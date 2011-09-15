@@ -257,6 +257,8 @@ type iterator struct {
 var _ db.Iterator = &iterator{}
 
 // fill fills the iterator's buffer with key/value pairs from the MemDB.
+//
+// Precondition: t.m.mutex is locked for reading.
 func (t *iterator) fill() {
 	i, n := 0, t.restartNode
 	for i < len(t.buf) && n != zeroNode {
