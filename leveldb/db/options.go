@@ -9,6 +9,11 @@ package db
 // The GetXxx methods are used inside the DB implementations; they return the
 // default parameter value if the *Options receiver is nil or the field value
 // is zero.
+//
+// Read/Write options:
+//   - Comparer
+// Read options:
+//   - VerifyChecksums
 type Options struct {
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
@@ -16,6 +21,11 @@ type Options struct {
 	//
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer Comparer
+
+	// VerifyChecksums is whether to verify the per-block checksums in a DB.
+	//
+	// The default value is false.
+	VerifyChecksums bool
 }
 
 func (o *Options) GetComparer() Comparer {
@@ -23,4 +33,11 @@ func (o *Options) GetComparer() Comparer {
 		return DefaultComparer
 	}
 	return o.Comparer
+}
+
+func (o *Options) GetVerifyChecksums() bool {
+	if o == nil {
+		return false
+	}
+	return o.VerifyChecksums
 }

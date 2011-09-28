@@ -8,8 +8,10 @@ all: install
 
 # The order matters: earlier packages may not depend on later ones.
 DIRS=\
+	leveldb/crc\
 	leveldb/db\
 	leveldb/memdb\
+	leveldb/table\
 
 install clean nuke:
 	for dir in $(DIRS); do \
