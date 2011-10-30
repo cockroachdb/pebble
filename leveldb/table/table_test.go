@@ -6,28 +6,36 @@ package table
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
 	"leveldb-go.googlecode.com/hg/leveldb/db"
 )
 
-type file []byte
+type memFile []byte
 
-func (f file) Close() os.Error {
+func (f *memFile) Close() os.Error {
 	return nil
 }
 
-func (f file) ReadAt(p []byte, off int64) (int, os.Error) {
-	return copy(p, f[off:]), nil
+func (f *memFile) ReadAt(p []byte, off int64) (int, os.Error) {
+	return copy(p, (*f)[off:]), nil
 }
 
-func (f file) Stat() (*os.FileInfo, os.Error) {
+func (f *memFile) Stat() (*os.FileInfo, os.Error) {
 	return &os.FileInfo{
-		Size: int64(len(f)),
+		Size: int64(len(*f)),
 	}, nil
+}
+
+func (f *memFile) Write(p []byte) (int, os.Error) {
+	*f = append(*f, p...)
+	return len(p), nil
 }
 
 var wordCount = map[string]string{}
@@ -56,7 +64,13 @@ func init() {
 	}
 }
 
-func check(r db.DB) os.Error {
+func check(f File) os.Error {
+	r, err := NewReader(f, &db.Options{
+		VerifyChecksums: true,
+	})
+	if err != nil {
+		return err
+	}
 	// Check that each key/value pair in wordCount is also in the table.
 	for k, v := range wordCount {
 		// Check using Get.
@@ -129,7 +143,34 @@ func check(r db.DB) os.Error {
 		}
 	}
 
-	return nil
+	return r.Close()
+}
+
+func build(compression db.Compression) (*memFile, os.Error) {
+	// Create a sorted list of wordCount's keys.
+	keys := make([]string, len(wordCount))
+	i := 0
+	for k := range wordCount {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+
+	// Write the key/value pairs to a new table, in increasing key order.
+	f := new(memFile)
+	w := NewWriter(f, &db.Options{
+		Compression: compression,
+	})
+	for _, k := range keys {
+		v := wordCount[k]
+		if err := w.Set([]byte(k), []byte(v)); err != nil {
+			return nil, err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 func TestReader(t *testing.T) {
@@ -138,19 +179,37 @@ func TestReader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := Open(f, &db.Options{
-		VerifyChecksums: true,
-	})
+	err = check(f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = check(r)
+}
+
+func TestWriter(t *testing.T) {
+	// Check that we can read a freshly made table.
+	f, err := build(db.DefaultCompression)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.Close()
+	err = check(f)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNoCompressionOutput(t *testing.T) {
+	// Check that a freshly made NoCompression table is byte-for-byte equal
+	// to a pre-made table.
+	a, err := ioutil.ReadFile("../../testdata/h.no-compression.sst")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := build(db.NoCompression)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, []byte(*b)) {
+		t.Fatal("built table does not match pre-made table")
 	}
 }
 

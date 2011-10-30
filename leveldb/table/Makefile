@@ -8,6 +8,7 @@ TARG=leveldb-go.googlecode.com/hg/leveldb/table
 GOFILES=\
 	reader.go\
 	table.go\
+	writer.go\
 
 include $(GOROOT)/src/Make.pkg
 

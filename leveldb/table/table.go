@@ -3,9 +3,9 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package table implements readers of leveldb tables.
+Package table implements readers and writers of leveldb tables.
 
-Tables are either opened for reading or created for writing.
+Tables are either opened for reading or created for writing but not both.
 
 A reader can create iterators, which yield all key/value pairs whose keys
 are 'greater than or equal' to a starting key. There may be multiple key/
@@ -16,8 +16,11 @@ concurrently, and each iterator can run concurrently with other iterators.
 However, any particular iterator should not be used concurrently, and
 iterators should not be used once a reader is closed.
 
-Readers can be created with various options. Passing a nil Options pointer
-is valid and means to use the default values.
+A writer writes key/value pairs in increasing key order, and cannot be used
+concurrently. A table cannot be read until the writer has finished.
+
+Readers and writers can be created with various options. Passing a nil
+Options pointer is valid and means to use the default values.
 
 One such option is to define the 'less than' ordering for keys. The default
 Comparer uses the natural ordering consistent with bytes.Compare. The same
@@ -25,7 +28,7 @@ ordering should be used for reading and writing a table.
 
 To return the value for a key:
 
-	r, err := table.Open(filename, options)
+	r, err := table.NewReader(filename, options)
 	if err != nil {
 		return nil, err
 	}
@@ -42,6 +45,23 @@ To count the number of entries in a table:
 		return 0, err
 	}
 	return n, nil
+
+To write a table with three entries:
+
+	w := table.NewWriter(filename, options)
+	if err := w.Set([]byte("apple"), []byte("red")); err != nil {
+		w.Close()
+		return err
+	}
+	if err := w.Set([]byte("banana"), []byte("yellow")); err != nil {
+		w.Close()
+		return err
+	}
+	if err := w.Set([]byte("cherry"), []byte("red")); err != nil {
+		w.Close()
+		return err
+	}
+	return w.Close()
 */
 package table
 
@@ -112,6 +132,9 @@ const (
 
 	// The block type gives the per-block compression format.
 	// These constants are part of the file format and should not be changed.
+	// They are different from the db.Compression constants because the latter
+	// are designed so that the zero value of the db.Compression type means to
+	// use the default compression (which is snappy).
 	noCompressionBlockType     = 0
 	snappyCompressionBlockType = 1
 )

@@ -23,16 +23,22 @@ type blockHandle struct {
 	offset, length uint64
 }
 
-// readBlockHandle returns the block handle encoded at the start of src, as
+// decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
-func readBlockHandle(src []byte) (blockHandle, int) {
+func decodeBlockHandle(src []byte) (blockHandle, int) {
 	offset, n := varint.Decode(src)
 	length, m := varint.Decode(src[n:])
 	if n == 0 || m == 0 {
 		return blockHandle{}, 0
 	}
 	return blockHandle{offset, length}, n + m
+}
+
+func encodeBlockHandle(dst []byte, b blockHandle) int {
+	n := varint.Encode(dst, b.offset)
+	m := varint.Encode(dst[n:], b.length)
+	return n + m
 }
 
 // block is a []byte that holds a sequence of key/value pairs plus an index
@@ -97,7 +103,7 @@ type blockIter struct {
 }
 
 // blockIter implements the db.Iterator interface.
-var _ db.Iterator = &blockIter{}
+var _ db.Iterator = (*blockIter)(nil)
 
 // Next implements Iterator.Next, as documented in the leveldb/db package.
 func (i *blockIter) Next() bool {
@@ -157,7 +163,7 @@ type tableIter struct {
 }
 
 // tableIter implements the db.Iterator interface.
-var _ db.Iterator = &tableIter{}
+var _ db.Iterator = (*tableIter)(nil)
 
 // nextBlock loads the next block and positions i.data at the first key in that
 // block which is >= the given key. If unsuccessful, it sets i.err to any error
@@ -169,7 +175,7 @@ func (i *tableIter) nextBlock(key []byte) bool {
 	}
 	// Load the next block.
 	v := i.index.Value()
-	h, n := readBlockHandle(v)
+	h, n := decodeBlockHandle(v)
 	if n == 0 || n != len(v) {
 		i.err = os.NewError("leveldb/table: corrupt index entry")
 		return false
@@ -243,7 +249,7 @@ type Reader struct {
 }
 
 // Reader implements the db.DB interface.
-var _ db.DB = &Reader{}
+var _ db.DB = (*Reader)(nil)
 
 // Close implements DB.Close, as documented in the leveldb/db package.
 func (r *Reader) Close() os.Error {
@@ -315,17 +321,21 @@ func (r *Reader) readBlock(bh blockHandle) (block, os.Error) {
 	return nil, fmt.Errorf("leveldb/table: unknown block compression: %d", b[bh.length])
 }
 
-// File provides the raw bytes for a table reader.
+// TODO(nigeltao): move the File interface to the standard package library?
+// Package http already defines something similar.
+
+// File holds the raw bytes for a table.
 type File interface {
 	io.Closer
 	io.ReaderAt
+	io.Writer
 	Stat() (*os.FileInfo, os.Error)
 }
 
-// Open opens the file for reading a table. If the returned reader is not nil,
-// closing the reader will close the file. If the returned reader is nil, the
-// file is not closed.
-func Open(f File, o *db.Options) (*Reader, os.Error) {
+// NewReader returns a new table reader for the file. If the returned reader
+// is not nil, closing the reader will close the file. Otherwise, the file is
+// not closed.
+func NewReader(f File, o *db.Options) (*Reader, os.Error) {
 	stat, err := f.Stat()
 	if err != nil {
 		return nil, err
@@ -347,12 +357,12 @@ func Open(f File, o *db.Options) (*Reader, os.Error) {
 		verifyChecksums: o.GetVerifyChecksums(),
 	}
 	// Ignore the metaindex.
-	_, n := readBlockHandle(footer[:])
+	_, n := decodeBlockHandle(footer[:])
 	if n == 0 {
 		return nil, os.NewError("leveldb/table: invalid table (bad metaindex block handle)")
 	}
 	// Read the index into memory.
-	indexBH, n := readBlockHandle(footer[n:])
+	indexBH, n := decodeBlockHandle(footer[n:])
 	if n == 0 {
 		return nil, os.NewError("leveldb/table: invalid table (bad index block handle)")
 	}
