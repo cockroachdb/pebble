@@ -28,7 +28,7 @@ ordering should be used for reading and writing a table.
 
 To return the value for a key:
 
-	r, err := table.NewReader(filename, options)
+	r, err := table.NewReader(file, options)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ To count the number of entries in a table:
 
 To write a table with three entries:
 
-	w := table.NewWriter(filename, options)
+	w := table.NewWriter(file, options)
 	if err := w.Set([]byte("apple"), []byte("red")); err != nil {
 		w.Close()
 		return err
