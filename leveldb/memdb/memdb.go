@@ -12,7 +12,6 @@
 package memdb
 
 import (
-	"os"
 	"rand"
 	"sync"
 
@@ -135,7 +134,7 @@ func (m *MemDB) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bo
 }
 
 // Get implements DB.Get, as documented in the leveldb/db package.
-func (m *MemDB) Get(key []byte) (value []byte, err os.Error) {
+func (m *MemDB) Get(key []byte) (value []byte, err error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -147,7 +146,7 @@ func (m *MemDB) Get(key []byte) (value []byte, err os.Error) {
 }
 
 // Set implements DB.Set, as documented in the leveldb/db package.
-func (m *MemDB) Set(key, value []byte) os.Error {
+func (m *MemDB) Set(key, value []byte) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	// Find the node, and its predecessors at all heights.
@@ -184,7 +183,7 @@ func (m *MemDB) Set(key, value []byte) os.Error {
 }
 
 // Delete implements DB.Delete, as documented in the leveldb/db package.
-func (m *MemDB) Delete(key []byte) os.Error {
+func (m *MemDB) Delete(key []byte) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -215,7 +214,7 @@ func (m *MemDB) Find(key []byte) db.Iterator {
 }
 
 // Close implements DB.Close, as documented in the leveldb/db package.
-func (m *MemDB) Close() os.Error {
+func (m *MemDB) Close() error {
 	return nil
 }
 
@@ -314,6 +313,6 @@ func (t *iterator) Value() []byte {
 }
 
 // Close implements Iterator.Close, as documented in the leveldb/db package.
-func (t *iterator) Close() os.Error {
+func (t *iterator) Close() error {
 	return nil
 }

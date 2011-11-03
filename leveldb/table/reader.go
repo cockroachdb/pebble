@@ -7,6 +7,7 @@ package table
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,10 +48,10 @@ type block []byte
 
 // seek returns a blockIter positioned at the first key/value pair whose key is
 // >= the given key. If there is no such key, the blockIter returned is done.
-func (b block) seek(c db.Comparer, key []byte) (*blockIter, os.Error) {
+func (b block) seek(c db.Comparer, key []byte) (*blockIter, error) {
 	numRestarts := int(binary.LittleEndian.Uint32(b[len(b)-4:]))
 	if numRestarts == 0 {
-		return nil, os.NewError("leveldb/table: invalid table (block has no restart points)")
+		return nil, errors.New("leveldb/table: invalid table (block has no restart points)")
 	}
 	n := len(b) - 4*(1+numRestarts)
 	var offset int
@@ -96,7 +97,7 @@ func (b block) seek(c db.Comparer, key []byte) (*blockIter, os.Error) {
 type blockIter struct {
 	data     []byte
 	key, val []byte
-	err      os.Error
+	err      error
 	// soi and eoi mark the start and end of iteration.
 	// Both cannot simultaneously be true.
 	soi, eoi bool
@@ -145,7 +146,7 @@ func (i *blockIter) Value() []byte {
 }
 
 // Close implements Iterator.Close, as documented in the leveldb/db package.
-func (i *blockIter) Close() os.Error {
+func (i *blockIter) Close() error {
 	i.key = nil
 	i.val = nil
 	i.eoi = true
@@ -159,7 +160,7 @@ type tableIter struct {
 	reader *Reader
 	data   *blockIter
 	index  *blockIter
-	err    os.Error
+	err    error
 }
 
 // tableIter implements the db.Iterator interface.
@@ -177,7 +178,7 @@ func (i *tableIter) nextBlock(key []byte) bool {
 	v := i.index.Value()
 	h, n := decodeBlockHandle(v)
 	if n == 0 || n != len(v) {
-		i.err = os.NewError("leveldb/table: corrupt index entry")
+		i.err = errors.New("leveldb/table: corrupt index entry")
 		return false
 	}
 	k, err := i.reader.readBlock(h)
@@ -233,7 +234,7 @@ func (i *tableIter) Value() []byte {
 }
 
 // Close implements Iterator.Close, as documented in the leveldb/db package.
-func (i *tableIter) Close() os.Error {
+func (i *tableIter) Close() error {
 	i.data = nil
 	return i.err
 }
@@ -252,12 +253,12 @@ type Reader struct {
 var _ db.DB = (*Reader)(nil)
 
 // Close implements DB.Close, as documented in the leveldb/db package.
-func (r *Reader) Close() os.Error {
+func (r *Reader) Close() error {
 	return r.file.Close()
 }
 
 // Get implements DB.Get, as documented in the leveldb/db package.
-func (r *Reader) Get(key []byte) (value []byte, err os.Error) {
+func (r *Reader) Get(key []byte) (value []byte, err error) {
 	i := r.Find(key)
 	if !i.Next() || !bytes.Equal(key, i.Key()) {
 		err := i.Close()
@@ -271,14 +272,14 @@ func (r *Reader) Get(key []byte) (value []byte, err os.Error) {
 
 // Set is provided to implement the DB interface, but returns an error, as a
 // Reader cannot write to a table.
-func (r *Reader) Set(key, value []byte) os.Error {
-	return os.NewError("leveldb/table: cannot Set into a read-only table")
+func (r *Reader) Set(key, value []byte) error {
+	return errors.New("leveldb/table: cannot Set into a read-only table")
 }
 
 // Delete is provided to implement the DB interface, but returns an error, as a
 // Reader cannot write to a table.
-func (r *Reader) Delete([]byte) os.Error {
-	return os.NewError("leveldb/table: cannot Delete from a read-only table")
+func (r *Reader) Delete([]byte) error {
+	return errors.New("leveldb/table: cannot Delete from a read-only table")
 }
 
 // Find implements DB.Find, as documented in the leveldb/db package.
@@ -296,7 +297,7 @@ func (r *Reader) Find(key []byte) db.Iterator {
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(bh blockHandle) (block, os.Error) {
+func (r *Reader) readBlock(bh blockHandle) (block, error) {
 	b := make([]byte, bh.length+blockTrailerLen)
 	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
 		return nil, err
@@ -305,7 +306,7 @@ func (r *Reader) readBlock(bh blockHandle) (block, os.Error) {
 		checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
 		checksum1 := crc.New(b[:bh.length+1]).Value()
 		if checksum0 != checksum1 {
-			return nil, os.NewError("leveldb/table: invalid table (checksum mismatch)")
+			return nil, errors.New("leveldb/table: invalid table (checksum mismatch)")
 		}
 	}
 	switch b[bh.length] {
@@ -329,27 +330,27 @@ type File interface {
 	io.Closer
 	io.ReaderAt
 	io.Writer
-	Stat() (*os.FileInfo, os.Error)
+	Stat() (*os.FileInfo, error)
 }
 
 // NewReader returns a new table reader for the file. If the returned reader
 // is not nil, closing the reader will close the file. Otherwise, the file is
 // not closed.
-func NewReader(f File, o *db.Options) (*Reader, os.Error) {
+func NewReader(f File, o *db.Options) (*Reader, error) {
 	stat, err := f.Stat()
 	if err != nil {
 		return nil, err
 	}
 	var footer [footerLen]byte
 	if stat.Size < int64(len(footer)) {
-		return nil, os.NewError("leveldb/table: invalid table (file size is too small)")
+		return nil, errors.New("leveldb/table: invalid table (file size is too small)")
 	}
 	_, err = f.ReadAt(footer[:], stat.Size-int64(len(footer)))
-	if err != nil && err != os.EOF {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	if string(footer[footerLen-len(magic):footerLen]) != magic {
-		return nil, os.NewError("leveldb/table: invalid table (bad magic number)")
+		return nil, errors.New("leveldb/table: invalid table (bad magic number)")
 	}
 	r := &Reader{
 		file:            f,
@@ -359,12 +360,12 @@ func NewReader(f File, o *db.Options) (*Reader, os.Error) {
 	// Ignore the metaindex.
 	_, n := decodeBlockHandle(footer[:])
 	if n == 0 {
-		return nil, os.NewError("leveldb/table: invalid table (bad metaindex block handle)")
+		return nil, errors.New("leveldb/table: invalid table (bad metaindex block handle)")
 	}
 	// Read the index into memory.
 	indexBH, n := decodeBlockHandle(footer[n:])
 	if n == 0 {
-		return nil, os.NewError("leveldb/table: invalid table (bad index block handle)")
+		return nil, errors.New("leveldb/table: invalid table (bad index block handle)")
 	}
 	r.index, err = r.readBlock(indexBH)
 	if err != nil {

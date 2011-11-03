@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -19,21 +20,21 @@ import (
 
 type memFile []byte
 
-func (f *memFile) Close() os.Error {
+func (f *memFile) Close() error {
 	return nil
 }
 
-func (f *memFile) ReadAt(p []byte, off int64) (int, os.Error) {
+func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 	return copy(p, (*f)[off:]), nil
 }
 
-func (f *memFile) Stat() (*os.FileInfo, os.Error) {
+func (f *memFile) Stat() (*os.FileInfo, error) {
 	return &os.FileInfo{
 		Size: int64(len(*f)),
 	}, nil
 }
 
-func (f *memFile) Write(p []byte) (int, os.Error) {
+func (f *memFile) Write(p []byte) (int, error) {
 	*f = append(*f, p...)
 	return len(p), nil
 }
@@ -49,7 +50,7 @@ func init() {
 	r := bufio.NewReader(f)
 	for {
 		s, err := r.ReadBytes('\n')
-		if err == os.EOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
@@ -64,7 +65,7 @@ func init() {
 	}
 }
 
-func check(f File) os.Error {
+func check(f File) error {
 	r, err := NewReader(f, &db.Options{
 		VerifyChecksums: true,
 	})
@@ -75,7 +76,7 @@ func check(f File) os.Error {
 	for k, v := range wordCount {
 		// Check using Get.
 		if v1, err := r.Get([]byte(k)); string(v1) != string(v) || err != nil {
-			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, os.Error(nil))
+			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
 		}
 
 		// Check using Find.
@@ -146,7 +147,7 @@ func check(f File) os.Error {
 	return r.Close()
 }
 
-func build(compression db.Compression) (*memFile, os.Error) {
+func build(compression db.Compression) (*memFile, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
 	i := 0

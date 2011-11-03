@@ -6,7 +6,6 @@ package memdb
 
 import (
 	"fmt"
-	"os"
 	"rand"
 	"strconv"
 	"strings"
@@ -28,7 +27,7 @@ func count(d db.DB) (n int) {
 }
 
 // compact compacts a MemDB.
-func compact(m *MemDB) (*MemDB, os.Error) {
+func compact(m *MemDB) (*MemDB, error) {
 	n, x := New(nil), m.Find(nil)
 	for x.Next() {
 		if err := n.Set(x.Key(), x.Value()); err != nil {
@@ -61,7 +60,7 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("2.count: got %v, want %v", got, want)
 	}
 	// Delete a key twice.
-	if got, want := m.Delete([]byte("grape")), os.Error(nil); got != want {
+	if got, want := m.Delete([]byte("grape")), error(nil); got != want {
 		t.Fatalf("3.delete: got %v, want %v", got, want)
 	}
 	if got, want := m.Delete([]byte("grape")), db.ErrNotFound; got != want {
@@ -73,7 +72,7 @@ func TestBasic(t *testing.T) {
 	// Get keys that are and aren't in the DB.
 	v, err = m.Get([]byte("plum"))
 	if string(v) != "purple" || err != nil {
-		t.Fatalf("6.get: got (%q, %v), want (%q, %v)", v, err, "purple", os.Error(nil))
+		t.Fatalf("6.get: got (%q, %v), want (%q, %v)", v, err, "purple", error(nil))
 	}
 	v, err = m.Get([]byte("lychee"))
 	if string(v) != "" || err != db.ErrNotFound {
@@ -91,7 +90,7 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("9.close: %v", err)
 	}
 	// Check some more sets and deletes.
-	if got, want := m.Delete([]byte("cherry")), os.Error(nil); got != want {
+	if got, want := m.Delete([]byte("cherry")), error(nil); got != want {
 		t.Fatalf("10.delete: got %v, want %v", got, want)
 	}
 	if got, want := count(m), 2; got != want {

@@ -32,11 +32,11 @@
 package db
 
 import (
-	"os"
+	"errors"
 )
 
 // ErrNotFound means that a get or delete call did not find the requested key.
-var ErrNotFound = os.NewError("leveldb/db: not found")
+var ErrNotFound = errors.New("leveldb/db: not found")
 
 // Iterator iterates over a DB's key/value pairs in key order.
 //
@@ -69,7 +69,7 @@ type Iterator interface {
 	// all the key/value pairs in a table is not considered to be an error.
 	// It is valid to call Close multiple times. Other methods should not be
 	// called after the iterator has been closed.
-	Close() os.Error
+	Close() error
 }
 
 // DB is a key/value store.
@@ -86,19 +86,19 @@ type DB interface {
 	//
 	// The caller should not modify the contents of the returned slice, but
 	// it is safe to modify the contents of the argument after Get returns.
-	Get(key []byte) (value []byte, err os.Error)
+	Get(key []byte) (value []byte, err error)
 
 	// Set sets the value for the given key. It overwrites any previous value
 	// for that key; a DB is not a multi-map.
 	//
 	// It is safe to modify the contents of the arguments after Set returns.
-	Set(key, value []byte) os.Error
+	Set(key, value []byte) error
 
 	// Delete deletes the value for the given key. It returns ErrNotFound if
 	// the DB does not contain the key.
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.
-	Delete(key []byte) os.Error
+	Delete(key []byte) error
 
 	// Find returns an iterator positioned before the first key/value pair
 	// whose key is 'greater than or equal to' the given key. There may be no
@@ -117,5 +117,5 @@ type DB interface {
 	// It is not safe to close a DB until all outstanding iterators are closed.
 	// It is valid to call Close multiple times. Other methods should not be
 	// called after the DB has been closed.
-	Close() os.Error
+	Close() error
 }

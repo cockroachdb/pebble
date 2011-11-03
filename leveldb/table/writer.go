@@ -8,9 +8,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"leveldb-go.googlecode.com/hg/leveldb/crc"
 	"leveldb-go.googlecode.com/hg/leveldb/db"
@@ -30,7 +30,7 @@ type Writer struct {
 	writer    io.Writer
 	bufWriter *bufio.Writer
 	closer    io.Closer
-	err       os.Error
+	err       error
 	// The next four fields are copied from a db.Options.
 	blockRestartInterval int
 	blockSize            int
@@ -76,27 +76,27 @@ var _ db.DB = (*Writer)(nil)
 
 // Get is provided to implement the DB interface, but returns an error, as a
 // Writer cannot read from a table.
-func (w *Writer) Get([]byte) ([]byte, os.Error) {
-	return nil, os.NewError("leveldb/table: cannot Get from a write-only table")
+func (w *Writer) Get([]byte) ([]byte, error) {
+	return nil, errors.New("leveldb/table: cannot Get from a write-only table")
 }
 
 // Delete is provided to implement the DB interface, but returns an error, as a
 // Writer can only append key/value pairs.
-func (w *Writer) Delete([]byte) os.Error {
-	return os.NewError("leveldb/table: cannot Delete from a table")
+func (w *Writer) Delete([]byte) error {
+	return errors.New("leveldb/table: cannot Delete from a table")
 }
 
 // Find is provided to implement the DB interface, but returns an error, as a
 // Writer cannot read from a table.
 func (w *Writer) Find([]byte) db.Iterator {
 	return &tableIter{
-		err: os.NewError("leveldb/table: cannot Find from a write-only table"),
+		err: errors.New("leveldb/table: cannot Find from a write-only table"),
 	}
 }
 
 // Set implements DB.Set, as documented in the leveldb/db package. For a given
 // Writer, the keys passed to Set must be in increasing order.
-func (w *Writer) Set(key, value []byte) os.Error {
+func (w *Writer) Set(key, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
@@ -152,7 +152,7 @@ func (w *Writer) append(key, value []byte, restart bool) {
 
 // finishBlock finishes the current block and returns its block handle, which is
 // its offset and length in the table.
-func (w *Writer) finishBlock() (blockHandle, os.Error) {
+func (w *Writer) finishBlock() (blockHandle, error) {
 	// Write the restart points to the buffer.
 	if w.nEntries == 0 {
 		// Every block must have at least one restart point.
@@ -205,7 +205,7 @@ func (w *Writer) finishBlock() (blockHandle, os.Error) {
 }
 
 // Close implements DB.Close, as documented in the leveldb/db package.
-func (w *Writer) Close() (err os.Error) {
+func (w *Writer) Close() (err error) {
 	defer func() {
 		if w.closer == nil {
 			return
@@ -276,7 +276,7 @@ func (w *Writer) Close() (err os.Error) {
 	}
 
 	// Make any future calls to Set or Close return an error.
-	w.err = os.NewError("leveldb/table: writer is closed")
+	w.err = errors.New("leveldb/table: writer is closed")
 	return nil
 }
 
@@ -294,7 +294,7 @@ func NewWriter(f File, o *db.Options) *Writer {
 	}
 	// If f does not have a Flush method, do our own buffering.
 	type flusher interface {
-		Flush() os.Error
+		Flush() error
 	}
 	if _, ok := f.(flusher); ok {
 		w.writer = f
