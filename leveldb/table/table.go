@@ -28,10 +28,7 @@ ordering should be used for reading and writing a table.
 
 To return the value for a key:
 
-	r, err := table.NewReader(file, options)
-	if err != nil {
-		return nil, err
-	}
+	r := table.NewReader(file, options)
 	defer r.Close()
 	return r.Get(key)
 

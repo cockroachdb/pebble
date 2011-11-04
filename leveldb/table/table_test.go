@@ -66,12 +66,9 @@ func init() {
 }
 
 func check(f File) error {
-	r, err := NewReader(f, &db.Options{
+	r := NewReader(f, &db.Options{
 		VerifyChecksums: true,
 	})
-	if err != nil {
-		return err
-	}
 	// Check that each key/value pair in wordCount is also in the table.
 	for k, v := range wordCount {
 		// Check using Get.

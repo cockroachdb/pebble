@@ -292,6 +292,10 @@ func NewWriter(f File, o *db.Options) *Writer {
 		prevKey:              make([]byte, 0, 256),
 		restarts:             make([]uint32, 0, 256),
 	}
+	if f == nil {
+		w.err = errors.New("leveldb/table: nil file")
+		return w
+	}
 	// If f does not have a Flush method, do our own buffering.
 	type flusher interface {
 		Flush() error

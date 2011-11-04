@@ -243,6 +243,7 @@ func (i *tableIter) Close() error {
 // in the leveldb/db package.
 type Reader struct {
 	file            File
+	err             error
 	index           block
 	comparer        db.Comparer
 	verifyChecksums bool
@@ -254,11 +255,30 @@ var _ db.DB = (*Reader)(nil)
 
 // Close implements DB.Close, as documented in the leveldb/db package.
 func (r *Reader) Close() error {
-	return r.file.Close()
+	if r.err != nil {
+		if r.file != nil {
+			r.file.Close()
+			r.file = nil
+		}
+		return r.err
+	}
+	if r.file != nil {
+		r.err = r.file.Close()
+		r.file = nil
+		if r.err != nil {
+			return r.err
+		}
+	}
+	// Make any future calls to Get, Find or Close return an error.
+	r.err = errors.New("leveldb/table: reader is closed")
+	return nil
 }
 
 // Get implements DB.Get, as documented in the leveldb/db package.
 func (r *Reader) Get(key []byte) (value []byte, err error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	i := r.Find(key)
 	if !i.Next() || !bytes.Equal(key, i.Key()) {
 		err := i.Close()
@@ -284,6 +304,9 @@ func (r *Reader) Delete([]byte) error {
 
 // Find implements DB.Find, as documented in the leveldb/db package.
 func (r *Reader) Find(key []byte) db.Iterator {
+	if r.err != nil {
+		return &tableIter{err: r.err}
+	}
 	index, err := r.index.seek(r.comparer, key)
 	if err != nil {
 		return &tableIter{err: err}
@@ -333,43 +356,49 @@ type File interface {
 	Stat() (*os.FileInfo, error)
 }
 
-// NewReader returns a new table reader for the file. If the returned reader
-// is not nil, closing the reader will close the file. Otherwise, the file is
-// not closed.
-func NewReader(f File, o *db.Options) (*Reader, error) {
-	stat, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	var footer [footerLen]byte
-	if stat.Size < int64(len(footer)) {
-		return nil, errors.New("leveldb/table: invalid table (file size is too small)")
-	}
-	_, err = f.ReadAt(footer[:], stat.Size-int64(len(footer)))
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if string(footer[footerLen-len(magic):footerLen]) != magic {
-		return nil, errors.New("leveldb/table: invalid table (bad magic number)")
-	}
+// NewReader returns a new table reader for the file. Closing the reader will
+// close the file.
+func NewReader(f File, o *db.Options) *Reader {
 	r := &Reader{
 		file:            f,
 		comparer:        o.GetComparer(),
 		verifyChecksums: o.GetVerifyChecksums(),
 	}
+	if f == nil {
+		r.err = errors.New("leveldb/table: nil file")
+		return r
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		r.err = fmt.Errorf("leveldb/table: invalid table (could not stat file): %v", err)
+		return r
+	}
+	var footer [footerLen]byte
+	if stat.Size < int64(len(footer)) {
+		r.err = errors.New("leveldb/table: invalid table (file size is too small)")
+		return r
+	}
+	_, err = f.ReadAt(footer[:], stat.Size-int64(len(footer)))
+	if err != nil && err != io.EOF {
+		r.err = fmt.Errorf("leveldb/table: invalid table (could not read footer): %v", err)
+		return r
+	}
+	if string(footer[footerLen-len(magic):footerLen]) != magic {
+		r.err = errors.New("leveldb/table: invalid table (bad magic number)")
+		return r
+	}
 	// Ignore the metaindex.
 	_, n := decodeBlockHandle(footer[:])
 	if n == 0 {
-		return nil, errors.New("leveldb/table: invalid table (bad metaindex block handle)")
+		r.err = errors.New("leveldb/table: invalid table (bad metaindex block handle)")
+		return r
 	}
 	// Read the index into memory.
 	indexBH, n := decodeBlockHandle(footer[n:])
 	if n == 0 {
-		return nil, errors.New("leveldb/table: invalid table (bad index block handle)")
+		r.err = errors.New("leveldb/table: invalid table (bad index block handle)")
+		return r
 	}
-	r.index, err = r.readBlock(indexBH)
-	if err != nil {
-		return nil, err
-	}
-	return r, nil
+	r.index, r.err = r.readBlock(indexBH)
+	return r
 }
