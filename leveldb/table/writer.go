@@ -15,7 +15,6 @@ import (
 	"leveldb-go.googlecode.com/hg/leveldb/crc"
 	"leveldb-go.googlecode.com/hg/leveldb/db"
 	"snappy-go.googlecode.com/hg/snappy"
-	"snappy-go.googlecode.com/hg/varint"
 )
 
 // indexEntry is a block handle and the length of the separator key.
@@ -67,7 +66,7 @@ type Writer struct {
 	// temporary buffer for each block.
 	compressedBuf []byte
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
-	// blockTrailerLen bytes, or (5 * varint.MaxLen) bytes.
+	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
 	tmp [50]byte
 }
 
@@ -142,9 +141,9 @@ func (w *Writer) append(key, value []byte, restart bool) {
 	}
 	w.prevKey = append(w.prevKey[:0], key...)
 	w.nEntries++
-	n := varint.Encode(w.tmp[0:], uint64(nShared))
-	n += varint.Encode(w.tmp[n:], uint64(len(key)-nShared))
-	n += varint.Encode(w.tmp[n:], uint64(len(value)))
+	n := binary.PutUvarint(w.tmp[0:], uint64(nShared))
+	n += binary.PutUvarint(w.tmp[n:], uint64(len(key)-nShared))
+	n += binary.PutUvarint(w.tmp[n:], uint64(len(value)))
 	w.buf.Write(w.tmp[:n])
 	w.buf.Write(key[nShared:])
 	w.buf.Write(value)
@@ -240,8 +239,8 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Write the index block.
-	// writer.append uses w.tmp[:3*varint.MaxLen].
-	i0, tmp := 0, w.tmp[3*varint.MaxLen:5*varint.MaxLen]
+	// writer.append uses w.tmp[:3*binary.MaxVarintLen64].
+	i0, tmp := 0, w.tmp[3*binary.MaxVarintLen64:5*binary.MaxVarintLen64]
 	for _, ie := range w.indexEntries {
 		n := encodeBlockHandle(tmp, ie.bh)
 		i1 := i0 + ie.keyLen

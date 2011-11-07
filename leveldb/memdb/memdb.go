@@ -12,11 +12,11 @@
 package memdb
 
 import (
+	"encoding/binary"
 	"rand"
 	"sync"
 
 	"leveldb-go.googlecode.com/hg/leveldb/db"
-	"snappy-go.googlecode.com/hg/varint"
 )
 
 // maxHeight is the maximum height of a MemDB's skiplist.
@@ -85,7 +85,7 @@ func (m *MemDB) load(kvOffset int) (b []byte) {
 	if kvOffset < 0 {
 		return nil
 	}
-	bLen, n := varint.Decode(m.kvData[kvOffset:])
+	bLen, n := binary.Uvarint(m.kvData[kvOffset:])
 	return m.kvData[kvOffset+n : kvOffset+n+int(bLen)]
 }
 
@@ -95,8 +95,8 @@ func (m *MemDB) save(b []byte) (kvOffset int) {
 		return kvOffsetEmptySlice
 	}
 	kvOffset = len(m.kvData)
-	var buf [varint.MaxLen]byte
-	length := varint.Encode(buf[:], uint64(len(b)))
+	var buf [binary.MaxVarintLen64]byte
+	length := binary.PutUvarint(buf[:], uint64(len(b)))
 	m.kvData = append(m.kvData, buf[:length]...)
 	m.kvData = append(m.kvData, b...)
 	return kvOffset

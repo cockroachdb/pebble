@@ -16,7 +16,6 @@ import (
 	"leveldb-go.googlecode.com/hg/leveldb/crc"
 	"leveldb-go.googlecode.com/hg/leveldb/db"
 	"snappy-go.googlecode.com/hg/snappy"
-	"snappy-go.googlecode.com/hg/varint"
 )
 
 // blockHandle is the file offset and length of a block.
@@ -28,8 +27,8 @@ type blockHandle struct {
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
 func decodeBlockHandle(src []byte) (blockHandle, int) {
-	offset, n := varint.Decode(src)
-	length, m := varint.Decode(src[n:])
+	offset, n := binary.Uvarint(src)
+	length, m := binary.Uvarint(src[n:])
 	if n == 0 || m == 0 {
 		return blockHandle{}, 0
 	}
@@ -37,8 +36,8 @@ func decodeBlockHandle(src []byte) (blockHandle, int) {
 }
 
 func encodeBlockHandle(dst []byte, b blockHandle) int {
-	n := varint.Encode(dst, b.offset)
-	m := varint.Encode(dst[n:], b.length)
+	n := binary.PutUvarint(dst, b.offset)
+	m := binary.PutUvarint(dst[n:], b.length)
 	return n + m
 }
 
@@ -64,8 +63,8 @@ func (b block) seek(c db.Comparer, key []byte) (*blockIter, error) {
 			// The varint encoding of 0 occupies 1 byte.
 			o++
 			// Decode the key at that restart point, and compare it to the key sought.
-			v1, n1 := varint.Decode(b[o:])
-			_, n2 := varint.Decode(b[o+n1:])
+			v1, n1 := binary.Uvarint(b[o:])
+			_, n2 := binary.Uvarint(b[o+n1:])
 			m := o + n1 + n2
 			s := b[m : m+int(v1)]
 			return c.Compare(s, key) > 0
@@ -119,9 +118,9 @@ func (i *blockIter) Next() bool {
 		i.Close()
 		return false
 	}
-	v0, n0 := varint.Decode(i.data)
-	v1, n1 := varint.Decode(i.data[n0:])
-	v2, n2 := varint.Decode(i.data[n0+n1:])
+	v0, n0 := binary.Uvarint(i.data)
+	v1, n1 := binary.Uvarint(i.data[n0:])
+	v2, n2 := binary.Uvarint(i.data[n0+n1:])
 	n := n0 + n1 + n2
 	i.key = append(i.key[:v0], i.data[n:n+int(v1)]...)
 	i.val = i.data[n+int(v1) : n+int(v1+v2)]
