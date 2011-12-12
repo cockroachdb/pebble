@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"leveldb-go.googlecode.com/hg/leveldb/db"
 )
@@ -28,15 +29,33 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 	return copy(p, (*f)[off:]), nil
 }
 
-func (f *memFile) Stat() (*os.FileInfo, error) {
-	return &os.FileInfo{
-		Size: int64(len(*f)),
-	}, nil
+func (f *memFile) Stat() (os.FileInfo, error) {
+	return f, nil
 }
 
 func (f *memFile) Write(p []byte) (int, error) {
 	*f = append(*f, p...)
 	return len(p), nil
+}
+
+func (f *memFile) Size() int64 {
+	return int64(len(*f))
+}
+
+func (f *memFile) IsDir() bool {
+	return false
+}
+
+func (f *memFile) ModTime() time.Time {
+	return time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
+}
+
+func (f *memFile) Mode() os.FileMode {
+	return os.FileMode(0755)
+}
+
+func (f *memFile) Name() string {
+	return "testdata"
 }
 
 var wordCount = map[string]string{}

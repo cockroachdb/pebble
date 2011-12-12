@@ -6,7 +6,7 @@ package memdb
 
 import (
 	"fmt"
-	"rand"
+	"math/rand"
 	"strconv"
 	"strings"
 	"testing"

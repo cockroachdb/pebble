@@ -352,7 +352,7 @@ type File interface {
 	io.Closer
 	io.ReaderAt
 	io.Writer
-	Stat() (*os.FileInfo, error)
+	Stat() (os.FileInfo, error)
 }
 
 // NewReader returns a new table reader for the file. Closing the reader will
@@ -373,11 +373,11 @@ func NewReader(f File, o *db.Options) *Reader {
 		return r
 	}
 	var footer [footerLen]byte
-	if stat.Size < int64(len(footer)) {
+	if stat.Size() < int64(len(footer)) {
 		r.err = errors.New("leveldb/table: invalid table (file size is too small)")
 		return r
 	}
-	_, err = f.ReadAt(footer[:], stat.Size-int64(len(footer)))
+	_, err = f.ReadAt(footer[:], stat.Size()-int64(len(footer)))
 	if err != nil && err != io.EOF {
 		r.err = fmt.Errorf("leveldb/table: invalid table (could not read footer): %v", err)
 		return r

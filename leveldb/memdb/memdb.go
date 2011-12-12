@@ -13,7 +13,7 @@ package memdb
 
 import (
 	"encoding/binary"
-	"rand"
+	"math/rand"
 	"sync"
 
 	"leveldb-go.googlecode.com/hg/leveldb/db"
