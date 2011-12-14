@@ -9,6 +9,7 @@ all: install
 # The order matters: earlier packages may not depend on later ones.
 DIRS=\
 	leveldb/crc\
+	leveldb/record\
 	leveldb/db\
 	leveldb/memdb\
 	leveldb/table\
