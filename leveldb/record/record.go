@@ -5,19 +5,16 @@
 // Package record reads and writes sequences of records. Each record is a stream
 // of bytes that completes before the next record starts.
 //
-// When reading, call Next to begin each record, and Read zero or more times
-// per record. Read will return io.EOF when the current record is exhausted.
-// Next will return io.EOF when there are no more records. It is valid to call
-// Next without reading the current record to exhaustion.
+// When reading, call Next to obtain an io.Reader for the next record. Next will
+// return io.EOF when there are no more records. It is valid to call Next
+// without reading the current record to exhaustion.
 //
-// When writing, call Next to begin each record, and Write zero or more times
-// per record. Calling Next finishes the current record. Call Close to finish
-// the final record.
+// When writing, call Next to obtain an io.Writer for the next record. Calling
+// Next finishes the current record. Call Close to finish the final record.
 //
 // Optionally, call Flush to finish the current record and flush the underlying
 // writer without starting a new record. To start a new record after flushing,
-// call Next. It is an error to call Write between calls to Flush and Next, or
-// to call Write before the first call to Next.
+// call Next.
 //
 // Neither Readers or Writers are safe to use concurrently.
 //
@@ -107,6 +104,8 @@ type flusher interface {
 type Reader struct {
 	// r is the underlying reader.
 	r io.Reader
+	// seq is the sequence number of the current record.
+	seq int
 	// buf[i:j] is the unread portion of the current chunk's payload.
 	// The low bound, i, excludes the chunk header.
 	i, j int
@@ -121,6 +120,13 @@ type Reader struct {
 	err error
 	// buf is the buffer.
 	buf [blockSize]byte
+}
+
+// NewReader returns a new reader.
+func NewReader(r io.Reader) *Reader {
+	return &Reader{
+		r: r,
+	}
 }
 
 // nextChunk sets r.buf[r.i:r.j] to hold the next chunk's payload, reading the
@@ -163,24 +169,34 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 	panic("unreachable")
 }
 
-// Next finishes the current record (if any) and begins the next record.
-func (r *Reader) Next() error {
+// Next returns a reader for the next record. It returns io.EOF if there are no
+// more records. The reader returned becomes stale after the next Next call,
+// and should no longer be used.
+func (r *Reader) Next() (io.Reader, error) {
+	r.seq++
 	if r.err != nil {
-		return r.err
+		return nil, r.err
 	}
 	r.i = r.j
 	r.err = r.nextChunk(true)
+	if r.err != nil {
+		return nil, r.err
+	}
 	r.started = true
-	return r.err
+	return singleReader{r, r.seq}, nil
 }
 
-// Read reads bytes for the current record.
-func (r *Reader) Read(p []byte) (int, error) {
-	if r.err != nil {
-		return 0, r.err
+type singleReader struct {
+	r   *Reader
+	seq int
+}
+
+func (x singleReader) Read(p []byte) (int, error) {
+	r := x.r
+	if r.seq != x.seq {
+		return 0, errors.New("leveldb/record: stale reader")
 	}
-	if !r.started {
-		r.err = errors.New("leveldb/record: Read called before Next")
+	if r.err != nil {
 		return 0, r.err
 	}
 	for r.i == r.j {
@@ -196,17 +212,12 @@ func (r *Reader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// NewReader returns a new reader.
-func NewReader(r io.Reader) *Reader {
-	return &Reader{
-		r: r,
-	}
-}
-
 // Writer writes records to an underlying io.Writer.
 type Writer struct {
 	// w is the underlying writer.
 	w io.Writer
+	// seq is the sequence number of the current record.
+	seq int
 	// f is w as a flusher.
 	f flusher
 	// buf[i:j] is the bytes that will become the current chunk.
@@ -223,6 +234,15 @@ type Writer struct {
 	err error
 	// buf is the buffer.
 	buf [blockSize]byte
+}
+
+// NewWriter returns a new Writer.
+func NewWriter(w io.Writer) *Writer {
+	f, _ := w.(flusher)
+	return &Writer{
+		w: w,
+		f: f,
+	}
 }
 
 // fillHeader fills in the header for the pending chunk.
@@ -272,6 +292,7 @@ func (w *Writer) writePending() {
 
 // Close finishes the current record and closes the writer.
 func (w *Writer) Close() error {
+	w.seq++
 	w.writePending()
 	if w.err != nil {
 		return w.err
@@ -283,6 +304,7 @@ func (w *Writer) Close() error {
 // Flush finishes the current record, writes to the underlying writer, and
 // flushes it if that writer implements interface{ Flush() error }.
 func (w *Writer) Flush() error {
+	w.seq++
 	w.writePending()
 	if w.err != nil {
 		return w.err
@@ -294,10 +316,12 @@ func (w *Writer) Flush() error {
 	return nil
 }
 
-// Next finishes the current record (if any) and begins the next record.
-func (w *Writer) Next() {
+// Next returns a writer for the next record. The writer returned becomes stale
+// after the next Close, Flush or Next call, and should no longer be used.
+func (w *Writer) Next() (io.Writer, error) {
+	w.seq++
 	if w.err != nil {
-		return
+		return nil, w.err
 	}
 	if w.pending {
 		w.fillHeader(true)
@@ -312,20 +336,25 @@ func (w *Writer) Next() {
 		}
 		w.writeBlock()
 		if w.err != nil {
-			return
+			return nil, w.err
 		}
 	}
 	w.first = true
 	w.pending = true
+	return singleWriter{w, w.seq}, nil
 }
 
-// Write writes bytes for the current record.
-func (w *Writer) Write(p []byte) (int, error) {
-	if w.err != nil {
-		return 0, w.err
+type singleWriter struct {
+	w   *Writer
+	seq int
+}
+
+func (x singleWriter) Write(p []byte) (int, error) {
+	w := x.w
+	if w.seq != x.seq {
+		return 0, errors.New("leveldb/record: stale writer")
 	}
-	if !w.pending {
-		w.err = errors.New("leveldb/record: Write called before Next")
+	if w.err != nil {
 		return 0, w.err
 	}
 	n0 := len(p)
@@ -345,13 +374,4 @@ func (w *Writer) Write(p []byte) (int, error) {
 		p = p[n:]
 	}
 	return n0, nil
-}
-
-// NewWriter returns a new Writer.
-func NewWriter(w io.Writer) *Writer {
-	f, _ := w.(flusher)
-	return &Writer{
-		w: w,
-		f: f,
-	}
 }

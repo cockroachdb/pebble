@@ -29,7 +29,7 @@ func big(partial string, n int) string {
 func TestEmpty(t *testing.T) {
 	buf := new(bytes.Buffer)
 	r := NewReader(buf)
-	if err := r.Next(); err != io.EOF {
+	if _, err := r.Next(); err != io.EOF {
 		t.Fatalf("got %v, want %v", err, io.EOF)
 	}
 }
@@ -44,8 +44,11 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 		if !ok {
 			break
 		}
-		w.Next()
-		if _, err := w.Write([]byte(s)); err != nil {
+		ww, err := w.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ww.Write([]byte(s)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -60,10 +63,11 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 		if !ok {
 			break
 		}
-		if err := r.Next(); err != nil {
+		rr, err := r.Next()
+		if err != nil {
 			t.Fatal(err)
 		}
-		x, err := ioutil.ReadAll(r)
+		x, err := ioutil.ReadAll(rr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,7 +75,7 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 			t.Fatalf("got %q, want %q", short(string(x)), short(s))
 		}
 	}
-	if err := r.Next(); err != io.EOF {
+	if _, err := r.Next(); err != io.EOF {
 		t.Fatalf("got %v, want %v", err, io.EOF)
 	}
 }
@@ -143,6 +147,75 @@ func TestBoundary(t *testing.T) {
 			testLiterals(t, []string{s0, "", s1})
 			testLiterals(t, []string{s0, "x", s1})
 		}
+	}
+}
+
+func TestStaleReader(t *testing.T) {
+	buf := new(bytes.Buffer)
+
+	w := NewWriter(buf)
+	w0, err := w.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w0.Write([]byte("0"))
+	w1, err := w.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w1.Write([]byte("11"))
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := buf.Len(), 2*headerSize+len("0")+len("11"); got != want {
+		t.Fatalf("buffer length: got %d want %d", got, want)
+	}
+
+	r := NewReader(buf)
+	r0, err := r.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1, err := r.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := make([]byte, 1)
+	if _, err := r0.Read(p); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale read #0: unexpected error: %v", err)
+	}
+	if _, err := r1.Read(p); err != nil {
+		t.Fatalf("fresh read #1: got %v want nil error", err)
+	}
+	if p[0] != '1' {
+		t.Fatalf("fresh read #1: byte contents: got '%c' want '1'", p[0])
+	}
+}
+
+func TestStaleWriter(t *testing.T) {
+	buf := new(bytes.Buffer)
+
+	w := NewWriter(buf)
+	w0, err := w.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w1, err := w.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w0.Write([]byte("0")); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale write #0: unexpected error: %v", err)
+	}
+	if _, err := w1.Write([]byte("11")); err != nil {
+		t.Fatalf("fresh write #1: got %v want nil error", err)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if _, err := w1.Write([]byte("0")); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale write #1: unexpected error: %v", err)
 	}
 }
 
