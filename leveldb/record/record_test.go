@@ -150,6 +150,104 @@ func TestBoundary(t *testing.T) {
 	}
 }
 
+func TestFlush(t *testing.T) {
+	buf := new(bytes.Buffer)
+	w := NewWriter(buf)
+	// Write a couple of records. Everything should still be held
+	// in the record.Writer buffer, so that buf.Len should be 0.
+	w0, _ := w.Next()
+	w0.Write([]byte("0"))
+	w1, _ := w.Next()
+	w1.Write([]byte("11"))
+	if got, want := buf.Len(), 0; got != want {
+		t.Fatalf("buffer length #0: got %d want %d", got, want)
+	}
+	// Flush the record.Writer buffer, which should yield 17 bytes.
+	// 17 = 2*7 + 1 + 2, which is two headers and 1 + 2 payload bytes.
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.Len(), 17; got != want {
+		t.Fatalf("buffer length #1: got %d want %d", got, want)
+	}
+	// Do another write, one that isn't large enough to complete the block.
+	// The write should not have flowed through to buf.
+	w2, _ := w.Next()
+	w2.Write(bytes.Repeat([]byte("2"), 10000))
+	if got, want := buf.Len(), 17; got != want {
+		t.Fatalf("buffer length #2: got %d want %d", got, want)
+	}
+	// Flushing should get us up to 10024 bytes written.
+	// 10024 = 17 + 7 + 10000.
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.Len(), 10024; got != want {
+		t.Fatalf("buffer length #3: got %d want %d", got, want)
+	}
+	// Do a bigger write, one that completes the current block.
+	// We should now have 32768 bytes (a complete block), without
+	// an explicit flush.
+	w3, _ := w.Next()
+	w3.Write(bytes.Repeat([]byte("3"), 40000))
+	if got, want := buf.Len(), 32768; got != want {
+		t.Fatalf("buffer length #4: got %d want %d", got, want)
+	}
+	// Flushing should get us up to 50038 bytes written.
+	// 50038 = 10024 + 2*7 + 40000. There are two headers because
+	// the one record was split into two chunks.
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.Len(), 50038; got != want {
+		t.Fatalf("buffer length #5: got %d want %d", got, want)
+	}
+	// Check that reading those records give the right lengths.
+	r := NewReader(buf)
+	wants := []int64{1, 2, 10000, 40000}
+	for i, want := range wants {
+		rr, _ := r.Next()
+		n, err := io.Copy(ioutil.Discard, rr)
+		if err != nil {
+			t.Fatalf("read #%d: %v", i, err)
+		}
+		if n != want {
+			t.Fatalf("read #%d: got %d bytes want %d", i, n, want)
+		}
+	}
+}
+
+func TestNonExhaustiveRead(t *testing.T) {
+	const n = 100
+	buf := new(bytes.Buffer)
+	p := make([]byte, 10)
+	rnd := rand.New(rand.NewSource(1))
+
+	w := NewWriter(buf)
+	for i := 0; i < n; i++ {
+		length := len(p) + rnd.Intn(3*blockSize)
+		s := string(uint8(i)) + "123456789abcdefgh"
+		ww, _ := w.Next()
+		ww.Write([]byte(big(s, length)))
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewReader(buf)
+	for i := 0; i < n; i++ {
+		rr, _ := r.Next()
+		_, err := io.ReadFull(rr, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := string(uint8(i)) + "123456789"
+		if got := string(p); got != want {
+			t.Fatalf("read #%d: got %q want %q", i, got, want)
+		}
+	}
+}
+
 func TestStaleReader(t *testing.T) {
 	buf := new(bytes.Buffer)
 
@@ -166,10 +264,6 @@ func TestStaleReader(t *testing.T) {
 	w1.Write([]byte("11"))
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
-	}
-
-	if got, want := buf.Len(), 2*headerSize+len("0")+len("11"); got != want {
-		t.Fatalf("buffer length: got %d want %d", got, want)
 	}
 
 	r := NewReader(buf)
@@ -218,6 +312,3 @@ func TestStaleWriter(t *testing.T) {
 		t.Fatalf("stale write #1: unexpected error: %v", err)
 	}
 }
-
-// TODO: test flush.
-// TODO: test calling Next without exhausting the reader.
