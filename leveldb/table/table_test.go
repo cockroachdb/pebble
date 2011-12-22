@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"leveldb-go.googlecode.com/hg/leveldb/db"
+	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
 type memFile []byte

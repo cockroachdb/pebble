@@ -4,7 +4,7 @@
 
 include $(GOROOT)/src/Make.inc
 
-TARG=leveldb-go.googlecode.com/hg/leveldb/table
+TARG=code.google.com/p/leveldb-go/leveldb/table
 GOFILES=\
 	reader.go\
 	table.go\

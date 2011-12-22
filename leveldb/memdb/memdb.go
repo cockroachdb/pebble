@@ -16,7 +16,7 @@ import (
 	"math/rand"
 	"sync"
 
-	"leveldb-go.googlecode.com/hg/leveldb/db"
+	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
 // maxHeight is the maximum height of a MemDB's skiplist.

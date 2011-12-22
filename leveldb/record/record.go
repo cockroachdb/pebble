@@ -80,7 +80,7 @@ import (
 	"errors"
 	"io"
 
-	"leveldb-go.googlecode.com/hg/leveldb/crc"
+	"code.google.com/p/leveldb-go/leveldb/crc"
 )
 
 // These constants are part of the wire format and should not be changed.

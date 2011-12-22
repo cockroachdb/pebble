@@ -12,9 +12,9 @@ import (
 	"fmt"
 	"io"
 
-	"leveldb-go.googlecode.com/hg/leveldb/crc"
-	"leveldb-go.googlecode.com/hg/leveldb/db"
-	"snappy-go.googlecode.com/hg/snappy"
+	"code.google.com/p/leveldb-go/leveldb/crc"
+	"code.google.com/p/leveldb-go/leveldb/db"
+	"code.google.com/p/snappy-go/snappy"
 )
 
 // indexEntry is a block handle and the length of the separator key.

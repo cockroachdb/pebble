@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"leveldb-go.googlecode.com/hg/leveldb/db"
+	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
 // count returns the number of entries in a DB.

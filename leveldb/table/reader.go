@@ -13,9 +13,9 @@ import (
 	"os"
 	"sort"
 
-	"leveldb-go.googlecode.com/hg/leveldb/crc"
-	"leveldb-go.googlecode.com/hg/leveldb/db"
-	"snappy-go.googlecode.com/hg/snappy"
+	"code.google.com/p/leveldb-go/leveldb/crc"
+	"code.google.com/p/leveldb-go/leveldb/db"
+	"code.google.com/p/snappy-go/snappy"
 )
 
 // blockHandle is the file offset and length of a block.

@@ -4,7 +4,7 @@
 
 include $(GOROOT)/src/Make.inc
 
-TARG=leveldb-go.googlecode.com/hg/leveldb/crc
+TARG=code.google.com/p/leveldb-go/leveldb/crc
 GOFILES=\
 	crc.go\
 
