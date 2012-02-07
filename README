@@ -1,5 +1,8 @@
 This is a LevelDB library for the Go programming language.
 
+To download and install from source:
+$ go get code.google.com/p/leveldb-go/leveldb
+
 Unless otherwise noted, the LevelDB-Go source files are distributed
 under the BSD-style license found in the LICENSE file.
 
