@@ -16,7 +16,7 @@ import (
 
 // count returns the number of entries in a DB.
 func count(d db.DB) (n int) {
-	x := d.Find(nil)
+	x := d.Find(nil, nil)
 	for x.Next() {
 		n++
 	}
@@ -28,9 +28,9 @@ func count(d db.DB) (n int) {
 
 // compact compacts a MemDB.
 func compact(m *MemDB) (*MemDB, error) {
-	n, x := New(nil), m.Find(nil)
+	n, x := New(nil), m.Find(nil, nil)
 	for x.Next() {
-		if err := n.Set(x.Key(), x.Value()); err != nil {
+		if err := n.Set(x.Key(), x.Value(), nil); err != nil {
 			return nil, err
 		}
 	}
@@ -46,40 +46,40 @@ func TestBasic(t *testing.T) {
 	if got, want := count(m), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
-	v, err := m.Get([]byte("cherry"))
+	v, err := m.Get([]byte("cherry"), nil)
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("1.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Add some key/value pairs.
-	m.Set([]byte("cherry"), []byte("red"))
-	m.Set([]byte("peach"), []byte("yellow"))
-	m.Set([]byte("grape"), []byte("red"))
-	m.Set([]byte("grape"), []byte("green"))
-	m.Set([]byte("plum"), []byte("purple"))
+	m.Set([]byte("cherry"), []byte("red"), nil)
+	m.Set([]byte("peach"), []byte("yellow"), nil)
+	m.Set([]byte("grape"), []byte("red"), nil)
+	m.Set([]byte("grape"), []byte("green"), nil)
+	m.Set([]byte("plum"), []byte("purple"), nil)
 	if got, want := count(m), 4; got != want {
 		t.Fatalf("2.count: got %v, want %v", got, want)
 	}
 	// Delete a key twice.
-	if got, want := m.Delete([]byte("grape")), error(nil); got != want {
+	if got, want := m.Delete([]byte("grape"), nil), error(nil); got != want {
 		t.Fatalf("3.delete: got %v, want %v", got, want)
 	}
-	if got, want := m.Delete([]byte("grape")), db.ErrNotFound; got != want {
+	if got, want := m.Delete([]byte("grape"), nil), db.ErrNotFound; got != want {
 		t.Fatalf("4.delete: got %v, want %v", got, want)
 	}
 	if got, want := count(m), 3; got != want {
 		t.Fatalf("5.count: got %v, want %v", got, want)
 	}
 	// Get keys that are and aren't in the DB.
-	v, err = m.Get([]byte("plum"))
+	v, err = m.Get([]byte("plum"), nil)
 	if string(v) != "purple" || err != nil {
 		t.Fatalf("6.get: got (%q, %v), want (%q, %v)", v, err, "purple", error(nil))
 	}
-	v, err = m.Get([]byte("lychee"))
+	v, err = m.Get([]byte("lychee"), nil)
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Check an iterator.
-	s, x := "", m.Find([]byte("mango"))
+	s, x := "", m.Find([]byte("mango"), nil)
 	for x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key(), x.Value())
 	}
@@ -90,13 +90,13 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("9.close: %v", err)
 	}
 	// Check some more sets and deletes.
-	if got, want := m.Delete([]byte("cherry")), error(nil); got != want {
+	if got, want := m.Delete([]byte("cherry"), nil), error(nil); got != want {
 		t.Fatalf("10.delete: got %v, want %v", got, want)
 	}
 	if got, want := count(m), 2; got != want {
 		t.Fatalf("11.count: got %v, want %v", got, want)
 	}
-	if err := m.Set([]byte("apricot"), []byte("orange")); err != nil {
+	if err := m.Set([]byte("apricot"), []byte("orange"), nil); err != nil {
 		t.Fatalf("12.set: %v", err)
 	}
 	if got, want := count(m), 3; got != want {
@@ -114,7 +114,7 @@ func TestCount(t *testing.T) {
 		if j := count(m); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
 		}
-		m.Set([]byte{byte(i)}, nil)
+		m.Set([]byte{byte(i)}, nil, nil)
 	}
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func Test1000Entries(t *testing.T) {
 	for i := 0; i < N; i++ {
 		k := []byte(strconv.Itoa(i))
 		v := []byte(strings.Repeat("x", i))
-		m0.Set(k, v)
+		m0.Set(k, v, nil)
 	}
 	// Delete one third of the entries, update another third,
 	// and leave the last third alone.
@@ -136,11 +136,11 @@ func Test1000Entries(t *testing.T) {
 		switch i % 3 {
 		case 0:
 			k := []byte(strconv.Itoa(i))
-			m0.Delete(k)
+			m0.Delete(k, nil)
 		case 1:
 			k := []byte(strconv.Itoa(i))
 			v := []byte(strings.Repeat("y", i))
-			m0.Set(k, v)
+			m0.Set(k, v, nil)
 		case 2:
 			// No-op.
 		}
@@ -154,7 +154,7 @@ func Test1000Entries(t *testing.T) {
 	for i := 0; i < 3*N; i++ {
 		j := r.Intn(N)
 		k := []byte(strconv.Itoa(j))
-		v, err := m0.Get(k)
+		v, err := m0.Get(k, nil)
 		var c uint8
 		if len(v) != 0 {
 			c = v[0]
@@ -190,7 +190,7 @@ func Test1000Entries(t *testing.T) {
 		"509",
 		"511",
 	}
-	x := m0.Find([]byte(wants[0]))
+	x := m0.Find([]byte(wants[0]), nil)
 	for _, want := range wants {
 		if !x.Next() {
 			t.Fatalf("iter: next failed, want=%q", want)

@@ -86,19 +86,19 @@ type DB interface {
 	//
 	// The caller should not modify the contents of the returned slice, but
 	// it is safe to modify the contents of the argument after Get returns.
-	Get(key []byte) (value []byte, err error)
+	Get(key []byte, o *ReadOptions) (value []byte, err error)
 
 	// Set sets the value for the given key. It overwrites any previous value
 	// for that key; a DB is not a multi-map.
 	//
 	// It is safe to modify the contents of the arguments after Set returns.
-	Set(key, value []byte) error
+	Set(key, value []byte, o *WriteOptions) error
 
 	// Delete deletes the value for the given key. It returns ErrNotFound if
 	// the DB does not contain the key.
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.
-	Delete(key []byte) error
+	Delete(key []byte, o *WriteOptions) error
 
 	// Find returns an iterator positioned before the first key/value pair
 	// whose key is 'greater than or equal to' the given key. There may be no
@@ -109,7 +109,7 @@ type DB interface {
 	// will return that error.
 	//
 	// It is safe to modify the contents of the argument after Find returns.
-	Find(key []byte) Iterator
+	Find(key []byte, o *ReadOptions) Iterator
 
 	// Close closes the DB. It may or may not close any underlying io.Reader
 	// or io.Writer, depending on how the DB was created.

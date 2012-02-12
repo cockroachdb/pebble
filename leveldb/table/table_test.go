@@ -42,6 +42,10 @@ func (f *memFile) Size() int64 {
 	return int64(len(*f))
 }
 
+func (f *memFile) Sys() interface{} {
+	return nil
+}
+
 func (f *memFile) IsDir() bool {
 	return false
 }
@@ -91,12 +95,12 @@ func check(f File) error {
 	// Check that each key/value pair in wordCount is also in the table.
 	for k, v := range wordCount {
 		// Check using Get.
-		if v1, err := r.Get([]byte(k)); string(v1) != string(v) || err != nil {
+		if v1, err := r.Get([]byte(k), nil); string(v1) != string(v) || err != nil {
 			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
 		}
 
 		// Check using Find.
-		i := r.Find([]byte(k))
+		i := r.Find([]byte(k), nil)
 		if !i.Next() || string(i.Key()) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
@@ -117,12 +121,12 @@ func check(f File) error {
 	}
 	for _, s := range nonsenseWords {
 		// Check using Get.
-		if _, err := r.Get([]byte(s)); err != db.ErrNotFound {
+		if _, err := r.Get([]byte(s), nil); err != db.ErrNotFound {
 			return fmt.Errorf("Get %q: got %v, want ErrNotFound", s, err)
 		}
 
 		// Check using Find.
-		i := r.Find([]byte(s))
+		i := r.Find([]byte(s), nil)
 		if i.Next() && s == string(i.Key()) {
 			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
@@ -148,7 +152,7 @@ func check(f File) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		n, i := 0, r.Find([]byte(ct.start))
+		n, i := 0, r.Find([]byte(ct.start), nil)
 		for i.Next() {
 			n++
 		}
@@ -180,7 +184,7 @@ func build(compression db.Compression) (*memFile, error) {
 	})
 	for _, k := range keys {
 		v := wordCount[k]
-		if err := w.Set([]byte(k), []byte(v)); err != nil {
+		if err := w.Set([]byte(k), []byte(v), nil); err != nil {
 			return nil, err
 		}
 	}

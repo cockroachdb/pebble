@@ -15,7 +15,10 @@ const (
 )
 
 // Options holds the optional parameters for leveldb's DB implementations.
-// They are typically passed to a constructor function as a struct literal.
+// These options apply to the DB at large; per-query options are defined by
+// the ReadOptions and WriteOptions types.
+//
+// Options are typically passed to a constructor function as a struct literal.
 // The GetXxx methods are used inside the DB implementations; they return the
 // default parameter value if the *Options receiver is nil or the field value
 // is zero.
@@ -92,4 +95,38 @@ func (o *Options) GetVerifyChecksums() bool {
 		return false
 	}
 	return o.VerifyChecksums
+}
+
+// ReadOptions hold the optional per-query parameters for Get and Find
+// operations.
+//
+// Like Options, a nil *ReadOptions is valid and means to use the default
+// values.
+type ReadOptions struct {
+	// No fields so far.
+}
+
+// WriteOptions hold the optional per-query parameters for Set and Delete
+// operations.
+//
+// Like Options, a nil *WriteOptions is valid and means to use the default
+// values.
+type WriteOptions struct {
+	// Sync is whether to sync underlying writes from the OS buffer cache
+	// through to actual disk, if applicable. Setting Sync can result in
+	// slower writes.
+	//
+	// If false, and the machine crashes, then some recent writes may be lost.
+	// Note that if it is just the process that crashes (and the machine does
+	// not) then no writes will be lost.
+	//
+	// In other words, Sync being false has the same semantics as a write
+	// system call. Sync being true means write followed by fsync.
+	//
+	// The default value is false.
+	Sync bool
+}
+
+func (o *WriteOptions) GetSync() bool {
+	return o != nil && o.Sync
 }

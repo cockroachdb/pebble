@@ -75,19 +75,19 @@ var _ db.DB = (*Writer)(nil)
 
 // Get is provided to implement the DB interface, but returns an error, as a
 // Writer cannot read from a table.
-func (w *Writer) Get([]byte) ([]byte, error) {
+func (w *Writer) Get(key []byte, o *db.ReadOptions) ([]byte, error) {
 	return nil, errors.New("leveldb/table: cannot Get from a write-only table")
 }
 
 // Delete is provided to implement the DB interface, but returns an error, as a
 // Writer can only append key/value pairs.
-func (w *Writer) Delete([]byte) error {
+func (w *Writer) Delete(key []byte, o *db.WriteOptions) error {
 	return errors.New("leveldb/table: cannot Delete from a table")
 }
 
 // Find is provided to implement the DB interface, but returns an error, as a
 // Writer cannot read from a table.
-func (w *Writer) Find([]byte) db.Iterator {
+func (w *Writer) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	return &tableIter{
 		err: errors.New("leveldb/table: cannot Find from a write-only table"),
 	}
@@ -95,7 +95,7 @@ func (w *Writer) Find([]byte) db.Iterator {
 
 // Set implements DB.Set, as documented in the leveldb/db package. For a given
 // Writer, the keys passed to Set must be in increasing order.
-func (w *Writer) Set(key, value []byte) error {
+func (w *Writer) Set(key, value []byte, o *db.WriteOptions) error {
 	if w.err != nil {
 		return w.err
 	}

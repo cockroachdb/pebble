@@ -134,7 +134,7 @@ func (m *MemDB) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bo
 }
 
 // Get implements DB.Get, as documented in the leveldb/db package.
-func (m *MemDB) Get(key []byte) (value []byte, err error) {
+func (m *MemDB) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -146,7 +146,7 @@ func (m *MemDB) Get(key []byte) (value []byte, err error) {
 }
 
 // Set implements DB.Set, as documented in the leveldb/db package.
-func (m *MemDB) Set(key, value []byte) error {
+func (m *MemDB) Set(key, value []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	// Find the node, and its predecessors at all heights.
@@ -183,7 +183,7 @@ func (m *MemDB) Set(key, value []byte) error {
 }
 
 // Delete implements DB.Delete, as documented in the leveldb/db package.
-func (m *MemDB) Delete(key []byte) error {
+func (m *MemDB) Delete(key []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -195,7 +195,7 @@ func (m *MemDB) Delete(key []byte) error {
 }
 
 // Find implements DB.Find, as documented in the leveldb/db package.
-func (m *MemDB) Find(key []byte) db.Iterator {
+func (m *MemDB) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	n, _ := m.findNode(key, nil)

@@ -274,11 +274,11 @@ func (r *Reader) Close() error {
 }
 
 // Get implements DB.Get, as documented in the leveldb/db package.
-func (r *Reader) Get(key []byte) (value []byte, err error) {
+func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	i := r.Find(key)
+	i := r.Find(key, o)
 	if !i.Next() || !bytes.Equal(key, i.Key()) {
 		err := i.Close()
 		if err == nil {
@@ -291,18 +291,18 @@ func (r *Reader) Get(key []byte) (value []byte, err error) {
 
 // Set is provided to implement the DB interface, but returns an error, as a
 // Reader cannot write to a table.
-func (r *Reader) Set(key, value []byte) error {
+func (r *Reader) Set(key, value []byte, o *db.WriteOptions) error {
 	return errors.New("leveldb/table: cannot Set into a read-only table")
 }
 
 // Delete is provided to implement the DB interface, but returns an error, as a
 // Reader cannot write to a table.
-func (r *Reader) Delete([]byte) error {
+func (r *Reader) Delete(key []byte, o *db.WriteOptions) error {
 	return errors.New("leveldb/table: cannot Delete from a read-only table")
 }
 
 // Find implements DB.Find, as documented in the leveldb/db package.
-func (r *Reader) Find(key []byte) db.Iterator {
+func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	if r.err != nil {
 		return &tableIter{err: r.err}
 	}
