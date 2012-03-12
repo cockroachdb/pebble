@@ -17,6 +17,13 @@ type Comparer interface {
 	// must be 'less than' any non-empty slice.
 	Compare(a, b []byte) int
 
+	// Name returns the name of the comparer.
+	//
+	// The Level-DB on-disk format stores the comparer name, and opening a
+	// database with a different comparer from the one it was created with
+	// will result in an error.
+	Name() string
+
 	// AppendSeparator appends a sequence of bytes x to dst such that
 	// a <= x && x < b, where 'less than' is consistent with Compare.
 	// It returns the enlarged slice, like the built-in append function.
@@ -43,6 +50,12 @@ type defCmp struct{}
 
 func (defCmp) Compare(a, b []byte) int {
 	return bytes.Compare(a, b)
+}
+
+func (defCmp) Name() string {
+	// This string is part of the C++ Level-DB implementation's default file format,
+	// and should not be changed.
+	return "leveldb.BytewiseComparator"
 }
 
 func (defCmp) AppendSeparator(dst, a, b []byte) []byte {

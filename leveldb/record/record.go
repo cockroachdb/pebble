@@ -21,16 +21,16 @@
 // Example code:
 //	func read(r io.Reader) ([]string, error) {
 //		var ss []string
-//		sr := record.NewReader(r)
+//		records := record.NewReader(r)
 //		for {
-//			err := sr.Next()
+//			record, err := records.Next()
 //			if err == io.EOF {
 //				break
 //			}
 //			if err != nil {
 //				return nil, err
 //			}
-//			s, err := ioutil.ReadAll(sr)
+//			s, err := ioutil.ReadAll(record)
 //			if err != nil {
 //				return nil, err
 //			}
@@ -136,7 +136,19 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		if r.j+headerSize <= r.n {
 			checksum := binary.LittleEndian.Uint32(r.buf[r.j+0 : r.j+4])
 			length := binary.LittleEndian.Uint16(r.buf[r.j+4 : r.j+6])
-			chunkType := int(r.buf[r.j+6])
+			chunkType := r.buf[r.j+6]
+
+			if checksum == 0 && length == 0 && chunkType == 0 {
+				if wantFirst {
+					// Skip the rest of the block, if it looks like it is all zeroes.
+					// This is common if the record file was created via mmap.
+					r.i = r.n
+					r.j = r.n
+					continue
+				} else {
+					return errors.New("leveldb/record: invalid chunk")
+				}
+			}
 
 			r.i = r.j + headerSize
 			r.j = r.j + headerSize + int(length)
