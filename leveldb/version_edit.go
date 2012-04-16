@@ -35,8 +35,6 @@ const (
 	tagPrevLogNumber  = 9
 )
 
-type internalKey []byte
-
 type fileMetadata struct {
 	fileNum  uint64
 	size     uint64
