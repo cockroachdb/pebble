@@ -3,7 +3,7 @@ syntax:glob
 .git
 .gitignore
 *.[568ao]
-*.ao
+*.a[568o]
 *.so
 *.pyc
 ._*
@@ -23,7 +23,12 @@ _test
 _testmain.go
 build.out
 test.out
-y.tab.[ch]
+goinstall.log
+last-change
+VERSION.cache
 
 syntax:regexp
+^bin/
+^pkg/
+^src/cmd/(.*)/6?\1$
 ^.*/core.[0-9]*$
