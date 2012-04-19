@@ -25,6 +25,7 @@ const (
 //
 // Read/Write options:
 //   - Comparer
+//   - FileSystem
 // Read options:
 //   - VerifyChecksums
 // Write options:
@@ -54,6 +55,11 @@ type Options struct {
 	//
 	// The default value (DefaultCompression) uses snappy compression.
 	Compression Compression
+
+	// FileSystem maps file names to byte storage.
+	//
+	// The default value uses the underlying operating system's file system.
+	FileSystem FileSystem
 
 	// VerifyChecksums is whether to verify the per-block checksums in a DB.
 	//
@@ -88,6 +94,13 @@ func (o *Options) GetCompression() Compression {
 		return SnappyCompression
 	}
 	return o.Compression
+}
+
+func (o *Options) GetFileSystem() FileSystem {
+	if o == nil || o.FileSystem == nil {
+		return DefaultFileSystem
+	}
+	return o.FileSystem
 }
 
 func (o *Options) GetVerifyChecksums() bool {

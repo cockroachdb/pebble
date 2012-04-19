@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 
 	"code.google.com/p/leveldb-go/leveldb/crc"
@@ -241,7 +240,7 @@ func (i *tableIter) Close() error {
 // Reader is a table reader. It implements the DB interface, as documented
 // in the leveldb/db package.
 type Reader struct {
-	file            File
+	file            db.File
 	err             error
 	index           block
 	comparer        db.Comparer
@@ -344,20 +343,9 @@ func (r *Reader) readBlock(bh blockHandle) (block, error) {
 	return nil, fmt.Errorf("leveldb/table: unknown block compression: %d", b[bh.length])
 }
 
-// TODO(nigeltao): move the File interface to the standard package library?
-// Package http already defines something similar.
-
-// File holds the raw bytes for a table.
-type File interface {
-	io.Closer
-	io.ReaderAt
-	io.Writer
-	Stat() (os.FileInfo, error)
-}
-
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f File, o *db.Options) *Reader {
+func NewReader(f db.File, o *db.Options) *Reader {
 	r := &Reader{
 		file:            f,
 		comparer:        o.GetComparer(),

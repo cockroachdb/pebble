@@ -14,53 +14,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
 )
-
-type memFile []byte
-
-func (f *memFile) Close() error {
-	return nil
-}
-
-func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
-	return copy(p, (*f)[off:]), nil
-}
-
-func (f *memFile) Stat() (os.FileInfo, error) {
-	return f, nil
-}
-
-func (f *memFile) Write(p []byte) (int, error) {
-	*f = append(*f, p...)
-	return len(p), nil
-}
-
-func (f *memFile) Size() int64 {
-	return int64(len(*f))
-}
-
-func (f *memFile) Sys() interface{} {
-	return nil
-}
-
-func (f *memFile) IsDir() bool {
-	return false
-}
-
-func (f *memFile) ModTime() time.Time {
-	return time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
-}
-
-func (f *memFile) Mode() os.FileMode {
-	return os.FileMode(0755)
-}
-
-func (f *memFile) Name() string {
-	return "testdata"
-}
 
 var wordCount = map[string]string{}
 
@@ -88,7 +44,7 @@ func init() {
 	}
 }
 
-func check(f File) error {
+func check(f db.File) error {
 	r := NewReader(f, &db.Options{
 		VerifyChecksums: true,
 	})
@@ -167,7 +123,9 @@ func check(f File) error {
 	return r.Close()
 }
 
-func build(compression db.Compression) (*memFile, error) {
+var tmpFileCount int
+
+func build(compression db.Compression) (db.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
 	i := 0
@@ -178,7 +136,11 @@ func build(compression db.Compression) (*memFile, error) {
 	sort.Strings(keys)
 
 	// Write the key/value pairs to a new table, in increasing key order.
-	f := new(memFile)
+	f, err := db.MemFileSystem.Create(fmt.Sprintf("/tmp/leveldb/table/table_test/%d", tmpFileCount))
+	if err != nil {
+		return nil, err
+	}
+	tmpFileCount++
 	w := NewWriter(f, &db.Options{
 		Compression: compression,
 	})
@@ -225,11 +187,20 @@ func TestNoCompressionOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := build(db.NoCompression)
+	f, err := build(db.NoCompression)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(a, []byte(*b)) {
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := make([]byte, stat.Size())
+	_, err = f.ReadAt(b, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
 		t.Fatal("built table does not match pre-made table")
 	}
 }
