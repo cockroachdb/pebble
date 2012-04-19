@@ -15,8 +15,6 @@ import (
 
 var errCorruptManifest = errors.New("leveldb: corrupt manifest")
 
-const numLevels = 7
-
 type byteReader interface {
 	io.ByteReader
 	io.Reader
@@ -34,13 +32,6 @@ const (
 	tagNewFile        = 7
 	tagPrevLogNumber  = 9
 )
-
-type fileMetadata struct {
-	fileNum  uint64
-	size     uint64
-	smallest internalKey
-	largest  internalKey
-}
 
 type compactPointerEntry struct {
 	level int

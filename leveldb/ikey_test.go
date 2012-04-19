@@ -11,7 +11,11 @@ import (
 )
 
 func TestInternalKey(t *testing.T) {
-	k := internalKey("foo\x01\x02\x03\x04\x05\x06\x07\x08")
+	k := internalKey("foo????????")
+	k.encodeTrailer(internalKeyKind(1), 0x08070605040302)
+	if got, want := string(k), "foo\x01\x02\x03\x04\x05\x06\x07\x08"; got != want {
+		t.Fatalf("k = %q want %q", got, want)
+	}
 	if !k.valid() {
 		t.Fatalf("invalid key")
 	}

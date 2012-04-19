@@ -19,16 +19,26 @@ type internalKey []byte
 
 type internalKeyKind uint8
 
-// These constants are part of the file format, and should not be changed.
 const (
+	// These constants are part of the file format, and should not be changed.
 	internalKeyKindDelete internalKeyKind = 0
 	internalKeyKindSet    internalKeyKind = 1
+
+	// This maximum value isn't part of the file format. It's unlikely,
+	// but future extensions may increase this value.
+	//
+	// When constructing an internal key to pass to DB.Find, internalKeyComparer
+	// sorts decreasing by kind (after sorting increasing by user key and
+	// decreasing by sequence number). Thus, use internalKeyKindMax, which sorts
+	// 'less than or equal to' any other valid internalKeyKind, when searching
+	// for any kind of internal key formed by a certain user key and seqNum.
+	internalKeyKindMax internalKeyKind = 1
 )
 
 // valid returns whether k is a valid internal key.
 func (k internalKey) valid() bool {
 	i := len(k) - 8
-	return i >= 0 && internalKeyKind(k[i]) <= 1
+	return i >= 0 && internalKeyKind(k[i]) <= internalKeyKindMax
 }
 
 // ukey returns the user key portion of an internal key.
@@ -55,6 +65,19 @@ func (k internalKey) seqNum() uint64 {
 	n |= uint64(k[i+5]) << 40
 	n |= uint64(k[i+6]) << 48
 	return n
+}
+
+// encodeTrailer encodes kind and seqNum into k's 8 byte trailer.
+func (k internalKey) encodeTrailer(kind internalKeyKind, seqNum uint64) {
+	i := len(k) - 8
+	k[i+0] = uint8(kind)
+	k[i+1] = uint8(seqNum)
+	k[i+2] = uint8(seqNum >> 8)
+	k[i+3] = uint8(seqNum >> 16)
+	k[i+4] = uint8(seqNum >> 24)
+	k[i+5] = uint8(seqNum >> 32)
+	k[i+6] = uint8(seqNum >> 40)
+	k[i+7] = uint8(seqNum >> 48)
 }
 
 // internalKeyComparer is a db.Comparer that wraps another db.Comparer.
