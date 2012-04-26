@@ -6,6 +6,7 @@ package leveldb
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -14,6 +15,85 @@ import (
 
 	"code.google.com/p/leveldb-go/leveldb/record"
 )
+
+func checkRoundTrip(e0 versionEdit) error {
+	var e1 versionEdit
+	buf := new(bytes.Buffer)
+	if err := e0.encode(buf); err != nil {
+		return fmt.Errorf("encode: %v", err)
+	}
+	if err := e1.decode(buf); err != nil {
+		return fmt.Errorf("decode: %v", err)
+	}
+	if !reflect.DeepEqual(e1, e0) {
+		return fmt.Errorf("\n\tgot  %#v\n\twant %#v", e1, e0)
+	}
+	return nil
+}
+
+func TestVersionEditRoundTrip(t *testing.T) {
+	testCases := []versionEdit{
+		// An empty version edit.
+		{},
+		// A complete version edit.
+		{
+			comparatorName: "11",
+			logNumber:      22,
+			prevLogNumber:  33,
+			nextFileNumber: 44,
+			lastSequence:   55,
+			compactPointers: []compactPointerEntry{
+				{
+					level: 0,
+					key:   internalKey("600"),
+				},
+				{
+					level: 1,
+					key:   internalKey("601"),
+				},
+				{
+					level: 2,
+					key:   internalKey("602"),
+				},
+			},
+			deletedFiles: map[deletedFileEntry]bool{
+				deletedFileEntry{
+					level:   3,
+					fileNum: 703,
+				}: true,
+				deletedFileEntry{
+					level:   4,
+					fileNum: 704,
+				}: true,
+			},
+			newFiles: []newFileEntry{
+				{
+					level: 5,
+					meta: fileMetadata{
+						fileNum:  805,
+						size:     8050,
+						smallest: internalKey("abc\x00\x01\x02\x03\x04\x05\x06\x07"),
+						largest:  internalKey("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9"),
+					},
+				},
+				{
+					level: 6,
+					meta: fileMetadata{
+						fileNum:  806,
+						size:     8060,
+						smallest: internalKey("A\x00\x01\x02\x03\x04\x05\x06\x07"),
+						largest:  internalKey("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9"),
+					},
+				},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		if err := checkRoundTrip(tc); err != nil {
+			t.Error(err)
+		}
+	}
+}
 
 func TestVersionEditDecode(t *testing.T) {
 	testCases := []struct {
@@ -64,8 +144,8 @@ func TestVersionEditDecode(t *testing.T) {
 							meta: fileMetadata{
 								fileNum:  5,
 								size:     165,
-								smallest: []byte("bar\x00\x05\x00\x00\x00\x00\x00\x00"),
-								largest:  []byte("foo\x01\x01\x00\x00\x00\x00\x00\x00"),
+								smallest: internalKey("bar\x00\x05\x00\x00\x00\x00\x00\x00"),
+								largest:  internalKey("foo\x01\x01\x00\x00\x00\x00\x00\x00"),
 							},
 						},
 					},
@@ -114,9 +194,14 @@ loop:
 				continue loop
 			}
 			if !reflect.DeepEqual(edit, tc.edits[i]) {
-				t.Errorf("filename=%q i=%d:\n\tgot  %#v\n\twant %#v", tc.filename, i, edit, tc.edits[i])
+				t.Errorf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v", tc.filename, i, edit, tc.edits[i])
 				continue loop
 			}
+			if err := checkRoundTrip(edit); err != nil {
+				t.Errorf("filename=%q i=%d: round trip: %v", tc.filename, i, err)
+				continue loop
+			}
+
 			i++
 		}
 		if i != len(tc.edits) {

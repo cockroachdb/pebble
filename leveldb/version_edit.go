@@ -6,6 +6,7 @@ package leveldb
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -173,8 +174,52 @@ func (v *versionEdit) decode(r io.Reader) error {
 	return nil
 }
 
+func (v *versionEdit) encode(w io.Writer) error {
+	e := versionEditEncoder{new(bytes.Buffer)}
+	if v.comparatorName != "" {
+		e.writeUvarint(tagComparator)
+		e.writeString(v.comparatorName)
+	}
+	if v.logNumber != 0 {
+		e.writeUvarint(tagLogNumber)
+		e.writeUvarint(v.logNumber)
+	}
+	if v.prevLogNumber != 0 {
+		e.writeUvarint(tagPrevLogNumber)
+		e.writeUvarint(v.prevLogNumber)
+	}
+	if v.nextFileNumber != 0 {
+		e.writeUvarint(tagNextFileNumber)
+		e.writeUvarint(v.nextFileNumber)
+	}
+	if v.lastSequence != 0 {
+		e.writeUvarint(tagLastSequence)
+		e.writeUvarint(v.lastSequence)
+	}
+	for _, x := range v.compactPointers {
+		e.writeUvarint(tagCompactPointer)
+		e.writeUvarint(uint64(x.level))
+		e.writeBytes(x.key)
+	}
+	for x := range v.deletedFiles {
+		e.writeUvarint(tagDeletedFile)
+		e.writeUvarint(uint64(x.level))
+		e.writeUvarint(x.fileNum)
+	}
+	for _, x := range v.newFiles {
+		e.writeUvarint(tagNewFile)
+		e.writeUvarint(uint64(x.level))
+		e.writeUvarint(x.meta.fileNum)
+		e.writeUvarint(x.meta.size)
+		e.writeBytes(x.meta.smallest)
+		e.writeBytes(x.meta.largest)
+	}
+	_, err := w.Write(e.Bytes())
+	return err
+}
+
 type versionEditDecoder struct {
-	r byteReader
+	byteReader
 }
 
 func (d versionEditDecoder) readBytes() ([]byte, error) {
@@ -183,7 +228,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 		return nil, err
 	}
 	s := make([]byte, n)
-	_, err = io.ReadFull(d.r, s)
+	_, err = io.ReadFull(d, s)
 	if err != nil {
 		if err == io.ErrUnexpectedEOF {
 			return nil, errCorruptManifest
@@ -205,7 +250,7 @@ func (d versionEditDecoder) readLevel() (int, error) {
 }
 
 func (d versionEditDecoder) readUvarint() (uint64, error) {
-	u, err := binary.ReadUvarint(d.r)
+	u, err := binary.ReadUvarint(d)
 	if err != nil {
 		if err == io.EOF {
 			return 0, errCorruptManifest
@@ -213,4 +258,24 @@ func (d versionEditDecoder) readUvarint() (uint64, error) {
 		return 0, err
 	}
 	return u, nil
+}
+
+type versionEditEncoder struct {
+	*bytes.Buffer
+}
+
+func (e versionEditEncoder) writeBytes(p []byte) {
+	e.writeUvarint(uint64(len(p)))
+	e.Write(p)
+}
+
+func (e versionEditEncoder) writeString(s string) {
+	e.writeUvarint(uint64(len(s)))
+	e.WriteString(s)
+}
+
+func (e versionEditEncoder) writeUvarint(u uint64) {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], u)
+	e.Write(buf[:n])
 }
