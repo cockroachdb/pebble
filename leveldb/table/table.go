@@ -34,7 +34,7 @@ To return the value for a key:
 
 To count the number of entries in a table:
 
-	i, n := r.Find(nil), 0
+	i, n := r.Find(nil, ropts), 0
 	for i.Next() {
 		n++
 	}
@@ -46,15 +46,15 @@ To count the number of entries in a table:
 To write a table with three entries:
 
 	w := table.NewWriter(file, options)
-	if err := w.Set([]byte("apple"), []byte("red")); err != nil {
+	if err := w.Set([]byte("apple"), []byte("red"), wopts); err != nil {
 		w.Close()
 		return err
 	}
-	if err := w.Set([]byte("banana"), []byte("yellow")); err != nil {
+	if err := w.Set([]byte("banana"), []byte("yellow"), wopts); err != nil {
 		w.Close()
 		return err
 	}
-	if err := w.Set([]byte("cherry"), []byte("red")); err != nil {
+	if err := w.Set([]byte("cherry"), []byte("red"), wopts); err != nil {
 		w.Close()
 		return err
 	}

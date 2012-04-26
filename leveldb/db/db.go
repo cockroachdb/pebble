@@ -12,7 +12,7 @@
 // is a DB, the code below prints all key/value pairs whose keys are 'greater
 // than or equal to' k:
 //
-//	iter := d.Find(k)
+//	iter := d.Find(k, readOptions)
 //	for iter.Next() {
 //		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
 //	}
