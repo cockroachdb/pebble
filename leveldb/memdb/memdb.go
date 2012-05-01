@@ -78,7 +78,7 @@ type MemDB struct {
 }
 
 // MemDB implements the db.DB interface.
-var _ db.DB = &MemDB{}
+var _ db.DB = (*MemDB)(nil)
 
 // load loads a []byte from m.kvData.
 func (m *MemDB) load(kvOffset int) (b []byte) {
@@ -253,7 +253,7 @@ type iterator struct {
 }
 
 // iterator implements the db.Iterator interface.
-var _ db.Iterator = &iterator{}
+var _ db.Iterator = (*iterator)(nil)
 
 // fill fills the iterator's buffer with key/value pairs from the MemDB.
 //
