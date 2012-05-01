@@ -123,7 +123,10 @@ func check(f db.File) error {
 	return r.Close()
 }
 
-var tmpFileCount int
+var (
+	memFS        = db.NewMemFileSystem()
+	tmpFileCount int
+)
 
 func build(compression db.Compression) (db.File, error) {
 	// Create a sorted list of wordCount's keys.
@@ -136,7 +139,7 @@ func build(compression db.Compression) (db.File, error) {
 	sort.Strings(keys)
 
 	// Write the key/value pairs to a new table, in increasing key order.
-	f, err := db.MemFileSystem.Create(fmt.Sprintf("/tmp/leveldb/table/table_test/%d", tmpFileCount))
+	f, err := memFS.Create(fmt.Sprintf("/tmp/leveldb/table/table_test/%d", tmpFileCount))
 	if err != nil {
 		return nil, err
 	}

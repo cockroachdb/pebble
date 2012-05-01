@@ -63,8 +63,10 @@ func (defFS) List(dir string) ([]string, error) {
 	return f.Readdirnames(-1)
 }
 
-// MemFileSystem is a memory-backed FileSystem implementation.
-var MemFileSystem FileSystem = &memFS{}
+// NewMemFileSystem returns a new memory-backed FileSystem implementation.
+func NewMemFileSystem() FileSystem {
+	return new(memFS)
+}
 
 type memFS struct {
 	mu sync.Mutex

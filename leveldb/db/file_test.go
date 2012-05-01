@@ -19,7 +19,7 @@ func normalize(name string) string {
 }
 
 func TestMemFSList(t *testing.T) {
-	var fs memFS
+	fs := NewMemFileSystem()
 
 	fullNames := []string{
 		"/a",
