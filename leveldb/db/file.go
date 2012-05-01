@@ -5,6 +5,7 @@
 package db
 
 import (
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -31,6 +32,18 @@ type FileSystem interface {
 	Create(name string) (File, error)
 	Open(name string) (File, error)
 	Remove(name string) error
+
+	// Lock locks the given file. A nil Closer is returned if an error occurred.
+	// Otherwise, close that Closer to release the lock.
+	//
+	// On Linux, a lock has the same semantics as fcntl(2)'s advisory locks.
+	// In particular, closing any other file descriptor for the same file will
+	// release the lock prematurely.
+	//
+	// Lock is not yet implemented on other operating systems, and calling it
+	// will return an error.
+	Lock(name string) (io.Closer, error)
+
 	// List returns a listing of the given directory. The names returned are
 	// relative to dir.
 	List(dir string) ([]string, error)
@@ -117,6 +130,10 @@ func (m *memFS) Remove(name string) error {
 	}
 	delete(m.m, name)
 	return nil
+}
+
+func (m *memFS) Lock(name string) (io.Closer, error) {
+	return nil, errors.New("leveldb/db: file locking is not implemented for memory-backed file systems")
 }
 
 func (m *memFS) List(dir string) ([]string, error) {
