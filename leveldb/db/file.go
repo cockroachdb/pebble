@@ -7,6 +7,7 @@ package db
 import (
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +31,9 @@ type FileSystem interface {
 	Create(name string) (File, error)
 	Open(name string) (File, error)
 	Remove(name string) error
+	// List returns a listing of the given directory. The names returned are
+	// relative to dir.
+	List(dir string) ([]string, error)
 }
 
 // DefaultFileSystem is a FileSystem implementation backed by the underlying
@@ -50,15 +54,24 @@ func (defFS) Remove(name string) error {
 	return os.Remove(name)
 }
 
+func (defFS) List(dir string) ([]string, error) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Readdirnames(-1)
+}
+
 // MemFileSystem is a memory-backed FileSystem implementation.
-var MemFileSystem FileSystem = memFS{}
+var MemFileSystem FileSystem = &memFS{}
 
 type memFS struct {
 	mu sync.Mutex
 	m  map[string]*memFile
 }
 
-func (m memFS) Create(name string) (File, error) {
+func (m *memFS) Create(name string) (File, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.m == nil {
@@ -75,7 +88,7 @@ func (m memFS) Create(name string) (File, error) {
 	return f, nil
 }
 
-func (m memFS) Open(name string) (File, error) {
+func (m *memFS) Open(name string) (File, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.m == nil {
@@ -89,7 +102,7 @@ func (m memFS) Open(name string) (File, error) {
 	return f, nil
 }
 
-func (m memFS) Remove(name string) error {
+func (m *memFS) Remove(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.m == nil {
@@ -102,6 +115,34 @@ func (m memFS) Remove(name string) error {
 	}
 	delete(m.m, name)
 	return nil
+}
+
+func (m *memFS) List(dir string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.m == nil {
+		m.m = make(map[string]*memFile)
+	}
+
+	names := make(map[string]bool)
+	if len(dir) == 0 || dir[len(dir)-1] != os.PathSeparator {
+		dir += string(os.PathSeparator)
+	}
+	for fullName := range m.m {
+		if !strings.HasPrefix(fullName, dir) {
+			continue
+		}
+		name := fullName[len(dir):]
+		if i := strings.IndexRune(name, os.PathSeparator); i >= 0 {
+			name = name[:i]
+		}
+		names[name] = true
+	}
+	ret := make([]string, 0, len(names))
+	for name := range names {
+		ret = append(ret, name)
+	}
+	return ret, nil
 }
 
 // memFile is a memFS file.
