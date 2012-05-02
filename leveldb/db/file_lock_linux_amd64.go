@@ -21,7 +21,7 @@ func (l lockCloser) Close() error {
 }
 
 func (defFS) Lock(name string) (io.Closer, error) {
-	f, err := os.OpenFile(name, os.O_WRONLY, 0600)
+	f, err := os.Create(name)
 	if err != nil {
 		return nil, err
 	}

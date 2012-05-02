@@ -9,7 +9,6 @@
 package memfs
 
 import (
-	"errors"
 	"io"
 	"os"
 	"strings"
@@ -18,6 +17,12 @@ import (
 
 	"code.google.com/p/leveldb-go/leveldb/db"
 )
+
+type nopCloser struct{}
+
+func (nopCloser) Close() error {
+	return nil
+}
 
 // New returns a new memory-backed db.FileSystem implementation.
 func New() db.FileSystem {
@@ -70,7 +75,9 @@ func (y *fileSystem) Remove(name string) error {
 }
 
 func (y *fileSystem) Lock(name string) (io.Closer, error) {
-	return nil, errors.New("leveldb/db: file locking is not implemented for memory-backed file systems")
+	// FileSystem.Lock excludes other processes, but other processes cannot
+	// see this process' memory, so Lock is a no-op.
+	return nopCloser{}, nil
 }
 
 func (y *fileSystem) List(dir string) ([]string, error) {

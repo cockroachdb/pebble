@@ -29,12 +29,21 @@ type FileSystem interface {
 	Open(name string) (File, error)
 	Remove(name string) error
 
-	// Lock locks the given file. A nil Closer is returned if an error occurred.
-	// Otherwise, close that Closer to release the lock.
+	// Lock locks the given file, creating the file if necessary, and
+	// truncating the file if it already exists. The lock is an exclusive lock
+	// (a write lock), but locked files should neither be read from nor written
+	// to. Such files should have zero size and only exist to co-ordinate
+	// ownership across processes.
+	//
+	// A nil Closer is returned if an error occurred. Otherwise, close that
+	// Closer to release the lock.
 	//
 	// On Linux, a lock has the same semantics as fcntl(2)'s advisory locks.
 	// In particular, closing any other file descriptor for the same file will
 	// release the lock prematurely.
+	//
+	// Attempting to lock a file that is already locked by the current process
+	// has undefined behavior.
 	//
 	// Lock is not yet implemented on other operating systems, and calling it
 	// will return an error.
