@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package db
+package memfs
 
 import (
 	"os"
@@ -18,8 +18,8 @@ func normalize(name string) string {
 	return strings.Replace(name, "/", string(os.PathSeparator), -1)
 }
 
-func TestMemFSList(t *testing.T) {
-	fs := NewMemFileSystem()
+func TestList(t *testing.T) {
+	fs := New()
 
 	fullNames := []string{
 		"/a",

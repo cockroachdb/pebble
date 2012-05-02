@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
+	"code.google.com/p/leveldb-go/leveldb/memfs"
 )
 
 var wordCount = map[string]string{}
@@ -124,8 +125,8 @@ func check(f db.File) error {
 }
 
 var (
-	memFS        = db.NewMemFileSystem()
-	tmpFileCount int
+	memFileSystem = memfs.New()
+	tmpFileCount  int
 )
 
 func build(compression db.Compression) (db.File, error) {
@@ -139,7 +140,7 @@ func build(compression db.Compression) (db.File, error) {
 	sort.Strings(keys)
 
 	// Write the key/value pairs to a new table, in increasing key order.
-	f, err := memFS.Create(fmt.Sprintf("/tmp/leveldb/table/table_test/%d", tmpFileCount))
+	f, err := memFileSystem.Create(fmt.Sprintf("/tmp/leveldb/table/table_test/%d", tmpFileCount))
 	if err != nil {
 		return nil, err
 	}
