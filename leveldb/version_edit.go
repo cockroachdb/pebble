@@ -9,7 +9,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+	"sort"
+
+	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
 // TODO: describe the MANIFEST file format, independently of the C++ project.
@@ -56,7 +60,7 @@ type versionEdit struct {
 	nextFileNumber  uint64
 	lastSequence    uint64
 	compactPointers []compactPointerEntry
-	deletedFiles    map[deletedFileEntry]bool
+	deletedFiles    map[deletedFileEntry]bool // A set of deletedFileEntry values.
 	newFiles        []newFileEntry
 }
 
@@ -278,4 +282,82 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], u)
 	e.Write(buf[:n])
+}
+
+// bulkVersionEdit summarizes the files added and deleted from a set of version
+// edits.
+//
+// The C++ LevelDB code calls this concept a VersionSet::Builder.
+type bulkVersionEdit struct {
+	added   [numLevels][]fileMetadata
+	deleted [numLevels]map[uint64]bool // map[uint64]bool is a set of fileNums.
+}
+
+func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
+	for _, cp := range ve.compactPointers {
+		// TODO: handle compaction pointers.
+		_ = cp
+	}
+
+	for df := range ve.deletedFiles {
+		dmap := b.deleted[df.level]
+		if dmap == nil {
+			dmap = make(map[uint64]bool)
+			b.deleted[df.level] = dmap
+		}
+		dmap[df.fileNum] = true
+	}
+
+	for _, nf := range ve.newFiles {
+		if dmap := b.deleted[nf.level]; dmap != nil {
+			delete(dmap, nf.meta.fileNum)
+		}
+		// TODO: fiddle with nf.meta.allowedSeeks.
+		b.added[nf.level] = append(b.added[nf.level], nf.meta)
+	}
+}
+
+// apply applies the delta b to a base version to produce a new version. The
+// new version is consistent with respect to the internal key comparer icmp.
+//
+// base may be nil, which is equivalent to a pointer to a zero version.
+func (b *bulkVersionEdit) apply(base *version, icmp db.Comparer) (*version, error) {
+	v := new(version)
+	for level := range v.files {
+		combined := [2][]fileMetadata{
+			nil,
+			b.added[level],
+		}
+		if base != nil {
+			combined[0] = base.files[level]
+		}
+		n := len(combined[0]) + len(combined[1])
+		if n == 0 {
+			continue
+		}
+		v.files[level] = make([]fileMetadata, 0, n)
+		dmap := b.deleted[level]
+
+		for _, ff := range combined {
+			for _, f := range ff {
+				if dmap != nil && dmap[f.fileNum] {
+					continue
+				}
+				v.files[level] = append(v.files[level], f)
+			}
+		}
+
+		// TODO: base.files[level] is already sorted. Instead than appending
+		// b.addFiles[level] to the end and sorting afterwards, it might be more
+		// efficient to sort b.addFiles[level] and then merge the two sorted slices.
+		if level == 0 {
+			sort.Sort(byFileNum(v.files[level]))
+		} else {
+			sort.Sort(bySmallest{v.files[level], icmp})
+		}
+	}
+	if err := v.checkOrdering(icmp); err != nil {
+		return nil, fmt.Errorf("leveldb: internal error: %v", err)
+	}
+	return v, nil
 }

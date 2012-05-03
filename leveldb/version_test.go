@@ -490,7 +490,7 @@ func TestVersion(t *testing.T) {
 			})
 		}
 
-		err := v.checkOrdering(db.DefaultComparer)
+		err := v.checkOrdering(icmp)
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
 			continue

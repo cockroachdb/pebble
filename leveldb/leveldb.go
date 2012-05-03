@@ -73,11 +73,17 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		}
 	}()
 
+	// TODO: add options for CreateIfMissing and ErrorIfExists, and check them here.
+
 	// Load the version set.
 	err = d.versions.load(dirname, opts)
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO: replay into a memdb any newer log files than the ones named in the manifest.
+
+	// TODO: write that memdb and a new manifest to disk.
 
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil

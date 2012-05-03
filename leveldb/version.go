@@ -23,6 +23,23 @@ type fileMetadata struct {
 	smallest, largest internalKey
 }
 
+type byFileNum []fileMetadata
+
+func (b byFileNum) Len() int           { return len(b) }
+func (b byFileNum) Less(i, j int) bool { return b[i].fileNum < b[j].fileNum }
+func (b byFileNum) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+
+type bySmallest struct {
+	dat []fileMetadata
+	cmp db.Comparer
+}
+
+func (b bySmallest) Len() int { return len(b.dat) }
+func (b bySmallest) Less(i, j int) bool {
+	return b.cmp.Compare(b.dat[i].smallest, b.dat[j].smallest) < 0
+}
+func (b bySmallest) Swap(i, j int) { b.dat[i], b.dat[j] = b.dat[j], b.dat[i] }
+
 const numLevels = 7
 
 // version is a collection of file metadata for on-disk tables at various
@@ -47,13 +64,15 @@ const numLevels = 7
 // sequence number.
 type version struct {
 	files [numLevels][]fileMetadata
+	// Every version is part of a circular doubly-linked list of versions.
+	// One of those versions is a versionSet.dummyVersion.
+	prev, next *version
 }
 
 // checkOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
-func (v *version) checkOrdering(ucmp db.Comparer) error {
-	icmp := internalKeyComparer{ucmp}
+func (v *version) checkOrdering(icmp db.Comparer) error {
 	for level, ff := range v.files {
 		if level == 0 {
 			prevFileNum := uint64(0)
