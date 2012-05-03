@@ -5,6 +5,7 @@
 package memfs
 
 import (
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -82,15 +83,22 @@ func TestBasics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("5c: Open: %v", err)
 	}
-	n, err = g.ReadAt(buf[:5], 0)
+	n, err = io.ReadFull(g, buf[:5])
 	if err != nil {
-		t.Fatalf("5d: ReadAt: %v", err)
+		t.Fatalf("5d: ReadFull: %v", err)
 	}
 	if n != 5 {
-		t.Fatalf("5e: ReadAt: got %q, want %q", n, 5)
+		t.Fatalf("5e: ReadFull: got %d, want %d", n, 5)
 	}
-	if got, want := string(buf[:n]), "ABCDE"; got != want {
-		t.Fatalf("5f: ReadAt: got %q, want %q", got, want)
+	n, err = g.ReadAt(buf[5:8], 0)
+	if err != nil {
+		t.Fatalf("5f: ReadAt: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("5g: ReadAt: got %d, want %d", n, 3)
+	}
+	if got, want := string(buf[:8]), "ABCDEABC"; got != want {
+		t.Fatalf("5h: ReadAt: got %q, want %q", got, want)
 	}
 
 	// Remove the file twice. The first should succeed, the second should fail.
@@ -139,6 +147,26 @@ func TestList(t *testing.T) {
 		}
 		if err := f.Close(); err != nil {
 			t.Fatalf("Close %q: %v", filename, err)
+		}
+	}
+
+	{
+		got := fs.(*fileSystem).String()
+		want := normalize(`          /
+       0    a
+            bar/
+       0      baz
+            foo/
+       0      0
+       0      1
+              2/
+       0        a
+       0        b
+       0      3
+       0    foot
+`)
+		if got != want {
+			t.Fatalf("String:\n----got----\n%s----want----\n%s", got, want)
 		}
 	}
 

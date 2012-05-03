@@ -15,6 +15,7 @@ import (
 // memory-backed implementations.
 type File interface {
 	io.Closer
+	io.Reader
 	io.ReaderAt
 	io.Writer
 	Stat() (stat os.FileInfo, err error)

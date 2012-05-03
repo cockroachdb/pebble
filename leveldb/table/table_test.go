@@ -140,12 +140,14 @@ func build(compression db.Compression) (db.File, error) {
 	sort.Strings(keys)
 
 	// Write the key/value pairs to a new table, in increasing key order.
-	f, err := memFileSystem.Create(fmt.Sprintf("/tmp%d", tmpFileCount))
+	filename := fmt.Sprintf("/tmp%d", tmpFileCount)
+	f0, err := memFileSystem.Create(filename)
 	if err != nil {
 		return nil, err
 	}
+	defer f0.Close()
 	tmpFileCount++
-	w := NewWriter(f, &db.Options{
+	w := NewWriter(f0, &db.Options{
 		Compression: compression,
 	})
 	for _, k := range keys {
@@ -157,7 +159,13 @@ func build(compression db.Compression) (db.File, error) {
 	if err := w.Close(); err != nil {
 		return nil, err
 	}
-	return f, nil
+
+	// Re-open that filename for reading.
+	f1, err := memFileSystem.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	return f1, nil
 }
 
 func TestReader(t *testing.T) {
