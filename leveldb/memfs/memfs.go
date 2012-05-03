@@ -9,6 +9,7 @@
 package memfs
 
 import (
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -17,6 +18,8 @@ import (
 
 	"code.google.com/p/leveldb-go/leveldb/db"
 )
+
+const sep = string(os.PathSeparator)
 
 type nopCloser struct{}
 
@@ -27,89 +30,187 @@ func (nopCloser) Close() error {
 // New returns a new memory-backed db.FileSystem implementation.
 func New() db.FileSystem {
 	return &fileSystem{
-		m: make(map[string]*file),
+		root: &file{
+			name:     sep,
+			children: make(map[string]*file),
+			isDir:    true,
+		},
 	}
 }
 
 // fileSystem implements db.FileSystem.
 type fileSystem struct {
-	mu sync.Mutex
-	m  map[string]*file
+	mu   sync.Mutex
+	root *file
 }
 
-func (y *fileSystem) Create(name string) (db.File, error) {
+// walk walks the directory tree for the fullname, calling f at each step. If
+// f returns an error, the walk will be aborted and return that same error.
+//
+// Each walk is atomic: y's mutex is held for the entire operation, including
+// all calls to f.
+//
+// dir is the directory at that step, frag is the name fragment, and final is
+// whether it is the final step. For example, walking "/foo/bar/x" will result
+// in 3 calls to f:
+//   - "/", "foo", false
+//   - "/foo/", "bar", false
+//   - "/foo/bar/", "x", true
+// Similarly, walking "/y/z/", with a trailing slash, will result in 3 calls to f:
+//   - "/", "y", false
+//   - "/y/", "z", false
+//   - "/y/z/", "", true
+func (y *fileSystem) walk(fullname string, f func(dir *file, frag string, final bool) error) error {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
-	f, ok := y.m[name]
-	if !ok {
-		f = &file{name: name}
-		y.m[name] = f
-	} else {
-		f.data = nil
+	// For memfs, the current working directory is the same as the root directory,
+	// so we strip off any leading "/"s to make fullname a relative path, and
+	// the walk starts at y.root.
+	for len(fullname) > 0 && fullname[0] == os.PathSeparator {
+		fullname = fullname[1:]
 	}
-	return f, nil
-}
+	dir := y.root
 
-func (y *fileSystem) Open(name string) (db.File, error) {
-	y.mu.Lock()
-	defer y.mu.Unlock()
-
-	f, ok := y.m[name]
-	if !ok {
-		return nil, os.ErrNotExist
+	for {
+		frag, remaining := fullname, ""
+		i := strings.IndexRune(fullname, os.PathSeparator)
+		final := i < 0
+		if !final {
+			frag, remaining = fullname[:i], fullname[i+1:]
+			for len(remaining) > 0 && remaining[0] == os.PathSeparator {
+				remaining = remaining[1:]
+			}
+		}
+		if err := f(dir, frag, final); err != nil {
+			return err
+		}
+		if final {
+			break
+		}
+		child := dir.children[frag]
+		if child == nil {
+			return errors.New("leveldb/memfs: no such directory")
+		}
+		if !child.isDir {
+			return errors.New("leveldb/memfs: not a directory")
+		}
+		dir, fullname = child, remaining
 	}
-	return f, nil
-}
-
-func (y *fileSystem) Remove(name string) error {
-	y.mu.Lock()
-	defer y.mu.Unlock()
-
-	_, ok := y.m[name]
-	if !ok {
-		return os.ErrNotExist
-	}
-	delete(y.m, name)
 	return nil
 }
 
-func (y *fileSystem) Lock(name string) (io.Closer, error) {
+func (y *fileSystem) Create(fullname string) (db.File, error) {
+	var ret *file
+	err := y.walk(fullname, func(dir *file, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("leveldb/memfs: empty file name")
+			}
+			ret = &file{name: frag}
+			dir.children[frag] = ret
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (y *fileSystem) Open(fullname string) (db.File, error) {
+	var ret *file
+	err := y.walk(fullname, func(dir *file, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("leveldb/memfs: empty file name")
+			}
+			ret = dir.children[frag]
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if ret == nil {
+		return nil, errors.New("leveldb/memfs: no such file")
+	}
+	return ret, nil
+}
+
+func (y *fileSystem) Remove(fullname string) error {
+	return y.walk(fullname, func(dir *file, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("leveldb/memfs: empty file name")
+			}
+			_, ok := dir.children[frag]
+			if !ok {
+				return errors.New("leveldb/memfs: no such file or directory")
+			}
+			delete(dir.children, frag)
+		}
+		return nil
+	})
+}
+
+func (y *fileSystem) MkdirAll(dirname string, perm os.FileMode) error {
+	return y.walk(dirname, func(dir *file, frag string, final bool) error {
+		if frag == "" {
+			if final {
+				return nil
+			}
+			return errors.New("leveldb/memfs: empty file name")
+		}
+		child := dir.children[frag]
+		if child == nil {
+			dir.children[frag] = &file{
+				name:     frag,
+				children: make(map[string]*file),
+				isDir:    true,
+			}
+			return nil
+		}
+		if !child.isDir {
+			return errors.New("leveldb/memfs: not a directory")
+		}
+		return nil
+	})
+}
+
+func (y *fileSystem) Lock(fullname string) (io.Closer, error) {
 	// FileSystem.Lock excludes other processes, but other processes cannot
 	// see this process' memory, so Lock is a no-op.
 	return nopCloser{}, nil
 }
 
-func (y *fileSystem) List(dir string) ([]string, error) {
-	y.mu.Lock()
-	defer y.mu.Unlock()
-
-	names := make(map[string]bool)
-	if len(dir) == 0 || dir[len(dir)-1] != os.PathSeparator {
-		dir += string(os.PathSeparator)
+func (y *fileSystem) List(dirname string) ([]string, error) {
+	if !strings.HasSuffix(dirname, sep) {
+		dirname += sep
 	}
-	for fullName := range y.m {
-		if !strings.HasPrefix(fullName, dir) {
-			continue
+	var ret []string
+	err := y.walk(dirname, func(dir *file, frag string, final bool) error {
+		if final {
+			if frag != "" {
+				panic("unreachable")
+			}
+			ret = make([]string, 0, len(dir.children))
+			for s := range dir.children {
+				ret = append(ret, s)
+			}
 		}
-		name := fullName[len(dir):]
-		if i := strings.IndexRune(name, os.PathSeparator); i >= 0 {
-			name = name[:i]
-		}
-		names[name] = true
-	}
-	ret := make([]string, 0, len(names))
-	for name := range names {
-		ret = append(ret, name)
-	}
-	return ret, nil
+		return nil
+	})
+	return ret, err
 }
 
 // file implements db.File and os.FileInfo.
 type file struct {
-	name    string
-	data    []byte
-	modTime time.Time
+	name     string
+	data     []byte
+	modTime  time.Time
+	children map[string]*file
+	isDir    bool
 }
 
 func (f *file) Close() error {
@@ -117,7 +218,7 @@ func (f *file) Close() error {
 }
 
 func (f *file) IsDir() bool {
-	return false
+	return f.isDir
 }
 
 func (f *file) ModTime() time.Time {
@@ -133,6 +234,9 @@ func (f *file) Name() string {
 }
 
 func (f *file) ReadAt(p []byte, off int64) (int, error) {
+	if f.isDir {
+		return 0, errors.New("leveldb/memfs: cannot read a directory")
+	}
 	return copy(p, f.data[off:]), nil
 }
 
@@ -149,6 +253,9 @@ func (f *file) Sys() interface{} {
 }
 
 func (f *file) Write(p []byte) (int, error) {
+	if f.isDir {
+		return 0, errors.New("leveldb/memfs: cannot write a directory")
+	}
 	f.modTime = time.Now()
 	f.data = append(f.data, p...)
 	return len(p), nil

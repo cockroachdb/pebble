@@ -140,7 +140,7 @@ func build(compression db.Compression) (db.File, error) {
 	sort.Strings(keys)
 
 	// Write the key/value pairs to a new table, in increasing key order.
-	f, err := memFileSystem.Create(fmt.Sprintf("/tmp/leveldb/table/table_test/%d", tmpFileCount))
+	f, err := memFileSystem.Create(fmt.Sprintf("/tmp%d", tmpFileCount))
 	if err != nil {
 		return nil, err
 	}

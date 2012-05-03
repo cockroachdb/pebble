@@ -29,6 +29,11 @@ type FileSystem interface {
 	Open(name string) (File, error)
 	Remove(name string) error
 
+	// MkdirAll creates a directory and all necessary parents. The permission
+	// bits perm have the same semantics as in os.MkdirAll. If the directory
+	// already exists, MkdirAll does nothing and returns nil.
+	MkdirAll(dir string, perm os.FileMode) error
+
 	// Lock locks the given file, creating the file if necessary, and
 	// truncating the file if it already exists. The lock is an exclusive lock
 	// (a write lock), but locked files should neither be read from nor written
@@ -70,6 +75,10 @@ func (defFS) Open(name string) (File, error) {
 
 func (defFS) Remove(name string) error {
 	return os.Remove(name)
+}
+
+func (defFS) MkdirAll(dir string, perm os.FileMode) error {
+	return os.MkdirAll(dir, perm)
 }
 
 func (defFS) List(dir string) ([]string, error) {
