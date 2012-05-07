@@ -7,6 +7,8 @@ package leveldb
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -34,4 +36,18 @@ func filename(dirname string, fileType int, fileNum uint64) string {
 		return fmt.Sprintf("%s%cCURRENT", dirname, os.PathSeparator)
 	}
 	panic("unreachable")
+}
+
+// logFileNum returns the fileNum of the given log file, or 0 if that file is
+// not a log file.
+func logFileNum(filename string) uint64 {
+	if !strings.HasSuffix(filename, ".log") {
+		return 0
+	}
+	filename = filename[:len(filename)-4]
+	u, err := strconv.ParseUint(filename, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return u
 }
