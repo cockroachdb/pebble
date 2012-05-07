@@ -14,32 +14,93 @@ const batchHeaderLen = 12
 type Batch struct {
 	// Data is the wire format of a batch's log entry:
 	//   - 8 bytes for a sequence number of the first batch element,
+	//     or zeroes if the batch has not yet been applied,
 	//   - 4 bytes for the count: the number of elements in the batch,
+	//     or "\xff\xff\xff\xff" if the batch is invalid,
 	//   - count elements, being:
 	//     - one byte for the kind: delete (0) or set (1),
 	//     - the varint-string user key,
 	//     - the varint-string value (if kind == set).
+	// The sequence number and count are stored in little-endian order.
 	data []byte
 }
 
+// Set adds an action to the batch that sets the key to map to the value.
 func (b *Batch) Set(key, value []byte) {
-	panic("unimplemented")
+	if len(b.data) == 0 {
+		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if b.increment() {
+		b.data = append(b.data, byte(internalKeyKindSet))
+		b.appendStr(key)
+		b.appendStr(value)
+	}
 }
 
+// Delete adds an action to the batch that deletes the entry for key.
 func (b *Batch) Delete(key []byte) {
-	panic("unimplemented")
+	if len(b.data) == 0 {
+		b.init(len(key) + binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if b.increment() {
+		b.data = append(b.data, byte(internalKeyKindDelete))
+		b.appendStr(key)
+	}
+}
+
+func (b *Batch) init(cap int) {
+	n := 256
+	for n < cap {
+		n *= 2
+	}
+	b.data = make([]byte, batchHeaderLen, n)
+}
+
+// seqNumData returns the 8 byte little-endian sequence number. Zero means that
+// the batch has not yet been applied.
+func (b *Batch) seqNumData() []byte {
+	return b.data[:8]
+}
+
+// countData returns the 4 byte little-endian count data. "\xff\xff\xff\xff"
+// means that the batch is invalid.
+func (b *Batch) countData() []byte {
+	return b.data[8:12]
+}
+
+func (b *Batch) increment() (ok bool) {
+	p := b.countData()
+	for i := range p {
+		p[i]++
+		if p[i] != 0x00 {
+			return true
+		}
+	}
+	// The countData was "\xff\xff\xff\xff". Leave it as it was.
+	p[0] = 0xff
+	p[1] = 0xff
+	p[2] = 0xff
+	p[3] = 0xff
+	return false
+}
+
+func (b *Batch) appendStr(s []byte) {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], uint64(len(s)))
+	b.data = append(b.data, buf[:n]...)
+	b.data = append(b.data, s...)
 }
 
 func (b *Batch) seqNum() uint64 {
-	return binary.LittleEndian.Uint64(b.data[:8])
+	return binary.LittleEndian.Uint64(b.seqNumData())
 }
 
 func (b *Batch) count() uint32 {
-	return binary.LittleEndian.Uint32(b.data[8:12])
+	return binary.LittleEndian.Uint32(b.countData())
 }
 
 func (b *Batch) iter() batchIter {
-	return b.data[12:]
+	return b.data[batchHeaderLen:]
 }
 
 type batchIter []byte
