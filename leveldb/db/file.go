@@ -19,6 +19,7 @@ type File interface {
 	io.ReaderAt
 	io.Writer
 	Stat() (stat os.FileInfo, err error)
+	Sync() error
 }
 
 // FileSystem is a namespace for files.

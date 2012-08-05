@@ -48,6 +48,15 @@ func TestInvalidInternalKey(t *testing.T) {
 func TestInternalKeyComparer(t *testing.T) {
 	// keys are some internal keys, in sorted order.
 	keys := []string{
+		// The empty key is not a valid internal key, but it still must
+		// sort lower than any other key. It is used as a zero value when
+		// checking that a sequence of internal keys are in sorted order.
+		"",
+		// The next two keys are also invalid internal keys. They are 'less
+		// than' any valid internal key, and 'greater than' the empty key.
+		"A",
+		"B",
+		// The remaining test keys are all valid.
 		"" + "\x01\xff\xff\xff\xff\xff\xff\xff",
 		"" + "\x00\xff\xff\xff\xff\xff\xff\xff",
 		"" + "\x01\x01\x00\x00\x00\x00\x00\x00",

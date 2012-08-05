@@ -42,7 +42,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	cmpName := opts.GetComparer().Name()
 
 	// Read the CURRENT file to find the current manifest file.
-	current, err := fs.Open(filename(dirname, fileTypeCurrent, 0))
+	current, err := fs.Open(dbFilename(dirname, fileTypeCurrent, 0))
 	if err != nil {
 		return fmt.Errorf("leveldb: could not open CURRENT file for DB %q: %v", dirname, err)
 	}

@@ -225,6 +225,13 @@ func (m *MemDB) ApproximateMemoryUsage() int {
 	return len(m.kvData)
 }
 
+// Empty returns whether the MemDB has no key/value pairs.
+func (m *MemDB) Empty() bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return len(m.nodeData) == maxHeight
+}
+
 // New returns a new MemDB.
 func New(o *db.Options) *MemDB {
 	return &MemDB{

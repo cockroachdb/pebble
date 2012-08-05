@@ -17,6 +17,7 @@ import (
 	"code.google.com/p/leveldb-go/leveldb/db"
 	"code.google.com/p/leveldb-go/leveldb/memdb"
 	"code.google.com/p/leveldb-go/leveldb/record"
+	"code.google.com/p/leveldb-go/leveldb/table"
 )
 
 // TODO: document DB.
@@ -86,7 +87,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	fileLock, err := fs.Lock(filename(dirname, fileTypeLock, 0))
+	fileLock, err := fs.Lock(dbFilename(dirname, fileTypeLock, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -221,19 +222,105 @@ func (d *DB) replayLogFile(fs db.FileSystem, filename string) (maxSeqNum uint64,
 		batchBuf.Reset()
 	}
 
-	// TODO: write mem to a level-0 table.
-
-	const debug = false
-	if debug && mem != nil {
-		t := mem.Find(nil, nil)
-		for t.Next() {
-			fmt.Printf("key=%q, value=%q\n", t.Key(), t.Value())
-		}
-		if err := t.Close(); err != nil {
+	if mem != nil && !mem.Empty() {
+		meta, err := d.writeLevel0Table(fs, mem)
+		if err != nil {
 			return 0, err
 		}
-		fmt.Println()
+		// TODO: accumulate meta in a versionEdit.
+		_ = meta
 	}
 
 	return maxSeqNum, nil
+}
+
+// firstError returns the first non-nil error of err0 and err1, or nil if both
+// are nil.
+func firstError(err0, err1 error) error {
+	if err0 != nil {
+		return err0
+	}
+	return err1
+}
+
+func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMetadata, err error) {
+	meta.fileNum = d.versions.nextFileNum()
+	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
+	// TODO: add meta.fileNum to a set of 'pending outputs' so that a
+	// concurrent sweep of obsolete db files won't delete the fileNum file.
+	// It is the caller's responsibility to remove that fileNum from the
+	// set of pending outputs.
+
+	var (
+		file db.File
+		tw   *table.Writer
+		iter db.Iterator
+	)
+	defer func() {
+		if iter != nil {
+			err = firstError(err, iter.Close())
+		}
+		if tw != nil {
+			err = firstError(err, tw.Close())
+		}
+		if file != nil {
+			err = firstError(err, file.Close())
+		}
+		if err != nil {
+			fs.Remove(filename)
+			meta = fileMetadata{}
+		}
+	}()
+
+	file, err = fs.Create(filename)
+	if err != nil {
+		return fileMetadata{}, err
+	}
+	tw = table.NewWriter(file, &db.Options{
+		Comparer: d.icmp,
+	})
+
+	iter = mem.Find(nil, nil)
+	iter.Next()
+	meta.smallest = internalKey(iter.Key()).clone()
+	for {
+		meta.largest = iter.Key()
+		if err1 := tw.Set(meta.largest, iter.Value(), nil); err1 != nil {
+			return fileMetadata{}, err1
+		}
+		if !iter.Next() {
+			break
+		}
+	}
+	meta.largest = meta.largest.clone()
+
+	if err1 := iter.Close(); err1 != nil {
+		iter = nil
+		return fileMetadata{}, err1
+	}
+	iter = nil
+
+	if err1 := tw.Close(); err1 != nil {
+		tw = nil
+		return fileMetadata{}, err1
+	}
+	tw = nil
+
+	if err1 := file.Sync(); err1 != nil {
+		return fileMetadata{}, err1
+	}
+
+	if stat, err1 := file.Stat(); err1 != nil {
+		return fileMetadata{}, err1
+	} else {
+		size := stat.Size()
+		if size < 0 {
+			return fileMetadata{}, fmt.Errorf("leveldb: table file %q has negative size %d", filename, size)
+		}
+		meta.size = uint64(size)
+	}
+
+	// TODO: compaction stats.
+
+	return meta, nil
 }

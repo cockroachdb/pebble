@@ -121,6 +121,18 @@ func TestCount(t *testing.T) {
 	}
 }
 
+func TestEmpty(t *testing.T) {
+	m := New(nil)
+	if !m.Empty() {
+		t.Errorf("got !empty, want empty")
+	}
+	// Add one key/value pair with an empty key and empty value.
+	m.Set(nil, nil, nil)
+	if m.Empty() {
+		t.Errorf("got empty, want !empty")
+	}
+}
+
 func Test1000Entries(t *testing.T) {
 	// Initialize the DB.
 	const N = 1000

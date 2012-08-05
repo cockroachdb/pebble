@@ -5,6 +5,8 @@
 package leveldb
 
 import (
+	"bytes"
+
 	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
@@ -80,6 +82,14 @@ func (k internalKey) encodeTrailer(kind internalKeyKind, seqNum uint64) {
 	k[i+7] = uint8(seqNum >> 48)
 }
 
+// clone returns an internalKey that has the same contents but is backed by a
+// different array.
+func (k internalKey) clone() internalKey {
+	x := make(internalKey, len(k))
+	copy(x, k)
+	return x
+}
+
 // internalKeyComparer is a db.Comparer that wraps another db.Comparer.
 //
 // It compares internal keys first by their user keys (as ordered by userCmp),
@@ -103,8 +113,14 @@ var _ db.Comparer = internalKeyComparer{}
 
 func (c internalKeyComparer) Compare(a, b []byte) int {
 	ak, bk := internalKey(a), internalKey(b)
-	if !ak.valid() || !bk.valid() {
-		return 0
+	if !ak.valid() {
+		if bk.valid() {
+			return -1
+		}
+		return bytes.Compare(a, b)
+	}
+	if !bk.valid() {
+		return 1
 	}
 	if x := c.userCmp.Compare(ak.ukey(), bk.ukey()); x != 0 {
 		return x

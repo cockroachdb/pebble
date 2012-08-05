@@ -340,3 +340,7 @@ func (f *file) Write(p []byte) (int, error) {
 func (f *file) Stat() (os.FileInfo, error) {
 	return f.n, nil
 }
+
+func (f *file) Sync() error {
+	return nil
+}

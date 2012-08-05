@@ -19,7 +19,7 @@ const (
 	fileTypeCurrent
 )
 
-func filename(dirname string, fileType int, fileNum uint64) string {
+func dbFilename(dirname string, fileType int, fileNum uint64) string {
 	for len(dirname) > 0 && dirname[len(dirname)-1] == os.PathSeparator {
 		dirname = dirname[:len(dirname)-1]
 	}
