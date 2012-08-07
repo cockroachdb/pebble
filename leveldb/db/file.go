@@ -45,9 +45,9 @@ type FileSystem interface {
 	// A nil Closer is returned if an error occurred. Otherwise, close that
 	// Closer to release the lock.
 	//
-	// On Linux, a lock has the same semantics as fcntl(2)'s advisory locks.
-	// In particular, closing any other file descriptor for the same file will
-	// release the lock prematurely.
+	// On Linux and OSX, a lock has the same semantics as fcntl(2)'s advisory
+	// locks.  In particular, closing any other file descriptor for the same
+	// file will release the lock prematurely.
 	//
 	// Attempting to lock a file that is already locked by the current process
 	// has undefined behavior.
