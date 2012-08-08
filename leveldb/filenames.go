@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
 const (
@@ -50,4 +52,21 @@ func logFileNum(filename string) uint64 {
 		return 0
 	}
 	return u
+}
+
+func setCurrentFile(dirname string, fs db.FileSystem, fileNum uint64) error {
+	newFilename := dbFilename(dirname, fileTypeCurrent, fileNum)
+	oldFilename := fmt.Sprintf("%s.%06d.dbtmp", newFilename, fileNum)
+	fs.Remove(oldFilename)
+	f, err := fs.Create(oldFilename)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(f, "MANIFEST-%06d\n", fileNum); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return fs.Rename(oldFilename, newFilename)
 }

@@ -23,14 +23,14 @@
 //		var ss []string
 //		records := record.NewReader(r)
 //		for {
-//			record, err := records.Next()
+//			rec, err := records.Next()
 //			if err == io.EOF {
 //				break
 //			}
 //			if err != nil {
 //				return nil, err
 //			}
-//			s, err := ioutil.ReadAll(record)
+//			s, err := ioutil.ReadAll(rec)
 //			if err != nil {
 //				return nil, err
 //			}
@@ -40,14 +40,17 @@
 //	}
 //
 //	func write(w io.Writer, ss []string) error {
-//		sw := record.NewWriter(w)
+//		records := record.NewWriter(w)
 //		for _, s := range ss {
-//			sw.Next()
-//			if _, err := sw.Write([]byte(s)), err != nil {
+//			rec, err := records.Next()
+//			if err != nil {
+//				return err
+//			}
+//			if _, err := rec.Write([]byte(s)), err != nil {
 //				return err
 //			}
 //		}
-//		return sw.Close()
+//		return records.Close()
 //	}
 //
 // The wire format is that the stream is divided into 32KiB blocks, and each

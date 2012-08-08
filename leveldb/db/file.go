@@ -31,6 +31,10 @@ type FileSystem interface {
 	Open(name string) (File, error)
 	Remove(name string) error
 
+	// Rename renames a file. It overwrites the file at newname if one exists,
+	// the same as os.Rename.
+	Rename(oldname, newname string) error
+
 	// MkdirAll creates a directory and all necessary parents. The permission
 	// bits perm have the same semantics as in os.MkdirAll. If the directory
 	// already exists, MkdirAll does nothing and returns nil.
@@ -77,6 +81,10 @@ func (defFS) Open(name string) (File, error) {
 
 func (defFS) Remove(name string) error {
 	return os.Remove(name)
+}
+
+func (defFS) Rename(oldname, newname string) error {
+	return os.Rename(oldname, newname)
 }
 
 func (defFS) MkdirAll(dir string, perm os.FileMode) error {

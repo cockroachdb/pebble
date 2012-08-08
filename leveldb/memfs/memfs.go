@@ -174,6 +174,35 @@ func (y *fileSystem) Remove(fullname string) error {
 	})
 }
 
+func (y *fileSystem) Rename(oldname, newname string) error {
+	var n *node
+	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("leveldb/memfs: empty file name")
+			}
+			n = dir.children[frag]
+			delete(dir.children, frag)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if n == nil {
+		return errors.New("leveldb/memfs: no such file or directory")
+	}
+	return y.walk(newname, func(dir *node, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("leveldb/memfs: empty file name")
+			}
+			dir.children[frag] = n
+		}
+		return nil
+	})
+}
+
 func (y *fileSystem) MkdirAll(dirname string, perm os.FileMode) error {
 	return y.walk(dirname, func(dir *node, frag string, final bool) error {
 		if frag == "" {

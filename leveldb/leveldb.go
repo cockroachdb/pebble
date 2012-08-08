@@ -27,6 +27,8 @@ type DB struct {
 	icmp    internalKeyComparer
 
 	fileLock io.Closer
+	logFile  db.File
+	log      *record.Writer
 
 	versions versionSet
 }
@@ -106,6 +108,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 
 	// Replay any newer log files than the ones named in the manifest.
+	var ve versionEdit
 	ls, err := fs.List(dirname)
 	if err != nil {
 		return nil, err
@@ -119,7 +122,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 	sort.Sort(logFiles)
 	for _, lf := range logFiles {
-		maxSeqNum, err := d.replayLogFile(fs, filepath.Join(dirname, lf.name))
+		maxSeqNum, err := d.replayLogFile(&ve, fs, filepath.Join(dirname, lf.name))
 		if err != nil {
 			return nil, err
 		}
@@ -129,13 +132,33 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		}
 	}
 
-	// TODO: write a new manifest to disk.
+	// Create an empty .log file.
+	ve.logNumber = d.versions.nextFileNum()
+	logFile, err := fs.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if logFile != nil {
+			logFile.Close()
+		}
+	}()
+	d.log = record.NewWriter(logFile)
 
+	// Write a new manifest to disk.
+	if err := d.versions.logAndApply(dirname, &ve); err != nil {
+		return nil, err
+	}
+
+	// TODO: delete obsolete files.
+	// TODO: maybe schedule compaction?
+
+	d.logFile, logFile = logFile, nil
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil
 }
 
-func (d *DB) replayLogFile(fs db.FileSystem, filename string) (maxSeqNum uint64, err error) {
+func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
 		return 0, err
@@ -227,8 +250,7 @@ func (d *DB) replayLogFile(fs db.FileSystem, filename string) (maxSeqNum uint64,
 		if err != nil {
 			return 0, err
 		}
-		// TODO: accumulate meta in a versionEdit.
-		_ = meta
+		ve.newFiles = append(ve.newFiles, newFileEntry{level: 0, meta: meta})
 	}
 
 	return maxSeqNum, nil
@@ -305,6 +327,13 @@ func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMeta
 		return fileMetadata{}, err1
 	}
 	tw = nil
+
+	// TODO: currently, closing a table.Writer closes its underlying file.
+	// We have to re-open the file to Sync or Stat it, which seems stupid.
+	file, err = fs.Open(filename)
+	if err != nil {
+		return fileMetadata{}, err
+	}
 
 	if err1 := file.Sync(); err1 != nil {
 		return fileMetadata{}, err1

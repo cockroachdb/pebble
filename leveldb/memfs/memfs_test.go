@@ -31,10 +31,11 @@ func TestBasics(t *testing.T) {
 	)
 
 	// Create a top-level file.
-	_, err := fs.Create(normalize("/foo"))
+	f, err := fs.Create(normalize("/foo"))
 	if err != nil {
 		t.Fatalf("1a: Create: %v", err)
 	}
+	f.Close()
 
 	// Create a child of that file. It should fail, since /foo is not a directory.
 	_, err = fs.Create(normalize("/foo/x"))
@@ -100,6 +101,10 @@ func TestBasics(t *testing.T) {
 	if got, want := string(buf[:8]), "ABCDEABC"; got != want {
 		t.Fatalf("5h: ReadAt: got %q, want %q", got, want)
 	}
+	err = g.Close()
+	if err != nil {
+		t.Fatalf("5i: Close: %v", err)
+	}
 
 	// Remove the file twice. The first should succeed, the second should fail.
 	err = fs.Remove(normalize("/bar/baz/y"))
@@ -114,6 +119,60 @@ func TestBasics(t *testing.T) {
 	if err == nil {
 		t.Fatalf("6c: Open: got nil error, want non-nil")
 	}
+
+	// Rename /foo to /goo. Trying to open /foo should succeed before the rename and
+	// fail afterwards, and vice versa for /goo.
+	f, err = fs.Open(normalize("/foo"))
+	if err != nil {
+		t.Fatalf("7a: Open: %v", err)
+	}
+	f.Close()
+	_, err = fs.Open(normalize("/goo"))
+	if err == nil {
+		t.Fatalf("7b: Open: got nil error, want non-nil")
+	}
+	err = fs.Rename(normalize("/foo"), normalize("/goo"))
+	if err != nil {
+		t.Fatalf("7c: Rename: %v", err)
+	}
+	_, err = fs.Open(normalize("/foo"))
+	if err == nil {
+		t.Fatalf("7d: Open: got nil error, want non-nil")
+	}
+	f, err = fs.Open(normalize("/goo"))
+	if err != nil {
+		t.Fatalf("7e: Open: %v", err)
+	}
+	f.Close()
+
+	// Create /bar/baz/z and rename /bar/baz to /bar/caz.
+	f, err = fs.Create(normalize("/bar/baz/z"))
+	if err != nil {
+		t.Fatalf("8a: Create: %v", err)
+	}
+	f.Close()
+	f, err = fs.Open(normalize("/bar/baz/z"))
+	if err != nil {
+		t.Fatalf("8b: Open: %v", err)
+	}
+	f.Close()
+	_, err = fs.Open(normalize("/bar/caz/z"))
+	if err == nil {
+		t.Fatalf("8c: Open: got nil error, want non-nil")
+	}
+	err = fs.Rename(normalize("/bar/baz"), normalize("/bar/caz"))
+	if err != nil {
+		t.Fatalf("8d: Rename: %v", err)
+	}
+	_, err = fs.Open(normalize("/bar/baz/z"))
+	if err == nil {
+		t.Fatalf("8e: Open: got nil error, want non-nil")
+	}
+	f, err = fs.Open(normalize("/bar/caz/z"))
+	if err != nil {
+		t.Fatalf("8f: Open: %v", err)
+	}
+	f.Close()
 }
 
 func TestList(t *testing.T) {
