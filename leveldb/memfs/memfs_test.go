@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -22,157 +23,129 @@ func normalize(name string) string {
 }
 
 func TestBasics(t *testing.T) {
-	var (
-		fs   = New()
-		f, g db.File
-		fi   os.FileInfo
-		buf  [16]byte
-		n    int
-	)
+	fs := New()
+	testCases := []string{
+		// Create a top-level file.
+		"1a: create /foo",
+		// Create a child of that file. It should fail, since /foo is not a directory.
+		"2a: create /foo/x fails",
+		// Create a third-level file. It should fail, since /bar has not been created.
+		// Similarly, opening that file should fail.
+		"3a: create /bar/baz/y fails",
+		"3b: open /bar/baz/y fails",
+		// Make the /bar/baz directory; create a third-level file. Creation should now succeed.
+		"4a: mkdirall /bar/baz",
+		"4b: f = create /bar/baz/y",
+		"4c: f.stat.name == y",
+		// Write some data; read it back.
+		"5a: f.write abcde",
+		"5b: f.close",
+		"5c: f = open /bar/baz/y",
+		"5d: f.read 5 == abcde",
+		"5e: f.readat 2 1 == bc",
+		"5f: f.close",
+		// Remove the file twice. The first should succeed, the second should fail.
+		"6a: remove /bar/baz/y",
+		"6b: remove /bar/baz/y fails",
+		"6c: open /bar/baz/y fails",
+		// Rename /foo to /goo. Trying to open /foo should succeed before the rename and
+		// fail afterwards, and vice versa for /goo.
+		"7a: open /foo",
+		"7b: open /goo fails",
+		"7c: rename /foo /goo",
+		"7d: open /foo fails",
+		"7e: open /goo",
+		// Create /bar/baz/z and rename /bar/baz to /bar/caz.
+		"8a: create /bar/baz/z",
+		"8b: open /bar/baz/z",
+		"8c: open /bar/caz/z fails",
+		"8d: rename /bar/baz /bar/caz",
+		"8e: open /bar/baz/z fails",
+		"8f: open /bar/caz/z",
+	}
+	var f db.File
+	for _, tc := range testCases {
+		s := strings.Split(tc, " ")[1:]
 
-	// Create a top-level file.
-	f, err := fs.Create(normalize("/foo"))
-	if err != nil {
-		t.Fatalf("1a: Create: %v", err)
-	}
-	f.Close()
+		saveF := s[0] == "f" && s[1] == "="
+		if saveF {
+			s = s[2:]
+		}
 
-	// Create a child of that file. It should fail, since /foo is not a directory.
-	_, err = fs.Create(normalize("/foo/x"))
-	if err == nil {
-		t.Fatalf("2a: Create: got nil error, want non-nil")
-	}
+		fails := s[len(s)-1] == "fails"
+		if fails {
+			s = s[:len(s)-1]
+		}
 
-	// Create a third-level file. It should fail, since /bar has not been created.
-	// Similarly, opening that file should fail.
-	_, err = fs.Create(normalize("/bar/baz/y"))
-	if err == nil {
-		t.Fatalf("3a: Create: got nil error, want non-nil")
-	}
-	_, err = fs.Open(normalize("/bar/baz/y"))
-	if err == nil {
-		t.Fatalf("3b: Open: got nil error, want non-nil")
-	}
+		var (
+			fi  os.FileInfo
+			g   db.File
+			err error
+		)
+		switch s[0] {
+		case "create":
+			g, err = fs.Create(normalize(s[1]))
+		case "open":
+			g, err = fs.Open(normalize(s[1]))
+		case "mkdirall":
+			err = fs.MkdirAll(normalize(s[1]), 0755)
+		case "remove":
+			err = fs.Remove(normalize(s[1]))
+		case "rename":
+			err = fs.Rename(normalize(s[1]), normalize(s[2]))
+		case "f.write":
+			_, err = f.Write([]byte(s[1]))
+		case "f.read":
+			n, _ := strconv.Atoi(s[1])
+			buf := make([]byte, n)
+			_, err = io.ReadFull(f, buf)
+			if err != nil {
+				break
+			}
+			if got, want := string(buf), s[3]; got != want {
+				t.Fatalf("%q: got %q, want %q", tc, got, want)
+			}
+		case "f.readat":
+			n, _ := strconv.Atoi(s[1])
+			off, _ := strconv.Atoi(s[2])
+			buf := make([]byte, n)
+			_, err = f.ReadAt(buf, int64(off))
+			if err != nil {
+				break
+			}
+			if got, want := string(buf), s[4]; got != want {
+				t.Fatalf("%q: got %q, want %q", tc, got, want)
+			}
+		case "f.close":
+			f, err = nil, f.Close()
+		case "f.stat.name":
+			fi, err = f.Stat()
+			if err != nil {
+				break
+			}
+			if got, want := fi.Name(), s[2]; got != want {
+				t.Fatalf("%q: got %q, want %q", tc, got, want)
+			}
+		default:
+			t.Fatalf("bad test case: %q", tc)
+		}
 
-	// Make the /bar/baz directory; create a third-level file. Creation should now succeed.
-	err = fs.MkdirAll(normalize("/bar/baz/"), 0755)
-	if err != nil {
-		t.Fatalf("4a: MkdirAll: %v", err)
-	}
-	f, err = fs.Create(normalize("/bar/baz/y"))
-	if err != nil {
-		t.Fatalf("4b: Create: %v", err)
-	}
-	fi, err = f.Stat()
-	if err != nil {
-		t.Fatalf("4c: Stat: %v", err)
-	}
-	if got, want := fi.Name(), "y"; got != want {
-		t.Fatalf("4d: Name: got %q, want %q", got, want)
-	}
+		if saveF {
+			f, g = g, nil
+		} else if g != nil {
+			g.Close()
+		}
 
-	// Write some data; read it back.
-	_, err = f.Write([]byte("ABCDE"))
-	if err != nil {
-		t.Fatalf("5a: Write: %v", err)
+		if fails {
+			if err == nil {
+				t.Fatalf("%q: got nil error, want non-nil", tc)
+			}
+		} else {
+			if err != nil {
+				t.Fatalf("%q: %v", tc, err)
+			}
+		}
 	}
-	err = f.Close()
-	if err != nil {
-		t.Fatalf("5b: Close: %v", err)
-	}
-	g, err = fs.Open(normalize("/bar/baz/y"))
-	if err != nil {
-		t.Fatalf("5c: Open: %v", err)
-	}
-	n, err = io.ReadFull(g, buf[:5])
-	if err != nil {
-		t.Fatalf("5d: ReadFull: %v", err)
-	}
-	if n != 5 {
-		t.Fatalf("5e: ReadFull: got %d, want %d", n, 5)
-	}
-	n, err = g.ReadAt(buf[5:8], 0)
-	if err != nil {
-		t.Fatalf("5f: ReadAt: %v", err)
-	}
-	if n != 3 {
-		t.Fatalf("5g: ReadAt: got %d, want %d", n, 3)
-	}
-	if got, want := string(buf[:8]), "ABCDEABC"; got != want {
-		t.Fatalf("5h: ReadAt: got %q, want %q", got, want)
-	}
-	err = g.Close()
-	if err != nil {
-		t.Fatalf("5i: Close: %v", err)
-	}
-
-	// Remove the file twice. The first should succeed, the second should fail.
-	err = fs.Remove(normalize("/bar/baz/y"))
-	if err != nil {
-		t.Fatalf("6a: Remove: %v", err)
-	}
-	err = fs.Remove(normalize("/bar/baz/y"))
-	if err == nil {
-		t.Fatalf("6b: Remove: got nil error, want non-nil")
-	}
-	_, err = fs.Open(normalize("/bar/baz/y"))
-	if err == nil {
-		t.Fatalf("6c: Open: got nil error, want non-nil")
-	}
-
-	// Rename /foo to /goo. Trying to open /foo should succeed before the rename and
-	// fail afterwards, and vice versa for /goo.
-	f, err = fs.Open(normalize("/foo"))
-	if err != nil {
-		t.Fatalf("7a: Open: %v", err)
-	}
-	f.Close()
-	_, err = fs.Open(normalize("/goo"))
-	if err == nil {
-		t.Fatalf("7b: Open: got nil error, want non-nil")
-	}
-	err = fs.Rename(normalize("/foo"), normalize("/goo"))
-	if err != nil {
-		t.Fatalf("7c: Rename: %v", err)
-	}
-	_, err = fs.Open(normalize("/foo"))
-	if err == nil {
-		t.Fatalf("7d: Open: got nil error, want non-nil")
-	}
-	f, err = fs.Open(normalize("/goo"))
-	if err != nil {
-		t.Fatalf("7e: Open: %v", err)
-	}
-	f.Close()
-
-	// Create /bar/baz/z and rename /bar/baz to /bar/caz.
-	f, err = fs.Create(normalize("/bar/baz/z"))
-	if err != nil {
-		t.Fatalf("8a: Create: %v", err)
-	}
-	f.Close()
-	f, err = fs.Open(normalize("/bar/baz/z"))
-	if err != nil {
-		t.Fatalf("8b: Open: %v", err)
-	}
-	f.Close()
-	_, err = fs.Open(normalize("/bar/caz/z"))
-	if err == nil {
-		t.Fatalf("8c: Open: got nil error, want non-nil")
-	}
-	err = fs.Rename(normalize("/bar/baz"), normalize("/bar/caz"))
-	if err != nil {
-		t.Fatalf("8d: Rename: %v", err)
-	}
-	_, err = fs.Open(normalize("/bar/baz/z"))
-	if err == nil {
-		t.Fatalf("8e: Open: got nil error, want non-nil")
-	}
-	f, err = fs.Open(normalize("/bar/caz/z"))
-	if err != nil {
-		t.Fatalf("8f: Open: %v", err)
-	}
-	f.Close()
 }
 
 func TestList(t *testing.T) {
