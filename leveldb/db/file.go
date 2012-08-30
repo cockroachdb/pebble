@@ -27,8 +27,14 @@ type File interface {
 // The names are filepath names: they may be / separated or \ separated,
 // depending on the underlying operating system.
 type FileSystem interface {
+	// Create creates the named file for writing, truncating it if it already
+	// exists.
 	Create(name string) (File, error)
+
+	// Open opens the named file for reading.
 	Open(name string) (File, error)
+
+	// Remove removes the named file or directory.
 	Remove(name string) error
 
 	// Rename renames a file. It overwrites the file at newname if one exists,
