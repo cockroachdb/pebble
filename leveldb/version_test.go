@@ -14,6 +14,12 @@ import (
 	"code.google.com/p/leveldb-go/leveldb/memdb"
 )
 
+type tableOpenerFunc func(fileNum uint64) (db.DB, error)
+
+func (f tableOpenerFunc) openTable(fileNum uint64) (db.DB, error) {
+	return f(fileNum)
+}
+
 func TestVersion(t *testing.T) {
 	// makeIkey converts a string like "foo.DEL.123" into an internal key
 	// consisting of a user key "foo", kind delete, and sequence number 123.
@@ -27,10 +33,7 @@ func TestVersion(t *testing.T) {
 		ukey := x[0]
 		kind := kinds[x[1]]
 		seqNum, _ := strconv.ParseUint(x[2], 10, 64)
-		ikey := make(internalKey, len(ukey)+8)
-		copy(ikey, ukey)
-		ikey.encodeTrailer(kind, seqNum)
-		return ikey
+		return makeInternalKey(nil, []byte(ukey), kind, seqNum)
 	}
 
 	// testTable is a table to insert into a version.
@@ -446,13 +449,13 @@ func TestVersion(t *testing.T) {
 
 		// m is a map from file numbers to DBs.
 		m := map[uint64]db.DB{}
-		open = func(f fileMetadata) (db.DB, error) {
-			d, ok := m[f.fileNum]
+		tableOpener := tableOpenerFunc(func(fileNum uint64) (db.DB, error) {
+			d, ok := m[fileNum]
 			if !ok {
 				return nil, errors.New("no such file")
 			}
 			return d, nil
-		}
+		})
 
 		v := version{}
 		for _, tt := range tc.tables {
@@ -501,7 +504,7 @@ func TestVersion(t *testing.T) {
 
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
-			val, err := v.get(makeIkey(s[0]), db.DefaultComparer, nil)
+			val, err := v.get(makeIkey(s[0]), tableOpener, db.DefaultComparer, nil)
 			got, want := "", s[1]
 			if err != nil {
 				if err != db.ErrNotFound {

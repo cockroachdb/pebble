@@ -37,6 +37,31 @@ const (
 	internalKeyKindMax internalKeyKind = 1
 )
 
+// makeInternalKey makes an internalKey from a user key, a kind, and a sequence
+// number. The return value may be a slice of dst if dst is large enough.
+// Otherwise, it may be a slice of a newly allocated buffer. In any case, all
+// of dst may be overwritten, not just dst[len(dst):cap(dst)].
+func makeInternalKey(dst internalKey, ukey []byte, kind internalKeyKind, seqNum uint64) internalKey {
+	if len(dst) < len(ukey)+8 {
+		n := 256
+		for n < len(ukey)+8 {
+			n *= 2
+		}
+		dst = make(internalKey, n)
+	}
+	ikey := dst[:len(ukey)+8]
+	i := copy(ikey, ukey)
+	ikey[i+0] = uint8(kind)
+	ikey[i+1] = uint8(seqNum)
+	ikey[i+2] = uint8(seqNum >> 8)
+	ikey[i+3] = uint8(seqNum >> 16)
+	ikey[i+4] = uint8(seqNum >> 24)
+	ikey[i+5] = uint8(seqNum >> 32)
+	ikey[i+6] = uint8(seqNum >> 40)
+	ikey[i+7] = uint8(seqNum >> 48)
+	return ikey
+}
+
 // valid returns whether k is a valid internal key.
 func (k internalKey) valid() bool {
 	i := len(k) - 8
@@ -67,19 +92,6 @@ func (k internalKey) seqNum() uint64 {
 	n |= uint64(k[i+5]) << 40
 	n |= uint64(k[i+6]) << 48
 	return n
-}
-
-// encodeTrailer encodes kind and seqNum into k's 8 byte trailer.
-func (k internalKey) encodeTrailer(kind internalKeyKind, seqNum uint64) {
-	i := len(k) - 8
-	k[i+0] = uint8(kind)
-	k[i+1] = uint8(seqNum)
-	k[i+2] = uint8(seqNum >> 8)
-	k[i+3] = uint8(seqNum >> 16)
-	k[i+4] = uint8(seqNum >> 24)
-	k[i+5] = uint8(seqNum >> 32)
-	k[i+6] = uint8(seqNum >> 40)
-	k[i+7] = uint8(seqNum >> 48)
 }
 
 // clone returns an internalKey that has the same contents but is backed by a

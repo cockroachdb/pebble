@@ -81,29 +81,83 @@ func cloneFileSystem(srcFS db.FileSystem, dirname string) (db.FileSystem, error)
 	return dstFS, nil
 }
 
-func TestOpen(t *testing.T) {
-	dirnames := []string{
-		"db-stage-1",
-		"db-stage-2",
-		"db-stage-3",
-		"db-stage-4",
+func TestBasic(t *testing.T) {
+	testCases := []struct {
+		dirname string
+		wantMap map[string]string
+	}{
+		{
+			"db-stage-1",
+			map[string]string{
+				"aaa":  "",
+				"bar":  "",
+				"baz":  "",
+				"foo":  "",
+				"quux": "",
+				"zzz":  "",
+			},
+		},
+		{
+			"db-stage-2",
+			map[string]string{
+				"aaa":  "",
+				"bar":  "",
+				"baz":  "three",
+				"foo":  "four",
+				"quux": "",
+				"zzz":  "",
+			},
+		},
+		{
+			"db-stage-3",
+			map[string]string{
+				"aaa":  "",
+				"bar":  "",
+				"baz":  "three",
+				"foo":  "four",
+				"quux": "",
+				"zzz":  "",
+			},
+		},
+		{
+			"db-stage-4",
+			map[string]string{
+				"aaa":  "",
+				"bar":  "",
+				"baz":  "",
+				"foo":  "five",
+				"quux": "six",
+				"zzz":  "",
+			},
+		},
 	}
-	for _, dirname := range dirnames {
-		fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/"+dirname)
+	for _, tc := range testCases {
+		fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/"+tc.dirname)
 		if err != nil {
-			t.Errorf("%s: cloneFileSystem failed: %v", dirname, err)
+			t.Errorf("%s: cloneFileSystem failed: %v", tc.dirname, err)
 			continue
 		}
 		d, err := Open("", &db.Options{
 			FileSystem: fs,
 		})
 		if err != nil {
-			t.Errorf("%s: Open failed: %v", dirname, err)
+			t.Errorf("%s: Open failed: %v", tc.dirname, err)
 			continue
+		}
+		for key, want := range tc.wantMap {
+			got, err := d.Get([]byte(key), nil)
+			if err != nil && err != db.ErrNotFound {
+				t.Errorf("%s: Get(%q) failed: %v", tc.dirname, key, err)
+				continue
+			}
+			if string(got) != string(want) {
+				t.Errorf("%s: Get(%q): got %q, want %q", tc.dirname, key, got, want)
+				continue
+			}
 		}
 		err = d.Close()
 		if err != nil {
-			t.Errorf("%s: Close failed: %v", dirname, err)
+			t.Errorf("%s: Close failed: %v", tc.dirname, err)
 			continue
 		}
 	}

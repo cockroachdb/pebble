@@ -5,7 +5,6 @@
 package leveldb
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 
@@ -98,6 +97,10 @@ func (v *version) checkOrdering(icmp db.Comparer) error {
 	return nil
 }
 
+type tableOpener interface {
+	openTable(fileNum uint64) (db.DB, error)
+}
+
 // get looks up the internal key k0 in v's tables such that k and k0 have the
 // same user key, and k0's sequence number is the highest such value that is
 // less than or equal to k's sequence number.
@@ -105,7 +108,7 @@ func (v *version) checkOrdering(icmp db.Comparer) error {
 // If k0's kind is set, the user key for that previous set action is returned.
 // If k0's kind is delete, the db.ErrNotFound error is returned.
 // If there is no such k0, the db.ErrNotFound error is returned.
-func (v *version) get(k internalKey, ucmp db.Comparer, ro *db.ReadOptions) ([]byte, error) {
+func (v *version) get(k internalKey, tOpener tableOpener, ucmp db.Comparer, ro *db.ReadOptions) ([]byte, error) {
 	ukey := k.ukey()
 	// get looks for k0 inside the on-disk table defined by f. Due to the order
 	// in which we search the tables, and the internalKeyComparer's ordering
@@ -116,10 +119,11 @@ func (v *version) get(k internalKey, ucmp db.Comparer, ro *db.ReadOptions) ([]by
 	// corruption error. If the search was not conclusive, we move on to the
 	// next table.
 	get := func(f fileMetadata) (val []byte, conclusive bool, err error) {
-		b, err := open(f)
+		b, err := tOpener.openTable(f.fileNum)
 		if err != nil {
 			return nil, true, err
 		}
+		defer b.Close()
 		t := b.Find(k, ro)
 		if !t.Next() {
 			err = t.Close()
@@ -185,8 +189,4 @@ func (v *version) get(k internalKey, ucmp db.Comparer, ro *db.ReadOptions) ([]by
 		}
 	}
 	return nil, db.ErrNotFound
-}
-
-var open = func(f fileMetadata) (db.DB, error) {
-	return nil, errors.New("unimplemented")
 }

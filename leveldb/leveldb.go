@@ -13,6 +13,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
 	"code.google.com/p/leveldb-go/leveldb/memdb"
@@ -25,18 +26,33 @@ type DB struct {
 	dirname string
 	opts    *db.Options
 	icmp    internalKeyComparer
+	// icmpOpts is a copy of opts that overrides the Comparer to be icmp.
+	icmpOpts db.Options
 
 	fileLock io.Closer
 	logFile  db.File
 	log      *record.Writer
 
+	// TODO: describe exactly what this mutex protects.
+	mu       sync.Mutex
 	versions versionSet
 }
 
 var _ db.DB = (*DB)(nil)
 
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
-	panic("unimplemented")
+	d.mu.Lock()
+	// TODO: add an opts.LastSequence field, or a DB.Snapshot method?
+	snapshot := d.versions.lastSequence
+	current := d.versions.currentVersion()
+	// TODO: do we need to ref-count the current version, so that we don't
+	// delete its underlying files if we have a concurrent compaction?
+	d.mu.Unlock()
+
+	ikey := makeInternalKey(nil, key, internalKeyKindMax, snapshot)
+	// TODO: look in memtables before going to the on-disk current version.
+	// TODO: update stats, maybe schedule compaction.
+	return current.get(ikey, d, d.icmp.userCmp, opts)
 }
 
 func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
@@ -82,6 +98,10 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		opts:    opts,
 		icmp:    internalKeyComparer{opts.GetComparer()},
 	}
+	if opts != nil {
+		d.icmpOpts = *opts
+	}
+	d.icmpOpts.Comparer = d.icmp
 	fs := opts.GetFileSystem()
 
 	// Lock the database directory.
@@ -222,18 +242,8 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 			// having to import the top-level leveldb package. That extra abstraction
 			// means that we need to copy to an intermediate buffer here, to reconstruct
 			// the complete internal key to pass to the memdb.
-			if n := len(ikeyBuf); n < len(key)+8 {
-				for {
-					n *= 2
-					if n >= len(key)+8 {
-						break
-					}
-				}
-				ikeyBuf = make(internalKey, n)
-			}
-			ikey := ikeyBuf[:len(key)+8]
-			copy(ikey, key)
-			ikey.encodeTrailer(kind, seqNum)
+			ikey := makeInternalKey(ikeyBuf, key, kind, seqNum)
+			ikeyBuf = ikey[:cap(ikey)]
 			mem.Set(ikey, value, nil)
 		}
 		if len(t) != 0 {
@@ -352,4 +362,12 @@ func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMeta
 	// TODO: compaction stats.
 
 	return meta, nil
+}
+
+func (d *DB) openTable(fileNum uint64) (db.DB, error) {
+	f, err := d.opts.GetFileSystem().Open(dbFilename(d.dirname, fileTypeTable, fileNum))
+	if err != nil {
+		return nil, err
+	}
+	return table.NewReader(f, &d.icmpOpts), nil
 }
