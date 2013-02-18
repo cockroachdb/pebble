@@ -9,6 +9,7 @@ package leveldb
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -29,13 +30,22 @@ type DB struct {
 	// icmpOpts is a copy of opts that overrides the Comparer to be icmp.
 	icmpOpts db.Options
 
+	// TODO: describe exactly what this mutex protects. So far: every field
+	// below.
+	mu sync.Mutex
+
 	fileLock io.Closer
 	logFile  db.File
 	log      *record.Writer
 
-	// TODO: describe exactly what this mutex protects.
-	mu       sync.Mutex
 	versions versionSet
+
+	// mem is non-nil and the MemDB pointed to is mutable. imm is possibly
+	// nil, but if non-nil, the MemDB pointed to is immutable and will be
+	// copied out as an on-disk table. mem's sequence numbers are all
+	// higher than imm's, and imm's sequence numbers are all higher than
+	// those on-disk.
+	mem, imm *memdb.MemDB
 }
 
 var _ db.DB = (*DB)(nil)
@@ -50,21 +60,85 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Unlock()
 
 	ikey := makeInternalKey(nil, key, internalKeyKindMax, snapshot)
-	// TODO: look in memtables before going to the on-disk current version.
+
+	// Look in the memtables before going to the on-disk current version.
+	for _, mem := range [2]*memdb.MemDB{d.mem, d.imm} {
+		if mem == nil {
+			continue
+		}
+		value, conclusive, err := internalGet(mem, d.icmp.userCmp, ikey, opts)
+		if conclusive {
+			return value, err
+		}
+	}
+
 	// TODO: update stats, maybe schedule compaction.
+
 	return current.get(ikey, d, d.icmp.userCmp, opts)
 }
 
 func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
-	panic("unimplemented")
+	var batch Batch
+	batch.Set(key, value)
+	return d.Apply(batch, opts)
 }
 
 func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
-	panic("unimplemented")
+	var batch Batch
+	batch.Delete(key)
+	return d.Apply(batch, opts)
 }
 
 func (d *DB) Apply(batch Batch, opts *db.WriteOptions) error {
-	panic("unimplemented")
+	if len(batch.data) == 0 {
+		return nil
+	}
+	n := batch.count()
+	if n == invalidBatchCount {
+		return errors.New("leveldb: invalid batch")
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// TODO: compact d.mem if there is not enough room for the batch.
+	// This may require temporarily releasing d.mu.
+
+	seqNum := d.versions.lastSequence + 1
+	batch.setSeqNum(seqNum)
+	d.versions.lastSequence += uint64(n)
+
+	// Write the batch to the log.
+	w, err := d.log.Next()
+	if err != nil {
+		return fmt.Errorf("leveldb: could not create log entry: %v", err)
+	}
+	if _, err = w.Write(batch.data); err != nil {
+		return fmt.Errorf("leveldb: could not write log entry: %v", err)
+	}
+	if opts.GetSync() {
+		if err = d.log.Flush(); err != nil {
+			return fmt.Errorf("leveldb: could not flush log entry: %v", err)
+		}
+		if err = d.logFile.Sync(); err != nil {
+			return fmt.Errorf("leveldb: could not sync log entry: %v", err)
+		}
+	}
+
+	// Apply the batch to the memtable.
+	for iter, ikey := batch.iter(), internalKey(nil); ; seqNum++ {
+		kind, ukey, value, ok := iter.next()
+		if !ok {
+			break
+		}
+		ikey = makeInternalKey(ikey, ukey, kind, seqNum)
+		d.mem.Set(ikey, value, nil)
+	}
+
+	if seqNum != d.versions.lastSequence+1 {
+		panic("leveldb: inconsistent batch count")
+	}
+	return nil
 }
 
 func (d *DB) Find(key []byte, opts *db.ReadOptions) db.Iterator {
@@ -72,6 +146,8 @@ func (d *DB) Find(key []byte, opts *db.ReadOptions) db.Iterator {
 }
 
 func (d *DB) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.fileLock == nil {
 		return nil
 	}
@@ -102,6 +178,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		d.icmpOpts = *opts
 	}
 	d.icmpOpts.Comparer = d.icmp
+	d.mem = memdb.New(&d.icmpOpts)
 	fs := opts.GetFileSystem()
 
 	// Lock the database directory.
@@ -188,7 +265,7 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 	var (
 		mem      *memdb.MemDB
 		batchBuf = new(bytes.Buffer)
-		ikeyBuf  = make(internalKey, 512)
+		ikey     = make(internalKey, 512)
 		rr       = record.NewReader(file)
 	)
 	for {
@@ -222,14 +299,14 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 
 		t := b.iter()
 		for ; seqNum != seqNum1; seqNum++ {
-			kind, key, value, ok := t.next()
+			kind, ukey, value, ok := t.next()
 			if !ok {
 				return 0, fmt.Errorf("leveldb: corrupt log file %q", filename)
 			}
 			// Convert seqNum, kind and key into an internalKey, and add that ikey/value
 			// pair to mem.
 			//
-			// TODO: instead of copying to an intermediate buffer (ikeyBuf), is it worth
+			// TODO: instead of copying to an intermediate buffer (ikey), is it worth
 			// adding a SetTwoPartKey(db.TwoPartKey{key0, key1}, value, opts) method to
 			// memdb.MemDB? What effect does that have on the db.Comparer interface?
 			//
@@ -242,8 +319,7 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 			// having to import the top-level leveldb package. That extra abstraction
 			// means that we need to copy to an intermediate buffer here, to reconstruct
 			// the complete internal key to pass to the memdb.
-			ikey := makeInternalKey(ikeyBuf, key, kind, seqNum)
-			ikeyBuf = ikey[:cap(ikey)]
+			ikey = makeInternalKey(ikey, ukey, kind, seqNum)
 			mem.Set(ikey, value, nil)
 		}
 		if len(t) != 0 {

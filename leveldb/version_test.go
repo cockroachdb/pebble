@@ -504,7 +504,7 @@ func TestVersion(t *testing.T) {
 
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
-			val, err := v.get(makeIkey(s[0]), tableOpener, db.DefaultComparer, nil)
+			value, err := v.get(makeIkey(s[0]), tableOpener, db.DefaultComparer, nil)
 			got, want := "", s[1]
 			if err != nil {
 				if err != db.ErrNotFound {
@@ -513,7 +513,7 @@ func TestVersion(t *testing.T) {
 				}
 				got = "ErrNotFound"
 			} else {
-				got = string(val)
+				got = string(value)
 			}
 			if got != want {
 				t.Errorf("desc=%q: query=%q: got %q, want %q", desc, s[0], got, want)

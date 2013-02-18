@@ -10,6 +10,8 @@ import (
 
 const batchHeaderLen = 12
 
+const invalidBatchCount = 1<<32 - 1
+
 // Batch is a sequence of Sets and/or Deletes that are applied atomically.
 type Batch struct {
 	// Data is the wire format of a batch's log entry:
@@ -91,6 +93,10 @@ func (b *Batch) appendStr(s []byte) {
 	b.data = append(b.data, s...)
 }
 
+func (b *Batch) setSeqNum(seqNum uint64) {
+	binary.LittleEndian.PutUint64(b.seqNumData(), seqNum)
+}
+
 func (b *Batch) seqNum() uint64 {
 	return binary.LittleEndian.Uint64(b.seqNumData())
 }
@@ -107,7 +113,7 @@ type batchIter []byte
 
 // next returns the next operation in this batch.
 // The final return value is false if the batch is corrupt.
-func (t *batchIter) next() (kind internalKeyKind, key []byte, value []byte, ok bool) {
+func (t *batchIter) next() (kind internalKeyKind, ukey []byte, value []byte, ok bool) {
 	p := *t
 	if len(p) == 0 {
 		return 0, nil, nil, false
@@ -116,7 +122,7 @@ func (t *batchIter) next() (kind internalKeyKind, key []byte, value []byte, ok b
 	if kind > internalKeyKindMax {
 		return 0, nil, nil, false
 	}
-	key, ok = t.nextStr()
+	ukey, ok = t.nextStr()
 	if !ok {
 		return 0, nil, nil, false
 	}
@@ -126,7 +132,7 @@ func (t *batchIter) next() (kind internalKeyKind, key []byte, value []byte, ok b
 			return 0, nil, nil, false
 		}
 	}
-	return kind, key, value, true
+	return kind, ukey, value, true
 }
 
 func (t *batchIter) nextStr() (s []byte, ok bool) {

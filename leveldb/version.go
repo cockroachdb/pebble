@@ -101,47 +101,19 @@ type tableOpener interface {
 	openTable(fileNum uint64) (db.DB, error)
 }
 
-// get looks up the internal key k0 in v's tables such that k and k0 have the
-// same user key, and k0's sequence number is the highest such value that is
-// less than or equal to k's sequence number.
+// get looks up the internal key ikey0 in v's tables such that ikey and ikey0
+// have the same user key, and ikey0's sequence number is the highest such
+// sequence number that is less than or equal to ikey's sequence number.
 //
-// If k0's kind is set, the user key for that previous set action is returned.
-// If k0's kind is delete, the db.ErrNotFound error is returned.
-// If there is no such k0, the db.ErrNotFound error is returned.
-func (v *version) get(k internalKey, tOpener tableOpener, ucmp db.Comparer, ro *db.ReadOptions) ([]byte, error) {
-	ukey := k.ukey()
-	// get looks for k0 inside the on-disk table defined by f. Due to the order
-	// in which we search the tables, and the internalKeyComparer's ordering
-	// within a table, the first k0 we find is the one that we want.
-	//
-	// In addition to returning a []byte and an error, it returns whether or
-	// not the search was conclusive: whether it found a k0, or encountered a
-	// corruption error. If the search was not conclusive, we move on to the
-	// next table.
-	get := func(f fileMetadata) (val []byte, conclusive bool, err error) {
-		b, err := tOpener.openTable(f.fileNum)
-		if err != nil {
-			return nil, true, err
-		}
-		defer b.Close()
-		t := b.Find(k, ro)
-		if !t.Next() {
-			err = t.Close()
-			return nil, err != nil, err
-		}
-		k0 := internalKey(t.Key())
-		if !k0.valid() {
-			return nil, true, fmt.Errorf("leveldb: corrupt table %d: invalid internal key", f.fileNum)
-		}
-		if ucmp.Compare(ukey, k0.ukey()) != 0 {
-			err = t.Close()
-			return nil, err != nil, err
-		}
-		if k0.kind() == internalKeyKindDelete {
-			return nil, true, db.ErrNotFound
-		}
-		return t.Value(), true, t.Close()
-	}
+// If ikey0's kind is set, the value for that previous set action is returned.
+// If ikey0's kind is delete, the db.ErrNotFound error is returned.
+// If there is no such ikey0, the db.ErrNotFound error is returned.
+func (v *version) get(ikey internalKey, tOpener tableOpener, ucmp db.Comparer, ro *db.ReadOptions) ([]byte, error) {
+	ukey := ikey.ukey()
+	// Iterate through v's tables, calling internalGet if the table's bounds
+	// might contain ikey. Due to the order in which we search the tables, and
+	// the internalKeyComparer's ordering within a table, we stop after the
+	// first conclusive result.
 
 	// Search the level 0 files in decreasing fileNum order,
 	// which is also decreasing sequence number order.
@@ -157,12 +129,17 @@ func (v *version) get(k internalKey, tOpener tableOpener, ucmp db.Comparer, ro *
 		}
 		// We compare internal keys on the high end. It gives a tighter bound than
 		// comparing user keys.
-		if icmp.Compare(k, f.largest) > 0 {
+		if icmp.Compare(ikey, f.largest) > 0 {
 			continue
 		}
-		val, conclusive, err := get(f)
+		tab, err := tOpener.openTable(f.fileNum)
+		if err != nil {
+			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+		}
+		value, conclusive, err := internalGet(tab, ucmp, ikey, ro)
+		tab.Close()
 		if conclusive {
-			return val, err
+			return value, err
 		}
 	}
 
@@ -172,9 +149,9 @@ func (v *version) get(k internalKey, tOpener tableOpener, ucmp db.Comparer, ro *
 		if n == 0 {
 			continue
 		}
-		// Find the earliest file at that level whose largest key is >= k.
+		// Find the earliest file at that level whose largest key is >= ikey.
 		index := sort.Search(n, func(i int) bool {
-			return icmp.Compare(v.files[level][i].largest, k) >= 0
+			return icmp.Compare(v.files[level][i].largest, ikey) >= 0
 		})
 		if index == n {
 			continue
@@ -183,10 +160,49 @@ func (v *version) get(k internalKey, tOpener tableOpener, ucmp db.Comparer, ro *
 		if ucmp.Compare(ukey, f.smallest.ukey()) < 0 {
 			continue
 		}
-		val, conclusive, err := get(f)
+		tab, err := tOpener.openTable(f.fileNum)
+		if err != nil {
+			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+		}
+		value, conclusive, err := internalGet(tab, ucmp, ikey, ro)
+		tab.Close()
 		if conclusive {
-			return val, err
+			return value, err
 		}
 	}
 	return nil, db.ErrNotFound
+}
+
+// internalGet looks up the first key/value pair whose (internal) key is >=
+// ikey, according to the internal key ordering, and also returns whether or
+// not that search was conclusive.
+//
+// If there is no such pair, or that pair's key and ikey do not share the same
+// user key (according to ucmp), then conclusive will be false. Otherwise,
+// conclusive will be true and:
+//	* if that pair's key's kind is set, that pair's value will be returned,
+//	* if that pair's key's kind is delete, db.ErrNotFound will be returned.
+// If the returned error is non-nil then conclusive will be true.
+func internalGet(d db.DB, ucmp db.Comparer, ikey internalKey, ro *db.ReadOptions) (
+	value []byte, conclusive bool, err error) {
+
+	t := d.Find(ikey, ro)
+	if !t.Next() {
+		err = t.Close()
+		return nil, err != nil, err
+	}
+	ikey0 := internalKey(t.Key())
+	if !ikey0.valid() {
+		t.Close()
+		return nil, true, fmt.Errorf("leveldb: corrupt table: invalid internal key")
+	}
+	if ucmp.Compare(ikey.ukey(), ikey0.ukey()) != 0 {
+		err = t.Close()
+		return nil, err != nil, err
+	}
+	if ikey0.kind() == internalKeyKindDelete {
+		t.Close()
+		return nil, true, db.ErrNotFound
+	}
+	return t.Value(), true, t.Close()
 }

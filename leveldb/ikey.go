@@ -38,11 +38,11 @@ const (
 )
 
 // makeInternalKey makes an internalKey from a user key, a kind, and a sequence
-// number. The return value may be a slice of dst if dst is large enough.
-// Otherwise, it may be a slice of a newly allocated buffer. In any case, all
-// of dst may be overwritten, not just dst[len(dst):cap(dst)].
+// number. The return value may be a slice of dst[:cap(dst)] if it is large
+// enough. Otherwise, it may be a slice of a newly allocated buffer. In any
+// case, all of dst[:cap(dst)] may be overwritten.
 func makeInternalKey(dst internalKey, ukey []byte, kind internalKeyKind, seqNum uint64) internalKey {
-	if len(dst) < len(ukey)+8 {
+	if cap(dst) < len(ukey)+8 {
 		n := 256
 		for n < len(ukey)+8 {
 			n *= 2
