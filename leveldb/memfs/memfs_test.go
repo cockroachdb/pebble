@@ -156,7 +156,7 @@ func TestList(t *testing.T) {
 		"/foo/2",
 	}
 	for _, dirname := range dirnames {
-		err := fs.MkdirAll(dirname, 0755)
+		err := fs.MkdirAll(normalize(dirname), 0755)
 		if err != nil {
 			t.Fatalf("MkdirAll %q: %v", dirname, err)
 		}
