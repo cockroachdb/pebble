@@ -128,9 +128,6 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 		return err
 	}
 	vs.append(newVersion)
-
-	// TODO: compute the compaction score. The C++ code calls this VersionSet::Finalize.
-
 	return nil
 }
 
@@ -151,8 +148,6 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	if err != nil {
 		return err
 	}
-
-	// TODO: compute the compaction score. The C++ code calls this VersionSet::Finalize.
 
 	if vs.manifest == nil {
 		if err := vs.createManifest(dirname); err != nil {
@@ -181,7 +176,6 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	vs.append(newVersion)
 	vs.logNumber = ve.logNumber
 	vs.prevLogNumber = ve.prevLogNumber
-
 	return nil
 }
 

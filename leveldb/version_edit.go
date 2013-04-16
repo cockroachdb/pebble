@@ -359,5 +359,6 @@ func (b *bulkVersionEdit) apply(base *version, icmp db.Comparer) (*version, erro
 	if err := v.checkOrdering(icmp); err != nil {
 		return nil, fmt.Errorf("leveldb: internal error: %v", err)
 	}
+	v.updateCompactionScore()
 	return v, nil
 }

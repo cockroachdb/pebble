@@ -22,6 +22,13 @@ type fileMetadata struct {
 	smallest, largest internalKey
 }
 
+func totalSize(f []fileMetadata) (size uint64) {
+	for _, x := range f {
+		size += x.size
+	}
+	return size
+}
+
 type byFileNum []fileMetadata
 
 func (b byFileNum) Len() int           { return len(b) }
@@ -66,6 +73,38 @@ type version struct {
 	// Every version is part of a circular doubly-linked list of versions.
 	// One of those versions is a versionSet.dummyVersion.
 	prev, next *version
+
+	// These fields are the level that should be compacted next and its
+	// compaction score. A score < 1 means that compaction is not strictly
+	// needed.
+	compactionScore float64
+	compactionLevel int
+}
+
+// updateCompactionScore updates v's compaction score and level.
+func (v *version) updateCompactionScore() {
+	// We treat level-0 specially by bounding the number of files instead of
+	// number of bytes for two reasons:
+	//
+	// (1) With larger write-buffer sizes, it is nice not to do too many
+	// level-0 compactions.
+	//
+	// (2) The files in level-0 are merged on every read and therefore we
+	// wish to avoid too many files when the individual file size is small
+	// (perhaps because of a small write-buffer setting, or very high
+	// compression ratios, or lots of overwrites/deletions).
+	v.compactionScore = float64(len(v.files[0])) / l0CompactionTrigger
+	v.compactionLevel = 0
+
+	maxBytes := float64(10 * 1024 * 1024)
+	for level := 1; level < numLevels-1; level++ {
+		score := float64(totalSize(v.files[level])) / maxBytes
+		if score > v.compactionScore {
+			v.compactionScore = score
+			v.compactionLevel = level
+		}
+		maxBytes *= 10
+	}
 }
 
 // checkOrdering checks that the files are consistent with respect to

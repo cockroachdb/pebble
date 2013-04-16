@@ -22,6 +22,12 @@ import (
 	"code.google.com/p/leveldb-go/leveldb/table"
 )
 
+const (
+	// l0CompactionTrigger is the number of files at which level-0 compaction
+	// starts.
+	l0CompactionTrigger = 4
+)
+
 // TODO: document DB.
 type DB struct {
 	dirname string
