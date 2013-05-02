@@ -22,11 +22,34 @@ type fileMetadata struct {
 	smallest, largest internalKey
 }
 
+// totalSize returns the total size of all the files in f.
 func totalSize(f []fileMetadata) (size uint64) {
 	for _, x := range f {
 		size += x.size
 	}
 	return size
+}
+
+// ikeyRange returns the minimum smallest and maximum largest internalKey for
+// all the fileMetadata in f0 and f1.
+func ikeyRange(icmp db.Comparer, f0, f1 []fileMetadata) (smallest, largest internalKey) {
+	first := true
+	for _, f := range [2][]fileMetadata{f0, f1} {
+		for _, meta := range f {
+			if first {
+				first = false
+				smallest, largest = meta.smallest, meta.largest
+				continue
+			}
+			if icmp.Compare(meta.smallest, smallest) < 0 {
+				smallest = meta.smallest
+			}
+			if icmp.Compare(meta.largest, largest) > 0 {
+				largest = meta.largest
+			}
+		}
+	}
+	return smallest, largest
 }
 
 type byFileNum []fileMetadata
@@ -105,6 +128,52 @@ func (v *version) updateCompactionScore() {
 		}
 		maxBytes *= 10
 	}
+}
+
+// overlaps returns all elements of v.files[level] whose user key range
+// intersects the inclusive range [ukey0, ukey1]. If level is non-zero then the
+// user key ranges of v.files[level] are assumed to not overlap (although they
+// may touch). If level is zero then that assumption cannot be made, and the
+// [ukey0, ukey1] range is expanded to the union of those matching ranges so
+// far and the computation is repeated until [ukey0, ukey1] stabilizes.
+func (v *version) overlaps(level int, ucmp db.Comparer, ukey0, ukey1 []byte) (ret []fileMetadata) {
+loop:
+	for {
+		for _, meta := range v.files[level] {
+			m0 := meta.smallest.ukey()
+			m1 := meta.largest.ukey()
+			if ucmp.Compare(m1, ukey0) < 0 {
+				// meta is completely before the specified range; skip it.
+				continue
+			}
+			if ucmp.Compare(m0, ukey1) > 0 {
+				// meta is completely after the specified range; skip it.
+				continue
+			}
+			ret = append(ret, meta)
+
+			// If level == 0, check if the newly added fileMetadata has
+			// expanded the range. If so, restart the search.
+			if level != 0 {
+				continue
+			}
+			restart := false
+			if ucmp.Compare(m0, ukey0) < 0 {
+				ukey0 = m0
+				restart = true
+			}
+			if ucmp.Compare(m1, ukey1) > 0 {
+				ukey1 = m1
+				restart = true
+			}
+			if restart {
+				ret = ret[:0]
+				continue loop
+			}
+		}
+		return ret
+	}
+	panic("unreachable")
 }
 
 // checkOrdering checks that the files are consistent with respect to
