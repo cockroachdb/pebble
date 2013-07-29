@@ -15,10 +15,10 @@ import (
 
 // TODO: describe what a versionSet is.
 type versionSet struct {
-	dirname string
-	opts    *db.Options
-	fs      db.FileSystem
-	icmp    db.Comparer
+	dirname    string
+	opts       *db.Options
+	fs         db.FileSystem
+	ucmp, icmp db.Comparer
 
 	// dummyVersion is the head of a circular doubly-linked list of versions.
 	// dummyVersion.prev is the current version.
@@ -39,13 +39,12 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.dirname = dirname
 	vs.opts = opts
 	vs.fs = opts.GetFileSystem()
-	vs.icmp = internalKeyComparer{opts.GetComparer()}
+	vs.ucmp = opts.GetComparer()
+	vs.icmp = internalKeyComparer{vs.ucmp}
 	vs.dummyVersion.prev = &vs.dummyVersion
 	vs.dummyVersion.next = &vs.dummyVersion
 	// For historical reasons, the next file number is initialized to 2.
 	vs.nextFileNumber = 2
-
-	cmpName := opts.GetComparer().Name()
 
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(dbFilename(dirname, fileTypeCurrent, 0))
@@ -96,10 +95,10 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 			return err
 		}
 		if ve.comparatorName != "" {
-			if ve.comparatorName != cmpName {
+			if ve.comparatorName != vs.ucmp.Name() {
 				return fmt.Errorf("leveldb: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from db.Options %q",
-					b, dirname, ve.comparatorName, cmpName)
+					b, dirname, ve.comparatorName, vs.ucmp.Name())
 			}
 		}
 		bve.accumulate(&ve)
@@ -204,7 +203,7 @@ func (vs *versionSet) createManifest(dirname string) (err error) {
 	manifest = record.NewWriter(manifestFile)
 
 	snapshot := versionEdit{
-		comparatorName: vs.opts.GetComparer().Name(),
+		comparatorName: vs.ucmp.Name(),
 	}
 	// TODO: save compaction pointers.
 	for level, fileMetadata := range vs.currentVersion().files {
