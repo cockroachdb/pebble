@@ -406,3 +406,138 @@ func TestPickCompaction(t *testing.T) {
 		}
 	}
 }
+
+func TestIsBaseLevelForUkey(t *testing.T) {
+	testCases := []struct {
+		desc    string
+		level   int
+		version version
+		wants   map[string]bool
+	}{
+		{
+			desc:    "empty",
+			level:   1,
+			version: version{},
+			wants: map[string]bool{
+				"x": true,
+			},
+		},
+		{
+			desc:  "non-empty",
+			level: 1,
+			version: version{
+				files: [numLevels][]fileMetadata{
+					1: []fileMetadata{
+						{
+							smallest: makeIkey("c.SET.801"),
+							largest:  makeIkey("g.SET.800"),
+						},
+						{
+							smallest: makeIkey("x.SET.701"),
+							largest:  makeIkey("y.SET.700"),
+						},
+					},
+					2: []fileMetadata{
+						{
+							smallest: makeIkey("d.SET.601"),
+							largest:  makeIkey("h.SET.600"),
+						},
+						{
+							smallest: makeIkey("r.SET.501"),
+							largest:  makeIkey("t.SET.500"),
+						},
+					},
+					3: []fileMetadata{
+						{
+							smallest: makeIkey("f.SET.401"),
+							largest:  makeIkey("g.SET.400"),
+						},
+						{
+							smallest: makeIkey("w.SET.301"),
+							largest:  makeIkey("x.SET.300"),
+						},
+					},
+					4: []fileMetadata{
+						{
+							smallest: makeIkey("f.SET.201"),
+							largest:  makeIkey("m.SET.200"),
+						},
+						{
+							smallest: makeIkey("t.SET.101"),
+							largest:  makeIkey("t.SET.100"),
+						},
+					},
+				},
+			},
+			wants: map[string]bool{
+				"b": true,
+				"c": true,
+				"d": true,
+				"e": true,
+				"f": false,
+				"g": false,
+				"h": false,
+				"l": false,
+				"m": false,
+				"n": true,
+				"q": true,
+				"r": true,
+				"s": true,
+				"t": false,
+				"u": true,
+				"v": true,
+				"w": false,
+				"x": false,
+				"y": true,
+				"z": true,
+			},
+		},
+		{
+			desc:  "repeated ukey",
+			level: 1,
+			version: version{
+				files: [numLevels][]fileMetadata{
+					6: []fileMetadata{
+						{
+							smallest: makeIkey("i.SET.401"),
+							largest:  makeIkey("i.SET.400"),
+						},
+						{
+							smallest: makeIkey("i.SET.301"),
+							largest:  makeIkey("k.SET.300"),
+						},
+						{
+							smallest: makeIkey("k.SET.201"),
+							largest:  makeIkey("m.SET.200"),
+						},
+						{
+							smallest: makeIkey("m.SET.101"),
+							largest:  makeIkey("m.SET.100"),
+						},
+					},
+				},
+			},
+			wants: map[string]bool{
+				"h": true,
+				"i": false,
+				"j": false,
+				"k": false,
+				"l": false,
+				"m": false,
+				"n": true,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		c := compaction{
+			version: &tc.version,
+			level:   tc.level,
+		}
+		for ukey, want := range tc.wants {
+			if got := c.isBaseLevelForUkey(db.DefaultComparer, []byte(ukey)); got != want {
+				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, ukey, got, want)
+			}
+		}
+	}
+}
