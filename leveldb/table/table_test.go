@@ -54,6 +54,8 @@ func check(f db.File) error {
 		// Check using Get.
 		if v1, err := r.Get([]byte(k), nil); string(v1) != string(v) || err != nil {
 			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
+		} else if len(v1) != cap(v1) {
+			return fmt.Errorf("Get %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
 
 		// Check using Find.
@@ -61,8 +63,14 @@ func check(f db.File) error {
 		if !i.Next() || string(i.Key()) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
+		if k1 := i.Key(); len(k1) != cap(k1) {
+			return fmt.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
+		}
 		if string(i.Value()) != v {
 			return fmt.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
+		}
+		if v1 := i.Value(); len(v1) != cap(v1) {
+			return fmt.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
 		if err := i.Close(); err != nil {
 			return err

@@ -86,7 +86,8 @@ func (m *MemDB) load(kvOffset int) (b []byte) {
 		return nil
 	}
 	bLen, n := binary.Uvarint(m.kvData[kvOffset:])
-	return m.kvData[kvOffset+n : kvOffset+n+int(bLen)]
+	i, j := kvOffset+n, kvOffset+n+int(bLen)
+	return m.kvData[i:j:j]
 }
 
 // save saves a []byte to m.kvData.

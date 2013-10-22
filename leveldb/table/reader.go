@@ -132,7 +132,7 @@ func (i *blockIter) Key() []byte {
 	if i.soi {
 		return nil
 	}
-	return i.key
+	return i.key[:len(i.key):len(i.key)]
 }
 
 // Value implements Iterator.Value, as documented in the leveldb/db package.
@@ -140,7 +140,7 @@ func (i *blockIter) Value() []byte {
 	if i.soi {
 		return nil
 	}
-	return i.val
+	return i.val[:len(i.val):len(i.val)]
 }
 
 // Close implements Iterator.Close, as documented in the leveldb/db package.

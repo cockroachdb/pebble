@@ -167,6 +167,9 @@ func Test1000Entries(t *testing.T) {
 		j := r.Intn(N)
 		k := []byte(strconv.Itoa(j))
 		v, err := m0.Get(k, nil)
+		if len(v) != cap(v) {
+			t.Fatalf("get: j=%d, got len(v)=%d, cap(v)=%d", j, len(v), cap(v))
+		}
 		var c uint8
 		if len(v) != 0 {
 			c = v[0]
@@ -209,6 +212,12 @@ func Test1000Entries(t *testing.T) {
 		}
 		if got := string(x.Key()); got != want {
 			t.Fatalf("iter: got %q, want %q", got, want)
+		}
+		if k := x.Key(); len(k) != cap(k) {
+			t.Fatalf("iter: len(k)=%d, cap(k)=%d", len(k), cap(k))
+		}
+		if v := x.Value(); len(v) != cap(v) {
+			t.Fatalf("iter: len(v)=%d, cap(v)=%d", len(v), cap(v))
 		}
 	}
 	if err := x.Close(); err != nil {
