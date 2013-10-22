@@ -260,3 +260,60 @@ func TestBlockIter(t *testing.T) {
 		}
 	}
 }
+
+func TestFinalBlockIsWritten(t *testing.T) {
+	const blockSize = 100
+	keys := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
+	valueLengths := []int{0, 1, 22, 28, 33, 40, 50, 61, 87, 100, 143, 200}
+	xxx := bytes.Repeat([]byte("x"), valueLengths[len(valueLengths)-1])
+
+	for nk := 0; nk <= len(keys); nk++ {
+	loop:
+		for _, vLen := range valueLengths {
+			got, memFS := 0, memfs.New()
+
+			wf, err := memFS.Create("foo")
+			if err != nil {
+				t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
+				continue
+			}
+			w := NewWriter(wf, &db.Options{
+				BlockSize: blockSize,
+			})
+			for _, k := range keys[:nk] {
+				if err := w.Set([]byte(k), xxx[:vLen], nil); err != nil {
+					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
+					continue loop
+				}
+			}
+			if err := w.Close(); err != nil {
+				t.Errorf("nk=%d, vLen=%d: writer close: %v", nk, vLen, err)
+				continue
+			}
+
+			rf, err := memFS.Open("foo")
+			if err != nil {
+				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
+				continue
+			}
+			r := NewReader(rf, nil)
+			i := r.Find(nil, nil)
+			for i.Next() {
+				got++
+			}
+			if err := i.Close(); err != nil {
+				t.Errorf("nk=%d, vLen=%d: Iterator close: %v", nk, vLen, err)
+				continue
+			}
+			if err := r.Close(); err != nil {
+				t.Errorf("nk=%d, vLen=%d: reader close: %v", nk, vLen, err)
+				continue
+			}
+
+			if got != nk {
+				t.Errorf("nk=%2d, vLen=%3d: got %2d keys, want %2d", nk, vLen, got, nk)
+				continue
+			}
+		}
+	}
+}

@@ -221,6 +221,7 @@ func (w *Writer) Close() (err error) {
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
+	w.flushPendingBH(nil)
 	if w.nEntries > 0 || len(w.indexEntries) == 0 {
 		bh, err := w.finishBlock()
 		if err != nil {
