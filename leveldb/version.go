@@ -205,8 +205,9 @@ func (v *version) checkOrdering(icmp db.Comparer) error {
 	return nil
 }
 
-type tableOpener interface {
-	openTable(fileNum uint64) (db.DB, error)
+// tableIkeyFinder finds the given ikey in the table of the given file number.
+type tableIkeyFinder interface {
+	find(fileNum uint64, ikey internalKey) (db.Iterator, error)
 }
 
 // get looks up the internal key ikey0 in v's tables such that ikey and ikey0
@@ -216,7 +217,7 @@ type tableOpener interface {
 // If ikey0's kind is set, the value for that previous set action is returned.
 // If ikey0's kind is delete, the db.ErrNotFound error is returned.
 // If there is no such ikey0, the db.ErrNotFound error is returned.
-func (v *version) get(ikey internalKey, tOpener tableOpener, ucmp db.Comparer, ro *db.ReadOptions) ([]byte, error) {
+func (v *version) get(ikey internalKey, tiFinder tableIkeyFinder, ucmp db.Comparer, ro *db.ReadOptions) ([]byte, error) {
 	ukey := ikey.ukey()
 	// Iterate through v's tables, calling internalGet if the table's bounds
 	// might contain ikey. Due to the order in which we search the tables, and
@@ -240,12 +241,11 @@ func (v *version) get(ikey internalKey, tOpener tableOpener, ucmp db.Comparer, r
 		if icmp.Compare(ikey, f.largest) > 0 {
 			continue
 		}
-		tab, err := tOpener.openTable(f.fileNum)
+		iter, err := tiFinder.find(f.fileNum, ikey)
 		if err != nil {
 			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
 		}
-		value, conclusive, err := internalGet(tab, ucmp, ikey, ro)
-		tab.Close()
+		value, conclusive, err := internalGet(iter, ucmp, ukey)
 		if conclusive {
 			return value, err
 		}
@@ -268,12 +268,11 @@ func (v *version) get(ikey internalKey, tOpener tableOpener, ucmp db.Comparer, r
 		if ucmp.Compare(ukey, f.smallest.ukey()) < 0 {
 			continue
 		}
-		tab, err := tOpener.openTable(f.fileNum)
+		iter, err := tiFinder.find(f.fileNum, ikey)
 		if err != nil {
 			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
 		}
-		value, conclusive, err := internalGet(tab, ucmp, ikey, ro)
-		tab.Close()
+		value, conclusive, err := internalGet(iter, ucmp, ukey)
 		if conclusive {
 			return value, err
 		}
@@ -291,10 +290,7 @@ func (v *version) get(ikey internalKey, tOpener tableOpener, ucmp db.Comparer, r
 //	* if that pair's key's kind is set, that pair's value will be returned,
 //	* if that pair's key's kind is delete, db.ErrNotFound will be returned.
 // If the returned error is non-nil then conclusive will be true.
-func internalGet(d db.DB, ucmp db.Comparer, ikey internalKey, ro *db.ReadOptions) (
-	value []byte, conclusive bool, err error) {
-
-	t := d.Find(ikey, ro)
+func internalGet(t db.Iterator, ucmp db.Comparer, ukey []byte) (value []byte, conclusive bool, err error) {
 	if !t.Next() {
 		err = t.Close()
 		return nil, err != nil, err
@@ -304,7 +300,7 @@ func internalGet(d db.DB, ucmp db.Comparer, ikey internalKey, ro *db.ReadOptions
 		t.Close()
 		return nil, true, fmt.Errorf("leveldb: corrupt table: invalid internal key")
 	}
-	if ucmp.Compare(ikey.ukey(), ikey0.ukey()) != 0 {
+	if ucmp.Compare(ukey, ikey0.ukey()) != 0 {
 		err = t.Close()
 		return nil, err != nil, err
 	}

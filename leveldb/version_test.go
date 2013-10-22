@@ -81,10 +81,10 @@ func TestIkeyRange(t *testing.T) {
 	}
 }
 
-type tableOpenerFunc func(fileNum uint64) (db.DB, error)
+type tableIkeyFinderFunc func(fileNum uint64, ikey internalKey) (db.Iterator, error)
 
-func (f tableOpenerFunc) openTable(fileNum uint64) (db.DB, error) {
-	return f(fileNum)
+func (f tableIkeyFinderFunc) find(fileNum uint64, ikey internalKey) (db.Iterator, error) {
+	return f(fileNum, ikey)
 }
 
 var makeIkeyKinds = map[string]internalKeyKind{
@@ -517,12 +517,12 @@ func TestVersion(t *testing.T) {
 
 		// m is a map from file numbers to DBs.
 		m := map[uint64]db.DB{}
-		tableOpener := tableOpenerFunc(func(fileNum uint64) (db.DB, error) {
+		tiFinder := tableIkeyFinderFunc(func(fileNum uint64, ikey internalKey) (db.Iterator, error) {
 			d, ok := m[fileNum]
 			if !ok {
 				return nil, errors.New("no such file")
 			}
-			return d, nil
+			return d.Find(ikey, nil), nil
 		})
 
 		v := version{}
@@ -530,6 +530,7 @@ func TestVersion(t *testing.T) {
 			d := memdb.New(&db.Options{
 				Comparer: icmp,
 			})
+			defer d.Close()
 			m[tt.fileNum] = d
 
 			var smallest, largest internalKey
@@ -572,7 +573,7 @@ func TestVersion(t *testing.T) {
 
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
-			value, err := v.get(makeIkey(s[0]), tableOpener, db.DefaultComparer, nil)
+			value, err := v.get(makeIkey(s[0]), tiFinder, db.DefaultComparer, nil)
 			got, want := "", s[1]
 			if err != nil {
 				if err != db.ErrNotFound {

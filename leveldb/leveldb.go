@@ -26,6 +26,13 @@ const (
 	// l0CompactionTrigger is the number of files at which level-0 compaction
 	// starts.
 	l0CompactionTrigger = 4
+
+	// minTableCacheSize is the minimum size of the table cache.
+	minTableCacheSize = 64
+
+	// numNonTableCacheFiles is an approximation for the number of MaxOpenFiles
+	// that we don't use for table caches.
+	numNonTableCacheFiles = 10
 )
 
 // TODO: document DB.
@@ -35,6 +42,8 @@ type DB struct {
 	icmp    internalKeyComparer
 	// icmpOpts is a copy of opts that overrides the Comparer to be icmp.
 	icmpOpts db.Options
+
+	tableCache tableCache
 
 	// TODO: describe exactly what this mutex protects. So far: every field
 	// below.
@@ -72,7 +81,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 		if mem == nil {
 			continue
 		}
-		value, conclusive, err := internalGet(mem, d.icmp.userCmp, ikey, opts)
+		value, conclusive, err := internalGet(mem.Find(ikey, opts), d.icmp.userCmp, key)
 		if conclusive {
 			return value, err
 		}
@@ -80,7 +89,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 
 	// TODO: update stats, maybe schedule compaction.
 
-	return current.get(ikey, d, d.icmp.userCmp, opts)
+	return current.get(ikey, &d.tableCache, d.icmp.userCmp, opts)
 }
 
 func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
@@ -152,12 +161,13 @@ func (d *DB) Find(key []byte, opts *db.ReadOptions) db.Iterator {
 }
 
 func (d *DB) Close() error {
+	err := d.tableCache.Close()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.fileLock == nil {
-		return nil
+		return err
 	}
-	err := d.fileLock.Close()
+	err = firstError(err, d.fileLock.Close())
 	d.fileLock = nil
 	return err
 }
@@ -184,6 +194,11 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		d.icmpOpts = *opts
 	}
 	d.icmpOpts.Comparer = d.icmp
+	tableCacheSize := opts.GetMaxOpenFiles() - numNonTableCacheFiles
+	if tableCacheSize < minTableCacheSize {
+		tableCacheSize = minTableCacheSize
+	}
+	d.tableCache.init(dirname, opts.GetFileSystem(), &d.icmpOpts, tableCacheSize)
 	d.mem = memdb.New(&d.icmpOpts)
 	fs := opts.GetFileSystem()
 
@@ -444,12 +459,4 @@ func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMeta
 	// TODO: compaction stats.
 
 	return meta, nil
-}
-
-func (d *DB) openTable(fileNum uint64) (db.DB, error) {
-	f, err := d.opts.GetFileSystem().Open(dbFilename(d.dirname, fileTypeTable, fileNum))
-	if err != nil {
-		return nil, err
-	}
-	return table.NewReader(f, &d.icmpOpts), nil
 }

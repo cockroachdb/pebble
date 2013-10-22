@@ -26,6 +26,7 @@ const (
 // Read/Write options:
 //   - Comparer
 //   - FileSystem
+//   - MaxOpenFiles
 // Read options:
 //   - VerifyChecksums
 // Write options:
@@ -60,6 +61,12 @@ type Options struct {
 	//
 	// The default value uses the underlying operating system's file system.
 	FileSystem FileSystem
+
+	// MaxOpenFiles is a soft limit on the number of open files that can be
+	// used by the DB.
+	//
+	// The default value is 1000.
+	MaxOpenFiles int
 
 	// VerifyChecksums is whether to verify the per-block checksums in a DB.
 	//
@@ -101,6 +108,13 @@ func (o *Options) GetFileSystem() FileSystem {
 		return DefaultFileSystem
 	}
 	return o.FileSystem
+}
+
+func (o *Options) GetMaxOpenFiles() int {
+	if o == nil || o.MaxOpenFiles == 0 {
+		return 1000
+	}
+	return o.MaxOpenFiles
 }
 
 func (o *Options) GetVerifyChecksums() bool {
