@@ -347,7 +347,7 @@ func (b *bulkVersionEdit) apply(base *version, icmp db.Comparer) (*version, erro
 			}
 		}
 
-		// TODO: base.files[level] is already sorted. Instead than appending
+		// TODO: base.files[level] is already sorted. Instead of appending
 		// b.addFiles[level] to the end and sorting afterwards, it might be more
 		// efficient to sort b.addFiles[level] and then merge the two sorted slices.
 		if level == 0 {
