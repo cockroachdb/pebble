@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
 	"code.google.com/p/leveldb-go/leveldb/memdb"
@@ -26,6 +27,14 @@ const (
 	// l0CompactionTrigger is the number of files at which level-0 compaction
 	// starts.
 	l0CompactionTrigger = 4
+
+	// l0SlowdownWritesTrigger is the soft limit on number of level-0 files.
+	// We slow down writes at this point.
+	l0SlowdownWritesTrigger = 8
+
+	// l0StopWritesTrigger is the maximum number of level-0 files. We stop
+	// writes at this point.
+	l0StopWritesTrigger = 12
 
 	// minTableCacheSize is the minimum size of the table cache.
 	minTableCacheSize = 64
@@ -49,9 +58,10 @@ type DB struct {
 	// below.
 	mu sync.Mutex
 
-	fileLock io.Closer
-	logFile  db.File
-	log      *record.Writer
+	fileLock  io.Closer
+	logNumber uint64
+	logFile   db.File
+	log       *record.Writer
 
 	versions versionSet
 
@@ -61,6 +71,9 @@ type DB struct {
 	// higher than imm's, and imm's sequence numbers are all higher than
 	// those on-disk.
 	mem, imm *memdb.MemDB
+
+	compactionCond sync.Cond
+	compacting     bool
 }
 
 var _ db.DB = (*DB)(nil)
@@ -72,12 +85,13 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	current := d.versions.currentVersion()
 	// TODO: do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
+	memtables := [2]*memdb.MemDB{d.mem, d.imm}
 	d.mu.Unlock()
 
 	ikey := makeInternalKey(nil, key, internalKeyKindMax, snapshot)
 
 	// Look in the memtables before going to the on-disk current version.
-	for _, mem := range [2]*memdb.MemDB{d.mem, d.imm} {
+	for _, mem := range memtables {
 		if mem == nil {
 			continue
 		}
@@ -116,14 +130,16 @@ func (d *DB) Apply(batch Batch, opts *db.WriteOptions) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// TODO: compact d.mem if there is not enough room for the batch.
-	// This may require temporarily releasing d.mu.
+	if err := d.makeRoomForWrite(false); err != nil {
+		return err
+	}
 
 	seqNum := d.versions.lastSequence + 1
 	batch.setSeqNum(seqNum)
 	d.versions.lastSequence += uint64(n)
 
 	// Write the batch to the log.
+	// TODO: drop and re-acquire d.mu around the I/O.
 	w, err := d.log.Next()
 	if err != nil {
 		return fmt.Errorf("leveldb: could not create log entry: %v", err)
@@ -200,7 +216,11 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 	d.tableCache.init(dirname, opts.GetFileSystem(), &d.icmpOpts, tableCacheSize)
 	d.mem = memdb.New(&d.icmpOpts)
+	d.compactionCond = sync.Cond{L: &d.mu}
 	fs := opts.GetFileSystem()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	// Lock the database directory.
 	err := fs.MkdirAll(dirname, 0755)
@@ -252,6 +272,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 
 	// Create an empty .log file.
 	ve.logNumber = d.versions.nextFileNum()
+	d.logNumber = ve.logNumber
 	logFile, err := fs.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
 	if err != nil {
 		return nil, err
@@ -268,14 +289,20 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 
-	// TODO: delete obsolete files.
-	// TODO: maybe schedule compaction?
+	if err := d.deleteObsoleteFiles(); err != nil {
+		return nil, err
+	}
+	d.maybeScheduleCompaction()
 
 	d.logFile, logFile = logFile, nil
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil
 }
 
+// replayLogFile replays the edits in the named log file.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
 func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
@@ -313,9 +340,7 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 		}
 
 		if mem == nil {
-			mem = memdb.New(&db.Options{
-				Comparer: d.icmp,
-			})
+			mem = memdb.New(&d.icmpOpts)
 		}
 
 		t := b.iter()
@@ -372,6 +397,10 @@ func firstError(err0, err1 error) error {
 	return err1
 }
 
+// writeLevel0Table writes a memtable to a level-0 on-disk table.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMetadata, err error) {
 	meta.fileNum = d.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
@@ -379,6 +408,11 @@ func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMeta
 	// concurrent sweep of obsolete db files won't delete the fileNum file.
 	// It is the caller's responsibility to remove that fileNum from the
 	// set of pending outputs.
+
+	// Release the d.mu lock while doing I/O.
+	// Note the unusual order: Unlock and then Lock.
+	d.mu.Unlock()
+	defer d.mu.Lock()
 
 	var (
 		file db.File
@@ -459,4 +493,78 @@ func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMeta
 	// TODO: compaction stats.
 
 	return meta, nil
+}
+
+// makeRoomForWrite ensures that there is room in d.mem for the next write.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) makeRoomForWrite(force bool) error {
+	allowDelay := !force
+	for {
+		// TODO: check any previous sticky error, if the paranoid option is set.
+
+		if allowDelay && len(d.versions.currentVersion().files[0]) > l0SlowdownWritesTrigger {
+			// We are getting close to hitting a hard limit on the number of
+			// L0 files. Rather than delaying a single write by several
+			// seconds when we hit the hard limit, start delaying each
+			// individual write by 1ms to reduce latency variance.
+			d.mu.Unlock()
+			time.Sleep(1 * time.Millisecond)
+			d.mu.Lock()
+			allowDelay = false
+			// TODO: how do we ensure we are still 'at the front of the writer queue'?
+			continue
+		}
+
+		if !force && d.mem.ApproximateMemoryUsage() <= d.opts.GetWriteBufferSize() {
+			// There is room in the current memtable.
+			break
+		}
+
+		if d.imm != nil {
+			// We have filled up the current memtable, but the previous
+			// one is still being compacted, so we wait.
+			d.compactionCond.Wait()
+			continue
+		}
+
+		if len(d.versions.currentVersion().files[0]) > l0StopWritesTrigger {
+			// There are too many level-0 files.
+			d.compactionCond.Wait()
+			continue
+		}
+
+		// Attempt to switch to a new memtable and trigger compaction of old
+		// TODO: drop and re-acquire d.mu around the I/O.
+		newLogNumber := d.versions.nextFileNum()
+		newLogFile, err := d.opts.GetFileSystem().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
+		if err != nil {
+			return err
+		}
+		newLog := record.NewWriter(newLogFile)
+		if err := d.log.Close(); err != nil {
+			newLogFile.Close()
+			return err
+		}
+		if err := d.logFile.Close(); err != nil {
+			newLog.Close()
+			newLogFile.Close()
+			return err
+		}
+		d.logNumber, d.logFile, d.log = newLogNumber, newLogFile, newLog
+		d.imm, d.mem = d.mem, memdb.New(&d.icmpOpts)
+		force = false
+		d.maybeScheduleCompaction()
+	}
+	return nil
+}
+
+// deleteObsoleteFiles deletes those files that are no longer needed.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) deleteObsoleteFiles() error {
+	// TODO: implement.
+	return nil
 }

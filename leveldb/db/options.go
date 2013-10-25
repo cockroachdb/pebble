@@ -33,6 +33,7 @@ const (
 //   - BlockRestartInterval
 //   - BlockSize
 //   - Compression
+//   - WriteBufferSize
 type Options struct {
 	// BlockRestartInterval is the number of keys between restart points
 	// for delta encoding of keys.
@@ -67,6 +68,18 @@ type Options struct {
 	//
 	// The default value is 1000.
 	MaxOpenFiles int
+
+	// WriteBufferSize is the amount of data to build up in memory (backed by
+	// an unsorted log on disk) before converting to a sorted on-disk file.
+	//
+	// Larger values increase performance, especially during bulk loads. Up to
+	// two write buffers may be held in memory at the same time, so you may
+	// wish to adjust this parameter to control memory usage. Also, a larger
+	// write buffer will result in a longer recovery time the next time the
+	// database is opened.
+	//
+	// The default value is 4MiB.
+	WriteBufferSize int
 
 	// VerifyChecksums is whether to verify the per-block checksums in a DB.
 	//
@@ -115,6 +128,13 @@ func (o *Options) GetMaxOpenFiles() int {
 		return 1000
 	}
 	return o.MaxOpenFiles
+}
+
+func (o *Options) GetWriteBufferSize() int {
+	if o == nil || o.WriteBufferSize <= 0 {
+		return 4 * 1024 * 1024
+	}
+	return o.WriteBufferSize
 }
 
 func (o *Options) GetVerifyChecksums() bool {

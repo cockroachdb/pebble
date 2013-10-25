@@ -5,11 +5,19 @@
 package leveldb
 
 import (
+	"fmt"
+
 	"code.google.com/p/leveldb-go/leveldb/db"
+	"code.google.com/p/leveldb-go/leveldb/table"
 )
 
 const (
 	targetFileSize = 2 * 1024 * 1024
+
+	// maxGrandparentOverlapBytes is the maximum bytes of overlap with
+	// level+2 before we stop building a single file in a level to level+1
+	// compaction.
+	maxGrandparentOverlapBytes = 10 * targetFileSize
 
 	// expandedCompactionByteSizeLimit is the maximum number of bytes in
 	// all compacted files. We avoid expanding the lower level file set of
@@ -128,4 +136,300 @@ func (c *compaction) isBaseLevelForUkey(userCmp db.Comparer, ukey []byte) bool {
 		}
 	}
 	return true
+}
+
+// maybeScheduleCompaction schedules a compaction if necessary.
+//
+// d.mu must be held when calling this.
+func (d *DB) maybeScheduleCompaction() {
+	if d.compacting {
+		return
+	}
+	// TODO: check if db is shutting down.
+	// TODO: check for manual compactions.
+	if d.imm == nil {
+		v := d.versions.currentVersion()
+		// TODO: check v.fileToCompact.
+		if v.compactionScore < 1 {
+			// There is no work to be done.
+			return
+		}
+	}
+	d.compacting = true
+	go d.compact()
+}
+
+// compact runs one compaction and maybe schedules another call to compact.
+func (d *DB) compact() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.compact1(); err != nil {
+		// TODO: count consecutive compaction errors and backoff.
+	}
+	d.compacting = false
+	// The previous compaction may have produced too many files in a
+	// level, so reschedule another compaction if needed.
+	d.maybeScheduleCompaction()
+	d.compactionCond.Broadcast()
+}
+
+// compact1 runs one compaction.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) compact1() error {
+	if d.imm != nil {
+		return d.compactMemTable()
+	}
+
+	// TODO: support manual compactions.
+
+	c := pickCompaction(&d.versions)
+	if c == nil {
+		return nil
+	}
+
+	// Check for a trivial move of one table from one level to the next.
+	// We avoid such a move if there is lots of overlapping grandparent data.
+	// Otherwise, the move could create a parent file that will require
+	// a very expensive merge later on.
+	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
+		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes {
+
+		meta := &c.inputs[0][0]
+		return d.versions.logAndApply(d.dirname, &versionEdit{
+			deletedFiles: map[deletedFileEntry]bool{
+				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
+			},
+			newFiles: []newFileEntry{
+				{level: c.level + 1, meta: *meta},
+			},
+		})
+	}
+
+	ve, err := d.compactDiskTables(c)
+	if err != nil {
+		return err
+	}
+	if err := d.versions.logAndApply(d.dirname, ve); err != nil {
+		return err
+	}
+	return d.deleteObsoleteFiles()
+}
+
+// compactMemTable runs a compaction that copies d.imm from memory to disk.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) compactMemTable() error {
+	meta, err := d.writeLevel0Table(d.opts.GetFileSystem(), d.imm)
+	if err != nil {
+		return err
+	}
+	err = d.versions.logAndApply(d.dirname, &versionEdit{
+		logNumber: d.logNumber,
+		newFiles: []newFileEntry{
+			{level: 0, meta: meta},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	d.imm = nil
+	return d.deleteObsoleteFiles()
+}
+
+// compactDiskTables runs a compaction that produces new on-disk tables from
+// old on-disk tables.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, retErr error) {
+	// TODO: track snapshots.
+	smallestSnapshot := d.versions.lastSequence
+
+	// Release the d.mu lock while doing I/O.
+	// Note the unusual order: Unlock and then Lock.
+	d.mu.Unlock()
+	defer d.mu.Lock()
+
+	iter, err := compactionIterator(&d.tableCache, d.icmp, c)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: output to more than one table, if it would otherwise be too large.
+	var (
+		fileNum  uint64
+		filename string
+		tw       *table.Writer
+	)
+	defer func() {
+		if iter != nil {
+			retErr = firstError(retErr, iter.Close())
+		}
+		if tw != nil {
+			retErr = firstError(retErr, tw.Close())
+		}
+		if retErr != nil {
+			d.opts.GetFileSystem().Remove(filename)
+		}
+	}()
+
+	currentUkey := make([]byte, 0, 4096)
+	hasCurrentUkey := false
+	lastSeqNumForKey := internalKeySeqNumMax
+	smallest, largest := internalKey(nil), internalKey(nil)
+	for iter.Next() {
+		// TODO: prioritize compacting d.imm.
+
+		// TODO: support c.shouldStopBefore.
+
+		ikey := internalKey(iter.Key())
+		if !ikey.valid() {
+			// Do not hide invalid keys.
+			currentUkey = currentUkey[:0]
+			hasCurrentUkey = false
+			lastSeqNumForKey = internalKeySeqNumMax
+
+		} else {
+			ukey := ikey.ukey()
+			if !hasCurrentUkey || d.icmp.userCmp.Compare(currentUkey, ukey) != 0 {
+				// This is the first occurrence of this user key.
+				currentUkey = append(currentUkey[:0], ukey...)
+				hasCurrentUkey = true
+				lastSeqNumForKey = internalKeySeqNumMax
+			}
+
+			drop, ikeySeqNum := false, ikey.seqNum()
+			if lastSeqNumForKey <= smallestSnapshot {
+				drop = true // Rule (A) referenced below.
+
+			} else if ikey.kind() == internalKeyKindDelete &&
+				ikeySeqNum <= smallestSnapshot &&
+				c.isBaseLevelForUkey(d.icmp.userCmp, ukey) {
+
+				// For this user key:
+				// (1) there is no data in higher levels
+				// (2) data in lower levels will have larger sequence numbers
+				// (3) data in layers that are being compacted here and have
+				//     smaller sequence numbers will be dropped in the next
+				//     few iterations of this loop (by rule (A) above).
+				// Therefore this deletion marker is obsolete and can be dropped.
+				drop = true
+			}
+
+			lastSeqNumForKey = ikeySeqNum
+			if drop {
+				continue
+			}
+		}
+
+		if tw == nil {
+			d.mu.Lock()
+			fileNum = d.versions.nextFileNum()
+			// TODO: track pending outputs.
+			d.mu.Unlock()
+
+			filename = dbFilename(d.dirname, fileTypeTable, fileNum)
+			file, err := d.opts.GetFileSystem().Create(filename)
+			if err != nil {
+				return nil, err
+			}
+			tw = table.NewWriter(file, &d.icmpOpts)
+
+			smallest = make(internalKey, len(ikey))
+			copy(smallest, ikey)
+			largest = make(internalKey, 0, 2*len(ikey))
+		}
+		largest = append(largest[:0], ikey...)
+		if err := tw.Set(ikey, iter.Value(), nil); err != nil {
+			return nil, err
+		}
+	}
+
+	ve = &versionEdit{
+		deletedFiles: map[deletedFileEntry]bool{},
+		newFiles: []newFileEntry{
+			{
+				level: c.level + 1,
+				meta: fileMetadata{
+					fileNum:  fileNum,
+					size:     1,
+					smallest: smallest,
+					largest:  largest,
+				},
+			},
+		},
+	}
+	for i := 0; i < 2; i++ {
+		for _, f := range c.inputs[i] {
+			ve.deletedFiles[deletedFileEntry{
+				level:   c.level + i,
+				fileNum: f.fileNum,
+			}] = true
+		}
+	}
+	return ve, nil
+}
+
+// compactionIterator returns an iterator over all the tables in a compaction.
+func compactionIterator(tc *tableCache, icmp db.Comparer, c *compaction) (cIter db.Iterator, retErr error) {
+	iters := make([]db.Iterator, 0, len(c.inputs[0])+1)
+	defer func() {
+		if retErr != nil {
+			for _, iter := range iters {
+				if iter != nil {
+					iter.Close()
+				}
+			}
+		}
+	}()
+
+	if c.level != 0 {
+		iter, err := newConcatenatingIterator(tc, c.inputs[0])
+		if err != nil {
+			return nil, err
+		}
+		iters = append(iters, iter)
+	} else {
+		for _, f := range c.inputs[0] {
+			iter, err := tc.find(f.fileNum, nil)
+			if err != nil {
+				return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+			}
+			iters = append(iters, iter)
+		}
+	}
+
+	iter, err := newConcatenatingIterator(tc, c.inputs[1])
+	if err != nil {
+		return nil, err
+	}
+	iters = append(iters, iter)
+	return db.NewMergingIterator(icmp, iters...), nil
+}
+
+// newConcatenatingIterator returns a concatenating iterator over all of the
+// input tables.
+func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.Iterator, retErr error) {
+	iters := make([]db.Iterator, len(inputs))
+	defer func() {
+		if retErr != nil {
+			for _, iter := range iters {
+				if iter != nil {
+					iter.Close()
+				}
+			}
+		}
+	}()
+
+	for i, f := range inputs {
+		iter, err := tc.find(f.fileNum, nil)
+		if err != nil {
+			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+		}
+		iters[i] = iter
+	}
+	return db.NewConcatenatingIterator(iters...), nil
 }

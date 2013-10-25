@@ -5,12 +5,16 @@
 package leveldb
 
 import (
+	"bytes"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
+	"code.google.com/p/leveldb-go/leveldb/table"
 )
 
 func TestPickCompaction(t *testing.T) {
@@ -539,5 +543,115 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, ukey, got, want)
 			}
 		}
+	}
+}
+
+func TestCompaction(t *testing.T) {
+	const writeBufferSize = 1000
+
+	// TODO: implement func Create instead of Open'ing a pre-existing empty DB.
+	fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/db-stage-1")
+	if err != nil {
+		t.Fatalf("cloneFileSystem failed: %v", err)
+	}
+	d, err := Open("", &db.Options{
+		FileSystem:      fs,
+		WriteBufferSize: writeBufferSize,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	get1 := func(x db.DB) (ret string) {
+		b := &bytes.Buffer{}
+		iter := x.Find(nil, nil)
+		for iter.Next() {
+			b.Write(internalKey(iter.Key()).ukey())
+		}
+		if err := iter.Close(); err != nil {
+			t.Fatalf("iterator Close: %v", err)
+		}
+		return b.String()
+	}
+	getAll := func() (gotMem, gotDisk string, err error) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		if d.mem != nil {
+			gotMem = get1(d.mem)
+		}
+		ss := []string(nil)
+		v := d.versions.currentVersion()
+		for _, files := range v.files {
+			for _, meta := range files {
+				f, err := fs.Open(dbFilename("", fileTypeTable, meta.fileNum))
+				if err != nil {
+					return "", "", fmt.Errorf("Open: %v", err)
+				}
+				defer f.Close()
+				r := table.NewReader(f, &db.Options{
+					Comparer: internalKeyComparer{db.DefaultComparer},
+				})
+				defer r.Close()
+				ss = append(ss, get1(r)+".")
+			}
+		}
+		sort.Strings(ss)
+		return gotMem, strings.Join(ss, ""), nil
+	}
+
+	value := bytes.Repeat([]byte("x"), writeBufferSize*6/10)
+	testCases := []struct {
+		key, wantMem, wantDisk string
+	}{
+		{"+A", "A", ""},
+		{"+a", "Aa", ""},
+		{"+B", "B", "Aa."},
+		{"+b", "Bb", "Aa."},
+		// The next level-0 table overwrites the B key.
+		{"+C", "C", "Aa.Bb."},
+		{"+B", "BC", "Aa.Bb."},
+		// The next level-0 table deletes the a key.
+		{"+D", "D", "Aa.BC.Bb."},
+		{"-a", "Da", "Aa.BC.Bb."},
+		{"+d", "Dad", "Aa.BC.Bb."},
+		// The next addition creates the fourth level-0 table, and l0CompactionTrigger == 4,
+		// so this triggers a non-trivial compaction into one level-1 table. Note that the
+		// keys in this one larger table are interleaved from the four smaller ones.
+		{"+E", "E", "ABCDbd."},
+		{"+e", "Ee", "ABCDbd."},
+		{"+F", "F", "ABCDbd.Ee."},
+	}
+	for _, tc := range testCases {
+		if key := tc.key[1:]; tc.key[0] == '+' {
+			if err := d.Set([]byte(key), value, nil); err != nil {
+				t.Errorf("%q: Set: %v", key, err)
+				break
+			}
+		} else {
+			if err := d.Delete([]byte(key), nil); err != nil {
+				t.Errorf("%q: Delete: %v", key, err)
+				break
+			}
+		}
+
+		// Allow any writes to the memfs to complete.
+		time.Sleep(1 * time.Millisecond)
+
+		gotMem, gotDisk, err := getAll()
+		if err != nil {
+			t.Errorf("%q: %v", tc.key, err)
+			break
+		}
+		if gotMem != tc.wantMem {
+			t.Errorf("%q: mem: got %q, want %q", tc.key, gotMem, tc.wantMem)
+		}
+		if gotDisk != tc.wantDisk {
+			t.Errorf("%q: sst: got %q, want %q", tc.key, gotDisk, tc.wantDisk)
+		}
+	}
+
+	if err := d.Close(); err != nil {
+		t.Fatalf("db Close: %v", err)
 	}
 }

@@ -37,6 +37,9 @@ const (
 	internalKeyKindMax internalKeyKind = 1
 )
 
+// internalKeySeqNumMax is the largest valid sequence number.
+const internalKeySeqNumMax = uint64(1<<56 - 1)
+
 // makeInternalKey makes an internalKey from a user key, a kind, and a sequence
 // number. The return value may be a slice of dst[:cap(dst)] if it is large
 // enough. Otherwise, it may be a slice of a newly allocated buffer. In any

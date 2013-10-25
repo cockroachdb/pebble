@@ -5,8 +5,11 @@
 package leveldb
 
 import (
+	"bytes"
 	"io"
+	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -305,5 +308,66 @@ func TestBasicWrites(t *testing.T) {
 
 	if err := d.Close(); err != nil {
 		t.Fatalf("Close failed: %v", err)
+	}
+}
+
+func TestRandomWrites(t *testing.T) {
+	// TODO: implement func Create instead of Open'ing a pre-existing empty DB.
+	fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/db-stage-1")
+	if err != nil {
+		t.Fatalf("cloneFileSystem failed: %v", err)
+	}
+	d, err := Open("", &db.Options{
+		FileSystem:      fs,
+		WriteBufferSize: 8 * 1024,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	keys := [64][]byte{}
+	wants := [64]int{}
+	for k := range keys {
+		keys[k] = []byte(strconv.Itoa(k))
+		wants[k] = -1
+	}
+	xxx := bytes.Repeat([]byte("x"), 512)
+
+	rng := rand.New(rand.NewSource(123))
+	const N = 1000
+	for i := 0; i < N; i++ {
+		k := rng.Intn(len(keys))
+		if rng.Intn(20) != 0 {
+			wants[k] = rng.Intn(len(xxx) + 1)
+			if err := d.Set(keys[k], xxx[:wants[k]], nil); err != nil {
+				t.Fatalf("i=%d: Set: %v", i, err)
+			}
+		} else {
+			wants[k] = -1
+			if err := d.Delete(keys[k], nil); err != nil {
+				t.Fatalf("i=%d: Delete: %v", i, err)
+			}
+		}
+
+		if i != N-1 || rng.Intn(50) != 0 {
+			continue
+		}
+		for k := range keys {
+			got := -1
+			if v, err := d.Get(keys[k], nil); err != nil {
+				if err != db.ErrNotFound {
+					t.Fatalf("Get: %v", err)
+				}
+			} else {
+				got = len(v)
+			}
+			if got != wants[k] {
+				t.Errorf("i=%d, k=%d: got %d, want %d", i, k, got, wants[k])
+			}
+		}
+	}
+
+	if err := d.Close(); err != nil {
+		t.Fatalf("db Close: %v", err)
 	}
 }

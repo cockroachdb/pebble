@@ -132,6 +132,9 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 
 // TODO: describe what this function does and how it interacts concurrently
 // with a running leveldb.
+//
+// d.mu must be held when calling this, for the enclosing *DB d.
+// TODO: actually pass d.mu, and drop and re-acquire it around the I/O.
 func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	if ve.logNumber != 0 {
 		if ve.logNumber < vs.logNumber || vs.nextFileNumber <= ve.logNumber {
@@ -173,8 +176,12 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 
 	// Install the new version.
 	vs.append(newVersion)
-	vs.logNumber = ve.logNumber
-	vs.prevLogNumber = ve.prevLogNumber
+	if ve.logNumber != 0 {
+		vs.logNumber = ve.logNumber
+	}
+	if ve.prevLogNumber != 0 {
+		vs.prevLogNumber = ve.prevLogNumber
+	}
 	return nil
 }
 
