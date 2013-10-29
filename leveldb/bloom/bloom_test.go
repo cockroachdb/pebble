@@ -128,7 +128,7 @@ func TestHash(t *testing.T) {
 		{"goph", 0x8c9d6390},
 		{"gophe", 0x9bfd4b0a},
 		{"gopher", 0xa78edc7c},
-		{"I always dreamed it would end this way.", 0xef6dc642},
+		{"I had a dream it would end this way.", 0xe14a9db9},
 	}
 	for _, tc := range testCases {
 		if got := hash([]byte(tc.s)); got != tc.want {
