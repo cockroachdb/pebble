@@ -116,7 +116,11 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 		}
 	}
 	if vs.logNumber == 0 || vs.nextFileNumber == 0 {
-		return fmt.Errorf("leveldb: incomplete manifest file %q for DB %q", b, dirname)
+		if vs.nextFileNumber == 2 {
+			// We have a freshly created DB.
+		} else {
+			return fmt.Errorf("leveldb: incomplete manifest file %q for DB %q", b, dirname)
+		}
 	}
 	vs.markFileNumUsed(vs.logNumber)
 	vs.markFileNumUsed(vs.prevLogNumber)

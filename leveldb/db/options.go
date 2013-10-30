@@ -33,6 +33,7 @@ const (
 //   - BlockRestartInterval
 //   - BlockSize
 //   - Compression
+//   - ErrorIfDBExists
 //   - WriteBufferSize
 type Options struct {
 	// BlockRestartInterval is the number of keys between restart points
@@ -57,6 +58,11 @@ type Options struct {
 	//
 	// The default value (DefaultCompression) uses snappy compression.
 	Compression Compression
+
+	// ErrorIfDBExists is whether it is an error if the database already exists.
+	//
+	// The default value is false.
+	ErrorIfDBExists bool
 
 	// FileSystem maps file names to byte storage.
 	//
@@ -114,6 +120,13 @@ func (o *Options) GetCompression() Compression {
 		return SnappyCompression
 	}
 	return o.Compression
+}
+
+func (o *Options) GetErrorIfDBExists() bool {
+	if o == nil {
+		return false
+	}
+	return o.ErrorIfDBExists
 }
 
 func (o *Options) GetFileSystem() FileSystem {

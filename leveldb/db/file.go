@@ -18,7 +18,7 @@ type File interface {
 	io.Reader
 	io.ReaderAt
 	io.Writer
-	Stat() (stat os.FileInfo, err error)
+	Stat() (os.FileInfo, error)
 	Sync() error
 }
 
@@ -69,6 +69,9 @@ type FileSystem interface {
 	// List returns a listing of the given directory. The names returned are
 	// relative to dir.
 	List(dir string) ([]string, error)
+
+	// Stat returns an os.FileInfo describing the named file.
+	Stat(name string) (os.FileInfo, error)
 }
 
 // DefaultFileSystem is a FileSystem implementation backed by the underlying
@@ -104,4 +107,8 @@ func (defFS) List(dir string) ([]string, error) {
 	}
 	defer f.Close()
 	return f.Readdirnames(-1)
+}
+
+func (defFS) Stat(name string) (os.FileInfo, error) {
+	return os.Stat(name)
 }

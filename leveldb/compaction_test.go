@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
+	"code.google.com/p/leveldb-go/leveldb/memfs"
 	"code.google.com/p/leveldb-go/leveldb/table"
 )
 
@@ -549,11 +550,7 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 func TestCompaction(t *testing.T) {
 	const writeBufferSize = 1000
 
-	// TODO: implement func Create instead of Open'ing a pre-existing empty DB.
-	fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/db-stage-1")
-	if err != nil {
-		t.Fatalf("cloneFileSystem failed: %v", err)
-	}
+	fs := memfs.New()
 	d, err := Open("", &db.Options{
 		FileSystem:      fs,
 		WriteBufferSize: writeBufferSize,

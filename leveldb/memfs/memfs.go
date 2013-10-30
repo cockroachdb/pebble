@@ -153,7 +153,11 @@ func (y *fileSystem) Open(fullname string) (db.File, error) {
 		return nil, err
 	}
 	if ret == nil {
-		return nil, errors.New("leveldb/memfs: no such file")
+		return nil, &os.PathError{
+			Op:   "open",
+			Path: fullname,
+			Err:  os.ErrNotExist,
+		}
 	}
 	return ret, nil
 }
@@ -251,6 +255,18 @@ func (y *fileSystem) List(dirname string) ([]string, error) {
 		return nil
 	})
 	return ret, err
+}
+
+func (y *fileSystem) Stat(name string) (os.FileInfo, error) {
+	f, err := y.Open(name)
+	if err != nil {
+		if pe, ok := err.(*os.PathError); ok {
+			pe.Op = "stat"
+		}
+		return nil, err
+	}
+	defer f.Close()
+	return f.Stat()
 }
 
 // node holds a file's data or a directory's children, and implements os.FileInfo.

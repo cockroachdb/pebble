@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -199,6 +200,40 @@ func (p fileNumAndNameSlice) Len() int           { return len(p) }
 func (p fileNumAndNameSlice) Less(i, j int) bool { return p[i].num < p[j].num }
 func (p fileNumAndNameSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
+func createDB(dirname string, opts *db.Options) (retErr error) {
+	const manifestFileNum = 1
+	ve := versionEdit{
+		comparatorName: opts.GetComparer().Name(),
+		nextFileNumber: manifestFileNum + 1,
+	}
+	manifestFilename := dbFilename(dirname, fileTypeManifest, manifestFileNum)
+	f, err := opts.GetFileSystem().Create(manifestFilename)
+	if err != nil {
+		return fmt.Errorf("leveldb: could not create %q: %v", manifestFilename, err)
+	}
+	defer func() {
+		if retErr != nil {
+			opts.GetFileSystem().Remove(manifestFilename)
+		}
+	}()
+	defer f.Close()
+
+	recWriter := record.NewWriter(f)
+	w, err := recWriter.Next()
+	if err != nil {
+		return err
+	}
+	err = ve.encode(w)
+	if err != nil {
+		return err
+	}
+	err = recWriter.Close()
+	if err != nil {
+		return err
+	}
+	return setCurrentFile(dirname, opts.GetFileSystem(), manifestFileNum)
+}
+
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *db.Options) (*DB, error) {
 	d := &DB{
@@ -237,7 +272,16 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		}
 	}()
 
-	// TODO: add options for CreateIfMissing and ErrorIfExists, and check them here.
+	if _, err := fs.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) {
+		// Create the DB if it did not already exist.
+		if err := createDB(dirname, opts); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("leveldb: database %q: %v", dirname, err)
+	} else if opts.GetErrorIfDBExists() {
+		return nil, fmt.Errorf("leveldb: database %q already exists", dirname)
+	}
 
 	// Load the version set.
 	err = d.versions.load(dirname, opts)

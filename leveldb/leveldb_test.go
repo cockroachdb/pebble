@@ -17,6 +17,35 @@ import (
 	"code.google.com/p/leveldb-go/leveldb/memfs"
 )
 
+func TestErrorIfDBExists(t *testing.T) {
+	for _, b := range [...]bool{false, true} {
+		fs := memfs.New()
+		d0, err := Open("", &db.Options{
+			FileSystem: fs,
+		})
+		if err != nil {
+			t.Errorf("b=%v: d0 Open: %v", b, err)
+			continue
+		}
+		if err := d0.Close(); err != nil {
+			t.Errorf("b=%v: d0 Close: %v", b, err)
+			continue
+		}
+
+		d1, err := Open("", &db.Options{
+			FileSystem:      fs,
+			ErrorIfDBExists: b,
+		})
+		if d1 != nil {
+			defer d1.Close()
+		}
+		if got := err != nil; got != b {
+			t.Errorf("b=%v: d1 Open: err is %v, got (err != nil) is %v, want %v", b, err, got, b)
+			continue
+		}
+	}
+}
+
 // cloneFileSystem returns a new memory-backed file system whose root contains
 // a copy of the directory dirname in the source file system srcFS. The copy
 // is not recursive; directories under dirname are not copied.
@@ -168,13 +197,8 @@ func TestBasicReads(t *testing.T) {
 }
 
 func TestBasicWrites(t *testing.T) {
-	// TODO: implement func Create instead of Open'ing a pre-existing empty DB.
-	fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/db-stage-1")
-	if err != nil {
-		t.Fatalf("cloneFileSystem failed: %v", err)
-	}
 	d, err := Open("", &db.Options{
-		FileSystem: fs,
+		FileSystem: memfs.New(),
 	})
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
@@ -312,13 +336,8 @@ func TestBasicWrites(t *testing.T) {
 }
 
 func TestRandomWrites(t *testing.T) {
-	// TODO: implement func Create instead of Open'ing a pre-existing empty DB.
-	fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/db-stage-1")
-	if err != nil {
-		t.Fatalf("cloneFileSystem failed: %v", err)
-	}
 	d, err := Open("", &db.Options{
-		FileSystem:      fs,
+		FileSystem:      memfs.New(),
 		WriteBufferSize: 8 * 1024,
 	})
 	if err != nil {
