@@ -222,3 +222,50 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 		}
 	})
 }
+
+func TestTableCacheEvictions(t *testing.T) {
+	const (
+		N      = 1000
+		lo, hi = 10, 20
+	)
+	c, fs, err := newTableCache()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rng := rand.New(rand.NewSource(2))
+	for i := 0; i < N; i++ {
+		j := rng.Intn(tableCacheTestNumTables)
+		iter, err := c.find(uint64(j), nil)
+		if err != nil {
+			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
+		}
+		if err := iter.Close(); err != nil {
+			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
+		}
+
+		c.evict(uint64(lo + rng.Intn(hi-lo)))
+	}
+
+	sumEvicted, nEvicted := 0, 0
+	sumSafe, nSafe := 0, 0
+	fs.validate(t, c, func(i, gotO, gotC int) {
+		if lo <= i && i < hi {
+			sumEvicted += gotO
+			nEvicted++
+		} else {
+			sumSafe += gotO
+			nSafe++
+		}
+	})
+	fEvicted := float64(sumEvicted) / float64(nEvicted)
+	fSafe := float64(sumSafe) / float64(nSafe)
+	// The magic 1.25 number isn't derived from formal modeling. It's just a guess. For
+	// (lo, hi, tableCacheTestCacheSize, tableCacheTestNumTables) = (10, 20, 100, 300),
+	// the ratio seems to converge on roughly 1.5 for large N, compared to 1.0 if we do
+	// not evict any cache entries.
+	if ratio := fEvicted / fSafe; ratio < 1.25 {
+		t.Errorf("evicted tables were opened %.3f times on average, safe tables %.3f, ratio %.3f < 1.250",
+			fEvicted, fSafe, ratio)
+	}
+}

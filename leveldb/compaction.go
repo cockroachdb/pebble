@@ -214,7 +214,8 @@ func (d *DB) compact1() error {
 	if err := d.versions.logAndApply(d.dirname, ve); err != nil {
 		return err
 	}
-	return d.deleteObsoleteFiles()
+	d.deleteObsoleteFiles()
+	return nil
 }
 
 // compactMemTable runs a compaction that copies d.imm from memory to disk.
@@ -236,7 +237,8 @@ func (d *DB) compactMemTable() error {
 		return err
 	}
 	d.imm = nil
-	return d.deleteObsoleteFiles()
+	d.deleteObsoleteFiles()
+	return nil
 }
 
 // compactDiskTables runs a compaction that produces new on-disk tables from

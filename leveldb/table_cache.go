@@ -59,6 +59,19 @@ func (c *tableCache) find(fileNum uint64, ikey internalKey) (db.Iterator, error)
 	}, nil
 }
 
+// releaseNode releases a node from the tableCache.
+//
+// c.mu must be held when calling this.
+func (c *tableCache) releaseNode(n *tableCacheNode) {
+	delete(c.nodes, n.fileNum)
+	n.next.prev = n.prev
+	n.prev.next = n.next
+	n.refCount--
+	if n.refCount == 0 {
+		go n.release()
+	}
+}
+
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
@@ -76,14 +89,7 @@ func (c *tableCache) findNode(fileNum uint64) *tableCacheNode {
 		c.nodes[fileNum] = n
 		if len(c.nodes) > c.size {
 			// Release the tail node.
-			tail := c.dummy.prev
-			delete(c.nodes, tail.fileNum)
-			tail.next.prev = tail.prev
-			tail.prev.next = tail.next
-			tail.refCount--
-			if tail.refCount == 0 {
-				go tail.release()
-			}
+			c.releaseNode(c.dummy.prev)
 		}
 		go n.load(c)
 	} else {
@@ -99,6 +105,15 @@ func (c *tableCache) findNode(fileNum uint64) *tableCacheNode {
 	// The caller is responsible for decrementing the refCount.
 	n.refCount++
 	return n
+}
+
+func (c *tableCache) evict(fileNum uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if n := c.nodes[fileNum]; n != nil {
+		c.releaseNode(n)
+	}
 }
 
 func (c *tableCache) Close() error {

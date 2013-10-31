@@ -265,3 +265,13 @@ func (vs *versionSet) append(v *version) {
 func (vs *versionSet) currentVersion() *version {
 	return vs.dummyVersion.prev
 }
+
+func (vs *versionSet) addLiveFileNums(m map[uint64]struct{}) {
+	for v := vs.dummyVersion.next; v != &vs.dummyVersion; v = v.next {
+		for _, ff := range v.files {
+			for _, f := range ff {
+				m[f.fileNum] = struct{}{}
+			}
+		}
+	}
+}

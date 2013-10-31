@@ -9,6 +9,9 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -43,6 +46,34 @@ func TestErrorIfDBExists(t *testing.T) {
 			t.Errorf("b=%v: d1 Open: err is %v, got (err != nil) is %v, want %v", b, err, got, b)
 			continue
 		}
+	}
+}
+
+func TestNewDBFilenames(t *testing.T) {
+	fooBar := filepath.Join("foo", "bar")
+	fs := memfs.New()
+	d, err := Open(fooBar, &db.Options{
+		FileSystem: fs,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	got, err := fs.List(fooBar)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	sort.Strings(got)
+	// TODO: should there be a LOCK file here?
+	want := []string{
+		"000003.log",
+		"CURRENT",
+		"MANIFEST-000002",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("\ngot  %v\nwant %v", got, want)
 	}
 }
 

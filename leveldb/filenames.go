@@ -7,21 +7,24 @@ package leveldb
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
+type fileType int
+
 const (
-	fileTypeLog = iota
+	fileTypeLog fileType = iota
 	fileTypeLock
 	fileTypeTable
 	fileTypeManifest
 	fileTypeCurrent
 )
 
-func dbFilename(dirname string, fileType int, fileNum uint64) string {
+func dbFilename(dirname string, fileType fileType, fileNum uint64) string {
 	for len(dirname) > 0 && dirname[len(dirname)-1] == os.PathSeparator {
 		dirname = dirname[:len(dirname)-1]
 	}
@@ -40,18 +43,36 @@ func dbFilename(dirname string, fileType int, fileNum uint64) string {
 	panic("unreachable")
 }
 
-// logFileNum returns the fileNum of the given log file, or 0 if that file is
-// not a log file.
-func logFileNum(filename string) uint64 {
-	if !strings.HasSuffix(filename, ".log") {
-		return 0
+func parseDBFilename(filename string) (fileType fileType, fileNum uint64, ok bool) {
+	filename = filepath.Base(filename)
+	switch {
+	case filename == "CURRENT":
+		return fileTypeCurrent, 0, true
+	case filename == "LOCK":
+		return fileTypeLock, 0, true
+	case strings.HasPrefix(filename, "MANIFEST-"):
+		u, err := strconv.ParseUint(filename[len("MANIFEST-"):], 10, 64)
+		if err != nil {
+			break
+		}
+		return fileTypeManifest, u, true
+	default:
+		i := strings.IndexByte(filename, '.')
+		if i < 0 {
+			break
+		}
+		u, err := strconv.ParseUint(filename[:i], 10, 64)
+		if err != nil {
+			break
+		}
+		switch filename[i+1:] {
+		case "log":
+			return fileTypeLog, u, true
+		case "sst":
+			return fileTypeTable, u, true
+		}
 	}
-	filename = filename[:len(filename)-4]
-	u, err := strconv.ParseUint(filename, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return u
+	return 0, 0, false
 }
 
 func setCurrentFile(dirname string, fs db.FileSystem, fileNum uint64) error {
