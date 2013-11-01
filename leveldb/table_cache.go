@@ -5,6 +5,7 @@
 package leveldb
 
 import (
+	"os"
 	"sync"
 
 	"code.google.com/p/leveldb-go/leveldb/db"
@@ -148,7 +149,12 @@ type tableCacheNode struct {
 }
 
 func (n *tableCacheNode) load(c *tableCache) {
+	// Try opening the fileTypeTable first. If that file doesn't exist,
+	// fall back onto the fileTypeOldFashionedTable.
 	f, err := c.fs.Open(dbFilename(c.dirname, fileTypeTable, n.fileNum))
+	if os.IsNotExist(err) {
+		f, err = c.fs.Open(dbFilename(c.dirname, fileTypeOldFashionedTable, n.fileNum))
+	}
 	if err != nil {
 		n.result <- tableReaderOrError{err: err}
 		return

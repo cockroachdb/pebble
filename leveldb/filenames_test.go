@@ -16,7 +16,9 @@ func TestParseDBFilename(t *testing.T) {
 		"000000..log":         false,
 		"a000000.log":         false,
 		"abcdef.log":          false,
-		"000001.sst":          true,
+		"000001ldb":           false,
+		"000001.ldb":          true,
+		"000002.sst":          true,
 		"CURRENT":             true,
 		"CURRaNT":             false,
 		"LOCK":                true,
@@ -42,9 +44,10 @@ func TestFilenameRoundTrip(t *testing.T) {
 		fileTypeCurrent: false,
 		fileTypeLock:    false,
 		// The remaining file types are numbered.
-		fileTypeLog:      true,
-		fileTypeManifest: true,
-		fileTypeTable:    true,
+		fileTypeLog:               true,
+		fileTypeManifest:          true,
+		fileTypeOldFashionedTable: true,
+		fileTypeTable:             true,
 	}
 	for fileType, numbered := range testCases {
 		fileNums := []uint64{0}

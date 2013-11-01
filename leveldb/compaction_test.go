@@ -644,7 +644,7 @@ func TestCompaction(t *testing.T) {
 			t.Errorf("%q: mem: got %q, want %q", tc.key, gotMem, tc.wantMem)
 		}
 		if gotDisk != tc.wantDisk {
-			t.Errorf("%q: sst: got %q, want %q", tc.key, gotDisk, tc.wantDisk)
+			t.Errorf("%q: ldb: got %q, want %q", tc.key, gotDisk, tc.wantDisk)
 		}
 	}
 

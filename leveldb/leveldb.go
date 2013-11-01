@@ -637,7 +637,7 @@ func (d *DB) deleteObsoleteFiles() {
 			keep = fileNum >= logNumber
 		case fileTypeManifest:
 			keep = fileNum >= manifestFileNumber
-		case fileTypeTable:
+		case fileTypeTable, fileTypeOldFashionedTable:
 			_, keep = liveFileNums[fileNum]
 		}
 		if keep {
