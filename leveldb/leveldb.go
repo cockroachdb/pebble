@@ -75,6 +75,8 @@ type DB struct {
 
 	compactionCond sync.Cond
 	compacting     bool
+
+	pendingOutputs map[uint64]struct{}
 }
 
 var _ db.DB = (*DB)(nil)
@@ -237,9 +239,10 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *db.Options) (*DB, error) {
 	d := &DB{
-		dirname: dirname,
-		opts:    opts,
-		icmp:    internalKeyComparer{opts.GetComparer()},
+		dirname:        dirname,
+		opts:           opts,
+		icmp:           internalKeyComparer{opts.GetComparer()},
+		pendingOutputs: make(map[uint64]struct{}),
 	}
 	if opts != nil {
 		d.icmpOpts = *opts
@@ -425,6 +428,10 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 			return 0, err
 		}
 		ve.newFiles = append(ve.newFiles, newFileEntry{level: 0, meta: meta})
+		// Strictly speaking, it's too early to delete meta.fileNum from d.pendingOutputs,
+		// but we are replaying the log file, which happens before Open returns, so there
+		// is no possibility of deleteObsoleteFiles being called concurrently here.
+		delete(d.pendingOutputs, meta.fileNum)
 	}
 
 	return maxSeqNum, nil
@@ -441,15 +448,21 @@ func firstError(err0, err1 error) error {
 
 // writeLevel0Table writes a memtable to a level-0 on-disk table.
 //
+// If no error is returned, it adds the file number of that on-disk table to
+// d.pendingOutputs. It is the caller's responsibility to remove that fileNum
+// from that set when it has been applied to d.versions.
+//
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMetadata, err error) {
 	meta.fileNum = d.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
-	// TODO: add meta.fileNum to a set of 'pending outputs' so that a
-	// concurrent sweep of obsolete db files won't delete the fileNum file.
-	// It is the caller's responsibility to remove that fileNum from the
-	// set of pending outputs.
+	d.pendingOutputs[meta.fileNum] = struct{}{}
+	defer func(fileNum uint64) {
+		if err != nil {
+			delete(d.pendingOutputs, fileNum)
+		}
+	}(meta.fileNum)
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
@@ -607,9 +620,10 @@ func (d *DB) makeRoomForWrite(force bool) error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles() {
-	// TODO: (elsewhere) track pending outputs, and refer to them here.
 	liveFileNums := map[uint64]struct{}{}
-
+	for fileNum := range d.pendingOutputs {
+		liveFileNums[fileNum] = struct{}{}
+	}
 	d.versions.addLiveFileNums(liveFileNums)
 	logNumber := d.versions.logNumber
 	manifestFileNumber := d.versions.manifestFileNumber

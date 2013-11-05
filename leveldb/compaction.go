@@ -207,11 +207,15 @@ func (d *DB) compact1() error {
 		})
 	}
 
-	ve, err := d.compactDiskTables(c)
+	ve, pendingOutputs, err := d.compactDiskTables(c)
 	if err != nil {
 		return err
 	}
-	if err := d.versions.logAndApply(d.dirname, ve); err != nil {
+	err = d.versions.logAndApply(d.dirname, ve)
+	for _, fileNum := range pendingOutputs {
+		delete(d.pendingOutputs, fileNum)
+	}
+	if err != nil {
 		return err
 	}
 	d.deleteObsoleteFiles()
@@ -233,6 +237,7 @@ func (d *DB) compactMemTable() error {
 			{level: 0, meta: meta},
 		},
 	})
+	delete(d.pendingOutputs, meta.fileNum)
 	if err != nil {
 		return err
 	}
@@ -246,7 +251,16 @@ func (d *DB) compactMemTable() error {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, retErr error) {
+func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs []uint64, retErr error) {
+	defer func() {
+		if retErr != nil {
+			for _, fileNum := range pendingOutputs {
+				delete(d.pendingOutputs, fileNum)
+			}
+			pendingOutputs = nil
+		}
+	}()
+
 	// TODO: track snapshots.
 	smallestSnapshot := d.versions.lastSequence
 
@@ -257,7 +271,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, retErr error) {
 
 	iter, err := compactionIterator(&d.tableCache, d.icmp, c)
 	if err != nil {
-		return nil, err
+		return nil, pendingOutputs, err
 	}
 
 	// TODO: output to more than one table, if it would otherwise be too large.
@@ -330,13 +344,14 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, retErr error) {
 		if tw == nil {
 			d.mu.Lock()
 			fileNum = d.versions.nextFileNum()
-			// TODO: track pending outputs.
+			d.pendingOutputs[fileNum] = struct{}{}
+			pendingOutputs = append(pendingOutputs, fileNum)
 			d.mu.Unlock()
 
 			filename = dbFilename(d.dirname, fileTypeTable, fileNum)
 			file, err := d.opts.GetFileSystem().Create(filename)
 			if err != nil {
-				return nil, err
+				return nil, pendingOutputs, err
 			}
 			tw = table.NewWriter(file, &d.icmpOpts)
 
@@ -346,7 +361,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, retErr error) {
 		}
 		largest = append(largest[:0], ikey...)
 		if err := tw.Set(ikey, iter.Value(), nil); err != nil {
-			return nil, err
+			return nil, pendingOutputs, err
 		}
 	}
 
@@ -372,7 +387,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, retErr error) {
 			}] = true
 		}
 	}
-	return ve, nil
+	return ve, pendingOutputs, nil
 }
 
 // compactionIterator returns an iterator over all the tables in a compaction.
