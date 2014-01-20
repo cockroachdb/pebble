@@ -4,6 +4,7 @@
 
 // +build !linux,!amd64
 // +build !darwin,!amd64
+// +build !openbsd,!amd64
 // +build !windows
 
 package db
