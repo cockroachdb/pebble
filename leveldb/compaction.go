@@ -142,10 +142,9 @@ func (c *compaction) isBaseLevelForUkey(userCmp db.Comparer, ukey []byte) bool {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if d.compacting {
+	if d.compacting || d.closed {
 		return
 	}
-	// TODO: check if db is shutting down.
 	// TODO: check for manual compactions.
 	if d.imm == nil {
 		v := d.versions.currentVersion()

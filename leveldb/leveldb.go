@@ -76,6 +76,8 @@ type DB struct {
 	compactionCond sync.Cond
 	compacting     bool
 
+	closed bool
+
 	pendingOutputs map[uint64]struct{}
 }
 
@@ -180,16 +182,19 @@ func (d *DB) Find(key []byte, opts *db.ReadOptions) db.Iterator {
 }
 
 func (d *DB) Close() error {
-	err := d.tableCache.Close()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.fileLock == nil {
-		return err
+	if d.closed {
+		return nil
 	}
+	for d.compacting {
+		d.compactionCond.Wait()
+	}
+	err := d.tableCache.Close()
 	err = firstError(err, d.log.Close())
 	err = firstError(err, d.logFile.Close())
 	err = firstError(err, d.fileLock.Close())
-	d.fileLock = nil
+	d.closed = true
 	return err
 }
 

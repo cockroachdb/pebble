@@ -427,58 +427,71 @@ func TestOpenCloseOpenClose(t *testing.T) {
 		FileSystem: memfs.New(),
 	}
 
-	for _, length := range []int{-1, 0, 1, 1000, 10000, 100000} {
-		dirname := strconv.Itoa(length)
-		got, xxx := []byte(nil), ""
-		if length >= 0 {
-			xxx = strings.Repeat("x", length)
-		}
+	for _, startFromEmpty := range []bool{false, true} {
+		for _, length := range []int{-1, 0, 1, 1000, 10000, 100000} {
+			dirname := "sharedDatabase"
+			if startFromEmpty {
+				dirname = "startFromEmpty" + strconv.Itoa(length)
+			}
 
-		d0, err := Open(dirname, opts)
-		if err != nil {
-			t.Errorf("length=%d: Open #0: %v", length, err)
-			continue
-		}
-		if length >= 0 {
-			err = d0.Set([]byte("key"), []byte(xxx), nil)
+			got, xxx := []byte(nil), ""
+			if length >= 0 {
+				xxx = strings.Repeat("x", length)
+			}
+
+			d0, err := Open(dirname, opts)
 			if err != nil {
-				t.Errorf("length=%d: Set: %v", length, err)
+				t.Errorf("sfe=%t, length=%d: Open #0: %v",
+					startFromEmpty, length, err)
 				continue
 			}
-		}
-		err = d0.Close()
-		if err != nil {
-			t.Errorf("length=%d: Close #0: %v", length, err)
-			continue
-		}
-
-		// TODO: make the second Open recover (without a fatal "corrupt log
-		// file" error) even if the d0 database was not closed but the xxx
-		// value is large enough to write a partial record. Writing to the
-		// database should not corrupt it even if the writer process was
-		// killed part-way through.
-
-		d1, err := Open(dirname, opts)
-		if err != nil {
-			t.Errorf("length=%d: Open #1: %v", length, err)
-			continue
-		}
-		if length >= 0 {
-			got, err = d1.Get([]byte("key"), nil)
+			if length >= 0 {
+				err = d0.Set([]byte("key"), []byte(xxx), nil)
+				if err != nil {
+					t.Errorf("sfe=%t, length=%d: Set: %v",
+						startFromEmpty, length, err)
+					continue
+				}
+			}
+			err = d0.Close()
 			if err != nil {
-				t.Errorf("length=%d: Get: %v", length, err)
+				t.Errorf("sfe=%t, length=%d: Close #0: %v",
+					startFromEmpty, length, err)
 				continue
 			}
-		}
-		err = d1.Close()
-		if err != nil {
-			t.Errorf("length=%d: Close #1: %v", length, err)
-			continue
-		}
 
-		if length >= 0 && string(got) != xxx {
-			t.Errorf("length=%d: got value differs from set value", length)
-			continue
+			// TODO: make the second Open recover (without a fatal "corrupt log
+			// file" error) even if the d0 database was not closed but the xxx
+			// value is large enough to write a partial record. Writing to the
+			// database should not corrupt it even if the writer process was
+			// killed part-way through.
+
+			d1, err := Open(dirname, opts)
+			if err != nil {
+				t.Errorf("sfe=%t, length=%d: Open #1: %v",
+					startFromEmpty, length, err)
+				continue
+			}
+			if length >= 0 {
+				got, err = d1.Get([]byte("key"), nil)
+				if err != nil {
+					t.Errorf("sfe=%t, length=%d: Get: %v",
+						startFromEmpty, length, err)
+					continue
+				}
+			}
+			err = d1.Close()
+			if err != nil {
+				t.Errorf("sfe=%t, length=%d: Close #1: %v",
+					startFromEmpty, length, err)
+				continue
+			}
+
+			if length >= 0 && string(got) != xxx {
+				t.Errorf("sfe=%t, length=%d: got value differs from set value",
+					startFromEmpty, length)
+				continue
+			}
 		}
 	}
 }
