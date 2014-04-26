@@ -186,6 +186,8 @@ func (d *DB) Close() error {
 	if d.fileLock == nil {
 		return err
 	}
+	err = firstError(err, d.log.Close())
+	err = firstError(err, d.logFile.Close())
 	err = firstError(err, d.fileLock.Close())
 	d.fileLock = nil
 	return err
