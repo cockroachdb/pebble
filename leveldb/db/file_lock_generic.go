@@ -2,11 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build !linux,!amd64
-// +build !darwin,!amd64
-// +build !openbsd,!amd64
-// +build !freebsd
-// +build !windows
+// +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd,!windows
 
 package db
 
