@@ -14,7 +14,7 @@ import (
 
 	"code.google.com/p/leveldb-go/leveldb/crc"
 	"code.google.com/p/leveldb-go/leveldb/db"
-	"code.google.com/p/snappy-go/snappy"
+	"github.com/golang/snappy/snappy"
 )
 
 // blockHandle is the file offset and length of a block.

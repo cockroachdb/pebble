@@ -14,7 +14,7 @@ import (
 
 	"code.google.com/p/leveldb-go/leveldb/crc"
 	"code.google.com/p/leveldb-go/leveldb/db"
-	"code.google.com/p/snappy-go/snappy"
+	"github.com/golang/snappy/snappy"
 )
 
 // indexEntry is a block handle and the length of the separator key.
