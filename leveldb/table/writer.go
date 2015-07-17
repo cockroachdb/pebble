@@ -14,7 +14,7 @@ import (
 
 	"code.google.com/p/leveldb-go/leveldb/crc"
 	"code.google.com/p/leveldb-go/leveldb/db"
-	"github.com/golang/snappy/snappy"
+	"github.com/golang/snappy"
 )
 
 // indexEntry is a block handle and the length of the separator key.
@@ -171,10 +171,7 @@ func (w *Writer) finishBlock() (blockHandle, error) {
 	b := w.buf.Bytes()
 	w.tmp[0] = noCompressionBlockType
 	if w.compression == db.SnappyCompression {
-		compressed, err := snappy.Encode(w.compressedBuf, b)
-		if err != nil {
-			return blockHandle{}, err
-		}
+		compressed := snappy.Encode(w.compressedBuf, b)
 		w.compressedBuf = compressed[:cap(compressed)]
 		if len(compressed) < len(b)-len(b)/8 {
 			w.tmp[0] = snappyCompressionBlockType
