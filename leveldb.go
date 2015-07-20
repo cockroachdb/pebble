@@ -5,7 +5,7 @@
 // Package leveldb provides an ordered key/value store.
 //
 // BUG: This package is incomplete.
-package leveldb
+package leveldb // import "github.com/golang/leveldb"
 
 import (
 	"bytes"

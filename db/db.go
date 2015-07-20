@@ -29,7 +29,7 @@
 //	db := memdb.New(&db.Options{
 //		Comparer: myComparer,
 //	})
-package db
+package db // import "github.com/golang/leveldb/db"
 
 import (
 	"errors"

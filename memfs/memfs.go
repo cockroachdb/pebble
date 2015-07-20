@@ -6,7 +6,7 @@
 //
 // It can be useful for tests, and also for LevelDB instances that should not
 // ever touch persistent storage, such as a web browser's private browsing mode.
-package memfs
+package memfs // import "github.com/golang/leveldb/memfs"
 
 import (
 	"bytes"

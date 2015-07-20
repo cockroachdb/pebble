@@ -60,7 +60,7 @@ To write a table with three entries:
 	}
 	return w.Close()
 */
-package table
+package table // import "github.com/golang/leveldb/table"
 
 /*
 The table file format looks like:

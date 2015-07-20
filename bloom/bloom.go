@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package bloom implements Bloom filters.
-package bloom
+package bloom // import "github.com/golang/leveldb/bloom"
 
 // Filter is an encoded set of []byte keys.
 type Filter []byte

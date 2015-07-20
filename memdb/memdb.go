@@ -9,7 +9,7 @@
 // deleted or values are updated with shorter slices. Callers of the package
 // are responsible for explicitly compacting a MemDB into a separate DB
 // (whether in-memory or on-disk) when appropriate.
-package memdb
+package memdb // import "github.com/golang/leveldb/memdb"
 
 import (
 	"encoding/binary"

@@ -69,7 +69,7 @@
 // The wire format allows for limited recovery in the face of data corruption:
 // on a format error (such as a checksum mismatch), the reader moves to the
 // next block and looks for the next full or first chunk.
-package record
+package record // import "github.com/golang/leveldb/record"
 
 // TODO: implement the recovery algorithm.
 
