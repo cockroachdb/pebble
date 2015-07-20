@@ -7,7 +7,7 @@ package leveldb
 import (
 	"bytes"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
+	"github.com/golang/leveldb/db"
 )
 
 // internalKey is a key used for the in-memory and on-disk partial DBs that

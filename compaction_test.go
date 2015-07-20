@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
-	"code.google.com/p/leveldb-go/leveldb/memfs"
-	"code.google.com/p/leveldb-go/leveldb/table"
+	"github.com/golang/leveldb/db"
+	"github.com/golang/leveldb/memfs"
+	"github.com/golang/leveldb/table"
 )
 
 func TestPickCompaction(t *testing.T) {

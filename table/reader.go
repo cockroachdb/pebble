@@ -12,8 +12,8 @@ import (
 	"io"
 	"sort"
 
-	"code.google.com/p/leveldb-go/leveldb/crc"
-	"code.google.com/p/leveldb-go/leveldb/db"
+	"github.com/golang/leveldb/crc"
+	"github.com/golang/leveldb/db"
 	"github.com/golang/snappy"
 )
 

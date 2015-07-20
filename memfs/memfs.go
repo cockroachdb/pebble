@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
+	"github.com/golang/leveldb/db"
 )
 
 const sep = string(os.PathSeparator)

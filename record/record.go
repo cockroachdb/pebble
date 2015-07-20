@@ -83,7 +83,7 @@ import (
 	"errors"
 	"io"
 
-	"code.google.com/p/leveldb-go/leveldb/crc"
+	"github.com/golang/leveldb/crc"
 )
 
 // These constants are part of the wire format and should not be changed.

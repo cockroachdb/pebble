@@ -9,8 +9,8 @@ import (
 	"io"
 	"os"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
-	"code.google.com/p/leveldb-go/leveldb/record"
+	"github.com/golang/leveldb/db"
+	"github.com/golang/leveldb/record"
 )
 
 // TODO: describe what a versionSet is.

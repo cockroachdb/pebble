@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
-	"code.google.com/p/leveldb-go/leveldb/memdb"
-	"code.google.com/p/leveldb-go/leveldb/record"
-	"code.google.com/p/leveldb-go/leveldb/table"
+	"github.com/golang/leveldb/db"
+	"github.com/golang/leveldb/memdb"
+	"github.com/golang/leveldb/record"
+	"github.com/golang/leveldb/table"
 )
 
 const (

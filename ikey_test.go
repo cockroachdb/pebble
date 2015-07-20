@@ -7,7 +7,7 @@ package leveldb
 import (
 	"testing"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
+	"github.com/golang/leveldb/db"
 )
 
 func TestInternalKey(t *testing.T) {

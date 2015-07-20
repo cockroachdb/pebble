@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
+	"github.com/golang/leveldb/db"
 )
 
 // count returns the number of entries in a DB.

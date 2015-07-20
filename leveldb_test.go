@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"code.google.com/p/leveldb-go/leveldb/db"
-	"code.google.com/p/leveldb-go/leveldb/memfs"
+	"github.com/golang/leveldb/db"
+	"github.com/golang/leveldb/memfs"
 )
 
 func TestErrorIfDBExists(t *testing.T) {
