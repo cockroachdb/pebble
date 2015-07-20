@@ -22,7 +22,7 @@ import (
 var wordCount = map[string]string{}
 
 func init() {
-	f, err := os.Open("../../testdata/h.txt")
+	f, err := os.Open("../testdata/h.txt")
 	if err != nil {
 		panic(err)
 	}
@@ -178,7 +178,7 @@ func build(compression db.Compression) (db.File, error) {
 
 func TestReader(t *testing.T) {
 	// Check that we can read a pre-made table.
-	f, err := os.Open("../../testdata/h.sst")
+	f, err := os.Open("../testdata/h.sst")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestWriter(t *testing.T) {
 func TestNoCompressionOutput(t *testing.T) {
 	// Check that a freshly made NoCompression table is byte-for-byte equal
 	// to a pre-made table.
-	a, err := ioutil.ReadFile("../../testdata/h.no-compression.sst")
+	a, err := ioutil.ReadFile("../testdata/h.no-compression.sst")
 	if err != nil {
 		t.Fatal(err)
 	}

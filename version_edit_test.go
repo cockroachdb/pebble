@@ -156,7 +156,7 @@ func TestVersionEditDecode(t *testing.T) {
 
 loop:
 	for _, tc := range testCases {
-		f, err := os.Open("../testdata/" + tc.filename)
+		f, err := os.Open("testdata/" + tc.filename)
 		if err != nil {
 			t.Errorf("filename=%q: open error: %v", tc.filename, err)
 			continue

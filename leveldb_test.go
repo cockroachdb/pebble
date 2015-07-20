@@ -196,7 +196,7 @@ func TestBasicReads(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		fs, err := cloneFileSystem(db.DefaultFileSystem, "../testdata/"+tc.dirname)
+		fs, err := cloneFileSystem(db.DefaultFileSystem, "testdata/"+tc.dirname)
 		if err != nil {
 			t.Errorf("%s: cloneFileSystem failed: %v", tc.dirname, err)
 			continue
