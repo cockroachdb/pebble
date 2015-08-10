@@ -28,11 +28,15 @@
 //				break
 //			}
 //			if err != nil {
-//				return nil, err
+//				log.Printf("recovering from %v", err)
+//				r.Recover()
+//				continue
 //			}
 //			s, err := ioutil.ReadAll(rec)
 //			if err != nil {
-//				return nil, err
+//				log.Printf("recovering from %v", err)
+//				r.Recover()
+//				continue
 //			}
 //			ss = append(ss, string(s))
 //		}
@@ -70,8 +74,6 @@
 // on a format error (such as a checksum mismatch), the reader moves to the
 // next block and looks for the next full or first chunk.
 package record // import "github.com/golang/leveldb/record"
-
-// TODO: implement the recovery algorithm.
 
 // The C++ Level-DB code calls this the log, but it has been renamed to record
 // to avoid clashing with the standard log package, and because it is generally
@@ -181,7 +183,6 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		}
 		r.i, r.j, r.n = 0, 0, n
 	}
-	panic("unreachable")
 }
 
 // Next returns a reader for the next record. It returns io.EOF if there are no
@@ -199,6 +200,21 @@ func (r *Reader) Next() (io.Reader, error) {
 	}
 	r.started = true
 	return singleReader{r, r.seq}, nil
+}
+
+// Recover clears any errors read so far, so that calling Next will start
+// reading from the next good 32KiB block. If there are no such blocks, Next
+// will return io.EOF.
+//
+// Recover also marks the current reader, the one most recently returned by
+// Next, as stale.
+func (r *Reader) Recover() {
+	r.err = nil
+	// Discard the rest of the current block.
+	r.i, r.j, r.last = r.n, r.n, false
+	// Invalidate any outstanding singleReader.
+	r.seq++
+	return
 }
 
 type singleReader struct {

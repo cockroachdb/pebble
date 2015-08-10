@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"os"
 	"strings"
 	"testing"
 )
@@ -310,5 +311,150 @@ func TestStaleWriter(t *testing.T) {
 	}
 	if _, err := w1.Write([]byte("0")); err == nil || !strings.Contains(err.Error(), "stale") {
 		t.Fatalf("stale write #1: unexpected error: %v", err)
+	}
+}
+
+func TestBasicRecover(t *testing.T) {
+	records := [][]byte{
+		[]byte(strings.Repeat("a", blockSize-headerSize)),
+		[]byte(strings.Repeat("b", blockSize-headerSize)),
+		[]byte(strings.Repeat("c", blockSize-headerSize)),
+	}
+
+	buf := new(bytes.Buffer)
+	w := NewWriter(buf)
+
+	for i := 0; i < len(records); i++ {
+		wRec, err := w.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = wRec.Write(records[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Close()
+
+	// Corrupt the checksum of the second record in our file.
+	rawBufSlice := buf.Bytes()
+	rawBufSlice[blockSize+0] = 0xef
+	rawBufSlice[blockSize+1] = 0xbe
+	rawBufSlice[blockSize+2] = 0xad
+	rawBufSlice[blockSize+3] = 0xde
+
+	// The first record should be read/processed just fine.
+	underlyingReader := bytes.NewReader(rawBufSlice)
+	r := NewReader(underlyingReader)
+	r0, err := r.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r0Data, err := ioutil.ReadAll(r0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(r0Data, records[0]) {
+		t.Fatal("Unexpected output in r0's data")
+	}
+
+	// This record should present problems since the checksum is wrong.
+	_, err = r.Next()
+	if err == nil {
+		t.Fatal("Expected an error while reading a corrupted record")
+	}
+
+	if !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("Unexpected error returned: %s", err)
+	}
+
+	// Attempt to recover from the checksum error we intentionally caused.
+	r.Recover()
+
+	currentOffset, err := underlyingReader.Seek(0, os.SEEK_CUR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if currentOffset != blockSize*2 {
+		t.Fatalf("current offset: got %d, want %d", currentOffset, blockSize*2)
+	}
+
+	r2, err := r.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := ioutil.ReadAll(r2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(data, records[2]) {
+		t.Fatal("Unexpected output in recovered data")
+	}
+}
+
+func TestComplexRecover(t *testing.T) {
+	// The first record will be blockSize * 3 bytes long. Since each block has a
+	// 6 byte header, the first record will roll over into 4 blocks.
+	records := [][]byte{
+		[]byte(strings.Repeat("a", blockSize*3)),
+		[]byte(strings.Repeat("b", blockSize-headerSize)),
+		[]byte(strings.Repeat("c", blockSize-headerSize)),
+	}
+
+	buf := new(bytes.Buffer)
+	w := NewWriter(buf)
+	for i := 0; i < 3; i++ {
+		wRec, err := w.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err = wRec.Write(records[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Close()
+
+	// Now corrupt the checksum for the portion of the first record that exists in the 4th block.
+	rawBufSlice := buf.Bytes()
+	rawBufSlice[blockSize*3+0] = 0xef
+	rawBufSlice[blockSize*3+1] = 0xbe
+	rawBufSlice[blockSize*3+2] = 0xad
+	rawBufSlice[blockSize*3+3] = 0xde
+
+	// The first record should fail, but only when we read deeper beyond the first block.
+	r := NewReader(bytes.NewReader(rawBufSlice))
+	r0, err := r.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// err below should reference a checksum mismatch.
+	_, err = ioutil.ReadAll(r0)
+	if err == nil {
+		t.Fatal("Exptected a checksum mismatch error, got nil")
+	}
+	if !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("Unexpected error returned: %s", err)
+	}
+
+	// Recover from the checksum mismatch.
+	r.Recover()
+
+	// All of the data in the second record is lost because the first record shared a partial
+	// block with it. The second record also overlapped into the block with the third record.
+	// Recovery was able to jump to that block, skipping over the end of the second record and
+	// start parsing the third record which we verify below.
+	r2, err := r.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r2Data, _ := ioutil.ReadAll(r2)
+	if !bytes.Equal(r2Data, records[2]) {
+		t.Fatal("Unexpected output in r2's data")
 	}
 }
