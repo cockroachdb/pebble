@@ -47,14 +47,14 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 		}
 		ww, err := w.Next()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("writer.Next: %v", err)
 		}
 		if _, err := ww.Write([]byte(s)); err != nil {
-			t.Fatal(err)
+			t.Fatalf("Write: %v", err)
 		}
 	}
 	if err := w.Close(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Close: %v", err)
 	}
 
 	reset()
@@ -66,11 +66,11 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 		}
 		rr, err := r.Next()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("reader.Next: %v", err)
 		}
 		x, err := ioutil.ReadAll(rr)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("ReadAll: %v", err)
 		}
 		if string(x) != s {
 			t.Fatalf("got %q, want %q", short(string(x)), short(s))
@@ -232,7 +232,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 		ww.Write([]byte(big(s, length)))
 	}
 	if err := w.Close(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Close: %v", err)
 	}
 
 	r := NewReader(buf)
@@ -240,7 +240,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 		rr, _ := r.Next()
 		_, err := io.ReadFull(rr, p)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("ReadFull: %v", err)
 		}
 		want := string(uint8(i)) + "123456789"
 		if got := string(p); got != want {
@@ -255,26 +255,26 @@ func TestStaleReader(t *testing.T) {
 	w := NewWriter(buf)
 	w0, err := w.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("writer.Next: %v", err)
 	}
 	w0.Write([]byte("0"))
 	w1, err := w.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("writer.Next: %v", err)
 	}
 	w1.Write([]byte("11"))
 	if err := w.Close(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Close: %v", err)
 	}
 
 	r := NewReader(buf)
 	r0, err := r.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("reader.Next: %v", err)
 	}
 	r1, err := r.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("reader.Next: %v", err)
 	}
 	p := make([]byte, 1)
 	if _, err := r0.Read(p); err == nil || !strings.Contains(err.Error(), "stale") {
@@ -294,11 +294,11 @@ func TestStaleWriter(t *testing.T) {
 	w := NewWriter(buf)
 	w0, err := w.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("writer.Next: %v", err)
 	}
 	w1, err := w.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("writer.Next: %v", err)
 	}
 	if _, err := w0.Write([]byte("0")); err == nil || !strings.Contains(err.Error(), "stale") {
 		t.Fatalf("stale write #0: unexpected error: %v", err)
@@ -314,145 +314,139 @@ func TestStaleWriter(t *testing.T) {
 	}
 }
 
+func writeRecords(records [][]byte) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	w := NewWriter(buf)
+	for _, rec := range records {
+		wRec, err := w.Next()
+		if err != nil {
+			return nil, err
+		}
+		if _, err = wRec.Write(rec); err != nil {
+			return nil, err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func TestBasicRecover(t *testing.T) {
 	records := [][]byte{
 		[]byte(strings.Repeat("a", blockSize-headerSize)),
 		[]byte(strings.Repeat("b", blockSize-headerSize)),
 		[]byte(strings.Repeat("c", blockSize-headerSize)),
 	}
-
-	buf := new(bytes.Buffer)
-	w := NewWriter(buf)
-
-	for i := 0; i < len(records); i++ {
-		wRec, err := w.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = wRec.Write(records[i]); err != nil {
-			t.Fatal(err)
-		}
+	buf, err := writeRecords(records)
+	if err != nil {
+		t.Fatalf("writeRecords: %v", err)
 	}
-	w.Close()
 
-	// Corrupt the checksum of the second record in our file.
-	rawBufSlice := buf.Bytes()
-	rawBufSlice[blockSize+0] = 0xef
-	rawBufSlice[blockSize+1] = 0xbe
-	rawBufSlice[blockSize+2] = 0xad
-	rawBufSlice[blockSize+3] = 0xde
+	// Corrupt the checksum of the second record r1 in our file.
+	buf[blockSize+0] = 0xef
+	buf[blockSize+1] = 0xbe
+	buf[blockSize+2] = 0xad
+	buf[blockSize+3] = 0xde
 
-	// The first record should be read/processed just fine.
-	underlyingReader := bytes.NewReader(rawBufSlice)
+	underlyingReader := bytes.NewReader(buf)
 	r := NewReader(underlyingReader)
+
+	// The first record r0 should be read just fine.
 	r0, err := r.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Next: %v", err)
 	}
-
 	r0Data, err := ioutil.ReadAll(r0)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ReadAll: %v", err)
 	}
-
 	if !bytes.Equal(r0Data, records[0]) {
 		t.Fatal("Unexpected output in r0's data")
 	}
 
-	// This record should present problems since the checksum is wrong.
+	// The next record should have a checksum mismatch.
 	_, err = r.Next()
 	if err == nil {
 		t.Fatal("Expected an error while reading a corrupted record")
 	}
-
 	if !strings.Contains(err.Error(), "checksum mismatch") {
-		t.Fatalf("Unexpected error returned: %s", err)
+		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
-	// Attempt to recover from the checksum error we intentionally caused.
+	// Recover from that checksum mismatch.
 	r.Recover()
-
 	currentOffset, err := underlyingReader.Seek(0, os.SEEK_CUR)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("current offset: %v", err)
 	}
 	if currentOffset != blockSize*2 {
 		t.Fatalf("current offset: got %d, want %d", currentOffset, blockSize*2)
 	}
 
+	// The third record r2 should be read just fine.
 	r2, err := r.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Next: %v", err)
 	}
-
-	data, err := ioutil.ReadAll(r2)
+	r2Data, err := ioutil.ReadAll(r2)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ReadAll: %v", err)
 	}
-
-	if !bytes.Equal(data, records[2]) {
-		t.Fatal("Unexpected output in recovered data")
+	if !bytes.Equal(r2Data, records[2]) {
+		t.Fatal("Unexpected output in r2's data")
 	}
 }
 
 func TestComplexRecover(t *testing.T) {
-	// The first record will be blockSize * 3 bytes long. Since each block has a
-	// 6 byte header, the first record will roll over into 4 blocks.
+	// The first record will be blockSize * 3 bytes long. Since each block has
+	// a 6 byte header, the first record will roll over into 4 blocks.
 	records := [][]byte{
 		[]byte(strings.Repeat("a", blockSize*3)),
 		[]byte(strings.Repeat("b", blockSize-headerSize)),
 		[]byte(strings.Repeat("c", blockSize-headerSize)),
 	}
-
-	buf := new(bytes.Buffer)
-	w := NewWriter(buf)
-	for i := 0; i < 3; i++ {
-		wRec, err := w.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if _, err = wRec.Write(records[i]); err != nil {
-			t.Fatal(err)
-		}
+	buf, err := writeRecords(records)
+	if err != nil {
+		t.Fatalf("writeRecords: %v", err)
 	}
-	w.Close()
 
-	// Now corrupt the checksum for the portion of the first record that exists in the 4th block.
-	rawBufSlice := buf.Bytes()
-	rawBufSlice[blockSize*3+0] = 0xef
-	rawBufSlice[blockSize*3+1] = 0xbe
-	rawBufSlice[blockSize*3+2] = 0xad
-	rawBufSlice[blockSize*3+3] = 0xde
+	// Corrupt the checksum for the portion of the first record that exists in
+	// the 4th block.
+	buf[blockSize*3+0] = 0xef
+	buf[blockSize*3+1] = 0xbe
+	buf[blockSize*3+2] = 0xad
+	buf[blockSize*3+3] = 0xde
 
-	// The first record should fail, but only when we read deeper beyond the first block.
-	r := NewReader(bytes.NewReader(rawBufSlice))
+	// The first record should fail, but only when we read deeper beyond the
+	// first block.
+	r := NewReader(bytes.NewReader(buf))
 	r0, err := r.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Next: %v", err)
 	}
 
-	// err below should reference a checksum mismatch.
+	// Reading deeper should yield a checksum mismatch.
 	_, err = ioutil.ReadAll(r0)
 	if err == nil {
 		t.Fatal("Exptected a checksum mismatch error, got nil")
 	}
 	if !strings.Contains(err.Error(), "checksum mismatch") {
-		t.Fatalf("Unexpected error returned: %s", err)
+		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
-	// Recover from the checksum mismatch.
+	// Recover from that checksum mismatch.
 	r.Recover()
 
-	// All of the data in the second record is lost because the first record shared a partial
-	// block with it. The second record also overlapped into the block with the third record.
-	// Recovery was able to jump to that block, skipping over the end of the second record and
-	// start parsing the third record which we verify below.
+	// All of the data in the second record r1 is lost because the first record
+	// r0 shared a partial block with it. The second record also overlapped
+	// into the block with the third record r2. Recovery should jump to that
+	// block, skipping over the end of the second record and start parsing the
+	// third record.
 	r2, err := r.Next()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Next: %v", err)
 	}
-
 	r2Data, _ := ioutil.ReadAll(r2)
 	if !bytes.Equal(r2Data, records[2]) {
 		t.Fatal("Unexpected output in r2's data")
