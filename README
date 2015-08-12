@@ -1,3 +1,7 @@
+# WARNING: This is an incomplete work-in-progress.
+
+## It is not ready for production use. Some features aren't implemented yet. Documentation is missing.
+
 The LevelDB key-value database in the Go programming language.
 
 To download and install from source:
