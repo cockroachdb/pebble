@@ -119,6 +119,8 @@ type Reader struct {
 	n int
 	// started is whether Next has been called at all.
 	started bool
+	// recovering is true when recovering from corruption.
+	recovering bool
 	// last is whether the current chunk is the last chunk of the record.
 	last bool
 	// err is any accumulated error.
@@ -144,23 +146,31 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			chunkType := r.buf[r.j+6]
 
 			if checksum == 0 && length == 0 && chunkType == 0 {
-				if wantFirst {
+				if wantFirst || r.recovering {
 					// Skip the rest of the block, if it looks like it is all zeroes.
 					// This is common if the record file was created via mmap.
-					r.i = r.n
-					r.j = r.n
+					// Set r.err to be an error so r.Recover actually recovers.
+					r.err = errors.New("leveldb/record: block appears to be zeroed")
+					r.Recover()
 					continue
-				} else {
-					return errors.New("leveldb/record: invalid chunk")
 				}
+				return errors.New("leveldb/record: invalid chunk")
 			}
 
 			r.i = r.j + headerSize
 			r.j = r.j + headerSize + int(length)
 			if r.j > r.n {
+				if r.recovering {
+					r.Recover()
+					continue
+				}
 				return errors.New("leveldb/record: invalid chunk (length overflows block)")
 			}
 			if checksum != crc.New(r.buf[r.i-1:r.j]).Value() {
+				if r.recovering {
+					r.Recover()
+					continue
+				}
 				return errors.New("leveldb/record: invalid chunk (checksum mismatch)")
 			}
 			if wantFirst {
@@ -169,6 +179,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				}
 			}
 			r.last = chunkType == fullChunkType || chunkType == lastChunkType
+			r.recovering = false
 			return nil
 		}
 		if r.n < blockSize && r.started {
@@ -204,11 +215,14 @@ func (r *Reader) Next() (io.Reader, error) {
 
 // Recover clears any errors read so far, so that calling Next will start
 // reading from the next good 32KiB block. If there are no such blocks, Next
-// will return io.EOF.
-//
-// Recover also marks the current reader, the one most recently returned by
-// Next, as stale.
+// will return io.EOF. Recover also marks the current reader, the one most
+// recently returned by Next, as stale. If Recover is called without any
+// prior error, then Recover is a no-op.
 func (r *Reader) Recover() {
+	if r.err == nil {
+		return
+	}
+	r.recovering = true
 	r.err = nil
 	// Discard the rest of the current block.
 	r.i, r.j, r.last = r.n, r.n, false
