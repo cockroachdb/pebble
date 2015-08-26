@@ -147,8 +147,10 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 
 			if checksum == 0 && length == 0 && chunkType == 0 {
 				if wantFirst || r.recovering {
-					// Skip the rest of the block, if it looks like it is all zeroes.
-					// This is common if the record file was created via mmap.
+					// Skip the rest of the block, if it looks like it is all
+					// zeroes. This is common if the record file was created
+					// via mmap.
+					//
 					// Set r.err to be an error so r.Recover actually recovers.
 					r.err = errors.New("leveldb/record: block appears to be zeroed")
 					r.Recover()

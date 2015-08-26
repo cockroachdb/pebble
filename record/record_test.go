@@ -28,11 +28,14 @@ func big(partial string, n int) string {
 	return strings.Repeat(partial, n/len(partial)+1)[:n]
 }
 
-func TestEmpty(t *testing.T) {
-	buf := new(bytes.Buffer)
-	r := NewReader(buf)
-	if _, err := r.Next(); err != io.EOF {
-		t.Fatalf("got %v, want %v", err, io.EOF)
+// TestZeroBlocks tests that reading nothing but all-zero blocks gives io.EOF.
+// This includes decoding an empty stream.
+func TestZeroBlocks(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		r := NewReader(bytes.NewReader(make([]byte, i*blockSize)))
+		if _, err := r.Next(); err != io.EOF {
+			t.Fatalf("%d blocks: got %v, want %v", i, err, io.EOF)
+		}
 	}
 }
 
