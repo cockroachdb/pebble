@@ -525,7 +525,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 	// Corrupt the checksum for the portion of the first record that exists in the 4th block.
 	corruptBlock(recs.buf, 3)
 
-	// Now corrupt the two blocks in a row that correspond to recs.records[{2,3}].
+	// Now corrupt the two blocks in a row that correspond to recs.records[2:4].
 	corruptBlock(recs.buf, 4)
 	corruptBlock(recs.buf, 5)
 
@@ -579,15 +579,14 @@ func verifyLastBlockRecover(recs *testRecords) error {
 			r.Recover()
 		case len(recs.records):
 			if err != io.EOF {
-				fmt.Errorf("Expected io.EOF, got %v", err)
+				return fmt.Errorf("Expected io.EOF, got %v", err)
 			}
 		default:
 			if err != nil {
-				fmt.Errorf("Next: %v", err)
+				return fmt.Errorf("Next: %v", err)
 			}
 		}
 	}
-
 	return nil
 }
 
