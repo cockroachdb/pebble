@@ -42,7 +42,7 @@ func TestLock(t *testing.T) {
 	// Avoid truncating an existing, non-empty file.
 	fi, err := os.Stat(filename)
 	if err == nil && fi.Size() != 0 {
-		t.Fatal("The file %s is not empty", filename)
+		t.Fatalf("The file %s is not empty", filename)
 	}
 
 	t.Logf("Locking %s\n", filename)

@@ -771,7 +771,7 @@ func TestNoLastRecordOffset(t *testing.T) {
 	}
 
 	if _, err := w.LastRecordOffset(); err != ErrNoLastRecord {
-		t.Fatal("LastRecordOffset: got: %v, want ErrNoLastRecord", err)
+		t.Fatalf("LastRecordOffset: got: %v, want ErrNoLastRecord", err)
 	}
 
 	writer, err := w.Next()

@@ -173,7 +173,6 @@ loop:
 		}
 		return ret
 	}
-	panic("unreachable")
 }
 
 // checkOrdering checks that the files are consistent with respect to
