@@ -320,6 +320,7 @@ func TestStaleWriter(t *testing.T) {
 
 type testRecords struct {
 	records [][]byte // The raw value of each record.
+	offsets []int64  // The offset of each record within buf, derived from writer.LastRecordOffset.
 	buf     []byte   // The serialized records form of all records.
 }
 
@@ -329,18 +330,23 @@ type testRecords struct {
 func makeTestRecords(recordLengths ...int) (*testRecords, error) {
 	ret := &testRecords{}
 	ret.records = make([][]byte, len(recordLengths))
+	ret.offsets = make([]int64, len(recordLengths))
 	for i, n := range recordLengths {
 		ret.records[i] = bytes.Repeat([]byte{byte(i)}, n)
 	}
 
 	buf := new(bytes.Buffer)
 	w := NewWriter(buf)
-	for _, rec := range ret.records {
+	for i, rec := range ret.records {
 		wRec, err := w.Next()
 		if err != nil {
 			return nil, err
 		}
 		if _, err = wRec.Write(rec); err != nil {
+			return nil, err
+		}
+		ret.offsets[i], err = w.LastRecordOffset()
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -634,5 +640,152 @@ func TestRecoverLastCompleteBlock(t *testing.T) {
 	// Verify Recover works when the last block is corrupted.
 	if err := verifyLastBlockRecover(recs); err != nil {
 		t.Fatalf("verifyLastBlockRecover: %v", err)
+	}
+}
+
+func TestSeekRecord(t *testing.T) {
+	recs, err := makeTestRecords(
+		// The first record will consume 3 entire blocks but a fraction of the 4th.
+		blockSize*3,
+		// The second record will completely fill the remainder of the 4th block.
+		3*(blockSize-headerSize)-2*blockSize-2*headerSize,
+		// Consume the entirety of the 5th block.
+		blockSize-headerSize,
+		// Consume the entirety of the 6th block.
+		blockSize-headerSize,
+		// Consume roughly half of the 7th block.
+		blockSize/2,
+	)
+	if err != nil {
+		t.Fatalf("makeTestRecords: %v", err)
+	}
+
+	r := NewReader(bytes.NewReader(recs.buf))
+	// Seek to a valid block offset, but within a multiblock record. This should cause the next call to
+	// Next after SeekRecord to return the next valid FIRST/FULL chunk of the subsequent record.
+	err = r.SeekRecord(blockSize)
+	if err != nil {
+		t.Fatalf("SeekRecord: %v", err)
+	}
+	rec, err := r.Next()
+	if err != nil {
+		t.Fatalf("Next: %v", err)
+	}
+	rData, _ := ioutil.ReadAll(rec)
+	if !bytes.Equal(rData, recs.records[1]) {
+		t.Fatalf("Unexpected output in record 1's data, got %v want %v", rData, recs.records[1])
+	}
+
+	// Seek 3 bytes into the second block, which is still in the middle of the first record, but not
+	// at a valid chunk boundary. Should result in an error upon calling r.Next.
+	err = r.SeekRecord(blockSize + 3)
+	if err != nil {
+		t.Fatalf("SeekRecord: %v", err)
+	}
+	if _, err = r.Next(); err == nil {
+		t.Fatalf("Expected an error seeking to an invalid chunk boundary")
+	}
+	r.Recover()
+
+	// Seek to the fifth block and verify all records can be read as appropriate.
+	err = r.SeekRecord(blockSize * 4)
+	if err != nil {
+		t.Fatalf("SeekRecord: %v", err)
+	}
+
+	check := func(i int) {
+		for ; i < len(recs.records); i++ {
+			rec, err := r.Next()
+			if err != nil {
+				t.Fatalf("Next: %v", err)
+			}
+
+			rData, _ := ioutil.ReadAll(rec)
+			if !bytes.Equal(rData, recs.records[i]) {
+				t.Fatalf("Unexpected output in record #%d's data, got %v want %v", i, rData, recs.records[i])
+			}
+		}
+	}
+	check(2)
+
+	// Seek back to the fourth block, and read all subsequent records and verify them.
+	err = r.SeekRecord(blockSize * 3)
+	if err != nil {
+		t.Fatalf("SeekRecord: %v", err)
+	}
+	check(1)
+
+	// Now seek past the end of the file and verify it causes an error.
+	err = r.SeekRecord(1 << 20)
+	if err == nil {
+		t.Fatalf("Seek past the end of a file didn't cause an error")
+	}
+	if err != io.EOF {
+		t.Fatalf("Seeking past EOF raised unexpected error: %v", err)
+	}
+	r.Recover() // Verify recovery works.
+
+	// Validate the current records are returned after seeking to a valid offset.
+	err = r.SeekRecord(blockSize * 4)
+	if err != nil {
+		t.Fatalf("SeekRecord: %v", err)
+	}
+	check(2)
+}
+
+func TestLastRecordOffset(t *testing.T) {
+	recs, err := makeTestRecords(
+		// The first record will consume 3 entire blocks but a fraction of the 4th.
+		blockSize*3,
+		// The second record will completely fill the remainder of the 4th block.
+		3*(blockSize-headerSize)-2*blockSize-2*headerSize,
+		// Consume the entirety of the 5th block.
+		blockSize-headerSize,
+		// Consume the entirety of the 6th block.
+		blockSize-headerSize,
+		// Consume roughly half of the 7th block.
+		blockSize/2,
+	)
+	if err != nil {
+		t.Fatalf("makeTestRecords: %v", err)
+	}
+
+	wants := []int64{0, 98332, 131072, 163840, 196608}
+	for i, got := range recs.offsets {
+		if want := wants[i]; got != want {
+			t.Errorf("record #%d: got %d, want %d", i, got, want)
+		}
+	}
+}
+
+func TestNoLastRecordOffset(t *testing.T) {
+	buf := new(bytes.Buffer)
+	w := NewWriter(buf)
+
+	if _, err := w.LastRecordOffset(); err != ErrNoLastRecord {
+		t.Fatalf("Expected ErrNoLastRecord, got: %v", err)
+	}
+
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.LastRecordOffset(); err != ErrNoLastRecord {
+		t.Fatal("LastRecordOffset: got: %v, want ErrNoLastRecord", err)
+	}
+
+	writer, err := w.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := writer.Write([]byte("testrecord")); err != nil {
+		t.Fatal(err)
+	}
+
+	if off, err := w.LastRecordOffset(); err != nil {
+		t.Fatalf("LastRecordOffset: %v", err)
+	} else if off != 0 {
+		t.Fatalf("LastRecordOffset: got %d, want 0", off)
 	}
 }
