@@ -14,7 +14,7 @@ import (
 	"github.com/golang/leveldb/db"
 )
 
-var lockFilename = flag.String("lockfile", "", "File to lock.  Non-empty value pimples child process.")
+var lockFilename = flag.String("lockfile", "", "File to lock. A non-empty value implies a child process.")
 
 func spawn(prog, filename string) ([]byte, error) {
 	return exec.Command(prog, "-lockfile", filename, "-test.v",
@@ -31,7 +31,7 @@ func TestLock(t *testing.T) {
 	if child {
 		filename = *lockFilename
 	} else {
-		f, err := ioutil.TempFile("", "")
+		f, err := ioutil.TempFile("", "golang-leveldb-db-testlock-")
 		if err != nil {
 			t.Fatal(err)
 		}

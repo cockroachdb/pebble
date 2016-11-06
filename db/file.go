@@ -56,7 +56,7 @@ type FileSystem interface {
 	// Closer to release the lock.
 	//
 	// On Linux and OSX, a lock has the same semantics as fcntl(2)'s advisory
-	// locks.  In particular, closing any other file descriptor for the same
+	// locks. In particular, closing any other file descriptor for the same
 	// file will release the lock prematurely.
 	//
 	// Attempting to lock a file that is already locked by the current process

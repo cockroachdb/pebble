@@ -632,19 +632,22 @@ func TestCompaction(t *testing.T) {
 			}
 		}
 
-		// Allow any writes to the memfs to complete.
-		time.Sleep(1 * time.Millisecond)
-
-		gotMem, gotDisk, err := getAll()
+		// try backs off to allow any writes to the memfs to complete.
+		err := try(100*time.Microsecond, 20*time.Second, func() error {
+			gotMem, gotDisk, err := getAll()
+			if err != nil {
+				return err
+			}
+			if gotMem != tc.wantMem {
+				return fmt.Errorf("mem: got %q, want %q", gotMem, tc.wantMem)
+			}
+			if gotDisk != tc.wantDisk {
+				return fmt.Errorf("ldb: got %q, want %q", gotDisk, tc.wantDisk)
+			}
+			return nil
+		})
 		if err != nil {
 			t.Errorf("%q: %v", tc.key, err)
-			break
-		}
-		if gotMem != tc.wantMem {
-			t.Errorf("%q: mem: got %q, want %q", tc.key, gotMem, tc.wantMem)
-		}
-		if gotDisk != tc.wantDisk {
-			t.Errorf("%q: ldb: got %q, want %q", tc.key, gotDisk, tc.wantDisk)
 		}
 	}
 

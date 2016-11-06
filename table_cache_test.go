@@ -53,43 +53,66 @@ func (fs *tableCacheTestFS) Open(name string) (db.File, error) {
 	return &tableCacheTestFile{f, fs, name}, nil
 }
 
-func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCache, f func(i, gotO, gotC int)) {
-	// Let any clean-up goroutines do their work.
-	time.Sleep(1 * time.Millisecond)
-
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
-	numStillOpen := 0
-	for i := 0; i < tableCacheTestNumTables; i++ {
-		filename := dbFilename("", fileTypeTable, uint64(i))
-		gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
-		if gotO > gotC {
-			numStillOpen++
-		}
-		if gotC != gotO && gotC != gotO-1 {
-			t.Errorf("i=%d: table closed too many or too few times: opened %d times, closed %d times", i, gotO, gotC)
-		}
-		if f != nil {
-			f(i, gotO, gotC)
-		}
+func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCache, f func(i, gotO, gotC int) error) {
+	if err := fs.validateOpenTables(f); err != nil {
+		t.Error(err)
+		return
 	}
-	if numStillOpen > tableCacheTestCacheSize {
-		t.Errorf("numStillOpen is %d, want <= %d", numStillOpen, tableCacheTestCacheSize)
-	}
-
-	// Close the tableCache and let any clean-up goroutines do their work.
-	fs.mu.Unlock()
 	c.Close()
-	time.Sleep(1 * time.Millisecond)
-	fs.mu.Lock()
-
-	for i := 0; i < tableCacheTestNumTables; i++ {
-		filename := dbFilename("", fileTypeTable, uint64(i))
-		gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
-		if gotO != gotC {
-			t.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
-		}
+	if err := fs.validateNoneStillOpen(); err != nil {
+		t.Error(err)
+		return
 	}
+}
+
+// validateOpenTables validates that no tables in the cache are open twice, and
+// the number still open is no greater than tableCacheTestCacheSize.
+func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) error {
+	// try backs off to let any clean-up goroutines do their work.
+	return try(100*time.Microsecond, 20*time.Second, func() error {
+		fs.mu.Lock()
+		defer fs.mu.Unlock()
+
+		numStillOpen := 0
+		for i := 0; i < tableCacheTestNumTables; i++ {
+			filename := dbFilename("", fileTypeTable, uint64(i))
+			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
+			if gotO > gotC {
+				numStillOpen++
+			}
+			if gotC != gotO && gotC != gotO-1 {
+				return fmt.Errorf("i=%d: table closed too many or too few times: opened %d times, closed %d times",
+					i, gotO, gotC)
+			}
+			if f != nil {
+				if err := f(i, gotO, gotC); err != nil {
+					return err
+				}
+			}
+		}
+		if numStillOpen > tableCacheTestCacheSize {
+			return fmt.Errorf("numStillOpen is %d, want <= %d", numStillOpen, tableCacheTestCacheSize)
+		}
+		return nil
+	})
+}
+
+// validateNoneStillOpen validates that no tables in the cache are open.
+func (fs *tableCacheTestFS) validateNoneStillOpen() error {
+	// try backs off to let any clean-up goroutines do their work.
+	return try(100*time.Microsecond, 20*time.Second, func() error {
+		fs.mu.Lock()
+		defer fs.mu.Unlock()
+
+		for i := 0; i < tableCacheTestNumTables; i++ {
+			filename := dbFilename("", fileTypeTable, uint64(i))
+			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
+			if gotO != gotC {
+				return fmt.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
+			}
+		}
+		return nil
+	})
 }
 
 const (
@@ -212,14 +235,15 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 		}
 	}
 
-	fs.validate(t, c, func(i, gotO, gotC int) {
+	fs.validate(t, c, func(i, gotO, gotC int) error {
 		if i == pinned0 || i == pinned1 {
 			if gotO != 1 || gotC != 0 {
-				t.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
+				return fmt.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
 			}
 		} else if gotO == 1 {
-			t.Errorf("i=%d: table only opened once", i)
+			return fmt.Errorf("i=%d: table only opened once", i)
 		}
+		return nil
 	})
 }
 
@@ -249,7 +273,7 @@ func TestTableCacheEvictions(t *testing.T) {
 
 	sumEvicted, nEvicted := 0, 0
 	sumSafe, nSafe := 0, 0
-	fs.validate(t, c, func(i, gotO, gotC int) {
+	fs.validate(t, c, func(i, gotO, gotC int) error {
 		if lo <= i && i < hi {
 			sumEvicted += gotO
 			nEvicted++
@@ -257,6 +281,7 @@ func TestTableCacheEvictions(t *testing.T) {
 			sumSafe += gotO
 			nSafe++
 		}
+		return nil
 	})
 	fEvicted := float64(sumEvicted) / float64(nEvicted)
 	fSafe := float64(sumSafe) / float64(nSafe)

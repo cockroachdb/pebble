@@ -1,11 +1,11 @@
 // Copyright 2012 The LevelDB-Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Use of this source code is governed by a BSD-style // license that can be found in the LICENSE file.
 
 package leveldb
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"math/rand"
 	"os"
@@ -14,11 +14,62 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang/leveldb/db"
 	"github.com/golang/leveldb/memfs"
 )
+
+// try repeatedly calls f, sleeping between calls with exponential back-off,
+// until f returns a nil error or the total sleep time is greater than or equal
+// to maxTotalSleep. It always calls f at least once.
+func try(initialSleep, maxTotalSleep time.Duration, f func() error) error {
+	totalSleep := time.Duration(0)
+	for d := initialSleep; ; d *= 2 {
+		time.Sleep(d)
+		totalSleep += d
+		if err := f(); err == nil || totalSleep >= maxTotalSleep {
+			return err
+		}
+	}
+}
+
+func TestTry(t *testing.T) {
+	c := make(chan struct{})
+	go func() {
+		time.Sleep(1 * time.Millisecond)
+		close(c)
+	}()
+
+	attemptsMu := sync.Mutex{}
+	attempts := 0
+
+	err := try(100*time.Microsecond, 20*time.Second, func() error {
+		attemptsMu.Lock()
+		attempts++
+		attemptsMu.Unlock()
+
+		select {
+		default:
+			return errors.New("timed out")
+		case <-c:
+			return nil
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attemptsMu.Lock()
+	a := attempts
+	attemptsMu.Unlock()
+
+	if a == 0 {
+		t.Fatalf("attempts: got 0, want > 0")
+	}
+}
 
 func TestErrorIfDBExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
