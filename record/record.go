@@ -465,6 +465,7 @@ func (w *Writer) Next() (io.Writer, error) {
 			return nil, w.err
 		}
 	}
+	w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.i)
 	w.first = true
 	w.pending = true
 	return singleWriter{w, w.seq}, nil
@@ -505,7 +506,6 @@ func (x singleWriter) Write(p []byte) (int, error) {
 	if w.err != nil {
 		return 0, w.err
 	}
-	w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.i)
 	n0 := len(p)
 	for len(p) > 0 {
 		// Write a block, if it is full.

@@ -342,9 +342,21 @@ func makeTestRecords(recordLengths ...int) (*testRecords, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// Alternate between one big write and many small writes.
+		cSize := 8
+		if i&1 == 0 {
+			cSize = len(rec)
+		}
+		for ; len(rec) > cSize; rec = rec[cSize:] {
+			if _, err = wRec.Write(rec[:cSize]); err != nil {
+				return nil, err
+			}
+		}
 		if _, err = wRec.Write(rec); err != nil {
 			return nil, err
 		}
+
 		ret.offsets[i], err = w.LastRecordOffset()
 		if err != nil {
 			return nil, err
