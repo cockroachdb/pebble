@@ -3,6 +3,9 @@
 // license that can be found in the LICENSE file.
 
 // This program creates a leveldb db at /tmp/db.
+//
+// To build and run:
+// g++ make-db.cc -lleveldb && ./a.out
 
 #include <iostream>
 
@@ -30,53 +33,53 @@ int main(int argc, char** argv) {
   if (stage < 1) {
     return 0;
   }
-  cout << "Stage 1" << endl;
+  std::cout << "Stage 1" << std::endl;
 
   status = leveldb::DB::Open(o, dbname, &db);
   if (!status.ok()) {
-    cerr << "DB::Open " << status.ToString() << endl;
+    std::cerr << "DB::Open " << status.ToString() << std::endl;
     return 1;
   }
 
   if (stage < 2) {
     return 0;
   }
-  cout << "Stage 2" << endl;
+  std::cout << "Stage 2" << std::endl;
 
   status = db->Put(wo, "foo", "one");
   if (!status.ok()) {
-    cerr << "DB::Put " << status.ToString() << endl;
+    std::cerr << "DB::Put " << status.ToString() << std::endl;
     return 1;
   }
 
   status = db->Put(wo, "bar", "two");
   if (!status.ok()) {
-    cerr << "DB::Put " << status.ToString() << endl;
+    std::cerr << "DB::Put " << status.ToString() << std::endl;
     return 1;
   }
 
   status = db->Put(wo, "baz", "three");
   if (!status.ok()) {
-    cerr << "DB::Put " << status.ToString() << endl;
+    std::cerr << "DB::Put " << status.ToString() << std::endl;
     return 1;
   }
 
   status = db->Put(wo, "foo", "four");
   if (!status.ok()) {
-    cerr << "DB::Put " << status.ToString() << endl;
+    std::cerr << "DB::Put " << status.ToString() << std::endl;
     return 1;
   }
 
   status = db->Delete(wo, "bar");
   if (!status.ok()) {
-    cerr << "DB::Delete " << status.ToString() << endl;
+    std::cerr << "DB::Delete " << status.ToString() << std::endl;
     return 1;
   }
 
   if (stage < 3) {
     return 0;
   }
-  cout << "Stage 3" << endl;
+  std::cout << "Stage 3" << std::endl;
 
   delete db;
   db = NULL;
@@ -85,30 +88,30 @@ int main(int argc, char** argv) {
 
   status = leveldb::DB::Open(o, dbname, &db);
   if (!status.ok()) {
-    cerr << "DB::Open " << status.ToString() << endl;
+    std::cerr << "DB::Open " << status.ToString() << std::endl;
     return 1;
   }
 
   if (stage < 4) {
     return 0;
   }
-  cout << "Stage 4" << endl;
+  std::cout << "Stage 4" << std::endl;
 
   status = db->Put(wo, "foo", "five");
   if (!status.ok()) {
-    cerr << "DB::Put " << status.ToString() << endl;
+    std::cerr << "DB::Put " << status.ToString() << std::endl;
     return 1;
   }
 
   status = db->Put(wo, "quux", "six");
   if (!status.ok()) {
-    cerr << "DB::Put " << status.ToString() << endl;
+    std::cerr << "DB::Put " << status.ToString() << std::endl;
     return 1;
   }
 
   status = db->Delete(wo, "baz");
   if (!status.ok()) {
-    cerr << "DB::Delete " << status.ToString() << endl;
+    std::cerr << "DB::Delete " << status.ToString() << std::endl;
     return 1;
   }
 

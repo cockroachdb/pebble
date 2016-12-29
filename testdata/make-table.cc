@@ -5,6 +5,9 @@
 // This program adds N lines from infile to a leveldb table at outfile.
 // The h.txt infile was generated via:
 // cat hamlet-act-1.txt | tr '[:upper:]' '[:lower:]' | grep -o -E '\w+' | sort | uniq -c > infile
+//
+// To build and run:
+// g++ make-table.cc -lleveldb && ./a.out
 
 #include <fstream>
 #include <iostream>
@@ -24,35 +27,35 @@ int write() {
   leveldb::WritableFile* wf;
   status = leveldb::Env::Default()->NewWritableFile(outfile, &wf);
   if (!status.ok()) {
-    cerr << "Env::NewWritableFile: " << status.ToString() << endl;
+    std::cerr << "Env::NewWritableFile: " << status.ToString() << std::endl;
     return 1;
   }
 
   leveldb::Options o;
   // o.compression = leveldb::kNoCompression;
   leveldb::TableBuilder* tb = new leveldb::TableBuilder(o, wf);
-  ifstream in(infile);
-  string s;
+  std::ifstream in(infile);
+  std::string s;
   for (int i = 0; i < N && getline(in, s); i++) {
-    string key(s, 8);
-    string val(s, 0, 7);
+    std::string key(s, 8);
+    std::string val(s, 0, 7);
     val = val.substr(1 + val.rfind(' '));
     tb->Add(key.c_str(), val.c_str());
   }
 
   status = tb->Finish();
   if (!status.ok()) {
-    cerr << "TableBuilder::Finish: " << status.ToString() << endl;
+    std::cerr << "TableBuilder::Finish: " << status.ToString() << std::endl;
     return 1;
   }
 
   status = wf->Close();
   if (!status.ok()) {
-    cerr << "WritableFile::Close: " << status.ToString() << endl;
+    std::cerr << "WritableFile::Close: " << status.ToString() << std::endl;
     return 1;
   }
 
-  cout << "wrote " << tb->NumEntries() << " entries" << endl;
+  std::cout << "wrote " << tb->NumEntries() << " entries" << std::endl;
   delete tb;
   delete wf;
   return 0;
@@ -64,14 +67,14 @@ int read() {
   leveldb::RandomAccessFile* raf;
   status = leveldb::Env::Default()->NewRandomAccessFile(outfile, &raf);
   if (!status.ok()) {
-    cerr << "Env::NewRandomAccessFile: " << status.ToString() << endl;
+    std::cerr << "Env::NewRandomAccessFile: " << status.ToString() << std::endl;
     return 1;
   }
 
   uint64_t file_size;
   status = leveldb::Env::Default()->GetFileSize(outfile, &file_size);
   if (!status.ok()) {
-    cerr << "Env::GetFileSize: " << status.ToString() << endl;
+    std::cerr << "Env::GetFileSize: " << status.ToString() << std::endl;
     return 1;
   }
 
@@ -79,7 +82,7 @@ int read() {
   leveldb::Table* t;
   status = leveldb::Table::Open(o, raf, file_size, &t);
   if (!status.ok()) {
-    cerr << "Table::Open: " << status.ToString() << endl;
+    std::cerr << "Table::Open: " << status.ToString() << std::endl;
     return 1;
   }
 
@@ -90,7 +93,7 @@ int read() {
     n++;
   }
 
-  cout << "read  " << n << " entries" << endl;
+  std::cout << "read  " << n << " entries" << std::endl;
   delete i;
   delete t;
   delete raf;
