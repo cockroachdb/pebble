@@ -5,9 +5,9 @@
 // Package crc implements the checksum algorithm used throughout leveldb.
 //
 // The algorithm is CRC-32 with Castagnoli's polynomial, followed by a bit
-// rotation and an additional delta. The additional processing is to lessen
-// the probability of arbitrary key/value data coincidental contains bytes
-// that look like a checksum.
+// rotation and an additional delta. The additional processing is to lessen the
+// probability of arbitrary key/value data coincidentally containing bytes that
+// look like a checksum.
 //
 // To calculate the uint32 checksum of some data:
 //	var u uint32 = crc.New(data).Value()
