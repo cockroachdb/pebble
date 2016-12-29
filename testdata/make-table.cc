@@ -19,7 +19,7 @@
 
 const int N = 1000000;
 const char* infile = "h.txt";
-const char* outfile = "h.sst";
+const char* outfile = "h.ldb";
 
 int write() {
   leveldb::Status status;
