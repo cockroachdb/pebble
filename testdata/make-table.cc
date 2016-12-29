@@ -14,6 +14,7 @@
 #include <string>
 
 #include "leveldb/env.h"
+#include "leveldb/filter_policy.h"
 #include "leveldb/table.h"
 #include "leveldb/table_builder.h"
 
@@ -33,6 +34,7 @@ int write() {
 
   leveldb::Options o;
   // o.compression = leveldb::kNoCompression;
+  // o.filter_policy = leveldb::NewBloomFilterPolicy(10);
   leveldb::TableBuilder* tb = new leveldb::TableBuilder(o, wf);
   std::ifstream in(infile);
   std::string s;
