@@ -7,6 +7,7 @@ package table
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -279,11 +280,10 @@ func TestReaderBloomUsed(t *testing.T) {
 			t.Errorf("degenerate=%t: false negatives: got %d, want %d", degenerate, c.falseNegatives, 0)
 		}
 
-		gotActualNegatives := c.falsePositives + c.trueNegatives
-		if gotActualNegatives < wantActualNegatives {
+		if got := c.falsePositives + c.trueNegatives; got < wantActualNegatives {
 			t.Errorf("degenerate=%t: actual negatives (false positives + true negatives): "+
 				"got %d (%d + %d), want >= %d",
-				degenerate, gotActualNegatives, c.falsePositives, c.trueNegatives, wantActualNegatives)
+				degenerate, got, c.falsePositives, c.trueNegatives, wantActualNegatives)
 		}
 
 		if !degenerate {
@@ -294,6 +294,52 @@ func TestReaderBloomUsed(t *testing.T) {
 					degenerate, c.trueNegatives, c.falsePositives)
 			}
 		}
+	}
+}
+
+func TestBloomFilterFalsePositiveRate(t *testing.T) {
+	f, err := os.Open(filepath.FromSlash("../testdata/h.bloom.no-compression.ldb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &countingFilterPolicy{
+		FilterPolicy: bloom.FilterPolicy(1),
+	}
+	r := NewReader(f, &db.Options{
+		FilterPolicy: c,
+	})
+
+	const n = 10000
+	// key is a buffer that will be re-used for n Get calls, each with a
+	// different key. The "m" in the 2-byte prefix means that the key falls in
+	// the [minWord, maxWord] range and so will not be rejected prior to
+	// applying the Bloom filter. The "!" in the 2-byte prefix means that the
+	// key is not actually in the table. The filter will only see actual
+	// negatives: false positives or true negatives.
+	key := []byte("m!....")
+	for i := 0; i < n; i++ {
+		binary.LittleEndian.PutUint32(key[2:6], uint32(i))
+		r.Get(key, nil)
+	}
+
+	if c.truePositives != 0 {
+		t.Errorf("true positives: got %d, want 0", c.truePositives)
+	}
+	if c.falseNegatives != 0 {
+		t.Errorf("false negatives: got %d, want 0", c.falseNegatives)
+	}
+	if got := c.falsePositives + c.trueNegatives; got != n {
+		t.Errorf("actual negatives (false positives + true negatives): got %d (%d + %d), want %d",
+			got, c.falsePositives, c.trueNegatives, n)
+	}
+
+	// According the the comments in the C++ LevelDB code, the false positive
+	// rate should be approximately 1% for for bloom.FilterPolicy(10). The 10
+	// was the parameter used to write the .ldb file. When reading the file,
+	// the 1 in the bloom.FilterPolicy(1) above doesn't matter, only the
+	// bloom.FilterPolicy matters.
+	if got := float64(100*c.falsePositives) / n; got < 0.2 || 5 < got {
+		t.Errorf("false positive rate: got %v%%, want approximately 1%%", got)
 	}
 }
 
