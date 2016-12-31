@@ -14,6 +14,31 @@ const (
 	nCompression
 )
 
+// FilterPolicy is an algorithm for probabilistically encoding a set of keys.
+// The canonical implementation is a Bloom filter.
+//
+// Every FilterPolicy has a name. This names the algorithm itself, not any one
+// particular instance. Aspects specific to a particular instance, such as the
+// set of keys or any other parameters, will be encoded in the []byte filter
+// returned by NewFilter.
+//
+// The name may be written to files on disk, along with the filter data. To use
+// these filters, the FilterPolicy name at the time of writing must equal the
+// name at the time of reading. If they do not match, the filters will be
+// ignored, which will not affect correctness but may affect performance.
+type FilterPolicy interface {
+	// Name names the filter policy.
+	Name() string
+
+	// NewFilter returns an encoded filter that holds a set of []byte keys.
+	NewFilter(keys [][]byte) []byte
+
+	// MayContain returns whether the encoded filter may contain given key.
+	// False positives are possible, where it returns true for keys not in the
+	// original set.
+	MayContain(filter, key []byte) bool
+}
+
 // Options holds the optional parameters for leveldb's DB implementations.
 // These options apply to the DB at large; per-query options are defined by
 // the ReadOptions and WriteOptions types.
@@ -26,6 +51,7 @@ const (
 // Read/Write options:
 //   - Comparer
 //   - FileSystem
+//   - FilterPolicy
 //   - MaxOpenFiles
 // Read options:
 //   - VerifyChecksums
@@ -68,6 +94,15 @@ type Options struct {
 	//
 	// The default value uses the underlying operating system's file system.
 	FileSystem FileSystem
+
+	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that
+	// can reduce disk reads for Get calls.
+	//
+	// One such implementation is bloom.FilterPolicy(10) from the leveldb/bloom
+	// package.
+	//
+	// The default value means to use no filter.
+	FilterPolicy FilterPolicy
 
 	// MaxOpenFiles is a soft limit on the number of open files that can be
 	// used by the DB.
@@ -134,6 +169,13 @@ func (o *Options) GetFileSystem() FileSystem {
 		return DefaultFileSystem
 	}
 	return o.FileSystem
+}
+
+func (o *Options) GetFilterPolicy() FilterPolicy {
+	if o == nil {
+		return nil
+	}
+	return o.FilterPolicy
 }
 
 func (o *Options) GetMaxOpenFiles() int {

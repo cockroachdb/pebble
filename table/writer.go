@@ -280,6 +280,7 @@ func (w *Writer) Close() (err error) {
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(f db.File, o *db.Options) *Writer {
+	// TODO: honor o.GetFilterPolicy().
 	w := &Writer{
 		closer:               f,
 		blockRestartInterval: o.GetBlockRestartInterval(),

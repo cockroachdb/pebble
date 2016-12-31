@@ -167,7 +167,12 @@ var _ db.Iterator = (*tableIter)(nil)
 // nextBlock loads the next block and positions i.data at the first key in that
 // block which is >= the given key. If unsuccessful, it sets i.err to any error
 // encountered, which may be nil if we have simply exhausted the entire table.
-func (i *tableIter) nextBlock(key []byte) bool {
+//
+// If f is non-nil, the caller is presumably looking for one specific key, as
+// opposed to iterating over a range of keys (where the minimum of that range
+// isn't necessarily in the table). In that case, i.err will be set to
+// db.ErrNotFound if f does not contain the key.
+func (i *tableIter) nextBlock(key []byte, f *filter) bool {
 	if !i.index.Next() {
 		i.err = i.index.err
 		return false
@@ -177,6 +182,10 @@ func (i *tableIter) nextBlock(key []byte) bool {
 	h, n := decodeBlockHandle(v)
 	if n == 0 || n != len(v) {
 		i.err = errors.New("leveldb/table: corrupt index entry")
+		return false
+	}
+	if f != nil && !f.mayContain(h.offset, key) {
+		i.err = db.ErrNotFound
 		return false
 	}
 	k, err := i.reader.readBlock(h)
@@ -207,7 +216,7 @@ func (i *tableIter) Next() bool {
 			i.err = i.data.err
 			break
 		}
-		if !i.nextBlock(nil) {
+		if !i.nextBlock(nil, nil) {
 			break
 		}
 	}
@@ -237,6 +246,49 @@ func (i *tableIter) Close() error {
 	return i.err
 }
 
+type filter struct {
+	data    []byte
+	offsets []byte // len(offsets) must be a multiple of 4.
+	policy  db.FilterPolicy
+	shift   uint32
+}
+
+func (f *filter) valid() bool {
+	return f.data != nil
+}
+
+func (f *filter) init(data []byte, policy db.FilterPolicy) (ok bool) {
+	if len(data) < 5 {
+		return false
+	}
+	lastOffset := binary.LittleEndian.Uint32(data[len(data)-5:])
+	if uint64(lastOffset) > uint64(len(data)-5) {
+		return false
+	}
+	data, offsets, shift := data[:lastOffset], data[lastOffset:len(data)-1], uint32(data[len(data)-1])
+	if len(offsets)&3 != 0 {
+		return false
+	}
+	f.data = data
+	f.offsets = offsets
+	f.policy = policy
+	f.shift = shift
+	return true
+}
+
+func (f *filter) mayContain(blockOffset uint64, key []byte) bool {
+	index := blockOffset >> f.shift
+	if index >= uint64(len(f.offsets)/4-1) {
+		return true
+	}
+	i := binary.LittleEndian.Uint32(f.offsets[4*index+0:])
+	j := binary.LittleEndian.Uint32(f.offsets[4*index+4:])
+	if i >= j || uint64(j) > uint64(len(f.data)) {
+		return true
+	}
+	return f.policy.MayContain(f.data[i:j], key)
+}
+
 // Reader is a table reader. It implements the DB interface, as documented
 // in the leveldb/db package.
 type Reader struct {
@@ -244,6 +296,7 @@ type Reader struct {
 	err             error
 	index           block
 	comparer        db.Comparer
+	filter          filter
 	verifyChecksums bool
 	// TODO: add a (goroutine-safe) LRU block cache.
 }
@@ -277,7 +330,11 @@ func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	i := r.Find(key, o)
+	f := (*filter)(nil)
+	if r.filter.valid() {
+		f = &r.filter
+	}
+	i := r.find(key, o, f)
 	if !i.Next() || !bytes.Equal(key, i.Key()) {
 		err := i.Close()
 		if err == nil {
@@ -302,6 +359,10 @@ func (r *Reader) Delete(key []byte, o *db.WriteOptions) error {
 
 // Find implements DB.Find, as documented in the leveldb/db package.
 func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
+	return r.find(key, o, nil)
+}
+
+func (r *Reader) find(key []byte, o *db.ReadOptions, f *filter) db.Iterator {
 	if r.err != nil {
 		return &tableIter{err: r.err}
 	}
@@ -313,7 +374,7 @@ func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
 		reader: r,
 		index:  index,
 	}
-	i.nextBlock(key)
+	i.nextBlock(key, f)
 	return i
 }
 
@@ -341,6 +402,54 @@ func (r *Reader) readBlock(bh blockHandle) (block, error) {
 		return b, nil
 	}
 	return nil, fmt.Errorf("leveldb/table: unknown block compression: %d", b[bh.length])
+}
+
+func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
+	fp := o.GetFilterPolicy()
+	if fp == nil {
+		// The only metaindex entry we care about is the filter. If o doesn't
+		// specify a filter policy, we can ignore the entire metaindex block.
+		//
+		// TODO: also return early if metaindexBH.length indicates an empty
+		// block.
+		return nil
+	}
+
+	b, err := r.readBlock(metaindexBH)
+	if err != nil {
+		return err
+	}
+	i, err := b.seek(db.DefaultComparer, nil)
+	if err != nil {
+		return err
+	}
+	filterName := "filter." + fp.Name()
+	filterBH := blockHandle{}
+	for i.Next() {
+		if filterName != string(i.Key()) {
+			continue
+		}
+		var n int
+		filterBH, n = decodeBlockHandle(i.Value())
+		if n == 0 {
+			return errors.New("leveldb/table: invalid table (bad filter block handle)")
+		}
+		break
+	}
+	if err := i.Close(); err != nil {
+		return err
+	}
+
+	if filterBH != (blockHandle{}) {
+		b, err = r.readBlock(filterBH)
+		if err != nil {
+			return err
+		}
+		if !r.filter.init(b, fp) {
+			return errors.New("leveldb/table: invalid table (bad filter block)")
+		}
+	}
+	return nil
 }
 
 // NewReader returns a new table reader for the file. Closing the reader will
@@ -374,12 +483,18 @@ func NewReader(f db.File, o *db.Options) *Reader {
 		r.err = errors.New("leveldb/table: invalid table (bad magic number)")
 		return r
 	}
-	// Ignore the metaindex.
-	_, n := decodeBlockHandle(footer[:])
+
+	// Read the metaindex.
+	metaindexBH, n := decodeBlockHandle(footer[:])
 	if n == 0 {
 		r.err = errors.New("leveldb/table: invalid table (bad metaindex block handle)")
 		return r
 	}
+	if err := r.readMetaindex(metaindexBH, o); err != nil {
+		r.err = err
+		return r
+	}
+
 	// Read the index into memory.
 	indexBH, n := decodeBlockHandle(footer[n:])
 	if n == 0 {

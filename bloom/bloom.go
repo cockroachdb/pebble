@@ -33,10 +33,15 @@ func (f Filter) MayContain(key []byte) bool {
 	return true
 }
 
+// TODO: delete the buf argument to NewFilter, if it's always going to be nil?
+
 // NewFilter returns a new Bloom filter that encodes a set of []byte keys with
-// the given number of bits per key. The returned Filter may be a sub-slice of
-// buf[:cap(buf)] if it is large enough, otherwise the Filter will be allocated
-// separately.
+// the given number of bits per key, approximately. The returned Filter may be
+// a sub-slice of buf[:cap(buf)] if it is large enough, otherwise the Filter
+// will be allocated separately.
+//
+// A good bitsPerKey value is 10, which yields a filter with ~ 1% false
+// positive rate.
 func NewFilter(buf []byte, keys [][]byte, bitsPerKey int) Filter {
 	if bitsPerKey < 0 {
 		bitsPerKey = 0
@@ -106,4 +111,29 @@ func hash(b []byte) uint32 {
 		h ^= h >> 24
 	}
 	return h
+}
+
+// FilterPolicy implements the db.FilterPolicy interface from the leveldb/db
+// package.
+//
+// The integer value is the approximate number of bits used per key. A good
+// value is 10, which yields a filter with ~ 1% false positive rate.
+//
+// It is valid to use the other API in this package (leveldb/bloom) without
+// using this type or the leveldb/db package.
+type FilterPolicy int
+
+// Name implements the db.FilterPolicy interface.
+func (p FilterPolicy) Name() string {
+	return "leveldb.BuiltinBloomFilter2"
+}
+
+// NewFilter implements the db.FilterPolicy interface.
+func (p FilterPolicy) NewFilter(keys [][]byte) []byte {
+	return NewFilter(nil, keys, int(p))
+}
+
+// MayContain implements the db.FilterPolicy interface.
+func (p FilterPolicy) MayContain(filter, key []byte) bool {
+	return Filter(filter).MayContain(key)
 }
