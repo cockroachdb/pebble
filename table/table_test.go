@@ -197,7 +197,7 @@ var (
 	tmpFileCount  int
 )
 
-func build(compression db.Compression) (db.File, error) {
+func build(compression db.Compression, fp db.FilterPolicy) (db.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
 	i := 0
@@ -216,7 +216,8 @@ func build(compression db.Compression) (db.File, error) {
 	defer f0.Close()
 	tmpFileCount++
 	w := NewWriter(f0, &db.Options{
-		Compression: compression,
+		Compression:  compression,
+		FilterPolicy: fp,
 	})
 	for _, k := range keys {
 		v := wordCount[k]
@@ -379,7 +380,7 @@ func (c *countingFilterPolicy) MayContain(filter, key []byte) bool {
 
 func TestWriter(t *testing.T) {
 	// Check that we can read a freshly made table.
-	f, err := build(db.DefaultCompression)
+	f, err := build(db.DefaultCompression, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,14 +390,20 @@ func TestWriter(t *testing.T) {
 	}
 }
 
-func TestNoCompressionOutput(t *testing.T) {
+func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
+	filename := "../testdata/h.no-compression.ldb"
+	if fp != nil {
+		filename = "../testdata/h.bloom.no-compression.ldb"
+	}
+
 	// Check that a freshly made NoCompression table is byte-for-byte equal
 	// to a pre-made table.
-	a, err := ioutil.ReadFile(filepath.FromSlash("../testdata/h.no-compression.ldb"))
+	want, err := ioutil.ReadFile(filepath.FromSlash(filename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := build(db.NoCompression)
+
+	f, err := build(db.NoCompression, fp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,15 +411,23 @@ func TestNoCompressionOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := make([]byte, stat.Size())
-	_, err = f.ReadAt(b, 0)
+	got := make([]byte, stat.Size())
+	_, err = f.ReadAt(got, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(a, b) {
-		t.Fatal("built table does not match pre-made table")
+
+	if !bytes.Equal(got, want) {
+		i := 0
+		for ; i < len(got) && i < len(want) && got[i] == want[i]; i++ {
+		}
+		t.Fatalf("built table does not match pre-made table. From byte %d onwards,\ngot:\n% x\nwant:\n% x",
+			i, got[i:], want[i:])
 	}
 }
+
+func TestNoCompressionOutput(t *testing.T)      { testNoCompressionOutput(t, nil) }
+func TestBloomNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, bloom.FilterPolicy(10)) }
 
 func TestBlockIter(t *testing.T) {
 	// k is a block that maps three keys "apple", "apricot", "banana" to empty strings.

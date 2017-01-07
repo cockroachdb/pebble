@@ -23,6 +23,97 @@ type indexEntry struct {
 	keyLen int
 }
 
+// filterBaseLog being 11 means that we generate a new filter for every 2KiB of
+// data.
+//
+// It's a little unfortunate that this is 11, whilst the default db.Options
+// BlockSize is 1<<12 or 4KiB, so that in practice, every second filter is
+// empty, but both values match the C++ code.
+const filterBaseLog = 11
+
+type filterWriter struct {
+	policy db.FilterPolicy
+	// block holds the keys for the current block. The buffers are re-used for
+	// each new block.
+	block struct {
+		data    []byte
+		lengths []int
+		keys    [][]byte
+	}
+	// data and offsets are the per-block filters for the overall table.
+	data    []byte
+	offsets []uint32
+}
+
+func (f *filterWriter) hasKeys() bool {
+	return len(f.block.lengths) != 0
+}
+
+func (f *filterWriter) appendKey(key []byte) {
+	f.block.data = append(f.block.data, key...)
+	f.block.lengths = append(f.block.lengths, len(key))
+}
+
+func (f *filterWriter) appendOffset() error {
+	o := len(f.data)
+	if uint64(o) > 1<<32-1 {
+		return errors.New("leveldb/table: filter data is too long")
+	}
+	f.offsets = append(f.offsets, uint32(o))
+	return nil
+}
+
+func (f *filterWriter) emit() error {
+	if err := f.appendOffset(); err != nil {
+		return err
+	}
+	if !f.hasKeys() {
+		return nil
+	}
+
+	i, j := 0, 0
+	for _, length := range f.block.lengths {
+		j += length
+		f.block.keys = append(f.block.keys, f.block.data[i:j])
+		i = j
+	}
+	f.data = append(f.data, f.policy.NewFilter(f.block.keys)...)
+
+	// Reset the per-block state.
+	f.block.data = f.block.data[:0]
+	f.block.lengths = f.block.lengths[:0]
+	f.block.keys = f.block.keys[:0]
+	return nil
+}
+
+func (f *filterWriter) finishBlock(blockOffset uint64) error {
+	for i := blockOffset >> filterBaseLog; i > uint64(len(f.offsets)); {
+		if err := f.emit(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *filterWriter) finish() ([]byte, error) {
+	if f.hasKeys() {
+		if err := f.emit(); err != nil {
+			return nil, err
+		}
+	}
+	if err := f.appendOffset(); err != nil {
+		return nil, err
+	}
+
+	var b [4]byte
+	for _, x := range f.offsets {
+		binary.LittleEndian.PutUint32(b[:], x)
+		f.data = append(f.data, b[0], b[1], b[2], b[3])
+	}
+	f.data = append(f.data, filterBaseLog)
+	return f.data, nil
+}
+
 // Writer is a table writer. It implements the DB interface, as documented
 // in the leveldb/db package.
 type Writer struct {
@@ -65,6 +156,8 @@ type Writer struct {
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
 	compressedBuf []byte
+	// filter accumulates the filter block.
+	filter filterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
 	tmp [50]byte
@@ -102,6 +195,9 @@ func (w *Writer) Set(key, value []byte, o *db.WriteOptions) error {
 	if w.cmp.Compare(w.prevKey, key) >= 0 {
 		w.err = fmt.Errorf("leveldb/table: Set called in non-increasing key order: %q, %q", w.prevKey, key)
 		return w.err
+	}
+	if w.filter.policy != nil {
+		w.filter.appendKey(key)
 	}
 	w.flushPendingBH(key)
 	w.append(key, value, w.nEntries%w.blockRestartInterval == 0)
@@ -169,15 +265,32 @@ func (w *Writer) finishBlock() (blockHandle, error) {
 	// Compress the buffer, discarding the result if the improvement
 	// isn't at least 12.5%.
 	b := w.buf.Bytes()
-	w.tmp[0] = noCompressionBlockType
+	blockType := byte(noCompressionBlockType)
 	if w.compression == db.SnappyCompression {
 		compressed := snappy.Encode(w.compressedBuf, b)
 		w.compressedBuf = compressed[:cap(compressed)]
 		if len(compressed) < len(b)-len(b)/8 {
-			w.tmp[0] = snappyCompressionBlockType
+			blockType = snappyCompressionBlockType
 			b = compressed
 		}
 	}
+	bh, err := w.writeRawBlock(b, blockType)
+
+	// Calculate filters.
+	if w.filter.policy != nil {
+		w.filter.finishBlock(w.offset)
+	}
+
+	// Reset the per-block state.
+	w.buf.Reset()
+	w.nEntries = 0
+	w.restarts = w.restarts[:0]
+
+	return bh, err
+}
+
+func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
+	w.tmp[0] = blockType
 
 	// Calculate the checksum.
 	checksum := crc.New(b).Update(w.tmp[:1]).Value()
@@ -192,11 +305,6 @@ func (w *Writer) finishBlock() (blockHandle, error) {
 	}
 	bh := blockHandle{w.offset, uint64(len(b))}
 	w.offset += uint64(len(b)) + blockTrailerLen
-
-	// Reset the per-block state.
-	w.buf.Reset()
-	w.nEntries = 0
-	w.restarts = w.restarts[:0]
 	return bh, nil
 }
 
@@ -229,7 +337,28 @@ func (w *Writer) Close() (err error) {
 		w.flushPendingBH(nil)
 	}
 
-	// Write the (empty) metaindex block.
+	// Writer.append uses w.tmp[:3*binary.MaxVarintLen64]. Let tmp be the other
+	// half of that slice.
+	tmp := w.tmp[3*binary.MaxVarintLen64 : 5*binary.MaxVarintLen64]
+
+	// Write the filter block.
+	if w.filter.policy != nil {
+		b, err := w.filter.finish()
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+		bh, err := w.writeRawBlock(b, noCompressionBlockType)
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+		n := encodeBlockHandle(tmp, bh)
+		w.append([]byte("filter."+w.filter.policy.Name()), tmp[:n], true)
+	}
+
+	// Write the metaindex block. It might be an empty block, if the filter
+	// policy is nil.
 	metaindexBlockHandle, err := w.finishBlock()
 	if err != nil {
 		w.err = err
@@ -237,8 +366,7 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Write the index block.
-	// writer.append uses w.tmp[:3*binary.MaxVarintLen64].
-	i0, tmp := 0, w.tmp[3*binary.MaxVarintLen64:5*binary.MaxVarintLen64]
+	i0 := 0
 	for _, ie := range w.indexEntries {
 		n := encodeBlockHandle(tmp, ie.bh)
 		i1 := i0 + ie.keyLen
@@ -280,15 +408,17 @@ func (w *Writer) Close() (err error) {
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(f db.File, o *db.Options) *Writer {
-	// TODO: honor o.GetFilterPolicy().
 	w := &Writer{
 		closer:               f,
 		blockRestartInterval: o.GetBlockRestartInterval(),
 		blockSize:            o.GetBlockSize(),
 		cmp:                  o.GetComparer(),
 		compression:          o.GetCompression(),
-		prevKey:              make([]byte, 0, 256),
-		restarts:             make([]uint32, 0, 256),
+		filter: filterWriter{
+			policy: o.GetFilterPolicy(),
+		},
+		prevKey:  make([]byte, 0, 256),
+		restarts: make([]uint32, 0, 256),
 	}
 	if f == nil {
 		w.err = errors.New("leveldb/table: nil file")

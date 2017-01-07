@@ -172,7 +172,7 @@ var _ db.Iterator = (*tableIter)(nil)
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *tableIter) nextBlock(key []byte, f *filter) bool {
+func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
 	if !i.index.Next() {
 		i.err = i.index.err
 		return false
@@ -246,18 +246,18 @@ func (i *tableIter) Close() error {
 	return i.err
 }
 
-type filter struct {
+type filterReader struct {
 	data    []byte
 	offsets []byte // len(offsets) must be a multiple of 4.
 	policy  db.FilterPolicy
 	shift   uint32
 }
 
-func (f *filter) valid() bool {
+func (f *filterReader) valid() bool {
 	return f.data != nil
 }
 
-func (f *filter) init(data []byte, policy db.FilterPolicy) (ok bool) {
+func (f *filterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	if len(data) < 5 {
 		return false
 	}
@@ -276,7 +276,7 @@ func (f *filter) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	return true
 }
 
-func (f *filter) mayContain(blockOffset uint64, key []byte) bool {
+func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 	index := blockOffset >> f.shift
 	if index >= uint64(len(f.offsets)/4-1) {
 		return true
@@ -296,7 +296,7 @@ type Reader struct {
 	err             error
 	index           block
 	comparer        db.Comparer
-	filter          filter
+	filter          filterReader
 	verifyChecksums bool
 	// TODO: add a (goroutine-safe) LRU block cache.
 }
@@ -330,7 +330,7 @@ func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	f := (*filter)(nil)
+	f := (*filterReader)(nil)
 	if r.filter.valid() {
 		f = &r.filter
 	}
@@ -362,7 +362,7 @@ func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	return r.find(key, o, nil)
 }
 
-func (r *Reader) find(key []byte, o *db.ReadOptions, f *filter) db.Iterator {
+func (r *Reader) find(key []byte, o *db.ReadOptions, f *filterReader) db.Iterator {
 	if r.err != nil {
 		return &tableIter{err: r.err}
 	}
