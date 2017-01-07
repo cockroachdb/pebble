@@ -33,16 +33,16 @@ func (f Filter) MayContain(key []byte) bool {
 	return true
 }
 
-// TODO: delete the buf argument to NewFilter, if it's always going to be nil?
-
 // NewFilter returns a new Bloom filter that encodes a set of []byte keys with
-// the given number of bits per key, approximately. The returned Filter may be
-// a sub-slice of buf[:cap(buf)] if it is large enough, otherwise the Filter
-// will be allocated separately.
+// the given number of bits per key, approximately.
 //
 // A good bitsPerKey value is 10, which yields a filter with ~ 1% false
 // positive rate.
 func NewFilter(buf []byte, keys [][]byte, bitsPerKey int) Filter {
+	return Filter(appendFilter(nil, keys, bitsPerKey))
+}
+
+func appendFilter(buf []byte, keys [][]byte, bitsPerKey int) []byte {
 	if bitsPerKey < 0 {
 		bitsPerKey = 0
 	}
@@ -56,34 +56,50 @@ func NewFilter(buf []byte, keys [][]byte, bitsPerKey int) Filter {
 	}
 
 	nBits := len(keys) * int(bitsPerKey)
-	// For small n, we can see a very high false positive rate. Fix it
+	// For small len(keys), we can see a very high false positive rate. Fix it
 	// by enforcing a minimum bloom filter length.
 	if nBits < 64 {
 		nBits = 64
 	}
 	nBytes := (nBits + 7) / 8
 	nBits = nBytes * 8
-
-	if nBytes+1 <= cap(buf) {
-		buf = buf[:nBytes+1]
-		for i := range buf {
-			buf[i] = 0
-		}
-	} else {
-		buf = make([]byte, nBytes+1)
-	}
+	buf, filter := extend(buf, nBytes+1)
 
 	for _, key := range keys {
 		h := hash(key)
 		delta := h>>17 | h<<15
 		for j := uint32(0); j < k; j++ {
 			bitPos := h % uint32(nBits)
-			buf[bitPos/8] |= 1 << (bitPos % 8)
+			filter[bitPos/8] |= 1 << (bitPos % 8)
 			h += delta
 		}
 	}
-	buf[nBytes] = uint8(k)
-	return Filter(buf)
+	filter[nBytes] = uint8(k)
+
+	return buf
+}
+
+// extend appends n zero bytes to b. It returns the overall slice (of length
+// n+len(originalB)) and the slice of n trailing zeroes.
+func extend(b []byte, n int) (overall, trailer []byte) {
+	want := n + len(b)
+	if want <= cap(b) {
+		overall = b[:want]
+		trailer = overall[len(b):]
+		for i := range trailer {
+			trailer[i] = 0
+		}
+	} else {
+		// Grow the capacity exponentially, with a 1KiB minimum.
+		c := 1024
+		for c < want {
+			c += c / 4
+		}
+		overall = make([]byte, want, c)
+		trailer = overall[len(b):]
+		copy(overall, b)
+	}
+	return overall, trailer
 }
 
 // hash implements a hashing algorithm similar to the Murmur hash.
@@ -131,9 +147,9 @@ func (p FilterPolicy) Name() string {
 	return "leveldb.BuiltinBloomFilter2"
 }
 
-// NewFilter implements the db.FilterPolicy interface.
-func (p FilterPolicy) NewFilter(keys [][]byte) []byte {
-	return NewFilter(nil, keys, int(p))
+// AppendFilter implements the db.FilterPolicy interface.
+func (p FilterPolicy) AppendFilter(dst []byte, keys [][]byte) []byte {
+	return appendFilter(dst, keys, int(p))
 }
 
 // MayContain implements the db.FilterPolicy interface.

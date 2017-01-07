@@ -30,8 +30,9 @@ type FilterPolicy interface {
 	// Name names the filter policy.
 	Name() string
 
-	// NewFilter returns an encoded filter that holds a set of []byte keys.
-	NewFilter(keys [][]byte) []byte
+	// AppendFilter appends to dst an encoded filter that holds a set of []byte
+	// keys.
+	AppendFilter(dst []byte, keys [][]byte) []byte
 
 	// MayContain returns whether the encoded filter may contain given key.
 	// False positives are possible, where it returns true for keys not in the

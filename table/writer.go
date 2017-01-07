@@ -76,7 +76,7 @@ func (f *filterWriter) emit() error {
 		f.block.keys = append(f.block.keys, f.block.data[i:j])
 		i = j
 	}
-	f.data = append(f.data, f.policy.NewFilter(f.block.keys)...)
+	f.data = f.policy.AppendFilter(f.data, f.block.keys)
 
 	// Reset the per-block state.
 	f.block.data = f.block.data[:0]
