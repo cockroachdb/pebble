@@ -6,7 +6,6 @@ package table
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -149,7 +148,7 @@ type Writer struct {
 	//   - nEntries is the number of entries,
 	//   - restarts are the offsets (relative to the block start) of each
 	//     restart point.
-	buf      bytes.Buffer
+	buf      []byte
 	nEntries int
 	restarts []uint32
 	// compressedBuf is the destination buffer for snappy compression. It is
@@ -202,7 +201,7 @@ func (w *Writer) Set(key, value []byte, o *db.WriteOptions) error {
 	w.flushPendingBH(key)
 	w.append(key, value, w.nEntries%w.blockRestartInterval == 0)
 	// If the estimated block size is sufficiently large, finish the current block.
-	if w.buf.Len()+4*(len(w.restarts)+1) >= w.blockSize {
+	if len(w.buf)+4*(len(w.restarts)+1) >= w.blockSize {
 		bh, err := w.finishBlock()
 		if err != nil {
 			w.err = err
@@ -231,7 +230,7 @@ func (w *Writer) flushPendingBH(key []byte) {
 func (w *Writer) append(key, value []byte, restart bool) {
 	nShared := 0
 	if restart {
-		w.restarts = append(w.restarts, uint32(w.buf.Len()))
+		w.restarts = append(w.restarts, uint32(len(w.buf)))
 	} else {
 		nShared = db.SharedPrefixLen(w.prevKey, key)
 	}
@@ -240,9 +239,9 @@ func (w *Writer) append(key, value []byte, restart bool) {
 	n := binary.PutUvarint(w.tmp[0:], uint64(nShared))
 	n += binary.PutUvarint(w.tmp[n:], uint64(len(key)-nShared))
 	n += binary.PutUvarint(w.tmp[n:], uint64(len(value)))
-	w.buf.Write(w.tmp[:n])
-	w.buf.Write(key[nShared:])
-	w.buf.Write(value)
+	w.buf = append(w.buf, w.tmp[:n]...)
+	w.buf = append(w.buf, key[nShared:]...)
+	w.buf = append(w.buf, value...)
 }
 
 // finishBlock finishes the current block and returns its block handle, which is
@@ -257,14 +256,14 @@ func (w *Writer) finishBlock() (blockHandle, error) {
 	tmp4 := w.tmp[:4]
 	for _, x := range w.restarts {
 		binary.LittleEndian.PutUint32(tmp4, x)
-		w.buf.Write(tmp4)
+		w.buf = append(w.buf, tmp4...)
 	}
 	binary.LittleEndian.PutUint32(tmp4, uint32(len(w.restarts)))
-	w.buf.Write(tmp4)
+	w.buf = append(w.buf, tmp4...)
 
 	// Compress the buffer, discarding the result if the improvement
 	// isn't at least 12.5%.
-	b := w.buf.Bytes()
+	b := w.buf
 	blockType := byte(noCompressionBlockType)
 	if w.compression == db.SnappyCompression {
 		compressed := snappy.Encode(w.compressedBuf, b)
@@ -282,7 +281,7 @@ func (w *Writer) finishBlock() (blockHandle, error) {
 	}
 
 	// Reset the per-block state.
-	w.buf.Reset()
+	w.buf = w.buf[:0]
 	w.nEntries = 0
 	w.restarts = w.restarts[:0]
 
