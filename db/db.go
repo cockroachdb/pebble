@@ -108,18 +108,25 @@ type Reader interface {
 	Find(key []byte, o *ReadOptions) Iterator
 }
 
-// Writer is a writable key/value store.
+// Setter is a basic writable key/value store.
 //
 // Goroutine safety is dependent on the specific implementation.
 //
 // Some implementations may impose additional restrictions. For example:
 //   - Set calls may need to be in increasing key order.
-type Writer interface {
+type Setter interface {
 	// Set sets the value for the given key. It overwrites any previous value
 	// for that key; a DB is not a multi-map.
 	//
 	// It is safe to modify the contents of the arguments after Set returns.
 	Set(key, value []byte, o *WriteOptions) error
+}
+
+// Writer is a writable key/value store.
+//
+// Goroutine safety is dependent on the specific implementation.
+type Writer interface {
+	Setter
 
 	// Delete deletes the value for the given key. It returns ErrNotFound if
 	// the DB does not contain the key.
@@ -127,12 +134,11 @@ type Writer interface {
 	// It is safe to modify the contents of the arguments after Delete returns.
 	Delete(key []byte, o *WriteOptions) error
 
-	// TODO(peter):
 	// DeleteRange deletes the keys (and values) in the range [start,end)
 	// (inclusive on start, exclusive on end).
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.
-	// DeleteRange(start, end []byte, o *WriteOptions) error
+	DeleteRange(start, end []byte, o *WriteOptions) error
 }
 
 // DB is a key/value store.

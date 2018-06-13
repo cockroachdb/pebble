@@ -6,6 +6,7 @@ package pebble // import "github.com/petermattis/pebble"
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math/rand"
 	"sync"
 
@@ -191,6 +192,12 @@ func (m *MemTable) Delete(key []byte, o *db.WriteOptions) error {
 	}
 	m.nodeData[n+fVal] = kvOffsetDeletedNode
 	return nil
+}
+
+// DeleteRange implements DB.DeleteRange, as documented in the pebble/db
+// package.
+func (m *MemTable) DeleteRange(start, end []byte, o *db.WriteOptions) error {
+	return fmt.Errorf("pebble: DeleteRange unimplemented")
 }
 
 // Find implements DB.Find, as documented in the pebble/db package.

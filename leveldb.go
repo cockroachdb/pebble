@@ -123,6 +123,12 @@ func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 	return d.Apply(batch, opts)
 }
 
+// DeleteRange implements DB.DeleteRange, as documented in the pebble/db
+// package.
+func (d *DB) DeleteRange(start, end []byte, o *db.WriteOptions) error {
+	return fmt.Errorf("pebble: DeleteRange unimplemented")
+}
+
 func (d *DB) Apply(batch Batch, opts *db.WriteOptions) error {
 	if len(batch.data) == 0 {
 		return nil

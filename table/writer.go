@@ -163,14 +163,8 @@ type Writer struct {
 	tmp [50]byte
 }
 
-// Writer implements the db.Writer interface.
-var _ db.Writer = (*Writer)(nil)
-
-// Delete is provided to implement the DB interface, but returns an error, as a
-// Writer can only append key/value pairs.
-func (w *Writer) Delete(key []byte, o *db.WriteOptions) error {
-	return errors.New("pebble/table: cannot Delete from a table")
-}
+// Writer implements the db.Setter interface.
+var _ db.Setter = (*Writer)(nil)
 
 // Set implements DB.Set, as documented in the pebble/db package. For a given
 // Writer, the keys passed to Set must be in increasing order.
