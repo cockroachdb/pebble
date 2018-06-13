@@ -20,7 +20,6 @@ const (
 	fileTypeLog fileType = iota
 	fileTypeLock
 	fileTypeTable
-	fileTypeOldFashionedTable
 	fileTypeManifest
 	fileTypeCurrent
 )
@@ -35,8 +34,6 @@ func dbFilename(dirname string, fileType fileType, fileNum uint64) string {
 	case fileTypeLock:
 		return fmt.Sprintf("%s%cLOCK", dirname, os.PathSeparator)
 	case fileTypeTable:
-		return fmt.Sprintf("%s%c%06d.ldb", dirname, os.PathSeparator, fileNum)
-	case fileTypeOldFashionedTable:
 		return fmt.Sprintf("%s%c%06d.sst", dirname, os.PathSeparator, fileNum)
 	case fileTypeManifest:
 		return fmt.Sprintf("%s%cMANIFEST-%06d", dirname, os.PathSeparator, fileNum)
@@ -69,12 +66,10 @@ func parseDBFilename(filename string) (fileType fileType, fileNum uint64, ok boo
 			break
 		}
 		switch filename[i+1:] {
-		case "ldb":
+		case "sst":
 			return fileTypeTable, u, true
 		case "log":
 			return fileTypeLog, u, true
-		case "sst":
-			return fileTypeOldFashionedTable, u, true
 		}
 	}
 	return 0, 0, false

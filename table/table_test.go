@@ -251,9 +251,9 @@ func testReader(t *testing.T, filename string, fp db.FilterPolicy) {
 	}
 }
 
-func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.ldb", nil) }
-func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.ldb", nil) }
-func TestReaderBloomIgnored(t *testing.T)       { testReader(t, "h.bloom.no-compression.ldb", nil) }
+func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil) }
+func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil) }
+func TestReaderBloomIgnored(t *testing.T)       { testReader(t, "h.bloom.no-compression.sst", nil) }
 
 func TestReaderBloomUsed(t *testing.T) {
 	// wantActualNegatives is the minimum number of nonsense words (i.e. false
@@ -272,7 +272,7 @@ func TestReaderBloomUsed(t *testing.T) {
 			FilterPolicy: bloom.FilterPolicy(10),
 			degenerate:   degenerate,
 		}
-		testReader(t, "h.bloom.no-compression.ldb", c)
+		testReader(t, "h.bloom.no-compression.sst", c)
 
 		if c.truePositives != len(wordCount) {
 			t.Errorf("degenerate=%t: true positives: got %d, want %d", degenerate, c.truePositives, len(wordCount))
@@ -299,7 +299,7 @@ func TestReaderBloomUsed(t *testing.T) {
 }
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
-	f, err := os.Open(filepath.FromSlash("../testdata/h.bloom.no-compression.ldb"))
+	f, err := os.Open(filepath.FromSlash("../testdata/h.bloom.no-compression.sst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 
 	// According the the comments in the C++ LevelDB code, the false positive
 	// rate should be approximately 1% for for bloom.FilterPolicy(10). The 10
-	// was the parameter used to write the .ldb file. When reading the file,
+	// was the parameter used to write the .sst file. When reading the file,
 	// the 1 in the bloom.FilterPolicy(1) above doesn't matter, only the
 	// bloom.FilterPolicy matters.
 	if got := float64(100*c.falsePositives) / n; got < 0.2 || 5 < got {
@@ -391,9 +391,9 @@ func TestWriter(t *testing.T) {
 }
 
 func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
-	filename := "../testdata/h.no-compression.ldb"
+	filename := "../testdata/h.no-compression.sst"
 	if fp != nil {
-		filename = "../testdata/h.bloom.no-compression.ldb"
+		filename = "../testdata/h.bloom.no-compression.sst"
 	}
 
 	// Check that a freshly made NoCompression table is byte-for-byte equal

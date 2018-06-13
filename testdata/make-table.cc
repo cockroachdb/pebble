@@ -20,11 +20,11 @@
 
 const int N = 1000000;
 const char* infile = "h.txt";
-const char* outfile = "h.ldb";
+const char* outfile = "h.sst";
 
 int write() {
   leveldb::Status status;
-  
+
   leveldb::WritableFile* wf;
   status = leveldb::Env::Default()->NewWritableFile(outfile, &wf);
   if (!status.ok()) {
