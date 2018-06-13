@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/memfs"
+	"github.com/petermattis/pebble/storage"
 )
 
 // try repeatedly calls f, sleeping between calls with exponential back-off,
@@ -73,7 +73,7 @@ func TestTry(t *testing.T) {
 
 func TestErrorIfDBExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
-		fs := memfs.New()
+		fs := storage.NewMem()
 		d0, err := Open("", &db.Options{
 			FileSystem: fs,
 		})
@@ -102,7 +102,7 @@ func TestErrorIfDBExists(t *testing.T) {
 
 func TestNewDBFilenames(t *testing.T) {
 	fooBar := filepath.Join("foo", "bar")
-	fs := memfs.New()
+	fs := storage.NewMem()
 	d, err := Open(fooBar, &db.Options{
 		FileSystem: fs,
 	})
@@ -150,7 +150,7 @@ func cloneFileSystem(srcFS db.FileSystem, dirname string) (db.FileSystem, error)
 		dirname += string(os.PathSeparator)
 	}
 
-	dstFS := memfs.New()
+	dstFS := storage.NewMem()
 	list, err := srcFS.List(dirname)
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func TestBasicReads(t *testing.T) {
 
 func TestBasicWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		FileSystem: memfs.New(),
+		FileSystem: storage.NewMem(),
 	})
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
@@ -419,7 +419,7 @@ func TestBasicWrites(t *testing.T) {
 
 func TestRandomWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		FileSystem:      memfs.New(),
+		FileSystem:      storage.NewMem(),
 		WriteBufferSize: 8 * 1024,
 	})
 	if err != nil {
@@ -475,7 +475,7 @@ func TestRandomWrites(t *testing.T) {
 
 func TestOpenCloseOpenClose(t *testing.T) {
 	opts := &db.Options{
-		FileSystem: memfs.New(),
+		FileSystem: storage.NewMem(),
 	}
 
 	for _, startFromEmpty := range []bool{false, true} {

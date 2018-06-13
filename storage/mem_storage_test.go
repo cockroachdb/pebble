@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package memfs
+package storage
 
 import (
 	"io"
@@ -23,7 +23,7 @@ func normalize(name string) string {
 }
 
 func TestBasics(t *testing.T) {
-	fs := New()
+	fs := NewMem()
 	testCases := []string{
 		// Create a top-level file.
 		"1a: create /foo",
@@ -149,7 +149,7 @@ func TestBasics(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	fs := New()
+	fs := NewMem()
 
 	dirnames := []string{
 		"/bar",

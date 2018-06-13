@@ -19,7 +19,7 @@ import (
 
 	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/memfs"
+	"github.com/petermattis/pebble/storage"
 )
 
 // nonsenseWords are words that aren't in ../testdata/h.txt.
@@ -193,7 +193,7 @@ func check(f db.File, fp db.FilterPolicy) error {
 }
 
 var (
-	memFileSystem = memfs.New()
+	memFileSystem = storage.NewMem()
 	tmpFileCount  int
 )
 
@@ -482,7 +482,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 	for nk := 0; nk <= len(keys); nk++ {
 	loop:
 		for _, vLen := range valueLengths {
-			got, memFS := 0, memfs.New()
+			got, memFS := 0, storage.NewMem()
 
 			wf, err := memFS.Create("foo")
 			if err != nil {

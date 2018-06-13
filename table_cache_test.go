@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/memfs"
+	"github.com/petermattis/pebble/storage"
 	"github.com/petermattis/pebble/table"
 )
 
@@ -123,7 +123,7 @@ const (
 func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	xxx := bytes.Repeat([]byte("x"), tableCacheTestNumTables)
 	fs := &tableCacheTestFS{
-		FileSystem: memfs.New(),
+		FileSystem: storage.NewMem(),
 	}
 	for i := 0; i < tableCacheTestNumTables; i++ {
 		f, err := fs.Create(dbFilename("", fileTypeTable, uint64(i)))

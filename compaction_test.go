@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/memfs"
+	"github.com/petermattis/pebble/storage"
 	"github.com/petermattis/pebble/table"
 )
 
@@ -550,7 +550,7 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 func TestCompaction(t *testing.T) {
 	const writeBufferSize = 1000
 
-	fs := memfs.New()
+	fs := storage.NewMem()
 	d, err := Open("", &db.Options{
 		FileSystem:      fs,
 		WriteBufferSize: writeBufferSize,
