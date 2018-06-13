@@ -21,6 +21,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/memdb"
 	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/storage"
 	"github.com/petermattis/pebble/table"
 )
 
@@ -61,7 +62,7 @@ type DB struct {
 
 	fileLock  io.Closer
 	logNumber uint64
-	logFile   db.File
+	logFile   storage.File
 	log       *record.Writer
 
 	versions versionSet
@@ -216,13 +217,13 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 		nextFileNumber: manifestFileNum + 1,
 	}
 	manifestFilename := dbFilename(dirname, fileTypeManifest, manifestFileNum)
-	f, err := opts.GetFileSystem().Create(manifestFilename)
+	f, err := opts.GetStorage().Create(manifestFilename)
 	if err != nil {
 		return fmt.Errorf("pebble: could not create %q: %v", manifestFilename, err)
 	}
 	defer func() {
 		if retErr != nil {
-			opts.GetFileSystem().Remove(manifestFilename)
+			opts.GetStorage().Remove(manifestFilename)
 		}
 	}()
 	defer f.Close()
@@ -240,7 +241,7 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 	if err != nil {
 		return err
 	}
-	return setCurrentFile(dirname, opts.GetFileSystem(), manifestFileNum)
+	return setCurrentFile(dirname, opts.GetStorage(), manifestFileNum)
 }
 
 // Open opens a LevelDB whose files live in the given directory.
@@ -259,10 +260,10 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(dirname, opts.GetFileSystem(), &d.icmpOpts, tableCacheSize)
+	d.tableCache.init(dirname, opts.GetStorage(), &d.icmpOpts, tableCacheSize)
 	d.mem = memdb.New(&d.icmpOpts)
 	d.compactionCond = sync.Cond{L: &d.mu}
-	fs := opts.GetFileSystem()
+	fs := opts.GetStorage()
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -355,7 +356,11 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) replayLogFile(ve *versionEdit, fs db.Storage, filename string) (maxSeqNum uint64, err error) {
+func (d *DB) replayLogFile(
+	ve *versionEdit,
+	fs storage.Storage,
+	filename string,
+) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
 		return 0, err
@@ -461,7 +466,7 @@ func firstError(err0, err1 error) error {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) writeLevel0Table(fs db.Storage, mem *memdb.MemDB) (meta fileMetadata, err error) {
+func (d *DB) writeLevel0Table(fs storage.Storage, mem *memdb.MemDB) (meta fileMetadata, err error) {
 	meta.fileNum = d.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
 	d.pendingOutputs[meta.fileNum] = struct{}{}
@@ -477,7 +482,7 @@ func (d *DB) writeLevel0Table(fs db.Storage, mem *memdb.MemDB) (meta fileMetadat
 	defer d.mu.Lock()
 
 	var (
-		file db.File
+		file storage.File
 		tw   *table.Writer
 		iter db.Iterator
 	)
@@ -600,7 +605,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		// Attempt to switch to a new memtable and trigger compaction of old
 		// TODO: drop and re-acquire d.mu around the I/O.
 		newLogNumber := d.versions.nextFileNum()
-		newLogFile, err := d.opts.GetFileSystem().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
+		newLogFile, err := d.opts.GetStorage().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
 		if err != nil {
 			return err
 		}
@@ -640,7 +645,7 @@ func (d *DB) deleteObsoleteFiles() {
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	fs := d.opts.GetFileSystem()
+	fs := d.opts.GetStorage()
 	list, err := fs.List(d.dirname)
 	if err != nil {
 		// Ignore any filesystem errors.

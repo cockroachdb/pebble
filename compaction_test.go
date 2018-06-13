@@ -552,7 +552,7 @@ func TestCompaction(t *testing.T) {
 
 	fs := storage.NewMem()
 	d, err := Open("", &db.Options{
-		FileSystem:      fs,
+		Storage:         fs,
 		WriteBufferSize: writeBufferSize,
 	})
 	if err != nil {

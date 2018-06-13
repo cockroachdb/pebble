@@ -11,9 +11,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/db"
-	"github.com/golang/snappy"
+	"github.com/petermattis/pebble/storage"
 )
 
 // indexEntry is a block handle and the length of the separator key.
@@ -406,7 +407,7 @@ func (w *Writer) Close() (err error) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f db.File, o *db.Options) *Writer {
+func NewWriter(f storage.File, o *db.Options) *Writer {
 	w := &Writer{
 		closer:               f,
 		blockRestartInterval: o.GetBlockRestartInterval(),

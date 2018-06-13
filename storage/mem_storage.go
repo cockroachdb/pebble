@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package storage provides a memory-backed db.FileSystem implementation.
+// Package storage provides a memory-backed storage.FileSystem implementation.
 //
 // It can be useful for tests, and also for LevelDB instances that should not
 // ever touch persistent storage, such as a web browser's private browsing mode.
@@ -18,8 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/petermattis/pebble/db"
 )
 
 const sep = string(os.PathSeparator)
@@ -30,8 +28,8 @@ func (nopCloser) Close() error {
 	return nil
 }
 
-// NewMem returns a new memory-backed db.FileSystem implementation.
-func NewMem() db.Storage {
+// NewMem returns a new memory-backed Storage implementation.
+func NewMem() Storage {
 	return &memStorage{
 		root: &node{
 			children: make(map[string]*node),
@@ -40,7 +38,7 @@ func NewMem() db.Storage {
 	}
 }
 
-// memStorage implements db.FileSystem.
+// memStorage implements Storage
 type memStorage struct {
 	mu   sync.Mutex
 	root *node
@@ -111,7 +109,7 @@ func (y *memStorage) walk(fullname string, f func(dir *node, frag string, final 
 	return nil
 }
 
-func (y *memStorage) Create(fullname string) (db.File, error) {
+func (y *memStorage) Create(fullname string) (File, error) {
 	var ret *file
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
@@ -133,7 +131,7 @@ func (y *memStorage) Create(fullname string) (db.File, error) {
 	return ret, nil
 }
 
-func (y *memStorage) Open(fullname string) (db.File, error) {
+func (y *memStorage) Open(fullname string) (File, error) {
 	var ret *file
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
@@ -331,7 +329,7 @@ func (f *node) dump(w *bytes.Buffer, level int) {
 	}
 }
 
-// file is a reader or writer of a node's data, and implements db.File.
+// file is a reader or writer of a node's data, and implements File.
 type file struct {
 	n           *node
 	rpos        int

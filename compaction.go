@@ -226,7 +226,7 @@ func (d *DB) compact1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compactMemTable() error {
-	meta, err := d.writeLevel0Table(d.opts.GetFileSystem(), d.imm)
+	meta, err := d.writeLevel0Table(d.opts.GetStorage(), d.imm)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			retErr = firstError(retErr, tw.Close())
 		}
 		if retErr != nil {
-			d.opts.GetFileSystem().Remove(filename)
+			d.opts.GetStorage().Remove(filename)
 		}
 	}()
 
@@ -348,7 +348,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			d.mu.Unlock()
 
 			filename = dbFilename(d.dirname, fileTypeTable, fileNum)
-			file, err := d.opts.GetFileSystem().Create(filename)
+			file, err := d.opts.GetStorage().Create(filename)
 			if err != nil {
 				return nil, pendingOutputs, err
 			}

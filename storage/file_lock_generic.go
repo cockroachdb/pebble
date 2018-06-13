@@ -4,7 +4,7 @@
 
 // +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd,!solaris,!windows
 
-package db
+package storage
 
 import (
 	"fmt"

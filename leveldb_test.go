@@ -75,7 +75,7 @@ func TestErrorIfDBExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
 		fs := storage.NewMem()
 		d0, err := Open("", &db.Options{
-			FileSystem: fs,
+			Storage: fs,
 		})
 		if err != nil {
 			t.Errorf("b=%v: d0 Open: %v", b, err)
@@ -87,7 +87,7 @@ func TestErrorIfDBExists(t *testing.T) {
 		}
 
 		d1, err := Open("", &db.Options{
-			FileSystem:      fs,
+			Storage:         fs,
 			ErrorIfDBExists: b,
 		})
 		if d1 != nil {
@@ -104,7 +104,7 @@ func TestNewDBFilenames(t *testing.T) {
 	fooBar := filepath.Join("foo", "bar")
 	fs := storage.NewMem()
 	d, err := Open(fooBar, &db.Options{
-		FileSystem: fs,
+		Storage: fs,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -145,7 +145,7 @@ func TestNewDBFilenames(t *testing.T) {
 // containing:
 //   - /x
 //   - /y
-func cloneFileSystem(srcFS db.Storage, dirname string) (db.Storage, error) {
+func cloneFileSystem(srcFS storage.Storage, dirname string) (storage.Storage, error) {
 	if len(dirname) == 0 || dirname[len(dirname)-1] != os.PathSeparator {
 		dirname += string(os.PathSeparator)
 	}
@@ -247,13 +247,13 @@ func TestBasicReads(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		fs, err := cloneFileSystem(db.DefaultFileSystem, "testdata/"+tc.dirname)
+		fs, err := cloneFileSystem(storage.Default, "testdata/"+tc.dirname)
 		if err != nil {
 			t.Errorf("%s: cloneFileSystem failed: %v", tc.dirname, err)
 			continue
 		}
 		d, err := Open("", &db.Options{
-			FileSystem: fs,
+			Storage: fs,
 		})
 		if err != nil {
 			t.Errorf("%s: Open failed: %v", tc.dirname, err)
@@ -280,7 +280,7 @@ func TestBasicReads(t *testing.T) {
 
 func TestBasicWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		FileSystem: storage.NewMem(),
+		Storage: storage.NewMem(),
 	})
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
@@ -419,7 +419,7 @@ func TestBasicWrites(t *testing.T) {
 
 func TestRandomWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		FileSystem:      storage.NewMem(),
+		Storage:         storage.NewMem(),
 		WriteBufferSize: 8 * 1024,
 	})
 	if err != nil {
@@ -475,7 +475,7 @@ func TestRandomWrites(t *testing.T) {
 
 func TestOpenCloseOpenClose(t *testing.T) {
 	opts := &db.Options{
-		FileSystem: storage.NewMem(),
+		Storage: storage.NewMem(),
 	}
 
 	for _, startFromEmpty := range []bool{false, true} {

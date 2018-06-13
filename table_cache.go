@@ -8,12 +8,13 @@ import (
 	"sync"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/storage"
 	"github.com/petermattis/pebble/table"
 )
 
 type tableCache struct {
 	dirname string
-	fs      db.Storage
+	fs      storage.Storage
 	opts    *db.Options
 	size    int
 
@@ -22,7 +23,7 @@ type tableCache struct {
 	dummy tableCacheNode
 }
 
-func (c *tableCache) init(dirname string, fs db.Storage, opts *db.Options, size int) {
+func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, size int) {
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts

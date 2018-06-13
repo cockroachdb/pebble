@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package db
+package storage
 
 import (
 	"io"
@@ -74,9 +74,9 @@ type Storage interface {
 	Stat(name string) (os.FileInfo, error)
 }
 
-// DefaultFileSystem is a FileSystem implementation backed by the underlying
-// operating system's file system.
-var DefaultFileSystem Storage = defaultFS{}
+// Default is a Storage implementation backed by the underlying operating
+// system's file system.
+var Default Storage = defaultFS{}
 
 type defaultFS struct{}
 

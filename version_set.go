@@ -11,13 +11,14 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/storage"
 )
 
 // TODO: describe what a versionSet is.
 type versionSet struct {
 	dirname    string
 	opts       *db.Options
-	fs         db.Storage
+	fs         storage.Storage
 	ucmp, icmp db.Comparer
 
 	// dummyVersion is the head of a circular doubly-linked list of versions.
@@ -30,7 +31,7 @@ type versionSet struct {
 	lastSequence       uint64
 	manifestFileNumber uint64
 
-	manifestFile db.File
+	manifestFile storage.File
 	manifest     *record.Writer
 }
 
@@ -38,7 +39,7 @@ type versionSet struct {
 func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.dirname = dirname
 	vs.opts = opts
-	vs.fs = opts.GetFileSystem()
+	vs.fs = opts.GetStorage()
 	vs.ucmp = opts.GetComparer()
 	vs.icmp = internalKeyComparer{vs.ucmp}
 	vs.dummyVersion.prev = &vs.dummyVersion
@@ -174,7 +175,7 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	if err := vs.manifestFile.Sync(); err != nil {
 		return err
 	}
-	if err := setCurrentFile(dirname, vs.opts.GetFileSystem(), vs.manifestFileNumber); err != nil {
+	if err := setCurrentFile(dirname, vs.opts.GetStorage(), vs.manifestFileNumber); err != nil {
 		return err
 	}
 
@@ -193,7 +194,7 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 func (vs *versionSet) createManifest(dirname string) (err error) {
 	var (
 		filename     = dbFilename(dirname, fileTypeManifest, vs.manifestFileNumber)
-		manifestFile db.File
+		manifestFile storage.File
 		manifest     *record.Writer
 	)
 	defer func() {

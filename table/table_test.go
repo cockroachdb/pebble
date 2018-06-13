@@ -110,7 +110,7 @@ func init() {
 	}
 }
 
-func check(f db.File, fp db.FilterPolicy) error {
+func check(f storage.File, fp db.FilterPolicy) error {
 	r := NewReader(f, &db.Options{
 		FilterPolicy:    fp,
 		VerifyChecksums: true,
@@ -197,7 +197,7 @@ var (
 	tmpFileCount  int
 )
 
-func build(compression db.Compression, fp db.FilterPolicy) (db.File, error) {
+func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
 	i := 0

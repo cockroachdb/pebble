@@ -18,7 +18,7 @@ import (
 )
 
 type tableCacheTestFile struct {
-	db.File
+	storage.File
 	fs   *tableCacheTestFS
 	name string
 }
@@ -33,14 +33,14 @@ func (f *tableCacheTestFile) Close() error {
 }
 
 type tableCacheTestFS struct {
-	db.Storage
+	storage.Storage
 
 	mu          sync.Mutex
 	openCounts  map[string]int
 	closeCounts map[string]int
 }
 
-func (fs *tableCacheTestFS) Open(name string) (db.File, error) {
+func (fs *tableCacheTestFS) Open(name string) (storage.File, error) {
 	fs.mu.Lock()
 	if fs.openCounts != nil {
 		fs.openCounts[name]++

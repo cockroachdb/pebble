@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/petermattis/pebble/db"
 )
 
 func normalize(name string) string {
@@ -63,7 +61,7 @@ func TestBasics(t *testing.T) {
 		"8e: open /bar/baz/z fails",
 		"8f: open /bar/caz/z",
 	}
-	var f db.File
+	var f File
 	for _, tc := range testCases {
 		s := strings.Split(tc, " ")[1:]
 
@@ -79,7 +77,7 @@ func TestBasics(t *testing.T) {
 
 		var (
 			fi  os.FileInfo
-			g   db.File
+			g   File
 			err error
 		)
 		switch s[0] {

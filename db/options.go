@@ -4,6 +4,8 @@
 
 package db
 
+import "github.com/petermattis/pebble/storage"
+
 // Compression is the per-block compression algorithm to use.
 type Compression int
 
@@ -91,11 +93,6 @@ type Options struct {
 	// The default value is false.
 	ErrorIfDBExists bool
 
-	// FileSystem maps file names to byte storage.
-	//
-	// The default value uses the underlying operating system's file system.
-	FileSystem Storage
-
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that
 	// can reduce disk reads for Get calls.
 	//
@@ -110,6 +107,11 @@ type Options struct {
 	//
 	// The default value is 1000.
 	MaxOpenFiles int
+
+	// Storage maps file names to byte storage.
+	//
+	// The default value uses the underlying operating system's file system.
+	Storage storage.Storage
 
 	// WriteBufferSize is the amount of data to build up in memory (backed by
 	// an unsorted log on disk) before converting to a sorted on-disk file.
@@ -165,13 +167,6 @@ func (o *Options) GetErrorIfDBExists() bool {
 	return o.ErrorIfDBExists
 }
 
-func (o *Options) GetFileSystem() Storage {
-	if o == nil || o.FileSystem == nil {
-		return DefaultFileSystem
-	}
-	return o.FileSystem
-}
-
 func (o *Options) GetFilterPolicy() FilterPolicy {
 	if o == nil {
 		return nil
@@ -184,6 +179,13 @@ func (o *Options) GetMaxOpenFiles() int {
 		return 1000
 	}
 	return o.MaxOpenFiles
+}
+
+func (o *Options) GetStorage() storage.Storage {
+	if o == nil || o.Storage == nil {
+		return storage.Default
+	}
+	return o.Storage
 }
 
 func (o *Options) GetWriteBufferSize() int {

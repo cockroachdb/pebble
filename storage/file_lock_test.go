@@ -1,7 +1,8 @@
 // Copyright 2014 The LevelDB-Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-package db_test
+
+package storage_test
 
 import (
 	"bytes"
@@ -11,7 +12,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/storage"
 )
 
 var lockFilename = flag.String("lockfile", "", "File to lock. A non-empty value implies a child process.")
@@ -46,7 +47,7 @@ func TestLock(t *testing.T) {
 	}
 
 	t.Logf("Locking %s\n", filename)
-	lock, err := db.DefaultFileSystem.Lock(filename)
+	lock, err := storage.Default.Lock(filename)
 	if err != nil {
 		t.Fatalf("Could not lock %s: %v", filename, err)
 	}

@@ -12,9 +12,10 @@ import (
 	"io"
 	"sort"
 
+	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/db"
-	"github.com/golang/snappy"
+	"github.com/petermattis/pebble/storage"
 )
 
 // blockHandle is the file offset and length of a block.
@@ -292,7 +293,7 @@ func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 // Reader is a table reader. It implements the DB interface, as documented
 // in the pebble/db package.
 type Reader struct {
-	file            db.File
+	file            storage.File
 	err             error
 	index           block
 	comparer        db.Comparer
@@ -454,7 +455,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f db.File, o *db.Options) *Reader {
+func NewReader(f storage.File, o *db.Options) *Reader {
 	r := &Reader{
 		file:            f,
 		comparer:        o.GetComparer(),
