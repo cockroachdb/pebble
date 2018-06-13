@@ -104,10 +104,10 @@ const (
 
 var (
 	// ErrNotAnIOSeeker is returned if the io.Reader underlying a Reader does not implement io.Seeker.
-	ErrNotAnIOSeeker = errors.New("leveldb/record: reader does not implement io.Seeker")
+	ErrNotAnIOSeeker = errors.New("pebble/record: reader does not implement io.Seeker")
 
 	// ErrNoLastRecord is returned if LastRecordOffset is called and there is no previous record.
-	ErrNoLastRecord = errors.New("leveldb/record: no last record exists")
+	ErrNoLastRecord = errors.New("pebble/record: no last record exists")
 )
 
 type flusher interface {
@@ -161,11 +161,11 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					// via mmap.
 					//
 					// Set r.err to be an error so r.Recover actually recovers.
-					r.err = errors.New("leveldb/record: block appears to be zeroed")
+					r.err = errors.New("pebble/record: block appears to be zeroed")
 					r.Recover()
 					continue
 				}
-				return errors.New("leveldb/record: invalid chunk")
+				return errors.New("pebble/record: invalid chunk")
 			}
 
 			r.i = r.j + headerSize
@@ -175,14 +175,14 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					r.Recover()
 					continue
 				}
-				return errors.New("leveldb/record: invalid chunk (length overflows block)")
+				return errors.New("pebble/record: invalid chunk (length overflows block)")
 			}
 			if checksum != crc.New(r.buf[r.i-1:r.j]).Value() {
 				if r.recovering {
 					r.Recover()
 					continue
 				}
-				return errors.New("leveldb/record: invalid chunk (checksum mismatch)")
+				return errors.New("pebble/record: invalid chunk (checksum mismatch)")
 			}
 			if wantFirst {
 				if chunkType != fullChunkType && chunkType != firstChunkType {
@@ -299,7 +299,7 @@ type singleReader struct {
 func (x singleReader) Read(p []byte) (int, error) {
 	r := x.r
 	if r.seq != x.seq {
-		return 0, errors.New("leveldb/record: stale reader")
+		return 0, errors.New("pebble/record: stale reader")
 	}
 	if r.err != nil {
 		return 0, r.err
@@ -373,7 +373,7 @@ func NewWriter(w io.Writer) *Writer {
 // fillHeader fills in the header for the pending chunk.
 func (w *Writer) fillHeader(last bool) {
 	if w.i+headerSize > w.j || w.j > blockSize {
-		panic("leveldb/record: bad writer state")
+		panic("pebble/record: bad writer state")
 	}
 	if last {
 		if w.first {
@@ -423,7 +423,7 @@ func (w *Writer) Close() error {
 	if w.err != nil {
 		return w.err
 	}
-	w.err = errors.New("leveldb/record: closed Writer")
+	w.err = errors.New("pebble/record: closed Writer")
 	return nil
 }
 
@@ -501,7 +501,7 @@ type singleWriter struct {
 func (x singleWriter) Write(p []byte) (int, error) {
 	w := x.w
 	if w.seq != x.seq {
-		return 0, errors.New("leveldb/record: stale writer")
+		return 0, errors.New("pebble/record: stale writer")
 	}
 	if w.err != nil {
 		return 0, w.err

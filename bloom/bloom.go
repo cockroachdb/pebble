@@ -129,14 +129,14 @@ func hash(b []byte) uint32 {
 	return h
 }
 
-// FilterPolicy implements the db.FilterPolicy interface from the leveldb/db
+// FilterPolicy implements the db.FilterPolicy interface from the pebble/db
 // package.
 //
 // The integer value is the approximate number of bits used per key. A good
 // value is 10, which yields a filter with ~ 1% false positive rate.
 //
-// It is valid to use the other API in this package (leveldb/bloom) without
-// using this type or the leveldb/db package.
+// It is valid to use the other API in this package (pebble/bloom) without
+// using this type or the pebble/db package.
 type FilterPolicy int
 
 // Name implements the db.FilterPolicy interface.

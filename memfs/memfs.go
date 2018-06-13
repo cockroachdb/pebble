@@ -101,10 +101,10 @@ func (y *fileSystem) walk(fullname string, f func(dir *node, frag string, final 
 		}
 		child := dir.children[frag]
 		if child == nil {
-			return errors.New("leveldb/memfs: no such directory")
+			return errors.New("pebble/memfs: no such directory")
 		}
 		if !child.isDir {
-			return errors.New("leveldb/memfs: not a directory")
+			return errors.New("pebble/memfs: not a directory")
 		}
 		dir, fullname = child, remaining
 	}
@@ -116,7 +116,7 @@ func (y *fileSystem) Create(fullname string) (db.File, error) {
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("leveldb/memfs: empty file name")
+				return errors.New("pebble/memfs: empty file name")
 			}
 			n := &node{name: frag}
 			dir.children[frag] = n
@@ -138,7 +138,7 @@ func (y *fileSystem) Open(fullname string) (db.File, error) {
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("leveldb/memfs: empty file name")
+				return errors.New("pebble/memfs: empty file name")
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &file{
@@ -166,11 +166,11 @@ func (y *fileSystem) Remove(fullname string) error {
 	return y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("leveldb/memfs: empty file name")
+				return errors.New("pebble/memfs: empty file name")
 			}
 			_, ok := dir.children[frag]
 			if !ok {
-				return errors.New("leveldb/memfs: no such file or directory")
+				return errors.New("pebble/memfs: no such file or directory")
 			}
 			delete(dir.children, frag)
 		}
@@ -183,7 +183,7 @@ func (y *fileSystem) Rename(oldname, newname string) error {
 	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("leveldb/memfs: empty file name")
+				return errors.New("pebble/memfs: empty file name")
 			}
 			n = dir.children[frag]
 			delete(dir.children, frag)
@@ -194,12 +194,12 @@ func (y *fileSystem) Rename(oldname, newname string) error {
 		return err
 	}
 	if n == nil {
-		return errors.New("leveldb/memfs: no such file or directory")
+		return errors.New("pebble/memfs: no such file or directory")
 	}
 	return y.walk(newname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("leveldb/memfs: empty file name")
+				return errors.New("pebble/memfs: empty file name")
 			}
 			dir.children[frag] = n
 		}
@@ -213,7 +213,7 @@ func (y *fileSystem) MkdirAll(dirname string, perm os.FileMode) error {
 			if final {
 				return nil
 			}
-			return errors.New("leveldb/memfs: empty file name")
+			return errors.New("pebble/memfs: empty file name")
 		}
 		child := dir.children[frag]
 		if child == nil {
@@ -225,7 +225,7 @@ func (y *fileSystem) MkdirAll(dirname string, perm os.FileMode) error {
 			return nil
 		}
 		if !child.isDir {
-			return errors.New("leveldb/memfs: not a directory")
+			return errors.New("pebble/memfs: not a directory")
 		}
 		return nil
 	})
@@ -344,10 +344,10 @@ func (f *file) Close() error {
 
 func (f *file) Read(p []byte) (int, error) {
 	if !f.read {
-		return 0, errors.New("leveldb/memfs: file was not opened for reading")
+		return 0, errors.New("pebble/memfs: file was not opened for reading")
 	}
 	if f.n.isDir {
-		return 0, errors.New("leveldb/memfs: cannot read a directory")
+		return 0, errors.New("pebble/memfs: cannot read a directory")
 	}
 	if f.rpos >= len(f.n.data) {
 		return 0, io.EOF
@@ -359,10 +359,10 @@ func (f *file) Read(p []byte) (int, error) {
 
 func (f *file) ReadAt(p []byte, off int64) (int, error) {
 	if !f.read {
-		return 0, errors.New("leveldb/memfs: file was not opened for reading")
+		return 0, errors.New("pebble/memfs: file was not opened for reading")
 	}
 	if f.n.isDir {
-		return 0, errors.New("leveldb/memfs: cannot read a directory")
+		return 0, errors.New("pebble/memfs: cannot read a directory")
 	}
 	if off >= int64(len(f.n.data)) {
 		return 0, io.EOF
@@ -372,10 +372,10 @@ func (f *file) ReadAt(p []byte, off int64) (int, error) {
 
 func (f *file) Write(p []byte) (int, error) {
 	if !f.write {
-		return 0, errors.New("leveldb/memfs: file was not created for writing")
+		return 0, errors.New("pebble/memfs: file was not created for writing")
 	}
 	if f.n.isDir {
-		return 0, errors.New("leveldb/memfs: cannot write a directory")
+		return 0, errors.New("pebble/memfs: cannot write a directory")
 	}
 	f.n.modTime = time.Now()
 	f.n.data = append(f.n.data, p...)

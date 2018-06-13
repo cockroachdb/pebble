@@ -82,7 +82,7 @@ The table file format looks like:
 Each block consists of some data and a 5 byte trailer: a 1 byte block type and
 a 4 byte checksum of the compressed data. The block type gives the per-block
 compression used; each block is compressed independently. The checksum
-algorithm is described in the leveldb/crc package.
+algorithm is described in the pebble/crc package.
 
 The decompressed block data consists of a sequence of key/value entries
 followed by a trailer. Each key is encoded as a shared prefix length and a

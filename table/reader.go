@@ -49,7 +49,7 @@ type block []byte
 func (b block) seek(c db.Comparer, key []byte) (*blockIter, error) {
 	numRestarts := int(binary.LittleEndian.Uint32(b[len(b)-4:]))
 	if numRestarts == 0 {
-		return nil, errors.New("leveldb/table: invalid table (block has no restart points)")
+		return nil, errors.New("pebble/table: invalid table (block has no restart points)")
 	}
 	n := len(b) - 4*(1+numRestarts)
 	var offset int
@@ -104,7 +104,7 @@ type blockIter struct {
 // blockIter implements the db.Iterator interface.
 var _ db.Iterator = (*blockIter)(nil)
 
-// Next implements Iterator.Next, as documented in the leveldb/db package.
+// Next implements Iterator.Next, as documented in the pebble/db package.
 func (i *blockIter) Next() bool {
 	if i.eoi || i.err != nil {
 		return false
@@ -127,7 +127,7 @@ func (i *blockIter) Next() bool {
 	return true
 }
 
-// Key implements Iterator.Key, as documented in the leveldb/db package.
+// Key implements Iterator.Key, as documented in the pebble/db package.
 func (i *blockIter) Key() []byte {
 	if i.soi {
 		return nil
@@ -135,7 +135,7 @@ func (i *blockIter) Key() []byte {
 	return i.key[:len(i.key):len(i.key)]
 }
 
-// Value implements Iterator.Value, as documented in the leveldb/db package.
+// Value implements Iterator.Value, as documented in the pebble/db package.
 func (i *blockIter) Value() []byte {
 	if i.soi {
 		return nil
@@ -143,7 +143,7 @@ func (i *blockIter) Value() []byte {
 	return i.val[:len(i.val):len(i.val)]
 }
 
-// Close implements Iterator.Close, as documented in the leveldb/db package.
+// Close implements Iterator.Close, as documented in the pebble/db package.
 func (i *blockIter) Close() error {
 	i.key = nil
 	i.val = nil
@@ -181,7 +181,7 @@ func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
 	v := i.index.Value()
 	h, n := decodeBlockHandle(v)
 	if n == 0 || n != len(v) {
-		i.err = errors.New("leveldb/table: corrupt index entry")
+		i.err = errors.New("pebble/table: corrupt index entry")
 		return false
 	}
 	if f != nil && !f.mayContain(h.offset, key) {
@@ -203,7 +203,7 @@ func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
 	return true
 }
 
-// Next implements Iterator.Next, as documented in the leveldb/db package.
+// Next implements Iterator.Next, as documented in the pebble/db package.
 func (i *tableIter) Next() bool {
 	if i.data == nil {
 		return false
@@ -224,7 +224,7 @@ func (i *tableIter) Next() bool {
 	return false
 }
 
-// Key implements Iterator.Key, as documented in the leveldb/db package.
+// Key implements Iterator.Key, as documented in the pebble/db package.
 func (i *tableIter) Key() []byte {
 	if i.data == nil {
 		return nil
@@ -232,7 +232,7 @@ func (i *tableIter) Key() []byte {
 	return i.data.Key()
 }
 
-// Value implements Iterator.Value, as documented in the leveldb/db package.
+// Value implements Iterator.Value, as documented in the pebble/db package.
 func (i *tableIter) Value() []byte {
 	if i.data == nil {
 		return nil
@@ -240,7 +240,7 @@ func (i *tableIter) Value() []byte {
 	return i.data.Value()
 }
 
-// Close implements Iterator.Close, as documented in the leveldb/db package.
+// Close implements Iterator.Close, as documented in the pebble/db package.
 func (i *tableIter) Close() error {
 	i.data = nil
 	return i.err
@@ -290,7 +290,7 @@ func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 }
 
 // Reader is a table reader. It implements the DB interface, as documented
-// in the leveldb/db package.
+// in the pebble/db package.
 type Reader struct {
 	file            db.File
 	err             error
@@ -304,7 +304,7 @@ type Reader struct {
 // Reader implements the db.DB interface.
 var _ db.DB = (*Reader)(nil)
 
-// Close implements DB.Close, as documented in the leveldb/db package.
+// Close implements DB.Close, as documented in the pebble/db package.
 func (r *Reader) Close() error {
 	if r.err != nil {
 		if r.file != nil {
@@ -321,11 +321,11 @@ func (r *Reader) Close() error {
 		}
 	}
 	// Make any future calls to Get, Find or Close return an error.
-	r.err = errors.New("leveldb/table: reader is closed")
+	r.err = errors.New("pebble/table: reader is closed")
 	return nil
 }
 
-// Get implements DB.Get, as documented in the leveldb/db package.
+// Get implements DB.Get, as documented in the pebble/db package.
 func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
@@ -348,16 +348,16 @@ func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 // Set is provided to implement the DB interface, but returns an error, as a
 // Reader cannot write to a table.
 func (r *Reader) Set(key, value []byte, o *db.WriteOptions) error {
-	return errors.New("leveldb/table: cannot Set into a read-only table")
+	return errors.New("pebble/table: cannot Set into a read-only table")
 }
 
 // Delete is provided to implement the DB interface, but returns an error, as a
 // Reader cannot write to a table.
 func (r *Reader) Delete(key []byte, o *db.WriteOptions) error {
-	return errors.New("leveldb/table: cannot Delete from a read-only table")
+	return errors.New("pebble/table: cannot Delete from a read-only table")
 }
 
-// Find implements DB.Find, as documented in the leveldb/db package.
+// Find implements DB.Find, as documented in the pebble/db package.
 func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	return r.find(key, o, nil)
 }
@@ -388,7 +388,7 @@ func (r *Reader) readBlock(bh blockHandle) (block, error) {
 		checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
 		checksum1 := crc.New(b[:bh.length+1]).Value()
 		if checksum0 != checksum1 {
-			return nil, errors.New("leveldb/table: invalid table (checksum mismatch)")
+			return nil, errors.New("pebble/table: invalid table (checksum mismatch)")
 		}
 	}
 	switch b[bh.length] {
@@ -401,7 +401,7 @@ func (r *Reader) readBlock(bh blockHandle) (block, error) {
 		}
 		return b, nil
 	}
-	return nil, fmt.Errorf("leveldb/table: unknown block compression: %d", b[bh.length])
+	return nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
 }
 
 func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
@@ -432,7 +432,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		var n int
 		filterBH, n = decodeBlockHandle(i.Value())
 		if n == 0 {
-			return errors.New("leveldb/table: invalid table (bad filter block handle)")
+			return errors.New("pebble/table: invalid table (bad filter block handle)")
 		}
 		break
 	}
@@ -446,7 +446,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 			return err
 		}
 		if !r.filter.init(b, fp) {
-			return errors.New("leveldb/table: invalid table (bad filter block)")
+			return errors.New("pebble/table: invalid table (bad filter block)")
 		}
 	}
 	return nil
@@ -461,33 +461,33 @@ func NewReader(f db.File, o *db.Options) *Reader {
 		verifyChecksums: o.GetVerifyChecksums(),
 	}
 	if f == nil {
-		r.err = errors.New("leveldb/table: nil file")
+		r.err = errors.New("pebble/table: nil file")
 		return r
 	}
 	stat, err := f.Stat()
 	if err != nil {
-		r.err = fmt.Errorf("leveldb/table: invalid table (could not stat file): %v", err)
+		r.err = fmt.Errorf("pebble/table: invalid table (could not stat file): %v", err)
 		return r
 	}
 	var footer [footerLen]byte
 	if stat.Size() < int64(len(footer)) {
-		r.err = errors.New("leveldb/table: invalid table (file size is too small)")
+		r.err = errors.New("pebble/table: invalid table (file size is too small)")
 		return r
 	}
 	_, err = f.ReadAt(footer[:], stat.Size()-int64(len(footer)))
 	if err != nil && err != io.EOF {
-		r.err = fmt.Errorf("leveldb/table: invalid table (could not read footer): %v", err)
+		r.err = fmt.Errorf("pebble/table: invalid table (could not read footer): %v", err)
 		return r
 	}
 	if string(footer[footerLen-len(magic):footerLen]) != magic {
-		r.err = errors.New("leveldb/table: invalid table (bad magic number)")
+		r.err = errors.New("pebble/table: invalid table (bad magic number)")
 		return r
 	}
 
 	// Read the metaindex.
 	metaindexBH, n := decodeBlockHandle(footer[:])
 	if n == 0 {
-		r.err = errors.New("leveldb/table: invalid table (bad metaindex block handle)")
+		r.err = errors.New("pebble/table: invalid table (bad metaindex block handle)")
 		return r
 	}
 	if err := r.readMetaindex(metaindexBH, o); err != nil {
@@ -498,7 +498,7 @@ func NewReader(f db.File, o *db.Options) *Reader {
 	// Read the index into memory.
 	indexBH, n := decodeBlockHandle(footer[n:])
 	if n == 0 {
-		r.err = errors.New("leveldb/table: invalid table (bad index block handle)")
+		r.err = errors.New("pebble/table: invalid table (bad index block handle)")
 		return r
 	}
 	r.index, r.err = r.readBlock(indexBH)

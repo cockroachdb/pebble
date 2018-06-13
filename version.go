@@ -242,7 +242,7 @@ func (v *version) get(ikey internalKey, tiFinder tableIkeyFinder, ucmp db.Compar
 		}
 		iter, err := tiFinder.find(f.fileNum, ikey)
 		if err != nil {
-			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
 		value, conclusive, err := internalGet(iter, ucmp, ukey)
 		if conclusive {
@@ -269,7 +269,7 @@ func (v *version) get(ikey internalKey, tiFinder tableIkeyFinder, ucmp db.Compar
 		}
 		iter, err := tiFinder.find(f.fileNum, ikey)
 		if err != nil {
-			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
 		value, conclusive, err := internalGet(iter, ucmp, ukey)
 		if conclusive {
@@ -297,7 +297,7 @@ func internalGet(t db.Iterator, ucmp db.Comparer, ukey []byte) (value []byte, co
 	ikey0 := internalKey(t.Key())
 	if !ikey0.valid() {
 		t.Close()
-		return nil, true, fmt.Errorf("leveldb: corrupt table: invalid internal key")
+		return nil, true, fmt.Errorf("pebble: corrupt table: invalid internal key")
 	}
 	if ucmp.Compare(ukey, ikey0.ukey()) != 0 {
 		err = t.Close()

@@ -56,7 +56,7 @@ func (f *filterWriter) appendKey(key []byte) {
 func (f *filterWriter) appendOffset() error {
 	o := len(f.data)
 	if uint64(o) > 1<<32-1 {
-		return errors.New("leveldb/table: filter data is too long")
+		return errors.New("pebble/table: filter data is too long")
 	}
 	f.offsets = append(f.offsets, uint32(o))
 	return nil
@@ -114,7 +114,7 @@ func (f *filterWriter) finish() ([]byte, error) {
 }
 
 // Writer is a table writer. It implements the DB interface, as documented
-// in the leveldb/db package.
+// in the pebble/db package.
 type Writer struct {
 	writer    io.Writer
 	bufWriter *bufio.Writer
@@ -168,31 +168,31 @@ var _ db.DB = (*Writer)(nil)
 // Get is provided to implement the DB interface, but returns an error, as a
 // Writer cannot read from a table.
 func (w *Writer) Get(key []byte, o *db.ReadOptions) ([]byte, error) {
-	return nil, errors.New("leveldb/table: cannot Get from a write-only table")
+	return nil, errors.New("pebble/table: cannot Get from a write-only table")
 }
 
 // Delete is provided to implement the DB interface, but returns an error, as a
 // Writer can only append key/value pairs.
 func (w *Writer) Delete(key []byte, o *db.WriteOptions) error {
-	return errors.New("leveldb/table: cannot Delete from a table")
+	return errors.New("pebble/table: cannot Delete from a table")
 }
 
 // Find is provided to implement the DB interface, but returns an error, as a
 // Writer cannot read from a table.
 func (w *Writer) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	return &tableIter{
-		err: errors.New("leveldb/table: cannot Find from a write-only table"),
+		err: errors.New("pebble/table: cannot Find from a write-only table"),
 	}
 }
 
-// Set implements DB.Set, as documented in the leveldb/db package. For a given
+// Set implements DB.Set, as documented in the pebble/db package. For a given
 // Writer, the keys passed to Set must be in increasing order.
 func (w *Writer) Set(key, value []byte, o *db.WriteOptions) error {
 	if w.err != nil {
 		return w.err
 	}
 	if w.cmp.Compare(w.prevKey, key) >= 0 {
-		w.err = fmt.Errorf("leveldb/table: Set called in non-increasing key order: %q, %q", w.prevKey, key)
+		w.err = fmt.Errorf("pebble/table: Set called in non-increasing key order: %q, %q", w.prevKey, key)
 		return w.err
 	}
 	if w.filter.policy != nil {
@@ -307,7 +307,7 @@ func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
 	return bh, nil
 }
 
-// Close implements DB.Close, as documented in the leveldb/db package.
+// Close implements DB.Close, as documented in the pebble/db package.
 func (w *Writer) Close() (err error) {
 	defer func() {
 		if w.closer == nil {
@@ -400,7 +400,7 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Make any future calls to Set or Close return an error.
-	w.err = errors.New("leveldb/table: writer is closed")
+	w.err = errors.New("pebble/table: writer is closed")
 	return nil
 }
 
@@ -420,7 +420,7 @@ func NewWriter(f db.File, o *db.Options) *Writer {
 		restarts: make([]uint32, 0, 256),
 	}
 	if f == nil {
-		w.err = errors.New("leveldb/table: nil file")
+		w.err = errors.New("pebble/table: nil file")
 		return w
 	}
 	// If f does not have a Flush method, do our own buffering.

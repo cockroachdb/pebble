@@ -99,7 +99,7 @@ type Options struct {
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that
 	// can reduce disk reads for Get calls.
 	//
-	// One such implementation is bloom.FilterPolicy(10) from the leveldb/bloom
+	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
 	// package.
 	//
 	// The default value means to use no filter.

@@ -129,7 +129,7 @@ func (d *DB) Apply(batch Batch, opts *db.WriteOptions) error {
 	}
 	n := batch.count()
 	if n == invalidBatchCount {
-		return errors.New("leveldb: invalid batch")
+		return errors.New("pebble: invalid batch")
 	}
 
 	d.mu.Lock()
@@ -147,17 +147,17 @@ func (d *DB) Apply(batch Batch, opts *db.WriteOptions) error {
 	// TODO: drop and re-acquire d.mu around the I/O.
 	w, err := d.log.Next()
 	if err != nil {
-		return fmt.Errorf("leveldb: could not create log entry: %v", err)
+		return fmt.Errorf("pebble: could not create log entry: %v", err)
 	}
 	if _, err = w.Write(batch.data); err != nil {
-		return fmt.Errorf("leveldb: could not write log entry: %v", err)
+		return fmt.Errorf("pebble: could not write log entry: %v", err)
 	}
 	if opts.GetSync() {
 		if err = d.log.Flush(); err != nil {
-			return fmt.Errorf("leveldb: could not flush log entry: %v", err)
+			return fmt.Errorf("pebble: could not flush log entry: %v", err)
 		}
 		if err = d.logFile.Sync(); err != nil {
-			return fmt.Errorf("leveldb: could not sync log entry: %v", err)
+			return fmt.Errorf("pebble: could not sync log entry: %v", err)
 		}
 	}
 
@@ -172,7 +172,7 @@ func (d *DB) Apply(batch Batch, opts *db.WriteOptions) error {
 	}
 
 	if seqNum != d.versions.lastSequence+1 {
-		panic("leveldb: inconsistent batch count")
+		panic("pebble: inconsistent batch count")
 	}
 	return nil
 }
@@ -218,7 +218,7 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 	manifestFilename := dbFilename(dirname, fileTypeManifest, manifestFileNum)
 	f, err := opts.GetFileSystem().Create(manifestFilename)
 	if err != nil {
-		return fmt.Errorf("leveldb: could not create %q: %v", manifestFilename, err)
+		return fmt.Errorf("pebble: could not create %q: %v", manifestFilename, err)
 	}
 	defer func() {
 		if retErr != nil {
@@ -288,9 +288,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 			return nil, err
 		}
 	} else if err != nil {
-		return nil, fmt.Errorf("leveldb: database %q: %v", dirname, err)
+		return nil, fmt.Errorf("pebble: database %q: %v", dirname, err)
 	} else if opts.GetErrorIfDBExists() {
-		return nil, fmt.Errorf("leveldb: database %q already exists", dirname)
+		return nil, fmt.Errorf("pebble: database %q already exists", dirname)
 	}
 
 	// Load the version set.
@@ -382,7 +382,7 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 		}
 
 		if batchBuf.Len() < batchHeaderLen {
-			return 0, fmt.Errorf("leveldb: corrupt log file %q", filename)
+			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
 		b := Batch{batchBuf.Bytes()}
 		seqNum := b.seqNum()
@@ -399,7 +399,7 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 		for ; seqNum != seqNum1; seqNum++ {
 			kind, ukey, value, ok := t.next()
 			if !ok {
-				return 0, fmt.Errorf("leveldb: corrupt log file %q", filename)
+				return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 			}
 			// Convert seqNum, kind and key into an internalKey, and add that ikey/value
 			// pair to mem.
@@ -413,7 +413,7 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 			// key component from the Batch format straight to the skiplist buffer.
 			//
 			// Go's LevelDB considers the memdb functionality to be useful in its own
-			// right, and so leveldb/memdb is a separate package that is usable without
+			// right, and so pebble/memdb is a separate package that is usable without
 			// having to import the top-level leveldb package. That extra abstraction
 			// means that we need to copy to an intermediate buffer here, to reconstruct
 			// the complete internal key to pass to the memdb.
@@ -421,7 +421,7 @@ func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (
 			mem.Set(ikey, value, nil)
 		}
 		if len(t) != 0 {
-			return 0, fmt.Errorf("leveldb: corrupt log file %q", filename)
+			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
 
 		// TODO: if mem is large enough, write it to a level-0 table and set mem = nil.
@@ -547,7 +547,7 @@ func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMeta
 	} else {
 		size := stat.Size()
 		if size < 0 {
-			return fileMetadata{}, fmt.Errorf("leveldb: table file %q has negative size %d", filename, size)
+			return fileMetadata{}, fmt.Errorf("pebble: table file %q has negative size %d", filename, size)
 		}
 		meta.size = uint64(size)
 	}

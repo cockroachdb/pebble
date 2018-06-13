@@ -134,7 +134,7 @@ func (m *MemDB) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bo
 	return n, exactMatch
 }
 
-// Get implements DB.Get, as documented in the leveldb/db package.
+// Get implements DB.Get, as documented in the pebble/db package.
 func (m *MemDB) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
@@ -146,7 +146,7 @@ func (m *MemDB) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	return m.load(vOff), nil
 }
 
-// Set implements DB.Set, as documented in the leveldb/db package.
+// Set implements DB.Set, as documented in the pebble/db package.
 func (m *MemDB) Set(key, value []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -183,7 +183,7 @@ func (m *MemDB) Set(key, value []byte, o *db.WriteOptions) error {
 	return nil
 }
 
-// Delete implements DB.Delete, as documented in the leveldb/db package.
+// Delete implements DB.Delete, as documented in the pebble/db package.
 func (m *MemDB) Delete(key []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -195,7 +195,7 @@ func (m *MemDB) Delete(key []byte, o *db.WriteOptions) error {
 	return nil
 }
 
-// Find implements DB.Find, as documented in the leveldb/db package.
+// Find implements DB.Find, as documented in the pebble/db package.
 func (m *MemDB) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
@@ -214,7 +214,7 @@ func (m *MemDB) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	return t
 }
 
-// Close implements DB.Close, as documented in the leveldb/db package.
+// Close implements DB.Close, as documented in the pebble/db package.
 func (m *MemDB) Close() error {
 	return nil
 }
@@ -287,7 +287,7 @@ func (t *iterator) fill() {
 	t.restartNode = n
 }
 
-// Next implements Iterator.Next, as documented in the leveldb/db package.
+// Next implements Iterator.Next, as documented in the pebble/db package.
 func (t *iterator) Next() bool {
 	t.i0++
 	if t.i0 < t.i1 {
@@ -304,7 +304,7 @@ func (t *iterator) Next() bool {
 	return true
 }
 
-// Key implements Iterator.Key, as documented in the leveldb/db package.
+// Key implements Iterator.Key, as documented in the pebble/db package.
 func (t *iterator) Key() []byte {
 	if t.i0 < 0 {
 		return nil
@@ -312,7 +312,7 @@ func (t *iterator) Key() []byte {
 	return t.buf[t.i0][fKey]
 }
 
-// Value implements Iterator.Value, as documented in the leveldb/db package.
+// Value implements Iterator.Value, as documented in the pebble/db package.
 func (t *iterator) Value() []byte {
 	if t.i0 < 0 {
 		return nil
@@ -320,7 +320,7 @@ func (t *iterator) Value() []byte {
 	return t.buf[t.i0][fVal]
 }
 
-// Close implements Iterator.Close, as documented in the leveldb/db package.
+// Close implements Iterator.Close, as documented in the pebble/db package.
 func (t *iterator) Close() error {
 	return nil
 }

@@ -49,7 +49,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(dbFilename(dirname, fileTypeCurrent, 0))
 	if err != nil {
-		return fmt.Errorf("leveldb: could not open CURRENT file for DB %q: %v", dirname, err)
+		return fmt.Errorf("pebble: could not open CURRENT file for DB %q: %v", dirname, err)
 	}
 	defer current.Close()
 	stat, err := current.Stat()
@@ -58,10 +58,10 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	}
 	n := stat.Size()
 	if n == 0 {
-		return fmt.Errorf("leveldb: CURRENT file for DB %q is empty", dirname)
+		return fmt.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
 	}
 	if n > 4096 {
-		return fmt.Errorf("leveldb: CURRENT file for DB %q is too large", dirname)
+		return fmt.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
 	}
 	b := make([]byte, n)
 	_, err = current.ReadAt(b, 0)
@@ -69,7 +69,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 		return err
 	}
 	if b[n-1] != '\n' {
-		return fmt.Errorf("leveldb: CURRENT file for DB %q is malformed", dirname)
+		return fmt.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
 	}
 	b = b[:n-1]
 
@@ -77,7 +77,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	var bve bulkVersionEdit
 	manifest, err := vs.fs.Open(dirname + string(os.PathSeparator) + string(b))
 	if err != nil {
-		return fmt.Errorf("leveldb: could not open manifest file %q for DB %q: %v", b, dirname, err)
+		return fmt.Errorf("pebble: could not open manifest file %q for DB %q: %v", b, dirname, err)
 	}
 	defer manifest.Close()
 	rr := record.NewReader(manifest)
@@ -96,7 +96,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 		}
 		if ve.comparatorName != "" {
 			if ve.comparatorName != vs.ucmp.Name() {
-				return fmt.Errorf("leveldb: manifest file %q for DB %q: "+
+				return fmt.Errorf("pebble: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from db.Options %q",
 					b, dirname, ve.comparatorName, vs.ucmp.Name())
 			}
@@ -119,7 +119,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 		if vs.nextFileNumber == 2 {
 			// We have a freshly created DB.
 		} else {
-			return fmt.Errorf("leveldb: incomplete manifest file %q for DB %q", b, dirname)
+			return fmt.Errorf("pebble: incomplete manifest file %q for DB %q", b, dirname)
 		}
 	}
 	vs.markFileNumUsed(vs.logNumber)
@@ -142,7 +142,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	if ve.logNumber != 0 {
 		if ve.logNumber < vs.logNumber || vs.nextFileNumber <= ve.logNumber {
-			panic(fmt.Sprintf("leveldb: inconsistent versionEdit logNumber %d", ve.logNumber))
+			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.logNumber))
 		}
 	}
 	ve.nextFileNumber = vs.nextFileNumber
@@ -254,7 +254,7 @@ func (vs *versionSet) nextFileNum() uint64 {
 
 func (vs *versionSet) append(v *version) {
 	if v.prev != nil || v.next != nil {
-		panic("leveldb: version linked list is inconsistent")
+		panic("pebble: version linked list is inconsistent")
 	}
 	v.prev = vs.dummyVersion.prev
 	v.prev.next = v

@@ -36,7 +36,7 @@ import (
 )
 
 // ErrNotFound means that a get or delete call did not find the requested key.
-var ErrNotFound = errors.New("leveldb/db: not found")
+var ErrNotFound = errors.New("pebble/db: not found")
 
 // Iterator iterates over a DB's key/value pairs in key order.
 //

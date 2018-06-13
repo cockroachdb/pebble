@@ -18,7 +18,7 @@ import (
 
 // TODO: describe the MANIFEST file format, independently of the C++ project.
 
-var errCorruptManifest = errors.New("leveldb: corrupt manifest")
+var errCorruptManifest = errors.New("pebble: corrupt manifest")
 
 type byteReader interface {
 	io.ByteReader
@@ -357,7 +357,7 @@ func (b *bulkVersionEdit) apply(base *version, icmp db.Comparer) (*version, erro
 		}
 	}
 	if err := v.checkOrdering(icmp); err != nil {
-		return nil, fmt.Errorf("leveldb: internal error: %v", err)
+		return nil, fmt.Errorf("pebble: internal error: %v", err)
 	}
 	v.updateCompactionScore()
 	return v, nil

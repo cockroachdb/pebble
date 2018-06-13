@@ -64,7 +64,7 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 		smallest, largest := ikeyRange(vs.icmp, c.inputs[0], nil)
 		c.inputs[0] = cur.overlaps(0, vs.ucmp, smallest.ukey(), largest.ukey())
 		if len(c.inputs) == 0 {
-			panic("leveldb: empty compaction")
+			panic("pebble: empty compaction")
 		}
 	}
 
@@ -412,7 +412,7 @@ func compactionIterator(tc *tableCache, icmp db.Comparer, c *compaction) (cIter 
 		for _, f := range c.inputs[0] {
 			iter, err := tc.find(f.fileNum, nil)
 			if err != nil {
-				return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
 			iters = append(iters, iter)
 		}
@@ -443,7 +443,7 @@ func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.I
 	for i, f := range inputs {
 		iter, err := tc.find(f.fileNum, nil)
 		if err != nil {
-			return nil, fmt.Errorf("leveldb: could not open table %d: %v", f.fileNum, err)
+			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
 		iters[i] = iter
 	}

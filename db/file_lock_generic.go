@@ -13,5 +13,5 @@ import (
 )
 
 func (defFS) Lock(name string) (io.Closer, error) {
-	return nil, fmt.Errorf("leveldb/db: file locking is not implemented on %s/%s", runtime.GOOS, runtime.GOARCH)
+	return nil, fmt.Errorf("pebble/db: file locking is not implemented on %s/%s", runtime.GOOS, runtime.GOARCH)
 }
