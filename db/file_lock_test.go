@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 var lockFilename = flag.String("lockfile", "", "File to lock. A non-empty value implies a child process.")

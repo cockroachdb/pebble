@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"bufio"
@@ -13,7 +13,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 // TODO: describe the MANIFEST file format, independently of the C++ project.

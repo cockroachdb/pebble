@@ -2,19 +2,19 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"bytes"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 // internalKey is a key used for the in-memory and on-disk partial DBs that
 // make up a leveldb DB.
 //
 // It consists of the user key (as given by the arbitrary code that uses
-// package leveldb) followed by an 8-byte trailer:
+// package pebble) followed by an 8-byte trailer:
 //   - 1 byte for the kind of internal key: delete or set,
 //   - 7 bytes for a uint56 sequence number, in little-endian format.
 type internalKey []byte

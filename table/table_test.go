@@ -17,9 +17,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/leveldb/bloom"
-	"github.com/golang/leveldb/db"
-	"github.com/golang/leveldb/memfs"
+	"github.com/petermattis/pebble/bloom"
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/memfs"
 )
 
 // nonsenseWords are words that aren't in ../testdata/h.txt.

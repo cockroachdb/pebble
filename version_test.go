@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"errors"
@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/leveldb/db"
-	"github.com/golang/leveldb/memdb"
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/memdb"
 )
 
 func TestIkeyRange(t *testing.T) {

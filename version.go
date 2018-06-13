@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"fmt"
 	"sort"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 // fileMetadata holds the metadata for an on-disk table.

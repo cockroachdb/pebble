@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/golang/leveldb/crc"
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/crc"
+	"github.com/petermattis/pebble/db"
 	"github.com/golang/snappy"
 )
 

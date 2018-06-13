@@ -1,7 +1,7 @@
 // Copyright 2012 The LevelDB-Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"bytes"
@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/leveldb/db"
-	"github.com/golang/leveldb/memfs"
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/memfs"
 )
 
 // try repeatedly calls f, sleeping between calls with exponential back-off,

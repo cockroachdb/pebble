@@ -9,14 +9,14 @@
 // deleted or values are updated with shorter slices. Callers of the package
 // are responsible for explicitly compacting a MemDB into a separate DB
 // (whether in-memory or on-disk) when appropriate.
-package memdb // import "github.com/golang/leveldb/memdb"
+package memdb // import "github.com/petermattis/pebble/memdb"
 
 import (
 	"encoding/binary"
 	"math/rand"
 	"sync"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 // maxHeight is the maximum height of a MemDB's skiplist.

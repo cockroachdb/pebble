@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/leveldb/record"
+	"github.com/petermattis/pebble/record"
 )
 
 func checkRoundTrip(e0 versionEdit) error {

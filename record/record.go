@@ -73,7 +73,7 @@
 // The wire format allows for limited recovery in the face of data corruption:
 // on a format error (such as a checksum mismatch), the reader moves to the
 // next block and looks for the next full or first chunk.
-package record // import "github.com/golang/leveldb/record"
+package record // import "github.com/petermattis/pebble/record"
 
 // The C++ Level-DB code calls this the log, but it has been renamed to record
 // to avoid clashing with the standard log package, and because it is generally
@@ -85,7 +85,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/golang/leveldb/crc"
+	"github.com/petermattis/pebble/crc"
 )
 
 // These constants are part of the wire format and should not be changed.

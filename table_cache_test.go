@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"bytes"
@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/leveldb/db"
-	"github.com/golang/leveldb/memfs"
-	"github.com/golang/leveldb/table"
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/memfs"
+	"github.com/petermattis/pebble/table"
 )
 
 type tableCacheTestFile struct {

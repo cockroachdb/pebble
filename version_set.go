@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package leveldb
+package pebble
 
 import (
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/golang/leveldb/db"
-	"github.com/golang/leveldb/record"
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/record"
 )
 
 // TODO: describe what a versionSet is.

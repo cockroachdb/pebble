@@ -6,7 +6,7 @@
 //
 // It can be useful for tests, and also for LevelDB instances that should not
 // ever touch persistent storage, such as a web browser's private browsing mode.
-package memfs // import "github.com/golang/leveldb/memfs"
+package memfs // import "github.com/petermattis/pebble/memfs"
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 const sep = string(os.PathSeparator)

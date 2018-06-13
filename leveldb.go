@@ -5,7 +5,7 @@
 // Package leveldb provides an ordered key/value store.
 //
 // BUG: This package is incomplete.
-package leveldb // import "github.com/golang/leveldb"
+package pebble // import "github.com/petermattis/pebble"
 
 import (
 	"bytes"
@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/leveldb/db"
-	"github.com/golang/leveldb/memdb"
-	"github.com/golang/leveldb/record"
-	"github.com/golang/leveldb/table"
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/memdb"
+	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/table"
 )
 
 const (

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 // count returns the number of entries in a DB.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/leveldb/db"
+	"github.com/petermattis/pebble/db"
 )
 
 func normalize(name string) string {
