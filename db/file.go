@@ -22,11 +22,11 @@ type File interface {
 	Sync() error
 }
 
-// FileSystem is a namespace for files.
+// Storage is a namespace for files.
 //
 // The names are filepath names: they may be / separated or \ separated,
 // depending on the underlying operating system.
-type FileSystem interface {
+type Storage interface {
 	// Create creates the named file for writing, truncating it if it already
 	// exists.
 	Create(name string) (File, error)
@@ -76,31 +76,31 @@ type FileSystem interface {
 
 // DefaultFileSystem is a FileSystem implementation backed by the underlying
 // operating system's file system.
-var DefaultFileSystem FileSystem = defFS{}
+var DefaultFileSystem Storage = defaultFS{}
 
-type defFS struct{}
+type defaultFS struct{}
 
-func (defFS) Create(name string) (File, error) {
+func (defaultFS) Create(name string) (File, error) {
 	return os.Create(name)
 }
 
-func (defFS) Open(name string) (File, error) {
+func (defaultFS) Open(name string) (File, error) {
 	return os.Open(name)
 }
 
-func (defFS) Remove(name string) error {
+func (defaultFS) Remove(name string) error {
 	return os.Remove(name)
 }
 
-func (defFS) Rename(oldname, newname string) error {
+func (defaultFS) Rename(oldname, newname string) error {
 	return os.Rename(oldname, newname)
 }
 
-func (defFS) MkdirAll(dir string, perm os.FileMode) error {
+func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {
 	return os.MkdirAll(dir, perm)
 }
 
-func (defFS) List(dir string) ([]string, error) {
+func (defaultFS) List(dir string) ([]string, error) {
 	f, err := os.Open(dir)
 	if err != nil {
 		return nil, err
@@ -109,6 +109,6 @@ func (defFS) List(dir string) ([]string, error) {
 	return f.Readdirnames(-1)
 }
 
-func (defFS) Stat(name string) (os.FileInfo, error) {
+func (defaultFS) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)
 }

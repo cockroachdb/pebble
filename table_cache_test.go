@@ -33,7 +33,7 @@ func (f *tableCacheTestFile) Close() error {
 }
 
 type tableCacheTestFS struct {
-	db.FileSystem
+	db.Storage
 
 	mu          sync.Mutex
 	openCounts  map[string]int
@@ -46,7 +46,7 @@ func (fs *tableCacheTestFS) Open(name string) (db.File, error) {
 		fs.openCounts[name]++
 	}
 	fs.mu.Unlock()
-	f, err := fs.FileSystem.Open(name)
+	f, err := fs.Storage.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ const (
 func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	xxx := bytes.Repeat([]byte("x"), tableCacheTestNumTables)
 	fs := &tableCacheTestFS{
-		FileSystem: storage.NewMem(),
+		Storage: storage.NewMem(),
 	}
 	for i := 0; i < tableCacheTestNumTables; i++ {
 		f, err := fs.Create(dbFilename("", fileTypeTable, uint64(i)))

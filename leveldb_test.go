@@ -145,7 +145,7 @@ func TestNewDBFilenames(t *testing.T) {
 // containing:
 //   - /x
 //   - /y
-func cloneFileSystem(srcFS db.FileSystem, dirname string) (db.FileSystem, error) {
+func cloneFileSystem(srcFS db.Storage, dirname string) (db.Storage, error) {
 	if len(dirname) == 0 || dirname[len(dirname)-1] != os.PathSeparator {
 		dirname += string(os.PathSeparator)
 	}

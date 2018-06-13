@@ -13,7 +13,7 @@ import (
 
 type tableCache struct {
 	dirname string
-	fs      db.FileSystem
+	fs      db.Storage
 	opts    *db.Options
 	size    int
 
@@ -22,7 +22,7 @@ type tableCache struct {
 	dummy tableCacheNode
 }
 
-func (c *tableCache) init(dirname string, fs db.FileSystem, opts *db.Options, size int) {
+func (c *tableCache) init(dirname string, fs db.Storage, opts *db.Options, size int) {
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts

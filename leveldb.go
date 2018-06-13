@@ -355,7 +355,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) replayLogFile(ve *versionEdit, fs db.FileSystem, filename string) (maxSeqNum uint64, err error) {
+func (d *DB) replayLogFile(ve *versionEdit, fs db.Storage, filename string) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
 		return 0, err
@@ -461,7 +461,7 @@ func firstError(err0, err1 error) error {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) writeLevel0Table(fs db.FileSystem, mem *memdb.MemDB) (meta fileMetadata, err error) {
+func (d *DB) writeLevel0Table(fs db.Storage, mem *memdb.MemDB) (meta fileMetadata, err error) {
 	meta.fileNum = d.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
 	d.pendingOutputs[meta.fileNum] = struct{}{}

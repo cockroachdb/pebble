@@ -94,7 +94,7 @@ type Options struct {
 	// FileSystem maps file names to byte storage.
 	//
 	// The default value uses the underlying operating system's file system.
-	FileSystem FileSystem
+	FileSystem Storage
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that
 	// can reduce disk reads for Get calls.
@@ -165,7 +165,7 @@ func (o *Options) GetErrorIfDBExists() bool {
 	return o.ErrorIfDBExists
 }
 
-func (o *Options) GetFileSystem() FileSystem {
+func (o *Options) GetFileSystem() Storage {
 	if o == nil || o.FileSystem == nil {
 		return DefaultFileSystem
 	}

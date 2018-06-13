@@ -17,7 +17,7 @@ import (
 type versionSet struct {
 	dirname    string
 	opts       *db.Options
-	fs         db.FileSystem
+	fs         db.Storage
 	ucmp, icmp db.Comparer
 
 	// dummyVersion is the head of a circular doubly-linked list of versions.

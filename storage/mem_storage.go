@@ -31,7 +31,7 @@ func (nopCloser) Close() error {
 }
 
 // NewMem returns a new memory-backed db.FileSystem implementation.
-func NewMem() db.FileSystem {
+func NewMem() db.Storage {
 	return &memStorage{
 		root: &node{
 			children: make(map[string]*node),

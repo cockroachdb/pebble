@@ -21,7 +21,7 @@ func (l lockCloser) Close() error {
 	return l.f.Close()
 }
 
-func (defFS) Lock(name string) (io.Closer, error) {
+func (defaultFS) Lock(name string) (io.Closer, error) {
 	f, err := os.Create(name)
 	if err != nil {
 		return nil, err
