@@ -55,6 +55,15 @@ type Iterator interface {
 	// It returns whether the iterator is exhausted.
 	Next() bool
 
+	// Prev moves the iterator to the previous key/value pair.
+	// It returns whether the iterator is exhausted.
+	// Prev() bool
+
+	// Seek(key []byte) bool
+	// RSeek(key []byte) bool
+	// First() bool
+	// Last() bool
+
 	// Key returns the key of the current key/value pair, or nil if done.
 	// The caller should not modify the contents of the returned slice, and
 	// its contents may change on the next call to Next.
@@ -65,6 +74,8 @@ type Iterator interface {
 	// its contents may change on the next call to Next.
 	Value() []byte
 
+	// Error() error
+
 	// Close closes the iterator and returns any accumulated error. Exhausting
 	// all the key/value pairs in a table is not considered to be an error.
 	// It is valid to call Close multiple times. Other methods should not be
@@ -72,23 +83,10 @@ type Iterator interface {
 	Close() error
 }
 
-// Closer ...
-type Closer interface {
-	// Close closes the DB. It may or may not close any underlying io.Reader
-	// or io.Writer, depending on how the DB was created.
-	//
-	// It is not safe to close a DB until all outstanding iterators are closed.
-	// It is valid to call Close multiple times. Other methods should not be
-	// called after the DB has been closed.
-	Close() error
-}
-
 // Reader is a readable key/value store.
 //
 // It is safe to call Get and Find from concurrent goroutines.
 type Reader interface {
-	Closer
-
 	// Get gets the value for the given key. It returns ErrNotFound if the DB
 	// does not contain the key.
 	//
@@ -106,6 +104,17 @@ type Reader interface {
 	//
 	// It is safe to modify the contents of the argument after Find returns.
 	Find(key []byte, o *ReadOptions) Iterator
+
+	// TODO(peter):
+	// NewIter(o *ReadOptions) Iterator
+
+	// Close closes the Reader. It may or may not close any underlying io.Reader
+	// or io.Writer, depending on how the DB was created.
+	//
+	// It is not safe to close a DB until all outstanding iterators are closed.
+	// It is valid to call Close multiple times. Other methods should not be
+	// called after the DB has been closed.
+	Close() error
 }
 
 // Setter is a basic writable key/value store.
@@ -128,13 +137,18 @@ type Setter interface {
 type Writer interface {
 	Setter
 
-	// Delete deletes the value for the given key. It returns ErrNotFound if
-	// the DB does not contain the key.
+	// Apply the operations contain in the batch to the store.
+	//
+	// It is safe to modify the contents of the arguments after Apply returns.
+	Apply(batch []byte, o *WriteOptions) error
+
+	// Delete deletes the value for the given key. Deletes are blind all will
+	// succeed even if the given key does not exist.
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.
 	Delete(key []byte, o *WriteOptions) error
 
-	// DeleteRange deletes the keys (and values) in the range [start,end)
+	// DeleteRange deletes all of the keys (and values) in the range [start,end)
 	// (inclusive on start, exclusive on end).
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.

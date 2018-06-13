@@ -114,13 +114,13 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
 	var batch Batch
 	batch.Set(key, value)
-	return d.Apply(batch, opts)
+	return d.Apply(batch.data, opts)
 }
 
 func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 	var batch Batch
 	batch.Delete(key)
-	return d.Apply(batch, opts)
+	return d.Apply(batch.data, opts)
 }
 
 // DeleteRange implements DB.DeleteRange, as documented in the pebble/db
@@ -129,10 +129,12 @@ func (d *DB) DeleteRange(start, end []byte, o *db.WriteOptions) error {
 	return fmt.Errorf("pebble: DeleteRange unimplemented")
 }
 
-func (d *DB) Apply(batch Batch, opts *db.WriteOptions) error {
-	if len(batch.data) == 0 {
+// Apply implements DB.Apply, as documented in the pebble/db package.
+func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
+	if len(repr) == 0 {
 		return nil
 	}
+	batch := Batch{data: repr}
 	n := batch.count()
 	if n == invalidBatchCount {
 		return errors.New("pebble: invalid batch")

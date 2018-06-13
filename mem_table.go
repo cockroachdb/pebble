@@ -200,6 +200,11 @@ func (m *MemTable) DeleteRange(start, end []byte, o *db.WriteOptions) error {
 	return fmt.Errorf("pebble: DeleteRange unimplemented")
 }
 
+// Apply implements DB.Apply, as documented in the pebble/db package.
+func (m *MemTable) Apply(repr []byte, opts *db.WriteOptions) error {
+	return fmt.Errorf("pebble: Apply unimplemented")
+}
+
 // Find implements DB.Find, as documented in the pebble/db package.
 func (m *MemTable) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	m.mutex.RLock()

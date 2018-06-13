@@ -376,7 +376,7 @@ func TestBasicWrites(t *testing.T) {
 		case "batch":
 			inBatch, batch, set, del = true, Batch{}, set1, del1
 		case "apply":
-			if err := d.Apply(batch, nil); err != nil {
+			if err := d.Apply(batch.data, nil); err != nil {
 				t.Fatalf("#%d %s: %v", i, tc, err)
 			}
 			for _, p := range pending {

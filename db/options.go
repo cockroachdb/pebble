@@ -42,6 +42,16 @@ type FilterPolicy interface {
 	MayContain(filter, key []byte) bool
 }
 
+// LevelOptions ...
+// TODO(peter):
+type LevelOptions struct {
+	BlockSize            int
+	BlockRestartInterval int
+	Compression          Compression
+	MaxBytes             int64
+	TargetFileSize       int64
+}
+
 // Options holds the optional parameters for leveldb's DB implementations.
 // These options apply to the DB at large; per-query options are defined by
 // the ReadOptions and WriteOptions types.
@@ -53,9 +63,9 @@ type FilterPolicy interface {
 //
 // Read/Write options:
 //   - Comparer
-//   - FileSystem
 //   - FilterPolicy
 //   - MaxOpenFiles
+//   - Storage
 // Read options:
 //   - VerifyChecksums
 // Write options:
@@ -208,7 +218,10 @@ func (o *Options) GetVerifyChecksums() bool {
 // Like Options, a nil *ReadOptions is valid and means to use the default
 // values.
 type ReadOptions struct {
-	// No fields so far.
+	// TODO(peter): document
+	LowerBound []byte
+	UpperBound []byte
+	// TableFilter func(_ TableProperties) bool
 }
 
 // WriteOptions hold the optional per-query parameters for Set and Delete
@@ -228,10 +241,13 @@ type WriteOptions struct {
 	// In other words, Sync being false has the same semantics as a write
 	// system call. Sync being true means write followed by fsync.
 	//
-	// The default value is false.
+	// The default value is true.
 	Sync bool
 }
 
+var Sync = &WriteOptions{Sync: true}
+var NoSync = &WriteOptions{Sync: false}
+
 func (o *WriteOptions) GetSync() bool {
-	return o != nil && o.Sync
+	return o == nil || o.Sync
 }
