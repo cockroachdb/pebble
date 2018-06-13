@@ -423,7 +423,7 @@ func compactionIterator(tc *tableCache, icmp db.Comparer, c *compaction) (cIter 
 		return nil, err
 	}
 	iters = append(iters, iter)
-	return db.NewMergingIterator(icmp, iters...), nil
+	return NewMergingIterator(icmp, iters...), nil
 }
 
 // newConcatenatingIterator returns a concatenating iterator over all of the
@@ -447,5 +447,5 @@ func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.I
 		}
 		iters[i] = iter
 	}
-	return db.NewConcatenatingIterator(iters...), nil
+	return NewConcatenatingIterator(iters...), nil
 }

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package db
+package pebble
 
 import (
 	"bytes"
@@ -11,6 +11,8 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
+
+	"github.com/petermattis/pebble/db"
 )
 
 var testKeyValuePairs = []string{
@@ -70,25 +72,25 @@ func (f *fakeIter) Close() error {
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
 // over those splits should recover the original key/value pairs in order.
-func testIterator(t *testing.T, newFunc func(...Iterator) Iterator, splitFunc func(r *rand.Rand) [][]string) {
+func testIterator(t *testing.T, newFunc func(...db.Iterator) db.Iterator, splitFunc func(r *rand.Rand) [][]string) {
 	// Test pre-determined sub-iterators. The sub-iterators are designed
 	// so that the combined key/value pair order is the same whether the
 	// combined iterator is concatenating or merging.
 	testCases := []struct {
 		desc  string
-		iters []Iterator
+		iters []db.Iterator
 		want  string
 	}{
 		{
 			"one sub-iterator",
-			[]Iterator{
+			[]db.Iterator{
 				newFakeIterator(nil, "e:east", "w:west"),
 			},
 			"<e:east><w:west>.",
 		},
 		{
 			"two sub-iterators",
-			[]Iterator{
+			[]db.Iterator{
 				newFakeIterator(nil, "a0:0"),
 				newFakeIterator(nil, "b1:1", "b2:2"),
 			},
@@ -96,7 +98,7 @@ func testIterator(t *testing.T, newFunc func(...Iterator) Iterator, splitFunc fu
 		},
 		{
 			"empty sub-iterators",
-			[]Iterator{
+			[]db.Iterator{
 				newFakeIterator(nil),
 				newFakeIterator(nil),
 				newFakeIterator(nil),
@@ -105,7 +107,7 @@ func testIterator(t *testing.T, newFunc func(...Iterator) Iterator, splitFunc fu
 		},
 		{
 			"sub-iterator errors",
-			[]Iterator{
+			[]db.Iterator{
 				newFakeIterator(nil, "a0:0", "a1:1"),
 				newFakeIterator(errors.New("the sky is falling!"), "b2:2", "b3:3", "b4:4"),
 				newFakeIterator(errors.New("run for your lives!"), "c5:5", "c6:6"),
@@ -135,7 +137,7 @@ func testIterator(t *testing.T, newFunc func(...Iterator) Iterator, splitFunc fu
 		bad := false
 
 		splits := splitFunc(r)
-		iters := make([]Iterator, len(splits))
+		iters := make([]db.Iterator, len(splits))
 		for i, split := range splits {
 			iters[i] = newFakeIterator(nil, split...)
 		}
@@ -191,8 +193,8 @@ func TestConcatenatingIterator(t *testing.T) {
 }
 
 func TestMergingIterator(t *testing.T) {
-	newFunc := func(iters ...Iterator) Iterator {
-		return NewMergingIterator(DefaultComparer, iters...)
+	newFunc := func(iters ...db.Iterator) db.Iterator {
+		return NewMergingIterator(db.DefaultComparer, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual
