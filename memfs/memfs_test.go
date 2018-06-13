@@ -183,7 +183,7 @@ func TestList(t *testing.T) {
 	}
 
 	{
-		got := fs.(*fileSystem).String()
+		got := fs.(*memStorage).String()
 		want := normalize(`          /
        0    a
             bar/

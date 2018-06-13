@@ -32,7 +32,7 @@ func (nopCloser) Close() error {
 
 // New returns a new memory-backed db.FileSystem implementation.
 func New() db.FileSystem {
-	return &fileSystem{
+	return &memStorage{
 		root: &node{
 			children: make(map[string]*node),
 			isDir:    true,
@@ -40,13 +40,13 @@ func New() db.FileSystem {
 	}
 }
 
-// fileSystem implements db.FileSystem.
-type fileSystem struct {
+// memStorage implements db.FileSystem.
+type memStorage struct {
 	mu   sync.Mutex
 	root *node
 }
 
-func (y *fileSystem) String() string {
+func (y *memStorage) String() string {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
@@ -71,7 +71,7 @@ func (y *fileSystem) String() string {
 //   - "/", "y", false
 //   - "/y/", "z", false
 //   - "/y/z/", "", true
-func (y *fileSystem) walk(fullname string, f func(dir *node, frag string, final bool) error) error {
+func (y *memStorage) walk(fullname string, f func(dir *node, frag string, final bool) error) error {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
@@ -111,7 +111,7 @@ func (y *fileSystem) walk(fullname string, f func(dir *node, frag string, final 
 	return nil
 }
 
-func (y *fileSystem) Create(fullname string) (db.File, error) {
+func (y *memStorage) Create(fullname string) (db.File, error) {
 	var ret *file
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
@@ -133,7 +133,7 @@ func (y *fileSystem) Create(fullname string) (db.File, error) {
 	return ret, nil
 }
 
-func (y *fileSystem) Open(fullname string) (db.File, error) {
+func (y *memStorage) Open(fullname string) (db.File, error) {
 	var ret *file
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
@@ -162,7 +162,7 @@ func (y *fileSystem) Open(fullname string) (db.File, error) {
 	return ret, nil
 }
 
-func (y *fileSystem) Remove(fullname string) error {
+func (y *memStorage) Remove(fullname string) error {
 	return y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
@@ -178,7 +178,7 @@ func (y *fileSystem) Remove(fullname string) error {
 	})
 }
 
-func (y *fileSystem) Rename(oldname, newname string) error {
+func (y *memStorage) Rename(oldname, newname string) error {
 	var n *node
 	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
 		if final {
@@ -207,7 +207,7 @@ func (y *fileSystem) Rename(oldname, newname string) error {
 	})
 }
 
-func (y *fileSystem) MkdirAll(dirname string, perm os.FileMode) error {
+func (y *memStorage) MkdirAll(dirname string, perm os.FileMode) error {
 	return y.walk(dirname, func(dir *node, frag string, final bool) error {
 		if frag == "" {
 			if final {
@@ -231,13 +231,13 @@ func (y *fileSystem) MkdirAll(dirname string, perm os.FileMode) error {
 	})
 }
 
-func (y *fileSystem) Lock(fullname string) (io.Closer, error) {
+func (y *memStorage) Lock(fullname string) (io.Closer, error) {
 	// FileSystem.Lock excludes other processes, but other processes cannot
 	// see this process' memory, so Lock is a no-op.
 	return nopCloser{}, nil
 }
 
-func (y *fileSystem) List(dirname string) ([]string, error) {
+func (y *memStorage) List(dirname string) ([]string, error) {
 	if !strings.HasSuffix(dirname, sep) {
 		dirname += sep
 	}
@@ -257,7 +257,7 @@ func (y *fileSystem) List(dirname string) ([]string, error) {
 	return ret, err
 }
 
-func (y *fileSystem) Stat(name string) (os.FileInfo, error) {
+func (y *memStorage) Stat(name string) (os.FileInfo, error) {
 	f, err := y.Open(name)
 	if err != nil {
 		if pe, ok := err.(*os.PathError); ok {
