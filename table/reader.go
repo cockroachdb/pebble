@@ -302,8 +302,8 @@ type Reader struct {
 	// TODO: add a (goroutine-safe) LRU block cache.
 }
 
-// Reader implements the db.DB interface.
-var _ db.DB = (*Reader)(nil)
+// Reader implements the db.Reader interface.
+var _ db.Reader = (*Reader)(nil)
 
 // Close implements DB.Close, as documented in the pebble/db package.
 func (r *Reader) Close() error {
@@ -344,18 +344,6 @@ func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 		return nil, err
 	}
 	return i.Value(), i.Close()
-}
-
-// Set is provided to implement the DB interface, but returns an error, as a
-// Reader cannot write to a table.
-func (r *Reader) Set(key, value []byte, o *db.WriteOptions) error {
-	return errors.New("pebble/table: cannot Set into a read-only table")
-}
-
-// Delete is provided to implement the DB interface, but returns an error, as a
-// Reader cannot write to a table.
-func (r *Reader) Delete(key []byte, o *db.WriteOptions) error {
-	return errors.New("pebble/table: cannot Delete from a read-only table")
 }
 
 // Find implements DB.Find, as documented in the pebble/db package.

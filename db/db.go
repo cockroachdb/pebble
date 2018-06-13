@@ -72,15 +72,23 @@ type Iterator interface {
 	Close() error
 }
 
-// DB is a key/value store.
+// Closer ...
+type Closer interface {
+	// Close closes the DB. It may or may not close any underlying io.Reader
+	// or io.Writer, depending on how the DB was created.
+	//
+	// It is not safe to close a DB until all outstanding iterators are closed.
+	// It is valid to call Close multiple times. Other methods should not be
+	// called after the DB has been closed.
+	Close() error
+}
+
+// Reader is a readable key/value store.
 //
-// It is safe to call Get and Find from concurrent goroutines. It is not
-// necessarily safe to do so for Set and Delete.
-//
-// Some implementations may impose additional restrictions. For example:
-//   - Set calls may need to be in increasing key order.
-//   - a DB may be read-only or write-only.
-type DB interface {
+// It is safe to call Get and Find from concurrent goroutines.
+type Reader interface {
+	Closer
+
 	// Get gets the value for the given key. It returns ErrNotFound if the DB
 	// does not contain the key.
 	//
@@ -88,6 +96,25 @@ type DB interface {
 	// it is safe to modify the contents of the argument after Get returns.
 	Get(key []byte, o *ReadOptions) (value []byte, err error)
 
+	// Find returns an iterator positioned before the first key/value pair
+	// whose key is 'greater than or equal to' the given key. There may be no
+	// such pair, in which case the iterator will return false on Next.
+	//
+	// Any error encountered will be implicitly returned via the iterator. An
+	// error-iterator will yield no key/value pairs and closing that iterator
+	// will return that error.
+	//
+	// It is safe to modify the contents of the argument after Find returns.
+	Find(key []byte, o *ReadOptions) Iterator
+}
+
+// Writer is a writable key/value store.
+//
+// Goroutine safety is dependent on the specific implementation.
+//
+// Some implementations may impose additional restrictions. For example:
+//   - Set calls may need to be in increasing key order.
+type Writer interface {
 	// Set sets the value for the given key. It overwrites any previous value
 	// for that key; a DB is not a multi-map.
 	//
@@ -100,22 +127,16 @@ type DB interface {
 	// It is safe to modify the contents of the arguments after Delete returns.
 	Delete(key []byte, o *WriteOptions) error
 
-	// Find returns an iterator positioned before the first key/value pair
-	// whose key is 'greater than or equal to' the given key. There may be no
-	// such pair, in which case the iterator will return false on Next.
+	// TODO(peter):
+	// DeleteRange deletes the keys (and values) in the range [start,end)
+	// (inclusive on start, exclusive on end).
 	//
-	// Any error encountered will be implicitly returned via the iterator. An
-	// error-iterator will yield no key/value pairs and closing that iterator
-	// will return that error.
-	//
-	// It is safe to modify the contents of the argument after Find returns.
-	Find(key []byte, o *ReadOptions) Iterator
+	// It is safe to modify the contents of the arguments after Delete returns.
+	// DeleteRange(start, end []byte, o *WriteOptions) error
+}
 
-	// Close closes the DB. It may or may not close any underlying io.Reader
-	// or io.Writer, depending on how the DB was created.
-	//
-	// It is not safe to close a DB until all outstanding iterators are closed.
-	// It is valid to call Close multiple times. Other methods should not be
-	// called after the DB has been closed.
-	Close() error
+// DB is a key/value store.
+type DB interface {
+	Reader
+	Writer
 }

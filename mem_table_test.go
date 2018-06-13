@@ -15,7 +15,7 @@ import (
 )
 
 // count returns the number of entries in a DB.
-func count(d db.DB) (n int) {
+func count(d db.Reader) (n int) {
 	x := d.Find(nil, nil)
 	for x.Next() {
 		n++

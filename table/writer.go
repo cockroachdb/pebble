@@ -163,27 +163,13 @@ type Writer struct {
 	tmp [50]byte
 }
 
-// Writer implements the db.DB interface.
-var _ db.DB = (*Writer)(nil)
-
-// Get is provided to implement the DB interface, but returns an error, as a
-// Writer cannot read from a table.
-func (w *Writer) Get(key []byte, o *db.ReadOptions) ([]byte, error) {
-	return nil, errors.New("pebble/table: cannot Get from a write-only table")
-}
+// Writer implements the db.Writer interface.
+var _ db.Writer = (*Writer)(nil)
 
 // Delete is provided to implement the DB interface, but returns an error, as a
 // Writer can only append key/value pairs.
 func (w *Writer) Delete(key []byte, o *db.WriteOptions) error {
 	return errors.New("pebble/table: cannot Delete from a table")
-}
-
-// Find is provided to implement the DB interface, but returns an error, as a
-// Writer cannot read from a table.
-func (w *Writer) Find(key []byte, o *db.ReadOptions) db.Iterator {
-	return &tableIter{
-		err: errors.New("pebble/table: cannot Find from a write-only table"),
-	}
 }
 
 // Set implements DB.Set, as documented in the pebble/db package. For a given

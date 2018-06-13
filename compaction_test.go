@@ -559,7 +559,7 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	get1 := func(x db.DB) (ret string) {
+	get1 := func(x db.Reader) (ret string) {
 		b := &bytes.Buffer{}
 		iter := x.Find(nil, nil)
 		for iter.Next() {
