@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/memdb"
 )
 
 func TestIkeyRange(t *testing.T) {
@@ -527,7 +526,7 @@ func TestVersion(t *testing.T) {
 
 		v := version{}
 		for _, tt := range tc.tables {
-			d := memdb.New(&db.Options{
+			d := NewMemTable(&db.Options{
 				Comparer: icmp,
 			})
 			defer d.Close()
@@ -539,7 +538,7 @@ func TestVersion(t *testing.T) {
 				ikey := makeIkey(s[0])
 				err := d.Set(ikey, []byte(s[1]), nil)
 				if err != nil {
-					t.Fatalf("desc=%q: memdb Set: %v", desc, err)
+					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
 				}
 
 				if i == 0 {

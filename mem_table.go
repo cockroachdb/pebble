@@ -2,14 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package memdb provides a memory-backed implementation of the db.DB
-// interface.
-//
-// A MemDB's memory consumption increases monotonically, even if keys are
-// deleted or values are updated with shorter slices. Callers of the package
-// are responsible for explicitly compacting a MemDB into a separate DB
-// (whether in-memory or on-disk) when appropriate.
-package memdb // import "github.com/petermattis/pebble/memdb"
+package pebble // import "github.com/petermattis/pebble"
 
 import (
 	"encoding/binary"
@@ -19,15 +12,15 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-// maxHeight is the maximum height of a MemDB's skiplist.
+// maxHeight is the maximum height of a MemTable's skiplist.
 const maxHeight = 12
 
-// A MemDB's skiplist consists of a number of nodes, and each node is
+// A MemTable's skiplist consists of a number of nodes, and each node is
 // represented by a variable number of ints: a key-offset, a value-offset, and
 // between 1 and maxHeight next nodes. The key-offset and value-offset encode
-// the node's key/value pair and are offsets into a MemDB's kvData slice.
+// the node's key/value pair and are offsets into a MemTable's kvData slice.
 // The remaining ints, for the next nodes in the skiplist's linked lists, are
-// offsets into a MemDB's nodeData slice.
+// offsets into a MemTable's nodeData slice.
 //
 // The fXxx constants represent how to find the Xxx field of a node in the
 // nodeData. For example, given an int 30 representing a node, and given
@@ -53,7 +46,7 @@ const (
 	headNode = -fNxt
 )
 
-// A node's key-offset and value-offset fields are offsets into a MemDB's
+// A node's key-offset and value-offset fields are offsets into a MemTable's
 // kvData slice that stores varint-prefixed strings: the node's key and value.
 // A negative offset means a zero-length string, whether explicitly set to
 // empty or implicitly set by deletion.
@@ -62,10 +55,15 @@ const (
 	kvOffsetDeletedNode = -2
 )
 
-// MemDB is a memory-backed implementation of the db.DB interface.
+// MemTable is a memory-backed implementation of the db.DB interface.
 //
 // It is safe to call Get, Set, Delete and Find concurrently.
-type MemDB struct {
+//
+// A MemTable's memory consumption increases monotonically, even if keys are
+// deleted or values are updated with shorter slices. Users are responsible for
+// explicitly compacting a MemTable into a separate DB (whether in-memory or
+// on-disk) when appropriate.
+type MemTable struct {
 	mutex sync.RWMutex
 	// height is the number of such lists, which can increase over time.
 	height int
@@ -77,11 +75,11 @@ type MemDB struct {
 	nodeData []int
 }
 
-// MemDB implements the db.DB interface.
-var _ db.DB = (*MemDB)(nil)
+// MemTable implements the db.DB interface.
+var _ db.DB = (*MemTable)(nil)
 
 // load loads a []byte from m.kvData.
-func (m *MemDB) load(kvOffset int) (b []byte) {
+func (m *MemTable) load(kvOffset int) (b []byte) {
 	if kvOffset < 0 {
 		return nil
 	}
@@ -91,7 +89,7 @@ func (m *MemDB) load(kvOffset int) (b []byte) {
 }
 
 // save saves a []byte to m.kvData.
-func (m *MemDB) save(b []byte) (kvOffset int) {
+func (m *MemTable) save(b []byte) (kvOffset int) {
 	if len(b) == 0 {
 		return kvOffsetEmptySlice
 	}
@@ -106,11 +104,11 @@ func (m *MemDB) save(b []byte) (kvOffset int) {
 // findNode returns the first node n whose key is >= the given key (or nil if
 // there is no such node) and whether n's key equals key. The search is based
 // solely on the contents of a node's key. Whether or not that key was
-// previously deleted from the MemDB is not relevant.
+// previously deleted from the MemTable is not relevant.
 //
 // If prev is non-nil, it also sets the first m.height elements of prev to the
 // preceding node at each height.
-func (m *MemDB) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bool) {
+func (m *MemTable) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bool) {
 	for h, p := m.height-1, headNode; h >= 0; h-- {
 		// Walk the skiplist at height h until we find either a zero node
 		// or one whose key is >= the given key.
@@ -135,7 +133,7 @@ func (m *MemDB) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bo
 }
 
 // Get implements DB.Get, as documented in the pebble/db package.
-func (m *MemDB) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
+func (m *MemTable) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -147,7 +145,7 @@ func (m *MemDB) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 }
 
 // Set implements DB.Set, as documented in the pebble/db package.
-func (m *MemDB) Set(key, value []byte, o *db.WriteOptions) error {
+func (m *MemTable) Set(key, value []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	// Find the node, and its predecessors at all heights.
@@ -184,7 +182,7 @@ func (m *MemDB) Set(key, value []byte, o *db.WriteOptions) error {
 }
 
 // Delete implements DB.Delete, as documented in the pebble/db package.
-func (m *MemDB) Delete(key []byte, o *db.WriteOptions) error {
+func (m *MemTable) Delete(key []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -196,7 +194,7 @@ func (m *MemDB) Delete(key []byte, o *db.WriteOptions) error {
 }
 
 // Find implements DB.Find, as documented in the pebble/db package.
-func (m *MemDB) Find(key []byte, o *db.ReadOptions) db.Iterator {
+func (m *MemTable) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	n, _ := m.findNode(key, nil)
@@ -215,27 +213,27 @@ func (m *MemDB) Find(key []byte, o *db.ReadOptions) db.Iterator {
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
-func (m *MemDB) Close() error {
+func (m *MemTable) Close() error {
 	return nil
 }
 
-// ApproximateMemoryUsage returns the approximate memory usage of the MemDB.
-func (m *MemDB) ApproximateMemoryUsage() int {
+// ApproximateMemoryUsage returns the approximate memory usage of the MemTable.
+func (m *MemTable) ApproximateMemoryUsage() int {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	return len(m.kvData)
 }
 
-// Empty returns whether the MemDB has no key/value pairs.
-func (m *MemDB) Empty() bool {
+// Empty returns whether the MemTable has no key/value pairs.
+func (m *MemTable) Empty() bool {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	return len(m.nodeData) == maxHeight
 }
 
-// New returns a new MemDB.
-func New(o *db.Options) *MemDB {
-	return &MemDB{
+// NewMemTable returns a new MemTable.
+func NewMemTable(o *db.Options) *MemTable {
+	return &MemTable{
 		height: 1,
 		cmp:    o.GetComparer(),
 		kvData: make([]byte, 0, 4096),
@@ -245,10 +243,10 @@ func New(o *db.Options) *MemDB {
 	}
 }
 
-// iterator is a MemDB iterator that buffers upcoming results, so that it does
-// not have to acquire the MemDB's mutex on each Next call.
+// iterator is a MemTable iterator that buffers upcoming results, so that it does
+// not have to acquire the MemTable's mutex on each Next call.
 type iterator struct {
-	m *MemDB
+	m *MemTable
 	// restartNode is the node to start refilling the buffer from.
 	restartNode int
 	// i0 is the current iterator position with respect to buf. A value of -1
@@ -263,7 +261,7 @@ type iterator struct {
 // iterator implements the db.Iterator interface.
 var _ db.Iterator = (*iterator)(nil)
 
-// fill fills the iterator's buffer with key/value pairs from the MemDB.
+// fill fills the iterator's buffer with key/value pairs from the MemTable.
 //
 // Precondition: t.m.mutex is locked for reading.
 func (t *iterator) fill() {

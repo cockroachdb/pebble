@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package memdb
+package pebble
 
 import (
 	"fmt"
@@ -26,9 +26,9 @@ func count(d db.DB) (n int) {
 	return n
 }
 
-// compact compacts a MemDB.
-func compact(m *MemDB) (*MemDB, error) {
-	n, x := New(nil), m.Find(nil, nil)
+// compact compacts a MemTable.
+func compact(m *MemTable) (*MemTable, error) {
+	n, x := NewMemTable(nil), m.Find(nil, nil)
 	for x.Next() {
 		if err := n.Set(x.Key(), x.Value(), nil); err != nil {
 			return nil, err
@@ -42,7 +42,7 @@ func compact(m *MemDB) (*MemDB, error) {
 
 func TestBasic(t *testing.T) {
 	// Check the empty DB.
-	m := New(nil)
+	m := NewMemTable(nil)
 	if got, want := count(m), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
@@ -109,7 +109,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestCount(t *testing.T) {
-	m := New(nil)
+	m := NewMemTable(nil)
 	for i := 0; i < 200; i++ {
 		if j := count(m); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
@@ -122,7 +122,7 @@ func TestCount(t *testing.T) {
 }
 
 func TestEmpty(t *testing.T) {
-	m := New(nil)
+	m := NewMemTable(nil)
 	if !m.Empty() {
 		t.Errorf("got !empty, want empty")
 	}
@@ -136,7 +136,7 @@ func TestEmpty(t *testing.T) {
 func Test1000Entries(t *testing.T) {
 	// Initialize the DB.
 	const N = 1000
-	m0 := New(nil)
+	m0 := NewMemTable(nil)
 	for i := 0; i < N; i++ {
 		k := []byte(strconv.Itoa(i))
 		v := []byte(strings.Repeat("x", i))

@@ -26,7 +26,7 @@
 // means to use the default value for that parameter. Thus, the code below
 // uses a custom Comparer, but the default values for every other parameter:
 //
-//	db := memdb.New(&db.Options{
+//	db := pebble.NewMemTable(&db.Options{
 //		Comparer: myComparer,
 //	})
 package db // import "github.com/petermattis/pebble/db"

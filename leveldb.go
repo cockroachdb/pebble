@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/memdb"
 	"github.com/petermattis/pebble/record"
 	"github.com/petermattis/pebble/storage"
 	"github.com/petermattis/pebble/table"
@@ -67,12 +66,12 @@ type DB struct {
 
 	versions versionSet
 
-	// mem is non-nil and the MemDB pointed to is mutable. imm is possibly
-	// nil, but if non-nil, the MemDB pointed to is immutable and will be
+	// mem is non-nil and the MemTable pointed to is mutable. imm is possibly
+	// nil, but if non-nil, the MemTable pointed to is immutable and will be
 	// copied out as an on-disk table. mem's sequence numbers are all
 	// higher than imm's, and imm's sequence numbers are all higher than
 	// those on-disk.
-	mem, imm *memdb.MemDB
+	mem, imm *MemTable
 
 	compactionCond sync.Cond
 	compacting     bool
@@ -91,7 +90,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	current := d.versions.currentVersion()
 	// TODO: do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
-	memtables := [2]*memdb.MemDB{d.mem, d.imm}
+	memtables := [2]*MemTable{d.mem, d.imm}
 	d.mu.Unlock()
 
 	ikey := makeInternalKey(nil, key, internalKeyKindMax, snapshot)
@@ -261,7 +260,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		tableCacheSize = minTableCacheSize
 	}
 	d.tableCache.init(dirname, opts.GetStorage(), &d.icmpOpts, tableCacheSize)
-	d.mem = memdb.New(&d.icmpOpts)
+	d.mem = NewMemTable(&d.icmpOpts)
 	d.compactionCond = sync.Cond{L: &d.mu}
 	fs := opts.GetStorage()
 
@@ -368,7 +367,7 @@ func (d *DB) replayLogFile(
 	defer file.Close()
 
 	var (
-		mem      *memdb.MemDB
+		mem      *MemTable
 		batchBuf = new(bytes.Buffer)
 		ikey     = make(internalKey, 512)
 		rr       = record.NewReader(file)
@@ -397,7 +396,7 @@ func (d *DB) replayLogFile(
 		}
 
 		if mem == nil {
-			mem = memdb.New(&d.icmpOpts)
+			mem = NewMemTable(&d.icmpOpts)
 		}
 
 		t := b.iter()
@@ -411,17 +410,18 @@ func (d *DB) replayLogFile(
 			//
 			// TODO: instead of copying to an intermediate buffer (ikey), is it worth
 			// adding a SetTwoPartKey(db.TwoPartKey{key0, key1}, value, opts) method to
-			// memdb.MemDB? What effect does that have on the db.Comparer interface?
+			// MemTable? What effect does that have on the db.Comparer interface?
 			//
-			// The C++ LevelDB code does not need an intermediate copy because its memdb
-			// implementation is a private implementation detail, and copies each internal
-			// key component from the Batch format straight to the skiplist buffer.
+			// The C++ LevelDB code does not need an intermediate copy because its
+			// memtable implementation is a private implementation detail, and copies
+			// each internal key component from the Batch format straight to the
+			// skiplist buffer.
 			//
-			// Go's LevelDB considers the memdb functionality to be useful in its own
-			// right, and so pebble/memdb is a separate package that is usable without
-			// having to import the top-level leveldb package. That extra abstraction
-			// means that we need to copy to an intermediate buffer here, to reconstruct
-			// the complete internal key to pass to the memdb.
+			// Go's LevelDB considers the memtable functionality to be useful in its
+			// own right, and so MemTable is a separate package that is usable
+			// without having to import the top-level leveldb package. That extra
+			// abstraction means that we need to copy to an intermediate buffer here,
+			// to reconstruct the complete internal key to pass to the memtable.
 			ikey = makeInternalKey(ikey, ukey, kind, seqNum)
 			mem.Set(ikey, value, nil)
 		}
@@ -466,7 +466,7 @@ func firstError(err0, err1 error) error {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) writeLevel0Table(fs storage.Storage, mem *memdb.MemDB) (meta fileMetadata, err error) {
+func (d *DB) writeLevel0Table(fs storage.Storage, mem *MemTable) (meta fileMetadata, err error) {
 	meta.fileNum = d.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
 	d.pendingOutputs[meta.fileNum] = struct{}{}
@@ -620,7 +620,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			return err
 		}
 		d.logNumber, d.logFile, d.log = newLogNumber, newLogFile, newLog
-		d.imm, d.mem = d.mem, memdb.New(&d.icmpOpts)
+		d.imm, d.mem = d.mem, NewMemTable(&d.icmpOpts)
 		force = false
 		d.maybeScheduleCompaction()
 	}
