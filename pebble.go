@@ -203,11 +203,19 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 	panic("pebble.DB: NewIter unimplemented")
 }
 
-// NewBatch returns a new empty batch. Any reads on the batch will read from
-// both the batch and the DB. If the batch is committed it will be applied to
-// the DB.
+// NewBatch returns a new empty write-only batch. Any reads on the batch will
+// return an error. If the batch is committed it will be applied to the DB.
 func (d *DB) NewBatch() db.Iterator {
 	panic("pebble.DB: NewBatch unimplemented")
+}
+
+// NewIndexedBatch returns a new empty read-write batch. Any reads on the batch
+// will read from both the batch and the DB. If the batch is committed it will
+// be applied to the DB. An indexed batch is slower that a non-indexed batch
+// for insert operations. If you do not need to perform reads on the batch, use
+// NewBatch instead.
+func (d *DB) NewIndexedBatch() db.Iterator {
+	panic("pebble.DB: NewIndexedBatch unimplemented")
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.

@@ -34,6 +34,7 @@ type Batch struct {
 	// entry. If the Batch is configured to track mutations we index the entries
 	// such that they can be iterated over in key (and descending insertion)
 	// order.
+	indexed bool
 }
 
 // Batch implements the db.Reader interface.
@@ -103,6 +104,12 @@ func (b *Batch) Commit(o *db.WriteOptions) error {
 // Close implements DB.Close, as documented in the pebble/db package.
 func (b *Batch) Close() error {
 	return nil
+}
+
+// Indexed returns true if the batch is indexed (i.e. supports read
+// operations).
+func (b *Batch) Indexed() bool {
+	return b.indexed
 }
 
 func (b *Batch) init(cap int) {
