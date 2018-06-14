@@ -190,7 +190,19 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 
 // Find implements DB.Find, as documented in the pebble/db package.
 func (d *DB) Find(key []byte, opts *db.ReadOptions) db.Iterator {
-	panic("unimplemented")
+	panic("pebble.DB: Find unimplemented")
+}
+
+// NewIter implements DB.NewIter, as documented in the pebble/db package.
+func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
+	panic("pebble.DB: NewIter unimplemented")
+}
+
+// NewBatch returns a new empty batch. Any reads on the batch will read from
+// both the batch and the DB. If the batch is committed it will be applied to
+// the DB.
+func (d *DB) NewBatch() db.Iterator {
+	panic("pebble.DB: NewBatch unimplemented")
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -209,6 +221,21 @@ func (d *DB) Close() error {
 	err = firstError(err, d.fileLock.Close())
 	d.closed = true
 	return err
+}
+
+// Compact TODO(peter)
+func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
+	panic("pebble.DB: Compact unimplemented")
+}
+
+// Flush the memtable to stable storage.
+func (d *DB) Flush() error {
+	panic("pebble.DB: Flush unimplemented")
+}
+
+// Ingest TODO(peter)
+func (d *DB) Ingest(paths []string) error {
+	panic("pebble.DB: Ingest unimplemented")
 }
 
 type fileNumAndName struct {

@@ -78,6 +78,16 @@ func (b *Batch) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	panic("pebble.Batch: Findunimplemented")
 }
 
+// NewIter implements DB.NewIter, as documented in the pebble/db package.
+func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
+	panic("pebble.Batch: NewIter unimplemented")
+}
+
+// Commit applies the batch to its parent writer.
+func (b *Batch) Commit(o *db.WriteOptions) error {
+	panic("pebble.Batch: Commit unimplemented")
+}
+
 // Close implements DB.Close, as documented in the pebble/db package.
 func (b *Batch) Close() error {
 	return nil

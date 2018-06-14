@@ -47,9 +47,29 @@ func newFakeIterator(closeErr error, kvPairs ...string) *fakeIter {
 	}
 }
 
+func (f *fakeIter) Seek(key []byte) bool {
+	panic("pebble: Seek unimplemented")
+}
+
+func (f *fakeIter) RSeek(key []byte) bool {
+	panic("pebble: RSeek unimplemented")
+}
+
+func (f *fakeIter) First() bool {
+	panic("pebble: First unimplemented")
+}
+
+func (f *fakeIter) Last() bool {
+	panic("pebble: Last unimplemented")
+}
+
 func (f *fakeIter) Next() bool {
 	f.index++
 	return f.index < len(f.kvPairs)
+}
+
+func (f *fakeIter) Prev() bool {
+	panic("pebble: Prev unimplemented")
 }
 
 func (f *fakeIter) Key() []byte {

@@ -51,6 +51,24 @@ var ErrNotFound = errors.New("pebble/db: not found")
 // key/value pairs are not guaranteed to be a consistent snapshot of that DB
 // at a particular point in time.
 type Iterator interface {
+	// Seek moves the iterator to the first key/value pair whose key is greater
+	// than or equal to the given key.
+	// It returns whether such a pair exists.
+	Seek(key []byte) bool
+
+	// RSeek moves the iterator to the first key/value pair whose key is less
+	// than or equal to the given key.
+	// It returns whether such a pair exists.
+	RSeek(key []byte) bool
+
+	// First moves the iterator the the first key/value pair.
+	// It returns whether such a pair exists.
+	First() bool
+
+	// Last moves the iterator the the last key/value pair.
+	// It returns whether such a pair exists.
+	Last() bool
+
 	// Next moves the iterator to the next key/value pair.
 	// It returns whether the iterator is exhausted.
 	Next() bool
@@ -58,11 +76,6 @@ type Iterator interface {
 	// Prev moves the iterator to the previous key/value pair.
 	// It returns whether the iterator is exhausted.
 	// Prev() bool
-
-	// Seek(key []byte) bool
-	// RSeek(key []byte) bool
-	// First() bool
-	// Last() bool
 
 	// Key returns the key of the current key/value pair, or nil if done.
 	// The caller should not modify the contents of the returned slice, and
@@ -94,19 +107,25 @@ type Reader interface {
 	// it is safe to modify the contents of the argument after Get returns.
 	Get(key []byte, o *ReadOptions) (value []byte, err error)
 
-	// Find returns an iterator positioned before the first key/value pair
-	// whose key is 'greater than or equal to' the given key. There may be no
-	// such pair, in which case the iterator will return false on Next.
+	// Find returns an iterator positioned before the first key/value pair whose
+	// key is greater than or equal to the given key. There may be no such pair,
+	// in which case the iterator will return false on Next.
 	//
 	// Any error encountered will be implicitly returned via the iterator. An
 	// error-iterator will yield no key/value pairs and closing that iterator
 	// will return that error.
 	//
+	// Equivalent to NewIter(o) -> Seek(key).
+	//
 	// It is safe to modify the contents of the argument after Find returns.
 	Find(key []byte, o *ReadOptions) Iterator
 
-	// TODO(peter):
-	// NewIter(o *ReadOptions) Iterator
+	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+	// return false). The iterator can be positioned via a call to Seek, RSeek,
+	// First or Last.
+	//
+	// It is safe to modify the contents of the argument after Find returns.
+	NewIter(o *ReadOptions) Iterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader
 	// or io.Writer, depending on how the DB was created.

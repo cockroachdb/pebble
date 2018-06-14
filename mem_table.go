@@ -6,7 +6,6 @@ package pebble // import "github.com/petermattis/pebble"
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math/rand"
 	"sync"
 
@@ -197,12 +196,12 @@ func (m *MemTable) Delete(key []byte, o *db.WriteOptions) error {
 // DeleteRange implements DB.DeleteRange, as documented in the pebble/db
 // package.
 func (m *MemTable) DeleteRange(start, end []byte, o *db.WriteOptions) error {
-	return fmt.Errorf("pebble: DeleteRange unimplemented")
+	panic("pebble.MemTable: DeleteRange unimplemented")
 }
 
 // Apply implements DB.Apply, as documented in the pebble/db package.
 func (m *MemTable) Apply(repr []byte, opts *db.WriteOptions) error {
-	return fmt.Errorf("pebble: Apply unimplemented")
+	panic("pebble.MemTable: Apply unimplemented")
 }
 
 // Find implements DB.Find, as documented in the pebble/db package.
@@ -222,6 +221,11 @@ func (m *MemTable) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	// requires that the caller the Next first, so we set t.i0 to -1.
 	t.i0 = -1
 	return t
+}
+
+// NewIter implements DB.NewIter, as documented in the pebble/db package.
+func (m *MemTable) NewIter(o *db.ReadOptions) db.Iterator {
+	panic("pebble.MemTable: NewIter unimplemented")
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -297,6 +301,22 @@ func (t *iterator) fill() {
 	t.restartNode = n
 }
 
+func (t *iterator) Seek(key []byte) bool {
+	panic("pebble: Seek unimplemented")
+}
+
+func (t *iterator) RSeek(key []byte) bool {
+	panic("pebble: RSeek unimplemented")
+}
+
+func (t *iterator) First() bool {
+	panic("pebble: First unimplemented")
+}
+
+func (t *iterator) Last() bool {
+	panic("pebble: Last unimplemented")
+}
+
 // Next implements Iterator.Next, as documented in the pebble/db package.
 func (t *iterator) Next() bool {
 	t.i0++
@@ -312,6 +332,10 @@ func (t *iterator) Next() bool {
 	defer t.m.mutex.RUnlock()
 	t.fill()
 	return true
+}
+
+func (t *iterator) Prev() bool {
+	panic("pebble: Prev unimplemented")
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.

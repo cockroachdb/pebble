@@ -24,6 +24,22 @@ type concatenatingIter struct {
 	err   error
 }
 
+func (c *concatenatingIter) Seek(key []byte) bool {
+	panic("pebble: Seek unimplemented")
+}
+
+func (c *concatenatingIter) RSeek(key []byte) bool {
+	panic("pebble: RSeek unimplemented")
+}
+
+func (c *concatenatingIter) First() bool {
+	panic("pebble: First unimplemented")
+}
+
+func (c *concatenatingIter) Last() bool {
+	panic("pebble: Last unimplemented")
+}
+
 func (c *concatenatingIter) Next() bool {
 	if c.err != nil {
 		return false
@@ -39,6 +55,10 @@ func (c *concatenatingIter) Next() bool {
 		c.iters = c.iters[1:]
 	}
 	return false
+}
+
+func (c *concatenatingIter) Prev() bool {
+	panic("pebble: Prev unimplemented")
 }
 
 func (c *concatenatingIter) Key() []byte {
@@ -116,6 +136,22 @@ func (m *mergingIter) close(i int) error {
 	return err
 }
 
+func (m *mergingIter) Seek(key []byte) bool {
+	panic("pebble: Seek unimplemented")
+}
+
+func (m *mergingIter) RSeek(key []byte) bool {
+	panic("pebble: RSeek unimplemented")
+}
+
+func (m *mergingIter) First() bool {
+	panic("pebble: First unimplemented")
+}
+
+func (m *mergingIter) Last() bool {
+	panic("pebble: Last unimplemented")
+}
+
 func (m *mergingIter) Next() bool {
 	if m.err != nil {
 		return false
@@ -155,6 +191,10 @@ func (m *mergingIter) Next() bool {
 		}
 	}
 	return m.index >= 0
+}
+
+func (m *mergingIter) Prev() bool {
+	panic("pebble: Prev unimplemented")
 }
 
 func (m *mergingIter) Key() []byte {

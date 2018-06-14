@@ -105,6 +105,26 @@ type blockIter struct {
 // blockIter implements the db.Iterator interface.
 var _ db.Iterator = (*blockIter)(nil)
 
+// Seek implements Iterator.Seek, as documented in the pebble/db package.
+func (i *blockIter) Seek(key []byte) bool {
+	panic("pebble/table: Seek unimplemented")
+}
+
+// RSeek implements Iterator.RSeek, as documented in the pebble/db package.
+func (i *blockIter) RSeek(key []byte) bool {
+	panic("pebble/table: RSeek unimplemented")
+}
+
+// First implements Iterator.First, as documented in the pebble/db package.
+func (i *blockIter) First() bool {
+	panic("pebble/table: First unimplemented")
+}
+
+// Last implements Iterator.Last, as documented in the pebble/db package.
+func (i *blockIter) Last() bool {
+	panic("pebble/table: Last unimplemented")
+}
+
 // Next implements Iterator.Next, as documented in the pebble/db package.
 func (i *blockIter) Next() bool {
 	if i.eoi || i.err != nil {
@@ -126,6 +146,11 @@ func (i *blockIter) Next() bool {
 	i.val = i.data[n+int(v1) : n+int(v1+v2)]
 	i.data = i.data[n+int(v1+v2):]
 	return true
+}
+
+// Prev implements Iterator.Prev, as documented in the pebble/db package.
+func (i *blockIter) Prev() bool {
+	panic("pebble/table: Prev unimplemented")
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.
@@ -204,6 +229,26 @@ func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
 	return true
 }
 
+// Seek implements Iterator.Seek, as documented in the pebble/db package.
+func (i *tableIter) Seek(key []byte) bool {
+	panic("pebble/table: Seek unimplemented")
+}
+
+// RSeek implements Iterator.RSeek, as documented in the pebble/db package.
+func (i *tableIter) RSeek(key []byte) bool {
+	panic("pebble/table: RSeek unimplemented")
+}
+
+// First implements Iterator.First, as documented in the pebble/db package.
+func (i *tableIter) First() bool {
+	panic("pebble/table: First unimplemented")
+}
+
+// Last implements Iterator.Last, as documented in the pebble/db package.
+func (i *tableIter) Last() bool {
+	panic("pebble/table: Last unimplemented")
+}
+
 // Next implements Iterator.Next, as documented in the pebble/db package.
 func (i *tableIter) Next() bool {
 	if i.data == nil {
@@ -223,6 +268,11 @@ func (i *tableIter) Next() bool {
 	}
 	i.Close()
 	return false
+}
+
+// Prev implements Iterator.Prev, as documented in the pebble/db package.
+func (i *tableIter) Prev() bool {
+	panic("pebble/table: Prev unimplemented")
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.
@@ -349,6 +399,11 @@ func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 // Find implements DB.Find, as documented in the pebble/db package.
 func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	return r.find(key, o, nil)
+}
+
+// NewIter implements DB.NewIter, as documented in the pebble/db package.
+func (r *Reader) NewIter(o *db.ReadOptions) db.Iterator {
+	panic("pebble/table: NewIter unimplemented")
 }
 
 func (r *Reader) find(key []byte, o *db.ReadOptions, f *filterReader) db.Iterator {
