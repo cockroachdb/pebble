@@ -212,7 +212,7 @@ func (m *MemTable) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	for n != zeroNode && m.nodeData[n+fVal] == kvOffsetDeletedNode {
 		n = m.nodeData[n+fNxt]
 	}
-	t := &iterator{
+	t := &memTableIter{
 		m:           m,
 		restartNode: n,
 	}
@@ -259,9 +259,9 @@ func NewMemTable(o *db.Options) *MemTable {
 	}
 }
 
-// iterator is a MemTable iterator that buffers upcoming results, so that it does
-// not have to acquire the MemTable's mutex on each Next call.
-type iterator struct {
+// memTableIter is a MemTable memTableIter that buffers upcoming results, so
+// that it does not have to acquire the MemTable's mutex on each Next call.
+type memTableIter struct {
 	m *MemTable
 	// restartNode is the node to start refilling the buffer from.
 	restartNode int
@@ -275,12 +275,12 @@ type iterator struct {
 }
 
 // iterator implements the db.Iterator interface.
-var _ db.Iterator = (*iterator)(nil)
+var _ db.Iterator = (*memTableIter)(nil)
 
 // fill fills the iterator's buffer with key/value pairs from the MemTable.
 //
 // Precondition: t.m.mutex is locked for reading.
-func (t *iterator) fill() {
+func (t *memTableIter) fill() {
 	i, n := 0, t.restartNode
 	for i < len(t.buf) && n != zeroNode {
 		if t.m.nodeData[n+fVal] != kvOffsetDeletedNode {
@@ -301,24 +301,24 @@ func (t *iterator) fill() {
 	t.restartNode = n
 }
 
-func (t *iterator) Seek(key []byte) bool {
+func (t *memTableIter) Seek(key []byte) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (t *iterator) RSeek(key []byte) bool {
+func (t *memTableIter) RSeek(key []byte) bool {
 	panic("pebble: RSeek unimplemented")
 }
 
-func (t *iterator) First() bool {
+func (t *memTableIter) First() bool {
 	panic("pebble: First unimplemented")
 }
 
-func (t *iterator) Last() bool {
+func (t *memTableIter) Last() bool {
 	panic("pebble: Last unimplemented")
 }
 
 // Next implements Iterator.Next, as documented in the pebble/db package.
-func (t *iterator) Next() bool {
+func (t *memTableIter) Next() bool {
 	t.i0++
 	if t.i0 < t.i1 {
 		return true
@@ -334,12 +334,12 @@ func (t *iterator) Next() bool {
 	return true
 }
 
-func (t *iterator) Prev() bool {
+func (t *memTableIter) Prev() bool {
 	panic("pebble: Prev unimplemented")
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.
-func (t *iterator) Key() []byte {
+func (t *memTableIter) Key() []byte {
 	if t.i0 < 0 {
 		return nil
 	}
@@ -347,7 +347,7 @@ func (t *iterator) Key() []byte {
 }
 
 // Value implements Iterator.Value, as documented in the pebble/db package.
-func (t *iterator) Value() []byte {
+func (t *memTableIter) Value() []byte {
 	if t.i0 < 0 {
 		return nil
 	}
@@ -355,6 +355,6 @@ func (t *iterator) Value() []byte {
 }
 
 // Close implements Iterator.Close, as documented in the pebble/db package.
-func (t *iterator) Close() error {
+func (t *memTableIter) Close() error {
 	return nil
 }
