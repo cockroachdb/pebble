@@ -136,7 +136,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 }
 
 // TODO: describe what this function does and how it interacts concurrently
-// with a running leveldb.
+// with a running pebble.
 //
 // d.mu must be held when calling this, for the enclosing *DB d.
 // TODO: actually pass d.mu, and drop and re-acquire it around the I/O.

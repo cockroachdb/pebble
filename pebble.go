@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package leveldb provides an ordered key/value store.
+// Package pebble provides an ordered key/value store.
 //
 // BUG: This package is incomplete.
 package pebble // import "github.com/petermattis/pebble"
@@ -464,7 +464,7 @@ func (d *DB) replayLogFile(
 			//
 			// Go's LevelDB considers the memtable functionality to be useful in its
 			// own right, and so MemTable is a separate package that is usable
-			// without having to import the top-level leveldb package. That extra
+			// without having to import the top-level pebble package. That extra
 			// abstraction means that we need to copy to an intermediate buffer here,
 			// to reconstruct the complete internal key to pass to the memtable.
 			ikey = makeInternalKey(ikey, ukey, kind, seqNum)

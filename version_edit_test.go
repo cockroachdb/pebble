@@ -105,12 +105,12 @@ func TestVersionEditDecode(t *testing.T) {
 		{
 			filename: "db-stage-1/MANIFEST-000002",
 			encodedEdits: []string{
-				"\x01\x1aleveldb.BytewiseComparator",
+				"\x01\x1apebble.BytewiseComparator",
 				"\x02\x03\x09\x00\x03\x04\x04\x00",
 			},
 			edits: []versionEdit{
 				{
-					comparatorName: "leveldb.BytewiseComparator",
+					comparatorName: "pebble.BytewiseComparator",
 				},
 				{
 					logNumber:      3,
@@ -124,14 +124,14 @@ func TestVersionEditDecode(t *testing.T) {
 		{
 			filename: "db-stage-3/MANIFEST-000004",
 			encodedEdits: []string{
-				"\x01\x1aleveldb.BytewiseComparator",
+				"\x01\x1apebble.BytewiseComparator",
 				"\x02\x06\x09\x00\x03\x07\x04\x05\x07\x00\x05\xa5\x01" +
 					"\x0bbar\x00\x05\x00\x00\x00\x00\x00\x00" +
 					"\x0bfoo\x01\x01\x00\x00\x00\x00\x00\x00",
 			},
 			edits: []versionEdit{
 				{
-					comparatorName: "leveldb.BytewiseComparator",
+					comparatorName: "pebble.BytewiseComparator",
 				},
 				{
 					logNumber:      6,

@@ -32,7 +32,7 @@ func TestLock(t *testing.T) {
 	if child {
 		filename = *lockFilename
 	} else {
-		f, err := ioutil.TempFile("", "golang-leveldb-db-testlock-")
+		f, err := ioutil.TempFile("", "golang-pebble-db-testlock-")
 		if err != nil {
 			t.Fatal(err)
 		}

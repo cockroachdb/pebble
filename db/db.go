@@ -18,13 +18,13 @@
 //	}
 //	return iter.Close()
 //
-// Other leveldb packages provide implementations of these interfaces. The
+// Other pebble packages provide implementations of these interfaces. The
 // Options struct in this package holds the optional parameters for these
 // implementations, including a Comparer to define a 'less than' relationship
-// over keys. It is always valid to pass a nil *Options, which means to use
-// the default parameter values. Any zero field of a non-nil *Options also
-// means to use the default value for that parameter. Thus, the code below
-// uses a custom Comparer, but the default values for every other parameter:
+// over keys. It is always valid to pass a nil *Options, which means to use the
+// default parameter values. Any zero field of a non-nil *Options also means to
+// use the default value for that parameter. Thus, the code below uses a custom
+// Comparer, but the default values for every other parameter:
 //
 //	db := pebble.NewMemTable(&db.Options{
 //		Comparer: myComparer,

@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package table implements readers and writers of leveldb tables.
+Package table implements readers and writers of pebble tables.
 
 Tables are either opened for reading or created for writing but not both.
 

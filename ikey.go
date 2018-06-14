@@ -11,7 +11,7 @@ import (
 )
 
 // internalKey is a key used for the in-memory and on-disk partial DBs that
-// make up a leveldb DB.
+// make up a pebble DB.
 //
 // It consists of the user key (as given by the arbitrary code that uses
 // package pebble) followed by an 8-byte trailer:
@@ -109,7 +109,7 @@ func (k internalKey) clone() internalKey {
 //
 // It compares internal keys first by their user keys (as ordered by userCmp),
 // then by sequence number (decreasing), then by kind (decreasing). The last
-// step is only for completeness; for a given leveldb DB, no two internal keys
+// step is only for completeness; for a given pebble DB, no two internal keys
 // should have the same sequence number.
 //
 // This ordering is designed so that when iterating through an internal table
@@ -154,8 +154,8 @@ func (c internalKeyComparer) Compare(a, b []byte) int {
 }
 
 func (c internalKeyComparer) Name() string {
-	// This is the same name given by the C++ leveldb's InternalKeyComparator class.
-	return "leveldb.InternalKeyComparator"
+	// This is the same name given by the C++ pebble's InternalKeyComparator class.
+	return "pebble.InternalKeyComparator"
 }
 
 func (c internalKeyComparer) AppendSeparator(dst, a, b []byte) []byte {
