@@ -184,6 +184,11 @@ func (m *MemTable) Set(key, value []byte, o *db.WriteOptions) error {
 	return nil
 }
 
+// Merge implements DB.Merge, as documented in the pebble/db package.
+func (m *MemTable) Merge(key, value []byte, o *db.WriteOptions) error {
+	panic("pebble.MemTable: Merge unimplemented")
+}
+
 // Delete implements DB.Delete, as documented in the pebble/db package.
 func (m *MemTable) Delete(key []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()

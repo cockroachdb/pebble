@@ -129,7 +129,12 @@ func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 // DeleteRange implements DB.DeleteRange, as documented in the pebble/db
 // package.
 func (d *DB) DeleteRange(start, end []byte, o *db.WriteOptions) error {
-	return fmt.Errorf("pebble: DeleteRange unimplemented")
+	panic("pebble.DB: DeleteRange unimplemented")
+}
+
+// Merge implements DB.Merge, as documented in the pebble/db package.
+func (d *DB) Merge(key, value []byte, o *db.WriteOptions) error {
+	panic("pebble.DB: Merge unimplemented")
 }
 
 // Apply implements DB.Apply, as documented in the pebble/db package.

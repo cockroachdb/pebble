@@ -172,6 +172,12 @@ type Writer interface {
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.
 	DeleteRange(start, end []byte, o *WriteOptions) error
+
+	// Merge merges the value for the given key. The details of the merge are
+	// dependent upon the configured merge operation.
+	//
+	// It is safe to modify the contents of the arguments after Merge returns.
+	Merge(key, value []byte, o *WriteOptions) error
 }
 
 // DB is a key/value store.

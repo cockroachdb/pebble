@@ -61,6 +61,13 @@ func (b *Batch) Set(key, value []byte) {
 	}
 }
 
+// Merge adds an action to the batch that merges the value at key with the new
+// value. The details of the merge are dependent upon the configured merge
+// operator.
+func (b *Batch) Merge(key, value []byte) {
+	panic("pebble.Batch: Merge unimplemented")
+}
+
 // Delete adds an action to the batch that deletes the entry for key.
 func (b *Batch) Delete(key []byte) {
 	if len(b.data) == 0 {
