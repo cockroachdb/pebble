@@ -6,6 +6,8 @@ package pebble
 
 import (
 	"encoding/binary"
+
+	"github.com/petermattis/pebble/db"
 )
 
 const batchHeaderLen = 12
@@ -14,6 +16,8 @@ const invalidBatchCount = 1<<32 - 1
 
 // Batch is a sequence of Sets and/or Deletes that are applied atomically.
 type Batch struct {
+	// The parent writer to which the batch will be committed.
+	parent db.Writer
 	// Data is the wire format of a batch's log entry:
 	//   - 8 bytes for a sequence number of the first batch element,
 	//     or zeroes if the batch has not yet been applied,
@@ -25,6 +29,19 @@ type Batch struct {
 	//     - the varint-string value (if kind == set).
 	// The sequence number and count are stored in little-endian order.
 	data []byte
+}
+
+// Batch implements the db.Reader interface.
+var _ db.Reader = (*Batch)(nil)
+
+// Apply implements DB.Apply, as documented in the pebble/db package.
+func (b *Batch) Apply(batch []byte) error {
+	panic("pebble.Batch: Apply unimplemented")
+}
+
+// Get implements DB.Get, as documented in the pebble/db package.
+func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
+	panic("pebble.Batch: Get unimplemented")
 }
 
 // Set adds an action to the batch that sets the key to map to the value.
@@ -48,6 +65,22 @@ func (b *Batch) Delete(key []byte) {
 		b.data = append(b.data, byte(internalKeyKindDelete))
 		b.appendStr(key)
 	}
+}
+
+// DeleteRange implements DB.DeleteRange, as documented in the pebble/db
+// package.
+func (b *Batch) DeleteRange(start, end []byte) {
+	panic("pebble.Batch: DeleteRange unimplemented")
+}
+
+// Find implements DB.Find, as documented in the pebble/db package.
+func (b *Batch) Find(key []byte, o *db.ReadOptions) db.Iterator {
+	panic("pebble.Batch: Findunimplemented")
+}
+
+// Close implements DB.Close, as documented in the pebble/db package.
+func (b *Batch) Close() error {
+	return nil
 }
 
 func (b *Batch) init(cap int) {

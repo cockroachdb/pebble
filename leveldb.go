@@ -83,6 +83,7 @@ type DB struct {
 
 var _ db.DB = (*DB)(nil)
 
+// Get implements DB.Get, as documented in the pebble/db package.
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
 	// TODO: add an opts.LastSequence field, or a DB.Snapshot method?
@@ -111,12 +112,14 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	return current.get(ikey, &d.tableCache, d.icmp.userCmp, opts)
 }
 
+// Set implements DB.Set, as documented in the pebble/db package.
 func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
 	var batch Batch
 	batch.Set(key, value)
 	return d.Apply(batch.data, opts)
 }
 
+// Delete implements DB.Delete, as documented in the pebble/db package.
 func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 	var batch Batch
 	batch.Delete(key)
@@ -185,10 +188,12 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 	return nil
 }
 
+// Find implements DB.Find, as documented in the pebble/db package.
 func (d *DB) Find(key []byte, opts *db.ReadOptions) db.Iterator {
 	panic("unimplemented")
 }
 
+// Close implements DB.Close, as documented in the pebble/db package.
 func (d *DB) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -396,7 +401,7 @@ func (d *DB) replayLogFile(
 		if batchBuf.Len() < batchHeaderLen {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
-		b := Batch{batchBuf.Bytes()}
+		b := Batch{data: batchBuf.Bytes()}
 		seqNum := b.seqNum()
 		seqNum1 := seqNum + uint64(b.count())
 		if maxSeqNum < seqNum1 {

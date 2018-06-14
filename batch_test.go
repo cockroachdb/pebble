@@ -86,7 +86,7 @@ func TestBatchIncrement(t *testing.T) {
 	for _, tc := range testCases {
 		var buf [12]byte
 		binary.LittleEndian.PutUint32(buf[8:12], tc)
-		b := Batch{buf[:]}
+		b := Batch{data: buf[:]}
 		b.increment()
 		got := binary.LittleEndian.Uint32(buf[8:12])
 		want := tc + 1
