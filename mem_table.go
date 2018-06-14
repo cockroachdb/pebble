@@ -63,6 +63,9 @@ const (
 // deleted or values are updated with shorter slices. Users are responsible for
 // explicitly compacting a MemTable into a separate DB (whether in-memory or
 // on-disk) when appropriate.
+//
+// TODO(peter): Replace with the arena skiplist implementation. Perhaps reuse
+// this implementation for the Batch skiplist.
 type MemTable struct {
 	mutex sync.RWMutex
 	// height is the number of such lists, which can increase over time.

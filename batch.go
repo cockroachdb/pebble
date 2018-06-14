@@ -29,6 +29,11 @@ type Batch struct {
 	//     - the varint-string value (if kind == set).
 	// The sequence number and count are stored in little-endian order.
 	data []byte
+
+	// TODO(peter): Add an optional skiplist keyed by offset into data of the
+	// entry. If the Batch is configured to track mutations we index the entries
+	// such that they can be iterated over in key (and descending insertion)
+	// order.
 }
 
 // Batch implements the db.Reader interface.
