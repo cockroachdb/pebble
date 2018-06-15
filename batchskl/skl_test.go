@@ -32,9 +32,7 @@ import (
 func length(s *Skiplist) int {
 	count := 0
 
-	var it Iterator
-	it.Init(s)
-
+	it := s.NewIterator()
 	for it.First(); it.Valid(); it.Next() {
 		count++
 	}
@@ -46,9 +44,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	var it Iterator
-	it.Init(s)
-
+	it := s.NewIterator()
 	for it.Last(); it.Valid(); it.Prev() {
 		count++
 	}
@@ -90,9 +86,7 @@ func (d *testStorage) Compare(a []byte, b uint32) int {
 func TestEmpty(t *testing.T) {
 	key := []byte("aaa")
 	l := NewSkiplist(&testStorage{}, 0)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 
@@ -111,9 +105,7 @@ func TestEmpty(t *testing.T) {
 func TestBasic(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	// Try adding values.
 	require.Nil(t, it.Add(d.add("key1")))
@@ -138,9 +130,7 @@ func TestBasic(t *testing.T) {
 func TestIteratorAdd(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	// Add empty key.
 	require.Nil(t, it.Add(d.add("")))
@@ -175,9 +165,7 @@ func TestIteratorNext(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 
@@ -202,9 +190,7 @@ func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 
@@ -228,9 +214,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	const n = 1000
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -272,9 +256,7 @@ func TestIteratorSeekLE(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -329,20 +311,18 @@ func BenchmarkReadWrite(b *testing.B) {
 				keys: make([][]byte, 0, b.N),
 			}
 			l := NewSkiplist(d, 0)
+			it := l.NewIterator()
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-			var iter Iterator
-			iter.Init(l)
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				key := randomKey(rng, buf[i*8:(i+1)*8])
 				if rng.Float32() < readFrac {
-					_ = iter.SeekGE(key)
+					_ = it.SeekGE(key)
 				} else {
 					offset := uint32(len(d.keys))
 					d.keys = append(d.keys, key)
-					_ = iter.Add(offset)
+					_ = it.Add(offset)
 				}
 			}
 			b.StopTimer()

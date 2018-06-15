@@ -35,12 +35,6 @@ type Iterator struct {
 	nd   uint32
 }
 
-// Init associates the iterator with a skiplist and resets all state.
-func (it *Iterator) Init(list *Skiplist) {
-	it.list = list
-	it.nd = 0
-}
-
 // Valid returns true iff the iterator is positioned at a valid node.
 func (it *Iterator) Valid() bool {
 	return it.nd != it.list.head && it.nd != it.list.tail

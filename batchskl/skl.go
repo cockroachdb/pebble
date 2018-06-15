@@ -152,6 +152,12 @@ func NewSkiplist(storage Storage, initBufSize int) *Skiplist {
 	return s
 }
 
+// NewIterator returns a new Iterator object. Note that it is safe for an
+// iterator to be copied by value.
+func (s *Skiplist) NewIterator() Iterator {
+	return Iterator{list: s}
+}
+
 func (s *Skiplist) newNode(height, key uint32, prefix KeyPrefix) uint32 {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
