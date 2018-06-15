@@ -33,6 +33,14 @@ import (
 
 const arenaSize = 1 << 20
 
+func makeKey(i int) []byte {
+	return []byte(fmt.Sprintf("%05d", i))
+}
+
+func makeValue(i int) []byte {
+	return []byte(fmt.Sprintf("v%05d", i))
+}
+
 // length iterates over skiplist to give exact size.
 func length(s *Skiplist) int {
 	count := 0
@@ -80,7 +88,7 @@ func TestFull(t *testing.T) {
 
 	foundArenaFull := false
 	for i := 0; i < 100; i++ {
-		err := l.Add([]byte(fmt.Sprintf("%05d", i)))
+		err := l.Add(makeKey(i), makeValue(i))
 		if err == ErrArenaFull {
 			foundArenaFull = true
 		}
@@ -88,7 +96,7 @@ func TestFull(t *testing.T) {
 
 	require.True(t, foundArenaFull)
 
-	err := l.Add([]byte("someval"))
+	err := l.Add([]byte("someval"), nil)
 	require.Equal(t, ErrArenaFull, err)
 }
 
@@ -98,20 +106,23 @@ func TestBasic(t *testing.T) {
 	it := l.NewIterator()
 
 	// Try adding values.
-	l.Add([]byte("key1"))
-	l.Add([]byte("key3"))
-	l.Add([]byte("key2"))
+	l.Add([]byte("key1"), makeValue(1))
+	l.Add([]byte("key3"), makeValue(3))
+	l.Add([]byte("key2"), makeValue(2))
 
 	require.False(t, it.SeekGE([]byte("key")))
 
 	require.True(t, it.SeekGE([]byte("key1")))
 	require.EqualValues(t, "key1", it.Key())
+	require.EqualValues(t, makeValue(1), it.Value())
 
 	require.True(t, it.SeekGE([]byte("key2")))
 	require.EqualValues(t, "key2", it.Key())
+	require.EqualValues(t, makeValue(2), it.Value())
 
 	require.True(t, it.SeekGE([]byte("key3")))
 	require.EqualValues(t, "key3", it.Key())
+	require.EqualValues(t, makeValue(3), it.Value())
 }
 
 // TestConcurrentBasic tests concurrent writes followed by concurrent reads.
@@ -128,7 +139,7 @@ func TestConcurrentBasic(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			l.Add([]byte(fmt.Sprintf("%05d", i)))
+			l.Add(makeKey(i), makeValue(i))
 		}(i)
 	}
 	wg.Wait()
@@ -154,12 +165,9 @@ func TestConcurrentBasic(t *testing.T) {
 func TestConcurrentOneKey(t *testing.T) {
 	const n = 100
 	key := []byte("thekey")
-	cmp := func(a, b []byte) int {
-		return bytes.Compare(a[:len(key)], b[:len(key)])
-	}
 
 	// Set testing flag to make it easier to trigger unusual race conditions.
-	l := NewSkiplist(NewArena(arenaSize), cmp)
+	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
 	l.testing = true
 
 	var wg sync.WaitGroup
@@ -168,7 +176,7 @@ func TestConcurrentOneKey(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			l.Add([]byte(fmt.Sprintf("thekey%d", i)))
+			l.Add(key, makeValue(i))
 		}(i)
 	}
 	// We expect that at least some write made it such that some read returns a value.
@@ -184,7 +192,7 @@ func TestConcurrentOneKey(t *testing.T) {
 			}
 
 			atomic.StoreInt32(&sawValue, 1)
-			v, err := strconv.Atoi(string(it.Key()[len(key):]))
+			v, err := strconv.Atoi(string(it.Value()[1:]))
 			require.NoError(t, err)
 			require.True(t, 0 <= v && v < n)
 		}()
@@ -200,48 +208,55 @@ func TestSkiplistAdd(t *testing.T) {
 	it := l.NewIterator()
 
 	// Add nil key and value (treated same as empty).
-	err := l.Add(nil)
+	err := l.Add(nil, nil)
 	require.Nil(t, err)
 	require.True(t, it.SeekGE(nil))
 	require.EqualValues(t, []byte{}, it.Key())
+	require.EqualValues(t, []byte{}, it.Value())
 
 	l = NewSkiplist(NewArena(arenaSize), bytes.Compare)
 	it = l.NewIterator()
 
 	// Add empty key and value (treated same as nil).
-	err = l.Add([]byte{})
+	err = l.Add([]byte{}, []byte{})
 	require.Nil(t, err)
 	require.True(t, it.SeekGE(nil))
 	require.EqualValues(t, []byte{}, it.Key())
+	require.EqualValues(t, []byte{}, it.Value())
 
 	// Add to empty list.
-	err = l.Add([]byte("00002"))
+	err = l.Add(makeKey(2), makeValue(2))
 	require.Nil(t, err)
 	require.True(t, it.SeekGE([]byte("00002")))
-	require.EqualValues(t, "00002", it.Key())
+	require.EqualValues(t, makeKey(2), it.Key())
+	require.EqualValues(t, makeValue(2), it.Value())
 
 	// Add first element in non-empty list.
-	err = l.Add([]byte("00001"))
+	err = l.Add(makeKey(1), makeValue(1))
 	require.Nil(t, err)
 	require.True(t, it.SeekGE([]byte("00001")))
-	require.EqualValues(t, "00001", it.Key())
+	require.EqualValues(t, makeKey(1), it.Key())
+	require.EqualValues(t, makeValue(1), it.Value())
 
 	// Add last element in non-empty list.
-	err = l.Add([]byte("00004"))
+	err = l.Add(makeKey(4), makeValue(4))
 	require.Nil(t, err)
 	require.True(t, it.SeekGE([]byte("00004")))
-	require.EqualValues(t, "00004", it.Key())
+	require.EqualValues(t, makeKey(4), it.Key())
+	require.EqualValues(t, makeValue(4), it.Value())
 
 	// Add element in middle of list.
-	err = l.Add([]byte("00003"))
+	err = l.Add(makeKey(3), makeValue(3))
 	require.Nil(t, err)
 	require.True(t, it.SeekGE([]byte("00003")))
-	require.EqualValues(t, "00003", it.Key())
+	require.EqualValues(t, makeKey(3), it.Key())
+	require.EqualValues(t, makeValue(3), it.Value())
 
 	// Try to add element that already exists.
-	err = l.Add([]byte("00002"))
+	err = l.Add(makeKey(2), nil)
 	require.Equal(t, ErrRecordExists, err)
-	require.EqualValues(t, []byte("00003"), it.Key())
+	require.EqualValues(t, makeKey(3), it.Key())
+	require.EqualValues(t, makeValue(3), it.Value())
 
 	require.Equal(t, 5, length(l))
 	require.Equal(t, 5, lengthRev(l))
@@ -270,8 +285,8 @@ func TestConcurrentAdd(t *testing.T) {
 			for i := 0; i < n; i++ {
 				start[i].Wait()
 
-				key := []byte(fmt.Sprintf("%05d", i))
-				if l.Add(key) == nil {
+				key := makeKey(i)
+				if l.Add(key, nil) == nil {
 					it.SeekGE(key)
 					require.EqualValues(t, key, it.Key())
 				}
@@ -302,13 +317,14 @@ func TestIteratorNext(t *testing.T) {
 	require.False(t, it.Valid())
 
 	for i := n - 1; i >= 0; i-- {
-		l.Add([]byte(fmt.Sprintf("%05d", i)))
+		l.Add(makeKey(i), makeValue(i))
 	}
 
 	it.First()
 	for i := 0; i < n; i++ {
 		require.True(t, it.Valid())
-		require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key())
+		require.EqualValues(t, makeKey(i), it.Key())
+		require.EqualValues(t, makeValue(i), it.Value())
 		it.Next()
 	}
 	require.False(t, it.Valid())
@@ -326,13 +342,14 @@ func TestIteratorPrev(t *testing.T) {
 	require.False(t, it.Valid())
 
 	for i := 0; i < n; i++ {
-		l.Add([]byte(fmt.Sprintf("%05d", i)))
+		l.Add(makeKey(i), makeValue(i))
 	}
 
 	it.Last()
 	for i := n - 1; i >= 0; i-- {
 		require.True(t, it.Valid())
-		require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key())
+		require.EqualValues(t, makeKey(i), it.Key())
+		require.EqualValues(t, makeValue(i), it.Value())
 		it.Prev()
 	}
 	require.False(t, it.Valid())
@@ -348,35 +365,40 @@ func TestIteratorSeekGE(t *testing.T) {
 	require.False(t, it.Valid())
 	// 1000, 1010, 1020, ..., 1990.
 	for i := n - 1; i >= 0; i-- {
-		l.Add([]byte(fmt.Sprintf("%05d", i*10+1000)))
+		v := i*10 + 1000
+		l.Add(makeKey(v), makeValue(v))
 	}
 
 	found := it.SeekGE([]byte(""))
 	require.False(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
+	require.EqualValues(t, "v01000", it.Value())
 
 	found = it.SeekGE([]byte("01000"))
 	require.True(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
+	require.EqualValues(t, "v01000", it.Value())
 
 	found = it.SeekGE([]byte("01005"))
 	require.False(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01010", it.Key())
+	require.EqualValues(t, "v01010", it.Value())
 
 	found = it.SeekGE([]byte("01010"))
 	require.True(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01010", it.Key())
+	require.EqualValues(t, "v01010", it.Value())
 
 	found = it.SeekGE([]byte("99999"))
 	require.False(t, found)
 	require.False(t, it.Valid())
 
 	// Test seek for empty key.
-	l.Add(nil)
+	l.Add(nil, nil)
 	found = it.SeekGE(nil)
 	require.True(t, found)
 	require.True(t, it.Valid())
@@ -398,7 +420,8 @@ func TestIteratorSeekLE(t *testing.T) {
 	require.False(t, it.Valid())
 	// 1000, 1010, 1020, ..., 1990.
 	for i := n - 1; i >= 0; i-- {
-		l.Add([]byte(fmt.Sprintf("%05d", i*10+1000)))
+		v := i*10 + 1000
+		l.Add(makeKey(v), makeValue(v))
 	}
 
 	found := it.SeekLE([]byte(""))
@@ -413,24 +436,28 @@ func TestIteratorSeekLE(t *testing.T) {
 	require.True(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
+	require.EqualValues(t, "v01000", it.Value())
 
 	found = it.SeekLE([]byte("01005"))
 	require.False(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
+	require.EqualValues(t, "v01000", it.Value())
 
 	found = it.SeekLE([]byte("01990"))
 	require.True(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01990", it.Key())
+	require.EqualValues(t, "v01990", it.Value())
 
 	found = it.SeekLE([]byte("99999"))
 	require.False(t, found)
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01990", it.Key())
+	require.EqualValues(t, "v01990", it.Value())
 
 	// Test seek for empty key.
-	l.Add(nil)
+	l.Add(nil, nil)
 	found = it.SeekLE(nil)
 	require.True(t, found)
 	require.True(t, it.Valid())
@@ -471,7 +498,7 @@ func BenchmarkReadWrite(b *testing.B) {
 							count++
 						}
 					} else {
-						l.Add(randomKey(rng))
+						l.Add(randomKey(rng), nil)
 					}
 				}
 			})

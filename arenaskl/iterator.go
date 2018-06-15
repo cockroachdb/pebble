@@ -44,6 +44,11 @@ func (it *Iterator) Key() []byte {
 	return it.nd.getKey(it.arena)
 }
 
+// Value returns the value at the current position.
+func (it *Iterator) Value() []byte {
+	return it.nd.getValue(it.arena)
+}
+
 // Next advances to the next position. If there are no following nodes, then
 // Valid() will be false after this call.
 func (it *Iterator) Next() {

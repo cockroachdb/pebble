@@ -94,15 +94,17 @@ func init() {
 // and values in the skiplist will be allocated from the given arena.
 func NewSkiplist(arena *Arena, comparer Comparer) *Skiplist {
 	// Allocate head and tail nodes.
-	head, err := newNode(arena, maxHeight, nil)
+	head, err := newNode(arena, maxHeight, nil, nil)
 	if err != nil {
 		panic("arenaSize is not large enough to hold the head node")
 	}
+	head.keyOffset = 0
 
-	tail, err := newNode(arena, maxHeight, nil)
+	tail, err := newNode(arena, maxHeight, nil, nil)
 	if err != nil {
 		panic("arenaSize is not large enough to hold the tail node")
 	}
+	tail.keyOffset = 0
 
 	// Link all head/tail levels together.
 	headOffset := arena.GetPointerOffset(unsafe.Pointer(head))
@@ -136,7 +138,7 @@ func (s *Skiplist) Size() uint32 { return s.arena.Size() }
 // Add adds a new key if it does not yet exist. If the key already exists, then
 // Add returns ErrRecordExists. If there isn't enough room in the arena, then
 // Add returns ErrArenaFull.
-func (s *Skiplist) Add(key []byte) error {
+func (s *Skiplist) Add(key, value []byte) error {
 	var spl [maxHeight]splice
 	if s.findSplice(key, &spl) {
 		// Found a matching node, but handle case where it's been deleted.
@@ -150,7 +152,7 @@ func (s *Skiplist) Add(key []byte) error {
 		runtime.Gosched()
 	}
 
-	nd, height, err := s.newNode(key)
+	nd, height, err := s.newNode(key, value)
 	if err != nil {
 		return err
 	}
@@ -250,9 +252,9 @@ func (s *Skiplist) NewIterator() Iterator {
 	return Iterator{list: s, arena: s.arena, nd: nil}
 }
 
-func (s *Skiplist) newNode(key []byte) (nd *node, height uint32, err error) {
+func (s *Skiplist) newNode(key, value []byte) (nd *node, height uint32, err error) {
 	height = s.randomHeight()
-	nd, err = newNode(s.arena, height, key)
+	nd, err = newNode(s.arena, height, key, value)
 	if err != nil {
 		return
 	}
@@ -268,8 +270,6 @@ func (s *Skiplist) newNode(key []byte) (nd *node, height uint32, err error) {
 		listHeight = s.Height()
 	}
 
-	// Allocate node's key.
-	nd.keyOffset, nd.keySize, err = s.allocKey(key)
 	return
 }
 
@@ -281,20 +281,6 @@ func (s *Skiplist) randomHeight() uint32 {
 	}
 
 	return h
-}
-
-func (s *Skiplist) allocKey(key []byte) (keyOffset uint32, keySize uint32, err error) {
-	if len(key) > math.MaxUint32 {
-		panic("key is too large")
-	}
-
-	keySize = uint32(len(key))
-	keyOffset, err = s.arena.Alloc(keySize, Align1)
-	if err == nil {
-		copy(s.arena.GetBytes(keyOffset, keySize), key)
-	}
-
-	return
 }
 
 func (s *Skiplist) findSplice(key []byte, spl *[maxHeight]splice) (found bool) {

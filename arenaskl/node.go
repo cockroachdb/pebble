@@ -18,6 +18,7 @@
 package arenaskl
 
 import (
+	"math"
 	"sync/atomic"
 )
 
@@ -35,6 +36,7 @@ type node struct {
 	// Immutable fields, so no need to lock to access key.
 	keyOffset uint32
 	keySize   uint32
+	valueSize uint32
 
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
@@ -46,9 +48,15 @@ type node struct {
 	tower [maxHeight]links
 }
 
-func newNode(arena *Arena, height uint32, key []byte) (nd *node, err error) {
+func newNode(arena *Arena, height uint32, key, value []byte) (nd *node, err error) {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
+	}
+	if len(key) > math.MaxUint32 {
+		panic("key is too large")
+	}
+	if len(value) > math.MaxUint32 {
+		panic("value is too large")
 	}
 
 	// Compute the amount of the tower that will never be used, since the height
@@ -56,22 +64,28 @@ func newNode(arena *Arena, height uint32, key []byte) (nd *node, err error) {
 	unusedSize := (maxHeight - int(height)) * linksSize
 	nodeSize := uint32(maxNodeSize - unusedSize)
 	keySize := uint32(len(key))
+	valueSize := uint32(len(value))
 
-	nodeOffset, err := arena.Alloc(nodeSize+keySize, Align4)
+	nodeOffset, err := arena.Alloc(nodeSize+keySize+valueSize, Align4)
 	if err != nil {
 		return
 	}
 
 	nd = (*node)(arena.GetPointer(nodeOffset))
-	if keySize > 0 {
-		nd.keyOffset = nodeSize
-		nd.keySize = keySize
-	}
+	nd.keyOffset = nodeOffset + nodeSize
+	nd.keySize = keySize
+	nd.valueSize = valueSize
+	copy(nd.getKey(arena), key)
+	copy(nd.getValue(arena), value)
 	return
 }
 
 func (n *node) getKey(arena *Arena) []byte {
 	return arena.GetBytes(n.keyOffset, n.keySize)
+}
+
+func (n *node) getValue(arena *Arena) []byte {
+	return arena.GetBytes(n.keyOffset+n.keySize, n.valueSize)
 }
 
 func (n *node) nextOffset(h int) uint32 {
