@@ -36,13 +36,6 @@ type node struct {
 	keyOffset uint32
 	keySize   uint32
 
-	// Multiple parts of the value are encoded as a single uint64 so that it
-	// can be atomically loaded and stored:
-	//   value offset: uint32 (bits 0-31)
-	//   value size  : uint16 (bits 32-47)
-	//   metadata    : uint16 (bits 48-63)
-	value uint64
-
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
 	// these elements are never accessed, they do not need to be allocated.
@@ -53,7 +46,7 @@ type node struct {
 	tower [maxHeight]links
 }
 
-func newNode(arena *Arena, height uint32) (nd *node, err error) {
+func newNode(arena *Arena, height uint32, key []byte) (nd *node, err error) {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
@@ -61,13 +54,19 @@ func newNode(arena *Arena, height uint32) (nd *node, err error) {
 	// Compute the amount of the tower that will never be used, since the height
 	// is less than maxHeight.
 	unusedSize := (maxHeight - int(height)) * linksSize
+	nodeSize := uint32(maxNodeSize - unusedSize)
+	keySize := uint32(len(key))
 
-	nodeOffset, err := arena.Alloc(uint32(MaxNodeSize-unusedSize), Align8)
+	nodeOffset, err := arena.Alloc(nodeSize+keySize, Align4)
 	if err != nil {
 		return
 	}
 
 	nd = (*node)(arena.GetPointer(nodeOffset))
+	if keySize > 0 {
+		nd.keyOffset = nodeSize
+		nd.keySize = keySize
+	}
 	return
 }
 
