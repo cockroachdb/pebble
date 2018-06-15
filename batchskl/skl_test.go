@@ -126,7 +126,7 @@ func TestBasic(t *testing.T) {
 	require.True(t, it.SeekGE([]byte("key3")))
 }
 
-func TestIteratorAdd(t *testing.T) {
+func TestSkiplistAdd(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
 	it := l.NewIterator()

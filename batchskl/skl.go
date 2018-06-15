@@ -154,7 +154,7 @@ func NewSkiplist(storage Storage, initBufSize int) *Skiplist {
 }
 
 // Add adds a new key to the skiplist if it does not yet exist. If the record
-// already exists, then Add positions returns ErrRecordExists.
+// already exists, then Add returns ErrRecordExists.
 func (s *Skiplist) Add(keyOffset uint32) error {
 	key := s.storage.Get(keyOffset)
 	keyPrefix := s.storage.Prefix(key)
