@@ -152,6 +152,40 @@ func NewSkiplist(storage Storage, initBufSize int) *Skiplist {
 	return s
 }
 
+// Add adds a new key to the skiplist if it does not yet exist. If the record
+// already exists, then Add positions returns ErrRecordExists.
+func (s *Skiplist) Add(keyOffset uint32) error {
+	key := s.storage.Get(keyOffset)
+	keyPrefix := s.storage.Prefix(key)
+
+	var spl [maxHeight]splice
+	if s.findSplice(key, keyPrefix, &spl) {
+		return ErrRecordExists
+	}
+
+	height := s.randomHeight()
+	nd := s.newNode(height, keyOffset, keyPrefix)
+	// Increase s.height as necessary.
+	for ; s.height < height; s.height++ {
+		spl[s.height].next = s.tail
+		spl[s.height].prev = s.head
+	}
+
+	// We always insert from the base level and up. After you add a node in base
+	// level, we cannot create a node in the level above because it would have
+	// discovered the node in the base level.
+	for i := uint32(0); i < height; i++ {
+		next := spl[i].next
+		prev := spl[i].prev
+		s.setNext(nd, i, next)
+		s.setPrev(nd, i, prev)
+		s.setNext(prev, i, nd)
+		s.setPrev(next, i, nd)
+	}
+
+	return nil
+}
+
 // NewIterator returns a new Iterator object. Note that it is safe for an
 // iterator to be copied by value.
 func (s *Skiplist) NewIterator() Iterator {
@@ -200,6 +234,23 @@ func (s *Skiplist) randomHeight() uint32 {
 		h++
 	}
 	return h
+}
+
+func (s *Skiplist) findSplice(
+	key []byte, prefix KeyPrefix, spl *[maxHeight]splice,
+) (found bool) {
+	var prev, next uint32
+	prev = s.head
+
+	for level := s.height - 1; ; level-- {
+		prev, next, found = s.findSpliceForLevel(key, prefix, level, prev)
+		spl[level].init(prev, next)
+		if level == 0 {
+			break
+		}
+	}
+
+	return
 }
 
 func (s *Skiplist) findSpliceForLevel(

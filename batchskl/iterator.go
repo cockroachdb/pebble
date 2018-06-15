@@ -27,8 +27,8 @@ func (s *splice) init(prev, next uint32) {
 	s.next = next
 }
 
-// Iterator is an iterator over the skiplist object. Call Init to associate a
-// skiplist with the iterator. The current state of the iterator can be cloned
+// Iterator is an iterator over the skiplist object. Use Skiplist.NewIterator
+// to construct an iterator. The current state of the iterator can be cloned
 // by simply value copying the struct.
 type Iterator struct {
 	list *Skiplist
@@ -80,43 +80,6 @@ func (it *Iterator) SeekLE(key []byte) (found bool) {
 	return found
 }
 
-// Add creates a new key/value record if it does not yet exist and positions the
-// iterator on it. If the record already exists, then Add positions the iterator
-// on the most current value and returns ErrRecordExists.
-func (it *Iterator) Add(keyOffset uint32) error {
-	key := it.list.storage.Get(keyOffset)
-	keyPrefix := it.list.storage.Prefix(key)
-
-	var spl [maxHeight]splice
-	if it.seekForSplice(key, keyPrefix, &spl) {
-		return ErrRecordExists
-	}
-
-	s := it.list
-	height := s.randomHeight()
-	nd := s.newNode(height, keyOffset, keyPrefix)
-	// Increase s.height as necessary.
-	for ; s.height < height; s.height++ {
-		spl[s.height].next = s.tail
-		spl[s.height].prev = s.head
-	}
-
-	// We always insert from the base level and up. After you add a node in base
-	// level, we cannot create a node in the level above because it would have
-	// discovered the node in the base level.
-	for i := uint32(0); i < height; i++ {
-		next := spl[i].next
-		prev := spl[i].prev
-		it.list.setNext(nd, i, next)
-		it.list.setPrev(nd, i, prev)
-		it.list.setNext(prev, i, nd)
-		it.list.setPrev(next, i, nd)
-	}
-
-	it.nd = nd
-	return nil
-}
-
 // First seeks position at the first entry in list.
 // Final state of iterator is Valid() iff list is not empty.
 func (it *Iterator) First() {
@@ -127,23 +90,6 @@ func (it *Iterator) First() {
 // Final state of iterator is Valid() iff list is not empty.
 func (it *Iterator) Last() {
 	it.nd = it.list.getPrev(it.list.tail, 0)
-}
-
-func (it *Iterator) seekForSplice(
-	key []byte, prefix KeyPrefix, spl *[maxHeight]splice,
-) (found bool) {
-	var prev, next uint32
-	prev = it.list.head
-
-	for level := it.list.height - 1; ; level-- {
-		prev, next, found = it.list.findSpliceForLevel(key, prefix, level, prev)
-		spl[level].init(prev, next)
-		if level == 0 {
-			break
-		}
-	}
-
-	return
 }
 
 func (it *Iterator) seekForBaseSplice(
