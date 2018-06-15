@@ -35,9 +35,16 @@ type Iterator struct {
 	nd   uint32
 }
 
+// Close resets the iterator.
+func (it *Iterator) Close() error {
+	it.list = nil
+	it.nd = 0
+	return nil
+}
+
 // Valid returns nil iff the iterator is positioned at a valid node.
 func (it *Iterator) Valid() error {
-	if it.nd != it.list.head && it.nd != it.list.tail {
+	if it.list != nil && it.nd != it.list.head && it.nd != it.list.tail {
 		return nil
 	}
 	return ErrInvalid
