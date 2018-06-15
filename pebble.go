@@ -71,7 +71,7 @@ type DB struct {
 	// copied out as an on-disk table. mem's sequence numbers are all
 	// higher than imm's, and imm's sequence numbers are all higher than
 	// those on-disk.
-	mem, imm *MemTable
+	mem, imm *memTable
 
 	compactionCond sync.Cond
 	compacting     bool
@@ -91,7 +91,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	current := d.versions.currentVersion()
 	// TODO: do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
-	memtables := [2]*MemTable{d.mem, d.imm}
+	memtables := [2]*memTable{d.mem, d.imm}
 	d.mu.Unlock()
 
 	ikey := makeInternalKey(nil, key, internalKeyKindMax, snapshot)
@@ -313,7 +313,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		tableCacheSize = minTableCacheSize
 	}
 	d.tableCache.init(dirname, opts.GetStorage(), &d.icmpOpts, tableCacheSize)
-	d.mem = NewMemTable(&d.icmpOpts)
+	d.mem = newMemTable(&d.icmpOpts)
 	d.compactionCond = sync.Cond{L: &d.mu}
 	fs := opts.GetStorage()
 
@@ -420,7 +420,7 @@ func (d *DB) replayLogFile(
 	defer file.Close()
 
 	var (
-		mem      *MemTable
+		mem      *memTable
 		batchBuf = new(bytes.Buffer)
 		ikey     = make(internalKey, 512)
 		rr       = record.NewReader(file)
@@ -449,7 +449,7 @@ func (d *DB) replayLogFile(
 		}
 
 		if mem == nil {
-			mem = NewMemTable(&d.icmpOpts)
+			mem = newMemTable(&d.icmpOpts)
 		}
 
 		t := b.iter()
@@ -519,7 +519,7 @@ func firstError(err0, err1 error) error {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) writeLevel0Table(fs storage.Storage, mem *MemTable) (meta fileMetadata, err error) {
+func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetadata, err error) {
 	meta.fileNum = d.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
 	d.pendingOutputs[meta.fileNum] = struct{}{}
@@ -673,7 +673,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			return err
 		}
 		d.logNumber, d.logFile, d.log = newLogNumber, newLogFile, newLog
-		d.imm, d.mem = d.mem, NewMemTable(&d.icmpOpts)
+		d.imm, d.mem = d.mem, newMemTable(&d.icmpOpts)
 		force = false
 		d.maybeScheduleCompaction()
 	}

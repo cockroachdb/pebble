@@ -55,18 +55,18 @@ const (
 	kvOffsetDeletedNode = -2
 )
 
-// MemTable is a memory-backed implementation of the db.DB interface.
+// memTable is a memory-backed implementation of the db.DB interface.
 //
 // It is safe to call Get, Set, Delete and Find concurrently.
 //
-// A MemTable's memory consumption increases monotonically, even if keys are
+// A memTable's memory consumption increases monotonically, even if keys are
 // deleted or values are updated with shorter slices. Users are responsible for
-// explicitly compacting a MemTable into a separate DB (whether in-memory or
+// explicitly compacting a memTable into a separate DB (whether in-memory or
 // on-disk) when appropriate.
 //
 // TODO(peter): Replace with the arena skiplist implementation. Perhaps reuse
 // this implementation for the Batch skiplist.
-type MemTable struct {
+type memTable struct {
 	mutex sync.RWMutex
 	// height is the number of such lists, which can increase over time.
 	height int
@@ -79,10 +79,10 @@ type MemTable struct {
 }
 
 // MemTable implements the db.DB interface.
-var _ db.DB = (*MemTable)(nil)
+var _ db.DB = (*memTable)(nil)
 
 // load loads a []byte from m.kvData.
-func (m *MemTable) load(kvOffset int) (b []byte) {
+func (m *memTable) load(kvOffset int) (b []byte) {
 	if kvOffset < 0 {
 		return nil
 	}
@@ -92,7 +92,7 @@ func (m *MemTable) load(kvOffset int) (b []byte) {
 }
 
 // save saves a []byte to m.kvData.
-func (m *MemTable) save(b []byte) (kvOffset int) {
+func (m *memTable) save(b []byte) (kvOffset int) {
 	if len(b) == 0 {
 		return kvOffsetEmptySlice
 	}
@@ -111,7 +111,7 @@ func (m *MemTable) save(b []byte) (kvOffset int) {
 //
 // If prev is non-nil, it also sets the first m.height elements of prev to the
 // preceding node at each height.
-func (m *MemTable) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bool) {
+func (m *memTable) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch bool) {
 	for h, p := m.height-1, headNode; h >= 0; h-- {
 		// Walk the skiplist at height h until we find either a zero node
 		// or one whose key is >= the given key.
@@ -136,7 +136,7 @@ func (m *MemTable) findNode(key []byte, prev *[maxHeight]int) (n int, exactMatch
 }
 
 // Get implements DB.Get, as documented in the pebble/db package.
-func (m *MemTable) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
+func (m *memTable) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -148,7 +148,7 @@ func (m *MemTable) Get(key []byte, o *db.ReadOptions) (value []byte, err error) 
 }
 
 // Set implements DB.Set, as documented in the pebble/db package.
-func (m *MemTable) Set(key, value []byte, o *db.WriteOptions) error {
+func (m *memTable) Set(key, value []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	// Find the node, and its predecessors at all heights.
@@ -185,12 +185,12 @@ func (m *MemTable) Set(key, value []byte, o *db.WriteOptions) error {
 }
 
 // Merge implements DB.Merge, as documented in the pebble/db package.
-func (m *MemTable) Merge(key, value []byte, o *db.WriteOptions) error {
+func (m *memTable) Merge(key, value []byte, o *db.WriteOptions) error {
 	panic("pebble.MemTable: Merge unimplemented")
 }
 
 // Delete implements DB.Delete, as documented in the pebble/db package.
-func (m *MemTable) Delete(key []byte, o *db.WriteOptions) error {
+func (m *memTable) Delete(key []byte, o *db.WriteOptions) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	n, exactMatch := m.findNode(key, nil)
@@ -203,17 +203,17 @@ func (m *MemTable) Delete(key []byte, o *db.WriteOptions) error {
 
 // DeleteRange implements DB.DeleteRange, as documented in the pebble/db
 // package.
-func (m *MemTable) DeleteRange(start, end []byte, o *db.WriteOptions) error {
+func (m *memTable) DeleteRange(start, end []byte, o *db.WriteOptions) error {
 	panic("pebble.MemTable: DeleteRange unimplemented")
 }
 
 // Apply implements DB.Apply, as documented in the pebble/db package.
-func (m *MemTable) Apply(repr []byte, opts *db.WriteOptions) error {
+func (m *memTable) Apply(repr []byte, opts *db.WriteOptions) error {
 	panic("pebble.MemTable: Apply unimplemented")
 }
 
 // Find implements DB.Find, as documented in the pebble/db package.
-func (m *MemTable) Find(key []byte, o *db.ReadOptions) db.Iterator {
+func (m *memTable) Find(key []byte, o *db.ReadOptions) db.Iterator {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	n, _ := m.findNode(key, nil)
@@ -232,32 +232,32 @@ func (m *MemTable) Find(key []byte, o *db.ReadOptions) db.Iterator {
 }
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
-func (m *MemTable) NewIter(o *db.ReadOptions) db.Iterator {
+func (m *memTable) NewIter(o *db.ReadOptions) db.Iterator {
 	panic("pebble.MemTable: NewIter unimplemented")
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
-func (m *MemTable) Close() error {
+func (m *memTable) Close() error {
 	return nil
 }
 
 // ApproximateMemoryUsage returns the approximate memory usage of the MemTable.
-func (m *MemTable) ApproximateMemoryUsage() int {
+func (m *memTable) ApproximateMemoryUsage() int {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	return len(m.kvData)
 }
 
 // Empty returns whether the MemTable has no key/value pairs.
-func (m *MemTable) Empty() bool {
+func (m *memTable) Empty() bool {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	return len(m.nodeData) == maxHeight
 }
 
-// NewMemTable returns a new MemTable.
-func NewMemTable(o *db.Options) *MemTable {
-	return &MemTable{
+// newMemTable returns a new MemTable.
+func newMemTable(o *db.Options) *memTable {
+	return &memTable{
 		height: 1,
 		cmp:    o.GetComparer(),
 		kvData: make([]byte, 0, 4096),
@@ -270,7 +270,7 @@ func NewMemTable(o *db.Options) *MemTable {
 // memTableIter is a MemTable memTableIter that buffers upcoming results, so
 // that it does not have to acquire the MemTable's mutex on each Next call.
 type memTableIter struct {
-	m *MemTable
+	m *memTable
 	// restartNode is the node to start refilling the buffer from.
 	restartNode int
 	// i0 is the current iterator position with respect to buf. A value of -1

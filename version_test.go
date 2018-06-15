@@ -526,7 +526,7 @@ func TestVersion(t *testing.T) {
 
 		v := version{}
 		for _, tt := range tc.tables {
-			d := NewMemTable(&db.Options{
+			d := newMemTable(&db.Options{
 				Comparer: icmp,
 			})
 			defer d.Close()

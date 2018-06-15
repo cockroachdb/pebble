@@ -27,8 +27,8 @@ func count(d db.Reader) (n int) {
 }
 
 // compact compacts a MemTable.
-func compact(m *MemTable) (*MemTable, error) {
-	n, x := NewMemTable(nil), m.Find(nil, nil)
+func compact(m *memTable) (*memTable, error) {
+	n, x := newMemTable(nil), m.Find(nil, nil)
 	for x.Next() {
 		if err := n.Set(x.Key(), x.Value(), nil); err != nil {
 			return nil, err
@@ -42,7 +42,7 @@ func compact(m *MemTable) (*MemTable, error) {
 
 func TestBasic(t *testing.T) {
 	// Check the empty DB.
-	m := NewMemTable(nil)
+	m := newMemTable(nil)
 	if got, want := count(m), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
@@ -109,7 +109,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestCount(t *testing.T) {
-	m := NewMemTable(nil)
+	m := newMemTable(nil)
 	for i := 0; i < 200; i++ {
 		if j := count(m); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
@@ -122,7 +122,7 @@ func TestCount(t *testing.T) {
 }
 
 func TestEmpty(t *testing.T) {
-	m := NewMemTable(nil)
+	m := newMemTable(nil)
 	if !m.Empty() {
 		t.Errorf("got !empty, want empty")
 	}
@@ -136,7 +136,7 @@ func TestEmpty(t *testing.T) {
 func Test1000Entries(t *testing.T) {
 	// Initialize the DB.
 	const N = 1000
-	m0 := NewMemTable(nil)
+	m0 := newMemTable(nil)
 	for i := 0; i < N; i++ {
 		k := []byte(strconv.Itoa(i))
 		v := []byte(strings.Repeat("x", i))
