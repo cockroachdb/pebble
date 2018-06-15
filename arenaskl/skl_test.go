@@ -37,9 +37,7 @@ const arenaSize = 1 << 20
 func length(s *Skiplist) int {
 	count := 0
 
-	var it Iterator
-	it.Init(s)
-
+	it := s.NewIterator()
 	for it.First(); it.Valid(); it.Next() {
 		count++
 	}
@@ -51,9 +49,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	var it Iterator
-	it.Init(s)
-
+	it := s.NewIterator()
 	for it.Last(); it.Valid(); it.Prev() {
 		count++
 	}
@@ -64,9 +60,7 @@ func lengthRev(s *Skiplist) int {
 func TestEmpty(t *testing.T) {
 	key := []byte("aaa")
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 
@@ -83,9 +77,6 @@ func TestEmpty(t *testing.T) {
 
 func TestFull(t *testing.T) {
 	l := NewSkiplist(NewArena(1000), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
 
 	foundArenaFull := false
 	for i := 0; i < 100; i++ {
@@ -104,9 +95,7 @@ func TestFull(t *testing.T) {
 // TestBasic tests single-threaded seeks and adds.
 func TestBasic(t *testing.T) {
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	// Try adding values.
 	l.Add([]byte("key1"))
@@ -139,9 +128,6 @@ func TestConcurrentBasic(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			var it Iterator
-			it.Init(l)
-
 			l.Add([]byte(fmt.Sprintf("%05d", i)))
 		}(i)
 	}
@@ -153,9 +139,7 @@ func TestConcurrentBasic(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			var it Iterator
-			it.Init(l)
-
+			it := l.NewIterator()
 			found := it.SeekGE([]byte(fmt.Sprintf("%05d", i)))
 			require.True(t, found)
 			require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key())
@@ -184,8 +168,6 @@ func TestConcurrentOneKey(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			var it Iterator
-			it.Init(l)
 			l.Add([]byte(fmt.Sprintf("thekey%d", i)))
 		}(i)
 	}
@@ -196,8 +178,7 @@ func TestConcurrentOneKey(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			var it Iterator
-			it.Init(l)
+			it := l.NewIterator()
 			if !it.SeekGE(key) {
 				return
 			}
@@ -216,9 +197,7 @@ func TestConcurrentOneKey(t *testing.T) {
 
 func TestSkiplistAdd(t *testing.T) {
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	// Add nil key and value (treated same as empty).
 	err := l.Add(nil)
@@ -227,7 +206,7 @@ func TestSkiplistAdd(t *testing.T) {
 	require.EqualValues(t, []byte{}, it.Key())
 
 	l = NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it.Init(l)
+	it = l.NewIterator()
 
 	// Add empty key and value (treated same as nil).
 	err = l.Add([]byte{})
@@ -286,8 +265,7 @@ func TestConcurrentAdd(t *testing.T) {
 
 	for f := 0; f < 2; f++ {
 		go func() {
-			var it Iterator
-			it.Init(l)
+			it := l.NewIterator()
 
 			for i := 0; i < n; i++ {
 				start[i].Wait()
@@ -316,9 +294,7 @@ func TestConcurrentAdd(t *testing.T) {
 func TestIteratorNext(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 
@@ -342,9 +318,7 @@ func TestIteratorNext(t *testing.T) {
 func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 
@@ -367,9 +341,7 @@ func TestIteratorPrev(t *testing.T) {
 func TestIteratorSeekGE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -419,9 +391,7 @@ func TestIteratorSeekGE(t *testing.T) {
 func TestIteratorSeekLE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-
-	var it Iterator
-	it.Init(l)
+	it := l.NewIterator()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -491,15 +461,13 @@ func BenchmarkReadWrite(b *testing.B) {
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
-				var iter Iterator
-				iter.Init(l)
-
+				it := l.NewIterator()
 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 				for pb.Next() {
 					if rng.Float32() < readFrac {
-						if iter.SeekGE(randomKey(rng)) {
-							_ = iter.Key()
+						if it.SeekGE(randomKey(rng)) {
+							_ = it.Key()
 							count++
 						}
 					} else {

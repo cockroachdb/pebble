@@ -27,20 +27,13 @@ func (s *splice) init(prev, next *node) {
 	s.next = next
 }
 
-// Iterator is an iterator over the skiplist object. Call Init to associate a
-// skiplist with the iterator. The current state of the iterator can be cloned
-// by simply value copying the struct. All iterator methods are thread-safe.
+// Iterator is an iterator over the skiplist object. Use Skiplist.NewIterator
+// to construct an iterator. The current state of the iterator can be cloned by
+// simply value copying the struct. All iterator methods are thread-safe.
 type Iterator struct {
 	list  *Skiplist
 	arena *Arena
 	nd    *node
-}
-
-// Init associates the iterator with a skiplist and resets all state.
-func (it *Iterator) Init(list *Skiplist) {
-	it.list = list
-	it.arena = list.arena
-	it.nd = nil
 }
 
 // Valid returns true iff the iterator is positioned at a valid node.

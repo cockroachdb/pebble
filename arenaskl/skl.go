@@ -244,6 +244,12 @@ func (s *Skiplist) Add(key []byte) error {
 	return nil
 }
 
+// NewIterator returns a new Iterator object. Note that it is safe for an
+// iterator to be copied by value.
+func (s *Skiplist) NewIterator() Iterator {
+	return Iterator{list: s, arena: s.arena, nd: nil}
+}
+
 func (s *Skiplist) newNode(key []byte) (nd *node, height uint32, err error) {
 	height = s.randomHeight()
 	nd, err = newNode(s.arena, height, key)
