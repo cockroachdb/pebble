@@ -69,7 +69,8 @@ const (
 	keyPrefixSize = int(unsafe.Sizeof(KeyPrefix(0)))
 )
 
-var ErrRecordExists = errors.New("record with this key already exists")
+var ErrExists = errors.New("record with this key already exists")
+var ErrInvalid = errors.New("iterator is not positioned at a valid node")
 
 type links struct {
 	next uint32
@@ -160,7 +161,7 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 
 	var spl [maxHeight]splice
 	if s.findSplice(key, keyPrefix, &spl) {
-		return ErrRecordExists
+		return ErrExists
 	}
 
 	height := s.randomHeight()

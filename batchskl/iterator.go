@@ -35,9 +35,12 @@ type Iterator struct {
 	nd   uint32
 }
 
-// Valid returns true iff the iterator is positioned at a valid node.
-func (it *Iterator) Valid() bool {
-	return it.nd != it.list.head && it.nd != it.list.tail
+// Valid returns nil iff the iterator is positioned at a valid node.
+func (it *Iterator) Valid() error {
+	if it.nd != it.list.head && it.nd != it.list.tail {
+		return nil
+	}
+	return ErrInvalid
 }
 
 // Key returns the key at the current position.

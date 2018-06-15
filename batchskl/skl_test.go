@@ -33,7 +33,7 @@ func length(s *Skiplist) int {
 	count := 0
 
 	it := s.NewIterator()
-	for it.First(); it.Valid(); it.Next() {
+	for it.First(); it.Valid() == nil; it.Next() {
 		count++
 	}
 
@@ -45,7 +45,7 @@ func lengthRev(s *Skiplist) int {
 	count := 0
 
 	it := s.NewIterator()
-	for it.Last(); it.Valid(); it.Prev() {
+	for it.Last(); it.Valid() == nil; it.Prev() {
 		count++
 	}
 
@@ -88,17 +88,16 @@ func TestEmpty(t *testing.T) {
 	l := NewSkiplist(&testStorage{}, 0)
 	it := l.NewIterator()
 
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	it.First()
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	it.Last()
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
-	found := it.SeekGE(key)
-	require.False(t, found)
-	require.False(t, it.Valid())
+	require.False(t, it.SeekGE(key))
+	require.EqualValues(t, ErrInvalid, it.Valid())
 }
 
 // TestBasic tests seeks and adds.
@@ -157,7 +156,7 @@ func TestIteratorAdd(t *testing.T) {
 	require.EqualValues(t, "00003", it.Key())
 
 	// Try to add element that already exists.
-	require.Equal(t, ErrRecordExists, l.Add(d.add("00002")))
+	require.Equal(t, ErrExists, l.Add(d.add("00002")))
 	require.Equal(t, 5, length(l))
 	require.Equal(t, 5, lengthRev(l))
 }
@@ -169,10 +168,10 @@ func TestIteratorNext(t *testing.T) {
 	l := NewSkiplist(d, 0)
 	it := l.NewIterator()
 
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	it.First()
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	for i := n - 1; i >= 0; i-- {
 		require.Nil(t, l.Add(d.add(fmt.Sprintf("%05d", i))))
@@ -180,11 +179,11 @@ func TestIteratorNext(t *testing.T) {
 
 	it.First()
 	for i := 0; i < n; i++ {
-		require.True(t, it.Valid())
+		require.Nil(t, it.Valid())
 		require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key())
 		it.Next()
 	}
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 }
 
 // // TestIteratorPrev tests a basic iteration over all nodes from the end.
@@ -194,10 +193,10 @@ func TestIteratorPrev(t *testing.T) {
 	l := NewSkiplist(d, 0)
 	it := l.NewIterator()
 
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	it.Last()
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	for i := 0; i < n; i++ {
 		l.Add(d.add(fmt.Sprintf("%05d", i)))
@@ -205,11 +204,11 @@ func TestIteratorPrev(t *testing.T) {
 
 	it.Last()
 	for i := n - 1; i >= 0; i-- {
-		require.True(t, it.Valid())
+		require.Nil(t, it.Valid())
 		require.EqualValues(t, fmt.Sprintf("%05d", i), string(it.Key()))
 		it.Prev()
 	}
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 }
 
 func TestIteratorSeekGE(t *testing.T) {
@@ -218,40 +217,40 @@ func TestIteratorSeekGE(t *testing.T) {
 	l := NewSkiplist(d, 0)
 	it := l.NewIterator()
 
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 	it.First()
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 	// 1000, 1010, 1020, ..., 1990.
 	for i := n - 1; i >= 0; i-- {
 		require.Nil(t, l.Add(d.add(fmt.Sprintf("%05d", i*10+1000))))
 	}
 
 	require.False(t, it.SeekGE([]byte("")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
 
 	require.True(t, it.SeekGE([]byte("01000")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
 
 	require.False(t, it.SeekGE([]byte("01005")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 	require.EqualValues(t, "01010", it.Key())
 
 	require.True(t, it.SeekGE([]byte("01010")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 	require.EqualValues(t, "01010", it.Key())
 
 	require.False(t, it.SeekGE([]byte("99999")))
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	// Test seek for empty key.
 	require.Nil(t, l.Add(d.add("")))
 	require.True(t, it.SeekGE(nil))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 
 	require.True(t, it.SeekGE([]byte{}))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 }
 
 func TestIteratorSeekLE(t *testing.T) {
@@ -260,38 +259,38 @@ func TestIteratorSeekLE(t *testing.T) {
 	l := NewSkiplist(d, 0)
 	it := l.NewIterator()
 
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 	it.First()
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 	// 1000, 1010, 1020, ..., 1990.
 	for i := n - 1; i >= 0; i-- {
 		require.Nil(t, l.Add(d.add(fmt.Sprintf("%05d", i*10+1000))))
 	}
 
 	require.False(t, it.SeekLE([]byte("")))
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	require.False(t, it.SeekLE([]byte("00990")))
-	require.False(t, it.Valid())
+	require.EqualValues(t, ErrInvalid, it.Valid())
 
 	require.True(t, it.SeekLE([]byte("01000")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 
 	require.False(t, it.SeekLE([]byte("01005")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 
 	require.True(t, it.SeekLE([]byte("01990")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 
 	require.False(t, it.SeekLE([]byte("99999")))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 
 	// Test seek for empty key.
 	require.Nil(t, l.Add(d.add("")))
 	require.True(t, it.SeekLE(nil))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 	require.True(t, it.SeekLE([]byte{}))
-	require.True(t, it.Valid())
+	require.Nil(t, it.Valid())
 }
 
 func randomKey(rng *rand.Rand, b []byte) []byte {
