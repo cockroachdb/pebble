@@ -47,11 +47,11 @@ func newFakeIterator(closeErr error, kvPairs ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) Seek(key []byte) bool {
+func (f *fakeIter) SeekGE(key []byte) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (f *fakeIter) RSeek(key []byte) bool {
+func (f *fakeIter) SeekLE(key []byte) bool {
 	panic("pebble: RSeek unimplemented")
 }
 

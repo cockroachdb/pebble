@@ -24,11 +24,11 @@ type concatenatingIter struct {
 	err   error
 }
 
-func (c *concatenatingIter) Seek(key []byte) bool {
+func (c *concatenatingIter) SeekGE(key []byte) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (c *concatenatingIter) RSeek(key []byte) bool {
+func (c *concatenatingIter) SeekLE(key []byte) bool {
 	panic("pebble: RSeek unimplemented")
 }
 
@@ -136,11 +136,11 @@ func (m *mergingIter) close(i int) error {
 	return err
 }
 
-func (m *mergingIter) Seek(key []byte) bool {
+func (m *mergingIter) SeekGE(key []byte) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (m *mergingIter) RSeek(key []byte) bool {
+func (m *mergingIter) SeekLE(key []byte) bool {
 	panic("pebble: RSeek unimplemented")
 }
 

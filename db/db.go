@@ -51,15 +51,15 @@ var ErrNotFound = errors.New("pebble/db: not found")
 // key/value pairs are not guaranteed to be a consistent snapshot of that DB
 // at a particular point in time.
 type Iterator interface {
-	// Seek moves the iterator to the first key/value pair whose key is greater
+	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key.
 	// It returns whether such a pair exists.
-	Seek(key []byte) bool
+	SeekGE(key []byte) bool
 
-	// RSeek moves the iterator to the first key/value pair whose key is less
+	// SeekLE moves the iterator to the first key/value pair whose key is less
 	// than or equal to the given key.
 	// It returns whether such a pair exists.
-	RSeek(key []byte) bool
+	SeekLE(key []byte) bool
 
 	// First moves the iterator the the first key/value pair.
 	// It returns whether such a pair exists.

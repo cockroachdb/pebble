@@ -309,11 +309,11 @@ func (t *memTableIter) fill() {
 	t.restartNode = n
 }
 
-func (t *memTableIter) Seek(key []byte) bool {
+func (t *memTableIter) SeekGE(key []byte) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (t *memTableIter) RSeek(key []byte) bool {
+func (t *memTableIter) SeekLE(key []byte) bool {
 	panic("pebble: RSeek unimplemented")
 }
 

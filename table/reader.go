@@ -105,13 +105,13 @@ type blockIter struct {
 // blockIter implements the db.Iterator interface.
 var _ db.Iterator = (*blockIter)(nil)
 
-// Seek implements Iterator.Seek, as documented in the pebble/db package.
-func (i *blockIter) Seek(key []byte) bool {
+// SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
+func (i *blockIter) SeekGE(key []byte) bool {
 	panic("pebble/table: Seek unimplemented")
 }
 
-// RSeek implements Iterator.RSeek, as documented in the pebble/db package.
-func (i *blockIter) RSeek(key []byte) bool {
+// SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
+func (i *blockIter) SeekLE(key []byte) bool {
 	panic("pebble/table: RSeek unimplemented")
 }
 
@@ -229,13 +229,13 @@ func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
 	return true
 }
 
-// Seek implements Iterator.Seek, as documented in the pebble/db package.
-func (i *tableIter) Seek(key []byte) bool {
+// SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
+func (i *tableIter) SeekGE(key []byte) bool {
 	panic("pebble/table: Seek unimplemented")
 }
 
-// RSeek implements Iterator.RSeek, as documented in the pebble/db package.
-func (i *tableIter) RSeek(key []byte) bool {
+// SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
+func (i *tableIter) SeekLE(key []byte) bool {
 	panic("pebble/table: RSeek unimplemented")
 }
 
