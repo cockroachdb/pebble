@@ -93,6 +93,13 @@ func init() {
 // NewSkiplist constructs and initializes a new, empty skiplist. All nodes, keys,
 // and values in the skiplist will be allocated from the given arena.
 func NewSkiplist(arena *Arena, comparer Comparer) *Skiplist {
+	skl := &Skiplist{}
+	skl.Reset(arena, comparer)
+	return skl
+}
+
+// Reset the skiplist to empty and re-initialize.
+func (s *Skiplist) Reset(arena *Arena, comparer Comparer) {
 	// Allocate head and tail nodes.
 	head, err := newNode(arena, maxHeight, nil, nil)
 	if err != nil {
@@ -114,15 +121,13 @@ func NewSkiplist(arena *Arena, comparer Comparer) *Skiplist {
 		tail.tower[i].prevOffset = headOffset
 	}
 
-	skl := &Skiplist{
+	*s = Skiplist{
 		arena:    arena,
 		comparer: comparer,
 		head:     head,
 		tail:     tail,
 		height:   1,
 	}
-
-	return skl
 }
 
 // Height returns the height of the highest tower within any of the nodes that
@@ -246,10 +251,10 @@ func (s *Skiplist) Add(key, value []byte) error {
 	return nil
 }
 
-// NewIterator returns a new Iterator object. Note that it is safe for an
+// NewIter returns a new Iterator object. Note that it is safe for an
 // iterator to be copied by value.
-func (s *Skiplist) NewIterator() Iterator {
-	return Iterator{list: s, arena: s.arena, nd: nil}
+func (s *Skiplist) NewIter() Iterator {
+	return Iterator{list: s, arena: s.arena, nd: s.head}
 }
 
 func (s *Skiplist) newNode(key, value []byte) (nd *node, height uint32, err error) {

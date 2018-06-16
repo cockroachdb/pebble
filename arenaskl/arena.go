@@ -81,7 +81,7 @@ func (a *Arena) GetBytes(offset uint32, size uint32) []byte {
 		return nil
 	}
 
-	return a.buf[offset : offset+size]
+	return a.buf[offset : offset+size : offset+size]
 }
 
 func (a *Arena) GetPointer(offset uint32) unsafe.Pointer {

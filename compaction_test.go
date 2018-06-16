@@ -561,7 +561,7 @@ func TestCompaction(t *testing.T) {
 
 	get1 := func(x db.Reader) (ret string) {
 		b := &bytes.Buffer{}
-		iter := x.Find(nil, nil)
+		iter := x.NewIter(nil)
 		for iter.Next() {
 			b.Write(internalKey(iter.Key()).ukey())
 		}
@@ -611,13 +611,13 @@ func TestCompaction(t *testing.T) {
 		// The next level-0 table deletes the a key.
 		{"+D", "D", "Aa.BC.Bb."},
 		{"-a", "Da", "Aa.BC.Bb."},
-		{"+d", "Dad", "Aa.BC.Bb."},
 		// The next addition creates the fourth level-0 table, and l0CompactionTrigger == 4,
 		// so this triggers a non-trivial compaction into one level-1 table. Note that the
 		// keys in this one larger table are interleaved from the four smaller ones.
-		{"+E", "E", "ABCDbd."},
-		{"+e", "Ee", "ABCDbd."},
-		{"+F", "F", "ABCDbd.Ee."},
+		{"+d", "d", "ABCDb."},
+		{"+E", "Ed", "ABCDb."},
+		{"+e", "e", "ABCDb.Ed."},
+		{"+F", "Fe", "ABCDb.Ed."},
 	}
 	for _, tc := range testCases {
 		if key := tc.key[1:]; tc.key[0] == '+' {
@@ -638,6 +638,7 @@ func TestCompaction(t *testing.T) {
 			if err != nil {
 				return err
 			}
+
 			if gotMem != tc.wantMem {
 				return fmt.Errorf("mem: got %q, want %q", gotMem, tc.wantMem)
 			}

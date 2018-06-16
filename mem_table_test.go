@@ -59,16 +59,6 @@ func TestBasic(t *testing.T) {
 	if got, want := count(m), 4; got != want {
 		t.Fatalf("2.count: got %v, want %v", got, want)
 	}
-	// Delete a key twice.
-	if got, want := m.Delete([]byte("grape"), nil), error(nil); got != want {
-		t.Fatalf("3.delete: got %v, want %v", got, want)
-	}
-	if got, want := m.Delete([]byte("grape"), nil), db.ErrNotFound; got != want {
-		t.Fatalf("4.delete: got %v, want %v", got, want)
-	}
-	if got, want := count(m), 3; got != want {
-		t.Fatalf("5.count: got %v, want %v", got, want)
-	}
 	// Get keys that are and aren't in the DB.
 	v, err = m.Get([]byte("plum"), nil)
 	if string(v) != "purple" || err != nil {
@@ -90,16 +80,10 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("9.close: %v", err)
 	}
 	// Check some more sets and deletes.
-	if got, want := m.Delete([]byte("cherry"), nil), error(nil); got != want {
-		t.Fatalf("10.delete: got %v, want %v", got, want)
-	}
-	if got, want := count(m), 2; got != want {
-		t.Fatalf("11.count: got %v, want %v", got, want)
-	}
 	if err := m.Set([]byte("apricot"), []byte("orange"), nil); err != nil {
 		t.Fatalf("12.set: %v", err)
 	}
-	if got, want := count(m), 3; got != want {
+	if got, want := count(m), 5; got != want {
 		t.Fatalf("13.count: got %v, want %v", got, want)
 	}
 	// Clean up.
@@ -142,23 +126,8 @@ func Test1000Entries(t *testing.T) {
 		v := []byte(strings.Repeat("x", i))
 		m0.Set(k, v, nil)
 	}
-	// Delete one third of the entries, update another third,
-	// and leave the last third alone.
-	for i := 0; i < N; i++ {
-		switch i % 3 {
-		case 0:
-			k := []byte(strconv.Itoa(i))
-			m0.Delete(k, nil)
-		case 1:
-			k := []byte(strconv.Itoa(i))
-			v := []byte(strings.Repeat("y", i))
-			m0.Set(k, v, nil)
-		case 2:
-			// No-op.
-		}
-	}
 	// Check the DB count.
-	if got, want := count(m0), 666; got != want {
+	if got, want := count(m0), 1000; got != want {
 		t.Fatalf("count: got %v, want %v", got, want)
 	}
 	// Check random-access lookup.
@@ -167,26 +136,20 @@ func Test1000Entries(t *testing.T) {
 		j := r.Intn(N)
 		k := []byte(strconv.Itoa(j))
 		v, err := m0.Get(k, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(v) != cap(v) {
 			t.Fatalf("get: j=%d, got len(v)=%d, cap(v)=%d", j, len(v), cap(v))
 		}
 		var c uint8
 		if len(v) != 0 {
 			c = v[0]
+		} else {
+			c = 'x'
 		}
-		switch j % 3 {
-		case 0:
-			if err != db.ErrNotFound {
-				t.Fatalf("get: j=%d, got err=%v, want %v", j, err, db.ErrNotFound)
-			}
-		case 1:
-			if len(v) != j || c != 'y' {
-				t.Fatalf("get: j=%d, got len(v),c=%d,%c, want %d,%c", j, len(v), c, j, 'y')
-			}
-		case 2:
-			if len(v) != j || c != 'x' {
-				t.Fatalf("get: j=%d, got len(v),c=%d,%c, want %d,%c", j, len(v), c, j, 'x')
-			}
+		if len(v) != j || c != 'x' {
+			t.Fatalf("get: j=%d, got len(v)=%d,c=%c, want %d,%c", j, len(v), c, j, 'x')
 		}
 	}
 	// Check that iterating through the middle of the DB looks OK.
@@ -197,13 +160,13 @@ func Test1000Entries(t *testing.T) {
 		"5",
 		"50",
 		"500",
+		"501",
 		"502",
 		"503",
+		"504",
 		"505",
 		"506",
-		"508",
-		"509",
-		"511",
+		"507",
 	}
 	x := m0.Find([]byte(wants[0]), nil)
 	for _, want := range wants {
@@ -222,19 +185,6 @@ func Test1000Entries(t *testing.T) {
 	}
 	if err := x.Close(); err != nil {
 		t.Fatalf("close: %v", err)
-	}
-	// Check that compaction reduces memory usage by at least one third.
-	amu0 := m0.ApproximateMemoryUsage()
-	if amu0 == 0 {
-		t.Fatalf("compact: memory usage is zero")
-	}
-	m1, err := compact(m0)
-	if err != nil {
-		t.Fatalf("compact: %v", err)
-	}
-	amu1 := m1.ApproximateMemoryUsage()
-	if ratio := float64(amu1) / float64(amu0); ratio > 0.667 {
-		t.Fatalf("compact: memory usage before=%d, after=%d, ratio=%f", amu0, amu1, ratio)
 	}
 	// Clean up.
 	if err := m0.Close(); err != nil {

@@ -45,7 +45,7 @@ func makeValue(i int) []byte {
 func length(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIterator()
+	it := s.NewIter()
 	for it.First(); it.Valid(); it.Next() {
 		count++
 	}
@@ -57,7 +57,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIterator()
+	it := s.NewIter()
 	for it.Last(); it.Valid(); it.Prev() {
 		count++
 	}
@@ -68,7 +68,7 @@ func lengthRev(s *Skiplist) int {
 func TestEmpty(t *testing.T) {
 	key := []byte("aaa")
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 
@@ -103,7 +103,7 @@ func TestFull(t *testing.T) {
 // TestBasic tests single-threaded seeks and adds.
 func TestBasic(t *testing.T) {
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	// Try adding values.
 	l.Add([]byte("key1"), makeValue(1))
@@ -150,7 +150,7 @@ func TestConcurrentBasic(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			it := l.NewIterator()
+			it := l.NewIter()
 			found := it.SeekGE([]byte(fmt.Sprintf("%05d", i)))
 			require.True(t, found)
 			require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key())
@@ -186,7 +186,7 @@ func TestConcurrentOneKey(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			it := l.NewIterator()
+			it := l.NewIter()
 			if !it.SeekGE(key) {
 				return
 			}
@@ -205,7 +205,7 @@ func TestConcurrentOneKey(t *testing.T) {
 
 func TestSkiplistAdd(t *testing.T) {
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	// Add nil key and value (treated same as empty).
 	err := l.Add(nil, nil)
@@ -215,7 +215,7 @@ func TestSkiplistAdd(t *testing.T) {
 	require.EqualValues(t, []byte{}, it.Value())
 
 	l = NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it = l.NewIterator()
+	it = l.NewIter()
 
 	// Add empty key and value (treated same as nil).
 	err = l.Add([]byte{}, []byte{})
@@ -280,7 +280,7 @@ func TestConcurrentAdd(t *testing.T) {
 
 	for f := 0; f < 2; f++ {
 		go func() {
-			it := l.NewIterator()
+			it := l.NewIter()
 
 			for i := 0; i < n; i++ {
 				start[i].Wait()
@@ -309,7 +309,7 @@ func TestConcurrentAdd(t *testing.T) {
 func TestIteratorNext(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 
@@ -334,7 +334,7 @@ func TestIteratorNext(t *testing.T) {
 func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 
@@ -358,7 +358,7 @@ func TestIteratorPrev(t *testing.T) {
 func TestIteratorSeekGE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -413,7 +413,7 @@ func TestIteratorSeekGE(t *testing.T) {
 func TestIteratorSeekLE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -488,7 +488,7 @@ func BenchmarkReadWrite(b *testing.B) {
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
-				it := l.NewIterator()
+				it := l.NewIter()
 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 				for pb.Next() {

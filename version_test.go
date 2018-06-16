@@ -515,7 +515,7 @@ func TestVersion(t *testing.T) {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
 		// m is a map from file numbers to DBs.
-		m := map[uint64]db.DB{}
+		m := map[uint64]db.Reader{}
 		tiFinder := tableIkeyFinderFunc(func(fileNum uint64, ikey internalKey) (db.Iterator, error) {
 			d, ok := m[fileNum]
 			if !ok {

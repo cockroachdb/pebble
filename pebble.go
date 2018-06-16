@@ -563,7 +563,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 		Comparer: d.icmp,
 	})
 
-	iter = mem.Find(nil, nil)
+	iter = mem.NewIter(nil)
 	iter.Next()
 	meta.smallest = internalKey(iter.Key()).clone()
 	for {

@@ -47,7 +47,7 @@ func dump(filename string) error {
 	})
 	defer r.Close()
 
-	t := r.Find(nil, nil)
+	t := r.NewIter(nil)
 	for t.Next() {
 		k, v := t.Key(), t.Value()
 		if *truncate {

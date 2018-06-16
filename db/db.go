@@ -75,7 +75,7 @@ type Iterator interface {
 
 	// Prev moves the iterator to the previous key/value pair.
 	// It returns whether the iterator is exhausted.
-	// Prev() bool
+	Prev() bool
 
 	// Key returns the key of the current key/value pair, or nil if done.
 	// The caller should not modify the contents of the returned slice, and

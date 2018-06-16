@@ -36,38 +36,24 @@ type Iterator struct {
 	nd    *node
 }
 
+// Close resets the iterator.
+func (it *Iterator) Close() error {
+	it.list = nil
+	it.arena = nil
+	it.nd = nil
+	return nil
+}
+
 // Valid returns true iff the iterator is positioned at a valid node.
-func (it *Iterator) Valid() bool { return it.nd != nil }
-
-// Key returns the key at the current position.
-func (it *Iterator) Key() []byte {
-	return it.nd.getKey(it.arena)
-}
-
-// Value returns the value at the current position.
-func (it *Iterator) Value() []byte {
-	return it.nd.getValue(it.arena)
-}
-
-// Next advances to the next position. If there are no following nodes, then
-// Valid() will be false after this call.
-func (it *Iterator) Next() {
-	it.setNode(it.list.getNext(it.nd, 0))
-}
-
-// Prev moves to the previous position. If there are no previous nodes, then
-// Valid() will be false after this call.
-func (it *Iterator) Prev() {
-	it.setNode(it.list.getPrev(it.nd, 0))
+func (it *Iterator) Valid() bool {
+	return it.nd != it.list.head && it.nd != it.list.tail
 }
 
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
 func (it *Iterator) SeekGE(key []byte) (found bool) {
-	var next *node
-	_, next, found = it.seekForBaseSplice(key)
-	it.setNode(next)
+	_, it.nd, found = it.seekForBaseSplice(key)
 	return found
 }
 
@@ -78,9 +64,9 @@ func (it *Iterator) SeekLE(key []byte) (found bool) {
 	prev, next, found = it.seekForBaseSplice(key)
 
 	if found {
-		it.setNode(next)
+		it.nd = next
 	} else {
-		it.setNode(prev)
+		it.nd = prev
 	}
 
 	return found
@@ -88,22 +74,40 @@ func (it *Iterator) SeekLE(key []byte) (found bool) {
 
 // First seeks position at the first entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (it *Iterator) First() {
-	it.setNode(it.list.getNext(it.list.head, 0))
+func (it *Iterator) First() bool {
+	it.nd = it.list.getNext(it.list.head, 0)
+	return it.nd != it.list.tail
 }
 
 // Last seeks position at the last entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (it *Iterator) Last() {
-	it.setNode(it.list.getPrev(it.list.tail, 0))
+func (it *Iterator) Last() bool {
+	it.nd = it.list.getPrev(it.list.tail, 0)
+	return it.nd != it.list.head
 }
 
-func (it *Iterator) setNode(nd *node) {
-	if nd == it.list.head || nd == it.list.tail {
-		it.nd = nil
-		return
-	}
-	it.nd = nd
+// Next advances to the next position. If there are no following nodes, then
+// Valid() will be false after this call.
+func (it *Iterator) Next() bool {
+	it.nd = it.list.getNext(it.nd, 0)
+	return it.nd != it.list.tail
+}
+
+// Prev moves to the previous position. If there are no previous nodes, then
+// Valid() will be false after this call.
+func (it *Iterator) Prev() bool {
+	it.nd = it.list.getPrev(it.nd, 0)
+	return it.nd != it.list.head
+}
+
+// Key returns the key at the current position.
+func (it *Iterator) Key() []byte {
+	return it.nd.getKey(it.arena)
+}
+
+// Value returns the value at the current position.
+func (it *Iterator) Value() []byte {
+	return it.nd.getValue(it.arena)
 }
 
 func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {

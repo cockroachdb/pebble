@@ -403,7 +403,8 @@ func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (r *Reader) NewIter(o *db.ReadOptions) db.Iterator {
-	panic("pebble/table: NewIter unimplemented")
+	// TODO(peter): don't seek on the new iterator.
+	return r.find(nil, o, nil)
 }
 
 func (r *Reader) find(key []byte, o *db.ReadOptions, f *filterReader) db.Iterator {
