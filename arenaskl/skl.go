@@ -254,7 +254,7 @@ func (s *Skiplist) Add(key, value []byte) error {
 // NewIter returns a new Iterator object. Note that it is safe for an
 // iterator to be copied by value.
 func (s *Skiplist) NewIter() Iterator {
-	return Iterator{list: s, arena: s.arena, nd: s.head}
+	return Iterator{list: s, nd: s.head}
 }
 
 func (s *Skiplist) newNode(key, value []byte) (nd *node, height uint32, err error) {

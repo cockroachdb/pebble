@@ -31,15 +31,13 @@ func (s *splice) init(prev, next *node) {
 // to construct an iterator. The current state of the iterator can be cloned by
 // simply value copying the struct. All iterator methods are thread-safe.
 type Iterator struct {
-	list  *Skiplist
-	arena *Arena
-	nd    *node
+	list *Skiplist
+	nd   *node
 }
 
 // Close resets the iterator.
 func (it *Iterator) Close() error {
 	it.list = nil
-	it.arena = nil
 	it.nd = nil
 	return nil
 }
@@ -102,12 +100,12 @@ func (it *Iterator) Prev() bool {
 
 // Key returns the key at the current position.
 func (it *Iterator) Key() []byte {
-	return it.nd.getKey(it.arena)
+	return it.nd.getKey(it.list.arena)
 }
 
 // Value returns the value at the current position.
 func (it *Iterator) Value() []byte {
-	return it.nd.getValue(it.arena)
+	return it.nd.getValue(it.list.arena)
 }
 
 func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {
