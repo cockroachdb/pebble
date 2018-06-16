@@ -42,14 +42,6 @@ func (it *Iterator) Close() error {
 	return nil
 }
 
-// Valid returns nil iff the iterator is positioned at a valid node.
-func (it *Iterator) Valid() error {
-	if it.list != nil && it.nd != it.list.head && it.nd != it.list.tail {
-		return nil
-	}
-	return ErrInvalid
-}
-
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
@@ -104,6 +96,11 @@ func (it *Iterator) Prev() bool {
 // Key returns the key at the current position.
 func (it *Iterator) Key() []byte {
 	return it.list.storage.Get(it.list.getKey(it.nd))
+}
+
+// Valid returns nil iff the iterator is positioned at a valid node.
+func (it *Iterator) Valid() bool {
+	return it.list != nil && it.nd != it.list.head && it.nd != it.list.tail
 }
 
 func (it *Iterator) seekForBaseSplice(

@@ -70,7 +70,6 @@ const (
 )
 
 var ErrExists = errors.New("record with this key already exists")
-var ErrInvalid = errors.New("iterator is not positioned at a valid node")
 
 type links struct {
 	next uint32

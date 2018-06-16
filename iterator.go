@@ -75,6 +75,13 @@ func (c *concatenatingIter) Value() []byte {
 	return c.iters[0].Value()
 }
 
+func (c *concatenatingIter) Valid() bool {
+	if len(c.iters) == 0 || c.err != nil {
+		return false
+	}
+	return c.iters[0].Valid()
+}
+
 func (c *concatenatingIter) Close() error {
 	for _, t := range c.iters {
 		err := t.Close()
@@ -209,6 +216,13 @@ func (m *mergingIter) Value() []byte {
 		return nil
 	}
 	return m.iters[m.index].Value()
+}
+
+func (m *mergingIter) Valid() bool {
+	if m.index < 0 || m.err != nil {
+		return false
+	}
+	return m.iters[m.index].Valid()
 }
 
 func (m *mergingIter) Close() error {

@@ -169,6 +169,14 @@ func (i *blockIter) Value() []byte {
 	return i.val[:len(i.val):len(i.val)]
 }
 
+// Valid implements Iterator.Valid, as documented in the pebble/db package.
+func (i *blockIter) Valid() bool {
+	if i.eoi || i.soi || i.err != nil {
+		return false
+	}
+	return true
+}
+
 // Close implements Iterator.Close, as documented in the pebble/db package.
 func (i *blockIter) Close() error {
 	i.key = nil
@@ -289,6 +297,14 @@ func (i *tableIter) Value() []byte {
 		return nil
 	}
 	return i.data.Value()
+}
+
+// Valid implements Iterator.Valid, as documented in the pebble/db package.
+func (i *tableIter) Valid() bool {
+	if i.data == nil {
+		return false
+	}
+	return i.data.Valid()
 }
 
 // Close implements Iterator.Close, as documented in the pebble/db package.

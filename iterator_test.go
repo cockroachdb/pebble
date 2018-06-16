@@ -84,6 +84,10 @@ func (f *fakeIter) Value() []byte {
 	return []byte(kv[i+1:])
 }
 
+func (f *fakeIter) Valid() bool {
+	return f.index >= 0 && f.index < len(f.kvPairs)
+}
+
 func (f *fakeIter) Close() error {
 	return f.closeErr
 }
