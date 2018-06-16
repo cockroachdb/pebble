@@ -50,23 +50,6 @@ func (it *Iterator) Valid() error {
 	return ErrInvalid
 }
 
-// Key returns the key at the current position.
-func (it *Iterator) Key() []byte {
-	return it.list.storage.Get(it.list.getKey(it.nd))
-}
-
-// Next advances to the next position. If there are no following nodes, then
-// Valid() will be false after this call.
-func (it *Iterator) Next() {
-	it.nd = it.list.getNext(it.nd, 0)
-}
-
-// Prev moves to the previous position. If there are no previous nodes, then
-// Valid() will be false after this call.
-func (it *Iterator) Prev() {
-	it.nd = it.list.getPrev(it.nd, 0)
-}
-
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
@@ -92,14 +75,35 @@ func (it *Iterator) SeekLE(key []byte) (found bool) {
 
 // First seeks position at the first entry in list.
 // Final state of iterator is Valid() iff list is not empty.
-func (it *Iterator) First() {
+func (it *Iterator) First() bool {
 	it.nd = it.list.getNext(it.list.head, 0)
+	return it.nd != it.list.tail
 }
 
 // Last seeks position at the last entry in list.
 // Final state of iterator is Valid() iff list is not empty.
-func (it *Iterator) Last() {
+func (it *Iterator) Last() bool {
 	it.nd = it.list.getPrev(it.list.tail, 0)
+	return it.nd != it.list.head
+}
+
+// Next advances to the next position. If there are no following nodes, then
+// Valid() will be false after this call.
+func (it *Iterator) Next() bool {
+	it.nd = it.list.getNext(it.nd, 0)
+	return it.nd != it.list.tail
+}
+
+// Prev moves to the previous position. If there are no previous nodes, then
+// Valid() will be false after this call.
+func (it *Iterator) Prev() bool {
+	it.nd = it.list.getPrev(it.nd, 0)
+	return it.nd != it.list.head
+}
+
+// Key returns the key at the current position.
+func (it *Iterator) Key() []byte {
+	return it.list.storage.Get(it.list.getKey(it.nd))
 }
 
 func (it *Iterator) seekForBaseSplice(
