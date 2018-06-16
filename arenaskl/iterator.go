@@ -50,14 +50,14 @@ func (it *Iterator) Valid() bool {
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
-func (it *Iterator) SeekGE(key []byte) (found bool) {
+func (it *Iterator) SeekGE(key Key) (found bool) {
 	_, it.nd, found = it.seekForBaseSplice(key)
 	return found
 }
 
 // SeekLE moves the iterator to the first entry whose key is less than or equal
 // to the given key. Returns true if the given key exists and false otherwise.
-func (it *Iterator) SeekLE(key []byte) (found bool) {
+func (it *Iterator) SeekLE(key Key) (found bool) {
 	var prev, next *node
 	prev, next, found = it.seekForBaseSplice(key)
 
@@ -108,7 +108,7 @@ func (it *Iterator) Value() []byte {
 	return it.nd.getValue(it.list.arena)
 }
 
-func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {
+func (it *Iterator) seekForBaseSplice(key Key) (prev, next *node, found bool) {
 	level := int(it.list.Height() - 1)
 
 	prev = it.list.head

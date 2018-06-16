@@ -61,11 +61,24 @@ const (
 
 var ErrRecordExists = errors.New("record with this key already exists")
 
-type Comparer func(a, b []byte) int
+// Key defines the interface for a key in the skiplist. Keys
+type Key interface {
+	// Compare the receiver and the encoded key other. Returns a negative number
+	// if the receiver is less than other. Returns 0 if the keys are
+	// equal. Returns a positive number if the receiver is greater than other.
+	Compare(cmp func(a, b []byte) int, other []byte) int
+
+	// Encode the key into the buffer. The buffer is guaranteed to be exactly
+	// Size() bytes in length.
+	Encode(buf []byte)
+
+	// Calculate the encoded size of the key.
+	Size() int
+}
 
 type Skiplist struct {
 	arena    *Arena
-	comparer Comparer
+	comparer func(a, b []byte) int
 	head     *node
 	tail     *node
 	height   uint32 // Current height. 1 <= height <= maxHeight. CAS.
@@ -92,22 +105,22 @@ func init() {
 
 // NewSkiplist constructs and initializes a new, empty skiplist. All nodes, keys,
 // and values in the skiplist will be allocated from the given arena.
-func NewSkiplist(arena *Arena, comparer Comparer) *Skiplist {
+func NewSkiplist(arena *Arena, comparer func(a, b []byte) int) *Skiplist {
 	skl := &Skiplist{}
 	skl.Reset(arena, comparer)
 	return skl
 }
 
 // Reset the skiplist to empty and re-initialize.
-func (s *Skiplist) Reset(arena *Arena, comparer Comparer) {
+func (s *Skiplist) Reset(arena *Arena, comparer func(a, b []byte) int) {
 	// Allocate head and tail nodes.
-	head, err := newNode(arena, maxHeight, nil, nil)
+	head, err := newRawNode(arena, maxHeight, 0, 0)
 	if err != nil {
 		panic("arenaSize is not large enough to hold the head node")
 	}
 	head.keyOffset = 0
 
-	tail, err := newNode(arena, maxHeight, nil, nil)
+	tail, err := newRawNode(arena, maxHeight, 0, 0)
 	if err != nil {
 		panic("arenaSize is not large enough to hold the tail node")
 	}
@@ -143,7 +156,7 @@ func (s *Skiplist) Size() uint32 { return s.arena.Size() }
 // Add adds a new key if it does not yet exist. If the key already exists, then
 // Add returns ErrRecordExists. If there isn't enough room in the arena, then
 // Add returns ErrArenaFull.
-func (s *Skiplist) Add(key, value []byte) error {
+func (s *Skiplist) Add(key Key, value []byte) error {
 	var spl [maxHeight]splice
 	if s.findSplice(key, &spl) {
 		// Found a matching node, but handle case where it's been deleted.
@@ -257,7 +270,7 @@ func (s *Skiplist) NewIter() Iterator {
 	return Iterator{list: s, nd: s.head}
 }
 
-func (s *Skiplist) newNode(key, value []byte) (nd *node, height uint32, err error) {
+func (s *Skiplist) newNode(key Key, value []byte) (nd *node, height uint32, err error) {
 	height = s.randomHeight()
 	nd, err = newNode(s.arena, height, key, value)
 	if err != nil {
@@ -288,7 +301,7 @@ func (s *Skiplist) randomHeight() uint32 {
 	return h
 }
 
-func (s *Skiplist) findSplice(key []byte, spl *[maxHeight]splice) (found bool) {
+func (s *Skiplist) findSplice(key Key, spl *[maxHeight]splice) (found bool) {
 	var prev, next *node
 
 	level := int(s.Height() - 1)
@@ -312,7 +325,7 @@ func (s *Skiplist) findSplice(key []byte, spl *[maxHeight]splice) (found bool) {
 	return
 }
 
-func (s *Skiplist) findSpliceForLevel(key []byte, level int, start *node) (prev, next *node, found bool) {
+func (s *Skiplist) findSpliceForLevel(key Key, level int, start *node) (prev, next *node, found bool) {
 	prev = start
 
 	for {
@@ -324,7 +337,7 @@ func (s *Skiplist) findSpliceForLevel(key []byte, level int, start *node) (prev,
 			break
 		}
 
-		cmp := s.comparer(key, nextKey)
+		cmp := key.Compare(s.comparer, nextKey)
 		if cmp == 0 {
 			// Equality case.
 			found = true

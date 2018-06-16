@@ -48,23 +48,34 @@ type node struct {
 	tower [maxHeight]links
 }
 
-func newNode(arena *Arena, height uint32, key, value []byte) (nd *node, err error) {
+func newNode(arena *Arena, height uint32, key Key, value []byte) (nd *node, err error) {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
-	if len(key) > math.MaxUint32 {
+	keySize := key.Size()
+	if keySize > math.MaxUint32 {
 		panic("key is too large")
 	}
+	valueSize := len(value)
 	if len(value) > math.MaxUint32 {
 		panic("value is too large")
 	}
 
+	nd, err = newRawNode(arena, height, uint32(keySize), uint32(valueSize))
+	if err != nil {
+		return
+	}
+
+	key.Encode(nd.getKey(arena))
+	copy(nd.getValue(arena), value)
+	return
+}
+
+func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *node, err error) {
 	// Compute the amount of the tower that will never be used, since the height
 	// is less than maxHeight.
 	unusedSize := (maxHeight - int(height)) * linksSize
 	nodeSize := uint32(maxNodeSize - unusedSize)
-	keySize := uint32(len(key))
-	valueSize := uint32(len(value))
 
 	nodeOffset, err := arena.Alloc(nodeSize+keySize+valueSize, Align4)
 	if err != nil {
@@ -73,10 +84,8 @@ func newNode(arena *Arena, height uint32, key, value []byte) (nd *node, err erro
 
 	nd = (*node)(arena.GetPointer(nodeOffset))
 	nd.keyOffset = nodeOffset + nodeSize
-	nd.keySize = keySize
-	nd.valueSize = valueSize
-	copy(nd.getKey(arena), key)
-	copy(nd.getValue(arena), value)
+	nd.keySize = uint32(keySize)
+	nd.valueSize = uint32(valueSize)
 	return
 }
 
