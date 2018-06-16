@@ -392,8 +392,8 @@ func TestPickCompaction(t *testing.T) {
 
 	for _, tc := range testCases {
 		vs := &versionSet{
-			ucmp: db.DefaultComparer,
-			icmp: internalKeyComparer{db.DefaultComparer},
+			cmp:     db.DefaultComparer.Compare,
+			cmpName: db.DefaultComparer.Name(),
 		}
 		vs.dummyVersion.prev = &vs.dummyVersion
 		vs.dummyVersion.next = &vs.dummyVersion
@@ -559,11 +559,11 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	get1 := func(x db.Reader) (ret string) {
+	get1 := func(x db.InternalReader) (ret string) {
 		b := &bytes.Buffer{}
 		iter := x.NewIter(nil)
 		for iter.Next() {
-			b.Write(internalKey(iter.Key()).ukey())
+			b.Write(iter.Key().UserKey)
 		}
 		if err := iter.Close(); err != nil {
 			t.Fatalf("iterator Close: %v", err)
@@ -586,9 +586,7 @@ func TestCompaction(t *testing.T) {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}
 				defer f.Close()
-				r := table.NewReader(f, &db.Options{
-					Comparer: internalKeyComparer{db.DefaultComparer},
-				})
+				r := table.NewReader(f, nil, db.InternalKeyCoder{})
 				defer r.Close()
 				ss = append(ss, get1(r)+".")
 			}

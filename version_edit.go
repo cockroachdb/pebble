@@ -40,7 +40,7 @@ const (
 
 type compactPointerEntry struct {
 	level int
-	key   internalKey
+	key   db.InternalKey
 }
 
 type deletedFileEntry struct {
@@ -117,7 +117,8 @@ func (v *versionEdit) decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.compactPointers = append(v.compactPointers, compactPointerEntry{level, key})
+			v.compactPointers = append(v.compactPointers,
+				compactPointerEntry{level, db.DecodeInternalKey(key)})
 
 		case tagDeletedFile:
 			level, err := d.readLevel()
@@ -159,8 +160,8 @@ func (v *versionEdit) decode(r io.Reader) error {
 				meta: fileMetadata{
 					fileNum:  fileNum,
 					size:     size,
-					smallest: smallest,
-					largest:  largest,
+					smallest: db.DecodeInternalKey(smallest),
+					largest:  db.DecodeInternalKey(largest),
 				},
 			})
 
@@ -203,7 +204,7 @@ func (v *versionEdit) encode(w io.Writer) error {
 	for _, x := range v.compactPointers {
 		e.writeUvarint(tagCompactPointer)
 		e.writeUvarint(uint64(x.level))
-		e.writeBytes(x.key)
+		e.writeKey(x.key)
 	}
 	for x := range v.deletedFiles {
 		e.writeUvarint(tagDeletedFile)
@@ -215,8 +216,8 @@ func (v *versionEdit) encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.level))
 		e.writeUvarint(x.meta.fileNum)
 		e.writeUvarint(x.meta.size)
-		e.writeBytes(x.meta.smallest)
-		e.writeBytes(x.meta.largest)
+		e.writeKey(x.meta.smallest)
+		e.writeKey(x.meta.largest)
 	}
 	_, err := w.Write(e.Bytes())
 	return err
@@ -273,6 +274,13 @@ func (e versionEditEncoder) writeBytes(p []byte) {
 	e.Write(p)
 }
 
+func (e versionEditEncoder) writeKey(k db.InternalKey) {
+	e.writeUvarint(uint64(k.Size()))
+	e.Write(k.UserKey)
+	buf := k.EncodeTrailer()
+	e.Write(buf[:])
+}
+
 func (e versionEditEncoder) writeString(s string) {
 	e.writeUvarint(uint64(len(s)))
 	e.WriteString(s)
@@ -321,7 +329,7 @@ func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
 // new version is consistent with respect to the internal key comparer icmp.
 //
 // base may be nil, which is equivalent to a pointer to a zero version.
-func (b *bulkVersionEdit) apply(base *version, icmp db.Comparer) (*version, error) {
+func (b *bulkVersionEdit) apply(base *version, cmp db.Compare) (*version, error) {
 	v := new(version)
 	for level := range v.files {
 		combined := [2][]fileMetadata{
@@ -353,10 +361,10 @@ func (b *bulkVersionEdit) apply(base *version, icmp db.Comparer) (*version, erro
 		if level == 0 {
 			sort.Sort(byFileNum(v.files[level]))
 		} else {
-			sort.Sort(bySmallest{v.files[level], icmp})
+			sort.Sort(bySmallest{v.files[level], cmp})
 		}
 	}
-	if err := v.checkOrdering(icmp); err != nil {
+	if err := v.checkOrdering(cmp); err != nil {
 		return nil, fmt.Errorf("pebble: internal error: %v", err)
 	}
 	v.updateCompactionScore()

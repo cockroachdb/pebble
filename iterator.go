@@ -10,7 +10,7 @@ import "github.com/petermattis/pebble/db"
 // increasing order: iters[i]'s last key is less than iters[i+1]'s first key.
 //
 // None of the iters may be nil.
-func NewConcatenatingIterator(iters ...db.Iterator) db.Iterator {
+func NewConcatenatingIterator(iters ...db.InternalIterator) db.InternalIterator {
 	if len(iters) == 1 {
 		return iters[0]
 	}
@@ -20,15 +20,15 @@ func NewConcatenatingIterator(iters ...db.Iterator) db.Iterator {
 }
 
 type concatenatingIter struct {
-	iters []db.Iterator
+	iters []db.InternalIterator
 	err   error
 }
 
-func (c *concatenatingIter) SeekGE(key []byte) bool {
+func (c *concatenatingIter) SeekGE(key *db.InternalKey) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (c *concatenatingIter) SeekLE(key []byte) bool {
+func (c *concatenatingIter) SeekLE(key *db.InternalKey) bool {
 	panic("pebble: RSeek unimplemented")
 }
 
@@ -61,7 +61,7 @@ func (c *concatenatingIter) Prev() bool {
 	panic("pebble: Prev unimplemented")
 }
 
-func (c *concatenatingIter) Key() []byte {
+func (c *concatenatingIter) Key() *db.InternalKey {
 	if len(c.iters) == 0 || c.err != nil {
 		return nil
 	}
@@ -101,14 +101,11 @@ func (c *concatenatingIter) Close() error {
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func NewMergingIterator(cmp db.Comparer, iters ...db.Iterator) db.Iterator {
-	if len(iters) == 1 {
-		return iters[0]
-	}
+func NewMergingIterator(cmp db.Compare, iters ...db.InternalIterator) db.InternalIterator {
 	return &mergingIter{
 		iters: iters,
 		cmp:   cmp,
-		keys:  make([][]byte, len(iters)),
+		keys:  make([]*db.InternalKey, len(iters)),
 		index: -1,
 	}
 }
@@ -116,11 +113,11 @@ func NewMergingIterator(cmp db.Comparer, iters ...db.Iterator) db.Iterator {
 type mergingIter struct {
 	// iters are the input iterators. An element is set to nil when that
 	// input iterator is done.
-	iters []db.Iterator
+	iters []db.InternalIterator
 	err   error
-	cmp   db.Comparer
+	cmp   db.Compare
 	// keys[i] is the current key for iters[i].
-	keys [][]byte
+	keys []*db.InternalKey
 	// index is:
 	//   - -2 if the mergingIter is done,
 	//   - -1 if the mergingIter has not yet started,
@@ -143,11 +140,11 @@ func (m *mergingIter) close(i int) error {
 	return err
 }
 
-func (m *mergingIter) SeekGE(key []byte) bool {
+func (m *mergingIter) SeekGE(key *db.InternalKey) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (m *mergingIter) SeekLE(key []byte) bool {
+func (m *mergingIter) SeekLE(key *db.InternalKey) bool {
 	panic("pebble: RSeek unimplemented")
 }
 
@@ -193,7 +190,7 @@ func (m *mergingIter) Next() bool {
 			m.index = i
 			continue
 		}
-		if m.cmp.Compare(m.keys[i], m.keys[m.index]) < 0 {
+		if db.InternalCompare(m.cmp, *m.keys[i], *m.keys[m.index]) < 0 {
 			m.index = i
 		}
 	}
@@ -204,7 +201,7 @@ func (m *mergingIter) Prev() bool {
 	panic("pebble: Prev unimplemented")
 }
 
-func (m *mergingIter) Key() []byte {
+func (m *mergingIter) Key() *db.InternalKey {
 	if m.index < 0 || m.err != nil {
 		return nil
 	}

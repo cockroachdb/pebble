@@ -16,10 +16,11 @@ import (
 
 // TODO: describe what a versionSet is.
 type versionSet struct {
-	dirname    string
-	opts       *db.Options
-	fs         storage.Storage
-	ucmp, icmp db.Comparer
+	dirname string
+	opts    *db.Options
+	fs      storage.Storage
+	cmp     db.Compare
+	cmpName string
 
 	// dummyVersion is the head of a circular doubly-linked list of versions.
 	// dummyVersion.prev is the current version.
@@ -40,8 +41,8 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.dirname = dirname
 	vs.opts = opts
 	vs.fs = opts.GetStorage()
-	vs.ucmp = opts.GetComparer()
-	vs.icmp = internalKeyComparer{vs.ucmp}
+	vs.cmp = opts.GetComparer().Compare
+	vs.cmpName = opts.GetComparer().Name()
 	vs.dummyVersion.prev = &vs.dummyVersion
 	vs.dummyVersion.next = &vs.dummyVersion
 	// For historical reasons, the next file number is initialized to 2.
@@ -96,10 +97,10 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 			return err
 		}
 		if ve.comparatorName != "" {
-			if ve.comparatorName != vs.ucmp.Name() {
+			if ve.comparatorName != vs.cmpName {
 				return fmt.Errorf("pebble: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from db.Options %q",
-					b, dirname, ve.comparatorName, vs.ucmp.Name())
+					b, dirname, ve.comparatorName, vs.cmpName)
 			}
 		}
 		bve.accumulate(&ve)
@@ -127,7 +128,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.markFileNumUsed(vs.prevLogNumber)
 	vs.manifestFileNumber = vs.nextFileNum()
 
-	newVersion, err := bve.apply(nil, vs.icmp)
+	newVersion, err := bve.apply(nil, vs.cmp)
 	if err != nil {
 		return err
 	}
@@ -151,7 +152,7 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 
 	var bve bulkVersionEdit
 	bve.accumulate(ve)
-	newVersion, err := bve.apply(vs.currentVersion(), vs.icmp)
+	newVersion, err := bve.apply(vs.currentVersion(), vs.cmp)
 	if err != nil {
 		return err
 	}
@@ -215,7 +216,7 @@ func (vs *versionSet) createManifest(dirname string) (err error) {
 	manifest = record.NewWriter(manifestFile)
 
 	snapshot := versionEdit{
-		comparatorName: vs.ucmp.Name(),
+		comparatorName: vs.cmpName,
 	}
 	// TODO: save compaction pointers.
 	for level, fileMetadata := range vs.currentVersion().files {

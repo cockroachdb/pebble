@@ -19,7 +19,7 @@ type fileMetadata struct {
 	size uint64
 	// smallest and largest are the inclusive bounds for the internal keys
 	// stored in the table.
-	smallest, largest internalKey
+	smallest, largest db.InternalKey
 }
 
 // totalSize returns the total size of all the files in f.
@@ -32,7 +32,7 @@ func totalSize(f []fileMetadata) (size uint64) {
 
 // ikeyRange returns the minimum smallest and maximum largest internalKey for
 // all the fileMetadata in f0 and f1.
-func ikeyRange(icmp db.Comparer, f0, f1 []fileMetadata) (smallest, largest internalKey) {
+func ikeyRange(ucmp db.Compare, f0, f1 []fileMetadata) (smallest, largest db.InternalKey) {
 	first := true
 	for _, f := range [2][]fileMetadata{f0, f1} {
 		for _, meta := range f {
@@ -41,10 +41,10 @@ func ikeyRange(icmp db.Comparer, f0, f1 []fileMetadata) (smallest, largest inter
 				smallest, largest = meta.smallest, meta.largest
 				continue
 			}
-			if icmp.Compare(meta.smallest, smallest) < 0 {
+			if db.InternalCompare(ucmp, meta.smallest, smallest) < 0 {
 				smallest = meta.smallest
 			}
-			if icmp.Compare(meta.largest, largest) > 0 {
+			if db.InternalCompare(ucmp, meta.largest, largest) > 0 {
 				largest = meta.largest
 			}
 		}
@@ -60,12 +60,12 @@ func (b byFileNum) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 
 type bySmallest struct {
 	dat []fileMetadata
-	cmp db.Comparer
+	cmp db.Compare
 }
 
 func (b bySmallest) Len() int { return len(b.dat) }
 func (b bySmallest) Less(i, j int) bool {
-	return b.cmp.Compare(b.dat[i].smallest, b.dat[j].smallest) < 0
+	return db.InternalCompare(b.cmp, b.dat[i].smallest, b.dat[j].smallest) < 0
 }
 func (b bySmallest) Swap(i, j int) { b.dat[i], b.dat[j] = b.dat[j], b.dat[i] }
 
@@ -136,17 +136,19 @@ func (v *version) updateCompactionScore() {
 // may touch). If level is zero then that assumption cannot be made, and the
 // [ukey0, ukey1] range is expanded to the union of those matching ranges so
 // far and the computation is repeated until [ukey0, ukey1] stabilizes.
-func (v *version) overlaps(level int, ucmp db.Comparer, ukey0, ukey1 []byte) (ret []fileMetadata) {
+func (v *version) overlaps(
+	level int, cmp db.Compare, ukey0, ukey1 []byte,
+) (ret []fileMetadata) {
 loop:
 	for {
 		for _, meta := range v.files[level] {
-			m0 := meta.smallest.ukey()
-			m1 := meta.largest.ukey()
-			if ucmp.Compare(m1, ukey0) < 0 {
+			m0 := meta.smallest.UserKey
+			m1 := meta.largest.UserKey
+			if cmp(m1, ukey0) < 0 {
 				// meta is completely before the specified range; skip it.
 				continue
 			}
-			if ucmp.Compare(m0, ukey1) > 0 {
+			if cmp(m0, ukey1) > 0 {
 				// meta is completely after the specified range; skip it.
 				continue
 			}
@@ -158,11 +160,11 @@ loop:
 				continue
 			}
 			restart := false
-			if ucmp.Compare(m0, ukey0) < 0 {
+			if cmp(m0, ukey0) < 0 {
 				ukey0 = m0
 				restart = true
 			}
-			if ucmp.Compare(m1, ukey1) > 0 {
+			if cmp(m1, ukey1) > 0 {
 				ukey1 = m1
 				restart = true
 			}
@@ -178,7 +180,7 @@ loop:
 // checkOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
-func (v *version) checkOrdering(icmp db.Comparer) error {
+func (v *version) checkOrdering(cmp db.Compare) error {
 	for level, ff := range v.files {
 		if level == 0 {
 			prevFileNum := uint64(0)
@@ -189,12 +191,12 @@ func (v *version) checkOrdering(icmp db.Comparer) error {
 				prevFileNum = f.fileNum
 			}
 		} else {
-			prevLargest := internalKey(nil)
+			var prevLargest db.InternalKey
 			for i, f := range ff {
-				if i != 0 && icmp.Compare(prevLargest, f.smallest) >= 0 {
+				if i != 0 && db.InternalCompare(cmp, prevLargest, f.smallest) >= 0 {
 					return fmt.Errorf("level non-0 files are not in increasing ikey order: %q, %q", prevLargest, f.smallest)
 				}
-				if icmp.Compare(f.smallest, f.largest) > 0 {
+				if db.InternalCompare(cmp, f.smallest, f.largest) > 0 {
 					return fmt.Errorf("level non-0 file has inconsistent bounds: %q, %q", f.smallest, f.largest)
 				}
 				prevLargest = f.largest
@@ -206,7 +208,7 @@ func (v *version) checkOrdering(icmp db.Comparer) error {
 
 // tableIkeyFinder finds the given ikey in the table of the given file number.
 type tableIkeyFinder interface {
-	find(fileNum uint64, ikey internalKey) (db.Iterator, error)
+	find(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error)
 }
 
 // get looks up the internal key ikey0 in v's tables such that ikey and ikey0
@@ -216,8 +218,10 @@ type tableIkeyFinder interface {
 // If ikey0's kind is set, the value for that previous set action is returned.
 // If ikey0's kind is delete, the db.ErrNotFound error is returned.
 // If there is no such ikey0, the db.ErrNotFound error is returned.
-func (v *version) get(ikey internalKey, tiFinder tableIkeyFinder, ucmp db.Comparer, ro *db.ReadOptions) ([]byte, error) {
-	ukey := ikey.ukey()
+func (v *version) get(
+	ikey *db.InternalKey, tiFinder tableIkeyFinder, cmp db.Compare, ro *db.ReadOptions,
+) ([]byte, error) {
+	ukey := ikey.UserKey
 	// Iterate through v's tables, calling internalGet if the table's bounds
 	// might contain ikey. Due to the order in which we search the tables, and
 	// the internalKeyComparer's ordering within a table, we stop after the
@@ -225,26 +229,25 @@ func (v *version) get(ikey internalKey, tiFinder tableIkeyFinder, ucmp db.Compar
 
 	// Search the level 0 files in decreasing fileNum order,
 	// which is also decreasing sequence number order.
-	icmp := internalKeyComparer{ucmp}
 	for i := len(v.files[0]) - 1; i >= 0; i-- {
 		f := v.files[0][i]
 		// We compare user keys on the low end, as we do not want to reject a table
 		// whose smallest internal key may have the same user key and a lower sequence
 		// number. An internalKeyComparer sorts increasing by user key but then
 		// descending by sequence number.
-		if ucmp.Compare(ukey, f.smallest.ukey()) < 0 {
+		if cmp(ukey, f.smallest.UserKey) < 0 {
 			continue
 		}
 		// We compare internal keys on the high end. It gives a tighter bound than
 		// comparing user keys.
-		if icmp.Compare(ikey, f.largest) > 0 {
+		if db.InternalCompare(cmp, *ikey, f.largest) > 0 {
 			continue
 		}
 		iter, err := tiFinder.find(f.fileNum, ikey)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
-		value, conclusive, err := internalGet(iter, ucmp, ukey)
+		value, conclusive, err := internalGet(iter, cmp, ukey)
 		if conclusive {
 			return value, err
 		}
@@ -258,20 +261,20 @@ func (v *version) get(ikey internalKey, tiFinder tableIkeyFinder, ucmp db.Compar
 		}
 		// Find the earliest file at that level whose largest key is >= ikey.
 		index := sort.Search(n, func(i int) bool {
-			return icmp.Compare(v.files[level][i].largest, ikey) >= 0
+			return db.InternalCompare(cmp, v.files[level][i].largest, *ikey) >= 0
 		})
 		if index == n {
 			continue
 		}
 		f := v.files[level][index]
-		if ucmp.Compare(ukey, f.smallest.ukey()) < 0 {
+		if cmp(ukey, f.smallest.UserKey) < 0 {
 			continue
 		}
 		iter, err := tiFinder.find(f.fileNum, ikey)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
-		value, conclusive, err := internalGet(iter, ucmp, ukey)
+		value, conclusive, err := internalGet(iter, cmp, ukey)
 		if conclusive {
 			return value, err
 		}
@@ -289,21 +292,23 @@ func (v *version) get(ikey internalKey, tiFinder tableIkeyFinder, ucmp db.Compar
 //	* if that pair's key's kind is set, that pair's value will be returned,
 //	* if that pair's key's kind is delete, db.ErrNotFound will be returned.
 // If the returned error is non-nil then conclusive will be true.
-func internalGet(t db.Iterator, ucmp db.Comparer, ukey []byte) (value []byte, conclusive bool, err error) {
+func internalGet(
+	t db.InternalIterator, cmp db.Compare, ukey []byte,
+) (value []byte, conclusive bool, err error) {
 	if !t.Next() {
 		err = t.Close()
 		return nil, err != nil, err
 	}
-	ikey0 := internalKey(t.Key())
-	if !ikey0.valid() {
+	ikey0 := t.Key()
+	if !ikey0.Valid() {
 		t.Close()
 		return nil, true, fmt.Errorf("pebble: corrupt table: invalid internal key")
 	}
-	if ucmp.Compare(ukey, ikey0.ukey()) != 0 {
+	if cmp(ukey, ikey0.UserKey) != 0 {
 		err = t.Close()
 		return nil, err != nil, err
 	}
-	if ikey0.kind() == internalKeyKindDelete {
+	if ikey0.Kind() == db.InternalKeyKindDelete {
 		t.Close()
 		return nil, true, db.ErrNotFound
 	}

@@ -130,10 +130,9 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}
-		tw := table.NewWriter(f, &db.Options{
-			Comparer: internalKeyComparer{userCmp: db.DefaultComparer},
-		})
-		if err := tw.Set(makeIkey(fmt.Sprintf("k.SET.%d", i)), xxx[:i], nil); err != nil {
+		tw := table.NewWriter(f, nil, db.InternalKeyCoder{})
+		ik := makeIkey(fmt.Sprintf("k.SET.%d", i))
+		if err := tw.Set(&ik, xxx[:i], nil); err != nil {
 			return nil, nil, fmt.Errorf("tw.Set: %v", err)
 		}
 		if err := tw.Close(); err != nil {
@@ -167,7 +166,8 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Lock()
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
-			iter, err := c.find(uint64(fileNum), []byte("k"))
+			ik := db.MakeInternalKey([]byte("k"), db.InternalKeySeqNumMax, db.InternalKeyKindMax)
+			iter, err := c.find(uint64(fileNum), &ik)
 			if err != nil {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return

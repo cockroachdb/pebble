@@ -45,16 +45,18 @@ func encodeBlockHandle(dst []byte, b blockHandle) int {
 // over those pairs.
 type block []byte
 
+type compare func(a, b []byte) int
+
 // seek returns a blockIter positioned at the first key/value pair whose key is
 // >= the given key. If there is no such key, the blockIter returned is done.
-func (b block) seek(c db.Comparer, key []byte) (*blockIter, error) {
+func (b block) seek(c compare, coder Coder, key *db.InternalKey) (*blockIter, error) {
 	numRestarts := int(binary.LittleEndian.Uint32(b[len(b)-4:]))
 	if numRestarts == 0 {
 		return nil, errors.New("pebble/table: invalid table (block has no restart points)")
 	}
 	n := len(b) - 4*(1+numRestarts)
 	var offset int
-	if len(key) > 0 {
+	if key != nil {
 		// Find the index of the smallest restart point whose key is > the key
 		// sought; index will be numRestarts if there is no such restart point.
 		index := sort.Search(numRestarts, func(i int) bool {
@@ -67,7 +69,7 @@ func (b block) seek(c db.Comparer, key []byte) (*blockIter, error) {
 			_, n2 := binary.Uvarint(b[o+n1:])
 			m := o + n1 + n2
 			s := b[m : m+int(v1)]
-			return c.Compare(s, key) > 0
+			return db.InternalCompare(c, *key, coder.Decode(s)) < 0
 		})
 		// Since keys are strictly increasing, if index > 0 then the restart
 		// point at index-1 will be the largest whose key is <= the key sought.
@@ -79,11 +81,16 @@ func (b block) seek(c db.Comparer, key []byte) (*blockIter, error) {
 	}
 	// Initialize the blockIter to the restart point.
 	i := &blockIter{
-		data: b[offset:n],
-		key:  make([]byte, 0, 256),
+		coder: coder,
+		data:  b[offset:n],
+		key:   make([]byte, 0, 256),
 	}
 	// Iterate from that restart point to somewhere >= the key sought.
-	for i.Next() && c.Compare(i.key, key) < 0 {
+	if key == nil {
+		i.Next()
+	} else {
+		for i.Next() && db.InternalCompare(c, *key, i.ikey) > 0 {
+		}
 	}
 	if i.err != nil {
 		return nil, i.err
@@ -94,24 +101,26 @@ func (b block) seek(c db.Comparer, key []byte) (*blockIter, error) {
 
 // blockIter is an iterator over a single block of data.
 type blockIter struct {
+	coder    Coder
 	data     []byte
 	key, val []byte
+	ikey     db.InternalKey
 	err      error
 	// soi and eoi mark the start and end of iteration.
 	// Both cannot simultaneously be true.
 	soi, eoi bool
 }
 
-// blockIter implements the db.Iterator interface.
-var _ db.Iterator = (*blockIter)(nil)
+// blockIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*blockIter)(nil)
 
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
-func (i *blockIter) SeekGE(key []byte) bool {
+func (i *blockIter) SeekGE(key *db.InternalKey) bool {
 	panic("pebble/table: Seek unimplemented")
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
-func (i *blockIter) SeekLE(key []byte) bool {
+func (i *blockIter) SeekLE(key *db.InternalKey) bool {
 	panic("pebble/table: RSeek unimplemented")
 }
 
@@ -143,8 +152,10 @@ func (i *blockIter) Next() bool {
 	v2, n2 := binary.Uvarint(i.data[n0+n1:])
 	n := n0 + n1 + n2
 	i.key = append(i.key[:v0], i.data[n:n+int(v1)]...)
+	i.key = i.key[:len(i.key):len(i.key)]
 	i.val = i.data[n+int(v1) : n+int(v1+v2)]
 	i.data = i.data[n+int(v1+v2):]
+	i.ikey = i.coder.Decode(i.key)
 	return true
 }
 
@@ -154,11 +165,11 @@ func (i *blockIter) Prev() bool {
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.
-func (i *blockIter) Key() []byte {
+func (i *blockIter) Key() *db.InternalKey {
 	if i.soi {
 		return nil
 	}
-	return i.key[:len(i.key):len(i.key)]
+	return &i.ikey
 }
 
 // Value implements Iterator.Value, as documented in the pebble/db package.
@@ -195,8 +206,8 @@ type tableIter struct {
 	err    error
 }
 
-// tableIter implements the db.Iterator interface.
-var _ db.Iterator = (*tableIter)(nil)
+// tableIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*tableIter)(nil)
 
 // nextBlock loads the next block and positions i.data at the first key in that
 // block which is >= the given key. If unsuccessful, it sets i.err to any error
@@ -206,7 +217,7 @@ var _ db.Iterator = (*tableIter)(nil)
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
+func (i *tableIter) nextBlock(key *db.InternalKey, f *filterReader) bool {
 	if !i.index.Next() {
 		i.err = i.index.err
 		return false
@@ -228,7 +239,7 @@ func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
 		return false
 	}
 	// Look for the key inside that block.
-	data, err := k.seek(i.reader.comparer, key)
+	data, err := k.seek(i.reader.compare, i.reader.coder, key)
 	if err != nil {
 		i.err = err
 		return false
@@ -238,12 +249,12 @@ func (i *tableIter) nextBlock(key []byte, f *filterReader) bool {
 }
 
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
-func (i *tableIter) SeekGE(key []byte) bool {
+func (i *tableIter) SeekGE(key *db.InternalKey) bool {
 	panic("pebble/table: Seek unimplemented")
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
-func (i *tableIter) SeekLE(key []byte) bool {
+func (i *tableIter) SeekLE(key *db.InternalKey) bool {
 	panic("pebble/table: RSeek unimplemented")
 }
 
@@ -284,7 +295,7 @@ func (i *tableIter) Prev() bool {
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.
-func (i *tableIter) Key() []byte {
+func (i *tableIter) Key() *db.InternalKey {
 	if i.data == nil {
 		return nil
 	}
@@ -343,7 +354,7 @@ func (f *filterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	return true
 }
 
-func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
+func (f *filterReader) mayContain(blockOffset uint64, key *db.InternalKey) bool {
 	index := blockOffset >> f.shift
 	if index >= uint64(len(f.offsets)/4-1) {
 		return true
@@ -353,7 +364,7 @@ func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 	if i >= j || uint64(j) > uint64(len(f.data)) {
 		return true
 	}
-	return f.policy.MayContain(f.data[i:j], key)
+	return f.policy.MayContain(f.data[i:j], key.UserKey)
 }
 
 // Reader is a table reader. It implements the DB interface, as documented
@@ -362,14 +373,15 @@ type Reader struct {
 	file            storage.File
 	err             error
 	index           block
-	comparer        db.Comparer
+	compare         compare
+	coder           Coder
 	filter          filterReader
 	verifyChecksums bool
 	// TODO: add a (goroutine-safe) LRU block cache.
 }
 
-// Reader implements the db.Reader interface.
-var _ db.Reader = (*Reader)(nil)
+// Reader implements the db.InternalReader interface.
+var _ db.InternalReader = (*Reader)(nil)
 
 // Close implements DB.Close, as documented in the pebble/db package.
 func (r *Reader) Close() error {
@@ -393,7 +405,7 @@ func (r *Reader) Close() error {
 }
 
 // Get implements DB.Get, as documented in the pebble/db package.
-func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
+func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -402,7 +414,7 @@ func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 		f = &r.filter
 	}
 	i := r.find(key, o, f)
-	if !i.Next() || !bytes.Equal(key, i.Key()) {
+	if !i.Next() || db.InternalCompare(r.compare, *key, *i.Key()) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = db.ErrNotFound
@@ -413,21 +425,21 @@ func (r *Reader) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 }
 
 // Find implements DB.Find, as documented in the pebble/db package.
-func (r *Reader) Find(key []byte, o *db.ReadOptions) db.Iterator {
+func (r *Reader) Find(key *db.InternalKey, o *db.ReadOptions) db.InternalIterator {
 	return r.find(key, o, nil)
 }
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
-func (r *Reader) NewIter(o *db.ReadOptions) db.Iterator {
+func (r *Reader) NewIter(o *db.ReadOptions) db.InternalIterator {
 	// TODO(peter): don't seek on the new iterator.
 	return r.find(nil, o, nil)
 }
 
-func (r *Reader) find(key []byte, o *db.ReadOptions, f *filterReader) db.Iterator {
+func (r *Reader) find(key *db.InternalKey, o *db.ReadOptions, f *filterReader) db.InternalIterator {
 	if r.err != nil {
 		return &tableIter{err: r.err}
 	}
-	index, err := r.index.seek(r.comparer, key)
+	index, err := r.index.seek(r.compare, r.coder, key)
 	if err != nil {
 		return &tableIter{err: err}
 	}
@@ -480,14 +492,14 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	if err != nil {
 		return err
 	}
-	i, err := b.seek(db.DefaultComparer, nil)
+	i, err := b.seek(bytes.Compare, raw{}, nil)
 	if err != nil {
 		return err
 	}
 	filterName := "filter." + fp.Name()
 	filterBH := blockHandle{}
 	for i.Next() {
-		if filterName != string(i.Key()) {
+		if filterName != string(i.Key().UserKey) {
 			continue
 		}
 		var n int
@@ -515,10 +527,11 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f storage.File, o *db.Options) *Reader {
+func NewReader(f storage.File, o *db.Options, coder Coder) *Reader {
 	r := &Reader{
 		file:            f,
-		comparer:        o.GetComparer(),
+		compare:         o.GetComparer().Compare,
+		coder:           coder,
 		verifyChecksums: o.GetVerifyChecksums(),
 	}
 	if f == nil {

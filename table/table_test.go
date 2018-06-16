@@ -114,22 +114,23 @@ func check(f storage.File, fp db.FilterPolicy) error {
 	r := NewReader(f, &db.Options{
 		FilterPolicy:    fp,
 		VerifyChecksums: true,
-	})
+	}, raw{})
 	// Check that each key/value pair in wordCount is also in the table.
 	for k, v := range wordCount {
 		// Check using Get.
-		if v1, err := r.Get([]byte(k), nil); string(v1) != string(v) || err != nil {
+		ik := db.InternalKey{UserKey: []byte(k)}
+		if v1, err := r.Get(&ik, nil); string(v1) != string(v) || err != nil {
 			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
 		} else if len(v1) != cap(v1) {
 			return fmt.Errorf("Get %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
 
 		// Check using Find.
-		i := r.Find([]byte(k), nil)
-		if !i.Next() || string(i.Key()) != k {
+		i := r.Find(&ik, nil)
+		if !i.Next() || string(i.Key().UserKey) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
-		if k1 := i.Key(); len(k1) != cap(k1) {
+		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
 			return fmt.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
 		}
 		if string(i.Value()) != v {
@@ -146,13 +147,14 @@ func check(f storage.File, fp db.FilterPolicy) error {
 	// Check that nonsense words are not in the table.
 	for _, s := range nonsenseWords {
 		// Check using Get.
-		if _, err := r.Get([]byte(s), nil); err != db.ErrNotFound {
+		ik := db.InternalKey{UserKey: []byte(s)}
+		if _, err := r.Get(&ik, nil); err != db.ErrNotFound {
 			return fmt.Errorf("Get %q: got %v, want ErrNotFound", s, err)
 		}
 
 		// Check using Find.
-		i := r.Find([]byte(s), nil)
-		if i.Next() && s == string(i.Key()) {
+		i := r.Find(&ik, nil)
+		if i.Next() && s == string(i.Key().UserKey) {
 			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
 		if err := i.Close(); err != nil {
@@ -177,7 +179,8 @@ func check(f storage.File, fp db.FilterPolicy) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		n, i := 0, r.Find([]byte(ct.start), nil)
+		ik := db.InternalKey{UserKey: []byte(ct.start)}
+		n, i := 0, r.Find(&ik, nil)
 		for i.Next() {
 			n++
 		}
@@ -218,10 +221,10 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	w := NewWriter(f0, &db.Options{
 		Compression:  compression,
 		FilterPolicy: fp,
-	})
+	}, raw{})
 	for _, k := range keys {
 		v := wordCount[k]
-		if err := w.Set([]byte(k), []byte(v), nil); err != nil {
+		if err := w.Set(&db.InternalKey{UserKey: []byte(k)}, []byte(v), nil); err != nil {
 			return nil, err
 		}
 	}
@@ -308,7 +311,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	}
 	r := NewReader(f, &db.Options{
 		FilterPolicy: c,
-	})
+	}, raw{})
 
 	const n = 10000
 	// key is a buffer that will be re-used for n Get calls, each with a
@@ -320,7 +323,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	key := []byte("m!....")
 	for i := 0; i < n; i++ {
 		binary.LittleEndian.PutUint32(key[2:6], uint32(i))
-		r.Get(key, nil)
+		r.Get(&db.InternalKey{UserKey: key}, nil)
 	}
 
 	if c.truePositives != 0 {
@@ -431,7 +434,11 @@ func TestBloomNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, blo
 
 func TestBlockIter(t *testing.T) {
 	// k is a block that maps three keys "apple", "apricot", "banana" to empty strings.
-	k := block([]byte("\x00\x05\x00apple\x02\x05\x00ricot\x00\x06\x00banana\x00\x00\x00\x00\x01\x00\x00\x00"))
+	k := block([]byte(
+		"\x00\x05\x00apple" +
+			"\x02\x05\x00ricot" +
+			"\x00\x06\x00banana" +
+			"\x00\x00\x00\x00\x01\x00\x00\x00"))
 	var testcases = []struct {
 		index int
 		key   string
@@ -452,7 +459,8 @@ func TestBlockIter(t *testing.T) {
 		{3, "c"},
 	}
 	for _, tc := range testcases {
-		i, err := k.seek(db.DefaultComparer, []byte(tc.key))
+		ik := db.InternalKey{UserKey: []byte(tc.key)}
+		i, err := k.seek(bytes.Compare, raw{}, &ik)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -460,7 +468,7 @@ func TestBlockIter(t *testing.T) {
 			if !i.Next() {
 				t.Fatalf("key=%q, index=%d, j=%d: Next got false, want true", tc.key, tc.index, j)
 			}
-			if kGot := string(i.Key()); kGot != kWant {
+			if kGot := string(i.Key().UserKey); kGot != kWant {
 				t.Fatalf("key=%q, index=%d, j=%d: got %q, want %q", tc.key, tc.index, j, kGot, kWant)
 			}
 		}
@@ -491,9 +499,9 @@ func TestFinalBlockIsWritten(t *testing.T) {
 			}
 			w := NewWriter(wf, &db.Options{
 				BlockSize: blockSize,
-			})
+			}, raw{})
 			for _, k := range keys[:nk] {
-				if err := w.Set([]byte(k), xxx[:vLen], nil); err != nil {
+				if err := w.Set(&db.InternalKey{UserKey: []byte(k)}, xxx[:vLen], nil); err != nil {
 					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
 					continue loop
 				}
@@ -508,7 +516,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 				continue
 			}
-			r := NewReader(rf, nil)
+			r := NewReader(rf, nil, raw{})
 			i := r.Find(nil, nil)
 			for i.Next() {
 				got++

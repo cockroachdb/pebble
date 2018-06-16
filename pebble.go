@@ -49,9 +49,7 @@ const (
 type DB struct {
 	dirname string
 	opts    *db.Options
-	icmp    internalKeyComparer
-	// icmpOpts is a copy of opts that overrides the Comparer to be icmp.
-	icmpOpts db.Options
+	cmp     db.Compare
 
 	tableCache tableCache
 
@@ -94,14 +92,14 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	memtables := [2]*memTable{d.mem, d.imm}
 	d.mu.Unlock()
 
-	ikey := makeInternalKey(nil, key, internalKeyKindMax, snapshot)
+	ikey := db.MakeInternalKey(key, snapshot, db.InternalKeyKindMax)
 
 	// Look in the memtables before going to the on-disk current version.
 	for _, mem := range memtables {
 		if mem == nil {
 			continue
 		}
-		value, conclusive, err := internalGet(mem.Find(ikey, opts), d.icmp.userCmp, key)
+		value, conclusive, err := internalGet(mem.Find(&ikey, opts), d.cmp, key)
 		if conclusive {
 			return value, err
 		}
@@ -109,7 +107,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 
 	// TODO: update stats, maybe schedule compaction.
 
-	return current.get(ikey, &d.tableCache, d.icmp.userCmp, opts)
+	return current.get(&ikey, &d.tableCache, d.cmp, opts)
 }
 
 // Set implements DB.Set, as documented in the pebble/db package.
@@ -178,13 +176,13 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 	}
 
 	// Apply the batch to the memtable.
-	for iter, ikey := batch.iter(), internalKey(nil); ; seqNum++ {
+	for iter, ikey := batch.iter(), (db.InternalKey{}); ; seqNum++ {
 		kind, ukey, value, ok := iter.next()
 		if !ok {
 			break
 		}
-		ikey = makeInternalKey(ikey, ukey, kind, seqNum)
-		d.mem.Set(ikey, value, nil)
+		ikey = db.MakeInternalKey(ukey, seqNum, kind)
+		d.mem.Set(&ikey, value, nil)
 	}
 
 	if seqNum != d.versions.lastSequence+1 {
@@ -301,19 +299,15 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d := &DB{
 		dirname:        dirname,
 		opts:           opts,
-		icmp:           internalKeyComparer{opts.GetComparer()},
+		cmp:            opts.GetComparer().Compare,
 		pendingOutputs: make(map[uint64]struct{}),
 	}
-	if opts != nil {
-		d.icmpOpts = *opts
-	}
-	d.icmpOpts.Comparer = d.icmp
 	tableCacheSize := opts.GetMaxOpenFiles() - numNonTableCacheFiles
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(dirname, opts.GetStorage(), &d.icmpOpts, tableCacheSize)
-	d.mem = newMemTable(&d.icmpOpts)
+	d.tableCache.init(dirname, opts.GetStorage(), d.opts, tableCacheSize)
+	d.mem = newMemTable(d.opts)
 	d.compactionCond = sync.Cond{L: &d.mu}
 	fs := opts.GetStorage()
 
@@ -421,8 +415,8 @@ func (d *DB) replayLogFile(
 
 	var (
 		mem      *memTable
+		ikey     db.InternalKey
 		batchBuf = new(bytes.Buffer)
-		ikey     = make(internalKey, 512)
 		rr       = record.NewReader(file)
 	)
 	for {
@@ -449,7 +443,7 @@ func (d *DB) replayLogFile(
 		}
 
 		if mem == nil {
-			mem = newMemTable(&d.icmpOpts)
+			mem = newMemTable(d.opts)
 		}
 
 		t := b.iter()
@@ -475,8 +469,8 @@ func (d *DB) replayLogFile(
 			// without having to import the top-level pebble package. That extra
 			// abstraction means that we need to copy to an intermediate buffer here,
 			// to reconstruct the complete internal key to pass to the memtable.
-			ikey = makeInternalKey(ikey, ukey, kind, seqNum)
-			mem.Set(ikey, value, nil)
+			ikey = db.MakeInternalKey(ukey, seqNum, kind)
+			mem.Set(&ikey, value, nil)
 		}
 		if len(t) != 0 {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
@@ -537,7 +531,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	var (
 		file storage.File
 		tw   *table.Writer
-		iter db.Iterator
+		iter db.InternalIterator
 	)
 	defer func() {
 		if iter != nil {
@@ -559,23 +553,21 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	if err != nil {
 		return fileMetadata{}, err
 	}
-	tw = table.NewWriter(file, &db.Options{
-		Comparer: d.icmp,
-	})
+	tw = table.NewWriter(file, d.opts, &db.InternalKeyCoder{})
 
 	iter = mem.NewIter(nil)
 	iter.Next()
-	meta.smallest = internalKey(iter.Key()).clone()
+	meta.smallest = iter.Key().Clone()
 	for {
-		meta.largest = iter.Key()
-		if err1 := tw.Set(meta.largest, iter.Value(), nil); err1 != nil {
+		meta.largest = *iter.Key()
+		if err1 := tw.Set(&meta.largest, iter.Value(), nil); err1 != nil {
 			return fileMetadata{}, err1
 		}
 		if !iter.Next() {
 			break
 		}
 	}
-	meta.largest = meta.largest.clone()
+	meta.largest = meta.largest.Clone()
 
 	if err1 := iter.Close(); err1 != nil {
 		iter = nil
@@ -673,7 +665,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			return err
 		}
 		d.logNumber, d.logFile, d.log = newLogNumber, newLogFile, newLog
-		d.imm, d.mem = d.mem, newMemTable(&d.icmpOpts)
+		d.imm, d.mem = d.mem, newMemTable(d.opts)
 		force = false
 		d.maybeScheduleCompaction()
 	}

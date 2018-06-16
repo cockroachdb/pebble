@@ -61,8 +61,8 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if c.level == 0 {
-		smallest, largest := ikeyRange(vs.icmp, c.inputs[0], nil)
-		c.inputs[0] = cur.overlaps(0, vs.ucmp, smallest.ukey(), largest.ukey())
+		smallest, largest := ikeyRange(vs.cmp, c.inputs[0], nil)
+		c.inputs[0] = cur.overlaps(0, vs.cmp, smallest.UserKey, largest.UserKey)
 		if len(c.inputs) == 0 {
 			panic("pebble: empty compaction")
 		}
@@ -77,18 +77,18 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 // setupOtherInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupOtherInputs(vs *versionSet) {
-	smallest0, largest0 := ikeyRange(vs.icmp, c.inputs[0], nil)
-	c.inputs[1] = c.version.overlaps(c.level+1, vs.ucmp, smallest0.ukey(), largest0.ukey())
-	smallest01, largest01 := ikeyRange(vs.icmp, c.inputs[0], c.inputs[1])
+	smallest0, largest0 := ikeyRange(vs.cmp, c.inputs[0], nil)
+	c.inputs[1] = c.version.overlaps(c.level+1, vs.cmp, smallest0.UserKey, largest0.UserKey)
+	smallest01, largest01 := ikeyRange(vs.cmp, c.inputs[0], c.inputs[1])
 
 	// Grow the inputs if it doesn't affect the number of level+1 files.
 	if c.grow(vs, smallest01, largest01) {
-		smallest01, largest01 = ikeyRange(vs.icmp, c.inputs[0], c.inputs[1])
+		smallest01, largest01 = ikeyRange(vs.cmp, c.inputs[0], c.inputs[1])
 	}
 
 	// Compute the set of level+2 files that overlap this compaction.
 	if c.level+2 < numLevels {
-		c.inputs[2] = c.version.overlaps(c.level+2, vs.ucmp, smallest01.ukey(), largest01.ukey())
+		c.inputs[2] = c.version.overlaps(c.level+2, vs.cmp, smallest01.UserKey, largest01.UserKey)
 	}
 
 	// TODO: update the compaction pointer for c.level.
@@ -96,20 +96,20 @@ func (c *compaction) setupOtherInputs(vs *versionSet) {
 
 // grow grows the number of inputs at c.level without changing the number of
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
-// and la are the smallest and largest internalKeys in all of the inputs.
-func (c *compaction) grow(vs *versionSet, sm, la internalKey) bool {
+// and la are the smallest and largest InternalKeys in all of the inputs.
+func (c *compaction) grow(vs *versionSet, sm, la db.InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
 	}
-	grow0 := c.version.overlaps(c.level, vs.ucmp, sm.ukey(), la.ukey())
+	grow0 := c.version.overlaps(c.level, vs.cmp, sm.UserKey, la.UserKey)
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
 	}
 	if totalSize(grow0)+totalSize(c.inputs[1]) >= expandedCompactionByteSizeLimit {
 		return false
 	}
-	sm1, la1 := ikeyRange(vs.icmp, grow0, nil)
-	grow1 := c.version.overlaps(c.level+1, vs.ucmp, sm1, la1)
+	sm1, la1 := ikeyRange(vs.cmp, grow0, nil)
+	grow1 := c.version.overlaps(c.level+1, vs.cmp, sm1.UserKey, la1.UserKey)
 	if len(grow1) != len(c.inputs[1]) {
 		return false
 	}
@@ -125,8 +125,8 @@ func (c *compaction) isBaseLevelForUkey(userCmp db.Comparer, ukey []byte) bool {
 	// isBaseLevelForUkey calls and we can keep some state in between calls.
 	for level := c.level + 2; level < numLevels; level++ {
 		for _, f := range c.version.files[level] {
-			if userCmp.Compare(ukey, f.largest.ukey()) <= 0 {
-				if userCmp.Compare(ukey, f.smallest.ukey()) >= 0 {
+			if userCmp.Compare(ukey, f.largest.UserKey) <= 0 {
+				if userCmp.Compare(ukey, f.smallest.UserKey) >= 0 {
 					return false
 				}
 				// For levels above level 0, the files within a level are in
@@ -268,7 +268,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	iter, err := compactionIterator(&d.tableCache, d.icmp, c)
+	iter, err := compactionIterator(&d.tableCache, d.cmp, c)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
@@ -293,36 +293,35 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 	currentUkey := make([]byte, 0, 4096)
 	hasCurrentUkey := false
-	lastSeqNumForKey := internalKeySeqNumMax
-	smallest, largest := internalKey(nil), internalKey(nil)
+	lastSeqNumForKey := db.InternalKeySeqNumMax
+	var smallest, largest db.InternalKey
 	for iter.Next() {
 		// TODO: prioritize compacting d.imm.
 
 		// TODO: support c.shouldStopBefore.
 
-		ikey := internalKey(iter.Key())
-		if !ikey.valid() {
+		ikey := iter.Key()
+		if false /* !valid */ {
 			// Do not hide invalid keys.
 			currentUkey = currentUkey[:0]
 			hasCurrentUkey = false
-			lastSeqNumForKey = internalKeySeqNumMax
-
+			lastSeqNumForKey = db.InternalKeySeqNumMax
 		} else {
-			ukey := ikey.ukey()
-			if !hasCurrentUkey || d.icmp.userCmp.Compare(currentUkey, ukey) != 0 {
+			ukey := ikey.UserKey
+			if !hasCurrentUkey || d.cmp(currentUkey, ukey) != 0 {
 				// This is the first occurrence of this user key.
 				currentUkey = append(currentUkey[:0], ukey...)
 				hasCurrentUkey = true
-				lastSeqNumForKey = internalKeySeqNumMax
+				lastSeqNumForKey = db.InternalKeySeqNumMax
 			}
 
-			drop, ikeySeqNum := false, ikey.seqNum()
+			drop, ikeySeqNum := false, ikey.Seqnum()
 			if lastSeqNumForKey <= smallestSnapshot {
 				drop = true // Rule (A) referenced below.
 
-			} else if ikey.kind() == internalKeyKindDelete &&
+			} else if ikey.Kind() == db.InternalKeyKindDelete &&
 				ikeySeqNum <= smallestSnapshot &&
-				c.isBaseLevelForUkey(d.icmp.userCmp, ukey) {
+				c.isBaseLevelForUkey(d.opts.Comparer, ukey) {
 
 				// For this user key:
 				// (1) there is no data in higher levels
@@ -352,13 +351,11 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			if err != nil {
 				return nil, pendingOutputs, err
 			}
-			tw = table.NewWriter(file, &d.icmpOpts)
-
-			smallest = make(internalKey, len(ikey))
-			copy(smallest, ikey)
-			largest = make(internalKey, 0, 2*len(ikey))
+			tw = table.NewWriter(file, d.opts, &db.InternalKeyCoder{})
+			smallest = ikey.Clone()
 		}
-		largest = append(largest[:0], ikey...)
+		// TODO(peter): Avoid the memory allocation
+		largest = ikey.Clone()
 		if err := tw.Set(ikey, iter.Value(), nil); err != nil {
 			return nil, pendingOutputs, err
 		}
@@ -390,8 +387,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 }
 
 // compactionIterator returns an iterator over all the tables in a compaction.
-func compactionIterator(tc *tableCache, icmp db.Comparer, c *compaction) (cIter db.Iterator, retErr error) {
-	iters := make([]db.Iterator, 0, len(c.inputs[0])+1)
+func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db.InternalIterator, retErr error) {
+	iters := make([]db.InternalIterator, 0, len(c.inputs[0])+1)
 	defer func() {
 		if retErr != nil {
 			for _, iter := range iters {
@@ -423,13 +420,13 @@ func compactionIterator(tc *tableCache, icmp db.Comparer, c *compaction) (cIter 
 		return nil, err
 	}
 	iters = append(iters, iter)
-	return NewMergingIterator(icmp, iters...), nil
+	return NewMergingIterator(cmp, iters...), nil
 }
 
 // newConcatenatingIterator returns a concatenating iterator over all of the
 // input tables.
-func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.Iterator, retErr error) {
-	iters := make([]db.Iterator, len(inputs))
+func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.InternalIterator, retErr error) {
+	iters := make([]db.InternalIterator, len(inputs))
 	defer func() {
 		if retErr != nil {
 			for _, iter := range iters {

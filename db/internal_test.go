@@ -2,29 +2,33 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package pebble
+package db
 
 import (
 	"testing"
-
-	"github.com/petermattis/pebble/db"
 )
 
+func (k InternalKey) encodedString() string {
+	buf := make([]byte, k.Size())
+	k.Encode(buf)
+	return string(buf)
+}
+
 func TestInternalKey(t *testing.T) {
-	k := makeInternalKey(nil, []byte("foo"), 1, 0x08070605040302)
-	if got, want := string(k), "foo\x01\x02\x03\x04\x05\x06\x07\x08"; got != want {
+	k := MakeInternalKey([]byte("foo"), 0x08070605040302, 1)
+	if got, want := k.encodedString(), "foo\x01\x02\x03\x04\x05\x06\x07\x08"; got != want {
 		t.Fatalf("k = %q want %q", got, want)
 	}
-	if !k.valid() {
+	if !k.Valid() {
 		t.Fatalf("invalid key")
 	}
-	if got, want := string(k.ukey()), "foo"; got != want {
+	if got, want := string(k.UserKey), "foo"; got != want {
 		t.Errorf("ukey = %q want %q", got, want)
 	}
-	if got, want := k.kind(), internalKeyKind(1); got != want {
+	if got, want := k.Kind(), InternalKeyKind(1); got != want {
 		t.Errorf("kind = %d want %d", got, want)
 	}
-	if got, want := k.seqNum(), uint64(0x08070605040302); got != want {
+	if got, want := k.Seqnum(), uint64(0x08070605040302); got != want {
 		t.Errorf("seqNum = %d want %d", got, want)
 	}
 }
@@ -38,7 +42,8 @@ func TestInvalidInternalKey(t *testing.T) {
 		"foo\x08\x07\x06\x05\x04\x03\x02\x01",
 	}
 	for _, tc := range testCases {
-		if internalKey(tc).valid() {
+		k := DecodeInternalKey([]byte(tc))
+		if k.Valid() {
 			t.Errorf("%q is a valid key, want invalid", tc)
 		}
 	}
@@ -88,10 +93,12 @@ func TestInternalKeyComparer(t *testing.T) {
 		"\xff\xff" + "\x01\xff\xff\xff\xff\xff\xff\xff",
 		"\xff\xff" + "\x00\x00\x00\x00\x00\x00\x00\x00",
 	}
-	c := internalKeyComparer{db.DefaultComparer}
+	c := DefaultComparer.Compare
 	for i := range keys {
 		for j := range keys {
-			got := c.Compare([]byte(keys[i]), []byte(keys[j]))
+			ik := DecodeInternalKey([]byte(keys[i]))
+			jk := DecodeInternalKey([]byte(keys[j]))
+			got := InternalCompare(c, ik, jk)
 			want := 0
 			if i < j {
 				want = -1
@@ -101,6 +108,12 @@ func TestInternalKeyComparer(t *testing.T) {
 			if got != want {
 				t.Errorf("i=%d, j=%d, keys[i]=%q, keys[j]=%q: got %d, want %d",
 					i, j, keys[i], keys[j], got, want)
+			}
+			if got := ik.Compare(c, []byte(keys[j])); got != want {
+				t.Errorf("i=%d: inconsistent compare: got %d, want %d", i, got, want)
+			}
+			if got := -jk.Compare(c, []byte(keys[i])); got != want {
+				t.Errorf("i=%d: inconsistent compare: got %d, want %d", i, got, want)
 			}
 		}
 	}

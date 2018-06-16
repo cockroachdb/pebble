@@ -8,29 +8,31 @@ import (
 	"encoding/binary"
 	"strings"
 	"testing"
+
+	"github.com/petermattis/pebble/db"
 )
 
 func TestBatch(t *testing.T) {
 	testCases := []struct {
-		kind       internalKeyKind
+		kind       db.InternalKeyKind
 		key, value string
 	}{
-		{internalKeyKindSet, "roses", "red"},
-		{internalKeyKindSet, "violets", "blue"},
-		{internalKeyKindDelete, "roses", ""},
-		{internalKeyKindSet, "", ""},
-		{internalKeyKindSet, "", "non-empty"},
-		{internalKeyKindDelete, "", ""},
-		{internalKeyKindSet, "grass", "green"},
-		{internalKeyKindSet, "grass", "greener"},
-		{internalKeyKindSet, "eleventy", strings.Repeat("!!11!", 100)},
-		{internalKeyKindDelete, "nosuchkey", ""},
-		{internalKeyKindSet, "binarydata", "\x00"},
-		{internalKeyKindSet, "binarydata", "\xff"},
+		{db.InternalKeyKindSet, "roses", "red"},
+		{db.InternalKeyKindSet, "violets", "blue"},
+		{db.InternalKeyKindDelete, "roses", ""},
+		{db.InternalKeyKindSet, "", ""},
+		{db.InternalKeyKindSet, "", "non-empty"},
+		{db.InternalKeyKindDelete, "", ""},
+		{db.InternalKeyKindSet, "grass", "green"},
+		{db.InternalKeyKindSet, "grass", "greener"},
+		{db.InternalKeyKindSet, "eleventy", strings.Repeat("!!11!", 100)},
+		{db.InternalKeyKindDelete, "nosuchkey", ""},
+		{db.InternalKeyKindSet, "binarydata", "\x00"},
+		{db.InternalKeyKindSet, "binarydata", "\xff"},
 	}
 	var b Batch
 	for _, tc := range testCases {
-		if tc.kind == internalKeyKindDelete {
+		if tc.kind == db.InternalKeyKindDelete {
 			b.Delete([]byte(tc.key))
 		} else {
 			b.Set([]byte(tc.key), []byte(tc.value))

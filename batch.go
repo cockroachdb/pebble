@@ -56,7 +56,7 @@ func (b *Batch) Set(key, value []byte) {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if b.increment() {
-		b.data = append(b.data, byte(internalKeyKindSet))
+		b.data = append(b.data, byte(db.InternalKeyKindSet))
 		b.appendStr(key)
 		b.appendStr(value)
 	}
@@ -75,7 +75,7 @@ func (b *Batch) Delete(key []byte) {
 		b.init(len(key) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if b.increment() {
-		b.data = append(b.data, byte(internalKeyKindDelete))
+		b.data = append(b.data, byte(db.InternalKeyKindDelete))
 		b.appendStr(key)
 	}
 }
@@ -175,20 +175,20 @@ type batchIter []byte
 
 // next returns the next operation in this batch.
 // The final return value is false if the batch is corrupt.
-func (t *batchIter) next() (kind internalKeyKind, ukey []byte, value []byte, ok bool) {
+func (t *batchIter) next() (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
 	p := *t
 	if len(p) == 0 {
 		return 0, nil, nil, false
 	}
-	kind, *t = internalKeyKind(p[0]), p[1:]
-	if kind > internalKeyKindMax {
+	kind, *t = db.InternalKeyKind(p[0]), p[1:]
+	if kind > db.InternalKeyKindMax {
 		return 0, nil, nil, false
 	}
 	ukey, ok = t.nextStr()
 	if !ok {
 		return 0, nil, nil, false
 	}
-	if kind != internalKeyKindDelete {
+	if kind != db.InternalKeyKindDelete {
 		value, ok = t.nextStr()
 		if !ok {
 			return 0, nil, nil, false

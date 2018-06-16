@@ -33,7 +33,7 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	c.dummy.prev = &c.dummy
 }
 
-func (c *tableCache) find(fileNum uint64, ikey internalKey) (db.Iterator, error) {
+func (c *tableCache) find(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility
@@ -54,9 +54,9 @@ func (c *tableCache) find(fileNum uint64, ikey internalKey) (db.Iterator, error)
 	}
 	n.result <- x
 	return &tableCacheIter{
-		Iterator: x.reader.Find(ikey, nil),
-		cache:    c,
-		node:     n,
+		InternalIterator: x.reader.Find(ikey, nil),
+		cache:            c,
+		node:             n,
 	}, nil
 }
 
@@ -155,7 +155,7 @@ func (n *tableCacheNode) load(c *tableCache) {
 		n.result <- tableReaderOrError{err: err}
 		return
 	}
-	n.result <- tableReaderOrError{reader: table.NewReader(f, c.opts)}
+	n.result <- tableReaderOrError{reader: table.NewReader(f, c.opts, db.InternalKeyCoder{})}
 }
 
 func (n *tableCacheNode) release() {
@@ -167,7 +167,7 @@ func (n *tableCacheNode) release() {
 }
 
 type tableCacheIter struct {
-	db.Iterator
+	db.InternalIterator
 	cache    *tableCache
 	node     *tableCacheNode
 	closeErr error
@@ -187,6 +187,6 @@ func (i *tableCacheIter) Close() error {
 	}
 	i.cache.mu.Unlock()
 
-	i.closeErr = i.Iterator.Close()
+	i.closeErr = i.InternalIterator.Close()
 	return i.closeErr
 }

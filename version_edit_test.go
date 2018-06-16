@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/record"
 )
 
@@ -45,15 +46,15 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			compactPointers: []compactPointerEntry{
 				{
 					level: 0,
-					key:   internalKey("600"),
+					key:   db.DecodeInternalKey([]byte("600")),
 				},
 				{
 					level: 1,
-					key:   internalKey("601"),
+					key:   db.DecodeInternalKey([]byte("601")),
 				},
 				{
 					level: 2,
-					key:   internalKey("602"),
+					key:   db.DecodeInternalKey([]byte("602")),
 				},
 			},
 			deletedFiles: map[deletedFileEntry]bool{
@@ -72,8 +73,8 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					meta: fileMetadata{
 						fileNum:  805,
 						size:     8050,
-						smallest: internalKey("abc\x00\x01\x02\x03\x04\x05\x06\x07"),
-						largest:  internalKey("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9"),
+						smallest: db.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
+						largest:  db.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 					},
 				},
 				{
@@ -81,8 +82,8 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					meta: fileMetadata{
 						fileNum:  806,
 						size:     8060,
-						smallest: internalKey("A\x00\x01\x02\x03\x04\x05\x06\x07"),
-						largest:  internalKey("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9"),
+						smallest: db.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
+						largest:  db.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 					},
 				},
 			},
@@ -144,8 +145,8 @@ func TestVersionEditDecode(t *testing.T) {
 							meta: fileMetadata{
 								fileNum:  5,
 								size:     165,
-								smallest: internalKey("bar\x00\x05\x00\x00\x00\x00\x00\x00"),
-								largest:  internalKey("foo\x01\x01\x00\x00\x00\x00\x00\x00"),
+								smallest: db.DecodeInternalKey([]byte("bar\x00\x05\x00\x00\x00\x00\x00\x00")),
+								largest:  db.DecodeInternalKey([]byte("foo\x01\x01\x00\x00\x00\x00\x00\x00")),
 							},
 						},
 					},

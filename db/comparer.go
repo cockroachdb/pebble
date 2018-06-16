@@ -8,6 +8,9 @@ import (
 	"bytes"
 )
 
+// Compare ...
+type Compare func(a, b []byte) int
+
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer interface {

@@ -60,46 +60,46 @@ func TestIkeyRange(t *testing.T) {
 		if tc.input != "" {
 			for _, s := range strings.Split(tc.input, " ") {
 				f = append(f, fileMetadata{
-					smallest: internalKey(s[0:1]),
-					largest:  internalKey(s[2:3]),
+					smallest: *ikey(s[0:1]),
+					largest:  *ikey(s[2:3]),
 				})
 			}
 		}
 
-		smallest0, largest0 := ikeyRange(db.DefaultComparer, f, nil)
-		got0 := string(smallest0) + "-" + string(largest0)
+		smallest0, largest0 := ikeyRange(db.DefaultComparer.Compare, f, nil)
+		got0 := string(smallest0.UserKey) + "-" + string(largest0.UserKey)
 		if got0 != tc.want {
 			t.Errorf("first []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got0, tc.want)
 		}
 
-		smallest1, largest1 := ikeyRange(db.DefaultComparer, nil, f)
-		got1 := string(smallest1) + "-" + string(largest1)
+		smallest1, largest1 := ikeyRange(db.DefaultComparer.Compare, nil, f)
+		got1 := string(smallest1.UserKey) + "-" + string(largest1.UserKey)
 		if got1 != tc.want {
 			t.Errorf("second []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got1, tc.want)
 		}
 	}
 }
 
-type tableIkeyFinderFunc func(fileNum uint64, ikey internalKey) (db.Iterator, error)
+type tableIkeyFinderFunc func(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error)
 
-func (f tableIkeyFinderFunc) find(fileNum uint64, ikey internalKey) (db.Iterator, error) {
+func (f tableIkeyFinderFunc) find(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
 	return f(fileNum, ikey)
 }
 
-var makeIkeyKinds = map[string]internalKeyKind{
-	"DEL": internalKeyKindDelete,
-	"MAX": internalKeyKindMax,
-	"SET": internalKeyKindSet,
+var makeIkeyKinds = map[string]db.InternalKeyKind{
+	"DEL": db.InternalKeyKindDelete,
+	"MAX": db.InternalKeyKindMax,
+	"SET": db.InternalKeyKindSet,
 }
 
 // makeIkey converts a string like "foo.DEL.123" into an internal key
 // consisting of a user key "foo", kind delete, and sequence number 123.
-func makeIkey(s string) internalKey {
+func makeIkey(s string) db.InternalKey {
 	x := strings.Split(s, ".")
 	ukey := x[0]
 	kind := makeIkeyKinds[x[1]]
 	seqNum, _ := strconv.ParseUint(x[2], 10, 64)
-	return makeInternalKey(nil, []byte(ukey), kind, seqNum)
+	return db.MakeInternalKey([]byte(ukey), seqNum, kind)
 }
 
 func TestVersion(t *testing.T) {
@@ -510,13 +510,13 @@ func TestVersion(t *testing.T) {
 		},
 	}
 
-	icmp := internalKeyComparer{db.DefaultComparer}
+	cmp := db.DefaultComparer.Compare
 	for _, tc := range testCases {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
 		// m is a map from file numbers to DBs.
-		m := map[uint64]db.Reader{}
-		tiFinder := tableIkeyFinderFunc(func(fileNum uint64, ikey internalKey) (db.Iterator, error) {
+		m := map[uint64]db.InternalReader{}
+		tiFinder := tableIkeyFinderFunc(func(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
 			d, ok := m[fileNum]
 			if !ok {
 				return nil, errors.New("no such file")
@@ -526,17 +526,15 @@ func TestVersion(t *testing.T) {
 
 		v := version{}
 		for _, tt := range tc.tables {
-			d := newMemTable(&db.Options{
-				Comparer: icmp,
-			})
+			d := newMemTable(nil)
 			defer d.Close()
 			m[tt.fileNum] = d
 
-			var smallest, largest internalKey
+			var smallest, largest db.InternalKey
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
 				ikey := makeIkey(s[0])
-				err := d.Set(ikey, []byte(s[1]), nil)
+				err := d.Set(&ikey, []byte(s[1]), nil)
 				if err != nil {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
 				}
@@ -545,10 +543,10 @@ func TestVersion(t *testing.T) {
 					smallest = ikey
 					largest = ikey
 				} else {
-					if icmp.Compare(ikey, smallest) < 0 {
+					if db.InternalCompare(cmp, ikey, smallest) < 0 {
 						smallest = ikey
 					}
-					if icmp.Compare(ikey, largest) > 0 {
+					if db.InternalCompare(cmp, ikey, largest) > 0 {
 						largest = ikey
 					}
 				}
@@ -561,7 +559,7 @@ func TestVersion(t *testing.T) {
 			})
 		}
 
-		err := v.checkOrdering(icmp)
+		err := v.checkOrdering(cmp)
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
 			continue
@@ -572,7 +570,8 @@ func TestVersion(t *testing.T) {
 
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
-			value, err := v.get(makeIkey(s[0]), tiFinder, db.DefaultComparer, nil)
+			ikey := makeIkey(s[0])
+			value, err := v.get(&ikey, tiFinder, cmp, nil)
 			got, want := "", s[1]
 			if err != nil {
 				if err != db.ErrNotFound {
@@ -749,8 +748,9 @@ func TestOverlaps(t *testing.T) {
 		{2, "a", "z", ""},
 	}
 
+	cmp := db.DefaultComparer.Compare
 	for _, tc := range testCases {
-		o := v.overlaps(tc.level, db.DefaultComparer, []byte(tc.ukey0), []byte(tc.ukey1))
+		o := v.overlaps(tc.level, cmp, []byte(tc.ukey0), []byte(tc.ukey1))
 		s := make([]string, len(o))
 		for i, meta := range o {
 			s[i] = fmt.Sprintf("m%02d", meta.fileNum%100)

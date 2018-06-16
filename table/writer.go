@@ -114,9 +114,31 @@ func (f *filterWriter) finish() ([]byte, error) {
 	return f.data, nil
 }
 
+// Coder ...
+type Coder interface {
+	Size(key *db.InternalKey) int
+	Encode(key *db.InternalKey, buf []byte)
+	Decode(buf []byte) db.InternalKey
+}
+
+type raw struct{}
+
+func (raw) Size(key *db.InternalKey) int {
+	return len(key.UserKey)
+}
+
+func (raw) Encode(key *db.InternalKey, buf []byte) {
+	copy(buf, key.UserKey)
+}
+
+func (raw) Decode(buf []byte) db.InternalKey {
+	return db.InternalKey{UserKey: buf}
+}
+
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
+	coder     Coder
 	writer    io.Writer
 	bufWriter *bufio.Writer
 	closer    io.Closer
@@ -125,6 +147,7 @@ type Writer struct {
 	blockRestartInterval int
 	blockSize            int
 	cmp                  db.Comparer
+	compare              compare
 	compression          db.Compression
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
@@ -137,7 +160,8 @@ type Writer struct {
 	// to be written.
 	offset uint64
 	// prevKey is a copy of the key most recently passed to Set.
-	prevKey []byte
+	prevKey        db.InternalKey
+	prevEncodedKey []byte
 	// indexKeys and indexEntries hold the separator keys between each block
 	// and the successor key for the final block. indexKeys contains the key's
 	// bytes concatenated together. The keyLen field of each indexEntries
@@ -164,20 +188,20 @@ type Writer struct {
 }
 
 // Writer implements the db.Setter interface.
-var _ db.Setter = (*Writer)(nil)
+var _ db.InternalSetter = (*Writer)(nil)
 
 // Set implements DB.Set, as documented in the pebble/db package. For a given
 // Writer, the keys passed to Set must be in increasing order.
-func (w *Writer) Set(key, value []byte, o *db.WriteOptions) error {
+func (w *Writer) Set(key *db.InternalKey, value []byte, o *db.WriteOptions) error {
 	if w.err != nil {
 		return w.err
 	}
-	if w.cmp.Compare(w.prevKey, key) >= 0 {
+	if db.InternalCompare(w.compare, w.prevKey, *key) >= 0 {
 		w.err = fmt.Errorf("pebble/table: Set called in non-increasing key order: %q, %q", w.prevKey, key)
 		return w.err
 	}
 	if w.filter.policy != nil {
-		w.filter.appendKey(key)
+		w.filter.appendKey(key.UserKey)
 	}
 	w.flushPendingBH(key)
 	w.append(key, value, w.nEntries%w.blockRestartInterval == 0)
@@ -194,34 +218,50 @@ func (w *Writer) Set(key, value []byte, o *db.WriteOptions) error {
 }
 
 // flushPendingBH adds any pending block handle to the index entries.
-func (w *Writer) flushPendingBH(key []byte) {
+func (w *Writer) flushPendingBH(key *db.InternalKey) {
 	if w.pendingBH.length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return
 	}
 	n0 := len(w.indexKeys)
-	w.indexKeys = w.cmp.AppendSeparator(w.indexKeys, w.prevKey, key)
+	// TODO(peter): This isn't correct for InternalKeys. And it is fugly.
+	var ukey []byte
+	if key != nil {
+		ukey = key.UserKey
+	}
+	if (w.coder == raw{}) {
+		w.indexKeys = w.cmp.AppendSeparator(w.indexKeys, w.prevEncodedKey, ukey)
+	} else {
+		w.indexKeys = append(w.indexKeys, w.prevEncodedKey...)
+	}
 	n1 := len(w.indexKeys)
 	w.indexEntries = append(w.indexEntries, indexEntry{w.pendingBH, n1 - n0})
 	w.pendingBH = blockHandle{}
 }
 
 // append appends a key/value pair, which may also be a restart point.
-func (w *Writer) append(key, value []byte, restart bool) {
+func (w *Writer) append(key *db.InternalKey, value []byte, restart bool) {
 	nShared := 0
 	if restart {
 		w.restarts = append(w.restarts, uint32(len(w.buf)))
 	} else {
-		nShared = db.SharedPrefixLen(w.prevKey, key)
+		// TODO(peter): Can also share part of the encoded sequence number? Maybe.
+		nShared = db.SharedPrefixLen(w.prevKey.UserKey, key.UserKey)
 	}
-	w.prevKey = append(w.prevKey[:0], key...)
+	size := w.coder.Size(key)
+	if cap(w.prevEncodedKey) < size {
+		w.prevEncodedKey = make([]byte, 0, size*2)
+	}
+	w.prevEncodedKey = w.prevEncodedKey[:size]
+	w.coder.Encode(key, w.prevEncodedKey)
+	w.prevKey = w.coder.Decode(w.prevEncodedKey)
 	w.nEntries++
 	n := binary.PutUvarint(w.tmp[0:], uint64(nShared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(len(key)-nShared))
+	n += binary.PutUvarint(w.tmp[n:], uint64(size-nShared))
 	n += binary.PutUvarint(w.tmp[n:], uint64(len(value)))
 	w.buf = append(w.buf, w.tmp[:n]...)
-	w.buf = append(w.buf, key[nShared:]...)
+	w.buf = append(w.buf, w.prevEncodedKey[nShared:]...)
 	w.buf = append(w.buf, value...)
 }
 
@@ -334,7 +374,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(tmp, bh)
-		w.append([]byte("filter."+w.filter.policy.Name()), tmp[:n], true)
+		w.append(&db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, tmp[:n], true)
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
@@ -347,10 +387,12 @@ func (w *Writer) Close() (err error) {
 
 	// Write the index block.
 	i0 := 0
+	var ikey db.InternalKey
 	for _, ie := range w.indexEntries {
 		n := encodeBlockHandle(tmp, ie.bh)
 		i1 := i0 + ie.keyLen
-		w.append(w.indexKeys[i0:i1], tmp[:n], true)
+		ikey = w.coder.Decode(w.indexKeys[i0:i1])
+		w.append(&ikey, tmp[:n], true)
 		i0 = i1
 	}
 	indexBlockHandle, err := w.finishBlock()
@@ -387,18 +429,20 @@ func (w *Writer) Close() (err error) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f storage.File, o *db.Options) *Writer {
+func NewWriter(f storage.File, o *db.Options, coder Coder) *Writer {
 	w := &Writer{
+		coder:                coder,
 		closer:               f,
 		blockRestartInterval: o.GetBlockRestartInterval(),
 		blockSize:            o.GetBlockSize(),
 		cmp:                  o.GetComparer(),
+		compare:              o.GetComparer().Compare,
 		compression:          o.GetCompression(),
 		filter: filterWriter{
 			policy: o.GetFilterPolicy(),
 		},
-		prevKey:  make([]byte, 0, 256),
-		restarts: make([]uint32, 0, 256),
+		prevEncodedKey: make([]byte, 0, 256),
+		restarts:       make([]uint32, 0, 256),
 	}
 	if f == nil {
 		w.err = errors.New("pebble/table: nil file")

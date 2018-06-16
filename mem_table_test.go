@@ -15,7 +15,7 @@ import (
 )
 
 // count returns the number of entries in a DB.
-func count(d db.Reader) (n int) {
+func count(d db.InternalReader) (n int) {
 	x := d.Find(nil, nil)
 	for x.Next() {
 		n++
@@ -24,6 +24,12 @@ func count(d db.Reader) (n int) {
 		return -1
 	}
 	return n
+}
+
+func ikey(s string) *db.InternalKey {
+	return &db.InternalKey{
+		UserKey: []byte(s),
+	}
 }
 
 // compact compacts a MemTable.
@@ -40,38 +46,38 @@ func compact(m *memTable) (*memTable, error) {
 	return n, nil
 }
 
-func TestBasic(t *testing.T) {
+func TestMemTableBasic(t *testing.T) {
 	// Check the empty DB.
 	m := newMemTable(nil)
 	if got, want := count(m), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
-	v, err := m.Get([]byte("cherry"), nil)
+	v, err := m.Get(ikey("cherry"), nil)
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("1.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Add some key/value pairs.
-	m.Set([]byte("cherry"), []byte("red"), nil)
-	m.Set([]byte("peach"), []byte("yellow"), nil)
-	m.Set([]byte("grape"), []byte("red"), nil)
-	m.Set([]byte("grape"), []byte("green"), nil)
-	m.Set([]byte("plum"), []byte("purple"), nil)
+	m.Set(ikey("cherry"), []byte("red"), nil)
+	m.Set(ikey("peach"), []byte("yellow"), nil)
+	m.Set(ikey("grape"), []byte("red"), nil)
+	m.Set(ikey("grape"), []byte("green"), nil)
+	m.Set(ikey("plum"), []byte("purple"), nil)
 	if got, want := count(m), 4; got != want {
 		t.Fatalf("2.count: got %v, want %v", got, want)
 	}
 	// Get keys that are and aren't in the DB.
-	v, err = m.Get([]byte("plum"), nil)
+	v, err = m.Get(ikey("plum"), nil)
 	if string(v) != "purple" || err != nil {
 		t.Fatalf("6.get: got (%q, %v), want (%q, %v)", v, err, "purple", error(nil))
 	}
-	v, err = m.Get([]byte("lychee"), nil)
+	v, err = m.Get(ikey("lychee"), nil)
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Check an iterator.
-	s, x := "", m.Find([]byte("mango"), nil)
+	s, x := "", m.Find(ikey("mango"), nil)
 	for x.Next() {
-		s += fmt.Sprintf("%s/%s.", x.Key(), x.Value())
+		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
 	if want := "peach/yellow.plum/purple."; s != want {
 		t.Fatalf("8.iter: got %q, want %q", s, want)
@@ -80,7 +86,7 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("9.close: %v", err)
 	}
 	// Check some more sets and deletes.
-	if err := m.Set([]byte("apricot"), []byte("orange"), nil); err != nil {
+	if err := m.Set(ikey("apricot"), []byte("orange"), nil); err != nil {
 		t.Fatalf("12.set: %v", err)
 	}
 	if got, want := count(m), 5; got != want {
@@ -92,37 +98,37 @@ func TestBasic(t *testing.T) {
 	}
 }
 
-func TestCount(t *testing.T) {
+func TestMemTableCount(t *testing.T) {
 	m := newMemTable(nil)
 	for i := 0; i < 200; i++ {
 		if j := count(m); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
 		}
-		m.Set([]byte{byte(i)}, nil, nil)
+		m.Set(&db.InternalKey{UserKey: []byte{byte(i)}}, nil, nil)
 	}
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestEmpty(t *testing.T) {
+func TestMemTableEmpty(t *testing.T) {
 	m := newMemTable(nil)
 	if !m.Empty() {
 		t.Errorf("got !empty, want empty")
 	}
 	// Add one key/value pair with an empty key and empty value.
-	m.Set(nil, nil, nil)
+	m.Set(&db.InternalKey{}, nil, nil)
 	if m.Empty() {
 		t.Errorf("got empty, want !empty")
 	}
 }
 
-func Test1000Entries(t *testing.T) {
+func TestMemTable1000Entries(t *testing.T) {
 	// Initialize the DB.
 	const N = 1000
 	m0 := newMemTable(nil)
 	for i := 0; i < N; i++ {
-		k := []byte(strconv.Itoa(i))
+		k := ikey(strconv.Itoa(i))
 		v := []byte(strings.Repeat("x", i))
 		m0.Set(k, v, nil)
 	}
@@ -134,7 +140,7 @@ func Test1000Entries(t *testing.T) {
 	r := rand.New(rand.NewSource(0))
 	for i := 0; i < 3*N; i++ {
 		j := r.Intn(N)
-		k := []byte(strconv.Itoa(j))
+		k := ikey(strconv.Itoa(j))
 		v, err := m0.Get(k, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -168,15 +174,15 @@ func Test1000Entries(t *testing.T) {
 		"506",
 		"507",
 	}
-	x := m0.Find([]byte(wants[0]), nil)
+	x := m0.Find(ikey(wants[0]), nil)
 	for _, want := range wants {
 		if !x.Next() {
 			t.Fatalf("iter: next failed, want=%q", want)
 		}
-		if got := string(x.Key()); got != want {
+		if got := string(x.Key().UserKey); got != want {
 			t.Fatalf("iter: got %q, want %q", got, want)
 		}
-		if k := x.Key(); len(k) != cap(k) {
+		if k := x.Key().UserKey; len(k) != cap(k) {
 			t.Fatalf("iter: len(k)=%d, cap(k)=%d", len(k), cap(k))
 		}
 		if v := x.Value(); len(v) != cap(v) {

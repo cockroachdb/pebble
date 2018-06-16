@@ -47,11 +47,11 @@ func newFakeIterator(closeErr error, kvPairs ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) SeekGE(key []byte) bool {
+func (f *fakeIter) SeekGE(key *db.InternalKey) bool {
 	panic("pebble: Seek unimplemented")
 }
 
-func (f *fakeIter) SeekLE(key []byte) bool {
+func (f *fakeIter) SeekLE(key *db.InternalKey) bool {
 	panic("pebble: RSeek unimplemented")
 }
 
@@ -72,10 +72,10 @@ func (f *fakeIter) Prev() bool {
 	panic("pebble: Prev unimplemented")
 }
 
-func (f *fakeIter) Key() []byte {
+func (f *fakeIter) Key() *db.InternalKey {
 	kv := f.kvPairs[f.index]
 	i := strings.Index(kv, ":")
-	return []byte(kv[:i])
+	return &db.InternalKey{UserKey: []byte(kv[:i])}
 }
 
 func (f *fakeIter) Value() []byte {
@@ -96,25 +96,29 @@ func (f *fakeIter) Close() error {
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
 // over those splits should recover the original key/value pairs in order.
-func testIterator(t *testing.T, newFunc func(...db.Iterator) db.Iterator, splitFunc func(r *rand.Rand) [][]string) {
+func testIterator(
+	t *testing.T,
+	newFunc func(...db.InternalIterator) db.InternalIterator,
+	splitFunc func(r *rand.Rand) [][]string,
+) {
 	// Test pre-determined sub-iterators. The sub-iterators are designed
 	// so that the combined key/value pair order is the same whether the
 	// combined iterator is concatenating or merging.
 	testCases := []struct {
 		desc  string
-		iters []db.Iterator
+		iters []db.InternalIterator
 		want  string
 	}{
 		{
 			"one sub-iterator",
-			[]db.Iterator{
+			[]db.InternalIterator{
 				newFakeIterator(nil, "e:east", "w:west"),
 			},
 			"<e:east><w:west>.",
 		},
 		{
 			"two sub-iterators",
-			[]db.Iterator{
+			[]db.InternalIterator{
 				newFakeIterator(nil, "a0:0"),
 				newFakeIterator(nil, "b1:1", "b2:2"),
 			},
@@ -122,7 +126,7 @@ func testIterator(t *testing.T, newFunc func(...db.Iterator) db.Iterator, splitF
 		},
 		{
 			"empty sub-iterators",
-			[]db.Iterator{
+			[]db.InternalIterator{
 				newFakeIterator(nil),
 				newFakeIterator(nil),
 				newFakeIterator(nil),
@@ -131,7 +135,7 @@ func testIterator(t *testing.T, newFunc func(...db.Iterator) db.Iterator, splitF
 		},
 		{
 			"sub-iterator errors",
-			[]db.Iterator{
+			[]db.InternalIterator{
 				newFakeIterator(nil, "a0:0", "a1:1"),
 				newFakeIterator(errors.New("the sky is falling!"), "b2:2", "b3:3", "b4:4"),
 				newFakeIterator(errors.New("run for your lives!"), "c5:5", "c6:6"),
@@ -143,7 +147,7 @@ func testIterator(t *testing.T, newFunc func(...db.Iterator) db.Iterator, splitF
 		var b bytes.Buffer
 		iter := newFunc(tc.iters...)
 		for iter.Next() {
-			fmt.Fprintf(&b, "<%s:%s>", iter.Key(), iter.Value())
+			fmt.Fprintf(&b, "<%s:%s>", iter.Key().UserKey, iter.Value())
 		}
 		if err := iter.Close(); err != nil {
 			fmt.Fprintf(&b, "err=%v", err)
@@ -161,7 +165,7 @@ func testIterator(t *testing.T, newFunc func(...db.Iterator) db.Iterator, splitF
 		bad := false
 
 		splits := splitFunc(r)
-		iters := make([]db.Iterator, len(splits))
+		iters := make([]db.InternalIterator, len(splits))
 		for i, split := range splits {
 			iters[i] = newFakeIterator(nil, split...)
 		}
@@ -169,7 +173,7 @@ func testIterator(t *testing.T, newFunc func(...db.Iterator) db.Iterator, splitF
 
 		j := 0
 		for ; iter.Next() && j < len(testKeyValuePairs); j++ {
-			got := string(iter.Key()) + ":" + string(iter.Value())
+			got := string(iter.Key().UserKey) + ":" + string(iter.Value())
 			want := testKeyValuePairs[j]
 			if got != want {
 				bad = true
@@ -217,8 +221,8 @@ func TestConcatenatingIterator(t *testing.T) {
 }
 
 func TestMergingIterator(t *testing.T) {
-	newFunc := func(iters ...db.Iterator) db.Iterator {
-		return NewMergingIterator(db.DefaultComparer, iters...)
+	newFunc := func(iters ...db.InternalIterator) db.InternalIterator {
+		return NewMergingIterator(db.DefaultComparer.Compare, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual
