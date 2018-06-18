@@ -37,20 +37,36 @@ import (
 
 type InternalKeyKind uint8
 
+// These constants are part of the file format, and should not be changed.
 const (
-	// These constants are part of the file format, and should not be changed.
-	InternalKeyKindDelete InternalKeyKind = 0
-	InternalKeyKindSet    InternalKeyKind = 1
+	InternalKeyKindDelete  InternalKeyKind = 0
+	InternalKeyKindSet                     = 1
+	InternalKeyKindMerge                   = 2
+	InternalKeyKindLogData                 = 3
+	// InternalKeyKindColumnFamilyDeletion                       = 4
+	// InternalKeyKindColumnFamilyValue                          = 5
+	// InternalKeyKindColumnFamilyMerge                          = 6
+	// InternalKeyKindSingleDeletion                             = 7
+	// InternalKeyKindColumnFamilySingleDeletion                 = 8
+	// InternalKeyKindBeginPrepareXID                            = 9
+	// InternalKeyKindEndPrepareXID                              = 10
+	// InternalKeyKindCommitXID                                  = 11
+	// InternalKeyKindRollbackXID                                = 12
+	// InternalKeyKindNoop                                       = 13
+	// InternalKeyKindColumnFamilyRangeDeletion                  = 14
+	InternalKeyKindRangeDeletion = 15
+	// InternalKeyKindColumnFamilyBlobIndex                      = 16
+	// InternalKeyKindBlobIndex                                  = 17
 
 	// This maximum value isn't part of the file format. It's unlikely,
 	// but future extensions may increase this value.
 	//
 	// When constructing an internal key to pass to DB.Find, internalKeyComparer
 	// sorts decreasing by kind (after sorting increasing by user key and
-	// decreasing by sequence number). Thus, use internalKeyKindMax, which sorts
+	// decreasing by sequence number). Thus, use InternalKeyKindMax, which sorts
 	// 'less than or equal to' any other valid internalKeyKind, when searching
 	// for any kind of internal key formed by a certain user key and seqNum.
-	InternalKeyKindMax InternalKeyKind = 1
+	InternalKeyKindMax InternalKeyKind = 15
 
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = 255
