@@ -32,7 +32,7 @@ import (
 func length(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIterator()
+	it := s.NewIter()
 	for it.First(); it.Valid(); it.Next() {
 		count++
 	}
@@ -44,7 +44,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIterator()
+	it := s.NewIter()
 	for it.Last(); it.Valid(); it.Prev() {
 		count++
 	}
@@ -86,7 +86,7 @@ func (d *testStorage) Compare(a []byte, b uint32) int {
 func TestEmpty(t *testing.T) {
 	key := []byte("aaa")
 	l := NewSkiplist(&testStorage{}, 0)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 
@@ -104,7 +104,7 @@ func TestEmpty(t *testing.T) {
 func TestBasic(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	// Try adding values.
 	require.Nil(t, l.Add(d.add("key1")))
@@ -129,7 +129,7 @@ func TestBasic(t *testing.T) {
 func TestSkiplistAdd(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	// Add empty key.
 	require.Nil(t, l.Add(d.add("")))
@@ -166,7 +166,7 @@ func TestIteratorNext(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 
@@ -191,7 +191,7 @@ func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 
@@ -215,7 +215,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	const n = 1000
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -257,7 +257,7 @@ func TestIteratorSeekLE(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIterator()
+	it := l.NewIter()
 
 	require.False(t, it.Valid())
 	it.First()
@@ -312,7 +312,7 @@ func BenchmarkReadWrite(b *testing.B) {
 				keys: make([][]byte, 0, b.N),
 			}
 			l := NewSkiplist(d, 0)
-			it := l.NewIterator()
+			it := l.NewIter()
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 			b.ResetTimer()

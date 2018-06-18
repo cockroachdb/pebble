@@ -126,13 +126,17 @@ func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 
 // DeleteRange implements DB.DeleteRange, as documented in the pebble/db
 // package.
-func (d *DB) DeleteRange(start, end []byte, o *db.WriteOptions) error {
-	panic("pebble.DB: DeleteRange unimplemented")
+func (d *DB) DeleteRange(start, end []byte, opts *db.WriteOptions) error {
+	var batch Batch
+	batch.DeleteRange(start, end)
+	return d.Apply(batch.data, opts)
 }
 
 // Merge implements DB.Merge, as documented in the pebble/db package.
-func (d *DB) Merge(key, value []byte, o *db.WriteOptions) error {
-	panic("pebble.DB: Merge unimplemented")
+func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
+	var batch Batch
+	batch.Merge(key, value)
+	return d.Apply(batch.data, opts)
 }
 
 // Apply implements DB.Apply, as documented in the pebble/db package.
@@ -140,7 +144,8 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 	if len(repr) == 0 {
 		return nil
 	}
-	batch := Batch{data: repr}
+	var batch Batch
+	batch.data = repr
 	n := batch.count()
 	if n == invalidBatchCount {
 		return errors.New("pebble: invalid batch")
@@ -203,8 +208,8 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
 // return an error. If the batch is committed it will be applied to the DB.
-func (d *DB) NewBatch() db.Iterator {
-	panic("pebble.DB: NewBatch unimplemented")
+func (d *DB) NewBatch() *Batch {
+	return &Batch{parent: d}
 }
 
 // NewIndexedBatch returns a new empty read-write batch. Any reads on the batch
@@ -212,8 +217,8 @@ func (d *DB) NewBatch() db.Iterator {
 // be applied to the DB. An indexed batch is slower that a non-indexed batch
 // for insert operations. If you do not need to perform reads on the batch, use
 // NewBatch instead.
-func (d *DB) NewIndexedBatch() db.Iterator {
-	panic("pebble.DB: NewIndexedBatch unimplemented")
+func (d *DB) NewIndexedBatch() *Batch {
+	return newIndexedBatch(d, d.cmp)
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -435,7 +440,8 @@ func (d *DB) replayLogFile(
 		if batchBuf.Len() < batchHeaderLen {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
-		b := Batch{data: batchBuf.Bytes()}
+		var b Batch
+		b.data = batchBuf.Bytes()
 		seqNum := b.seqNum()
 		seqNum1 := seqNum + uint64(b.count())
 		if maxSeqNum < seqNum1 {

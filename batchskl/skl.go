@@ -152,6 +152,28 @@ func NewSkiplist(storage Storage, initBufSize int) *Skiplist {
 	return s
 }
 
+// Reset the skiplist to empty and re-initialize.
+func (s *Skiplist) Reset(storage Storage, initBufSize int) {
+	if initBufSize < 256 {
+		initBufSize = 256
+	}
+	*s = Skiplist{
+		storage: storage,
+		nodes:   make([]byte, 0, initBufSize),
+		height:  1,
+	}
+
+	// Allocate head and tail nodes.
+	s.head = s.newNode(maxHeight, 0, 0)
+	s.tail = s.newNode(maxHeight, 0, 0)
+
+	// Link all head/tail levels together.
+	for i := uint32(0); i < maxHeight; i++ {
+		s.setNext(s.head, i, s.tail)
+		s.setPrev(s.tail, i, s.head)
+	}
+}
+
 // Add adds a new key to the skiplist if it does not yet exist. If the record
 // already exists, then Add returns ErrRecordExists.
 func (s *Skiplist) Add(keyOffset uint32) error {
@@ -186,9 +208,9 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	return nil
 }
 
-// NewIterator returns a new Iterator object. Note that it is safe for an
-// iterator to be copied by value.
-func (s *Skiplist) NewIterator() Iterator {
+// NewIter returns a new Iterator object. Note that it is safe for an iterator
+// to be copied by value.
+func (s *Skiplist) NewIter() Iterator {
 	return Iterator{list: s}
 }
 

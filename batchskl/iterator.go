@@ -98,6 +98,11 @@ func (it *Iterator) Key() []byte {
 	return it.list.storage.Get(it.list.getKey(it.nd))
 }
 
+// KeyOffset returns the key offset at the current position.
+func (it *Iterator) KeyOffset() uint32 {
+	return it.list.getKey(it.nd)
+}
+
 // Valid returns nil iff the iterator is positioned at a valid node.
 func (it *Iterator) Valid() bool {
 	return it.list != nil && it.nd != it.list.head && it.nd != it.list.tail

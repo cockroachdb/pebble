@@ -43,20 +43,20 @@ const (
 	InternalKeyKindSet                     = 1
 	InternalKeyKindMerge                   = 2
 	InternalKeyKindLogData                 = 3
-	// InternalKeyKindColumnFamilyDeletion                       = 4
-	// InternalKeyKindColumnFamilyValue                          = 5
-	// InternalKeyKindColumnFamilyMerge                          = 6
-	// InternalKeyKindSingleDeletion                             = 7
-	// InternalKeyKindColumnFamilySingleDeletion                 = 8
-	// InternalKeyKindBeginPrepareXID                            = 9
-	// InternalKeyKindEndPrepareXID                              = 10
-	// InternalKeyKindCommitXID                                  = 11
-	// InternalKeyKindRollbackXID                                = 12
-	// InternalKeyKindNoop                                       = 13
-	// InternalKeyKindColumnFamilyRangeDeletion                  = 14
-	InternalKeyKindRangeDeletion = 15
-	// InternalKeyKindColumnFamilyBlobIndex                      = 16
-	// InternalKeyKindBlobIndex                                  = 17
+	// InternalKeyKindColumnFamilyDeletion                     = 4
+	// InternalKeyKindColumnFamilyValue                        = 5
+	// InternalKeyKindColumnFamilyMerge                        = 6
+	// InternalKeyKindSingleDelete                             = 7
+	// InternalKeyKindColumnFamilySingleDelete                 = 8
+	// InternalKeyKindBeginPrepareXID                          = 9
+	// InternalKeyKindEndPrepareXID                            = 10
+	// InternalKeyKindCommitXID                                = 11
+	// InternalKeyKindRollbackXID                              = 12
+	// InternalKeyKindNoop                                     = 13
+	// InternalKeyKindColumnFamilyRangeDelete                  = 14
+	InternalKeyKindRangeDelete = 15
+	// InternalKeyKindColumnFamilyBlobIndex                    = 16
+	// InternalKeyKindBlobIndex                                = 17
 
 	// This maximum value isn't part of the file format. It's unlikely,
 	// but future extensions may increase this value.

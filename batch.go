@@ -6,18 +6,24 @@ package pebble
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
+	"unsafe"
 
+	"github.com/petermattis/pebble/batchskl"
 	"github.com/petermattis/pebble/db"
 )
 
-const batchHeaderLen = 12
+const (
+	batchHeaderLen    = 12
+	invalidBatchCount = 1<<32 - 1
+)
 
-const invalidBatchCount = 1<<32 - 1
+// ErrNotIndexed means that a read operation on a batch failed because the
+// batch is not indexed and thus doesn't support reads.
+var ErrNotIndexed = errors.New("pebble: batch not indexed")
 
-// Batch is a sequence of Sets and/or Deletes that are applied atomically.
-type Batch struct {
-	// The parent writer to which the batch will be committed.
-	parent db.Writer
+type batchStorage struct {
 	// Data is the wire format of a batch's log entry:
 	//   - 8 bytes for a sequence number of the first batch element,
 	//     or zeroes if the batch has not yet been applied,
@@ -29,25 +35,136 @@ type Batch struct {
 	//     - the varint-string value (if kind == set).
 	// The sequence number and count are stored in little-endian order.
 	data []byte
+	cmp  db.Compare
+}
 
-	// TODO(peter): Add an optional skiplist keyed by offset into data of the
-	// entry. If the Batch is configured to track mutations we index the entries
-	// such that they can be iterated over in key (and descending insertion)
-	// order.
-	indexed bool
+// Get implements Storage.Get, as documented in the pebble/batchskl package.
+func (s *batchStorage) Get(offset uint32) []byte {
+	p := s.data[offset+1:]
+	v, n := binary.Uvarint(p)
+	if n <= 0 {
+		panic("unable to decode varint")
+	}
+	p = p[n:]
+	if v > uint64(len(p)) {
+		panic("corrupted batch entry")
+	}
+	return p[:v]
+}
+
+// Prefix implements Storage.Prefix, as documented in the pebble/batchskl
+// package.
+func (s *batchStorage) Prefix(key []byte) batchskl.KeyPrefix {
+	// TODO(peter): This needs to be part of the db.Comparer package as the
+	// specifics of the comparison routine affect how a fixed prefix can be
+	// extracted.
+	var v batchskl.KeyPrefix
+	n := int(unsafe.Sizeof(batchskl.KeyPrefix(0)))
+	if n > len(key) {
+		n = len(key)
+	}
+	for _, b := range key[:n] {
+		v <<= 8
+		v |= batchskl.KeyPrefix(b)
+	}
+	return v
+}
+
+// Compare implements Storage.Compare, as documented in the pebble/batchskl
+// package.
+func (s *batchStorage) Compare(a []byte, b uint32) int {
+	// The key "a" is always the search key or the newer key being inserted. If
+	// it is equal to the existing key consider it smaller so that it sorts
+	// first.
+	c := s.cmp(a, s.Get(b))
+	if c <= 0 {
+		return -1
+	}
+	return 1
+}
+
+// Batch is a sequence of Sets and/or Deletes that are applied atomically.
+type Batch struct {
+	batchStorage
+
+	// The parent writer to which the batch will be committed.
+	parent db.Writer
+
+	// An optional skiplist keyed by offset into data of the entry.
+	index *batchskl.Skiplist
 }
 
 // Batch implements the db.Reader interface.
 var _ db.Reader = (*Batch)(nil)
 
+func newIndexedBatch(parent db.Writer, cmp db.Compare) *Batch {
+	var b struct {
+		batch Batch
+		index batchskl.Skiplist
+	}
+	b.batch.cmp = cmp
+	b.batch.parent = parent
+	b.batch.index = &b.index
+	b.batch.index.Reset(&b.batch.batchStorage, 0)
+	return &b.batch
+}
+
 // Apply implements DB.Apply, as documented in the pebble/db package.
-func (b *Batch) Apply(batch []byte) error {
-	panic("pebble.Batch: Apply unimplemented")
+func (b *Batch) Apply(repr []byte) error {
+	if len(repr) == 0 {
+		return nil
+	}
+	if len(repr) < batchHeaderLen {
+		return errors.New("pebble: invalid batch")
+	}
+
+	offset := len(b.data)
+	if offset == 0 {
+		b.init(offset)
+		offset = batchHeaderLen
+	}
+	b.data = append(b.data, repr[batchHeaderLen:]...)
+
+	count := binary.LittleEndian.Uint32(repr[8:12])
+	b.setCount(b.count() + count)
+
+	if b.index != nil {
+		start := batchIter(b.data[offset:])
+		for iter := batchIter(start); ; {
+			if _, _, _, ok := iter.next(); !ok {
+				break
+			}
+			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&start[0]))
+			if err := b.index.Add(uint32(offset)); err != nil {
+				panic(err)
+			}
+		}
+	}
+	return nil
 }
 
 // Get implements DB.Get, as documented in the pebble/db package.
 func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
-	panic("pebble.Batch: Get unimplemented")
+	if b.index == nil {
+		return nil, ErrNotIndexed
+	}
+	// Loop over the entries with keys >= the target key. The indexing of the
+	// entries returns equal keys in reverse order of insertion. That is, the
+	// last key added will be seen first.
+	iter := b.index.NewIter()
+	iter.SeekGE(key)
+	for ; iter.Valid(); iter.Next() {
+		_, ekey, value, ok := b.decode(iter.KeyOffset())
+		if !ok {
+			return nil, fmt.Errorf("corrupted batch")
+		}
+		if b.cmp(key, ekey) > 0 {
+			break
+		}
+		// Invariant: b.cmp(key, ekey) == 0.
+		return value, nil
+	}
+	return nil, db.ErrNotFound
 }
 
 // Set adds an action to the batch that sets the key to map to the value.
@@ -56,9 +173,15 @@ func (b *Batch) Set(key, value []byte) {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if b.increment() {
+		offset := uint32(len(b.data))
 		b.data = append(b.data, byte(db.InternalKeyKindSet))
 		b.appendStr(key)
 		b.appendStr(value)
+		if b.index != nil {
+			if err := b.index.Add(offset); err != nil {
+				panic(err)
+			}
+		}
 	}
 }
 
@@ -66,7 +189,20 @@ func (b *Batch) Set(key, value []byte) {
 // value. The details of the merge are dependent upon the configured merge
 // operator.
 func (b *Batch) Merge(key, value []byte) {
-	panic("pebble.Batch: Merge unimplemented")
+	if len(b.data) == 0 {
+		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if b.increment() {
+		offset := uint32(len(b.data))
+		b.data = append(b.data, byte(db.InternalKeyKindMerge))
+		b.appendStr(key)
+		b.appendStr(value)
+		if b.index != nil {
+			if err := b.index.Add(offset); err != nil {
+				panic(err)
+			}
+		}
+	}
 }
 
 // Delete adds an action to the batch that deletes the entry for key.
@@ -75,30 +211,55 @@ func (b *Batch) Delete(key []byte) {
 		b.init(len(key) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if b.increment() {
+		offset := uint32(len(b.data))
 		b.data = append(b.data, byte(db.InternalKeyKindDelete))
 		b.appendStr(key)
+		if b.index != nil {
+			if err := b.index.Add(offset); err != nil {
+				panic(err)
+			}
+		}
 	}
 }
 
 // DeleteRange implements DB.DeleteRange, as documented in the pebble/db
 // package.
 func (b *Batch) DeleteRange(start, end []byte) {
-	panic("pebble.Batch: DeleteRange unimplemented")
+	if len(b.data) == 0 {
+		b.init(len(start) + len(end) + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if b.increment() {
+		offset := uint32(len(b.data))
+		b.data = append(b.data, byte(db.InternalKeyKindRangeDelete))
+		b.appendStr(start)
+		b.appendStr(end)
+		if b.index != nil {
+			if err := b.index.Add(offset); err != nil {
+				panic(err)
+			}
+		}
+	}
 }
 
 // Find implements DB.Find, as documented in the pebble/db package.
 func (b *Batch) Find(key []byte, o *db.ReadOptions) db.Iterator {
+	if b.index == nil {
+		return newErrorIter(ErrNotIndexed)
+	}
 	panic("pebble.Batch: Findunimplemented")
 }
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
+	if b.index == nil {
+		return newErrorIter(ErrNotIndexed)
+	}
 	panic("pebble.Batch: NewIter unimplemented")
 }
 
 // Commit applies the batch to its parent writer.
 func (b *Batch) Commit(o *db.WriteOptions) error {
-	panic("pebble.Batch: Commit unimplemented")
+	return b.parent.Apply(b.data, o)
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -109,7 +270,7 @@ func (b *Batch) Close() error {
 // Indexed returns true if the batch is indexed (i.e. supports read
 // operations).
 func (b *Batch) Indexed() bool {
-	return b.indexed
+	return b.index != nil
 }
 
 func (b *Batch) init(cap int) {
@@ -163,12 +324,53 @@ func (b *Batch) seqNum() uint64 {
 	return binary.LittleEndian.Uint64(b.seqNumData())
 }
 
+func (b *Batch) setCount(v uint32) {
+	binary.LittleEndian.PutUint32(b.countData(), v)
+}
+
 func (b *Batch) count() uint32 {
 	return binary.LittleEndian.Uint32(b.countData())
 }
 
 func (b *Batch) iter() batchIter {
 	return b.data[batchHeaderLen:]
+}
+
+func (b *Batch) decode(offset uint32) (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
+	p := b.data[offset:]
+	if len(p) == 0 {
+		return 0, nil, nil, false
+	}
+	kind, p = db.InternalKeyKind(p[0]), p[1:]
+	if kind > db.InternalKeyKindMax {
+		return 0, nil, nil, false
+	}
+	p, ukey, ok = batchDecodeStr(p)
+	if !ok {
+		return 0, nil, nil, false
+	}
+	switch kind {
+	case db.InternalKeyKindSet,
+		db.InternalKeyKindMerge,
+		db.InternalKeyKindRangeDelete:
+		_, value, ok = batchDecodeStr(p)
+		if !ok {
+			return 0, nil, nil, false
+		}
+	}
+	return kind, ukey, value, true
+}
+
+func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
+	v, n := binary.Uvarint(data)
+	if n <= 0 {
+		return nil, nil, false
+	}
+	data = data[n:]
+	if v > uint64(len(data)) {
+		return nil, nil, false
+	}
+	return data[v:], data[:v], true
 }
 
 type batchIter []byte
@@ -188,7 +390,8 @@ func (t *batchIter) next() (kind db.InternalKeyKind, ukey []byte, value []byte, 
 	if !ok {
 		return 0, nil, nil, false
 	}
-	if kind != db.InternalKeyKindDelete {
+	switch kind {
+	case db.InternalKeyKindSet, db.InternalKeyKindRangeDelete:
 		value, ok = t.nextStr()
 		if !ok {
 			return 0, nil, nil, false

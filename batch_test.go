@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"encoding/binary"
 	"strings"
 	"testing"
@@ -88,7 +89,8 @@ func TestBatchIncrement(t *testing.T) {
 	for _, tc := range testCases {
 		var buf [12]byte
 		binary.LittleEndian.PutUint32(buf[8:12], tc)
-		b := Batch{data: buf[:]}
+		var b Batch
+		b.data = buf[:]
 		b.increment()
 		got := binary.LittleEndian.Uint32(buf[8:12])
 		want := tc + 1
@@ -99,4 +101,87 @@ func TestBatchIncrement(t *testing.T) {
 			t.Errorf("input=%d: got %d, want %d", tc, got, want)
 		}
 	}
+}
+
+func TestBatchGet(t *testing.T) {
+	testCases := []struct {
+		key      []byte
+		value    []byte
+		expected []byte
+	}{
+		{[]byte("a"), []byte("b"), []byte("b")},
+		{[]byte("a"), []byte("c"), []byte("c")},
+		{[]byte("a"), nil, nil},
+		{[]byte("a"), []byte("d"), []byte("d")},
+	}
+
+	b := newIndexedBatch(nil, bytes.Compare)
+	for _, c := range testCases {
+		if c.value == nil {
+			b.Delete(c.key)
+		} else {
+			b.Set(c.key, c.value)
+		}
+		v, err := b.Get(c.key, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.expected == nil && v != nil {
+			t.Fatalf("unexpected value: %q", v)
+		} else if string(c.expected) != string(v) {
+			t.Fatalf("expected %q, but found %q", c.expected, v)
+		}
+	}
+}
+
+func BenchmarkBatchSet(b *testing.B) {
+	value := make([]byte, 10)
+	for i := range value {
+		value[i] = byte(i)
+	}
+	key := make([]byte, 8)
+
+	b.ResetTimer()
+
+	const batchSize = 1000
+	for i := 0; i < b.N; i += batchSize {
+		end := i + batchSize
+		if end > b.N {
+			end = b.N
+		}
+
+		var batch Batch
+		for j := i; j < end; j++ {
+			binary.BigEndian.PutUint64(key, uint64(j))
+			batch.Set(key, value)
+		}
+	}
+
+	b.StopTimer()
+}
+
+func BenchmarkIndexedBatchSet(b *testing.B) {
+	value := make([]byte, 10)
+	for i := range value {
+		value[i] = byte(i)
+	}
+	key := make([]byte, 8)
+
+	b.ResetTimer()
+
+	const batchSize = 1000
+	for i := 0; i < b.N; i += batchSize {
+		end := i + batchSize
+		if end > b.N {
+			end = b.N
+		}
+
+		batch := newIndexedBatch(nil, bytes.Compare)
+		for j := i; j < end; j++ {
+			binary.BigEndian.PutUint64(key, uint64(j))
+			batch.Set(key, value)
+		}
+	}
+
+	b.StopTimer()
 }
