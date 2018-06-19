@@ -66,15 +66,15 @@ func (d *testStorage) Get(offset uint32) []byte {
 	return d.keys[offset]
 }
 
-func (d *testStorage) Prefix(key []byte) KeyPrefix {
-	var v KeyPrefix
-	n := keyPrefixSize
+func (d *testStorage) InlineKey(key []byte) InlineKey {
+	var v InlineKey
+	n := inlineKeySize
 	if n > len(key) {
 		n = len(key)
 	}
 	for _, b := range key[:n] {
 		v <<= 8
-		v |= KeyPrefix(b)
+		v |= InlineKey(b)
 	}
 	return v
 }

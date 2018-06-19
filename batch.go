@@ -47,20 +47,20 @@ func (s *batchStorage) Get(offset uint32) []byte {
 	return key
 }
 
-// Prefix implements Storage.Prefix, as documented in the pebble/batchskl
+// InlineKey implements Storage.InlineKey, as documented in the pebble/batchskl
 // package.
-func (s *batchStorage) Prefix(key []byte) batchskl.KeyPrefix {
+func (s *batchStorage) InlineKey(key []byte) batchskl.InlineKey {
 	// TODO(peter): This needs to be part of the db.Comparer package as the
 	// specifics of the comparison routine affect how a fixed prefix can be
 	// extracted.
-	var v batchskl.KeyPrefix
-	n := int(unsafe.Sizeof(batchskl.KeyPrefix(0)))
+	var v batchskl.InlineKey
+	n := int(unsafe.Sizeof(batchskl.InlineKey(0)))
 	if n > len(key) {
 		n = len(key)
 	}
 	for _, b := range key[:n] {
 		v <<= 8
-		v |= batchskl.KeyPrefix(b)
+		v |= batchskl.InlineKey(b)
 	}
 	return v
 }

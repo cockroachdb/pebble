@@ -46,7 +46,7 @@ func (it *Iterator) Close() error {
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
 func (it *Iterator) SeekGE(key []byte) (found bool) {
-	_, it.nd, found = it.seekForBaseSplice(key, it.list.storage.Prefix(key))
+	_, it.nd, found = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
 	return found
 }
 
@@ -54,7 +54,7 @@ func (it *Iterator) SeekGE(key []byte) (found bool) {
 // to the given key. Returns true if the given key exists and false otherwise.
 func (it *Iterator) SeekLE(key []byte) (found bool) {
 	var prev, next uint32
-	prev, next, found = it.seekForBaseSplice(key, it.list.storage.Prefix(key))
+	prev, next, found = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
 
 	if found {
 		it.nd = next
@@ -109,11 +109,11 @@ func (it *Iterator) Valid() bool {
 }
 
 func (it *Iterator) seekForBaseSplice(
-	key []byte, prefix KeyPrefix,
+	key []byte, inlineKey InlineKey,
 ) (prev, next uint32, found bool) {
 	prev = it.list.head
 	for level := it.list.height - 1; ; level-- {
-		prev, next, found = it.list.findSpliceForLevel(key, prefix, level, prev)
+		prev, next, found = it.list.findSpliceForLevel(key, inlineKey, level, prev)
 		if found {
 			break
 		}

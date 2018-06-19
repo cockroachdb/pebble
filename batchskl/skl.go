@@ -66,7 +66,7 @@ const (
 	maxHeight     = 20
 	maxNodeSize   = int(unsafe.Sizeof(node{}))
 	linksSize     = int(unsafe.Sizeof(links{}))
-	keyPrefixSize = int(unsafe.Sizeof(KeyPrefix(0)))
+	inlineKeySize = int(unsafe.Sizeof(InlineKey(0)))
 )
 
 var ErrExists = errors.New("record with this key already exists")
@@ -76,17 +76,21 @@ type links struct {
 	prev uint32
 }
 
-type KeyPrefix uint64
+// InlineKey is a prefix of a user key that is stored inline with the skiplist
+// node. Storing a portion of the key inline removes a cache miss for accessing
+// keys during seeks in the common case if inequality for the inline key
+// comparison.
+type InlineKey uint64
 
 type node struct {
 	// The offset of the key in storage. See Storage.Get.
 	key uint32
-	// A fixed 8-byte prefix of the key, used to avoid retrieval of the key
+	// A fixed 8-byte inlineKey of the key, used to avoid retrieval of the key
 	// during seek operations. The key retrieval can be expensive purely due to
-	// cache misses while the prefix stored here will be in the same cache line
+	// cache misses while the inlineKey stored here will be in the same cache line
 	// as the key and the links making accessing and comparing against it almost
 	// free.
-	prefix KeyPrefix
+	inlineKey InlineKey
 	// Most nodes do not need to use the full height of the link tower, since the
 	// probability of each successive level decreases exponentially. Because
 	// these elements are never accessed, they do not need to be allocated.
@@ -98,7 +102,7 @@ type node struct {
 // Storage ...
 type Storage interface {
 	Get(offset uint32) []byte
-	Prefix(key []byte) KeyPrefix
+	InlineKey(key []byte) InlineKey
 	Compare(a []byte, b uint32) int
 }
 
@@ -178,15 +182,15 @@ func (s *Skiplist) Reset(storage Storage, initBufSize int) {
 // already exists, then Add returns ErrRecordExists.
 func (s *Skiplist) Add(keyOffset uint32) error {
 	key := s.storage.Get(keyOffset)
-	keyPrefix := s.storage.Prefix(key)
+	inlineKey := s.storage.InlineKey(key)
 
 	var spl [maxHeight]splice
-	if s.findSplice(key, keyPrefix, &spl) {
+	if s.findSplice(key, inlineKey, &spl) {
 		return ErrExists
 	}
 
 	height := s.randomHeight()
-	nd := s.newNode(height, keyOffset, keyPrefix)
+	nd := s.newNode(height, keyOffset, inlineKey)
 	// Increase s.height as necessary.
 	for ; s.height < height; s.height++ {
 		spl[s.height].next = s.tail
@@ -214,7 +218,7 @@ func (s *Skiplist) NewIter() Iterator {
 	return Iterator{list: s}
 }
 
-func (s *Skiplist) newNode(height, key uint32, prefix KeyPrefix) uint32 {
+func (s *Skiplist) newNode(height, key uint32, inlineKey InlineKey) uint32 {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
@@ -224,7 +228,7 @@ func (s *Skiplist) newNode(height, key uint32, prefix KeyPrefix) uint32 {
 	nd := s.node(offset)
 
 	nd.key = key
-	nd.prefix = prefix
+	nd.inlineKey = inlineKey
 	return offset
 }
 
@@ -259,13 +263,13 @@ func (s *Skiplist) randomHeight() uint32 {
 }
 
 func (s *Skiplist) findSplice(
-	key []byte, prefix KeyPrefix, spl *[maxHeight]splice,
+	key []byte, inlineKey InlineKey, spl *[maxHeight]splice,
 ) (found bool) {
 	var prev, next uint32
 	prev = s.head
 
 	for level := s.height - 1; ; level-- {
-		prev, next, found = s.findSpliceForLevel(key, prefix, level, prev)
+		prev, next, found = s.findSpliceForLevel(key, inlineKey, level, prev)
 		spl[level].init(prev, next)
 		if level == 0 {
 			break
@@ -276,7 +280,7 @@ func (s *Skiplist) findSplice(
 }
 
 func (s *Skiplist) findSpliceForLevel(
-	key []byte, prefix KeyPrefix, level, start uint32,
+	key []byte, inlineKey InlineKey, level, start uint32,
 ) (prev, next uint32, found bool) {
 	prev = start
 
@@ -288,12 +292,12 @@ func (s *Skiplist) findSpliceForLevel(
 			break
 		}
 
-		nextPrefix := s.getKeyPrefix(next)
-		if prefix < nextPrefix {
+		nextInlineKey := s.getInlineKey(next)
+		if inlineKey < nextInlineKey {
 			// We are done for this level, since prev.key < key < next.key.
 			break
 		}
-		if prefix == nextPrefix {
+		if inlineKey == nextInlineKey {
 			cmp := s.storage.Compare(key, s.getKey(next))
 			if cmp == 0 {
 				// Equality case.
@@ -317,8 +321,8 @@ func (s *Skiplist) getKey(nd uint32) uint32 {
 	return s.node(nd).key
 }
 
-func (s *Skiplist) getKeyPrefix(nd uint32) KeyPrefix {
-	return s.node(nd).prefix
+func (s *Skiplist) getInlineKey(nd uint32) InlineKey {
+	return s.node(nd).inlineKey
 }
 
 func (s *Skiplist) getNext(nd, h uint32) uint32 {
