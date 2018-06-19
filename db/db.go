@@ -109,24 +109,9 @@ type Reader interface {
 	// it is safe to modify the contents of the argument after Get returns.
 	Get(key []byte, o *ReadOptions) (value []byte, err error)
 
-	// Find returns an iterator positioned before the first key/value pair whose
-	// key is greater than or equal to the given key. There may be no such pair,
-	// in which case the iterator will return false on Next.
-	//
-	// Any error encountered will be implicitly returned via the iterator. An
-	// error-iterator will yield no key/value pairs and closing that iterator
-	// will return that error.
-	//
-	// Equivalent to NewIter(o) -> Seek(key).
-	//
-	// It is safe to modify the contents of the argument after Find returns.
-	Find(key []byte, o *ReadOptions) Iterator
-
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
-	// return false). The iterator can be positioned via a call to Seek, RSeek,
-	// First or Last.
-	//
-	// It is safe to modify the contents of the argument after Find returns.
+	// return false). The iterator can be positioned via a call to SeekGE,
+	// SeekLE, First or Last.
 	NewIter(o *ReadOptions) Iterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader

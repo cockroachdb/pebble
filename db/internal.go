@@ -277,7 +277,7 @@ type InternalReader interface {
 	// error-iterator will yield no key/value pairs and closing that iterator
 	// will return that error.
 	//
-	// Equivalent to NewIter(o) -> Seek(key).
+	// Equivalent to NewIter(o) -> SeekGE(key).
 	//
 	// It is safe to modify the contents of the argument after Find returns.
 	Find(key *InternalKey, o *ReadOptions) InternalIterator
@@ -285,8 +285,6 @@ type InternalReader interface {
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to Seek, RSeek,
 	// First or Last.
-	//
-	// It is safe to modify the contents of the argument after Find returns.
 	NewIter(o *ReadOptions) InternalIterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader
