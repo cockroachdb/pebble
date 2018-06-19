@@ -30,9 +30,9 @@ type batchStorage struct {
 	//   - 4 bytes for the count: the number of elements in the batch,
 	//     or "\xff\xff\xff\xff" if the batch is invalid,
 	//   - count elements, being:
-	//     - one byte for the kind: delete (0) or set (1),
+	//     - one byte for the kind
 	//     - the varint-string user key,
-	//     - the varint-string value (if kind == set).
+	//     - the varint-string value (if kind != delete).
 	// The sequence number and count are stored in little-endian order.
 	data []byte
 	cmp  db.Compare
@@ -179,6 +179,7 @@ func (b *Batch) Set(key, value []byte) {
 		b.appendStr(value)
 		if b.index != nil {
 			if err := b.index.Add(offset); err != nil {
+				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
 		}
@@ -199,6 +200,7 @@ func (b *Batch) Merge(key, value []byte) {
 		b.appendStr(value)
 		if b.index != nil {
 			if err := b.index.Add(offset); err != nil {
+				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
 		}
@@ -216,6 +218,7 @@ func (b *Batch) Delete(key []byte) {
 		b.appendStr(key)
 		if b.index != nil {
 			if err := b.index.Add(offset); err != nil {
+				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
 		}
@@ -235,6 +238,7 @@ func (b *Batch) DeleteRange(start, end []byte) {
 		b.appendStr(end)
 		if b.index != nil {
 			if err := b.index.Add(offset); err != nil {
+				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
 		}
