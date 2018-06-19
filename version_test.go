@@ -521,7 +521,11 @@ func TestVersion(t *testing.T) {
 			if !ok {
 				return nil, errors.New("no such file")
 			}
-			return d.Find(ikey, nil), nil
+			iter := d.NewIter(nil)
+			iter.SeekGE(ikey)
+			// TODO(peter): remove this oddity.
+			iter.Prev()
+			return iter, nil
 		})
 
 		v := version{}

@@ -431,6 +431,7 @@ func (r *Reader) Find(key *db.InternalKey, o *db.ReadOptions) db.InternalIterato
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (r *Reader) NewIter(o *db.ReadOptions) db.InternalIterator {
+	panic("not reached")
 	// TODO(peter): don't seek on the new iterator.
 	return r.find(nil, o, nil)
 }

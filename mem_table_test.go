@@ -16,8 +16,8 @@ import (
 
 // count returns the number of entries in a DB.
 func count(d db.InternalReader) (n int) {
-	x := d.Find(nil, nil)
-	for x.Next() {
+	x := d.NewIter(nil)
+	for x.First(); x.Valid(); x.Next() {
 		n++
 	}
 	if x.Close() != nil {
@@ -34,8 +34,8 @@ func ikey(s string) *db.InternalKey {
 
 // compact compacts a MemTable.
 func compact(m *memTable) (*memTable, error) {
-	n, x := newMemTable(nil), m.Find(nil, nil)
-	for x.Next() {
+	n, x := newMemTable(nil), m.NewIter(nil)
+	for x.First(); x.Valid(); x.Next() {
 		if err := n.Set(x.Key(), x.Value(), nil); err != nil {
 			return nil, err
 		}
@@ -75,8 +75,8 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Check an iterator.
-	s, x := "", m.Find(ikey("mango"), nil)
-	for x.Next() {
+	s, x := "", m.NewIter(nil)
+	for x.SeekGE(ikey("mango")); x.Valid(); x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
 	if want := "peach/yellow.plum/purple."; s != want {
@@ -174,9 +174,10 @@ func TestMemTable1000Entries(t *testing.T) {
 		"506",
 		"507",
 	}
-	x := m0.Find(ikey(wants[0]), nil)
+	x := m0.NewIter(nil)
+	x.SeekGE(ikey(wants[0]))
 	for _, want := range wants {
-		if !x.Next() {
+		if !x.Valid() {
 			t.Fatalf("iter: next failed, want=%q", want)
 		}
 		if got := string(x.Key().UserKey); got != want {
@@ -188,6 +189,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		if v := x.Value(); len(v) != cap(v) {
 			t.Fatalf("iter: len(v)=%d, cap(v)=%d", len(v), cap(v))
 		}
+		x.Next()
 	}
 	if err := x.Close(); err != nil {
 		t.Fatalf("close: %v", err)

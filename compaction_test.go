@@ -561,7 +561,7 @@ func TestCompaction(t *testing.T) {
 
 	get1 := func(x db.InternalReader) (ret string) {
 		b := &bytes.Buffer{}
-		iter := x.NewIter(nil)
+		iter := x.Find(nil, nil)
 		for iter.Next() {
 			b.Write(iter.Key().UserKey)
 		}

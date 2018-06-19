@@ -52,6 +52,7 @@ func (m *memTable) Set(key *db.InternalKey, value []byte, o *db.WriteOptions) er
 func (m *memTable) Find(key *db.InternalKey, o *db.ReadOptions) db.InternalIterator {
 	t := m.NewIter(o)
 	t.SeekGE(key)
+	// TODO(peter): remove this oddity.
 	t.Prev()
 	return t
 }
