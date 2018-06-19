@@ -40,16 +40,11 @@ type batchStorage struct {
 
 // Get implements Storage.Get, as documented in the pebble/batchskl package.
 func (s *batchStorage) Get(offset uint32) []byte {
-	p := s.data[offset+1:]
-	v, n := binary.Uvarint(p)
-	if n <= 0 {
-		panic("unable to decode varint")
-	}
-	p = p[n:]
-	if v > uint64(len(p)) {
+	_, key, ok := batchDecodeStr(s.data[offset+1:])
+	if !ok {
 		panic("corrupted batch entry")
 	}
-	return p[:v]
+	return key
 }
 
 // Prefix implements Storage.Prefix, as documented in the pebble/batchskl
