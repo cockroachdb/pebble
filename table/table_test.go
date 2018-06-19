@@ -459,11 +459,12 @@ func TestBlockIter(t *testing.T) {
 		{3, "c"},
 	}
 	for _, tc := range testcases {
-		ik := db.InternalKey{UserKey: []byte(tc.key)}
-		i, err := k.seek(bytes.Compare, raw{}, &ik)
+		i, err := newBlockIter(bytes.Compare, raw{}, k)
 		if err != nil {
 			t.Fatal(err)
 		}
+		ik := db.InternalKey{UserKey: []byte(tc.key)}
+		i.SeekGE(&ik)
 		for j, kWant := range []string{"apple", "apricot", "banana"}[tc.index:] {
 			if !i.Next() {
 				t.Fatalf("key=%q, index=%d, j=%d: Next got false, want true", tc.key, tc.index, j)

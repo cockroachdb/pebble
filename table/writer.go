@@ -147,7 +147,7 @@ type Writer struct {
 	blockRestartInterval int
 	blockSize            int
 	cmp                  db.Comparer
-	compare              compare
+	compare              db.Compare
 	compression          db.Compression
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
