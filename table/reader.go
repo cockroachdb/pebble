@@ -125,7 +125,7 @@ func (i *blockIter) SeekGE(key *db.InternalKey) bool {
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
 func (i *blockIter) SeekLE(key *db.InternalKey) bool {
-	panic("pebble/table: RSeek unimplemented")
+	panic("pebble/table: SeekLE unimplemented")
 }
 
 // First implements Iterator.First, as documented in the pebble/db package.
@@ -261,12 +261,14 @@ func (i *tableIter) nextBlock(key *db.InternalKey, f *filterReader) bool {
 
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
 func (i *tableIter) SeekGE(key *db.InternalKey) bool {
-	panic("pebble/table: Seek unimplemented")
+	i.index.SeekGE(key)
+	i.nextBlock(key, nil /* filter */)
+	return false
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
 func (i *tableIter) SeekLE(key *db.InternalKey) bool {
-	panic("pebble/table: RSeek unimplemented")
+	panic("pebble/table: SeekLE unimplemented")
 }
 
 // First implements Iterator.First, as documented in the pebble/db package.

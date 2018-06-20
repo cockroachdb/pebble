@@ -99,7 +99,11 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 		if mem == nil {
 			continue
 		}
-		value, conclusive, err := internalGet(mem.Find(&ikey, opts), d.cmp, key)
+		iter := mem.NewIter(opts)
+		iter.SeekGE(&ikey)
+		// TODO(peter): Remove the need for Prev().
+		iter.Prev()
+		value, conclusive, err := internalGet(iter, d.cmp, key)
 		if conclusive {
 			return value, err
 		}
