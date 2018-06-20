@@ -34,8 +34,8 @@ To return the value for a key:
 
 To count the number of entries in a table:
 
-	i, n := r.Find(nil, ropts), 0
-	for i.Next() {
+	i, n := r.NewIter(ropts), 0
+	for i.First(); i.Valid(); i.Next() {
 		n++
 	}
 	if err := i.Close(); err != nil {

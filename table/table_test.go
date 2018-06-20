@@ -126,8 +126,9 @@ func check(f storage.File, fp db.FilterPolicy) error {
 		}
 
 		// Check using Find.
-		i := r.Find(&ik, nil)
-		if !i.Next() || string(i.Key().UserKey) != k {
+		i := r.NewIter(nil)
+		i.SeekGE(&ik)
+		if !i.Valid() || string(i.Key().UserKey) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
 		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
@@ -153,8 +154,9 @@ func check(f storage.File, fp db.FilterPolicy) error {
 		}
 
 		// Check using Find.
-		i := r.Find(&ik, nil)
-		if i.Next() && s == string(i.Key().UserKey) {
+		i := r.NewIter(nil)
+		i.SeekGE(&ik)
+		if i.Valid() && s == string(i.Key().UserKey) {
 			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
 		if err := i.Close(); err != nil {
@@ -180,8 +182,8 @@ func check(f storage.File, fp db.FilterPolicy) error {
 	}
 	for _, ct := range countTests {
 		ik := db.InternalKey{UserKey: []byte(ct.start)}
-		n, i := 0, r.Find(&ik, nil)
-		for i.Next() {
+		n, i := 0, r.NewIter(nil)
+		for i.SeekGE(&ik); i.Valid(); i.Next() {
 			n++
 		}
 		if err := i.Close(); err != nil {
@@ -518,8 +520,8 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				continue
 			}
 			r := NewReader(rf, nil, raw{})
-			i := r.Find(nil, nil)
-			for i.Next() {
+			i := r.NewIter(nil)
+			for i.First(); i.Valid(); i.Next() {
 				got++
 			}
 			if err := i.Close(); err != nil {

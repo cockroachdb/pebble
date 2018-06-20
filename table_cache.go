@@ -53,8 +53,7 @@ func (c *tableCache) find(fileNum uint64, ikey *db.InternalKey) (db.InternalIter
 		return nil, x.err
 	}
 	n.result <- x
-	iter := x.reader.NewIter(nil)
-	iter.SeekGE(ikey)
+	iter := x.reader.Find(ikey, nil)
 	return &tableCacheIter{
 		InternalIterator: iter,
 		cache:            c,
