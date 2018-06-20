@@ -213,21 +213,17 @@ func (InternalKeyCoder) Decode(buf []byte) InternalKey {
 type InternalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key.
-	// It returns whether such a pair exists.
-	SeekGE(key *InternalKey) bool
+	SeekGE(key *InternalKey)
 
 	// SeekLE moves the iterator to the first key/value pair whose key is less
 	// than or equal to the given key.
-	// It returns whether such a pair exists.
-	SeekLE(key *InternalKey) bool
+	SeekLE(key *InternalKey)
 
 	// First moves the iterator the the first key/value pair.
-	// It returns whether such a pair exists.
-	First() bool
+	First()
 
 	// Last moves the iterator the the last key/value pair.
-	// It returns whether such a pair exists.
-	Last() bool
+	Last()
 
 	// Next moves the iterator to the next key/value pair.
 	// It returns whether the iterator is exhausted.

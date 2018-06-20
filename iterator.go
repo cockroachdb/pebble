@@ -74,19 +74,19 @@ type concatenatingIter struct {
 	err   error
 }
 
-func (c *concatenatingIter) SeekGE(key *db.InternalKey) bool {
+func (c *concatenatingIter) SeekGE(key *db.InternalKey) {
 	panic("pebble: Seek unimplemented")
 }
 
-func (c *concatenatingIter) SeekLE(key *db.InternalKey) bool {
+func (c *concatenatingIter) SeekLE(key *db.InternalKey) {
 	panic("pebble: RSeek unimplemented")
 }
 
-func (c *concatenatingIter) First() bool {
+func (c *concatenatingIter) First() {
 	panic("pebble: First unimplemented")
 }
 
-func (c *concatenatingIter) Last() bool {
+func (c *concatenatingIter) Last() {
 	panic("pebble: Last unimplemented")
 }
 
@@ -190,19 +190,19 @@ func (m *mergingIter) close(i int) error {
 	return err
 }
 
-func (m *mergingIter) SeekGE(key *db.InternalKey) bool {
+func (m *mergingIter) SeekGE(key *db.InternalKey) {
 	panic("pebble: Seek unimplemented")
 }
 
-func (m *mergingIter) SeekLE(key *db.InternalKey) bool {
+func (m *mergingIter) SeekLE(key *db.InternalKey) {
 	panic("pebble: RSeek unimplemented")
 }
 
-func (m *mergingIter) First() bool {
+func (m *mergingIter) First() {
 	panic("pebble: First unimplemented")
 }
 
-func (m *mergingIter) Last() bool {
+func (m *mergingIter) Last() {
 	panic("pebble: Last unimplemented")
 }
 

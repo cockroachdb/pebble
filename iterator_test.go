@@ -47,19 +47,19 @@ func newFakeIterator(closeErr error, kvPairs ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) SeekGE(key *db.InternalKey) bool {
-	panic("pebble: Seek unimplemented")
+func (f *fakeIter) SeekGE(key *db.InternalKey) {
+	panic("pebble: SeekGE unimplemented")
 }
 
-func (f *fakeIter) SeekLE(key *db.InternalKey) bool {
-	panic("pebble: RSeek unimplemented")
+func (f *fakeIter) SeekLE(key *db.InternalKey) {
+	panic("pebble: SeekLE unimplemented")
 }
 
-func (f *fakeIter) First() bool {
+func (f *fakeIter) First() {
 	panic("pebble: First unimplemented")
 }
 
-func (f *fakeIter) Last() bool {
+func (f *fakeIter) Last() {
 	panic("pebble: Last unimplemented")
 }
 

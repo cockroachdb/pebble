@@ -18,6 +18,7 @@ import (
 // explicitly compacting a memTable into a separate DB (whether in-memory or
 // on-disk) when appropriate.
 type memTable struct {
+	cmp       db.Compare
 	skl       arenaskl.Skiplist
 	emptySize uint32
 }
@@ -27,9 +28,11 @@ var _ db.InternalReader = (*memTable)(nil)
 
 // newMemTable returns a new MemTable.
 func newMemTable(o *db.Options) *memTable {
-	m := &memTable{}
+	m := &memTable{
+		cmp: o.GetComparer().Compare,
+	}
 	arena := arenaskl.NewArena(4 << 20 /* 4 MiB */)
-	m.skl.Reset(arena, o.GetComparer().Compare)
+	m.skl.Reset(arena, m.cmp)
 	m.emptySize = m.skl.Size()
 	return m
 }
@@ -37,7 +40,15 @@ func newMemTable(o *db.Options) *memTable {
 // Get implements Reader.Get, as documented in the pebble/db package.
 func (m *memTable) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err error) {
 	it := m.skl.NewIter()
-	if !it.SeekGE(key) {
+	it.SeekGE(key)
+	if !it.Valid() {
+		return nil, db.ErrNotFound
+	}
+	ikey := db.DecodeInternalKey(it.Key())
+	if m.cmp(key.UserKey, ikey.UserKey) != 0 {
+		return nil, db.ErrNotFound
+	}
+	if ikey.Kind() == db.InternalKeyKindDelete {
 		return nil, db.ErrNotFound
 	}
 	return it.Value(), nil
@@ -90,28 +101,27 @@ type memTableIter struct {
 var _ db.InternalIterator = (*memTableIter)(nil)
 
 // SeekGE moves the iterator to the first entry whose key is greater than or
-// equal to the given key. Returns true if the given key exists and false
-// otherwise.
-func (t *memTableIter) SeekGE(key *db.InternalKey) (found bool) {
-	return t.iter.SeekGE(key)
+// equal to the given key.
+func (t *memTableIter) SeekGE(key *db.InternalKey) {
+	t.iter.SeekGE(key)
 }
 
 // SeekLE moves the iterator to the first entry whose key is less than or equal
 // to the given key. Returns true if the given key exists and false otherwise.
-func (t *memTableIter) SeekLE(key *db.InternalKey) (found bool) {
-	return t.iter.SeekLE(key)
+func (t *memTableIter) SeekLE(key *db.InternalKey) {
+	t.iter.SeekLE(key)
 }
 
 // First seeks position at the first entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (t *memTableIter) First() bool {
-	return t.iter.First()
+func (t *memTableIter) First() {
+	t.iter.First()
 }
 
 // Last seeks position at the last entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (t *memTableIter) Last() bool {
-	return t.iter.Last()
+func (t *memTableIter) Last() {
+	t.iter.Last()
 }
 
 // Next advances to the next position. If there are no following nodes, then

@@ -27,9 +27,8 @@ func count(d db.InternalReader) (n int) {
 }
 
 func ikey(s string) *db.InternalKey {
-	return &db.InternalKey{
-		UserKey: []byte(s),
-	}
+	k := db.MakeInternalKey([]byte(s), 0, db.InternalKeyKindSet)
+	return &k
 }
 
 // compact compacts a MemTable.

@@ -86,7 +86,7 @@ func (i *blockIter) init(cmp db.Compare, coder Coder, block block) error {
 }
 
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
-func (i *blockIter) SeekGE(key *db.InternalKey) bool {
+func (i *blockIter) SeekGE(key *db.InternalKey) {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
@@ -120,22 +120,20 @@ func (i *blockIter) SeekGE(key *db.InternalKey) bool {
 		}
 	}
 	i.soi = !i.eoi
-	return false
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
-func (i *blockIter) SeekLE(key *db.InternalKey) bool {
+func (i *blockIter) SeekLE(key *db.InternalKey) {
 	panic("pebble/table: SeekLE unimplemented")
 }
 
 // First implements Iterator.First, as documented in the pebble/db package.
-func (i *blockIter) First() bool {
+func (i *blockIter) First() {
 	i.SeekGE(nil)
-	return i.soi
 }
 
 // Last implements Iterator.Last, as documented in the pebble/db package.
-func (i *blockIter) Last() bool {
+func (i *blockIter) Last() {
 	panic("pebble/table: Last unimplemented")
 }
 
@@ -260,24 +258,23 @@ func (i *tableIter) nextBlock(key *db.InternalKey, f *filterReader) bool {
 }
 
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
-func (i *tableIter) SeekGE(key *db.InternalKey) bool {
+func (i *tableIter) SeekGE(key *db.InternalKey) {
 	i.index.SeekGE(key)
 	i.nextBlock(key, nil /* filter */)
-	return false
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
-func (i *tableIter) SeekLE(key *db.InternalKey) bool {
+func (i *tableIter) SeekLE(key *db.InternalKey) {
 	panic("pebble/table: SeekLE unimplemented")
 }
 
 // First implements Iterator.First, as documented in the pebble/db package.
-func (i *tableIter) First() bool {
+func (i *tableIter) First() {
 	panic("pebble/table: First unimplemented")
 }
 
 // Last implements Iterator.Last, as documented in the pebble/db package.
-func (i *tableIter) Last() bool {
+func (i *tableIter) Last() {
 	panic("pebble/table: Last unimplemented")
 }
 
