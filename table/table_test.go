@@ -434,56 +434,6 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
 func TestNoCompressionOutput(t *testing.T)      { testNoCompressionOutput(t, nil) }
 func TestBloomNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, bloom.FilterPolicy(10)) }
 
-func TestBlockIter(t *testing.T) {
-	// k is a block that maps three keys "apple", "apricot", "banana" to empty strings.
-	k := block([]byte(
-		"\x00\x05\x00apple" +
-			"\x02\x05\x00ricot" +
-			"\x00\x06\x00banana" +
-			"\x00\x00\x00\x00\x01\x00\x00\x00"))
-	var testcases = []struct {
-		index int
-		key   string
-	}{
-		{0, ""},
-		{0, "a"},
-		{0, "aaaaaaaaaaaaaaa"},
-		{0, "app"},
-		{0, "apple"},
-		{1, "appliance"},
-		{1, "apricos"},
-		{1, "apricot"},
-		{2, "azzzzzzzzzzzzzz"},
-		{2, "b"},
-		{2, "banan"},
-		{2, "banana"},
-		{3, "banana\x00"},
-		{3, "c"},
-	}
-	for _, tc := range testcases {
-		i, err := newBlockIter(bytes.Compare, raw{}, k)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ik := db.InternalKey{UserKey: []byte(tc.key)}
-		i.SeekGE(&ik)
-		for j, kWant := range []string{"apple", "apricot", "banana"}[tc.index:] {
-			if !i.Next() {
-				t.Fatalf("key=%q, index=%d, j=%d: Next got false, want true", tc.key, tc.index, j)
-			}
-			if kGot := string(i.Key().UserKey); kGot != kWant {
-				t.Fatalf("key=%q, index=%d, j=%d: got %q, want %q", tc.key, tc.index, j, kGot, kWant)
-			}
-		}
-		if i.Next() {
-			t.Fatalf("key=%q, index=%d: Next got true, want false", tc.key, tc.index)
-		}
-		if err := i.Close(); err != nil {
-			t.Fatalf("key=%q, index=%d: got err=%v", tc.key, tc.index, err)
-		}
-	}
-}
-
 func TestFinalBlockIsWritten(t *testing.T) {
 	const blockSize = 100
 	keys := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}

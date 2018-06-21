@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/crc"
@@ -45,167 +44,6 @@ func encodeBlockHandle(dst []byte, b blockHandle) int {
 // over those pairs.
 type block []byte
 
-// blockIter is an iterator over a single block of data.
-type blockIter struct {
-	cmp         db.Compare
-	coder       coder
-	offset      int
-	restarts    int
-	numRestarts int
-	data        []byte
-	key, val    []byte
-	ikey        db.InternalKey
-	err         error
-	// soi and eoi mark the start and end of iteration.
-	// Both cannot simultaneously be true.
-	soi, eoi bool
-}
-
-// blockIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*blockIter)(nil)
-
-func newBlockIter(cmp db.Compare, coder coder, block block) (*blockIter, error) {
-	i := &blockIter{}
-	return i, i.init(cmp, coder, block)
-}
-
-func (i *blockIter) init(cmp db.Compare, coder coder, block block) error {
-	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
-	if numRestarts == 0 {
-		return errors.New("pebble/table: invalid table (block has no restart points)")
-	}
-	*i = blockIter{
-		cmp:         cmp,
-		coder:       coder,
-		restarts:    len(block) - 4*(1+numRestarts),
-		numRestarts: numRestarts,
-		data:        block,
-		key:         make([]byte, 0, 256),
-	}
-	return nil
-}
-
-// SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
-func (i *blockIter) SeekGE(key *db.InternalKey) {
-	// Find the index of the smallest restart point whose key is > the key
-	// sought; index will be numRestarts if there is no such restart point.
-	i.offset = 0
-	i.soi, i.eoi = false, false
-	if key != nil {
-		index := sort.Search(i.numRestarts, func(j int) bool {
-			o := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
-			// For a restart point, there are 0 bytes shared with the previous key.
-			// The varint encoding of 0 occupies 1 byte.
-			o++
-			// Decode the key at that restart point, and compare it to the key sought.
-			v1, n1 := binary.Uvarint(i.data[o:])
-			_, n2 := binary.Uvarint(i.data[o+n1:])
-			m := o + n1 + n2
-			s := i.data[m : m+int(v1)]
-			return db.InternalCompare(i.cmp, *key, i.coder.Decode(s)) < 0
-		})
-		// Since keys are strictly increasing, if index > 0 then the restart
-		// point at index-1 will be the largest whose key is <= the key sought.
-		// If index == 0, then all keys in this block are larger than the key
-		// sought, and offset remains at zero.
-		if index > 0 {
-			i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
-		}
-	}
-	// Iterate from that restart point to somewhere >= the key sought.
-	if key == nil {
-		i.Next()
-	} else {
-		for i.Next() && db.InternalCompare(i.cmp, *key, i.ikey) > 0 {
-		}
-	}
-	i.soi = !i.eoi
-}
-
-// SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
-func (i *blockIter) SeekLE(key *db.InternalKey) {
-	panic("pebble/table: SeekLE unimplemented")
-}
-
-// First implements Iterator.First, as documented in the pebble/db package.
-func (i *blockIter) First() {
-	i.SeekGE(nil)
-}
-
-// Last implements Iterator.Last, as documented in the pebble/db package.
-func (i *blockIter) Last() {
-	panic("pebble/table: Last unimplemented")
-}
-
-// Next implements Iterator.Next, as documented in the pebble/db package.
-func (i *blockIter) Next() bool {
-	if i.eoi || i.err != nil {
-		return false
-	}
-	if i.soi {
-		i.soi = false
-		return true
-	}
-	if i.offset >= i.restarts {
-		i.eoi = true
-		i.key = nil
-		i.val = nil
-		return false
-	}
-	shared, n := binary.Uvarint(i.data[i.offset:])
-	i.offset += n
-	unshared, n := binary.Uvarint(i.data[i.offset:])
-	i.offset += n
-	value, n := binary.Uvarint(i.data[i.offset:])
-	i.offset += n
-	i.key = append(i.key[:shared], i.data[i.offset:i.offset+int(unshared)]...)
-	i.offset += int(unshared)
-	i.key = i.key[:len(i.key):len(i.key)]
-	i.val = i.data[i.offset : i.offset+int(value)]
-	i.offset += int(value)
-	i.ikey = i.coder.Decode(i.key)
-	return true
-}
-
-// Prev implements Iterator.Prev, as documented in the pebble/db package.
-func (i *blockIter) Prev() bool {
-	// TODO(peter): Keep a cache of the uncompressed keys since the previous
-	// restart point.
-	panic("pebble/table: Prev unimplemented")
-}
-
-// Key implements Iterator.Key, as documented in the pebble/db package.
-func (i *blockIter) Key() *db.InternalKey {
-	if i.soi {
-		return nil
-	}
-	return &i.ikey
-}
-
-// Value implements Iterator.Value, as documented in the pebble/db package.
-func (i *blockIter) Value() []byte {
-	if i.soi {
-		return nil
-	}
-	return i.val[:len(i.val):len(i.val)]
-}
-
-// Valid implements Iterator.Valid, as documented in the pebble/db package.
-func (i *blockIter) Valid() bool {
-	if i.eoi || i.soi || i.err != nil {
-		return false
-	}
-	return true
-}
-
-// Close implements Iterator.Close, as documented in the pebble/db package.
-func (i *blockIter) Close() error {
-	i.key = nil
-	i.val = nil
-	i.eoi = true
-	return i.err
-}
-
 // tableIter is an iterator over an entire table of data. It is a two-level
 // iterator: to seek for a given key, it first looks in the index for the
 // block that contains that key, and then looks inside that block.
@@ -213,6 +51,7 @@ type tableIter struct {
 	reader *Reader
 	index  blockIter
 	data   blockIter
+	soi    bool
 	err    error
 }
 
@@ -227,8 +66,8 @@ var _ db.InternalIterator = (*tableIter)(nil)
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *tableIter) nextBlock(key *db.InternalKey, f *filterReader) bool {
-	if !i.index.Next() {
+func (i *tableIter) loadBlock(key *db.InternalKey, f *filterReader) bool {
+	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
 	}
@@ -260,8 +99,7 @@ func (i *tableIter) nextBlock(key *db.InternalKey, f *filterReader) bool {
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
 func (i *tableIter) SeekGE(key *db.InternalKey) {
 	i.index.SeekGE(key)
-	i.nextBlock(key, nil /* filter */)
-	i.Next()
+	i.loadBlock(key, nil /* filter */)
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
@@ -281,6 +119,11 @@ func (i *tableIter) Last() {
 
 // Next implements Iterator.Next, as documented in the pebble/db package.
 func (i *tableIter) Next() bool {
+	if i.soi {
+		i.soi = false
+		return true
+	}
+
 	for {
 		if i.data.Next() {
 			return true
@@ -289,9 +132,11 @@ func (i *tableIter) Next() bool {
 			i.err = i.data.err
 			break
 		}
-		if !i.nextBlock(nil, nil) {
+		if !i.index.Next() {
 			break
 		}
+		i.loadBlock(nil, nil)
+		return true
 	}
 	i.Close()
 	return false
@@ -452,7 +297,8 @@ func (r *Reader) find(key *db.InternalKey, o *db.ReadOptions, f *filterReader) d
 		return i
 	}
 	i.index.SeekGE(key)
-	i.nextBlock(key, f)
+	i.loadBlock(key, f)
+	i.soi = i.Valid()
 	return i
 }
 
@@ -504,7 +350,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	i.SeekGE(nil)
 	filterName := "filter." + fp.Name()
 	filterBH := blockHandle{}
-	for i.Next() {
+	for ; i.Valid(); i.Next() {
 		if filterName != string(i.Key().UserKey) {
 			continue
 		}

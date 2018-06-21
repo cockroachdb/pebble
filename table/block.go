@@ -73,8 +73,8 @@ type blockEntry struct {
 	val    []byte
 }
 
-// blockIter2 is an iterator over a single block of data.
-type blockIter2 struct {
+// blockIter is an iterator over a single block of data.
+type blockIter struct {
 	cmp         db.Compare
 	coder       coder
 	offset      int
@@ -86,10 +86,11 @@ type blockIter2 struct {
 	ikey        db.InternalKey
 	cached      []blockEntry
 	cachedBuf   []byte
+	err         error
 }
 
-// blockIter2 implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*blockIter2)(nil)
+// blockIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*blockIter)(nil)
 
 func decodeVarint(src []byte) (uint32, int) {
 	dst := uint32(src[0]) & 0x7f
@@ -112,17 +113,17 @@ func decodeVarint(src []byte) (uint32, int) {
 	return dst, 5
 }
 
-func newBlockIter2(cmp db.Compare, coder coder, block block) (*blockIter2, error) {
-	i := &blockIter2{}
+func newBlockIter(cmp db.Compare, coder coder, block block) (*blockIter, error) {
+	i := &blockIter{}
 	return i, i.init(cmp, coder, block)
 }
 
-func (i *blockIter2) init(cmp db.Compare, coder coder, block block) error {
+func (i *blockIter) init(cmp db.Compare, coder coder, block block) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
 	}
-	*i = blockIter2{
+	*i = blockIter{
 		cmp:         cmp,
 		coder:       coder,
 		restarts:    len(block) - 4*(1+numRestarts),
@@ -133,7 +134,7 @@ func (i *blockIter2) init(cmp db.Compare, coder coder, block block) error {
 	return nil
 }
 
-func (i *blockIter2) readEntry() {
+func (i *blockIter) readEntry() {
 	shared, n := decodeVarint(i.data[i.offset:])
 	i.nextOffset = i.offset + n
 	unshared, n := decodeVarint(i.data[i.nextOffset:])
@@ -147,17 +148,17 @@ func (i *blockIter2) readEntry() {
 	i.nextOffset += int(value)
 }
 
-func (i *blockIter2) loadEntry() {
+func (i *blockIter) loadEntry() {
 	i.readEntry()
 	i.ikey = i.coder.Decode(i.key)
 }
 
-func (i *blockIter2) clearCache() {
+func (i *blockIter) clearCache() {
 	i.cached = i.cached[:0]
 	i.cachedBuf = i.cachedBuf[:0]
 }
 
-func (i *blockIter2) cacheEntry() {
+func (i *blockIter) cacheEntry() {
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 	i.cached = append(i.cached, blockEntry{
 		offset: i.offset,
@@ -167,7 +168,7 @@ func (i *blockIter2) cacheEntry() {
 }
 
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
-func (i *blockIter2) SeekGE(key *db.InternalKey) {
+func (i *blockIter) SeekGE(key *db.InternalKey) {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
@@ -207,18 +208,18 @@ func (i *blockIter2) SeekGE(key *db.InternalKey) {
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
-func (i *blockIter2) SeekLE(key *db.InternalKey) {
+func (i *blockIter) SeekLE(key *db.InternalKey) {
 	panic("pebble/table: SeekLE unimplemented")
 }
 
 // First implements Iterator.First, as documented in the pebble/db package.
-func (i *blockIter2) First() {
+func (i *blockIter) First() {
 	i.offset = 0
 	i.loadEntry()
 }
 
 // Last implements Iterator.Last, as documented in the pebble/db package.
-func (i *blockIter2) Last() {
+func (i *blockIter) Last() {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
 
@@ -236,7 +237,7 @@ func (i *blockIter2) Last() {
 }
 
 // Next implements Iterator.Next, as documented in the pebble/db package.
-func (i *blockIter2) Next() bool {
+func (i *blockIter) Next() bool {
 	i.offset = i.nextOffset
 	if !i.Valid() {
 		return false
@@ -246,7 +247,7 @@ func (i *blockIter2) Next() bool {
 }
 
 // Prev implements Iterator.Prev, as documented in the pebble/db package.
-func (i *blockIter2) Prev() bool {
+func (i *blockIter) Prev() bool {
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
@@ -288,22 +289,22 @@ func (i *blockIter2) Prev() bool {
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.
-func (i *blockIter2) Key() *db.InternalKey {
+func (i *blockIter) Key() *db.InternalKey {
 	return &i.ikey
 }
 
 // Value implements Iterator.Value, as documented in the pebble/db package.
-func (i *blockIter2) Value() []byte {
+func (i *blockIter) Value() []byte {
 	return i.val
 }
 
 // Valid implements Iterator.Valid, as documented in the pebble/db package.
-func (i *blockIter2) Valid() bool {
+func (i *blockIter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
 // Close implements Iterator.Close, as documented in the pebble/db package.
-func (i *blockIter2) Close() error {
+func (i *blockIter) Close() error {
 	i.val = nil
 	return nil
 }

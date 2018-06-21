@@ -34,7 +34,7 @@ func TestBlockWriter(t *testing.T) {
 	}
 }
 
-func TestBlockIter2(t *testing.T) {
+func TestBlockIter(t *testing.T) {
 	// k is a block that maps three keys "apple", "apricot", "banana" to empty strings.
 	k := block([]byte(
 		"\x00\x05\x00apple" +
@@ -61,7 +61,7 @@ func TestBlockIter2(t *testing.T) {
 		{3, "c"},
 	}
 	for _, tc := range testcases {
-		i, err := newBlockIter2(bytes.Compare, raw{}, k)
+		i, err := newBlockIter(bytes.Compare, raw{}, k)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestBlockIter2(t *testing.T) {
 	}
 
 	{
-		i, err := newBlockIter2(bytes.Compare, raw{}, k)
+		i, err := newBlockIter(bytes.Compare, raw{}, k)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,7 +128,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter2(bytes.Compare, raw{}, w.finish())
+				it, err := newBlockIter(bytes.Compare, raw{}, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -160,7 +160,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter2(bytes.Compare, raw{}, w.finish())
+				it, err := newBlockIter(bytes.Compare, raw{}, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -193,7 +193,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter2(bytes.Compare, raw{}, w.finish())
+				it, err := newBlockIter(bytes.Compare, raw{}, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
