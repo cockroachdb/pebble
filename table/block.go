@@ -67,6 +67,12 @@ func (w *blockWriter) size() int {
 	return len(w.buf) + 4*(len(w.restarts)+1)
 }
 
+type blockEntry struct {
+	offset int
+	key    []byte
+	val    []byte
+}
+
 // blockIter2 is an iterator over a single block of data.
 type blockIter2 struct {
 	cmp         db.Compare
@@ -78,6 +84,8 @@ type blockIter2 struct {
 	data        []byte
 	key, val    []byte
 	ikey        db.InternalKey
+	cached      []blockEntry
+	cachedBuf   []byte
 }
 
 // blockIter2 implements the db.InternalIterator interface.
@@ -125,7 +133,7 @@ func (i *blockIter2) init(cmp db.Compare, coder Coder, block block) error {
 	return nil
 }
 
-func (i *blockIter2) loadEntry() {
+func (i *blockIter2) readEntry() {
 	shared, n := decodeVarint(i.data[i.offset:])
 	i.nextOffset = i.offset + n
 	unshared, n := decodeVarint(i.data[i.nextOffset:])
@@ -137,7 +145,25 @@ func (i *blockIter2) loadEntry() {
 	i.nextOffset += int(unshared)
 	i.val = i.data[i.nextOffset : i.nextOffset+int(value) : i.nextOffset+int(value)]
 	i.nextOffset += int(value)
+}
+
+func (i *blockIter2) loadEntry() {
+	i.readEntry()
 	i.ikey = i.coder.Decode(i.key)
+}
+
+func (i *blockIter2) clearCache() {
+	i.cached = i.cached[:0]
+	i.cachedBuf = i.cachedBuf[:0]
+}
+
+func (i *blockIter2) cacheEntry() {
+	i.cachedBuf = append(i.cachedBuf, i.key...)
+	i.cached = append(i.cached, blockEntry{
+		offset: i.offset,
+		key:    i.cachedBuf[len(i.cachedBuf)-len(i.key) : len(i.cachedBuf) : len(i.cachedBuf)],
+		val:    i.val,
+	})
 }
 
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
@@ -195,10 +221,18 @@ func (i *blockIter2) First() {
 func (i *blockIter2) Last() {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
-	i.loadEntry()
+
+	i.readEntry()
+	i.clearCache()
+	i.cacheEntry()
+
 	for i.nextOffset < i.restarts {
-		i.Next()
+		i.offset = i.nextOffset
+		i.readEntry()
+		i.cacheEntry()
 	}
+
+	i.ikey = i.coder.Decode(i.key)
 }
 
 // Next implements Iterator.Next, as documented in the pebble/db package.
@@ -213,6 +247,16 @@ func (i *blockIter2) Next() bool {
 
 // Prev implements Iterator.Prev, as documented in the pebble/db package.
 func (i *blockIter2) Prev() bool {
+	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
+		i.nextOffset = i.offset
+		e := &i.cached[n-1]
+		i.offset = e.offset
+		i.val = e.val
+		i.ikey = i.coder.Decode(e.key)
+		i.cached = i.cached[:n]
+		return true
+	}
+
 	if i.offset == 0 {
 		i.offset = -1
 		i.nextOffset = 0
@@ -222,16 +266,24 @@ func (i *blockIter2) Prev() bool {
 	targetOffset := i.offset
 	index := sort.Search(i.numRestarts, func(j int) bool {
 		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
-		return offset > targetOffset
+		return offset >= targetOffset
 	})
+	i.offset = 0
 	if index > 0 {
 		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
 	}
 
-	i.loadEntry()
+	i.readEntry()
+	i.clearCache()
+	i.cacheEntry()
+
 	for i.nextOffset < targetOffset {
-		i.Next()
+		i.offset = i.nextOffset
+		i.readEntry()
+		i.cacheEntry()
 	}
+
+	i.ikey = i.coder.Decode(i.key)
 	return true
 }
 

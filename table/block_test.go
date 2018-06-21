@@ -79,23 +79,31 @@ func TestBlockIter2(t *testing.T) {
 		if i.Valid() {
 			t.Fatalf("key=%q, index=%d: Valid got true, want false", tc.key, tc.index)
 		}
+		if err := i.Close(); err != nil {
+			t.Fatalf("key=%q, index=%d: got err=%v", tc.key, tc.index, err)
+		}
+	}
 
+	{
+		i, err := newBlockIter2(bytes.Compare, raw{}, k)
+		if err != nil {
+			t.Fatal(err)
+		}
 		i.Last()
 		for j, kWant := range []string{"banana", "apricot", "apple"} {
 			if !i.Valid() {
-				t.Fatalf("key=%q, index=%d, j=%d: Valid got false, want true", tc.key, tc.index, j)
+				t.Fatalf("j=%d: Valid got false, want true", j)
 			}
 			if kGot := string(i.Key().UserKey); kGot != kWant {
-				t.Fatalf("key=%q, index=%d, j=%d: got %q, want %q", tc.key, tc.index, j, kGot, kWant)
+				t.Fatalf("j=%d: got %q, want %q", j, kGot, kWant)
 			}
 			i.Prev()
 		}
 		if i.Valid() {
-			t.Fatalf("key=%q, index=%d: Valid got true, want false", tc.key, tc.index)
+			t.Fatalf("Valid got true, want false")
 		}
-
 		if err := i.Close(); err != nil {
-			t.Fatalf("key=%q, index=%d: got err=%v", tc.key, tc.index, err)
+			t.Fatalf("got err=%v", err)
 		}
 	}
 }
