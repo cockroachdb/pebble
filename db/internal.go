@@ -166,6 +166,11 @@ func (k *InternalKey) Kind() InternalKeyKind {
 	return InternalKeyKind(k.trailer & 0xff)
 }
 
+// Trailer ...
+func (k *InternalKey) Trailer() uint64 {
+	return k.trailer
+}
+
 // Valid returns true if the key has a valid kind.
 func (k *InternalKey) Valid() bool {
 	return k.Kind() <= InternalKeyKindMax
@@ -177,25 +182,6 @@ func (k InternalKey) Clone() InternalKey {
 		UserKey: append([]byte(nil), k.UserKey...),
 		trailer: k.trailer,
 	}
-}
-
-// InternalKeyCoder ...
-type InternalKeyCoder struct{}
-
-// Size ...
-func (InternalKeyCoder) Size(key *InternalKey) int {
-	return key.Size()
-}
-
-// Encode ...
-func (InternalKeyCoder) Encode(key *InternalKey, buf []byte) {
-	i := copy(buf, key.UserKey)
-	binary.LittleEndian.PutUint64(buf[i:], key.trailer)
-}
-
-// Decode ...
-func (InternalKeyCoder) Decode(buf []byte) InternalKey {
-	return DecodeInternalKey(buf)
 }
 
 // InternalIterator iterates over a DB's key/value pairs in key order.

@@ -9,7 +9,7 @@ import (
 )
 
 type blockWriter struct {
-	coder           Coder
+	coder           coder
 	restartInterval int
 	nEntries        int
 	buf             []byte
@@ -76,7 +76,7 @@ type blockEntry struct {
 // blockIter2 is an iterator over a single block of data.
 type blockIter2 struct {
 	cmp         db.Compare
-	coder       Coder
+	coder       coder
 	offset      int
 	nextOffset  int
 	restarts    int
@@ -112,12 +112,12 @@ func decodeVarint(src []byte) (uint32, int) {
 	return dst, 5
 }
 
-func newBlockIter2(cmp db.Compare, coder Coder, block block) (*blockIter2, error) {
+func newBlockIter2(cmp db.Compare, coder coder, block block) (*blockIter2, error) {
 	i := &blockIter2{}
 	return i, i.init(cmp, coder, block)
 }
 
-func (i *blockIter2) init(cmp db.Compare, coder Coder, block block) error {
+func (i *blockIter2) init(cmp db.Compare, coder coder, block block) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")

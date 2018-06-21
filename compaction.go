@@ -351,7 +351,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			if err != nil {
 				return nil, pendingOutputs, err
 			}
-			tw = table.NewWriter(file, d.opts, &db.InternalKeyCoder{})
+			tw = table.NewWriter(file, d.opts)
 			smallest = ikey.Clone()
 		}
 		// TODO(peter): Avoid the memory allocation

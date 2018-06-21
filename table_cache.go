@@ -156,7 +156,7 @@ func (n *tableCacheNode) load(c *tableCache) {
 		n.result <- tableReaderOrError{err: err}
 		return
 	}
-	n.result <- tableReaderOrError{reader: table.NewReader(f, c.opts, db.InternalKeyCoder{})}
+	n.result <- tableReaderOrError{reader: table.NewReader(f, c.opts)}
 }
 
 func (n *tableCacheNode) release() {

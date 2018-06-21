@@ -563,7 +563,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	if err != nil {
 		return fileMetadata{}, err
 	}
-	tw = table.NewWriter(file, d.opts, &db.InternalKeyCoder{})
+	tw = table.NewWriter(file, d.opts)
 
 	iter = mem.NewIter(nil)
 	iter.Next()

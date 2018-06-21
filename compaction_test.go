@@ -586,7 +586,7 @@ func TestCompaction(t *testing.T) {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}
 				defer f.Close()
-				r := table.NewReader(f, nil, db.InternalKeyCoder{})
+				r := table.NewReader(f, nil)
 				defer r.Close()
 				ss = append(ss, get1(r)+".")
 			}

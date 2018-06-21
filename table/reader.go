@@ -48,7 +48,7 @@ type block []byte
 // blockIter is an iterator over a single block of data.
 type blockIter struct {
 	cmp         db.Compare
-	coder       Coder
+	coder       coder
 	offset      int
 	restarts    int
 	numRestarts int
@@ -64,12 +64,12 @@ type blockIter struct {
 // blockIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*blockIter)(nil)
 
-func newBlockIter(cmp db.Compare, coder Coder, block block) (*blockIter, error) {
+func newBlockIter(cmp db.Compare, coder coder, block block) (*blockIter, error) {
 	i := &blockIter{}
 	return i, i.init(cmp, coder, block)
 }
 
-func (i *blockIter) init(cmp db.Compare, coder Coder, block block) error {
+func (i *blockIter) init(cmp db.Compare, coder coder, block block) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
@@ -373,7 +373,7 @@ type Reader struct {
 	err             error
 	index           block
 	compare         db.Compare
-	coder           Coder
+	coder           coder
 	filter          filterReader
 	verifyChecksums bool
 	// TODO: add a (goroutine-safe) LRU block cache.
@@ -531,9 +531,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	return nil
 }
 
-// NewReader returns a new table reader for the file. Closing the reader will
-// close the file.
-func NewReader(f storage.File, o *db.Options, coder Coder) *Reader {
+func newReader(f storage.File, o *db.Options, coder coder) *Reader {
 	r := &Reader{
 		file:            f,
 		compare:         o.GetComparer().Compare,
@@ -583,4 +581,10 @@ func NewReader(f storage.File, o *db.Options, coder Coder) *Reader {
 	}
 	r.index, r.err = r.readBlock(indexBH)
 	return r
+}
+
+// NewReader returns a new table reader for the file. Closing the reader will
+// close the file.
+func NewReader(f storage.File, o *db.Options) *Reader {
+	return newReader(f, o, internalKeyCoder{})
 }

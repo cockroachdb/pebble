@@ -111,7 +111,7 @@ func init() {
 }
 
 func check(f storage.File, fp db.FilterPolicy) error {
-	r := NewReader(f, &db.Options{
+	r := newReader(f, &db.Options{
 		FilterPolicy:    fp,
 		VerifyChecksums: true,
 	}, raw{})
@@ -220,7 +220,7 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	}
 	defer f0.Close()
 	tmpFileCount++
-	w := NewWriter(f0, &db.Options{
+	w := newWriter(f0, &db.Options{
 		Compression:  compression,
 		FilterPolicy: fp,
 	}, raw{})
@@ -311,7 +311,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r := NewReader(f, &db.Options{
+	r := newReader(f, &db.Options{
 		FilterPolicy: c,
 	}, raw{})
 
@@ -500,7 +500,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 				continue
 			}
-			w := NewWriter(wf, &db.Options{
+			w := newWriter(wf, &db.Options{
 				BlockSize: blockSize,
 			}, raw{})
 			for _, k := range keys[:nk] {
@@ -519,7 +519,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 				continue
 			}
-			r := NewReader(rf, nil, raw{})
+			r := newReader(rf, nil, raw{})
 			i := r.NewIter(nil)
 			for i.First(); i.Valid(); i.Next() {
 				got++

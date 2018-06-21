@@ -130,7 +130,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}
-		tw := table.NewWriter(f, nil, db.InternalKeyCoder{})
+		tw := table.NewWriter(f, nil)
 		ik := makeIkey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Set(&ik, xxx[:i], nil); err != nil {
 			return nil, nil, fmt.Errorf("tw.Set: %v", err)

@@ -114,8 +114,7 @@ func (f *filterWriter) finish() ([]byte, error) {
 	return f.data, nil
 }
 
-// Coder ...
-type Coder interface {
+type coder interface {
 	Size(key *db.InternalKey) int
 	Encode(key *db.InternalKey, buf []byte)
 	Decode(buf []byte) db.InternalKey
@@ -135,10 +134,25 @@ func (raw) Decode(buf []byte) db.InternalKey {
 	return db.InternalKey{UserKey: buf}
 }
 
+type internalKeyCoder struct{}
+
+func (internalKeyCoder) Size(key *db.InternalKey) int {
+	return key.Size()
+}
+
+func (internalKeyCoder) Encode(key *db.InternalKey, buf []byte) {
+	i := copy(buf, key.UserKey)
+	binary.LittleEndian.PutUint64(buf[i:], key.Trailer())
+}
+
+func (internalKeyCoder) Decode(buf []byte) db.InternalKey {
+	return db.DecodeInternalKey(buf)
+}
+
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
-	coder     Coder
+	coder     coder
 	writer    io.Writer
 	bufWriter *bufio.Writer
 	closer    io.Closer
@@ -427,9 +441,7 @@ func (w *Writer) Close() (err error) {
 	return nil
 }
 
-// NewWriter returns a new table writer for the file. Closing the writer will
-// close the file.
-func NewWriter(f storage.File, o *db.Options, coder Coder) *Writer {
+func newWriter(f storage.File, o *db.Options, coder coder) *Writer {
 	w := &Writer{
 		coder:                coder,
 		closer:               f,
@@ -459,4 +471,10 @@ func NewWriter(f storage.File, o *db.Options, coder Coder) *Writer {
 		w.writer = w.bufWriter
 	}
 	return w
+}
+
+// NewWriter returns a new table writer for the file. Closing the writer will
+// close the file.
+func NewWriter(f storage.File, o *db.Options) *Writer {
+	return newWriter(f, o, internalKeyCoder{})
 }
