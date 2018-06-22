@@ -158,11 +158,10 @@ type Writer struct {
 	closer    io.Closer
 	err       error
 	// The next four fields are copied from a db.Options.
-	blockRestartInterval int
-	blockSize            int
-	cmp                  db.Comparer
-	compare              db.Compare
-	compression          db.Compression
+	blockSize   int
+	cmp         db.Comparer
+	compare     db.Compare
+	compression db.Compression
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
 	// cannot be written until the first key in the next block is seen.
@@ -173,23 +172,13 @@ type Writer struct {
 	// offset is the offset (relative to the table start) of the next block
 	// to be written.
 	offset uint64
-	// prevKey is a copy of the key most recently passed to Set.
-	prevKey        db.InternalKey
-	prevEncodedKey []byte
 	// indexKeys and indexEntries hold the separator keys between each block
 	// and the successor key for the final block. indexKeys contains the key's
 	// bytes concatenated together. The keyLen field of each indexEntries
 	// element is the length of the respective separator key.
 	indexKeys    []byte
 	indexEntries []indexEntry
-	// The next three fields hold data for the current block:
-	//   - buf is the accumulated uncompressed bytes,
-	//   - nEntries is the number of entries,
-	//   - restarts are the offsets (relative to the block start) of each
-	//     restart point.
-	buf      []byte
-	nEntries int
-	restarts []uint32
+	block        blockWriter
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -210,17 +199,18 @@ func (w *Writer) Set(key *db.InternalKey, value []byte, o *db.WriteOptions) erro
 	if w.err != nil {
 		return w.err
 	}
-	if db.InternalCompare(w.compare, w.prevKey, *key) >= 0 {
-		w.err = fmt.Errorf("pebble/table: Set called in non-increasing key order: %q, %q", w.prevKey, key)
+	prevKey := db.DecodeInternalKey(w.block.curKey)
+	if db.InternalCompare(w.compare, prevKey, *key) >= 0 {
+		w.err = fmt.Errorf("pebble/table: Set called in non-increasing key order: %q, %q", prevKey, key)
 		return w.err
 	}
 	if w.filter.policy != nil {
 		w.filter.appendKey(key.UserKey)
 	}
 	w.flushPendingBH(key)
-	w.append(key, value, w.nEntries%w.blockRestartInterval == 0)
+	w.block.add(key, value)
 	// If the estimated block size is sufficiently large, finish the current block.
-	if len(w.buf)+4*(len(w.restarts)+1) >= w.blockSize {
+	if w.block.estimatedSize() >= w.blockSize {
 		bh, err := w.finishBlock()
 		if err != nil {
 			w.err = err
@@ -245,60 +235,21 @@ func (w *Writer) flushPendingBH(key *db.InternalKey) {
 		ukey = key.UserKey
 	}
 	if (w.coder == raw{}) {
-		w.indexKeys = w.cmp.AppendSeparator(w.indexKeys, w.prevEncodedKey, ukey)
+		w.indexKeys = w.cmp.AppendSeparator(w.indexKeys, w.block.curKey, ukey)
 	} else {
-		w.indexKeys = append(w.indexKeys, w.prevEncodedKey...)
+		w.indexKeys = append(w.indexKeys, w.block.curKey...)
 	}
 	n1 := len(w.indexKeys)
 	w.indexEntries = append(w.indexEntries, indexEntry{w.pendingBH, n1 - n0})
 	w.pendingBH = blockHandle{}
 }
 
-// append appends a key/value pair, which may also be a restart point.
-func (w *Writer) append(key *db.InternalKey, value []byte, restart bool) {
-	nShared := 0
-	if restart {
-		w.restarts = append(w.restarts, uint32(len(w.buf)))
-	} else {
-		// TODO(peter): Can also share part of the encoded sequence number? Maybe.
-		nShared = db.SharedPrefixLen(w.prevKey.UserKey, key.UserKey)
-	}
-	size := w.coder.Size(key)
-	if cap(w.prevEncodedKey) < size {
-		w.prevEncodedKey = make([]byte, 0, size*2)
-	}
-	w.prevEncodedKey = w.prevEncodedKey[:size]
-	w.coder.Encode(key, w.prevEncodedKey)
-	w.prevKey = w.coder.Decode(w.prevEncodedKey)
-	w.nEntries++
-	n := binary.PutUvarint(w.tmp[0:], uint64(nShared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(size-nShared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(len(value)))
-	w.buf = append(w.buf, w.tmp[:n]...)
-	w.buf = append(w.buf, w.prevEncodedKey[nShared:]...)
-	w.buf = append(w.buf, value...)
-}
-
 // finishBlock finishes the current block and returns its block handle, which is
 // its offset and length in the table.
 func (w *Writer) finishBlock() (blockHandle, error) {
-	// Write the restart points to the buffer.
-	if w.nEntries == 0 {
-		// Every block must have at least one restart point.
-		w.restarts = w.restarts[:1]
-		w.restarts[0] = 0
-	}
-	tmp4 := w.tmp[:4]
-	for _, x := range w.restarts {
-		binary.LittleEndian.PutUint32(tmp4, x)
-		w.buf = append(w.buf, tmp4...)
-	}
-	binary.LittleEndian.PutUint32(tmp4, uint32(len(w.restarts)))
-	w.buf = append(w.buf, tmp4...)
-
 	// Compress the buffer, discarding the result if the improvement
 	// isn't at least 12.5%.
-	b := w.buf
+	b := w.block.finish()
 	blockType := byte(noCompressionBlockType)
 	if w.compression == db.SnappyCompression {
 		compressed := snappy.Encode(w.compressedBuf, b)
@@ -316,9 +267,7 @@ func (w *Writer) finishBlock() (blockHandle, error) {
 	}
 
 	// Reset the per-block state.
-	w.buf = w.buf[:0]
-	w.nEntries = 0
-	w.restarts = w.restarts[:0]
+	w.block.reset()
 
 	return bh, err
 }
@@ -361,7 +310,7 @@ func (w *Writer) Close() (err error) {
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
 	w.flushPendingBH(nil)
-	if w.nEntries > 0 || len(w.indexEntries) == 0 {
+	if w.block.nEntries > 0 || len(w.indexEntries) == 0 {
 		bh, err := w.finishBlock()
 		if err != nil {
 			w.err = err
@@ -376,6 +325,7 @@ func (w *Writer) Close() (err error) {
 	tmp := w.tmp[3*binary.MaxVarintLen64 : 5*binary.MaxVarintLen64]
 
 	// Write the filter block.
+	w.block.restartInterval = 1
 	if w.filter.policy != nil {
 		b, err := w.filter.finish()
 		if err != nil {
@@ -388,7 +338,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(tmp, bh)
-		w.append(&db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, tmp[:n], true)
+		w.block.add(&db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, tmp[:n])
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
@@ -400,13 +350,14 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Write the index block.
+	w.block.reset()
 	i0 := 0
 	var ikey db.InternalKey
 	for _, ie := range w.indexEntries {
 		n := encodeBlockHandle(tmp, ie.bh)
 		i1 := i0 + ie.keyLen
 		ikey = w.coder.Decode(w.indexKeys[i0:i1])
-		w.append(&ikey, tmp[:n], true)
+		w.block.add(&ikey, tmp[:n])
 		i0 = i1
 	}
 	indexBlockHandle, err := w.finishBlock()
@@ -443,18 +394,19 @@ func (w *Writer) Close() (err error) {
 
 func newWriter(f storage.File, o *db.Options, coder coder) *Writer {
 	w := &Writer{
-		coder:                coder,
-		closer:               f,
-		blockRestartInterval: o.GetBlockRestartInterval(),
-		blockSize:            o.GetBlockSize(),
-		cmp:                  o.GetComparer(),
-		compare:              o.GetComparer().Compare,
-		compression:          o.GetCompression(),
+		coder:       coder,
+		closer:      f,
+		blockSize:   o.GetBlockSize(),
+		cmp:         o.GetComparer(),
+		compare:     o.GetComparer().Compare,
+		compression: o.GetCompression(),
 		filter: filterWriter{
 			policy: o.GetFilterPolicy(),
 		},
-		prevEncodedKey: make([]byte, 0, 256),
-		restarts:       make([]uint32, 0, 256),
+		block: blockWriter{
+			coder:           coder,
+			restartInterval: o.GetBlockRestartInterval(),
+		},
 	}
 	if f == nil {
 		w.err = errors.New("pebble/table: nil file")

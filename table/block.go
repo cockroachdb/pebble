@@ -50,8 +50,12 @@ func (w *blockWriter) finish() []byte {
 	// Write the restart points to the buffer.
 	if w.nEntries == 0 {
 		// Every block must have at least one restart point.
-		w.restarts = w.restarts[:1]
-		w.restarts[0] = 0
+		if cap(w.restarts) > 0 {
+			w.restarts = w.restarts[:1]
+			w.restarts[0] = 0
+		} else {
+			w.restarts = append(w.restarts, 0)
+		}
 	}
 	tmp4 := w.tmp[:4]
 	for _, x := range w.restarts {
@@ -63,7 +67,13 @@ func (w *blockWriter) finish() []byte {
 	return w.buf
 }
 
-func (w *blockWriter) size() int {
+func (w *blockWriter) reset() {
+	w.nEntries = 0
+	w.buf = w.buf[:0]
+	w.restarts = w.restarts[:0]
+}
+
+func (w *blockWriter) estimatedSize() int {
 	return len(w.buf) + 4*(len(w.restarts)+1)
 }
 

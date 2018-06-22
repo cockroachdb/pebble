@@ -121,7 +121,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 
 				var ikey db.InternalKey
 				var keys [][]byte
-				for i := 0; w.size() < blockSize; i++ {
+				for i := 0; w.estimatedSize() < blockSize; i++ {
 					key := []byte(fmt.Sprintf("%05d", i))
 					keys = append(keys, key)
 					ikey.UserKey = key
@@ -155,7 +155,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 				}
 
 				var ikey db.InternalKey
-				for i := 0; w.size() < blockSize; i++ {
+				for i := 0; w.estimatedSize() < blockSize; i++ {
 					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
 					w.add(&ikey, nil)
 				}
@@ -188,7 +188,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 				}
 
 				var ikey db.InternalKey
-				for i := 0; w.size() < blockSize; i++ {
+				for i := 0; w.estimatedSize() < blockSize; i++ {
 					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
 					w.add(&ikey, nil)
 				}
