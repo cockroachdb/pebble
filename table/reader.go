@@ -51,7 +51,6 @@ type tableIter struct {
 	reader *Reader
 	index  blockIter
 	data   blockIter
-	soi    bool
 	err    error
 }
 
@@ -119,11 +118,6 @@ func (i *tableIter) Last() {
 
 // Next implements Iterator.Next, as documented in the pebble/db package.
 func (i *tableIter) Next() bool {
-	if i.soi {
-		i.soi = false
-		return true
-	}
-
 	for {
 		if i.data.Next() {
 			return true
@@ -243,7 +237,7 @@ func (r *Reader) Close() error {
 			return r.err
 		}
 	}
-	// Make any future calls to Get, Find or Close return an error.
+	// Make any future calls to Get, NewIter or Close return an error.
 	r.err = errors.New("pebble/table: reader is closed")
 	return nil
 }
@@ -258,7 +252,7 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 		f = &r.filter
 	}
 	i := r.find(key, o, f)
-	if !i.Next() || db.InternalCompare(r.compare, *key, *i.Key()) != 0 {
+	if !i.Valid() || db.InternalCompare(r.compare, *key, *i.Key()) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = db.ErrNotFound
@@ -266,11 +260,6 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 		return nil, err
 	}
 	return i.Value(), i.Close()
-}
-
-// Find implements DB.Find, as documented in the pebble/db package.
-func (r *Reader) Find(key *db.InternalKey, o *db.ReadOptions) db.InternalIterator {
-	return r.find(key, o, nil)
 }
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
@@ -298,7 +287,6 @@ func (r *Reader) find(key *db.InternalKey, o *db.ReadOptions, f *filterReader) d
 	}
 	i.index.SeekGE(key)
 	i.loadBlock(key, f)
-	i.soi = i.Valid()
 	return i
 }
 

@@ -101,8 +101,6 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 		}
 		iter := mem.NewIter(opts)
 		iter.SeekGE(&ikey)
-		// TODO(peter): Remove the need for Prev().
-		iter.Prev()
 		value, conclusive, err := internalGet(iter, d.cmp, key)
 		if conclusive {
 			return value, err
@@ -198,11 +196,6 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 		panic("pebble: inconsistent batch count")
 	}
 	return nil
-}
-
-// Find implements DB.Find, as documented in the pebble/db package.
-func (d *DB) Find(key []byte, opts *db.ReadOptions) db.Iterator {
-	panic("pebble.DB: Find unimplemented")
 }
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.

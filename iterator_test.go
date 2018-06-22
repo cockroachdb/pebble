@@ -42,7 +42,7 @@ func newFakeIterator(closeErr error, kvPairs ...string) *fakeIter {
 	}
 	return &fakeIter{
 		kvPairs:  kvPairs,
-		index:    -1,
+		index:    0,
 		closeErr: closeErr,
 	}
 }
@@ -146,7 +146,7 @@ func testIterator(
 	for _, tc := range testCases {
 		var b bytes.Buffer
 		iter := newFunc(tc.iters...)
-		for iter.Next() {
+		for ; iter.Valid(); iter.Next() {
 			fmt.Fprintf(&b, "<%s:%s>", iter.Key().UserKey, iter.Value())
 		}
 		if err := iter.Close(); err != nil {
@@ -172,21 +172,24 @@ func testIterator(
 		iter := newFunc(iters...)
 
 		j := 0
-		for ; iter.Next() && j < len(testKeyValuePairs); j++ {
+		for ; iter.Valid() && j < len(testKeyValuePairs); j++ {
 			got := string(iter.Key().UserKey) + ":" + string(iter.Value())
 			want := testKeyValuePairs[j]
 			if got != want {
 				bad = true
 				t.Errorf("random splits: i=%d, j=%d: got %q, want %q", i, j, got, want)
 			}
+			iter.Next()
 		}
-		if iter.Next() {
+		if iter.Valid() {
 			bad = true
 			t.Errorf("random splits: i=%d, j=%d: iter was not exhausted", i, j)
 		}
 		if j != len(testKeyValuePairs) {
 			bad = true
 			t.Errorf("random splits: i=%d, j=%d: want j=%d", i, j, len(testKeyValuePairs))
+			fmt.Printf("splits: %v\n", splits)
+			return
 		}
 		if err := iter.Close(); err != nil {
 			bad = true

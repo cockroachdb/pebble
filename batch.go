@@ -240,14 +240,6 @@ func (b *Batch) DeleteRange(start, end []byte) {
 	}
 }
 
-// Find implements DB.Find, as documented in the pebble/db package.
-func (b *Batch) Find(key []byte, o *db.ReadOptions) db.Iterator {
-	if b.index == nil {
-		return newErrorIter(ErrNotIndexed)
-	}
-	panic("pebble.Batch: Findunimplemented")
-}
-
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
 	if b.index == nil {

@@ -82,7 +82,7 @@ func TestIkeyRange(t *testing.T) {
 
 type tableIkeyFinderFunc func(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error)
 
-func (f tableIkeyFinderFunc) find(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
+func (f tableIkeyFinderFunc) seekGE(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
 	return f(fileNum, ikey)
 }
 
@@ -523,8 +523,6 @@ func TestVersion(t *testing.T) {
 			}
 			iter := d.NewIter(nil)
 			iter.SeekGE(ikey)
-			// TODO(peter): remove this oddity.
-			iter.Prev()
 			return iter, nil
 		})
 

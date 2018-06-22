@@ -59,15 +59,6 @@ func (m *memTable) Set(key *db.InternalKey, value []byte, o *db.WriteOptions) er
 	return m.skl.Add(key, value)
 }
 
-// Find implements Reader.Find, as documented in the pebble/db package.
-func (m *memTable) Find(key *db.InternalKey, o *db.ReadOptions) db.InternalIterator {
-	t := m.NewIter(o)
-	t.SeekGE(key)
-	// TODO(peter): remove this oddity.
-	t.Prev()
-	return t
-}
-
 // NewIter implements Reader.NewIter, as documented in the pebble/db package.
 func (m *memTable) NewIter(o *db.ReadOptions) db.InternalIterator {
 	return &memTableIter{

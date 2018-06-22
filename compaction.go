@@ -295,7 +295,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	hasCurrentUkey := false
 	lastSeqNumForKey := db.InternalKeySeqNumMax
 	var smallest, largest db.InternalKey
-	for iter.Next() {
+	for ; iter.Valid(); iter.Next() {
 		// TODO: prioritize compacting d.imm.
 
 		// TODO: support c.shouldStopBefore.
@@ -407,7 +407,7 @@ func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db
 		iters = append(iters, iter)
 	} else {
 		for _, f := range c.inputs[0] {
-			iter, err := tc.find(f.fileNum, nil)
+			iter, err := tc.seekGE(f.fileNum, nil)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
@@ -438,7 +438,7 @@ func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.I
 	}()
 
 	for i, f := range inputs {
-		iter, err := tc.find(f.fileNum, nil)
+		iter, err := tc.seekGE(f.fileNum, nil)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}

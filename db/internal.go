@@ -61,11 +61,12 @@ const (
 	// This maximum value isn't part of the file format. It's unlikely,
 	// but future extensions may increase this value.
 	//
-	// When constructing an internal key to pass to DB.Find, internalKeyComparer
-	// sorts decreasing by kind (after sorting increasing by user key and
-	// decreasing by sequence number). Thus, use InternalKeyKindMax, which sorts
-	// 'less than or equal to' any other valid internalKeyKind, when searching
-	// for any kind of internal key formed by a certain user key and seqNum.
+	// When constructing an internal key to pass to DB.Seek{GE,LE},
+	// internalKeyComparer sorts decreasing by kind (after sorting increasing by
+	// user key and decreasing by sequence number). Thus, use InternalKeyKindMax,
+	// which sorts 'less than or equal to' any other valid internalKeyKind, when
+	// searching for any kind of internal key formed by a certain user key and
+	// seqNum.
 	InternalKeyKindMax InternalKeyKind = 15
 
 	// A marker for an invalid key.
@@ -242,7 +243,7 @@ type InternalIterator interface {
 
 // InternalReader is a readable key/value store.
 //
-// It is safe to call Get and Find from concurrent goroutines.
+// It is safe to call Get and NewIter from concurrent goroutines.
 type InternalReader interface {
 	// Get gets the value for the given key. It returns ErrNotFound if the DB
 	// does not contain the key.
@@ -250,19 +251,6 @@ type InternalReader interface {
 	// The caller should not modify the contents of the returned slice, but
 	// it is safe to modify the contents of the argument after Get returns.
 	Get(key *InternalKey, o *ReadOptions) (value []byte, err error)
-
-	// Find returns an iterator positioned before the first key/value pair whose
-	// key is greater than or equal to the given key. There may be no such pair,
-	// in which case the iterator will return false on Next.
-	//
-	// Any error encountered will be implicitly returned via the iterator. An
-	// error-iterator will yield no key/value pairs and closing that iterator
-	// will return that error.
-	//
-	// Equivalent to NewIter(o) -> SeekGE(key).
-	//
-	// It is safe to modify the contents of the argument after Find returns.
-	Find(key *InternalKey, o *ReadOptions) InternalIterator
 
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to Seek, RSeek,

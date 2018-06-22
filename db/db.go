@@ -100,7 +100,7 @@ type Iterator interface {
 
 // Reader is a readable key/value store.
 //
-// It is safe to call Get and Find from concurrent goroutines.
+// It is safe to call Get and NewIter from concurrent goroutines.
 type Reader interface {
 	// Get gets the value for the given key. It returns ErrNotFound if the DB
 	// does not contain the key.

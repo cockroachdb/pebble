@@ -61,6 +61,12 @@ func (c *errorIter) Close() error {
 //
 // None of the iters may be nil.
 func NewConcatenatingIterator(iters ...db.InternalIterator) db.InternalIterator {
+	for len(iters) > 0 {
+		if iters[0].Valid() {
+			break
+		}
+		iters = iters[1:]
+	}
 	if len(iters) == 1 {
 		return iters[0]
 	}
@@ -94,8 +100,14 @@ func (c *concatenatingIter) Next() bool {
 	if c.err != nil {
 		return false
 	}
-	for len(c.iters) > 0 {
+	if len(c.iters) > 0 {
 		if c.iters[0].Next() {
+			return true
+		}
+	}
+
+	for len(c.iters) > 0 {
+		if c.iters[0].Valid() {
 			return true
 		}
 		c.err = c.iters[0].Close()
@@ -152,12 +164,28 @@ func (c *concatenatingIter) Close() error {
 //
 // None of the iters may be nil.
 func NewMergingIterator(cmp db.Compare, iters ...db.InternalIterator) db.InternalIterator {
-	return &mergingIter{
+	m := &mergingIter{
 		iters: iters,
 		cmp:   cmp,
 		keys:  make([]*db.InternalKey, len(iters)),
-		index: -1,
+		index: -2,
 	}
+
+	for i, t := range m.iters {
+		if t.Valid() {
+			m.keys[i] = t.Key()
+			if m.index < 0 {
+				m.index = i
+				continue
+			}
+			if db.InternalCompare(m.cmp, *m.keys[i], *m.keys[m.index]) < 0 {
+				m.index = i
+			}
+		} else {
+			_ = m.close(i)
+		}
+	}
+	return m
 }
 
 type mergingIter struct {
@@ -213,14 +241,6 @@ func (m *mergingIter) Next() bool {
 	switch m.index {
 	case -2:
 		return false
-	case -1:
-		for i, t := range m.iters {
-			if t.Next() {
-				m.keys[i] = t.Key()
-			} else if m.close(i) != nil {
-				return false
-			}
-		}
 	default:
 		t := m.iters[m.index]
 		if t.Next() {
