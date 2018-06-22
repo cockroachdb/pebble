@@ -520,6 +520,44 @@ func BenchmarkReadWrite(b *testing.B) {
 	}
 }
 
+func BenchmarkIterNext(b *testing.B) {
+	l := NewSkiplist(NewArena(64<<10), bytes.Compare)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for {
+		if err := l.Add(randomKey(rng), nil); err == ErrArenaFull {
+			break
+		}
+	}
+
+	it := l.NewIter()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !it.Valid() {
+			it.First()
+		}
+		it.Next()
+	}
+}
+
+func BenchmarkIterPrev(b *testing.B) {
+	l := NewSkiplist(NewArena(64<<10), bytes.Compare)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for {
+		if err := l.Add(randomKey(rng), nil); err == ErrArenaFull {
+			break
+		}
+	}
+
+	it := l.NewIter()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !it.Valid() {
+			it.Last()
+		}
+		it.Prev()
+	}
+}
+
 // Standard test. Some fraction is read. Some fraction is write. Writes have
 // to go through mutex lock.
 func BenchmarkReadWriteMap(b *testing.B) {
