@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"sort"
+	"unsafe"
 
 	"github.com/petermattis/pebble/db"
 )
@@ -91,6 +92,7 @@ type blockIter struct {
 	nextOffset  int
 	restarts    int
 	numRestarts int
+	ptr         unsafe.Pointer
 	data        []byte
 	key, val    []byte
 	ikey        db.InternalKey
@@ -101,27 +103,6 @@ type blockIter struct {
 
 // blockIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*blockIter)(nil)
-
-func decodeVarint(src []byte) (uint32, int) {
-	dst := uint32(src[0]) & 0x7f
-	if src[0] < 128 {
-		return dst, 1
-	}
-	dst |= (uint32(src[1]&0x7f) << 7)
-	if src[1] < 128 {
-		return dst, 2
-	}
-	dst |= (uint32(src[2]&0x7f) << 14)
-	if src[2] < 128 {
-		return dst, 3
-	}
-	dst |= (uint32(src[3]&0x7f) << 21)
-	if src[3] < 128 {
-		return dst, 4
-	}
-	dst |= (uint32(src[4]&0x7f) << 28)
-	return dst, 5
-}
 
 func newBlockIter(cmp db.Compare, coder coder, block block) (*blockIter, error) {
 	i := &blockIter{}
@@ -138,6 +119,7 @@ func (i *blockIter) init(cmp db.Compare, coder coder, block block) error {
 		coder:       coder,
 		restarts:    len(block) - 4*(1+numRestarts),
 		numRestarts: numRestarts,
+		ptr:         unsafe.Pointer(&block[0]),
 		data:        block,
 		key:         make([]byte, 0, 256),
 	}
@@ -145,17 +127,15 @@ func (i *blockIter) init(cmp db.Compare, coder coder, block block) error {
 }
 
 func (i *blockIter) readEntry() {
-	shared, n := decodeVarint(i.data[i.offset:])
-	i.nextOffset = i.offset + n
-	unshared, n := decodeVarint(i.data[i.nextOffset:])
-	i.nextOffset += n
-	value, n := decodeVarint(i.data[i.nextOffset:])
-	i.nextOffset += n
-	i.key = append(i.key[:shared], i.data[i.nextOffset:i.nextOffset+int(unshared)]...)
+	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
+	shared, ptr := decodeVarint(ptr)
+	unshared, ptr := decodeVarint(ptr)
+	value, ptr := decodeVarint(ptr)
+	i.key = append(i.key[:shared], getBytes(ptr, int(unshared))...)
 	i.key = i.key[:len(i.key):len(i.key)]
-	i.nextOffset += int(unshared)
-	i.val = i.data[i.nextOffset : i.nextOffset+int(value) : i.nextOffset+int(value)]
-	i.nextOffset += int(value)
+	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
+	i.val = getBytes(ptr, int(value))
+	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
 }
 
 func (i *blockIter) loadEntry() {
@@ -191,12 +171,11 @@ func (i *blockIter) SeekGE(key *db.InternalKey) {
 		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
 		// For a restart point, there are 0 bytes shared with the previous key.
 		// The varint encoding of 0 occupies 1 byte.
-		offset++
+		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
 		// Decode the key at that restart point, and compare it to the key sought.
-		v1, n1 := decodeVarint(i.data[offset:])
-		_, n2 := decodeVarint(i.data[offset+n1:])
-		m := offset + n1 + n2
-		s := i.data[m : m+int(v1)]
+		v1, ptr := decodeVarint(ptr)
+		_, ptr = decodeVarint(ptr)
+		s := getBytes(ptr, int(v1))
 		return db.InternalCompare(i.cmp, *key, i.coder.Decode(s)) < 0
 	})
 
