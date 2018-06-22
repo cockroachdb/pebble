@@ -392,6 +392,11 @@ func (w *Writer) Close() (err error) {
 	return nil
 }
 
+// EstimatedSize ...
+func (w *Writer) EstimatedSize() uint64 {
+	return w.offset + uint64(w.block.estimatedSize()+len(w.indexEntries))
+}
+
 func newWriter(f storage.File, o *db.Options, coder coder) *Writer {
 	w := &Writer{
 		coder:       coder,

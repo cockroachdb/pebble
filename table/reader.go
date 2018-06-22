@@ -215,7 +215,7 @@ type Reader struct {
 	coder           coder
 	filter          filterReader
 	verifyChecksums bool
-	// TODO: add a (goroutine-safe) LRU block cache.
+	// TODO(peter): add a (goroutine-safe) LRU block cache.
 }
 
 // Reader implements the db.InternalReader interface.
