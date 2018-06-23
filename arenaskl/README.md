@@ -44,31 +44,18 @@ X percent of the operations are reads.
 The results are much better than `skiplist` and `slist`.
 
 ```
-BenchmarkReadWrite/frac_0-8           5000000	       490 ns/op
-BenchmarkReadWrite/frac_10-8          5000000	       479 ns/op
-BenchmarkReadWrite/frac_20-8          5000000	       448 ns/op
-BenchmarkReadWrite/frac_30-8          5000000	       440 ns/op
-BenchmarkReadWrite/frac_40-8          5000000	       424 ns/op
-BenchmarkReadWrite/frac_50-8          5000000	       384 ns/op
-BenchmarkReadWrite/frac_60-8          5000000	       361 ns/op
-BenchmarkReadWrite/frac_70-8          5000000	       315 ns/op
-BenchmarkReadWrite/frac_80-8         10000000	       306 ns/op
-BenchmarkReadWrite/frac_90-8         10000000	       267 ns/op
-BenchmarkReadWrite/frac_100-8       100000000	       25.2 ns/op
-```
-
-And even better than a simple map with read-write lock:
-
-```
-BenchmarkReadWriteMap/frac_0-8        2000000	       691 ns/op
-BenchmarkReadWriteMap/frac_10-8       3000000	       566 ns/op
-BenchmarkReadWriteMap/frac_20-8       3000000	       562 ns/op
-BenchmarkReadWriteMap/frac_30-8       3000000	       560 ns/op
-BenchmarkReadWriteMap/frac_40-8       3000000	       519 ns/op
-BenchmarkReadWriteMap/frac_50-8       3000000	       436 ns/op
-BenchmarkReadWriteMap/frac_60-8       5000000	       484 ns/op
-BenchmarkReadWriteMap/frac_70-8       5000000	       399 ns/op
-BenchmarkReadWriteMap/frac_80-8       5000000	       400 ns/op
-BenchmarkReadWriteMap/frac_90-8       5000000	       319 ns/op
-BenchmarkReadWriteMap/frac_100-8     30000000	        43.6 ns/op
+name                  time/op
+ReadWrite/frac_0-8     470ns ±11%
+ReadWrite/frac_10-8    462ns ± 3%
+ReadWrite/frac_20-8    436ns ± 2%
+ReadWrite/frac_30-8    410ns ± 2%
+ReadWrite/frac_40-8    385ns ± 2%
+ReadWrite/frac_50-8    360ns ± 4%
+ReadWrite/frac_60-8    386ns ± 1%
+ReadWrite/frac_70-8    352ns ± 2%
+ReadWrite/frac_80-8    306ns ± 3%
+ReadWrite/frac_90-8    253ns ± 4%
+ReadWrite/frac_100-8  28.1ns ± 2%
+IterNext-8            3.97ns ± 3%
+IterPrev-8            3.93ns ± 2%
 ```
