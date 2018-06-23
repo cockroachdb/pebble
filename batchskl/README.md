@@ -34,17 +34,23 @@ X percent of the operations are reads.
 
 ```
 name                  time/op
-ReadWrite/frac_0-8    1.03µs ± 2%
-ReadWrite/frac_10-8   1.32µs ± 1%
-ReadWrite/frac_20-8   1.26µs ± 1%
-ReadWrite/frac_30-8   1.18µs ± 1%
-ReadWrite/frac_40-8   1.09µs ± 1%
-ReadWrite/frac_50-8    987ns ± 2%
-ReadWrite/frac_60-8   1.07µs ± 1%
-ReadWrite/frac_70-8    909ns ± 1%
-ReadWrite/frac_80-8    693ns ± 2%
-ReadWrite/frac_90-8    599ns ± 2%
-ReadWrite/frac_100-8  45.3ns ± 3%
-IterNext-8            4.49ns ± 3%
-IterPrev-8            4.48ns ± 3%
+ReadWrite/frac_0      1.03µs ± 2%
+ReadWrite/frac_10     1.32µs ± 1%
+ReadWrite/frac_20     1.26µs ± 1%
+ReadWrite/frac_30     1.18µs ± 1%
+ReadWrite/frac_40     1.09µs ± 1%
+ReadWrite/frac_50      987ns ± 2%
+ReadWrite/frac_60     1.07µs ± 1%
+ReadWrite/frac_70      909ns ± 1%
+ReadWrite/frac_80      693ns ± 2%
+ReadWrite/frac_90      599ns ± 2%
+ReadWrite/frac_100    45.3ns ± 3%
+```
+
+Forward and backward iteration are also fast:
+
+```
+name                  time/op
+IterNext              4.49ns ± 3%
+IterPrev              4.48ns ± 3%
 ```

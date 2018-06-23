@@ -560,31 +560,31 @@ func BenchmarkIterPrev(b *testing.B) {
 
 // Standard test. Some fraction is read. Some fraction is write. Writes have
 // to go through mutex lock.
-func BenchmarkReadWriteMap(b *testing.B) {
-	for i := 0; i <= 10; i++ {
-		readFrac := float32(i) / 10.0
-		b.Run(fmt.Sprintf("frac_%d", i*10), func(b *testing.B) {
-			m := make(map[string]struct{})
-			var mutex sync.RWMutex
-			b.ResetTimer()
-			var count int
-			b.RunParallel(func(pb *testing.PB) {
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-				for pb.Next() {
-					if rng.Float32() < readFrac {
-						mutex.RLock()
-						_, ok := m[string(randomKey(rng))]
-						mutex.RUnlock()
-						if ok {
-							count++
-						}
-					} else {
-						mutex.Lock()
-						m[string(randomKey(rng))] = struct{}{}
-						mutex.Unlock()
-					}
-				}
-			})
-		})
-	}
-}
+// func BenchmarkReadWriteMap(b *testing.B) {
+// 	for i := 0; i <= 10; i++ {
+// 		readFrac := float32(i) / 10.0
+// 		b.Run(fmt.Sprintf("frac_%d", i*10), func(b *testing.B) {
+// 			m := make(map[string]struct{})
+// 			var mutex sync.RWMutex
+// 			b.ResetTimer()
+// 			var count int
+// 			b.RunParallel(func(pb *testing.PB) {
+// 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+// 				for pb.Next() {
+// 					if rng.Float32() < readFrac {
+// 						mutex.RLock()
+// 						_, ok := m[string(randomKey(rng))]
+// 						mutex.RUnlock()
+// 						if ok {
+// 							count++
+// 						}
+// 					} else {
+// 						mutex.Lock()
+// 						m[string(randomKey(rng))] = struct{}{}
+// 						mutex.Unlock()
+// 					}
+// 				}
+// 			})
+// 		})
+// 	}
+// }

@@ -63,6 +63,31 @@ ReadWrite/frac_70-8    352ns ± 2%
 ReadWrite/frac_80-8    306ns ± 3%
 ReadWrite/frac_90-8    253ns ± 4%
 ReadWrite/frac_100-8  28.1ns ± 2%
-IterNext-8            3.97ns ± 3%
-IterPrev-8            3.93ns ± 2%
+```
+
+Note that the above numbers are for concurrent operations using 8x
+parallelism. The same benchmarks without concurrency (use these
+numbers when comparing vs batchskl):
+
+```
+name                time/op
+ReadWrite/frac_0    1.53µs ± 1%
+ReadWrite/frac_10   1.46µs ± 2%
+ReadWrite/frac_20   1.39µs ± 3%
+ReadWrite/frac_30   1.28µs ± 3%
+ReadWrite/frac_40   1.21µs ± 2%
+ReadWrite/frac_50   1.11µs ± 3%
+ReadWrite/frac_60   1.23µs ±17%
+ReadWrite/frac_70   1.16µs ± 4%
+ReadWrite/frac_80    959ns ± 3%
+ReadWrite/frac_90    738ns ± 5%
+ReadWrite/frac_100  81.9ns ± 2%
+```
+
+Forward and backward iteration are also fast:
+
+```
+name                time/op
+IterNext            3.97ns ± 5%
+IterPrev            3.88ns ± 3%
 ```
