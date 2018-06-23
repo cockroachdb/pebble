@@ -330,3 +330,53 @@ func BenchmarkReadWrite(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkIterNext(b *testing.B) {
+	buf := make([]byte, 64<<10)
+	d := &testStorage{
+		keys: make([][]byte, 0, (64<<10)/8),
+	}
+	l := NewSkiplist(d, 0)
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < len(buf); i += 8 {
+		key := randomKey(rng, buf[i:i+8])
+		offset := uint32(len(d.keys))
+		d.keys = append(d.keys, key)
+		_ = l.Add(offset)
+	}
+
+	it := l.NewIter()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !it.Valid() {
+			it.First()
+		}
+		it.Next()
+	}
+}
+
+func BenchmarkIterPrev(b *testing.B) {
+	buf := make([]byte, 64<<10)
+	d := &testStorage{
+		keys: make([][]byte, 0, (64<<10)/8),
+	}
+	l := NewSkiplist(d, 0)
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < len(buf); i += 8 {
+		key := randomKey(rng, buf[i:i+8])
+		offset := uint32(len(d.keys))
+		d.keys = append(d.keys, key)
+		_ = l.Add(offset)
+	}
+
+	it := l.NewIter()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !it.Valid() {
+			it.Last()
+		}
+		it.Prev()
+	}
+}
