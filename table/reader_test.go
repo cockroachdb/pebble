@@ -88,3 +88,23 @@ func BenchmarkTableIterNext(b *testing.B) {
 			})
 	}
 }
+
+func BenchmarkTableIterPrev(b *testing.B) {
+	const blockSize = 32 << 10
+
+	for _, restartInterval := range []int{16} {
+		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+			func(b *testing.B) {
+				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
+				it := r.NewIter(nil)
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if !it.Valid() {
+						it.Last()
+					}
+					it.Prev()
+				}
+			})
+	}
+}

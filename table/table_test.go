@@ -186,11 +186,21 @@ func check(f storage.File, fp db.FilterPolicy) error {
 		for i.SeekGE(&ik); i.Valid(); i.Next() {
 			n++
 		}
-		if err := i.Close(); err != nil {
-			return err
+		if n != ct.count {
+			return fmt.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
+		}
+		n = 0
+		for i.Last(); i.Valid(); i.Prev() {
+			if bytes.Compare(i.Key().UserKey, ik.UserKey) < 0 {
+				break
+			}
+			n++
 		}
 		if n != ct.count {
 			return fmt.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
+		}
+		if err := i.Close(); err != nil {
+			return err
 		}
 	}
 

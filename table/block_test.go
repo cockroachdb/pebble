@@ -111,7 +111,7 @@ func TestBlockIter(t *testing.T) {
 func BenchmarkBlockIterSeekGE(b *testing.B) {
 	const blockSize = 32 << 10
 
-	for _, restartInterval := range []int{1, 2, 4, 8, 16, 32} {
+	for _, restartInterval := range []int{16} {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				w := &blockWriter{

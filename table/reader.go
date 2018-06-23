@@ -58,15 +58,43 @@ type tableIter struct {
 // tableIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*tableIter)(nil)
 
-// nextBlock loads the next block and positions i.data at the first key in that
-// block which is >= the given key. If unsuccessful, it sets i.err to any error
-// encountered, which may be nil if we have simply exhausted the entire table.
+// laodBlock loads the block at the current index position and leaves i.data
+// unpositioned. If unsuccessful, it sets i.err to any error encountered, which
+// may be nil if we have simply exhausted the entire table.
+func (i *tableIter) loadBlock() bool {
+	if !i.index.Valid() {
+		i.err = i.index.err
+		return false
+	}
+	// Load the next block.
+	v := i.index.Value()
+	h, n := decodeBlockHandle(v)
+	if n == 0 || n != len(v) {
+		i.err = errors.New("pebble/table: corrupt index entry")
+		return false
+	}
+	block, err := i.reader.readBlock(h)
+	if err != nil {
+		i.err = err
+		return false
+	}
+	i.err = i.data.init(i.reader.compare, i.reader.coder, block)
+	if i.err != nil {
+		return false
+	}
+	return true
+}
+
+// seekBlock loads the block at the current index position and positions i.data
+// at the first key in that block which is >= the given key. If unsuccessful,
+// it sets i.err to any error encountered, which may be nil if we have simply
+// exhausted the entire table.
 //
 // If f is non-nil, the caller is presumably looking for one specific key, as
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *tableIter) loadBlock(key *db.InternalKey, f *filterReader) bool {
+func (i *tableIter) seekBlock(key *db.InternalKey, f *filterReader) bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
@@ -87,11 +115,11 @@ func (i *tableIter) loadBlock(key *db.InternalKey, f *filterReader) bool {
 		i.err = err
 		return false
 	}
-	// Look for the key inside that block.
 	i.err = i.data.init(i.reader.compare, i.reader.coder, block)
 	if i.err != nil {
 		return false
 	}
+	// Look for the key inside that block.
 	i.data.SeekGE(key)
 	return true
 }
@@ -99,7 +127,9 @@ func (i *tableIter) loadBlock(key *db.InternalKey, f *filterReader) bool {
 // SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
 func (i *tableIter) SeekGE(key *db.InternalKey) {
 	i.index.SeekGE(key)
-	i.loadBlock(key, nil /* filter */)
+	if i.loadBlock() {
+		i.data.SeekGE(key)
+	}
 }
 
 // SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
@@ -114,15 +144,18 @@ func (i *tableIter) First() {
 
 // Last implements Iterator.Last, as documented in the pebble/db package.
 func (i *tableIter) Last() {
-	panic("pebble/table: Last unimplemented")
+	i.index.Last()
+	if i.loadBlock() {
+		i.data.Last()
+	}
 }
 
 // Next implements Iterator.Next, as documented in the pebble/db package.
 func (i *tableIter) Next() bool {
+	if i.data.Next() {
+		return true
+	}
 	for {
-		if i.data.Next() {
-			return true
-		}
 		if i.data.err != nil {
 			i.err = i.data.err
 			break
@@ -130,16 +163,33 @@ func (i *tableIter) Next() bool {
 		if !i.index.Next() {
 			break
 		}
-		i.loadBlock(nil, nil)
-		return true
+		if i.loadBlock() {
+			i.data.First()
+			return true
+		}
 	}
-	i.Close()
 	return false
 }
 
 // Prev implements Iterator.Prev, as documented in the pebble/db package.
 func (i *tableIter) Prev() bool {
-	panic("pebble/table: Prev unimplemented")
+	if i.data.Prev() {
+		return true
+	}
+	for {
+		if i.data.err != nil {
+			i.err = i.data.err
+			break
+		}
+		if !i.index.Prev() {
+			break
+		}
+		if i.loadBlock() {
+			i.data.Last()
+			return true
+		}
+	}
+	return false
 }
 
 // Key implements Iterator.Key, as documented in the pebble/db package.
@@ -218,7 +268,6 @@ type Reader struct {
 	coder           coder
 	filter          filterReader
 	verifyChecksums bool
-	// TODO(peter): add a (goroutine-safe) LRU block cache.
 }
 
 // Reader implements the db.InternalReader interface.
@@ -261,7 +310,7 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 	i.err = i.index.init(r.compare, r.coder, r.index)
 	if i.err == nil {
 		i.index.SeekGE(key)
-		i.loadBlock(key, f)
+		i.seekBlock(key, f)
 	}
 
 	if !i.Valid() || db.InternalCompare(r.compare, *key, *i.Key()) != 0 {
@@ -276,6 +325,8 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (r *Reader) NewIter(o *db.ReadOptions) db.InternalIterator {
+	// TODO(peter): Don't allow the Reader to be closed while a tableIter exists
+	// on it.
 	if r.err != nil {
 		return &tableIter{err: r.err}
 	}
