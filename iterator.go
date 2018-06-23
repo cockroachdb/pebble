@@ -52,7 +52,7 @@ func (c *errorIter) Close() error {
 	return c.err
 }
 
-// NewConcatenatingIterator returns an iterator that concatenates its input.
+// newConcatenatingIterator returns an iterator that concatenates its input.
 // Walking the resultant iterator will walk each input iterator in turn,
 // exhausting each input before moving on to the next.
 //
@@ -60,7 +60,7 @@ func (c *errorIter) Close() error {
 // increasing order: iters[i]'s last key is less than iters[i+1]'s first key.
 //
 // None of the iters may be nil.
-func NewConcatenatingIterator(iters ...db.InternalIterator) db.InternalIterator {
+func newConcatenatingIterator(iters ...db.InternalIterator) db.InternalIterator {
 	for len(iters) > 0 {
 		if iters[0].Valid() {
 			break
@@ -155,7 +155,7 @@ func (c *concatenatingIter) Close() error {
 	return c.err
 }
 
-// NewMergingIterator returns an iterator that merges its input. Walking the
+// newMergingIterator returns an iterator that merges its input. Walking the
 // resultant iterator will return all key/value pairs of all input iterators
 // in strictly increasing key order, as defined by cmp.
 //
@@ -163,7 +163,7 @@ func (c *concatenatingIter) Close() error {
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func NewMergingIterator(cmp db.Compare, iters ...db.InternalIterator) db.InternalIterator {
+func newMergingIterator(cmp db.Compare, iters ...db.InternalIterator) db.InternalIterator {
 	m := &mergingIter{
 		iters: iters,
 		cmp:   cmp,

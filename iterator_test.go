@@ -206,7 +206,7 @@ func testIterator(
 }
 
 func TestConcatenatingIterator(t *testing.T) {
-	testIterator(t, NewConcatenatingIterator, func(r *rand.Rand) [][]string {
+	testIterator(t, newConcatenatingIterator, func(r *rand.Rand) [][]string {
 		// Partition testKeyValuePairs into one or more splits. Each individual
 		// split is in increasing order, and different splits may not overlap
 		// in range. Some of the splits may be empty.
@@ -225,7 +225,7 @@ func TestConcatenatingIterator(t *testing.T) {
 
 func TestMergingIterator(t *testing.T) {
 	newFunc := func(iters ...db.InternalIterator) db.InternalIterator {
-		return NewMergingIterator(db.DefaultComparer.Compare, iters...)
+		return newMergingIterator(db.DefaultComparer.Compare, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual

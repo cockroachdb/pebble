@@ -400,7 +400,7 @@ func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db
 	}()
 
 	if c.level != 0 {
-		iter, err := newConcatenatingIterator(tc, c.inputs[0])
+		iter, err := concatenateInputs(tc, c.inputs[0])
 		if err != nil {
 			return nil, err
 		}
@@ -415,17 +415,17 @@ func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db
 		}
 	}
 
-	iter, err := newConcatenatingIterator(tc, c.inputs[1])
+	iter, err := concatenateInputs(tc, c.inputs[1])
 	if err != nil {
 		return nil, err
 	}
 	iters = append(iters, iter)
-	return NewMergingIterator(cmp, iters...), nil
+	return newMergingIterator(cmp, iters...), nil
 }
 
-// newConcatenatingIterator returns a concatenating iterator over all of the
-// input tables.
-func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.InternalIterator, retErr error) {
+// concatenateInputs returns a concatenating iterator over all of the input
+// tables.
+func concatenateInputs(tc *tableCache, inputs []fileMetadata) (cIter db.InternalIterator, retErr error) {
 	iters := make([]db.InternalIterator, len(inputs))
 	defer func() {
 		if retErr != nil {
@@ -444,5 +444,5 @@ func newConcatenatingIterator(tc *tableCache, inputs []fileMetadata) (cIter db.I
 		}
 		iters[i] = iter
 	}
-	return NewConcatenatingIterator(iters...), nil
+	return newConcatenatingIterator(iters...), nil
 }
