@@ -157,7 +157,7 @@ func (n *tableCacheNode) load(c *tableCache) {
 		n.result <- tableReaderOrError{err: err}
 		return
 	}
-	n.result <- tableReaderOrError{reader: table.NewReader(f, c.opts)}
+	n.result <- tableReaderOrError{reader: table.NewReader(f, n.fileNum, c.opts)}
 }
 
 func (n *tableCacheNode) release() {

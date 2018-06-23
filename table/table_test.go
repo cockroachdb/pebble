@@ -111,7 +111,7 @@ func init() {
 }
 
 func check(f storage.File, fp db.FilterPolicy) error {
-	r := newReader(f, &db.Options{
+	r := newReader(f, 0, &db.Options{
 		FilterPolicy:    fp,
 		VerifyChecksums: true,
 	}, raw{})
@@ -311,7 +311,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r := newReader(f, &db.Options{
+	r := newReader(f, 0, &db.Options{
 		FilterPolicy: c,
 	}, raw{})
 
@@ -469,7 +469,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 				continue
 			}
-			r := newReader(rf, nil, raw{})
+			r := newReader(rf, 0, nil, raw{})
 			i := r.NewIter(nil)
 			for i.First(); i.Valid(); i.Next() {
 				got++

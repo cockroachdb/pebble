@@ -4,7 +4,10 @@
 
 package db
 
-import "github.com/petermattis/pebble/storage"
+import (
+	"github.com/petermattis/pebble/cache"
+	"github.com/petermattis/pebble/storage"
+)
 
 // Compression is the per-block compression algorithm to use.
 type Compression int
@@ -86,6 +89,9 @@ type Options struct {
 	// The default value is 4096.
 	BlockSize int
 
+	// TODO(peter): provide a cache interface.
+	Cache *cache.BlockCache
+
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
@@ -153,6 +159,13 @@ func (o *Options) GetBlockSize() int {
 		return 4096
 	}
 	return o.BlockSize
+}
+
+func (o *Options) GetCache() *cache.BlockCache {
+	if o == nil {
+		return nil
+	}
+	return o.Cache
 }
 
 func (o *Options) GetComparer() Comparer {

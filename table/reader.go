@@ -12,6 +12,7 @@ import (
 	"io"
 
 	"github.com/golang/snappy"
+	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
@@ -209,8 +210,10 @@ func (f *filterReader) mayContain(blockOffset uint64, key *db.InternalKey) bool 
 // in the pebble/db package.
 type Reader struct {
 	file            storage.File
+	fileNum         uint64
 	err             error
 	index           block
+	cache           *cache.BlockCache
 	compare         db.Compare
 	coder           coder
 	filter          filterReader
@@ -292,6 +295,10 @@ func (r *Reader) find(key *db.InternalKey, o *db.ReadOptions, f *filterReader) d
 
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(bh blockHandle) (block, error) {
+	if b := r.cache.Get(r.fileNum, bh.offset); b != nil {
+		return b, nil
+	}
+
 	b := make([]byte, bh.length+blockTrailerLen)
 	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
 		return nil, err
@@ -305,12 +312,15 @@ func (r *Reader) readBlock(bh blockHandle) (block, error) {
 	}
 	switch b[bh.length] {
 	case noCompressionBlockType:
-		return b[:bh.length], nil
+		b = b[:bh.length]
+		r.cache.Insert(r.fileNum, bh.offset, b)
+		return b, nil
 	case snappyCompressionBlockType:
 		b, err := snappy.Decode(nil, b[:bh.length])
 		if err != nil {
 			return nil, err
 		}
+		r.cache.Insert(r.fileNum, bh.offset, b)
 		return b, nil
 	}
 	return nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
@@ -365,9 +375,11 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	return nil
 }
 
-func newReader(f storage.File, o *db.Options, coder coder) *Reader {
+func newReader(f storage.File, fileNum uint64, o *db.Options, coder coder) *Reader {
 	r := &Reader{
 		file:            f,
+		fileNum:         fileNum,
+		cache:           o.GetCache(),
 		compare:         o.GetComparer().Compare,
 		coder:           coder,
 		verifyChecksums: o.GetVerifyChecksums(),
@@ -408,6 +420,8 @@ func newReader(f storage.File, o *db.Options, coder coder) *Reader {
 	}
 
 	// Read the index into memory.
+	//
+	// TODO(peter): Allow the index block to be placed in the block cache.
 	indexBH, n := decodeBlockHandle(footer[n:])
 	if n == 0 {
 		r.err = errors.New("pebble/table: invalid table (bad index block handle)")
@@ -419,6 +433,6 @@ func newReader(f storage.File, o *db.Options, coder coder) *Reader {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f storage.File, o *db.Options) *Reader {
-	return newReader(f, o, internalKeyCoder{})
+func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
+	return newReader(f, fileNum, o, internalKeyCoder{})
 }
