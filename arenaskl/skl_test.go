@@ -563,7 +563,7 @@ func BenchmarkIterPrev(b *testing.B) {
 func BenchmarkReadWriteMap(b *testing.B) {
 	for i := 0; i <= 10; i++ {
 		readFrac := float32(i) / 10.0
-		b.Run(fmt.Sprintf("frac_%d", i), func(b *testing.B) {
+		b.Run(fmt.Sprintf("frac_%d", i*10), func(b *testing.B) {
 			m := make(map[string]struct{})
 			var mutex sync.RWMutex
 			b.ResetTimer()
