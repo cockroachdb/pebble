@@ -254,7 +254,16 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 	if r.filter.valid() {
 		f = &r.filter
 	}
-	i := r.find(key, o, f)
+
+	i := &tableIter{
+		reader: r,
+	}
+	i.err = i.index.init(r.compare, r.coder, r.index)
+	if i.err == nil {
+		i.index.SeekGE(key)
+		i.loadBlock(key, f)
+	}
+
 	if !i.Valid() || db.InternalCompare(r.compare, *key, *i.Key()) != 0 {
 		err := i.Close()
 		if err == nil {
@@ -274,22 +283,6 @@ func (r *Reader) NewIter(o *db.ReadOptions) db.InternalIterator {
 		reader: r,
 	}
 	i.err = i.index.init(r.compare, r.coder, r.index)
-	return i
-}
-
-func (r *Reader) find(key *db.InternalKey, o *db.ReadOptions, f *filterReader) db.InternalIterator {
-	if r.err != nil {
-		return &tableIter{err: r.err}
-	}
-	i := &tableIter{
-		reader: r,
-	}
-	i.err = i.index.init(r.compare, r.coder, r.index)
-	if i.err != nil {
-		return i
-	}
-	i.index.SeekGE(key)
-	i.loadBlock(key, f)
 	return i
 }
 
