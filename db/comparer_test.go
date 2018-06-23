@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestDefCmp(t *testing.T) {
+func TestDefAppendSeparator(t *testing.T) {
 	testCases := []struct {
 		a, b, want string
 	}{

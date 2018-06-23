@@ -265,7 +265,7 @@ func (p fileNumAndNameSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func createDB(dirname string, opts *db.Options) (retErr error) {
 	const manifestFileNum = 1
 	ve := versionEdit{
-		comparatorName: opts.GetComparer().Name(),
+		comparatorName: opts.GetComparer().Name,
 		nextFileNumber: manifestFileNum + 1,
 	}
 	manifestFilename := dbFilename(dirname, fileTypeManifest, manifestFileNum)

@@ -120,13 +120,13 @@ func (c *compaction) grow(vs *versionSet, sm, la db.InternalKey) bool {
 
 // isBaseLevelForUkey reports whether it is guaranteed that there are no
 // key/value pairs at c.level+2 or higher that have the user key ukey.
-func (c *compaction) isBaseLevelForUkey(userCmp db.Comparer, ukey []byte) bool {
+func (c *compaction) isBaseLevelForUkey(userCmp db.Compare, ukey []byte) bool {
 	// TODO: this can be faster if ukey is always increasing between successive
 	// isBaseLevelForUkey calls and we can keep some state in between calls.
 	for level := c.level + 2; level < numLevels; level++ {
 		for _, f := range c.version.files[level] {
-			if userCmp.Compare(ukey, f.largest.UserKey) <= 0 {
-				if userCmp.Compare(ukey, f.smallest.UserKey) >= 0 {
+			if userCmp(ukey, f.largest.UserKey) <= 0 {
+				if userCmp(ukey, f.smallest.UserKey) >= 0 {
 					return false
 				}
 				// For levels above level 0, the files within a level are in
@@ -321,7 +321,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 			} else if ikey.Kind() == db.InternalKeyKindDelete &&
 				ikeySeqNum <= smallestSnapshot &&
-				c.isBaseLevelForUkey(d.opts.Comparer, ukey) {
+				c.isBaseLevelForUkey(d.opts.GetComparer().Compare, ukey) {
 
 				// For this user key:
 				// (1) there is no data in higher levels

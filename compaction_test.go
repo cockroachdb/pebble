@@ -393,7 +393,7 @@ func TestPickCompaction(t *testing.T) {
 	for _, tc := range testCases {
 		vs := &versionSet{
 			cmp:     db.DefaultComparer.Compare,
-			cmpName: db.DefaultComparer.Name(),
+			cmpName: db.DefaultComparer.Name,
 		}
 		vs.dummyVersion.prev = &vs.dummyVersion
 		vs.dummyVersion.next = &vs.dummyVersion
@@ -540,7 +540,7 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 			level:   tc.level,
 		}
 		for ukey, want := range tc.wants {
-			if got := c.isBaseLevelForUkey(db.DefaultComparer, []byte(ukey)); got != want {
+			if got := c.isBaseLevelForUkey(db.DefaultComparer.Compare, []byte(ukey)); got != want {
 				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, ukey, got, want)
 			}
 		}

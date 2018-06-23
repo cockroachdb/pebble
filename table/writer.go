@@ -159,7 +159,7 @@ type Writer struct {
 	err       error
 	// The next four fields are copied from a db.Options.
 	blockSize   int
-	cmp         db.Comparer
+	appendSep   db.AppendSeparator
 	compare     db.Compare
 	compression db.Compression
 	// A table is a series of blocks and a block's index entry contains a
@@ -235,7 +235,7 @@ func (w *Writer) flushPendingBH(key *db.InternalKey) {
 		ukey = key.UserKey
 	}
 	if (w.coder == raw{}) {
-		w.indexKeys = w.cmp.AppendSeparator(w.indexKeys, w.block.curKey, ukey)
+		w.indexKeys = w.appendSep(w.indexKeys, w.block.curKey, ukey)
 	} else {
 		w.indexKeys = append(w.indexKeys, w.block.curKey...)
 	}
@@ -402,7 +402,7 @@ func newWriter(f storage.File, o *db.Options, coder coder) *Writer {
 		coder:       coder,
 		closer:      f,
 		blockSize:   o.GetBlockSize(),
-		cmp:         o.GetComparer(),
+		appendSep:   o.GetComparer().AppendSeparator,
 		compare:     o.GetComparer().Compare,
 		compression: o.GetCompression(),
 		filter: filterWriter{

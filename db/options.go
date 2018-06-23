@@ -97,7 +97,7 @@ type Options struct {
 	// and writes over the lifetime of the DB.
 	//
 	// The default value uses the same ordering as bytes.Compare.
-	Comparer Comparer
+	Comparer *Comparer
 
 	// Compression defines the per-block compression to use.
 	//
@@ -168,7 +168,7 @@ func (o *Options) GetCache() *cache.BlockCache {
 	return o.Cache
 }
 
-func (o *Options) GetComparer() Comparer {
+func (o *Options) GetComparer() *Comparer {
 	if o == nil || o.Comparer == nil {
 		return DefaultComparer
 	}

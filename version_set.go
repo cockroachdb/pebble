@@ -42,7 +42,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.opts = opts
 	vs.fs = opts.GetStorage()
 	vs.cmp = opts.GetComparer().Compare
-	vs.cmpName = opts.GetComparer().Name()
+	vs.cmpName = opts.GetComparer().Name
 	vs.dummyVersion.prev = &vs.dummyVersion
 	vs.dummyVersion.next = &vs.dummyVersion
 	// For historical reasons, the next file number is initialized to 2.
