@@ -7,14 +7,14 @@ Package table implements readers and writers of pebble tables.
 
 Tables are either opened for reading or created for writing but not both.
 
-A reader can create iterators, which yield all key/value pairs whose keys
-are 'greater than or equal' to a starting key. There may be multiple key/
-value pairs that have the same key.
+A reader can create iterators, which allow seeking and next/prev
+iteration. There may be multiple key/value pairs that have the same key and
+different sequence numbers.
 
-A reader can be used concurrently. Multiple goroutines can call Find
+A reader can be used concurrently. Multiple goroutines can call NewIter
 concurrently, and each iterator can run concurrently with other iterators.
-However, any particular iterator should not be used concurrently, and
-iterators should not be used once a reader is closed.
+However, any particular iterator should not be used concurrently, and iterators
+should not be used once a reader is closed.
 
 A writer writes key/value pairs in increasing key order, and cannot be used
 concurrently. A table cannot be read until the writer has finished.
