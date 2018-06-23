@@ -114,15 +114,19 @@ func (i *blockIter) init(cmp db.Compare, coder coder, block block) error {
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
 	}
-	*i = blockIter{
-		cmp:         cmp,
-		coder:       coder,
-		restarts:    len(block) - 4*(1+numRestarts),
-		numRestarts: numRestarts,
-		ptr:         unsafe.Pointer(&block[0]),
-		data:        block,
-		key:         make([]byte, 0, 256),
+	i.cmp = cmp
+	i.coder = coder
+	i.restarts = len(block) - 4*(1+numRestarts)
+	i.numRestarts = numRestarts
+	i.ptr = unsafe.Pointer(&block[0])
+	i.data = block
+	if i.key == nil {
+		i.key = make([]byte, 0, 256)
+	} else {
+		i.key = i.key[:0]
 	}
+	i.val = nil
+	i.clearCache()
 	return nil
 }
 
