@@ -4,6 +4,7 @@ Fast, lock-free, arena-based Skiplist implementation in Go that supports iterati
 in both directions.
 
 ## Advantages
+
 Arenaskl offers several advantages over other skiplist implementations:
 
 * High performance that linearly scales with the number of cores. This is
@@ -14,19 +15,25 @@ Arenaskl offers several advantages over other skiplist implementations:
 * Support for iterating in reverse (i.e. previous links). 
 
 ## Limitations
+
 The advantages come at a cost that prevents arenaskl from being a general-purpose
 skiplist implementation:
 
 * The size of the arena sets a hard upper bound on the combined size of skiplist
   nodes, keys, and values. This limit includes even the size of deleted nodes,
   keys, and values.
-* Deleted nodes are not removed from the list, and are instead tagged with
-  tombstone markers. This means that iteration times are proportional to the
-  total number of nodes, rather than the number of live nodes.
+* Deletion is not supported. Instead, higher-level code is expected to
+  add deletion tombstones and needs to process those tombstones
+  appropriately.
 
 ## Pedigree
 
-This code is based on the skiplist found in Badger, a Go-based KV store:
+This code is based on Andy Kimball's arenaskl code:
+
+https://github.com/andy-kimball/arenaskl
+
+The arenaskl code is based on the skiplist found in Badger, a Go-based
+KV store:
 
 https://github.com/dgraph-io/badger/tree/master/skl
 
