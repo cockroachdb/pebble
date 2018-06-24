@@ -386,16 +386,19 @@ func (m *mergingIter) Next() bool {
 		return false
 	}
 
-	item := heap.Pop(&m.heap).(*mergingIterItem)
+	item := &m.heap.items[0]
 	if item.iter.Next() {
 		item.key = item.iter.Key()
-		heap.Push(&m.heap, item)
+		heap.Fix(&m.heap, 0)
 		return true
 	}
+
 	m.err = item.iter.Error()
 	if m.err != nil {
 		return false
 	}
+
+	heap.Pop(&m.heap)
 	return m.heap.Len() > 0
 }
 
@@ -413,16 +416,19 @@ func (m *mergingIter) Prev() bool {
 		return false
 	}
 
-	item := heap.Pop(&m.heap).(*mergingIterItem)
+	item := &m.heap.items[0]
 	if item.iter.Prev() {
 		item.key = item.iter.Key()
-		heap.Push(&m.heap, item)
+		heap.Fix(&m.heap, 0)
 		return true
 	}
+
 	m.err = item.iter.Error()
 	if m.err != nil {
 		return false
 	}
+
+	heap.Pop(&m.heap)
 	return m.heap.Len() > 0
 }
 
