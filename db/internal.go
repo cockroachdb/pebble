@@ -202,7 +202,7 @@ type InternalIterator interface {
 	// than or equal to the given key.
 	SeekGE(key *InternalKey)
 
-	// SeekLE moves the iterator to the first key/value pair whose key is less
+	// SeekLE moves the iterator to the last key/value pair whose key is less
 	// than or equal to the given key.
 	SeekLE(key *InternalKey)
 

@@ -88,7 +88,7 @@ type memTableIter struct {
 	ikey db.InternalKey
 }
 
-// memTableIter implements the db.Iterator interface.
+// memTableIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*memTableIter)(nil)
 
 // SeekGE moves the iterator to the first entry whose key is greater than or

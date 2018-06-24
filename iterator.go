@@ -1,7 +1,9 @@
 package pebble
 
 import (
+	"bytes"
 	"container/heap"
+	"fmt"
 
 	"github.com/petermattis/pebble/db"
 )
@@ -56,6 +58,14 @@ func (c *errorIter) Close() error {
 	return c.err
 }
 
+type concatenatingIter struct {
+	iters []db.InternalIterator
+	err   error
+}
+
+// concatenatingIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*concatenatingIter)(nil)
+
 // newConcatenatingIterator returns an iterator that concatenates its input.
 // Walking the resultant iterator will walk each input iterator in turn,
 // exhausting each input before moving on to the next.
@@ -79,17 +89,12 @@ func newConcatenatingIterator(iters ...db.InternalIterator) db.InternalIterator 
 	}
 }
 
-type concatenatingIter struct {
-	iters []db.InternalIterator
-	err   error
-}
-
 func (c *concatenatingIter) SeekGE(key *db.InternalKey) {
-	panic("pebble: Seek unimplemented")
+	panic("pebble: SeekGE unimplemented")
 }
 
 func (c *concatenatingIter) SeekLE(key *db.InternalKey) {
-	panic("pebble: RSeek unimplemented")
+	panic("pebble: SeekLE unimplemented")
 }
 
 func (c *concatenatingIter) First() {
@@ -174,8 +179,9 @@ type mergingIterItem struct {
 }
 
 type mergingIterHeap struct {
-	cmp   db.Compare
-	items []mergingIterItem
+	cmp     db.Compare
+	reverse bool
+	items   []mergingIterItem
 }
 
 func (h *mergingIterHeap) Len() int {
@@ -183,6 +189,9 @@ func (h *mergingIterHeap) Len() int {
 }
 
 func (h *mergingIterHeap) Less(i, j int) bool {
+	if h.reverse {
+		i, j = j, i
+	}
 	return db.InternalCompare(h.cmp, *h.items[i].key, *h.items[j].key) < 0
 }
 
@@ -206,10 +215,14 @@ func (h *mergingIterHeap) Pop() interface{} {
 }
 
 type mergingIter struct {
+	dir   int
 	iters []db.InternalIterator
 	heap  mergingIterHeap
 	err   error
 }
+
+// mergingIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*mergingIter)(nil)
 
 // newMergingIterator returns an iterator that merges its input. Walking the
 // resultant iterator will return all key/value pairs of all input iterators
@@ -225,7 +238,13 @@ func newMergingIterator(cmp db.Compare, iters ...db.InternalIterator) db.Interna
 	}
 	m.heap.cmp = cmp
 	m.heap.items = make([]mergingIterItem, 0, len(iters))
-	for _, t := range iters {
+	m.initMinHeap()
+	return m
+}
+
+func (m *mergingIter) initHeap() {
+	m.heap.items = m.heap.items[:0]
+	for _, t := range m.iters {
 		if t.Valid() {
 			m.heap.items = append(m.heap.items, mergingIterItem{
 				iter: t,
@@ -234,29 +253,139 @@ func newMergingIterator(cmp db.Compare, iters ...db.InternalIterator) db.Interna
 		}
 	}
 	heap.Init(&m.heap)
-	return m
+}
+
+func (m *mergingIter) initMinHeap() {
+	m.dir = 1
+	m.heap.reverse = false
+	m.initHeap()
+}
+
+func (m *mergingIter) initMaxHeap() {
+	m.dir = -1
+	m.heap.reverse = true
+	m.initHeap()
+}
+
+func (m *mergingIter) switchToMinHeap() {
+	if m.heap.Len() == 0 {
+		m.First()
+		return
+	}
+
+	// We're switching from using a max heap to a min heap. We need to advance
+	// any iterator that is less than or equal to the current key. Consider the
+	// scenario where we have 2 iterators being merged (user-key:seqnum):
+	//
+	// i1:     *a:2     b:2
+	// i2: a:1      b:1
+	//
+	// The current key is a:2 and i2 is pointed at a:1. When we switch to forward
+	// iteration, we want to return a key that is greater than a:2.
+
+	key := m.heap.items[0].key
+	cur := m.heap.items[0].iter
+
+	for _, i := range m.iters {
+		if i == cur {
+			continue
+		}
+		if !i.Valid() {
+			i.Next()
+		}
+		for ; i.Valid(); i.Next() {
+			if db.InternalCompare(m.heap.cmp, *key, *i.Key()) < 0 {
+				// key < iter-key
+				break
+			}
+			// key >= iter-key
+		}
+	}
+
+	// Special handling for the current iterator because we were using its key
+	// above.
+	cur.Next()
+	m.initMinHeap()
+}
+
+func (m *mergingIter) switchToMaxHeap() {
+	if m.heap.Len() == 0 {
+		m.Last()
+		return
+	}
+
+	// We're switching from using a min heap to a max heap. We need to backup any
+	// iterator that is greater than or equal to the current key. Consider the
+	// scenario where we have 2 iterators being merged (user-key:seqnum):
+	//
+	// i1: a:2     *b:2
+	// i2:     a:1      b:1
+	//
+	// The current key is b:2 and i2 is pointing at b:1. When we switch to
+	// reverse iteration, we want to return a key that is less than b:2.
+	key := m.heap.items[0].key
+	cur := m.heap.items[0].iter
+	for _, i := range m.iters {
+		if i == cur {
+			continue
+		}
+		if !i.Valid() {
+			i.Prev()
+		}
+		for ; i.Valid(); i.Prev() {
+			if db.InternalCompare(m.heap.cmp, *key, *i.Key()) > 0 {
+				break
+			}
+		}
+	}
+	// Special handling for the current iterator because we were using its key
+	// above.
+	cur.Prev()
+	m.initMaxHeap()
 }
 
 func (m *mergingIter) SeekGE(key *db.InternalKey) {
-	panic("pebble: Seek unimplemented")
+	for _, t := range m.iters {
+		t.SeekGE(key)
+	}
+	m.initMinHeap()
 }
 
 func (m *mergingIter) SeekLE(key *db.InternalKey) {
-	panic("pebble: RSeek unimplemented")
+	for _, t := range m.iters {
+		t.SeekLE(key)
+	}
+	m.initMaxHeap()
 }
 
 func (m *mergingIter) First() {
-	panic("pebble: First unimplemented")
+	for _, t := range m.iters {
+		t.First()
+	}
+	m.initMinHeap()
 }
 
 func (m *mergingIter) Last() {
-	panic("pebble: Last unimplemented")
+	for _, t := range m.iters {
+		t.Last()
+	}
+	m.initMaxHeap()
 }
 
 func (m *mergingIter) Next() bool {
 	if m.err != nil {
 		return false
 	}
+
+	if m.dir != 1 {
+		m.switchToMinHeap()
+		return m.heap.Len() > 0
+	}
+
+	if m.heap.Len() == 0 {
+		return false
+	}
+
 	item := heap.Pop(&m.heap).(*mergingIterItem)
 	if item.iter.Next() {
 		item.key = item.iter.Key()
@@ -271,7 +400,30 @@ func (m *mergingIter) Next() bool {
 }
 
 func (m *mergingIter) Prev() bool {
-	panic("pebble: Prev unimplemented")
+	if m.err != nil {
+		return false
+	}
+
+	if m.dir != -1 {
+		m.switchToMaxHeap()
+		return m.heap.Len() > 0
+	}
+
+	if m.heap.Len() == 0 {
+		return false
+	}
+
+	item := heap.Pop(&m.heap).(*mergingIterItem)
+	if item.iter.Prev() {
+		item.key = item.iter.Key()
+		heap.Push(&m.heap, item)
+		return true
+	}
+	m.err = item.iter.Error()
+	if m.err != nil {
+		return false
+	}
+	return m.heap.Len() > 0
 }
 
 func (m *mergingIter) Key() *db.InternalKey {
@@ -310,4 +462,20 @@ func (m *mergingIter) Close() error {
 	m.iters = nil
 	m.heap.items = nil
 	return m.err
+}
+
+func (m *mergingIter) DebugString() string {
+	var buf bytes.Buffer
+	sep := ""
+	for m.heap.Len() > 0 {
+		item := heap.Pop(&m.heap).(*mergingIterItem)
+		fmt.Fprintf(&buf, "%s%s:%d", sep, item.key.UserKey, item.key.Seqnum())
+		sep = " "
+	}
+	if m.dir == 1 {
+		m.initMinHeap()
+	} else {
+		m.initMaxHeap()
+	}
+	return buf.String()
 }

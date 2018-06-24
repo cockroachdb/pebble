@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,76 +17,85 @@ import (
 )
 
 var testKeyValuePairs = []string{
-	"10:ten",
-	"11:eleven",
-	"12:twelve",
-	"13:thirteen",
-	"14:fourteen",
-	"15:fifteen",
-	"16:sixteen",
-	"17:seventeen",
-	"18:eighteen",
-	"19:nineteen",
+	"10:10",
+	"11:11",
+	"12:12",
+	"13:13",
+	"14:14",
+	"15:15",
+	"16:16",
+	"17:17",
+	"18:18",
+	"19:19",
 }
 
 type fakeIter struct {
-	kvPairs  []string
+	keys     []db.InternalKey
 	index    int
 	closeErr error
 }
 
-func newFakeIterator(closeErr error, kvPairs ...string) *fakeIter {
-	for _, kv := range kvPairs {
-		if !strings.Contains(kv, ":") {
-			panic(fmt.Sprintf(`key-value pair %q does not contain ":"`, kv))
+func newFakeIterator(closeErr error, keys ...string) *fakeIter {
+	ikeys := make([]db.InternalKey, len(keys))
+	for i, k := range keys {
+		j := strings.Index(k, ":")
+		seqnum, err := strconv.Atoi(k[j+1:])
+		if err != nil {
+			panic(err)
 		}
+		ikeys[i] = db.MakeInternalKey([]byte(k[:j]), uint64(seqnum), db.InternalKeyKindSet)
 	}
 	return &fakeIter{
-		kvPairs:  kvPairs,
+		keys:     ikeys,
 		index:    0,
 		closeErr: closeErr,
 	}
 }
 
 func (f *fakeIter) SeekGE(key *db.InternalKey) {
-	panic("pebble: SeekGE unimplemented")
+	for f.index = 0; f.index < len(f.keys); f.index++ {
+		if db.InternalCompare(db.DefaultComparer.Compare, *key, *f.Key()) <= 0 {
+			break
+		}
+	}
 }
 
 func (f *fakeIter) SeekLE(key *db.InternalKey) {
-	panic("pebble: SeekLE unimplemented")
+	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
+		if db.InternalCompare(db.DefaultComparer.Compare, *key, *f.Key()) >= 0 {
+			break
+		}
+	}
 }
 
 func (f *fakeIter) First() {
-	panic("pebble: First unimplemented")
+	f.index = 0
 }
 
 func (f *fakeIter) Last() {
-	panic("pebble: Last unimplemented")
+	f.index = len(f.keys) - 1
 }
 
 func (f *fakeIter) Next() bool {
 	f.index++
-	return f.index < len(f.kvPairs)
+	return f.index < len(f.keys)
 }
 
 func (f *fakeIter) Prev() bool {
-	panic("pebble: Prev unimplemented")
+	f.index--
+	return f.index >= 0
 }
 
 func (f *fakeIter) Key() *db.InternalKey {
-	kv := f.kvPairs[f.index]
-	i := strings.Index(kv, ":")
-	return &db.InternalKey{UserKey: []byte(kv[:i])}
+	return &f.keys[f.index]
 }
 
 func (f *fakeIter) Value() []byte {
-	kv := f.kvPairs[f.index]
-	i := strings.Index(kv, ":")
-	return []byte(kv[i+1:])
+	return nil
 }
 
 func (f *fakeIter) Valid() bool {
-	return f.index >= 0 && f.index < len(f.kvPairs)
+	return f.index >= 0 && f.index < len(f.keys)
 }
 
 func (f *fakeIter) Error() error {
@@ -116,9 +126,9 @@ func testIterator(
 		{
 			"one sub-iterator",
 			[]db.InternalIterator{
-				newFakeIterator(nil, "e:east", "w:west"),
+				newFakeIterator(nil, "e:1", "w:2"),
 			},
-			"<e:east><w:west>.",
+			"<e:1><w:2>.",
 		},
 		{
 			"two sub-iterators",
@@ -151,7 +161,7 @@ func testIterator(
 		var b bytes.Buffer
 		iter := newFunc(tc.iters...)
 		for ; iter.Valid(); iter.Next() {
-			fmt.Fprintf(&b, "<%s:%s>", iter.Key().UserKey, iter.Value())
+			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
 		}
 		if err := iter.Close(); err != nil {
 			fmt.Fprintf(&b, "err=%v", err)
@@ -177,7 +187,7 @@ func testIterator(
 
 		j := 0
 		for ; iter.Valid() && j < len(testKeyValuePairs); j++ {
-			got := string(iter.Key().UserKey) + ":" + string(iter.Value())
+			got := fmt.Sprintf("%s:%d", iter.Key().UserKey, iter.Key().Seqnum())
 			want := testKeyValuePairs[j]
 			if got != want {
 				bad = true
@@ -242,4 +252,179 @@ func TestMergingIterator(t *testing.T) {
 		}
 		return splits
 	})
+}
+
+func TestMergingIteratorSeek(t *testing.T) {
+	testCases := []struct {
+		key          string
+		iters        string
+		expectedNext string
+		expectedPrev string
+	}{
+		{
+			"a0.SET.3",
+			"a0:0;a1:1;a2:2",
+			"<a0:0><a1:1><a2:2>.",
+			".",
+		},
+		{
+			"a1.SET.3",
+			"a0:0;a1:1;a2:2",
+			"<a1:1><a2:2>.",
+			"<a0:0>.",
+		},
+		{
+			"a2.SET.3",
+			"a0:0;a1:1;a2:2",
+			"<a2:2>.",
+			"<a1:1><a0:0>.",
+		},
+		{
+			"a3.SET.3",
+			"a0:0;a1:1;a2:2",
+			".",
+			"<a2:2><a1:1><a0:0>.",
+		},
+		{
+			"a2.SET.3",
+			"a0:0,b3:3;a1:1;a2:2",
+			"<a2:2><b3:3>.",
+			"<a1:1><a0:0>.",
+		},
+		{
+			"a.SET.2",
+			"a:0;a:1;a:2",
+			"<a:2><a:1><a:0>.",
+			"<a:2>.",
+		},
+		{
+			"a.SET.1",
+			"a:0;a:1;a:2",
+			"<a:1><a:0>.",
+			"<a:1><a:2>.",
+		},
+		{
+			"a.SET.0",
+			"a:0;a:1;a:2",
+			"<a:0>.",
+			"<a:0><a:1><a:2>.",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			var iters []db.InternalIterator
+			for _, s := range strings.Split(tc.iters, ";") {
+				iters = append(iters, newFakeIterator(nil, strings.Split(s, ",")...))
+			}
+
+			var b bytes.Buffer
+			iter := newMergingIterator(db.DefaultComparer.Compare, iters...)
+			ikey := makeIkey(tc.key)
+			iter.SeekGE(&ikey)
+			for ; iter.Valid(); iter.Next() {
+				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+			}
+			if err := iter.Error(); err != nil {
+				fmt.Fprintf(&b, "err=%v", err)
+			} else {
+				b.WriteByte('.')
+			}
+			if got := b.String(); got != tc.expectedNext {
+				t.Errorf("got  %q\nwant %q", got, tc.expectedNext)
+			}
+
+			b.Reset()
+			iter.SeekLE(&ikey)
+			for ; iter.Valid(); iter.Prev() {
+				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+			}
+			if err := iter.Close(); err != nil {
+				fmt.Fprintf(&b, "err=%v", err)
+			} else {
+				b.WriteByte('.')
+			}
+			if got := b.String(); got != tc.expectedPrev {
+				t.Errorf("got  %q\nwant %q", got, tc.expectedPrev)
+			}
+		})
+	}
+}
+
+func TestMergingIteratorNextPrev(t *testing.T) {
+	// The data is the same in each of these cases, but divided up amongst the
+	// iterators differently.
+	iterCases := [][]db.InternalIterator{
+		[]db.InternalIterator{
+			newFakeIterator(nil, "a:2", "a:1", "b:2", "b:1", "c:2", "c:1"),
+		},
+		[]db.InternalIterator{
+			newFakeIterator(nil, "a:2", "b:2", "c:2"),
+			newFakeIterator(nil, "a:1", "b:1", "c:1"),
+		},
+		[]db.InternalIterator{
+			newFakeIterator(nil, "a:2", "b:2"),
+			newFakeIterator(nil, "a:1", "b:1"),
+			newFakeIterator(nil, "c:2", "c:1"),
+		},
+		[]db.InternalIterator{
+			newFakeIterator(nil, "a:2"),
+			newFakeIterator(nil, "a:1"),
+			newFakeIterator(nil, "b:2"),
+			newFakeIterator(nil, "b:1"),
+			newFakeIterator(nil, "c:2"),
+			newFakeIterator(nil, "c:1"),
+		},
+	}
+	for _, iters := range iterCases {
+		t.Run("", func(t *testing.T) {
+			m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+			m.First()
+
+			testCases := []struct {
+				dir      string
+				expected string
+			}{
+				{"+", "<a:1>"},
+				{"+", "<b:2>"},
+				{"-", "<a:1>"},
+				{"-", "<a:2>"},
+				{"-", "."},
+				{"+", "<a:2>"},
+				{"+", "<a:1>"},
+				{"+", "<b:2>"},
+				{"+", "<b:1>"},
+				{"+", "<c:2>"},
+				{"+", "<c:1>"},
+				{"-", "<c:2>"},
+				{"-", "<b:1>"},
+				{"-", "<b:2>"},
+				{"+", "<b:1>"},
+				{"+", "<c:2>"},
+				{"-", "<b:1>"},
+				{"+", "<c:2>"},
+				{"+", "<c:1>"},
+				{"+", "."},
+				{"-", "<c:1>"},
+			}
+			for i, c := range testCases {
+				switch c.dir {
+				case "+":
+					m.Next()
+				case "-":
+					m.Prev()
+				default:
+					t.Fatalf("unexpected direction: %q", c.dir)
+				}
+				var got string
+				if !m.Valid() {
+					got = "."
+				} else {
+					got = fmt.Sprintf("<%s:%d>", m.Key().UserKey, m.Key().Seqnum())
+				}
+				if got != c.expected {
+					t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
+				}
+			}
+		})
+	}
 }
