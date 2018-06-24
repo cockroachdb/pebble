@@ -84,10 +84,10 @@ var _ db.DB = (*DB)(nil)
 // Get implements DB.Get, as documented in the pebble/db package.
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
-	// TODO: add an opts.LastSequence field, or a DB.Snapshot method?
+	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
 	snapshot := d.versions.lastSequence
 	current := d.versions.currentVersion()
-	// TODO: do we need to ref-count the current version, so that we don't
+	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
 	memtables := [2]*memTable{d.mem, d.imm}
 	d.mu.Unlock()
@@ -200,6 +200,8 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
+	// TODO(peter): Grab a reference to the current memtable, immutable memtable
+	// and sstable version.
 	panic("pebble.DB: NewIter unimplemented")
 }
 
