@@ -1,6 +1,10 @@
 package pebble
 
-import "github.com/petermattis/pebble/db"
+import (
+	"container/heap"
+
+	"github.com/petermattis/pebble/db"
+)
 
 type errorIter struct {
 	err error
@@ -144,6 +148,14 @@ func (c *concatenatingIter) Valid() bool {
 	return c.iters[0].Valid()
 }
 
+// Error implements Iterator.Error, as documented in the pebble/db package.
+func (c *concatenatingIter) Error() error {
+	if len(c.iters) == 0 || c.err != nil {
+		return c.err
+	}
+	return c.iters[0].Error()
+}
+
 func (c *concatenatingIter) Close() error {
 	for _, t := range c.iters {
 		err := t.Close()
@@ -153,6 +165,50 @@ func (c *concatenatingIter) Close() error {
 	}
 	c.iters = nil
 	return c.err
+}
+
+type mergingIterItem struct {
+	iter  db.InternalIterator
+	key   *db.InternalKey
+	index int
+}
+
+type mergingIterHeap struct {
+	cmp   db.Compare
+	items []mergingIterItem
+}
+
+func (h *mergingIterHeap) Len() int {
+	return len(h.items)
+}
+
+func (h *mergingIterHeap) Less(i, j int) bool {
+	return db.InternalCompare(h.cmp, *h.items[i].key, *h.items[j].key) < 0
+}
+
+func (h *mergingIterHeap) Swap(i, j int) {
+	h.items[i], h.items[j] = h.items[j], h.items[i]
+}
+
+func (h *mergingIterHeap) Push(x interface{}) {
+	n := len(h.items)
+	item := x.(*mergingIterItem)
+	item.index = n
+	h.items = append(h.items, *item)
+}
+
+func (h *mergingIterHeap) Pop() interface{} {
+	n := len(h.items)
+	item := &h.items[n-1]
+	item.index = -1 // for safety
+	h.items = h.items[:n-1]
+	return item
+}
+
+type mergingIter struct {
+	iters []db.InternalIterator
+	heap  mergingIterHeap
+	err   error
 }
 
 // newMergingIterator returns an iterator that merges its input. Walking the
@@ -166,56 +222,19 @@ func (c *concatenatingIter) Close() error {
 func newMergingIterator(cmp db.Compare, iters ...db.InternalIterator) db.InternalIterator {
 	m := &mergingIter{
 		iters: iters,
-		cmp:   cmp,
-		keys:  make([]*db.InternalKey, len(iters)),
-		index: -2,
 	}
-
-	for i, t := range m.iters {
+	m.heap.cmp = cmp
+	m.heap.items = make([]mergingIterItem, 0, len(iters))
+	for _, t := range iters {
 		if t.Valid() {
-			m.keys[i] = t.Key()
-			if m.index < 0 {
-				m.index = i
-				continue
-			}
-			if db.InternalCompare(m.cmp, *m.keys[i], *m.keys[m.index]) < 0 {
-				m.index = i
-			}
-		} else {
-			_ = m.close(i)
+			m.heap.items = append(m.heap.items, mergingIterItem{
+				iter: t,
+				key:  t.Key(),
+			})
 		}
 	}
+	heap.Init(&m.heap)
 	return m
-}
-
-type mergingIter struct {
-	// iters are the input iterators. An element is set to nil when that
-	// input iterator is done.
-	iters []db.InternalIterator
-	err   error
-	cmp   db.Compare
-	// keys[i] is the current key for iters[i].
-	keys []*db.InternalKey
-	// index is:
-	//   - -2 if the mergingIter is done,
-	//   - -1 if the mergingIter has not yet started,
-	//   - otherwise, the index (in iters and in keys) of the smallest key.
-	index int
-}
-
-// close records that the i'th input iterator is done.
-func (m *mergingIter) close(i int) error {
-	t := m.iters[i]
-	if t == nil {
-		return nil
-	}
-	err := t.Close()
-	if m.err == nil {
-		m.err = err
-	}
-	m.iters[i] = nil
-	m.keys[i] = nil
-	return err
 }
 
 func (m *mergingIter) SeekGE(key *db.InternalKey) {
@@ -238,33 +257,17 @@ func (m *mergingIter) Next() bool {
 	if m.err != nil {
 		return false
 	}
-	switch m.index {
-	case -2:
+	item := heap.Pop(&m.heap).(*mergingIterItem)
+	if item.iter.Next() {
+		item.key = item.iter.Key()
+		heap.Push(&m.heap, item)
+		return true
+	}
+	m.err = item.iter.Error()
+	if m.err != nil {
 		return false
-	default:
-		t := m.iters[m.index]
-		if t.Next() {
-			m.keys[m.index] = t.Key()
-		} else if m.close(m.index) != nil {
-			return false
-		}
 	}
-	// Find the smallest key. We could maintain a heap instead of doing
-	// a linear scan, but len(iters) is typically small.
-	m.index = -2
-	for i, t := range m.iters {
-		if t == nil {
-			continue
-		}
-		if m.index < 0 {
-			m.index = i
-			continue
-		}
-		if db.InternalCompare(m.cmp, *m.keys[i], *m.keys[m.index]) < 0 {
-			m.index = i
-		}
-	}
-	return m.index >= 0
+	return m.heap.Len() > 0
 }
 
 func (m *mergingIter) Prev() bool {
@@ -272,30 +275,39 @@ func (m *mergingIter) Prev() bool {
 }
 
 func (m *mergingIter) Key() *db.InternalKey {
-	if m.index < 0 || m.err != nil {
+	if m.heap.Len() == 0 || m.err != nil {
 		return nil
 	}
-	return m.keys[m.index]
+	return m.heap.items[0].key
 }
 
 func (m *mergingIter) Value() []byte {
-	if m.index < 0 || m.err != nil {
+	if m.heap.Len() == 0 || m.err != nil {
 		return nil
 	}
-	return m.iters[m.index].Value()
+	return m.heap.items[0].iter.Value()
 }
 
 func (m *mergingIter) Valid() bool {
-	if m.index < 0 || m.err != nil {
+	if m.heap.Len() == 0 || m.err != nil {
 		return false
 	}
-	return m.iters[m.index].Valid()
+	return true
+}
+
+// Error implements Iterator.Error, as documented in the pebble/db package.
+func (m *mergingIter) Error() error {
+	if m.heap.Len() == 0 || m.err != nil {
+		return m.err
+	}
+	return m.heap.items[0].iter.Error()
 }
 
 func (m *mergingIter) Close() error {
 	for i := range m.iters {
-		m.close(i)
+		m.iters[i].Close()
 	}
-	m.index = -2
+	m.iters = nil
+	m.heap.items = nil
 	return m.err
 }

@@ -144,7 +144,12 @@ func (t *memTableIter) Valid() bool {
 	return t.iter.Valid()
 }
 
-// Close ...
+// Error implements Iterator.Error, as documented in the pebble/db package.
+func (t *memTableIter) Error() error {
+	return nil
+}
+
+// Close implements Iterator.Close, as documented in the pebble/db package.
 func (t *memTableIter) Close() error {
 	return t.iter.Close()
 }

@@ -207,9 +207,19 @@ func (i *tableIter) Valid() bool {
 	return i.data.Valid()
 }
 
+// Error implements Iterator.Error, as documented in the pebble/db package.
+func (i *tableIter) Error() error {
+	if err := i.data.Error(); err != nil {
+		return err
+	}
+	return i.err
+}
+
 // Close implements Iterator.Close, as documented in the pebble/db package.
 func (i *tableIter) Close() error {
-	i.data.Close()
+	if err := i.data.Close(); err != nil {
+		return err
+	}
 	return i.err
 }
 

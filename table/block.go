@@ -296,8 +296,13 @@ func (i *blockIter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
+// Error implements Iterator.Error, as documented in the pebble/db package.
+func (i *blockIter) Error() error {
+	return i.err
+}
+
 // Close implements Iterator.Close, as documented in the pebble/db package.
 func (i *blockIter) Close() error {
 	i.val = nil
-	return nil
+	return i.err
 }
