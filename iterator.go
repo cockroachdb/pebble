@@ -2,7 +2,6 @@ package pebble
 
 import (
 	"bytes"
-	"container/heap"
 	"fmt"
 
 	"github.com/petermattis/pebble/db"
@@ -173,9 +172,8 @@ func (c *concatenatingIter) Close() error {
 }
 
 type mergingIterItem struct {
-	iter  db.InternalIterator
-	key   *db.InternalKey
-	index int
+	iter db.InternalIterator
+	key  *db.InternalKey
 }
 
 type mergingIterHeap struct {
@@ -184,34 +182,74 @@ type mergingIterHeap struct {
 	items   []mergingIterItem
 }
 
-func (h *mergingIterHeap) Len() int {
+func (h *mergingIterHeap) len() int {
 	return len(h.items)
 }
 
-func (h *mergingIterHeap) Less(i, j int) bool {
+func (h *mergingIterHeap) less(i, j int) bool {
 	if h.reverse {
 		i, j = j, i
 	}
 	return db.InternalCompare(h.cmp, *h.items[i].key, *h.items[j].key) < 0
 }
 
-func (h *mergingIterHeap) Swap(i, j int) {
+func (h *mergingIterHeap) swap(i, j int) {
 	h.items[i], h.items[j] = h.items[j], h.items[i]
 }
 
-func (h *mergingIterHeap) Push(x interface{}) {
-	n := len(h.items)
-	item := x.(*mergingIterItem)
-	item.index = n
-	h.items = append(h.items, *item)
+// init, up and down are copied from the go stdlib.
+func (h *mergingIterHeap) init() {
+	// heapify
+	n := h.len()
+	for i := n/2 - 1; i >= 0; i-- {
+		h.down(i, n)
+	}
 }
 
-func (h *mergingIterHeap) Pop() interface{} {
-	n := len(h.items)
-	item := &h.items[n-1]
-	item.index = -1 // for safety
-	h.items = h.items[:n-1]
+func (h *mergingIterHeap) fix(i int) {
+	if !h.down(i, h.len()) {
+		h.up(i)
+	}
+}
+
+func (h *mergingIterHeap) pop() *mergingIterItem {
+	n := h.len() - 1
+	h.swap(0, n)
+	h.down(0, n)
+	item := &h.items[n]
+	h.items = h.items[:n]
 	return item
+}
+
+func (h *mergingIterHeap) up(j int) {
+	for {
+		i := (j - 1) / 2 // parent
+		if i == j || !h.less(j, i) {
+			break
+		}
+		h.swap(i, j)
+		j = i
+	}
+}
+
+func (h *mergingIterHeap) down(i0, n int) bool {
+	i := i0
+	for {
+		j1 := 2*i + 1
+		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+			break
+		}
+		j := j1 // left child
+		if j2 := j1 + 1; j2 < n && h.less(j2, j1) {
+			j = j2 // = 2*i + 2  // right child
+		}
+		if !h.less(j, i) {
+			break
+		}
+		h.swap(i, j)
+		i = j
+	}
+	return i > i0
 }
 
 type mergingIter struct {
@@ -252,7 +290,7 @@ func (m *mergingIter) initHeap() {
 			})
 		}
 	}
-	heap.Init(&m.heap)
+	m.heap.init()
 }
 
 func (m *mergingIter) initMinHeap() {
@@ -268,7 +306,7 @@ func (m *mergingIter) initMaxHeap() {
 }
 
 func (m *mergingIter) switchToMinHeap() {
-	if m.heap.Len() == 0 {
+	if m.heap.len() == 0 {
 		m.First()
 		return
 	}
@@ -309,7 +347,7 @@ func (m *mergingIter) switchToMinHeap() {
 }
 
 func (m *mergingIter) switchToMaxHeap() {
-	if m.heap.Len() == 0 {
+	if m.heap.len() == 0 {
 		m.Last()
 		return
 	}
@@ -379,17 +417,17 @@ func (m *mergingIter) Next() bool {
 
 	if m.dir != 1 {
 		m.switchToMinHeap()
-		return m.heap.Len() > 0
+		return m.heap.len() > 0
 	}
 
-	if m.heap.Len() == 0 {
+	if m.heap.len() == 0 {
 		return false
 	}
 
 	item := &m.heap.items[0]
 	if item.iter.Next() {
 		item.key = item.iter.Key()
-		heap.Fix(&m.heap, 0)
+		m.heap.fix(0)
 		return true
 	}
 
@@ -398,8 +436,8 @@ func (m *mergingIter) Next() bool {
 		return false
 	}
 
-	heap.Pop(&m.heap)
-	return m.heap.Len() > 0
+	m.heap.pop()
+	return m.heap.len() > 0
 }
 
 func (m *mergingIter) Prev() bool {
@@ -409,17 +447,17 @@ func (m *mergingIter) Prev() bool {
 
 	if m.dir != -1 {
 		m.switchToMaxHeap()
-		return m.heap.Len() > 0
+		return m.heap.len() > 0
 	}
 
-	if m.heap.Len() == 0 {
+	if m.heap.len() == 0 {
 		return false
 	}
 
 	item := &m.heap.items[0]
 	if item.iter.Prev() {
 		item.key = item.iter.Key()
-		heap.Fix(&m.heap, 0)
+		m.heap.fix(0)
 		return true
 	}
 
@@ -428,26 +466,26 @@ func (m *mergingIter) Prev() bool {
 		return false
 	}
 
-	heap.Pop(&m.heap)
-	return m.heap.Len() > 0
+	m.heap.pop()
+	return m.heap.len() > 0
 }
 
 func (m *mergingIter) Key() *db.InternalKey {
-	if m.heap.Len() == 0 || m.err != nil {
+	if m.heap.len() == 0 || m.err != nil {
 		return nil
 	}
 	return m.heap.items[0].key
 }
 
 func (m *mergingIter) Value() []byte {
-	if m.heap.Len() == 0 || m.err != nil {
+	if m.heap.len() == 0 || m.err != nil {
 		return nil
 	}
 	return m.heap.items[0].iter.Value()
 }
 
 func (m *mergingIter) Valid() bool {
-	if m.heap.Len() == 0 || m.err != nil {
+	if m.heap.len() == 0 || m.err != nil {
 		return false
 	}
 	return true
@@ -455,7 +493,7 @@ func (m *mergingIter) Valid() bool {
 
 // Error implements Iterator.Error, as documented in the pebble/db package.
 func (m *mergingIter) Error() error {
-	if m.heap.Len() == 0 || m.err != nil {
+	if m.heap.len() == 0 || m.err != nil {
 		return m.err
 	}
 	return m.heap.items[0].iter.Error()
@@ -473,8 +511,8 @@ func (m *mergingIter) Close() error {
 func (m *mergingIter) DebugString() string {
 	var buf bytes.Buffer
 	sep := ""
-	for m.heap.Len() > 0 {
-		item := heap.Pop(&m.heap).(*mergingIterItem)
+	for m.heap.len() > 0 {
+		item := m.heap.pop()
 		fmt.Fprintf(&buf, "%s%s:%d", sep, item.key.UserKey, item.key.Seqnum())
 		sep = " "
 	}
