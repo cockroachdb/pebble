@@ -12,8 +12,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/table"
 )
 
 var testKeyValuePairs = []string{
@@ -426,5 +430,153 @@ func TestMergingIteratorNextPrev(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func buildBenchmarkTables(b *testing.B, blockSize, restartInterval, count int) ([]*table.Reader, [][]byte) {
+	mem := storage.NewMem()
+	files := make([]storage.File, count)
+	for i := range files {
+		f, err := mem.Create(fmt.Sprintf("bench%d", i))
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer f.Close()
+		files[i] = f
+	}
+
+	writers := make([]*table.Writer, len(files))
+	for i := range files {
+		writers[i] = table.NewWriter(files[i], &db.Options{
+			BlockRestartInterval: restartInterval,
+			BlockSize:            blockSize,
+			Compression:          db.NoCompression,
+		})
+	}
+
+	estimatedSize := func() uint64 {
+		var sum uint64
+		for _, w := range writers {
+			sum += w.EstimatedSize()
+		}
+		return sum
+	}
+
+	var keys [][]byte
+	var ikey db.InternalKey
+	targetSize := uint64(count * (2 << 20))
+	for i := 0; estimatedSize() < targetSize; i++ {
+		key := []byte(fmt.Sprintf("%08d", i))
+		keys = append(keys, key)
+		ikey.UserKey = key
+		j := rand.Intn(len(writers))
+		w := writers[j]
+		w.Set(&ikey, nil, nil)
+	}
+
+	for _, w := range writers {
+		if err := w.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	cache := cache.NewBlockCache(128 << 20)
+	readers := make([]*table.Reader, len(files))
+	for i := range files {
+		f, err := mem.Open(fmt.Sprintf("bench%d", i))
+		if err != nil {
+			b.Fatal(err)
+		}
+		readers[i] = table.NewReader(f, 0, &db.Options{
+			Cache: cache,
+		})
+	}
+	return readers, keys
+}
+
+func BenchmarkMergingIterSeekGE(b *testing.B) {
+	const blockSize = 32 << 10
+
+	for _, restartInterval := range []int{16} {
+		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+			func(b *testing.B) {
+				for _, count := range []int{1, 2, 3, 4, 5} {
+					b.Run(fmt.Sprintf("count=%d", count),
+						func(b *testing.B) {
+							readers, keys := buildBenchmarkTables(b, blockSize, restartInterval, count)
+							iters := make([]db.InternalIterator, len(readers))
+							for i := range readers {
+								iters[i] = readers[i].NewIter(nil)
+							}
+							m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+							b.ResetTimer()
+							var ikey db.InternalKey
+							for i := 0; i < b.N; i++ {
+								ikey.UserKey = keys[rng.Intn(len(keys))]
+								m.SeekGE(&ikey)
+							}
+						})
+				}
+			})
+	}
+}
+
+func BenchmarkMergingIterNext(b *testing.B) {
+	const blockSize = 32 << 10
+
+	for _, restartInterval := range []int{16} {
+		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+			func(b *testing.B) {
+				for _, count := range []int{1, 2, 3, 4, 5} {
+					b.Run(fmt.Sprintf("count=%d", count),
+						func(b *testing.B) {
+							readers, _ := buildBenchmarkTables(b, blockSize, restartInterval, count)
+							iters := make([]db.InternalIterator, len(readers))
+							for i := range readers {
+								iters[i] = readers[i].NewIter(nil)
+							}
+							m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+
+							b.ResetTimer()
+							for i := 0; i < b.N; i++ {
+								if !m.Valid() {
+									m.First()
+								}
+								m.Next()
+							}
+						})
+				}
+			})
+	}
+}
+
+func BenchmarkMergingIterPrev(b *testing.B) {
+	const blockSize = 32 << 10
+
+	for _, restartInterval := range []int{16} {
+		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+			func(b *testing.B) {
+				for _, count := range []int{1, 2, 3, 4, 5} {
+					b.Run(fmt.Sprintf("count=%d", count),
+						func(b *testing.B) {
+							readers, _ := buildBenchmarkTables(b, blockSize, restartInterval, count)
+							iters := make([]db.InternalIterator, len(readers))
+							for i := range readers {
+								iters[i] = readers[i].NewIter(nil)
+							}
+							m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+
+							b.ResetTimer()
+							for i := 0; i < b.N; i++ {
+								if !m.Valid() {
+									m.Last()
+								}
+								m.Prev()
+							}
+						})
+				}
+			})
 	}
 }
