@@ -114,7 +114,7 @@ func check(f storage.File, fp db.FilterPolicy) error {
 	r := newReader(f, 0, &db.Options{
 		FilterPolicy:    fp,
 		VerifyChecksums: true,
-	}, raw{})
+	}, rawCoder)
 	// Check that each key/value pair in wordCount is also in the table.
 	for k, v := range wordCount {
 		// Check using Get.
@@ -233,7 +233,7 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	w := newWriter(f0, &db.Options{
 		Compression:  compression,
 		FilterPolicy: fp,
-	}, raw{})
+	}, rawCoder)
 	for _, k := range keys {
 		v := wordCount[k]
 		if err := w.Set(&db.InternalKey{UserKey: []byte(k)}, []byte(v), nil); err != nil {
@@ -323,7 +323,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	}
 	r := newReader(f, 0, &db.Options{
 		FilterPolicy: c,
-	}, raw{})
+	}, rawCoder)
 
 	const n = 10000
 	// key is a buffer that will be re-used for n Get calls, each with a
@@ -462,7 +462,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 			}
 			w := newWriter(wf, &db.Options{
 				BlockSize: blockSize,
-			}, raw{})
+			}, rawCoder)
 			for _, k := range keys[:nk] {
 				if err := w.Set(&db.InternalKey{UserKey: []byte(k)}, xxx[:vLen], nil); err != nil {
 					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
@@ -479,7 +479,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 				continue
 			}
-			r := newReader(rf, 0, nil, raw{})
+			r := newReader(rf, 0, nil, rawCoder)
 			i := r.NewIter(nil)
 			for i.First(); i.Valid(); i.Next() {
 				got++

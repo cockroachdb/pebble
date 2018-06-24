@@ -275,7 +275,7 @@ type Reader struct {
 	index           block
 	cache           *cache.BlockCache
 	compare         db.Compare
-	coder           coder
+	coder           *coder
 	filter          filterReader
 	verifyChecksums bool
 }
@@ -395,7 +395,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	if err != nil {
 		return err
 	}
-	i, err := newBlockIter(bytes.Compare, raw{}, b)
+	i, err := newBlockIter(bytes.Compare, rawCoder, b)
 	if err != nil {
 		return err
 	}
@@ -429,7 +429,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	return nil
 }
 
-func newReader(f storage.File, fileNum uint64, o *db.Options, coder coder) *Reader {
+func newReader(f storage.File, fileNum uint64, o *db.Options, coder *coder) *Reader {
 	r := &Reader{
 		file:            f,
 		fileNum:         fileNum,
@@ -488,5 +488,5 @@ func newReader(f storage.File, fileNum uint64, o *db.Options, coder coder) *Read
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
-	return newReader(f, fileNum, o, internalKeyCoder{})
+	return newReader(f, fileNum, o, internalKeyCoder)
 }

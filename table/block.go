@@ -10,7 +10,7 @@ import (
 )
 
 type blockWriter struct {
-	coder           coder
+	coder           *coder
 	restartInterval int
 	nEntries        int
 	buf             []byte
@@ -87,7 +87,7 @@ type blockEntry struct {
 // blockIter is an iterator over a single block of data.
 type blockIter struct {
 	cmp         db.Compare
-	coder       coder
+	coder       *coder
 	offset      int
 	nextOffset  int
 	restarts    int
@@ -104,12 +104,12 @@ type blockIter struct {
 // blockIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*blockIter)(nil)
 
-func newBlockIter(cmp db.Compare, coder coder, block block) (*blockIter, error) {
+func newBlockIter(cmp db.Compare, coder *coder, block block) (*blockIter, error) {
 	i := &blockIter{}
 	return i, i.init(cmp, coder, block)
 }
 
-func (i *blockIter) init(cmp db.Compare, coder coder, block block) error {
+func (i *blockIter) init(cmp db.Compare, coder *coder, block block) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")

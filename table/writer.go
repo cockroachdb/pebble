@@ -114,45 +114,41 @@ func (f *filterWriter) finish() ([]byte, error) {
 	return f.data, nil
 }
 
-type coder interface {
-	Size(key *db.InternalKey) int
-	Encode(key *db.InternalKey, buf []byte)
-	Decode(buf []byte) db.InternalKey
+type coder struct {
+	Size   func(key *db.InternalKey) int
+	Encode func(key *db.InternalKey, buf []byte)
+	Decode func(buf []byte) db.InternalKey
 }
 
-type raw struct{}
-
-func (raw) Size(key *db.InternalKey) int {
-	return len(key.UserKey)
+var rawCoder = &coder{
+	Size: func(key *db.InternalKey) int {
+		return len(key.UserKey)
+	},
+	Encode: func(key *db.InternalKey, buf []byte) {
+		copy(buf, key.UserKey)
+	},
+	Decode: func(buf []byte) db.InternalKey {
+		return db.InternalKey{UserKey: buf}
+	},
 }
 
-func (raw) Encode(key *db.InternalKey, buf []byte) {
-	copy(buf, key.UserKey)
-}
-
-func (raw) Decode(buf []byte) db.InternalKey {
-	return db.InternalKey{UserKey: buf}
-}
-
-type internalKeyCoder struct{}
-
-func (internalKeyCoder) Size(key *db.InternalKey) int {
-	return key.Size()
-}
-
-func (internalKeyCoder) Encode(key *db.InternalKey, buf []byte) {
-	i := copy(buf, key.UserKey)
-	binary.LittleEndian.PutUint64(buf[i:], key.Trailer())
-}
-
-func (internalKeyCoder) Decode(buf []byte) db.InternalKey {
-	return db.DecodeInternalKey(buf)
+var internalKeyCoder = &coder{
+	Size: func(key *db.InternalKey) int {
+		return key.Size()
+	},
+	Encode: func(key *db.InternalKey, buf []byte) {
+		i := copy(buf, key.UserKey)
+		binary.LittleEndian.PutUint64(buf[i:], key.Trailer())
+	},
+	Decode: func(buf []byte) db.InternalKey {
+		return db.DecodeInternalKey(buf)
+	},
 }
 
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
-	coder     coder
+	coder     *coder
 	writer    io.Writer
 	bufWriter *bufio.Writer
 	closer    io.Closer
@@ -234,7 +230,7 @@ func (w *Writer) flushPendingBH(key *db.InternalKey) {
 	if key != nil {
 		ukey = key.UserKey
 	}
-	if (w.coder == raw{}) {
+	if w.coder == rawCoder {
 		w.indexKeys = w.appendSep(w.indexKeys, w.block.curKey, ukey)
 	} else {
 		w.indexKeys = append(w.indexKeys, w.block.curKey...)
@@ -397,7 +393,7 @@ func (w *Writer) EstimatedSize() uint64 {
 	return w.offset + uint64(w.block.estimatedSize()+len(w.indexEntries))
 }
 
-func newWriter(f storage.File, o *db.Options, coder coder) *Writer {
+func newWriter(f storage.File, o *db.Options, coder *coder) *Writer {
 	w := &Writer{
 		coder:       coder,
 		closer:      f,
@@ -433,5 +429,5 @@ func newWriter(f storage.File, o *db.Options, coder coder) *Writer {
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(f storage.File, o *db.Options) *Writer {
-	return newWriter(f, o, internalKeyCoder{})
+	return newWriter(f, o, internalKeyCoder)
 }

@@ -16,7 +16,7 @@ func TestBlockWriter(t *testing.T) {
 	}
 
 	w := &blockWriter{
-		coder:           raw{},
+		coder:           rawCoder,
 		restartInterval: 16,
 	}
 	w.add(ikey("apple"), nil)
@@ -61,7 +61,7 @@ func TestBlockIter(t *testing.T) {
 		{3, "c"},
 	}
 	for _, tc := range testcases {
-		i, err := newBlockIter(bytes.Compare, raw{}, k)
+		i, err := newBlockIter(bytes.Compare, rawCoder, k)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestBlockIter(t *testing.T) {
 	}
 
 	{
-		i, err := newBlockIter(bytes.Compare, raw{}, k)
+		i, err := newBlockIter(bytes.Compare, rawCoder, k)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +115,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				w := &blockWriter{
-					coder:           raw{},
+					coder:           rawCoder,
 					restartInterval: restartInterval,
 				}
 
@@ -128,7 +128,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, raw{}, w.finish())
+				it, err := newBlockIter(bytes.Compare, rawCoder, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -150,7 +150,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				w := &blockWriter{
-					coder:           raw{},
+					coder:           rawCoder,
 					restartInterval: restartInterval,
 				}
 
@@ -160,7 +160,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, raw{}, w.finish())
+				it, err := newBlockIter(bytes.Compare, rawCoder, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -183,7 +183,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				w := &blockWriter{
-					coder:           raw{},
+					coder:           rawCoder,
 					restartInterval: restartInterval,
 				}
 
@@ -193,7 +193,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, raw{}, w.finish())
+				it, err := newBlockIter(bytes.Compare, rawCoder, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
