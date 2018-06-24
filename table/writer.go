@@ -186,12 +186,9 @@ type Writer struct {
 	tmp [50]byte
 }
 
-// Writer implements the db.Setter interface.
-var _ db.InternalSetter = (*Writer)(nil)
-
-// Set implements DB.Set, as documented in the pebble/db package. For a given
-// Writer, the keys passed to Set must be in increasing order.
-func (w *Writer) Set(key *db.InternalKey, value []byte, o *db.WriteOptions) error {
+// Add adds a key/value pair to the table being written. For a given Writer,
+// the keys passed to Add must be in increasing order.
+func (w *Writer) Add(key *db.InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
@@ -287,7 +284,8 @@ func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
 	return bh, nil
 }
 
-// Close implements DB.Close, as documented in the pebble/db package.
+// Close finishes writing the table and closes the underlying file that the
+// table was written to.
 func (w *Writer) Close() (err error) {
 	defer func() {
 		if w.closer == nil {

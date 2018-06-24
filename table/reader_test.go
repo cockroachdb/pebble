@@ -32,7 +32,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 		key := []byte(fmt.Sprintf("%05d", i))
 		keys = append(keys, key)
 		ikey.UserKey = key
-		w.Set(&ikey, nil, nil)
+		w.Add(&ikey, nil)
 	}
 
 	if err := w.Close(); err != nil {

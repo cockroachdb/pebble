@@ -53,21 +53,17 @@ var ErrNotFound = errors.New("pebble/db: not found")
 type Iterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key.
-	// It returns whether such a pair exists.
-	SeekGE(key []byte) bool
+	SeekGE(key []byte)
 
 	// SeekLE moves the iterator to the first key/value pair whose key is less
 	// than or equal to the given key.
-	// It returns whether such a pair exists.
-	SeekLE(key []byte) bool
+	SeekLE(key []byte)
 
 	// First moves the iterator the the first key/value pair.
-	// It returns whether such a pair exists.
-	First() bool
+	First()
 
 	// Last moves the iterator the the last key/value pair.
-	// It returns whether such a pair exists.
-	Last() bool
+	Last()
 
 	// Next moves the iterator to the next key/value pair.
 	// It returns whether the iterator is exhausted.
@@ -90,6 +86,9 @@ type Iterator interface {
 	// Valid returns true if the iterator is positioned at a valid key/value pair
 	// and false otherwise.
 	Valid() bool
+
+	// Error returns any accumulated error.
+	Error() error
 
 	// Close closes the iterator and returns any accumulated error. Exhausting
 	// all the key/value pairs in a table is not considered to be an error.
@@ -123,26 +122,10 @@ type Reader interface {
 	Close() error
 }
 
-// Setter is a basic writable key/value store.
-//
-// Goroutine safety is dependent on the specific implementation.
-//
-// Some implementations may impose additional restrictions. For example:
-//   - Set calls may need to be in increasing key order.
-type Setter interface {
-	// Set sets the value for the given key. It overwrites any previous value
-	// for that key; a DB is not a multi-map.
-	//
-	// It is safe to modify the contents of the arguments after Set returns.
-	Set(key, value []byte, o *WriteOptions) error
-}
-
 // Writer is a writable key/value store.
 //
 // Goroutine safety is dependent on the specific implementation.
 type Writer interface {
-	Setter
-
 	// Apply the operations contain in the batch to the store.
 	//
 	// It is safe to modify the contents of the arguments after Apply returns.
@@ -165,6 +148,12 @@ type Writer interface {
 	//
 	// It is safe to modify the contents of the arguments after Merge returns.
 	Merge(key, value []byte, o *WriteOptions) error
+
+	// Set sets the value for the given key. It overwrites any previous value
+	// for that key; a DB is not a multi-map.
+	//
+	// It is safe to modify the contents of the arguments after Set returns.
+	Set(key, value []byte, o *WriteOptions) error
 }
 
 // DB is a key/value store.

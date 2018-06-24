@@ -471,7 +471,7 @@ func buildBenchmarkTables(b *testing.B, blockSize, restartInterval, count int) (
 		ikey.UserKey = key
 		j := rand.Intn(len(writers))
 		w := writers[j]
-		w.Set(&ikey, nil, nil)
+		w.Add(&ikey, nil)
 	}
 
 	for _, w := range writers {

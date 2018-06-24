@@ -236,7 +236,7 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	}, rawCoder)
 	for _, k := range keys {
 		v := wordCount[k]
-		if err := w.Set(&db.InternalKey{UserKey: []byte(k)}, []byte(v), nil); err != nil {
+		if err := w.Add(&db.InternalKey{UserKey: []byte(k)}, []byte(v)); err != nil {
 			return nil, err
 		}
 	}
@@ -464,7 +464,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				BlockSize: blockSize,
 			}, rawCoder)
 			for _, k := range keys[:nk] {
-				if err := w.Set(&db.InternalKey{UserKey: []byte(k)}, xxx[:vLen], nil); err != nil {
+				if err := w.Add(&db.InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
 					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
 					continue loop
 				}

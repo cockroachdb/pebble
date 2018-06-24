@@ -185,7 +185,12 @@ func (k InternalKey) Clone() InternalKey {
 	}
 }
 
-// InternalIterator iterates over a DB's key/value pairs in key order.
+// InternalIterator iterates over a DB's key/value pairs in key order. Unlike
+// the Iterator interface, keys are "internal keys" composed of the user-key, a
+// sequence number and a key kind. In forward iteration, key/value pairs are
+// returned in key order and, for identical user-keys, descending sequence
+// order. In reverse iteration, key value pairs are returned in reverse key
+// order and, for identical user keys, ascending sequence order.
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
@@ -269,26 +274,10 @@ type InternalReader interface {
 	Close() error
 }
 
-// InternalSetter is a basic writable key/value store.
-//
-// Goroutine safety is dependent on the specific implementation.
-//
-// Some implementations may impose additional restrictions. For example:
-//   - Set calls may need to be in increasing key order.
-type InternalSetter interface {
-	// Set sets the value for the given key. It overwrites any previous value
-	// for that key; a DB is not a multi-map.
-	//
-	// It is safe to modify the contents of the arguments after Set returns.
-	Set(key *InternalKey, value []byte, o *WriteOptions) error
-}
-
 // InternalWriter is a writable key/value store.
 //
 // Goroutine safety is dependent on the specific implementation.
 type InternalWriter interface {
-	Setter
-
 	// Apply the operations contain in the batch to the store.
 	//
 	// It is safe to modify the contents of the arguments after Apply returns.
