@@ -248,28 +248,3 @@ type InternalIterator interface {
 	// called after the iterator has been closed.
 	Close() error
 }
-
-// InternalReader is a readable key/value store.
-//
-// It is safe to call Get and NewIter from concurrent goroutines.
-type InternalReader interface {
-	// Get gets the value for the given key. It returns ErrNotFound if the DB
-	// does not contain the key.
-	//
-	// The caller should not modify the contents of the returned slice, but
-	// it is safe to modify the contents of the argument after Get returns.
-	Get(key *InternalKey, o *ReadOptions) (value []byte, err error)
-
-	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
-	// return false). The iterator can be positioned via a call to Seek, RSeek,
-	// First or Last.
-	NewIter(o *ReadOptions) InternalIterator
-
-	// Close closes the Reader. It may or may not close any underlying io.Reader
-	// or io.Writer, depending on how the DB was created.
-	//
-	// It is not safe to close a DB until all outstanding iterators are closed.
-	// It is valid to call Close multiple times. Other methods should not be
-	// called after the DB has been closed.
-	Close() error
-}

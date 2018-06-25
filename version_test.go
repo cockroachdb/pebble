@@ -509,7 +509,7 @@ func TestVersion(t *testing.T) {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
 		// m is a map from file numbers to DBs.
-		m := map[uint64]db.InternalReader{}
+		m := map[uint64]*memTable{}
 		newIter := func(fileNum uint64) (db.InternalIterator, error) {
 			d, ok := m[fileNum]
 			if !ok {

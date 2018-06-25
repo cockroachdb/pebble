@@ -15,7 +15,7 @@ import (
 )
 
 // count returns the number of entries in a DB.
-func count(d db.InternalReader) (n int) {
+func count(d *memTable) (n int) {
 	x := d.NewIter(nil)
 	for x.First(); x.Valid(); x.Next() {
 		n++

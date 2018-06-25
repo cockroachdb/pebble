@@ -23,9 +23,6 @@ type memTable struct {
 	emptySize uint32
 }
 
-// memTable implements the db.InternalReader interface.
-var _ db.InternalReader = (*memTable)(nil)
-
 // newMemTable returns a new MemTable.
 func newMemTable(o *db.Options) *memTable {
 	m := &memTable{

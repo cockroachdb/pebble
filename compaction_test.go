@@ -559,9 +559,8 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	get1 := func(x db.InternalReader) (ret string) {
+	get1 := func(iter db.InternalIterator) (ret string) {
 		b := &bytes.Buffer{}
-		iter := x.NewIter(nil)
 		for iter.First(); iter.Valid(); iter.Next() {
 			b.Write(iter.Key().UserKey)
 		}
@@ -575,7 +574,7 @@ func TestCompaction(t *testing.T) {
 		defer d.mu.Unlock()
 
 		if d.mem != nil {
-			gotMem = get1(d.mem)
+			gotMem = get1(d.mem.NewIter(nil))
 		}
 		ss := []string(nil)
 		v := d.versions.currentVersion()
@@ -588,7 +587,7 @@ func TestCompaction(t *testing.T) {
 				defer f.Close()
 				r := table.NewReader(f, meta.fileNum, nil)
 				defer r.Close()
-				ss = append(ss, get1(r)+".")
+				ss = append(ss, get1(r.NewIter(nil))+".")
 			}
 		}
 		sort.Strings(ss)
