@@ -273,13 +273,3 @@ type InternalReader interface {
 	// called after the DB has been closed.
 	Close() error
 }
-
-// InternalWriter is a writable key/value store.
-//
-// Goroutine safety is dependent on the specific implementation.
-type InternalWriter interface {
-	// Apply the operations contain in the batch to the store.
-	//
-	// It is safe to modify the contents of the arguments after Apply returns.
-	Apply(batch []byte, o *WriteOptions) error
-}
