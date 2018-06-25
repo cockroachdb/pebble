@@ -52,6 +52,7 @@ type DB struct {
 	cmp     db.Compare
 
 	tableCache tableCache
+	newIter    tableNewIter
 
 	// TODO: describe exactly what this mutex protects. So far: every field
 	// below.
@@ -109,7 +110,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 
 	// TODO: update stats, maybe schedule compaction.
 
-	return current.get(&ikey, &d.tableCache, d.cmp, opts)
+	return current.get(&ikey, d.newIter, d.cmp, opts)
 }
 
 // Set implements DB.Set, as documented in the pebble/db package.
@@ -231,7 +232,7 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 	// The level 0 files need to be added from newest to oldest.
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := current.files[0][i]
-		iter, err := d.tableCache.newIter(f.fileNum)
+		iter, err := d.newIter(f.fileNum)
 		if err != nil {
 			return newErrorIter(err)
 		}
@@ -254,8 +255,8 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 			li = &levelIter{}
 		}
 		*li = levelIter{
-			files:     current.files[level],
-			iterMaker: &d.tableCache,
+			files:   current.files[level],
+			newIter: d.newIter,
 		}
 
 		iters = append(iters, li)
@@ -372,6 +373,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		tableCacheSize = minTableCacheSize
 	}
 	d.tableCache.init(dirname, opts.GetStorage(), d.opts, tableCacheSize)
+	d.newIter = d.tableCache.newIter
 	d.mem = newMemTable(d.opts)
 	d.compactionCond = sync.Cond{L: &d.mu}
 	fs := opts.GetStorage()

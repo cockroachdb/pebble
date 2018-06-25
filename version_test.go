@@ -80,12 +80,6 @@ func TestIkeyRange(t *testing.T) {
 	}
 }
 
-type tableIterMakerFunc func(fileNum uint64) (db.InternalIterator, error)
-
-func (f tableIterMakerFunc) newIter(fileNum uint64) (db.InternalIterator, error) {
-	return f(fileNum)
-}
-
 var makeIkeyKinds = map[string]db.InternalKeyKind{
 	"DEL": db.InternalKeyKindDelete,
 	"MAX": db.InternalKeyKindMax,
@@ -516,13 +510,13 @@ func TestVersion(t *testing.T) {
 
 		// m is a map from file numbers to DBs.
 		m := map[uint64]db.InternalReader{}
-		tiMaker := tableIterMakerFunc(func(fileNum uint64) (db.InternalIterator, error) {
+		newIter := func(fileNum uint64) (db.InternalIterator, error) {
 			d, ok := m[fileNum]
 			if !ok {
 				return nil, errors.New("no such file")
 			}
 			return d.NewIter(nil), nil
-		})
+		}
 
 		v := version{}
 		for _, tt := range tc.tables {
@@ -571,7 +565,7 @@ func TestVersion(t *testing.T) {
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
 			ikey := makeIkey(s[0])
-			value, err := v.get(&ikey, tiMaker, cmp, nil)
+			value, err := v.get(&ikey, newIter, cmp, nil)
 			got, want := "", s[1]
 			if err != nil {
 				if err != db.ErrNotFound {

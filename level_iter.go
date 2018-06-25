@@ -7,12 +7,12 @@ import (
 )
 
 type levelIter struct {
-	cmp       db.Compare
-	index     int
-	iter      db.InternalIterator
-	iterMaker tableIterMaker
-	files     []fileMetadata
-	err       error
+	cmp     db.Compare
+	index   int
+	iter    db.InternalIterator
+	newIter tableNewIter
+	files   []fileMetadata
+	err     error
 }
 
 // levelIter implements the db.InternalIterator interface.
@@ -31,7 +31,7 @@ func (l *levelIter) findFileGE(key *db.InternalKey) int {
 
 func (l *levelIter) loadFile(index int) bool {
 	l.index = index
-	l.iter, l.err = l.iterMaker.newIter(l.files[l.index].fileNum)
+	l.iter, l.err = l.newIter(l.files[l.index].fileNum)
 	if l.err != nil {
 		return false
 	}
