@@ -40,7 +40,13 @@ func (l *levelIter) loadFile(index int) bool {
 	if l.index == index {
 		return true
 	}
-	l.iter = nil
+	if l.iter != nil {
+		l.err = l.iter.Close()
+		if l.err != nil {
+			return false
+		}
+		l.iter = nil
+	}
 	l.index = index
 	if l.index < 0 || l.index >= len(l.files) {
 		return false
