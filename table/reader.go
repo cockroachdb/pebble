@@ -58,6 +58,13 @@ type Iter struct {
 // Iter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*Iter)(nil)
 
+// Init ...
+func (i *Iter) Init(r *Reader) error {
+	i.reader = r
+	i.err = i.index.init(r.compare, r.coder, r.index)
+	return i.err
+}
+
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
@@ -311,11 +318,8 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 		f = &r.filter
 	}
 
-	i := &Iter{
-		reader: r,
-	}
-	i.err = i.index.init(r.compare, r.coder, r.index)
-	if i.err == nil {
+	i := &Iter{}
+	if err := i.Init(r); err == nil {
 		i.index.SeekGE(key)
 		i.seekBlock(key, f)
 	}
@@ -337,10 +341,8 @@ func (r *Reader) NewIter(o *db.ReadOptions) db.InternalIterator {
 	if r.err != nil {
 		return &Iter{err: r.err}
 	}
-	i := &Iter{
-		reader: r,
-	}
-	i.err = i.index.init(r.compare, r.coder, r.index)
+	i := &Iter{}
+	_ = i.Init(r)
 	return i
 }
 
