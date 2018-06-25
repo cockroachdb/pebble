@@ -89,7 +89,7 @@ func (l *levelIter) Next() bool {
 	if l.iter.Next() {
 		return true
 	}
-	// Current file was exhausted. Move to the nxt file.
+	// Current file was exhausted. Move to the next file.
 	if l.loadFile(l.index + 1) {
 		l.iter.First()
 		return true
