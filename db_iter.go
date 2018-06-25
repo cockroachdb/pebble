@@ -3,11 +3,9 @@ package pebble
 import "github.com/petermattis/pebble/db"
 
 type dbIter struct {
-	iter db.InternalIterator
-	err  error
-
-	levelsBuf [numLevels]levelIter
-	itersBuf  [2 + numLevels]db.InternalIterator
+	iter   db.InternalIterator
+	seqnum uint64
+	err    error
 }
 
 var _ db.Iterator = (*dbIter)(nil)

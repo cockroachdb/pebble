@@ -204,48 +204,66 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 	// and sstable version.
 	panic("pebble.DB: NewIter unimplemented")
 
-	// d.mu.Lock()
-	// // TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
-	// snapshot := d.versions.lastSequence
-	// current := d.versions.currentVersion()
-	// // TODO(peter): do we need to ref-count the current version, so that we don't
-	// // delete its underlying files if we have a concurrent compaction?
-	// memtables := [2]*memTable{d.mem, d.imm}
-	// d.mu.Unlock()
+	d.mu.Lock()
+	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
+	seqnum := d.versions.lastSequence
+	current := d.versions.currentVersion()
+	// TODO(peter): do we need to ref-count the current version, so that we don't
+	// delete its underlying files if we have a concurrent compaction?
+	memtables := [2]*memTable{d.mem, d.imm}
+	d.mu.Unlock()
 
-	// iters := make([]db.InternalIterator, 0, 2+len(current.files[0])+len(current.files)-1)
-	// for _, mem := range memtables {
-	// 	if mem == nil {
-	// 		continue
-	// 	}
-	// 	iters = append(iters, mem.NewIter(o))
-	// }
+	var buf struct {
+		dbi    dbIter
+		iters  [2 + numLevels]db.InternalIterator
+		levels [numLevels]levelIter
+	}
 
-	// // The level 0 files need to be added from newest to oldest.
-	// for i := len(current.files[0]) - 1; i >= 0; i-- {
-	// 	f := current.files[0][i]
-	// 	iter, err := d.tableCache.newIter(f.fileNum)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	iters = append(iters, iter)
-	// }
+	dbi := &buf.dbi
+	iters := buf.iters[:0]
+	for _, mem := range memtables {
+		if mem == nil {
+			continue
+		}
+		iters = append(iters, mem.NewIter(o))
+	}
 
-	// // Add level iterators for the remaining files.
-	// for level := 1; level < len(current.files); level++ {
-	// 	n := len(current.files[level])
-	// 	if n == 0 {
-	// 		continue
-	// 	}
-	// 	iters = append(iters, &levelIter{
-	// 		files:      current.files[level],
-	// 		tableCache: &d.tableCache,
-	// 	})
-	// }
+	// The level 0 files need to be added from newest to oldest.
+	for i := len(current.files[0]) - 1; i >= 0; i-- {
+		f := current.files[0][i]
+		iter, err := d.tableCache.newIter(f.fileNum)
+		if err != nil {
+			return newErrorIter(err)
+		}
+		iters = append(iters, iter)
+	}
 
-	// return &dbIter{
-	// 	iter: newMergingIterator(d.cmp, iters...),
-	// }
+	// Add level iterators for the remaining files.
+	levels := buf.levels[:]
+	for level := 1; level < len(current.files); level++ {
+		n := len(current.files[level])
+		if n == 0 {
+			continue
+		}
+
+		var li *levelIter
+		if len(levels) > 0 {
+			li = &levels[0]
+			levels = levels[1:]
+		} else {
+			li = &levelIter{}
+		}
+		*li = levelIter{
+			files:      current.files[level],
+			tableCache: &d.tableCache,
+		}
+
+		iters = append(iters, li)
+	}
+
+	dbi.iter = newMergingIterator(d.cmp, iters...)
+	dbi.seqnum = seqnum
+	return dbi
 }
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
