@@ -254,8 +254,8 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 			li = &levelIter{}
 		}
 		*li = levelIter{
-			files:   current.files[level],
-			tiMaker: &d.tableCache,
+			files:     current.files[level],
+			iterMaker: &d.tableCache,
 		}
 
 		iters = append(iters, li)

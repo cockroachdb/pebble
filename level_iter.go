@@ -7,64 +7,68 @@ import (
 )
 
 type levelIter struct {
-	cmp     db.Compare
-	titer   db.InternalIterator
-	tiMaker tableIterMaker
-	files   []fileMetadata
-	err     error
+	cmp       db.Compare
+	index     int
+	iter      db.InternalIterator
+	iterMaker tableIterMaker
+	files     []fileMetadata
+	err       error
 }
 
 // levelIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*levelIter)(nil)
 
-func (l *levelIter) findFileGE(key *db.InternalKey) *fileMetadata {
-	// Find the earliest file at that level whose largest key is >= ikey.
+func (l *levelIter) findFileGE(key *db.InternalKey) int {
+	// Find the earliest file whose largest key is >= ikey.
 	index := sort.Search(len(l.files), func(i int) bool {
 		return db.InternalCompare(l.cmp, l.files[i].largest, *key) >= 0
 	})
 	if index == len(l.files) {
-		return &l.files[len(l.files)-1]
+		return len(l.files) - 1
 	}
-	return &l.files[index]
+	return index
+}
+
+func (l *levelIter) loadFile(index int) bool {
+	l.index = index
+	l.iter, l.err = l.iterMaker.newIter(l.files[l.index].fileNum)
+	if l.err != nil {
+		return false
+	}
+	return true
 }
 
 func (l *levelIter) SeekGE(key *db.InternalKey) {
-	f := l.findFileGE(key)
-	l.titer, l.err = l.tiMaker.newIter(f.fileNum)
-	if l.err != nil {
-		return
+	if l.loadFile(l.findFileGE(key)) {
+		l.iter.SeekGE(key)
 	}
-	l.titer.SeekGE(key)
 }
 
 func (l *levelIter) SeekLE(key *db.InternalKey) {
-	panic("pebble: SeekLE unimplemented")
+	// TODO(peter): findFileLE?
+	if l.loadFile(l.findFileGE(key)) {
+		l.iter.SeekLE(key)
+	}
 }
 
 func (l *levelIter) First() {
-	f := &l.files[0]
-	l.titer, l.err = l.tiMaker.newIter(f.fileNum)
-	if l.err != nil {
-		return
+	if l.loadFile(0) {
+		l.iter.First()
 	}
-	l.titer.First()
 }
 
 func (l *levelIter) Last() {
-	f := &l.files[len(l.files)-1]
-	l.titer, l.err = l.tiMaker.newIter(f.fileNum)
-	if l.err != nil {
-		return
+	if l.loadFile(len(l.files) - 1) {
+		l.iter.Last()
 	}
-	l.titer.Last()
 }
 
 func (l *levelIter) Next() bool {
 	if l.err != nil {
 		return false
 	}
-	if l.titer != nil {
-		if l.titer.Next() {
+	if l.iter != nil {
+		if l.iter.Next() {
 			return true
 		}
 	}
@@ -77,8 +81,8 @@ func (l *levelIter) Prev() bool {
 	if l.err != nil {
 		return false
 	}
-	if l.titer != nil {
-		if l.titer.Prev() {
+	if l.iter != nil {
+		if l.iter.Prev() {
 			return true
 		}
 	}
@@ -88,37 +92,37 @@ func (l *levelIter) Prev() bool {
 }
 
 func (l *levelIter) Key() *db.InternalKey {
-	if l.titer == nil {
+	if l.iter == nil {
 		return nil
 	}
-	return l.titer.Key()
+	return l.iter.Key()
 }
 
 func (l *levelIter) Value() []byte {
-	if l.titer == nil {
+	if l.iter == nil {
 		return nil
 	}
-	return l.titer.Value()
+	return l.iter.Value()
 }
 
 func (l *levelIter) Valid() bool {
-	if l.titer == nil {
+	if l.iter == nil {
 		return false
 	}
-	return l.titer.Valid()
+	return l.iter.Valid()
 }
 
 func (l *levelIter) Error() error {
 	if l.err != nil {
 		return l.err
 	}
-	return l.titer.Error()
+	return l.iter.Error()
 }
 
 func (l *levelIter) Close() error {
-	if l.titer != nil {
-		l.err = l.titer.Close()
-		l.titer = nil
+	if l.iter != nil {
+		l.err = l.iter.Close()
+		l.iter = nil
 	}
 	return l.err
 }
