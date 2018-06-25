@@ -1,51 +1,99 @@
 package pebble
 
-import "github.com/petermattis/pebble/db"
+import (
+	"fmt"
+
+	"github.com/petermattis/pebble/db"
+)
 
 type dbIter struct {
+	cmp    db.Compare
 	iter   db.InternalIterator
+	ikey   db.InternalKey
 	seqnum uint64
 	err    error
 }
 
 var _ db.Iterator = (*dbIter)(nil)
 
-func (c *dbIter) SeekGE(key []byte) {
-}
+func (i *dbIter) findNextEntry() bool {
+	for i.iter.Valid() {
+		key := i.iter.Key()
+		if key.Seqnum() > i.seqnum {
+			// Ignore entries that are newer than our snapshot seqnum.
+			i.iter.Next()
+			continue
+		}
+		switch key.Kind() {
+		case db.InternalKeyKindDelete:
+			i.iter.NextUserKey()
+			continue
 
-func (c *dbIter) SeekLE(key []byte) {
-}
+		case db.InternalKeyKindSet:
+			return true
 
-func (c *dbIter) First() {
-}
-
-func (c *dbIter) Last() {
-}
-
-func (c *dbIter) Next() bool {
+		default:
+			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
+			return false
+		}
+	}
 	return false
 }
 
-func (c *dbIter) Prev() bool {
-	return false
+func (i *dbIter) findPrevEntry() bool {
+	panic("dbIter.findPrevEntry: unimplemented")
 }
 
-func (c *dbIter) Key() []byte {
-	return nil
+func (i *dbIter) SeekGE(key []byte) {
+	i.ikey = db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax)
+	i.iter.SeekGE(&i.ikey)
+	i.ikey.UserKey = nil
+	i.findNextEntry()
 }
 
-func (c *dbIter) Value() []byte {
-	return nil
+func (i *dbIter) SeekLE(key []byte) {
+	i.ikey = db.MakeInternalKey(key, 0, 0)
+	i.iter.SeekLE(&i.ikey)
+	i.ikey.UserKey = nil
+	i.findPrevEntry()
 }
 
-func (c *dbIter) Valid() bool {
-	return false
+func (i *dbIter) First() {
+	i.iter.First()
+	i.findNextEntry()
 }
 
-func (c *dbIter) Error() error {
-	return c.err
+func (i *dbIter) Last() {
+	i.iter.Last()
+	i.findPrevEntry()
 }
 
-func (c *dbIter) Close() error {
-	return c.err
+func (i *dbIter) Next() bool {
+	i.iter.NextUserKey()
+	return i.findNextEntry()
+}
+
+func (i *dbIter) Prev() bool {
+	i.iter.PrevUserKey()
+	return i.findPrevEntry()
+}
+
+func (i *dbIter) Key() []byte {
+	return i.iter.Key().UserKey
+}
+
+func (i *dbIter) Value() []byte {
+	return i.iter.Value()
+}
+
+func (i *dbIter) Valid() bool {
+	return i.iter.Valid()
+}
+
+func (i *dbIter) Error() error {
+	return i.err
+}
+
+func (i *dbIter) Close() error {
+	return i.err
 }

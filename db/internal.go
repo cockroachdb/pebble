@@ -221,9 +221,19 @@ type InternalIterator interface {
 	// It returns whether the iterator is exhausted.
 	Next() bool
 
+	// NextUserKey moves the iterator to the next key/value pair with a user-key
+	// greater than the current user key.
+	// It returns whether the iterator is exhausted.
+	NextUserKey() bool
+
 	// Prev moves the iterator to the previous key/value pair.
 	// It returns whether the iterator is exhausted.
 	Prev() bool
+
+	// PrevUserKey moves the iterator to the previous key/value pair with a
+	// user-key less than the current user key.
+	// It returns whether the iterator is exhausted.
+	PrevUserKey() bool
 
 	// Key returns the encoded internal key of the current key/value pair, or nil
 	// if done.  The caller should not modify the contents of the returned slice,

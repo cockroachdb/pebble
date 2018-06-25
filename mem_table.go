@@ -59,6 +59,7 @@ func (m *memTable) Set(key *db.InternalKey, value []byte, o *db.WriteOptions) er
 // NewIter implements Reader.NewIter, as documented in the pebble/db package.
 func (m *memTable) NewIter(o *db.ReadOptions) db.InternalIterator {
 	return &memTableIter{
+		cmp:  m.cmp,
 		iter: m.skl.NewIter(),
 	}
 }
@@ -81,6 +82,7 @@ func (m *memTable) Empty() bool {
 // memTableIter is a MemTable memTableIter that buffers upcoming results, so
 // that it does not have to acquire the MemTable's mutex on each Next call.
 type memTableIter struct {
+	cmp  db.Compare
 	iter arenaskl.Iterator
 	ikey db.InternalKey
 }
@@ -88,65 +90,74 @@ type memTableIter struct {
 // memTableIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*memTableIter)(nil)
 
-// SeekGE moves the iterator to the first entry whose key is greater than or
-// equal to the given key.
 func (t *memTableIter) SeekGE(key *db.InternalKey) {
 	t.iter.SeekGE(key)
 }
 
-// SeekLE moves the iterator to the first entry whose key is less than or equal
-// to the given key. Returns true if the given key exists and false otherwise.
 func (t *memTableIter) SeekLE(key *db.InternalKey) {
 	t.iter.SeekLE(key)
 }
 
-// First seeks position at the first entry in list. Final state of iterator is
-// Valid() iff list is not empty.
 func (t *memTableIter) First() {
 	t.iter.First()
 }
 
-// Last seeks position at the last entry in list. Final state of iterator is
-// Valid() iff list is not empty.
 func (t *memTableIter) Last() {
 	t.iter.Last()
 }
 
-// Next advances to the next position. If there are no following nodes, then
-// Valid() will be false after this call.
 func (t *memTableIter) Next() bool {
 	return t.iter.Next()
 }
 
-// Prev moves to the previous position. If there are no previous nodes, then
-// Valid() will be false after this call.
+func (t *memTableIter) NextUserKey() bool {
+	if !t.iter.Valid() {
+		return false
+	}
+	key := db.DecodeInternalKey(t.iter.Key())
+	for t.Next() {
+		if t.cmp(key.UserKey, t.Key().UserKey) < 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *memTableIter) Prev() bool {
 	return t.iter.Prev()
 }
 
-// Key returns the key at the current position.
+func (t *memTableIter) PrevUserKey() bool {
+	if !t.iter.Valid() {
+		return false
+	}
+	key := db.DecodeInternalKey(t.iter.Key())
+	for t.Prev() {
+		if t.cmp(key.UserKey, t.Key().UserKey) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *memTableIter) Key() *db.InternalKey {
 	// TODO(peter): Perform the decoding during iteration.
 	t.ikey = db.DecodeInternalKey(t.iter.Key())
 	return &t.ikey
 }
 
-// Value returns the value at the current position.
 func (t *memTableIter) Value() []byte {
 	return t.iter.Value()
 }
 
-// Valid returns true iff the iterator is positioned at a valid node.
 func (t *memTableIter) Valid() bool {
 	return t.iter.Valid()
 }
 
-// Error implements Iterator.Error, as documented in the pebble/db package.
 func (t *memTableIter) Error() error {
 	return nil
 }
 
-// Close implements Iterator.Close, as documented in the pebble/db package.
 func (t *memTableIter) Close() error {
 	return t.iter.Close()
 }

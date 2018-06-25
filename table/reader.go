@@ -131,7 +131,8 @@ func (i *Iter) seekBlock(key *db.InternalKey, f *filterReader) bool {
 	return true
 }
 
-// SeekGE implements Iterator.SeekGE, as documented in the pebble/db package.
+// SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
+// package.
 func (i *Iter) SeekGE(key *db.InternalKey) {
 	i.index.SeekGE(key)
 	if i.loadBlock() {
@@ -139,17 +140,20 @@ func (i *Iter) SeekGE(key *db.InternalKey) {
 	}
 }
 
-// SeekLE implements Iterator.SeekLE, as documented in the pebble/db package.
+// SeekLE implements InternalIterator.SeekLE, as documented in the pebble/db
+// package.
 func (i *Iter) SeekLE(key *db.InternalKey) {
 	panic("pebble/table: SeekLE unimplemented")
 }
 
-// First implements Iterator.First, as documented in the pebble/db package.
+// First implements InternalIterator.First, as documented in the pebble/db
+// package.
 func (i *Iter) First() {
 	i.SeekGE(nil)
 }
 
-// Last implements Iterator.Last, as documented in the pebble/db package.
+// Last implements InternalIterator.Last, as documented in the pebble/db
+// package.
 func (i *Iter) Last() {
 	i.index.Last()
 	if i.loadBlock() {
@@ -157,7 +161,8 @@ func (i *Iter) Last() {
 	}
 }
 
-// Next implements Iterator.Next, as documented in the pebble/db package.
+// Next implements InternalIterator.Next, as documented in the pebble/db
+// package.
 func (i *Iter) Next() bool {
 	if i.data.Next() {
 		return true
@@ -178,7 +183,14 @@ func (i *Iter) Next() bool {
 	return false
 }
 
-// Prev implements Iterator.Prev, as documented in the pebble/db package.
+// NextUserKey implements InternalIterator.NextUserKey, as documented in the
+// pebble/db package.
+func (i *Iter) NextUserKey() bool {
+	return i.Next()
+}
+
+// Prev implements InternalIterator.Prev, as documented in the pebble/db
+// package.
 func (i *Iter) Prev() bool {
 	if i.data.Prev() {
 		return true
@@ -199,22 +211,31 @@ func (i *Iter) Prev() bool {
 	return false
 }
 
-// Key implements Iterator.Key, as documented in the pebble/db package.
+// PrevUserKey implements InternalIterator.PrevUserKey, as documented in the
+// pebble/db package.
+func (i *Iter) PrevUserKey() bool {
+	return i.Prev()
+}
+
+// Key implements InternalIterator.Key, as documented in the pebble/db package.
 func (i *Iter) Key() *db.InternalKey {
 	return i.data.Key()
 }
 
-// Value implements Iterator.Value, as documented in the pebble/db package.
+// Value implements InternalIterator.Value, as documented in the pebble/db
+// package.
 func (i *Iter) Value() []byte {
 	return i.data.Value()
 }
 
-// Valid implements Iterator.Valid, as documented in the pebble/db package.
+// Valid implements InternalIterator.Valid, as documented in the pebble/db
+// package.
 func (i *Iter) Valid() bool {
 	return i.data.Valid()
 }
 
-// Error implements Iterator.Error, as documented in the pebble/db package.
+// Error implements InternalIterator.Error, as documented in the pebble/db
+// package.
 func (i *Iter) Error() error {
 	if err := i.data.Error(); err != nil {
 		return err
@@ -222,7 +243,8 @@ func (i *Iter) Error() error {
 	return i.err
 }
 
-// Close implements Iterator.Close, as documented in the pebble/db package.
+// Close implements InternalIterator.Close, as documented in the pebble/db
+// package.
 func (i *Iter) Close() error {
 	if err := i.data.Close(); err != nil {
 		return err

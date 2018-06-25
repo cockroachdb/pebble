@@ -103,6 +103,10 @@ func (l *levelIter) Next() bool {
 	return false
 }
 
+func (l *levelIter) NextUserKey() bool {
+	return l.Next()
+}
+
 func (l *levelIter) Prev() bool {
 	if l.err != nil {
 		return false
@@ -125,6 +129,10 @@ func (l *levelIter) Prev() bool {
 		return true
 	}
 	return false
+}
+
+func (l *levelIter) PrevUserKey() bool {
+	return l.Prev()
 }
 
 func (l *levelIter) Key() *db.InternalKey {

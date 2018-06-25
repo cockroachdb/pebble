@@ -276,6 +276,39 @@ func (m *mergingIter) Next() bool {
 	return m.heap.len() > 0
 }
 
+func (m *mergingIter) NextUserKey() bool {
+	if m.err != nil {
+		return false
+	}
+
+	if m.dir != 1 {
+		m.switchToMinHeap()
+		return m.heap.len() > 0
+	}
+
+	if m.heap.len() == 0 {
+		return false
+	}
+
+	key := m.heap.items[0].key
+	cur := m.heap.items[0].iter
+
+	for _, i := range m.iters {
+		if i == cur {
+			continue
+		}
+		if i.Valid() && m.heap.cmp(key.UserKey, i.Key().UserKey) == 0 {
+			i.NextUserKey()
+		}
+	}
+
+	// Special handling for the current iterator because we were using its key
+	// above.
+	cur.NextUserKey()
+	m.initMinHeap()
+	return m.heap.len() > 0
+}
+
 func (m *mergingIter) Prev() bool {
 	if m.err != nil {
 		return false
@@ -303,6 +336,39 @@ func (m *mergingIter) Prev() bool {
 	}
 
 	m.heap.pop()
+	return m.heap.len() > 0
+}
+
+func (m *mergingIter) PrevUserKey() bool {
+	if m.err != nil {
+		return false
+	}
+
+	if m.dir != -1 {
+		m.switchToMaxHeap()
+		return m.heap.len() > 0
+	}
+
+	if m.heap.len() == 0 {
+		return false
+	}
+
+	key := m.heap.items[0].key
+	cur := m.heap.items[0].iter
+
+	for _, i := range m.iters {
+		if i == cur {
+			continue
+		}
+		if i.Valid() && m.heap.cmp(key.UserKey, i.Key().UserKey) == 0 {
+			i.PrevUserKey()
+		}
+	}
+
+	// Special handling for the current iterator because we were using its key
+	// above.
+	cur.PrevUserKey()
+	m.initMaxHeap()
 	return m.heap.len() > 0
 }
 

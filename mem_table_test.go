@@ -198,3 +198,61 @@ func TestMemTable1000Entries(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 }
+
+func TestMemTableNextPrevUserKey(t *testing.T) {
+	m := newMemTable(nil)
+	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
+		ikey := fakeIkey(key)
+		if err := m.Set(&ikey, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	iter := m.NewIter(nil)
+	iter.First()
+
+	testCases := []struct {
+		dir      string
+		expected string
+	}{
+		{"+", "<a:1>"},
+		{"+", "<b:2>"},
+		{"-", "<a:1>"},
+		{"-", "<a:2>"},
+		{"-", "."},
+		{"+", "<a:2>"},
+		{"+", "<a:1>"},
+		{"+", "<b:2>"},
+		{"+", "<b:1>"},
+		{"+", "<c:2>"},
+		{"+", "<c:1>"},
+		{"-", "<c:2>"},
+		{"-", "<b:1>"},
+		{"-", "<b:2>"},
+		{"+", "<b:1>"},
+		{"+", "<c:2>"},
+		{"-", "<b:1>"},
+		{"+", "<c:2>"},
+		{"+", "<c:1>"},
+		{"+", "."},
+		{"-", "<c:1>"},
+	}
+	for i, c := range testCases {
+		switch c.dir {
+		case "+":
+			iter.Next()
+		case "-":
+			iter.Prev()
+		default:
+			t.Fatalf("unexpected direction: %q", c.dir)
+		}
+		var got string
+		if !iter.Valid() {
+			got = "."
+		} else {
+			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+		}
+		if got != c.expected {
+			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
+		}
+	}
+}

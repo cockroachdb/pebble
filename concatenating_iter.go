@@ -34,19 +34,19 @@ func newConcatenatingIter(iters ...db.InternalIterator) db.InternalIterator {
 }
 
 func (c *concatenatingIter) SeekGE(key *db.InternalKey) {
-	panic("pebble: SeekGE unimplemented")
+	panic("pebble.concatenatingIter: SeekGE unimplemented")
 }
 
 func (c *concatenatingIter) SeekLE(key *db.InternalKey) {
-	panic("pebble: SeekLE unimplemented")
+	panic("pebble.concatenatingIter: SeekLE unimplemented")
 }
 
 func (c *concatenatingIter) First() {
-	panic("pebble: First unimplemented")
+	panic("pebble.concatenatingIter: First unimplemented")
 }
 
 func (c *concatenatingIter) Last() {
-	panic("pebble: Last unimplemented")
+	panic("pebble.concatenatingIter: Last unimplemented")
 }
 
 func (c *concatenatingIter) Next() bool {
@@ -72,8 +72,16 @@ func (c *concatenatingIter) Next() bool {
 	return false
 }
 
+func (c *concatenatingIter) NextUserKey() bool {
+	panic("pebble.concatenatingIter: NextUserKey unimplemented")
+}
+
 func (c *concatenatingIter) Prev() bool {
-	panic("pebble: Prev unimplemented")
+	panic("pebble.concatenatingIter: Prev unimplemented")
+}
+
+func (c *concatenatingIter) PrevUserKey() bool {
+	panic("pebble.concatenatingIter: PrevUserKey unimplemented")
 }
 
 func (c *concatenatingIter) Key() *db.InternalKey {
