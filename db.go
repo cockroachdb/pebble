@@ -254,11 +254,8 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 		} else {
 			li = &levelIter{}
 		}
-		*li = levelIter{
-			files:   current.files[level],
-			newIter: d.newIter,
-		}
 
+		li.init(d.cmp, d.newIter, current.files[level])
 		iters = append(iters, li)
 	}
 

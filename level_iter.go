@@ -18,7 +18,14 @@ type levelIter struct {
 // levelIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*levelIter)(nil)
 
-func (l *levelIter) findFileGE(key *db.InternalKey) int {
+func (l *levelIter) init(cmp db.Compare, newIter tableNewIter, files []fileMetadata) {
+	l.cmp = cmp
+	l.index = -1
+	l.newIter = newIter
+	l.files = files
+}
+
+func (l *levelIter) findFile(key *db.InternalKey) int {
 	// Find the earliest file whose largest key is >= ikey.
 	index := sort.Search(len(l.files), func(i int) bool {
 		return db.InternalCompare(l.cmp, l.files[i].largest, *key) >= 0
@@ -30,23 +37,26 @@ func (l *levelIter) findFileGE(key *db.InternalKey) int {
 }
 
 func (l *levelIter) loadFile(index int) bool {
+	if l.index == index {
+		return true
+	}
+	l.iter = nil
 	l.index = index
-	l.iter, l.err = l.newIter(l.files[l.index].fileNum)
-	if l.err != nil {
+	if l.index < 0 || l.index >= len(l.files) {
 		return false
 	}
-	return true
+	l.iter, l.err = l.newIter(l.files[l.index].fileNum)
+	return l.err == nil
 }
 
 func (l *levelIter) SeekGE(key *db.InternalKey) {
-	if l.loadFile(l.findFileGE(key)) {
+	if l.loadFile(l.findFile(key)) {
 		l.iter.SeekGE(key)
 	}
 }
 
 func (l *levelIter) SeekLE(key *db.InternalKey) {
-	// TODO(peter): findFileLE?
-	if l.loadFile(l.findFileGE(key)) {
+	if l.loadFile(l.findFile(key)) {
 		l.iter.SeekLE(key)
 	}
 }
@@ -67,28 +77,48 @@ func (l *levelIter) Next() bool {
 	if l.err != nil {
 		return false
 	}
-	if l.iter != nil {
-		if l.iter.Next() {
+	if l.iter == nil {
+		if l.index == -1 && l.loadFile(0) {
+			// The iterator was positioned off the beginning of the level. Position
+			// at the first entry.
+			l.iter.First()
 			return true
 		}
+		return false
 	}
-
-	// TODO(peter): find the next file.
-	panic("pebble: Next unimplemented")
+	if l.iter.Next() {
+		return true
+	}
+	// Current file was exhausted. Move to the nxt file.
+	if l.loadFile(l.index + 1) {
+		l.iter.First()
+		return true
+	}
+	return false
 }
 
 func (l *levelIter) Prev() bool {
 	if l.err != nil {
 		return false
 	}
-	if l.iter != nil {
-		if l.iter.Prev() {
+	if l.iter == nil {
+		if n := len(l.files); l.index == n && l.loadFile(n-1) {
+			// The iterator was positioned off the end of the level. Position at the
+			// last entry.
+			l.iter.Last()
 			return true
 		}
+		return false
 	}
-
-	// TODO(peter): find the prev file.
-	panic("pebble: Prev unimplemented")
+	if l.iter.Prev() {
+		return true
+	}
+	// Current file was exhausted. Move to the previous file.
+	if l.loadFile(l.index - 1) {
+		l.iter.Last()
+		return true
+	}
+	return false
 }
 
 func (l *levelIter) Key() *db.InternalKey {
@@ -113,7 +143,7 @@ func (l *levelIter) Valid() bool {
 }
 
 func (l *levelIter) Error() error {
-	if l.err != nil {
+	if l.err != nil || l.iter == nil {
 		return l.err
 	}
 	return l.iter.Error()

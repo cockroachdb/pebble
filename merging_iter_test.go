@@ -97,8 +97,7 @@ func TestMergingIterSeek(t *testing.T) {
 			var b bytes.Buffer
 			iter := newMergingIter(db.DefaultComparer.Compare, iters...)
 			ikey := makeIkey(tc.key)
-			iter.SeekGE(&ikey)
-			for ; iter.Valid(); iter.Next() {
+			for iter.SeekGE(&ikey); iter.Valid(); iter.Next() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
 			}
 			if err := iter.Error(); err != nil {
@@ -111,8 +110,7 @@ func TestMergingIterSeek(t *testing.T) {
 			}
 
 			b.Reset()
-			iter.SeekLE(&ikey)
-			for ; iter.Valid(); iter.Prev() {
+			for iter.SeekLE(&ikey); iter.Valid(); iter.Prev() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
 			}
 			if err := iter.Close(); err != nil {
@@ -206,7 +204,9 @@ func TestMergingIterNextPrev(t *testing.T) {
 	}
 }
 
-func buildBenchmarkTables(b *testing.B, blockSize, restartInterval, count int) ([]*table.Reader, [][]byte) {
+func buildMergingIterTables(
+	b *testing.B, blockSize, restartInterval, count int,
+) ([]*table.Reader, [][]byte) {
 	mem := storage.NewMem()
 	files := make([]storage.File, count)
 	for i := range files {
@@ -260,7 +260,7 @@ func buildBenchmarkTables(b *testing.B, blockSize, restartInterval, count int) (
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i] = table.NewReader(f, 0, &db.Options{
+		readers[i] = table.NewReader(f, uint64(i), &db.Options{
 			Cache: cache,
 		})
 	}
@@ -276,7 +276,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, keys := buildBenchmarkTables(b, blockSize, restartInterval, count)
+							readers, keys := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]db.InternalIterator, len(readers))
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
@@ -305,7 +305,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, _ := buildBenchmarkTables(b, blockSize, restartInterval, count)
+							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]db.InternalIterator, len(readers))
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
@@ -334,7 +334,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, _ := buildBenchmarkTables(b, blockSize, restartInterval, count)
+							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]db.InternalIterator, len(readers))
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)

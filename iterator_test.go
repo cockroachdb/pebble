@@ -35,15 +35,19 @@ type fakeIter struct {
 	closeErr error
 }
 
+func fakeIkey(s string) db.InternalKey {
+	j := strings.Index(s, ":")
+	seqnum, err := strconv.Atoi(s[j+1:])
+	if err != nil {
+		panic(err)
+	}
+	return db.MakeInternalKey([]byte(s[:j]), uint64(seqnum), db.InternalKeyKindSet)
+}
+
 func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	ikeys := make([]db.InternalKey, len(keys))
 	for i, k := range keys {
-		j := strings.Index(k, ":")
-		seqnum, err := strconv.Atoi(k[j+1:])
-		if err != nil {
-			panic(err)
-		}
-		ikeys[i] = db.MakeInternalKey([]byte(k[:j]), uint64(seqnum), db.InternalKeyKindSet)
+		ikeys[i] = fakeIkey(k)
 	}
 	return &fakeIter{
 		keys:     ikeys,
