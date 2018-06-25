@@ -80,10 +80,10 @@ func TestIkeyRange(t *testing.T) {
 	}
 }
 
-type tableIkeyFinderFunc func(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error)
+type tableIterMakerFunc func(fileNum uint64) (db.InternalIterator, error)
 
-func (f tableIkeyFinderFunc) seekGE(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
-	return f(fileNum, ikey)
+func (f tableIterMakerFunc) newIter(fileNum uint64) (db.InternalIterator, error) {
+	return f(fileNum)
 }
 
 var makeIkeyKinds = map[string]db.InternalKeyKind{
@@ -516,14 +516,12 @@ func TestVersion(t *testing.T) {
 
 		// m is a map from file numbers to DBs.
 		m := map[uint64]db.InternalReader{}
-		tiFinder := tableIkeyFinderFunc(func(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
+		tiMaker := tableIterMakerFunc(func(fileNum uint64) (db.InternalIterator, error) {
 			d, ok := m[fileNum]
 			if !ok {
 				return nil, errors.New("no such file")
 			}
-			iter := d.NewIter(nil)
-			iter.SeekGE(ikey)
-			return iter, nil
+			return d.NewIter(nil), nil
 		})
 
 		v := version{}
@@ -573,7 +571,7 @@ func TestVersion(t *testing.T) {
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
 			ikey := makeIkey(s[0])
-			value, err := v.get(&ikey, tiFinder, cmp, nil)
+			value, err := v.get(&ikey, tiMaker, cmp, nil)
 			got, want := "", s[1]
 			if err != nil {
 				if err != db.ErrNotFound {

@@ -167,11 +167,12 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
 			ik := db.MakeInternalKey([]byte("k"), db.InternalKeySeqNumMax, db.InternalKeyKindMax)
-			iter, err := c.seekGE(uint64(fileNum), &ik)
+			iter, err := c.newIter(uint64(fileNum))
 			if err != nil {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
 			}
+			iter.SeekGE(&ik)
 			if concurrent {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}
@@ -225,7 +226,7 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
-			iter, err := c.seekGE(uint64(j), nil)
+			iter, err := c.newIter(uint64(j))
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -260,7 +261,7 @@ func TestTableCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
-		iter, err := c.seekGE(uint64(j), nil)
+		iter, err := c.newIter(uint64(j))
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}

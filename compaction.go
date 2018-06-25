@@ -407,10 +407,11 @@ func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db
 		iters = append(iters, iter)
 	} else {
 		for _, f := range c.inputs[0] {
-			iter, err := tc.seekGE(f.fileNum, nil)
+			iter, err := tc.newIter(f.fileNum)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
+			iter.First()
 			iters = append(iters, iter)
 		}
 	}
@@ -438,10 +439,11 @@ func concatenateInputs(tc *tableCache, inputs []fileMetadata) (cIter db.Internal
 	}()
 
 	for i, f := range inputs {
-		iter, err := tc.seekGE(f.fileNum, nil)
+		iter, err := tc.newIter(f.fileNum)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
+		iter.First()
 		iters[i] = iter
 	}
 	return newConcatenatingIterator(iters...), nil

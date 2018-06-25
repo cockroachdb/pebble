@@ -203,6 +203,49 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 	// TODO(peter): Grab a reference to the current memtable, immutable memtable
 	// and sstable version.
 	panic("pebble.DB: NewIter unimplemented")
+
+	// d.mu.Lock()
+	// // TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
+	// snapshot := d.versions.lastSequence
+	// current := d.versions.currentVersion()
+	// // TODO(peter): do we need to ref-count the current version, so that we don't
+	// // delete its underlying files if we have a concurrent compaction?
+	// memtables := [2]*memTable{d.mem, d.imm}
+	// d.mu.Unlock()
+
+	// iters := make([]db.InternalIterator, 0, 2+len(current.files[0])+len(current.files)-1)
+	// for _, mem := range memtables {
+	// 	if mem == nil {
+	// 		continue
+	// 	}
+	// 	iters = append(iters, mem.NewIter(o))
+	// }
+
+	// // The level 0 files need to be added from newest to oldest.
+	// for i := len(current.files[0]) - 1; i >= 0; i-- {
+	// 	f := current.files[0][i]
+	// 	iter, err := d.tableCache.newIter(f.fileNum)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	iters = append(iters, iter)
+	// }
+
+	// // Add level iterators for the remaining files.
+	// for level := 1; level < len(current.files); level++ {
+	// 	n := len(current.files[level])
+	// 	if n == 0 {
+	// 		continue
+	// 	}
+	// 	iters = append(iters, &levelIter{
+	// 		files:      current.files[level],
+	// 		tableCache: &d.tableCache,
+	// 	})
+	// }
+
+	// return &dbIter{
+	// 	iter: newMergingIterator(d.cmp, iters...),
+	// }
 }
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will

@@ -206,9 +206,9 @@ func (v *version) checkOrdering(cmp db.Compare) error {
 	return nil
 }
 
-// tableIkeyFinder finds the given ikey in the table of the given file number.
-type tableIkeyFinder interface {
-	seekGE(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error)
+// tableIterMaker creates a new iterator for the given file number.
+type tableIterMaker interface {
+	newIter(fileNum uint64) (db.InternalIterator, error)
 }
 
 // get looks up the internal key ikey0 in v's tables such that ikey and ikey0
@@ -219,7 +219,7 @@ type tableIkeyFinder interface {
 // If ikey0's kind is delete, the db.ErrNotFound error is returned.
 // If there is no such ikey0, the db.ErrNotFound error is returned.
 func (v *version) get(
-	ikey *db.InternalKey, tiFinder tableIkeyFinder, cmp db.Compare, ro *db.ReadOptions,
+	ikey *db.InternalKey, tiMaker tableIterMaker, cmp db.Compare, ro *db.ReadOptions,
 ) ([]byte, error) {
 	ukey := ikey.UserKey
 	// Iterate through v's tables, calling internalGet if the table's bounds
@@ -243,10 +243,11 @@ func (v *version) get(
 		if db.InternalCompare(cmp, *ikey, f.largest) > 0 {
 			continue
 		}
-		iter, err := tiFinder.seekGE(f.fileNum, ikey)
+		iter, err := tiMaker.newIter(f.fileNum)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
+		iter.SeekGE(ikey)
 		value, conclusive, err := internalGet(iter, cmp, ukey)
 		if conclusive {
 			return value, err
@@ -270,10 +271,11 @@ func (v *version) get(
 		if cmp(ukey, f.smallest.UserKey) < 0 {
 			continue
 		}
-		iter, err := tiFinder.seekGE(f.fileNum, ikey)
+		iter, err := tiMaker.newIter(f.fileNum)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
+		iter.SeekGE(ikey)
 		value, conclusive, err := internalGet(iter, cmp, ukey)
 		if conclusive {
 			return value, err

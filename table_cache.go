@@ -33,7 +33,7 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	c.dummy.prev = &c.dummy
 }
 
-func (c *tableCache) seekGE(fileNum uint64, ikey *db.InternalKey) (db.InternalIterator, error) {
+func (c *tableCache) newIter(fileNum uint64) (db.InternalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility
@@ -53,10 +53,8 @@ func (c *tableCache) seekGE(fileNum uint64, ikey *db.InternalKey) (db.InternalIt
 		return nil, x.err
 	}
 	n.result <- x
-	iter := x.reader.NewIter(nil)
-	iter.SeekGE(ikey)
 	return &tableCacheIter{
-		InternalIterator: iter,
+		InternalIterator: x.reader.NewIter(nil),
 		cache:            c,
 		node:             n,
 	}, nil
