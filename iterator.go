@@ -152,7 +152,6 @@ func (c *concatenatingIter) Valid() bool {
 	return c.iters[0].Valid()
 }
 
-// Error implements Iterator.Error, as documented in the pebble/db package.
 func (c *concatenatingIter) Error() error {
 	if len(c.iters) == 0 || c.err != nil {
 		return c.err
@@ -491,7 +490,6 @@ func (m *mergingIter) Valid() bool {
 	return true
 }
 
-// Error implements Iterator.Error, as documented in the pebble/db package.
 func (m *mergingIter) Error() error {
 	if m.heap.len() == 0 || m.err != nil {
 		return m.err
