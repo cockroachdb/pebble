@@ -16,7 +16,7 @@ import (
 
 func TestMergingIter(t *testing.T) {
 	newFunc := func(iters ...db.InternalIterator) db.InternalIterator {
-		return newMergingIterator(db.DefaultComparer.Compare, iters...)
+		return newMergingIter(db.DefaultComparer.Compare, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual
@@ -95,7 +95,7 @@ func TestMergingIterSeek(t *testing.T) {
 			}
 
 			var b bytes.Buffer
-			iter := newMergingIterator(db.DefaultComparer.Compare, iters...)
+			iter := newMergingIter(db.DefaultComparer.Compare, iters...)
 			ikey := makeIkey(tc.key)
 			iter.SeekGE(&ikey)
 			for ; iter.Valid(); iter.Next() {
@@ -154,7 +154,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 	}
 	for _, iters := range iterCases {
 		t.Run("", func(t *testing.T) {
-			m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+			m := newMergingIter(db.DefaultComparer.Compare, iters...)
 			m.First()
 
 			testCases := []struct {
@@ -281,7 +281,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
-							m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(db.DefaultComparer.Compare, iters...)
 							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 							b.ResetTimer()
@@ -310,7 +310,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
-							m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(db.DefaultComparer.Compare, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -339,7 +339,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
-							m := newMergingIterator(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(db.DefaultComparer.Compare, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {

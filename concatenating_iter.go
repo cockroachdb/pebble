@@ -10,7 +10,7 @@ type concatenatingIter struct {
 // concatenatingIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*concatenatingIter)(nil)
 
-// newConcatenatingIterator returns an iterator that concatenates its input.
+// newConcatenatingIter returns an iterator that concatenates its input.
 // Walking the resultant iterator will walk each input iterator in turn,
 // exhausting each input before moving on to the next.
 //
@@ -18,7 +18,7 @@ var _ db.InternalIterator = (*concatenatingIter)(nil)
 // increasing order: iters[i]'s last key is less than iters[i+1]'s first key.
 //
 // None of the iters may be nil.
-func newConcatenatingIterator(iters ...db.InternalIterator) db.InternalIterator {
+func newConcatenatingIter(iters ...db.InternalIterator) db.InternalIterator {
 	for len(iters) > 0 {
 		if iters[0].Valid() {
 			break

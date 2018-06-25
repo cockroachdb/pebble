@@ -261,7 +261,7 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 		iters = append(iters, li)
 	}
 
-	dbi.iter = newMergingIterator(d.cmp, iters...)
+	dbi.iter = newMergingIter(d.cmp, iters...)
 	dbi.seqnum = seqnum
 	return dbi
 }

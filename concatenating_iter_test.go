@@ -6,7 +6,7 @@ import (
 )
 
 func TestConcatenatingIter(t *testing.T) {
-	testIterator(t, newConcatenatingIterator, func(r *rand.Rand) [][]string {
+	testIterator(t, newConcatenatingIter, func(r *rand.Rand) [][]string {
 		// Partition testKeyValuePairs into one or more splits. Each individual
 		// split is in increasing order, and different splits may not overlap
 		// in range. Some of the splits may be empty.
