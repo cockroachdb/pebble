@@ -402,16 +402,6 @@ func (r *Reader) readBlock(bh blockHandle) (block, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
-	fp := o.GetFilterPolicy()
-	if fp == nil {
-		// The only metaindex entry we care about is the filter. If o doesn't
-		// specify a filter policy, we can ignore the entire metaindex block.
-		//
-		// TODO: also return early if metaindexBH.length indicates an empty
-		// block.
-		return nil
-	}
-
 	b, err := r.readBlock(metaindexBH)
 	if err != nil {
 		return err
@@ -420,31 +410,44 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	if err != nil {
 		return err
 	}
-	i.SeekGE(nil)
-	filterName := "filter." + fp.Name()
-	filterBH := blockHandle{}
-	for ; i.Valid(); i.Next() {
-		if filterName != string(i.Key().UserKey) {
-			continue
-		}
-		var n int
-		filterBH, n = decodeBlockHandle(i.Value())
+
+	meta := map[string]blockHandle{}
+	for i.First(); i.Valid(); i.Next() {
+		bh, n := decodeBlockHandle(i.Value())
 		if n == 0 {
 			return errors.New("pebble/table: invalid table (bad filter block handle)")
 		}
-		break
+		meta[string(i.Key().UserKey)] = bh
 	}
 	if err := i.Close(); err != nil {
 		return err
 	}
 
-	if filterBH != (blockHandle{}) {
-		b, err = r.readBlock(filterBH)
-		if err != nil {
-			return err
+	if false {
+		if bh, ok := meta["rocksdb.properties"]; ok {
+			b, err = r.readBlock(bh)
+			if err != nil {
+				return err
+			}
+			i, err := newBlockIter(bytes.Compare, rawCoder, b)
+			if err != nil {
+				return err
+			}
+			for i.First(); i.Valid(); i.Next() {
+				fmt.Printf("%s -> %s\n", i.Key().UserKey, i.Value())
+			}
 		}
-		if !r.filter.init(b, fp) {
-			return errors.New("pebble/table: invalid table (bad filter block)")
+	}
+
+	if fp := o.GetFilterPolicy(); fp != nil {
+		if bh, ok := meta["filter."+fp.Name()]; ok {
+			b, err = r.readBlock(bh)
+			if err != nil {
+				return err
+			}
+			if !r.filter.init(b, fp) {
+				return errors.New("pebble/table: invalid table (bad filter block)")
+			}
 		}
 	}
 	return nil
