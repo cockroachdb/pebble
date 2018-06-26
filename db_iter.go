@@ -41,7 +41,27 @@ func (i *dbIter) findNextEntry() bool {
 }
 
 func (i *dbIter) findPrevEntry() bool {
-	panic("dbIter.findPrevEntry: unimplemented")
+	for i.iter.Valid() {
+		key := i.iter.Key()
+		if key.Seqnum() > i.seqnum {
+			// Ignore entries that are newer than our snapshot seqnum.
+			i.iter.Prev()
+			continue
+		}
+		switch key.Kind() {
+		case db.InternalKeyKindDelete:
+			i.iter.PrevUserKey()
+			continue
+
+		case db.InternalKeyKindSet:
+			return true
+
+		default:
+			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
+			return false
+		}
+	}
+	return false
 }
 
 func (i *dbIter) SeekGE(key []byte) {

@@ -31,6 +31,7 @@ var testKeyValuePairs = []string{
 
 type fakeIter struct {
 	keys     []db.InternalKey
+	vals     [][]byte
 	index    int
 	closeErr error
 }
@@ -145,6 +146,9 @@ func (f *fakeIter) Key() *db.InternalKey {
 }
 
 func (f *fakeIter) Value() []byte {
+	if f.index >= 0 && f.index < len(f.vals) {
+		return f.vals[f.index]
+	}
 	return nil
 }
 
