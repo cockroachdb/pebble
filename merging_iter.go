@@ -23,10 +23,14 @@ func (h *mergingIterHeap) len() int {
 }
 
 func (h *mergingIterHeap) less(i, j int) bool {
-	if h.reverse {
-		i, j = j, i
+	ikey, jkey := h.items[i].key, h.items[j].key
+	if c := h.cmp(ikey.UserKey, jkey.UserKey); c != 0 {
+		if h.reverse {
+			return c > 0
+		}
+		return c < 0
 	}
-	return db.InternalCompare(h.cmp, *h.items[i].key, *h.items[j].key) < 0
+	return ikey.Trailer() > jkey.Trailer()
 }
 
 func (h *mergingIterHeap) swap(i, j int) {
@@ -199,6 +203,7 @@ func (m *mergingIter) switchToMaxHeap() {
 	// reverse iteration, we want to return a key that is less than b:2.
 	key := m.heap.items[0].key
 	cur := m.heap.items[0].iter
+
 	for _, i := range m.iters {
 		if i == cur {
 			continue
@@ -207,11 +212,19 @@ func (m *mergingIter) switchToMaxHeap() {
 			i.Prev()
 		}
 		for ; i.Valid(); i.Prev() {
-			if db.InternalCompare(m.heap.cmp, *key, *i.Key()) > 0 {
+			c := m.heap.cmp(key.UserKey, i.Key().UserKey)
+			if c > 0 {
+				// key > iter-key
 				break
 			}
+			if c == 0 && key.Trailer() > i.Key().Trailer() {
+				// key > iter-key
+				break
+			}
+			// key <= iter-key
 		}
 	}
+
 	// Special handling for the current iterator because we were using its key
 	// above.
 	cur.Prev()
@@ -282,7 +295,35 @@ func (m *mergingIter) NextUserKey() bool {
 	}
 
 	if m.dir != 1 {
-		m.switchToMinHeap()
+		// We're switching directions from reverse iteration to forward iteration.
+		if m.heap.len() == 0 {
+			m.First()
+			return m.heap.len() > 0
+		}
+
+		key := m.heap.items[0].key
+		cur := m.heap.items[0].iter
+
+		for _, i := range m.iters {
+			if i == cur {
+				continue
+			}
+			if !i.Valid() {
+				i.NextUserKey()
+			}
+			for ; i.Valid(); i.NextUserKey() {
+				if m.heap.cmp(key.UserKey, i.Key().UserKey) < 0 {
+					// key < iter-key
+					break
+				}
+				// key >= iter-key
+			}
+		}
+
+		// Special handling for the current iterator because we were using its key
+		// above.
+		cur.NextUserKey()
+		m.initMinHeap()
 		return m.heap.len() > 0
 	}
 
@@ -293,19 +334,28 @@ func (m *mergingIter) NextUserKey() bool {
 	key := m.heap.items[0].key
 	cur := m.heap.items[0].iter
 
+	var reheap bool
 	for _, i := range m.iters {
 		if i == cur {
 			continue
 		}
 		if i.Valid() && m.heap.cmp(key.UserKey, i.Key().UserKey) == 0 {
 			i.NextUserKey()
+			reheap = true
 		}
 	}
 
 	// Special handling for the current iterator because we were using its key
 	// above.
-	cur.NextUserKey()
-	m.initMinHeap()
+	if reheap {
+		cur.NextUserKey()
+		m.initMinHeap()
+	} else if cur.NextUserKey() {
+		m.heap.items[0].key = cur.Key()
+		m.heap.fix(0)
+	} else {
+		m.heap.pop()
+	}
 	return m.heap.len() > 0
 }
 
@@ -345,7 +395,45 @@ func (m *mergingIter) PrevUserKey() bool {
 	}
 
 	if m.dir != -1 {
-		m.switchToMaxHeap()
+		// We're switching directions from forward iteration to reverse iteration.
+		if m.heap.len() == 0 {
+			// If the iterators are all existed, move to the last entry.
+			m.Last()
+			return m.heap.len() > 0
+		}
+
+		// The current heap is organized from smallest to larger user-key and from
+		// larger to smaller sequence:
+		//
+		//   a:2 a:1 *b:2 b:1 c:2 c:1
+		//
+		// This needs to be flipped to sort from larger to smaller user-key and
+		// from larger to smaller sequence:
+		//
+		//   a:1 *a:2 b:1 b:2 c:1 c:2
+		key := m.heap.items[0].key
+		cur := m.heap.items[0].iter
+
+		for _, i := range m.iters {
+			if i == cur {
+				continue
+			}
+			if !i.Valid() {
+				i.PrevUserKey()
+			}
+			for ; i.Valid(); i.PrevUserKey() {
+				if m.heap.cmp(key.UserKey, i.Key().UserKey) > 0 {
+					// key > iter-key
+					break
+				}
+				// key <= iter-key
+			}
+		}
+
+		// Special handling for the current iterator because we were using its key
+		// above.
+		cur.PrevUserKey()
+		m.initMaxHeap()
 		return m.heap.len() > 0
 	}
 
@@ -356,19 +444,28 @@ func (m *mergingIter) PrevUserKey() bool {
 	key := m.heap.items[0].key
 	cur := m.heap.items[0].iter
 
+	var reheap bool
 	for _, i := range m.iters {
 		if i == cur {
 			continue
 		}
 		if i.Valid() && m.heap.cmp(key.UserKey, i.Key().UserKey) == 0 {
 			i.PrevUserKey()
+			reheap = true
 		}
 	}
 
 	// Special handling for the current iterator because we were using its key
 	// above.
-	cur.PrevUserKey()
-	m.initMaxHeap()
+	if reheap {
+		cur.PrevUserKey()
+		m.initMaxHeap()
+	} else if cur.PrevUserKey() {
+		m.heap.items[0].key = cur.Key()
+		m.heap.fix(0)
+	} else {
+		m.heap.pop()
+	}
 	return m.heap.len() > 0
 }
 

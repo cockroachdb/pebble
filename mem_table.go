@@ -82,40 +82,104 @@ func (m *memTable) Empty() bool {
 // memTableIter is a MemTable memTableIter that buffers upcoming results, so
 // that it does not have to acquire the MemTable's mutex on each Next call.
 type memTableIter struct {
-	cmp  db.Compare
-	iter arenaskl.Iterator
-	ikey db.InternalKey
+	cmp       db.Compare
+	reverse   bool
+	iter      arenaskl.Iterator
+	prevStart arenaskl.Iterator
+	prevEnd   arenaskl.Iterator
+	ikey      db.InternalKey
 }
 
 // memTableIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*memTableIter)(nil)
 
+func (t *memTableIter) clearPrevCache() {
+	if t.reverse {
+		t.reverse = false
+		t.prevStart = arenaskl.Iterator{}
+		t.prevEnd = arenaskl.Iterator{}
+	}
+}
+
+func (t *memTableIter) initPrevStart(key db.InternalKey) {
+	t.reverse = true
+	t.prevStart = t.iter
+	for {
+		iter := t.prevStart
+		if !iter.Prev() {
+			break
+		}
+		prevKey := db.DecodeInternalKey(iter.Key())
+		if t.cmp(prevKey.UserKey, key.UserKey) != 0 {
+			break
+		}
+		t.prevStart = iter
+	}
+}
+
+func (t *memTableIter) initPrevEnd(key db.InternalKey) {
+	t.prevEnd = t.iter
+	for {
+		iter := t.prevEnd
+		if !iter.Next() {
+			break
+		}
+		nextKey := db.DecodeInternalKey(iter.Key())
+		if t.cmp(nextKey.UserKey, key.UserKey) != 0 {
+			break
+		}
+		t.prevEnd = iter
+	}
+}
+
 func (t *memTableIter) SeekGE(key *db.InternalKey) {
+	t.clearPrevCache()
 	t.iter.SeekGE(key)
 }
 
 func (t *memTableIter) SeekLE(key *db.InternalKey) {
+	t.clearPrevCache()
 	t.iter.SeekLE(key)
+	if t.iter.Valid() {
+		key := db.DecodeInternalKey(t.iter.Key())
+		t.initPrevStart(key)
+		t.initPrevEnd(key)
+		t.iter = t.prevStart
+	}
 }
 
 func (t *memTableIter) First() {
+	t.clearPrevCache()
 	t.iter.First()
 }
 
 func (t *memTableIter) Last() {
+	t.clearPrevCache()
 	t.iter.Last()
+	if t.iter.Valid() {
+		key := db.DecodeInternalKey(t.iter.Key())
+		t.initPrevStart(key)
+		t.prevEnd = t.iter
+		t.iter = t.prevStart
+	}
 }
 
 func (t *memTableIter) Next() bool {
+	t.clearPrevCache()
 	return t.iter.Next()
 }
 
 func (t *memTableIter) NextUserKey() bool {
-	if !t.iter.Valid() {
+	t.clearPrevCache()
+	if t.iter.Tail() {
 		return false
 	}
+	if t.iter.Head() {
+		t.iter.First()
+		return t.iter.Valid()
+	}
 	key := db.DecodeInternalKey(t.iter.Key())
-	for t.Next() {
+	for t.iter.Next() {
 		if t.cmp(key.UserKey, t.Key().UserKey) < 0 {
 			return true
 		}
@@ -124,24 +188,80 @@ func (t *memTableIter) NextUserKey() bool {
 }
 
 func (t *memTableIter) Prev() bool {
-	return t.iter.Prev()
+	// Reverse iteration is a bit funky in that it returns entries for identical
+	// user-keys from larger to smaller sequence number even though they are not
+	// stored that way in the skiplist. For example, the following shows the
+	// ordering of keys in the skiplist:
+	//
+	//   a:2 a:1 b:2 b:1 c:2 c:1
+	//
+	// With reverse iteration we return them in the following order:
+	//
+	//   c:2 c:1 b:2 b:1 a:2 a:1
+	//
+	// This is accomplished via a bit of fancy footwork: if the iterator is
+	// currently at a valid entry, see if the user-key for the next entry is the
+	// same and if it is advance. Otherwise, move to the previous user key.
+	//
+	// Note that this makes reverse iteration a bit more expensive than forward
+	// iteration, especially if there are a larger number of versions for a key
+	// in the mem-table, though that should be rare. In the normal case where
+	// there is a single version for each key, reverse iteration consumes an
+	// extra dereference and comparison.
+	if t.iter.Head() {
+		return false
+	}
+	if t.iter.Tail() {
+		return t.PrevUserKey()
+	}
+	if !t.reverse {
+		key := db.DecodeInternalKey(t.iter.Key())
+		t.initPrevStart(key)
+		t.initPrevEnd(key)
+	}
+	if t.iter != t.prevEnd {
+		t.iter.Next()
+		if !t.iter.Valid() {
+			panic("expected valid node")
+		}
+		return true
+	}
+	t.iter = t.prevStart
+	if !t.iter.Prev() {
+		t.clearPrevCache()
+		return false
+	}
+	t.prevEnd = t.iter
+	t.initPrevStart(db.DecodeInternalKey(t.iter.Key()))
+	t.iter = t.prevStart
+	return true
 }
 
 func (t *memTableIter) PrevUserKey() bool {
-	if !t.iter.Valid() {
+	if t.iter.Head() {
 		return false
 	}
-	key := db.DecodeInternalKey(t.iter.Key())
-	for t.Prev() {
-		if t.cmp(key.UserKey, t.Key().UserKey) > 0 {
-			return true
-		}
+	if t.iter.Tail() {
+		t.Last()
+		return t.iter.Valid()
 	}
-	return false
+	if !t.reverse {
+		key := db.DecodeInternalKey(t.iter.Key())
+		t.initPrevStart(key)
+	}
+	t.iter = t.prevStart
+	if !t.iter.Prev() {
+		t.clearPrevCache()
+		return false
+	}
+	t.prevEnd = t.iter
+	t.initPrevStart(db.DecodeInternalKey(t.iter.Key()))
+	t.iter = t.prevStart
+	return true
 }
 
 func (t *memTableIter) Key() *db.InternalKey {
-	// TODO(peter): Perform the decoding during iteration.
+	// TODO(peter): Perform the decoding during iteration?
 	t.ikey = db.DecodeInternalKey(t.iter.Key())
 	return &t.ikey
 }

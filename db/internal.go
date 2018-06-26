@@ -187,10 +187,9 @@ func (k InternalKey) Clone() InternalKey {
 
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, keys are "internal keys" composed of the user-key, a
-// sequence number and a key kind. In forward iteration, key/value pairs are
-// returned in key order and, for identical user-keys, descending sequence
-// order. In reverse iteration, key value pairs are returned in reverse key
-// order and, for identical user keys, ascending sequence order.
+// sequence number and a key kind. In both forward and reverse iteration,
+// key/value pairs for identical user-keys are returned in descending sequence
+// order: newer keys are returned before older keys.
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.

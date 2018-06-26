@@ -77,7 +77,8 @@ func (f *fakeIter) First() {
 }
 
 func (f *fakeIter) Last() {
-	f.index = len(f.keys) - 1
+	f.index = len(f.keys)
+	f.Prev()
 }
 
 func (f *fakeIter) Next() bool {
@@ -99,21 +100,44 @@ func (f *fakeIter) NextUserKey() bool {
 }
 
 func (f *fakeIter) Prev() bool {
-	f.index--
-	return f.index >= 0
+	if f.Valid() {
+		key := f.keys[f.index]
+		if f.index+1 < len(f.keys) {
+			if db.DefaultComparer.Compare(key.UserKey, f.keys[f.index+1].UserKey) == 0 {
+				f.index++
+				return true
+			}
+		}
+	}
+	return f.PrevUserKey()
 }
 
 func (f *fakeIter) PrevUserKey() bool {
 	if f.index == len(f.keys) {
-		return f.Prev()
-	}
-	key := f.keys[f.index]
-	for f.Prev() {
-		if db.DefaultComparer.Compare(key.UserKey, f.Key().UserKey) > 0 {
-			return true
+		f.index--
+	} else {
+		key := f.keys[f.index]
+		f.index--
+		for ; f.index >= 0; f.index-- {
+			pkey := f.keys[f.index]
+			if db.DefaultComparer.Compare(pkey.UserKey, key.UserKey) < 0 {
+				break
+			}
 		}
 	}
-	return false
+
+	if f.index < 0 {
+		return false
+	}
+
+	key := f.keys[f.index]
+	for ; f.index > 0; f.index-- {
+		pkey := f.keys[f.index-1]
+		if db.DefaultComparer.Compare(pkey.UserKey, key.UserKey) != 0 {
+			break
+		}
+	}
+	return true
 }
 
 func (f *fakeIter) Key() *db.InternalKey {

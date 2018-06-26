@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/petermattis/pebble/arenaskl"
 	"github.com/petermattis/pebble/db"
 )
 
@@ -199,7 +201,7 @@ func TestMemTable1000Entries(t *testing.T) {
 	}
 }
 
-func TestMemTableNextPrevUserKey(t *testing.T) {
+func TestMemTableNextPrev(t *testing.T) {
 	m := newMemTable(nil)
 	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
 		ikey := fakeIkey(key)
@@ -210,31 +212,33 @@ func TestMemTableNextPrevUserKey(t *testing.T) {
 	iter := m.NewIter(nil)
 	iter.First()
 
+	// These test cases are shared with TestMergingIterNextPrev.
 	testCases := []struct {
 		dir      string
 		expected string
 	}{
-		{"+", "<a:1>"},
-		{"+", "<b:2>"},
-		{"-", "<a:1>"},
-		{"-", "<a:2>"},
-		{"-", "."},
-		{"+", "<a:2>"},
-		{"+", "<a:1>"},
-		{"+", "<b:2>"},
-		{"+", "<b:1>"},
-		{"+", "<c:2>"},
-		{"+", "<c:1>"},
-		{"-", "<c:2>"},
-		{"-", "<b:1>"},
-		{"-", "<b:2>"},
-		{"+", "<b:1>"},
-		{"+", "<c:2>"},
-		{"-", "<b:1>"},
-		{"+", "<c:2>"},
-		{"+", "<c:1>"},
-		{"+", "."},
-		{"-", "<c:1>"},
+		{"+", "<a:1>"}, // 0
+		{"+", "<b:2>"}, // 1
+		{"-", "<b:1>"}, // 2
+		{"-", "<a:2>"}, // 3
+		{"-", "<a:1>"}, // 4
+		{"-", "."},     // 5
+		{"+", "<a:2>"}, // 6
+		{"+", "<a:1>"}, // 7
+		{"+", "<b:2>"}, // 8
+		{"+", "<b:1>"}, // 9
+		{"+", "<c:2>"}, // 10
+		{"+", "<c:1>"}, // 11
+		{"-", "<b:2>"}, // 12
+		{"-", "<b:1>"}, // 13
+		{"+", "<c:2>"}, // 14
+		{"-", "<c:1>"}, // 15
+		{"-", "<b:2>"}, // 16
+		{"+", "<b:1>"}, // 17
+		{"+", "<c:2>"}, // 18
+		{"+", "<c:1>"}, // 19
+		{"+", "."},     // 20
+		{"-", "<c:2>"}, // 21
 	}
 	for i, c := range testCases {
 		switch c.dir {
@@ -254,5 +258,113 @@ func TestMemTableNextPrevUserKey(t *testing.T) {
 		if got != c.expected {
 			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
 		}
+	}
+}
+
+func TestMemTableNextPrevUserKey(t *testing.T) {
+	m := newMemTable(nil)
+	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
+		ikey := fakeIkey(key)
+		if err := m.Set(&ikey, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	iter := m.NewIter(nil)
+	iter.First()
+
+	// These test cases are shared with TestMergingIterNextPrevUserKey.
+	testCases := []struct {
+		dir      string
+		expected string
+	}{
+		{"+", "<b:2>"}, // 0
+		{"-", "<a:2>"}, // 1
+		{"-", "."},     // 2
+		{"+", "<a:2>"}, // 3
+		{"+", "<b:2>"}, // 4
+		{"+", "<c:2>"}, // 5
+		{"+", "."},     // 6
+		{"-", "<c:2>"}, // 7
+		{"-", "<b:2>"}, // 8
+		{"-", "<a:2>"}, // 9
+		{"+", "<b:2>"}, // 10
+		{"+", "<c:2>"}, // 11
+		{"-", "<b:2>"}, // 12
+		{"+", "<c:2>"}, // 13
+		{"+", "."},     // 14
+		{"-", "<c:2>"}, // 14
+	}
+	for i, c := range testCases {
+		switch c.dir {
+		case "+":
+			iter.NextUserKey()
+		case "-":
+			iter.PrevUserKey()
+		default:
+			t.Fatalf("unexpected direction: %q", c.dir)
+		}
+		var got string
+		if !iter.Valid() {
+			got = "."
+		} else {
+			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+		}
+		if got != c.expected {
+			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
+		}
+	}
+}
+
+func buildMemTable(b *testing.B) (*memTable, [][]byte) {
+	m := newMemTable(nil)
+	var keys [][]byte
+	var ikey db.InternalKey
+	for i := 0; ; i++ {
+		key := []byte(fmt.Sprintf("%08d", i))
+		keys = append(keys, key)
+		ikey.UserKey = key
+		if m.Set(&ikey, nil, nil) == arenaskl.ErrArenaFull {
+			break
+		}
+	}
+	return m, keys
+}
+
+func BenchmarkMemTableIterSeekGE(b *testing.B) {
+	m, keys := buildMemTable(b)
+	iter := m.NewIter(nil)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	b.ResetTimer()
+	var ikey db.InternalKey
+	for i := 0; i < b.N; i++ {
+		ikey.UserKey = keys[rng.Intn(len(keys))]
+		iter.SeekGE(&ikey)
+	}
+}
+
+func BenchmarkMemTableIterNext(b *testing.B) {
+	m, _ := buildMemTable(b)
+	iter := m.NewIter(nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !iter.Valid() {
+			iter.First()
+		}
+		iter.Next()
+	}
+}
+
+func BenchmarkMemTableIterPrev(b *testing.B) {
+	m, _ := buildMemTable(b)
+	iter := m.NewIter(nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !iter.Valid() {
+			iter.Last()
+		}
+		iter.Prev()
 	}
 }
