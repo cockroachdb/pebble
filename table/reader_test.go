@@ -24,7 +24,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 		BlockSize:            blockSize,
 		Compression:          db.NoCompression,
 		FilterPolicy:         nil,
-	}, rawCoder)
+	}, internalKeyCoder)
 
 	var keys [][]byte
 	var ikey db.InternalKey
@@ -46,7 +46,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	}
 	return newReader(f1, 0, &db.Options{
 		Cache: cache.NewBlockCache(128 << 20),
-	}, rawCoder), keys
+	}, internalKeyCoder), keys
 }
 
 func BenchmarkTableIterSeekGE(b *testing.B) {

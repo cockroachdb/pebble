@@ -144,7 +144,7 @@ func (p FilterPolicy) Name() string {
 	// This string looks arbitrary, but its value is written to LevelDB .sst
 	// files, and should be this exact value to be compatible with those files
 	// and with the C++ LevelDB code.
-	return "leveldb.BuiltinBloomFilter2"
+	return "rocksdb.BuiltinBloomFilter"
 }
 
 // AppendFilter implements the db.FilterPolicy interface.

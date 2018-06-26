@@ -115,7 +115,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				w := &blockWriter{
-					coder:           rawCoder,
+					coder:           internalKeyCoder,
 					restartInterval: restartInterval,
 				}
 
@@ -128,7 +128,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, rawCoder, w.finish())
+				it, err := newBlockIter(bytes.Compare, internalKeyCoder, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -150,7 +150,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				w := &blockWriter{
-					coder:           rawCoder,
+					coder:           internalKeyCoder,
 					restartInterval: restartInterval,
 				}
 
@@ -160,7 +160,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, rawCoder, w.finish())
+				it, err := newBlockIter(bytes.Compare, internalKeyCoder, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -183,7 +183,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				w := &blockWriter{
-					coder:           rawCoder,
+					coder:           internalKeyCoder,
 					restartInterval: restartInterval,
 				}
 
@@ -193,7 +193,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 					w.add(&ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, rawCoder, w.finish())
+				it, err := newBlockIter(bytes.Compare, internalKeyCoder, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}

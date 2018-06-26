@@ -67,7 +67,7 @@ const (
 	// which sorts 'less than or equal to' any other valid internalKeyKind, when
 	// searching for any kind of internal key formed by a certain user key and
 	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 15
+	InternalKeyKindMax InternalKeyKind = 17
 
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = 255
