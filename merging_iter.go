@@ -238,9 +238,9 @@ func (m *mergingIter) SeekGE(key *db.InternalKey) {
 	m.initMinHeap()
 }
 
-func (m *mergingIter) SeekLE(key *db.InternalKey) {
+func (m *mergingIter) SeekLT(key *db.InternalKey) {
 	for _, t := range m.iters {
-		t.SeekLE(key)
+		t.SeekLT(key)
 	}
 	m.initMaxHeap()
 }

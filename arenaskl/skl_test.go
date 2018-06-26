@@ -424,7 +424,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	require.EqualValues(t, "", it.Key())
 }
 
-func TestIteratorSeekLE(t *testing.T) {
+func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize), bytes.Compare)
 	it := l.NewIter()
@@ -438,47 +438,38 @@ func TestIteratorSeekLE(t *testing.T) {
 		l.Add(makeKey(v), makeValue(v))
 	}
 
-	found := it.SeekLE(testKey(""))
-	require.False(t, found)
+	it.SeekLT(testKey(""))
 	require.False(t, it.Valid())
 
-	found = it.SeekLE(testKey("00990"))
-	require.False(t, found)
+	it.SeekLT(testKey("01000"))
 	require.False(t, it.Valid())
 
-	found = it.SeekLE(testKey("01000"))
-	require.True(t, found)
+	it.SeekLT(testKey("01001"))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
 	require.EqualValues(t, "v01000", it.Value())
 
-	found = it.SeekLE(testKey("01005"))
-	require.False(t, found)
+	it.SeekLT(testKey("01005"))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key())
 	require.EqualValues(t, "v01000", it.Value())
 
-	found = it.SeekLE(testKey("01990"))
-	require.True(t, found)
+	it.SeekLT(testKey("01991"))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01990", it.Key())
 	require.EqualValues(t, "v01990", it.Value())
 
-	found = it.SeekLE(testKey("99999"))
-	require.False(t, found)
+	it.SeekLT(testKey("99999"))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01990", it.Key())
 	require.EqualValues(t, "v01990", it.Value())
 
 	// Test seek for empty key.
 	l.Add(testKey(nil), nil)
-	found = it.SeekLE(testKey(nil))
-	require.True(t, found)
-	require.True(t, it.Valid())
-	require.EqualValues(t, "", it.Key())
+	it.SeekLT(testKey(nil))
+	require.False(t, it.Valid())
 
-	found = it.SeekLE(testKey{})
-	require.True(t, found)
+	it.SeekLT(testKey("\x01"))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "", it.Key())
 }

@@ -15,7 +15,7 @@ func newErrorIter(err error) *errorIter {
 func (c *errorIter) SeekGE(key []byte) {
 }
 
-func (c *errorIter) SeekLE(key []byte) {
+func (c *errorIter) SeekLT(key []byte) {
 }
 
 func (c *errorIter) First() {

@@ -37,8 +37,8 @@ func (c *concatenatingIter) SeekGE(key *db.InternalKey) {
 	panic("pebble.concatenatingIter: SeekGE unimplemented")
 }
 
-func (c *concatenatingIter) SeekLE(key *db.InternalKey) {
-	panic("pebble.concatenatingIter: SeekLE unimplemented")
+func (c *concatenatingIter) SeekLT(key *db.InternalKey) {
+	panic("pebble.concatenatingIter: SeekLT unimplemented")
 }
 
 func (c *concatenatingIter) First() {

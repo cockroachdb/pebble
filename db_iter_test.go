@@ -3,8 +3,10 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/petermattis/pebble/db"
 )
@@ -20,19 +22,49 @@ func TestDBIterNextPrev(t *testing.T) {
 			"a:1",
 			"a.SET.1:b",
 			"<a:b>.",
-			"<a:b>.",
+			".",
 		},
 		{
 			"a:1",
 			"a.SET.2:c a.SET.1:b",
 			"<a:b>.",
-			"<a:b>.",
+			".",
 		},
 		{
 			"a:2",
 			"a.SET.2:c a.SET.1:b",
 			"<a:c>.",
-			"<a:c>.",
+			".",
+		},
+		{
+			"a:2",
+			"a.DEL.2: a.SET.1:b",
+			".",
+			".",
+		},
+		{
+			"a:3",
+			"a.DEL.2: a.SET.1:b b.SET.3:c",
+			"<b:c>.",
+			".",
+		},
+		{
+			"a:3",
+			"a.SET.1:a b.SET.2:b c.SET.3:c",
+			"<a:a><b:b><c:c>.",
+			".",
+		},
+		{
+			"b:3",
+			"a.SET.1:a b.SET.2:b c.SET.3:c",
+			"<b:b><c:c>.",
+			"<a:a>.",
+		},
+		{
+			"c:3",
+			"a.SET.1:a b.SET.2:b c.SET.3:c",
+			"<c:c>.",
+			"<b:b><a:a>.",
 		},
 	}
 	for _, c := range testCases {
@@ -65,7 +97,7 @@ func TestDBIterNextPrev(t *testing.T) {
 			}
 
 			b.Reset()
-			for iter.SeekLE([]byte(seek.UserKey)); iter.Valid(); iter.Prev() {
+			for iter.SeekLT([]byte(seek.UserKey)); iter.Valid(); iter.Prev() {
 				fmt.Fprintf(&b, "<%s:%s>", iter.Key(), iter.Value())
 			}
 			if err := iter.Close(); err != nil {
@@ -77,5 +109,55 @@ func TestDBIterNextPrev(t *testing.T) {
 				t.Errorf("got  %q\nwant %q", got, c.expectedPrev)
 			}
 		})
+	}
+}
+
+func BenchmarkDBIterSeekGE(b *testing.B) {
+	m, keys := buildMemTable(b)
+	iter := &dbIter{
+		cmp:    db.DefaultComparer.Compare,
+		iter:   m.NewIter(nil),
+		seqnum: db.InternalKeySeqNumMax,
+	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := keys[rng.Intn(len(keys))]
+		iter.SeekGE(key)
+	}
+}
+
+func BenchmarkDBIterNext(b *testing.B) {
+	m, _ := buildMemTable(b)
+	iter := &dbIter{
+		cmp:    db.DefaultComparer.Compare,
+		iter:   m.NewIter(nil),
+		seqnum: db.InternalKeySeqNumMax,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !iter.Valid() {
+			iter.First()
+		}
+		iter.Next()
+	}
+}
+
+func BenchmarkDBIterPrev(b *testing.B) {
+	m, _ := buildMemTable(b)
+	iter := &dbIter{
+		cmp:    db.DefaultComparer.Compare,
+		iter:   m.NewIter(nil),
+		seqnum: db.InternalKeySeqNumMax,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !iter.Valid() {
+			iter.Last()
+		}
+		iter.Prev()
 	}
 }

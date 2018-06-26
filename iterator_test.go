@@ -65,9 +65,9 @@ func (f *fakeIter) SeekGE(key *db.InternalKey) {
 	}
 }
 
-func (f *fakeIter) SeekLE(key *db.InternalKey) {
+func (f *fakeIter) SeekLT(key *db.InternalKey) {
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
-		if db.InternalCompare(db.DefaultComparer.Compare, *key, *f.Key()) >= 0 {
+		if db.InternalCompare(db.DefaultComparer.Compare, *key, *f.Key()) > 0 {
 			break
 		}
 	}

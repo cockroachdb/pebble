@@ -201,10 +201,10 @@ func (i *blockIter) SeekGE(key *db.InternalKey) {
 	}
 }
 
-// SeekLE implements InternalIterator.SeekLE, as documented in the pebble/db
+// SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
-func (i *blockIter) SeekLE(key *db.InternalKey) {
-	panic("pebble/table: SeekLE unimplemented")
+func (i *blockIter) SeekLT(key *db.InternalKey) {
+	panic("pebble/table: SeekLT unimplemented")
 }
 
 // First implements InternalIterator.First, as documented in the pebble/db

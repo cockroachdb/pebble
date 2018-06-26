@@ -31,25 +31,25 @@ func TestLevelIter(t *testing.T) {
 			"a:1",
 			"a:1,b:2 c:3,d:4",
 			"<a:1><b:2><c:3><d:4>.",
-			"<a:1>.",
+			".",
 		},
 		{
 			"b:2",
 			"a:1,b:2 c:3,d:4",
 			"<b:2><c:3><d:4>.",
-			"<b:2><a:1>.",
+			"<a:1>.",
 		},
 		{
 			"c:3",
 			"a:1,b:2 c:3,d:4",
 			"<c:3><d:4>.",
-			"<c:3><b:2><a:1>.",
+			"<b:2><a:1>.",
 		},
 		{
 			"d:4",
 			"a:1,b:2 c:3,d:4",
 			"<d:4>.",
-			"<d:4><c:3><b:2><a:1>.",
+			"<c:3><b:2><a:1>.",
 		},
 		{
 			"d:0",
@@ -96,7 +96,7 @@ func TestLevelIter(t *testing.T) {
 			}
 
 			b.Reset()
-			for iter.SeekLE(&ikey); iter.Valid(); iter.Prev() {
+			for iter.SeekLT(&ikey); iter.Valid(); iter.Prev() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
 			}
 			if err := iter.Close(); err != nil {
@@ -142,7 +142,7 @@ func buildLevelIterTables(
 		for ; w.EstimatedSize() < targetSize; i++ {
 			key := []byte(fmt.Sprintf("%08d", i))
 			keys = append(keys, key)
-			ikey.UserKey = key
+			ikey = db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
 			w.Add(&ikey, nil)
 		}
 		if err := w.Close(); err != nil {

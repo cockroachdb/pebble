@@ -322,7 +322,7 @@ func buildMemTable(b *testing.B) (*memTable, [][]byte) {
 	for i := 0; ; i++ {
 		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
-		ikey.UserKey = key
+		ikey = db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
 		if m.Set(&ikey, nil, nil) == arenaskl.ErrArenaFull {
 			break
 		}

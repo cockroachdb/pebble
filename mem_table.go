@@ -137,9 +137,9 @@ func (t *memTableIter) SeekGE(key *db.InternalKey) {
 	t.iter.SeekGE(key)
 }
 
-func (t *memTableIter) SeekLE(key *db.InternalKey) {
+func (t *memTableIter) SeekLT(key *db.InternalKey) {
 	t.clearPrevCache()
-	t.iter.SeekLE(key)
+	t.iter.SeekLT(key)
 	if t.iter.Valid() {
 		key := db.DecodeInternalKey(t.iter.Key())
 		t.initPrevStart(key)

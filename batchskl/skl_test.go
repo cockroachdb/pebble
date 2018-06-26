@@ -253,7 +253,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	require.True(t, it.Valid())
 }
 
-func TestIteratorSeekLE(t *testing.T) {
+func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
@@ -267,30 +267,35 @@ func TestIteratorSeekLE(t *testing.T) {
 		require.Nil(t, l.Add(d.add(fmt.Sprintf("%05d", i*10+1000))))
 	}
 
-	require.False(t, it.SeekLE([]byte("")))
+	it.SeekLT([]byte(""))
 	require.False(t, it.Valid())
 
-	require.False(t, it.SeekLE([]byte("00990")))
+	it.SeekLT([]byte("01000"))
 	require.False(t, it.Valid())
 
-	require.True(t, it.SeekLE([]byte("01000")))
+	it.SeekLT([]byte("01001"))
+	require.EqualValues(t, "01000", it.Key())
 	require.True(t, it.Valid())
 
-	require.False(t, it.SeekLE([]byte("01005")))
+	it.SeekLT([]byte("01005"))
+	require.EqualValues(t, "01000", it.Key())
 	require.True(t, it.Valid())
 
-	require.True(t, it.SeekLE([]byte("01990")))
+	it.SeekLT([]byte("01991"))
+	require.EqualValues(t, "01990", it.Key())
 	require.True(t, it.Valid())
 
-	require.False(t, it.SeekLE([]byte("99999")))
+	it.SeekLT([]byte("99999"))
 	require.True(t, it.Valid())
+	require.EqualValues(t, "01990", it.Key())
 
 	// Test seek for empty key.
 	require.Nil(t, l.Add(d.add("")))
-	require.True(t, it.SeekLE(nil))
+	it.SeekLT(nil)
+	require.False(t, it.Valid())
+	it.SeekLT([]byte("\x01"))
 	require.True(t, it.Valid())
-	require.True(t, it.SeekLE([]byte{}))
-	require.True(t, it.Valid())
+	require.EqualValues(t, "", it.Key())
 }
 
 func randomKey(rng *rand.Rand, b []byte) []byte {

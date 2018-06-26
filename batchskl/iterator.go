@@ -50,19 +50,10 @@ func (it *Iterator) SeekGE(key []byte) (found bool) {
 	return found
 }
 
-// SeekLE moves the iterator to the first entry whose key is less than or equal
-// to the given key. Returns true if the given key exists and false otherwise.
-func (it *Iterator) SeekLE(key []byte) (found bool) {
-	var prev, next uint32
-	prev, next, found = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
-
-	if found {
-		it.nd = next
-	} else {
-		it.nd = prev
-	}
-
-	return found
+// SeekLT moves the iterator to the last entry whose key is less the given
+// key.
+func (it *Iterator) SeekLT(key []byte) {
+	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
 }
 
 // First seeks position at the first entry in list.

@@ -65,19 +65,10 @@ func (it *Iterator) SeekGE(key Key) (found bool) {
 	return found
 }
 
-// SeekLE moves the iterator to the first entry whose key is less than or equal
-// to the given key. Returns true if the given key exists and false otherwise.
-func (it *Iterator) SeekLE(key Key) (found bool) {
-	var prev, next *node
-	prev, next, found = it.seekForBaseSplice(key)
-
-	if found {
-		it.nd = next
-	} else {
-		it.nd = prev
-	}
-
-	return found
+// SeekLT moves the iterator to the last entry whose key is less than the given
+// key.
+func (it *Iterator) SeekLT(key Key) {
+	it.nd, _, _ = it.seekForBaseSplice(key)
 }
 
 // First seeks position at the first entry in list. Final state of iterator is

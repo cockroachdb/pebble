@@ -72,19 +72,19 @@ func TestMergingIterSeek(t *testing.T) {
 			"a.SET.2",
 			"a:0;a:1;a:2",
 			"<a:2><a:1><a:0>.",
-			"<a:2>.",
+			".",
 		},
 		{
 			"a.SET.1",
 			"a:0;a:1;a:2",
 			"<a:1><a:0>.",
-			"<a:2><a:1>.",
+			"<a:2>.",
 		},
 		{
 			"a.SET.0",
 			"a:0;a:1;a:2",
 			"<a:0>.",
-			"<a:2><a:1><a:0>.",
+			"<a:2><a:1>.",
 		},
 	}
 	for _, tc := range testCases {
@@ -110,7 +110,7 @@ func TestMergingIterSeek(t *testing.T) {
 			}
 
 			b.Reset()
-			for iter.SeekLE(&ikey); iter.Valid(); iter.Prev() {
+			for iter.SeekLT(&ikey); iter.Valid(); iter.Prev() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
 			}
 			if err := iter.Close(); err != nil {

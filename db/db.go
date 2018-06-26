@@ -55,9 +55,9 @@ type Iterator interface {
 	// than or equal to the given key.
 	SeekGE(key []byte)
 
-	// SeekLE moves the iterator to the first key/value pair whose key is less
-	// than or equal to the given key.
-	SeekLE(key []byte)
+	// SeekLT moves the iterator to the last key/value pair whose key is less
+	// than the given key.
+	SeekLT(key []byte)
 
 	// First moves the iterator the the first key/value pair.
 	First()
