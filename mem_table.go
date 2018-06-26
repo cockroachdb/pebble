@@ -34,8 +34,9 @@ func newMemTable(o *db.Options) *memTable {
 	return m
 }
 
-// Get implements Reader.Get, as documented in the pebble/db package.
-func (m *memTable) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err error) {
+// Get gets the value for the given key. It returns ErrNotFound if the DB does
+// not contain the key.
+func (m *memTable) get(key *db.InternalKey) (value []byte, err error) {
 	it := m.skl.NewIter()
 	it.SeekGE(key)
 	if !it.Valid() {
@@ -51,12 +52,15 @@ func (m *memTable) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, er
 	return it.Value(), nil
 }
 
-// Set implements DB.Set, as documented in the pebble/db package.
-func (m *memTable) Set(key *db.InternalKey, value []byte, o *db.WriteOptions) error {
+// Set sets the value for the given key. It overwrites any previous value for
+// that key; a DB is not a multi-map.
+func (m *memTable) set(key *db.InternalKey, value []byte) error {
 	return m.skl.Add(key, value)
 }
 
-// NewIter implements Reader.NewIter, as documented in the pebble/db package.
+// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+// return false). The iterator can be positioned via a call to SeekGE,
+// SeekLT, First or Last.
 func (m *memTable) NewIter(o *db.ReadOptions) db.InternalIterator {
 	return &memTableIter{
 		cmp:  m.cmp,
@@ -64,7 +68,6 @@ func (m *memTable) NewIter(o *db.ReadOptions) db.InternalIterator {
 	}
 }
 
-// Close implements Reader.Close, as documented in the pebble/db package.
 func (m *memTable) Close() error {
 	return nil
 }

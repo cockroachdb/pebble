@@ -110,7 +110,7 @@ type Reader interface {
 
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to SeekGE,
-	// SeekLE, First or Last.
+	// SeekLT, First or Last.
 	NewIter(o *ReadOptions) Iterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader

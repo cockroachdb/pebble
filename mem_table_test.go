@@ -37,7 +37,7 @@ func ikey(s string) *db.InternalKey {
 func compact(m *memTable) (*memTable, error) {
 	n, x := newMemTable(nil), m.NewIter(nil)
 	for x.First(); x.Valid(); x.Next() {
-		if err := n.Set(x.Key(), x.Value(), nil); err != nil {
+		if err := n.set(x.Key(), x.Value()); err != nil {
 			return nil, err
 		}
 	}
@@ -53,25 +53,25 @@ func TestMemTableBasic(t *testing.T) {
 	if got, want := count(m), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
-	v, err := m.Get(ikey("cherry"), nil)
+	v, err := m.get(ikey("cherry"))
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("1.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Add some key/value pairs.
-	m.Set(ikey("cherry"), []byte("red"), nil)
-	m.Set(ikey("peach"), []byte("yellow"), nil)
-	m.Set(ikey("grape"), []byte("red"), nil)
-	m.Set(ikey("grape"), []byte("green"), nil)
-	m.Set(ikey("plum"), []byte("purple"), nil)
+	m.set(ikey("cherry"), []byte("red"))
+	m.set(ikey("peach"), []byte("yellow"))
+	m.set(ikey("grape"), []byte("red"))
+	m.set(ikey("grape"), []byte("green"))
+	m.set(ikey("plum"), []byte("purple"))
 	if got, want := count(m), 4; got != want {
 		t.Fatalf("2.count: got %v, want %v", got, want)
 	}
 	// Get keys that are and aren't in the DB.
-	v, err = m.Get(ikey("plum"), nil)
+	v, err = m.get(ikey("plum"))
 	if string(v) != "purple" || err != nil {
 		t.Fatalf("6.get: got (%q, %v), want (%q, %v)", v, err, "purple", error(nil))
 	}
-	v, err = m.Get(ikey("lychee"), nil)
+	v, err = m.get(ikey("lychee"))
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
@@ -87,7 +87,7 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("9.close: %v", err)
 	}
 	// Check some more sets and deletes.
-	if err := m.Set(ikey("apricot"), []byte("orange"), nil); err != nil {
+	if err := m.set(ikey("apricot"), []byte("orange")); err != nil {
 		t.Fatalf("12.set: %v", err)
 	}
 	if got, want := count(m), 5; got != want {
@@ -105,7 +105,7 @@ func TestMemTableCount(t *testing.T) {
 		if j := count(m); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
 		}
-		m.Set(&db.InternalKey{UserKey: []byte{byte(i)}}, nil, nil)
+		m.set(&db.InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestMemTableEmpty(t *testing.T) {
 		t.Errorf("got !empty, want empty")
 	}
 	// Add one key/value pair with an empty key and empty value.
-	m.Set(&db.InternalKey{}, nil, nil)
+	m.set(&db.InternalKey{}, nil)
 	if m.Empty() {
 		t.Errorf("got empty, want !empty")
 	}
@@ -131,7 +131,7 @@ func TestMemTable1000Entries(t *testing.T) {
 	for i := 0; i < N; i++ {
 		k := ikey(strconv.Itoa(i))
 		v := []byte(strings.Repeat("x", i))
-		m0.Set(k, v, nil)
+		m0.set(k, v)
 	}
 	// Check the DB count.
 	if got, want := count(m0), 1000; got != want {
@@ -142,7 +142,7 @@ func TestMemTable1000Entries(t *testing.T) {
 	for i := 0; i < 3*N; i++ {
 		j := r.Intn(N)
 		k := ikey(strconv.Itoa(j))
-		v, err := m0.Get(k, nil)
+		v, err := m0.get(k)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -205,7 +205,7 @@ func TestMemTableNextPrev(t *testing.T) {
 	m := newMemTable(nil)
 	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
 		ikey := fakeIkey(key)
-		if err := m.Set(&ikey, nil, nil); err != nil {
+		if err := m.set(&ikey, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -265,7 +265,7 @@ func TestMemTableNextPrevUserKey(t *testing.T) {
 	m := newMemTable(nil)
 	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
 		ikey := fakeIkey(key)
-		if err := m.Set(&ikey, nil, nil); err != nil {
+		if err := m.set(&ikey, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -323,7 +323,7 @@ func buildMemTable(b *testing.B) (*memTable, [][]byte) {
 		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
 		ikey = db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
-		if m.Set(&ikey, nil, nil) == arenaskl.ErrArenaFull {
+		if m.set(&ikey, nil) == arenaskl.ErrArenaFull {
 			break
 		}
 	}

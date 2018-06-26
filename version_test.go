@@ -528,7 +528,7 @@ func TestVersion(t *testing.T) {
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
 				ikey := makeIkey(s[0])
-				err := d.Set(&ikey, []byte(s[1]), nil)
+				err := d.set(&ikey, []byte(s[1]))
 				if err != nil {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
 				}

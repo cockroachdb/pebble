@@ -190,7 +190,7 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 			break
 		}
 		ikey = db.MakeInternalKey(ukey, seqNum, kind)
-		d.mem.Set(&ikey, value, nil)
+		d.mem.set(&ikey, value)
 	}
 
 	if seqNum != d.versions.lastSequence+1 {
@@ -535,7 +535,7 @@ func (d *DB) replayLogFile(
 			// abstraction means that we need to copy to an intermediate buffer here,
 			// to reconstruct the complete internal key to pass to the memtable.
 			ikey = db.MakeInternalKey(ukey, seqNum, kind)
-			mem.Set(&ikey, value, nil)
+			mem.set(&ikey, value)
 		}
 		if len(t) != 0 {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
