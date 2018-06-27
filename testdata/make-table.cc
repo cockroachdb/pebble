@@ -20,48 +20,52 @@
 
 const int N = 1000000;
 const char* infile = "h.txt";
-const char* outfile = "h.sst";
-// const char* outfile = "h.no-compression.sst";
-// const char* outfile = "h.bloom.no-compression.sst";
+const char* outfiles[3] = {
+  "h.sst",
+  "h.no-compression.sst",
+  "h.bloom.no-compression.sst",
+};
 
 int write() {
-  rocksdb::Status status;
+  for (int i = 0; i < 3; ++i) {
+    const char* outfile = outfiles[i];
+    rocksdb::Status status;
 
-  rocksdb::BlockBasedTableOptions table_options;
-  // The original LevelDB compatible format. We explicitly set the checksum too
-  // to guard against the silent version upconversion. See
-  // https://github.com/facebook/rocksdb/blob/972f96b3fbae1a4675043bdf4279c9072ad69645/include/rocksdb/table.h#L198
-  table_options.format_version = 0;
-  table_options.checksum = rocksdb::kCRC32c;
-  // table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
+    rocksdb::BlockBasedTableOptions table_options;
+    if (i == 2) {
+      table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
+    }
 
-  rocksdb::Options options;
-  options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
+    rocksdb::Options options;
+    options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
+    if (i >= 1) {
+      options.compression = rocksdb::kNoCompression;
+    }
 
-  // options.compression = rocksdb::kNoCompression;
-  std::unique_ptr<rocksdb::SstFileWriter> tb(new rocksdb::SstFileWriter({}, options));
-  status = tb->Open(outfile);
-  if (!status.ok()) {
-    std::cerr << "SstFileWriter::Open: " << status.ToString() << std::endl;
-    return 1;
+    std::unique_ptr<rocksdb::SstFileWriter> tb(new rocksdb::SstFileWriter({}, options));
+    status = tb->Open(outfile);
+    if (!status.ok()) {
+      std::cerr << "SstFileWriter::Open: " << status.ToString() << std::endl;
+      return 1;
+    }
+    std::ifstream in(infile);
+    std::string s;
+    for (int i = 0; i < N && getline(in, s); i++) {
+      std::string key(s, 8);
+      std::string val(s, 0, 7);
+      val = val.substr(1 + val.rfind(' '));
+      tb->Put(key.c_str(), val.c_str());
+    }
+
+    rocksdb::ExternalSstFileInfo info;
+    status = tb->Finish(&info);
+    if (!status.ok()) {
+      std::cerr << "TableBuilder::Finish: " << status.ToString() << std::endl;
+      return 1;
+    }
+
+    std::cout << outfile << ": wrote " << info.num_entries << " entries" << std::endl;
   }
-  std::ifstream in(infile);
-  std::string s;
-  for (int i = 0; i < N && getline(in, s); i++) {
-    std::string key(s, 8);
-    std::string val(s, 0, 7);
-    val = val.substr(1 + val.rfind(' '));
-    tb->Put(key.c_str(), val.c_str());
-  }
-
-  rocksdb::ExternalSstFileInfo info;
-  status = tb->Finish(&info);
-  if (!status.ok()) {
-    std::cerr << "TableBuilder::Finish: " << status.ToString() << std::endl;
-    return 1;
-  }
-
-  std::cout << "wrote " << info.num_entries << " entries" << std::endl;
   return 0;
 }
 

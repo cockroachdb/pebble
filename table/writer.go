@@ -183,7 +183,7 @@ type Writer struct {
 	filter filterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
-	tmp [50]byte
+	tmp [footerLen]byte
 }
 
 // Add adds a key/value pair to the table being written. For a given Writer,
@@ -365,9 +365,12 @@ func (w *Writer) Close() (err error) {
 	for i := range footer {
 		footer[i] = 0
 	}
-	n := encodeBlockHandle(footer, metaindexBlockHandle)
-	encodeBlockHandle(footer[n:], indexBlockHandle)
-	copy(footer[footerLen-len(magic):], magic)
+	footer[0] = checksumCRC32c
+	n := 1
+	n += encodeBlockHandle(footer[n:], metaindexBlockHandle)
+	n += encodeBlockHandle(footer[n:], indexBlockHandle)
+	binary.LittleEndian.PutUint32(footer[versionOffset:], formatVersion)
+	copy(footer[magicOffset:], magic)
 	if _, err := w.writer.Write(footer); err != nil {
 		w.err = err
 		return w.err

@@ -122,10 +122,19 @@ values. The maximum size of an encoded block handle is therefore 20 bytes.
 */
 
 const (
-	blockTrailerLen = 5
-	footerLen       = 48
+	blockTrailerLen   = 5
+	blockHandleMaxLen = 10 + 10
+	footerLen         = 1 + 2*blockHandleMaxLen + 4 + 8
+	magicOffset       = footerLen - len(magic)
+	versionOffset     = magicOffset - 4
 
-	magic = "\x57\xfb\x80\x8b\x24\x75\x47\xdb"
+	magic = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
+
+	noChecksum     = 0
+	checksumCRC32c = 1
+	checksumXXHash = 2
+
+	formatVersion = 2
 
 	// The block type gives the per-block compression format.
 	// These constants are part of the file format and should not be changed.
