@@ -116,7 +116,7 @@ func TestBatchGet(t *testing.T) {
 	}
 
 	b := newIndexedBatch(nil, bytes.Compare)
-	for _, c := range testCases {
+	for i, c := range testCases {
 		if c.value == nil {
 			b.Delete(c.key)
 		} else {
@@ -124,7 +124,7 @@ func TestBatchGet(t *testing.T) {
 		}
 		v, err := b.Get(c.key, nil)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%d: %s: %v", i, c.key, err)
 		}
 		if c.expected == nil && v != nil {
 			t.Fatalf("unexpected value: %q", v)

@@ -60,6 +60,8 @@ import (
 	"math"
 	"math/rand"
 	"unsafe"
+
+	"github.com/petermattis/pebble/db"
 )
 
 const (
@@ -101,9 +103,9 @@ type node struct {
 
 // Storage ...
 type Storage interface {
-	Get(offset uint32) []byte
-	InlineKey(key []byte) InlineKey
-	Compare(a []byte, b uint32) int
+	Get(offset uint32) db.InternalKey
+	InlineKey(key db.InternalKey) InlineKey
+	Compare(a db.InternalKey, b uint32) int
 }
 
 // Skiplist ...
@@ -263,7 +265,7 @@ func (s *Skiplist) randomHeight() uint32 {
 }
 
 func (s *Skiplist) findSplice(
-	key []byte, inlineKey InlineKey, spl *[maxHeight]splice,
+	key db.InternalKey, inlineKey InlineKey, spl *[maxHeight]splice,
 ) (found bool) {
 	var prev, next uint32
 	prev = s.head
@@ -280,7 +282,7 @@ func (s *Skiplist) findSplice(
 }
 
 func (s *Skiplist) findSpliceForLevel(
-	key []byte, inlineKey InlineKey, level, start uint32,
+	key db.InternalKey, inlineKey InlineKey, level, start uint32,
 ) (prev, next uint32, found bool) {
 	prev = start
 

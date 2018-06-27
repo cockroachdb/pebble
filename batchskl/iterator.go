@@ -17,6 +17,8 @@
 
 package batchskl
 
+import "github.com/petermattis/pebble/db"
+
 type splice struct {
 	prev uint32
 	next uint32
@@ -45,14 +47,14 @@ func (it *Iterator) Close() error {
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
-func (it *Iterator) SeekGE(key []byte) (found bool) {
+func (it *Iterator) SeekGE(key db.InternalKey) (found bool) {
 	_, it.nd, found = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
 	return found
 }
 
 // SeekLT moves the iterator to the last entry whose key is less the given
 // key.
-func (it *Iterator) SeekLT(key []byte) {
+func (it *Iterator) SeekLT(key db.InternalKey) {
 	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
 }
 
@@ -85,7 +87,7 @@ func (it *Iterator) Prev() bool {
 }
 
 // Key returns the key at the current position.
-func (it *Iterator) Key() []byte {
+func (it *Iterator) Key() db.InternalKey {
 	return it.list.storage.Get(it.list.getKey(it.nd))
 }
 
@@ -100,7 +102,7 @@ func (it *Iterator) Valid() bool {
 }
 
 func (it *Iterator) seekForBaseSplice(
-	key []byte, inlineKey InlineKey,
+	key db.InternalKey, inlineKey InlineKey,
 ) (prev, next uint32, found bool) {
 	prev = it.list.head
 	for level := it.list.height - 1; ; level-- {

@@ -77,7 +77,7 @@ const (
 	InternalKeySeqNumBatch = uint64(1 << 55)
 
 	// InternalKeySeqNumMax is the largest valid sequence number.
-	InternalKeySeqNumMax = InternalKeySeqNumBatch - 1
+	InternalKeySeqNumMax = uint64(1<<56 - 1)
 )
 
 // InternalKey is a key used for the in-memory and on-disk partial DBs that
@@ -144,40 +144,40 @@ func (k *InternalKey) Compare(userCmp func(a, b []byte) int, other []byte) int {
 }
 
 // Encode ...
-func (k *InternalKey) Encode(buf []byte) {
+func (k InternalKey) Encode(buf []byte) {
 	i := copy(buf, k.UserKey)
 	binary.LittleEndian.PutUint64(buf[i:], k.trailer)
 }
 
 // EncodeTrailer ...
-func (k *InternalKey) EncodeTrailer() [8]byte {
+func (k InternalKey) EncodeTrailer() [8]byte {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], k.trailer)
 	return buf
 }
 
 // Size ...
-func (k *InternalKey) Size() int {
+func (k InternalKey) Size() int {
 	return len(k.UserKey) + 8
 }
 
 // SeqNum ...
-func (k *InternalKey) SeqNum() uint64 {
+func (k InternalKey) SeqNum() uint64 {
 	return k.trailer >> 8
 }
 
 // Kind ...
-func (k *InternalKey) Kind() InternalKeyKind {
+func (k InternalKey) Kind() InternalKeyKind {
 	return InternalKeyKind(k.trailer & 0xff)
 }
 
 // Trailer ...
-func (k *InternalKey) Trailer() uint64 {
+func (k InternalKey) Trailer() uint64 {
 	return k.trailer
 }
 
 // Valid returns true if the key has a valid kind.
-func (k *InternalKey) Valid() bool {
+func (k InternalKey) Valid() bool {
 	return k.Kind() <= InternalKeyKindMax
 }
 

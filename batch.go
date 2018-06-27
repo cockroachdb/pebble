@@ -39,26 +39,27 @@ type batchStorage struct {
 }
 
 // Get implements Storage.Get, as documented in the pebble/batchskl package.
-func (s *batchStorage) Get(offset uint32) []byte {
+func (s *batchStorage) Get(offset uint32) db.InternalKey {
+	kind := db.InternalKeyKind(s.data[offset])
 	_, key, ok := batchDecodeStr(s.data[offset+1:])
 	if !ok {
 		panic("corrupted batch entry")
 	}
-	return key
+	return db.MakeInternalKey(key, uint64(offset)|db.InternalKeySeqNumBatch, kind)
 }
 
 // InlineKey implements Storage.InlineKey, as documented in the pebble/batchskl
 // package.
-func (s *batchStorage) InlineKey(key []byte) batchskl.InlineKey {
+func (s *batchStorage) InlineKey(key db.InternalKey) batchskl.InlineKey {
 	// TODO(peter): This needs to be part of the db.Comparer package as the
 	// specifics of the comparison routine affect how a fixed prefix can be
 	// extracted.
 	var v batchskl.InlineKey
 	n := int(unsafe.Sizeof(batchskl.InlineKey(0)))
-	if n > len(key) {
-		n = len(key)
+	if n > len(key.UserKey) {
+		n = len(key.UserKey)
 	}
-	for _, b := range key[:n] {
+	for _, b := range key.UserKey[:n] {
 		v <<= 8
 		v |= batchskl.InlineKey(b)
 	}
@@ -67,15 +68,8 @@ func (s *batchStorage) InlineKey(key []byte) batchskl.InlineKey {
 
 // Compare implements Storage.Compare, as documented in the pebble/batchskl
 // package.
-func (s *batchStorage) Compare(a []byte, b uint32) int {
-	// The key "a" is always the search key or the newer key being inserted. If
-	// it is equal to the existing key consider it smaller so that it sorts
-	// firsi.
-	c := s.cmp(a, s.Get(b))
-	if c <= 0 {
-		return -1
-	}
-	return 1
+func (s *batchStorage) Compare(a db.InternalKey, b uint32) int {
+	return db.InternalCompare(s.cmp, a, s.Get(b))
 }
 
 // Batch is a sequence of Sets and/or Deletes that are applied atomically.
@@ -147,7 +141,7 @@ func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	// entries returns equal keys in reverse order of insertion. That is, the
 	// last key added will be seen firsi.
 	iter := b.index.NewIter()
-	iter.SeekGE(key)
+	iter.SeekGE(db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax))
 	for ; iter.Valid(); iter.Next() {
 		_, ekey, value, ok := b.decode(iter.KeyOffset())
 		if !ok {
@@ -436,7 +430,7 @@ func (i *batchIter) initPrevStart(key db.InternalKey) {
 		if !iter.Prev() {
 			break
 		}
-		prevKey := db.DecodeInternalKey(iter.Key())
+		prevKey := iter.Key()
 		if i.cmp(prevKey.UserKey, key.UserKey) != 0 {
 			break
 		}
@@ -451,7 +445,7 @@ func (i *batchIter) initPrevEnd(key db.InternalKey) {
 		if !iter.Next() {
 			break
 		}
-		nextKey := db.DecodeInternalKey(iter.Key())
+		nextKey := iter.Key()
 		if i.cmp(nextKey.UserKey, key.UserKey) != 0 {
 			break
 		}
@@ -504,11 +498,12 @@ func (i *batchIter) PrevUserKey() bool {
 }
 
 func (i *batchIter) Key() *db.InternalKey {
-	i.ikey = db.DecodeInternalKey(i.iter.Key())
+	i.ikey = i.iter.Key()
 	return &i.ikey
 }
 
 func (i *batchIter) Value() []byte {
+	// offset := i.iter.KeyOffset()
 	return nil
 }
 
