@@ -242,6 +242,17 @@ func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
 	panic("pebble.Batch: NewIter unimplemented")
 }
 
+func (b *Batch) newInternalIter(o *db.ReadOptions) db.InternalIterator {
+	if b.index == nil {
+		panic("pebble.Batch: newInternalIter on non-indexed batch")
+	}
+	return &batchIter{
+		cmp:   b.cmp,
+		batch: b,
+		iter:  b.index.NewIter(),
+	}
+}
+
 // Commit applies the batch to its parent writer.
 func (b *Batch) Commit(o *db.WriteOptions) error {
 	return b.parent.Apply(b.data, o)
@@ -399,16 +410,15 @@ func (r *batchReader) nextStr() (s []byte, ok bool) {
 	return s, true
 }
 
-// TODO(peter): Flesh out the implementation here. It should be similar to
-// memTableIter. The sequence number for batch entries is the
-// key-offset|db.InternalSeqNumBatch.
 type batchIter struct {
 	cmp       db.Compare
+	batch     *Batch
 	reverse   bool
 	iter      batchskl.Iterator
 	prevStart batchskl.Iterator
 	prevEnd   batchskl.Iterator
 	ikey      db.InternalKey
+	err       error
 }
 
 // batchIter implements the db.InternalIterator interface.
@@ -454,21 +464,19 @@ func (i *batchIter) initPrevEnd(key db.InternalKey) {
 }
 
 func (i *batchIter) SeekGE(key *db.InternalKey) {
-	// i.clearPrevCache()
-	// i.iter.SeekGE(key)
-	panic("pebble.batchIter: SeekGE unimplemented")
+	i.clearPrevCache()
+	i.iter.SeekGE(*key)
 }
 
 func (i *batchIter) SeekLT(key *db.InternalKey) {
-	// i.clearPrevCache()
-	// i.iter.SeekLT(key)
-	// if i.iter.Valid() {
-	// 	key := db.DecodeInternalKey(i.iter.Key())
-	// 	i.initPrevStart(key)
-	// 	i.initPrevEnd(key)
-	// 	i.iter = t.prevStart
-	// }
-	panic("pebble.batchIter: SeekLT unimplemented")
+	i.clearPrevCache()
+	i.iter.SeekLT(*key)
+	if i.iter.Valid() {
+		key := i.iter.Key()
+		i.initPrevStart(key)
+		i.initPrevEnd(key)
+		i.iter = i.prevStart
+	}
 }
 
 func (i *batchIter) First() {
@@ -477,7 +485,14 @@ func (i *batchIter) First() {
 }
 
 func (i *batchIter) Last() {
-	panic("pebble.batchIter: Last unimplemented")
+	i.clearPrevCache()
+	i.iter.Last()
+	if i.iter.Valid() {
+		key := i.iter.Key()
+		i.initPrevStart(key)
+		i.prevEnd = i.iter
+		i.iter = i.prevStart
+	}
 }
 
 func (i *batchIter) Next() bool {
@@ -486,15 +501,94 @@ func (i *batchIter) Next() bool {
 }
 
 func (i *batchIter) NextUserKey() bool {
+	i.clearPrevCache()
+	if i.iter.Tail() {
+		return false
+	}
+	if i.iter.Head() {
+		i.iter.First()
+		return i.iter.Valid()
+	}
+	key := i.iter.Key()
+	for i.iter.Next() {
+		if i.cmp(key.UserKey, i.Key().UserKey) < 0 {
+			return true
+		}
+	}
 	return false
 }
 
 func (i *batchIter) Prev() bool {
-	return false
+	// Reverse iteration is a bit funky in that it returns entries for identical
+	// user-keys from larger to smaller sequence number even though they are not
+	// stored that way in the skiplist. For example, the following shows the
+	// ordering of keys in the skiplist:
+	//
+	//   a:2 a:1 b:2 b:1 c:2 c:1
+	//
+	// With reverse iteration we return them in the following order:
+	//
+	//   c:2 c:1 b:2 b:1 a:2 a:1
+	//
+	// This is accomplished via a bit of fancy footwork: if the iterator is
+	// currently at a valid entry, see if the user-key for the next entry is the
+	// same and if it is advance. Otherwise, move to the previous user key.
+	//
+	// Note that this makes reverse iteration a bit more expensive than forward
+	// iteration, especially if there are a larger number of versions for a key
+	// in the mem-table, though that should be rare. In the normal case where
+	// there is a single version for each key, reverse iteration consumes an
+	// extra dereference and comparison.
+	if i.iter.Head() {
+		return false
+	}
+	if i.iter.Tail() {
+		return i.PrevUserKey()
+	}
+	if !i.reverse {
+		key := i.iter.Key()
+		i.initPrevStart(key)
+		i.initPrevEnd(key)
+	}
+	if i.iter != i.prevEnd {
+		i.iter.Next()
+		if !i.iter.Valid() {
+			panic("expected valid node")
+		}
+		return true
+	}
+	i.iter = i.prevStart
+	if !i.iter.Prev() {
+		i.clearPrevCache()
+		return false
+	}
+	i.prevEnd = i.iter
+	i.initPrevStart(i.iter.Key())
+	i.iter = i.prevStart
+	return true
 }
 
 func (i *batchIter) PrevUserKey() bool {
-	return false
+	if i.iter.Head() {
+		return false
+	}
+	if i.iter.Tail() {
+		i.Last()
+		return i.iter.Valid()
+	}
+	if !i.reverse {
+		key := i.iter.Key()
+		i.initPrevStart(key)
+	}
+	i.iter = i.prevStart
+	if !i.iter.Prev() {
+		i.clearPrevCache()
+		return false
+	}
+	i.prevEnd = i.iter
+	i.initPrevStart(i.iter.Key())
+	i.iter = i.prevStart
+	return true
 }
 
 func (i *batchIter) Key() *db.InternalKey {
@@ -503,8 +597,11 @@ func (i *batchIter) Key() *db.InternalKey {
 }
 
 func (i *batchIter) Value() []byte {
-	// offset := i.iter.KeyOffset()
-	return nil
+	_, _, value, ok := i.batch.decode(i.iter.KeyOffset())
+	if !ok {
+		i.err = fmt.Errorf("corrupted batch")
+	}
+	return value
 }
 
 func (i *batchIter) Valid() bool {
@@ -512,9 +609,10 @@ func (i *batchIter) Valid() bool {
 }
 
 func (i *batchIter) Error() error {
-	return nil
+	return i.err
 }
 
 func (i *batchIter) Close() error {
-	return i.iter.Close()
+	_ = i.iter.Close()
+	return i.err
 }

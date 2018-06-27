@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -130,6 +131,122 @@ func TestBatchGet(t *testing.T) {
 			t.Fatalf("unexpected value: %q", v)
 		} else if string(c.expected) != string(v) {
 			t.Fatalf("expected %q, but found %q", c.expected, v)
+		}
+	}
+}
+
+func TestBatchIterNextPrev(t *testing.T) {
+	b := newIndexedBatch(nil, bytes.Compare)
+	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
+		ikey := fakeIkey(key)
+		value := []byte(fmt.Sprint(ikey.SeqNum()))
+		b.Set(ikey.UserKey, value)
+	}
+	iter := b.newInternalIter(nil)
+	iter.First()
+
+	// These test cases are shared with TestMergingIterNextPrev.
+	testCases := []struct {
+		dir      string
+		expected string
+	}{
+		{"+", "<a:1>"}, // 0
+		{"+", "<b:2>"}, // 1
+		{"-", "<b:1>"}, // 2
+		{"-", "<a:2>"}, // 3
+		{"-", "<a:1>"}, // 4
+		{"-", "."},     // 5
+		{"+", "<a:2>"}, // 6
+		{"+", "<a:1>"}, // 7
+		{"+", "<b:2>"}, // 8
+		{"+", "<b:1>"}, // 9
+		{"+", "<c:2>"}, // 10
+		{"+", "<c:1>"}, // 11
+		{"-", "<b:2>"}, // 12
+		{"-", "<b:1>"}, // 13
+		{"+", "<c:2>"}, // 14
+		{"-", "<c:1>"}, // 15
+		{"-", "<b:2>"}, // 16
+		{"+", "<b:1>"}, // 17
+		{"+", "<c:2>"}, // 18
+		{"+", "<c:1>"}, // 19
+		{"+", "."},     // 20
+		{"-", "<c:2>"}, // 21
+	}
+	for i, c := range testCases {
+		switch c.dir {
+		case "+":
+			iter.Next()
+		case "-":
+			iter.Prev()
+		default:
+			t.Fatalf("unexpected direction: %q", c.dir)
+		}
+		var got string
+		if !iter.Valid() {
+			got = "."
+		} else if (iter.Key().SeqNum() & db.InternalKeySeqNumBatch) == 0 {
+			got = fmt.Sprintf("<%s:bad-seq-num>", iter.Key().UserKey)
+		} else {
+			got = fmt.Sprintf("<%s:%s>", iter.Key().UserKey, iter.Value())
+		}
+		if got != c.expected {
+			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
+		}
+	}
+}
+
+func TestBatchIterNextPrevUserKey(t *testing.T) {
+	b := newIndexedBatch(nil, bytes.Compare)
+	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
+		ikey := fakeIkey(key)
+		value := []byte(fmt.Sprint(ikey.SeqNum()))
+		b.Set(ikey.UserKey, value)
+	}
+	iter := b.newInternalIter(nil)
+	iter.First()
+
+	// These test cases are shared with TestMergingIterNextPrevUserKey.
+	testCases := []struct {
+		dir      string
+		expected string
+	}{
+		{"+", "<b:2>"}, // 0
+		{"-", "<a:2>"}, // 1
+		{"-", "."},     // 2
+		{"+", "<a:2>"}, // 3
+		{"+", "<b:2>"}, // 4
+		{"+", "<c:2>"}, // 5
+		{"+", "."},     // 6
+		{"-", "<c:2>"}, // 7
+		{"-", "<b:2>"}, // 8
+		{"-", "<a:2>"}, // 9
+		{"+", "<b:2>"}, // 10
+		{"+", "<c:2>"}, // 11
+		{"-", "<b:2>"}, // 12
+		{"+", "<c:2>"}, // 13
+		{"+", "."},     // 14
+		{"-", "<c:2>"}, // 14
+	}
+	for i, c := range testCases {
+		switch c.dir {
+		case "+":
+			iter.NextUserKey()
+		case "-":
+			iter.PrevUserKey()
+		default:
+			t.Fatalf("unexpected direction: %q", c.dir)
+		}
+		var got string
+		if !iter.Valid() {
+			got = "."
+		} else if (iter.Key().SeqNum() & db.InternalKeySeqNumBatch) == 0 {
+			got = fmt.Sprintf("<%s:bad-seq-num>", iter.Key().UserKey)
+		} else {
+			got = fmt.Sprintf("<%s:%s>", iter.Key().UserKey, iter.Value())
+		}
+		if got != c.expected {
+			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
 		}
 	}
 }

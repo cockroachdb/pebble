@@ -42,21 +42,6 @@ func (it *Iterator) Close() error {
 	return nil
 }
 
-// Head true iff the iterator is positioned at the sentinel head node.
-func (it *Iterator) Head() bool {
-	return it.nd == it.list.head
-}
-
-// Tail true iff the iterator is positioned at the sentinel tail node.
-func (it *Iterator) Tail() bool {
-	return it.nd == it.list.tail
-}
-
-// Valid returns true iff the iterator is positioned at a valid node.
-func (it *Iterator) Valid() bool {
-	return it.nd != it.list.head && it.nd != it.list.tail
-}
-
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
@@ -107,6 +92,21 @@ func (it *Iterator) Key() []byte {
 // Value returns the value at the current position.
 func (it *Iterator) Value() []byte {
 	return it.nd.getValue(it.list.arena)
+}
+
+// Head true iff the iterator is positioned at the sentinel head node.
+func (it *Iterator) Head() bool {
+	return it.nd == it.list.head
+}
+
+// Tail true iff the iterator is positioned at the sentinel tail node.
+func (it *Iterator) Tail() bool {
+	return it.nd == it.list.tail
+}
+
+// Valid returns true iff the iterator is positioned at a valid node.
+func (it *Iterator) Valid() bool {
+	return it.nd != it.list.head && it.nd != it.list.tail
 }
 
 func (it *Iterator) seekForBaseSplice(key Key) (prev, next *node, found bool) {

@@ -96,6 +96,16 @@ func (it *Iterator) KeyOffset() uint32 {
 	return it.list.getKey(it.nd)
 }
 
+// Head true iff the iterator is positioned at the sentinel head node.
+func (it *Iterator) Head() bool {
+	return it.nd == it.list.head
+}
+
+// Tail true iff the iterator is positioned at the sentinel tail node.
+func (it *Iterator) Tail() bool {
+	return it.nd == it.list.tail
+}
+
 // Valid returns nil iff the iterator is positioned at a valid node.
 func (it *Iterator) Valid() bool {
 	return it.list != nil && it.nd != it.list.head && it.nd != it.list.tail
