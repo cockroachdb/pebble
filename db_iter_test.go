@@ -80,7 +80,7 @@ func TestDBIterNextPrev(t *testing.T) {
 			iter := &dbIter{
 				cmp:    db.DefaultComparer.Compare,
 				iter:   &fakeIter{keys: keys, vals: vals},
-				seqnum: seek.Seqnum(),
+				seqNum: seek.SeqNum(),
 			}
 
 			var b bytes.Buffer
@@ -117,7 +117,7 @@ func BenchmarkDBIterSeekGE(b *testing.B) {
 	iter := &dbIter{
 		cmp:    db.DefaultComparer.Compare,
 		iter:   m.NewIter(nil),
-		seqnum: db.InternalKeySeqNumMax,
+		seqNum: db.InternalKeySeqNumMax,
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -133,7 +133,7 @@ func BenchmarkDBIterNext(b *testing.B) {
 	iter := &dbIter{
 		cmp:    db.DefaultComparer.Compare,
 		iter:   m.NewIter(nil),
-		seqnum: db.InternalKeySeqNumMax,
+		seqNum: db.InternalKeySeqNumMax,
 	}
 
 	b.ResetTimer()
@@ -150,7 +150,7 @@ func BenchmarkDBIterPrev(b *testing.B) {
 	iter := &dbIter{
 		cmp:    db.DefaultComparer.Compare,
 		iter:   m.NewIter(nil),
-		seqnum: db.InternalKeySeqNumMax,
+		seqNum: db.InternalKeySeqNumMax,
 	}
 
 	b.ResetTimer()

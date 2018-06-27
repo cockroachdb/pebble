@@ -98,7 +98,7 @@ func TestMergingIterSeek(t *testing.T) {
 			iter := newMergingIter(db.DefaultComparer.Compare, iters...)
 			ikey := makeIkey(tc.key)
 			for iter.SeekGE(&ikey); iter.Valid(); iter.Next() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Error(); err != nil {
 				fmt.Fprintf(&b, "err=%v", err)
@@ -111,7 +111,7 @@ func TestMergingIterSeek(t *testing.T) {
 
 			b.Reset()
 			for iter.SeekLT(&ikey); iter.Valid(); iter.Prev() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Close(); err != nil {
 				fmt.Fprintf(&b, "err=%v", err)
@@ -196,7 +196,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 				if !m.Valid() {
 					got = "."
 				} else {
-					got = fmt.Sprintf("<%s:%d>", m.Key().UserKey, m.Key().Seqnum())
+					got = fmt.Sprintf("<%s:%d>", m.Key().UserKey, m.Key().SeqNum())
 				}
 				if got != c.expected {
 					t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
@@ -271,7 +271,7 @@ func TestMergingIterNextPrevUserKey(t *testing.T) {
 				if !m.Valid() {
 					got = "."
 				} else {
-					got = fmt.Sprintf("<%s:%d>", m.Key().UserKey, m.Key().Seqnum())
+					got = fmt.Sprintf("<%s:%d>", m.Key().UserKey, m.Key().SeqNum())
 				}
 				if got != c.expected {
 					t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)

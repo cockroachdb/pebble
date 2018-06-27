@@ -89,10 +89,10 @@ type InternalKey struct {
 }
 
 // MakeInternalKey ...
-func MakeInternalKey(userKey []byte, seqnum uint64, kind InternalKeyKind) InternalKey {
+func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
-		trailer: (seqnum << 8) | uint64(kind),
+		trailer: (seqNum << 8) | uint64(kind),
 	}
 }
 
@@ -157,8 +157,8 @@ func (k *InternalKey) Size() int {
 	return len(k.UserKey) + 8
 }
 
-// Seqnum ...
-func (k *InternalKey) Seqnum() uint64 {
+// SeqNum ...
+func (k *InternalKey) SeqNum() uint64 {
 	return k.trailer >> 8
 }
 

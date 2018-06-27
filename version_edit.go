@@ -168,14 +168,14 @@ func (v *versionEdit) decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			var smallestSeqnum uint64
-			var largestSeqnum uint64
+			var smallestSeqNum uint64
+			var largestSeqNum uint64
 			if tag != tagNewFile {
-				smallestSeqnum, err = d.readUvarint()
+				smallestSeqNum, err = d.readUvarint()
 				if err != nil {
 					return err
 				}
-				largestSeqnum, err = d.readUvarint()
+				largestSeqNum, err = d.readUvarint()
 				if err != nil {
 					return err
 				}
@@ -218,8 +218,8 @@ func (v *versionEdit) decode(r io.Reader) error {
 					size:                size,
 					smallest:            db.DecodeInternalKey(smallest),
 					largest:             db.DecodeInternalKey(largest),
-					smallestSeqnum:      smallestSeqnum,
-					largestSeqnum:       largestSeqnum,
+					smallestSeqNum:      smallestSeqNum,
+					largestSeqNum:       largestSeqNum,
 					markedForCompaction: markedForCompaction,
 				},
 			})
@@ -281,8 +281,8 @@ func (v *versionEdit) encode(w io.Writer) error {
 		e.writeUvarint(x.meta.size)
 		e.writeKey(x.meta.smallest)
 		e.writeKey(x.meta.largest)
-		e.writeUvarint(x.meta.smallestSeqnum)
-		e.writeUvarint(x.meta.largestSeqnum)
+		e.writeUvarint(x.meta.smallestSeqNum)
+		e.writeUvarint(x.meta.largestSeqNum)
 		if customFields {
 			if x.meta.markedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)

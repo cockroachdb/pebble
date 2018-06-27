@@ -38,11 +38,11 @@ type fakeIter struct {
 
 func fakeIkey(s string) db.InternalKey {
 	j := strings.Index(s, ":")
-	seqnum, err := strconv.Atoi(s[j+1:])
+	seqNum, err := strconv.Atoi(s[j+1:])
 	if err != nil {
 		panic(err)
 	}
-	return db.MakeInternalKey([]byte(s[:j]), uint64(seqnum), db.InternalKeyKindSet)
+	return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet)
 }
 
 func newFakeIterator(closeErr error, keys ...string) *fakeIter {
@@ -219,7 +219,7 @@ func testIterator(
 		var b bytes.Buffer
 		iter := newFunc(tc.iters...)
 		for ; iter.Valid(); iter.Next() {
-			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 		}
 		if err := iter.Close(); err != nil {
 			fmt.Fprintf(&b, "err=%v", err)
@@ -245,7 +245,7 @@ func testIterator(
 
 		j := 0
 		for ; iter.Valid() && j < len(testKeyValuePairs); j++ {
-			got := fmt.Sprintf("%s:%d", iter.Key().UserKey, iter.Key().Seqnum())
+			got := fmt.Sprintf("%s:%d", iter.Key().UserKey, iter.Key().SeqNum())
 			want := testKeyValuePairs[j]
 			if got != want {
 				bad = true

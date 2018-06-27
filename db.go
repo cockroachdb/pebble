@@ -207,7 +207,7 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 
 	d.mu.Lock()
 	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
-	seqnum := d.versions.lastSequence
+	seqNum := d.versions.lastSequence
 	current := d.versions.currentVersion()
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
@@ -260,7 +260,7 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 	}
 
 	dbi.iter = newMergingIter(d.cmp, iters...)
-	dbi.seqnum = seqnum
+	dbi.seqNum = seqNum
 	return dbi
 }
 

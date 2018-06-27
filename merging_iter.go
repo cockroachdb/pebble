@@ -153,7 +153,7 @@ func (m *mergingIter) switchToMinHeap() {
 
 	// We're switching from using a max heap to a min heap. We need to advance
 	// any iterator that is less than or equal to the current key. Consider the
-	// scenario where we have 2 iterators being merged (user-key:seqnum):
+	// scenario where we have 2 iterators being merged (user-key:seq-num):
 	//
 	// i1:     *a:2     b:2
 	// i2: a:1      b:1
@@ -194,7 +194,7 @@ func (m *mergingIter) switchToMaxHeap() {
 
 	// We're switching from using a min heap to a max heap. We need to backup any
 	// iterator that is greater than or equal to the current key. Consider the
-	// scenario where we have 2 iterators being merged (user-key:seqnum):
+	// scenario where we have 2 iterators being merged (user-key:seq-num):
 	//
 	// i1: a:2     *b:2
 	// i2:     a:1      b:1
@@ -511,7 +511,7 @@ func (m *mergingIter) DebugString() string {
 	sep := ""
 	for m.heap.len() > 0 {
 		item := m.heap.pop()
-		fmt.Fprintf(&buf, "%s%s:%d", sep, item.key.UserKey, item.key.Seqnum())
+		fmt.Fprintf(&buf, "%s%s:%d", sep, item.key.UserKey, item.key.SeqNum())
 		sep = " "
 	}
 	if m.dir == 1 {

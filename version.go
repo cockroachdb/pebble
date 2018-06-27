@@ -22,8 +22,8 @@ type fileMetadata struct {
 	smallest db.InternalKey
 	largest  db.InternalKey
 	// smallest and largest sequence numbers in the table.
-	smallestSeqnum uint64
-	largestSeqnum  uint64
+	smallestSeqNum uint64
+	largestSeqNum  uint64
 	// true if client asked us nicely to compact this file.
 	markedForCompaction bool
 }

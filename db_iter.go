@@ -10,7 +10,7 @@ type dbIter struct {
 	cmp    db.Compare
 	iter   db.InternalIterator
 	ikey   db.InternalKey
-	seqnum uint64
+	seqNum uint64
 	err    error
 }
 
@@ -19,8 +19,8 @@ var _ db.Iterator = (*dbIter)(nil)
 func (i *dbIter) findNextEntry() bool {
 	for i.iter.Valid() {
 		key := i.iter.Key()
-		if key.Seqnum() > i.seqnum {
-			// Ignore entries that are newer than our snapshot seqnum.
+		if key.SeqNum() > i.seqNum {
+			// Ignore entries that are newer than our snapshot seqNum.
 			i.iter.Next()
 			continue
 		}
@@ -43,8 +43,8 @@ func (i *dbIter) findNextEntry() bool {
 func (i *dbIter) findPrevEntry() bool {
 	for i.iter.Valid() {
 		key := i.iter.Key()
-		if key.Seqnum() > i.seqnum {
-			// Ignore entries that are newer than our snapshot seqnum.
+		if key.SeqNum() > i.seqNum {
+			// Ignore entries that are newer than our snapshot seqNum.
 			i.iter.Prev()
 			continue
 		}

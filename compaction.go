@@ -315,7 +315,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				lastSeqNumForKey = db.InternalKeySeqNumMax
 			}
 
-			drop, ikeySeqNum := false, ikey.Seqnum()
+			drop, ikeySeqNum := false, ikey.SeqNum()
 			if lastSeqNumForKey <= smallestSnapshot {
 				drop = true // Rule (A) referenced below.
 

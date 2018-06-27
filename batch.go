@@ -91,7 +91,7 @@ type Batch struct {
 	// The batch index sequence number. Used for indexed batches to give each
 	// entry a unique sequence number that is larger than the snapshot sequence
 	// number in the underlying database.
-	iseqnum uint32
+	iSeqNum uint32
 }
 
 // Batch implements the db.Reader interface.
@@ -106,7 +106,7 @@ func newIndexedBatch(parent db.Writer, cmp db.Compare) *Batch {
 	b.batch.parent = parent
 	b.batch.index = &b.index
 	b.batch.index.Reset(&b.batch.batchStorage, 0)
-	b.batch.iseqnum = 1
+	b.batch.iSeqNum = 1
 	return &b.batch
 }
 
@@ -136,10 +136,10 @@ func (b *Batch) Apply(repr []byte) error {
 				break
 			}
 			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&start[0]))
-			if err := b.index.Add(uint32(offset), b.iseqnum); err != nil {
+			if err := b.index.Add(uint32(offset), b.iSeqNum); err != nil {
 				panic(err)
 			}
-			b.iseqnum++
+			b.iSeqNum++
 		}
 	}
 	return nil
@@ -180,11 +180,11 @@ func (b *Batch) Set(key, value []byte) {
 		b.appendStr(key)
 		b.appendStr(value)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iseqnum); err != nil {
+			if err := b.index.Add(offset, b.iSeqNum); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iseqnum++
+			b.iSeqNum++
 		}
 	}
 }
@@ -202,11 +202,11 @@ func (b *Batch) Merge(key, value []byte) {
 		b.appendStr(key)
 		b.appendStr(value)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iseqnum); err != nil {
+			if err := b.index.Add(offset, b.iSeqNum); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iseqnum++
+			b.iSeqNum++
 		}
 	}
 }
@@ -221,11 +221,11 @@ func (b *Batch) Delete(key []byte) {
 		b.data = append(b.data, byte(db.InternalKeyKindDelete))
 		b.appendStr(key)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iseqnum); err != nil {
+			if err := b.index.Add(offset, b.iSeqNum); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iseqnum++
+			b.iSeqNum++
 		}
 	}
 }
@@ -242,11 +242,11 @@ func (b *Batch) DeleteRange(start, end []byte) {
 		b.appendStr(start)
 		b.appendStr(end)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iseqnum); err != nil {
+			if err := b.index.Add(offset, b.iSeqNum); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iseqnum++
+			b.iSeqNum++
 		}
 	}
 }
@@ -418,7 +418,7 @@ func (r *batchReader) nextStr() (s []byte, ok bool) {
 
 // TODO(peter): Flesh out the implementation here. It should be similar to
 // memTableIter, though the value stored in batchskl.Skiplist is the batch
-// "seqnum".
+// sequence number.
 type batchIter struct {
 }
 

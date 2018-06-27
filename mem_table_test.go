@@ -253,7 +253,7 @@ func TestMemTableNextPrev(t *testing.T) {
 		if !iter.Valid() {
 			got = "."
 		} else {
-			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 		}
 		if got != c.expected {
 			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
@@ -307,7 +307,7 @@ func TestMemTableNextPrevUserKey(t *testing.T) {
 		if !iter.Valid() {
 			got = "."
 		} else {
-			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 		}
 		if got != c.expected {
 			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)

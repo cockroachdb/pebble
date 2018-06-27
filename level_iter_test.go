@@ -84,7 +84,7 @@ func TestLevelIter(t *testing.T) {
 
 			var b bytes.Buffer
 			for iter.SeekGE(&ikey); iter.Valid(); iter.Next() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Error(); err != nil {
 				fmt.Fprintf(&b, "err=%v", err)
@@ -97,7 +97,7 @@ func TestLevelIter(t *testing.T) {
 
 			b.Reset()
 			for iter.SeekLT(&ikey); iter.Valid(); iter.Prev() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().Seqnum())
+				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Close(); err != nil {
 				fmt.Fprintf(&b, "err=%v", err)
