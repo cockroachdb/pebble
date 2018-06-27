@@ -66,6 +66,25 @@ func TestDBIterNextPrev(t *testing.T) {
 			"<c:c>.",
 			"<b:b><a:a>.",
 		},
+		{
+			"c:3",
+			"a.SET.1:a b.SET.2:b c.SET.3:c",
+			"<c:c>.",
+			"<b:b><a:a>.",
+		},
+		// Batch sequence numbers are not skipped.
+		{
+			"a:1",
+			"a.SET.b2:b b.SET.2:c",
+			"<a:b>.",
+			".",
+		},
+		{
+			"b:1",
+			"a.SET.b2:b b.SET.2:c",
+			".",
+			"<a:b>.",
+		},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {

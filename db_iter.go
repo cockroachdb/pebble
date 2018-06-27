@@ -19,10 +19,13 @@ var _ db.Iterator = (*dbIter)(nil)
 func (i *dbIter) findNextEntry() bool {
 	for i.iter.Valid() {
 		key := i.iter.Key()
-		if key.SeqNum() > i.seqNum {
-			// Ignore entries that are newer than our snapshot seqNum.
-			i.iter.Next()
-			continue
+		if seqNum := key.SeqNum(); seqNum > i.seqNum {
+			// Ignore entries that are newer than our snapshot sequence number,
+			// except for batch sequence numbers which are always visible.
+			if (seqNum & db.InternalKeySeqNumBatch) == 0 {
+				i.iter.Next()
+				continue
+			}
 		}
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
@@ -43,10 +46,13 @@ func (i *dbIter) findNextEntry() bool {
 func (i *dbIter) findPrevEntry() bool {
 	for i.iter.Valid() {
 		key := i.iter.Key()
-		if key.SeqNum() > i.seqNum {
-			// Ignore entries that are newer than our snapshot seqNum.
-			i.iter.Prev()
-			continue
+		if seqNum := key.SeqNum(); seqNum > i.seqNum {
+			// Ignore entries that are newer than our snapshot sequence number,
+			// except for batch sequence numbers which are always visible.
+			if (seqNum & db.InternalKeySeqNumBatch) == 0 {
+				i.iter.Next()
+				continue
+			}
 		}
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:

@@ -87,12 +87,21 @@ var makeIkeyKinds = map[string]db.InternalKeyKind{
 }
 
 // makeIkey converts a string like "foo.DEL.123" into an internal key
-// consisting of a user key "foo", kind delete, and sequence number 123.
+// consisting of a user key "foo", kind delete, and sequence number 123. If the
+// sequence number is preceded with "b" then a batch sequence number is used
+// (i.e. the batch seq-num bit is set).
 func makeIkey(s string) db.InternalKey {
 	x := strings.Split(s, ".")
 	ukey := x[0]
 	kind := makeIkeyKinds[x[1]]
-	seqNum, _ := strconv.ParseUint(x[2], 10, 64)
+	j := 0
+	if x[2][0] == 'b' {
+		j = 1
+	}
+	seqNum, _ := strconv.ParseUint(x[2][j:], 10, 64)
+	if x[2][0] == 'b' {
+		seqNum |= db.InternalKeySeqNumBatch
+	}
 	return db.MakeInternalKey([]byte(ukey), seqNum, kind)
 }
 
