@@ -70,7 +70,7 @@ func (s *batchStorage) InlineKey(key []byte) batchskl.InlineKey {
 func (s *batchStorage) Compare(a []byte, b uint32) int {
 	// The key "a" is always the search key or the newer key being inserted. If
 	// it is equal to the existing key consider it smaller so that it sorts
-	// first.
+	// firsi.
 	c := s.cmp(a, s.Get(b))
 	if c <= 0 {
 		return -1
@@ -145,7 +145,7 @@ func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	}
 	// Loop over the entries with keys >= the target key. The indexing of the
 	// entries returns equal keys in reverse order of insertion. That is, the
-	// last key added will be seen first.
+	// last key added will be seen firsi.
 	iter := b.index.NewIter()
 	iter.SeekGE(key)
 	for ; iter.Valid(); iter.Next() {
@@ -367,7 +367,7 @@ func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 type batchReader []byte
 
 // next returns the next operation in this batch.
-// The final return value is false if the batch is corrupt.
+// The final return value is false if the batch is corrupi.
 func (r *batchReader) next() (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
 	p := *r
 	if len(p) == 0 {
@@ -409,21 +409,77 @@ func (r *batchReader) nextStr() (s []byte, ok bool) {
 // memTableIter. The sequence number for batch entries is the
 // key-offset|db.InternalSeqNumBatch.
 type batchIter struct {
+	cmp       db.Compare
+	reverse   bool
+	iter      batchskl.Iterator
+	prevStart batchskl.Iterator
+	prevEnd   batchskl.Iterator
+	ikey      db.InternalKey
 }
 
 // batchIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*batchIter)(nil)
 
+func (i *batchIter) clearPrevCache() {
+	if i.reverse {
+		i.reverse = false
+		i.prevStart = batchskl.Iterator{}
+		i.prevEnd = batchskl.Iterator{}
+	}
+}
+
+func (i *batchIter) initPrevStart(key db.InternalKey) {
+	i.reverse = true
+	i.prevStart = i.iter
+	for {
+		iter := i.prevStart
+		if !iter.Prev() {
+			break
+		}
+		prevKey := db.DecodeInternalKey(iter.Key())
+		if i.cmp(prevKey.UserKey, key.UserKey) != 0 {
+			break
+		}
+		i.prevStart = iter
+	}
+}
+
+func (i *batchIter) initPrevEnd(key db.InternalKey) {
+	i.prevEnd = i.iter
+	for {
+		iter := i.prevEnd
+		if !iter.Next() {
+			break
+		}
+		nextKey := db.DecodeInternalKey(iter.Key())
+		if i.cmp(nextKey.UserKey, key.UserKey) != 0 {
+			break
+		}
+		i.prevEnd = iter
+	}
+}
+
 func (i *batchIter) SeekGE(key *db.InternalKey) {
+	// i.clearPrevCache()
+	// i.iter.SeekGE(key)
 	panic("pebble.batchIter: SeekGE unimplemented")
 }
 
 func (i *batchIter) SeekLT(key *db.InternalKey) {
+	// i.clearPrevCache()
+	// i.iter.SeekLT(key)
+	// if i.iter.Valid() {
+	// 	key := db.DecodeInternalKey(i.iter.Key())
+	// 	i.initPrevStart(key)
+	// 	i.initPrevEnd(key)
+	// 	i.iter = t.prevStart
+	// }
 	panic("pebble.batchIter: SeekLT unimplemented")
 }
 
 func (i *batchIter) First() {
-	panic("pebble.batchIter: First unimplemented")
+	i.clearPrevCache()
+	i.iter.First()
 }
 
 func (i *batchIter) Last() {
@@ -431,7 +487,8 @@ func (i *batchIter) Last() {
 }
 
 func (i *batchIter) Next() bool {
-	return false
+	i.clearPrevCache()
+	return i.iter.Next()
 }
 
 func (i *batchIter) NextUserKey() bool {
@@ -447,7 +504,8 @@ func (i *batchIter) PrevUserKey() bool {
 }
 
 func (i *batchIter) Key() *db.InternalKey {
-	return nil
+	i.ikey = db.DecodeInternalKey(i.iter.Key())
+	return &i.ikey
 }
 
 func (i *batchIter) Value() []byte {
@@ -455,7 +513,7 @@ func (i *batchIter) Value() []byte {
 }
 
 func (i *batchIter) Valid() bool {
-	return false
+	return i.iter.Valid()
 }
 
 func (i *batchIter) Error() error {
@@ -463,5 +521,5 @@ func (i *batchIter) Error() error {
 }
 
 func (i *batchIter) Close() error {
-	return nil
+	return i.iter.Close()
 }
