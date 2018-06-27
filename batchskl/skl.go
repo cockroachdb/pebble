@@ -85,9 +85,6 @@ type InlineKey uint64
 type node struct {
 	// The offset of the key in storage. See Storage.Get.
 	key uint32
-	// The value for the node. The user is expected to use this to index into a
-	// separate storage for values.
-	value uint32
 	// A fixed 8-byte inlineKey of the key, used to avoid retrieval of the key
 	// during seek operations. The key retrieval can be expensive purely due to
 	// cache misses while the inlineKey stored here will be in the same cache line
@@ -137,8 +134,25 @@ func init() {
 
 // NewSkiplist constructs and initializes a new, empty skiplist.
 func NewSkiplist(storage Storage, initBufSize int) *Skiplist {
-	s := &Skiplist{}
-	s.Reset(storage, initBufSize)
+	if initBufSize < 256 {
+		initBufSize = 256
+	}
+	s := &Skiplist{
+		storage: storage,
+		nodes:   make([]byte, 0, initBufSize),
+		height:  1,
+	}
+
+	// Allocate head and tail nodes.
+	s.head = s.newNode(maxHeight, 0, 0)
+	s.tail = s.newNode(maxHeight, 0, 0)
+
+	// Link all head/tail levels together.
+	for i := uint32(0); i < maxHeight; i++ {
+		s.setNext(s.head, i, s.tail)
+		s.setPrev(s.tail, i, s.head)
+	}
+
 	return s
 }
 
@@ -154,8 +168,8 @@ func (s *Skiplist) Reset(storage Storage, initBufSize int) {
 	}
 
 	// Allocate head and tail nodes.
-	s.head = s.newNode(maxHeight, 0, 0, 0)
-	s.tail = s.newNode(maxHeight, 0, 0, 0)
+	s.head = s.newNode(maxHeight, 0, 0)
+	s.tail = s.newNode(maxHeight, 0, 0)
 
 	// Link all head/tail levels together.
 	for i := uint32(0); i < maxHeight; i++ {
@@ -166,7 +180,7 @@ func (s *Skiplist) Reset(storage Storage, initBufSize int) {
 
 // Add adds a new key to the skiplist if it does not yet exist. If the record
 // already exists, then Add returns ErrRecordExists.
-func (s *Skiplist) Add(keyOffset, value uint32) error {
+func (s *Skiplist) Add(keyOffset uint32) error {
 	key := s.storage.Get(keyOffset)
 	inlineKey := s.storage.InlineKey(key)
 
@@ -176,7 +190,7 @@ func (s *Skiplist) Add(keyOffset, value uint32) error {
 	}
 
 	height := s.randomHeight()
-	nd := s.newNode(height, keyOffset, value, inlineKey)
+	nd := s.newNode(height, keyOffset, inlineKey)
 	// Increase s.height as necessary.
 	for ; s.height < height; s.height++ {
 		spl[s.height].next = s.tail
@@ -204,7 +218,7 @@ func (s *Skiplist) NewIter() Iterator {
 	return Iterator{list: s}
 }
 
-func (s *Skiplist) newNode(height, key, value uint32, inlineKey InlineKey) uint32 {
+func (s *Skiplist) newNode(height, key uint32, inlineKey InlineKey) uint32 {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
@@ -214,7 +228,6 @@ func (s *Skiplist) newNode(height, key, value uint32, inlineKey InlineKey) uint3
 	nd := s.node(offset)
 
 	nd.key = key
-	nd.value = value
 	nd.inlineKey = inlineKey
 	return offset
 }
@@ -310,10 +323,6 @@ func (s *Skiplist) getKey(nd uint32) uint32 {
 
 func (s *Skiplist) getInlineKey(nd uint32) InlineKey {
 	return s.node(nd).inlineKey
-}
-
-func (s *Skiplist) getValue(nd uint32) uint32 {
-	return s.node(nd).value
 }
 
 func (s *Skiplist) getNext(nd, h uint32) uint32 {

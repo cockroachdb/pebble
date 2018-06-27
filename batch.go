@@ -87,11 +87,6 @@ type Batch struct {
 
 	// An optional skiplist keyed by offset into data of the entry.
 	index *batchskl.Skiplist
-
-	// The batch index sequence number. Used for indexed batches to give each
-	// entry a unique sequence number that is larger than the snapshot sequence
-	// number in the underlying database.
-	iSeqNum uint32
 }
 
 // Batch implements the db.Reader interface.
@@ -106,7 +101,6 @@ func newIndexedBatch(parent db.Writer, cmp db.Compare) *Batch {
 	b.batch.parent = parent
 	b.batch.index = &b.index
 	b.batch.index.Reset(&b.batch.batchStorage, 0)
-	b.batch.iSeqNum = 1
 	return &b.batch
 }
 
@@ -136,10 +130,9 @@ func (b *Batch) Apply(repr []byte) error {
 				break
 			}
 			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&start[0]))
-			if err := b.index.Add(uint32(offset), b.iSeqNum); err != nil {
+			if err := b.index.Add(uint32(offset)); err != nil {
 				panic(err)
 			}
-			b.iSeqNum++
 		}
 	}
 	return nil
@@ -180,11 +173,10 @@ func (b *Batch) Set(key, value []byte) {
 		b.appendStr(key)
 		b.appendStr(value)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iSeqNum); err != nil {
+			if err := b.index.Add(offset); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iSeqNum++
 		}
 	}
 }
@@ -202,11 +194,10 @@ func (b *Batch) Merge(key, value []byte) {
 		b.appendStr(key)
 		b.appendStr(value)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iSeqNum); err != nil {
+			if err := b.index.Add(offset); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iSeqNum++
 		}
 	}
 }
@@ -221,11 +212,10 @@ func (b *Batch) Delete(key []byte) {
 		b.data = append(b.data, byte(db.InternalKeyKindDelete))
 		b.appendStr(key)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iSeqNum); err != nil {
+			if err := b.index.Add(offset); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iSeqNum++
 		}
 	}
 }
@@ -242,11 +232,10 @@ func (b *Batch) DeleteRange(start, end []byte) {
 		b.appendStr(start)
 		b.appendStr(end)
 		if b.index != nil {
-			if err := b.index.Add(offset, b.iSeqNum); err != nil {
+			if err := b.index.Add(offset); err != nil {
 				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
-			b.iSeqNum++
 		}
 	}
 }
