@@ -9,7 +9,7 @@ rebuild: make-db make-table
 	rm -fr db-stage-4 && ./make-db 4
 
 make-db: make-db.cc
-	g++ -std=c++14 -o make-db make-db.cc -lleveldb
+	g++ -std=c++14 -o make-db make-db.cc -lrocksdb
 
 make-table: make-table.cc
 	g++ -std=c++14 -o make-table make-table.cc -lrocksdb

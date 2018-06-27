@@ -10,7 +10,7 @@
 #include <iostream>
 #include <sstream>
 
-#include "leveldb/db.h"
+#include "rocksdb/db.h"
 
 template <typename T>
 inline std::string ToString(const T& t) {
@@ -27,10 +27,10 @@ inline T FromString(const std::string &str, T val = T()) {
 }
 
 int main(int argc, char** argv) {
-  leveldb::Status status;
-  leveldb::Options o;
-  leveldb::WriteOptions wo;
-  leveldb::DB* db;
+  rocksdb::Status status;
+  rocksdb::Options o;
+  rocksdb::WriteOptions wo;
+  rocksdb::DB* db;
 
   o.create_if_missing = true;
   o.error_if_exists = true;
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
   std::cout << "Stage 1" << std::endl;
 
   const std::string dbname = "db-stage-" + ToString(stage);
-  status = leveldb::DB::Open(o, dbname, &db);
+  status = rocksdb::DB::Open(o, dbname, &db);
   if (!status.ok()) {
     std::cerr << "DB::Open " << status.ToString() << std::endl;
     return 1;
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
   o.create_if_missing = false;
   o.error_if_exists = false;
 
-  status = leveldb::DB::Open(o, dbname, &db);
+  status = rocksdb::DB::Open(o, dbname, &db);
   if (!status.ok()) {
     std::cerr << "DB::Open " << status.ToString() << std::endl;
     return 1;

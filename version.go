@@ -19,7 +19,13 @@ type fileMetadata struct {
 	size uint64
 	// smallest and largest are the inclusive bounds for the internal keys
 	// stored in the table.
-	smallest, largest db.InternalKey
+	smallest db.InternalKey
+	largest  db.InternalKey
+	// smallest and largest sequence numbers in the table.
+	smallestSeqnum uint64
+	largestSeqnum  uint64
+	// true if client asked us nicely to compact this file.
+	markedForCompaction bool
 }
 
 // totalSize returns the total size of all the files in f.

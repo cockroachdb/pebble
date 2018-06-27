@@ -28,6 +28,7 @@ type byteReader interface {
 // Tags for the versionEdit disk format.
 // Tag 8 is no longer used.
 const (
+	// LevelDB tags.
 	tagComparator     = 1
 	tagLogNumber      = 2
 	tagNextFileNumber = 3
@@ -36,6 +37,21 @@ const (
 	tagDeletedFile    = 6
 	tagNewFile        = 7
 	tagPrevLogNumber  = 9
+
+	// RocksDB tags.
+	tagNewFile2         = 100
+	tagNewFile3         = 102
+	tagNewFile4         = 103
+	tagColumnFamily     = 200
+	tagColumnFamilyAdd  = 201
+	tagColumnFamilyDrop = 202
+	tagMaxColumnFamily  = 203
+
+	// The custom tags sub-format used by tagNewFile4.
+	customTagTerminate         = 1
+	customTagNeedsCompaction   = 2
+	customTagPathID            = 65
+	customTagNonSafeIgnoreMask = 1 << 6
 )
 
 type compactPointerEntry struct {
@@ -79,7 +95,6 @@ func (v *versionEdit) decode(r io.Reader) error {
 			return err
 		}
 		switch tag {
-
 		case tagComparator:
 			s, err := d.readBytes()
 			if err != nil {
@@ -134,7 +149,7 @@ func (v *versionEdit) decode(r io.Reader) error {
 			}
 			v.deletedFiles[deletedFileEntry{level, fileNum}] = true
 
-		case tagNewFile:
+		case tagNewFile, tagNewFile2, tagNewFile3, tagNewFile4:
 			level, err := d.readLevel()
 			if err != nil {
 				return err
@@ -142,6 +157,13 @@ func (v *versionEdit) decode(r io.Reader) error {
 			fileNum, err := d.readUvarint()
 			if err != nil {
 				return err
+			}
+			if tag == tagNewFile3 {
+				// The pathID field appears unused in RocksDB.
+				_ /* pathID */, err := d.readUvarint()
+				if err != nil {
+					return err
+				}
 			}
 			size, err := d.readUvarint()
 			if err != nil {
@@ -155,13 +177,59 @@ func (v *versionEdit) decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
+			var smallestSeqnum uint64
+			var largestSeqnum uint64
+			if tag != tagNewFile {
+				smallestSeqnum, err = d.readUvarint()
+				if err != nil {
+					return err
+				}
+				largestSeqnum, err = d.readUvarint()
+				if err != nil {
+					return err
+				}
+			}
+			var markedForCompaction bool
+			if tag == tagNewFile4 {
+				for {
+					customTag, err := d.readUvarint()
+					if err != nil {
+						return err
+					}
+					if customTag == customTagTerminate {
+						break
+					}
+					field, err := d.readBytes()
+					if err != nil {
+						return err
+					}
+					switch customTag {
+					case customTagNeedsCompaction:
+						if len(field) != 1 {
+							return fmt.Errorf("need_compaction field wrong size")
+						}
+						markedForCompaction = (field[0] == 1)
+
+					case customTagPathID:
+						// TODO(peter): ???
+
+					default:
+						if (customTag & customTagNonSafeIgnoreMask) != 0 {
+							return fmt.Errorf("new-file4 custom field not supported: %d", customTag)
+						}
+					}
+				}
+			}
 			v.newFiles = append(v.newFiles, newFileEntry{
 				level: level,
 				meta: fileMetadata{
-					fileNum:  fileNum,
-					size:     size,
-					smallest: db.DecodeInternalKey(smallest),
-					largest:  db.DecodeInternalKey(largest),
+					fileNum:             fileNum,
+					size:                size,
+					smallest:            db.DecodeInternalKey(smallest),
+					largest:             db.DecodeInternalKey(largest),
+					smallestSeqnum:      smallestSeqnum,
+					largestSeqnum:       largestSeqnum,
+					markedForCompaction: markedForCompaction,
 				},
 			})
 
@@ -172,6 +240,14 @@ func (v *versionEdit) decode(r io.Reader) error {
 			}
 			v.prevLogNumber = n
 
+		case tagColumnFamily:
+			fallthrough
+		case tagColumnFamilyAdd:
+			fallthrough
+		case tagColumnFamilyDrop:
+			fallthrough
+		case tagMaxColumnFamily:
+			fallthrough
 		default:
 			return errCorruptManifest
 		}
@@ -212,12 +288,27 @@ func (v *versionEdit) encode(w io.Writer) error {
 		e.writeUvarint(x.fileNum)
 	}
 	for _, x := range v.newFiles {
-		e.writeUvarint(tagNewFile)
+		var customFields bool
+		if x.meta.markedForCompaction {
+			customFields = true
+			e.writeUvarint(tagNewFile4)
+		} else {
+			e.writeUvarint(tagNewFile2)
+		}
 		e.writeUvarint(uint64(x.level))
 		e.writeUvarint(x.meta.fileNum)
 		e.writeUvarint(x.meta.size)
 		e.writeKey(x.meta.smallest)
 		e.writeKey(x.meta.largest)
+		e.writeUvarint(x.meta.smallestSeqnum)
+		e.writeUvarint(x.meta.largestSeqnum)
+		if customFields {
+			if x.meta.markedForCompaction {
+				e.writeUvarint(customTagNeedsCompaction)
+				e.writeBytes([]byte{1})
+			}
+			e.writeUvarint(customTagTerminate)
+		}
 	}
 	_, err := w.Write(e.Bytes())
 	return err

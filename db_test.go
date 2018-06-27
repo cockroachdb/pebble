@@ -197,7 +197,6 @@ func cloneFileSystem(srcFS storage.Storage, dirname string) (storage.Storage, er
 }
 
 func TestBasicReads(t *testing.T) {
-	t.Skipf("fix soon")
 	testCases := []struct {
 		dirname string
 		wantMap map[string]string

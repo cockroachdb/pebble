@@ -11,8 +11,10 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/record"
 )
@@ -80,10 +82,11 @@ func TestVersionEditRoundTrip(t *testing.T) {
 				{
 					level: 6,
 					meta: fileMetadata{
-						fileNum:  806,
-						size:     8060,
-						smallest: db.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
-						largest:  db.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						fileNum:             806,
+						size:                8060,
+						smallest:            db.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
+						largest:             db.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						markedForCompaction: true,
 					},
 				},
 			},
@@ -104,49 +107,46 @@ func TestVersionEditDecode(t *testing.T) {
 	}{
 		// db-stage-1 and db-stage-2 have the same manifest.
 		{
-			filename: "db-stage-1/MANIFEST-000002",
+			filename: "db-stage-1/MANIFEST-000001",
 			encodedEdits: []string{
-				"\x01\x1aleveldb.BytewiseComparator",
-				"\x02\x03\x09\x00\x03\x04\x04\x00",
+				"\x02\x00\x03\x02\x04\x00",
 			},
 			edits: []versionEdit{
 				{
-					comparatorName: "leveldb.BytewiseComparator",
-				},
-				{
-					logNumber:      3,
-					prevLogNumber:  0,
-					nextFileNumber: 4,
-					lastSequence:   0,
+					nextFileNumber: 2,
 				},
 			},
 		},
 		// db-stage-3 and db-stage-4 have the same manifest.
 		{
-			filename: "db-stage-3/MANIFEST-000004",
+			filename: "db-stage-3/MANIFEST-000005",
 			encodedEdits: []string{
 				"\x01\x1aleveldb.BytewiseComparator",
-				"\x02\x06\x09\x00\x03\x07\x04\x05\x07\x00\x05\xa5\x01" +
-					"\x0bbar\x00\x05\x00\x00\x00\x00\x00\x00" +
-					"\x0bfoo\x01\x01\x00\x00\x00\x00\x00\x00",
+				"\x02\x00",
+				"\x02\x04\t\x00\x03\x06\x04\x05d\x00\x04\xda\a\vbar" +
+					"\x00\x05\x00\x00\x00\x00\x00\x00\vfoo\x01\x04\x00" +
+					"\x00\x00\x00\x00\x00\x03\x05",
 			},
 			edits: []versionEdit{
 				{
 					comparatorName: "leveldb.BytewiseComparator",
 				},
+				{},
 				{
-					logNumber:      6,
+					logNumber:      4,
 					prevLogNumber:  0,
-					nextFileNumber: 7,
+					nextFileNumber: 6,
 					lastSequence:   5,
 					newFiles: []newFileEntry{
 						{
 							level: 0,
 							meta: fileMetadata{
-								fileNum:  5,
-								size:     165,
-								smallest: db.DecodeInternalKey([]byte("bar\x00\x05\x00\x00\x00\x00\x00\x00")),
-								largest:  db.DecodeInternalKey([]byte("foo\x01\x01\x00\x00\x00\x00\x00\x00")),
+								fileNum:        4,
+								size:           986,
+								smallest:       db.MakeInternalKey([]byte("bar"), 5, db.InternalKeyKindDelete),
+								largest:        db.MakeInternalKey([]byte("foo"), 4, db.InternalKeyKindSet),
+								smallestSeqnum: 3,
+								largestSeqnum:  5,
 							},
 						},
 					},
@@ -155,59 +155,52 @@ func TestVersionEditDecode(t *testing.T) {
 		},
 	}
 
-loop:
 	for _, tc := range testCases {
-		f, err := os.Open("testdata/" + tc.filename)
-		if err != nil {
-			t.Errorf("filename=%q: open error: %v", tc.filename, err)
-			continue
-		}
-		defer f.Close()
-		i, r := 0, record.NewReader(f)
-		for {
-			rr, err := r.Next()
-			if err == io.EOF {
-				break
-			}
+		t.Run("", func(t *testing.T) {
+			f, err := os.Open("testdata/" + tc.filename)
 			if err != nil {
-				t.Errorf("filename=%q i=%d: record reader error: %v", tc.filename, i, err)
-				continue loop
+				t.Fatalf("filename=%q: open error: %v", tc.filename, err)
 			}
-			if i >= len(tc.edits) {
-				t.Errorf("filename=%q i=%d: too many version edits", tc.filename, i+1)
-				continue loop
-			}
+			defer f.Close()
+			i, r := 0, record.NewReader(f)
+			for {
+				rr, err := r.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("filename=%q i=%d: record reader error: %v", tc.filename, i, err)
+				}
+				if i >= len(tc.edits) {
+					t.Fatalf("filename=%q i=%d: too many version edits", tc.filename, i+1)
+				}
 
-			encodedEdit, err := ioutil.ReadAll(rr)
-			if err != nil {
-				t.Errorf("filename=%q i=%d: read error: %v", tc.filename, i, err)
-				continue loop
-			}
-			if s := string(encodedEdit); s != tc.encodedEdits[i] {
-				t.Errorf("filename=%q i=%d: got encoded %q, want %q", tc.filename, i, s, tc.encodedEdits[i])
-				continue loop
-			}
+				encodedEdit, err := ioutil.ReadAll(rr)
+				if err != nil {
+					t.Fatalf("filename=%q i=%d: read error: %v", tc.filename, i, err)
+				}
+				if s := string(encodedEdit); s != tc.encodedEdits[i] {
+					t.Fatalf("filename=%q i=%d: got encoded %q, want %q", tc.filename, i, s, tc.encodedEdits[i])
+				}
 
-			var edit versionEdit
-			err = edit.decode(bytes.NewReader(encodedEdit))
-			if err != nil {
-				t.Errorf("filename=%q i=%d: decode error: %v", tc.filename, i, err)
-				continue loop
-			}
-			if !reflect.DeepEqual(edit, tc.edits[i]) {
-				t.Errorf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v", tc.filename, i, edit, tc.edits[i])
-				continue loop
-			}
-			if err := checkRoundTrip(edit); err != nil {
-				t.Errorf("filename=%q i=%d: round trip: %v", tc.filename, i, err)
-				continue loop
-			}
+				var edit versionEdit
+				err = edit.decode(bytes.NewReader(encodedEdit))
+				if err != nil {
+					t.Fatalf("filename=%q i=%d: decode error: %v", tc.filename, i, err)
+				}
+				if !reflect.DeepEqual(edit, tc.edits[i]) {
+					t.Fatalf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v\n%s", tc.filename, i, edit, tc.edits[i],
+						strings.Join(pretty.Diff(edit, tc.edits[i]), "\n"))
+				}
+				if err := checkRoundTrip(edit); err != nil {
+					t.Fatalf("filename=%q i=%d: round trip: %v", tc.filename, i, err)
+				}
 
-			i++
-		}
-		if i != len(tc.edits) {
-			t.Errorf("filename=%q: got %d edits, want %d", tc.filename, i, len(tc.edits))
-			continue
-		}
+				i++
+			}
+			if i != len(tc.edits) {
+				t.Fatalf("filename=%q: got %d edits, want %d", tc.filename, i, len(tc.edits))
+			}
+		})
 	}
 }
