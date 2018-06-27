@@ -124,8 +124,8 @@ func (b *Batch) Apply(repr []byte) error {
 	b.setCount(b.count() + count)
 
 	if b.index != nil {
-		start := batchIter(b.data[offset:])
-		for iter := batchIter(start); ; {
+		start := batchReader(b.data[offset:])
+		for iter := batchReader(start); ; {
 			if _, _, _, ok := iter.next(); !ok {
 				break
 			}
@@ -323,7 +323,7 @@ func (b *Batch) count() uint32 {
 	return binary.LittleEndian.Uint32(b.countData())
 }
 
-func (b *Batch) iter() batchIter {
+func (b *Batch) iter() batchReader {
 	return b.data[batchHeaderLen:]
 }
 
@@ -364,26 +364,26 @@ func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 	return data[v:], data[:v], true
 }
 
-type batchIter []byte
+type batchReader []byte
 
 // next returns the next operation in this batch.
 // The final return value is false if the batch is corrupt.
-func (t *batchIter) next() (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
-	p := *t
+func (r *batchReader) next() (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
+	p := *r
 	if len(p) == 0 {
 		return 0, nil, nil, false
 	}
-	kind, *t = db.InternalKeyKind(p[0]), p[1:]
+	kind, *r = db.InternalKeyKind(p[0]), p[1:]
 	if kind > db.InternalKeyKindMax {
 		return 0, nil, nil, false
 	}
-	ukey, ok = t.nextStr()
+	ukey, ok = r.nextStr()
 	if !ok {
 		return 0, nil, nil, false
 	}
 	switch kind {
 	case db.InternalKeyKindSet, db.InternalKeyKindRangeDelete:
-		value, ok = t.nextStr()
+		value, ok = r.nextStr()
 		if !ok {
 			return 0, nil, nil, false
 		}
@@ -391,8 +391,8 @@ func (t *batchIter) next() (kind db.InternalKeyKind, ukey []byte, value []byte, 
 	return kind, ukey, value, true
 }
 
-func (t *batchIter) nextStr() (s []byte, ok bool) {
-	p := *t
+func (r *batchReader) nextStr() (s []byte, ok bool) {
+	p := *r
 	u, numBytes := binary.Uvarint(p)
 	if numBytes <= 0 {
 		return nil, false
@@ -401,6 +401,67 @@ func (t *batchIter) nextStr() (s []byte, ok bool) {
 	if u > uint64(len(p)) {
 		return nil, false
 	}
-	s, *t = p[:u], p[u:]
+	s, *r = p[:u], p[u:]
 	return s, true
+}
+
+// TODO(peter): Flesh out the implementation here. It should be similar to
+// memTableIter, though the value stored in batchskl.Skiplist is the batch
+// "seqnum".
+type batchIter struct {
+}
+
+// batchIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*batchIter)(nil)
+
+func (i *batchIter) SeekGE(key *db.InternalKey) {
+	panic("pebble.batchIter: SeekGE unimplemented")
+}
+
+func (i *batchIter) SeekLT(key *db.InternalKey) {
+	panic("pebble.batchIter: SeekLT unimplemented")
+}
+
+func (i *batchIter) First() {
+	panic("pebble.batchIter: First unimplemented")
+}
+
+func (i *batchIter) Last() {
+	panic("pebble.batchIter: Last unimplemented")
+}
+
+func (i *batchIter) Next() bool {
+	return false
+}
+
+func (i *batchIter) NextUserKey() bool {
+	return false
+}
+
+func (i *batchIter) Prev() bool {
+	return false
+}
+
+func (i *batchIter) PrevUserKey() bool {
+	return false
+}
+
+func (i *batchIter) Key() *db.InternalKey {
+	return nil
+}
+
+func (i *batchIter) Value() []byte {
+	return nil
+}
+
+func (i *batchIter) Valid() bool {
+	return false
+}
+
+func (i *batchIter) Error() error {
+	return nil
+}
+
+func (i *batchIter) Close() error {
+	return nil
 }
