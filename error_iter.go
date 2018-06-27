@@ -6,16 +6,16 @@ type errorIter struct {
 	err error
 }
 
-var _ db.Iterator = (*errorIter)(nil)
+var _ db.InternalIterator = (*errorIter)(nil)
 
 func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekGE(key []byte) {
+func (c *errorIter) SeekGE(key *db.InternalKey) {
 }
 
-func (c *errorIter) SeekLT(key []byte) {
+func (c *errorIter) SeekLT(key *db.InternalKey) {
 }
 
 func (c *errorIter) First() {
@@ -28,11 +28,19 @@ func (c *errorIter) Next() bool {
 	return false
 }
 
+func (c *errorIter) NextUserKey() bool {
+	return false
+}
+
 func (c *errorIter) Prev() bool {
 	return false
 }
 
-func (c *errorIter) Key() []byte {
+func (c *errorIter) PrevUserKey() bool {
+	return false
+}
+
+func (c *errorIter) Key() *db.InternalKey {
 	return nil
 }
 

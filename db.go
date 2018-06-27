@@ -199,12 +199,9 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 	return nil
 }
 
-// NewIter implements DB.NewIter, as documented in the pebble/db package.
-func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
-	// TODO(peter): Grab a reference to the current memtable, immutable memtable
-	// and sstable version.
-	panic("pebble.DB: NewIter unimplemented")
-
+// newIterInternal constructs a new iterator, merging in batchIter as an extra
+// level.
+func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) db.Iterator {
 	d.mu.Lock()
 	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
 	seqNum := d.versions.lastSequence
@@ -216,12 +213,15 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 
 	var buf struct {
 		dbi    dbIter
-		iters  [2 + numLevels]db.InternalIterator
+		iters  [3 + numLevels]db.InternalIterator
 		levels [numLevels]levelIter
 	}
 
-	dbi := &buf.dbi
 	iters := buf.iters[:0]
+	if batchIter != nil {
+		iters = append(iters, batchIter)
+	}
+
 	for _, mem := range memtables {
 		if mem == nil {
 			continue
@@ -234,7 +234,7 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 		f := current.files[0][i]
 		iter, err := d.newIter(f.fileNum)
 		if err != nil {
-			return newErrorIter(err)
+			return &dbIter{err: err}
 		}
 		iters = append(iters, iter)
 	}
@@ -259,15 +259,21 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 		iters = append(iters, li)
 	}
 
+	dbi := &buf.dbi
 	dbi.iter = newMergingIter(d.cmp, iters...)
 	dbi.seqNum = seqNum
 	return dbi
 }
 
+// NewIter implements DB.NewIter, as documented in the pebble/db package.
+func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
+	return d.newIterInternal(nil, o)
+}
+
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
 // return an error. If the batch is committed it will be applied to the DB.
 func (d *DB) NewBatch() *Batch {
-	return &Batch{parent: d}
+	return &Batch{db: d}
 }
 
 // NewIndexedBatch returns a new empty read-write batch. Any reads on the batch
@@ -302,7 +308,7 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	panic("pebble.DB: Compact unimplemented")
 }
 
-// Flush the memtable to stable storage.
+// Flush the memtable to stable storage. TODO(peter)
 func (d *DB) Flush() error {
 	panic("pebble.DB: Flush unimplemented")
 }

@@ -76,8 +76,8 @@ func (s *batchStorage) Compare(a db.InternalKey, b uint32) int {
 type Batch struct {
 	batchStorage
 
-	// The parent writer to which the batch will be committed.
-	parent db.Writer
+	// The db to which the batch will be committed.
+	db *DB
 
 	// An optional skiplist keyed by offset into data of the entry.
 	index *batchskl.Skiplist
@@ -86,13 +86,13 @@ type Batch struct {
 // Batch implements the db.Reader interface.
 var _ db.Reader = (*Batch)(nil)
 
-func newIndexedBatch(parent db.Writer, cmp db.Compare) *Batch {
+func newIndexedBatch(db *DB, cmp db.Compare) *Batch {
 	var b struct {
 		batch Batch
 		index batchskl.Skiplist
 	}
 	b.batch.cmp = cmp
-	b.batch.parent = parent
+	b.batch.db = db
 	b.batch.index = &b.index
 	b.batch.index.Reset(&b.batch.batchStorage, 0)
 	return &b.batch
@@ -237,14 +237,16 @@ func (b *Batch) DeleteRange(start, end []byte) {
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
 	if b.index == nil {
-		return newErrorIter(ErrNotIndexed)
+		return &dbIter{err: ErrNotIndexed}
 	}
-	panic("pebble.Batch: NewIter unimplemented")
+	return b.db.newIterInternal(b.newInternalIter(o), o)
 }
 
+// newInternalIter creates a new InternalIterator that iterates over the
+// contents of the batch.
 func (b *Batch) newInternalIter(o *db.ReadOptions) db.InternalIterator {
 	if b.index == nil {
-		panic("pebble.Batch: newInternalIter on non-indexed batch")
+		return newErrorIter(ErrNotIndexed)
 	}
 	return &batchIter{
 		cmp:   b.cmp,
@@ -255,7 +257,7 @@ func (b *Batch) newInternalIter(o *db.ReadOptions) db.InternalIterator {
 
 // Commit applies the batch to its parent writer.
 func (b *Batch) Commit(o *db.WriteOptions) error {
-	return b.parent.Apply(b.data, o)
+	return b.db.Apply(b.data, o)
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.

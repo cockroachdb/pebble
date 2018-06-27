@@ -71,6 +71,9 @@ func (i *dbIter) findPrevEntry() bool {
 }
 
 func (i *dbIter) SeekGE(key []byte) {
+	if i.err != nil {
+		return
+	}
 	i.ikey = db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax)
 	i.iter.SeekGE(&i.ikey)
 	i.ikey.UserKey = nil
@@ -78,6 +81,9 @@ func (i *dbIter) SeekGE(key []byte) {
 }
 
 func (i *dbIter) SeekLT(key []byte) {
+	if i.err != nil {
+		return
+	}
 	i.ikey = db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax)
 	i.iter.SeekLT(&i.ikey)
 	i.ikey.UserKey = nil
@@ -85,21 +91,33 @@ func (i *dbIter) SeekLT(key []byte) {
 }
 
 func (i *dbIter) First() {
+	if i.err != nil {
+		return
+	}
 	i.iter.First()
 	i.findNextEntry()
 }
 
 func (i *dbIter) Last() {
+	if i.err != nil {
+		return
+	}
 	i.iter.Last()
 	i.findPrevEntry()
 }
 
 func (i *dbIter) Next() bool {
+	if i.err != nil {
+		return false
+	}
 	i.iter.NextUserKey()
 	return i.findNextEntry()
 }
 
 func (i *dbIter) Prev() bool {
+	if i.err != nil {
+		return false
+	}
 	i.iter.PrevUserKey()
 	return i.findPrevEntry()
 }
