@@ -54,11 +54,6 @@ const (
 	customTagNonSafeIgnoreMask = 1 << 6
 )
 
-type compactPointerEntry struct {
-	level int
-	key   db.InternalKey
-}
-
 type deletedFileEntry struct {
 	level   int
 	fileNum uint64
@@ -70,14 +65,13 @@ type newFileEntry struct {
 }
 
 type versionEdit struct {
-	comparatorName  string
-	logNumber       uint64
-	prevLogNumber   uint64
-	nextFileNumber  uint64
-	lastSequence    uint64
-	compactPointers []compactPointerEntry
-	deletedFiles    map[deletedFileEntry]bool // A set of deletedFileEntry values.
-	newFiles        []newFileEntry
+	comparatorName string
+	logNumber      uint64
+	prevLogNumber  uint64
+	nextFileNumber uint64
+	lastSequence   uint64
+	deletedFiles   map[deletedFileEntry]bool // A set of deletedFileEntry values.
+	newFiles       []newFileEntry
 }
 
 func (v *versionEdit) decode(r io.Reader) error {
@@ -124,16 +118,13 @@ func (v *versionEdit) decode(r io.Reader) error {
 			v.lastSequence = n
 
 		case tagCompactPointer:
-			level, err := d.readLevel()
-			if err != nil {
+			if _, err := d.readLevel(); err != nil {
 				return err
 			}
-			key, err := d.readBytes()
-			if err != nil {
+			if _, err := d.readBytes(); err != nil {
 				return err
 			}
-			v.compactPointers = append(v.compactPointers,
-				compactPointerEntry{level, db.DecodeInternalKey(key)})
+			// NB: RocksDB does not use compaction pointers anymore.
 
 		case tagDeletedFile:
 			level, err := d.readLevel()
@@ -206,16 +197,16 @@ func (v *versionEdit) decode(r io.Reader) error {
 					switch customTag {
 					case customTagNeedsCompaction:
 						if len(field) != 1 {
-							return fmt.Errorf("need_compaction field wrong size")
+							return fmt.Errorf("new-file4: need-compaction field wrong size")
 						}
 						markedForCompaction = (field[0] == 1)
 
 					case customTagPathID:
-						// TODO(peter): ???
+						return fmt.Errorf("new-file4: path-id field not supported")
 
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
-							return fmt.Errorf("new-file4 custom field not supported: %d", customTag)
+							return fmt.Errorf("new-file4: custom field not supported: %d", customTag)
 						}
 					}
 				}
@@ -240,14 +231,9 @@ func (v *versionEdit) decode(r io.Reader) error {
 			}
 			v.prevLogNumber = n
 
-		case tagColumnFamily:
-			fallthrough
-		case tagColumnFamilyAdd:
-			fallthrough
-		case tagColumnFamilyDrop:
-			fallthrough
-		case tagMaxColumnFamily:
-			fallthrough
+		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
+			return fmt.Errorf("column families are not supported")
+
 		default:
 			return errCorruptManifest
 		}
@@ -276,11 +262,6 @@ func (v *versionEdit) encode(w io.Writer) error {
 	if v.lastSequence != 0 {
 		e.writeUvarint(tagLastSequence)
 		e.writeUvarint(v.lastSequence)
-	}
-	for _, x := range v.compactPointers {
-		e.writeUvarint(tagCompactPointer)
-		e.writeUvarint(uint64(x.level))
-		e.writeKey(x.key)
 	}
 	for x := range v.deletedFiles {
 		e.writeUvarint(tagDeletedFile)
@@ -393,11 +374,6 @@ type bulkVersionEdit struct {
 }
 
 func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
-	for _, cp := range ve.compactPointers {
-		// TODO: handle compaction pointers.
-		_ = cp
-	}
-
 	for df := range ve.deletedFiles {
 		dmap := b.deleted[df.level]
 		if dmap == nil {

@@ -45,20 +45,6 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			prevLogNumber:  33,
 			nextFileNumber: 44,
 			lastSequence:   55,
-			compactPointers: []compactPointerEntry{
-				{
-					level: 0,
-					key:   db.DecodeInternalKey([]byte("600")),
-				},
-				{
-					level: 1,
-					key:   db.DecodeInternalKey([]byte("601")),
-				},
-				{
-					level: 2,
-					key:   db.DecodeInternalKey([]byte("602")),
-				},
-			},
 			deletedFiles: map[deletedFileEntry]bool{
 				deletedFileEntry{
 					level:   3,
