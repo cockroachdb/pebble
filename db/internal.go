@@ -72,8 +72,12 @@ const (
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = 255
 
+	// InternalKeySeqNumBatch is a bit that is set on batch sequence numbers
+	// which prevents those entries from being excluded from iteration.
+	InternalKeySeqNumBatch = uint64(1 << 55)
+
 	// InternalKeySeqNumMax is the largest valid sequence number.
-	InternalKeySeqNumMax = uint64(1<<56 - 1)
+	InternalKeySeqNumMax = InternalKeySeqNumBatch - 1
 )
 
 // InternalKey is a key used for the in-memory and on-disk partial DBs that

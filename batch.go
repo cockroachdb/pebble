@@ -406,8 +406,8 @@ func (r *batchReader) nextStr() (s []byte, ok bool) {
 }
 
 // TODO(peter): Flesh out the implementation here. It should be similar to
-// memTableIter, though the value stored in batchskl.Skiplist is the batch
-// sequence number.
+// memTableIter. The sequence number for batch entries is the
+// key-offset|db.InternalSeqNumBatch.
 type batchIter struct {
 }
 
