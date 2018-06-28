@@ -149,7 +149,10 @@ func (i *Iter) SeekLT(key *db.InternalKey) {
 // First implements InternalIterator.First, as documented in the pebble/db
 // package.
 func (i *Iter) First() {
-	i.SeekGE(nil)
+	i.index.First()
+	if i.loadBlock() {
+		i.data.First()
+	}
 }
 
 // Last implements InternalIterator.Last, as documented in the pebble/db
