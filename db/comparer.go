@@ -31,11 +31,18 @@ type Compare func(a, b []byte) int
 // may be "aquah".
 type AppendSeparator func(dst, a, b []byte) []byte
 
+// InlineKey returns a fixed length prefix of a user key such that InlineKey(a)
+// < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff a > b. If
+// InlineKey(a) == InlineKey(b) an additional comparison is required to
+// determine if the two keys are actually equal.
+type InlineKey func(key []byte) uint64
+
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer struct {
 	AppendSeparator AppendSeparator
 	Compare         Compare
+	InlineKey       InlineKey
 
 	// Name is the name of the comparer.
 	//
@@ -76,6 +83,19 @@ var DefaultComparer = &Comparer{
 	},
 
 	Compare: bytes.Compare,
+
+	InlineKey: func(key []byte) uint64 {
+		var v uint64
+		n := 8
+		if n > len(key) {
+			n = len(key)
+		}
+		for _, b := range key[:n] {
+			v <<= 8
+			v |= uint64(b)
+		}
+		return v
+	},
 
 	// This name is part of the C++ Level-DB implementation's default file
 	// format, and should not be changed.

@@ -112,7 +112,7 @@ func (it *Iterator) Valid() bool {
 }
 
 func (it *Iterator) seekForBaseSplice(
-	key db.InternalKey, inlineKey InlineKey,
+	key db.InternalKey, inlineKey uint64,
 ) (prev, next uint32, found bool) {
 	prev = it.list.head
 	for level := it.list.height - 1; ; level-- {

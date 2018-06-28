@@ -47,9 +47,10 @@ const (
 
 // TODO: document DB.
 type DB struct {
-	dirname string
-	opts    *db.Options
-	cmp     db.Compare
+	dirname   string
+	opts      *db.Options
+	cmp       db.Compare
+	inlineKey db.InlineKey
 
 	tableCache tableCache
 	newIter    tableNewIter
@@ -272,7 +273,7 @@ func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
 // return an error. If the batch is committed it will be applied to the DB.
 func (d *DB) NewBatch() *Batch {
-	return &Batch{db: d}
+	return newBatch(d)
 }
 
 // NewIndexedBatch returns a new empty read-write batch. Any reads on the batch
@@ -281,7 +282,7 @@ func (d *DB) NewBatch() *Batch {
 // for insert operations. If you do not need to perform reads on the batch, use
 // NewBatch instead.
 func (d *DB) NewIndexedBatch() *Batch {
-	return newIndexedBatch(d, d.cmp)
+	return newIndexedBatch(d, d.opts.GetComparer())
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -368,6 +369,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		dirname:        dirname,
 		opts:           opts,
 		cmp:            opts.GetComparer().Compare,
+		inlineKey:      opts.GetComparer().InlineKey,
 		pendingOutputs: make(map[uint64]struct{}),
 	}
 	tableCacheSize := opts.GetMaxOpenFiles() - numNonTableCacheFiles

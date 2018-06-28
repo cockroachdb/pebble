@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -116,7 +115,7 @@ func TestBatchGet(t *testing.T) {
 		{[]byte("a"), []byte("d"), []byte("d")},
 	}
 
-	b := newIndexedBatch(nil, bytes.Compare)
+	b := newIndexedBatch(nil, db.DefaultComparer)
 	for i, c := range testCases {
 		if c.value == nil {
 			b.Delete(c.key)
@@ -136,7 +135,7 @@ func TestBatchGet(t *testing.T) {
 }
 
 func TestBatchIterNextPrev(t *testing.T) {
-	b := newIndexedBatch(nil, bytes.Compare)
+	b := newIndexedBatch(nil, db.DefaultComparer)
 	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
 		ikey := fakeIkey(key)
 		value := []byte(fmt.Sprint(ikey.SeqNum()))
@@ -197,7 +196,7 @@ func TestBatchIterNextPrev(t *testing.T) {
 }
 
 func TestBatchIterNextPrevUserKey(t *testing.T) {
-	b := newIndexedBatch(nil, bytes.Compare)
+	b := newIndexedBatch(nil, db.DefaultComparer)
 	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
 		ikey := fakeIkey(key)
 		value := []byte(fmt.Sprint(ikey.SeqNum()))
@@ -293,7 +292,7 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 			end = b.N
 		}
 
-		batch := newIndexedBatch(nil, bytes.Compare)
+		batch := newIndexedBatch(nil, db.DefaultComparer)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value)

@@ -68,7 +68,7 @@ const (
 	maxHeight     = 20
 	maxNodeSize   = int(unsafe.Sizeof(node{}))
 	linksSize     = int(unsafe.Sizeof(links{}))
-	inlineKeySize = int(unsafe.Sizeof(InlineKey(0)))
+	inlineKeySize = 8
 )
 
 var ErrExists = errors.New("record with this key already exists")
@@ -78,12 +78,6 @@ type links struct {
 	prev uint32
 }
 
-// InlineKey is a prefix of a user key that is stored inline with the skiplist
-// node. Storing a portion of the key inline removes a cache miss for accessing
-// keys during seeks in the common case if inequality for the inline key
-// comparison.
-type InlineKey uint64
-
 type node struct {
 	// The offset of the key in storage. See Storage.Get.
 	key uint32
@@ -92,7 +86,7 @@ type node struct {
 	// cache misses while the inlineKey stored here will be in the same cache line
 	// as the key and the links making accessing and comparing against it almost
 	// free.
-	inlineKey InlineKey
+	inlineKey uint64
 	// Most nodes do not need to use the full height of the link tower, since the
 	// probability of each successive level decreases exponentially. Because
 	// these elements are never accessed, they do not need to be allocated.
@@ -104,7 +98,7 @@ type node struct {
 // Storage ...
 type Storage interface {
 	Get(offset uint32) db.InternalKey
-	InlineKey(key db.InternalKey) InlineKey
+	InlineKey(key db.InternalKey) uint64
 	Compare(a db.InternalKey, b uint32) int
 }
 
@@ -220,7 +214,7 @@ func (s *Skiplist) NewIter() Iterator {
 	return Iterator{list: s}
 }
 
-func (s *Skiplist) newNode(height, key uint32, inlineKey InlineKey) uint32 {
+func (s *Skiplist) newNode(height, key uint32, inlineKey uint64) uint32 {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
@@ -265,7 +259,7 @@ func (s *Skiplist) randomHeight() uint32 {
 }
 
 func (s *Skiplist) findSplice(
-	key db.InternalKey, inlineKey InlineKey, spl *[maxHeight]splice,
+	key db.InternalKey, inlineKey uint64, spl *[maxHeight]splice,
 ) (found bool) {
 	var prev, next uint32
 	prev = s.head
@@ -282,7 +276,7 @@ func (s *Skiplist) findSplice(
 }
 
 func (s *Skiplist) findSpliceForLevel(
-	key db.InternalKey, inlineKey InlineKey, level, start uint32,
+	key db.InternalKey, inlineKey uint64, level, start uint32,
 ) (prev, next uint32, found bool) {
 	prev = start
 
@@ -323,7 +317,7 @@ func (s *Skiplist) getKey(nd uint32) uint32 {
 	return s.node(nd).key
 }
 
-func (s *Skiplist) getInlineKey(nd uint32) InlineKey {
+func (s *Skiplist) getInlineKey(nd uint32) uint64 {
 	return s.node(nd).inlineKey
 }
 

@@ -34,8 +34,9 @@ type batchStorage struct {
 	//     - the varint-string user key,
 	//     - the varint-string value (if kind != delete).
 	// The sequence number and count are stored in little-endian order.
-	data []byte
-	cmp  db.Compare
+	data      []byte
+	cmp       db.Compare
+	inlineKey db.InlineKey
 }
 
 // Get implements Storage.Get, as documented in the pebble/batchskl package.
@@ -50,20 +51,8 @@ func (s *batchStorage) Get(offset uint32) db.InternalKey {
 
 // InlineKey implements Storage.InlineKey, as documented in the pebble/batchskl
 // package.
-func (s *batchStorage) InlineKey(key db.InternalKey) batchskl.InlineKey {
-	// TODO(peter): This needs to be part of the db.Comparer package as the
-	// specifics of the comparison routine affect how a fixed prefix can be
-	// extracted.
-	var v batchskl.InlineKey
-	n := int(unsafe.Sizeof(batchskl.InlineKey(0)))
-	if n > len(key.UserKey) {
-		n = len(key.UserKey)
-	}
-	for _, b := range key.UserKey[:n] {
-		v <<= 8
-		v |= batchskl.InlineKey(b)
-	}
-	return v
+func (s *batchStorage) InlineKey(key db.InternalKey) uint64 {
+	return s.inlineKey(key.UserKey)
 }
 
 // Compare implements Storage.Compare, as documented in the pebble/batchskl
@@ -86,12 +75,17 @@ type Batch struct {
 // Batch implements the db.Reader interface.
 var _ db.Reader = (*Batch)(nil)
 
-func newIndexedBatch(db *DB, cmp db.Compare) *Batch {
+func newBatch(db *DB) *Batch {
+	return &Batch{db: db}
+}
+
+func newIndexedBatch(db *DB, comparer *db.Comparer) *Batch {
 	var b struct {
 		batch Batch
 		index batchskl.Skiplist
 	}
-	b.batch.cmp = cmp
+	b.batch.cmp = comparer.Compare
+	b.batch.inlineKey = comparer.InlineKey
 	b.batch.db = db
 	b.batch.index = &b.index
 	b.batch.index.Reset(&b.batch.batchStorage, 0)
