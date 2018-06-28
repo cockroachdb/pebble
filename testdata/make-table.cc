@@ -20,20 +20,21 @@
 
 const int N = 1000000;
 const char* infile = "h.txt";
-const char* outfiles[3] = {
+const char* outfiles[] = {
   "h.sst",
   "h.no-compression.sst",
-  "h.bloom.no-compression.sst",
+  "h.block-bloom.no-compression.sst",
+  "h.full-bloom.no-compression.sst",
 };
 
 int write() {
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 4; ++i) {
     const char* outfile = outfiles[i];
     rocksdb::Status status;
 
     rocksdb::BlockBasedTableOptions table_options;
-    if (i == 2) {
-      table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
+    if (i >= 2) {
+      table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, i == 2));
     }
 
     rocksdb::Options options;

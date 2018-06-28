@@ -45,6 +45,15 @@ type FilterPolicy interface {
 	MayContain(filter, key []byte) bool
 }
 
+// FilterType is the level at which to apply a filter: block or table.
+type FilterType int
+
+// The available filter types.
+const (
+	BlockFilter FilterType = iota
+	TableFilter
+)
+
 // LevelOptions ...
 // TODO(peter):
 type LevelOptions struct {
@@ -117,6 +126,15 @@ type Options struct {
 	//
 	// The default value means to use no filter.
 	FilterPolicy FilterPolicy
+
+	// FilterType defines whether an existing filter policy is applied at a
+	// block-level or table-level. Block-level filters use less memory to create,
+	// but are slower to access as a check for the key in the index must first be
+	// performed to locate the filter block. A table-level filter will require
+	// memory proportional to the number of keys in an sstable to create, but
+	// avoids the index lookup when determining if a key is present. Table-level
+	// filters should be preferred except under constrained memory situations.
+	FilterType FilterType
 
 	// MaxOpenFiles is a soft limit on the number of open files that can be
 	// used by the DB.

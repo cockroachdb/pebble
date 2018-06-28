@@ -270,7 +270,8 @@ func testReader(t *testing.T, filename string, fp db.FilterPolicy) {
 
 func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil) }
 func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil) }
-func TestReaderBloomIgnored(t *testing.T)       { testReader(t, "h.bloom.no-compression.sst", nil) }
+func TestReaderBlockBloomIgnored(t *testing.T)  { testReader(t, "h.block-bloom.no-compression.sst", nil) }
+func TestReaderFullBloomIgnored(t *testing.T)   { testReader(t, "h.full-bloom.no-compression.sst", nil) }
 
 func TestReaderBloomUsed(t *testing.T) {
 	// wantActualNegatives is the minimum number of nonsense words (i.e. false
@@ -289,7 +290,7 @@ func TestReaderBloomUsed(t *testing.T) {
 			FilterPolicy: bloom.FilterPolicy(10),
 			degenerate:   degenerate,
 		}
-		testReader(t, "h.bloom.no-compression.sst", c)
+		testReader(t, "h.block-bloom.no-compression.sst", c)
 
 		if c.truePositives != len(wordCount) {
 			t.Errorf("degenerate=%t: true positives: got %d, want %d", degenerate, c.truePositives, len(wordCount))
@@ -316,7 +317,7 @@ func TestReaderBloomUsed(t *testing.T) {
 }
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
-	f, err := os.Open(filepath.FromSlash("../testdata/h.bloom.no-compression.sst"))
+	f, err := os.Open(filepath.FromSlash("../testdata/h.block-bloom.no-compression.sst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +411,7 @@ func TestWriter(t *testing.T) {
 func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
 	filename := "../testdata/h.no-compression.sst"
 	if fp != nil {
-		filename = "../testdata/h.bloom.no-compression.sst"
+		filename = "../testdata/h.block-bloom.no-compression.sst"
 	}
 
 	// Check that a freshly made NoCompression table is byte-for-byte equal
