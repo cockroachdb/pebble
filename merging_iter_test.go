@@ -321,7 +321,7 @@ func buildMergingIterTables(
 		ikey.UserKey = key
 		j := rand.Intn(len(writers))
 		w := writers[j]
-		w.Add(&ikey, nil)
+		w.Add(ikey, nil)
 	}
 
 	for _, w := range writers {

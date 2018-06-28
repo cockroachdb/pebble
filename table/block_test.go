@@ -11,8 +11,8 @@ import (
 )
 
 func TestBlockWriter(t *testing.T) {
-	ikey := func(s string) *db.InternalKey {
-		return &db.InternalKey{UserKey: []byte(s)}
+	ikey := func(s string) db.InternalKey {
+		return db.InternalKey{UserKey: []byte(s)}
 	}
 
 	w := &blockWriter{
@@ -124,7 +124,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					key := []byte(fmt.Sprintf("%05d", i))
 					keys = append(keys, key)
 					ikey.UserKey = key
-					w.add(&ikey, nil)
+					w.add(ikey, nil)
 				}
 
 				it, err := newBlockIter(bytes.Compare, internalKeyCoder, w.finish())
@@ -156,7 +156,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 				var ikey db.InternalKey
 				for i := 0; w.estimatedSize() < blockSize; i++ {
 					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
-					w.add(&ikey, nil)
+					w.add(ikey, nil)
 				}
 
 				it, err := newBlockIter(bytes.Compare, internalKeyCoder, w.finish())
@@ -189,7 +189,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 				var ikey db.InternalKey
 				for i := 0; w.estimatedSize() < blockSize; i++ {
 					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
-					w.add(&ikey, nil)
+					w.add(ikey, nil)
 				}
 
 				it, err := newBlockIter(bytes.Compare, internalKeyCoder, w.finish())

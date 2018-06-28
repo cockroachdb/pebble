@@ -135,15 +135,14 @@ func buildLevelIterTables(
 	}
 
 	var keys [][]byte
-	var ikey db.InternalKey
 	var i int
 	const targetSize = 2 << 20
 	for _, w := range writers {
 		for ; w.EstimatedSize() < targetSize; i++ {
 			key := []byte(fmt.Sprintf("%08d", i))
 			keys = append(keys, key)
-			ikey = db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
-			w.Add(&ikey, nil)
+			ikey := db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
+			w.Add(ikey, nil)
 		}
 		if err := w.Close(); err != nil {
 			b.Fatal(err)

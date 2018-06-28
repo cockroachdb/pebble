@@ -115,16 +115,16 @@ func (f *filterWriter) finish() ([]byte, error) {
 }
 
 type coder struct {
-	Size   func(key *db.InternalKey) int
-	Encode func(key *db.InternalKey, buf []byte)
+	Size   func(key db.InternalKey) int
+	Encode func(key db.InternalKey, buf []byte)
 	Decode func(buf []byte) db.InternalKey
 }
 
 var rawCoder = &coder{
-	Size: func(key *db.InternalKey) int {
+	Size: func(key db.InternalKey) int {
 		return len(key.UserKey)
 	},
-	Encode: func(key *db.InternalKey, buf []byte) {
+	Encode: func(key db.InternalKey, buf []byte) {
 		copy(buf, key.UserKey)
 	},
 	Decode: func(buf []byte) db.InternalKey {
@@ -133,10 +133,10 @@ var rawCoder = &coder{
 }
 
 var internalKeyCoder = &coder{
-	Size: func(key *db.InternalKey) int {
+	Size: func(key db.InternalKey) int {
 		return key.Size()
 	},
-	Encode: func(key *db.InternalKey, buf []byte) {
+	Encode: func(key db.InternalKey, buf []byte) {
 		i := copy(buf, key.UserKey)
 		binary.LittleEndian.PutUint64(buf[i:], key.Trailer)
 	},
@@ -188,12 +188,12 @@ type Writer struct {
 
 // Add adds a key/value pair to the table being written. For a given Writer,
 // the keys passed to Add must be in increasing order.
-func (w *Writer) Add(key *db.InternalKey, value []byte) error {
+func (w *Writer) Add(key db.InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
 	prevKey := db.DecodeInternalKey(w.block.curKey)
-	if db.InternalCompare(w.compare, prevKey, *key) >= 0 {
+	if db.InternalCompare(w.compare, prevKey, key) >= 0 {
 		w.err = fmt.Errorf("pebble/table: Set called in non-increasing key order: %q, %q", prevKey, key)
 		return w.err
 	}
@@ -215,7 +215,7 @@ func (w *Writer) Add(key *db.InternalKey, value []byte) error {
 }
 
 // flushPendingBH adds any pending block handle to the index entries.
-func (w *Writer) flushPendingBH(key *db.InternalKey) {
+func (w *Writer) flushPendingBH(key db.InternalKey) {
 	if w.pendingBH.length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
@@ -223,10 +223,7 @@ func (w *Writer) flushPendingBH(key *db.InternalKey) {
 	}
 	n0 := len(w.indexKeys)
 	// TODO(peter): This isn't correct for InternalKeys. And it is fugly.
-	var ukey []byte
-	if key != nil {
-		ukey = key.UserKey
-	}
+	ukey := key.UserKey
 	if w.coder == rawCoder {
 		w.indexKeys = w.appendSep(w.indexKeys, w.block.curKey, ukey)
 	} else {
@@ -303,7 +300,7 @@ func (w *Writer) Close() (err error) {
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
-	w.flushPendingBH(nil)
+	w.flushPendingBH(db.InternalKey{})
 	if w.block.nEntries > 0 || len(w.indexEntries) == 0 {
 		bh, err := w.finishBlock()
 		if err != nil {
@@ -311,7 +308,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		w.pendingBH = bh
-		w.flushPendingBH(nil)
+		w.flushPendingBH(db.InternalKey{})
 	}
 
 	// Writer.append uses w.tmp[:3*binary.MaxVarintLen64]. Let tmp be the other
@@ -332,7 +329,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(tmp, bh)
-		w.block.add(&db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, tmp[:n])
+		w.block.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, tmp[:n])
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
@@ -346,12 +343,11 @@ func (w *Writer) Close() (err error) {
 	// Write the index block.
 	w.block.reset()
 	i0 := 0
-	var ikey db.InternalKey
 	for _, ie := range w.indexEntries {
 		n := encodeBlockHandle(tmp, ie.bh)
 		i1 := i0 + ie.keyLen
-		ikey = w.coder.Decode(w.indexKeys[i0:i1])
-		w.block.add(&ikey, tmp[:n])
+		ikey := w.coder.Decode(w.indexKeys[i0:i1])
+		w.block.add(ikey, tmp[:n])
 		i0 = i1
 	}
 	indexBlockHandle, err := w.finishBlock()

@@ -235,11 +235,10 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 		Compression:  compression,
 		FilterPolicy: fp,
 	}, internalKeyCoder)
-	var ikey db.InternalKey
 	for _, k := range keys {
 		v := wordCount[k]
-		ikey = db.MakeInternalKey([]byte(k), 0, db.InternalKeyKindSet)
-		if err := w.Add(&ikey, []byte(v)); err != nil {
+		ikey := db.MakeInternalKey([]byte(k), 0, db.InternalKeyKindSet)
+		if err := w.Add(ikey, []byte(v)); err != nil {
 			return nil, err
 		}
 	}
@@ -470,7 +469,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				BlockSize: blockSize,
 			}, internalKeyCoder)
 			for _, k := range keys[:nk] {
-				if err := w.Add(&db.InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
+				if err := w.Add(db.InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
 					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
 					continue loop
 				}

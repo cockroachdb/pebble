@@ -20,7 +20,7 @@ type blockWriter struct {
 	tmp             [50]byte
 }
 
-func (w *blockWriter) add(key *db.InternalKey, value []byte) {
+func (w *blockWriter) add(key db.InternalKey, value []byte) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := w.coder.Size(key)
