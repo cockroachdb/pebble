@@ -120,7 +120,7 @@ func check(f storage.File, fp db.FilterPolicy) error {
 	for k, v := range wordCount {
 		// Check using Get.
 		ik := db.MakeInternalKey([]byte(k), 0, db.InternalKeyKindSet)
-		if v1, err := r.Get(&ik, nil); string(v1) != string(v) || err != nil {
+		if v1, err := r.Get(ik, nil); string(v1) != string(v) || err != nil {
 			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
 		} else if len(v1) != cap(v1) {
 			return fmt.Errorf("Get %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
@@ -128,7 +128,7 @@ func check(f storage.File, fp db.FilterPolicy) error {
 
 		// Check using Find.
 		i := r.NewIter(nil)
-		i.SeekGE(&ik)
+		i.SeekGE(ik)
 		if !i.Valid() || string(i.Key().UserKey) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
@@ -150,13 +150,13 @@ func check(f storage.File, fp db.FilterPolicy) error {
 	for _, s := range nonsenseWords {
 		// Check using Get.
 		ik := db.InternalKey{UserKey: []byte(s)}
-		if _, err := r.Get(&ik, nil); err != db.ErrNotFound {
+		if _, err := r.Get(ik, nil); err != db.ErrNotFound {
 			return fmt.Errorf("Get %q: got %v, want ErrNotFound", s, err)
 		}
 
 		// Check using Find.
 		i := r.NewIter(nil)
-		i.SeekGE(&ik)
+		i.SeekGE(ik)
 		if i.Valid() && s == string(i.Key().UserKey) {
 			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
@@ -184,7 +184,7 @@ func check(f storage.File, fp db.FilterPolicy) error {
 	for _, ct := range countTests {
 		ik := db.InternalKey{UserKey: []byte(ct.start)}
 		n, i := 0, r.NewIter(nil)
-		for i.SeekGE(&ik); i.Valid(); i.Next() {
+		for i.SeekGE(ik); i.Valid(); i.Next() {
 			n++
 		}
 		if n != ct.count {
@@ -338,7 +338,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	key := []byte("m!....")
 	for i := 0; i < n; i++ {
 		binary.LittleEndian.PutUint32(key[2:6], uint32(i))
-		r.Get(&db.InternalKey{UserKey: key}, nil)
+		r.Get(db.InternalKey{UserKey: key}, nil)
 	}
 
 	if c.truePositives != 0 {

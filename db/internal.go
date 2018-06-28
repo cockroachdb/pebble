@@ -202,11 +202,11 @@ func (k InternalKey) Clone() InternalKey {
 type InternalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key.
-	SeekGE(key *InternalKey)
+	SeekGE(key InternalKey)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key.
-	SeekLT(key *InternalKey)
+	SeekLT(key InternalKey)
 
 	// First moves the iterator the the first key/value pair.
 	First()

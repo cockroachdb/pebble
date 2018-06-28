@@ -464,14 +464,14 @@ func (i *batchIter) initPrevEnd(key db.InternalKey) {
 	}
 }
 
-func (i *batchIter) SeekGE(key *db.InternalKey) {
+func (i *batchIter) SeekGE(key db.InternalKey) {
 	i.clearPrevCache()
-	i.iter.SeekGE(*key)
+	i.iter.SeekGE(key)
 }
 
-func (i *batchIter) SeekLT(key *db.InternalKey) {
+func (i *batchIter) SeekLT(key db.InternalKey) {
 	i.clearPrevCache()
-	i.iter.SeekLT(*key)
+	i.iter.SeekLT(key)
 	if i.iter.Valid() {
 		key := i.iter.Key()
 		i.initPrevStart(key)

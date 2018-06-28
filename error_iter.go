@@ -12,10 +12,10 @@ func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekGE(key *db.InternalKey) {
+func (c *errorIter) SeekGE(key db.InternalKey) {
 }
 
-func (c *errorIter) SeekLT(key *db.InternalKey) {
+func (c *errorIter) SeekLT(key db.InternalKey) {
 }
 
 func (c *errorIter) First() {

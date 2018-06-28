@@ -166,13 +166,13 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Lock()
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
-			ik := db.MakeInternalKey([]byte("k"), db.InternalKeySeqNumMax, db.InternalKeyKindMax)
 			iter, err := c.newIter(uint64(fileNum))
 			if err != nil {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
 			}
-			iter.SeekGE(&ik)
+			ik := db.MakeInternalKey([]byte("k"), db.InternalKeySeqNumMax, db.InternalKeyKindMax)
+			iter.SeekGE(ik)
 			if concurrent {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}

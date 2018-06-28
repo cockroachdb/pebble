@@ -28,17 +28,15 @@ func count(d *memTable) (n int) {
 	return n
 }
 
-func ikey(s string) *db.InternalKey {
-	k := db.MakeInternalKey([]byte(s), 0, db.InternalKeyKindSet)
-	return &k
+func ikey(s string) db.InternalKey {
+	return db.MakeInternalKey([]byte(s), 0, db.InternalKeyKindSet)
 }
 
 // compact compacts a MemTable.
 func compact(m *memTable) (*memTable, error) {
 	n, x := newMemTable(nil), m.NewIter(nil)
 	for x.First(); x.Valid(); x.Next() {
-		key := x.Key()
-		if err := n.set(&key, x.Value()); err != nil {
+		if err := n.set(x.Key(), x.Value()); err != nil {
 			return nil, err
 		}
 	}
@@ -106,7 +104,7 @@ func TestMemTableCount(t *testing.T) {
 		if j := count(m); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
 		}
-		m.set(&db.InternalKey{UserKey: []byte{byte(i)}}, nil)
+		m.set(db.InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
@@ -119,7 +117,7 @@ func TestMemTableEmpty(t *testing.T) {
 		t.Errorf("got !empty, want empty")
 	}
 	// Add one key/value pair with an empty key and empty value.
-	m.set(&db.InternalKey{}, nil)
+	m.set(db.InternalKey{}, nil)
 	if m.Empty() {
 		t.Errorf("got empty, want !empty")
 	}
@@ -205,8 +203,7 @@ func TestMemTable1000Entries(t *testing.T) {
 func TestMemTableNextPrev(t *testing.T) {
 	m := newMemTable(nil)
 	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
-		ikey := fakeIkey(key)
-		if err := m.set(&ikey, nil); err != nil {
+		if err := m.set(fakeIkey(key), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -265,8 +262,7 @@ func TestMemTableNextPrev(t *testing.T) {
 func TestMemTableNextPrevUserKey(t *testing.T) {
 	m := newMemTable(nil)
 	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
-		ikey := fakeIkey(key)
-		if err := m.set(&ikey, nil); err != nil {
+		if err := m.set(fakeIkey(key), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -324,7 +320,7 @@ func buildMemTable(b *testing.B) (*memTable, [][]byte) {
 		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
 		ikey = db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
-		if m.set(&ikey, nil) == arenaskl.ErrArenaFull {
+		if m.set(ikey, nil) == arenaskl.ErrArenaFull {
 			break
 		}
 	}
@@ -340,7 +336,7 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 	var ikey db.InternalKey
 	for i := 0; i < b.N; i++ {
 		ikey.UserKey = keys[rng.Intn(len(keys))]
-		iter.SeekGE(&ikey)
+		iter.SeekGE(ikey)
 	}
 }
 

@@ -60,8 +60,8 @@ func TestIkeyRange(t *testing.T) {
 		if tc.input != "" {
 			for _, s := range strings.Split(tc.input, " ") {
 				f = append(f, fileMetadata{
-					smallest: *ikey(s[0:1]),
-					largest:  *ikey(s[2:3]),
+					smallest: ikey(s[0:1]),
+					largest:  ikey(s[2:3]),
 				})
 			}
 		}
@@ -537,7 +537,7 @@ func TestVersion(t *testing.T) {
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
 				ikey := makeIkey(s[0])
-				err := d.set(&ikey, []byte(s[1]))
+				err := d.set(ikey, []byte(s[1]))
 				if err != nil {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
 				}
@@ -574,7 +574,7 @@ func TestVersion(t *testing.T) {
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
 			ikey := makeIkey(s[0])
-			value, err := v.get(&ikey, newIter, cmp, nil)
+			value, err := v.get(ikey, newIter, cmp, nil)
 			got, want := "", s[1]
 			if err != nil {
 				if err != db.ErrNotFound {

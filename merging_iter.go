@@ -231,14 +231,14 @@ func (m *mergingIter) switchToMaxHeap() {
 	m.initMaxHeap()
 }
 
-func (m *mergingIter) SeekGE(key *db.InternalKey) {
+func (m *mergingIter) SeekGE(key db.InternalKey) {
 	for _, t := range m.iters {
 		t.SeekGE(key)
 	}
 	m.initMinHeap()
 }
 
-func (m *mergingIter) SeekLT(key *db.InternalKey) {
+func (m *mergingIter) SeekLT(key db.InternalKey) {
 	for _, t := range m.iters {
 		t.SeekLT(key)
 	}

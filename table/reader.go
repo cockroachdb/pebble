@@ -101,7 +101,7 @@ func (i *Iter) loadBlock() bool {
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *Iter) seekBlock(key *db.InternalKey, f *filterReader) bool {
+func (i *Iter) seekBlock(key db.InternalKey, f *filterReader) bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
@@ -133,7 +133,7 @@ func (i *Iter) seekBlock(key *db.InternalKey, f *filterReader) bool {
 
 // SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
 // package.
-func (i *Iter) SeekGE(key *db.InternalKey) {
+func (i *Iter) SeekGE(key db.InternalKey) {
 	i.index.SeekGE(key)
 	if i.loadBlock() {
 		i.data.SeekGE(key)
@@ -142,7 +142,7 @@ func (i *Iter) SeekGE(key *db.InternalKey) {
 
 // SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
-func (i *Iter) SeekLT(key *db.InternalKey) {
+func (i *Iter) SeekLT(key db.InternalKey) {
 	panic("pebble/table: SeekLT unimplemented")
 }
 
@@ -285,7 +285,7 @@ func (f *filterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	return true
 }
 
-func (f *filterReader) mayContain(blockOffset uint64, key *db.InternalKey) bool {
+func (f *filterReader) mayContain(blockOffset uint64, key db.InternalKey) bool {
 	index := blockOffset >> f.shift
 	if index >= uint64(len(f.offsets)/4-1) {
 		return true
@@ -334,7 +334,7 @@ func (r *Reader) Close() error {
 }
 
 // Get implements DB.Get, as documented in the pebble/db package.
-func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err error) {
+func (r *Reader) Get(key db.InternalKey, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -349,7 +349,7 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 		i.seekBlock(key, f)
 	}
 
-	if !i.Valid() || db.InternalCompare(r.compare, *key, i.Key()) != 0 {
+	if !i.Valid() || db.InternalCompare(r.compare, key, i.Key()) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = db.ErrNotFound

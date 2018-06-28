@@ -223,7 +223,7 @@ type tableNewIter func(fileNum uint64) (db.InternalIterator, error)
 // If ikey0's kind is delete, the db.ErrNotFound error is returned.
 // If there is no such ikey0, the db.ErrNotFound error is returned.
 func (v *version) get(
-	ikey *db.InternalKey, newIter tableNewIter, cmp db.Compare, ro *db.ReadOptions,
+	ikey db.InternalKey, newIter tableNewIter, cmp db.Compare, ro *db.ReadOptions,
 ) ([]byte, error) {
 	ukey := ikey.UserKey
 	// Iterate through v's tables, calling internalGet if the table's bounds
@@ -244,7 +244,7 @@ func (v *version) get(
 		}
 		// We compare internal keys on the high end. It gives a tighter bound than
 		// comparing user keys.
-		if db.InternalCompare(cmp, *ikey, f.largest) > 0 {
+		if db.InternalCompare(cmp, ikey, f.largest) > 0 {
 			continue
 		}
 		iter, err := newIter(f.fileNum)
@@ -266,7 +266,7 @@ func (v *version) get(
 		}
 		// Find the earliest file at that level whose largest key is >= ikey.
 		index := sort.Search(n, func(i int) bool {
-			return db.InternalCompare(cmp, v.files[level][i].largest, *ikey) >= 0
+			return db.InternalCompare(cmp, v.files[level][i].largest, ikey) >= 0
 		})
 		if index == n {
 			continue

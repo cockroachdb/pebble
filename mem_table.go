@@ -36,9 +36,9 @@ func newMemTable(o *db.Options) *memTable {
 
 // Get gets the value for the given key. It returns ErrNotFound if the DB does
 // not contain the key.
-func (m *memTable) get(key *db.InternalKey) (value []byte, err error) {
+func (m *memTable) get(key db.InternalKey) (value []byte, err error) {
 	it := m.skl.NewIter()
-	it.SeekGE(*key)
+	it.SeekGE(key)
 	if !it.Valid() {
 		return nil, db.ErrNotFound
 	}
@@ -54,8 +54,8 @@ func (m *memTable) get(key *db.InternalKey) (value []byte, err error) {
 
 // Set sets the value for the given key. It overwrites any previous value for
 // that key; a DB is not a multi-map.
-func (m *memTable) set(key *db.InternalKey, value []byte) error {
-	return m.skl.Add(*key, value)
+func (m *memTable) set(key db.InternalKey, value []byte) error {
+	return m.skl.Add(key, value)
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
@@ -134,14 +134,14 @@ func (t *memTableIter) initPrevEnd(key db.InternalKey) {
 	}
 }
 
-func (t *memTableIter) SeekGE(key *db.InternalKey) {
+func (t *memTableIter) SeekGE(key db.InternalKey) {
 	t.clearPrevCache()
-	t.iter.SeekGE(*key)
+	t.iter.SeekGE(key)
 }
 
-func (t *memTableIter) SeekLT(key *db.InternalKey) {
+func (t *memTableIter) SeekLT(key db.InternalKey) {
 	t.clearPrevCache()
-	t.iter.SeekLT(*key)
+	t.iter.SeekLT(key)
 	if t.iter.Valid() {
 		key := t.iter.Key()
 		t.initPrevStart(key)

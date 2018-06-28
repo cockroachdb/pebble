@@ -9,7 +9,6 @@ import (
 type dbIter struct {
 	cmp    db.Compare
 	iter   db.InternalIterator
-	ikey   db.InternalKey
 	seqNum uint64
 	err    error
 }
@@ -74,9 +73,7 @@ func (i *dbIter) SeekGE(key []byte) {
 	if i.err != nil {
 		return
 	}
-	i.ikey = db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax)
-	i.iter.SeekGE(&i.ikey)
-	i.ikey.UserKey = nil
+	i.iter.SeekGE(db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax))
 	i.findNextEntry()
 }
 
@@ -84,9 +81,7 @@ func (i *dbIter) SeekLT(key []byte) {
 	if i.err != nil {
 		return
 	}
-	i.ikey = db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax)
-	i.iter.SeekLT(&i.ikey)
-	i.ikey.UserKey = nil
+	i.iter.SeekLT(db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax))
 	i.findPrevEntry()
 }
 

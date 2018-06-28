@@ -63,7 +63,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 				var ikey db.InternalKey
 				for i := 0; i < b.N; i++ {
 					ikey.UserKey = keys[rng.Intn(len(keys))]
-					it.SeekGE(&ikey)
+					it.SeekGE(ikey)
 				}
 			})
 	}

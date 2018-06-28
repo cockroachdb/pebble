@@ -101,7 +101,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 			continue
 		}
 		iter := mem.NewIter(opts)
-		iter.SeekGE(&ikey)
+		iter.SeekGE(ikey)
 		value, conclusive, err := internalGet(iter, d.cmp, key)
 		if conclusive {
 			return value, err
@@ -110,7 +110,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 
 	// TODO: update stats, maybe schedule compaction.
 
-	return current.get(&ikey, d.newIter, d.cmp, opts)
+	return current.get(ikey, d.newIter, d.cmp, opts)
 }
 
 // Set implements DB.Set, as documented in the pebble/db package.
@@ -184,13 +184,12 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 	}
 
 	// Apply the batch to the memtable.
-	for iter, ikey := batch.iter(), (db.InternalKey{}); ; seqNum++ {
+	for iter := batch.iter(); ; seqNum++ {
 		kind, ukey, value, ok := iter.next()
 		if !ok {
 			break
 		}
-		ikey = db.MakeInternalKey(ukey, seqNum, kind)
-		d.mem.set(&ikey, value)
+		d.mem.set(db.MakeInternalKey(ukey, seqNum, kind), value)
 	}
 
 	if seqNum != d.versions.lastSequence+1 {
@@ -485,7 +484,6 @@ func (d *DB) replayLogFile(
 
 	var (
 		mem      *memTable
-		ikey     db.InternalKey
 		batchBuf = new(bytes.Buffer)
 		rr       = record.NewReader(file)
 	)
@@ -540,8 +538,7 @@ func (d *DB) replayLogFile(
 			// without having to import the top-level pebble package. That extra
 			// abstraction means that we need to copy to an intermediate buffer here,
 			// to reconstruct the complete internal key to pass to the memtable.
-			ikey = db.MakeInternalKey(ukey, seqNum, kind)
-			mem.set(&ikey, value)
+			mem.set(db.MakeInternalKey(ukey, seqNum, kind), value)
 		}
 		if len(t) != 0 {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)

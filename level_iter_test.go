@@ -83,7 +83,7 @@ func TestLevelIter(t *testing.T) {
 			ikey := fakeIkey(c.key)
 
 			var b bytes.Buffer
-			for iter.SeekGE(&ikey); iter.Valid(); iter.Next() {
+			for iter.SeekGE(ikey); iter.Valid(); iter.Next() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Error(); err != nil {
@@ -96,7 +96,7 @@ func TestLevelIter(t *testing.T) {
 			}
 
 			b.Reset()
-			for iter.SeekLT(&ikey); iter.Valid(); iter.Prev() {
+			for iter.SeekLT(ikey); iter.Valid(); iter.Prev() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Close(); err != nil {
@@ -195,7 +195,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							var ikey db.InternalKey
 							for i := 0; i < b.N; i++ {
 								ikey.UserKey = keys[rng.Intn(len(keys))]
-								l.SeekGE(&ikey)
+								l.SeekGE(ikey)
 							}
 						})
 				}
