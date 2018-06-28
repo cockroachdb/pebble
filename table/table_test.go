@@ -111,10 +111,10 @@ func init() {
 }
 
 func check(f storage.File, fp db.FilterPolicy) error {
-	r := newReader(f, 0, &db.Options{
+	r := NewReader(f, 0, &db.Options{
 		FilterPolicy:    fp,
 		VerifyChecksums: true,
-	}, internalKeyCoder)
+	})
 
 	// Check that each key/value pair in wordCount is also in the table.
 	for k, v := range wordCount {
@@ -231,10 +231,10 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	}
 	defer f0.Close()
 	tmpFileCount++
-	w := newWriter(f0, &db.Options{
+	w := NewWriter(f0, &db.Options{
 		Compression:  compression,
 		FilterPolicy: fp,
-	}, internalKeyCoder)
+	})
 	for _, k := range keys {
 		v := wordCount[k]
 		ikey := db.MakeInternalKey([]byte(k), 0, db.InternalKeyKindSet)
@@ -323,9 +323,9 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r := newReader(f, 0, &db.Options{
+	r := NewReader(f, 0, &db.Options{
 		FilterPolicy: c,
-	}, internalKeyCoder)
+	})
 
 	const n = 10000
 	// key is a buffer that will be re-used for n Get calls, each with a
@@ -465,9 +465,9 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 				continue
 			}
-			w := newWriter(wf, &db.Options{
+			w := NewWriter(wf, &db.Options{
 				BlockSize: blockSize,
-			}, internalKeyCoder)
+			})
 			for _, k := range keys[:nk] {
 				if err := w.Add(db.InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
 					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
@@ -484,7 +484,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 				continue
 			}
-			r := newReader(rf, 0, nil, internalKeyCoder)
+			r := NewReader(rf, 0, nil)
 			i := r.NewIter(nil)
 			for i.First(); i.Valid(); i.Next() {
 				got++

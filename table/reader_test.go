@@ -19,12 +19,12 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	}
 	defer f0.Close()
 
-	w := newWriter(f0, &db.Options{
+	w := NewWriter(f0, &db.Options{
 		BlockRestartInterval: restartInterval,
 		BlockSize:            blockSize,
 		Compression:          db.NoCompression,
 		FilterPolicy:         nil,
-	}, internalKeyCoder)
+	})
 
 	var keys [][]byte
 	var ikey db.InternalKey
@@ -44,9 +44,9 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
-	return newReader(f1, 0, &db.Options{
+	return NewReader(f1, 0, &db.Options{
 		Cache: cache.NewBlockCache(128 << 20),
-	}, internalKeyCoder), keys
+	}), keys
 }
 
 func BenchmarkTableIterSeekGE(b *testing.B) {

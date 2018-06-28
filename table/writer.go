@@ -114,41 +114,9 @@ func (f *filterWriter) finish() ([]byte, error) {
 	return f.data, nil
 }
 
-type coder struct {
-	Size   func(key db.InternalKey) int
-	Encode func(key db.InternalKey, buf []byte)
-	Decode func(buf []byte) db.InternalKey
-}
-
-var rawCoder = &coder{
-	Size: func(key db.InternalKey) int {
-		return len(key.UserKey)
-	},
-	Encode: func(key db.InternalKey, buf []byte) {
-		copy(buf, key.UserKey)
-	},
-	Decode: func(buf []byte) db.InternalKey {
-		return db.InternalKey{UserKey: buf}
-	},
-}
-
-var internalKeyCoder = &coder{
-	Size: func(key db.InternalKey) int {
-		return key.Size()
-	},
-	Encode: func(key db.InternalKey, buf []byte) {
-		i := copy(buf, key.UserKey)
-		binary.LittleEndian.PutUint64(buf[i:], key.Trailer)
-	},
-	Decode: func(buf []byte) db.InternalKey {
-		return db.DecodeInternalKey(buf)
-	},
-}
-
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
-	coder     *coder
 	writer    io.Writer
 	bufWriter *bufio.Writer
 	closer    io.Closer
@@ -223,9 +191,8 @@ func (w *Writer) flushPendingBH(key db.InternalKey) {
 	}
 	n0 := len(w.indexKeys)
 	// TODO(peter): This isn't correct for InternalKeys. And it is fugly.
-	ukey := key.UserKey
-	if w.coder == rawCoder {
-		w.indexKeys = w.appendSep(w.indexKeys, w.block.curKey, ukey)
+	if false {
+		w.indexKeys = w.appendSep(w.indexKeys, w.block.curKey, key.UserKey)
 	} else {
 		w.indexKeys = append(w.indexKeys, w.block.curKey...)
 	}
@@ -347,7 +314,7 @@ func (w *Writer) Close() (err error) {
 	for _, ie := range w.indexEntries {
 		n := encodeBlockHandle(tmp, ie.bh)
 		i1 := i0 + ie.keyLen
-		ikey := w.coder.Decode(w.indexKeys[i0:i1])
+		ikey := db.DecodeInternalKey(w.indexKeys[i0:i1])
 		w.block.add(ikey, tmp[:n])
 		i0 = i1
 	}
@@ -391,9 +358,10 @@ func (w *Writer) EstimatedSize() uint64 {
 	return w.offset + uint64(w.block.estimatedSize()+len(w.indexEntries))
 }
 
-func newWriter(f storage.File, o *db.Options, coder *coder) *Writer {
+// NewWriter returns a new table writer for the file. Closing the writer will
+// close the file.
+func NewWriter(f storage.File, o *db.Options) *Writer {
 	w := &Writer{
-		coder:       coder,
 		closer:      f,
 		blockSize:   o.GetBlockSize(),
 		appendSep:   o.GetComparer().AppendSeparator,
@@ -403,7 +371,6 @@ func newWriter(f storage.File, o *db.Options, coder *coder) *Writer {
 			policy: o.GetFilterPolicy(),
 		},
 		block: blockWriter{
-			coder:           coder,
 			restartInterval: o.GetBlockRestartInterval(),
 		},
 	}
@@ -422,10 +389,4 @@ func newWriter(f storage.File, o *db.Options, coder *coder) *Writer {
 		w.writer = w.bufWriter
 	}
 	return w
-}
-
-// NewWriter returns a new table writer for the file. Closing the writer will
-// close the file.
-func NewWriter(f storage.File, o *db.Options) *Writer {
-	return newWriter(f, o, internalKeyCoder)
 }

@@ -61,7 +61,7 @@ var _ db.InternalIterator = (*Iter)(nil)
 // Init ...
 func (i *Iter) Init(r *Reader) error {
 	i.reader = r
-	i.err = i.index.init(r.compare, r.coder, r.index)
+	i.err = i.index.init(r.compare, r.index)
 	return i.err
 }
 
@@ -85,7 +85,7 @@ func (i *Iter) loadBlock() bool {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.reader.compare, i.reader.coder, block)
+	i.err = i.data.init(i.reader.compare, block)
 	if i.err != nil {
 		return false
 	}
@@ -122,7 +122,7 @@ func (i *Iter) seekBlock(key db.InternalKey, f *filterReader) bool {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.reader.compare, i.reader.coder, block)
+	i.err = i.data.init(i.reader.compare, block)
 	if i.err != nil {
 		return false
 	}
@@ -307,7 +307,6 @@ type Reader struct {
 	index           block
 	cache           *cache.BlockCache
 	compare         db.Compare
-	coder           *coder
 	filter          filterReader
 	verifyChecksums bool
 }
@@ -409,7 +408,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	if err != nil {
 		return err
 	}
-	i, err := newBlockIter(bytes.Compare, rawCoder, b)
+	i, err := newRawBlockIter(bytes.Compare, b)
 	if err != nil {
 		return err
 	}
@@ -432,7 +431,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 			if err != nil {
 				return err
 			}
-			i, err := newBlockIter(bytes.Compare, rawCoder, b)
+			i, err := newRawBlockIter(bytes.Compare, b)
 			if err != nil {
 				return err
 			}
@@ -456,13 +455,14 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	return nil
 }
 
-func newReader(f storage.File, fileNum uint64, o *db.Options, coder *coder) *Reader {
+// NewReader returns a new table reader for the file. Closing the reader will
+// close the file.
+func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 	r := &Reader{
 		file:            f,
 		fileNum:         fileNum,
 		cache:           o.GetCache(),
 		compare:         o.GetComparer().Compare,
-		coder:           coder,
 		verifyChecksums: o.GetVerifyChecksums(),
 	}
 	if f == nil {
@@ -537,10 +537,4 @@ func newReader(f storage.File, fileNum uint64, o *db.Options, coder *coder) *Rea
 	footer = footer[n:]
 	r.index, r.err = r.readBlock(indexBH)
 	return r
-}
-
-// NewReader returns a new table reader for the file. Closing the reader will
-// close the file.
-func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
-	return newReader(f, fileNum, o, internalKeyCoder)
 }
