@@ -30,7 +30,7 @@ func (h *mergingIterHeap) less(i, j int) bool {
 		}
 		return c < 0
 	}
-	return ikey.Trailer() > jkey.Trailer()
+	return ikey.Trailer > jkey.Trailer
 }
 
 func (h *mergingIterHeap) swap(i, j int) {
@@ -217,7 +217,7 @@ func (m *mergingIter) switchToMaxHeap() {
 				// key > iter-key
 				break
 			}
-			if c == 0 && key.Trailer() > i.Key().Trailer() {
+			if c == 0 && key.Trailer > i.Key().Trailer {
 				// key > iter-key
 				break
 			}

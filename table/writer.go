@@ -138,7 +138,7 @@ var internalKeyCoder = &coder{
 	},
 	Encode: func(key *db.InternalKey, buf []byte) {
 		i := copy(buf, key.UserKey)
-		binary.LittleEndian.PutUint64(buf[i:], key.Trailer())
+		binary.LittleEndian.PutUint64(buf[i:], key.Trailer)
 	},
 	Decode: func(buf []byte) db.InternalKey {
 		return db.DecodeInternalKey(buf)

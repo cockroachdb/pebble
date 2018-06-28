@@ -89,14 +89,14 @@ const (
 //   - 7 bytes for a uint56 sequence number, in little-endian format.
 type InternalKey struct {
 	UserKey []byte
-	trailer uint64
+	Trailer uint64
 }
 
 // MakeInternalKey ...
 func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
-		trailer: (seqNum << 8) | uint64(kind),
+		Trailer: (seqNum << 8) | uint64(kind),
 	}
 }
 
@@ -106,12 +106,12 @@ func DecodeInternalKey(encodedKey []byte) InternalKey {
 	if n < 0 {
 		return InternalKey{
 			UserKey: encodedKey,
-			trailer: uint64(InternalKeyKindInvalid),
+			Trailer: uint64(InternalKeyKindInvalid),
 		}
 	}
 	return InternalKey{
 		UserKey: encodedKey[:n:n],
-		trailer: binary.LittleEndian.Uint64(encodedKey[n:]),
+		Trailer: binary.LittleEndian.Uint64(encodedKey[n:]),
 	}
 }
 
@@ -129,10 +129,10 @@ func InternalCompare(userCmp func(a, b []byte) int, a, b InternalKey) int {
 	if x := userCmp(a.UserKey, b.UserKey); x != 0 {
 		return x
 	}
-	if a.trailer < b.trailer {
+	if a.Trailer < b.Trailer {
 		return 1
 	}
-	if a.trailer > b.trailer {
+	if a.Trailer > b.Trailer {
 		return -1
 	}
 	return 0
@@ -149,13 +149,13 @@ func (k *InternalKey) Compare(userCmp func(a, b []byte) int, other []byte) int {
 // Encode ...
 func (k InternalKey) Encode(buf []byte) {
 	i := copy(buf, k.UserKey)
-	binary.LittleEndian.PutUint64(buf[i:], k.trailer)
+	binary.LittleEndian.PutUint64(buf[i:], k.Trailer)
 }
 
 // EncodeTrailer ...
 func (k InternalKey) EncodeTrailer() [8]byte {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], k.trailer)
+	binary.LittleEndian.PutUint64(buf[:], k.Trailer)
 	return buf
 }
 
@@ -166,17 +166,12 @@ func (k InternalKey) Size() int {
 
 // SeqNum ...
 func (k InternalKey) SeqNum() uint64 {
-	return k.trailer >> 8
+	return k.Trailer >> 8
 }
 
 // Kind ...
 func (k InternalKey) Kind() InternalKeyKind {
-	return InternalKeyKind(k.trailer & 0xff)
-}
-
-// Trailer ...
-func (k InternalKey) Trailer() uint64 {
-	return k.trailer
+	return InternalKeyKind(k.Trailer & 0xff)
 }
 
 // Valid returns true if the key has a valid kind.
@@ -188,7 +183,7 @@ func (k InternalKey) Valid() bool {
 func (k InternalKey) Clone() InternalKey {
 	return InternalKey{
 		UserKey: append([]byte(nil), k.UserKey...),
-		trailer: k.trailer,
+		Trailer: k.Trailer,
 	}
 }
 
