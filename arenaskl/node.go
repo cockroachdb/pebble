@@ -20,6 +20,8 @@ package arenaskl
 import (
 	"math"
 	"sync/atomic"
+
+	"github.com/petermattis/pebble/db"
 )
 
 type links struct {
@@ -48,7 +50,9 @@ type node struct {
 	tower [maxHeight]links
 }
 
-func newNode(arena *Arena, height uint32, key Key, value []byte) (nd *node, err error) {
+func newNode(
+	arena *Arena, height uint32, key db.InternalKey, value []byte,
+) (nd *node, err error) {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
@@ -66,7 +70,7 @@ func newNode(arena *Arena, height uint32, key Key, value []byte) (nd *node, err 
 		return
 	}
 
-	key.Encode(nd.getKey(arena))
+	key.Encode(nd.getKeyBytes(arena))
 	copy(nd.getValue(arena), value)
 	return
 }
@@ -89,7 +93,11 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	return
 }
 
-func (n *node) getKey(arena *Arena) []byte {
+func (n *node) getKey(arena *Arena) db.InternalKey {
+	return db.DecodeInternalKey(arena.GetBytes(n.keyOffset, n.keySize))
+}
+
+func (n *node) getKeyBytes(arena *Arena) []byte {
 	return arena.GetBytes(n.keyOffset, n.keySize)
 }
 

@@ -17,6 +17,8 @@
 
 package arenaskl
 
+import "github.com/petermattis/pebble/db"
+
 type splice struct {
 	prev *node
 	next *node
@@ -45,14 +47,14 @@ func (it *Iterator) Close() error {
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
-func (it *Iterator) SeekGE(key Key) (found bool) {
+func (it *Iterator) SeekGE(key db.InternalKey) (found bool) {
 	_, it.nd, found = it.seekForBaseSplice(key)
 	return found
 }
 
 // SeekLT moves the iterator to the last entry whose key is less than the given
 // key.
-func (it *Iterator) SeekLT(key Key) {
+func (it *Iterator) SeekLT(key db.InternalKey) {
 	it.nd, _, _ = it.seekForBaseSplice(key)
 }
 
@@ -85,7 +87,7 @@ func (it *Iterator) Prev() bool {
 }
 
 // Key returns the key at the current position.
-func (it *Iterator) Key() []byte {
+func (it *Iterator) Key() db.InternalKey {
 	return it.nd.getKey(it.list.arena)
 }
 
@@ -109,7 +111,7 @@ func (it *Iterator) Valid() bool {
 	return it.nd != it.list.head && it.nd != it.list.tail
 }
 
-func (it *Iterator) seekForBaseSplice(key Key) (prev, next *node, found bool) {
+func (it *Iterator) seekForBaseSplice(key db.InternalKey) (prev, next *node, found bool) {
 	level := int(it.list.Height() - 1)
 
 	prev = it.list.head

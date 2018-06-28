@@ -38,11 +38,11 @@ func newMemTable(o *db.Options) *memTable {
 // not contain the key.
 func (m *memTable) get(key *db.InternalKey) (value []byte, err error) {
 	it := m.skl.NewIter()
-	it.SeekGE(key)
+	it.SeekGE(*key)
 	if !it.Valid() {
 		return nil, db.ErrNotFound
 	}
-	ikey := db.DecodeInternalKey(it.Key())
+	ikey := it.Key()
 	if m.cmp(key.UserKey, ikey.UserKey) != 0 {
 		return nil, db.ErrNotFound
 	}
@@ -55,7 +55,7 @@ func (m *memTable) get(key *db.InternalKey) (value []byte, err error) {
 // Set sets the value for the given key. It overwrites any previous value for
 // that key; a DB is not a multi-map.
 func (m *memTable) set(key *db.InternalKey, value []byte) error {
-	return m.skl.Add(key, value)
+	return m.skl.Add(*key, value)
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
@@ -112,7 +112,7 @@ func (t *memTableIter) initPrevStart(key db.InternalKey) {
 		if !iter.Prev() {
 			break
 		}
-		prevKey := db.DecodeInternalKey(iter.Key())
+		prevKey := iter.Key()
 		if t.cmp(prevKey.UserKey, key.UserKey) != 0 {
 			break
 		}
@@ -127,7 +127,7 @@ func (t *memTableIter) initPrevEnd(key db.InternalKey) {
 		if !iter.Next() {
 			break
 		}
-		nextKey := db.DecodeInternalKey(iter.Key())
+		nextKey := iter.Key()
 		if t.cmp(nextKey.UserKey, key.UserKey) != 0 {
 			break
 		}
@@ -137,14 +137,14 @@ func (t *memTableIter) initPrevEnd(key db.InternalKey) {
 
 func (t *memTableIter) SeekGE(key *db.InternalKey) {
 	t.clearPrevCache()
-	t.iter.SeekGE(key)
+	t.iter.SeekGE(*key)
 }
 
 func (t *memTableIter) SeekLT(key *db.InternalKey) {
 	t.clearPrevCache()
-	t.iter.SeekLT(key)
+	t.iter.SeekLT(*key)
 	if t.iter.Valid() {
-		key := db.DecodeInternalKey(t.iter.Key())
+		key := t.iter.Key()
 		t.initPrevStart(key)
 		t.initPrevEnd(key)
 		t.iter = t.prevStart
@@ -160,7 +160,7 @@ func (t *memTableIter) Last() {
 	t.clearPrevCache()
 	t.iter.Last()
 	if t.iter.Valid() {
-		key := db.DecodeInternalKey(t.iter.Key())
+		key := t.iter.Key()
 		t.initPrevStart(key)
 		t.prevEnd = t.iter
 		t.iter = t.prevStart
@@ -181,7 +181,7 @@ func (t *memTableIter) NextUserKey() bool {
 		t.iter.First()
 		return t.iter.Valid()
 	}
-	key := db.DecodeInternalKey(t.iter.Key())
+	key := t.iter.Key()
 	for t.iter.Next() {
 		if t.cmp(key.UserKey, t.Key().UserKey) < 0 {
 			return true
@@ -218,7 +218,7 @@ func (t *memTableIter) Prev() bool {
 		return t.PrevUserKey()
 	}
 	if !t.reverse {
-		key := db.DecodeInternalKey(t.iter.Key())
+		key := t.iter.Key()
 		t.initPrevStart(key)
 		t.initPrevEnd(key)
 	}
@@ -235,7 +235,7 @@ func (t *memTableIter) Prev() bool {
 		return false
 	}
 	t.prevEnd = t.iter
-	t.initPrevStart(db.DecodeInternalKey(t.iter.Key()))
+	t.initPrevStart(t.iter.Key())
 	t.iter = t.prevStart
 	return true
 }
@@ -249,8 +249,7 @@ func (t *memTableIter) PrevUserKey() bool {
 		return t.iter.Valid()
 	}
 	if !t.reverse {
-		key := db.DecodeInternalKey(t.iter.Key())
-		t.initPrevStart(key)
+		t.initPrevStart(t.iter.Key())
 	}
 	t.iter = t.prevStart
 	if !t.iter.Prev() {
@@ -258,14 +257,13 @@ func (t *memTableIter) PrevUserKey() bool {
 		return false
 	}
 	t.prevEnd = t.iter
-	t.initPrevStart(db.DecodeInternalKey(t.iter.Key()))
+	t.initPrevStart(t.iter.Key())
 	t.iter = t.prevStart
 	return true
 }
 
 func (t *memTableIter) Key() *db.InternalKey {
-	// TODO(peter): Perform the decoding during iteration?
-	t.ikey = db.DecodeInternalKey(t.iter.Key())
+	t.ikey = t.iter.Key()
 	return &t.ikey
 }
 

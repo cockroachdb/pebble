@@ -104,7 +104,10 @@ func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) Intern
 func DecodeInternalKey(encodedKey []byte) InternalKey {
 	n := len(encodedKey) - 8
 	if n < 0 {
-		return MakeInternalKey(encodedKey, 0, InternalKeyKindInvalid)
+		return InternalKey{
+			UserKey: encodedKey,
+			trailer: uint64(InternalKeyKindInvalid),
+		}
 	}
 	return InternalKey{
 		UserKey: encodedKey[:n:n],
