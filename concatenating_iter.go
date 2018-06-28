@@ -84,9 +84,9 @@ func (c *concatenatingIter) PrevUserKey() bool {
 	panic("pebble.concatenatingIter: PrevUserKey unimplemented")
 }
 
-func (c *concatenatingIter) Key() *db.InternalKey {
+func (c *concatenatingIter) Key() db.InternalKey {
 	if len(c.iters) == 0 || c.err != nil {
-		return nil
+		return db.InvalidInternalKey
 	}
 	return c.iters[0].Key()
 }

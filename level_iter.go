@@ -146,9 +146,9 @@ func (l *levelIter) PrevUserKey() bool {
 	return l.Prev()
 }
 
-func (l *levelIter) Key() *db.InternalKey {
+func (l *levelIter) Key() db.InternalKey {
 	if l.iter == nil {
-		return nil
+		return db.InvalidInternalKey
 	}
 	return l.iter.Key()
 }

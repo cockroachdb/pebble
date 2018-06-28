@@ -356,7 +356,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 		// TODO(peter): Avoid the memory allocation
 		largest = ikey.Clone()
-		if err := tw.Add(ikey, iter.Value()); err != nil {
+		if err := tw.Add(&ikey, iter.Value()); err != nil {
 			return nil, pendingOutputs, err
 		}
 	}

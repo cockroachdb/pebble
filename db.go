@@ -630,7 +630,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	iter.Next()
 	meta.smallest = iter.Key().Clone()
 	for {
-		meta.largest = *iter.Key()
+		meta.largest = iter.Key()
 		if err1 := tw.Add(&meta.largest, iter.Value()); err1 != nil {
 			return fileMetadata{}, err1
 		}

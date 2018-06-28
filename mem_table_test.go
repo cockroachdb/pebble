@@ -37,7 +37,8 @@ func ikey(s string) *db.InternalKey {
 func compact(m *memTable) (*memTable, error) {
 	n, x := newMemTable(nil), m.NewIter(nil)
 	for x.First(); x.Valid(); x.Next() {
-		if err := n.set(x.Key(), x.Value()); err != nil {
+		key := x.Key()
+		if err := n.set(&key, x.Value()); err != nil {
 			return nil, err
 		}
 	}

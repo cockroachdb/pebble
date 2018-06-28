@@ -29,7 +29,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	var keys [][]byte
 	var ikey db.InternalKey
 	for i := 0; w.EstimatedSize() < 4<<20; i++ {
-		key := []byte(fmt.Sprintf("%05d", i))
+		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
 		ikey.UserKey = key
 		w.Add(&ikey, nil)

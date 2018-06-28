@@ -299,8 +299,8 @@ func (i *blockIter) PrevUserKey() bool {
 }
 
 // Key implements InternalIterator.Key, as documented in the pebble/db package.
-func (i *blockIter) Key() *db.InternalKey {
-	return &i.ikey
+func (i *blockIter) Key() db.InternalKey {
+	return i.ikey
 }
 
 // Value implements InternalIterator.Value, as documented in the pebble/db

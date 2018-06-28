@@ -221,7 +221,7 @@ func (i *Iter) PrevUserKey() bool {
 }
 
 // Key implements InternalIterator.Key, as documented in the pebble/db package.
-func (i *Iter) Key() *db.InternalKey {
+func (i *Iter) Key() db.InternalKey {
 	return i.data.Key()
 }
 
@@ -349,7 +349,7 @@ func (r *Reader) Get(key *db.InternalKey, o *db.ReadOptions) (value []byte, err 
 		i.seekBlock(key, f)
 	}
 
-	if !i.Valid() || db.InternalCompare(r.compare, *key, *i.Key()) != 0 {
+	if !i.Valid() || db.InternalCompare(r.compare, *key, i.Key()) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = db.ErrNotFound

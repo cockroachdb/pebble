@@ -90,7 +90,6 @@ type memTableIter struct {
 	iter      arenaskl.Iterator
 	prevStart arenaskl.Iterator
 	prevEnd   arenaskl.Iterator
-	ikey      db.InternalKey
 }
 
 // memTableIter implements the db.InternalIterator interface.
@@ -262,9 +261,8 @@ func (t *memTableIter) PrevUserKey() bool {
 	return true
 }
 
-func (t *memTableIter) Key() *db.InternalKey {
-	t.ikey = t.iter.Key()
-	return &t.ikey
+func (t *memTableIter) Key() db.InternalKey {
+	return t.iter.Key()
 }
 
 func (t *memTableIter) Value() []byte {

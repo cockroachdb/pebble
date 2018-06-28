@@ -40,8 +40,8 @@ func (c *errorIter) PrevUserKey() bool {
 	return false
 }
 
-func (c *errorIter) Key() *db.InternalKey {
-	return nil
+func (c *errorIter) Key() db.InternalKey {
+	return db.InvalidInternalKey
 }
 
 func (c *errorIter) Value() []byte {

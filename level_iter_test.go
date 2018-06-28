@@ -167,9 +167,9 @@ func buildLevelIterTables(
 		iter := readers[i].NewIter(nil)
 		iter.First()
 		meta[i].fileNum = uint64(i)
-		meta[i].smallest = *iter.Key()
+		meta[i].smallest = iter.Key()
 		iter.Last()
-		meta[i].largest = *iter.Key()
+		meta[i].largest = iter.Key()
 	}
 	return readers, meta, keys
 }

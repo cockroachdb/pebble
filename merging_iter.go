@@ -9,7 +9,7 @@ import (
 
 type mergingIterItem struct {
 	iter db.InternalIterator
-	key  *db.InternalKey
+	key  db.InternalKey
 }
 
 type mergingIterHeap struct {
@@ -172,7 +172,7 @@ func (m *mergingIter) switchToMinHeap() {
 			i.Next()
 		}
 		for ; i.Valid(); i.Next() {
-			if db.InternalCompare(m.heap.cmp, *key, *i.Key()) < 0 {
+			if db.InternalCompare(m.heap.cmp, key, i.Key()) < 0 {
 				// key < iter-key
 				break
 			}
@@ -469,9 +469,9 @@ func (m *mergingIter) PrevUserKey() bool {
 	return m.heap.len() > 0
 }
 
-func (m *mergingIter) Key() *db.InternalKey {
+func (m *mergingIter) Key() db.InternalKey {
 	if m.heap.len() == 0 || m.err != nil {
-		return nil
+		return db.InvalidInternalKey
 	}
 	return m.heap.items[0].key
 }

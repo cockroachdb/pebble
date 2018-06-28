@@ -419,7 +419,6 @@ type batchIter struct {
 	iter      batchskl.Iterator
 	prevStart batchskl.Iterator
 	prevEnd   batchskl.Iterator
-	ikey      db.InternalKey
 	err       error
 }
 
@@ -593,9 +592,8 @@ func (i *batchIter) PrevUserKey() bool {
 	return true
 }
 
-func (i *batchIter) Key() *db.InternalKey {
-	i.ikey = i.iter.Key()
-	return &i.ikey
+func (i *batchIter) Key() db.InternalKey {
+	return i.iter.Key()
 }
 
 func (i *batchIter) Value() []byte {
