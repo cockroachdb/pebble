@@ -329,6 +329,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(tmp, bh)
+		// TODO(peter): the metaindex block should be written with rawCoder.
 		w.block.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, tmp[:n])
 	}
 
