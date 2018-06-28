@@ -139,14 +139,6 @@ func InternalCompare(userCmp func(a, b []byte) int, a, b InternalKey) int {
 	return 0
 }
 
-// Compare ...
-func (k *InternalKey) Compare(userCmp func(a, b []byte) int, other []byte) int {
-	if k == nil {
-		return -1
-	}
-	return InternalCompare(userCmp, *k, DecodeInternalKey(other))
-}
-
 // Encode ...
 func (k InternalKey) Encode(buf []byte) {
 	i := copy(buf, k.UserKey)

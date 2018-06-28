@@ -109,12 +109,6 @@ func TestInternalKeyComparer(t *testing.T) {
 				t.Errorf("i=%d, j=%d, keys[i]=%q, keys[j]=%q: got %d, want %d",
 					i, j, keys[i], keys[j], got, want)
 			}
-			if got := ik.Compare(c, []byte(keys[j])); got != want {
-				t.Errorf("i=%d: inconsistent compare: got %d, want %d", i, got, want)
-			}
-			if got := -jk.Compare(c, []byte(keys[i])); got != want {
-				t.Errorf("i=%d: inconsistent compare: got %d, want %d", i, got, want)
-			}
 		}
 	}
 }
