@@ -18,6 +18,7 @@
 package arenaskl
 
 import (
+	"encoding/binary"
 	"math"
 	"sync/atomic"
 
@@ -94,7 +95,21 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 }
 
 func (n *node) getKey(arena *Arena) db.InternalKey {
-	return db.DecodeInternalKey(arena.GetBytes(n.keyOffset, n.keySize))
+	b := arena.GetBytes(n.keyOffset, n.keySize)
+	// This is a manual inline of db.DecodeInternalKey, because the Go compiler
+	// seems to refuse to automatically inline it currently.
+	l := len(b) - 8
+	var trailer uint64
+	if l >= 0 {
+		trailer = binary.LittleEndian.Uint64(b[l:])
+		b = b[:l:l]
+	} else {
+		trailer = uint64(db.InternalKeyKindInvalid)
+	}
+	return db.InternalKey{
+		UserKey: b,
+		Trailer: trailer,
+	}
 }
 
 func (n *node) getKeyBytes(arena *Arena) []byte {
