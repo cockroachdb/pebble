@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 )
 
 type testCommitEnv struct {
@@ -40,8 +39,8 @@ func (e *testCommitEnv) sync() error {
 	return nil
 }
 
-func (e *testCommitEnv) write(group batchList) error {
-	for b := group.head; b != nil; b = b.commit.next {
+func (e *testCommitEnv) write(group commitList) error {
+	for b := group.head; b != nil; b = b.next {
 		e.writeBuf = append(e.writeBuf, b.seqNum())
 	}
 	return nil
@@ -97,17 +96,17 @@ func BenchmarkCommitPipeline(b *testing.B) {
 
 			nullCommitEnv := commitEnv{
 				apply: func(b *Batch) error {
-					time.Sleep(10 * time.Microsecond)
+					// time.Sleep(10 * time.Microsecond)
 					return nil
 				},
 				publish: func(seqNum uint64) {
 				},
 				sync: func() error {
-					time.Sleep(time.Millisecond)
+					// time.Sleep(time.Millisecond)
 					return nil
 				},
-				write: func(group batchList) error {
-					time.Sleep(50 * time.Microsecond)
+				write: func(group commitList) error {
+					// time.Sleep(50 * time.Microsecond)
 					return nil
 				},
 			}
