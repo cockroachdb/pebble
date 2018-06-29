@@ -58,6 +58,23 @@ func (m *memTable) set(key db.InternalKey, value []byte) error {
 	return m.skl.Add(key, value)
 }
 
+func (m *memTable) apply(batch *Batch, seqNum uint64) error {
+	startSeqNum := seqNum
+	for iter := batch.iter(); ; seqNum++ {
+		kind, ukey, value, ok := iter.next()
+		if !ok {
+			break
+		}
+		if err := m.skl.Add(db.MakeInternalKey(ukey, seqNum, kind), value); err != nil {
+			return err
+		}
+	}
+	if seqNum != startSeqNum+uint64(batch.count()) {
+		panic("pebble: inconsistent batch count")
+	}
+	return nil
+}
+
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.

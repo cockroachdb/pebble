@@ -283,16 +283,8 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 	}
 
 	// Apply the batch to the memtable.
-	for iter := batch.iter(); ; seqNum++ {
-		kind, ukey, value, ok := iter.next()
-		if !ok {
-			break
-		}
-		d.mem.set(db.MakeInternalKey(ukey, seqNum, kind), value)
-	}
-
-	if seqNum != d.versions.lastSequence+1 {
-		panic("pebble: inconsistent batch count")
+	if err := d.mem.apply(batch, seqNum); err != nil {
+		panic(err)
 	}
 	return nil
 }
