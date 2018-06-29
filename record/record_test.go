@@ -49,12 +49,11 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 		if !ok {
 			break
 		}
-		ww, err := w.Next()
-		if err != nil {
-			t.Fatalf("writer.Next: %v", err)
-		}
-		if _, err := ww.Write([]byte(s)); err != nil {
+		if _, err := w.Write([]byte(s)); err != nil {
 			t.Fatalf("Write: %v", err)
+		}
+		if err := w.Finish(); err != nil {
+			t.Fatalf("Finish: %v", err)
 		}
 	}
 	if err := w.Close(); err != nil {
@@ -160,10 +159,10 @@ func TestFlush(t *testing.T) {
 	w := NewWriter(buf)
 	// Write a couple of records. Everything should still be held
 	// in the record.Writer buffer, so that buf.Len should be 0.
-	w0, _ := w.Next()
-	w0.Write([]byte("0"))
-	w1, _ := w.Next()
-	w1.Write([]byte("11"))
+	_, _ = w.Write([]byte("0"))
+	_ = w.Finish()
+	_, _ = w.Write([]byte("11"))
+	_ = w.Finish()
 	if got, want := buf.Len(), 0; got != want {
 		t.Fatalf("buffer length #0: got %d want %d", got, want)
 	}
@@ -177,8 +176,8 @@ func TestFlush(t *testing.T) {
 	}
 	// Do another write, one that isn't large enough to complete the block.
 	// The write should not have flowed through to buf.
-	w2, _ := w.Next()
-	w2.Write(bytes.Repeat([]byte("2"), 10000))
+	_, _ = w.Write(bytes.Repeat([]byte("2"), 10000))
+	_ = w.Finish()
 	if got, want := buf.Len(), 17; got != want {
 		t.Fatalf("buffer length #2: got %d want %d", got, want)
 	}
@@ -193,8 +192,8 @@ func TestFlush(t *testing.T) {
 	// Do a bigger write, one that completes the current block.
 	// We should now have 32768 bytes (a complete block), without
 	// an explicit flush.
-	w3, _ := w.Next()
-	w3.Write(bytes.Repeat([]byte("3"), 40000))
+	_, _ = w.Write(bytes.Repeat([]byte("3"), 40000))
+	_ = w.Finish()
 	if got, want := buf.Len(), 32768; got != want {
 		t.Fatalf("buffer length #4: got %d want %d", got, want)
 	}
@@ -232,8 +231,8 @@ func TestNonExhaustiveRead(t *testing.T) {
 	for i := 0; i < n; i++ {
 		length := len(p) + rnd.Intn(3*blockSize)
 		s := string(uint8(i)) + "123456789abcdefgh"
-		ww, _ := w.Next()
-		ww.Write([]byte(big(s, length)))
+		_, _ = w.Write([]byte(big(s, length)))
+		_ = w.Finish()
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -257,18 +256,15 @@ func TestStaleReader(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	w := NewWriter(buf)
-	w0, err := w.Next()
-	if err != nil {
-		t.Fatalf("writer.Next: %v", err)
+	if _, err := w.Write([]byte("0")); err != nil {
+		t.Fatal(err)
 	}
-	w0.Write([]byte("0"))
-	w1, err := w.Next()
-	if err != nil {
-		t.Fatalf("writer.Next: %v", err)
+	_ = w.Finish()
+	if _, err := w.Write([]byte("11")); err != nil {
+		t.Fatal(err)
 	}
-	w1.Write([]byte("11"))
 	if err := w.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
+		t.Fatalf("Close: %v\n", err)
 	}
 
 	r := NewReader(buf)
@@ -292,32 +288,6 @@ func TestStaleReader(t *testing.T) {
 	}
 }
 
-func TestStaleWriter(t *testing.T) {
-	buf := new(bytes.Buffer)
-
-	w := NewWriter(buf)
-	w0, err := w.Next()
-	if err != nil {
-		t.Fatalf("writer.Next: %v", err)
-	}
-	w1, err := w.Next()
-	if err != nil {
-		t.Fatalf("writer.Next: %v", err)
-	}
-	if _, err := w0.Write([]byte("0")); err == nil || !strings.Contains(err.Error(), "stale") {
-		t.Fatalf("stale write #0: unexpected error: %v", err)
-	}
-	if _, err := w1.Write([]byte("11")); err != nil {
-		t.Fatalf("fresh write #1: got %v want nil error", err)
-	}
-	if err := w.Flush(); err != nil {
-		t.Fatalf("flush: %v", err)
-	}
-	if _, err := w1.Write([]byte("0")); err == nil || !strings.Contains(err.Error(), "stale") {
-		t.Fatalf("stale write #1: unexpected error: %v", err)
-	}
-}
-
 type testRecords struct {
 	records [][]byte // The raw value of each record.
 	offsets []int64  // The offset of each record within buf, derived from writer.LastRecordOffset.
@@ -338,25 +308,24 @@ func makeTestRecords(recordLengths ...int) (*testRecords, error) {
 	buf := new(bytes.Buffer)
 	w := NewWriter(buf)
 	for i, rec := range ret.records {
-		wRec, err := w.Next()
-		if err != nil {
-			return nil, err
-		}
-
 		// Alternate between one big write and many small writes.
 		cSize := 8
 		if i&1 == 0 {
 			cSize = len(rec)
 		}
 		for ; len(rec) > cSize; rec = rec[cSize:] {
-			if _, err = wRec.Write(rec[:cSize]); err != nil {
+			if _, err := w.Write(rec[:cSize]); err != nil {
 				return nil, err
 			}
 		}
-		if _, err = wRec.Write(rec); err != nil {
+		if _, err := w.Write(rec); err != nil {
+			return nil, err
+		}
+		if err := w.Finish(); err != nil {
 			return nil, err
 		}
 
+		var err error
 		ret.offsets[i], err = w.LastRecordOffset()
 		if err != nil {
 			return nil, err
@@ -786,12 +755,10 @@ func TestNoLastRecordOffset(t *testing.T) {
 		t.Fatalf("LastRecordOffset: got: %v, want ErrNoLastRecord", err)
 	}
 
-	writer, err := w.Next()
-	if err != nil {
+	if _, err := w.Write([]byte("testrecord")); err != nil {
 		t.Fatal(err)
 	}
-
-	if _, err := writer.Write([]byte("testrecord")); err != nil {
+	if err := w.Finish(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -799,5 +766,21 @@ func TestNoLastRecordOffset(t *testing.T) {
 		t.Fatalf("LastRecordOffset: %v", err)
 	} else if off != 0 {
 		t.Fatalf("LastRecordOffset: got %d, want 0", off)
+	}
+}
+
+func BenchmarkRecordWrite(b *testing.B) {
+	w := NewWriter(ioutil.Discard)
+	buf := make([]byte, 64)
+
+	b.SetBytes(int64(len(buf)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := w.Write(buf); err != nil {
+			b.Fatal(err)
+		}
+		if err := w.Finish(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

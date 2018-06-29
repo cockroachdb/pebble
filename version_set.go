@@ -163,17 +163,13 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 		}
 	}
 
-	w, err := vs.manifest.Next()
-	if err != nil {
-		return err
-	}
-	if err := ve.encode(w); err != nil {
+	if err := ve.encode(vs.manifest); err != nil {
 		return err
 	}
 	if err := vs.manifest.Flush(); err != nil {
 		return err
 	}
-	if err := vs.manifestFile.Sync(); err != nil {
+	if err := vs.manifest.Sync(); err != nil {
 		return err
 	}
 	if err := setCurrentFile(dirname, vs.opts.GetStorage(), vs.manifestFileNumber); err != nil {
@@ -200,6 +196,7 @@ func (vs *versionSet) createManifest(dirname string) (err error) {
 	)
 	defer func() {
 		if manifest != nil {
+			manifest.Sync()
 			manifest.Close()
 		}
 		if manifestFile != nil {
@@ -228,13 +225,8 @@ func (vs *versionSet) createManifest(dirname string) (err error) {
 		}
 	}
 
-	w, err1 := manifest.Next()
-	if err1 != nil {
-		return err1
-	}
-	err1 = snapshot.encode(w)
-	if err1 != nil {
-		return err1
+	if err := snapshot.encode(manifest); err != nil {
+		return err
 	}
 
 	vs.manifest, manifest = manifest, nil

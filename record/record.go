@@ -114,6 +114,10 @@ type flusher interface {
 	Flush() error
 }
 
+type syncer interface {
+	Sync() error
+}
+
 // Reader reads records from an underlying io.Reader.
 type Reader struct {
 	// r is the underlying reader.
@@ -321,10 +325,10 @@ func (x singleReader) Read(p []byte) (int, error) {
 type Writer struct {
 	// w is the underlying writer.
 	w io.Writer
-	// seq is the sequence number of the current record.
-	seq int
 	// f is w as a flusher.
 	f flusher
+	// s is w as a syncer.
+	s syncer
 	// buf[i:j] is the bytes that will become the current chunk.
 	// The low bound, i, includes the chunk header.
 	i, j int
@@ -354,6 +358,7 @@ type Writer struct {
 // NewWriter returns a new Writer.
 func NewWriter(w io.Writer) *Writer {
 	f, _ := w.(flusher)
+	s, _ := w.(syncer)
 
 	var o int64
 	if s, ok := w.(io.Seeker); ok {
@@ -365,6 +370,7 @@ func NewWriter(w io.Writer) *Writer {
 	return &Writer{
 		w:                w,
 		f:                f,
+		s:                s,
 		baseOffset:       o,
 		lastRecordOffset: -1,
 	}
@@ -418,7 +424,6 @@ func (w *Writer) writePending() {
 
 // Close finishes the current record and closes the writer.
 func (w *Writer) Close() error {
-	w.seq++
 	w.writePending()
 	if w.err != nil {
 		return w.err
@@ -430,7 +435,6 @@ func (w *Writer) Close() error {
 // Flush finishes the current record, writes to the underlying writer, and
 // flushes it if that writer implements interface{ Flush() error }.
 func (w *Writer) Flush() error {
-	w.seq++
 	w.writePending()
 	if w.err != nil {
 		return w.err
@@ -442,33 +446,71 @@ func (w *Writer) Flush() error {
 	return nil
 }
 
-// Next returns a writer for the next record. The writer returned becomes stale
-// after the next Close, Flush or Next call, and should no longer be used.
-func (w *Writer) Next() (io.Writer, error) {
-	w.seq++
-	if w.err != nil {
-		return nil, w.err
+// Sync finishes the current record, writes to the underlying writer, and
+// flushes and syncs it if the writer implements interface { Sync() error }.
+func (w *Writer) Sync() error {
+	if err := w.Flush(); err != nil {
+		return err
 	}
+	if w.s != nil {
+		w.err = w.s.Sync()
+		return w.err
+	}
+	return nil
+}
+
+// Write writes the given data to the current record, starting a new record if
+// one isn't currently active.
+func (w *Writer) Write(p []byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
+
+	if !w.pending {
+		w.i = w.j
+		w.j = w.j + headerSize
+		// Check if there is room in the block for the header.
+		if w.j > blockSize {
+			// Fill in the rest of the block with zeroes.
+			for k := w.i; k < blockSize; k++ {
+				w.buf[k] = 0
+			}
+			w.writeBlock()
+			if w.err != nil {
+				return 0, w.err
+			}
+		}
+		w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.i)
+		w.first = true
+		w.pending = true
+	}
+
+	n0 := len(p)
+	for len(p) > 0 {
+		// Write a block, if it is full.
+		if w.j == blockSize {
+			w.fillHeader(false)
+			w.writeBlock()
+			if w.err != nil {
+				return 0, w.err
+			}
+			w.first = false
+		}
+		// Copy bytes into the buffer.
+		n := copy(w.buf[w.j:], p)
+		w.j += n
+		p = p[n:]
+	}
+	return n0, nil
+}
+
+// Finish finishes the current record and writes to the underlying writer.
+func (w *Writer) Finish() error {
 	if w.pending {
 		w.fillHeader(true)
+		w.pending = false
 	}
-	w.i = w.j
-	w.j = w.j + headerSize
-	// Check if there is room in the block for the header.
-	if w.j > blockSize {
-		// Fill in the rest of the block with zeroes.
-		for k := w.i; k < blockSize; k++ {
-			w.buf[k] = 0
-		}
-		w.writeBlock()
-		if w.err != nil {
-			return nil, w.err
-		}
-	}
-	w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.i)
-	w.first = true
-	w.pending = true
-	return singleWriter{w, w.seq}, nil
+	return w.err
 }
 
 // LastRecordOffset returns the offset in the underlying io.Writer of the last
@@ -491,36 +533,4 @@ func (w *Writer) LastRecordOffset() (int64, error) {
 		return 0, ErrNoLastRecord
 	}
 	return w.lastRecordOffset, nil
-}
-
-type singleWriter struct {
-	w   *Writer
-	seq int
-}
-
-func (x singleWriter) Write(p []byte) (int, error) {
-	w := x.w
-	if w.seq != x.seq {
-		return 0, errors.New("pebble/record: stale writer")
-	}
-	if w.err != nil {
-		return 0, w.err
-	}
-	n0 := len(p)
-	for len(p) > 0 {
-		// Write a block, if it is full.
-		if w.j == blockSize {
-			w.fillHeader(false)
-			w.writeBlock()
-			if w.err != nil {
-				return 0, w.err
-			}
-			w.first = false
-		}
-		// Copy bytes into the buffer.
-		n := copy(w.buf[w.j:], p)
-		w.j += n
-		p = p[n:]
-	}
-	return n0, nil
 }
