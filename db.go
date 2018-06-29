@@ -155,6 +155,24 @@ func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
 		return errors.New("pebble: invalid batch")
 	}
 
+	// TODO(peter):
+	// - group the batch with other batches being written concurrently
+	// - when the group is ready, the group leader assigns each batch its
+	//   sequence number and writes the group to the log. there is only a single
+	//   thread writing to the WAL at any time.
+	// - once the group has been written to the WAL, the leader signals all of
+	//   the group members which concurrently add their batches to the
+	//   memtable. it also signals that another group can be writing to the WAL.
+	// - concurrent with the memtable insertion, any batch that required syncing
+	//   will have been added to a sync list. after the memtable insertion, the
+	//   goroutine which applied the batch waits for the batch to be
+	//   flushed/synced.
+	// - a lastPublishedSequence number is used to ratchet up the visibility of
+	//   additions to the memtable. since the memtable insertions happen
+	//   concurrently, a batch for a later sequence number can finish before an
+	//   earlier sequence number. those later writes cannot become visible until
+	//   the earlier writes complete.
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -523,30 +541,14 @@ func (d *DB) replayLogFile(
 			if !ok {
 				return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 			}
-			// Convert seqNum, kind and key into an internalKey, and add that ikey/value
-			// pair to mem.
-			//
-			// TODO: instead of copying to an intermediate buffer (ikey), is it worth
-			// adding a SetTwoPartKey(db.TwoPartKey{key0, key1}, value, opts) method to
-			// MemTable? What effect does that have on the db.Comparer interface?
-			//
-			// The C++ LevelDB code does not need an intermediate copy because its
-			// memtable implementation is a private implementation detail, and copies
-			// each internal key component from the Batch format straight to the
-			// skiplist buffer.
-			//
-			// Go's LevelDB considers the memtable functionality to be useful in its
-			// own right, and so MemTable is a separate package that is usable
-			// without having to import the top-level pebble package. That extra
-			// abstraction means that we need to copy to an intermediate buffer here,
-			// to reconstruct the complete internal key to pass to the memtable.
 			mem.set(db.MakeInternalKey(ukey, seqNum, kind), value)
 		}
 		if len(t) != 0 {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
 
-		// TODO: if mem is large enough, write it to a level-0 table and set mem = nil.
+		// TODO(peter): if mem is large enough, write it to a level-0 table and set
+		// mem = nil.
 
 		batchBuf.Reset()
 	}
@@ -651,7 +653,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	}
 	tw = nil
 
-	// TODO: currently, closing a table.Writer closes its underlying file.
+	// TODO(peter): currently, closing a table.Writer closes its underlying file.
 	// We have to re-open the file to Sync or Stat it, which seems stupid.
 	file, err = fs.Open(filename)
 	if err != nil {
@@ -672,7 +674,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 		meta.size = uint64(size)
 	}
 
-	// TODO: compaction stats.
+	// TODO(peter): compaction stats.
 
 	return meta, nil
 }
@@ -684,7 +686,8 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 func (d *DB) makeRoomForWrite(force bool) error {
 	allowDelay := !force
 	for {
-		// TODO: check any previous sticky error, if the paranoid option is set.
+		// TODO(peter): check any previous sticky error, if the paranoid option is
+		// set.
 
 		if allowDelay && len(d.versions.currentVersion().files[0]) > l0SlowdownWritesTrigger {
 			// We are getting close to hitting a hard limit on the number of
@@ -695,7 +698,8 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			time.Sleep(1 * time.Millisecond)
 			d.mu.Lock()
 			allowDelay = false
-			// TODO: how do we ensure we are still 'at the front of the writer queue'?
+			// TODO(peter): how do we ensure we are still 'at the front of the writer
+			// queue'?
 			continue
 		}
 
@@ -718,7 +722,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		}
 
 		// Attempt to switch to a new memtable and trigger compaction of old
-		// TODO: drop and re-acquire d.mu around the I/O.
+		// TODO(peter): drop and re-acquire d.mu around the I/O.
 		newLogNumber := d.versions.nextFileNum()
 		newLogFile, err := d.opts.GetStorage().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
 		if err != nil {
@@ -774,7 +778,7 @@ func (d *DB) deleteObsoleteFiles() {
 		keep := true
 		switch fileType {
 		case fileTypeLog:
-			// TODO: also look at prevLogNumber?
+			// TODO(peter): also look at prevLogNumber?
 			keep = fileNum >= logNumber
 		case fileTypeManifest:
 			keep = fileNum >= manifestFileNumber
