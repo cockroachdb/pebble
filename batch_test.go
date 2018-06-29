@@ -34,9 +34,9 @@ func TestBatch(t *testing.T) {
 	var b Batch
 	for _, tc := range testCases {
 		if tc.kind == db.InternalKeyKindDelete {
-			b.Delete([]byte(tc.key))
+			b.Delete([]byte(tc.key), nil)
 		} else {
-			b.Set([]byte(tc.key), []byte(tc.value))
+			b.Set([]byte(tc.key), []byte(tc.value), nil)
 		}
 	}
 	iter := b.iter()
@@ -118,9 +118,9 @@ func TestBatchGet(t *testing.T) {
 	b := newIndexedBatch(nil, db.DefaultComparer)
 	for i, c := range testCases {
 		if c.value == nil {
-			b.Delete(c.key)
+			b.Delete(c.key, nil)
 		} else {
-			b.Set(c.key, c.value)
+			b.Set(c.key, c.value, nil)
 		}
 		v, err := b.Get(c.key, nil)
 		if err != nil {
@@ -139,7 +139,7 @@ func TestBatchIterNextPrev(t *testing.T) {
 	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
 		ikey := fakeIkey(key)
 		value := []byte(fmt.Sprint(ikey.SeqNum()))
-		b.Set(ikey.UserKey, value)
+		b.Set(ikey.UserKey, value, nil)
 	}
 	iter := b.newInternalIter(nil)
 	iter.First()
@@ -200,7 +200,7 @@ func TestBatchIterNextPrevUserKey(t *testing.T) {
 	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
 		ikey := fakeIkey(key)
 		value := []byte(fmt.Sprint(ikey.SeqNum()))
-		b.Set(ikey.UserKey, value)
+		b.Set(ikey.UserKey, value, nil)
 	}
 	iter := b.newInternalIter(nil)
 	iter.First()
@@ -269,7 +269,7 @@ func BenchmarkBatchSet(b *testing.B) {
 		var batch Batch
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
-			batch.Set(key, value)
+			batch.Set(key, value, nil)
 		}
 	}
 
@@ -295,7 +295,7 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 		batch := newIndexedBatch(nil, db.DefaultComparer)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
-			batch.Set(key, value)
+			batch.Set(key, value, nil)
 		}
 	}
 

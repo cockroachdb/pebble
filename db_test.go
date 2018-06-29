@@ -296,7 +296,7 @@ func TestBasicWrites(t *testing.T) {
 	}
 	wantMap := map[string]string{}
 
-	inBatch, batch, pending := false, Batch{}, [][]string(nil)
+	inBatch, batch, pending := false, &Batch{}, [][]string(nil)
 	set0 := func(k, v string) error {
 		return d.Set([]byte(k), []byte(v), nil)
 	}
@@ -304,11 +304,11 @@ func TestBasicWrites(t *testing.T) {
 		return d.Delete([]byte(k), nil)
 	}
 	set1 := func(k, v string) error {
-		batch.Set([]byte(k), []byte(v))
+		batch.Set([]byte(k), []byte(v), nil)
 		return nil
 	}
 	del1 := func(k string) error {
-		batch.Delete([]byte(k))
+		batch.Delete([]byte(k), nil)
 		return nil
 	}
 	set, del := set0, del0
@@ -374,9 +374,9 @@ func TestBasicWrites(t *testing.T) {
 				delete(wantMap, s[1])
 			}
 		case "batch":
-			inBatch, batch, set, del = true, Batch{}, set1, del1
+			inBatch, batch, set, del = true, &Batch{}, set1, del1
 		case "apply":
-			if err := d.Apply(batch.data, nil); err != nil {
+			if err := d.Apply(batch, nil); err != nil {
 				t.Fatalf("#%d %s: %v", i, tc, err)
 			}
 			for _, p := range pending {

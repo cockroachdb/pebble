@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/petermattis/pebble/batchskl"
@@ -22,6 +23,9 @@ const (
 // ErrNotIndexed means that a read operation on a batch failed because the
 // batch is not indexed and thus doesn't support reads.
 var ErrNotIndexed = errors.New("pebble: batch not indexed")
+
+// ErrInvalidBatch indicates that a batch is invalid or otherwise corrupted.
+var ErrInvalidBatch = errors.New("pebble: invalid batch")
 
 type batchStorage struct {
 	// Data is the wire format of a batch's log entry:
@@ -72,32 +76,61 @@ type Batch struct {
 	index *batchskl.Skiplist
 }
 
-// Batch implements the db.Reader interface.
-var _ db.Reader = (*Batch)(nil)
+var _ Reader = (*Batch)(nil)
+var _ Writer = (*Batch)(nil)
+
+var batchPool = sync.Pool{
+	New: func() interface{} {
+		return &Batch{}
+	},
+}
+
+type indexedBatch struct {
+	batch Batch
+	index batchskl.Skiplist
+}
+
+var indexedBatchPool = sync.Pool{
+	New: func() interface{} {
+		return &indexedBatch{}
+	},
+}
 
 func newBatch(db *DB) *Batch {
-	return &Batch{db: db}
+	b := batchPool.Get().(*Batch)
+	b.db = db
+	return b
 }
 
 func newIndexedBatch(db *DB, comparer *db.Comparer) *Batch {
-	var b struct {
-		batch Batch
-		index batchskl.Skiplist
-	}
-	b.batch.cmp = comparer.Compare
-	b.batch.inlineKey = comparer.InlineKey
-	b.batch.db = db
-	b.batch.index = &b.index
-	b.batch.index.Reset(&b.batch.batchStorage, 0)
-	return &b.batch
+	i := indexedBatchPool.Get().(*indexedBatch)
+	i.batch.cmp = comparer.Compare
+	i.batch.inlineKey = comparer.InlineKey
+	i.batch.db = db
+	i.batch.index = &i.index
+	i.batch.index.Reset(&i.batch.batchStorage, 0)
+	return &i.batch
 }
 
-// Apply implements DB.Apply, as documented in the pebble/db package.
-func (b *Batch) Apply(repr []byte) error {
-	if len(repr) == 0 {
+func (b *Batch) release() {
+	if b.index == nil {
+		*b = Batch{}
+		batchPool.Put(b)
+	} else {
+		*b.index = batchskl.Skiplist{}
+		*b = Batch{}
+		indexedBatchPool.Put(b)
+	}
+}
+
+// Apply the operations contained in the batch to the receiver batch.
+//
+// It is safe to modify the contents of the arguments after Apply returns.
+func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
+	if len(batch.data) == 0 {
 		return nil
 	}
-	if len(repr) < batchHeaderLen {
+	if len(batch.data) < batchHeaderLen {
 		return errors.New("pebble: invalid batch")
 	}
 
@@ -106,9 +139,9 @@ func (b *Batch) Apply(repr []byte) error {
 		b.init(offset)
 		offset = batchHeaderLen
 	}
-	b.data = append(b.data, repr[batchHeaderLen:]...)
+	b.data = append(b.data, batch.data[batchHeaderLen:]...)
 
-	count := binary.LittleEndian.Uint32(repr[8:12])
+	count := binary.LittleEndian.Uint32(batch.data[8:12])
 	b.setCount(b.count() + count)
 
 	if b.index != nil {
@@ -126,7 +159,11 @@ func (b *Batch) Apply(repr []byte) error {
 	return nil
 }
 
-// Get implements DB.Get, as documented in the pebble/db package.
+// Get gets the value for the given key. It returns ErrNotFound if the DB
+// does not contain the key.
+//
+// The caller should not modify the contents of the returned slice, but
+// it is safe to modify the contents of the argument after Get returns.
 func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if b.index == nil {
 		return nil, ErrNotIndexed
@@ -151,84 +188,103 @@ func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 }
 
 // Set adds an action to the batch that sets the key to map to the value.
-func (b *Batch) Set(key, value []byte) {
+//
+// It is safe to modify the contents of the arguments after Set returns.
+func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
 	if len(b.data) == 0 {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
-	if b.increment() {
-		offset := uint32(len(b.data))
-		b.data = append(b.data, byte(db.InternalKeyKindSet))
-		b.appendStr(key)
-		b.appendStr(value)
-		if b.index != nil {
-			if err := b.index.Add(offset); err != nil {
-				// We never add duplicate entries, so an error should never occur.
-				panic(err)
-			}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+	offset := uint32(len(b.data))
+	b.data = append(b.data, byte(db.InternalKeyKindSet))
+	b.appendStr(key)
+	b.appendStr(value)
+	if b.index != nil {
+		if err := b.index.Add(offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
 		}
 	}
+	return nil
 }
 
 // Merge adds an action to the batch that merges the value at key with the new
 // value. The details of the merge are dependent upon the configured merge
 // operator.
-func (b *Batch) Merge(key, value []byte) {
+//
+// It is safe to modify the contents of the arguments after Merge returns.
+func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
 	if len(b.data) == 0 {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
-	if b.increment() {
-		offset := uint32(len(b.data))
-		b.data = append(b.data, byte(db.InternalKeyKindMerge))
-		b.appendStr(key)
-		b.appendStr(value)
-		if b.index != nil {
-			if err := b.index.Add(offset); err != nil {
-				// We never add duplicate entries, so an error should never occur.
-				panic(err)
-			}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+	offset := uint32(len(b.data))
+	b.data = append(b.data, byte(db.InternalKeyKindMerge))
+	b.appendStr(key)
+	b.appendStr(value)
+	if b.index != nil {
+		if err := b.index.Add(offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
 		}
 	}
+	return nil
 }
 
 // Delete adds an action to the batch that deletes the entry for key.
-func (b *Batch) Delete(key []byte) {
+//
+// It is safe to modify the contents of the arguments after Delete returns.
+func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
 	if len(b.data) == 0 {
 		b.init(len(key) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
-	if b.increment() {
-		offset := uint32(len(b.data))
-		b.data = append(b.data, byte(db.InternalKeyKindDelete))
-		b.appendStr(key)
-		if b.index != nil {
-			if err := b.index.Add(offset); err != nil {
-				// We never add duplicate entries, so an error should never occur.
-				panic(err)
-			}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+	offset := uint32(len(b.data))
+	b.data = append(b.data, byte(db.InternalKeyKindDelete))
+	b.appendStr(key)
+	if b.index != nil {
+		if err := b.index.Add(offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
 		}
 	}
+	return nil
 }
 
-// DeleteRange implements DB.DeleteRange, as documented in the pebble/db
-// package.
-func (b *Batch) DeleteRange(start, end []byte) {
+// DeleteRange deletes all of the keys (and values) in the range [start,end)
+// (inclusive on start, exclusive on end).
+//
+// It is safe to modify the contents of the arguments after DeleteRange
+// returns.
+func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 	if len(b.data) == 0 {
 		b.init(len(start) + len(end) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
-	if b.increment() {
-		offset := uint32(len(b.data))
-		b.data = append(b.data, byte(db.InternalKeyKindRangeDelete))
-		b.appendStr(start)
-		b.appendStr(end)
-		if b.index != nil {
-			if err := b.index.Add(offset); err != nil {
-				// We never add duplicate entries, so an error should never occur.
-				panic(err)
-			}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+	offset := uint32(len(b.data))
+	b.data = append(b.data, byte(db.InternalKeyKindRangeDelete))
+	b.appendStr(start)
+	b.appendStr(end)
+	if b.index != nil {
+		if err := b.index.Add(offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
 		}
 	}
+	return nil
 }
 
-// NewIter implements DB.NewIter, as documented in the pebble/db package.
+// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+// return false). The iterator can be positioned via a call to SeekGE, SeekLT,
+// First or Last. Only indexed batches support iterators.
 func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
 	if b.index == nil {
 		return &dbIter{err: ErrNotIndexed}
@@ -251,7 +307,7 @@ func (b *Batch) newInternalIter(o *db.ReadOptions) db.InternalIterator {
 
 // Commit applies the batch to its parent writer.
 func (b *Batch) Commit(o *db.WriteOptions) error {
-	return b.db.Apply(b.data, o)
+	return b.db.Apply(b, o)
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.

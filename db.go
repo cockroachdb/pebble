@@ -9,7 +9,6 @@ package pebble // import "github.com/petermattis/pebble"
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -44,6 +43,65 @@ const (
 	// that we don't use for table caches.
 	numNonTableCacheFiles = 10
 )
+
+// Reader is a readable key/value store.
+//
+// It is safe to call Get and NewIter from concurrent goroutines.
+type Reader interface {
+	// Get gets the value for the given key. It returns ErrNotFound if the DB
+	// does not contain the key.
+	//
+	// The caller should not modify the contents of the returned slice, but
+	// it is safe to modify the contents of the argument after Get returns.
+	Get(key []byte, o *db.ReadOptions) (value []byte, err error)
+
+	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+	// return false). The iterator can be positioned via a call to SeekGE,
+	// SeekLT, First or Last.
+	NewIter(o *db.ReadOptions) db.Iterator
+
+	// Close closes the Reader. It may or may not close any underlying io.Reader
+	// or io.Writer, depending on how the DB was created.
+	//
+	// It is not safe to close a DB until all outstanding iterators are closed.
+	// It is valid to call Close multiple times. Other methods should not be
+	// called after the DB has been closed.
+	Close() error
+}
+
+// Writer is a writable key/value store.
+//
+// Goroutine safety is dependent on the specific implementation.
+type Writer interface {
+	// Apply the operations contained in the batch to the DB.
+	//
+	// It is safe to modify the contents of the arguments after Apply returns.
+	Apply(batch *Batch, o *db.WriteOptions) error
+
+	// Delete deletes the value for the given key. Deletes are blind all will
+	// succeed even if the given key does not exist.
+	//
+	// It is safe to modify the contents of the arguments after Delete returns.
+	Delete(key []byte, o *db.WriteOptions) error
+
+	// DeleteRange deletes all of the keys (and values) in the range [start,end)
+	// (inclusive on start, exclusive on end).
+	//
+	// It is safe to modify the contents of the arguments after Delete returns.
+	DeleteRange(start, end []byte, o *db.WriteOptions) error
+
+	// Merge merges the value for the given key. The details of the merge are
+	// dependent upon the configured merge operation.
+	//
+	// It is safe to modify the contents of the arguments after Merge returns.
+	Merge(key, value []byte, o *db.WriteOptions) error
+
+	// Set sets the value for the given key. It overwrites any previous value
+	// for that key; a DB is not a multi-map.
+	//
+	// It is safe to modify the contents of the arguments after Set returns.
+	Set(key, value []byte, o *db.WriteOptions) error
+}
 
 // TODO: document DB.
 type DB struct {
@@ -81,9 +139,14 @@ type DB struct {
 	pendingOutputs map[uint64]struct{}
 }
 
-var _ db.DB = (*DB)(nil)
+var _ Reader = (*DB)(nil)
+var _ Writer = (*DB)(nil)
 
-// Get implements DB.Get, as documented in the pebble/db package.
+// Get gets the value for the given key. It returns ErrNotFound if the DB
+// does not contain the key.
+//
+// The caller should not modify the contents of the returned slice, but
+// it is safe to modify the contents of the argument after Get returns.
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
 	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
@@ -114,45 +177,62 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	return current.get(ikey, d.newIter, d.cmp, opts)
 }
 
-// Set implements DB.Set, as documented in the pebble/db package.
+// Set sets the value for the given key. It overwrites any previous value
+// for that key; a DB is not a multi-map.
+//
+// It is safe to modify the contents of the arguments after Set returns.
 func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
-	var batch Batch
-	batch.Set(key, value)
-	return d.Apply(batch.data, opts)
+	b := newBatch(d)
+	defer b.release()
+	b.Set(key, value, opts)
+	return d.Apply(b, opts)
 }
 
-// Delete implements DB.Delete, as documented in the pebble/db package.
+// Delete deletes the value for the given key. Deletes are blind all will
+// succeed even if the given key does not exist.
+//
+// It is safe to modify the contents of the arguments after Delete returns.
 func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
-	var batch Batch
-	batch.Delete(key)
-	return d.Apply(batch.data, opts)
+	b := newBatch(d)
+	defer b.release()
+	b.Delete(key, opts)
+	return d.Apply(b, opts)
 }
 
-// DeleteRange implements DB.DeleteRange, as documented in the pebble/db
-// package.
+// DeleteRange deletes all of the keys (and values) in the range [start,end)
+// (inclusive on start, exclusive on end).
+//
+// It is safe to modify the contents of the arguments after DeleteRange
+// returns.
 func (d *DB) DeleteRange(start, end []byte, opts *db.WriteOptions) error {
-	var batch Batch
-	batch.DeleteRange(start, end)
-	return d.Apply(batch.data, opts)
+	b := newBatch(d)
+	defer b.release()
+	b.DeleteRange(start, end, opts)
+	return d.Apply(b, opts)
 }
 
-// Merge implements DB.Merge, as documented in the pebble/db package.
+// Merge adds an action to the DB that merges the value at key with the new
+// value. The details of the merge are dependent upon the configured merge
+// operator.
+//
+// It is safe to modify the contents of the arguments after Merge returns.
 func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
-	var batch Batch
-	batch.Merge(key, value)
-	return d.Apply(batch.data, opts)
+	b := newBatch(d)
+	defer b.release()
+	b.Merge(key, value, opts)
+	return d.Apply(b, opts)
 }
 
-// Apply implements DB.Apply, as documented in the pebble/db package.
-func (d *DB) Apply(repr []byte, opts *db.WriteOptions) error {
-	if len(repr) == 0 {
+// Apply the operations contained in the batch to the DB.
+//
+// It is safe to modify the contents of the arguments after Apply returns.
+func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
+	if len(batch.data) == 0 {
 		return nil
 	}
-	var batch Batch
-	batch.data = repr
 	n := batch.count()
 	if n == invalidBatchCount {
-		return errors.New("pebble: invalid batch")
+		return ErrInvalidBatch
 	}
 
 	// TODO(peter):
@@ -283,7 +363,9 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	return dbi
 }
 
-// NewIter implements DB.NewIter, as documented in the pebble/db package.
+// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+// return false). The iterator can be positioned via a call to SeekGE,
+// SeekLT, First or Last.
 func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
 	return d.newIterInternal(nil, o)
 }
@@ -303,7 +385,11 @@ func (d *DB) NewIndexedBatch() *Batch {
 	return newIndexedBatch(d, d.opts.GetComparer())
 }
 
-// Close implements DB.Close, as documented in the pebble/db package.
+// Close closes the DB.
+//
+// It is not safe to close a DB until all outstanding iterators are closed.
+// It is valid to call Close multiple times. Other methods should not be
+// called after the DB has been closed.
 func (d *DB) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
