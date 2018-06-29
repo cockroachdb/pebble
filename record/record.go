@@ -435,6 +435,9 @@ func (w *Writer) Close() error {
 // Flush finishes the current record, writes to the underlying writer, and
 // flushes it if that writer implements interface{ Flush() error }.
 func (w *Writer) Flush() error {
+	// TODO(peter): Add locking to Writer. Writing the pending block requires
+	// synchronization with Write/Finish, but calling Flush on the underlying
+	// file does not.
 	w.writePending()
 	if w.err != nil {
 		return w.err
