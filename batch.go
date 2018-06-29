@@ -74,6 +74,9 @@ type Batch struct {
 
 	// An optional skiplist keyed by offset into data of the entry.
 	index *batchskl.Skiplist
+
+	// State used during batch commit.
+	commit batchCommitState
 }
 
 var _ Reader = (*Batch)(nil)
