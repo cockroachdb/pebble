@@ -1,7 +1,9 @@
 package pebble
 
 import (
+	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
@@ -59,8 +61,6 @@ func (l *commitList) empty() bool {
 type commitEnv struct {
 	// Apply the batch to the in-memory state. Called concurrently.
 	apply func(b *Batch) error
-	// Publish the sequence number of visible writes. Called serially.
-	publish func(seqNum uint64)
 	// Sync the WAL. Called serially.
 	sync func() error
 	// Write the batch group to the WAL. Called serially.
@@ -79,9 +79,10 @@ type commitEnv struct {
 type commitPipeline struct {
 	env commitEnv
 
-	// The next sequence number to give to a batch. Only mutated by the current
-	// WAL writer.
-	seqNum uint64
+	// The next sequence number to give to a batch. Only mutated atomically the
+	// current WAL writer.
+	logSeqNum     *uint64
+	visibleSeqNum *uint64
 
 	// State for writing to the WAL.
 	write struct {
@@ -102,8 +103,12 @@ type commitPipeline struct {
 	}
 }
 
-func newCommitPipeline(env commitEnv, seqNum uint64) *commitPipeline {
-	p := &commitPipeline{env: env, seqNum: seqNum}
+func newCommitPipeline(env commitEnv, logSeqNum, visibleSeqNum *uint64) *commitPipeline {
+	p := &commitPipeline{
+		env:           env,
+		logSeqNum:     logSeqNum,
+		visibleSeqNum: visibleSeqNum,
+	}
 	p.write.cond.L = &p.write.Mutex
 	p.syncer.cond.L = &p.syncer.Mutex
 	go p.syncLoop()
@@ -184,8 +189,8 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 
 		// Set the sequence number for each member of the group.
 		for b := pending.head; b != nil; b = b.next {
-			b.setSeqNum(p.seqNum)
-			p.seqNum += uint64(b.count())
+			n := uint64(b.count())
+			b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
 		}
 
 		// Write the group to the WAL.
@@ -243,7 +248,12 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	}
 
 	// Publish this batch's writes and then notify any waiter.
-	p.env.publish(b.seqNum() + uint64(b.count()-1))
+	oldSeqNum := b.seqNum()
+	newSeqNum := oldSeqNum + uint64(b.count())
+	if !atomic.CompareAndSwapUint64(p.visibleSeqNum, oldSeqNum, newSeqNum) {
+		panic(fmt.Sprintf("bad visible sequence number transition: visible=%d old=%d new=%d",
+			atomic.LoadUint64(p.visibleSeqNum), oldSeqNum, newSeqNum))
+	}
 	state.applyWG.Done()
 
 	return nil

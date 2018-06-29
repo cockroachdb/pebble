@@ -150,7 +150,7 @@ var _ Writer = (*DB)(nil)
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
 	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
-	snapshot := d.versions.lastSequence
+	snapshot := d.versions.logSeqNum
 	current := d.versions.currentVersion()
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
@@ -260,9 +260,9 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 		return err
 	}
 
-	seqNum := d.versions.lastSequence + 1
+	seqNum := d.versions.logSeqNum + 1
 	batch.setSeqNum(seqNum)
-	d.versions.lastSequence += uint64(n)
+	d.versions.logSeqNum += uint64(n)
 
 	// Write the batch to the log.
 	// TODO: drop and re-acquire d.mu around the I/O.
@@ -293,7 +293,7 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) db.Iterator {
 	d.mu.Lock()
 	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
-	seqNum := d.versions.lastSequence
+	seqNum := d.versions.logSeqNum
 	current := d.versions.currentVersion()
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
@@ -528,8 +528,8 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 			return nil, err
 		}
 		d.versions.markFileNumUsed(lf.num)
-		if d.versions.lastSequence < maxSeqNum {
-			d.versions.lastSequence = maxSeqNum
+		if d.versions.logSeqNum < maxSeqNum {
+			d.versions.logSeqNum = maxSeqNum
 		}
 	}
 

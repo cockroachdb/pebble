@@ -261,7 +261,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	}()
 
 	// TODO: track snapshots.
-	smallestSnapshot := d.versions.lastSequence
+	smallestSnapshot := d.versions.logSeqNum
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.

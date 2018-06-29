@@ -29,7 +29,8 @@ type versionSet struct {
 	logNumber          uint64
 	prevLogNumber      uint64
 	nextFileNumber     uint64
-	lastSequence       uint64
+	logSeqNum          uint64 // next seqNum to use for WAL writes
+	visibleSeqNum      uint64 // visible seqNum (< logSeqNum)
 	manifestFileNumber uint64
 
 	manifestFile storage.File
@@ -114,7 +115,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 			vs.nextFileNumber = ve.nextFileNumber
 		}
 		if ve.lastSequence != 0 {
-			vs.lastSequence = ve.lastSequence
+			vs.logSeqNum = ve.lastSequence
 		}
 	}
 	if vs.logNumber == 0 || vs.nextFileNumber == 0 {
@@ -148,7 +149,7 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 		}
 	}
 	ve.nextFileNumber = vs.nextFileNumber
-	ve.lastSequence = vs.lastSequence
+	ve.lastSequence = vs.logSeqNum
 
 	var bve bulkVersionEdit
 	bve.accumulate(ve)
