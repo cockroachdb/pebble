@@ -502,6 +502,21 @@ func BenchmarkReadWrite(b *testing.B) {
 	}
 }
 
+func BenchmarkOrderedWrite(b *testing.B) {
+	l := NewSkiplist(NewArena(8<<20), bytes.Compare)
+	buf := make([]byte, 8)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		binary.BigEndian.PutUint64(buf, uint64(i))
+		if err := l.Add(db.InternalKey{UserKey: buf}, nil); err == ErrArenaFull {
+			b.StopTimer()
+			l = NewSkiplist(NewArena(uint32((b.N+2)*maxNodeSize)), bytes.Compare)
+			b.StartTimer()
+		}
+	}
+}
+
 func BenchmarkIterNext(b *testing.B) {
 	l := NewSkiplist(NewArena(64<<10), bytes.Compare)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))

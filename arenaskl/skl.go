@@ -293,10 +293,8 @@ func (s *Skiplist) randomHeight() uint32 {
 }
 
 func (s *Skiplist) findSplice(key db.InternalKey, spl *[maxHeight]splice) (found bool) {
-	var prev, next *node
-
 	level := int(s.Height() - 1)
-	prev = s.head
+	prev, next := s.head, (*node)(nil)
 
 	for {
 		prev, next, found = s.findSpliceForLevel(key, level, prev)
