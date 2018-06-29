@@ -285,34 +285,43 @@ func TestReaderBloomUsed(t *testing.T) {
 		}
 	}
 
-	for _, degenerate := range []bool{false, true} {
-		c := &countingFilterPolicy{
-			FilterPolicy: bloom.FilterPolicy(10),
-			degenerate:   degenerate,
-		}
-		testReader(t, "h.block-bloom.no-compression.sst", c)
+	files := []string{
+		"h.block-bloom.no-compression.sst",
+		// TODO(peter): enable when table-filters are supported
+		// "h.full-bloom.no-compression.sst",
+	}
+	for _, f := range files {
+		t.Run(f, func(t *testing.T) {
+			for _, degenerate := range []bool{false, true} {
+				c := &countingFilterPolicy{
+					FilterPolicy: bloom.FilterPolicy(10),
+					degenerate:   degenerate,
+				}
+				testReader(t, f, c)
 
-		if c.truePositives != len(wordCount) {
-			t.Errorf("degenerate=%t: true positives: got %d, want %d", degenerate, c.truePositives, len(wordCount))
-		}
-		if c.falseNegatives != 0 {
-			t.Errorf("degenerate=%t: false negatives: got %d, want %d", degenerate, c.falseNegatives, 0)
-		}
+				if c.truePositives != len(wordCount) {
+					t.Errorf("degenerate=%t: true positives: got %d, want %d", degenerate, c.truePositives, len(wordCount))
+				}
+				if c.falseNegatives != 0 {
+					t.Errorf("degenerate=%t: false negatives: got %d, want %d", degenerate, c.falseNegatives, 0)
+				}
 
-		if got := c.falsePositives + c.trueNegatives; got < wantActualNegatives {
-			t.Errorf("degenerate=%t: actual negatives (false positives + true negatives): "+
-				"got %d (%d + %d), want >= %d",
-				degenerate, got, c.falsePositives, c.trueNegatives, wantActualNegatives)
-		}
+				if got := c.falsePositives + c.trueNegatives; got < wantActualNegatives {
+					t.Errorf("degenerate=%t: actual negatives (false positives + true negatives): "+
+						"got %d (%d + %d), want >= %d",
+						degenerate, got, c.falsePositives, c.trueNegatives, wantActualNegatives)
+				}
 
-		if !degenerate {
-			// The true negative count should be much greater than the false
-			// positive count.
-			if c.trueNegatives < 10*c.falsePositives {
-				t.Errorf("degenerate=%t: true negative to false positive ratio (%d:%d) is too small",
-					degenerate, c.trueNegatives, c.falsePositives)
+				if !degenerate {
+					// The true negative count should be much greater than the false
+					// positive count.
+					if c.trueNegatives < 10*c.falsePositives {
+						t.Errorf("degenerate=%t: true negative to false positive ratio (%d:%d) is too small",
+							degenerate, c.trueNegatives, c.falsePositives)
+					}
+				}
 			}
-		}
+		})
 	}
 }
 

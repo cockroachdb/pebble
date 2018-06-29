@@ -442,13 +442,26 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	}
 
 	if fp := o.GetFilterPolicy(); fp != nil {
-		if bh, ok := meta["filter."+fp.Name()]; ok {
-			b, err = r.readBlock(bh)
-			if err != nil {
-				return err
-			}
-			if !r.filter.init(b, fp) {
-				return errors.New("pebble/table: invalid table (bad filter block)")
+		types := []struct {
+			ftype  db.FilterType
+			prefix string
+		}{
+			{db.BlockFilter, "filter."},
+			{db.TableFilter, "fullfilter."},
+		}
+		for _, t := range types {
+			if bh, ok := meta[t.prefix+fp.Name()]; ok {
+				if t.ftype == db.TableFilter {
+					panic("table filters unimplemented")
+				}
+
+				b, err = r.readBlock(bh)
+				if err != nil {
+					return err
+				}
+				if !r.filter.init(b, fp) {
+					return errors.New("pebble/table: invalid table (bad filter block)")
+				}
 			}
 		}
 	}
