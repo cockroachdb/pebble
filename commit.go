@@ -9,11 +9,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
-const (
-	commitQueueSize = 64
-	commitQueueMask = commitQueueSize - 1
-)
-
 type commitQueueNode struct {
 	position uint64
 	value    unsafe.Pointer
@@ -28,11 +23,31 @@ type commitQueue struct {
 	_     [8]uint64
 	read  uint64
 	_     [8]uint64
-	nodes [commitQueueSize]commitQueueNode
+	mask  uint64
 	_     [8]uint64
+	nodes []commitQueueNode
 }
 
 func (q *commitQueue) init() {
+	roundUp := func(v uint64) uint64 {
+		v--
+		v |= v >> 1
+		v |= v >> 2
+		v |= v >> 4
+		v |= v >> 8
+		v |= v >> 16
+		v |= v >> 32
+		v++
+		return v
+	}
+
+	// Size the commitQueue to 8x the number of CPUs. Note that this works around
+	// a limitation (bug?) when the size of the queue is 1 (enqueue does not
+	// properly block waiting for the sequence to advance).
+	n := roundUp(uint64(runtime.NumCPU() * 8))
+
+	q.mask = uint64(n - 1)
+	q.nodes = make([]commitQueueNode, n)
 	for i := range q.nodes {
 		q.nodes[i].position = uint64(i)
 	}
@@ -44,7 +59,7 @@ func (q *commitQueue) enqueue(b *Batch, cond *sync.Cond) {
 	// field is protected by commitPipeline.write.mu.
 	for {
 		pos := q.write
-		n := &q.nodes[pos&commitQueueMask]
+		n := &q.nodes[pos&q.mask]
 		seq := atomic.LoadUint64(&n.position)
 		if seq != pos {
 			cond.Wait()
@@ -64,7 +79,7 @@ func (q *commitQueue) dequeue() *Batch {
 		if v := atomic.LoadUint64(&q.write); pos == v {
 			return nil
 		}
-		n := &q.nodes[pos&commitQueueMask]
+		n := &q.nodes[pos&q.mask]
 		seq := atomic.LoadUint64(&n.position)
 		if seq != pos+1 {
 			runtime.Gosched()
@@ -80,7 +95,7 @@ func (q *commitQueue) dequeue() *Batch {
 
 		if atomic.CompareAndSwapUint64(&q.read, pos, pos+1) {
 			atomic.StorePointer(&n.value, nil)
-			atomic.StoreUint64(&n.position, pos+commitQueueSize)
+			atomic.StoreUint64(&n.position, pos+q.mask+1)
 			return b
 		}
 
