@@ -37,7 +37,7 @@ func (e *testCommitEnv) sync() error {
 }
 
 func (e *testCommitEnv) write(group commitList) error {
-	for b := group.head; b != nil; b = b.next {
+	for b := group.head; b != nil; b = b.commit.next {
 		e.writeBuf = append(e.writeBuf, b.seqNum())
 	}
 	return nil

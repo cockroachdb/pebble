@@ -9,16 +9,15 @@ import (
 )
 
 type commitState struct {
-	*Batch
-	wg      sync.WaitGroup
-	applyWG sync.WaitGroup
+	writeWG sync.WaitGroup
+	applyWG *sync.WaitGroup
 	// TODO(peter): Is there a faster approach to achieving this end? Rather than
 	// a per-batch wait-group, we could use a per-group wait-group. That would
 	// use slightly less memory and involve somewhat less synchronization. A
 	// wait-group per group is essentially what RocksDB provides with its
 	// concurrent memtable inserts code.
 	prevWG *sync.WaitGroup
-	next   *commitState
+	next   *Batch
 	sync   bool
 	err    error
 }
@@ -26,8 +25,8 @@ type commitState struct {
 // commitList holds a single-linked list of batches that are waiting to be
 // written to the WAL or synced to disk.
 type commitList struct {
-	head *commitState
-	tail *commitState
+	head *Batch
+	tail *Batch
 }
 
 func (l *commitList) clear() {
@@ -35,12 +34,12 @@ func (l *commitList) clear() {
 	l.tail = nil
 }
 
-func (l *commitList) push(e *commitState) {
+func (l *commitList) push(e *Batch) {
 	if l.head == nil {
 		l.head = e
 		l.tail = e
 	} else {
-		l.tail.next = e
+		l.tail.commit.next = e
 		l.tail = e
 	}
 }
@@ -49,7 +48,7 @@ func (l *commitList) splice(other commitList) {
 	if l.head == nil {
 		*l = other
 	} else {
-		l.tail.next = other.head
+		l.tail.commit.next = other.head
 		l.tail = other.tail
 	}
 }
@@ -90,8 +89,9 @@ type commitPipeline struct {
 		cond    sync.Cond
 		writing bool
 		pending commitList
-		// A buffer for chunked allocation of commit state.
-		buf []commitState
+		// A buffer for chunked allocation of apply wait-groups which must outlive
+		// the lifetime of the Batch they are assigned to.
+		buf []sync.WaitGroup
 	}
 
 	// State for syncing the WAL.
@@ -134,11 +134,11 @@ func (p *commitPipeline) syncLoop() {
 
 		err := p.env.sync()
 
-		for b, next := pending.head, (*commitState)(nil); b != nil; b = next {
+		for b, next := pending.head, (*Batch)(nil); b != nil; b = next {
 			// Clear the batch's next link before signalling the commit wait group.
-			next, b.next = b.next, nil
-			b.err = err
-			b.wg.Done()
+			next, b.commit.next = b.commit.next, nil
+			b.commit.err = err
+			b.commit.writeWG.Done()
 		}
 
 		s.Lock()
@@ -156,26 +156,14 @@ func (p *commitPipeline) close() {
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
 func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
+	b.commit.writeWG.Add(1)
+	b.commit.sync = syncWAL
+
 	w := &p.write
 	w.Lock()
 
-	var prevWG *sync.WaitGroup
-	if len(w.buf) > 0 {
-		prevWG = &w.buf[0].applyWG
-		w.buf = w.buf[1:]
-	}
-	if len(w.buf) == 0 {
-		w.buf = make([]commitState, 256)
-	}
-	state := &w.buf[0]
-	state.Batch = b
-	state.wg.Add(1)
-	state.applyWG.Add(1)
-	state.prevWG = prevWG
-	state.sync = syncWAL
-
 	leader := w.pending.empty()
-	w.pending.push(state)
+	w.pending.push(b)
 
 	if leader {
 		// We're the leader. Wait for any running commit to finish.
@@ -188,9 +176,19 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 		w.Unlock()
 
 		// Set the sequence number for each member of the group.
-		for b := pending.head; b != nil; b = b.next {
+		for b := pending.head; b != nil; b = b.commit.next {
 			n := uint64(b.count())
 			b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
+
+			if len(w.buf) > 0 {
+				b.commit.prevWG = &w.buf[0]
+				w.buf = w.buf[1:]
+			}
+			if len(w.buf) == 0 {
+				w.buf = make([]sync.WaitGroup, 256)
+			}
+			b.commit.applyWG = &w.buf[0]
+			b.commit.applyWG.Add(1)
 		}
 
 		// Write the group to the WAL.
@@ -205,12 +203,12 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 		// Propagate the error to all of the group's batches. If a batch requires
 		// syncing and the WAL write was successful, add it to the syncing list.
 		var syncing commitList
-		for b, next := pending.head, (*commitState)(nil); b != nil; b = next {
+		for b, next := pending.head, (*Batch)(nil); b != nil; b = next {
 			// Clear the batch's next link before signalling the commit wait group.
-			next, b.next = b.next, nil
-			if err != nil || !b.sync {
-				b.err = err
-				b.wg.Done()
+			next, b.commit.next = b.commit.next, nil
+			if err != nil || !b.commit.sync {
+				b.commit.err = err
+				b.commit.writeWG.Done()
 			} else {
 				syncing.push(b)
 			}
@@ -230,9 +228,9 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	}
 
 	// Wait for the write/sync to finish.
-	state.wg.Wait()
-	if state.err != nil {
-		return state.err
+	b.commit.writeWG.Wait()
+	if b.commit.err != nil {
+		return b.commit.err
 	}
 
 	// Apply this batch to the memtable.
@@ -243,8 +241,8 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// Wait for the previous batch (if any) to have applied. This prevents this
 	// batch's writes from becoming visible before the previous batch has
 	// finished applying.
-	if state.prevWG != nil {
-		state.prevWG.Wait()
+	if b.commit.prevWG != nil {
+		b.commit.prevWG.Wait()
 	}
 
 	// Publish this batch's writes and then notify any waiter.
@@ -254,7 +252,7 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 		panic(fmt.Sprintf("bad visible sequence number transition: visible=%d old=%d new=%d",
 			atomic.LoadUint64(p.visibleSeqNum), oldSeqNum, newSeqNum))
 	}
-	state.applyWG.Done()
+	b.commit.applyWG.Done()
 
 	return nil
 }
