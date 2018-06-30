@@ -1,6 +1,7 @@
 package pebble
 
 import (
+	"math/bits"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -29,22 +30,12 @@ type commitQueue struct {
 }
 
 func (q *commitQueue) init() {
-	roundUp := func(v uint64) uint64 {
-		v--
-		v |= v >> 1
-		v |= v >> 2
-		v |= v >> 4
-		v |= v >> 8
-		v |= v >> 16
-		v |= v >> 32
-		v++
-		return v
-	}
-
 	// Size the commitQueue to 8x the number of CPUs. Note that this works around
 	// a limitation (bug?) when the size of the queue is 1 (enqueue does not
 	// properly block waiting for the sequence to advance).
-	n := roundUp(uint64(runtime.NumCPU() * 8))
+	n := runtime.NumCPU()
+	n = 1 << uint((64 - bits.LeadingZeros(uint(n-1))))
+	n *= 8
 
 	q.mask = uint64(n - 1)
 	q.nodes = make([]commitQueueNode, n)
