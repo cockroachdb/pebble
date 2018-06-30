@@ -46,7 +46,7 @@ func (e *testCommitEnv) reserve(n int) uint64 {
 	return atomic.AddUint64(&e.writePos, uint64(n)) - uint64(n)
 }
 
-func (e *testCommitEnv) sync() error {
+func (e *testCommitEnv) sync(pos uint64, n int) error {
 	return nil
 }
 
@@ -58,7 +58,6 @@ func (e *testCommitEnv) write(pos uint64, data []byte) error {
 func TestCommitPipeline(t *testing.T) {
 	var e testCommitEnv
 	p := newCommitPipeline(e.env(), &e.logSeqNum, &e.visibleSeqNum)
-	defer p.close()
 
 	const n = 10000
 	var wg sync.WaitGroup
@@ -121,10 +120,10 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					}
 				},
 				reserve: func(n int) uint64 {
-					return 0
 					// return wal.Reserve(n)
+					return 0
 				},
-				sync: func() error {
+				sync: func(pos uint64, n int) error {
 					// return wal.Sync()
 					return nil
 				},
@@ -136,7 +135,6 @@ func BenchmarkCommitPipeline(b *testing.B) {
 			}
 			var logSeqNum, visibleSeqNum uint64
 			p := newCommitPipeline(nullCommitEnv, &logSeqNum, &visibleSeqNum)
-			defer p.close()
 
 			b.SetBytes(16)
 			b.ResetTimer()
@@ -149,7 +147,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					batch := newBatch(nil)
 					binary.BigEndian.PutUint64(buf, rng.Uint64())
 					batch.Set(buf, buf, nil)
-					if err := p.commit(batch, false /* sync */); err != nil {
+					if err := p.commit(batch, true /* sync */); err != nil {
 						b.Fatal(err)
 					}
 					batch.release()

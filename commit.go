@@ -110,8 +110,8 @@ type commitEnv struct {
 	// those bytes will be written. Must be matched with a call to
 	// write(). Called serially with the write mutex held.
 	reserve func(n int) uint64
-	// Sync the WAL. Called serially.
-	sync func() error
+	// Sync the WAL up to pos+n.
+	sync func(pos uint64, n int) error
 	// Write the batch to the WAL. A previous call to reserve(len(data)) needs to
 	// be performed to retrieve the supplied position. Called concurrently.
 	write func(pos uint64, data []byte) error
@@ -153,9 +153,6 @@ func newCommitPipeline(env commitEnv, logSeqNum, visibleSeqNum *uint64) *commitP
 	return p
 }
 
-func (p *commitPipeline) close() {
-}
-
 // Commit the specified batch, writing it to the WAL, optionally syncing the
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
@@ -181,7 +178,11 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// Publish the batch sequence number.
 	p.publish(b)
 
-	// TODO(peter): wait for the WAL to sync.
+	if syncWAL {
+		if err := p.env.sync(pos, len(b.data)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
