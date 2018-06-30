@@ -13,9 +13,11 @@ import (
 type commitQueueNode struct {
 	position uint64
 	value    unsafe.Pointer
+	_        [6]uint64
 }
 
-// commitQueue maintains a circular ring buffer.
+// commitQueue maintains a circular ring buffer for a fixed-size
+// single-producer, multiple-consumer queue.
 type commitQueue struct {
 	// The padding members are here to ensure each item is on a separate cache
 	// line. This prevents false sharing and improves performance.
