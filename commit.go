@@ -1,11 +1,79 @@
 package pebble
 
 import (
-	"fmt"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
+
+type commitQueueNode struct {
+	value *Batch
+	next  unsafe.Pointer
+}
+
+type commitQueue struct {
+	head unsafe.Pointer
+	tail unsafe.Pointer
+}
+
+func (q *commitQueue) init() {
+	dummy := &commitQueueNode{}
+	q.head = unsafe.Pointer(dummy)
+	q.tail = q.head
+}
+
+func (q *commitQueue) load(p *unsafe.Pointer) *commitQueueNode {
+	return (*commitQueueNode)(atomic.LoadPointer(p))
+}
+
+func (q *commitQueue) cas(p *unsafe.Pointer, old, new *commitQueueNode) (ok bool) {
+	return atomic.CompareAndSwapPointer(
+		p, unsafe.Pointer(old), unsafe.Pointer(new))
+}
+
+func (q *commitQueue) enqueue(node *commitQueueNode) {
+	for {
+		last := q.load(&q.tail)
+		next := q.load(&last.next)
+		if last == q.load(&q.tail) {
+			if next == nil {
+				if q.cas(&last.next, next, node) {
+					q.cas(&q.tail, last, node)
+					return
+				}
+			} else {
+				q.cas(&q.tail, last, next)
+			}
+		}
+	}
+}
+
+func (q *commitQueue) dequeue() *Batch {
+	for {
+		first := q.load(&q.head)
+		last := q.load(&q.tail)
+		next := q.load(&first.next)
+		if first == q.load(&q.head) {
+			if first == last {
+				if next == nil {
+					// Queue is empty.
+					return nil
+				}
+				q.cas(&q.tail, last, next)
+			} else {
+				v := next.value
+				if atomic.LoadUint32(&v.applied) == 0 {
+					// The first batch in the queue has not been applied.
+					return nil
+				}
+				if q.cas(&q.head, first, next) {
+					return v
+				}
+			}
+		}
+	}
+}
 
 type commitEnv struct {
 	// Apply the batch to the in-memory state. Called concurrently.
@@ -41,8 +109,8 @@ type commitPipeline struct {
 	// State for writing to the WAL.
 	write struct {
 		syncutil.Mutex
-		head *Batch
-		tail *Batch
+		pending commitQueue
+		nodes   []commitQueueNode
 	}
 }
 
@@ -52,6 +120,7 @@ func newCommitPipeline(env commitEnv, logSeqNum, visibleSeqNum *uint64) *commitP
 		logSeqNum:     logSeqNum,
 		visibleSeqNum: visibleSeqNum,
 	}
+	p.write.pending.init()
 	return p
 }
 
@@ -73,13 +142,17 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// Reserve the WAL position.
 	pos := p.env.reserve(len(b.data))
 
-	if w.head == nil {
-		w.head = b
-		w.tail = b
-	} else {
-		w.tail.next = b
-		w.tail = b
+	if len(w.nodes) == 0 {
+		w.nodes = make([]commitQueueNode, 1024)
 	}
+	node := &w.nodes[0]
+	w.nodes = w.nodes[1:]
+	node.value = b
+
+	// Enqueue the batch in the pending queue. Note that while the pending queue
+	// is lock-free, we want the order of batches to be the same as the sequence
+	// number order.
+	w.pending.enqueue(node)
 
 	w.Unlock()
 
@@ -97,34 +170,39 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 		return err
 	}
 
-	w.Lock()
-	b.applied = true
-	if w.head == b {
-		// Our batch is the head of the queue. Publish it and any subsequent
-		// batches that have already been applied.
-		for w.head != nil {
-			t := w.head
-			if !t.applied {
+	// Mark the batch as applied.
+	atomic.StoreUint32(&b.applied, 1)
+
+	// Loop dequeuing applied batches from the pending queue. If our batch was
+	// the head of the pending queue we are guaranteed that either we'll publish
+	// it or someone else will dequeue and publish it. If our batch is not the
+	// head of the queue then either we'll dequeue applied batches and reach our
+	// batch or there is an unapplied batch blocking us. When that unapplied
+	// batch applies it will go through the same process and publish our batch
+	// for us.
+	for {
+		t := w.pending.dequeue()
+		if t == nil {
+			// Wait for another goroutine to publish us.
+			b.published.Wait()
+			break
+		}
+
+		// We're responsible for publishing the sequence number for batch t, but
+		// another goroutine might have already increased the visible sequence
+		// number past t's, so only ratchet if t's visible sequence number is past
+		// the current visible sequence number.
+		for {
+			curSeqNum := atomic.LoadUint64(p.visibleSeqNum)
+			newSeqNum := t.seqNum() + uint64(t.count())
+			if newSeqNum <= curSeqNum {
 				break
 			}
-			w.head = w.head.next
-			if w.head == nil {
-				w.tail = nil
+			if atomic.CompareAndSwapUint64(p.visibleSeqNum, curSeqNum, newSeqNum) {
+				break
 			}
-			oldSeqNum := t.seqNum()
-			newSeqNum := oldSeqNum + uint64(t.count())
-			if !atomic.CompareAndSwapUint64(p.visibleSeqNum, oldSeqNum, newSeqNum) {
-				panic(fmt.Sprintf("bad visible sequence number transition: visible=%d old=%d new=%d",
-					atomic.LoadUint64(p.visibleSeqNum), oldSeqNum, newSeqNum))
-			}
-			t.next = nil
-			t.published.Done()
 		}
-		w.Unlock()
-	} else {
-		w.Unlock()
-		// Wait for our batch to be published.
-		b.published.Wait()
+		t.published.Done()
 	}
 
 	// TODO(peter): wait for the WAL to sync.

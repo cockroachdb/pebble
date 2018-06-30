@@ -75,9 +75,8 @@ type Batch struct {
 	// An optional skiplist keyed by offset into data of the entry.
 	index *batchskl.Skiplist
 
-	next      *Batch
 	published sync.WaitGroup
-	applied   bool
+	applied   uint32 // updated atomically
 }
 
 var _ Reader = (*Batch)(nil)
