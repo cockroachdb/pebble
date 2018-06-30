@@ -1,6 +1,7 @@
 package pebble
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -8,82 +9,82 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
+const (
+	commitQueueSize = 64
+	commitQueueMask = commitQueueSize - 1
+)
+
 type commitQueueNode struct {
-	value unsafe.Pointer
-	next  unsafe.Pointer
+	position uint64
+	value    unsafe.Pointer
 }
 
+// commitQueue maintains a circular ring buffer.
 type commitQueue struct {
-	head  unsafe.Pointer
-	tail  unsafe.Pointer
-	alloc []commitQueueNode
-}
-
-func (q *commitQueue) newNode(b *Batch) *commitQueueNode {
-	if len(q.alloc) == 0 {
-		q.alloc = make([]commitQueueNode, 16<<10)
-	}
-	n := &q.alloc[0]
-	q.alloc = q.alloc[1:]
-	n.value = unsafe.Pointer(b)
-	return n
+	// The padding members are here to ensure each item is on a separate cache
+	// line. This prevents false sharing and improves performance.
+	_     [8]uint64
+	write uint64
+	_     [8]uint64
+	read  uint64
+	_     [8]uint64
+	nodes [commitQueueSize]commitQueueNode
+	_     [8]uint64
 }
 
 func (q *commitQueue) init() {
-	q.head = unsafe.Pointer(q.newNode(nil))
-	q.tail = q.head
+	for i := range q.nodes {
+		q.nodes[i].position = uint64(i)
+	}
 }
 
-func (q *commitQueue) load(p *unsafe.Pointer) *commitQueueNode {
-	return (*commitQueueNode)(atomic.LoadPointer(p))
-}
-
-func (q *commitQueue) cas(p *unsafe.Pointer, old, new *commitQueueNode) (ok bool) {
-	return atomic.CompareAndSwapPointer(p, unsafe.Pointer(old), unsafe.Pointer(new))
-}
-
-func (q *commitQueue) enqueue(b *Batch) {
-	n := q.newNode(b)
+// Enqueue a single batch. Wait on cond if the queue is full.
+func (q *commitQueue) enqueue(b *Batch, cond *sync.Cond) {
+	// Note that this is a single-producer, multi-consumer queue. The q.write
+	// field is protected by commitPipeline.write.mu.
 	for {
-		last := q.load(&q.tail)
-		next := q.load(&last.next)
-		if last == q.load(&q.tail) {
-			if next == nil {
-				if q.cas(&last.next, next, n) {
-					q.cas(&q.tail, last, n)
-					return
-				}
-			} else {
-				q.cas(&q.tail, last, next)
-			}
+		pos := q.write
+		n := &q.nodes[pos&commitQueueMask]
+		seq := atomic.LoadUint64(&n.position)
+		if seq != pos {
+			cond.Wait()
+			continue
 		}
+
+		atomic.StoreUint64(&q.write, pos+1)
+		atomic.StorePointer(&n.value, unsafe.Pointer(b))
+		atomic.StoreUint64(&n.position, pos+1)
+		return
 	}
 }
 
 func (q *commitQueue) dequeue() *Batch {
 	for {
-		first := q.load(&q.head)
-		last := q.load(&q.tail)
-		next := q.load(&first.next)
-		if first == q.load(&q.head) {
-			if first == last {
-				if next == nil {
-					// Queue is empty.
-					return nil
-				}
-				q.cas(&q.tail, last, next)
-			} else {
-				v := (*Batch)(atomic.LoadPointer(&next.value))
-				if v == nil || atomic.LoadUint32(&v.applied) == 0 {
-					// The first batch in the queue has not been applied.
-					return nil
-				}
-				if q.cas(&q.head, first, next) {
-					atomic.StorePointer(&next.value, nil)
-					return v
-				}
-			}
+		pos := atomic.LoadUint64(&q.read)
+		if v := atomic.LoadUint64(&q.write); pos == v {
+			return nil
 		}
+		n := &q.nodes[pos&commitQueueMask]
+		seq := atomic.LoadUint64(&n.position)
+		if seq != pos+1 {
+			runtime.Gosched()
+			continue
+		}
+
+		b := (*Batch)(atomic.LoadPointer(&n.value))
+		if b == nil || atomic.LoadUint32(&b.applied) == 0 {
+			// The batch at the read index has either already been published or has
+			// not been applied.
+			return nil
+		}
+
+		if atomic.CompareAndSwapUint64(&q.read, pos, pos+1) {
+			atomic.StorePointer(&n.value, nil)
+			atomic.StoreUint64(&n.position, pos+commitQueueSize)
+			return b
+		}
+
+		runtime.Gosched() // free up the cpu before the next iteration
 	}
 }
 
@@ -121,9 +122,8 @@ type commitPipeline struct {
 	// State for writing to the WAL.
 	write struct {
 		syncutil.Mutex
-		cond         sync.Cond
-		pending      commitQueue
-		pendingCount int32
+		cond    sync.Cond
+		pending commitQueue
 	}
 }
 
@@ -177,15 +177,10 @@ func (p *commitPipeline) prepare(b *Batch) uint64 {
 	w := &p.write
 	w.Lock()
 
-	for atomic.LoadInt32(&w.pendingCount) > 64 {
-		w.cond.Wait()
-	}
-	atomic.AddInt32(&w.pendingCount, 1)
-
 	// Enqueue the batch in the pending queue. Note that while the pending queue
 	// is lock-free, we want the order of batches to be the same as the sequence
 	// number order.
-	w.pending.enqueue(b)
+	w.pending.enqueue(b, &w.cond)
 
 	// Assign the batch a sequence number.
 	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
@@ -211,15 +206,9 @@ func (p *commitPipeline) publish(b *Batch) {
 	// batch or there is an unapplied batch blocking us. When that unapplied
 	// batch applies it will go through the same process and publish our batch
 	// for us.
-	for count := int32(0); ; count++ {
+	for {
 		t := w.pending.dequeue()
 		if t == nil {
-			if count > 0 {
-				atomic.AddInt32(&w.pendingCount, -count)
-				for i := int32(0); i < count; i++ {
-					w.cond.Signal()
-				}
-			}
 			// Wait for another goroutine to publish us.
 			b.published.Wait()
 			break
@@ -240,5 +229,6 @@ func (p *commitPipeline) publish(b *Batch) {
 			}
 		}
 		t.published.Done()
+		w.cond.Signal()
 	}
 }
