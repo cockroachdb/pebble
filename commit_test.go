@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/arenaskl"
-	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/record"
 )
 
@@ -121,20 +120,19 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					return nil
 				},
 				write: func(data []byte) (int64, error) {
-					_ = crc.New(data).Value()
-					// return wal.Fill(pos, data)
-					return -1, nil
+					return wal.WriteRecord(data)
 				},
 			}
 			var logSeqNum, visibleSeqNum uint64
 			p := newCommitPipeline(nullCommitEnv, &logSeqNum, &visibleSeqNum)
 
-			b.SetBytes(16)
+			const keySize = 8
+			b.SetBytes(2 * keySize)
 			b.ResetTimer()
 
 			b.RunParallel(func(pb *testing.PB) {
 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-				buf := make([]byte, 8)
+				buf := make([]byte, keySize)
 
 				for pb.Next() {
 					batch := newBatch(nil)

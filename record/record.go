@@ -516,6 +516,20 @@ func (w *Writer) Finish() error {
 	return w.err
 }
 
+// WriteRecord writes a complete record.
+func (w *Writer) WriteRecord(p []byte) (int64, error) {
+	if w.err != nil {
+		return -1, w.err
+	}
+	if err := w.Finish(); err != nil {
+		return -1, err
+	}
+	if _, err := w.Write(p); err != nil {
+		return -1, err
+	}
+	return w.lastRecordOffset, w.Finish()
+}
+
 // LastRecordOffset returns the offset in the underlying io.Writer of the last
 // record so far - the one created by the most recent Next call. It is the
 // offset of the first chunk header, suitable to pass to Reader.SeekRecord.

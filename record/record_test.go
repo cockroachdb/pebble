@@ -49,11 +49,8 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 		if !ok {
 			break
 		}
-		if _, err := w.Write([]byte(s)); err != nil {
+		if _, err := w.WriteRecord([]byte(s)); err != nil {
 			t.Fatalf("Write: %v", err)
-		}
-		if err := w.Finish(); err != nil {
-			t.Fatalf("Finish: %v", err)
 		}
 	}
 	if err := w.Close(); err != nil {
@@ -159,10 +156,8 @@ func TestFlush(t *testing.T) {
 	w := NewWriter(buf)
 	// Write a couple of records. Everything should still be held
 	// in the record.Writer buffer, so that buf.Len should be 0.
-	_, _ = w.Write([]byte("0"))
-	_ = w.Finish()
-	_, _ = w.Write([]byte("11"))
-	_ = w.Finish()
+	_, _ = w.WriteRecord([]byte("0"))
+	_, _ = w.WriteRecord([]byte("11"))
 	if got, want := buf.Len(), 0; got != want {
 		t.Fatalf("buffer length #0: got %d want %d", got, want)
 	}
@@ -176,8 +171,7 @@ func TestFlush(t *testing.T) {
 	}
 	// Do another write, one that isn't large enough to complete the block.
 	// The write should not have flowed through to buf.
-	_, _ = w.Write(bytes.Repeat([]byte("2"), 10000))
-	_ = w.Finish()
+	_, _ = w.WriteRecord(bytes.Repeat([]byte("2"), 10000))
 	if got, want := buf.Len(), 17; got != want {
 		t.Fatalf("buffer length #2: got %d want %d", got, want)
 	}
@@ -192,8 +186,7 @@ func TestFlush(t *testing.T) {
 	// Do a bigger write, one that completes the current block.
 	// We should now have 32768 bytes (a complete block), without
 	// an explicit flush.
-	_, _ = w.Write(bytes.Repeat([]byte("3"), 40000))
-	_ = w.Finish()
+	_, _ = w.WriteRecord(bytes.Repeat([]byte("3"), 40000))
 	if got, want := buf.Len(), 32768; got != want {
 		t.Fatalf("buffer length #4: got %d want %d", got, want)
 	}
@@ -231,8 +224,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 	for i := 0; i < n; i++ {
 		length := len(p) + rnd.Intn(3*blockSize)
 		s := string(uint8(i)) + "123456789abcdefgh"
-		_, _ = w.Write([]byte(big(s, length)))
-		_ = w.Finish()
+		_, _ = w.WriteRecord([]byte(big(s, length)))
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -256,11 +248,10 @@ func TestStaleReader(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	w := NewWriter(buf)
-	if _, err := w.Write([]byte("0")); err != nil {
+	if _, err := w.WriteRecord([]byte("0")); err != nil {
 		t.Fatal(err)
 	}
-	_ = w.Finish()
-	if _, err := w.Write([]byte("11")); err != nil {
+	if _, err := w.WriteRecord([]byte("11")); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.Close(); err != nil {
@@ -755,10 +746,7 @@ func TestNoLastRecordOffset(t *testing.T) {
 		t.Fatalf("LastRecordOffset: got: %v, want ErrNoLastRecord", err)
 	}
 
-	if _, err := w.Write([]byte("testrecord")); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Finish(); err != nil {
+	if _, err := w.WriteRecord([]byte("testrecord")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -776,10 +764,7 @@ func BenchmarkRecordWrite(b *testing.B) {
 	b.SetBytes(int64(len(buf)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := w.Write(buf); err != nil {
-			b.Fatal(err)
-		}
-		if err := w.Finish(); err != nil {
+		if _, err := w.WriteRecord(buf); err != nil {
 			b.Fatal(err)
 		}
 	}
