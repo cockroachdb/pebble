@@ -152,6 +152,25 @@ func (p *commitPipeline) close() {
 	p.syncer.Unlock()
 }
 
+// func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
+// 	// TODO(peter): Rather than the current pipeline, we could more tightly
+// 	// integrate the WAL writes. The WAL is composed of 32KB blocks where each
+// 	// block is composed of variable length fragments. A record that spans a
+// 	// block is composed of multiple fragments. Given a batch, we can quickly
+// 	// determine the byte offsets that batch will consume in the current block
+// 	// and subsequent blocks.
+// 	//
+// 	// The new pipeline would look like:
+// 	// - Lock commitPipeline.write.mu
+// 	// - Assign batch seqnum and determine WAL fragment locations
+// 	// - Unlock commitPipeline.write.mu
+// 	// - Fill WAL blocks
+// 	// - If syncing, flushing WAL blocks and sync WAL
+// 	// - Apply batch to memtable
+// 	// - Wait for previous batch to apply
+// 	// - Bump visible seqnum
+// }
+
 // Commit the specified batch, writing it to the WAL, optionally syncing the
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.

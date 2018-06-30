@@ -1,10 +1,17 @@
 package pebble
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/petermattis/pebble/arenaskl"
+	"github.com/petermattis/pebble/record"
 )
 
 type testCommitEnv struct {
@@ -45,8 +52,6 @@ func (e *testCommitEnv) write(group commitList) error {
 
 func TestCommitPipeline(t *testing.T) {
 	var e testCommitEnv
-	e.logSeqNum = 1
-	e.visibleSeqNum = 1
 	p := newCommitPipeline(e.env(), &e.logSeqNum, &e.visibleSeqNum)
 	defer p.close()
 
@@ -71,15 +76,15 @@ func TestCommitPipeline(t *testing.T) {
 		t.Fatalf("expected %d written batches, but found %d",
 			n, len(e.applyBuf.buf))
 	}
-	if e, s := uint64(n+1), atomic.LoadUint64(&e.logSeqNum); e != s {
-		t.Fatalf("expected %d, but found %d", e, s)
+	if s := atomic.LoadUint64(&e.logSeqNum); n != s {
+		t.Fatalf("expected %d, but found %d", n, s)
 	}
-	if e, s := uint64(n+1), atomic.LoadUint64(&e.visibleSeqNum); e != s {
-		t.Fatalf("expected %d, but found %d", e, s)
+	if s := atomic.LoadUint64(&e.visibleSeqNum); n != s {
+		t.Fatalf("expected %d, but found %d", n, s)
 	}
 
 	for i := 0; i < n; i++ {
-		if e.writeBuf[i] != uint64(i+1) {
+		if e.writeBuf[i] != uint64(i) {
 			t.Fatalf("batches written out of sequence order: %d != %d",
 				i+1, e.writeBuf[i])
 		}
@@ -90,18 +95,50 @@ func BenchmarkCommitPipeline(b *testing.B) {
 	for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
 			b.SetParallelism(parallelism)
+			var mem struct {
+				sync.RWMutex
+				*memTable
+			}
+			var wal struct {
+				sync.Mutex
+				*record.Writer
+			}
+			wal.Writer = record.NewWriter(ioutil.Discard)
 
 			nullCommitEnv := commitEnv{
 				apply: func(b *Batch) error {
-					// time.Sleep(10 * time.Microsecond)
-					return nil
+					for {
+						mem.RLock()
+						err := arenaskl.ErrArenaFull
+						if mem.memTable != nil {
+							err = mem.apply(b, b.seqNum())
+						}
+						mem.RUnlock()
+
+						if err == arenaskl.ErrArenaFull {
+							mem.Lock()
+							mem.memTable = newMemTable(nil)
+							mem.Unlock()
+							continue
+						}
+						return err
+					}
 				},
 				sync: func() error {
-					// time.Sleep(time.Millisecond)
-					return nil
+					wal.Lock()
+					defer wal.Unlock()
+					return wal.Sync()
 				},
 				write: func(group commitList) error {
-					// time.Sleep(50 * time.Microsecond)
+					wal.Lock()
+					defer wal.Unlock()
+					for b := group.head; b != nil; b = b.commit.next {
+						_, err := wal.Write(b.data)
+						if err != nil {
+							return err
+						}
+						return wal.Finish()
+					}
 					return nil
 				},
 			}
@@ -109,15 +146,21 @@ func BenchmarkCommitPipeline(b *testing.B) {
 			p := newCommitPipeline(nullCommitEnv, &logSeqNum, &visibleSeqNum)
 			defer p.close()
 
+			b.SetBytes(16)
+			b.ResetTimer()
+
 			b.RunParallel(func(pb *testing.PB) {
-				batch := newBatch(nil)
-				batch.Set([]byte("hello"), nil, nil)
+				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+				buf := make([]byte, 8)
 
 				for pb.Next() {
-					batch.setSeqNum(0)
-					if err := p.commit(batch, true); err != nil {
+					batch := newBatch(nil)
+					binary.BigEndian.PutUint64(buf, rng.Uint64())
+					batch.Set(buf, buf, nil)
+					if err := p.commit(batch, false /* sync */); err != nil {
 						b.Fatal(err)
 					}
+					batch.release()
 				}
 			})
 		})
