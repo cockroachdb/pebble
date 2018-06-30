@@ -131,30 +131,9 @@ func (p *commitPipeline) close() {
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
 func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
-	b.published.Add(1)
-	n := uint64(b.count())
-	w := &p.write
-	w.Lock()
-
-	// Assign the batch a sequence number.
-	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
-
-	// Reserve the WAL position.
-	pos := p.env.reserve(len(b.data))
-
-	if len(w.nodes) == 0 {
-		w.nodes = make([]commitQueueNode, 1024)
-	}
-	node := &w.nodes[0]
-	w.nodes = w.nodes[1:]
-	node.value = b
-
-	// Enqueue the batch in the pending queue. Note that while the pending queue
-	// is lock-free, we want the order of batches to be the same as the sequence
-	// number order.
-	w.pending.enqueue(node)
-
-	w.Unlock()
+	// Prepare the batch for committing: determine the batch sequence number and
+	// WAL position.
+	pos := p.prepare(b)
 
 	// Fill the WAL reservation.
 	if err := p.env.write(pos, b.data); err != nil {
@@ -169,6 +148,45 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 		// point.
 		return err
 	}
+
+	// Publish the batch sequence number.
+	p.publish(b)
+
+	// TODO(peter): wait for the WAL to sync.
+	return nil
+}
+
+func (p *commitPipeline) prepare(b *Batch) uint64 {
+	b.published.Add(1)
+	n := uint64(b.count())
+	w := &p.write
+	w.Lock()
+
+	// Assign the batch a sequence number.
+	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
+
+	// Reserve the WAL position.
+	pos := p.env.reserve(len(b.data))
+
+	if len(w.nodes) == 0 {
+		w.nodes = make([]commitQueueNode, 16<<10)
+	}
+	node := &w.nodes[0]
+	w.nodes = w.nodes[1:]
+	node.value = b
+
+	// Enqueue the batch in the pending queue. Note that while the pending queue
+	// is lock-free, we want the order of batches to be the same as the sequence
+	// number order.
+	w.pending.enqueue(node)
+
+	w.Unlock()
+
+	return pos
+}
+
+func (p *commitPipeline) publish(b *Batch) {
+	w := &p.write
 
 	// Mark the batch as applied.
 	atomic.StoreUint32(&b.applied, 1)
@@ -204,7 +222,4 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 		}
 		t.published.Done()
 	}
-
-	// TODO(peter): wait for the WAL to sync.
-	return nil
 }

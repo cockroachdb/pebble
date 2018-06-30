@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/arenaskl"
+	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/record"
 )
 
@@ -128,6 +129,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					return nil
 				},
 				write: func(pos uint64, data []byte) error {
+					_ = crc.New(data).Value()
 					// return wal.Fill(pos, data)
 					return nil
 				},
