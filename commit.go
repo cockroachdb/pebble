@@ -1,6 +1,7 @@
 package pebble
 
 import (
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -120,7 +121,9 @@ type commitPipeline struct {
 	// State for writing to the WAL.
 	write struct {
 		syncutil.Mutex
-		pending commitQueue
+		cond         sync.Cond
+		pending      commitQueue
+		pendingCount int32
 	}
 }
 
@@ -130,6 +133,7 @@ func newCommitPipeline(env commitEnv, logSeqNum, visibleSeqNum *uint64) *commitP
 		logSeqNum:     logSeqNum,
 		visibleSeqNum: visibleSeqNum,
 	}
+	p.write.cond.L = &p.write.Mutex
 	p.write.pending.init()
 	return p
 }
@@ -173,6 +177,11 @@ func (p *commitPipeline) prepare(b *Batch) uint64 {
 	w := &p.write
 	w.Lock()
 
+	for atomic.LoadInt32(&w.pendingCount) > 64 {
+		w.cond.Wait()
+	}
+	atomic.AddInt32(&w.pendingCount, 1)
+
 	// Enqueue the batch in the pending queue. Note that while the pending queue
 	// is lock-free, we want the order of batches to be the same as the sequence
 	// number order.
@@ -202,9 +211,15 @@ func (p *commitPipeline) publish(b *Batch) {
 	// batch or there is an unapplied batch blocking us. When that unapplied
 	// batch applies it will go through the same process and publish our batch
 	// for us.
-	for {
+	for count := int32(0); ; count++ {
 		t := w.pending.dequeue()
 		if t == nil {
+			if count > 0 {
+				atomic.AddInt32(&w.pendingCount, -count)
+				for i := int32(0); i < count; i++ {
+					w.cond.Signal()
+				}
+			}
 			// Wait for another goroutine to publish us.
 			b.published.Wait()
 			break
