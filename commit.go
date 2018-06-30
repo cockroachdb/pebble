@@ -8,18 +8,28 @@ import (
 )
 
 type commitQueueNode struct {
-	value *Batch
+	value unsafe.Pointer
 	next  unsafe.Pointer
 }
 
 type commitQueue struct {
-	head unsafe.Pointer
-	tail unsafe.Pointer
+	head  unsafe.Pointer
+	tail  unsafe.Pointer
+	alloc []commitQueueNode
+}
+
+func (q *commitQueue) newNode(b *Batch) *commitQueueNode {
+	if len(q.alloc) == 0 {
+		q.alloc = make([]commitQueueNode, 16<<10)
+	}
+	n := &q.alloc[0]
+	q.alloc = q.alloc[1:]
+	n.value = unsafe.Pointer(b)
+	return n
 }
 
 func (q *commitQueue) init() {
-	dummy := &commitQueueNode{}
-	q.head = unsafe.Pointer(dummy)
+	q.head = unsafe.Pointer(q.newNode(nil))
 	q.tail = q.head
 }
 
@@ -28,18 +38,18 @@ func (q *commitQueue) load(p *unsafe.Pointer) *commitQueueNode {
 }
 
 func (q *commitQueue) cas(p *unsafe.Pointer, old, new *commitQueueNode) (ok bool) {
-	return atomic.CompareAndSwapPointer(
-		p, unsafe.Pointer(old), unsafe.Pointer(new))
+	return atomic.CompareAndSwapPointer(p, unsafe.Pointer(old), unsafe.Pointer(new))
 }
 
-func (q *commitQueue) enqueue(node *commitQueueNode) {
+func (q *commitQueue) enqueue(b *Batch) {
+	n := q.newNode(b)
 	for {
 		last := q.load(&q.tail)
 		next := q.load(&last.next)
 		if last == q.load(&q.tail) {
 			if next == nil {
-				if q.cas(&last.next, next, node) {
-					q.cas(&q.tail, last, node)
+				if q.cas(&last.next, next, n) {
+					q.cas(&q.tail, last, n)
 					return
 				}
 			} else {
@@ -62,12 +72,13 @@ func (q *commitQueue) dequeue() *Batch {
 				}
 				q.cas(&q.tail, last, next)
 			} else {
-				v := next.value
-				if atomic.LoadUint32(&v.applied) == 0 {
+				v := (*Batch)(atomic.LoadPointer(&next.value))
+				if v == nil || atomic.LoadUint32(&v.applied) == 0 {
 					// The first batch in the queue has not been applied.
 					return nil
 				}
 				if q.cas(&q.head, first, next) {
+					atomic.StorePointer(&next.value, nil)
 					return v
 				}
 			}
@@ -110,7 +121,6 @@ type commitPipeline struct {
 	write struct {
 		syncutil.Mutex
 		pending commitQueue
-		nodes   []commitQueueNode
 	}
 }
 
@@ -132,7 +142,7 @@ func (p *commitPipeline) close() {
 // batch's mutations will be visible for reading.
 func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// Prepare the batch for committing: determine the batch sequence number and
-	// WAL position.
+	// WAL position and enqueue the batch in the pending queue.
 	pos := p.prepare(b)
 
 	// Fill the WAL reservation.
@@ -159,26 +169,20 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 func (p *commitPipeline) prepare(b *Batch) uint64 {
 	b.published.Add(1)
 	n := uint64(b.count())
+
 	w := &p.write
 	w.Lock()
+
+	// Enqueue the batch in the pending queue. Note that while the pending queue
+	// is lock-free, we want the order of batches to be the same as the sequence
+	// number order.
+	w.pending.enqueue(b)
 
 	// Assign the batch a sequence number.
 	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
 
 	// Reserve the WAL position.
 	pos := p.env.reserve(len(b.data))
-
-	if len(w.nodes) == 0 {
-		w.nodes = make([]commitQueueNode, 16<<10)
-	}
-	node := &w.nodes[0]
-	w.nodes = w.nodes[1:]
-	node.value = b
-
-	// Enqueue the batch in the pending queue. Note that while the pending queue
-	// is lock-free, we want the order of batches to be the same as the sequence
-	// number order.
-	w.pending.enqueue(node)
 
 	w.Unlock()
 
