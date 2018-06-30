@@ -64,15 +64,20 @@ func (q *commitQueue) enqueue(b *Batch, cond *sync.Cond) {
 	}
 }
 
-func (q *commitQueue) dequeue() *Batch {
+// Dequeue removes and returns the batch at the head of the queue if that batch
+// has been applied (Batch.applied != 0). Returns nil if either the queue empty
+// or the head batch is not been applied.
+func (q *commitQueue) dequeue(cond *sync.Cond) *Batch {
 	for {
 		pos := atomic.LoadUint64(&q.read)
-		if v := atomic.LoadUint64(&q.write); pos == v {
-			return nil
-		}
 		n := &q.nodes[pos&q.mask]
 		seq := atomic.LoadUint64(&n.position)
 		if seq != pos+1 {
+			if pos == atomic.LoadUint64(&q.write) {
+				// The queue is empty.
+				return nil
+			}
+			// The element at pos is being written.
 			runtime.Gosched()
 			continue
 		}
@@ -84,12 +89,15 @@ func (q *commitQueue) dequeue() *Batch {
 			return nil
 		}
 
+		// Dequeue the element by bumping the read pointer.
 		if atomic.CompareAndSwapUint64(&q.read, pos, pos+1) {
 			atomic.StorePointer(&n.value, nil)
 			atomic.StoreUint64(&n.position, pos+q.mask+1)
+			cond.Signal()
 			return b
 		}
 
+		// We failed to bump the read pointer. Loop and try again.
 		runtime.Gosched() // free up the cpu before the next iteration
 	}
 }
@@ -101,7 +109,7 @@ type commitEnv struct {
 	// those bytes will be written. Must be matched with a call to
 	// write(). Called serially with the write mutex held.
 	reserve func(n int) uint64
-	// Sync the WAL up to pos+n.
+	// Sync the WAL up to pos+n. Called concurrently.
 	sync func(pos uint64, n int) error
 	// Write the batch to the WAL. A previous call to reserve(len(data)) needs to
 	// be performed to retrieve the supplied position. Called concurrently.
@@ -214,7 +222,7 @@ func (p *commitPipeline) publish(b *Batch) {
 	// batch applies it will go through the same process and publish our batch
 	// for us.
 	for {
-		t := w.pending.dequeue()
+		t := w.pending.dequeue(&w.cond)
 		if t == nil {
 			// Wait for another goroutine to publish us.
 			b.published.Wait()
@@ -222,20 +230,22 @@ func (p *commitPipeline) publish(b *Batch) {
 		}
 
 		// We're responsible for publishing the sequence number for batch t, but
-		// another goroutine might have already increased the visible sequence
-		// number past t's, so only ratchet if t's visible sequence number is past
-		// the current visible sequence number.
+		// another concurrent goroutine might sneak in a publish the sequence
+		// number for a subsequent batch. That's ok as all we're guaranteeing is
+		// that the sequence number ratchets up.
 		for {
 			curSeqNum := atomic.LoadUint64(p.visibleSeqNum)
 			newSeqNum := t.seqNum() + uint64(t.count())
 			if newSeqNum <= curSeqNum {
+				// t's sequence number has already been published.
 				break
 			}
 			if atomic.CompareAndSwapUint64(p.visibleSeqNum, curSeqNum, newSeqNum) {
+				// We successfully published t's sequence number.
 				break
 			}
 		}
+
 		t.published.Done()
-		w.cond.Signal()
 	}
 }
