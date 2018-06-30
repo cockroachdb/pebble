@@ -758,14 +758,18 @@ func TestNoLastRecordOffset(t *testing.T) {
 }
 
 func BenchmarkRecordWrite(b *testing.B) {
-	w := NewWriter(ioutil.Discard)
-	buf := make([]byte, 64)
+	for _, size := range []int{8, 16, 32, 64, 128} {
+		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
+			w := NewWriter(ioutil.Discard)
+			buf := make([]byte, size)
 
-	b.SetBytes(int64(len(buf)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, err := w.WriteRecord(buf); err != nil {
-			b.Fatal(err)
-		}
+			b.SetBytes(int64(len(buf)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := w.WriteRecord(buf); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
