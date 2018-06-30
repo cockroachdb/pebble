@@ -107,15 +107,12 @@ func (q *commitQueue) dequeue(cond *sync.Cond) *Batch {
 type commitEnv struct {
 	// Apply the batch to the in-memory state. Called concurrently.
 	apply func(b *Batch) error
-	// Reserve n bytes in the WAL, returning the start offset in the WAL at which
-	// those bytes will be written. Must be matched with a call to
-	// write(). Called serially with the write mutex held.
-	reserve func(n int) uint64
 	// Sync the WAL up to pos+n. Called concurrently.
-	sync func(pos uint64, n int) error
-	// Write the batch to the WAL. A previous call to reserve(len(data)) needs to
-	// be performed to retrieve the supplied position. Called concurrently.
-	write func(pos uint64, data []byte) error
+	sync func(pos, n int64) error
+	// Write the batch to the WAL. The data is not persisted until a call to
+	// sync() is performed. Returns the WAL position at which the data was
+	// written which can be used in a subsequent call to sync(). Called serially.
+	write func(data []byte) (int64, error)
 }
 
 // A commitPipeline manages the commit commitPipeline: writing batches to the
@@ -158,15 +155,13 @@ func newCommitPipeline(env commitEnv, logSeqNum, visibleSeqNum *uint64) *commitP
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
 func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
-	// Prepare the batch for committing: determine the batch sequence number and
-	// WAL position and enqueue the batch in the pending queue.
-	pos := p.prepare(b)
-
-	// Fill the WAL reservation.
-	if err := p.env.write(pos, b.data); err != nil {
+	// Prepare the batch for committing: enqueuing the batch in the pending
+	// queue, determining the batch sequence number and writing the data to the
+	// WAL.
+	pos, err := p.prepare(b)
+	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
-		return err
 	}
 
 	// Apply the batch to the memtable.
@@ -180,14 +175,14 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	p.publish(b)
 
 	if syncWAL {
-		if err := p.env.sync(pos, len(b.data)); err != nil {
+		if err := p.env.sync(pos, int64(len(b.data))); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *commitPipeline) prepare(b *Batch) uint64 {
+func (p *commitPipeline) prepare(b *Batch) (int64, error) {
 	b.published.Add(1)
 	n := uint64(b.count())
 
@@ -202,12 +197,12 @@ func (p *commitPipeline) prepare(b *Batch) uint64 {
 	// Assign the batch a sequence number.
 	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
 
-	// Reserve the WAL position.
-	pos := p.env.reserve(len(b.data))
+	// Write the data to the WAL.
+	pos, err := p.env.write(b.data)
 
 	w.Unlock()
 
-	return pos
+	return pos, err
 }
 
 func (p *commitPipeline) publish(b *Batch) {

@@ -18,7 +18,7 @@ import (
 type testCommitEnv struct {
 	logSeqNum     uint64
 	visibleSeqNum uint64
-	writePos      uint64
+	writePos      int64
 	writeCount    uint64
 	applyBuf      struct {
 		sync.Mutex
@@ -28,10 +28,9 @@ type testCommitEnv struct {
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		apply:   e.apply,
-		reserve: e.reserve,
-		sync:    e.sync,
-		write:   e.write,
+		apply: e.apply,
+		sync:  e.sync,
+		write: e.write,
 	}
 }
 
@@ -42,17 +41,15 @@ func (e *testCommitEnv) apply(b *Batch) error {
 	return nil
 }
 
-func (e *testCommitEnv) reserve(n int) uint64 {
-	return atomic.AddUint64(&e.writePos, uint64(n)) - uint64(n)
-}
-
-func (e *testCommitEnv) sync(pos uint64, n int) error {
+func (e *testCommitEnv) sync(pos, n int64) error {
 	return nil
 }
 
-func (e *testCommitEnv) write(pos uint64, data []byte) error {
+func (e *testCommitEnv) write(data []byte) (int64, error) {
+	n := int64(len(data))
+	pos := atomic.AddInt64(&e.writePos, n) - n
 	atomic.AddUint64(&e.writeCount, 1)
-	return nil
+	return pos, nil
 }
 
 func TestCommitPipeline(t *testing.T) {
@@ -119,18 +116,14 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						return err
 					}
 				},
-				reserve: func(n int) uint64 {
-					// return wal.Reserve(n)
-					return 0
-				},
-				sync: func(pos uint64, n int) error {
+				sync: func(pos, n int64) error {
 					// return wal.Sync()
 					return nil
 				},
-				write: func(pos uint64, data []byte) error {
+				write: func(data []byte) (int64, error) {
 					_ = crc.New(data).Value()
 					// return wal.Fill(pos, data)
-					return nil
+					return -1, nil
 				},
 			}
 			var logSeqNum, visibleSeqNum uint64
