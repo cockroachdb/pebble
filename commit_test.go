@@ -17,18 +17,20 @@ import (
 type testCommitEnv struct {
 	logSeqNum     uint64
 	visibleSeqNum uint64
+	writePos      uint64
+	writeCount    uint64
 	applyBuf      struct {
 		sync.Mutex
 		buf []uint64
 	}
-	writeBuf []uint64
 }
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		apply: e.apply,
-		sync:  e.sync,
-		write: e.write,
+		apply:   e.apply,
+		reserve: e.reserve,
+		sync:    e.sync,
+		write:   e.write,
 	}
 }
 
@@ -39,14 +41,16 @@ func (e *testCommitEnv) apply(b *Batch) error {
 	return nil
 }
 
+func (e *testCommitEnv) reserve(n int) uint64 {
+	return atomic.AddUint64(&e.writePos, uint64(n)) - uint64(n)
+}
+
 func (e *testCommitEnv) sync() error {
 	return nil
 }
 
-func (e *testCommitEnv) write(group commitList) error {
-	for b := group.head; b != nil; b = b.commit.next {
-		e.writeBuf = append(e.writeBuf, b.seqNum())
-	}
+func (e *testCommitEnv) write(pos uint64, data []byte) error {
+	atomic.AddUint64(&e.writeCount, 1)
 	return nil
 }
 
@@ -68,9 +72,8 @@ func TestCommitPipeline(t *testing.T) {
 	}
 	wg.Wait()
 
-	if n != len(e.writeBuf) {
-		t.Fatalf("expected %d written batches, but found %d",
-			n, len(e.writeBuf))
+	if s := atomic.LoadUint64(&e.writeCount); n != s {
+		t.Fatalf("expected %d written batches, but found %d", n, s)
 	}
 	if n != len(e.applyBuf.buf) {
 		t.Fatalf("expected %d written batches, but found %d",
@@ -81,13 +84,6 @@ func TestCommitPipeline(t *testing.T) {
 	}
 	if s := atomic.LoadUint64(&e.visibleSeqNum); n != s {
 		t.Fatalf("expected %d, but found %d", n, s)
-	}
-
-	for i := 0; i < n; i++ {
-		if e.writeBuf[i] != uint64(i) {
-			t.Fatalf("batches written out of sequence order: %d != %d",
-				i+1, e.writeBuf[i])
-		}
 	}
 }
 
@@ -100,7 +96,6 @@ func BenchmarkCommitPipeline(b *testing.B) {
 				*memTable
 			}
 			var wal struct {
-				sync.Mutex
 				*record.Writer
 			}
 			wal.Writer = record.NewWriter(ioutil.Discard)
@@ -124,21 +119,16 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						return err
 					}
 				},
-				sync: func() error {
-					wal.Lock()
-					defer wal.Unlock()
-					return wal.Sync()
+				reserve: func(n int) uint64 {
+					return 0
+					// return wal.Reserve(n)
 				},
-				write: func(group commitList) error {
-					wal.Lock()
-					defer wal.Unlock()
-					for b := group.head; b != nil; b = b.commit.next {
-						_, err := wal.Write(b.data)
-						if err != nil {
-							return err
-						}
-						return wal.Finish()
-					}
+				sync: func() error {
+					// return wal.Sync()
+					return nil
+				},
+				write: func(pos uint64, data []byte) error {
+					// return wal.Fill(pos, data)
 					return nil
 				},
 			}
