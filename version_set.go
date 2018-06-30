@@ -167,6 +167,9 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	if err := ve.encode(vs.manifest); err != nil {
 		return err
 	}
+	if err := vs.manifest.Finish(); err != nil {
+		return err
+	}
 	if err := vs.manifest.Flush(); err != nil {
 		return err
 	}
@@ -227,6 +230,9 @@ func (vs *versionSet) createManifest(dirname string) (err error) {
 	}
 
 	if err := snapshot.encode(manifest); err != nil {
+		return err
+	}
+	if err := manifest.Finish(); err != nil {
 		return err
 	}
 

@@ -84,6 +84,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync"
 
 	"github.com/petermattis/pebble/crc"
 )
@@ -321,6 +322,16 @@ func (x singleReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+type block struct {
+	// buf[i:j] is the bytes that will become the current chunk.
+	// The low bound, i, includes the chunk header.
+	i, j int
+	// buf[:written] has already been written to w.
+	// written is zero unless Flush has been called.
+	written int
+	buf     [blockSize]byte
+}
+
 // Writer writes records to an underlying io.Writer.
 type Writer struct {
 	// w is the underlying writer.
@@ -329,12 +340,6 @@ type Writer struct {
 	f flusher
 	// s is w as a syncer.
 	s syncer
-	// buf[i:j] is the bytes that will become the current chunk.
-	// The low bound, i, includes the chunk header.
-	i, j int
-	// buf[:written] has already been written to w.
-	// written is zero unless Flush has been called.
-	written int
 	// baseOffset is the base offset in w at which writing started. If
 	// w implements io.Seeker, it's relative to the start of w, 0 otherwise.
 	baseOffset int64
@@ -351,8 +356,14 @@ type Writer struct {
 	pending bool
 	// err is any accumulated error.
 	err error
-	// buf is the buffer.
-	buf [blockSize]byte
+	// block is the current block being written.
+	block *block
+
+	// TODO(peter): flusher goroutine.
+	flusher struct {
+		sync.Mutex
+		cond sync.Cond
+	}
 }
 
 // NewWriter returns a new Writer.
@@ -373,75 +384,71 @@ func NewWriter(w io.Writer) *Writer {
 		s:                s,
 		baseOffset:       o,
 		lastRecordOffset: -1,
+		block:            &block{},
 	}
 }
 
 // fillHeader fills in the header for the pending chunk.
 func (w *Writer) fillHeader(last bool) {
-	if w.i+headerSize > w.j || w.j > blockSize {
+	b := w.block
+	if b.i+headerSize > b.j || b.j > blockSize {
 		panic("pebble/record: bad writer state")
 	}
 	if last {
 		if w.first {
-			w.buf[w.i+6] = fullChunkType
+			b.buf[b.i+6] = fullChunkType
 		} else {
-			w.buf[w.i+6] = lastChunkType
+			b.buf[b.i+6] = lastChunkType
 		}
 	} else {
 		if w.first {
-			w.buf[w.i+6] = firstChunkType
+			b.buf[b.i+6] = firstChunkType
 		} else {
-			w.buf[w.i+6] = middleChunkType
+			b.buf[b.i+6] = middleChunkType
 		}
 	}
-	binary.LittleEndian.PutUint32(w.buf[w.i+0:w.i+4], crc.New(w.buf[w.i+6:w.j]).Value())
-	binary.LittleEndian.PutUint16(w.buf[w.i+4:w.i+6], uint16(w.j-w.i-headerSize))
+	binary.LittleEndian.PutUint32(
+		b.buf[b.i+0:b.i+4], crc.New(b.buf[b.i+6:b.j]).Value())
+	binary.LittleEndian.PutUint16(
+		b.buf[b.i+4:b.i+6], uint16(b.j-b.i-headerSize))
 }
 
 // writeBlock writes the buffered block to the underlying writer, and reserves
 // space for the next chunk's header.
 func (w *Writer) writeBlock() {
-	_, w.err = w.w.Write(w.buf[w.written:])
-	w.i = 0
-	w.j = headerSize
-	w.written = 0
+	// TODO(peter): Take the current block and enqueue it on a queue of blocks to
+	// flush. Signal the flusher goroutine to wake-up. Create a new block,
+	// recycling a flushed block if available or blocking if there are too many
+	// blocks being flushed.
+
+	b := w.block
+	_, w.err = w.w.Write(w.block.buf[b.written:])
+	b.i = 0
+	b.j = headerSize
+	b.written = 0
 	w.blockNumber++
 }
 
-// writePending finishes the current record and writes the buffer to the
-// underlying writer.
-func (w *Writer) writePending() {
-	if w.err != nil {
-		return
-	}
-	if w.pending {
-		w.fillHeader(true)
-		w.pending = false
-	}
-	_, w.err = w.w.Write(w.buf[w.written:w.j])
-	w.written = w.j
-}
-
-// Close finishes the current record and closes the writer.
+// Close flushes any unwritten data and closes the writer.
 func (w *Writer) Close() error {
-	w.writePending()
-	if w.err != nil {
-		return w.err
+	if err := w.Flush(); err != nil {
+		return err
 	}
 	w.err = errors.New("pebble/record: closed Writer")
 	return nil
 }
 
-// Flush finishes the current record, writes to the underlying writer, and
-// flushes it if that writer implements interface{ Flush() error }.
+// Flush flushes any unwritten data.
 func (w *Writer) Flush() error {
-	// TODO(peter): Add locking to Writer. Writing the pending block requires
-	// synchronization with Write/Finish, but calling Flush on the underlying
-	// file does not.
-	w.writePending()
+	// TODO(peter): Take the current block and enqueue the portion of it that has
+	// been written so far on a flush queue. Flush all of the data in the queue.
+
 	if w.err != nil {
 		return w.err
 	}
+	b := w.block
+	_, w.err = w.w.Write(w.block.buf[b.written:b.j])
+	b.written = b.j
 	if w.f != nil {
 		w.err = w.f.Flush()
 		return w.err
@@ -449,8 +456,13 @@ func (w *Writer) Flush() error {
 	return nil
 }
 
-// Sync finishes the current record, writes to the underlying writer, and
-// flushes and syncs it if the writer implements interface { Sync() error }.
+// FlushTo flushes unwritten data to pos+n.
+func (w *Writer) FlushTo(pos int64, n int) error {
+	// TODO(peter): unimplemented.
+	return w.Flush()
+}
+
+// Sync flushes any unwritten and synchronizes the underlying file.
 func (w *Writer) Sync() error {
 	if err := w.Flush(); err != nil {
 		return err
@@ -462,28 +474,41 @@ func (w *Writer) Sync() error {
 	return nil
 }
 
-// Write writes the given data to the current record, starting a new record if
-// one isn't currently active.
+// SyncTo flushes unwritten data to pos+n and synchronizes the underlying file.
+func (w *Writer) SyncTo(pos int64, n int) error {
+	if err := w.FlushTo(pos, n); err != nil {
+		return err
+	}
+	if w.s != nil {
+		w.err = w.s.Sync()
+		return w.err
+	}
+	return nil
+}
+
+// Write writes the given data to the current record, starting a new
+// record if one isn't currently active.
 func (w *Writer) Write(p []byte) (int, error) {
 	if w.err != nil {
 		return 0, w.err
 	}
 
+	b := w.block
 	if !w.pending {
-		w.i = w.j
-		w.j = w.j + headerSize
+		b.i = b.j
+		b.j = b.j + headerSize
 		// Check if there is room in the block for the header.
-		if w.j > blockSize {
+		if b.j > blockSize {
 			// Fill in the rest of the block with zeroes.
-			for k := w.i; k < blockSize; k++ {
-				w.buf[k] = 0
+			for k := b.i; k < blockSize; k++ {
+				w.block.buf[k] = 0
 			}
 			w.writeBlock()
 			if w.err != nil {
 				return 0, w.err
 			}
 		}
-		w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.i)
+		w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(b.i)
 		w.first = true
 		w.pending = true
 	}
@@ -491,7 +516,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 	n0 := len(p)
 	for len(p) > 0 {
 		// Write a block, if it is full.
-		if w.j == blockSize {
+		if b.j == blockSize {
 			w.fillHeader(false)
 			w.writeBlock()
 			if w.err != nil {
@@ -500,8 +525,8 @@ func (w *Writer) Write(p []byte) (int, error) {
 			w.first = false
 		}
 		// Copy bytes into the buffer.
-		n := copy(w.buf[w.j:], p)
-		w.j += n
+		n := copy(w.block.buf[b.j:], p)
+		b.j += n
 		p = p[n:]
 	}
 	return n0, nil

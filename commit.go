@@ -6,8 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 )
 
 type commitQueueNode struct {
@@ -134,7 +132,7 @@ type commitPipeline struct {
 
 	// State for writing to the WAL.
 	write struct {
-		syncutil.Mutex
+		sync.Mutex
 		cond    sync.Cond
 		pending commitQueue
 	}

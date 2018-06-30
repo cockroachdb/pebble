@@ -266,10 +266,7 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 
 	// Write the batch to the log.
 	// TODO: drop and re-acquire d.mu around the I/O.
-	if _, err := d.log.Write(batch.data); err != nil {
-		return fmt.Errorf("pebble: could not write log entry: %v", err)
-	}
-	if err := d.log.Finish(); err != nil {
+	if _, err := d.log.WriteRecord(batch.data); err != nil {
 		return fmt.Errorf("pebble: could not write log entry: %v", err)
 	}
 	if opts.GetSync() {
@@ -444,6 +441,10 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 
 	recWriter := record.NewWriter(f)
 	err = ve.encode(recWriter)
+	if err != nil {
+		return err
+	}
+	err = recWriter.Finish()
 	if err != nil {
 		return err
 	}
