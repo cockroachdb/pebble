@@ -358,11 +358,33 @@ type Writer struct {
 	err error
 	// block is the current block being written.
 	block *block
+	free  chan *block
 
-	// TODO(peter): flusher goroutine.
+	// TODO(peter): writeMu is a blunt instrument. Calls to Write, Finish and
+	// WriteRecord require external synchronization. writeMu is protected against
+	// concurrent calls to Flush. What flush needs to do is to ensure data up to
+	// some offset is written to the underlying writer. Any block that is queued
+	// for flushing is out of the concern if Write/Finish/WriteRecord. The
+	// complexity is if we need to flush part of a block. Block's are filled
+	// sequentially. We should be able to atomically update write block.j (the
+	// marker of what has been written in the block). Write/Finish/WriteRecord
+	// then only needs to grab flusher.mutex when it crosses a block boundary.
+	writeMu sync.Mutex
+
 	flusher struct {
 		sync.Mutex
-		cond sync.Cond
+		// Cond var signalled when there are blocks to flush or the Writer has been
+		// closed.
+		ready sync.Cond
+		// Cond var signalled when flushing of pending blocks has been completed.
+		done sync.Cond
+		// Is flushing currently active?
+		flushing bool
+		// Has the writer been closed?
+		closed bool
+		// Accumulated flush error.
+		err     error
+		pending []*block
 	}
 }
 
@@ -378,14 +400,71 @@ func NewWriter(w io.Writer) *Writer {
 			o = 0
 		}
 	}
-	return &Writer{
+
+	r := &Writer{
 		w:                w,
 		f:                f,
 		s:                s,
 		baseOffset:       o,
 		lastRecordOffset: -1,
-		block:            &block{},
+		free:             make(chan *block, 4),
 	}
+	for i := 0; i < cap(r.free); i++ {
+		r.free <- &block{}
+	}
+	r.block = <-r.free
+	r.flusher.ready.L = &r.flusher.Mutex
+	r.flusher.done.L = &r.flusher.Mutex
+	go r.flushLoop()
+	return r
+}
+
+func (w *Writer) flushLoop() {
+	f := &w.flusher
+	f.Lock()
+	defer f.Unlock()
+
+	for {
+		for len(f.pending) == 0 && !f.closed {
+			f.ready.Wait()
+		}
+		if f.closed {
+			return
+		}
+
+		pending := f.pending
+		f.pending = nil
+		f.flushing = true
+
+		f.Unlock()
+
+		for _, b := range pending {
+			if err := w.flushBlock(b); err != nil {
+				// TODO(peter): Figure out error handling.
+				panic(err)
+			}
+		}
+
+		f.Lock()
+		f.flushing = false
+		f.done.Signal()
+	}
+}
+
+func (w *Writer) flushWait() {
+	w.flusher.Lock()
+	for len(w.flusher.pending) > 0 || w.flusher.flushing {
+		w.flusher.done.Wait()
+	}
+	w.flusher.Unlock()
+}
+
+func (w *Writer) flushBlock(b *block) error {
+	if _, err := w.w.Write(b.buf[b.written:]); err != nil {
+		return err
+	}
+	w.free <- b
+	return nil
 }
 
 // fillHeader fills in the header for the pending chunk.
@@ -413,24 +492,37 @@ func (w *Writer) fillHeader(last bool) {
 		b.buf[b.i+4:b.i+6], uint16(b.j-b.i-headerSize))
 }
 
-// writeBlock writes the buffered block to the underlying writer, and reserves
-// space for the next chunk's header.
-func (w *Writer) writeBlock() {
-	// TODO(peter): Take the current block and enqueue it on a queue of blocks to
-	// flush. Signal the flusher goroutine to wake-up. Create a new block,
-	// recycling a flushed block if available or blocking if there are too many
-	// blocks being flushed.
-
+// queueBlock queues the current block for writing to the underlying writer,
+// allocates a new block and reserves space for the next header. Requires
+// w.writeMu to be held, but will release and reacquire it during execution.
+func (w *Writer) queueBlock() {
 	b := w.block
-	_, w.err = w.w.Write(w.block.buf[b.written:])
-	b.i = 0
-	b.j = headerSize
-	b.written = 0
+	w.block = nil
+	w.writeMu.Unlock()
+
+	f := &w.flusher
+	f.Lock()
+	f.pending = append(f.pending, b)
+	f.ready.Signal()
+	f.Unlock()
+
+	w.writeMu.Lock()
+
+	// Allocate a new block, blocking until one is available.
+	w.block = <-w.free
+	w.block.i = 0
+	w.block.j = headerSize
+	w.block.written = 0
 	w.blockNumber++
 }
 
 // Close flushes any unwritten data and closes the writer.
 func (w *Writer) Close() error {
+	w.flusher.Lock()
+	w.flusher.closed = true
+	w.flusher.ready.Signal()
+	w.flusher.Unlock()
+
 	if err := w.Flush(); err != nil {
 		return err
 	}
@@ -438,17 +530,49 @@ func (w *Writer) Close() error {
 	return nil
 }
 
-// Flush flushes any unwritten data.
+// Flush flushes any unwritten data. May be called concurrently with Write,
+// Sync and itself.
 func (w *Writer) Flush() error {
-	// TODO(peter): Take the current block and enqueue the portion of it that has
-	// been written so far on a flush queue. Flush all of the data in the queue.
-
 	if w.err != nil {
 		return w.err
 	}
+
+	// Wait for any existing flushing to complete and block any new flushing from
+	// starting.
+	w.flusher.Lock()
+	for w.flusher.flushing {
+		w.flusher.done.Wait()
+	}
+	// TODO(peter): This doesn't actually block the flush loop.
+	w.flusher.flushing = true
+	w.flusher.Unlock()
+
+	// Grab the part of the current block that requires flushing.
+	w.writeMu.Lock()
 	b := w.block
-	_, w.err = w.w.Write(w.block.buf[b.written:b.j])
+	data := b.buf[b.written:b.j]
 	b.written = b.j
+	w.writeMu.Unlock()
+
+	w.flusher.Lock()
+	for _, t := range w.flusher.pending {
+		if b == t {
+			b.written -= len(data)
+			data = nil
+		}
+		w.flusher.err = w.flushBlock(t)
+		if w.flusher.err != nil {
+			break
+		}
+	}
+	w.flusher.pending = nil
+	if w.flusher.err == nil && len(data) > 0 {
+		_, w.flusher.err = w.w.Write(data)
+	}
+	w.flusher.flushing = false
+	w.flusher.done.Signal()
+	w.flusher.Unlock()
+
 	if w.f != nil {
 		w.err = w.f.Flush()
 		return w.err
@@ -456,27 +580,10 @@ func (w *Writer) Flush() error {
 	return nil
 }
 
-// FlushTo flushes unwritten data to pos+n.
-func (w *Writer) FlushTo(pos int64, n int) error {
-	// TODO(peter): unimplemented.
-	return w.Flush()
-}
-
-// Sync flushes any unwritten and synchronizes the underlying file.
+// Sync flushes any unwritten and synchronizes the underlying file. May be
+// called concurrently with Write, Flush and itself.
 func (w *Writer) Sync() error {
 	if err := w.Flush(); err != nil {
-		return err
-	}
-	if w.s != nil {
-		w.err = w.s.Sync()
-		return w.err
-	}
-	return nil
-}
-
-// SyncTo flushes unwritten data to pos+n and synchronizes the underlying file.
-func (w *Writer) SyncTo(pos int64, n int) error {
-	if err := w.FlushTo(pos, n); err != nil {
 		return err
 	}
 	if w.s != nil {
@@ -489,26 +596,31 @@ func (w *Writer) SyncTo(pos int64, n int) error {
 // Write writes the given data to the current record, starting a new
 // record if one isn't currently active.
 func (w *Writer) Write(p []byte) (int, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
+	return w.writeLocked(p)
+}
+
+func (w *Writer) writeLocked(p []byte) (int, error) {
 	if w.err != nil {
 		return 0, w.err
 	}
 
-	b := w.block
 	if !w.pending {
-		b.i = b.j
-		b.j = b.j + headerSize
+		w.block.i = w.block.j
+		w.block.j = w.block.j + headerSize
 		// Check if there is room in the block for the header.
-		if b.j > blockSize {
+		if w.block.j > blockSize {
 			// Fill in the rest of the block with zeroes.
-			for k := b.i; k < blockSize; k++ {
+			for k := w.block.i; k < blockSize; k++ {
 				w.block.buf[k] = 0
 			}
-			w.writeBlock()
+			w.queueBlock()
 			if w.err != nil {
 				return 0, w.err
 			}
 		}
-		w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(b.i)
+		w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.block.i)
 		w.first = true
 		w.pending = true
 	}
@@ -516,17 +628,17 @@ func (w *Writer) Write(p []byte) (int, error) {
 	n0 := len(p)
 	for len(p) > 0 {
 		// Write a block, if it is full.
-		if b.j == blockSize {
+		if w.block.j == blockSize {
 			w.fillHeader(false)
-			w.writeBlock()
+			w.queueBlock()
 			if w.err != nil {
 				return 0, w.err
 			}
 			w.first = false
 		}
 		// Copy bytes into the buffer.
-		n := copy(w.block.buf[b.j:], p)
-		b.j += n
+		n := copy(w.block.buf[w.block.j:], p)
+		w.block.j += n
 		p = p[n:]
 	}
 	return n0, nil
@@ -534,6 +646,12 @@ func (w *Writer) Write(p []byte) (int, error) {
 
 // Finish finishes the current record and writes to the underlying writer.
 func (w *Writer) Finish() error {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
+	return w.finishLocked()
+}
+
+func (w *Writer) finishLocked() error {
 	if w.pending {
 		w.fillHeader(true)
 		w.pending = false
@@ -543,16 +661,18 @@ func (w *Writer) Finish() error {
 
 // WriteRecord writes a complete record.
 func (w *Writer) WriteRecord(p []byte) (int64, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	if w.err != nil {
 		return -1, w.err
 	}
-	if err := w.Finish(); err != nil {
+	if err := w.finishLocked(); err != nil {
 		return -1, err
 	}
-	if _, err := w.Write(p); err != nil {
+	if _, err := w.writeLocked(p); err != nil {
 		return -1, err
 	}
-	return w.lastRecordOffset, w.Finish()
+	return w.lastRecordOffset, w.finishLocked()
 }
 
 // LastRecordOffset returns the offset in the underlying io.Writer of the last

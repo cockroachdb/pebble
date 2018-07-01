@@ -154,6 +154,7 @@ func TestBoundary(t *testing.T) {
 func TestFlush(t *testing.T) {
 	buf := new(bytes.Buffer)
 	w := NewWriter(buf)
+	defer w.Close()
 	// Write a couple of records. Everything should still be held
 	// in the record.Writer buffer, so that buf.Len should be 0.
 	_, _ = w.WriteRecord([]byte("0"))
@@ -187,6 +188,7 @@ func TestFlush(t *testing.T) {
 	// We should now have 32768 bytes (a complete block), without
 	// an explicit flush.
 	_, _ = w.WriteRecord(bytes.Repeat([]byte("3"), 40000))
+	w.flushWait()
 	if got, want := buf.Len(), 32768; got != want {
 		t.Fatalf("buffer length #4: got %d want %d", got, want)
 	}
@@ -733,6 +735,7 @@ func TestLastRecordOffset(t *testing.T) {
 func TestNoLastRecordOffset(t *testing.T) {
 	buf := new(bytes.Buffer)
 	w := NewWriter(buf)
+	defer w.Close()
 
 	if _, err := w.LastRecordOffset(); err != ErrNoLastRecord {
 		t.Fatalf("Expected ErrNoLastRecord, got: %v", err)
@@ -761,6 +764,7 @@ func BenchmarkRecordWrite(b *testing.B) {
 	for _, size := range []int{8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
 			w := NewWriter(ioutil.Discard)
+			defer w.Close()
 			buf := make([]byte, size)
 
 			b.SetBytes(int64(len(buf)))
@@ -770,6 +774,7 @@ func BenchmarkRecordWrite(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
+			b.StopTimer()
 		})
 	}
 }
