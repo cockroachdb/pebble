@@ -291,6 +291,10 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	d.mu.Lock()
 	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
 	seqNum := d.versions.logSeqNum
+	// TODO(peter): The sstables in current are guaranteed to have sequence
+	// numbers less than d.versions.logSeqNum, so why does dbIter need to check
+	// sequence numbers for every iter? Perhaps the sequence number filtering
+	// should be folded into mergingIter (or InternalIterator).
 	current := d.versions.currentVersion()
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
