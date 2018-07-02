@@ -154,11 +154,12 @@ func TestBoundary(t *testing.T) {
 func TestFlush(t *testing.T) {
 	buf := new(bytes.Buffer)
 	w := NewWriter(buf)
-	defer w.Close()
 	// Write a couple of records. Everything should still be held
 	// in the record.Writer buffer, so that buf.Len should be 0.
-	_, _ = w.WriteRecord([]byte("0"))
-	_, _ = w.WriteRecord([]byte("11"))
+	w0, _ := w.Next()
+	w0.Write([]byte("0"))
+	w1, _ := w.Next()
+	w1.Write([]byte("11"))
 	if got, want := buf.Len(), 0; got != want {
 		t.Fatalf("buffer length #0: got %d want %d", got, want)
 	}
@@ -172,7 +173,8 @@ func TestFlush(t *testing.T) {
 	}
 	// Do another write, one that isn't large enough to complete the block.
 	// The write should not have flowed through to buf.
-	_, _ = w.WriteRecord(bytes.Repeat([]byte("2"), 10000))
+	w2, _ := w.Next()
+	w2.Write(bytes.Repeat([]byte("2"), 10000))
 	if got, want := buf.Len(), 17; got != want {
 		t.Fatalf("buffer length #2: got %d want %d", got, want)
 	}
@@ -187,8 +189,8 @@ func TestFlush(t *testing.T) {
 	// Do a bigger write, one that completes the current block.
 	// We should now have 32768 bytes (a complete block), without
 	// an explicit flush.
-	_, _ = w.WriteRecord(bytes.Repeat([]byte("3"), 40000))
-	w.flushWait()
+	w3, _ := w.Next()
+	w3.Write(bytes.Repeat([]byte("3"), 40000))
 	if got, want := buf.Len(), 32768; got != want {
 		t.Fatalf("buffer length #4: got %d want %d", got, want)
 	}
@@ -301,24 +303,25 @@ func makeTestRecords(recordLengths ...int) (*testRecords, error) {
 	buf := new(bytes.Buffer)
 	w := NewWriter(buf)
 	for i, rec := range ret.records {
+		wRec, err := w.Next()
+		if err != nil {
+			return nil, err
+		}
+
 		// Alternate between one big write and many small writes.
 		cSize := 8
 		if i&1 == 0 {
 			cSize = len(rec)
 		}
 		for ; len(rec) > cSize; rec = rec[cSize:] {
-			if _, err := w.Write(rec[:cSize]); err != nil {
+			if _, err := wRec.Write(rec[:cSize]); err != nil {
 				return nil, err
 			}
 		}
-		if _, err := w.Write(rec); err != nil {
-			return nil, err
-		}
-		if err := w.Finish(); err != nil {
+		if _, err := wRec.Write(rec); err != nil {
 			return nil, err
 		}
 
-		var err error
 		ret.offsets[i], err = w.LastRecordOffset()
 		if err != nil {
 			return nil, err

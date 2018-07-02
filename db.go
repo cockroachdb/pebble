@@ -273,7 +273,7 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 		if err := d.log.Flush(); err != nil {
 			return fmt.Errorf("pebble: could not flush log entry: %v", err)
 		}
-		if err := d.log.Sync(); err != nil {
+		if err := d.logFile.Sync(); err != nil {
 			return fmt.Errorf("pebble: could not sync log entry: %v", err)
 		}
 	}
@@ -440,11 +440,11 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 	defer f.Close()
 
 	recWriter := record.NewWriter(f)
-	err = ve.encode(recWriter)
+	w, err := recWriter.Next()
 	if err != nil {
 		return err
 	}
-	err = recWriter.Finish()
+	err = ve.encode(w)
 	if err != nil {
 		return err
 	}

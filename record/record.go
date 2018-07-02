@@ -84,7 +84,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"sync"
 
 	"github.com/petermattis/pebble/crc"
 )
@@ -322,24 +321,20 @@ func (x singleReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-type block struct {
+// Writer writes records to an underlying io.Writer.
+type Writer struct {
+	// w is the underlying writer.
+	w io.Writer
+	// seq is the sequence number of the current record.
+	seq int
+	// f is w as a flusher.
+	f flusher
 	// buf[i:j] is the bytes that will become the current chunk.
 	// The low bound, i, includes the chunk header.
 	i, j int
 	// buf[:written] has already been written to w.
 	// written is zero unless Flush has been called.
 	written int
-	buf     [blockSize]byte
-}
-
-// Writer writes records to an underlying io.Writer.
-type Writer struct {
-	// w is the underlying writer.
-	w io.Writer
-	// f is w as a flusher.
-	f flusher
-	// s is w as a syncer.
-	s syncer
 	// baseOffset is the base offset in w at which writing started. If
 	// w implements io.Seeker, it's relative to the start of w, 0 otherwise.
 	baseOffset int64
@@ -356,42 +351,13 @@ type Writer struct {
 	pending bool
 	// err is any accumulated error.
 	err error
-	// block is the current block being written.
-	block *block
-	free  chan *block
-
-	// TODO(peter): writeMu is a blunt instrument. Calls to Write, Finish and
-	// WriteRecord require external synchronization. writeMu is protected against
-	// concurrent calls to Flush. What flush needs to do is to ensure data up to
-	// some offset is written to the underlying writer. Any block that is queued
-	// for flushing is out of the concern if Write/Finish/WriteRecord. The
-	// complexity is if we need to flush part of a block. Block's are filled
-	// sequentially. We should be able to atomically update write block.j (the
-	// marker of what has been written in the block). Write/Finish/WriteRecord
-	// then only needs to grab flusher.mutex when it crosses a block boundary.
-	writeMu sync.Mutex
-
-	flusher struct {
-		sync.Mutex
-		// Cond var signalled when there are blocks to flush or the Writer has been
-		// closed.
-		ready sync.Cond
-		// Cond var signalled when flushing of pending blocks has been completed.
-		done sync.Cond
-		// Is flushing currently active?
-		flushing bool
-		// Has the writer been closed?
-		closed bool
-		// Accumulated flush error.
-		err     error
-		pending []*block
-	}
+	// buf is the buffer.
+	buf [blockSize]byte
 }
 
 // NewWriter returns a new Writer.
 func NewWriter(w io.Writer) *Writer {
 	f, _ := w.(flusher)
-	s, _ := w.(syncer)
 
 	var o int64
 	if s, ok := w.(io.Seeker); ok {
@@ -400,179 +366,79 @@ func NewWriter(w io.Writer) *Writer {
 			o = 0
 		}
 	}
-
-	r := &Writer{
+	return &Writer{
 		w:                w,
 		f:                f,
-		s:                s,
 		baseOffset:       o,
 		lastRecordOffset: -1,
-		free:             make(chan *block, 4),
 	}
-	for i := 0; i < cap(r.free); i++ {
-		r.free <- &block{}
-	}
-	r.block = <-r.free
-	r.flusher.ready.L = &r.flusher.Mutex
-	r.flusher.done.L = &r.flusher.Mutex
-	go r.flushLoop()
-	return r
-}
-
-func (w *Writer) flushLoop() {
-	f := &w.flusher
-	f.Lock()
-	defer f.Unlock()
-
-	for {
-		for len(f.pending) == 0 && !f.closed {
-			f.ready.Wait()
-		}
-		if f.closed {
-			return
-		}
-
-		pending := f.pending
-		f.pending = nil
-		f.flushing = true
-
-		f.Unlock()
-
-		for _, b := range pending {
-			if err := w.flushBlock(b); err != nil {
-				// TODO(peter): Figure out error handling.
-				panic(err)
-			}
-		}
-
-		f.Lock()
-		f.flushing = false
-		f.done.Signal()
-	}
-}
-
-func (w *Writer) flushWait() {
-	w.flusher.Lock()
-	for len(w.flusher.pending) > 0 || w.flusher.flushing {
-		w.flusher.done.Wait()
-	}
-	w.flusher.Unlock()
-}
-
-func (w *Writer) flushBlock(b *block) error {
-	if _, err := w.w.Write(b.buf[b.written:]); err != nil {
-		return err
-	}
-	w.free <- b
-	return nil
 }
 
 // fillHeader fills in the header for the pending chunk.
 func (w *Writer) fillHeader(last bool) {
-	b := w.block
-	if b.i+headerSize > b.j || b.j > blockSize {
+	if w.i+headerSize > w.j || w.j > blockSize {
 		panic("pebble/record: bad writer state")
 	}
 	if last {
 		if w.first {
-			b.buf[b.i+6] = fullChunkType
+			w.buf[w.i+6] = fullChunkType
 		} else {
-			b.buf[b.i+6] = lastChunkType
+			w.buf[w.i+6] = lastChunkType
 		}
 	} else {
 		if w.first {
-			b.buf[b.i+6] = firstChunkType
+			w.buf[w.i+6] = firstChunkType
 		} else {
-			b.buf[b.i+6] = middleChunkType
+			w.buf[w.i+6] = middleChunkType
 		}
 	}
-	binary.LittleEndian.PutUint32(
-		b.buf[b.i+0:b.i+4], crc.New(b.buf[b.i+6:b.j]).Value())
-	binary.LittleEndian.PutUint16(
-		b.buf[b.i+4:b.i+6], uint16(b.j-b.i-headerSize))
+	binary.LittleEndian.PutUint32(w.buf[w.i+0:w.i+4], crc.New(w.buf[w.i+6:w.j]).Value())
+	binary.LittleEndian.PutUint16(w.buf[w.i+4:w.i+6], uint16(w.j-w.i-headerSize))
 }
 
-// queueBlock queues the current block for writing to the underlying writer,
-// allocates a new block and reserves space for the next header. Requires
-// w.writeMu to be held, but will release and reacquire it during execution.
-func (w *Writer) queueBlock() {
-	b := w.block
-	w.block = nil
-	w.writeMu.Unlock()
-
-	f := &w.flusher
-	f.Lock()
-	f.pending = append(f.pending, b)
-	f.ready.Signal()
-	f.Unlock()
-
-	w.writeMu.Lock()
-
-	// Allocate a new block, blocking until one is available.
-	w.block = <-w.free
-	w.block.i = 0
-	w.block.j = headerSize
-	w.block.written = 0
+// writeBlock writes the buffered block to the underlying writer, and reserves
+// space for the next chunk's header.
+func (w *Writer) writeBlock() {
+	_, w.err = w.w.Write(w.buf[w.written:])
+	w.i = 0
+	w.j = headerSize
+	w.written = 0
 	w.blockNumber++
 }
 
-// Close flushes any unwritten data and closes the writer.
-func (w *Writer) Close() error {
-	w.flusher.Lock()
-	w.flusher.closed = true
-	w.flusher.ready.Signal()
-	w.flusher.Unlock()
+// writePending finishes the current record and writes the buffer to the
+// underlying writer.
+func (w *Writer) writePending() {
+	if w.err != nil {
+		return
+	}
+	if w.pending {
+		w.fillHeader(true)
+		w.pending = false
+	}
+	_, w.err = w.w.Write(w.buf[w.written:w.j])
+	w.written = w.j
+}
 
-	if err := w.Flush(); err != nil {
-		return err
+// Close finishes the current record and closes the writer.
+func (w *Writer) Close() error {
+	w.seq++
+	w.writePending()
+	if w.err != nil {
+		return w.err
 	}
 	w.err = errors.New("pebble/record: closed Writer")
 	return nil
 }
 
-// Flush flushes any unwritten data. May be called concurrently with Write,
-// Sync and itself.
+// Flush finishes the current record, writes to the underlying writer, and
+// flushes it if that writer implements interface{ Flush() error }.
 func (w *Writer) Flush() error {
+	w.seq++
+	w.writePending()
 	if w.err != nil {
 		return w.err
 	}
-
-	// Wait for any existing flushing to complete and block any new flushing from
-	// starting.
-	w.flusher.Lock()
-	for w.flusher.flushing {
-		w.flusher.done.Wait()
-	}
-	// TODO(peter): This doesn't actually block the flush loop.
-	w.flusher.flushing = true
-	w.flusher.Unlock()
-
-	// Grab the part of the current block that requires flushing.
-	w.writeMu.Lock()
-	b := w.block
-	data := b.buf[b.written:b.j]
-	b.written = b.j
-	w.writeMu.Unlock()
-
-	w.flusher.Lock()
-	for _, t := range w.flusher.pending {
-		if b == t {
-			b.written -= len(data)
-			data = nil
-		}
-		w.flusher.err = w.flushBlock(t)
-		if w.flusher.err != nil {
-			break
-		}
-	}
-	w.flusher.pending = nil
-	if w.flusher.err == nil && len(data) > 0 {
-		_, w.flusher.err = w.w.Write(data)
-	}
-	w.flusher.flushing = false
-	w.flusher.done.Signal()
-	w.flusher.Unlock()
-
 	if w.f != nil {
 		w.err = w.f.Flush()
 		return w.err
@@ -580,99 +446,49 @@ func (w *Writer) Flush() error {
 	return nil
 }
 
-// Sync flushes any unwritten and synchronizes the underlying file. May be
-// called concurrently with Write, Flush and itself.
-func (w *Writer) Sync() error {
-	if err := w.Flush(); err != nil {
-		return err
-	}
-	if w.s != nil {
-		w.err = w.s.Sync()
-		return w.err
-	}
-	return nil
-}
-
-// Write writes the given data to the current record, starting a new
-// record if one isn't currently active.
-func (w *Writer) Write(p []byte) (int, error) {
-	w.writeMu.Lock()
-	defer w.writeMu.Unlock()
-	return w.writeLocked(p)
-}
-
-func (w *Writer) writeLocked(p []byte) (int, error) {
+// Next returns a writer for the next record. The writer returned becomes stale
+// after the next Close, Flush or Next call, and should no longer be used.
+func (w *Writer) Next() (io.Writer, error) {
+	w.seq++
 	if w.err != nil {
-		return 0, w.err
+		return nil, w.err
 	}
-
-	if !w.pending {
-		w.block.i = w.block.j
-		w.block.j = w.block.j + headerSize
-		// Check if there is room in the block for the header.
-		if w.block.j > blockSize {
-			// Fill in the rest of the block with zeroes.
-			for k := w.block.i; k < blockSize; k++ {
-				w.block.buf[k] = 0
-			}
-			w.queueBlock()
-			if w.err != nil {
-				return 0, w.err
-			}
-		}
-		w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.block.i)
-		w.first = true
-		w.pending = true
-	}
-
-	n0 := len(p)
-	for len(p) > 0 {
-		// Write a block, if it is full.
-		if w.block.j == blockSize {
-			w.fillHeader(false)
-			w.queueBlock()
-			if w.err != nil {
-				return 0, w.err
-			}
-			w.first = false
-		}
-		// Copy bytes into the buffer.
-		n := copy(w.block.buf[w.block.j:], p)
-		w.block.j += n
-		p = p[n:]
-	}
-	return n0, nil
-}
-
-// Finish finishes the current record and writes to the underlying writer.
-func (w *Writer) Finish() error {
-	w.writeMu.Lock()
-	defer w.writeMu.Unlock()
-	return w.finishLocked()
-}
-
-func (w *Writer) finishLocked() error {
 	if w.pending {
 		w.fillHeader(true)
-		w.pending = false
 	}
-	return w.err
+	w.i = w.j
+	w.j = w.j + headerSize
+	// Check if there is room in the block for the header.
+	if w.j > blockSize {
+		// Fill in the rest of the block with zeroes.
+		for k := w.i; k < blockSize; k++ {
+			w.buf[k] = 0
+		}
+		w.writeBlock()
+		if w.err != nil {
+			return nil, w.err
+		}
+	}
+	w.lastRecordOffset = w.baseOffset + w.blockNumber*blockSize + int64(w.i)
+	w.first = true
+	w.pending = true
+	return singleWriter{w, w.seq}, nil
 }
 
 // WriteRecord writes a complete record.
 func (w *Writer) WriteRecord(p []byte) (int64, error) {
-	w.writeMu.Lock()
-	defer w.writeMu.Unlock()
 	if w.err != nil {
 		return -1, w.err
 	}
-	if err := w.finishLocked(); err != nil {
+	t, err := w.Next()
+	if err != nil {
 		return -1, err
 	}
-	if _, err := w.writeLocked(p); err != nil {
+	if _, err := t.Write(p); err != nil {
 		return -1, err
 	}
-	return w.lastRecordOffset, w.finishLocked()
+	w.writePending()
+	return w.lastRecordOffset, w.err
 }
 
 // LastRecordOffset returns the offset in the underlying io.Writer of the last
@@ -695,4 +511,36 @@ func (w *Writer) LastRecordOffset() (int64, error) {
 		return 0, ErrNoLastRecord
 	}
 	return w.lastRecordOffset, nil
+}
+
+type singleWriter struct {
+	w   *Writer
+	seq int
+}
+
+func (x singleWriter) Write(p []byte) (int, error) {
+	w := x.w
+	if w.seq != x.seq {
+		return 0, errors.New("pebble/record: stale writer")
+	}
+	if w.err != nil {
+		return 0, w.err
+	}
+	n0 := len(p)
+	for len(p) > 0 {
+		// Write a block, if it is full.
+		if w.j == blockSize {
+			w.fillHeader(false)
+			w.writeBlock()
+			if w.err != nil {
+				return 0, w.err
+			}
+			w.first = false
+		}
+		// Copy bytes into the buffer.
+		n := copy(w.buf[w.j:], p)
+		w.j += n
+		p = p[n:]
+	}
+	return n0, nil
 }
