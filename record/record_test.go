@@ -766,7 +766,7 @@ func TestNoLastRecordOffset(t *testing.T) {
 func BenchmarkRecordWrite(b *testing.B) {
 	for _, size := range []int{8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
-			w := NewWriter(ioutil.Discard)
+			w := NewLogWriter(ioutil.Discard)
 			defer w.Close()
 			buf := make([]byte, size)
 

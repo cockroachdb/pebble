@@ -91,7 +91,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 				sync.RWMutex
 				*memTable
 			}
-			wal := record.NewWriter(ioutil.Discard)
+			wal := record.NewLogWriter(ioutil.Discard)
 
 			nullCommitEnv := commitEnv{
 				apply: func(b *Batch) error {

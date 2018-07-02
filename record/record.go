@@ -475,7 +475,8 @@ func (w *Writer) Next() (io.Writer, error) {
 	return singleWriter{w, w.seq}, nil
 }
 
-// WriteRecord writes a complete record.
+// WriteRecord writes a complete record. Returns the offset just past the end
+// of the record.
 func (w *Writer) WriteRecord(p []byte) (int64, error) {
 	if w.err != nil {
 		return -1, w.err
@@ -488,7 +489,8 @@ func (w *Writer) WriteRecord(p []byte) (int64, error) {
 		return -1, err
 	}
 	w.writePending()
-	return w.lastRecordOffset, w.err
+	offset := w.blockNumber*blockSize + int64(w.j)
+	return offset, w.err
 }
 
 // LastRecordOffset returns the offset in the underlying io.Writer of the last

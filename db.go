@@ -120,7 +120,7 @@ type DB struct {
 	fileLock  io.Closer
 	logNumber uint64
 	logFile   storage.File
-	log       *record.Writer
+	log       *record.LogWriter
 
 	versions versionSet
 
@@ -546,7 +546,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 			logFile.Close()
 		}
 	}()
-	d.log = record.NewWriter(logFile)
+	d.log = record.NewLogWriter(logFile)
 
 	// Write a new manifest to disk.
 	if err := d.versions.logAndApply(dirname, &ve); err != nil {
@@ -802,7 +802,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		if err != nil {
 			return err
 		}
-		newLog := record.NewWriter(newLogFile)
+		newLog := record.NewLogWriter(newLogFile)
 		if err := d.log.Close(); err != nil {
 			newLogFile.Close()
 			return err
