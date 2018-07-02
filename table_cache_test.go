@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
-	"github.com/petermattis/pebble/table"
 )
 
 type tableCacheTestFile struct {
@@ -130,7 +130,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}
-		tw := table.NewWriter(f, nil)
+		tw := sstable.NewWriter(f, nil)
 		ik := makeIkey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
 			return nil, nil, fmt.Errorf("tw.Set: %v", err)

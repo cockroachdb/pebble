@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
-	"github.com/petermattis/pebble/table"
 )
 
 func TestPickCompaction(t *testing.T) {
@@ -585,7 +585,7 @@ func TestCompaction(t *testing.T) {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}
 				defer f.Close()
-				r := table.NewReader(f, meta.fileNum, nil)
+				r := sstable.NewReader(f, meta.fileNum, nil)
 				defer r.Close()
 				ss = append(ss, get1(r.NewIter(nil))+".")
 			}

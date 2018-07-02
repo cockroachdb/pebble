@@ -1,4 +1,4 @@
-package table
+package sstable
 
 import (
 	"encoding/binary"
@@ -9,86 +9,29 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-type blockWriter struct {
-	restartInterval int
-	nEntries        int
-	buf             []byte
-	restarts        []uint32
-	curKey          []byte
-	prevKey         []byte
-	tmp             [50]byte
+type rawBlockWriter struct {
+	blockWriter
 }
 
-func (w *blockWriter) store(keySize int, value []byte) {
-	shared := 0
-	if w.nEntries%w.restartInterval == 0 {
-		w.restarts = append(w.restarts, uint32(len(w.buf)))
-	} else {
-		shared = db.SharedPrefixLen(w.curKey, w.prevKey)
-	}
-
-	n := binary.PutUvarint(w.tmp[0:], uint64(shared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(keySize-shared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(len(value)))
-	w.buf = append(w.buf, w.tmp[:n]...)
-	w.buf = append(w.buf, w.curKey[shared:]...)
-	w.buf = append(w.buf, value...)
-
-	w.nEntries++
-}
-
-func (w *blockWriter) add(key db.InternalKey, value []byte) {
+func (w *rawBlockWriter) add(key db.InternalKey, value []byte) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
-	size := key.Size()
+	size := len(key.UserKey)
 	if cap(w.curKey) < size {
 		w.curKey = make([]byte, 0, size*2)
 	}
 	w.curKey = w.curKey[:size]
-	key.Encode(w.curKey)
+	copy(w.curKey, key.UserKey)
 
 	w.store(size, value)
 }
 
-func (w *blockWriter) finish() []byte {
-	// Write the restart points to the buffer.
-	if w.nEntries == 0 {
-		// Every block must have at least one restart point.
-		if cap(w.restarts) > 0 {
-			w.restarts = w.restarts[:1]
-			w.restarts[0] = 0
-		} else {
-			w.restarts = append(w.restarts, 0)
-		}
-	}
-	tmp4 := w.tmp[:4]
-	for _, x := range w.restarts {
-		binary.LittleEndian.PutUint32(tmp4, x)
-		w.buf = append(w.buf, tmp4...)
-	}
-	binary.LittleEndian.PutUint32(tmp4, uint32(len(w.restarts)))
-	w.buf = append(w.buf, tmp4...)
-	return w.buf
-}
-
-func (w *blockWriter) reset() {
-	w.nEntries = 0
-	w.buf = w.buf[:0]
-	w.restarts = w.restarts[:0]
-}
-
-func (w *blockWriter) estimatedSize() int {
-	return len(w.buf) + 4*(len(w.restarts)+1)
-}
-
-type blockEntry struct {
-	offset int
-	key    []byte
-	val    []byte
-}
-
-// blockIter is an iterator over a single block of data.
-type blockIter struct {
+// rawBlockIter is an iterator over a single block of data. Unlike blockIter,
+// keys are stored in "raw" format (i.e. not as internal keys). Note that there
+// is significant similarity between this code and the code in blockIter. Yet
+// reducing duplication is difficult due to the blockIter being performance
+// critical.
+type rawBlockIter struct {
 	cmp         db.Compare
 	offset      int
 	nextOffset  int
@@ -103,15 +46,15 @@ type blockIter struct {
 	err         error
 }
 
-// blockIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*blockIter)(nil)
+// rawBlockIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*rawBlockIter)(nil)
 
-func newBlockIter(cmp db.Compare, block block) (*blockIter, error) {
-	i := &blockIter{}
+func newRawBlockIter(cmp db.Compare, block block) (*rawBlockIter, error) {
+	i := &rawBlockIter{}
 	return i, i.init(cmp, block)
 }
 
-func (i *blockIter) init(cmp db.Compare, block block) error {
+func (i *rawBlockIter) init(cmp db.Compare, block block) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
@@ -131,7 +74,7 @@ func (i *blockIter) init(cmp db.Compare, block block) error {
 	return nil
 }
 
-func (i *blockIter) readEntry() {
+func (i *rawBlockIter) readEntry() {
 	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
 	shared, ptr := decodeVarint(ptr)
 	unshared, ptr := decodeVarint(ptr)
@@ -143,17 +86,17 @@ func (i *blockIter) readEntry() {
 	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
 }
 
-func (i *blockIter) loadEntry() {
+func (i *rawBlockIter) loadEntry() {
 	i.readEntry()
-	i.ikey = db.DecodeInternalKey(i.key)
+	i.ikey.UserKey = i.key
 }
 
-func (i *blockIter) clearCache() {
+func (i *rawBlockIter) clearCache() {
 	i.cached = i.cached[:0]
 	i.cachedBuf = i.cachedBuf[:0]
 }
 
-func (i *blockIter) cacheEntry() {
+func (i *rawBlockIter) cacheEntry() {
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 	i.cached = append(i.cached, blockEntry{
 		offset: i.offset,
@@ -164,7 +107,7 @@ func (i *blockIter) cacheEntry() {
 
 // SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
 // package.
-func (i *blockIter) SeekGE(key db.InternalKey) {
+func (i *rawBlockIter) SeekGE(key db.InternalKey) {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
@@ -177,7 +120,7 @@ func (i *blockIter) SeekGE(key db.InternalKey) {
 		v1, ptr := decodeVarint(ptr)
 		_, ptr = decodeVarint(ptr)
 		s := getBytes(ptr, int(v1))
-		return db.InternalCompare(i.cmp, key, db.DecodeInternalKey(s)) < 0
+		return db.InternalCompare(i.cmp, key, db.InternalKey{UserKey: s}) < 0
 	})
 
 	// Since keys are strictly increasing, if index > 0 then the restart point at
@@ -199,19 +142,19 @@ func (i *blockIter) SeekGE(key db.InternalKey) {
 
 // SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
-func (i *blockIter) SeekLT(key db.InternalKey) {
+func (i *rawBlockIter) SeekLT(key db.InternalKey) {
 	panic("pebble/table: SeekLT unimplemented")
 }
 
 // First implements InternalIterator.First, as documented in the pebble/db
 // package.
-func (i *blockIter) First() {
+func (i *rawBlockIter) First() {
 	i.offset = 0
 	i.loadEntry()
 }
 
 // Last implements InternalIterator.Last, as documented in the pebble/db package.
-func (i *blockIter) Last() {
+func (i *rawBlockIter) Last() {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
 
@@ -225,12 +168,12 @@ func (i *blockIter) Last() {
 		i.cacheEntry()
 	}
 
-	i.ikey = db.DecodeInternalKey(i.key)
+	i.ikey.UserKey = i.key
 }
 
 // Next implements InternalIterator.Next, as documented in the pebble/db
 // package.
-func (i *blockIter) Next() bool {
+func (i *rawBlockIter) Next() bool {
 	i.offset = i.nextOffset
 	if !i.Valid() {
 		return false
@@ -241,19 +184,19 @@ func (i *blockIter) Next() bool {
 
 // NextUserKey implements InternalIterator.NextUserKey, as documented in the
 // pebble/db package.
-func (i *blockIter) NextUserKey() bool {
+func (i *rawBlockIter) NextUserKey() bool {
 	return i.Next()
 }
 
 // Prev implements InternalIterator.Prev, as documented in the pebble/db
 // package.
-func (i *blockIter) Prev() bool {
+func (i *rawBlockIter) Prev() bool {
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
 		i.offset = e.offset
 		i.val = e.val
-		i.ikey = db.DecodeInternalKey(e.key)
+		i.ikey.UserKey = e.key
 		i.cached = i.cached[:n]
 		return true
 	}
@@ -284,42 +227,42 @@ func (i *blockIter) Prev() bool {
 		i.cacheEntry()
 	}
 
-	i.ikey = db.DecodeInternalKey(i.key)
+	i.ikey.UserKey = i.key
 	return true
 }
 
 // PrevUserKey implements InternalIterator.PrevUserKey, as documented in the
 // pebble/db package.
-func (i *blockIter) PrevUserKey() bool {
+func (i *rawBlockIter) PrevUserKey() bool {
 	return i.Prev()
 }
 
 // Key implements InternalIterator.Key, as documented in the pebble/db package.
-func (i *blockIter) Key() db.InternalKey {
+func (i *rawBlockIter) Key() db.InternalKey {
 	return i.ikey
 }
 
 // Value implements InternalIterator.Value, as documented in the pebble/db
 // package.
-func (i *blockIter) Value() []byte {
+func (i *rawBlockIter) Value() []byte {
 	return i.val
 }
 
 // Valid implements InternalIterator.Valid, as documented in the pebble/db
 // package.
-func (i *blockIter) Valid() bool {
+func (i *rawBlockIter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
 // Error implements InternalIterator.Error, as documented in the pebble/db
 // package.
-func (i *blockIter) Error() error {
+func (i *rawBlockIter) Error() error {
 	return i.err
 }
 
 // Close implements InternalIterator.Close, as documented in the pebble/db
 // package.
-func (i *blockIter) Close() error {
+func (i *rawBlockIter) Close() error {
 	i.val = nil
 	return i.err
 }

@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
-	"github.com/petermattis/pebble/table"
 )
 
 type tableCache struct {
@@ -134,7 +134,7 @@ func (c *tableCache) Close() error {
 }
 
 type tableReaderOrError struct {
-	reader *table.Reader
+	reader *sstable.Reader
 	err    error
 }
 
@@ -155,7 +155,7 @@ func (n *tableCacheNode) load(c *tableCache) {
 		n.result <- tableReaderOrError{err: err}
 		return
 	}
-	n.result <- tableReaderOrError{reader: table.NewReader(f, n.fileNum, c.opts)}
+	n.result <- tableReaderOrError{reader: sstable.NewReader(f, n.fileNum, c.opts)}
 }
 
 func (n *tableCacheNode) release() {

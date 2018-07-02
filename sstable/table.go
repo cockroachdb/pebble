@@ -60,7 +60,7 @@ To write a table with three entries:
 	}
 	return w.Close()
 */
-package table // import "github.com/petermattis/pebble/table"
+package sstable // import "github.com/petermattis/pebble/sstable"
 
 /*
 The table file format looks like:

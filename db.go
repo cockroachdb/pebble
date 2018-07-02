@@ -19,8 +19,8 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
-	"github.com/petermattis/pebble/table"
 )
 
 const (
@@ -676,7 +676,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 
 	var (
 		file storage.File
-		tw   *table.Writer
+		tw   *sstable.Writer
 		iter db.InternalIterator
 	)
 	defer func() {
@@ -699,7 +699,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	if err != nil {
 		return fileMetadata{}, err
 	}
-	tw = table.NewWriter(file, d.opts)
+	tw = sstable.NewWriter(file, d.opts)
 
 	iter = mem.NewIter(nil)
 	iter.Next()

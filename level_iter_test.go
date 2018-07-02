@@ -10,8 +10,8 @@ import (
 
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
-	"github.com/petermattis/pebble/table"
 )
 
 func TestLevelIter(t *testing.T) {
@@ -113,7 +113,7 @@ func TestLevelIter(t *testing.T) {
 
 func buildLevelIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*table.Reader, []fileMetadata, [][]byte) {
+) ([]*sstable.Reader, []fileMetadata, [][]byte) {
 	mem := storage.NewMem()
 	files := make([]storage.File, count)
 	for i := range files {
@@ -125,9 +125,9 @@ func buildLevelIterTables(
 		files[i] = f
 	}
 
-	writers := make([]*table.Writer, len(files))
+	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = table.NewWriter(files[i], &db.Options{
+		writers[i] = sstable.NewWriter(files[i], &db.Options{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          db.NoCompression,
@@ -150,13 +150,13 @@ func buildLevelIterTables(
 	}
 
 	cache := cache.NewBlockCache(128 << 20)
-	readers := make([]*table.Reader, len(files))
+	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i] = table.NewReader(f, uint64(i), &db.Options{
+		readers[i] = sstable.NewReader(f, uint64(i), &db.Options{
 			Cache: cache,
 		})
 	}

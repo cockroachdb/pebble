@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/table"
+	"github.com/petermattis/pebble/sstable"
 )
 
 const (
@@ -277,7 +277,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	var (
 		fileNum  uint64
 		filename string
-		tw       *table.Writer
+		tw       *sstable.Writer
 	)
 	defer func() {
 		if iter != nil {
@@ -351,7 +351,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			if err != nil {
 				return nil, pendingOutputs, err
 			}
-			tw = table.NewWriter(file, d.opts)
+			tw = sstable.NewWriter(file, d.opts)
 			smallest = ikey.Clone()
 		}
 		// TODO(peter): Avoid the memory allocation
