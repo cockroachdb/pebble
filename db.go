@@ -804,6 +804,8 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		newLogNumber := d.versions.nextFileNum()
 		newLogFile, err := d.opts.GetStorage().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
 		if err != nil {
+			// TODO(peter): avoid chewing through file numbers in a tight loop if
+			// there is an error here.
 			return err
 		}
 		newLog := record.NewLogWriter(newLogFile)
