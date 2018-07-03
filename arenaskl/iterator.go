@@ -47,14 +47,13 @@ func (it *Iterator) Close() error {
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
-func (it *Iterator) SeekGE(key db.InternalKey) (found bool) {
-	_, it.nd, found = it.seekForBaseSplice(key)
-	return found
+func (it *Iterator) SeekGE(key []byte) {
+	_, it.nd, _ = it.seekForBaseSplice(key)
 }
 
 // SeekLT moves the iterator to the last entry whose key is less than the given
 // key.
-func (it *Iterator) SeekLT(key db.InternalKey) {
+func (it *Iterator) SeekLT(key []byte) {
 	it.nd, _, _ = it.seekForBaseSplice(key)
 }
 
@@ -111,12 +110,13 @@ func (it *Iterator) Valid() bool {
 	return it.nd != it.list.head && it.nd != it.list.tail
 }
 
-func (it *Iterator) seekForBaseSplice(key db.InternalKey) (prev, next *node, found bool) {
+func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {
+	ikey := db.MakeSearchKey(key)
 	level := int(it.list.Height() - 1)
 
 	prev = it.list.head
 	for {
-		prev, next, found = it.list.findSpliceForLevel(key, level, prev)
+		prev, next, found = it.list.findSpliceForLevel(ikey, level, prev)
 
 		if found {
 			break

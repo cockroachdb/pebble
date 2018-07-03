@@ -57,17 +57,17 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) SeekGE(key db.InternalKey) {
+func (f *fakeIter) SeekGE(key []byte) {
 	for f.index = 0; f.index < len(f.keys); f.index++ {
-		if db.InternalCompare(db.DefaultComparer.Compare, key, f.Key()) <= 0 {
+		if db.DefaultComparer.Compare(key, f.Key().UserKey) <= 0 {
 			break
 		}
 	}
 }
 
-func (f *fakeIter) SeekLT(key db.InternalKey) {
+func (f *fakeIter) SeekLT(key []byte) {
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
-		if db.InternalCompare(db.DefaultComparer.Compare, key, f.Key()) > 0 {
+		if db.DefaultComparer.Compare(key, f.Key().UserKey) > 0 {
 			break
 		}
 	}

@@ -33,11 +33,11 @@ func newConcatenatingIter(iters ...db.InternalIterator) db.InternalIterator {
 	}
 }
 
-func (c *concatenatingIter) SeekGE(key db.InternalKey) {
+func (c *concatenatingIter) SeekGE(key []byte) {
 	panic("pebble.concatenatingIter: SeekGE unimplemented")
 }
 
-func (c *concatenatingIter) SeekLT(key db.InternalKey) {
+func (c *concatenatingIter) SeekLT(key []byte) {
 	panic("pebble.concatenatingIter: SeekLT unimplemented")
 }
 

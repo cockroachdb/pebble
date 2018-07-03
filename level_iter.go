@@ -25,10 +25,10 @@ func (l *levelIter) init(cmp db.Compare, newIter tableNewIter, files []fileMetad
 	l.files = files
 }
 
-func (l *levelIter) findFileGE(key db.InternalKey) int {
+func (l *levelIter) findFileGE(key []byte) int {
 	// Find the earliest file whose largest key is >= ikey.
 	index := sort.Search(len(l.files), func(i int) bool {
-		return db.InternalCompare(l.cmp, l.files[i].largest, key) >= 0
+		return l.cmp(l.files[i].largest.UserKey, key) >= 0
 	})
 	if index == len(l.files) {
 		return len(l.files) - 1
@@ -36,10 +36,10 @@ func (l *levelIter) findFileGE(key db.InternalKey) int {
 	return index
 }
 
-func (l *levelIter) findFileLT(key db.InternalKey) int {
+func (l *levelIter) findFileLT(key []byte) int {
 	// Find the last file whose smallest key is < ikey.
 	index := sort.Search(len(l.files), func(i int) bool {
-		return db.InternalCompare(l.cmp, l.files[i].smallest, key) >= 0
+		return l.cmp(l.files[i].smallest.UserKey, key) >= 0
 	})
 	if index == 0 {
 		return index
@@ -66,13 +66,13 @@ func (l *levelIter) loadFile(index int) bool {
 	return l.err == nil
 }
 
-func (l *levelIter) SeekGE(key db.InternalKey) {
+func (l *levelIter) SeekGE(key []byte) {
 	if l.loadFile(l.findFileGE(key)) {
 		l.iter.SeekGE(key)
 	}
 }
 
-func (l *levelIter) SeekLT(key db.InternalKey) {
+func (l *levelIter) SeekLT(key []byte) {
 	if l.loadFile(l.findFileLT(key)) {
 		l.iter.SeekLT(key)
 	}

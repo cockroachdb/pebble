@@ -39,52 +39,34 @@ func TestMergingIterSeek(t *testing.T) {
 		expectedPrev string
 	}{
 		{
-			"a0.SET.3",
+			"a0",
 			"a0:0;a1:1;a2:2",
 			"<a0:0><a1:1><a2:2>.",
 			".",
 		},
 		{
-			"a1.SET.3",
+			"a1",
 			"a0:0;a1:1;a2:2",
 			"<a1:1><a2:2>.",
 			"<a0:0>.",
 		},
 		{
-			"a2.SET.3",
+			"a2",
 			"a0:0;a1:1;a2:2",
 			"<a2:2>.",
 			"<a1:1><a0:0>.",
 		},
 		{
-			"a3.SET.3",
+			"a3",
 			"a0:0;a1:1;a2:2",
 			".",
 			"<a2:2><a1:1><a0:0>.",
 		},
 		{
-			"a2.SET.3",
+			"a2",
 			"a0:0,b3:3;a1:1;a2:2",
 			"<a2:2><b3:3>.",
 			"<a1:1><a0:0>.",
-		},
-		{
-			"a.SET.2",
-			"a:0;a:1;a:2",
-			"<a:2><a:1><a:0>.",
-			".",
-		},
-		{
-			"a.SET.1",
-			"a:0;a:1;a:2",
-			"<a:1><a:0>.",
-			"<a:2>.",
-		},
-		{
-			"a.SET.0",
-			"a:0;a:1;a:2",
-			"<a:0>.",
-			"<a:2><a:1>.",
 		},
 	}
 	for _, tc := range testCases {
@@ -96,8 +78,8 @@ func TestMergingIterSeek(t *testing.T) {
 
 			var b bytes.Buffer
 			iter := newMergingIter(db.DefaultComparer.Compare, iters...)
-			ikey := makeIkey(tc.key)
-			for iter.SeekGE(ikey); iter.Valid(); iter.Next() {
+			key := []byte(tc.key)
+			for iter.SeekGE(key); iter.Valid(); iter.Next() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Error(); err != nil {
@@ -110,7 +92,7 @@ func TestMergingIterSeek(t *testing.T) {
 			}
 
 			b.Reset()
-			for iter.SeekLT(ikey); iter.Valid(); iter.Prev() {
+			for iter.SeekLT(key); iter.Valid(); iter.Prev() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Close(); err != nil {
@@ -362,10 +344,8 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 							b.ResetTimer()
-							var ikey db.InternalKey
 							for i := 0; i < b.N; i++ {
-								ikey.UserKey = keys[rng.Intn(len(keys))]
-								m.SeekGE(ikey)
+								m.SeekGE(keys[rng.Intn(len(keys))])
 							}
 						})
 				}

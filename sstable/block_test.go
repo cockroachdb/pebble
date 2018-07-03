@@ -64,7 +64,7 @@ func TestBlockIter(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		i.SeekGE(db.InternalKey{UserKey: []byte(tc.key)})
+		i.SeekGE([]byte(tc.key))
 		for j, kWant := range []string{"apple", "apricot", "banana"}[tc.index:] {
 			if !i.Valid() {
 				t.Fatalf("key=%q, index=%d, j=%d: Valid got false, want true", tc.key, tc.index, j)
@@ -133,8 +133,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					ikey.UserKey = keys[rng.Intn(len(keys))]
-					it.SeekGE(ikey)
+					it.SeekGE(keys[rng.Intn(len(keys))])
 				}
 			})
 	}

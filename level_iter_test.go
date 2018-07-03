@@ -22,37 +22,37 @@ func TestLevelIter(t *testing.T) {
 		expectedPrev string
 	}{
 		{
-			"a:10",
+			"a",
 			"a:1,b:2 c:3,d:4",
 			"<a:1><b:2><c:3><d:4>.",
 			".",
 		},
 		{
-			"a:1",
+			"a",
 			"a:1,b:2 c:3,d:4",
 			"<a:1><b:2><c:3><d:4>.",
 			".",
 		},
 		{
-			"b:2",
+			"b",
 			"a:1,b:2 c:3,d:4",
 			"<b:2><c:3><d:4>.",
 			"<a:1>.",
 		},
 		{
-			"c:3",
+			"c",
 			"a:1,b:2 c:3,d:4",
 			"<c:3><d:4>.",
 			"<b:2><a:1>.",
 		},
 		{
-			"d:4",
+			"d",
 			"a:1,b:2 c:3,d:4",
 			"<d:4>.",
 			"<c:3><b:2><a:1>.",
 		},
 		{
-			"d:0",
+			"e",
 			"a:1,b:2 c:3,d:4",
 			".",
 			"<d:4><c:3><b:2><a:1>.",
@@ -80,10 +80,10 @@ func TestLevelIter(t *testing.T) {
 
 			iter := &levelIter{}
 			iter.init(db.DefaultComparer.Compare, newIter, files)
-			ikey := fakeIkey(c.key)
+			key := []byte(c.key)
 
 			var b bytes.Buffer
-			for iter.SeekGE(ikey); iter.Valid(); iter.Next() {
+			for iter.SeekGE(key); iter.Valid(); iter.Next() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Error(); err != nil {
@@ -96,7 +96,7 @@ func TestLevelIter(t *testing.T) {
 			}
 
 			b.Reset()
-			for iter.SeekLT(ikey); iter.Valid(); iter.Prev() {
+			for iter.SeekLT(key); iter.Valid(); iter.Prev() {
 				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 			}
 			if err := iter.Close(); err != nil {
@@ -191,10 +191,8 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 							b.ResetTimer()
-							var ikey db.InternalKey
 							for i := 0; i < b.N; i++ {
-								ikey.UserKey = keys[rng.Intn(len(keys))]
-								l.SeekGE(ikey)
+								l.SeekGE(keys[rng.Intn(len(keys))])
 							}
 						})
 				}

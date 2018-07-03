@@ -60,10 +60,8 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 				b.ResetTimer()
-				var ikey db.InternalKey
 				for i := 0; i < b.N; i++ {
-					ikey.UserKey = keys[rng.Intn(len(keys))]
-					it.SeekGE(ikey)
+					it.SeekGE(keys[rng.Intn(len(keys))])
 				}
 			})
 	}

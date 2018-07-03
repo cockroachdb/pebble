@@ -164,7 +164,9 @@ func (i *blockIter) cacheEntry() {
 
 // SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
 // package.
-func (i *blockIter) SeekGE(key db.InternalKey) {
+func (i *blockIter) SeekGE(key []byte) {
+	ikey := db.MakeSearchKey(key)
+
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
@@ -177,7 +179,7 @@ func (i *blockIter) SeekGE(key db.InternalKey) {
 		v1, ptr := decodeVarint(ptr)
 		_, ptr = decodeVarint(ptr)
 		s := getBytes(ptr, int(v1))
-		return db.InternalCompare(i.cmp, key, db.DecodeInternalKey(s)) < 0
+		return db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) < 0
 	})
 
 	// Since keys are strictly increasing, if index > 0 then the restart point at
@@ -191,7 +193,7 @@ func (i *blockIter) SeekGE(key db.InternalKey) {
 
 	// Iterate from that restart point to somewhere >= the key sought.
 	for ; i.Valid(); i.Next() {
-		if db.InternalCompare(i.cmp, key, i.ikey) <= 0 {
+		if db.InternalCompare(i.cmp, ikey, i.ikey) <= 0 {
 			break
 		}
 	}
@@ -199,7 +201,7 @@ func (i *blockIter) SeekGE(key db.InternalKey) {
 
 // SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
-func (i *blockIter) SeekLT(key db.InternalKey) {
+func (i *blockIter) SeekLT(key []byte) {
 	panic("pebble/table: SeekLT unimplemented")
 }
 

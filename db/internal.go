@@ -103,6 +103,14 @@ func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) Intern
 	}
 }
 
+// MakeSearchKey ...
+func MakeSearchKey(userKey []byte) InternalKey {
+	return InternalKey{
+		UserKey: userKey,
+		Trailer: (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindMax),
+	}
+}
+
 // DecodeInternalKey ...
 func DecodeInternalKey(encodedKey []byte) InternalKey {
 	n := len(encodedKey) - 8
@@ -184,10 +192,10 @@ func (k InternalKey) Clone() InternalKey {
 }
 
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
-// the Iterator interface, keys are "internal keys" composed of the user-key, a
-// sequence number and a key kind. In both forward and reverse iteration,
-// key/value pairs for identical user-keys are returned in descending sequence
-// order: newer keys are returned before older keys.
+// the Iterator interface, the returned keys are InternalKeys composed of the
+// user-key, a sequence number and a key kind. In both forward and reverse
+// iteration, key/value pairs for identical user-keys are returned in
+// descending sequence order: newer keys are returned before older keys.
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
@@ -202,11 +210,11 @@ func (k InternalKey) Clone() InternalKey {
 type InternalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key.
-	SeekGE(key InternalKey)
+	SeekGE(key []byte)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key.
-	SeekLT(key InternalKey)
+	SeekLT(key []byte)
 
 	// First moves the iterator the the first key/value pair.
 	First()

@@ -101,7 +101,7 @@ func (i *Iter) loadBlock() bool {
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *Iter) seekBlock(key db.InternalKey, f *filterReader) bool {
+func (i *Iter) seekBlock(key []byte, f *filterReader) bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
@@ -133,7 +133,7 @@ func (i *Iter) seekBlock(key db.InternalKey, f *filterReader) bool {
 
 // SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
 // package.
-func (i *Iter) SeekGE(key db.InternalKey) {
+func (i *Iter) SeekGE(key []byte) {
 	i.index.SeekGE(key)
 	if i.loadBlock() {
 		i.data.SeekGE(key)
@@ -142,7 +142,7 @@ func (i *Iter) SeekGE(key db.InternalKey) {
 
 // SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
-func (i *Iter) SeekLT(key db.InternalKey) {
+func (i *Iter) SeekLT(key []byte) {
 	panic("pebble/table: SeekLT unimplemented")
 }
 
@@ -285,7 +285,7 @@ func (f *filterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	return true
 }
 
-func (f *filterReader) mayContain(blockOffset uint64, key db.InternalKey) bool {
+func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 	index := blockOffset >> f.shift
 	if index >= uint64(len(f.offsets)/4-1) {
 		return true
@@ -295,7 +295,7 @@ func (f *filterReader) mayContain(blockOffset uint64, key db.InternalKey) bool {
 	if i >= j || uint64(j) > uint64(len(f.data)) {
 		return true
 	}
-	return f.policy.MayContain(f.data[i:j], key.UserKey)
+	return f.policy.MayContain(f.data[i:j], key)
 }
 
 // Reader is a table reader. It implements the DB interface, as documented
@@ -332,8 +332,7 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// Get implements DB.Get, as documented in the pebble/db package.
-func (r *Reader) Get(key db.InternalKey, o *db.ReadOptions) (value []byte, err error) {
+func (r *Reader) get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -348,7 +347,7 @@ func (r *Reader) Get(key db.InternalKey, o *db.ReadOptions) (value []byte, err e
 		i.seekBlock(key, f)
 	}
 
-	if !i.Valid() || db.InternalCompare(r.compare, key, i.Key()) != 0 {
+	if !i.Valid() || r.compare(key, i.Key().UserKey) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = db.ErrNotFound

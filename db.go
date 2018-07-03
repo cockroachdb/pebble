@@ -165,8 +165,8 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 			continue
 		}
 		iter := mem.NewIter(opts)
-		iter.SeekGE(ikey)
-		value, conclusive, err := internalGet(iter, d.cmp, key)
+		iter.SeekGE(key)
+		value, conclusive, err := internalGet(iter, d.cmp, ikey)
 		if conclusive {
 			return value, err
 		}

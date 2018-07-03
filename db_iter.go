@@ -73,7 +73,7 @@ func (i *dbIter) SeekGE(key []byte) {
 	if i.err != nil {
 		return
 	}
-	i.iter.SeekGE(db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax))
+	i.iter.SeekGE(key)
 	i.findNextEntry()
 }
 
@@ -81,7 +81,7 @@ func (i *dbIter) SeekLT(key []byte) {
 	if i.err != nil {
 		return
 	}
-	i.iter.SeekLT(db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax))
+	i.iter.SeekLT(key)
 	i.findPrevEntry()
 }
 

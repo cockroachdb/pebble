@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
@@ -171,8 +170,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
 			}
-			ik := db.MakeInternalKey([]byte("k"), db.InternalKeySeqNumMax, db.InternalKeyKindMax)
-			iter.SeekGE(ik)
+			iter.SeekGE([]byte("k"))
 			if concurrent {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}

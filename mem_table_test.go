@@ -52,7 +52,7 @@ func TestMemTableBasic(t *testing.T) {
 	if got, want := count(m), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
-	v, err := m.get(ikey("cherry"))
+	v, err := m.get([]byte("cherry"))
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("1.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
@@ -66,17 +66,17 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("2.count: got %v, want %v", got, want)
 	}
 	// Get keys that are and aren't in the DB.
-	v, err = m.get(ikey("plum"))
+	v, err = m.get([]byte("plum"))
 	if string(v) != "purple" || err != nil {
 		t.Fatalf("6.get: got (%q, %v), want (%q, %v)", v, err, "purple", error(nil))
 	}
-	v, err = m.get(ikey("lychee"))
+	v, err = m.get([]byte("lychee"))
 	if string(v) != "" || err != db.ErrNotFound {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Check an iterator.
 	s, x := "", m.NewIter(nil)
-	for x.SeekGE(ikey("mango")); x.Valid(); x.Next() {
+	for x.SeekGE([]byte("mango")); x.Valid(); x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
 	if want := "peach/yellow.plum/purple."; s != want {
@@ -140,7 +140,7 @@ func TestMemTable1000Entries(t *testing.T) {
 	r := rand.New(rand.NewSource(0))
 	for i := 0; i < 3*N; i++ {
 		j := r.Intn(N)
-		k := ikey(strconv.Itoa(j))
+		k := []byte(strconv.Itoa(j))
 		v, err := m0.get(k)
 		if err != nil {
 			t.Fatal(err)
@@ -175,7 +175,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		"507",
 	}
 	x := m0.NewIter(nil)
-	x.SeekGE(ikey(wants[0]))
+	x.SeekGE([]byte(wants[0]))
 	for _, want := range wants {
 		if !x.Valid() {
 			t.Fatalf("iter: next failed, want=%q", want)
@@ -333,10 +333,8 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	b.ResetTimer()
-	var ikey db.InternalKey
 	for i := 0; i < b.N; i++ {
-		ikey.UserKey = keys[rng.Intn(len(keys))]
-		iter.SeekGE(ikey)
+		iter.SeekGE(keys[rng.Intn(len(keys))])
 	}
 }
 

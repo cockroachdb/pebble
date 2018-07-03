@@ -251,8 +251,7 @@ func (v *version) get(
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
-		iter.SeekGE(ikey)
-		value, conclusive, err := internalGet(iter, cmp, ukey)
+		value, conclusive, err := internalGet(iter, cmp, ikey)
 		if conclusive {
 			return value, err
 		}
@@ -279,8 +278,7 @@ func (v *version) get(
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
-		iter.SeekGE(ikey)
-		value, conclusive, err := internalGet(iter, cmp, ukey)
+		value, conclusive, err := internalGet(iter, cmp, ikey)
 		if conclusive {
 			return value, err
 		}
@@ -299,24 +297,26 @@ func (v *version) get(
 //	* if that pair's key's kind is delete, db.ErrNotFound will be returned.
 // If the returned error is non-nil then conclusive will be true.
 func internalGet(
-	t db.InternalIterator, cmp db.Compare, ukey []byte,
+	t db.InternalIterator, cmp db.Compare, key db.InternalKey,
 ) (value []byte, conclusive bool, err error) {
-	if !t.Valid() {
-		err = t.Close()
-		return nil, err != nil, err
+	for t.SeekGE(key.UserKey); t.Valid(); t.Next() {
+		ikey0 := t.Key()
+		if !ikey0.Valid() {
+			t.Close()
+			return nil, true, fmt.Errorf("pebble: corrupt table: invalid internal key")
+		}
+		if cmp(ikey0.UserKey, key.UserKey) != 0 {
+			break
+		}
+		if ikey0.SeqNum() > key.SeqNum() {
+			continue
+		}
+		if ikey0.Kind() == db.InternalKeyKindDelete {
+			t.Close()
+			return nil, true, db.ErrNotFound
+		}
+		return t.Value(), true, t.Close()
 	}
-	ikey0 := t.Key()
-	if !ikey0.Valid() {
-		t.Close()
-		return nil, true, fmt.Errorf("pebble: corrupt table: invalid internal key")
-	}
-	if cmp(ukey, ikey0.UserKey) != 0 {
-		err = t.Close()
-		return nil, err != nil, err
-	}
-	if ikey0.Kind() == db.InternalKeyKindDelete {
-		t.Close()
-		return nil, true, db.ErrNotFound
-	}
-	return t.Value(), true, t.Close()
+	err = t.Close()
+	return nil, err != nil, err
 }

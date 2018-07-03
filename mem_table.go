@@ -36,14 +36,14 @@ func newMemTable(o *db.Options) *memTable {
 
 // Get gets the value for the given key. It returns ErrNotFound if the DB does
 // not contain the key.
-func (m *memTable) get(key db.InternalKey) (value []byte, err error) {
+func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter()
 	it.SeekGE(key)
 	if !it.Valid() {
 		return nil, db.ErrNotFound
 	}
 	ikey := it.Key()
-	if m.cmp(key.UserKey, ikey.UserKey) != 0 {
+	if m.cmp(key, ikey.UserKey) != 0 {
 		return nil, db.ErrNotFound
 	}
 	if ikey.Kind() == db.InternalKeyKindDelete {
@@ -151,12 +151,12 @@ func (t *memTableIter) initPrevEnd(key db.InternalKey) {
 	}
 }
 
-func (t *memTableIter) SeekGE(key db.InternalKey) {
+func (t *memTableIter) SeekGE(key []byte) {
 	t.clearPrevCache()
 	t.iter.SeekGE(key)
 }
 
-func (t *memTableIter) SeekLT(key db.InternalKey) {
+func (t *memTableIter) SeekLT(key []byte) {
 	t.clearPrevCache()
 	t.iter.SeekLT(key)
 	if t.iter.Valid() {

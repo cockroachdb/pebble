@@ -98,8 +98,8 @@ type node struct {
 // Storage ...
 type Storage interface {
 	Get(offset uint32) db.InternalKey
-	InlineKey(key db.InternalKey) uint64
-	Compare(a db.InternalKey, b uint32) int
+	InlineKey(key []byte) uint64
+	Compare(a []byte, b uint32) int
 }
 
 // Skiplist ...
@@ -178,10 +178,10 @@ func (s *Skiplist) Reset(storage Storage, initBufSize int) {
 // already exists, then Add returns ErrRecordExists.
 func (s *Skiplist) Add(keyOffset uint32) error {
 	key := s.storage.Get(keyOffset)
-	inlineKey := s.storage.InlineKey(key)
+	inlineKey := s.storage.InlineKey(key.UserKey)
 
 	var spl [maxHeight]splice
-	if s.findSplice(key, inlineKey, &spl) {
+	if s.findSplice(key.UserKey, inlineKey, &spl) {
 		return ErrExists
 	}
 
@@ -259,7 +259,7 @@ func (s *Skiplist) randomHeight() uint32 {
 }
 
 func (s *Skiplist) findSplice(
-	key db.InternalKey, inlineKey uint64, spl *[maxHeight]splice,
+	key []byte, inlineKey uint64, spl *[maxHeight]splice,
 ) (found bool) {
 	var prev, next uint32
 	prev = s.head
@@ -276,7 +276,7 @@ func (s *Skiplist) findSplice(
 }
 
 func (s *Skiplist) findSpliceForLevel(
-	key db.InternalKey, inlineKey uint64, level, start uint32,
+	key []byte, inlineKey uint64, level, start uint32,
 ) (prev, next uint32, found bool) {
 	prev = start
 

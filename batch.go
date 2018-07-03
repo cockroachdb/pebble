@@ -55,14 +55,20 @@ func (s *batchStorage) Get(offset uint32) db.InternalKey {
 
 // InlineKey implements Storage.InlineKey, as documented in the pebble/batchskl
 // package.
-func (s *batchStorage) InlineKey(key db.InternalKey) uint64 {
-	return s.inlineKey(key.UserKey)
+func (s *batchStorage) InlineKey(key []byte) uint64 {
+	return s.inlineKey(key)
 }
 
 // Compare implements Storage.Compare, as documented in the pebble/batchskl
 // package.
-func (s *batchStorage) Compare(a db.InternalKey, b uint32) int {
-	return db.InternalCompare(s.cmp, a, s.Get(b))
+func (s *batchStorage) Compare(a []byte, b uint32) int {
+	// The key "a" is always the search key or the newer key being inserted. If
+	// it is equal to the existing key consider it smaller so that it sorts
+	// first.
+	if s.cmp(a, s.Get(b).UserKey) <= 0 {
+		return -1
+	}
+	return 1
 }
 
 // Batch is a sequence of Sets and/or Deletes that are applied atomically.
@@ -175,7 +181,7 @@ func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	// entries returns equal keys in reverse order of insertion. That is, the
 	// last key added will be seen firsi.
 	iter := b.index.NewIter()
-	iter.SeekGE(db.MakeInternalKey(key, db.InternalKeySeqNumMax, db.InternalKeyKindMax))
+	iter.SeekGE(key)
 	for ; iter.Valid(); iter.Next() {
 		_, ekey, value, ok := b.decode(iter.KeyOffset())
 		if !ok {
@@ -517,12 +523,12 @@ func (i *batchIter) initPrevEnd(key db.InternalKey) {
 	}
 }
 
-func (i *batchIter) SeekGE(key db.InternalKey) {
+func (i *batchIter) SeekGE(key []byte) {
 	i.clearPrevCache()
 	i.iter.SeekGE(key)
 }
 
-func (i *batchIter) SeekLT(key db.InternalKey) {
+func (i *batchIter) SeekLT(key []byte) {
 	i.clearPrevCache()
 	i.iter.SeekLT(key)
 	if i.iter.Valid() {
