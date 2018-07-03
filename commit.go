@@ -160,6 +160,7 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
+		return err
 	}
 
 	// Apply the batch to the memtable.
