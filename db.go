@@ -149,8 +149,7 @@ var _ Writer = (*DB)(nil)
 // it is safe to modify the contents of the argument after Get returns.
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
-	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
-	snapshot := d.versions.logSeqNum
+	snapshot := d.versions.visibleSeqNum
 	current := d.versions.currentVersion()
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
@@ -282,6 +281,7 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 	if err := d.mem.apply(batch, seqNum); err != nil {
 		panic(err)
 	}
+	d.versions.visibleSeqNum = d.versions.logSeqNum
 	return nil
 }
 
@@ -289,8 +289,7 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 // level.
 func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) db.Iterator {
 	d.mu.Lock()
-	// TODO(peter): add an opts.LastSequence field, or a DB.Snapshot method?
-	seqNum := d.versions.logSeqNum
+	seqNum := d.versions.visibleSeqNum
 	// TODO(peter): The sstables in current are guaranteed to have sequence
 	// numbers less than d.versions.logSeqNum, so why does dbIter need to check
 	// sequence numbers for every iter? Perhaps the sequence number filtering
@@ -537,6 +536,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 			d.versions.logSeqNum = maxSeqNum
 		}
 	}
+	d.versions.visibleSeqNum = d.versions.logSeqNum
 
 	// Create an empty .log file.
 	ve.logNumber = d.versions.nextFileNum()
