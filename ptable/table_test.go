@@ -143,7 +143,7 @@ func buildBenchmarkTable(b *testing.B, blockSize int) *Reader {
 
 	env := newEnv(ColumnDef{Type: ColumnTypeInt64})
 	w := NewWriter(f0, env, &db.Options{BlockSize: blockSize})
-	for i := int64(0); w.EstimatedSize() < 4<<20; i++ {
+	for i := int64(0); i < 1e6; i++ {
 		w.AddRow(makeRow(i))
 	}
 	if err := w.Close(); err != nil {

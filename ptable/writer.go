@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
@@ -58,16 +59,25 @@ func encodeBlockHandle(dst []byte, b blockHandle) int {
 
 // Writer ...
 type Writer struct {
-	env        *Env
-	opts       *db.Options
-	writer     io.Writer
-	closer     io.Closer
+	env    *Env
+	writer io.Writer
+	closer io.Closer
+	err    error
+	// The next four fields are copied from a db.Options.
+	blockSize   int
+	appendSep   db.AppendSeparator
+	compare     db.Compare
+	compression db.Compression
+	// The data block and index block writers.
 	block      blockWriter
 	indexBlock blockWriter
+	// compressedBuf is the destination buffer for snappy compression. It is
+	// re-used over the lifetime of the writer, avoiding the allocation of a
+	// temporary buffer for each block.
+	compressedBuf []byte
 	// offset is the offset (relative to the table start) of the next block to be
 	// written.
 	offset uint64
-	err    error
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
 	tmp [footerLen]byte
@@ -76,13 +86,14 @@ type Writer struct {
 var indexColTypes = []ColumnType{ColumnTypeBytes, ColumnTypeInt64}
 
 // NewWriter ...
-func NewWriter(f storage.File, env *Env, opts *db.Options) *Writer {
+func NewWriter(f storage.File, env *Env, o *db.Options) *Writer {
 	// TODO(peter): Ensure we use bufio if "f" is not buffered.
 	w := &Writer{
-		env:    env,
-		opts:   opts,
-		writer: f,
-		closer: f,
+		env:         env,
+		writer:      f,
+		closer:      f,
+		blockSize:   o.GetBlockSize(),
+		compression: o.GetCompression(),
 	}
 	colTypes := make([]ColumnType, len(w.env.Schema))
 	for i := range w.env.Schema {
@@ -187,7 +198,7 @@ func (w *Writer) addIndex(key []byte) {
 }
 
 func (w *Writer) maybeFinishBlock() {
-	if int(w.block.Size()) < w.opts.GetBlockSize() {
+	if int(w.block.Size()) < w.blockSize {
 		return
 	}
 	_, w.err = w.finishBlock(&w.block)
@@ -195,9 +206,19 @@ func (w *Writer) maybeFinishBlock() {
 
 func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 	b := block.Finish()
+	blockType := byte(noCompressionBlockType)
+	if w.compression == db.SnappyCompression {
+		compressed := snappy.Encode(w.compressedBuf, b)
+		w.compressedBuf = compressed[:cap(compressed)]
+		if len(compressed) < len(b)-len(b)/8 {
+			blockType = snappyCompressionBlockType
+			b = compressed
+		}
+	}
+
 	// Reset the per-block state.
 	block.reset()
-	return w.writeRawBlock(b, noCompressionBlockType)
+	return w.writeRawBlock(b, blockType)
 }
 
 func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
