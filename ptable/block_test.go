@@ -106,8 +106,8 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 			t.Fatalf("expected %d rows, but found %d\n", rows, r.rows)
 		}
 		for col := range schema {
-			if schema[col] != r.Vec(col).Type {
-				t.Fatalf("schema mismatch: %s != %s\n", schema[col], r.Vec(col).Type)
+			if schema[col] != r.Column(col).Type {
+				t.Fatalf("schema mismatch: %s != %s\n", schema[col], r.Column(col).Type)
 			}
 		}
 
@@ -115,36 +115,36 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 			var got interface{}
 			switch schema[col] {
 			case ColumnTypeBool:
-				got = r.Vec(col).Bool()
+				got = r.Column(col).Bool()
 			case ColumnTypeInt8:
-				got = r.Vec(col).Int8()
+				got = r.Column(col).Int8()
 			case ColumnTypeInt16:
-				got = r.Vec(col).Int16()
+				got = r.Column(col).Int16()
 				if v := uintptr(unsafe.Pointer(&(got.([]int16)[0]))); v%2 != 0 {
 					t.Fatalf("expected 2-byte alignment, but found %x\n", v)
 				}
 			case ColumnTypeInt32:
-				got = r.Vec(col).Int32()
+				got = r.Column(col).Int32()
 				if v := uintptr(unsafe.Pointer(&(got.([]int32)[0]))); v%4 != 0 {
 					t.Fatalf("expected 2-byte alignment, but found %x\n", v)
 				}
 			case ColumnTypeInt64:
-				got = r.Vec(col).Int64()
+				got = r.Column(col).Int64()
 				if v := uintptr(unsafe.Pointer(&(got.([]int64)[0]))); v%8 != 0 {
 					t.Fatalf("expected 2-byte alignment, but found %x\n", v)
 				}
 			case ColumnTypeFloat32:
-				got = r.Vec(col).Float32()
+				got = r.Column(col).Float32()
 				if v := uintptr(unsafe.Pointer(&(got.([]float32)[0]))); v%4 != 0 {
 					t.Fatalf("expected 2-byte alignment, but found %x\n", v)
 				}
 			case ColumnTypeFloat64:
-				got = r.Vec(col).Float64()
+				got = r.Column(col).Float64()
 				if v := uintptr(unsafe.Pointer(&(got.([]float64)[0]))); v%8 != 0 {
 					t.Fatalf("expected 2-byte alignment, but found %x\n", v)
 				}
 			case ColumnTypeBytes:
-				vals := r.Vec(col).Bytes()
+				vals := r.Column(col).Bytes()
 				vals2 := make([][]byte, r.rows)
 				for i := range vals2 {
 					vals2[i] = vals.At(i)
@@ -192,7 +192,7 @@ func BenchmarkBlockReader(b *testing.B) {
 	var sum int64
 	for i, k := 0, 0; i < b.N; i += k {
 		r := newReader(blocks[rng.Intn(len(blocks))])
-		vals := r.Vec(0).Int64()
+		vals := r.Column(0).Int64()
 
 		k = len(vals)
 		if k > b.N-i {

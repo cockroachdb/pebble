@@ -71,3 +71,49 @@ package ptable
 //   only and is is due to the addition or deletion of columns. The schema
 //   needs to be stored in the table and when merging tables columns need to be
 //   added and dropped appropriately.
+//
+// - What to do about column families where row data is spread across multiple
+//   key/value pairs?
+
+// RowWriter provides an interface for writing the column data for a row.
+type RowWriter interface {
+	PutBool(col int, v bool)
+	PutInt8(col int, v int8)
+	PutInt16(col int, v int16)
+	PutInt32(col int, v int32)
+	PutInt64(col int, v int64)
+	PutFloat32(col int, v float32)
+	PutFloat64(col int, v float64)
+	PutBytes(col int, v []byte)
+	PutNull(col int)
+}
+
+// RowReader provides an interface for reading the column data from a row.
+type RowReader interface {
+	Null(col int) bool
+	Bool(col int) bool
+	Int8(col int) int8
+	Int16(col int) int16
+	Int32(col int) int32
+	Int64(col int) int64
+	Float32(col int) float32
+	Float64(col int) float64
+	Bytes(col int) []byte
+}
+
+// Env holds a set of functions used to convert key/value data to and from
+// structured column data.
+type Env struct {
+	// Schema specifies the columns for a table. The order of the columns in the
+	// schema matters. Columns that are part of the key need to occur in the same
+	// order as they are present in the key and all key columns need to specify a
+	// direction.
+	Schema []ColumnDef
+	// Decode the columns from a key/value pair, outputting the column data to
+	// writer. Buf can tbe used for temporary storage during decoding. The column
+	// data written to writer is copied.
+	Decode func(key, value, buf []byte, writer RowWriter)
+	// Encode the columns from the specified row into a key/value pair. Buf can
+	// be used to store the encoded key/value data or for temporary storage.
+	Encode func(row RowReader, buf []byte) (key, value []byte)
+}

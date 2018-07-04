@@ -48,6 +48,13 @@ type columnWriter struct {
 	count   int32
 }
 
+func (w *columnWriter) reset() {
+	w.data = w.data[:0]
+	w.offsets = w.offsets[:0]
+	w.nulls = w.nulls[:0]
+	w.count = 0
+}
+
 func (w *columnWriter) grow(n int) []byte {
 	i := len(w.data)
 	if cap(w.data)-i < n {
@@ -191,26 +198,21 @@ type blockWriter struct {
 	cols []columnWriter
 }
 
-func (w *blockWriter) init(s []ColumnType) bool {
-	if len(w.cols) == 0 {
-		w.cols = make([]columnWriter, len(s))
-		for i := range s {
-			w.cols[i].ctype = s[i]
-		}
-		return true
+func (w *blockWriter) init(s []ColumnType) {
+	w.cols = make([]columnWriter, len(s))
+	for i := range w.cols {
+		w.cols[i].ctype = s[i]
 	}
-	if len(w.cols) != len(s) {
-		return false
+}
+
+func (w *blockWriter) reset() {
+	for i := range w.cols {
+		w.cols[i].reset()
 	}
-	for i := range s {
-		if w.cols[i].ctype != s[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (w *blockWriter) Finish() []byte {
+	// TODO(peter): Cache "buf" and re-use on subsequent alls to Finish().
 	buf := make([]byte, w.Size())
 	n := len(w.cols)
 	binary.LittleEndian.PutUint32(buf[0:], uint32(n))
@@ -232,36 +234,68 @@ func (w *blockWriter) Size() int32 {
 	return size
 }
 
-func (w *blockWriter) PutBool(i int, v bool) {
-	w.cols[i].putBool(v)
+func (w *blockWriter) PutRow(row RowReader) {
+	for i := range w.cols {
+		col := &w.cols[i]
+		if row.Null(i) {
+			col.putNull()
+			continue
+		}
+		switch w.cols[i].ctype {
+		case ColumnTypeBool:
+			col.putBool(row.Bool(i))
+		case ColumnTypeInt8:
+			col.putInt8(row.Int8(i))
+		case ColumnTypeInt16:
+			col.putInt16(row.Int16(i))
+		case ColumnTypeInt32:
+			col.putInt32(row.Int32(i))
+		case ColumnTypeInt64:
+			col.putInt64(row.Int64(i))
+		case ColumnTypeFloat32:
+			col.putFloat32(row.Float32(i))
+		case ColumnTypeFloat64:
+			col.putFloat64(row.Float64(i))
+		case ColumnTypeBytes:
+			col.putBytes(row.Bytes(i))
+		}
+	}
 }
 
-func (w *blockWriter) PutInt8(i int, v int8) {
-	w.cols[i].putInt8(v)
+func (w *blockWriter) PutBool(col int, v bool) {
+	w.cols[col].putBool(v)
 }
 
-func (w *blockWriter) PutInt16(i int, v int16) {
-	w.cols[i].putInt16(v)
+func (w *blockWriter) PutInt8(col int, v int8) {
+	w.cols[col].putInt8(v)
 }
 
-func (w *blockWriter) PutInt32(i int, v int32) {
-	w.cols[i].putInt32(v)
+func (w *blockWriter) PutInt16(col int, v int16) {
+	w.cols[col].putInt16(v)
 }
 
-func (w *blockWriter) PutInt64(i int, v int64) {
-	w.cols[i].putInt64(v)
+func (w *blockWriter) PutInt32(col int, v int32) {
+	w.cols[col].putInt32(v)
 }
 
-func (w *blockWriter) PutFloat32(i int, v float32) {
-	w.cols[i].putFloat32(v)
+func (w *blockWriter) PutInt64(col int, v int64) {
+	w.cols[col].putInt64(v)
 }
 
-func (w *blockWriter) PutFloat64(i int, v float64) {
-	w.cols[i].putFloat64(v)
+func (w *blockWriter) PutFloat32(col int, v float32) {
+	w.cols[col].putFloat32(v)
 }
 
-func (w *blockWriter) PutBytes(i int, v []byte) {
-	w.cols[i].putBytes(v)
+func (w *blockWriter) PutFloat64(col int, v float64) {
+	w.cols[col].putFloat64(v)
+}
+
+func (w *blockWriter) PutBytes(col int, v []byte) {
+	w.cols[col].putBytes(v)
+}
+
+func (w *blockWriter) PutNull(col int) {
+	w.cols[col].putNull()
 }
 
 type blockReader struct {
@@ -303,7 +337,7 @@ func (r *blockReader) Data() []byte {
 	return (*[1 << 31]byte)(r.start)[:r.len:r.len]
 }
 
-func (r *blockReader) Vec(col int) Vec {
+func (r *blockReader) Column(col int) Vec {
 	start := r.pageStart(col)
 	data := r.pointer(start)
 

@@ -130,13 +130,31 @@ func (c ColumnTypes) String() string {
 	return buf.String()
 }
 
-// Vec ...
+// ColumnDirection ...
+type ColumnDirection int8
+
+// ColumnDirection definitions.
+const (
+	Unsorted   ColumnDirection = 0
+	Ascending                  = 1
+	Descending                 = -1
+)
+
+// ColumnDef is the definition for a single column.
+type ColumnDef struct {
+	Type ColumnType
+	Dir  ColumnDirection
+	ID   int32
+}
+
+// Vec holds data for a single column. Vec provides accessors for the native
+// data such as Int32() to access []int32 data.
 type Vec struct {
-	N     int32
-	Type  ColumnType
-	Nulls Bitmap
-	start unsafe.Pointer
-	end   unsafe.Pointer
+	N     int32          // the number of elements in the vector
+	Type  ColumnType     // the type of vector elements
+	Nulls Bitmap         // bitmap of NULL elements
+	start unsafe.Pointer // pointer to start of the column data
+	end   unsafe.Pointer // pointer to the end of column data
 }
 
 // Bool returns the vec data as a boolean bitmap. The bitmap should not be
