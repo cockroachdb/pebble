@@ -319,14 +319,10 @@ func (r *blockReader) init(data []byte) {
 }
 
 func (r *blockReader) pageStart(col int) int32 {
-	return *(*int32)(unsafe.Pointer(uintptr(r.start) + 8 + uintptr(col*4)))
-}
-
-func (r *blockReader) pageEnd(col int) int32 {
-	if int32(col+1) < r.cols {
-		return r.pageStart(col + 1)
+	if int32(col) >= r.cols {
+		return r.len
 	}
-	return r.len
+	return *(*int32)(unsafe.Pointer(uintptr(r.start) + 8 + uintptr(col*4)))
 }
 
 func (r *blockReader) pointer(offset int32) unsafe.Pointer {
@@ -338,6 +334,10 @@ func (r *blockReader) Data() []byte {
 }
 
 func (r *blockReader) Column(col int) Vec {
+	if col < 0 || int32(col) >= r.cols {
+		panic("invalid column")
+	}
+
 	start := r.pageStart(col)
 	data := r.pointer(start)
 
@@ -349,6 +349,6 @@ func (r *blockReader) Column(col int) Vec {
 	start += n
 	start = align(start, v.Type.Alignment())
 	v.start = r.pointer(start)
-	v.end = r.pointer(r.pageEnd(col))
+	v.end = r.pointer(r.pageStart(col + 1))
 	return v
 }
