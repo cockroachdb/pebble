@@ -1,6 +1,7 @@
 package ptable
 
 import (
+	"bytes"
 	"unsafe"
 )
 
@@ -113,6 +114,20 @@ func (t ColumnType) String() string {
 // Width ...
 func (t ColumnType) Width() int32 {
 	return columnTypeWidth[t]
+}
+
+// ColumnTypes ...
+type ColumnTypes []ColumnType
+
+func (c ColumnTypes) String() string {
+	var buf bytes.Buffer
+	for i := range c {
+		if i > 0 {
+			buf.WriteString(",")
+		}
+		buf.WriteString(c[i].String())
+	}
+	return buf.String()
 }
 
 // Vec ...

@@ -65,7 +65,7 @@ func randBlock(rng *rand.Rand, rows int, schema []ColumnType) ([]byte, []interfa
 	}
 
 	var w blockWriter
-	w.SetSchema(schema)
+	w.init(schema)
 
 	for row := 0; row < rows; row++ {
 		for col := 0; col < len(schema); col++ {
@@ -94,11 +94,8 @@ func randBlock(rng *rand.Rand, rows int, schema []ColumnType) ([]byte, []interfa
 }
 
 func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
-	// TODO(peter): fix this wart. The writer is otherwise unused except for the
-	// w.String() call.
-	var w blockWriter
-	w.SetSchema(schema)
-	t.Run(w.String(), func(t *testing.T) {
+	name := (ColumnTypes)(schema).String()
+	t.Run(name, func(t *testing.T) {
 		block, data := randBlock(rng, rows, schema)
 
 		r := newReader(block)

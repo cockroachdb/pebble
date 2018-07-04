@@ -24,8 +24,7 @@ package ptable
 // package.
 //
 // The decompressed block consists of structured row data in a columnar
-// layout. The schema for rows is fixed for a block but can change between
-// blocks.
+// layout. The schema for rows is fixed for an entire table.
 //
 // An index block consists of a fixed 2 column schema of keys and block
 // handles. The i'th value is the encoded block handle of the i'th data
@@ -33,7 +32,7 @@ package ptable
 // N-1. The separator between blocks i and i+1 is a key that is >= every key in
 // block i and is < every key i block i+1. The successor for the final block is
 // a key that is >= every key in block N-1. Note that the keys in the index
-// block are not stored as such in data block.
+// block are not stored as such in data blocks.
 //
 // A block handle is an offset and a length. In the index block, the block
 // handle length is not stored directly but is instead calculated using the

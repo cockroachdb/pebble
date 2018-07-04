@@ -1,7 +1,6 @@
 package ptable
 
 import (
-	"bytes"
 	"encoding/binary"
 	"math"
 	"unsafe"
@@ -10,7 +9,7 @@ import (
 // Block layout
 //
 // +---------------------------------------------------------------+
-// | ncols(4) | nrows(4) | page1(4) | page2(4) | ...               |
+// | ncols(4) | nrows(4) | page1(4) | page2(4) | ...    | pageN(4) |
 // +---------------------------------------------------------------+
 // | <bool>  | null-bitmap | value-bitmap                          |
 // +---------------------------------------------------------------+
@@ -208,15 +207,23 @@ type blockWriter struct {
 	cols []columnWriter
 }
 
-func (w *blockWriter) String() string {
-	var buf bytes.Buffer
-	for i := range w.cols {
-		if i > 0 {
-			buf.WriteString(",")
+func (w *blockWriter) init(s []ColumnType) bool {
+	if len(w.cols) == 0 {
+		w.cols = make([]columnWriter, len(s))
+		for i := range s {
+			w.cols[i].ctype = s[i]
 		}
-		buf.WriteString(w.cols[i].ctype.String())
+		return true
 	}
-	return buf.String()
+	if len(w.cols) != len(s) {
+		return false
+	}
+	for i := range s {
+		if w.cols[i].ctype != s[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (w *blockWriter) Finish() []byte {
@@ -239,25 +246,6 @@ func (w *blockWriter) Size() int32 {
 		size += w.cols[i].size(size)
 	}
 	return size
-}
-
-func (w *blockWriter) SetSchema(s []ColumnType) bool {
-	if len(w.cols) == 0 {
-		w.cols = make([]columnWriter, len(s))
-		for i := range s {
-			w.cols[i].ctype = s[i]
-		}
-		return true
-	}
-	if len(w.cols) != len(s) {
-		return false
-	}
-	for i := range s {
-		if w.cols[i].ctype != s[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (w *blockWriter) PutBool(i int, v bool) {
