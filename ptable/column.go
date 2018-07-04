@@ -60,7 +60,10 @@ const (
 	ColumnTypeInt64              = 5
 	ColumnTypeFloat32            = 6
 	ColumnTypeFloat64            = 7
-	ColumnTypeBytes              = 8
+	// TODO(peter): Should "bytes" be replaced with a bit indicating variable
+	// width data that can be applied to any fixed-width data type? This would
+	// allow modeling both []int8, []int64, and []float64.
+	ColumnTypeBytes = 8
 	// TODO(peter): decimal, uuid, ipaddr, timestamp, time, timetz, duration,
 	// collated string, tuple.
 )
