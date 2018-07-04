@@ -1,0 +1,35 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/petermattis/pebble/ptable
+BenchmarkBlockReader-8     	2000000000	         0.30 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.28 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkBlockReader-8     	2000000000	         0.29 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.31 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.31 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterNext-8   	2000000000	         0.31 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.32 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+BenchmarkTableIterPrev-8   	2000000000	         0.33 ns/op
+PASS
+ok  	github.com/petermattis/pebble/ptable	34.966s
