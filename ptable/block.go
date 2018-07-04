@@ -60,7 +60,6 @@ type columnWriter struct {
 	data    []byte
 	offsets []int32
 	nulls   Bitmap
-	tmp     [8]byte
 	count   int32
 }
 
