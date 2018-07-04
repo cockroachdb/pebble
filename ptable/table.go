@@ -38,3 +38,36 @@ package ptable
 // handle length is not stored directly but is instead calculated using the
 // offset of the following block. In the index block, the block handle offset
 // is stored as an 8-byte 64-bit integer.
+
+// TODO(peter):
+//
+// - Do we need to store which columns the rows are sorted on? How to store
+//   sort order? Yes, we need to be able to merge tables in order to perform
+//   compactions and the fundamental operation here is comparison.
+//
+// - Iteration iterates over blocks. Every row has an implicit timestamp column
+//   containing the hlc timestamp.
+//
+// - How to integrate with the memtable? The memtable contains relatively
+//   little data. Do we convert to columnar data on the fly?
+//
+// - Need to be able to decompose key/value data into columnar data and then
+//   later reconstitute it into key/value data. There likely needs to be a
+//   Schema interface which can perform operations in both directions.
+//
+//   type Schema interface {
+//     Encode(...) ([]byte, []byte)
+//     Decode(key, value []byte) []Columns
+//   }
+//
+// - How to specify the schema for a given key? The number of schemas is the
+//   number of indexes in all of the tables. The /table/index/ prefix is a
+//   unique prefix. Perhaps there should be a callback from key to schema.
+//
+// - Define scan operation which takes a start and end key and an operator tree
+//   composed of projections and filters and returns an iterator over the data.
+//
+// - How to handle changes to the schema? This happens for the primary row data
+//   only and is is due to the addition or deletion of columns. The schema
+//   needs to be stored in the table and when merging tables columns need to be
+//   added and dropped appropriately.

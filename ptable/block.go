@@ -40,21 +40,6 @@ import (
 // offset[0] is the end of the first row's column data. A negative offset
 // indicates a null value.
 
-// TODO(peter):
-//
-// - Do we need to store which columns the rows are sorted on? How to store
-//   sort order?
-//
-// - Iteration iterates over blocks. Every row has an implicit timestamp column
-//   containing the hlc timestamp.
-//
-// - How to integrate with the memtable? The memtable contains relatively
-//   little data. Do we convert to columnar data on the fly?
-//
-// - How to specify the schema for a given key? The number of schemas is the
-//   number of indexes in all of the tables. The /table/index/ prefix is a
-//   unique prefix. Perhaps there should be a callback from key to schema.
-
 type columnWriter struct {
 	ctype   ColumnType
 	data    []byte
