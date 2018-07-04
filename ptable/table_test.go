@@ -169,9 +169,6 @@ func BenchmarkTableIterNext(b *testing.B) {
 	b.ResetTimer()
 	var sum int64
 	for i, k := 0, 0; i < b.N; i += k {
-		if it.Valid() {
-			it.Next()
-		}
 		if !it.Valid() {
 			it.First()
 		}
@@ -184,5 +181,33 @@ func BenchmarkTableIterNext(b *testing.B) {
 		for j := 0; j < k; j++ {
 			sum += vals[j]
 		}
+
+		it.Next()
+	}
+}
+
+func BenchmarkTableIterPrev(b *testing.B) {
+	const blockSize = 32 << 10
+
+	r := buildBenchmarkTable(b, blockSize)
+	it := r.NewIter()
+
+	b.ResetTimer()
+	var sum int64
+	for i, k := 0, 0; i < b.N; i += k {
+		if !it.Valid() {
+			it.Last()
+		}
+
+		vals := it.Block().Column(0).Int64()
+		k = len(vals)
+		if k > b.N-i {
+			k = b.N - i
+		}
+		for j, e := len(vals)-1, len(vals)-k; j >= e; j-- {
+			sum += vals[j]
+		}
+
+		it.Prev()
 	}
 }

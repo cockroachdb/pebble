@@ -30,6 +30,7 @@ func (i *Iter) Init(r *Reader) error {
 		return i.err
 	}
 	i.index.init(r.index)
+	i.pos = -1
 	return nil
 }
 
@@ -53,7 +54,9 @@ func (i *Iter) First() {
 
 // Last moves the iterator to the last block in the table.
 func (i *Iter) Last() {
-	i.pos = i.index.rows - 1
+	// NB: the index block has 1 more row than there are data blocks in the
+	// table.
+	i.pos = i.index.rows - 2
 	i.loadBlock()
 }
 

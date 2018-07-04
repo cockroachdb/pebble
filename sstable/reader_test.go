@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -22,14 +23,14 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	w := NewWriter(f0, &db.Options{
 		BlockRestartInterval: restartInterval,
 		BlockSize:            blockSize,
-		Compression:          db.NoCompression,
 		FilterPolicy:         nil,
 	})
 
 	var keys [][]byte
 	var ikey db.InternalKey
-	for i := 0; i < 1e6; i++ {
-		key := []byte(fmt.Sprintf("%08d", i))
+	for i := uint64(0); i < 1e6; i++ {
+		key := make([]byte, 8)
+		binary.BigEndian.PutUint64(key, i)
 		keys = append(keys, key)
 		ikey.UserKey = key
 		w.Add(ikey, nil)
@@ -77,10 +78,12 @@ func BenchmarkTableIterNext(b *testing.B) {
 				it := r.NewIter(nil)
 
 				b.ResetTimer()
+				var sum int64
 				for i := 0; i < b.N; i++ {
 					if !it.Valid() {
 						it.First()
 					}
+					sum += int64(binary.BigEndian.Uint64(it.Key().UserKey))
 					it.Next()
 				}
 			})
@@ -97,10 +100,12 @@ func BenchmarkTableIterPrev(b *testing.B) {
 				it := r.NewIter(nil)
 
 				b.ResetTimer()
+				var sum int64
 				for i := 0; i < b.N; i++ {
 					if !it.Valid() {
 						it.Last()
 					}
+					sum += int64(binary.BigEndian.Uint64(it.Key().UserKey))
 					it.Prev()
 				}
 			})
