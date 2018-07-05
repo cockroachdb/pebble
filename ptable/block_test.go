@@ -112,6 +112,13 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 		}
 
 		for col := range data {
+			vec := r.Column(col)
+			for i := int32(0); i < vec.N; i++ {
+				if i != int32(vec.Rank(int(i))) {
+					t.Fatalf("expected rank %d, but found %d", i, vec.Rank(int(i)))
+				}
+			}
+
 			var got interface{}
 			switch schema[col] {
 			case ColumnTypeBool:
@@ -192,14 +199,17 @@ func BenchmarkBlockReader(b *testing.B) {
 	var sum int64
 	for i, k := 0, 0; i < b.N; i += k {
 		r := newReader(blocks[rng.Intn(len(blocks))])
-		vals := r.Column(0).Int64()
+		col := r.Column(0)
+		vals := col.Int64()
 
-		k = len(vals)
+		k = int(col.N)
 		if k > b.N-i {
 			k = b.N - i
 		}
 		for j := 0; j < k; j++ {
-			sum += vals[j]
+			if r := col.Rank(j); r >= 0 {
+				sum += vals[r]
+			}
 		}
 	}
 }

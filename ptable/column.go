@@ -2,6 +2,8 @@ package ptable
 
 import (
 	"bytes"
+	"encoding/binary"
+	"math/bits"
 	"unsafe"
 )
 
@@ -156,8 +158,45 @@ type Vec struct {
 	N     int32          // the number of elements in the vector
 	Type  ColumnType     // the type of vector elements
 	Nulls Bitmap         // bitmap of NULL elements
+	rank  unsafe.Pointer // pointer to rank lookup table
 	start unsafe.Pointer // pointer to start of the column data
 	end   unsafe.Pointer // pointer to the end of column data
+}
+
+// Rank returns the index of the i'th non-NULL value in the slices returned
+// from the slice accessors. Returns -1 if the i'th value is NULL. If all
+// values are non-NULL, Rank(i) == i. The pattern to iterate over the
+// non-NULL values in a vector is:
+//
+//   vals := vec.Int64()
+//   for i := 0; i < vec.N; i++ {
+//     if j := vec.Rank(i); j >= 0 {
+//       v := vals[j]
+//       // process v
+//     }
+//   }
+func (v Vec) Rank(i int) int {
+	block := uint64(i) / 64
+	bit := uint64(1) << uint(i%64)
+	var b uint64
+	if int32(block+64) < v.N {
+		// Fast-path, we can read an entire 64-bit chunk of the null-bitmap.
+		b = binary.BigEndian.Uint64(v.Nulls[block:])
+	} else {
+		// TODO(peter): we could always read the 64-bit chunk of the null-bitmap
+		// because we're masking off the bits that we don't care about. Or we could
+		// waste a little space and ensure the null-bitmap was always a multiple of
+		// 8-bytes in length.
+		for k := i / 8; k < len(v.Nulls); k++ {
+			b |= uint64(v.Nulls[k])
+			b <<= 8
+		}
+	}
+	if (b & bit) != 0 {
+		return -1
+	}
+	sum := *(*uint16)(unsafe.Pointer(uintptr(v.rank) + uintptr(block)*2))
+	return int(sum) + bits.OnesCount64((^b)&(bit-1))
 }
 
 // Bool returns the vec data as a boolean bitmap. The bitmap should not be

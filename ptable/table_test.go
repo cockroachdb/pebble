@@ -223,13 +223,16 @@ func BenchmarkTableIterNext(b *testing.B) {
 			it.First()
 		}
 
-		vals := it.Block().Column(0).Int64()
-		k = len(vals)
+		col := it.Block().Column(0)
+		vals := col.Int64()
+		k = int(col.N)
 		if k > b.N-i {
 			k = b.N - i
 		}
 		for j := 0; j < k; j++ {
-			sum += vals[j]
+			if r := col.Rank(j); r >= 0 {
+				sum += vals[r]
+			}
 		}
 
 		it.Next()
@@ -249,13 +252,16 @@ func BenchmarkTableIterPrev(b *testing.B) {
 			it.Last()
 		}
 
-		vals := it.Block().Column(0).Int64()
-		k = len(vals)
+		col := it.Block().Column(0)
+		vals := col.Int64()
+		k = int(col.N)
 		if k > b.N-i {
 			k = b.N - i
 		}
 		for j, e := len(vals)-1, len(vals)-k; j >= e; j-- {
-			sum += vals[j]
+			if r := col.Rank(j); r >= 0 {
+				sum += vals[r]
+			}
 		}
 
 		it.Prev()
