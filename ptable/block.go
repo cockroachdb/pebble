@@ -196,6 +196,7 @@ func pageOffsetPos(i int) int32 {
 
 type blockWriter struct {
 	cols []columnWriter
+	buf  []byte
 }
 
 func (w *blockWriter) init(s []ColumnType) {
@@ -212,18 +213,21 @@ func (w *blockWriter) reset() {
 }
 
 func (w *blockWriter) Finish() []byte {
-	// TODO(peter): Cache "buf" and re-use on subsequent alls to Finish().
-	buf := make([]byte, w.Size())
+	size := w.Size()
+	if int32(cap(w.buf)) < size {
+		w.buf = make([]byte, size)
+	}
+	w.buf = w.buf[:size]
 	n := len(w.cols)
-	binary.LittleEndian.PutUint32(buf[0:], uint32(n))
-	binary.LittleEndian.PutUint32(buf[4:], uint32(w.cols[0].count))
+	binary.LittleEndian.PutUint32(w.buf[0:], uint32(n))
+	binary.LittleEndian.PutUint32(w.buf[4:], uint32(w.cols[0].count))
 	pageOffset := blockHeaderSize(n)
 	for i := range w.cols {
 		col := &w.cols[i]
-		binary.LittleEndian.PutUint32(buf[pageOffsetPos(i):], uint32(pageOffset))
-		pageOffset = col.encode(pageOffset, buf)
+		binary.LittleEndian.PutUint32(w.buf[pageOffsetPos(i):], uint32(pageOffset))
+		pageOffset = col.encode(pageOffset, w.buf)
 	}
-	return buf
+	return w.buf
 }
 
 func (w *blockWriter) Size() int32 {
