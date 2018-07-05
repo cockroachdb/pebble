@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/cache"
@@ -16,6 +17,7 @@ import (
 // Iter ...
 type Iter struct {
 	reader *Reader
+	cmp    db.Compare
 	index  blockReader
 	data   blockReader
 	pos    int32
@@ -25,6 +27,7 @@ type Iter struct {
 // Init ...
 func (i *Iter) Init(r *Reader) error {
 	i.reader = r
+	i.cmp = i.reader.cmp
 	i.err = r.err
 	if i.err != nil {
 		return i.err
@@ -37,7 +40,15 @@ func (i *Iter) Init(r *Reader) error {
 // SeekGE moves the iterator to the first block containing keys greater than or
 // equal to the given key.
 func (i *Iter) SeekGE(key []byte) {
-	panic("pebble/ptable: SeekGE unimplemented")
+	keys := i.index.Column(0).Bytes()
+	index := sort.Search(int(i.index.rows-1), func(j int) bool {
+		return i.cmp(key, keys.At(j)) < 0
+	})
+	if index > 0 {
+		index--
+	}
+	i.pos = int32(index)
+	i.loadBlock()
 }
 
 // SeekLT moves the iterator to the last block containing keys less than the
@@ -113,6 +124,7 @@ type Reader struct {
 	err             error
 	index           []byte
 	cache           *cache.BlockCache
+	cmp             db.Compare
 	verifyChecksums bool
 }
 
@@ -122,6 +134,7 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 		file:            f,
 		fileNum:         fileNum,
 		cache:           o.GetCache(),
+		cmp:             o.GetComparer().Compare,
 		verifyChecksums: o.GetVerifyChecksums(),
 	}
 

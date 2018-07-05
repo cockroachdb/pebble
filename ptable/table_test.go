@@ -2,7 +2,10 @@ package ptable
 
 import (
 	"fmt"
+	"math/rand"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
@@ -97,7 +100,7 @@ func TestTable(t *testing.T) {
 			t.Fatal(err)
 		}
 		w := NewWriter(f, env, &db.Options{BlockSize: 100})
-		for i := int64(0); i < 1000; i++ {
+		for i := int64(0); i < count; i++ {
 			if err := w.AddRow(makeRow(i)); err != nil {
 				t.Fatal(err)
 			}
@@ -127,13 +130,32 @@ func TestTable(t *testing.T) {
 		if count != j {
 			t.Fatalf("expected %d, but found %d", count, j)
 		}
+
+		for i := int64(0); i < count; i++ {
+			key, _ := env.Encode(makeRow(i), nil)
+			iter.SeekGE(key)
+			if !iter.Valid() {
+				t.Fatal("expected valid iterator")
+			}
+			var found bool
+			for _, v := range iter.Block().Column(0).Int64() {
+				if i == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("unable to find %d on block %d", i, iter.pos)
+			}
+		}
+
 		if err := r.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}
 }
 
-func buildBenchmarkTable(b *testing.B, blockSize int) *Reader {
+func buildBenchmarkTable(b *testing.B, blockSize int) (*Reader, [][]byte) {
 	mem := storage.NewMem()
 	f0, err := mem.Create("bench")
 	if err != nil {
@@ -143,8 +165,12 @@ func buildBenchmarkTable(b *testing.B, blockSize int) *Reader {
 
 	env := newEnv(ColumnDef{Type: ColumnTypeInt64})
 	w := NewWriter(f0, env, &db.Options{BlockSize: blockSize})
+	var keys [][]byte
 	for i := int64(0); i < 1e6; i++ {
-		w.AddRow(makeRow(i))
+		r := makeRow(i)
+		w.AddRow(r)
+		key, _ := env.Encode(r, nil)
+		keys = append(keys, key)
 	}
 	if err := w.Close(); err != nil {
 		b.Fatal(err)
@@ -157,13 +183,37 @@ func buildBenchmarkTable(b *testing.B, blockSize int) *Reader {
 	}
 	return NewReader(f1, 0, &db.Options{
 		Cache: cache.NewBlockCache(128 << 20),
-	})
+	}), keys
+}
+
+func BenchmarkTableIterSeekGE(b *testing.B) {
+	const blockSize = 32 << 10
+
+	r, keys := buildBenchmarkTable(b, blockSize)
+	it := r.NewIter()
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := int64(rng.Intn(len(keys)))
+		it.SeekGE(keys[v])
+		if !it.Valid() {
+			b.Fatalf("unable to find block containing %d", v)
+		}
+		vals := it.Block().Column(0).Int64()
+		index := sort.Search(len(vals), func(j int) bool {
+			return vals[j] >= v
+		})
+		if vals[index] != v {
+			b.Fatalf("unable to find %d", v)
+		}
+	}
 }
 
 func BenchmarkTableIterNext(b *testing.B) {
 	const blockSize = 32 << 10
 
-	r := buildBenchmarkTable(b, blockSize)
+	r, _ := buildBenchmarkTable(b, blockSize)
 	it := r.NewIter()
 
 	b.ResetTimer()
@@ -189,7 +239,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 func BenchmarkTableIterPrev(b *testing.B) {
 	const blockSize = 32 << 10
 
-	r := buildBenchmarkTable(b, blockSize)
+	r, _ := buildBenchmarkTable(b, blockSize)
 	it := r.NewIter()
 
 	b.ResetTimer()
