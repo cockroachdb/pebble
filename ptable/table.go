@@ -47,7 +47,8 @@ package ptable
 //
 // - Do we need to store which columns the rows are sorted on? How to store
 //   sort order? Yes, we need to be able to merge tables in order to perform
-//   compactions and the fundamental operation here is comparison.
+//   compactions and the fundamental operation here is comparison. We need to
+//   know the key columns.
 //
 // - Iteration iterates over blocks. Every row has an implicit timestamp column
 //   containing the hlc timestamp. Need to be able to filter to get only the
@@ -69,7 +70,23 @@ package ptable
 //   added and dropped appropriately.
 //
 // - What to do about column families where row data is spread across multiple
-//   key/value pairs?
+//   key/value pairs? Column families are logically part of the same row. In
+//   some ways, they are similar to the Merge operation, allowing partial
+//   updates to a row.
+//
+// - What to do about Merge operations? Simplest approach would be to disallow
+//   them on the structured data portion of the key space.
+//
+// - Need to add a per-row "deleted" bitmap in order to support deletion
+//   tombstones.
+//
+// - How to handle range deletion tombstones?
+//
+// - How to support UNIQUE indexes with NULL-able keys? Such indexes have a
+//   fixed set of columns in the key, but also a unique-ifier suffix in case
+//   one of the columns is NULL. Perhaps just model such columns exactly like
+//   that, with an implicit hidden column that is part of the key and only
+//   non-empty if one of the key column values is NULL.
 
 // RowWriter provides an interface for writing the column data for a row.
 type RowWriter interface {
