@@ -40,7 +40,8 @@ import (
 // accelerates calculation of the rank for bitmap i. The rank is the number of
 // non-NULL values present in bitmap[0,i). The bitmap is organized as a series
 // of 32-bit words where the low 16-bits of each word are part of the bitmap
-// and the high 16-bits are the sum of the set bits in the earlier words.
+// and the high 16-bits are the sum of the set bits in the earlier words. The
+// NULL-bitmap is omitted if there are no NULL values for a column in a block.
 //
 // Variable width data (i.e. the "bytes" column type) is stored in a different
 // format. Immediately following the column type are the concatenated variable
@@ -50,11 +51,12 @@ import (
 // indicates a null value.
 
 type columnWriter struct {
-	ctype   ColumnType
-	data    []byte
-	offsets []int32
-	nulls   nullBitmapBuilder
-	count   int32
+	ctype     ColumnType
+	data      []byte
+	offsets   []int32
+	nulls     nullBitmapBuilder
+	count     int32
+	nullCount int32
 }
 
 func (w *columnWriter) reset() {
@@ -62,6 +64,7 @@ func (w *columnWriter) reset() {
 	w.offsets = w.offsets[:0]
 	w.nulls = w.nulls[:0]
 	w.count = 0
+	w.nullCount = 0
 }
 
 func (w *columnWriter) grow(n int) []byte {
@@ -158,6 +161,7 @@ func (w *columnWriter) putNull() {
 		w.offsets = append(w.offsets, int32(len(w.data)))
 	}
 	w.count++
+	w.nullCount++
 }
 
 func align(offset, val int32) int32 {
@@ -169,14 +173,21 @@ func (w *columnWriter) encode(offset int32, buf []byte) int32 {
 	buf[offset] = byte(w.ctype)
 	offset++
 	// The NULL-bitmap.
-	offset = align(offset, 4)
-	binary.LittleEndian.PutUint32(buf[offset:], w.nulls[0])
-	offset += 4
-	for i, sum := 1, 0; i < len(w.nulls); i++ {
-		sum += bits.OnesCount16(^uint16(w.nulls[i-1]))
-		w.nulls[i] |= uint32(sum << 16)
-		binary.LittleEndian.PutUint32(buf[offset:], w.nulls[i])
+	if w.nullCount == 0 {
+		buf[offset] = 0 // no NULL-bitmap
+		offset++
+	} else {
+		buf[offset] = 1 // NULL-bitmap exists
+		offset++
+		offset = align(offset, 4)
+		binary.LittleEndian.PutUint32(buf[offset:], w.nulls[0])
 		offset += 4
+		for i, sum := 1, 0; i < len(w.nulls); i++ {
+			sum += bits.OnesCount16(^uint16(w.nulls[i-1]))
+			w.nulls[i] |= uint32(sum << 16)
+			binary.LittleEndian.PutUint32(buf[offset:], w.nulls[i])
+			offset += 4
+		}
 	}
 	// The column values.
 	offset = align(offset, w.ctype.Alignment())
@@ -196,8 +207,11 @@ func (w *columnWriter) size(offset int32) int32 {
 	// The column type.
 	offset++
 	// The NULL-bitmap.
-	offset = align(offset, 4)
-	offset += 4 * int32(len(w.nulls))
+	offset++
+	if w.nullCount > 0 {
+		offset = align(offset, 4)
+		offset += 4 * int32(len(w.nulls))
+	}
 	// The column values.
 	offset = align(offset, w.ctype.Alignment())
 	offset += int32(len(w.data))
@@ -373,9 +387,13 @@ func (r *blockReader) Column(col int) Vec {
 	v.Type = *(*ColumnType)(data)
 	start++
 	// The NULL-bitmap.
-	start = align(start, 4)
-	v.Null.ptr = r.pointer(start)
-	start += 4 * (int32(r.rows+15) / 16)
+	if *(*byte)(r.pointer(start)) == 0 {
+		start++
+	} else {
+		start = align(start, 4)
+		v.Null.ptr = r.pointer(start)
+		start += 4 * (int32(r.rows+15) / 16)
+	}
 	// The column values.
 	start = align(start, v.Type.Alignment())
 	v.start = r.pointer(start)

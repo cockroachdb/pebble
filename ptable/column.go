@@ -38,8 +38,18 @@ type NullBitmap struct {
 	ptr unsafe.Pointer
 }
 
+// Empty returns true if the bitmap is empty and indicates that all of the
+// column values are non-NULL. It is safe to call Get and Rank on an empty
+// bitmap, but faster to specialize the code to not invoke them at all.
+func (b NullBitmap) Empty() bool {
+	return b.ptr == nil
+}
+
 // Get returns true if the bit at position i is set and false otherwise.
 func (b NullBitmap) Get(i int) bool {
+	if b.ptr == nil {
+		return false
+	}
 	bit := uint32(1) << uint(i&0xf)
 	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(i)>>4)<<2))
 	return (val & bit) != 0
@@ -58,6 +68,9 @@ func (b NullBitmap) Get(i int) bool {
 //     }
 //   }
 func (b NullBitmap) Rank(i int) int {
+	if b.ptr == nil {
+		return i
+	}
 	bit := uint32(1) << uint(i&0xf)
 	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(i)>>4)<<2))
 	if (val & bit) != 0 {
