@@ -16,6 +16,9 @@ type testEnv []ColumnDef
 
 func (e testEnv) Encode(row RowReader, buf []byte) (key, value []byte) {
 	for i := range e {
+		if row.Null(i) {
+			continue
+		}
 		switch e[i].Type {
 		case ColumnTypeInt64:
 			key = append(key, []byte(fmt.Sprintf("%08d", row.Int64(i)))...)
@@ -155,7 +158,7 @@ func TestTable(t *testing.T) {
 	}
 }
 
-func buildBenchmarkTable(b *testing.B, blockSize int) (*Reader, [][]byte) {
+func buildBenchmarkTable(b *testing.B, blockSize int, nullValues bool) (*Reader, [][]byte) {
 	mem := storage.NewMem()
 	f0, err := mem.Create("bench")
 	if err != nil {
@@ -163,11 +166,16 @@ func buildBenchmarkTable(b *testing.B, blockSize int) (*Reader, [][]byte) {
 	}
 	defer f0.Close()
 
-	env := newEnv(ColumnDef{Type: ColumnTypeInt64})
+	env := newEnv(ColumnDef{Type: ColumnTypeInt64}, ColumnDef{Type: ColumnTypeInt64})
 	w := NewWriter(f0, env, &db.Options{BlockSize: blockSize})
 	var keys [][]byte
 	for i := int64(0); i < 1e6; i++ {
-		r := makeRow(i)
+		var r testRow
+		if nullValues && (i%2) == 0 {
+			r = makeRow(i, nil)
+		} else {
+			r = makeRow(i, i)
+		}
 		w.AddRow(r)
 		key, _ := env.Encode(r, nil)
 		keys = append(keys, key)
@@ -189,7 +197,7 @@ func buildBenchmarkTable(b *testing.B, blockSize int) (*Reader, [][]byte) {
 func BenchmarkTableIterSeekGE(b *testing.B) {
 	const blockSize = 32 << 10
 
-	r, keys := buildBenchmarkTable(b, blockSize)
+	r, keys := buildBenchmarkTable(b, blockSize, false /* NULL values */)
 	it := r.NewIter()
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -213,7 +221,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 func BenchmarkTableIterNext(b *testing.B) {
 	const blockSize = 32 << 10
 
-	r, _ := buildBenchmarkTable(b, blockSize)
+	r, _ := buildBenchmarkTable(b, blockSize, true /* NULL values */)
 	it := r.NewIter()
 
 	b.ResetTimer()
@@ -223,7 +231,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 			it.First()
 		}
 
-		col := it.Block().Column(0)
+		col := it.Block().Column(1)
 		vals := col.Int64()
 		k = int(col.N)
 		if k > b.N-i {
@@ -242,7 +250,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 func BenchmarkTableIterPrev(b *testing.B) {
 	const blockSize = 32 << 10
 
-	r, _ := buildBenchmarkTable(b, blockSize)
+	r, _ := buildBenchmarkTable(b, blockSize, true /* NULL values */)
 	it := r.NewIter()
 
 	b.ResetTimer()
@@ -252,7 +260,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 			it.Last()
 		}
 
-		col := it.Block().Column(0)
+		col := it.Block().Column(1)
 		vals := col.Int64()
 		k = int(col.N)
 		if k > b.N-i {

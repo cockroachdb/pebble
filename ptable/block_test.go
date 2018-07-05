@@ -188,6 +188,29 @@ func TestBlockWriter(t *testing.T) {
 	}
 }
 
+func TestBlockWriterNullValues(t *testing.T) {
+	var w blockWriter
+	w.init([]ColumnType{ColumnTypeInt8})
+	for i := 0; i <= 16; i++ {
+		if i%2 == 0 {
+			w.PutNull(0)
+		} else {
+			w.PutInt8(0, int8(i))
+		}
+	}
+	r := newReader(w.Finish())
+	col := r.Column(0)
+	for i := 0; i < int(col.N); i++ {
+		if j := col.Null.Rank(i); j < 0 {
+			if i%2 != 0 {
+				t.Fatalf("expected non-NULL value, but found NULL")
+			}
+		} else if i%2 == 0 {
+			t.Fatalf("expected NULL value, but found %d", col.Int8()[j])
+		}
+	}
+}
+
 func BenchmarkBlockReader(b *testing.B) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	blocks := make([][]byte, 128)
