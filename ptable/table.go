@@ -41,24 +41,20 @@ package ptable
 
 // TODO(peter):
 //
+// - We likely need to allow different block schemas within the same
+//   table. This is needed for both interleaved tables and for L0 tables which
+//   will likely hold blocks for many different SQL tables at once.
+//
 // - Do we need to store which columns the rows are sorted on? How to store
 //   sort order? Yes, we need to be able to merge tables in order to perform
 //   compactions and the fundamental operation here is comparison.
 //
 // - Iteration iterates over blocks. Every row has an implicit timestamp column
-//   containing the hlc timestamp.
+//   containing the hlc timestamp. Need to be able to filter to get only the
+//   desired version of a row.
 //
-// - How to integrate with the memtable? The memtable contains relatively
-//   little data. Do we convert to columnar data on the fly?
-//
-// - Need to be able to decompose key/value data into columnar data and then
-//   later reconstitute it into key/value data. There likely needs to be a
-//   Schema interface which can perform operations in both directions.
-//
-//   type Schema interface {
-//     Encode(...) ([]byte, []byte)
-//     Decode(key, value []byte) []Columns
-//   }
+// - How to integrate iteration with the memtable? The memtable contains
+//   relatively little data. Do we convert to columnar data on the fly?
 //
 // - How to specify the schema for a given key? The number of schemas is the
 //   number of indexes in all of the tables. The /table/index/ prefix is a
