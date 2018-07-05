@@ -39,10 +39,10 @@ import (
 // index. A rank-lut (rank lookup table) is stored after the null-bitmap which
 // allows fast determination of the "real" index for a non-NULL value. Rank(i)
 // returns the index in the value array. If no column values are NULL, rank(i)
-// == i. The rank lookup table is composed of rows/64 16-bit values where each
+// == i. The rank lookup table is composed of rows/8 16-bit values where each
 // value is the count of the non-NULL in the previous entries. Computing
 // rank(i) involves a lookup in the rank-lut combined with a pop-count for the
-// 64-bit chunk of the null-bitmap that i resides in.
+// 8-bit chunk of the null-bitmap that i resides in.
 //
 // Variable width data (i.e. the "bytes" column type) is stored in a different
 // format. Immediately following the column type are the concatenated variable
@@ -177,10 +177,10 @@ func (w *columnWriter) encode(offset int32, buf []byte) int32 {
 	// The first entry of the rank-lut is always 0.
 	binary.LittleEndian.PutUint16(buf[offset:], 0)
 	offset += 2
-	for i, sum := int32(64), uint16(0); i < w.count; i += 64 {
+	for i, sum := int32(8), uint16(0); i < w.count; i += 8 {
 		// Add the present values for the previous 64-bit block of the null-bitmap.
-		j := (i - 64) / 64
-		sum += uint16(bits.OnesCount64(^binary.BigEndian.Uint64(w.nulls[j:])))
+		j := (i - 8) / 8
+		sum += uint16(bits.OnesCount8(^(uint8)(w.nulls[j])))
 		binary.LittleEndian.PutUint16(buf[offset:], sum)
 		offset += 2
 	}
@@ -205,7 +205,7 @@ func (w *columnWriter) size(offset int32) int32 {
 	offset += int32(len(w.nulls))
 	// The rank lookup table.
 	offset = align(offset, 2)
-	offset += 2 * (int32(w.count+63) / 64)
+	offset += 2 * (int32(w.count+7) / 8)
 	// The column values.
 	offset = align(offset, w.ctype.Alignment())
 	offset += int32(len(w.data))
@@ -387,7 +387,7 @@ func (r *blockReader) Column(col int) Vec {
 	// The rank lookup table.
 	start = align(start, 2)
 	v.rank = r.pointer(start)
-	start += 2 * (int32(r.rows+63) / 64)
+	start += 2 * (int32(r.rows+7) / 8)
 	// The column values.
 	start = align(start, v.Type.Alignment())
 	v.start = r.pointer(start)
