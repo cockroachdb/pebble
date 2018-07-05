@@ -98,7 +98,7 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 	t.Run(name, func(t *testing.T) {
 		block, data := randBlock(rng, rows, schema)
 
-		r := newReader(block)
+		r := NewBlock(block)
 		if r.cols != int32(len(schema)) {
 			t.Fatalf("expected %d columns, but found %d\n", len(schema), r.cols)
 		}
@@ -159,7 +159,7 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 				got = vals2
 			}
 			if !reflect.DeepEqual(data[col], got) {
-				t.Fatalf("expected\n%+v\ngot\n%+v\n% x", data[col], got, r.Data())
+				t.Fatalf("expected\n%+v\ngot\n%+v\n% x", data[col], got, r.data())
 			}
 		}
 	})
@@ -198,7 +198,7 @@ func TestBlockWriterNullValues(t *testing.T) {
 			w.PutInt8(0, int8(i))
 		}
 	}
-	r := newReader(w.Finish())
+	r := NewBlock(w.Finish())
 	col := r.Column(0)
 	for i := 0; i < int(col.N); i++ {
 		if j := col.Null.Rank(i); j < 0 {
@@ -221,7 +221,7 @@ func BenchmarkBlockReader(b *testing.B) {
 	b.Run("not-null", func(b *testing.B) {
 		var sum int64
 		for i, k := 0, 0; i < b.N; i += k {
-			r := newReader(blocks[rng.Intn(len(blocks))])
+			r := NewBlock(blocks[rng.Intn(len(blocks))])
 			col := r.Column(0)
 			vals := col.Int64()
 
@@ -238,7 +238,7 @@ func BenchmarkBlockReader(b *testing.B) {
 	b.Run("null-get", func(b *testing.B) {
 		var sum int64
 		for i, k := 0, 0; i < b.N; i += k {
-			r := newReader(blocks[rng.Intn(len(blocks))])
+			r := NewBlock(blocks[rng.Intn(len(blocks))])
 			col := r.Column(0)
 			vals := col.Int64()
 
@@ -257,7 +257,7 @@ func BenchmarkBlockReader(b *testing.B) {
 	b.Run("null-rank", func(b *testing.B) {
 		var sum int64
 		for i, k := 0, 0; i < b.N; i += k {
-			r := newReader(blocks[rng.Intn(len(blocks))])
+			r := NewBlock(blocks[rng.Intn(len(blocks))])
 			col := r.Column(0)
 			vals := col.Int64()
 

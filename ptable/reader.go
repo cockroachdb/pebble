@@ -18,8 +18,8 @@ import (
 type Iter struct {
 	reader *Reader
 	cmp    db.Compare
-	index  blockReader
-	data   blockReader
+	index  Block
+	data   Block
 	pos    int32
 	err    error
 }
@@ -96,7 +96,7 @@ func (i *Iter) Valid() bool {
 }
 
 // Block returns the block the iterator is currently pointed out.
-func (i *Iter) Block() *blockReader {
+func (i *Iter) Block() *Block {
 	return &i.data
 }
 

@@ -79,6 +79,16 @@ func (b NullBitmap) Rank(i int) int {
 	return int(val>>16) + bits.OnesCount16(uint16(^val&(bit-1)))
 }
 
+// count returns the count of non-NULL values in the bitmap.
+func (b NullBitmap) count(n int) int {
+	if b.ptr == nil {
+		return n
+	}
+	bit := uint32(1) << uint((n-1)&0xf)
+	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(n-1)>>4)<<2))
+	return int(val>>16) + bits.OnesCount16(uint16(^val&((bit<<1)-1)))
+}
+
 type nullBitmapBuilder []uint32
 
 // set sets the bit at position i if v is true and clears the bit at position i
@@ -234,7 +244,7 @@ func (v Vec) Bool() Bitmap {
 	if v.Type != ColumnTypeBool {
 		panic("vec does not hold bool data")
 	}
-	n := int32(v.N+7) / 8
+	n := (v.Null.count(int(v.N)) + 7) / 8
 	return Bitmap((*[1 << 31]byte)(v.start)[:n:n])
 }
 
@@ -243,7 +253,8 @@ func (v Vec) Int8() []int8 {
 	if v.Type != ColumnTypeInt8 {
 		panic("vec does not hold int8 data")
 	}
-	return (*[1 << 31]int8)(v.start)[:v.N:v.N]
+	n := v.Null.count(int(v.N))
+	return (*[1 << 31]int8)(v.start)[:n:n]
 }
 
 // Int16 returns the vec data as []int16. The slice should not be mutated.
@@ -251,7 +262,8 @@ func (v Vec) Int16() []int16 {
 	if v.Type != ColumnTypeInt16 {
 		panic("vec does not hold int16 data")
 	}
-	return (*[1 << 31]int16)(v.start)[:v.N:v.N]
+	n := v.Null.count(int(v.N))
+	return (*[1 << 31]int16)(v.start)[:n:n]
 }
 
 // Int32 returns the vec data as []int32. The slice should not be mutated.
@@ -259,7 +271,8 @@ func (v Vec) Int32() []int32 {
 	if v.Type != ColumnTypeInt32 {
 		panic("vec does not hold int32 data")
 	}
-	return (*[1 << 31]int32)(v.start)[:v.N:v.N]
+	n := v.Null.count(int(v.N))
+	return (*[1 << 31]int32)(v.start)[:n:n]
 }
 
 // Int64 returns the vec data as []int64. The slice should not be mutated.
@@ -267,7 +280,8 @@ func (v Vec) Int64() []int64 {
 	if v.Type != ColumnTypeInt64 {
 		panic("vec does not hold int64 data")
 	}
-	return (*[1 << 31]int64)(v.start)[:v.N:v.N]
+	n := v.Null.count(int(v.N))
+	return (*[1 << 31]int64)(v.start)[:n:n]
 }
 
 // Float32 returns the vec data as []float32. The slice should not be mutated.
@@ -275,7 +289,8 @@ func (v Vec) Float32() []float32 {
 	if v.Type != ColumnTypeFloat32 {
 		panic("vec does not hold float32 data")
 	}
-	return (*[1 << 31]float32)(v.start)[:v.N:v.N]
+	n := v.Null.count(int(v.N))
+	return (*[1 << 31]float32)(v.start)[:n:n]
 }
 
 // Float64 returns the vec data as []float64. The slice should not be mutated.
@@ -283,7 +298,8 @@ func (v Vec) Float64() []float64 {
 	if v.Type != ColumnTypeFloat64 {
 		panic("vec does not hold float64 data")
 	}
-	return (*[1 << 31]float64)(v.start)[:v.N:v.N]
+	n := v.Null.count(int(v.N))
+	return (*[1 << 31]float64)(v.start)[:n:n]
 }
 
 // Bytes returns the vec data as Bytes. The underlying data should not be
@@ -295,9 +311,10 @@ func (v Vec) Bytes() Bytes {
 	if uintptr(v.end)%4 != 0 {
 		panic("expected offsets data to be 4-byte aligned")
 	}
+	n := v.N
 	return Bytes{
-		count:   int(v.N),
+		count:   int(n),
 		data:    v.start,
-		offsets: unsafe.Pointer(uintptr(v.end) - uintptr(v.N*4)),
+		offsets: unsafe.Pointer(uintptr(v.end) - uintptr(n*4)),
 	}
 }

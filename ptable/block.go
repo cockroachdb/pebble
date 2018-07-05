@@ -7,49 +7,6 @@ import (
 	"unsafe"
 )
 
-// Block layout
-//
-// +---------------------------------------------------------------+
-// | ncols(4) | nrows(4) | page1(4) | page2(4) | ...    | pageN(4) |
-// +---------------------------------------------------------------+
-// | <bool>  | NULL-bitmap | value-bitmap                          |
-// +---------------------------------------------------------------+
-// | <int32> | NULL-bitmap | values (4-byte aligned)               |
-// +---------------------------------------------------------------+
-// | <bytes> | NULL-bitmap | val1 | val2 | ... | pos (4) | pos (4) |
-// +---------------------------------------------------------------+
-// | ...                                                           |
-// +---------------------------------------------------------------+
-//
-// Blocks contain rows following a fixed schema. The data is stored in a column
-// layout: all of the values for a column is stored contiguously. Column types
-// have either fixed-width values, or variable-width. All variable-width values
-// are stored in the "bytes" column type and it is up to higher levels to
-// interpret.
-//
-// The data for a column is stored within a "page". The first byte in a page
-// specifies the column type. Fixed width pages are then followed by a null
-// bitmap with 1-bit per row indicating whether the column at that row is null
-// or not. Following the null bitmap is the column data itself. The data is
-// aligned to the required alignment of the column type (4 for int32, 8 for
-// int64, etc) so that it can be accessed directly without decoding.
-//
-// The NULL-bitmap indicates the presence of a column value. If the i'th bit of
-// the NULL-bitmap for a column is 1, no value is stored for the column at that
-// index. The NULL-bitmap is interleaved with a rank lookup table which
-// accelerates calculation of the rank for bitmap i. The rank is the number of
-// non-NULL values present in bitmap[0,i). The bitmap is organized as a series
-// of 32-bit words where the low 16-bits of each word are part of the bitmap
-// and the high 16-bits are the sum of the set bits in the earlier words. The
-// NULL-bitmap is omitted if there are no NULL values for a column in a block.
-//
-// Variable width data (i.e. the "bytes" column type) is stored in a different
-// format. Immediately following the column type are the concatenated variable
-// length values. After the concatenated data is an array of offsets indicating
-// the end of each column value within the concatenated data. For example,
-// offset[0] is the end of the first row's column data. A negative offset
-// indicates a null value.
-
 type columnWriter struct {
 	ctype     ColumnType
 	data      []byte
@@ -339,42 +296,92 @@ func (w *blockWriter) PutNull(col int) {
 	w.cols[col].putNull()
 }
 
-type blockReader struct {
+// Block is a contiguous chunk of memory that contains column data. The layout
+// of a block is:
+//
+// +---------------------------------------------------------------+
+// | ncols(4) | nrows(4) | page1(4) | page2(4) | ...    | pageN(4) |
+// +---------------------------------------------------------------+
+// | <bool>  | NULL-bitmap | value-bitmap                          |
+// +---------------------------------------------------------------+
+// | <int32> | NULL-bitmap | values (4-byte aligned)               |
+// +---------------------------------------------------------------+
+// | <bytes> | NULL-bitmap | val1 | val2 | ... | pos (4) | pos (4) |
+// +---------------------------------------------------------------+
+// | ...                                                           |
+// +---------------------------------------------------------------+
+//
+// Blocks contain rows following a fixed schema. The data is stored in a
+// columnar layout: all of the values for a column are stored
+// contiguously. Column types have either fixed-width values, or
+// variable-width. All variable-width values are stored in the "bytes" column
+// type and it is up to higher levels to interpret.
+//
+// The data for a column is stored within a "page". The first byte in a page
+// specifies the column type. Fixed width pages are then followed by a
+// NULL-bitmap with 1-bit per row indicating whether the column at that row is
+// null or not. Following the NULL-bitmap is the column data itself. The data
+// is aligned to the required alignment of the column type (4 for int32, 8 for
+// int64, etc) so that it can be accessed directly without decoding.
+//
+// The NULL-bitmap indicates the presence of a column value. If the i'th bit of
+// the NULL-bitmap for a column is 1, no value is stored for the column at that
+// index. The NULL-bitmap is interleaved with a rank lookup table which
+// accelerates calculation of the rank for bitmap i. The rank is the number of
+// non-NULL values present in bitmap[0,i). The bitmap is organized as a series
+// of 32-bit words where the low 16-bits of each word are part of the bitmap
+// and the high 16-bits are the sum of the set bits in the earlier words. The
+// NULL-bitmap is omitted if there are no NULL values for a column in a block.
+//
+// Variable width data (i.e. the "bytes" column type) is stored in a different
+// format. Immediately following the column type are the concatenated variable
+// length values. After the concatenated data is an array of offsets indicating
+// the end of each column value within the concatenated data. For example,
+// offset[0] is the end of the first row's column data. A negative offset
+// indicates a null value.
+type Block struct {
 	start unsafe.Pointer
 	len   int32
 	cols  int32
 	rows  int32
 }
 
-func newReader(data []byte) *blockReader {
-	r := &blockReader{}
+// NewBlock return a new Block configured to read from the specified
+// memory. The caller must ensure that the data is formatted as to the block
+// layout specification.
+func NewBlock(data []byte) *Block {
+	r := &Block{}
 	r.init(data)
 	return r
 }
 
-func (r *blockReader) init(data []byte) {
+func (r *Block) init(data []byte) {
 	r.start = unsafe.Pointer(&data[0])
 	r.len = int32(len(data))
 	r.cols = int32(binary.LittleEndian.Uint32(data[0:]))
 	r.rows = int32(binary.LittleEndian.Uint32(data[4:]))
 }
 
-func (r *blockReader) pageStart(col int) int32 {
+func (r *Block) pageStart(col int) int32 {
 	if int32(col) >= r.cols {
 		return r.len
 	}
 	return *(*int32)(unsafe.Pointer(uintptr(r.start) + 8 + uintptr(col*4)))
 }
 
-func (r *blockReader) pointer(offset int32) unsafe.Pointer {
+func (r *Block) pointer(offset int32) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(r.start) + uintptr(offset))
 }
 
-func (r *blockReader) Data() []byte {
+func (r *Block) data() []byte {
 	return (*[1 << 31]byte)(r.start)[:r.len:r.len]
 }
 
-func (r *blockReader) Column(col int) Vec {
+// Column returns a Vector for the specified column. The caller must check (or
+// otherwise know) the type of the column before accessing the column data. The
+// caller should check to see if the column contains any NULL values
+// (Vec.Null.Empty()) and specialize processing accordingly.
+func (r *Block) Column(col int) Vec {
 	if col < 0 || int32(col) >= r.cols {
 		panic("invalid column")
 	}
