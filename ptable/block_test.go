@@ -114,8 +114,8 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 		for col := range data {
 			vec := r.Column(col)
 			for i := int32(0); i < vec.N; i++ {
-				if i != int32(vec.Rank(int(i))) {
-					t.Fatalf("expected rank %d, but found %d", i, vec.Rank(int(i)))
+				if i != int32(vec.Null.Rank(int(i))) {
+					t.Fatalf("expected rank %d, but found %d", i, vec.Null.Rank(int(i)))
 				}
 			}
 
@@ -195,21 +195,58 @@ func BenchmarkBlockReader(b *testing.B) {
 		blocks[i], _ = randBlock(rng, 4096, []ColumnType{ColumnTypeInt64})
 	}
 
-	b.ResetTimer()
-	var sum int64
-	for i, k := 0, 0; i < b.N; i += k {
-		r := newReader(blocks[rng.Intn(len(blocks))])
-		col := r.Column(0)
-		vals := col.Int64()
+	b.Run("not-null", func(b *testing.B) {
+		var sum int64
+		for i, k := 0, 0; i < b.N; i += k {
+			r := newReader(blocks[rng.Intn(len(blocks))])
+			col := r.Column(0)
+			vals := col.Int64()
 
-		k = int(col.N)
-		if k > b.N-i {
-			k = b.N - i
-		}
-		for j := 0; j < k; j++ {
-			if r := col.Rank(j); r >= 0 {
-				sum += vals[r]
+			k = int(col.N)
+			if k > b.N-i {
+				k = b.N - i
+			}
+			for j := 0; j < k; j++ {
+				sum += vals[j]
 			}
 		}
-	}
+	})
+
+	b.Run("null-get", func(b *testing.B) {
+		var sum int64
+		for i, k := 0, 0; i < b.N; i += k {
+			r := newReader(blocks[rng.Intn(len(blocks))])
+			col := r.Column(0)
+			vals := col.Int64()
+
+			k = int(col.N)
+			if k > b.N-i {
+				k = b.N - i
+			}
+			for j := 0; j < k; j++ {
+				if !col.Null.Get(j) {
+					sum += vals[j]
+				}
+			}
+		}
+	})
+
+	b.Run("null-rank", func(b *testing.B) {
+		var sum int64
+		for i, k := 0, 0; i < b.N; i += k {
+			r := newReader(blocks[rng.Intn(len(blocks))])
+			col := r.Column(0)
+			vals := col.Int64()
+
+			k = int(col.N)
+			if k > b.N-i {
+				k = b.N - i
+			}
+			for j := 0; j < k; j++ {
+				if r := col.Null.Rank(j); r >= 0 {
+					sum += vals[r]
+				}
+			}
+		}
+	})
 }

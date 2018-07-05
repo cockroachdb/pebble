@@ -9,17 +9,17 @@ import (
 
 // Block layout
 //
-// +--------------------------------------------------------------------------+
-// | ncols(4) | nrows(4) | page1(4) | page2(4) | ...    | pageN(4)            |
-// +--------------------------------------------------------------------------+
-// | <bool>  | null-bitmap | rank-lut | value-bitmap                          |
-// +--------------------------------------------------------------------------+
-// | <int32> | null-bitmap | rank-lut | values (4-byte aligned)               |
-// +--------------------------------------------------------------------------+
-// | <bytes> | null-bitmap | rank-lut | val1 | val2 | ... | pos (4) | pos (4) |
-// +--------------------------------------------------------------------------+
-// | ...                                                                      |
-// +--------------------------------------------------------------------------+
+// +---------------------------------------------------------------+
+// | ncols(4) | nrows(4) | page1(4) | page2(4) | ...    | pageN(4) |
+// +---------------------------------------------------------------+
+// | <bool>  | NULL-bitmap | value-bitmap                          |
+// +---------------------------------------------------------------+
+// | <int32> | NULL-bitmap | values (4-byte aligned)               |
+// +---------------------------------------------------------------+
+// | <bytes> | NULL-bitmap | val1 | val2 | ... | pos (4) | pos (4) |
+// +---------------------------------------------------------------+
+// | ...                                                           |
+// +---------------------------------------------------------------+
 //
 // Blocks contain rows following a fixed schema. The data is stored in a column
 // layout: all of the values for a column is stored contiguously. Column types
@@ -34,15 +34,13 @@ import (
 // aligned to the required alignment of the column type (4 for int32, 8 for
 // int64, etc) so that it can be accessed directly without decoding.
 //
-// The null-bitmap indicates the presence of a column value. If the i'th bit of
-// the null-bitmap for a column is 1, no value is stored for the column at that
-// index. A rank-lut (rank lookup table) is stored after the null-bitmap which
-// allows fast determination of the "real" index for a non-NULL value. Rank(i)
-// returns the index in the value array. If no column values are NULL, rank(i)
-// == i. The rank lookup table is composed of rows/8 16-bit values where each
-// value is the count of the non-NULL in the previous entries. Computing
-// rank(i) involves a lookup in the rank-lut combined with a pop-count for the
-// 8-bit chunk of the null-bitmap that i resides in.
+// The NULL-bitmap indicates the presence of a column value. If the i'th bit of
+// the NULL-bitmap for a column is 1, no value is stored for the column at that
+// index. The NULL-bitmap is interleaved with a rank lookup table which
+// accelerates calculation of the rank for bitmap i. The rank is the number of
+// non-NULL values present in bitmap[0,i). The bitmap is organized as a series
+// of 32-bit words where the low 16-bits of each word are part of the bitmap
+// and the high 16-bits are the sum of the set bits in the earlier words.
 //
 // Variable width data (i.e. the "bytes" column type) is stored in a different
 // format. Immediately following the column type are the concatenated variable
@@ -55,7 +53,7 @@ type columnWriter struct {
 	ctype   ColumnType
 	data    []byte
 	offsets []int32
-	nulls   Bitmap
+	nulls   nullBitmapBuilder
 	count   int32
 }
 
@@ -170,19 +168,15 @@ func (w *columnWriter) encode(offset int32, buf []byte) int32 {
 	// The column type.
 	buf[offset] = byte(w.ctype)
 	offset++
-	// The null-bitmap.
-	offset += int32(copy(buf[offset:], w.nulls))
-	// The rank lookup table.
-	offset = align(offset, 2)
-	// The first entry of the rank-lut is always 0.
-	binary.LittleEndian.PutUint16(buf[offset:], 0)
-	offset += 2
-	for i, sum := int32(8), uint16(0); i < w.count; i += 8 {
-		// Add the present values for the previous 64-bit block of the null-bitmap.
-		j := (i - 8) / 8
-		sum += uint16(bits.OnesCount8(^(uint8)(w.nulls[j])))
-		binary.LittleEndian.PutUint16(buf[offset:], sum)
-		offset += 2
+	// The NULL-bitmap.
+	offset = align(offset, 4)
+	binary.LittleEndian.PutUint32(buf[offset:], w.nulls[0])
+	offset += 4
+	for i, sum := 1, 0; i < len(w.nulls); i++ {
+		sum += bits.OnesCount16(^uint16(w.nulls[i-1]))
+		w.nulls[i] |= uint32(sum << 16)
+		binary.LittleEndian.PutUint32(buf[offset:], w.nulls[i])
+		offset += 4
 	}
 	// The column values.
 	offset = align(offset, w.ctype.Alignment())
@@ -201,11 +195,9 @@ func (w *columnWriter) size(offset int32) int32 {
 	startOffset := offset
 	// The column type.
 	offset++
-	// The null-bitmap.
-	offset += int32(len(w.nulls))
-	// The rank lookup table.
-	offset = align(offset, 2)
-	offset += 2 * (int32(w.count+7) / 8)
+	// The NULL-bitmap.
+	offset = align(offset, 4)
+	offset += 4 * int32(len(w.nulls))
 	// The column values.
 	offset = align(offset, w.ctype.Alignment())
 	offset += int32(len(w.data))
@@ -380,14 +372,10 @@ func (r *blockReader) Column(col int) Vec {
 	// The column type.
 	v.Type = *(*ColumnType)(data)
 	start++
-	// The null bitmap.
-	n := int32(r.rows+7) / 8
-	v.Nulls = Bitmap((*[1 << 31]byte)(r.pointer(start + 1))[:n:n])
-	start += n
-	// The rank lookup table.
-	start = align(start, 2)
-	v.rank = r.pointer(start)
-	start += 2 * (int32(r.rows+7) / 8)
+	// The NULL-bitmap.
+	start = align(start, 4)
+	v.Null.ptr = r.pointer(start)
+	start += 4 * (int32(r.rows+15) / 16)
 	// The column values.
 	start = align(start, v.Type.Alignment())
 	v.start = r.pointer(start)

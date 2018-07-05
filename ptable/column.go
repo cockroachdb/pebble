@@ -18,13 +18,67 @@ func (b Bitmap) Get(i int) bool {
 // otherwise.
 func (b Bitmap) set(i int, v bool) Bitmap {
 	j := i / 8
-	for len(b) <= int(j) {
+	for len(b) <= j {
 		b = append(b, 0)
 	}
 	if v {
 		b[j] |= 1 << uint(i%8)
 	} else {
 		b[j] &^= 1 << uint(i%8)
+	}
+	return b
+}
+
+// NullBitmap is a bitmap structure implemented on top of an array of 32-bit
+// integers. In addition to bit testing, it also provides a fast rank(i)
+// operation by interleaving a lookup table into the bitmap. The bitmap is
+// stored in the low 16-bits of every 32-bit word, and the lookup table is
+// stored in the high bits.
+type NullBitmap struct {
+	ptr unsafe.Pointer
+}
+
+// Get returns true if the bit at position i is set and false otherwise.
+func (b NullBitmap) Get(i int) bool {
+	bit := uint32(1) << uint(i&0xf)
+	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(i)>>4)<<2))
+	return (val & bit) != 0
+}
+
+// Rank returns the index of the i'th non-NULL value in the value
+// array. Returns -1 if the i'th value is NULL. If all values are non-NULL,
+// Rank(i) == i. The pattern to iterate over the non-NULL values in a vector
+// is:
+//
+//   vals := vec.Int64()
+//   for i := 0; i < vec.N; i++ {
+//     if j := vec.Rank(i); j >= 0 {
+//       v := vals[j]
+//       // process v
+//     }
+//   }
+func (b NullBitmap) Rank(i int) int {
+	bit := uint32(1) << uint(i&0xf)
+	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(i)>>4)<<2))
+	if (val & bit) != 0 {
+		return -1
+	}
+	return int(val>>16) + bits.OnesCount16(uint16(^val&(bit-1)))
+}
+
+type nullBitmapBuilder []uint32
+
+// set sets the bit at position i if v is true and clears the bit at position i
+// otherwise.
+func (b nullBitmapBuilder) set(i int, v bool) nullBitmapBuilder {
+	j := i / 16
+	for len(b) <= j {
+		b = append(b, 0)
+	}
+	if v {
+		b[j] |= 1 << uint(i%16)
+	} else {
+		b[j] &^= 1 << uint(i%16)
 	}
 	return b
 }
@@ -156,33 +210,9 @@ type ColumnDef struct {
 type Vec struct {
 	N     int32          // the number of elements in the vector
 	Type  ColumnType     // the type of vector elements
-	Nulls Bitmap         // bitmap of NULL elements
-	rank  unsafe.Pointer // pointer to rank lookup table
+	Null  NullBitmap     // the NULL-bitmap
 	start unsafe.Pointer // pointer to start of the column data
 	end   unsafe.Pointer // pointer to the end of column data
-}
-
-// Rank returns the index of the i'th non-NULL value in the slices returned
-// from the slice accessors. Returns -1 if the i'th value is NULL. If all
-// values are non-NULL, Rank(i) == i. The pattern to iterate over the
-// non-NULL values in a vector is:
-//
-//   vals := vec.Int64()
-//   for i := 0; i < vec.N; i++ {
-//     if j := vec.Rank(i); j >= 0 {
-//       v := vals[j]
-//       // process v
-//     }
-//   }
-func (v Vec) Rank(i int) int {
-	block := uintptr(i) / 8
-	bit := uint8(1) << uint(i%8)
-	b := (uint8)(v.Nulls[block])
-	if (b & bit) != 0 {
-		return -1
-	}
-	sum := *(*uint16)(unsafe.Pointer(uintptr(v.rank) + block*2))
-	return int(sum) + bits.OnesCount8((^b)&(bit-1))
 }
 
 // Bool returns the vec data as a boolean bitmap. The bitmap should not be

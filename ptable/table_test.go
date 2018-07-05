@@ -230,7 +230,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 			k = b.N - i
 		}
 		for j := 0; j < k; j++ {
-			if r := col.Rank(j); r >= 0 {
+			if r := col.Null.Rank(j); r >= 0 {
 				sum += vals[r]
 			}
 		}
@@ -259,7 +259,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 			k = b.N - i
 		}
 		for j, e := len(vals)-1, len(vals)-k; j >= e; j-- {
-			if r := col.Rank(j); r >= 0 {
+			if r := col.Null.Rank(j); r >= 0 {
 				sum += vals[r]
 			}
 		}
