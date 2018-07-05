@@ -1,6 +1,7 @@
 package ptable
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -59,10 +60,11 @@ func encodeBlockHandle(dst []byte, b blockHandle) int {
 
 // Writer ...
 type Writer struct {
-	env    *Env
-	writer io.Writer
-	closer io.Closer
-	err    error
+	env       *Env
+	writer    io.Writer
+	bufWriter *bufio.Writer
+	closer    io.Closer
+	err       error
 	// The next four fields are copied from a db.Options.
 	blockSize   int
 	appendSep   db.AppendSeparator
@@ -87,7 +89,6 @@ var indexColTypes = []ColumnType{ColumnTypeBytes, ColumnTypeInt64}
 
 // NewWriter ...
 func NewWriter(f storage.File, env *Env, o *db.Options) *Writer {
-	// TODO(peter): Ensure we use bufio if "f" is not buffered.
 	w := &Writer{
 		env:         env,
 		writer:      f,
@@ -95,6 +96,22 @@ func NewWriter(f storage.File, env *Env, o *db.Options) *Writer {
 		blockSize:   o.GetBlockSize(),
 		compression: o.GetCompression(),
 	}
+	if f == nil {
+		w.err = errors.New("pebble/table: nil file")
+		return w
+	}
+
+	// If f does not have a Flush method, do our own buffering.
+	type flusher interface {
+		Flush() error
+	}
+	if _, ok := f.(flusher); ok {
+		w.writer = f
+	} else {
+		w.bufWriter = bufio.NewWriter(f)
+		w.writer = w.bufWriter
+	}
+
 	colTypes := make([]ColumnType, len(w.env.Schema))
 	for i := range w.env.Schema {
 		colTypes[i] = w.env.Schema[i].Type
@@ -185,6 +202,14 @@ func (w *Writer) Close() (err error) {
 	if _, err := w.writer.Write(footer); err != nil {
 		w.err = err
 		return w.err
+	}
+
+	// Flush the buffer.
+	if w.bufWriter != nil {
+		if err := w.bufWriter.Flush(); err != nil {
+			w.err = err
+			return err
+		}
 	}
 
 	// Make any future calls to Set or Close return an error.
