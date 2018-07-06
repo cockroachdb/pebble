@@ -59,7 +59,8 @@ package ptable
 //
 // - How to specify the schema for a given key? The number of schemas is the
 //   number of indexes in all of the tables. The /table/index/ prefix is a
-//   unique prefix. Perhaps there should be a callback from key to schema.
+//   unique prefix. Perhaps there should be a callback from key to schema and
+//   the "schema key" can be stored in each block.
 //
 // - Define scan operation which takes a start and end key and an operator tree
 //   composed of projections and filters and returns an iterator over the data.
@@ -74,6 +75,10 @@ package ptable
 //   some ways, they are similar to the Merge operation, allowing partial
 //   updates to a row.
 //
+// - How to handle the MVCC metadata keys? The intent data (txn, etc) logically
+//   belongs on the row, yet no other version of the row has that data. Is this
+//   a hidden "intent" column that is NULL for other versions of the row?
+//
 // - What to do about Merge operations? Simplest approach would be to disallow
 //   them on the structured data portion of the key space.
 //
@@ -87,6 +92,23 @@ package ptable
 //   one of the columns is NULL. Perhaps just model such columns exactly like
 //   that, with an implicit hidden column that is part of the key and only
 //   non-empty if one of the key column values is NULL.
+//
+// - How to perform level merging iteration? This is sort of like a full-outer
+//   merge-join. For equality on the key columns we keep the version in the
+//   higher level.
+//
+// - How to perform most version selection? There seems to be some similarity
+//   with a sorted distinct operation, but instead of keeping the most recent
+//   value, we choose the one which meets some criteria on the timestamp
+//   column. Or perhaps the op first filters out versions which are newer than
+//   the read timestamp, and then does a sorted distinct to only keep the most
+//   recent version of the versions remaining.
+//
+// - How to support interleaved tables? The naive approach of switching blocks
+//   whenever we switch from parent to child keys would result in a lot of
+//   small blocks for the parent rows (perhaps 1 row per block). Seems better
+//   to interleave at the block level, though this will make iteration through
+//   a table more complex.
 
 // RowWriter provides an interface for writing the column data for a row.
 type RowWriter interface {
