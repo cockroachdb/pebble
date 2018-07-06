@@ -114,8 +114,8 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 		for col := range data {
 			vec := r.Column(col)
 			for i := int32(0); i < vec.N; i++ {
-				if i != int32(vec.Null.Rank(int(i))) {
-					t.Fatalf("expected rank %d, but found %d", i, vec.Null.Rank(int(i)))
+				if i != int32(vec.Rank(int(i))) {
+					t.Fatalf("expected rank %d, but found %d", i, vec.Rank(int(i)))
 				}
 			}
 
@@ -201,7 +201,7 @@ func TestBlockWriterNullValues(t *testing.T) {
 	r := NewBlock(w.Finish())
 	col := r.Column(0)
 	for i := 0; i < int(col.N); i++ {
-		if j := col.Null.Rank(i); j < 0 {
+		if j := col.Rank(i); j < 0 {
 			if i%2 != 0 {
 				t.Fatalf("expected non-NULL value, but found NULL")
 			}
@@ -247,7 +247,7 @@ func BenchmarkBlockReader(b *testing.B) {
 				k = b.N - i
 			}
 			for j := 0; j < k; j++ {
-				if !col.Null.Get(j) {
+				if !col.Null(j) {
 					sum += vals[j]
 				}
 			}
@@ -266,7 +266,7 @@ func BenchmarkBlockReader(b *testing.B) {
 				k = b.N - i
 			}
 			for j := 0; j < k; j++ {
-				if r := col.Null.Rank(j); r >= 0 {
+				if r := col.Rank(j); r >= 0 {
 					sum += vals[r]
 				}
 			}

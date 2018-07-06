@@ -3,7 +3,6 @@ package ptable
 import (
 	"encoding/binary"
 	"math"
-	"math/bits"
 	"unsafe"
 )
 
@@ -137,11 +136,8 @@ func (w *columnWriter) encode(offset int32, buf []byte) int32 {
 		buf[offset] = 1 // NULL-bitmap exists
 		offset++
 		offset = align(offset, 4)
-		binary.LittleEndian.PutUint32(buf[offset:], w.nulls[0])
-		offset += 4
-		for i, sum := 1, 0; i < len(w.nulls); i++ {
-			sum += bits.OnesCount16(^uint16(w.nulls[i-1]))
-			w.nulls[i] |= uint32(sum << 16)
+		w.nulls.finish()
+		for i := 0; i < len(w.nulls); i++ {
 			binary.LittleEndian.PutUint32(buf[offset:], w.nulls[i])
 			offset += 4
 		}
@@ -389,7 +385,8 @@ func (r *Block) Column(col int) Vec {
 	start := r.pageStart(col)
 	data := r.pointer(start)
 
-	v := Vec{N: r.rows}
+	var v Vec
+	v.N = r.rows
 	// The column type.
 	v.Type = *(*ColumnType)(data)
 	start++
@@ -398,7 +395,7 @@ func (r *Block) Column(col int) Vec {
 		start++
 	} else {
 		start = align(start, 4)
-		v.Null.ptr = r.pointer(start)
+		v.ptr = r.pointer(start)
 		start += 4 * (int32(r.rows+15) / 16)
 	}
 	// The column values.
