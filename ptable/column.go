@@ -35,28 +35,28 @@ func (b Bitmap) set(i int, v bool) Bitmap {
 // is stored in the low 16-bits of every 32-bit word, and the lookup table is
 // stored in the high bits.
 //
-//    bits    sum    bits    sum     bits    sum
-//   +-------+------+-------+-------+-------+-------+
-//   | 0-15  | 0    | 16-31 | 0-15  | 32-47 | 0-32  |
-//   +-------+------+-------+-------+-------+-------+
+//    bits    sum    bits    sum     bits    sum     bits    sum
+//   +-------+------+-------+-------+-------+-------+-------+-------+
+//   | 0-15  | 0    | 16-31 | 0-15  | 32-47 | 0-31  | 48-64 | 0-63  |
+//   +-------+------+-------+-------+-------+-------+-------+-------+
 //
-// For example, if the bitmap contains 64-bits and each bit is set, we logically have:
+// For example, consider the following 64-bits of data:
 //
-//   1111111111111111111111111111111111111111111111111111111111111111
+//   1110011111011111 1101111011110011 1111111111111111 1111110000111111
 //
 // The logical bits are split at 16-bit boundaries
 //
 //          bits             sum
-//   0-15:  1111111111111111 0
-//   16-31: 1111111111111111 16
-//   32-47: 1111111111111111 32
-//   48-63: 1111111111111111 48
+//   0-15:  1110011111011111 0
+//   16-31: 1101111011110011 13
+//   32-47: 1111111111111111 25
+//   48-63: 1111110000011111 41
 //
-// The lookup table is interleaved with the bitmap in the high 16 bits. To
-// answer the a Rank query, we find the word containing the bit, count the
-// number of bits that are set in the low 16 bits of the word before the bit
-// we're interested in, and add the sum from the high 16 bits in the word. See
-// Rank for the implementation.
+// The lookup table (the sum column) is interleaved with the bitmap in the high
+// 16 bits. To answer a Rank query, we find the word containing the bit (i/16),
+// count the number of bits that are set in the low 16 bits of the word before
+// the bit we're interested in, and add the sum from the high 16 bits in the
+// word. See Rank for the implementation.
 //
 // The number of bits used for each lookup table entry (16-bits) limits the
 // size of a bitmap to 64K bits. The lookup table imposes an additional bit of
