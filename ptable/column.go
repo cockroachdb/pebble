@@ -90,8 +90,8 @@ func (b NullBitmap) Null(i int) bool {
 	if b.ptr == nil {
 		return false
 	}
-	bit := uint32(1) << uint(i&0xf)
 	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(i)>>4)<<2))
+	bit := uint32(1) << uint(i&0xf)
 	return (val & bit) != 0
 }
 
@@ -111,8 +111,8 @@ func (b NullBitmap) Rank(i int) int {
 	if b.ptr == nil {
 		return i
 	}
-	bit := uint32(1) << uint(i&0xf)
 	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(i)>>4)<<2))
+	bit := uint32(1) << uint(i&0xf)
 	if (val & bit) != 0 {
 		return -1
 	}
@@ -124,9 +124,9 @@ func (b NullBitmap) count(n int) int {
 	if b.ptr == nil {
 		return n
 	}
-	bit := uint32(1) << uint((n-1)&0xf)
 	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(n-1)>>4)<<2))
-	return int(val>>16) + bits.OnesCount16(uint16(^val&((bit<<1)-1)))
+	bit := uint32(1) << (uint((n-1)&0xf) + 1)
+	return int(val>>16) + bits.OnesCount16(uint16(^val&(bit-1)))
 }
 
 type nullBitmapBuilder []uint32
