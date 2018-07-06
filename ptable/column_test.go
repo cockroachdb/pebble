@@ -12,7 +12,6 @@ func randNullBitmap(rng *rand.Rand, size int) NullBitmap {
 	for i := 0; i < size; i++ {
 		builder = builder.set(i, rng.Intn(2) == 0)
 	}
-	builder.finish()
 	return makeNullBitmap(builder)
 }
 

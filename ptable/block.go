@@ -136,7 +136,6 @@ func (w *columnWriter) encode(offset int32, buf []byte) int32 {
 		buf[offset] = 1 // NULL-bitmap exists
 		offset++
 		offset = align(offset, 4)
-		w.nulls.finish()
 		for i := 0; i < len(w.nulls); i++ {
 			binary.LittleEndian.PutUint32(buf[offset:], w.nulls[i])
 			offset += 4

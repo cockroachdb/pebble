@@ -30,10 +30,45 @@ func (b Bitmap) set(i int, v bool) Bitmap {
 }
 
 // NullBitmap is a bitmap structure implemented on top of an array of 32-bit
-// integers. In addition to bit testing, it also provides a fast rank(i)
-// operation by interleaving a lookup table into the bitmap. The bitmap is
-// stored in the low 16-bits of every 32-bit word, and the lookup table is
+// integers. In addition to bit testing, NullBitmap also provides a fast
+// Rank(i) operation by interleaving a lookup table into the bitmap. The bitmap
+// is stored in the low 16-bits of every 32-bit word, and the lookup table is
 // stored in the high bits.
+//
+//    bits    sum    bits    sum     bits    sum
+//   +-------+------+-------+-------+-------+-------+
+//   | 0-15  | 0    | 16-31 | 0-15  | 32-47 | 0-32  |
+//   +-------+------+-------+-------+-------+-------+
+//
+// For example, if the bitmap contains 64-bits and each bit is set, we logically have:
+//
+//   1111111111111111111111111111111111111111111111111111111111111111
+//
+// The logical bits are split at 16-bit boundaries
+//
+//          bits             sum
+//   0-15:  1111111111111111 0
+//   16-31: 1111111111111111 16
+//   32-47: 1111111111111111 32
+//   48-63: 1111111111111111 48
+//
+// The lookup table is interleaved with the bitmap in the high 16 bits. To
+// answer the a Rank query, we find the word containing the bit, count the
+// number of bits that are set in the low 16 bits of the word before the bit
+// we're interested in, and add the sum from the high 16 bits in the word. See
+// Rank for the implementation.
+//
+// The number of bits used for each lookup table entry (16-bits) limits the
+// size of a bitmap to 64K bits. The lookup table imposes an additional bit of
+// overhead per bit in the bitmap.
+//
+// TODO(peter): I experimented with a few other approaches, such as maintaining
+// the lookup table after the bitmap. The advantage of a separate lookup table
+// is that the space overhead can be reduced. For example, we could chunk the
+// bitmap into 64-bit words and use bits.OnesCount64 to do the per-word counts
+// which reduce the space overhead of the lookup table to 0.25
+// bits/bit. Unfortunately, that approach was twice as slow as the interleaved
+// lookup table, presumably due to cache misses.
 type NullBitmap struct {
 	ptr unsafe.Pointer
 }
@@ -96,25 +131,21 @@ func (b NullBitmap) count(n int) int {
 type nullBitmapBuilder []uint32
 
 // set sets the bit at position i if v is true and clears the bit at position i
-// otherwise.
+// otherwise. Bits must be set in order and it is invalid to set a bit twice.
 func (b nullBitmapBuilder) set(i int, v bool) nullBitmapBuilder {
 	j := i / 16
 	for len(b) <= j {
-		b = append(b, 0)
+		var p uint32
+		if len(b) > 0 {
+			p = b[len(b)-1] & 0xffff0000
+		}
+		b = append(b, p)
 	}
 	if v {
-		b[j] |= 1 << uint(i%16)
-	} else {
-		b[j] &^= 1 << uint(i%16)
+		b[j] |= uint32(1) << uint(i&0xf)
+		b[j] = (b[j] & 0xffff) | (((b[j] >> 16) + 1) << 16)
 	}
 	return b
-}
-
-func (b nullBitmapBuilder) finish() {
-	for i, sum := 1, uint32(0); i < len(b); i++ {
-		sum += uint32(bits.OnesCount16(^uint16(b[i-1])))
-		b[i] |= sum << 16
-	}
 }
 
 // Bytes holds an array of byte slices stored as the concatenated data and
