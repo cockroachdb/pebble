@@ -1,6 +1,7 @@
 package ptable
 
 import (
+	"fmt"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -211,7 +212,7 @@ func TestBlockWriterNullValues(t *testing.T) {
 	}
 }
 
-func BenchmarkBlockReader(b *testing.B) {
+func BenchmarkBlock(b *testing.B) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	blocks := make([][]byte, 128)
 	for i := range blocks {
@@ -233,6 +234,9 @@ func BenchmarkBlockReader(b *testing.B) {
 				sum += vals[j]
 			}
 		}
+		if testing.Verbose() {
+			fmt.Println(sum)
+		}
 	})
 
 	b.Run("null-get", func(b *testing.B) {
@@ -252,6 +256,9 @@ func BenchmarkBlockReader(b *testing.B) {
 				}
 			}
 		}
+		if testing.Verbose() {
+			fmt.Println(sum)
+		}
 	})
 
 	b.Run("null-rank", func(b *testing.B) {
@@ -270,6 +277,9 @@ func BenchmarkBlockReader(b *testing.B) {
 					sum += vals[r]
 				}
 			}
+		}
+		if testing.Verbose() {
+			fmt.Println(sum)
 		}
 	})
 }

@@ -35,15 +35,11 @@ func (b Bitmap) set(i int, v bool) Bitmap {
 // stored in the low 16-bits of every 32-bit word, and the lookup table is
 // stored in the high bits.
 type NullBitmap struct {
-	N   int32 // the number of elements in the bitmap
 	ptr unsafe.Pointer
 }
 
 func makeNullBitmap(v []uint32) NullBitmap {
-	return NullBitmap{
-		N:   int32(len(v)) * 16,
-		ptr: unsafe.Pointer(&v[0]),
-	}
+	return NullBitmap{ptr: unsafe.Pointer(&v[0])}
 }
 
 // Empty returns true if the bitmap is empty and indicates that all of the
@@ -88,12 +84,12 @@ func (b NullBitmap) Rank(i int) int {
 }
 
 // count returns the count of non-NULL values in the bitmap.
-func (b NullBitmap) count() int {
+func (b NullBitmap) count(n int) int {
 	if b.ptr == nil {
-		return int(b.N)
+		return n
 	}
-	bit := uint32(1) << uint((b.N-1)&0xf)
-	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(b.N-1)>>4)<<2))
+	bit := uint32(1) << uint((n-1)&0xf)
+	val := *(*uint32)(unsafe.Pointer(uintptr(b.ptr) + (uintptr(n-1)>>4)<<2))
 	return int(val>>16) + bits.OnesCount16(uint16(^val&((bit<<1)-1)))
 }
 
@@ -246,8 +242,9 @@ type ColumnDef struct {
 // Vec holds data for a single column. Vec provides accessors for the native
 // data such as Int32() to access []int32 data.
 type Vec struct {
+	N    int32      // the number of elements in the bitmap
+	Type ColumnType // the type of vector elements
 	NullBitmap
-	Type  ColumnType     // the type of vector elements
 	start unsafe.Pointer // pointer to start of the column data
 	end   unsafe.Pointer // pointer to the end of column data
 }
@@ -258,7 +255,7 @@ func (v Vec) Bool() Bitmap {
 	if v.Type != ColumnTypeBool {
 		panic("vec does not hold bool data")
 	}
-	n := (v.count() + 7) / 8
+	n := (v.count(int(v.N)) + 7) / 8
 	return Bitmap((*[1 << 31]byte)(v.start)[:n:n])
 }
 
@@ -267,7 +264,7 @@ func (v Vec) Int8() []int8 {
 	if v.Type != ColumnTypeInt8 {
 		panic("vec does not hold int8 data")
 	}
-	n := v.count()
+	n := v.count(int(v.N))
 	return (*[1 << 31]int8)(v.start)[:n:n]
 }
 
@@ -276,7 +273,7 @@ func (v Vec) Int16() []int16 {
 	if v.Type != ColumnTypeInt16 {
 		panic("vec does not hold int16 data")
 	}
-	n := v.count()
+	n := v.count(int(v.N))
 	return (*[1 << 31]int16)(v.start)[:n:n]
 }
 
@@ -285,7 +282,7 @@ func (v Vec) Int32() []int32 {
 	if v.Type != ColumnTypeInt32 {
 		panic("vec does not hold int32 data")
 	}
-	n := v.count()
+	n := v.count(int(v.N))
 	return (*[1 << 31]int32)(v.start)[:n:n]
 }
 
@@ -294,7 +291,7 @@ func (v Vec) Int64() []int64 {
 	if v.Type != ColumnTypeInt64 {
 		panic("vec does not hold int64 data")
 	}
-	n := v.count()
+	n := v.count(int(v.N))
 	return (*[1 << 31]int64)(v.start)[:n:n]
 }
 
@@ -303,7 +300,7 @@ func (v Vec) Float32() []float32 {
 	if v.Type != ColumnTypeFloat32 {
 		panic("vec does not hold float32 data")
 	}
-	n := v.count()
+	n := v.count(int(v.N))
 	return (*[1 << 31]float32)(v.start)[:n:n]
 }
 
@@ -312,7 +309,7 @@ func (v Vec) Float64() []float64 {
 	if v.Type != ColumnTypeFloat64 {
 		panic("vec does not hold float64 data")
 	}
-	n := v.count()
+	n := v.count(int(v.N))
 	return (*[1 << 31]float64)(v.start)[:n:n]
 }
 

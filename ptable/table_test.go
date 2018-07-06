@@ -245,6 +245,9 @@ func BenchmarkTableIterNext(b *testing.B) {
 
 		it.Next()
 	}
+	if testing.Verbose() {
+		fmt.Println(sum)
+	}
 }
 
 func BenchmarkTableIterPrev(b *testing.B) {
@@ -273,5 +276,8 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		}
 
 		it.Prev()
+	}
+	if testing.Verbose() {
+		fmt.Println(sum)
 	}
 }

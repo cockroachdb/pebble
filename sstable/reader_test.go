@@ -86,6 +86,9 @@ func BenchmarkTableIterNext(b *testing.B) {
 					sum += int64(binary.BigEndian.Uint64(it.Key().UserKey))
 					it.Next()
 				}
+				if testing.Verbose() {
+					fmt.Println(sum)
+				}
 			})
 	}
 }
@@ -107,6 +110,9 @@ func BenchmarkTableIterPrev(b *testing.B) {
 					}
 					sum += int64(binary.BigEndian.Uint64(it.Key().UserKey))
 					it.Prev()
+				}
+				if testing.Verbose() {
+					fmt.Println(sum)
 				}
 			})
 	}
