@@ -117,7 +117,7 @@ func TestNewDBFilenames(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	sort.Strings(got)
-	// TODO: should there be a LOCK file here?
+	// TODO(peter): should there be a LOCK file here?
 	want := []string{
 		"000003.log",
 		"CURRENT",
@@ -511,11 +511,11 @@ func TestOpenCloseOpenClose(t *testing.T) {
 				continue
 			}
 
-			// TODO: make the second Open recover (without a fatal "corrupt log
-			// file" error) even if the d0 database was not closed but the xxx
+			// TODO(peter): make the second Open recover (without a fatal "corrupt
+			// log file" error) even if the d0 database was not closed but the xxx
 			// value is large enough to write a partial record. Writing to the
-			// database should not corrupt it even if the writer process was
-			// killed part-way through.
+			// database should not corrupt it even if the writer process was killed
+			// part-way through.
 
 			d1, err := Open(dirname, opts)
 			if err != nil {

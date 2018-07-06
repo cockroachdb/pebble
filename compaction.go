@@ -49,11 +49,12 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 			version: cur,
 			level:   cur.compactionLevel,
 		}
-		// TODO: Pick the first file that comes after the compaction pointer for c.level.
+		// TODO(peter): Pick the first file that comes after the compaction pointer
+		// for c.level.
 		c.inputs[0] = []fileMetadata{cur.files[c.level][0]}
 
 	} else if false {
-		// TODO: look for a compaction triggered by seeks.
+		// TODO(peter): look for a compaction triggered by seeks.
 
 	} else {
 		return nil
@@ -72,7 +73,7 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 	return c
 }
 
-// TODO: user initiated compactions.
+// TODO(peter): user initiated compactions.
 
 // setupOtherInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
@@ -91,7 +92,7 @@ func (c *compaction) setupOtherInputs(vs *versionSet) {
 		c.inputs[2] = c.version.overlaps(c.level+2, vs.cmp, smallest01.UserKey, largest01.UserKey)
 	}
 
-	// TODO: update the compaction pointer for c.level.
+	// TODO(peter): update the compaction pointer for c.level.
 }
 
 // grow grows the number of inputs at c.level without changing the number of
@@ -121,8 +122,9 @@ func (c *compaction) grow(vs *versionSet, sm, la db.InternalKey) bool {
 // isBaseLevelForUkey reports whether it is guaranteed that there are no
 // key/value pairs at c.level+2 or higher that have the user key ukey.
 func (c *compaction) isBaseLevelForUkey(userCmp db.Compare, ukey []byte) bool {
-	// TODO: this can be faster if ukey is always increasing between successive
-	// isBaseLevelForUkey calls and we can keep some state in between calls.
+	// TODO(peter): this can be faster if ukey is always increasing between
+	// successive isBaseLevelForUkey calls and we can keep some state in between
+	// calls.
 	for level := c.level + 2; level < numLevels; level++ {
 		for _, f := range c.version.files[level] {
 			if userCmp(ukey, f.largest.UserKey) <= 0 {
@@ -145,10 +147,10 @@ func (d *DB) maybeScheduleCompaction() {
 	if d.compacting || d.closed {
 		return
 	}
-	// TODO: check for manual compactions.
+	// TODO(peter): check for manual compactions.
 	if d.imm == nil {
 		v := d.versions.currentVersion()
-		// TODO: check v.fileToCompact.
+		// TODO(peter): check v.fileToCompact.
 		if v.compactionScore < 1 {
 			// There is no work to be done.
 			return
@@ -163,7 +165,7 @@ func (d *DB) compact() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if err := d.compact1(); err != nil {
-		// TODO: count consecutive compaction errors and backoff.
+		// TODO(peter): count consecutive compaction errors and backoff.
 	}
 	d.compacting = false
 	// The previous compaction may have produced too many files in a
@@ -181,7 +183,7 @@ func (d *DB) compact1() error {
 		return d.compactMemTable()
 	}
 
-	// TODO: support manual compactions.
+	// TODO(peter): support manual compactions.
 
 	c := pickCompaction(&d.versions)
 	if c == nil {
@@ -260,7 +262,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}()
 
-	// TODO: track snapshots.
+	// TODO(peter): track snapshots.
 	smallestSnapshot := d.versions.logSeqNum
 
 	// Release the d.mu lock while doing I/O.
@@ -273,7 +275,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		return nil, pendingOutputs, err
 	}
 
-	// TODO: output to more than one table, if it would otherwise be too large.
+	// TODO(peter): output to more than one table, if it would otherwise be too large.
 	var (
 		fileNum  uint64
 		filename string
@@ -296,9 +298,9 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	lastSeqNumForKey := db.InternalKeySeqNumMax
 	var smallest, largest db.InternalKey
 	for ; iter.Valid(); iter.Next() {
-		// TODO: prioritize compacting d.imm.
+		// TODO(peter): prioritize compacting d.imm.
 
-		// TODO: support c.shouldStopBefore.
+		// TODO(peter): support c.shouldStopBefore.
 
 		ikey := iter.Key()
 		if false /* !valid */ {

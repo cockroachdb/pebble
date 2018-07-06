@@ -14,7 +14,7 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
-// TODO: describe what a versionSet is.
+// TODO(peter): describe what a versionSet is.
 type versionSet struct {
 	dirname string
 	opts    *db.Options
@@ -137,11 +137,12 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	return nil
 }
 
-// TODO: describe what this function does and how it interacts concurrently
-// with a running pebble.
+// TODO(peter): describe what this function does and how it interacts
+// concurrently with a running pebble.
 //
 // d.mu must be held when calling this, for the enclosing *DB d.
-// TODO: actually pass d.mu, and drop and re-acquire it around the I/O.
+//
+// TODO(peter): actually pass d.mu, and drop and re-acquire it around the I/O.
 func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	if ve.logNumber != 0 {
 		if ve.logNumber < vs.logNumber || vs.nextFileNumber <= ve.logNumber {
@@ -220,7 +221,7 @@ func (vs *versionSet) createManifest(dirname string) (err error) {
 	snapshot := versionEdit{
 		comparatorName: vs.cmpName,
 	}
-	// TODO: save compaction pointers.
+	// TODO(peter): save compaction pointers.
 	for level, fileMetadata := range vs.currentVersion().files {
 		for _, meta := range fileMetadata {
 			snapshot.newFiles = append(snapshot.newFiles, newFileEntry{

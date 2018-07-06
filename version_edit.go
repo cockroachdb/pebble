@@ -16,7 +16,8 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-// TODO: describe the MANIFEST file format, independently of the C++ project.
+// TODO(peter): describe the MANIFEST file format, independently of the C++
+// project.
 
 var errCorruptManifest = errors.New("pebble: corrupt manifest")
 
@@ -387,7 +388,7 @@ func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
 		if dmap := b.deleted[nf.level]; dmap != nil {
 			delete(dmap, nf.meta.fileNum)
 		}
-		// TODO: fiddle with nf.meta.allowedSeeks.
+		// TODO(peter): fiddle with nf.meta.allowedSeeks.
 		b.added[nf.level] = append(b.added[nf.level], nf.meta)
 	}
 }
@@ -422,9 +423,10 @@ func (b *bulkVersionEdit) apply(base *version, cmp db.Compare) (*version, error)
 			}
 		}
 
-		// TODO: base.files[level] is already sorted. Instead of appending
+		// TODO(peter): base.files[level] is already sorted. Instead of appending
 		// b.addFiles[level] to the end and sorting afterwards, it might be more
-		// efficient to sort b.addFiles[level] and then merge the two sorted slices.
+		// efficient to sort b.addFiles[level] and then merge the two sorted
+		// slices.
 		if level == 0 {
 			sort.Sort(byFileNum(v.files[level]))
 		} else {

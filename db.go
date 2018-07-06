@@ -4,7 +4,68 @@
 
 // Package pebble provides an ordered key/value store.
 //
-// BUG: This package is incomplete.
+// TODO(peter):
+//
+// - Miscellaneous
+//   - Implement {block,table}Iter.SeekLT
+//   - Add InlineKey to db.Comparator (perhaps use better terminology)
+//   - Add support for referencing a version and preventing file deletion for a
+//     referenced version. Use in DB.Get and DB.NewIter.
+//   - Merge operator
+//   - Debug/event logging
+//   - Faster block cache (sharded?)
+//
+// - Commit pipeline
+//   - Use commitPipeline in DB.Apply
+//   - Rate limiting user writes
+//   - Controlled delay
+//     - Check if the queue has been drained within the last N seconds, if not
+//       set queue timeout to 10-30ms
+//
+// - DeleteRange
+//   - Store range tombstones in the memtable
+//   - Write range tombstones to sstables in range-del block
+//   - Read range tombstones from sstable
+//   - Process range tombstones during iteration
+//
+// - Compactions
+//   - Concurrent compactions
+//   - Manual compaction
+//   - Manual flush
+//   - Dynamic level bytes
+//   - Rate limiting (disk and CPU)
+//
+// - Options
+//   - Add options for hardcoded settings (e.g. l0CompactionTrigger)
+//   - Options should specify sizing and tunable knobs, not enable or disable
+//     significant bits of functionality
+//   - Parse RocksDB OPTIONS file
+//
+// - Sstables
+//   - SSTable ingestion
+//   - Whole file bloom filter
+//   - Prefix extractor and prefix bloom filter
+//
+// - Iterators
+//   - Prefix same as start
+//   - Iterate upper bound
+//   - Iterate lower bound
+//   - Debug checks that iterators are always closed
+//
+// - Testing
+//   - Datadrive test infrastructure
+//   - DB.NewIter
+//   - Batch.NewIter
+//   - Expand dbIter tests (with {merging,memTable,batch,level}Iter)
+//   - LogWriter (test all error paths)
+//   - commitPipeline (test all error paths)
+//
+// - Optimizations
+//   - In-order insertion into memtable/indexed-batches
+//   - Add InlineKey to mergingIter
+//     - Speed up Next/Prev with fast-path comparison check
+//   - Fractional cascading on lookups
+//     https://github.com/facebook/rocksdb/wiki/Indexing-SST-Files-for-Better-Lookup-Performance
 package pebble // import "github.com/petermattis/pebble"
 
 import (
@@ -103,7 +164,7 @@ type Writer interface {
 	Set(key, value []byte, o *db.WriteOptions) error
 }
 
-// TODO: document DB.
+// TODO(peter): document DB.
 type DB struct {
 	dirname   string
 	opts      *db.Options
@@ -113,7 +174,7 @@ type DB struct {
 	tableCache tableCache
 	newIter    tableNewIter
 
-	// TODO: describe exactly what this mutex protects. So far: every field
+	// TODO(peter): describe exactly what this mutex protects. So far: every field
 	// below.
 	mu sync.Mutex
 
@@ -171,7 +232,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 		}
 	}
 
-	// TODO: update stats, maybe schedule compaction.
+	// TODO(peter): update stats, maybe schedule compaction.
 
 	return current.get(ikey, d.newIter, d.cmp, opts)
 }
@@ -264,7 +325,7 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 	d.versions.logSeqNum += uint64(n)
 
 	// Write the batch to the log.
-	// TODO: drop and re-acquire d.mu around the I/O.
+	// TODO(peter): drop and re-acquire d.mu around the I/O.
 	if _, err := d.log.WriteRecord(batch.data); err != nil {
 		return fmt.Errorf("pebble: could not write log entry: %v", err)
 	}
