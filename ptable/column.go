@@ -2,6 +2,7 @@ package ptable
 
 import (
 	"bytes"
+	"fmt"
 	"math/bits"
 	"unsafe"
 )
@@ -137,15 +138,29 @@ func (b nullBitmapBuilder) set(i int, v bool) nullBitmapBuilder {
 	for len(b) <= j {
 		var p uint32
 		if len(b) > 0 {
-			p = b[len(b)-1] & 0xffff0000
+			v := b[len(b)-1]
+			p = ((v >> 16) + uint32(bits.OnesCount16(^uint16(v)))) << 16
 		}
 		b = append(b, p)
 	}
 	if v {
 		b[j] |= uint32(1) << uint(i&0xf)
-		b[j] = (b[j] & 0xffff) | (((b[j] >> 16) + 1) << 16)
 	}
 	return b
+}
+
+func (b nullBitmapBuilder) verify() {
+	if len(b) > 0 {
+		if (b[0] >> 16) != 0 {
+			panic(fmt.Sprintf("0: %08x\n", b[0]))
+		}
+		for i, sum := 1, uint32(0); i < len(b); i++ {
+			sum += uint32(bits.OnesCount16(^uint16(b[i-1])))
+			if (b[i] >> 16) != sum {
+				panic(fmt.Sprintf("i: %08x vs %08x\n", b[i], (sum << 16)))
+			}
+		}
+	}
 }
 
 // Bytes holds an array of byte slices stored as the concatenated data and
