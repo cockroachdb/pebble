@@ -103,8 +103,10 @@ func (q *commitQueue) dequeue(cond *sync.Cond) *Batch {
 }
 
 type commitEnv struct {
-	// Apply the batch to the in-memory state. Called concurrently.
-	apply func(b *Batch) error
+	// Apply the batch to the specified memtable. Called concurrently.
+	apply func(b *Batch, mem *memTable) error
+	// Prepare a batch for applying to the memtable. Called serially.
+	prepare func(b *Batch) (*memTable, error)
 	// Sync the WAL up to pos+n. Called concurrently.
 	sync func(pos, n int64) error
 	// Write the batch to the WAL. The data is not persisted until a call to
@@ -153,10 +155,14 @@ func newCommitPipeline(env commitEnv, logSeqNum, visibleSeqNum *uint64) *commitP
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
 func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
+	if len(b.data) == 0 {
+		return nil
+	}
+
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
-	pos, err := p.prepare(b)
+	mem, pos, err := p.prepare(b)
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
@@ -164,7 +170,7 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	}
 
 	// Apply the batch to the memtable.
-	if err := p.env.apply(b); err != nil {
+	if err := p.env.apply(b, mem); err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
 		return err
@@ -181,27 +187,38 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	return nil
 }
 
-func (p *commitPipeline) prepare(b *Batch) (int64, error) {
-	b.published.Add(1)
+func (p *commitPipeline) prepare(b *Batch) (*memTable, int64, error) {
 	n := uint64(b.count())
+	if n == invalidBatchCount {
+		return nil, 0, ErrInvalidBatch
+	}
+	b.published.Add(1)
+
+	var pos int64
 
 	w := &p.write
 	w.Lock()
 
-	// Enqueue the batch in the pending queue. Note that while the pending queue
-	// is lock-free, we want the order of batches to be the same as the sequence
-	// number order.
-	w.pending.enqueue(b, &w.cond)
+	// Prepare the batch for applying to a memtable.
+	//
+	// TODO(peter): handle ErrArenaFull.
+	mem, err := p.env.prepare(b)
+	if err == nil {
+		// Enqueue the batch in the pending queue. Note that while the pending queue
+		// is lock-free, we want the order of batches to be the same as the sequence
+		// number order.
+		w.pending.enqueue(b, &w.cond)
 
-	// Assign the batch a sequence number.
-	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
+		// Assign the batch a sequence number.
+		b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
 
-	// Write the data to the WAL.
-	pos, err := p.env.write(b.data)
+		// Write the data to the WAL.
+		pos, err = p.env.write(b.data)
+	}
 
 	w.Unlock()
 
-	return pos, err
+	return mem, pos, err
 }
 
 func (p *commitPipeline) publish(b *Batch) {

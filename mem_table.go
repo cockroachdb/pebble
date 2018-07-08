@@ -5,9 +5,15 @@
 package pebble // import "github.com/petermattis/pebble"
 
 import (
+	"sync/atomic"
+
 	"github.com/petermattis/pebble/arenaskl"
 	"github.com/petermattis/pebble/db"
 )
+
+func memTableEntrySize(keyBytes, valueBytes int) uint32 {
+	return arenaskl.MaxNodeSize(uint32(keyBytes)+8, uint32(valueBytes))
+}
 
 // memTable is a memory-backed implementation of the db.Reader interface.
 //
@@ -21,12 +27,15 @@ type memTable struct {
 	cmp       db.Compare
 	skl       arenaskl.Skiplist
 	emptySize uint32
+	reserved  uint32
+	refs      int32
 }
 
 // newMemTable returns a new MemTable.
 func newMemTable(o *db.Options) *memTable {
 	m := &memTable{
-		cmp: o.GetComparer().Compare,
+		cmp:  o.GetComparer().Compare,
+		refs: 1,
 	}
 	arena := arenaskl.NewArena(4 << 20 /* 4 MiB */)
 	m.skl.Reset(arena, m.cmp)
@@ -55,7 +64,30 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 // Set sets the value for the given key. It overwrites any previous value for
 // that key; a DB is not a multi-map.
 func (m *memTable) set(key db.InternalKey, value []byte) error {
+	// TODO(peter): how does this interact with prepare/apply?
 	return m.skl.Add(key, value)
+}
+
+// Prepare reserves space for the batch in the memtable and references the
+// memtable preventing it from being deleted until the batch is applied. Note
+// that prepare is not thread-safe, while apply is.
+func (m *memTable) prepare(batch *Batch) error {
+	a := m.skl.Arena()
+	if atomic.LoadInt32(&m.refs) == 1 {
+		// If there are no other concurrent apply operations, we can update the
+		// reserved bytes setting to accurately reflect how many bytes of been
+		// allocated vs the over-estimation present in memTableEntrySize.
+		m.reserved = a.Size()
+	}
+
+	avail := a.Capacity() - m.reserved
+	if batch.memTableSize > avail {
+		return arenaskl.ErrArenaFull
+	}
+	m.reserved += batch.memTableSize
+
+	atomic.AddInt32(&m.refs, 1)
+	return nil
 }
 
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
@@ -71,6 +103,12 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	}
 	if seqNum != startSeqNum+uint64(batch.count()) {
 		panic("pebble: inconsistent batch count")
+	}
+	switch v := atomic.AddInt32(&m.refs, -1); {
+	case v < 0:
+		panic("pebble: inconsistent reference count")
+	case v == 0:
+		// TODO(peter): flush the batch
 	}
 	return nil
 }
@@ -224,7 +262,7 @@ func (t *memTableIter) Prev() bool {
 	//
 	// Note that this makes reverse iteration a bit more expensive than forward
 	// iteration, especially if there are a larger number of versions for a key
-	// in the mem-table, though that should be rare. In the normal case where
+	// in the memtable, though that should be rare. In the normal case where
 	// there is a single version for each key, reverse iteration consumes an
 	// extra dereference and comparison.
 	if t.iter.Head() {

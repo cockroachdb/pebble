@@ -6,6 +6,12 @@
 //
 // TODO(peter):
 //
+// - MemTable
+//   - Allow arbitrary sized values. RocksDB allows this by allocating special
+//     arena blocks for large values. One possibility for arenaskl is to store
+//     large values outside of the arena. We can add a node.valueIndex field
+//     and if it is non-zero it is an index into an arena.largeValues slice.
+//
 // - Miscellaneous
 //   - Implement {block,table}Iter.SeekLT
 //   - Add InlineKey to db.Comparator (perhaps use better terminology)
@@ -16,7 +22,6 @@
 //   - Faster block cache (sharded?)
 //
 // - Commit pipeline
-//   - Use commitPipeline in DB.Apply
 //   - Rate limiting user writes
 //   - Controlled delay
 //     - Check if the queue has been drained within the last N seconds, if not
@@ -76,6 +81,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/petermattis/pebble/db"
@@ -174,6 +180,8 @@ type DB struct {
 	tableCache tableCache
 	newIter    tableNewIter
 
+	commit *commitPipeline
+
 	// TODO(peter): describe exactly what this mutex protects. So far: every field
 	// below.
 	mu sync.Mutex
@@ -210,7 +218,7 @@ var _ Writer = (*DB)(nil)
 // it is safe to modify the contents of the argument after Get returns.
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
-	snapshot := d.versions.visibleSeqNum
+	snapshot := atomic.LoadUint64(&d.versions.visibleSeqNum)
 	current := d.versions.currentVersion()
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
@@ -287,70 +295,45 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
-	if len(batch.data) == 0 {
-		return nil
-	}
-	n := batch.count()
-	if n == invalidBatchCount {
-		return ErrInvalidBatch
-	}
-
-	// TODO(peter):
-	// - group the batch with other batches being written concurrently
-	// - when the group is ready, the group leader assigns each batch its
-	//   sequence number and writes the group to the log. there is only a single
-	//   thread writing to the WAL at any time.
-	// - once the group has been written to the WAL, the leader signals all of
-	//   the group members which concurrently add their batches to the
-	//   memtable. it also signals that another group can be writing to the WAL.
-	// - concurrent with the memtable insertion, any batch that required syncing
-	//   will have been added to a sync list. after the memtable insertion, the
-	//   goroutine which applied the batch waits for the batch to be
-	//   flushed/synced.
-	// - a lastPublishedSequence number is used to ratchet up the visibility of
-	//   additions to the memtable. since the memtable insertions happen
-	//   concurrently, a batch for a later sequence number can finish before an
-	//   earlier sequence number. those later writes cannot become visible until
-	//   the earlier writes complete.
-
+	// TODO(peter): Fix makeRoomForWrite to not require DB.mu to be locked.
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
 	if err := d.makeRoomForWrite(false); err != nil {
 		return err
 	}
+	return d.commit.commit(batch, opts.GetSync())
+}
 
-	seqNum := d.versions.logSeqNum + 1
-	batch.setSeqNum(seqNum)
-	d.versions.logSeqNum += uint64(n)
+func (d *DB) commitApply(b *Batch, mem *memTable) error {
+	return mem.apply(b, b.seqNum())
+}
 
-	// Write the batch to the log.
-	// TODO(peter): drop and re-acquire d.mu around the I/O.
-	if _, err := d.log.WriteRecord(batch.data); err != nil {
-		return fmt.Errorf("pebble: could not write log entry: %v", err)
+func (d *DB) commitPrepare(b *Batch) (*memTable, error) {
+	// TODO(peter): If the memtable is full, allocate a new one. Mark the full
+	// memtable as ready to be flushed as soon as the reference count drops to 0.
+	err := d.mem.prepare(b)
+	if err != nil {
+		return nil, err
 	}
-	if opts.GetSync() {
-		if err := d.log.Flush(); err != nil {
-			return fmt.Errorf("pebble: could not flush log entry: %v", err)
-		}
-		if err := d.logFile.Sync(); err != nil {
-			return fmt.Errorf("pebble: could not sync log entry: %v", err)
-		}
-	}
+	return d.mem, nil
+}
 
-	// Apply the batch to the memtable.
-	if err := d.mem.apply(batch, seqNum); err != nil {
-		panic(err)
-	}
-	d.versions.visibleSeqNum = d.versions.logSeqNum
-	return nil
+func (d *DB) commitSync(pos, n int64) error {
+	return d.log.Sync( /* pos, n */ )
+}
+
+func (d *DB) commitWrite(data []byte) (int64, error) {
+	// TODO(peter): The log write itself is protected by
+	// commitPipeline.write.Mutex, but we need to ensure that the log that is
+	// later synced is the same one that was written to.
+	return d.log.WriteRecord(data)
 }
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
 // level.
 func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) db.Iterator {
 	d.mu.Lock()
-	seqNum := d.versions.visibleSeqNum
+	seqNum := atomic.LoadUint64(&d.versions.visibleSeqNum)
 	// TODO(peter): The sstables in current are guaranteed to have sequence
 	// numbers less than d.versions.logSeqNum, so why does dbIter need to check
 	// sequence numbers for every iter? Perhaps the sequence number filtering
@@ -534,6 +517,12 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 	d.tableCache.init(dirname, opts.GetStorage(), d.opts, tableCacheSize)
 	d.newIter = d.tableCache.newIter
+	d.commit = newCommitPipeline(commitEnv{
+		apply:   d.commitApply,
+		prepare: d.commitPrepare,
+		sync:    d.commitSync,
+		write:   d.commitWrite,
+	}, &d.versions.logSeqNum, &d.versions.visibleSeqNum)
 	d.mem = newMemTable(d.opts)
 	d.compactionCond = sync.Cond{L: &d.mu}
 	fs := opts.GetStorage()

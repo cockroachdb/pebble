@@ -58,6 +58,10 @@ func (a *Arena) Size() uint32 {
 	return atomic.LoadUint32(&a.n)
 }
 
+func (a *Arena) Capacity() uint32 {
+	return uint32(len(a.buf))
+}
+
 func (a *Arena) Reset() {
 	atomic.StoreUint32(&a.n, 1)
 }

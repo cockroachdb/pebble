@@ -25,6 +25,12 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
+// MaxNodeSize returns the maximum space needed for a node with the specified
+// key and value sizes.
+func MaxNodeSize(keySize, valueSize uint32) uint32 {
+	return uint32(maxNodeSize) + keySize + valueSize + Align4
+}
+
 type links struct {
 	nextOffset uint32
 	prevOffset uint32

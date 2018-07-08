@@ -75,6 +75,8 @@ func (s *batchStorage) Compare(a []byte, b uint32) int {
 type Batch struct {
 	batchStorage
 
+	memTableSize uint32
+
 	// The db to which the batch will be committed.
 	db *DB
 
@@ -153,17 +155,19 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 	count := binary.LittleEndian.Uint32(batch.data[8:12])
 	b.setCount(b.count() + count)
 
-	if b.index != nil {
-		start := batchReader(b.data[offset:])
-		for iter := batchReader(start); ; {
-			if _, _, _, ok := iter.next(); !ok {
-				break
-			}
+	start := batchReader(b.data[offset:])
+	for iter := batchReader(start); ; {
+		_, key, value, ok := iter.next()
+		if !ok {
+			break
+		}
+		if b.index != nil {
 			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&start[0]))
 			if err := b.index.Add(uint32(offset)); err != nil {
 				panic(err)
 			}
 		}
+		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
 	return nil
 }
@@ -216,6 +220,7 @@ func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
 			panic(err)
 		}
 	}
+	b.memTableSize += memTableEntrySize(len(key), len(value))
 	return nil
 }
 
@@ -241,6 +246,7 @@ func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
 			panic(err)
 		}
 	}
+	b.memTableSize += memTableEntrySize(len(key), len(value))
 	return nil
 }
 
@@ -263,6 +269,7 @@ func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
 			panic(err)
 		}
 	}
+	b.memTableSize += memTableEntrySize(len(key), 0)
 	return nil
 }
 
@@ -288,6 +295,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 			panic(err)
 		}
 	}
+	b.memTableSize += memTableEntrySize(len(start), len(end))
 	return nil
 }
 

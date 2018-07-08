@@ -27,17 +27,22 @@ type testCommitEnv struct {
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		apply: e.apply,
-		sync:  e.sync,
-		write: e.write,
+		apply:   e.apply,
+		prepare: e.prepare,
+		sync:    e.sync,
+		write:   e.write,
 	}
 }
 
-func (e *testCommitEnv) apply(b *Batch) error {
+func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	e.applyBuf.Lock()
 	e.applyBuf.buf = append(e.applyBuf.buf, b.seqNum())
 	e.applyBuf.Unlock()
 	return nil
+}
+
+func (e *testCommitEnv) prepare(b *Batch) (*memTable, error) {
+	return nil, nil
 }
 
 func (e *testCommitEnv) sync(pos, n int64) error {
@@ -87,29 +92,24 @@ func BenchmarkCommitPipeline(b *testing.B) {
 	for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
 			b.SetParallelism(parallelism)
-			var mem struct {
-				sync.RWMutex
-				*memTable
-			}
+			var mem *memTable
 			wal := record.NewLogWriter(ioutil.Discard)
 
 			nullCommitEnv := commitEnv{
-				apply: func(b *Batch) error {
+				apply: func(b *Batch, mem *memTable) error {
+					return mem.apply(b, b.seqNum())
+				},
+				prepare: func(b *Batch) (*memTable, error) {
 					for {
-						mem.RLock()
 						err := arenaskl.ErrArenaFull
-						if mem.memTable != nil {
-							err = mem.apply(b, b.seqNum())
+						if mem != nil {
+							err = mem.prepare(b)
 						}
-						mem.RUnlock()
-
 						if err == arenaskl.ErrArenaFull {
-							mem.Lock()
-							mem.memTable = newMemTable(nil)
-							mem.Unlock()
+							mem = newMemTable(nil)
 							continue
 						}
-						return err
+						return mem, err
 					}
 				},
 				sync: func(pos, n int64) error {

@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
@@ -263,7 +264,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	}()
 
 	// TODO(peter): track snapshots.
-	smallestSnapshot := d.versions.logSeqNum
+	smallestSnapshot := atomic.LoadUint64(&d.versions.logSeqNum)
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
