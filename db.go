@@ -20,6 +20,7 @@
 //   - Merge operator
 //   - Debug/event logging
 //   - Faster block cache (sharded?)
+//     - Reserve block cache memory for memtables
 //
 // - Commit pipeline
 //   - Rate limiting user writes
