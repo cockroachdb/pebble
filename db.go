@@ -298,9 +298,6 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
-	// TODO(peter): Fix makeRoomForWrite to not require DB.mu to be locked.
-	d.mu.Lock()
-	defer d.mu.Unlock()
 	if err := d.makeRoomForWrite(false); err != nil {
 		return err
 	}
@@ -811,10 +808,11 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 }
 
 // makeRoomForWrite ensures that there is room in d.mem for the next write.
-//
-// d.mu must be held when calling this, but the mutex may be dropped and
-// re-acquired during the course of this method.
 func (d *DB) makeRoomForWrite(force bool) error {
+	// TODO(peter): Fix makeRoomForWrite to not require DB.mu to be locked.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	allowDelay := !force
 	for {
 		// TODO(peter): check any previous sticky error, if the paranoid option is
