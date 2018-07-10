@@ -183,32 +183,34 @@ type DB struct {
 	tableCache tableCache
 	newIter    tableNewIter
 
-	commit *commitPipeline
+	commit   *commitPipeline
+	fileLock io.Closer
 
-	// TODO(peter): describe exactly what this mutex protects. So far: every field
-	// below.
-	mu sync.Mutex
+	// TODO(peter): describe exactly what this mutex protects. So far: every
+	// field in the struct.
+	mu struct {
+		sync.Mutex
 
-	fileLock  io.Closer
-	logNumber uint64
-	logFile   storage.File
-	log       *record.LogWriter
+		logNumber uint64
+		logFile   storage.File
+		log       *record.LogWriter
 
-	versions versionSet
+		versions versionSet
 
-	// mem is non-nil and the MemTable pointed to is mutable. imm is possibly
-	// nil, but if non-nil, the MemTable pointed to is immutable and will be
-	// copied out as an on-disk table. mem's sequence numbers are all
-	// higher than imm's, and imm's sequence numbers are all higher than
-	// those on-disk.
-	mem, imm *memTable
+		// mem is non-nil and the MemTable pointed to is mutable. imm is possibly
+		// nil, but if non-nil, the MemTable pointed to is immutable and will be
+		// copied out as an on-disk table. mem's sequence numbers are all
+		// higher than imm's, and imm's sequence numbers are all higher than
+		// those on-disk.
+		mem, imm *memTable
 
-	compactionCond sync.Cond
-	compacting     bool
+		compactionCond sync.Cond
+		compacting     bool
 
-	closed bool
+		closed bool
 
-	pendingOutputs map[uint64]struct{}
+		pendingOutputs map[uint64]struct{}
+	}
 }
 
 var _ Reader = (*DB)(nil)
@@ -221,13 +223,13 @@ var _ Writer = (*DB)(nil)
 // it is safe to modify the contents of the argument after Get returns.
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
-	snapshot := atomic.LoadUint64(&d.versions.visibleSeqNum)
+	snapshot := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
-	current := d.versions.currentVersion()
-	// TODO(peter): What is the synchronization story for d.mem and d.imm?
+	current := d.mu.versions.currentVersion()
+	// TODO(peter): What is the synchronization story for d.mu.mem and d.mu.imm?
 	// d.commit.write.Mutex?
-	memtables := [2]*memTable{d.mem, d.imm}
+	memtables := [2]*memTable{d.mu.mem, d.mu.imm}
 	d.mu.Unlock()
 
 	ikey := db.MakeInternalKey(key, snapshot, db.InternalKeyKindMax)
@@ -313,11 +315,11 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 func (d *DB) commitPrepare(b *Batch) (*memTable, error) {
 	// TODO(peter): If the memtable is full, allocate a new one. Mark the full
 	// memtable as ready to be flushed as soon as the reference count drops to 0.
-	err := d.mem.prepare(b)
+	err := d.mu.mem.prepare(b)
 	if err != nil {
 		return nil, err
 	}
-	return d.mem, nil
+	return d.mu.mem, nil
 }
 
 func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
@@ -325,26 +327,26 @@ func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
 }
 
 func (d *DB) commitWrite(data []byte) (*record.LogWriter, int64, error) {
-	pos, err := d.log.WriteRecord(data)
-	return d.log, pos, err
+	pos, err := d.mu.log.WriteRecord(data)
+	return d.mu.log, pos, err
 }
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
 // level.
 func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) db.Iterator {
 	d.mu.Lock()
-	seqNum := atomic.LoadUint64(&d.versions.visibleSeqNum)
+	seqNum := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 	// TODO(peter): The sstables in current are guaranteed to have sequence
-	// numbers less than d.versions.logSeqNum, so why does dbIter need to check
+	// numbers less than d.mu.versions.logSeqNum, so why does dbIter need to check
 	// sequence numbers for every iter? Perhaps the sequence number filtering
 	// should be folded into mergingIter (or InternalIterator).
 	//
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
-	current := d.versions.currentVersion()
-	// TODO(peter): What is the synchronization story for d.mem and d.imm?
+	current := d.mu.versions.currentVersion()
+	// TODO(peter): What is the synchronization story for d.mu.mem and d.mu.imm?
 	// d.commit.write.Mutex?
-	memtables := [2]*memTable{d.mem, d.imm}
+	memtables := [2]*memTable{d.mu.mem, d.mu.imm}
 	d.mu.Unlock()
 
 	var buf struct {
@@ -431,17 +433,17 @@ func (d *DB) NewIndexedBatch() *Batch {
 func (d *DB) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.closed {
+	if d.mu.closed {
 		return nil
 	}
-	for d.compacting {
-		d.compactionCond.Wait()
+	for d.mu.compacting {
+		d.mu.compactionCond.Wait()
 	}
 	err := d.tableCache.Close()
-	err = firstError(err, d.log.Close())
-	err = firstError(err, d.logFile.Close())
+	err = firstError(err, d.mu.log.Close())
+	err = firstError(err, d.mu.logFile.Close())
 	err = firstError(err, d.fileLock.Close())
-	d.closed = true
+	d.mu.closed = true
 	return err
 }
 
@@ -508,11 +510,10 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *db.Options) (*DB, error) {
 	d := &DB{
-		dirname:        dirname,
-		opts:           opts,
-		cmp:            opts.GetComparer().Compare,
-		inlineKey:      opts.GetComparer().InlineKey,
-		pendingOutputs: make(map[uint64]struct{}),
+		dirname:   dirname,
+		opts:      opts,
+		cmp:       opts.GetComparer().Compare,
+		inlineKey: opts.GetComparer().InlineKey,
 	}
 	tableCacheSize := opts.GetMaxOpenFiles() - numNonTableCacheFiles
 	if tableCacheSize < minTableCacheSize {
@@ -525,9 +526,10 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		prepare: d.commitPrepare,
 		sync:    d.commitSync,
 		write:   d.commitWrite,
-	}, &d.versions.logSeqNum, &d.versions.visibleSeqNum)
-	d.mem = newMemTable(d.opts)
-	d.compactionCond = sync.Cond{L: &d.mu}
+	}, &d.mu.versions.logSeqNum, &d.mu.versions.visibleSeqNum)
+	d.mu.mem = newMemTable(d.opts)
+	d.mu.compactionCond = sync.Cond{L: &d.mu}
+	d.mu.pendingOutputs = make(map[uint64]struct{})
 	fs := opts.GetStorage()
 
 	d.mu.Lock()
@@ -560,7 +562,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 
 	// Load the version set.
-	err = d.versions.load(dirname, opts)
+	err = d.mu.versions.load(dirname, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -574,7 +576,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	var logFiles fileNumAndNameSlice
 	for _, filename := range ls {
 		ft, fn, ok := parseDBFilename(filename)
-		if ok && ft == fileTypeLog && (fn >= d.versions.logNumber || fn == d.versions.prevLogNumber) {
+		if ok && ft == fileTypeLog && (fn >= d.mu.versions.logNumber || fn == d.mu.versions.prevLogNumber) {
 			logFiles = append(logFiles, fileNumAndName{fn, filename})
 		}
 	}
@@ -584,16 +586,16 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		d.versions.markFileNumUsed(lf.num)
-		if d.versions.logSeqNum < maxSeqNum {
-			d.versions.logSeqNum = maxSeqNum
+		d.mu.versions.markFileNumUsed(lf.num)
+		if d.mu.versions.logSeqNum < maxSeqNum {
+			d.mu.versions.logSeqNum = maxSeqNum
 		}
 	}
-	d.versions.visibleSeqNum = d.versions.logSeqNum
+	d.mu.versions.visibleSeqNum = d.mu.versions.logSeqNum
 
 	// Create an empty .log file.
-	ve.logNumber = d.versions.nextFileNum()
-	d.logNumber = ve.logNumber
+	ve.logNumber = d.mu.versions.nextFileNum()
+	d.mu.logNumber = ve.logNumber
 	logFile, err := fs.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
 	if err != nil {
 		return nil, err
@@ -603,17 +605,17 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 			logFile.Close()
 		}
 	}()
-	d.log = record.NewLogWriter(logFile)
+	d.mu.log = record.NewLogWriter(logFile)
 
 	// Write a new manifest to disk.
-	if err := d.versions.logAndApply(dirname, &ve); err != nil {
+	if err := d.mu.versions.logAndApply(dirname, &ve); err != nil {
 		return nil, err
 	}
 
 	d.deleteObsoleteFiles()
 	d.maybeScheduleCompaction()
 
-	d.logFile, logFile = logFile, nil
+	d.mu.logFile, logFile = logFile, nil
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil
 }
@@ -693,7 +695,7 @@ func (d *DB) replayLogFile(
 		// Strictly speaking, it's too early to delete meta.fileNum from d.pendingOutputs,
 		// but we are replaying the log file, which happens before Open returns, so there
 		// is no possibility of deleteObsoleteFiles being called concurrently here.
-		delete(d.pendingOutputs, meta.fileNum)
+		delete(d.mu.pendingOutputs, meta.fileNum)
 	}
 
 	return maxSeqNum, nil
@@ -712,17 +714,17 @@ func firstError(err0, err1 error) error {
 //
 // If no error is returned, it adds the file number of that on-disk table to
 // d.pendingOutputs. It is the caller's responsibility to remove that fileNum
-// from that set when it has been applied to d.versions.
+// from that set when it has been applied to d.mu.versions.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetadata, err error) {
-	meta.fileNum = d.versions.nextFileNum()
+	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
-	d.pendingOutputs[meta.fileNum] = struct{}{}
+	d.mu.pendingOutputs[meta.fileNum] = struct{}{}
 	defer func(fileNum uint64) {
 		if err != nil {
-			delete(d.pendingOutputs, fileNum)
+			delete(d.mu.pendingOutputs, fileNum)
 		}
 	}(meta.fileNum)
 
@@ -810,7 +812,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	return meta, nil
 }
 
-// makeRoomForWrite ensures that there is room in d.mem for the next write.
+// makeRoomForWrite ensures that there is room in d.mu.mem for the next write.
 func (d *DB) makeRoomForWrite(force bool) error {
 	// TODO(peter): Fix makeRoomForWrite to not require DB.mu to be locked.
 	d.mu.Lock()
@@ -821,7 +823,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		// TODO(peter): check any previous sticky error, if the paranoid option is
 		// set.
 
-		if allowDelay && len(d.versions.currentVersion().files[0]) > l0SlowdownWritesTrigger {
+		if allowDelay && len(d.mu.versions.currentVersion().files[0]) > l0SlowdownWritesTrigger {
 			// We are getting close to hitting a hard limit on the number of
 			// L0 files. Rather than delaying a single write by several
 			// seconds when we hit the hard limit, start delaying each
@@ -835,27 +837,27 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			continue
 		}
 
-		if !force && d.mem.ApproximateMemoryUsage() <= d.opts.GetWriteBufferSize() {
+		if !force && d.mu.mem.ApproximateMemoryUsage() <= d.opts.GetWriteBufferSize() {
 			// There is room in the current memtable.
 			break
 		}
 
-		if d.imm != nil {
+		if d.mu.imm != nil {
 			// We have filled up the current memtable, but the previous
 			// one is still being compacted, so we wait.
-			d.compactionCond.Wait()
+			d.mu.compactionCond.Wait()
 			continue
 		}
 
-		if len(d.versions.currentVersion().files[0]) > l0StopWritesTrigger {
+		if len(d.mu.versions.currentVersion().files[0]) > l0StopWritesTrigger {
 			// There are too many level-0 files.
-			d.compactionCond.Wait()
+			d.mu.compactionCond.Wait()
 			continue
 		}
 
 		// Attempt to switch to a new memtable and trigger compaction of old
 		// TODO(peter): drop and re-acquire d.mu around the I/O.
-		newLogNumber := d.versions.nextFileNum()
+		newLogNumber := d.mu.versions.nextFileNum()
 		newLogFile, err := d.opts.GetStorage().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
 		if err != nil {
 			// TODO(peter): avoid chewing through file numbers in a tight loop if
@@ -863,17 +865,17 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			return err
 		}
 		newLog := record.NewLogWriter(newLogFile)
-		if err := d.log.Close(); err != nil {
+		if err := d.mu.log.Close(); err != nil {
 			newLogFile.Close()
 			return err
 		}
-		if err := d.logFile.Close(); err != nil {
+		if err := d.mu.logFile.Close(); err != nil {
 			newLog.Close()
 			newLogFile.Close()
 			return err
 		}
-		d.logNumber, d.logFile, d.log = newLogNumber, newLogFile, newLog
-		d.imm, d.mem = d.mem, newMemTable(d.opts)
+		d.mu.logNumber, d.mu.logFile, d.mu.log = newLogNumber, newLogFile, newLog
+		d.mu.imm, d.mu.mem = d.mu.mem, newMemTable(d.opts)
 		force = false
 		d.maybeScheduleCompaction()
 	}
@@ -886,12 +888,12 @@ func (d *DB) makeRoomForWrite(force bool) error {
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles() {
 	liveFileNums := map[uint64]struct{}{}
-	for fileNum := range d.pendingOutputs {
+	for fileNum := range d.mu.pendingOutputs {
 		liveFileNums[fileNum] = struct{}{}
 	}
-	d.versions.addLiveFileNums(liveFileNums)
-	logNumber := d.versions.logNumber
-	manifestFileNumber := d.versions.manifestFileNumber
+	d.mu.versions.addLiveFileNums(liveFileNums)
+	logNumber := d.mu.versions.logNumber
+	manifestFileNumber := d.mu.versions.manifestFileNumber
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.

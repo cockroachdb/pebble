@@ -145,19 +145,19 @@ func (c *compaction) isBaseLevelForUkey(userCmp db.Compare, ukey []byte) bool {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if d.compacting || d.closed {
+	if d.mu.compacting || d.mu.closed {
 		return
 	}
 	// TODO(peter): check for manual compactions.
-	if d.imm == nil {
-		v := d.versions.currentVersion()
+	if d.mu.imm == nil {
+		v := d.mu.versions.currentVersion()
 		// TODO(peter): check v.fileToCompact.
 		if v.compactionScore < 1 {
 			// There is no work to be done.
 			return
 		}
 	}
-	d.compacting = true
+	d.mu.compacting = true
 	go d.compact()
 }
 
@@ -168,11 +168,11 @@ func (d *DB) compact() {
 	if err := d.compact1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
 	}
-	d.compacting = false
+	d.mu.compacting = false
 	// The previous compaction may have produced too many files in a
 	// level, so reschedule another compaction if needed.
 	d.maybeScheduleCompaction()
-	d.compactionCond.Broadcast()
+	d.mu.compactionCond.Broadcast()
 }
 
 // compact1 runs one compaction.
@@ -180,13 +180,13 @@ func (d *DB) compact() {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compact1() error {
-	if d.imm != nil {
+	if d.mu.imm != nil {
 		return d.compactMemTable()
 	}
 
 	// TODO(peter): support manual compactions.
 
-	c := pickCompaction(&d.versions)
+	c := pickCompaction(&d.mu.versions)
 	if c == nil {
 		return nil
 	}
@@ -199,7 +199,7 @@ func (d *DB) compact1() error {
 		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes {
 
 		meta := &c.inputs[0][0]
-		return d.versions.logAndApply(d.dirname, &versionEdit{
+		return d.mu.versions.logAndApply(d.dirname, &versionEdit{
 			deletedFiles: map[deletedFileEntry]bool{
 				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
 			},
@@ -213,9 +213,9 @@ func (d *DB) compact1() error {
 	if err != nil {
 		return err
 	}
-	err = d.versions.logAndApply(d.dirname, ve)
+	err = d.mu.versions.logAndApply(d.dirname, ve)
 	for _, fileNum := range pendingOutputs {
-		delete(d.pendingOutputs, fileNum)
+		delete(d.mu.pendingOutputs, fileNum)
 	}
 	if err != nil {
 		return err
@@ -224,26 +224,26 @@ func (d *DB) compact1() error {
 	return nil
 }
 
-// compactMemTable runs a compaction that copies d.imm from memory to disk.
+// compactMemTable runs a compaction that copies d.mu.imm from memory to disk.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compactMemTable() error {
-	meta, err := d.writeLevel0Table(d.opts.GetStorage(), d.imm)
+	meta, err := d.writeLevel0Table(d.opts.GetStorage(), d.mu.imm)
 	if err != nil {
 		return err
 	}
-	err = d.versions.logAndApply(d.dirname, &versionEdit{
-		logNumber: d.logNumber,
+	err = d.mu.versions.logAndApply(d.dirname, &versionEdit{
+		logNumber: d.mu.logNumber,
 		newFiles: []newFileEntry{
 			{level: 0, meta: meta},
 		},
 	})
-	delete(d.pendingOutputs, meta.fileNum)
+	delete(d.mu.pendingOutputs, meta.fileNum)
 	if err != nil {
 		return err
 	}
-	d.imm = nil
+	d.mu.imm = nil
 	d.deleteObsoleteFiles()
 	return nil
 }
@@ -257,14 +257,14 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	defer func() {
 		if retErr != nil {
 			for _, fileNum := range pendingOutputs {
-				delete(d.pendingOutputs, fileNum)
+				delete(d.mu.pendingOutputs, fileNum)
 			}
 			pendingOutputs = nil
 		}
 	}()
 
 	// TODO(peter): track snapshots.
-	smallestSnapshot := atomic.LoadUint64(&d.versions.logSeqNum)
+	smallestSnapshot := atomic.LoadUint64(&d.mu.versions.logSeqNum)
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
@@ -299,7 +299,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	lastSeqNumForKey := db.InternalKeySeqNumMax
 	var smallest, largest db.InternalKey
 	for ; iter.Valid(); iter.Next() {
-		// TODO(peter): prioritize compacting d.imm.
+		// TODO(peter): prioritize compacting d.mu.imm.
 
 		// TODO(peter): support c.shouldStopBefore.
 
@@ -344,8 +344,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 		if tw == nil {
 			d.mu.Lock()
-			fileNum = d.versions.nextFileNum()
-			d.pendingOutputs[fileNum] = struct{}{}
+			fileNum = d.mu.versions.nextFileNum()
+			d.mu.pendingOutputs[fileNum] = struct{}{}
 			pendingOutputs = append(pendingOutputs, fileNum)
 			d.mu.Unlock()
 

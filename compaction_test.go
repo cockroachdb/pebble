@@ -573,11 +573,11 @@ func TestCompaction(t *testing.T) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		if d.mem != nil {
-			gotMem = get1(d.mem.NewIter(nil))
+		if d.mu.mem != nil {
+			gotMem = get1(d.mu.mem.NewIter(nil))
 		}
 		ss := []string(nil)
-		v := d.versions.currentVersion()
+		v := d.mu.versions.currentVersion()
 		for _, files := range v.files {
 			for _, meta := range files {
 				f, err := fs.Open(dbFilename("", fileTypeTable, meta.fileNum))
