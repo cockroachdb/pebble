@@ -14,7 +14,6 @@
 //
 // - Miscellaneous
 //   - Implement {block,table}Iter.SeekLT
-//   - Add InlineKey to db.Comparator (perhaps use better terminology)
 //   - Add support for referencing a version and preventing file deletion for a
 //     referenced version. Use in DB.Get and DB.NewIter.
 //   - Merge operator
@@ -51,6 +50,7 @@
 //   - SSTable ingestion
 //   - Whole file bloom filter
 //   - Prefix extractor and prefix bloom filter
+//   - Read/write RocksDB table properties
 //
 // - Iterators
 //   - Prefix same as start
