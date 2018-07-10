@@ -222,9 +222,11 @@ var _ Writer = (*DB)(nil)
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
 	snapshot := atomic.LoadUint64(&d.versions.visibleSeqNum)
-	current := d.versions.currentVersion()
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
+	current := d.versions.currentVersion()
+	// TODO(peter): What is the synchronization story for d.mem and d.imm?
+	// d.commit.write.Mutex?
 	memtables := [2]*memTable{d.mem, d.imm}
 	d.mu.Unlock()
 
@@ -336,9 +338,12 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	// numbers less than d.versions.logSeqNum, so why does dbIter need to check
 	// sequence numbers for every iter? Perhaps the sequence number filtering
 	// should be folded into mergingIter (or InternalIterator).
-	current := d.versions.currentVersion()
+	//
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
+	current := d.versions.currentVersion()
+	// TODO(peter): What is the synchronization story for d.mem and d.imm?
+	// d.commit.write.Mutex?
 	memtables := [2]*memTable{d.mem, d.imm}
 	d.mu.Unlock()
 
