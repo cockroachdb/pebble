@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/petermattis/pebble/record"
 )
 
 type commitQueueNode struct {
@@ -108,11 +110,11 @@ type commitEnv struct {
 	// Prepare a batch for applying to the memtable. Called serially.
 	prepare func(b *Batch) (*memTable, error)
 	// Sync the WAL up to pos+n. Called concurrently.
-	sync func(pos, n int64) error
+	sync func(log *record.LogWriter, pos, n int64) error
 	// Write the batch to the WAL. The data is not persisted until a call to
 	// sync() is performed. Returns the WAL position at which the data was
 	// written which can be used in a subsequent call to sync(). Called serially.
-	write func(data []byte) (int64, error)
+	write func(data []byte) (*record.LogWriter, int64, error)
 }
 
 // A commitPipeline manages the commit commitPipeline: writing batches to the
@@ -162,7 +164,7 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
-	mem, pos, err := p.prepare(b)
+	mem, log, pos, err := p.prepare(b)
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
@@ -180,21 +182,22 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	p.publish(b)
 
 	if syncWAL {
-		if err := p.env.sync(pos, int64(len(b.data))); err != nil {
+		if err := p.env.sync(log, pos, int64(len(b.data))); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *commitPipeline) prepare(b *Batch) (*memTable, int64, error) {
+func (p *commitPipeline) prepare(b *Batch) (*memTable, *record.LogWriter, int64, error) {
 	n := uint64(b.count())
 	if n == invalidBatchCount {
-		return nil, 0, ErrInvalidBatch
+		return nil, nil, 0, ErrInvalidBatch
 	}
 	b.published.Add(1)
 
 	var pos int64
+	var log *record.LogWriter
 
 	w := &p.write
 	w.Lock()
@@ -213,12 +216,12 @@ func (p *commitPipeline) prepare(b *Batch) (*memTable, int64, error) {
 		b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
 
 		// Write the data to the WAL.
-		pos, err = p.env.write(b.data)
+		log, pos, err = p.env.write(b.data)
 	}
 
 	w.Unlock()
 
-	return mem, pos, err
+	return mem, log, pos, err
 }
 
 func (p *commitPipeline) publish(b *Batch) {

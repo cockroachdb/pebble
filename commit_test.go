@@ -45,15 +45,15 @@ func (e *testCommitEnv) prepare(b *Batch) (*memTable, error) {
 	return nil, nil
 }
 
-func (e *testCommitEnv) sync(pos, n int64) error {
+func (e *testCommitEnv) sync(log *record.LogWriter, pos, n int64) error {
 	return nil
 }
 
-func (e *testCommitEnv) write(data []byte) (int64, error) {
+func (e *testCommitEnv) write(data []byte) (*record.LogWriter, int64, error) {
 	n := int64(len(data))
 	pos := atomic.AddInt64(&e.writePos, n) - n
 	atomic.AddUint64(&e.writeCount, 1)
-	return pos, nil
+	return nil, pos, nil
 }
 
 func TestCommitPipeline(t *testing.T) {
@@ -112,12 +112,13 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						return mem, err
 					}
 				},
-				sync: func(pos, n int64) error {
+				sync: func(log *record.LogWriter, pos, n int64) error {
 					// return wal.Sync()
 					return nil
 				},
-				write: func(data []byte) (int64, error) {
-					return wal.WriteRecord(data)
+				write: func(data []byte) (*record.LogWriter, int64, error) {
+					pos, err := wal.WriteRecord(data)
+					return wal, pos, err
 				},
 			}
 			var logSeqNum, visibleSeqNum uint64

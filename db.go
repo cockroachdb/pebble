@@ -318,15 +318,13 @@ func (d *DB) commitPrepare(b *Batch) (*memTable, error) {
 	return d.mem, nil
 }
 
-func (d *DB) commitSync(pos, n int64) error {
-	return d.log.Sync( /* pos, n */ )
+func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
+	return log.Sync( /* pos, n */ )
 }
 
-func (d *DB) commitWrite(data []byte) (int64, error) {
-	// TODO(peter): The log write itself is protected by
-	// commitPipeline.write.Mutex, but we need to ensure that the log that is
-	// later synced is the same one that was written to.
-	return d.log.WriteRecord(data)
+func (d *DB) commitWrite(data []byte) (*record.LogWriter, int64, error) {
+	pos, err := d.log.WriteRecord(data)
+	return d.log, pos, err
 }
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
