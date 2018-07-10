@@ -45,7 +45,9 @@ type node struct {
 	// Immutable fields, so no need to lock to access key.
 	keyOffset uint32
 	keySize   uint32
-	valueSize uint32
+	// If valueSize is negative, the value is stored separately from the node in
+	// arena.extValues.
+	valueSize int32
 
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
@@ -87,21 +89,26 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	// is less than maxHeight.
 	unusedSize := (maxHeight - int(height)) * linksSize
 	nodeSize := uint32(maxNodeSize - unusedSize)
+	valueIndex := int32(valueSize)
+	if valueSize >= arena.extValues.threshold {
+		valueIndex = -(arena.allocExtValue(valueSize) + 1)
+		valueSize = 0
+	}
 
-	nodeOffset, err := arena.Alloc(nodeSize+keySize+valueSize, Align4)
+	nodeOffset, err := arena.alloc(nodeSize+keySize+valueSize, Align4)
 	if err != nil {
 		return
 	}
 
-	nd = (*node)(arena.GetPointer(nodeOffset))
+	nd = (*node)(arena.getPointer(nodeOffset))
 	nd.keyOffset = nodeOffset + nodeSize
 	nd.keySize = uint32(keySize)
-	nd.valueSize = uint32(valueSize)
+	nd.valueSize = valueIndex
 	return
 }
 
 func (n *node) getKey(arena *Arena) db.InternalKey {
-	b := arena.GetBytes(n.keyOffset, n.keySize)
+	b := arena.getBytes(n.keyOffset, n.keySize)
 	// This is a manual inline of db.DecodeInternalKey, because the Go compiler
 	// seems to refuse to automatically inline it currently.
 	l := len(b) - 8
@@ -119,11 +126,14 @@ func (n *node) getKey(arena *Arena) db.InternalKey {
 }
 
 func (n *node) getKeyBytes(arena *Arena) []byte {
-	return arena.GetBytes(n.keyOffset, n.keySize)
+	return arena.getBytes(n.keyOffset, n.keySize)
 }
 
 func (n *node) getValue(arena *Arena) []byte {
-	return arena.GetBytes(n.keyOffset+n.keySize, n.valueSize)
+	if n.valueSize < 0 {
+		return arena.getExtValue(-n.valueSize - 1)
+	}
+	return arena.getBytes(n.keyOffset+n.keySize, uint32(n.valueSize))
 }
 
 func (n *node) nextOffset(h int) uint32 {

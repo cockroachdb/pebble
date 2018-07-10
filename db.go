@@ -7,10 +7,12 @@
 // TODO(peter):
 //
 // - MemTable
-//   - Allow arbitrary sized values. RocksDB allows this by allocating special
-//     arena blocks for large values. One possibility for arenaskl is to store
-//     large values outside of the arena. We can add a node.valueIndex field
-//     and if it is non-zero it is an index into an arena.largeValues slice.
+//   - Allow arbitrary sized batches. RocksDB allows this by allowing
+//     additional arena blocks to be added as necessary to hold the contents of
+//     a batch. With the memTable.prepare() functionality, we could allocate a
+//     custom sized arena to hold a batch that is larger than the normal
+//     arena. Need to be cognizant of what this would mean for
+//     throughput. Should memTable internally have a stack of skiplists?
 //
 // - Miscellaneous
 //   - Implement {block,table}Iter.SeekLT

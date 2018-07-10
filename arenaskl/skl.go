@@ -116,8 +116,8 @@ func (s *Skiplist) Reset(arena *Arena, cmp db.Compare) {
 	tail.keyOffset = 0
 
 	// Link all head/tail levels together.
-	headOffset := arena.GetPointerOffset(unsafe.Pointer(head))
-	tailOffset := arena.GetPointerOffset(unsafe.Pointer(tail))
+	headOffset := arena.getPointerOffset(unsafe.Pointer(head))
+	tailOffset := arena.getPointerOffset(unsafe.Pointer(tail))
 	for i := 0; i < maxHeight; i++ {
 		head.tower[i].nextOffset = tailOffset
 		tail.tower[i].prevOffset = headOffset
@@ -164,7 +164,7 @@ func (s *Skiplist) Add(key db.InternalKey, value []byte) error {
 		return err
 	}
 
-	ndOffset := s.arena.GetPointerOffset(unsafe.Pointer(nd))
+	ndOffset := s.arena.getPointerOffset(unsafe.Pointer(nd))
 
 	// We always insert from the base level and up. After you add a node in base
 	// level, we cannot create a node in the level above because it would have
@@ -197,8 +197,8 @@ func (s *Skiplist) Add(key db.InternalKey, value []byte) error {
 		// 2. CAS prevNextOffset to repoint from next to nd.
 		// 3. CAS nextPrevOffset to repoint from prev to nd.
 		for {
-			prevOffset := s.arena.GetPointerOffset(unsafe.Pointer(prev))
-			nextOffset := s.arena.GetPointerOffset(unsafe.Pointer(next))
+			prevOffset := s.arena.getPointerOffset(unsafe.Pointer(prev))
+			nextOffset := s.arena.getPointerOffset(unsafe.Pointer(next))
 			nd.tower[i].init(prevOffset, nextOffset)
 
 			// Check whether next has an updated link to prev. If it does not,
@@ -348,12 +348,12 @@ func (s *Skiplist) findSpliceForLevel(
 
 func (s *Skiplist) getNext(nd *node, h int) *node {
 	offset := atomic.LoadUint32(&nd.tower[h].nextOffset)
-	return (*node)(s.arena.GetPointer(offset))
+	return (*node)(s.arena.getPointer(offset))
 }
 
 func (s *Skiplist) getPrev(nd *node, h int) *node {
 	offset := atomic.LoadUint32(&nd.tower[h].prevOffset)
-	return (*node)(s.arena.GetPointer(offset))
+	return (*node)(s.arena.getPointer(offset))
 }
 
 func encodeValue(valOffset uint32, valSize uint16) uint64 {

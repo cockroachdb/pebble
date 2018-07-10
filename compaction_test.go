@@ -635,6 +635,9 @@ func TestCompaction(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			if testing.Verbose() {
+				fmt.Printf("mem=%s (%s) disk=%s (%s)\n", gotMem, tc.wantMem, gotDisk, tc.wantDisk)
+			}
 
 			if gotMem != tc.wantMem {
 				return fmt.Errorf("mem: got %q, want %q", gotMem, tc.wantMem)
