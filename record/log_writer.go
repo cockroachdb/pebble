@@ -22,6 +22,8 @@ type block struct {
 type LogWriter struct {
 	// w is the underlying writer.
 	w io.Writer
+	// c is w as a closer.
+	c io.Closer
 	// f is w as a flusher.
 	f flusher
 	// s is w as a syncer.
@@ -57,10 +59,12 @@ type LogWriter struct {
 
 // NewLogWriter returns a new LogWriter.
 func NewLogWriter(w io.Writer) *LogWriter {
+	c, _ := w.(io.Closer)
 	f, _ := w.(flusher)
 	s, _ := w.(syncer)
 	r := &LogWriter{
 		w:    w,
+		c:    c,
 		f:    f,
 		s:    s,
 		free: make(chan *block, 4),
@@ -156,6 +160,11 @@ func (w *LogWriter) Close() error {
 
 	if err := w.Flush(); err != nil {
 		return err
+	}
+	if w.c != nil {
+		if err := w.c.Close(); err != nil {
+			return err
+		}
 	}
 	w.err = errors.New("pebble/record: closed LogWriter")
 	return nil

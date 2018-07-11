@@ -192,7 +192,6 @@ type DB struct {
 		sync.Mutex
 
 		logNumber uint64
-		logFile   storage.File
 		log       *record.LogWriter
 
 		versions versionSet
@@ -441,7 +440,6 @@ func (d *DB) Close() error {
 	}
 	err := d.tableCache.Close()
 	err = firstError(err, d.mu.log.Close())
-	err = firstError(err, d.mu.logFile.Close())
 	err = firstError(err, d.fileLock.Close())
 	d.mu.closed = true
 	return err
@@ -615,7 +613,6 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.deleteObsoleteFiles()
 	d.maybeScheduleCompaction()
 
-	d.mu.logFile, logFile = logFile, nil
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil
 }
@@ -866,15 +863,10 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		}
 		newLog := record.NewLogWriter(newLogFile)
 		if err := d.mu.log.Close(); err != nil {
-			newLogFile.Close()
-			return err
-		}
-		if err := d.mu.logFile.Close(); err != nil {
 			newLog.Close()
-			newLogFile.Close()
 			return err
 		}
-		d.mu.logNumber, d.mu.logFile, d.mu.log = newLogNumber, newLogFile, newLog
+		d.mu.logNumber, d.mu.log = newLogNumber, newLog
 		d.mu.imm, d.mu.mem = d.mu.mem, newMemTable(d.opts)
 		force = false
 		d.maybeScheduleCompaction()
