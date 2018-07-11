@@ -234,7 +234,7 @@ func (d *DB) compactMemTable() error {
 		return err
 	}
 	err = d.mu.versions.logAndApply(d.dirname, &versionEdit{
-		logNumber: d.mu.logNumber,
+		logNumber: d.mu.log.number,
 		newFiles: []newFileEntry{
 			{level: 0, meta: meta},
 		},

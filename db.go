@@ -191,8 +191,10 @@ type DB struct {
 	mu struct {
 		sync.Mutex
 
-		logNumber uint64
-		log       *record.LogWriter
+		log struct {
+			number uint64
+			*record.LogWriter
+		}
 
 		versions versionSet
 
@@ -327,7 +329,7 @@ func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
 
 func (d *DB) commitWrite(data []byte) (*record.LogWriter, int64, error) {
 	pos, err := d.mu.log.WriteRecord(data)
-	return d.mu.log, pos, err
+	return d.mu.log.LogWriter, pos, err
 }
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
@@ -593,7 +595,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 
 	// Create an empty .log file.
 	ve.logNumber = d.mu.versions.nextFileNum()
-	d.mu.logNumber = ve.logNumber
+	d.mu.log.number = ve.logNumber
 	logFile, err := fs.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
 	if err != nil {
 		return nil, err
@@ -603,7 +605,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 			logFile.Close()
 		}
 	}()
-	d.mu.log = record.NewLogWriter(logFile)
+	d.mu.log.LogWriter = record.NewLogWriter(logFile)
 
 	// Write a new manifest to disk.
 	if err := d.mu.versions.logAndApply(dirname, &ve); err != nil {
@@ -866,7 +868,10 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			newLog.Close()
 			return err
 		}
-		d.mu.logNumber, d.mu.log = newLogNumber, newLog
+		// NB: When the immutable memtable is flushed to disk it will apply a
+		// versionEdit to the manifest telling it that log files < d.mu.log.number
+		// have been applied.
+		d.mu.log.number, d.mu.log.LogWriter = newLogNumber, newLog
 		d.mu.imm, d.mu.mem = d.mu.mem, newMemTable(d.opts)
 		force = false
 		d.maybeScheduleCompaction()

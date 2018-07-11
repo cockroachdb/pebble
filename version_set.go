@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/record"
@@ -16,6 +17,7 @@ import (
 
 // TODO(peter): describe what a versionSet is.
 type versionSet struct {
+	// Immutable fields.
 	dirname string
 	opts    *db.Options
 	fs      storage.Storage
@@ -150,7 +152,7 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 		}
 	}
 	ve.nextFileNumber = vs.nextFileNumber
-	ve.lastSequence = vs.logSeqNum
+	ve.lastSequence = atomic.LoadUint64(&vs.logSeqNum)
 
 	var bve bulkVersionEdit
 	bve.accumulate(ve)
