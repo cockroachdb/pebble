@@ -27,10 +27,9 @@ type testCommitEnv struct {
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		apply:   e.apply,
-		prepare: e.prepare,
-		sync:    e.sync,
-		write:   e.write,
+		apply: e.apply,
+		sync:  e.sync,
+		write: e.write,
 	}
 }
 
@@ -49,11 +48,11 @@ func (e *testCommitEnv) sync(log *record.LogWriter, pos, n int64) error {
 	return nil
 }
 
-func (e *testCommitEnv) write(data []byte) (*record.LogWriter, int64, error) {
-	n := int64(len(data))
+func (e *testCommitEnv) write(b *Batch) (*memTable, *record.LogWriter, int64, error) {
+	n := int64(len(b.data))
 	pos := atomic.AddInt64(&e.writePos, n) - n
 	atomic.AddUint64(&e.writeCount, 1)
-	return nil, pos, nil
+	return nil, nil, pos, nil
 }
 
 func TestCommitPipeline(t *testing.T) {
@@ -99,7 +98,11 @@ func BenchmarkCommitPipeline(b *testing.B) {
 				apply: func(b *Batch, mem *memTable) error {
 					return mem.apply(b, b.seqNum())
 				},
-				prepare: func(b *Batch) (*memTable, error) {
+				sync: func(log *record.LogWriter, pos, n int64) error {
+					// return wal.Sync()
+					return nil
+				},
+				write: func(b *Batch) (*memTable, *record.LogWriter, int64, error) {
 					for {
 						err := arenaskl.ErrArenaFull
 						if mem != nil {
@@ -109,16 +112,14 @@ func BenchmarkCommitPipeline(b *testing.B) {
 							mem = newMemTable(nil)
 							continue
 						}
-						return mem, err
+						if err != nil {
+							return nil, nil, 0, err
+						}
+						break
 					}
-				},
-				sync: func(log *record.LogWriter, pos, n int64) error {
-					// return wal.Sync()
-					return nil
-				},
-				write: func(data []byte) (*record.LogWriter, int64, error) {
-					pos, err := wal.WriteRecord(data)
-					return wal, pos, err
+
+					pos, err := wal.WriteRecord(b.data)
+					return mem, wal, pos, err
 				},
 			}
 			var logSeqNum, visibleSeqNum uint64

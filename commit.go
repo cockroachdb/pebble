@@ -107,14 +107,13 @@ func (q *commitQueue) dequeue(cond *sync.Cond) *Batch {
 type commitEnv struct {
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
-	// Prepare a batch for applying to the memtable. Called serially.
-	prepare func(b *Batch) (*memTable, error)
 	// Sync the WAL up to pos+n. Called concurrently.
 	sync func(log *record.LogWriter, pos, n int64) error
 	// Write the batch to the WAL. The data is not persisted until a call to
 	// sync() is performed. Returns the WAL position at which the data was
-	// written which can be used in a subsequent call to sync(). Called serially.
-	write func(data []byte) (*record.LogWriter, int64, error)
+	// written which can be used in a subsequent call to sync(). Also returns the
+	// memtable the batch should be applied to. Called serially.
+	write func(b *Batch) (*memTable, *record.LogWriter, int64, error)
 }
 
 // A commitPipeline manages the commit commitPipeline: writing batches to the
@@ -129,9 +128,11 @@ type commitEnv struct {
 type commitPipeline struct {
 	env commitEnv
 
-	// The next sequence number to give to a batch. Only mutated atomically the
+	// The next sequence number to give to a batch. Mutated atomically by the
 	// current WAL writer.
-	logSeqNum     *uint64
+	logSeqNum *uint64
+	// The visible sequence number at which reads should be performed. Ratched
+	// upwards atomically as batches are applied to the memtable.
 	visibleSeqNum *uint64
 
 	// State for writing to the WAL.
@@ -196,28 +197,19 @@ func (p *commitPipeline) prepare(b *Batch) (*memTable, *record.LogWriter, int64,
 	}
 	b.published.Add(1)
 
-	var pos int64
-	var log *record.LogWriter
-
 	w := &p.write
 	w.Lock()
 
-	// Prepare the batch for applying to a memtable.
-	//
-	// TODO(peter): handle ErrArenaFull.
-	mem, err := p.env.prepare(b)
-	if err == nil {
-		// Enqueue the batch in the pending queue. Note that while the pending queue
-		// is lock-free, we want the order of batches to be the same as the sequence
-		// number order.
-		w.pending.enqueue(b, &w.cond)
+	// Enqueue the batch in the pending queue. Note that while the pending queue
+	// is lock-free, we want the order of batches to be the same as the sequence
+	// number order.
+	w.pending.enqueue(b, &w.cond)
 
-		// Assign the batch a sequence number.
-		b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
+	// Assign the batch a sequence number.
+	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
 
-		// Write the data to the WAL.
-		log, pos, err = p.env.write(b.data)
-	}
+	// Write the data to the WAL.
+	mem, log, pos, err := p.env.write(b)
 
 	w.Unlock()
 

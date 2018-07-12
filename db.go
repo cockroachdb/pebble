@@ -313,23 +313,19 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	return mem.apply(b, b.seqNum())
 }
 
-func (d *DB) commitPrepare(b *Batch) (*memTable, error) {
-	// TODO(peter): If the memtable is full, allocate a new one. Mark the full
-	// memtable as ready to be flushed as soon as the reference count drops to 0.
-	err := d.mu.mem.prepare(b)
-	if err != nil {
-		return nil, err
-	}
-	return d.mu.mem, nil
-}
-
 func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
 	return log.Sync( /* pos, n */ )
 }
 
-func (d *DB) commitWrite(data []byte) (*record.LogWriter, int64, error) {
-	pos, err := d.mu.log.WriteRecord(data)
-	return d.mu.log.LogWriter, pos, err
+func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) {
+	// TODO(peter): If the memtable is full, allocate a new one. Mark the full
+	// memtable as ready to be flushed as soon as the reference count drops to 0.
+	err := d.mu.mem.prepare(b)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	pos, err := d.mu.log.WriteRecord(b.data)
+	return d.mu.mem, d.mu.log.LogWriter, pos, err
 }
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
@@ -522,10 +518,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.tableCache.init(dirname, opts.GetStorage(), d.opts, tableCacheSize)
 	d.newIter = d.tableCache.newIter
 	d.commit = newCommitPipeline(commitEnv{
-		apply:   d.commitApply,
-		prepare: d.commitPrepare,
-		sync:    d.commitSync,
-		write:   d.commitWrite,
+		apply: d.commitApply,
+		sync:  d.commitSync,
+		write: d.commitWrite,
 	}, &d.mu.versions.logSeqNum, &d.mu.versions.visibleSeqNum)
 	d.mu.mem = newMemTable(d.opts)
 	d.mu.compactionCond = sync.Cond{L: &d.mu}
