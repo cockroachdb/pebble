@@ -61,7 +61,7 @@
 //   - Debug checks that iterators are always closed
 //
 // - Testing
-//   - Datadrive test infrastructure
+//   - Datadriven test infrastructure
 //   - DB.NewIter
 //   - Batch.NewIter
 //   - Expand dbIter tests (with {merging,memTable,batch,level}Iter)
