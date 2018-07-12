@@ -24,9 +24,7 @@ type versionSet struct {
 	cmp     db.Compare
 	cmpName string
 
-	// dummyVersion is the head of a circular doubly-linked list of versions.
-	// dummyVersion.prev is the current version.
-	dummyVersion version
+	versions versionList
 
 	logNumber          uint64
 	prevLogNumber      uint64
@@ -46,8 +44,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.fs = opts.GetStorage()
 	vs.cmp = opts.GetComparer().Compare
 	vs.cmpName = opts.GetComparer().Name
-	vs.dummyVersion.prev = &vs.dummyVersion
-	vs.dummyVersion.next = &vs.dummyVersion
+	vs.versions.init()
 	// For historical reasons, the next file number is initialized to 2.
 	vs.nextFileNumber = 2
 
@@ -259,21 +256,15 @@ func (vs *versionSet) nextFileNum() uint64 {
 }
 
 func (vs *versionSet) append(v *version) {
-	if v.prev != nil || v.next != nil {
-		panic("pebble: version linked list is inconsistent")
-	}
-	v.prev = vs.dummyVersion.prev
-	v.prev.next = v
-	v.next = &vs.dummyVersion
-	v.next.prev = v
+	vs.versions.pushBack(v)
 }
 
 func (vs *versionSet) currentVersion() *version {
-	return vs.dummyVersion.prev
+	return vs.versions.back()
 }
 
 func (vs *versionSet) addLiveFileNums(m map[uint64]struct{}) {
-	for v := vs.dummyVersion.next; v != &vs.dummyVersion; v = v.next {
+	for v := vs.versions.root.next; v != &vs.versions.root; v = v.next {
 		for _, ff := range v.files {
 			for _, f := range ff {
 				m[f.fileNum] = struct{}{}

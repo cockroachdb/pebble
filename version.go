@@ -320,3 +320,36 @@ func internalGet(
 	err = t.Close()
 	return nil, err != nil, err
 }
+
+type versionList struct {
+	root version
+}
+
+func (l *versionList) init() {
+	l.root.next = &l.root
+	l.root.prev = &l.root
+}
+
+func (l *versionList) back() *version {
+	return l.root.prev
+}
+
+func (l *versionList) pushBack(v *version) {
+	if v.prev != nil || v.next != nil {
+		panic("pebble: version linked list is inconsistent")
+	}
+	v.prev = l.root.prev
+	v.prev.next = v
+	v.next = &l.root
+	v.next.prev = v
+}
+
+func (l *versionList) remove(v *version) {
+	if v == &l.root {
+		panic("pebble: cannot remove version list root node")
+	}
+	v.prev.next = v.next
+	v.next.prev = v.prev
+	v.next = nil // avoid memory leaks
+	v.prev = nil // avoid memory leaks
+}

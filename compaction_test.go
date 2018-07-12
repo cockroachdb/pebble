@@ -395,8 +395,7 @@ func TestPickCompaction(t *testing.T) {
 			cmp:     db.DefaultComparer.Compare,
 			cmpName: db.DefaultComparer.Name,
 		}
-		vs.dummyVersion.prev = &vs.dummyVersion
-		vs.dummyVersion.next = &vs.dummyVersion
+		vs.versions.init()
 		vs.append(&tc.version)
 
 		c, got := pickCompaction(vs), ""
