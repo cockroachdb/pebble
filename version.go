@@ -98,16 +98,32 @@ const numLevels = 7
 // key in a higher level table that has both the same user key and a higher
 // sequence number.
 type version struct {
+	refs int32
+
 	files [numLevels][]fileMetadata
-	// Every version is part of a circular doubly-linked list of versions.
-	// One of those versions is a versionSet.dummyVersion.
-	prev, next *version
 
 	// These fields are the level that should be compacted next and its
 	// compaction score. A score < 1 means that compaction is not strictly
 	// needed.
 	compactionScore float64
 	compactionLevel int
+
+	// The list the version is linked into.
+	list *versionList
+
+	// The next/prev link for the versionList doubly-linked list of versions.
+	prev, next *version
+}
+
+func (v *version) ref() {
+	v.refs++
+}
+
+func (v *version) unref() {
+	v.refs--
+	if v.refs == 0 {
+		v.list.remove(v)
+	}
 }
 
 // updateCompactionScore updates v's compaction score and level.
@@ -330,26 +346,35 @@ func (l *versionList) init() {
 	l.root.prev = &l.root
 }
 
+func (l *versionList) empty() bool {
+	return l.root.next == &l.root
+}
+
 func (l *versionList) back() *version {
 	return l.root.prev
 }
 
 func (l *versionList) pushBack(v *version) {
-	if v.prev != nil || v.next != nil {
-		panic("pebble: version linked list is inconsistent")
+	if v.list != nil || v.prev != nil || v.next != nil {
+		panic("pebble: version list is inconsistent")
 	}
 	v.prev = l.root.prev
 	v.prev.next = v
 	v.next = &l.root
 	v.next.prev = v
+	v.list = l
 }
 
 func (l *versionList) remove(v *version) {
 	if v == &l.root {
 		panic("pebble: cannot remove version list root node")
 	}
+	if v.list != l {
+		panic("pebble: version list is inconsistent")
+	}
 	v.prev.next = v.next
 	v.next.prev = v.prev
 	v.next = nil // avoid memory leaks
 	v.prev = nil // avoid memory leaks
+	v.list = nil // avoid memory leaks
 }

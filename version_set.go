@@ -256,6 +256,13 @@ func (vs *versionSet) nextFileNum() uint64 {
 }
 
 func (vs *versionSet) append(v *version) {
+	if v.refs != 0 {
+		panic("pebble: version should be unreferenced")
+	}
+	if !vs.versions.empty() {
+		vs.versions.back().unref()
+	}
+	v.ref()
 	vs.versions.pushBack(v)
 }
 
