@@ -145,7 +145,7 @@ func (c *compaction) isBaseLevelForUkey(userCmp db.Compare, ukey []byte) bool {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if d.mu.compacting || d.mu.closed {
+	if d.mu.compact.active || d.mu.closed {
 		return
 	}
 	// TODO(peter): check for manual compactions.
@@ -157,7 +157,7 @@ func (d *DB) maybeScheduleCompaction() {
 			return
 		}
 	}
-	d.mu.compacting = true
+	d.mu.compact.active = true
 	go d.compact()
 }
 
@@ -168,11 +168,11 @@ func (d *DB) compact() {
 	if err := d.compact1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
 	}
-	d.mu.compacting = false
+	d.mu.compact.active = false
 	// The previous compaction may have produced too many files in a
 	// level, so reschedule another compaction if needed.
 	d.maybeScheduleCompaction()
-	d.mu.compactionCond.Broadcast()
+	d.mu.compact.cond.Broadcast()
 }
 
 // compact1 runs one compaction.
@@ -215,7 +215,7 @@ func (d *DB) compact1() error {
 	}
 	err = d.mu.versions.logAndApply(d.dirname, ve)
 	for _, fileNum := range pendingOutputs {
-		delete(d.mu.pendingOutputs, fileNum)
+		delete(d.mu.compact.pendingOutputs, fileNum)
 	}
 	if err != nil {
 		return err
@@ -239,7 +239,7 @@ func (d *DB) compactMemTable() error {
 			{level: 0, meta: meta},
 		},
 	})
-	delete(d.mu.pendingOutputs, meta.fileNum)
+	delete(d.mu.compact.pendingOutputs, meta.fileNum)
 	if err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	defer func() {
 		if retErr != nil {
 			for _, fileNum := range pendingOutputs {
-				delete(d.mu.pendingOutputs, fileNum)
+				delete(d.mu.compact.pendingOutputs, fileNum)
 			}
 			pendingOutputs = nil
 		}
@@ -345,7 +345,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		if tw == nil {
 			d.mu.Lock()
 			fileNum = d.mu.versions.nextFileNum()
-			d.mu.pendingOutputs[fileNum] = struct{}{}
+			d.mu.compact.pendingOutputs[fileNum] = struct{}{}
 			pendingOutputs = append(pendingOutputs, fileNum)
 			d.mu.Unlock()
 

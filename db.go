@@ -191,6 +191,8 @@ type DB struct {
 	mu struct {
 		sync.Mutex
 
+		closed bool
+
 		log struct {
 			number uint64
 			*record.LogWriter
@@ -205,12 +207,11 @@ type DB struct {
 		// those on-disk.
 		mem, imm *memTable
 
-		compactionCond sync.Cond
-		compacting     bool
-
-		closed bool
-
-		pendingOutputs map[uint64]struct{}
+		compact struct {
+			cond           sync.Cond
+			active         bool
+			pendingOutputs map[uint64]struct{}
+		}
 	}
 }
 
@@ -433,8 +434,8 @@ func (d *DB) Close() error {
 	if d.mu.closed {
 		return nil
 	}
-	for d.mu.compacting {
-		d.mu.compactionCond.Wait()
+	for d.mu.compact.active {
+		d.mu.compact.cond.Wait()
 	}
 	err := d.tableCache.Close()
 	err = firstError(err, d.mu.log.Close())
@@ -523,8 +524,8 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		write: d.commitWrite,
 	}, &d.mu.versions.logSeqNum, &d.mu.versions.visibleSeqNum)
 	d.mu.mem = newMemTable(d.opts)
-	d.mu.compactionCond = sync.Cond{L: &d.mu}
-	d.mu.pendingOutputs = make(map[uint64]struct{})
+	d.mu.compact.cond = sync.Cond{L: &d.mu}
+	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
 	fs := opts.GetStorage()
 
 	d.mu.Lock()
@@ -689,7 +690,7 @@ func (d *DB) replayLogFile(
 		// Strictly speaking, it's too early to delete meta.fileNum from d.pendingOutputs,
 		// but we are replaying the log file, which happens before Open returns, so there
 		// is no possibility of deleteObsoleteFiles being called concurrently here.
-		delete(d.mu.pendingOutputs, meta.fileNum)
+		delete(d.mu.compact.pendingOutputs, meta.fileNum)
 	}
 
 	return maxSeqNum, nil
@@ -715,10 +716,10 @@ func firstError(err0, err1 error) error {
 func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetadata, err error) {
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
-	d.mu.pendingOutputs[meta.fileNum] = struct{}{}
+	d.mu.compact.pendingOutputs[meta.fileNum] = struct{}{}
 	defer func(fileNum uint64) {
 		if err != nil {
-			delete(d.mu.pendingOutputs, fileNum)
+			delete(d.mu.compact.pendingOutputs, fileNum)
 		}
 	}(meta.fileNum)
 
@@ -839,13 +840,13 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		if d.mu.imm != nil {
 			// We have filled up the current memtable, but the previous
 			// one is still being compacted, so we wait.
-			d.mu.compactionCond.Wait()
+			d.mu.compact.cond.Wait()
 			continue
 		}
 
 		if len(d.mu.versions.currentVersion().files[0]) > l0StopWritesTrigger {
 			// There are too many level-0 files.
-			d.mu.compactionCond.Wait()
+			d.mu.compact.cond.Wait()
 			continue
 		}
 
@@ -880,7 +881,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles() {
 	liveFileNums := map[uint64]struct{}{}
-	for fileNum := range d.mu.pendingOutputs {
+	for fileNum := range d.mu.compact.pendingOutputs {
 		liveFileNums[fileNum] = struct{}{}
 	}
 	d.mu.versions.addLiveFileNums(liveFileNums)
