@@ -7,10 +7,11 @@ import (
 )
 
 type dbIter struct {
-	cmp    db.Compare
-	iter   db.InternalIterator
-	seqNum uint64
-	err    error
+	cmp     db.Compare
+	iter    db.InternalIterator
+	seqNum  uint64
+	version *version
+	err     error
 }
 
 var _ db.Iterator = (*dbIter)(nil)
@@ -134,5 +135,9 @@ func (i *dbIter) Error() error {
 }
 
 func (i *dbIter) Close() error {
+	if i.version != nil {
+		i.version.unref()
+		i.version = nil
+	}
 	return i.err
 }

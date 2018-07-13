@@ -16,8 +16,6 @@
 //
 // - Miscellaneous
 //   - Implement {block,table}Iter.SeekLT
-//   - Add support for referencing a version and preventing file deletion for a
-//     referenced version. Use in DB.Get and DB.NewIter.
 //   - Merge operator
 //   - Debug/event logging
 //   - Faster block cache (sharded?)
@@ -224,9 +222,12 @@ var _ Writer = (*DB)(nil)
 func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	d.mu.Lock()
 	snapshot := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
-	// TODO(peter): do we need to ref-count the current version, so that we don't
-	// delete its underlying files if we have a concurrent compaction?
+	// Grab and reference the current version to prevent its underlying files
+	// from being deleted if we have a concurrent compaction. Note that
+	// version.unref() can be called without holding DB.mu.
 	current := d.mu.versions.currentVersion()
+	current.ref()
+	defer current.unref()
 	memtables := d.mu.mem.queue.iter()
 	d.mu.Unlock()
 
@@ -335,9 +336,11 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	// sequence numbers for every iter? Perhaps the sequence number filtering
 	// should be folded into mergingIter (or InternalIterator).
 	//
-	// TODO(peter): do we need to ref-count the current version, so that we don't
-	// delete its underlying files if we have a concurrent compaction?
+	// Grab and reference the current version to prevent its underlying files
+	// from being deleted if we have a concurrent compaction. Note that
+	// version.unref() can be called without holding DB.mu.
 	current := d.mu.versions.currentVersion()
+	current.ref()
 	memtables := d.mu.mem.queue.iter()
 	d.mu.Unlock()
 
@@ -346,6 +349,9 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 		iters  [3 + numLevels]db.InternalIterator
 		levels [numLevels]levelIter
 	}
+
+	dbi := &buf.dbi
+	dbi.version = current
 
 	iters := buf.iters[:0]
 	if batchIter != nil {
@@ -362,7 +368,8 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 		f := current.files[0][i]
 		iter, err := d.newIter(f.fileNum)
 		if err != nil {
-			return &dbIter{err: err}
+			dbi.err = err
+			return dbi
 		}
 		iters = append(iters, iter)
 	}
@@ -387,7 +394,6 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 		iters = append(iters, li)
 	}
 
-	dbi := &buf.dbi
 	dbi.iter = newMergingIter(d.cmp, iters...)
 	dbi.seqNum = seqNum
 	return dbi
@@ -521,14 +527,16 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.mem.mutable = newMemTable(d.opts)
 	d.mu.mem.queue.init()
 	d.mu.mem.queue.pushLocked(d.mu.mem.mutable)
-	d.mu.compact.cond = sync.Cond{L: &d.mu}
+	d.mu.compact.cond = sync.Cond{L: &d.mu.Mutex}
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
-	fs := opts.GetStorage()
+	// TODO(peter): This initialization is funky.
+	d.mu.versions.versions.mu = &d.mu.Mutex
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	// Lock the database directory.
+	fs := opts.GetStorage()
 	err := fs.MkdirAll(dirname, 0755)
 	if err != nil {
 		return nil, err

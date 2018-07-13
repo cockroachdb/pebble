@@ -24,6 +24,7 @@ type versionSet struct {
 	cmp     db.Compare
 	cmpName string
 
+	// Mutable fields.
 	versions versionList
 
 	logNumber          uint64
@@ -260,7 +261,7 @@ func (vs *versionSet) append(v *version) {
 		panic("pebble: version should be unreferenced")
 	}
 	if !vs.versions.empty() {
-		vs.versions.back().unref()
+		vs.versions.back().unrefLocked()
 	}
 	v.ref()
 	vs.versions.pushBack(v)

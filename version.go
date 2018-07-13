@@ -7,6 +7,8 @@ package pebble
 import (
 	"fmt"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
 )
@@ -116,12 +118,19 @@ type version struct {
 }
 
 func (v *version) ref() {
-	v.refs++
+	atomic.AddInt32(&v.refs, 1)
 }
 
 func (v *version) unref() {
-	v.refs--
-	if v.refs == 0 {
+	if atomic.AddInt32(&v.refs, -1) == 0 {
+		v.list.mu.Lock()
+		v.list.remove(v)
+		v.list.mu.Unlock()
+	}
+}
+
+func (v *version) unrefLocked() {
+	if atomic.AddInt32(&v.refs, -1) == 0 {
 		v.list.remove(v)
 	}
 }
@@ -338,6 +347,7 @@ func internalGet(
 }
 
 type versionList struct {
+	mu   *sync.Mutex
 	root version
 }
 
