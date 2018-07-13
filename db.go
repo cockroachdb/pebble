@@ -193,19 +193,17 @@ type DB struct {
 
 		closed bool
 
+		versions versionSet
+
 		log struct {
 			number uint64
 			*record.LogWriter
 		}
 
-		versions versionSet
-
-		// mem is non-nil and the MemTable pointed to is mutable. imm is possibly
-		// nil, but if non-nil, the MemTable pointed to is immutable and will be
-		// copied out as an on-disk table. mem's sequence numbers are all
-		// higher than imm's, and imm's sequence numbers are all higher than
-		// those on-disk.
-		mem, imm *memTable
+		mem struct {
+			mutable *memTable     // the current mutable memTable
+			queue   memTableQueue // queue of memtables (mutable is at head)
+		}
 
 		compact struct {
 			cond           sync.Cond
@@ -229,16 +227,14 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
 	current := d.mu.versions.currentVersion()
-	memtables := [2]*memTable{d.mu.mem, d.mu.imm}
+	memtables := d.mu.mem.queue.iter()
 	d.mu.Unlock()
 
 	ikey := db.MakeInternalKey(key, snapshot, db.InternalKeyKindMax)
 
 	// Look in the memtables before going to the on-disk current version.
-	for _, mem := range memtables {
-		if mem == nil {
-			continue
-		}
+	for ; !memtables.done(); memtables.next() {
+		mem := memtables.table()
 		iter := mem.NewIter(opts)
 		iter.SeekGE(key)
 		value, conclusive, err := internalGet(iter, d.cmp, ikey)
@@ -321,12 +317,12 @@ func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) 
 
 	// TODO(peter): If the memtable is full, allocate a new one. Mark the full
 	// memtable as ready to be flushed as soon as the reference count drops to 0.
-	err := d.mu.mem.prepare(b)
+	err := d.mu.mem.mutable.prepare(b)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 	pos, err := d.mu.log.WriteRecord(b.data)
-	return d.mu.mem, d.mu.log.LogWriter, pos, err
+	return d.mu.mem.mutable, d.mu.log.LogWriter, pos, err
 }
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
@@ -342,7 +338,7 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
 	current := d.mu.versions.currentVersion()
-	memtables := [2]*memTable{d.mu.mem, d.mu.imm}
+	memtables := d.mu.mem.queue.iter()
 	d.mu.Unlock()
 
 	var buf struct {
@@ -356,10 +352,8 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 		iters = append(iters, batchIter)
 	}
 
-	for _, mem := range memtables {
-		if mem == nil {
-			continue
-		}
+	for ; !memtables.done(); memtables.next() {
+		mem := memtables.table()
 		iters = append(iters, mem.NewIter(o))
 	}
 
@@ -524,7 +518,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		sync:          d.commitSync,
 		write:         d.commitWrite,
 	})
-	d.mu.mem = newMemTable(d.opts)
+	d.mu.mem.mutable = newMemTable(d.opts)
+	d.mu.mem.queue.init()
+	d.mu.mem.queue.pushLocked(d.mu.mem.mutable)
 	d.mu.compact.cond = sync.Cond{L: &d.mu}
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
 	fs := opts.GetStorage()
@@ -833,12 +829,12 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			continue
 		}
 
-		if !force && d.mu.mem.ApproximateMemoryUsage() <= d.opts.GetWriteBufferSize() {
+		if !force && d.mu.mem.mutable.ApproximateMemoryUsage() <= d.opts.GetWriteBufferSize() {
 			// There is room in the current memtable.
 			break
 		}
 
-		if d.mu.imm != nil {
+		if d.mu.mem.queue.len() >= 2 {
 			// We have filled up the current memtable, but the previous
 			// one is still being compacted, so we wait.
 			d.mu.compact.cond.Wait()
@@ -869,7 +865,8 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		// versionEdit to the manifest telling it that log files < d.mu.log.number
 		// have been applied.
 		d.mu.log.number, d.mu.log.LogWriter = newLogNumber, newLog
-		d.mu.imm, d.mu.mem = d.mu.mem, newMemTable(d.opts)
+		d.mu.mem.mutable = newMemTable(d.opts)
+		d.mu.mem.queue.pushLocked(d.mu.mem.mutable)
 		force = false
 		d.maybeScheduleCompaction()
 	}

@@ -149,7 +149,7 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 	// TODO(peter): check for manual compactions.
-	if d.mu.imm == nil {
+	if d.mu.mem.queue.len() == 1 {
 		v := d.mu.versions.currentVersion()
 		// TODO(peter): check v.fileToCompact.
 		if v.compactionScore < 1 {
@@ -180,7 +180,7 @@ func (d *DB) compact() {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compact1() error {
-	if d.mu.imm != nil {
+	if d.mu.mem.queue.len() > 1 {
 		return d.compactMemTable()
 	}
 
@@ -224,12 +224,17 @@ func (d *DB) compact1() error {
 	return nil
 }
 
-// compactMemTable runs a compaction that copies d.mu.imm from memory to disk.
+// compactMemTable runs a compaction that copies the immutable memtables from
+// memory to disk.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compactMemTable() error {
-	meta, err := d.writeLevel0Table(d.opts.GetStorage(), d.mu.imm)
+	imm := d.mu.mem.queue.tailLocked()
+	if imm == d.mu.mem.mutable {
+		panic("pebble: cannot compact mutable memtable")
+	}
+	meta, err := d.writeLevel0Table(d.opts.GetStorage(), imm)
 	if err != nil {
 		return err
 	}
@@ -243,7 +248,7 @@ func (d *DB) compactMemTable() error {
 	if err != nil {
 		return err
 	}
-	d.mu.imm = nil
+	d.mu.mem.queue.popLocked()
 	d.deleteObsoleteFiles()
 	return nil
 }
@@ -299,7 +304,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	lastSeqNumForKey := db.InternalKeySeqNumMax
 	var smallest, largest db.InternalKey
 	for ; iter.Valid(); iter.Next() {
-		// TODO(peter): prioritize compacting d.mu.imm.
+		// TODO(peter): prioritize compacting immutable memtables.
 
 		// TODO(peter): support c.shouldStopBefore.
 
