@@ -199,8 +199,13 @@ type DB struct {
 		}
 
 		mem struct {
-			mutable *memTable     // the current mutable memTable
-			queue   memTableQueue // queue of memtables (mutable is at head)
+			// The current mutable memTable.
+			mutable *memTable
+			// Queue of memtables (mutable is at end). Elements are added to the end
+			// of the slice and removed from the beginning. Once an index is set it
+			// is never modified making a fixed slice immutable and safe for
+			// concurrent reads.
+			queue []*memTable
 		}
 
 		compact struct {
@@ -228,14 +233,14 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	current := d.mu.versions.currentVersion()
 	current.ref()
 	defer current.unref()
-	memtables := d.mu.mem.queue.iter()
+	memtables := d.mu.mem.queue
 	d.mu.Unlock()
 
 	ikey := db.MakeInternalKey(key, snapshot, db.InternalKeyKindMax)
 
 	// Look in the memtables before going to the on-disk current version.
-	for ; !memtables.done(); memtables.next() {
-		mem := memtables.table()
+	for i := len(memtables) - 1; i >= 0; i-- {
+		mem := memtables[i]
 		iter := mem.NewIter(opts)
 		iter.SeekGE(key)
 		value, conclusive, err := internalGet(iter, d.cmp, ikey)
@@ -341,7 +346,7 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	// version.unref() can be called without holding DB.mu.
 	current := d.mu.versions.currentVersion()
 	current.ref()
-	memtables := d.mu.mem.queue.iter()
+	memtables := d.mu.mem.queue
 	d.mu.Unlock()
 
 	var buf struct {
@@ -358,8 +363,8 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 		iters = append(iters, batchIter)
 	}
 
-	for ; !memtables.done(); memtables.next() {
-		mem := memtables.table()
+	for i := len(memtables) - 1; i >= 0; i-- {
+		mem := memtables[i]
 		iters = append(iters, mem.NewIter(o))
 	}
 
@@ -525,8 +530,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		write:         d.commitWrite,
 	})
 	d.mu.mem.mutable = newMemTable(d.opts)
-	d.mu.mem.queue.init()
-	d.mu.mem.queue.pushLocked(d.mu.mem.mutable)
+	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 	d.mu.compact.cond = sync.Cond{L: &d.mu.Mutex}
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
 	// TODO(peter): This initialization is funky.
@@ -842,7 +846,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			break
 		}
 
-		if d.mu.mem.queue.len() >= 2 {
+		if len(d.mu.mem.queue) >= 2 {
 			// We have filled up the current memtable, but the previous
 			// one is still being compacted, so we wait.
 			d.mu.compact.cond.Wait()
@@ -874,7 +878,7 @@ func (d *DB) makeRoomForWrite(force bool) error {
 		// have been applied.
 		d.mu.log.number, d.mu.log.LogWriter = newLogNumber, newLog
 		d.mu.mem.mutable = newMemTable(d.opts)
-		d.mu.mem.queue.pushLocked(d.mu.mem.mutable)
+		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 		force = false
 		d.maybeScheduleCompaction()
 	}

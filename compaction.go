@@ -149,7 +149,7 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 	// TODO(peter): check for manual compactions.
-	if d.mu.mem.queue.len() == 1 {
+	if len(d.mu.mem.queue) == 1 {
 		v := d.mu.versions.currentVersion()
 		// TODO(peter): check v.fileToCompact.
 		if v.compactionScore < 1 {
@@ -180,7 +180,7 @@ func (d *DB) compact() {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compact1() error {
-	if d.mu.mem.queue.len() > 1 {
+	if len(d.mu.mem.queue) > 1 {
 		return d.compactMemTable()
 	}
 
@@ -230,7 +230,7 @@ func (d *DB) compact1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compactMemTable() error {
-	imm := d.mu.mem.queue.tailLocked()
+	imm := d.mu.mem.queue[0]
 	if imm == d.mu.mem.mutable {
 		panic("pebble: cannot compact mutable memtable")
 	}
@@ -248,7 +248,7 @@ func (d *DB) compactMemTable() error {
 	if err != nil {
 		return err
 	}
-	d.mu.mem.queue.popLocked()
+	d.mu.mem.queue = d.mu.mem.queue[1:]
 	d.deleteObsoleteFiles()
 	return nil
 }
