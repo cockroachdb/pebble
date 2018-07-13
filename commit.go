@@ -105,6 +105,16 @@ func (q *commitQueue) dequeue(cond *sync.Cond) *Batch {
 }
 
 type commitEnv struct {
+	// The mutex to use for synchronizing access to logSeqNum and serializing
+	// calls to write().
+	mu *sync.Mutex
+	// The next sequence number to give to a batch. Mutated atomically by the
+	// current WAL writer.
+	logSeqNum *uint64
+	// The visible sequence number at which reads should be performed. Ratched
+	// upwards atomically as batches are applied to the memtable.
+	visibleSeqNum *uint64
+
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
 	// Sync the WAL up to pos+n. Called concurrently.
@@ -127,30 +137,18 @@ type commitEnv struct {
 // sequence number ensuring that the sequence number only ratchets up.
 type commitPipeline struct {
 	env commitEnv
-
-	// The next sequence number to give to a batch. Mutated atomically by the
-	// current WAL writer.
-	logSeqNum *uint64
-	// The visible sequence number at which reads should be performed. Ratched
-	// upwards atomically as batches are applied to the memtable.
-	visibleSeqNum *uint64
-
-	// State for writing to the WAL.
-	write struct {
-		sync.Mutex
-		cond    sync.Cond
-		pending commitQueue
-	}
+	// Condition var to signal upon changes to the pending queue.
+	cond sync.Cond
+	// Queue of pending batches to commit.
+	pending commitQueue
 }
 
-func newCommitPipeline(env commitEnv, logSeqNum, visibleSeqNum *uint64) *commitPipeline {
+func newCommitPipeline(env commitEnv) *commitPipeline {
 	p := &commitPipeline{
-		env:           env,
-		logSeqNum:     logSeqNum,
-		visibleSeqNum: visibleSeqNum,
+		env: env,
 	}
-	p.write.cond.L = &p.write.Mutex
-	p.write.pending.init()
+	p.cond.L = p.env.mu
+	p.pending.init()
 	return p
 }
 
@@ -197,28 +195,25 @@ func (p *commitPipeline) prepare(b *Batch) (*memTable, *record.LogWriter, int64,
 	}
 	b.published.Add(1)
 
-	w := &p.write
-	w.Lock()
+	p.env.mu.Lock()
 
 	// Enqueue the batch in the pending queue. Note that while the pending queue
 	// is lock-free, we want the order of batches to be the same as the sequence
 	// number order.
-	w.pending.enqueue(b, &w.cond)
+	p.pending.enqueue(b, &p.cond)
 
 	// Assign the batch a sequence number.
-	b.setSeqNum(atomic.AddUint64(p.logSeqNum, n) - n)
+	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
 	mem, log, pos, err := p.env.write(b)
 
-	w.Unlock()
+	p.env.mu.Unlock()
 
 	return mem, log, pos, err
 }
 
 func (p *commitPipeline) publish(b *Batch) {
-	w := &p.write
-
 	// Mark the batch as applied.
 	atomic.StoreUint32(&b.applied, 1)
 
@@ -230,7 +225,7 @@ func (p *commitPipeline) publish(b *Batch) {
 	// batch applies it will go through the same process and publish our batch
 	// for us.
 	for {
-		t := w.pending.dequeue(&w.cond)
+		t := p.pending.dequeue(&p.cond)
 		if t == nil {
 			// Wait for another goroutine to publish us.
 			b.published.Wait()
@@ -242,13 +237,13 @@ func (p *commitPipeline) publish(b *Batch) {
 		// number for a subsequent batch. That's ok as all we're guaranteeing is
 		// that the sequence number ratchets up.
 		for {
-			curSeqNum := atomic.LoadUint64(p.visibleSeqNum)
+			curSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)
 			newSeqNum := t.seqNum() + uint64(t.count())
 			if newSeqNum <= curSeqNum {
 				// t's sequence number has already been published.
 				break
 			}
-			if atomic.CompareAndSwapUint64(p.visibleSeqNum, curSeqNum, newSeqNum) {
+			if atomic.CompareAndSwapUint64(p.env.visibleSeqNum, curSeqNum, newSeqNum) {
 				// We successfully published t's sequence number.
 				break
 			}

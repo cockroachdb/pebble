@@ -229,8 +229,6 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
 	current := d.mu.versions.currentVersion()
-	// TODO(peter): What is the synchronization story for d.mu.mem and d.mu.imm?
-	// d.commit.write.Mutex?
 	memtables := [2]*memTable{d.mu.mem, d.mu.imm}
 	d.mu.Unlock()
 
@@ -319,6 +317,8 @@ func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
 }
 
 func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) {
+	// NB: commitWrite is called with d.mu locked.
+
 	// TODO(peter): If the memtable is full, allocate a new one. Mark the full
 	// memtable as ready to be flushed as soon as the reference count drops to 0.
 	err := d.mu.mem.prepare(b)
@@ -342,8 +342,6 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	// TODO(peter): do we need to ref-count the current version, so that we don't
 	// delete its underlying files if we have a concurrent compaction?
 	current := d.mu.versions.currentVersion()
-	// TODO(peter): What is the synchronization story for d.mu.mem and d.mu.imm?
-	// d.commit.write.Mutex?
 	memtables := [2]*memTable{d.mu.mem, d.mu.imm}
 	d.mu.Unlock()
 
@@ -519,10 +517,13 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.tableCache.init(dirname, opts.GetStorage(), d.opts, tableCacheSize)
 	d.newIter = d.tableCache.newIter
 	d.commit = newCommitPipeline(commitEnv{
-		apply: d.commitApply,
-		sync:  d.commitSync,
-		write: d.commitWrite,
-	}, &d.mu.versions.logSeqNum, &d.mu.versions.visibleSeqNum)
+		mu:            &d.mu.Mutex,
+		logSeqNum:     &d.mu.versions.logSeqNum,
+		visibleSeqNum: &d.mu.versions.visibleSeqNum,
+		apply:         d.commitApply,
+		sync:          d.commitSync,
+		write:         d.commitWrite,
+	})
 	d.mu.mem = newMemTable(d.opts)
 	d.mu.compact.cond = sync.Cond{L: &d.mu}
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})

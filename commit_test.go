@@ -15,6 +15,7 @@ import (
 )
 
 type testCommitEnv struct {
+	mu            sync.Mutex
 	logSeqNum     uint64
 	visibleSeqNum uint64
 	writePos      int64
@@ -27,9 +28,12 @@ type testCommitEnv struct {
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		apply: e.apply,
-		sync:  e.sync,
-		write: e.write,
+		mu:            &e.mu,
+		logSeqNum:     &e.logSeqNum,
+		visibleSeqNum: &e.visibleSeqNum,
+		apply:         e.apply,
+		sync:          e.sync,
+		write:         e.write,
 	}
 }
 
@@ -57,7 +61,7 @@ func (e *testCommitEnv) write(b *Batch) (*memTable, *record.LogWriter, int64, er
 
 func TestCommitPipeline(t *testing.T) {
 	var e testCommitEnv
-	p := newCommitPipeline(e.env(), &e.logSeqNum, &e.visibleSeqNum)
+	p := newCommitPipeline(e.env())
 
 	const n = 10000
 	var wg sync.WaitGroup
@@ -95,6 +99,9 @@ func BenchmarkCommitPipeline(b *testing.B) {
 			wal := record.NewLogWriter(ioutil.Discard)
 
 			nullCommitEnv := commitEnv{
+				mu:            new(sync.Mutex),
+				logSeqNum:     new(uint64),
+				visibleSeqNum: new(uint64),
 				apply: func(b *Batch, mem *memTable) error {
 					return mem.apply(b, b.seqNum())
 				},
@@ -122,8 +129,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					return mem, wal, pos, err
 				},
 			}
-			var logSeqNum, visibleSeqNum uint64
-			p := newCommitPipeline(nullCommitEnv, &logSeqNum, &visibleSeqNum)
+			p := newCommitPipeline(nullCommitEnv)
 
 			const keySize = 8
 			b.SetBytes(2 * keySize)
