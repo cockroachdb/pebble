@@ -91,8 +91,9 @@ func (m *memTable) set(key db.InternalKey, value []byte) error {
 }
 
 // Prepare reserves space for the batch in the memtable and references the
-// memtable preventing it from being deleted until the batch is applied. Note
-// that prepare is not thread-safe, while apply is.
+// memtable preventing it from being flushed until the batch is applied. Note
+// that prepare is not thread-safe, while apply is. The caller must call
+// unref() after the batch has been applied.
 func (m *memTable) prepare(batch *Batch) error {
 	a := m.skl.Arena()
 	if atomic.LoadInt32(&m.refs) == 1 {
@@ -107,6 +108,8 @@ func (m *memTable) prepare(batch *Batch) error {
 		return arenaskl.ErrArenaFull
 	}
 	m.reserved += batch.memTableSize
+
+	m.ref()
 	return nil
 }
 

@@ -48,7 +48,7 @@ func (e *testCommitEnv) prepare(b *Batch) (*memTable, error) {
 	return nil, nil
 }
 
-func (e *testCommitEnv) sync(log *record.LogWriter, pos, n int64) error {
+func (e *testCommitEnv) sync(log *record.LogWriter, pos int64) error {
 	return nil
 }
 
@@ -95,7 +95,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 	for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
 			b.SetParallelism(parallelism)
-			var mem *memTable
+			mem := newMemTable(nil)
 			wal := record.NewLogWriter(ioutil.Discard)
 
 			nullCommitEnv := commitEnv{
@@ -103,18 +103,19 @@ func BenchmarkCommitPipeline(b *testing.B) {
 				logSeqNum:     new(uint64),
 				visibleSeqNum: new(uint64),
 				apply: func(b *Batch, mem *memTable) error {
-					return mem.apply(b, b.seqNum())
-				},
-				sync: func(log *record.LogWriter, pos, n int64) error {
-					// return wal.Sync()
+					err := mem.apply(b, b.seqNum())
+					if err != nil {
+						return err
+					}
+					mem.unref()
 					return nil
+				},
+				sync: func(log *record.LogWriter, pos int64) error {
+					return wal.Sync(pos)
 				},
 				write: func(b *Batch) (*memTable, *record.LogWriter, int64, error) {
 					for {
-						err := arenaskl.ErrArenaFull
-						if mem != nil {
-							err = mem.prepare(b)
-						}
+						err := mem.prepare(b)
 						if err == arenaskl.ErrArenaFull {
 							mem = newMemTable(nil)
 							continue

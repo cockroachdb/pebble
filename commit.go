@@ -117,8 +117,8 @@ type commitEnv struct {
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
-	// Sync the WAL up to pos+n. Called concurrently.
-	sync func(log *record.LogWriter, pos, n int64) error
+	// Sync the WAL up to pos. Called concurrently.
+	sync func(log *record.LogWriter, pos int64) error
 	// Write the batch to the WAL. The data is not persisted until a call to
 	// sync() is performed. Returns the WAL position at which the data was
 	// written which can be used in a subsequent call to sync(). Also returns the
@@ -167,22 +167,22 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
-		return err
+		panic(err)
 	}
 
 	// Apply the batch to the memtable.
 	if err := p.env.apply(b, mem); err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
-		return err
+		panic(err)
 	}
 
 	// Publish the batch sequence number.
 	p.publish(b)
 
 	if syncWAL {
-		if err := p.env.sync(log, pos, int64(len(b.data))); err != nil {
-			return err
+		if err := p.env.sync(log, pos); err != nil {
+			panic(err)
 		}
 	}
 	return nil

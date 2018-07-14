@@ -326,8 +326,8 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
-	return log.Sync( /* pos, n */ )
+func (d *DB) commitSync(log *record.LogWriter, pos int64) error {
+	return log.Sync(pos)
 }
 
 func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) {
@@ -357,7 +357,6 @@ func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) 
 		if err != nil {
 			return nil, nil, 0, err
 		}
-		d.mu.mem.mutable.ref()
 		break
 	}
 
