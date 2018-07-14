@@ -7,12 +7,8 @@
 // TODO(peter):
 //
 // - MemTable
-//   - Allow arbitrary sized batches. RocksDB allows this by allowing
-//     additional arena blocks to be added as necessary to hold the contents of
-//     a batch. With the memTable.prepare() functionality, we could allocate a
-//     custom sized arena to hold a batch that is larger than the normal
-//     arena. Need to be cognizant of what this would mean for
-//     throughput. Should memTable internally have a stack of skiplists?
+//   - Allow arbitrary sized batches. If a batch is too large to fit in a
+//     single memTable, then allocate a custom-sized memTable to hold it.
 //
 // - Miscellaneous
 //   - Implement {block,table}Iter.SeekLT
