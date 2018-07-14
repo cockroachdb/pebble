@@ -30,11 +30,11 @@ func TestCache(t *testing.T) {
 		var hit bool
 		v := cache.Get(uint64(key), 0)
 		if v == nil {
-			cache.Set(uint64(key), 0, key)
+			cache.Set(uint64(key), 0, append([]byte(nil), fields[0][0]))
 		} else {
 			hit = true
-			if v.(int) != key {
-				t.Errorf("cache returned bad data: got %+v , want %+v\n", v, key)
+			if !bytes.Equal(v, fields[0][:1]) {
+				t.Errorf("cache returned bad data: got %s , want %s\n", v, fields[0][:1])
 			}
 		}
 		if hit != wantHit {

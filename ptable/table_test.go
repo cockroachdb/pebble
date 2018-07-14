@@ -190,7 +190,7 @@ func buildBenchmarkTable(b *testing.B, blockSize int, nullValues bool) (*Reader,
 		b.Fatal(err)
 	}
 	return NewReader(f1, 0, &db.Options{
-		Cache: cache.NewBlockCache(128 << 20),
+		Cache: cache.New(128 << 20),
 	}), keys
 }
 

@@ -121,7 +121,7 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 // and WriteOptions types.
 type Options struct {
 	// TODO(peter): provide a cache interface.
-	Cache *cache.BlockCache
+	Cache *cache.Cache
 
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads

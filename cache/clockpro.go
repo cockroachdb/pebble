@@ -17,7 +17,6 @@ It is MIT licensed, like the original.
 package cache
 
 import (
-	"container/ring"
 	"sync"
 )
 
@@ -41,12 +40,77 @@ func (p pageType) String() string {
 	return "unknown"
 }
 
-type entry2 struct {
+type key struct {
+	fileNum uint64
+	offset  uint64
+}
+
+type entry struct {
 	key   key
-	val   interface{}
-	link  ring.Ring
+	val   []byte
+	next  *entry
+	prev  *entry
+	size  int64
 	ptype pageType
 	ref   bool
+}
+
+func (e *entry) init() *entry {
+	e.next = e
+	e.prev = e
+	return e
+}
+
+func (e *entry) Next() *entry {
+	if e.next == nil {
+		return e.init()
+	}
+	return e.next
+}
+
+func (e *entry) Prev() *entry {
+	if e.prev == nil {
+		return e.init()
+	}
+	return e.prev
+}
+
+func (e *entry) Link(s *entry) *entry {
+	n := e.Next()
+	if s != nil {
+		p := s.Prev()
+		// Note: Cannot use multiple assignment because
+		// evaluation order of LHS is not specified.
+		e.next = s
+		s.prev = e
+		n.prev = p
+		p.next = n
+	}
+	return n
+}
+
+func (e *entry) Move(n int) *entry {
+	if e.next == nil {
+		return e.init()
+	}
+	switch {
+	case n < 0:
+		for ; n < 0; n++ {
+			e = e.prev
+		}
+	case n > 0:
+		for ; n > 0; n-- {
+			e = e.next
+		}
+	}
+	return e
+}
+
+func (e *entry) Unlink(n int) *entry {
+	if n <= 0 {
+		return nil
+	}
+	return e.Link(e.Move(n + 1))
 }
 
 // Cache ...
@@ -55,11 +119,11 @@ type Cache struct {
 
 	maxSize  int64
 	coldSize int64
-	keys     map[key]*entry2
+	keys     map[key]*entry
 
-	handHot  *ring.Ring
-	handCold *ring.Ring
-	handTest *ring.Ring
+	handHot  *entry
+	handCold *entry
+	handTest *entry
 
 	countHot  int64
 	countCold int64
@@ -71,17 +135,20 @@ func New(size int64) *Cache {
 	return &Cache{
 		maxSize:  size,
 		coldSize: size,
-		keys:     make(map[key]*entry2),
+		keys:     make(map[key]*entry),
 	}
 }
 
 // Get ...
-func (c *Cache) Get(fileNum, offset uint64) interface{} {
+func (c *Cache) Get(fileNum, offset uint64) []byte {
+	if c == nil {
+		return nil
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	k := key{FileNum: fileNum, Offset: offset}
-	e := c.keys[k]
+	e := c.keys[key{fileNum: fileNum, offset: offset}]
 	if e == nil {
 		return nil
 	}
@@ -93,18 +160,21 @@ func (c *Cache) Get(fileNum, offset uint64) interface{} {
 }
 
 // Set ...
-func (c *Cache) Set(fileNum, offset uint64, value interface{}) {
+func (c *Cache) Set(fileNum, offset uint64, value []byte) {
+	if c == nil {
+		return
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	k := key{FileNum: fileNum, Offset: offset}
+	k := key{fileNum: fileNum, offset: offset}
 	e := c.keys[k]
 	if e == nil {
 		// no cache entry? add it
-		e = &entry2{ref: false, val: value, ptype: ptCold, key: k}
-		e.link.Value = e
+		e = &entry{val: value, ptype: ptCold, key: k, size: int64(len(value))}
 		c.metaAdd(k, e)
-		c.countCold++
+		c.countCold += e.size
 		return
 	}
 
@@ -112,33 +182,42 @@ func (c *Cache) Set(fileNum, offset uint64, value interface{}) {
 		// cache entry was a hot or cold page
 		e.val = value
 		e.ref = true
+		delta := int64(len(value)) - e.size
+		e.size = int64(len(value))
+		if e.ptype == ptHot {
+			c.countHot += delta
+		} else {
+			c.countCold += delta
+		}
+		c.evict()
 		return
 	}
 
 	// cache entry was a test page
-	if c.coldSize < c.maxSize {
-		c.coldSize++
+	c.coldSize += e.size
+	if c.coldSize > c.maxSize {
+		c.coldSize = c.maxSize
 	}
 	e.ref = false
 	e.val = value
 	e.ptype = ptHot
-	c.countTest--
-	c.metaDel(&e.link)
+	c.countTest -= e.size
+	c.metaDel(e)
 	c.metaAdd(k, e)
-	c.countHot++
+	c.countHot += e.size
 }
 
-func (c *Cache) metaAdd(key key, e *entry2) {
+func (c *Cache) metaAdd(key key, e *entry) {
 	c.evict()
 
 	c.keys[key] = e
-	e.link.Link(c.handHot)
+	e.Link(c.handHot)
 
 	if c.handHot == nil {
 		// first element
-		c.handHot = &e.link
-		c.handCold = &e.link
-		c.handTest = &e.link
+		c.handHot = e
+		c.handCold = e
+		c.handTest = e
 	}
 
 	if c.handCold == c.handHot {
@@ -146,20 +225,20 @@ func (c *Cache) metaAdd(key key, e *entry2) {
 	}
 }
 
-func (c *Cache) metaDel(r *ring.Ring) {
-	delete(c.keys, r.Value.(*entry2).key)
+func (c *Cache) metaDel(e *entry) {
+	delete(c.keys, e.key)
 
-	if r == c.handHot {
+	if e == c.handHot {
 		c.handHot = c.handHot.Prev()
 	}
-	if r == c.handCold {
+	if e == c.handCold {
 		c.handCold = c.handCold.Prev()
 	}
-	if r == c.handTest {
+	if e == c.handTest {
 		c.handTest = c.handTest.Prev()
 	}
 
-	r.Prev().Unlink(1)
+	e.Prev().Unlink(1)
 }
 
 func (c *Cache) evict() {
@@ -169,18 +248,18 @@ func (c *Cache) evict() {
 }
 
 func (c *Cache) runHandCold() {
-	mentry := c.handCold.Value.(*entry2)
-	if mentry.ptype == ptCold {
-		if mentry.ref {
-			mentry.ptype = ptHot
-			mentry.ref = false
-			c.countCold--
-			c.countHot++
+	e := c.handCold
+	if e.ptype == ptCold {
+		if e.ref {
+			e.ref = false
+			e.ptype = ptHot
+			c.countCold -= e.size
+			c.countHot += e.size
 		} else {
-			mentry.ptype = ptTest
-			mentry.val = nil
-			c.countCold--
-			c.countTest++
+			e.val = nil
+			e.ptype = ptTest
+			c.countCold -= e.size
+			c.countTest += e.size
 			for c.maxSize < c.countTest {
 				c.runHandTest()
 			}
@@ -189,7 +268,7 @@ func (c *Cache) runHandCold() {
 
 	c.handCold = c.handCold.Next()
 
-	for c.maxSize-c.coldSize < c.countHot {
+	for c.maxSize-c.coldSize <= c.countHot {
 		c.runHandHot()
 	}
 }
@@ -199,14 +278,14 @@ func (c *Cache) runHandHot() {
 		c.runHandTest()
 	}
 
-	mentry := c.handHot.Value.(*entry2)
-	if mentry.ptype == ptHot {
-		if mentry.ref {
-			mentry.ref = false
+	e := c.handHot
+	if e.ptype == ptHot {
+		if e.ref {
+			e.ref = false
 		} else {
-			mentry.ptype = ptCold
-			c.countHot--
-			c.countCold++
+			e.ptype = ptCold
+			c.countHot -= e.size
+			c.countCold += e.size
 		}
 	}
 
@@ -218,15 +297,16 @@ func (c *Cache) runHandTest() {
 		c.runHandCold()
 	}
 
-	mentry := c.handTest.Value.(*entry2)
-	if mentry.ptype == ptTest {
+	e := c.handTest
+	if e.ptype == ptTest {
 		prev := c.handTest.Prev()
 		c.metaDel(c.handTest)
 		c.handTest = prev
 
-		c.countTest--
-		if c.coldSize > 1 {
-			c.coldSize--
+		c.countTest -= e.size
+		c.coldSize -= e.size
+		if c.coldSize < 0 {
+			c.coldSize = 0
 		}
 	}
 

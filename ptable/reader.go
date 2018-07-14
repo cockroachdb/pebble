@@ -123,7 +123,7 @@ type Reader struct {
 	fileNum uint64 // TODO(peter): needed for block cache
 	err     error
 	index   []byte
-	cache   *cache.BlockCache
+	cache   *cache.Cache
 	cmp     db.Compare
 }
 
@@ -258,14 +258,14 @@ func (r *Reader) readBlock(bh blockHandle) ([]byte, error) {
 	switch b[bh.length] {
 	case noCompressionBlockType:
 		b = b[:bh.length]
-		r.cache.Insert(r.fileNum, bh.offset, b)
+		r.cache.Set(r.fileNum, bh.offset, b)
 		return b, nil
 	case snappyCompressionBlockType:
 		b, err := snappy.Decode(nil, b[:bh.length])
 		if err != nil {
 			return nil, err
 		}
-		r.cache.Insert(r.fileNum, bh.offset, b)
+		r.cache.Set(r.fileNum, bh.offset, b)
 		return b, nil
 	}
 	return nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])

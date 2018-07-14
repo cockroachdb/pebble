@@ -16,7 +16,7 @@
 //   - Debug/event logging
 //   - Faster block cache (sharded?)
 //     - Reserve block cache memory for memtables
-//     - CLOCK-PRO: https://godoc.org/github.com/dgryski/go-clockpro
+//     - Lock-free cache: http://myui.github.io/publications/ICDE10_conf_full_409.pdf
 //
 // - Commit pipeline
 //   - Rate limiting user writes
@@ -61,6 +61,7 @@
 //   - Expand dbIter tests (with {merging,memTable,batch,level}Iter)
 //   - LogWriter (test all error paths)
 //   - commitPipeline (test all error paths)
+//   - Benchmark cache under concurrency
 //
 // - Optimizations
 //   - In-order insertion into memtable/indexed-batches
