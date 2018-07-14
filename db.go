@@ -72,6 +72,8 @@
 //     - Speed up Next/Prev with fast-path comparison check
 //   - Fractional cascading on lookups
 //     https://github.com/facebook/rocksdb/wiki/Indexing-SST-Files-for-Better-Lookup-Performance
+//   - IO scheduler ala Scylla to reduce IO latency
+//   - Dynamically adjust compaction bandwidth based on user requests
 package pebble // import "github.com/petermattis/pebble"
 
 import (
