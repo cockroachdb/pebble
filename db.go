@@ -314,7 +314,16 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 }
 
 func (d *DB) commitApply(b *Batch, mem *memTable) error {
-	return mem.apply(b, b.seqNum())
+	err := mem.apply(b, b.seqNum())
+	if err != nil {
+		return err
+	}
+	if mem.unref() {
+		d.mu.Lock()
+		d.maybeScheduleCompaction()
+		d.mu.Unlock()
+	}
+	return nil
 }
 
 func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
@@ -348,6 +357,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) 
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		d.mu.mem.mutable.ref()
 		break
 	}
 
@@ -913,9 +923,12 @@ func (d *DB) switchMemTable() error {
 	// have been applied.
 	d.mu.log.number = newLogNumber
 	d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
+	imm := d.mu.mem.mutable
 	d.mu.mem.mutable = newMemTable(d.opts)
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-	d.maybeScheduleCompaction()
+	if imm.unref() {
+		d.maybeScheduleCompaction()
+	}
 	return nil
 }
 

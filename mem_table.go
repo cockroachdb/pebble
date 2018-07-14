@@ -46,6 +46,25 @@ func newMemTable(o *db.Options) *memTable {
 	return m
 }
 
+func (m *memTable) ref() {
+	atomic.AddInt32(&m.refs, 1)
+}
+
+func (m *memTable) unref() bool {
+	switch v := atomic.AddInt32(&m.refs, -1); {
+	case v < 0:
+		panic("pebble: inconsistent reference count")
+	case v == 0:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *memTable) readyForFlush() bool {
+	return atomic.LoadInt32(&m.refs) == 0
+}
+
 // Get gets the value for the given key. It returns ErrNotFound if the DB does
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
@@ -88,8 +107,6 @@ func (m *memTable) prepare(batch *Batch) error {
 		return arenaskl.ErrArenaFull
 	}
 	m.reserved += batch.memTableSize
-
-	atomic.AddInt32(&m.refs, 1)
 	return nil
 }
 
@@ -106,12 +123,6 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	}
 	if seqNum != startSeqNum+uint64(batch.count()) {
 		panic("pebble: inconsistent batch count")
-	}
-	switch v := atomic.AddInt32(&m.refs, -1); {
-	case v < 0:
-		panic("pebble: inconsistent reference count")
-	case v == 0:
-		// TODO(peter): flush the batch
 	}
 	return nil
 }

@@ -148,8 +148,18 @@ func (d *DB) maybeScheduleCompaction() {
 	if d.mu.compact.active || d.mu.closed {
 		return
 	}
+
+	var compactMemTable = false
+	for _, mem := range d.mu.mem.queue {
+		if mem.readyForFlush() {
+			compactMemTable = true
+			break
+		}
+	}
+
 	// TODO(peter): check for manual compactions.
-	if len(d.mu.mem.queue) == 1 {
+
+	if !compactMemTable {
 		v := d.mu.versions.currentVersion()
 		// TODO(peter): check v.fileToCompact.
 		if v.compactionScore < 1 {
@@ -157,6 +167,7 @@ func (d *DB) maybeScheduleCompaction() {
 			return
 		}
 	}
+
 	d.mu.compact.active = true
 	go d.compact()
 }
@@ -233,6 +244,9 @@ func (d *DB) compactMemTable() error {
 	imm := d.mu.mem.queue[0]
 	if imm == d.mu.mem.mutable {
 		panic("pebble: cannot compact mutable memtable")
+	}
+	if !imm.readyForFlush() {
+		return nil
 	}
 	meta, err := d.writeLevel0Table(d.opts.GetStorage(), imm)
 	if err != nil {
