@@ -323,16 +323,22 @@ func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
 func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) {
 	// NB: commitWrite is called with d.mu locked.
 
-	// TODO(peter):
-	// - L0 slowdown writes trigger
-	// - L0 stop writes trigger
-	if err := d.makeRoomForWrite(b == nil /* force */); err != nil {
-		return nil, nil, 0, err
+	if b == nil {
+		// A nil batch indicates a request to flush the memtable.
+		return nil, nil, 0, d.switchMemTable()
 	}
 
-	if b == nil {
-		// TODO(peter): force a memtable flush.
-		return nil, nil, 0, nil
+	// Throttle writes if there are too many L0 tables.
+	d.throttleWrite()
+
+	// Switch out the memtable if the current one is too big.
+	//
+	// TODO(peter): This should be controlled by memTable.prepare() failing with
+	// ErrArenaFull.
+	if d.mu.mem.mutable.ApproximateMemoryUsage() > d.opts.GetWriteBufferSize() {
+		if err := d.switchMemTable(); err != nil {
+			return nil, nil, 0, err
+		}
 	}
 
 	err := d.mu.mem.mutable.prepare(b)
@@ -342,6 +348,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) 
 		// 0.
 		return nil, nil, 0, err
 	}
+
 	pos, err := d.mu.log.WriteRecord(b.data)
 	return d.mu.mem.mutable, d.mu.log.LogWriter, pos, err
 }
@@ -471,8 +478,10 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 //
 // TODO(peter): untested
 func (d *DB) Flush() error {
-	// Flushing is implemented by applying a nil batch. See DB.commitWrite.
-	return d.Apply(nil, nil)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// TODO(peter): Wait for the memtable to be flushed.
+	return d.switchMemTable()
 }
 
 // Ingest TODO(peter)
@@ -833,39 +842,6 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	// TODO(peter): compaction stats.
 
 	return meta, nil
-}
-
-// makeRoomForWrite ensures that there is room in d.mu.mem for the next write.
-//
-// d.mu must be held when calling this, but the mutex may be dropped and
-// re-acquired during the course of this method.
-func (d *DB) makeRoomForWrite(force bool) error {
-	if !force {
-		d.throttleWrite()
-	}
-
-	for {
-		// TODO(peter): check any previous sticky error, if the paranoid option is
-		// set.
-
-		if d.mu.mem.switching {
-			d.mu.mem.cond.Wait()
-			continue
-		}
-
-		if !force && d.mu.mem.mutable.ApproximateMemoryUsage() <= d.opts.GetWriteBufferSize() {
-			// There is room in the current memtable.
-			break
-		}
-
-		// Attempt to switch to a new memtable and trigger compaction of old
-		if err := d.switchMemTable(); err != nil {
-			return err
-		}
-
-		force = false
-	}
-	return nil
 }
 
 func (d *DB) throttleWrite() {

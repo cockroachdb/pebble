@@ -164,7 +164,7 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
 	mem, log, pos, err := p.prepare(b)
-	if b == nil || err != nil {
+	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
 		return err
@@ -197,15 +197,13 @@ func (p *commitPipeline) prepare(b *Batch) (*memTable, *record.LogWriter, int64,
 
 	p.env.mu.Lock()
 
-	if b != nil {
-		// Enqueue the batch in the pending queue. Note that while the pending queue
-		// is lock-free, we want the order of batches to be the same as the sequence
-		// number order.
-		p.pending.enqueue(b, &p.cond)
+	// Enqueue the batch in the pending queue. Note that while the pending queue
+	// is lock-free, we want the order of batches to be the same as the sequence
+	// number order.
+	p.pending.enqueue(b, &p.cond)
 
-		// Assign the batch a sequence number.
-		b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
-	}
+	// Assign the batch a sequence number.
+	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
 	mem, log, pos, err := p.env.write(b)
