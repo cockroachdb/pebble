@@ -233,7 +233,7 @@ func (p *commitPipeline) publish(b *Batch) {
 		}
 
 		// We're responsible for publishing the sequence number for batch t, but
-		// another concurrent goroutine might sneak in a publish the sequence
+		// another concurrent goroutine might sneak in and publish the sequence
 		// number for a subsequent batch. That's ok as all we're guaranteeing is
 		// that the sequence number ratchets up.
 		for {
