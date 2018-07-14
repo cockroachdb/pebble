@@ -612,7 +612,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 	sort.Sort(logFiles)
 	for _, lf := range logFiles {
-		maxSeqNum, err := d.replayLogFile(&ve, fs, filepath.Join(dirname, lf.name))
+		maxSeqNum, err := d.replayWAL(&ve, fs, filepath.Join(dirname, lf.name))
 		if err != nil {
 			return nil, err
 		}
@@ -649,11 +649,11 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	return d, nil
 }
 
-// replayLogFile replays the edits in the named log file.
+// replayWAL replays the edits in the specified log file.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) replayLogFile(
+func (d *DB) replayWAL(
 	ve *versionEdit,
 	fs storage.Storage,
 	filename string,
@@ -665,9 +665,10 @@ func (d *DB) replayLogFile(
 	defer file.Close()
 
 	var (
-		mem      *memTable
-		batchBuf = new(bytes.Buffer)
-		rr       = record.NewReader(file)
+		mem *memTable
+		b   Batch
+		buf bytes.Buffer
+		rr  = record.NewReader(file)
 	)
 	for {
 		r, err := rr.Next()
@@ -677,42 +678,46 @@ func (d *DB) replayLogFile(
 		if err != nil {
 			return 0, err
 		}
-		_, err = io.Copy(batchBuf, r)
+		_, err = io.Copy(&buf, r)
 		if err != nil {
 			return 0, err
 		}
 
-		if batchBuf.Len() < batchHeaderLen {
+		if buf.Len() < batchHeaderLen {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
-		var b Batch
-		b.data = batchBuf.Bytes()
+		b = Batch{}
+		b.data = buf.Bytes()
+		b.refreshMemTableSize()
 		seqNum := b.seqNum()
-		seqNum1 := seqNum + uint64(b.count())
-		if maxSeqNum < seqNum1 {
-			maxSeqNum = seqNum1
-		}
+		maxSeqNum = seqNum + uint64(b.count())
 
 		if mem == nil {
 			mem = newMemTable(d.opts)
 		}
 
-		t := b.iter()
-		for ; seqNum != seqNum1; seqNum++ {
-			kind, ukey, value, ok := t.next()
-			if !ok {
-				return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
+		for {
+			err := mem.prepare(&b)
+			if err == arenaskl.ErrArenaFull {
+				if err := d.switchMemTable(); err != nil {
+					return 0, err
+				}
+				continue
 			}
-			mem.set(db.MakeInternalKey(ukey, seqNum, kind), value)
-		}
-		if len(t) != 0 {
-			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
+			if err != nil {
+				return 0, err
+			}
+			break
 		}
 
-		// TODO(peter): if mem is large enough, write it to a level-0 table and set
-		// mem = nil.
+		if err := mem.apply(&b, seqNum); err != nil {
+			return 0, err
+		}
+		if mem.unref() {
+			d.maybeScheduleCompaction()
+		}
 
-		batchBuf.Reset()
+		buf.Reset()
 	}
 
 	if mem != nil && !mem.Empty() {

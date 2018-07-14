@@ -134,6 +134,17 @@ func (b *Batch) release() {
 	}
 }
 
+func (b *Batch) refreshMemTableSize() {
+	b.memTableSize = 0
+	for iter := b.iter(); ; {
+		_, key, value, ok := iter.next()
+		if !ok {
+			break
+		}
+		b.memTableSize += memTableEntrySize(len(key), len(value))
+	}
+}
+
 // Apply the operations contained in the batch to the receiver batch.
 //
 // It is safe to modify the contents of the arguments after Apply returns.
