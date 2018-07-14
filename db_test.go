@@ -419,8 +419,8 @@ func TestBasicWrites(t *testing.T) {
 
 func TestRandomWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		Storage:         storage.NewMem(),
-		WriteBufferSize: 8 * 1024,
+		Storage:      storage.NewMem(),
+		MemTableSize: 8 * 1024,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)

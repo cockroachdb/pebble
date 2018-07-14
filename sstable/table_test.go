@@ -112,8 +112,9 @@ func init() {
 
 func check(f storage.File, fp db.FilterPolicy) error {
 	r := NewReader(f, 0, &db.Options{
-		FilterPolicy:    fp,
-		VerifyChecksums: true,
+		Levels: []db.LevelOptions{{
+			FilterPolicy: fp,
+		}},
 	})
 
 	// Check that each key/value pair in wordCount is also in the table.
@@ -228,7 +229,7 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	}
 	defer f0.Close()
 	tmpFileCount++
-	w := NewWriter(f0, &db.Options{
+	w := NewWriter(f0, nil, &db.LevelOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
 	})
@@ -331,7 +332,9 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
 	r := NewReader(f, 0, &db.Options{
-		FilterPolicy: c,
+		Levels: []db.LevelOptions{{
+			FilterPolicy: c,
+		}},
 	})
 
 	const n = 10000
@@ -472,7 +475,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 				continue
 			}
-			w := NewWriter(wf, &db.Options{
+			w := NewWriter(wf, nil, &db.LevelOptions{
 				BlockSize: blockSize,
 			})
 			for _, k := range keys[:nk] {

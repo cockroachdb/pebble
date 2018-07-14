@@ -127,7 +127,7 @@ func buildLevelIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], &db.Options{
+		writers[i] = sstable.NewWriter(files[i], nil, &db.LevelOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          db.NoCompression,

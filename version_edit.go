@@ -397,7 +397,9 @@ func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
 // new version is consistent with respect to the internal key comparer icmp.
 //
 // base may be nil, which is equivalent to a pointer to a zero version.
-func (b *bulkVersionEdit) apply(base *version, cmp db.Compare) (*version, error) {
+func (b *bulkVersionEdit) apply(
+	opts *db.Options, base *version, cmp db.Compare,
+) (*version, error) {
 	v := new(version)
 	for level := range v.files {
 		combined := [2][]fileMetadata{
@@ -436,6 +438,6 @@ func (b *bulkVersionEdit) apply(base *version, cmp db.Compare) (*version, error)
 	if err := v.checkOrdering(cmp); err != nil {
 		return nil, fmt.Errorf("pebble: internal error: %v", err)
 	}
-	v.updateCompactionScore()
+	v.updateCompactionScore(opts)
 	return v, nil
 }

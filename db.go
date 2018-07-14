@@ -41,7 +41,6 @@
 //   - Rate limiting (disk and CPU)
 //
 // - Options
-//   - Add options for hardcoded settings (e.g. l0CompactionTrigger)
 //   - Options should specify sizing and tunable knobs, not enable or disable
 //     significant bits of functionality
 //   - Parse RocksDB OPTIONS file
@@ -95,18 +94,6 @@ import (
 )
 
 const (
-	// l0CompactionTrigger is the number of files at which level-0 compaction
-	// starts.
-	l0CompactionTrigger = 4
-
-	// l0SlowdownWritesTrigger is the soft limit on number of level-0 files.
-	// We slow down writes at this point.
-	l0SlowdownWritesTrigger = 8
-
-	// l0StopWritesTrigger is the maximum number of level-0 files. We stop
-	// writes at this point.
-	l0StopWritesTrigger = 12
-
 	// minTableCacheSize is the minimum size of the table cache.
 	minTableCacheSize = 64
 
@@ -456,7 +443,7 @@ func (d *DB) NewBatch() *Batch {
 // for insert operations. If you do not need to perform reads on the batch, use
 // NewBatch instead.
 func (d *DB) NewIndexedBatch() *Batch {
-	return newIndexedBatch(d, d.opts.GetComparer())
+	return newIndexedBatch(d, d.opts.Comparer)
 }
 
 // Close closes the DB.
@@ -514,17 +501,17 @@ func (p fileNumAndNameSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func createDB(dirname string, opts *db.Options) (retErr error) {
 	const manifestFileNum = 1
 	ve := versionEdit{
-		comparatorName: opts.GetComparer().Name,
+		comparatorName: opts.Comparer.Name,
 		nextFileNumber: manifestFileNum + 1,
 	}
 	manifestFilename := dbFilename(dirname, fileTypeManifest, manifestFileNum)
-	f, err := opts.GetStorage().Create(manifestFilename)
+	f, err := opts.Storage.Create(manifestFilename)
 	if err != nil {
 		return fmt.Errorf("pebble: could not create %q: %v", manifestFilename, err)
 	}
 	defer func() {
 		if retErr != nil {
-			opts.GetStorage().Remove(manifestFilename)
+			opts.Storage.Remove(manifestFilename)
 		}
 	}()
 	defer f.Close()
@@ -542,22 +529,23 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 	if err != nil {
 		return err
 	}
-	return setCurrentFile(dirname, opts.GetStorage(), manifestFileNum)
+	return setCurrentFile(dirname, opts.Storage, manifestFileNum)
 }
 
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *db.Options) (*DB, error) {
+	opts = opts.EnsureDefaults()
 	d := &DB{
 		dirname:   dirname,
 		opts:      opts,
-		cmp:       opts.GetComparer().Compare,
-		inlineKey: opts.GetComparer().InlineKey,
+		cmp:       opts.Comparer.Compare,
+		inlineKey: opts.Comparer.InlineKey,
 	}
-	tableCacheSize := opts.GetMaxOpenFiles() - numNonTableCacheFiles
+	tableCacheSize := opts.MaxOpenFiles - numNonTableCacheFiles
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(dirname, opts.GetStorage(), d.opts, tableCacheSize)
+	d.tableCache.init(dirname, opts.Storage, d.opts, tableCacheSize)
 	d.newIter = d.tableCache.newIter
 	d.commit = newCommitPipeline(commitEnv{
 		mu:            &d.mu.Mutex,
@@ -579,7 +567,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	defer d.mu.Unlock()
 
 	// Lock the database directory.
-	fs := opts.GetStorage()
+	fs := opts.Storage
 	err := fs.MkdirAll(dirname, 0755)
 	if err != nil {
 		return nil, err
@@ -601,7 +589,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("pebble: database %q: %v", dirname, err)
-	} else if opts.GetErrorIfDBExists() {
+	} else if opts.ErrorIfDBExists {
 		return nil, fmt.Errorf("pebble: database %q already exists", dirname)
 	}
 
@@ -652,7 +640,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.log.LogWriter = record.NewLogWriter(logFile)
 
 	// Write a new manifest to disk.
-	if err := d.mu.versions.logAndApply(dirname, &ve); err != nil {
+	if err := d.mu.versions.logAndApply(d.opts, dirname, &ve); err != nil {
 		return nil, err
 	}
 
@@ -798,7 +786,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	if err != nil {
 		return fileMetadata{}, err
 	}
-	tw = sstable.NewWriter(file, d.opts)
+	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
 	iter = mem.NewIter(nil)
 	if !iter.Next() {
@@ -844,7 +832,7 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 }
 
 func (d *DB) throttleWrite() {
-	if len(d.mu.versions.currentVersion().files[0]) <= l0SlowdownWritesTrigger {
+	if len(d.mu.versions.currentVersion().files[0]) <= d.opts.L0SlowdownWritesThreshold {
 		return
 	}
 	// We are getting close to hitting a hard limit on the number of L0
@@ -870,7 +858,7 @@ func (d *DB) switchMemTable() error {
 			d.mu.compact.cond.Wait()
 			continue
 		}
-		if len(d.mu.versions.currentVersion().files[0]) > l0StopWritesTrigger {
+		if len(d.mu.versions.currentVersion().files[0]) > d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
 			d.mu.compact.cond.Wait()
 			continue
@@ -882,7 +870,7 @@ func (d *DB) switchMemTable() error {
 	d.mu.mem.switching = true
 	d.mu.Unlock()
 
-	newLogFile, err := d.opts.GetStorage().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
+	newLogFile, err := d.opts.Storage.Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
 	if err == nil {
 		err = d.mu.log.Close()
 		if err != nil {
@@ -935,7 +923,7 @@ func (d *DB) deleteObsoleteFiles() {
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	fs := d.opts.GetStorage()
+	fs := d.opts.Storage
 	list, err := fs.List(d.dirname)
 	if err != nil {
 		// Ignore any filesystem errors.

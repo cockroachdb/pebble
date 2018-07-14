@@ -88,13 +88,15 @@ type Writer struct {
 var indexColTypes = []ColumnType{ColumnTypeBytes, ColumnTypeInt64}
 
 // NewWriter ...
-func NewWriter(f storage.File, env *Env, o *db.Options) *Writer {
+func NewWriter(f storage.File, env *Env, o *db.Options, lo *db.LevelOptions) *Writer {
+	o = o.EnsureDefaults()
+	lo = lo.EnsureDefaults()
 	w := &Writer{
 		env:         env,
 		writer:      f,
 		closer:      f,
-		blockSize:   o.GetBlockSize(),
-		compression: o.GetCompression(),
+		blockSize:   lo.BlockSize,
+		compression: lo.Compression,
 	}
 	if f == nil {
 		w.err = errors.New("pebble/table: nil file")

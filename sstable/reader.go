@@ -301,14 +301,14 @@ func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 // Reader is a table reader. It implements the DB interface, as documented
 // in the pebble/db package.
 type Reader struct {
-	file            storage.File
-	fileNum         uint64
-	err             error
-	index           block
-	cache           *cache.BlockCache
-	compare         db.Compare
-	filter          filterReader
-	verifyChecksums bool
+	file    storage.File
+	fileNum uint64
+	err     error
+	index   block
+	opts    *db.Options
+	cache   *cache.BlockCache
+	compare db.Compare
+	filter  filterReader
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -379,12 +379,10 @@ func (r *Reader) readBlock(bh blockHandle) (block, error) {
 	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
 		return nil, err
 	}
-	if r.verifyChecksums {
-		checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
-		checksum1 := crc.New(b[:bh.length+1]).Value()
-		if checksum0 != checksum1 {
-			return nil, errors.New("pebble/table: invalid table (checksum mismatch)")
-		}
+	checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
+	checksum1 := crc.New(b[:bh.length+1]).Value()
+	if checksum0 != checksum1 {
+		return nil, errors.New("pebble/table: invalid table (checksum mismatch)")
 	}
 	switch b[bh.length] {
 	case noCompressionBlockType:
@@ -440,7 +438,11 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		}
 	}
 
-	if fp := o.GetFilterPolicy(); fp != nil {
+	for level := range r.opts.Levels {
+		fp := r.opts.Levels[level].FilterPolicy
+		if fp == nil {
+			continue
+		}
 		types := []struct {
 			ftype  db.FilterType
 			prefix string
@@ -448,6 +450,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 			{db.BlockFilter, "filter."},
 			{db.TableFilter, "fullfilter."},
 		}
+		var done bool
 		for _, t := range types {
 			if bh, ok := meta[t.prefix+fp.Name()]; ok {
 				if t.ftype == db.TableFilter {
@@ -461,7 +464,12 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 				if !r.filter.init(b, fp) {
 					return errors.New("pebble/table: invalid table (bad filter block)")
 				}
+				done = true
+				break
 			}
+		}
+		if done {
+			break
 		}
 	}
 	return nil
@@ -470,12 +478,13 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
+	o = o.EnsureDefaults()
 	r := &Reader{
-		file:            f,
-		fileNum:         fileNum,
-		cache:           o.GetCache(),
-		compare:         o.GetComparer().Compare,
-		verifyChecksums: o.GetVerifyChecksums(),
+		file:    f,
+		fileNum: fileNum,
+		opts:    o,
+		cache:   o.Cache,
+		compare: o.Comparer.Compare,
 	}
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")

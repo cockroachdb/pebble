@@ -136,7 +136,7 @@ func (v *version) unrefLocked() {
 }
 
 // updateCompactionScore updates v's compaction score and level.
-func (v *version) updateCompactionScore() {
+func (v *version) updateCompactionScore(opts *db.Options) {
 	// We treat level-0 specially by bounding the number of files instead of
 	// number of bytes for two reasons:
 	//
@@ -147,7 +147,7 @@ func (v *version) updateCompactionScore() {
 	// wish to avoid too many files when the individual file size is small
 	// (perhaps because of a small write-buffer setting, or very high
 	// compression ratios, or lots of overwrites/deletions).
-	v.compactionScore = float64(len(v.files[0])) / l0CompactionTrigger
+	v.compactionScore = float64(len(v.files[0])) / float64(opts.L0CompactionThreshold)
 	v.compactionLevel = 0
 
 	maxBytes := float64(10 * 1024 * 1024)

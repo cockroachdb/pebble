@@ -57,36 +57,6 @@ const (
 // LevelOptions ...
 // TODO(peter):
 type LevelOptions struct {
-	BlockSize            int
-	BlockRestartInterval int
-	Compression          Compression
-	MaxBytes             int64
-	TargetFileSize       int64
-}
-
-// Options holds the optional parameters for leveldb's DB implementations.
-// These options apply to the DB at large; per-query options are defined by
-// the ReadOptions and WriteOptions types.
-//
-// Options are typically passed to a constructor function as a struct literal.
-// The GetXxx methods are used inside the DB implementations; they return the
-// default parameter value if the *Options receiver is nil or the field value
-// is zero.
-//
-// Read/Write options:
-//   - Comparer
-//   - FilterPolicy
-//   - MaxOpenFiles
-//   - Storage
-// Read options:
-//   - VerifyChecksums
-// Write options:
-//   - BlockRestartInterval
-//   - BlockSize
-//   - Compression
-//   - ErrorIfDBExists
-//   - WriteBufferSize
-type Options struct {
 	// BlockRestartInterval is the number of keys between restart points
 	// for delta encoding of keys.
 	//
@@ -98,28 +68,13 @@ type Options struct {
 	// The default value is 4096.
 	BlockSize int
 
-	// TODO(peter): provide a cache interface.
-	Cache *cache.BlockCache
-
-	// Comparer defines a total ordering over the space of []byte keys: a 'less
-	// than' relationship. The same comparison algorithm must be used for reads
-	// and writes over the lifetime of the DB.
-	//
-	// The default value uses the same ordering as bytes.Compare.
-	Comparer *Comparer
-
 	// Compression defines the per-block compression to use.
 	//
 	// The default value (DefaultCompression) uses snappy compression.
 	Compression Compression
 
-	// ErrorIfDBExists is whether it is an error if the database already exists.
-	//
-	// The default value is false.
-	ErrorIfDBExists bool
-
-	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that
-	// can reduce disk reads for Get calls.
+	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
+	// reduce disk reads for Get calls.
 	//
 	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
 	// package.
@@ -136,111 +91,134 @@ type Options struct {
 	// filters should be preferred except under constrained memory situations.
 	FilterType FilterType
 
+	// The maximum number of bytes for the level. When the maximum number of
+	// bytes for a level is exceeded, compaction is requested.
+	MaxBytes int64
+
+	// The target file size for the level.
+	TargetFileSize int64
+}
+
+// EnsureDefaults ...
+func (o *LevelOptions) EnsureDefaults() *LevelOptions {
+	if o == nil {
+		o = &LevelOptions{}
+	}
+	if o.BlockRestartInterval <= 0 {
+		o.BlockRestartInterval = 16
+	}
+	if o.BlockRestartInterval <= 0 {
+		o.BlockSize = 4096
+	}
+	if o.Compression <= DefaultCompression || o.Compression >= nCompression {
+		o.Compression = SnappyCompression
+	}
+	return o
+}
+
+// Options holds the optional parameters for configuring pebble. These options
+// apply to the DB at large; per-query options are defined by the ReadOptions
+// and WriteOptions types.
+type Options struct {
+	// TODO(peter): provide a cache interface.
+	Cache *cache.BlockCache
+
+	// Comparer defines a total ordering over the space of []byte keys: a 'less
+	// than' relationship. The same comparison algorithm must be used for reads
+	// and writes over the lifetime of the DB.
+	//
+	// The default value uses the same ordering as bytes.Compare.
+	Comparer *Comparer
+
+	// ErrorIfDBExists is whether it is an error if the database already exists.
+	//
+	// The default value is false.
+	ErrorIfDBExists bool
+
+	// The number of files necessary to trigger an L0 compaction.
+	L0CompactionThreshold int
+
+	// Soft limit on the number of L0 files. Writes are slowed down when this
+	// threshold is reached.
+	L0SlowdownWritesThreshold int
+
+	// Hard limit on the number of L0 files. Writes are stopped when this
+	// threshold is reached.
+	L0StopWritesThreshold int
+
+	// Per-level options. Options for at least one level must be specified. The
+	// options for the last level are used for all subsequent levels.
+	Levels []LevelOptions
+
 	// MaxOpenFiles is a soft limit on the number of open files that can be
 	// used by the DB.
 	//
 	// The default value is 1000.
 	MaxOpenFiles int
 
+	// The size of a MemTable. Note that more than one MemTable can be in
+	// existence since flushing a MemTable involves creating a new one and
+	// writing the contents of the old one in the background. The
+	// StopWritesThreshold places a hard limit on the number of MemTables allowed
+	// at once.
+	MemTableSize int
+
+	// Hard limit on the number of MemTables. Writes are stopped when this number
+	// is reached. This value should be at least 2 or writes will stop whenever
+	// the MemTable is being flushed.
+	MemTableStopWritesThreshold int
+
 	// Storage maps file names to byte storage.
 	//
 	// The default value uses the underlying operating system's file system.
 	Storage storage.Storage
-
-	// WriteBufferSize is the amount of data to build up in memory (backed by
-	// an unsorted log on disk) before converting to a sorted on-disk file.
-	//
-	// Larger values increase performance, especially during bulk loads. Up to
-	// two write buffers may be held in memory at the same time, so you may
-	// wish to adjust this parameter to control memory usage. Also, a larger
-	// write buffer will result in a longer recovery time the next time the
-	// database is opened.
-	//
-	// The default value is 4MiB.
-	WriteBufferSize int
-
-	// VerifyChecksums is whether to verify the per-block checksums in a DB.
-	//
-	// The default value is false.
-	VerifyChecksums bool
 }
 
-func (o *Options) GetBlockRestartInterval() int {
-	if o == nil || o.BlockRestartInterval <= 0 {
-		return 16
-	}
-	return o.BlockRestartInterval
-}
-
-func (o *Options) GetBlockSize() int {
-	if o == nil || o.BlockSize <= 0 {
-		return 4096
-	}
-	return o.BlockSize
-}
-
-func (o *Options) GetCache() *cache.BlockCache {
+// EnsureDefaults ensures that the default values for all options are set if a
+// valid value was not already specified. Returns the new options.
+func (o *Options) EnsureDefaults() *Options {
 	if o == nil {
-		return nil
+		o = &Options{}
 	}
-	return o.Cache
+	if o.Comparer == nil {
+		o.Comparer = DefaultComparer
+	}
+	if o.L0CompactionThreshold <= 0 {
+		o.L0CompactionThreshold = 4
+	}
+	if o.L0SlowdownWritesThreshold <= 0 {
+		o.L0SlowdownWritesThreshold = 8
+	}
+	if o.L0StopWritesThreshold <= 0 {
+		o.L0StopWritesThreshold = 12
+	}
+	if o.Levels == nil {
+		o.Levels = make([]LevelOptions, 1)
+		for i := range o.Levels {
+			o.Levels[i] = *o.Levels[i].EnsureDefaults()
+		}
+	}
+	if o.MaxOpenFiles == 0 {
+		o.MaxOpenFiles = 1000
+	}
+	if o.MemTableSize <= 0 {
+		o.MemTableSize = 4 << 20
+	}
+	if o.MemTableStopWritesThreshold <= 0 {
+		o.MemTableStopWritesThreshold = 2
+	}
+	if o.Storage == nil {
+		o.Storage = storage.Default
+	}
+	return o
 }
 
-func (o *Options) GetComparer() *Comparer {
-	if o == nil || o.Comparer == nil {
-		return DefaultComparer
+// Level ...
+func (o *Options) Level(level int) *LevelOptions {
+	if level < len(o.Levels) {
+		return &o.Levels[level]
 	}
-	return o.Comparer
-}
-
-func (o *Options) GetCompression() Compression {
-	if o == nil || o.Compression <= DefaultCompression || o.Compression >= nCompression {
-		// Default to SnappyCompression.
-		return SnappyCompression
-	}
-	return o.Compression
-}
-
-func (o *Options) GetErrorIfDBExists() bool {
-	if o == nil {
-		return false
-	}
-	return o.ErrorIfDBExists
-}
-
-func (o *Options) GetFilterPolicy() FilterPolicy {
-	if o == nil {
-		return nil
-	}
-	return o.FilterPolicy
-}
-
-func (o *Options) GetMaxOpenFiles() int {
-	if o == nil || o.MaxOpenFiles == 0 {
-		return 1000
-	}
-	return o.MaxOpenFiles
-}
-
-func (o *Options) GetStorage() storage.Storage {
-	if o == nil || o.Storage == nil {
-		return storage.Default
-	}
-	return o.Storage
-}
-
-func (o *Options) GetWriteBufferSize() int {
-	if o == nil || o.WriteBufferSize <= 0 {
-		return 4 * 1024 * 1024
-	}
-	return o.WriteBufferSize
-}
-
-func (o *Options) GetVerifyChecksums() bool {
-	if o == nil {
-		return false
-	}
-	return o.VerifyChecksums
+	return &o.Levels[len(o.Levels)-1]
 }
 
 // ReadOptions hold the optional per-query parameters for Get and Find

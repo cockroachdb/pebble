@@ -36,11 +36,12 @@ type memTable struct {
 
 // newMemTable returns a new MemTable.
 func newMemTable(o *db.Options) *memTable {
+	o = o.EnsureDefaults()
 	m := &memTable{
-		cmp:  o.GetComparer().Compare,
+		cmp:  o.Comparer.Compare,
 		refs: 1,
 	}
-	arena := arenaskl.NewArena(uint32(o.GetWriteBufferSize()), 0)
+	arena := arenaskl.NewArena(uint32(o.MemTableSize), 0)
 	m.skl.Reset(arena, m.cmp)
 	m.emptySize = m.skl.Size()
 	return m

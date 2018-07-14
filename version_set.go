@@ -42,9 +42,9 @@ type versionSet struct {
 func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.dirname = dirname
 	vs.opts = opts
-	vs.fs = opts.GetStorage()
-	vs.cmp = opts.GetComparer().Compare
-	vs.cmpName = opts.GetComparer().Name
+	vs.fs = opts.Storage
+	vs.cmp = opts.Comparer.Compare
+	vs.cmpName = opts.Comparer.Name
 	vs.versions.init()
 	// For historical reasons, the next file number is initialized to 2.
 	vs.nextFileNumber = 2
@@ -129,7 +129,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	vs.markFileNumUsed(vs.prevLogNumber)
 	vs.manifestFileNumber = vs.nextFileNum()
 
-	newVersion, err := bve.apply(nil, vs.cmp)
+	newVersion, err := bve.apply(opts, nil, vs.cmp)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 // d.mu must be held when calling this, for the enclosing *DB d.
 //
 // TODO(peter): actually pass d.mu, and drop and re-acquire it around the I/O.
-func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
+func (vs *versionSet) logAndApply(opts *db.Options, dirname string, ve *versionEdit) error {
 	if ve.logNumber != 0 {
 		if ve.logNumber < vs.logNumber || vs.nextFileNumber <= ve.logNumber {
 			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.logNumber))
@@ -154,7 +154,7 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 
 	var bve bulkVersionEdit
 	bve.accumulate(ve)
-	newVersion, err := bve.apply(vs.currentVersion(), vs.cmp)
+	newVersion, err := bve.apply(opts, vs.currentVersion(), vs.cmp)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (vs *versionSet) logAndApply(dirname string, ve *versionEdit) error {
 	if err := vs.manifestFile.Sync(); err != nil {
 		return err
 	}
-	if err := setCurrentFile(dirname, vs.opts.GetStorage(), vs.manifestFileNumber); err != nil {
+	if err := setCurrentFile(dirname, vs.opts.Storage, vs.manifestFileNumber); err != nil {
 		return err
 	}
 

@@ -119,23 +119,22 @@ func (i *Iter) loadBlock() {
 
 // Reader ...
 type Reader struct {
-	file            storage.File
-	fileNum         uint64 // TODO(peter): needed for block cache
-	err             error
-	index           []byte
-	cache           *cache.BlockCache
-	cmp             db.Compare
-	verifyChecksums bool
+	file    storage.File
+	fileNum uint64 // TODO(peter): needed for block cache
+	err     error
+	index   []byte
+	cache   *cache.BlockCache
+	cmp     db.Compare
 }
 
 // NewReader ...
 func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
+	o = o.EnsureDefaults()
 	r := &Reader{
-		file:            f,
-		fileNum:         fileNum,
-		cache:           o.GetCache(),
-		cmp:             o.GetComparer().Compare,
-		verifyChecksums: o.GetVerifyChecksums(),
+		file:    f,
+		fileNum: fileNum,
+		cache:   o.Cache,
+		cmp:     o.Comparer.Compare,
 	}
 
 	if f == nil {
@@ -251,12 +250,10 @@ func (r *Reader) readBlock(bh blockHandle) ([]byte, error) {
 	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
 		return nil, err
 	}
-	if r.verifyChecksums {
-		checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
-		checksum1 := crc.New(b[:bh.length+1]).Value()
-		if checksum0 != checksum1 {
-			return nil, errors.New("pebble/table: invalid table (checksum mismatch)")
-		}
+	checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
+	checksum1 := crc.New(b[:bh.length+1]).Value()
+	if checksum0 != checksum1 {
+		return nil, errors.New("pebble/table: invalid table (checksum mismatch)")
 	}
 	switch b[bh.length] {
 	case noCompressionBlockType:

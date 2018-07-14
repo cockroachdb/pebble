@@ -210,7 +210,7 @@ func (d *DB) compact1() error {
 		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes {
 
 		meta := &c.inputs[0][0]
-		return d.mu.versions.logAndApply(d.dirname, &versionEdit{
+		return d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{
 			deletedFiles: map[deletedFileEntry]bool{
 				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
 			},
@@ -224,7 +224,7 @@ func (d *DB) compact1() error {
 	if err != nil {
 		return err
 	}
-	err = d.mu.versions.logAndApply(d.dirname, ve)
+	err = d.mu.versions.logAndApply(d.opts, d.dirname, ve)
 	for _, fileNum := range pendingOutputs {
 		delete(d.mu.compact.pendingOutputs, fileNum)
 	}
@@ -248,11 +248,11 @@ func (d *DB) compactMemTable() error {
 	if !imm.readyForFlush() {
 		return nil
 	}
-	meta, err := d.writeLevel0Table(d.opts.GetStorage(), imm)
+	meta, err := d.writeLevel0Table(d.opts.Storage, imm)
 	if err != nil {
 		return err
 	}
-	err = d.mu.versions.logAndApply(d.dirname, &versionEdit{
+	err = d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{
 		logNumber: d.mu.log.number,
 		newFiles: []newFileEntry{
 			{level: 0, meta: meta},
@@ -309,7 +309,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			retErr = firstError(retErr, tw.Close())
 		}
 		if retErr != nil {
-			d.opts.GetStorage().Remove(filename)
+			d.opts.Storage.Remove(filename)
 		}
 	}()
 
@@ -343,7 +343,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 			} else if ikey.Kind() == db.InternalKeyKindDelete &&
 				ikeySeqNum <= smallestSnapshot &&
-				c.isBaseLevelForUkey(d.opts.GetComparer().Compare, ukey) {
+				c.isBaseLevelForUkey(d.opts.Comparer.Compare, ukey) {
 
 				// For this user key:
 				// (1) there is no data in higher levels
@@ -369,11 +369,11 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			d.mu.Unlock()
 
 			filename = dbFilename(d.dirname, fileTypeTable, fileNum)
-			file, err := d.opts.GetStorage().Create(filename)
+			file, err := d.opts.Storage.Create(filename)
 			if err != nil {
 				return nil, pendingOutputs, err
 			}
-			tw = sstable.NewWriter(file, d.opts)
+			tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.level+1))
 			smallest = ikey.Clone()
 		}
 		// TODO(peter): Avoid the memory allocation

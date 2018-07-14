@@ -385,18 +385,20 @@ func (w *Writer) Stat() (os.FileInfo, error) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f storage.File, o *db.Options) *Writer {
+func NewWriter(f storage.File, o *db.Options, lo *db.LevelOptions) *Writer {
+	o = o.EnsureDefaults()
+	lo = lo.EnsureDefaults()
 	w := &Writer{
 		file:        f,
-		blockSize:   o.GetBlockSize(),
-		appendSep:   o.GetComparer().AppendSeparator,
-		compare:     o.GetComparer().Compare,
-		compression: o.GetCompression(),
+		blockSize:   lo.BlockSize,
+		appendSep:   o.Comparer.AppendSeparator,
+		compare:     o.Comparer.Compare,
+		compression: lo.Compression,
 		filter: filterWriter{
-			policy: o.GetFilterPolicy(),
+			policy: lo.FilterPolicy,
 		},
 		block: blockWriter{
-			restartInterval: o.GetBlockRestartInterval(),
+			restartInterval: lo.BlockRestartInterval,
 		},
 	}
 	if f == nil {
