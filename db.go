@@ -199,6 +199,7 @@ type DB struct {
 		}
 
 		mem struct {
+			cond sync.Cond
 			// The current mutable memTable.
 			mutable *memTable
 			// Queue of memtables (mutable is at end). Elements are added to the end
@@ -206,6 +207,8 @@ type DB struct {
 			// is never modified making a fixed slice immutable and safe for
 			// concurrent reads.
 			queue []*memTable
+			// True when the memtable is actively been switched.
+			switching bool
 		}
 
 		compact struct {
@@ -542,9 +545,10 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		sync:          d.commitSync,
 		write:         d.commitWrite,
 	})
+	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.mem.mutable = newMemTable(d.opts)
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-	d.mu.compact.cond = sync.Cond{L: &d.mu.Mutex}
+	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
 	// TODO(peter): This initialization is funky.
 	d.mu.versions.versions.mu = &d.mu.Mutex
@@ -834,22 +838,16 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) makeRoomForWrite(force bool) error {
-	allowDelay := !force
+	if !force {
+		d.throttleWrite()
+	}
+
 	for {
 		// TODO(peter): check any previous sticky error, if the paranoid option is
 		// set.
 
-		if allowDelay && len(d.mu.versions.currentVersion().files[0]) > l0SlowdownWritesTrigger {
-			// We are getting close to hitting a hard limit on the number of
-			// L0 files. Rather than delaying a single write by several
-			// seconds when we hit the hard limit, start delaying each
-			// individual write by 1ms to reduce latency variance.
-			d.mu.Unlock()
-			time.Sleep(1 * time.Millisecond)
-			d.mu.Lock()
-			allowDelay = false
-			// TODO(peter): how do we ensure we are still 'at the front of the writer
-			// queue'?
+		if d.mu.mem.switching {
+			d.mu.mem.cond.Wait()
 			continue
 		}
 
@@ -858,42 +856,84 @@ func (d *DB) makeRoomForWrite(force bool) error {
 			break
 		}
 
-		if len(d.mu.mem.queue) >= 2 {
-			// We have filled up the current memtable, but the previous
-			// one is still being compacted, so we wait.
-			d.mu.compact.cond.Wait()
-			continue
-		}
-
-		if len(d.mu.versions.currentVersion().files[0]) > l0StopWritesTrigger {
-			// There are too many level-0 files.
-			d.mu.compact.cond.Wait()
-			continue
-		}
-
 		// Attempt to switch to a new memtable and trigger compaction of old
-		// TODO(peter): drop and re-acquire d.mu around the I/O.
-		newLogNumber := d.mu.versions.nextFileNum()
-		newLogFile, err := d.opts.GetStorage().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
-		if err != nil {
-			// TODO(peter): avoid chewing through file numbers in a tight loop if
-			// there is an error here.
+		if err := d.switchMemTable(); err != nil {
 			return err
 		}
-		newLog := record.NewLogWriter(newLogFile)
-		if err := d.mu.log.Close(); err != nil {
-			newLog.Close()
-			return err
-		}
-		// NB: When the immutable memtable is flushed to disk it will apply a
-		// versionEdit to the manifest telling it that log files < d.mu.log.number
-		// have been applied.
-		d.mu.log.number, d.mu.log.LogWriter = newLogNumber, newLog
-		d.mu.mem.mutable = newMemTable(d.opts)
-		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+
 		force = false
-		d.maybeScheduleCompaction()
 	}
+	return nil
+}
+
+func (d *DB) throttleWrite() {
+	if len(d.mu.versions.currentVersion().files[0]) <= l0SlowdownWritesTrigger {
+		return
+	}
+	// We are getting close to hitting a hard limit on the number of L0
+	// files. Rather than delaying a single write by several seconds when we hit
+	// the hard limit, start delaying each individual write by 1ms to reduce
+	// latency variance.
+	//
+	// TODO(peter): Use more sophisticated rate limiting.
+	d.mu.Unlock()
+	time.Sleep(1 * time.Millisecond)
+	d.mu.Lock()
+}
+
+func (d *DB) switchMemTable() error {
+	for {
+		if d.mu.mem.switching {
+			d.mu.mem.cond.Wait()
+			continue
+		}
+		if len(d.mu.mem.queue) >= 2 {
+			// We have filled up the current memtable, but the previous one is still
+			// being compacted, so we wait.
+			d.mu.compact.cond.Wait()
+			continue
+		}
+		if len(d.mu.versions.currentVersion().files[0]) > l0StopWritesTrigger {
+			// There are too many level-0 files, so we wait.
+			d.mu.compact.cond.Wait()
+			continue
+		}
+		break
+	}
+
+	newLogNumber := d.mu.versions.nextFileNum()
+	d.mu.mem.switching = true
+	d.mu.Unlock()
+
+	newLogFile, err := d.opts.GetStorage().Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
+	if err == nil {
+		err = d.mu.log.Close()
+		if err != nil {
+			newLogFile.Close()
+		}
+	}
+
+	d.mu.Lock()
+	d.mu.mem.switching = false
+	d.mu.mem.cond.Broadcast()
+
+	if err != nil {
+		// TODO(peter): avoid chewing through file numbers in a tight loop if there
+		// is an error here.
+		//
+		// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
+		// close the previous log it is possible we lost a write.
+		panic(err)
+	}
+
+	// NB: When the immutable memtable is flushed to disk it will apply a
+	// versionEdit to the manifest telling it that log files < d.mu.log.number
+	// have been applied.
+	d.mu.log.number = newLogNumber
+	d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
+	d.mu.mem.mutable = newMemTable(d.opts)
+	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+	d.maybeScheduleCompaction()
 	return nil
 }
 
