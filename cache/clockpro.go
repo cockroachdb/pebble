@@ -16,9 +16,12 @@ It is MIT licensed, like the original.
 */
 package cache
 
-import "container/ring"
+import (
+	"container/ring"
+	"sync"
+)
 
-type pageType int
+type pageType int8
 
 const (
 	ptTest pageType = iota
@@ -27,257 +30,205 @@ const (
 )
 
 func (p pageType) String() string {
-
 	switch p {
 	case ptTest:
-		return "Test"
+		return "test"
 	case ptCold:
-		return "Cold"
+		return "cold"
 	case ptHot:
-		return "Hot"
+		return "hot"
 	}
-
 	return "unknown"
 }
 
 type entry2 struct {
-	ptype pageType
-	key   string
+	key   key
 	val   interface{}
+	link  ring.Ring
+	ptype pageType
 	ref   bool
 }
 
+// Cache ...
 type Cache struct {
-	mem_max  int
-	mem_cold int
-	keys     map[string]*ring.Ring
+	mu sync.Mutex
 
-	hand_hot  *ring.Ring
-	hand_cold *ring.Ring
-	hand_test *ring.Ring
+	maxSize  int64
+	coldSize int64
+	keys     map[key]*entry2
 
-	count_hot  int
-	count_cold int
-	count_test int
+	handHot  *ring.Ring
+	handCold *ring.Ring
+	handTest *ring.Ring
+
+	countHot  int64
+	countCold int64
+	countTest int64
 }
 
-func New(size int) *Cache {
+// New ...
+func New(size int64) *Cache {
 	return &Cache{
-		mem_max:  size,
-		mem_cold: size,
-		keys:     make(map[string]*ring.Ring),
+		maxSize:  size,
+		coldSize: size,
+		keys:     make(map[key]*entry2),
 	}
 }
 
-func (c *Cache) Get(key string) interface{} {
+// Get ...
+func (c *Cache) Get(fileNum, offset uint64) interface{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	r := c.keys[key]
-
-	if r == nil {
+	k := key{FileNum: fileNum, Offset: offset}
+	e := c.keys[k]
+	if e == nil {
 		return nil
 	}
-
-	mentry := r.Value.(*entry2)
-
-	if mentry.val == nil {
+	if e.val == nil {
 		return nil
 	}
-
-	mentry.ref = true
-	return mentry.val
+	e.ref = true
+	return e.val
 }
 
-func (c *Cache) Set(key string, value interface{}) {
+// Set ...
+func (c *Cache) Set(fileNum, offset uint64, value interface{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	r := c.keys[key]
-
-	if r == nil {
-		// no cache entry?  add it
-		r = &ring.Ring{Value: &entry2{ref: false, val: value, ptype: ptCold, key: key}}
-		c.meta_add(key, r)
-		c.count_cold++
+	k := key{FileNum: fileNum, Offset: offset}
+	e := c.keys[k]
+	if e == nil {
+		// no cache entry? add it
+		e = &entry2{ref: false, val: value, ptype: ptCold, key: k}
+		e.link.Value = e
+		c.metaAdd(k, e)
+		c.countCold++
 		return
 	}
 
-	mentry := r.Value.(*entry2)
-
-	if mentry.val != nil {
+	if e.val != nil {
 		// cache entry was a hot or cold page
-		mentry.val = value
-		mentry.ref = true
+		e.val = value
+		e.ref = true
 		return
 	}
 
 	// cache entry was a test page
-	if c.mem_cold < c.mem_max {
-		c.mem_cold++
+	if c.coldSize < c.maxSize {
+		c.coldSize++
 	}
-	mentry.ref = false
-	mentry.val = value
-	mentry.ptype = ptHot
-	c.count_test--
-	c.meta_del(r)
-	c.meta_add(key, r)
-	c.count_hot++
+	e.ref = false
+	e.val = value
+	e.ptype = ptHot
+	c.countTest--
+	c.metaDel(&e.link)
+	c.metaAdd(k, e)
+	c.countHot++
 }
 
-func (c *Cache) meta_add(key string, r *ring.Ring) {
-
+func (c *Cache) metaAdd(key key, e *entry2) {
 	c.evict()
 
-	c.keys[key] = r
-	r.Link(c.hand_hot)
+	c.keys[key] = e
+	e.link.Link(c.handHot)
 
-	if c.hand_hot == nil {
+	if c.handHot == nil {
 		// first element
-		c.hand_hot = r
-		c.hand_cold = r
-		c.hand_test = r
+		c.handHot = &e.link
+		c.handCold = &e.link
+		c.handTest = &e.link
 	}
 
-	if c.hand_cold == c.hand_hot {
-		c.hand_cold = c.hand_cold.Prev()
+	if c.handCold == c.handHot {
+		c.handCold = c.handCold.Prev()
 	}
 }
 
-func (c *Cache) meta_del(r *ring.Ring) {
-
+func (c *Cache) metaDel(r *ring.Ring) {
 	delete(c.keys, r.Value.(*entry2).key)
 
-	if r == c.hand_hot {
-		c.hand_hot = c.hand_hot.Prev()
+	if r == c.handHot {
+		c.handHot = c.handHot.Prev()
 	}
-
-	if r == c.hand_cold {
-		c.hand_cold = c.hand_cold.Prev()
+	if r == c.handCold {
+		c.handCold = c.handCold.Prev()
 	}
-
-	if r == c.hand_test {
-		c.hand_test = c.hand_test.Prev()
+	if r == c.handTest {
+		c.handTest = c.handTest.Prev()
 	}
 
 	r.Prev().Unlink(1)
 }
 
 func (c *Cache) evict() {
-
-	for c.mem_max <= c.count_hot+c.count_cold {
-		c.run_hand_cold()
+	for c.maxSize <= c.countHot+c.countCold {
+		c.runHandCold()
 	}
 }
 
-func (c *Cache) run_hand_cold() {
-
-	mentry := c.hand_cold.Value.(*entry2)
-
+func (c *Cache) runHandCold() {
+	mentry := c.handCold.Value.(*entry2)
 	if mentry.ptype == ptCold {
-
 		if mentry.ref {
 			mentry.ptype = ptHot
 			mentry.ref = false
-			c.count_cold--
-			c.count_hot++
+			c.countCold--
+			c.countHot++
 		} else {
 			mentry.ptype = ptTest
 			mentry.val = nil
-			c.count_cold--
-			c.count_test++
-			for c.mem_max < c.count_test {
-				c.run_hand_test()
+			c.countCold--
+			c.countTest++
+			for c.maxSize < c.countTest {
+				c.runHandTest()
 			}
 		}
 	}
 
-	c.hand_cold = c.hand_cold.Next()
+	c.handCold = c.handCold.Next()
 
-	for c.mem_max-c.mem_cold < c.count_hot {
-		c.run_hand_hot()
+	for c.maxSize-c.coldSize < c.countHot {
+		c.runHandHot()
 	}
 }
 
-func (c *Cache) run_hand_hot() {
-
-	if c.hand_hot == c.hand_test {
-		c.run_hand_test()
+func (c *Cache) runHandHot() {
+	if c.handHot == c.handTest {
+		c.runHandTest()
 	}
 
-	mentry := c.hand_hot.Value.(*entry2)
-
+	mentry := c.handHot.Value.(*entry2)
 	if mentry.ptype == ptHot {
-
 		if mentry.ref {
 			mentry.ref = false
 		} else {
 			mentry.ptype = ptCold
-			c.count_hot--
-			c.count_cold++
+			c.countHot--
+			c.countCold++
 		}
 	}
 
-	c.hand_hot = c.hand_hot.Next()
+	c.handHot = c.handHot.Next()
 }
 
-func (c *Cache) run_hand_test() {
-
-	if c.hand_test == c.hand_cold {
-		c.run_hand_cold()
+func (c *Cache) runHandTest() {
+	if c.handTest == c.handCold {
+		c.runHandCold()
 	}
 
-	mentry := c.hand_test.Value.(*entry2)
-
+	mentry := c.handTest.Value.(*entry2)
 	if mentry.ptype == ptTest {
+		prev := c.handTest.Prev()
+		c.metaDel(c.handTest)
+		c.handTest = prev
 
-		prev := c.hand_test.Prev()
-		c.meta_del(c.hand_test)
-		c.hand_test = prev
-
-		c.count_test--
-		if c.mem_cold > 1 {
-			c.mem_cold--
+		c.countTest--
+		if c.coldSize > 1 {
+			c.coldSize--
 		}
 	}
 
-	c.hand_test = c.hand_test.Next()
-}
-
-func (c *Cache) dump() string {
-
-	var b []byte
-
-	var end *ring.Ring = nil
-	for elt := c.hand_hot; elt != end; elt = elt.Next() {
-		end = c.hand_hot
-		m := elt.Value.(*entry2)
-
-		if c.hand_hot == elt {
-			b = append(b, '2')
-		}
-
-		if c.hand_test == elt {
-			b = append(b, '0')
-		}
-
-		if c.hand_cold == elt {
-			b = append(b, '1')
-		}
-
-		switch m.ptype {
-		case ptHot:
-			if m.ref {
-				b = append(b, 'H')
-			} else {
-				b = append(b, 'h')
-			}
-		case ptCold:
-			if m.ref {
-				b = append(b, 'C')
-			} else {
-				b = append(b, 'c')
-			}
-		case ptTest:
-			b = append(b, 'n')
-		}
-	}
-
-	return string(b)
+	c.handTest = c.handTest.Next()
 }

@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"os"
+	"strconv"
 	"testing"
 )
 
 func TestCache(t *testing.T) {
 	// Test data was generated from the python code
-	f, err := os.Open("testdata/domains.txt")
+	f, err := os.Open("testdata/cache")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,16 +21,19 @@ func TestCache(t *testing.T) {
 	for scanner.Scan() {
 		fields := bytes.Fields(scanner.Bytes())
 
-		key := string(fields[0])
+		key, err := strconv.Atoi(string(fields[0]))
+		if err != nil {
+			t.Fatal(err)
+		}
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		v := cache.Get(key)
+		v := cache.Get(uint64(key), 0)
 		if v == nil {
-			cache.Set(key, key)
+			cache.Set(uint64(key), 0, key)
 		} else {
 			hit = true
-			if v.(string) != key {
+			if v.(int) != key {
 				t.Errorf("cache returned bad data: got %+v , want %+v\n", v, key)
 			}
 		}
