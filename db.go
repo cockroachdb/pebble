@@ -20,6 +20,7 @@
 //   - Debug/event logging
 //   - Faster block cache (sharded?)
 //     - Reserve block cache memory for memtables
+//     - CLOCK-PRO: https://godoc.org/github.com/dgryski/go-clockpro
 //
 // - Commit pipeline
 //   - Rate limiting user writes
