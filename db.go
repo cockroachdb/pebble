@@ -6,6 +6,11 @@
 //
 // TODO(peter):
 //
+// - Benchmarking
+//   - synctest
+//   - mvccScan
+//   - mvccPut
+//
 // - MemTable
 //   - Allow arbitrary sized batches. If a batch is too large to fit in a
 //     single memTable, then allocate a custom-sized memTable to hold it.
