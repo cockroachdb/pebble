@@ -40,7 +40,7 @@ func newMemTable(o *db.Options) *memTable {
 		cmp:  o.GetComparer().Compare,
 		refs: 1,
 	}
-	arena := arenaskl.NewArena(4<<20 /* 4 MiB */, 0)
+	arena := arenaskl.NewArena(uint32(o.GetWriteBufferSize()), 0)
 	m.skl.Reset(arena, m.cmp)
 	m.emptySize = m.skl.Size()
 	return m

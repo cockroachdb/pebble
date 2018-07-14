@@ -547,7 +547,10 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 }
 
 func TestCompaction(t *testing.T) {
-	const writeBufferSize = 1000
+	const writeBufferSize = 10000
+	// Tuned so that 2 values can reside in the memtable before a flush. Needs to
+	// account for the max skiplist node size.
+	const valueSize = 4705
 
 	fs := storage.NewMem()
 	d, err := Open("", &db.Options{
@@ -593,7 +596,7 @@ func TestCompaction(t *testing.T) {
 		return gotMem, strings.Join(ss, ""), nil
 	}
 
-	value := bytes.Repeat([]byte("x"), writeBufferSize*6/10)
+	value := bytes.Repeat([]byte("x"), valueSize)
 	testCases := []struct {
 		key, wantMem, wantDisk string
 	}{

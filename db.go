@@ -87,6 +87,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/petermattis/pebble/arenaskl"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/record"
 	"github.com/petermattis/pebble/sstable"
@@ -331,22 +332,23 @@ func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) 
 	// Throttle writes if there are too many L0 tables.
 	d.throttleWrite()
 
-	// Switch out the memtable if the current one is too big.
-	//
-	// TODO(peter): This should be controlled by memTable.prepare() failing with
-	// ErrArenaFull.
-	if d.mu.mem.mutable.ApproximateMemoryUsage() > d.opts.GetWriteBufferSize() {
-		if err := d.switchMemTable(); err != nil {
+	for {
+		err := d.mu.mem.mutable.prepare(b)
+		if err == arenaskl.ErrArenaFull {
+			// Switch out the memtable if there was not enough room to store the
+			// batch.
+			//
+			// TODO(peter): should pass in the size required by the batch so that a
+			// custom-sized memtable can be allocated if the batch is very large.
+			if err := d.switchMemTable(); err != nil {
+				return nil, nil, 0, err
+			}
+			continue
+		}
+		if err != nil {
 			return nil, nil, 0, err
 		}
-	}
-
-	err := d.mu.mem.mutable.prepare(b)
-	if err != nil {
-		// TODO(peter): If the memtable is full, allocate a new one. Mark the full
-		// memtable as ready to be flushed as soon as the reference count drops to
-		// 0.
-		return nil, nil, 0, err
+		break
 	}
 
 	pos, err := d.mu.log.WriteRecord(b.data)
@@ -793,7 +795,9 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	tw = sstable.NewWriter(file, d.opts)
 
 	iter = mem.NewIter(nil)
-	iter.Next()
+	if !iter.Next() {
+		return fileMetadata{}, fmt.Errorf("pebble: memtable empty")
+	}
 	meta.smallest = iter.Key().Clone()
 	for {
 		meta.largest = iter.Key()

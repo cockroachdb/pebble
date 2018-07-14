@@ -162,7 +162,7 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 	}
 	prevKey := db.DecodeInternalKey(w.block.curKey)
 	if db.InternalCompare(w.compare, prevKey, key) >= 0 {
-		w.err = fmt.Errorf("pebble/table: Set called in non-increasing key order: %q, %q", prevKey, key)
+		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q", prevKey, key)
 		return w.err
 	}
 	if w.filter.policy != nil {
