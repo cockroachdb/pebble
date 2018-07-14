@@ -304,9 +304,6 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
-	if err := d.makeRoomForWrite(false); err != nil {
-		return err
-	}
 	return d.commit.commit(batch, opts.GetSync())
 }
 
@@ -321,10 +318,23 @@ func (d *DB) commitSync(log *record.LogWriter, pos, n int64) error {
 func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) {
 	// NB: commitWrite is called with d.mu locked.
 
-	// TODO(peter): If the memtable is full, allocate a new one. Mark the full
-	// memtable as ready to be flushed as soon as the reference count drops to 0.
+	// TODO(peter):
+	// - L0 slowdown writes trigger
+	// - L0 stop writes trigger
+	if err := d.makeRoomForWrite(b == nil /* force */); err != nil {
+		return nil, nil, 0, err
+	}
+
+	if b == nil {
+		// TODO(peter): force a memtable flush.
+		return nil, nil, 0, nil
+	}
+
 	err := d.mu.mem.mutable.prepare(b)
 	if err != nil {
+		// TODO(peter): If the memtable is full, allocate a new one. Mark the full
+		// memtable as ready to be flushed as soon as the reference count drops to
+		// 0.
 		return nil, nil, 0, err
 	}
 	pos, err := d.mu.log.WriteRecord(b.data)
@@ -452,9 +462,12 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	panic("pebble.DB: Compact unimplemented")
 }
 
-// Flush the memtable to stable storage. TODO(peter)
+// Flush the memtable to stable storage.
+//
+// TODO(peter): untested
 func (d *DB) Flush() error {
-	panic("pebble.DB: Flush unimplemented")
+	// Flushing is implemented by applying a nil batch. See DB.commitWrite.
+	return d.Apply(nil, nil)
 }
 
 // Ingest TODO(peter)
@@ -817,11 +830,10 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 }
 
 // makeRoomForWrite ensures that there is room in d.mu.mem for the next write.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
 func (d *DB) makeRoomForWrite(force bool) error {
-	// TODO(peter): Fix makeRoomForWrite to not require DB.mu to be locked.
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	allowDelay := !force
 	for {
 		// TODO(peter): check any previous sticky error, if the paranoid option is
