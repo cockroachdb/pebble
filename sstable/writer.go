@@ -10,12 +10,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
 )
+
+type syncer interface {
+	Sync() error
+}
 
 // indexEntry is a block handle and the length of the separator key.
 type indexEntry struct {
@@ -119,7 +124,8 @@ func (f *filterWriter) finish() ([]byte, error) {
 type Writer struct {
 	writer    io.Writer
 	bufWriter *bufio.Writer
-	closer    io.Closer
+	file      storage.File
+	stat      os.FileInfo
 	err       error
 	// The next four fields are copied from a db.Options.
 	blockSize   int
@@ -252,14 +258,14 @@ func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
 // table was written to.
 func (w *Writer) Close() (err error) {
 	defer func() {
-		if w.closer == nil {
+		if w.file == nil {
 			return
 		}
-		err1 := w.closer.Close()
+		err1 := w.file.Close()
 		if err == nil {
 			err = err1
 		}
-		w.closer = nil
+		w.file = nil
 	}()
 	if w.err != nil {
 		return w.err
@@ -348,6 +354,17 @@ func (w *Writer) Close() (err error) {
 		}
 	}
 
+	if err := w.file.Sync(); err != nil {
+		w.err = err
+		return err
+	}
+
+	w.stat, err = w.file.Stat()
+	if err != nil {
+		w.err = err
+		return err
+	}
+
 	// Make any future calls to Set or Close return an error.
 	w.err = errors.New("pebble/table: writer is closed")
 	return nil
@@ -358,11 +375,19 @@ func (w *Writer) EstimatedSize() uint64 {
 	return w.offset + uint64(w.block.estimatedSize()+len(w.indexEntries))
 }
 
+// Stat ...
+func (w *Writer) Stat() (os.FileInfo, error) {
+	if w.file != nil {
+		return nil, errors.New("pebble/table: writer is not closed")
+	}
+	return w.stat, nil
+}
+
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(f storage.File, o *db.Options) *Writer {
 	w := &Writer{
-		closer:      f,
+		file:        f,
 		blockSize:   o.GetBlockSize(),
 		appendSep:   o.GetComparer().AppendSeparator,
 		compare:     o.GetComparer().Compare,

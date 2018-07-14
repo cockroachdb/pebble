@@ -789,9 +789,6 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 		if tw != nil {
 			err = firstError(err, tw.Close())
 		}
-		if file != nil {
-			err = firstError(err, file.Close())
-		}
 		if err != nil {
 			fs.Remove(filename)
 			meta = fileMetadata{}
@@ -830,28 +827,17 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 		tw = nil
 		return fileMetadata{}, err1
 	}
-	tw = nil
 
-	// TODO(peter): currently, closing a table.Writer closes its underlying file.
-	// We have to re-open the file to Sync or Stat it, which seems stupid.
-	file, err = fs.Open(filename)
+	stat, err := tw.Stat()
 	if err != nil {
 		return fileMetadata{}, err
 	}
-
-	if err1 := file.Sync(); err1 != nil {
-		return fileMetadata{}, err1
+	size := stat.Size()
+	if size < 0 {
+		return fileMetadata{}, fmt.Errorf("pebble: table file %q has negative size %d", filename, size)
 	}
-
-	if stat, err1 := file.Stat(); err1 != nil {
-		return fileMetadata{}, err1
-	} else {
-		size := stat.Size()
-		if size < 0 {
-			return fileMetadata{}, fmt.Errorf("pebble: table file %q has negative size %d", filename, size)
-		}
-		meta.size = uint64(size)
-	}
+	meta.size = uint64(size)
+	tw = nil
 
 	// TODO(peter): compaction stats.
 

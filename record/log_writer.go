@@ -227,6 +227,7 @@ func (w *LogWriter) Flush() error {
 // Sync flushes any unwritten and synchronizes the underlying file. May be
 // called concurrently with Write, Flush and itself.
 func (w *LogWriter) Sync() error {
+	// TODO(peter): Allow sync to be called after the writer has been closed.
 	if err := w.Flush(); err != nil {
 		return err
 	}

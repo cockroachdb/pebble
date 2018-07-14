@@ -383,6 +383,17 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}
 
+	if err := tw.Close(); err != nil {
+		tw = nil
+		return nil, pendingOutputs, err
+	}
+	stat, err := tw.Stat()
+	if err != nil {
+		tw = nil
+		return nil, pendingOutputs, err
+	}
+	tw = nil
+
 	ve = &versionEdit{
 		deletedFiles: map[deletedFileEntry]bool{},
 		newFiles: []newFileEntry{
@@ -390,7 +401,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				level: c.level + 1,
 				meta: fileMetadata{
 					fileNum:  fileNum,
-					size:     1,
+					size:     uint64(stat.Size()),
 					smallest: smallest,
 					largest:  largest,
 				},
