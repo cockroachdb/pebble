@@ -550,9 +550,10 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 
 func TestCompaction(t *testing.T) {
 	const memTableSize = 10000
-	// Tuned so that 2 values can reside in the memtable before a flush. Needs to
-	// account for the max skiplist node size.
-	const valueSize = 4705
+	// Tuned so that 2 values can reside in the memtable before a flush, but a
+	// 3rd value will cause a flush. Needs to account for the max skiplist node
+	// size.
+	const valueSize = 3500
 
 	fs := storage.NewMem()
 	d, err := Open("", &db.Options{
@@ -612,13 +613,13 @@ func TestCompaction(t *testing.T) {
 		// The next level-0 table deletes the a key.
 		{"+D", "D", "Aa.BC.Bb."},
 		{"-a", "Da", "Aa.BC.Bb."},
+		{"+d", "Dad", "Aa.BC.Bb."},
 		// The next addition creates the fourth level-0 table, and l0CompactionTrigger == 4,
 		// so this triggers a non-trivial compaction into one level-1 table. Note that the
 		// keys in this one larger table are interleaved from the four smaller ones.
-		{"+d", "d", "ABCDb."},
-		{"+E", "Ed", "ABCDb."},
-		{"+e", "e", "ABCDb.Ed."},
-		{"+F", "Fe", "ABCDb.Ed."},
+		{"+E", "E", "ABCDbd."},
+		{"+e", "Ee", "ABCDbd."},
+		{"+F", "F", "ABCDbd.Ee."},
 	}
 	for _, tc := range testCases {
 		if key := tc.key[1:]; tc.key[0] == '+' {
