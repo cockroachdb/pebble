@@ -3,9 +3,7 @@ package record
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
-	"math"
 	"sync"
 	"sync/atomic"
 
@@ -39,20 +37,8 @@ type LogWriter struct {
 	block *block
 	free  chan *block
 
-	// Protects against concurrent calls to Flush().
+	// Protects against concurrent calls to Flush/Sync().
 	flushMu sync.Mutex
-	// The latest position in the file that has been flushed. Updated atomically.
-	flushWatermark int64
-
-	// Protects against concurrent calls to Sync().
-	sync struct {
-		sync.Mutex
-		// The latest position in the file that has been synced.
-		watermark int64
-		fast1     int64
-		fast2     int64
-		slow      int64
-	}
 
 	flusher struct {
 		sync.Mutex
@@ -138,14 +124,12 @@ func (w *LogWriter) flushLoop() {
 }
 
 func (w *LogWriter) flushBlock(b *block) error {
-	n, err := w.w.Write(b.buf[b.flushed:])
-	if err != nil {
+	if _, err := w.w.Write(b.buf[b.flushed:]); err != nil {
 		return err
 	}
 	b.written = 0
 	b.flushed = 0
 	w.free <- b
-	atomic.StoreInt64(&w.flushWatermark, w.flushWatermark+int64(n))
 	return nil
 }
 
@@ -174,7 +158,7 @@ func (w *LogWriter) Close() error {
 	w.flusher.ready.Signal()
 	w.flusher.Unlock()
 
-	if err := w.Sync(math.MaxInt64); err != nil {
+	if err := w.Sync(); err != nil {
 		return err
 	}
 	if w.c != nil {
@@ -193,12 +177,15 @@ func (w *LogWriter) closed() bool {
 	return closed
 }
 
-// Flush flushes unwritten data up to the specified position (as returned from
-// WriteRecord). May be called concurrently with Write, Sync and itself.
-func (w *LogWriter) Flush(pos int64) error {
+// Flush flushes unwritten data. May be called concurrently with Write, Sync
+// and itself.
+func (w *LogWriter) Flush() error {
 	w.flushMu.Lock()
 	defer w.flushMu.Unlock()
+	return w.flushLocked()
+}
 
+func (w *LogWriter) flushLocked() error {
 	if w.err != nil {
 		if w.closed() {
 			return nil
@@ -232,9 +219,7 @@ func (w *LogWriter) Flush(pos int64) error {
 		}
 	}
 	if err == nil && len(data) > 0 {
-		var n int
-		n, err = w.w.Write(data)
-		atomic.StoreInt64(&w.flushWatermark, w.flushWatermark+int64(n))
+		_, err = w.w.Write(data)
 	}
 
 	// Release the flush loop.
@@ -252,51 +237,28 @@ func (w *LogWriter) Flush(pos int64) error {
 	return nil
 }
 
-// Sync flushes unwritten data up to the specified position synchronizes the
-// underlying file. May be called concurrently with Write, Flush and itself.
-func (w *LogWriter) Sync(pos int64) error {
-	if err := w.Flush(pos); err != nil {
+// Sync flushes unwritten data and synchronizes the underlying file. May be
+// called concurrently with Write, Flush and itself.
+func (w *LogWriter) Sync() error {
+	w.flushMu.Lock()
+	defer w.flushMu.Unlock()
+
+	if err := w.flushLocked(); err != nil {
+		if w.closed() {
+			return nil
+		}
 		return err
 	}
 
-	if pos <= atomic.LoadInt64(&w.sync.watermark) {
-		// Nothing to do, the position we're being asked to sync to has already
-		// been synced.
-		atomic.AddInt64(&w.sync.fast1, 1)
-		return nil
-	}
-
-	w.sync.Lock()
-	defer w.sync.Unlock()
-
-	// Note that this check doesn't require an atomic because syncWatermark is
-	// only ever set with syncMu held.
-	if pos <= w.sync.watermark {
-		// Nothing to do, the position we're being asked to sync to has already
-		// been synced.
-		w.sync.fast2++
-		if true && (w.sync.fast2%10000) == 0 {
-			v := atomic.LoadInt64(&w.sync.fast1)
-			fmt.Printf("sync %.1f%% %0.1f%%\n",
-				100.0*float64(v)/float64(v+w.sync.fast2+w.sync.slow),
-				100.0*float64(w.sync.fast2)/float64(v+w.sync.fast2+w.sync.slow),
-			)
-		}
-		return nil
-	}
-
-	newWatermark := atomic.LoadInt64(&w.flushWatermark)
 	if w.s != nil {
 		w.err = w.s.Sync()
 		if w.err != nil {
 			if w.closed() {
 				return nil
 			}
-			return w.err
 		}
+		return w.err
 	}
-	atomic.StoreInt64(&w.sync.watermark, newWatermark)
-	w.sync.slow++
 	return nil
 }
 

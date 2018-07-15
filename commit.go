@@ -1,14 +1,11 @@
 package pebble
 
 import (
-	"math"
 	"math/bits"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/petermattis/pebble/record"
 )
 
 type commitQueueNode struct {
@@ -118,13 +115,12 @@ type commitEnv struct {
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
-	// Sync the WAL up to pos. Called concurrently.
-	sync func(log *record.LogWriter, pos int64) error
+	// Sync the WAL. Called serially by the sync goroutine.
+	sync func() error
 	// Write the batch to the WAL. The data is not persisted until a call to
-	// sync() is performed. Returns the WAL position at which the data was
-	// written which can be used in a subsequent call to sync(). Also returns the
-	// memtable the batch should be applied to. Called serially.
-	write func(b *Batch) (*memTable, *record.LogWriter, int64, error)
+	// sync() is performed. Returns the memtable the batch should be applied
+	// to. Called serially.
+	write func(b *Batch) (*memTable, error)
 }
 
 // A commitPipeline manages the commit commitPipeline: writing batches to the
@@ -162,8 +158,10 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 }
 
 func (p *commitPipeline) syncLoop() {
-	// runtime.LockOSThread()
-	// defer runtime.UnlockOSThread()
+	// Prevent other goroutines from running on this thread, which will be
+	// spending most of its time either waiting for in the kernel.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	s := &p.syncer
 	s.Lock()
@@ -179,10 +177,13 @@ func (p *commitPipeline) syncLoop() {
 
 		s.Unlock()
 
-		_ = p.env.sync(nil, math.MaxInt64)
+		if err := p.env.sync(); err != nil {
+			// TODO(peter): Handle error notification.
+			panic(err)
+		}
 
 		for _, b := range pending {
-			b.synced.Done()
+			b.commit.Done()
 		}
 
 		s.Lock()
@@ -200,14 +201,12 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
-	mem, log, pos, err := p.prepare(b)
+	mem, err := p.prepare(b, syncWAL)
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
 		panic(err)
 	}
-	_ = log
-	_ = pos
 
 	// Apply the batch to the memtable.
 	if err := p.env.apply(b, mem); err != nil {
@@ -219,24 +218,19 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	// Publish the batch sequence number.
 	p.publish(b)
 
-	if syncWAL {
-		b.synced.Add(1)
-		s := &p.syncer
-		s.Lock()
-		s.pending = append(s.pending, b)
-		s.cond.Signal()
-		s.Unlock()
-		b.synced.Wait()
-	}
 	return nil
 }
 
-func (p *commitPipeline) prepare(b *Batch) (*memTable, *record.LogWriter, int64, error) {
+func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	n := uint64(b.count())
 	if n == invalidBatchCount {
-		return nil, nil, 0, ErrInvalidBatch
+		return nil, ErrInvalidBatch
 	}
-	b.published.Add(1)
+	count := 1
+	if syncWAL {
+		count++
+	}
+	b.commit.Add(count)
 
 	p.env.mu.Lock()
 
@@ -249,11 +243,19 @@ func (p *commitPipeline) prepare(b *Batch) (*memTable, *record.LogWriter, int64,
 	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
-	mem, log, pos, err := p.env.write(b)
+	mem, err := p.env.write(b)
 
 	p.env.mu.Unlock()
 
-	return mem, log, pos, err
+	if syncWAL {
+		s := &p.syncer
+		s.Lock()
+		s.pending = append(s.pending, b)
+		s.cond.Signal()
+		s.Unlock()
+	}
+
+	return mem, err
 }
 
 func (p *commitPipeline) publish(b *Batch) {
@@ -271,7 +273,7 @@ func (p *commitPipeline) publish(b *Batch) {
 		t := p.pending.dequeue(&p.cond)
 		if t == nil {
 			// Wait for another goroutine to publish us.
-			b.published.Wait()
+			b.commit.Wait()
 			break
 		}
 
@@ -292,6 +294,6 @@ func (p *commitPipeline) publish(b *Batch) {
 			}
 		}
 
-		t.published.Done()
+		t.commit.Done()
 	}
 }

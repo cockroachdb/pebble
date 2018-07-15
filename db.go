@@ -316,14 +316,17 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (d *DB) commitSync(log *record.LogWriter, pos int64) error {
+func (d *DB) commitSync() error {
 	d.mu.Lock()
-	log = d.mu.log.LogWriter
+	log := d.mu.log.LogWriter
 	d.mu.Unlock()
-	return log.Sync(pos)
+	// NB: The log might have been closed after we unlock d.mu. That's ok because
+	// it will have been synced and all we're guaranteeing is that the log that
+	// was open at the start of this call was synced by the end of it.
+	return log.Sync()
 }
 
-func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) {
+func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 	// NB: commitWrite is called with d.mu locked.
 
 	// Throttle writes if there are too many L0 tables.
@@ -332,11 +335,11 @@ func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) 
 	// Switch out the memtable if there was not enough room to store the
 	// batch.
 	if err := d.makeRoomForWrite(b); err != nil {
-		return nil, nil, 0, err
+		return nil, err
 	}
 
-	pos, err := d.mu.log.WriteRecord(b.data)
-	return d.mu.mem.mutable, d.mu.log.LogWriter, pos, err
+	_, err := d.mu.log.WriteRecord(b.data)
+	return d.mu.mem.mutable, err
 }
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra

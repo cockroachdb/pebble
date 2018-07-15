@@ -44,19 +44,15 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (e *testCommitEnv) prepare(b *Batch) (*memTable, error) {
-	return nil, nil
-}
-
-func (e *testCommitEnv) sync(log *record.LogWriter, pos int64) error {
+func (e *testCommitEnv) sync() error {
 	return nil
 }
 
-func (e *testCommitEnv) write(b *Batch) (*memTable, *record.LogWriter, int64, error) {
+func (e *testCommitEnv) write(b *Batch) (*memTable, error) {
 	n := int64(len(b.data))
-	pos := atomic.AddInt64(&e.writePos, n) - n
+	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
-	return nil, nil, pos, nil
+	return nil, nil
 }
 
 func TestCommitPipeline(t *testing.T) {
@@ -110,10 +106,10 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					mem.unref()
 					return nil
 				},
-				sync: func(log *record.LogWriter, pos int64) error {
-					return wal.Sync(pos)
+				sync: func() error {
+					return wal.Sync()
 				},
-				write: func(b *Batch) (*memTable, *record.LogWriter, int64, error) {
+				write: func(b *Batch) (*memTable, error) {
 					for {
 						err := mem.prepare(b)
 						if err == arenaskl.ErrArenaFull {
@@ -121,13 +117,13 @@ func BenchmarkCommitPipeline(b *testing.B) {
 							continue
 						}
 						if err != nil {
-							return nil, nil, 0, err
+							return nil, err
 						}
 						break
 					}
 
-					pos, err := wal.WriteRecord(b.data)
-					return mem, wal, pos, err
+					_, err := wal.WriteRecord(b.data)
+					return mem, err
 				},
 			}
 			p := newCommitPipeline(nullCommitEnv)
