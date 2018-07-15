@@ -376,8 +376,10 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.level+1))
 			smallest = ikey.Clone()
 		}
-		// TODO(peter): Avoid the memory allocation
-		largest = ikey.Clone()
+		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
+		// in largest.
+		largest.UserKey = append(largest.UserKey[:0], ikey.UserKey...)
+		largest.Trailer = ikey.Trailer
 		if err := tw.Add(ikey, iter.Value()); err != nil {
 			return nil, pendingOutputs, err
 		}
