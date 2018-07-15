@@ -94,6 +94,7 @@ import (
 	"github.com/petermattis/pebble/record"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -176,6 +177,16 @@ type DB struct {
 
 	commit   *commitPipeline
 	fileLock io.Closer
+
+	// Rate limiter for how much bandwidth to allow for commits, compactions, and
+	// flushes.
+	//
+	// TODO(peter): Add a controller module that balances the limits so that
+	// commits cannot happen faster than flushes and the backlog of compaction
+	// work does not grow too large.
+	commitController  *controller
+	compactController *controller
+	flushController   *controller
 
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
@@ -526,12 +537,18 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *db.Options) (*DB, error) {
+	const defaultRateLimit = rate.Limit(50 << 20) // 50 MB/sec
+	const defaultBurst = 1 << 20                  // 1 MB
+
 	opts = opts.EnsureDefaults()
 	d := &DB{
-		dirname:   dirname,
-		opts:      opts,
-		cmp:       opts.Comparer.Compare,
-		inlineKey: opts.Comparer.InlineKey,
+		dirname:           dirname,
+		opts:              opts,
+		cmp:               opts.Comparer.Compare,
+		inlineKey:         opts.Comparer.InlineKey,
+		commitController:  newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
+		compactController: newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
+		flushController:   newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
 	}
 	tableCacheSize := opts.MaxOpenFiles - numNonTableCacheFiles
 	if tableCacheSize < minTableCacheSize {
@@ -543,6 +560,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		mu:            &d.mu.Mutex,
 		logSeqNum:     &d.mu.versions.logSeqNum,
 		visibleSeqNum: &d.mu.versions.visibleSeqNum,
+		controller:    d.commitController,
 		apply:         d.commitApply,
 		sync:          d.commitSync,
 		write:         d.commitWrite,
@@ -778,10 +796,16 @@ func (d *DB) writeLevel0Table(
 		return fileMetadata{}, fmt.Errorf("pebble: memtable empty")
 	}
 
+	// TODO(peter): Before a flush we set the flush rate to 110% of the commit
+	// rate. The rationale behind the 110% is that flushing has to keep up with
+	// committing, but doesn't need to exceed it too much.
+	d.flushController.limiter.SetLimit(1.1 * rate.Limit(d.commitController.sensor.Rate()))
+
 	file, err = fs.Create(filename)
 	if err != nil {
 		return fileMetadata{}, err
 	}
+	file = newRateLimitedFile(file, d.flushController)
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
 	meta.smallest = iter.Key().Clone()
@@ -817,6 +841,11 @@ func (d *DB) writeLevel0Table(
 	}
 	meta.size = uint64(size)
 	tw = nil
+
+	// TODO(peter): After a flush we set the commit rate to 110% of the flush
+	// rate. The rationale behind the 110% is to account for slack. Investigate a
+	// more principled way of setting this.
+	d.commitController.limiter.SetLimit(1.1 * rate.Limit(d.flushController.sensor.Rate()))
 
 	// TODO(peter): compaction stats.
 
