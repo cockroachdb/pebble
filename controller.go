@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
+	"github.com/petermattis/pebble/rate"
 )
 
 type controller struct {

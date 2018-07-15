@@ -91,10 +91,10 @@ import (
 
 	"github.com/petermattis/pebble/arenaskl"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/rate"
 	"github.com/petermattis/pebble/record"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
-	"golang.org/x/time/rate"
 )
 
 const (
