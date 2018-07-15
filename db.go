@@ -708,7 +708,7 @@ func (d *DB) replayWAL(
 	}
 
 	if mem != nil && !mem.Empty() {
-		meta, err := d.writeLevel0Table(fs, mem)
+		meta, err := d.writeLevel0Table(fs, mem.NewIter(nil))
 		if err != nil {
 			return 0, err
 		}
@@ -739,7 +739,9 @@ func firstError(err0, err1 error) error {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetadata, err error) {
+func (d *DB) writeLevel0Table(
+	fs storage.Storage, iter db.InternalIterator,
+) (meta fileMetadata, err error) {
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
 	d.mu.compact.pendingOutputs[meta.fileNum] = struct{}{}
@@ -757,7 +759,6 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 	var (
 		file storage.File
 		tw   *sstable.Writer
-		iter db.InternalIterator
 	)
 	defer func() {
 		if iter != nil {
@@ -772,16 +773,17 @@ func (d *DB) writeLevel0Table(fs storage.Storage, mem *memTable) (meta fileMetad
 		}
 	}()
 
+	iter.First()
+	if !iter.Valid() {
+		return fileMetadata{}, fmt.Errorf("pebble: memtable empty")
+	}
+
 	file, err = fs.Create(filename)
 	if err != nil {
 		return fileMetadata{}, err
 	}
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
-	iter = mem.NewIter(nil)
-	if !iter.Next() {
-		return fileMetadata{}, fmt.Errorf("pebble: memtable empty")
-	}
 	meta.smallest = iter.Key().Clone()
 	for {
 		meta.largest = iter.Key()

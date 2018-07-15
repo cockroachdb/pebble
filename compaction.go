@@ -241,17 +241,33 @@ func (d *DB) compact1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compactMemTable() error {
-	imm := d.mu.mem.queue[0]
-	if imm == d.mu.mem.mutable {
-		panic("pebble: cannot compact mutable memtable")
+	var n int
+	for ; n < len(d.mu.mem.queue)-1; n++ {
+		if !d.mu.mem.queue[n].readyForFlush() {
+			break
+		}
 	}
-	if !imm.readyForFlush() {
+	if n == 0 {
+		// None of the immutable memtables are ready for flushing.
 		return nil
 	}
-	meta, err := d.writeLevel0Table(d.opts.Storage, imm)
+
+	var iter db.InternalIterator
+	if n == 1 {
+		iter = d.mu.mem.queue[0].NewIter(nil)
+	} else {
+		iters := make([]db.InternalIterator, n)
+		for i := range iters {
+			iters[i] = d.mu.mem.queue[i].NewIter(nil)
+		}
+		iter = newMergingIter(d.cmp, iters...)
+	}
+
+	meta, err := d.writeLevel0Table(d.opts.Storage, iter)
 	if err != nil {
 		return err
 	}
+
 	err = d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{
 		logNumber: d.mu.log.number,
 		newFiles: []newFileEntry{
@@ -262,7 +278,8 @@ func (d *DB) compactMemTable() error {
 	if err != nil {
 		return err
 	}
-	d.mu.mem.queue = d.mu.mem.queue[1:]
+
+	d.mu.mem.queue = d.mu.mem.queue[n:]
 	d.deleteObsoleteFiles()
 	return nil
 }
