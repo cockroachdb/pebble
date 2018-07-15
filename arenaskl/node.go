@@ -28,7 +28,7 @@ import (
 // MaxNodeSize returns the maximum space needed for a node with the specified
 // key and value sizes.
 func MaxNodeSize(keySize, valueSize uint32) uint32 {
-	return uint32(maxNodeSize) + keySize + valueSize + Align4
+	return uint32(maxNodeSize) + keySize + valueSize + align4
 }
 
 type links struct {
@@ -95,7 +95,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 		valueSize = 0
 	}
 
-	nodeOffset, err := arena.alloc(nodeSize+keySize+valueSize, Align4)
+	nodeOffset, err := arena.alloc(nodeSize+keySize+valueSize, align4)
 	if err != nil {
 		return
 	}

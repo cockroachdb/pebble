@@ -37,13 +37,8 @@ type Arena struct {
 	}
 }
 
-type Align uint8
-
 const (
-	Align1 = 0
-	Align2 = 1
-	Align4 = 3
-	Align8 = 7
+	align4 = 3
 )
 
 var (
@@ -81,9 +76,9 @@ func (a *Arena) reset() {
 	atomic.StoreUint32(&a.n, 1)
 }
 
-func (a *Arena) alloc(size uint32, align Align) (uint32, error) {
+func (a *Arena) alloc(size, align uint32) (uint32, error) {
 	// Pad the allocation with enough bytes to ensure the requested alignment.
-	padded := uint32(size) + uint32(align)
+	padded := uint32(size) + align
 
 	newSize := atomic.AddUint32(&a.n, padded)
 	if int(newSize) > len(a.buf) {
