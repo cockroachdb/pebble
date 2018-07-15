@@ -310,6 +310,12 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 	return nil
 }
 
+// Repr returns the underlying batch representation. It is not safe to modify
+// the contents.
+func (b *Batch) Repr() []byte {
+	return b.data
+}
+
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE, SeekLT,
 // First or Last. Only indexed batches support iterators.

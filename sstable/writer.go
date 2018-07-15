@@ -249,6 +249,14 @@ func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
 	if _, err := w.writer.Write(w.tmp[:5]); err != nil {
 		return blockHandle{}, err
 	}
+	if w.bufWriter != nil {
+		if err := w.bufWriter.Flush(); err != nil {
+			return blockHandle{}, err
+		}
+	}
+	if err := w.file.Sync(); err != nil {
+		return blockHandle{}, err
+	}
 	bh := blockHandle{w.offset, uint64(len(b))}
 	w.offset += uint64(len(b)) + blockTrailerLen
 	return bh, nil

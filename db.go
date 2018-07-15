@@ -323,31 +323,13 @@ func (d *DB) commitSync(log *record.LogWriter, pos int64) error {
 func (d *DB) commitWrite(b *Batch) (*memTable, *record.LogWriter, int64, error) {
 	// NB: commitWrite is called with d.mu locked.
 
-	if b == nil {
-		// A nil batch indicates a request to flush the memtable.
-		return nil, nil, 0, d.switchMemTable()
-	}
-
 	// Throttle writes if there are too many L0 tables.
 	d.throttleWrite()
 
-	for {
-		err := d.mu.mem.mutable.prepare(b)
-		if err == arenaskl.ErrArenaFull {
-			// Switch out the memtable if there was not enough room to store the
-			// batch.
-			//
-			// TODO(peter): should pass in the size required by the batch so that a
-			// custom-sized memtable can be allocated if the batch is very large.
-			if err := d.switchMemTable(); err != nil {
-				return nil, nil, 0, err
-			}
-			continue
-		}
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		break
+	// Switch out the memtable if there was not enough room to store the
+	// batch.
+	if err := d.makeRoomForWrite(b); err != nil {
+		return nil, nil, 0, err
 	}
 
 	pos, err := d.mu.log.WriteRecord(b.data)
@@ -482,7 +464,7 @@ func (d *DB) Flush() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	// TODO(peter): Wait for the memtable to be flushed.
-	return d.switchMemTable()
+	return d.makeRoomForWrite(nil)
 }
 
 // Ingest TODO(peter)
@@ -635,11 +617,6 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if logFile != nil {
-			logFile.Close()
-		}
-	}()
 	d.mu.log.LogWriter = record.NewLogWriter(logFile)
 
 	// Write a new manifest to disk.
@@ -670,9 +647,9 @@ func (d *DB) replayWAL(
 	defer file.Close()
 
 	var (
-		mem *memTable
 		b   Batch
 		buf bytes.Buffer
+		mem *memTable
 		rr  = record.NewReader(file)
 	)
 	for {
@@ -704,10 +681,8 @@ func (d *DB) replayWAL(
 		for {
 			err := mem.prepare(&b)
 			if err == arenaskl.ErrArenaFull {
-				if err := d.switchMemTable(); err != nil {
-					return 0, err
-				}
-				continue
+				// TODO(peter): write the memtable to disk.
+				panic(err)
 			}
 			if err != nil {
 				return 0, err
@@ -843,6 +818,7 @@ func (d *DB) throttleWrite() {
 	if len(d.mu.versions.currentVersion().files[0]) <= d.opts.L0SlowdownWritesThreshold {
 		return
 	}
+	fmt.Printf("L0 slowdown writes threshold\n")
 	// We are getting close to hitting a hard limit on the number of L0
 	// files. Rather than delaying a single write by several seconds when we hit
 	// the hard limit, start delaying each individual write by 1ms to reduce
@@ -854,13 +830,22 @@ func (d *DB) throttleWrite() {
 	d.mu.Lock()
 }
 
-func (d *DB) switchMemTable() error {
+func (d *DB) makeRoomForWrite(b *Batch) error {
 	for {
+		if b != nil {
+			err := d.mu.mem.mutable.prepare(b)
+			if err == nil {
+				return nil
+			}
+			if err != arenaskl.ErrArenaFull {
+				return err
+			}
+		}
 		if d.mu.mem.switching {
 			d.mu.mem.cond.Wait()
 			continue
 		}
-		if len(d.mu.mem.queue) >= 2 {
+		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
 			// We have filled up the current memtable, but the previous one is still
 			// being compacted, so we wait.
 			d.mu.compact.cond.Wait()
@@ -868,49 +853,48 @@ func (d *DB) switchMemTable() error {
 		}
 		if len(d.mu.versions.currentVersion().files[0]) > d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
+			fmt.Printf("L0 stop writes threshold\n")
 			d.mu.compact.cond.Wait()
 			continue
 		}
-		break
-	}
 
-	newLogNumber := d.mu.versions.nextFileNum()
-	d.mu.mem.switching = true
-	d.mu.Unlock()
+		newLogNumber := d.mu.versions.nextFileNum()
+		d.mu.mem.switching = true
+		d.mu.Unlock()
 
-	newLogFile, err := d.opts.Storage.Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
-	if err == nil {
-		err = d.mu.log.Close()
+		newLogFile, err := d.opts.Storage.Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
+		if err == nil {
+			err = d.mu.log.Close()
+			if err != nil {
+				newLogFile.Close()
+			}
+		}
+
+		d.mu.Lock()
+		d.mu.mem.switching = false
+		d.mu.mem.cond.Broadcast()
+
 		if err != nil {
-			newLogFile.Close()
+			// TODO(peter): avoid chewing through file numbers in a tight loop if there
+			// is an error here.
+			//
+			// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
+			// close the previous log it is possible we lost a write.
+			panic(err)
+		}
+
+		// NB: When the immutable memtable is flushed to disk it will apply a
+		// versionEdit to the manifest telling it that log files < d.mu.log.number
+		// have been applied.
+		d.mu.log.number = newLogNumber
+		d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
+		imm := d.mu.mem.mutable
+		d.mu.mem.mutable = newMemTable(d.opts)
+		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		if imm.unref() {
+			d.maybeScheduleCompaction()
 		}
 	}
-
-	d.mu.Lock()
-	d.mu.mem.switching = false
-	d.mu.mem.cond.Broadcast()
-
-	if err != nil {
-		// TODO(peter): avoid chewing through file numbers in a tight loop if there
-		// is an error here.
-		//
-		// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
-		// close the previous log it is possible we lost a write.
-		panic(err)
-	}
-
-	// NB: When the immutable memtable is flushed to disk it will apply a
-	// versionEdit to the manifest telling it that log files < d.mu.log.number
-	// have been applied.
-	d.mu.log.number = newLogNumber
-	d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
-	imm := d.mu.mem.mutable
-	d.mu.mem.mutable = newMemTable(d.opts)
-	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-	if imm.unref() {
-		d.maybeScheduleCompaction()
-	}
-	return nil
 }
 
 // deleteObsoleteFiles deletes those files that are no longer needed.

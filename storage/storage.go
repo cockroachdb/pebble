@@ -7,6 +7,7 @@ package storage
 import (
 	"io"
 	"os"
+	"syscall"
 )
 
 // File is a readable, writable sequence of bytes.
@@ -78,14 +79,41 @@ type Storage interface {
 // system's file system.
 var Default Storage = defaultFS{}
 
+type defaultFile struct {
+	*os.File
+	fd int
+}
+
+func newDefaultFile(f *os.File) *defaultFile {
+	fd := int(f.Fd())
+	_ = syscall.SetNonblock(fd, true)
+	return &defaultFile{File: f, fd: fd}
+}
+
+func (f *defaultFile) Sync() error {
+	return syscall.Fsync(f.fd)
+}
+
+func (f *defaultFile) Write(p []byte) (int, error) {
+	return syscall.Write(f.fd, p)
+}
+
 type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
-	return os.Create(name)
+	f, err := os.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return newDefaultFile(f), nil
 }
 
 func (defaultFS) Open(name string) (File, error) {
-	return os.Open(name)
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return newDefaultFile(f), nil
 }
 
 func (defaultFS) Remove(name string) error {

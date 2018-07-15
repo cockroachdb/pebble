@@ -3,6 +3,7 @@ package record
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -48,6 +49,9 @@ type LogWriter struct {
 		sync.Mutex
 		// The latest position in the file that has been synced.
 		watermark int64
+		fast1     int64
+		fast2     int64
+		slow      int64
 	}
 
 	flusher struct {
@@ -185,12 +189,6 @@ func (w *LogWriter) Close() error {
 // Flush flushes unwritten data up to the specified position (as returned from
 // WriteRecord). May be called concurrently with Write, Sync and itself.
 func (w *LogWriter) Flush(pos int64) error {
-	if pos <= atomic.LoadInt64(&w.flushWatermark) {
-		// Nothing to do, the position we're being asked to flush to has already
-		// been flushed.
-		return nil
-	}
-
 	w.flushMu.Lock()
 	defer w.flushMu.Unlock()
 
@@ -200,13 +198,8 @@ func (w *LogWriter) Flush(pos int64) error {
 
 	w.flusher.Lock()
 	// Wait for any existing flushing to complete.
-	for w.flusher.flushing && pos > w.flushWatermark {
+	for w.flusher.flushing {
 		w.flusher.done.Wait()
-	}
-	// Check the flush watermark again after the flusher is done.
-	if pos <= w.flushWatermark {
-		w.flusher.Unlock()
-		return nil
 	}
 	// Block any new flushing from starting.
 	w.flusher.flushing = true
@@ -253,7 +246,17 @@ func (w *LogWriter) Flush(pos int64) error {
 // underlying file. May be called concurrently with Write, Flush and itself.
 func (w *LogWriter) Sync(pos int64) error {
 	if err := w.Flush(pos); err != nil {
+		if pos <= atomic.LoadInt64(&w.sync.watermark) {
+			return nil
+		}
 		return err
+	}
+
+	if pos <= atomic.LoadInt64(&w.sync.watermark) {
+		// Nothing to do, the position we're being asked to sync to has already
+		// been synced.
+		atomic.AddInt64(&w.sync.fast1, 1)
+		return nil
 	}
 
 	w.sync.Lock()
@@ -264,15 +267,26 @@ func (w *LogWriter) Sync(pos int64) error {
 	if pos <= w.sync.watermark {
 		// Nothing to do, the position we're being asked to sync to has already
 		// been synced.
+		w.sync.fast2++
+		if true && (w.sync.fast2%10000) == 0 {
+			v := atomic.LoadInt64(&w.sync.fast1)
+			fmt.Printf("sync %.1f%% %0.1f%%\n",
+				100.0*float64(v)/float64(v+w.sync.fast2+w.sync.slow),
+				100.0*float64(w.sync.fast2)/float64(v+w.sync.fast2+w.sync.slow),
+			)
+		}
 		return nil
 	}
 
 	newWatermark := atomic.LoadInt64(&w.flushWatermark)
 	if w.s != nil {
 		w.err = w.s.Sync()
-		return w.err
+		if w.err != nil {
+			return w.err
+		}
 	}
-	w.sync.watermark = newWatermark
+	atomic.StoreInt64(&w.sync.watermark, newWatermark)
+	w.sync.slow++
 	return nil
 }
 
