@@ -300,7 +300,7 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
-	return d.commit.commit(batch, opts.GetSync())
+	return d.commit.Commit(batch, opts.GetSync())
 }
 
 func (d *DB) commitApply(b *Batch, mem *memTable) error {
@@ -454,6 +454,7 @@ func (d *DB) Close() error {
 	err := d.tableCache.Close()
 	err = firstError(err, d.mu.log.Close())
 	err = firstError(err, d.fileLock.Close())
+	d.commit.Close()
 	d.mu.closed = true
 	return err
 }

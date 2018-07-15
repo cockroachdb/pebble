@@ -67,7 +67,7 @@ func TestCommitPipeline(t *testing.T) {
 			defer wg.Done()
 			var b Batch
 			_ = b.Set([]byte(fmt.Sprint(i)), nil, nil)
-			_ = p.commit(&b, false)
+			_ = p.Commit(&b, false)
 		}(i)
 	}
 	wg.Wait()
@@ -140,7 +140,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					batch := newBatch(nil)
 					binary.BigEndian.PutUint64(buf, rng.Uint64())
 					batch.Set(buf, buf, nil)
-					if err := p.commit(batch, true /* sync */); err != nil {
+					if err := p.Commit(batch, true /* sync */); err != nil {
 						b.Fatal(err)
 					}
 					batch.release()

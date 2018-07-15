@@ -142,6 +142,7 @@ type commitPipeline struct {
 	syncer struct {
 		sync.Mutex
 		cond    sync.Cond
+		closed  bool
 		pending []*Batch
 	}
 }
@@ -168,8 +169,11 @@ func (p *commitPipeline) syncLoop() {
 	defer s.Unlock()
 
 	for {
-		for len(s.pending) == 0 {
+		for len(s.pending) == 0 && !s.closed {
 			s.cond.Wait()
+		}
+		if s.closed {
+			return
 		}
 
 		pending := s.pending
@@ -190,10 +194,17 @@ func (p *commitPipeline) syncLoop() {
 	}
 }
 
+func (p *commitPipeline) Close() {
+	p.syncer.Lock()
+	p.syncer.closed = true
+	p.syncer.cond.Broadcast()
+	p.syncer.Unlock()
+}
+
 // Commit the specified batch, writing it to the WAL, optionally syncing the
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
-func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
+func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	if len(b.data) == 0 {
 		return nil
 	}
