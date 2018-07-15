@@ -181,6 +181,8 @@ func main() {
 	var lastOps uint64
 	var lastBytes uint64
 
+	cumLatency := hdrhistogram.New(minLatency.Nanoseconds(), maxLatency.Nanoseconds(), 1)
+
 	for i := 0; ; i++ {
 		select {
 		case <-ticker.C:
@@ -197,6 +199,7 @@ func main() {
 				}
 			}
 
+			cumLatency.Merge(h)
 			p50 := h.ValueAtQuantile(50)
 			p95 := h.ValueAtQuantile(95)
 			p99 := h.ValueAtQuantile(99)
@@ -224,6 +227,31 @@ func main() {
 			lastBytes = bytes
 
 		case <-done:
+			for _, w := range workers {
+				w.latency.Lock()
+				m := w.latency.Merge()
+				w.latency.Rotate()
+				w.latency.Unlock()
+				cumLatency.Merge(m)
+			}
+
+			avg := cumLatency.Mean()
+			p50 := cumLatency.ValueAtQuantile(50)
+			p95 := cumLatency.ValueAtQuantile(95)
+			p99 := cumLatency.ValueAtQuantile(99)
+			pMax := cumLatency.ValueAtQuantile(100)
+
+			ops := atomic.LoadUint64(&numOps)
+			elapsed := time.Since(start).Seconds()
+			fmt.Println("\n_elapsed_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+			fmt.Printf("%7.1fs %14d %14.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n\n",
+				time.Since(start).Seconds(),
+				ops, float64(ops)/elapsed,
+				time.Duration(avg).Seconds()*1000,
+				time.Duration(p50).Seconds()*1000,
+				time.Duration(p95).Seconds()*1000,
+				time.Duration(p99).Seconds()*1000,
+				time.Duration(pMax).Seconds()*1000)
 			return
 		}
 	}
