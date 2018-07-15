@@ -1,6 +1,7 @@
 package pebble
 
 import (
+	"math"
 	"math/bits"
 	"runtime"
 	"sync"
@@ -141,6 +142,12 @@ type commitPipeline struct {
 	cond sync.Cond
 	// Queue of pending batches to commit.
 	pending commitQueue
+
+	syncer struct {
+		sync.Mutex
+		cond    sync.Cond
+		pending []*Batch
+	}
 }
 
 func newCommitPipeline(env commitEnv) *commitPipeline {
@@ -149,7 +156,37 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 	}
 	p.cond.L = p.env.mu
 	p.pending.init()
+	p.syncer.cond.L = &p.syncer.Mutex
+	go p.syncLoop()
 	return p
+}
+
+func (p *commitPipeline) syncLoop() {
+	// runtime.LockOSThread()
+	// defer runtime.UnlockOSThread()
+
+	s := &p.syncer
+	s.Lock()
+	defer s.Unlock()
+
+	for {
+		for len(s.pending) == 0 {
+			s.cond.Wait()
+		}
+
+		pending := s.pending
+		s.pending = nil
+
+		s.Unlock()
+
+		_ = p.env.sync(nil, math.MaxInt64)
+
+		for _, b := range pending {
+			b.synced.Done()
+		}
+
+		s.Lock()
+	}
 }
 
 // Commit the specified batch, writing it to the WAL, optionally syncing the
@@ -169,6 +206,8 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 		// point.
 		panic(err)
 	}
+	_ = log
+	_ = pos
 
 	// Apply the batch to the memtable.
 	if err := p.env.apply(b, mem); err != nil {
@@ -181,9 +220,13 @@ func (p *commitPipeline) commit(b *Batch, syncWAL bool) error {
 	p.publish(b)
 
 	if syncWAL {
-		if err := p.env.sync(log, pos); err != nil {
-			panic(err)
-		}
+		b.synced.Add(1)
+		s := &p.syncer
+		s.Lock()
+		s.pending = append(s.pending, b)
+		s.cond.Signal()
+		s.Unlock()
+		b.synced.Wait()
 	}
 	return nil
 }

@@ -186,6 +186,13 @@ func (w *LogWriter) Close() error {
 	return nil
 }
 
+func (w *LogWriter) closed() bool {
+	w.flusher.Lock()
+	closed := w.flusher.closed
+	w.flusher.Unlock()
+	return closed
+}
+
 // Flush flushes unwritten data up to the specified position (as returned from
 // WriteRecord). May be called concurrently with Write, Sync and itself.
 func (w *LogWriter) Flush(pos int64) error {
@@ -193,6 +200,9 @@ func (w *LogWriter) Flush(pos int64) error {
 	defer w.flushMu.Unlock()
 
 	if w.err != nil {
+		if w.closed() {
+			return nil
+		}
 		return w.err
 	}
 
@@ -246,9 +256,6 @@ func (w *LogWriter) Flush(pos int64) error {
 // underlying file. May be called concurrently with Write, Flush and itself.
 func (w *LogWriter) Sync(pos int64) error {
 	if err := w.Flush(pos); err != nil {
-		if pos <= atomic.LoadInt64(&w.sync.watermark) {
-			return nil
-		}
 		return err
 	}
 
@@ -282,6 +289,9 @@ func (w *LogWriter) Sync(pos int64) error {
 	if w.s != nil {
 		w.err = w.s.Sync()
 		if w.err != nil {
+			if w.closed() {
+				return nil
+			}
 			return w.err
 		}
 	}

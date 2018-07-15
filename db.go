@@ -317,6 +317,9 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 }
 
 func (d *DB) commitSync(log *record.LogWriter, pos int64) error {
+	d.mu.Lock()
+	log = d.mu.log.LogWriter
+	d.mu.Unlock()
 	return log.Sync(pos)
 }
 
@@ -848,6 +851,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
 			// We have filled up the current memtable, but the previous one is still
 			// being compacted, so we wait.
+			fmt.Printf("memtable stop writes threshold\n")
 			d.mu.compact.cond.Wait()
 			continue
 		}

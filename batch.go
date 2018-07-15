@@ -84,6 +84,7 @@ type Batch struct {
 	index *batchskl.Skiplist
 
 	published sync.WaitGroup
+	synced    sync.WaitGroup
 	applied   uint32 // updated atomically
 }
 

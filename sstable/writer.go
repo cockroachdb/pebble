@@ -141,7 +141,8 @@ type Writer struct {
 	pendingBH blockHandle
 	// offset is the offset (relative to the table start) of the next block
 	// to be written.
-	offset uint64
+	offset     uint64
+	syncOffset uint64
 	// indexKeys and indexEntries hold the separator keys between each block
 	// and the successor key for the final block. indexKeys contains the key's
 	// bytes concatenated together. The keyLen field of each indexEntries
@@ -249,16 +250,23 @@ func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
 	if _, err := w.writer.Write(w.tmp[:5]); err != nil {
 		return blockHandle{}, err
 	}
-	if w.bufWriter != nil {
-		if err := w.bufWriter.Flush(); err != nil {
-			return blockHandle{}, err
-		}
-	}
-	if err := w.file.Sync(); err != nil {
-		return blockHandle{}, err
-	}
 	bh := blockHandle{w.offset, uint64(len(b))}
 	w.offset += uint64(len(b)) + blockTrailerLen
+
+	// Sync the file periodically to smooth out disk traffic.
+	//
+	// TODO(peter): make this configurable.
+	if (w.offset - w.syncOffset) >= 128<<10 {
+		if w.bufWriter != nil {
+			if err := w.bufWriter.Flush(); err != nil {
+				return blockHandle{}, err
+			}
+		}
+		if err := w.file.Sync(); err != nil {
+			return blockHandle{}, err
+		}
+		w.syncOffset = w.offset
+	}
 	return bh, nil
 }
 
