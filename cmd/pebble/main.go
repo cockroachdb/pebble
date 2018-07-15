@@ -16,6 +16,7 @@ import (
 
 	"github.com/codahale/hdrhistogram"
 	"github.com/petermattis/pebble"
+	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 )
 
@@ -120,6 +121,7 @@ func main() {
 	fmt.Printf("writing to %s, concurrency %d\n", dir, *concurrency)
 
 	db, err := pebble.Open(dir, &db.Options{
+		Cache:                       cache.New(1 << 30),
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
 		L0CompactionThreshold:       2,

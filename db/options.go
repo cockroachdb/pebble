@@ -107,7 +107,7 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o.BlockRestartInterval <= 0 {
 		o.BlockRestartInterval = 16
 	}
-	if o.BlockRestartInterval <= 0 {
+	if o.BlockSize <= 0 {
 		o.BlockSize = 4096
 	}
 	if o.Compression <= DefaultCompression || o.Compression >= nCompression {
@@ -120,6 +120,14 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 // apply to the DB at large; per-query options are defined by the ReadOptions
 // and WriteOptions types.
 type Options struct {
+	// Sync sstables and the WAL periodically in order to smooth out writes to
+	// disk. This option does not provide any persistency guarantee, but is used
+	// to avoid latency spikes if the OS automatically decides to write out a
+	// large chunk of dirty filesystem buffers.
+	//
+	// The default value is 512KB.
+	BytesPerSync int
+
 	// TODO(peter): provide a cache interface.
 	Cache *cache.Cache
 
@@ -158,9 +166,9 @@ type Options struct {
 
 	// The size of a MemTable. Note that more than one MemTable can be in
 	// existence since flushing a MemTable involves creating a new one and
-	// writing the contents of the old one in the background. The
-	// StopWritesThreshold places a hard limit on the number of MemTables allowed
-	// at once.
+	// writing the contents of the old one in the
+	// background. MemTableStopWritesThreshold places a hard limit on the number
+	// of MemTables allowed at once.
 	MemTableSize int
 
 	// Hard limit on the number of MemTables. Writes are stopped when this number
@@ -179,6 +187,9 @@ type Options struct {
 func (o *Options) EnsureDefaults() *Options {
 	if o == nil {
 		o = &Options{}
+	}
+	if o.BytesPerSync <= 0 {
+		o.BytesPerSync = 512 << 10
 	}
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer

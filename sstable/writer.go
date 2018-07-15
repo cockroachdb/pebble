@@ -127,11 +127,12 @@ type Writer struct {
 	file      storage.File
 	stat      os.FileInfo
 	err       error
-	// The next four fields are copied from a db.Options.
-	blockSize   int
-	appendSep   db.AppendSeparator
-	compare     db.Compare
-	compression db.Compression
+	// The next give fields are copied from a db.Options.
+	blockSize    int
+	bytesPerSync int
+	appendSep    db.AppendSeparator
+	compare      db.Compare
+	compression  db.Compression
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
 	// cannot be written until the first key in the next block is seen.
@@ -254,9 +255,7 @@ func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
 	w.offset += uint64(len(b)) + blockTrailerLen
 
 	// Sync the file periodically to smooth out disk traffic.
-	//
-	// TODO(peter): make this configurable.
-	if (w.offset - w.syncOffset) >= 128<<10 {
+	if w.bytesPerSync > 0 && (w.offset-w.syncOffset) >= uint64(w.bytesPerSync) {
 		if w.bufWriter != nil {
 			if err := w.bufWriter.Flush(); err != nil {
 				return blockHandle{}, err
@@ -405,11 +404,12 @@ func NewWriter(f storage.File, o *db.Options, lo *db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = lo.EnsureDefaults()
 	w := &Writer{
-		file:        f,
-		blockSize:   lo.BlockSize,
-		appendSep:   o.Comparer.AppendSeparator,
-		compare:     o.Comparer.Compare,
-		compression: lo.Compression,
+		file:         f,
+		blockSize:    lo.BlockSize,
+		bytesPerSync: o.BytesPerSync,
+		appendSep:    o.Comparer.AppendSeparator,
+		compare:      o.Comparer.Compare,
+		compression:  lo.Compression,
 		filter: filterWriter{
 			policy: lo.FilterPolicy,
 		},
