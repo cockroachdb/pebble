@@ -48,7 +48,9 @@ import (
 	"math"
 	"math/rand"
 	"runtime"
+	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/petermattis/pebble/db"
@@ -71,6 +73,11 @@ type Skiplist struct {
 	head   *node
 	tail   *node
 	height uint32 // Current height. 1 <= height <= maxHeight. CAS.
+
+	rand struct {
+		sync.Mutex
+		src rand.Source64
+	}
 
 	// If set to true by tests, then extra delays are added to make it easier to
 	// detect unusual race conditions.
@@ -130,6 +137,7 @@ func (s *Skiplist) Reset(arena *Arena, cmp db.Compare) {
 		tail:   tail,
 		height: 1,
 	}
+	s.rand.src = rand.NewSource(time.Now().UnixNano()).(rand.Source64)
 }
 
 // Height returns the height of the highest tower within any of the nodes that
@@ -283,7 +291,10 @@ func (s *Skiplist) newNode(
 }
 
 func (s *Skiplist) randomHeight() uint32 {
-	rnd := rand.Uint32()
+	s.rand.Lock()
+	rnd := uint32(s.rand.src.Uint64())
+	s.rand.Unlock()
+
 	h := uint32(1)
 	for h < maxHeight && rnd <= probabilities[h] {
 		h++
