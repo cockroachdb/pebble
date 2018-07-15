@@ -150,14 +150,12 @@ func (v *version) updateCompactionScore(opts *db.Options) {
 	v.compactionScore = float64(len(v.files[0])) / float64(opts.L0CompactionThreshold)
 	v.compactionLevel = 0
 
-	maxBytes := float64(10 * 1024 * 1024)
 	for level := 1; level < numLevels-1; level++ {
-		score := float64(totalSize(v.files[level])) / maxBytes
+		score := float64(totalSize(v.files[level])) / float64(opts.Level(level).MaxBytes)
 		if score > v.compactionScore {
 			v.compactionScore = score
 			v.compactionLevel = level
 		}
-		maxBytes *= 10
 	}
 }
 

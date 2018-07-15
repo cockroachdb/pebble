@@ -400,9 +400,9 @@ func (w *Writer) Stat() (os.FileInfo, error) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f storage.File, o *db.Options, lo *db.LevelOptions) *Writer {
+func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
-	lo = lo.EnsureDefaults()
+	lo = *lo.EnsureDefaults()
 	w := &Writer{
 		file:         f,
 		blockSize:    lo.BlockSize,

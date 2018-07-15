@@ -113,6 +113,12 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o.Compression <= DefaultCompression || o.Compression >= nCompression {
 		o.Compression = SnappyCompression
 	}
+	if o.MaxBytes <= 0 {
+		o.MaxBytes = 64 << 20 // 64 MB
+	}
+	if o.TargetFileSize <= 0 {
+		o.TargetFileSize = 4 << 20 // 4 MB
+	}
 	return o
 }
 
@@ -206,6 +212,15 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Levels == nil {
 		o.Levels = make([]LevelOptions, 1)
 		for i := range o.Levels {
+			if i > 0 {
+				l := &o.Levels[i]
+				if l.MaxBytes <= 0 {
+					l.MaxBytes = o.Levels[i-1].MaxBytes * 10
+				}
+				if l.TargetFileSize <= 0 {
+					l.TargetFileSize = o.Levels[i-1].TargetFileSize * 2
+				}
+			}
 			o.Levels[i] = *o.Levels[i].EnsureDefaults()
 		}
 	}
@@ -225,11 +240,17 @@ func (o *Options) EnsureDefaults() *Options {
 }
 
 // Level ...
-func (o *Options) Level(level int) *LevelOptions {
+func (o *Options) Level(level int) LevelOptions {
 	if level < len(o.Levels) {
-		return &o.Levels[level]
+		return o.Levels[level]
 	}
-	return &o.Levels[len(o.Levels)-1]
+	n := len(o.Levels) - 1
+	l := o.Levels[n]
+	for i := n; i < level; i++ {
+		l.MaxBytes *= 10
+		l.TargetFileSize *= 2
+	}
+	return l
 }
 
 // ReadOptions hold the optional per-query parameters for Get and Find

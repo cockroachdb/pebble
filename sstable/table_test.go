@@ -229,7 +229,7 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	}
 	defer f0.Close()
 	tmpFileCount++
-	w := NewWriter(f0, nil, &db.LevelOptions{
+	w := NewWriter(f0, nil, db.LevelOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
 	})
@@ -475,7 +475,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 				continue
 			}
-			w := NewWriter(wf, nil, &db.LevelOptions{
+			w := NewWriter(wf, nil, db.LevelOptions{
 				BlockSize: blockSize,
 			})
 			for _, k := range keys[:nk] {

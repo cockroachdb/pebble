@@ -20,7 +20,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	}
 	defer f0.Close()
 
-	w := NewWriter(f0, nil, &db.LevelOptions{
+	w := NewWriter(f0, nil, db.LevelOptions{
 		BlockRestartInterval: restartInterval,
 		BlockSize:            blockSize,
 		FilterPolicy:         nil,

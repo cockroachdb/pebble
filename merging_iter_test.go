@@ -279,7 +279,7 @@ func buildMergingIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], nil, &db.LevelOptions{
+		writers[i] = sstable.NewWriter(files[i], nil, db.LevelOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          db.NoCompression,

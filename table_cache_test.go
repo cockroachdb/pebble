@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
@@ -129,7 +130,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}
-		tw := sstable.NewWriter(f, nil, nil)
+		tw := sstable.NewWriter(f, nil, db.LevelOptions{})
 		ik := makeIkey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
 			return nil, nil, fmt.Errorf("tw.Set: %v", err)

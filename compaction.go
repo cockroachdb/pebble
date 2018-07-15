@@ -12,20 +12,18 @@ import (
 	"github.com/petermattis/pebble/sstable"
 )
 
-const (
-	targetFileSize = 2 * 1024 * 1024
+// expandedCompactionByteSizeLimit is the maximum number of bytes in all
+// compacted files. We avoid expanding the lower level file set of a compaction
+// if it would make the total compaction cover more than this many bytes.
+func expandedCompactionByteSizeLimit(opts *db.Options, level int) uint64 {
+	return uint64(25 * opts.Level(level).TargetFileSize)
+}
 
-	// maxGrandparentOverlapBytes is the maximum bytes of overlap with
-	// level+2 before we stop building a single file in a level to level+1
-	// compaction.
-	maxGrandparentOverlapBytes = 10 * targetFileSize
-
-	// expandedCompactionByteSizeLimit is the maximum number of bytes in
-	// all compacted files. We avoid expanding the lower level file set of
-	// a compaction if it would make the total compaction cover more than
-	// this many bytes.
-	expandedCompactionByteSizeLimit = 25 * targetFileSize
-)
+// maxGrandparentOverlapBytes is the maximum bytes of overlap with level+2
+// before we stop building a single file in a level to level+1 compaction.
+func maxGrandparentOverlapBytes(opts *db.Options, level int) uint64 {
+	return uint64(10 * opts.Level(level).TargetFileSize)
+}
 
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
@@ -107,7 +105,8 @@ func (c *compaction) grow(vs *versionSet, sm, la db.InternalKey) bool {
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
 	}
-	if totalSize(grow0)+totalSize(c.inputs[1]) >= expandedCompactionByteSizeLimit {
+	if totalSize(grow0)+totalSize(c.inputs[1]) >=
+		expandedCompactionByteSizeLimit(vs.opts, c.level+1) {
 		return false
 	}
 	sm1, la1 := ikeyRange(vs.cmp, grow0, nil)
@@ -206,8 +205,9 @@ func (d *DB) compact1() error {
 	// We avoid such a move if there is lots of overlapping grandparent data.
 	// Otherwise, the move could create a parent file that will require
 	// a very expensive merge later on.
+	//
 	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
-		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes {
+		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
 
 		meta := &c.inputs[0][0]
 		return d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{

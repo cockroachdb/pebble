@@ -28,6 +28,7 @@ func TestPickCompaction(t *testing.T) {
 		return strings.Join(ss, ",")
 	}
 
+	opts := (*db.Options)(nil).EnsureDefaults()
 	testCases := []struct {
 		desc    string
 		version version
@@ -345,25 +346,25 @@ func TestPickCompaction(t *testing.T) {
 					1: []fileMetadata{
 						{
 							fileNum:  200,
-							size:     expandedCompactionByteSizeLimit - 1,
+							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
 							smallest: makeIkey("i1.SET.201"),
 							largest:  makeIkey("i2.SET.202"),
 						},
 						{
 							fileNum:  210,
-							size:     expandedCompactionByteSizeLimit - 1,
+							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
 							smallest: makeIkey("j1.SET.211"),
 							largest:  makeIkey("j2.SET.212"),
 						},
 						{
 							fileNum:  220,
-							size:     expandedCompactionByteSizeLimit - 1,
+							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
 							smallest: makeIkey("k1.SET.221"),
 							largest:  makeIkey("k2.SET.222"),
 						},
 						{
 							fileNum:  230,
-							size:     expandedCompactionByteSizeLimit - 1,
+							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
 							smallest: makeIkey("l1.SET.231"),
 							largest:  makeIkey("l2.SET.232"),
 						},
@@ -371,13 +372,13 @@ func TestPickCompaction(t *testing.T) {
 					2: []fileMetadata{
 						{
 							fileNum:  300,
-							size:     expandedCompactionByteSizeLimit - 1,
+							size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
 							smallest: makeIkey("a0.SET.301"),
 							largest:  makeIkey("l0.SET.302"),
 						},
 						{
 							fileNum:  310,
-							size:     expandedCompactionByteSizeLimit - 1,
+							size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
 							smallest: makeIkey("l2.SET.311"),
 							largest:  makeIkey("z2.SET.312"),
 						},
@@ -392,6 +393,7 @@ func TestPickCompaction(t *testing.T) {
 
 	for _, tc := range testCases {
 		vs := &versionSet{
+			opts:    opts,
 			cmp:     db.DefaultComparer.Compare,
 			cmpName: db.DefaultComparer.Name,
 		}
