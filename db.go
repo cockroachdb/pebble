@@ -213,7 +213,8 @@ type DB struct {
 			// is never modified making a fixed slice immutable and safe for
 			// concurrent reads.
 			queue []*memTable
-			// True when the memtable is actively been switched.
+			// True when the memtable is actively been switched. Both mem.mutable and
+			// log.LogWriter are invalid while switching is true.
 			switching bool
 		}
 
@@ -324,7 +325,7 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	}
 	if mem.unref() {
 		d.mu.Lock()
-		d.maybeScheduleCompaction()
+		d.maybeScheduleFlush()
 		d.mu.Unlock()
 	}
 	return nil
@@ -353,6 +354,9 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 	}
 
 	_, err := d.mu.log.WriteRecord(b.data)
+	if err != nil {
+		panic(err)
+	}
 	return d.mu.mem.mutable, err
 }
 
@@ -879,6 +883,10 @@ func (d *DB) throttleWrite() {
 
 func (d *DB) makeRoomForWrite(b *Batch) error {
 	for {
+		if d.mu.mem.switching {
+			d.mu.mem.cond.Wait()
+			continue
+		}
 		if b != nil {
 			err := d.mu.mem.mutable.prepare(b)
 			if err == nil {
@@ -887,10 +895,6 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			if err != arenaskl.ErrArenaFull {
 				return err
 			}
-		}
-		if d.mu.mem.switching {
-			d.mu.mem.cond.Wait()
-			continue
 		}
 		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
 			// We have filled up the current memtable, but the previous one is still
