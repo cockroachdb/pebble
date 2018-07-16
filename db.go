@@ -462,7 +462,7 @@ func (d *DB) Close() error {
 	if d.mu.closed {
 		return nil
 	}
-	for d.mu.compact.compacting {
+	for d.mu.compact.compacting || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}
 	err := d.tableCache.Close()
@@ -658,6 +658,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 
 	d.deleteObsoleteFiles()
+	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
 	d.fileLock, fileLock = fileLock, nil
@@ -727,7 +728,7 @@ func (d *DB) replayWAL(
 			return 0, err
 		}
 		if mem.unref() {
-			d.maybeScheduleCompaction()
+			d.maybeScheduleFlush()
 		}
 
 		buf.Reset()
@@ -813,6 +814,8 @@ func (d *DB) writeLevel0Table(
 
 	meta.smallest = iter.Key().Clone()
 	for {
+		// TODO(peter): support c.shouldStopBefore.
+
 		meta.largest = iter.Key()
 		if err1 := tw.Add(meta.largest, iter.Value()); err1 != nil {
 			return fileMetadata{}, err1
@@ -937,7 +940,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		d.mu.mem.mutable = newMemTable(d.opts)
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 		if imm.unref() {
-			d.maybeScheduleCompaction()
+			d.maybeScheduleFlush()
 		}
 	}
 }

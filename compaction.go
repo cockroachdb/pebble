@@ -140,107 +140,46 @@ func (c *compaction) isBaseLevelForUkey(userCmp db.Compare, ukey []byte) bool {
 	return true
 }
 
-// maybeScheduleCompaction schedules a compaction if necessary.
+// maybeScheduleFlush schedules a flush if necessary.
 //
 // d.mu must be held when calling this.
-func (d *DB) maybeScheduleCompaction() {
-	if d.mu.compact.compacting || d.mu.closed {
+func (d *DB) maybeScheduleFlush() {
+	if d.mu.compact.flushing || d.mu.closed {
+		return
+	}
+	if len(d.mu.mem.queue) <= 1 {
+		return
+	}
+	if !d.mu.mem.queue[0].readyForFlush() {
 		return
 	}
 
-	var compactMemTable = false
-	for _, mem := range d.mu.mem.queue {
-		if mem.readyForFlush() {
-			compactMemTable = true
-			break
-		}
-	}
-
-	// TODO(peter): check for manual compactions.
-
-	if !compactMemTable {
-		v := d.mu.versions.currentVersion()
-		// TODO(peter): check v.fileToCompact.
-		if v.compactionScore < 1 {
-			// There is no work to be done.
-			return
-		}
-	}
-
-	d.mu.compact.compacting = true
-	go d.compact()
+	d.mu.compact.flushing = true
+	go d.flush()
 }
 
-// compact runs one compaction and maybe schedules another call to compact.
-func (d *DB) compact() {
+func (d *DB) flush() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if err := d.compact1(); err != nil {
+	if err := d.flush1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
 	}
-	d.mu.compact.compacting = false
-	// The previous compaction may have produced too many files in a
-	// level, so reschedule another compaction if needed.
+	d.mu.compact.flushing = false
+	// More flush work may have arrived while we were flushing, so schedule
+	// another flush if needed.
+	d.maybeScheduleFlush()
+	// The flush may have produced too many files in a level, so schedule a
+	// compaction if needed.
 	d.maybeScheduleCompaction()
 	d.mu.compact.cond.Broadcast()
 }
 
-// compact1 runs one compaction.
+// flush runs a compaction that copies the immutable memtables from memory to
+// disk.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) compact1() error {
-	if len(d.mu.mem.queue) > 1 {
-		return d.compactMemTable()
-	}
-
-	// TODO(peter): support manual compactions.
-
-	c := pickCompaction(&d.mu.versions)
-	if c == nil {
-		return nil
-	}
-
-	// Check for a trivial move of one table from one level to the next.
-	// We avoid such a move if there is lots of overlapping grandparent data.
-	// Otherwise, the move could create a parent file that will require
-	// a very expensive merge later on.
-	//
-	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
-		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
-
-		meta := &c.inputs[0][0]
-		return d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{
-			deletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
-			},
-			newFiles: []newFileEntry{
-				{level: c.level + 1, meta: *meta},
-			},
-		})
-	}
-
-	ve, pendingOutputs, err := d.compactDiskTables(c)
-	if err != nil {
-		return err
-	}
-	err = d.mu.versions.logAndApply(d.opts, d.dirname, ve)
-	for _, fileNum := range pendingOutputs {
-		delete(d.mu.compact.pendingOutputs, fileNum)
-	}
-	if err != nil {
-		return err
-	}
-	d.deleteObsoleteFiles()
-	return nil
-}
-
-// compactMemTable runs a compaction that copies the immutable memtables from
-// memory to disk.
-//
-// d.mu must be held when calling this, but the mutex may be dropped and
-// re-acquired during the course of this method.
-func (d *DB) compactMemTable() error {
+func (d *DB) flush1() error {
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
@@ -285,6 +224,87 @@ func (d *DB) compactMemTable() error {
 	}
 	d.mu.mem.queue = d.mu.mem.queue[n:]
 
+	d.deleteObsoleteFiles()
+	return nil
+}
+
+// maybeScheduleCompaction schedules a compaction if necessary.
+//
+// d.mu must be held when calling this.
+func (d *DB) maybeScheduleCompaction() {
+	if d.mu.compact.compacting || d.mu.closed {
+		return
+	}
+
+	// TODO(peter): check for manual compactions.
+
+	v := d.mu.versions.currentVersion()
+	// TODO(peter): check v.fileToCompact.
+	if v.compactionScore < 1 {
+		// There is no work to be done.
+		return
+	}
+
+	d.mu.compact.compacting = true
+	go d.compact()
+}
+
+// compact runs one compaction and maybe schedules another call to compact.
+func (d *DB) compact() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.compact1(); err != nil {
+		// TODO(peter): count consecutive compaction errors and backoff.
+	}
+	d.mu.compact.compacting = false
+	// The previous compaction may have produced too many files in a
+	// level, so reschedule another compaction if needed.
+	d.maybeScheduleCompaction()
+	d.mu.compact.cond.Broadcast()
+}
+
+// compact1 runs one compaction.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) compact1() error {
+	// TODO(peter): support manual compactions.
+
+	c := pickCompaction(&d.mu.versions)
+	if c == nil {
+		return nil
+	}
+
+	// Check for a trivial move of one table from one level to the next.
+	// We avoid such a move if there is lots of overlapping grandparent data.
+	// Otherwise, the move could create a parent file that will require
+	// a very expensive merge later on.
+	//
+	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
+		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
+
+		meta := &c.inputs[0][0]
+		return d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{
+			deletedFiles: map[deletedFileEntry]bool{
+				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
+			},
+			newFiles: []newFileEntry{
+				{level: c.level + 1, meta: *meta},
+			},
+		})
+	}
+
+	ve, pendingOutputs, err := d.compactDiskTables(c)
+	if err != nil {
+		return err
+	}
+	err = d.mu.versions.logAndApply(d.opts, d.dirname, ve)
+	for _, fileNum := range pendingOutputs {
+		delete(d.mu.compact.pendingOutputs, fileNum)
+	}
+	if err != nil {
+		return err
+	}
 	d.deleteObsoleteFiles()
 	return nil
 }
@@ -340,8 +360,6 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	lastSeqNumForKey := db.InternalKeySeqNumMax
 	var smallest, largest db.InternalKey
 	for ; iter.Valid(); iter.Next() {
-		// TODO(peter): prioritize compacting immutable memtables.
-
 		// TODO(peter): support c.shouldStopBefore.
 
 		ikey := iter.Key()
