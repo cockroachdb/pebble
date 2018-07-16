@@ -29,6 +29,7 @@ func (c *controller) WaitN(n int) {
 	c.sensor.Add(int64(n))
 }
 
+// TODO(peter): this is similar to https://github.com/dgryski/go-timewindow
 type rateCounter struct {
 	now         func() time.Time
 	bucketWidth time.Duration
