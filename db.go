@@ -22,6 +22,8 @@
 //   - Faster block cache (sharded?)
 //     - Reserve block cache memory for memtables
 //     - Lock-free cache: http://myui.github.io/publications/ICDE10_conf_full_409.pdf
+//     - Tiny-LFU: https://github.com/dgryski/go-tinylfu
+//     - Take inspiration from Caffeine: https://github.com/ben-manes/caffeine
 //
 // - Commit pipeline
 //   - Rate limiting user writes
