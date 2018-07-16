@@ -6,7 +6,6 @@ package pebble // import "github.com/petermattis/pebble"
 
 import (
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/petermattis/pebble/arenaskl"
 	"github.com/petermattis/pebble/db"
@@ -30,16 +29,16 @@ type memTable struct {
 	emptySize uint32
 	reserved  uint32
 	refs      int32
-	// Next and previous pointers used by memTableList.
-	next, prev unsafe.Pointer
+	flushed   chan struct{}
 }
 
 // newMemTable returns a new MemTable.
 func newMemTable(o *db.Options) *memTable {
 	o = o.EnsureDefaults()
 	m := &memTable{
-		cmp:  o.Comparer.Compare,
-		refs: 1,
+		cmp:     o.Comparer.Compare,
+		refs:    1,
+		flushed: make(chan struct{}),
 	}
 	arena := arenaskl.NewArena(uint32(o.MemTableSize), 0)
 	m.skl.Reset(arena, m.cmp)

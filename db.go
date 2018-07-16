@@ -219,7 +219,8 @@ type DB struct {
 
 		compact struct {
 			cond           sync.Cond
-			active         bool
+			flushing       bool
+			compacting     bool
 			pendingOutputs map[uint64]struct{}
 		}
 	}
@@ -461,7 +462,7 @@ func (d *DB) Close() error {
 	if d.mu.closed {
 		return nil
 	}
-	for d.mu.compact.active {
+	for d.mu.compact.compacting {
 		d.mu.compact.cond.Wait()
 	}
 	err := d.tableCache.Close()
@@ -482,9 +483,14 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 // TODO(peter): untested
 func (d *DB) Flush() error {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	// TODO(peter): Wait for the memtable to be flushed.
-	return d.makeRoomForWrite(nil)
+	mem := d.mu.mem.mutable
+	err := d.makeRoomForWrite(nil)
+	d.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	<-mem.flushed
+	return nil
 }
 
 // Ingest TODO(peter)

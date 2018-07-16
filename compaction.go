@@ -144,7 +144,7 @@ func (c *compaction) isBaseLevelForUkey(userCmp db.Compare, ukey []byte) bool {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if d.mu.compact.active || d.mu.closed {
+	if d.mu.compact.compacting || d.mu.closed {
 		return
 	}
 
@@ -167,7 +167,7 @@ func (d *DB) maybeScheduleCompaction() {
 		}
 	}
 
-	d.mu.compact.active = true
+	d.mu.compact.compacting = true
 	go d.compact()
 }
 
@@ -178,7 +178,7 @@ func (d *DB) compact() {
 	if err := d.compact1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
 	}
-	d.mu.compact.active = false
+	d.mu.compact.compacting = false
 	// The previous compaction may have produced too many files in a
 	// level, so reschedule another compaction if needed.
 	d.maybeScheduleCompaction()
@@ -279,7 +279,12 @@ func (d *DB) compactMemTable() error {
 		return err
 	}
 
+	// Mark all the memtables we flushed as flushed.
+	for i := 0; i < n; i++ {
+		close(d.mu.mem.queue[i].flushed)
+	}
 	d.mu.mem.queue = d.mu.mem.queue[n:]
+
 	d.deleteObsoleteFiles()
 	return nil
 }
