@@ -548,7 +548,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		inlineKey:         opts.Comparer.InlineKey,
 		commitController:  newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
 		compactController: newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
-		flushController:   newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
+		flushController:   newController(rate.NewLimiter(rate.Inf, defaultBurst)),
 	}
 	tableCacheSize := opts.MaxOpenFiles - numNonTableCacheFiles
 	if tableCacheSize < minTableCacheSize {
@@ -796,11 +796,6 @@ func (d *DB) writeLevel0Table(
 		return fileMetadata{}, fmt.Errorf("pebble: memtable empty")
 	}
 
-	// TODO(peter): Before a flush we set the flush rate to 110% of the commit
-	// rate. The rationale behind the 110% is that flushing has to keep up with
-	// committing, but doesn't need to exceed it too much.
-	d.flushController.limiter.SetLimit(1.1 * rate.Limit(d.commitController.sensor.Rate()))
-
 	file, err = fs.Create(filename)
 	if err != nil {
 		return fileMetadata{}, err
@@ -845,7 +840,10 @@ func (d *DB) writeLevel0Table(
 	// TODO(peter): After a flush we set the commit rate to 110% of the flush
 	// rate. The rationale behind the 110% is to account for slack. Investigate a
 	// more principled way of setting this.
-	d.commitController.limiter.SetLimit(1.1 * rate.Limit(d.flushController.sensor.Rate()))
+	// d.commitController.limiter.SetLimit(rate.Limit(d.flushController.sensor.Rate()))
+	// if false {
+	// 	fmt.Printf("flush: %.1f MB/s\n", d.flushController.sensor.Rate()/float64(1<<20))
+	// }
 
 	// TODO(peter): compaction stats.
 
