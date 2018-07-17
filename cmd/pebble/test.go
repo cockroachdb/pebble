@@ -180,9 +180,9 @@ func (w *histogramRegistry) Tick(fn func(histogramTick)) {
 }
 
 type test struct {
-	init func(db *pebble.DB, reg *histogramRegistry, wg *sync.WaitGroup)
-	step func(elapsed time.Duration, reg *histogramRegistry, i int)
-	done func(elapsed time.Duration, reg *histogramRegistry)
+	init func(db *pebble.DB, wg *sync.WaitGroup)
+	tick func(elapsed time.Duration, i int)
+	done func(elapsed time.Duration)
 }
 
 func runTest(dir string, t test) {
@@ -195,7 +195,7 @@ func runTest(dir string, t test) {
 		_ = os.RemoveAll(dir)
 	}()
 
-	fmt.Printf("writing to %s, concurrency %d\n", dir, concurrency)
+	fmt.Printf("%s, concurrency %d\n", dir, concurrency)
 
 	db, err := pebble.Open(dir, &db.Options{
 		Cache:                       cache.New(1 << 30),
@@ -212,9 +212,8 @@ func runTest(dir string, t test) {
 		log.Fatal(err)
 	}
 
-	reg := newHistogramRegistry()
 	var wg sync.WaitGroup
-	t.init(db, reg, &wg)
+	t.init(db, &wg)
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -234,16 +233,17 @@ func runTest(dir string, t test) {
 		}()
 	}
 
-	defer startCPUProfile()()
+	stopProf := startCPUProfile()
+	defer stopProf()
 
 	start := time.Now()
 	for i := 0; ; i++ {
 		select {
 		case <-ticker.C:
-			t.step(time.Since(start), reg, i)
+			t.tick(time.Since(start), i)
 
 		case <-done:
-			t.done(time.Since(start), reg)
+			t.done(time.Since(start))
 			return
 		}
 	}

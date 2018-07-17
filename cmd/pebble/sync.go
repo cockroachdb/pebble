@@ -22,8 +22,10 @@ var syncCmd = &cobra.Command{
 }
 
 func runSync(cmd *cobra.Command, args []string) {
+	reg := newHistogramRegistry()
+
 	runTest(args[0], test{
-		init: func(d *pebble.DB, reg *histogramRegistry, wg *sync.WaitGroup) {
+		init: func(d *pebble.DB, wg *sync.WaitGroup) {
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				latency := reg.Register("ops")
@@ -62,7 +64,7 @@ func runSync(cmd *cobra.Command, args []string) {
 			}
 		},
 
-		step: func(elapsed time.Duration, reg *histogramRegistry, i int) {
+		tick: func(elapsed time.Duration, i int) {
 			if i%20 == 0 {
 				fmt.Println("_elapsed____ops/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 			}
@@ -79,7 +81,7 @@ func runSync(cmd *cobra.Command, args []string) {
 			})
 		},
 
-		done: func(elapsed time.Duration, reg *histogramRegistry) {
+		done: func(elapsed time.Duration) {
 			fmt.Println("\n_elapsed_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 			reg.Tick(func(tick histogramTick) {
 				h := tick.Cumulative

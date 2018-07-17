@@ -7,7 +7,6 @@
 // TODO(peter):
 //
 // - Benchmarking
-//   - synctest
 //   - mvccScan
 //   - mvccPut
 //
