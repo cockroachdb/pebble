@@ -1,4 +1,4 @@
-# WARNING: Pebble is an incomplete work-in-progress.
+# DO NOT USE: Pebble is an incomplete work-in-progress.
 
 # Pebble
 
@@ -36,3 +36,7 @@ https://github.com/golang/leveldb
 The Go version of LevelDB is based on the C++ original:
 
 https://github.com/google/leveldb
+
+Optimizations and inspiration were drawn from RocksDB:
+
+https://github.com/facebook/rocksdb
