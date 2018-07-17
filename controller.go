@@ -32,12 +32,12 @@ func (c *controller) WaitN(n int) {
 // TODO(peter): this is similar to https://github.com/dgryski/go-timewindow
 type rateCounter struct {
 	now         func() time.Time
-	bucketWidth time.Duration
+	bucketWidth int64
 	mu          struct {
 		sync.Mutex
-		start   int64
-		last    int64
-		sum     int64
+		startT  int64
+		lastT   int64
+		total   int64
 		head    int
 		buckets []int64
 	}
@@ -46,18 +46,18 @@ type rateCounter struct {
 func newRateCounter(duration time.Duration, resolution int) *rateCounter {
 	r := &rateCounter{
 		now:         time.Now,
-		bucketWidth: duration / time.Duration(resolution),
+		bucketWidth: int64(duration / time.Duration(resolution)),
 	}
 	r.mu.buckets = make([]int64, resolution)
 	return r
 }
 
-func (r *rateCounter) tickLocked(now time.Time) {
-	floor := now.UnixNano() / int64(r.bucketWidth)
-	if floor <= r.mu.last {
+func (r *rateCounter) tickLocked() {
+	t := r.now().UnixNano() / int64(r.bucketWidth)
+	if t <= r.mu.lastT {
 		return
 	}
-	delta := (floor - r.mu.last)
+	delta := (t - r.mu.lastT)
 	if delta >= int64(len(r.mu.buckets)) {
 		delta = int64(len(r.mu.buckets))
 	}
@@ -66,39 +66,39 @@ func (r *rateCounter) tickLocked(now time.Time) {
 		if r.mu.head >= len(r.mu.buckets) {
 			r.mu.head = 0
 		}
-		r.mu.sum -= r.mu.buckets[r.mu.head]
+		r.mu.total -= r.mu.buckets[r.mu.head]
 		r.mu.buckets[r.mu.head] = 0
 	}
-	r.mu.last = floor
-	if r.mu.start == 0 {
-		r.mu.start = r.mu.last
+	r.mu.lastT = t
+	if r.mu.startT == 0 {
+		r.mu.startT = r.mu.lastT
 	}
 }
 
 func (r *rateCounter) Add(n int64) {
 	r.mu.Lock()
-	r.tickLocked(r.now())
+	r.tickLocked()
 	r.mu.buckets[r.mu.head] += n
-	r.mu.sum += n
+	r.mu.total += n
 	r.mu.Unlock()
 }
 
 func (r *rateCounter) Value() int64 {
 	r.mu.Lock()
-	r.tickLocked(r.now())
-	sum := r.mu.sum
+	r.tickLocked()
+	sum := r.mu.total
 	r.mu.Unlock()
 	return sum
 }
 
 func (r *rateCounter) Rate() float64 {
 	r.mu.Lock()
-	r.tickLocked(r.now())
-	sum := r.mu.sum
-	elapsed := r.mu.last - r.mu.start
+	r.tickLocked()
+	sum := r.mu.total
+	elapsed := r.mu.lastT - r.mu.startT
 	r.mu.Unlock()
 	if elapsed >= int64(len(r.mu.buckets)) {
 		elapsed = int64(len(r.mu.buckets))
 	}
-	return float64(sum) / (float64(time.Duration(elapsed)*r.bucketWidth) / float64(time.Second))
+	return float64(sum) / (float64(elapsed*r.bucketWidth) / float64(time.Second))
 }
