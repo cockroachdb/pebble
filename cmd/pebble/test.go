@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	minLatency = 100 * time.Microsecond
+	minLatency = 10 * time.Microsecond
 	maxLatency = 10 * time.Second
 )
 
@@ -187,15 +187,14 @@ type test struct {
 
 func runTest(dir string, t test) {
 	// Check if the directory exists.
-	if _, err := os.Stat(dir); err == nil {
-		log.Fatalf("error: supplied path '%s' must not exist", dir)
+	if wipe {
+		fmt.Printf("wiping %s\n", dir)
+		if err := os.RemoveAll(dir); err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	defer func() {
-		_ = os.RemoveAll(dir)
-	}()
-
-	fmt.Printf("%s, concurrency %d\n", dir, concurrency)
+	fmt.Printf("dir %s\nconcurrency %d\n", dir, concurrency)
 
 	db, err := pebble.Open(dir, &db.Options{
 		Cache:                       cache.New(1 << 30),

@@ -7,7 +7,6 @@
 // TODO(peter):
 //
 // - Benchmarking
-//   - mvccScan
 //   - mvccPut
 //
 // - MemTable
@@ -881,7 +880,7 @@ func (d *DB) throttleWrite() {
 }
 
 func (d *DB) makeRoomForWrite(b *Batch) error {
-	for {
+	for force := b == nil; ; {
 		if d.mu.mem.switching {
 			d.mu.mem.cond.Wait()
 			continue
@@ -894,6 +893,8 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			if err != arenaskl.ErrArenaFull {
 				return err
 			}
+		} else if !force {
+			return nil
 		}
 		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
 			// We have filled up the current memtable, but the previous one is still
@@ -945,6 +946,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if imm.unref() {
 			d.maybeScheduleFlush()
 		}
+		force = false
 	}
 }
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -32,7 +31,6 @@ func runSync(cmd *cobra.Command, args []string) {
 				go func() {
 					defer wg.Done()
 
-					ctx := context.Background()
 					rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 					var buf []byte
 
@@ -51,12 +49,12 @@ func runSync(cmd *cobra.Command, args []string) {
 							block := randBlock(60, 80)
 							key := encodeUint32Ascending(buf, rand.Uint32())
 							if err := b.Set(key, block, nil); err != nil {
-								log.Fatal(ctx, err)
+								log.Fatal(err)
 							}
 							buf = key[:0]
 						}
 						if err := b.Commit(db.Sync); err != nil {
-							log.Fatal(ctx, err)
+							log.Fatal(err)
 						}
 						latency.Record(time.Since(start))
 					}
