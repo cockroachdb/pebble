@@ -143,7 +143,27 @@ func (i *Iter) SeekGE(key []byte) {
 // SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
 func (i *Iter) SeekLT(key []byte) {
-	panic("pebble/table: SeekLT unimplemented")
+	i.index.SeekGE(key)
+	if i.loadBlock() {
+		i.data.SeekLT(key)
+		if !i.data.Valid() {
+			// The index contains separator keys which may between
+			// user-keys. Consider the user-keys:
+			//
+			//   complete
+			// ---- new block ---
+			//   complexion
+			//
+			// If these two keys end one block and start the next, the index key may
+			// be chosen as "compleu". The SeekGE in the index block will then point
+			// us to the block containing "complexion". If this happens, we want the
+			// last key from the previous data block.
+			i.index.Prev()
+			if i.loadBlock() {
+				i.data.Last()
+			}
+		}
+	}
 }
 
 // First implements InternalIterator.First, as documented in the pebble/db

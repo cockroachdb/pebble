@@ -68,6 +68,24 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 	}
 }
 
+func BenchmarkTableIterSeekLT(b *testing.B) {
+	const blockSize = 32 << 10
+
+	for _, restartInterval := range []int{16} {
+		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+			func(b *testing.B) {
+				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
+				it := r.NewIter(nil)
+				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					it.SeekLT(keys[rng.Intn(len(keys))])
+				}
+			})
+	}
+}
+
 func BenchmarkTableIterNext(b *testing.B) {
 	const blockSize = 32 << 10
 

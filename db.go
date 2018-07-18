@@ -14,7 +14,6 @@
 //     single memTable, then allocate a custom-sized memTable to hold it.
 //
 // - Miscellaneous
-//   - Implement {block,table}Iter.SeekLT
 //   - Merge operator
 //   - Debug/event logging
 //   - Faster block cache (sharded?)

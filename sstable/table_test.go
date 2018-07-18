@@ -126,7 +126,7 @@ func check(f storage.File, fp db.FilterPolicy) error {
 			return fmt.Errorf("Get %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
 
-		// Check using Find.
+		// Check using SeekGE.
 		i := r.NewIter(nil)
 		i.SeekGE([]byte(k))
 		if !i.Valid() || string(i.Key().UserKey) != k {
@@ -141,6 +141,27 @@ func check(f storage.File, fp db.FilterPolicy) error {
 		if v1 := i.Value(); len(v1) != cap(v1) {
 			return fmt.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
+
+		// Check using SeekLT.
+		i.SeekLT([]byte(k))
+		if !i.Valid() {
+			i.First()
+		} else {
+			i.Next()
+		}
+		if string(i.Key().UserKey) != k {
+			return fmt.Errorf("Find %q: key was not in the table", k)
+		}
+		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
+			return fmt.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
+		}
+		if string(i.Value()) != v {
+			return fmt.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
+		}
+		if v1 := i.Value(); len(v1) != cap(v1) {
+			return fmt.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
+		}
+
 		if err := i.Close(); err != nil {
 			return err
 		}
