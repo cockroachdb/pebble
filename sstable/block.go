@@ -193,7 +193,7 @@ func (i *blockIter) SeekGE(key []byte) {
 
 	// Iterate from that restart point to somewhere >= the key sought.
 	for ; i.Valid(); i.Next() {
-		if db.InternalCompare(i.cmp, ikey, i.ikey) <= 0 {
+		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
 			break
 		}
 	}
@@ -202,7 +202,57 @@ func (i *blockIter) SeekGE(key []byte) {
 // SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
 func (i *blockIter) SeekLT(key []byte) {
-	panic("pebble/table: SeekLT unimplemented")
+	ikey := db.MakeSearchKey(key)
+
+	// Find the index of the smallest restart point whose key is >= the key
+	// sought; index will be numRestarts if there is no such restart point.
+	i.offset = 0
+	index := sort.Search(i.numRestarts, func(j int) bool {
+		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
+		// For a restart point, there are 0 bytes shared with the previous key.
+		// The varint encoding of 0 occupies 1 byte.
+		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
+		// Decode the key at that restart point, and compare it to the key sought.
+		v1, ptr := decodeVarint(ptr)
+		_, ptr = decodeVarint(ptr)
+		s := getBytes(ptr, int(v1))
+		return db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) <= 0
+	})
+
+	// Since keys are strictly increasing, if index > 0 then the restart point at
+	// index-1 will be the largest whose key is < the key sought.
+	if index > 0 {
+		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+	} else if index == 0 {
+		// If index == 0 then all keys in this block are larger than the key
+		// sought.
+		i.offset = -1
+		i.nextOffset = 0
+		return
+	}
+
+	// Iterate from that restart point to somewhere >= the key sought, then back
+	// up to the previous entry. The expectation is that we'll be performing
+	// reverse iteration, so we cache the entries as we advance forward.
+	i.clearCache()
+	i.nextOffset = i.offset
+
+	for {
+		i.offset = i.nextOffset
+		i.readEntry()
+		i.cacheEntry()
+		i.ikey = db.DecodeInternalKey(i.key)
+		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
+			// The current key is greater than or equal to our search key. Back up to
+			// the previous key which was less than our search key.
+			i.Prev()
+			return
+		}
+		if i.nextOffset >= i.restarts {
+			// We've reached the end of the block. Return the current key.
+			break
+		}
+	}
 }
 
 // First implements InternalIterator.First, as documented in the pebble/db

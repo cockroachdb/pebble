@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,6 +108,105 @@ func TestBlockIter(t *testing.T) {
 	}
 }
 
+func TestBlockIter2(t *testing.T) {
+	makeIkey := func(s string) db.InternalKey {
+		j := strings.Index(s, ":")
+		seqNum, err := strconv.Atoi(s[j+1:])
+		if err != nil {
+			panic(err)
+		}
+		return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet)
+	}
+
+	testCases := []struct {
+		key          string
+		entries      string
+		expectedNext string
+		expectedPrev string
+	}{
+		{
+			"a",
+			"a:1,b:2,c:3,d:4",
+			"<a:1><b:2><c:3><d:4>.",
+			".",
+		},
+		{
+			"a",
+			"a:1,b:2,c:3,d:4",
+			"<a:1><b:2><c:3><d:4>.",
+			".",
+		},
+		{
+			"b",
+			"a:1,b:2,c:3,d:4",
+			"<b:2><c:3><d:4>.",
+			"<a:1>.",
+		},
+		{
+			"c",
+			"a:1,b:2,c:3,d:4",
+			"<c:3><d:4>.",
+			"<b:2><a:1>.",
+		},
+		{
+			"d",
+			"a:1,b:2,c:3,d:4",
+			"<d:4>.",
+			"<c:3><b:2><a:1>.",
+		},
+		{
+			"e",
+			"a:1,b:2,c:3,d:4",
+			".",
+			"<d:4><c:3><b:2><a:1>.",
+		},
+	}
+	for _, r := range []int{1, 2, 3, 4} {
+		t.Run(fmt.Sprintf("restart=%d", r), func(t *testing.T) {
+			for _, c := range testCases {
+				t.Run("", func(t *testing.T) {
+					w := &blockWriter{restartInterval: r}
+					for _, e := range strings.Split(c.entries, ",") {
+						w.add(makeIkey(e), nil)
+					}
+
+					iter, err := newBlockIter(bytes.Compare, w.finish())
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					key := []byte(c.key)
+					var b bytes.Buffer
+					for iter.SeekGE(key); iter.Valid(); iter.Next() {
+						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
+					}
+					if err := iter.Error(); err != nil {
+						fmt.Fprintf(&b, "err=%v", err)
+					} else {
+						b.WriteByte('.')
+					}
+					if got := b.String(); got != c.expectedNext {
+						t.Errorf("got  %q\nwant %q", got, c.expectedNext)
+					}
+
+					b.Reset()
+					for iter.SeekLT(key); iter.Valid(); iter.Prev() {
+						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
+					}
+					if err := iter.Close(); err != nil {
+						fmt.Fprintf(&b, "err=%v", err)
+					} else {
+						b.WriteByte('.')
+					}
+					if got := b.String(); got != c.expectedPrev {
+						t.Errorf("got  %q\nwant %q", got, c.expectedPrev)
+					}
+				})
+			}
+		})
+	}
+}
+
 func BenchmarkBlockIterSeekGE(b *testing.B) {
 	const blockSize = 32 << 10
 
@@ -133,7 +234,65 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					it.SeekGE(keys[rng.Intn(len(keys))])
+					k := keys[rng.Intn(len(keys))]
+					it.SeekGE(k)
+					if testing.Verbose() {
+						if !it.Valid() {
+							b.Fatal("expected to find key")
+						}
+						if !bytes.Equal(k, it.Key().UserKey) {
+							b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+						}
+					}
+				}
+			})
+	}
+}
+
+func BenchmarkBlockIterSeekLT(b *testing.B) {
+	const blockSize = 32 << 10
+
+	for _, restartInterval := range []int{16} {
+		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+			func(b *testing.B) {
+				w := &blockWriter{
+					restartInterval: restartInterval,
+				}
+
+				var ikey db.InternalKey
+				var keys [][]byte
+				for i := 0; w.estimatedSize() < blockSize; i++ {
+					key := []byte(fmt.Sprintf("%05d", i))
+					keys = append(keys, key)
+					ikey.UserKey = key
+					w.add(ikey, nil)
+				}
+
+				it, err := newBlockIter(bytes.Compare, w.finish())
+				if err != nil {
+					b.Fatal(err)
+				}
+				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					j := rng.Intn(len(keys))
+					it.SeekLT(keys[j])
+					if testing.Verbose() {
+						if j == 0 {
+							if it.Valid() {
+								b.Fatal("unexpected key")
+							}
+						} else {
+							if !it.Valid() {
+								b.Fatal("expected to find key")
+							}
+							k := keys[j-1]
+							if !bytes.Equal(k, it.Key().UserKey) {
+								b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+							}
+						}
+					}
 				}
 			})
 	}
