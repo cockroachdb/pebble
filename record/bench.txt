@@ -1,0 +1,55 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/petermattis/pebble/record
+BenchmarkRecordWrite/size=8-8         	30000000	        37.6 ns/op	 212.58 MB/s
+BenchmarkRecordWrite/size=8-8         	30000000	        37.8 ns/op	 211.79 MB/s
+BenchmarkRecordWrite/size=8-8         	50000000	        37.5 ns/op	 213.53 MB/s
+BenchmarkRecordWrite/size=8-8         	50000000	        38.8 ns/op	 206.06 MB/s
+BenchmarkRecordWrite/size=8-8         	30000000	        38.3 ns/op	 208.73 MB/s
+BenchmarkRecordWrite/size=8-8         	50000000	        38.5 ns/op	 207.92 MB/s
+BenchmarkRecordWrite/size=8-8         	50000000	        37.8 ns/op	 211.41 MB/s
+BenchmarkRecordWrite/size=8-8         	30000000	        38.1 ns/op	 209.71 MB/s
+BenchmarkRecordWrite/size=8-8         	30000000	        37.2 ns/op	 215.34 MB/s
+BenchmarkRecordWrite/size=8-8         	50000000	        38.0 ns/op	 210.63 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        39.5 ns/op	 405.18 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        39.4 ns/op	 405.87 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        40.5 ns/op	 395.09 MB/s
+BenchmarkRecordWrite/size=16-8        	50000000	        40.7 ns/op	 392.76 MB/s
+BenchmarkRecordWrite/size=16-8        	50000000	        40.5 ns/op	 394.62 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        40.8 ns/op	 392.55 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        39.2 ns/op	 408.50 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        40.9 ns/op	 391.25 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        40.4 ns/op	 395.83 MB/s
+BenchmarkRecordWrite/size=16-8        	30000000	        41.1 ns/op	 388.98 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        42.7 ns/op	 748.87 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        43.3 ns/op	 739.81 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        43.6 ns/op	 733.81 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        43.8 ns/op	 730.94 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        43.8 ns/op	 730.82 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        43.7 ns/op	 732.34 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        43.1 ns/op	 742.46 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        42.6 ns/op	 751.82 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        44.3 ns/op	 722.30 MB/s
+BenchmarkRecordWrite/size=32-8        	30000000	        43.2 ns/op	 740.73 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        48.7 ns/op	1315.40 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        47.9 ns/op	1336.60 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        49.8 ns/op	1284.63 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        47.6 ns/op	1345.23 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        50.1 ns/op	1277.34 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        48.4 ns/op	1321.16 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        48.6 ns/op	1316.79 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        47.9 ns/op	1337.30 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        47.9 ns/op	1337.05 MB/s
+BenchmarkRecordWrite/size=64-8        	30000000	        49.8 ns/op	1286.16 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        59.5 ns/op	2150.23 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        58.9 ns/op	2172.04 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        60.1 ns/op	2130.86 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        59.8 ns/op	2141.29 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        58.3 ns/op	2196.12 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        59.2 ns/op	2163.67 MB/s
+BenchmarkRecordWrite/size=128-8       	30000000	        59.3 ns/op	2157.61 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        59.2 ns/op	2160.56 MB/s
+BenchmarkRecordWrite/size=128-8       	20000000	        60.2 ns/op	2124.57 MB/s
+BenchmarkRecordWrite/size=128-8       	30000000	        58.6 ns/op	2182.98 MB/s
+PASS
+ok  	github.com/petermattis/pebble/record	72.069s

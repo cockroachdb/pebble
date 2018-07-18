@@ -1,265 +1,345 @@
 goos: darwin
 goarch: amd64
 pkg: github.com/petermattis/pebble
-BenchmarkBatchSet-8             	30000000	        42.1 ns/op
-BenchmarkBatchSet-8             	30000000	        42.3 ns/op
-BenchmarkBatchSet-8             	30000000	        41.9 ns/op
-BenchmarkBatchSet-8             	30000000	        42.2 ns/op
-BenchmarkBatchSet-8             	30000000	        41.6 ns/op
-BenchmarkBatchSet-8             	30000000	        41.9 ns/op
-BenchmarkBatchSet-8             	30000000	        42.2 ns/op
-BenchmarkBatchSet-8             	30000000	        42.0 ns/op
-BenchmarkBatchSet-8             	30000000	        41.8 ns/op
-BenchmarkBatchSet-8             	30000000	        42.1 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       183 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       181 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       181 ns/op
+BenchmarkBatchSet-8             	30000000	        43.8 ns/op
+BenchmarkBatchSet-8             	30000000	        43.7 ns/op
+BenchmarkBatchSet-8             	30000000	        43.9 ns/op
+BenchmarkBatchSet-8             	30000000	        43.9 ns/op
+BenchmarkBatchSet-8             	30000000	        43.6 ns/op
+BenchmarkBatchSet-8             	30000000	        43.8 ns/op
+BenchmarkBatchSet-8             	30000000	        43.5 ns/op
+BenchmarkBatchSet-8             	30000000	        43.8 ns/op
+BenchmarkBatchSet-8             	30000000	        43.5 ns/op
+BenchmarkBatchSet-8             	30000000	        43.9 ns/op
 BenchmarkIndexedBatchSet-8      	10000000	       184 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       183 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       181 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       189 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       185 ns/op
 BenchmarkIndexedBatchSet-8      	10000000	       186 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       183 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       189 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       886 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       847 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       745 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       791 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       889 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       741 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       817 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       771 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       760 ns/op
-BenchmarkDBIterSeekGE-8         	 2000000	       871 ns/op
-BenchmarkDBIterNext-8           	30000000	        40.5 ns/op
-BenchmarkDBIterNext-8           	50000000	        41.7 ns/op
-BenchmarkDBIterNext-8           	50000000	        39.8 ns/op
-BenchmarkDBIterNext-8           	30000000	        39.2 ns/op
-BenchmarkDBIterNext-8           	30000000	        39.5 ns/op
-BenchmarkDBIterNext-8           	50000000	        40.6 ns/op
-BenchmarkDBIterNext-8           	50000000	        40.6 ns/op
-BenchmarkDBIterNext-8           	50000000	        40.9 ns/op
-BenchmarkDBIterNext-8           	30000000	        43.3 ns/op
-BenchmarkDBIterNext-8           	30000000	        44.0 ns/op
-BenchmarkDBIterPrev-8           	30000000	        52.4 ns/op
-BenchmarkDBIterPrev-8           	30000000	        52.3 ns/op
-BenchmarkDBIterPrev-8           	30000000	        53.0 ns/op
-BenchmarkDBIterPrev-8           	30000000	        53.0 ns/op
-BenchmarkDBIterPrev-8           	30000000	        51.8 ns/op
-BenchmarkDBIterPrev-8           	30000000	        51.9 ns/op
-BenchmarkDBIterPrev-8           	30000000	        53.0 ns/op
-BenchmarkDBIterPrev-8           	30000000	        51.4 ns/op
-BenchmarkDBIterPrev-8           	30000000	        49.6 ns/op
-BenchmarkDBIterPrev-8           	30000000	        47.6 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1806 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1734 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1704 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1783 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1761 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1751 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1754 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1740 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1727 ns/op
-BenchmarkLevelIterSeekGE/restart=16/count=5-8 	 1000000	      1740 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.8 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.3 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.2 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.5 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.3 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.5 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.6 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.5 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.1 ns/op
-BenchmarkLevelIterNext/restart=16/count=5-8   	50000000	        27.0 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        45.6 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        45.9 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        45.0 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        44.4 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        44.8 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        45.3 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        44.6 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        44.7 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        46.1 ns/op
-BenchmarkLevelIterPrev/restart=16/count=5-8   	30000000	        44.6 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       823 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       793 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       748 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       804 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       780 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       810 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       764 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       783 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       729 ns/op
-BenchmarkMemTableIterSeekGE-8                 	 2000000	       822 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.80 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.77 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.67 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.80 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.80 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.77 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.78 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.80 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.69 ns/op
-BenchmarkMemTableIterNext-8                   	300000000	         5.90 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        30.7 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        30.9 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        30.9 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        34.4 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        34.5 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        32.8 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        30.7 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        33.0 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        31.5 ns/op
-BenchmarkMemTableIterPrev-8                   	50000000	        31.2 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 2000000	       992 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 1000000	      1034 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 2000000	       995 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 1000000	      1033 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 2000000	      1014 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 1000000	      1044 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 1000000	      1032 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 2000000	       996 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 1000000	      1021 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=1-8         	 1000000	      1001 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2095 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2050 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2047 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2095 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2014 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2048 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2069 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2083 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2084 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=2-8         	 1000000	      2060 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3074 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3055 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3154 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3186 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3098 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3189 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3729 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3442 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3557 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=3-8         	  500000	      3224 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4644 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4160 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4478 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4281 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4679 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4381 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4610 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4476 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4483 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=4-8         	  300000	      4406 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5241 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5654 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5391 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5704 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5670 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5713 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  200000	      5930 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5572 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5521 ns/op
-BenchmarkMergingIterSeekGE/restart=16/count=5-8         	  300000	      5390 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        38.5 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        38.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        38.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        36.0 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        37.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        36.1 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        36.3 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        36.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	30000000	        36.4 ns/op
-BenchmarkMergingIterNext/restart=16/count=1-8           	50000000	        36.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        54.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        55.3 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        54.1 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        55.7 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        55.5 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        54.3 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        56.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        56.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	30000000	        59.0 ns/op
-BenchmarkMergingIterNext/restart=16/count=2-8           	20000000	        62.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        65.3 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        67.0 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        66.3 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        66.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        66.1 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        65.0 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        65.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        67.8 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        66.7 ns/op
-BenchmarkMergingIterNext/restart=16/count=3-8           	20000000	        66.8 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.3 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.4 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.9 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        72.4 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.5 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        74.4 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.0 ns/op
-BenchmarkMergingIterNext/restart=16/count=4-8           	20000000	        73.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        81.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        81.2 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        82.1 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        81.6 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        83.1 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        81.3 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        81.9 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        81.0 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        81.7 ns/op
-BenchmarkMergingIterNext/restart=16/count=5-8           	20000000	        82.5 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        55.1 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        53.6 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        54.5 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        53.5 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        54.7 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        52.6 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        54.7 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        54.0 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        54.4 ns/op
-BenchmarkMergingIterPrev/restart=16/count=1-8           	30000000	        53.4 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        72.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        73.0 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        73.1 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        73.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        73.2 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        74.1 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        74.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        72.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        73.7 ns/op
-BenchmarkMergingIterPrev/restart=16/count=2-8           	20000000	        72.4 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        85.3 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        83.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        84.7 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        84.3 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        84.7 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        84.6 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        83.2 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        84.8 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        84.8 ns/op
-BenchmarkMergingIterPrev/restart=16/count=3-8           	20000000	        82.7 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        92.0 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        91.0 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        92.6 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        92.5 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        93.3 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        92.1 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        91.6 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        93.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        91.8 ns/op
-BenchmarkMergingIterPrev/restart=16/count=4-8           	20000000	        91.0 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	       101 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	       100 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        99.7 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        99.2 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        99.5 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        99.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        97.9 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        98.8 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        98.4 ns/op
-BenchmarkMergingIterPrev/restart=16/count=5-8           	20000000	        99.6 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       185 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       186 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       185 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       185 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       185 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       185 ns/op
+BenchmarkIndexedBatchSet-8      	10000000	       186 ns/op
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1747 ns/op	   9.16 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1755 ns/op	   9.11 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1761 ns/op	   9.09 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1763 ns/op	   9.07 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1818 ns/op	   8.80 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1799 ns/op	   8.89 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1858 ns/op	   8.61 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1803 ns/op	   8.87 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1813 ns/op	   8.82 MB/s
+BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1822 ns/op	   8.78 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1211 ns/op	  13.20 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1155 ns/op	  13.85 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1216 ns/op	  13.15 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1169 ns/op	  13.68 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1244 ns/op	  12.86 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1074 ns/op	  14.90 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1212 ns/op	  13.20 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1212 ns/op	  13.19 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1204 ns/op	  13.29 MB/s
+BenchmarkCommitPipeline/parallel=2-8         	 1000000	      1213 ns/op	  13.18 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 1000000	      1015 ns/op	  15.76 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 2000000	       864 ns/op	  18.51 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 1000000	      1010 ns/op	  15.84 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 2000000	       913 ns/op	  17.51 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 2000000	       902 ns/op	  17.73 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 2000000	       888 ns/op	  18.00 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 2000000	       859 ns/op	  18.61 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 2000000	       912 ns/op	  17.53 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 1000000	      1003 ns/op	  15.95 MB/s
+BenchmarkCommitPipeline/parallel=4-8         	 2000000	       875 ns/op	  18.28 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       791 ns/op	  20.22 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       786 ns/op	  20.34 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       789 ns/op	  20.27 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       782 ns/op	  20.45 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       787 ns/op	  20.33 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       779 ns/op	  20.53 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       788 ns/op	  20.30 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       790 ns/op	  20.24 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       764 ns/op	  20.92 MB/s
+BenchmarkCommitPipeline/parallel=8-8         	 2000000	       770 ns/op	  20.78 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       792 ns/op	  20.19 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       783 ns/op	  20.42 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       819 ns/op	  19.53 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       784 ns/op	  20.40 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       788 ns/op	  20.30 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       782 ns/op	  20.44 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       785 ns/op	  20.36 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       771 ns/op	  20.73 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       789 ns/op	  20.28 MB/s
+BenchmarkCommitPipeline/parallel=16-8        	 2000000	       774 ns/op	  20.67 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       864 ns/op	  18.50 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       873 ns/op	  18.31 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       859 ns/op	  18.61 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       862 ns/op	  18.54 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       871 ns/op	  18.35 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       834 ns/op	  19.17 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       863 ns/op	  18.52 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       860 ns/op	  18.58 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       840 ns/op	  19.04 MB/s
+BenchmarkCommitPipeline/parallel=32-8        	 2000000	       880 ns/op	  18.17 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       968 ns/op	  16.51 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       934 ns/op	  17.13 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       942 ns/op	  16.97 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       965 ns/op	  16.56 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       946 ns/op	  16.90 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       947 ns/op	  16.89 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       944 ns/op	  16.94 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       934 ns/op	  17.13 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 2000000	       946 ns/op	  16.91 MB/s
+BenchmarkCommitPipeline/parallel=64-8        	 1000000	      1003 ns/op	  15.95 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 1000000	      1017 ns/op	  15.72 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 2000000	       989 ns/op	  16.16 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 1000000	      1017 ns/op	  15.73 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 2000000	       989 ns/op	  16.16 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 2000000	       967 ns/op	  16.55 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 2000000	       985 ns/op	  16.23 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 1000000	      1011 ns/op	  15.81 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 1000000	      1054 ns/op	  15.18 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 1000000	      1016 ns/op	  15.75 MB/s
+BenchmarkCommitPipeline/parallel=128-8       	 1000000	      1064 ns/op	  15.03 MB/s
+BenchmarkDBIterSeekGE-8                      	 2000000	       851 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       942 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       902 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       879 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       845 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       899 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       865 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       839 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       858 ns/op
+BenchmarkDBIterSeekGE-8                      	 2000000	       840 ns/op
+BenchmarkDBIterNext-8                        	50000000	        40.6 ns/op
+BenchmarkDBIterNext-8                        	50000000	        39.8 ns/op
+BenchmarkDBIterNext-8                        	30000000	        40.3 ns/op
+BenchmarkDBIterNext-8                        	50000000	        41.1 ns/op
+BenchmarkDBIterNext-8                        	30000000	        40.4 ns/op
+BenchmarkDBIterNext-8                        	30000000	        39.5 ns/op
+BenchmarkDBIterNext-8                        	30000000	        40.2 ns/op
+BenchmarkDBIterNext-8                        	50000000	        40.4 ns/op
+BenchmarkDBIterNext-8                        	30000000	        39.6 ns/op
+BenchmarkDBIterNext-8                        	50000000	        40.3 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        47.5 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        47.2 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        47.1 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        47.4 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        47.1 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        48.1 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        46.9 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        47.5 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        48.2 ns/op
+BenchmarkDBIterPrev-8                        	30000000	        48.0 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1730 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1514 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1481 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1561 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1654 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1657 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1666 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1632 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1679 ns/op
+BenchmarkLevelIterSeekGE/restart=16/count=5-8         	 1000000	      1648 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        27.1 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        27.5 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        30.6 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        30.1 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        29.0 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        27.4 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        27.7 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        27.2 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        27.4 ns/op
+BenchmarkLevelIterNext/restart=16/count=5-8           	50000000	        27.5 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        43.7 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        44.8 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        44.4 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        45.6 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        45.4 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        44.6 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        45.1 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        44.8 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        44.1 ns/op
+BenchmarkLevelIterPrev/restart=16/count=5-8           	30000000	        44.5 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       854 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       847 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       889 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       845 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       860 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       849 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       850 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	      1135 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 1000000	      1092 ns/op
+BenchmarkMemTableIterSeekGE-8                         	 2000000	       863 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.29 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.28 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.14 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.21 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.31 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.13 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.11 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         6.28 ns/op
+BenchmarkMemTableIterNext-8                           	200000000	         5.97 ns/op
+BenchmarkMemTableIterNext-8                           	300000000	         5.97 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        31.9 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        31.9 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        30.8 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        31.1 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        31.0 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        31.8 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        31.4 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        33.4 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        34.3 ns/op
+BenchmarkMemTableIterPrev-8                           	50000000	        34.3 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1156 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1210 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1204 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1154 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1126 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1156 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1177 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1174 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1187 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=1-8       	 1000000	      1156 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	  500000	      2166 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	 1000000	      2128 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	  500000	      2259 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	 1000000	      2159 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	 1000000	      2104 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	 1000000	      2441 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	 1000000	      2142 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	  500000	      2240 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	 1000000	      2068 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=2-8       	 1000000	      2170 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3308 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3227 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3104 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3177 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3405 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3296 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3153 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3204 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3129 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=3-8       	  500000	      3248 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4286 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4500 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4270 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4285 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4196 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4429 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4151 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4284 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4257 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=4-8       	  300000	      4341 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  200000	      5445 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  200000	      5397 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  300000	      5443 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  300000	      5556 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  300000	      5440 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  300000	      5472 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  300000	      5506 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  300000	      5438 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  200000	      5609 ns/op
+BenchmarkMergingIterSeekGE/restart=16/count=5-8       	  300000	      5481 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        36.5 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        35.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        35.4 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        35.2 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        36.0 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        35.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        36.1 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        35.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        35.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=1-8         	50000000	        36.2 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        53.7 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        54.4 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        55.0 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        56.2 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        54.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        54.5 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	20000000	        59.1 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	20000000	        54.3 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        54.1 ns/op
+BenchmarkMergingIterNext/restart=16/count=2-8         	30000000	        54.5 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        64.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        66.3 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        65.5 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        64.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        64.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        64.3 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        65.6 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        66.4 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        64.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=3-8         	20000000	        65.4 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        72.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        71.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        70.2 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        74.3 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        70.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        73.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        72.2 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        73.0 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        72.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=4-8         	20000000	        70.4 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        79.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        80.3 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        79.9 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        81.1 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        80.1 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        79.8 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        78.6 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        78.6 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        79.6 ns/op
+BenchmarkMergingIterNext/restart=16/count=5-8         	20000000	        79.8 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        52.6 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        53.5 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        62.0 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	20000000	        61.4 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        59.7 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        52.1 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        53.7 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        53.3 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        52.9 ns/op
+BenchmarkMergingIterPrev/restart=16/count=1-8         	30000000	        54.9 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        73.6 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        72.0 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        72.6 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        71.4 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        73.7 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        74.3 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        71.9 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        72.0 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        73.3 ns/op
+BenchmarkMergingIterPrev/restart=16/count=2-8         	20000000	        71.8 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        82.5 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        84.5 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        83.8 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        82.6 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        82.8 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        83.1 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        82.1 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        84.6 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        82.6 ns/op
+BenchmarkMergingIterPrev/restart=16/count=3-8         	20000000	        82.2 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        91.6 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        90.1 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        95.7 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        99.7 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        92.4 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        92.7 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        89.4 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        91.3 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        91.1 ns/op
+BenchmarkMergingIterPrev/restart=16/count=4-8         	20000000	        90.8 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	       100 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	        99.7 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	        98.5 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	       101 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	        99.3 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	       100 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	       102 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	       101 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	       100 ns/op
+BenchmarkMergingIterPrev/restart=16/count=5-8         	20000000	        99.4 ns/op
 PASS
-ok  	github.com/petermattis/pebble	672.380s
+ok  	github.com/petermattis/pebble	770.041s
