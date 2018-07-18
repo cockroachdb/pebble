@@ -17,6 +17,7 @@ import (
 var (
 	scanRows      = 100
 	scanValueSize = 8
+	scanReverse   = false
 )
 
 var scanCmd = &cobra.Command{
@@ -83,11 +84,24 @@ func runScan(cmd *cobra.Command, args []string) {
 
 						it := d.NewIter(nil)
 						count := 0
-						for it.SeekGE(startKey); it.Valid(); it.Next() {
-							if bytes.Compare(it.Key(), endKey) >= 0 {
-								break
+						if scanReverse {
+							// TODO(peter): Fix once sstable/{block,table}Iter.SeekLT() are
+							// implemented.
+							it.SeekGE(endKey)
+							it.Prev()
+							for ; it.Valid(); it.Prev() {
+								if bytes.Compare(it.Key(), startKey) < 0 {
+									break
+								}
+								count++
 							}
-							count++
+						} else {
+							for it.SeekGE(startKey); it.Valid(); it.Next() {
+								if bytes.Compare(it.Key(), endKey) >= 0 {
+									break
+								}
+								count++
+							}
 						}
 						it.Close()
 

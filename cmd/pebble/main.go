@@ -35,6 +35,8 @@ func main() {
 			&wipe, "wipe", "w", false, "wipe the database before starting")
 	}
 
+	scanCmd.Flags().BoolVarP(
+		&scanReverse, "reverse", "r", false, "reverse scan")
 	scanCmd.Flags().IntVar(
 		&scanRows, "rows", scanRows, "number of rows to scan in each operation")
 	scanCmd.Flags().IntVar(
