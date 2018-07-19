@@ -37,7 +37,6 @@
 // - Compactions
 //   - Concurrent compactions
 //   - Manual compaction
-//   - Manual flush
 //   - Dynamic level bytes
 //   - Rate limiting (disk and CPU)
 //
