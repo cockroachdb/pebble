@@ -344,7 +344,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	iter, err := compactionIterator(&d.tableCache, d.cmp, c)
+	iter, err := compactionIterator(d.cmp, d.newIter, c)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
@@ -474,7 +474,9 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 }
 
 // compactionIterator returns an iterator over all the tables in a compaction.
-func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db.InternalIterator, retErr error) {
+func compactionIterator(
+	cmp db.Compare, newIter tableNewIter, c *compaction,
+) (cIter db.InternalIterator, retErr error) {
 	iters := make([]db.InternalIterator, 0, len(c.inputs[0])+1)
 	defer func() {
 		if retErr != nil {
@@ -487,14 +489,11 @@ func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db
 	}()
 
 	if c.level != 0 {
-		iter, err := concatenateInputs(tc, c.inputs[0])
-		if err != nil {
-			return nil, err
-		}
+		iter := newLevelIter(cmp, newIter, c.inputs[0])
 		iters = append(iters, iter)
 	} else {
 		for _, f := range c.inputs[0] {
-			iter, err := tc.newIter(f.fileNum)
+			iter, err := newIter(f.fileNum)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
@@ -503,35 +502,7 @@ func compactionIterator(tc *tableCache, cmp db.Compare, c *compaction) (cIter db
 		}
 	}
 
-	iter, err := concatenateInputs(tc, c.inputs[1])
-	if err != nil {
-		return nil, err
-	}
+	iter := newLevelIter(cmp, newIter, c.inputs[1])
 	iters = append(iters, iter)
 	return newMergingIter(cmp, iters...), nil
-}
-
-// concatenateInputs returns a concatenating iterator over all of the input
-// tables.
-func concatenateInputs(tc *tableCache, inputs []fileMetadata) (cIter db.InternalIterator, retErr error) {
-	iters := make([]db.InternalIterator, len(inputs))
-	defer func() {
-		if retErr != nil {
-			for _, iter := range iters {
-				if iter != nil {
-					iter.Close()
-				}
-			}
-		}
-	}()
-
-	for i, f := range inputs {
-		iter, err := tc.newIter(f.fileNum)
-		if err != nil {
-			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
-		}
-		iter.First()
-		iters[i] = iter
-	}
-	return newConcatenatingIter(iters...), nil
 }

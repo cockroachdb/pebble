@@ -18,6 +18,12 @@ type levelIter struct {
 // levelIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*levelIter)(nil)
 
+func newLevelIter(cmp db.Compare, newIter tableNewIter, files []fileMetadata) *levelIter {
+	l := &levelIter{}
+	l.init(cmp, newIter, files)
+	return l
+}
+
 func (l *levelIter) init(cmp db.Compare, newIter tableNewIter, files []fileMetadata) {
 	l.cmp = cmp
 	l.index = -1
