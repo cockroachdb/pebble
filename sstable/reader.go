@@ -321,14 +321,15 @@ func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 // Reader is a table reader. It implements the DB interface, as documented
 // in the pebble/db package.
 type Reader struct {
-	file    storage.File
-	fileNum uint64
-	err     error
-	index   block
-	opts    *db.Options
-	cache   *cache.Cache
-	compare db.Compare
-	filter  filterReader
+	file       storage.File
+	fileNum    uint64
+	err        error
+	index      block
+	opts       *db.Options
+	cache      *cache.Cache
+	compare    db.Compare
+	filter     filterReader
+	Properties Properties
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -442,19 +443,13 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		return err
 	}
 
-	if false {
-		if bh, ok := meta["rocksdb.properties"]; ok {
-			b, err = r.readBlock(bh)
-			if err != nil {
-				return err
-			}
-			i, err := newRawBlockIter(bytes.Compare, b)
-			if err != nil {
-				return err
-			}
-			for i.First(); i.Valid(); i.Next() {
-				fmt.Printf("%s -> %s\n", i.Key().UserKey, i.Value())
-			}
+	if bh, ok := meta["rocksdb.properties"]; ok {
+		b, err = r.readBlock(bh)
+		if err != nil {
+			return err
+		}
+		if err := r.Properties.load(b); err != nil {
+			return err
 		}
 	}
 

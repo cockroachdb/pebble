@@ -144,13 +144,9 @@ type Writer struct {
 	// to be written.
 	offset     uint64
 	syncOffset uint64
-	// indexKeys and indexEntries hold the separator keys between each block
-	// and the successor key for the final block. indexKeys contains the key's
-	// bytes concatenated together. The keyLen field of each indexEntries
-	// element is the length of the respective separator key.
-	indexKeys    []byte
-	indexEntries []indexEntry
-	block        blockWriter
+	block      blockWriter
+	indexBlock blockWriter
+	props      Properties
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -177,10 +173,13 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 		w.filter.appendKey(key.UserKey)
 	}
 	w.flushPendingBH(key)
+	w.props.NumEntries++
+	w.props.RawKeySize += uint64(key.Size())
+	w.props.RawValueSize += uint64(len(value))
 	w.block.add(key, value)
 	// If the estimated block size is sufficiently large, finish the current block.
 	if w.block.estimatedSize() >= w.blockSize {
-		bh, err := w.finishBlock()
+		bh, err := w.finishBlock(&w.block)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -197,24 +196,19 @@ func (w *Writer) flushPendingBH(key db.InternalKey) {
 		// In particular, it must have a non-zero length.
 		return
 	}
-	n0 := len(w.indexKeys)
-	// TODO(peter): This isn't correct for InternalKeys. And it is fugly.
-	if false {
-		w.indexKeys = w.appendSep(w.indexKeys, w.block.curKey, key.UserKey)
-	} else {
-		w.indexKeys = append(w.indexKeys, w.block.curKey...)
-	}
-	n1 := len(w.indexKeys)
-	w.indexEntries = append(w.indexEntries, indexEntry{w.pendingBH, n1 - n0})
+	ikey := db.DecodeInternalKey(w.block.curKey)
+	ikey.UserKey = w.appendSep(nil, ikey.UserKey, key.UserKey)
+	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
+	w.indexBlock.add(ikey, w.tmp[:n])
 	w.pendingBH = blockHandle{}
 }
 
 // finishBlock finishes the current block and returns its block handle, which is
 // its offset and length in the table.
-func (w *Writer) finishBlock() (blockHandle, error) {
+func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 	// Compress the buffer, discarding the result if the improvement
 	// isn't at least 12.5%.
-	b := w.block.finish()
+	b := block.finish()
 	blockType := byte(noCompressionBlockType)
 	if w.compression == db.SnappyCompression {
 		compressed := snappy.Encode(w.compressedBuf, b)
@@ -232,7 +226,7 @@ func (w *Writer) finishBlock() (blockHandle, error) {
 	}
 
 	// Reset the per-block state.
-	w.block.reset()
+	block.reset()
 
 	return bh, err
 }
@@ -289,8 +283,8 @@ func (w *Writer) Close() (err error) {
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
 	w.flushPendingBH(db.InternalKey{})
-	if w.block.nEntries > 0 || len(w.indexEntries) == 0 {
-		bh, err := w.finishBlock()
+	if w.block.nEntries > 0 || w.indexBlock.nEntries == 0 {
+		bh, err := w.finishBlock(&w.block)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -298,13 +292,12 @@ func (w *Writer) Close() (err error) {
 		w.pendingBH = bh
 		w.flushPendingBH(db.InternalKey{})
 	}
-
-	// Writer.append uses w.tmp[:3*binary.MaxVarintLen64]. Let tmp be the other
-	// half of that slice.
-	tmp := w.tmp[3*binary.MaxVarintLen64 : 5*binary.MaxVarintLen64]
+	w.props.DataSize = w.offset
+	w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 	// Write the filter block.
-	w.block.restartInterval = 1
+	var metaindex rawBlockWriter
+	metaindex.restartInterval = 1
 	if w.filter.policy != nil {
 		b, err := w.filter.finish()
 		if err != nil {
@@ -316,30 +309,37 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		n := encodeBlockHandle(tmp, bh)
-		// TODO(peter): the metaindex block should be written with rawCoder.
-		w.block.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, tmp[:n])
+		n := encodeBlockHandle(w.tmp[:0], bh)
+		metaindex.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, w.tmp[:n])
 	}
 
-	// Write the metaindex block. It might be an empty block, if the filter
-	// policy is nil.
-	metaindexBlockHandle, err := w.finishBlock()
+	// Write the index block.
+	indexBlockHandle, err := w.finishBlock(&w.indexBlock)
 	if err != nil {
 		w.err = err
 		return w.err
 	}
 
-	// Write the index block.
-	w.block.reset()
-	i0 := 0
-	for _, ie := range w.indexEntries {
-		n := encodeBlockHandle(tmp, ie.bh)
-		i1 := i0 + ie.keyLen
-		ikey := db.DecodeInternalKey(w.indexKeys[i0:i1])
-		w.block.add(ikey, tmp[:n])
-		i0 = i1
+	// TODO(peter): write the range-del block.
+
+	{
+		// Write the properties block.
+		var raw rawBlockWriter
+		raw.restartInterval = 1
+		w.props.IndexSize = indexBlockHandle.length
+		w.props.save(&raw)
+		bh, err := w.writeRawBlock(raw.finish(), noCompressionBlockType)
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+		n := encodeBlockHandle(w.tmp[:], bh)
+		metaindex.add(db.InternalKey{UserKey: []byte("rocksdb.properties")}, w.tmp[:n])
 	}
-	indexBlockHandle, err := w.finishBlock()
+
+	// Write the metaindex block. It might be an empty block, if the filter
+	// policy is nil.
+	metaindexBlockHandle, err := w.finishBlock(&metaindex.blockWriter)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -387,7 +387,7 @@ func (w *Writer) Close() (err error) {
 
 // EstimatedSize ...
 func (w *Writer) EstimatedSize() uint64 {
-	return w.offset + uint64(w.block.estimatedSize()+len(w.indexEntries))
+	return w.offset + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
 // Stat ...
@@ -415,6 +415,9 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		},
 		block: blockWriter{
 			restartInterval: lo.BlockRestartInterval,
+		},
+		indexBlock: blockWriter{
+			restartInterval: 1,
 		},
 	}
 	if f == nil {

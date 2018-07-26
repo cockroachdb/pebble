@@ -49,7 +49,6 @@
 //   - SSTable ingestion
 //   - Whole file bloom filter
 //   - Prefix extractor and prefix bloom filter
-//   - Read/write RocksDB table properties
 //
 // - Iterators
 //   - Prefix same as start
