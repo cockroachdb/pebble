@@ -474,10 +474,10 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
 	}
 }
 
-// TODO(peter): these tests fail because we don't generate the
-// rocksdb.properties block (yet).
+// TODO(peter): these tests fail because we generate the meta blocks in a
+// different order than rocksdb.
 //
-// func TestNoCompressionOutput(t *testing.T)      { testNoCompressionOutput(t, nil) }
+// func TestNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, nil) }
 // func TestBloomNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, bloom.FilterPolicy(10)) }
 
 func TestFinalBlockIsWritten(t *testing.T) {

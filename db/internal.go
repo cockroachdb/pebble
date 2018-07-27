@@ -33,6 +33,7 @@ package db // import "github.com/petermattis/pebble/db"
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 )
 
 type InternalKeyKind uint8
@@ -163,6 +164,35 @@ func (k InternalKey) EncodeTrailer() [8]byte {
 	return buf
 }
 
+// Separator ...
+func (k InternalKey) Separator(
+	cmp Compare,
+	sep Separator,
+	buf []byte,
+	other InternalKey,
+) InternalKey {
+	buf = sep(buf, k.UserKey, other.UserKey)
+	if len(buf) <= len(k.UserKey) && cmp(k.UserKey, buf) < 0 {
+		// The separator user key is physically shorter that k.UserKey, but
+		// logically after. Tack on the max sequence number to the shortened user
+		// key.
+		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
+	}
+	return k
+}
+
+// Successor ...
+func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) InternalKey {
+	buf = succ(buf, k.UserKey)
+	if len(buf) <= len(k.UserKey) && cmp(k.UserKey, buf) < 0 {
+		// The successor user key is physically shorter that k.UserKey, but
+		// logically after. Tack on the max sequence number to the shortened user
+		// key.
+		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
+	}
+	return k
+}
+
 // Size ...
 func (k InternalKey) Size() int {
 	return len(k.UserKey) + 8
@@ -189,6 +219,16 @@ func (k InternalKey) Clone() InternalKey {
 		UserKey: append([]byte(nil), k.UserKey...),
 		Trailer: k.Trailer,
 	}
+}
+
+// String ...
+func (k InternalKey) String() string {
+	return fmt.Sprintf("%s#%d,%d", k.UserKey, k.SeqNum(), k.Kind())
+}
+
+// Pretty ...
+func (k InternalKey) Pretty(f func([]byte) string) string {
+	return fmt.Sprintf("%s#%d,%d", f(k.UserKey), k.SeqNum(), k.Kind())
 }
 
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike

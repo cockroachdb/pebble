@@ -570,7 +570,13 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 		r.err = errors.New("pebble/table: invalid table (bad index block handle)")
 		return r
 	}
+
 	footer = footer[n:]
 	r.index, r.err = r.readBlock(indexBH)
+
+	// iter, _ := newBlockIter(r.compare, r.index)
+	// for iter.First(); iter.Valid(); iter.Next() {
+	// 	fmt.Printf("%s#%d\n", iter.Key().UserKey, iter.Key().SeqNum())
+	// }
 	return r
 }

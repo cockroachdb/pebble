@@ -14,7 +14,13 @@ import (
 // must be 'less than' any non-empty slice.
 type Compare func(a, b []byte) int
 
-// AppendSeparator appends a sequence of bytes x to dst such that
+// InlineKey returns a fixed length prefix of a user key such that InlineKey(a)
+// < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff a > b. If
+// InlineKey(a) == InlineKey(b) an additional comparison is required to
+// determine if the two keys are actually equal.
+type InlineKey func(key []byte) uint64
+
+// Separator appends a sequence of bytes x to dst such that
 // a <= x && x < b, where 'less than' is consistent with Compare.
 // It returns the enlarged slice, like the built-in append function.
 //
@@ -29,20 +35,18 @@ type Compare func(a, b []byte) int
 // "aqua", "black" and "blue", then the result may be "aquablb".
 // Similarly, if the arguments were "aqua", "green" and "", then the result
 // may be "aquah".
-type AppendSeparator func(dst, a, b []byte) []byte
+type Separator func(dst, a, b []byte) []byte
 
-// InlineKey returns a fixed length prefix of a user key such that InlineKey(a)
-// < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff a > b. If
-// InlineKey(a) == InlineKey(b) an additional comparison is required to
-// determine if the two keys are actually equal.
-type InlineKey func(key []byte) uint64
+// Successor TODO(peter)
+type Successor func(dst, a []byte) []byte
 
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer struct {
-	AppendSeparator AppendSeparator
-	Compare         Compare
-	InlineKey       InlineKey
+	Compare   Compare
+	InlineKey InlineKey
+	Separator Separator
+	Successor Successor
 
 	// Name is the name of the comparer.
 	//
@@ -55,33 +59,6 @@ type Comparer struct {
 // DefaultComparer is the default implementation of the Comparer interface.
 // It uses the natural ordering, consistent with bytes.Compare.
 var DefaultComparer = &Comparer{
-	AppendSeparator: func(dst, a, b []byte) []byte {
-		i, n := SharedPrefixLen(a, b), len(dst)
-		dst = append(dst, a...)
-		if len(b) > 0 {
-			if i == len(a) {
-				return dst
-			}
-			if i == len(b) {
-				panic("a < b is a precondition, but b is a prefix of a")
-			}
-			if a[i] == 0xff || a[i]+1 >= b[i] {
-				// This isn't optimal, but it matches the C++ Level-DB implementation, and
-				// it's good enough. For example, if a is "1357" and b is "2", then the
-				// optimal (i.e. shortest) result is appending "14", but we append "1357".
-				return dst
-			}
-		}
-		i += n
-		for ; i < len(dst); i++ {
-			if dst[i] != 0xff {
-				dst[i]++
-				return dst[:i+1]
-			}
-		}
-		return dst
-	},
-
 	Compare: bytes.Compare,
 
 	InlineKey: func(key []byte) uint64 {
@@ -95,6 +72,51 @@ var DefaultComparer = &Comparer{
 			v |= uint64(b)
 		}
 		return v
+	},
+
+	Separator: func(dst, a, b []byte) []byte {
+		i, n := SharedPrefixLen(a, b), len(dst)
+		dst = append(dst, a...)
+
+		min := len(a)
+		if min > len(b) {
+			min = len(b)
+		}
+		if i >= min {
+			// Do not shorten if one string is a prefix of the other.
+			return dst
+		}
+
+		if a[i] >= b[i] {
+			// b is smaller than a or a is already the shortest possible.
+			return dst
+		}
+
+		if i < len(b)-1 || a[i]+1 < b[i] {
+			i += n
+			dst[i]++
+			return dst[:i+1]
+		}
+
+		i += n + 1
+		for ; i < len(dst); i++ {
+			if dst[i] != 0xff {
+				dst[i]++
+				return dst[:i+1]
+			}
+		}
+		return dst
+	},
+
+	Successor: func(dst, a []byte) []byte {
+		for i := 0; i < len(a); i++ {
+			if a[i] != 0xff {
+				dst = append(dst, a[:i+1]...)
+				dst[len(dst)-1]++
+				return dst
+			}
+		}
+		return append(dst, a...)
 	},
 
 	// This name is part of the C++ Level-DB implementation's default file

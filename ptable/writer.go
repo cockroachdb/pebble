@@ -67,7 +67,7 @@ type Writer struct {
 	err       error
 	// The next four fields are copied from a db.Options.
 	blockSize   int
-	appendSep   db.AppendSeparator
+	appendSep   db.Separator
 	compare     db.Compare
 	compression db.Compression
 	// The data block and index block writers.

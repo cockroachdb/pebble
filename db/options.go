@@ -63,10 +63,17 @@ type LevelOptions struct {
 	// The default value is 16.
 	BlockRestartInterval int
 
-	// BlockSize is the minimum uncompressed size in bytes of each table block.
+	// BlockSize is the target uncompressed size in bytes of each table block.
 	//
 	// The default value is 4096.
 	BlockSize int
+
+	// BlockSizeThreshold finishes a block if the block size is larger than the
+	// specified percentage of the target block size and adding the next entry
+	// would cause the block to be larger than the target block size.
+	//
+	// The default value is 90
+	BlockSizeThreshold int
 
 	// Compression defines the per-block compression to use.
 	//
@@ -109,6 +116,9 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	}
 	if o.BlockSize <= 0 {
 		o.BlockSize = 4096
+	}
+	if o.BlockSizeThreshold <= 0 {
+		o.BlockSizeThreshold = 90
 	}
 	if o.Compression <= DefaultCompression || o.Compression >= nCompression {
 		o.Compression = SnappyCompression

@@ -5,6 +5,8 @@
 package db
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -110,5 +112,54 @@ func TestInternalKeyComparer(t *testing.T) {
 					i, j, keys[i], keys[j], got, want)
 			}
 		}
+	}
+}
+
+func TestInternalKeySeparator(t *testing.T) {
+	var makeIkeyKinds = map[string]InternalKeyKind{
+		"DEL": InternalKeyKindDelete,
+		"MAX": InternalKeyKindMax,
+		"SET": InternalKeyKindSet,
+	}
+
+	makeIkey := func(s string) InternalKey {
+		x := strings.Split(s, ".")
+		ukey := x[0]
+		kind := makeIkeyKinds[x[1]]
+		seqNum, _ := strconv.ParseUint(x[2], 10, 64)
+		return MakeInternalKey([]byte(ukey), seqNum, kind)
+	}
+
+	testCases := []struct {
+		a        string
+		b        string
+		expected string
+	}{
+		{"foo.SET.100", "foo.SET.99", "foo.SET.100"},
+		{"foo.SET.100", "foo.SET.100", "foo.SET.100"},
+		{"foo.SET.100", "foo.DEL.100", "foo.SET.100"},
+		{"foo.SET.100", "foo.SET.101", "foo.SET.100"},
+		{"foo.SET.100", "bar.SET.99", "foo.SET.100"},
+		{"foo.SET.100", "hello.SET.200", "g.MAX.72057594037927935"},
+		{"ABC1AAAAA.SET.100", "ABC2ABB.SET.200", "ABC2.MAX.72057594037927935"},
+		{"AAA1AAA.SET.100", "AAA2AA.SET.200", "AAA2.MAX.72057594037927935"},
+		{"AAA1AAA.SET.100", "AAA4.SET.200", "AAA2.MAX.72057594037927935"},
+		{"AAA1AAA.SET.100", "AAA2.SET.200", "AAA1B.MAX.72057594037927935"},
+		{"AAA1AAA.SET.100", "AAA2A.SET.200", "AAA2.MAX.72057594037927935"},
+		{"AAA1.SET.100", "AAA2.SET.200", "AAA1.SET.100"},
+		{"foo.SET.100", "foobar.SET.200", "foo.SET.100"},
+		{"foobar.SET.100", "foo.SET.200", "foobar.SET.100"},
+	}
+	d := DefaultComparer
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			a := makeIkey(c.a)
+			b := makeIkey(c.b)
+			expected := makeIkey(c.expected)
+			result := a.Separator(d.Compare, d.Separator, nil, b)
+			if cmp := InternalCompare(d.Compare, expected, result); cmp != 0 {
+				t.Fatalf("expected %s, but found %s", expected, result)
+			}
+		})
 	}
 }

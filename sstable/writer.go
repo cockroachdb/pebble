@@ -128,11 +128,13 @@ type Writer struct {
 	stat      os.FileInfo
 	err       error
 	// The next give fields are copied from a db.Options.
-	blockSize    int
-	bytesPerSync int
-	appendSep    db.AppendSeparator
-	compare      db.Compare
-	compression  db.Compression
+	blockSize          int
+	blockSizeThreshold int
+	bytesPerSync       int
+	compare            db.Compare
+	compression        db.Compression
+	separator          db.Separator
+	successor          db.Successor
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
 	// cannot be written until the first key in the next block is seen.
@@ -169,23 +171,49 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q", prevKey, key)
 		return w.err
 	}
+
+	if err := w.maybeFlush(key, value); err != nil {
+		return err
+	}
+
 	if w.filter.policy != nil {
 		w.filter.appendKey(key.UserKey)
 	}
-	w.flushPendingBH(key)
 	w.props.NumEntries++
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
 	w.block.add(key, value)
-	// If the estimated block size is sufficiently large, finish the current block.
-	if w.block.estimatedSize() >= w.blockSize {
-		bh, err := w.finishBlock(&w.block)
-		if err != nil {
-			w.err = err
-			return w.err
+	return nil
+}
+
+func (w *Writer) maybeFlush(key db.InternalKey, value []byte) error {
+	if size := w.block.estimatedSize(); size < w.blockSize {
+		// The block is currently smaller than the target size.
+		if size <= w.blockSizeThreshold {
+			// The block is smaller than the threshold size at which we'll consider
+			// flushing it.
+			return nil
 		}
-		w.pendingBH = bh
+		newSize := size + key.Size() + len(value)
+		if w.block.nEntries&w.block.restartInterval == 0 {
+			newSize += 4
+		}
+		// TODO(peter): newSize += 4                              // varint for shared key bytes
+		newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
+		newSize += uvarintLen(uint32(len(value))) // varint for value size
+		if newSize <= w.blockSize {
+			// The block plus the new entry is smaller than the target size.
+			return nil
+		}
 	}
+
+	bh, err := w.finishBlock(&w.block)
+	if err != nil {
+		w.err = err
+		return w.err
+	}
+	w.pendingBH = bh
+	w.flushPendingBH(key)
 	return nil
 }
 
@@ -196,10 +224,16 @@ func (w *Writer) flushPendingBH(key db.InternalKey) {
 		// In particular, it must have a non-zero length.
 		return
 	}
-	ikey := db.DecodeInternalKey(w.block.curKey)
-	ikey.UserKey = w.appendSep(nil, ikey.UserKey, key.UserKey)
+	prevKey := db.DecodeInternalKey(w.block.curKey)
+	var sep db.InternalKey
+	if key.UserKey == nil && key.Trailer == 0 {
+		sep = prevKey.Successor(w.compare, w.successor, nil)
+	} else {
+		sep = prevKey.Separator(w.compare, w.separator, nil, key)
+	}
+	fmt.Printf("index key: %s %d [%s %s]\n", sep, w.pendingBH.offset, prevKey, key)
 	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
-	w.indexBlock.add(ikey, w.tmp[:n])
+	w.indexBlock.add(sep, w.tmp[:n])
 	w.pendingBH = blockHandle{}
 }
 
@@ -227,7 +261,6 @@ func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 
 	// Reset the per-block state.
 	block.reset()
-
 	return bh, err
 }
 
@@ -314,7 +347,7 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Write the index block.
-	indexBlockHandle, err := w.finishBlock(&w.indexBlock)
+	indexBH, err := w.finishBlock(&w.indexBlock)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -326,7 +359,7 @@ func (w *Writer) Close() (err error) {
 		// Write the properties block.
 		var raw rawBlockWriter
 		raw.restartInterval = 1
-		w.props.IndexSize = indexBlockHandle.length
+		w.props.IndexSize = indexBH.length
 		w.props.save(&raw)
 		bh, err := w.writeRawBlock(raw.finish(), noCompressionBlockType)
 		if err != nil {
@@ -339,7 +372,7 @@ func (w *Writer) Close() (err error) {
 
 	// Write the metaindex block. It might be an empty block, if the filter
 	// policy is nil.
-	metaindexBlockHandle, err := w.finishBlock(&metaindex.blockWriter)
+	metaindexBH, err := w.finishBlock(&metaindex.blockWriter)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -352,8 +385,8 @@ func (w *Writer) Close() (err error) {
 	}
 	footer[0] = checksumCRC32c
 	n := 1
-	n += encodeBlockHandle(footer[n:], metaindexBlockHandle)
-	n += encodeBlockHandle(footer[n:], indexBlockHandle)
+	n += encodeBlockHandle(footer[n:], metaindexBH)
+	n += encodeBlockHandle(footer[n:], indexBH)
 	binary.LittleEndian.PutUint32(footer[versionOffset:], formatVersion)
 	copy(footer[magicOffset:], magic)
 	if _, err := w.writer.Write(footer); err != nil {
@@ -404,12 +437,14 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
 	w := &Writer{
-		file:         f,
-		blockSize:    lo.BlockSize,
-		bytesPerSync: o.BytesPerSync,
-		appendSep:    o.Comparer.AppendSeparator,
-		compare:      o.Comparer.Compare,
-		compression:  lo.Compression,
+		file:               f,
+		blockSize:          lo.BlockSize,
+		blockSizeThreshold: (lo.BlockSize*lo.BlockSizeThreshold + 99) / 100,
+		bytesPerSync:       o.BytesPerSync,
+		compare:            o.Comparer.Compare,
+		compression:        lo.Compression,
+		separator:          o.Comparer.Separator,
+		successor:          o.Comparer.Successor,
 		filter: filterWriter{
 			policy: lo.FilterPolicy,
 		},
