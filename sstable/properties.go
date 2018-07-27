@@ -22,7 +22,7 @@ var columnFamilyIDField = func() reflect.StructField {
 	return f
 }()
 
-var propOffsetTagMap = make(map[uintptr]db.InternalKey)
+var propOffsetTagMap = make(map[uintptr]string)
 
 func init() {
 	t := reflect.TypeOf(Properties{})
@@ -38,7 +38,7 @@ func init() {
 				panic(fmt.Sprintf("unsupported property field type: %s %s", f.Name, f.Type))
 			}
 			propTagMap[tag] = f
-			propOffsetTagMap[f.Offset] = db.InternalKey{UserKey: []byte(tag)}
+			propOffsetTagMap[f.Offset] = tag
 		}
 	}
 }
@@ -108,7 +108,7 @@ type Properties struct {
 	// User collected properties.
 	UserProperties map[string]string
 	// The version. TODO(peter): add a more detailed description.
-	Version uint64 `prop:"rocksdb.external_sst_file.version"`
+	Version uint32 `prop:"rocksdb.external_sst_file.version"`
 	// If filtering is enabled, was the filter created on the whole key.
 	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
 }
@@ -149,7 +149,7 @@ func (p *Properties) String() string {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		fmt.Printf("%s: %s\n", keys, p.UserProperties[key])
+		fmt.Fprintf(&buf, "%s: %s\n", keys, p.UserProperties[key])
 	}
 	return buf.String()
 }
@@ -170,7 +170,12 @@ func (p *Properties) load(b block) error {
 			case reflect.Uint32:
 				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
 			case reflect.Uint64:
-				n, _ := binary.Uvarint(i.Value())
+				var n uint64
+				if string(tag) == "rocksdb.external_sst_file.global_seqno" {
+					n = binary.LittleEndian.Uint64(i.Value())
+				} else {
+					n, _ = binary.Uvarint(i.Value())
+				}
 				field.SetUint(n)
 			case reflect.String:
 				field.SetString(string(i.Value()))
@@ -187,83 +192,98 @@ func (p *Properties) load(b block) error {
 	return nil
 }
 
-func (p *Properties) saveBool(w *rawBlockWriter, offset uintptr, value bool) {
+func (p *Properties) saveBool(m map[string][]byte, offset uintptr, value bool) {
 	tag := propOffsetTagMap[offset]
 	if value {
-		w.add(tag, []byte{'1'})
+		m[tag] = []byte{'1'}
 	} else {
-		w.add(tag, []byte{'0'})
+		m[tag] = []byte{'0'}
 	}
 }
 
-func (p *Properties) saveUint32(w *rawBlockWriter, offset uintptr, value uint32) {
+func (p *Properties) saveUint32(m map[string][]byte, offset uintptr, value uint32) {
 	var buf [4]byte
 	binary.LittleEndian.PutUint32(buf[:], value)
-	w.add(propOffsetTagMap[offset], buf[:])
+	m[propOffsetTagMap[offset]] = buf[:]
 }
 
-func (p *Properties) saveUvarint(w *rawBlockWriter, offset uintptr, value uint64) {
+func (p *Properties) saveUint64(m map[string][]byte, offset uintptr, value uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], value)
+	m[propOffsetTagMap[offset]] = buf[:]
+}
+
+func (p *Properties) saveUvarint(m map[string][]byte, offset uintptr, value uint64) {
 	var buf [10]byte
 	n := binary.PutUvarint(buf[:], value)
-	w.add(propOffsetTagMap[offset], buf[:n])
+	m[propOffsetTagMap[offset]] = buf[:n]
 }
 
-func (p *Properties) saveString(w *rawBlockWriter, offset uintptr, value string) {
-	w.add(propOffsetTagMap[offset], []byte(value))
+func (p *Properties) saveString(m map[string][]byte, offset uintptr, value string) {
+	m[propOffsetTagMap[offset]] = []byte(value)
 }
 
 func (p *Properties) save(w *rawBlockWriter) {
-	p.saveUvarint(w, unsafe.Offsetof(p.RawKeySize), p.RawKeySize)
-	p.saveUvarint(w, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
-	p.saveUvarint(w, unsafe.Offsetof(p.DataSize), p.DataSize)
-	p.saveUvarint(w, unsafe.Offsetof(p.IndexSize), p.IndexSize)
-	if p.IndexPartitions != 0 {
-		p.saveUvarint(w, unsafe.Offsetof(p.IndexPartitions), p.IndexPartitions)
-		p.saveUvarint(w, unsafe.Offsetof(p.TopLevelIndexSize), p.TopLevelIndexSize)
+	m := make(map[string][]byte)
+	for k, v := range p.UserProperties {
+		m[k] = []byte(v)
 	}
-	p.saveUvarint(w, unsafe.Offsetof(p.IndexKeyIsUserKey), p.IndexKeyIsUserKey)
-	p.saveUvarint(w, unsafe.Offsetof(p.NumEntries), p.NumEntries)
-	p.saveUvarint(w, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
-	p.saveUvarint(w, unsafe.Offsetof(p.NumDataBlocks), p.NumDataBlocks)
-	p.saveUvarint(w, unsafe.Offsetof(p.FilterSize), p.FilterSize)
-	p.saveUvarint(w, unsafe.Offsetof(p.FormatVersion), p.FormatVersion)
-	p.saveUvarint(w, unsafe.Offsetof(p.FixedKeyLen), p.FixedKeyLen)
-	p.saveUvarint(w, unsafe.Offsetof(p.ColumnFamilyID), p.ColumnFamilyID)
-	p.saveUvarint(w, unsafe.Offsetof(p.CreationTime), p.CreationTime)
-	p.saveUvarint(w, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
-	if p.FilterPolicyName != "" {
-		p.saveString(w, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
+
+	p.saveUvarint(m, unsafe.Offsetof(p.ColumnFamilyID), p.ColumnFamilyID)
+	if p.ColumnFamilyName != "" {
+		p.saveString(m, unsafe.Offsetof(p.ColumnFamilyName), p.ColumnFamilyName)
 	}
 	if p.ComparatorName != "" {
-		p.saveString(w, unsafe.Offsetof(p.ComparatorName), p.ComparatorName)
-	}
-	if p.MergeOperatorName != "" {
-		p.saveString(w, unsafe.Offsetof(p.MergeOperatorName), p.MergeOperatorName)
-	}
-	if p.PrefixExtractorName != "" {
-		p.saveString(w, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
-	}
-	if p.PropertyCollectorNames != "" {
-		p.saveString(w, unsafe.Offsetof(p.PropertyCollectorNames), p.PropertyCollectorNames)
-	}
-	if p.ColumnFamilyName != "" {
-		p.saveString(w, unsafe.Offsetof(p.ColumnFamilyName), p.ColumnFamilyName)
+		p.saveString(m, unsafe.Offsetof(p.ComparatorName), p.ComparatorName)
 	}
 	if p.CompressionName != "" {
-		p.saveString(w, unsafe.Offsetof(p.CompressionName), p.CompressionName)
+		p.saveString(m, unsafe.Offsetof(p.CompressionName), p.CompressionName)
 	}
-	p.saveUint32(w, unsafe.Offsetof(p.IndexType), p.IndexType)
-	p.saveBool(w, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
-	p.saveBool(w, unsafe.Offsetof(p.PrefixFiltering), p.PrefixFiltering)
-	p.saveUvarint(w, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
-	p.saveUvarint(w, unsafe.Offsetof(p.Version), p.Version)
+	p.saveUvarint(m, unsafe.Offsetof(p.CreationTime), p.CreationTime)
+	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
+	if p.FilterPolicyName != "" {
+		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
+	}
+	p.saveUvarint(m, unsafe.Offsetof(p.FilterSize), p.FilterSize)
+	p.saveUvarint(m, unsafe.Offsetof(p.FixedKeyLen), p.FixedKeyLen)
+	p.saveUvarint(m, unsafe.Offsetof(p.FormatVersion), p.FormatVersion)
+	p.saveUint64(m, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
+	if p.IndexKeyIsUserKey != 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.IndexKeyIsUserKey), p.IndexKeyIsUserKey)
+	}
+	if p.IndexPartitions != 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.IndexPartitions), p.IndexPartitions)
+		p.saveUvarint(m, unsafe.Offsetof(p.TopLevelIndexSize), p.TopLevelIndexSize)
+	}
+	p.saveUvarint(m, unsafe.Offsetof(p.IndexSize), p.IndexSize)
+	p.saveUint32(m, unsafe.Offsetof(p.IndexType), p.IndexType)
+	if p.MergeOperatorName != "" {
+		p.saveString(m, unsafe.Offsetof(p.MergeOperatorName), p.MergeOperatorName)
+	}
+	p.saveUvarint(m, unsafe.Offsetof(p.NumDataBlocks), p.NumDataBlocks)
+	p.saveUvarint(m, unsafe.Offsetof(p.NumEntries), p.NumEntries)
+	if p.NumRangeDeletions != 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
+	}
+	p.saveUvarint(m, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
+	if p.PrefixExtractorName != "" {
+		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
+	}
+	p.saveBool(m, unsafe.Offsetof(p.PrefixFiltering), p.PrefixFiltering)
+	if p.PropertyCollectorNames != "" {
+		p.saveString(m, unsafe.Offsetof(p.PropertyCollectorNames), p.PropertyCollectorNames)
+	}
+	p.saveUvarint(m, unsafe.Offsetof(p.RawKeySize), p.RawKeySize)
+	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
+	p.saveUint32(m, unsafe.Offsetof(p.Version), p.Version)
+	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
 
-	keys := make([]string, 0, len(p.UserProperties))
-	for key := range p.UserProperties {
+	keys := make([]string, 0, len(m))
+	for key := range m {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		w.add(db.InternalKey{UserKey: []byte(key)}, []byte(p.UserProperties[key]))
+		w.add(db.InternalKey{UserKey: []byte(key)}, m[key])
 	}
 }

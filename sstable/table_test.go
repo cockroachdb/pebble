@@ -474,11 +474,8 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
 	}
 }
 
-// TODO(peter): these tests fail because we generate the meta blocks in a
-// different order than rocksdb.
-//
-// func TestNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, nil) }
-// func TestBloomNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, bloom.FilterPolicy(10)) }
+func TestNoCompressionOutput(t *testing.T)      { testNoCompressionOutput(t, nil) }
+func TestBloomNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, bloom.FilterPolicy(10)) }
 
 func TestFinalBlockIsWritten(t *testing.T) {
 	const blockSize = 100

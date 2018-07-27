@@ -19,6 +19,19 @@ const (
 	nCompression
 )
 
+func (c Compression) String() string {
+	switch c {
+	case DefaultCompression:
+		return "Default"
+	case NoCompression:
+		return "NoCompression"
+	case SnappyCompression:
+		return "Snappy"
+	default:
+		return "Unknown"
+	}
+}
+
 // FilterPolicy is an algorithm for probabilistically encoding a set of keys.
 // The canonical implementation is a Bloom filter.
 //

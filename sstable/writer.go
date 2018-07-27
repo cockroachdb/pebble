@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 
 	"github.com/golang/snappy"
@@ -231,7 +232,6 @@ func (w *Writer) flushPendingBH(key db.InternalKey) {
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	fmt.Printf("index key: %s %d [%s %s]\n", sep, w.pendingBH.offset, prevKey, key)
 	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
 	w.indexBlock.add(sep, w.tmp[:n])
 	w.pendingBH = blockHandle{}
@@ -342,15 +342,10 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		n := encodeBlockHandle(w.tmp[:0], bh)
+		n := encodeBlockHandle(w.tmp[:], bh)
 		metaindex.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, w.tmp[:n])
-	}
-
-	// Write the index block.
-	indexBH, err := w.finishBlock(&w.indexBlock)
-	if err != nil {
-		w.err = err
-		return w.err
+		w.props.FilterPolicyName = w.filter.policy.Name()
+		w.props.FilterSize = bh.length
 	}
 
 	// TODO(peter): write the range-del block.
@@ -359,7 +354,10 @@ func (w *Writer) Close() (err error) {
 		// Write the properties block.
 		var raw rawBlockWriter
 		raw.restartInterval = 1
-		w.props.IndexSize = indexBH.length
+		// NB: RocksDB includes the block trailer length in the index size
+		// property, though it doesn't include the trailer in the filter size
+		// property.
+		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
 		w.props.save(&raw)
 		bh, err := w.writeRawBlock(raw.finish(), noCompressionBlockType)
 		if err != nil {
@@ -373,6 +371,13 @@ func (w *Writer) Close() (err error) {
 	// Write the metaindex block. It might be an empty block, if the filter
 	// policy is nil.
 	metaindexBH, err := w.finishBlock(&metaindex.blockWriter)
+	if err != nil {
+		w.err = err
+		return w.err
+	}
+
+	// Write the index block.
+	indexBH, err := w.finishBlock(&w.indexBlock)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -459,6 +464,16 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		w.err = errors.New("pebble/table: nil file")
 		return w
 	}
+
+	w.props.ColumnFamilyID = math.MaxInt32
+	w.props.ComparatorName = o.Comparer.Name
+	w.props.CompressionName = lo.Compression.String()
+	w.props.MergeOperatorName = "nullptr"
+	w.props.PrefixExtractorName = "nullptr"
+	w.props.PropertyCollectorNames = "[]"
+	w.props.WholeKeyFiltering = true
+	w.props.Version = 2 // TODO(peter): what is this?
+
 	// If f does not have a Flush method, do our own buffering.
 	type flusher interface {
 		Flush() error
