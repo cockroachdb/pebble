@@ -23,10 +23,8 @@
 //     - Take inspiration from Caffeine: https://github.com/ben-manes/caffeine
 //
 // - Commit pipeline
-//   - Rate limiting user writes
-//   - Controlled delay
-//     - Check if the queue has been drained within the last N seconds, if not
-//       set queue timeout to 10-30ms
+//   - Rate limiting user writes based on flush and compaction rate
+//     - Take inspiration from Go GC pacer
 //
 // - DeleteRange
 //   - Store range tombstones in the memtable
@@ -47,7 +45,7 @@
 //
 // - Sstables
 //   - SSTable ingestion
-//   - Whole file bloom filter
+//   - Table-level bloom filter
 //   - Prefix extractor and prefix bloom filter
 //
 // - Iterators
