@@ -275,49 +275,6 @@ func (i *Iter) Close() error {
 	return i.err
 }
 
-type filterReader struct {
-	data    []byte
-	offsets []byte // len(offsets) must be a multiple of 4.
-	policy  db.FilterPolicy
-	shift   uint32
-}
-
-func (f *filterReader) valid() bool {
-	return f.data != nil
-}
-
-func (f *filterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
-	if len(data) < 5 {
-		return false
-	}
-	lastOffset := binary.LittleEndian.Uint32(data[len(data)-5:])
-	if uint64(lastOffset) > uint64(len(data)-5) {
-		return false
-	}
-	data, offsets, shift := data[:lastOffset], data[lastOffset:len(data)-1], uint32(data[len(data)-1])
-	if len(offsets)&3 != 0 {
-		return false
-	}
-	f.data = data
-	f.offsets = offsets
-	f.policy = policy
-	f.shift = shift
-	return true
-}
-
-func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
-	index := blockOffset >> f.shift
-	if index >= uint64(len(f.offsets)/4-1) {
-		return true
-	}
-	i := binary.LittleEndian.Uint32(f.offsets[4*index+0:])
-	j := binary.LittleEndian.Uint32(f.offsets[4*index+4:])
-	if i >= j || uint64(j) > uint64(len(f.data)) {
-		return true
-	}
-	return f.policy.MayContain(f.data[i:j], key)
-}
-
 // Reader is a table reader. It implements the DB interface, as documented
 // in the pebble/db package.
 type Reader struct {

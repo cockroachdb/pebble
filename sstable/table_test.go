@@ -402,14 +402,14 @@ type countingFilterPolicy struct {
 	trueNegatives  int
 }
 
-func (c *countingFilterPolicy) MayContain(filter, key []byte) bool {
+func (c *countingFilterPolicy) MayContain(ftype db.FilterType, filter, key []byte) bool {
 	got := true
 	if c.degenerate {
 		// When degenerate is true, we override the embedded FilterPolicy's
 		// MayContain method to always return true. Doing so is a valid, if
 		// inefficient, implementation of the FilterPolicy interface.
 	} else {
-		got = c.FilterPolicy.MayContain(filter, key)
+		got = c.FilterPolicy.MayContain(ftype, filter, key)
 	}
 	_, want := wordCount[string(key)]
 
@@ -474,8 +474,10 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
 	}
 }
 
-func TestNoCompressionOutput(t *testing.T)      { testNoCompressionOutput(t, nil) }
-func TestBloomNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, bloom.FilterPolicy(10)) }
+func TestNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, nil) }
+func TestBloomNoCompressionOutput(t *testing.T) {
+	testNoCompressionOutput(t, bloom.FilterPolicy(10))
+}
 
 func TestFinalBlockIsWritten(t *testing.T) {
 	const blockSize = 100

@@ -29,97 +29,6 @@ type indexEntry struct {
 	keyLen int
 }
 
-// filterBaseLog being 11 means that we generate a new filter for every 2KiB of
-// data.
-//
-// It's a little unfortunate that this is 11, whilst the default db.Options
-// BlockSize is 1<<12 or 4KiB, so that in practice, every second filter is
-// empty, but both values match the C++ code.
-const filterBaseLog = 11
-
-type filterWriter struct {
-	policy db.FilterPolicy
-	// block holds the keys for the current block. The buffers are re-used for
-	// each new block.
-	block struct {
-		data    []byte
-		lengths []int
-		keys    [][]byte
-	}
-	// data and offsets are the per-block filters for the overall table.
-	data    []byte
-	offsets []uint32
-}
-
-func (f *filterWriter) hasKeys() bool {
-	return len(f.block.lengths) != 0
-}
-
-func (f *filterWriter) appendKey(key []byte) {
-	f.block.data = append(f.block.data, key...)
-	f.block.lengths = append(f.block.lengths, len(key))
-}
-
-func (f *filterWriter) appendOffset() error {
-	o := len(f.data)
-	if uint64(o) > 1<<32-1 {
-		return errors.New("pebble/table: filter data is too long")
-	}
-	f.offsets = append(f.offsets, uint32(o))
-	return nil
-}
-
-func (f *filterWriter) emit() error {
-	if err := f.appendOffset(); err != nil {
-		return err
-	}
-	if !f.hasKeys() {
-		return nil
-	}
-
-	i, j := 0, 0
-	for _, length := range f.block.lengths {
-		j += length
-		f.block.keys = append(f.block.keys, f.block.data[i:j])
-		i = j
-	}
-	f.data = f.policy.AppendFilter(f.data, f.block.keys)
-
-	// Reset the per-block state.
-	f.block.data = f.block.data[:0]
-	f.block.lengths = f.block.lengths[:0]
-	f.block.keys = f.block.keys[:0]
-	return nil
-}
-
-func (f *filterWriter) finishBlock(blockOffset uint64) error {
-	for i := blockOffset >> filterBaseLog; i > uint64(len(f.offsets)); {
-		if err := f.emit(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (f *filterWriter) finish() ([]byte, error) {
-	if f.hasKeys() {
-		if err := f.emit(); err != nil {
-			return nil, err
-		}
-	}
-	if err := f.appendOffset(); err != nil {
-		return nil, err
-	}
-
-	var b [4]byte
-	for _, x := range f.offsets {
-		binary.LittleEndian.PutUint32(b[:], x)
-		f.data = append(f.data, b[0], b[1], b[2], b[3])
-	}
-	f.data = append(f.data, filterBaseLog)
-	return f.data, nil
-}
-
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
@@ -463,6 +372,10 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	if f == nil {
 		w.err = errors.New("pebble/table: nil file")
 		return w
+	}
+
+	if w.filter.policy != nil {
+		w.filter.writer = w.filter.policy.NewWriter(db.BlockFilter)
 	}
 
 	w.props.ColumnFamilyID = math.MaxInt32

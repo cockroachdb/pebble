@@ -6,9 +6,11 @@ package bloom
 
 import (
 	"testing"
+
+	"github.com/petermattis/pebble/db"
 )
 
-func (f Filter) String() string {
+func (f blockFilter) String() string {
 	s := make([]byte, 8*len(f))
 	for i, x := range f {
 		for j := 0; j < 8; j++ {
@@ -22,8 +24,16 @@ func (f Filter) String() string {
 	return string(s)
 }
 
+func newBlockFilter(buf []byte, keys [][]byte, bitsPerKey int) blockFilter {
+	w := FilterPolicy(bitsPerKey).NewWriter(db.BlockFilter)
+	for _, key := range keys {
+		w.AddKey(key)
+	}
+	return blockFilter(w.Finish(nil))
+}
+
 func TestSmallBloomFilter(t *testing.T) {
-	f := NewFilter(nil, [][]byte{
+	f := newBlockFilter(nil, [][]byte{
 		[]byte("hello"),
 		[]byte("world"),
 	}, 10)
@@ -77,7 +87,7 @@ loop:
 		for i := 0; i < length; i++ {
 			keys = append(keys, le32(i))
 		}
-		f := NewFilter(nil, keys, 10)
+		f := newBlockFilter(nil, keys, 10)
 
 		if len(f) > (length*10/8)+40 {
 			t.Errorf("length=%d: len(f)=%d is too large", length, len(f))

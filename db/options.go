@@ -32,6 +32,36 @@ func (c Compression) String() string {
 	}
 }
 
+// FilterType is the level at which to apply a filter: block or table.
+type FilterType int
+
+// The available filter types.
+const (
+	BlockFilter FilterType = iota
+	TableFilter
+)
+
+// FilterReader provides an interface for querying filter blocks. See
+// FilterPolicy for more details about filters.
+type FilterReader interface {
+	// MayContain returns whether the encoded filter may contain given key.
+	// False positives are possible, where it returns true for keys not in the
+	// original set.
+	MayContain(filter, key []byte) bool
+}
+
+// FilterWriter provides an interface for creating filter blocks. See
+// FilterPolicy for more details about filters.
+type FilterWriter interface {
+	// AddKey adds a key to the current filter block.
+	AddKey(key []byte)
+
+	// Finish appends to dst an encoded filter tha holds the current set of
+	// keys. The writer state is reset after the call to Finish allowing the
+	// writer to be reused for the creation of additional filters.
+	Finish(dst []byte) []byte
+}
+
 // FilterPolicy is an algorithm for probabilistically encoding a set of keys.
 // The canonical implementation is a Bloom filter.
 //
@@ -48,24 +78,17 @@ type FilterPolicy interface {
 	// Name names the filter policy.
 	Name() string
 
-	// AppendFilter appends to dst an encoded filter that holds a set of []byte
-	// keys.
-	AppendFilter(dst []byte, keys [][]byte) []byte
-
 	// MayContain returns whether the encoded filter may contain given key.
 	// False positives are possible, where it returns true for keys not in the
 	// original set.
-	MayContain(filter, key []byte) bool
+	MayContain(ftype FilterType, filter, key []byte) bool
+
+	// NewReader creates a new FilterReader.
+	// NewReader(ftype FilterType) FilterReader
+
+	// NewWriter creates a new FilterWriter.
+	NewWriter(ftype FilterType) FilterWriter
 }
-
-// FilterType is the level at which to apply a filter: block or table.
-type FilterType int
-
-// The available filter types.
-const (
-	BlockFilter FilterType = iota
-	TableFilter
-)
 
 // LevelOptions ...
 // TODO(peter):
