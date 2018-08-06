@@ -11,18 +11,18 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-type filterReader struct {
+type blockFilterReader struct {
 	data    []byte
 	offsets []byte // len(offsets) must be a multiple of 4.
 	policy  db.FilterPolicy
 	shift   uint32
 }
 
-func (f *filterReader) valid() bool {
+func (f *blockFilterReader) valid() bool {
 	return f.data != nil
 }
 
-func (f *filterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
+func (f *blockFilterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	if len(data) < 5 {
 		return false
 	}
@@ -41,7 +41,7 @@ func (f *filterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	return true
 }
 
-func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
+func (f *blockFilterReader) mayContain(blockOffset uint64, key []byte) bool {
 	index := blockOffset >> f.shift
 	if index >= uint64(len(f.offsets)/4-1) {
 		return true
@@ -62,7 +62,7 @@ func (f *filterReader) mayContain(blockOffset uint64, key []byte) bool {
 // empty, but both values match the C++ code.
 const filterBaseLog = 11
 
-type filterWriter struct {
+type blockFilterWriter struct {
 	policy db.FilterPolicy
 	writer db.FilterWriter
 	// count is the count of the number of keys in the current block.
@@ -72,16 +72,16 @@ type filterWriter struct {
 	offsets []uint32
 }
 
-func (f *filterWriter) hasKeys() bool {
+func (f *blockFilterWriter) hasKeys() bool {
 	return f.count != 0
 }
 
-func (f *filterWriter) appendKey(key []byte) {
+func (f *blockFilterWriter) appendKey(key []byte) {
 	f.count++
 	f.writer.AddKey(key)
 }
 
-func (f *filterWriter) appendOffset() error {
+func (f *blockFilterWriter) appendOffset() error {
 	o := len(f.data)
 	if uint64(o) > 1<<32-1 {
 		return errors.New("pebble/table: filter data is too long")
@@ -90,7 +90,7 @@ func (f *filterWriter) appendOffset() error {
 	return nil
 }
 
-func (f *filterWriter) emit() error {
+func (f *blockFilterWriter) emit() error {
 	if err := f.appendOffset(); err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func (f *filterWriter) emit() error {
 	return nil
 }
 
-func (f *filterWriter) finishBlock(blockOffset uint64) error {
+func (f *blockFilterWriter) finishBlock(blockOffset uint64) error {
 	for i := blockOffset >> filterBaseLog; i > uint64(len(f.offsets)); {
 		if err := f.emit(); err != nil {
 			return err
@@ -111,7 +111,7 @@ func (f *filterWriter) finishBlock(blockOffset uint64) error {
 	return nil
 }
 
-func (f *filterWriter) finish() ([]byte, error) {
+func (f *blockFilterWriter) finish() ([]byte, error) {
 	if f.hasKeys() {
 		if err := f.emit(); err != nil {
 			return nil, err

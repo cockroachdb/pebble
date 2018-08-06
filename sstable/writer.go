@@ -64,7 +64,7 @@ type Writer struct {
 	// temporary buffer for each block.
 	compressedBuf []byte
 	// filter accumulates the filter block.
-	filter filterWriter
+	filter blockFilterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
 	tmp [footerLen]byte
@@ -359,7 +359,7 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		compression:        lo.Compression,
 		separator:          o.Comparer.Separator,
 		successor:          o.Comparer.Successor,
-		filter: filterWriter{
+		filter: blockFilterWriter{
 			policy: lo.FilterPolicy,
 		},
 		block: blockWriter{
