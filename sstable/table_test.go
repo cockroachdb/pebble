@@ -295,7 +295,7 @@ func testReader(t *testing.T, filename string, fp db.FilterPolicy) {
 func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil) }
 func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil) }
 func TestReaderBlockBloomIgnored(t *testing.T)  { testReader(t, "h.block-bloom.no-compression.sst", nil) }
-func TestReaderTableBloomIgnored(t *testing.T)  { testReader(t, "h.full-bloom.no-compression.sst", nil) }
+func TestReaderTableBloomIgnored(t *testing.T)  { testReader(t, "h.table-bloom.no-compression.sst", nil) }
 
 func TestReaderBloomUsed(t *testing.T) {
 	// wantActualNegatives is the minimum number of nonsense words (i.e. false
@@ -311,7 +311,7 @@ func TestReaderBloomUsed(t *testing.T) {
 
 	files := []string{
 		"h.block-bloom.no-compression.sst",
-		"h.full-bloom.no-compression.sst",
+		"h.table-bloom.no-compression.sst",
 	}
 	for _, f := range files {
 		t.Run(f, func(t *testing.T) {
@@ -448,7 +448,7 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy, ftype db.FilterTy
 		if ftype == db.BlockFilter {
 			filename = "../testdata/h.block-bloom.no-compression.sst"
 		} else {
-			filename = "../testdata/h.full-bloom.no-compression.sst"
+			filename = "../testdata/h.table-bloom.no-compression.sst"
 		}
 	}
 

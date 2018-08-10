@@ -24,7 +24,7 @@ const char* outfiles[] = {
   "h.sst",
   "h.no-compression.sst",
   "h.block-bloom.no-compression.sst",
-  "h.full-bloom.no-compression.sst",
+  "h.table-bloom.no-compression.sst",
 };
 
 int write() {
