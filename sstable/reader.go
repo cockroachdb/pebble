@@ -101,7 +101,7 @@ func (i *Iter) loadBlock() bool {
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
+func (i *Iter) seekBlock(key []byte, f filterReader) bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
@@ -285,7 +285,7 @@ type Reader struct {
 	opts       *db.Options
 	cache      *cache.Cache
 	compare    db.Compare
-	filter     blockFilterReader
+	filter     filterReader
 	Properties Properties
 }
 
@@ -314,9 +314,9 @@ func (r *Reader) get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	f := (*blockFilterReader)(nil)
-	if r.filter.valid() {
-		f = &r.filter
+	var f filterReader
+	if r.filter != nil {
+		f = r.filter
 	}
 
 	i := &Iter{}
@@ -433,9 +433,12 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 				if err != nil {
 					return err
 				}
-				if !r.filter.init(b, fp) {
+
+				f := &blockFilterReader{}
+				if !f.init(b, fp) {
 					return errors.New("pebble/table: invalid table (bad filter block)")
 				}
+				r.filter = f
 				done = true
 				break
 			}

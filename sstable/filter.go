@@ -11,6 +11,17 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
+type filterReader interface {
+	mayContain(blockOffset uint64, key []byte) bool
+}
+
+type filterWriter interface {
+	addKey(key []byte)
+	finishBlock(blockOffset uint64) error
+	finish() ([]byte, error)
+	policyName() string
+}
+
 type blockFilterReader struct {
 	data    []byte
 	offsets []byte // len(offsets) must be a multiple of 4.
@@ -76,7 +87,7 @@ func (f *blockFilterWriter) hasKeys() bool {
 	return f.count != 0
 }
 
-func (f *blockFilterWriter) appendKey(key []byte) {
+func (f *blockFilterWriter) addKey(key []byte) {
 	f.count++
 	f.writer.AddKey(key)
 }
@@ -128,4 +139,8 @@ func (f *blockFilterWriter) finish() ([]byte, error) {
 	}
 	f.data = append(f.data, filterBaseLog)
 	return f.data, nil
+}
+
+func (f *blockFilterWriter) policyName() string {
+	return f.policy.Name()
 }

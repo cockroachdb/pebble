@@ -64,7 +64,7 @@ type Writer struct {
 	// temporary buffer for each block.
 	compressedBuf []byte
 	// filter accumulates the filter block.
-	filter blockFilterWriter
+	filter filterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
 	tmp [footerLen]byte
@@ -86,8 +86,8 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 		return err
 	}
 
-	if w.filter.policy != nil {
-		w.filter.appendKey(key.UserKey)
+	if w.filter != nil {
+		w.filter.addKey(key.UserKey)
 	}
 	w.props.NumEntries++
 	w.props.RawKeySize += uint64(key.Size())
@@ -164,7 +164,7 @@ func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 	bh, err := w.writeRawBlock(b, blockType)
 
 	// Calculate filters.
-	if w.filter.policy != nil {
+	if w.filter != nil {
 		w.filter.finishBlock(w.offset)
 	}
 
@@ -240,7 +240,7 @@ func (w *Writer) Close() (err error) {
 	// Write the filter block.
 	var metaindex rawBlockWriter
 	metaindex.restartInterval = 1
-	if w.filter.policy != nil {
+	if w.filter != nil {
 		b, err := w.filter.finish()
 		if err != nil {
 			w.err = err
@@ -252,8 +252,8 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(w.tmp[:], bh)
-		metaindex.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policy.Name())}, w.tmp[:n])
-		w.props.FilterPolicyName = w.filter.policy.Name()
+		metaindex.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policyName())}, w.tmp[:n])
+		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.length
 	}
 
@@ -359,9 +359,6 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		compression:        lo.Compression,
 		separator:          o.Comparer.Separator,
 		successor:          o.Comparer.Successor,
-		filter: blockFilterWriter{
-			policy: lo.FilterPolicy,
-		},
 		block: blockWriter{
 			restartInterval: lo.BlockRestartInterval,
 		},
@@ -374,8 +371,20 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		return w
 	}
 
-	if w.filter.policy != nil {
-		w.filter.writer = w.filter.policy.NewWriter(db.BlockFilter)
+	if lo.FilterPolicy != nil {
+		switch lo.FilterType {
+		case db.BlockFilter:
+			w.filter = &blockFilterWriter{
+				policy: lo.FilterPolicy,
+				writer: lo.FilterPolicy.NewWriter(db.BlockFilter),
+			}
+		case db.TableFilter:
+			// w.filter = &tableFilterWriter{
+			// }
+			panic("TODO(peter): TableFilter type")
+		default:
+			panic(fmt.Sprintf("unknown filter type: %v", lo.FilterType))
+		}
 	}
 
 	w.props.ColumnFamilyID = math.MaxInt32
