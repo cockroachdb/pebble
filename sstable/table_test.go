@@ -232,7 +232,11 @@ var (
 	tmpFileCount  int
 )
 
-func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error) {
+func build(
+	compression db.Compression,
+	fp db.FilterPolicy,
+	ftype db.FilterType,
+) (storage.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
 	i := 0
@@ -253,6 +257,7 @@ func build(compression db.Compression, fp db.FilterPolicy) (storage.File, error)
 	w := NewWriter(f0, nil, db.LevelOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
+		FilterType:   ftype,
 	})
 	for _, k := range keys {
 		v := wordCount[k]
@@ -290,7 +295,7 @@ func testReader(t *testing.T, filename string, fp db.FilterPolicy) {
 func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil) }
 func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil) }
 func TestReaderBlockBloomIgnored(t *testing.T)  { testReader(t, "h.block-bloom.no-compression.sst", nil) }
-func TestReaderFullBloomIgnored(t *testing.T)   { testReader(t, "h.full-bloom.no-compression.sst", nil) }
+func TestReaderTableBloomIgnored(t *testing.T)  { testReader(t, "h.full-bloom.no-compression.sst", nil) }
 
 func TestReaderBloomUsed(t *testing.T) {
 	// wantActualNegatives is the minimum number of nonsense words (i.e. false
@@ -427,7 +432,7 @@ func (c *countingFilterPolicy) MayContain(ftype db.FilterType, filter, key []byt
 
 func TestWriter(t *testing.T) {
 	// Check that we can read a freshly made table.
-	f, err := build(db.DefaultCompression, nil)
+	f, err := build(db.DefaultCompression, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,10 +442,14 @@ func TestWriter(t *testing.T) {
 	}
 }
 
-func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
+func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy, ftype db.FilterType) {
 	filename := "../testdata/h.no-compression.sst"
 	if fp != nil {
-		filename = "../testdata/h.block-bloom.no-compression.sst"
+		if ftype == db.BlockFilter {
+			filename = "../testdata/h.block-bloom.no-compression.sst"
+		} else {
+			filename = "../testdata/h.full-bloom.no-compression.sst"
+		}
 	}
 
 	// Check that a freshly made NoCompression table is byte-for-byte equal
@@ -450,7 +459,7 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
 		t.Fatal(err)
 	}
 
-	f, err := build(db.NoCompression, fp)
+	f, err := build(db.NoCompression, fp, ftype)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,9 +482,16 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy) {
 	}
 }
 
-func TestNoCompressionOutput(t *testing.T) { testNoCompressionOutput(t, nil) }
-func TestBloomNoCompressionOutput(t *testing.T) {
-	testNoCompressionOutput(t, bloom.FilterPolicy(10))
+func TestNoCompressionOutput(t *testing.T) {
+	testNoCompressionOutput(t, nil, 0)
+}
+
+func TestBlockBloomNoCompressionOutput(t *testing.T) {
+	testNoCompressionOutput(t, bloom.FilterPolicy(10), db.BlockFilter)
+}
+
+func TestTableBloomNoCompressionOutput(t *testing.T) {
+	testNoCompressionOutput(t, bloom.FilterPolicy(10), db.TableFilter)
 }
 
 func TestFinalBlockIsWritten(t *testing.T) {

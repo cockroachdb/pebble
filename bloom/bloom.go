@@ -192,8 +192,8 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	// The table filter format matches the RocksDB full-file filter format.
 	var nBits, nLines int
 	if len(w.hashes) != 0 {
-		nBits := len(w.hashes) * w.bitsPerKey
-		nLines := (nBits + cacheLineBits - 1) / (cacheLineBits)
+		nBits = len(w.hashes) * w.bitsPerKey
+		nLines = (nBits + cacheLineBits - 1) / (cacheLineBits)
 		// Make nLines an odd number to make sure more bits are involved when
 		// determining which block.
 		if nLines%2 == 0 {
@@ -202,8 +202,9 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 		nBits = nLines * cacheLineBits
 		nLines = nBits / (cacheLineBits)
 	}
+
 	nBytes := nBits / 8
-	nBytes += 5 // 4 bytes for num-lines, 1 byte for num-probes
+	// +5: 4 bytes for num-lines, 1 byte for num-probes
 	buf, filter := extend(buf, nBytes+5)
 
 	if nBits != 0 && nLines != 0 {

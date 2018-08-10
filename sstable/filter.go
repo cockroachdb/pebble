@@ -15,6 +15,7 @@ type filterWriter interface {
 	addKey(key []byte)
 	finishBlock(blockOffset uint64) error
 	finish() ([]byte, error)
+	metaName() string
 	policyName() string
 }
 
@@ -141,6 +142,10 @@ func (f *blockFilterWriter) finish() ([]byte, error) {
 	return f.data, nil
 }
 
+func (f *blockFilterWriter) metaName() string {
+	return "filter." + f.policy.Name()
+}
+
 func (f *blockFilterWriter) policyName() string {
 	return f.policy.Name()
 }
@@ -190,6 +195,10 @@ func (f *tableFilterWriter) finish() ([]byte, error) {
 		return nil, nil
 	}
 	return f.writer.Finish(nil), nil
+}
+
+func (f *tableFilterWriter) metaName() string {
+	return "fullfilter." + f.policy.Name()
 }
 
 func (f *tableFilterWriter) policyName() string {

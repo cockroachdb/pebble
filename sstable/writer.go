@@ -252,7 +252,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(w.tmp[:], bh)
-		metaindex.add(db.InternalKey{UserKey: []byte("filter." + w.filter.policyName())}, w.tmp[:n])
+		metaindex.add(db.InternalKey{UserKey: []byte(w.filter.metaName())}, w.tmp[:n])
 		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.length
 	}
