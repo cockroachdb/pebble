@@ -306,8 +306,7 @@ func TestReaderBloomUsed(t *testing.T) {
 
 	files := []string{
 		"h.block-bloom.no-compression.sst",
-		// TODO(peter): enable when table-filters are supported
-		// "h.full-bloom.no-compression.sst",
+		"h.full-bloom.no-compression.sst",
 	}
 	for _, f := range files {
 		t.Run(f, func(t *testing.T) {

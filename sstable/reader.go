@@ -101,7 +101,7 @@ func (i *Iter) loadBlock() bool {
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *Iter) seekBlock(key []byte, f filterReader) bool {
+func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
@@ -278,15 +278,16 @@ func (i *Iter) Close() error {
 // Reader is a table reader. It implements the DB interface, as documented
 // in the pebble/db package.
 type Reader struct {
-	file       storage.File
-	fileNum    uint64
-	err        error
-	index      block
-	opts       *db.Options
-	cache      *cache.Cache
-	compare    db.Compare
-	filter     filterReader
-	Properties Properties
+	file        storage.File
+	fileNum     uint64
+	err         error
+	index       block
+	opts        *db.Options
+	cache       *cache.Cache
+	compare     db.Compare
+	blockFilter *blockFilterReader
+	tableFilter *tableFilterReader
+	Properties  Properties
 }
 
 // Close implements DB.Close, as documented in the pebble/db package.
@@ -314,15 +315,17 @@ func (r *Reader) get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	var f filterReader
-	if r.filter != nil {
-		f = r.filter
+
+	if r.tableFilter != nil {
+		if !r.tableFilter.mayContain(key) {
+			return nil, db.ErrNotFound
+		}
 	}
 
 	i := &Iter{}
 	if err := i.Init(r); err == nil {
 		i.index.SeekGE(key)
-		i.seekBlock(key, f)
+		i.seekBlock(key, r.blockFilter)
 	}
 
 	if !i.Valid() || r.compare(key, i.Key().UserKey) != 0 {
@@ -432,17 +435,15 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 
 				switch t.ftype {
 				case db.BlockFilter:
-					f := &blockFilterReader{}
-					if !f.init(b, fp) {
+					r.blockFilter = newBlockFilterReader(b, fp)
+					if r.blockFilter == nil {
 						return errors.New("pebble/table: invalid table (bad filter block)")
 					}
-					r.filter = f
 				case db.TableFilter:
-					f := &tableFilterReader{}
-					if !f.init(b, fp) {
+					r.tableFilter = newTableFilterReader(b, fp)
+					if r.tableFilter == nil {
 						return errors.New("pebble/table: invalid table (bad filter block)")
 					}
-					r.filter = f
 				default:
 					panic(fmt.Sprintf("unknown filter type: %v", t.ftype))
 				}

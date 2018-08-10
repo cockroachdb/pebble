@@ -11,10 +11,6 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-type filterReader interface {
-	mayContain(blockOffset uint64, key []byte) bool
-}
-
 type filterWriter interface {
 	addKey(key []byte)
 	finishBlock(blockOffset uint64) error
@@ -29,23 +25,24 @@ type blockFilterReader struct {
 	shift   uint32
 }
 
-func (f *blockFilterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
+func newBlockFilterReader(data []byte, policy db.FilterPolicy) *blockFilterReader {
 	if len(data) < 5 {
-		return false
+		return nil
 	}
 	lastOffset := binary.LittleEndian.Uint32(data[len(data)-5:])
 	if uint64(lastOffset) > uint64(len(data)-5) {
-		return false
+		return nil
 	}
 	data, offsets, shift := data[:lastOffset], data[lastOffset:len(data)-1], uint32(data[len(data)-1])
 	if len(offsets)&3 != 0 {
-		return false
+		return nil
 	}
-	f.data = data
-	f.offsets = offsets
-	f.policy = policy
-	f.shift = shift
-	return true
+	return &blockFilterReader{
+		data:    data,
+		offsets: offsets,
+		policy:  policy,
+		shift:   shift,
+	}
 }
 
 func (f *blockFilterReader) mayContain(blockOffset uint64, key []byte) bool {
@@ -150,14 +147,18 @@ func (f *blockFilterWriter) policyName() string {
 
 type tableFilterReader struct {
 	policy db.FilterPolicy
+	data   []byte
 }
 
-func (f *tableFilterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
-	return true
+func newTableFilterReader(data []byte, policy db.FilterPolicy) *tableFilterReader {
+	return &tableFilterReader{
+		policy: policy,
+		data:   data,
+	}
 }
 
-func (f *tableFilterReader) mayContain(blockOffset uint64, key []byte) bool {
-	return true
+func (f *tableFilterReader) mayContain(key []byte) bool {
+	return f.policy.MayContain(db.TableFilter, f.data, key)
 }
 
 type tableFilterWriter struct {
