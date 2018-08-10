@@ -29,10 +29,6 @@ type blockFilterReader struct {
 	shift   uint32
 }
 
-func (f *blockFilterReader) valid() bool {
-	return f.data != nil
-}
-
 func (f *blockFilterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
 	if len(data) < 5 {
 		return false
@@ -81,6 +77,13 @@ type blockFilterWriter struct {
 	// data and offsets are the per-block filters for the overall table.
 	data    []byte
 	offsets []uint32
+}
+
+func newBlockFilterWriter(policy db.FilterPolicy) *blockFilterWriter {
+	return &blockFilterWriter{
+		policy: policy,
+		writer: policy.NewWriter(db.BlockFilter),
+	}
 }
 
 func (f *blockFilterWriter) hasKeys() bool {
@@ -142,5 +145,52 @@ func (f *blockFilterWriter) finish() ([]byte, error) {
 }
 
 func (f *blockFilterWriter) policyName() string {
+	return f.policy.Name()
+}
+
+type tableFilterReader struct {
+	policy db.FilterPolicy
+}
+
+func (f *tableFilterReader) init(data []byte, policy db.FilterPolicy) (ok bool) {
+	return true
+}
+
+func (f *tableFilterReader) mayContain(blockOffset uint64, key []byte) bool {
+	return true
+}
+
+type tableFilterWriter struct {
+	policy db.FilterPolicy
+	writer db.FilterWriter
+	// count is the count of the number of keys added to the filter.
+	count int
+}
+
+func newTableFilterWriter(policy db.FilterPolicy) *tableFilterWriter {
+	return &tableFilterWriter{
+		policy: policy,
+		writer: policy.NewWriter(db.TableFilter),
+	}
+}
+
+func (f *tableFilterWriter) addKey(key []byte) {
+	f.count++
+	f.writer.AddKey(key)
+}
+
+func (f *tableFilterWriter) finishBlock(blockOffset uint64) error {
+	// NB: table-level filters have nothing to do when a block is finished.
+	return nil
+}
+
+func (f *tableFilterWriter) finish() ([]byte, error) {
+	if f.count == 0 {
+		return nil, nil
+	}
+	return f.writer.Finish(nil), nil
+}
+
+func (f *tableFilterWriter) policyName() string {
 	return f.policy.Name()
 }

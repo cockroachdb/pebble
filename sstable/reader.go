@@ -425,20 +425,28 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		var done bool
 		for _, t := range types {
 			if bh, ok := meta[t.prefix+fp.Name()]; ok {
-				if t.ftype == db.TableFilter {
-					panic("table filters unimplemented")
-				}
-
 				b, err = r.readBlock(bh)
 				if err != nil {
 					return err
 				}
 
-				f := &blockFilterReader{}
-				if !f.init(b, fp) {
-					return errors.New("pebble/table: invalid table (bad filter block)")
+				switch t.ftype {
+				case db.BlockFilter:
+					f := &blockFilterReader{}
+					if !f.init(b, fp) {
+						return errors.New("pebble/table: invalid table (bad filter block)")
+					}
+					r.filter = f
+				case db.TableFilter:
+					f := &tableFilterReader{}
+					if !f.init(b, fp) {
+						return errors.New("pebble/table: invalid table (bad filter block)")
+					}
+					r.filter = f
+				default:
+					panic(fmt.Sprintf("unknown filter type: %v", t.ftype))
 				}
-				r.filter = f
+
 				done = true
 				break
 			}

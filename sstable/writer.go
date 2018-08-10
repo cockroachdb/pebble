@@ -374,14 +374,9 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	if lo.FilterPolicy != nil {
 		switch lo.FilterType {
 		case db.BlockFilter:
-			w.filter = &blockFilterWriter{
-				policy: lo.FilterPolicy,
-				writer: lo.FilterPolicy.NewWriter(db.BlockFilter),
-			}
+			w.filter = newBlockFilterWriter(lo.FilterPolicy)
 		case db.TableFilter:
-			// w.filter = &tableFilterWriter{
-			// }
-			panic("TODO(peter): TableFilter type")
+			w.filter = newTableFilterWriter(lo.FilterPolicy)
 		default:
 			panic(fmt.Sprintf("unknown filter type: %v", lo.FilterType))
 		}
