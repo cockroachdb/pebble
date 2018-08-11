@@ -381,6 +381,12 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			hasCurrentUkey = false
 			lastSeqNumForKey = db.InternalKeySeqNumMax
 		} else {
+			// TODO(peter): Handle db.InternalKeyKindMerge. Need to perform the merge
+			// and only output the single merged value.
+			if ikey.Kind() == db.InternalKeyKindMerge {
+				panic("TODO(peter): db.InternalKeyKindMerge unimplemented")
+			}
+
 			ukey := ikey.UserKey
 			if !hasCurrentUkey || d.cmp(currentUkey, ukey) != 0 {
 				// This is the first occurrence of this user key.
@@ -388,9 +394,6 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				hasCurrentUkey = true
 				lastSeqNumForKey = db.InternalKeySeqNumMax
 			}
-
-			// TODO(peter): Handle db.InternalKeyKindMerge. Need to perform the merge
-			// and only output the single merged value.
 
 			drop, ikeySeqNum := false, ikey.SeqNum()
 			if lastSeqNumForKey <= smallestSnapshot {
