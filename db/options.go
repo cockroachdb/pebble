@@ -227,6 +227,12 @@ type Options struct {
 	// the MemTable is being flushed.
 	MemTableStopWritesThreshold int
 
+	// Merger defines the associative merge operation to use for merging values
+	// written with {Batch,DB}.Merge.
+	//
+	// The default merger concatenates values.
+	Merger Merger
+
 	// Storage maps file names to byte storage.
 	//
 	// The default value uses the underlying operating system's file system.
