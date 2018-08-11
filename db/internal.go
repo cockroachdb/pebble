@@ -36,14 +36,16 @@ import (
 	"fmt"
 )
 
+// InternalKeyKind enumerates the kind of key: a deletion tombstone, a set
+// value, a merged value, etc.
 type InternalKeyKind uint8
 
 // These constants are part of the file format, and should not be changed.
 const (
-	InternalKeyKindDelete  InternalKeyKind = 0
-	InternalKeyKindSet                     = 1
-	InternalKeyKindMerge                   = 2
-	InternalKeyKindLogData                 = 3
+	InternalKeyKindDelete InternalKeyKind = 0
+	InternalKeyKindSet                    = 1
+	InternalKeyKindMerge                  = 2
+	// InternalKeyKindLogData                                  = 3
 	// InternalKeyKindColumnFamilyDeletion                     = 4
 	// InternalKeyKindColumnFamilyValue                        = 5
 	// InternalKeyKindColumnFamilyMerge                        = 6

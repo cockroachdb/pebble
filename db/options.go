@@ -231,7 +231,7 @@ type Options struct {
 	// written with {Batch,DB}.Merge.
 	//
 	// The default merger concatenates values.
-	Merger Merger
+	Merger *Merger
 
 	// Storage maps file names to byte storage.
 	//
@@ -283,6 +283,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.MemTableStopWritesThreshold <= 0 {
 		o.MemTableStopWritesThreshold = 2
+	}
+	if o.Merger == nil {
+		o.Merger = DefaultMerger
 	}
 	if o.Storage == nil {
 		o.Storage = storage.Default

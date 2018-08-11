@@ -389,6 +389,9 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				lastSeqNumForKey = db.InternalKeySeqNumMax
 			}
 
+			// TODO(peter): Handle db.InternalKeyKindMerge. Need to perform the merge
+			// and only output the single merged value.
+
 			drop, ikeySeqNum := false, ikey.SeqNum()
 			if lastSeqNumForKey <= smallestSnapshot {
 				drop = true // Rule (A) referenced below.

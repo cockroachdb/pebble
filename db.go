@@ -97,6 +97,7 @@ type DB struct {
 	dirname   string
 	opts      *db.Options
 	cmp       db.Compare
+	merge     db.Merge
 	inlineKey db.InlineKey
 
 	tableCache tableCache
@@ -197,7 +198,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
-	b.Set(key, value, opts)
+	_ = b.Set(key, value, opts)
 	return d.Apply(b, opts)
 }
 
@@ -208,7 +209,7 @@ func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
 func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
-	b.Delete(key, opts)
+	_ = b.Delete(key, opts)
 	return d.Apply(b, opts)
 }
 
@@ -220,7 +221,7 @@ func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 func (d *DB) DeleteRange(start, end []byte, opts *db.WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
-	b.DeleteRange(start, end, opts)
+	_ = b.DeleteRange(start, end, opts)
 	return d.Apply(b, opts)
 }
 
@@ -232,7 +233,7 @@ func (d *DB) DeleteRange(start, end []byte, opts *db.WriteOptions) error {
 func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
-	b.Merge(key, value, opts)
+	_ = b.Merge(key, value, opts)
 	return d.Apply(b, opts)
 }
 
@@ -310,6 +311,8 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 	}
 
 	dbi := &buf.dbi
+	dbi.cmp = d.cmp
+	dbi.merge = d.merge
 	dbi.version = current
 
 	iters := buf.iters[:0]
@@ -482,6 +485,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		dirname:           dirname,
 		opts:              opts,
 		cmp:               opts.Comparer.Compare,
+		merge:             opts.Merger.Merge,
 		inlineKey:         opts.Comparer.InlineKey,
 		commitController:  newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
 		compactController: newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
