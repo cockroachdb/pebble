@@ -90,8 +90,7 @@ type FilterPolicy interface {
 	NewWriter(ftype FilterType) FilterWriter
 }
 
-// LevelOptions ...
-// TODO(peter):
+// LevelOptions holds the optional per-level parameters.
 type LevelOptions struct {
 	// BlockRestartInterval is the number of keys between restart points
 	// for delta encoding of keys.
@@ -305,7 +304,7 @@ func (o *Options) Level(level int) LevelOptions {
 // Like Options, a nil *ReadOptions is valid and means to use the default
 // values.
 type ReadOptions struct {
-	// TODO(peter): document
+	// TODO(peter): implement and document
 	LowerBound []byte
 	UpperBound []byte
 	// TableFilter func(_ TableProperties) bool
