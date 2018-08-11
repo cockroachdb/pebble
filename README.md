@@ -15,11 +15,11 @@ needed by CockroachDB:
 * Block-based tables
 * Indexed batches
 * Level-based compaction
-* Merge operator
-* Prefix bloom filters
-* Range deletion tombstones
+* [TODO] Merge operator
+* [TODO] Prefix bloom filters
+* [TODO] Range deletion tombstones
 * Reverse iteration
-* SSTable ingestion
+* [TODO] SSTable ingestion
 * Table-level bloom filters
 
 RocksDB has a large number of features that are not implemented in
