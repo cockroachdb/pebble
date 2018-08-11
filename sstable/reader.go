@@ -340,8 +340,9 @@ func (r *Reader) get(key []byte, o *db.ReadOptions) (value []byte, err error) {
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
 func (r *Reader) NewIter(o *db.ReadOptions) db.InternalIterator {
-	// TODO(peter): Don't allow the Reader to be closed while a tableIter exists
-	// on it.
+	// NB: pebble.tableCache wraps the returned iterator with one which performs
+	// reference counting on the Reader, preventing the Reader from being closed
+	// until the final iterator closes.
 	if r.err != nil {
 		return &Iter{err: r.err}
 	}
