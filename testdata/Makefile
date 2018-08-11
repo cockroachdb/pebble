@@ -1,8 +1,7 @@
 all: rebuild
 
 .PHONY: rebuild
-rebuild: make-db make-table
-	./make-table
+rebuild: make-db
 	rm -fr db-stage-1 && ./make-db 1
 	rm -fr db-stage-2 && ./make-db 2
 	rm -fr db-stage-3 && ./make-db 3
@@ -10,6 +9,3 @@ rebuild: make-db make-table
 
 make-db: make-db.cc
 	g++ -std=c++14 -o make-db make-db.cc -lrocksdb
-
-make-table: make-table.cc
-	g++ -std=c++14 -o make-table make-table.cc -lrocksdb

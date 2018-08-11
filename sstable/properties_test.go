@@ -34,7 +34,7 @@ func TestPropertiesLoad(t *testing.T) {
 
 	{
 		// Check that we can read properties from a table.
-		f, err := os.Open(filepath.FromSlash("../testdata/h.sst"))
+		f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
 		if err != nil {
 			t.Fatal(err)
 		}

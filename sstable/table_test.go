@@ -22,7 +22,7 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
-// nonsenseWords are words that aren't in ../testdata/h.txt.
+// nonsenseWords are words that aren't in testdata/h.txt.
 var nonsenseWords = []string{
 	// Edge cases.
 	"",
@@ -35,7 +35,7 @@ var nonsenseWords = []string{
 	"youth\x00",
 	"youti",
 	"zzzzzz",
-	// Capitalized versions of actual words in ../testdata/h.txt.
+	// Capitalized versions of actual words in testdata/h.txt.
 	"A",
 	"Hamlet",
 	"thEE",
@@ -66,7 +66,7 @@ var (
 )
 
 func init() {
-	f, err := os.Open(filepath.FromSlash("../testdata/h.txt"))
+	f, err := os.Open(filepath.FromSlash("testdata/h.txt"))
 	if err != nil {
 		panic(err)
 	}
@@ -280,7 +280,7 @@ func build(
 
 func testReader(t *testing.T, filename string, fp db.FilterPolicy) {
 	// Check that we can read a pre-made table.
-	f, err := os.Open(filepath.FromSlash("../testdata/" + filename))
+	f, err := os.Open(filepath.FromSlash("testdata/" + filename))
 	if err != nil {
 		t.Error(err)
 		return
@@ -349,7 +349,7 @@ func TestReaderBloomUsed(t *testing.T) {
 }
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
-	f, err := os.Open(filepath.FromSlash("../testdata/h.block-bloom.no-compression.sst"))
+	f, err := os.Open(filepath.FromSlash("testdata/h.block-bloom.no-compression.sst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,12 +443,12 @@ func TestWriter(t *testing.T) {
 }
 
 func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy, ftype db.FilterType) {
-	filename := "../testdata/h.no-compression.sst"
+	filename := "testdata/h.no-compression.sst"
 	if fp != nil {
 		if ftype == db.BlockFilter {
-			filename = "../testdata/h.block-bloom.no-compression.sst"
+			filename = "testdata/h.block-bloom.no-compression.sst"
 		} else {
-			filename = "../testdata/h.table-bloom.no-compression.sst"
+			filename = "testdata/h.table-bloom.no-compression.sst"
 		}
 	}
 
