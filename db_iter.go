@@ -9,9 +9,9 @@ import (
 type dbIterPos int8
 
 const (
-	dbIterCur dbIterPos = iota
-	dbIterNext
-	dbIterPrev
+	dbIterCur  dbIterPos = 0
+	dbIterNext           = 1
+	dbIterPrev           = -1
 )
 
 type dbIter struct {
@@ -64,6 +64,7 @@ func (i *dbIter) findNextEntry() bool {
 			return false
 		}
 	}
+
 	return false
 }
 
@@ -100,6 +101,7 @@ func (i *dbIter) findPrevEntry() bool {
 			return false
 		}
 	}
+
 	return false
 }
 
@@ -114,6 +116,7 @@ func (i *dbIter) mergeNext() bool {
 	for {
 		i.iter.Next()
 		if !i.iter.Valid() {
+			i.pos = dbIterNext
 			return true
 		}
 		key := i.iter.Key()
@@ -156,6 +159,7 @@ func (i *dbIter) mergePrev() bool {
 	for {
 		i.iter.Prev()
 		if !i.iter.Valid() {
+			i.pos = dbIterPrev
 			return true
 		}
 		key := i.iter.Key()
@@ -223,8 +227,13 @@ func (i *dbIter) Next() bool {
 	if i.err != nil {
 		return false
 	}
-	if i.pos != dbIterNext {
+	switch i.pos {
+	case dbIterCur:
 		i.iter.NextUserKey()
+	case dbIterPrev:
+		i.iter.NextUserKey()
+		i.iter.NextUserKey()
+	case dbIterNext:
 	}
 	return i.findNextEntry()
 }
@@ -233,8 +242,13 @@ func (i *dbIter) Prev() bool {
 	if i.err != nil {
 		return false
 	}
-	if i.pos != dbIterPrev {
+	switch i.pos {
+	case dbIterCur:
 		i.iter.PrevUserKey()
+	case dbIterNext:
+		i.iter.PrevUserKey()
+		i.iter.PrevUserKey()
+	case dbIterPrev:
 	}
 	return i.findPrevEntry()
 }

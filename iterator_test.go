@@ -71,6 +71,15 @@ func (f *fakeIter) SeekLT(key []byte) {
 			break
 		}
 	}
+	if f.Valid() {
+		key := f.keys[f.index]
+		for ; f.index > 0; f.index-- {
+			pkey := f.keys[f.index-1]
+			if db.DefaultComparer.Compare(pkey.UserKey, key.UserKey) < 0 {
+				break
+			}
+		}
+	}
 }
 
 func (f *fakeIter) First() {
@@ -90,6 +99,9 @@ func (f *fakeIter) Next() bool {
 func (f *fakeIter) NextUserKey() bool {
 	if f.index == -1 {
 		return f.Next()
+	}
+	if f.index == len(f.keys) {
+		return false
 	}
 	key := f.keys[f.index]
 	for f.Next() {

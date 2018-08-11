@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,11 +17,20 @@ func TestDBIter(t *testing.T) {
 	var keys []db.InternalKey
 	var vals [][]byte
 
+	newIter := func(seqNum uint64) *dbIter {
+		return &dbIter{
+			cmp:    db.DefaultComparer.Compare,
+			merge:  db.DefaultMerger.Merge,
+			iter:   &fakeIter{keys: keys, vals: vals},
+			seqNum: seqNum,
+		}
+	}
+
 	datadriven.RunTest(t, "testdata/db_iter", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
-			keys = nil
-			vals = nil
+			keys = keys[:0]
+			vals = vals[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				keys = append(keys, makeIkey(key[:j]))
@@ -28,37 +38,47 @@ func TestDBIter(t *testing.T) {
 			}
 			return ""
 
-		case "next":
-			seek := fakeIkey(strings.TrimSpace(d.Input))
-			iter := &dbIter{
-				cmp:    db.DefaultComparer.Compare,
-				iter:   &fakeIter{keys: keys, vals: vals},
-				seqNum: seek.SeqNum(),
+		case "iter":
+			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
+				return fmt.Sprintf("iter seq=<value>\n")
+			}
+			seqNum, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
+			if err != nil {
+				return err.Error()
 			}
 
+			iter := newIter(uint64(seqNum))
 			var b bytes.Buffer
-			for iter.SeekGE([]byte(seek.UserKey)); iter.Valid(); iter.Next() {
-				fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
-			}
-			if err := iter.Error(); err != nil {
-				fmt.Fprintf(&b, "err=%v\n", err)
-			}
-			return b.String()
-
-		case "prev":
-			seek := fakeIkey(strings.TrimSpace(d.Input))
-			iter := &dbIter{
-				cmp:    db.DefaultComparer.Compare,
-				iter:   &fakeIter{keys: keys, vals: vals},
-				seqNum: seek.SeqNum(),
-			}
-
-			var b bytes.Buffer
-			for iter.SeekLT([]byte(seek.UserKey)); iter.Valid(); iter.Prev() {
-				fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
-			}
-			if err := iter.Error(); err != nil {
-				fmt.Fprintf(&b, "err=%v\n", err)
+			for _, line := range strings.Split(d.Input, "\n") {
+				parts := strings.Fields(line)
+				if len(parts) == 0 {
+					continue
+				}
+				switch parts[0] {
+				case "seek-ge":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-ge <key>\n")
+					}
+					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+				case "seek-lt":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-lt <key>\n")
+					}
+					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+				case "next":
+					iter.Next()
+				case "prev":
+					iter.Prev()
+				default:
+					return fmt.Sprintf("unknown op: %s", parts[0])
+				}
+				if iter.Valid() {
+					fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+				} else if err := iter.Error(); err != nil {
+					fmt.Fprintf(&b, "err=%v\n", err)
+				} else {
+					fmt.Fprintf(&b, ".\n")
+				}
 			}
 			return b.String()
 		}

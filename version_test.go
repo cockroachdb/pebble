@@ -81,9 +81,10 @@ func TestIkeyRange(t *testing.T) {
 }
 
 var makeIkeyKinds = map[string]db.InternalKeyKind{
-	"DEL": db.InternalKeyKindDelete,
-	"MAX": db.InternalKeyKindMax,
-	"SET": db.InternalKeyKindSet,
+	"DEL":   db.InternalKeyKindDelete,
+	"MAX":   db.InternalKeyKindMax,
+	"SET":   db.InternalKeyKindSet,
+	"MERGE": db.InternalKeyKindMerge,
 }
 
 // makeIkey converts a string like "foo.DEL.123" into an internal key
