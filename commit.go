@@ -223,7 +223,7 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
-	mem, err := p.prepare(b, syncWAL)
+	mem, err := p.prepare(b, true /* writeWAL */, syncWAL)
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
@@ -243,7 +243,53 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	return nil
 }
 
-func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
+// AllocateSeqNum allocates a sequence number, invokes the prepare callback,
+// then the apply callback, and then publishes the sequence
+// number. AllocateSeqNum does not write to the WAL or add entries to the
+// memtable. AllocateSeqNum can be used to sequence an operation such as
+// sstable ingestion within the commit pipeline. The prepare callback is
+// invoked with commitEnv.mu held, making it suitable for flushing the memtable
+// if necessary.
+func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64)) {
+	// This method is similar to Commit and prepare. Be careful about trying to
+	// share additional code with those methods because Commit and prepare are
+	// performance critical code paths.
+
+	b := newBatch(nil)
+	defer b.release()
+
+	// Give the batch a count of 1 so that the log and visible sequence number
+	// are incremented correctly.
+	b.data = make([]byte, batchHeaderLen)
+	b.setCount(1)
+	n := uint64(b.count())
+	b.commit.Add(1)
+
+	p.env.mu.Lock()
+
+	// Enqueue the batch in the pending queue. Note that while the pending queue
+	// is lock-free, we want the order of batches to be the same as the sequence
+	// number order.
+	p.pending.enqueue(b, &p.cond)
+
+	// Assign the batch a sequence number.
+	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
+
+	// Invoke the prepare callback. Note the lack of error reporting. Even if the
+	// callback internally fails, the sequence number needs to be published in
+	// order to allow the commit pipeline to proceed.
+	prepare()
+
+	p.env.mu.Unlock()
+
+	// Invoke the apply callback.
+	apply(b.seqNum())
+
+	// Publish the sequence number.
+	p.publish(b)
+}
+
+func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, error) {
 	n := uint64(b.count())
 	if n == invalidBatchCount {
 		return nil, ErrInvalidBatch
@@ -267,7 +313,11 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
-	mem, err := p.env.write(b)
+	var mem *memTable
+	var err error
+	if writeWAL {
+		mem, err = p.env.write(b)
+	}
 
 	p.env.mu.Unlock()
 

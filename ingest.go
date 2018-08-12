@@ -22,7 +22,7 @@ func (d *DB) Ingest(paths []string) error {
 	// have to be modified). If the ingested file overlaps with keys in the
 	// memtable, the memtable is flushed.
 	//
-	// 1. Preventing ingest files from being garbage collected.
+	// 1. Prevent ingested files from being garbage collected.
 	//
 	// 2. Block user writes.
 	//

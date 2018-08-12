@@ -91,6 +91,41 @@ func TestCommitPipeline(t *testing.T) {
 	}
 }
 
+func TestCommitPipelineAllocateSeqNum(t *testing.T) {
+	var e testCommitEnv
+	p := newCommitPipeline(e.env())
+
+	const n = 10
+	var wg sync.WaitGroup
+	wg.Add(n)
+	var prepareCount uint64
+	var applyCount uint64
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			p.AllocateSeqNum(func() {
+				atomic.AddUint64(&prepareCount, 1)
+			}, func(seqNum uint64) {
+				atomic.AddUint64(&applyCount, 1)
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	if s := atomic.LoadUint64(&prepareCount); n != s {
+		t.Fatalf("expected %d prepares, but found %d", n, s)
+	}
+	if s := atomic.LoadUint64(&applyCount); n != s {
+		t.Fatalf("expected %d applies, but found %d", n, s)
+	}
+	if s := atomic.LoadUint64(&e.logSeqNum); n != s {
+		t.Fatalf("expected %d, but found %d", n, s)
+	}
+	if s := atomic.LoadUint64(&e.visibleSeqNum); n != s {
+		t.Fatalf("expected %d, but found %d", n, s)
+	}
+}
+
 func BenchmarkCommitPipeline(b *testing.B) {
 	for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
