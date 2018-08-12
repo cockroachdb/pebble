@@ -52,6 +52,7 @@ const (
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
 	customTagPathID            = 65
+	customTagGlobalSeqNum      = 66
 	customTagNonSafeIgnoreMask = 1 << 6
 )
 
@@ -171,6 +172,7 @@ func (v *versionEdit) decode(r io.Reader) error {
 			}
 			var smallestSeqNum uint64
 			var largestSeqNum uint64
+			var globalSeqNum uint64
 			if tag != tagNewFile {
 				smallestSeqNum, err = d.readUvarint()
 				if err != nil {
@@ -205,6 +207,9 @@ func (v *versionEdit) decode(r io.Reader) error {
 					case customTagPathID:
 						return fmt.Errorf("new-file4: path-id field not supported")
 
+					case customTagGlobalSeqNum:
+						globalSeqNum = binary.LittleEndian.Uint64(field)
+
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
 							return fmt.Errorf("new-file4: custom field not supported: %d", customTag)
@@ -221,6 +226,7 @@ func (v *versionEdit) decode(r io.Reader) error {
 					largest:             db.DecodeInternalKey(largest),
 					smallestSeqNum:      smallestSeqNum,
 					largestSeqNum:       largestSeqNum,
+					globalSeqNum:        globalSeqNum,
 					markedForCompaction: markedForCompaction,
 				},
 			})
@@ -271,7 +277,7 @@ func (v *versionEdit) encode(w io.Writer) error {
 	}
 	for _, x := range v.newFiles {
 		var customFields bool
-		if x.meta.markedForCompaction {
+		if x.meta.markedForCompaction || x.meta.globalSeqNum != 0 {
 			customFields = true
 			e.writeUvarint(tagNewFile4)
 		} else {
@@ -288,6 +294,12 @@ func (v *versionEdit) encode(w io.Writer) error {
 			if x.meta.markedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
+			}
+			if x.meta.globalSeqNum != 0 {
+				e.writeUvarint(customTagGlobalSeqNum)
+				var buf [8]byte
+				binary.LittleEndian.PutUint64(buf[:], x.meta.globalSeqNum)
+				e.writeBytes(buf[:])
 			}
 			e.writeUvarint(customTagTerminate)
 		}

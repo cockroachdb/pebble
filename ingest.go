@@ -112,8 +112,10 @@ func ingestUpdateSeqNum(
 		m.largest = db.MakeInternalKey(m.largest.UserKey, seqNum, m.largest.Kind())
 		m.smallestSeqNum = seqNum
 		m.largestSeqNum = seqNum
+		m.globalSeqNum = seqNum
 
-		// TODO(peter): Update the global sequence number property.
+		// TODO(peter): Update the global sequence number property. This is only
+		// necessary for compatibility with RocksDB.
 	}
 	return nil
 }
