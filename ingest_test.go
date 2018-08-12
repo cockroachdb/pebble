@@ -22,3 +22,13 @@ func TestIngestLink(t *testing.T) {
 func TestIngestMemtableOverlaps(t *testing.T) {
 	// TODO(peter): Test detection of memtable overlaps.
 }
+
+func TestIngestApply(t *testing.T) {
+	// TODO(peter): Test various cases for ingesting sstables into the correct
+	// level of the LSM.
+}
+
+func TestIngestGlobalSeqNum(t *testing.T) {
+	// TODO(peter): Test that the sequence number for entries added via ingestion
+	// is correct.
+}
