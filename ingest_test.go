@@ -11,11 +11,13 @@ import (
 	"math/rand"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kr/pretty"
+	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
@@ -342,8 +344,65 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 }
 
 func TestIngestTargetLevel(t *testing.T) {
-	// TODO(peter): Test various cases for ingesting sstables into the correct
-	// level of the LSM.
+	cmp := db.DefaultComparer.Compare
+	var vers *version
+
+	parseMeta := func(s string) fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		return fileMetadata{
+			smallest: db.InternalKey{UserKey: []byte(parts[0])},
+			largest:  db.InternalKey{UserKey: []byte(parts[1])},
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/ingest_target_level", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			vers = &version{}
+			if len(d.Input) == 0 {
+				return ""
+			}
+			for _, data := range strings.Split(d.Input, "\n") {
+				parts := strings.Split(data, ":")
+				if len(parts) != 2 {
+					t.Fatalf("malformed test:\n%s", d.Input)
+				}
+				level, err := strconv.Atoi(parts[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if vers.files[level] != nil {
+					t.Fatalf("level %d already filled", level)
+				}
+				for _, table := range strings.Fields(parts[1]) {
+					vers.files[level] = append(vers.files[level], parseMeta(table))
+				}
+
+				if level == 0 {
+					sort.Sort(byFileNum(vers.files[level]))
+				} else {
+					sort.Sort(bySmallest{vers.files[level], cmp})
+				}
+			}
+			return ""
+
+		case "target":
+			var buf bytes.Buffer
+			for _, target := range strings.Split(d.Input, "\n") {
+				meta := parseMeta(target)
+				level := ingestTargetLevel(cmp, vers, &meta)
+				fmt.Fprintf(&buf, "%d\n", level)
+			}
+			return buf.String()
+
+		default:
+			t.Fatalf("unknown command: %s", d.Cmd)
+			return ""
+		}
+	})
 }
 
 func TestIngestGlobalSeqNum(t *testing.T) {

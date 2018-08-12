@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"sync"
@@ -119,6 +120,22 @@ type version struct {
 	prev, next *version
 }
 
+func (v *version) String() string {
+	var buf bytes.Buffer
+	for level := 0; level < numLevels; level++ {
+		if len(v.files[level]) == 0 {
+			continue
+		}
+		fmt.Fprintf(&buf, "%d:", level)
+		for j := range v.files[level] {
+			f := &v.files[level][j]
+			fmt.Fprintf(&buf, " %s-%s", f.smallest.UserKey, f.largest.UserKey)
+		}
+		fmt.Fprintf(&buf, "\n")
+	}
+	return buf.String()
+}
+
 func (v *version) ref() {
 	atomic.AddInt32(&v.refs, 1)
 }
@@ -170,6 +187,10 @@ func (v *version) updateCompactionScore(opts *db.Options) {
 func (v *version) overlaps(
 	level int, cmp db.Compare, ukey0, ukey1 []byte,
 ) (ret []fileMetadata) {
+	// TODO(peter): For level > L0, this is correct, but inefficient. We should
+	// be doing a binary search on the files. Additionally, for level > L0 we
+	// could return a sub-slice of v.files[level] instead of allocating memory.
+
 loop:
 	for {
 		for _, meta := range v.files[level] {

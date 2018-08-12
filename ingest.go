@@ -141,9 +141,19 @@ func ingestUpdateSeqNum(
 	return nil
 }
 
-func ingestTargetLevel(v *version, meta *fileMetadata) int {
-	// TODO(peter): returning L0 is safe, but not optimal.
-	return 0
+func ingestTargetLevel(cmp db.Compare, v *version, meta *fileMetadata) int {
+	// Find the lowest level which does not have any files which overlap meta.
+	if len(v.overlaps(0, cmp, meta.smallest.UserKey, meta.largest.UserKey)) != 0 {
+		return 0
+	}
+
+	level := 1
+	for ; level < numLevels; level++ {
+		if len(v.overlaps(level, cmp, meta.smallest.UserKey, meta.largest.UserKey)) != 0 {
+			break
+		}
+	}
+	return level - 1
 }
 
 // Ingest ingests a set of sstables into the DB. Ingestion of the files is
@@ -263,7 +273,7 @@ func (d *DB) ingestApply(meta []*fileMetadata) error {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		m := meta[i]
-		ve.newFiles[i].level = ingestTargetLevel(current, m)
+		ve.newFiles[i].level = ingestTargetLevel(d.cmp, current, m)
 		ve.newFiles[i].meta = *m
 	}
 	return d.mu.versions.logAndApply(d.opts, d.dirname, ve)

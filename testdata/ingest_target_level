@@ -1,0 +1,41 @@
+define
+----
+
+# An empty LSM ingests into the bottom level.
+target
+a-b
+----
+6
+
+define
+5: b-c
+----
+
+target
+a-b
+b-c
+c-d
+a-aa
+d-e
+----
+4
+4
+4
+6
+6
+
+define
+0: b-e d-f x-y
+3: g-h
+----
+
+target
+b-c
+d-e
+g-m
+i-m
+----
+0
+0
+2
+6
