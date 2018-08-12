@@ -5,7 +5,9 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"regexp"
 	"sort"
@@ -193,8 +195,91 @@ func TestIngestSortAndVerify(t *testing.T) {
 }
 
 func TestIngestLink(t *testing.T) {
-	// TODO(peter): Test linking of tables into the DB directory. Test cleanup
-	// when one of the tables cannot be linked.
+	// Test linking of tables into the DB directory. Test cleanup when one of the
+	// tables cannot be linked.
+
+	const db = "db"
+	const count = 10
+	for i := 0; i <= count; i++ {
+		t.Run("", func(t *testing.T) {
+			mem := storage.NewMem()
+			if err := mem.MkdirAll(db, 0755); err != nil {
+				t.Fatal(err)
+			}
+
+			paths := make([]string, 10)
+			meta := make([]*ingestMetadata, len(paths))
+			contents := make([][]byte, len(paths))
+			for j := range paths {
+				paths[j] = fmt.Sprintf("external%d", j)
+				meta[j] = &ingestMetadata{}
+				meta[j].fileNum = uint64(j)
+				f, err := mem.Create(paths[j])
+				if err != nil {
+					t.Fatal(err)
+				}
+				contents[j] = []byte(fmt.Sprintf("data%d", j))
+				if _, err := f.Write(contents[j]); err != nil {
+					t.Fatal(err)
+				}
+				f.Close()
+			}
+
+			if i < count {
+				mem.Remove(paths[i])
+			}
+
+			err := ingestLink(mem, db, paths, meta)
+			if i < count {
+				if err == nil {
+					t.Fatalf("expected error, but found success")
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			files, err := mem.List(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sort.Strings(files)
+
+			if i < count {
+				if len(files) > 0 {
+					t.Fatalf("expected all of the files to be cleaned up, but found:\n%s",
+						strings.Join(files, "\n"))
+				}
+			} else {
+				if len(files) != count {
+					t.Fatalf("expected %d files, but found:\n%s", count, strings.Join(files, "\n"))
+				}
+				for j := range files {
+					ftype, fileNum, ok := parseDBFilename(files[j])
+					if !ok {
+						t.Fatalf("unable to parse filename: %s", files[j])
+					}
+					if fileTypeTable != ftype {
+						t.Fatalf("expected table, but found %d", ftype)
+					}
+					if uint64(j) != fileNum {
+						t.Fatalf("expected table %d, but found %d", j, fileNum)
+					}
+					f, err := mem.Open(db + "/" + files[j])
+					if err != nil {
+						t.Fatal(err)
+					}
+					data, err := ioutil.ReadAll(f)
+					if err != nil {
+						t.Fatal(err)
+					}
+					f.Close()
+					if !bytes.Equal(contents[j], data) {
+						t.Fatalf("expected %s, but found %s", contents[j], data)
+					}
+				}
+			}
+		})
+	}
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
