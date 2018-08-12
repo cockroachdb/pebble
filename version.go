@@ -238,7 +238,7 @@ func (v *version) checkOrdering(cmp db.Compare) error {
 }
 
 // tableNewIter creates a new iterator for the given file number.
-type tableNewIter func(fileNum uint64) (db.InternalIterator, error)
+type tableNewIter func(meta *fileMetadata) (db.InternalIterator, error)
 
 // get looks up the internal key ikey0 in v's tables such that ikey and ikey0
 // have the same user key, and ikey0's sequence number is the highest such
@@ -259,7 +259,7 @@ func (v *version) get(
 	// Search the level 0 files in decreasing fileNum order,
 	// which is also decreasing sequence number order.
 	for i := len(v.files[0]) - 1; i >= 0; i-- {
-		f := v.files[0][i]
+		f := &v.files[0][i]
 		// We compare user keys on the low end, as we do not want to reject a table
 		// whose smallest internal key may have the same user key and a lower sequence
 		// number. An internalKeyComparer sorts increasing by user key but then
@@ -272,7 +272,7 @@ func (v *version) get(
 		if db.InternalCompare(cmp, ikey, f.largest) > 0 {
 			continue
 		}
-		iter, err := newIter(f.fileNum)
+		iter, err := newIter(f)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}
@@ -295,11 +295,11 @@ func (v *version) get(
 		if index == n {
 			continue
 		}
-		f := v.files[level][index]
+		f := &v.files[level][index]
 		if cmp(ukey, f.smallest.UserKey) < 0 {
 			continue
 		}
-		iter, err := newIter(f.fileNum)
+		iter, err := newIter(f)
 		if err != nil {
 			return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 		}

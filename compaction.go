@@ -549,8 +549,9 @@ func compactionIterator(
 		iter := newLevelIter(cmp, newIter, c.inputs[0])
 		iters = append(iters, iter)
 	} else {
-		for _, f := range c.inputs[0] {
-			iter, err := newIter(f.fileNum)
+		for i := range c.inputs[0] {
+			f := &c.inputs[0][i]
+			iter, err := newIter(f)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}

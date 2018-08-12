@@ -33,12 +33,12 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	c.dummy.prev = &c.dummy
 }
 
-func (c *tableCache) newIter(fileNum uint64) (db.InternalIterator, error) {
+func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility
 	// to the tableCacheIter, which decrements when it is closed.
-	n := c.findNode(fileNum)
+	n := c.findNode(meta)
 	x := <-n.result
 	if x.err != nil {
 		c.mu.Lock()
@@ -64,7 +64,7 @@ func (c *tableCache) newIter(fileNum uint64) (db.InternalIterator, error) {
 //
 // c.mu must be held when calling this.
 func (c *tableCache) releaseNode(n *tableCacheNode) {
-	delete(c.nodes, n.fileNum)
+	delete(c.nodes, n.meta.fileNum)
 	n.next.prev = n.prev
 	n.prev.next = n.next
 	n.refCount--
@@ -76,18 +76,18 @@ func (c *tableCache) releaseNode(n *tableCacheNode) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCache) findNode(fileNum uint64) *tableCacheNode {
+func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	n := c.nodes[fileNum]
+	n := c.nodes[meta.fileNum]
 	if n == nil {
 		n = &tableCacheNode{
-			fileNum:  fileNum,
+			meta:     meta,
 			refCount: 1,
 			result:   make(chan tableReaderOrError, 1),
 		}
-		c.nodes[fileNum] = n
+		c.nodes[meta.fileNum] = n
 		if len(c.nodes) > c.size {
 			// Release the tail node.
 			c.releaseNode(c.dummy.prev)
@@ -139,8 +139,8 @@ type tableReaderOrError struct {
 }
 
 type tableCacheNode struct {
-	fileNum uint64
-	result  chan tableReaderOrError
+	meta   *fileMetadata
+	result chan tableReaderOrError
 
 	// The remaining fields are protected by the tableCache mutex.
 
@@ -150,12 +150,16 @@ type tableCacheNode struct {
 
 func (n *tableCacheNode) load(c *tableCache) {
 	// Try opening the fileTypeTable first.
-	f, err := c.fs.Open(dbFilename(c.dirname, fileTypeTable, n.fileNum))
+	f, err := c.fs.Open(dbFilename(c.dirname, fileTypeTable, n.meta.fileNum))
 	if err != nil {
 		n.result <- tableReaderOrError{err: err}
 		return
 	}
-	n.result <- tableReaderOrError{reader: sstable.NewReader(f, n.fileNum, c.opts)}
+	r := sstable.NewReader(f, n.meta.fileNum, c.opts)
+	if n.meta.globalSeqNum != 0 {
+		r.Properties.GlobalSeqNum = n.meta.globalSeqNum
+	}
+	n.result <- tableReaderOrError{reader: r}
 }
 
 func (n *tableCacheNode) release() {

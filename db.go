@@ -322,8 +322,8 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 
 	// The level 0 files need to be added from newest to oldest.
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
-		f := current.files[0][i]
-		iter, err := d.newIter(f.fileNum)
+		f := &current.files[0][i]
+		iter, err := d.newIter(f)
 		if err != nil {
 			dbi.err = err
 			return dbi

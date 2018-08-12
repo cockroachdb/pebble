@@ -78,8 +78,8 @@ func TestLevelIter(t *testing.T) {
 				fileData = append(fileData, keys)
 			}
 
-			newIter := func(fileNum uint64) (db.InternalIterator, error) {
-				return newFakeIterator(nil, fileData[fileNum]...), nil
+			newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+				return newFakeIterator(nil, fileData[meta.fileNum]...), nil
 			}
 
 			iter := &levelIter{}
@@ -187,8 +187,8 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, files, keys := buildLevelIterTables(b, blockSize, restartInterval, count)
-							newIter := func(fileNum uint64) (db.InternalIterator, error) {
-								return readers[fileNum].NewIter(nil), nil
+							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+								return readers[meta.fileNum].NewIter(nil), nil
 							}
 							l := &levelIter{}
 							l.init(db.DefaultComparer.Compare, newIter, files)
@@ -214,8 +214,8 @@ func BenchmarkLevelIterNext(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
-							newIter := func(fileNum uint64) (db.InternalIterator, error) {
-								return readers[fileNum].NewIter(nil), nil
+							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+								return readers[meta.fileNum].NewIter(nil), nil
 							}
 							l := &levelIter{}
 							l.init(db.DefaultComparer.Compare, newIter, files)
@@ -243,8 +243,8 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
-							newIter := func(fileNum uint64) (db.InternalIterator, error) {
-								return readers[fileNum].NewIter(nil), nil
+							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+								return readers[meta.fileNum].NewIter(nil), nil
 							}
 							l := &levelIter{}
 							l.init(db.DefaultComparer.Compare, newIter, files)

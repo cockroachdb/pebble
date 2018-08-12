@@ -72,7 +72,7 @@ func (l *levelIter) loadFile(index int) bool {
 	if l.index < 0 || l.index >= len(l.files) {
 		return false
 	}
-	l.iter, l.err = l.newIter(l.files[l.index].fileNum)
+	l.iter, l.err = l.newIter(&l.files[l.index])
 	return l.err == nil
 }
 
