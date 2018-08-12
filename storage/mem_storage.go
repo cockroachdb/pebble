@@ -131,6 +131,34 @@ func (y *memStorage) Create(fullname string) (File, error) {
 	return ret, nil
 }
 
+func (y *memStorage) Link(oldname, newname string) error {
+	var n *node
+	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("pebble/storage: empty file name")
+			}
+			n = dir.children[frag]
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if n == nil {
+		return errors.New("pebble/storage: no such file or directory")
+	}
+	return y.walk(newname, func(dir *node, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("pebble/storage: empty file name")
+			}
+			dir.children[frag] = n
+		}
+		return nil
+	})
+}
+
 func (y *memStorage) Open(fullname string) (File, error) {
 	var ret *file
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {

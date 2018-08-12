@@ -31,6 +31,9 @@ type Storage interface {
 	// exists.
 	Create(name string) (File, error)
 
+	// Link creates newname as a hard link to the oldname file.
+	Link(oldname, newname string) error
+
 	// Open opens the named file for reading.
 	Open(name string) (File, error)
 
@@ -82,6 +85,10 @@ type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
 	return os.Create(name)
+}
+
+func (defaultFS) Link(oldname, newname string) error {
+	return os.Link(oldname, newname)
 }
 
 func (defaultFS) Open(name string) (File, error) {

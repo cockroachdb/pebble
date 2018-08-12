@@ -42,24 +42,34 @@ func TestBasics(t *testing.T) {
 		"5d: f.read 5 == abcde",
 		"5e: f.readat 2 1 == bc",
 		"5f: f.close",
+		// Link /bar/baz/y to /bar/baz/z. We should be able to read from both files
+		// and remove them independently.
+		"6a: link /bar/baz/y /bar/baz/z",
+		"6b: f = open /bar/baz/z",
+		"6c: f.read 5 == abcde",
+		"6d: f.close",
+		"6e: remove /bar/baz/z",
+		"6f: f = open /bar/baz/y",
+		"6g: f.read 5 == abcde",
+		"6h: f.close",
 		// Remove the file twice. The first should succeed, the second should fail.
-		"6a: remove /bar/baz/y",
-		"6b: remove /bar/baz/y fails",
-		"6c: open /bar/baz/y fails",
+		"7a: remove /bar/baz/y",
+		"7b: remove /bar/baz/y fails",
+		"7c: open /bar/baz/y fails",
 		// Rename /foo to /goo. Trying to open /foo should succeed before the rename and
 		// fail afterwards, and vice versa for /goo.
-		"7a: open /foo",
-		"7b: open /goo fails",
-		"7c: rename /foo /goo",
-		"7d: open /foo fails",
-		"7e: open /goo",
+		"8a: open /foo",
+		"8b: open /goo fails",
+		"8c: rename /foo /goo",
+		"8d: open /foo fails",
+		"8e: open /goo",
 		// Create /bar/baz/z and rename /bar/baz to /bar/caz.
-		"8a: create /bar/baz/z",
-		"8b: open /bar/baz/z",
-		"8c: open /bar/caz/z fails",
-		"8d: rename /bar/baz /bar/caz",
-		"8e: open /bar/baz/z fails",
-		"8f: open /bar/caz/z",
+		"9a: create /bar/baz/z",
+		"9b: open /bar/baz/z",
+		"9c: open /bar/caz/z fails",
+		"9d: rename /bar/baz /bar/caz",
+		"9e: open /bar/baz/z fails",
+		"9f: open /bar/caz/z",
 	}
 	var f File
 	for _, tc := range testCases {
@@ -83,6 +93,8 @@ func TestBasics(t *testing.T) {
 		switch s[0] {
 		case "create":
 			g, err = fs.Create(normalize(s[1]))
+		case "link":
+			err = fs.Link(normalize(s[1]), normalize(s[2]))
 		case "open":
 			g, err = fs.Open(normalize(s[1]))
 		case "mkdirall":
