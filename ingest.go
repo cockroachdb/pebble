@@ -5,6 +5,9 @@
 package pebble
 
 import (
+	"fmt"
+	"sort"
+
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
@@ -60,8 +63,20 @@ func ingestLoad(opts *db.Options, paths []string, pending []uint64) ([]*ingestMe
 	return meta, nil
 }
 
-func ingestVerify(meta []*ingestMetadata) error {
-	// TODO(peter): unimplemented.
+func ingestSortAndVerify(cmp db.Compare, meta []*ingestMetadata) error {
+	if len(meta) <= 1 {
+		return nil
+	}
+
+	sort.Slice(meta, func(i, j int) bool {
+		return cmp(meta[i].smallest.UserKey, meta[j].smallest.UserKey) < 0
+	})
+
+	for i := 1; i < len(meta); i++ {
+		if cmp(meta[i-1].largest.UserKey, meta[i].smallest.UserKey) >= 0 {
+			return fmt.Errorf("files have overlapping ranges")
+		}
+	}
 	return nil
 }
 
@@ -169,7 +184,7 @@ func (d *DB) Ingest(paths []string) error {
 	}
 
 	// Verify the sstables do not overlap.
-	if err := ingestVerify(meta); err != nil {
+	if err := ingestSortAndVerify(d.cmp, meta); err != nil {
 		return err
 	}
 
