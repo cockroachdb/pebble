@@ -134,6 +134,10 @@ func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
 // SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
 // package.
 func (i *Iter) SeekGE(key []byte) {
+	if i.err != nil {
+		return
+	}
+
 	i.index.SeekGE(key)
 	if i.loadBlock() {
 		i.data.SeekGE(key)
@@ -143,6 +147,10 @@ func (i *Iter) SeekGE(key []byte) {
 // SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
 // package.
 func (i *Iter) SeekLT(key []byte) {
+	if i.err != nil {
+		return
+	}
+
 	i.index.SeekGE(key)
 	if i.loadBlock() {
 		i.data.SeekLT(key)
@@ -169,6 +177,10 @@ func (i *Iter) SeekLT(key []byte) {
 // First implements InternalIterator.First, as documented in the pebble/db
 // package.
 func (i *Iter) First() {
+	if i.err != nil {
+		return
+	}
+
 	i.index.First()
 	if i.loadBlock() {
 		i.data.First()
@@ -178,6 +190,10 @@ func (i *Iter) First() {
 // Last implements InternalIterator.Last, as documented in the pebble/db
 // package.
 func (i *Iter) Last() {
+	if i.err != nil {
+		return
+	}
+
 	i.index.Last()
 	if i.loadBlock() {
 		i.data.Last()
@@ -187,6 +203,9 @@ func (i *Iter) Last() {
 // Next implements InternalIterator.Next, as documented in the pebble/db
 // package.
 func (i *Iter) Next() bool {
+	if i.err != nil {
+		return false
+	}
 	if i.data.Next() {
 		return true
 	}
@@ -215,6 +234,9 @@ func (i *Iter) NextUserKey() bool {
 // Prev implements InternalIterator.Prev, as documented in the pebble/db
 // package.
 func (i *Iter) Prev() bool {
+	if i.err != nil {
+		return false
+	}
 	if i.data.Prev() {
 		return true
 	}

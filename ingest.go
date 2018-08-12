@@ -15,7 +15,6 @@ import (
 
 type ingestMetadata struct {
 	fileMetadata
-	props *sstable.Properties
 }
 
 func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*ingestMetadata, error) {
@@ -32,9 +31,7 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*ingestMetadata
 	r := sstable.NewReader(f, fileNum, opts)
 	defer r.Close()
 
-	meta := &ingestMetadata{
-		props: &r.Properties,
-	}
+	meta := &ingestMetadata{}
 	meta.fileNum = fileNum
 	meta.size = uint64(stat.Size())
 	meta.smallest = db.InternalKey{}
@@ -43,10 +40,13 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*ingestMetadata
 	iter := r.NewIter(nil)
 	defer iter.Close()
 	if iter.First(); iter.Valid() {
-		meta.smallest = iter.Key()
+		meta.smallest = iter.Key().Clone()
 	}
 	if iter.Last(); iter.Valid() {
-		meta.largest = iter.Key()
+		meta.largest = iter.Key().Clone()
+	}
+	if err := iter.Error(); err != nil {
+		return nil, err
 	}
 	return meta, nil
 }

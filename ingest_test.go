@@ -5,16 +5,120 @@
 package pebble
 
 import (
+	"fmt"
+	"math/rand"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/sstable"
+	"github.com/petermattis/pebble/storage"
 )
 
 func TestIngestLoad(t *testing.T) {
-	// TODO(peter): Test loading of metadata.
+	mem := storage.NewMem()
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	cmp := db.DefaultComparer.Compare
+
+	randBytes := func(size int) []byte {
+		data := make([]byte, size)
+		for i := range data {
+			data[i] = byte(rng.Int() & 0xff)
+		}
+		return data
+	}
+
+	paths := make([]string, 1+rng.Intn(10))
+	pending := make([]uint64, len(paths))
+	expected := make([]*ingestMetadata, len(paths))
+	for i := range paths {
+		paths[i] = fmt.Sprint(i)
+		pending[i] = uint64(rng.Int63())
+		expected[i] = &ingestMetadata{
+			fileMetadata: fileMetadata{
+				fileNum: pending[i],
+			},
+		}
+
+		func() {
+			f, err := mem.Create(paths[i])
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+
+			keys := make([]db.InternalKey, 1+rng.Intn(100))
+			for i := range keys {
+				keys[i] = db.MakeInternalKey(
+					randBytes(1+rng.Intn(10)),
+					uint64(rng.Int63n(int64(db.InternalKeySeqNumMax))),
+					db.InternalKeyKindSet)
+			}
+			sort.Slice(keys, func(i, j int) bool {
+				return db.InternalCompare(cmp, keys[i], keys[j]) < 0
+			})
+
+			expected[i].smallest = keys[0]
+			expected[i].largest = keys[len(keys)-1]
+
+			w := sstable.NewWriter(f, nil, db.LevelOptions{})
+			for i := range keys {
+				w.Add(keys[i], nil)
+			}
+			if err := w.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			stat, err := w.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected[i].size = uint64(stat.Size())
+		}()
+	}
+
+	opts := &db.Options{
+		Comparer: db.DefaultComparer,
+		Storage:  mem,
+	}
+	meta, err := ingestLoad(opts, paths, pending)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := pretty.Diff(expected, meta); diff != nil {
+		t.Fatalf("%s", strings.Join(diff, "\n"))
+	}
+}
+
+func TestIngestLoadNonExistent(t *testing.T) {
+	opts := &db.Options{
+		Comparer: db.DefaultComparer,
+		Storage:  storage.NewMem(),
+	}
+	if _, err := ingestLoad(opts, []string{"non-existent"}, []uint64{1}); err == nil {
+		t.Fatalf("expected error, but found success")
+	}
+}
+
+func TestIngestLoadEmpty(t *testing.T) {
+	mem := storage.NewMem()
+	f, err := mem.Create("empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	opts := &db.Options{
+		Comparer: db.DefaultComparer,
+		Storage:  mem,
+	}
+	if _, err := ingestLoad(opts, []string{"empty"}, []uint64{1}); err == nil {
+		t.Fatalf("expected error, but found success")
+	}
 }
 
 func TestIngestSortAndVerify(t *testing.T) {
