@@ -254,7 +254,11 @@ func build(
 	}
 	defer f0.Close()
 	tmpFileCount++
-	w := NewWriter(f0, nil, db.LevelOptions{
+	w := NewWriter(f0, &db.Options{
+		Merger: &db.Merger{
+			Name: "nullptr",
+		},
+	}, db.LevelOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
 		FilterType:   ftype,

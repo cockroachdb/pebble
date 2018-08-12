@@ -385,7 +385,7 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	w.props.ColumnFamilyID = math.MaxInt32
 	w.props.ComparatorName = o.Comparer.Name
 	w.props.CompressionName = lo.Compression.String()
-	w.props.MergeOperatorName = "nullptr"
+	w.props.MergeOperatorName = o.Merger.Name
 	w.props.PrefixExtractorName = "nullptr"
 	w.props.PropertyCollectorNames = "[]"
 	w.props.WholeKeyFiltering = true
