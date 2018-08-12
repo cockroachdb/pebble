@@ -409,7 +409,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		if err != nil {
 			return err
 		}
-		if err := r.Properties.load(b); err != nil {
+		if err := r.Properties.load(b, bh.offset); err != nil {
 			return err
 		}
 	}

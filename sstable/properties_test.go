@@ -34,6 +34,30 @@ func TestPropertiesLoad(t *testing.T) {
 		RawValueSize:           1835,
 		Version:                2,
 		WholeKeyFiltering:      true,
+		ValueOffsets: map[string]uint64{
+			"rocksdb.block.based.table.index.type":          13122,
+			"rocksdb.block.based.table.prefix.filtering":    13171,
+			"rocksdb.block.based.table.whole.key.filtering": 13220,
+			"rocksdb.column.family.id":                      13248,
+			"rocksdb.comparator":                            13274,
+			"rocksdb.compression":                           13322,
+			"rocksdb.creation.time":                         13352,
+			"rocksdb.data.size":                             13373,
+			"rocksdb.external_sst_file.global_seqno":        13416,
+			"rocksdb.external_sst_file.version":             13460,
+			"rocksdb.filter.size":                           13486,
+			"rocksdb.fixed.key.length":                      13514,
+			"rocksdb.format.version":                        13540,
+			"rocksdb.index.size":                            13562,
+			"rocksdb.merge.operator":                        13589,
+			"rocksdb.num.data.blocks":                       13622,
+			"rocksdb.num.entries":                           13645,
+			"rocksdb.oldest.key.time":                       13673,
+			"rocksdb.prefix.extractor.name":                 13706,
+			"rocksdb.property.collectors":                   13743,
+			"rocksdb.raw.key.size":                          13768,
+			"rocksdb.raw.value.size":                        13796,
+		},
 	}
 
 	{
@@ -93,9 +117,10 @@ func TestPropertiesSave(t *testing.T) {
 		w.restartInterval = 1
 		expected.save(&w)
 		var props Properties
-		if err := props.load(w.finish()); err != nil {
+		if err := props.load(w.finish(), 0); err != nil {
 			t.Fatal(err)
 		}
+		props.ValueOffsets = nil
 		if diff := pretty.Diff(*expected, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}

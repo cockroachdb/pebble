@@ -111,6 +111,9 @@ type Properties struct {
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
 	UserProperties map[string]string
+	// ValueOffsets map from property name to byte offset of the property value
+	// within the file. Only set if the properties have been loaded from a file.
+	ValueOffsets map[string]uint64
 	// The version. TODO(peter): add a more detailed description.
 	Version uint32 `prop:"rocksdb.external_sst_file.version"`
 	// If filtering is enabled, was the filter created on the whole key.
@@ -158,14 +161,16 @@ func (p *Properties) String() string {
 	return buf.String()
 }
 
-func (p *Properties) load(b block) error {
+func (p *Properties) load(b block, blockOffset uint64) error {
 	i, err := newRawBlockIter(bytes.Compare, b)
 	if err != nil {
 		return err
 	}
+	p.ValueOffsets = make(map[string]uint64)
 	v := reflect.ValueOf(p).Elem()
 	for i.First(); i.Valid(); i.Next() {
 		tag := i.Key().UserKey
+		p.ValueOffsets[string(tag)] = blockOffset + i.valueOffset()
 		if f, ok := propTagMap[string(tag)]; ok {
 			field := v.FieldByIndex(f.Index)
 			switch f.Type.Kind() {

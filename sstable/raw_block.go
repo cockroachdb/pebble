@@ -252,6 +252,13 @@ func (i *rawBlockIter) Value() []byte {
 	return i.val
 }
 
+func (i *rawBlockIter) valueOffset() uint64 {
+	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
+	shared, ptr := decodeVarint(ptr)
+	unshared, _ := decodeVarint(ptr)
+	return uint64(i.offset) + uint64(shared+unshared)
+}
+
 // Valid implements InternalIterator.Valid, as documented in the pebble/db
 // package.
 func (i *rawBlockIter) Valid() bool {
