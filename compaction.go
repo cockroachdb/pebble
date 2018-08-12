@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"path/filepath"
 	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
@@ -477,6 +478,56 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}
 	return ve, pendingOutputs, nil
+}
+
+// deleteObsoleteFiles deletes those files that are no longer needed.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) deleteObsoleteFiles() {
+	liveFileNums := map[uint64]struct{}{}
+	for fileNum := range d.mu.compact.pendingOutputs {
+		liveFileNums[fileNum] = struct{}{}
+	}
+	d.mu.versions.addLiveFileNums(liveFileNums)
+	logNumber := d.mu.versions.logNumber
+	manifestFileNumber := d.mu.versions.manifestFileNumber
+
+	// Release the d.mu lock while doing I/O.
+	// Note the unusual order: Unlock and then Lock.
+	d.mu.Unlock()
+	defer d.mu.Lock()
+
+	fs := d.opts.Storage
+	list, err := fs.List(d.dirname)
+	if err != nil {
+		// Ignore any filesystem errors.
+		return
+	}
+	for _, filename := range list {
+		fileType, fileNum, ok := parseDBFilename(filename)
+		if !ok {
+			return
+		}
+		keep := true
+		switch fileType {
+		case fileTypeLog:
+			// TODO(peter): also look at prevLogNumber?
+			keep = fileNum >= logNumber
+		case fileTypeManifest:
+			keep = fileNum >= manifestFileNumber
+		case fileTypeTable:
+			_, keep = liveFileNums[fileNum]
+		}
+		if keep {
+			continue
+		}
+		if fileType == fileTypeTable {
+			d.tableCache.evict(fileNum)
+		}
+		// Ignore any file system errors.
+		fs.Remove(filepath.Join(d.dirname, filename))
+	}
 }
 
 // compactionIterator returns an iterator over all the tables in a compaction.
