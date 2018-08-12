@@ -1,8 +1,11 @@
+// Copyright 2018. All rights reserved. Use of this source code is governed by
+// an MIT-style license that can be found in the LICENSE file.
+
 // Package cache implements the CLOCK-Pro caching algorithm.
 /*
 
 CLOCK-Pro is a patent-free alternative to the Adaptive Replacement Cache,
-https://en.wikipedia.org/wiki/Adaptive_replacement_cache .
+https://en.wikipedia.org/wiki/Adaptive_replacement_cache.
 It is an approximation of LIRS ( https://en.wikipedia.org/wiki/LIRS_caching_algorithm ),
 much like the CLOCK page replacement algorithm is an approximation of LRU.
 
