@@ -36,14 +36,12 @@ func TestIngestLoad(t *testing.T) {
 
 	paths := make([]string, 1+rng.Intn(10))
 	pending := make([]uint64, len(paths))
-	expected := make([]*ingestMetadata, len(paths))
+	expected := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
 		pending[i] = uint64(rng.Int63())
-		expected[i] = &ingestMetadata{
-			fileMetadata: fileMetadata{
-				fileNum: pending[i],
-			},
+		expected[i] = &fileMetadata{
+			fileNum: pending[i],
 		}
 
 		func() {
@@ -163,7 +161,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 			cmp := comparer.cmp
 			for _, c := range testCases {
 				t.Run("", func(t *testing.T) {
-					var meta []*ingestMetadata
+					var meta []*fileMetadata
 					for _, p := range strings.Fields(c.input) {
 						parts := strings.Split(p, "-")
 						if len(parts) != 2 {
@@ -172,11 +170,9 @@ func TestIngestSortAndVerify(t *testing.T) {
 						if cmp([]byte(parts[0]), []byte(parts[1])) > 0 {
 							parts[0], parts[1] = parts[1], parts[0]
 						}
-						meta = append(meta, &ingestMetadata{
-							fileMetadata: fileMetadata{
-								smallest: db.InternalKey{UserKey: []byte(parts[0])},
-								largest:  db.InternalKey{UserKey: []byte(parts[1])},
-							},
+						meta = append(meta, &fileMetadata{
+							smallest: db.InternalKey{UserKey: []byte(parts[0])},
+							largest:  db.InternalKey{UserKey: []byte(parts[1])},
 						})
 					}
 					if err := ingestSortAndVerify(cmp, meta); !isError(err, c.expected) {
@@ -208,11 +204,11 @@ func TestIngestLink(t *testing.T) {
 			}
 
 			paths := make([]string, 10)
-			meta := make([]*ingestMetadata, len(paths))
+			meta := make([]*fileMetadata, len(paths))
 			contents := make([][]byte, len(paths))
 			for j := range paths {
 				paths[j] = fmt.Sprintf("external%d", j)
-				meta[j] = &ingestMetadata{}
+				meta[j] = &fileMetadata{}
 				meta[j].fileNum = uint64(j)
 				f, err := mem.Create(paths[j])
 				if err != nil {
@@ -296,32 +292,50 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 		{"b-c e-f", "a d e g", true},
 		{"b-c e-f", "a c d g", true},
 	}
-	for _, c := range testCases {
-		t.Run("", func(t *testing.T) {
-			var meta []*ingestMetadata
-			for _, p := range strings.Fields(c.ingest) {
-				parts := strings.Split(p, "-")
-				if len(parts) != 2 {
-					t.Fatalf("malformed test case: %s", c.ingest)
-				}
-				meta = append(meta, &ingestMetadata{
-					fileMetadata: fileMetadata{
-						smallest: db.InternalKey{UserKey: []byte(parts[0])},
-						largest:  db.InternalKey{UserKey: []byte(parts[1])},
-					},
+
+	comparers := []db.Comparer{
+		{Name: "default", Compare: db.DefaultComparer.Compare},
+		{Name: "reverse", Compare: func(a, b []byte) int {
+			return db.DefaultComparer.Compare(b, a)
+		}},
+	}
+
+	for _, comparer := range comparers {
+		t.Run(comparer.Name, func(t *testing.T) {
+			cmp := comparer.Compare
+			for _, c := range testCases {
+				t.Run("", func(t *testing.T) {
+					var meta []*fileMetadata
+					for _, p := range strings.Fields(c.ingest) {
+						parts := strings.Split(p, "-")
+						if len(parts) != 2 {
+							t.Fatalf("malformed test case: %s", c.ingest)
+						}
+						if cmp([]byte(parts[0]), []byte(parts[1])) > 0 {
+							parts[0], parts[1] = parts[1], parts[0]
+						}
+						meta = append(meta, &fileMetadata{
+							smallest: db.InternalKey{UserKey: []byte(parts[0])},
+							largest:  db.InternalKey{UserKey: []byte(parts[1])},
+						})
+					}
+
+					opts := &db.Options{
+						Comparer: &comparer,
+					}
+					opts.EnsureDefaults()
+					mem := newMemTable(opts)
+					for _, key := range strings.Fields(c.memtable) {
+						if err := mem.set(db.InternalKey{UserKey: []byte(key)}, nil); err != nil {
+							t.Fatal(err)
+						}
+					}
+
+					result := ingestMemtableOverlaps(mem, meta)
+					if c.expected != result {
+						t.Fatalf("expected %t, but found %t", c.expected, result)
+					}
 				})
-			}
-
-			mem := newMemTable(nil)
-			for _, key := range strings.Fields(c.memtable) {
-				if err := mem.set(db.InternalKey{UserKey: []byte(key)}, nil); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			result := ingestMemtableOverlaps(mem, meta)
-			if c.expected != result {
-				t.Fatalf("expected %t, but found %t", c.expected, result)
 			}
 		})
 	}

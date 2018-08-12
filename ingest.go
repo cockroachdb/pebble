@@ -13,11 +13,7 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
-type ingestMetadata struct {
-	fileMetadata
-}
-
-func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*ingestMetadata, error) {
+func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, error) {
 	stat, err := opts.Storage.Stat(path)
 	if err != nil {
 		return nil, err
@@ -31,7 +27,7 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*ingestMetadata
 	r := sstable.NewReader(f, fileNum, opts)
 	defer r.Close()
 
-	meta := &ingestMetadata{}
+	meta := &fileMetadata{}
 	meta.fileNum = fileNum
 	meta.size = uint64(stat.Size())
 	meta.smallest = db.InternalKey{}
@@ -51,8 +47,8 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*ingestMetadata
 	return meta, nil
 }
 
-func ingestLoad(opts *db.Options, paths []string, pending []uint64) ([]*ingestMetadata, error) {
-	meta := make([]*ingestMetadata, len(paths))
+func ingestLoad(opts *db.Options, paths []string, pending []uint64) ([]*fileMetadata, error) {
+	meta := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		var err error
 		meta[i], err = ingestLoad1(opts, paths[i], pending[i])
@@ -63,7 +59,7 @@ func ingestLoad(opts *db.Options, paths []string, pending []uint64) ([]*ingestMe
 	return meta, nil
 }
 
-func ingestSortAndVerify(cmp db.Compare, meta []*ingestMetadata) error {
+func ingestSortAndVerify(cmp db.Compare, meta []*fileMetadata) error {
 	if len(meta) <= 1 {
 		return nil
 	}
@@ -81,7 +77,7 @@ func ingestSortAndVerify(cmp db.Compare, meta []*ingestMetadata) error {
 }
 
 func ingestCleanup(
-	fs storage.Storage, dirname string, meta []*ingestMetadata,
+	fs storage.Storage, dirname string, meta []*fileMetadata,
 ) error {
 	var firstErr error
 	for i := range meta {
@@ -96,7 +92,7 @@ func ingestCleanup(
 }
 
 func ingestLink(
-	fs storage.Storage, dirname string, paths []string, meta []*ingestMetadata,
+	fs storage.Storage, dirname string, paths []string, meta []*fileMetadata,
 ) error {
 	for i := range paths {
 		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
@@ -113,7 +109,7 @@ func ingestLink(
 	return nil
 }
 
-func ingestMemtableOverlaps(mem *memTable, meta []*ingestMetadata) bool {
+func ingestMemtableOverlaps(mem *memTable, meta []*fileMetadata) bool {
 	iter := mem.NewIter(nil)
 	defer iter.Close()
 
@@ -130,7 +126,7 @@ func ingestMemtableOverlaps(mem *memTable, meta []*ingestMetadata) bool {
 }
 
 func ingestUpdateSeqNum(
-	opts *db.Options, dirname string, seqNum uint64, meta []*ingestMetadata,
+	opts *db.Options, dirname string, seqNum uint64, meta []*fileMetadata,
 ) error {
 	for _, m := range meta {
 		m.smallest = db.MakeInternalKey(m.smallest.UserKey, seqNum, m.smallest.Kind())
@@ -145,7 +141,7 @@ func ingestUpdateSeqNum(
 	return nil
 }
 
-func ingestTargetLevel(v *version, meta *ingestMetadata) int {
+func ingestTargetLevel(v *version, meta *fileMetadata) int {
 	// TODO(peter): returning L0 is safe, but not optimal.
 	return 0
 }
@@ -255,7 +251,7 @@ func (d *DB) Ingest(paths []string) error {
 	return err
 }
 
-func (d *DB) ingestApply(meta []*ingestMetadata) error {
+func (d *DB) ingestApply(meta []*fileMetadata) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -268,7 +264,7 @@ func (d *DB) ingestApply(meta []*ingestMetadata) error {
 		// overlap any existing files in the level.
 		m := meta[i]
 		ve.newFiles[i].level = ingestTargetLevel(current, m)
-		ve.newFiles[i].meta = m.fileMetadata
+		ve.newFiles[i].meta = *m
 	}
 	return d.mu.versions.logAndApply(d.opts, d.dirname, ve)
 }
