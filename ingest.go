@@ -65,21 +65,31 @@ func ingestVerify(meta []*ingestMetadata) error {
 	return nil
 }
 
+func ingestCleanup(
+	fs storage.Storage, dirname string, meta []*ingestMetadata,
+) error {
+	var firstErr error
+	for i := range meta {
+		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
+		if err := fs.Remove(target); err != nil {
+			if firstErr != nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
 func ingestLink(
 	fs storage.Storage, dirname string, paths []string, meta []*ingestMetadata,
 ) error {
-	targetPath := func(i int) string {
-		return dbFilename(dirname, fileTypeTable, meta[i].fileNum)
-	}
-
 	for i := range paths {
-		err := fs.Link(paths[i], targetPath(i))
+		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
+		err := fs.Link(paths[i], target)
 		if err != nil {
-			for j := 0; j < i; j++ {
-				if err2 := fs.Remove(targetPath(j)); err2 != nil {
-					// TODO(peter): log a warning.
-					panic(err2)
-				}
+			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
+				// TODO(peter): log a warning.
+				panic(err2)
 			}
 			return err
 		}
@@ -118,6 +128,11 @@ func ingestUpdateSeqNum(
 		// necessary for compatibility with RocksDB.
 	}
 	return nil
+}
+
+func ingestTargetLevel(v *version, meta *ingestMetadata) int {
+	// TODO(peter): returning L0 is safe, but not optimal.
+	return 0
 }
 
 // Ingest ingests a set of sstables into the DB. Ingestion of the files is
@@ -176,7 +191,12 @@ func (d *DB) Ingest(paths []string) error {
 		if ingestMemtableOverlaps(d.mu.mem.mutable, meta) {
 			mem = d.mu.mem.mutable
 			err = d.makeRoomForWrite(nil)
+			return
 		}
+
+		// TODO(peter): Check to see if any files overlap with any of the immutable
+		// memtables. Record the last memtable for which that is true so that we
+		// can wait for it to flush in apply.
 	}
 
 	apply := func(seqNum uint64) {
@@ -205,7 +225,10 @@ func (d *DB) Ingest(paths []string) error {
 	d.commit.AllocateSeqNum(prepareLocked, apply)
 
 	if err != nil {
-		// TODO(peter): cleanup.
+		if err2 := ingestCleanup(d.opts.Storage, d.dirname, meta); err2 != nil {
+			// TODO(peter): log a warning.
+			panic(err2)
+		}
 	}
 	return err
 }
@@ -214,11 +237,16 @@ func (d *DB) ingestApply(meta []*ingestMetadata) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	ve := &versionEdit{}
-	for _, m := range meta {
-		// TODO(peter): Determine the lowest level in the LSM for which the sstable
-		// doesn't overlap any existing files in the level.
-		_ = m
+	ve := &versionEdit{
+		newFiles: make([]newFileEntry, len(meta)),
+	}
+	current := d.mu.versions.currentVersion()
+	for i := range meta {
+		// Determine the lowest level in the LSM for which the sstable doesn't
+		// overlap any existing files in the level.
+		m := meta[i]
+		ve.newFiles[i].level = ingestTargetLevel(current, m)
+		ve.newFiles[i].meta = m.fileMetadata
 	}
 	return d.mu.versions.logAndApply(d.opts, d.dirname, ve)
 }
