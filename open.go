@@ -18,17 +18,6 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
-type fileNumAndName struct {
-	num  uint64
-	name string
-}
-
-type fileNumAndNameSlice []fileNumAndName
-
-func (p fileNumAndNameSlice) Len() int           { return len(p) }
-func (p fileNumAndNameSlice) Less(i, j int) bool { return p[i].num < p[j].num }
-func (p fileNumAndNameSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
 func createDB(dirname string, opts *db.Options) (retErr error) {
 	const manifestFileNum = 1
 	ve := versionEdit{
@@ -144,14 +133,21 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	var logFiles fileNumAndNameSlice
+
+	type fileNumAndName struct {
+		num  uint64
+		name string
+	}
+	var logFiles []fileNumAndName
 	for _, filename := range ls {
 		ft, fn, ok := parseDBFilename(filename)
 		if ok && ft == fileTypeLog && (fn >= d.mu.versions.logNumber || fn == d.mu.versions.prevLogNumber) {
 			logFiles = append(logFiles, fileNumAndName{fn, filename})
 		}
 	}
-	sort.Sort(logFiles)
+	sort.Slice(logFiles, func(i, j int) bool {
+		return logFiles[i].num < logFiles[j].num
+	})
 	for _, lf := range logFiles {
 		maxSeqNum, err := d.replayWAL(&ve, fs, filepath.Join(dirname, lf.name))
 		if err != nil {
