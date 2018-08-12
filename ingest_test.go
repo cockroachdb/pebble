@@ -283,7 +283,48 @@ func TestIngestLink(t *testing.T) {
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
-	// TODO(peter): Test detection of memtable overlaps.
+	testCases := []struct {
+		ingest   string
+		memtable string
+		expected bool
+	}{
+		{"a-b", "c", false},
+		{"a-b", "a", true},
+		{"a-b", "b", true},
+		{"b-c", "a", false},
+		{"b-c e-f", "a d g", false},
+		{"b-c e-f", "a d e g", true},
+		{"b-c e-f", "a c d g", true},
+	}
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			var meta []*ingestMetadata
+			for _, p := range strings.Fields(c.ingest) {
+				parts := strings.Split(p, "-")
+				if len(parts) != 2 {
+					t.Fatalf("malformed test case: %s", c.ingest)
+				}
+				meta = append(meta, &ingestMetadata{
+					fileMetadata: fileMetadata{
+						smallest: db.InternalKey{UserKey: []byte(parts[0])},
+						largest:  db.InternalKey{UserKey: []byte(parts[1])},
+					},
+				})
+			}
+
+			mem := newMemTable(nil)
+			for _, key := range strings.Fields(c.memtable) {
+				if err := mem.set(db.InternalKey{UserKey: []byte(key)}, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			result := ingestMemtableOverlaps(mem, meta)
+			if c.expected != result {
+				t.Fatalf("expected %t, but found %t", c.expected, result)
+			}
+		})
+	}
 }
 
 func TestIngestTargetLevel(t *testing.T) {

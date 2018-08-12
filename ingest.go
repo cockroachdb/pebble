@@ -199,7 +199,7 @@ func (d *DB) Ingest(paths []string) error {
 	var mem *memTable
 	prepareLocked := func() {
 		// NB: prepare is called with d.mu locked.
-		//
+
 		// If the mutable memtable contains keys which overlap any of the sstables
 		// then flush the memtable. Note that apply will wait for the flushing to
 		// finish.
@@ -209,9 +209,16 @@ func (d *DB) Ingest(paths []string) error {
 			return
 		}
 
-		// TODO(peter): Check to see if any files overlap with any of the immutable
-		// memtables. Record the last memtable for which that is true so that we
-		// can wait for it to flush in apply.
+		// Check to see if any files overlap with any of the immutable
+		// memtables. The queue is ordered from oldest to newest. We want to wait
+		// for the newest table that overlaps.
+		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
+			m := d.mu.mem.queue[i]
+			if ingestMemtableOverlaps(m, meta) {
+				mem = m
+				return
+			}
+		}
 	}
 
 	apply := func(seqNum uint64) {
