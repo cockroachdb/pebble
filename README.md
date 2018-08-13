@@ -19,7 +19,7 @@ needed by CockroachDB:
 * [TODO] Prefix bloom filters
 * [TODO] Range deletion tombstones
 * Reverse iteration
-* [TODO] SSTable ingestion
+* SSTable ingestion
 * Table-level bloom filters
 
 RocksDB has a large number of features that are not implemented in

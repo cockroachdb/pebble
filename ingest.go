@@ -298,6 +298,3 @@ func (d *DB) ingestApply(meta []*fileMetadata) error {
 	}
 	return d.mu.versions.logAndApply(d.opts, d.dirname, ve)
 }
-
-// TODO(peter): Update sstable.Reader to use the global sequence number
-// property.
