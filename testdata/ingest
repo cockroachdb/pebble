@@ -1,0 +1,96 @@
+ingest
+set a 1
+set b 2
+----
+
+lsm
+----
+6: a-b
+
+iter
+seek-ge a
+next
+next
+----
+a:1
+b:2
+.
+
+ingest
+set a 3
+del b
+----
+
+lsm
+----
+5: a-b
+6: a-b
+
+iter
+seek-ge a
+next
+----
+a:3
+.
+
+ingest
+set a 4
+set b 5
+set c 6
+----
+
+lsm
+----
+4: a-c
+5: a-b
+6: a-b
+
+iter
+seek-ge a
+next
+next
+----
+a:4
+b:5
+c:6
+
+ingest
+merge b 5
+del c
+----
+
+lsm
+----
+3: b-c
+4: a-c
+5: a-b
+6: a-b
+
+iter
+seek-ge a
+next
+next
+----
+a:4
+b:55
+.
+
+ingest
+set x 7
+set y 8
+----
+
+lsm
+----
+3: b-c
+4: a-c
+5: a-b
+6: a-b x-y
+
+# TODO(peter):
+# iter
+# seek-lt y
+# prev
+# ----
+# x:7
+# b:55

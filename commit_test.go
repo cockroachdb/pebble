@@ -118,11 +118,13 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 	if s := atomic.LoadUint64(&applyCount); n != s {
 		t.Fatalf("expected %d applies, but found %d", n, s)
 	}
-	if s := atomic.LoadUint64(&e.logSeqNum); n != s {
-		t.Fatalf("expected %d, but found %d", n, s)
+	// AllocateSeqNum always returns a non-zero sequence number causing the
+	// values we see to be offset from 1.
+	if s := atomic.LoadUint64(&e.logSeqNum); n+1 != s {
+		t.Fatalf("expected %d, but found %d", n+1, s)
 	}
-	if s := atomic.LoadUint64(&e.visibleSeqNum); n != s {
-		t.Fatalf("expected %d, but found %d", n, s)
+	if s := atomic.LoadUint64(&e.visibleSeqNum); n+1 != s {
+		t.Fatalf("expected %d, but found %d", n+1, s)
 	}
 }
 

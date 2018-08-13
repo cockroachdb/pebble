@@ -262,7 +262,6 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	// are incremented correctly.
 	b.data = make([]byte, batchHeaderLen)
 	b.setCount(1)
-	n := uint64(b.count())
 	b.commit.Add(1)
 
 	p.env.mu.Lock()
@@ -273,7 +272,12 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	p.pending.enqueue(b, &p.cond)
 
 	// Assign the batch a sequence number.
-	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
+	seqNum := atomic.AddUint64(p.env.logSeqNum, 1) - 1
+	if seqNum == 0 {
+		seqNum = atomic.AddUint64(p.env.logSeqNum, 1) - 1
+		b.setCount(2)
+	}
+	b.setSeqNum(seqNum)
 
 	// Invoke the prepare callback. Note the lack of error reporting. Even if the
 	// callback internally fails, the sequence number needs to be published in

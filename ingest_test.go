@@ -405,11 +405,121 @@ func TestIngestTargetLevel(t *testing.T) {
 	})
 }
 
-func TestIngestGlobalSeqNum(t *testing.T) {
-	// TODO(peter): Test that the sequence number for entries added via ingestion
-	// is correct.
-}
-
 func TestIngest(t *testing.T) {
-	// TODO(peter): Test that ingest works end-to-end.
+	fs := storage.NewMem()
+	err := fs.MkdirAll("ext", 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := Open("", &db.Options{
+		Storage: fs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	datadriven.RunTest(t, "testdata/ingest", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "ingest":
+			b := d.NewIndexedBatch()
+			for _, line := range strings.Split(td.Input, "\n") {
+				parts := strings.Fields(line)
+				if len(parts) == 0 {
+					continue
+				}
+				var err error
+				switch parts[0] {
+				case "set":
+					if len(parts) != 3 {
+						t.Fatalf("%s expects 2 arguments", parts[0])
+					}
+					err = b.Set([]byte(parts[1]), []byte(parts[2]), nil)
+				case "del":
+					if len(parts) != 2 {
+						t.Fatalf("%s expects 1 argument", parts[0])
+					}
+					err = b.Delete([]byte(parts[1]), nil)
+				case "merge":
+					if len(parts) != 3 {
+						t.Fatalf("%s expects 2 arguments", parts[0])
+					}
+					err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
+				default:
+					t.Fatalf("unknown op: %s", parts[0])
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			f, err := fs.Create("ext/0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := sstable.NewWriter(f, nil, db.LevelOptions{})
+			iter := b.newInternalIter(nil)
+			for iter.First(); iter.Valid(); iter.Next() {
+				key := iter.Key()
+				key.SetSeqNum(10000)
+				w.Add(key, iter.Value())
+			}
+			iter.Close()
+			w.Close()
+
+			if err := d.Ingest([]string{"ext/0"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := fs.Remove("ext/0"); err != nil {
+				t.Fatal(err)
+			}
+
+		case "iter":
+			iter := d.NewIter(nil)
+			defer iter.Close()
+			var b bytes.Buffer
+			for _, line := range strings.Split(td.Input, "\n") {
+				parts := strings.Fields(line)
+				if len(parts) == 0 {
+					continue
+				}
+				switch parts[0] {
+				case "seek-ge":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-ge <key>\n")
+					}
+					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+				case "seek-lt":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-lt <key>\n")
+					}
+					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+				case "next":
+					iter.Next()
+				case "prev":
+					iter.Prev()
+				default:
+					return fmt.Sprintf("unknown op: %s", parts[0])
+				}
+				if iter.Valid() {
+					fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+				} else if err := iter.Error(); err != nil {
+					fmt.Fprintf(&b, "err=%v\n", err)
+				} else {
+					fmt.Fprintf(&b, ".\n")
+				}
+			}
+			return b.String()
+
+		case "lsm":
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
+		default:
+			t.Fatalf("unknown command: %s", td.Cmd)
+		}
+		return ""
+	})
 }
