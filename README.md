@@ -16,7 +16,7 @@ needed by CockroachDB:
 * Indexed batches
 * [[TODO](https://github.com/petermattis/pebble/issues/6)] Iterator options (prefix, lower/upper bound)
 * Level-based compaction
-* [[IN-PROGRESS](https://github.com/petermattis/pebble/issues/23)] Merge operator
+* Merge operator
 * [[TODO](https://github.com/petermattis/pebble/issues/5)] Prefix bloom filters
 * [[TODO](https://github.com/petermattis/pebble/issues/1)] Range deletion tombstones
 * Reverse iteration

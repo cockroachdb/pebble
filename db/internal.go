@@ -210,6 +210,11 @@ func (k InternalKey) SeqNum() uint64 {
 	return k.Trailer >> 8
 }
 
+// SetKind ...
+func (k *InternalKey) SetKind(kind InternalKeyKind) {
+	k.Trailer = (k.Trailer &^ 0xff) | uint64(kind)
+}
+
 // Kind ...
 func (k InternalKey) Kind() InternalKeyKind {
 	return InternalKeyKind(k.Trailer & 0xff)

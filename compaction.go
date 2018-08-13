@@ -7,7 +7,6 @@ package pebble
 import (
 	"fmt"
 	"path/filepath"
-	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
@@ -337,17 +336,19 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}()
 
-	// TODO(peter): track snapshots.
-	smallestSnapshot := atomic.LoadUint64(&d.mu.versions.logSeqNum)
-
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	iter, err := compactionIterator(d.cmp, d.newIter, c)
+	iiter, err := compactionIterator(d.cmp, d.newIter, c)
 	if err != nil {
 		return nil, pendingOutputs, err
+	}
+	iter := &compactionIter{
+		cmp:   d.cmp,
+		merge: d.merge,
+		iter:  iiter,
 	}
 
 	// TODO(peter): output to more than one table, if it would otherwise be too large.
@@ -368,56 +369,14 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}()
 
-	currentUkey := make([]byte, 0, 4096)
-	hasCurrentUkey := false
-	lastSeqNumForKey := db.InternalKeySeqNumMax
 	var smallest, largest db.InternalKey
-	for ; iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); iter.Next() {
 		// TODO(peter): support c.shouldStopBefore.
 
 		ikey := iter.Key()
-		if false /* !valid */ {
-			// Do not hide invalid keys.
-			currentUkey = currentUkey[:0]
-			hasCurrentUkey = false
-			lastSeqNumForKey = db.InternalKeySeqNumMax
-		} else {
-			// TODO(peter): Handle db.InternalKeyKindMerge. Need to perform the merge
-			// and only output the single merged value.
-			if ikey.Kind() == db.InternalKeyKindMerge {
-				panic("TODO(peter): db.InternalKeyKindMerge unimplemented")
-			}
-
-			ukey := ikey.UserKey
-			if !hasCurrentUkey || d.cmp(currentUkey, ukey) != 0 {
-				// This is the first occurrence of this user key.
-				currentUkey = append(currentUkey[:0], ukey...)
-				hasCurrentUkey = true
-				lastSeqNumForKey = db.InternalKeySeqNumMax
-			}
-
-			drop, ikeySeqNum := false, ikey.SeqNum()
-			if lastSeqNumForKey <= smallestSnapshot {
-				drop = true // Rule (A) referenced below.
-
-			} else if ikey.Kind() == db.InternalKeyKindDelete &&
-				ikeySeqNum <= smallestSnapshot &&
-				c.isBaseLevelForUkey(d.opts.Comparer.Compare, ukey) {
-
-				// For this user key:
-				// (1) there is no data in higher levels
-				// (2) data in lower levels will have larger sequence numbers
-				// (3) data in layers that are being compacted here and have
-				//     smaller sequence numbers will be dropped in the next
-				//     few iterations of this loop (by rule (A) above).
-				// Therefore this deletion marker is obsolete and can be dropped.
-				drop = true
-			}
-
-			lastSeqNumForKey = ikeySeqNum
-			if drop {
-				continue
-			}
+		if ikey.Kind() == db.InternalKeyKindDelete &&
+			c.isBaseLevelForUkey(d.opts.Comparer.Compare, ikey.UserKey) {
+			continue
 		}
 
 		if tw == nil {
@@ -435,6 +394,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.level+1))
 			smallest = ikey.Clone()
 		}
+
 		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
 		// in largest.
 		largest.UserKey = append(largest.UserKey[:0], ikey.UserKey...)
