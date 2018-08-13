@@ -200,6 +200,11 @@ func (k InternalKey) Size() int {
 	return len(k.UserKey) + 8
 }
 
+// SetSeqNum ...
+func (k *InternalKey) SetSeqNum(seqNum uint64) {
+	k.Trailer = (seqNum << 8) | (k.Trailer & 0xff)
+}
+
 // SeqNum ...
 func (k InternalKey) SeqNum() uint64 {
 	return k.Trailer >> 8

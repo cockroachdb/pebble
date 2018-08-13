@@ -85,6 +85,9 @@ func TestDBIter(t *testing.T) {
 				}
 			}
 			return b.String()
+
+		default:
+			t.Fatalf("unknown command: %s", d.Cmd)
 		}
 
 		return ""

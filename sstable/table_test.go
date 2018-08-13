@@ -554,3 +554,22 @@ func TestFinalBlockIsWritten(t *testing.T) {
 		}
 	}
 }
+
+func TestReaderGlobalSeqNum(t *testing.T) {
+	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := NewReader(f, 0, nil)
+	defer r.Close()
+
+	const globalSeqNum = 42
+	r.Properties.GlobalSeqNum = globalSeqNum
+
+	i := r.NewIter(nil)
+	for i.First(); i.Valid(); i.Next() {
+		if globalSeqNum != i.Key().SeqNum() {
+			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())
+		}
+	}
+}

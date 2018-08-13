@@ -61,7 +61,7 @@ var _ db.InternalIterator = (*Iter)(nil)
 // Init ...
 func (i *Iter) Init(r *Reader) error {
 	i.reader = r
-	i.err = i.index.init(r.compare, r.index)
+	i.err = i.index.init(r.compare, r.index, r.Properties.GlobalSeqNum)
 	return i.err
 }
 
@@ -85,7 +85,7 @@ func (i *Iter) loadBlock() bool {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.reader.compare, block)
+	i.err = i.data.init(i.reader.compare, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		return false
 	}
@@ -122,7 +122,7 @@ func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.reader.compare, block)
+	i.err = i.data.init(i.reader.compare, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		return false
 	}

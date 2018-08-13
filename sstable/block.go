@@ -102,18 +102,19 @@ type blockEntry struct {
 
 // blockIter is an iterator over a single block of data.
 type blockIter struct {
-	cmp         db.Compare
-	offset      int
-	nextOffset  int
-	restarts    int
-	numRestarts int
-	ptr         unsafe.Pointer
-	data        []byte
-	key, val    []byte
-	ikey        db.InternalKey
-	cached      []blockEntry
-	cachedBuf   []byte
-	err         error
+	cmp          db.Compare
+	offset       int
+	nextOffset   int
+	restarts     int
+	numRestarts  int
+	globalSeqNum uint64
+	ptr          unsafe.Pointer
+	data         []byte
+	key, val     []byte
+	ikey         db.InternalKey
+	cached       []blockEntry
+	cachedBuf    []byte
+	err          error
 }
 
 // blockIter implements the db.InternalIterator interface.
@@ -121,10 +122,10 @@ var _ db.InternalIterator = (*blockIter)(nil)
 
 func newBlockIter(cmp db.Compare, block block) (*blockIter, error) {
 	i := &blockIter{}
-	return i, i.init(cmp, block)
+	return i, i.init(cmp, block, 0)
 }
 
-func (i *blockIter) init(cmp db.Compare, block block) error {
+func (i *blockIter) init(cmp db.Compare, block block, globalSeqNum uint64) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
@@ -132,6 +133,7 @@ func (i *blockIter) init(cmp db.Compare, block block) error {
 	i.cmp = cmp
 	i.restarts = len(block) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
+	i.globalSeqNum = globalSeqNum
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
 	if i.key == nil {
@@ -156,9 +158,16 @@ func (i *blockIter) readEntry() {
 	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
 }
 
+func (i *blockIter) decodeInternalKey() {
+	i.ikey = db.DecodeInternalKey(i.key)
+	if i.globalSeqNum != 0 {
+		i.ikey.SetSeqNum(i.globalSeqNum)
+	}
+}
+
 func (i *blockIter) loadEntry() {
 	i.readEntry()
-	i.ikey = db.DecodeInternalKey(i.key)
+	i.decodeInternalKey()
 }
 
 func (i *blockIter) clearCache() {
@@ -253,14 +262,16 @@ func (i *blockIter) SeekLT(key []byte) {
 	for {
 		i.offset = i.nextOffset
 		i.readEntry()
-		i.cacheEntry()
-		i.ikey = db.DecodeInternalKey(i.key)
+		i.decodeInternalKey()
+
 		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
 			// the previous key which was less than our search key.
 			i.Prev()
 			return
 		}
+
+		i.cacheEntry()
 		if i.nextOffset >= i.restarts {
 			// We've reached the end of the block. Return the current key.
 			break
@@ -290,7 +301,7 @@ func (i *blockIter) Last() {
 		i.cacheEntry()
 	}
 
-	i.ikey = db.DecodeInternalKey(i.key)
+	i.decodeInternalKey()
 }
 
 // Next implements InternalIterator.Next, as documented in the pebble/db
@@ -319,8 +330,9 @@ func (i *blockIter) Prev() bool {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
 		i.offset = e.offset
+		i.key = e.key
 		i.val = e.val
-		i.ikey = db.DecodeInternalKey(e.key)
+		i.decodeInternalKey()
 		i.cached = i.cached[:n]
 		return true
 	}
@@ -351,7 +363,7 @@ func (i *blockIter) Prev() bool {
 		i.cacheEntry()
 	}
 
-	i.ikey = db.DecodeInternalKey(i.key)
+	i.decodeInternalKey()
 	return true
 }
 

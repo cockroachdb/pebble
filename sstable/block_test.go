@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 )
 
@@ -122,91 +123,83 @@ func TestBlockIter2(t *testing.T) {
 		return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet)
 	}
 
-	testCases := []struct {
-		key          string
-		entries      string
-		expectedNext string
-		expectedPrev string
-	}{
-		{
-			"a",
-			"a:1,b:2,c:3,d:4",
-			"<a:1><b:2><c:3><d:4>.",
-			".",
-		},
-		{
-			"a",
-			"a:1,b:2,c:3,d:4",
-			"<a:1><b:2><c:3><d:4>.",
-			".",
-		},
-		{
-			"b",
-			"a:1,b:2,c:3,d:4",
-			"<b:2><c:3><d:4>.",
-			"<a:1>.",
-		},
-		{
-			"c",
-			"a:1,b:2,c:3,d:4",
-			"<c:3><d:4>.",
-			"<b:2><a:1>.",
-		},
-		{
-			"d",
-			"a:1,b:2,c:3,d:4",
-			"<d:4>.",
-			"<c:3><b:2><a:1>.",
-		},
-		{
-			"e",
-			"a:1,b:2,c:3,d:4",
-			".",
-			"<d:4><c:3><b:2><a:1>.",
-		},
-	}
+	var block []byte
+
 	for _, r := range []int{1, 2, 3, 4} {
 		t.Run(fmt.Sprintf("restart=%d", r), func(t *testing.T) {
-			for _, c := range testCases {
-				t.Run("", func(t *testing.T) {
+			datadriven.RunTest(t, "testdata/block", func(d *datadriven.TestData) string {
+				switch d.Cmd {
+				case "define":
 					w := &blockWriter{restartInterval: r}
-					for _, e := range strings.Split(c.entries, ",") {
+					for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
 						w.add(makeIkey(e), nil)
 					}
+					block = w.finish()
 
-					iter, err := newBlockIter(bytes.Compare, w.finish())
+				case "iter":
+					iter, err := newBlockIter(bytes.Compare, block)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					key := []byte(c.key)
-					var b bytes.Buffer
-					for iter.SeekGE(key); iter.Valid(); iter.Next() {
-						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-					}
-					if err := iter.Error(); err != nil {
-						fmt.Fprintf(&b, "err=%v", err)
-					} else {
-						b.WriteByte('.')
-					}
-					if got := b.String(); got != c.expectedNext {
-						t.Errorf("got  %q\nwant %q", got, c.expectedNext)
+					for _, arg := range d.CmdArgs {
+						switch arg.Key {
+						case "globalSeqNum":
+							if len(arg.Vals) != 1 {
+								t.Fatalf("%s: arg %s expects 1 value", d.Cmd, arg.Key)
+							}
+							v, err := strconv.Atoi(arg.Vals[0])
+							if err != nil {
+								t.Fatal(err)
+							}
+							iter.globalSeqNum = uint64(v)
+						default:
+							t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+						}
 					}
 
-					b.Reset()
-					for iter.SeekLT(key); iter.Valid(); iter.Prev() {
-						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
+					var b bytes.Buffer
+					for _, line := range strings.Split(d.Input, "\n") {
+						parts := strings.Fields(line)
+						if len(parts) == 0 {
+							continue
+						}
+						switch parts[0] {
+						case "seek-ge":
+							if len(parts) != 2 {
+								return fmt.Sprintf("seek-ge <key>\n")
+							}
+							iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+						case "seek-lt":
+							if len(parts) != 2 {
+								return fmt.Sprintf("seek-lt <key>\n")
+							}
+							iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+						case "first":
+							iter.First()
+						case "last":
+							iter.Last()
+						case "next":
+							iter.Next()
+						case "prev":
+							iter.Prev()
+						}
+						if iter.Valid() {
+							fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
+						} else if err := iter.Error(); err != nil {
+							fmt.Fprintf(&b, "<err=%v>", err)
+						} else {
+							fmt.Fprintf(&b, ".")
+						}
 					}
-					if err := iter.Close(); err != nil {
-						fmt.Fprintf(&b, "err=%v", err)
-					} else {
-						b.WriteByte('.')
-					}
-					if got := b.String(); got != c.expectedPrev {
-						t.Errorf("got  %q\nwant %q", got, c.expectedPrev)
-					}
-				})
-			}
+					b.WriteString("\n")
+					return b.String()
+
+				default:
+					t.Fatalf("unknown command: %s", d.Cmd)
+				}
+				return ""
+			})
 		})
 	}
 }
