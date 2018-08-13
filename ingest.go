@@ -131,9 +131,10 @@ func ingestUpdateSeqNum(
 	for _, m := range meta {
 		m.smallest = db.MakeInternalKey(m.smallest.UserKey, seqNum, m.smallest.Kind())
 		m.largest = db.MakeInternalKey(m.largest.UserKey, seqNum, m.largest.Kind())
+		// Setting smallestSeqNum == largestSeqNum triggers the setting of
+		// Properties.GlobalSeqNum when an sstable is loaded.
 		m.smallestSeqNum = seqNum
 		m.largestSeqNum = seqNum
-		m.globalSeqNum = seqNum
 
 		// TODO(peter): Update the global sequence number property. This is only
 		// necessary for compatibility with RocksDB.

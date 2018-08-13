@@ -74,7 +74,6 @@ func TestVersionEditRoundTrip(t *testing.T) {
 						largest:             db.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 						smallestSeqNum:      3,
 						largestSeqNum:       5,
-						globalSeqNum:        7,
 						markedForCompaction: true,
 					},
 				},

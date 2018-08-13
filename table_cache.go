@@ -156,8 +156,8 @@ func (n *tableCacheNode) load(c *tableCache) {
 		return
 	}
 	r := sstable.NewReader(f, n.meta.fileNum, c.opts)
-	if n.meta.globalSeqNum != 0 {
-		r.Properties.GlobalSeqNum = n.meta.globalSeqNum
+	if n.meta.smallestSeqNum == n.meta.largestSeqNum {
+		r.Properties.GlobalSeqNum = n.meta.largestSeqNum
 	}
 	n.result <- tableReaderOrError{reader: r}
 }

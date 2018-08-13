@@ -27,8 +27,6 @@ type fileMetadata struct {
 	// smallest and largest sequence numbers in the table.
 	smallestSeqNum uint64
 	largestSeqNum  uint64
-	// global sequence number for an ingested table.
-	globalSeqNum uint64
 	// true if client asked us nicely to compact this file.
 	markedForCompaction bool
 }
