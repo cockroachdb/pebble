@@ -397,6 +397,9 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
 		// in largest.
+		//
+		// TODO(peter): sstable.Writer internally keeps track of the last key
+		// added. Rather than making our own copy here, we should expose that one.
 		largest.UserKey = append(largest.UserKey[:0], ikey.UserKey...)
 		largest.Trailer = ikey.Trailer
 		if err := tw.Add(ikey, iter.Value()); err != nil {
