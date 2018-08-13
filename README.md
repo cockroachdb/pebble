@@ -14,10 +14,11 @@ needed by CockroachDB:
 
 * Block-based tables
 * Indexed batches
+* [[TODO](https://github.com/petermattis/pebble/issues/6)] Iterator options (prefix, lower/upper bound)
 * Level-based compaction
-* [IN-PROGRESS] Merge operator
-* [TODO] Prefix bloom filters
-* [TODO] Range deletion tombstones
+* [[IN-PROGRESS](https://github.com/petermattis/pebble/issues/23)] Merge operator
+* [[TODO](https://github.com/petermattis/pebble/issues/5)] Prefix bloom filters
+* [[TODO](https://github.com/petermattis/pebble/issues/1)] Range deletion tombstones
 * Reverse iteration
 * SSTable ingestion
 * Table-level bloom filters
@@ -46,8 +47,7 @@ emptor!
 
 ## Pedigree
 
-Pebble is based on the (at the time of writing) incomplete Go version
-of LevelDB:
+Pebble is based on the incomplete Go version of LevelDB:
 
 https://github.com/golang/leveldb
 
