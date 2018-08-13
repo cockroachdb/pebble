@@ -152,6 +152,9 @@ func (i *Iter) SeekLT(key []byte) {
 	}
 
 	i.index.SeekGE(key)
+	if !i.index.Valid() {
+		i.index.Last()
+	}
 	if i.loadBlock() {
 		i.data.SeekLT(key)
 		if !i.data.Valid() {

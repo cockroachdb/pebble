@@ -5,16 +5,123 @@
 package sstable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/petermattis/pebble/cache"
+	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
 )
+
+func TestReader(t *testing.T) {
+	makeIkey := func(s string) db.InternalKey {
+		j := strings.Index(s, ":")
+		seqNum, err := strconv.Atoi(s[j+1:])
+		if err != nil {
+			panic(err)
+		}
+		return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet)
+	}
+
+	fs := storage.NewMem()
+	var r *Reader
+
+	datadriven.RunTest(t, "testdata/reader", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "build":
+			if r != nil {
+				r.Close()
+				fs.Remove("sstable")
+			}
+
+			f, err := fs.Create("sstable")
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := NewWriter(f, nil, db.LevelOptions{})
+			for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
+				w.Add(makeIkey(e), nil)
+			}
+			w.Close()
+
+			f, err = fs.Open("sstable")
+			if err != nil {
+				t.Fatal(err)
+			}
+			r = NewReader(f, 0, nil)
+
+		case "iter":
+			for _, arg := range d.CmdArgs {
+				switch arg.Key {
+				case "globalSeqNum":
+					if len(arg.Vals) != 1 {
+						t.Fatalf("%s: arg %s expects 1 value", d.Cmd, arg.Key)
+					}
+					v, err := strconv.Atoi(arg.Vals[0])
+					if err != nil {
+						t.Fatal(err)
+					}
+					r.Properties.GlobalSeqNum = uint64(v)
+				default:
+					t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
+			}
+
+			iter := r.NewIter(nil)
+			if err := iter.Error(); err != nil {
+				t.Fatal(err)
+			}
+
+			var b bytes.Buffer
+			for _, line := range strings.Split(d.Input, "\n") {
+				parts := strings.Fields(line)
+				if len(parts) == 0 {
+					continue
+				}
+				switch parts[0] {
+				case "seek-ge":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-ge <key>\n")
+					}
+					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+				case "seek-lt":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-lt <key>\n")
+					}
+					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+				case "first":
+					iter.First()
+				case "last":
+					iter.Last()
+				case "next":
+					iter.Next()
+				case "prev":
+					iter.Prev()
+				}
+				if iter.Valid() {
+					fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
+				} else if err := iter.Error(); err != nil {
+					fmt.Fprintf(&b, "<err=%v>", err)
+				} else {
+					fmt.Fprintf(&b, ".")
+				}
+			}
+			b.WriteString("\n")
+			return b.String()
+
+		default:
+			t.Fatalf("unknown command: %s", d.Cmd)
+		}
+		return ""
+	})
+}
 
 func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader, [][]byte) {
 	mem := storage.NewMem()

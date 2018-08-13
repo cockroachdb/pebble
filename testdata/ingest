@@ -87,10 +87,11 @@ lsm
 5: a-b
 6: a-b x-y
 
-# TODO(peter):
-# iter
-# seek-lt y
-# prev
-# ----
-# x:7
-# b:55
+iter
+seek-lt y
+prev
+prev
+----
+x:7
+b:55
+a:4

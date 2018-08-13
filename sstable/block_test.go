@@ -129,7 +129,7 @@ func TestBlockIter2(t *testing.T) {
 		t.Run(fmt.Sprintf("restart=%d", r), func(t *testing.T) {
 			datadriven.RunTest(t, "testdata/block", func(d *datadriven.TestData) string {
 				switch d.Cmd {
-				case "define":
+				case "build":
 					w := &blockWriter{restartInterval: r}
 					for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
 						w.add(makeIkey(e), nil)
