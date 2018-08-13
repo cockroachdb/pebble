@@ -421,7 +421,7 @@ func TestIngest(t *testing.T) {
 
 	datadriven.RunTest(t, "testdata/ingest", func(td *datadriven.TestData) string {
 		switch td.Cmd {
-		case "ingest":
+		case "ingest", "batch":
 			b := d.NewIndexedBatch()
 			for _, line := range strings.Split(td.Input, "\n") {
 				parts := strings.Fields(line)
@@ -453,25 +453,31 @@ func TestIngest(t *testing.T) {
 				}
 			}
 
-			f, err := fs.Create("ext/0")
-			if err != nil {
-				t.Fatal(err)
-			}
-			w := sstable.NewWriter(f, nil, db.LevelOptions{})
-			iter := b.newInternalIter(nil)
-			for iter.First(); iter.Valid(); iter.Next() {
-				key := iter.Key()
-				key.SetSeqNum(10000)
-				w.Add(key, iter.Value())
-			}
-			iter.Close()
-			w.Close()
+			switch td.Cmd {
+			case "ingest":
+				f, err := fs.Create("ext/0")
+				if err != nil {
+					t.Fatal(err)
+				}
+				w := sstable.NewWriter(f, nil, db.LevelOptions{})
+				iter := b.newInternalIter(nil)
+				for iter.First(); iter.Valid(); iter.Next() {
+					key := iter.Key()
+					key.SetSeqNum(10000)
+					w.Add(key, iter.Value())
+				}
+				iter.Close()
+				w.Close()
 
-			if err := d.Ingest([]string{"ext/0"}); err != nil {
-				t.Fatal(err)
-			}
-			if err := fs.Remove("ext/0"); err != nil {
-				t.Fatal(err)
+				if err := d.Ingest([]string{"ext/0"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := fs.Remove("ext/0"); err != nil {
+					t.Fatal(err)
+				}
+
+			case "batch":
+				b.Commit(nil)
 			}
 
 		case "iter":

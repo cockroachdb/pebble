@@ -95,3 +95,44 @@ prev
 x:7
 b:55
 a:4
+
+batch
+set j 9
+set k 10
+----
+
+ingest
+set k 11
+----
+
+lsm
+----
+0: k-k j-k
+3: b-c
+4: a-c
+5: a-b
+6: a-b x-y
+
+iter
+seek-ge j
+next
+----
+j:9
+k:11
+
+
+batch
+set m 12
+----
+
+ingest
+set n 13
+----
+
+lsm
+----
+0: k-k j-k
+3: b-c
+4: a-c
+5: a-b
+6: a-b n-n x-y
