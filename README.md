@@ -15,7 +15,7 @@ needed by CockroachDB:
 * Block-based tables
 * Indexed batches
 * Level-based compaction
-* [TODO] Merge operator
+* [IN-PROGRESS] Merge operator
 * [TODO] Prefix bloom filters
 * [TODO] Range deletion tombstones
 * Reverse iteration
