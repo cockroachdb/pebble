@@ -41,15 +41,6 @@ const (
 	TableFilter
 )
 
-// FilterReader provides an interface for querying filter blocks. See
-// FilterPolicy for more details about filters.
-type FilterReader interface {
-	// MayContain returns whether the encoded filter may contain given key.
-	// False positives are possible, where it returns true for keys not in the
-	// original set.
-	MayContain(filter, key []byte) bool
-}
-
 // FilterWriter provides an interface for creating filter blocks. See
 // FilterPolicy for more details about filters.
 type FilterWriter interface {
@@ -82,9 +73,6 @@ type FilterPolicy interface {
 	// False positives are possible, where it returns true for keys not in the
 	// original set.
 	MayContain(ftype FilterType, filter, key []byte) bool
-
-	// NewReader creates a new FilterReader.
-	// NewReader(ftype FilterType) FilterReader
 
 	// NewWriter creates a new FilterWriter.
 	NewWriter(ftype FilterType) FilterWriter
