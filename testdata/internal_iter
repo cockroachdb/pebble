@@ -1,10 +1,10 @@
 define
-a.SET.2:2
 a.SET.1:1
-b.SET.2:2
+a.SET.2:2
 b.SET.1:1
-c.SET.2:2
+b.SET.2:2
 c.SET.1:1
+c.SET.2:2
 ----
 
 iter
@@ -55,15 +55,6 @@ c:2
 c:1
 .
 c:2
-
-define
-a.SET.2:2
-a.SET.1:1
-b.SET.2:2
-b.SET.1:1
-c.SET.2:2
-c.SET.1:1
-----
 
 iter
 first

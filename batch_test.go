@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 )
 
@@ -134,120 +135,31 @@ func TestBatchGet(t *testing.T) {
 	}
 }
 
-func TestBatchIterNextPrev(t *testing.T) {
-	b := newIndexedBatch(nil, db.DefaultComparer)
-	for _, key := range []string{"a.SET.1", "a.SET.2", "b.SET.1", "b.SET.2", "c.SET.1", "c.SET.2"} {
-		ikey := db.ParseInternalKey(key)
-		value := []byte(fmt.Sprint(ikey.SeqNum()))
-		b.Set(ikey.UserKey, value, nil)
-	}
-	iter := b.newInternalIter(nil)
-	iter.First()
+func TestBatchIter(t *testing.T) {
+	var b *Batch
+	datadriven.RunTest(t, "testdata/internal_iter", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			b = newIndexedBatch(nil, db.DefaultComparer)
+			for _, key := range strings.Split(d.Input, "\n") {
+				j := strings.Index(key, ":")
+				ikey := db.ParseInternalKey(key[:j])
+				value := []byte(fmt.Sprint(ikey.SeqNum()))
+				b.Set(ikey.UserKey, value, nil)
+			}
+			return ""
 
-	// These test cases are shared with TestMergingIterNextPrev.
-	testCases := []struct {
-		dir      string
-		expected string
-	}{
-		{"+", "<a:1>"}, // 0
-		{"+", "<b:2>"}, // 1
-		{"-", "<b:1>"}, // 2
-		{"-", "<a:2>"}, // 3
-		{"-", "<a:1>"}, // 4
-		{"-", "."},     // 5
-		{"+", "<a:2>"}, // 6
-		{"+", "<a:1>"}, // 7
-		{"+", "<b:2>"}, // 8
-		{"+", "<b:1>"}, // 9
-		{"+", "<c:2>"}, // 10
-		{"+", "<c:1>"}, // 11
-		{"-", "<b:2>"}, // 12
-		{"-", "<b:1>"}, // 13
-		{"+", "<c:2>"}, // 14
-		{"-", "<c:1>"}, // 15
-		{"-", "<b:2>"}, // 16
-		{"+", "<b:1>"}, // 17
-		{"+", "<c:2>"}, // 18
-		{"+", "<c:1>"}, // 19
-		{"+", "."},     // 20
-		{"-", "<c:2>"}, // 21
-	}
-	for i, c := range testCases {
-		switch c.dir {
-		case "+":
-			iter.Next()
-		case "-":
-			iter.Prev()
+		case "iter":
+			iter := b.newInternalIter(nil)
+			defer iter.Close()
+			return runInternalIterCmd(d, iter)
+
 		default:
-			t.Fatalf("unexpected direction: %q", c.dir)
+			t.Fatalf("unknown command: %s", d.Cmd)
 		}
-		var got string
-		if !iter.Valid() {
-			got = "."
-		} else if (iter.Key().SeqNum() & db.InternalKeySeqNumBatch) == 0 {
-			got = fmt.Sprintf("<%s:bad-seq-num>", iter.Key().UserKey)
-		} else {
-			got = fmt.Sprintf("<%s:%s>", iter.Key().UserKey, iter.Value())
-		}
-		if got != c.expected {
-			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
-		}
-	}
-}
 
-func TestBatchIterNextPrevUserKey(t *testing.T) {
-	b := newIndexedBatch(nil, db.DefaultComparer)
-	for _, key := range []string{"a.SET.1", "a.SET.2", "b.SET.1", "b.SET.2", "c.SET.1", "c.SET.2"} {
-		ikey := db.ParseInternalKey(key)
-		value := []byte(fmt.Sprint(ikey.SeqNum()))
-		b.Set(ikey.UserKey, value, nil)
-	}
-	iter := b.newInternalIter(nil)
-	iter.First()
-
-	// These test cases are shared with TestMergingIterNextPrevUserKey.
-	testCases := []struct {
-		dir      string
-		expected string
-	}{
-		{"+", "<b:2>"}, // 0
-		{"-", "<a:2>"}, // 1
-		{"-", "."},     // 2
-		{"+", "<a:2>"}, // 3
-		{"+", "<b:2>"}, // 4
-		{"+", "<c:2>"}, // 5
-		{"+", "."},     // 6
-		{"-", "<c:2>"}, // 7
-		{"-", "<b:2>"}, // 8
-		{"-", "<a:2>"}, // 9
-		{"+", "<b:2>"}, // 10
-		{"+", "<c:2>"}, // 11
-		{"-", "<b:2>"}, // 12
-		{"+", "<c:2>"}, // 13
-		{"+", "."},     // 14
-		{"-", "<c:2>"}, // 14
-	}
-	for i, c := range testCases {
-		switch c.dir {
-		case "+":
-			iter.NextUserKey()
-		case "-":
-			iter.PrevUserKey()
-		default:
-			t.Fatalf("unexpected direction: %q", c.dir)
-		}
-		var got string
-		if !iter.Valid() {
-			got = "."
-		} else if (iter.Key().SeqNum() & db.InternalKeySeqNumBatch) == 0 {
-			got = fmt.Sprintf("<%s:bad-seq-num>", iter.Key().UserKey)
-		} else {
-			got = fmt.Sprintf("<%s:%s>", iter.Key().UserKey, iter.Value())
-		}
-		if got != c.expected {
-			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
-		}
-	}
+		return ""
+	})
 }
 
 func BenchmarkBatchSet(b *testing.B) {
