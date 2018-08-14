@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/arenaskl"
+	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 )
 
@@ -200,116 +201,31 @@ func TestMemTable1000Entries(t *testing.T) {
 	}
 }
 
-func TestMemTableNextPrev(t *testing.T) {
-	m := newMemTable(nil)
-	for _, key := range []string{"a.SET.2", "a.SET.1", "b.SET.2", "b.SET.1", "c.SET.2", "c.SET.1"} {
-		if err := m.set(db.ParseInternalKey(key), nil); err != nil {
-			t.Fatal(err)
-		}
-	}
-	iter := m.NewIter(nil)
-	iter.First()
+func TestMemTableIter(t *testing.T) {
+	var mem *memTable
+	datadriven.RunTest(t, "testdata/internal_iter", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			mem = newMemTable(nil)
+			for _, key := range strings.Split(d.Input, "\n") {
+				j := strings.Index(key, ":")
+				if err := mem.set(db.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return ""
 
-	// These test cases are shared with TestMergingIterNextPrev.
-	testCases := []struct {
-		dir      string
-		expected string
-	}{
-		{"+", "<a:1>"}, // 0
-		{"+", "<b:2>"}, // 1
-		{"-", "<b:1>"}, // 2
-		{"-", "<a:2>"}, // 3
-		{"-", "<a:1>"}, // 4
-		{"-", "."},     // 5
-		{"+", "<a:2>"}, // 6
-		{"+", "<a:1>"}, // 7
-		{"+", "<b:2>"}, // 8
-		{"+", "<b:1>"}, // 9
-		{"+", "<c:2>"}, // 10
-		{"+", "<c:1>"}, // 11
-		{"-", "<b:2>"}, // 12
-		{"-", "<b:1>"}, // 13
-		{"+", "<c:2>"}, // 14
-		{"-", "<c:1>"}, // 15
-		{"-", "<b:2>"}, // 16
-		{"+", "<b:1>"}, // 17
-		{"+", "<c:2>"}, // 18
-		{"+", "<c:1>"}, // 19
-		{"+", "."},     // 20
-		{"-", "<c:2>"}, // 21
-	}
-	for i, c := range testCases {
-		switch c.dir {
-		case "+":
-			iter.Next()
-		case "-":
-			iter.Prev()
+		case "iter":
+			iter := mem.NewIter(nil)
+			defer iter.Close()
+			return runInternalIterCmd(d, iter)
+
 		default:
-			t.Fatalf("unexpected direction: %q", c.dir)
+			t.Fatalf("unknown command: %s", d.Cmd)
 		}
-		var got string
-		if !iter.Valid() {
-			got = "."
-		} else {
-			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-		}
-		if got != c.expected {
-			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
-		}
-	}
-}
 
-func TestMemTableNextPrevUserKey(t *testing.T) {
-	m := newMemTable(nil)
-	for _, key := range []string{"a.SET.2", "a.SET.1", "b.SET.2", "b.SET.1", "c.SET.2", "c.SET.1"} {
-		if err := m.set(db.ParseInternalKey(key), nil); err != nil {
-			t.Fatal(err)
-		}
-	}
-	iter := m.NewIter(nil)
-	iter.First()
-
-	// These test cases are shared with TestMergingIterNextPrevUserKey.
-	testCases := []struct {
-		dir      string
-		expected string
-	}{
-		{"+", "<b:2>"}, // 0
-		{"-", "<a:2>"}, // 1
-		{"-", "."},     // 2
-		{"+", "<a:2>"}, // 3
-		{"+", "<b:2>"}, // 4
-		{"+", "<c:2>"}, // 5
-		{"+", "."},     // 6
-		{"-", "<c:2>"}, // 7
-		{"-", "<b:2>"}, // 8
-		{"-", "<a:2>"}, // 9
-		{"+", "<b:2>"}, // 10
-		{"+", "<c:2>"}, // 11
-		{"-", "<b:2>"}, // 12
-		{"+", "<c:2>"}, // 13
-		{"+", "."},     // 14
-		{"-", "<c:2>"}, // 14
-	}
-	for i, c := range testCases {
-		switch c.dir {
-		case "+":
-			iter.NextUserKey()
-		case "-":
-			iter.PrevUserKey()
-		default:
-			t.Fatalf("unexpected direction: %q", c.dir)
-		}
-		var got string
-		if !iter.Valid() {
-			got = "."
-		} else {
-			got = fmt.Sprintf("<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-		}
-		if got != c.expected {
-			t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
-		}
-	}
+		return ""
+	})
 }
 
 func buildMemTable(b *testing.B) (*memTable, [][]byte) {
