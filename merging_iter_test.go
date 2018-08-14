@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
+	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
@@ -111,158 +112,63 @@ func TestMergingIterSeek(t *testing.T) {
 	}
 }
 
-func TestMergingIterNextPrev(t *testing.T) {
+func TestMergingIter2(t *testing.T) {
 	// The data is the same in each of these cases, but divided up amongst the
-	// iterators differently.
-	iterCases := [][]db.InternalIterator{
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2", "a:1", "b:2", "b:1", "c:2", "c:1"),
+	// iterators differently. This data must match the definition in
+	// testdata/internal_iter.
+	iterCases := [][]string{
+		[]string{
+			"a.SET.2:2 a.SET.1:1 b.SET.2:2 b.SET.1:1 c.SET.2:2 c.SET.1:1",
 		},
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2", "b:2", "c:2"),
-			newFakeIterator(nil, "a:1", "b:1", "c:1"),
+		[]string{
+			"a.SET.2:2 b.SET.2:2 c.SET.2:2",
+			"a.SET.1:1 b.SET.1:1 c.SET.1:1",
 		},
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2", "b:2"),
-			newFakeIterator(nil, "a:1", "b:1"),
-			newFakeIterator(nil, "c:2", "c:1"),
+		[]string{
+			"a.SET.2:2 b.SET.2:2",
+			"a.SET.1:1 b.SET.1:1",
+			"c.SET.2:2 c.SET.1:1",
 		},
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2"),
-			newFakeIterator(nil, "a:1"),
-			newFakeIterator(nil, "b:2"),
-			newFakeIterator(nil, "b:1"),
-			newFakeIterator(nil, "c:2"),
-			newFakeIterator(nil, "c:1"),
+		[]string{
+			"a.SET.2:2",
+			"a.SET.1:1",
+			"b.SET.2:2",
+			"b.SET.1:1",
+			"c.SET.2:2",
+			"c.SET.1:1",
 		},
 	}
-	for _, iters := range iterCases {
+
+	for _, c := range iterCases {
 		t.Run("", func(t *testing.T) {
-			m := newMergingIter(db.DefaultComparer.Compare, iters...)
-			m.First()
+			datadriven.RunTest(t, "testdata/internal_iter", func(d *datadriven.TestData) string {
+				switch d.Cmd {
+				case "define":
+					// Ignore. We've defined the iterator data above.
+					return ""
 
-			// These test cases are shared with TestMemTableIterNextPrev.
-			testCases := []struct {
-				dir      string
-				expected string
-			}{
-				{"+", "<a:1>"}, // 0
-				{"+", "<b:2>"}, // 1
-				{"-", "<b:1>"}, // 2
-				{"-", "<a:2>"}, // 3
-				{"-", "<a:1>"}, // 4
-				{"-", "."},     // 5
-				{"+", "<a:2>"}, // 6
-				{"+", "<a:1>"}, // 7
-				{"+", "<b:2>"}, // 8
-				{"+", "<b:1>"}, // 9
-				{"+", "<c:2>"}, // 10
-				{"+", "<c:1>"}, // 11
-				{"-", "<b:2>"}, // 12
-				{"-", "<b:1>"}, // 13
-				{"+", "<c:2>"}, // 14
-				{"-", "<c:1>"}, // 15
-				{"-", "<b:2>"}, // 16
-				{"+", "<b:1>"}, // 17
-				{"+", "<c:2>"}, // 18
-				{"+", "<c:1>"}, // 19
-				{"+", "."},     // 20
-				{"-", "<c:2>"}, // 21
-			}
-			for i, c := range testCases {
-				switch c.dir {
-				case "+":
-					m.Next()
-				case "-":
-					m.Prev()
+				case "iter":
+					iters := make([]db.InternalIterator, len(c))
+					for i := range c {
+						f := &fakeIter{}
+						iters[i] = f
+						for _, key := range strings.Fields(c[i]) {
+							j := strings.Index(key, ":")
+							f.keys = append(f.keys, db.ParseInternalKey(key[:j]))
+							f.vals = append(f.vals, []byte(key[j+1:]))
+						}
+					}
+
+					iter := newMergingIter(db.DefaultComparer.Compare, iters...)
+					defer iter.Close()
+					return runInternalIterCmd(d, iter)
+
 				default:
-					t.Fatalf("unexpected direction: %q", c.dir)
+					t.Fatalf("unknown command: %s", d.Cmd)
 				}
-				var got string
-				if !m.Valid() {
-					got = "."
-				} else {
-					got = fmt.Sprintf("<%s:%d>", m.Key().UserKey, m.Key().SeqNum())
-				}
-				if got != c.expected {
-					t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
-				}
-			}
-		})
-	}
-}
 
-func TestMergingIterNextPrevUserKey(t *testing.T) {
-	// The data is the same in each of these cases, but divided up amongst the
-	// iterators differently.
-	iterCases := [][]db.InternalIterator{
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2", "a:1", "b:2", "b:1", "c:2", "c:1"),
-		},
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2", "b:2", "c:2"),
-			newFakeIterator(nil, "a:1", "b:1", "c:1"),
-		},
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2", "b:2"),
-			newFakeIterator(nil, "a:1", "b:1"),
-			newFakeIterator(nil, "c:2", "c:1"),
-		},
-		[]db.InternalIterator{
-			newFakeIterator(nil, "a:2"),
-			newFakeIterator(nil, "a:1"),
-			newFakeIterator(nil, "b:2"),
-			newFakeIterator(nil, "b:1"),
-			newFakeIterator(nil, "c:2"),
-			newFakeIterator(nil, "c:1"),
-		},
-	}
-	for _, iters := range iterCases {
-		t.Run("", func(t *testing.T) {
-			m := newMergingIter(db.DefaultComparer.Compare, iters...)
-			m.First()
-
-			// These test cases are shared with TestMemTableIterNextPrevUserKey.
-			testCases := []struct {
-				dir      string
-				expected string
-			}{
-				{"+", "<b:2>"}, // 0
-				{"-", "<a:2>"}, // 1
-				{"-", "."},     // 2
-				{"+", "<a:2>"}, // 3
-				{"+", "<b:2>"}, // 4
-				{"+", "<c:2>"}, // 5
-				{"+", "."},     // 6
-				{"-", "<c:2>"}, // 7
-				{"-", "<b:2>"}, // 8
-				{"-", "<a:2>"}, // 9
-				{"+", "<b:2>"}, // 10
-				{"+", "<c:2>"}, // 11
-				{"-", "<b:2>"}, // 12
-				{"+", "<c:2>"}, // 13
-				{"+", "."},     // 14
-				{"-", "<c:2>"}, // 14
-			}
-			for i, c := range testCases {
-				switch c.dir {
-				case "+":
-					m.NextUserKey()
-				case "-":
-					m.PrevUserKey()
-				default:
-					t.Fatalf("unexpected direction: %q", c.dir)
-				}
-				var got string
-				if !m.Valid() {
-					got = "."
-				} else {
-					got = fmt.Sprintf("<%s:%d>", m.Key().UserKey, m.Key().SeqNum())
-				}
-				if got != c.expected {
-					t.Fatalf("%d: got  %q\nwant %q", i, got, c.expected)
-				}
-			}
+				return ""
+			})
 		})
 	}
 }
