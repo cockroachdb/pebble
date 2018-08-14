@@ -122,7 +122,7 @@ func TestBatchGet(t *testing.T) {
 		} else {
 			b.Set(c.key, c.value, nil)
 		}
-		v, err := b.Get(c.key, nil)
+		v, err := b.Get(c.key)
 		if err != nil {
 			t.Fatalf("%d: %s: %v", i, c.key, err)
 		}

@@ -37,12 +37,12 @@ type Reader interface {
 	//
 	// The caller should not modify the contents of the returned slice, but
 	// it is safe to modify the contents of the argument after Get returns.
-	Get(key []byte, o *db.ReadOptions) (value []byte, err error)
+	Get(key []byte) (value []byte, err error)
 
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to SeekGE,
 	// SeekLT, First or Last.
-	NewIter(o *db.ReadOptions) db.Iterator
+	NewIter(o *db.IterOptions) db.Iterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader
 	// or io.Writer, depending on how the DB was created.
@@ -156,7 +156,7 @@ var _ Writer = (*DB)(nil)
 //
 // The caller should not modify the contents of the returned slice, but
 // it is safe to modify the contents of the argument after Get returns.
-func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
+func (d *DB) Get(key []byte) ([]byte, error) {
 	d.mu.Lock()
 	snapshot := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 	// Grab and reference the current version to prevent its underlying files
@@ -173,7 +173,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 	// Look in the memtables before going to the on-disk current version.
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
-		iter := mem.NewIter(opts)
+		iter := mem.NewIter(nil)
 		iter.SeekGE(key)
 		value, conclusive, err := internalGet(iter, d.cmp, ikey)
 		if conclusive {
@@ -183,7 +183,7 @@ func (d *DB) Get(key []byte, opts *db.ReadOptions) ([]byte, error) {
 
 	// TODO(peter): update stats, maybe schedule compaction.
 
-	return current.get(ikey, d.newIter, d.cmp, opts)
+	return current.get(ikey, d.newIter, d.cmp, nil)
 }
 
 // Set sets the value for the given key. It overwrites any previous value
@@ -283,7 +283,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
 // level.
-func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) db.Iterator {
+func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.IterOptions) db.Iterator {
 	d.mu.Lock()
 	seqNum := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 	// TODO(peter): The sstables in current are guaranteed to have sequence
@@ -359,7 +359,7 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.ReadOptions) d
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
-func (d *DB) NewIter(o *db.ReadOptions) db.Iterator {
+func (d *DB) NewIter(o *db.IterOptions) db.Iterator {
 	return d.newIterInternal(nil, o)
 }
 

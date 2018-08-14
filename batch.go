@@ -188,7 +188,7 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 //
 // The caller should not modify the contents of the returned slice, but
 // it is safe to modify the contents of the argument after Get returns.
-func (b *Batch) Get(key []byte, o *db.ReadOptions) (value []byte, err error) {
+func (b *Batch) Get(key []byte) (value []byte, err error) {
 	if b.index == nil {
 		return nil, ErrNotIndexed
 	}
@@ -319,7 +319,7 @@ func (b *Batch) Repr() []byte {
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE, SeekLT,
 // First or Last. Only indexed batches support iterators.
-func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
+func (b *Batch) NewIter(o *db.IterOptions) db.Iterator {
 	if b.index == nil {
 		return &dbIter{err: ErrNotIndexed}
 	}
@@ -328,7 +328,7 @@ func (b *Batch) NewIter(o *db.ReadOptions) db.Iterator {
 
 // newInternalIter creates a new InternalIterator that iterates over the
 // contents of the batch.
-func (b *Batch) newInternalIter(o *db.ReadOptions) db.InternalIterator {
+func (b *Batch) newInternalIter(o *db.IterOptions) db.InternalIterator {
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}

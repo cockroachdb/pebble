@@ -267,7 +267,7 @@ type tableNewIter func(meta *fileMetadata) (db.InternalIterator, error)
 // If ikey0's kind is delete, the db.ErrNotFound error is returned.
 // If there is no such ikey0, the db.ErrNotFound error is returned.
 func (v *version) get(
-	ikey db.InternalKey, newIter tableNewIter, cmp db.Compare, ro *db.ReadOptions,
+	ikey db.InternalKey, newIter tableNewIter, cmp db.Compare, ro *db.IterOptions,
 ) ([]byte, error) {
 	ukey := ikey.UserKey
 	// Iterate through v's tables, calling internalGet if the table's bounds

@@ -201,7 +201,7 @@ func TestBasicReads(t *testing.T) {
 			continue
 		}
 		for key, want := range tc.wantMap {
-			got, err := d.Get([]byte(key), nil)
+			got, err := d.Get([]byte(key))
 			if err != nil && err != db.ErrNotFound {
 				t.Errorf("%s: Get(%q) failed: %v", tc.dirname, key, err)
 				continue
@@ -335,7 +335,7 @@ func TestBasicWrites(t *testing.T) {
 
 		fail := false
 		for _, name := range names {
-			g, err := d.Get([]byte(name), nil)
+			g, err := d.Get([]byte(name))
 			if err != nil && err != db.ErrNotFound {
 				t.Errorf("#%d %s: Get(%q): %v", i, tc, name, err)
 				fail = true
@@ -396,7 +396,7 @@ func TestRandomWrites(t *testing.T) {
 		}
 		for k := range keys {
 			got := -1
-			if v, err := d.Get(keys[k], nil); err != nil {
+			if v, err := d.Get(keys[k]); err != nil {
 				if err != db.ErrNotFound {
 					t.Fatalf("Get: %v", err)
 				}

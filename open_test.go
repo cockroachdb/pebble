@@ -124,7 +124,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 				continue
 			}
 			if length >= 0 {
-				got, err = d1.Get([]byte("key"), nil)
+				got, err = d1.Get([]byte("key"))
 				if err != nil {
 					t.Errorf("sfe=%t, length=%d: Get: %v",
 						startFromEmpty, length, err)

@@ -307,16 +307,31 @@ func (o *Options) Level(level int) LevelOptions {
 	return l
 }
 
-// ReadOptions hold the optional per-query parameters for Get and Find
-// operations.
+// IterOptions hold the optional per-query parameters for NewIter.
 //
-// Like Options, a nil *ReadOptions is valid and means to use the default
+// Like Options, a nil *IterOptions is valid and means to use the default
 // values.
-type ReadOptions struct {
-	// TODO(peter): implement and document
+type IterOptions struct {
+	// LowerBound specifies the smallest key (inclusive) that the iterator will
+	// return during iteration. If the iterator is seeked or iterated past this
+	// boundary the iterator will return Valid()==false. Setting LowerBound
+	// effectively truncates the key space visible to the iterator.
+	//
+	// TODO(peter): unimplemented.
 	LowerBound []byte
+	// UpperBound specifies the largest key (exclusive) that the iterator will
+	// return during iteration. If the iterator is seeked or iterated past this
+	// boundary the iterator will return Valid()==false. Setting UpperBound
+	// effectively truncates the key space visible to the iterator.
+	//
+	// TODO(peter): unimplemented.
 	UpperBound []byte
-	// TableFilter func(_ TableProperties) bool
+	// TableFilter can be used to filter the tables that are scanned during
+	// iteration based on the user properties. Return true to scan the table and
+	// false to skip scanning.
+	//
+	// TODO(peter): unimplemented.
+	TableFilter func(userProps map[string]string) bool
 }
 
 // WriteOptions hold the optional per-query parameters for Set and Delete
