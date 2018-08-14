@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -13,106 +12,58 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
+	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
 
 func TestLevelIter(t *testing.T) {
-	testCases := []struct {
-		key          string
-		files        string
-		expectedNext string
-		expectedPrev string
-	}{
-		{
-			"a",
-			"a:1,b:2 c:3,d:4",
-			"<a:1><b:2><c:3><d:4>.",
-			".",
-		},
-		{
-			"a",
-			"a:1,b:2 c:3,d:4",
-			"<a:1><b:2><c:3><d:4>.",
-			".",
-		},
-		{
-			"b",
-			"a:1,b:2 c:3,d:4",
-			"<b:2><c:3><d:4>.",
-			"<a:1>.",
-		},
-		{
-			"c",
-			"a:1,b:2 c:3,d:4",
-			"<c:3><d:4>.",
-			"<b:2><a:1>.",
-		},
-		{
-			"d",
-			"a:1,b:2 c:3,d:4",
-			"<d:4>.",
-			"<c:3><b:2><a:1>.",
-		},
-		{
-			"e",
-			"a:1,b:2 c:3,d:4",
-			".",
-			"<d:4><c:3><b:2><a:1>.",
-		},
-	}
-	for _, c := range testCases {
-		t.Run("", func(t *testing.T) {
-			var files []fileMetadata
-			var fileData [][]string
+	var iters []*fakeIter
+	var files []fileMetadata
 
-			for _, data := range strings.Split(c.files, " ") {
-				keys := strings.Split(data, ",")
+	newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+		f := *iters[meta.fileNum]
+		return &f, nil
+	}
+
+	datadriven.RunTest(t, "testdata/level_iter", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			iters = nil
+			files = nil
+
+			for _, line := range strings.Split(d.Input, "\n") {
+				f := &fakeIter{}
+				for _, key := range strings.Fields(line) {
+					j := strings.Index(key, ":")
+					f.keys = append(f.keys, db.ParseInternalKey(key[:j]))
+					f.vals = append(f.vals, []byte(key[j+1:]))
+				}
+				iters = append(iters, f)
+
 				meta := fileMetadata{
 					fileNum: uint64(len(files)),
 				}
-				meta.smallest = fakeIkey(keys[0])
-				meta.largest = fakeIkey(keys[len(keys)-1])
+				meta.smallest = f.keys[0]
+				meta.largest = f.keys[len(f.keys)-1]
 				files = append(files, meta)
-				fileData = append(fileData, keys)
 			}
 
-			newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
-				return newFakeIterator(nil, fileData[meta.fileNum]...), nil
-			}
+			return ""
 
+		case "iter":
 			iter := &levelIter{}
 			iter.init(db.DefaultComparer.Compare, newIter, files)
-			key := []byte(c.key)
+			defer iter.Close()
+			return runInternalIterCmd(d, iter)
 
-			var b bytes.Buffer
-			for iter.SeekGE(key); iter.Valid(); iter.Next() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-			}
-			if err := iter.Error(); err != nil {
-				fmt.Fprintf(&b, "err=%v", err)
-			} else {
-				b.WriteByte('.')
-			}
-			if got := b.String(); got != c.expectedNext {
-				t.Errorf("got  %q\nwant %q", got, c.expectedNext)
-			}
+		default:
+			t.Fatalf("unknown command: %s", d.Cmd)
+		}
 
-			b.Reset()
-			for iter.SeekLT(key); iter.Valid(); iter.Prev() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-			}
-			if err := iter.Close(); err != nil {
-				fmt.Fprintf(&b, "err=%v", err)
-			} else {
-				b.WriteByte('.')
-			}
-			if got := b.String(); got != c.expectedPrev {
-				t.Errorf("got  %q\nwant %q", got, c.expectedPrev)
-			}
-		})
-	}
+		return ""
+	})
 }
 
 func buildLevelIterTables(
