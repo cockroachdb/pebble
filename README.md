@@ -38,6 +38,7 @@ Pebble:
 * Plain table format
 * Single delete
 * Snapshots
+* SSTable ingest-behind
 * Transactions
 * Universal compaction style
 
