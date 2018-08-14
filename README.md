@@ -14,11 +14,11 @@ needed by CockroachDB:
 
 * Block-based tables
 * Indexed batches
-* [[TODO](https://github.com/petermattis/pebble/issues/6)] Iterator options (prefix, lower/upper bound)
+* [[TODO]](https://github.com/petermattis/pebble/issues/6) Iterator options (prefix, lower/upper bound, table filter)
 * Level-based compaction
 * Merge operator
-* [[TODO](https://github.com/petermattis/pebble/issues/5)] Prefix bloom filters
-* [[TODO](https://github.com/petermattis/pebble/issues/1)] Range deletion tombstones
+* [[TODO]](https://github.com/petermattis/pebble/issues/5) Prefix bloom filters
+* [[TODO]](https://github.com/petermattis/pebble/issues/1) Range deletion tombstones
 * Reverse iteration
 * SSTable ingestion
 * Table-level bloom filters
