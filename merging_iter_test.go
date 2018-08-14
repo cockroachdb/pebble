@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -37,82 +36,38 @@ func TestMergingIter(t *testing.T) {
 }
 
 func TestMergingIterSeek(t *testing.T) {
-	testCases := []struct {
-		key          string
-		iters        string
-		expectedNext string
-		expectedPrev string
-	}{
-		{
-			"a0",
-			"a0:0;a1:1;a2:2",
-			"<a0:0><a1:1><a2:2>.",
-			".",
-		},
-		{
-			"a1",
-			"a0:0;a1:1;a2:2",
-			"<a1:1><a2:2>.",
-			"<a0:0>.",
-		},
-		{
-			"a2",
-			"a0:0;a1:1;a2:2",
-			"<a2:2>.",
-			"<a1:1><a0:0>.",
-		},
-		{
-			"a3",
-			"a0:0;a1:1;a2:2",
-			".",
-			"<a2:2><a1:1><a0:0>.",
-		},
-		{
-			"a2",
-			"a0:0,b3:3;a1:1;a2:2",
-			"<a2:2><b3:3>.",
-			"<a1:1><a0:0>.",
-		},
-	}
-	for _, tc := range testCases {
-		t.Run("", func(t *testing.T) {
+	var def string
+	datadriven.RunTest(t, "testdata/merging_iter_seek", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			def = d.Input
+			return ""
+
+		case "iter":
 			var iters []db.InternalIterator
-			for _, s := range strings.Split(tc.iters, ";") {
-				iters = append(iters, newFakeIterator(nil, strings.Split(s, ",")...))
+			for _, line := range strings.Split(def, "\n") {
+				f := &fakeIter{}
+				for _, key := range strings.Fields(line) {
+					j := strings.Index(key, ":")
+					f.keys = append(f.keys, db.ParseInternalKey(key[:j]))
+					f.vals = append(f.vals, []byte(key[j+1:]))
+				}
+				iters = append(iters, f)
 			}
 
-			var b bytes.Buffer
 			iter := newMergingIter(db.DefaultComparer.Compare, iters...)
-			key := []byte(tc.key)
-			for iter.SeekGE(key); iter.Valid(); iter.Next() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-			}
-			if err := iter.Error(); err != nil {
-				fmt.Fprintf(&b, "err=%v", err)
-			} else {
-				b.WriteByte('.')
-			}
-			if got := b.String(); got != tc.expectedNext {
-				t.Errorf("got  %q\nwant %q", got, tc.expectedNext)
-			}
+			defer iter.Close()
+			return runInternalIterCmd(d, iter)
 
-			b.Reset()
-			for iter.SeekLT(key); iter.Valid(); iter.Prev() {
-				fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-			}
-			if err := iter.Close(); err != nil {
-				fmt.Fprintf(&b, "err=%v", err)
-			} else {
-				b.WriteByte('.')
-			}
-			if got := b.String(); got != tc.expectedPrev {
-				t.Errorf("got  %q\nwant %q", got, tc.expectedPrev)
-			}
-		})
-	}
+		default:
+			t.Fatalf("unknown command: %s", d.Cmd)
+		}
+
+		return ""
+	})
 }
 
-func TestMergingIter2(t *testing.T) {
+func TestMergingIterNextPrev(t *testing.T) {
 	// The data is the same in each of these cases, but divided up amongst the
 	// iterators differently. This data must match the definition in
 	// testdata/internal_iter.

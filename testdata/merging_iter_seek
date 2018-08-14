@@ -1,0 +1,93 @@
+define
+a0.SET.0:0
+a1.SET.1:1
+a2.SET.2:2
+----
+
+iter
+seek-ge a0
+next
+next
+next
+----
+a0:0
+a1:1
+a2:2
+.
+
+iter
+seek-ge a1
+next
+next
+----
+a1:1
+a2:2
+.
+
+iter
+seek-ge a2
+next
+----
+a2:2
+.
+
+iter
+seek-ge a3
+----
+.
+
+iter
+seek-lt a0
+----
+.
+
+iter
+seek-lt a1
+prev
+----
+a0:0
+.
+
+iter
+seek-lt a2
+prev
+prev
+----
+a1:1
+a0:0
+.
+
+iter
+seek-lt a3
+prev
+prev
+prev
+----
+a2:2
+a1:1
+a0:0
+.
+
+define
+a0.SET.0:0 b3.SET.3:3
+a1.SET.1:1
+a2.SET.2:2
+----
+
+iter
+seek-ge a2
+next
+next
+----
+a2:2
+b3:3
+.
+
+iter
+seek-lt a2
+prev
+prev
+----
+a1:1
+a0:0
+.
