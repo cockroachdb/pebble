@@ -202,8 +202,8 @@ func TestMemTable1000Entries(t *testing.T) {
 
 func TestMemTableNextPrev(t *testing.T) {
 	m := newMemTable(nil)
-	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
-		if err := m.set(fakeIkey(key), nil); err != nil {
+	for _, key := range []string{"a.SET.2", "a.SET.1", "b.SET.2", "b.SET.1", "c.SET.2", "c.SET.1"} {
+		if err := m.set(db.ParseInternalKey(key), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -261,8 +261,8 @@ func TestMemTableNextPrev(t *testing.T) {
 
 func TestMemTableNextPrevUserKey(t *testing.T) {
 	m := newMemTable(nil)
-	for _, key := range []string{"a:2", "a:1", "b:2", "b:1", "c:2", "c:1"} {
-		if err := m.set(fakeIkey(key), nil); err != nil {
+	for _, key := range []string{"a.SET.2", "a.SET.1", "b.SET.2", "b.SET.1", "c.SET.2", "c.SET.1"} {
+		if err := m.set(db.ParseInternalKey(key), nil); err != nil {
 			t.Fatal(err)
 		}
 	}

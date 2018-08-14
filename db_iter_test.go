@@ -37,7 +37,7 @@ func TestDBIter(t *testing.T) {
 			vals = vals[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				keys = append(keys, makeIkey(key[:j]))
+				keys = append(keys, db.ParseInternalKey(key[:j]))
 				vals = append(vals, []byte(key[j+1:]))
 			}
 			return ""

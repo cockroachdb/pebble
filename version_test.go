@@ -7,7 +7,6 @@ package pebble
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -78,32 +77,6 @@ func TestIkeyRange(t *testing.T) {
 			t.Errorf("second []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got1, tc.want)
 		}
 	}
-}
-
-var makeIkeyKinds = map[string]db.InternalKeyKind{
-	"DEL":   db.InternalKeyKindDelete,
-	"MAX":   db.InternalKeyKindMax,
-	"SET":   db.InternalKeyKindSet,
-	"MERGE": db.InternalKeyKindMerge,
-}
-
-// makeIkey converts a string like "foo.DEL.123" into an internal key
-// consisting of a user key "foo", kind delete, and sequence number 123. If the
-// sequence number is preceded with "b" then a batch sequence number is used
-// (i.e. the batch seq-num bit is set).
-func makeIkey(s string) db.InternalKey {
-	x := strings.Split(s, ".")
-	ukey := x[0]
-	kind := makeIkeyKinds[x[1]]
-	j := 0
-	if x[2][0] == 'b' {
-		j = 1
-	}
-	seqNum, _ := strconv.ParseUint(x[2][j:], 10, 64)
-	if x[2][0] == 'b' {
-		seqNum |= db.InternalKeySeqNumBatch
-	}
-	return db.MakeInternalKey([]byte(ukey), seqNum, kind)
 }
 
 func TestVersion(t *testing.T) {
@@ -537,7 +510,7 @@ func TestVersion(t *testing.T) {
 			var smallest, largest db.InternalKey
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
-				ikey := makeIkey(s[0])
+				ikey := db.ParseInternalKey(s[0])
 				err := d.set(ikey, []byte(s[1]))
 				if err != nil {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
@@ -574,7 +547,7 @@ func TestVersion(t *testing.T) {
 
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
-			ikey := makeIkey(s[0])
+			ikey := db.ParseInternalKey(s[0])
 			value, err := v.get(ikey, newIter, cmp, nil)
 			got, want := "", s[1]
 			if err != nil {
@@ -597,81 +570,81 @@ func TestOverlaps(t *testing.T) {
 	m00 := fileMetadata{
 		fileNum:  700,
 		size:     1,
-		smallest: makeIkey("b.SET.7008"),
-		largest:  makeIkey("e.SET.7009"),
+		smallest: db.ParseInternalKey("b.SET.7008"),
+		largest:  db.ParseInternalKey("e.SET.7009"),
 	}
 	m01 := fileMetadata{
 		fileNum:  701,
 		size:     1,
-		smallest: makeIkey("c.SET.7018"),
-		largest:  makeIkey("f.SET.7019"),
+		smallest: db.ParseInternalKey("c.SET.7018"),
+		largest:  db.ParseInternalKey("f.SET.7019"),
 	}
 	m02 := fileMetadata{
 		fileNum:  702,
 		size:     1,
-		smallest: makeIkey("f.SET.7028"),
-		largest:  makeIkey("g.SET.7029"),
+		smallest: db.ParseInternalKey("f.SET.7028"),
+		largest:  db.ParseInternalKey("g.SET.7029"),
 	}
 	m03 := fileMetadata{
 		fileNum:  703,
 		size:     1,
-		smallest: makeIkey("x.SET.7038"),
-		largest:  makeIkey("y.SET.7039"),
+		smallest: db.ParseInternalKey("x.SET.7038"),
+		largest:  db.ParseInternalKey("y.SET.7039"),
 	}
 	m04 := fileMetadata{
 		fileNum:  704,
 		size:     1,
-		smallest: makeIkey("n.SET.7048"),
-		largest:  makeIkey("p.SET.7049"),
+		smallest: db.ParseInternalKey("n.SET.7048"),
+		largest:  db.ParseInternalKey("p.SET.7049"),
 	}
 	m05 := fileMetadata{
 		fileNum:  705,
 		size:     1,
-		smallest: makeIkey("p.SET.7058"),
-		largest:  makeIkey("p.SET.7059"),
+		smallest: db.ParseInternalKey("p.SET.7058"),
+		largest:  db.ParseInternalKey("p.SET.7059"),
 	}
 	m06 := fileMetadata{
 		fileNum:  706,
 		size:     1,
-		smallest: makeIkey("p.SET.7068"),
-		largest:  makeIkey("u.SET.7069"),
+		smallest: db.ParseInternalKey("p.SET.7068"),
+		largest:  db.ParseInternalKey("u.SET.7069"),
 	}
 	m07 := fileMetadata{
 		fileNum:  707,
 		size:     1,
-		smallest: makeIkey("r.SET.7078"),
-		largest:  makeIkey("s.SET.7079"),
+		smallest: db.ParseInternalKey("r.SET.7078"),
+		largest:  db.ParseInternalKey("s.SET.7079"),
 	}
 
 	m10 := fileMetadata{
 		fileNum:  710,
 		size:     1,
-		smallest: makeIkey("d.SET.7108"),
-		largest:  makeIkey("g.SET.7109"),
+		smallest: db.ParseInternalKey("d.SET.7108"),
+		largest:  db.ParseInternalKey("g.SET.7109"),
 	}
 	m11 := fileMetadata{
 		fileNum:  711,
 		size:     1,
-		smallest: makeIkey("g.SET.7118"),
-		largest:  makeIkey("j.SET.7119"),
+		smallest: db.ParseInternalKey("g.SET.7118"),
+		largest:  db.ParseInternalKey("j.SET.7119"),
 	}
 	m12 := fileMetadata{
 		fileNum:  712,
 		size:     1,
-		smallest: makeIkey("n.SET.7128"),
-		largest:  makeIkey("p.SET.7129"),
+		smallest: db.ParseInternalKey("n.SET.7128"),
+		largest:  db.ParseInternalKey("p.SET.7129"),
 	}
 	m13 := fileMetadata{
 		fileNum:  713,
 		size:     1,
-		smallest: makeIkey("p.SET.7138"),
-		largest:  makeIkey("p.SET.7139"),
+		smallest: db.ParseInternalKey("p.SET.7138"),
+		largest:  db.ParseInternalKey("p.SET.7139"),
 	}
 	m14 := fileMetadata{
 		fileNum:  714,
 		size:     1,
-		smallest: makeIkey("p.SET.7148"),
-		largest:  makeIkey("u.SET.7149"),
+		smallest: db.ParseInternalKey("p.SET.7148"),
+		largest:  db.ParseInternalKey("u.SET.7149"),
 	}
 
 	v := version{

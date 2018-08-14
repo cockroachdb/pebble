@@ -136,8 +136,8 @@ func TestBatchGet(t *testing.T) {
 
 func TestBatchIterNextPrev(t *testing.T) {
 	b := newIndexedBatch(nil, db.DefaultComparer)
-	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
-		ikey := fakeIkey(key)
+	for _, key := range []string{"a.SET.1", "a.SET.2", "b.SET.1", "b.SET.2", "c.SET.1", "c.SET.2"} {
+		ikey := db.ParseInternalKey(key)
 		value := []byte(fmt.Sprint(ikey.SeqNum()))
 		b.Set(ikey.UserKey, value, nil)
 	}
@@ -197,8 +197,8 @@ func TestBatchIterNextPrev(t *testing.T) {
 
 func TestBatchIterNextPrevUserKey(t *testing.T) {
 	b := newIndexedBatch(nil, db.DefaultComparer)
-	for _, key := range []string{"a:1", "a:2", "b:1", "b:2", "c:1", "c:2"} {
-		ikey := fakeIkey(key)
+	for _, key := range []string{"a.SET.1", "a.SET.2", "b.SET.1", "b.SET.2", "c.SET.1", "c.SET.2"} {
+		ikey := db.ParseInternalKey(key)
 		value := []byte(fmt.Sprint(ikey.SeqNum()))
 		b.Set(ikey.UserKey, value, nil)
 	}

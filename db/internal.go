@@ -34,6 +34,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // InternalKeyKind enumerates the kind of key: a deletion tombstone, a set
@@ -112,6 +114,32 @@ func MakeSearchKey(userKey []byte) InternalKey {
 		UserKey: userKey,
 		Trailer: (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindMax),
 	}
+}
+
+var kindsMap = map[string]InternalKeyKind{
+	"DEL":      InternalKeyKindDelete,
+	"RANGEDEL": InternalKeyKindRangeDelete,
+	"SET":      InternalKeyKindSet,
+	"MERGE":    InternalKeyKindMerge,
+	"MAX":      InternalKeyKindMax,
+}
+
+// ParseInternalKey parses the string representation of an internal key. The
+// format is <user-key>.<kind>.<seq-num>. If the seq-num starts with a "b" it
+// is marked as a batch-seq-num (i.e. the InternalKeySeqNumBatch bit is set).
+func ParseInternalKey(s string) InternalKey {
+	x := strings.Split(s, ".")
+	ukey := x[0]
+	kind := kindsMap[x[1]]
+	j := 0
+	if x[2][0] == 'b' {
+		j = 1
+	}
+	seqNum, _ := strconv.ParseUint(x[2][j:], 10, 64)
+	if x[2][0] == 'b' {
+		seqNum |= InternalKeySeqNumBatch
+	}
+	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
 
 // DecodeInternalKey ...

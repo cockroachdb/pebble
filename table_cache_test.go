@@ -131,7 +131,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}
 		tw := sstable.NewWriter(f, nil, db.LevelOptions{})
-		ik := makeIkey(fmt.Sprintf("k.SET.%d", i))
+		ik := db.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
 			return nil, nil, fmt.Errorf("tw.Set: %v", err)
 		}

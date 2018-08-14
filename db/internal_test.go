@@ -5,8 +5,6 @@
 package db
 
 import (
-	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -116,20 +114,6 @@ func TestInternalKeyComparer(t *testing.T) {
 }
 
 func TestInternalKeySeparator(t *testing.T) {
-	var makeIkeyKinds = map[string]InternalKeyKind{
-		"DEL": InternalKeyKindDelete,
-		"MAX": InternalKeyKindMax,
-		"SET": InternalKeyKindSet,
-	}
-
-	makeIkey := func(s string) InternalKey {
-		x := strings.Split(s, ".")
-		ukey := x[0]
-		kind := makeIkeyKinds[x[1]]
-		seqNum, _ := strconv.ParseUint(x[2], 10, 64)
-		return MakeInternalKey([]byte(ukey), seqNum, kind)
-	}
-
 	testCases := []struct {
 		a        string
 		b        string
@@ -153,9 +137,9 @@ func TestInternalKeySeparator(t *testing.T) {
 	d := DefaultComparer
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
-			a := makeIkey(c.a)
-			b := makeIkey(c.b)
-			expected := makeIkey(c.expected)
+			a := ParseInternalKey(c.a)
+			b := ParseInternalKey(c.b)
+			expected := ParseInternalKey(c.expected)
 			result := a.Separator(d.Compare, d.Separator, nil, b)
 			if cmp := InternalCompare(d.Compare, expected, result); cmp != 0 {
 				t.Fatalf("expected %s, but found %s", expected, result)
