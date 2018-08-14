@@ -203,7 +203,7 @@ func TestMemTable1000Entries(t *testing.T) {
 
 func TestMemTableIter(t *testing.T) {
 	var mem *memTable
-	datadriven.RunTest(t, "testdata/internal_iter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			mem = newMemTable(nil)

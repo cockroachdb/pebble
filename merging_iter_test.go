@@ -141,7 +141,7 @@ func TestMergingIter2(t *testing.T) {
 
 	for _, c := range iterCases {
 		t.Run("", func(t *testing.T) {
-			datadriven.RunTest(t, "testdata/internal_iter", func(d *datadriven.TestData) string {
+			datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
 				switch d.Cmd {
 				case "define":
 					// Ignore. We've defined the iterator data above.

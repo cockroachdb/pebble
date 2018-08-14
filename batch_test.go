@@ -137,7 +137,7 @@ func TestBatchGet(t *testing.T) {
 
 func TestBatchIter(t *testing.T) {
 	var b *Batch
-	datadriven.RunTest(t, "testdata/internal_iter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			b = newIndexedBatch(nil, db.DefaultComparer)
