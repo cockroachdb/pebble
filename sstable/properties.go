@@ -47,7 +47,9 @@ func init() {
 	}
 }
 
-// Properties TODO(peter)
+// Properties holds the sstable property values. The properties are
+// automatically populated during sstable creation and load from the properties
+// meta block when an sstable is opened.
 type Properties struct {
 	// ID of column family for this SST file, corresponding to the CF identified
 	// by column_family_name.

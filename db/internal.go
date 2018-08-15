@@ -97,10 +97,12 @@ type InternalKey struct {
 	Trailer uint64
 }
 
-// InvalidInternalKey TODO(peter)
+// InvalidInternalKey is an invalid internal key for which Valid() will return
+// false.
 var InvalidInternalKey = MakeInternalKey(nil, 0, InternalKeyKindInvalid)
 
-// MakeInternalKey ...
+// MakeInternalKey constructs an internal key from a specified user key,
+// sequence number and kind.
 func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
@@ -108,7 +110,10 @@ func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) Intern
 	}
 }
 
-// MakeSearchKey ...
+// MakeSearchKey constructs an internal key that is appropriate for searching
+// for a the specified user key. The search key contain the maximual sequence
+// number and kind ensuring that it sorts before any other internal keys for
+// the same user key.
 func MakeSearchKey(userKey []byte) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
@@ -142,7 +147,7 @@ func ParseInternalKey(s string) InternalKey {
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
 
-// DecodeInternalKey ...
+// DecodeInternalKey decodes an encoded internal key. See InternalKey.Encode().
 func DecodeInternalKey(encodedKey []byte) InternalKey {
 	n := len(encodedKey) - 8
 	var trailer uint64
@@ -158,8 +163,12 @@ func DecodeInternalKey(encodedKey []byte) InternalKey {
 	}
 }
 
-// InternalCompare ...
-func InternalCompare(userCmp func(a, b []byte) int, a, b InternalKey) int {
+// InternalCompare compares two internal keys using the specified comparison
+// function. For equal user keys, internal keys compare in descending sequence
+// number order. For equal user keys and sequence numbers, internal keys
+// compare in descending kind order (though this should never happen in
+// practice).
+func InternalCompare(userCmp Compare, a, b InternalKey) int {
 	if !a.Valid() {
 		if b.Valid() {
 			return -1
@@ -181,20 +190,24 @@ func InternalCompare(userCmp func(a, b []byte) int, a, b InternalKey) int {
 	return 0
 }
 
-// Encode ...
+// Encode encodes the receiver into the buffer. The buffer must be large enough
+// to hold the encoded data. See InternalKey.Size().
 func (k InternalKey) Encode(buf []byte) {
 	i := copy(buf, k.UserKey)
 	binary.LittleEndian.PutUint64(buf[i:], k.Trailer)
 }
 
-// EncodeTrailer ...
+// EncodeTrailer returns the trailer encoded to an 8-byte array.
 func (k InternalKey) EncodeTrailer() [8]byte {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], k.Trailer)
 	return buf
 }
 
-// Separator ...
+// Separator returns a separator key such that k <= x && x < other, where less
+// than is consistent with the Compare function. The buf parameter may be used
+// to store the returned InternalKey.UserKey, though it is valid to pass a
+// nil. See the Separator type for details on separator keys.
 func (k InternalKey) Separator(
 	cmp Compare,
 	sep Separator,
@@ -211,7 +224,9 @@ func (k InternalKey) Separator(
 	return k
 }
 
-// Successor ...
+// Successor returns a successor key such that k <= x. A simple implementation
+// may return k unchanged. The buf parameter may be used to store the returned
+// InternalKey.UserKey, though it is valid to pass a nil.
 func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) InternalKey {
 	buf = succ(buf, k.UserKey)
 	if len(buf) <= len(k.UserKey) && cmp(k.UserKey, buf) < 0 {
@@ -223,27 +238,27 @@ func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) Internal
 	return k
 }
 
-// Size ...
+// Size returns the encoded size of the key.
 func (k InternalKey) Size() int {
 	return len(k.UserKey) + 8
 }
 
-// SetSeqNum ...
+// SetSeqNum sets the sequence number component of the key.
 func (k *InternalKey) SetSeqNum(seqNum uint64) {
 	k.Trailer = (seqNum << 8) | (k.Trailer & 0xff)
 }
 
-// SeqNum ...
+// SeqNum returns the sequence number component of the key.
 func (k InternalKey) SeqNum() uint64 {
 	return k.Trailer >> 8
 }
 
-// SetKind ...
+// SetKind sets the kind component of the key.
 func (k *InternalKey) SetKind(kind InternalKeyKind) {
 	k.Trailer = (k.Trailer &^ 0xff) | uint64(kind)
 }
 
-// Kind ...
+// Kind returns the kind compoment of the key.
 func (k InternalKey) Kind() InternalKeyKind {
 	return InternalKeyKind(k.Trailer & 0xff)
 }
@@ -253,7 +268,7 @@ func (k InternalKey) Valid() bool {
 	return k.Kind() <= InternalKeyKindMax
 }
 
-// Clone ...
+// Clone clones the storage for the UserKey component of the key.
 func (k InternalKey) Clone() InternalKey {
 	return InternalKey{
 		UserKey: append([]byte(nil), k.UserKey...),
@@ -261,12 +276,12 @@ func (k InternalKey) Clone() InternalKey {
 	}
 }
 
-// String ...
+// String returns a string representation of the key.
 func (k InternalKey) String() string {
 	return fmt.Sprintf("%s#%d,%d", k.UserKey, k.SeqNum(), k.Kind())
 }
 
-// Pretty ...
+// Pretty returns a pretty-printed string representation of the key.
 func (k InternalKey) Pretty(f func([]byte) string) string {
 	return fmt.Sprintf("%s#%d,%d", f(k.UserKey), k.SeqNum(), k.Kind())
 }

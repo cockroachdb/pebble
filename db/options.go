@@ -129,7 +129,9 @@ type LevelOptions struct {
 	TargetFileSize int64
 }
 
-// EnsureDefaults ...
+// EnsureDefaults ensures that the default values for all of the options have
+// been initialized. It is valid to call EnsureDefaults on a nil receiver. A
+// non-nil result will always be returned.
 func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o == nil {
 		o = &LevelOptions{}
@@ -281,7 +283,7 @@ func (o *Options) EnsureDefaults() *Options {
 	return o
 }
 
-// Level ...
+// Level returns the LevelOptions for the specified level.
 func (o *Options) Level(level int) LevelOptions {
 	if level < len(o.Levels) {
 		return o.Levels[level]

@@ -37,7 +37,9 @@ type InlineKey func(key []byte) uint64
 // may be "aquah".
 type Separator func(dst, a, b []byte) []byte
 
-// Successor TODO(peter)
+// Successor returns a successor key such that k <= a. A simple implementation
+// may return a unchanged. The dst parameter may be used to store the returned
+// key, though it is valid to pass a nil.
 type Successor func(dst, a []byte) []byte
 
 // Comparer defines a total ordering over the space of []byte keys: a 'less

@@ -332,12 +332,14 @@ func (w *Writer) Close() (err error) {
 	return nil
 }
 
-// EstimatedSize ...
+// EstimatedSize returns the estimated size of the sstable being written if a
+// called to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
 	return w.offset + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
-// Stat ...
+// Stat returns the file info for the finished sstable. Only valid to call
+// after the sstable has been finished.
 func (w *Writer) Stat() (os.FileInfo, error) {
 	if w.file != nil {
 		return nil, errors.New("pebble/table: writer is not closed")

@@ -58,8 +58,7 @@ type Iter struct {
 // Iter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*Iter)(nil)
 
-// Init ...
-func (i *Iter) Init(r *Reader) error {
+func (i *Iter) init(r *Reader) error {
 	i.reader = r
 	i.err = i.index.init(r.compare, r.index, r.Properties.GlobalSeqNum)
 	return i.err
@@ -348,7 +347,7 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 	}
 
 	i := &Iter{}
-	if err := i.Init(r); err == nil {
+	if err := i.init(r); err == nil {
 		i.index.SeekGE(key)
 		i.seekBlock(key, r.blockFilter)
 	}
@@ -372,7 +371,7 @@ func (r *Reader) NewIter(o *db.IterOptions) db.InternalIterator {
 		return &Iter{err: r.err}
 	}
 	i := &Iter{}
-	_ = i.Init(r)
+	_ = i.init(r)
 	return i
 }
 

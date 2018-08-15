@@ -63,10 +63,19 @@ const (
 	pValue      = 1 / math.E
 )
 
-// ErrRecordExists TODO(peter)
+// ErrRecordExists indicates that an entry with the specified key already
+// exists in the skiplist. Duplicate entries are not directly supported and
+// instead must be handled by the user by appending a unique version suffix to
+// keys.
 var ErrRecordExists = errors.New("record with this key already exists")
 
-// Skiplist TODO(peter)
+// Skiplist is a fast, cocnurrent skiplist implementation that supports forward
+// and backward iteration. See batchskl.Skiplist for a non-concurrent
+// skiplist. Keys and values are immutable once added to the skiplist and
+// deletion is not supported. Instead, higher-level code is expected to add new
+// entries that shadow existing entries and perform deletion via tombstones. It
+// is up to the user to process these shadow entries and tombstones
+// appropriately during retrieval.
 type Skiplist struct {
 	arena  *Arena
 	cmp    db.Compare

@@ -87,7 +87,7 @@ type Writer interface {
 	Set(key, value []byte, o *db.WriteOptions) error
 }
 
-// TODO(peter): document DB.
+// DB provides a concurrent, persistent ordered key/value store.
 type DB struct {
 	dirname   string
 	opts      *db.Options
@@ -400,7 +400,9 @@ func (d *DB) Close() error {
 	return err
 }
 
-// Compact TODO(peter)
+// Compact the specified range of keys in the database.
+//
+// TODO(peter): unimplemented
 func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	panic("pebble.DB: Compact unimplemented")
 }

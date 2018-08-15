@@ -2,8 +2,7 @@
  * Copyright 2017 Dgraph Labs, Inc. and Contributors
  * Modifications copyright (C) 2017 Andy Kimball and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
+ * Licensed under the Apache License, Version 2.0 (the "License") * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
@@ -95,14 +94,28 @@ type node struct {
 	links [maxHeight]links
 }
 
-// Storage ...
+// Storage defines the storage interface for retrieval and comparison of keys.
 type Storage interface {
+	// Get returns the key stored at the specified offset.
 	Get(offset uint32) db.InternalKey
+
+	// InlineKey returns a fixed length prefix of the specified key such that
+	// InlineKey(a) < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff
+	// a > b. If InlineKey(a) == InlineKey(b) an additional comparison is
+	// required to determine if the two keys are actually equal.
 	InlineKey(key []byte) uint64
+
+	// Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
+	// to', or 'greater than' the key stored at b.
 	Compare(a []byte, b uint32) int
 }
 
-// Skiplist ...
+// Skiplist is a fast, non-cocnurrent skiplist implementation that supports
+// forward and backward iteration. See arenaskl.Skiplist for a concurrent
+// skiplist. Keys and values are stored externally from the skiplist via the
+// Storage interface. Deletion is not supported. Instead, higher-level code is
+// expected to perform deletion via tombstones and needs to process those
+// tombstones appropriately during retrieval operations.
 type Skiplist struct {
 	storage Storage
 	nodes   []byte
