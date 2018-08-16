@@ -388,7 +388,6 @@ func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
 		if dmap := b.deleted[nf.level]; dmap != nil {
 			delete(dmap, nf.meta.fileNum)
 		}
-		// TODO(peter): fiddle with nf.meta.allowedSeeks.
 		b.added[nf.level] = append(b.added[nf.level], nf.meta)
 	}
 }

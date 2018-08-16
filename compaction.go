@@ -51,10 +51,6 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 		// TODO(peter): Pick the first file that comes after the compaction pointer
 		// for c.level.
 		c.inputs[0] = []fileMetadata{cur.files[c.level][0]}
-
-	} else if false {
-		// TODO(peter): look for a compaction triggered by seeks.
-
 	} else {
 		return nil
 	}
