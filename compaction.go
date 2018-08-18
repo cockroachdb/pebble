@@ -221,7 +221,7 @@ func (d *DB) flush1() error {
 
 	// Mark all the memtables we flushed as flushed.
 	for i := 0; i < n; i++ {
-		close(d.mu.mem.queue[i].flushed)
+		close(d.mu.mem.queue[i].flushed())
 	}
 	d.mu.mem.queue = d.mu.mem.queue[n:]
 

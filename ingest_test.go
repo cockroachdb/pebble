@@ -333,7 +333,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 						}
 					}
 
-					result := ingestMemtableOverlaps(mem, meta)
+					result := ingestMemtableOverlaps(comparer.Compare, mem, meta)
 					if c.expected != result {
 						t.Fatalf("expected %t, but found %t", c.expected, result)
 					}

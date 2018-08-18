@@ -109,7 +109,7 @@ func ingestLink(
 	return nil
 }
 
-func ingestMemtableOverlaps(mem *memTable, meta []*fileMetadata) bool {
+func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata) bool {
 	iter := mem.NewIter(nil)
 	defer iter.Close()
 
@@ -118,7 +118,7 @@ func ingestMemtableOverlaps(mem *memTable, meta []*fileMetadata) bool {
 		if !iter.Valid() {
 			continue
 		}
-		if mem.cmp(iter.Key().UserKey, m.largest.UserKey) <= 0 {
+		if cmp(iter.Key().UserKey, m.largest.UserKey) <= 0 {
 			return true
 		}
 	}
@@ -203,7 +203,7 @@ func (d *DB) Ingest(paths []string) error {
 		return err
 	}
 
-	var mem *memTable
+	var mem flushable
 	prepareLocked := func() {
 		// NB: prepare is called with d.mu locked.
 
@@ -230,7 +230,7 @@ func (d *DB) Ingest(paths []string) error {
 		// that sstable until the corresponding memtable has been flushed. This
 		// complicates the compaction heuristics, but avoids have to wait for
 		// memtable flushes during ingestion.
-		if ingestMemtableOverlaps(d.mu.mem.mutable, meta) {
+		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
 			mem = d.mu.mem.mutable
 			err = d.makeRoomForWrite(nil)
 			return
@@ -241,7 +241,7 @@ func (d *DB) Ingest(paths []string) error {
 		// for the newest table that overlaps.
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
-			if ingestMemtableOverlaps(m, meta) {
+			if ingestMemtableOverlaps(d.cmp, m, meta) {
 				mem = m
 				return
 			}
@@ -263,7 +263,7 @@ func (d *DB) Ingest(paths []string) error {
 		// If we flushed the mutable memtable in prepareLocked wait for the flush
 		// to finish.
 		if mem != nil {
-			<-mem.flushed
+			<-mem.flushed()
 		}
 
 		// Assign the sstables to the correct level in the LSM and apply the

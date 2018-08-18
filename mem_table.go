@@ -29,16 +29,16 @@ type memTable struct {
 	emptySize uint32
 	reserved  uint32
 	refs      int32
-	flushed   chan struct{}
+	flushedCh chan struct{}
 }
 
 // newMemTable returns a new MemTable.
 func newMemTable(o *db.Options) *memTable {
 	o = o.EnsureDefaults()
 	m := &memTable{
-		cmp:     o.Comparer.Compare,
-		refs:    1,
-		flushed: make(chan struct{}),
+		cmp:       o.Comparer.Compare,
+		refs:      1,
+		flushedCh: make(chan struct{}),
 	}
 	arena := arenaskl.NewArena(uint32(o.MemTableSize), 0)
 	m.skl.Reset(arena, m.cmp)
@@ -59,6 +59,10 @@ func (m *memTable) unref() bool {
 	default:
 		return false
 	}
+}
+
+func (m *memTable) flushed() chan struct{} {
+	return m.flushedCh
 }
 
 func (m *memTable) readyForFlush() bool {

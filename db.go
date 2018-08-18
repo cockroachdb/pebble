@@ -28,6 +28,12 @@ const (
 	numNonTableCacheFiles = 10
 )
 
+type flushable interface {
+	NewIter(o *db.IterOptions) db.InternalIterator
+	flushed() chan struct{}
+	readyForFlush() bool
+}
+
 // Reader is a readable key/value store.
 //
 // It is safe to call Get and NewIter from concurrent goroutines.
@@ -129,11 +135,11 @@ type DB struct {
 			cond sync.Cond
 			// The current mutable memTable.
 			mutable *memTable
-			// Queue of memtables (mutable is at end). Elements are added to the end
-			// of the slice and removed from the beginning. Once an index is set it
-			// is never modified making a fixed slice immutable and safe for
-			// concurrent reads.
-			queue []*memTable
+			// Queue of flushables (the mutable memtable is at end). Elements are
+			// added to the end of the slice and removed from the beginning. Once an
+			// index is set it is never modified making a fixed slice immutable and
+			// safe for concurrent reads.
+			queue []flushable
 			// True when the memtable is actively been switched. Both mem.mutable and
 			// log.LogWriter are invalid while switching is true.
 			switching bool
@@ -418,7 +424,7 @@ func (d *DB) Flush() error {
 	if err != nil {
 		return err
 	}
-	<-mem.flushed
+	<-mem.flushed()
 	return nil
 }
 
