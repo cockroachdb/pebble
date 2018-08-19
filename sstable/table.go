@@ -144,3 +144,7 @@ const (
 	noCompressionBlockType     = 0
 	snappyCompressionBlockType = 1
 )
+
+// TODO(peter): silence unused warnings.
+var _ = noChecksum
+var _ = checksumXXHash

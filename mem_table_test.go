@@ -33,20 +33,6 @@ func ikey(s string) db.InternalKey {
 	return db.MakeInternalKey([]byte(s), 0, db.InternalKeyKindSet)
 }
 
-// compact compacts a MemTable.
-func compact(m *memTable) (*memTable, error) {
-	n, x := newMemTable(nil), m.newIter(nil)
-	for x.First(); x.Valid(); x.Next() {
-		if err := n.set(x.Key(), x.Value()); err != nil {
-			return nil, err
-		}
-	}
-	if err := x.Close(); err != nil {
-		return nil, err
-	}
-	return n, nil
-}
-
 func TestMemTableBasic(t *testing.T) {
 	// Check the empty DB.
 	m := newMemTable(nil)

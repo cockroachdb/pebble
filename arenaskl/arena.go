@@ -72,10 +72,6 @@ func (a *Arena) Capacity() uint32 {
 	return uint32(len(a.buf))
 }
 
-func (a *Arena) reset() {
-	atomic.StoreUint32(&a.n, 1)
-}
-
 func (a *Arena) alloc(size, align uint32) (uint32, error) {
 	// Pad the allocation with enough bytes to ensure the requested alignment.
 	padded := uint32(size) + align

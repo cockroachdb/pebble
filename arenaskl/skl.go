@@ -375,13 +375,3 @@ func (s *Skiplist) getPrev(nd *node, h int) *node {
 	offset := atomic.LoadUint32(&nd.tower[h].prevOffset)
 	return (*node)(s.arena.getPointer(offset))
 }
-
-func encodeValue(valOffset uint32, valSize uint16) uint64 {
-	return uint64(valSize)<<32 | uint64(valOffset)
-}
-
-func decodeValue(value uint64) (valOffset uint32, valSize uint16) {
-	valOffset = uint32(value)
-	valSize = uint16(value >> 32)
-	return
-}

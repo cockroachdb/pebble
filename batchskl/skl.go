@@ -64,10 +64,9 @@ import (
 )
 
 const (
-	maxHeight     = 20
-	maxNodeSize   = int(unsafe.Sizeof(node{}))
-	linksSize     = int(unsafe.Sizeof(links{}))
-	inlineKeySize = 8
+	maxHeight   = 20
+	maxNodeSize = int(unsafe.Sizeof(node{}))
+	linksSize   = int(unsafe.Sizeof(links{}))
 )
 
 var ErrExists = errors.New("record with this key already exists")
@@ -361,3 +360,6 @@ func (s *Skiplist) debug() string {
 	}
 	return buf.String()
 }
+
+// Silence unused warning.
+var _ = (*Skiplist).debug

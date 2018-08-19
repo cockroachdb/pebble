@@ -26,16 +26,6 @@ const (
 	maxLatency = 10 * time.Second
 )
 
-func clampLatency(d, min, max time.Duration) time.Duration {
-	if d < min {
-		return min
-	}
-	if d > max {
-		return max
-	}
-	return d
-}
-
 func startCPUProfile() func() {
 	f, err := os.Create("cpu.prof")
 	if err != nil {

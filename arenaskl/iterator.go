@@ -131,13 +131,3 @@ func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool)
 
 	return
 }
-
-// IsSameArray returns true if the slices are the same length and the array
-// underlying the two slices is the same. Always returns false for empty arrays.
-func isSameArray(val1, val2 []byte) bool {
-	if len(val1) == len(val2) && len(val1) > 0 {
-		return &val1[0] == &val2[0]
-	}
-
-	return false
-}

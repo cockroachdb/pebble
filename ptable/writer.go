@@ -39,6 +39,9 @@ const (
 	snappyCompressionBlockType = 1
 )
 
+// Silence unused warning.
+var _ = noChecksum
+
 // blockHandle is the file offset and length of a block.
 type blockHandle struct {
 	offset, length uint64
@@ -71,8 +74,6 @@ type Writer struct {
 	err       error
 	// The next four fields are copied from a db.Options.
 	blockSize   int
-	appendSep   db.Separator
-	compare     db.Compare
 	compression db.Compression
 	// The data block and index block writers.
 	block      blockWriter

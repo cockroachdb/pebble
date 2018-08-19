@@ -19,16 +19,6 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
-type syncer interface {
-	Sync() error
-}
-
-// indexEntry is a block handle and the length of the separator key.
-type indexEntry struct {
-	bh     blockHandle
-	keyLen int
-}
-
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
