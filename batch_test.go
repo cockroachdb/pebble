@@ -137,20 +137,66 @@ func TestBatchGet(t *testing.T) {
 
 func TestBatchIter(t *testing.T) {
 	var b *Batch
+
+	for _, method := range []string{"build", "apply"} {
+		t.Run(method, func(t *testing.T) {
+			datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
+				switch d.Cmd {
+				case "define":
+					switch method {
+					case "build":
+						b = newIndexedBatch(nil, db.DefaultComparer)
+					case "apply":
+						b = newBatch(nil)
+					}
+
+					for _, key := range strings.Split(d.Input, "\n") {
+						j := strings.Index(key, ":")
+						ikey := db.ParseInternalKey(key[:j])
+						value := []byte(fmt.Sprint(ikey.SeqNum()))
+						b.Set(ikey.UserKey, value, nil)
+					}
+
+					switch method {
+					case "apply":
+						tmp := newIndexedBatch(nil, db.DefaultComparer)
+						tmp.Apply(b, nil)
+						b = tmp
+					}
+					return ""
+
+				case "iter":
+					iter := b.newInternalIter(nil)
+					defer iter.Close()
+					return runInternalIterCmd(d, iter)
+
+				default:
+					t.Fatalf("unknown command: %s", d.Cmd)
+				}
+
+				return ""
+			})
+		})
+	}
+}
+
+func TestFlushableBatchIter(t *testing.T) {
+	var b *flushableBatch
 	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
-			b = newIndexedBatch(nil, db.DefaultComparer)
+			batch := newBatch(nil)
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				ikey := db.ParseInternalKey(key[:j])
 				value := []byte(fmt.Sprint(ikey.SeqNum()))
-				b.Set(ikey.UserKey, value, nil)
+				batch.Set(ikey.UserKey, value, nil)
 			}
+			b = newFlushableBatch(batch, db.DefaultComparer)
 			return ""
 
 		case "iter":
-			iter := b.newInternalIter(nil)
+			iter := b.newIter(nil)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
 

@@ -48,7 +48,7 @@ func (s *batchStorage) Get(offset uint32) db.InternalKey {
 	kind := db.InternalKeyKind(s.data[offset])
 	_, key, ok := batchDecodeStr(s.data[offset+1:])
 	if !ok {
-		panic("corrupted batch entry")
+		panic(fmt.Sprintf("corrupted batch entry: %d", offset))
 	}
 	return db.MakeInternalKey(key, uint64(offset)|db.InternalKeySeqNumBatch, kind)
 }
@@ -166,14 +166,13 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 	count := binary.LittleEndian.Uint32(batch.data[8:12])
 	b.setCount(b.count() + count)
 
-	start := batchReader(b.data[offset:])
-	for iter := batchReader(start); ; {
+	for iter := batchReader(b.data[offset:]); len(iter) > 0; {
+		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
 		_, key, value, ok := iter.next()
 		if !ok {
 			break
 		}
 		if b.index != nil {
-			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&start[0]))
 			if err := b.index.Add(uint32(offset)); err != nil {
 				panic(err)
 			}
@@ -706,22 +705,39 @@ func (i *batchIter) Close() error {
 // index is created if the batch is not already indexed.
 type flushableBatch struct {
 	batch     *Batch
-	index     []uint32
 	flushedCh chan struct{}
 }
 
 var _ flushable = (*flushableBatch)(nil)
 
-func newFlushableBatch(batch *Batch) *flushableBatch {
-	if !batch.Indexed() {
-		panic("TODO(peter): support indexing non-indexed batches")
-	}
-	return &flushableBatch{
+func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
+	b := &flushableBatch{
 		batch:     batch,
 		flushedCh: make(chan struct{}),
 	}
-}
 
+	if !batch.Indexed() {
+		// TODO(peter): Rather than using a skiplist, we create a slice of offsets
+		// sorted by the comparator. The upside of such an approach would be
+		// significantly less memory usage than the skiplist. The downside is that
+		// we'd need to create a flushableBatchIter.
+		batch.cmp = comparer.Compare
+		batch.inlineKey = comparer.InlineKey
+		batch.index = &batchskl.Skiplist{}
+		batch.index.Reset(&batch.batchStorage, 0)
+
+		for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; {
+			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&batch.data[0]))
+			if _, _, _, ok := iter.next(); !ok {
+				break
+			}
+			if err := batch.index.Add(uint32(offset)); err != nil {
+				panic(err)
+			}
+		}
+	}
+	return b
+}
 func (b *flushableBatch) newIter(o *db.IterOptions) db.InternalIterator {
 	return b.batch.newInternalIter(o)
 }
