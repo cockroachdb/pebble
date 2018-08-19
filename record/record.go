@@ -243,7 +243,6 @@ func (r *Reader) Recover() {
 	r.i, r.j, r.last = r.n, r.n, false
 	// Invalidate any outstanding singleReader.
 	r.seq++
-	return
 }
 
 // SeekRecord seeks in the underlying io.Reader such that calling r.Next

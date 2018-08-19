@@ -26,7 +26,6 @@ func (e testEnv) Encode(row RowReader, buf []byte) (key, value []byte) {
 		switch e[i].Type {
 		case ColumnTypeInt64:
 			key = append(key, []byte(fmt.Sprintf("%08d", row.Int64(i)))...)
-			break
 		default:
 			panic("not reached")
 		}

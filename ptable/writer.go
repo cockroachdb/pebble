@@ -93,8 +93,7 @@ type Writer struct {
 var indexColTypes = []ColumnType{ColumnTypeBytes, ColumnTypeInt64}
 
 // NewWriter ...
-func NewWriter(f storage.File, env *Env, o *db.Options, lo *db.LevelOptions) *Writer {
-	o = o.EnsureDefaults()
+func NewWriter(f storage.File, env *Env, _ *db.Options, lo *db.LevelOptions) *Writer {
 	lo = lo.EnsureDefaults()
 	w := &Writer{
 		env:         env,

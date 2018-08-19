@@ -187,7 +187,7 @@ func TestBlockWriter(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		schema := make([]ColumnType, 2+rng.Intn(8))
 		for j := range schema {
-			schema[j] = ColumnType(1 + rng.Intn(ColumnTypeBytes))
+			schema[j] = ColumnType(1 + rng.Intn(int(ColumnTypeBytes)))
 		}
 		testSchema(t, rng, randInt(1, 100), schema)
 	}

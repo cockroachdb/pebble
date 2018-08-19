@@ -35,7 +35,7 @@ func TestBlockWriter(t *testing.T) {
 			"\x02\x05\x00ricot" +
 			"\x00\x06\x00banana" +
 			"\x00\x00\x00\x00\x01\x00\x00\x00")
-	if bytes.Compare(expected, block) != 0 {
+	if !bytes.Equal(expected, block) {
 		t.Fatalf("expected\n%q\nfound\n%q", expected, block)
 	}
 }

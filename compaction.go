@@ -159,6 +159,7 @@ func (d *DB) flush() {
 	defer d.mu.Unlock()
 	if err := d.flush1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
+		_ = err
 	}
 	d.mu.compact.flushing = false
 	// More flush work may have arrived while we were flushing, so schedule
@@ -263,6 +264,7 @@ func (d *DB) compact() {
 	defer d.mu.Unlock()
 	if err := d.compact1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
+		_ = err
 	}
 	d.mu.compact.compacting = false
 	// The previous compaction may have produced too many files in a

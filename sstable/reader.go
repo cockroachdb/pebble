@@ -85,10 +85,7 @@ func (i *Iter) loadBlock() bool {
 		return false
 	}
 	i.err = i.data.init(i.reader.compare, block, i.reader.Properties.GlobalSeqNum)
-	if i.err != nil {
-		return false
-	}
-	return true
+	return i.err == nil
 }
 
 // seekBlock loads the block at the current index position and positions i.data
@@ -565,7 +562,6 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 		return r
 	}
 
-	footer = footer[n:]
 	r.index, r.err = r.readBlock(indexBH)
 
 	// iter, _ := newBlockIter(r.compare, r.index)

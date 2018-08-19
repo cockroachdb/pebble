@@ -14,7 +14,7 @@ type compactionIterPos int8
 
 const (
 	compactionIterCur  compactionIterPos = 0
-	compactionIterNext                   = 1
+	compactionIterNext compactionIterPos = 1
 )
 
 type compactionIter struct {

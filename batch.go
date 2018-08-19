@@ -201,16 +201,15 @@ func (b *Batch) Get(key []byte) (value []byte, err error) {
 	// last key added will be seen firsi.
 	iter := b.index.NewIter()
 	iter.SeekGE(key)
-	for ; iter.Valid(); iter.Next() {
+	if iter.Valid() {
 		_, ekey, value, ok := b.decode(iter.KeyOffset())
 		if !ok {
 			return nil, fmt.Errorf("corrupted batch")
 		}
-		if b.cmp(key, ekey) > 0 {
-			break
+		if b.cmp(key, ekey) <= 0 {
+			// Invariant: b.cmp(key, ekey) == 0.
+			return value, nil
 		}
-		// Invariant: b.cmp(key, ekey) == 0.
-		return value, nil
 	}
 	return nil, db.ErrNotFound
 }

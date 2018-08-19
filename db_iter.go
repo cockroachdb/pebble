@@ -14,8 +14,8 @@ type dbIterPos int8
 
 const (
 	dbIterCur  dbIterPos = 0
-	dbIterNext           = 1
-	dbIterPrev           = -1
+	dbIterNext dbIterPos = 1
+	dbIterPrev dbIterPos = -1
 )
 
 type dbIter struct {

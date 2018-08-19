@@ -192,17 +192,17 @@ type ColumnType uint8
 // ColumnType definitions.
 const (
 	ColumnTypeInvalid ColumnType = 0
-	ColumnTypeBool               = 1
-	ColumnTypeInt8               = 2
-	ColumnTypeInt16              = 3
-	ColumnTypeInt32              = 4
-	ColumnTypeInt64              = 5
-	ColumnTypeFloat32            = 6
-	ColumnTypeFloat64            = 7
+	ColumnTypeBool    ColumnType = 1
+	ColumnTypeInt8    ColumnType = 2
+	ColumnTypeInt16   ColumnType = 3
+	ColumnTypeInt32   ColumnType = 4
+	ColumnTypeInt64   ColumnType = 5
+	ColumnTypeFloat32 ColumnType = 6
+	ColumnTypeFloat64 ColumnType = 7
 	// TODO(peter): Should "bytes" be replaced with a bit indicating variable
 	// width data that can be applied to any fixed-width data type? This would
 	// allow modeling both []int8, []int64, and []float64.
-	ColumnTypeBytes = 8
+	ColumnTypeBytes ColumnType = 8
 	// TODO(peter): decimal, uuid, ipaddr, timestamp, time, timetz, duration,
 	// collated string, tuple.
 )
@@ -278,8 +278,8 @@ type ColumnDirection int8
 // ColumnDirection definitions.
 const (
 	Unsorted   ColumnDirection = 0
-	Ascending                  = 1
-	Descending                 = -1
+	Ascending  ColumnDirection = 1
+	Descending ColumnDirection = -1
 )
 
 // ColumnDef is the definition for a single column.
