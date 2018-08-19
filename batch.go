@@ -854,6 +854,7 @@ func (i *flushableBatchIter) SeekLT(key []byte) {
 	i.index = sort.Search(len(i.batch.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
+	i.index--
 	if i.Valid() {
 		key := i.Key()
 		i.initPrevStart(key)
