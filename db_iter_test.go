@@ -98,7 +98,7 @@ func BenchmarkDBIterSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &dbIter{
 		cmp:    db.DefaultComparer.Compare,
-		iter:   m.NewIter(nil),
+		iter:   m.newIter(nil),
 		seqNum: db.InternalKeySeqNumMax,
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -114,7 +114,7 @@ func BenchmarkDBIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &dbIter{
 		cmp:    db.DefaultComparer.Compare,
-		iter:   m.NewIter(nil),
+		iter:   m.newIter(nil),
 		seqNum: db.InternalKeySeqNumMax,
 	}
 
@@ -131,7 +131,7 @@ func BenchmarkDBIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &dbIter{
 		cmp:    db.DefaultComparer.Compare,
-		iter:   m.NewIter(nil),
+		iter:   m.newIter(nil),
 		seqNum: db.InternalKeySeqNumMax,
 	}
 

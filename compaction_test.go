@@ -579,7 +579,7 @@ func TestCompaction(t *testing.T) {
 		defer d.mu.Unlock()
 
 		if d.mu.mem.mutable != nil {
-			gotMem = get1(d.mu.mem.mutable.NewIter(nil))
+			gotMem = get1(d.mu.mem.mutable.newIter(nil))
 		}
 		ss := []string(nil)
 		v := d.mu.versions.currentVersion()

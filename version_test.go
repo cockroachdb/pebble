@@ -498,13 +498,13 @@ func TestVersion(t *testing.T) {
 			if !ok {
 				return nil, errors.New("no such file")
 			}
-			return d.NewIter(nil), nil
+			return d.newIter(nil), nil
 		}
 
 		v := version{}
 		for _, tt := range tc.tables {
 			d := newMemTable(nil)
-			defer d.Close()
+			defer d.close()
 			m[tt.fileNum] = d
 
 			var smallest, largest db.InternalKey

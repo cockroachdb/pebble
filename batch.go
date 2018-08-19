@@ -710,6 +710,8 @@ type flushableBatch struct {
 	flushedCh chan struct{}
 }
 
+var _ flushable = (*flushableBatch)(nil)
+
 func newFlushableBatch(batch *Batch) *flushableBatch {
 	if !batch.Indexed() {
 		panic("TODO(peter): support indexing non-indexed batches")
@@ -720,7 +722,7 @@ func newFlushableBatch(batch *Batch) *flushableBatch {
 	}
 }
 
-func (b *flushableBatch) NewIter(o *db.IterOptions) db.InternalIterator {
+func (b *flushableBatch) newIter(o *db.IterOptions) db.InternalIterator {
 	return b.batch.newInternalIter(o)
 }
 

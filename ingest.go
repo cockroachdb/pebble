@@ -110,7 +110,7 @@ func ingestLink(
 }
 
 func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata) bool {
-	iter := mem.NewIter(nil)
+	iter := mem.newIter(nil)
 	defer iter.Close()
 
 	for _, m := range meta {

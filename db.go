@@ -29,7 +29,7 @@ const (
 )
 
 type flushable interface {
-	NewIter(o *db.IterOptions) db.InternalIterator
+	newIter(o *db.IterOptions) db.InternalIterator
 	flushed() chan struct{}
 	readyForFlush() bool
 }
@@ -179,7 +179,7 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 	// Look in the memtables before going to the on-disk current version.
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
-		iter := mem.NewIter(nil)
+		iter := mem.newIter(nil)
 		iter.SeekGE(key)
 		value, conclusive, err := internalGet(iter, d.cmp, ikey)
 		if conclusive {
@@ -323,7 +323,7 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.IterOptions) d
 
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
-		iters = append(iters, mem.NewIter(o))
+		iters = append(iters, mem.newIter(o))
 	}
 
 	// The level 0 files need to be added from newest to oldest.

@@ -252,8 +252,8 @@ func (d *DB) replayWAL(
 		buf.Reset()
 	}
 
-	if mem != nil && !mem.Empty() {
-		meta, err := d.writeLevel0Table(fs, mem.NewIter(nil))
+	if mem != nil && !mem.empty() {
+		meta, err := d.writeLevel0Table(fs, mem.newIter(nil))
 		if err != nil {
 			return 0, err
 		}

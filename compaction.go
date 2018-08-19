@@ -194,11 +194,11 @@ func (d *DB) flush1() error {
 
 	var iter db.InternalIterator
 	if n == 1 {
-		iter = d.mu.mem.queue[0].NewIter(nil)
+		iter = d.mu.mem.queue[0].newIter(nil)
 	} else {
 		iters := make([]db.InternalIterator, n)
 		for i := range iters {
-			iters[i] = d.mu.mem.queue[i].NewIter(nil)
+			iters[i] = d.mu.mem.queue[i].newIter(nil)
 		}
 		iter = newMergingIter(d.cmp, iters...)
 	}

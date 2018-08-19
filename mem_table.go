@@ -134,27 +134,22 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	return nil
 }
 
-// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+// newIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
-func (m *memTable) NewIter(o *db.IterOptions) db.InternalIterator {
+func (m *memTable) newIter(o *db.IterOptions) db.InternalIterator {
 	return &memTableIter{
 		cmp:  m.cmp,
 		iter: m.skl.NewIter(),
 	}
 }
 
-func (m *memTable) Close() error {
+func (m *memTable) close() error {
 	return nil
 }
 
-// ApproximateMemoryUsage returns the approximate memory usage of the MemTable.
-func (m *memTable) ApproximateMemoryUsage() int {
-	return int(m.skl.Size())
-}
-
-// Empty returns whether the MemTable has no key/value pairs.
-func (m *memTable) Empty() bool {
+// empty returns whether the MemTable has no key/value pairs.
+func (m *memTable) empty() bool {
 	return m.skl.Size() == m.emptySize
 }
 

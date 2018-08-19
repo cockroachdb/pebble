@@ -19,7 +19,7 @@ import (
 
 // count returns the number of entries in a DB.
 func count(d *memTable) (n int) {
-	x := d.NewIter(nil)
+	x := d.newIter(nil)
 	for x.First(); x.Valid(); x.Next() {
 		n++
 	}
@@ -35,7 +35,7 @@ func ikey(s string) db.InternalKey {
 
 // compact compacts a MemTable.
 func compact(m *memTable) (*memTable, error) {
-	n, x := newMemTable(nil), m.NewIter(nil)
+	n, x := newMemTable(nil), m.newIter(nil)
 	for x.First(); x.Valid(); x.Next() {
 		if err := n.set(x.Key(), x.Value()); err != nil {
 			return nil, err
@@ -76,7 +76,7 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Check an iterator.
-	s, x := "", m.NewIter(nil)
+	s, x := "", m.newIter(nil)
 	for x.SeekGE([]byte("mango")); x.Valid(); x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
@@ -94,7 +94,7 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("13.count: got %v, want %v", got, want)
 	}
 	// Clean up.
-	if err := m.Close(); err != nil {
+	if err := m.close(); err != nil {
 		t.Fatalf("14.close: %v", err)
 	}
 }
@@ -107,19 +107,19 @@ func TestMemTableCount(t *testing.T) {
 		}
 		m.set(db.InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
-	if err := m.Close(); err != nil {
+	if err := m.close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestMemTableEmpty(t *testing.T) {
 	m := newMemTable(nil)
-	if !m.Empty() {
+	if !m.empty() {
 		t.Errorf("got !empty, want empty")
 	}
 	// Add one key/value pair with an empty key and empty value.
 	m.set(db.InternalKey{}, nil)
-	if m.Empty() {
+	if m.empty() {
 		t.Errorf("got empty, want !empty")
 	}
 }
@@ -175,7 +175,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		"506",
 		"507",
 	}
-	x := m0.NewIter(nil)
+	x := m0.newIter(nil)
 	x.SeekGE([]byte(wants[0]))
 	for _, want := range wants {
 		if !x.Valid() {
@@ -196,7 +196,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 	// Clean up.
-	if err := m0.Close(); err != nil {
+	if err := m0.close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 }
@@ -216,7 +216,7 @@ func TestMemTableIter(t *testing.T) {
 			return ""
 
 		case "iter":
-			iter := mem.NewIter(nil)
+			iter := mem.newIter(nil)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
 
@@ -245,7 +245,7 @@ func buildMemTable(b *testing.B) (*memTable, [][]byte) {
 
 func BenchmarkMemTableIterSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
-	iter := m.NewIter(nil)
+	iter := m.newIter(nil)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	b.ResetTimer()
@@ -256,7 +256,7 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 
 func BenchmarkMemTableIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
-	iter := m.NewIter(nil)
+	iter := m.newIter(nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -269,7 +269,7 @@ func BenchmarkMemTableIterNext(b *testing.B) {
 
 func BenchmarkMemTableIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
-	iter := m.NewIter(nil)
+	iter := m.newIter(nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
