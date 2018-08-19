@@ -14,11 +14,14 @@ needed by CockroachDB:
 
 * Block-based tables
 * Indexed batches
-* [[TODO]](https://github.com/petermattis/pebble/issues/6) Iterator options (prefix, lower/upper bound, table filter)
+* [[TODO]](https://github.com/petermattis/pebble/issues/6) Iterator
+  options (prefix, lower/upper bound, table filter)
 * Level-based compaction
 * Merge operator
-* [[TODO]](https://github.com/petermattis/pebble/issues/5) Prefix bloom filters
-* [[TODO]](https://github.com/petermattis/pebble/issues/1) Range deletion tombstones
+* [[TODO]](https://github.com/petermattis/pebble/issues/5) Prefix
+  bloom filters
+* [[TODO]](https://github.com/petermattis/pebble/issues/1) Range
+  deletion tombstones
 * Reverse iteration
 * SSTable ingestion
 * Table-level bloom filters
@@ -45,6 +48,20 @@ Pebble:
 Pebble may silently corrupt data or behave incorrectly if used with a
 RocksDB database that uses a feature Pebble doesn't support. Caveat
 emptor!
+
+## Advantages
+
+Pebble offers several improvements over RocksDB:
+
+* Faster reverse iteration via backwards links in the memtable's
+  skiplist and descending sequence number iteration during reverse
+  iteration of internal iterators.
+* Faster commit pipeline that achieves better concurrency.
+* Seamless merged iteration of indexed batches. The mutations in the
+  batch conceptually occupy another memtable level.
+* Smaller, more approachable code base.
+* [[TODO]](https://github.com/petermattis/pebble/issues/7) Pacing of
+  user writes vs flushes vs compactions.
 
 ## Pedigree
 
