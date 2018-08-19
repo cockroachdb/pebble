@@ -700,3 +700,34 @@ func (i *batchIter) Close() error {
 	_ = i.iter.Close()
 	return i.err
 }
+
+// flushableBatch wraps an existing batch and provides the interfaces needed
+// for making the batch flushable (i.e. able to mimic a memtable). An optional
+// index is created if the batch is not already indexed.
+type flushableBatch struct {
+	batch     *Batch
+	index     []uint32
+	flushedCh chan struct{}
+}
+
+func newFlushableBatch(batch *Batch) *flushableBatch {
+	if !batch.Indexed() {
+		panic("TODO(peter): support indexing non-indexed batches")
+	}
+	return &flushableBatch{
+		batch:     batch,
+		flushedCh: make(chan struct{}),
+	}
+}
+
+func (b *flushableBatch) NewIter(o *db.IterOptions) db.InternalIterator {
+	return b.batch.newInternalIter(o)
+}
+
+func (b *flushableBatch) flushed() chan struct{} {
+	return b.flushedCh
+}
+
+func (b *flushableBatch) readyForFlush() bool {
+	return true
+}
