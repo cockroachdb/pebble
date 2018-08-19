@@ -83,6 +83,10 @@ type Batch struct {
 	// An optional skiplist keyed by offset into data of the entry.
 	index *batchskl.Skiplist
 
+	// The flushableBatch wrapper if the batch is too large to fit in the
+	// memtable.
+	flushable *flushableBatch
+
 	commit  sync.WaitGroup
 	applied uint32 // updated atomically
 }
@@ -701,10 +705,12 @@ func (i *batchIter) Close() error {
 }
 
 // flushableBatch wraps an existing batch and provides the interfaces needed
-// for making the batch flushable (i.e. able to mimic a memtable). An optional
-// index is created if the batch is not already indexed.
+// for making the batch flushable (i.e. able to mimic a memtable).
 type flushableBatch struct {
 	batch     *Batch
+	seqNum    uint64
+	index     batchskl.Skiplist
+	offsets   []uint32
 	flushedCh chan struct{}
 }
 
@@ -713,33 +719,40 @@ var _ flushable = (*flushableBatch)(nil)
 func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	b := &flushableBatch{
 		batch:     batch,
+		offsets:   make([]uint32, 0, batch.count()),
 		flushedCh: make(chan struct{}),
 	}
 
-	if !batch.Indexed() {
-		// TODO(peter): Rather than using a skiplist, we create a slice of offsets
-		// sorted by the comparator. The upside of such an approach would be
-		// significantly less memory usage than the skiplist. The downside is that
-		// we'd need to create a flushableBatchIter.
-		batch.cmp = comparer.Compare
-		batch.inlineKey = comparer.InlineKey
-		batch.index = &batchskl.Skiplist{}
-		batch.index.Reset(&batch.batchStorage, 0)
+	// TODO(peter): Rather than creating a new skiplist here, we could sort the
+	// slice of offsets and create a flushableBatchIter. This would be
+	// significantly less memory usage
+	b.index.Reset(b, 0)
+	batch.cmp = comparer.Compare
+	batch.inlineKey = comparer.InlineKey
 
-		for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; {
-			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&batch.data[0]))
-			if _, _, _, ok := iter.next(); !ok {
-				break
-			}
-			if err := batch.index.Add(uint32(offset)); err != nil {
-				panic(err)
-			}
+	for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; {
+		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&batch.data[0]))
+		if _, _, _, ok := iter.next(); !ok {
+			break
+		}
+		i := uint32(len(b.offsets))
+		b.offsets = append(b.offsets, uint32(offset))
+		if err := b.index.Add(i); err != nil {
+			panic(err)
 		}
 	}
 	return b
 }
+
 func (b *flushableBatch) newIter(o *db.IterOptions) db.InternalIterator {
-	return b.batch.newInternalIter(o)
+	return &flushableBatchIter{
+		flushable: b,
+		batchIter: batchIter{
+			cmp:   b.batch.cmp,
+			batch: b.batch,
+			iter:  b.index.NewIter(),
+		},
+	}
 }
 
 func (b *flushableBatch) flushed() chan struct{} {
@@ -748,4 +761,47 @@ func (b *flushableBatch) flushed() chan struct{} {
 
 func (b *flushableBatch) readyForFlush() bool {
 	return true
+}
+
+// Get implements Storage.Get, as documented in the pebble/batchskl package.
+func (b *flushableBatch) Get(index uint32) db.InternalKey {
+	offset := b.offsets[index]
+	kind := db.InternalKeyKind(b.batch.data[offset])
+	_, key, ok := batchDecodeStr(b.batch.data[offset+1:])
+	if !ok {
+		panic(fmt.Sprintf("corrupted batch entry: %d", offset))
+	}
+	return db.MakeInternalKey(key, b.seqNum+uint64(index), kind)
+}
+
+// InlineKey implements Storage.InlineKey, as documented in the pebble/batchskl
+// package.
+func (b *flushableBatch) InlineKey(key []byte) uint64 {
+	return b.batch.inlineKey(key)
+}
+
+// Compare implements Storage.Compare, as documented in the pebble/batchskl
+// package.
+func (b *flushableBatch) Compare(a []byte, o uint32) int {
+	// The key "a" is always the search key or the newer key being inserted. If
+	// it is equal to the existing key consider it smaller so that it sorts
+	// first.
+	if b.batch.cmp(a, b.Get(o).UserKey) <= 0 {
+		return -1
+	}
+	return 1
+}
+
+type flushableBatchIter struct {
+	flushable *flushableBatch
+	batchIter
+}
+
+func (i *flushableBatchIter) Value() []byte {
+	offset := i.flushable.offsets[i.iter.KeyOffset()]
+	_, _, value, ok := i.batch.decode(offset)
+	if !ok {
+		i.err = fmt.Errorf("corrupted batch")
+	}
+	return value
 }

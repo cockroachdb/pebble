@@ -91,6 +91,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
 	// TODO(peter): This initialization is funky.
 	d.mu.versions.versions.mu = &d.mu.Mutex
+	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -220,6 +221,9 @@ func (d *DB) replayWAL(
 		if buf.Len() < batchHeaderLen {
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
+
+		// TODO(peter): If the batch is too large to fit in the memtable, flush the
+		// existing memtable and write the batch as a separate L0 table.
 		b = Batch{}
 		b.data = buf.Bytes()
 		b.refreshMemTableSize()
@@ -245,9 +249,7 @@ func (d *DB) replayWAL(
 		if err := mem.apply(&b, seqNum); err != nil {
 			return 0, err
 		}
-		if mem.unref() {
-			d.maybeScheduleFlush()
-		}
+		mem.unref()
 
 		buf.Reset()
 	}

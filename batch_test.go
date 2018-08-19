@@ -5,8 +5,10 @@
 package pebble
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -199,6 +201,53 @@ func TestFlushableBatchIter(t *testing.T) {
 			iter := b.newIter(nil)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
+
+		default:
+			t.Fatalf("unknown command: %s", d.Cmd)
+		}
+
+		return ""
+	})
+}
+
+func TestFlushableBatchSeqNum(t *testing.T) {
+	var b *flushableBatch
+	datadriven.RunTest(t, "testdata/flushable_batch", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			batch := newBatch(nil)
+			for _, key := range strings.Split(d.Input, "\n") {
+				j := strings.Index(key, ":")
+				ikey := db.ParseInternalKey(key[:j])
+				value := []byte(fmt.Sprint(ikey.SeqNum()))
+				switch ikey.Kind() {
+				case db.InternalKeyKindDelete:
+					batch.Delete(ikey.UserKey, nil)
+				case db.InternalKeyKindSet:
+					batch.Set(ikey.UserKey, value, nil)
+				case db.InternalKeyKindMerge:
+					batch.Merge(ikey.UserKey, value, nil)
+				}
+			}
+			b = newFlushableBatch(batch, db.DefaultComparer)
+
+		case "dump":
+			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
+				return fmt.Sprintf("dump seq=<value>\n")
+			}
+			seqNum, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
+			if err != nil {
+				return err.Error()
+			}
+			b.seqNum = uint64(seqNum)
+
+			iter := b.newIter(nil)
+			var buf bytes.Buffer
+			for iter.First(); iter.Valid(); iter.Next() {
+				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+			}
+			iter.Close()
+			return buf.String()
 
 		default:
 			t.Fatalf("unknown command: %s", d.Cmd)

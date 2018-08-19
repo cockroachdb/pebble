@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"os"
@@ -224,7 +225,7 @@ func TestBasicWrites(t *testing.T) {
 		Storage: storage.NewMem(),
 	})
 	if err != nil {
-		t.Fatalf("Open failed: %v", err)
+		t.Fatal(err)
 	}
 
 	names := []string{
@@ -354,7 +355,7 @@ func TestBasicWrites(t *testing.T) {
 	}
 
 	if err := d.Close(); err != nil {
-		t.Fatalf("Close failed: %v", err)
+		t.Fatal(err)
 	}
 }
 
@@ -364,7 +365,7 @@ func TestRandomWrites(t *testing.T) {
 		MemTableSize: 8 * 1024,
 	})
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatal(err)
 	}
 
 	keys := [64][]byte{}
@@ -410,6 +411,47 @@ func TestRandomWrites(t *testing.T) {
 	}
 
 	if err := d.Close(); err != nil {
-		t.Fatalf("db Close: %v", err)
+		t.Fatal(err)
+	}
+}
+
+func TestLargeBatch(t *testing.T) {
+	d, err := Open("", &db.Options{
+		Storage:                     storage.NewMem(),
+		MemTableSize:                1024,
+		MemTableStopWritesThreshold: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write two keys with values that are larger than the memtable size.
+	if err := d.Set([]byte("a"), bytes.Repeat([]byte("a"), 512), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set([]byte("b"), bytes.Repeat([]byte("b"), 512), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify this results in two L0 tables being created.
+	expected := "0: a-a b-b\n"
+	err = try(100*time.Microsecond, 20*time.Second, func() error {
+		d.mu.Lock()
+		s := d.mu.versions.currentVersion().String()
+		d.mu.Unlock()
+		if expected != s {
+			if testing.Verbose() {
+				fmt.Println(strings.TrimSpace(s))
+			}
+			return fmt.Errorf("expected %s, but found %s", expected, s)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

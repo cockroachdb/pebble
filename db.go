@@ -107,6 +107,8 @@ type DB struct {
 	commit   *commitPipeline
 	fileLock io.Closer
 
+	largeBatchThreshold int
+
 	// Rate limiter for how much bandwidth to allow for commits, compactions, and
 	// flushes.
 	//
@@ -242,10 +244,26 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
-	return d.commit.Commit(batch, opts.GetSync())
+	if int(batch.memTableSize) >= d.largeBatchThreshold {
+		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
+	}
+	err := d.commit.Commit(batch, opts.GetSync())
+	if err == nil {
+		// If this is a large batch wait for it to flush. This is necessary as the
+		// caller might mutate the contents of the batch (or reuse it) after this
+		// method returns.
+		if batch.flushable != nil {
+			<-batch.flushable.flushed()
+		}
+	}
+	return err
 }
 
 func (d *DB) commitApply(b *Batch, mem *memTable) error {
+	if b.flushable != nil {
+		// This is a large batch which was already added to the immutable queue.
+		return nil
+	}
 	err := mem.apply(b, b.seqNum())
 	if err != nil {
 		return err
@@ -273,6 +291,10 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 
 	// Throttle writes if there are too many L0 tables.
 	d.throttleWrite()
+
+	if b.flushable != nil {
+		b.flushable.seqNum = b.seqNum()
+	}
 
 	// Switch out the memtable if there was not enough room to store the
 	// batch.
@@ -557,12 +579,13 @@ func (d *DB) throttleWrite() {
 }
 
 func (d *DB) makeRoomForWrite(b *Batch) error {
-	for force := b == nil; ; {
+	force := b == nil || b.flushable != nil
+	for {
 		if d.mu.mem.switching {
 			d.mu.mem.cond.Wait()
 			continue
 		}
-		if b != nil {
+		if b != nil && b.flushable == nil {
 			err := d.mu.mem.mutable.prepare(b)
 			if err == nil {
 				return nil
@@ -618,9 +641,16 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		d.mu.log.number = newLogNumber
 		d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
 		imm := d.mu.mem.mutable
+		var scheduleFlush bool
+		if b != nil && b.flushable != nil {
+			// The batch is too large to fit in the memtable so add it directly to
+			// the immutable queue.
+			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
+			scheduleFlush = true
+		}
 		d.mu.mem.mutable = newMemTable(d.opts)
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-		if imm.unref() {
+		if imm.unref() || scheduleFlush {
 			d.maybeScheduleFlush()
 		}
 		force = false
