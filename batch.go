@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"unsafe"
 
@@ -499,6 +500,8 @@ func (r *batchReader) nextStr() (s []byte, ok bool) {
 	return s, true
 }
 
+// Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
+// two in sync.
 type batchIter struct {
 	cmp       db.Compare
 	batch     *Batch
@@ -661,6 +664,7 @@ func (i *batchIter) PrevUserKey() bool {
 		return false
 	}
 	if i.iter.Tail() {
+		// TODO(peter): Back up to prev start.
 		i.Last()
 		return i.iter.Valid()
 	}
@@ -704,13 +708,27 @@ func (i *batchIter) Close() error {
 	return i.err
 }
 
+type flushableBatchEntry struct {
+	offset uint32
+	index  uint32
+}
+
 // flushableBatch wraps an existing batch and provides the interfaces needed
 // for making the batch flushable (i.e. able to mimic a memtable).
 type flushableBatch struct {
-	batch     *Batch
-	seqNum    uint64
-	index     batchskl.Skiplist
-	offsets   []uint32
+	batch *Batch
+	cmp   db.Compare
+
+	// The base sequence number for the entries in the batch. This is the same
+	// value as Batch.seqNum() and is cached here for performance.
+	seqNum uint64
+
+	// A slice of offsets and indices for the entries in the batch. Used to
+	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
+	// flushable batch is indexed such that batch entry i will be given the
+	// sequence number flushableBatch.seqNum+i.
+	offsets []flushableBatchEntry
+
 	flushedCh chan struct{}
 }
 
@@ -719,39 +737,45 @@ var _ flushable = (*flushableBatch)(nil)
 func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	b := &flushableBatch{
 		batch:     batch,
-		offsets:   make([]uint32, 0, batch.count()),
+		cmp:       comparer.Compare,
+		offsets:   make([]flushableBatchEntry, 0, batch.count()),
 		flushedCh: make(chan struct{}),
 	}
-
-	// TODO(peter): Rather than creating a new skiplist here, we could sort the
-	// slice of offsets and create a flushableBatchIter. This would be
-	// significantly less memory usage
-	b.index.Reset(b, 0)
-	batch.cmp = comparer.Compare
-	batch.inlineKey = comparer.InlineKey
 
 	for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&batch.data[0]))
 		if _, _, _, ok := iter.next(); !ok {
 			break
 		}
-		i := uint32(len(b.offsets))
-		b.offsets = append(b.offsets, uint32(offset))
-		if err := b.index.Add(i); err != nil {
-			panic(err)
-		}
+		b.offsets = append(b.offsets, flushableBatchEntry{
+			offset: uint32(offset),
+			index:  uint32(len(b.offsets)),
+		})
 	}
+
+	sort.Sort(b)
 	return b
+}
+
+func (b *flushableBatch) Len() int {
+	return len(b.offsets)
+}
+
+func (b *flushableBatch) Less(i, j int) bool {
+	return db.InternalCompare(b.cmp,
+		b.batch.batchStorage.Get(b.offsets[i].offset),
+		b.batch.batchStorage.Get(b.offsets[j].offset)) < 0
+}
+
+func (b *flushableBatch) Swap(i, j int) {
+	b.offsets[i], b.offsets[j] = b.offsets[j], b.offsets[i]
 }
 
 func (b *flushableBatch) newIter(o *db.IterOptions) db.InternalIterator {
 	return &flushableBatchIter{
-		flushable: b,
-		batchIter: batchIter{
-			cmp:   b.batch.cmp,
-			batch: b.batch,
-			iter:  b.index.NewIter(),
-		},
+		batch: b,
+		cmp:   b.cmp,
+		index: -1,
 	}
 }
 
@@ -763,45 +787,233 @@ func (b *flushableBatch) readyForFlush() bool {
 	return true
 }
 
-// Get implements Storage.Get, as documented in the pebble/batchskl package.
-func (b *flushableBatch) Get(index uint32) db.InternalKey {
-	offset := b.offsets[index]
-	kind := db.InternalKeyKind(b.batch.data[offset])
-	_, key, ok := batchDecodeStr(b.batch.data[offset+1:])
-	if !ok {
-		panic(fmt.Sprintf("corrupted batch entry: %d", offset))
-	}
-	return db.MakeInternalKey(key, b.seqNum+uint64(index), kind)
-}
-
-// InlineKey implements Storage.InlineKey, as documented in the pebble/batchskl
-// package.
-func (b *flushableBatch) InlineKey(key []byte) uint64 {
-	return b.batch.inlineKey(key)
-}
-
-// Compare implements Storage.Compare, as documented in the pebble/batchskl
-// package.
-func (b *flushableBatch) Compare(a []byte, o uint32) int {
-	// The key "a" is always the search key or the newer key being inserted. If
-	// it is equal to the existing key consider it smaller so that it sorts
-	// first.
-	if b.batch.cmp(a, b.Get(o).UserKey) <= 0 {
-		return -1
-	}
-	return 1
-}
-
+// Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
+// two in sync.
 type flushableBatchIter struct {
-	flushable *flushableBatch
-	batchIter
+	batch     *flushableBatch
+	cmp       db.Compare
+	reverse   bool
+	index     int
+	prevStart int
+	prevEnd   int
+	err       error
+}
+
+// flushableBatchIter implements the db.InternalIterator interface.
+var _ db.InternalIterator = (*flushableBatchIter)(nil)
+
+func (i *flushableBatchIter) clearPrevCache() {
+	if i.reverse {
+		i.reverse = false
+		i.prevStart = -1
+		i.prevEnd = -1
+	}
+}
+
+func (i *flushableBatchIter) initPrevStart(key db.InternalKey) {
+	i.reverse = true
+	i.prevStart = i.index
+	for {
+		index := i.prevStart - 1
+		if index < 0 {
+			break
+		}
+		prevKey := i.getKey(index)
+		if i.cmp(prevKey.UserKey, key.UserKey) != 0 {
+			break
+		}
+		i.prevStart = index
+	}
+}
+
+func (i *flushableBatchIter) initPrevEnd(key db.InternalKey) {
+	i.prevEnd = i.index
+	for {
+		index := i.prevEnd + 1
+		if index >= len(i.batch.offsets) {
+			break
+		}
+		nextKey := i.getKey(index)
+		if i.cmp(nextKey.UserKey, key.UserKey) != 0 {
+			break
+		}
+		i.prevEnd = index
+	}
+}
+
+func (i *flushableBatchIter) SeekGE(key []byte) {
+	i.clearPrevCache()
+	ikey := db.MakeSearchKey(key)
+	i.index = sort.Search(len(i.batch.offsets), func(j int) bool {
+		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
+	})
+}
+
+func (i *flushableBatchIter) SeekLT(key []byte) {
+	i.clearPrevCache()
+	ikey := db.MakeSearchKey(key)
+	i.index = sort.Search(len(i.batch.offsets), func(j int) bool {
+		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
+	})
+	if i.Valid() {
+		key := i.Key()
+		i.initPrevStart(key)
+		i.initPrevEnd(key)
+		i.index = i.prevStart
+	}
+}
+
+func (i *flushableBatchIter) First() {
+	i.clearPrevCache()
+	i.index = 0
+}
+
+func (i *flushableBatchIter) Last() {
+	i.clearPrevCache()
+	i.index = len(i.batch.offsets) - 1
+	if i.Valid() {
+		key := i.Key()
+		i.initPrevStart(key)
+		i.prevEnd = i.index
+		i.index = i.prevStart
+	}
+}
+
+func (i *flushableBatchIter) Next() bool {
+	i.clearPrevCache()
+	if i.index == len(i.batch.offsets) {
+		return false
+	}
+	i.index++
+	return i.index < len(i.batch.offsets)
+}
+
+func (i *flushableBatchIter) NextUserKey() bool {
+	i.clearPrevCache()
+	if i.index >= len(i.batch.offsets) {
+		return false
+	}
+	if i.index == -1 {
+		i.index = 0
+		return i.Valid()
+	}
+	key := i.Key()
+	for {
+		i.index++
+		if i.index >= len(i.batch.offsets) {
+			break
+		}
+		if i.cmp(key.UserKey, i.Key().UserKey) < 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (i *flushableBatchIter) Prev() bool {
+	// Reverse iteration is a bit funky in that it returns entries for identical
+	// user-keys from larger to smaller sequence number even though they are not
+	// stored that way in the skiplist. For example, the following shows the
+	// ordering of keys in the skiplist:
+	//
+	//   a:2 a:1 b:2 b:1 c:2 c:1
+	//
+	// With reverse iteration we return them in the following order:
+	//
+	//   c:2 c:1 b:2 b:1 a:2 a:1
+	//
+	// This is accomplished via a bit of fancy footwork: if the iterator is
+	// currently at a valid entry, see if the user-key for the next entry is the
+	// same and if it is advance. Otherwise, move to the previous user key.
+	//
+	// Note that this makes reverse iteration a bit more expensive than forward
+	// iteration, especially if there are a larger number of versions for a key
+	// in the mem-table, though that should be rare. In the normal case where
+	// there is a single version for each key, reverse iteration consumes an
+	// extra dereference and comparison.
+	if i.index < 0 {
+		return false
+	}
+	if i.index >= len(i.batch.offsets) {
+		return i.PrevUserKey()
+	}
+	if !i.reverse {
+		key := i.Key()
+		i.initPrevStart(key)
+		i.initPrevEnd(key)
+	}
+	if i.index != i.prevEnd {
+		i.index++
+		if !i.Valid() {
+			panic("expected valid node")
+		}
+		return true
+	}
+	i.index = i.prevStart - 1
+	if i.index < 0 {
+		i.clearPrevCache()
+		return false
+	}
+	i.prevEnd = i.index
+	i.initPrevStart(i.Key())
+	i.index = i.prevStart
+	return true
+}
+
+func (i *flushableBatchIter) PrevUserKey() bool {
+	if i.index < 0 {
+		return false
+	}
+	if i.index >= len(i.batch.offsets) {
+		i.Last()
+		return i.Valid()
+	}
+	if !i.reverse {
+		key := i.Key()
+		i.initPrevStart(key)
+	}
+	i.index = i.prevStart - 1
+	if i.index < 0 {
+		i.clearPrevCache()
+		return false
+	}
+	i.prevEnd = i.index
+	i.initPrevStart(i.Key())
+	i.index = i.prevStart
+	return true
+}
+
+func (i *flushableBatchIter) getKey(index int) db.InternalKey {
+	entry := i.batch.offsets[index]
+	kind := db.InternalKeyKind(i.batch.batch.data[entry.offset])
+	_, key, ok := batchDecodeStr(i.batch.batch.data[entry.offset+1:])
+	if !ok {
+		panic(fmt.Sprintf("corrupted batch entry: %d", entry.offset))
+	}
+	return db.MakeInternalKey(key, i.batch.seqNum+uint64(entry.index), kind)
+}
+
+func (i *flushableBatchIter) Key() db.InternalKey {
+	return i.getKey(i.index)
 }
 
 func (i *flushableBatchIter) Value() []byte {
-	offset := i.flushable.offsets[i.iter.KeyOffset()]
-	_, _, value, ok := i.batch.decode(offset)
+	offset := i.batch.offsets[i.index].offset
+	_, _, value, ok := i.batch.batch.decode(offset)
 	if !ok {
 		i.err = fmt.Errorf("corrupted batch")
 	}
 	return value
+}
+
+func (i *flushableBatchIter) Valid() bool {
+	return i.index >= 0 && i.index < len(i.batch.offsets)
+}
+
+func (i *flushableBatchIter) Error() error {
+	return i.err
+}
+
+func (i *flushableBatchIter) Close() error {
+	return i.err
 }
