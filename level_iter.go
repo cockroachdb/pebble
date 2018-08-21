@@ -11,6 +11,7 @@ import (
 )
 
 type levelIter struct {
+	opts    *db.IterOptions
 	cmp     db.Compare
 	index   int
 	iter    db.InternalIterator
@@ -22,13 +23,18 @@ type levelIter struct {
 // levelIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*levelIter)(nil)
 
-func newLevelIter(cmp db.Compare, newIter tableNewIter, files []fileMetadata) *levelIter {
+func newLevelIter(
+	opts *db.IterOptions, cmp db.Compare, newIter tableNewIter, files []fileMetadata,
+) *levelIter {
 	l := &levelIter{}
-	l.init(cmp, newIter, files)
+	l.init(opts, cmp, newIter, files)
 	return l
 }
 
-func (l *levelIter) init(cmp db.Compare, newIter tableNewIter, files []fileMetadata) {
+func (l *levelIter) init(
+	opts *db.IterOptions, cmp db.Compare, newIter tableNewIter, files []fileMetadata,
+) {
+	l.opts = opts
 	l.cmp = cmp
 	l.index = -1
 	l.newIter = newIter
@@ -57,7 +63,7 @@ func (l *levelIter) findFileLT(key []byte) int {
 	return index - 1
 }
 
-func (l *levelIter) loadFile(index int) bool {
+func (l *levelIter) loadFile(index, dir int) bool {
 	if l.index == index {
 		return true
 	}
@@ -68,34 +74,67 @@ func (l *levelIter) loadFile(index int) bool {
 		}
 		l.iter = nil
 	}
-	l.index = index
-	if l.index < 0 || l.index >= len(l.files) {
-		return false
+
+	for ; ; index += dir {
+		l.index = index
+		if l.index < 0 || l.index >= len(l.files) {
+			return false
+		}
+
+		f := &l.files[l.index]
+		if lowerBound := l.opts.GetLowerBound(); lowerBound != nil {
+			if l.cmp(f.largest.UserKey, lowerBound) < 0 {
+				// The largest key in the sstable is smaller than the lower bound.
+				if dir < 0 {
+					return false
+				}
+				continue
+			}
+		}
+		if upperBound := l.opts.GetUpperBound(); upperBound != nil {
+			if l.cmp(f.smallest.UserKey, upperBound) >= 0 {
+				// The smallest key in the sstable is greater than or equal to the
+				// lower bound.
+				if dir > 0 {
+					return false
+				}
+				continue
+			}
+		}
+
+		l.iter, l.err = l.newIter(f)
+		return l.err == nil
 	}
-	l.iter, l.err = l.newIter(&l.files[l.index])
-	return l.err == nil
 }
 
 func (l *levelIter) SeekGE(key []byte) {
-	if l.loadFile(l.findFileGE(key)) {
+	// NB: the top-level dbIter has already adjusted key based on
+	// IterOptions.LowerBound.
+	if l.loadFile(l.findFileGE(key), 1) {
 		l.iter.SeekGE(key)
 	}
 }
 
 func (l *levelIter) SeekLT(key []byte) {
-	if l.loadFile(l.findFileLT(key)) {
+	// NB: the top-level dbIter has already adjusted key based on
+	// IterOptions.UpperBound.
+	if l.loadFile(l.findFileLT(key), -1) {
 		l.iter.SeekLT(key)
 	}
 }
 
 func (l *levelIter) First() {
-	if l.loadFile(0) {
+	// NB: the top-level dbIter will call SeekGE if IterOptions.LowerBound is
+	// set.
+	if l.loadFile(0, 1) {
 		l.iter.First()
 	}
 }
 
 func (l *levelIter) Last() {
-	if l.loadFile(len(l.files) - 1) {
+	// NB: the top-level dbIter will call SeekLT if IterOptions.UpperBound is
+	// set.
+	if l.loadFile(len(l.files)-1, -1) {
 		l.iter.Last()
 	}
 }
@@ -105,7 +144,7 @@ func (l *levelIter) Next() bool {
 		return false
 	}
 	if l.iter == nil {
-		if l.index == -1 && l.loadFile(0) {
+		if l.index == -1 && l.loadFile(0, 1) {
 			// The iterator was positioned off the beginning of the level. Position
 			// at the first entry.
 			l.iter.First()
@@ -117,7 +156,7 @@ func (l *levelIter) Next() bool {
 		return true
 	}
 	// Current file was exhausted. Move to the next file.
-	if l.loadFile(l.index + 1) {
+	if l.loadFile(l.index+1, 1) {
 		l.iter.First()
 		return true
 	}
@@ -133,7 +172,7 @@ func (l *levelIter) Prev() bool {
 		return false
 	}
 	if l.iter == nil {
-		if n := len(l.files); l.index == n && l.loadFile(n-1) {
+		if n := len(l.files); l.index == n && l.loadFile(n-1, -1) {
 			// The iterator was positioned off the end of the level. Position at the
 			// last entry.
 			l.iter.Last()
@@ -145,7 +184,7 @@ func (l *levelIter) Prev() bool {
 		return true
 	}
 	// Current file was exhausted. Move to the previous file.
-	if l.loadFile(l.index - 1) {
+	if l.loadFile(l.index-1, -1) {
 		l.iter.Last()
 		return true
 	}

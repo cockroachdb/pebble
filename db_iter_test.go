@@ -21,8 +21,9 @@ func TestDBIter(t *testing.T) {
 	var keys []db.InternalKey
 	var vals [][]byte
 
-	newIter := func(seqNum uint64) *dbIter {
+	newIter := func(seqNum uint64, opts *db.IterOptions) *dbIter {
 		return &dbIter{
+			opts:   opts,
 			cmp:    db.DefaultComparer.Compare,
 			merge:  db.DefaultMerger.Merge,
 			iter:   &fakeIter{keys: keys, vals: vals},
@@ -43,15 +44,30 @@ func TestDBIter(t *testing.T) {
 			return ""
 
 		case "iter":
-			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
-				return fmt.Sprintf("iter seq=<value>\n")
-			}
-			seqNum, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
-			if err != nil {
-				return err.Error()
+			var seqNum int
+			var opts db.IterOptions
+
+			for _, arg := range d.CmdArgs {
+				if len(arg.Vals) != 1 {
+					t.Fatalf("%s: %s=<value>", d.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "seq":
+					var err error
+					seqNum, err = strconv.Atoi(arg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+				case "lower":
+					opts.LowerBound = []byte(arg.Vals[0])
+				case "upper":
+					opts.UpperBound = []byte(arg.Vals[0])
+				default:
+					t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
 			}
 
-			iter := newIter(uint64(seqNum))
+			iter := newIter(uint64(seqNum), &opts)
 			var b bytes.Buffer
 			for _, line := range strings.Split(d.Input, "\n") {
 				parts := strings.Fields(line)
@@ -69,6 +85,10 @@ func TestDBIter(t *testing.T) {
 						return fmt.Sprintf("seek-lt <key>\n")
 					}
 					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+				case "first":
+					iter.First()
+				case "last":
+					iter.Last()
 				case "next":
 					iter.Next()
 				case "prev":

@@ -19,6 +19,7 @@ const (
 )
 
 type dbIter struct {
+	opts     *db.IterOptions
 	cmp      db.Compare
 	merge    db.Merge
 	iter     db.InternalIterator
@@ -36,11 +37,16 @@ type dbIter struct {
 var _ db.Iterator = (*dbIter)(nil)
 
 func (i *dbIter) findNextEntry() bool {
+	upperBound := i.opts.GetUpperBound()
 	i.valid = false
 	i.pos = dbIterCur
 
 	for i.iter.Valid() {
 		key := i.iter.Key()
+		if upperBound != nil && i.cmp(key.UserKey, upperBound) >= 0 {
+			break
+		}
+
 		if seqNum := key.SeqNum(); seqNum > i.seqNum {
 			// Ignore entries that are newer than our snapshot sequence number,
 			// except for batch sequence numbers which are always visible.
@@ -73,11 +79,16 @@ func (i *dbIter) findNextEntry() bool {
 }
 
 func (i *dbIter) findPrevEntry() bool {
+	lowerBound := i.opts.GetLowerBound()
 	i.valid = false
 	i.pos = dbIterCur
 
 	for i.iter.Valid() {
 		key := i.iter.Key()
+		if lowerBound != nil && i.cmp(key.UserKey, lowerBound) < 0 {
+			break
+		}
+
 		if seqNum := key.SeqNum(); seqNum > i.seqNum {
 			// Ignore entries that are newer than our snapshot sequence number,
 			// except for batch sequence numbers which are always visible.
@@ -199,6 +210,11 @@ func (i *dbIter) SeekGE(key []byte) {
 	if i.err != nil {
 		return
 	}
+
+	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
+		key = lowerBound
+	}
+
 	i.iter.SeekGE(key)
 	i.findNextEntry()
 }
@@ -207,6 +223,11 @@ func (i *dbIter) SeekLT(key []byte) {
 	if i.err != nil {
 		return
 	}
+
+	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) >= 0 {
+		key = upperBound
+	}
+
 	i.iter.SeekLT(key)
 	i.findPrevEntry()
 }
@@ -215,6 +236,12 @@ func (i *dbIter) First() {
 	if i.err != nil {
 		return
 	}
+
+	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+		i.SeekGE(lowerBound)
+		return
+	}
+
 	i.iter.First()
 	i.findNextEntry()
 }
@@ -223,6 +250,12 @@ func (i *dbIter) Last() {
 	if i.err != nil {
 		return
 	}
+
+	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
+		i.SeekLT(upperBound)
+		return
+	}
+
 	i.iter.Last()
 	i.findPrevEntry()
 }

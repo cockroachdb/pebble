@@ -92,3 +92,77 @@ c:3
 b:2
 a:1
 .
+
+iter lower=a
+seek-ge a
+first
+----
+a:1
+a:1
+
+# levelIter only checks lower bound when loading sstables.
+iter lower=b
+seek-ge a
+first
+----
+a:1
+a:1
+
+iter lower=c
+seek-ge a
+first
+----
+c:3
+c:3
+
+# levelIter only checks lower bound when loading sstables.
+iter lower=d
+seek-ge a
+first
+----
+c:3
+c:3
+
+iter lower=e
+seek-ge a
+first
+----
+.
+.
+
+iter upper=e
+seek-lt e
+last
+----
+d:4
+d:4
+
+# levelIter only checks upper bound when loading sstables.
+iter upper=d
+seek-lt e
+last
+----
+d:4
+d:4
+
+iter upper=c
+seek-lt e
+last
+----
+b:2
+b:2
+
+# levelIter only checks lower bound when loading sstables.
+iter upper=b
+seek-lt e
+last
+----
+b:2
+b:2
+
+iter upper=a
+seek-lt e
+last
+----
+.
+.

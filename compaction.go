@@ -507,7 +507,7 @@ func compactionIterator(
 	}()
 
 	if c.level != 0 {
-		iter := newLevelIter(cmp, newIter, c.inputs[0])
+		iter := newLevelIter(nil, cmp, newIter, c.inputs[0])
 		iters = append(iters, iter)
 	} else {
 		for i := range c.inputs[0] {
@@ -521,7 +521,7 @@ func compactionIterator(
 		}
 	}
 
-	iter := newLevelIter(cmp, newIter, c.inputs[1])
+	iter := newLevelIter(nil, cmp, newIter, c.inputs[1])
 	iters = append(iters, iter)
 	return newMergingIter(cmp, iters...), nil
 }

@@ -306,15 +306,11 @@ type IterOptions struct {
 	// return during iteration. If the iterator is seeked or iterated past this
 	// boundary the iterator will return Valid()==false. Setting LowerBound
 	// effectively truncates the key space visible to the iterator.
-	//
-	// TODO(peter): unimplemented.
 	LowerBound []byte
 	// UpperBound specifies the largest key (exclusive) that the iterator will
 	// return during iteration. If the iterator is seeked or iterated past this
 	// boundary the iterator will return Valid()==false. Setting UpperBound
 	// effectively truncates the key space visible to the iterator.
-	//
-	// TODO(peter): unimplemented.
 	UpperBound []byte
 	// TableFilter can be used to filter the tables that are scanned during
 	// iteration based on the user properties. Return true to scan the table and
@@ -322,6 +318,22 @@ type IterOptions struct {
 	//
 	// TODO(peter): unimplemented.
 	TableFilter func(userProps map[string]string) bool
+}
+
+// GetLowerBound returns the LowerBound or nil if the receiver is nil.
+func (o *IterOptions) GetLowerBound() []byte {
+	if o == nil {
+		return nil
+	}
+	return o.LowerBound
+}
+
+// GetUpperBound returns the UpperBound or nil if the receiver is nil.
+func (o *IterOptions) GetUpperBound() []byte {
+	if o == nil {
+		return nil
+	}
+	return o.UpperBound
 }
 
 // WriteOptions hold the optional per-query parameters for Set and Delete
@@ -345,9 +357,15 @@ type WriteOptions struct {
 	Sync bool
 }
 
+// Sync specifies the default write options for writes which synchronize to
+// disk.
 var Sync = &WriteOptions{Sync: true}
+
+// NoSync specifies the default write options for writes which do not
+// synchronize to disk.
 var NoSync = &WriteOptions{Sync: false}
 
+// GetSync returns the Sync value or true if the receiver is nil.
 func (o *WriteOptions) GetSync() bool {
 	return o == nil || o.Sync
 }

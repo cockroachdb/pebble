@@ -53,8 +53,22 @@ func TestLevelIter(t *testing.T) {
 			return ""
 
 		case "iter":
-			iter := &levelIter{}
-			iter.init(db.DefaultComparer.Compare, newIter, files)
+			var opts db.IterOptions
+			for _, arg := range d.CmdArgs {
+				if len(arg.Vals) != 1 {
+					t.Fatalf("%s: %s=<value>", d.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "lower":
+					opts.LowerBound = []byte(arg.Vals[0])
+				case "upper":
+					opts.UpperBound = []byte(arg.Vals[0])
+				default:
+					t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
+			}
+
+			iter := newLevelIter(&opts, db.DefaultComparer.Compare, newIter, files)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
 
@@ -141,8 +155,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil), nil
 							}
-							l := &levelIter{}
-							l.init(db.DefaultComparer.Compare, newIter, files)
+							l := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)
 							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 							b.ResetTimer()
@@ -168,8 +181,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil), nil
 							}
-							l := &levelIter{}
-							l.init(db.DefaultComparer.Compare, newIter, files)
+							l := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -197,8 +209,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil), nil
 							}
-							l := &levelIter{}
-							l.init(db.DefaultComparer.Compare, newIter, files)
+							l := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {

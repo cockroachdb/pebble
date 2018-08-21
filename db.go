@@ -334,6 +334,7 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.IterOptions) d
 	}
 
 	dbi := &buf.dbi
+	dbi.opts = o
 	dbi.cmp = d.cmp
 	dbi.merge = d.merge
 	dbi.version = current
@@ -375,7 +376,7 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.IterOptions) d
 			li = &levelIter{}
 		}
 
-		li.init(d.cmp, d.newIter, current.files[level])
+		li.init(o, d.cmp, d.newIter, current.files[level])
 		iters = append(iters, li)
 	}
 
