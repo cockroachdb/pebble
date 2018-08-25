@@ -158,8 +158,8 @@ func (i *blockIter) readEntry() {
 	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
 }
 
-func (i *blockIter) decodeInternalKey() {
-	i.ikey = db.DecodeInternalKey(i.key)
+func (i *blockIter) decodeInternalKey(key []byte) {
+	i.ikey = db.DecodeInternalKey(key)
 	if i.globalSeqNum != 0 {
 		i.ikey.SetSeqNum(i.globalSeqNum)
 	}
@@ -167,7 +167,7 @@ func (i *blockIter) decodeInternalKey() {
 
 func (i *blockIter) loadEntry() {
 	i.readEntry()
-	i.decodeInternalKey()
+	i.decodeInternalKey(i.key)
 }
 
 func (i *blockIter) clearCache() {
@@ -261,17 +261,16 @@ func (i *blockIter) SeekLT(key []byte) {
 
 	for {
 		i.offset = i.nextOffset
-		i.readEntry()
-		i.decodeInternalKey()
+		i.loadEntry()
+		i.cacheEntry()
 
-		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
+		if i.cmp(i.ikey.UserKey, ikey.UserKey) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
 			// the previous key which was less than our search key.
 			i.Prev()
 			return
 		}
 
-		i.cacheEntry()
 		if i.nextOffset >= i.restarts {
 			// We've reached the end of the block. Return the current key.
 			break
@@ -301,7 +300,7 @@ func (i *blockIter) Last() {
 		i.cacheEntry()
 	}
 
-	i.decodeInternalKey()
+	i.decodeInternalKey(i.key)
 }
 
 // Next implements InternalIterator.Next, as documented in the pebble/db
@@ -330,9 +329,8 @@ func (i *blockIter) Prev() bool {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
 		i.offset = e.offset
-		i.key = e.key
 		i.val = e.val
-		i.decodeInternalKey()
+		i.decodeInternalKey(e.key)
 		i.cached = i.cached[:n]
 		return true
 	}
@@ -363,7 +361,7 @@ func (i *blockIter) Prev() bool {
 		i.cacheEntry()
 	}
 
-	i.decodeInternalKey()
+	i.decodeInternalKey(i.key)
 	return true
 }
 
