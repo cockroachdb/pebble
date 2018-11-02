@@ -7,8 +7,8 @@ package pebble
 import (
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/arenaskl"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/arenaskl"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint32 {
