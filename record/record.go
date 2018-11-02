@@ -85,7 +85,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/petermattis/pebble/crc"
+	"github.com/petermattis/pebble/internal/crc"
 )
 
 // These constants are part of the wire format and should not be changed.

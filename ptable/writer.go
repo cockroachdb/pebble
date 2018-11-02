@@ -11,8 +11,8 @@ import (
 	"io"
 
 	"github.com/golang/snappy"
-	"github.com/petermattis/pebble/crc"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/crc"
 	"github.com/petermattis/pebble/storage"
 )
 
