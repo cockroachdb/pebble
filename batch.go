@@ -12,8 +12,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/petermattis/pebble/batchskl"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/batchskl"
 )
 
 const (
