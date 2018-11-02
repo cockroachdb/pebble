@@ -381,6 +381,11 @@ func (d *DB) newIterInternal(
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
 		iters = append(iters, mem.newIter(o))
+
+		riter := mem.newRangeDelIter(o)
+		if riter != nil {
+			// TODO(peter): add range-del iterator to rangeTombstoneMap
+		}
 	}
 
 	// The level 0 files need to be added from newest to oldest.
@@ -392,6 +397,15 @@ func (d *DB) newIterInternal(
 			return dbi
 		}
 		iters = append(iters, iter)
+
+		riter, err := d.newRangeDelIter(f)
+		if err != nil {
+			dbi.err = err
+			return dbi
+		}
+		if riter != nil {
+			// TODO(peter): add range-del-iter to rangeTombstoneMap
+		}
 	}
 
 	// Add level iterators for the remaining files.
@@ -411,6 +425,8 @@ func (d *DB) newIterInternal(
 		}
 
 		li.init(o, d.cmp, d.newIter, current.files[level])
+		// TODO(peter): add rangeTombstoneMap to levelIter
+		// li.initRangeDel(d.newIter, rangeTombstoneMap)
 		iters = append(iters, li)
 	}
 
