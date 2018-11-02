@@ -19,6 +19,17 @@ type Snapshot struct {
 	prev, next *Snapshot
 }
 
+var _ Reader = (*Snapshot)(nil)
+
+// Get gets the value for the given key. It returns ErrNotFound if the DB does
+// not contain the key.
+//
+// The caller should not modify the contents of the returned slice, but it is
+// safe to modify the contents of the argument after Get returns.
+func (s *Snapshot) Get(key []byte) ([]byte, error) {
+	return s.db.getInternal(key, s)
+}
+
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
@@ -30,10 +41,11 @@ func (s *Snapshot) NewIter(o *db.IterOptions) db.Iterator {
 // called. Failure to do so while result in a tiny memory leak, and a large
 // leak of resources on disk due to the entries the snapshot is preventing from
 // being deleted.
-func (s *Snapshot) Close() {
+func (s *Snapshot) Close() error {
 	s.db.mu.Lock()
 	s.db.mu.snapshots.remove(s)
 	s.db.mu.Unlock()
+	return nil
 }
 
 type snapshotList struct {

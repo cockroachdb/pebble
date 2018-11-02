@@ -162,14 +162,23 @@ type DB struct {
 var _ Reader = (*DB)(nil)
 var _ Writer = (*DB)(nil)
 
-// Get gets the value for the given key. It returns ErrNotFound if the DB
-// does not contain the key.
+// Get gets the value for the given key. It returns ErrNotFound if the DB does
+// not contain the key.
 //
-// The caller should not modify the contents of the returned slice, but
-// it is safe to modify the contents of the argument after Get returns.
+// The caller should not modify the contents of the returned slice, but it is
+// safe to modify the contents of the argument after Get returns.
 func (d *DB) Get(key []byte) ([]byte, error) {
+	return d.getInternal(key, nil /* snapshot */)
+}
+
+func (d *DB) getInternal(key []byte, s *Snapshot) ([]byte, error) {
+	var seqNum uint64
 	d.mu.Lock()
-	snapshot := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
+	if s != nil {
+		seqNum = s.seqNum
+	} else {
+		seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
+	}
 	// Grab and reference the current version to prevent its underlying files
 	// from being deleted if we have a concurrent compaction. Note that
 	// version.unref() can be called without holding DB.mu.
@@ -179,7 +188,7 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 	memtables := d.mu.mem.queue
 	d.mu.Unlock()
 
-	ikey := db.MakeInternalKey(key, snapshot, db.InternalKeyKindMax)
+	ikey := db.MakeInternalKey(key, seqNum, db.InternalKeyKindMax)
 
 	// Look in the memtables before going to the on-disk current version.
 	for i := len(memtables) - 1; i >= 0; i-- {
@@ -192,7 +201,7 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 		}
 	}
 
-	// TODO(peter): update stats, maybe schedule compaction.
+	// TODO(peter): update stats.
 
 	return current.get(ikey, d.newIter, d.cmp, nil)
 }
