@@ -18,16 +18,17 @@ const (
 )
 
 type compactionIter struct {
-	cmp      db.Compare
-	merge    db.Merge
-	iter     db.InternalIterator
-	err      error
-	key      db.InternalKey
-	keyBuf   []byte
-	value    []byte
-	valueBuf []byte
-	valid    bool
-	pos      compactionIterPos
+	cmp                db.Compare
+	merge              db.Merge
+	iter               db.InternalIterator
+	err                error
+	key                db.InternalKey
+	keyBuf             []byte
+	value              []byte
+	valueBuf           []byte
+	valid              bool
+	pos                compactionIterPos
+	isBaseLevelForUkey func(cmp db.Compare, ukey []byte) bool
 }
 
 // TODO(peter): Add support for snapshots. Snapshots complicate the rules for
@@ -80,6 +81,10 @@ func (i *compactionIter) findNextEntry() bool {
 		i.key = i.iter.Key()
 		switch i.key.Kind() {
 		case db.InternalKeyKindDelete:
+			if i.isBaseLevelForUkey(i.cmp, i.key.UserKey) {
+				i.iter.NextUserKey()
+				continue
+			}
 			i.value = i.iter.Value()
 			i.valid = true
 			return true

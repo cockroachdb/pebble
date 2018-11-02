@@ -344,9 +344,10 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		return nil, pendingOutputs, err
 	}
 	iter := &compactionIter{
-		cmp:   d.cmp,
-		merge: d.merge,
-		iter:  iiter,
+		cmp:                d.cmp,
+		merge:              d.merge,
+		iter:               iiter,
+		isBaseLevelForUkey: c.isBaseLevelForUkey,
 	}
 
 	// TODO(peter): output to more than one table, if it would otherwise be too large.
@@ -372,10 +373,6 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		// TODO(peter): support c.shouldStopBefore.
 
 		ikey := iter.Key()
-		if ikey.Kind() == db.InternalKeyKindDelete &&
-			c.isBaseLevelForUkey(d.opts.Comparer.Compare, ikey.UserKey) {
-			continue
-		}
 
 		if tw == nil {
 			d.mu.Lock()

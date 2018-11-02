@@ -23,6 +23,9 @@ func TestCompactionIter(t *testing.T) {
 			cmp:   db.DefaultComparer.Compare,
 			merge: db.DefaultMerger.Merge,
 			iter:  &fakeIter{keys: keys, vals: vals},
+			isBaseLevelForUkey: func(db.Compare, []byte) bool {
+				return false
+			},
 		}
 	}
 
