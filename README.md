@@ -23,6 +23,7 @@ needed by CockroachDB:
 * [[TODO]](https://github.com/petermattis/pebble/issues/1) Range
   deletion tombstones
 * Reverse iteration
+* [TODO] Snapshots
 * SSTable ingestion
 * Table-level bloom filters
 
@@ -40,8 +41,8 @@ Pebble:
 * Pin iterator key / value
 * Plain table format
 * Single delete
-* Snapshots
 * SSTable ingest-behind
+* Sub-compactions
 * Transactions
 * Universal compaction style
 
