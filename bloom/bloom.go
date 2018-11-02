@@ -4,6 +4,7 @@
 
 // Package bloom implements Bloom filters.
 package bloom // import "github.com/petermattis/pebble/bloom"
+
 import (
 	"encoding/binary"
 	"fmt"
