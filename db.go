@@ -424,7 +424,7 @@ func (d *DB) NewIter(o *db.IterOptions) db.Iterator {
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators
 // created with this handle will all observe a stable snapshot of the current
-// DB state. The caller must call Snapshot.Release() when the snapshot is no
+// DB state. The caller must call Snapshot.Close() when the snapshot is no
 // longer needed. Snapshots are not persisted across DB restarts (close ->
 // open). Unlike the implicit snapshot maintained by an iterator, a snapshot
 // will not prevent memtables from being released or sstables from being

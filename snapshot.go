@@ -26,10 +26,11 @@ func (s *Snapshot) NewIter(o *db.IterOptions) db.Iterator {
 	return s.db.newIterInternal(nil, s, o)
 }
 
-// Release releases the snapshot. Release must be called. Failure to do so
-// while result in a tiny memory leak, and a large leak of resources on disk
-// due to the entries the snapshot is preventing from being deleted.
-func (s *Snapshot) Release() {
+// Close closes the snapshot, releasing its resources. Close must be
+// called. Failure to do so while result in a tiny memory leak, and a large
+// leak of resources on disk due to the entries the snapshot is preventing from
+// being deleted.
+func (s *Snapshot) Close() {
 	s.db.mu.Lock()
 	s.db.mu.snapshots.remove(s)
 	s.db.mu.Unlock()
