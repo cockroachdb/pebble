@@ -153,6 +153,9 @@ type DB struct {
 			compacting     bool
 			pendingOutputs map[uint64]struct{}
 		}
+
+		// The list of active snapshots.
+		snapshots snapshotList
 	}
 }
 
@@ -311,14 +314,18 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
 // level.
-func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.IterOptions) db.Iterator {
+func (d *DB) newIterInternal(
+	batchIter db.InternalIterator,
+	s *Snapshot,
+	o *db.IterOptions,
+) db.Iterator {
+	var seqNum uint64
 	d.mu.Lock()
-	seqNum := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
-	// TODO(peter): The sstables in current are guaranteed to have sequence
-	// numbers less than d.mu.versions.logSeqNum, so why does dbIter need to check
-	// sequence numbers for every iter? Perhaps the sequence number filtering
-	// should be folded into mergingIter (or InternalIterator).
-	//
+	if s != nil {
+		seqNum = s.seqNum
+	} else {
+		seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
+	}
 	// Grab and reference the current version to prevent its underlying files
 	// from being deleted if we have a concurrent compaction. Note that
 	// version.unref() can be called without holding DB.mu.
@@ -344,6 +351,9 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.IterOptions) d
 		iters = append(iters, batchIter)
 	}
 
+	// TODO(peter): We only need to add memtables which contain sequence numbers
+	// older than seqNum. Unfortunately, memtables don't track their oldest
+	// sequence number currently.
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
 		iters = append(iters, mem.newIter(o))
@@ -385,13 +395,6 @@ func (d *DB) newIterInternal(batchIter db.InternalIterator, o *db.IterOptions) d
 	return dbi
 }
 
-// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
-// return false). The iterator can be positioned via a call to SeekGE,
-// SeekLT, First or Last.
-func (d *DB) NewIter(o *db.IterOptions) db.Iterator {
-	return d.newIterInternal(nil, o)
-}
-
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
 // return an error. If the batch is committed it will be applied to the DB.
 func (d *DB) NewBatch() *Batch {
@@ -405,6 +408,35 @@ func (d *DB) NewBatch() *Batch {
 // NewBatch instead.
 func (d *DB) NewIndexedBatch() *Batch {
 	return newIndexedBatch(d, d.opts.Comparer)
+}
+
+// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+// return false). The iterator can be positioned via a call to SeekGE, SeekLT,
+// First or Last. The iterator provides a point-in-time view of the current DB
+// state. This view is maintained by preventing file deletions and preventing
+// memtables referenced by the iterator from being deleted. Using an iterator
+// to maintain a long-lived point-in-time view of the DB state can lead to an
+// apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
+// point-in-time snapshots which avoids these problems.
+func (d *DB) NewIter(o *db.IterOptions) db.Iterator {
+	return d.newIterInternal(nil /* batchIter */, nil /* snapshot */, o)
+}
+
+// NewSnapshot returns a point-in-time view of the current DB state. Iterators
+// created with this handle will all observe a stable snapshot of the current
+// DB state. The caller must call Snapshot.Release() when the snapshot is no
+// longer needed. Snapshots are not persisted across DB restarts (close ->
+// open). Unlike the implicit snapshot maintained by an iterator, a snapshot
+// will not prevent memtables from being released or sstables from being
+// deleted. Instead, a snapshot prevents deletion of sequence numbers
+// referenced by the snapshot.
+func (d *DB) NewSnapshot() *Snapshot {
+	s := &Snapshot{db: d}
+	d.mu.Lock()
+	s.seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
+	d.mu.snapshots.pushBack(s)
+	d.mu.Unlock()
+	return s
 }
 
 // Close closes the DB.

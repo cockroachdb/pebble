@@ -91,6 +91,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
 	// TODO(peter): This initialization is funky.
 	d.mu.versions.versions.mu = &d.mu.Mutex
+	d.mu.snapshots.init()
 	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 
 	d.mu.Lock()
