@@ -30,6 +30,48 @@ type compactionIter struct {
 	pos      compactionIterPos
 }
 
+// TODO(peter): Add support for snapshots. Snapshots complicate the rules for
+// when to output entries. Rather than outputting a single entry per-user key,
+// we have to output the newest entry that is older than a snapshot.
+//
+// Whenever an entries sequence number is older than a snapshot, but the
+// previous sequence number for the same user key was newer than the snapshot,
+// we need to stop accumulating the current entry. We're looking for the
+// pattern "a#X, snap#Y, a#Z" where X > Y >= Z. Another way to look at this is
+// that compaction compresses keys which are shadowed, yet snapshots prevent
+// shadowing. For example, consider the sequence of entries for the key a:
+//
+//   put#10
+//   del#8
+//   put#7
+//   del#4
+//   put#3
+//
+// In the absence of any snapshots, during compaction this would compress to:
+//
+//   put#10
+//
+// What if we have a snapshot at sequence number 11? Nothing changes as all of
+// the operations are older than the snapshot:
+//
+//   put#10
+//
+// There is similar behavior if there is a snapshot at sequence number 2. More
+// interesting is what happens if there is a snapshot at sequence number 5. The
+// series of operations between [inf, 5) are compressed, and so are the
+// operations between [5, 0):
+//
+//   put#10
+//   del#4
+//
+// compactionIter can perform this processing by maintaining a slice containing
+// all of the snapshot sequence numbers ordered from newest to oldest. When an
+// entry is being processed, a binary search is performed to find the "covering
+// snapshot" (i.e. the oldest snapshot that is newer than entry's sequence
+// number). If the covering snapshot differs from the previous entry's covering
+// snapshot, then we'll need to emit a new entry and thus processing for the
+// current entry is terminated.
+
 func (i *compactionIter) findNextEntry() bool {
 	i.valid = false
 	i.pos = compactionIterCur
