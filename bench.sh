@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# pushd arenaskl
+# pushd internal/arenaskl
 # go test -cpu 1,8 -run - -bench . -count 10 -timeout 1h 2>&1 | tee bench.txt.new
 # popd
 
-# pushd batchskl
+# pushd internal/batchskl
 # go test -run - -bench . -count 10 -timeout 1h 2>&1 | tee bench.txt.new
 # popd
 
-pushd record
+pushd internal/record
 go test -run - -bench . -count 10 -timeout 1h 2>&1 | tee bench.txt.new
 popd
 
