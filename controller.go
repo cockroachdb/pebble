@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/petermattis/pebble/rate"
+	"github.com/petermattis/pebble/internal/rate"
 )
 
 type controller struct {

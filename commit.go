@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/petermattis/pebble/rate"
+	"github.com/petermattis/pebble/internal/rate"
 )
 
 type commitQueueNode struct {
