@@ -305,7 +305,16 @@ func (n *node) rebalanceOrMerge(i int) {
 	}
 }
 
-func (n *node) verify(cmp db.Compare) {
+func (n *node) verify(cmp db.Compare, root bool) {
+	if root {
+		if n.parent != nil {
+			panic("root node should not have parent pointer")
+		}
+	} else {
+		if n.count < minItems || maxItems < n.count {
+			panic(fmt.Sprintf("item count %d outside range [%d,%d]", n.count, minItems, maxItems))
+		}
+	}
 	for i := int16(1); i < n.count; i++ {
 		if cmp(n.items[i-1].ukey(), n.items[i].ukey()) >= 0 {
 			panic(fmt.Sprintf("items are not sorted @ %d: %s >= %s",
@@ -332,7 +341,7 @@ func (n *node) verify(cmp db.Compare) {
 			if n.children[i].parent != n {
 				panic(fmt.Sprintf("child does not point to parent: %d/%d", i, n.count))
 			}
-			n.children[i].verify(cmp)
+			n.children[i].verify(cmp, false)
 		}
 	}
 }
@@ -374,6 +383,7 @@ func (t *BTree) Delete(key db.InternalKey) {
 	}
 	if t.root.count == 0 && !t.root.leaf {
 		t.root = t.root.children[0]
+		t.root.parent = nil
 	}
 }
 
@@ -431,7 +441,7 @@ func (t *BTree) Verify() {
 	if t.root == nil {
 		return
 	}
-	t.root.verify(t.cmp)
+	t.root.verify(t.cmp, true)
 }
 
 // Iterator ...
