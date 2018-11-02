@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/kr/pretty"
-	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )

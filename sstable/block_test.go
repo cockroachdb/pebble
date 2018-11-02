@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/datadriven"
 )
 
 func TestBlockWriter(t *testing.T) {

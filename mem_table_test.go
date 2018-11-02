@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
+	"github.com/petermattis/pebble/internal/datadriven"
 )
 
 // count returns the number of entries in a DB.

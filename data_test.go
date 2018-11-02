@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/datadriven"
 )
 
 func runInternalIterCmd(d *datadriven.TestData, iter db.InternalIterator) string {

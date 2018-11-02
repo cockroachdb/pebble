@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/datadriven"
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/storage"
 )
 
