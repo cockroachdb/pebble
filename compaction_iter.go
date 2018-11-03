@@ -10,13 +10,6 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-type compactionIterPos int8
-
-const (
-	compactionIterCur  compactionIterPos = 0
-	compactionIterNext compactionIterPos = 1
-)
-
 // compactionIter provides a forward-only iterator that encapsulates the logic
 // for collapsing entries during compaction. It wraps an internal iterator and
 // collapses entries that are no longer necessary because they are shadowed by
@@ -108,13 +101,12 @@ type compactionIter struct {
 	value          []byte
 	valueBuf       []byte
 	valid          bool
-	pos            compactionIterPos
+	skip           bool
 	elideTombstone func(key []byte) bool
 }
 
 func (i *compactionIter) findNextEntry() bool {
 	i.valid = false
-	i.pos = compactionIterCur
 
 	for i.iter.Valid() {
 		i.key = i.iter.Key()
@@ -126,11 +118,13 @@ func (i *compactionIter) findNextEntry() bool {
 			}
 			i.value = i.iter.Value()
 			i.valid = true
+			i.skip = true
 			return true
 
 		case db.InternalKeyKindSet:
 			i.value = i.iter.Value()
 			i.valid = true
+			i.skip = true
 			return true
 
 		case db.InternalKeyKindMerge:
@@ -151,18 +145,19 @@ func (i *compactionIter) mergeNext() bool {
 	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
 	i.key.UserKey, i.value = i.keyBuf, i.valueBuf
 	i.valid = true
+	i.skip = true
 
 	// Loop looking for older values for this key and merging them.
 	for {
 		i.iter.Next()
 		if !i.iter.Valid() {
-			i.pos = compactionIterNext
+			i.skip = false
 			return true
 		}
 		key := i.iter.Key()
 		if i.cmp(i.key.UserKey, key.UserKey) != 0 {
 			// We've advanced to the next key.
-			i.pos = compactionIterNext
+			i.skip = false
 			return true
 		}
 		switch key.Kind() {
@@ -203,13 +198,11 @@ func (i *compactionIter) Next() bool {
 	if i.err != nil {
 		return false
 	}
-	switch i.pos {
-	case compactionIterCur:
+	if i.skip {
 		// TODO(peter): Rather than calling NextUserKey here, we should advance the
 		// iterator manually to the next key looking for any entries which have
 		// invalid keys and returning them.
 		i.iter.NextUserKey()
-	case compactionIterNext:
 	}
 	return i.findNextEntry()
 }
