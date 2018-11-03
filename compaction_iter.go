@@ -17,61 +17,100 @@ const (
 	compactionIterNext compactionIterPos = 1
 )
 
+// compactionIter provides a forward-only iterator that encapsulates the logic
+// for collapsing entries during compaction. It wraps an internal iterator and
+// collapses entries that are no longer necessary because they are shadowed by
+// newer entries. The simplest example of this is when the internal iterator
+// contains two keys: a.PUT.2 and a.PUT.1. Instead of returning both entries,
+// compactionIter collapses the second entry because it is no longer
+// necessary. The high-level structure for compactionIter is to iterate over
+// its internal iterator and output 1 entry for every user-key. There are three
+// complications to this story.
+//
+// 1. Eliding Deletion Tombstones
+//
+// Consider the entries a.DEL.2 and a.PUT.1. These entries collapse to
+// a.DEL.2. Do we have to output the entry a.DEL.2? Only if a.DEL.2 possibly
+// shadows an entry at a lower level. If we're compacting to the base-level in
+// the LSM tree then a.DEL.2 is definitely not shadowing an entry at a lower
+// level and can be elided.
+//
+// We can do slightly better than only eliding deletion tombstones at the base
+// level by observing that we can elide a deletion tombstone if there are no
+// sstables that contain the entry's key. This check is performed by
+// elideTombstone.
+//
+// 2. Merges
+//
+// The MERGE operation merges the value for an entry with the existing value
+// for an entry. The logical value of an entry can be composed of a series of
+// merge operations. When compactionIter sees a MERGE, it scans forward in its
+// internal iterator collapsing MERGE operations for the same key until it
+// encounters a SET or DELETE operation. For example, the keys a.MERGE.4,
+// a.MERGE.3, a.MERGE.2 will be collapsed to a.MERGE.4 and the values will be
+// merged using the specified db.Merger.
+//
+// An interesting case here occurs when MERGE is combined with SET. Consider
+// the entries a.MERGE.3 and a.SET.2. The collapsed key will be a.SET.3. The
+// reason that the kind is changed to SET is because the SET operation acts as
+// a barrier preventing further merging. This can be seen better in the
+// scenario a.MERGE.3, a.SET.2, a.MERGE.1. The entry a.MERGE.1 may be at lower
+// (older) level and not involved in the compaction. If the compaction of
+// a.MERGE.3 and a.SET.2 produced a.MERGE.3, a subsequent compaction with
+// a.MERGE.1 would merge the values together incorrectly.
+//
+// 3. Snapshots [TODO(peter): unimplemented]
+//
+// Snapshots are lightweight point-in-time views of the DB state. At its core,
+// a snapshot is a sequence number along with a guarantee from Pebble that it
+// will maintain the view of the database at that sequence number. Part of this
+// guarantee is relatively straightforward to achieve. When reading from the
+// database Pebble will ignore sequence numbers that are larger than the
+// snapshot sequence number. The primary complexity with snapshots occurs
+// during compaction: the collapsing of entries that are shadowed by newer
+// entries is at odds with the guarantee that Pebble will maintain the view of
+// the database at the snapshot sequence number. Rather than collapsing entries
+// up to the next user key, compactionIter can only collapse entries up to the
+// next snapshot boundary. That is, every snapshot boundary potentially causes
+// another entry for the same user-key to be emitted. Another way to view this
+// is that snapshots define stripes and entries are collapsed within stripes,
+// but not across stripes. Consider the following scenario:
+//
+//   a.PUT.9
+//   a.DEL.8
+//   a.PUT.7
+//   a.DEL.6
+//   a.PUT.5
+//
+// In the absence of snapshots these entries would be collapsed to
+// a.PUT.9. What if there is a snapshot at sequence number 6? The entries can
+// be divided into two stripes and collapsed within the stripes:
+//
+//   a.PUT.9        a.PUT.9
+//   a.DEL.8  --->
+//   a.PUT.7
+//   --             --
+//   a.DEL.6  --->  a.DEL.6
+//   a.PUT.5
+//
+// All of the rules described earlier still apply, but they are confined to
+// operate within a snapshot stripe. Snapshots only affect compaction when the
+// snapshot sequence number lies within the range of sequence numbers being
+// compacted. In the above example, a snapshot at sequence number 10 or at
+// sequence number 5 would not have any effect.
 type compactionIter struct {
-	cmp                db.Compare
-	merge              db.Merge
-	iter               db.InternalIterator
-	err                error
-	key                db.InternalKey
-	keyBuf             []byte
-	value              []byte
-	valueBuf           []byte
-	valid              bool
-	pos                compactionIterPos
-	isBaseLevelForUkey func(cmp db.Compare, ukey []byte) bool
+	cmp            db.Compare
+	merge          db.Merge
+	iter           db.InternalIterator
+	err            error
+	key            db.InternalKey
+	keyBuf         []byte
+	value          []byte
+	valueBuf       []byte
+	valid          bool
+	pos            compactionIterPos
+	elideTombstone func(key []byte) bool
 }
-
-// TODO(peter): Add support for snapshots. Snapshots complicate the rules for
-// when to output entries. Rather than outputting a single entry per-user key,
-// we have to output the newest entry that is older than a snapshot.
-//
-// Whenever an entries sequence number is older than a snapshot, but the
-// previous sequence number for the same user key was newer than the snapshot,
-// we need to stop accumulating the current entry. We're looking for the
-// pattern "a#X, snap#Y, a#Z" where X > Y >= Z. Another way to look at this is
-// that compaction compresses keys which are shadowed, yet snapshots prevent
-// shadowing. For example, consider the sequence of entries for the key a:
-//
-//   put#10
-//   del#8
-//   put#7
-//   del#4
-//   put#3
-//
-// In the absence of any snapshots, during compaction this would compress to:
-//
-//   put#10
-//
-// What if we have a snapshot at sequence number 11? Nothing changes as all of
-// the operations are older than the snapshot:
-//
-//   put#10
-//
-// There is similar behavior if there is a snapshot at sequence number 2. More
-// interesting is what happens if there is a snapshot at sequence number 5. The
-// series of operations between [inf, 5) are compressed, and so are the
-// operations between [5, 0):
-//
-//   put#10
-//   del#4
-//
-// compactionIter can perform this processing by maintaining a slice containing
-// all of the snapshot sequence numbers ordered from newest to oldest. When an
-// entry is being processed, a binary search is performed to find the "covering
-// snapshot" (i.e. the oldest snapshot that is newer than entry's sequence
-// number). If the covering snapshot differs from the previous entry's covering
-// snapshot, then we'll need to emit a new entry and thus processing for the
-// current entry is terminated.
 
 func (i *compactionIter) findNextEntry() bool {
 	i.valid = false
@@ -81,7 +120,7 @@ func (i *compactionIter) findNextEntry() bool {
 		i.key = i.iter.Key()
 		switch i.key.Kind() {
 		case db.InternalKeyKindDelete:
-			if i.isBaseLevelForUkey(i.cmp, i.key.UserKey) {
+			if i.elideTombstone(i.key.UserKey) {
 				i.iter.NextUserKey()
 				continue
 			}

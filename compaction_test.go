@@ -537,11 +537,12 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 
 	for _, tc := range testCases {
 		c := compaction{
+			cmp:     db.DefaultComparer.Compare,
 			version: &tc.version,
 			level:   tc.level,
 		}
 		for ukey, want := range tc.wants {
-			if got := c.isBaseLevelForUkey(db.DefaultComparer.Compare, []byte(ukey)); got != want {
+			if got := c.elideTombstone([]byte(ukey)); got != want {
 				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, ukey, got, want)
 			}
 		}

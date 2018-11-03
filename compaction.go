@@ -28,6 +28,7 @@ func maxGrandparentOverlapBytes(opts *db.Options, level int) uint64 {
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
+	cmp     db.Compare
 	version *version
 
 	// level is the level that is being compacted. Inputs from level and
@@ -115,16 +116,17 @@ func (c *compaction) grow(vs *versionSet, sm, la db.InternalKey) bool {
 	return true
 }
 
-// isBaseLevelForUkey reports whether it is guaranteed that there are no
-// key/value pairs at c.level+2 or higher that have the user key ukey.
-func (c *compaction) isBaseLevelForUkey(userCmp db.Compare, ukey []byte) bool {
+// elideTombstone returns true if it is ok to elide a tombstone for the
+// specified key. A return value of true guarantees that there are no key/value
+// pairs at c.level+2 or higher that possibly contain the specified user key.
+func (c *compaction) elideTombstone(key []byte) bool {
 	// TODO(peter): this can be faster if ukey is always increasing between
 	// successive isBaseLevelForUkey calls and we can keep some state in between
 	// calls.
 	for level := c.level + 2; level < numLevels; level++ {
 		for _, f := range c.version.files[level] {
-			if userCmp(ukey, f.largest.UserKey) <= 0 {
-				if userCmp(ukey, f.smallest.UserKey) >= 0 {
+			if c.cmp(key, f.largest.UserKey) <= 0 {
+				if c.cmp(key, f.smallest.UserKey) >= 0 {
 					return false
 				}
 				// For levels above level 0, the files within a level are in
@@ -339,15 +341,16 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
+	c.cmp = d.cmp
 	iiter, err := compactionIterator(d.cmp, d.newIter, c)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
 	iter := &compactionIter{
-		cmp:                d.cmp,
-		merge:              d.merge,
-		iter:               iiter,
-		isBaseLevelForUkey: c.isBaseLevelForUkey,
+		cmp:            d.cmp,
+		merge:          d.merge,
+		iter:           iiter,
+		elideTombstone: c.elideTombstone,
 	}
 
 	// TODO(peter): output to more than one table, if it would otherwise be too large.
