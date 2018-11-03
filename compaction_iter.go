@@ -105,9 +105,28 @@ type compactionIter struct {
 	elideTombstone func(key []byte) bool
 }
 
-func (i *compactionIter) findNextEntry() bool {
-	i.valid = false
+func (i *compactionIter) First() {
+	if i.err != nil {
+		return
+	}
+	i.iter.First()
+	i.Next()
+}
 
+func (i *compactionIter) Next() bool {
+	if i.err != nil {
+		return false
+	}
+
+	if i.skip {
+		i.skip = false
+		// TODO(peter): Rather than calling NextUserKey here, we should advance the
+		// iterator manually to the next key looking for any entries which have
+		// invalid keys and returning them.
+		i.iter.NextUserKey()
+	}
+
+	i.valid = false
 	for i.iter.Valid() {
 		i.key = i.iter.Key()
 		switch i.key.Kind() {
@@ -184,27 +203,6 @@ func (i *compactionIter) mergeNext() bool {
 			return false
 		}
 	}
-}
-
-func (i *compactionIter) First() {
-	if i.err != nil {
-		return
-	}
-	i.iter.First()
-	i.findNextEntry()
-}
-
-func (i *compactionIter) Next() bool {
-	if i.err != nil {
-		return false
-	}
-	if i.skip {
-		// TODO(peter): Rather than calling NextUserKey here, we should advance the
-		// iterator manually to the next key looking for any entries which have
-		// invalid keys and returning them.
-		i.iter.NextUserKey()
-	}
-	return i.findNextEntry()
 }
 
 func (i *compactionIter) Key() db.InternalKey {
