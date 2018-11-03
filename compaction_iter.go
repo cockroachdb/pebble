@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/petermattis/pebble/db"
 )
@@ -52,7 +53,7 @@ import (
 // a.MERGE.3 and a.SET.2 produced a.MERGE.3, a subsequent compaction with
 // a.MERGE.1 would merge the values together incorrectly.
 //
-// 3. Snapshots [TODO(peter): unimplemented]
+// 3. Snapshots
 //
 // Snapshots are lightweight point-in-time views of the DB state. At its core,
 // a snapshot is a sequence number along with a guarantee from Pebble that it
@@ -92,16 +93,30 @@ import (
 // compacted. In the above example, a snapshot at sequence number 10 or at
 // sequence number 5 would not have any effect.
 type compactionIter struct {
-	cmp            db.Compare
-	merge          db.Merge
-	iter           db.InternalIterator
-	err            error
-	key            db.InternalKey
-	keyBuf         []byte
-	value          []byte
-	valueBuf       []byte
-	valid          bool
-	skip           bool
+	cmp   db.Compare
+	merge db.Merge
+	iter  db.InternalIterator
+	err   error
+	key   db.InternalKey
+	value []byte
+	// Temporary buffer used for storing the previous user key in order to
+	// determine when iteration has advanced to a new user key and thus a new
+	// snapshot stripe.
+	keyBuf []byte
+	// Temporary buffer used for aggregating merge operations.
+	valueBuf []byte
+	// Is the current entry valid?
+	valid bool
+	// Skip indicates whether the remaining entries in the current snapshot
+	// stripe should be skipped or processed. Skipped is true at the start of a
+	// stripe and set to false afterwards.
+	skip bool
+	// The index of the snapshot for the current key within the snapshots slice.
+	curSnapshotIdx int
+	// The snapshot sequence numbers that need to be maintained. These sequence
+	// numbers define the snapshot stripes (see the Snapshots description
+	// above). The sequence numbers are in ascending order.
+	snapshots      []uint64
 	elideTombstone func(key []byte) bool
 }
 
@@ -110,6 +125,9 @@ func (i *compactionIter) First() {
 		return
 	}
 	i.iter.First()
+	if i.iter.Valid() {
+		i.curSnapshotIdx = snapshotIndex(i.iter.Key().SeqNum(), i.snapshots)
+	}
 	i.Next()
 }
 
@@ -120,10 +138,8 @@ func (i *compactionIter) Next() bool {
 
 	if i.skip {
 		i.skip = false
-		// TODO(peter): Rather than calling NextUserKey here, we should advance the
-		// iterator manually to the next key looking for any entries which have
-		// invalid keys and returning them.
-		i.iter.NextUserKey()
+		for i.nextInStripe() {
+		}
 	}
 
 	i.valid = false
@@ -131,16 +147,25 @@ func (i *compactionIter) Next() bool {
 		i.key = i.iter.Key()
 		switch i.key.Kind() {
 		case db.InternalKeyKindDelete:
-			if i.elideTombstone(i.key.UserKey) {
-				i.iter.NextUserKey()
+			// If we're at the last snapshot stripe and the tombstone can be elided
+			// skip to the next stripe (which will be the next user key).
+			//
+			// TODO(peter): untested
+			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
+				i.saveKey()
+				for i.nextInStripe() {
+				}
 				continue
 			}
+
+			i.saveKey()
 			i.value = i.iter.Value()
 			i.valid = true
 			i.skip = true
 			return true
 
 		case db.InternalKeyKindSet:
+			i.saveKey()
 			i.value = i.iter.Value()
 			i.valid = true
 			i.skip = true
@@ -148,6 +173,17 @@ func (i *compactionIter) Next() bool {
 
 		case db.InternalKeyKindMerge:
 			return i.mergeNext()
+
+		case db.InternalKeyKindInvalid:
+			// NB: Invalid keys occur when there is some error parsing the key. Pass
+			// them through unmodified.
+			//
+			// TODO(peter): untested
+			i.saveKey()
+			i.saveValue()
+			i.iter.Next()
+			i.valid = true
+			return true
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.key.Kind())
@@ -158,31 +194,58 @@ func (i *compactionIter) Next() bool {
 	return false
 }
 
+// snapshotIndex returns the index of the first sequence number in snapshots
+// which is greater than or equal to seq.
+func snapshotIndex(seq uint64, snapshots []uint64) int {
+	return sort.Search(len(snapshots), func(i int) bool {
+		return snapshots[i] >= seq
+	})
+}
+
+func (i *compactionIter) nextInStripe() bool {
+	i.iter.Next()
+	if !i.iter.Valid() {
+		return false
+	}
+	key := i.iter.Key()
+	if i.cmp(i.key.UserKey, key.UserKey) != 0 {
+		i.curSnapshotIdx = snapshotIndex(key.SeqNum(), i.snapshots)
+		return false
+	}
+	if key.Kind() == db.InternalKeyKindInvalid {
+		i.curSnapshotIdx = snapshotIndex(key.SeqNum(), i.snapshots)
+		return false
+	}
+	if len(i.snapshots) == 0 {
+		return true
+	}
+	idx := snapshotIndex(key.SeqNum(), i.snapshots)
+	if i.curSnapshotIdx == idx {
+		return true
+	}
+	i.curSnapshotIdx = idx
+	return false
+}
+
 func (i *compactionIter) mergeNext() bool {
 	// Save the current key and value.
-	i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
-	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
-	i.key.UserKey, i.value = i.keyBuf, i.valueBuf
+	i.saveKey()
+	i.saveValue()
 	i.valid = true
-	i.skip = true
 
-	// Loop looking for older values for this key and merging them.
+	// Loop looking for older values in the current snapshot stripe and merging
+	// them.
 	for {
-		i.iter.Next()
-		if !i.iter.Valid() {
+		if !i.nextInStripe() {
 			i.skip = false
 			return true
 		}
-		key := i.iter.Key()
-		if i.cmp(i.key.UserKey, key.UserKey) != 0 {
-			// We've advanced to the next key.
-			i.skip = false
-			return true
-		}
-		switch key.Kind() {
+		switch i.iter.Key().Kind() {
 		case db.InternalKeyKindDelete:
-			// We've hit a deletion tombstone. Return everything up to this
-			// point.
+			// We've hit a deletion tombstone. Return everything up to this point and
+			// then skip entries until the next snapshot stripe.
+			i.valueBuf = i.value[:0]
+			i.skip = true
 			return true
 
 		case db.InternalKeyKindSet:
@@ -190,19 +253,32 @@ func (i *compactionIter) mergeNext() bool {
 			// change the kind of the resulting key to a Set so that it shadows keys
 			// in lower levels. That is, MERGE+MERGE+SET -> SET.
 			i.value = i.merge(i.key.UserKey, i.value, i.iter.Value(), nil)
+			i.valueBuf = i.value[:0]
 			i.key.SetKind(db.InternalKeyKindSet)
+			i.skip = true
 			return true
 
 		case db.InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
 			i.value = i.merge(i.key.UserKey, i.value, i.iter.Value(), nil)
+			i.valueBuf = i.value[:0]
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", i.key.Kind())
+			i.err = fmt.Errorf("invalid internal key kind: %d", i.iter.Key().Kind())
 			return false
 		}
 	}
+}
+
+func (i *compactionIter) saveKey() {
+	i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+	i.key.UserKey = i.keyBuf
+}
+
+func (i *compactionIter) saveValue() {
+	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
+	i.value = i.valueBuf
 }
 
 func (i *compactionIter) Key() db.InternalKey {
@@ -222,5 +298,9 @@ func (i *compactionIter) Error() error {
 }
 
 func (i *compactionIter) Close() error {
+	err := i.iter.Close()
+	if i.err == nil {
+		i.err = err
+	}
 	return i.err
 }

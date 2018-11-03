@@ -7,6 +7,8 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,15 +16,43 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
+func TestSnapshotIndex(t *testing.T) {
+	testCases := []struct {
+		snapshots []uint64
+		seq       uint64
+		expected  int
+	}{
+		{[]uint64{}, 1, 0},
+		{[]uint64{1}, 0, 0},
+		{[]uint64{1}, 1, 0},
+		{[]uint64{1}, 2, 1},
+		{[]uint64{1, 3}, 1, 0},
+		{[]uint64{1, 3}, 2, 1},
+		{[]uint64{1, 3}, 3, 1},
+		{[]uint64{1, 3}, 4, 2},
+		{[]uint64{1, 3, 3}, 2, 1},
+	}
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			idx := snapshotIndex(c.seq, c.snapshots)
+			if c.expected != idx {
+				t.Fatalf("expected %d, but got %d", c.expected, idx)
+			}
+		})
+	}
+}
+
 func TestCompactionIter(t *testing.T) {
 	var keys []db.InternalKey
 	var vals [][]byte
+	var snapshots []uint64
 
 	newIter := func() *compactionIter {
 		return &compactionIter{
-			cmp:   db.DefaultComparer.Compare,
-			merge: db.DefaultMerger.Merge,
-			iter:  &fakeIter{keys: keys, vals: vals},
+			cmp:       db.DefaultComparer.Compare,
+			merge:     db.DefaultMerger.Merge,
+			iter:      &fakeIter{keys: keys, vals: vals},
+			snapshots: snapshots,
 			elideTombstone: func([]byte) bool {
 				return false
 			},
@@ -42,6 +72,25 @@ func TestCompactionIter(t *testing.T) {
 			return ""
 
 		case "iter":
+			snapshots = snapshots[:0]
+			for _, arg := range d.CmdArgs {
+				switch arg.Key {
+				case "snapshots":
+					for _, val := range arg.Vals {
+						seqNum, err := strconv.Atoi(val)
+						if err != nil {
+							return err.Error()
+						}
+						snapshots = append(snapshots, uint64(seqNum))
+					}
+				default:
+					t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
+			}
+			sort.Slice(snapshots, func(i, j int) bool {
+				return snapshots[i] < snapshots[j]
+			})
+
 			iter := newIter()
 			var b bytes.Buffer
 			for _, line := range strings.Split(d.Input, "\n") {

@@ -2,7 +2,7 @@ define
 a.SET.1:b
 ----
 
-iter seq=1
+iter
 first
 next
 ----
@@ -15,6 +15,29 @@ a.SET.1:b
 ----
 
 iter
+first
+next
+----
+a#2,1:c
+.
+
+iter snapshots=0
+first
+next
+----
+a#2,1:c
+.
+
+iter snapshots=1
+first
+next
+next
+----
+a#2,1:c
+a#1,1:b
+.
+
+iter snapshots=2
 first
 next
 ----
@@ -45,6 +68,17 @@ next
 next
 ----
 a#2,0:
+b#3,1:c
+.
+
+iter snapshots=1
+first
+next
+next
+next
+----
+a#2,0:
+a#1,1:b
 b#3,1:c
 .
 
@@ -80,4 +114,88 @@ next
 ----
 a#3,1:bcd
 b#2,2:ab
+.
+
+iter snapshots=2
+first
+next
+next
+next
+----
+a#3,2:b
+a#2,1:cd
+b#2,2:ab
+.
+
+define
+a.SET.9:b
+a.DEL.8:
+a.SET.7:d
+a.DEL.6:
+a.SET.5:f
+----
+
+iter
+first
+next
+----
+a#9,1:b
+.
+
+iter snapshots=5
+first
+next
+next
+----
+a#9,1:b
+a#5,1:f
+.
+
+iter snapshots=6
+first
+next
+next
+----
+a#9,1:b
+a#6,0:
+.
+
+iter snapshots=7
+first
+next
+next
+----
+a#9,1:b
+a#7,1:d
+.
+
+iter snapshots=8
+first
+next
+next
+----
+a#9,1:b
+a#8,0:
+.
+
+iter snapshots=9
+first
+next
+----
+a#9,1:b
+.
+
+iter snapshots=(5,6,7,8,9)
+first
+next
+next
+next
+next
+next
+----
+a#9,1:b
+a#8,0:
+a#7,1:d
+a#6,0:
+a#5,1:f
 .
