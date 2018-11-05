@@ -61,8 +61,15 @@ func (l *snapshotList) empty() bool {
 	return l.root.next == &l.root
 }
 
-func (l *snapshotList) back() *Snapshot {
-	return l.root.prev
+func (l *snapshotList) toSlice() []uint64 {
+	if l.empty() {
+		return nil
+	}
+	var results []uint64
+	for i := l.root.next; i != &l.root; i = i.next {
+		results = append(results, i.seqNum)
+	}
+	return results
 }
 
 func (l *snapshotList) pushBack(s *Snapshot) {
