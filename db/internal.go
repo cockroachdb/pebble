@@ -30,6 +30,7 @@
 //		Comparer: myComparer,
 //	})
 package db // import "github.com/petermattis/pebble/db"
+
 import (
 	"bytes"
 	"encoding/binary"
