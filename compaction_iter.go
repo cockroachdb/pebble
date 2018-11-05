@@ -177,8 +177,6 @@ func (i *compactionIter) Next() bool {
 		case db.InternalKeyKindInvalid:
 			// NB: Invalid keys occur when there is some error parsing the key. Pass
 			// them through unmodified.
-			//
-			// TODO(peter): untested
 			i.saveKey()
 			i.saveValue()
 			i.iter.Next()

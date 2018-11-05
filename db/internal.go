@@ -126,6 +126,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"RANGEDEL": InternalKeyKindRangeDelete,
 	"SET":      InternalKeyKindSet,
 	"MERGE":    InternalKeyKindMerge,
+	"INVALID":  InternalKeyKindInvalid,
 	"MAX":      InternalKeyKindMax,
 }
 
