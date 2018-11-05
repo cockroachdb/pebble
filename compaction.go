@@ -336,6 +336,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}()
 
+	snapshots := d.mu.snapshots.toSlice()
+
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
@@ -350,6 +352,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		cmp:            d.cmp,
 		merge:          d.merge,
 		iter:           iiter,
+		snapshots:      snapshots,
 		elideTombstone: c.elideTombstone,
 	}
 
