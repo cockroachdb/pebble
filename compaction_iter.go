@@ -149,8 +149,6 @@ func (i *compactionIter) Next() bool {
 		case db.InternalKeyKindDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
 			// skip to the next stripe (which will be the next user key).
-			//
-			// TODO(peter): untested
 			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
 				i.saveKey()
 				for i.nextInStripe() {

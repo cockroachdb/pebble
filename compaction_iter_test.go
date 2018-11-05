@@ -46,6 +46,7 @@ func TestCompactionIter(t *testing.T) {
 	var keys []db.InternalKey
 	var vals [][]byte
 	var snapshots []uint64
+	var elideTombstones bool
 
 	newIter := func() *compactionIter {
 		return &compactionIter{
@@ -54,7 +55,7 @@ func TestCompactionIter(t *testing.T) {
 			iter:      &fakeIter{keys: keys, vals: vals},
 			snapshots: snapshots,
 			elideTombstone: func([]byte) bool {
-				return false
+				return elideTombstones
 			},
 		}
 	}
@@ -73,6 +74,7 @@ func TestCompactionIter(t *testing.T) {
 
 		case "iter":
 			snapshots = snapshots[:0]
+			elideTombstones = false
 			for _, arg := range d.CmdArgs {
 				switch arg.Key {
 				case "snapshots":
@@ -82,6 +84,12 @@ func TestCompactionIter(t *testing.T) {
 							return err.Error()
 						}
 						snapshots = append(snapshots, uint64(seqNum))
+					}
+				case "elide-tombstones":
+					var err error
+					elideTombstones, err = strconv.ParseBool(arg.Vals[0])
+					if err != nil {
+						return err.Error()
 					}
 				default:
 					t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)

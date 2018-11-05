@@ -56,6 +56,25 @@ next
 a#2,0:
 .
 
+iter elide-tombstones=true
+first
+----
+.
+
+iter elide-tombstones=true snapshots=2
+first
+----
+.
+
+iter elide-tombstones=true snapshots=1
+first
+next
+next
+----
+a#2,0:
+a#1,1:b
+.
+
 define
 a.DEL.2:
 a.SET.1:b
