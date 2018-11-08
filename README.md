@@ -17,6 +17,7 @@ needed by CockroachDB:
 * [[TODO]](https://github.com/petermattis/pebble/issues/6) Iterator
   options (prefix, lower/upper bound, table filter)
 * Level-based compaction
+* Manual compaction
 * Merge operator
 * [[TODO]](https://github.com/petermattis/pebble/issues/5) Prefix
   bloom filters

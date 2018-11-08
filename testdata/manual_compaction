@@ -1,0 +1,26 @@
+batch
+set a 1
+set b 2
+----
+
+compact a-b
+----
+1: a-b
+
+batch
+set c 3
+set d 4
+----
+
+compact c-d
+----
+1: a-b c-d
+
+batch
+set b 5
+set c 6
+----
+
+compact a-d
+----
+1: a-d

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
@@ -661,4 +662,114 @@ func TestCompaction(t *testing.T) {
 	if err := d.Close(); err != nil {
 		t.Fatalf("db Close: %v", err)
 	}
+}
+
+func TestManualCompaction(t *testing.T) {
+	fs := storage.NewMem()
+	err := fs.MkdirAll("ext", 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := Open("", &db.Options{
+		Storage: fs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	datadriven.RunTest(t, "testdata/manual_compaction", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "batch":
+			b := d.NewIndexedBatch()
+			for _, line := range strings.Split(td.Input, "\n") {
+				parts := strings.Fields(line)
+				if len(parts) == 0 {
+					continue
+				}
+				var err error
+				switch parts[0] {
+				case "set":
+					if len(parts) != 3 {
+						t.Fatalf("%s expects 2 arguments", parts[0])
+					}
+					err = b.Set([]byte(parts[1]), []byte(parts[2]), nil)
+				case "del":
+					if len(parts) != 2 {
+						t.Fatalf("%s expects 1 argument", parts[0])
+					}
+					err = b.Delete([]byte(parts[1]), nil)
+				case "merge":
+					if len(parts) != 3 {
+						t.Fatalf("%s expects 2 arguments", parts[0])
+					}
+					err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
+				default:
+					t.Fatalf("unknown op: %s", parts[0])
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			b.Commit(nil)
+
+		case "iter":
+			iter := d.NewIter(nil)
+			defer iter.Close()
+			var b bytes.Buffer
+			for _, line := range strings.Split(td.Input, "\n") {
+				parts := strings.Fields(line)
+				if len(parts) == 0 {
+					continue
+				}
+				switch parts[0] {
+				case "seek-ge":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-ge <key>\n")
+					}
+					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+				case "seek-lt":
+					if len(parts) != 2 {
+						return fmt.Sprintf("seek-lt <key>\n")
+					}
+					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+				case "next":
+					iter.Next()
+				case "prev":
+					iter.Prev()
+				default:
+					return fmt.Sprintf("unknown op: %s", parts[0])
+				}
+				if iter.Valid() {
+					fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+				} else if err := iter.Error(); err != nil {
+					fmt.Fprintf(&b, "err=%v\n", err)
+				} else {
+					fmt.Fprintf(&b, ".\n")
+				}
+			}
+			return b.String()
+
+		case "compact":
+			if len(td.CmdArgs) != 1 {
+				t.Fatalf("%s expects 1 argument", td.Cmd)
+			}
+			parts := strings.Split(td.CmdArgs[0].Key, "-")
+			if len(parts) != 2 {
+				t.Fatalf("malformed test case: %s", td.Input)
+			}
+			if err := d.Compact([]byte(parts[0]), []byte(parts[1])); err != nil {
+				return err.Error()
+			}
+
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
+		default:
+			t.Fatalf("unknown command: %s", td.Cmd)
+		}
+		return ""
+	})
 }

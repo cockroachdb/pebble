@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 
@@ -69,7 +70,20 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 	return c
 }
 
-// TODO(peter): user initiated compactions.
+func pickManualCompaction(vs *versionSet, manual *manualCompaction) (c *compaction) {
+	// TODO(peter): The logic here is untested and likely incomplete.
+	cur := vs.currentVersion()
+	c = &compaction{
+		version: cur,
+		level:   manual.level,
+	}
+	c.inputs[0] = cur.overlaps(manual.level, vs.cmp, manual.start.UserKey, manual.end.UserKey)
+	if len(c.inputs[0]) == 0 {
+		return nil
+	}
+	c.setupOtherInputs(vs)
+	return c
+}
 
 // setupOtherInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
@@ -87,8 +101,6 @@ func (c *compaction) setupOtherInputs(vs *versionSet) {
 	if c.level+2 < numLevels {
 		c.inputs[2] = c.version.overlaps(c.level+2, vs.cmp, smallest01.UserKey, largest01.UserKey)
 	}
-
-	// TODO(peter): update the compaction pointer for c.level.
 }
 
 // grow grows the number of inputs at c.level without changing the number of
@@ -136,6 +148,25 @@ func (c *compaction) elideTombstone(key []byte) bool {
 		}
 	}
 	return true
+}
+
+func (c *compaction) String() string {
+	var buf bytes.Buffer
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(&buf, "%d:", i+c.level)
+		for _, f := range c.inputs[0] {
+			fmt.Fprintf(&buf, " %s-%s", f.smallest.UserKey, f.largest.UserKey)
+		}
+		fmt.Fprintf(&buf, "\n")
+	}
+	return buf.String()
+}
+
+type manualCompaction struct {
+	level int
+	done  chan error
+	start db.InternalKey
+	end   db.InternalKey
 }
 
 // maybeScheduleFlush schedules a flush if necessary.
@@ -247,7 +278,11 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 
-	// TODO(peter): check for manual compactions.
+	if len(d.mu.compact.manual) > 0 {
+		d.mu.compact.compacting = true
+		go d.compact()
+		return
+	}
 
 	v := d.mu.versions.currentVersion()
 	// TODO(peter): check v.fileToCompact.
@@ -279,19 +314,26 @@ func (d *DB) compact() {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) compact1() error {
-	// TODO(peter): support manual compactions.
-
-	c := pickCompaction(&d.mu.versions)
+func (d *DB) compact1() (err error) {
+	var c *compaction
+	if len(d.mu.compact.manual) > 0 {
+		manual := d.mu.compact.manual[0]
+		d.mu.compact.manual = d.mu.compact.manual[1:]
+		c = pickManualCompaction(&d.mu.versions, manual)
+		defer func() {
+			manual.done <- err
+		}()
+	} else {
+		c = pickCompaction(&d.mu.versions)
+	}
 	if c == nil {
 		return nil
 	}
 
-	// Check for a trivial move of one table from one level to the next.
-	// We avoid such a move if there is lots of overlapping grandparent data.
-	// Otherwise, the move could create a parent file that will require
-	// a very expensive merge later on.
-	//
+	// Check for a trivial move of one table from one level to the next.  We
+	// avoid such a move if there is lots of overlapping grandparent data.
+	// Otherwise, the move could create a parent file that will require a very
+	// expensive merge later on.
 	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
 		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
 

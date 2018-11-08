@@ -152,6 +152,7 @@ type DB struct {
 			flushing       bool
 			compacting     bool
 			pendingOutputs map[uint64]struct{}
+			manual         []*manualCompaction
 		}
 
 		// The list of active snapshots.
@@ -471,10 +472,68 @@ func (d *DB) Close() error {
 }
 
 // Compact the specified range of keys in the database.
-//
-// TODO(peter): unimplemented
 func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
-	panic("pebble.DB: Compact unimplemented")
+	iStart := db.MakeInternalKey(start, db.InternalKeySeqNumMax, db.InternalKeyKindMax)
+	iEnd := db.MakeInternalKey(end, 0, 0)
+	meta := []*fileMetadata{&fileMetadata{smallest: iStart, largest: iEnd}}
+
+	d.mu.Lock()
+	maxLevelWithFiles := 1
+	cur := d.mu.versions.currentVersion()
+	for level := 0; level < numLevels; level++ {
+		if len(cur.overlaps(level, d.cmp, start, end)) > 0 {
+			maxLevelWithFiles = level
+		}
+	}
+
+	// Determine if any memtable overlaps with the compaction range. We wait for
+	// any such overlap to flush (initiating a flush if necessary).
+	mem, err := func() (flushable, error) {
+		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
+			mem := d.mu.mem.mutable
+			return mem, d.makeRoomForWrite(nil)
+		}
+		// Check to see if any files overlap with any of the immutable
+		// memtables. The queue is ordered from oldest to newest. We want to wait
+		// for the newest table that overlaps.
+		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
+			mem := d.mu.mem.queue[i]
+			if ingestMemtableOverlaps(d.cmp, mem, meta) {
+				return mem, nil
+			}
+		}
+		return nil, nil
+	}()
+
+	d.mu.Unlock()
+
+	if err != nil {
+		return err
+	}
+	if mem != nil {
+		<-mem.flushed()
+	}
+
+	for level := 0; level < maxLevelWithFiles; level++ {
+		manual := &manualCompaction{
+			done:  make(chan error, 1),
+			level: level,
+			start: iStart,
+			end:   iEnd,
+		}
+		if err := d.manualCompact(manual); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DB) manualCompact(manual *manualCompaction) error {
+	d.mu.Lock()
+	d.mu.compact.manual = append(d.mu.compact.manual, manual)
+	d.maybeScheduleCompaction()
+	d.mu.Unlock()
+	return <-manual.done
 }
 
 // Flush the memtable to stable storage.
