@@ -222,6 +222,7 @@ func (i *dbIter) mergeNext(key db.InternalKey) bool {
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
 			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
+			i.valueBuf = i.value[:0]
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())

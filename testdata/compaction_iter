@@ -31,17 +31,17 @@ a#2,1:c
 iter snapshots=1
 first
 next
-next
 ----
 a#2,1:c
-a#1,1:b
 .
 
 iter snapshots=2
 first
 next
+next
 ----
 a#2,1:c
+a#1,1:b
 .
 
 define
@@ -63,16 +63,18 @@ first
 
 iter elide-tombstones=true snapshots=2
 first
-----
-.
-
-iter elide-tombstones=true snapshots=1
-first
 next
 next
 ----
 a#2,0:
 a#1,1:b
+.
+
+iter elide-tombstones=true snapshots=1
+first
+next
+----
+a#2,0:
 .
 
 define
@@ -91,6 +93,15 @@ b#3,1:c
 .
 
 iter snapshots=1
+first
+next
+next
+----
+a#2,0:
+b#3,1:c
+.
+
+iter snapshots=2
 first
 next
 next
@@ -135,7 +146,7 @@ a#3,1:bcd
 b#2,2:ab
 .
 
-iter snapshots=2
+iter snapshots=3
 first
 next
 next
@@ -161,7 +172,7 @@ next
 a#9,1:b
 .
 
-iter snapshots=5
+iter snapshots=6
 first
 next
 next
@@ -170,7 +181,7 @@ a#9,1:b
 a#5,1:f
 .
 
-iter snapshots=6
+iter snapshots=7
 first
 next
 next
@@ -179,7 +190,7 @@ a#9,1:b
 a#6,0:
 .
 
-iter snapshots=7
+iter snapshots=8
 first
 next
 next
@@ -188,7 +199,7 @@ a#9,1:b
 a#7,1:d
 .
 
-iter snapshots=8
+iter snapshots=9
 first
 next
 next
@@ -197,7 +208,7 @@ a#9,1:b
 a#8,0:
 .
 
-iter snapshots=9
+iter snapshots=10
 first
 next
 ----
@@ -259,4 +270,21 @@ next
 ----
 a#2,2:b
 a#1,255:c
+.
+
+define
+a.MERGE.2:b
+a.MERGE.1:c
+a.MERGE.0:d
+----
+
+iter snapshots=(1,2)
+first
+next
+next
+next
+----
+a#2,2:b
+a#1,2:c
+a#0,2:d
 .

@@ -77,7 +77,7 @@ import (
 //   a.PUT.5
 //
 // In the absence of snapshots these entries would be collapsed to
-// a.PUT.9. What if there is a snapshot at sequence number 6? The entries can
+// a.PUT.9. What if there is a snapshot at sequence number 7? The entries can
 // be divided into two stripes and collapsed within the stripes:
 //
 //   a.PUT.9        a.PUT.9
@@ -194,7 +194,7 @@ func (i *compactionIter) Next() bool {
 // which is greater than or equal to seq.
 func snapshotIndex(seq uint64, snapshots []uint64) int {
 	return sort.Search(len(snapshots), func(i int) bool {
-		return snapshots[i] >= seq
+		return snapshots[i] > seq
 	})
 }
 

@@ -118,3 +118,40 @@ prev
 a:3
 .
 a:3
+
+define
+merge a 1
+snapshot 1
+merge a 2
+snapshot 2
+merge a 3
+snapshot 3
+compact a-b
+----
+
+iter snapshot=1
+first
+next
+prev
+----
+a:1
+.
+a:1
+
+iter snapshot=2
+first
+next
+prev
+----
+a:21
+.
+a:21
+
+iter snapshot=3
+first
+next
+prev
+----
+a:321
+.
+a:321
