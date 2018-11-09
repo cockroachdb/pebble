@@ -1,0 +1,77 @@
+define
+set a 1
+snapshot 1
+set b 2
+snapshot 2
+set c 3
+snapshot 3
+----
+
+iter snapshot=1
+first
+next
+prev
+----
+a:1
+.
+a:1
+
+iter snapshot=2
+first
+next
+next
+prev
+prev
+----
+a:1
+b:2
+.
+b:2
+a:1
+
+iter snapshot=3
+first
+next
+next
+next
+prev
+prev
+prev
+----
+a:1
+b:2
+c:3
+.
+c:3
+b:2
+a:1
+
+define
+set a 1
+snapshot 1
+set a 2
+snapshot 2
+set a 3
+snapshot 3
+----
+
+iter snapshot=1
+first
+next
+----
+a:1
+.
+
+iter snapshot=2
+first
+next
+----
+a:2
+.
+
+iter snapshot=3
+first
+next
+----
+a:3
+.
