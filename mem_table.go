@@ -158,6 +158,8 @@ func (m *memTable) empty() bool {
 type memTableIter struct {
 	cmp       db.Compare
 	reverse   bool
+	valid     bool
+	key       db.InternalKey
 	iter      arenaskl.Iterator
 	prevStart arenaskl.Iterator
 	prevEnd   arenaskl.Iterator
@@ -174,7 +176,7 @@ func (t *memTableIter) clearPrevCache() {
 	}
 }
 
-func (t *memTableIter) initPrevStart(key db.InternalKey) {
+func (t *memTableIter) initPrevStart(key db.InternalKey) db.InternalKey {
 	t.reverse = true
 	t.prevStart = t.iter
 	for {
@@ -187,7 +189,9 @@ func (t *memTableIter) initPrevStart(key db.InternalKey) {
 			break
 		}
 		t.prevStart = iter
+		key = prevKey
 	}
+	return key
 }
 
 func (t *memTableIter) initPrevEnd(key db.InternalKey) {
@@ -208,14 +212,19 @@ func (t *memTableIter) initPrevEnd(key db.InternalKey) {
 func (t *memTableIter) SeekGE(key []byte) {
 	t.clearPrevCache()
 	t.iter.SeekGE(key)
+	t.valid = t.iter.Valid()
+	if t.valid {
+		t.key = t.iter.Key()
+	}
 }
 
 func (t *memTableIter) SeekLT(key []byte) {
 	t.clearPrevCache()
 	t.iter.SeekLT(key)
-	if t.iter.Valid() {
+	t.valid = t.iter.Valid()
+	if t.valid {
 		key := t.iter.Key()
-		t.initPrevStart(key)
+		t.key = t.initPrevStart(key)
 		t.initPrevEnd(key)
 		t.iter = t.prevStart
 	}
@@ -224,14 +233,19 @@ func (t *memTableIter) SeekLT(key []byte) {
 func (t *memTableIter) First() {
 	t.clearPrevCache()
 	t.iter.First()
+	t.valid = t.iter.Valid()
+	if t.valid {
+		t.key = t.iter.Key()
+	}
 }
 
 func (t *memTableIter) Last() {
 	t.clearPrevCache()
 	t.iter.Last()
-	if t.iter.Valid() {
+	t.valid = t.iter.Valid()
+	if t.valid {
 		key := t.iter.Key()
-		t.initPrevStart(key)
+		t.key = t.initPrevStart(key)
 		t.prevEnd = t.iter
 		t.iter = t.prevStart
 	}
@@ -239,7 +253,11 @@ func (t *memTableIter) Last() {
 
 func (t *memTableIter) Next() bool {
 	t.clearPrevCache()
-	return t.iter.Next()
+	t.valid = t.iter.Next()
+	if t.valid {
+		t.key = t.iter.Key()
+	}
+	return t.valid
 }
 
 func (t *memTableIter) Prev() bool {
@@ -264,30 +282,33 @@ func (t *memTableIter) Prev() bool {
 	// there is a single version for each key, reverse iteration consumes an
 	// extra dereference and comparison.
 	if t.iter.Head() {
+		t.valid = false
 		return false
 	}
 	if t.iter.Tail() {
 		return t.prevUserKey()
 	}
 	if !t.reverse {
-		key := t.iter.Key()
-		t.initPrevStart(key)
-		t.initPrevEnd(key)
+		key := t.initPrevStart(t.key)
+		t.initPrevEnd(t.key)
+		t.key = key
 	}
 	if t.iter != t.prevEnd {
 		t.iter.Next()
 		if !t.iter.Valid() {
 			panic("expected valid node")
 		}
+		t.key = t.iter.Key()
 		return true
 	}
 	t.iter = t.prevStart
-	if !t.iter.Prev() {
+	t.valid = t.iter.Prev()
+	if !t.valid {
 		t.clearPrevCache()
 		return false
 	}
 	t.prevEnd = t.iter
-	t.initPrevStart(t.iter.Key())
+	t.key = t.initPrevStart(t.iter.Key())
 	t.iter = t.prevStart
 	return true
 }
@@ -298,24 +319,30 @@ func (t *memTableIter) prevUserKey() bool {
 	}
 	if t.iter.Tail() {
 		t.Last()
-		return t.iter.Valid()
+		t.valid = t.iter.Valid()
+		if !t.valid {
+			return false
+		}
+		t.key = t.iter.Key()
+		return true
 	}
 	if !t.reverse {
-		t.initPrevStart(t.iter.Key())
+		t.key = t.initPrevStart(t.iter.Key())
 	}
 	t.iter = t.prevStart
-	if !t.iter.Prev() {
+	t.valid = t.iter.Prev()
+	if !t.valid {
 		t.clearPrevCache()
 		return false
 	}
 	t.prevEnd = t.iter
-	t.initPrevStart(t.iter.Key())
+	t.key = t.initPrevStart(t.iter.Key())
 	t.iter = t.prevStart
 	return true
 }
 
 func (t *memTableIter) Key() db.InternalKey {
-	return t.iter.Key()
+	return t.key
 }
 
 func (t *memTableIter) Value() []byte {
@@ -323,7 +350,7 @@ func (t *memTableIter) Value() []byte {
 }
 
 func (t *memTableIter) Valid() bool {
-	return t.iter.Valid()
+	return t.valid
 }
 
 func (t *memTableIter) Error() error {
