@@ -242,24 +242,6 @@ func (t *memTableIter) Next() bool {
 	return t.iter.Next()
 }
 
-func (t *memTableIter) NextUserKey() bool {
-	t.clearPrevCache()
-	if t.iter.Tail() {
-		return false
-	}
-	if t.iter.Head() {
-		t.iter.First()
-		return t.iter.Valid()
-	}
-	key := t.iter.Key()
-	for t.iter.Next() {
-		if t.cmp(key.UserKey, t.Key().UserKey) < 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func (t *memTableIter) Prev() bool {
 	// Reverse iteration is a bit funky in that it returns entries for identical
 	// user-keys from larger to smaller sequence number even though they are not
@@ -285,7 +267,7 @@ func (t *memTableIter) Prev() bool {
 		return false
 	}
 	if t.iter.Tail() {
-		return t.PrevUserKey()
+		return t.prevUserKey()
 	}
 	if !t.reverse {
 		key := t.iter.Key()
@@ -310,7 +292,7 @@ func (t *memTableIter) Prev() bool {
 	return true
 }
 
-func (t *memTableIter) PrevUserKey() bool {
+func (t *memTableIter) prevUserKey() bool {
 	if t.iter.Head() {
 		return false
 	}

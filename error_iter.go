@@ -32,15 +32,7 @@ func (c *errorIter) Next() bool {
 	return false
 }
 
-func (c *errorIter) NextUserKey() bool {
-	return false
-}
-
 func (c *errorIter) Prev() bool {
-	return false
-}
-
-func (c *errorIter) PrevUserKey() bool {
 	return false
 }
 

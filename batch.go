@@ -590,24 +590,6 @@ func (i *batchIter) Next() bool {
 	return i.iter.Next()
 }
 
-func (i *batchIter) NextUserKey() bool {
-	i.clearPrevCache()
-	if i.iter.Tail() {
-		return false
-	}
-	if i.iter.Head() {
-		i.iter.First()
-		return i.iter.Valid()
-	}
-	key := i.iter.Key()
-	for i.iter.Next() {
-		if i.cmp(key.UserKey, i.Key().UserKey) < 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func (i *batchIter) Prev() bool {
 	// Reverse iteration is a bit funky in that it returns entries for identical
 	// user-keys from larger to smaller sequence number even though they are not
@@ -633,7 +615,7 @@ func (i *batchIter) Prev() bool {
 		return false
 	}
 	if i.iter.Tail() {
-		return i.PrevUserKey()
+		return i.prevUserKey()
 	}
 	if !i.reverse {
 		key := i.iter.Key()
@@ -658,7 +640,7 @@ func (i *batchIter) Prev() bool {
 	return true
 }
 
-func (i *batchIter) PrevUserKey() bool {
+func (i *batchIter) prevUserKey() bool {
 	if i.iter.Head() {
 		return false
 	}
@@ -888,28 +870,6 @@ func (i *flushableBatchIter) Next() bool {
 	return i.index < len(i.batch.offsets)
 }
 
-func (i *flushableBatchIter) NextUserKey() bool {
-	i.clearPrevCache()
-	if i.index >= len(i.batch.offsets) {
-		return false
-	}
-	if i.index == -1 {
-		i.index = 0
-		return i.Valid()
-	}
-	key := i.Key()
-	for {
-		i.index++
-		if i.index >= len(i.batch.offsets) {
-			break
-		}
-		if i.cmp(key.UserKey, i.Key().UserKey) < 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func (i *flushableBatchIter) Prev() bool {
 	// Reverse iteration is a bit funky in that it returns entries for identical
 	// user-keys from larger to smaller sequence number even though they are not
@@ -935,7 +895,7 @@ func (i *flushableBatchIter) Prev() bool {
 		return false
 	}
 	if i.index >= len(i.batch.offsets) {
-		return i.PrevUserKey()
+		return i.prevUserKey()
 	}
 	if !i.reverse {
 		key := i.Key()
@@ -960,7 +920,7 @@ func (i *flushableBatchIter) Prev() bool {
 	return true
 }
 
-func (i *flushableBatchIter) PrevUserKey() bool {
+func (i *flushableBatchIter) prevUserKey() bool {
 	if i.index < 0 {
 		return false
 	}

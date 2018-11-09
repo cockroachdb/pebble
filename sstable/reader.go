@@ -236,12 +236,6 @@ func (i *Iter) Next() bool {
 	return false
 }
 
-// NextUserKey implements InternalIterator.NextUserKey, as documented in the
-// pebble/db package.
-func (i *Iter) NextUserKey() bool {
-	return i.Next()
-}
-
 // Prev implements InternalIterator.Prev, as documented in the pebble/db
 // package.
 func (i *Iter) Prev() bool {
@@ -265,12 +259,6 @@ func (i *Iter) Prev() bool {
 		}
 	}
 	return false
-}
-
-// PrevUserKey implements InternalIterator.PrevUserKey, as documented in the
-// pebble/db package.
-func (i *Iter) PrevUserKey() bool {
-	return i.Prev()
 }
 
 // Key implements InternalIterator.Key, as documented in the pebble/db package.

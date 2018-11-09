@@ -37,12 +37,8 @@ func runInternalIterCmd(d *datadriven.TestData, iter db.InternalIterator) string
 			iter.Last()
 		case "next":
 			iter.Next()
-		case "next-user-key":
-			iter.NextUserKey()
 		case "prev":
 			iter.Prev()
-		case "prev-user-key":
-			iter.PrevUserKey()
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}

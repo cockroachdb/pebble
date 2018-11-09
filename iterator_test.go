@@ -96,22 +96,6 @@ func (f *fakeIter) Next() bool {
 	return f.index < len(f.keys)
 }
 
-func (f *fakeIter) NextUserKey() bool {
-	if f.index == -1 {
-		return f.Next()
-	}
-	if f.index == len(f.keys) {
-		return false
-	}
-	key := f.keys[f.index]
-	for f.Next() {
-		if db.DefaultComparer.Compare(key.UserKey, f.Key().UserKey) < 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func (f *fakeIter) Prev() bool {
 	if f.Valid() {
 		key := f.keys[f.index]
@@ -122,10 +106,10 @@ func (f *fakeIter) Prev() bool {
 			}
 		}
 	}
-	return f.PrevUserKey()
+	return f.prevUserKey()
 }
 
-func (f *fakeIter) PrevUserKey() bool {
+func (f *fakeIter) prevUserKey() bool {
 	if f.index == len(f.keys) {
 		f.index--
 	} else {

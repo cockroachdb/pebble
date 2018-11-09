@@ -314,14 +314,6 @@ func (i *blockIter) Next() bool {
 	return true
 }
 
-// NextUserKey implements InternalIterator.NextUserKey, as documented in the
-// pebble/db package.
-func (i *blockIter) NextUserKey() bool {
-	// TODO(peter): An sstable might contain multiple versions of the same
-	// user-key. Such keys will have 8 bytes or fewer of unshared key.
-	return i.Next()
-}
-
 // Prev implements InternalIterator.Prev, as documented in the pebble/db
 // package.
 func (i *blockIter) Prev() bool {
@@ -363,14 +355,6 @@ func (i *blockIter) Prev() bool {
 
 	i.decodeInternalKey(i.key)
 	return true
-}
-
-// PrevUserKey implements InternalIterator.PrevUserKey, as documented in the
-// pebble/db package.
-func (i *blockIter) PrevUserKey() bool {
-	// TODO(peter): An sstable might contain multiple versions of the same
-	// user-key. Such keys will have 8 bytes or fewer of unshared key.
-	return i.Prev()
 }
 
 // Key implements InternalIterator.Key, as documented in the pebble/db package.
