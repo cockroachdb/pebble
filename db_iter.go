@@ -57,17 +57,18 @@ func (i *dbIter) findNextEntry() bool {
 		}
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
-			i.iter.NextUserKey()
+			i.nextUserKey()
 			continue
 
 		case db.InternalKeyKindSet:
-			i.key = key.UserKey
+			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
+			i.key = i.keyBuf
 			i.value = i.iter.Value()
 			i.valid = true
 			return true
 
 		case db.InternalKeyKindMerge:
-			return i.mergeNext()
+			return i.mergeNext(key)
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
@@ -76,6 +77,21 @@ func (i *dbIter) findNextEntry() bool {
 	}
 
 	return false
+}
+
+func (i *dbIter) nextUserKey() {
+	if i.iter.Valid() {
+		if !i.valid {
+			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+			i.key = i.keyBuf
+		}
+		i.iter.Next()
+		for i.iter.Valid() && i.cmp(i.key, i.iter.Key().UserKey) == 0 {
+			i.iter.Next()
+		}
+	} else {
+		i.iter.First()
+	}
 }
 
 func (i *dbIter) findPrevEntry() bool {
@@ -99,17 +115,18 @@ func (i *dbIter) findPrevEntry() bool {
 		}
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
-			i.iter.PrevUserKey()
+			i.prevUserKey()
 			continue
 
 		case db.InternalKeyKindSet:
-			i.key = key.UserKey
+			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
+			i.key = i.keyBuf
 			i.value = i.iter.Value()
 			i.valid = true
 			return true
 
 		case db.InternalKeyKindMerge:
-			return i.mergePrev()
+			return i.mergePrev(key)
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
@@ -120,9 +137,24 @@ func (i *dbIter) findPrevEntry() bool {
 	return false
 }
 
-func (i *dbIter) mergeNext() bool {
+func (i *dbIter) prevUserKey() {
+	if i.iter.Valid() {
+		if !i.valid {
+			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+			i.key = i.keyBuf
+		}
+		i.iter.Prev()
+		for i.iter.Valid() && i.cmp(i.key, i.iter.Key().UserKey) == 0 {
+			i.iter.Prev()
+		}
+	} else {
+		i.iter.Last()
+	}
+}
+
+func (i *dbIter) mergeNext(key db.InternalKey) bool {
 	// Save the current key and value.
-	i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
 	i.key, i.value = i.keyBuf, i.valueBuf
 	i.valid = true
@@ -134,7 +166,7 @@ func (i *dbIter) mergeNext() bool {
 			i.pos = dbIterNext
 			return true
 		}
-		key := i.iter.Key()
+		key = i.iter.Key()
 		if i.cmp(i.key, key.UserKey) != 0 {
 			// We've advanced to the next key.
 			i.pos = dbIterNext
@@ -163,9 +195,9 @@ func (i *dbIter) mergeNext() bool {
 	}
 }
 
-func (i *dbIter) mergePrev() bool {
+func (i *dbIter) mergePrev(key db.InternalKey) bool {
 	// Save the current key and value.
-	i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
 	i.key, i.value = i.keyBuf, i.valueBuf
 	i.valid = true
@@ -177,7 +209,7 @@ func (i *dbIter) mergePrev() bool {
 			i.pos = dbIterPrev
 			return true
 		}
-		key := i.iter.Key()
+		key = i.iter.Key()
 		if i.cmp(i.key, key.UserKey) != 0 {
 			// We've advanced to the previous key.
 			i.pos = dbIterPrev
@@ -266,10 +298,10 @@ func (i *dbIter) Next() bool {
 	}
 	switch i.pos {
 	case dbIterCur:
-		i.iter.NextUserKey()
+		i.nextUserKey()
 	case dbIterPrev:
-		i.iter.NextUserKey()
-		i.iter.NextUserKey()
+		i.nextUserKey()
+		i.nextUserKey()
 	case dbIterNext:
 	}
 	return i.findNextEntry()
@@ -281,10 +313,10 @@ func (i *dbIter) Prev() bool {
 	}
 	switch i.pos {
 	case dbIterCur:
-		i.iter.PrevUserKey()
+		i.prevUserKey()
 	case dbIterNext:
-		i.iter.PrevUserKey()
-		i.iter.PrevUserKey()
+		i.prevUserKey()
+		i.prevUserKey()
 	case dbIterPrev:
 	}
 	return i.findPrevEntry()

@@ -75,3 +75,34 @@ next
 ----
 a:3
 .
+
+define
+set a 1
+snapshot 1
+set a 2
+snapshot 2
+set a 3
+snapshot 3
+compact a-b
+----
+
+iter snapshot=1
+first
+next
+----
+a:1
+.
+
+iter snapshot=2
+first
+next
+----
+a:2
+.
+
+iter snapshot=3
+first
+next
+----
+a:3
+.

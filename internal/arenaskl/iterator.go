@@ -17,7 +17,11 @@
 
 package arenaskl
 
-import "github.com/petermattis/pebble/db"
+import (
+	"encoding/binary"
+
+	"github.com/petermattis/pebble/db"
+)
 
 type splice struct {
 	prev *node
@@ -87,7 +91,22 @@ func (it *Iterator) Prev() bool {
 
 // Key returns the key at the current position.
 func (it *Iterator) Key() db.InternalKey {
-	return it.nd.getKey(it.list.arena)
+	// NB: This is manually inlined from node.getKey() for performance.
+	b := it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
+	// This is a manual inline of db.DecodeInternalKey, because the Go compiler
+	// seems to refuse to automatically inline it currently.
+	l := len(b) - 8
+	var trailer uint64
+	if l >= 0 {
+		trailer = binary.LittleEndian.Uint64(b[l:])
+		b = b[:l:l]
+	} else {
+		trailer = uint64(db.InternalKeyKindInvalid)
+	}
+	return db.InternalKey{
+		UserKey: b,
+		Trailer: trailer,
+	}
 }
 
 // Value returns the value at the current position.
