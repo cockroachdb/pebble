@@ -24,7 +24,7 @@ needed by CockroachDB:
 * [[TODO]](https://github.com/petermattis/pebble/issues/1) Range
   deletion tombstones
 * Reverse iteration
-* [TODO] Snapshots
+* Snapshots
 * SSTable ingestion
 * Table-level bloom filters
 
