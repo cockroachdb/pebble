@@ -115,7 +115,7 @@ type commitEnv struct {
 	// The next sequence number to give to a batch. Mutated atomically by the
 	// current WAL writer.
 	logSeqNum *uint64
-	// The visible sequence number at which reads should be performed. Ratched
+	// The visible sequence number at which reads should be performed. Ratcheted
 	// upwards atomically as batches are applied to the memtable.
 	visibleSeqNum *uint64
 	// Controller for measuring and limiting the commit rate.
