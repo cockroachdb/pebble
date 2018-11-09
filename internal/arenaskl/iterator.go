@@ -48,6 +48,11 @@ func (it *Iterator) Close() error {
 	return nil
 }
 
+// Error returns any accumulated error.
+func (it *Iterator) Error() error {
+	return nil
+}
+
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns true if the given key exists and false
 // otherwise.
@@ -63,16 +68,14 @@ func (it *Iterator) SeekLT(key []byte) {
 
 // First seeks position at the first entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (it *Iterator) First() bool {
+func (it *Iterator) First() {
 	it.nd = it.list.getNext(it.list.head, 0)
-	return it.nd != it.list.tail
 }
 
 // Last seeks position at the last entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (it *Iterator) Last() bool {
+func (it *Iterator) Last() {
 	it.nd = it.list.getPrev(it.list.tail, 0)
-	return it.nd != it.list.head
 }
 
 // Next advances to the next position. If there are no following nodes, then

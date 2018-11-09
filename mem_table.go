@@ -138,10 +138,8 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
 func (m *memTable) newIter(o *db.IterOptions) db.InternalIterator {
-	return &memTableIter{
-		cmp:  m.cmp,
-		iter: m.skl.NewIter(),
-	}
+	it := m.skl.NewIter()
+	return &it
 }
 
 func (m *memTable) close() error {
@@ -151,91 +149,4 @@ func (m *memTable) close() error {
 // empty returns whether the MemTable has no key/value pairs.
 func (m *memTable) empty() bool {
 	return m.skl.Size() == m.emptySize
-}
-
-// memTableIter is a MemTable memTableIter that buffers upcoming results, so
-// that it does not have to acquire the MemTable's mutex on each Next call.
-type memTableIter struct {
-	cmp     db.Compare
-	reverse bool
-	valid   bool
-	key     db.InternalKey
-	iter    arenaskl.Iterator
-}
-
-// memTableIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*memTableIter)(nil)
-
-func (t *memTableIter) SeekGE(key []byte) {
-	t.iter.SeekGE(key)
-	t.valid = t.iter.Valid()
-	if t.valid {
-		t.key = t.iter.Key()
-	}
-}
-
-func (t *memTableIter) SeekLT(key []byte) {
-	t.iter.SeekLT(key)
-	t.valid = t.iter.Valid()
-	if t.valid {
-		t.key = t.iter.Key()
-	}
-}
-
-func (t *memTableIter) First() {
-	t.iter.First()
-	t.valid = t.iter.Valid()
-	if t.valid {
-		t.key = t.iter.Key()
-	}
-}
-
-func (t *memTableIter) Last() {
-	t.iter.Last()
-	t.valid = t.iter.Valid()
-	if t.valid {
-		t.key = t.iter.Key()
-	}
-}
-
-func (t *memTableIter) Next() bool {
-	if t.iter.Tail() {
-		return false
-	}
-	t.valid = t.iter.Next()
-	if t.valid {
-		t.key = t.iter.Key()
-	}
-	return t.valid
-}
-
-func (t *memTableIter) Prev() bool {
-	if t.iter.Head() {
-		return false
-	}
-	t.valid = t.iter.Prev()
-	if t.valid {
-		t.key = t.iter.Key()
-	}
-	return t.valid
-}
-
-func (t *memTableIter) Key() db.InternalKey {
-	return t.key
-}
-
-func (t *memTableIter) Value() []byte {
-	return t.iter.Value()
-}
-
-func (t *memTableIter) Valid() bool {
-	return t.valid
-}
-
-func (t *memTableIter) Error() error {
-	return nil
-}
-
-func (t *memTableIter) Close() error {
-	return t.iter.Close()
 }
