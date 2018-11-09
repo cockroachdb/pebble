@@ -17,9 +17,16 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
+// Set sets the value for the given key. It overwrites any previous value for
+// that key; a DB is not a multi-map. NB: this might have unexpected
+// interaction with prepare/apply. Caveat emptor!
+func (m *memTable) set(key db.InternalKey, value []byte) error {
+	return m.skl.Add(key, value)
+}
+
 // count returns the number of entries in a DB.
-func count(d *memTable) (n int) {
-	x := d.newIter(nil)
+func (m *memTable) count() (n int) {
+	x := m.newIter(nil)
 	for x.First(); x.Valid(); x.Next() {
 		n++
 	}
@@ -36,7 +43,7 @@ func ikey(s string) db.InternalKey {
 func TestMemTableBasic(t *testing.T) {
 	// Check the empty DB.
 	m := newMemTable(nil)
-	if got, want := count(m), 0; got != want {
+	if got, want := m.count(), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
 	v, err := m.get([]byte("cherry"))
@@ -49,7 +56,7 @@ func TestMemTableBasic(t *testing.T) {
 	m.set(ikey("grape"), []byte("red"))
 	m.set(ikey("grape"), []byte("green"))
 	m.set(ikey("plum"), []byte("purple"))
-	if got, want := count(m), 4; got != want {
+	if got, want := m.count(), 4; got != want {
 		t.Fatalf("2.count: got %v, want %v", got, want)
 	}
 	// Get keys that are and aren't in the DB.
@@ -76,7 +83,7 @@ func TestMemTableBasic(t *testing.T) {
 	if err := m.set(ikey("apricot"), []byte("orange")); err != nil {
 		t.Fatalf("12.set: %v", err)
 	}
-	if got, want := count(m), 5; got != want {
+	if got, want := m.count(), 5; got != want {
 		t.Fatalf("13.count: got %v, want %v", got, want)
 	}
 	// Clean up.
@@ -88,7 +95,7 @@ func TestMemTableBasic(t *testing.T) {
 func TestMemTableCount(t *testing.T) {
 	m := newMemTable(nil)
 	for i := 0; i < 200; i++ {
-		if j := count(m); j != i {
+		if j := m.count(); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
 		}
 		m.set(db.InternalKey{UserKey: []byte{byte(i)}}, nil)
@@ -120,7 +127,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		m0.set(k, v)
 	}
 	// Check the DB count.
-	if got, want := count(m0), 1000; got != want {
+	if got, want := m0.count(), 1000; got != want {
 		t.Fatalf("count: got %v, want %v", got, want)
 	}
 	// Check random-access lookup.

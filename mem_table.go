@@ -87,13 +87,6 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 	return it.Value(), nil
 }
 
-// Set sets the value for the given key. It overwrites any previous value for
-// that key; a DB is not a multi-map.
-func (m *memTable) set(key db.InternalKey, value []byte) error {
-	// TODO(peter): how does this interact with prepare/apply?
-	return m.skl.Add(key, value)
-}
-
 // Prepare reserves space for the batch in the memtable and references the
 // memtable preventing it from being flushed until the batch is applied. Note
 // that prepare is not thread-safe, while apply is. The caller must call
