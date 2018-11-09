@@ -58,23 +58,29 @@ snapshot 3
 iter snapshot=1
 first
 next
+prev
 ----
 a:1
 .
+a:1
 
 iter snapshot=2
 first
 next
+prev
 ----
 a:2
 .
+a:2
 
 iter snapshot=3
 first
 next
+prev
 ----
 a:3
 .
+a:3
 
 define
 set a 1
@@ -89,20 +95,26 @@ compact a-b
 iter snapshot=1
 first
 next
+prev
 ----
 a:1
 .
+a:1
 
 iter snapshot=2
 first
 next
+prev
 ----
 a:2
 .
+a:2
 
 iter snapshot=3
 first
 next
+prev
 ----
 a:3
 .
+a:3
