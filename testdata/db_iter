@@ -2,7 +2,7 @@ define
 a.SET.1:b
 ----
 
-iter seq=1
+iter seq=2
 seek-ge a
 next
 prev
@@ -11,12 +11,12 @@ a:b
 .
 a:b
 
-iter seq=1
+iter seq=2
 seek-ge b
 ----
 .
 
-iter seq=1
+iter seq=2
 seek-lt a
 ----
 .
@@ -27,7 +27,7 @@ a.SET.2:c
 a.SET.1:b
 ----
 
-iter seq=1
+iter seq=2
 seek-ge a
 next
 prev
@@ -36,7 +36,7 @@ a:b
 .
 a:b
 
-iter seq=2
+iter seq=3
 seek-ge a
 next
 prev
@@ -51,24 +51,24 @@ a.DEL.2:
 a.SET.1:b
 ----
 
-iter seq=2
+iter seq=3
 seek-ge a
 ----
 .
 
-iter seq=1
+iter seq=2
 seek-ge 1
 next
 ----
 a:b
 .
 
-iter seq=2
+iter seq=3
 seek-lt b
 ----
 .
 
-iter seq=1
+iter seq=2
 seek-lt b
 prev
 next
@@ -84,19 +84,19 @@ a.SET.1:b
 b.SET.3:c
 ----
 
-iter seq=3
+iter seq=4
 seek-ge a
 next
 ----
 b:c
 .
 
-iter seq=2
+iter seq=3
 seek-ge a
 ----
 .
 
-iter seq=1
+iter seq=2
 seek-ge a
 ----
 a:b
@@ -108,7 +108,7 @@ b.SET.2:b
 c.SET.3:c
 ----
 
-iter seq=3
+iter seq=4
 seek-ge a
 next
 next
@@ -119,24 +119,24 @@ b:b
 c:c
 .
 
-iter seq=3
+iter seq=4
 seek-ge b
 next
 ----
 b:b
 c:c
 
-iter seq=3
+iter seq=4
 seek-ge c
 ----
 c:c
 
-iter seq=3
+iter seq=4
 seek-lt a
 ----
 .
 
-iter seq=3
+iter seq=4
 seek-lt b
 prev
 next
@@ -145,7 +145,7 @@ a:a
 .
 a:a
 
-iter seq=3
+iter seq=4
 seek-lt c
 prev
 prev
@@ -157,7 +157,7 @@ a:a
 a:a
 
 
-iter seq=3
+iter seq=4
 seek-lt d
 prev
 prev
@@ -175,7 +175,7 @@ a.SET.b2:b
 b.SET.2:c
 ----
 
-iter seq=1
+iter seq=2
 seek-ge a
 next
 prev
@@ -184,17 +184,17 @@ a:b
 .
 a:b
 
-iter seq=1
+iter seq=2
 seek-ge b
 ----
 .
 
-iter seq=1
+iter seq=2
 seek-lt a
 ----
 .
 
-iter seq=1
+iter seq=2
 seek-lt b
 prev
 next
@@ -203,7 +203,7 @@ a:b
 .
 a:b
 
-iter seq=1
+iter seq=2
 seek-lt c
 prev
 next
@@ -221,7 +221,7 @@ b.MERGE.2:a
 b.MERGE.1:b
 ----
 
-iter seq=3
+iter seq=4
 seek-ge a
 next
 next
@@ -232,21 +232,21 @@ b:ab
 .
 b:ab
 
-iter seq=2
+iter seq=3
 seek-ge a
 next
 ----
 a:cd
 b:ab
 
-iter seq=1
+iter seq=2
 seek-ge a
 next
 ----
 a:d
 b:b
 
-iter seq=3
+iter seq=4
 seek-lt c
 prev
 prev
@@ -257,19 +257,30 @@ a:bcd
 .
 a:bcd
 
-iter seq=2
+iter seq=3
 seek-lt c
 prev
 ----
 b:ab
 a:cd
 
-iter seq=1
+iter seq=2
 seek-lt c
 prev
 ----
 b:b
 a:d
+
+iter seq=4
+seek-ge a
+next
+prev
+next
+----
+a:bcd
+b:ab
+a:bcd
+b:ab
 
 iter seq=3
 seek-ge a
@@ -277,9 +288,9 @@ next
 prev
 next
 ----
-a:bcd
+a:cd
 b:ab
-a:bcd
+a:cd
 b:ab
 
 iter seq=2
@@ -288,21 +299,21 @@ next
 prev
 next
 ----
-a:cd
-b:ab
-a:cd
-b:ab
+a:d
+b:b
+a:d
+b:b
 
-iter seq=1
-seek-ge a
-next
+iter seq=4
+seek-lt c
 prev
 next
+prev
 ----
-a:d
-b:b
-a:d
-b:b
+b:ab
+a:bcd
+b:ab
+a:bcd
 
 iter seq=3
 seek-lt c
@@ -311,22 +322,11 @@ next
 prev
 ----
 b:ab
-a:bcd
+a:cd
 b:ab
-a:bcd
+a:cd
 
 iter seq=2
-seek-lt c
-prev
-next
-prev
-----
-b:ab
-a:cd
-b:ab
-a:cd
-
-iter seq=1
 seek-lt c
 prev
 next
@@ -344,7 +344,7 @@ c.SET.1:c
 d.SET.1:d
 ----
 
-iter seq=1 lower=a
+iter seq=2 lower=a
 seek-ge a
 first
 prev
@@ -353,7 +353,7 @@ a:a
 a:a
 .
 
-iter seq=1 lower=b
+iter seq=2 lower=b
 seek-ge a
 first
 prev
@@ -362,7 +362,7 @@ b:b
 b:b
 .
 
-iter seq=1 lower=c
+iter seq=2 lower=c
 seek-ge a
 first
 prev
@@ -371,7 +371,7 @@ c:c
 c:c
 .
 
-iter seq=1 lower=d
+iter seq=2 lower=d
 seek-ge a
 first
 prev
@@ -380,14 +380,14 @@ d:d
 d:d
 .
 
-iter seq=1 lower=e
+iter seq=2 lower=e
 seek-ge a
 first
 ----
 .
 .
 
-iter seq=1 upper=d
+iter seq=2 upper=d
 seek-lt d
 last
 next
@@ -396,7 +396,7 @@ c:c
 c:c
 .
 
-iter seq=1 upper=c
+iter seq=2 upper=c
 seek-lt d
 last
 next
@@ -405,7 +405,7 @@ b:b
 b:b
 .
 
-iter seq=1 upper=b
+iter seq=2 upper=b
 seek-lt d
 last
 next
@@ -414,14 +414,14 @@ a:a
 a:a
 .
 
-iter seq=1 upper=a
+iter seq=2 upper=a
 seek-lt d
 last
 ----
 .
 .
 
-iter seq=1 lower=b upper=c
+iter seq=2 lower=b upper=c
 seek-ge a
 next
 ----

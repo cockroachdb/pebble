@@ -47,7 +47,7 @@ func (i *dbIter) findNextEntry() bool {
 			break
 		}
 
-		if seqNum := key.SeqNum(); seqNum > i.seqNum {
+		if seqNum := key.SeqNum(); seqNum >= i.seqNum {
 			// Ignore entries that are newer than our snapshot sequence number,
 			// except for batch sequence numbers which are always visible.
 			if (seqNum & db.InternalKeySeqNumBatch) == 0 {
@@ -89,7 +89,7 @@ func (i *dbIter) findPrevEntry() bool {
 			break
 		}
 
-		if seqNum := key.SeqNum(); seqNum > i.seqNum {
+		if seqNum := key.SeqNum(); seqNum >= i.seqNum {
 			// Ignore entries that are newer than our snapshot sequence number,
 			// except for batch sequence numbers which are always visible.
 			if (seqNum & db.InternalKeySeqNumBatch) == 0 {

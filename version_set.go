@@ -31,7 +31,7 @@ type versionSet struct {
 	prevLogNumber      uint64
 	nextFileNumber     uint64
 	logSeqNum          uint64 // next seqNum to use for WAL writes
-	visibleSeqNum      uint64 // visible seqNum (< logSeqNum)
+	visibleSeqNum      uint64 // visible seqNum (<= logSeqNum)
 	manifestFileNumber uint64
 
 	manifestFile storage.File
