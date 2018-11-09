@@ -7,7 +7,6 @@ package sstable
 import (
 	"encoding/binary"
 	"errors"
-	"sort"
 	"unsafe"
 
 	"github.com/petermattis/pebble/db"
@@ -192,17 +191,34 @@ func (i *blockIter) SeekGE(key []byte) {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
-	index := sort.Search(i.numRestarts, func(j int) bool {
-		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
-		// For a restart point, there are 0 bytes shared with the previous key.
-		// The varint encoding of 0 occupies 1 byte.
-		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
-		// Decode the key at that restart point, and compare it to the key sought.
-		v1, ptr := decodeVarint(ptr)
-		_, ptr = decodeVarint(ptr)
-		s := getBytes(ptr, int(v1))
-		return db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) < 0
-	})
+	var index int
+
+	{
+		// NB: manually inlined sort.Sort is ~5% faster.
+		//
+		// Define f(-1) == false and f(n) == true.
+		// Invariant: f(index-1) == false, f(upper) == true.
+		upper := i.numRestarts
+		for index < upper {
+			h := int(uint(index+upper) >> 1) // avoid overflow when computing h
+			// index ≤ h < upper
+			offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			// For a restart point, there are 0 bytes shared with the previous key.
+			// The varint encoding of 0 occupies 1 byte.
+			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
+			// Decode the key at that restart point, and compare it to the key sought.
+			v1, ptr := decodeVarint(ptr)
+			_, ptr = decodeVarint(ptr)
+			s := getBytes(ptr, int(v1))
+			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) >= 0 {
+				index = h + 1 // preserves f(i-1) == false
+			} else {
+				upper = h // preserves f(j) == true
+			}
+		}
+		// index == upper, f(index-1) == false, and f(upper) (= f(index)) == true
+		// => answer is index.
+	}
 
 	// Since keys are strictly increasing, if index > 0 then the restart point at
 	// index-1 will be the largest whose key is <= the key sought.  If index ==
@@ -229,17 +245,34 @@ func (i *blockIter) SeekLT(key []byte) {
 	// Find the index of the smallest restart point whose key is >= the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
-	index := sort.Search(i.numRestarts, func(j int) bool {
-		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
-		// For a restart point, there are 0 bytes shared with the previous key.
-		// The varint encoding of 0 occupies 1 byte.
-		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
-		// Decode the key at that restart point, and compare it to the key sought.
-		v1, ptr := decodeVarint(ptr)
-		_, ptr = decodeVarint(ptr)
-		s := getBytes(ptr, int(v1))
-		return db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) <= 0
-	})
+	var index int
+
+	{
+		// NB: manually inlined sort.Sort is ~5% faster.
+		//
+		// Define f(-1) == false and f(n) == true.
+		// Invariant: f(index-1) == false, f(upper) == true.
+		upper := i.numRestarts
+		for index < upper {
+			h := int(uint(index+upper) >> 1) // avoid overflow when computing h
+			// index ≤ h < upper
+			offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			// For a restart point, there are 0 bytes shared with the previous key.
+			// The varint encoding of 0 occupies 1 byte.
+			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
+			// Decode the key at that restart point, and compare it to the key sought.
+			v1, ptr := decodeVarint(ptr)
+			_, ptr = decodeVarint(ptr)
+			s := getBytes(ptr, int(v1))
+			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) > 0 {
+				index = h + 1 // preserves f(i-1) == false
+			} else {
+				upper = h // preserves f(j) == true
+			}
+		}
+		// index == upper, f(index-1) == false, and f(upper) (= f(index)) == true
+		// => answer is index.
+	}
 
 	// Since keys are strictly increasing, if index > 0 then the restart point at
 	// index-1 will be the largest whose key is < the key sought.
@@ -334,10 +367,28 @@ func (i *blockIter) Prev() bool {
 	}
 
 	targetOffset := i.offset
-	index := sort.Search(i.numRestarts, func(j int) bool {
-		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
-		return offset >= targetOffset
-	})
+	var index int
+
+	{
+		// NB: manually inlined sort.Sort is ~5% faster.
+		//
+		// Define f(-1) == false and f(n) == true.
+		// Invariant: f(index-1) == false, f(upper) == true.
+		upper := i.numRestarts
+		for index < upper {
+			h := int(uint(index+upper) >> 1) // avoid overflow when computing h
+			// index ≤ h < upper
+			offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			if offset < targetOffset {
+				index = h + 1 // preserves f(i-1) == false
+			} else {
+				upper = h // preserves f(j) == true
+			}
+		}
+		// index == upper, f(index-1) == false, and f(upper) (= f(index)) == true
+		// => answer is index.
+	}
+
 	i.offset = 0
 	if index > 0 {
 		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
