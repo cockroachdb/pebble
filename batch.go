@@ -502,166 +502,38 @@ func (r *batchReader) nextStr() (s []byte, ok bool) {
 // Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
 // two in sync.
 type batchIter struct {
-	cmp       db.Compare
-	batch     *Batch
-	reverse   bool
-	iter      batchskl.Iterator
-	prevStart batchskl.Iterator
-	prevEnd   batchskl.Iterator
-	err       error
+	cmp     db.Compare
+	batch   *Batch
+	reverse bool
+	iter    batchskl.Iterator
+	err     error
 }
 
 // batchIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*batchIter)(nil)
 
-func (i *batchIter) clearPrevCache() {
-	if i.reverse {
-		i.reverse = false
-		i.prevStart = batchskl.Iterator{}
-		i.prevEnd = batchskl.Iterator{}
-	}
-}
-
-func (i *batchIter) initPrevStart(key db.InternalKey) {
-	i.reverse = true
-	i.prevStart = i.iter
-	for {
-		iter := i.prevStart
-		if !iter.Prev() {
-			break
-		}
-		prevKey := iter.Key()
-		if i.cmp(prevKey.UserKey, key.UserKey) != 0 {
-			break
-		}
-		i.prevStart = iter
-	}
-}
-
-func (i *batchIter) initPrevEnd(key db.InternalKey) {
-	i.prevEnd = i.iter
-	for {
-		iter := i.prevEnd
-		if !iter.Next() {
-			break
-		}
-		nextKey := iter.Key()
-		if i.cmp(nextKey.UserKey, key.UserKey) != 0 {
-			break
-		}
-		i.prevEnd = iter
-	}
-}
-
 func (i *batchIter) SeekGE(key []byte) {
-	i.clearPrevCache()
 	i.iter.SeekGE(key)
 }
 
 func (i *batchIter) SeekLT(key []byte) {
-	i.clearPrevCache()
 	i.iter.SeekLT(key)
-	if i.iter.Valid() {
-		key := i.iter.Key()
-		i.initPrevStart(key)
-		i.initPrevEnd(key)
-		i.iter = i.prevStart
-	}
 }
 
 func (i *batchIter) First() {
-	i.clearPrevCache()
 	i.iter.First()
 }
 
 func (i *batchIter) Last() {
-	i.clearPrevCache()
 	i.iter.Last()
-	if i.iter.Valid() {
-		key := i.iter.Key()
-		i.initPrevStart(key)
-		i.prevEnd = i.iter
-		i.iter = i.prevStart
-	}
 }
 
 func (i *batchIter) Next() bool {
-	i.clearPrevCache()
 	return i.iter.Next()
 }
 
 func (i *batchIter) Prev() bool {
-	// Reverse iteration is a bit funky in that it returns entries for identical
-	// user-keys from larger to smaller sequence number even though they are not
-	// stored that way in the skiplist. For example, the following shows the
-	// ordering of keys in the skiplist:
-	//
-	//   a:2 a:1 b:2 b:1 c:2 c:1
-	//
-	// With reverse iteration we return them in the following order:
-	//
-	//   c:2 c:1 b:2 b:1 a:2 a:1
-	//
-	// This is accomplished via a bit of fancy footwork: if the iterator is
-	// currently at a valid entry, see if the user-key for the next entry is the
-	// same and if it is advance. Otherwise, move to the previous user key.
-	//
-	// Note that this makes reverse iteration a bit more expensive than forward
-	// iteration, especially if there are a larger number of versions for a key
-	// in the mem-table, though that should be rare. In the normal case where
-	// there is a single version for each key, reverse iteration consumes an
-	// extra dereference and comparison.
-	if i.iter.Head() {
-		return false
-	}
-	if i.iter.Tail() {
-		return i.prevUserKey()
-	}
-	if !i.reverse {
-		key := i.iter.Key()
-		i.initPrevStart(key)
-		i.initPrevEnd(key)
-	}
-	if i.iter != i.prevEnd {
-		i.iter.Next()
-		if !i.iter.Valid() {
-			panic("expected valid node")
-		}
-		return true
-	}
-	i.iter = i.prevStart
-	if !i.iter.Prev() {
-		i.clearPrevCache()
-		return false
-	}
-	i.prevEnd = i.iter
-	i.initPrevStart(i.iter.Key())
-	i.iter = i.prevStart
-	return true
-}
-
-func (i *batchIter) prevUserKey() bool {
-	if i.iter.Head() {
-		return false
-	}
-	if i.iter.Tail() {
-		// TODO(peter): Back up to prev start.
-		i.Last()
-		return i.iter.Valid()
-	}
-	if !i.reverse {
-		key := i.iter.Key()
-		i.initPrevStart(key)
-	}
-	i.iter = i.prevStart
-	if !i.iter.Prev() {
-		i.clearPrevCache()
-		return false
-	}
-	i.prevEnd = i.iter
-	i.initPrevStart(i.iter.Key())
-	i.iter = i.prevStart
-	return true
+	return i.iter.Prev()
 }
 
 func (i *batchIter) Key() db.InternalKey {
@@ -771,59 +643,17 @@ func (b *flushableBatch) readyForFlush() bool {
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
 // two in sync.
 type flushableBatchIter struct {
-	batch     *flushableBatch
-	cmp       db.Compare
-	reverse   bool
-	index     int
-	prevStart int
-	prevEnd   int
-	err       error
+	batch   *flushableBatch
+	cmp     db.Compare
+	reverse bool
+	index   int
+	err     error
 }
 
 // flushableBatchIter implements the db.InternalIterator interface.
 var _ db.InternalIterator = (*flushableBatchIter)(nil)
 
-func (i *flushableBatchIter) clearPrevCache() {
-	if i.reverse {
-		i.reverse = false
-		i.prevStart = -1
-		i.prevEnd = -1
-	}
-}
-
-func (i *flushableBatchIter) initPrevStart(key db.InternalKey) {
-	i.reverse = true
-	i.prevStart = i.index
-	for {
-		index := i.prevStart - 1
-		if index < 0 {
-			break
-		}
-		prevKey := i.getKey(index)
-		if i.cmp(prevKey.UserKey, key.UserKey) != 0 {
-			break
-		}
-		i.prevStart = index
-	}
-}
-
-func (i *flushableBatchIter) initPrevEnd(key db.InternalKey) {
-	i.prevEnd = i.index
-	for {
-		index := i.prevEnd + 1
-		if index >= len(i.batch.offsets) {
-			break
-		}
-		nextKey := i.getKey(index)
-		if i.cmp(nextKey.UserKey, key.UserKey) != 0 {
-			break
-		}
-		i.prevEnd = index
-	}
-}
-
 func (i *flushableBatchIter) SeekGE(key []byte) {
-	i.clearPrevCache()
 	ikey := db.MakeSearchKey(key)
 	i.index = sort.Search(len(i.batch.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
@@ -831,38 +661,22 @@ func (i *flushableBatchIter) SeekGE(key []byte) {
 }
 
 func (i *flushableBatchIter) SeekLT(key []byte) {
-	i.clearPrevCache()
 	ikey := db.MakeSearchKey(key)
 	i.index = sort.Search(len(i.batch.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	i.index--
-	if i.Valid() {
-		key := i.Key()
-		i.initPrevStart(key)
-		i.initPrevEnd(key)
-		i.index = i.prevStart
-	}
 }
 
 func (i *flushableBatchIter) First() {
-	i.clearPrevCache()
 	i.index = 0
 }
 
 func (i *flushableBatchIter) Last() {
-	i.clearPrevCache()
 	i.index = len(i.batch.offsets) - 1
-	if i.Valid() {
-		key := i.Key()
-		i.initPrevStart(key)
-		i.prevEnd = i.index
-		i.index = i.prevStart
-	}
 }
 
 func (i *flushableBatchIter) Next() bool {
-	i.clearPrevCache()
 	if i.index == len(i.batch.offsets) {
 		return false
 	}
@@ -871,76 +685,11 @@ func (i *flushableBatchIter) Next() bool {
 }
 
 func (i *flushableBatchIter) Prev() bool {
-	// Reverse iteration is a bit funky in that it returns entries for identical
-	// user-keys from larger to smaller sequence number even though they are not
-	// stored that way in the skiplist. For example, the following shows the
-	// ordering of keys in the skiplist:
-	//
-	//   a:2 a:1 b:2 b:1 c:2 c:1
-	//
-	// With reverse iteration we return them in the following order:
-	//
-	//   c:2 c:1 b:2 b:1 a:2 a:1
-	//
-	// This is accomplished via a bit of fancy footwork: if the iterator is
-	// currently at a valid entry, see if the user-key for the next entry is the
-	// same and if it is advance. Otherwise, move to the previous user key.
-	//
-	// Note that this makes reverse iteration a bit more expensive than forward
-	// iteration, especially if there are a larger number of versions for a key
-	// in the mem-table, though that should be rare. In the normal case where
-	// there is a single version for each key, reverse iteration consumes an
-	// extra dereference and comparison.
 	if i.index < 0 {
 		return false
 	}
-	if i.index >= len(i.batch.offsets) {
-		return i.prevUserKey()
-	}
-	if !i.reverse {
-		key := i.Key()
-		i.initPrevStart(key)
-		i.initPrevEnd(key)
-	}
-	if i.index != i.prevEnd {
-		i.index++
-		if !i.Valid() {
-			panic("expected valid node")
-		}
-		return true
-	}
-	i.index = i.prevStart - 1
-	if i.index < 0 {
-		i.clearPrevCache()
-		return false
-	}
-	i.prevEnd = i.index
-	i.initPrevStart(i.Key())
-	i.index = i.prevStart
-	return true
-}
-
-func (i *flushableBatchIter) prevUserKey() bool {
-	if i.index < 0 {
-		return false
-	}
-	if i.index >= len(i.batch.offsets) {
-		i.Last()
-		return i.Valid()
-	}
-	if !i.reverse {
-		key := i.Key()
-		i.initPrevStart(key)
-	}
-	i.index = i.prevStart - 1
-	if i.index < 0 {
-		i.clearPrevCache()
-		return false
-	}
-	i.prevEnd = i.index
-	i.initPrevStart(i.Key())
-	i.index = i.prevStart
-	return true
+	i.index--
+	return i.index >= 0
 }
 
 func (i *flushableBatchIter) getKey(index int) db.InternalKey {

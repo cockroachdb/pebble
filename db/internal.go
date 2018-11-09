@@ -290,9 +290,10 @@ func (k InternalKey) Pretty(f func([]byte) string) string {
 
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
-// user-key, a sequence number and a key kind. In both forward and reverse
-// iteration, key/value pairs for identical user-keys are returned in
-// descending sequence order: newer keys are returned before older keys.
+// user-key, a sequence number and a key kind. In forward iteration, key/value
+// pairs for identical user-keys are returned in descending sequence order. In
+// reverse iteration, key/value pairs for identical user-keys are returned in
+// ascending sequence order.
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
@@ -328,7 +329,7 @@ type InternalIterator interface {
 	Prev() bool
 
 	// Key returns the encoded internal key of the current key/value pair, or nil
-	// if done.  The caller should not modify the contents of the returned slice,
+	// if done. The caller should not modify the contents of the returned slice,
 	// and its contents may change on the next call to Next.
 	Key() InternalKey
 

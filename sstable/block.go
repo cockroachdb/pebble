@@ -317,8 +317,6 @@ func (i *blockIter) Next() bool {
 // Prev implements InternalIterator.Prev, as documented in the pebble/db
 // package.
 func (i *blockIter) Prev() bool {
-	// TODO(peter): Reverse iteration needs to return entries in decreasing
-	// sequence number order for the same user key.
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]

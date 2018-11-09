@@ -56,8 +56,7 @@ emptor!
 Pebble offers several improvements over RocksDB:
 
 * Faster reverse iteration via backwards links in the memtable's
-  skiplist and descending sequence number iteration during reverse
-  iteration of internal iterators.
+  skiplist.
 * Faster commit pipeline that achieves better concurrency.
 * Seamless merged iteration of indexed batches. The mutations in the
   batch conceptually occupy another memtable level.

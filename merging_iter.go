@@ -34,6 +34,9 @@ func (h *mergingIterHeap) less(i, j int) bool {
 		}
 		return c < 0
 	}
+	if h.reverse {
+		return ikey.Trailer < jkey.Trailer
+	}
 	return ikey.Trailer > jkey.Trailer
 }
 
@@ -216,12 +219,7 @@ func (m *mergingIter) switchToMaxHeap() {
 			i.Prev()
 		}
 		for ; i.Valid(); i.Prev() {
-			c := m.heap.cmp(key.UserKey, i.Key().UserKey)
-			if c > 0 {
-				// key > iter-key
-				break
-			}
-			if c == 0 && key.Trailer > i.Key().Trailer {
+			if db.InternalCompare(m.heap.cmp, key, i.Key()) > 0 {
 				// key > iter-key
 				break
 			}

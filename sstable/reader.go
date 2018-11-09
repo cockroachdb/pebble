@@ -239,8 +239,6 @@ func (i *Iter) Next() bool {
 // Prev implements InternalIterator.Prev, as documented in the pebble/db
 // package.
 func (i *Iter) Prev() bool {
-	// TODO(peter): Reverse iteration needs to return entries in decreasing
-	// sequence number order for the same user key.
 	if i.err != nil {
 		return false
 	}

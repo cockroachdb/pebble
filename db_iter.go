@@ -19,19 +19,20 @@ const (
 )
 
 type dbIter struct {
-	opts     *db.IterOptions
-	cmp      db.Compare
-	merge    db.Merge
-	iter     db.InternalIterator
-	seqNum   uint64
-	version  *version
-	err      error
-	key      []byte
-	keyBuf   []byte
-	value    []byte
-	valueBuf []byte
-	valid    bool
-	pos      dbIterPos
+	opts      *db.IterOptions
+	cmp       db.Compare
+	merge     db.Merge
+	iter      db.InternalIterator
+	seqNum    uint64
+	version   *version
+	err       error
+	key       []byte
+	keyBuf    []byte
+	value     []byte
+	valueBuf  []byte
+	valueBuf2 []byte
+	valid     bool
+	pos       dbIterPos
 }
 
 var _ db.Iterator = (*dbIter)(nil)
@@ -55,6 +56,7 @@ func (i *dbIter) findNextEntry() bool {
 				continue
 			}
 		}
+
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
 			i.nextUserKey()
@@ -109,13 +111,28 @@ func (i *dbIter) findPrevEntry() bool {
 			// Ignore entries that are newer than our snapshot sequence number,
 			// except for batch sequence numbers which are always visible.
 			if (seqNum & db.InternalKeySeqNumBatch) == 0 {
+				if i.valid {
+					i.pos = dbIterCur
+					return true
+				}
 				i.iter.Prev()
 				continue
 			}
 		}
+
+		if i.valid {
+			if i.cmp(key.UserKey, i.key) < 0 {
+				// We've iterated to the previous user key.
+				i.pos = dbIterPrev
+				return true
+			}
+		}
+
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
-			i.prevUserKey()
+			i.value = nil
+			i.valid = false
+			i.iter.Prev()
 			continue
 
 		case db.InternalKeyKindSet:
@@ -123,15 +140,33 @@ func (i *dbIter) findPrevEntry() bool {
 			i.key = i.keyBuf
 			i.value = i.iter.Value()
 			i.valid = true
-			return true
+			i.iter.Prev()
+			continue
 
 		case db.InternalKeyKindMerge:
-			return i.mergePrev(key)
+			if !i.valid {
+				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
+				i.key = i.keyBuf
+				i.value = i.iter.Value()
+				i.valid = true
+			} else {
+				i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
+				i.valueBuf = i.merge(i.key, i.valueBuf, i.value, nil)
+				i.valueBuf, i.valueBuf2 = i.valueBuf2, i.valueBuf
+				i.value = i.valueBuf2
+			}
+			i.iter.Prev()
+			continue
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
 			return false
 		}
+	}
+
+	if i.valid {
+		i.pos = dbIterPrev
+		return true
 	}
 
 	return false
@@ -170,49 +205,6 @@ func (i *dbIter) mergeNext(key db.InternalKey) bool {
 		if i.cmp(i.key, key.UserKey) != 0 {
 			// We've advanced to the next key.
 			i.pos = dbIterNext
-			return true
-		}
-		switch key.Kind() {
-		case db.InternalKeyKindDelete:
-			// We've hit a deletion tombstone. Return everything up to this
-			// point.
-			return true
-
-		case db.InternalKeyKindSet:
-			// We've hit a Set value. Merge with the existing value and return.
-			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
-			return true
-
-		case db.InternalKeyKindMerge:
-			// We've hit another Merge value. Merge with the existing value and
-			// continue looping.
-			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
-
-		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
-			return false
-		}
-	}
-}
-
-func (i *dbIter) mergePrev(key db.InternalKey) bool {
-	// Save the current key and value.
-	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
-	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
-	i.key, i.value = i.keyBuf, i.valueBuf
-	i.valid = true
-
-	// Loop looking for older values for this key and merging them.
-	for {
-		i.iter.Prev()
-		if !i.iter.Valid() {
-			i.pos = dbIterPrev
-			return true
-		}
-		key = i.iter.Key()
-		if i.cmp(i.key, key.UserKey) != 0 {
-			// We've advanced to the previous key.
-			i.pos = dbIterPrev
 			return true
 		}
 		switch key.Kind() {

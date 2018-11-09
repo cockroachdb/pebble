@@ -71,15 +71,6 @@ func (f *fakeIter) SeekLT(key []byte) {
 			break
 		}
 	}
-	if f.Valid() {
-		key := f.keys[f.index]
-		for ; f.index > 0; f.index-- {
-			pkey := f.keys[f.index-1]
-			if db.DefaultComparer.Compare(pkey.UserKey, key.UserKey) < 0 {
-				break
-			}
-		}
-	}
 }
 
 func (f *fakeIter) First() {
@@ -92,49 +83,19 @@ func (f *fakeIter) Last() {
 }
 
 func (f *fakeIter) Next() bool {
+	if f.index == len(f.keys) {
+		return false
+	}
 	f.index++
 	return f.index < len(f.keys)
 }
 
 func (f *fakeIter) Prev() bool {
-	if f.Valid() {
-		key := f.keys[f.index]
-		if f.index+1 < len(f.keys) {
-			if db.DefaultComparer.Compare(key.UserKey, f.keys[f.index+1].UserKey) == 0 {
-				f.index++
-				return true
-			}
-		}
-	}
-	return f.prevUserKey()
-}
-
-func (f *fakeIter) prevUserKey() bool {
-	if f.index == len(f.keys) {
-		f.index--
-	} else {
-		key := f.keys[f.index]
-		f.index--
-		for ; f.index >= 0; f.index-- {
-			pkey := f.keys[f.index]
-			if db.DefaultComparer.Compare(pkey.UserKey, key.UserKey) < 0 {
-				break
-			}
-		}
-	}
-
 	if f.index < 0 {
 		return false
 	}
-
-	key := f.keys[f.index]
-	for ; f.index > 0; f.index-- {
-		pkey := f.keys[f.index-1]
-		if db.DefaultComparer.Compare(pkey.UserKey, key.UserKey) != 0 {
-			break
-		}
-	}
-	return true
+	f.index--
+	return f.index >= 0
 }
 
 func (f *fakeIter) Key() db.InternalKey {

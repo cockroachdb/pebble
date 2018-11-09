@@ -22,15 +22,14 @@ b:2
 c:2
 .
 .
-a:2
-b:2
-c:2
+a:1
+b:1
+c:1
 
 iter
 first
 next
 next
-prev
 prev
 prev
 prev
@@ -54,9 +53,8 @@ prev
 a:2
 a:1
 b:2
-b:1
-a:2
 a:1
+a:2
 .
 a:2
 a:1
@@ -64,13 +62,13 @@ b:2
 b:1
 c:2
 c:1
-b:2
+c:2
 b:1
 c:2
-c:1
+b:1
 b:2
 b:1
 c:2
 c:1
 .
-c:2
+c:1

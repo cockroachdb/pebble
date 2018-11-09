@@ -164,11 +164,6 @@ func (l *levelIter) Next() bool {
 }
 
 func (l *levelIter) Prev() bool {
-	// TODO(peter): Reverse iteration needs to return entries in decreasing
-	// sequence number order for the same user key. Initialize a slice of
-	// seqNum/values for a given user-key. The user-key only has to be copied
-	// once, and the values don't need to be copied at all because they are
-	// immutable.
 	if l.err != nil {
 		return false
 	}
