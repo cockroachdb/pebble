@@ -33,13 +33,17 @@ func TestBatch(t *testing.T) {
 		{db.InternalKeyKindDelete, "nosuchkey", ""},
 		{db.InternalKeyKindSet, "binarydata", "\x00"},
 		{db.InternalKeyKindSet, "binarydata", "\xff"},
+		{db.InternalKeyKindMerge, "merge", "mergedata"},
 	}
 	var b Batch
 	for _, tc := range testCases {
-		if tc.kind == db.InternalKeyKindDelete {
-			b.Delete([]byte(tc.key), nil)
-		} else {
+		switch tc.kind {
+		case db.InternalKeyKindSet:
 			b.Set([]byte(tc.key), []byte(tc.value), nil)
+		case db.InternalKeyKindMerge:
+			b.Merge([]byte(tc.key), []byte(tc.value), nil)
+		case db.InternalKeyKindDelete:
+			b.Delete([]byte(tc.key), nil)
 		}
 	}
 	iter := b.iter()

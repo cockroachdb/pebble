@@ -435,9 +435,7 @@ func (b *Batch) decode(offset uint32) (kind db.InternalKeyKind, ukey []byte, val
 		return 0, nil, nil, false
 	}
 	switch kind {
-	case db.InternalKeyKindSet,
-		db.InternalKeyKindMerge,
-		db.InternalKeyKindRangeDelete:
+	case db.InternalKeyKindSet, db.InternalKeyKindMerge, db.InternalKeyKindRangeDelete:
 		_, value, ok = batchDecodeStr(p)
 		if !ok {
 			return 0, nil, nil, false
@@ -476,7 +474,7 @@ func (r *batchReader) next() (kind db.InternalKeyKind, ukey []byte, value []byte
 		return 0, nil, nil, false
 	}
 	switch kind {
-	case db.InternalKeyKindSet, db.InternalKeyKindRangeDelete:
+	case db.InternalKeyKindSet, db.InternalKeyKindMerge, db.InternalKeyKindRangeDelete:
 		value, ok = r.nextStr()
 		if !ok {
 			return 0, nil, nil, false
