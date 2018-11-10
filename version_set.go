@@ -16,7 +16,11 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
-// TODO(peter): describe what a versionSet is.
+// versionSet manages a collection of immutable versions, and manages the
+// creation of a new version from the most recent version. A new versions is
+// created from an existing version by applying a version edit which is just
+// like it sounds: a delta from the previous version. Version edits are logged
+// to the manifest file, which is replayed at startup.
 type versionSet struct {
 	// Immutable fields.
 	dirname string
@@ -176,15 +180,16 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 		return err
 	}
 
-	if vs.manifest == nil {
-		if err := vs.createManifest(vs.dirname); err != nil {
-			return err
-		}
-	}
-
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
+
+		// TODO(peter): if vs.manifest becomes too large, create a new one.
+		if vs.manifest == nil {
+			if err := vs.createManifest(vs.dirname); err != nil {
+				return err
+			}
+		}
 
 		w, err := vs.manifest.Next()
 		if err != nil {
@@ -199,7 +204,7 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 		if err := vs.manifestFile.Sync(); err != nil {
 			return err
 		}
-		if err := setCurrentFile(vs.dirname, vs.opts.Storage, vs.manifestFileNumber); err != nil {
+		if err := setCurrentFile(vs.dirname, vs.fs, vs.manifestFileNumber); err != nil {
 			return err
 		}
 		return nil
