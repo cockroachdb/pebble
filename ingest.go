@@ -297,5 +297,5 @@ func (d *DB) ingestApply(meta []*fileMetadata) error {
 		ve.newFiles[i].level = ingestTargetLevel(d.cmp, current, m)
 		ve.newFiles[i].meta = *m
 	}
-	return d.mu.versions.logAndApply(d.opts, d.dirname, ve)
+	return d.mu.versions.logAndApply(ve)
 }

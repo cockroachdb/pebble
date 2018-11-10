@@ -241,7 +241,7 @@ func (d *DB) flush1() error {
 		return err
 	}
 
-	err = d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{
+	err = d.mu.versions.logAndApply(&versionEdit{
 		logNumber: d.mu.log.number,
 		newFiles: []newFileEntry{
 			{level: 0, meta: meta},
@@ -337,7 +337,7 @@ func (d *DB) compact1() (err error) {
 		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
 
 		meta := &c.inputs[0][0]
-		return d.mu.versions.logAndApply(d.opts, d.dirname, &versionEdit{
+		return d.mu.versions.logAndApply(&versionEdit{
 			deletedFiles: map[deletedFileEntry]bool{
 				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
 			},
@@ -351,7 +351,7 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
-	err = d.mu.versions.logAndApply(d.opts, d.dirname, ve)
+	err = d.mu.versions.logAndApply(ve)
 	for _, fileNum := range pendingOutputs {
 		delete(d.mu.compact.pendingOutputs, fileNum)
 	}

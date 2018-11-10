@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
@@ -19,6 +20,7 @@ import (
 type versionSet struct {
 	// Immutable fields.
 	dirname string
+	mu      *sync.Mutex
 	opts    *db.Options
 	fs      storage.Storage
 	cmp     db.Compare
@@ -36,11 +38,17 @@ type versionSet struct {
 
 	manifestFile storage.File
 	manifest     *record.Writer
+
+	writing    bool
+	writerCond sync.Cond
 }
 
 // load loads the version set from the manifest file.
-func (vs *versionSet) load(dirname string, opts *db.Options) error {
+func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) error {
 	vs.dirname = dirname
+	vs.mu = mu
+	vs.versions.mu = mu
+	vs.writerCond.L = mu
 	vs.opts = opts
 	vs.fs = opts.Storage
 	vs.cmp = opts.Comparer.Compare
@@ -137,13 +145,22 @@ func (vs *versionSet) load(dirname string, opts *db.Options) error {
 	return nil
 }
 
-// TODO(peter): describe what this function does and how it interacts
-// concurrently with a running pebble.
-//
-// d.mu must be held when calling this, for the enclosing *DB d.
-//
-// TODO(peter): actually pass d.mu, and drop and re-acquire it around the I/O.
-func (vs *versionSet) logAndApply(opts *db.Options, dirname string, ve *versionEdit) error {
+// logAndApply logs the version edit to the manifest, applies the version edit
+// to the current version, and installs the new version. DB.mu must be held
+// when calling this method and will be released temporarily while performing
+// file I/O.
+func (vs *versionSet) logAndApply(ve *versionEdit) error {
+	// Wait for any existing writing to the manifest to complete, then mark the
+	// manifest as busy.
+	for vs.writing {
+		vs.writerCond.Wait()
+	}
+	vs.writing = true
+	defer func() {
+		vs.writing = false
+		vs.writerCond.Signal()
+	}()
+
 	if ve.logNumber != 0 {
 		if ve.logNumber < vs.logNumber || vs.nextFileNumber <= ve.logNumber {
 			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.logNumber))
@@ -154,31 +171,39 @@ func (vs *versionSet) logAndApply(opts *db.Options, dirname string, ve *versionE
 
 	var bve bulkVersionEdit
 	bve.accumulate(ve)
-	newVersion, err := bve.apply(opts, vs.currentVersion(), vs.cmp)
+	newVersion, err := bve.apply(vs.opts, vs.currentVersion(), vs.cmp)
 	if err != nil {
 		return err
 	}
 
 	if vs.manifest == nil {
-		if err := vs.createManifest(dirname); err != nil {
+		if err := vs.createManifest(vs.dirname); err != nil {
 			return err
 		}
 	}
 
-	w, err := vs.manifest.Next()
-	if err != nil {
-		return err
-	}
-	if err := ve.encode(w); err != nil {
-		return err
-	}
-	if err := vs.manifest.Flush(); err != nil {
-		return err
-	}
-	if err := vs.manifestFile.Sync(); err != nil {
-		return err
-	}
-	if err := setCurrentFile(dirname, vs.opts.Storage, vs.manifestFileNumber); err != nil {
+	if err := func() error {
+		vs.mu.Unlock()
+		defer vs.mu.Lock()
+
+		w, err := vs.manifest.Next()
+		if err != nil {
+			return err
+		}
+		if err := ve.encode(w); err != nil {
+			return err
+		}
+		if err := vs.manifest.Flush(); err != nil {
+			return err
+		}
+		if err := vs.manifestFile.Sync(); err != nil {
+			return err
+		}
+		if err := setCurrentFile(vs.dirname, vs.opts.Storage, vs.manifestFileNumber); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
 		return err
 	}
 

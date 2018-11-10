@@ -89,8 +89,6 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
-	// TODO(peter): This initialization is funky.
-	d.mu.versions.versions.mu = &d.mu.Mutex
 	d.mu.snapshots.init()
 	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 
@@ -125,7 +123,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	}
 
 	// Load the version set.
-	err = d.mu.versions.load(dirname, opts)
+	err = d.mu.versions.load(dirname, opts, &d.mu.Mutex)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +171,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.log.LogWriter = record.NewLogWriter(logFile)
 
 	// Write a new manifest to disk.
-	if err := d.mu.versions.logAndApply(d.opts, dirname, &ve); err != nil {
+	if err := d.mu.versions.logAndApply(&ve); err != nil {
 		return nil, err
 	}
 
