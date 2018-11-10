@@ -221,7 +221,6 @@ func (vs *versionSet) createManifest(dirname string) (err error) {
 	snapshot := versionEdit{
 		comparatorName: vs.cmpName,
 	}
-	// TODO(peter): save compaction pointers.
 	for level, fileMetadata := range vs.currentVersion().files {
 		for _, meta := range fileMetadata {
 			snapshot.newFiles = append(snapshot.newFiles, newFileEntry{

@@ -50,8 +50,7 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 			version: cur,
 			level:   cur.compactionLevel,
 		}
-		// TODO(peter): Pick the first file that comes after the compaction pointer
-		// for c.level.
+		// TODO(peter): Flesh out the compaction heuristics.
 		c.inputs[0] = []fileMetadata{cur.files[c.level][0]}
 	} else {
 		return nil
