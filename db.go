@@ -571,9 +571,6 @@ func firstError(err0, err1 error) error {
 func (d *DB) writeLevel0Table(
 	fs storage.Storage, iiter db.InternalIterator,
 ) (meta fileMetadata, err error) {
-	// TODO(peter): This method is very similar to DB.compactDiskTables. Should
-	// refactor to share logic.
-
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
 	d.mu.compact.pendingOutputs[meta.fileNum] = struct{}{}
@@ -628,8 +625,6 @@ func (d *DB) writeLevel0Table(
 
 	meta.smallest = iter.Key().Clone()
 	for ; iter.Valid(); iter.Next() {
-		// TODO(peter): support c.shouldStopBefore.
-
 		ikey := iter.Key()
 
 		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
