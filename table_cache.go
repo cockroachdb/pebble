@@ -53,11 +53,18 @@ func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
 		return nil, x.err
 	}
 	n.result <- x
-	return &tableCacheIter{
-		InternalIterator: x.reader.NewIter(nil),
-		cache:            c,
-		node:             n,
-	}, nil
+
+	iter := x.reader.NewIter(nil)
+	iter.(*sstable.Iter).SetCloseHook(func() error {
+		c.mu.Lock()
+		n.refCount--
+		if n.refCount == 0 {
+			go n.release()
+		}
+		c.mu.Unlock()
+		return nil
+	})
+	return iter, nil
 }
 
 // releaseNode releases a node from the tableCache.
@@ -168,29 +175,4 @@ func (n *tableCacheNode) release() {
 		return
 	}
 	x.reader.Close()
-}
-
-type tableCacheIter struct {
-	db.InternalIterator
-	cache    *tableCache
-	node     *tableCacheNode
-	closeErr error
-	closed   bool
-}
-
-func (i *tableCacheIter) Close() error {
-	if i.closed {
-		return i.closeErr
-	}
-	i.closed = true
-
-	i.cache.mu.Lock()
-	i.node.refCount--
-	if i.node.refCount == 0 {
-		go i.node.release()
-	}
-	i.cache.mu.Unlock()
-
-	i.closeErr = i.InternalIterator.Close()
-	return i.closeErr
 }

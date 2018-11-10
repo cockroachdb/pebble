@@ -49,10 +49,11 @@ type block []byte
 // iterator: to seek for a given key, it first looks in the index for the
 // block that contains that key, and then looks inside that block.
 type Iter struct {
-	reader *Reader
-	index  blockIter
-	data   blockIter
-	err    error
+	reader    *Reader
+	index     blockIter
+	data      blockIter
+	err       error
+	closeHook func() error
 }
 
 // Iter implements the db.InternalIterator interface.
@@ -287,9 +288,20 @@ func (i *Iter) Error() error {
 	return i.err
 }
 
+// SetCloseHook sets a function that will be called when the iterator is
+// closed.
+func (i *Iter) SetCloseHook(fn func() error) {
+	i.closeHook = fn
+}
+
 // Close implements InternalIterator.Close, as documented in the pebble/db
 // package.
 func (i *Iter) Close() error {
+	if i.closeHook != nil {
+		if err := i.closeHook(); err != nil {
+			return err
+		}
+	}
 	if err := i.data.Close(); err != nil {
 		return err
 	}
