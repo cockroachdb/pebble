@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/internal/arenaskl"
-	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/internal/record"
 )
 
 type testCommitEnv struct {

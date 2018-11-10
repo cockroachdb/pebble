@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/storage"
 )
 

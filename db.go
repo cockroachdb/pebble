@@ -14,7 +14,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
-	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )

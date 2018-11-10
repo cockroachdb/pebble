@@ -16,7 +16,7 @@ import (
 
 	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/record"
+	"github.com/petermattis/pebble/internal/record"
 )
 
 func checkRoundTrip(e0 versionEdit) error {
