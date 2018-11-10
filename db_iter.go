@@ -151,6 +151,11 @@ func (i *dbIter) findPrevEntry() bool {
 				i.value = i.iter.Value()
 				i.valid = true
 			} else {
+				// The existing value is either stored in valueBuf2 or the underlying
+				// iterators value. We append the new value to valueBuf in order to
+				// merge(valueBuf, valueBuf2). Then we swap valueBuf and valueBuf2 in
+				// order to maintain the invariant that the existing value points to
+				// valueBuf2 (in preparation for handling th next merge value).
 				i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
 				i.valueBuf = i.merge(i.key, i.valueBuf, i.value, nil)
 				i.valueBuf, i.valueBuf2 = i.valueBuf2, i.valueBuf
