@@ -6,7 +6,6 @@
 package pebble // import "github.com/petermattis/pebble"
 
 import (
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -15,8 +14,6 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/record"
-	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
 )
 
 const (
@@ -551,127 +548,6 @@ func (d *DB) Flush() error {
 	return nil
 }
 
-// firstError returns the first non-nil error of err0 and err1, or nil if both
-// are nil.
-func firstError(err0, err1 error) error {
-	if err0 != nil {
-		return err0
-	}
-	return err1
-}
-
-// writeLevel0Table writes a memtable to a level-0 on-disk table.
-//
-// If no error is returned, it adds the file number of that on-disk table to
-// d.pendingOutputs. It is the caller's responsibility to remove that fileNum
-// from that set when it has been applied to d.mu.versions.
-//
-// d.mu must be held when calling this, but the mutex may be dropped and
-// re-acquired during the course of this method.
-func (d *DB) writeLevel0Table(
-	fs storage.Storage, iiter db.InternalIterator,
-) (meta fileMetadata, err error) {
-	meta.fileNum = d.mu.versions.nextFileNum()
-	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
-	d.mu.compact.pendingOutputs[meta.fileNum] = struct{}{}
-	defer func(fileNum uint64) {
-		if err != nil {
-			delete(d.mu.compact.pendingOutputs, fileNum)
-		}
-	}(meta.fileNum)
-
-	snapshots := d.mu.snapshots.toSlice()
-
-	// Release the d.mu lock while doing I/O.
-	// Note the unusual order: Unlock and then Lock.
-	d.mu.Unlock()
-	defer d.mu.Lock()
-
-	iter := &compactionIter{
-		cmp:            d.cmp,
-		merge:          d.merge,
-		iter:           iiter,
-		snapshots:      snapshots,
-		elideTombstone: func([]byte) bool { return false },
-	}
-	var (
-		file storage.File
-		tw   *sstable.Writer
-	)
-	defer func() {
-		if iter != nil {
-			err = firstError(err, iter.Close())
-		}
-		if tw != nil {
-			err = firstError(err, tw.Close())
-		}
-		if err != nil {
-			fs.Remove(filename)
-			meta = fileMetadata{}
-		}
-	}()
-
-	iter.First()
-	if !iter.Valid() {
-		return fileMetadata{}, fmt.Errorf("pebble: memtable empty")
-	}
-
-	file, err = fs.Create(filename)
-	if err != nil {
-		return fileMetadata{}, err
-	}
-	file = newRateLimitedFile(file, d.flushController)
-	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
-
-	meta.smallest = iter.Key().Clone()
-	for ; iter.Valid(); iter.Next() {
-		ikey := iter.Key()
-
-		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
-		// in largest.
-		meta.largest.UserKey = append(meta.largest.UserKey[:0], ikey.UserKey...)
-		meta.largest.Trailer = ikey.Trailer
-
-		if err1 := tw.Add(ikey, iter.Value()); err1 != nil {
-			return fileMetadata{}, err1
-		}
-	}
-
-	if err1 := iter.Close(); err1 != nil {
-		iter = nil
-		return fileMetadata{}, err1
-	}
-	iter = nil
-
-	if err1 := tw.Close(); err1 != nil {
-		tw = nil
-		return fileMetadata{}, err1
-	}
-
-	stat, err := tw.Stat()
-	if err != nil {
-		return fileMetadata{}, err
-	}
-	size := stat.Size()
-	if size < 0 {
-		return fileMetadata{}, fmt.Errorf("pebble: table file %q has negative size %d", filename, size)
-	}
-	meta.size = uint64(size)
-	tw = nil
-
-	// TODO(peter): After a flush we set the commit rate to 110% of the flush
-	// rate. The rationale behind the 110% is to account for slack. Investigate a
-	// more principled way of setting this.
-	// d.commitController.limiter.SetLimit(rate.Limit(d.flushController.sensor.Rate()))
-	// if false {
-	// 	fmt.Printf("flush: %.1f MB/s\n", d.flushController.sensor.Rate()/float64(1<<20))
-	// }
-
-	// TODO(peter): compaction stats.
-
-	return meta, nil
-}
-
 func (d *DB) throttleWrite() {
 	if len(d.mu.versions.currentVersion().files[0]) <= d.opts.L0SlowdownWritesThreshold {
 		return
@@ -765,4 +641,13 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 		force = false
 	}
+}
+
+// firstError returns the first non-nil error of err0 and err1, or nil if both
+// are nil.
+func firstError(err0, err1 error) error {
+	if err0 != nil {
+		return err0
+	}
+	return err1
 }
