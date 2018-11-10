@@ -87,9 +87,10 @@ func (i *dbIter) nextUserKey() {
 			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
 			i.key = i.keyBuf
 		}
-		i.iter.Next()
-		for i.iter.Valid() && i.cmp(i.key, i.iter.Key().UserKey) == 0 {
-			i.iter.Next()
+		for i.iter.Next() {
+			if i.cmp(i.key, i.iter.Key().UserKey) != 0 {
+				break
+			}
 		}
 	} else {
 		i.iter.First()
@@ -178,9 +179,10 @@ func (i *dbIter) prevUserKey() {
 			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
 			i.key = i.keyBuf
 		}
-		i.iter.Prev()
-		for i.iter.Valid() && i.cmp(i.key, i.iter.Key().UserKey) == 0 {
-			i.iter.Prev()
+		for i.iter.Prev() {
+			if i.cmp(i.key, i.iter.Key().UserKey) != 0 {
+				break
+			}
 		}
 	} else {
 		i.iter.Last()
