@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/cache"
@@ -61,7 +62,12 @@ var _ db.InternalIterator = (*Iter)(nil)
 
 func (i *Iter) init(r *Reader) error {
 	i.reader = r
-	i.err = i.index.init(r.compare, r.index, r.Properties.GlobalSeqNum)
+	var index block
+	index, i.err = r.readIndex()
+	if i.err != nil {
+		return i.err
+	}
+	i.err = i.index.init(r.compare, index, r.Properties.GlobalSeqNum)
 	return i.err
 }
 
@@ -80,7 +86,7 @@ func (i *Iter) loadBlock() bool {
 		i.err = errors.New("pebble/table: corrupt index entry")
 		return false
 	}
-	block, err := i.reader.readBlock(h)
+	block, _, err := i.reader.readBlock(h)
 	if err != nil {
 		i.err = err
 		return false
@@ -114,7 +120,7 @@ func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
 		i.err = db.ErrNotFound
 		return false
 	}
-	block, err := i.reader.readBlock(h)
+	block, _, err := i.reader.readBlock(h)
 	if err != nil {
 		i.err = err
 		return false
@@ -161,7 +167,7 @@ func (i *Iter) SeekLT(key []byte) {
 	if i.loadBlock() {
 		i.data.SeekLT(key)
 		if !i.data.Valid() {
-			// The index contains separator keys which may between
+			// The index contains separator keys which may lie between
 			// user-keys. Consider the user-keys:
 			//
 			//   complete
@@ -311,10 +317,14 @@ func (i *Iter) Close() error {
 // Reader is a table reader. It implements the DB interface, as documented
 // in the pebble/db package.
 type Reader struct {
-	file        storage.File
-	fileNum     uint64
-	err         error
-	index       block
+	file    storage.File
+	fileNum uint64
+	err     error
+	indexBH blockHandle
+	index   struct {
+		mu     sync.RWMutex
+		handle cache.WeakHandle
+	}
 	opts        *db.Options
 	cache       *cache.Cache
 	compare     db.Compare
@@ -384,39 +394,62 @@ func (r *Reader) NewIter(o *db.IterOptions) db.InternalIterator {
 	return i
 }
 
-// readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(bh blockHandle) (block, error) {
-	if b := r.cache.Get(r.fileNum, bh.offset); b != nil {
+func (r *Reader) readIndex() (block, error) {
+	// Fast-path for retrieving the index block from a weak cache handle.
+	r.index.mu.RLock()
+	var b []byte
+	if r.index.handle != nil {
+		b = r.index.handle.Get()
+	}
+	r.index.mu.RUnlock()
+	if b != nil {
 		return b, nil
+	}
+
+	// Slow-path: read the index block from disk. This checks the cache again,
+	// but that is ok because somebody else might have inserted it for us.
+	b, h, err := r.readBlock(r.indexBH)
+	if err == nil && h != nil {
+		r.index.mu.Lock()
+		r.index.handle = h
+		r.index.mu.Unlock()
+	}
+	return b, err
+}
+
+// readBlock reads and decompresses a block from disk into memory.
+func (r *Reader) readBlock(bh blockHandle) (block, cache.WeakHandle, error) {
+	if b := r.cache.Get(r.fileNum, bh.offset); b != nil {
+		return b, nil, nil
 	}
 
 	b := make([]byte, bh.length+blockTrailerLen)
 	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
 	checksum1 := crc.New(b[:bh.length+1]).Value()
 	if checksum0 != checksum1 {
-		return nil, errors.New("pebble/table: invalid table (checksum mismatch)")
+		return nil, nil, errors.New("pebble/table: invalid table (checksum mismatch)")
 	}
 	switch b[bh.length] {
 	case noCompressionBlockType:
 		b = b[:bh.length]
-		r.cache.Set(r.fileNum, bh.offset, b)
-		return b, nil
+		h := r.cache.Set(r.fileNum, bh.offset, b)
+		return b, h, nil
 	case snappyCompressionBlockType:
 		b, err := snappy.Decode(nil, b[:bh.length])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		r.cache.Set(r.fileNum, bh.offset, b)
-		return b, nil
+		h := r.cache.Set(r.fileNum, bh.offset, b)
+		return b, h, nil
 	}
-	return nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
+	return nil, nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
 }
 
 func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
-	b, err := r.readBlock(metaindexBH)
+	b, _, err := r.readBlock(metaindexBH)
 	if err != nil {
 		return err
 	}
@@ -438,7 +471,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	}
 
 	if bh, ok := meta["rocksdb.properties"]; ok {
-		b, err = r.readBlock(bh)
+		b, _, err = r.readBlock(bh)
 		if err != nil {
 			return err
 		}
@@ -462,7 +495,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		var done bool
 		for _, t := range types {
 			if bh, ok := meta[t.prefix+fp.Name()]; ok {
-				b, err = r.readBlock(bh)
+				b, _, err = r.readBlock(bh)
 				if err != nil {
 					return err
 				}
@@ -566,17 +599,14 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 	}
 
 	// Read the index into memory.
-	//
-	// TODO(peter): Allow the index block to be placed in the block cache.
-	indexBH, n := decodeBlockHandle(footer)
+	r.indexBH, n = decodeBlockHandle(footer)
 	if n == 0 {
 		r.err = errors.New("pebble/table: invalid table (bad index block handle)")
 		return r
 	}
 
-	r.index, r.err = r.readBlock(indexBH)
-
-	// iter, _ := newBlockIter(r.compare, r.index)
+	// index, r.err = r.readIndex()
+	// iter, _ := newBlockIter(r.compare, index)
 	// for iter.First(); iter.Valid(); iter.Next() {
 	// 	fmt.Printf("%s#%d\n", iter.Key().UserKey, iter.Key().SeqNum())
 	// }
