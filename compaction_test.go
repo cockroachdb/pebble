@@ -405,7 +405,7 @@ func TestPickCompaction(t *testing.T) {
 		if c != nil {
 			got0 := fileNums(c.inputs[0])
 			got1 := fileNums(c.inputs[1])
-			got2 := fileNums(c.inputs[2])
+			got2 := fileNums(c.grandparents)
 			got = got0 + " " + got1 + " " + got2
 		}
 		if got != tc.want {

@@ -38,7 +38,11 @@ type compaction struct {
 	level int
 
 	// inputs are the tables to be compacted.
-	inputs [3][]fileMetadata
+	inputs [2][]fileMetadata
+
+	// grandparents are the tables in level+2 that overlap with the files being
+	// compacted. Used to determine output table boundaries.
+	grandparents []fileMetadata
 }
 
 // pickCompaction picks the best compaction, if any, for vs' current version.
@@ -99,7 +103,7 @@ func (c *compaction) setupOtherInputs(vs *versionSet) {
 
 	// Compute the set of level+2 files that overlap this compaction.
 	if c.level+2 < numLevels {
-		c.inputs[2] = c.version.overlaps(c.level+2, vs.cmp, smallest01.UserKey, largest01.UserKey)
+		c.grandparents = c.version.overlaps(c.level+2, vs.cmp, smallest01.UserKey, largest01.UserKey)
 	}
 }
 
@@ -442,12 +446,12 @@ func (d *DB) compact1() (err error) {
 		return nil
 	}
 
-	// Check for a trivial move of one table from one level to the next.  We
-	// avoid such a move if there is lots of overlapping grandparent data.
-	// Otherwise, the move could create a parent file that will require a very
-	// expensive merge later on.
+	// Check for a trivial move of one table from one level to the next. We avoid
+	// such a move if there is lots of overlapping grandparent data.  Otherwise,
+	// the move could create a parent file that will require a very expensive
+	// merge later on.
 	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
-		totalSize(c.inputs[2]) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
+		totalSize(c.grandparents) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
 
 		meta := &c.inputs[0][0]
 		return d.mu.versions.logAndApply(&versionEdit{
