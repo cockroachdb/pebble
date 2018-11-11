@@ -37,12 +37,32 @@ type compaction struct {
 	// level+1 will be merged to produce a set of level+1 files.
 	level int
 
+	// maxOutputFileSize is the maximum size of an individual table created
+	// during compaction.
+	maxOutputFileSize uint64
+	// maxOverlapBytes is the maximum number of bytes of overlap allowed for a
+	// single output table with the tables in the grandparent level.
+	maxOverlapBytes uint64
+
 	// inputs are the tables to be compacted.
 	inputs [2][]fileMetadata
 
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries.
-	grandparents []fileMetadata
+	grandparents    []fileMetadata
+	overlappedBytes uint64 // bytes of overlap with grandparent tables
+	seenKey         bool   // some output key has been seen
+}
+
+func newCompaction(vs *versionSet, cur *version, level int) *compaction {
+	c := &compaction{
+		cmp:               vs.cmp,
+		version:           cur,
+		level:             level,
+		maxOutputFileSize: uint64(vs.opts.Level(level + 1).TargetFileSize),
+		maxOverlapBytes:   maxGrandparentOverlapBytes(vs.opts, level+1),
+	}
+	return c
 }
 
 // pickCompaction picks the best compaction, if any, for vs' current version.
@@ -50,16 +70,13 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 	cur := vs.currentVersion()
 
 	// Pick a compaction based on size. If none exist, pick one based on seeks.
-	if cur.compactionScore >= 1 {
-		c = &compaction{
-			version: cur,
-			level:   cur.compactionLevel,
-		}
-		// TODO(peter): Flesh out the compaction heuristics.
-		c.inputs[0] = []fileMetadata{cur.files[c.level][0]}
-	} else {
+	if cur.compactionScore < 1 {
 		return nil
 	}
+
+	c = newCompaction(vs, cur, cur.compactionLevel)
+	// TODO(peter): Flesh out the compaction heuristics.
+	c.inputs[0] = []fileMetadata{cur.files[c.level][0]}
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if c.level == 0 {
@@ -77,10 +94,7 @@ func pickCompaction(vs *versionSet) (c *compaction) {
 func pickManualCompaction(vs *versionSet, manual *manualCompaction) (c *compaction) {
 	// TODO(peter): The logic here is untested and likely incomplete.
 	cur := vs.currentVersion()
-	c = &compaction{
-		version: cur,
-		level:   manual.level,
-	}
+	c = newCompaction(vs, cur, manual.level)
 	c.inputs[0] = cur.overlaps(manual.level, vs.cmp, manual.start.UserKey, manual.end.UserKey)
 	if len(c.inputs[0]) == 0 {
 		return nil
@@ -130,6 +144,32 @@ func (c *compaction) grow(vs *versionSet, sm, la db.InternalKey) bool {
 	c.inputs[0] = grow0
 	c.inputs[1] = grow1
 	return true
+}
+
+// shouldStopBefore returns true if the output to the current table should be
+// finished and a new table started before adding the specified key. This is
+// done in order to prevent a table at level N from overlapping too much data
+// at level N+1. We want to avoid such large overlaps because they translate
+// into large compactions. The current heuristic stops output of a table if the
+// addition of another key would cause the table to overlap more than 10x the
+// target file size at level N. See maxGrandparentOverlapBytes.
+func (c *compaction) shouldStopBefore(key db.InternalKey) bool {
+	for len(c.grandparents) > 0 {
+		g := &c.grandparents[0]
+		if db.InternalCompare(c.cmp, key, g.largest) <= 0 {
+			break
+		}
+		if c.seenKey {
+			c.overlappedBytes += g.size
+		}
+		c.grandparents = c.grandparents[1:]
+	}
+	c.seenKey = true
+	if c.overlappedBytes > c.maxOverlapBytes {
+		c.overlappedBytes = 0
+		return true
+	}
+	return false
 }
 
 // elideTombstone returns true if it is ok to elide a tombstone for the
@@ -514,11 +554,10 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		elideTombstone: c.elideTombstone,
 	}
 
-	// TODO(peter): output to more than one table, if it would otherwise be too large.
 	var (
-		fileNum  uint64
-		filename string
-		tw       *sstable.Writer
+		filenames []string
+		meta      *fileMetadata
+		tw        *sstable.Writer
 	)
 	defer func() {
 		if iter != nil {
@@ -528,30 +567,65 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			retErr = firstError(retErr, tw.Close())
 		}
 		if retErr != nil {
-			d.opts.Storage.Remove(filename)
+			for _, filename := range filenames {
+				d.opts.Storage.Remove(filename)
+			}
 		}
 	}()
 
-	var smallest, largest db.InternalKey
-	for iter.First(); iter.Valid(); iter.Next() {
-		// TODO(peter): support c.shouldStopBefore.
+	ve = &versionEdit{
+		deletedFiles: map[deletedFileEntry]bool{},
+	}
+	finishOutput := func() error {
+		if tw == nil {
+			return nil
+		}
+		if err := tw.Close(); err != nil {
+			tw = nil
+			return err
+		}
+		stat, err := tw.Stat()
+		if err != nil {
+			tw = nil
+			return err
+		}
+		tw = nil
+		meta.size = uint64(stat.Size())
+		meta = nil
+		return nil
+	}
 
+	for iter.First(); iter.Valid(); iter.Next() {
 		ikey := iter.Key()
+		if tw != nil && c.shouldStopBefore(ikey) {
+			if err := finishOutput(); err != nil {
+				return nil, pendingOutputs, err
+			}
+		}
 
 		if tw == nil {
 			d.mu.Lock()
-			fileNum = d.mu.versions.nextFileNum()
+			fileNum := d.mu.versions.nextFileNum()
 			d.mu.compact.pendingOutputs[fileNum] = struct{}{}
 			pendingOutputs = append(pendingOutputs, fileNum)
 			d.mu.Unlock()
 
-			filename = dbFilename(d.dirname, fileTypeTable, fileNum)
+			filename := dbFilename(d.dirname, fileTypeTable, fileNum)
 			file, err := d.opts.Storage.Create(filename)
 			if err != nil {
 				return nil, pendingOutputs, err
 			}
+			filenames = append(filenames, filename)
 			tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.level+1))
-			smallest = ikey.Clone()
+
+			ve.newFiles = append(ve.newFiles, newFileEntry{
+				level: c.level + 1,
+				meta: fileMetadata{
+					fileNum: fileNum,
+				},
+			})
+			meta = &ve.newFiles[len(ve.newFiles)-1].meta
+			meta.smallest = ikey.Clone()
 		}
 
 		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
@@ -559,39 +633,25 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		//
 		// TODO(peter): sstable.Writer internally keeps track of the last key
 		// added. Rather than making our own copy here, we should expose that one.
-		largest.UserKey = append(largest.UserKey[:0], ikey.UserKey...)
-		largest.Trailer = ikey.Trailer
+		meta.largest.UserKey = append(meta.largest.UserKey[:0], ikey.UserKey...)
+		meta.largest.Trailer = ikey.Trailer
 		if err := tw.Add(ikey, iter.Value()); err != nil {
 			return nil, pendingOutputs, err
 		}
+
+		// Close the current output file if it is big enough.
+		if tw.EstimatedSize() >= c.maxOutputFileSize {
+			if err := finishOutput(); err != nil {
+				return nil, pendingOutputs, err
+			}
+		}
 	}
 
-	if err := tw.Close(); err != nil {
-		tw = nil
-		return nil, pendingOutputs, err
+	if err := finishOutput(); err != nil {
+		return nil, pendingOutputs, nil
 	}
-	stat, err := tw.Stat()
-	if err != nil {
-		tw = nil
-		return nil, pendingOutputs, err
-	}
-	tw = nil
 
-	ve = &versionEdit{
-		deletedFiles: map[deletedFileEntry]bool{},
-		newFiles: []newFileEntry{
-			{
-				level: c.level + 1,
-				meta: fileMetadata{
-					fileNum:  fileNum,
-					size:     uint64(stat.Size()),
-					smallest: smallest,
-					largest:  largest,
-				},
-			},
-		},
-	}
-	for i := 0; i < 2; i++ {
+	for i := range c.inputs {
 		for _, f := range c.inputs[i] {
 			ve.deletedFiles[deletedFileEntry{
 				level:   c.level + i,

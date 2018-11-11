@@ -773,3 +773,82 @@ func TestManualCompaction(t *testing.T) {
 		return ""
 	})
 }
+
+func TestCompactionShouldStopBefore(t *testing.T) {
+	cmp := db.DefaultComparer.Compare
+	var grandparents []fileMetadata
+
+	parseMeta := func(s string) fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		return fileMetadata{
+			smallest: db.InternalKey{UserKey: []byte(parts[0])},
+			largest:  db.InternalKey{UserKey: []byte(parts[1])},
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_should_stop_before",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "define":
+				grandparents = nil
+				if len(d.Input) == 0 {
+					return ""
+				}
+				for _, data := range strings.Split(d.Input, "\n") {
+					parts := strings.Fields(data)
+					if len(parts) != 2 {
+						return fmt.Sprintf("malformed test:\n%s", d.Input)
+					}
+
+					meta := parseMeta(parts[0])
+					var err error
+					meta.size, err = strconv.ParseUint(parts[1], 10, 64)
+					if err != nil {
+						t.Fatal(err)
+					}
+					grandparents = append(grandparents, meta)
+				}
+				sort.Sort(bySmallest{grandparents, cmp})
+				return ""
+
+			case "compact":
+				c := &compaction{
+					cmp:          cmp,
+					grandparents: grandparents,
+				}
+				if len(d.CmdArgs) != 1 {
+					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
+				}
+				if len(d.CmdArgs[0].Vals) != 1 {
+					return fmt.Sprintf("%s expects 1 value", d.CmdArgs[0].Key)
+				}
+				var err error
+				c.maxOverlapBytes, err = strconv.ParseUint(d.CmdArgs[0].Vals[0], 10, 64)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				var buf bytes.Buffer
+				var smallest, largest string
+				for i, key := range strings.Fields(d.Input) {
+					if i == 0 {
+						smallest = key
+					}
+					if c.shouldStopBefore(db.MakeInternalKey([]byte(key), 0, 0)) {
+						fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
+						smallest = key
+					}
+					largest = key
+				}
+				fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
+				return buf.String()
+
+			default:
+				t.Fatalf("unknown command: %s", d.Cmd)
+				return ""
+			}
+		})
+}
