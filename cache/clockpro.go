@@ -21,23 +21,25 @@ package cache
 
 import (
 	"sync"
+	"sync/atomic"
+	"unsafe"
 )
 
-type pageType int8
+type entryType int8
 
 const (
-	ptTest pageType = iota
-	ptCold
-	ptHot
+	etTest entryType = iota
+	etCold
+	etHot
 )
 
-func (p pageType) String() string {
+func (p entryType) String() string {
 	switch p {
-	case ptTest:
+	case etTest:
 		return "test"
-	case ptCold:
+	case etCold:
 		return "cold"
-	case ptHot:
+	case etHot:
 		return "hot"
 	}
 	return "unknown"
@@ -48,72 +50,105 @@ type key struct {
 	offset  uint64
 }
 
+type value struct {
+	ptr unsafe.Pointer
+}
+
+func (v *value) set(b []byte) {
+	atomic.StorePointer(&v.ptr, unsafe.Pointer(&b))
+}
+
+func (v *value) get() []byte {
+	p := (*[]byte)(atomic.LoadPointer(&v.ptr))
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
 type entry struct {
-	key   key
-	val   []byte
-	next  *entry
-	prev  *entry
-	size  int64
-	ptype pageType
-	ref   bool
+	key      key
+	val      value
+	nextLink *entry
+	prevLink *entry
+	size     int64
+	ptype    entryType
+	ref      int32
 }
 
 func (e *entry) init() *entry {
-	e.next = e
-	e.prev = e
+	e.nextLink = e
+	e.prevLink = e
 	return e
 }
 
-func (e *entry) Next() *entry {
-	if e.next == nil {
+func (e *entry) next() *entry {
+	if e.nextLink == nil {
 		return e.init()
 	}
-	return e.next
+	return e.nextLink
 }
 
-func (e *entry) Prev() *entry {
-	if e.prev == nil {
+func (e *entry) prev() *entry {
+	if e.prevLink == nil {
 		return e.init()
 	}
-	return e.prev
+	return e.prevLink
 }
 
-func (e *entry) Link(s *entry) *entry {
-	n := e.Next()
+func (e *entry) link(s *entry) *entry {
+	n := e.next()
 	if s != nil {
-		p := s.Prev()
+		p := s.prev()
 		// Note: Cannot use multiple assignment because
 		// evaluation order of LHS is not specified.
-		e.next = s
-		s.prev = e
-		n.prev = p
-		p.next = n
+		e.nextLink = s
+		s.prevLink = e
+		n.prevLink = p
+		p.nextLink = n
 	}
 	return n
 }
 
-func (e *entry) Move(n int) *entry {
-	if e.next == nil {
+func (e *entry) move(n int) *entry {
+	if e.nextLink == nil {
 		return e.init()
 	}
 	switch {
 	case n < 0:
 		for ; n < 0; n++ {
-			e = e.prev
+			e = e.prevLink
 		}
 	case n > 0:
 		for ; n > 0; n-- {
-			e = e.next
+			e = e.nextLink
 		}
 	}
 	return e
 }
 
-func (e *entry) Unlink(n int) *entry {
+func (e *entry) unlink(n int) *entry {
 	if n <= 0 {
 		return nil
 	}
-	return e.Link(e.Move(n + 1))
+	return e.link(e.move(n + 1))
+}
+
+func (e *entry) Get() []byte {
+	b := e.val.get()
+	if b == nil {
+		return nil
+	}
+	atomic.StoreInt32(&e.ref, 1)
+	return b
+}
+
+// WeakHandle provides a "weak" reference to an entry in the cache. A weak
+// reference allows the entry to be evicted, but also provides fast access
+type WeakHandle interface {
+	// Get retrieves the value associated with the weak handle, returning nil if
+	// no value is present.
+	Get() []byte
 }
 
 // Cache ...
@@ -133,7 +168,8 @@ type Cache struct {
 	countTest int64
 }
 
-// New ...
+// New creates a new cache of the specified size. Memory for the cache is
+// allocated on demand, not during initialization.
 func New(size int64) *Cache {
 	return &Cache{
 		maxSize:  size,
@@ -142,7 +178,8 @@ func New(size int64) *Cache {
 	}
 }
 
-// Get ...
+// Get retrieves the cache value for the specified file and offset, returning
+// nil if no value is present.
 func (c *Cache) Get(fileNum, offset uint64) []byte {
 	if c == nil {
 		return nil
@@ -155,17 +192,16 @@ func (c *Cache) Get(fileNum, offset uint64) []byte {
 	if e == nil {
 		return nil
 	}
-	if e.val == nil {
-		return nil
-	}
-	e.ref = true
-	return e.val
+	return e.Get()
 }
 
-// Set ...
-func (c *Cache) Set(fileNum, offset uint64, value []byte) {
+// Set sets the cache value for the specified file and offset, overwriting an
+// existing value if present. A WeakHandle is returned which provides faster
+// retrieval of the cached value than Get (lock-free and avoidance of the map
+// lookup).
+func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
 	if c == nil {
-		return
+		return nil
 	}
 
 	c.mu.Lock()
@@ -175,25 +211,26 @@ func (c *Cache) Set(fileNum, offset uint64, value []byte) {
 	e := c.keys[k]
 	if e == nil {
 		// no cache entry? add it
-		e = &entry{val: value, ptype: ptCold, key: k, size: int64(len(value))}
+		e = &entry{ptype: etCold, key: k, size: int64(len(value))}
+		e.val.set(value)
 		c.metaAdd(k, e)
 		c.countCold += e.size
-		return
+		return e
 	}
 
-	if e.val != nil {
+	if e.val.get() != nil {
 		// cache entry was a hot or cold page
-		e.val = value
-		e.ref = true
+		e.val.set(value)
+		atomic.StoreInt32(&e.ref, 1)
 		delta := int64(len(value)) - e.size
 		e.size = int64(len(value))
-		if e.ptype == ptHot {
+		if e.ptype == etHot {
 			c.countHot += delta
 		} else {
 			c.countCold += delta
 		}
 		c.evict()
-		return
+		return e
 	}
 
 	// cache entry was a test page
@@ -201,20 +238,21 @@ func (c *Cache) Set(fileNum, offset uint64, value []byte) {
 	if c.coldSize > c.maxSize {
 		c.coldSize = c.maxSize
 	}
-	e.ref = false
-	e.val = value
-	e.ptype = ptHot
+	atomic.StoreInt32(&e.ref, 0)
+	e.val.set(value)
+	e.ptype = etHot
 	c.countTest -= e.size
 	c.metaDel(e)
 	c.metaAdd(k, e)
 	c.countHot += e.size
+	return e
 }
 
 func (c *Cache) metaAdd(key key, e *entry) {
 	c.evict()
 
 	c.keys[key] = e
-	e.Link(c.handHot)
+	e.link(c.handHot)
 
 	if c.handHot == nil {
 		// first element
@@ -224,7 +262,7 @@ func (c *Cache) metaAdd(key key, e *entry) {
 	}
 
 	if c.handCold == c.handHot {
-		c.handCold = c.handCold.Prev()
+		c.handCold = c.handCold.prev()
 	}
 }
 
@@ -232,16 +270,16 @@ func (c *Cache) metaDel(e *entry) {
 	delete(c.keys, e.key)
 
 	if e == c.handHot {
-		c.handHot = c.handHot.Prev()
+		c.handHot = c.handHot.prev()
 	}
 	if e == c.handCold {
-		c.handCold = c.handCold.Prev()
+		c.handCold = c.handCold.prev()
 	}
 	if e == c.handTest {
-		c.handTest = c.handTest.Prev()
+		c.handTest = c.handTest.prev()
 	}
 
-	e.Prev().Unlink(1)
+	e.prev().unlink(1)
 }
 
 func (c *Cache) evict() {
@@ -252,15 +290,15 @@ func (c *Cache) evict() {
 
 func (c *Cache) runHandCold() {
 	e := c.handCold
-	if e.ptype == ptCold {
-		if e.ref {
-			e.ref = false
-			e.ptype = ptHot
+	if e.ptype == etCold {
+		if atomic.LoadInt32(&e.ref) == 1 {
+			atomic.StoreInt32(&e.ref, 0)
+			e.ptype = etHot
 			c.countCold -= e.size
 			c.countHot += e.size
 		} else {
-			e.val = nil
-			e.ptype = ptTest
+			e.val.set(nil)
+			e.ptype = etTest
 			c.countCold -= e.size
 			c.countTest += e.size
 			for c.maxSize < c.countTest {
@@ -269,7 +307,7 @@ func (c *Cache) runHandCold() {
 		}
 	}
 
-	c.handCold = c.handCold.Next()
+	c.handCold = c.handCold.next()
 
 	for c.maxSize-c.coldSize <= c.countHot {
 		c.runHandHot()
@@ -282,27 +320,27 @@ func (c *Cache) runHandHot() {
 	}
 
 	e := c.handHot
-	if e.ptype == ptHot {
-		if e.ref {
-			e.ref = false
+	if e.ptype == etHot {
+		if atomic.LoadInt32(&e.ref) == 1 {
+			atomic.StoreInt32(&e.ref, 0)
 		} else {
-			e.ptype = ptCold
+			e.ptype = etCold
 			c.countHot -= e.size
 			c.countCold += e.size
 		}
 	}
 
-	c.handHot = c.handHot.Next()
+	c.handHot = c.handHot.next()
 }
 
 func (c *Cache) runHandTest() {
-	if c.handTest == c.handCold {
+	if c.countCold > 0 && c.handTest == c.handCold {
 		c.runHandCold()
 	}
 
 	e := c.handTest
-	if e.ptype == ptTest {
-		prev := c.handTest.Prev()
+	if e.ptype == etTest {
+		prev := c.handTest.prev()
 		c.metaDel(c.handTest)
 		c.handTest = prev
 
@@ -313,5 +351,5 @@ func (c *Cache) runHandTest() {
 		}
 	}
 
-	c.handTest = c.handTest.Next()
+	c.handTest = c.handTest.next()
 }

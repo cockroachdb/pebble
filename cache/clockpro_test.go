@@ -45,3 +45,16 @@ func TestCache(t *testing.T) {
 		}
 	}
 }
+
+func TestWeakHandle(t *testing.T) {
+	cache := New(5)
+	cache.Set(1, 0, bytes.Repeat([]byte("a"), 5))
+	h := cache.Set(0, 0, bytes.Repeat([]byte("b"), 5))
+	if v := h.Get(); string(v) != "bbbbb" {
+		t.Fatalf("expected bbbbb, but found %v", v)
+	}
+	cache.Set(2, 0, bytes.Repeat([]byte("a"), 5))
+	if v := h.Get(); v != nil {
+		t.Fatalf("expected nil, but found %s", v)
+	}
+}
