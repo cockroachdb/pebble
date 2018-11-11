@@ -105,10 +105,8 @@ func TestRangeTombstone(t *testing.T) {
 
 		// At this point, key >= tombstone-start and key < tombstone-end. Walk
 		// through the tombstones to find one that is both visible and newer than
-		// our key's sequence number.
-
-		// TODO(peter): SeekLT needs to return the newest entry for a key and
-		// currently it returns the oldest. So back up to find the newest.
+		// our key's sequence number. SeekLT returns the oldest entry for a key, so
+		// back up to find the newest.
 		for {
 			i.Prev()
 			if !i.Valid() || cmp(key, i.Value()) >= 0 {
