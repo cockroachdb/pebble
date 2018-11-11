@@ -177,54 +177,63 @@ func (v *version) updateCompactionScore(opts *db.Options) {
 }
 
 // overlaps returns all elements of v.files[level] whose user key range
-// intersects the inclusive range [ukey0, ukey1]. If level is non-zero then the
+// intersects the inclusive range [start, end]. If level is non-zero then the
 // user key ranges of v.files[level] are assumed to not overlap (although they
 // may touch). If level is zero then that assumption cannot be made, and the
-// [ukey0, ukey1] range is expanded to the union of those matching ranges so
-// far and the computation is repeated until [ukey0, ukey1] stabilizes.
+// [start, end] range is expanded to the union of those matching ranges so far
+// and the computation is repeated until [start, end] stabilizes.
 func (v *version) overlaps(
-	level int, cmp db.Compare, ukey0, ukey1 []byte,
+	level int, cmp db.Compare, start, end []byte,
 ) (ret []fileMetadata) {
-	// TODO(peter): For level > L0, this is correct, but inefficient. We should
-	// be doing a binary search on the files. Additionally, for level > L0 we
-	// could return a sub-slice of v.files[level] instead of allocating memory.
+	if level == 0 {
+		// The sstables in level 0 can overlap with each other. As soon as we find
+		// one sstable that overlaps with our target range, we need to expand the
+		// range and find all sstables that overlap with the expanded range.
+	loop:
+		for {
+			for _, meta := range v.files[level] {
+				smallest := meta.smallest.UserKey
+				largest := meta.largest.UserKey
+				if cmp(largest, start) < 0 {
+					// meta is completely before the specified range; skip it.
+					continue
+				}
+				if cmp(smallest, end) > 0 {
+					// meta is completely after the specified range; skip it.
+					continue
+				}
+				ret = append(ret, meta)
 
-loop:
-	for {
-		for _, meta := range v.files[level] {
-			m0 := meta.smallest.UserKey
-			m1 := meta.largest.UserKey
-			if cmp(m1, ukey0) < 0 {
-				// meta is completely before the specified range; skip it.
-				continue
+				// If level == 0, check if the newly added fileMetadata has
+				// expanded the range. If so, restart the search.
+				restart := false
+				if cmp(smallest, start) < 0 {
+					start = smallest
+					restart = true
+				}
+				if cmp(largest, end) > 0 {
+					end = largest
+					restart = true
+				}
+				if restart {
+					ret = ret[:0]
+					continue loop
+				}
 			}
-			if cmp(m0, ukey1) > 0 {
-				// meta is completely after the specified range; skip it.
-				continue
-			}
-			ret = append(ret, meta)
-
-			// If level == 0, check if the newly added fileMetadata has
-			// expanded the range. If so, restart the search.
-			if level != 0 {
-				continue
-			}
-			restart := false
-			if cmp(m0, ukey0) < 0 {
-				ukey0 = m0
-				restart = true
-			}
-			if cmp(m1, ukey1) > 0 {
-				ukey1 = m1
-				restart = true
-			}
-			if restart {
-				ret = ret[:0]
-				continue loop
-			}
+			return ret
 		}
-		return ret
 	}
+
+	// Binary search to find the range of files which overlaps with our target
+	// range.
+	files := v.files[level]
+	lower := sort.Search(len(files), func(i int) bool {
+		return cmp(files[i].largest.UserKey, start) >= 0
+	})
+	upper := sort.Search(len(files), func(i int) bool {
+		return cmp(files[i].smallest.UserKey, end) > 0
+	})
+	return files[lower:upper]
 }
 
 // checkOrdering checks that the files are consistent with respect to
