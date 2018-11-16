@@ -5,7 +5,12 @@
 package pebble
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
@@ -22,6 +27,8 @@ type tableCache struct {
 		sync.Mutex
 		cond      sync.Cond
 		nodes     map[uint64]*tableCacheNode
+		iterCount int32
+		iters     map[*sstable.Iter][]byte
 		dummy     tableCacheNode
 		releasing int
 	}
@@ -36,6 +43,10 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	c.mu.nodes = make(map[uint64]*tableCacheNode)
 	c.mu.dummy.next = &c.mu.dummy
 	c.mu.dummy.prev = &c.mu.dummy
+
+	if raceEnabled {
+		c.mu.iters = make(map[*sstable.Iter][]byte)
+	}
 }
 
 func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
@@ -60,9 +71,20 @@ func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
 	}
 	n.result <- x
 
-	iter := x.reader.NewIter(nil)
-	iter.(*sstable.Iter).SetCloseHook(func() error {
+	iter := x.reader.NewIter(nil).(*sstable.Iter)
+	atomic.AddInt32(&c.mu.iterCount, 1)
+	if raceEnabled {
 		c.mu.Lock()
+		c.mu.iters[iter] = debug.Stack()
+		c.mu.Unlock()
+	}
+
+	iter.SetCloseHook(func() error {
+		c.mu.Lock()
+		atomic.AddInt32(&c.mu.iterCount, -1)
+		if raceEnabled {
+			delete(c.mu.iters, iter)
+		}
 		n.refCount--
 		if n.refCount == 0 {
 			c.mu.releasing++
@@ -135,6 +157,18 @@ func (c *tableCache) evict(fileNum uint64) {
 func (c *tableCache) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if v := atomic.LoadInt32(&c.mu.iterCount); v > 0 {
+		if !raceEnabled {
+			return fmt.Errorf("leaked iterators: %d", v)
+		}
+		var buf bytes.Buffer
+		fmt.Fprintf(&buf, "leaked iterators: %d\n", v)
+		for _, stack := range c.mu.iters {
+			fmt.Fprintf(&buf, "%s\n", stack)
+		}
+		return errors.New(buf.String())
+	}
 
 	for n := c.mu.dummy.next; n != &c.mu.dummy; n = n.next {
 		n.refCount--

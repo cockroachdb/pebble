@@ -388,6 +388,10 @@ func (l *versionList) empty() bool {
 	return l.root.next == &l.root
 }
 
+func (l *versionList) front() *version {
+	return l.root.next
+}
+
 func (l *versionList) back() *version {
 	return l.root.prev
 }

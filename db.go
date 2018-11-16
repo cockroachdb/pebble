@@ -6,6 +6,7 @@
 package pebble // import "github.com/petermattis/pebble"
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -465,6 +466,22 @@ func (d *DB) Close() error {
 	err = firstError(err, d.fileLock.Close())
 	d.commit.Close()
 	d.mu.closed = true
+
+	if err == nil {
+		current := d.mu.versions.currentVersion()
+		for v := d.mu.versions.versions.front(); true; v = v.next {
+			refs := atomic.LoadInt32(&v.refs)
+			if v == current {
+				if refs != 1 {
+					return fmt.Errorf("leaked iterators: current\n%s", v)
+				}
+				break
+			}
+			if refs != 0 {
+				return fmt.Errorf("leaked iterators:\n%s", v)
+			}
+		}
+	}
 	return err
 }
 

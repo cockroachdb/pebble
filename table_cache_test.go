@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -292,5 +293,22 @@ func TestTableCacheEvictions(t *testing.T) {
 	if ratio := fEvicted / fSafe; ratio < 1.25 {
 		t.Errorf("evicted tables were opened %.3f times on average, safe tables %.3f, ratio %.3f < 1.250",
 			fEvicted, fSafe, ratio)
+	}
+}
+
+func TestTableCacheIterLeak(t *testing.T) {
+	c, _, err := newTableCache()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.newIter(&fileMetadata{fileNum: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Close(); err == nil {
+		t.Fatalf("expected failure, but found success")
+	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
+		t.Fatalf("expected leaked iterators, but found %+v", err)
+	} else {
+		t.Log(err.Error())
 	}
 }

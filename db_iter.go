@@ -343,5 +343,8 @@ func (i *dbIter) Close() error {
 		i.version.unref()
 		i.version = nil
 	}
+	if err := i.iter.Close(); err != nil && i.err != nil {
+		i.err = err
+	}
 	return i.err
 }
