@@ -1,0 +1,13 @@
+language: go
+
+matrix:
+  include:
+    - name: "go1.10.x"
+      go: 1.10.x
+      gobuild_args: -v
+    - name: "go1.11.x"
+      go: 1.11.x
+      gobuild_args: -v
+    - name: "go1.11.x race"
+      go: 1.11.x
+      gobuild_args: -v -race
