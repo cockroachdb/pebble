@@ -18,9 +18,13 @@ type tableCache struct {
 	opts    *db.Options
 	size    int
 
-	mu    sync.Mutex
-	nodes map[uint64]*tableCacheNode
-	dummy tableCacheNode
+	mu struct {
+		sync.Mutex
+		cond      sync.Cond
+		nodes     map[uint64]*tableCacheNode
+		dummy     tableCacheNode
+		releasing int
+	}
 }
 
 func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, size int) {
@@ -28,9 +32,10 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	c.fs = fs
 	c.opts = opts
 	c.size = size
-	c.nodes = make(map[uint64]*tableCacheNode)
-	c.dummy.next = &c.dummy
-	c.dummy.prev = &c.dummy
+	c.mu.cond.L = &c.mu.Mutex
+	c.mu.nodes = make(map[uint64]*tableCacheNode)
+	c.mu.dummy.next = &c.mu.dummy
+	c.mu.dummy.prev = &c.mu.dummy
 }
 
 func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
@@ -44,7 +49,8 @@ func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
 		c.mu.Lock()
 		n.refCount--
 		if n.refCount == 0 {
-			go n.release()
+			c.mu.releasing++
+			go n.release(c)
 		}
 		c.mu.Unlock()
 
@@ -59,7 +65,8 @@ func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
 		c.mu.Lock()
 		n.refCount--
 		if n.refCount == 0 {
-			go n.release()
+			c.mu.releasing++
+			go n.release(c)
 		}
 		c.mu.Unlock()
 		return nil
@@ -71,12 +78,13 @@ func (c *tableCache) newIter(meta *fileMetadata) (db.InternalIterator, error) {
 //
 // c.mu must be held when calling this.
 func (c *tableCache) releaseNode(n *tableCacheNode) {
-	delete(c.nodes, n.meta.fileNum)
+	delete(c.mu.nodes, n.meta.fileNum)
 	n.next.prev = n.prev
 	n.prev.next = n.next
 	n.refCount--
 	if n.refCount == 0 {
-		go n.release()
+		c.mu.releasing++
+		go n.release(c)
 	}
 }
 
@@ -87,17 +95,17 @@ func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	n := c.nodes[meta.fileNum]
+	n := c.mu.nodes[meta.fileNum]
 	if n == nil {
 		n = &tableCacheNode{
 			meta:     meta,
 			refCount: 1,
 			result:   make(chan tableReaderOrError, 1),
 		}
-		c.nodes[meta.fileNum] = n
-		if len(c.nodes) > c.size {
+		c.mu.nodes[meta.fileNum] = n
+		if len(c.mu.nodes) > c.size {
 			// Release the tail node.
-			c.releaseNode(c.dummy.prev)
+			c.releaseNode(c.mu.dummy.prev)
 		}
 		go n.load(c)
 	} else {
@@ -106,8 +114,8 @@ func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
 		n.prev.next = n.next
 	}
 	// Insert n at the front of the doubly-linked list.
-	n.next = c.dummy.next
-	n.prev = &c.dummy
+	n.next = c.mu.dummy.next
+	n.prev = &c.mu.dummy
 	n.next.prev = n
 	n.prev.next = n
 	// The caller is responsible for decrementing the refCount.
@@ -119,7 +127,7 @@ func (c *tableCache) evict(fileNum uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if n := c.nodes[fileNum]; n != nil {
+	if n := c.mu.nodes[fileNum]; n != nil {
 		c.releaseNode(n)
 	}
 }
@@ -128,15 +136,20 @@ func (c *tableCache) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for n := c.dummy.next; n != &c.dummy; n = n.next {
+	for n := c.mu.dummy.next; n != &c.mu.dummy; n = n.next {
 		n.refCount--
 		if n.refCount == 0 {
-			go n.release()
+			c.mu.releasing++
+			go n.release(c)
 		}
 	}
-	c.nodes = nil
-	c.dummy.next = nil
-	c.dummy.prev = nil
+	c.mu.nodes = nil
+	c.mu.dummy.next = nil
+	c.mu.dummy.prev = nil
+
+	for c.mu.releasing > 0 {
+		c.mu.cond.Wait()
+	}
 	return nil
 }
 
@@ -169,10 +182,14 @@ func (n *tableCacheNode) load(c *tableCache) {
 	n.result <- tableReaderOrError{reader: r}
 }
 
-func (n *tableCacheNode) release() {
+func (n *tableCacheNode) release(c *tableCache) {
 	x := <-n.result
-	if x.err != nil {
-		return
+	if x.err == nil {
+		// Nothing to be done about an error at this point.
+		_ = x.reader.Close()
 	}
-	x.reader.Close()
+	c.mu.Lock()
+	c.mu.releasing--
+	c.mu.Unlock()
+	c.mu.cond.Signal()
 }
