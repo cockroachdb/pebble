@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/petermattis/pebble/db"
@@ -736,5 +737,19 @@ func TestOverlaps(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("level=%d, range=%s-%s\ngot  %v\nwant %v", tc.level, tc.ukey0, tc.ukey1, got, tc.want)
 		}
+	}
+}
+
+func TestVersionUnref(t *testing.T) {
+	list := &versionList{
+		mu: &sync.Mutex{},
+	}
+	list.init()
+	v := &version{}
+	v.ref()
+	list.pushBack(v)
+	v.unref()
+	if !list.empty() {
+		t.Fatalf("expected version list to be empty")
 	}
 }

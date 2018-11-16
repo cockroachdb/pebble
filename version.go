@@ -140,9 +140,10 @@ func (v *version) ref() {
 
 func (v *version) unref() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
-		v.list.mu.Lock()
-		v.list.remove(v)
-		v.list.mu.Unlock()
+		l := v.list
+		l.mu.Lock()
+		l.remove(v)
+		l.mu.Unlock()
 	}
 }
 
