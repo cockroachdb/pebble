@@ -459,38 +459,44 @@ func TestLargeBatch(t *testing.T) {
 func TestIterLeak(t *testing.T) {
 	for _, leak := range []bool{true, false} {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
-			d, err := Open("", &db.Options{
-				Storage:                     storage.NewMem(),
-				MemTableSize:                1024,
-				MemTableStopWritesThreshold: 100,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			for _, flush := range []bool{true, false} {
+				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
+					d, err := Open("", &db.Options{
+						Storage:                     storage.NewMem(),
+						MemTableSize:                1024,
+						MemTableStopWritesThreshold: 100,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
 
-			if err := d.Set([]byte("a"), []byte("a"), nil); err != nil {
-				t.Fatal(err)
-			}
-			if err := d.Flush(); err != nil {
-				t.Fatal(err)
-			}
-			iter := d.NewIter(nil)
-			iter.First()
-			if !leak {
-				if err := iter.Close(); err != nil {
-					t.Fatal(err)
-				}
-				if err := d.Close(); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				if err := d.Close(); err == nil {
-					t.Fatalf("expected failure, but found success")
-				} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
-					t.Fatalf("expected leaked iterators, but found %+v", err)
-				} else {
-					t.Log(err.Error())
-				}
+					if err := d.Set([]byte("a"), []byte("a"), nil); err != nil {
+						t.Fatal(err)
+					}
+					if flush {
+						if err := d.Flush(); err != nil {
+							t.Fatal(err)
+						}
+					}
+					iter := d.NewIter(nil)
+					iter.First()
+					if !leak {
+						if err := iter.Close(); err != nil {
+							t.Fatal(err)
+						}
+						if err := d.Close(); err != nil {
+							t.Fatal(err)
+						}
+					} else {
+						if err := d.Close(); err == nil {
+							t.Fatalf("expected failure, but found success")
+						} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
+							t.Fatalf("expected leaked iterators, but found %+v", err)
+						} else {
+							t.Log(err.Error())
+						}
+					}
+				})
 			}
 		})
 	}
