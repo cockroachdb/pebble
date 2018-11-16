@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/petermattis/pebble/db"
@@ -129,12 +130,21 @@ func newIndexedBatch(db *DB, comparer *db.Comparer) *Batch {
 }
 
 func (b *Batch) release() {
+	// NB: This is ugly, but necessary so that we can use atomic.StoreUint32 for
+	// the Batch.applied field. Without using an atomic to clear that field the
+	// Go race detector complains.
+	b.batchStorage = batchStorage{}
+	b.memTableSize = 0
+	b.db = nil
+	b.flushable = nil
+	b.commit = sync.WaitGroup{}
+	atomic.StoreUint32(&b.applied, 0)
+
 	if b.index == nil {
-		*b = Batch{}
 		batchPool.Put(b)
 	} else {
 		*b.index = batchskl.Skiplist{}
-		*b = Batch{}
+		b.index = nil
 		indexedBatchPool.Put(b)
 	}
 }
