@@ -184,6 +184,12 @@ type Options struct {
 	// The default value is false.
 	ErrorIfDBExists bool
 
+	// EventListener provides hooks to listening to significant DB events such as
+	// flushes, compactions, and file creation and deletion.
+	//
+	// TODO(peter): unimplemented.
+	EventListener *EventListener
+
 	// The number of files necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
@@ -198,6 +204,13 @@ type Options struct {
 	// Per-level options. Options for at least one level must be specified. The
 	// options for the last level are used for all subsequent levels.
 	Levels []LevelOptions
+
+	// Logger used to write log messages.
+	//
+	// The default logger uses the Go standard library log package.
+	//
+	// TODO(peter): unimplemented.
+	Logger Logger
 
 	// MaxOpenFiles is a soft limit on the number of open files that can be
 	// used by the DB.
