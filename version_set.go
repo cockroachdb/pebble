@@ -32,6 +32,7 @@ type versionSet struct {
 
 	// Mutable fields.
 	versions versionList
+	picker   *compactionPicker
 
 	logNumber          uint64
 	prevLogNumber      uint64
@@ -180,6 +181,7 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 		return err
 	}
 
+	var picker *compactionPicker
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
@@ -207,6 +209,7 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 		if err := setCurrentFile(vs.dirname, vs.fs, vs.manifestFileNumber); err != nil {
 			return err
 		}
+		picker = newCompactionPicker(newVersion, vs.opts)
 		return nil
 	}(); err != nil {
 		return err
@@ -220,6 +223,7 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 	if ve.prevLogNumber != 0 {
 		vs.prevLogNumber = ve.prevLogNumber
 	}
+	vs.picker = picker
 	return nil
 }
 

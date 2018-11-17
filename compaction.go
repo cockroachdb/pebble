@@ -54,90 +54,54 @@ type compaction struct {
 	seenKey         bool   // some output key has been seen
 }
 
-func newCompaction(vs *versionSet, cur *version, level int) *compaction {
+func newCompaction(opts *db.Options, cur *version, level int) *compaction {
 	c := &compaction{
-		cmp:               vs.cmp,
+		cmp:               opts.Comparer.Compare,
 		version:           cur,
 		level:             level,
-		maxOutputFileSize: uint64(vs.opts.Level(level + 1).TargetFileSize),
-		maxOverlapBytes:   maxGrandparentOverlapBytes(vs.opts, level+1),
+		maxOutputFileSize: uint64(opts.Level(level + 1).TargetFileSize),
+		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, level+1),
 	}
-	return c
-}
-
-// pickCompaction picks the best compaction, if any, for vs' current version.
-func pickCompaction(vs *versionSet) (c *compaction) {
-	cur := vs.currentVersion()
-
-	// Pick a compaction based on size. If none exist, pick one based on seeks.
-	if cur.compactionScore < 1 {
-		return nil
-	}
-
-	c = newCompaction(vs, cur, cur.compactionLevel)
-	// TODO(peter): Flesh out the compaction heuristics.
-	c.inputs[0] = []fileMetadata{cur.files[c.level][0]}
-
-	// Files in level 0 may overlap each other, so pick up all overlapping ones.
-	if c.level == 0 {
-		smallest, largest := ikeyRange(vs.cmp, c.inputs[0], nil)
-		c.inputs[0] = cur.overlaps(0, vs.cmp, smallest.UserKey, largest.UserKey)
-		if len(c.inputs) == 0 {
-			panic("pebble: empty compaction")
-		}
-	}
-
-	c.setupOtherInputs(vs)
-	return c
-}
-
-func pickManualCompaction(vs *versionSet, manual *manualCompaction) (c *compaction) {
-	// TODO(peter): The logic here is untested and likely incomplete.
-	cur := vs.currentVersion()
-	c = newCompaction(vs, cur, manual.level)
-	c.inputs[0] = cur.overlaps(manual.level, vs.cmp, manual.start.UserKey, manual.end.UserKey)
-	if len(c.inputs[0]) == 0 {
-		return nil
-	}
-	c.setupOtherInputs(vs)
 	return c
 }
 
 // setupOtherInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
-func (c *compaction) setupOtherInputs(vs *versionSet) {
-	smallest0, largest0 := ikeyRange(vs.cmp, c.inputs[0], nil)
-	c.inputs[1] = c.version.overlaps(c.level+1, vs.cmp, smallest0.UserKey, largest0.UserKey)
-	smallest01, largest01 := ikeyRange(vs.cmp, c.inputs[0], c.inputs[1])
+func (c *compaction) setupOtherInputs(opts *db.Options) {
+	cmp := opts.Comparer.Compare
+	smallest0, largest0 := ikeyRange(cmp, c.inputs[0], nil)
+	c.inputs[1] = c.version.overlaps(c.level+1, cmp, smallest0.UserKey, largest0.UserKey)
+	smallest01, largest01 := ikeyRange(cmp, c.inputs[0], c.inputs[1])
 
 	// Grow the inputs if it doesn't affect the number of level+1 files.
-	if c.grow(vs, smallest01, largest01) {
-		smallest01, largest01 = ikeyRange(vs.cmp, c.inputs[0], c.inputs[1])
+	if c.grow(opts, smallest01, largest01) {
+		smallest01, largest01 = ikeyRange(cmp, c.inputs[0], c.inputs[1])
 	}
 
 	// Compute the set of level+2 files that overlap this compaction.
 	if c.level+2 < numLevels {
-		c.grandparents = c.version.overlaps(c.level+2, vs.cmp, smallest01.UserKey, largest01.UserKey)
+		c.grandparents = c.version.overlaps(c.level+2, cmp, smallest01.UserKey, largest01.UserKey)
 	}
 }
 
 // grow grows the number of inputs at c.level without changing the number of
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
-func (c *compaction) grow(vs *versionSet, sm, la db.InternalKey) bool {
+func (c *compaction) grow(opts *db.Options, sm, la db.InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
 	}
-	grow0 := c.version.overlaps(c.level, vs.cmp, sm.UserKey, la.UserKey)
+	cmp := opts.Comparer.Compare
+	grow0 := c.version.overlaps(c.level, cmp, sm.UserKey, la.UserKey)
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
 	}
 	if totalSize(grow0)+totalSize(c.inputs[1]) >=
-		expandedCompactionByteSizeLimit(vs.opts, c.level+1) {
+		expandedCompactionByteSizeLimit(opts, c.level+1) {
 		return false
 	}
-	sm1, la1 := ikeyRange(vs.cmp, grow0, nil)
-	grow1 := c.version.overlaps(c.level+1, vs.cmp, sm1.UserKey, la1.UserKey)
+	sm1, la1 := ikeyRange(cmp, grow0, nil)
+	grow1 := c.version.overlaps(c.level+1, cmp, sm1.UserKey, la1.UserKey)
 	if len(grow1) != len(c.inputs[1]) {
 		return false
 	}
@@ -440,9 +404,8 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 
-	v := d.mu.versions.currentVersion()
 	// TODO(peter): check v.fileToCompact.
-	if v.compactionScore < 1 {
+	if !d.mu.versions.picker.compactionNeeded() {
 		// There is no work to be done.
 		return
 	}
@@ -475,12 +438,12 @@ func (d *DB) compact1() (err error) {
 	if len(d.mu.compact.manual) > 0 {
 		manual := d.mu.compact.manual[0]
 		d.mu.compact.manual = d.mu.compact.manual[1:]
-		c = pickManualCompaction(&d.mu.versions, manual)
+		c = d.mu.versions.picker.pickManual(d.opts, manual)
 		defer func() {
 			manual.done <- err
 		}()
 	} else {
-		c = pickCompaction(&d.mu.versions)
+		c = d.mu.versions.picker.pick(d.opts)
 	}
 	if c == nil {
 		return nil

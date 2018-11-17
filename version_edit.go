@@ -437,6 +437,5 @@ func (b *bulkVersionEdit) apply(
 	if err := v.checkOrdering(cmp); err != nil {
 		return nil, fmt.Errorf("pebble: internal error: %v", err)
 	}
-	v.updateCompactionScore(opts)
 	return v, nil
 }

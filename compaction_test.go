@@ -33,6 +33,7 @@ func TestPickCompaction(t *testing.T) {
 	testCases := []struct {
 		desc    string
 		version version
+		picker  compactionPicker
 		want    string
 	}{
 		{
@@ -65,8 +66,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 0,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 0,
 			},
 			want: "100  ",
 		},
@@ -90,8 +93,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 0,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 0,
 			},
 			want: "100  ",
 		},
@@ -115,8 +120,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 0,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 0,
 			},
 			want: "100,110  ",
 		},
@@ -140,8 +147,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 0,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 0,
 			},
 			want: "100,110  ",
 		},
@@ -173,8 +182,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 0,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 0,
 			},
 			want: "100  ",
 		},
@@ -232,8 +243,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 0,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 0,
 			},
 			want: "100 210 310,320,330",
 		},
@@ -283,8 +296,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 1,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 1,
 			},
 			want: "200,210,220 300 ",
 		},
@@ -334,8 +349,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 1,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 1,
 			},
 			want: "200 300 ",
 		},
@@ -385,8 +402,10 @@ func TestPickCompaction(t *testing.T) {
 						},
 					},
 				},
-				compactionScore: 99,
-				compactionLevel: 1,
+			},
+			picker: compactionPicker{
+				score: 99,
+				level: 1,
 			},
 			want: "200 300 ",
 		},
@@ -400,8 +419,10 @@ func TestPickCompaction(t *testing.T) {
 		}
 		vs.versions.init()
 		vs.append(&tc.version)
+		vs.picker = &tc.picker
+		vs.picker.vers = &tc.version
 
-		c, got := pickCompaction(vs), ""
+		c, got := vs.picker.pick(opts), ""
 		if c != nil {
 			got0 := fileNums(c.inputs[0])
 			got1 := fileNums(c.inputs[1])
