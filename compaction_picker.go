@@ -29,6 +29,7 @@ type compactionPicker struct {
 	// needed.
 	score float64
 	level int
+	file  int
 }
 
 func newCompactionPicker(v *version, opts *db.Options) *compactionPicker {
@@ -36,7 +37,7 @@ func newCompactionPicker(v *version, opts *db.Options) *compactionPicker {
 		vers: v,
 	}
 	p.initLevelMaxBytes(v, opts)
-	p.initScore(v, opts)
+	p.initTarget(v, opts)
 	return p
 }
 
@@ -145,8 +146,10 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *db.Options) {
 	}
 }
 
-// initScore initializes the compaction score and level.
-func (p *compactionPicker) initScore(v *version, opts *db.Options) {
+// initTarget initializes the compaction score and level. If the compaction
+// score indicates compaction is needed, a target table within the target level
+// is selected for compaction.
+func (p *compactionPicker) initTarget(v *version, opts *db.Options) {
 	// We treat level-0 specially by bounding the number of files instead of
 	// number of bytes for two reasons:
 	//
@@ -167,6 +170,59 @@ func (p *compactionPicker) initScore(v *version, opts *db.Options) {
 			p.level = level
 		}
 	}
+
+	if p.score >= 1 {
+		// TODO(peter): Select the file within the level to compact. See the
+		// kMinOverlappingRatio heuristic in RocksDB which chooses the file with the
+		// minimum overlapping ratio with the next level. This minimizes write
+		// amplification. We also want to computed a "compensated size" which adjusts
+		// the size of a table based on the number of deletions it contains.
+		//
+		// We want to minimize write amplification, but also ensure that deletes
+		// are propagated to the bottom level in a timely fashion so as to reclaim
+		// disk space. A table's smallest sequence number provides a measure of its
+		// age. The ratio of overlapping-bytes / table-size gives an indication of
+		// write amplification (a smaller ratio is preferrable).
+		//
+		// Simulate various workloads:
+		// - Uniform random write
+		// - Uniform random write+delete
+		// - Skewed random write
+		// - Skewed random write+delete
+		// - Sequential write
+		// - Sequential write+delete (queue)
+
+		// The current heuristic matches the RocksDB kOldestSmallestSeqFirst
+		// heuristic.
+		smallestSeqNum := uint64(math.MaxUint64)
+		files := v.files[p.level]
+		for i := range files {
+			f := &files[i]
+			if smallestSeqNum > f.smallestSeqNum {
+				smallestSeqNum = f.smallestSeqNum
+				p.file = i
+			}
+		}
+		return
+	}
+
+	// No levels exceeded their size threshold. Check for forced compactions.
+	for level := 0; level < numLevels-1; level++ {
+		files := v.files[p.level]
+		for i := range files {
+			f := &files[i]
+			if f.markedForCompaction {
+				p.score = 1.0
+				p.level = level
+				p.file = i
+				return
+			}
+		}
+	}
+
+	// TODO(peter): When a snapshot is released, we may need to compact tables at
+	// the bottom level in order to free up entries that were pinned by the
+	// snapshot.
 }
 
 // pick picks the best compaction, if any.
@@ -175,15 +231,9 @@ func (p *compactionPicker) pick(opts *db.Options) (c *compaction) {
 		return nil
 	}
 
-	// TODO(peter): Flesh out the compaction heuristics. Need to first determine
-	// the level to compact, then the file within the level. We need to iterate
-	// from the higest score level to the lowest score level, choosing the first
-	// level that needs a compaction and has a table available for compaction
-	// (i.e. not already being compacted).
-
 	vers := p.vers
 	c = newCompaction(opts, vers, p.level)
-	c.inputs[0] = []fileMetadata{vers.files[c.level][0]}
+	c.inputs[0] = []fileMetadata{vers.files[c.level][p.file]}
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if c.level == 0 {

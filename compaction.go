@@ -404,7 +404,6 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 
-	// TODO(peter): check v.fileToCompact.
 	if !d.mu.versions.picker.compactionNeeded() {
 		// There is no work to be done.
 		return
