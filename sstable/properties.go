@@ -91,6 +91,8 @@ type Properties struct {
 	MergeOperatorName string `prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
 	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
+	// TODO(peter): unimplemented
+	// NumDeletions uint64
 	// the number of entries in this table.
 	NumEntries uint64 `prop:"rocksdb.num.entries"`
 	// the number of range deletions in this table.
