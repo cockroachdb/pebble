@@ -121,10 +121,6 @@ type LevelOptions struct {
 	// filters should be preferred except under constrained memory situations.
 	FilterType FilterType
 
-	// The maximum number of bytes for the level. When the maximum number of
-	// bytes for a level is exceeded, compaction is requested.
-	MaxBytes int64
-
 	// The target file size for the level.
 	TargetFileSize int64
 }
@@ -147,9 +143,6 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	}
 	if o.Compression <= DefaultCompression || o.Compression >= nCompression {
 		o.Compression = SnappyCompression
-	}
-	if o.MaxBytes <= 0 {
-		o.MaxBytes = 64 << 20 // 64 MB
 	}
 	if o.TargetFileSize <= 0 {
 		o.TargetFileSize = 4 << 20 // 4 MB
@@ -200,6 +193,11 @@ type Options struct {
 	// Hard limit on the number of L0 files. Writes are stopped when this
 	// threshold is reached.
 	L0StopWritesThreshold int
+
+	// The maximum number of bytes for L1. The maximum number of bytes for other
+	// levels is computed dynamically based on this value. When the maximum
+	// number of bytes for a level is exceeded, compaction is requested.
+	L1MaxBytes int64
 
 	// Per-level options. Options for at least one level must be specified. The
 	// options for the last level are used for all subsequent levels.
@@ -263,14 +261,14 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.L0StopWritesThreshold <= 0 {
 		o.L0StopWritesThreshold = 12
 	}
+	if o.L1MaxBytes <= 0 {
+		o.L1MaxBytes = 64 << 20 // 64 MB
+	}
 	if o.Levels == nil {
 		o.Levels = make([]LevelOptions, 1)
 		for i := range o.Levels {
 			if i > 0 {
 				l := &o.Levels[i]
-				if l.MaxBytes <= 0 {
-					l.MaxBytes = o.Levels[i-1].MaxBytes * 10
-				}
 				if l.TargetFileSize <= 0 {
 					l.TargetFileSize = o.Levels[i-1].TargetFileSize * 2
 				}
@@ -304,7 +302,6 @@ func (o *Options) Level(level int) LevelOptions {
 	n := len(o.Levels) - 1
 	l := o.Levels[n]
 	for i := n; i < level; i++ {
-		l.MaxBytes *= 10
 		l.TargetFileSize *= 2
 	}
 	return l

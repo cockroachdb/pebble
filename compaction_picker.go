@@ -1,10 +1,14 @@
-// Copyright 2012 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// Copyright 2018 The LevelDB-Go and Pebble Authors. All rights reserved. Use
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
 package pebble
 
-import "github.com/petermattis/pebble/db"
+import (
+	"math"
+
+	"github.com/petermattis/pebble/db"
+)
 
 // compactionPicker holds the state and logic for picking a compaction. A
 // compaction picker is associated with a single version. A new compaction
@@ -15,6 +19,10 @@ type compactionPicker struct {
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
 	baseLevel int
+
+	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
+	// level.
+	levelMaxBytes [numLevels]int64
 
 	// These fields are the level that should be compacted next and its
 	// compaction score. A score < 1 means that compaction is not strictly
@@ -27,7 +35,7 @@ func newCompactionPicker(v *version, opts *db.Options) *compactionPicker {
 	p := &compactionPicker{
 		vers: v,
 	}
-	p.initBaseLevel(v, opts)
+	p.initLevelMaxBytes(v, opts)
 	p.initScore(v, opts)
 	return p
 }
@@ -39,12 +47,100 @@ func (p *compactionPicker) compactionNeeded() bool {
 	return p.score >= 1
 }
 
-func (p *compactionPicker) initBaseLevel(v *version, opts *db.Options) {
-	p.baseLevel = numLevels - 1
-	for level := 1; level < p.baseLevel; level++ {
-		if len(v.files) > 0 {
-			p.baseLevel = level
-			break
+func (p *compactionPicker) initLevelMaxBytes(v *version, opts *db.Options) {
+	// Determine the first non-empty level and the maximum size of any level.
+	firstNonEmptyLevel := -1
+	var maxLevelSize int64
+	for level := 1; level < numLevels; level++ {
+		levelSize := int64(totalSize(v.files[level]))
+		if levelSize > 0 && firstNonEmptyLevel == -1 {
+			firstNonEmptyLevel = level
+		}
+		if maxLevelSize < levelSize {
+			maxLevelSize = levelSize
+		}
+	}
+
+	// Initialize the max-bytes setting for each level to "infinity" which will
+	// disallow compaction for that level. We'll fill in the actual value below
+	// for levels we want to allow compactions from.
+	for level := 0; level < numLevels; level++ {
+		p.levelMaxBytes[level] = math.MaxInt64
+	}
+
+	if maxLevelSize == 0 {
+		// No levels for L1 and up contain any data. Target L0 compactions for the
+		// last level.
+		p.baseLevel = numLevels - 1
+		return
+	}
+
+	levelMultiplier := 10.0
+
+	l0Size := int64(totalSize(v.files[0]))
+	baseBytesMax := opts.L1MaxBytes
+	if baseBytesMax < l0Size {
+		baseBytesMax = l0Size
+	}
+	baseBytesMin := int64(float64(baseBytesMax) / levelMultiplier)
+
+	curLevelSize := maxLevelSize
+	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
+		curLevelSize = int64(float64(curLevelSize) / levelMultiplier)
+	}
+
+	var baseLevelSize int64
+	if curLevelSize <= baseBytesMin {
+		// If we make target size of last level to be maxLevelSize, target size of
+		// the first non-empty level would be smaller than baseBytesMin. We set it
+		// be baseBytesMin.
+		baseLevelSize = baseBytesMin + 1
+		p.baseLevel = firstNonEmptyLevel
+	} else {
+		// Compute base level (where L0 data is compacted to).
+		p.baseLevel = firstNonEmptyLevel
+		for p.baseLevel > 1 && curLevelSize > baseBytesMax {
+			p.baseLevel--
+			curLevelSize = int64(float64(curLevelSize) / levelMultiplier)
+		}
+		if curLevelSize > baseBytesMax {
+			baseLevelSize = baseBytesMax
+		} else {
+			baseLevelSize = curLevelSize
+		}
+	}
+
+	if l0Size > baseLevelSize &&
+		(l0Size > opts.L1MaxBytes ||
+			(len(v.files)/2) >= opts.L0CompactionThreshold) {
+		// We adjust the base level according to actual L0 size, and adjust the
+		// level multiplier accordingly, when:
+		//
+		//   1. the L0 size is larger than level size base, or
+		//   2. number of L0 files reaches twice the L0->L1 compaction threshold
+		//
+		// We don't do this otherwise to keep the LSM-tree structure stable unless
+		// the L0 compaction is backlogged.
+		baseLevelSize = l0Size
+		if p.baseLevel == numLevels-1 {
+			levelMultiplier = 1.0
+		} else {
+			levelMultiplier = math.Pow(
+				float64(maxLevelSize)/float64(baseLevelSize),
+				1.0/float64(numLevels-p.baseLevel-1))
+		}
+	}
+
+	levelSize := baseLevelSize
+	for level := p.baseLevel; level < numLevels; level++ {
+		if level > p.baseLevel {
+			if levelSize > 0 && float64(math.MaxInt64/levelSize) >= levelMultiplier {
+				levelSize = int64(float64(levelSize) * levelMultiplier)
+			}
+		}
+		p.levelMaxBytes[level] = levelSize
+		if p.levelMaxBytes[level] < baseBytesMax {
+			p.levelMaxBytes[level] = baseBytesMax
 		}
 	}
 }
@@ -65,8 +161,8 @@ func (p *compactionPicker) initScore(v *version, opts *db.Options) {
 	p.level = 0
 
 	for level := 1; level < numLevels-1; level++ {
-		score := float64(totalSize(v.files[level])) / float64(opts.Level(level).MaxBytes)
-		if score > p.score {
+		score := float64(totalSize(v.files[level])) / float64(p.levelMaxBytes[level])
+		if p.score < score {
 			p.score = score
 			p.level = level
 		}
@@ -108,7 +204,7 @@ func (p *compactionPicker) pickManual(opts *db.Options, manual *manualCompaction
 		return nil
 	}
 
-	// TODO(peter): The logic here is untested and likely incomplete.
+	// TODO(peter): The logic here is untested and possibly incomplete.
 	cur := p.vers
 	c = newCompaction(opts, cur, manual.level)
 	cmp := opts.Comparer.Compare
