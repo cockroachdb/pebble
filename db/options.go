@@ -5,6 +5,9 @@
 package db
 
 import (
+	"bytes"
+	"fmt"
+
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/storage"
 )
@@ -41,6 +44,16 @@ const (
 	TableFilter
 )
 
+func (t FilterType) String() string {
+	switch t {
+	case BlockFilter:
+		return "block"
+	case TableFilter:
+		return "table"
+	}
+	return "unknown"
+}
+
 // FilterWriter provides an interface for creating filter blocks. See
 // FilterPolicy for more details about filters.
 type FilterWriter interface {
@@ -76,6 +89,13 @@ type FilterPolicy interface {
 
 	// NewWriter creates a new FilterWriter.
 	NewWriter(ftype FilterType) FilterWriter
+}
+
+func filterPolicyName(p FilterPolicy) string {
+	if p == nil {
+		return "none"
+	}
+	return p.Name()
 }
 
 // LevelOptions holds the optional per-level parameters.
@@ -271,6 +291,10 @@ func (o *Options) EnsureDefaults() *Options {
 			}
 			o.Levels[i] = *o.Levels[i].EnsureDefaults()
 		}
+	} else {
+		for i := range o.Levels {
+			o.Levels[i] = *o.Levels[i].EnsureDefaults()
+		}
 	}
 	if o.Logger == nil {
 		o.Logger = defaultLogger{}
@@ -304,6 +328,40 @@ func (o *Options) Level(level int) LevelOptions {
 		l.TargetFileSize *= 2
 	}
 	return l
+}
+
+func (o *Options) String() string {
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "[Version]\n")
+	fmt.Fprintf(&buf, "  pebble_version=0.1\n")
+	fmt.Fprintf(&buf, "\n")
+	fmt.Fprintf(&buf, "[Options]\n")
+	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
+	fmt.Fprintf(&buf, "  cache_size=%d\n", o.Cache.MaxSize())
+	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
+	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
+	fmt.Fprintf(&buf, "  l0_slowdown_writes_threshold=%d\n", o.L0SlowdownWritesThreshold)
+	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
+	fmt.Fprintf(&buf, "  l1_max_bytes=%d\n", o.L1MaxBytes)
+	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
+	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
+	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
+	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+
+	for i := range o.Levels {
+		l := &o.Levels[i]
+		fmt.Fprintf(&buf, "\n")
+		fmt.Fprintf(&buf, "[Level \"%d\"]\n", i)
+		fmt.Fprintf(&buf, "  block_restart_interval=%d\n", l.BlockRestartInterval)
+		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
+		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression)
+		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
+		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
+		fmt.Fprintf(&buf, "  target_file_size=%d\n", l.TargetFileSize)
+	}
+
+	return buf.String()
 }
 
 // IterOptions hold the optional per-query parameters for NewIter.

@@ -22,6 +22,7 @@ const (
 	fileTypeTable
 	fileTypeManifest
 	fileTypeCurrent
+	fileTypeOptions
 )
 
 func dbFilename(dirname string, fileType fileType, fileNum uint64) string {
@@ -39,6 +40,8 @@ func dbFilename(dirname string, fileType fileType, fileNum uint64) string {
 		return fmt.Sprintf("%s%cMANIFEST-%06d", dirname, os.PathSeparator, fileNum)
 	case fileTypeCurrent:
 		return fmt.Sprintf("%s%cCURRENT", dirname, os.PathSeparator)
+	case fileTypeOptions:
+		return fmt.Sprintf("%s%cOPTIONS-%06d", dirname, os.PathSeparator, fileNum)
 	}
 	panic("unreachable")
 }
@@ -56,6 +59,12 @@ func parseDBFilename(filename string) (fileType fileType, fileNum uint64, ok boo
 			break
 		}
 		return fileTypeManifest, u, true
+	case strings.HasPrefix(filename, "OPTIONS-"):
+		u, err := strconv.ParseUint(filename[len("OPTIONS-"):], 10, 64)
+		if err != nil {
+			break
+		}
+		return fileTypeOptions, u, true
 	default:
 		i := strings.IndexByte(filename, '.')
 		if i < 0 {

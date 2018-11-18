@@ -711,6 +711,8 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			keep = fileNum >= logNumber
 		case fileTypeManifest:
 			keep = fileNum >= manifestFileNumber
+		case fileTypeOptions:
+			keep = fileNum >= d.optionsFileNum
 		case fileTypeTable:
 			_, keep = liveFileNums[fileNum]
 		}

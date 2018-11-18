@@ -83,15 +83,15 @@ func TestEventListener(t *testing.T) {
 	}
 
 	expected := `#2: flush begin
-#2: flush end: 5
+#2: flush end: 6
 #3: compaction begin: L0 -> L1
 #3: compaction end: L0 -> L1
 #4: flush begin
-#4: flush end: 7
+#4: flush end: 8
 #5: compaction begin: L0 -> L1
 #5: compaction end: L0 -> L1
-#5: table deleted: 5
-#5: table deleted: 7
+#5: table deleted: 6
+#5: table deleted: 8
 `
 	if v := buf.String(); expected != v {
 		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)

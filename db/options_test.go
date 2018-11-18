@@ -32,3 +32,36 @@ func TestLevelOptions(t *testing.T) {
 		}
 	}
 }
+
+func TestOptionsString(t *testing.T) {
+	const expected = `[Version]
+  pebble_version=0.1
+
+[Options]
+  bytes_per_sync=524288
+  cache_size=0
+  comparer=leveldb.BytewiseComparator
+  l0_compaction_threshold=4
+  l0_slowdown_writes_threshold=8
+  l0_stop_writes_threshold=12
+  l1_max_bytes=67108864
+  max_open_files=1000
+  mem_table_size=4194304
+  mem_table_stop_writes_threshold=2
+  merger=pebble.concatenate
+
+[Level "0"]
+  block_restart_interval=16
+  block_size=4096
+  compression=Snappy
+  filter_policy=none
+  filter_type=block
+  target_file_size=4194304
+`
+
+	var opts *Options
+	opts = opts.EnsureDefaults()
+	if v := opts.String(); expected != v {
+		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)
+	}
+}

@@ -176,6 +176,17 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 
+	// Write the current options to disk.
+	d.optionsFileNum = d.mu.versions.nextFileNum()
+	optionsFile, err := fs.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := optionsFile.Write([]byte(opts.String())); err != nil {
+		return nil, err
+	}
+	optionsFile.Close()
+
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	d.deleteObsoleteFiles(jobID)

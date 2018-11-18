@@ -106,6 +106,7 @@ type DB struct {
 	fileLock io.Closer
 
 	largeBatchThreshold int
+	optionsFileNum      uint64
 
 	// Rate limiter for how much bandwidth to allow for commits, compactions, and
 	// flushes.

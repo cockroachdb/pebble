@@ -248,6 +248,14 @@ func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
 	return e
 }
 
+// MaxSize returns the max size of the cache.
+func (c *Cache) MaxSize() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.maxSize
+}
+
 func (c *Cache) metaAdd(key key, e *entry) {
 	c.evict()
 

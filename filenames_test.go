@@ -28,6 +28,11 @@ func TestParseDBFilename(t *testing.T) {
 		"MANIFEST-":           false,
 		"MANIFEST-123456":     true,
 		"MANIFEST-123456.doc": false,
+		"OPTIONS":             false,
+		"OPTIONS123456":       false,
+		"OPTIONS-":            false,
+		"OPTIONS-123456":      true,
+		"OPTIONS-123456.doc":  false,
 	}
 	for tc, want := range testCases {
 		_, _, got := parseDBFilename(filepath.Join("foo", tc))
@@ -46,6 +51,7 @@ func TestFilenameRoundTrip(t *testing.T) {
 		fileTypeLog:      true,
 		fileTypeManifest: true,
 		fileTypeTable:    true,
+		fileTypeOptions:  true,
 	}
 	for fileType, numbered := range testCases {
 		fileNums := []uint64{0}

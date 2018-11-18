@@ -67,6 +67,7 @@ func TestNewDBFilenames(t *testing.T) {
 		"000003.log",
 		"CURRENT",
 		"MANIFEST-000002",
+		"OPTIONS-000004",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("\ngot  %v\nwant %v", got, want)
@@ -142,6 +143,22 @@ func TestOpenCloseOpenClose(t *testing.T) {
 				t.Errorf("sfe=%t, length=%d: got value differs from set value",
 					startFromEmpty, length)
 				continue
+			}
+
+			{
+				got, err := opts.Storage.List(dirname)
+				if err != nil {
+					t.Fatalf("List: %v", err)
+				}
+				var optionsCount int
+				for _, s := range got {
+					if t, _, ok := parseDBFilename(s); ok && t == fileTypeOptions {
+						optionsCount++
+					}
+				}
+				if optionsCount != 1 {
+					t.Fatalf("expected 1 OPTIONS file, but found %d", optionsCount)
+				}
 			}
 		}
 	}
