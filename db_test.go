@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
 )
@@ -537,5 +538,55 @@ func TestIterLeak(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestCacheEvict(t *testing.T) {
+	cache := cache.New(10 << 20)
+	d, err := Open("", &db.Options{
+		Cache:   cache,
+		Storage: storage.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 1000; i++ {
+		key := []byte(fmt.Sprintf("%04d", i))
+		if err := d.Set(key, key, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	iter := d.NewIter(nil)
+	for iter.First(); iter.Valid(); iter.Next() {
+	}
+	if err := iter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if size := cache.Size(); size == 0 {
+		t.Fatalf("expected non-zero cache size")
+	}
+
+	for i := 0; i < 1000; i++ {
+		key := []byte(fmt.Sprintf("%04d", i))
+		if err := d.Delete(key, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := d.Compact([]byte("0"), []byte("1")); err != nil {
+		t.Fatal(err)
+	}
+
+	if size := cache.Size(); size != 0 {
+		t.Fatalf("expected empty cache, but found %d", size)
+	}
+
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

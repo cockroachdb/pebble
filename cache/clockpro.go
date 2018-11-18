@@ -67,71 +67,67 @@ func (v *value) get() []byte {
 }
 
 type entry struct {
-	key      key
-	val      value
-	nextLink *entry
-	prevLink *entry
-	size     int64
-	ptype    entryType
-	ref      int32
+	key       key
+	val       value
+	blockLink struct {
+		next *entry
+		prev *entry
+	}
+	fileLink struct {
+		next *entry
+		prev *entry
+	}
+	size  int64
+	ptype entryType
+	ref   int32
 }
 
 func (e *entry) init() *entry {
-	e.nextLink = e
-	e.prevLink = e
+	e.blockLink.next = e
+	e.blockLink.prev = e
+	e.fileLink.next = e
+	e.fileLink.prev = e
 	return e
 }
 
 func (e *entry) next() *entry {
-	if e.nextLink == nil {
-		return e.init()
-	}
-	return e.nextLink
+	return e.blockLink.next
 }
 
 func (e *entry) prev() *entry {
-	if e.prevLink == nil {
-		return e.init()
-	}
-	return e.prevLink
+	return e.blockLink.prev
 }
 
-func (e *entry) link(s *entry) *entry {
-	n := e.next()
-	if s != nil {
-		p := s.prev()
-		// Note: Cannot use multiple assignment because
-		// evaluation order of LHS is not specified.
-		e.nextLink = s
-		s.prevLink = e
-		n.prevLink = p
-		p.nextLink = n
-	}
-	return n
+func (e *entry) link(s *entry) {
+	s.blockLink.prev = e.blockLink.prev
+	s.blockLink.prev.blockLink.next = s
+	s.blockLink.next = e
+	s.blockLink.next.blockLink.prev = s
 }
 
-func (e *entry) move(n int) *entry {
-	if e.nextLink == nil {
-		return e.init()
-	}
-	switch {
-	case n < 0:
-		for ; n < 0; n++ {
-			e = e.prevLink
-		}
-	case n > 0:
-		for ; n > 0; n-- {
-			e = e.nextLink
-		}
-	}
-	return e
+func (e *entry) unlink() *entry {
+	next := e.blockLink.next
+	e.blockLink.prev.blockLink.next = e.blockLink.next
+	e.blockLink.next.blockLink.prev = e.blockLink.prev
+	e.blockLink.prev = e
+	e.blockLink.next = e
+	return next
 }
 
-func (e *entry) unlink(n int) *entry {
-	if n <= 0 {
-		return nil
-	}
-	return e.link(e.move(n + 1))
+func (e *entry) linkFile(s *entry) {
+	s.fileLink.prev = e.fileLink.prev
+	s.fileLink.prev.fileLink.next = s
+	s.fileLink.next = e
+	s.fileLink.next.fileLink.prev = s
+}
+
+func (e *entry) unlinkFile() *entry {
+	next := e.fileLink.next
+	e.fileLink.prev.fileLink.next = e.fileLink.next
+	e.fileLink.next.fileLink.prev = e.fileLink.prev
+	e.fileLink.prev = e
+	e.fileLink.next = e
+	return next
 }
 
 func (e *entry) Get() []byte {
@@ -157,7 +153,8 @@ type Cache struct {
 
 	maxSize  int64
 	coldSize int64
-	keys     map[key]*entry
+	blocks   map[key]*entry    // fileNum+offset -> block
+	files    map[uint64]*entry // fileNum -> list of blocks
 
 	handHot  *entry
 	handCold *entry
@@ -174,7 +171,8 @@ func New(size int64) *Cache {
 	return &Cache{
 		maxSize:  size,
 		coldSize: size,
-		keys:     make(map[key]*entry),
+		blocks:   make(map[key]*entry),
+		files:    make(map[uint64]*entry),
 	}
 }
 
@@ -188,7 +186,7 @@ func (c *Cache) Get(fileNum, offset uint64) []byte {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	e := c.keys[key{fileNum: fileNum, offset: offset}]
+	e := c.blocks[key{fileNum: fileNum, offset: offset}]
 	if e == nil {
 		return nil
 	}
@@ -208,10 +206,11 @@ func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
 	defer c.mu.Unlock()
 
 	k := key{fileNum: fileNum, offset: offset}
-	e := c.keys[k]
+	e := c.blocks[k]
 	if e == nil {
 		// no cache entry? add it
 		e = &entry{ptype: etCold, key: k, size: int64(len(value))}
+		e.init()
 		e.val.set(value)
 		c.metaAdd(k, e)
 		c.countCold += e.size
@@ -248,30 +247,33 @@ func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
 	return e
 }
 
-// EvictFiles evicts all of the cache values for the specified files. This is
-// expensive as it walks over the entire cache.
-//
-// TODO(peter): Is this too expensive?
-func (c *Cache) EvictFiles(files map[uint64]struct{}) {
+// EvictFile evicts all of the cache values for the specified file.
+func (c *Cache) EvictFile(fileNum uint64) {
 	if c == nil {
 		return
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for k, e := range c.keys {
-		if _, ok := files[k.fileNum]; !ok {
-			continue
-		}
-		switch e.ptype {
+
+	blocks := c.files[fileNum]
+	if blocks == nil {
+		return
+	}
+	for b, n := blocks, (*entry)(nil); ; b = n {
+		switch b.ptype {
 		case etHot:
-			c.countHot -= e.size
+			c.countHot -= b.size
 		case etCold:
-			c.countCold -= e.size
+			c.countCold -= b.size
 		case etTest:
-			c.countTest -= e.size
+			c.countTest -= b.size
 		}
-		c.metaDel(e)
+		n = b.fileLink.next
+		c.metaDel(b)
+		if b == n {
+			break
+		}
 	}
 }
 
@@ -294,23 +296,30 @@ func (c *Cache) Size() int64 {
 func (c *Cache) metaAdd(key key, e *entry) {
 	c.evict()
 
-	c.keys[key] = e
-	e.link(c.handHot)
+	c.blocks[key] = e
 
 	if c.handHot == nil {
 		// first element
 		c.handHot = e
 		c.handCold = e
 		c.handTest = e
+	} else {
+		c.handHot.link(e)
 	}
 
 	if c.handCold == c.handHot {
 		c.handCold = c.handCold.prev()
 	}
+
+	if fileBlocks := c.files[key.fileNum]; fileBlocks == nil {
+		c.files[key.fileNum] = e
+	} else {
+		fileBlocks.linkFile(e)
+	}
 }
 
 func (c *Cache) metaDel(e *entry) {
-	delete(c.keys, e.key)
+	delete(c.blocks, e.key)
 
 	if e == c.handHot {
 		c.handHot = c.handHot.prev()
@@ -322,7 +331,18 @@ func (c *Cache) metaDel(e *entry) {
 		c.handTest = c.handTest.prev()
 	}
 
-	e.prev().unlink(1)
+	if e.unlink() == e {
+		// This was the last entry in the cache.
+		c.handHot = nil
+		c.handCold = nil
+		c.handTest = nil
+	}
+
+	if next := e.unlinkFile(); e == next {
+		delete(c.files, e.key.fileNum)
+	} else {
+		c.files[e.key.fileNum] = next
+	}
 }
 
 func (c *Cache) evict() {
@@ -332,6 +352,10 @@ func (c *Cache) evict() {
 }
 
 func (c *Cache) runHandCold() {
+	if c.handCold == nil {
+		return
+	}
+
 	e := c.handCold
 	if e.ptype == etCold {
 		if atomic.LoadInt32(&e.ref) == 1 {
@@ -361,6 +385,9 @@ func (c *Cache) runHandHot() {
 	if c.handHot == c.handTest {
 		c.runHandTest()
 	}
+	if c.handHot == nil {
+		return
+	}
 
 	e := c.handHot
 	if e.ptype == etHot {
@@ -379,6 +406,9 @@ func (c *Cache) runHandHot() {
 func (c *Cache) runHandTest() {
 	if c.countCold > 0 && c.handTest == c.handCold {
 		c.runHandCold()
+	}
+	if c.handTest == nil {
+		return
 	}
 
 	e := c.handTest

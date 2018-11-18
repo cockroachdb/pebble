@@ -147,12 +147,12 @@ func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
 
 func (c *tableCache) evict(fileNum uint64) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if n := c.mu.nodes[fileNum]; n != nil {
-		n.deleted = true
 		c.releaseNode(n)
 	}
+	c.mu.Unlock()
+
+	c.opts.Cache.EvictFile(fileNum)
 }
 
 func (c *tableCache) Close() error {
@@ -201,7 +201,6 @@ type tableCacheNode struct {
 
 	next, prev *tableCacheNode
 	refCount   int
-	deleted    bool
 }
 
 func (n *tableCacheNode) load(c *tableCache) {
@@ -221,9 +220,6 @@ func (n *tableCacheNode) load(c *tableCache) {
 func (n *tableCacheNode) release(c *tableCache) {
 	x := <-n.result
 	if x.err == nil {
-		if n.deleted {
-			x.reader.Evict()
-		}
 		// Nothing to be done about an error at this point.
 		_ = x.reader.Close()
 	}

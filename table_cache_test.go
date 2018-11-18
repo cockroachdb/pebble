@@ -146,8 +146,10 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	fs.closeCounts = map[string]int{}
 	fs.mu.Unlock()
 
+	opts := &db.Options{}
+	opts.EnsureDefaults()
 	c := &tableCache{}
-	c.init("", fs, nil, tableCacheTestCacheSize)
+	c.init("", fs, opts, tableCacheTestCacheSize)
 	return c, fs, nil
 }
 

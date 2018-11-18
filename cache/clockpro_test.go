@@ -59,7 +59,7 @@ func TestWeakHandle(t *testing.T) {
 	}
 }
 
-func TestEvictFiles(t *testing.T) {
+func TestEvictFile(t *testing.T) {
 	cache := New(100)
 	cache.Set(0, 0, bytes.Repeat([]byte("a"), 5))
 	cache.Set(1, 0, bytes.Repeat([]byte("a"), 5))
@@ -67,21 +67,18 @@ func TestEvictFiles(t *testing.T) {
 	cache.Set(2, 1, bytes.Repeat([]byte("a"), 5))
 	cache.Set(2, 2, bytes.Repeat([]byte("a"), 5))
 	if expected, size := int64(25), cache.Size(); expected != size {
-		t.Fatalf("expected cache size of %d, but found %d", expected, size)
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	files := func(files ...uint64) map[uint64]struct{} {
-		m := make(map[uint64]struct{})
-		for _, f := range files {
-			m[f] = struct{}{}
-		}
-		return m
+	cache.EvictFile(0)
+	if expected, size := int64(20), cache.Size(); expected != size {
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFiles(files(2))
-	if expected, size := int64(10), cache.Size(); expected != size {
-		t.Fatalf("expected cache size of %d, but found %d", expected, size)
+	cache.EvictFile(1)
+	if expected, size := int64(15), cache.Size(); expected != size {
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFiles(files(1, 0))
+	cache.EvictFile(2)
 	if expected, size := int64(0), cache.Size(); expected != size {
-		t.Fatalf("expected cache size of %d, but found %d", expected, size)
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
 }

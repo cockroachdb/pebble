@@ -354,15 +354,6 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// Evict evicts data blocks for the table from the block cache.
-func (r *Reader) Evict() {
-	// TODO(peter): unimplemented. If the index block is in cache, loop over the
-	// index block entries and call Cache.Evict() for each block. For a 128 MB
-	// table, this will be on the order of 4k to 32k blocks. Alternately, we can
-	// extend the Cache so that it keeps track of the values that are cached for
-	// a file.
-}
-
 func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
