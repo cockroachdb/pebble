@@ -91,8 +91,8 @@ type Properties struct {
 	MergeOperatorName string `prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
 	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
-	// TODO(peter): unimplemented
-	// NumDeletions uint64
+	// the number of deletion entries in this table.
+	NumDeletions uint64 `prop:"rocksdb.deleted.keys"`
 	// the number of entries in this table.
 	NumEntries uint64 `prop:"rocksdb.num.entries"`
 	// the number of range deletions in this table.
@@ -275,6 +275,9 @@ func (p *Properties) save(w *rawBlockWriter) {
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDataBlocks), p.NumDataBlocks)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumEntries), p.NumEntries)
+	if p.NumDeletions != 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumDeletions), p.NumDeletions)
+	}
 	if p.NumRangeDeletions != 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
 	}
