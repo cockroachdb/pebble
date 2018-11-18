@@ -245,7 +245,27 @@ func (d *DB) flush1() error {
 		iter = newMergingIter(d.cmp, iters...)
 	}
 
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+	if d.opts.EventListener != nil && d.opts.EventListener.FlushBegin != nil {
+		d.opts.EventListener.FlushBegin(db.FlushInfo{
+			JobID: jobID,
+		})
+	}
+
 	meta, err := d.writeLevel0Table(d.opts.Storage, iter)
+
+	if d.opts.EventListener != nil && d.opts.EventListener.FlushEnd != nil {
+		info := db.FlushInfo{
+			JobID: jobID,
+			Err:   err,
+		}
+		if err == nil {
+			info.Output = meta.tableInfo(d.dirname)
+		}
+		d.opts.EventListener.FlushEnd(info)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -274,7 +294,7 @@ func (d *DB) flush1() error {
 	// fmt.Printf("flushed %d: %.1f MB -> %.1f MB\n",
 	// 	n, float64(dirty)/(1<<20), float64(newDirty)/(1<<20))
 
-	d.deleteObsoleteFiles()
+	d.deleteObsoleteFiles(jobID)
 	return nil
 }
 
@@ -448,25 +468,39 @@ func (d *DB) compact1() (err error) {
 		return nil
 	}
 
-	// Check for a trivial move of one table from one level to the next. We avoid
-	// such a move if there is lots of overlapping grandparent data.  Otherwise,
-	// the move could create a parent file that will require a very expensive
-	// merge later on.
-	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
-		totalSize(c.grandparents) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
-
-		meta := &c.inputs[0][0]
-		return d.mu.versions.logAndApply(&versionEdit{
-			deletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
-			},
-			newFiles: []newFileEntry{
-				{level: c.level + 1, meta: *meta},
-			},
-		})
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+	if d.opts.EventListener != nil && d.opts.EventListener.CompactionBegin != nil {
+		info := db.CompactionInfo{
+			JobID: jobID,
+		}
+		d.opts.EventListener.CompactionBegin(info)
 	}
 
 	ve, pendingOutputs, err := d.compactDiskTables(c)
+
+	if d.opts.EventListener != nil && d.opts.EventListener.CompactionEnd != nil {
+		info := db.CompactionInfo{
+			JobID: jobID,
+			Err:   err,
+		}
+		if err != nil {
+			info.Input.Level = c.level
+			info.Output.Level = c.level + 1
+			for i := range c.inputs {
+				for j := range c.inputs[i] {
+					m := &c.inputs[i][j]
+					info.Input.Tables[i] = append(info.Input.Tables[i], m.tableInfo(d.dirname))
+				}
+			}
+			for i := range ve.newFiles {
+				e := &ve.newFiles[i]
+				info.Output.Tables = append(info.Output.Tables, e.meta.tableInfo(d.dirname))
+			}
+		}
+		d.opts.EventListener.CompactionEnd(info)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -477,7 +511,7 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
-	d.deleteObsoleteFiles()
+	d.deleteObsoleteFiles(jobID)
 	return nil
 }
 
@@ -487,6 +521,23 @@ func (d *DB) compact1() (err error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs []uint64, retErr error) {
+	// Check for a trivial move of one table from one level to the next. We avoid
+	// such a move if there is lots of overlapping grandparent data. Otherwise,
+	// the move could create a parent file that will require a very expensive
+	// merge later on.
+	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
+		totalSize(c.grandparents) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
+		meta := &c.inputs[0][0]
+		return &versionEdit{
+			deletedFiles: map[deletedFileEntry]bool{
+				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
+			},
+			newFiles: []newFileEntry{
+				{level: c.level + 1, meta: *meta},
+			},
+		}, nil, nil
+	}
+
 	defer func() {
 		if retErr != nil {
 			for _, fileNum := range pendingOutputs {
@@ -628,7 +679,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) deleteObsoleteFiles() {
+func (d *DB) deleteObsoleteFiles(jobID int) {
 	liveFileNums := map[uint64]struct{}{}
 	for fileNum := range d.mu.compact.pendingOutputs {
 		liveFileNums[fileNum] = struct{}{}
@@ -669,8 +720,19 @@ func (d *DB) deleteObsoleteFiles() {
 		if fileType == fileTypeTable {
 			d.tableCache.evict(fileNum)
 		}
-		// Ignore any file system errors.
-		fs.Remove(filepath.Join(d.dirname, filename))
+		path := filepath.Join(d.dirname, filename)
+		err := fs.Remove(path)
+
+		if fileType == fileTypeTable {
+			if d.opts.EventListener != nil && d.opts.EventListener.TableDeleted != nil {
+				d.opts.EventListener.TableDeleted(db.TableDeleteInfo{
+					JobID:   jobID,
+					Path:    path,
+					FileNum: fileNum,
+					Err:     err,
+				})
+			}
+		}
 	}
 }
 

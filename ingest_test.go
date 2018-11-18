@@ -196,12 +196,14 @@ func TestIngestLink(t *testing.T) {
 	// Test linking of tables into the DB directory. Test cleanup when one of the
 	// tables cannot be linked.
 
-	const db = "db"
+	const dir = "db"
 	const count = 10
 	for i := 0; i <= count; i++ {
 		t.Run("", func(t *testing.T) {
 			mem := storage.NewMem()
-			if err := mem.MkdirAll(db, 0755); err != nil {
+			opts := &db.Options{Storage: mem}
+			opts.EnsureDefaults()
+			if err := mem.MkdirAll(dir, 0755); err != nil {
 				t.Fatal(err)
 			}
 
@@ -227,7 +229,7 @@ func TestIngestLink(t *testing.T) {
 				mem.Remove(paths[i])
 			}
 
-			err := ingestLink(mem, db, paths, meta)
+			err := ingestLink(opts, dir, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -236,7 +238,7 @@ func TestIngestLink(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			files, err := mem.List(db)
+			files, err := mem.List(dir)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,7 +264,7 @@ func TestIngestLink(t *testing.T) {
 					if uint64(j) != fileNum {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
-					f, err := mem.Open(db + "/" + files[j])
+					f, err := mem.Open(dir + "/" + files[j])
 					if err != nil {
 						t.Fatal(err)
 					}

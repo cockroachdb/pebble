@@ -31,6 +31,18 @@ type fileMetadata struct {
 	markedForCompaction bool
 }
 
+func (m *fileMetadata) tableInfo(dirname string) db.TableInfo {
+	return db.TableInfo{
+		Path:           dbFilename(dirname, fileTypeTable, m.fileNum),
+		FileNum:        m.fileNum,
+		Size:           m.size,
+		Smallest:       m.smallest,
+		Largest:        m.largest,
+		SmallestSeqNum: m.smallestSeqNum,
+		LargestSeqNum:  m.largestSeqNum,
+	}
+}
+
 // totalSize returns the total size of all the files in f.
 func totalSize(f []fileMetadata) (size uint64) {
 	for _, x := range f {

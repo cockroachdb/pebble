@@ -92,15 +92,14 @@ func ingestCleanup(
 }
 
 func ingestLink(
-	fs storage.Storage, dirname string, paths []string, meta []*fileMetadata,
+	opts *db.Options, dirname string, paths []string, meta []*fileMetadata,
 ) error {
 	for i := range paths {
 		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
-		err := fs.Link(paths[i], target)
+		err := opts.Storage.Link(paths[i], target)
 		if err != nil {
-			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
-				// TODO(peter): log a warning.
-				panic(err2)
+			if err2 := ingestCleanup(opts.Storage, dirname, meta[:i]); err2 != nil {
+				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
 			return err
 		}
@@ -174,6 +173,8 @@ func (d *DB) Ingest(paths []string) error {
 	for _, fileNum := range pendingOutputs {
 		d.mu.compact.pendingOutputs[fileNum] = struct{}{}
 	}
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
 	d.mu.Unlock()
 
 	defer func() {
@@ -199,7 +200,7 @@ func (d *DB) Ingest(paths []string) error {
 	// referenced by a version, they won't be used. If the hard linking fails
 	// (e.g. because the files reside on a different filesystem) we undo our work
 	// and return an error.
-	if err := ingestLink(d.opts.Storage, d.dirname, paths, meta); err != nil {
+	if err := ingestLink(d.opts, d.dirname, paths, meta); err != nil {
 		return err
 	}
 
@@ -248,6 +249,7 @@ func (d *DB) Ingest(paths []string) error {
 		}
 	}
 
+	var ve *versionEdit
 	apply := func(seqNum uint64) {
 		if err != nil {
 			// An error occurred during prepareLocked.
@@ -268,21 +270,41 @@ func (d *DB) Ingest(paths []string) error {
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		err = d.ingestApply(meta)
+		ve, err = d.ingestApply(meta)
 	}
 
 	d.commit.AllocateSeqNum(prepareLocked, apply)
 
 	if err != nil {
 		if err2 := ingestCleanup(d.opts.Storage, d.dirname, meta); err2 != nil {
-			// TODO(peter): log a warning.
-			panic(err2)
+			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
 		}
 	}
+
+	if d.opts.EventListener != nil && d.opts.EventListener.TableIngested != nil {
+		info := db.TableIngestInfo{
+			JobID:        jobID,
+			GlobalSeqNum: meta[0].smallestSeqNum,
+			Err:          err,
+		}
+		if ve != nil {
+			info.Tables = make([]struct {
+				db.TableInfo
+				Level int
+			}, len(ve.newFiles))
+			for i := range ve.newFiles {
+				e := &ve.newFiles[i]
+				info.Tables[i].Level = e.level
+				info.Tables[i].TableInfo = e.meta.tableInfo(d.dirname)
+			}
+		}
+		d.opts.EventListener.TableIngested(info)
+	}
+
 	return err
 }
 
-func (d *DB) ingestApply(meta []*fileMetadata) error {
+func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -297,5 +319,8 @@ func (d *DB) ingestApply(meta []*fileMetadata) error {
 		ve.newFiles[i].level = ingestTargetLevel(d.cmp, current, m)
 		ve.newFiles[i].meta = *m
 	}
-	return d.mu.versions.logAndApply(ve)
+	if err := d.mu.versions.logAndApply(ve); err != nil {
+		return nil, err
+	}
+	return ve, nil
 }

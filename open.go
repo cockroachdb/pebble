@@ -84,6 +84,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		sync:          d.commitSync,
 		write:         d.commitWrite,
 	})
+	d.mu.nextJobID = 1
 	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.mem.mutable = newMemTable(d.opts)
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
@@ -175,7 +176,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 
-	d.deleteObsoleteFiles()
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+	d.deleteObsoleteFiles(jobID)
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 

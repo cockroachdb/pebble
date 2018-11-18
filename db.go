@@ -122,7 +122,8 @@ type DB struct {
 	mu struct {
 		sync.Mutex
 
-		closed bool
+		closed    bool
+		nextJobID int
 
 		versions versionSet
 
@@ -508,7 +509,7 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	cur := d.mu.versions.currentVersion()
 	for level := 0; level < numLevels; level++ {
 		if len(cur.overlaps(level, d.cmp, start, end)) > 0 {
-			maxLevelWithFiles = level
+			maxLevelWithFiles = level + 1
 		}
 	}
 
