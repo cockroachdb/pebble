@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"sort"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
@@ -699,6 +700,10 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		// Ignore any filesystem errors.
 		return
 	}
+	// We sort to make the order of deletions deterministic, which is nice for
+	// tests.
+	sort.Strings(list)
+
 	for _, filename := range list {
 		fileType, fileNum, ok := parseDBFilename(filename)
 		if !ok {
