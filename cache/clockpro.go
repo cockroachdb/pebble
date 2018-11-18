@@ -248,12 +248,47 @@ func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
 	return e
 }
 
+// EvictFiles evicts all of the cache values for the specified files. This is
+// expensive as it walks over the entire cache.
+//
+// TODO(peter): Is this too expensive?
+func (c *Cache) EvictFiles(files map[uint64]struct{}) {
+	if c == nil {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k, e := range c.keys {
+		if _, ok := files[k.fileNum]; !ok {
+			continue
+		}
+		switch e.ptype {
+		case etHot:
+			c.countHot -= e.size
+		case etCold:
+			c.countCold -= e.size
+		case etTest:
+			c.countTest -= e.size
+		}
+		c.metaDel(e)
+	}
+}
+
 // MaxSize returns the max size of the cache.
 func (c *Cache) MaxSize() int64 {
 	if c == nil {
 		return 0
 	}
 	return c.maxSize
+}
+
+// Size returns the current space used by the cache.
+func (c *Cache) Size() int64 {
+	c.mu.Lock()
+	size := c.countHot + c.countCold
+	c.mu.Unlock()
+	return size
 }
 
 func (c *Cache) metaAdd(key key, e *entry) {

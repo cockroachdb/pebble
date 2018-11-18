@@ -58,3 +58,30 @@ func TestWeakHandle(t *testing.T) {
 		t.Fatalf("expected nil, but found %s", v)
 	}
 }
+
+func TestEvictFiles(t *testing.T) {
+	cache := New(100)
+	cache.Set(0, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(2, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(2, 1, bytes.Repeat([]byte("a"), 5))
+	cache.Set(2, 2, bytes.Repeat([]byte("a"), 5))
+	if expected, size := int64(25), cache.Size(); expected != size {
+		t.Fatalf("expected cache size of %d, but found %d", expected, size)
+	}
+	files := func(files ...uint64) map[uint64]struct{} {
+		m := make(map[uint64]struct{})
+		for _, f := range files {
+			m[f] = struct{}{}
+		}
+		return m
+	}
+	cache.EvictFiles(files(2))
+	if expected, size := int64(10), cache.Size(); expected != size {
+		t.Fatalf("expected cache size of %d, but found %d", expected, size)
+	}
+	cache.EvictFiles(files(1, 0))
+	if expected, size := int64(0), cache.Size(); expected != size {
+		t.Fatalf("expected cache size of %d, but found %d", expected, size)
+	}
+}
