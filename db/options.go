@@ -289,11 +289,11 @@ func (o *Options) EnsureDefaults() *Options {
 					l.TargetFileSize = o.Levels[i-1].TargetFileSize * 2
 				}
 			}
-			o.Levels[i] = *o.Levels[i].EnsureDefaults()
+			o.Levels[i].EnsureDefaults()
 		}
 	} else {
 		for i := range o.Levels {
-			o.Levels[i] = *o.Levels[i].EnsureDefaults()
+			o.Levels[i].EnsureDefaults()
 		}
 	}
 	if o.Logger == nil {
