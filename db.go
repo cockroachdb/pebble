@@ -183,26 +183,38 @@ func (d *DB) getInternal(key []byte, s *Snapshot) ([]byte, error) {
 	// version.unref() can be called without holding DB.mu.
 	current := d.mu.versions.currentVersion()
 	current.ref()
-	defer current.unref()
 	memtables := d.mu.mem.queue
 	d.mu.Unlock()
 
-	ikey := db.MakeInternalKey(key, seqNum, db.InternalKeyKindMax)
-
-	// Look in the memtables before going to the on-disk current version.
-	for i := len(memtables) - 1; i >= 0; i-- {
-		mem := memtables[i]
-		iter := mem.newIter(nil)
-		iter.SeekGE(key)
-		value, conclusive, err := internalGet(iter, d.cmp, ikey)
-		if conclusive {
-			return value, err
-		}
+	var buf struct {
+		dbi dbIter
+		get getIter
 	}
 
-	// TODO(peter): update stats.
+	get := &buf.get
+	get.cmp = d.cmp
+	get.newIter = d.newIter
+	get.key = key
+	get.mem = memtables
+	get.l0 = current.files[0]
+	get.version = current
 
-	return current.get(ikey, d.newIter, d.cmp, nil)
+	i := &buf.dbi
+	i.cmp = d.cmp
+	i.merge = d.merge
+	i.iter = get
+	i.seqNum = seqNum
+	i.version = current
+
+	defer i.Close()
+	if !i.Next() {
+		err := i.Error()
+		if err != nil {
+			return nil, err
+		}
+		return nil, db.ErrNotFound
+	}
+	return i.Value(), nil
 }
 
 // Set sets the value for the given key. It overwrites any previous value

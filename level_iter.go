@@ -65,7 +65,7 @@ func (l *levelIter) findFileLT(key []byte) int {
 
 func (l *levelIter) loadFile(index, dir int) bool {
 	if l.index == index {
-		return true
+		return l.iter != nil
 	}
 	if l.iter != nil {
 		l.err = l.iter.Close()

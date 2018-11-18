@@ -456,6 +456,44 @@ func TestLargeBatch(t *testing.T) {
 	}
 }
 
+func TestGetMerge(t *testing.T) {
+	d, err := Open("", &db.Options{
+		Storage: storage.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := []byte("a")
+	verify := func(expected string) {
+		val, err := d.Get(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if expected != string(val) {
+			t.Fatalf("expected %s, but got %s", expected, val)
+		}
+	}
+
+	const val = "1"
+	for i := 1; i <= 3; i++ {
+		if err := d.Merge(key, []byte(val), nil); err != nil {
+			t.Fatal(err)
+		}
+		expected := strings.Repeat(val, i)
+		verify(expected)
+
+		if err := d.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		verify(expected)
+	}
+
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIterLeak(t *testing.T) {
 	for _, leak := range []bool{true, false} {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
