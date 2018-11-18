@@ -704,7 +704,6 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	// tests.
 	sort.Strings(list)
 
-	deletedTables := make(map[uint64]struct{})
 	for _, filename := range list {
 		fileType, fileNum, ok := parseDBFilename(filename)
 		if !ok {
@@ -727,7 +726,6 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		}
 		if fileType == fileTypeTable {
 			d.tableCache.evict(fileNum)
-			deletedTables[fileNum] = struct{}{}
 		}
 		path := filepath.Join(d.dirname, filename)
 		err := fs.Remove(path)
@@ -743,8 +741,6 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			}
 		}
 	}
-
-	d.opts.Cache.EvictFiles(deletedTables)
 }
 
 // compactionIterator returns an iterator over all the tables in a compaction.
