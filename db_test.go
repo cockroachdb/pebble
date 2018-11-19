@@ -419,7 +419,7 @@ func TestRandomWrites(t *testing.T) {
 func TestLargeBatch(t *testing.T) {
 	d, err := Open("", &db.Options{
 		Storage:                     storage.NewMem(),
-		MemTableSize:                1024,
+		MemTableSize:                1400,
 		MemTableStopWritesThreshold: 100,
 	})
 	if err != nil {
@@ -501,9 +501,7 @@ func TestIterLeak(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
 					d, err := Open("", &db.Options{
-						Storage:                     storage.NewMem(),
-						MemTableSize:                1024,
-						MemTableStopWritesThreshold: 100,
+						Storage: storage.NewMem(),
 					})
 					if err != nil {
 						t.Fatal(err)

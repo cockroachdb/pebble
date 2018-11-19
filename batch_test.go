@@ -186,6 +186,48 @@ func TestBatchIter(t *testing.T) {
 	}
 }
 
+func TestBatchDeleteRange(t *testing.T) {
+	var b *Batch
+
+	datadriven.RunTest(t, "testdata/batch_delete_range", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			b = newIndexedBatch(nil, db.DefaultComparer)
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "scan":
+			var iter db.InternalIterator
+			if len(td.CmdArgs) > 1 {
+				t.Fatalf("%s expects at most 1 argument", td.Cmd)
+			}
+			if len(td.CmdArgs) == 1 {
+				if td.CmdArgs[0].String() != "range-del" {
+					t.Fatalf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
+				}
+				iter = b.newRangeDelIter(nil)
+			} else {
+				iter = b.newInternalIter(nil)
+			}
+			defer iter.Close()
+
+			var buf bytes.Buffer
+			for iter.First(); iter.Valid(); iter.Next() {
+				key := iter.Key()
+				key.SetSeqNum(key.SeqNum() &^ db.InternalKeySeqNumBatch)
+				fmt.Fprintf(&buf, "%s:%s\n", key, iter.Value())
+			}
+			return buf.String()
+
+		default:
+			t.Fatalf("unknown command: %s", td.Cmd)
+		}
+		return ""
+	})
+}
+
 func TestFlushableBatchIter(t *testing.T) {
 	var b *flushableBatch
 	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
@@ -257,6 +299,47 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 			t.Fatalf("unknown command: %s", d.Cmd)
 		}
 
+		return ""
+	})
+}
+
+func TestFlushableBatchDeleteRange(t *testing.T) {
+	var fb *flushableBatch
+
+	datadriven.RunTest(t, "testdata/delete_range", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			b := newBatch(nil)
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			fb = newFlushableBatch(b, db.DefaultComparer)
+			return ""
+
+		case "scan":
+			var iter db.InternalIterator
+			if len(td.CmdArgs) > 1 {
+				t.Fatalf("%s expects at most 1 argument", td.Cmd)
+			}
+			if len(td.CmdArgs) == 1 {
+				if td.CmdArgs[0].String() != "range-del" {
+					t.Fatalf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
+				}
+				iter = fb.newRangeDelIter(nil)
+			} else {
+				iter = fb.newIter(nil)
+			}
+			defer iter.Close()
+
+			var buf bytes.Buffer
+			for iter.First(); iter.Valid(); iter.Next() {
+				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+			}
+			return buf.String()
+
+		default:
+			t.Fatalf("unknown command: %s", td.Cmd)
+		}
 		return ""
 	})
 }

@@ -24,12 +24,13 @@ func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 // explicitly compacting a memTable into a separate DB (whether in-memory or
 // on-disk) when appropriate.
 type memTable struct {
-	cmp       db.Compare
-	skl       arenaskl.Skiplist
-	emptySize uint32
-	reserved  uint32
-	refs      int32
-	flushedCh chan struct{}
+	cmp         db.Compare
+	skl         arenaskl.Skiplist
+	rangeDelSkl arenaskl.Skiplist
+	emptySize   uint32
+	reserved    uint32
+	refs        int32
+	flushedCh   chan struct{}
 }
 
 // newMemTable returns a new MemTable.
@@ -42,7 +43,8 @@ func newMemTable(o *db.Options) *memTable {
 	}
 	arena := arenaskl.NewArena(uint32(o.MemTableSize), 0)
 	m.skl.Reset(arena, m.cmp)
-	m.emptySize = m.skl.Size()
+	m.rangeDelSkl.Reset(arena, m.cmp)
+	m.emptySize = arena.Size()
 	return m
 }
 
@@ -117,7 +119,14 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		if !ok {
 			break
 		}
-		if err := m.skl.Add(db.MakeInternalKey(ukey, seqNum, kind), value); err != nil {
+		var err error
+		ikey := db.MakeInternalKey(ukey, seqNum, kind)
+		if kind == db.InternalKeyKindRangeDelete {
+			err = m.rangeDelSkl.Add(ikey, value)
+		} else {
+			err = m.skl.Add(ikey, value)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -130,8 +139,13 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 // newIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
-func (m *memTable) newIter(o *db.IterOptions) db.InternalIterator {
+func (m *memTable) newIter(*db.IterOptions) db.InternalIterator {
 	it := m.skl.NewIter()
+	return &it
+}
+
+func (m *memTable) newRangeDelIter(*db.IterOptions) db.InternalIterator {
+	it := m.rangeDelSkl.NewIter()
 	return &it
 }
 

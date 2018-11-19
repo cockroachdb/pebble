@@ -83,7 +83,8 @@ type Batch struct {
 	db *DB
 
 	// An optional skiplist keyed by offset into data of the entry.
-	index *batchskl.Skiplist
+	index         *batchskl.Skiplist
+	rangeDelIndex *batchskl.Skiplist
 
 	// The flushableBatch wrapper if the batch is too large to fit in the
 	// memtable.
@@ -144,7 +145,7 @@ func (b *Batch) release() {
 		batchPool.Put(b)
 	} else {
 		*b.index = batchskl.Skiplist{}
-		b.index = nil
+		b.index, b.rangeDelIndex = nil, nil
 		indexedBatchPool.Put(b)
 	}
 }
@@ -314,7 +315,11 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 	b.appendStr(start)
 	b.appendStr(end)
 	if b.index != nil {
-		if err := b.index.Add(offset); err != nil {
+		// Range deletions are rare, so we lazily allocate the index for them.
+		if b.rangeDelIndex == nil {
+			b.rangeDelIndex = batchskl.NewSkiplist(&b.batchStorage, 0)
+		}
+		if err := b.rangeDelIndex.Add(offset); err != nil {
 			// We never add duplicate entries, so an error should never occur.
 			panic(err)
 		}
@@ -349,6 +354,20 @@ func (b *Batch) newInternalIter(o *db.IterOptions) db.InternalIterator {
 		cmp:   b.cmp,
 		batch: b,
 		iter:  b.index.NewIter(),
+	}
+}
+
+func (b *Batch) newRangeDelIter(o *db.IterOptions) db.InternalIterator {
+	if b.index == nil {
+		return newErrorIter(ErrNotIndexed)
+	}
+	if b.rangeDelIndex == nil {
+		return newErrorIter(nil)
+	}
+	return &batchIter{
+		cmp:   b.cmp,
+		batch: b,
+		iter:  b.rangeDelIndex.NewIter(),
 	}
 }
 
@@ -588,7 +607,8 @@ type flushableBatch struct {
 	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
 	// flushable batch is indexed such that batch entry i will be given the
 	// sequence number flushableBatch.seqNum+i.
-	offsets []flushableBatchEntry
+	offsets         []flushableBatchEntry
+	rangeDelOffsets []flushableBatchEntry
 
 	flushedCh chan struct{}
 }
@@ -597,24 +617,36 @@ var _ flushable = (*flushableBatch)(nil)
 
 func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	b := &flushableBatch{
-		batch:     batch,
-		cmp:       comparer.Compare,
-		offsets:   make([]flushableBatchEntry, 0, batch.count()),
-		flushedCh: make(chan struct{}),
+		batch:           batch,
+		cmp:             comparer.Compare,
+		offsets:         make([]flushableBatchEntry, 0, batch.count()),
+		rangeDelOffsets: nil, // NB: assume no range deletions need indexing
+		flushedCh:       make(chan struct{}),
 	}
 
-	for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; {
+	var index uint32
+	for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; index++ {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&batch.data[0]))
-		if _, _, _, ok := iter.next(); !ok {
+		kind, _, _, ok := iter.next()
+		if !ok {
 			break
 		}
-		b.offsets = append(b.offsets, flushableBatchEntry{
+		entry := flushableBatchEntry{
 			offset: uint32(offset),
-			index:  uint32(len(b.offsets)),
-		})
+			index:  uint32(index),
+		}
+		if kind == db.InternalKeyKindRangeDelete {
+			b.rangeDelOffsets = append(b.rangeDelOffsets, entry)
+		} else {
+			b.offsets = append(b.offsets, entry)
+		}
 	}
 
+	// Sort both offsets and rangeDelOffsets.
 	sort.Sort(b)
+	b.rangeDelOffsets, b.offsets = b.offsets, b.rangeDelOffsets
+	sort.Sort(b)
+	b.rangeDelOffsets, b.offsets = b.offsets, b.rangeDelOffsets
 	return b
 }
 
@@ -634,9 +666,19 @@ func (b *flushableBatch) Swap(i, j int) {
 
 func (b *flushableBatch) newIter(o *db.IterOptions) db.InternalIterator {
 	return &flushableBatchIter{
-		batch: b,
-		cmp:   b.cmp,
-		index: -1,
+		batch:   b,
+		offsets: b.offsets,
+		cmp:     b.cmp,
+		index:   -1,
+	}
+}
+
+func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) db.InternalIterator {
+	return &flushableBatchIter{
+		batch:   b,
+		offsets: b.rangeDelOffsets,
+		cmp:     b.cmp,
+		index:   -1,
 	}
 }
 
@@ -652,6 +694,7 @@ func (b *flushableBatch) readyForFlush() bool {
 // two in sync.
 type flushableBatchIter struct {
 	batch   *flushableBatch
+	offsets []flushableBatchEntry
 	cmp     db.Compare
 	reverse bool
 	index   int
@@ -663,14 +706,14 @@ var _ db.InternalIterator = (*flushableBatchIter)(nil)
 
 func (i *flushableBatchIter) SeekGE(key []byte) {
 	ikey := db.MakeSearchKey(key)
-	i.index = sort.Search(len(i.batch.offsets), func(j int) bool {
+	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
 	})
 }
 
 func (i *flushableBatchIter) SeekLT(key []byte) {
 	ikey := db.MakeSearchKey(key)
-	i.index = sort.Search(len(i.batch.offsets), func(j int) bool {
+	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	i.index--
@@ -681,15 +724,15 @@ func (i *flushableBatchIter) First() {
 }
 
 func (i *flushableBatchIter) Last() {
-	i.index = len(i.batch.offsets) - 1
+	i.index = len(i.offsets) - 1
 }
 
 func (i *flushableBatchIter) Next() bool {
-	if i.index == len(i.batch.offsets) {
+	if i.index == len(i.offsets) {
 		return false
 	}
 	i.index++
-	return i.index < len(i.batch.offsets)
+	return i.index < len(i.offsets)
 }
 
 func (i *flushableBatchIter) Prev() bool {
@@ -701,7 +744,7 @@ func (i *flushableBatchIter) Prev() bool {
 }
 
 func (i *flushableBatchIter) getKey(index int) db.InternalKey {
-	entry := i.batch.offsets[index]
+	entry := i.offsets[index]
 	kind := db.InternalKeyKind(i.batch.batch.data[entry.offset])
 	_, key, ok := batchDecodeStr(i.batch.batch.data[entry.offset+1:])
 	if !ok {
@@ -715,7 +758,7 @@ func (i *flushableBatchIter) Key() db.InternalKey {
 }
 
 func (i *flushableBatchIter) Value() []byte {
-	offset := i.batch.offsets[i.index].offset
+	offset := i.offsets[i.index].offset
 	_, _, value, ok := i.batch.batch.decode(offset)
 	if !ok {
 		i.err = fmt.Errorf("corrupted batch")
@@ -724,7 +767,7 @@ func (i *flushableBatchIter) Value() []byte {
 }
 
 func (i *flushableBatchIter) Valid() bool {
-	return i.index >= 0 && i.index < len(i.batch.offsets)
+	return i.index >= 0 && i.index < len(i.offsets)
 }
 
 func (i *flushableBatchIter) Error() error {

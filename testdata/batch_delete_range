@@ -1,0 +1,32 @@
+define
+set a 1
+set b 2
+merge c 3
+del-range a c
+del d
+----
+
+scan
+----
+a#12,1:1
+b#17,1:2
+c#22,2:3
+d#32,0:
+
+scan range-del
+----
+a#27,15:c
+
+define
+del-range a b
+del-range b c
+del-range a c
+del-range b d
+----
+
+scan range-del
+----
+a#22,15:c
+a#12,15:b
+b#27,15:d
+b#17,15:c

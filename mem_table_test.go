@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -217,6 +218,50 @@ func TestMemTableIter(t *testing.T) {
 			t.Fatalf("unknown command: %s", d.Cmd)
 		}
 
+		return ""
+	})
+}
+
+func TestMemTableDeleteRange(t *testing.T) {
+	var mem *memTable
+
+	datadriven.RunTest(t, "testdata/delete_range", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			b := newBatch(nil)
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			mem = newMemTable(nil)
+			if err := mem.apply(b, 0); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "scan":
+			var iter db.InternalIterator
+			if len(td.CmdArgs) > 1 {
+				t.Fatalf("%s expects at most 1 argument", td.Cmd)
+			}
+			if len(td.CmdArgs) == 1 {
+				if td.CmdArgs[0].String() != "range-del" {
+					t.Fatalf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
+				}
+				iter = mem.newRangeDelIter(nil)
+			} else {
+				iter = mem.newIter(nil)
+			}
+			defer iter.Close()
+
+			var buf bytes.Buffer
+			for iter.First(); iter.Valid(); iter.Next() {
+				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+			}
+			return buf.String()
+
+		default:
+			t.Fatalf("unknown command: %s", td.Cmd)
+		}
 		return ""
 	})
 }
