@@ -57,9 +57,6 @@ type Iter struct {
 	closeHook func() error
 }
 
-// Iter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*Iter)(nil)
-
 func (i *Iter) init(r *Reader) error {
 	i.reader = r
 	var index block
@@ -382,7 +379,7 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 }
 
 // NewIter implements DB.NewIter, as documented in the pebble/db package.
-func (r *Reader) NewIter(o *db.IterOptions) db.InternalIterator {
+func (r *Reader) NewIter(o *db.IterOptions) *Iter {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.

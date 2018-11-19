@@ -346,7 +346,7 @@ func (b *Batch) NewIter(o *db.IterOptions) db.Iterator {
 
 // newInternalIter creates a new InternalIterator that iterates over the
 // contents of the batch.
-func (b *Batch) newInternalIter(o *db.IterOptions) db.InternalIterator {
+func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}
@@ -357,7 +357,7 @@ func (b *Batch) newInternalIter(o *db.IterOptions) db.InternalIterator {
 	}
 }
 
-func (b *Batch) newRangeDelIter(o *db.IterOptions) db.InternalIterator {
+func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}
@@ -536,8 +536,8 @@ type batchIter struct {
 	err     error
 }
 
-// batchIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*batchIter)(nil)
+// batchIter implements the internalIterator interface.
+var _ internalIterator = (*batchIter)(nil)
 
 func (i *batchIter) SeekGE(key []byte) {
 	i.iter.SeekGE(key)
@@ -664,7 +664,7 @@ func (b *flushableBatch) Swap(i, j int) {
 	b.offsets[i], b.offsets[j] = b.offsets[j], b.offsets[i]
 }
 
-func (b *flushableBatch) newIter(o *db.IterOptions) db.InternalIterator {
+func (b *flushableBatch) newIter(o *db.IterOptions) internalIterator {
 	return &flushableBatchIter{
 		batch:   b,
 		offsets: b.offsets,
@@ -673,7 +673,7 @@ func (b *flushableBatch) newIter(o *db.IterOptions) db.InternalIterator {
 	}
 }
 
-func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) db.InternalIterator {
+func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) internalIterator {
 	return &flushableBatchIter{
 		batch:   b,
 		offsets: b.rangeDelOffsets,
@@ -701,8 +701,8 @@ type flushableBatchIter struct {
 	err     error
 }
 
-// flushableBatchIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*flushableBatchIter)(nil)
+// flushableBatchIter implements the internalIterator interface.
+var _ internalIterator = (*flushableBatchIter)(nil)
 
 func (i *flushableBatchIter) SeekGE(key []byte) {
 	ikey := db.MakeSearchKey(key)

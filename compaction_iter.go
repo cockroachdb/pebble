@@ -95,7 +95,7 @@ import (
 type compactionIter struct {
 	cmp   db.Compare
 	merge db.Merge
-	iter  db.InternalIterator
+	iter  internalIterator
 	err   error
 	key   db.InternalKey
 	value []byte

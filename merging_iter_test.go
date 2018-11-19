@@ -19,7 +19,7 @@ import (
 )
 
 func TestMergingIter(t *testing.T) {
-	newFunc := func(iters ...db.InternalIterator) db.InternalIterator {
+	newFunc := func(iters ...internalIterator) internalIterator {
 		return newMergingIter(db.DefaultComparer.Compare, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
@@ -44,7 +44,7 @@ func TestMergingIterSeek(t *testing.T) {
 			return ""
 
 		case "iter":
-			var iters []db.InternalIterator
+			var iters []internalIterator
 			for _, line := range strings.Split(def, "\n") {
 				f := &fakeIter{}
 				for _, key := range strings.Fields(line) {
@@ -103,7 +103,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 					return ""
 
 				case "iter":
-					iters := make([]db.InternalIterator, len(c))
+					iters := make([]internalIterator, len(c))
 					for i := range c {
 						f := &fakeIter{}
 						iters[i] = f
@@ -201,7 +201,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, keys := buildMergingIterTables(b, blockSize, restartInterval, count)
-							iters := make([]db.InternalIterator, len(readers))
+							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
@@ -228,7 +228,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
-							iters := make([]db.InternalIterator, len(readers))
+							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
@@ -257,7 +257,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
-							iters := make([]db.InternalIterator, len(readers))
+							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}

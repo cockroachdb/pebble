@@ -27,7 +27,7 @@ const (
 )
 
 type flushable interface {
-	newIter(o *db.IterOptions) db.InternalIterator
+	newIter(o *db.IterOptions) internalIterator
 	flushed() chan struct{}
 	readyForFlush() bool
 }
@@ -337,7 +337,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
 // level.
 func (d *DB) newIterInternal(
-	batchIter db.InternalIterator,
+	batchIter internalIterator,
 	s *Snapshot,
 	o *db.IterOptions,
 ) db.Iterator {
@@ -358,7 +358,7 @@ func (d *DB) newIterInternal(
 
 	var buf struct {
 		dbi    dbIter
-		iters  [3 + numLevels]db.InternalIterator
+		iters  [3 + numLevels]internalIterator
 		levels [numLevels]levelIter
 	}
 

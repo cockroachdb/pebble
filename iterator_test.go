@@ -127,7 +127,7 @@ func (f *fakeIter) Close() error {
 // over those splits should recover the original key/value pairs in order.
 func testIterator(
 	t *testing.T,
-	newFunc func(...db.InternalIterator) db.InternalIterator,
+	newFunc func(...internalIterator) internalIterator,
 	splitFunc func(r *rand.Rand) [][]string,
 ) {
 	// Test pre-determined sub-iterators. The sub-iterators are designed
@@ -135,19 +135,19 @@ func testIterator(
 	// combined iterator is concatenating or merging.
 	testCases := []struct {
 		desc  string
-		iters []db.InternalIterator
+		iters []internalIterator
 		want  string
 	}{
 		{
 			"one sub-iterator",
-			[]db.InternalIterator{
+			[]internalIterator{
 				newFakeIterator(nil, "e:1", "w:2"),
 			},
 			"<e:1><w:2>.",
 		},
 		{
 			"two sub-iterators",
-			[]db.InternalIterator{
+			[]internalIterator{
 				newFakeIterator(nil, "a0:0"),
 				newFakeIterator(nil, "b1:1", "b2:2"),
 			},
@@ -155,7 +155,7 @@ func testIterator(
 		},
 		{
 			"empty sub-iterators",
-			[]db.InternalIterator{
+			[]internalIterator{
 				newFakeIterator(nil),
 				newFakeIterator(nil),
 				newFakeIterator(nil),
@@ -164,7 +164,7 @@ func testIterator(
 		},
 		{
 			"sub-iterator errors",
-			[]db.InternalIterator{
+			[]internalIterator{
 				newFakeIterator(nil, "a0:0", "a1:1"),
 				newFakeIterator(errors.New("the sky is falling!"), "b2:2", "b3:3", "b4:4"),
 				newFakeIterator(errors.New("run for your lives!"), "c5:5", "c6:6"),
@@ -194,7 +194,7 @@ func testIterator(
 		bad := false
 
 		splits := splitFunc(r)
-		iters := make([]db.InternalIterator, len(splits))
+		iters := make([]internalIterator, len(splits))
 		for i, split := range splits {
 			iters[i] = newFakeIterator(nil, split...)
 		}

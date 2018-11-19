@@ -10,7 +10,7 @@ type errorIter struct {
 	err error
 }
 
-var _ db.InternalIterator = (*errorIter)(nil)
+var _ internalIterator = (*errorIter)(nil)
 
 func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}

@@ -139,12 +139,12 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 // newIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
-func (m *memTable) newIter(*db.IterOptions) db.InternalIterator {
+func (m *memTable) newIter(*db.IterOptions) internalIterator {
 	it := m.skl.NewIter()
 	return &it
 }
 
-func (m *memTable) newRangeDelIter(*db.IterOptions) db.InternalIterator {
+func (m *memTable) newRangeDelIter(*db.IterOptions) internalIterator {
 	it := m.rangeDelSkl.NewIter()
 	return &it
 }

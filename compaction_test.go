@@ -587,7 +587,7 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	get1 := func(iter db.InternalIterator) (ret string) {
+	get1 := func(iter internalIterator) (ret string) {
 		b := &bytes.Buffer{}
 		for iter.First(); iter.Valid(); iter.Next() {
 			b.Write(iter.Key().UserKey)

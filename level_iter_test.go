@@ -22,7 +22,7 @@ func TestLevelIter(t *testing.T) {
 	var iters []*fakeIter
 	var files []fileMetadata
 
-	newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+	newIter := func(meta *fileMetadata) (internalIterator, error) {
 		f := *iters[meta.fileNum]
 		return &f, nil
 	}
@@ -152,7 +152,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, files, keys := buildLevelIterTables(b, blockSize, restartInterval, count)
-							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+							newIter := func(meta *fileMetadata) (internalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil), nil
 							}
 							l := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)
@@ -178,7 +178,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
-							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+							newIter := func(meta *fileMetadata) (internalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil), nil
 							}
 							l := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)
@@ -206,7 +206,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
 							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
-							newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+							newIter := func(meta *fileMetadata) (internalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil), nil
 							}
 							l := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)

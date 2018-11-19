@@ -14,14 +14,14 @@ type levelIter struct {
 	opts    *db.IterOptions
 	cmp     db.Compare
 	index   int
-	iter    db.InternalIterator
+	iter    internalIterator
 	newIter tableNewIter
 	files   []fileMetadata
 	err     error
 }
 
-// levelIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*levelIter)(nil)
+// levelIter implements the internalIterator interface.
+var _ internalIterator = (*levelIter)(nil)
 
 func newLevelIter(
 	opts *db.IterOptions, cmp db.Compare, newIter tableNewIter, files []fileMetadata,

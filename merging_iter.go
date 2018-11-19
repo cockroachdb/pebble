@@ -12,7 +12,7 @@ import (
 )
 
 type mergingIterItem struct {
-	iter db.InternalIterator
+	iter internalIterator
 	key  db.InternalKey
 }
 
@@ -101,13 +101,13 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 
 type mergingIter struct {
 	dir   int
-	iters []db.InternalIterator
+	iters []internalIterator
 	heap  mergingIterHeap
 	err   error
 }
 
-// mergingIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*mergingIter)(nil)
+// mergingIter implements the internalIterator interface.
+var _ internalIterator = (*mergingIter)(nil)
 
 // newMergingIter returns an iterator that merges its input. Walking the
 // resultant iterator will return all key/value pairs of all input iterators
@@ -117,7 +117,7 @@ var _ db.InternalIterator = (*mergingIter)(nil)
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func newMergingIter(cmp db.Compare, iters ...db.InternalIterator) db.InternalIterator {
+func newMergingIter(cmp db.Compare, iters ...internalIterator) internalIterator {
 	m := &mergingIter{
 		iters: iters,
 	}

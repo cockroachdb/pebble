@@ -22,7 +22,7 @@ type dbIter struct {
 	opts      *db.IterOptions
 	cmp       db.Compare
 	merge     db.Merge
-	iter      db.InternalIterator
+	iter      internalIterator
 	seqNum    uint64
 	version   *version
 	err       error

@@ -16,7 +16,7 @@ type getIter struct {
 	cmp       db.Compare
 	newIter   tableNewIter
 	key       []byte
-	iter      db.InternalIterator
+	iter      internalIterator
 	levelIter levelIter
 	level     int
 	mem       []flushable
@@ -25,8 +25,8 @@ type getIter struct {
 	err       error
 }
 
-// getIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*getIter)(nil)
+// getIter implements the internalIterator interface.
+var _ internalIterator = (*getIter)(nil)
 
 func (g *getIter) SeekGE(key []byte) {
 	panic("pebble: SeekGE unimplemented")

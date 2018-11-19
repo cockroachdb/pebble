@@ -439,7 +439,7 @@ func TestGetIter(t *testing.T) {
 
 		// m is a map from file numbers to DBs.
 		m := map[uint64]*memTable{}
-		newIter := func(meta *fileMetadata) (db.InternalIterator, error) {
+		newIter := func(meta *fileMetadata) (internalIterator, error) {
 			d, ok := m[meta.fileNum]
 			if !ok {
 				return nil, errors.New("no such file")

@@ -199,7 +199,7 @@ func TestBatchDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter db.InternalIterator
+			var iter internalIterator
 			if len(td.CmdArgs) > 1 {
 				t.Fatalf("%s expects at most 1 argument", td.Cmd)
 			}
@@ -317,7 +317,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter db.InternalIterator
+			var iter internalIterator
 			if len(td.CmdArgs) > 1 {
 				t.Fatalf("%s expects at most 1 argument", td.Cmd)
 			}

@@ -116,9 +116,6 @@ type blockIter struct {
 	err          error
 }
 
-// blockIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*blockIter)(nil)
-
 func newBlockIter(cmp db.Compare, block block) (*blockIter, error) {
 	i := &blockIter{}
 	return i, i.init(cmp, block, 0)

@@ -9,11 +9,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
-func runInternalIterCmd(d *datadriven.TestData, iter db.InternalIterator) string {
+func runInternalIterCmd(d *datadriven.TestData, iter internalIterator) string {
 	var b bytes.Buffer
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)

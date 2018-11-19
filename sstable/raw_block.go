@@ -50,9 +50,6 @@ type rawBlockIter struct {
 	err         error
 }
 
-// rawBlockIter implements the db.InternalIterator interface.
-var _ db.InternalIterator = (*rawBlockIter)(nil)
-
 func newRawBlockIter(cmp db.Compare, block block) (*rawBlockIter, error) {
 	i := &rawBlockIter{}
 	return i, i.init(cmp, block)

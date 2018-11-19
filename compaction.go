@@ -235,11 +235,11 @@ func (d *DB) flush1() error {
 		return nil
 	}
 
-	var iter db.InternalIterator
+	var iter internalIterator
 	if n == 1 {
 		iter = d.mu.mem.queue[0].newIter(nil)
 	} else {
-		iters := make([]db.InternalIterator, n)
+		iters := make([]internalIterator, n)
 		for i := range iters {
 			iters[i] = d.mu.mem.queue[i].newIter(nil)
 		}
@@ -308,7 +308,7 @@ func (d *DB) flush1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(
-	fs storage.Storage, iiter db.InternalIterator,
+	fs storage.Storage, iiter internalIterator,
 ) (meta fileMetadata, err error) {
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
@@ -746,8 +746,8 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 // compactionIterator returns an iterator over all the tables in a compaction.
 func compactionIterator(
 	cmp db.Compare, newIter tableNewIter, c *compaction,
-) (cIter db.InternalIterator, retErr error) {
-	iters := make([]db.InternalIterator, 0, len(c.inputs[0])+1)
+) (cIter internalIterator, retErr error) {
+	iters := make([]internalIterator, 0, len(c.inputs[0])+1)
 	defer func() {
 		if retErr != nil {
 			for _, iter := range iters {
