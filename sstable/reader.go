@@ -311,14 +311,13 @@ func (i *Iter) Close() error {
 	return i.err
 }
 
-// Reader is a table reader. It implements the DB interface, as documented
-// in the pebble/db package.
+// Reader is a table reader.
 type Reader struct {
 	file    storage.File
 	fileNum uint64
 	err     error
-	indexBH blockHandle
 	index   struct {
+		bh     blockHandle
 		mu     sync.RWMutex
 		handle cache.WeakHandle
 	}
@@ -405,7 +404,7 @@ func (r *Reader) readIndex() (block, error) {
 
 	// Slow-path: read the index block from disk. This checks the cache again,
 	// but that is ok because somebody else might have inserted it for us.
-	b, h, err := r.readBlock(r.indexBH)
+	b, h, err := r.readBlock(r.index.bh)
 	if err == nil && h != nil {
 		r.index.mu.Lock()
 		r.index.handle = h
@@ -596,7 +595,7 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 	}
 
 	// Read the index into memory.
-	r.indexBH, n = decodeBlockHandle(footer)
+	r.index.bh, n = decodeBlockHandle(footer)
 	if n == 0 {
 		r.err = errors.New("pebble/table: invalid table (bad index block handle)")
 		return r
