@@ -52,21 +52,17 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 func (c *tableCache) newIter(meta *fileMetadata) (internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
-	// decrement this straight away. Otherwise, we pass that responsibility
-	// to the tableCacheIter, which decrements when it is closed.
+	// decrement this straight away. Otherwise, we pass that responsibility to
+	// the sstable iterator, which decrements when it is closed.
 	n := c.findNode(meta)
 	x := <-n.result
 	if x.err != nil {
-		c.mu.Lock()
-		n.refCount--
-		if n.refCount == 0 {
-			c.mu.releasing++
-			go n.release(c)
+		if !c.unrefNode(n) {
+			// Try loading the table again; the error may be transient.
+			//
+			// TODO(peter): This could loop forever. That doesn't seem right.
+			go n.load(c)
 		}
-		c.mu.Unlock()
-
-		// Try loading the table again; the error may be transient.
-		go n.load(c)
 		return nil, x.err
 	}
 	n.result <- x
@@ -93,6 +89,32 @@ func (c *tableCache) newIter(meta *fileMetadata) (internalIterator, error) {
 		c.mu.Unlock()
 		return nil
 	})
+	return iter, nil
+}
+
+func (c *tableCache) newRangeDelIter(meta *fileMetadata) (internalIterator, error) {
+	// Calling findNode gives us the responsibility of decrementing n's
+	// refCount. If opening the underlying table resulted in error, then we
+	// decrement this straight away. Otherwise, we construct the range-del
+	// iterator and then decrement.
+	n := c.findNode(meta)
+	x := <-n.result
+	if x.err != nil {
+		if !c.unrefNode(n) {
+			// Try loading the table again; the error may be transient.
+			//
+			// TODO(peter): This could loop forever. That doesn't seem right.
+			go n.load(c)
+		}
+		return nil, x.err
+	}
+	n.result <- x
+
+	// NB: range-del iterator does not maintain a reference to the table, nor
+	// does it need to read from it after creation.
+	iter := x.reader.NewRangeDelIter(nil)
+
+	c.unrefNode(n)
 	return iter, nil
 }
 
@@ -143,6 +165,25 @@ func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
 	// The caller is responsible for decrementing the refCount.
 	n.refCount++
 	return n
+}
+
+// unrefNode decrements the reference count for the specified node, releasing
+// it if the reference count fell to 0. Note that the node has a reference if
+// it is present in tableCache.mu.nodes, so a reference count of 0 means the
+// node has already been removed from that map.
+//
+// Returns true if the node was released and false otherwise.
+func (c *tableCache) unrefNode(n *tableCacheNode) bool {
+	c.mu.Lock()
+	n.refCount--
+	res := false
+	if n.refCount == 0 {
+		c.mu.releasing++
+		go n.release(c)
+		res = true
+	}
+	c.mu.Unlock()
+	return res
 }
 
 func (c *tableCache) evict(fileNum uint64) {

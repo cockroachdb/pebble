@@ -10,6 +10,9 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
+// tableNewIter creates a new iterator for the given file number.
+type tableNewIter func(meta *fileMetadata) (internalIterator, error)
+
 type levelIter struct {
 	opts    *db.IterOptions
 	cmp     db.Compare

@@ -248,9 +248,6 @@ func (v *version) checkOrdering(cmp db.Compare) error {
 	return nil
 }
 
-// tableNewIter creates a new iterator for the given file number.
-type tableNewIter func(meta *fileMetadata) (internalIterator, error)
-
 type versionList struct {
 	mu   *sync.Mutex
 	root version
