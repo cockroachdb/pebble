@@ -159,6 +159,39 @@ func (c *compaction) elideTombstone(key []byte) bool {
 	return true
 }
 
+// newInputIter returns an iterator over all the input tables in a compaction.
+func (c *compaction) newInputIter(newIter tableNewIter) (_ internalIterator, retErr error) {
+	iters := make([]internalIterator, 0, len(c.inputs[0])+1)
+	defer func() {
+		if retErr != nil {
+			for _, iter := range iters {
+				if iter != nil {
+					iter.Close()
+				}
+			}
+		}
+	}()
+
+	if c.level != 0 {
+		iter := newLevelIter(nil, c.cmp, newIter, c.inputs[0])
+		iters = append(iters, iter)
+	} else {
+		for i := range c.inputs[0] {
+			f := &c.inputs[0][i]
+			iter, err := newIter(f)
+			if err != nil {
+				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
+			}
+			iter.First()
+			iters = append(iters, iter)
+		}
+	}
+
+	iter := newLevelIter(nil, c.cmp, newIter, c.inputs[1])
+	iters = append(iters, iter)
+	return newMergingIter(c.cmp, iters...), nil
+}
+
 func (c *compaction) String() string {
 	var buf bytes.Buffer
 	for i := 0; i < 2; i++ {
@@ -556,7 +589,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	defer d.mu.Lock()
 
 	c.cmp = d.cmp
-	iiter, err := compactionIterator(d.cmp, d.newIter, c)
+	iiter, err := c.newInputIter(d.newIter)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
@@ -741,39 +774,4 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			}
 		}
 	}
-}
-
-// compactionIterator returns an iterator over all the tables in a compaction.
-func compactionIterator(
-	cmp db.Compare, newIter tableNewIter, c *compaction,
-) (cIter internalIterator, retErr error) {
-	iters := make([]internalIterator, 0, len(c.inputs[0])+1)
-	defer func() {
-		if retErr != nil {
-			for _, iter := range iters {
-				if iter != nil {
-					iter.Close()
-				}
-			}
-		}
-	}()
-
-	if c.level != 0 {
-		iter := newLevelIter(nil, cmp, newIter, c.inputs[0])
-		iters = append(iters, iter)
-	} else {
-		for i := range c.inputs[0] {
-			f := &c.inputs[0][i]
-			iter, err := newIter(f)
-			if err != nil {
-				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
-			}
-			iter.First()
-			iters = append(iters, iter)
-		}
-	}
-
-	iter := newLevelIter(nil, cmp, newIter, c.inputs[1])
-	iters = append(iters, iter)
-	return newMergingIter(cmp, iters...), nil
 }
