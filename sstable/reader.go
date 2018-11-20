@@ -332,6 +332,7 @@ type Reader struct {
 	index       weakCachedBlock
 	filter      weakCachedBlock
 	rangeDel    weakCachedBlock
+	rangeDelV2  bool
 	opts        *db.Options
 	cache       *cache.Cache
 	compare     db.Compare
@@ -392,7 +393,7 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 	return i.Value(), i.Close()
 }
 
-// NewIter implements DB.NewIter, as documented in the pebble/db package.
+// NewIter returns an internal iterator for the contents of the table.
 func (r *Reader) NewIter(o *db.IterOptions) *Iter {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
@@ -405,6 +406,26 @@ func (r *Reader) NewIter(o *db.IterOptions) *Iter {
 	return i
 }
 
+// NewRangeDelIter returns an internal iterator for the contents of the
+// range-del block for the table. Returns nil if the table does not contain any
+// range deletions.
+func (r *Reader) NewRangeDelIter(o *db.IterOptions) *blockIter {
+	if r.rangeDel.bh.length == 0 {
+		return nil
+	}
+	b, err := r.readRangeDel()
+	if err != nil {
+		// TODO(peter): propagate the error
+		panic(err)
+	}
+	i := &blockIter{}
+	if err := i.init(r.compare, b, r.Properties.GlobalSeqNum); err != nil {
+		// TODO(peter): propagate the error
+		panic(err)
+	}
+	return i
+}
+
 func (r *Reader) readIndex() (block, error) {
 	return r.readWeakCachedBlock(&r.index)
 }
@@ -414,7 +435,34 @@ func (r *Reader) readFilter() (block, error) {
 }
 
 func (r *Reader) readRangeDel() (block, error) {
-	return r.readWeakCachedBlock(&r.rangeDel)
+	// Fast-path for retrieving the block from a weak cache handle.
+	r.rangeDel.mu.RLock()
+	var b []byte
+	if r.rangeDel.handle != nil {
+		b = r.rangeDel.handle.Get()
+	}
+	r.rangeDel.mu.RUnlock()
+	if b != nil {
+		return b, nil
+	}
+
+	// Slow-path: read the index block from disk. This checks the cache again,
+	// but that is ok because somebody else might have inserted it for us.
+	b, h, err := r.readBlock(r.rangeDel.bh)
+	if err == nil && h != nil {
+		if !r.rangeDelV2 {
+			// TODO(peter): if we have a v1 range-del block, convert it on the fly
+			// and cache the converted version. We just need to create a
+			// rangeTombstoneBlockWriter and loop over the v1 block and add all of
+			// the contents. Note that the contents of the v1 block may not be
+			// sorted, so we'll have to sort them first.
+		}
+
+		r.rangeDel.mu.Lock()
+		r.rangeDel.handle = h
+		r.rangeDel.mu.Unlock()
+	}
+	return b, err
 }
 
 func (r *Reader) readWeakCachedBlock(w *weakCachedBlock) (block, error) {
@@ -493,7 +541,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		return err
 	}
 
-	if bh, ok := meta["rocksdb.properties"]; ok {
+	if bh, ok := meta[metaPropertiesName]; ok {
 		b, _, err = r.readBlock(bh)
 		if err != nil {
 			return err
@@ -503,7 +551,10 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		}
 	}
 
-	if bh, ok := meta["rocksdb.range_del"]; ok {
+	if bh, ok := meta[metaRangeDelV2Name]; ok {
+		r.rangeDel.bh = bh
+		r.rangeDelV2 = true
+	} else if bh, ok := meta[metaRangeDelName]; ok {
 		r.rangeDel.bh = bh
 	}
 

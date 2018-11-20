@@ -434,7 +434,7 @@ func (c *countingFilterPolicy) MayContain(ftype db.FilterType, filter, key []byt
 	return got
 }
 
-func TestWriter(t *testing.T) {
+func TestWriterRoundTrip(t *testing.T) {
 	// Check that we can read a freshly made table.
 	f, err := build(db.DefaultCompression, nil, 0)
 	if err != nil {

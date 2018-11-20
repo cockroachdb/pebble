@@ -143,6 +143,10 @@ const (
 	// use the default compression (which is snappy).
 	noCompressionBlockType     = 0
 	snappyCompressionBlockType = 1
+
+	metaPropertiesName = "rocksdb.properties"
+	metaRangeDelName   = "rocksdb.range_del"
+	metaRangeDelV2Name = "rocksdb.range_del2"
 )
 
 // TODO(peter): silence unused warnings.

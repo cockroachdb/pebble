@@ -44,11 +44,12 @@ type Writer struct {
 	pendingBH blockHandle
 	// offset is the offset (relative to the table start) of the next block
 	// to be written.
-	offset     uint64
-	syncOffset uint64
-	block      blockWriter
-	indexBlock blockWriter
-	props      Properties
+	offset        uint64
+	syncOffset    uint64
+	block         blockWriter
+	indexBlock    blockWriter
+	rangeDelBlock rangeTombstoneBlockWriter
+	props         Properties
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -66,6 +67,13 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
+
+	if key.Kind() == db.InternalKeyKindRangeDelete {
+		w.rangeDelBlock.add(key.UserKey, value, key.SeqNum())
+		w.props.NumRangeDeletions++
+		return nil
+	}
+
 	prevKey := db.DecodeInternalKey(w.block.curKey)
 	if db.InternalCompare(w.compare, prevKey, key) >= 0 {
 		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q", prevKey, key)
@@ -80,6 +88,9 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 		w.filter.addKey(key.UserKey)
 	}
 	w.props.NumEntries++
+	if key.Kind() == db.InternalKeyKindDelete {
+		w.props.NumDeletions++
+	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
 	w.block.add(key, value)
@@ -247,7 +258,24 @@ func (w *Writer) Close() (err error) {
 		w.props.FilterSize = bh.length
 	}
 
-	// TODO(peter): write the range-del block.
+	// Write the range-del block.
+	if w.props.NumRangeDeletions > 0 {
+		b := w.rangeDelBlock.finish()
+		// TODO(peter): Should the range-del block be compressed?
+		bh, err := w.writeRawBlock(b, noCompressionBlockType)
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+		n := encodeBlockHandle(w.tmp[:], bh)
+		// The v2 range-del block encoding is backwards compatible with the v1
+		// encoding. We add meta-index entries for both the old name and the new
+		// name so that old code can continue to find the range-del block and new
+		// code knows that the range tombstones in the block are fragmented and
+		// sorted.
+		metaindex.add(db.InternalKey{UserKey: []byte(metaRangeDelName)}, w.tmp[:n])
+		metaindex.add(db.InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
+	}
 
 	{
 		// Write the properties block.
@@ -264,7 +292,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(w.tmp[:], bh)
-		metaindex.add(db.InternalKey{UserKey: []byte("rocksdb.properties")}, w.tmp[:n])
+		metaindex.add(db.InternalKey{UserKey: []byte(metaPropertiesName)}, w.tmp[:n])
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
@@ -356,6 +384,12 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		},
 		indexBlock: blockWriter{
 			restartInterval: 1,
+		},
+		rangeDelBlock: rangeTombstoneBlockWriter{
+			cmp: o.Comparer.Compare,
+			block: blockWriter{
+				restartInterval: 1,
+			},
 		},
 	}
 	if f == nil {
