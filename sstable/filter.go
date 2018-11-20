@@ -20,10 +20,9 @@ type filterWriter interface {
 }
 
 type blockFilterReader struct {
-	data    []byte
-	offsets []byte // len(offsets) must be a multiple of 4.
-	policy  db.FilterPolicy
-	shift   uint32
+	policy     db.FilterPolicy
+	lastOffset uint32
+	shift      uint32
 }
 
 func newBlockFilterReader(data []byte, policy db.FilterPolicy) *blockFilterReader {
@@ -39,24 +38,25 @@ func newBlockFilterReader(data []byte, policy db.FilterPolicy) *blockFilterReade
 		return nil
 	}
 	return &blockFilterReader{
-		data:    data,
-		offsets: offsets,
-		policy:  policy,
-		shift:   shift,
+		policy:     policy,
+		lastOffset: lastOffset,
+		shift:      shift,
 	}
 }
 
-func (f *blockFilterReader) mayContain(blockOffset uint64, key []byte) bool {
+func (f *blockFilterReader) mayContain(data []byte, blockOffset uint64, key []byte) bool {
+	data, offsets := data[:f.lastOffset], data[f.lastOffset:len(data)-1]
+
 	index := blockOffset >> f.shift
-	if index >= uint64(len(f.offsets)/4-1) {
+	if index >= uint64(len(offsets)/4-1) {
 		return true
 	}
-	i := binary.LittleEndian.Uint32(f.offsets[4*index+0:])
-	j := binary.LittleEndian.Uint32(f.offsets[4*index+4:])
-	if i >= j || uint64(j) > uint64(len(f.data)) {
+	i := binary.LittleEndian.Uint32(offsets[4*index+0:])
+	j := binary.LittleEndian.Uint32(offsets[4*index+4:])
+	if i >= j || uint64(j) > uint64(len(data)) {
 		return true
 	}
-	return f.policy.MayContain(db.BlockFilter, f.data[i:j], key)
+	return f.policy.MayContain(db.BlockFilter, data[i:j], key)
 }
 
 // filterBaseLog being 11 means that we generate a new filter for every 2KiB of
@@ -152,18 +152,16 @@ func (f *blockFilterWriter) policyName() string {
 
 type tableFilterReader struct {
 	policy db.FilterPolicy
-	data   []byte
 }
 
-func newTableFilterReader(data []byte, policy db.FilterPolicy) *tableFilterReader {
+func newTableFilterReader(policy db.FilterPolicy) *tableFilterReader {
 	return &tableFilterReader{
 		policy: policy,
-		data:   data,
 	}
 }
 
-func (f *tableFilterReader) mayContain(key []byte) bool {
-	return f.policy.MayContain(db.TableFilter, f.data, key)
+func (f *tableFilterReader) mayContain(data, key []byte) bool {
+	return f.policy.MayContain(db.TableFilter, data, key)
 }
 
 type tableFilterWriter struct {

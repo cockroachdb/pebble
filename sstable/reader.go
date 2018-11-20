@@ -113,9 +113,16 @@ func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
 		i.err = errors.New("pebble/table: corrupt index entry")
 		return false
 	}
-	if f != nil && !f.mayContain(h.offset, key) {
-		i.err = db.ErrNotFound
-		return false
+	if f != nil {
+		data, err := i.reader.readFilter()
+		if err != nil {
+			i.err = err
+			return false
+		}
+		if !f.mayContain(data, h.offset, key) {
+			i.err = db.ErrNotFound
+			return false
+		}
 	}
 	block, _, err := i.reader.readBlock(h)
 	if err != nil {
@@ -311,16 +318,20 @@ func (i *Iter) Close() error {
 	return i.err
 }
 
+type weakCachedBlock struct {
+	bh     blockHandle
+	mu     sync.RWMutex
+	handle cache.WeakHandle
+}
+
 // Reader is a table reader.
 type Reader struct {
-	file    storage.File
-	fileNum uint64
-	err     error
-	index   struct {
-		bh     blockHandle
-		mu     sync.RWMutex
-		handle cache.WeakHandle
-	}
+	file        storage.File
+	fileNum     uint64
+	err         error
+	index       weakCachedBlock
+	filter      weakCachedBlock
+	rangeDel    weakCachedBlock
 	opts        *db.Options
 	cache       *cache.Cache
 	compare     db.Compare
@@ -356,7 +367,11 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		if !r.tableFilter.mayContain(key) {
+		data, err := r.readFilter()
+		if err != nil {
+			return nil, err
+		}
+		if !r.tableFilter.mayContain(data, key) {
 			return nil, db.ErrNotFound
 		}
 	}
@@ -391,24 +406,36 @@ func (r *Reader) NewIter(o *db.IterOptions) *Iter {
 }
 
 func (r *Reader) readIndex() (block, error) {
-	// Fast-path for retrieving the index block from a weak cache handle.
-	r.index.mu.RLock()
+	return r.readWeakCachedBlock(&r.index)
+}
+
+func (r *Reader) readFilter() (block, error) {
+	return r.readWeakCachedBlock(&r.filter)
+}
+
+func (r *Reader) readRangeDel() (block, error) {
+	return r.readWeakCachedBlock(&r.rangeDel)
+}
+
+func (r *Reader) readWeakCachedBlock(w *weakCachedBlock) (block, error) {
+	// Fast-path for retrieving the block from a weak cache handle.
+	w.mu.RLock()
 	var b []byte
-	if r.index.handle != nil {
-		b = r.index.handle.Get()
+	if w.handle != nil {
+		b = w.handle.Get()
 	}
-	r.index.mu.RUnlock()
+	w.mu.RUnlock()
 	if b != nil {
 		return b, nil
 	}
 
 	// Slow-path: read the index block from disk. This checks the cache again,
 	// but that is ok because somebody else might have inserted it for us.
-	b, h, err := r.readBlock(r.index.bh)
+	b, h, err := r.readBlock(w.bh)
 	if err == nil && h != nil {
-		r.index.mu.Lock()
-		r.index.handle = h
-		r.index.mu.Unlock()
+		w.mu.Lock()
+		w.handle = h
+		w.mu.Unlock()
 	}
 	return b, err
 }
@@ -476,6 +503,10 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		}
 	}
 
+	if bh, ok := meta["rocksdb.range_del"]; ok {
+		r.rangeDel.bh = bh
+	}
+
 	for level := range r.opts.Levels {
 		fp := r.opts.Levels[level].FilterPolicy
 		if fp == nil {
@@ -491,7 +522,13 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 		var done bool
 		for _, t := range types {
 			if bh, ok := meta[t.prefix+fp.Name()]; ok {
-				b, _, err = r.readBlock(bh)
+				r.filter.bh = bh
+
+				// Read the filter block to a) make sure it exists and b) initialize
+				// the filter readers. Note that the filter readers do not (and should
+				// not) hold onto the block data. Instead, that data is read from the
+				// weakCachedBlock on every access.
+				b, err := r.readFilter()
 				if err != nil {
 					return err
 				}
@@ -503,7 +540,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 						return errors.New("pebble/table: invalid table (bad filter block)")
 					}
 				case db.TableFilter:
-					r.tableFilter = newTableFilterReader(b, fp)
+					r.tableFilter = newTableFilterReader(fp)
 					if r.tableFilter == nil {
 						return errors.New("pebble/table: invalid table (bad filter block)")
 					}
