@@ -145,6 +145,9 @@ func (m *memTable) newIter(*db.IterOptions) internalIterator {
 }
 
 func (m *memTable) newRangeDelIter(*db.IterOptions) internalIterator {
+	if m.rangeDelSkl.Count() == 0 {
+		return nil
+	}
 	it := m.rangeDelSkl.NewIter()
 	return &it
 }

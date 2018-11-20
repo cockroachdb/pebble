@@ -81,6 +81,7 @@ type Skiplist struct {
 	cmp    db.Compare
 	head   *node
 	tail   *node
+	count  uint32
 	height uint32 // Current height. 1 <= height <= maxHeight. CAS.
 
 	rand struct {
@@ -152,6 +153,9 @@ func (s *Skiplist) Reset(arena *Arena, cmp db.Compare) {
 // Height returns the height of the highest tower within any of the nodes that
 // have ever been allocated as part of this skiplist.
 func (s *Skiplist) Height() uint32 { return atomic.LoadUint32(&s.height) }
+
+// Count returns the count of the number of nodes in this skiplist.
+func (s *Skiplist) Count() uint32 { return atomic.LoadUint32(&s.count) }
 
 // Arena returns the arena backing this skiplist.
 func (s *Skiplist) Arena() *Arena { return s.arena }
@@ -267,6 +271,7 @@ func (s *Skiplist) Add(key db.InternalKey, value []byte) error {
 		}
 	}
 
+	atomic.AddUint32(&s.count, 1)
 	return nil
 }
 
