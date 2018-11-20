@@ -97,7 +97,24 @@ import (
 // range tombstones and when one is encountered we need to add it to a stack of
 // active tombstones. That stack needs to be checked as we advance to see if a
 // key is covered by a range tombstone (or if an older range tombstone is
-// covered by a more recent range tombstone).
+// covered by a more recent range tombstone). This is more or less whan
+// sstable.rangeTombstoneBlockWriter maintains internally. Note that the
+// decision of what range tombstone fragments to output depends on the snapshot
+// stripes. Consider:
+//
+//   2:     c-------g
+//   1: a-------e
+//
+// This will be fragmented into:
+//
+//   2:     c---e---g
+//   1: a---c---e
+//
+// Do we output the fragment [c,e)#1? It is covered by [c-e]#2. We only need to
+// output it if there is a snapshot at sequence number 1. Perhaps we need to
+// pull the fragmentation logic out of rangeTombstoneBlockBuilder so it can be
+// utilized here.
+
 type compactionIter struct {
 	cmp   db.Compare
 	merge db.Merge

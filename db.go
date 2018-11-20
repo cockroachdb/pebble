@@ -100,8 +100,9 @@ type DB struct {
 	merge     db.Merge
 	inlineKey db.InlineKey
 
-	tableCache tableCache
-	newIter    tableNewIter
+	tableCache      tableCache
+	newIter         tableNewIter
+	newRangeDelIter tableNewIter
 
 	commit   *commitPipeline
 	fileLock io.Closer

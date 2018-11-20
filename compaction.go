@@ -160,10 +160,10 @@ func (c *compaction) elideTombstone(key []byte) bool {
 }
 
 // newInputIter returns an iterator over all the input tables in a compaction.
-func (c *compaction) newInputIter(newIter tableNewIter) (_ internalIterator, retErr error) {
-	// TODO(peter): include range tombstones in this iteration.
-
-	iters := make([]internalIterator, 0, len(c.inputs[0])+1)
+func (c *compaction) newInputIter(
+	newIter, newRangeDelIter tableNewIter,
+) (_ internalIterator, retErr error) {
+	iters := make([]internalIterator, 0, 2*len(c.inputs[0])+1)
 	defer func() {
 		if retErr != nil {
 			for _, iter := range iters {
@@ -174,23 +174,33 @@ func (c *compaction) newInputIter(newIter tableNewIter) (_ internalIterator, ret
 		}
 	}()
 
+	// TODO(peter): test that range tombstones are properly included in the
+	// output sstable.
 	if c.level != 0 {
-		iter := newLevelIter(nil, c.cmp, newIter, c.inputs[0])
-		iters = append(iters, iter)
+		iters = append(iters, newLevelIter(nil, c.cmp, newIter, c.inputs[0]))
+		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0]))
 	} else {
 		for i := range c.inputs[0] {
 			f := &c.inputs[0][i]
+
 			iter, err := newIter(f)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
-			iter.First()
 			iters = append(iters, iter)
+
+			iter, err = newRangeDelIter(f)
+			if err != nil {
+				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
+			}
+			if iter != nil {
+				iters = append(iters, iter)
+			}
 		}
 	}
 
-	iter := newLevelIter(nil, c.cmp, newIter, c.inputs[1])
-	iters = append(iters, iter)
+	iters = append(iters, newLevelIter(nil, c.cmp, newIter, c.inputs[1]))
+	iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[1]))
 	return newMergingIter(c.cmp, iters...), nil
 }
 
@@ -270,13 +280,25 @@ func (d *DB) flush1() error {
 		return nil
 	}
 
+	// TODO(peter): test that range tombstones are properly included in the
+	// output sstable. Should propbably pull out the code below into a method
+	// that can be separately tested.
 	var iter internalIterator
 	if n == 1 {
-		iter = d.mu.mem.queue[0].newIter(nil)
+		mem := d.mu.mem.queue[0]
+		iter = mem.newIter(nil)
+		if riter := mem.newRangeDelIter(nil); riter != nil {
+			iter = newMergingIter(d.cmp, iter, riter)
+		}
 	} else {
-		iters := make([]internalIterator, n)
-		for i := range iters {
-			iters[i] = d.mu.mem.queue[i].newIter(nil)
+		iters := make([]internalIterator, 0, 2*n)
+		for i := 0; i < n; i++ {
+			mem := d.mu.mem.queue[i]
+			iters = append(iters, mem.newIter(nil))
+			riter := mem.newRangeDelIter(nil)
+			if riter != nil {
+				iters = append(iters, riter)
+			}
 		}
 		iter = newMergingIter(d.cmp, iters...)
 	}
@@ -591,7 +613,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	defer d.mu.Lock()
 
 	c.cmp = d.cmp
-	iiter, err := c.newInputIter(d.newIter)
+	iiter, err := c.newInputIter(d.newIter, d.newRangeDelIter)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}

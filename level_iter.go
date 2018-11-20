@@ -106,7 +106,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		l.iter, l.err = l.newIter(f)
-		return l.err == nil
+		return l.err == nil && l.iter != nil
 	}
 }
 

@@ -115,6 +115,11 @@ func (c *tableCache) newRangeDelIter(meta *fileMetadata) (internalIterator, erro
 	iter := x.reader.NewRangeDelIter(nil)
 
 	c.unrefNode(n)
+
+	// NB: translate a nil typed value into a nil interface.
+	if iter == nil {
+		return nil, nil
+	}
 	return iter, nil
 }
 
