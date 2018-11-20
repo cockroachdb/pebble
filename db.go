@@ -28,6 +28,7 @@ const (
 
 type flushable interface {
 	newIter(o *db.IterOptions) internalIterator
+	newRangeDelIter(o *db.IterOptions) internalIterator
 	flushed() chan struct{}
 	readyForFlush() bool
 }
