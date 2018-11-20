@@ -92,6 +92,12 @@ import (
 // snapshot sequence number lies within the range of sequence numbers being
 // compacted. In the above example, a snapshot at sequence number 10 or at
 // sequence number 5 would not have any effect.
+//
+// TODO(peter): Need to handle range tombstones. compactionIter.iter includes
+// range tombstones and when one is encountered we need to add it to a stack of
+// active tombstones. That stack needs to be checked as we advance to see if a
+// key is covered by a range tombstone (or if an older range tombstone is
+// covered by a more recent range tombstone).
 type compactionIter struct {
 	cmp   db.Compare
 	merge db.Merge

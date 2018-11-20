@@ -161,6 +161,8 @@ func (c *compaction) elideTombstone(key []byte) bool {
 
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(newIter tableNewIter) (_ internalIterator, retErr error) {
+	// TODO(peter): include range tombstones in this iteration.
+
 	iters := make([]internalIterator, 0, len(c.inputs[0])+1)
 	defer func() {
 		if retErr != nil {
