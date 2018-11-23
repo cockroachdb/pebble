@@ -37,13 +37,10 @@ func TestFragmenter(t *testing.T) {
 	build := func(t *testing.T, s string) []Tombstone {
 		var tombstones []Tombstone
 		f := &Fragmenter{
-			Output: func(start db.InternalKey, end []byte) {
-				tombstones = append(tombstones, Tombstone{
-					Start: start,
-					End:   end,
-				})
-			},
 			Cmp: db.DefaultComparer.Compare,
+			Emit: func(fragmented []Tombstone) {
+				tombstones = append(tombstones, fragmented...)
+			},
 		}
 		for _, p := range strings.Split(s, ",") {
 			t := parseTombstone(t, p)
@@ -69,3 +66,5 @@ func TestFragmenter(t *testing.T) {
 		}
 	})
 }
+
+// TODO(peter): Test Fragmenter.Deleted

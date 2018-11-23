@@ -38,8 +38,11 @@ func (v *tombstonesBySeqNum) Swap(i, j int) {
 // tombstones are split at their overlap points. The fragmented tombstones are
 // output to the supplied Output function.
 type Fragmenter struct {
-	Output func(start db.InternalKey, end []byte)
-	Cmp    db.Compare
+	Cmp db.Compare
+	// Emit is called to emit a chunk of tombstone fragments. Every tombstone
+	// within the chunk has the same start and end key, and differ only by
+	// sequence number.
+	Emit func([]Tombstone)
 	// pending contains the list of pending range tombstone fragments that have
 	// not been flushed to the block writer. Note that the tombstones have not
 	// been fragmented on the end keys yet. That happens as the tombstones are
@@ -134,6 +137,8 @@ func (f *Fragmenter) checkInvariants() {
 //
 // This process continues until there are no more fragments to flush.
 func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
+	// TODO(peter): Copy start.UserKey as it might not survive beyond this call.
+
 	if f.finished {
 		panic("pebble: Tombstone fragmenter already finished")
 	}
@@ -191,6 +196,45 @@ func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 	})
 }
 
+// Deleted returns true if the specified key is covered by one of the pending
+// tombstones. The key must be consistent with the ordering of the
+// tombstones. That is, it is invalid to specify a key here that is out of
+// order with the tombstone start keys passed to Add.
+func (f *Fragmenter) Deleted(key db.InternalKey) bool {
+	if len(f.pending) == 0 {
+		return false
+	}
+
+	if f.Cmp(f.pending[0].Start.UserKey, key.UserKey) > 0 {
+		panic(fmt.Sprintf("pebble: Deleted called in non-increasing key order: %q, %q",
+			f.pending[0].Start.UserKey, key.UserKey))
+	}
+
+	seqNum := key.SeqNum()
+	flush := true
+	for _, t := range f.pending {
+		// NB: A range deletion tombstone deletes a point operation at the same
+		// sequence number.
+		if f.Cmp(key.UserKey, t.End) < 0 {
+			if t.Start.SeqNum() >= seqNum {
+				return true
+			}
+			flush = false
+		}
+	}
+
+	if flush {
+		// All of the pending tombstones ended before the specified key which means
+		// we can flush them without causing fragmentation at key. This is an
+		// optimization to allow flushing the pending tombstones as early as
+		// possible so that we don't have to continually reconsider them in
+		// Deleted.
+		f.flush(f.pending)
+		f.pending = f.pending[:0]
+	}
+	return false
+}
+
 // flush a group of range tombstones to the block. The tombstones are required
 // to all have the same start key.
 func (f *Fragmenter) flush(buf []Tombstone) {
@@ -224,8 +268,11 @@ func (f *Fragmenter) flush(buf []Tombstone) {
 		buf = buf[remove:]
 
 		sort.Sort(&f.flushBuf)
-		for _, t := range f.flushBuf {
-			f.Output(t.Start, t.End)
+		f.Emit(f.flushBuf)
+
+		// Adjust the start key for every remaining tombstone.
+		for i := range buf {
+			buf[i].Start.UserKey = split
 		}
 	}
 }

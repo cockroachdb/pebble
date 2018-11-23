@@ -12,6 +12,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/storage"
 )
 
@@ -32,11 +33,29 @@ func TestWriter(t *testing.T) {
 			}
 
 			w := NewWriter(f0, nil, db.LevelOptions{})
+			var tombstones []rangedel.Tombstone
+			f := rangedel.Fragmenter{
+				Cmp: db.DefaultComparer.Compare,
+				Emit: func(fragmented []rangedel.Tombstone) {
+					tombstones = append(tombstones, fragmented...)
+				},
+			}
 			for _, key := range strings.Split(td.Input, "\n") {
 				j := strings.Index(key, ":")
 				ikey := db.ParseInternalKey(key[:j])
 				value := []byte(key[j+1:])
-				if err := w.Add(ikey, value); err != nil {
+				switch ikey.Kind() {
+				case db.InternalKeyKindRangeDelete:
+					f.Add(ikey, value)
+				default:
+					if err := w.Add(ikey, value); err != nil {
+						return err.Error()
+					}
+				}
+			}
+			f.Finish()
+			for _, v := range tombstones {
+				if err := w.Add(v.Start, v.End); err != nil {
 					return err.Error()
 				}
 			}

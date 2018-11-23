@@ -11,9 +11,9 @@ f-j#2
 j-m#3
 j-m#2
 j-m#1
-j-s#2
-j-s#1
-j-z#1
+m-s#2
+m-s#1
+s-z#1
 
 build
 a-a#1
@@ -29,7 +29,7 @@ a-e#1,b-d#3
 a-b#1
 b-d#3
 b-d#1
-b-e#1
+d-e#1
 
 get t=3
 a#3 a#2 a#1 a#0
@@ -101,7 +101,7 @@ a-e#3,b-d#1
 a-b#3
 b-d#3
 b-d#1
-b-e#3
+d-e#3
 
 get t=3
 a#3 a#2 a#1 a#0
@@ -173,7 +173,7 @@ a-d#3,b-e#1
 a-b#3
 b-d#3
 b-d#1
-b-e#1
+d-e#1
 
 get t=3
 a#3 a#2 a#1 a#0
@@ -245,7 +245,7 @@ a-d#1,b-e#3
 a-b#1
 b-d#3
 b-d#1
-b-e#3
+d-e#3
 
 get t=3
 a#3 a#2 a#1 a#0
@@ -316,7 +316,7 @@ a-d#3,a-e#1
 ----
 a-d#3
 a-d#1
-a-e#1
+d-e#1
 
 get t=3
 a#3 a#2 a#1 a#0
@@ -387,7 +387,7 @@ a-e#3,a-d#1
 ----
 a-d#3
 a-d#1
-a-e#3
+d-e#3
 
 get t=3
 a#3 a#2 a#1 a#0

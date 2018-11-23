@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/rangedel"
 )
 
 // compactionIter provides a forward-only iterator that encapsulates the logic
@@ -144,8 +145,31 @@ type compactionIter struct {
 	// The snapshot sequence numbers that need to be maintained. These sequence
 	// numbers define the snapshot stripes (see the Snapshots description
 	// above). The sequence numbers are in ascending order.
-	snapshots      []uint64
+	snapshots []uint64
+	// The range deletion tombstone fragmenter.
+	rangeDelFrag rangedel.Fragmenter
+	// The fragmented tombstones.
+	tombstones     []rangedel.Tombstone
 	elideTombstone func(key []byte) bool
+}
+
+func newCompactionIter(
+	cmp db.Compare,
+	merge db.Merge,
+	iter internalIterator,
+	snapshots []uint64,
+	elideTombstones func(key []byte) bool,
+) *compactionIter {
+	i := &compactionIter{
+		cmp:            cmp,
+		merge:          merge,
+		iter:           iter,
+		snapshots:      snapshots,
+		elideTombstone: elideTombstones,
+	}
+	i.rangeDelFrag.Cmp = cmp
+	i.rangeDelFrag.Emit = i.emitRangeDelChunk
+	return i
 }
 
 func (i *compactionIter) First() {
@@ -166,8 +190,7 @@ func (i *compactionIter) Next() bool {
 
 	if i.skip {
 		i.skip = false
-		for i.nextInStripe() {
-		}
+		i.skipStripe()
 	}
 
 	i.valid = false
@@ -179,8 +202,7 @@ func (i *compactionIter) Next() bool {
 			// skip to the next stripe (which will be the next user key).
 			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
 				i.saveKey()
-				for i.nextInStripe() {
-				}
+				i.skipStripe()
 				continue
 			}
 
@@ -190,7 +212,19 @@ func (i *compactionIter) Next() bool {
 			i.skip = true
 			return true
 
+		case db.InternalKeyKindRangeDelete:
+			i.rangeDelFrag.Add(i.key, i.iter.Value())
+			i.saveKey()
+			i.skipStripe()
+			continue
+
 		case db.InternalKeyKindSet:
+			if i.rangeDelFrag.Deleted(i.key) {
+				i.saveKey()
+				i.skipStripe()
+				continue
+			}
+
 			i.saveKey()
 			i.value = i.iter.Value()
 			i.valid = true
@@ -198,6 +232,12 @@ func (i *compactionIter) Next() bool {
 			return true
 
 		case db.InternalKeyKindMerge:
+			if i.rangeDelFrag.Deleted(i.key) {
+				i.saveKey()
+				i.skipStripe()
+				continue
+			}
+
 			return i.mergeNext()
 
 		case db.InternalKeyKindInvalid:
@@ -226,6 +266,11 @@ func snapshotIndex(seq uint64, snapshots []uint64) int {
 	})
 }
 
+func (i *compactionIter) skipStripe() {
+	for i.nextInStripe() {
+	}
+}
+
 func (i *compactionIter) nextInStripe() bool {
 	i.iter.Next()
 	if !i.iter.Valid() {
@@ -236,7 +281,13 @@ func (i *compactionIter) nextInStripe() bool {
 		i.curSnapshotIdx = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
 	}
-	if key.Kind() == db.InternalKeyKindInvalid {
+	switch key.Kind() {
+	case db.InternalKeyKindRangeDelete:
+		// Range tombstones are always added to the fragmenter. They are processed
+		// into stripes after fragmentation.
+		i.rangeDelFrag.Add(key, i.iter.Value())
+		return true
+	case db.InternalKeyKindInvalid:
 		i.curSnapshotIdx = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
 	}
@@ -264,7 +315,8 @@ func (i *compactionIter) mergeNext() bool {
 			i.skip = false
 			return true
 		}
-		switch i.iter.Key().Kind() {
+		key := i.iter.Key()
+		switch key.Kind() {
 		case db.InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe.
@@ -272,7 +324,18 @@ func (i *compactionIter) mergeNext() bool {
 			i.skip = true
 			return true
 
+		case db.InternalKeyKindRangeDelete:
+			// We've hit a range deletion tombstone. Return everything up to this
+			// point and then skip entries until the next snapshot stripe.
+			i.skip = true
+			return true
+
 		case db.InternalKeyKindSet:
+			if i.rangeDelFrag.Deleted(key) {
+				i.skip = true
+				return true
+			}
+
 			// We've hit a Set value. Merge with the existing value and return. We
 			// change the kind of the resulting key to a Set so that it shadows keys
 			// in lower levels. That is, MERGE+MERGE+SET -> SET.
@@ -283,6 +346,11 @@ func (i *compactionIter) mergeNext() bool {
 			return true
 
 		case db.InternalKeyKindMerge:
+			if i.rangeDelFrag.Deleted(key) {
+				i.skip = true
+				return true
+			}
+
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
 			i.value = i.merge(i.key.UserKey, i.value, i.iter.Value(), nil)
@@ -327,4 +395,23 @@ func (i *compactionIter) Close() error {
 		i.err = err
 	}
 	return i.err
+}
+
+func (i *compactionIter) Tombstones() []rangedel.Tombstone {
+	i.rangeDelFrag.Finish()
+	return i.tombstones
+}
+
+func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
+	// Apply the snapshot stripe rules, keeping only the latest tombstone for
+	// each snapshot stripe.
+	currentIdx := -1
+	for _, v := range fragmented {
+		idx := snapshotIndex(v.Start.SeqNum(), i.snapshots)
+		if currentIdx == idx {
+			continue
+		}
+		currentIdx = idx
+		i.tombstones = append(i.tombstones, v)
+	}
 }

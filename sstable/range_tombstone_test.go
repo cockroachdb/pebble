@@ -42,8 +42,12 @@ func TestRangeTombstone(t *testing.T) {
 			restartInterval: 1,
 		}
 		f := &rangedel.Fragmenter{
-			Output: b.add,
-			Cmp:    cmp,
+			Emit: func(fragmented []rangedel.Tombstone) {
+				for _, v := range fragmented {
+					b.add(v.Start, v.End)
+				}
+			},
+			Cmp: cmp,
 		}
 		for _, p := range strings.Split(s, ",") {
 			t := parseTombstone(t, p)

@@ -16,7 +16,6 @@ import (
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
-	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/storage"
 )
 
@@ -50,7 +49,6 @@ type Writer struct {
 	block         blockWriter
 	indexBlock    blockWriter
 	rangeDelBlock blockWriter
-	rangeDelFrag  rangedel.Fragmenter
 	props         Properties
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
@@ -64,14 +62,21 @@ type Writer struct {
 }
 
 // Add adds a key/value pair to the table being written. For a given Writer,
-// the keys passed to Add must be in increasing order.
+// the keys passed to Add must be in increasing order. The exception to this
+// rule is range deletion tombstones. Range deletion tombstones need to be
+// added ordered by their start key, but they can be added out of order from
+// point entries. Additionally, range deletion tombstones must be fragmented
+// (i.e. by rangedel.Fragmenter).
+//
+// TODO(peter): Should there be a different interface for adding range
+// tombstones?
 func (w *Writer) Add(key db.InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
 
 	if key.Kind() == db.InternalKeyKindRangeDelete {
-		w.rangeDelFrag.Add(key, value)
+		w.rangeDelBlock.add(key, value)
 		w.props.NumRangeDeletions++
 		return nil
 	}
@@ -262,7 +267,6 @@ func (w *Writer) Close() (err error) {
 
 	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
-		w.rangeDelFrag.Finish()
 		b := w.rangeDelBlock.finish()
 		// TODO(peter): Should the range-del block be compressed?
 		bh, err := w.writeRawBlock(b, noCompressionBlockType)
@@ -391,9 +395,6 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		rangeDelBlock: blockWriter{
 			restartInterval: 1,
 		},
-		rangeDelFrag: rangedel.Fragmenter{
-			Cmp: o.Comparer.Compare,
-		},
 	}
 	if f == nil {
 		w.err = errors.New("pebble/table: nil file")
@@ -411,7 +412,6 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		}
 	}
 
-	w.rangeDelFrag.Output = w.rangeDelBlock.add
 	w.props.ColumnFamilyID = math.MaxInt32
 	w.props.ComparatorName = o.Comparer.Name
 	w.props.CompressionName = lo.Compression.String()

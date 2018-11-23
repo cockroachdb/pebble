@@ -49,15 +49,15 @@ func TestCompactionIter(t *testing.T) {
 	var elideTombstones bool
 
 	newIter := func() *compactionIter {
-		return &compactionIter{
-			cmp:       db.DefaultComparer.Compare,
-			merge:     db.DefaultMerger.Merge,
-			iter:      &fakeIter{keys: keys, vals: vals},
-			snapshots: snapshots,
-			elideTombstone: func([]byte) bool {
+		return newCompactionIter(
+			db.DefaultComparer.Compare,
+			db.DefaultMerger.Merge,
+			&fakeIter{keys: keys, vals: vals},
+			snapshots,
+			func([]byte) bool {
 				return elideTombstones
 			},
-		}
+		)
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_iter", func(d *datadriven.TestData) string {
@@ -111,6 +111,13 @@ func TestCompactionIter(t *testing.T) {
 					iter.First()
 				case "next":
 					iter.Next()
+				case "tombstones":
+					for _, v := range iter.Tombstones() {
+						fmt.Fprintf(&b, "%s-%s#%d\n",
+							v.Start.UserKey, v.End, v.Start.SeqNum())
+					}
+					fmt.Fprintf(&b, ".\n")
+					continue
 				default:
 					return fmt.Sprintf("unknown op: %s", parts[0])
 				}

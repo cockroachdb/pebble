@@ -383,13 +383,9 @@ func (d *DB) writeLevel0Table(
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	iter := &compactionIter{
-		cmp:            d.cmp,
-		merge:          d.merge,
-		iter:           iiter,
-		snapshots:      snapshots,
-		elideTombstone: func([]byte) bool { return false },
-	}
+	iter := newCompactionIter(
+		d.cmp, d.merge, iiter, snapshots,
+		func([]byte) bool { return false })
 	var (
 		file storage.File
 		tw   *sstable.Writer
@@ -429,6 +425,13 @@ func (d *DB) writeLevel0Table(
 		meta.largest.Trailer = ikey.Trailer
 
 		if err1 := tw.Add(ikey, iter.Value()); err1 != nil {
+			return fileMetadata{}, err1
+		}
+	}
+
+	// TODO(peter): tombstones might affect the sstable boundaries.
+	for _, v := range iter.Tombstones() {
+		if err1 := tw.Add(v.Start, v.End); err1 != nil {
 			return fileMetadata{}, err1
 		}
 	}
@@ -617,13 +620,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
-	iter := &compactionIter{
-		cmp:            d.cmp,
-		merge:          d.merge,
-		iter:           iiter,
-		snapshots:      snapshots,
-		elideTombstone: c.elideTombstone,
-	}
+	iter := newCompactionIter(d.cmp, d.merge, iiter, snapshots, c.elideTombstone)
 
 	var (
 		filenames []string
@@ -651,6 +648,9 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		if tw == nil {
 			return nil
 		}
+
+		// TODO(peter): Add tombstones.
+
 		if err := tw.Close(); err != nil {
 			tw = nil
 			return err
