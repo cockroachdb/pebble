@@ -14,6 +14,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/internal/rangedel"
 )
 
 func TestRangeTombstone(t *testing.T) {
@@ -21,7 +22,7 @@ func TestRangeTombstone(t *testing.T) {
 
 	var tombstoneRe = regexp.MustCompile(`(\w+)-(\w+)#(\d+)`)
 
-	parseTombstone := func(t *testing.T, s string) rangeTombstone {
+	parseTombstone := func(t *testing.T, s string) rangedel.Tombstone {
 		m := tombstoneRe.FindStringSubmatch(s)
 		if len(m) != 4 {
 			t.Fatalf("expected 4 components, but found %d", len(m))
@@ -30,20 +31,26 @@ func TestRangeTombstone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return rangeTombstone{
-			start: db.MakeInternalKey([]byte(m[1]), uint64(seqNum), 0),
-			end:   []byte(m[2]),
+		return rangedel.Tombstone{
+			Start: db.MakeInternalKey([]byte(m[1]), uint64(seqNum), 0),
+			End:   []byte(m[2]),
 		}
 	}
 
 	build := func(t *testing.T, s string) block {
-		w := rangeTombstoneBlockWriter{cmp: cmp}
-		w.block.restartInterval = 1
+		b := blockWriter{
+			restartInterval: 1,
+		}
+		f := &rangedel.Fragmenter{
+			Output: b.add,
+			Cmp:    cmp,
+		}
 		for _, p := range strings.Split(s, ",") {
 			t := parseTombstone(t, p)
-			w.add(t.start.UserKey, t.end, t.start.SeqNum())
+			f.Add(t.Start, t.End)
 		}
-		return w.finish()
+		f.Finish()
+		return b.finish()
 	}
 
 	var getRe = regexp.MustCompile(`(\w+)#(\d+)`)

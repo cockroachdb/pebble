@@ -453,9 +453,9 @@ func (r *Reader) readRangeDel() (block, error) {
 		if !r.rangeDelV2 {
 			// TODO(peter): if we have a v1 range-del block, convert it on the fly
 			// and cache the converted version. We just need to create a
-			// rangeTombstoneBlockWriter and loop over the v1 block and add all of
-			// the contents. Note that the contents of the v1 block may not be
-			// sorted, so we'll have to sort them first.
+			// rangedel.Fragmenter and loop over the v1 block and add all of the
+			// contents. Note that the contents of the v1 block may not be sorted, so
+			// we'll have to sort them first.
 		}
 
 		r.rangeDel.mu.Lock()

@@ -1,0 +1,150 @@
+# 3: a-----------m
+# 2:      f------------s
+# 1:          j---------------z
+
+build
+a-m#3,f-s#2,j-z#1
+----
+a-f#3
+f-j#3
+f-j#2
+j-m#3
+j-m#2
+j-m#1
+j-s#2
+j-s#1
+j-z#1
+
+build
+a-a#1
+----
+a-a#1
+
+# 3:  b-d
+# 1: a---e
+
+build
+a-e#1,b-d#3
+----
+a-b#1
+b-d#3
+b-d#1
+b-e#1
+
+# 3: a---e
+# 1:  b-d
+
+build
+a-e#3,b-d#1
+----
+a-b#3
+b-d#3
+b-d#1
+b-e#3
+
+# 3: a--d
+# 1:  b--e
+
+build
+a-d#3,b-e#1
+----
+a-b#3
+b-d#3
+b-d#1
+b-e#1
+
+# 3:  b--e
+# 1: a--d
+
+build
+a-d#1,b-e#3
+----
+a-b#1
+b-d#3
+b-d#1
+b-e#3
+
+# 3: a--d
+# 1: a---e
+
+build
+a-d#3,a-e#1
+----
+a-d#3
+a-d#1
+a-e#1
+
+# 3: a---e
+# 1: a--d
+
+build
+a-e#3,a-d#1
+----
+a-d#3
+a-d#1
+a-e#3
+
+# 3:  b--e
+# 1: a---e
+
+build
+a-e#1,b-e#3
+----
+a-b#1
+b-e#3
+b-e#1
+
+# 3: a---e
+# 1:  b--e
+
+build
+a-e#3,b-e#1
+----
+a-b#3
+b-e#3
+b-e#1
+
+# 3: a---e
+# 1: a---e
+
+build
+a-e#3,a-e#1
+----
+a-e#3
+a-e#1
+
+# 3:   c-e
+# 1: a-c
+
+build
+a-c#1,c-e#3
+----
+a-c#1
+c-e#3
+
+# 3: a-c
+# 1:   c-e
+
+build
+a-c#3,c-e#1
+----
+a-c#3
+c-e#1
+
+# 3:    de
+# 1: a-c
+
+build
+a-c#1,d-e#3
+----
+a-c#1
+d-e#3
+
+# 3: a-c
+# 1:    de
+
+build
+a-c#3,d-e#1
+----
+a-c#3
+d-e#1

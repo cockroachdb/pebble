@@ -16,6 +16,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
+	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/storage"
 )
 
@@ -48,7 +49,8 @@ type Writer struct {
 	syncOffset    uint64
 	block         blockWriter
 	indexBlock    blockWriter
-	rangeDelBlock rangeTombstoneBlockWriter
+	rangeDelBlock blockWriter
+	rangeDelFrag  rangedel.Fragmenter
 	props         Properties
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
@@ -69,7 +71,7 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 	}
 
 	if key.Kind() == db.InternalKeyKindRangeDelete {
-		w.rangeDelBlock.add(key.UserKey, value, key.SeqNum())
+		w.rangeDelFrag.Add(key, value)
 		w.props.NumRangeDeletions++
 		return nil
 	}
@@ -260,6 +262,7 @@ func (w *Writer) Close() (err error) {
 
 	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
+		w.rangeDelFrag.Finish()
 		b := w.rangeDelBlock.finish()
 		// TODO(peter): Should the range-del block be compressed?
 		bh, err := w.writeRawBlock(b, noCompressionBlockType)
@@ -385,11 +388,11 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		indexBlock: blockWriter{
 			restartInterval: 1,
 		},
-		rangeDelBlock: rangeTombstoneBlockWriter{
-			cmp: o.Comparer.Compare,
-			block: blockWriter{
-				restartInterval: 1,
-			},
+		rangeDelBlock: blockWriter{
+			restartInterval: 1,
+		},
+		rangeDelFrag: rangedel.Fragmenter{
+			Cmp: o.Comparer.Compare,
 		},
 	}
 	if f == nil {
@@ -408,6 +411,7 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		}
 	}
 
+	w.rangeDelFrag.Output = w.rangeDelBlock.add
 	w.props.ColumnFamilyID = math.MaxInt32
 	w.props.ComparatorName = o.Comparer.Name
 	w.props.CompressionName = lo.Compression.String()

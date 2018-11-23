@@ -18,7 +18,7 @@ import (
 // contains two keys: a.PUT.2 and a.PUT.1. Instead of returning both entries,
 // compactionIter collapses the second entry because it is no longer
 // necessary. The high-level structure for compactionIter is to iterate over
-// its internal iterator and output 1 entry for every user-key. There are three
+// its internal iterator and output 1 entry for every user-key. There are four
 // complications to this story.
 //
 // 1. Eliding Deletion Tombstones
@@ -93,27 +93,32 @@ import (
 // compacted. In the above example, a snapshot at sequence number 10 or at
 // sequence number 5 would not have any effect.
 //
-// TODO(peter): Need to handle range tombstones. compactionIter.iter includes
-// range tombstones and when one is encountered we need to add it to a stack of
-// active tombstones. That stack needs to be checked as we advance to see if a
-// key is covered by a range tombstone (or if an older range tombstone is
-// covered by a more recent range tombstone). This is more or less whan
-// sstable.rangeTombstoneBlockWriter maintains internally. Note that the
-// decision of what range tombstone fragments to output depends on the snapshot
-// stripes. Consider:
+// 4. Range Deletions
+//
+// Range deletions provide the ability to delete all of the keys (and values)
+// in a contiguous range. Range deletions are stored indexed by their start
+// key. The end key of the range is stored in the value. In order to support
+// lookup of the range deletions which overlap with a particular key, the range
+// deletion tombstones need to be fragmented whenever they overlap. This
+// fragmentation is performed by rangedel.Fragmenter. The fragments are then
+// subject to the rules for snapshots. For example, consider the two range
+// tombstones [a,e)#1 and [c,g)#2:
 //
 //   2:     c-------g
 //   1: a-------e
 //
-// This will be fragmented into:
+// These tombstones will be fragmented into:
 //
 //   2:     c---e---g
 //   1: a---c---e
 //
-// Do we output the fragment [c,e)#1? It is covered by [c-e]#2. We only need to
-// output it if there is a snapshot at sequence number 1. Perhaps we need to
-// pull the fragmentation logic out of rangeTombstoneBlockBuilder so it can be
-// utilized here.
+// Do we output the fragment [c,e)#1? Since it is covered by [c-e]#2 the answer
+// depends on whether it is in a new snapshot stripe.
+//
+// In addition to the fragmentation of range tombstones, compaction also needs
+// to take the range tombstones into consideration when outputting normal
+// keys. Just as with point deletions, a range deletion covering an entry can
+// cause the entry to be elided.
 
 type compactionIter struct {
 	cmp   db.Compare
