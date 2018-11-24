@@ -49,17 +49,21 @@ func TestWriter(t *testing.T) {
 					f.Add(ikey, value)
 				default:
 					if err := w.Add(ikey, value); err != nil {
-						return err.Error()
+						return err.Error() + "\n"
 					}
 				}
 			}
 			f.Finish()
 			for _, v := range tombstones {
 				if err := w.Add(v.Start, v.End); err != nil {
-					return err.Error()
+					return err.Error() + "\n"
 				}
 			}
 			if err := w.Close(); err != nil {
+				return err.Error()
+			}
+			meta, err := w.Metadata()
+			if err != nil {
 				return err.Error()
 			}
 
@@ -68,7 +72,8 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 			r = NewReader(f1, 0, nil)
-			return ""
+			return fmt.Sprintf("bounds:  [%s,%s]\nseqnums: [%d,%d]\n", meta.Smallest, meta.Largest,
+				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "scan":
 			iter := r.NewIter(nil)

@@ -1,6 +1,8 @@
 build
 a.SET.1:a
 ----
+bounds:  [a#1,1,a#1,1]
+seqnums: [1,1]
 
 scan
 ----
@@ -19,6 +21,8 @@ g.DEL.6:g
 h.MERGE.7:h
 i.RANGEDEL.8:j
 ----
+bounds:  [a#1,1,j#72057594037927935,15]
+seqnums: [1,8]
 
 scan
 ----
@@ -43,6 +47,8 @@ a.RANGEDEL.3:m
 f.RANGEDEL.2:s
 j.RANGEDEL.1:z
 ----
+bounds:  [a#3,15,z#72057594037927935,15]
+seqnums: [1,3]
 
 scan
 ----
@@ -58,3 +64,34 @@ j#1,15:m
 m#2,15:s
 m#1,15:s
 s#1,15:z
+
+# The range tombstone upper bound is exclusive, so a point operation
+# on that same key will be the actual boundary.
+
+build
+a.RANGEDEL.3:b
+b.SET.4:c
+----
+bounds:  [a#3,15,b#4,1]
+seqnums: [3,4]
+
+build
+a.RANGEDEL.3:b
+b.SET.2:c
+----
+bounds:  [a#3,15,b#2,1]
+seqnums: [2,3]
+
+# Keys must be added in order.
+
+build
+a.SET.1:b
+a.SET.2:c
+----
+pebble/table: Add called in non-increasing key order: "a#1,1", "a#2,1"
+
+build
+b.SET.1:a
+a.SET.2:b
+----
+pebble/table: Add called in non-increasing key order: "b#1,1", "a#2,1"
