@@ -1,0 +1,74 @@
+define
+a.SET.2:b
+a.SET.1:b
+b.SET.2:c
+b.SET.1:c
+c.SET.2:d
+c.SET.1:d
+----
+
+iter
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+a-b#2
+b-c#2
+c-d#2
+.
+.
+a-b#1
+b-c#1
+c-d#1
+
+iter
+first
+next
+next
+prev
+prev
+prev
+next
+next
+next
+next
+next
+next
+prev
+prev
+next
+prev
+prev
+next
+next
+next
+next
+prev
+----
+a-b#2
+a-b#1
+b-c#2
+a-b#1
+a-b#2
+.
+a-b#2
+a-b#1
+b-c#2
+b-c#1
+c-d#2
+c-d#1
+c-d#2
+b-c#1
+c-d#2
+b-c#1
+b-c#2
+b-c#1
+c-d#2
+c-d#1
+.
+c-d#1

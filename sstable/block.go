@@ -193,7 +193,7 @@ func (i *blockIter) SeekGE(key []byte) {
 	var index int
 
 	{
-		// NB: manually inlined sort.Sort is ~5% faster.
+		// NB: manually inlined sort.Seach is ~5% faster.
 		//
 		// Define f(-1) == false and f(n) == true.
 		// Invariant: f(index-1) == false, f(upper) == true.
@@ -247,7 +247,7 @@ func (i *blockIter) SeekLT(key []byte) {
 	var index int
 
 	{
-		// NB: manually inlined sort.Sort is ~5% faster.
+		// NB: manually inlined sort.Search is ~5% faster.
 		//
 		// Define f(-1) == false and f(n) == true.
 		// Invariant: f(index-1) == false, f(upper) == true.

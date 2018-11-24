@@ -27,23 +27,51 @@ func NewIter(cmp db.Compare, tombstones []Tombstone) *Iter {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *Iter) SeekGE(key []byte) {
-	// TODO(peter): Use binary search.
-	for i.index = 0; i.index < len(i.tombstones); i.index++ {
-		if i.cmp(key, i.Key().UserKey) <= 0 {
-			break
+	// NB: manually inlined sort.Seach is ~5% faster.
+	//
+	// Define f(-1) == false and f(n) == true.
+	// Invariant: f(index-1) == false, f(upper) == true.
+	ikey := db.MakeSearchKey(key)
+	i.index = 0
+	upper := len(i.tombstones)
+	for i.index < upper {
+		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
+		// i.index ≤ h < upper
+		if db.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) >= 0 {
+			i.index = h + 1 // preserves f(i-1) == false
+		} else {
+			upper = h // preserves f(j) == true
 		}
 	}
+	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
+	// true => answer is i.index.
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
 func (i *Iter) SeekLT(key []byte) {
-	// TODO(peter): Use binary search.
-	for i.index = len(i.tombstones) - 1; i.index >= 0; i.index-- {
-		if i.cmp(key, i.Key().UserKey) > 0 {
-			break
+	// NB: manually inlined sort.Search is ~5% faster.
+	//
+	// Define f(-1) == false and f(n) == true.
+	// Invariant: f(index-1) == false, f(upper) == true.
+	ikey := db.MakeSearchKey(key)
+	i.index = 0
+	upper := len(i.tombstones)
+	for i.index < upper {
+		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
+		// i.index ≤ h < upper
+		if db.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) > 0 {
+			i.index = h + 1 // preserves f(i-1) == false
+		} else {
+			upper = h // preserves f(j) == true
 		}
 	}
+	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
+	// true => answer is i.index.
+
+	// Since keys are strictly increasing, if i.index > 0 then i.index-1 will be
+	// the largest whose key is < the key sought.
+	i.index--
 }
 
 // First implements internalIterator.First, as documented in the pebble
