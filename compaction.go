@@ -634,6 +634,31 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	ve = &versionEdit{
 		deletedFiles: map[deletedFileEntry]bool{},
 	}
+
+	newOutput := func() error {
+		d.mu.Lock()
+		fileNum := d.mu.versions.nextFileNum()
+		d.mu.compact.pendingOutputs[fileNum] = struct{}{}
+		pendingOutputs = append(pendingOutputs, fileNum)
+		d.mu.Unlock()
+
+		filename := dbFilename(d.dirname, fileTypeTable, fileNum)
+		file, err := d.opts.Storage.Create(filename)
+		if err != nil {
+			return err
+		}
+		filenames = append(filenames, filename)
+		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.level+1))
+
+		ve.newFiles = append(ve.newFiles, newFileEntry{
+			level: c.level + 1,
+			meta: fileMetadata{
+				fileNum: fileNum,
+			},
+		})
+		return nil
+	}
+
 	finishOutput := func() error {
 		if tw == nil {
 			return nil
@@ -665,44 +690,20 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		ikey := iter.Key()
 		// TODO(peter): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
-		if tw != nil && c.shouldStopBefore(ikey) {
+		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(ikey)) {
 			if err := finishOutput(); err != nil {
 				return nil, pendingOutputs, err
 			}
 		}
 
 		if tw == nil {
-			d.mu.Lock()
-			fileNum := d.mu.versions.nextFileNum()
-			d.mu.compact.pendingOutputs[fileNum] = struct{}{}
-			pendingOutputs = append(pendingOutputs, fileNum)
-			d.mu.Unlock()
-
-			filename := dbFilename(d.dirname, fileTypeTable, fileNum)
-			file, err := d.opts.Storage.Create(filename)
-			if err != nil {
+			if err := newOutput(); err != nil {
 				return nil, pendingOutputs, err
 			}
-			filenames = append(filenames, filename)
-			tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.level+1))
-
-			ve.newFiles = append(ve.newFiles, newFileEntry{
-				level: c.level + 1,
-				meta: fileMetadata{
-					fileNum: fileNum,
-				},
-			})
 		}
 
 		if err := tw.Add(ikey, iter.Value()); err != nil {
 			return nil, pendingOutputs, err
-		}
-
-		// Close the current output file if it is big enough.
-		if tw.EstimatedSize() >= c.maxOutputFileSize {
-			if err := finishOutput(); err != nil {
-				return nil, pendingOutputs, err
-			}
 		}
 	}
 
