@@ -449,3 +449,39 @@ d-e#2
 d-e#1
 e-f#1
 .
+
+define
+a.SET.1:a
+b.RANGEDEL.2:d
+c.RANGEDEL.3:e
+d.SET.4:d
+----
+
+iter
+first
+next
+tombstones c
+tombstones
+----
+a#1,1:a
+d#4,1:d
+b-c#2
+.
+c-d#3
+d-e#3
+.
+
+iter snapshots=3
+first
+next
+tombstones c
+tombstones
+----
+a#1,1:a
+d#4,1:d
+b-c#2
+.
+c-d#3
+c-d#2
+d-e#3
+.

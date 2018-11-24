@@ -421,7 +421,7 @@ func (d *DB) writeLevel0Table(
 		}
 	}
 
-	for _, v := range iter.Tombstones() {
+	for _, v := range iter.Tombstones(nil) {
 		if err1 := tw.Add(v.Start, v.End); err1 != nil {
 			return fileMetadata{}, err1
 		}
@@ -659,13 +659,16 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		return nil
 	}
 
-	finishOutput := func() error {
+	finishOutput := func(userKey []byte) error {
 		if tw == nil {
 			return nil
 		}
 
-		// TODO(peter): Add tombstones. If the sstable is being finished due to
-		// size, we need to truncate the current set of tombstones.
+		for _, v := range iter.Tombstones(userKey) {
+			if err := tw.Add(v.Start, v.End); err != nil {
+				return err
+			}
+		}
 
 		if err := tw.Close(); err != nil {
 			tw = nil
@@ -691,7 +694,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		// TODO(peter): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
 		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(ikey)) {
-			if err := finishOutput(); err != nil {
+			if err := finishOutput(ikey.UserKey); err != nil {
 				return nil, pendingOutputs, err
 			}
 		}
@@ -707,7 +710,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}
 
-	if err := finishOutput(); err != nil {
+	if err := finishOutput(nil); err != nil {
 		return nil, pendingOutputs, nil
 	}
 

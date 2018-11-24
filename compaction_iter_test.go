@@ -112,7 +112,11 @@ func TestCompactionIter(t *testing.T) {
 				case "next":
 					iter.Next()
 				case "tombstones":
-					for _, v := range iter.Tombstones() {
+					var key []byte
+					if len(parts) == 2 {
+						key = []byte(parts[1])
+					}
+					for _, v := range iter.Tombstones(key) {
 						fmt.Fprintf(&b, "%s-%s#%d\n",
 							v.Start.UserKey, v.End, v.Start.SeqNum())
 					}

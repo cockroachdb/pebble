@@ -169,28 +169,7 @@ func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 
 		// At this point we know that the new start key is greater than the pending
 		// tombstones start keys.
-		done := f.doneBuf[:0]
-		pending := f.pending
-		f.pending = f.pending[:0]
-
-		for _, t := range pending {
-			if f.Cmp(start.UserKey, t.End) < 0 {
-				//   t: a--+--e
-				// new:    c------
-				done = append(done, Tombstone{Start: t.Start, End: start.UserKey})
-				f.pending = append(f.pending, Tombstone{
-					Start: db.MakeInternalKey(start.UserKey, t.Start.SeqNum(), t.Start.Kind()),
-					End:   t.End,
-				})
-			} else {
-				//   t: a-----e
-				// new:       e----
-				done = append(done, t)
-			}
-		}
-
-		f.doneBuf = done[:0]
-		f.flush(done)
+		f.truncateAndFlush(start.UserKey)
 	}
 
 	f.pending = append(f.pending, Tombstone{
@@ -236,6 +215,55 @@ func (f *Fragmenter) Deleted(key db.InternalKey) bool {
 		f.pending = f.pending[:0]
 	}
 	return false
+}
+
+// FlushTo flushes all of the fragments before key. Used internally by Add to
+// flush tombstone fragments, and can be used externally to fragment tombstones
+// during compaction when a tombstone straddles an sstable boundary.
+func (f *Fragmenter) FlushTo(key []byte) {
+	if len(f.pending) == 0 {
+		return
+	}
+	// Since all of the pending tombstones have the same start key, we only need
+	// to compare against the first one.
+	switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
+	case c > 0:
+		panic(fmt.Sprintf("pebble: FlushTo called in non-increasing key order: %q, %q",
+			f.pending[0].Start.UserKey, key))
+	case c == 0:
+		// The pending tombstone start key and the flush-to key are equal, so we'd
+		// only be generating empty tombstones if we continued.
+		return
+	}
+
+	// At this point we know that the new start key is greater than the pending
+	// tombstones start keys.
+	f.truncateAndFlush(key)
+}
+
+func (f *Fragmenter) truncateAndFlush(key []byte) {
+	done := f.doneBuf[:0]
+	pending := f.pending
+	f.pending = f.pending[:0]
+
+	for _, t := range pending {
+		if f.Cmp(key, t.End) < 0 {
+			//   t: a--+--e
+			// new:    c------
+			done = append(done, Tombstone{Start: t.Start, End: key})
+			f.pending = append(f.pending, Tombstone{
+				Start: db.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
+				End:   t.End,
+			})
+		} else {
+			//   t: a-----e
+			// new:       e----
+			done = append(done, t)
+		}
+	}
+
+	f.doneBuf = done[:0]
+	f.flush(done)
 }
 
 // flush a group of range tombstones to the block. The tombstones are required

@@ -402,9 +402,15 @@ func (i *compactionIter) Close() error {
 	return i.err
 }
 
-func (i *compactionIter) Tombstones() []rangedel.Tombstone {
-	i.rangeDelFrag.Finish()
-	return i.tombstones
+func (i *compactionIter) Tombstones(key []byte) []rangedel.Tombstone {
+	if key == nil {
+		i.rangeDelFrag.Finish()
+	} else {
+		i.rangeDelFrag.FlushTo(key)
+	}
+	tombstones := i.tombstones
+	i.tombstones = nil
+	return tombstones
 }
 
 func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
