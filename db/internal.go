@@ -84,6 +84,13 @@ const (
 
 	// InternalKeySeqNumMax is the largest valid sequence number.
 	InternalKeySeqNumMax = uint64(1<<56 - 1)
+
+	// InternalKeyRangeDeleteSentinel is the marker for a range delete sentinel
+	// key. This sequence number and kind are used for the upper stable boundary
+	// when a range deletion tombstone is the largest key in an sstable. This is
+	// necessary because sstable boundaries are inclusive, while the end key of a
+	// range deletion tombstone is exclusive.
+	InternalKeyRangeDeleteSentinel = (InternalKeySeqNumMax << 8) | InternalKeyKindRangeDelete
 )
 
 // InternalKey is a key used for the in-memory and on-disk partial DBs that
@@ -119,6 +126,16 @@ func MakeSearchKey(userKey []byte) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
 		Trailer: (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindMax),
+	}
+}
+
+// MakeRangeDeleteSentinelKey constructs an internal key that is a range
+// deletion sentinel key, used as the upper boundary for an sstable when a
+// range deletion is the largest key in an sstable.
+func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
+	return InternalKey{
+		UserKey: userKey,
+		Trailer: InternalKeyRangeDeleteSentinel,
 	}
 }
 

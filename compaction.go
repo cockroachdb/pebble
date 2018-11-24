@@ -142,7 +142,7 @@ func (c *compaction) shouldStopBefore(key db.InternalKey) bool {
 // pairs at c.level+2 or higher that possibly contain the specified user key.
 func (c *compaction) elideTombstone(key []byte) bool {
 	// TODO(peter): this can be faster if ukey is always increasing between
-	// successive isBaseLevelForUkey calls and we can keep some state in between
+	// successive elideTombstones calls and we can keep some state in between
 	// calls.
 	for level := c.level + 2; level < numLevels; level++ {
 		for _, f := range c.version.files[level] {
@@ -415,21 +415,12 @@ func (d *DB) writeLevel0Table(
 	file = newRateLimitedFile(file, d.flushController)
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
-	meta.smallest = iter.Key().Clone()
 	for ; iter.Valid(); iter.Next() {
-		ikey := iter.Key()
-
-		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
-		// in largest.
-		meta.largest.UserKey = append(meta.largest.UserKey[:0], ikey.UserKey...)
-		meta.largest.Trailer = ikey.Trailer
-
-		if err1 := tw.Add(ikey, iter.Value()); err1 != nil {
+		if err1 := tw.Add(iter.Key(), iter.Value()); err1 != nil {
 			return fileMetadata{}, err1
 		}
 	}
 
-	// TODO(peter): tombstones might affect the sstable boundaries.
 	for _, v := range iter.Tombstones() {
 		if err1 := tw.Add(v.Start, v.End); err1 != nil {
 			return fileMetadata{}, err1
@@ -447,15 +438,15 @@ func (d *DB) writeLevel0Table(
 		return fileMetadata{}, err1
 	}
 
-	stat, err := tw.Stat()
+	writerMeta, err := tw.Metadata()
 	if err != nil {
 		return fileMetadata{}, err
 	}
-	size := stat.Size()
-	if size < 0 {
-		return fileMetadata{}, fmt.Errorf("pebble: table file %q has negative size %d", filename, size)
-	}
-	meta.size = uint64(size)
+	meta.size = writerMeta.Size
+	meta.smallest = writerMeta.Smallest
+	meta.largest = writerMeta.Largest
+	meta.smallestSeqNum = writerMeta.SmallestSeqNum
+	meta.largestSeqNum = writerMeta.LargestSeqNum
 	tw = nil
 
 	// TODO(peter): After a flush we set the commit rate to 110% of the flush
@@ -655,13 +646,17 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			tw = nil
 			return err
 		}
-		stat, err := tw.Stat()
+		writerMeta, err := tw.Metadata()
 		if err != nil {
 			tw = nil
 			return err
 		}
 		tw = nil
-		meta.size = uint64(stat.Size())
+		meta.size = writerMeta.Size
+		meta.smallest = writerMeta.Smallest
+		meta.largest = writerMeta.Largest
+		meta.smallestSeqNum = writerMeta.SmallestSeqNum
+		meta.largestSeqNum = writerMeta.LargestSeqNum
 		meta = nil
 		return nil
 	}
@@ -696,16 +691,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				},
 			})
 			meta = &ve.newFiles[len(ve.newFiles)-1].meta
-			meta.smallest = ikey.Clone()
 		}
 
-		// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer
-		// in largest.
-		//
-		// TODO(peter): sstable.Writer internally keeps track of the last key
-		// added. Rather than making our own copy here, we should expose that one.
-		meta.largest.UserKey = append(meta.largest.UserKey[:0], ikey.UserKey...)
-		meta.largest.Trailer = ikey.Trailer
 		if err := tw.Add(ikey, iter.Value()); err != nil {
 			return nil, pendingOutputs, err
 		}

@@ -27,6 +27,7 @@ type blockWriter struct {
 	buf             []byte
 	restarts        []uint32
 	curKey          []byte
+	curValue        []byte
 	prevKey         []byte
 	tmp             [50]byte
 }
@@ -45,6 +46,7 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	w.buf = append(w.buf, w.tmp[:n]...)
 	w.buf = append(w.buf, w.curKey[shared:]...)
 	w.buf = append(w.buf, value...)
+	w.curValue = w.buf[len(w.buf)-len(value):]
 
 	w.nEntries++
 }

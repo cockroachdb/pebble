@@ -411,7 +411,14 @@ func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
 		if currentIdx == idx {
 			continue
 		}
-		currentIdx = idx
 		i.tombstones = append(i.tombstones, v)
+		currentIdx = idx
+		if currentIdx == 0 {
+			// This is the last snapshot stripe.
+			//
+			// TODO(peter): Check to see whether the range tombstone can be
+			// elided. Need to add an elideRangeTombstone callback.
+			break
+		}
 	}
 }

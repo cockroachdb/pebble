@@ -75,11 +75,11 @@ func TestIngestLoad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			stat, err := w.Stat()
+			meta, err := w.Metadata()
 			if err != nil {
 				t.Fatal(err)
 			}
-			expected[i].size = uint64(stat.Size())
+			expected[i].size = meta.Size
 		}()
 	}
 

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/db"
@@ -19,13 +18,52 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
+// WriterMetadata holds info about a finished sstable.
+type WriterMetadata struct {
+	Size           uint64
+	Smallest       db.InternalKey
+	Largest        db.InternalKey
+	SmallestSeqNum uint64
+	LargestSeqNum  uint64
+}
+
+func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
+	if m.SmallestSeqNum > seqNum {
+		m.SmallestSeqNum = seqNum
+	}
+	if m.LargestSeqNum < seqNum {
+		m.LargestSeqNum = seqNum
+	}
+}
+
+func (m *WriterMetadata) updateSmallest(cmp db.Compare, key db.InternalKey) {
+	if db.InternalCompare(cmp, m.Smallest, key) > 0 {
+		// Avoid the memory allocation in InternalKey.Clone() by reusing the
+		// buffer.
+		m.Smallest.UserKey = append(m.Smallest.UserKey[:0], key.UserKey...)
+		m.Smallest.Trailer = key.Trailer
+	}
+}
+
+func (m *WriterMetadata) updateLargest(key db.InternalKey) {
+	// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer.
+	m.Largest.UserKey = append(m.Largest.UserKey[:0], key.UserKey...)
+	m.Largest.Trailer = key.Trailer
+}
+
+func (m *WriterMetadata) maybeUpdateLargest(cmp db.Compare, key db.InternalKey) {
+	if db.InternalCompare(cmp, m.Largest, key) < 0 {
+		m.updateLargest(key)
+	}
+}
+
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
 	writer    io.Writer
 	bufWriter *bufio.Writer
 	file      storage.File
-	stat      os.FileInfo
+	meta      WriterMetadata
 	err       error
 	// The next give fields are copied from a db.Options.
 	blockSize          int
@@ -67,23 +105,21 @@ type Writer struct {
 // added ordered by their start key, but they can be added out of order from
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by rangedel.Fragmenter).
-//
-// TODO(peter): Should there be a different interface for adding range
-// tombstones?
 func (w *Writer) Add(key db.InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
 
 	if key.Kind() == db.InternalKeyKindRangeDelete {
-		w.rangeDelBlock.add(key, value)
-		w.props.NumRangeDeletions++
-		return nil
+		return w.addTombstone(key, value)
 	}
+	return w.addPoint(key, value)
+}
 
-	prevKey := db.DecodeInternalKey(w.block.curKey)
-	if db.InternalCompare(w.compare, prevKey, key) >= 0 {
-		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q", prevKey, key)
+func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
+	if db.InternalCompare(w.compare, w.meta.Largest, key) >= 0 {
+		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q",
+			w.meta.Largest, key)
 		return w.err
 	}
 
@@ -91,8 +127,18 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 		return err
 	}
 
+	w.meta.updateSeqNum(key.SeqNum())
+	w.meta.updateLargest(key)
+
 	if w.filter != nil {
 		w.filter.addKey(key.UserKey)
+	}
+	if w.props.NumEntries == 0 {
+		if w.props.NumRangeDeletions == 0 {
+			w.meta.Smallest = key.Clone()
+		} else {
+			w.meta.updateSmallest(w.compare, key)
+		}
 	}
 	w.props.NumEntries++
 	if key.Kind() == db.InternalKeyKindDelete {
@@ -101,6 +147,27 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
 	w.block.add(key, value)
+	return nil
+}
+
+func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
+	prevKey := db.DecodeInternalKey(w.rangeDelBlock.curKey)
+	if db.InternalCompare(w.compare, prevKey, key) >= 0 {
+		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q", prevKey, key)
+		return w.err
+	}
+
+	w.meta.updateSeqNum(key.SeqNum())
+
+	if w.props.NumRangeDeletions == 0 {
+		if w.props.NumEntries == 0 {
+			w.meta.Smallest = key.Clone()
+		} else {
+			w.meta.updateSmallest(w.compare, key)
+		}
+	}
+	w.props.NumRangeDeletions++
+	w.rangeDelBlock.add(key, value)
 	return nil
 }
 
@@ -267,6 +334,13 @@ func (w *Writer) Close() (err error) {
 
 	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
+		// Because the range tombstones are fragmented, the end key of the last
+		// added range tombstone will be the largest range tombstone key. Note that
+		// we need to make this into a range deletion sentinel because sstable
+		// boundaries are inclusive while the end key of a range deletion tombstone
+		// is exclusive.
+		w.meta.maybeUpdateLargest(w.compare, db.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue))
+
 		b := w.rangeDelBlock.finish()
 		// TODO(peter): Should the range-del block be compressed?
 		bh, err := w.writeRawBlock(b, noCompressionBlockType)
@@ -346,11 +420,18 @@ func (w *Writer) Close() (err error) {
 		return err
 	}
 
-	w.stat, err = w.file.Stat()
+	stat, err := w.file.Stat()
 	if err != nil {
 		w.err = err
 		return err
 	}
+
+	size := stat.Size()
+	if size < 0 {
+		w.err = fmt.Errorf("pebble/table: file has negative size %d", size)
+		return err
+	}
+	w.meta.Size = uint64(size)
 
 	// Make any future calls to Set or Close return an error.
 	w.err = errors.New("pebble/table: writer is closed")
@@ -363,13 +444,13 @@ func (w *Writer) EstimatedSize() uint64 {
 	return w.offset + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
-// Stat returns the file info for the finished sstable. Only valid to call
+// Metadata returns the metadata for the finished sstable. Only valid to call
 // after the sstable has been finished.
-func (w *Writer) Stat() (os.FileInfo, error) {
+func (w *Writer) Metadata() (*WriterMetadata, error) {
 	if w.file != nil {
 		return nil, errors.New("pebble/table: writer is not closed")
 	}
-	return w.stat, nil
+	return &w.meta, nil
 }
 
 // NewWriter returns a new table writer for the file. Closing the writer will
@@ -378,7 +459,10 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
 	w := &Writer{
-		file:               f,
+		file: f,
+		meta: WriterMetadata{
+			SmallestSeqNum: math.MaxUint64,
+		},
 		blockSize:          lo.BlockSize,
 		blockSizeThreshold: (lo.BlockSize*lo.BlockSizeThreshold + 99) / 100,
 		bytesPerSync:       o.BytesPerSync,
