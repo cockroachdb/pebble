@@ -145,6 +145,9 @@ func (m *memTable) newIter(*db.IterOptions) internalIterator {
 }
 
 func (m *memTable) newRangeDelIter(*db.IterOptions) internalIterator {
+	// TODO(peter): This needs to return a fragmented tombstone iterator. The
+	// fragmented tombstones can be cached and the cache invalidated whenever a
+	// new range tombstone is added to the memtable.
 	if m.rangeDelSkl.Count() == 0 {
 		return nil
 	}

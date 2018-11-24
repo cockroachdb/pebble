@@ -358,6 +358,9 @@ func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
 }
 
 func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
+	// TODO(peter): This needs to return a fragmented tombstone iterator. The
+	// fragmented tombstones can be cached and the cache invalidated whenever a
+	// new range tombstone is added to the Batch.
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}
@@ -674,6 +677,8 @@ func (b *flushableBatch) newIter(o *db.IterOptions) internalIterator {
 }
 
 func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) internalIterator {
+	// TODO(peter): This needs to return a fragmented tombstone iterator. The
+	// fragmented tombstones can be created and cached on first access.
 	return &flushableBatchIter{
 		batch:   b,
 		offsets: b.rangeDelOffsets,
