@@ -615,7 +615,6 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 	var (
 		filenames []string
-		meta      *fileMetadata
 		tw        *sstable.Writer
 	)
 	defer func() {
@@ -653,12 +652,12 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			return err
 		}
 		tw = nil
+		meta := &ve.newFiles[len(ve.newFiles)-1].meta
 		meta.size = writerMeta.Size
 		meta.smallest = writerMeta.Smallest
 		meta.largest = writerMeta.Largest
 		meta.smallestSeqNum = writerMeta.SmallestSeqNum
 		meta.largestSeqNum = writerMeta.LargestSeqNum
-		meta = nil
 		return nil
 	}
 
@@ -693,7 +692,6 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 					fileNum: fileNum,
 				},
 			})
-			meta = &ve.newFiles[len(ve.newFiles)-1].meta
 		}
 
 		if err := tw.Add(ikey, iter.Value()); err != nil {
