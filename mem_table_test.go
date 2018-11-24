@@ -224,18 +224,26 @@ func TestMemTableIter(t *testing.T) {
 
 func TestMemTableDeleteRange(t *testing.T) {
 	var mem *memTable
+	var seqNum uint64
 
 	datadriven.RunTest(t, "testdata/delete_range", func(td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "clear":
+			mem = nil
+			seqNum = 0
+
 		case "define":
 			b := newBatch(nil)
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
-			mem = newMemTable(nil)
-			if err := mem.apply(b, 0); err != nil {
+			if mem == nil {
+				mem = newMemTable(nil)
+			}
+			if err := mem.apply(b, seqNum); err != nil {
 				return err.Error()
 			}
+			seqNum += uint64(b.count())
 			return ""
 
 		case "scan":

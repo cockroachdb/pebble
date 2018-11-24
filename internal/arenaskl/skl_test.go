@@ -79,7 +79,6 @@ func TestEmpty(t *testing.T) {
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
 	it := l.NewIter()
 
-	require.EqualValues(t, 0, l.Count())
 	require.False(t, it.Valid())
 
 	it.First()
@@ -100,7 +99,6 @@ func TestFull(t *testing.T) {
 		err := l.Add(makeIntKey(i), makeValue(i))
 		if err == ErrArenaFull {
 			foundArenaFull = true
-			require.EqualValues(t, i, l.Count())
 			break
 		}
 	}
@@ -120,7 +118,6 @@ func TestBasic(t *testing.T) {
 	l.Add(makeIkey("key1"), makeValue(1))
 	l.Add(makeIkey("key3"), makeValue(3))
 	l.Add(makeIkey("key2"), makeValue(2))
-	require.EqualValues(t, 3, l.Count())
 
 	it.SeekGE(makeKey("key"))
 	require.True(t, it.Valid())
@@ -275,7 +272,6 @@ func TestSkiplistAdd(t *testing.T) {
 
 	require.Equal(t, 5, length(l))
 	require.Equal(t, 5, lengthRev(l))
-	require.EqualValues(t, 5, l.Count())
 }
 
 // TestConcurrentAdd races between adding same nodes.
@@ -319,7 +315,6 @@ func TestConcurrentAdd(t *testing.T) {
 
 	require.Equal(t, n, length(l))
 	require.Equal(t, n, lengthRev(l))
-	require.EqualValues(t, n, l.Count())
 }
 
 // TestIteratorNext tests a basic iteration over all nodes from the beginning.

@@ -191,8 +191,13 @@ func TestBatchDeleteRange(t *testing.T) {
 
 	datadriven.RunTest(t, "testdata/batch_delete_range", func(td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "clear":
+			b = nil
+
 		case "define":
-			b = newIndexedBatch(nil, db.DefaultComparer)
+			if b == nil {
+				b = newIndexedBatch(nil, db.DefaultComparer)
+			}
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
@@ -305,11 +310,21 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 
 func TestFlushableBatchDeleteRange(t *testing.T) {
 	var fb *flushableBatch
+	var input string
 
 	datadriven.RunTest(t, "testdata/delete_range", func(td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "clear":
+			input = ""
+
 		case "define":
 			b := newBatch(nil)
+			// NB: We can't actually add to the flushable batch as we can to a
+			// memtable (which shares the "testdata/delete_range" data), so we fake
+			// it be concatenating the input and rebuilding the flushable batch from
+			// scratch.
+			input += "\n" + td.Input
+			td.Input = input
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}

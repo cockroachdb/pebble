@@ -17,10 +17,57 @@ scan range-del
 ----
 a#27,15:c
 
+clear
+----
+
 define
 del-range a b
 del-range b c
 del-range a c
+del-range b d
+----
+
+scan range-del
+----
+a#22,15:b
+a#12,15:b
+b#27,15:c
+b#22,15:c
+b#17,15:c
+c#27,15:d
+
+clear
+----
+
+define
+del-range a b
+----
+
+scan range-del
+----
+a#12,15:b
+
+define
+del-range b c
+----
+
+scan range-del
+----
+a#12,15:b
+b#17,15:c
+
+define
+del-range a c
+----
+
+scan range-del
+----
+a#22,15:b
+a#12,15:b
+b#22,15:c
+b#17,15:c
+
+define
 del-range b d
 ----
 
