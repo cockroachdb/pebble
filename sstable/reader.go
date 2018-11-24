@@ -138,7 +138,7 @@ func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
 	return true
 }
 
-// SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
+// SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *Iter) SeekGE(key []byte) {
 	if i.err != nil {
@@ -154,7 +154,7 @@ func (i *Iter) SeekGE(key []byte) {
 	}
 }
 
-// SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
+// SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
 func (i *Iter) SeekLT(key []byte) {
 	if i.err != nil {
@@ -190,7 +190,7 @@ func (i *Iter) SeekLT(key []byte) {
 	}
 }
 
-// First implements InternalIterator.First, as documented in the pebble/db
+// First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *Iter) First() {
 	if i.err != nil {
@@ -206,7 +206,7 @@ func (i *Iter) First() {
 	}
 }
 
-// Last implements InternalIterator.Last, as documented in the pebble/db
+// Last implements internalIterator.Last, as documented in the pebble
 // package.
 func (i *Iter) Last() {
 	if i.err != nil {
@@ -222,7 +222,7 @@ func (i *Iter) Last() {
 	}
 }
 
-// Next implements InternalIterator.Next, as documented in the pebble/db
+// Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *Iter) Next() bool {
 	if i.err != nil {
@@ -247,7 +247,7 @@ func (i *Iter) Next() bool {
 	return false
 }
 
-// Prev implements InternalIterator.Prev, as documented in the pebble/db
+// Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *Iter) Prev() bool {
 	if i.err != nil {
@@ -272,24 +272,24 @@ func (i *Iter) Prev() bool {
 	return false
 }
 
-// Key implements InternalIterator.Key, as documented in the pebble/db package.
+// Key implements internalIterator.Key, as documented in the pebble package.
 func (i *Iter) Key() db.InternalKey {
 	return i.data.Key()
 }
 
-// Value implements InternalIterator.Value, as documented in the pebble/db
+// Value implements internalIterator.Value, as documented in the pebble
 // package.
 func (i *Iter) Value() []byte {
 	return i.data.Value()
 }
 
-// Valid implements InternalIterator.Valid, as documented in the pebble/db
+// Valid implements internalIterator.Valid, as documented in the pebble
 // package.
 func (i *Iter) Valid() bool {
 	return i.data.Valid()
 }
 
-// Error implements InternalIterator.Error, as documented in the pebble/db
+// Error implements internalIterator.Error, as documented in the pebble
 // package.
 func (i *Iter) Error() error {
 	if err := i.data.Error(); err != nil {
@@ -304,7 +304,7 @@ func (i *Iter) SetCloseHook(fn func() error) {
 	i.closeHook = fn
 }
 
-// Close implements InternalIterator.Close, as documented in the pebble/db
+// Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *Iter) Close() error {
 	if i.closeHook != nil {
@@ -341,7 +341,7 @@ type Reader struct {
 	Properties  Properties
 }
 
-// Close implements DB.Close, as documented in the pebble/db package.
+// Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
 	if r.err != nil {
 		if r.file != nil {

@@ -106,7 +106,7 @@ func (i *rawBlockIter) cacheEntry() {
 	})
 }
 
-// SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
+// SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *rawBlockIter) SeekGE(key []byte) {
 	// Find the index of the smallest restart point whose key is > the key
@@ -141,20 +141,20 @@ func (i *rawBlockIter) SeekGE(key []byte) {
 	}
 }
 
-// SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
+// SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
 func (i *rawBlockIter) SeekLT(key []byte) {
 	panic("pebble/table: SeekLT unimplemented")
 }
 
-// First implements InternalIterator.First, as documented in the pebble/db
+// First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *rawBlockIter) First() {
 	i.offset = 0
 	i.loadEntry()
 }
 
-// Last implements InternalIterator.Last, as documented in the pebble/db package.
+// Last implements internalIterator.Last, as documented in the pebble package.
 func (i *rawBlockIter) Last() {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
@@ -172,7 +172,7 @@ func (i *rawBlockIter) Last() {
 	i.ikey.UserKey = i.key
 }
 
-// Next implements InternalIterator.Next, as documented in the pebble/db
+// Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *rawBlockIter) Next() bool {
 	i.offset = i.nextOffset
@@ -183,7 +183,7 @@ func (i *rawBlockIter) Next() bool {
 	return true
 }
 
-// Prev implements InternalIterator.Prev, as documented in the pebble/db
+// Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *rawBlockIter) Prev() bool {
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
@@ -226,12 +226,12 @@ func (i *rawBlockIter) Prev() bool {
 	return true
 }
 
-// Key implements InternalIterator.Key, as documented in the pebble/db package.
+// Key implements internalIterator.Key, as documented in the pebble package.
 func (i *rawBlockIter) Key() db.InternalKey {
 	return i.ikey
 }
 
-// Value implements InternalIterator.Value, as documented in the pebble/db
+// Value implements internalIterator.Value, as documented in the pebble
 // package.
 func (i *rawBlockIter) Value() []byte {
 	return i.val
@@ -244,19 +244,19 @@ func (i *rawBlockIter) valueOffset() uint64 {
 	return uint64(i.offset) + uint64(shared+unshared)
 }
 
-// Valid implements InternalIterator.Valid, as documented in the pebble/db
+// Valid implements internalIterator.Valid, as documented in the pebble
 // package.
 func (i *rawBlockIter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
-// Error implements InternalIterator.Error, as documented in the pebble/db
+// Error implements internalIterator.Error, as documented in the pebble
 // package.
 func (i *rawBlockIter) Error() error {
 	return i.err
 }
 
-// Close implements InternalIterator.Close, as documented in the pebble/db
+// Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *rawBlockIter) Close() error {
 	i.val = nil

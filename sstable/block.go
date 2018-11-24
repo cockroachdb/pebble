@@ -182,7 +182,7 @@ func (i *blockIter) cacheEntry() {
 	})
 }
 
-// SeekGE implements InternalIterator.SeekGE, as documented in the pebble/db
+// SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *blockIter) SeekGE(key []byte) {
 	ikey := db.MakeSearchKey(key)
@@ -236,7 +236,7 @@ func (i *blockIter) SeekGE(key []byte) {
 	}
 }
 
-// SeekLT implements InternalIterator.SeekLT, as documented in the pebble/db
+// SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
 func (i *blockIter) SeekLT(key []byte) {
 	ikey := db.MakeSearchKey(key)
@@ -310,14 +310,14 @@ func (i *blockIter) SeekLT(key []byte) {
 	}
 }
 
-// First implements InternalIterator.First, as documented in the pebble/db
+// First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *blockIter) First() {
 	i.offset = 0
 	i.loadEntry()
 }
 
-// Last implements InternalIterator.Last, as documented in the pebble/db package.
+// Last implements internalIterator.Last, as documented in the pebble package.
 func (i *blockIter) Last() {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
@@ -335,7 +335,7 @@ func (i *blockIter) Last() {
 	i.decodeInternalKey(i.key)
 }
 
-// Next implements InternalIterator.Next, as documented in the pebble/db
+// Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *blockIter) Next() bool {
 	i.offset = i.nextOffset
@@ -346,7 +346,7 @@ func (i *blockIter) Next() bool {
 	return true
 }
 
-// Prev implements InternalIterator.Prev, as documented in the pebble/db
+// Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *blockIter) Prev() bool {
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
@@ -407,30 +407,30 @@ func (i *blockIter) Prev() bool {
 	return true
 }
 
-// Key implements InternalIterator.Key, as documented in the pebble/db package.
+// Key implements internalIterator.Key, as documented in the pebble package.
 func (i *blockIter) Key() db.InternalKey {
 	return i.ikey
 }
 
-// Value implements InternalIterator.Value, as documented in the pebble/db
+// Value implements internalIterator.Value, as documented in the pebble
 // package.
 func (i *blockIter) Value() []byte {
 	return i.val
 }
 
-// Valid implements InternalIterator.Valid, as documented in the pebble/db
+// Valid implements internalIterator.Valid, as documented in the pebble
 // package.
 func (i *blockIter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
-// Error implements InternalIterator.Error, as documented in the pebble/db
+// Error implements internalIterator.Error, as documented in the pebble
 // package.
 func (i *blockIter) Error() error {
 	return i.err
 }
 
-// Close implements InternalIterator.Close, as documented in the pebble/db
+// Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *blockIter) Close() error {
 	i.val = nil

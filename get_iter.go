@@ -10,7 +10,7 @@ import (
 
 // getIter is an internal iterator used to perform gets. It iterates through
 // the values for a particular key, level by level. It is not a general purpose
-// InternalIterator, but specialized for Get operations so that it loads data
+// internalIterator, but specialized for Get operations so that it loads data
 // lazily.
 type getIter struct {
 	cmp       db.Compare

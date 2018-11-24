@@ -45,6 +45,67 @@ b-d#3
 b-d#1
 d-e#1
 
+get t=3
+a#3 a#2 a#1 a#0
+----
+alive alive deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+alive alive deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted
+
+
 # 3: a---e
 # 1:  b-d
 
@@ -55,6 +116,67 @@ a-b#3
 b-d#3
 b-d#1
 d-e#3
+
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive alive alive
+
+get t=1
+a#1 a#0
+----
+alive alive
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive alive alive
+
+get t=1
+d#1 d#0
+----
+alive alive
+
 
 # 3: a--d
 # 1:  b--e
@@ -67,6 +189,67 @@ b-d#3
 b-d#1
 d-e#1
 
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive alive alive
+
+get t=1
+a#1 a#0
+----
+alive alive
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+alive alive deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted
+
+
 # 3:  b--e
 # 1: a--d
 
@@ -78,6 +261,67 @@ b-d#3
 b-d#1
 d-e#3
 
+get t=3
+a#3 a#2 a#1 a#0
+----
+alive alive deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive alive alive
+
+get t=1
+d#1 d#0
+----
+alive alive
+
+
 # 3: a--d
 # 1: a---e
 
@@ -87,6 +331,67 @@ a-d#3,a-e#1
 a-d#3
 a-d#1
 d-e#1
+
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+alive alive deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted
+
 
 # 3: a---e
 # 1: a--d
@@ -98,6 +403,67 @@ a-d#3
 a-d#1
 d-e#3
 
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive alive alive
+
+get t=1
+d#1 d#0
+----
+alive alive
+
+
 # 3:  b--e
 # 1: a---e
 
@@ -107,6 +473,67 @@ a-e#1,b-e#3
 a-b#1
 b-e#3
 b-e#1
+
+get t=3
+a#3 a#2 a#1 a#0
+----
+alive alive deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted
+
 
 # 3: a---e
 # 1:  b--e
@@ -118,6 +545,67 @@ a-b#3
 b-e#3
 b-e#1
 
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive alive alive
+
+get t=1
+a#1 a#0
+----
+alive alive
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted
+
+
 # 3: a---e
 # 1: a---e
 
@@ -126,6 +614,67 @@ a-e#3,a-e#1
 ----
 a-e#3
 a-e#1
+
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted
+
 
 # 3:   c-e
 # 1: a-c
@@ -136,6 +685,67 @@ a-c#1,c-e#3
 a-c#1
 c-e#3
 
+get t=3
+a#3 a#2 a#1 a#0
+----
+alive alive deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+alive alive deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+deleted deleted deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive alive alive
+
+get t=1
+c#1 c#0
+----
+alive alive
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive alive alive
+
+get t=1
+d#1 d#0
+----
+alive alive
+
+
 # 3: a-c
 # 1:   c-e
 
@@ -144,6 +754,67 @@ a-c#3,c-e#1
 ----
 a-c#3
 c-e#1
+
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive alive alive
+
+get t=1
+a#1 a#0
+----
+alive alive
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive alive alive
+
+get t=1
+b#1 b#0
+----
+alive alive
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+alive alive deleted deleted
+
+get t=2
+c#2 c#1 c#0
+----
+alive deleted deleted
+
+get t=1
+c#1 c#0
+----
+deleted deleted
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+alive alive deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted
+
 
 # 3:    de
 # 1: a-c
@@ -154,6 +825,67 @@ a-c#1,d-e#3
 a-c#1
 d-e#3
 
+get t=3
+a#3 a#2 a#1 a#0
+----
+alive alive deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive deleted deleted
+
+get t=1
+a#1 a#0
+----
+deleted deleted
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+alive alive deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive deleted deleted
+
+get t=1
+b#1 b#0
+----
+deleted deleted
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+alive alive alive alive
+
+get t=2
+c#2 c#1 c#0
+----
+alive alive alive
+
+get t=1
+c#1 c#0
+----
+alive alive
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+deleted deleted deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive alive alive
+
+get t=1
+d#1 d#0
+----
+alive alive
+
+
 # 3: a-c
 # 1:    de
 
@@ -162,3 +894,63 @@ a-c#3,d-e#1
 ----
 a-c#3
 d-e#1
+
+get t=3
+a#3 a#2 a#1 a#0
+----
+deleted deleted deleted deleted
+
+get t=2
+a#2 a#1 a#0
+----
+alive alive alive
+
+get t=1
+a#1 a#0
+----
+alive alive
+
+get t=3
+b#3 b#2 b#1 b#0
+----
+deleted deleted deleted deleted
+
+get t=2
+b#2 b#1 b#0
+----
+alive alive alive
+
+get t=1
+b#1 b#0
+----
+alive alive
+
+get t=3
+c#3 c#2 c#1 c#0
+----
+alive alive alive alive
+
+get t=2
+c#2 c#1 c#0
+----
+alive alive alive
+
+get t=1
+c#1 c#0
+----
+alive alive
+
+get t=3
+d#3 d#2 d#1 d#0
+----
+alive alive deleted deleted
+
+get t=2
+d#2 d#1 d#0
+----
+alive deleted deleted
+
+get t=1
+d#1 d#0
+----
+deleted deleted

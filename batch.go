@@ -344,7 +344,7 @@ func (b *Batch) NewIter(o *db.IterOptions) db.Iterator {
 	return b.db.newIterInternal(b.newInternalIter(o), nil /* snapshot */, o)
 }
 
-// newInternalIter creates a new InternalIterator that iterates over the
+// newInternalIter creates a new internalIterator that iterates over the
 // contents of the batch.
 func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
 	if b.index == nil {
