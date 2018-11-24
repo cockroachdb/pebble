@@ -640,7 +640,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			return nil
 		}
 
-		// TODO(peter): Add tombstones.
+		// TODO(peter): Add tombstones. If the sstable is being finished due to
+		// size, we need to truncate the current set of tombstones.
 
 		if err := tw.Close(); err != nil {
 			tw = nil
@@ -663,6 +664,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		ikey := iter.Key()
+		// TODO(peter): Need to incorporate the range tombstones in the
+		// shouldStopBefore decision.
 		if tw != nil && c.shouldStopBefore(ikey) {
 			if err := finishOutput(); err != nil {
 				return nil, pendingOutputs, err
