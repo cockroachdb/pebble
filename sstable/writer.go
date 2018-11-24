@@ -225,19 +225,7 @@ func (w *Writer) flushPendingBH(key db.InternalKey) {
 // finishBlock finishes the current block and returns its block handle, which is
 // its offset and length in the table.
 func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
-	// Compress the buffer, discarding the result if the improvement
-	// isn't at least 12.5%.
-	b := block.finish()
-	blockType := byte(noCompressionBlockType)
-	if w.compression == db.SnappyCompression {
-		compressed := snappy.Encode(w.compressedBuf, b)
-		w.compressedBuf = compressed[:cap(compressed)]
-		if len(compressed) < len(b)-len(b)/8 {
-			blockType = snappyCompressionBlockType
-			b = compressed
-		}
-	}
-	bh, err := w.writeRawBlock(b, blockType)
+	bh, err := w.writeRawBlock(block.finish(), w.compression)
 
 	// Calculate filters.
 	if w.filter != nil {
@@ -249,7 +237,18 @@ func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 	return bh, err
 }
 
-func (w *Writer) writeRawBlock(b []byte, blockType byte) (blockHandle, error) {
+func (w *Writer) writeRawBlock(b []byte, compression db.Compression) (blockHandle, error) {
+	blockType := noCompressionBlockType
+	if compression == db.SnappyCompression {
+		// Compress the buffer, discarding the result if the improvement isn't at
+		// least 12.5%.
+		compressed := snappy.Encode(w.compressedBuf, b)
+		w.compressedBuf = compressed[:cap(compressed)]
+		if len(compressed) < len(b)-len(b)/8 {
+			blockType = snappyCompressionBlockType
+			b = compressed
+		}
+	}
 	w.tmp[0] = blockType
 
 	// Calculate the checksum.
@@ -322,7 +321,7 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		bh, err := w.writeRawBlock(b, noCompressionBlockType)
+		bh, err := w.writeRawBlock(b, db.NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -343,8 +342,7 @@ func (w *Writer) Close() (err error) {
 		w.meta.maybeUpdateLargest(w.compare, db.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue))
 
 		b := w.rangeDelBlock.finish()
-		// TODO(peter): Should the range-del block be compressed?
-		bh, err := w.writeRawBlock(b, noCompressionBlockType)
+		bh, err := w.writeRawBlock(b, w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -368,7 +366,7 @@ func (w *Writer) Close() (err error) {
 		// property.
 		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
 		w.props.save(&raw)
-		bh, err := w.writeRawBlock(raw.finish(), noCompressionBlockType)
+		bh, err := w.writeRawBlock(raw.finish(), db.NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
