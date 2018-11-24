@@ -384,7 +384,7 @@ func (d *DB) newIterInternal(
 
 		riter := mem.newRangeDelIter(o)
 		if riter != nil {
-			// TODO(peter): add range-del iterator to rangeTombstoneMap
+			// TODO(peter): add range-del-iter to rangeDelMap
 		}
 	}
 
@@ -404,7 +404,7 @@ func (d *DB) newIterInternal(
 			return dbi
 		}
 		if riter != nil {
-			// TODO(peter): add range-del-iter to rangeTombstoneMap
+			// TODO(peter): add range-del-iter to rangeDelMap
 		}
 	}
 
@@ -425,8 +425,8 @@ func (d *DB) newIterInternal(
 		}
 
 		li.init(o, d.cmp, d.newIter, current.files[level])
-		// TODO(peter): add rangeTombstoneMap to levelIter
-		// li.initRangeDel(d.newIter, rangeTombstoneMap)
+		// TODO(peter): add rangeDelMap to levelIter li.initRangeDel(d.newIter,
+		// rangeDelMap)
 		iters = append(iters, li)
 	}
 

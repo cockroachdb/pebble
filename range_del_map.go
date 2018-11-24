@@ -9,40 +9,40 @@ import (
 	"github.com/petermattis/pebble/internal/rangedel"
 )
 
-type rangeTombstoneLevel struct {
+type rangeDelLevel struct {
 	iter internalIterator
 	val  rangedel.Tombstone
 }
 
-func (l *rangeTombstoneLevel) init(iter internalIterator) {
+func (l *rangeDelLevel) init(iter internalIterator) {
 	l.iter = iter
 }
 
-// rangeTombstoneMap provides a merged view of the range tombstones from
+// rangeDelMap provides a merged view of the range tombstones from
 // multiple levels.
-type rangeTombstoneMap struct {
+type rangeDelMap struct {
 	// The sequence number at which reads are being performed. Tombstones that
 	// are newer than this sequence number are ignored.
 	seqNum uint64
-	levels []rangeTombstoneLevel
+	levels []rangeDelLevel
 }
 
 // ClearCache clears any cached tombstone information so that the next call to
 // Deleted or Get will have to repopulate the cache. This is useful when the
 // next call to Deleted or Get is expected to not hit the cache due to a Seek
-// being performed on the iterator using this rangeTombstoneMap.
-func (m *rangeTombstoneMap) ClearCache() {
+// being performed on the iterator using this rangeDelMap.
+func (m *rangeDelMap) ClearCache() {
 }
 
 // Deleted returns true if the specified key is covered by a newer range
 // tombstone.
-func (m *rangeTombstoneMap) Deleted(key db.InternalKey) bool {
+func (m *rangeDelMap) Deleted(key db.InternalKey) bool {
 	return m.Get(key).Start.SeqNum() >= key.SeqNum()
 }
 
 // Get the range tombstone at the specified key. A tombstone is always
 // returned, though it may cover an empty range of keys or the sequence number
 // may be 0 to indicate that no tombstone covers the specified key.
-func (m *rangeTombstoneMap) Get(key db.InternalKey) rangedel.Tombstone {
+func (m *rangeDelMap) Get(key db.InternalKey) rangedel.Tombstone {
 	return rangedel.Tombstone{}
 }
