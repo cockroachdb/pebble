@@ -136,9 +136,12 @@ func (f *Fragmenter) checkInvariants() {
 //   e---i
 //
 // This process continues until there are no more fragments to flush.
+//
+// WARNING: the slices backing start.UserKey and end are retained after this
+// method returns and should not be modified. This is safe for tombstones that
+// are added from a memtable or batch. It is not safe for a tombstone added
+// from an sstable where the range-del block has been prefix compressed.
 func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
-	// TODO(peter): Copy start.UserKey as it might not survive beyond this call.
-
 	if f.finished {
 		panic("pebble: Tombstone fragmenter already finished")
 	}
