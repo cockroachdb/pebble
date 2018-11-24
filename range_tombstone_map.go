@@ -4,18 +4,14 @@
 
 package pebble
 
-import "github.com/petermattis/pebble/db"
-
-// rangeTombstone ...
-type rangeTombstone struct {
-	Start  []byte
-	End    []byte
-	SeqNum uint64
-}
+import (
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/rangedel"
+)
 
 type rangeTombstoneLevel struct {
 	iter internalIterator
-	val  rangeTombstone
+	val  rangedel.Tombstone
 }
 
 func (l *rangeTombstoneLevel) init(iter internalIterator) {
@@ -41,12 +37,12 @@ func (m *rangeTombstoneMap) ClearCache() {
 // Deleted returns true if the specified key is covered by a newer range
 // tombstone.
 func (m *rangeTombstoneMap) Deleted(key db.InternalKey) bool {
-	return m.Get(key).SeqNum >= key.SeqNum()
+	return m.Get(key).Start.SeqNum() >= key.SeqNum()
 }
 
 // Get the range tombstone at the specified key. A tombstone is always
 // returned, though it may cover an empty range of keys or the sequence number
 // may be 0 to indicate that no tombstone covers the specified key.
-func (m *rangeTombstoneMap) Get(key db.InternalKey) rangeTombstone {
-	return rangeTombstone{}
+func (m *rangeTombstoneMap) Get(key db.InternalKey) rangedel.Tombstone {
+	return rangedel.Tombstone{}
 }
