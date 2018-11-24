@@ -15,6 +15,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/batchskl"
+	"github.com/petermattis/pebble/internal/rangedel"
 )
 
 const (
@@ -85,6 +86,11 @@ type Batch struct {
 	// An optional skiplist keyed by offset into data of the entry.
 	index         *batchskl.Skiplist
 	rangeDelIndex *batchskl.Skiplist
+
+	// Fragmented range deletion tombstones. Cached the first time a range
+	// deletion iterator is requested. The cache is invalidated whenever a new
+	// range deletion is added to the batch.
+	tombstones []rangedel.Tombstone
 
 	// The flushableBatch wrapper if the batch is too large to fit in the
 	// memtable.
@@ -323,6 +329,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 			// We never add duplicate entries, so an error should never occur.
 			panic(err)
 		}
+		b.tombstones = nil
 	}
 	b.memTableSize += memTableEntrySize(len(start), len(end))
 	return nil
@@ -358,20 +365,35 @@ func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
 }
 
 func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
-	// TODO(peter): This needs to return a fragmented tombstone iterator. The
-	// fragmented tombstones can be cached and the cache invalidated whenever a
-	// new range tombstone is added to the Batch.
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}
 	if b.rangeDelIndex == nil {
-		return newErrorIter(nil)
+		return nil
 	}
-	return &batchIter{
-		cmp:   b.cmp,
-		batch: b,
-		iter:  b.rangeDelIndex.NewIter(),
+
+	// Fragment the range tombstones the first time a range deletion iterator is
+	// requested. The cached tombstones are invalidated if another range deletion
+	// tombstone is added to the batch.
+	if b.tombstones == nil {
+		frag := &rangedel.Fragmenter{
+			Cmp: b.cmp,
+			Emit: func(fragmented []rangedel.Tombstone) {
+				b.tombstones = append(b.tombstones, fragmented...)
+			},
+		}
+		it := &batchIter{
+			cmp:   b.cmp,
+			batch: b,
+			iter:  b.rangeDelIndex.NewIter(),
+		}
+		for it.Next() {
+			frag.Add(it.Key(), it.Value())
+		}
+		frag.Finish()
 	}
+
+	return rangedel.NewIter(b.cmp, b.tombstones)
 }
 
 // Commit applies the batch to its parent writer.
@@ -613,6 +635,10 @@ type flushableBatch struct {
 	offsets         []flushableBatchEntry
 	rangeDelOffsets []flushableBatchEntry
 
+	// Fragmented range deletion tombstones. Created and cached the first time a
+	// range deletion iterator is requested.
+	tombstones []rangedel.Tombstone
+
 	flushedCh chan struct{}
 }
 
@@ -677,14 +703,32 @@ func (b *flushableBatch) newIter(o *db.IterOptions) internalIterator {
 }
 
 func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) internalIterator {
-	// TODO(peter): This needs to return a fragmented tombstone iterator. The
-	// fragmented tombstones can be created and cached on first access.
-	return &flushableBatchIter{
-		batch:   b,
-		offsets: b.rangeDelOffsets,
-		cmp:     b.cmp,
-		index:   -1,
+	if len(b.rangeDelOffsets) == 0 {
+		return nil
 	}
+
+	// Fragment the range tombstones the first time a range deletion iterator is
+	// requested.
+	if b.tombstones == nil {
+		frag := &rangedel.Fragmenter{
+			Cmp: b.cmp,
+			Emit: func(fragmented []rangedel.Tombstone) {
+				b.tombstones = append(b.tombstones, fragmented...)
+			},
+		}
+		it := &flushableBatchIter{
+			batch:   b,
+			offsets: b.rangeDelOffsets,
+			cmp:     b.cmp,
+			index:   -1,
+		}
+		for it.Next() {
+			frag.Add(it.Key(), it.Value())
+		}
+		frag.Finish()
+	}
+
+	return rangedel.NewIter(b.cmp, b.tombstones)
 }
 
 func (b *flushableBatch) flushed() chan struct{} {

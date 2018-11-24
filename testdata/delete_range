@@ -26,7 +26,9 @@ del-range b d
 
 scan range-del
 ----
-a#2,15:c
+a#2,15:b
 a#0,15:b
-b#3,15:d
+b#3,15:c
+b#2,15:c
 b#1,15:c
+c#3,15:d
