@@ -82,6 +82,13 @@ b.SET.2:c
 bounds:  [a#3,15,b#2,1]
 seqnums: [2,3]
 
+build
+a.RANGEDEL.3:c
+b.SET.2:c
+----
+bounds:  [a#3,15,c#72057594037927935,15]
+seqnums: [2,3]
+
 # Keys must be added in order.
 
 build
