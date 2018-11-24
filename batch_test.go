@@ -50,7 +50,7 @@ func TestBatch(t *testing.T) {
 	for _, tc := range testCases {
 		kind, k, v, ok := iter.next()
 		if !ok {
-			t.Fatalf("next returned !ok: test case = %q", tc)
+			t.Fatalf("next returned !ok: test case = %v", tc)
 		}
 		key, value := string(k), string(v)
 		if kind != tc.kind || key != tc.key || value != tc.value {

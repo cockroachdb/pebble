@@ -93,6 +93,22 @@ const (
 	InternalKeyRangeDeleteSentinel = (InternalKeySeqNumMax << 8) | InternalKeyKindRangeDelete
 )
 
+var internalKeyKindNames = []string{
+	InternalKeyKindDelete:      "DEL",
+	InternalKeyKindSet:         "SET",
+	InternalKeyKindMerge:       "MERGE",
+	InternalKeyKindRangeDelete: "RANGEDEL",
+	InternalKeyKindMax:         "MAX",
+	InternalKeyKindInvalid:     "INVALID",
+}
+
+func (k InternalKeyKind) String() string {
+	if int(k) < len(internalKeyKindNames) {
+		return internalKeyKindNames[k]
+	}
+	return fmt.Sprintf("UNKNOWN:%d", k)
+}
+
 // InternalKey is a key used for the in-memory and on-disk partial DBs that
 // make up a pebble DB.
 //
