@@ -65,7 +65,7 @@ type Writer struct {
 	file      storage.File
 	meta      WriterMetadata
 	err       error
-	// The next give fields are copied from a db.Options.
+	// The following fields are copied from db.Options.
 	blockSize          int
 	blockSizeThreshold int
 	bytesPerSync       int
@@ -151,6 +151,7 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 }
 
 func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
+	// TODO(peter): Check that tombstones are being added in fragmented order.
 	prevKey := db.DecodeInternalKey(w.rangeDelBlock.curKey)
 	if db.InternalCompare(w.compare, prevKey, key) >= 0 {
 		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q", prevKey, key)
