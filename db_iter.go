@@ -23,6 +23,7 @@ type dbIter struct {
 	cmp       db.Compare
 	merge     db.Merge
 	iter      internalIterator
+	rangeDels rangeDelMap
 	seqNum    uint64
 	version   *version
 	err       error

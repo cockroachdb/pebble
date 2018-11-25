@@ -13,14 +13,26 @@ import (
 // tableNewIter creates a new iterator for the given file number.
 type tableNewIter func(meta *fileMetadata) (internalIterator, error)
 
+// levelIter provides a merged view of the sstables in a level.
+//
+// TODO(peter): Level iteration needs to "pause" at sstable if a range deletion
+// tombstone is the cause of that boundary. We know if a range tombstone is the
+// smallest or largest key in a file because the kind will be
+// InternalKeyKindRangeDeletion. If the lower boundary is a range deletion
+// tombstone, we materialize a fake point deletion at that key and sequence
+// number. This is safe because the lower bounds of a range deletion tombstone
+// is inclusive so that key is already deleted at that sequence number. For the
+// upper bounds we return the range tombstone sentinel key. dbIter treats the
+// range tombstone sentinel as a no-op.
 type levelIter struct {
-	opts    *db.IterOptions
-	cmp     db.Compare
-	index   int
-	iter    internalIterator
-	newIter tableNewIter
-	files   []fileMetadata
-	err     error
+	opts     *db.IterOptions
+	cmp      db.Compare
+	index    int
+	iter     internalIterator
+	newIter  tableNewIter
+	rangeDel *rangeDelLevel
+	files    []fileMetadata
+	err      error
 }
 
 // levelIter implements the internalIterator interface.
@@ -42,6 +54,10 @@ func (l *levelIter) init(
 	l.index = -1
 	l.newIter = newIter
 	l.files = files
+}
+
+func (l *levelIter) initRangeDel(rangeDel *rangeDelLevel) {
+	l.rangeDel = rangeDel
 }
 
 func (l *levelIter) findFileGE(key []byte) int {
@@ -105,8 +121,20 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			}
 		}
 
+		// TODO(peter): If the table is entirely covered by a range deletion
+		// tombstone, skip it.
+
 		l.iter, l.err = l.newIter(f)
-		return l.err == nil && l.iter != nil
+		if l.err != nil || l.iter == nil {
+			return false
+		}
+		if l.rangeDel != nil {
+			if err := l.rangeDel.load(f); err != nil {
+				l.err = err
+				return false
+			}
+		}
+		return true
 	}
 }
 
@@ -146,6 +174,7 @@ func (l *levelIter) Next() bool {
 	if l.err != nil {
 		return false
 	}
+
 	if l.iter == nil {
 		if l.index == -1 && l.loadFile(0, 1) {
 			// The iterator was positioned off the beginning of the level. Position
@@ -155,9 +184,13 @@ func (l *levelIter) Next() bool {
 		}
 		return false
 	}
+
 	if l.iter.Next() {
 		return true
 	}
+
+	// TODO(peter): Determine if a boundary sentinel key needs to be returned.
+
 	// Current file was exhausted. Move to the next file.
 	if l.loadFile(l.index+1, 1) {
 		l.iter.First()
@@ -170,6 +203,7 @@ func (l *levelIter) Prev() bool {
 	if l.err != nil {
 		return false
 	}
+
 	if l.iter == nil {
 		if n := len(l.files); l.index == n && l.loadFile(n-1, -1) {
 			// The iterator was positioned off the end of the level. Position at the
@@ -179,9 +213,13 @@ func (l *levelIter) Prev() bool {
 		}
 		return false
 	}
+
 	if l.iter.Prev() {
 		return true
 	}
+
+	// TODO(peter): Determine if a boundary sentinel key needs to be returned.
+
 	// Current file was exhausted. Move to the previous file.
 	if l.loadFile(l.index-1, -1) {
 		l.iter.Last()

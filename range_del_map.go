@@ -9,22 +9,59 @@ import (
 	"github.com/petermattis/pebble/internal/rangedel"
 )
 
+// rangeDelLevel holds the state for a single level in rangeDelMap. Levels come
+// in two flavors: single-table levels and multi-table levels. Single table
+// labels are initialized with a range-del iterator when the rangeDelMap is
+// created. Multi-table levels are connected to levelIter and are lazily
+// populated as tables are loaded.
 type rangeDelLevel struct {
+	m    *rangeDelMap
 	iter internalIterator
-	val  rangedel.Tombstone
 }
 
 func (l *rangeDelLevel) init(iter internalIterator) {
 	l.iter = iter
 }
 
-// rangeDelMap provides a merged view of the range tombstones from
-// multiple levels.
+// load the range-del iterator for the specified table.
+func (l *rangeDelLevel) load(meta *fileMetadata) error {
+	var err error
+	l.iter, err = l.m.newIter(meta)
+	return err
+}
+
+// rangeDelMap provides a merged view of the range tombstones from multiple
+// levels. The map is composed of a series of levels, mirroring the levels in
+// the LSM tree, though L0 is exploded into a level per table, and each
+// memtable is on its own level.
 type rangeDelMap struct {
 	// The sequence number at which reads are being performed. Tombstones that
 	// are newer than this sequence number are ignored.
 	seqNum uint64
-	levels []rangeDelLevel
+	// The callback for creating new range-del iterators.
+	newIter tableNewIter
+	levels  []rangeDelLevel
+}
+
+func (m *rangeDelMap) init(seqNum uint64, newIter tableNewIter) {
+	m.seqNum = seqNum
+	m.newIter = newIter
+}
+
+func (m *rangeDelMap) addLevel(iter internalIterator) {
+	m.levels = append(m.levels, rangeDelLevel{
+		m:    m,
+		iter: iter,
+	})
+}
+
+func (m *rangeDelMap) addLevels(n int) []rangeDelLevel {
+	for i := 0; i < n; i++ {
+		m.levels = append(m.levels, rangeDelLevel{
+			m: m,
+		})
+	}
+	return m.levels[len(m.levels)-n:]
 }
 
 // ClearCache clears any cached tombstone information so that the next call to

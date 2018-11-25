@@ -358,10 +358,13 @@ func (d *DB) newIterInternal(
 	memtables := d.mu.mem.queue
 	d.mu.Unlock()
 
+	// Bundle various structures under a single umbrella in order to allocate
+	// them together.
 	var buf struct {
-		dbi    dbIter
-		iters  [3 + numLevels]internalIterator
-		levels [numLevels]levelIter
+		dbi            dbIter
+		iters          [3 + numLevels]internalIterator
+		levels         [numLevels]levelIter
+		rangeDelLevels [3 + numLevels]rangeDelLevel
 	}
 
 	dbi := &buf.dbi
@@ -369,6 +372,8 @@ func (d *DB) newIterInternal(
 	dbi.cmp = d.cmp
 	dbi.merge = d.merge
 	dbi.version = current
+	dbi.rangeDels.newIter = d.newRangeDelIter
+	dbi.rangeDels.levels = buf.rangeDelLevels[:0]
 
 	iters := buf.iters[:0]
 	if batchIter != nil {
@@ -384,7 +389,7 @@ func (d *DB) newIterInternal(
 
 		riter := mem.newRangeDelIter(o)
 		if riter != nil {
-			// TODO(peter): add range-del-iter to rangeDelMap
+			dbi.rangeDels.addLevel(riter)
 		}
 	}
 
@@ -404,12 +409,22 @@ func (d *DB) newIterInternal(
 			return dbi
 		}
 		if riter != nil {
-			// TODO(peter): add range-del-iter to rangeDelMap
+			dbi.rangeDels.addLevel(riter)
 		}
+	}
+
+	numNonEmptyLevels := 0
+	for level := 1; level < len(current.files); level++ {
+		n := len(current.files[level])
+		if n == 0 {
+			continue
+		}
+		numNonEmptyLevels++
 	}
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
+	rangeDelLevels := dbi.rangeDels.addLevels(numNonEmptyLevels)
 	for level := 1; level < len(current.files); level++ {
 		n := len(current.files[level])
 		if n == 0 {
@@ -425,8 +440,8 @@ func (d *DB) newIterInternal(
 		}
 
 		li.init(o, d.cmp, d.newIter, current.files[level])
-		// TODO(peter): add rangeDelMap to levelIter li.initRangeDel(d.newIter,
-		// rangeDelMap)
+		li.initRangeDel(&rangeDelLevels[0])
+		rangeDelLevels = rangeDelLevels[1:]
 		iters = append(iters, li)
 	}
 
