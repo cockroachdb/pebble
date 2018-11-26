@@ -44,7 +44,7 @@ func (h *mergingIterHeap) swap(i, j int) {
 	h.items[i], h.items[j] = h.items[j], h.items[i]
 }
 
-// init, up and down are copied from the go stdlib.
+// init, fix, up and down are copied from the go stdlib.
 func (h *mergingIterHeap) init() {
 	// heapify
 	n := h.len()
