@@ -177,4 +177,4 @@ func TestFragmenter(t *testing.T) {
 	})
 }
 
-// TODO(peter): Test Fragmenter.Deleted
+// TODO(peter,rangedel): Test Fragmenter.Deleted

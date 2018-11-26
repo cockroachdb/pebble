@@ -122,8 +122,8 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		if l.rangeDel != nil {
-			// TODO(peter): If the table is entirely covered by a range deletion
-			// tombstone, skip it.
+			// TODO(peter,rangedel): If the table is entirely covered by a range
+			// deletion tombstone, skip it.
 		}
 
 		l.iter, l.err = l.newIter(f)

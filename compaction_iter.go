@@ -213,8 +213,8 @@ func (i *compactionIter) Next() bool {
 			return true
 
 		case db.InternalKeyKindRangeDelete:
-			// TODO(peter): Copy i.key.UserKey as it might not survive the next
-			// iteration step.
+			// TODO(peter,rangedel): Copy i.key.UserKey as it might not survive the
+			// next iteration step.
 			i.rangeDelFrag.Add(i.key, i.iter.Value())
 			i.saveKey()
 			i.skipStripe()
@@ -288,8 +288,8 @@ func (i *compactionIter) nextInStripe() bool {
 		// Range tombstones are always added to the fragmenter. They are processed
 		// into stripes after fragmentation.
 		//
-		// TODO(peter): Copy i.key.UserKey as it might not survive the next
-		// iteration step.
+		// TODO(peter,rangedel): Copy i.key.UserKey as it might not survive the
+		// next iteration step.
 		i.rangeDelFrag.Add(key, i.iter.Value())
 		return true
 	case db.InternalKeyKindInvalid:
@@ -427,7 +427,7 @@ func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
 		if currentIdx == 0 {
 			// This is the last snapshot stripe.
 			//
-			// TODO(peter): Check to see whether the range tombstone can be
+			// TODO(peter,rangedel): Check to see whether the range tombstone can be
 			// elided. Need to add an elideRangeTombstone callback.
 			break
 		}

@@ -64,13 +64,6 @@ func (m *rangeDelMap) addLevels(n int) []rangeDelLevel {
 	return m.levels[len(m.levels)-n:]
 }
 
-// ClearCache clears any cached tombstone information so that the next call to
-// Deleted or Get will have to repopulate the cache. This is useful when the
-// next call to Deleted or Get is expected to not hit the cache due to a Seek
-// being performed on the iterator using this rangeDelMap.
-func (m *rangeDelMap) ClearCache() {
-}
-
 // Deleted returns true if the specified key is covered by a newer range
 // tombstone.
 func (m *rangeDelMap) Deleted(key db.InternalKey) bool {
@@ -81,5 +74,6 @@ func (m *rangeDelMap) Deleted(key db.InternalKey) bool {
 // returned, though it may cover an empty range of keys or the sequence number
 // may be 0 to indicate that no tombstone covers the specified key.
 func (m *rangeDelMap) Get(key db.InternalKey) rangedel.Tombstone {
+	// TODO(peter,rangedel): unimplemented.
 	return rangedel.Tombstone{}
 }

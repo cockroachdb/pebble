@@ -174,8 +174,8 @@ func (c *compaction) newInputIter(
 		}
 	}()
 
-	// TODO(peter): test that range tombstones are properly included in the
-	// output sstable.
+	// TODO(peter,rangedel): test that range tombstones are properly included in
+	// the output sstable.
 	if c.level != 0 {
 		iters = append(iters, newLevelIter(nil, c.cmp, newIter, c.inputs[0]))
 		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0]))
@@ -280,8 +280,8 @@ func (d *DB) flush1() error {
 		return nil
 	}
 
-	// TODO(peter): test that range tombstones are properly included in the
-	// output sstable. Should propbably pull out the code below into a method
+	// TODO(peter,rangedel): test that range tombstones are properly included in
+	// the output sstable. Should propbably pull out the code below into a method
 	// that can be separately tested.
 	var iter internalIterator
 	if n == 1 {
@@ -691,7 +691,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		ikey := iter.Key()
-		// TODO(peter): Need to incorporate the range tombstones in the
+		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
 		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(ikey)) {
 			if err := finishOutput(ikey.UserKey); err != nil {
