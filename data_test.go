@@ -12,7 +12,20 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
-func runInternalIterCmd(d *datadriven.TestData, iter internalIterator) string {
+type iterCmdOpt int
+
+const (
+	iterCmdVerboseKey iterCmdOpt = iota
+)
+
+func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...iterCmdOpt) string {
+	var verboseKey bool
+	for _, opt := range opts {
+		if opt == iterCmdVerboseKey {
+			verboseKey = true
+		}
+	}
+
 	var b bytes.Buffer
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)
@@ -42,7 +55,11 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator) string {
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
 		if iter.Valid() {
-			fmt.Fprintf(&b, "%s:%s\n", iter.Key().UserKey, iter.Value())
+			if verboseKey {
+				fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+			} else {
+				fmt.Fprintf(&b, "%s:%s\n", iter.Key().UserKey, iter.Value())
+			}
 		} else if err := iter.Error(); err != nil {
 			fmt.Fprintf(&b, "err=%v\n", err)
 		} else {

@@ -63,6 +63,12 @@ func (i *dbIter) findNextEntry() bool {
 			i.nextUserKey()
 			continue
 
+		case db.InternalKeyKindRangeDelete:
+			// Range deletions are treated as no-ops. See the comments in levelIter
+			// for more details.
+			i.iter.Next()
+			continue
+
 		case db.InternalKeyKindSet:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
@@ -134,6 +140,12 @@ func (i *dbIter) findPrevEntry() bool {
 		case db.InternalKeyKindDelete:
 			i.value = nil
 			i.valid = false
+			i.iter.Prev()
+			continue
+
+		case db.InternalKeyKindRangeDelete:
+			// Range deletions are treated as no-ops. See the comments in levelIter
+			// for more details.
 			i.iter.Prev()
 			continue
 
@@ -221,6 +233,11 @@ func (i *dbIter) mergeNext(key db.InternalKey) bool {
 			// point.
 			return true
 
+		case db.InternalKeyKindRangeDelete:
+			// Range deletions are treated as no-ops. See the comments in levelIter
+			// for more details.
+			continue
+
 		case db.InternalKeyKindSet:
 			// We've hit a Set value. Merge with the existing value and return.
 			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
@@ -231,6 +248,7 @@ func (i *dbIter) mergeNext(key db.InternalKey) bool {
 			// continue looping.
 			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
 			i.valueBuf = i.value[:0]
+			continue
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())

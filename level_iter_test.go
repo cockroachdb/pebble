@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
@@ -71,6 +73,101 @@ func TestLevelIter(t *testing.T) {
 			iter := newLevelIter(&opts, db.DefaultComparer.Compare, newIter, files)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
+
+		default:
+			t.Fatalf("unknown command: %s", d.Cmd)
+		}
+
+		return ""
+	})
+}
+
+func TestLevelIterBoundaries(t *testing.T) {
+	fs := storage.NewMem()
+	var readers []*sstable.Reader
+	var files []fileMetadata
+
+	newIter := func(meta *fileMetadata) (internalIterator, error) {
+		return readers[meta.fileNum].NewIter(nil), nil
+	}
+
+	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "clear":
+			fs = storage.NewMem()
+			readers = nil
+			files = nil
+
+		case "build":
+			fileNum := uint64(len(readers))
+			name := fmt.Sprint(fileNum)
+			f0, err := fs.Create(name)
+			if err != nil {
+				return err.Error()
+			}
+
+			w := sstable.NewWriter(f0, nil, db.LevelOptions{})
+			var tombstones []rangedel.Tombstone
+			f := rangedel.Fragmenter{
+				Cmp: db.DefaultComparer.Compare,
+				Emit: func(fragmented []rangedel.Tombstone) {
+					tombstones = append(tombstones, fragmented...)
+				},
+			}
+			for _, key := range strings.Split(d.Input, "\n") {
+				j := strings.Index(key, ":")
+				ikey := db.ParseInternalKey(key[:j])
+				value := []byte(key[j+1:])
+				switch ikey.Kind() {
+				case db.InternalKeyKindRangeDelete:
+					f.Add(ikey, value)
+				default:
+					if err := w.Add(ikey, value); err != nil {
+						return err.Error() + "\n"
+					}
+				}
+			}
+			f.Finish()
+			for _, v := range tombstones {
+				if err := w.Add(v.Start, v.End); err != nil {
+					return err.Error() + "\n"
+				}
+			}
+			if err := w.Close(); err != nil {
+				return err.Error()
+			}
+			meta, err := w.Metadata()
+			if err != nil {
+				return err.Error()
+			}
+
+			f1, err := fs.Open(name)
+			if err != nil {
+				return err.Error()
+			}
+			readers = append(readers, sstable.NewReader(f1, 0, nil))
+			files = append(files, fileMetadata{
+				fileNum:  fileNum,
+				largest:  meta.Largest,
+				smallest: meta.Smallest,
+			})
+
+			var buf bytes.Buffer
+			for _, f := range files {
+				fmt.Fprintf(&buf, "%d: %s-%s\n", f.fileNum, f.smallest, f.largest)
+			}
+			return buf.String()
+
+		case "iter":
+			iter := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)
+			defer iter.Close()
+			// Fake up the range deletion initialization.
+			iter.rangeDel = &rangeDelLevel{}
+			iter.rangeDel.m = &rangeDelMap{}
+			iter.rangeDel.m.newIter = func(*fileMetadata) (internalIterator, error) {
+				return nil, nil
+			}
+			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
 
 		default:
 			t.Fatalf("unknown command: %s", d.Cmd)

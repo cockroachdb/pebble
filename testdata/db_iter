@@ -213,11 +213,17 @@ a:b
 a:b
 
 
+# NB: RANGEDEL entries are ignored.
 define
+a.RANGEDEL.4:c
 a.MERGE.3:b
+a.RANGEDEL.2:c
 a.MERGE.2:c
+a.RANGEDEL.1:c
 a.SET.1:d
+b.RANGEDEL.3:c
 b.MERGE.2:a
+b.RANGEDEL.1:c
 b.MERGE.1:b
 ----
 
@@ -425,5 +431,23 @@ iter seq=2 lower=b upper=c
 seek-ge a
 next
 ----
+b:b
+.
+
+# NB: RANGEDEL entries are ignored.
+define
+a.RANGEDEL.2:c
+a.SET.1:a
+b.RANGEDEL.3:d
+b.SET.2:b
+b.RANGEDEL.1:d
+----
+
+iter seq=4
+first
+next
+next
+----
+a:a
 b:b
 .
