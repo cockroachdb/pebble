@@ -41,7 +41,7 @@ Key differences:
 - Iterator includes mutator functions.
 */
 
-package arenaskl
+package arenaskl // import "github.com/petermattis/pebble/internal/arenaskl"
 
 import (
 	"errors"

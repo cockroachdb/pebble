@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package ptable
+package ptable // import "github.com/petermattis/pebble/ptable"
 
 // The ptable file format is similar to the sstable format except that data
 // blocks are formatted differently.
