@@ -190,12 +190,22 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 
 	for iter := batchReader(b.data[offset:]); len(iter) > 0; {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
-		_, key, value, ok := iter.next()
+		kind, key, value, ok := iter.next()
 		if !ok {
 			break
 		}
 		if b.index != nil {
-			if err := b.index.Add(uint32(offset)); err != nil {
+			var err error
+			if kind == db.InternalKeyKindRangeDelete {
+				if b.rangeDelIndex == nil {
+					b.rangeDelIndex = batchskl.NewSkiplist(&b.batchStorage, 0)
+				}
+				err = b.rangeDelIndex.Add(uint32(offset))
+			} else {
+				err = b.index.Add(uint32(offset))
+			}
+			if err != nil {
+				// We never add duplicate entries, so an error should never occur.
 				panic(err)
 			}
 		}
@@ -209,29 +219,11 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 //
 // The caller should not modify the contents of the returned slice, but
 // it is safe to modify the contents of the argument after Get returns.
-//
-// TODO(peter,rangedel): This doesn't properly handle merges or range
-// deletions. It really needs to call into DB.getInternal.
 func (b *Batch) Get(key []byte) (value []byte, err error) {
 	if b.index == nil {
 		return nil, ErrNotIndexed
 	}
-	// Loop over the entries with keys >= the target key. The indexing of the
-	// entries returns equal keys in reverse order of insertion. That is, the
-	// last key added will be seen firsi.
-	iter := b.index.NewIter()
-	iter.SeekGE(key)
-	if iter.Valid() {
-		_, ekey, value, ok := b.decode(iter.KeyOffset())
-		if !ok {
-			return nil, fmt.Errorf("corrupted batch")
-		}
-		if b.cmp(key, ekey) <= 0 {
-			// Invariant: b.cmp(key, ekey) == 0.
-			return value, nil
-		}
-	}
-	return nil, db.ErrNotFound
+	return b.db.getInternal(key, b, nil /* snapshot */)
 }
 
 // Set adds an action to the batch that sets the key to map to the value.

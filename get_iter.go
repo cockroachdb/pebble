@@ -21,6 +21,7 @@ type getIter struct {
 	rangeDelIter    internalIterator
 	levelIter       levelIter
 	level           int
+	batch           *Batch
 	mem             []flushable
 	l0              []fileMetadata
 	version         *version
@@ -65,6 +66,15 @@ func (g *getIter) Next() bool {
 			if g.err != nil {
 				return false
 			}
+		}
+
+		// Create an iterator from the batch.
+		if g.batch != nil {
+			g.iter = g.batch.newInternalIter(nil)
+			g.rangeDelIter = g.batch.newRangeDelIter(nil)
+			g.batch = nil
+			g.iter.SeekGE(g.key)
+			continue
 		}
 
 		// Create iterators from memtables from newest to oldest.

@@ -196,10 +196,10 @@ var _ Writer = (*DB)(nil)
 // The caller should not modify the contents of the returned slice, but it is
 // safe to modify the contents of the argument after Get returns.
 func (d *DB) Get(key []byte) ([]byte, error) {
-	return d.getInternal(key, nil /* snapshot */)
+	return d.getInternal(key, nil /* batch */, nil /* snapshot */)
 }
 
-func (d *DB) getInternal(key []byte, s *Snapshot) ([]byte, error) {
+func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	var seqNum uint64
 	d.mu.Lock()
 	if s != nil {
@@ -225,6 +225,7 @@ func (d *DB) getInternal(key []byte, s *Snapshot) ([]byte, error) {
 	get.newIter = d.newIter
 	get.newRangeDelIter = d.newRangeDelIter
 	get.key = key
+	get.batch = b
 	get.mem = memtables
 	get.l0 = current.files[0]
 	get.version = current

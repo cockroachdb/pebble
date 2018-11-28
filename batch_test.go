@@ -14,6 +14,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/storage"
 )
 
 func TestBatch(t *testing.T) {
@@ -111,6 +112,17 @@ func TestBatchIncrement(t *testing.T) {
 }
 
 func TestBatchGet(t *testing.T) {
+	// TODO(peter): This needs more thorough testing. Convert to a data driven
+	// test.
+
+	d, err := Open("", &db.Options{
+		Storage: storage.NewMem(),
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer d.Close()
+
 	testCases := []struct {
 		key      []byte
 		value    []byte
@@ -122,7 +134,7 @@ func TestBatchGet(t *testing.T) {
 		{[]byte("a"), []byte("d"), []byte("d")},
 	}
 
-	b := newIndexedBatch(nil, db.DefaultComparer)
+	b := d.NewIndexedBatch()
 	for i, c := range testCases {
 		if c.value == nil {
 			b.Delete(c.key, nil)
@@ -130,7 +142,11 @@ func TestBatchGet(t *testing.T) {
 			b.Set(c.key, c.value, nil)
 		}
 		v, err := b.Get(c.key)
-		if err != nil {
+		if err == nil {
+			if c.expected == nil {
+				t.Fatalf("%d: %s: %v", i, c.key, err)
+			}
+		} else if c.expected != nil {
 			t.Fatalf("%d: %s: %v", i, c.key, err)
 		}
 		if c.expected == nil && v != nil {

@@ -27,7 +27,7 @@ var _ Reader = (*Snapshot)(nil)
 // The caller should not modify the contents of the returned slice, but it is
 // safe to modify the contents of the argument after Get returns.
 func (s *Snapshot) Get(key []byte) ([]byte, error) {
-	return s.db.getInternal(key, s)
+	return s.db.getInternal(key, nil /* batch */, s)
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
