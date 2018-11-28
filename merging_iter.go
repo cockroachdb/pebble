@@ -12,8 +12,8 @@ import (
 )
 
 type mergingIterItem struct {
-	iter internalIterator
-	key  db.InternalKey
+	index int
+	key   db.InternalKey
 }
 
 type mergingIterHeap struct {
@@ -132,11 +132,11 @@ func (m *mergingIter) init(cmp db.Compare, iters ...internalIterator) {
 
 func (m *mergingIter) initHeap() {
 	m.heap.items = m.heap.items[:0]
-	for _, t := range m.iters {
+	for i, t := range m.iters {
 		if t.Valid() {
 			m.heap.items = append(m.heap.items, mergingIterItem{
-				iter: t,
-				key:  t.Key(),
+				index: i,
+				key:   t.Key(),
 			})
 		}
 	}
@@ -172,7 +172,7 @@ func (m *mergingIter) switchToMinHeap() {
 	// iteration, we want to return a key that is greater than a:2.
 
 	key := m.heap.items[0].key
-	cur := m.heap.items[0].iter
+	cur := m.iters[m.heap.items[0].index]
 
 	for _, i := range m.iters {
 		if i == cur {
@@ -212,7 +212,7 @@ func (m *mergingIter) switchToMaxHeap() {
 	// The current key is b:2 and i2 is pointing at b:1. When we switch to
 	// reverse iteration, we want to return a key that is less than b:2.
 	key := m.heap.items[0].key
-	cur := m.heap.items[0].iter
+	cur := m.iters[m.heap.items[0].index]
 
 	for _, i := range m.iters {
 		if i == cur {
@@ -279,13 +279,14 @@ func (m *mergingIter) Next() bool {
 	}
 
 	item := &m.heap.items[0]
-	if item.iter.Next() {
-		item.key = item.iter.Key()
+	iter := m.iters[item.index]
+	if iter.Next() {
+		item.key = iter.Key()
 		m.heap.fix(0)
 		return true
 	}
 
-	m.err = item.iter.Error()
+	m.err = iter.Error()
 	if m.err != nil {
 		return false
 	}
@@ -309,13 +310,14 @@ func (m *mergingIter) Prev() bool {
 	}
 
 	item := &m.heap.items[0]
-	if item.iter.Prev() {
-		item.key = item.iter.Key()
+	iter := m.iters[item.index]
+	if iter.Prev() {
+		item.key = iter.Key()
 		m.heap.fix(0)
 		return true
 	}
 
-	m.err = item.iter.Error()
+	m.err = iter.Error()
 	if m.err != nil {
 		return false
 	}
@@ -335,7 +337,7 @@ func (m *mergingIter) Value() []byte {
 	if m.heap.len() == 0 || m.err != nil {
 		return nil
 	}
-	return m.heap.items[0].iter.Value()
+	return m.iters[m.heap.items[0].index].Value()
 }
 
 func (m *mergingIter) Valid() bool {
@@ -349,7 +351,7 @@ func (m *mergingIter) Error() error {
 	if m.heap.len() == 0 || m.err != nil {
 		return m.err
 	}
-	return m.heap.items[0].iter.Error()
+	return m.iters[m.heap.items[0].index].Error()
 }
 
 func (m *mergingIter) Close() error {
