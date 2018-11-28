@@ -388,6 +388,7 @@ func (d *DB) newIterInternal(
 	var buf struct {
 		dbi            dbIter
 		merging        mergingIter
+		rangeDels      rangeDelMap
 		iters          [3 + numLevels]internalIterator
 		levels         [numLevels]levelIter
 		rangeDelLevels [3 + numLevels]rangeDelLevel
@@ -398,8 +399,11 @@ func (d *DB) newIterInternal(
 	dbi.cmp = d.cmp
 	dbi.merge = d.merge
 	dbi.version = current
-	dbi.rangeDels.newIter = d.newRangeDelIter
-	dbi.rangeDels.levels = buf.rangeDelLevels[:0]
+
+	rangeDels := &buf.rangeDels
+	rangeDels.newIter = d.newRangeDelIter
+	rangeDels.levels = buf.rangeDelLevels[:0]
+	buf.merging.rangeDels = rangeDels
 
 	iters := buf.iters[:0]
 	if batchIter != nil {
@@ -412,11 +416,7 @@ func (d *DB) newIterInternal(
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
 		iters = append(iters, mem.newIter(o))
-
-		riter := mem.newRangeDelIter(o)
-		if riter != nil {
-			dbi.rangeDels.addLevel(riter)
-		}
+		rangeDels.addLevel(mem.newRangeDelIter(o))
 	}
 
 	// The level 0 files need to be added from newest to oldest.
@@ -434,9 +434,7 @@ func (d *DB) newIterInternal(
 			dbi.err = err
 			return dbi
 		}
-		if riter != nil {
-			dbi.rangeDels.addLevel(riter)
-		}
+		rangeDels.addLevel(riter)
 	}
 
 	numNonEmptyLevels := 0
@@ -450,7 +448,7 @@ func (d *DB) newIterInternal(
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
-	rangeDelLevels := dbi.rangeDels.addLevels(numNonEmptyLevels)
+	rangeDelLevels := rangeDels.addLevels(numNonEmptyLevels)
 	for level := 1; level < len(current.files); level++ {
 		n := len(current.files[level])
 		if n == 0 {

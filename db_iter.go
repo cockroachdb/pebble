@@ -23,7 +23,6 @@ type dbIter struct {
 	cmp       db.Compare
 	merge     db.Merge
 	iter      internalIterator
-	rangeDels rangeDelMap
 	seqNum    uint64
 	version   *version
 	err       error
@@ -70,7 +69,6 @@ func (i *dbIter) findNextEntry() bool {
 			continue
 
 		case db.InternalKeyKindSet:
-			// TODO(peter,rangedel): check rangeDelMap.
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iter.Value()
@@ -78,7 +76,6 @@ func (i *dbIter) findNextEntry() bool {
 			return true
 
 		case db.InternalKeyKindMerge:
-			// TODO(peter,rangedel): check rangeDelMap.
 			return i.mergeNext(key)
 
 		default:
@@ -152,7 +149,6 @@ func (i *dbIter) findPrevEntry() bool {
 			continue
 
 		case db.InternalKeyKindSet:
-			// TODO(peter,rangedel): check rangeDelMap.
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iter.Value()
@@ -161,7 +157,6 @@ func (i *dbIter) findPrevEntry() bool {
 			continue
 
 		case db.InternalKeyKindMerge:
-			// TODO(peter,rangedel): check rangeDelMap.
 			if !i.valid {
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
@@ -244,16 +239,12 @@ func (i *dbIter) mergeNext(key db.InternalKey) bool {
 
 		case db.InternalKeyKindSet:
 			// We've hit a Set value. Merge with the existing value and return.
-			//
-			// TODO(peter,rangedel): check rangeDelMap.
 			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
 			return true
 
 		case db.InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			//
-			// TODO(peter,rangedel): check rangeDelMap.
 			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
 			i.valueBuf = i.value[:0]
 			continue

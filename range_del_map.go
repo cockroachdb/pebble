@@ -4,11 +4,6 @@
 
 package pebble
 
-import (
-	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/internal/rangedel"
-)
-
 // rangeDelLevel holds the state for a single level in rangeDelMap. Levels come
 // in two flavors: single-table levels and multi-table levels. Single table
 // labels are initialized with a range-del iterator when the rangeDelMap is
@@ -25,6 +20,12 @@ func (l *rangeDelLevel) init(iter internalIterator) {
 
 // load the range-del iterator for the specified table.
 func (l *rangeDelLevel) load(meta *fileMetadata) error {
+	if l.iter != nil {
+		if err := l.iter.Close(); err != nil {
+			return err
+		}
+	}
+
 	var err error
 	l.iter, err = l.m.newIter(meta)
 	return err
@@ -64,16 +65,14 @@ func (m *rangeDelMap) addLevels(n int) []rangeDelLevel {
 	return m.levels[len(m.levels)-n:]
 }
 
-// Deleted returns true if the specified key is covered by a newer range
-// tombstone.
-func (m *rangeDelMap) Deleted(key db.InternalKey) bool {
-	return m.Get(key).Start.SeqNum() >= key.SeqNum()
-}
-
-// Get the range tombstone at the specified key. A tombstone is always
-// returned, though it may cover an empty range of keys or the sequence number
-// may be 0 to indicate that no tombstone covers the specified key.
-func (m *rangeDelMap) Get(key db.InternalKey) rangedel.Tombstone {
-	// TODO(peter,rangedel): unimplemented.
-	return rangedel.Tombstone{}
+func (m *rangeDelMap) Close() error {
+	var err error
+	for i := range m.levels {
+		if m.levels[i].iter != nil {
+			if err1 := m.levels[i].iter.Close(); err1 != nil && err == nil {
+				err = err1
+			}
+		}
+	}
+	return err
 }
