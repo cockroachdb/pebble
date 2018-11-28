@@ -112,48 +112,61 @@ func TestBatchIncrement(t *testing.T) {
 }
 
 func TestBatchGet(t *testing.T) {
-	// TODO(peter): This needs more thorough testing. Convert to a data driven
-	// test.
-
-	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
-	})
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer d.Close()
-
-	testCases := []struct {
-		key      []byte
-		value    []byte
-		expected []byte
-	}{
-		{[]byte("a"), []byte("b"), []byte("b")},
-		{[]byte("a"), []byte("c"), []byte("c")},
-		{[]byte("a"), nil, nil},
-		{[]byte("a"), []byte("d"), []byte("d")},
-	}
-
-	b := d.NewIndexedBatch()
-	for i, c := range testCases {
-		if c.value == nil {
-			b.Delete(c.key, nil)
-		} else {
-			b.Set(c.key, c.value, nil)
-		}
-		v, err := b.Get(c.key)
-		if err == nil {
-			if c.expected == nil {
-				t.Fatalf("%d: %s: %v", i, c.key, err)
+	for _, method := range []string{"build", "apply"} {
+		t.Run(method, func(t *testing.T) {
+			d, err := Open("", &db.Options{
+				Storage: storage.NewMem(),
+			})
+			if err != nil {
+				t.Fatalf("Open: %v", err)
 			}
-		} else if c.expected != nil {
-			t.Fatalf("%d: %s: %v", i, c.key, err)
-		}
-		if c.expected == nil && v != nil {
-			t.Fatalf("unexpected value: %q", v)
-		} else if string(c.expected) != string(v) {
-			t.Fatalf("expected %q, but found %q", c.expected, v)
-		}
+			defer d.Close()
+			var b *Batch
+
+			datadriven.RunTest(t, "testdata/batch_get", func(td *datadriven.TestData) string {
+				switch td.Cmd {
+				case "define":
+					switch method {
+					case "build":
+						b = d.NewIndexedBatch()
+					case "apply":
+						b = d.NewBatch()
+					}
+
+					if err := runBatchDefineCmd(td, b); err != nil {
+						return err.Error()
+					}
+
+					switch method {
+					case "apply":
+						tmp := d.NewIndexedBatch()
+						tmp.Apply(b, nil)
+						b = tmp
+					}
+
+				case "commit":
+					if err := b.Commit(nil); err != nil {
+						return err.Error()
+					}
+					return ""
+
+				case "get":
+					if len(td.CmdArgs) != 1 {
+						return fmt.Sprintf("%s expects 1 argument", td.Cmd)
+					}
+					v, err := b.Get([]byte(td.CmdArgs[0].String()))
+					if err != nil {
+						return err.Error() + "\n"
+					}
+					return string(v) + "\n"
+
+				default:
+					t.Fatalf("unknown command: %s", td.Cmd)
+				}
+
+				return ""
+			})
+		})
 	}
 }
 
@@ -222,7 +235,7 @@ func TestBatchDeleteRange(t *testing.T) {
 		case "scan":
 			var iter internalIterator
 			if len(td.CmdArgs) > 1 {
-				t.Fatalf("%s expects at most 1 argument", td.Cmd)
+				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].String() != "range-del" {

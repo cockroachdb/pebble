@@ -1,0 +1,74 @@
+define
+set a 1
+----
+
+get a
+----
+1
+
+get b
+----
+pebble/db: not found
+
+define
+set a 1
+set a 2
+----
+
+get a
+----
+2
+
+define
+set a 1
+set a 2
+del a
+----
+
+get a
+----
+pebble/db: not found
+
+define
+set a 1
+set a 2
+del a
+set a 3
+----
+
+get a
+----
+3
+
+define
+merge a 1
+merge a 2
+merge a 3
+----
+
+get a
+----
+321
+
+commit
+----
+
+define
+merge a 4
+----
+
+get a
+----
+4321
+
+commit
+----
+
+define
+del a
+set a 5
+----
+
+get a
+----
+5
