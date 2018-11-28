@@ -387,6 +387,7 @@ func (d *DB) newIterInternal(
 	// them together.
 	var buf struct {
 		dbi            dbIter
+		merging        mergingIter
 		iters          [3 + numLevels]internalIterator
 		levels         [numLevels]levelIter
 		rangeDelLevels [3 + numLevels]rangeDelLevel
@@ -470,7 +471,8 @@ func (d *DB) newIterInternal(
 		iters = append(iters, li)
 	}
 
-	dbi.iter = newMergingIter(d.cmp, iters...)
+	buf.merging.init(d.cmp, iters...)
+	dbi.iter = &buf.merging
 	dbi.seqNum = seqNum
 	return dbi
 }

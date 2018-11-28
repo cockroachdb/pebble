@@ -118,13 +118,16 @@ var _ internalIterator = (*mergingIter)(nil)
 //
 // None of the iters may be nil.
 func newMergingIter(cmp db.Compare, iters ...internalIterator) internalIterator {
-	m := &mergingIter{
-		iters: iters,
-	}
+	m := &mergingIter{}
+	m.init(cmp, iters...)
+	return m
+}
+
+func (m *mergingIter) init(cmp db.Compare, iters ...internalIterator) {
+	m.iters = iters
 	m.heap.cmp = cmp
 	m.heap.items = make([]mergingIterItem, 0, len(iters))
 	m.initMinHeap()
-	return m
 }
 
 func (m *mergingIter) initHeap() {
