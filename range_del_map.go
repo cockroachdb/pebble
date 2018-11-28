@@ -10,25 +10,11 @@ package pebble
 // created. Multi-table levels are connected to levelIter and are lazily
 // populated as tables are loaded.
 type rangeDelLevel struct {
-	m    *rangeDelMap
 	iter internalIterator
 }
 
 func (l *rangeDelLevel) init(iter internalIterator) {
 	l.iter = iter
-}
-
-// load the range-del iterator for the specified table.
-func (l *rangeDelLevel) load(meta *fileMetadata) error {
-	if l.iter != nil {
-		if err := l.iter.Close(); err != nil {
-			return err
-		}
-	}
-
-	var err error
-	l.iter, err = l.m.newIter(meta)
-	return err
 }
 
 // rangeDelMap provides a merged view of the range tombstones from multiple
@@ -39,28 +25,22 @@ type rangeDelMap struct {
 	// The sequence number at which reads are being performed. Tombstones that
 	// are newer than this sequence number are ignored.
 	seqNum uint64
-	// The callback for creating new range-del iterators.
-	newIter tableNewIter
-	levels  []rangeDelLevel
+	levels []rangeDelLevel
 }
 
-func (m *rangeDelMap) init(seqNum uint64, newIter tableNewIter) {
+func (m *rangeDelMap) init(seqNum uint64) {
 	m.seqNum = seqNum
-	m.newIter = newIter
 }
 
 func (m *rangeDelMap) addLevel(iter internalIterator) {
 	m.levels = append(m.levels, rangeDelLevel{
-		m:    m,
 		iter: iter,
 	})
 }
 
 func (m *rangeDelMap) addLevels(n int) []rangeDelLevel {
 	for i := 0; i < n; i++ {
-		m.levels = append(m.levels, rangeDelLevel{
-			m: m,
-		})
+		m.levels = append(m.levels, rangeDelLevel{})
 	}
 	return m.levels[len(m.levels)-n:]
 }

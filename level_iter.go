@@ -33,12 +33,13 @@ type levelIter struct {
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone. Note that if boundary != nil, then
 	// iter == nil, and if iter != nil, then boundary == nil.
-	boundary *db.InternalKey
-	iter     internalIterator
-	newIter  tableNewIter
-	rangeDel *rangeDelLevel
-	files    []fileMetadata
-	err      error
+	boundary        *db.InternalKey
+	iter            internalIterator
+	newIter         tableNewIter
+	newRangeDelIter tableNewIter
+	rangeDel        *rangeDelLevel
+	files           []fileMetadata
+	err             error
 }
 
 // levelIter implements the internalIterator interface.
@@ -62,7 +63,8 @@ func (l *levelIter) init(
 	l.files = files
 }
 
-func (l *levelIter) initRangeDel(rangeDel *rangeDelLevel) {
+func (l *levelIter) initRangeDel(newRangeDelIter tableNewIter, rangeDel *rangeDelLevel) {
+	l.newRangeDelIter = newRangeDelIter
 	l.rangeDel = rangeDel
 }
 
@@ -131,10 +133,12 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			return false
 		}
 		if l.rangeDel != nil {
-			if err := l.rangeDel.load(f); err != nil {
+			iter, err := l.newRangeDelIter(f)
+			if err != nil {
 				l.err = err
 				return false
 			}
+			l.rangeDel.init(iter)
 		}
 		return true
 	}

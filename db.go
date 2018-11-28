@@ -401,7 +401,6 @@ func (d *DB) newIterInternal(
 	dbi.version = current
 
 	rangeDels := &buf.rangeDels
-	rangeDels.newIter = d.newRangeDelIter
 	rangeDels.levels = buf.rangeDelLevels[:0]
 	buf.merging.rangeDels = rangeDels
 
@@ -464,7 +463,7 @@ func (d *DB) newIterInternal(
 		}
 
 		li.init(o, d.cmp, d.newIter, current.files[level])
-		li.initRangeDel(&rangeDelLevels[0])
+		li.initRangeDel(d.newRangeDelIter, &rangeDelLevels[0])
 		rangeDelLevels = rangeDelLevels[1:]
 		iters = append(iters, li)
 	}

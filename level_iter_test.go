@@ -163,8 +163,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.rangeDel = &rangeDelLevel{}
-			iter.rangeDel.m = &rangeDelMap{}
-			iter.rangeDel.m.newIter = func(*fileMetadata) (internalIterator, error) {
+			iter.newRangeDelIter = func(*fileMetadata) (internalIterator, error) {
 				return nil, nil
 			}
 			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
