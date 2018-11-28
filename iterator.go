@@ -2,41 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// Package db defines the interfaces for a key/value store.
-//
-// A DB's basic operations (Get, Set, Delete) should be self-explanatory. Get
-// and Delete will return ErrNotFound if the requested key is not in the store.
-// Callers are free to ignore this error.
-//
-// A DB also allows for iterating over the key/value pairs in key order. If d
-// is a DB, the code below prints all key/value pairs whose keys are 'greater
-// than or equal to' k:
-//
-//	iter := d.NewIter(readOptions)
-//	for iter.SeekGE(k); iter.Valid(); iter.Next() {
-//		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
-//	}
-//	return iter.Close()
-//
-// Other pebble packages provide implementations of these interfaces. The
-// Options struct in this package holds the optional parameters for these
-// implementations, including a Comparer to define a 'less than' relationship
-// over keys. It is always valid to pass a nil *Options, which means to use the
-// default parameter values. Any zero field of a non-nil *Options also means to
-// use the default value for that parameter. Thus, the code below uses a custom
-// Comparer, but the default values for every other parameter:
-//
-//	db := pebble.NewMemTable(&db.Options{
-//		Comparer: myComparer,
-//	})
-package db // import "github.com/petermattis/pebble/db"
-
-import (
-	"errors"
-)
-
-// ErrNotFound means that a get or delete call did not find the requested key.
-var ErrNotFound = errors.New("pebble/db: not found")
+package pebble
 
 // Iterator iterates over a DB's key/value pairs in key order.
 //

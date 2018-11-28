@@ -101,7 +101,7 @@ func TestSnapshot(t *testing.T) {
 			}
 
 		case "iter":
-			var iter db.Iterator
+			var iter Iterator
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].Key != "snapshot" {
 					t.Fatalf("unknown argument: %s", td.CmdArgs[0])

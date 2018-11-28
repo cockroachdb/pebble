@@ -36,7 +36,7 @@ type dbIter struct {
 	pos       dbIterPos
 }
 
-var _ db.Iterator = (*dbIter)(nil)
+var _ Iterator = (*dbIter)(nil)
 
 func (i *dbIter) findNextEntry() bool {
 	upperBound := i.opts.GetUpperBound()

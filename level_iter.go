@@ -15,8 +15,8 @@ type tableNewIter func(meta *fileMetadata) (internalIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
 //
-// levelIter is used during compaction and as part of the db.Iterator
-// implementation. When used as part of the db.Iterator implementation, level
+// levelIter is used during compaction and as part of the Iterator
+// implementation. When used as part of the Iterator implementation, level
 // iteration needs to "pause" at sstable boundaries if a range deletion
 // tombstone is the source of that boundary. We know if a range tombstone is
 // the smallest or largest key in a file because the kind will be

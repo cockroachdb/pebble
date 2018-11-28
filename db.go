@@ -47,7 +47,7 @@ type Reader interface {
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to SeekGE,
 	// SeekLT, First or Last.
-	NewIter(o *db.IterOptions) db.Iterator
+	NewIter(o *db.IterOptions) Iterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader
 	// or io.Writer, depending on how the DB was created.
@@ -93,6 +93,31 @@ type Writer interface {
 }
 
 // DB provides a concurrent, persistent ordered key/value store.
+//
+// A DB's basic operations (Get, Set, Delete) should be self-explanatory. Get
+// and Delete will return ErrNotFound if the requested key is not in the store.
+// Callers are free to ignore this error.
+//
+// A DB also allows for iterating over the key/value pairs in key order. If d
+// is a DB, the code below prints all key/value pairs whose keys are 'greater
+// than or equal to' k:
+//
+//	iter := d.NewIter(readOptions)
+//	for iter.SeekGE(k); iter.Valid(); iter.Next() {
+//		fmt.Printf("key=%q value=%q\n", iter.Key(), iter.Value())
+//	}
+//	return iter.Close()
+//
+// The Options struct in the db package holds the optional parameters for the
+// DB, including a Comparer to define a 'less than' relationship over keys. It
+// is always valid to pass a nil *Options, which means to use the default
+// parameter values. Any zero field of a non-nil *Options also means to use the
+// default value for that parameter. Thus, the code below uses a custom
+// Comparer, but the default values for every other parameter:
+//
+//	db := pebble.Open(&db.Options{
+//		Comparer: myComparer,
+//	})
 type DB struct {
 	dirname   string
 	opts      *db.Options
@@ -342,7 +367,7 @@ func (d *DB) newIterInternal(
 	batchIter internalIterator,
 	s *Snapshot,
 	o *db.IterOptions,
-) db.Iterator {
+) Iterator {
 	var seqNum uint64
 	d.mu.Lock()
 	if s != nil {
@@ -473,7 +498,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 // to maintain a long-lived point-in-time view of the DB state can lead to an
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
-func (d *DB) NewIter(o *db.IterOptions) db.Iterator {
+func (d *DB) NewIter(o *db.IterOptions) Iterator {
 	return d.newIterInternal(nil /* batchIter */, nil /* snapshot */, o)
 }
 
