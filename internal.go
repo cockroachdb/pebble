@@ -4,7 +4,10 @@
 
 package pebble
 
-import "github.com/petermattis/pebble/db"
+import (
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/sstable"
+)
 
 // internalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
@@ -69,3 +72,6 @@ type internalIterator interface {
 	// called after the iterator has been closed.
 	Close() error
 }
+
+// sstable.Iter implements the internalIterator interface.
+var _ internalIterator = (*sstable.Iter)(nil)
