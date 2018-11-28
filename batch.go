@@ -209,6 +209,9 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 //
 // The caller should not modify the contents of the returned slice, but
 // it is safe to modify the contents of the argument after Get returns.
+//
+// TODO(peter,rangedel): This doesn't properly handle merges or range
+// deletions. It really needs to call into DB.getInternal.
 func (b *Batch) Get(key []byte) (value []byte, err error) {
 	if b.index == nil {
 		return nil, ErrNotIndexed

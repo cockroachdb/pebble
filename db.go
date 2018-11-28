@@ -223,6 +223,7 @@ func (d *DB) getInternal(key []byte, s *Snapshot) ([]byte, error) {
 	get := &buf.get
 	get.cmp = d.cmp
 	get.newIter = d.newIter
+	get.newRangeDelIter = d.newRangeDelIter
 	get.key = key
 	get.mem = memtables
 	get.l0 = current.files[0]

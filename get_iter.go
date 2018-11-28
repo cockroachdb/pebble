@@ -13,16 +13,18 @@ import (
 // internalIterator, but specialized for Get operations so that it loads data
 // lazily.
 type getIter struct {
-	cmp       db.Compare
-	newIter   tableNewIter
-	key       []byte
-	iter      internalIterator
-	levelIter levelIter
-	level     int
-	mem       []flushable
-	l0        []fileMetadata
-	version   *version
-	err       error
+	cmp             db.Compare
+	newIter         tableNewIter
+	newRangeDelIter tableNewIter
+	key             []byte
+	iter            internalIterator
+	rangeDelIter    internalIterator
+	levelIter       levelIter
+	level           int
+	mem             []flushable
+	l0              []fileMetadata
+	version         *version
+	err             error
 }
 
 // getIter implements the internalIterator interface.
@@ -49,13 +51,15 @@ func (g *getIter) Next() bool {
 		g.iter.Next()
 	}
 
+	// TODO(peter,rangedel): add range-del checks.
+
 	for {
 		if g.iter != nil {
 			if g.iter.Valid() && g.cmp(g.key, g.iter.Key().UserKey) == 0 {
 				return true
 			}
-			// We've advanced the iterator passed the desire key. Move on to the next
-			// memtable / level.
+			// We've advanced the iterator passed the desired key. Move on to the
+			// next memtable / level.
 			g.err = g.iter.Close()
 			g.iter = nil
 			if g.err != nil {
@@ -66,6 +70,7 @@ func (g *getIter) Next() bool {
 		// Create iterators from memtables from newest to oldest.
 		if n := len(g.mem); n > 0 {
 			g.iter = g.mem[n-1].newIter(nil)
+			g.rangeDelIter = g.mem[n-1].newRangeDelIter(nil)
 			g.mem = g.mem[:n-1]
 			g.iter.SeekGE(g.key)
 			continue
@@ -90,6 +95,7 @@ func (g *getIter) Next() bool {
 		}
 
 		g.levelIter.init(nil, g.cmp, g.newIter, g.version.files[g.level])
+		g.levelIter.initRangeDel(g.newRangeDelIter, &g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
 		g.iter.SeekGE(g.key)

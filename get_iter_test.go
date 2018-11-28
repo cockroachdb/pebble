@@ -500,6 +500,9 @@ func TestGetIter(t *testing.T) {
 			get := &buf.get
 			get.cmp = cmp
 			get.newIter = newIter
+			get.newRangeDelIter = func(*fileMetadata) (internalIterator, error) {
+				return nil, nil
+			}
 			get.key = ikey.UserKey
 			get.l0 = v.files[0]
 			get.version = v
