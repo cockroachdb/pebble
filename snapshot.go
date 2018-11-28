@@ -34,7 +34,7 @@ func (s *Snapshot) Get(key []byte) ([]byte, error) {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
 func (s *Snapshot) NewIter(o *db.IterOptions) Iterator {
-	return s.db.newIterInternal(nil, s, o)
+	return s.db.newIterInternal(nil /* batchIter */, nil /* batchRangeDelIter */, s, o)
 }
 
 // Close closes the snapshot, releasing its resources. Close must be

@@ -102,27 +102,27 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 // mergingIter provides a merged view of multiple iterators from different
 // levels of the LSM.
 //
-// A mergingIter can optionally be configured with a rangeDelMap which it will
-// use to skip over keys covered by range tombstones. The levels in the
-// rangeDelMap must correspond exactly to the iterator levels. This requirement
-// allows mergingIter to only consider range tombstones from newer levels.
+// A mergingIter can optionally be configured with a slice of range-del
+// iterators which it will use to skip over keys covered by range
+// tombstones. The range-del iterator slice must exactly parallel the point
+// iterators. This requirement allows mergingIter to only consider range
+// tombstones from newer levels.
 //
-// TODO(peter,rangedel): hook up rangeDelMap. rangeDelMap keeps a range-del
-// iterator per level. We'll maintain a heap of active range
-// tombstones. Because tombstones are fragmented within a level we know there
-// will be no overlap. Because mergingIter.iters and rangeDelMap.levels are
-// parallel, if a lower-level iterator is covered by a range tombstone from a
-// higher (newer) level, the iterator can be advanced to the boundary of the
-// tombstone. The range tombstone heap needs to be advanced based on the
-// current mergingIter key. Note that rangeDelMap is initialized with the
-// sequence number being read at and thus only returns range tombstones that
-// are visible.
+// TODO(peter,rangedel): Because tombstones are fragmented within a level we
+// know there will be no overlap within a level. levelIter takes care of
+// initializing the range-del iterator when switching tables. Because
+// mergingIter.iters and mergingIter.rangeDelIters are parallel, if a
+// lower-level iterator is covered by a range tombstone from a higher (newer)
+// level, the iterator can be advanced to the boundary of the tombstone. The
+// range-del iterators need to be advanced based on the current mergingIter
+// key.
 type mergingIter struct {
-	dir       int
-	iters     []internalIterator
-	heap      mergingIterHeap
-	rangeDels *rangeDelMap
-	err       error
+	dir            int
+	iters          []internalIterator
+	rangeDelIters  []internalIterator
+	rangeDelSeqNum uint64
+	heap           mergingIterHeap
+	err            error
 }
 
 // mergingIter implements the internalIterator interface.
@@ -257,8 +257,9 @@ func (m *mergingIter) switchToMaxHeap() {
 
 func (m *mergingIter) SeekGE(key []byte) {
 	for _, t := range m.iters {
-		// TODO(peter): Also seek the corresponding rangDelMap iterator. Keep track
-		// of the covering tombstone and adjust the key being seeked to.
+		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
+		// iterator. Keep track of the covering tombstone and adjust the key being
+		// seeked to.
 		t.SeekGE(key)
 	}
 	m.initMinHeap()
@@ -266,8 +267,9 @@ func (m *mergingIter) SeekGE(key []byte) {
 
 func (m *mergingIter) SeekLT(key []byte) {
 	for _, t := range m.iters {
-		// TODO(peter): Also seek the corresponding rangDelMap iterator. Keep track
-		// of the covering tombstone and adjust the key being seeked to.
+		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
+		// iterator. Keep track of the covering tombstone and adjust the key being
+		// seeked to.
 		t.SeekLT(key)
 	}
 	m.initMaxHeap()
@@ -275,8 +277,9 @@ func (m *mergingIter) SeekLT(key []byte) {
 
 func (m *mergingIter) First() {
 	for _, t := range m.iters {
-		// TODO(peter): Also seek the corresponding rangDelMap iterator. Keep track
-		// of the covering tombstone and adjust the key being seeked to.
+		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
+		// iterator. Keep track of the covering tombstone and adjust the key being
+		// seeked to.
 		t.First()
 	}
 	m.initMinHeap()
@@ -284,8 +287,9 @@ func (m *mergingIter) First() {
 
 func (m *mergingIter) Last() {
 	for _, t := range m.iters {
-		// TODO(peter): Also seek the corresponding rangDelMap iterator. Keep track
-		// of the covering tombstone and adjust the key being seeked to.
+		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
+		// iterator. Keep track of the covering tombstone and adjust the key being
+		// seeked to.
 		t.Last()
 	}
 	m.initMaxHeap()
@@ -305,7 +309,7 @@ func (m *mergingIter) Next() bool {
 		return false
 	}
 
-	// TODO(peter): Integrate range-del checks.
+	// TODO(peter,rangedel): Integrate range-del checks.
 
 	item := &m.heap.items[0]
 	iter := m.iters[item.index]
@@ -338,7 +342,7 @@ func (m *mergingIter) Prev() bool {
 		return false
 	}
 
-	// TODO(peter): Integrate range-del checks.
+	// TODO(peter,rangedel): Integrate range-del checks.
 
 	item := &m.heap.items[0]
 	iter := m.iters[item.index]
@@ -386,18 +390,20 @@ func (m *mergingIter) Error() error {
 }
 
 func (m *mergingIter) Close() error {
-	for i := range m.iters {
-		if err := m.iters[i].Close(); err != nil && m.err == nil {
+	for _, iter := range m.iters {
+		if err := iter.Close(); err != nil && m.err == nil {
 			m.err = err
 		}
 	}
-	if m.rangeDels != nil {
-		if err := m.rangeDels.Close(); err != nil && m.err == nil {
-			m.err = err
+	for _, iter := range m.rangeDelIters {
+		if iter != nil {
+			if err := iter.Close(); err != nil && m.err == nil {
+				m.err = err
+			}
 		}
-		m.rangeDels = nil
 	}
 	m.iters = nil
+	m.rangeDelIters = nil
 	m.heap.items = nil
 	return m.err
 }

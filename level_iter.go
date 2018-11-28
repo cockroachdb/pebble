@@ -25,7 +25,7 @@ type tableNewIter func(meta *fileMetadata) (internalIterator, error)
 // prevents mergingIter from advancing past the sstable until the sstable
 // contains the smallest (or largest for reverse iteration) key in the merged
 // heap. Note that dbIter treat a range deletion tombstone as a no-op and
-// processes range deletions via rangeDelMap.
+// processes range deletions via mergingIter.
 type levelIter struct {
 	opts  *db.IterOptions
 	cmp   db.Compare
@@ -37,7 +37,7 @@ type levelIter struct {
 	iter            internalIterator
 	newIter         tableNewIter
 	newRangeDelIter tableNewIter
-	rangeDel        *rangeDelLevel
+	rangeDelIter    *internalIterator
 	files           []fileMetadata
 	err             error
 }
@@ -63,9 +63,9 @@ func (l *levelIter) init(
 	l.files = files
 }
 
-func (l *levelIter) initRangeDel(newRangeDelIter tableNewIter, rangeDel *rangeDelLevel) {
+func (l *levelIter) initRangeDel(newRangeDelIter tableNewIter, rangeDelIter *internalIterator) {
 	l.newRangeDelIter = newRangeDelIter
-	l.rangeDel = rangeDel
+	l.rangeDelIter = rangeDelIter
 }
 
 func (l *levelIter) findFileGE(key []byte) int {
@@ -123,22 +123,17 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			}
 		}
 
-		if l.rangeDel != nil {
-			// TODO(peter,rangedel): If the table is entirely covered by a range
-			// deletion tombstone, skip it.
-		}
-
 		l.iter, l.err = l.newIter(f)
 		if l.err != nil || l.iter == nil {
 			return false
 		}
-		if l.rangeDel != nil {
-			iter, err := l.newRangeDelIter(f)
+		if l.rangeDelIter != nil {
+			var err error
+			*l.rangeDelIter, err = l.newRangeDelIter(f)
 			if err != nil {
 				l.err = err
 				return false
 			}
-			l.rangeDel.init(iter)
 		}
 		return true
 	}
@@ -247,7 +242,7 @@ func (l *levelIter) skipEmptyFileForward() bool {
 		}
 		l.iter = nil
 
-		if l.rangeDel != nil {
+		if l.rangeDelIter != nil {
 			// We're being used as part of a dbIter and we've reached the end of the
 			// sstable. If the boundary is a range deletion tombstone, return that key.
 			if f := &l.files[l.index]; f.largest.Kind() == db.InternalKeyKindRangeDelete {
@@ -272,7 +267,7 @@ func (l *levelIter) skipEmptyFileBackward() bool {
 		}
 		l.iter = nil
 
-		if l.rangeDel != nil {
+		if l.rangeDelIter != nil {
 			// We're being used as part of a dbIter and we've reached the end of the
 			// sstable. If the boundary is a range deletion tombstone, return that key.
 			if f := &l.files[l.index]; f.smallest.Kind() == db.InternalKeyKindRangeDelete {

@@ -365,6 +365,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 // level.
 func (d *DB) newIterInternal(
 	batchIter internalIterator,
+	batchRangeDelIter internalIterator,
 	s *Snapshot,
 	o *db.IterOptions,
 ) Iterator {
@@ -386,12 +387,11 @@ func (d *DB) newIterInternal(
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	var buf struct {
-		dbi            dbIter
-		merging        mergingIter
-		rangeDels      rangeDelMap
-		iters          [3 + numLevels]internalIterator
-		levels         [numLevels]levelIter
-		rangeDelLevels [3 + numLevels]rangeDelLevel
+		dbi           dbIter
+		merging       mergingIter
+		iters         [3 + numLevels]internalIterator
+		rangeDelIters [3 + numLevels]internalIterator
+		levels        [numLevels]levelIter
 	}
 
 	dbi := &buf.dbi
@@ -400,13 +400,11 @@ func (d *DB) newIterInternal(
 	dbi.merge = d.merge
 	dbi.version = current
 
-	rangeDels := &buf.rangeDels
-	rangeDels.levels = buf.rangeDelLevels[:0]
-	buf.merging.rangeDels = rangeDels
-
 	iters := buf.iters[:0]
+	rangeDelIters := buf.rangeDelIters[:0]
 	if batchIter != nil {
 		iters = append(iters, batchIter)
+		rangeDelIters = append(rangeDelIters, batchRangeDelIter)
 	}
 
 	// TODO(peter): We only need to add memtables which contain sequence numbers
@@ -415,7 +413,7 @@ func (d *DB) newIterInternal(
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
 		iters = append(iters, mem.newIter(o))
-		rangeDels.addLevel(mem.newRangeDelIter(o))
+		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(o))
 	}
 
 	// The level 0 files need to be added from newest to oldest.
@@ -433,21 +431,20 @@ func (d *DB) newIterInternal(
 			dbi.err = err
 			return dbi
 		}
-		rangeDels.addLevel(riter)
+		rangeDelIters = append(rangeDelIters, riter)
 	}
 
-	numNonEmptyLevels := 0
 	for level := 1; level < len(current.files); level++ {
 		n := len(current.files[level])
 		if n == 0 {
 			continue
 		}
-		numNonEmptyLevels++
+		rangeDelIters = append(rangeDelIters, nil)
 	}
+	buf.merging.rangeDelIters = rangeDelIters
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
-	rangeDelLevels := rangeDels.addLevels(numNonEmptyLevels)
 	for level := 1; level < len(current.files); level++ {
 		n := len(current.files[level])
 		if n == 0 {
@@ -463,12 +460,19 @@ func (d *DB) newIterInternal(
 		}
 
 		li.init(o, d.cmp, d.newIter, current.files[level])
-		li.initRangeDel(d.newRangeDelIter, &rangeDelLevels[0])
-		rangeDelLevels = rangeDelLevels[1:]
+		li.initRangeDel(d.newRangeDelIter, &rangeDelIters[0])
 		iters = append(iters, li)
+		rangeDelIters = rangeDelIters[1:]
 	}
 
+	// NB: Both mergingIter and dbIter have a seqNum field. mergingIter.seqNum is
+	// used to filter visibility of range tombstones, and dbIter.seqNum is used
+	// to filter visibility of point operations.
+	//
+	// TODO(peter): Investigate collapsing down to a single sequence number
+	// filter.
 	buf.merging.init(d.cmp, iters...)
+	buf.merging.rangeDelSeqNum = seqNum
 	dbi.iter = &buf.merging
 	dbi.seqNum = seqNum
 	return dbi
@@ -498,7 +502,8 @@ func (d *DB) NewIndexedBatch() *Batch {
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
 func (d *DB) NewIter(o *db.IterOptions) Iterator {
-	return d.newIterInternal(nil /* batchIter */, nil /* snapshot */, o)
+	return d.newIterInternal(nil, /* batchIter */
+		nil /* batchRangeDelIter */, nil /* snapshot */, o)
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators

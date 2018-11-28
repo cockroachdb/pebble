@@ -348,7 +348,8 @@ func (b *Batch) NewIter(o *db.IterOptions) Iterator {
 	if b.index == nil {
 		return &dbIter{err: ErrNotIndexed}
 	}
-	return b.db.newIterInternal(b.newInternalIter(o), nil /* snapshot */, o)
+	return b.db.newIterInternal(b.newInternalIter(o),
+		b.newRangeDelIter(o), nil /* snapshot */, o)
 }
 
 // newInternalIter creates a new internalIterator that iterates over the

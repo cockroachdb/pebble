@@ -162,7 +162,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			iter := newLevelIter(nil, db.DefaultComparer.Compare, newIter, files)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
-			iter.rangeDel = &rangeDelLevel{}
+			iter.rangeDelIter = new(internalIterator)
 			iter.newRangeDelIter = func(*fileMetadata) (internalIterator, error) {
 				return nil, nil
 			}
