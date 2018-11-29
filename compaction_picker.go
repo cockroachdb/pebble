@@ -233,15 +233,7 @@ func (p *compactionPicker) pickAuto(opts *db.Options) (c *compaction) {
 
 	vers := p.vers
 	c = newCompaction(opts, vers, p.level)
-	// TODO(peter): Expand to clean cut. We need to guarantee that no newer
-	// version of a key is compacted to level+1 while leaving an older key at
-	// level. Doing so violates an invariant: for any key in the tree, newer
-	// levels will contain newer versions of the key. This invariant is required
-	// for correct operation by Get and Iterators. A clean cut is only required
-	// for the right side of a compaction because the left side will contain
-	// newer versions of a key that straddles tables and therefore is fine to
-	// leave at level.
-	c.inputs[0] = []fileMetadata{vers.files[c.level][p.file]}
+	c.inputs[0] = vers.files[c.level][p.file : p.file+1]
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if c.level == 0 {

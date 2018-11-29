@@ -873,3 +873,65 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 			}
 		})
 }
+
+func TestCompactionExpandInputs(t *testing.T) {
+	cmp := db.DefaultComparer.Compare
+	var files []fileMetadata
+
+	parseMeta := func(s string) fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		return fileMetadata{
+			smallest: db.ParseInternalKey(parts[0]),
+			largest:  db.ParseInternalKey(parts[1]),
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_expand_inputs",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "define":
+				files = nil
+				if len(d.Input) == 0 {
+					return ""
+				}
+				for _, data := range strings.Split(d.Input, "\n") {
+					meta := parseMeta(data)
+					meta.fileNum = uint64(len(files))
+					files = append(files, meta)
+				}
+				sort.Sort(bySmallest{files, cmp})
+				return ""
+
+			case "expand-inputs":
+				c := &compaction{
+					cmp:     cmp,
+					version: &version{},
+					level:   1,
+				}
+				c.version.files[c.level] = files
+				if len(d.CmdArgs) != 1 {
+					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
+				}
+				index, err := strconv.ParseInt(d.CmdArgs[0].String(), 10, 64)
+				if err != nil {
+					return err.Error()
+				}
+
+				inputs := c.expandInputs(files[index : index+1])
+
+				var buf bytes.Buffer
+				for i := range inputs {
+					f := &inputs[i]
+					fmt.Fprintf(&buf, "%d: %s-%s\n", f.fileNum, f.smallest, f.largest)
+				}
+				return buf.String()
+
+			default:
+				t.Fatalf("unknown command: %s", d.Cmd)
+				return ""
+			}
+		})
+}

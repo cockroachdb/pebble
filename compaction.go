@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"unsafe"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
@@ -74,6 +75,7 @@ func newCompaction(opts *db.Options, cur *version, level int) *compaction {
 // setupOtherInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupOtherInputs() {
+	c.inputs[0] = c.expandInputs(c.inputs[0])
 	smallest0, largest0 := ikeyRange(c.cmp, c.inputs[0], nil)
 	c.inputs[1] = c.version.overlaps(c.level+1, c.cmp, smallest0.UserKey, largest0.UserKey)
 	smallest01, largest01 := ikeyRange(c.cmp, c.inputs[0], c.inputs[1])
@@ -89,6 +91,49 @@ func (c *compaction) setupOtherInputs() {
 	}
 }
 
+// expandInputs expands the files in inputs[0] in order to maintain the
+// invariant that the versions of keys at level+1 are older than the versions
+// of keys at level. This is achieved by adding tables to the right of the
+// current input tables such that the rightmost table has a "clean cut". A
+// clean cut is either a change in user keys, or
+func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
+	if c.level == 0 {
+		// We already call version.overlaps for L0 and that call guarantees that we
+		// get a "clean cut".
+		return inputs
+	}
+	files := c.version.files[c.level]
+	// Pointer arithmetic to figure out the index if inputs[0] with
+	// files[0]. This requires that the inputs slice is a sub-slice of
+	// files. This is true for non-L0 files returned from version.overlaps.
+	if uintptr(unsafe.Pointer(&inputs[0])) < uintptr(unsafe.Pointer(&files[0])) {
+		panic("pebble/db: invalid input slice")
+	}
+	start := int((uintptr(unsafe.Pointer(&inputs[0])) -
+		uintptr(unsafe.Pointer(&files[0]))) / unsafe.Sizeof(inputs[0]))
+	if start >= len(files) {
+		panic("pebble/db: invalid input slice")
+	}
+	end := start + len(inputs)
+	for ; end < len(files); end++ {
+		cur := &files[end-1]
+		next := files[end]
+		if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
+			break
+		}
+		if cur.largest.Trailer == db.InternalKeyRangeDeleteSentinel {
+			// The range deletion sentinel key is set for the largest key in a table
+			// when a range deletion tombstone straddles a table. It isn't necessary
+			// to include the next table in the compaction as cur.largest.UserKey
+			// does not actually exist in the table.
+			break
+		}
+		// cur.largest.UserKey == next.largest.UserKey, so we need to include next
+		// in the compaction.
+	}
+	return files[start:end]
+}
+
 // grow grows the number of inputs at c.level without changing the number of
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
@@ -97,6 +142,7 @@ func (c *compaction) grow(sm, la db.InternalKey) bool {
 		return false
 	}
 	grow0 := c.version.overlaps(c.level, c.cmp, sm.UserKey, la.UserKey)
+	grow0 = c.expandInputs(grow0)
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
 	}
