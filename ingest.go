@@ -126,17 +126,25 @@ func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata)
 	}
 
 	// Check overlap with range deletions.
-	//
-	// TODO(peter): this is incomplete and untested.
 	if iter := mem.newRangeDelIter(nil); iter != nil {
 		defer iter.Close()
 		for _, m := range meta {
-			iter.SeekGE(m.smallest.UserKey)
+			iter.SeekLT(m.smallest.UserKey)
 			if !iter.Valid() {
-				continue
+				iter.Next()
 			}
-			if cmp(iter.Key().UserKey, m.largest.UserKey) <= 0 {
-				return true
+			for ; iter.Valid(); iter.Next() {
+				if cmp(iter.Key().UserKey, m.largest.UserKey) > 0 {
+					// The start of the tombstone is after the largest key in the
+					// ingested table.
+					break
+				}
+				if cmp(iter.Value(), m.smallest.UserKey) > 0 {
+					// The end of the tombstone is greater than the smallest in the
+					// table. Note that the tombstone end key is exclusive, thus ">0"
+					// instead of ">=0".
+					return true
+				}
 			}
 		}
 	}

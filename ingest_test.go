@@ -283,64 +283,79 @@ func TestIngestLink(t *testing.T) {
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
-	testCases := []struct {
-		ingest   string
-		memtable string
-		expected bool
-	}{
-		{"a-b", "c", false},
-		{"a-b", "a", true},
-		{"a-b", "b", true},
-		{"b-c", "a", false},
-		{"b-c e-f", "a d g", false},
-		{"b-c e-f", "a d e g", true},
-		{"b-c e-f", "a c d g", true},
-	}
-
 	comparers := []db.Comparer{
 		{Name: "default", Compare: db.DefaultComparer.Compare},
 		{Name: "reverse", Compare: func(a, b []byte) int {
 			return db.DefaultComparer.Compare(b, a)
 		}},
 	}
+	m := make(map[string]*db.Comparer)
+	for i := range comparers {
+		c := &comparers[i]
+		m[c.Name] = c
+	}
 
 	for _, comparer := range comparers {
 		t.Run(comparer.Name, func(t *testing.T) {
-			cmp := comparer.Compare
-			for _, c := range testCases {
-				t.Run("", func(t *testing.T) {
-					var meta []*fileMetadata
-					for _, p := range strings.Fields(c.ingest) {
-						parts := strings.Split(p, "-")
-						if len(parts) != 2 {
-							t.Fatalf("malformed test case: %s", c.ingest)
-						}
-						if cmp([]byte(parts[0]), []byte(parts[1])) > 0 {
-							parts[0], parts[1] = parts[1], parts[0]
-						}
-						meta = append(meta, &fileMetadata{
-							smallest: db.InternalKey{UserKey: []byte(parts[0])},
-							largest:  db.InternalKey{UserKey: []byte(parts[1])},
-						})
+			var mem *memTable
+
+			parseMeta := func(s string) *fileMetadata {
+				parts := strings.Split(s, "-")
+				if len(parts) != 2 {
+					t.Fatalf("malformed table spec: %s", s)
+				}
+				if mem.cmp([]byte(parts[0]), []byte(parts[1])) > 0 {
+					parts[0], parts[1] = parts[1], parts[0]
+				}
+				return &fileMetadata{
+					smallest: db.InternalKey{UserKey: []byte(parts[0])},
+					largest:  db.InternalKey{UserKey: []byte(parts[1])},
+				}
+			}
+
+			datadriven.RunTest(t, "testdata/ingest_memtable_overlaps", func(d *datadriven.TestData) string {
+				switch d.Cmd {
+				case "define":
+					b := newBatch(nil)
+					if err := runBatchDefineCmd(d, b); err != nil {
+						return err.Error()
 					}
 
 					opts := &db.Options{
 						Comparer: &comparer,
 					}
 					opts.EnsureDefaults()
-					mem := newMemTable(opts)
-					for _, key := range strings.Fields(c.memtable) {
-						if err := mem.set(db.InternalKey{UserKey: []byte(key)}, nil); err != nil {
-							t.Fatal(err)
+					if len(d.CmdArgs) > 1 {
+						return fmt.Sprintf("%s expects at most 1 argument", d.Cmd)
+					}
+					if len(d.CmdArgs) == 1 {
+						opts.Comparer = m[d.CmdArgs[0].String()]
+						if opts.Comparer == nil {
+							return fmt.Sprintf("%s unknown comparer: %s", d.Cmd, d.CmdArgs[0].String())
 						}
 					}
 
-					result := ingestMemtableOverlaps(comparer.Compare, mem, meta)
-					if c.expected != result {
-						t.Fatalf("expected %t, but found %t", c.expected, result)
+					mem = newMemTable(opts)
+					if err := mem.apply(b, 0); err != nil {
+						return err.Error()
 					}
-				})
-			}
+
+				case "overlaps":
+					var buf bytes.Buffer
+					for _, data := range strings.Split(d.Input, "\n") {
+						var meta []*fileMetadata
+						for _, part := range strings.Fields(data) {
+							meta = append(meta, parseMeta(part))
+						}
+						fmt.Fprintf(&buf, "%t\n", ingestMemtableOverlaps(mem.cmp, mem, meta))
+					}
+					return buf.String()
+
+				default:
+					t.Fatalf("unknown command: %s", d.Cmd)
+				}
+				return ""
+			})
 		})
 	}
 }
