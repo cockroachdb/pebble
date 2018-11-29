@@ -14,21 +14,20 @@ import (
 // internalIterator, but specialized for Get operations so that it loads data
 // lazily.
 type getIter struct {
-	cmp             db.Compare
-	newIter         tableNewIter
-	newRangeDelIter tableNewIter
-	snapshot        uint64
-	key             []byte
-	iter            internalIterator
-	rangeDelIter    internalIterator
-	tombstone       rangedel.Tombstone
-	levelIter       levelIter
-	level           int
-	batch           *Batch
-	mem             []flushable
-	l0              []fileMetadata
-	version         *version
-	err             error
+	cmp          db.Compare
+	newIters     tableNewIters
+	snapshot     uint64
+	key          []byte
+	iter         internalIterator
+	rangeDelIter internalIterator
+	tombstone    rangedel.Tombstone
+	levelIter    levelIter
+	level        int
+	batch        *Batch
+	mem          []flushable
+	l0           []fileMetadata
+	version      *version
+	err          error
 }
 
 // getIter implements the internalIterator interface.
@@ -123,11 +122,7 @@ func (g *getIter) Next() bool {
 			// Create iterators from L0 from newest to oldest.
 			if n := len(g.l0); n > 0 {
 				l := &g.l0[n-1]
-				g.iter, g.err = g.newIter(l)
-				if g.err != nil {
-					return false
-				}
-				g.rangeDelIter, g.err = g.newRangeDelIter(l)
+				g.iter, g.rangeDelIter, g.err = g.newIters(l)
 				if g.err != nil {
 					return false
 				}
@@ -146,8 +141,8 @@ func (g *getIter) Next() bool {
 			continue
 		}
 
-		g.levelIter.init(nil, g.cmp, g.newIter, g.version.files[g.level])
-		g.levelIter.initRangeDel(g.newRangeDelIter, &g.rangeDelIter)
+		g.levelIter.init(nil, g.cmp, g.newIters, g.version.files[g.level])
+		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
 		g.iter.SeekGE(g.key)

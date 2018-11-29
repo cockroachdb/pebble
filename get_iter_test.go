@@ -439,12 +439,12 @@ func TestGetIter(t *testing.T) {
 
 		// m is a map from file numbers to DBs.
 		m := map[uint64]*memTable{}
-		newIter := func(meta *fileMetadata) (internalIterator, error) {
+		newIter := func(meta *fileMetadata) (internalIterator, internalIterator, error) {
 			d, ok := m[meta.fileNum]
 			if !ok {
-				return nil, errors.New("no such file")
+				return nil, nil, errors.New("no such file")
 			}
-			return d.newIter(nil), nil
+			return d.newIter(nil), nil, nil
 		}
 
 		v := version{}
@@ -499,10 +499,7 @@ func TestGetIter(t *testing.T) {
 
 			get := &buf.get
 			get.cmp = cmp
-			get.newIter = newIter
-			get.newRangeDelIter = func(*fileMetadata) (internalIterator, error) {
-				return nil, nil
-			}
+			get.newIters = newIter
 			get.key = ikey.UserKey
 			get.l0 = v.files[0]
 			get.version = v

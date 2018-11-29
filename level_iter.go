@@ -10,8 +10,9 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-// tableNewIter creates a new iterator for the given file number.
-type tableNewIter func(meta *fileMetadata) (internalIterator, error)
+// tableNewIters creates a new point and range-del iterator for the given file
+// number.
+type tableNewIters func(meta *fileMetadata) (internalIterator, internalIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
 //
@@ -33,38 +34,36 @@ type levelIter struct {
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone. Note that if boundary != nil, then
 	// iter == nil, and if iter != nil, then boundary == nil.
-	boundary        *db.InternalKey
-	iter            internalIterator
-	newIter         tableNewIter
-	newRangeDelIter tableNewIter
-	rangeDelIter    *internalIterator
-	files           []fileMetadata
-	err             error
+	boundary     *db.InternalKey
+	iter         internalIterator
+	newIters     tableNewIters
+	rangeDelIter *internalIterator
+	files        []fileMetadata
+	err          error
 }
 
 // levelIter implements the internalIterator interface.
 var _ internalIterator = (*levelIter)(nil)
 
 func newLevelIter(
-	opts *db.IterOptions, cmp db.Compare, newIter tableNewIter, files []fileMetadata,
+	opts *db.IterOptions, cmp db.Compare, newIters tableNewIters, files []fileMetadata,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, newIter, files)
+	l.init(opts, cmp, newIters, files)
 	return l
 }
 
 func (l *levelIter) init(
-	opts *db.IterOptions, cmp db.Compare, newIter tableNewIter, files []fileMetadata,
+	opts *db.IterOptions, cmp db.Compare, newIters tableNewIters, files []fileMetadata,
 ) {
 	l.opts = opts
 	l.cmp = cmp
 	l.index = -1
-	l.newIter = newIter
+	l.newIters = newIters
 	l.files = files
 }
 
-func (l *levelIter) initRangeDel(newRangeDelIter tableNewIter, rangeDelIter *internalIterator) {
-	l.newRangeDelIter = newRangeDelIter
+func (l *levelIter) initRangeDel(rangeDelIter *internalIterator) {
 	l.rangeDelIter = rangeDelIter
 }
 
@@ -123,17 +122,13 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			}
 		}
 
-		l.iter, l.err = l.newIter(f)
+		var rangeDelIter internalIterator
+		l.iter, rangeDelIter, l.err = l.newIters(f)
 		if l.err != nil || l.iter == nil {
 			return false
 		}
 		if l.rangeDelIter != nil {
-			var err error
-			*l.rangeDelIter, err = l.newRangeDelIter(f)
-			if err != nil {
-				l.err = err
-				return false
-			}
+			*l.rangeDelIter = rangeDelIter
 		}
 		return true
 	}

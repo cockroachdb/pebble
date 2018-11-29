@@ -125,9 +125,8 @@ type DB struct {
 	merge     db.Merge
 	inlineKey db.InlineKey
 
-	tableCache      tableCache
-	newIter         tableNewIter
-	newRangeDelIter tableNewIter
+	tableCache tableCache
+	newIters   tableNewIters
 
 	commit   *commitPipeline
 	fileLock io.Closer
@@ -222,8 +221,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 
 	get := &buf.get
 	get.cmp = d.cmp
-	get.newIter = d.newIter
-	get.newRangeDelIter = d.newRangeDelIter
+	get.newIters = d.newIters
 	get.snapshot = seqNum
 	get.key = key
 	get.batch = b
@@ -422,19 +420,13 @@ func (d *DB) newIterInternal(
 	// The level 0 files need to be added from newest to oldest.
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
-		iter, err := d.newIter(f)
+		iter, rangeDelIter, err := d.newIters(f)
 		if err != nil {
 			dbi.err = err
 			return dbi
 		}
 		iters = append(iters, iter)
-
-		riter, err := d.newRangeDelIter(f)
-		if err != nil {
-			dbi.err = err
-			return dbi
-		}
-		rangeDelIters = append(rangeDelIters, riter)
+		rangeDelIters = append(rangeDelIters, rangeDelIter)
 	}
 
 	for level := 1; level < len(current.files); level++ {
@@ -462,8 +454,8 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(o, d.cmp, d.newIter, current.files[level])
-		li.initRangeDel(d.newRangeDelIter, &rangeDelIters[0])
+		li.init(o, d.cmp, d.newIters, current.files[level])
+		li.initRangeDel(&rangeDelIters[0])
 		iters = append(iters, li)
 		rangeDelIters = rangeDelIters[1:]
 	}

@@ -49,7 +49,7 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	}
 }
 
-func (c *tableCache) newIter(meta *fileMetadata) (internalIterator, error) {
+func (c *tableCache) newIters(meta *fileMetadata) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
@@ -63,7 +63,7 @@ func (c *tableCache) newIter(meta *fileMetadata) (internalIterator, error) {
 			// TODO(peter): This could loop forever. That doesn't seem right.
 			go n.load(c)
 		}
-		return nil, x.err
+		return nil, nil, x.err
 	}
 	n.result <- x
 
@@ -89,38 +89,14 @@ func (c *tableCache) newIter(meta *fileMetadata) (internalIterator, error) {
 		c.mu.Unlock()
 		return nil
 	})
-	return iter, nil
-}
-
-func (c *tableCache) newRangeDelIter(meta *fileMetadata) (internalIterator, error) {
-	// Calling findNode gives us the responsibility of decrementing n's
-	// refCount. If opening the underlying table resulted in error, then we
-	// decrement this straight away. Otherwise, we construct the range-del
-	// iterator and then decrement.
-	n := c.findNode(meta)
-	x := <-n.result
-	if x.err != nil {
-		if !c.unrefNode(n) {
-			// Try loading the table again; the error may be transient.
-			//
-			// TODO(peter): This could loop forever. That doesn't seem right.
-			go n.load(c)
-		}
-		return nil, x.err
-	}
-	n.result <- x
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	iter := x.reader.NewRangeDelIter(nil)
-
-	c.unrefNode(n)
-
-	// NB: translate a nil typed value into a nil interface.
-	if iter == nil {
-		return nil, nil
+	if rangeDelIter := x.reader.NewRangeDelIter(nil); rangeDelIter != nil {
+		return iter, rangeDelIter, nil
 	}
-	return iter, nil
+	// NB: Translate a nil range-del iterator into a nil interface.
+	return iter, nil, nil
 }
 
 // releaseNode releases a node from the tableCache.

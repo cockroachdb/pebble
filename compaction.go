@@ -161,7 +161,7 @@ func (c *compaction) elideTombstone(key []byte) bool {
 
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
-	newIter, newRangeDelIter tableNewIter,
+	newIters tableNewIters,
 ) (_ internalIterator, retErr error) {
 	iters := make([]internalIterator, 0, 2*len(c.inputs[0])+1)
 	defer func() {
@@ -174,32 +174,49 @@ func (c *compaction) newInputIter(
 		}
 	}()
 
+	// In normal operation, levelIter iterates over the point operations in a
+	// level, and initializes a rangeDelIter pointer for the range deletions in
+	// each table. During compaction, we want to iterate over the merged view of
+	// point operations and range deletions. In order to do this we create two
+	// levelIters per level, one which iterates over the point operations, and
+	// one which iterates over the range deletions. These two iterators are
+	// combined with a mergingIter.
+	newRangeDelIter := func(f *fileMetadata) (internalIterator, internalIterator, error) {
+		iter, rangeDelIter, err := newIters(f)
+		if err == nil {
+			// TODO(peter): It is mildly wasteful to open the point iterator only to
+			// immediately close it. One way to solve this would be to add new
+			// methods to tableCache for creating point and range-deletion iterators
+			// independently. We'd only want to use those methods here,
+			// though. Doesn't seem worth the hassle in the near term.
+			if err = iter.Close(); err != nil {
+				rangeDelIter.Close()
+				rangeDelIter = nil
+			}
+		}
+		return rangeDelIter, nil, err
+	}
+
 	// TODO(peter,rangedel): test that range tombstones are properly included in
 	// the output sstable.
 	if c.level != 0 {
-		iters = append(iters, newLevelIter(nil, c.cmp, newIter, c.inputs[0]))
+		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0]))
 		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0]))
 	} else {
 		for i := range c.inputs[0] {
 			f := &c.inputs[0][i]
-
-			iter, err := newIter(f)
+			iter, rangeDelIter, err := newIters(f)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
 			iters = append(iters, iter)
-
-			iter, err = newRangeDelIter(f)
-			if err != nil {
-				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
-			}
-			if iter != nil {
-				iters = append(iters, iter)
+			if rangeDelIter != nil {
+				iters = append(iters, rangeDelIter)
 			}
 		}
 	}
 
-	iters = append(iters, newLevelIter(nil, c.cmp, newIter, c.inputs[1]))
+	iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[1]))
 	iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[1]))
 	return newMergingIter(c.cmp, iters...), nil
 }
@@ -607,7 +624,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	defer d.mu.Lock()
 
 	c.cmp = d.cmp
-	iiter, err := c.newInputIter(d.newIter, d.newRangeDelIter)
+	iiter, err := c.newInputIter(d.newIters)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}

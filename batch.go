@@ -316,7 +316,6 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 	b.appendStr(start)
 	b.appendStr(end)
 	if b.index != nil {
-		fmt.Printf("DeleteRange: %s %s\n", start, end)
 		// Range deletions are rare, so we lazily allocate the index for them.
 		if b.rangeDelIndex == nil {
 			b.rangeDelIndex = batchskl.NewSkiplist(&b.batchStorage, 0)

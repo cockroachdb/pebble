@@ -74,8 +74,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		tableCacheSize = minTableCacheSize
 	}
 	d.tableCache.init(dirname, opts.Storage, d.opts, tableCacheSize)
-	d.newIter = d.tableCache.newIter
-	d.newRangeDelIter = d.tableCache.newRangeDelIter
+	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
 		mu:            &d.mu.Mutex,
 		logSeqNum:     &d.mu.versions.logSeqNum,
