@@ -511,7 +511,7 @@ func TestGetIter(t *testing.T) {
 			i.cmp = cmp
 			i.merge = db.DefaultMerger.Merge
 			i.iter = get
-			i.seqNum = ikey.SeqNum() + 1
+			i.snapshot = ikey.SeqNum() + 1
 
 			defer i.Close()
 			if !i.Next() {

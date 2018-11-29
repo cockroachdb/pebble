@@ -17,7 +17,7 @@ type getIter struct {
 	cmp             db.Compare
 	newIter         tableNewIter
 	newRangeDelIter tableNewIter
-	rangeDelSeqNum  uint64
+	snapshot        uint64
 	key             []byte
 	iter            internalIterator
 	rangeDelIter    internalIterator
@@ -63,7 +63,7 @@ func (g *getIter) Next() bool {
 			// key. Every call to levelIter.Next() potentially switches to a new
 			// table and thus reinitializes rangeDelIter.
 			if g.rangeDelIter != nil {
-				g.tombstone = rangeDelIterGet(g.cmp, g.rangeDelIter, g.key, g.rangeDelSeqNum)
+				g.tombstone = rangeDelIterGet(g.cmp, g.rangeDelIter, g.key, g.snapshot)
 				if g.err = g.rangeDelIter.Close(); g.err != nil {
 					return false
 				}

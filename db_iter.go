@@ -22,8 +22,8 @@ type dbIter struct {
 	opts      *db.IterOptions
 	cmp       db.Compare
 	merge     db.Merge
+	snapshot  uint64
 	iter      internalIterator
-	seqNum    uint64
 	version   *version
 	err       error
 	key       []byte
@@ -48,7 +48,7 @@ func (i *dbIter) findNextEntry() bool {
 			break
 		}
 
-		if seqNum := key.SeqNum(); seqNum >= i.seqNum {
+		if seqNum := key.SeqNum(); seqNum >= i.snapshot {
 			// Ignore entries that are newer than our snapshot sequence number,
 			// except for batch sequence numbers which are always visible.
 			if (seqNum & db.InternalKeySeqNumBatch) == 0 {
@@ -114,7 +114,7 @@ func (i *dbIter) findPrevEntry() bool {
 			break
 		}
 
-		if seqNum := key.SeqNum(); seqNum >= i.seqNum {
+		if seqNum := key.SeqNum(); seqNum >= i.snapshot {
 			// Ignore entries that are newer than our snapshot sequence number,
 			// except for batch sequence numbers which are always visible.
 			if (seqNum & db.InternalKeySeqNumBatch) == 0 {

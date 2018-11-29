@@ -224,7 +224,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	get.cmp = d.cmp
 	get.newIter = d.newIter
 	get.newRangeDelIter = d.newRangeDelIter
-	get.rangeDelSeqNum = seqNum
+	get.snapshot = seqNum
 	get.key = key
 	get.batch = b
 	get.mem = memtables
@@ -235,7 +235,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	i.cmp = d.cmp
 	i.merge = d.merge
 	i.iter = get
-	i.seqNum = seqNum
+	i.snapshot = seqNum
 	i.version = current
 
 	defer i.Close()
@@ -475,9 +475,9 @@ func (d *DB) newIterInternal(
 	// TODO(peter): Investigate collapsing down to a single sequence number
 	// filter.
 	buf.merging.init(d.cmp, iters...)
-	buf.merging.rangeDelSeqNum = seqNum
+	buf.merging.snapshot = seqNum
 	dbi.iter = &buf.merging
-	dbi.seqNum = seqNum
+	dbi.snapshot = seqNum
 	return dbi
 }
 

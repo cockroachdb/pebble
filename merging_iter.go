@@ -117,12 +117,12 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 // range-del iterators need to be advanced based on the current mergingIter
 // key.
 type mergingIter struct {
-	dir            int
-	iters          []internalIterator
-	rangeDelIters  []internalIterator
-	rangeDelSeqNum uint64
-	heap           mergingIterHeap
-	err            error
+	dir           int
+	snapshot      uint64
+	iters         []internalIterator
+	rangeDelIters []internalIterator
+	heap          mergingIterHeap
+	err           error
 }
 
 // mergingIter implements the internalIterator interface.

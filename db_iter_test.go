@@ -23,11 +23,11 @@ func TestDBIter(t *testing.T) {
 
 	newIter := func(seqNum uint64, opts *db.IterOptions) *dbIter {
 		return &dbIter{
-			opts:   opts,
-			cmp:    db.DefaultComparer.Compare,
-			merge:  db.DefaultMerger.Merge,
-			iter:   &fakeIter{keys: keys, vals: vals},
-			seqNum: seqNum,
+			opts:     opts,
+			cmp:      db.DefaultComparer.Compare,
+			merge:    db.DefaultMerger.Merge,
+			iter:     &fakeIter{keys: keys, vals: vals},
+			snapshot: seqNum,
 		}
 	}
 
@@ -117,9 +117,9 @@ func TestDBIter(t *testing.T) {
 func BenchmarkDBIterSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &dbIter{
-		cmp:    db.DefaultComparer.Compare,
-		iter:   m.newIter(nil),
-		seqNum: db.InternalKeySeqNumMax,
+		cmp:      db.DefaultComparer.Compare,
+		iter:     m.newIter(nil),
+		snapshot: db.InternalKeySeqNumMax,
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -133,9 +133,9 @@ func BenchmarkDBIterSeekGE(b *testing.B) {
 func BenchmarkDBIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &dbIter{
-		cmp:    db.DefaultComparer.Compare,
-		iter:   m.newIter(nil),
-		seqNum: db.InternalKeySeqNumMax,
+		cmp:      db.DefaultComparer.Compare,
+		iter:     m.newIter(nil),
+		snapshot: db.InternalKeySeqNumMax,
 	}
 
 	b.ResetTimer()
@@ -150,9 +150,9 @@ func BenchmarkDBIterNext(b *testing.B) {
 func BenchmarkDBIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &dbIter{
-		cmp:    db.DefaultComparer.Compare,
-		iter:   m.newIter(nil),
-		seqNum: db.InternalKeySeqNumMax,
+		cmp:      db.DefaultComparer.Compare,
+		iter:     m.newIter(nil),
+		snapshot: db.InternalKeySeqNumMax,
 	}
 
 	b.ResetTimer()
