@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/rangedel"
 )
 
 // getIter is an internal iterator used to perform gets. It iterates through
@@ -16,9 +17,11 @@ type getIter struct {
 	cmp             db.Compare
 	newIter         tableNewIter
 	newRangeDelIter tableNewIter
+	rangeDelSeqNum  uint64
 	key             []byte
 	iter            internalIterator
 	rangeDelIter    internalIterator
+	tombstone       rangedel.Tombstone
 	levelIter       levelIter
 	level           int
 	batch           *Batch
@@ -52,12 +55,35 @@ func (g *getIter) Next() bool {
 		g.iter.Next()
 	}
 
-	// TODO(peter,rangedel): add range-del checks.
-
 	for {
 		if g.iter != nil {
-			if g.iter.Valid() && g.cmp(g.key, g.iter.Key().UserKey) == 0 {
-				return true
+			// We have to check rangeDelIter on each iteration because a single
+			// user-key can be spread across multiple tables in a level. A range
+			// tombstone will appear in the table corresponding to its start
+			// key. Every call to levelIter.Next() potentially switches to a new
+			// table and thus reinitializes rangeDelIter.
+			if g.rangeDelIter != nil {
+				g.tombstone = rangeDelIterGet(g.cmp, g.rangeDelIter, g.key, g.rangeDelSeqNum)
+				if g.err = g.rangeDelIter.Close(); g.err != nil {
+					return false
+				}
+				g.rangeDelIter = nil
+			}
+
+			if g.iter.Valid() {
+				key := g.iter.Key()
+				if g.tombstone.Deletes(key.SeqNum()) {
+					// We have a range tombstone covering this key. Rather than return a
+					// point or range deletion here, we return false and close our
+					// internal iterator which will make Valid() return false,
+					// effectively stopping iteration.
+					g.err = g.iter.Close()
+					g.iter = nil
+					return false
+				}
+				if g.cmp(g.key, key.UserKey) == 0 {
+					return true
+				}
 			}
 			// We've advanced the iterator passed the desired key. Move on to the
 			// next memtable / level.
@@ -77,10 +103,17 @@ func (g *getIter) Next() bool {
 			continue
 		}
 
+		// If we have a tombstone from a previous level it is guaranteed to delete
+		// keys in lower levels.
+		if !g.tombstone.Empty() {
+			return false
+		}
+
 		// Create iterators from memtables from newest to oldest.
 		if n := len(g.mem); n > 0 {
-			g.iter = g.mem[n-1].newIter(nil)
-			g.rangeDelIter = g.mem[n-1].newRangeDelIter(nil)
+			m := g.mem[n-1]
+			g.iter = m.newIter(nil)
+			g.rangeDelIter = m.newRangeDelIter(nil)
 			g.mem = g.mem[:n-1]
 			g.iter.SeekGE(g.key)
 			continue
@@ -89,7 +122,12 @@ func (g *getIter) Next() bool {
 		if g.level == 0 {
 			// Create iterators from L0 from newest to oldest.
 			if n := len(g.l0); n > 0 {
-				g.iter, g.err = g.newIter(&g.l0[n-1])
+				l := &g.l0[n-1]
+				g.iter, g.err = g.newIter(l)
+				if g.err != nil {
+					return false
+				}
+				g.rangeDelIter, g.err = g.newRangeDelIter(l)
 				if g.err != nil {
 					return false
 				}
@@ -102,6 +140,10 @@ func (g *getIter) Next() bool {
 
 		if g.level >= numLevels {
 			return false
+		}
+		if len(g.version.files[g.level]) == 0 {
+			g.level++
+			continue
 		}
 
 		g.levelIter.init(nil, g.cmp, g.newIter, g.version.files[g.level])
@@ -125,7 +167,7 @@ func (g *getIter) Value() []byte {
 }
 
 func (g *getIter) Valid() bool {
-	return g.iter != nil
+	return g.iter != nil && g.err == nil
 }
 
 func (g *getIter) Error() error {
@@ -133,10 +175,11 @@ func (g *getIter) Error() error {
 }
 
 func (g *getIter) Close() error {
-	var err error
 	if g.iter != nil {
-		err = g.iter.Close()
+		if err := g.iter.Close(); err != nil && g.err == nil {
+			g.err = err
+		}
 		g.iter = nil
 	}
-	return err
+	return g.err
 }

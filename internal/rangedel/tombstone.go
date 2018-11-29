@@ -5,6 +5,8 @@
 package rangedel // import "github.com/petermattis/pebble/internal/rangedel"
 
 import (
+	"fmt"
+
 	"github.com/petermattis/pebble/db"
 )
 
@@ -14,4 +16,21 @@ import (
 type Tombstone struct {
 	Start db.InternalKey
 	End   []byte
+}
+
+// Empty returns true if the tombstone does not cover any keys.
+func (t Tombstone) Empty() bool {
+	return t.Start.Kind() != db.InternalKeyKindRangeDelete
+}
+
+// Deletes returns true if the tombstone deletes keys at seqNum.
+func (t Tombstone) Deletes(seqNum uint64) bool {
+	return !t.Empty() && t.Start.SeqNum() >= seqNum
+}
+
+func (t Tombstone) String() string {
+	if t.Empty() {
+		return "<empty>"
+	}
+	return fmt.Sprintf("%s-%s#%d", t.Start.UserKey, t.End, t.Start.SeqNum())
 }

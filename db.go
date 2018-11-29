@@ -224,6 +224,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	get.cmp = d.cmp
 	get.newIter = d.newIter
 	get.newRangeDelIter = d.newRangeDelIter
+	get.rangeDelSeqNum = seqNum
 	get.key = key
 	get.batch = b
 	get.mem = memtables
