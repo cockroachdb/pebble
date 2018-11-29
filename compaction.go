@@ -198,7 +198,7 @@ func (c *compaction) elideTombstone(key []byte) bool {
 				if c.cmp(key, f.smallest.UserKey) >= 0 {
 					return false
 				}
-				// For levels above level 0, the files within a level are in
+				// For levels below level 0, the files within a level are in
 				// increasing ikey order, so we can break early.
 				break
 			}
@@ -352,17 +352,17 @@ func (d *DB) flush1() error {
 	if n == 1 {
 		mem := d.mu.mem.queue[0]
 		iter = mem.newIter(nil)
-		if riter := mem.newRangeDelIter(nil); riter != nil {
-			iter = newMergingIter(d.cmp, iter, riter)
+		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
+			iter = newMergingIter(d.cmp, iter, rangeDelIter)
 		}
 	} else {
 		iters := make([]internalIterator, 0, 2*n)
 		for i := 0; i < n; i++ {
 			mem := d.mu.mem.queue[i]
 			iters = append(iters, mem.newIter(nil))
-			riter := mem.newRangeDelIter(nil)
-			if riter != nil {
-				iters = append(iters, riter)
+			rangeDelIter := mem.newRangeDelIter(nil)
+			if rangeDelIter != nil {
+				iters = append(iters, rangeDelIter)
 			}
 		}
 		iter = newMergingIter(d.cmp, iters...)
@@ -468,11 +468,6 @@ func (d *DB) writeLevel0Table(
 		}
 	}()
 
-	iter.First()
-	if !iter.Valid() {
-		return fileMetadata{}, fmt.Errorf("pebble: memtable empty")
-	}
-
 	file, err = fs.Create(filename)
 	if err != nil {
 		return fileMetadata{}, err
@@ -480,7 +475,7 @@ func (d *DB) writeLevel0Table(
 	file = newRateLimitedFile(file, d.flushController)
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
-	for ; iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); iter.Next() {
 		if err1 := tw.Add(iter.Key(), iter.Value()); err1 != nil {
 			return fileMetadata{}, err1
 		}

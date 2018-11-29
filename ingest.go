@@ -109,18 +109,38 @@ func ingestLink(
 }
 
 func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata) bool {
-	iter := mem.newIter(nil)
-	defer iter.Close()
+	{
+		// Check overlap with point operations.
+		iter := mem.newIter(nil)
+		defer iter.Close()
 
-	for _, m := range meta {
-		iter.SeekGE(m.smallest.UserKey)
-		if !iter.Valid() {
-			continue
-		}
-		if cmp(iter.Key().UserKey, m.largest.UserKey) <= 0 {
-			return true
+		for _, m := range meta {
+			iter.SeekGE(m.smallest.UserKey)
+			if !iter.Valid() {
+				continue
+			}
+			if cmp(iter.Key().UserKey, m.largest.UserKey) <= 0 {
+				return true
+			}
 		}
 	}
+
+	// Check overlap with range deletions.
+	//
+	// TODO(peter): this is incomplete and untested.
+	if iter := mem.newRangeDelIter(nil); iter != nil {
+		defer iter.Close()
+		for _, m := range meta {
+			iter.SeekGE(m.smallest.UserKey)
+			if !iter.Valid() {
+				continue
+			}
+			if cmp(iter.Key().UserKey, m.largest.UserKey) <= 0 {
+				return true
+			}
+		}
+	}
+
 	return false
 }
 

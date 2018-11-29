@@ -703,34 +703,8 @@ func TestManualCompaction(t *testing.T) {
 		switch td.Cmd {
 		case "batch":
 			b := d.NewIndexedBatch()
-			for _, line := range strings.Split(td.Input, "\n") {
-				parts := strings.Fields(line)
-				if len(parts) == 0 {
-					continue
-				}
-				var err error
-				switch parts[0] {
-				case "set":
-					if len(parts) != 3 {
-						t.Fatalf("%s expects 2 arguments", parts[0])
-					}
-					err = b.Set([]byte(parts[1]), []byte(parts[2]), nil)
-				case "del":
-					if len(parts) != 2 {
-						t.Fatalf("%s expects 1 argument", parts[0])
-					}
-					err = b.Delete([]byte(parts[1]), nil)
-				case "merge":
-					if len(parts) != 3 {
-						t.Fatalf("%s expects 2 arguments", parts[0])
-					}
-					err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
-				default:
-					t.Fatalf("unknown op: %s", parts[0])
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
 			}
 			b.Commit(nil)
 

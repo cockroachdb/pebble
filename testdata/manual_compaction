@@ -24,3 +24,13 @@ set c 6
 compact a-d
 ----
 2: a-d
+
+# This also tests flushing a memtable that only contains range
+# deletions.
+
+batch
+del-range a e
+----
+
+compact a-d
+----
