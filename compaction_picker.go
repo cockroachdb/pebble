@@ -225,8 +225,8 @@ func (p *compactionPicker) initTarget(v *version, opts *db.Options) {
 	// snapshot.
 }
 
-// pick picks the best compaction, if any.
-func (p *compactionPicker) pick(opts *db.Options) (c *compaction) {
+// pickAuto picks the best compaction, if any.
+func (p *compactionPicker) pickAuto(opts *db.Options) (c *compaction) {
 	if !p.compactionNeeded() {
 		return nil
 	}

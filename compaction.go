@@ -531,7 +531,7 @@ func (d *DB) compact1() (err error) {
 			manual.done <- err
 		}()
 	} else {
-		c = d.mu.versions.picker.pick(d.opts)
+		c = d.mu.versions.picker.pickAuto(d.opts)
 	}
 	if c == nil {
 		return nil

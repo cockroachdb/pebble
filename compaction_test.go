@@ -422,7 +422,7 @@ func TestPickCompaction(t *testing.T) {
 		vs.picker = &tc.picker
 		vs.picker.vers = &tc.version
 
-		c, got := vs.picker.pick(opts), ""
+		c, got := vs.picker.pickAuto(opts), ""
 		if c != nil {
 			got0 := fileNums(c.inputs[0])
 			got1 := fileNums(c.inputs[1])
