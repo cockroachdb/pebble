@@ -253,7 +253,7 @@ func (p *compactionPicker) pickAuto(opts *db.Options) (c *compaction) {
 		}
 	}
 
-	c.setupOtherInputs(opts)
+	c.setupOtherInputs()
 	return c
 }
 
@@ -270,6 +270,6 @@ func (p *compactionPicker) pickManual(opts *db.Options, manual *manualCompaction
 	if len(c.inputs[0]) == 0 {
 		return nil
 	}
-	c.setupOtherInputs(opts)
+	c.setupOtherInputs()
 	return c
 }

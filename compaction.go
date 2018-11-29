@@ -44,6 +44,10 @@ type compaction struct {
 	// maxOverlapBytes is the maximum number of bytes of overlap allowed for a
 	// single output table with the tables in the grandparent level.
 	maxOverlapBytes uint64
+	// maxExpandedBytes is the maximum size of an expanded compaction. If growing
+	// a compaction results in a larger size, the original compaction is used
+	// instead.
+	maxExpandedBytes uint64
 
 	// inputs are the tables to be compacted.
 	inputs [2][]fileMetadata
@@ -62,47 +66,45 @@ func newCompaction(opts *db.Options, cur *version, level int) *compaction {
 		level:             level,
 		maxOutputFileSize: uint64(opts.Level(level + 1).TargetFileSize),
 		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, level+1),
+		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, level+1),
 	}
 	return c
 }
 
 // setupOtherInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
-func (c *compaction) setupOtherInputs(opts *db.Options) {
-	cmp := opts.Comparer.Compare
-	smallest0, largest0 := ikeyRange(cmp, c.inputs[0], nil)
-	c.inputs[1] = c.version.overlaps(c.level+1, cmp, smallest0.UserKey, largest0.UserKey)
-	smallest01, largest01 := ikeyRange(cmp, c.inputs[0], c.inputs[1])
+func (c *compaction) setupOtherInputs() {
+	smallest0, largest0 := ikeyRange(c.cmp, c.inputs[0], nil)
+	c.inputs[1] = c.version.overlaps(c.level+1, c.cmp, smallest0.UserKey, largest0.UserKey)
+	smallest01, largest01 := ikeyRange(c.cmp, c.inputs[0], c.inputs[1])
 
 	// Grow the inputs if it doesn't affect the number of level+1 files.
-	if c.grow(opts, smallest01, largest01) {
-		smallest01, largest01 = ikeyRange(cmp, c.inputs[0], c.inputs[1])
+	if c.grow(smallest01, largest01) {
+		smallest01, largest01 = ikeyRange(c.cmp, c.inputs[0], c.inputs[1])
 	}
 
 	// Compute the set of level+2 files that overlap this compaction.
 	if c.level+2 < numLevels {
-		c.grandparents = c.version.overlaps(c.level+2, cmp, smallest01.UserKey, largest01.UserKey)
+		c.grandparents = c.version.overlaps(c.level+2, c.cmp, smallest01.UserKey, largest01.UserKey)
 	}
 }
 
 // grow grows the number of inputs at c.level without changing the number of
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
-func (c *compaction) grow(opts *db.Options, sm, la db.InternalKey) bool {
+func (c *compaction) grow(sm, la db.InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
 	}
-	cmp := opts.Comparer.Compare
-	grow0 := c.version.overlaps(c.level, cmp, sm.UserKey, la.UserKey)
+	grow0 := c.version.overlaps(c.level, c.cmp, sm.UserKey, la.UserKey)
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
 	}
-	if totalSize(grow0)+totalSize(c.inputs[1]) >=
-		expandedCompactionByteSizeLimit(opts, c.level+1) {
+	if totalSize(grow0)+totalSize(c.inputs[1]) >= c.maxExpandedBytes {
 		return false
 	}
-	sm1, la1 := ikeyRange(cmp, grow0, nil)
-	grow1 := c.version.overlaps(c.level+1, cmp, sm1.UserKey, la1.UserKey)
+	sm1, la1 := ikeyRange(c.cmp, grow0, nil)
+	grow1 := c.version.overlaps(c.level+1, c.cmp, sm1.UserKey, la1.UserKey)
 	if len(grow1) != len(c.inputs[1]) {
 		return false
 	}
