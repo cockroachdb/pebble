@@ -8,7 +8,7 @@ get a
 
 get b
 ----
-pebble/db: not found
+pebble: not found
 
 define
 set a 1
@@ -27,7 +27,7 @@ del a
 
 get a
 ----
-pebble/db: not found
+pebble: not found
 
 define
 set a 1
@@ -79,7 +79,7 @@ del-range a b
 
 get a
 ----
-pebble/db: not found
+pebble: not found
 
 commit
 ----
@@ -89,7 +89,7 @@ define
 
 get a
 ----
-pebble/db: not found
+pebble: not found
 
 define
 merge b 1

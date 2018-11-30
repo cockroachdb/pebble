@@ -9,4 +9,4 @@ import (
 )
 
 // ErrNotFound means that a get or delete call did not find the requested key.
-var ErrNotFound = errors.New("pebble/db: not found")
+var ErrNotFound = errors.New("pebble: not found")

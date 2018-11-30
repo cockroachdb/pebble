@@ -7,9 +7,12 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/storage"
 )
 
 type iterCmdOpt int
@@ -105,4 +108,99 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 		}
 	}
 	return nil
+}
+
+func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
+	if td.Input == "" {
+		return nil, fmt.Errorf("empty test input")
+	}
+
+	fs := storage.NewMem()
+	d, err := Open("", &db.Options{
+		Storage: fs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var mem *memTable
+	ve := &versionEdit{}
+	level := -1
+
+	maybeFlush := func() error {
+		if level < 0 {
+			return nil
+		}
+
+		iter := mem.newIter(nil)
+		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
+			iter = newMergingIter(d.cmp, iter, rangeDelIter)
+		}
+		meta, err := d.writeLevel0Table(d.opts.Storage, iter)
+		if err != nil {
+			return nil
+		}
+		ve.newFiles = append(ve.newFiles, newFileEntry{
+			level: level,
+			meta:  meta,
+		})
+		level = -1
+		return nil
+	}
+
+	for _, line := range strings.Split(td.Input, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			switch fields[0] {
+			case "mem":
+				if err := maybeFlush(); err != nil {
+					return nil, err
+				}
+				// Add a memtable layer.
+				if !d.mu.mem.mutable.empty() {
+					d.mu.mem.mutable = newMemTable(d.opts)
+					d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+				}
+				mem = d.mu.mem.mutable
+				fields = fields[1:]
+			case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+				if err := maybeFlush(); err != nil {
+					return nil, err
+				}
+				var err error
+				if level, err = strconv.Atoi(fields[0][1:]); err != nil {
+					return nil, err
+				}
+				fields = fields[1:]
+				mem = newMemTable(d.opts)
+			}
+		}
+
+		for _, data := range fields {
+			i := strings.Index(data, ":")
+			key := db.ParseInternalKey(data[:i])
+			value := []byte(data[i+1:])
+			if err := mem.set(key, value); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := maybeFlush(); err != nil {
+		return nil, err
+	}
+
+	if len(ve.newFiles) > 0 {
+		if err := d.mu.versions.logAndApply(ve); err != nil {
+			return nil, err
+		}
+		for i := range ve.newFiles {
+			meta := &ve.newFiles[i].meta
+			delete(d.mu.compact.pendingOutputs, meta.fileNum)
+		}
+	}
+
+	return d, nil
 }

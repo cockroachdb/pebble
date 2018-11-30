@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +23,16 @@ import (
 // that key; a DB is not a multi-map. NB: this might have unexpected
 // interaction with prepare/apply. Caveat emptor!
 func (m *memTable) set(key db.InternalKey, value []byte) error {
+	if key.Kind() == db.InternalKeyKindRangeDelete {
+		if err := m.rangeDelSkl.Add(key, value); err != nil {
+			return err
+		}
+		atomic.AddUint32(&m.tombstones.count, 1)
+		m.tombstones.Lock()
+		m.tombstones.vals = nil
+		m.tombstones.Unlock()
+		return nil
+	}
 	return m.skl.Add(key, value)
 }
 

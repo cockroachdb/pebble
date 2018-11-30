@@ -35,6 +35,11 @@ func rangeDelIterGet(
 		}
 	}
 
+	if cmp(key, i.Key().UserKey) < 0 {
+		// The search key lies before the start of the tombstone.
+		return rangedel.Tombstone{}
+	}
+
 	// Advance the iterator as long as the search key lies past the end of the
 	// tombstone. See the comment above about why this is necessary.
 	for cmp(key, i.Value()) >= 0 {
@@ -61,7 +66,7 @@ func rangeDelIterGet(
 	for {
 		tStart := i.Key()
 		tSeqNum := tStart.SeqNum()
-		if tSeqNum <= seqNum || (tSeqNum&db.InternalKeySeqNumBatch) != 0 {
+		if tSeqNum < seqNum || (tSeqNum&db.InternalKeySeqNumBatch) != 0 {
 			// The tombstone is visible at our read sequence number.
 			return rangedel.Tombstone{
 				Start: tStart,

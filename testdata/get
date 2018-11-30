@@ -1,0 +1,534 @@
+# 1 memtable.
+
+define
+mem
+  a.SET.1:b
+  a.SET.2:c
+  a.SET.3:d
+  b.MERGE.1:b
+  b.MERGE.2:c
+  b.MERGE.3:d
+  b.RANGEDEL.4:c
+  b.MERGE.5:e
+  c.SET.1:b
+  c.SET.2:c
+  c.SET.3:d
+----
+mem: 1
+
+get seq=2
+a
+b
+c
+----
+b
+b
+b
+
+get seq=3
+a
+b
+c
+----
+c
+cb
+c
+
+get seq=4
+a
+b
+c
+----
+d
+dcb
+d
+
+get seq=5
+a
+b
+c
+----
+d
+pebble: not found
+d
+
+get seq=6
+a
+b
+c
+----
+d
+e
+d
+
+# Multiple memtables.
+
+define
+mem
+  a.SET.1:b
+  b.MERGE.1:b
+  c.SET.1:b
+mem
+  a.SET.2:c
+  b.MERGE.2:c
+  c.SET.2:c
+mem
+  a.SET.3:d
+  b.MERGE.3:d
+  c.SET.3:d
+mem
+  b.RANGEDEL.4:c
+mem
+  b.MERGE.5:e
+----
+mem: 5
+
+get seq=2
+a
+b
+c
+----
+b
+b
+b
+
+get seq=3
+a
+b
+c
+----
+c
+cb
+c
+
+get seq=4
+a
+b
+c
+----
+d
+dcb
+d
+
+get seq=5
+a
+b
+c
+----
+d
+pebble: not found
+d
+
+get seq=6
+a
+b
+c
+----
+d
+e
+d
+
+# Overlapping range deletions in the same memtable.
+
+define
+mem
+  a.SET.1:1
+  a.SET.2:2
+  a.SET.3:3
+  a.SET.4:4
+  b.SET.1:1
+  b.SET.2:2
+  b.SET.3:3
+  b.SET.4:4
+  c.SET.1:1
+  c.SET.2:2
+  c.SET.3:3
+  c.SET.4:4
+  d.SET.1:1
+  d.SET.2:2
+  d.SET.3:3
+  d.SET.4:4
+  a.RANGEDEL.2:b
+  b.RANGEDEL.3:c
+  b.RANGEDEL.2:c
+  c.RANGEDEL.4:d
+  c.RANGEDEL.3:d
+  c.RANGEDEL.2:d
+----
+mem: 1
+
+get seq=2
+a
+b
+c
+d
+----
+1
+1
+1
+1
+
+get seq=3
+a
+b
+c
+d
+----
+pebble: not found
+pebble: not found
+pebble: not found
+2
+
+get seq=4
+a
+b
+c
+d
+----
+3
+pebble: not found
+pebble: not found
+3
+
+get seq=5
+a
+b
+c
+d
+----
+4
+4
+pebble: not found
+4
+
+# Overlapping range deletions in the different memtables. Note that
+# the range tombstones are not fragmented in this case.
+
+define
+mem
+  a.SET.1:1
+  b.SET.1:1
+  c.SET.1:1
+  d.SET.1:1
+mem
+  a.SET.2:2
+  b.SET.2:2
+  c.SET.2:2
+  d.SET.2:2
+  a.RANGEDEL.2:d
+mem
+  a.SET.3:3
+  b.SET.3:3
+  c.SET.3:3
+  d.SET.3:3
+  b.RANGEDEL.3:d
+mem
+  a.SET.4:4
+  b.SET.4:4
+  c.SET.4:4
+  d.SET.4:4
+  c.RANGEDEL.4:d
+----
+mem: 4
+
+get seq=2
+a
+b
+c
+d
+----
+1
+1
+1
+1
+
+get seq=3
+a
+b
+c
+d
+----
+pebble: not found
+pebble: not found
+pebble: not found
+2
+
+get seq=4
+a
+b
+c
+d
+----
+3
+pebble: not found
+pebble: not found
+3
+
+get seq=5
+a
+b
+c
+d
+----
+4
+4
+pebble: not found
+4
+
+# User-key that spans tables in a level.
+
+define
+L1
+  a.SET.3:3
+L1
+  a.SET.2:2
+L1
+  a.SET.1:1
+----
+mem: 1
+1: a-a a-a a-a
+
+get seq=1
+a
+----
+pebble: not found
+
+get seq=2
+a
+----
+1
+
+get seq=3
+a
+----
+2
+
+get seq=4
+a
+----
+3
+
+define
+L1
+  a.MERGE.3:3
+L1
+  a.MERGE.2:2
+L1
+  a.MERGE.1:1
+----
+mem: 1
+1: a-a a-a a-a
+
+get seq=1
+a
+----
+pebble: not found
+
+get seq=2
+a
+----
+1
+
+get seq=3
+a
+----
+21
+
+get seq=4
+a
+----
+321
+
+# User-key spread across multiple levels.
+
+define
+mem
+  a.MERGE.4:4
+L1
+  a.MERGE.3:3
+L2
+  a.MERGE.2:2
+L3
+  a.MERGE.1:1
+----
+mem: 1
+1: a-a
+2: a-a
+3: a-a
+
+get seq=1
+a
+----
+pebble: not found
+
+get seq=2
+a
+----
+1
+
+get seq=3
+a
+----
+21
+
+get seq=4
+a
+----
+321
+
+get seq=5
+a
+----
+4321
+
+# Range deletions on multiple levels.
+define
+L0
+  a.SET.4:4
+  b.SET.4:4
+  c.SET.4:4
+  d.SET.4:4
+  c.RANGEDEL.4:d
+L1
+  a.SET.3:3
+  b.SET.3:3
+  c.SET.3:3
+  d.SET.3:3
+  b.RANGEDEL.3:d
+L2
+  a.SET.2:2
+  b.SET.2:2
+  c.SET.2:2
+  d.SET.2:2
+  a.RANGEDEL.2:d
+L3
+  a.SET.1:1
+  b.SET.1:1
+  c.SET.1:1
+  d.SET.1:1
+----
+mem: 1
+0: a-d
+1: a-d
+2: a-d
+3: a-d
+
+get seq=2
+a
+b
+c
+d
+----
+1
+1
+1
+1
+
+get seq=3
+a
+b
+c
+d
+----
+pebble: not found
+pebble: not found
+pebble: not found
+2
+
+get seq=4
+a
+b
+c
+d
+----
+3
+pebble: not found
+pebble: not found
+3
+
+get seq=5
+a
+b
+c
+d
+----
+4
+4
+pebble: not found
+4
+
+# Range deletions spanning tables within a level.
+
+define
+mem
+  a.SET.3:3
+  b.SET.3:3
+  c.SET.3:3
+  d.SET.3:3
+L1
+  a.RANGEDEL.2:b
+L1
+  b.RANGEDEL.2:c
+L1
+  c.RANGEDEL.2:d
+L2
+  a.SET.1:1
+  b.SET.1:1
+  c.SET.1:1
+  d.SET.1:1
+----
+mem: 1
+1: a-b b-c c-d
+2: a-d
+
+get seq=2
+a
+b
+c
+d
+----
+1
+1
+1
+1
+
+get seq=3
+a
+b
+c
+d
+----
+pebble: not found
+pebble: not found
+pebble: not found
+1
+
+get seq=4
+a
+b
+c
+d
+----
+3
+3
+3
+3
+
+# Invalid LSM structure (range deletion at newer level covers newer
+# write at an older level). This LSM structure is not generated
+# naturally, but tested here to show the level-by-level nature of Get.
+
+define
+L1
+  a.RANGEDEL.1:b
+L2
+  a.SET.2:2
+----
+mem: 1
+1: a-b
+2: a-a
+
+get seq=3
+a
+----
+pebble: not found

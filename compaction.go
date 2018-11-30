@@ -107,12 +107,12 @@ func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 	// files[0]. This requires that the inputs slice is a sub-slice of
 	// files. This is true for non-L0 files returned from version.overlaps.
 	if uintptr(unsafe.Pointer(&inputs[0])) < uintptr(unsafe.Pointer(&files[0])) {
-		panic("pebble/db: invalid input slice")
+		panic("pebble: invalid input slice")
 	}
 	start := int((uintptr(unsafe.Pointer(&inputs[0])) -
 		uintptr(unsafe.Pointer(&files[0]))) / unsafe.Sizeof(inputs[0]))
 	if start >= len(files) {
-		panic("pebble/db: invalid input slice")
+		panic("pebble: invalid input slice")
 	}
 	end := start + len(inputs)
 	for ; end < len(files); end++ {
