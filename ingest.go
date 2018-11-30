@@ -44,6 +44,8 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 	if err := iter.Error(); err != nil {
 		return nil, err
 	}
+
+	// TODO(peter,rangedel): Need to include range-deletions in the metadata.
 	return meta, nil
 }
 
