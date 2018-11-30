@@ -195,9 +195,9 @@ func (f *Fragmenter) Deleted(key db.InternalKey) bool {
 	seqNum := key.SeqNum()
 	flush := true
 	for _, t := range f.pending {
-		// NB: A range deletion tombstone deletes a point operation at the same
-		// sequence number.
 		if f.Cmp(key.UserKey, t.End) < 0 {
+			// NB: A range deletion tombstone deletes a point operation at the same
+			// sequence number.
 			if t.Start.SeqNum() >= seqNum {
 				return true
 			}

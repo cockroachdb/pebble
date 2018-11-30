@@ -16,25 +16,25 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
+var tombstoneRe = regexp.MustCompile(`(\w+)-(\w+)#(\d+)`)
+
+func parseTombstone(t *testing.T, s string) Tombstone {
+	m := tombstoneRe.FindStringSubmatch(s)
+	if len(m) != 4 {
+		t.Fatalf("expected 4 components, but found %d", len(m))
+	}
+	seqNum, err := strconv.Atoi(m[3])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Tombstone{
+		Start: db.MakeInternalKey([]byte(m[1]), uint64(seqNum), db.InternalKeyKindRangeDelete),
+		End:   []byte(m[2]),
+	}
+}
+
 func TestFragmenter(t *testing.T) {
 	cmp := db.DefaultComparer.Compare
-
-	var tombstoneRe = regexp.MustCompile(`(\w+)-(\w+)#(\d+)`)
-
-	parseTombstone := func(t *testing.T, s string) Tombstone {
-		m := tombstoneRe.FindStringSubmatch(s)
-		if len(m) != 4 {
-			t.Fatalf("expected 4 components, but found %d", len(m))
-		}
-		seqNum, err := strconv.Atoi(m[3])
-		if err != nil {
-			t.Fatal(err)
-		}
-		return Tombstone{
-			Start: db.MakeInternalKey([]byte(m[1]), uint64(seqNum), 0),
-			End:   []byte(m[2]),
-		}
-	}
 
 	build := func(t *testing.T, s string) []Tombstone {
 		var tombstones []Tombstone
@@ -177,4 +177,41 @@ func TestFragmenter(t *testing.T) {
 	})
 }
 
-// TODO(peter,rangedel): Test Fragmenter.Deleted
+func TestFragmenterDeleted(t *testing.T) {
+	datadriven.RunTest(t, "testdata/fragmenter_deleted", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "build":
+			f := &Fragmenter{
+				Cmp: db.DefaultComparer.Compare,
+				Emit: func(fragmented []Tombstone) {
+				},
+			}
+			var buf bytes.Buffer
+			for _, line := range strings.Split(d.Input, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) != 2 {
+					return fmt.Sprintf("malformed input: %s", line)
+				}
+				switch fields[0] {
+				case "add":
+					t := parseTombstone(t, fields[1])
+					f.Add(t.Start, t.End)
+				case "deleted":
+					key := db.ParseInternalKey(fields[1])
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								fmt.Fprintf(&buf, "%s: %s\n", key, r)
+							}
+						}()
+						fmt.Fprintf(&buf, "%s: %t\n", key, f.Deleted(key))
+					}()
+				}
+			}
+			return buf.String()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}

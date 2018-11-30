@@ -1,0 +1,49 @@
+# 3: a-----------m
+# 2:      f------------s
+# 1:          j---------------z
+
+build
+deleted a.SET.1
+add a-m#3
+deleted a.SET.1
+deleted a.SET.2
+deleted a.SET.3
+deleted a.SET.4
+deleted l.SET.3
+add f-s#2
+deleted e.SET.4
+deleted f.SET.3
+deleted l.SET.3
+deleted m.SET.3
+add j-z#1
+deleted j.SET.1
+deleted j.SET.2
+deleted j.SET.3
+deleted j.SET.4
+deleted l.SET.3
+deleted m.SET.3
+deleted r.SET.2
+deleted s.SET.2
+deleted y.SET.1
+deleted z.SET.1
+----
+a#1,1: false
+a#1,1: true
+a#2,1: true
+a#3,1: true
+a#4,1: false
+l#3,1: true
+e#4,1: pebble: Deleted called in non-increasing key order: "f", "e"
+f#3,1: true
+l#3,1: true
+m#3,1: false
+j#1,1: true
+j#2,1: true
+j#3,1: true
+j#4,1: false
+l#3,1: true
+m#3,1: false
+r#2,1: true
+s#2,1: false
+y#1,1: true
+z#1,1: false
