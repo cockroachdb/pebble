@@ -32,20 +32,42 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 	meta.size = uint64(stat.Size())
 	meta.smallest = db.InternalKey{}
 	meta.largest = db.InternalKey{}
+	smallestSet, largestSet := false, false
 
-	iter := r.NewIter(nil)
-	defer iter.Close()
-	if iter.First(); iter.Valid() {
-		meta.smallest = iter.Key().Clone()
-	}
-	if iter.Last(); iter.Valid() {
-		meta.largest = iter.Key().Clone()
-	}
-	if err := iter.Error(); err != nil {
-		return nil, err
+	{
+		iter := r.NewIter(nil)
+		defer iter.Close()
+		if iter.First(); iter.Valid() {
+			meta.smallest = iter.Key().Clone()
+			smallestSet = true
+		}
+		if iter.Last(); iter.Valid() {
+			meta.largest = iter.Key().Clone()
+			largestSet = true
+		}
+		if err := iter.Error(); err != nil {
+			return nil, err
+		}
 	}
 
-	// TODO(peter,rangedel): Need to include range-deletions in the metadata.
+	if iter := r.NewRangeDelIter(nil); iter != nil {
+		defer iter.Close()
+		if iter.First(); iter.Valid() {
+			key := iter.Key()
+			if !smallestSet ||
+				db.InternalCompare(opts.Comparer.Compare, meta.smallest, key) > 0 {
+				meta.smallest = key
+			}
+		}
+		if iter.Last(); iter.Valid() {
+			key := db.MakeRangeDeleteSentinelKey(iter.Value())
+			if !largestSet ||
+				db.InternalCompare(opts.Comparer.Compare, meta.largest, key) < 0 {
+				meta.largest = key
+			}
+		}
+	}
+
 	return meta, nil
 }
 

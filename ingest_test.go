@@ -24,6 +24,51 @@ import (
 )
 
 func TestIngestLoad(t *testing.T) {
+	fs := storage.NewMem()
+
+	datadriven.RunTest(t, "testdata/ingest_load", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "load":
+			f, err := fs.Create("ext")
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := sstable.NewWriter(f, nil, db.LevelOptions{})
+			for _, data := range strings.Split(td.Input, "\n") {
+				j := strings.Index(data, ":")
+				if j < 0 {
+					return fmt.Sprintf("malformed input: %s\n", data)
+				}
+				key := db.ParseInternalKey(data[:j])
+				value := []byte(data[j+1:])
+				if err := w.Add(key, value); err != nil {
+					return err.Error()
+				}
+			}
+			w.Close()
+
+			opts := &db.Options{
+				Comparer: db.DefaultComparer,
+				Storage:  fs,
+			}
+			meta, err := ingestLoad(opts, []string{"ext"}, []uint64{1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			for _, m := range meta {
+				fmt.Fprintf(&buf, "%d: %s-%s\n", m.fileNum, m.smallest, m.largest)
+			}
+			return buf.String()
+
+		default:
+			t.Fatalf("unknown command: %s", td.Cmd)
+		}
+		return ""
+	})
+}
+
+func TestIngestLoadRand(t *testing.T) {
 	mem := storage.NewMem()
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	cmp := db.DefaultComparer.Compare
@@ -440,34 +485,8 @@ func TestIngest(t *testing.T) {
 		switch td.Cmd {
 		case "ingest", "batch":
 			b := d.NewIndexedBatch()
-			for _, line := range strings.Split(td.Input, "\n") {
-				parts := strings.Fields(line)
-				if len(parts) == 0 {
-					continue
-				}
-				var err error
-				switch parts[0] {
-				case "set":
-					if len(parts) != 3 {
-						t.Fatalf("%s expects 2 arguments", parts[0])
-					}
-					err = b.Set([]byte(parts[1]), []byte(parts[2]), nil)
-				case "del":
-					if len(parts) != 2 {
-						t.Fatalf("%s expects 1 argument", parts[0])
-					}
-					err = b.Delete([]byte(parts[1]), nil)
-				case "merge":
-					if len(parts) != 3 {
-						t.Fatalf("%s expects 2 arguments", parts[0])
-					}
-					err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
-				default:
-					t.Fatalf("unknown op: %s", parts[0])
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
 			}
 
 			switch td.Cmd {
@@ -481,9 +500,13 @@ func TestIngest(t *testing.T) {
 				for iter.First(); iter.Valid(); iter.Next() {
 					key := iter.Key()
 					key.SetSeqNum(10000)
-					w.Add(key, iter.Value())
+					if err := w.Add(key, iter.Value()); err != nil {
+						return err.Error()
+					}
 				}
-				iter.Close()
+				if err := iter.Close(); err != nil {
+					return err.Error()
+				}
 				w.Close()
 
 				if err := d.Ingest([]string{"ext/0"}); err != nil {
@@ -494,7 +517,9 @@ func TestIngest(t *testing.T) {
 				}
 
 			case "batch":
-				b.Commit(nil)
+				if err := b.Commit(nil); err != nil {
+					return err.Error()
+				}
 			}
 
 		case "iter":

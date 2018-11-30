@@ -1,0 +1,59 @@
+load
+----
+malformed input: 
+
+load
+a.SET.1:
+----
+1: a#1,1-a#1,1
+
+load
+a.SET.1:
+b.SET.2:
+----
+1: a#1,1-b#2,1
+
+load
+a.DEL.1:
+----
+1: a#1,0-a#1,0
+
+load
+a.DEL.1:
+b.DEL.2:
+----
+1: a#1,0-b#2,0
+
+load
+a.MERGE.1:
+----
+1: a#1,2-a#1,2
+
+load
+a.MERGE.1:
+b.MERGE.2:
+----
+1: a#1,2-b#2,2
+
+load
+a.RANGEDEL.1:b
+----
+1: a#1,15-b#72057594037927935,15
+
+load
+a.SET.1:
+a.RANGEDEL.2:b
+----
+1: a#2,15-b#72057594037927935,15
+
+load
+a.SET.2:
+a.RANGEDEL.1:b
+----
+1: a#2,1-b#72057594037927935,15
+
+load
+b.SET.1:
+a.RANGEDEL.2:b
+----
+1: a#2,15-b#1,1
