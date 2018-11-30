@@ -155,7 +155,7 @@ func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 		// to compare against the first one.
 		switch c := f.Cmp(f.pending[0].Start.UserKey, start.UserKey); {
 		case c > 0:
-			panic(fmt.Sprintf("pebble: Add called in non-increasing key order: %q, %q",
+			panic(fmt.Sprintf("pebble: keys must be added in order: %s, %s",
 				f.pending[0].Start.UserKey, start.UserKey))
 		case c == 0:
 			// The new tombstone has the same start key as the existing pending

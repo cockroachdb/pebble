@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -40,15 +41,26 @@ func TestWriter(t *testing.T) {
 					tombstones = append(tombstones, fragmented...)
 				},
 			}
-			for _, key := range strings.Split(td.Input, "\n") {
-				j := strings.Index(key, ":")
-				ikey := db.ParseInternalKey(key[:j])
-				value := []byte(key[j+1:])
-				switch ikey.Kind() {
+			for _, data := range strings.Split(td.Input, "\n") {
+				j := strings.Index(data, ":")
+				key := db.ParseInternalKey(data[:j])
+				value := []byte(data[j+1:])
+				switch key.Kind() {
 				case db.InternalKeyKindRangeDelete:
-					f.Add(ikey, value)
+					var err error
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								err = errors.New(fmt.Sprint(r))
+							}
+						}()
+						f.Add(key, value)
+					}()
+					if err != nil {
+						return err.Error()
+					}
 				default:
-					if err := w.Add(ikey, value); err != nil {
+					if err := w.Add(key, value); err != nil {
 						return err.Error()
 					}
 				}
@@ -56,6 +68,43 @@ func TestWriter(t *testing.T) {
 			f.Finish()
 			for _, v := range tombstones {
 				if err := w.Add(v.Start, v.End); err != nil {
+					return err.Error()
+				}
+			}
+			if err := w.Close(); err != nil {
+				return err.Error()
+			}
+			meta, err := w.Metadata()
+			if err != nil {
+				return err.Error()
+			}
+
+			f1, err := fs.Open("test")
+			if err != nil {
+				return err.Error()
+			}
+			r = NewReader(f1, 0, nil)
+			return fmt.Sprintf("bounds:  [%s,%s]\nseqnums: [%d,%d]\n", meta.Smallest, meta.Largest,
+				meta.SmallestSeqNum, meta.LargestSeqNum)
+
+		case "build-raw":
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+
+			fs := storage.NewMem()
+			f0, err := fs.Create("test")
+			if err != nil {
+				return err.Error()
+			}
+
+			w := NewWriter(f0, nil, db.LevelOptions{})
+			for _, data := range strings.Split(td.Input, "\n") {
+				j := strings.Index(data, ":")
+				key := db.ParseInternalKey(data[:j])
+				value := []byte(data[j+1:])
+				if err := w.Add(key, value); err != nil {
 					return err.Error()
 				}
 			}

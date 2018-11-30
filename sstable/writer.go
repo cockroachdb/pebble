@@ -15,6 +15,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
+	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/storage"
 )
 
@@ -118,8 +119,7 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 
 func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 	if db.InternalCompare(w.compare, w.meta.Largest, key) >= 0 {
-		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q",
-			w.meta.Largest, key)
+		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", w.meta.Largest, key)
 		return w.err
 	}
 
@@ -151,12 +151,33 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 }
 
 func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
-	// TODO(peter,rangedel): Check that tombstones are being added in fragmented
-	// order.
+	// Check that tombstones are being added in fragmented order. If the two
+	// tombstones overlap, their start and end keys must be identical.
 	prevKey := db.DecodeInternalKey(w.rangeDelBlock.curKey)
-	if db.InternalCompare(w.compare, prevKey, key) >= 0 {
-		w.err = fmt.Errorf("pebble/table: Add called in non-increasing key order: %q, %q", prevKey, key)
+	switch c := w.compare(prevKey.UserKey, key.UserKey); {
+	case c > 0:
+		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
 		return w.err
+	case c == 0:
+		prevValue := w.rangeDelBlock.curValue
+		if w.compare(prevValue, value) != 0 {
+			w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				rangedel.Tombstone{Start: prevKey, End: prevValue},
+				rangedel.Tombstone{Start: key, End: value})
+			return w.err
+		}
+		if prevKey.SeqNum() <= key.SeqNum() {
+			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
+			return w.err
+		}
+	default:
+		prevValue := w.rangeDelBlock.curValue
+		if w.compare(prevValue, key.UserKey) > 0 {
+			w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				rangedel.Tombstone{Start: prevKey, End: prevValue},
+				rangedel.Tombstone{Start: key, End: value})
+			return w.err
+		}
 	}
 
 	w.meta.updateSeqNum(key.SeqNum())
@@ -428,13 +449,13 @@ func (w *Writer) Close() (err error) {
 
 	size := stat.Size()
 	if size < 0 {
-		w.err = fmt.Errorf("pebble/table: file has negative size %d", size)
+		w.err = fmt.Errorf("pebble: file has negative size %d", size)
 		return err
 	}
 	w.meta.Size = uint64(size)
 
 	// Make any future calls to Set or Close return an error.
-	w.err = errors.New("pebble/table: writer is closed")
+	w.err = errors.New("pebble: writer is closed")
 	return nil
 }
 
@@ -448,7 +469,7 @@ func (w *Writer) EstimatedSize() uint64 {
 // after the sstable has been finished.
 func (w *Writer) Metadata() (*WriterMetadata, error) {
 	if w.file != nil {
-		return nil, errors.New("pebble/table: writer is not closed")
+		return nil, errors.New("pebble: writer is not closed")
 	}
 	return &w.meta, nil
 }
@@ -481,7 +502,7 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		},
 	}
 	if f == nil {
-		w.err = errors.New("pebble/table: nil file")
+		w.err = errors.New("pebble: nil file")
 		return w
 	}
 

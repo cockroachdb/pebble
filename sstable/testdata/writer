@@ -95,10 +95,41 @@ build
 a.SET.1:b
 a.SET.2:c
 ----
-pebble/table: Add called in non-increasing key order: "a#1,1", "a#2,1"
+pebble: keys must be added in order: a#1,1, a#2,1
 
 build
 b.SET.1:a
 a.SET.2:b
 ----
-pebble/table: Add called in non-increasing key order: "b#1,1", "a#2,1"
+pebble: keys must be added in order: b#1,1, a#2,1
+
+build
+b.RANGEDEL.1:c
+a.RANGEDEL.2:b
+----
+pebble: keys must be added in order: b, a
+
+build-raw
+a.RANGEDEL.1:c
+a.RANGEDEL.2:c
+----
+pebble: keys must be added in order: a#1,15, a#2,15
+
+build-raw
+a.RANGEDEL.1:c
+b.RANGEDEL.2:d
+----
+pebble: overlapping tombstones must be fragmented: a-c#1 vs b-d#2
+
+build-raw
+a.RANGEDEL.2:c
+a.RANGEDEL.1:d
+----
+pebble: overlapping tombstones must be fragmented: a-c#2 vs a-d#1
+
+build-raw
+a.RANGEDEL.1:c
+c.RANGEDEL.2:d
+----
+bounds:  [a#1,15,d#72057594037927935,15]
+seqnums: [1,2]
