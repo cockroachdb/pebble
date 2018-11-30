@@ -494,16 +494,24 @@ func TestIngest(t *testing.T) {
 					return err.Error()
 				}
 				w := sstable.NewWriter(f, nil, db.LevelOptions{})
-				iter := b.newInternalIter(nil)
-				for iter.First(); iter.Valid(); iter.Next() {
-					key := iter.Key()
-					key.SetSeqNum(10000)
-					if err := w.Add(key, iter.Value()); err != nil {
+				iters := []internalIterator{
+					b.newInternalIter(nil),
+					b.newRangeDelIter(nil),
+				}
+				for _, iter := range iters {
+					if iter == nil {
+						continue
+					}
+					for iter.First(); iter.Valid(); iter.Next() {
+						key := iter.Key()
+						key.SetSeqNum(10000)
+						if err := w.Add(key, iter.Value()); err != nil {
+							return err.Error()
+						}
+					}
+					if err := iter.Close(); err != nil {
 						return err.Error()
 					}
-				}
-				if err := iter.Close(); err != nil {
-					return err.Error()
 				}
 				w.Close()
 
@@ -520,6 +528,18 @@ func TestIngest(t *testing.T) {
 				}
 			}
 			return ""
+
+		case "get":
+			var buf bytes.Buffer
+			for _, data := range strings.Split(td.Input, "\n") {
+				v, err := d.Get([]byte(data))
+				if err != nil {
+					fmt.Fprintf(&buf, "%s: %s\n", data, err)
+				} else {
+					fmt.Fprintf(&buf, "%s:%s\n", data, v)
+				}
+			}
+			return buf.String()
 
 		case "iter":
 			iter := d.NewIter(nil)

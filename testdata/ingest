@@ -16,6 +16,13 @@ a:1
 b:2
 .
 
+get
+a
+b
+----
+a:1
+b:2
+
 ingest
 set a 3
 del b
@@ -33,6 +40,13 @@ next
 a:3
 .
 
+get
+a
+b
+----
+a:3
+b: pebble: not found
+
 ingest
 set a 4
 set b 5
@@ -49,6 +63,15 @@ iter
 seek-ge a
 next
 next
+----
+a:4
+b:5
+c:6
+
+get
+a
+b
+c
 ----
 a:4
 b:5
@@ -75,6 +98,15 @@ a:4
 b:55
 .
 
+get
+a
+b
+c
+----
+a:4
+b:55
+c: pebble: not found
+
 ingest
 set x 7
 set y 8
@@ -95,6 +127,13 @@ prev
 x:7
 b:55
 a:4
+
+get
+x
+y
+----
+x:7
+y:8
 
 batch
 set j 9
@@ -120,6 +159,12 @@ next
 j:9
 k:11
 
+get
+j
+k
+----
+j:9
+k:10
 
 batch
 set m 12
@@ -136,3 +181,59 @@ lsm
 4: a-c
 5: a-b
 6: a-b n-n x-y
+
+get
+m
+n
+----
+m:12
+n:13
+
+ingest
+del-range a c
+del-range x z
+----
+
+lsm
+----
+0: k-k j-k a-z m-m
+3: b-c
+4: a-c
+5: a-b
+6: a-b n-n x-y
+
+get
+a
+b
+c
+j
+k
+m
+n
+x
+y
+----
+a: pebble: not found
+b: pebble: not found
+c: pebble: not found
+j:9
+k:10
+m:12
+n:13
+x: pebble: not found
+y: pebble: not found
+
+ingest
+set j 20
+del-range j k
+set m 30
+----
+
+get
+j
+k
+m
+----
+j: pebble: not found
+k:10
+m:30

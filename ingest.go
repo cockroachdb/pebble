@@ -56,14 +56,14 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 			key := iter.Key()
 			if !smallestSet ||
 				db.InternalCompare(opts.Comparer.Compare, meta.smallest, key) > 0 {
-				meta.smallest = key
+				meta.smallest = key.Clone()
 			}
 		}
 		if iter.Last(); iter.Valid() {
 			key := db.MakeRangeDeleteSentinelKey(iter.Value())
 			if !largestSet ||
 				db.InternalCompare(opts.Comparer.Compare, meta.largest, key) < 0 {
-				meta.largest = key
+				meta.largest = key.Clone()
 			}
 		}
 	}
