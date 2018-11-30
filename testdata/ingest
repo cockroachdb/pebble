@@ -223,6 +223,9 @@ n:13
 x: pebble: not found
 y: pebble: not found
 
+# A set operation takes precedence over a range deletion at the same
+# sequence number as can occur during ingestion.
+
 ingest
 set j 20
 del-range j k
@@ -234,6 +237,6 @@ j
 k
 m
 ----
-j: pebble: not found
+j:20
 k:10
 m:30

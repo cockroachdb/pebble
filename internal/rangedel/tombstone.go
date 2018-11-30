@@ -25,7 +25,7 @@ func (t Tombstone) Empty() bool {
 
 // Deletes returns true if the tombstone deletes keys at seqNum.
 func (t Tombstone) Deletes(seqNum uint64) bool {
-	return !t.Empty() && t.Start.SeqNum() >= seqNum
+	return !t.Empty() && t.Start.SeqNum() > seqNum
 }
 
 func (t Tombstone) String() string {

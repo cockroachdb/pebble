@@ -3,16 +3,16 @@
 define
 mem
   a.SET.1:b
-  a.SET.2:c
-  a.SET.3:d
+  a.SET.3:c
+  a.SET.5:d
   b.MERGE.1:b
-  b.MERGE.2:c
-  b.MERGE.3:d
-  b.RANGEDEL.4:c
-  b.MERGE.5:e
+  b.MERGE.3:c
+  b.MERGE.5:d
+  b.RANGEDEL.6:c
+  b.MERGE.7:e
   c.SET.1:b
-  c.SET.2:c
-  c.SET.3:d
+  c.SET.3:c
+  c.SET.5:d
 ----
 mem: 1
 
@@ -25,7 +25,7 @@ b
 b
 b
 
-get seq=3
+get seq=4
 a
 b
 c
@@ -34,7 +34,7 @@ c
 cb
 c
 
-get seq=4
+get seq=6
 a
 b
 c
@@ -43,7 +43,7 @@ d
 dcb
 d
 
-get seq=5
+get seq=7
 a
 b
 c
@@ -52,13 +52,22 @@ d
 pebble: not found
 d
 
-get seq=6
+get seq=8
 a
 b
 c
 ----
 d
 e
+d
+
+get seq=6
+a
+b
+c
+----
+d
+dcb
 d
 
 # Multiple memtables.
@@ -69,17 +78,17 @@ mem
   b.MERGE.1:b
   c.SET.1:b
 mem
-  a.SET.2:c
-  b.MERGE.2:c
-  c.SET.2:c
+  a.SET.3:c
+  b.MERGE.3:c
+  c.SET.3:c
 mem
-  a.SET.3:d
-  b.MERGE.3:d
-  c.SET.3:d
+  a.SET.5:d
+  b.MERGE.5:d
+  c.SET.5:d
 mem
-  b.RANGEDEL.4:c
+  b.RANGEDEL.6:c
 mem
-  b.MERGE.5:e
+  b.MERGE.7:e
 ----
 mem: 5
 
@@ -92,7 +101,7 @@ b
 b
 b
 
-get seq=3
+get seq=4
 a
 b
 c
@@ -101,7 +110,7 @@ c
 cb
 c
 
-get seq=4
+get seq=6
 a
 b
 c
@@ -110,7 +119,7 @@ d
 dcb
 d
 
-get seq=5
+get seq=7
 a
 b
 c
@@ -119,7 +128,7 @@ d
 pebble: not found
 d
 
-get seq=6
+get seq=8
 a
 b
 c
@@ -128,31 +137,40 @@ d
 e
 d
 
+get seq=6
+a
+b
+c
+----
+d
+dcb
+d
+
 # Overlapping range deletions in the same memtable.
 
 define
 mem
   a.SET.1:1
-  a.SET.2:2
-  a.SET.3:3
-  a.SET.4:4
+  a.SET.3:2
+  a.SET.5:3
+  a.SET.7:4
   b.SET.1:1
-  b.SET.2:2
-  b.SET.3:3
-  b.SET.4:4
+  b.SET.3:2
+  b.SET.5:3
+  b.SET.7:4
   c.SET.1:1
-  c.SET.2:2
-  c.SET.3:3
-  c.SET.4:4
+  c.SET.3:2
+  c.SET.5:3
+  c.SET.7:4
   d.SET.1:1
-  d.SET.2:2
-  d.SET.3:3
-  d.SET.4:4
+  d.SET.3:2
+  d.SET.5:3
+  d.SET.7:4
   a.RANGEDEL.2:b
-  b.RANGEDEL.3:c
+  b.RANGEDEL.4:c
   b.RANGEDEL.2:c
+  c.RANGEDEL.6:d
   c.RANGEDEL.4:d
-  c.RANGEDEL.3:d
   c.RANGEDEL.2:d
 ----
 mem: 1
@@ -177,18 +195,7 @@ d
 pebble: not found
 pebble: not found
 pebble: not found
-2
-
-get seq=4
-a
-b
-c
-d
-----
-3
-pebble: not found
-pebble: not found
-3
+1
 
 get seq=5
 a
@@ -196,9 +203,31 @@ b
 c
 d
 ----
-4
-4
+2
 pebble: not found
+pebble: not found
+2
+
+get seq=7
+a
+b
+c
+d
+----
+3
+3
+pebble: not found
+3
+
+get seq=9
+a
+b
+c
+d
+----
+4
+4
+4
 4
 
 # Overlapping range deletions in the different memtables. Note that
@@ -211,22 +240,22 @@ mem
   c.SET.1:1
   d.SET.1:1
 mem
-  a.SET.2:2
-  b.SET.2:2
-  c.SET.2:2
-  d.SET.2:2
+  a.SET.3:2
+  b.SET.3:2
+  c.SET.3:2
+  d.SET.3:2
   a.RANGEDEL.2:d
 mem
-  a.SET.3:3
-  b.SET.3:3
-  c.SET.3:3
-  d.SET.3:3
-  b.RANGEDEL.3:d
+  a.SET.5:3
+  b.SET.5:3
+  c.SET.5:3
+  d.SET.5:3
+  b.RANGEDEL.4:d
 mem
-  a.SET.4:4
-  b.SET.4:4
-  c.SET.4:4
-  d.SET.4:4
+  a.SET.7:4
+  b.SET.7:4
+  c.SET.7:4
+  d.SET.7:4
   c.RANGEDEL.4:d
 ----
 mem: 4
@@ -251,18 +280,7 @@ d
 pebble: not found
 pebble: not found
 pebble: not found
-2
-
-get seq=4
-a
-b
-c
-d
-----
-3
-pebble: not found
-pebble: not found
-3
+1
 
 get seq=5
 a
@@ -270,9 +288,31 @@ b
 c
 d
 ----
-4
-4
+2
 pebble: not found
+pebble: not found
+2
+
+get seq=7
+a
+b
+c
+d
+----
+3
+3
+pebble: not found
+3
+
+get seq=9
+a
+b
+c
+d
+----
+4
+4
+4
 4
 
 # User-key that spans tables in a level.
