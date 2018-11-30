@@ -169,7 +169,7 @@ func TestFragmenter(t *testing.T) {
 					results = append(results, "alive")
 				}
 			}
-			return strings.Join(results, " ") + "\n"
+			return strings.Join(results, " ")
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

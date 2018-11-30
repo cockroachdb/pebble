@@ -49,14 +49,14 @@ func TestWriter(t *testing.T) {
 					f.Add(ikey, value)
 				default:
 					if err := w.Add(ikey, value); err != nil {
-						return err.Error() + "\n"
+						return err.Error()
 					}
 				}
 			}
 			f.Finish()
 			for _, v := range tombstones {
 				if err := w.Add(v.Start, v.End); err != nil {
-					return err.Error() + "\n"
+					return err.Error()
 				}
 			}
 			if err := w.Close(); err != nil {

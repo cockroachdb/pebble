@@ -75,7 +75,11 @@ func RunTest(t *testing.T, path string, f func(d *TestData) string) {
 					panic(r)
 				}
 			}()
-			return f(d)
+			s := f(d)
+			if n := len(s); n > 0 && s[n-1] != '\n' {
+				s += "\n"
+			}
+			return s
 		}()
 
 		if r.rewrite != nil {

@@ -156,9 +156,9 @@ func TestBatchGet(t *testing.T) {
 					}
 					v, err := b.Get([]byte(td.CmdArgs[0].String()))
 					if err != nil {
-						return err.Error() + "\n"
+						return err.Error()
 					}
-					return string(v) + "\n"
+					return string(v)
 
 				default:
 					t.Fatalf("unknown command: %s", td.Cmd)
