@@ -92,7 +92,7 @@ func TestCompactionIter(t *testing.T) {
 						return err.Error()
 					}
 				default:
-					t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+					return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
 				}
 			}
 			sort.Slice(snapshots, func(i, j int) bool {
@@ -136,9 +136,7 @@ func TestCompactionIter(t *testing.T) {
 			return b.String()
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-
-		return ""
 	})
 }

@@ -52,7 +52,7 @@ func TestSnapshot(t *testing.T) {
 				Storage: storage.NewMem(),
 			})
 			if err != nil {
-				t.Fatal(err)
+				return err.Error()
 			}
 			snapshots = make(map[string]*Snapshot)
 
@@ -65,49 +65,50 @@ func TestSnapshot(t *testing.T) {
 				switch parts[0] {
 				case "set":
 					if len(parts) != 3 {
-						t.Fatalf("%s expects 2 arguments", parts[0])
+						return fmt.Sprintf("%s expects 2 arguments", parts[0])
 					}
 					err = d.Set([]byte(parts[1]), []byte(parts[2]), nil)
 				case "del":
 					if len(parts) != 2 {
-						t.Fatalf("%s expects 1 argument", parts[0])
+						return fmt.Sprintf("%s expects 1 argument", parts[0])
 					}
 					err = d.Delete([]byte(parts[1]), nil)
 				case "merge":
 					if len(parts) != 3 {
-						t.Fatalf("%s expects 2 arguments", parts[0])
+						return fmt.Sprintf("%s expects 2 arguments", parts[0])
 					}
 					err = d.Merge([]byte(parts[1]), []byte(parts[2]), nil)
 				case "snapshot":
 					if len(parts) != 2 {
-						t.Fatalf("%s expects 1 argument", parts[0])
+						return fmt.Sprintf("%s expects 1 argument", parts[0])
 					}
 					snapshots[parts[1]] = d.NewSnapshot()
 				case "compact":
 					if len(parts) != 2 {
-						t.Fatalf("%s expects 1 argument", parts[0])
+						return fmt.Sprintf("%s expects 1 argument", parts[0])
 					}
 					keys := strings.Split(parts[1], "-")
 					if len(keys) != 2 {
-						t.Fatalf("malformed key range: %s", parts[1])
+						return fmt.Sprintf("malformed key range: %s", parts[1])
 					}
 					err = d.Compact([]byte(keys[0]), []byte(keys[1]))
 				default:
-					t.Fatalf("unknown op: %s", parts[0])
+					return fmt.Sprintf("unknown op: %s", parts[0])
 				}
 				if err != nil {
-					t.Fatal(err)
+					return err.Error()
 				}
 			}
+			return ""
 
 		case "iter":
 			var iter Iterator
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].Key != "snapshot" {
-					t.Fatalf("unknown argument: %s", td.CmdArgs[0])
+					return fmt.Sprintf("unknown argument: %s", td.CmdArgs[0])
 				}
 				if len(td.CmdArgs[0].Vals) != 1 {
-					t.Fatalf("%s expects 1 value: %s", td.CmdArgs[0].Key, td.CmdArgs[0])
+					return fmt.Sprintf("%s expects 1 value: %s", td.CmdArgs[0].Key, td.CmdArgs[0])
 				}
 				name := td.CmdArgs[0].Vals[0]
 				snapshot := snapshots[name]
@@ -159,8 +160,7 @@ func TestSnapshot(t *testing.T) {
 			return b.String()
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }

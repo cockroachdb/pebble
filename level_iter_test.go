@@ -58,7 +58,7 @@ func TestLevelIter(t *testing.T) {
 			var opts db.IterOptions
 			for _, arg := range d.CmdArgs {
 				if len(arg.Vals) != 1 {
-					t.Fatalf("%s: %s=<value>", d.Cmd, arg.Key)
+					return fmt.Sprintf("%s: %s=<value>", d.Cmd, arg.Key)
 				}
 				switch arg.Key {
 				case "lower":
@@ -66,7 +66,7 @@ func TestLevelIter(t *testing.T) {
 				case "upper":
 					opts.UpperBound = []byte(arg.Vals[0])
 				default:
-					t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+					return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
 				}
 			}
 
@@ -75,10 +75,8 @@ func TestLevelIter(t *testing.T) {
 			return runInternalIterCmd(d, iter)
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-
-		return ""
 	})
 }
 
@@ -97,6 +95,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			fs = storage.NewMem()
 			readers = nil
 			files = nil
+			return ""
 
 		case "build":
 			fileNum := uint64(len(readers))
@@ -166,10 +165,8 @@ func TestLevelIterBoundaries(t *testing.T) {
 			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-
-		return ""
 	})
 }
 

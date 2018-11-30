@@ -150,10 +150,10 @@ func TestFragmenter(t *testing.T) {
 
 		case "get":
 			if len(d.CmdArgs) != 1 {
-				t.Fatalf("expected 1 argument, but found %s", d.CmdArgs)
+				return fmt.Sprintf("expected 1 argument, but found %s", d.CmdArgs)
 			}
 			if d.CmdArgs[0].Key != "t" {
-				t.Fatalf("expected timestamp argument, but found %s", d.CmdArgs[0])
+				return fmt.Sprintf("expected timestamp argument, but found %s", d.CmdArgs[0])
 			}
 			readSeq, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
 			if err != nil {

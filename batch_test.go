@@ -143,6 +143,7 @@ func TestBatchGet(t *testing.T) {
 						tmp.Apply(b, nil)
 						b = tmp
 					}
+					return ""
 
 				case "commit":
 					if err := b.Commit(nil); err != nil {
@@ -161,10 +162,8 @@ func TestBatchGet(t *testing.T) {
 					return string(v)
 
 				default:
-					t.Fatalf("unknown command: %s", td.Cmd)
+					return fmt.Sprintf("unknown command: %s", td.Cmd)
 				}
-
-				return ""
 			})
 		})
 	}
@@ -206,10 +205,8 @@ func TestBatchIter(t *testing.T) {
 					return runInternalIterCmd(d, iter)
 
 				default:
-					t.Fatalf("unknown command: %s", d.Cmd)
+					return fmt.Sprintf("unknown command: %s", d.Cmd)
 				}
-
-				return ""
 			})
 		})
 	}
@@ -222,6 +219,7 @@ func TestBatchDeleteRange(t *testing.T) {
 		switch td.Cmd {
 		case "clear":
 			b = nil
+			return ""
 
 		case "define":
 			if b == nil {
@@ -239,7 +237,7 @@ func TestBatchDeleteRange(t *testing.T) {
 			}
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].String() != "range-del" {
-					t.Fatalf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
+					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
 				iter = b.newRangeDelIter(nil)
 			} else {
@@ -256,9 +254,8 @@ func TestBatchDeleteRange(t *testing.T) {
 			return buf.String()
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }
 
@@ -283,10 +280,8 @@ func TestFlushableBatchIter(t *testing.T) {
 			return runInternalIterCmd(d, iter)
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-
-		return ""
 	})
 }
 
@@ -310,6 +305,7 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 				}
 			}
 			b = newFlushableBatch(batch, db.DefaultComparer)
+			return ""
 
 		case "dump":
 			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
@@ -330,10 +326,8 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 			return buf.String()
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-
-		return ""
 	})
 }
 
@@ -345,6 +339,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 		switch td.Cmd {
 		case "clear":
 			input = ""
+			return ""
 
 		case "define":
 			b := newBatch(nil)
@@ -363,11 +358,11 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 		case "scan":
 			var iter internalIterator
 			if len(td.CmdArgs) > 1 {
-				t.Fatalf("%s expects at most 1 argument", td.Cmd)
+				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].String() != "range-del" {
-					t.Fatalf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
+					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
 				iter = fb.newRangeDelIter(nil)
 			} else {
@@ -382,9 +377,8 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			return buf.String()
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }
 

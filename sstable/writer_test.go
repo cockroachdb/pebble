@@ -99,8 +99,7 @@ func TestWriter(t *testing.T) {
 			return buf.String()
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }

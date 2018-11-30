@@ -707,6 +707,7 @@ func TestManualCompaction(t *testing.T) {
 				return err.Error()
 			}
 			b.Commit(nil)
+			return ""
 
 		case "iter":
 			iter := d.NewIter(nil)
@@ -747,11 +748,11 @@ func TestManualCompaction(t *testing.T) {
 
 		case "compact":
 			if len(td.CmdArgs) != 1 {
-				t.Fatalf("%s expects 1 argument", td.Cmd)
+				return fmt.Sprintf("%s expects 1 argument", td.Cmd)
 			}
 			parts := strings.Split(td.CmdArgs[0].Key, "-")
 			if len(parts) != 2 {
-				t.Fatalf("malformed test case: %s", td.Input)
+				return fmt.Sprintf("malformed test case: %s", td.Input)
 			}
 			if err := d.Compact([]byte(parts[0]), []byte(parts[1])); err != nil {
 				return err.Error()
@@ -763,9 +764,8 @@ func TestManualCompaction(t *testing.T) {
 			return s
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }
 
@@ -802,7 +802,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 					var err error
 					meta.size, err = strconv.ParseUint(parts[1], 10, 64)
 					if err != nil {
-						t.Fatal(err)
+						return err.Error()
 					}
 					grandparents = append(grandparents, meta)
 				}
@@ -823,7 +823,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 				var err error
 				c.maxOverlapBytes, err = strconv.ParseUint(d.CmdArgs[0].Vals[0], 10, 64)
 				if err != nil {
-					t.Fatal(err)
+					return err.Error()
 				}
 
 				var buf bytes.Buffer
@@ -842,8 +842,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 				return buf.String()
 
 			default:
-				t.Fatalf("unknown command: %s", d.Cmd)
-				return ""
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
 }
@@ -904,8 +903,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 				return buf.String()
 
 			default:
-				t.Fatalf("unknown command: %s", d.Cmd)
-				return ""
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
 }

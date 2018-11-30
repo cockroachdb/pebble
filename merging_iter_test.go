@@ -60,10 +60,8 @@ func TestMergingIterSeek(t *testing.T) {
 			return runInternalIterCmd(d, iter)
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-
-		return ""
 	})
 }
 
@@ -119,10 +117,8 @@ func TestMergingIterNextPrev(t *testing.T) {
 					return runInternalIterCmd(d, iter)
 
 				default:
-					t.Fatalf("unknown command: %s", d.Cmd)
+					return fmt.Sprintf("unknown command: %s", d.Cmd)
 				}
-
-				return ""
 			})
 		})
 	}

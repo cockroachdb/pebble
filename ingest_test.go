@@ -31,7 +31,7 @@ func TestIngestLoad(t *testing.T) {
 		case "load":
 			f, err := fs.Create("ext")
 			if err != nil {
-				t.Fatal(err)
+				return err.Error()
 			}
 			w := sstable.NewWriter(f, nil, db.LevelOptions{})
 			for _, data := range strings.Split(td.Input, "\n") {
@@ -53,7 +53,7 @@ func TestIngestLoad(t *testing.T) {
 			}
 			meta, err := ingestLoad(opts, []string{"ext"}, []uint64{1})
 			if err != nil {
-				t.Fatal(err)
+				return err.Error()
 			}
 			var buf bytes.Buffer
 			for _, m := range meta {
@@ -62,9 +62,8 @@ func TestIngestLoad(t *testing.T) {
 			return buf.String()
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }
 
@@ -384,6 +383,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					if err := mem.apply(b, 0); err != nil {
 						return err.Error()
 					}
+					return ""
 
 				case "overlaps":
 					var buf bytes.Buffer
@@ -397,9 +397,8 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					return buf.String()
 
 				default:
-					t.Fatalf("unknown command: %s", d.Cmd)
+					return fmt.Sprintf("unknown command: %s", d.Cmd)
 				}
-				return ""
 			})
 		})
 	}
@@ -430,14 +429,14 @@ func TestIngestTargetLevel(t *testing.T) {
 			for _, data := range strings.Split(d.Input, "\n") {
 				parts := strings.Split(data, ":")
 				if len(parts) != 2 {
-					t.Fatalf("malformed test:\n%s", d.Input)
+					return fmt.Sprintf("malformed test:\n%s", d.Input)
 				}
 				level, err := strconv.Atoi(parts[0])
 				if err != nil {
-					t.Fatal(err)
+					return err.Error()
 				}
 				if vers.files[level] != nil {
-					t.Fatalf("level %d already filled", level)
+					return fmt.Sprintf("level %d already filled", level)
 				}
 				for _, table := range strings.Fields(parts[1]) {
 					vers.files[level] = append(vers.files[level], parseMeta(table))
@@ -461,8 +460,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			return buf.String()
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
-			return ""
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
 	})
 }
@@ -493,7 +491,7 @@ func TestIngest(t *testing.T) {
 			case "ingest":
 				f, err := fs.Create("ext/0")
 				if err != nil {
-					t.Fatal(err)
+					return err.Error()
 				}
 				w := sstable.NewWriter(f, nil, db.LevelOptions{})
 				iter := b.newInternalIter(nil)
@@ -510,10 +508,10 @@ func TestIngest(t *testing.T) {
 				w.Close()
 
 				if err := d.Ingest([]string{"ext/0"}); err != nil {
-					t.Fatal(err)
+					return err.Error()
 				}
 				if err := fs.Remove("ext/0"); err != nil {
-					t.Fatal(err)
+					return err.Error()
 				}
 
 			case "batch":
@@ -521,6 +519,7 @@ func TestIngest(t *testing.T) {
 					return err.Error()
 				}
 			}
+			return ""
 
 		case "iter":
 			iter := d.NewIter(nil)
@@ -566,8 +565,7 @@ func TestIngest(t *testing.T) {
 			return s
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }

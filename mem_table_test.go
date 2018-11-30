@@ -215,7 +215,7 @@ func TestMemTableIter(t *testing.T) {
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				if err := mem.set(db.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
-					t.Fatal(err)
+					return err.Error()
 				}
 			}
 			return ""
@@ -226,10 +226,8 @@ func TestMemTableIter(t *testing.T) {
 			return runInternalIterCmd(d, iter)
 
 		default:
-			t.Fatalf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-
-		return ""
 	})
 }
 
@@ -242,6 +240,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 		case "clear":
 			mem = nil
 			seqNum = 0
+			return ""
 
 		case "define":
 			b := newBatch(nil)
@@ -260,11 +259,11 @@ func TestMemTableDeleteRange(t *testing.T) {
 		case "scan":
 			var iter internalIterator
 			if len(td.CmdArgs) > 1 {
-				t.Fatalf("%s expects at most 1 argument", td.Cmd)
+				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].String() != "range-del" {
-					t.Fatalf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
+					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
 				iter = mem.newRangeDelIter(nil)
 			} else {
@@ -279,9 +278,8 @@ func TestMemTableDeleteRange(t *testing.T) {
 			return buf.String()
 
 		default:
-			t.Fatalf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
 }
 

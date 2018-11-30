@@ -24,7 +24,7 @@ func TestCompactionPickerLevelMaxBytes(t *testing.T) {
 				opts.EnsureDefaults()
 
 				if len(d.CmdArgs) != 1 {
-					t.Fatalf("%s expects 1 argument", d.Cmd)
+					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
 				var err error
 				opts.L1MaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
@@ -37,14 +37,14 @@ func TestCompactionPickerLevelMaxBytes(t *testing.T) {
 					for _, data := range strings.Split(d.Input, "\n") {
 						parts := strings.Split(data, ":")
 						if len(parts) != 2 {
-							t.Fatalf("malformed test:\n%s", d.Input)
+							return fmt.Sprintf("malformed test:\n%s", d.Input)
 						}
 						level, err := strconv.Atoi(parts[0])
 						if err != nil {
-							t.Fatal(err)
+							return err.Error()
 						}
 						if vers.files[level] != nil {
-							t.Fatalf("level %d already filled", level)
+							return fmt.Sprintf("level %d already filled", level)
 						}
 						size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
 						if err != nil {
@@ -72,8 +72,7 @@ func TestCompactionPickerLevelMaxBytes(t *testing.T) {
 				return buf.String()
 
 			default:
-				t.Fatalf("unknown command: %s", d.Cmd)
-				return ""
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
 }
@@ -87,7 +86,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				opts.EnsureDefaults()
 
 				if len(d.CmdArgs) != 1 {
-					t.Fatalf("%s expects 1 argument", d.Cmd)
+					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
 				var err error
 				opts.L1MaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
@@ -100,14 +99,14 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					for _, data := range strings.Split(d.Input, "\n") {
 						parts := strings.Split(data, ":")
 						if len(parts) != 2 {
-							t.Fatalf("malformed test:\n%s", d.Input)
+							return fmt.Sprintf("malformed test:\n%s", d.Input)
 						}
 						level, err := strconv.Atoi(parts[0])
 						if err != nil {
-							t.Fatal(err)
+							return err.Error()
 						}
 						if vers.files[level] != nil {
-							t.Fatalf("level %d already filled", level)
+							return fmt.Sprintf("level %d already filled", level)
 						}
 						size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
 						if err != nil {
@@ -131,8 +130,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				return fmt.Sprintf("%d: %.1f\n", p.level, p.score)
 
 			default:
-				t.Fatalf("unknown command: %s", d.Cmd)
-				return ""
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
 }

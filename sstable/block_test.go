@@ -135,26 +135,27 @@ func TestBlockIter2(t *testing.T) {
 						w.add(makeIkey(e), nil)
 					}
 					block = w.finish()
+					return ""
 
 				case "iter":
 					iter, err := newBlockIter(bytes.Compare, block)
 					if err != nil {
-						t.Fatal(err)
+						return err.Error()
 					}
 
 					for _, arg := range d.CmdArgs {
 						switch arg.Key {
 						case "globalSeqNum":
 							if len(arg.Vals) != 1 {
-								t.Fatalf("%s: arg %s expects 1 value", d.Cmd, arg.Key)
+								return fmt.Sprintf("%s: arg %s expects 1 value", d.Cmd, arg.Key)
 							}
 							v, err := strconv.Atoi(arg.Vals[0])
 							if err != nil {
-								t.Fatal(err)
+								return err.Error()
 							}
 							iter.globalSeqNum = uint64(v)
 						default:
-							t.Fatalf("%s: unknown arg: %s", d.Cmd, arg.Key)
+							return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
 						}
 					}
 
@@ -196,9 +197,8 @@ func TestBlockIter2(t *testing.T) {
 					return b.String()
 
 				default:
-					t.Fatalf("unknown command: %s", d.Cmd)
+					return fmt.Sprintf("unknown command: %s", d.Cmd)
 				}
-				return ""
 			})
 		})
 	}
