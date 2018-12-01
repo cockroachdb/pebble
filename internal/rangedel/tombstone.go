@@ -23,6 +23,12 @@ func (t Tombstone) Empty() bool {
 	return t.Start.Kind() != db.InternalKeyKindRangeDelete
 }
 
+// Contains returns true if the specified key resides within the range
+// tombstone bounds.
+func (t Tombstone) Contains(cmp db.Compare, key []byte) bool {
+	return cmp(t.Start.UserKey, key) <= 0 && cmp(key, t.End) < 0
+}
+
 // Deletes returns true if the tombstone deletes keys at seqNum.
 func (t Tombstone) Deletes(seqNum uint64) bool {
 	return !t.Empty() && t.Start.SeqNum() > seqNum

@@ -120,7 +120,6 @@ import (
 // to take the range tombstones into consideration when outputting normal
 // keys. Just as with point deletions, a range deletion covering an entry can
 // cause the entry to be elided.
-
 type compactionIter struct {
 	cmp   db.Compare
 	merge db.Merge

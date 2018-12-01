@@ -106,16 +106,21 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 // iterators which it will use to skip over keys covered by range
 // tombstones. The range-del iterator slice must exactly parallel the point
 // iterators. This requirement allows mergingIter to only consider range
-// tombstones from newer levels.
+// tombstones from newer levels. Because range tombstones are fragmented with a
+// level we know there can be no overlap within a level. When a level iter is
+// backed by a levelIter, the levelIter takes care of initializing the
+// range-del iterator when switching tables. Note that levelIter also takes
+// care of materializing fake "sentinel" keys at sstable boundaries to prevent
+// iterating past a table when a range tombstone is the last (or first) entry
+// in the table.
 //
-// TODO(peter,rangedel): Because tombstones are fragmented within a level we
-// know there will be no overlap within a level. levelIter takes care of
-// initializing the range-del iterator when switching tables. Because
-// mergingIter.iters and mergingIter.rangeDelIters are parallel, if a
-// lower-level iterator is covered by a range tombstone from a higher (newer)
-// level, the iterator can be advanced to the boundary of the tombstone. The
-// range-del iterators need to be advanced based on the current mergingIter
-// key.
+// Internally, mergingIter advances the iterators for each level by keeping
+// them in a heap and advancing the iterator with the smallest key (or largest
+// key during reverse iteration). Due to LSM invariants, the range deletion
+// tombstones for each level are guaranteed to shadow lower levels. If we're
+// seeking to a key X within a level and there is a tombstone within that level
+// containing X, in lower levels we can seek to the boundary of the tombstone
+// instead. See SeekGE for more details.
 type mergingIter struct {
 	dir           int
 	snapshot      uint64
@@ -256,41 +261,86 @@ func (m *mergingIter) switchToMaxHeap() {
 }
 
 func (m *mergingIter) SeekGE(key []byte) {
-	for _, t := range m.iters {
-		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
-		// iterator. Keep track of the covering tombstone and adjust the key being
-		// seeked to.
+	// When seeking, we can use tombstones to adjust the key we seek to on each
+	// level. Consider the series of range tombstones:
+	//
+	// 1: a---e
+	// 2:    d---h
+	// 3:       g---k
+	// 4:          j---n
+	// 5:             m---q
+	//
+	// If we SeekGE("b") we also find the tombstone "b" resides within in the
+	// first level which is [a,e). Regardless of whether this tombstone deletes
+	// "b" in that level, we know it deletes "b" in all lower levels, so we
+	// adjust the search key in the next level to the tombstone end key "e". We
+	// then SeekGE("e") in the second level and find the corresponding tombstone
+	// [d,h). This process continues and we end up seeking for "h" in the 3rd
+	// level, "k" in the 4th level and "n" in the last level.
+
+	for i, t := range m.iters {
 		t.SeekGE(key)
+
+		if m.rangeDelIters != nil {
+			if rangeDelIter := m.rangeDelIters[i]; rangeDelIter != nil {
+				// The level has a range-del iterator. Find the tombstone containing the
+				// search key.
+				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, key, m.snapshot)
+				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) {
+					key = tombstone.End
+				}
+			}
+		}
 	}
 	m.initMinHeap()
+
+	// TODO(peter): Need to adjust the range-del iterators here as they might not
+	// be positioned at the tombstone covering the current key. For example, the
+	// scenario at the top of this method showed a range tombstone [a,e) and
+	// seeking to "b", but the current key might be "f". We only have to seek the
+	// range-del iterators that are from newer levels than the iterator at the
+	// top of the heap.
 }
 
 func (m *mergingIter) SeekLT(key []byte) {
-	for _, t := range m.iters {
-		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
-		// iterator. Keep track of the covering tombstone and adjust the key being
-		// seeked to.
+	// See the comment in SeekGE regarding using tombstones to adjust the seek
+	// target per level.
+
+	for i, t := range m.iters {
 		t.SeekLT(key)
+
+		if m.rangeDelIters != nil {
+			if rangeDelIter := m.rangeDelIters[i]; rangeDelIter != nil {
+				// The level has a range-del iterator. Find the tombstone containing the
+				// search key.
+				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, key, m.snapshot)
+				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) {
+					key = tombstone.Start.UserKey
+				}
+			}
+		}
 	}
 	m.initMaxHeap()
+
+	// TODO(peter): Seek the range-del iterators.
 }
 
 func (m *mergingIter) First() {
 	for _, t := range m.iters {
-		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
-		// iterator.
 		t.First()
 	}
 	m.initMinHeap()
+
+	// TODO(peter): Seek the range-del iterators.
 }
 
 func (m *mergingIter) Last() {
 	for _, t := range m.iters {
-		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
-		// iterator.
 		t.Last()
 	}
 	m.initMaxHeap()
+
+	// TODO(peter): Seek the range-del iterators.
 }
 
 func (m *mergingIter) Next() bool {
@@ -311,7 +361,8 @@ func (m *mergingIter) Next() bool {
 	//
 	// Invariant: The range deletion iterators are positioned at
 	// mergingIter.Key(). After advancing the iter on the top of the heap, we
-	// need to check to see which of the range-del iterators neds to be advanced.
+	// need to check to see which of the range-del iterators needs to be
+	// advanced.
 
 	item := &m.heap.items[0]
 	iter := m.iters[item.index]
@@ -348,7 +399,8 @@ func (m *mergingIter) Prev() bool {
 	//
 	// Invariant: The range deletion iterators are positioned at
 	// mergingIter.Key(). After advancing the iter on the top of the heap, we
-	// need to check to see which of the range-del iterators neds to be advanced.
+	// need to check to see which of the range-del iterators needs to be
+	// advanced.
 
 	item := &m.heap.items[0]
 	iter := m.iters[item.index]
