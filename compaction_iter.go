@@ -149,7 +149,9 @@ type compactionIter struct {
 	// The range deletion tombstone fragmenter.
 	rangeDelFrag rangedel.Fragmenter
 	// The fragmented tombstones.
-	tombstones     []rangedel.Tombstone
+	tombstones []rangedel.Tombstone
+	// Byte allocator for the tombstone keys.
+	alloc          byteAllocator
 	elideTombstone func(key []byte) bool
 }
 
@@ -374,8 +376,8 @@ func (i *compactionIter) saveValue() {
 }
 
 func (i *compactionIter) cloneKey(key db.InternalKey) db.InternalKey {
-	// TODO(peter,rangedel): Use a buf allocator to reduce the allocations.
-	return key.Clone()
+	i.alloc, key.UserKey = i.alloc.Copy(key.UserKey)
+	return key
 }
 
 func (i *compactionIter) Key() db.InternalKey {
