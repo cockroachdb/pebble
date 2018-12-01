@@ -277,14 +277,19 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 
 func (m *mergingIter) findNextEntry() bool {
 	// TODO(peter,rangedel): Integrate range-del checks.
-	//
-	// Invariant: The range deletion iterators are positioned at
-	// mergingIter.Key(). After advancing the iter on the top of the heap, we
-	// need to check to see which of the range-del iterators needs to be
-	// advanced.
 
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
+		// TODO(peter,rangedel): Look for range deletions containing item.key at
+		// levels < item.index. If we find such a range deletion, we seek
+		// m.iters[item.index] to the largest tombstone end-key. Also need to look
+		// for a range deletion in m.rangeDelIters[item.index], but we can't seek
+		// because the range deletion is not guaranteed to cover all of the keys in
+		// the current level. When seeking m.iters[item.index], we also should seek
+		// all iters at lower levels. We'll then need to re-init the heap. Note
+		// that this is a bit like what mergingIter.SeekGE does, though we're only
+		// seeking a subset of levels.
+
 		seqNum := item.key.SeqNum()
 		if seqNum < m.snapshot || (seqNum&db.InternalKeySeqNumBatch) != 0 {
 			return true
@@ -310,11 +315,6 @@ func (m *mergingIter) prevEntry(item *mergingIterItem) {
 
 func (m *mergingIter) findPrevEntry() bool {
 	// TODO(peter,rangedel): Integrate range-del checks.
-	//
-	// Invariant: The range deletion iterators are positioned at
-	// mergingIter.Key(). After advancing the iter on the top of the heap, we
-	// need to check to see which of the range-del iterators needs to be
-	// advanced.
 
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
@@ -361,12 +361,12 @@ func (m *mergingIter) SeekGE(key []byte) {
 	}
 	m.initMinHeap()
 
-	// TODO(peter): Need to adjust the range-del iterators here as they might not
-	// be positioned at the tombstone covering the current key. For example, the
-	// scenario at the top of this method showed a range tombstone [a,e) and
-	// seeking to "b", but the current key might be "f". We only have to seek the
-	// range-del iterators that are from newer levels than the iterator at the
-	// top of the heap.
+	// TODO(peter,rangedel): Need to adjust the range-del iterators here as they
+	// might not be positioned at the tombstone covering the current key. For
+	// example, the scenario at the top of this method showed a range tombstone
+	// [a,e) and seeking to "b", but the current key might be "f". We only have
+	// to seek the range-del iterators that are from newer levels than the
+	// iterator at the top of the heap.
 
 	m.findNextEntry()
 }
@@ -391,7 +391,7 @@ func (m *mergingIter) SeekLT(key []byte) {
 	}
 	m.initMaxHeap()
 
-	// TODO(peter): Seek the range-del iterators.
+	// TODO(peter,rangedel): Seek the range-del iterators.
 
 	m.findPrevEntry()
 }
@@ -402,7 +402,7 @@ func (m *mergingIter) First() {
 	}
 	m.initMinHeap()
 
-	// TODO(peter): Seek the range-del iterators.
+	// TODO(peter,rangedel): Seek the range-del iterators.
 
 	m.findNextEntry()
 }
@@ -413,7 +413,7 @@ func (m *mergingIter) Last() {
 	}
 	m.initMaxHeap()
 
-	// TODO(peter): Seek the range-del iterators.
+	// TODO(peter,rangedel): Seek the range-del iterators.
 
 	m.findPrevEntry()
 }
