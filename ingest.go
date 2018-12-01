@@ -216,11 +216,10 @@ func ingestTargetLevel(cmp db.Compare, v *version, meta *fileMetadata) int {
 // sstable.Writer.
 func (d *DB) Ingest(paths []string) error {
 	// Allocate file numbers for all of the files being ingested and mark them as
-	// pending in order to prevent them from being deleted.
-	//
-	// TODO(peter): Allocating the file numbers before we know the sequence
-	// numbers for the ingested tables causes the file number sequence to be out
-	// of alignment with the sequence number.
+	// pending in order to prevent them from being deleted. Note that this causes
+	// the file number ordering to be out of alignment with sequence number
+	// ordering. The sorting of L0 tables by sequence number avoids relying on
+	// that (busted) invariant.
 	d.mu.Lock()
 	pendingOutputs := make([]uint64, len(paths))
 	for i := range paths {

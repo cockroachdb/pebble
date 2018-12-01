@@ -73,11 +73,24 @@ func ikeyRange(ucmp db.Compare, f0, f1 []fileMetadata) (smallest, largest db.Int
 	return smallest, largest
 }
 
-type byFileNum []fileMetadata
+type bySeqNum []fileMetadata
 
-func (b byFileNum) Len() int           { return len(b) }
-func (b byFileNum) Less(i, j int) bool { return b[i].smallestSeqNum < b[j].smallestSeqNum }
-func (b byFileNum) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b bySeqNum) Len() int { return len(b) }
+func (b bySeqNum) Less(i, j int) bool {
+	// NB: This is the same ordering that RocksDB uses for L0 files.
+
+	// Sort first by largest sequence number.
+	if b[i].largestSeqNum != b[j].largestSeqNum {
+		return b[i].largestSeqNum < b[j].largestSeqNum
+	}
+	// Then by smallest sequence number.
+	if b[i].smallestSeqNum != b[j].smallestSeqNum {
+		return b[i].smallestSeqNum < b[j].smallestSeqNum
+	}
+	// Break ties by file number.
+	return b[i].fileNum < b[j].fileNum
+}
+func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
 type bySmallest struct {
 	dat []fileMetadata
@@ -225,24 +238,30 @@ func (v *version) overlaps(
 func (v *version) checkOrdering(cmp db.Compare) error {
 	for level, ff := range v.files {
 		if level == 0 {
-			prevSeqNum := uint64(0)
-			for i, f := range ff {
-				if i != 0 && prevSeqNum >= f.smallestSeqNum {
-					return fmt.Errorf("level 0 files are not in increasing seqNum order: %d, %d",
-						prevSeqNum, f.smallestSeqNum)
+			for i := 1; i < len(ff); i++ {
+				prev := &ff[i-1]
+				f := &ff[i]
+				if prev.largestSeqNum >= f.largestSeqNum {
+					return fmt.Errorf("level 0 files are not in increasing largest seqNum order: %d, %d",
+						prev.largestSeqNum, f.largestSeqNum)
 				}
-				prevSeqNum = f.smallestSeqNum
+				if prev.smallestSeqNum >= f.smallestSeqNum {
+					return fmt.Errorf("level 0 files are not in increasing smallest seqNum order: %d, %d",
+						prev.smallestSeqNum, f.smallestSeqNum)
+				}
 			}
 		} else {
-			var prevLargest db.InternalKey
-			for i, f := range ff {
-				if i != 0 && db.InternalCompare(cmp, prevLargest, f.smallest) >= 0 {
-					return fmt.Errorf("level non-0 files are not in increasing ikey order: %q, %q", prevLargest, f.smallest)
+			for i := 1; i < len(ff); i++ {
+				prev := &ff[i-1]
+				f := &ff[i]
+				if db.InternalCompare(cmp, prev.largest, f.smallest) >= 0 {
+					return fmt.Errorf("level non-0 files are not in increasing ikey order: %s, %s",
+						prev.largest, f.smallest)
 				}
 				if db.InternalCompare(cmp, f.smallest, f.largest) > 0 {
-					return fmt.Errorf("level non-0 file has inconsistent bounds: %q, %q", f.smallest, f.largest)
+					return fmt.Errorf("level non-0 file has inconsistent bounds: %s, %s",
+						f.smallest, f.largest)
 				}
-				prevLargest = f.largest
 			}
 		}
 	}

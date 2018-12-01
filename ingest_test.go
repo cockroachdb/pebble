@@ -443,7 +443,7 @@ func TestIngestTargetLevel(t *testing.T) {
 				}
 
 				if level == 0 {
-					sort.Sort(byFileNum(vers.files[level]))
+					sort.Sort(bySeqNum(vers.files[level]))
 				} else {
 					sort.Sort(bySmallest{vers.files[level], cmp})
 				}

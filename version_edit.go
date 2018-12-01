@@ -429,7 +429,7 @@ func (b *bulkVersionEdit) apply(
 		// efficient to sort b.addFiles[level] and then merge the two sorted
 		// slices.
 		if level == 0 {
-			sort.Sort(byFileNum(v.files[level]))
+			sort.Sort(bySeqNum(v.files[level]))
 		} else {
 			sort.Sort(bySmallest{v.files[level], cmp})
 		}
