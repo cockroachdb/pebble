@@ -148,6 +148,7 @@ func newMergingIter(cmp db.Compare, iters ...internalIterator) internalIterator 
 }
 
 func (m *mergingIter) init(cmp db.Compare, iters ...internalIterator) {
+	m.snapshot = db.InternalKeySeqNumMax
 	m.iters = iters
 	m.heap.cmp = cmp
 	m.heap.items = make([]mergingIterItem, 0, len(iters))
@@ -260,6 +261,72 @@ func (m *mergingIter) switchToMaxHeap() {
 	m.initMaxHeap()
 }
 
+func (m *mergingIter) nextEntry(item *mergingIterItem) {
+	iter := m.iters[item.index]
+	if iter.Next() {
+		item.key = iter.Key()
+		m.heap.fix(0)
+		return
+	}
+
+	m.err = iter.Error()
+	if m.err == nil {
+		m.heap.pop()
+	}
+}
+
+func (m *mergingIter) findNextEntry() bool {
+	// TODO(peter,rangedel): Integrate range-del checks.
+	//
+	// Invariant: The range deletion iterators are positioned at
+	// mergingIter.Key(). After advancing the iter on the top of the heap, we
+	// need to check to see which of the range-del iterators needs to be
+	// advanced.
+
+	for m.heap.len() > 0 && m.err == nil {
+		item := &m.heap.items[0]
+		seqNum := item.key.SeqNum()
+		if seqNum < m.snapshot || (seqNum&db.InternalKeySeqNumBatch) != 0 {
+			return true
+		}
+		m.nextEntry(item)
+	}
+	return false
+}
+
+func (m *mergingIter) prevEntry(item *mergingIterItem) {
+	iter := m.iters[item.index]
+	if iter.Prev() {
+		item.key = iter.Key()
+		m.heap.fix(0)
+		return
+	}
+
+	m.err = iter.Error()
+	if m.err == nil {
+		m.heap.pop()
+	}
+}
+
+func (m *mergingIter) findPrevEntry() bool {
+	// TODO(peter,rangedel): Integrate range-del checks.
+	//
+	// Invariant: The range deletion iterators are positioned at
+	// mergingIter.Key(). After advancing the iter on the top of the heap, we
+	// need to check to see which of the range-del iterators needs to be
+	// advanced.
+
+	for m.heap.len() > 0 && m.err == nil {
+		item := &m.heap.items[0]
+		seqNum := item.key.SeqNum()
+		if seqNum < m.snapshot || (seqNum&db.InternalKeySeqNumBatch) != 0 {
+			return true
+		}
+		m.prevEntry(item)
+	}
+	return false
+}
+
 func (m *mergingIter) SeekGE(key []byte) {
 	// When seeking, we can use tombstones to adjust the key we seek to on each
 	// level. Consider the series of range tombstones:
@@ -300,6 +367,8 @@ func (m *mergingIter) SeekGE(key []byte) {
 	// seeking to "b", but the current key might be "f". We only have to seek the
 	// range-del iterators that are from newer levels than the iterator at the
 	// top of the heap.
+
+	m.findNextEntry()
 }
 
 func (m *mergingIter) SeekLT(key []byte) {
@@ -323,6 +392,8 @@ func (m *mergingIter) SeekLT(key []byte) {
 	m.initMaxHeap()
 
 	// TODO(peter): Seek the range-del iterators.
+
+	m.findPrevEntry()
 }
 
 func (m *mergingIter) First() {
@@ -332,6 +403,8 @@ func (m *mergingIter) First() {
 	m.initMinHeap()
 
 	// TODO(peter): Seek the range-del iterators.
+
+	m.findNextEntry()
 }
 
 func (m *mergingIter) Last() {
@@ -341,6 +414,8 @@ func (m *mergingIter) Last() {
 	m.initMaxHeap()
 
 	// TODO(peter): Seek the range-del iterators.
+
+	m.findPrevEntry()
 }
 
 func (m *mergingIter) Next() bool {
@@ -350,35 +425,15 @@ func (m *mergingIter) Next() bool {
 
 	if m.dir != 1 {
 		m.switchToMinHeap()
-		return m.heap.len() > 0
+		return m.findNextEntry()
 	}
 
 	if m.heap.len() == 0 {
 		return false
 	}
 
-	// TODO(peter,rangedel): Integrate range-del checks.
-	//
-	// Invariant: The range deletion iterators are positioned at
-	// mergingIter.Key(). After advancing the iter on the top of the heap, we
-	// need to check to see which of the range-del iterators needs to be
-	// advanced.
-
-	item := &m.heap.items[0]
-	iter := m.iters[item.index]
-	if iter.Next() {
-		item.key = iter.Key()
-		m.heap.fix(0)
-		return true
-	}
-
-	m.err = iter.Error()
-	if m.err != nil {
-		return false
-	}
-
-	m.heap.pop()
-	return m.heap.len() > 0
+	m.nextEntry(&m.heap.items[0])
+	return m.findNextEntry()
 }
 
 func (m *mergingIter) Prev() bool {
@@ -388,35 +443,15 @@ func (m *mergingIter) Prev() bool {
 
 	if m.dir != -1 {
 		m.switchToMaxHeap()
-		return m.heap.len() > 0
+		return m.findPrevEntry()
 	}
 
 	if m.heap.len() == 0 {
 		return false
 	}
 
-	// TODO(peter,rangedel): Integrate range-del checks.
-	//
-	// Invariant: The range deletion iterators are positioned at
-	// mergingIter.Key(). After advancing the iter on the top of the heap, we
-	// need to check to see which of the range-del iterators needs to be
-	// advanced.
-
-	item := &m.heap.items[0]
-	iter := m.iters[item.index]
-	if iter.Prev() {
-		item.key = iter.Key()
-		m.heap.fix(0)
-		return true
-	}
-
-	m.err = iter.Error()
-	if m.err != nil {
-		return false
-	}
-
-	m.heap.pop()
-	return m.heap.len() > 0
+	m.prevEntry(&m.heap.items[0])
+	return m.findPrevEntry()
 }
 
 func (m *mergingIter) Key() db.InternalKey {
