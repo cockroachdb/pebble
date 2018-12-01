@@ -141,7 +141,7 @@ var _ internalIterator = (*mergingIter)(nil)
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func newMergingIter(cmp db.Compare, iters ...internalIterator) internalIterator {
+func newMergingIter(cmp db.Compare, iters ...internalIterator) *mergingIter {
 	m := &mergingIter{}
 	m.init(cmp, iters...)
 	return m

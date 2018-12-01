@@ -22,12 +22,15 @@ func TestDBIter(t *testing.T) {
 	var vals [][]byte
 
 	newIter := func(seqNum uint64, opts *db.IterOptions) *dbIter {
+		cmp := db.DefaultComparer.Compare
+		// NB: Use a mergingIter to filter entries newer than seqNum.
+		iter := newMergingIter(cmp, &fakeIter{keys: keys, vals: vals})
+		iter.snapshot = seqNum
 		return &dbIter{
-			opts:     opts,
-			cmp:      db.DefaultComparer.Compare,
-			merge:    db.DefaultMerger.Merge,
-			iter:     &fakeIter{keys: keys, vals: vals},
-			snapshot: seqNum,
+			opts:  opts,
+			cmp:   cmp,
+			merge: db.DefaultMerger.Merge,
+			iter:  iter,
 		}
 	}
 
@@ -115,9 +118,8 @@ func TestDBIter(t *testing.T) {
 func BenchmarkDBIterSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &dbIter{
-		cmp:      db.DefaultComparer.Compare,
-		iter:     m.newIter(nil),
-		snapshot: db.InternalKeySeqNumMax,
+		cmp:  db.DefaultComparer.Compare,
+		iter: m.newIter(nil),
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -131,9 +133,8 @@ func BenchmarkDBIterSeekGE(b *testing.B) {
 func BenchmarkDBIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &dbIter{
-		cmp:      db.DefaultComparer.Compare,
-		iter:     m.newIter(nil),
-		snapshot: db.InternalKeySeqNumMax,
+		cmp:  db.DefaultComparer.Compare,
+		iter: m.newIter(nil),
 	}
 
 	b.ResetTimer()
@@ -148,9 +149,8 @@ func BenchmarkDBIterNext(b *testing.B) {
 func BenchmarkDBIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &dbIter{
-		cmp:      db.DefaultComparer.Compare,
-		iter:     m.newIter(nil),
-		snapshot: db.InternalKeySeqNumMax,
+		cmp:  db.DefaultComparer.Compare,
+		iter: m.newIter(nil),
 	}
 
 	b.ResetTimer()

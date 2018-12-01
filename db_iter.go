@@ -18,11 +18,11 @@ const (
 	dbIterPrev dbIterPos = -1
 )
 
+// TODO(peter): document
 type dbIter struct {
 	opts      *db.IterOptions
 	cmp       db.Compare
 	merge     db.Merge
-	snapshot  uint64
 	iter      internalIterator
 	version   *version
 	err       error
@@ -46,15 +46,6 @@ func (i *dbIter) findNextEntry() bool {
 		key := i.iter.Key()
 		if upperBound != nil && i.cmp(key.UserKey, upperBound) >= 0 {
 			break
-		}
-
-		if seqNum := key.SeqNum(); seqNum >= i.snapshot {
-			// Ignore entries that are newer than our snapshot sequence number,
-			// except for batch sequence numbers which are always visible.
-			if (seqNum & db.InternalKeySeqNumBatch) == 0 {
-				i.iter.Next()
-				continue
-			}
 		}
 
 		switch key.Kind() {
@@ -112,19 +103,6 @@ func (i *dbIter) findPrevEntry() bool {
 		key := i.iter.Key()
 		if lowerBound != nil && i.cmp(key.UserKey, lowerBound) < 0 {
 			break
-		}
-
-		if seqNum := key.SeqNum(); seqNum >= i.snapshot {
-			// Ignore entries that are newer than our snapshot sequence number,
-			// except for batch sequence numbers which are always visible.
-			if (seqNum & db.InternalKeySeqNumBatch) == 0 {
-				if i.valid {
-					i.pos = dbIterCur
-					return true
-				}
-				i.iter.Prev()
-				continue
-			}
 		}
 
 		if i.valid {

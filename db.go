@@ -233,7 +233,6 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	i.cmp = d.cmp
 	i.merge = d.merge
 	i.iter = get
-	i.snapshot = seqNum
 	i.version = current
 
 	defer i.Close()
@@ -469,7 +468,6 @@ func (d *DB) newIterInternal(
 	buf.merging.init(d.cmp, iters...)
 	buf.merging.snapshot = seqNum
 	dbi.iter = &buf.merging
-	dbi.snapshot = seqNum
 	return dbi
 }
 
