@@ -57,8 +57,8 @@ type Fragmenter struct {
 func (f *Fragmenter) checkSameStart(buf []Tombstone) {
 	for i := 1; i < len(buf); i++ {
 		if f.Cmp(buf[i-1].Start.UserKey, buf[i].Start.UserKey) != 0 {
-			panic(fmt.Sprintf("pebble: pending tombstone invariant violated: %q, %q",
-				buf[i-1].Start.UserKey, buf[i].Start.UserKey))
+			panic(fmt.Sprintf("pebble: pending tombstone invariant violated: %s %s",
+				buf[i-1].Start, buf[i].Start))
 		}
 	}
 }
@@ -143,7 +143,7 @@ func (f *Fragmenter) checkInvariants() {
 // from an sstable where the range-del block has been prefix compressed.
 func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 	if f.finished {
-		panic("pebble: Tombstone fragmenter already finished")
+		panic("pebble: tombstone fragmenter already finished")
 	}
 	if raceEnabled {
 		f.checkInvariants()
@@ -155,8 +155,8 @@ func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 		// to compare against the first one.
 		switch c := f.Cmp(f.pending[0].Start.UserKey, start.UserKey); {
 		case c > 0:
-			panic(fmt.Sprintf("pebble: keys must be added in order: %s, %s",
-				f.pending[0].Start.UserKey, start.UserKey))
+			panic(fmt.Sprintf("pebble: keys must be added in order: %s > %s",
+				f.pending[0].Start, start))
 		case c == 0:
 			// The new tombstone has the same start key as the existing pending
 			// tombstones. Add it to the pending buffer.
@@ -183,13 +183,16 @@ func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 // tombstones. That is, it is invalid to specify a key here that is out of
 // order with the tombstone start keys passed to Add.
 func (f *Fragmenter) Deleted(key db.InternalKey) bool {
+	if f.finished {
+		panic("pebble: tombstone fragmenter already finished")
+	}
 	if len(f.pending) == 0 {
 		return false
 	}
 
 	if f.Cmp(f.pending[0].Start.UserKey, key.UserKey) > 0 {
-		panic(fmt.Sprintf("pebble: Deleted called in non-increasing key order: %q, %q",
-			f.pending[0].Start.UserKey, key.UserKey))
+		panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
+			f.pending[0].Start, key))
 	}
 
 	seqNum := key.SeqNum()
@@ -221,6 +224,9 @@ func (f *Fragmenter) Deleted(key db.InternalKey) bool {
 // flush tombstone fragments, and can be used externally to fragment tombstones
 // during compaction when a tombstone straddles an sstable boundary.
 func (f *Fragmenter) FlushTo(key []byte) {
+	if f.finished {
+		panic("pebble: tombstone fragmenter already finished")
+	}
 	if len(f.pending) == 0 {
 		return
 	}
@@ -228,8 +234,8 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	// to compare against the first one.
 	switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
 	case c > 0:
-		panic(fmt.Sprintf("pebble: FlushTo called in non-increasing key order: %q, %q",
-			f.pending[0].Start.UserKey, key))
+		panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
+			f.pending[0].Start, key))
 	case c == 0:
 		// The pending tombstone start key and the flush-to key are equal, so we'd
 		// only be generating empty tombstones if we continued.
@@ -312,7 +318,7 @@ func (f *Fragmenter) flush(buf []Tombstone) {
 // this if any other tombstones will be added.
 func (f *Fragmenter) Finish() {
 	if f.finished {
-		panic("pebble: Tombstone fragmenter already finished")
+		panic("pebble: tombstone fragmenter already finished")
 	}
 	f.flush(f.pending)
 	f.finished = true

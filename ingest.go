@@ -217,6 +217,10 @@ func ingestTargetLevel(cmp db.Compare, v *version, meta *fileMetadata) int {
 func (d *DB) Ingest(paths []string) error {
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted.
+	//
+	// TODO(peter): Allocating the file numbers before we know the sequence
+	// numbers for the ingested tables causes the file number sequence to be out
+	// of alignment with the sequence number.
 	d.mu.Lock()
 	pendingOutputs := make([]uint64, len(paths))
 	for i := range paths {

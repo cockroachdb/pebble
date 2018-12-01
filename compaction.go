@@ -271,10 +271,10 @@ func (c *compaction) newInputIter(
 
 func (c *compaction) String() string {
 	var buf bytes.Buffer
-	for i := 0; i < 2; i++ {
+	for i := range c.inputs {
 		fmt.Fprintf(&buf, "%d:", i+c.level)
-		for _, f := range c.inputs[0] {
-			fmt.Fprintf(&buf, " %s-%s", f.smallest.UserKey, f.largest.UserKey)
+		for _, f := range c.inputs[i] {
+			fmt.Fprintf(&buf, " %d:%s-%s", f.fileNum, f.smallest, f.largest)
 		}
 		fmt.Fprintf(&buf, "\n")
 	}

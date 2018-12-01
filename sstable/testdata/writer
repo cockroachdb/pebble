@@ -107,7 +107,7 @@ build
 b.RANGEDEL.1:c
 a.RANGEDEL.2:b
 ----
-pebble: keys must be added in order: b, a
+pebble: keys must be added in order: b#1,15 > a#2,15
 
 build-raw
 a.RANGEDEL.1:c

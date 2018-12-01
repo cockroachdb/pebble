@@ -76,7 +76,7 @@ func ikeyRange(ucmp db.Compare, f0, f1 []fileMetadata) (smallest, largest db.Int
 type byFileNum []fileMetadata
 
 func (b byFileNum) Len() int           { return len(b) }
-func (b byFileNum) Less(i, j int) bool { return b[i].fileNum < b[j].fileNum }
+func (b byFileNum) Less(i, j int) bool { return b[i].smallestSeqNum < b[j].smallestSeqNum }
 func (b byFileNum) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 
 type bySmallest struct {
@@ -225,12 +225,13 @@ func (v *version) overlaps(
 func (v *version) checkOrdering(cmp db.Compare) error {
 	for level, ff := range v.files {
 		if level == 0 {
-			prevFileNum := uint64(0)
+			prevSeqNum := uint64(0)
 			for i, f := range ff {
-				if i != 0 && prevFileNum >= f.fileNum {
-					return fmt.Errorf("level 0 files are not in increasing fileNum order: %d, %d", prevFileNum, f.fileNum)
+				if i != 0 && prevSeqNum >= f.smallestSeqNum {
+					return fmt.Errorf("level 0 files are not in increasing seqNum order: %d, %d",
+						prevSeqNum, f.smallestSeqNum)
 				}
-				prevFileNum = f.fileNum
+				prevSeqNum = f.smallestSeqNum
 			}
 		} else {
 			var prevLargest db.InternalKey

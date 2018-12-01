@@ -213,9 +213,7 @@ func (i *compactionIter) Next() bool {
 			return true
 
 		case db.InternalKeyKindRangeDelete:
-			// TODO(peter,rangedel): Copy i.key.UserKey as it might not survive the
-			// next iteration step.
-			i.rangeDelFrag.Add(i.key, i.iter.Value())
+			i.rangeDelFrag.Add(i.cloneKey(i.key), i.iter.Value())
 			i.saveKey()
 			i.skipStripe()
 			continue
@@ -287,10 +285,7 @@ func (i *compactionIter) nextInStripe() bool {
 	case db.InternalKeyKindRangeDelete:
 		// Range tombstones are always added to the fragmenter. They are processed
 		// into stripes after fragmentation.
-		//
-		// TODO(peter,rangedel): Copy i.key.UserKey as it might not survive the
-		// next iteration step.
-		i.rangeDelFrag.Add(key, i.iter.Value())
+		i.rangeDelFrag.Add(i.cloneKey(key), i.iter.Value())
 		return true
 	case db.InternalKeyKindInvalid:
 		i.curSnapshotIdx = snapshotIndex(key.SeqNum(), i.snapshots)
@@ -376,6 +371,11 @@ func (i *compactionIter) saveKey() {
 func (i *compactionIter) saveValue() {
 	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
 	i.value = i.valueBuf
+}
+
+func (i *compactionIter) cloneKey(key db.InternalKey) db.InternalKey {
+	// TODO(peter,rangedel): Use a buf allocator to reduce the allocations.
+	return key.Clone()
 }
 
 func (i *compactionIter) Key() db.InternalKey {

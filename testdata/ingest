@@ -146,7 +146,7 @@ set k 11
 
 lsm
 ----
-0: k-k j-k
+0: j-k k-k
 3: b-c
 4: a-c
 5: a-b
@@ -164,7 +164,7 @@ j
 k
 ----
 j:9
-k:10
+k:11
 
 batch
 set m 12
@@ -176,7 +176,7 @@ set n 13
 
 lsm
 ----
-0: k-k j-k
+0: j-k k-k
 3: b-c
 4: a-c
 5: a-b
@@ -196,7 +196,7 @@ del-range x z
 
 lsm
 ----
-0: k-k j-k a-z m-m
+0: j-k k-k m-m a-z
 3: b-c
 4: a-c
 5: a-b
@@ -217,7 +217,7 @@ a: pebble: not found
 b: pebble: not found
 c: pebble: not found
 j:9
-k:10
+k:11
 m:12
 n:13
 x: pebble: not found
@@ -238,5 +238,5 @@ k
 m
 ----
 j:20
-k:10
+k:11
 m:30

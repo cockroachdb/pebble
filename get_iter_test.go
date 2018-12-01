@@ -453,7 +453,9 @@ func TestGetIter(t *testing.T) {
 			defer d.close()
 			m[tt.fileNum] = d
 
-			var smallest, largest db.InternalKey
+			meta := fileMetadata{
+				fileNum: tt.fileNum,
+			}
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
 				ikey := db.ParseInternalKey(s[0])
@@ -463,23 +465,27 @@ func TestGetIter(t *testing.T) {
 				}
 
 				if i == 0 {
-					smallest = ikey
-					largest = ikey
+					meta.smallest = ikey
+					meta.smallestSeqNum = ikey.SeqNum()
+					meta.largest = ikey
+					meta.largestSeqNum = ikey.SeqNum()
 				} else {
-					if db.InternalCompare(cmp, ikey, smallest) < 0 {
-						smallest = ikey
+					if db.InternalCompare(cmp, ikey, meta.smallest) < 0 {
+						meta.smallest = ikey
 					}
-					if db.InternalCompare(cmp, ikey, largest) > 0 {
-						largest = ikey
+					if db.InternalCompare(cmp, ikey, meta.largest) > 0 {
+						meta.largest = ikey
+					}
+					if meta.smallestSeqNum > ikey.SeqNum() {
+						meta.smallestSeqNum = ikey.SeqNum()
+					}
+					if meta.largestSeqNum < ikey.SeqNum() {
+						meta.largestSeqNum = ikey.SeqNum()
 					}
 				}
 			}
 
-			v.files[tt.level] = append(v.files[tt.level], fileMetadata{
-				fileNum:  tt.fileNum,
-				smallest: smallest,
-				largest:  largest,
-			})
+			v.files[tt.level] = append(v.files[tt.level], meta)
 		}
 
 		err := v.checkOrdering(cmp)
