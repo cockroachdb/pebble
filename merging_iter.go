@@ -276,19 +276,44 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 }
 
 func (m *mergingIter) findNextEntry() bool {
-	// TODO(peter,rangedel): Integrate range-del checks.
-
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
-		// TODO(peter,rangedel): Look for range deletions containing item.key at
-		// levels < item.index. If we find such a range deletion, we seek
-		// m.iters[item.index] to the largest tombstone end-key. Also need to look
-		// for a range deletion in m.rangeDelIters[item.index], but we can't seek
-		// because the range deletion is not guaranteed to cover all of the keys in
-		// the current level. When seeking m.iters[item.index], we also should seek
-		// all iters at lower levels. We'll then need to re-init the heap. Note
-		// that this is a bit like what mergingIter.SeekGE does, though we're only
-		// seeking a subset of levels.
+
+		if m.rangeDelIters != nil {
+			// TODO(peter,rangedel): Avoid repeated work here. Once we find the range
+			// tombstone for a level we can avoid seeking again until we reach its
+			// boundary.
+
+			// Look for a range deletion tombstone containing item.key at higher
+			// levels of the tree (level < item.index). If we find such a range
+			// tombstone we know it deletes the key in the current level.
+			for level := 0; level < item.index; level++ {
+				rangeDelIter := m.rangeDelIters[level]
+				if rangeDelIter == nil {
+					continue
+				}
+				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+					m.seekGE(tombstone.End, item.index)
+					continue
+				}
+			}
+
+			// Look for a range deletion in the current level that deletes the
+			// current key. Note that we can't seek because the range deletion is not
+			// guaranteed to cover all of the keys in the current level.
+			//
+			// TODO(peter,rangedel): Avoid seeking the range-del iterator repeatedly
+			// for a tombstone that lies underneath a set of keys within a
+			// level. Possible this optimization can be added to rangeDelIterGet.
+			if rangeDelIter := m.rangeDelIters[item.index]; rangeDelIter != nil {
+				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+				if tombstone.Deletes(item.key.SeqNum()) {
+					m.nextEntry(item)
+					continue
+				}
+			}
+		}
 
 		seqNum := item.key.SeqNum()
 		if seqNum < m.snapshot || (seqNum&db.InternalKeySeqNumBatch) != 0 {
@@ -314,10 +339,41 @@ func (m *mergingIter) prevEntry(item *mergingIterItem) {
 }
 
 func (m *mergingIter) findPrevEntry() bool {
-	// TODO(peter,rangedel): Integrate range-del checks.
-
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
+
+		if m.rangeDelIters != nil {
+			// Look for a range deletion tombstone containing item.key at higher
+			// levels of the tree (level < item.index). If we find such a range
+			// tombstone we know it deletes the key in the current level.
+			for level := 0; level < item.index; level++ {
+				rangeDelIter := m.rangeDelIters[level]
+				if rangeDelIter == nil {
+					continue
+				}
+				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+					m.seekLT(tombstone.Start.UserKey, item.index)
+					continue
+				}
+			}
+
+			// Look for a range deletion in the current level that deletes the
+			// current key. Note that we can't seek because the range deletion is not
+			// guaranteed to cover all of the keys in the current level.
+			//
+			// TODO(peter,rangedel): Avoid seeking the range-del iterator repeatedly
+			// for a tombstone that lies underneath a set of keys within a
+			// level. Possible this optimization can be added to rangeDelIterGet.
+			if rangeDelIter := m.rangeDelIters[item.index]; rangeDelIter != nil {
+				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+				if tombstone.Deletes(item.key.SeqNum()) {
+					m.prevEntry(item)
+					continue
+				}
+			}
+		}
+
 		seqNum := item.key.SeqNum()
 		if seqNum < m.snapshot || (seqNum&db.InternalKeySeqNumBatch) != 0 {
 			return true
@@ -327,7 +383,7 @@ func (m *mergingIter) findPrevEntry() bool {
 	return false
 }
 
-func (m *mergingIter) SeekGE(key []byte) {
+func (m *mergingIter) seekGE(key []byte, level int) {
 	// When seeking, we can use tombstones to adjust the key we seek to on each
 	// level. Consider the series of range tombstones:
 	//
@@ -345,11 +401,12 @@ func (m *mergingIter) SeekGE(key []byte) {
 	// [d,h). This process continues and we end up seeking for "h" in the 3rd
 	// level, "k" in the 4th level and "n" in the last level.
 
-	for i, t := range m.iters {
-		t.SeekGE(key)
+	for ; level < len(m.iters); level++ {
+		iter := m.iters[level]
+		iter.SeekGE(key)
 
 		if m.rangeDelIters != nil {
-			if rangeDelIter := m.rangeDelIters[i]; rangeDelIter != nil {
+			if rangeDelIter := m.rangeDelIters[level]; rangeDelIter != nil {
 				// The level has a range-del iterator. Find the tombstone containing the
 				// search key.
 				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, key, m.snapshot)
@@ -359,27 +416,24 @@ func (m *mergingIter) SeekGE(key []byte) {
 			}
 		}
 	}
+
 	m.initMinHeap()
+}
 
-	// TODO(peter,rangedel): Need to adjust the range-del iterators here as they
-	// might not be positioned at the tombstone covering the current key. For
-	// example, the scenario at the top of this method showed a range tombstone
-	// [a,e) and seeking to "b", but the current key might be "f". We only have
-	// to seek the range-del iterators that are from newer levels than the
-	// iterator at the top of the heap.
-
+func (m *mergingIter) SeekGE(key []byte) {
+	m.seekGE(key, 0 /* start level */)
 	m.findNextEntry()
 }
 
-func (m *mergingIter) SeekLT(key []byte) {
-	// See the comment in SeekGE regarding using tombstones to adjust the seek
+func (m *mergingIter) seekLT(key []byte, level int) {
+	// See the comment in seekLT regarding using tombstones to adjust the seek
 	// target per level.
 
-	for i, t := range m.iters {
-		t.SeekLT(key)
+	for ; level < len(m.iters); level++ {
+		m.iters[level].SeekLT(key)
 
 		if m.rangeDelIters != nil {
-			if rangeDelIter := m.rangeDelIters[i]; rangeDelIter != nil {
+			if rangeDelIter := m.rangeDelIters[level]; rangeDelIter != nil {
 				// The level has a range-del iterator. Find the tombstone containing the
 				// search key.
 				tombstone := rangeDelIterGet(m.heap.cmp, rangeDelIter, key, m.snapshot)
@@ -389,10 +443,12 @@ func (m *mergingIter) SeekLT(key []byte) {
 			}
 		}
 	}
+
 	m.initMaxHeap()
+}
 
-	// TODO(peter,rangedel): Seek the range-del iterators.
-
+func (m *mergingIter) SeekLT(key []byte) {
+	m.seekLT(key, 0 /* start level */)
 	m.findPrevEntry()
 }
 
@@ -401,9 +457,6 @@ func (m *mergingIter) First() {
 		t.First()
 	}
 	m.initMinHeap()
-
-	// TODO(peter,rangedel): Seek the range-del iterators.
-
 	m.findNextEntry()
 }
 
@@ -412,9 +465,6 @@ func (m *mergingIter) Last() {
 		t.Last()
 	}
 	m.initMaxHeap()
-
-	// TODO(peter,rangedel): Seek the range-del iterators.
-
 	m.findPrevEntry()
 }
 
