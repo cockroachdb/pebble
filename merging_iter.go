@@ -278,8 +278,7 @@ func (m *mergingIter) SeekLT(key []byte) {
 func (m *mergingIter) First() {
 	for _, t := range m.iters {
 		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
-		// iterator. Keep track of the covering tombstone and adjust the key being
-		// seeked to.
+		// iterator.
 		t.First()
 	}
 	m.initMinHeap()
@@ -288,8 +287,7 @@ func (m *mergingIter) First() {
 func (m *mergingIter) Last() {
 	for _, t := range m.iters {
 		// TODO(peter,rangedel): Also seek the corresponding rangeDelIter
-		// iterator. Keep track of the covering tombstone and adjust the key being
-		// seeked to.
+		// iterator.
 		t.Last()
 	}
 	m.initMaxHeap()
@@ -310,6 +308,10 @@ func (m *mergingIter) Next() bool {
 	}
 
 	// TODO(peter,rangedel): Integrate range-del checks.
+	//
+	// Invariant: The range deletion iterators are positioned at
+	// mergingIter.Key(). After advancing the iter on the top of the heap, we
+	// need to check to see which of the range-del iterators neds to be advanced.
 
 	item := &m.heap.items[0]
 	iter := m.iters[item.index]
@@ -343,6 +345,10 @@ func (m *mergingIter) Prev() bool {
 	}
 
 	// TODO(peter,rangedel): Integrate range-del checks.
+	//
+	// Invariant: The range deletion iterators are positioned at
+	// mergingIter.Key(). After advancing the iter on the top of the heap, we
+	// need to check to see which of the range-del iterators neds to be advanced.
 
 	item := &m.heap.items[0]
 	iter := m.iters[item.index]

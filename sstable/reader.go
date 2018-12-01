@@ -455,7 +455,8 @@ func (r *Reader) readRangeDel() (block, error) {
 			// and cache the converted version. We just need to create a
 			// rangedel.Fragmenter and loop over the v1 block and add all of the
 			// contents. Note that the contents of the v1 block may not be sorted, so
-			// we'll have to sort them first.
+			// we'll have to sort them first. We also need to truncate the v1
+			// tombstones to the sstable boundaries.
 		}
 
 		r.rangeDel.mu.Lock()

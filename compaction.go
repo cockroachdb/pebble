@@ -166,6 +166,14 @@ func (c *compaction) grow(sm, la db.InternalKey) bool {
 // into large compactions. The current heuristic stops output of a table if the
 // addition of another key would cause the table to overlap more than 10x the
 // target file size at level N. See maxGrandparentOverlapBytes.
+//
+// TODO(peter): Stopping compaction output in the middle of a user-key creates
+// 2 sstables that need to be compacted together as an "atomic compaction
+// unit". This is unfortunate as it removes the benefit of stopping output to
+// an sstable in order to prevent a large compaction with the next level. Seems
+// better to adjust shouldStopBefore to not stop output in the middle of a
+// user-key. Perhaps this isn't a problem if the compaction picking heuristics
+// always pick the right (older) sibling for compaction first.
 func (c *compaction) shouldStopBefore(key db.InternalKey) bool {
 	for len(c.grandparents) > 0 {
 		g := &c.grandparents[0]
