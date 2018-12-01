@@ -509,6 +509,7 @@ func TestGetIter(t *testing.T) {
 			get.key = ikey.UserKey
 			get.l0 = v.files[0]
 			get.version = v
+			get.snapshot = ikey.SeqNum() + 1
 
 			i := &buf.dbi
 			i.cmp = cmp

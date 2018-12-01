@@ -81,6 +81,12 @@ func (g *getIter) Next() bool {
 					return false
 				}
 				if g.cmp(g.key, key.UserKey) == 0 {
+					if seqNum := key.SeqNum(); seqNum >= g.snapshot {
+						if (seqNum & db.InternalKeySeqNumBatch) == 0 {
+							g.iter.Next()
+							continue
+						}
+					}
 					return true
 				}
 			}
