@@ -62,7 +62,7 @@ func (g *getIter) Next() bool {
 			// key. Every call to levelIter.Next() potentially switches to a new
 			// table and thus reinitializes rangeDelIter.
 			if g.rangeDelIter != nil {
-				g.tombstone = rangeDelIterGet(g.cmp, g.rangeDelIter, g.key, g.snapshot)
+				g.tombstone = rangeDelGet(g.cmp, g.rangeDelIter, g.key, g.snapshot)
 				if g.err = g.rangeDelIter.Close(); g.err != nil {
 					return false
 				}

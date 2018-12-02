@@ -9,11 +9,11 @@ import (
 	"github.com/petermattis/pebble/internal/rangedel"
 )
 
-func rangeDelIterGet(
+func rangeDelGet(
 	cmp db.Compare,
 	i internalIterator,
 	key []byte,
-	seqNum uint64,
+	snapshot uint64,
 ) rangedel.Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
@@ -66,7 +66,7 @@ func rangeDelIterGet(
 	for {
 		tStart := i.Key()
 		tSeqNum := tStart.SeqNum()
-		if tSeqNum < seqNum || (tSeqNum&db.InternalKeySeqNumBatch) != 0 {
+		if tSeqNum < snapshot || (tSeqNum&db.InternalKeySeqNumBatch) != 0 {
 			// The tombstone is visible at our read sequence number.
 			return rangedel.Tombstone{
 				Start: tStart,
@@ -80,4 +80,32 @@ func rangeDelIterGet(
 			return rangedel.Tombstone{}
 		}
 	}
+}
+
+// rangeDelSeekGE seeks to the newest tombstone that contains or is past
+// the target key. The snapshot parameter controls the visibility of tombstones
+// (only tombstones older than the snapshot sequence number are visible). The
+// internal iterator must contain fragmented tombstones: any overlapping
+// tombstones must have the same start and end key.
+func rangeDelSeekGE(
+	cmp db.Compare,
+	i internalIterator,
+	key []byte,
+	snapshot uint64,
+) rangedel.Tombstone {
+	return rangeDelGet(cmp, i, key, snapshot)
+}
+
+// rangeTombstoneSeekGE seeks to the newest tombstone that contains or is
+// before the target key. The snapshot parameter controls the visibility of
+// tombstones (only tombstones older than the snapshot sequence number are
+// visible). The internal iterator must contain fragmented tombstones: any
+// overlapping tombstones must have the same start and end key.
+func rangeDelSeekLE(
+	cmp db.Compare,
+	i internalIterator,
+	key []byte,
+	snapshot uint64,
+) rangedel.Tombstone {
+	return rangeDelGet(cmp, i, key, snapshot)
 }
