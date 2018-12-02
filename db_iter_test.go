@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -71,43 +70,8 @@ func TestDBIter(t *testing.T) {
 			}
 
 			iter := newIter(uint64(seqNum), &opts)
-			var b bytes.Buffer
-			for _, line := range strings.Split(d.Input, "\n") {
-				parts := strings.Fields(line)
-				if len(parts) == 0 {
-					continue
-				}
-				switch parts[0] {
-				case "seek-ge":
-					if len(parts) != 2 {
-						return fmt.Sprintf("seek-ge <key>\n")
-					}
-					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
-				case "seek-lt":
-					if len(parts) != 2 {
-						return fmt.Sprintf("seek-lt <key>\n")
-					}
-					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
-				case "first":
-					iter.First()
-				case "last":
-					iter.Last()
-				case "next":
-					iter.Next()
-				case "prev":
-					iter.Prev()
-				default:
-					return fmt.Sprintf("unknown op: %s", parts[0])
-				}
-				if iter.Valid() {
-					fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
-				} else if err := iter.Error(); err != nil {
-					fmt.Fprintf(&b, "err=%v\n", err)
-				} else {
-					fmt.Fprintf(&b, ".\n")
-				}
-			}
-			return b.String()
+			defer iter.Close()
+			return runIterCmd(d, iter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

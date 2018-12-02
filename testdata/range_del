@@ -70,6 +70,34 @@ d
 dcb
 d
 
+iter seq=6
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+a:d
+b:dcb
+c:d
+.
+c:d
+b:dcb
+a:d
+.
+
+iter seq=7
+first
+next
+next
+----
+a:d
+c:d
+.
+
 # Multiple memtables.
 
 define

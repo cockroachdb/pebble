@@ -15,10 +15,10 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
-func TestGet(t *testing.T) {
+func TestRangeDel(t *testing.T) {
 	var d *DB
 
-	datadriven.RunTest(t, "testdata/get", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/range_del", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			var err error
@@ -63,6 +63,32 @@ func TestGet(t *testing.T) {
 				}
 			}
 			return buf.String()
+
+		case "iter":
+			snap := Snapshot{
+				db:     d,
+				seqNum: db.InternalKeySeqNumMax,
+			}
+
+			for _, arg := range td.CmdArgs {
+				if len(arg.Vals) != 1 {
+					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "seq":
+					var err error
+					snap.seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+				}
+			}
+
+			iter := snap.NewIter(nil)
+			defer iter.Close()
+			return runIterCmd(td, iter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
