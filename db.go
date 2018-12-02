@@ -428,20 +428,20 @@ func (d *DB) newIterInternal(
 		rangeDelIters = append(rangeDelIters, rangeDelIter)
 	}
 
+	start := len(rangeDelIters)
 	for level := 1; level < len(current.files); level++ {
-		n := len(current.files[level])
-		if n == 0 {
+		if len(current.files[level]) == 0 {
 			continue
 		}
 		rangeDelIters = append(rangeDelIters, nil)
 	}
 	buf.merging.rangeDelIters = rangeDelIters
+	rangeDelIters = rangeDelIters[start:]
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
 	for level := 1; level < len(current.files); level++ {
-		n := len(current.files[level])
-		if n == 0 {
+		if len(current.files[level]) == 0 {
 			continue
 		}
 

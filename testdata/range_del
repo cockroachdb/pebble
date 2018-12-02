@@ -75,28 +75,66 @@ first
 next
 next
 next
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
 last
 prev
 prev
 prev
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
 ----
 a:d
 b:dcb
 c:d
 .
+a:d
+b:dcb
+c:d
+.
 c:d
 b:dcb
 a:d
 .
+.
+a:d
+b:dcb
+c:d
 
 iter seq=7
 first
 next
 next
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+last
+prev
+prev
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
 ----
 a:d
 c:d
 .
+a:d
+c:d
+c:d
+.
+c:d
+a:d
+.
+.
+a:d
+a:d
+c:d
 
 # Multiple memtables.
 
@@ -173,6 +211,72 @@ c
 d
 dcb
 d
+
+iter seq=6
+first
+next
+next
+next
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+last
+prev
+prev
+prev
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+a:d
+b:dcb
+c:d
+.
+a:d
+b:dcb
+c:d
+.
+c:d
+b:dcb
+a:d
+.
+.
+a:d
+b:dcb
+c:d
+
+iter seq=7
+first
+next
+next
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+last
+prev
+prev
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+a:d
+c:d
+.
+a:d
+c:d
+c:d
+.
+c:d
+a:d
+.
+.
+a:d
+a:d
+c:d
 
 # Overlapping range deletions in the same memtable.
 
@@ -258,8 +362,99 @@ d
 4
 4
 
-# Overlapping range deletions in the different memtables. Note that
-# the range tombstones are not fragmented in this case.
+iter seq=2
+first
+next
+next
+next
+next
+last
+prev
+prev
+prev
+prev
+----
+a:1
+b:1
+c:1
+d:1
+.
+d:1
+c:1
+b:1
+a:1
+.
+
+iter seq=3
+first
+next
+last
+prev
+----
+d:1
+.
+d:1
+.
+
+iter seq=5
+first
+next
+next
+last
+prev
+prev
+----
+a:2
+d:2
+.
+d:2
+a:2
+.
+
+iter seq=7
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+a:3
+b:3
+d:3
+.
+d:3
+b:3
+a:3
+.
+
+iter seq=9
+first
+next
+next
+next
+next
+last
+prev
+prev
+prev
+prev
+----
+a:4
+b:4
+c:4
+d:4
+.
+d:4
+c:4
+b:4
+a:4
+.
+
+# Overlapping range deletions in different memtables. Note that the
+# range tombstones are not fragmented in this case.
 
 define
 mem
@@ -343,6 +538,97 @@ d
 4
 4
 
+iter seq=2
+first
+next
+next
+next
+next
+last
+prev
+prev
+prev
+prev
+----
+a:1
+b:1
+c:1
+d:1
+.
+d:1
+c:1
+b:1
+a:1
+.
+
+iter seq=3
+first
+next
+last
+prev
+----
+d:1
+.
+d:1
+.
+
+iter seq=5
+first
+next
+next
+last
+prev
+prev
+----
+a:2
+d:2
+.
+d:2
+a:2
+.
+
+iter seq=7
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+a:3
+b:3
+d:3
+.
+d:3
+b:3
+a:3
+.
+
+iter seq=9
+first
+next
+next
+next
+next
+last
+prev
+prev
+prev
+prev
+----
+a:4
+b:4
+c:4
+d:4
+.
+d:4
+c:4
+b:4
+a:4
+.
+
 # User-key that spans tables in a level.
 
 define
@@ -376,6 +662,51 @@ a
 ----
 3
 
+iter seq=2
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:1
+a:1
+.
+a:1
+.
+a:1
+
+iter seq=3
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:2
+a:2
+.
+a:2
+.
+a:2
+
+iter seq=4
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:3
+a:3
+.
+a:3
+.
+a:3
+
 define
 L1
   a.MERGE.3:3
@@ -406,6 +737,51 @@ get seq=4
 a
 ----
 321
+
+iter seq=2
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:1
+a:1
+.
+a:1
+.
+a:1
+
+iter seq=3
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:21
+a:21
+.
+a:21
+.
+a:21
+
+iter seq=4
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:321
+a:321
+.
+a:321
+.
+a:321
 
 # User-key spread across multiple levels.
 
@@ -448,6 +824,66 @@ get seq=5
 a
 ----
 4321
+
+iter seq=2
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:1
+a:1
+.
+a:1
+.
+a:1
+
+iter seq=3
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:21
+a:21
+.
+a:21
+.
+a:21
+
+iter seq=4
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:321
+a:321
+.
+a:321
+.
+a:321
+
+iter seq=5
+first
+seek-ge a
+seek-ge b
+last
+seek-lt a
+seek-lt b
+----
+a:4321
+a:4321
+.
+a:4321
+.
+a:4321
 
 # Range deletions on multiple levels.
 define
@@ -525,6 +961,58 @@ d
 pebble: not found
 4
 
+iter seq=2
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+a:1
+b:1
+c:1
+d:1
+d:1
+c:1
+b:1
+a:1
+
+iter seq=3
+first
+last
+----
+d:2
+d:2
+
+iter seq=4
+first
+next
+last
+prev
+----
+a:3
+d:3
+d:3
+a:3
+
+iter seq=5
+first
+next
+next
+last
+prev
+prev
+----
+a:4
+b:4
+d:4
+d:4
+b:4
+a:4
+
 # Range deletions spanning tables within a level.
 
 define
@@ -581,6 +1069,51 @@ d
 3
 3
 3
+
+iter seq=2
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+a:1
+b:1
+c:1
+d:1
+d:1
+c:1
+b:1
+a:1
+
+iter seq=3
+first
+last
+----
+d:1
+d:1
+
+iter seq=4
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+a:3
+b:3
+c:3
+d:3
+d:3
+c:3
+b:3
+a:3
 
 # Invalid LSM structure (range deletion at newer level covers newer
 # write at an older level). This LSM structure is not generated

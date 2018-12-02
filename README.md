@@ -21,8 +21,7 @@ needed by CockroachDB:
 * Merge operator
 * [[TODO]](https://github.com/petermattis/pebble/issues/5) Prefix
   bloom filters
-* [[TODO]](https://github.com/petermattis/pebble/issues/1) Range
-  deletion tombstones
+* Range deletion tombstones
 * Reverse iteration
 * Snapshots
 * SSTable ingestion

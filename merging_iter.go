@@ -223,17 +223,22 @@ func (m *mergingIter) initMinHeap() {
 	m.dir = 1
 	m.heap.reverse = false
 	m.initHeap()
+	m.initMinRangeDelIters(-1)
+}
 
-	if m.rangeDelIters != nil && m.heap.len() > 0 {
-		// Position the range-del iterators at levels <= m.heap.items[0].index.
-		item := &m.heap.items[0]
-		for level := 0; level <= item.index; level++ {
-			rangeDelIter := m.rangeDelIters[level]
-			if rangeDelIter == nil {
-				continue
-			}
-			_ = rangedel.SeekGE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+func (m *mergingIter) initMinRangeDelIters(oldTopLevel int) {
+	if m.rangeDelIters == nil || m.heap.len() == 0 {
+		return
+	}
+
+	// Position the range-del iterators at levels <= m.heap.items[0].index.
+	item := &m.heap.items[0]
+	for level := oldTopLevel + 1; level <= item.index; level++ {
+		rangeDelIter := m.rangeDelIters[level]
+		if rangeDelIter == nil {
+			continue
 		}
+		_ = rangedel.SeekGE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
 	}
 }
 
@@ -241,17 +246,21 @@ func (m *mergingIter) initMaxHeap() {
 	m.dir = -1
 	m.heap.reverse = true
 	m.initHeap()
+	m.initMaxRangeDelIters(-1)
+}
 
-	if m.rangeDelIters != nil && m.heap.len() > 0 {
-		// Position the range-del iterators at levels <= m.heap.items[0].index.
-		item := &m.heap.items[0]
-		for level := 0; level <= item.index; level++ {
-			rangeDelIter := m.rangeDelIters[level]
-			if rangeDelIter == nil {
-				continue
-			}
-			_ = rangedel.SeekLE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+func (m *mergingIter) initMaxRangeDelIters(oldTopLevel int) {
+	if m.rangeDelIters == nil || m.heap.len() == 0 {
+		return
+	}
+	// Position the range-del iterators at levels <= m.heap.items[0].index.
+	item := &m.heap.items[0]
+	for level := oldTopLevel + 1; level <= item.index; level++ {
+		rangeDelIter := m.rangeDelIters[level]
+		if rangeDelIter == nil {
+			continue
 		}
+		_ = rangedel.SeekLE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
 	}
 }
 
@@ -337,17 +346,18 @@ func (m *mergingIter) switchToMaxHeap() {
 }
 
 func (m *mergingIter) nextEntry(item *mergingIterItem) {
+	oldTopLevel := item.index
 	iter := m.iters[item.index]
 	if iter.Next() {
 		item.key = iter.Key()
 		m.heap.fix(0)
-		return
+	} else {
+		m.err = iter.Error()
+		if m.err == nil {
+			m.heap.pop()
+		}
 	}
-
-	m.err = iter.Error()
-	if m.err == nil {
-		m.heap.pop()
-	}
+	m.initMinRangeDelIters(oldTopLevel)
 }
 
 func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
@@ -402,17 +412,18 @@ func (m *mergingIter) findNextEntry() bool {
 }
 
 func (m *mergingIter) prevEntry(item *mergingIterItem) {
+	oldTopLevel := item.index
 	iter := m.iters[item.index]
 	if iter.Prev() {
 		item.key = iter.Key()
 		m.heap.fix(0)
-		return
+	} else {
+		m.err = iter.Error()
+		if m.err == nil {
+			m.heap.pop()
+		}
 	}
-
-	m.err = iter.Error()
-	if m.err == nil {
-		m.heap.pop()
-	}
+	m.initMaxRangeDelIters(oldTopLevel)
 }
 
 func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
@@ -440,11 +451,11 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 		}
 		if tombstone.Contains(m.heap.cmp, item.key.UserKey) {
 			if level < item.index {
-				m.seekGE(tombstone.End, item.index)
+				m.seekLT(tombstone.Start.UserKey, item.index)
 				return true
 			}
 			if tombstone.Deletes(item.key.SeqNum()) {
-				m.nextEntry(item)
+				m.prevEntry(item)
 				return true
 			}
 		}
