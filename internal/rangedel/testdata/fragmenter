@@ -1,956 +1,936 @@
-# 3: a-----------m
-# 2:      f------------s
-# 1:          j---------------z
-
 build
-a-m#3,f-s#2,j-z#1
+3: a-----------m
+2:      f------------s
+1:          j---------------z
 ----
-a-f#3
-f-j#3
-f-j#2
-j-m#3
-j-m#2
-j-m#1
-m-s#2
-m-s#1
-s-z#1
+3: a----f
+3:      f---j
+2:      f---j
+3:          j--m
+2:          j--m
+1:          j--m
+2:             m-----s
+1:             m-----s
+1:                   s------z
 
 # Building is idempotent.
 build
-a-f#3,f-j#3,f-j#2,j-m#3,j-m#2,j-m#1,m-s#2,m-s#1,s-z#1
+3: a----f
+3:      f---j
+2:      f---j
+3:          j--m
+2:          j--m
+1:          j--m
+2:             m-----s
+1:             m-----s------z
+1:                   s------z
 ----
-a-f#3
-f-j#3
-f-j#2
-j-m#3
-j-m#2
-j-m#1
-m-s#2
-m-s#1
-s-z#1
+3: a----f
+3:      f---j
+2:      f---j
+3:          j--m
+2:          j--m
+1:          j--m
+2:             m-----s
+1:             m-----s
+1:                   s------z
 
 build
-a-a#1
+1: a-a
 ----
-a-a#1
-
-# 3:  b-d
-# 1: a---e
+1: a-a
 
 build
-a-e#1,b-d#3
+1: a---e
+3:  b-d
 ----
-a-b#1
-b-d#3
-b-d#1
-d-e#1
+1: ab
+3:  b-d
+1:  b-d
+1:    de
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-alive alive deleted deleted
+alive alive alive deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 a#1 a#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 b#3 b#2 b#1 b#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 b#2 b#1 b#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 b#1 b#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 c#3 c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 c#2 c#1 c#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 c#1 c#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 d#3 d#2 d#1 d#0
 ----
-alive alive deleted deleted
-
-get t=2
-d#2 d#1 d#0
-----
-alive deleted deleted
-
-get t=1
-d#1 d#0
-----
-deleted deleted
-
-
-# 3: a---e
-# 1:  b-d
-
-build
-a-e#3,b-d#1
-----
-a-b#3
-b-d#3
-b-d#1
-d-e#3
+alive alive alive deleted
 
 get t=3
-a#3 a#2 a#1 a#0
+d#2 d#1 d#0
 ----
-deleted deleted deleted deleted
+alive alive deleted
 
 get t=2
+d#1 d#0
+----
+alive deleted
+
+
+build
+3: a---e
+1:  b-d
+----
+3: ab
+3:  b-d
+1:  b-d
+3:    de
+
+get t=4
+a#3 a#2 a#1 a#0
+----
+alive deleted deleted deleted
+
+get t=3
 a#2 a#1 a#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 a#1 a#0
 ----
 alive alive
 
-get t=3
+get t=4
 b#3 b#2 b#1 b#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 b#2 b#1 b#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 b#1 b#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 c#3 c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive deleted deleted
-
-get t=1
-c#1 c#0
-----
-deleted deleted
+alive deleted deleted deleted
 
 get t=3
-d#3 d#2 d#1 d#0
+c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
+alive alive deleted
 
 get t=2
+c#1 c#0
+----
+alive deleted
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive deleted deleted deleted
+
+get t=3
 d#2 d#1 d#0
 ----
 alive alive alive
 
-get t=1
-d#1 d#0
-----
-alive alive
-
-
-# 3: a--d
-# 1:  b--e
-
-build
-a-d#3,b-e#1
-----
-a-b#3
-b-d#3
-b-d#1
-d-e#1
-
-get t=3
-a#3 a#2 a#1 a#0
-----
-deleted deleted deleted deleted
-
 get t=2
-a#2 a#1 a#0
-----
-alive alive alive
-
-get t=1
-a#1 a#0
-----
-alive alive
-
-get t=3
-b#3 b#2 b#1 b#0
-----
-deleted deleted deleted deleted
-
-get t=2
-b#2 b#1 b#0
-----
-alive deleted deleted
-
-get t=1
-b#1 b#0
-----
-deleted deleted
-
-get t=3
-c#3 c#2 c#1 c#0
-----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive deleted deleted
-
-get t=1
-c#1 c#0
-----
-deleted deleted
-
-get t=3
-d#3 d#2 d#1 d#0
-----
-alive alive deleted deleted
-
-get t=2
-d#2 d#1 d#0
-----
-alive deleted deleted
-
-get t=1
-d#1 d#0
-----
-deleted deleted
-
-
-# 3:  b--e
-# 1: a--d
-
-build
-a-d#1,b-e#3
-----
-a-b#1
-b-d#3
-b-d#1
-d-e#3
-
-get t=3
-a#3 a#2 a#1 a#0
-----
-alive alive deleted deleted
-
-get t=2
-a#2 a#1 a#0
-----
-alive deleted deleted
-
-get t=1
-a#1 a#0
-----
-deleted deleted
-
-get t=3
-b#3 b#2 b#1 b#0
-----
-deleted deleted deleted deleted
-
-get t=2
-b#2 b#1 b#0
-----
-alive deleted deleted
-
-get t=1
-b#1 b#0
-----
-deleted deleted
-
-get t=3
-c#3 c#2 c#1 c#0
-----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive deleted deleted
-
-get t=1
-c#1 c#0
-----
-deleted deleted
-
-get t=3
-d#3 d#2 d#1 d#0
-----
-deleted deleted deleted deleted
-
-get t=2
-d#2 d#1 d#0
-----
-alive alive alive
-
-get t=1
 d#1 d#0
 ----
 alive alive
 
 
-# 3: a--d
-# 1: a---e
-
 build
-a-d#3,a-e#1
+3: a--d
+1:  b--e
 ----
-a-d#3
-a-d#1
-d-e#1
+3: ab
+3:  b-d
+1:  b-d
+1:    de
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
-alive deleted deleted
+alive alive alive
 
-get t=1
+get t=2
 a#1 a#0
 ----
-deleted deleted
+alive alive
 
-get t=3
+get t=4
 b#3 b#2 b#1 b#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 b#2 b#1 b#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 b#1 b#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 c#3 c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive deleted deleted
-
-get t=1
-c#1 c#0
-----
-deleted deleted
+alive deleted deleted deleted
 
 get t=3
-d#3 d#2 d#1 d#0
+c#2 c#1 c#0
 ----
-alive alive deleted deleted
+alive alive deleted
 
 get t=2
+c#1 c#0
+----
+alive deleted
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive alive alive deleted
+
+get t=3
 d#2 d#1 d#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 d#1 d#0
 ----
-deleted deleted
+alive deleted
 
-
-# 3: a---e
-# 1: a--d
 
 build
-a-e#3,a-d#1
+1: a--d
+3:  b--e
 ----
-a-d#3
-a-d#1
-d-e#3
+1: ab
+3:  b-d
+1:  b-d
+3:    de
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-deleted deleted deleted deleted
+alive alive alive deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 a#1 a#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 b#3 b#2 b#1 b#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 b#2 b#1 b#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 b#1 b#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 c#3 c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive deleted deleted
-
-get t=1
-c#1 c#0
-----
-deleted deleted
+alive deleted deleted deleted
 
 get t=3
-d#3 d#2 d#1 d#0
+c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
+alive alive deleted
 
 get t=2
+c#1 c#0
+----
+alive deleted
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive deleted deleted deleted
+
+get t=3
 d#2 d#1 d#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 d#1 d#0
 ----
 alive alive
 
 
-# 3:  b--e
-# 1: a---e
-
 build
-a-e#1,b-e#3
+3: a--d
+1: a---e
 ----
-a-b#1
-b-e#3
-b-e#1
+3: a--d
+1: a--d
+1:    de
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-alive alive deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 a#1 a#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 b#3 b#2 b#1 b#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 b#2 b#1 b#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 b#1 b#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 c#3 c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive deleted deleted
-
-get t=1
-c#1 c#0
-----
-deleted deleted
+alive deleted deleted deleted
 
 get t=3
-d#3 d#2 d#1 d#0
+c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
+alive alive deleted
 
 get t=2
+c#1 c#0
+----
+alive deleted
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive alive alive deleted
+
+get t=3
 d#2 d#1 d#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 d#1 d#0
 ----
-deleted deleted
+alive deleted
 
-
-# 3: a---e
-# 1:  b--e
 
 build
-a-e#3,b-e#1
+3: a---e
+1: a--d
 ----
-a-b#3
-b-e#3
-b-e#1
+3: a--d
+1: a--d
+3:    de
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
-alive alive alive
+alive alive deleted
 
-get t=1
+get t=2
 a#1 a#0
 ----
-alive alive
+alive deleted
 
-get t=3
+get t=4
 b#3 b#2 b#1 b#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 b#2 b#1 b#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 b#1 b#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 c#3 c#2 c#1 c#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 c#2 c#1 c#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 c#1 c#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 d#3 d#2 d#1 d#0
 ----
-deleted deleted deleted deleted
-
-get t=2
-d#2 d#1 d#0
-----
-alive deleted deleted
-
-get t=1
-d#1 d#0
-----
-deleted deleted
-
-
-# 3: a---e
-# 1: a---e
-
-build
-a-e#3,a-e#1
-----
-a-e#3
-a-e#1
+alive deleted deleted deleted
 
 get t=3
-a#3 a#2 a#1 a#0
-----
-deleted deleted deleted deleted
-
-get t=2
-a#2 a#1 a#0
-----
-alive deleted deleted
-
-get t=1
-a#1 a#0
-----
-deleted deleted
-
-get t=3
-b#3 b#2 b#1 b#0
-----
-deleted deleted deleted deleted
-
-get t=2
-b#2 b#1 b#0
-----
-alive deleted deleted
-
-get t=1
-b#1 b#0
-----
-deleted deleted
-
-get t=3
-c#3 c#2 c#1 c#0
-----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive deleted deleted
-
-get t=1
-c#1 c#0
-----
-deleted deleted
-
-get t=3
-d#3 d#2 d#1 d#0
-----
-deleted deleted deleted deleted
-
-get t=2
-d#2 d#1 d#0
-----
-alive deleted deleted
-
-get t=1
-d#1 d#0
-----
-deleted deleted
-
-
-# 3:   c-e
-# 1: a-c
-
-build
-a-c#1,c-e#3
-----
-a-c#1
-c-e#3
-
-get t=3
-a#3 a#2 a#1 a#0
-----
-alive alive deleted deleted
-
-get t=2
-a#2 a#1 a#0
-----
-alive deleted deleted
-
-get t=1
-a#1 a#0
-----
-deleted deleted
-
-get t=3
-b#3 b#2 b#1 b#0
-----
-alive alive deleted deleted
-
-get t=2
-b#2 b#1 b#0
-----
-alive deleted deleted
-
-get t=1
-b#1 b#0
-----
-deleted deleted
-
-get t=3
-c#3 c#2 c#1 c#0
-----
-deleted deleted deleted deleted
-
-get t=2
-c#2 c#1 c#0
-----
-alive alive alive
-
-get t=1
-c#1 c#0
-----
-alive alive
-
-get t=3
-d#3 d#2 d#1 d#0
-----
-deleted deleted deleted deleted
-
-get t=2
 d#2 d#1 d#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 d#1 d#0
 ----
 alive alive
 
 
-# 3: a-c
-# 1:   c-e
-
 build
-a-c#3,c-e#1
+1: a---e
+3:  b--e
 ----
-a-c#3
-c-e#1
+1: ab
+3:  b--e
+1:  b--e
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-deleted deleted deleted deleted
+alive alive alive deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
-alive alive alive
-
-get t=1
-a#1 a#0
-----
-alive alive
-
-get t=3
-b#3 b#2 b#1 b#0
-----
-deleted deleted deleted deleted
+alive alive deleted
 
 get t=2
-b#2 b#1 b#0
+a#1 a#0
 ----
-alive alive alive
+alive deleted
 
-get t=1
-b#1 b#0
+get t=4
+b#3 b#2 b#1 b#0
 ----
-alive alive
+alive deleted deleted deleted
 
 get t=3
+b#2 b#1 b#0
+----
+alive alive deleted
+
+get t=2
+b#1 b#0
+----
+alive deleted
+
+get t=4
 c#3 c#2 c#1 c#0
 ----
-alive alive deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 c#2 c#1 c#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 c#1 c#0
 ----
-deleted deleted
+alive deleted
 
-get t=3
+get t=4
 d#3 d#2 d#1 d#0
 ----
-alive alive deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 d#2 d#1 d#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 d#1 d#0
 ----
-deleted deleted
+alive deleted
 
-
-# 3:    de
-# 1: a-c
 
 build
-a-c#1,d-e#3
+3: a---e
+1:  b--e
 ----
-a-c#1
-d-e#3
+3: ab
+3:  b--e
+1:  b--e
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-alive alive deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
-alive deleted deleted
-
-get t=1
-a#1 a#0
-----
-deleted deleted
-
-get t=3
-b#3 b#2 b#1 b#0
-----
-alive alive deleted deleted
+alive alive alive
 
 get t=2
-b#2 b#1 b#0
+a#1 a#0
 ----
-alive deleted deleted
+alive alive
 
-get t=1
-b#1 b#0
+get t=4
+b#3 b#2 b#1 b#0
 ----
-deleted deleted
+alive deleted deleted deleted
 
 get t=3
+b#2 b#1 b#0
+----
+alive alive deleted
+
+get t=2
+b#1 b#0
+----
+alive deleted
+
+get t=4
+c#3 c#2 c#1 c#0
+----
+alive deleted deleted deleted
+
+get t=3
+c#2 c#1 c#0
+----
+alive alive deleted
+
+get t=2
+c#1 c#0
+----
+alive deleted
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive deleted deleted deleted
+
+get t=3
+d#2 d#1 d#0
+----
+alive alive deleted
+
+get t=2
+d#1 d#0
+----
+alive deleted
+
+
+build
+3: a---e
+1: a---e
+----
+3: a---e
+1: a---e
+
+get t=4
+a#3 a#2 a#1 a#0
+----
+alive deleted deleted deleted
+
+get t=3
+a#2 a#1 a#0
+----
+alive alive deleted
+
+get t=2
+a#1 a#0
+----
+alive deleted
+
+get t=4
+b#3 b#2 b#1 b#0
+----
+alive deleted deleted deleted
+
+get t=3
+b#2 b#1 b#0
+----
+alive alive deleted
+
+get t=2
+b#1 b#0
+----
+alive deleted
+
+get t=4
+c#3 c#2 c#1 c#0
+----
+alive deleted deleted deleted
+
+get t=3
+c#2 c#1 c#0
+----
+alive alive deleted
+
+get t=2
+c#1 c#0
+----
+alive deleted
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive deleted deleted deleted
+
+get t=3
+d#2 d#1 d#0
+----
+alive alive deleted
+
+get t=2
+d#1 d#0
+----
+alive deleted
+
+
+build
+1: a-c
+3:   c-e
+----
+1: a-c
+3:   c-e
+
+get t=4
+a#3 a#2 a#1 a#0
+----
+alive alive alive deleted
+
+get t=3
+a#2 a#1 a#0
+----
+alive alive deleted
+
+get t=2
+a#1 a#0
+----
+alive deleted
+
+get t=4
+b#3 b#2 b#1 b#0
+----
+alive alive alive deleted
+
+get t=3
+b#2 b#1 b#0
+----
+alive alive deleted
+
+get t=2
+b#1 b#0
+----
+alive deleted
+
+get t=4
+c#3 c#2 c#1 c#0
+----
+alive deleted deleted deleted
+
+get t=3
+c#2 c#1 c#0
+----
+alive alive alive
+
+get t=2
+c#1 c#0
+----
+alive alive
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive deleted deleted deleted
+
+get t=3
+d#2 d#1 d#0
+----
+alive alive alive
+
+get t=2
+d#1 d#0
+----
+alive alive
+
+
+build
+3: a-c
+1:   c-e
+----
+3: a-c
+1:   c-e
+
+get t=4
+a#3 a#2 a#1 a#0
+----
+alive deleted deleted deleted
+
+get t=3
+a#2 a#1 a#0
+----
+alive alive alive
+
+get t=2
+a#1 a#0
+----
+alive alive
+
+get t=4
+b#3 b#2 b#1 b#0
+----
+alive deleted deleted deleted
+
+get t=3
+b#2 b#1 b#0
+----
+alive alive alive
+
+get t=2
+b#1 b#0
+----
+alive alive
+
+get t=4
+c#3 c#2 c#1 c#0
+----
+alive alive alive deleted
+
+get t=3
+c#2 c#1 c#0
+----
+alive alive deleted
+
+get t=2
+c#1 c#0
+----
+alive deleted
+
+get t=4
+d#3 d#2 d#1 d#0
+----
+alive alive alive deleted
+
+get t=3
+d#2 d#1 d#0
+----
+alive alive deleted
+
+get t=2
+d#1 d#0
+----
+alive deleted
+
+
+build
+1: a-c
+3:    de
+----
+1: a-c
+3:    de
+
+get t=4
+a#3 a#2 a#1 a#0
+----
+alive alive alive deleted
+
+get t=3
+a#2 a#1 a#0
+----
+alive alive deleted
+
+get t=2
+a#1 a#0
+----
+alive deleted
+
+get t=4
+b#3 b#2 b#1 b#0
+----
+alive alive alive deleted
+
+get t=3
+b#2 b#1 b#0
+----
+alive alive deleted
+
+get t=2
+b#1 b#0
+----
+alive deleted
+
+get t=4
 c#3 c#2 c#1 c#0
 ----
 alive alive alive alive
 
-get t=2
+get t=3
 c#2 c#1 c#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 c#1 c#0
 ----
 alive alive
 
-get t=3
+get t=4
 d#3 d#2 d#1 d#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 d#2 d#1 d#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 d#1 d#0
 ----
 alive alive
 
 
-# 3: a-c
-# 1:    de
-
 build
-a-c#3,d-e#1
+3: a-c
+1:    de
 ----
-a-c#3
-d-e#1
+3: a-c
+1:    de
 
-get t=3
+get t=4
 a#3 a#2 a#1 a#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 a#2 a#1 a#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 a#1 a#0
 ----
 alive alive
 
-get t=3
+get t=4
 b#3 b#2 b#1 b#0
 ----
-deleted deleted deleted deleted
+alive deleted deleted deleted
 
-get t=2
+get t=3
 b#2 b#1 b#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 b#1 b#0
 ----
 alive alive
 
-get t=3
+get t=4
 c#3 c#2 c#1 c#0
 ----
 alive alive alive alive
 
-get t=2
+get t=3
 c#2 c#1 c#0
 ----
 alive alive alive
 
-get t=1
+get t=2
 c#1 c#0
 ----
 alive alive
 
-get t=3
+get t=4
 d#3 d#2 d#1 d#0
 ----
-alive alive deleted deleted
+alive alive alive deleted
 
-get t=2
+get t=3
 d#2 d#1 d#0
 ----
-alive deleted deleted
+alive alive deleted
 
-get t=1
+get t=2
 d#1 d#0
 ----
-deleted deleted
+alive deleted

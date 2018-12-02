@@ -261,6 +261,13 @@ func (k InternalKey) SeqNum() uint64 {
 	return k.Trailer >> 8
 }
 
+// Visible returns true if the key is visible at the specified snapshot
+// sequence number.
+func (k InternalKey) Visible(snapshot uint64) bool {
+	seqNum := k.SeqNum()
+	return seqNum < snapshot || (seqNum&InternalKeySeqNumBatch) != 0
+}
+
 // SetKind sets the kind component of the key.
 func (k *InternalKey) SetKind(kind InternalKeyKind) {
 	k.Trailer = (k.Trailer &^ 0xff) | uint64(kind)

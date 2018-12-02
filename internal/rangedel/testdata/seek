@@ -1,0 +1,288 @@
+build
+1:  b-d
+----
+1:  b-d
+
+seek-ge
+a 2
+b 2
+b 1
+d 2
+----
+1:  b-d
+1:  b-d
+<empty>
+<empty>
+
+seek-le
+a 2
+b 2
+b 1
+d 2
+----
+<empty>
+1:  b-d
+<empty>
+1:  b-d
+
+build
+3:  b-d
+2:  b-d
+1:  b-d
+----
+3:  b-d
+2:  b-d
+1:  b-d
+
+seek-ge
+a 4
+b 4
+b 3
+b 2
+b 1
+d 4
+----
+3:  b-d
+3:  b-d
+2:  b-d
+1:  b-d
+<empty>
+<empty>
+
+seek-le
+a 4
+b 4
+b 3
+b 2
+b 1
+d 4
+----
+<empty>
+3:  b-d
+2:  b-d
+1:  b-d
+<empty>
+3:  b-d
+
+build
+1:  b-d
+2:    d-f
+----
+1:  b-d
+2:    d-f
+
+seek-ge
+b 2
+d 2
+d 3
+e 3
+----
+1:  b-d
+<empty>
+2:    d-f
+2:    d-f
+
+seek-le
+a 3
+b 2
+d 2
+d 3
+e 3
+f 3
+----
+<empty>
+1:  b-d
+1:  b-d
+2:    d-f
+2:    d-f
+2:    d-f
+
+build
+3: a-----------m
+2:      f------------s
+1:          j---------------z
+----
+3: a----f
+3:      f---j
+2:      f---j
+3:          j--m
+2:          j--m
+1:          j--m
+2:             m-----s
+1:             m-----s
+1:                   s------z
+
+seek-ge
+a 4
+a 3
+a 2
+a 1
+f 4
+f 3
+f 2
+f 1
+j 4
+j 3
+j 2
+j 1
+m 3
+m 2
+m 1
+s 2
+s 1
+z 2
+----
+3: a----f
+2:      f---j
+1:          j--m
+<empty>
+3:      f---j
+2:      f---j
+1:          j--m
+<empty>
+3:          j--m
+2:          j--m
+1:          j--m
+<empty>
+2:             m-----s
+1:             m-----s
+<empty>
+1:                   s------z
+<empty>
+<empty>
+
+seek-le
+a 4
+a 3
+a 2
+a 1
+f 4
+f 3
+f 2
+f 1
+j 4
+j 3
+j 2
+j 1
+m 3
+m 2
+m 1
+s 2
+s 1
+z 2
+----
+3: a----f
+<empty>
+<empty>
+<empty>
+3:      f---j
+2:      f---j
+<empty>
+<empty>
+3:          j--m
+2:          j--m
+1:          j--m
+<empty>
+2:             m-----s
+1:             m-----s
+<empty>
+1:                   s------z
+<empty>
+1:                   s------z
+
+build
+1: a-----------m
+2:      f------------s
+3:          j---------------z
+----
+1: a----f
+2:      f---j
+1:      f---j
+3:          j--m
+2:          j--m
+1:          j--m
+3:             m-----s
+2:             m-----s
+3:                   s------z
+
+seek-ge
+a 2
+a 1
+f 3
+f 2
+f 1
+j 4
+j 3
+j 2
+j 1
+m 4
+m 3
+m 2
+m 1
+s 4
+s 3
+s 2
+s 1
+z 4
+----
+1: a----f
+<empty>
+2:      f---j
+1:      f---j
+<empty>
+3:          j--m
+2:          j--m
+1:          j--m
+<empty>
+3:             m-----s
+2:             m-----s
+<empty>
+<empty>
+3:                   s------z
+<empty>
+<empty>
+<empty>
+<empty>
+
+seek-le
+a 2
+a 1
+f 3
+f 2
+f 1
+j 4
+j 3
+j 2
+j 1
+m 4
+m 3
+m 2
+m 1
+s 4
+s 3
+s 2
+s 1
+z 4
+z 3
+z 2
+----
+1: a----f
+<empty>
+2:      f---j
+1:      f---j
+<empty>
+3:          j--m
+2:          j--m
+1:          j--m
+<empty>
+3:             m-----s
+2:             m-----s
+1:          j--m
+<empty>
+3:                   s------z
+2:             m-----s
+1:          j--m
+<empty>
+3:                   s------z
+2:             m-----s
+1:          j--m

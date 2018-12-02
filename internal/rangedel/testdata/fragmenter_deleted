@@ -1,21 +1,17 @@
-# 3: a-----------m
-# 2:      f------------s
-# 1:          j---------------z
-
 build
 deleted a.SET.1
-add a-m#3
+add 3: a-----------m
 deleted a.SET.1
 deleted a.SET.2
 deleted a.SET.3
 deleted a.SET.4
 deleted l.SET.3
-add f-s#2
+add 2:      f------------s
 deleted e.SET.4
 deleted f.SET.3
 deleted l.SET.3
 deleted m.SET.3
-add j-z#1
+add 1:          j---------------z
 deleted j.SET.1
 deleted j.SET.2
 deleted j.SET.3
