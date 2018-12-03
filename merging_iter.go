@@ -19,8 +19,8 @@ import (
 // iterators which it will use to skip over keys covered by range
 // tombstones. The range deletion iterator slice must exactly parallel the
 // point iterators. This requirement allows mergingIter to only consider range
-// tombstones from newer levels. Because range tombstones are fragmented with a
-// level we know there can be no overlap within a level. When a level iter is
+// tombstones from newer levels. Because range tombstones are fragmented within
+// a level we know there can be no overlap within a level. When a level iter is
 // backed by a levelIter, the levelIter takes care of initializing the range
 // deletion iterator when switching tables. Note that levelIter also takes care
 // of materializing fake "sentinel" keys at sstable boundaries to prevent

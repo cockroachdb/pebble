@@ -74,6 +74,10 @@ func (i *Iter) init(r *Reader) error {
 func (i *Iter) loadBlock() bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
+		// TODO(peter): Need to test that seeking to a key outside of the sstable
+		// invalidates the iterator.
+		i.data.offset = 0
+		i.data.restarts = 0
 		return false
 	}
 	// Load the next block.

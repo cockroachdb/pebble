@@ -97,65 +97,13 @@ func TestRangeDel(t *testing.T) {
 	})
 }
 
-// Verify that truncating a range tombstone when a user-key straddles an
-// sstable does not result in a version of that user-key reappearing.
+// Verify that range tombstones at higher levels do not unintentionally delete
+// newer keys at lower levels. This test sets up one such scenario. The base
+// problem is that range tombstones are not truncated to sstable boundaries on
+// disk, only in memory.
 func TestRangeDelCompactionTruncation(t *testing.T) {
-	// Use a small target file size so that there is a single key per sstable.
-	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
-		Levels: []db.LevelOptions{
-			{TargetFileSize: 1},
-			{TargetFileSize: 1},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Skipf("TODO(peter,rangedel): fix handling of range tombstones during Get")
 
-	if err := d.Set([]byte("a"), []byte("b"), nil); err != nil {
-		t.Fatal(err)
-	}
-	snap1 := d.NewSnapshot()
-	defer snap1.Close()
-	// Flush so that each version of "a" ends up in its own L0 table. If we
-	// allowed both versions in the same L0 table, compaction could trivially
-	// move the single L0 table to L1.
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Set([]byte("a"), []byte("b"), nil); err != nil {
-		t.Fatal(err)
-	}
-	snap2 := d.NewSnapshot()
-	defer snap2.Close()
-	if err := d.DeleteRange([]byte("a"), []byte("b"), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Compact([]byte("a"), []byte("b")); err != nil {
-		t.Fatal(err)
-	}
-
-	lsm := func() string {
-		d.mu.Lock()
-		s := d.mu.versions.currentVersion().DebugString()
-		d.mu.Unlock()
-		return s
-	}
-	actual := lsm()
-	const expected = "1: a#2,15-a#1,1 a#0,15-b#72057594037927935,15\n"
-	if expected != actual {
-		t.Fatalf("expected\n%sbut found\n%s", expected, actual)
-	}
-
-	if _, err := d.Get([]byte("a")); err != db.ErrNotFound {
-		t.Fatalf("expected ErrNotFound, but found %v", err)
-	}
-}
-
-// TODO(peter): This causes a bug in RocksDB, but not in Pebble. The difference
-// appears to be in the handling of version.overlaps. Pebble finds overlaps
-// using user-keys, while RocksDB finds overlaps using internal keys.
-func TestRangeDelCompactionTruncation2(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &db.Options{
 		Storage: storage.NewMem(),
@@ -168,12 +116,21 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer d.Close()
 
 	lsm := func() string {
 		d.mu.Lock()
 		s := d.mu.versions.currentVersion().DebugString()
 		d.mu.Unlock()
 		return s
+	}
+	expectLSM := func(expected string) {
+		t.Helper()
+		expected = strings.TrimSpace(expected)
+		actual := strings.TrimSpace(lsm())
+		if expected != actual {
+			t.Fatalf("expected\n%sbut found\n%s", expected, actual)
+		}
 	}
 
 	if err := d.Set([]byte("a"), bytes.Repeat([]byte("b"), 100), nil); err != nil {
@@ -195,35 +152,82 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	if err := d.DeleteRange([]byte("a"), []byte("d"), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.Compact([]byte("a"), []byte("d")); err != nil {
-		t.Fatal(err)
-	}
-	fmt.Println(lsm())
+
+	// Compact to produce the L1 tables.
 	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(lsm())
+	expectLSM(`
+1: a#2,15-b#72057594037927935,15 b#1,1-d#72057594037927935,15
+`)
 
+	// Compact again to move one of the tables to L2.
+	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
+		t.Fatal(err)
+	}
+	expectLSM(`
+1: a#2,15-b#72057594037927935,15
+2: b#1,1-d#72057594037927935,15
+`)
+
+	// Write "b" and "c" to a new table.
 	if err := d.Set([]byte("b"), []byte("d"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.Set([]byte("c"), []byte("e"), nil); err != nil {
 		t.Fatal(err)
 	}
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	expectLSM(`
+0: b#3,1-c#4,1
+1: a#2,15-b#72057594037927935,15
+2: b#1,1-d#72057594037927935,15
+`)
+
+	// "b" is still visible at this point as it should be.
 	if _, err := d.Get([]byte("b")); err != nil {
 		t.Fatalf("expected success, but found %v", err)
 	}
 
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
+	keys := func() string {
+		iter := d.NewIter(nil)
+		defer iter.Close()
+		var buf bytes.Buffer
+		var sep string
+		for iter.First(); iter.Valid(); iter.Next() {
+			fmt.Fprintf(&buf, "%s%s", sep, iter.Key())
+			sep = " "
+		}
+		return buf.String()
 	}
-	fmt.Println(lsm())
+
+	if expected, actual := `b c`, keys(); expected != actual {
+		t.Fatalf("expected %q, but found %q", expected, actual)
+	}
+
+	// Compact the L0 table. This will compact the L0 table into L1 and do to the
+	// sstable target size settings will create 2 tables in L1. Then L1 table
+	// containing "c" will be compacted again with the L2 table creating two
+	// tables in L2. Lastly, the L2 table containing "c" will be compacted
+	// creating the L3 table.
 	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(lsm())
+	expectLSM(`
+1: a#2,15-b#72057594037927935,15
+2: b#3,1-b#3,1
+3: b#2,15-c#72057594037927935,15 c#4,1-d#72057594037927935,15
+`)
 
-	if _, err := d.Get([]byte("b")); err == nil {
-		t.Fatalf("expected ErrNotFound, but found %v", err)
+	// The L1 table still contains a tombstone from [a,d) which will improperly
+	// delete the newer version of "b" in L2.
+	if _, err := d.Get([]byte("b")); err != nil {
+		t.Errorf("expected success, but found %v", err)
+	}
+
+	if expected, actual := `b c`, keys(); expected != actual {
+		t.Errorf("expected %q, but found %q", expected, actual)
 	}
 }
