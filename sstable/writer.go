@@ -22,8 +22,10 @@ import (
 // WriterMetadata holds info about a finished sstable.
 type WriterMetadata struct {
 	Size           uint64
-	Smallest       db.InternalKey
-	Largest        db.InternalKey
+	SmallestPoint  db.InternalKey
+	SmallestRange  db.InternalKey
+	LargestPoint   db.InternalKey
+	LargestRange   db.InternalKey
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
 }
@@ -37,25 +39,38 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-func (m *WriterMetadata) updateSmallest(cmp db.Compare, key db.InternalKey) {
-	if db.InternalCompare(cmp, m.Smallest, key) > 0 {
-		// Avoid the memory allocation in InternalKey.Clone() by reusing the
-		// buffer.
-		m.Smallest.UserKey = append(m.Smallest.UserKey[:0], key.UserKey...)
-		m.Smallest.Trailer = key.Trailer
-	}
-}
-
-func (m *WriterMetadata) updateLargest(key db.InternalKey) {
+func (m *WriterMetadata) updateLargestPoint(key db.InternalKey) {
 	// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer.
-	m.Largest.UserKey = append(m.Largest.UserKey[:0], key.UserKey...)
-	m.Largest.Trailer = key.Trailer
+	m.LargestPoint.UserKey = append(m.LargestPoint.UserKey[:0], key.UserKey...)
+	m.LargestPoint.Trailer = key.Trailer
 }
 
-func (m *WriterMetadata) maybeUpdateLargest(cmp db.Compare, key db.InternalKey) {
-	if db.InternalCompare(cmp, m.Largest, key) < 0 {
-		m.updateLargest(key)
+// Smallest returns the smaller of SmallestPoint and SmallestRange.
+func (m *WriterMetadata) Smallest(cmp db.Compare) db.InternalKey {
+	if m.SmallestPoint.UserKey == nil {
+		return m.SmallestRange
 	}
+	if m.SmallestRange.UserKey == nil {
+		return m.SmallestPoint
+	}
+	if db.InternalCompare(cmp, m.SmallestPoint, m.SmallestRange) < 0 {
+		return m.SmallestPoint
+	}
+	return m.SmallestRange
+}
+
+// Largest returns the larget of LargestPoint and LargestRange.
+func (m *WriterMetadata) Largest(cmp db.Compare) db.InternalKey {
+	if m.LargestPoint.UserKey == nil {
+		return m.LargestRange
+	}
+	if m.LargestRange.UserKey == nil {
+		return m.LargestPoint
+	}
+	if db.InternalCompare(cmp, m.LargestPoint, m.LargestRange) > 0 {
+		return m.LargestPoint
+	}
+	return m.LargestRange
 }
 
 // Writer is a table writer. It implements the DB interface, as documented
@@ -118,8 +133,8 @@ func (w *Writer) Add(key db.InternalKey, value []byte) error {
 }
 
 func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
-	if db.InternalCompare(w.compare, w.meta.Largest, key) >= 0 {
-		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", w.meta.Largest, key)
+	if db.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
+		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", w.meta.LargestPoint, key)
 		return w.err
 	}
 
@@ -128,17 +143,13 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 	}
 
 	w.meta.updateSeqNum(key.SeqNum())
-	w.meta.updateLargest(key)
+	w.meta.updateLargestPoint(key)
 
 	if w.filter != nil {
 		w.filter.addKey(key.UserKey)
 	}
 	if w.props.NumEntries == 0 {
-		if w.props.NumRangeDeletions == 0 {
-			w.meta.Smallest = key.Clone()
-		} else {
-			w.meta.updateSmallest(w.compare, key)
-		}
+		w.meta.SmallestPoint = key.Clone()
 	}
 	w.props.NumEntries++
 	if key.Kind() == db.InternalKeyKindDelete {
@@ -183,11 +194,7 @@ func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
 	w.meta.updateSeqNum(key.SeqNum())
 
 	if w.props.NumRangeDeletions == 0 {
-		if w.props.NumEntries == 0 {
-			w.meta.Smallest = key.Clone()
-		} else {
-			w.meta.updateSmallest(w.compare, key)
-		}
+		w.meta.SmallestRange = key.Clone()
 	}
 	w.props.NumRangeDeletions++
 	w.rangeDelBlock.add(key, value)
@@ -361,8 +368,7 @@ func (w *Writer) Close() (err error) {
 		// we need to make this into a range deletion sentinel because sstable
 		// boundaries are inclusive while the end key of a range deletion tombstone
 		// is exclusive.
-		w.meta.maybeUpdateLargest(w.compare, db.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue))
-
+		w.meta.LargestRange = db.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
 		b := w.rangeDelBlock.finish()
 		bh, err := w.writeRawBlock(b, w.compression)
 		if err != nil {

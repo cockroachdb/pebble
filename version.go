@@ -31,6 +31,10 @@ type fileMetadata struct {
 	markedForCompaction bool
 }
 
+func (m *fileMetadata) String() string {
+	return fmt.Sprintf("%d:%s-%s", m.fileNum, m.smallest, m.largest)
+}
+
 func (m *fileMetadata) tableInfo(dirname string) db.TableInfo {
 	return db.TableInfo{
 		Path:           dbFilename(dirname, fileTypeTable, m.fileNum),

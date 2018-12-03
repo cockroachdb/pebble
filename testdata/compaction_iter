@@ -502,6 +502,7 @@ tombstones
 a#1,1:a
 d#4,1:d
 b-c#2
+c-d#3
 .
 c-d#3
 d-e#3
@@ -516,10 +517,31 @@ tombstones
 a#1,1:a
 d#4,1:d
 b-c#2
+c-d#3
+c-d#2
 .
 c-d#3
 c-d#2
 d-e#3
+.
+
+define
+a.SET.1:a
+b.RANGEDEL.2:d
+c.SET.4:d
+----
+
+iter
+first
+next
+tombstones c
+tombstones
+----
+a#1,1:a
+c#4,1:d
+b-d#2
+.
+c-d#2
 .
 
 define

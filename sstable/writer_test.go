@@ -84,7 +84,9 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 			r = NewReader(f1, 0, nil)
-			return fmt.Sprintf("bounds:  [%s,%s]\nseqnums: [%d,%d]\n", meta.Smallest, meta.Largest,
+			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
+				meta.SmallestPoint, meta.LargestPoint,
+				meta.SmallestRange, meta.LargestRange,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "build-raw":
@@ -121,7 +123,9 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 			r = NewReader(f1, 0, nil)
-			return fmt.Sprintf("bounds:  [%s,%s]\nseqnums: [%d,%d]\n", meta.Smallest, meta.Largest,
+			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
+				meta.SmallestPoint, meta.LargestPoint,
+				meta.SmallestRange, meta.LargestRange,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "scan":

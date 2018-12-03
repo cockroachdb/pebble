@@ -511,8 +511,8 @@ func (d *DB) writeLevel0Table(
 		return fileMetadata{}, err
 	}
 	meta.size = writerMeta.Size
-	meta.smallest = writerMeta.Smallest
-	meta.largest = writerMeta.Largest
+	meta.smallest = writerMeta.Smallest(d.cmp)
+	meta.largest = writerMeta.Largest(d.cmp)
 	meta.smallestSeqNum = writerMeta.SmallestSeqNum
 	meta.largestSeqNum = writerMeta.LargestSeqNum
 	tw = nil
@@ -727,12 +727,15 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		return nil
 	}
 
-	finishOutput := func(userKey []byte) error {
+	finishOutput := func(key db.InternalKey) error {
 		if tw == nil {
 			return nil
 		}
 
-		for _, v := range iter.Tombstones(userKey) {
+		// NB: clone the key because the data can be held on to by the call to
+		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
+		key = key.Clone()
+		for _, v := range iter.Tombstones(key.UserKey) {
 			if err := tw.Add(v.Start, v.End); err != nil {
 				return err
 			}
@@ -750,19 +753,43 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		tw = nil
 		meta := &ve.newFiles[len(ve.newFiles)-1].meta
 		meta.size = writerMeta.Size
-		meta.smallest = writerMeta.Smallest
-		meta.largest = writerMeta.Largest
 		meta.smallestSeqNum = writerMeta.SmallestSeqNum
 		meta.largestSeqNum = writerMeta.LargestSeqNum
+
+		// The handling of range boundaries is a bit complicated.
+		if n := len(ve.newFiles); n > 1 {
+			// This is not the first output. Bound the smallest range key by the
+			// previous tables largest key.
+			prevMeta := &ve.newFiles[n-2].meta
+			if d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.largest.UserKey) <= 0 {
+				// The range boundary user key is less than or equal to the previous
+				// table's largest key. We need the tables to be key-space partitioned,
+				// so force the boundary to a key that we know is larger than the
+				// previous key.
+				writerMeta.SmallestRange = db.MakeInternalKey(
+					prevMeta.largest.UserKey, 0, db.InternalKeyKindRangeDelete)
+			}
+		}
+
+		if key.UserKey != nil {
+			if d.cmp(writerMeta.LargestRange.UserKey, key.UserKey) >= 0 {
+				writerMeta.LargestRange = key
+				writerMeta.LargestRange.Trailer = db.InternalKeyRangeDeleteSentinel
+			}
+		}
+
+		meta.smallest = writerMeta.Smallest(d.cmp)
+		meta.largest = writerMeta.Largest(d.cmp)
+
 		return nil
 	}
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		ikey := iter.Key()
+		key := iter.Key()
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
-		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(ikey)) {
-			if err := finishOutput(ikey.UserKey); err != nil {
+		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(key)) {
+			if err := finishOutput(key); err != nil {
 				return nil, pendingOutputs, err
 			}
 		}
@@ -773,12 +800,12 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			}
 		}
 
-		if err := tw.Add(ikey, iter.Value()); err != nil {
+		if err := tw.Add(key, iter.Value()); err != nil {
 			return nil, pendingOutputs, err
 		}
 	}
 
-	if err := finishOutput(nil); err != nil {
+	if err := finishOutput(db.InternalKey{}); err != nil {
 		return nil, pendingOutputs, nil
 	}
 

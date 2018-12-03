@@ -214,7 +214,7 @@ func (f *Fragmenter) Deleted(key db.InternalKey, snapshot uint64) bool {
 		// optimization to allow flushing the pending tombstones as early as
 		// possible so that we don't have to continually reconsider them in
 		// Deleted.
-		f.flush(f.pending)
+		f.flush(f.pending, true /* all */)
 		f.pending = f.pending[:0]
 	}
 	return false
@@ -236,15 +236,16 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	case c > 0:
 		panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
 			f.pending[0].Start, key))
-	case c == 0:
-		// The pending tombstone start key and the flush-to key are equal, so we'd
-		// only be generating empty tombstones if we continued.
-		return
 	}
 
 	// At this point we know that the new start key is greater than the pending
-	// tombstones start keys.
-	f.truncateAndFlush(key)
+	// tombstones start keys. We flush the pending first set of fragments for the
+	// pending tombstones.
+	f.flush(f.pending, false /* all */)
+
+	for i := range f.pending {
+		f.pending[i].Start.UserKey = key
+	}
 }
 
 func (f *Fragmenter) truncateAndFlush(key []byte) {
@@ -269,12 +270,12 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 	}
 
 	f.doneBuf = done[:0]
-	f.flush(done)
+	f.flush(done, true /* all */)
 }
 
 // flush a group of range tombstones to the block. The tombstones are required
 // to all have the same start key.
-func (f *Fragmenter) flush(buf []Tombstone) {
+func (f *Fragmenter) flush(buf []Tombstone, all bool) {
 	if raceEnabled {
 		f.checkSameStart(buf)
 	}
@@ -307,6 +308,10 @@ func (f *Fragmenter) flush(buf []Tombstone) {
 		sort.Sort(&f.flushBuf)
 		f.Emit(f.flushBuf)
 
+		if !all {
+			break
+		}
+
 		// Adjust the start key for every remaining tombstone.
 		for i := range buf {
 			buf[i].Start.UserKey = split
@@ -320,6 +325,6 @@ func (f *Fragmenter) Finish() {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
-	f.flush(f.pending)
+	f.flush(f.pending, true /* all */)
 	f.finished = true
 }

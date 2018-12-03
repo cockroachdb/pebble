@@ -81,6 +81,7 @@ func TestLevelIter(t *testing.T) {
 }
 
 func TestLevelIterBoundaries(t *testing.T) {
+	cmp := db.DefaultComparer.Compare
 	fs := storage.NewMem()
 	var readers []*sstable.Reader
 	var files []fileMetadata
@@ -108,7 +109,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			w := sstable.NewWriter(f0, nil, db.LevelOptions{})
 			var tombstones []rangedel.Tombstone
 			f := rangedel.Fragmenter{
-				Cmp: db.DefaultComparer.Compare,
+				Cmp: cmp,
 				Emit: func(fragmented []rangedel.Tombstone) {
 					tombstones = append(tombstones, fragmented...)
 				},
@@ -147,8 +148,8 @@ func TestLevelIterBoundaries(t *testing.T) {
 			readers = append(readers, sstable.NewReader(f1, 0, nil))
 			files = append(files, fileMetadata{
 				fileNum:  fileNum,
-				largest:  meta.Largest,
-				smallest: meta.Smallest,
+				smallest: meta.Smallest(cmp),
+				largest:  meta.Largest(cmp),
 			})
 
 			var buf bytes.Buffer

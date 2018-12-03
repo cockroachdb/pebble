@@ -100,8 +100,6 @@ func TestRangeDel(t *testing.T) {
 // Verify that truncating a range tombstone when a user-key straddles an
 // sstable does not result in a version of that user-key reappearing.
 func TestRangeDelCompactionTruncation(t *testing.T) {
-	t.Skipf("TODO(peter,rangedel): currently exposes a bug")
-
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &db.Options{
 		Storage: storage.NewMem(),
@@ -114,17 +112,14 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lsm := func() {
-		d.mu.Lock()
-		fmt.Print(d.mu.versions.currentVersion().DebugString())
-		d.mu.Unlock()
-	}
-
 	if err := d.Set([]byte("a"), []byte("b"), nil); err != nil {
 		t.Fatal(err)
 	}
 	snap1 := d.NewSnapshot()
 	defer snap1.Close()
+	// Flush so that each version of "a" ends up in its own L0 table. If we
+	// allowed both versions in the same L0 table, compaction could trivially
+	// move the single L0 table to L1.
 	if err := d.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -139,5 +134,20 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	if err := d.Compact([]byte("a"), []byte("b")); err != nil {
 		t.Fatal(err)
 	}
-	lsm()
+
+	lsm := func() string {
+		d.mu.Lock()
+		s := d.mu.versions.currentVersion().DebugString()
+		d.mu.Unlock()
+		return s
+	}
+	actual := lsm()
+	const expected = "1: a#2,15-a#1,1 a#0,15-b#72057594037927935,15\n"
+	if expected != actual {
+		t.Fatalf("expected\n%sbut found\n%s", expected, actual)
+	}
+
+	if _, err := d.Get([]byte("a")); err != db.ErrNotFound {
+		t.Fatalf("expected ErrNotFound, but found %v", err)
+	}
 }
