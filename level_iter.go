@@ -68,9 +68,18 @@ func (l *levelIter) initRangeDel(rangeDelIter *internalIterator) {
 }
 
 func (l *levelIter) findFileGE(key []byte) int {
-	// Find the earliest file whose largest key is >= ikey.
+	// Find the earliest file whose largest key is >= ikey. Note that the range
+	// deletion sentinel key is handled specially and a search for K will not
+	// find a table for K<range-del-sentinel> is the largest key. This prevents
+	// loading untruncated range deletions from a table which can't possibly
+	// contain the target key and is required for correctness by DB.Get.
 	return sort.Search(len(l.files), func(i int) bool {
-		return l.cmp(l.files[i].largest.UserKey, key) >= 0
+		largest := &l.files[i].largest
+		c := l.cmp(largest.UserKey, key)
+		if c > 0 {
+			return true
+		}
+		return c == 0 && largest.Trailer != db.InternalKeyRangeDeleteSentinel
 	})
 }
 
@@ -93,6 +102,9 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			return false
 		}
 		l.iter = nil
+	}
+	if l.rangeDelIter != nil {
+		*l.rangeDelIter = nil
 	}
 
 	for ; ; index += dir {
@@ -244,6 +256,7 @@ func (l *levelIter) skipEmptyFileForward() bool {
 				l.boundary = &f.largest
 				return true
 			}
+			*l.rangeDelIter = nil
 		}
 
 		// Current file was exhausted. Move to the next file.
@@ -269,6 +282,7 @@ func (l *levelIter) skipEmptyFileBackward() bool {
 				l.boundary = &f.smallest
 				return true
 			}
+			*l.rangeDelIter = nil
 		}
 
 		// Current file was exhausted. Move to the previous file.
@@ -315,6 +329,14 @@ func (l *levelIter) Close() error {
 	if l.iter != nil {
 		l.err = l.iter.Close()
 		l.iter = nil
+	}
+	if l.rangeDelIter != nil {
+		if t := *l.rangeDelIter; t != nil {
+			if err := t.Close(); err != nil && l.err == nil {
+				l.err = err
+			}
+		}
+		*l.rangeDelIter = nil
 	}
 	return l.err
 }

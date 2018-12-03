@@ -16,8 +16,8 @@ a#1,15:
 .
 
 iter
+seek-ge c
 seek-ge d
-next
 seek-lt b
 prev
 ----

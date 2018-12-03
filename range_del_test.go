@@ -102,8 +102,6 @@ func TestRangeDel(t *testing.T) {
 // problem is that range tombstones are not truncated to sstable boundaries on
 // disk, only in memory.
 func TestRangeDelCompactionTruncation(t *testing.T) {
-	t.Skipf("TODO(peter,rangedel): fix handling of range tombstones during Get")
-
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &db.Options{
 		Storage: storage.NewMem(),
