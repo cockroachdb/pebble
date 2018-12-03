@@ -18,25 +18,29 @@ import (
 
 func TestSnapshotIndex(t *testing.T) {
 	testCases := []struct {
-		snapshots []uint64
-		seq       uint64
-		expected  int
+		snapshots      []uint64
+		seq            uint64
+		expectedIndex  int
+		expectedSeqNum uint64
 	}{
-		{[]uint64{}, 1, 0},
-		{[]uint64{1}, 0, 0},
-		{[]uint64{1}, 1, 1},
-		{[]uint64{1}, 2, 1},
-		{[]uint64{1, 3}, 1, 1},
-		{[]uint64{1, 3}, 2, 1},
-		{[]uint64{1, 3}, 3, 2},
-		{[]uint64{1, 3}, 4, 2},
-		{[]uint64{1, 3, 3}, 2, 1},
+		{[]uint64{}, 1, 0, db.InternalKeySeqNumMax},
+		{[]uint64{1}, 0, 0, 1},
+		{[]uint64{1}, 1, 1, db.InternalKeySeqNumMax},
+		{[]uint64{1}, 2, 1, db.InternalKeySeqNumMax},
+		{[]uint64{1, 3}, 1, 1, 3},
+		{[]uint64{1, 3}, 2, 1, 3},
+		{[]uint64{1, 3}, 3, 2, db.InternalKeySeqNumMax},
+		{[]uint64{1, 3}, 4, 2, db.InternalKeySeqNumMax},
+		{[]uint64{1, 3, 3}, 2, 1, 3},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
-			idx := snapshotIndex(c.seq, c.snapshots)
-			if c.expected != idx {
-				t.Fatalf("expected %d, but got %d", c.expected, idx)
+			idx, seqNum := snapshotIndex(c.seq, c.snapshots)
+			if c.expectedIndex != idx {
+				t.Fatalf("expected %d, but got %d", c.expectedIndex, idx)
+			}
+			if c.expectedSeqNum != seqNum {
+				t.Fatalf("expected %d, but got %d", c.expectedSeqNum, seqNum)
 			}
 		})
 	}

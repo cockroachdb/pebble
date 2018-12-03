@@ -13,6 +13,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/storage"
 )
 
 func TestRangeDel(t *testing.T) {
@@ -93,6 +94,50 @@ func TestRangeDel(t *testing.T) {
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-		return ""
 	})
+}
+
+// Verify that truncating a range tombstone when a user-key straddles an
+// sstable does not result in a version of that user-key reappearing.
+func TestRangeDelCompactionTruncation(t *testing.T) {
+	t.Skipf("TODO(peter,rangedel): currently exposes a bug")
+
+	// Use a small target file size so that there is a single key per sstable.
+	d, err := Open("", &db.Options{
+		Storage: storage.NewMem(),
+		Levels: []db.LevelOptions{
+			{TargetFileSize: 1},
+			{TargetFileSize: 1},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lsm := func() {
+		d.mu.Lock()
+		fmt.Print(d.mu.versions.currentVersion().DebugString())
+		d.mu.Unlock()
+	}
+
+	if err := d.Set([]byte("a"), []byte("b"), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap1 := d.NewSnapshot()
+	defer snap1.Close()
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set([]byte("a"), []byte("b"), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap2 := d.NewSnapshot()
+	defer snap2.Close()
+	if err := d.DeleteRange([]byte("a"), []byte("b"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Compact([]byte("a"), []byte("b")); err != nil {
+		t.Fatal(err)
+	}
+	lsm()
 }

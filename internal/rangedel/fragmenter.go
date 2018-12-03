@@ -182,7 +182,7 @@ func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 // tombstones. The key must be consistent with the ordering of the
 // tombstones. That is, it is invalid to specify a key here that is out of
 // order with the tombstone start keys passed to Add.
-func (f *Fragmenter) Deleted(key db.InternalKey) bool {
+func (f *Fragmenter) Deleted(key db.InternalKey, snapshot uint64) bool {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
@@ -201,7 +201,7 @@ func (f *Fragmenter) Deleted(key db.InternalKey) bool {
 		if f.Cmp(key.UserKey, t.End) < 0 {
 			// NB: A range deletion tombstone deletes a point operation at the same
 			// sequence number.
-			if t.Start.SeqNum() >= seqNum {
+			if t.Start.Visible(snapshot) && t.Start.SeqNum() > seqNum {
 				return true
 			}
 			flush = false

@@ -140,7 +140,8 @@ type compactionIter struct {
 	// stripe and set to false afterwards.
 	skip bool
 	// The index of the snapshot for the current key within the snapshots slice.
-	curSnapshotIdx int
+	curSnapshotIdx    int
+	curSnapshotSeqNum uint64
 	// The snapshot sequence numbers that need to be maintained. These sequence
 	// numbers define the snapshot stripes (see the Snapshots description
 	// above). The sequence numbers are in ascending order.
@@ -179,7 +180,7 @@ func (i *compactionIter) First() {
 	}
 	i.iter.First()
 	if i.iter.Valid() {
-		i.curSnapshotIdx = snapshotIndex(i.iter.Key().SeqNum(), i.snapshots)
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iter.Key().SeqNum(), i.snapshots)
 	}
 	i.Next()
 }
@@ -214,13 +215,13 @@ func (i *compactionIter) Next() bool {
 			return true
 
 		case db.InternalKeyKindRangeDelete:
-			i.rangeDelFrag.Add(i.cloneKey(i.key), i.iter.Value())
-			i.saveKey()
-			i.skipStripe()
+			i.key = i.cloneKey(i.key)
+			i.rangeDelFrag.Add(i.key, i.iter.Value())
+			i.nextInStripe()
 			continue
 
 		case db.InternalKeyKindSet:
-			if i.rangeDelFrag.Deleted(i.key) {
+			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
 				i.saveKey()
 				i.skipStripe()
 				continue
@@ -233,7 +234,7 @@ func (i *compactionIter) Next() bool {
 			return true
 
 		case db.InternalKeyKindMerge:
-			if i.rangeDelFrag.Deleted(i.key) {
+			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
 				i.saveKey()
 				i.skipStripe()
 				continue
@@ -261,10 +262,14 @@ func (i *compactionIter) Next() bool {
 
 // snapshotIndex returns the index of the first sequence number in snapshots
 // which is greater than or equal to seq.
-func snapshotIndex(seq uint64, snapshots []uint64) int {
-	return sort.Search(len(snapshots), func(i int) bool {
+func snapshotIndex(seq uint64, snapshots []uint64) (int, uint64) {
+	index := sort.Search(len(snapshots), func(i int) bool {
 		return snapshots[i] > seq
 	})
+	if index >= len(snapshots) {
+		return index, db.InternalKeySeqNumMax
+	}
+	return index, snapshots[index]
 }
 
 func (i *compactionIter) skipStripe() {
@@ -279,7 +284,7 @@ func (i *compactionIter) nextInStripe() bool {
 	}
 	key := i.iter.Key()
 	if i.cmp(i.key.UserKey, key.UserKey) != 0 {
-		i.curSnapshotIdx = snapshotIndex(key.SeqNum(), i.snapshots)
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
 	}
 	switch key.Kind() {
@@ -289,17 +294,18 @@ func (i *compactionIter) nextInStripe() bool {
 		i.rangeDelFrag.Add(i.cloneKey(key), i.iter.Value())
 		return true
 	case db.InternalKeyKindInvalid:
-		i.curSnapshotIdx = snapshotIndex(key.SeqNum(), i.snapshots)
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
 	}
 	if len(i.snapshots) == 0 {
 		return true
 	}
-	idx := snapshotIndex(key.SeqNum(), i.snapshots)
+	idx, seqNum := snapshotIndex(key.SeqNum(), i.snapshots)
 	if i.curSnapshotIdx == idx {
 		return true
 	}
 	i.curSnapshotIdx = idx
+	i.curSnapshotSeqNum = seqNum
 	return false
 }
 
@@ -332,7 +338,7 @@ func (i *compactionIter) mergeNext() bool {
 			return true
 
 		case db.InternalKeyKindSet:
-			if i.rangeDelFrag.Deleted(key) {
+			if i.rangeDelFrag.Deleted(key, i.curSnapshotSeqNum) {
 				i.skip = true
 				return true
 			}
@@ -347,7 +353,7 @@ func (i *compactionIter) mergeNext() bool {
 			return true
 
 		case db.InternalKeyKindMerge:
-			if i.rangeDelFrag.Deleted(key) {
+			if i.rangeDelFrag.Deleted(key, i.curSnapshotSeqNum) {
 				i.skip = true
 				return true
 			}
@@ -419,7 +425,7 @@ func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
 	// each snapshot stripe.
 	currentIdx := -1
 	for _, v := range fragmented {
-		idx := snapshotIndex(v.Start.SeqNum(), i.snapshots)
+		idx, _ := snapshotIndex(v.Start.SeqNum(), i.snapshots)
 		if currentIdx == idx {
 			continue
 		}

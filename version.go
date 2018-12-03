@@ -153,6 +153,22 @@ func (v *version) String() string {
 	return buf.String()
 }
 
+func (v *version) DebugString() string {
+	var buf bytes.Buffer
+	for level := 0; level < numLevels; level++ {
+		if len(v.files[level]) == 0 {
+			continue
+		}
+		fmt.Fprintf(&buf, "%d:", level)
+		for j := range v.files[level] {
+			f := &v.files[level][j]
+			fmt.Fprintf(&buf, " %s-%s", f.smallest, f.largest)
+		}
+		fmt.Fprintf(&buf, "\n")
+	}
+	return buf.String()
+}
+
 func (v *version) ref() {
 	atomic.AddInt32(&v.refs, 1)
 }
@@ -255,8 +271,8 @@ func (v *version) checkOrdering(cmp db.Compare) error {
 				prev := &ff[i-1]
 				f := &ff[i]
 				if db.InternalCompare(cmp, prev.largest, f.smallest) >= 0 {
-					return fmt.Errorf("level non-0 files are not in increasing ikey order: %s, %s",
-						prev.largest, f.smallest)
+					return fmt.Errorf("level non-0 files are not in increasing ikey order: %s, %s\n%s",
+						prev.largest, f.smallest, v.DebugString())
 				}
 				if db.InternalCompare(cmp, f.smallest, f.largest) > 0 {
 					return fmt.Errorf("level non-0 file has inconsistent bounds: %s, %s",

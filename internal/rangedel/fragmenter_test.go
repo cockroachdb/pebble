@@ -164,7 +164,7 @@ func TestFragmenterDeleted(t *testing.T) {
 								fmt.Fprintf(&buf, "%s: %s\n", key, r)
 							}
 						}()
-						fmt.Fprintf(&buf, "%s: %t\n", key, f.Deleted(key))
+						fmt.Fprintf(&buf, "%s: %t\n", key, f.Deleted(key, db.InternalKeySeqNumMax))
 					}()
 				}
 			}

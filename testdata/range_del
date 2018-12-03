@@ -890,19 +890,13 @@ define
 L0
   a.SET.4:4
   b.SET.4:4
-  c.SET.4:4
   d.SET.4:4
   c.RANGEDEL.4:d
 L1
   a.SET.3:3
-  b.SET.3:3
-  c.SET.3:3
   d.SET.3:3
   b.RANGEDEL.3:d
 L2
-  a.SET.2:2
-  b.SET.2:2
-  c.SET.2:2
   d.SET.2:2
   a.RANGEDEL.2:d
 L3

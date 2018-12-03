@@ -292,7 +292,7 @@ a#0,2:d
 define
 a.SET.2:b
 a.RANGEDEL.1:c
-b.RANGEDEL.3:d
+b.RANGEDEL.4:d
 b.SET.2:e
 c.SET.3:f
 ----
@@ -305,8 +305,8 @@ tombstones
 a#2,1:b
 .
 a-b#1
-b-c#3
-c-d#3
+b-c#4
+c-d#4
 .
 
 iter snapshots=2
@@ -317,9 +317,41 @@ tombstones
 a#2,1:b
 .
 a-b#1
-b-c#3
+b-c#4
 b-c#1
-c-d#3
+c-d#4
+.
+
+iter snapshots=3
+first
+next
+next
+tombstones
+----
+a#2,1:b
+b#2,1:e
+.
+a-b#1
+b-c#4
+b-c#1
+c-d#4
+.
+
+iter snapshots=4
+first
+next
+next
+next
+tombstones
+----
+a#2,1:b
+b#2,1:e
+c#3,1:f
+.
+a-b#1
+b-c#4
+b-c#1
+c-d#4
 .
 
 define
@@ -334,9 +366,11 @@ iter
 first
 next
 next
+next
 tombstones
 ----
 b#4,1:b
+c#3,1:c
 e#1,1:e
 .
 a-e#3
@@ -354,9 +388,11 @@ iter
 first
 next
 next
+next
 tombstones
 ----
 b#4,2:b
+c#3,2:c
 e#1,2:e
 .
 a-e#3
@@ -484,4 +520,22 @@ b-c#2
 c-d#3
 c-d#2
 d-e#3
+.
+
+define
+a.RANGEDEL.2:d
+a.SET.2:a
+b.SET.2:b
+c.SET.2:c
+----
+
+iter
+first
+next
+next
+next
+----
+a#2,1:a
+b#2,1:b
+c#2,1:c
 .

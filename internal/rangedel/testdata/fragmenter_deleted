@@ -1,45 +1,45 @@
 build
-deleted a.SET.1
+deleted a.SET.0
 add 3: a-----------m
+deleted a.SET.0
 deleted a.SET.1
 deleted a.SET.2
 deleted a.SET.3
-deleted a.SET.4
 deleted l.SET.3
 add 2:      f------------s
-deleted e.SET.4
-deleted f.SET.3
-deleted l.SET.3
-deleted m.SET.3
+deleted e.SET.3
+deleted f.SET.2
+deleted l.SET.2
+deleted m.SET.2
 add 1:          j---------------z
 deleted j.SET.1
 deleted j.SET.2
 deleted j.SET.3
-deleted j.SET.4
-deleted l.SET.3
-deleted m.SET.3
-deleted r.SET.2
-deleted s.SET.2
-deleted y.SET.1
-deleted z.SET.1
+deleted l.SET.2
+deleted m.SET.2
+deleted r.SET.1
+deleted s.SET.1
+deleted y.SET.0
+deleted z.SET.0
 ----
-a#1,1: false
+a#0,1: false
+a#0,1: true
 a#1,1: true
 a#2,1: true
-a#3,1: true
-a#4,1: false
-l#3,1: true
-e#4,1: pebble: keys must be in order: f#3,15 > e#4,1
-f#3,1: true
-l#3,1: true
-m#3,1: false
+a#3,1: false
+l#3,1: false
+e#3,1: pebble: keys must be in order: f#3,15 > e#3,1
+f#2,1: true
+l#2,1: true
+m#2,1: false
 j#1,1: true
 j#2,1: true
-j#3,1: true
-j#4,1: false
-l#3,1: true
-m#3,1: false
-r#2,1: true
-s#2,1: false
-y#1,1: true
-z#1,1: false
+j#3,1: false
+l#2,1: true
+m#2,1: false
+r#1,1: true
+s#1,1: false
+y#0,1: true
+z#0,1: false
+
+# TODO(peter,rangedel): test Deleted at specific sequence numbers.
