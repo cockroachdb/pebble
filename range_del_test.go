@@ -151,3 +151,79 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, but found %v", err)
 	}
 }
+
+// TODO(peter): This causes a bug in RocksDB, but not in Pebble. The difference
+// appears to be in the handling of version.overlaps. Pebble finds overlaps
+// using user-keys, while RocksDB finds overlaps using internal keys.
+func TestRangeDelCompactionTruncation2(t *testing.T) {
+	// Use a small target file size so that there is a single key per sstable.
+	d, err := Open("", &db.Options{
+		Storage: storage.NewMem(),
+		Levels: []db.LevelOptions{
+			{TargetFileSize: 100},
+			{TargetFileSize: 100},
+			{TargetFileSize: 1},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lsm := func() string {
+		d.mu.Lock()
+		s := d.mu.versions.currentVersion().DebugString()
+		d.mu.Unlock()
+		return s
+	}
+
+	if err := d.Set([]byte("a"), bytes.Repeat([]byte("b"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap1 := d.NewSnapshot()
+	defer snap1.Close()
+	// Flush so that each version of "a" ends up in its own L0 table. If we
+	// allowed both versions in the same L0 table, compaction could trivially
+	// move the single L0 table to L1.
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap2 := d.NewSnapshot()
+	defer snap2.Close()
+	if err := d.DeleteRange([]byte("a"), []byte("d"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Compact([]byte("a"), []byte("d")); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(lsm())
+	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(lsm())
+
+	if err := d.Set([]byte("b"), []byte("d"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set([]byte("c"), []byte("e"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Get([]byte("b")); err != nil {
+		t.Fatalf("expected success, but found %v", err)
+	}
+
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(lsm())
+	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(lsm())
+
+	if _, err := d.Get([]byte("b")); err == nil {
+		t.Fatalf("expected ErrNotFound, but found %v", err)
+	}
+}
