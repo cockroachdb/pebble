@@ -473,7 +473,8 @@ func TestIngest(t *testing.T) {
 	}
 
 	d, err := Open("", &db.Options{
-		Storage: fs,
+		Storage:               fs,
+		L0CompactionThreshold: 100,
 	})
 	if err != nil {
 		t.Fatal(err)
