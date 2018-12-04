@@ -7,15 +7,15 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"testing"
 
-	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
 )
 
 type syncedBuffer struct {
-	mu  syncutil.Mutex
+	mu  sync.Mutex
 	buf bytes.Buffer
 }
 
