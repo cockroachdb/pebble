@@ -15,68 +15,147 @@ import (
 // mergingIter provides a merged view of multiple iterators from different
 // levels of the LSM.
 //
+// The core of a mergingIter is a heap of internalIterators (see
+// mergingIterHeap). The heap can operate as either a min-heap, used during
+// forward iteration (First, SeekGE, Next) or a max-heap, used during reverse
+// iteration (Last, SeekLT, Prev). The heap is initialized in calls to First,
+// Last, SeekGE, and SeekLT. A call to Next or Prev takes the current top
+// element on the heap, advances its iterator, and then "fixes" the heap
+// property. When one of the child iterators is exhausted during Next/Prev
+// iteration, it is removed from the heap.
+//
+// Range Deletions
+//
 // A mergingIter can optionally be configured with a slice of range deletion
-// iterators which it will use to skip over keys covered by range
-// tombstones. The range deletion iterator slice must exactly parallel the
-// point iterators. This requirement allows mergingIter to only consider range
-// tombstones from newer levels. Because range tombstones are fragmented within
-// a level we know there can be no overlap within a level. When a level iter is
-// backed by a levelIter, the levelIter takes care of initializing the range
-// deletion iterator when switching tables. Note that levelIter also takes care
-// of materializing fake "sentinel" keys at sstable boundaries to prevent
-// iterating past a table when a range tombstone is the last (or first) entry
-// in the table.
+// iterators. The range deletion iterator slice must exactly parallel the point
+// iterators and the range deletion iterator must correspond to the same level
+// in the LSM as the point iterator. Note that each memtable and each table in
+// L0 is a different "level" from the mergingIter perspective. So level 0 below
+// does not correspond to L0 in the LSM.
 //
-// Internally, mergingIter advances the iterators for each level by keeping
-// them in a heap and advancing the iterator with the smallest key (or largest
-// key during reverse iteration). Due to LSM invariants, the range deletion
-// tombstones for each level are guaranteed to shadow lower levels. If we're
-// seeking to a key X within a level and there is a tombstone within that level
-// containing X, in lower levels we can seek to the boundary of the tombstone
-// instead. See SeekGE for more details.
+// A range deletion iterator iterates over fragmented range tombstones. Range
+// tombstones are fragmented by splitting them at any overlapping points. This
+// fragmentation guarantees that within an sstable tombstones will either be
+// distinct or will have identical start and end user keys. While range
+// tombstones are fragmented within an sstable, the end keys are not truncated
+// to sstable boundaries. This is necessary because the tombstone end key is
+// exclusive and does not have a sequence number. Consider an sstable
+// containing the range tombstone [a,c)#9 and the key "b#8". The tombstone must
+// delete "b#8", yet older versions of "b" might spill over to the next
+// sstable. So the boundary key for this sstable must be "b#9". Adjusting the
+// end key of tombstones to be optionally inclusive or contain a sequence
+// number would be possible solutions. The approach taken here performs an
+// implicit truncation of the tombstone to the sstable boundaries.
 //
-// Every level can have one or both of point operations (Px) and range
-// deletions (Rx). The point operations and range deletions within a level can
-// have overlapping sequence numbers, but between levels we are guaranteed
-// independence. The range deletions for level N are guaranteed to have newer
-// sequence numbers than any entry in level Y > n. Consider the example below
-// which has 4 levels. R3 is empty indicating there are no range deletions.
+// During initialization of a mergingIter, the range deletion iterators for
+// batches, memtables, and L0 tables are populated up front. Note that Batches
+// and memtables index unfragmented tombstones.  Batch.newRangeDelIter() and
+// memTable.newRangeDelIter() fragment and cache the tombstones on demand. The
+// L1-L6 range deletion iterators are populated by levelIter. When configured
+// to load range deletion iterators, whenever a levelIter loads a table it
+// loads both the point iterator and the range deletion
+// iterator. levelIter.rangeDelIter is configured to point to the right entry
+// in mergingIter.rangeDelIters. The effect of this setup is that
+// mergingIter.rangeDelIters[i] always contains the fragmented range tombstone
+// for the current table in level i that the levelIter has open.
 //
-//   P0:               o
-//   R0:             m---q
+// Another crucial mechanism of levelIter is that it materializes fake point
+// entries for the table boundaries if the boundary is range deletion
+// key. Consider a table that contains only a range tombstone [a-e)#10. The
+// sstable boundaries for this table will be a#10,15 and
+// e#72057594037927935,15. During forward iteration levelIter will return
+// e#72057594037927935,15 as a key. During reverse iteration levelIter will
+// return a#10,15 as a key. These sentinel keys act as bookends to point
+// iteration and allow mergingIter to keep a table and its associated range
+// tombstones loaded as long as their are keys at lower levels that are within
+// the bounds of the table.
 //
-//   P1:              n p
-//   R1:       g---k
+// The final piece to the range deletion puzzle is the LSM invariant that for a
+// given key K newer versions of K can only exist earlier in the level, or at
+// higher levels of the tree. For example, if K#4 exists in L3, k#5 can only
+// exist earlier in the L3 or in L0, L1, L2 or a memtable. Get very explicitly
+// uses this invariant to find the value for a key by walking the LSM level by
+// level. For range deletions, this invariant means that a range deletion at
+// level N will necesarily shadow any keys within its bounds in level Y where Y
+// > N. One wrinkle to this statement is that it only applies to keys that lie
+// within the sstable bounds as well, but we get that guarantee due to the way
+// the range deletion iterator and point iterator are bound together by a
+// levelIter.
 //
-//   P2:  b d    i
-//   R2: a---e           q----v
+// Tying the above all together, we get a picture where each level (index in
+// mergingIter.{iters,rangeDelIters}) is composed of both point operations (pX)
+// and range deletions (rX). The range deletions for level X shadow both the
+// point operations and range deletions for level Y where Y > X allowing
+// mergingIter to skip processing entries in that shadow. For example, consider
+// the scenario:
 //
-//   P3:     e
-//   R3:
+//   r0: a---e
+//   r1:    d---h
+//   r2:       g---k
+//   r3:          j---n
+//   r4:             m---q
+//
+// This is showing 5 levels of range deletions. Consider what happens upon
+// SeekGE("b"). We first seek the point iterator for level 0 (the point values
+// are not shown above) and we then seek the range deletion iterator. That
+// returns the tombstone [a,e). This tombstone tells us that all keys in the
+// range [a,e) in lower levels are deleted so we can skip them. So we can
+// adjust the seek key to "e", the tombstone end key. For level 1 we seek to
+// "e" and find the range tombstone [d,h) and similar logic holds. By the time
+// we get to level 4 we're seeking to "n".
+//
+// During actual iteration levels can contain both point operations and range
+// deletions. Within a level, when a range deletion contains a point operation
+// the sequence numbers must must be checked to determine if the point
+// operation is newer or older than the range deletion tombstone. The
+// mergingIter maintains the invariant that the range deletion iterators for
+// all levels newer that the current iteration key (L < m.heap.items[0].index)
+// are positioned at the next (or previous during reverse iteration) range
+// deletion tombstone. We know those levels don't contain a range deletion
+// tombstone that covers the current key because if they did the current key
+// would be deleted. The range deletion iterator for the current key's level is
+// positioned at a range tombstone covering or past the current key. The
+// position of all of other range deletion iterators is unspecified. Whenever a
+// key from those levels becomes the current key, their range deletion
+// iterators need to be positioned. This lazy positioning avoids seeking the
+// range deletion iterators for keys that are never considered. (A similar bit
+// of lazy evaluation can be done for the point iterators, but is still TBD).
+//
+// For a full example, consider the following setup:
+//
+//   p0:               o
+//   r0:             m---q
+//
+//   p1:              n p
+//   r1:       g---k
+//
+//   p2:  b d    i
+//   r2: a---e           q----v
+//
+//   p3:     e
+//   r3:
 //
 // If we start iterating from the beginning, the first key we encounter is "b"
-// in P2. When the mergingIter is pointing at a valid entry, the range deletion
+// in p2. When the mergingIter is pointing at a valid entry, the range deletion
 // iterators for all of the levels < m.heap.items[0].index are positioned at
-// the next range tombstone past the current key. (Note that if those levels
-// contained a range tombstone covering the current key then the current key
-// would be deleted and thus the iterator would not be pointing at it). The
-// position of the range deletion iterators for all other levels is unspecified
-// (they could point anywhere).
+// the next range tombstone past the current key. So r0 will point at [m,q) and
+// r1 at [g,k). When the key "b" is encountered, we check to see if the current
+// tombstone for r0 or r1 contains it, and whether the tombstone for r2, [a,e),
+// contains and is newer than "b".
 //
 // Advancing the iterator finds the next key at "d". This is in the same level
-// as the previous entry so we don't have to reposition any of the range
-// deletion iterators, but merely check whether "d" is now containe by any of
-// the range tombstones at higher levels are has stepped past the range
-// tombstone in its own level. In this case, there is nothing to be
-// done.
+// as the previous key "b" so we don't have to reposition any of the range
+// deletion iterators, but merely check whether "d" is now contained by any of
+// the range tombstones at higher levels or has stepped past the range
+// tombstone in its own level. In this case, there is nothing to be done.
 //
-// Advancing the iterator again brings the iterator to "e". Since "e" comes
-// from P3, we have to position the R3 range deletion iterator, which is
-// empty. "e" is past the R2 tombstone of [a,e) so we need to advance that
-// range deletion iterator to [q,v).
+// Advancing the iterator again finds "e". Since "e" comes from p3, we have to
+// position the r3 range deletion iterator, which is empty. "e" is past the r2
+// tombstone of [a,e) so we need to advance the r2 range deletion iterator to
+// [q,v).
 //
-// The next key is "i". Because this key is on a level above "e" we don't have
-// to reposition any range deletion iterators and instead see that "i" is
+// The next key is "i". Because this key is on p2, a level above "e", we don't
+// have to reposition any range deletion iterators and instead see that "i" is
 // covered by the range tombstone [g,k). The iterator is immediately advanced
 // to "n" which is covered by the range tombstone [m,q) causing the iterator to
 // advance to "o" which is visible.
