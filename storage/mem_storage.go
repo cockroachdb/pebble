@@ -196,7 +196,7 @@ func (y *memStorage) Remove(fullname string) error {
 			}
 			_, ok := dir.children[frag]
 			if !ok {
-				return errors.New("pebble/storage: no such file or directory")
+				return os.ErrNotExist
 			}
 			delete(dir.children, frag)
 		}

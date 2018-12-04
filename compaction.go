@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"unsafe"
@@ -407,6 +408,9 @@ func (d *DB) flush1() error {
 			{level: 0, meta: meta},
 		},
 	})
+	if _, ok := d.mu.compact.pendingOutputs[meta.fileNum]; !ok {
+		panic("pebble: expected pending output not present")
+	}
 	delete(d.mu.compact.pendingOutputs, meta.fileNum)
 	if err != nil {
 		return err
@@ -626,6 +630,9 @@ func (d *DB) compact1() (err error) {
 	}
 	err = d.mu.versions.logAndApply(ve)
 	for _, fileNum := range pendingOutputs {
+		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
+			panic("pebble: expected pending output not present")
+		}
 		delete(d.mu.compact.pendingOutputs, fileNum)
 	}
 	if err != nil {
@@ -825,15 +832,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles(jobID int) {
-	liveFileNums := map[uint64]struct{}{}
-	for fileNum := range d.mu.compact.pendingOutputs {
-		liveFileNums[fileNum] = struct{}{}
-	}
-	d.mu.versions.addLiveFileNums(liveFileNums)
-	logNumber := d.mu.versions.logNumber
-	manifestFileNumber := d.mu.versions.manifestFileNumber
-
-	// Release the d.mu lock while doing I/O.
+	// Release d.mu while doing I/O
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
 	defer d.mu.Lock()
@@ -847,6 +846,19 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	// We sort to make the order of deletions deterministic, which is nice for
 	// tests.
 	sort.Strings(list)
+
+	// Grab d.mu again in order to get a snapshot of the live state. Note that we
+	// need to this after the directory list because after releasing the lock
+	// again new files can be created.
+	d.mu.Lock()
+	liveFileNums := make(map[uint64]struct{}, len(d.mu.compact.pendingOutputs))
+	for fileNum := range d.mu.compact.pendingOutputs {
+		liveFileNums[fileNum] = struct{}{}
+	}
+	d.mu.versions.addLiveFileNums(liveFileNums)
+	logNumber := d.mu.versions.logNumber
+	manifestFileNumber := d.mu.versions.manifestFileNumber
+	d.mu.Unlock()
 
 	for _, filename := range list {
 		fileType, fileNum, ok := parseDBFilename(filename)
@@ -864,6 +876,9 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			keep = fileNum >= d.optionsFileNum
 		case fileTypeTable:
 			_, keep = liveFileNums[fileNum]
+		default:
+			// Don't delete files we don't know about.
+			continue
 		}
 		if keep {
 			continue
@@ -874,7 +889,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		path := filepath.Join(d.dirname, filename)
 		err := fs.Remove(path)
 
-		if fileType == fileTypeTable {
+		if err != os.ErrNotExist && fileType == fileTypeTable {
 			if d.opts.EventListener != nil && d.opts.EventListener.TableDeleted != nil {
 				d.opts.EventListener.TableDeleted(db.TableDeleteInfo{
 					JobID:   jobID,
