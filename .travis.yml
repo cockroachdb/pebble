@@ -1,5 +1,9 @@
 language: go
 
+install: go get -t -v ./...
+
+script: go test -v ./...
+
 matrix:
   include:
     - name: "go1.10.x"
