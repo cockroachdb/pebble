@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"math/rand"
@@ -86,20 +85,17 @@ func runScan(cmd *cobra.Command, args []string) {
 						startKey := encodeUint32Ascending(startKeyBuf[:4], uint32(startIdx))
 						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(scanRows)))
 
-						it := d.NewIter(nil)
+						it := d.NewIter(&db.IterOptions{
+							LowerBound: startKey,
+							UpperBound: endKey,
+						})
 						count := 0
 						if scanReverse {
-							for it.SeekLT(endKey); it.Valid(); it.Prev() {
-								if bytes.Compare(it.Key(), startKey) < 0 {
-									break
-								}
+							for it.Last(); it.Valid(); it.Prev() {
 								count++
 							}
 						} else {
-							for it.SeekGE(startKey); it.Valid(); it.Next() {
-								if bytes.Compare(it.Key(), endKey) >= 0 {
-									break
-								}
+							for it.First(); it.Valid(); it.Next() {
 								count++
 							}
 						}
