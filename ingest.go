@@ -266,26 +266,6 @@ func (d *DB) Ingest(paths []string) error {
 		// If the mutable memtable contains keys which overlap any of the sstables
 		// then flush the memtable. Note that apply will wait for the flushing to
 		// finish.
-		//
-		// TODO(peter): This is almost not necesasry. We're giving all of the
-		// entries in the ingested sstables a sequence number. So even though the
-		// ingested sstable entries have a higher sequence number than memtable
-		// entries, they will correctly shadow those entries. There are two
-		// problems, the first with Get() which walks from the memtable down
-		// through the levels, assuming that there is an invariant that Ln has a
-		// higher sequence number for a key than Ln+1. The second problem is with
-		// compactions and stems from breaking the same invariant. Imagine an
-		// sstable contains a deletion tombstone for key "a#3" which is also
-		// present in a memtable as "a#2" and on disk as "a#1". If the ingested
-		// sstable is made visible before the memtable is flushed it can be
-		// compacted with the on-disk value of "a" and deleted from existence
-		// causing "a#2" to resurrect.
-		//
-		// A possible way out of this mess is to force an sstable which overlaps
-		// with a memtable to be ingested into L0 and to prevent compactions of
-		// that sstable until the corresponding memtable has been flushed. This
-		// complicates the compaction heuristics, but avoids have to wait for
-		// memtable flushes during ingestion.
 		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
 			mem = d.mu.mem.mutable
 			err = d.makeRoomForWrite(nil)
