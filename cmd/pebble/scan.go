@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -56,7 +57,7 @@ func runScan(cmd *cobra.Command, args []string) {
 			for i := 0; i < count; {
 				b := d.NewBatch()
 				for end := i + batch; i < end; i++ {
-					keys[i] = encodeUint32Ascending([]byte("key-"), uint32(i))
+					keys[i] = mvccEncode(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
 					value := randBytes(scanValueSize)
 					if err := b.Set(keys[i], value, nil); err != nil {
 						log.Fatal(err)
@@ -79,6 +80,7 @@ func runScan(cmd *cobra.Command, args []string) {
 					rng := rand.New(rand.NewSource(int64(i)))
 					startKeyBuf := append(make([]byte, 0, 64), []byte("key-")...)
 					endKeyBuf := append(make([]byte, 0, 64), []byte("key-")...)
+					minTS := encodeUint64Ascending(nil, math.MaxUint64)
 
 					for {
 						startIdx := rng.Int31n(int32(len(keys) - scanRows))
@@ -86,18 +88,14 @@ func runScan(cmd *cobra.Command, args []string) {
 						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(scanRows)))
 
 						it := d.NewIter(&db.IterOptions{
-							LowerBound: startKey,
-							UpperBound: endKey,
+							LowerBound: mvccEncode(nil, startKey, 0, 0),
+							UpperBound: mvccEncode(nil, endKey, 0, 0),
 						})
-						count := 0
+						var count int
 						if scanReverse {
-							for it.Last(); it.Valid(); it.Prev() {
-								count++
-							}
+							count = mvccReverseScan(d, startKey, endKey, minTS)
 						} else {
-							for it.First(); it.Valid(); it.Next() {
-								count++
-							}
+							count = mvccForwardScan(d, startKey, endKey, minTS)
 						}
 						it.Close()
 

@@ -36,6 +36,7 @@ func runSync(cmd *cobra.Command, args []string) {
 					defer wg.Done()
 
 					rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+					var raw []byte
 					var buf []byte
 
 					randBlock := func(min, max int) []byte {
@@ -51,11 +52,13 @@ func runSync(cmd *cobra.Command, args []string) {
 						b := d.NewBatch()
 						for j := 0; j < 5; j++ {
 							block := randBlock(60, 80)
-							key := encodeUint32Ascending(buf, rand.Uint32())
+							raw = encodeUint32Ascending(raw[:0], rand.Uint32())
+							key := mvccEncode(buf[:0], raw, 0, 0)
+							buf = key[:0]
+
 							if err := b.Set(key, block, nil); err != nil {
 								log.Fatal(err)
 							}
-							buf = key[:0]
 						}
 						if err := b.Commit(db.Sync); err != nil {
 							log.Fatal(err)
