@@ -87,17 +87,12 @@ func runScan(cmd *cobra.Command, args []string) {
 						startKey := encodeUint32Ascending(startKeyBuf[:4], uint32(startIdx))
 						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(scanRows)))
 
-						it := d.NewIter(&db.IterOptions{
-							LowerBound: mvccEncode(nil, startKey, 0, 0),
-							UpperBound: mvccEncode(nil, endKey, 0, 0),
-						})
 						var count int
 						if scanReverse {
 							count = mvccReverseScan(d, startKey, endKey, minTS)
 						} else {
 							count = mvccForwardScan(d, startKey, endKey, minTS)
 						}
-						it.Close()
 
 						if count != scanRows {
 							log.Fatalf("scanned %d, expected %d\n", count, scanRows)
