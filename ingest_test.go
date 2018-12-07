@@ -514,7 +514,9 @@ func TestIngest(t *testing.T) {
 						return err.Error()
 					}
 				}
-				w.Close()
+				if err := w.Close(); err != nil {
+					return err.Error()
+				}
 
 				if err := d.Ingest([]string{"ext/0"}); err != nil {
 					return err.Error()

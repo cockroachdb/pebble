@@ -11,8 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
 
@@ -227,5 +229,77 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 
 	if expected, actual := `b c`, keys(); expected != actual {
 		t.Errorf("expected %q, but found %q", expected, actual)
+	}
+}
+
+func BenchmarkRangeDelIterate(b *testing.B) {
+	for _, entries := range []int{10, 1000, 100000} {
+		b.Run(fmt.Sprintf("entries=%d", entries), func(b *testing.B) {
+			for _, deleted := range []int{entries, entries - 1} {
+				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
+					fs := storage.NewMem()
+					d, err := Open("", &db.Options{
+						Cache:   cache.New(128 << 20), // 128 MB
+						Storage: fs,
+					})
+					if err != nil {
+						b.Fatal(err)
+					}
+					defer d.Close()
+
+					makeKey := func(i int) []byte {
+						return []byte(fmt.Sprintf("%09d", i))
+					}
+
+					// Create an sstable with N entries and ingest it. This is a fast way
+					// to get a lot of entries into pebble.
+					f, err := fs.Create("ext")
+					if err != nil {
+						b.Fatal(err)
+					}
+					w := sstable.NewWriter(f, nil, db.LevelOptions{
+						BlockSize: 32 << 10, // 32 KB
+					})
+					for i := 0; i < entries; i++ {
+						key := db.MakeInternalKey(makeKey(i), 0, db.InternalKeyKindSet)
+						if err := w.Add(key, nil); err != nil {
+							b.Fatal(err)
+						}
+					}
+					if err := w.Close(); err != nil {
+						b.Fatal(err)
+					}
+					if err := d.Ingest([]string{"ext"}); err != nil {
+						b.Fatal(err)
+					}
+					if err := fs.Remove("ext"); err != nil {
+						b.Fatal(err)
+					}
+
+					// Create a range tombstone that deletes most (or all) of those entries.
+					from := makeKey(0)
+					to := makeKey(deleted)
+					if err := d.DeleteRange(from, to, nil); err != nil {
+						b.Fatal(err)
+					}
+
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						iter := d.NewIter(nil)
+						iter.SeekGE(from)
+						if deleted < entries {
+							if !iter.Valid() {
+								b.Fatal("key not found")
+							}
+						} else if iter.Valid() {
+							b.Fatal("unexpected key found")
+						}
+						if err := iter.Close(); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		})
 	}
 }
