@@ -18,7 +18,18 @@ const (
 	dbIterPrev dbIterPos = -1
 )
 
-// TODO(peter): document
+// Iterator iterates over a DB's key/value pairs in key order.
+//
+// An iterator must be closed after use, but it is not necessary to read an
+// iterator until exhaustion.
+//
+// An iterator is not necessarily goroutine-safe, but it is safe to use
+// multiple iterators concurrently, with each in a dedicated goroutine.
+//
+// It is also safe to use an iterator concurrently with modifying its
+// underlying DB, if that DB permits modification. However, the resultant
+// key/value pairs are not guaranteed to be a consistent snapshot of that DB
+// at a particular point in time.
 type dbIter struct {
 	opts      *db.IterOptions
 	cmp       db.Compare
@@ -234,6 +245,8 @@ func (i *dbIter) mergeNext(key db.InternalKey) bool {
 	}
 }
 
+// SeekGE moves the iterator to the first key/value pair whose key is greater
+// than or equal to the given key.
 func (i *dbIter) SeekGE(key []byte) {
 	if i.err != nil {
 		return
@@ -247,6 +260,8 @@ func (i *dbIter) SeekGE(key []byte) {
 	i.findNextEntry()
 }
 
+// SeekLT moves the iterator to the last key/value pair whose key is less than
+// the given key.
 func (i *dbIter) SeekLT(key []byte) {
 	if i.err != nil {
 		return
@@ -260,6 +275,7 @@ func (i *dbIter) SeekLT(key []byte) {
 	i.findPrevEntry()
 }
 
+// First moves the iterator the the first key/value pair.
 func (i *dbIter) First() {
 	if i.err != nil {
 		return
@@ -274,6 +290,7 @@ func (i *dbIter) First() {
 	i.findNextEntry()
 }
 
+// Last moves the iterator the the last key/value pair.
 func (i *dbIter) Last() {
 	if i.err != nil {
 		return
@@ -288,6 +305,8 @@ func (i *dbIter) Last() {
 	i.findPrevEntry()
 }
 
+// Next moves the iterator to the next key/value pair.
+// It returns whether the iterator is exhausted.
 func (i *dbIter) Next() bool {
 	if i.err != nil {
 		return false
@@ -303,6 +322,8 @@ func (i *dbIter) Next() bool {
 	return i.findNextEntry()
 }
 
+// Prev moves the iterator to the previous key/value pair.
+// It returns whether the iterator is exhausted.
 func (i *dbIter) Prev() bool {
 	if i.err != nil {
 		return false
@@ -318,22 +339,35 @@ func (i *dbIter) Prev() bool {
 	return i.findPrevEntry()
 }
 
+// Key returns the key of the current key/value pair, or nil if done. The
+// caller should not modify the contents of the returned slice, and its
+// contents may change on the next call to Next.
 func (i *dbIter) Key() []byte {
 	return i.key
 }
 
+// Value returns the value of the current key/value pair, or nil if done. The
+// caller should not modify the contents of the returned slice, and its
+// contents may change on the next call to Next.
 func (i *dbIter) Value() []byte {
 	return i.value
 }
 
+// Valid returns true if the iterator is positioned at a valid key/value pair
+// and false otherwise.
 func (i *dbIter) Valid() bool {
 	return i.valid
 }
 
+// Error returns any accumulated error.
 func (i *dbIter) Error() error {
 	return i.err
 }
 
+// Close closes the iterator and returns any accumulated error. Exhausting
+// all the key/value pairs in a table is not considered to be an error.
+// It is valid to call Close multiple times. Other methods should not be
+// called after the iterator has been closed.
 func (i *dbIter) Close() error {
 	if i.version != nil {
 		i.version.unref()
