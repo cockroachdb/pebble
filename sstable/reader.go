@@ -46,10 +46,10 @@ func encodeBlockHandle(dst []byte, b blockHandle) int {
 // over those pairs.
 type block []byte
 
-// Iter is an iterator over an entire table of data. It is a two-level
-// iterator: to seek for a given key, it first looks in the index for the
-// block that contains that key, and then looks inside that block.
-type Iter struct {
+// Iterator iterates over an entire table of data. It is a two-level iterator:
+// to seek for a given key, it first looks in the index for the block that
+// contains that key, and then looks inside that block.
+type Iterator struct {
 	reader    *Reader
 	index     blockIter
 	data      blockIter
@@ -57,7 +57,7 @@ type Iter struct {
 	closeHook func() error
 }
 
-func (i *Iter) init(r *Reader) error {
+func (i *Iterator) init(r *Reader) error {
 	i.reader = r
 	var index block
 	index, i.err = r.readIndex()
@@ -71,7 +71,7 @@ func (i *Iter) init(r *Reader) error {
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
-func (i *Iter) loadBlock() bool {
+func (i *Iterator) loadBlock() bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		// TODO(peter): Need to test that seeking to a key outside of the sstable
@@ -105,7 +105,7 @@ func (i *Iter) loadBlock() bool {
 // opposed to iterating over a range of keys (where the minimum of that range
 // isn't necessarily in the table). In that case, i.err will be set to
 // db.ErrNotFound if f does not contain the key.
-func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
+func (i *Iterator) seekBlock(key []byte, f *blockFilterReader) bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
@@ -144,7 +144,7 @@ func (i *Iter) seekBlock(key []byte, f *blockFilterReader) bool {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *Iter) SeekGE(key []byte) {
+func (i *Iterator) SeekGE(key []byte) {
 	if i.err != nil {
 		return
 	}
@@ -160,7 +160,7 @@ func (i *Iter) SeekGE(key []byte) {
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *Iter) SeekLT(key []byte) {
+func (i *Iterator) SeekLT(key []byte) {
 	if i.err != nil {
 		return
 	}
@@ -196,7 +196,7 @@ func (i *Iter) SeekLT(key []byte) {
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *Iter) First() {
+func (i *Iterator) First() {
 	if i.err != nil {
 		return
 	}
@@ -212,7 +212,7 @@ func (i *Iter) First() {
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
-func (i *Iter) Last() {
+func (i *Iterator) Last() {
 	if i.err != nil {
 		return
 	}
@@ -228,7 +228,7 @@ func (i *Iter) Last() {
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *Iter) Next() bool {
+func (i *Iterator) Next() bool {
 	if i.err != nil {
 		return false
 	}
@@ -253,7 +253,7 @@ func (i *Iter) Next() bool {
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *Iter) Prev() bool {
+func (i *Iterator) Prev() bool {
 	if i.err != nil {
 		return false
 	}
@@ -277,25 +277,25 @@ func (i *Iter) Prev() bool {
 }
 
 // Key implements internalIterator.Key, as documented in the pebble package.
-func (i *Iter) Key() db.InternalKey {
+func (i *Iterator) Key() db.InternalKey {
 	return i.data.Key()
 }
 
 // Value implements internalIterator.Value, as documented in the pebble
 // package.
-func (i *Iter) Value() []byte {
+func (i *Iterator) Value() []byte {
 	return i.data.Value()
 }
 
 // Valid implements internalIterator.Valid, as documented in the pebble
 // package.
-func (i *Iter) Valid() bool {
+func (i *Iterator) Valid() bool {
 	return i.data.Valid()
 }
 
 // Error implements internalIterator.Error, as documented in the pebble
 // package.
-func (i *Iter) Error() error {
+func (i *Iterator) Error() error {
 	if err := i.data.Error(); err != nil {
 		return err
 	}
@@ -304,13 +304,13 @@ func (i *Iter) Error() error {
 
 // SetCloseHook sets a function that will be called when the iterator is
 // closed.
-func (i *Iter) SetCloseHook(fn func() error) {
+func (i *Iterator) SetCloseHook(fn func() error) {
 	i.closeHook = fn
 }
 
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
-func (i *Iter) Close() error {
+func (i *Iterator) Close() error {
 	if i.closeHook != nil {
 		if err := i.closeHook(); err != nil {
 			return err
@@ -381,7 +381,7 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 		}
 	}
 
-	i := &Iter{}
+	i := &Iterator{}
 	if err := i.init(r); err == nil {
 		i.index.SeekGE(key)
 		i.seekBlock(key, r.blockFilter)
@@ -398,14 +398,14 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 }
 
 // NewIter returns an internal iterator for the contents of the table.
-func (r *Reader) NewIter(o *db.IterOptions) *Iter {
+func (r *Reader) NewIter(o *db.IterOptions) *Iterator {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.err != nil {
-		return &Iter{err: r.err}
+		return &Iterator{err: r.err}
 	}
-	i := &Iter{}
+	i := &Iterator{}
 	_ = i.init(r)
 	return i
 }

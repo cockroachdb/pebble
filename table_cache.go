@@ -28,7 +28,7 @@ type tableCache struct {
 		cond      sync.Cond
 		nodes     map[uint64]*tableCacheNode
 		iterCount int32
-		iters     map[*sstable.Iter][]byte
+		iters     map[*sstable.Iterator][]byte
 		dummy     tableCacheNode
 		releasing int
 	}
@@ -45,7 +45,7 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	c.mu.dummy.prev = &c.mu.dummy
 
 	if raceEnabled {
-		c.mu.iters = make(map[*sstable.Iter][]byte)
+		c.mu.iters = make(map[*sstable.Iterator][]byte)
 	}
 }
 

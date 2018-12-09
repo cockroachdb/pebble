@@ -73,5 +73,5 @@ type internalIterator interface {
 	Close() error
 }
 
-// sstable.Iter implements the internalIterator interface.
-var _ internalIterator = (*sstable.Iter)(nil)
+// sstable.Iterator implements the internalIterator interface.
+var _ internalIterator = (*sstable.Iterator)(nil)
