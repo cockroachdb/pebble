@@ -47,7 +47,7 @@ type Reader interface {
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to SeekGE,
 	// SeekLT, First or Last.
-	NewIter(o *db.IterOptions) Iterator
+	NewIter(o *db.IterOptions) *Iterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader
 	// or io.Writer, depending on how the DB was created.
@@ -215,7 +215,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	d.mu.Unlock()
 
 	var buf struct {
-		dbi dbIter
+		dbi Iterator
 		get getIter
 	}
 
@@ -368,7 +368,7 @@ func (d *DB) newIterInternal(
 	batchRangeDelIter internalIterator,
 	s *Snapshot,
 	o *db.IterOptions,
-) Iterator {
+) *Iterator {
 	var seqNum uint64
 	d.mu.Lock()
 	if s != nil {
@@ -387,7 +387,7 @@ func (d *DB) newIterInternal(
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	var buf struct {
-		dbi           dbIter
+		dbi           Iterator
 		merging       mergingIter
 		iters         [3 + numLevels]internalIterator
 		rangeDelIters [3 + numLevels]internalIterator
@@ -459,12 +459,6 @@ func (d *DB) newIterInternal(
 		rangeDelIters = rangeDelIters[1:]
 	}
 
-	// NB: Both mergingIter and dbIter have a seqNum field. mergingIter.seqNum is
-	// used to filter visibility of range tombstones, and dbIter.seqNum is used
-	// to filter visibility of point operations.
-	//
-	// TODO(peter): Investigate collapsing down to a single sequence number
-	// filter.
 	buf.merging.init(d.cmp, iters...)
 	buf.merging.snapshot = seqNum
 	dbi.iter = &buf.merging
@@ -494,7 +488,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 // to maintain a long-lived point-in-time view of the DB state can lead to an
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
-func (d *DB) NewIter(o *db.IterOptions) Iterator {
+func (d *DB) NewIter(o *db.IterOptions) *Iterator {
 	return d.newIterInternal(nil, /* batchIter */
 		nil /* batchRangeDelIter */, nil /* snapshot */, o)
 }

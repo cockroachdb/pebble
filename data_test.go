@@ -21,7 +21,7 @@ const (
 	iterCmdVerboseKey iterCmdOpt = iota
 )
 
-func runIterCmd(d *datadriven.TestData, iter Iterator) string {
+func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 	var b bytes.Buffer
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)

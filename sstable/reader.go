@@ -149,7 +149,7 @@ func (i *Iter) SeekGE(key []byte) {
 		return
 	}
 
-	// NB: the top-level dbIter has already adjusted key based on
+	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 
 	i.index.SeekGE(key)
@@ -165,7 +165,7 @@ func (i *Iter) SeekLT(key []byte) {
 		return
 	}
 
-	// NB: the top-level dbIter has already adjusted key based on
+	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
 
 	i.index.SeekGE(key)
@@ -201,7 +201,7 @@ func (i *Iter) First() {
 		return
 	}
 
-	// NB: the top-level dbIter will call SeekGE if IterOptions.LowerBound is
+	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
 
 	i.index.First()
@@ -217,7 +217,7 @@ func (i *Iter) Last() {
 		return
 	}
 
-	// NB: the top-level dbIter will call SeekLT if IterOptions.UpperBound is
+	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
 
 	i.index.Last()

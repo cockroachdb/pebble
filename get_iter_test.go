@@ -499,7 +499,7 @@ func TestGetIter(t *testing.T) {
 
 		get := func(v *version, ikey db.InternalKey) ([]byte, error) {
 			var buf struct {
-				dbi dbIter
+				dbi Iterator
 				get getIter
 			}
 

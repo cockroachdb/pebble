@@ -102,7 +102,7 @@ func TestSnapshot(t *testing.T) {
 			return ""
 
 		case "iter":
-			var iter Iterator
+			var iter *Iterator
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].Key != "snapshot" {
 					return fmt.Sprintf("unknown argument: %s", td.CmdArgs[0])

@@ -339,9 +339,9 @@ func (b *Batch) Repr() []byte {
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE, SeekLT,
 // First or Last. Only indexed batches support iterators.
-func (b *Batch) NewIter(o *db.IterOptions) Iterator {
+func (b *Batch) NewIter(o *db.IterOptions) *Iterator {
 	if b.index == nil {
-		return &dbIter{err: ErrNotIndexed}
+		return &Iterator{err: ErrNotIndexed}
 	}
 	return b.db.newIterInternal(b.newInternalIter(o),
 		b.newRangeDelIter(o), nil /* snapshot */, o)
