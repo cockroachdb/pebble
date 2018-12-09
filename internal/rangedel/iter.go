@@ -26,7 +26,7 @@ func NewIter(cmp db.Compare, tombstones []Tombstone) *Iter {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *Iter) SeekGE(key []byte) {
+func (i *Iter) SeekGE(key []byte) bool {
 	// NB: manually inlined sort.Seach is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
@@ -45,11 +45,12 @@ func (i *Iter) SeekGE(key []byte) {
 	}
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
 	// true => answer is i.index.
+	return i.index < len(i.tombstones)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *Iter) SeekLT(key []byte) {
+func (i *Iter) SeekLT(key []byte) bool {
 	// NB: manually inlined sort.Search is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
@@ -72,18 +73,27 @@ func (i *Iter) SeekLT(key []byte) {
 	// Since keys are strictly increasing, if i.index > 0 then i.index-1 will be
 	// the largest whose key is < the key sought.
 	i.index--
+	return i.index >= 0
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *Iter) First() {
+func (i *Iter) First() bool {
+	if len(i.tombstones) == 0 {
+		return false
+	}
 	i.index = 0
+	return true
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
-func (i *Iter) Last() {
+func (i *Iter) Last() bool {
+	if len(i.tombstones) == 0 {
+		return false
+	}
 	i.index = len(i.tombstones) - 1
+	return true
 }
 
 // Next implements internalIterator.Next, as documented in the pebble

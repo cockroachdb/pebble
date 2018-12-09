@@ -59,29 +59,32 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) SeekGE(key []byte) {
+func (f *fakeIter) SeekGE(key []byte) bool {
 	for f.index = 0; f.index < len(f.keys); f.index++ {
 		if db.DefaultComparer.Compare(key, f.Key().UserKey) <= 0 {
-			break
+			return true
 		}
 	}
+	return false
 }
 
-func (f *fakeIter) SeekLT(key []byte) {
+func (f *fakeIter) SeekLT(key []byte) bool {
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
 		if db.DefaultComparer.Compare(key, f.Key().UserKey) > 0 {
-			break
+			return true
 		}
 	}
+	return false
 }
 
-func (f *fakeIter) First() {
-	f.index = 0
+func (f *fakeIter) First() bool {
+	f.index = -1
+	return f.Next()
 }
 
-func (f *fakeIter) Last() {
+func (f *fakeIter) Last() bool {
 	f.index = len(f.keys)
-	f.Prev()
+	return f.Prev()
 }
 
 func (f *fakeIter) Next() bool {
@@ -177,7 +180,7 @@ func testIterator(
 	for _, tc := range testCases {
 		var b bytes.Buffer
 		iter := newFunc(tc.iters...)
-		for ; iter.Valid(); iter.Next() {
+		for valid := iter.First(); valid; valid = iter.Next() {
 			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 		}
 		if err := iter.Close(); err != nil {

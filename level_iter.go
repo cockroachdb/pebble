@@ -73,6 +73,8 @@ func (l *levelIter) findFileGE(key []byte) int {
 	// find a table for K<range-del-sentinel> is the largest key. This prevents
 	// loading untruncated range deletions from a table which can't possibly
 	// contain the target key and is required for correctness by DB.Get.
+	//
+	// TODO(peter): inline the binary search.
 	return sort.Search(len(l.files), func(i int) bool {
 		largest := &l.files[i].largest
 		c := l.cmp(largest.UserKey, key)
@@ -146,40 +148,52 @@ func (l *levelIter) loadFile(index, dir int) bool {
 	}
 }
 
-func (l *levelIter) SeekGE(key []byte) {
+func (l *levelIter) SeekGE(key []byte) bool {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	if l.loadFile(l.findFileGE(key), 1) {
-		l.iter.SeekGE(key)
-		l.skipEmptyFileForward()
+	if !l.loadFile(l.findFileGE(key), 1) {
+		return false
 	}
+	if l.iter.SeekGE(key) {
+		return true
+	}
+	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) SeekLT(key []byte) {
+func (l *levelIter) SeekLT(key []byte) bool {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
-	if l.loadFile(l.findFileLT(key), -1) {
-		l.iter.SeekLT(key)
-		l.skipEmptyFileBackward()
+	if !l.loadFile(l.findFileLT(key), -1) {
+		return false
 	}
+	if l.iter.SeekLT(key) {
+		return true
+	}
+	return l.skipEmptyFileBackward()
 }
 
-func (l *levelIter) First() {
+func (l *levelIter) First() bool {
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
-	if l.loadFile(0, 1) {
-		l.iter.First()
-		l.skipEmptyFileForward()
+	if !l.loadFile(0, 1) {
+		return false
 	}
+	if l.iter.First() {
+		return true
+	}
+	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) Last() {
+func (l *levelIter) Last() bool {
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
-	if l.loadFile(len(l.files)-1, -1) {
-		l.iter.Last()
-		l.skipEmptyFileBackward()
+	if !l.loadFile(len(l.files)-1, -1) {
+		return false
 	}
+	if l.iter.Last() {
+		return true
+	}
+	return l.skipEmptyFileBackward()
 }
 
 func (l *levelIter) Next() bool {
@@ -190,18 +204,20 @@ func (l *levelIter) Next() bool {
 	if l.iter == nil {
 		if l.boundary != nil {
 			if l.loadFile(l.index+1, 1) {
-				l.iter.First()
-				l.skipEmptyFileForward()
-				return true
+				if l.iter.First() {
+					return true
+				}
+				return l.skipEmptyFileForward()
 			}
 			return false
 		}
 		if l.index == -1 && l.loadFile(0, 1) {
 			// The iterator was positioned off the beginning of the level. Position
 			// at the first entry.
-			l.iter.First()
-			l.skipEmptyFileForward()
-			return true
+			if l.iter.First() {
+				return true
+			}
+			return l.skipEmptyFileForward()
 		}
 		return false
 	}
@@ -220,18 +236,20 @@ func (l *levelIter) Prev() bool {
 	if l.iter == nil {
 		if l.boundary != nil {
 			if l.loadFile(l.index-1, -1) {
-				l.iter.Last()
-				l.skipEmptyFileBackward()
-				return true
+				if l.iter.Last() {
+					return true
+				}
+				return l.skipEmptyFileBackward()
 			}
 			return false
 		}
 		if n := len(l.files); l.index == n && l.loadFile(n-1, -1) {
 			// The iterator was positioned off the end of the level. Position at the
 			// last entry.
-			l.iter.Last()
-			l.skipEmptyFileBackward()
-			return true
+			if l.iter.Last() {
+				return true
+			}
+			return l.skipEmptyFileBackward()
 		}
 		return false
 	}
@@ -243,7 +261,7 @@ func (l *levelIter) Prev() bool {
 }
 
 func (l *levelIter) skipEmptyFileForward() bool {
-	for !l.iter.Valid() {
+	for valid := false; !valid; valid = l.iter.First() {
 		if l.err = l.iter.Close(); l.err != nil {
 			return false
 		}
@@ -264,13 +282,12 @@ func (l *levelIter) skipEmptyFileForward() bool {
 		if !l.loadFile(l.index+1, 1) {
 			return false
 		}
-		l.iter.First()
 	}
 	return true
 }
 
 func (l *levelIter) skipEmptyFileBackward() bool {
-	for !l.iter.Valid() {
+	for valid := false; !valid; valid = l.iter.Last() {
 		if l.err = l.iter.Close(); l.err != nil {
 			return false
 		}
@@ -291,7 +308,6 @@ func (l *levelIter) skipEmptyFileBackward() bool {
 		if !l.loadFile(l.index-1, -1) {
 			return false
 		}
-		l.iter.Last()
 	}
 	return true
 }

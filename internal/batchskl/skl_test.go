@@ -34,7 +34,7 @@ func length(s *Skiplist) int {
 	count := 0
 
 	it := s.NewIter()
-	for it.First(); it.Valid(); it.Next() {
+	for valid := it.First(); valid; valid = it.Next() {
 		count++
 	}
 
@@ -46,7 +46,7 @@ func lengthRev(s *Skiplist) int {
 	count := 0
 
 	it := s.NewIter()
-	for it.Last(); it.Valid(); it.Prev() {
+	for valid := it.Last(); valid; valid = it.Prev() {
 		count++
 	}
 
@@ -107,7 +107,8 @@ func TestBasic(t *testing.T) {
 	require.Nil(t, l.Add(d.add("key2")))
 	require.Nil(t, l.Add(d.add("key3")))
 
-	require.False(t, it.SeekGE(makeKey("key")))
+	require.True(t, it.SeekGE(makeKey("key")))
+	require.EqualValues(t, "key1", it.Key().UserKey)
 
 	require.True(t, it.SeekGE(makeKey("key1")))
 	require.EqualValues(t, "key1", it.Key().UserKey)
@@ -221,7 +222,7 @@ func TestIteratorSeekGE(t *testing.T) {
 		require.Nil(t, l.Add(d.add(fmt.Sprintf("%05d", i*10+1000))))
 	}
 
-	require.False(t, it.SeekGE(makeKey("")))
+	require.True(t, it.SeekGE(makeKey("")))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key().UserKey)
 
@@ -229,7 +230,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01000", it.Key().UserKey)
 
-	require.False(t, it.SeekGE(makeKey("01005")))
+	require.True(t, it.SeekGE(makeKey("01005")))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01010", it.Key().UserKey)
 
@@ -263,33 +264,33 @@ func TestIteratorSeekLT(t *testing.T) {
 		require.Nil(t, l.Add(d.add(fmt.Sprintf("%05d", i*10+1000))))
 	}
 
-	it.SeekLT(makeKey(""))
+	require.False(t, it.SeekLT(makeKey("")))
 	require.False(t, it.Valid())
 
-	it.SeekLT(makeKey("01000"))
+	require.False(t, it.SeekLT(makeKey("01000")))
 	require.False(t, it.Valid())
 
-	it.SeekLT(makeKey("01001"))
+	require.True(t, it.SeekLT(makeKey("01001")))
 	require.EqualValues(t, "01000", it.Key().UserKey)
 	require.True(t, it.Valid())
 
-	it.SeekLT(makeKey("01005"))
+	require.True(t, it.SeekLT(makeKey("01005")))
 	require.EqualValues(t, "01000", it.Key().UserKey)
 	require.True(t, it.Valid())
 
-	it.SeekLT(makeKey("01991"))
+	require.True(t, it.SeekLT(makeKey("01991")))
 	require.EqualValues(t, "01990", it.Key().UserKey)
 	require.True(t, it.Valid())
 
-	it.SeekLT(makeKey("99999"))
+	require.True(t, it.SeekLT(makeKey("99999")))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "01990", it.Key().UserKey)
 
 	// Test seek for empty key.
 	require.Nil(t, l.Add(d.add("")))
-	it.SeekLT([]byte{})
+	require.False(t, it.SeekLT([]byte{}))
 	require.False(t, it.Valid())
-	it.SeekLT(makeKey("\x01"))
+	require.True(t, it.SeekLT(makeKey("\x01")))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "", it.Key().UserKey)
 }

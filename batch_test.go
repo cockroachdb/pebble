@@ -246,7 +246,7 @@ func TestBatchDeleteRange(t *testing.T) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for iter.First(); iter.Valid(); iter.Next() {
+			for valid := iter.First(); valid; valid = iter.Next() {
 				key := iter.Key()
 				key.SetSeqNum(key.SeqNum() &^ db.InternalKeySeqNumBatch)
 				fmt.Fprintf(&buf, "%s:%s\n", key, iter.Value())
@@ -319,7 +319,7 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 
 			iter := b.newIter(nil)
 			var buf bytes.Buffer
-			for iter.First(); iter.Valid(); iter.Next() {
+			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
 			}
 			iter.Close()
@@ -371,7 +371,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for iter.First(); iter.Valid(); iter.Next() {
+			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
 			}
 			return buf.String()

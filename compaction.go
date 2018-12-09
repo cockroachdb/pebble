@@ -487,7 +487,7 @@ func (d *DB) writeLevel0Table(
 	file = newRateLimitedFile(file, d.flushController)
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
-	for iter.First(); iter.Valid(); iter.Next() {
+	for valid := iter.First(); valid; valid = iter.Next() {
 		if err1 := tw.Add(iter.Key(), iter.Value()); err1 != nil {
 			return fileMetadata{}, err1
 		}
@@ -791,7 +791,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		return nil
 	}
 
-	for iter.First(); iter.Valid(); iter.Next() {
+	for valid := iter.First(); valid; valid = iter.Next() {
 		key := iter.Key()
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.

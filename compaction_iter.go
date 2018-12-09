@@ -174,15 +174,14 @@ func newCompactionIter(
 	return i
 }
 
-func (i *compactionIter) First() {
+func (i *compactionIter) First() bool {
 	if i.err != nil {
-		return
+		return false
 	}
-	i.iter.First()
-	if i.iter.Valid() {
+	if i.iter.First() {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iter.Key().SeqNum(), i.snapshots)
 	}
-	i.Next()
+	return i.Next()
 }
 
 func (i *compactionIter) Next() bool {

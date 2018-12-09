@@ -184,7 +184,7 @@ func (i *blockIter) cacheEntry() {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *blockIter) SeekGE(key []byte) {
+func (i *blockIter) SeekGE(key []byte) bool {
 	ikey := db.MakeSearchKey(key)
 
 	// Find the index of the smallest restart point whose key is > the key
@@ -229,16 +229,18 @@ func (i *blockIter) SeekGE(key []byte) {
 	i.loadEntry()
 
 	// Iterate from that restart point to somewhere >= the key sought.
-	for ; i.Valid(); i.Next() {
+	for valid := i.Valid(); valid; valid = i.Next() {
 		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
 			break
 		}
 	}
+
+	return i.Valid()
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *blockIter) SeekLT(key []byte) {
+func (i *blockIter) SeekLT(key []byte) bool {
 	ikey := db.MakeSearchKey(key)
 
 	// Find the index of the smallest restart point whose key is >= the key
@@ -282,7 +284,7 @@ func (i *blockIter) SeekLT(key []byte) {
 		// sought.
 		i.offset = -1
 		i.nextOffset = 0
-		return
+		return false
 	}
 
 	// Iterate from that restart point to somewhere >= the key sought, then back
@@ -300,7 +302,7 @@ func (i *blockIter) SeekLT(key []byte) {
 			// The current key is greater than or equal to our search key. Back up to
 			// the previous key which was less than our search key.
 			i.Prev()
-			return
+			return true
 		}
 
 		if i.nextOffset >= i.restarts {
@@ -308,19 +310,28 @@ func (i *blockIter) SeekLT(key []byte) {
 			break
 		}
 	}
+
+	return i.Valid()
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *blockIter) First() {
+func (i *blockIter) First() bool {
 	i.offset = 0
+	if !i.Valid() {
+		return false
+	}
 	i.loadEntry()
+	return true
 }
 
 // Last implements internalIterator.Last, as documented in the pebble package.
-func (i *blockIter) Last() {
+func (i *blockIter) Last() bool {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
+	if !i.Valid() {
+		return false
+	}
 
 	i.readEntry()
 	i.clearCache()
@@ -333,6 +344,7 @@ func (i *blockIter) Last() {
 	}
 
 	i.decodeInternalKey(i.key)
+	return true
 }
 
 // Next implements internalIterator.Next, as documented in the pebble

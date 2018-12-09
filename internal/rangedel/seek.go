@@ -32,11 +32,11 @@ func SeekGE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the tombstone [a,e)
 	// and we'll have to move forward.
-	iter.SeekLT(key)
+	valid := iter.SeekLT(key)
 
 	// Invariant: key < iter.Key().UserKey
 
-	if iter.Valid() && cmp(key, iter.Value()) < 0 {
+	if valid && cmp(key, iter.Value()) < 0 {
 		// The current tombstones contains or is past the search key, but SeekLT
 		// returns the oldest entry for a key, so backup until we hit the previous
 		// tombstone or an entry which is not visible.
@@ -96,8 +96,7 @@ func SeekLE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the tombstone [a,e)
 	// and we'll have to move forward.
-	iter.SeekLT(key)
-	if !iter.Valid() {
+	if !iter.SeekLT(key) {
 		if !iter.Next() {
 			// The iterator is empty.
 			return Tombstone{}

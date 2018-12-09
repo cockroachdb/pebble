@@ -133,7 +133,7 @@ func TestWriter(t *testing.T) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for iter.First(); iter.Valid(); iter.Next() {
+			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
 			}
 			return buf.String()
@@ -146,7 +146,7 @@ func TestWriter(t *testing.T) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for iter.First(); iter.Valid(); iter.Next() {
+			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
 			}
 			return buf.String()

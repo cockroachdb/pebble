@@ -39,7 +39,7 @@ func (m *memTable) set(key db.InternalKey, value []byte) error {
 // count returns the number of entries in a DB.
 func (m *memTable) count() (n int) {
 	x := m.newIter(nil)
-	for x.First(); x.Valid(); x.Next() {
+	for valid := x.First(); valid; valid = x.Next() {
 		n++
 	}
 	if x.Close() != nil {
@@ -82,7 +82,7 @@ func TestMemTableBasic(t *testing.T) {
 	}
 	// Check an iterator.
 	s, x := "", m.newIter(nil)
-	for x.SeekGE([]byte("mango")); x.Valid(); x.Next() {
+	for valid := x.SeekGE([]byte("mango")); valid; valid = x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
 	if want := "peach/yellow.plum/purple."; s != want {
@@ -272,7 +272,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for iter.First(); iter.Valid(); iter.Next() {
+			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
 			}
 			return buf.String()

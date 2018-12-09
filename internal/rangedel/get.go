@@ -13,10 +13,10 @@ import (
 type iterator interface {
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key.
-	SeekLT(key []byte)
+	SeekLT(key []byte) bool
 
 	// Last moves the iterator the the last key/value pair.
-	Last()
+	Last() bool
 
 	// Next moves the iterator to the next key/value pair.
 	// It returns whether the iterator is exhausted.
@@ -60,8 +60,7 @@ func Get(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the tombstone [a,e)
 	// and we'll have to move forward.
-	iter.SeekLT(key)
-	if !iter.Valid() {
+	if !iter.SeekLT(key) {
 		if !iter.Next() {
 			// The iterator is empty.
 			return Tombstone{}

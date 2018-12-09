@@ -28,25 +28,29 @@ import (
 // at a particular point in time.
 type internalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
-	// than or equal to the given key.
-	SeekGE(key []byte)
+	// than or equal to the given key. Returns true if the iterator is pointing
+	// at a valid entry and false otherwise.
+	SeekGE(key []byte) bool
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
-	// than the given key.
-	SeekLT(key []byte)
+	// than the given key. Returns true if the iterator is pointing at a valid
+	// entry and false otherwise.
+	SeekLT(key []byte) bool
 
-	// First moves the iterator the the first key/value pair.
-	First()
+	// First moves the iterator the the first key/value pair. Returns true if the
+	// iterator is pointing at a valid entry and false otherwise.
+	First() bool
 
-	// Last moves the iterator the the last key/value pair.
-	Last()
+	// Last moves the iterator the the last key/value pair. Returns true if the
+	// iterator is pointing at a valid entry and false otherwise.
+	Last() bool
 
-	// Next moves the iterator to the next key/value pair.
-	// It returns whether the iterator is exhausted.
+	// Next moves the iterator to the next key/value pair. Returns true if the
+	// iterator is pointing at a valid entry and false otherwise.
 	Next() bool
 
-	// Prev moves the iterator to the previous key/value pair.
-	// It returns whether the iterator is exhausted.
+	// Prev moves the iterator to the previous key/value pair. Returns true if the
+	// iterator is pointing at a valid entry and false otherwise.
 	Prev() bool
 
 	// Key returns the encoded internal key of the current key/value pair, or nil

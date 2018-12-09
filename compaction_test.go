@@ -589,7 +589,7 @@ func TestCompaction(t *testing.T) {
 
 	get1 := func(iter internalIterator) (ret string) {
 		b := &bytes.Buffer{}
-		for iter.First(); iter.Valid(); iter.Next() {
+		for valid := iter.First(); valid; valid = iter.Next() {
 			b.Write(iter.Key().UserKey)
 		}
 		if err := iter.Close(); err != nil {

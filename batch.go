@@ -560,20 +560,20 @@ type batchIter struct {
 // batchIter implements the internalIterator interface.
 var _ internalIterator = (*batchIter)(nil)
 
-func (i *batchIter) SeekGE(key []byte) {
-	i.iter.SeekGE(key)
+func (i *batchIter) SeekGE(key []byte) bool {
+	return i.iter.SeekGE(key)
 }
 
-func (i *batchIter) SeekLT(key []byte) {
-	i.iter.SeekLT(key)
+func (i *batchIter) SeekLT(key []byte) bool {
+	return i.iter.SeekLT(key)
 }
 
-func (i *batchIter) First() {
-	i.iter.First()
+func (i *batchIter) First() bool {
+	return i.iter.First()
 }
 
-func (i *batchIter) Last() {
-	i.iter.Last()
+func (i *batchIter) Last() bool {
+	return i.iter.Last()
 }
 
 func (i *batchIter) Next() bool {
@@ -749,27 +749,37 @@ type flushableBatchIter struct {
 // flushableBatchIter implements the internalIterator interface.
 var _ internalIterator = (*flushableBatchIter)(nil)
 
-func (i *flushableBatchIter) SeekGE(key []byte) {
+func (i *flushableBatchIter) SeekGE(key []byte) bool {
 	ikey := db.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
 	})
+	return i.index < len(i.offsets)
 }
 
-func (i *flushableBatchIter) SeekLT(key []byte) {
+func (i *flushableBatchIter) SeekLT(key []byte) bool {
 	ikey := db.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	i.index--
+	return i.index >= 0
 }
 
-func (i *flushableBatchIter) First() {
+func (i *flushableBatchIter) First() bool {
+	if len(i.offsets) == 0 {
+		return false
+	}
 	i.index = 0
+	return true
 }
 
-func (i *flushableBatchIter) Last() {
+func (i *flushableBatchIter) Last() bool {
+	if len(i.offsets) == 0 {
+		return false
+	}
 	i.index = len(i.offsets) - 1
+	return true
 }
 
 func (i *flushableBatchIter) Next() bool {

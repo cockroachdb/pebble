@@ -33,19 +33,19 @@ type getIter struct {
 // getIter implements the internalIterator interface.
 var _ internalIterator = (*getIter)(nil)
 
-func (g *getIter) SeekGE(key []byte) {
+func (g *getIter) SeekGE(key []byte) bool {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (g *getIter) SeekLT(key []byte) {
+func (g *getIter) SeekLT(key []byte) bool {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (g *getIter) First() {
-	g.Next()
+func (g *getIter) First() bool {
+	return g.Next()
 }
 
-func (g *getIter) Last() {
+func (g *getIter) Last() bool {
 	panic("pebble: Last unimplemented")
 }
 

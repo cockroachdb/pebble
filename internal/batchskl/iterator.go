@@ -45,17 +45,19 @@ func (it *Iterator) Close() error {
 }
 
 // SeekGE moves the iterator to the first entry whose key is greater than or
-// equal to the given key. Returns true if the given key exists and false
-// otherwise.
-func (it *Iterator) SeekGE(key []byte) (found bool) {
-	_, it.nd, found = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
-	return found
+// equal to the given key. Returns true if the iterator is pointing at a
+// valid entry and false otherwise.
+func (it *Iterator) SeekGE(key []byte) bool {
+	_, it.nd, _ = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
+	return it.nd != it.list.tail
 }
 
 // SeekLT moves the iterator to the last entry whose key is less the given
-// key.
-func (it *Iterator) SeekLT(key []byte) {
+// key. Returns true if the iterator is pointing at a valid entry and false
+// otherwise.
+func (it *Iterator) SeekLT(key []byte) (found bool) {
 	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
+	return it.nd != it.list.head
 }
 
 // First seeks position at the first entry in list.

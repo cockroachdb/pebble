@@ -144,86 +144,98 @@ func (i *Iterator) seekBlock(key []byte, f *blockFilterReader) bool {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *Iterator) SeekGE(key []byte) {
+func (i *Iterator) SeekGE(key []byte) bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 
-	i.index.SeekGE(key)
-	if i.loadBlock() {
-		i.data.SeekGE(key)
+	if !i.index.SeekGE(key) {
+		return false
 	}
+	if !i.loadBlock() {
+		return false
+	}
+	return i.data.SeekGE(key)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *Iterator) SeekLT(key []byte) {
+func (i *Iterator) SeekLT(key []byte) bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
 
-	i.index.SeekGE(key)
-	if !i.index.Valid() {
+	if !i.index.SeekGE(key) {
 		i.index.Last()
 	}
-	if i.loadBlock() {
-		i.data.SeekLT(key)
-		if !i.data.Valid() {
-			// The index contains separator keys which may lie between
-			// user-keys. Consider the user-keys:
-			//
-			//   complete
-			// ---- new block ---
-			//   complexion
-			//
-			// If these two keys end one block and start the next, the index key may
-			// be chosen as "compleu". The SeekGE in the index block will then point
-			// us to the block containing "complexion". If this happens, we want the
-			// last key from the previous data block.
-			i.index.Prev()
-			if i.loadBlock() {
-				i.data.Last()
-			}
-		}
+	if !i.loadBlock() {
+		return false
 	}
+	if i.data.SeekLT(key) {
+		return true
+	}
+	// The index contains separator keys which may lie between
+	// user-keys. Consider the user-keys:
+	//
+	//   complete
+	// ---- new block ---
+	//   complexion
+	//
+	// If these two keys end one block and start the next, the index key may
+	// be chosen as "compleu". The SeekGE in the index block will then point
+	// us to the block containing "complexion". If this happens, we want the
+	// last key from the previous data block.
+	if !i.index.Prev() {
+		return false
+	}
+	if !i.loadBlock() {
+		return false
+	}
+	return i.data.Last()
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *Iterator) First() {
+func (i *Iterator) First() bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
 
-	i.index.First()
-	if i.loadBlock() {
-		i.data.First()
+	if !i.index.First() {
+		return false
 	}
+	if !i.loadBlock() {
+		return false
+	}
+	return i.data.First()
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
-func (i *Iterator) Last() {
+func (i *Iterator) Last() bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
 
-	i.index.Last()
-	if i.loadBlock() {
-		i.data.Last()
+	if !i.index.Last() {
+		return false
 	}
+	if !i.loadBlock() {
+		return false
+	}
+	return i.data.Last()
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
@@ -244,8 +256,7 @@ func (i *Iterator) Next() bool {
 			break
 		}
 		if i.loadBlock() {
-			i.data.First()
-			return true
+			return i.data.First()
 		}
 	}
 	return false
@@ -269,8 +280,7 @@ func (i *Iterator) Prev() bool {
 			break
 		}
 		if i.loadBlock() {
-			i.data.Last()
-			return true
+			return i.data.Last()
 		}
 	}
 	return false
@@ -535,7 +545,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 	}
 
 	meta := map[string]blockHandle{}
-	for i.First(); i.Valid(); i.Next() {
+	for valid := i.First(); valid; valid = i.Next() {
 		bh, n := decodeBlockHandle(i.Value())
 		if n == 0 {
 			return errors.New("pebble/table: invalid table (bad filter block handle)")
@@ -696,7 +706,7 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 
 	// index, r.err = r.readIndex()
 	// iter, _ := newBlockIter(r.compare, index)
-	// for iter.First(); iter.Valid(); iter.Next() {
+	// for valid := iter.First(); valid; valid = iter.Next() {
 	// 	fmt.Printf("%s#%d\n", iter.Key().UserKey, iter.Key().SeqNum())
 	// }
 	return r

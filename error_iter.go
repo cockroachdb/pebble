@@ -16,16 +16,20 @@ func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekGE(key []byte) {
+func (c *errorIter) SeekGE(key []byte) bool {
+	return false
 }
 
-func (c *errorIter) SeekLT(key []byte) {
+func (c *errorIter) SeekLT(key []byte) bool {
+	return false
 }
 
-func (c *errorIter) First() {
+func (c *errorIter) First() bool {
+	return false
 }
 
-func (c *errorIter) Last() {
+func (c *errorIter) Last() bool {
+	return false
 }
 
 func (c *errorIter) Next() bool {

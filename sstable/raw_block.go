@@ -108,7 +108,7 @@ func (i *rawBlockIter) cacheEntry() {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *rawBlockIter) SeekGE(key []byte) {
+func (i *rawBlockIter) SeekGE(key []byte) bool {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
@@ -134,28 +134,30 @@ func (i *rawBlockIter) SeekGE(key []byte) {
 	i.loadEntry()
 
 	// Iterate from that restart point to somewhere >= the key sought.
-	for ; i.Valid(); i.Next() {
+	for valid := i.Valid(); valid; valid = i.Next() {
 		if i.cmp(key, i.key) <= 0 {
 			break
 		}
 	}
+	return i.Valid()
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *rawBlockIter) SeekLT(key []byte) {
+func (i *rawBlockIter) SeekLT(key []byte) bool {
 	panic("pebble/table: SeekLT unimplemented")
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *rawBlockIter) First() {
+func (i *rawBlockIter) First() bool {
 	i.offset = 0
 	i.loadEntry()
+	return i.Valid()
 }
 
 // Last implements internalIterator.Last, as documented in the pebble package.
-func (i *rawBlockIter) Last() {
+func (i *rawBlockIter) Last() bool {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
 
@@ -170,6 +172,7 @@ func (i *rawBlockIter) Last() {
 	}
 
 	i.ikey.UserKey = i.key
+	return i.Valid()
 }
 
 // Next implements internalIterator.Next, as documented in the pebble

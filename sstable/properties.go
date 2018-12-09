@@ -172,7 +172,7 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 	}
 	p.ValueOffsets = make(map[string]uint64)
 	v := reflect.ValueOf(p).Elem()
-	for i.First(); i.Valid(); i.Next() {
+	for valid := i.First(); valid; valid = i.Next() {
 		tag := i.Key().UserKey
 		p.ValueOffsets[string(tag)] = blockOffset + i.valueOffset()
 		if f, ok := propTagMap[string(tag)]; ok {

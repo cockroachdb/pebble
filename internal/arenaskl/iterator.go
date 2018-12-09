@@ -54,28 +54,33 @@ func (it *Iterator) Error() error {
 }
 
 // SeekGE moves the iterator to the first entry whose key is greater than or
-// equal to the given key. Returns true if the given key exists and false
-// otherwise.
-func (it *Iterator) SeekGE(key []byte) {
+// equal to the given key. Returns true if the iterator is pointing at a
+// valid entry and false otherwise.
+func (it *Iterator) SeekGE(key []byte) bool {
 	_, it.nd, _ = it.seekForBaseSplice(key)
+	return it.nd != it.list.tail
 }
 
 // SeekLT moves the iterator to the last entry whose key is less than the given
-// key.
-func (it *Iterator) SeekLT(key []byte) {
+// key. Returns true if the iterator is pointing at a valid entry and false
+// otherwise.
+func (it *Iterator) SeekLT(key []byte) bool {
 	it.nd, _, _ = it.seekForBaseSplice(key)
+	return it.nd != it.list.head
 }
 
 // First seeks position at the first entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (it *Iterator) First() {
+func (it *Iterator) First() bool {
 	it.nd = it.list.getNext(it.list.head, 0)
+	return it.nd != it.list.tail
 }
 
 // Last seeks position at the last entry in list. Final state of iterator is
 // Valid() iff list is not empty.
-func (it *Iterator) Last() {
+func (it *Iterator) Last() bool {
 	it.nd = it.list.getPrev(it.list.tail, 0)
+	return it.nd != it.list.head
 }
 
 // Next advances to the next position. If there are no following nodes, then

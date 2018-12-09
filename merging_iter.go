@@ -278,10 +278,11 @@ func (m *mergingIter) switchToMinHeap() {
 		if i == cur {
 			continue
 		}
-		if !i.Valid() {
-			i.Next()
+		valid := i.Valid()
+		if !valid {
+			valid = i.Next()
 		}
-		for ; i.Valid(); i.Next() {
+		for ; valid; valid = i.Next() {
 			if db.InternalCompare(m.heap.cmp, key, i.Key()) < 0 {
 				// key < iter-key
 				break
@@ -318,10 +319,11 @@ func (m *mergingIter) switchToMaxHeap() {
 		if i == cur {
 			continue
 		}
-		if !i.Valid() {
-			i.Prev()
+		valid := i.Valid()
+		if !valid {
+			valid = i.Prev()
 		}
-		for ; i.Valid(); i.Prev() {
+		for ; valid; valid = i.Prev() {
 			if db.InternalCompare(m.heap.cmp, key, i.Key()) > 0 {
 				// key > iter-key
 				break
@@ -509,9 +511,9 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 	m.initMinHeap()
 }
 
-func (m *mergingIter) SeekGE(key []byte) {
+func (m *mergingIter) SeekGE(key []byte) bool {
 	m.seekGE(key, 0 /* start level */)
-	m.findNextEntry()
+	return m.findNextEntry()
 }
 
 func (m *mergingIter) seekLT(key []byte, level int) {
@@ -536,25 +538,25 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 	m.initMaxHeap()
 }
 
-func (m *mergingIter) SeekLT(key []byte) {
+func (m *mergingIter) SeekLT(key []byte) bool {
 	m.seekLT(key, 0 /* start level */)
-	m.findPrevEntry()
+	return m.findPrevEntry()
 }
 
-func (m *mergingIter) First() {
+func (m *mergingIter) First() bool {
 	for _, t := range m.iters {
 		t.First()
 	}
 	m.initMinHeap()
-	m.findNextEntry()
+	return m.findNextEntry()
 }
 
-func (m *mergingIter) Last() {
+func (m *mergingIter) Last() bool {
 	for _, t := range m.iters {
 		t.Last()
 	}
 	m.initMaxHeap()
-	m.findPrevEntry()
+	return m.findPrevEntry()
 }
 
 func (m *mergingIter) Next() bool {
