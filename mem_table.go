@@ -83,8 +83,7 @@ func (m *memTable) readyForFlush() bool {
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter()
-	it.SeekGE(key)
-	if !it.Valid() {
+	if !it.SeekGE(key) {
 		return nil, db.ErrNotFound
 	}
 	ikey := it.Key()

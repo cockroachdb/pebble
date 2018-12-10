@@ -134,7 +134,8 @@ type compactionIter struct {
 	// Temporary buffer used for aggregating merge operations.
 	valueBuf []byte
 	// Is the current entry valid?
-	valid bool
+	valid     bool
+	iterValid bool
 	// Skip indicates whether the remaining entries in the current snapshot
 	// stripe should be skipped or processed. Skipped is true at the start of a
 	// stripe and set to false afterwards.
@@ -178,7 +179,8 @@ func (i *compactionIter) First() bool {
 	if i.err != nil {
 		return false
 	}
-	if i.iter.First() {
+	i.iterValid = i.iter.First()
+	if i.iterValid {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iter.Key().SeqNum(), i.snapshots)
 	}
 	return i.Next()
@@ -195,7 +197,7 @@ func (i *compactionIter) Next() bool {
 	}
 
 	i.valid = false
-	for i.iter.Valid() {
+	for i.iterValid {
 		i.key = i.iter.Key()
 		switch i.key.Kind() {
 		case db.InternalKeyKindDelete:
@@ -246,7 +248,7 @@ func (i *compactionIter) Next() bool {
 			// them through unmodified.
 			i.saveKey()
 			i.saveValue()
-			i.iter.Next()
+			i.iterValid = i.iter.Next()
 			i.valid = true
 			return true
 
@@ -277,8 +279,8 @@ func (i *compactionIter) skipStripe() {
 }
 
 func (i *compactionIter) nextInStripe() bool {
-	i.iter.Next()
-	if !i.iter.Valid() {
+	i.iterValid = i.iter.Next()
+	if !i.iterValid {
 		return false
 	}
 	key := i.iter.Key()

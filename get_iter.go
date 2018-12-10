@@ -27,6 +27,7 @@ type getIter struct {
 	mem          []flushable
 	l0           []fileMetadata
 	version      *version
+	valid        bool
 	err          error
 }
 
@@ -42,7 +43,8 @@ func (g *getIter) SeekLT(key []byte) bool {
 }
 
 func (g *getIter) First() bool {
-	return g.Next()
+	g.valid = g.Next()
+	return g.valid
 }
 
 func (g *getIter) Last() bool {
@@ -51,7 +53,7 @@ func (g *getIter) Last() bool {
 
 func (g *getIter) Next() bool {
 	if g.iter != nil {
-		g.iter.Next()
+		g.valid = g.iter.Next()
 	}
 
 	for {
@@ -69,7 +71,7 @@ func (g *getIter) Next() bool {
 				g.rangeDelIter = nil
 			}
 
-			if g.iter.Valid() {
+			if g.valid {
 				key := g.iter.Key()
 				if g.tombstone.Deletes(key.SeqNum()) {
 					// We have a range tombstone covering this key. Rather than return a
@@ -82,7 +84,7 @@ func (g *getIter) Next() bool {
 				}
 				if g.cmp(g.key, key.UserKey) == 0 {
 					if !key.Visible(g.snapshot) {
-						g.iter.Next()
+						g.valid = g.iter.Next()
 						continue
 					}
 					return true
@@ -102,7 +104,7 @@ func (g *getIter) Next() bool {
 			g.iter = g.batch.newInternalIter(nil)
 			g.rangeDelIter = g.batch.newRangeDelIter(nil)
 			g.batch = nil
-			g.iter.SeekGE(g.key)
+			g.valid = g.iter.SeekGE(g.key)
 			continue
 		}
 
@@ -118,7 +120,7 @@ func (g *getIter) Next() bool {
 			g.iter = m.newIter(nil)
 			g.rangeDelIter = m.newRangeDelIter(nil)
 			g.mem = g.mem[:n-1]
-			g.iter.SeekGE(g.key)
+			g.valid = g.iter.SeekGE(g.key)
 			continue
 		}
 
@@ -131,7 +133,7 @@ func (g *getIter) Next() bool {
 					return false
 				}
 				g.l0 = g.l0[:n-1]
-				g.iter.SeekGE(g.key)
+				g.valid = g.iter.SeekGE(g.key)
 				continue
 			}
 			g.level++
@@ -149,7 +151,7 @@ func (g *getIter) Next() bool {
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
-		g.iter.SeekGE(g.key)
+		g.valid = g.iter.SeekGE(g.key)
 	}
 }
 
@@ -166,7 +168,7 @@ func (g *getIter) Value() []byte {
 }
 
 func (g *getIter) Valid() bool {
-	return g.iter != nil && g.err == nil
+	return g.valid && g.err == nil
 }
 
 func (g *getIter) Error() error {
