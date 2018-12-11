@@ -140,6 +140,8 @@ type commitEnv struct {
 // the memtable concurrently (using the goroutine that called
 // commitPipeline.commit). Lastly, the commitPipeline publishes that visible
 // sequence number ensuring that the sequence number only ratchets up.
+//
+// TODO(peter): Document the invariants the commitPipeline needs to maintain.
 type commitPipeline struct {
 	env commitEnv
 	// Condition var to signal upon changes to the pending queue.
