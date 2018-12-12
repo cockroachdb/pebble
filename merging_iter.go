@@ -42,7 +42,7 @@ import (
 // exclusive and does not have a sequence number. Consider an sstable
 // containing the range tombstone [a,c)#9 and the key "b#8". The tombstone must
 // delete "b#8", yet older versions of "b" might spill over to the next
-// sstable. So the boundary key for this sstable must be "b#9". Adjusting the
+// sstable. So the boundary key for this sstable must be "b#8". Adjusting the
 // end key of tombstones to be optionally inclusive or contain a sequence
 // number would be possible solutions. The approach taken here performs an
 // implicit truncation of the tombstone to the sstable boundaries.
@@ -76,10 +76,10 @@ import (
 // exist earlier in the L3 or in L0, L1, L2 or a memtable. Get very explicitly
 // uses this invariant to find the value for a key by walking the LSM level by
 // level. For range deletions, this invariant means that a range deletion at
-// level N will necesarily shadow any keys within its bounds in level Y where Y
-// > N. One wrinkle to this statement is that it only applies to keys that lie
-// within the sstable bounds as well, but we get that guarantee due to the way
-// the range deletion iterator and point iterator are bound together by a
+// level N will necessarily shadow any keys within its bounds in level Y where
+// Y > N. One wrinkle to this statement is that it only applies to keys that
+// lie within the sstable bounds as well, but we get that guarantee due to the
+// way the range deletion iterator and point iterator are bound together by a
 // levelIter.
 //
 // Tying the above all together, we get a picture where each level (index in
