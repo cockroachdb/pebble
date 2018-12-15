@@ -44,6 +44,7 @@ Key differences:
 package arenaskl // import "github.com/petermattis/pebble/internal/arenaskl"
 
 import (
+	"encoding/binary"
 	"errors"
 	"math"
 	"math/rand"
@@ -347,16 +348,31 @@ func (s *Skiplist) findSpliceForLevel(
 			break
 		}
 
-		cmp := db.InternalCompare(s.cmp, key, next.getKey(s.arena))
-		if cmp == 0 {
-			// Equality case.
-			found = true
-			break
-		}
-
+		offset, size := next.keyOffset, next.keySize
+		nextKey := s.arena.buf[offset : offset+size]
+		n := size - 8
+		cmp := s.cmp(key.UserKey, nextKey[:n])
 		if cmp < 0 {
 			// We are done for this level, since prev.key < key < next.key.
 			break
+		}
+		if cmp == 0 {
+			// User-key equality.
+			var nextTrailer uint64
+			if n >= 0 {
+				nextTrailer = binary.LittleEndian.Uint64(nextKey[n:])
+			} else {
+				nextTrailer = uint64(db.InternalKeyKindInvalid)
+			}
+			if key.Trailer == nextTrailer {
+				// Internal key equality.
+				found = true
+				break
+			}
+			if key.Trailer > nextTrailer {
+				// We are done for this level, since prev.key < key < next.key.
+				break
+			}
 		}
 
 		// Keep moving right on this level.

@@ -99,7 +99,6 @@ func (it *Iterator) Prev() bool {
 
 // Key returns the key at the current position.
 func (it *Iterator) Key() db.InternalKey {
-	// NB: This is manually inlined from node.getKey() for performance.
 	b := it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
 	// This is a manual inline of db.DecodeInternalKey, because the Go compiler
 	// seems to refuse to automatically inline it currently.
