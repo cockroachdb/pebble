@@ -685,6 +685,7 @@ type flushableBatchEntry struct {
 type flushableBatch struct {
 	batch *Batch
 	cmp   db.Compare
+	data  []byte
 
 	// The base sequence number for the entries in the batch. This is the same
 	// value as Batch.seqNum() and is cached here for performance.
@@ -709,6 +710,7 @@ var _ flushable = (*flushableBatch)(nil)
 func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	b := &flushableBatch{
 		batch:           batch,
+		data:            batch.data,
 		cmp:             comparer.Compare,
 		offsets:         make([]flushableBatchEntry, 0, batch.count()),
 		rangeDelOffsets: nil, // NB: assume no range deletions need indexing
@@ -716,8 +718,8 @@ func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	}
 
 	var index uint32
-	for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; index++ {
-		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&batch.data[0]))
+	for iter := batchReader(b.data[batchHeaderLen:]); len(iter) > 0; index++ {
+		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
 		kind, key, _, ok := iter.next()
 		if !ok {
 			break
@@ -725,7 +727,7 @@ func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 		entry := flushableBatchEntry{
 			offset:   uint32(offset),
 			index:    uint32(index),
-			keyStart: uint32(uintptr(unsafe.Pointer(&key[0])) - uintptr(unsafe.Pointer(&batch.data[0]))),
+			keyStart: uint32(uintptr(unsafe.Pointer(&key[0])) - uintptr(unsafe.Pointer(&b.data[0]))),
 		}
 		entry.keyEnd = entry.keyStart + uint32(len(key))
 		if kind == db.InternalKeyKindRangeDelete {
@@ -750,9 +752,8 @@ func (b *flushableBatch) Len() int {
 func (b *flushableBatch) Less(i, j int) bool {
 	ei := &b.offsets[i]
 	ej := &b.offsets[j]
-	data := b.batch.batchStorage.data
-	ki := data[ei.keyStart:ei.keyEnd]
-	kj := data[ej.keyStart:ej.keyEnd]
+	ki := b.data[ei.keyStart:ei.keyEnd]
+	kj := b.data[ej.keyStart:ej.keyEnd]
 	switch c := b.cmp(ki, kj); {
 	case c < 0:
 		return true
@@ -770,6 +771,7 @@ func (b *flushableBatch) Swap(i, j int) {
 func (b *flushableBatch) newIter(o *db.IterOptions) internalIterator {
 	return &flushableBatchIter{
 		batch:   b,
+		data:    b.data,
 		offsets: b.offsets,
 		cmp:     b.cmp,
 		index:   -1,
@@ -792,6 +794,7 @@ func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) internalIterator {
 		}
 		it := &flushableBatchIter{
 			batch:   b,
+			data:    b.data,
 			offsets: b.rangeDelOffsets,
 			cmp:     b.cmp,
 			index:   -1,
@@ -817,6 +820,7 @@ func (b *flushableBatch) readyForFlush() bool {
 // two in sync.
 type flushableBatchIter struct {
 	batch   *flushableBatch
+	data    []byte
 	offsets []flushableBatchEntry
 	cmp     db.Compare
 	reverse bool
@@ -878,9 +882,8 @@ func (i *flushableBatchIter) Prev() bool {
 
 func (i *flushableBatchIter) getKey(index int) db.InternalKey {
 	e := &i.offsets[index]
-	data := i.batch.batch.data
-	kind := db.InternalKeyKind(data[e.offset])
-	key := data[e.keyStart:e.keyEnd]
+	kind := db.InternalKeyKind(i.data[e.offset])
+	key := i.data[e.keyStart:e.keyEnd]
 	return db.MakeInternalKey(key, i.batch.seqNum+uint64(e.index), kind)
 }
 
