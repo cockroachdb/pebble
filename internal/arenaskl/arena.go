@@ -19,7 +19,6 @@ package arenaskl
 
 import (
 	"errors"
-	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -28,13 +27,6 @@ import (
 type Arena struct {
 	n   uint32
 	buf []byte
-
-	extValues struct {
-		threshold uint32
-		size      uint32
-		sync.RWMutex
-		vals [][]byte
-	}
 }
 
 const (
@@ -49,23 +41,14 @@ var (
 func NewArena(size, extValueThreshold uint32) *Arena {
 	// Don't store data at position 0 in order to reserve offset=0 as a kind
 	// of nil pointer.
-	out := &Arena{
+	return &Arena{
 		n:   1,
 		buf: make([]byte, size),
 	}
-	if extValueThreshold >= size {
-		panic("invalid external value threshold")
-	}
-	if extValueThreshold == 0 {
-		extValueThreshold = size / 4
-	}
-	out.extValues.threshold = extValueThreshold
-
-	return out
 }
 
 func (a *Arena) Size() uint32 {
-	return atomic.LoadUint32(&a.n) + atomic.LoadUint32(&a.extValues.size)
+	return atomic.LoadUint32(&a.n)
 }
 
 func (a *Arena) Capacity() uint32 {
@@ -84,16 +67,6 @@ func (a *Arena) alloc(size, align uint32) (uint32, error) {
 	// Return the aligned offset.
 	offset := (newSize - padded + uint32(align)) & ^uint32(align)
 	return offset, nil
-}
-
-func (a *Arena) allocExtValue(size uint32) int32 {
-	atomic.AddUint32(&a.extValues.size, size)
-	v := make([]byte, size)
-	a.extValues.Lock()
-	i := int32(len(a.extValues.vals))
-	a.extValues.vals = append(a.extValues.vals, v)
-	a.extValues.Unlock()
-	return i
 }
 
 func (a *Arena) getBytes(offset uint32, size uint32) []byte {
@@ -115,11 +88,4 @@ func (a *Arena) getPointerOffset(ptr unsafe.Pointer) uint32 {
 		return 0
 	}
 	return uint32(uintptr(ptr) - uintptr(unsafe.Pointer(&a.buf[0])))
-}
-
-func (a *Arena) getExtValue(i int32) []byte {
-	a.extValues.RLock()
-	v := a.extValues.vals[i]
-	a.extValues.RUnlock()
-	return v
 }

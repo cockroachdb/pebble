@@ -465,29 +465,6 @@ func TestIteratorSeekLT(t *testing.T) {
 	require.EqualValues(t, "", it.Key().UserKey)
 }
 
-func TestExtValue(t *testing.T) {
-	l := NewSkiplist(NewArena(1000, 5), bytes.Compare)
-	l.Add(makeIkey("a"), []byte("aaaaa"))
-	l.Add(makeIkey("b"), []byte("bbbbb"))
-	l.Add(makeIkey("c"), []byte("cccc"))
-
-	it := l.NewIter()
-	it.First()
-	require.True(t, it.Valid())
-	require.True(t, it.nd.valueSize < 0)
-	require.EqualValues(t, "aaaaa", it.Value())
-
-	it.Next()
-	require.True(t, it.Valid())
-	require.True(t, it.nd.valueSize < 0)
-	require.EqualValues(t, "bbbbb", it.Value())
-
-	it.Next()
-	require.True(t, it.Valid())
-	require.True(t, it.nd.valueSize > 0)
-	require.EqualValues(t, "cccc", it.Value())
-}
-
 func randomKey(rng *rand.Rand, b []byte) db.InternalKey {
 	key := rng.Uint32()
 	key2 := rng.Uint32()

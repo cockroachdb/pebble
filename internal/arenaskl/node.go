@@ -89,10 +89,6 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	unusedSize := (maxHeight - int(height)) * linksSize
 	nodeSize := uint32(maxNodeSize - unusedSize)
 	valueIndex := int32(valueSize)
-	if valueSize >= arena.extValues.threshold {
-		valueIndex = -(arena.allocExtValue(valueSize) + 1)
-		valueSize = 0
-	}
 
 	nodeOffset, err := arena.alloc(nodeSize+keySize+valueSize, align4)
 	if err != nil {
@@ -111,9 +107,6 @@ func (n *node) getKeyBytes(arena *Arena) []byte {
 }
 
 func (n *node) getValue(arena *Arena) []byte {
-	if n.valueSize < 0 {
-		return arena.getExtValue(-n.valueSize - 1)
-	}
 	return arena.getBytes(n.keyOffset+n.keySize, uint32(n.valueSize))
 }
 
