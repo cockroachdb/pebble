@@ -446,9 +446,8 @@ func (b *Batch) reset() {
 		} else {
 			// Otherwise, reset the buffer for re-use.
 			b.data = b.data[:batchHeaderLen]
-			for i := 0; i < batchHeaderLen; i++ {
-				b.data[i] = 0
-			}
+			b.setCount(0)
+			b.setSeqNum(0)
 		}
 	}
 }
