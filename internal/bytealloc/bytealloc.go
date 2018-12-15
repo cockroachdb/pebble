@@ -12,21 +12,21 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package pebble
+package bytealloc
 
-// byteAllocator provides chunk allocation of []byte, amortizing the overhead
-// of each allocation. Because the underlying storage for the slices is shared,
-// they should share a similar lifetime in order to avoid pinning large amounts
-// of memory unnecessarily. The allocator itself is a []byte where cap()
-// indicates the total amount of memory and len() is the amount already
-// allocated. The size of the buffer to allocate from is grown exponentially
-// when it runs out of room up to a maximum size (chunkAllocMaxSize).
-type byteAllocator []byte
+// An A provides chunk allocation of []byte, amortizing the overhead of each
+// allocation. Because the underlying storage for the slices is shared, they
+// should share a similar lifetime in order to avoid pinning large amounts of
+// memory unnecessarily. The allocator itself is a []byte where cap() indicates
+// the total amount of memory and len() is the amount already allocated. The
+// size of the buffer to allocate from is grown exponentially when it runs out
+// of room up to a maximum size (chunkAllocMaxSize).
+type A []byte
 
 const chunkAllocMinSize = 512
 const chunkAllocMaxSize = 16384
 
-func (a byteAllocator) reserve(n int) byteAllocator {
+func (a A) reserve(n int) A {
 	allocSize := cap(a) * 2
 	if allocSize < chunkAllocMinSize {
 		allocSize = chunkAllocMinSize
@@ -40,7 +40,7 @@ func (a byteAllocator) reserve(n int) byteAllocator {
 }
 
 // Alloc allocates a new chunk of memory with the specified length.
-func (a byteAllocator) Alloc(n int) (byteAllocator, []byte) {
+func (a A) Alloc(n int) (A, []byte) {
 	if cap(a)-len(a) < n {
 		a = a.reserve(n)
 	}
@@ -51,7 +51,7 @@ func (a byteAllocator) Alloc(n int) (byteAllocator, []byte) {
 }
 
 // Copy allocates a new chunk of memory, initializing it from src.
-func (a byteAllocator) Copy(src []byte) (byteAllocator, []byte) {
+func (a A) Copy(src []byte) (A, []byte) {
 	var alloc []byte
 	a, alloc = a.Alloc(len(src))
 	copy(alloc, src)

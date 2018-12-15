@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/bytealloc"
 	"github.com/petermattis/pebble/internal/rangedel"
 )
 
@@ -152,7 +153,7 @@ type compactionIter struct {
 	// The fragmented tombstones.
 	tombstones []rangedel.Tombstone
 	// Byte allocator for the tombstone keys.
-	alloc          byteAllocator
+	alloc          bytealloc.A
 	elideTombstone func(key []byte) bool
 }
 
