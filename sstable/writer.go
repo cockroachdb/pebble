@@ -162,32 +162,34 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 }
 
 func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
-	// Check that tombstones are being added in fragmented order. If the two
-	// tombstones overlap, their start and end keys must be identical.
-	prevKey := db.DecodeInternalKey(w.rangeDelBlock.curKey)
-	switch c := w.compare(prevKey.UserKey, key.UserKey); {
-	case c > 0:
-		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
-		return w.err
-	case c == 0:
-		prevValue := w.rangeDelBlock.curValue
-		if w.compare(prevValue, value) != 0 {
-			w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-				rangedel.Tombstone{Start: prevKey, End: prevValue},
-				rangedel.Tombstone{Start: key, End: value})
-			return w.err
-		}
-		if prevKey.SeqNum() <= key.SeqNum() {
+	if w.rangeDelBlock.nEntries > 0 {
+		// Check that tombstones are being added in fragmented order. If the two
+		// tombstones overlap, their start and end keys must be identical.
+		prevKey := db.DecodeInternalKey(w.rangeDelBlock.curKey)
+		switch c := w.compare(prevKey.UserKey, key.UserKey); {
+		case c > 0:
 			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
 			return w.err
-		}
-	default:
-		prevValue := w.rangeDelBlock.curValue
-		if w.compare(prevValue, key.UserKey) > 0 {
-			w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-				rangedel.Tombstone{Start: prevKey, End: prevValue},
-				rangedel.Tombstone{Start: key, End: value})
-			return w.err
+		case c == 0:
+			prevValue := w.rangeDelBlock.curValue
+			if w.compare(prevValue, value) != 0 {
+				w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+					rangedel.Tombstone{Start: prevKey, End: prevValue},
+					rangedel.Tombstone{Start: key, End: value})
+				return w.err
+			}
+			if prevKey.SeqNum() <= key.SeqNum() {
+				w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
+				return w.err
+			}
+		default:
+			prevValue := w.rangeDelBlock.curValue
+			if w.compare(prevValue, key.UserKey) > 0 {
+				w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+					rangedel.Tombstone{Start: prevKey, End: prevValue},
+					rangedel.Tombstone{Start: key, End: value})
+				return w.err
+			}
 		}
 	}
 

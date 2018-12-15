@@ -116,6 +116,13 @@ a.RANGEDEL.2:b
 pebble: keys must be added in order: b#1,15 > a#2,15
 
 build-raw
+.RANGEDEL.1:b
+----
+point:   [#0,0,#0,0]
+range:   [#1,15,b#72057594037927935,15]
+seqnums: [1,1]
+
+build-raw
 a.RANGEDEL.1:c
 a.RANGEDEL.2:c
 ----
