@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	batchHeaderLen    = 12
-	invalidBatchCount = 1<<32 - 1
+	batchHeaderLen       = 12
+	batchInitialSize     = 1 << 10 // 1 KB
+	batchMaxRetainedSize = 1 << 20 // 1 MB
+	invalidBatchCount    = 1<<32 - 1
+	maxVarintLen32       = 5
 )
 
 // ErrNotIndexed means that a read operation on a batch failed because the
@@ -140,7 +143,9 @@ func (b *Batch) release() {
 	// NB: This is ugly, but necessary so that we can use atomic.StoreUint32 for
 	// the Batch.applied field. Without using an atomic to clear that field the
 	// Go race detector complains.
-	b.batchStorage = batchStorage{}
+	b.reset()
+	b.cmp = nil
+	b.inlineKey = nil
 	b.memTableSize = 0
 	b.db = nil
 	b.flushable = nil
@@ -152,7 +157,7 @@ func (b *Batch) release() {
 	} else {
 		*b.index = batchskl.Skiplist{}
 		b.index, b.rangeDelIndex = nil, nil
-		indexedBatchPool.Put(b)
+		indexedBatchPool.Put((*indexedBatch)(unsafe.Pointer(b)))
 	}
 }
 
@@ -226,6 +231,17 @@ func (b *Batch) Get(key []byte) (value []byte, err error) {
 	return b.db.getInternal(key, b, nil /* snapshot */)
 }
 
+func (b *Batch) encodeKeyValue(key, value []byte, kind db.InternalKeyKind) uint32 {
+	pos := len(b.data)
+	offset := uint32(pos)
+	b.grow(1 + 2*maxVarintLen32 + len(key) + len(value))
+	b.data[pos] = byte(kind)
+	pos, varlen1 := b.copyStr(pos+1, key)
+	_, varlen2 := b.copyStr(pos, value)
+	b.data = b.data[:len(b.data)-(2*maxVarintLen32-varlen1-varlen2)]
+	return offset
+}
+
 // Set adds an action to the batch that sets the key to map to the value.
 //
 // It is safe to modify the contents of the arguments after Set returns.
@@ -236,10 +252,9 @@ func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
 	if !b.increment() {
 		return ErrInvalidBatch
 	}
-	offset := uint32(len(b.data))
-	b.data = append(b.data, byte(db.InternalKeyKindSet))
-	b.appendStr(key)
-	b.appendStr(value)
+
+	offset := b.encodeKeyValue(key, value, db.InternalKeyKindSet)
+
 	if b.index != nil {
 		if err := b.index.Add(offset); err != nil {
 			// We never add duplicate entries, so an error should never occur.
@@ -262,10 +277,9 @@ func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
 	if !b.increment() {
 		return ErrInvalidBatch
 	}
-	offset := uint32(len(b.data))
-	b.data = append(b.data, byte(db.InternalKeyKindMerge))
-	b.appendStr(key)
-	b.appendStr(value)
+
+	offset := b.encodeKeyValue(key, value, db.InternalKeyKindMerge)
+
 	if b.index != nil {
 		if err := b.index.Add(offset); err != nil {
 			// We never add duplicate entries, so an error should never occur.
@@ -286,9 +300,14 @@ func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
 	if !b.increment() {
 		return ErrInvalidBatch
 	}
-	offset := uint32(len(b.data))
-	b.data = append(b.data, byte(db.InternalKeyKindDelete))
-	b.appendStr(key)
+
+	pos := len(b.data)
+	offset := uint32(pos)
+	b.grow(1 + maxVarintLen32 + len(key))
+	b.data[pos] = byte(db.InternalKeyKindDelete)
+	pos, varlen1 := b.copyStr(pos+1, key)
+	b.data = b.data[:len(b.data)-(maxVarintLen32-varlen1)]
+
 	if b.index != nil {
 		if err := b.index.Add(offset); err != nil {
 			// We never add duplicate entries, so an error should never occur.
@@ -311,10 +330,9 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 	if !b.increment() {
 		return ErrInvalidBatch
 	}
-	offset := uint32(len(b.data))
-	b.data = append(b.data, byte(db.InternalKeyKindRangeDelete))
-	b.appendStr(start)
-	b.appendStr(end)
+
+	offset := b.encodeKeyValue(start, end, db.InternalKeyKindRangeDelete)
+
 	if b.index != nil {
 		// Range deletions are rare, so we lazily allocate the index for them.
 		if b.rangeDelIndex == nil {
@@ -399,6 +417,7 @@ func (b *Batch) Commit(o *db.WriteOptions) error {
 
 // Close implements DB.Close, as documented in the pebble/db package.
 func (b *Batch) Close() error {
+	b.release()
 	return nil
 }
 
@@ -409,11 +428,29 @@ func (b *Batch) Indexed() bool {
 }
 
 func (b *Batch) init(cap int) {
-	n := 256
+	n := batchInitialSize
 	for n < cap {
 		n *= 2
 	}
 	b.data = make([]byte, batchHeaderLen, n)
+}
+
+func (b *Batch) reset() {
+	if b.data != nil {
+		if cap(b.data) > batchMaxRetainedSize {
+			// If the capacity of the buffer is larger than our maximum
+			// retention size, don't re-use it. Let it be GC-ed instead.
+			// This prevents the memory from an unusually large batch from
+			// being held on to indefinitely.
+			b.data = nil
+		} else {
+			// Otherwise, reset the buffer for re-use.
+			b.data = b.data[:batchHeaderLen]
+			for i := 0; i < batchHeaderLen; i++ {
+				b.data[i] = 0
+			}
+		}
+	}
 }
 
 // seqNumData returns the 8 byte little-endian sequence number. Zero means that
@@ -444,11 +481,34 @@ func (b *Batch) increment() (ok bool) {
 	return false
 }
 
-func (b *Batch) appendStr(s []byte) {
-	var buf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(buf[:], uint64(len(s)))
-	b.data = append(b.data, buf[:n]...)
-	b.data = append(b.data, s...)
+func (b *Batch) grow(n int) {
+	newSize := len(b.data) + n
+	if newSize > cap(b.data) {
+		newCap := 2 * cap(b.data)
+		for newCap < newSize {
+			newCap *= 2
+		}
+		newData := make([]byte, len(b.data), newCap)
+		copy(newData, b.data)
+		b.data = newData
+	}
+	b.data = b.data[:newSize]
+}
+
+func putUvarint32(buf []byte, x uint32) int {
+	i := 0
+	for x >= 0x80 {
+		buf[i] = byte(x) | 0x80
+		x >>= 7
+		i++
+	}
+	buf[i] = byte(x)
+	return i + 1
+}
+
+func (b *Batch) copyStr(pos int, s []byte) (int, int) {
+	n := putUvarint32(b.data[pos:], uint32(len(s)))
+	return pos + n + copy(b.data[pos+n:], s), n
 }
 
 func (b *Batch) setSeqNum(seqNum uint64) {

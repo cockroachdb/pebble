@@ -398,11 +398,12 @@ func BenchmarkBatchSet(b *testing.B) {
 			end = b.N
 		}
 
-		var batch Batch
+		batch := newBatch(nil)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value, nil)
 		}
+		batch.release()
 	}
 
 	b.StopTimer()
@@ -429,6 +430,7 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value, nil)
 		}
+		batch.release()
 	}
 
 	b.StopTimer()

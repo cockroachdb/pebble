@@ -1,26 +1,26 @@
 goos: darwin
 goarch: amd64
 pkg: github.com/petermattis/pebble
-BenchmarkBatchSet-8             	30000000	        42.8 ns/op
-BenchmarkBatchSet-8             	30000000	        42.6 ns/op
-BenchmarkBatchSet-8             	30000000	        42.5 ns/op
-BenchmarkBatchSet-8             	30000000	        42.7 ns/op
-BenchmarkBatchSet-8             	30000000	        42.4 ns/op
-BenchmarkBatchSet-8             	30000000	        42.6 ns/op
-BenchmarkBatchSet-8             	30000000	        42.9 ns/op
-BenchmarkBatchSet-8             	30000000	        42.5 ns/op
-BenchmarkBatchSet-8             	30000000	        43.0 ns/op
-BenchmarkBatchSet-8             	30000000	        42.5 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       190 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       189 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       188 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       189 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       189 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       189 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       189 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       188 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       190 ns/op
-BenchmarkIndexedBatchSet-8      	10000000	       190 ns/op
+BenchmarkBatchSet-8          	50000000	        28.0 ns/op
+BenchmarkBatchSet-8          	50000000	        27.7 ns/op
+BenchmarkBatchSet-8          	50000000	        28.0 ns/op
+BenchmarkBatchSet-8          	50000000	        28.1 ns/op
+BenchmarkBatchSet-8          	50000000	        28.0 ns/op
+BenchmarkBatchSet-8          	50000000	        28.0 ns/op
+BenchmarkBatchSet-8          	50000000	        28.1 ns/op
+BenchmarkBatchSet-8          	50000000	        28.4 ns/op
+BenchmarkBatchSet-8          	50000000	        28.3 ns/op
+BenchmarkBatchSet-8          	50000000	        28.3 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       169 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       167 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       166 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       168 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       167 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       166 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       168 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       168 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       166 ns/op
+BenchmarkIndexedBatchSet-8   	10000000	       167 ns/op
 BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1883 ns/op	   8.49 MB/s
 BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1866 ns/op	   8.57 MB/s
 BenchmarkCommitPipeline/parallel=1-8         	 1000000	      1853 ns/op	   8.63 MB/s
