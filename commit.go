@@ -352,7 +352,8 @@ func (p *commitPipeline) publish(b *Batch) {
 	for {
 		t := p.pending.dequeue(&p.cond)
 		if t == nil {
-			// Wait for another goroutine to publish us.
+			// Wait for another goroutine to publish us. We might also be waiting for
+			// the WAL sync to finish.
 			b.commit.Wait()
 			break
 		}

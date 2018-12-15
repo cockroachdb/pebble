@@ -16,6 +16,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/batchskl"
 	"github.com/petermattis/pebble/internal/rangedel"
+	"github.com/petermattis/pebble/internal/rawalloc"
 )
 
 const (
@@ -432,7 +433,10 @@ func (b *Batch) init(cap int) {
 	for n < cap {
 		n *= 2
 	}
-	b.data = make([]byte, batchHeaderLen, n)
+	b.data = rawalloc.New(n)
+	b.setCount(0)
+	b.setSeqNum(0)
+	b.data = b.data[:batchHeaderLen]
 }
 
 func (b *Batch) reset() {
@@ -487,7 +491,8 @@ func (b *Batch) grow(n int) {
 		for newCap < newSize {
 			newCap *= 2
 		}
-		newData := make([]byte, len(b.data), newCap)
+		newData := rawalloc.New(newCap)
+		newData = newData[:len(b.data)]
 		copy(newData, b.data)
 		b.data = newData
 	}
@@ -669,8 +674,10 @@ func (i *batchIter) Close() error {
 }
 
 type flushableBatchEntry struct {
-	offset uint32
-	index  uint32
+	offset   uint32
+	index    uint32
+	keyStart uint32
+	keyEnd   uint32
 }
 
 // flushableBatch wraps an existing batch and provides the interfaces needed
@@ -711,14 +718,16 @@ func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	var index uint32
 	for iter := batchReader(batch.data[batchHeaderLen:]); len(iter) > 0; index++ {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&batch.data[0]))
-		kind, _, _, ok := iter.next()
+		kind, key, _, ok := iter.next()
 		if !ok {
 			break
 		}
 		entry := flushableBatchEntry{
-			offset: uint32(offset),
-			index:  uint32(index),
+			offset:   uint32(offset),
+			index:    uint32(index),
+			keyStart: uint32(uintptr(unsafe.Pointer(&key[0])) - uintptr(unsafe.Pointer(&batch.data[0]))),
 		}
+		entry.keyEnd = entry.keyStart + uint32(len(key))
 		if kind == db.InternalKeyKindRangeDelete {
 			b.rangeDelOffsets = append(b.rangeDelOffsets, entry)
 		} else {
@@ -739,9 +748,19 @@ func (b *flushableBatch) Len() int {
 }
 
 func (b *flushableBatch) Less(i, j int) bool {
-	return db.InternalCompare(b.cmp,
-		b.batch.batchStorage.Get(b.offsets[i].offset),
-		b.batch.batchStorage.Get(b.offsets[j].offset)) < 0
+	ei := &b.offsets[i]
+	ej := &b.offsets[j]
+	data := b.batch.batchStorage.data
+	ki := data[ei.keyStart:ei.keyEnd]
+	kj := data[ej.keyStart:ej.keyEnd]
+	switch c := b.cmp(ki, kj); {
+	case c < 0:
+		return true
+	case c > 0:
+		return false
+	default:
+		return ei.offset > ej.offset
+	}
 }
 
 func (b *flushableBatch) Swap(i, j int) {
@@ -858,13 +877,11 @@ func (i *flushableBatchIter) Prev() bool {
 }
 
 func (i *flushableBatchIter) getKey(index int) db.InternalKey {
-	entry := i.offsets[index]
-	kind := db.InternalKeyKind(i.batch.batch.data[entry.offset])
-	_, key, ok := batchDecodeStr(i.batch.batch.data[entry.offset+1:])
-	if !ok {
-		panic(fmt.Sprintf("corrupted batch entry: %d", entry.offset))
-	}
-	return db.MakeInternalKey(key, i.batch.seqNum+uint64(entry.index), kind)
+	e := &i.offsets[index]
+	data := i.batch.batch.data
+	kind := db.InternalKeyKind(data[e.offset])
+	key := data[e.keyStart:e.keyEnd]
+	return db.MakeInternalKey(key, i.batch.seqNum+uint64(e.index), kind)
 }
 
 func (i *flushableBatchIter) Key() db.InternalKey {
