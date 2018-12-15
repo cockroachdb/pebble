@@ -628,6 +628,16 @@ func (d *DB) Flush() error {
 	return nil
 }
 
+// AsyncFlush asynchronously flushes the memtable to stable storage.
+//
+// TODO(peter): untested
+func (d *DB) AsyncFlush() error {
+	d.mu.Lock()
+	err := d.makeRoomForWrite(nil)
+	d.mu.Unlock()
+	return err
+}
+
 func (d *DB) throttleWrite() {
 	if len(d.mu.versions.currentVersion().files[0]) <= d.opts.L0SlowdownWritesThreshold {
 		return
