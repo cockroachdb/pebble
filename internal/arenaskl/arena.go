@@ -21,6 +21,8 @@ import (
 	"errors"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/petermattis/pebble/internal/rawalloc"
 )
 
 // Arena should be lock-free.
@@ -43,7 +45,7 @@ func NewArena(size, extValueThreshold uint32) *Arena {
 	// of nil pointer.
 	return &Arena{
 		n:   1,
-		buf: make([]byte, size),
+		buf: rawalloc.New(int(size)),
 	}
 }
 
