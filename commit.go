@@ -172,11 +172,6 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 }
 
 func (p *commitPipeline) syncLoop() {
-	// Prevent other goroutines from running on this thread, which will be
-	// spending most of its time either waiting for in the kernel.
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	s := &p.syncer
 	s.Lock()
 	defer s.Unlock()
