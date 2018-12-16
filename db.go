@@ -6,6 +6,7 @@
 package pebble // import "github.com/petermattis/pebble"
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/record"
+	"github.com/petermattis/pebble/storage"
 )
 
 const (
@@ -331,6 +333,10 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 }
 
 func (d *DB) commitSync() error {
+	if d.opts.DisableWAL {
+		return errors.New("pebble: WAL disabled")
+	}
+
 	d.mu.Lock()
 	log := d.mu.log.LogWriter
 	d.mu.Unlock()
@@ -354,6 +360,10 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 	// batch.
 	if err := d.makeRoomForWrite(b); err != nil {
 		return nil, err
+	}
+
+	if d.opts.DisableWAL {
+		return d.mu.mem.mutable, nil
 	}
 
 	_, err := d.mu.log.WriteRecord(b.data)
@@ -686,21 +696,27 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			continue
 		}
 
-		newLogNumber := d.mu.versions.nextFileNum()
-		d.mu.mem.switching = true
-		d.mu.Unlock()
+		var newLogNumber uint64
+		var newLogFile storage.File
+		var err error
 
-		newLogFile, err := d.opts.Storage.Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
-		if err == nil {
-			err = d.mu.log.Close()
-			if err != nil {
-				newLogFile.Close()
+		if !d.opts.DisableWAL {
+			newLogNumber = d.mu.versions.nextFileNum()
+			d.mu.mem.switching = true
+			d.mu.Unlock()
+
+			newLogFile, err = d.opts.Storage.Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
+			if err == nil {
+				err = d.mu.log.Close()
+				if err != nil {
+					newLogFile.Close()
+				}
 			}
-		}
 
-		d.mu.Lock()
-		d.mu.mem.switching = false
-		d.mu.mem.cond.Broadcast()
+			d.mu.Lock()
+			d.mu.mem.switching = false
+			d.mu.mem.cond.Broadcast()
+		}
 
 		if err != nil {
 			// TODO(peter): avoid chewing through file numbers in a tight loop if there
@@ -714,8 +730,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// NB: When the immutable memtable is flushed to disk it will apply a
 		// versionEdit to the manifest telling it that log files < d.mu.log.number
 		// have been applied.
-		d.mu.log.number = newLogNumber
-		d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
+		if !d.opts.DisableWAL {
+			d.mu.log.number = newLogNumber
+			d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
+		}
 		imm := d.mu.mem.mutable
 		if imm.empty() {
 			// If the mutable memtable is empty, then remove it from the queue. We'll

@@ -192,6 +192,13 @@ type Options struct {
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
 
+	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
+	// crash recovery, but can improve performance if crash recovery is not
+	// needed (e.g. when only temporary state is being stored in the database).
+	//
+	// TODO(peter): untested
+	DisableWAL bool
+
 	// ErrorIfDBExists is whether it is an error if the database already exists.
 	//
 	// The default value is false.
@@ -340,6 +347,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
 	fmt.Fprintf(&buf, "  cache_size=%d\n", o.Cache.MaxSize())
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
+	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_slowdown_writes_threshold=%d\n", o.L0SlowdownWritesThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
