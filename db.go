@@ -616,8 +616,6 @@ func (d *DB) manualCompact(manual *manualCompaction) error {
 }
 
 // Flush the memtable to stable storage.
-//
-// TODO(peter): untested
 func (d *DB) Flush() error {
 	d.mu.Lock()
 	mem := d.mu.mem.mutable

@@ -1,0 +1,47 @@
+batch
+set a 1
+set b 2
+----
+
+flush
+----
+0: a#0,1-b#1,1
+
+reset
+----
+
+batch
+set a 1
+set b 2
+del a
+del b
+----
+
+flush
+----
+0: a#2,0-b#3,0
+
+reset
+----
+
+batch
+set a 1
+set b 2
+del-range a c
+----
+
+flush
+----
+0: a#2,15-c#72057594037927935,15
+
+reset
+----
+
+batch
+set a 1
+set b 2
+----
+
+async-flush
+----
+0: a#0,1-b#1,1
