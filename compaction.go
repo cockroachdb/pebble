@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
+
+var errEmptyTable = errors.New("pebble: empty table")
 
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
@@ -216,6 +219,19 @@ func (c *compaction) elideTombstone(key []byte) bool {
 	return true
 }
 
+// elideRangeTombstone returns true if it is ok to elide the specified range
+// tombstone. A return value of true guarantees that there are no key/value
+// pairs at c.level+2 or higher that possibly overlap the specified tombstone.
+func (c *compaction) elideRangeTombstone(start, end []byte) bool {
+	for level := c.level + 2; level < numLevels; level++ {
+		overlaps := c.version.overlaps(level, c.cmp, start, end)
+		if len(overlaps) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
 	newIters tableNewIters,
@@ -385,7 +401,8 @@ func (d *DB) flush1() error {
 		})
 	}
 
-	meta, err := d.writeLevel0Table(d.opts.Storage, iter)
+	meta, err := d.writeLevel0Table(d.opts.Storage, iter,
+		true /* allowRangeTombstoneElision */)
 
 	if d.opts.EventListener != nil && d.opts.EventListener.FlushEnd != nil {
 		info := db.FlushInfo{
@@ -396,6 +413,16 @@ func (d *DB) flush1() error {
 			info.Output = meta.tableInfo(d.dirname)
 		}
 		d.opts.EventListener.FlushEnd(info)
+	}
+
+	if err == errEmptyTable {
+		// The flush succeed, but produced an empty sstable. Mark all the
+		// memtables we flushed as flushed.
+		for i := 0; i < n; i++ {
+			close(d.mu.mem.queue[i].flushed())
+		}
+		d.mu.mem.queue = d.mu.mem.queue[n:]
+		return nil
 	}
 
 	if err != nil {
@@ -442,7 +469,7 @@ func (d *DB) flush1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(
-	fs storage.Storage, iiter internalIterator,
+	fs storage.Storage, iiter internalIterator, allowRangeTombstoneElision bool,
 ) (meta fileMetadata, err error) {
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
@@ -454,15 +481,31 @@ func (d *DB) writeLevel0Table(
 	}(meta.fileNum)
 
 	snapshots := d.mu.snapshots.toSlice()
+	version := d.mu.versions.currentVersion()
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
+	elideRangeTombstone := func(start, end []byte) bool {
+		if !allowRangeTombstoneElision {
+			return false
+		}
+		for level := 0; level < numLevels; level++ {
+			overlaps := version.overlaps(level, d.cmp, start, end)
+			if len(overlaps) > 0 {
+				return false
+			}
+		}
+		return true
+	}
+
 	iter := newCompactionIter(
 		d.cmp, d.merge, iiter, snapshots,
-		func([]byte) bool { return false })
+		func([]byte) bool { return false },
+		elideRangeTombstone,
+	)
 	var (
 		file storage.File
 		tw   *sstable.Writer
@@ -487,16 +530,19 @@ func (d *DB) writeLevel0Table(
 	file = newRateLimitedFile(file, d.flushController)
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
+	var count int
 	for valid := iter.First(); valid; valid = iter.Next() {
 		if err1 := tw.Add(iter.Key(), iter.Value()); err1 != nil {
 			return fileMetadata{}, err1
 		}
+		count++
 	}
 
 	for _, v := range iter.Tombstones(nil) {
 		if err1 := tw.Add(v.Start, v.End); err1 != nil {
 			return fileMetadata{}, err1
 		}
+		count++
 	}
 
 	if err1 := iter.Close(); err1 != nil {
@@ -508,6 +554,12 @@ func (d *DB) writeLevel0Table(
 	if err1 := tw.Close(); err1 != nil {
 		tw = nil
 		return fileMetadata{}, err1
+	}
+
+	if count == 0 {
+		// The flush may have produced an empty table if a range tombstone deleted
+		// all the entries in the table and the range tombstone could be elided.
+		return fileMetadata{}, errEmptyTable
 	}
 
 	writerMeta, err := tw.Metadata()
@@ -686,7 +738,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
-	iter := newCompactionIter(d.cmp, d.merge, iiter, snapshots, c.elideTombstone)
+	iter := newCompactionIter(d.cmp, d.merge, iiter, snapshots,
+		c.elideTombstone, c.elideRangeTombstone)
 
 	var (
 		filenames []string

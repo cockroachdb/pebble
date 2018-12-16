@@ -178,7 +178,8 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
 			iter = newMergingIter(d.cmp, iter, rangeDelIter)
 		}
-		meta, err := d.writeLevel0Table(d.opts.Storage, iter)
+		meta, err := d.writeLevel0Table(d.opts.Storage, iter,
+			false /* allowRangeTombstoneElision */)
 		if err != nil {
 			return nil
 		}

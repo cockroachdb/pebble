@@ -153,8 +153,9 @@ type compactionIter struct {
 	// The fragmented tombstones.
 	tombstones []rangedel.Tombstone
 	// Byte allocator for the tombstone keys.
-	alloc          bytealloc.A
-	elideTombstone func(key []byte) bool
+	alloc               bytealloc.A
+	elideTombstone      func(key []byte) bool
+	elideRangeTombstone func(start, end []byte) bool
 }
 
 func newCompactionIter(
@@ -162,14 +163,16 @@ func newCompactionIter(
 	merge db.Merge,
 	iter internalIterator,
 	snapshots []uint64,
-	elideTombstones func(key []byte) bool,
+	elideTombstone func(key []byte) bool,
+	elideRangeTombstone func(start, end []byte) bool,
 ) *compactionIter {
 	i := &compactionIter{
-		cmp:            cmp,
-		merge:          merge,
-		iter:           iter,
-		snapshots:      snapshots,
-		elideTombstone: elideTombstones,
+		cmp:                 cmp,
+		merge:               merge,
+		iter:                iter,
+		snapshots:           snapshots,
+		elideTombstone:      elideTombstone,
+		elideRangeTombstone: elideRangeTombstone,
 	}
 	i.rangeDelFrag.Cmp = cmp
 	i.rangeDelFrag.Emit = i.emitRangeDelChunk
@@ -431,14 +434,17 @@ func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
 		if currentIdx == idx {
 			continue
 		}
-		i.tombstones = append(i.tombstones, v)
-		currentIdx = idx
-		if currentIdx == 0 {
-			// This is the last snapshot stripe.
-			//
-			// TODO(peter,rangedel): Check to see whether the range tombstone can be
-			// elided. Need to add an elideRangeTombstone callback.
+		if idx == 0 && i.elideRangeTombstone(v.Start.UserKey, v.End) {
+			// This is the last snapshot stripe and the range tombstone can be
+			// elided.
 			break
 		}
+
+		i.tombstones = append(i.tombstones, v)
+		if idx == 0 {
+			// This is the last snapshot stripe.
+			break
+		}
+		currentIdx = idx
 	}
 }

@@ -61,6 +61,9 @@ func TestCompactionIter(t *testing.T) {
 			func([]byte) bool {
 				return elideTombstones
 			},
+			func(_, _ []byte) bool {
+				return elideTombstones
+			},
 		)
 	}
 

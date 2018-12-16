@@ -268,7 +268,8 @@ func (d *DB) replayWAL(
 	}
 
 	if mem != nil && !mem.empty() {
-		meta, err := d.writeLevel0Table(fs, mem.newIter(nil))
+		meta, err := d.writeLevel0Table(fs, mem.newIter(nil),
+			true /* allowRangeTombstoneElision */)
 		if err != nil {
 			return 0, err
 		}
