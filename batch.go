@@ -727,11 +727,17 @@ func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 			break
 		}
 		entry := flushableBatchEntry{
-			offset:   uint32(offset),
-			index:    uint32(index),
-			keyStart: uint32(uintptr(unsafe.Pointer(&key[0])) - uintptr(unsafe.Pointer(&b.data[0]))),
+			offset: uint32(offset),
+			index:  uint32(index),
 		}
-		entry.keyEnd = entry.keyStart + uint32(len(key))
+		if keySize := uint32(len(key)); keySize == 0 {
+			entry.keyStart = uint32(offset)
+			entry.keyEnd = uint32(offset)
+		} else {
+			entry.keyStart = uint32(uintptr(unsafe.Pointer(&key[0])) -
+				uintptr(unsafe.Pointer(&b.data[0])))
+			entry.keyEnd = entry.keyStart + keySize
+		}
 		if kind == db.InternalKeyKindRangeDelete {
 			b.rangeDelOffsets = append(b.rangeDelOffsets, entry)
 		} else {

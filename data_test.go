@@ -118,6 +118,9 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 		if len(parts) == 0 {
 			continue
 		}
+		if parts[1] == `<nil>` {
+			parts[1] = ""
+		}
 		var err error
 		switch parts[0] {
 		case "set":

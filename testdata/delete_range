@@ -79,3 +79,19 @@ b#3,15:c
 b#2,15:c
 b#1,15:c
 c#3,15:d
+
+clear
+----
+
+define
+set <nil> 1
+del-range <nil> d
+----
+
+scan
+----
+#0,1:1
+
+scan range-del
+----
+#1,15:d
