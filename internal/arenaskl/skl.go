@@ -94,6 +94,17 @@ type Skiplist struct {
 	testing bool
 }
 
+// Inserter TODO(peter)
+type Inserter struct {
+	spl    [maxHeight]splice
+	height uint32
+}
+
+// Add TODO(peter)
+func (ins *Inserter) Add(list *Skiplist, key db.InternalKey, value []byte) error {
+	return list.addInternal(key, value, ins)
+}
+
 var (
 	probabilities [maxHeight]uint32
 )
@@ -164,8 +175,12 @@ func (s *Skiplist) Size() uint32 { return s.arena.Size() }
 // Add returns ErrRecordExists. If there isn't enough room in the arena, then
 // Add returns ErrArenaFull.
 func (s *Skiplist) Add(key db.InternalKey, value []byte) error {
-	var spl [maxHeight]splice
-	if s.findSplice(key, &spl) {
+	var ins Inserter
+	return s.addInternal(key, value, &ins)
+}
+
+func (s *Skiplist) addInternal(key db.InternalKey, value []byte, ins *Inserter) error {
+	if s.findSplice(key, ins) {
 		// Found a matching node, but handle case where it's been deleted.
 		return ErrRecordExists
 	}
@@ -188,9 +203,10 @@ func (s *Skiplist) Add(key db.InternalKey, value []byte) error {
 	// level, we cannot create a node in the level above because it would have
 	// discovered the node in the base level.
 	var found bool
+	var invalidateSplice bool
 	for i := 0; i < int(height); i++ {
-		prev := spl[i].prev
-		next := spl[i].next
+		prev := ins.spl[i].prev
+		next := ins.spl[i].next
 
 		if prev == nil {
 			// New node increased the height of the skiplist, so assume that the
@@ -265,6 +281,20 @@ func (s *Skiplist) Add(key db.InternalKey, value []byte) error {
 
 				return ErrRecordExists
 			}
+			invalidateSplice = true
+		}
+	}
+
+	// If we had to recompute the splice for a level, invalidate the entire
+	// cached splice.
+	if invalidateSplice {
+		ins.height = 0
+	} else {
+		// The splice was valid. We inserted a node between spl[i].prev and
+		// spl[i].next. Optimistically update spl[i].prev for use in a subsequent
+		// call to add.
+		for i := uint32(0); i < height; i++ {
+			ins.spl[i].prev = nd
 		}
 	}
 
@@ -313,23 +343,48 @@ func (s *Skiplist) randomHeight() uint32 {
 	return h
 }
 
-func (s *Skiplist) findSplice(key db.InternalKey, spl *[maxHeight]splice) (found bool) {
-	level := int(s.Height() - 1)
-	prev, next := s.head, (*node)(nil)
+func (s *Skiplist) findSplice(key db.InternalKey, ins *Inserter) (found bool) {
+	listHeight := s.Height()
+	var level int
 
-	for {
+	prev, next := s.head, (*node)(nil)
+	if ins.height < listHeight {
+		// Our cached height is less than the list height, which means there were
+		// inserts that increased the height of the list. Recompute the splice from
+		// scratch.
+		ins.height = listHeight
+		level = int(ins.height)
+	} else {
+		// Our cached height is equal to the list height.
+		for ; level < int(listHeight); level++ {
+			spl := &ins.spl[level]
+			if s.getNext(spl.prev, level) != spl.next {
+				// One or more nodes have been inserted between the splice at this
+				// level.
+				continue
+			}
+			if spl.prev != s.head && !s.keyIsAfterNode(spl.prev, key) {
+				// Key lies before splice.
+				level = int(listHeight)
+				break
+			}
+			if spl.next != s.tail && s.keyIsAfterNode(spl.next, key) {
+				// Key lies after splice.
+				level = int(listHeight)
+				break
+			}
+			// The splice brackets the key!
+			prev, next = spl.prev, spl.next
+			break
+		}
+	}
+
+	for level = level - 1; level >= 0; level-- {
 		prev, next, found = s.findSpliceForLevel(key, level, prev)
 		if next == nil {
 			next = s.tail
 		}
-
-		spl[level].init(prev, next)
-
-		if level == 0 {
-			break
-		}
-
-		level--
+		ins.spl[level].init(prev, next)
 	}
 
 	return
@@ -380,6 +435,30 @@ func (s *Skiplist) findSpliceForLevel(
 	}
 
 	return
+}
+
+func (s *Skiplist) keyIsAfterNode(nd *node, key db.InternalKey) bool {
+	ndKey := s.arena.buf[nd.keyOffset : nd.keyOffset+nd.keySize]
+	n := nd.keySize - 8
+	cmp := s.cmp(ndKey[:n], key.UserKey)
+	if cmp < 0 {
+		return true
+	}
+	if cmp > 0 {
+		return false
+	}
+	// User-key equality.
+	var ndTrailer uint64
+	if n >= 0 {
+		ndTrailer = binary.LittleEndian.Uint64(ndKey[n:])
+	} else {
+		ndTrailer = uint64(db.InternalKeyKindInvalid)
+	}
+	if key.Trailer == ndTrailer {
+		// Internal key equality.
+		return false
+	}
+	return key.Trailer < ndTrailer
 }
 
 func (s *Skiplist) getNext(nd *node, h int) *node {

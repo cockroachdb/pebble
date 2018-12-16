@@ -50,6 +50,13 @@ func makeValue(i int) []byte {
 	return []byte(fmt.Sprintf("v%05d", i))
 }
 
+func makeInserterAdd(s *Skiplist) func(key db.InternalKey, value []byte) error {
+	ins := &Inserter{}
+	return func(key db.InternalKey, value []byte) error {
+		return ins.Add(s, key, value)
+	}
+}
+
 // length iterates over skiplist to give exact size.
 func length(s *Skiplist) int {
 	count := 0
@@ -111,64 +118,114 @@ func TestFull(t *testing.T) {
 
 // TestBasic tests single-threaded seeks and adds.
 func TestBasic(t *testing.T) {
-	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter()
+	for _, inserter := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
+			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+			it := l.NewIter()
 
-	// Try adding values.
-	l.Add(makeIkey("key1"), makeValue(1))
-	l.Add(makeIkey("key3"), makeValue(3))
-	l.Add(makeIkey("key2"), makeValue(2))
+			add := l.Add
+			if inserter {
+				add = makeInserterAdd(l)
+			}
 
-	require.True(t, it.SeekGE(makeKey("key")))
-	require.True(t, it.Valid())
-	require.NotEqual(t, "key", it.Key().UserKey)
+			// Try adding values.
+			add(makeIkey("key1"), makeValue(1))
+			add(makeIkey("key3"), makeValue(3))
+			add(makeIkey("key2"), makeValue(2))
 
-	require.True(t, it.SeekGE(makeKey("key1")))
-	require.EqualValues(t, "key1", it.Key().UserKey)
-	require.EqualValues(t, makeValue(1), it.Value())
+			require.True(t, it.SeekGE(makeKey("key")))
+			require.True(t, it.Valid())
+			require.NotEqual(t, "key", it.Key().UserKey)
 
-	require.True(t, it.SeekGE(makeKey("key2")))
-	require.EqualValues(t, "key2", it.Key().UserKey)
-	require.EqualValues(t, makeValue(2), it.Value())
+			require.True(t, it.SeekGE(makeKey("key1")))
+			require.EqualValues(t, "key1", it.Key().UserKey)
+			require.EqualValues(t, makeValue(1), it.Value())
 
-	require.True(t, it.SeekGE(makeKey("key3")))
-	require.EqualValues(t, "key3", it.Key().UserKey)
-	require.EqualValues(t, makeValue(3), it.Value())
+			require.True(t, it.SeekGE(makeKey("key2")))
+			require.EqualValues(t, "key2", it.Key().UserKey)
+			require.EqualValues(t, makeValue(2), it.Value())
+
+			require.True(t, it.SeekGE(makeKey("key3")))
+			require.EqualValues(t, "key3", it.Key().UserKey)
+			require.EqualValues(t, makeValue(3), it.Value())
+
+			key := makeIkey("a")
+			key.SetSeqNum(1)
+			add(key, nil)
+			key.SetSeqNum(2)
+			add(key, nil)
+
+			require.True(t, it.SeekGE(makeKey("a")))
+			require.True(t, it.Valid())
+			require.EqualValues(t, "a", it.Key().UserKey)
+			require.EqualValues(t, 2, it.Key().SeqNum())
+
+			require.True(t, it.Next())
+			require.True(t, it.Valid())
+			require.EqualValues(t, "a", it.Key().UserKey)
+			require.EqualValues(t, 1, it.Key().SeqNum())
+
+			key = makeIkey("b")
+			key.SetSeqNum(2)
+			add(key, nil)
+			key.SetSeqNum(1)
+			add(key, nil)
+
+			require.True(t, it.SeekGE(makeKey("b")))
+			require.True(t, it.Valid())
+			require.EqualValues(t, "b", it.Key().UserKey)
+			require.EqualValues(t, 2, it.Key().SeqNum())
+
+			require.True(t, it.Next())
+			require.True(t, it.Valid())
+			require.EqualValues(t, "b", it.Key().UserKey)
+			require.EqualValues(t, 1, it.Key().SeqNum())
+		})
+	}
 }
 
 // TestConcurrentBasic tests concurrent writes followed by concurrent reads.
 func TestConcurrentBasic(t *testing.T) {
 	const n = 1000
 
-	// Set testing flag to make it easier to trigger unusual race conditions.
-	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	l.testing = true
+	for _, inserter := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
+			// Set testing flag to make it easier to trigger unusual race conditions.
+			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+			l.testing = true
 
-	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+			var wg sync.WaitGroup
+			for i := 0; i < n; i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
 
-			l.Add(makeIntKey(i), makeValue(i))
-		}(i)
+					if inserter {
+						var ins Inserter
+						ins.Add(l, makeIntKey(i), makeValue(i))
+					} else {
+						l.Add(makeIntKey(i), makeValue(i))
+					}
+				}(i)
+			}
+			wg.Wait()
+
+			// Check values. Concurrent reads.
+			for i := 0; i < n; i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+
+					it := l.NewIter()
+					require.True(t, it.SeekGE(makeKey(fmt.Sprintf("%05d", i))))
+					require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key().UserKey)
+				}(i)
+			}
+			wg.Wait()
+			require.Equal(t, n, length(l))
+			require.Equal(t, n, lengthRev(l))
+		})
 	}
-	wg.Wait()
-
-	// Check values. Concurrent reads.
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-
-			it := l.NewIter()
-			require.True(t, it.SeekGE(makeKey(fmt.Sprintf("%05d", i))))
-			require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key().UserKey)
-		}(i)
-	}
-	wg.Wait()
-	require.Equal(t, n, length(l))
-	require.Equal(t, n, lengthRev(l))
 }
 
 // TestConcurrentOneKey will read while writing to one single key.
@@ -177,144 +234,175 @@ func TestConcurrentOneKey(t *testing.T) {
 	key := makeKey("thekey")
 	ikey := makeIkey("thekey")
 
-	// Set testing flag to make it easier to trigger unusual race conditions.
-	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	l.testing = true
+	for _, inserter := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
+			// Set testing flag to make it easier to trigger unusual race conditions.
+			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+			l.testing = true
 
-	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+			var wg sync.WaitGroup
+			for i := 0; i < n; i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
 
-			l.Add(ikey, makeValue(i))
-		}(i)
-	}
-	// We expect that at least some write made it such that some read returns a value.
-	var sawValue int32
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			it := l.NewIter()
-			it.SeekGE(key)
-			if !it.Valid() || !bytes.Equal(key, it.Key().UserKey) {
-				return
+					if inserter {
+						var ins Inserter
+						ins.Add(l, ikey, makeValue(i))
+					} else {
+						l.Add(ikey, makeValue(i))
+					}
+				}(i)
 			}
+			// We expect that at least some write made it such that some read returns a value.
+			var sawValue int32
+			for i := 0; i < n; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
 
-			atomic.StoreInt32(&sawValue, 1)
-			v, err := strconv.Atoi(string(it.Value()[1:]))
-			require.NoError(t, err)
-			require.True(t, 0 <= v && v < n)
-		}()
+					it := l.NewIter()
+					it.SeekGE(key)
+					if !it.Valid() || !bytes.Equal(key, it.Key().UserKey) {
+						return
+					}
+
+					atomic.StoreInt32(&sawValue, 1)
+					v, err := strconv.Atoi(string(it.Value()[1:]))
+					require.NoError(t, err)
+					require.True(t, 0 <= v && v < n)
+				}()
+			}
+			wg.Wait()
+			require.True(t, sawValue > 0)
+			require.Equal(t, 1, length(l))
+			require.Equal(t, 1, lengthRev(l))
+		})
 	}
-	wg.Wait()
-	require.True(t, sawValue > 0)
-	require.Equal(t, 1, length(l))
-	require.Equal(t, 1, lengthRev(l))
 }
 
 func TestSkiplistAdd(t *testing.T) {
-	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter()
+	for _, inserter := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
+			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+			it := l.NewIter()
 
-	// Add nil key and value (treated same as empty).
-	err := l.Add(db.InternalKey{}, nil)
-	require.Nil(t, err)
-	require.True(t, it.SeekGE([]byte{}))
-	require.EqualValues(t, []byte{}, it.Key().UserKey)
-	require.EqualValues(t, []byte{}, it.Value())
+			add := l.Add
+			if inserter {
+				add = makeInserterAdd(l)
+			}
 
-	l = NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it = l.NewIter()
+			// Add nil key and value (treated same as empty).
+			err := add(db.InternalKey{}, nil)
+			require.Nil(t, err)
+			require.True(t, it.SeekGE([]byte{}))
+			require.EqualValues(t, []byte{}, it.Key().UserKey)
+			require.EqualValues(t, []byte{}, it.Value())
 
-	// Add empty key and value (treated same as nil).
-	err = l.Add(makeIkey(""), []byte{})
-	require.Nil(t, err)
-	require.True(t, it.SeekGE([]byte{}))
-	require.EqualValues(t, []byte{}, it.Key().UserKey)
-	require.EqualValues(t, []byte{}, it.Value())
+			l = NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+			it = l.NewIter()
 
-	// Add to empty list.
-	err = l.Add(makeIntKey(2), makeValue(2))
-	require.Nil(t, err)
-	require.True(t, it.SeekGE(makeKey("00002")))
-	require.EqualValues(t, "00002", it.Key().UserKey)
-	require.EqualValues(t, makeValue(2), it.Value())
+			add = l.Add
+			if inserter {
+				add = makeInserterAdd(l)
+			}
 
-	// Add first element in non-empty list.
-	err = l.Add(makeIntKey(1), makeValue(1))
-	require.Nil(t, err)
-	require.True(t, it.SeekGE(makeKey("00001")))
-	require.EqualValues(t, "00001", it.Key().UserKey)
-	require.EqualValues(t, makeValue(1), it.Value())
+			// Add empty key and value (treated same as nil).
+			err = add(makeIkey(""), []byte{})
+			require.Nil(t, err)
+			require.True(t, it.SeekGE([]byte{}))
+			require.EqualValues(t, []byte{}, it.Key().UserKey)
+			require.EqualValues(t, []byte{}, it.Value())
 
-	// Add last element in non-empty list.
-	err = l.Add(makeIntKey(4), makeValue(4))
-	require.Nil(t, err)
-	require.True(t, it.SeekGE(makeKey("00004")))
-	require.EqualValues(t, "00004", it.Key().UserKey)
-	require.EqualValues(t, makeValue(4), it.Value())
+			// Add to empty list.
+			err = add(makeIntKey(2), makeValue(2))
+			require.Nil(t, err)
+			require.True(t, it.SeekGE(makeKey("00002")))
+			require.EqualValues(t, "00002", it.Key().UserKey)
+			require.EqualValues(t, makeValue(2), it.Value())
 
-	// Add element in middle of list.
-	err = l.Add(makeIntKey(3), makeValue(3))
-	require.Nil(t, err)
-	require.True(t, it.SeekGE(makeKey("00003")))
-	require.EqualValues(t, "00003", it.Key().UserKey)
-	require.EqualValues(t, makeValue(3), it.Value())
+			// Add first element in non-empty list.
+			err = add(makeIntKey(1), makeValue(1))
+			require.Nil(t, err)
+			require.True(t, it.SeekGE(makeKey("00001")))
+			require.EqualValues(t, "00001", it.Key().UserKey)
+			require.EqualValues(t, makeValue(1), it.Value())
 
-	// Try to add element that already exists.
-	err = l.Add(makeIntKey(2), nil)
-	require.Equal(t, ErrRecordExists, err)
-	require.EqualValues(t, "00003", it.Key().UserKey)
-	require.EqualValues(t, makeValue(3), it.Value())
+			// Add last element in non-empty list.
+			err = add(makeIntKey(4), makeValue(4))
+			require.Nil(t, err)
+			require.True(t, it.SeekGE(makeKey("00004")))
+			require.EqualValues(t, "00004", it.Key().UserKey)
+			require.EqualValues(t, makeValue(4), it.Value())
 
-	require.Equal(t, 5, length(l))
-	require.Equal(t, 5, lengthRev(l))
+			// Add element in middle of list.
+			err = add(makeIntKey(3), makeValue(3))
+			require.Nil(t, err)
+			require.True(t, it.SeekGE(makeKey("00003")))
+			require.EqualValues(t, "00003", it.Key().UserKey)
+			require.EqualValues(t, makeValue(3), it.Value())
+
+			// Try to add element that already exists.
+			err = add(makeIntKey(2), nil)
+			require.Equal(t, ErrRecordExists, err)
+			require.EqualValues(t, "00003", it.Key().UserKey)
+			require.EqualValues(t, makeValue(3), it.Value())
+
+			require.Equal(t, 5, length(l))
+			require.Equal(t, 5, lengthRev(l))
+		})
+	}
 }
 
 // TestConcurrentAdd races between adding same nodes.
 func TestConcurrentAdd(t *testing.T) {
-	const n = 100
+	for _, inserter := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
+			const n = 100
 
-	// Set testing flag to make it easier to trigger unusual race conditions.
-	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	l.testing = true
+			// Set testing flag to make it easier to trigger unusual race conditions.
+			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+			l.testing = true
 
-	start := make([]sync.WaitGroup, n)
-	end := make([]sync.WaitGroup, n)
-
-	for i := 0; i < n; i++ {
-		start[i].Add(1)
-		end[i].Add(2)
-	}
-
-	for f := 0; f < 2; f++ {
-		go func() {
-			it := l.NewIter()
+			start := make([]sync.WaitGroup, n)
+			end := make([]sync.WaitGroup, n)
 
 			for i := 0; i < n; i++ {
-				start[i].Wait()
-
-				key := makeIntKey(i)
-				if l.Add(key, nil) == nil {
-					require.True(t, it.SeekGE(key.UserKey))
-					require.EqualValues(t, key, it.Key())
-				}
-
-				end[i].Done()
+				start[i].Add(1)
+				end[i].Add(2)
 			}
-		}()
-	}
 
-	for i := 0; i < n; i++ {
-		start[i].Done()
-		end[i].Wait()
-	}
+			for f := 0; f < 2; f++ {
+				go func() {
+					it := l.NewIter()
+					add := l.Add
+					if inserter {
+						add = makeInserterAdd(l)
+					}
 
-	require.Equal(t, n, length(l))
-	require.Equal(t, n, lengthRev(l))
+					for i := 0; i < n; i++ {
+						start[i].Wait()
+
+						key := makeIntKey(i)
+						if add(key, nil) == nil {
+							require.True(t, it.SeekGE(key.UserKey))
+							require.EqualValues(t, key, it.Key())
+						}
+
+						end[i].Done()
+					}
+				}()
+			}
+
+			for i := 0; i < n; i++ {
+				start[i].Done()
+				end[i].Wait()
+			}
+
+			require.Equal(t, n, length(l))
+			require.Equal(t, n, lengthRev(l))
+		})
+	}
 }
 
 // TestIteratorNext tests a basic iteration over all nodes from the beginning.
@@ -353,8 +441,9 @@ func TestIteratorPrev(t *testing.T) {
 	it.Last()
 	require.False(t, it.Valid())
 
+	var ins Inserter
 	for i := 0; i < n; i++ {
-		l.Add(makeIntKey(i), makeValue(i))
+		ins.Add(l, makeIntKey(i), makeValue(i))
 	}
 
 	it.Last()
@@ -376,9 +465,11 @@ func TestIteratorSeekGE(t *testing.T) {
 	it.First()
 	require.False(t, it.Valid())
 	// 1000, 1010, 1020, ..., 1990.
+
+	var ins Inserter
 	for i := n - 1; i >= 0; i-- {
 		v := i*10 + 1000
-		l.Add(makeIntKey(v), makeValue(v))
+		ins.Add(l, makeIntKey(v), makeValue(v))
 	}
 
 	require.True(t, it.SeekGE(makeKey("")))
@@ -405,7 +496,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	require.False(t, it.Valid())
 
 	// Test seek for empty key.
-	l.Add(db.InternalKey{}, nil)
+	ins.Add(l, db.InternalKey{}, nil)
 	require.True(t, it.SeekGE([]byte{}))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "", it.Key().UserKey)
@@ -424,9 +515,10 @@ func TestIteratorSeekLT(t *testing.T) {
 	it.First()
 	require.False(t, it.Valid())
 	// 1000, 1010, 1020, ..., 1990.
+	var ins Inserter
 	for i := n - 1; i >= 0; i-- {
 		v := i*10 + 1000
-		l.Add(makeIntKey(v), makeValue(v))
+		ins.Add(l, makeIntKey(v), makeValue(v))
 	}
 
 	require.False(t, it.SeekLT(makeKey("")))
@@ -456,7 +548,7 @@ func TestIteratorSeekLT(t *testing.T) {
 	require.EqualValues(t, "v01990", it.Value())
 
 	// Test seek for empty key.
-	l.Add(db.InternalKey{}, nil)
+	ins.Add(l, db.InternalKey{}, nil)
 	require.False(t, it.SeekLT([]byte{}))
 	require.False(t, it.Valid())
 
@@ -505,14 +597,16 @@ func BenchmarkReadWrite(b *testing.B) {
 
 func BenchmarkOrderedWrite(b *testing.B) {
 	l := NewSkiplist(NewArena(8<<20, 0), bytes.Compare)
+	var ins Inserter
 	buf := make([]byte, 8)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		binary.BigEndian.PutUint64(buf, uint64(i))
-		if err := l.Add(db.InternalKey{UserKey: buf}, nil); err == ErrArenaFull {
+		if err := ins.Add(l, db.InternalKey{UserKey: buf}, nil); err == ErrArenaFull {
 			b.StopTimer()
 			l = NewSkiplist(NewArena(uint32((b.N+2)*maxNodeSize), 0), bytes.Compare)
+			ins = Inserter{}
 			b.StartTimer()
 		}
 	}
