@@ -306,7 +306,7 @@ func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, e
 	}
 	b.commit.Add(count)
 
-	p.env.controller.WaitN(len(b.data))
+	// p.env.controller.WaitN(len(b.data))
 
 	p.env.mu.Lock()
 

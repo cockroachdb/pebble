@@ -535,8 +535,8 @@ func (b *Batch) iter() batchReader {
 	return b.data[batchHeaderLen:]
 }
 
-func (b *Batch) decode(offset uint32) (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
-	p := b.data[offset:]
+func batchDecode(data []byte, offset uint32) (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
+	p := data[offset:]
 	if len(p) == 0 {
 		return 0, nil, nil, false
 	}
@@ -653,7 +653,7 @@ func (i *batchIter) Key() db.InternalKey {
 }
 
 func (i *batchIter) Value() []byte {
-	_, _, value, ok := i.batch.decode(i.iter.KeyOffset())
+	_, _, value, ok := batchDecode(i.batch.data, i.iter.KeyOffset())
 	if !ok {
 		i.err = fmt.Errorf("corrupted batch")
 	}
@@ -683,9 +683,8 @@ type flushableBatchEntry struct {
 // flushableBatch wraps an existing batch and provides the interfaces needed
 // for making the batch flushable (i.e. able to mimic a memtable).
 type flushableBatch struct {
-	batch *Batch
-	cmp   db.Compare
-	data  []byte
+	cmp  db.Compare
+	data []byte
 
 	// The base sequence number for the entries in the batch. This is the same
 	// value as Batch.seqNum() and is cached here for performance.
@@ -707,9 +706,12 @@ type flushableBatch struct {
 
 var _ flushable = (*flushableBatch)(nil)
 
+// newFlushableBatch creates a new batch that implements the flushable
+// interface. This allows the batch to act like a memtable and be placed in the
+// queue of flushable memtables. Note that the flushable batch takes ownership
+// of the batch data.
 func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	b := &flushableBatch{
-		batch:           batch,
 		data:            batch.data,
 		cmp:             comparer.Compare,
 		offsets:         make([]flushableBatchEntry, 0, batch.count()),
@@ -893,7 +895,7 @@ func (i *flushableBatchIter) Key() db.InternalKey {
 
 func (i *flushableBatchIter) Value() []byte {
 	offset := i.offsets[i.index].offset
-	_, _, value, ok := i.batch.batch.decode(offset)
+	_, _, value, ok := batchDecode(i.batch.data, offset)
 	if !ok {
 		i.err = fmt.Errorf("corrupted batch")
 	}

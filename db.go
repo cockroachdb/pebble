@@ -292,7 +292,10 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 	return d.Apply(b, opts)
 }
 
-// Apply the operations contained in the batch to the DB.
+// Apply the operations contained in the batch to the DB. If the batch is large
+// the contents of the batch may be retained by the database. If that occurs
+// the batch contents will be cleared preventing the caller from attempting to
+// reuse them.
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
@@ -301,11 +304,10 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 	}
 	err := d.commit.Commit(batch, opts.GetSync())
 	if err == nil {
-		// If this is a large batch wait for it to flush. This is necessary as the
-		// caller might mutate the contents of the batch (or reuse it) after this
-		// method returns.
+		// If this is a large batch, we need to clear the batch contents as the
+		// flushable batch may still be present in the flushables queue.
 		if batch.flushable != nil {
-			<-batch.flushable.flushed()
+			batch.data = nil
 		}
 	}
 	return err
