@@ -717,6 +717,14 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		d.mu.log.number = newLogNumber
 		d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
 		imm := d.mu.mem.mutable
+		if imm.empty() {
+			// If the mutable memtable is empty, then remove it from the queue. We'll
+			// reuse the memtable by leaving d.mu.mem.mutable non nil.
+			d.mu.mem.queue = d.mu.mem.queue[:len(d.mu.mem.queue)-1]
+			imm = nil
+		} else {
+			d.mu.mem.mutable = nil
+		}
 		var scheduleFlush bool
 		if b != nil && b.flushable != nil {
 			// The batch is too large to fit in the memtable so add it directly to
@@ -724,9 +732,13 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
 			scheduleFlush = true
 		}
-		d.mu.mem.mutable = newMemTable(d.opts)
+		if d.mu.mem.mutable == nil {
+			// Create a new memtable if we are flushing the previous mutable
+			// memtable.
+			d.mu.mem.mutable = newMemTable(d.opts)
+		}
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-		if imm.unref() || scheduleFlush {
+		if (imm != nil && imm.unref()) || scheduleFlush {
 			d.maybeScheduleFlush()
 		}
 		force = false
