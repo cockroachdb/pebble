@@ -16,13 +16,13 @@ func TestLevelOptions(t *testing.T) {
 		level          int
 		targetFileSize int64
 	}{
-		{0, 4 << 20},
-		{1, (2 * 4) << 20},
-		{2, (4 * 4) << 20},
-		{3, (8 * 4) << 20},
-		{4, (16 * 4) << 20},
-		{5, (32 * 4) << 20},
-		{6, (64 * 4) << 20},
+		{0, 2 << 20},
+		{1, (2 * 2) << 20},
+		{2, (4 * 2) << 20},
+		{3, (8 * 2) << 20},
+		{4, (16 * 2) << 20},
+		{5, (32 * 2) << 20},
+		{6, (64 * 2) << 20},
 	}
 	for _, c := range testCases {
 		l := opts.Level(c.level)
@@ -56,7 +56,7 @@ func TestOptionsString(t *testing.T) {
   compression=Snappy
   filter_policy=none
   filter_type=block
-  target_file_size=4194304
+  target_file_size=2097152
 `
 
 	var opts *Options

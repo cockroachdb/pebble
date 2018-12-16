@@ -165,7 +165,7 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 		o.Compression = SnappyCompression
 	}
 	if o.TargetFileSize <= 0 {
-		o.TargetFileSize = 4 << 20 // 4 MB
+		o.TargetFileSize = 2 << 20 // 2 MB
 	}
 	return o
 }
