@@ -1192,3 +1192,50 @@ prev
 c:v
 a:v
 .
+
+# A range tombstone straddles two SSTs. One is compacted two levels lower. The
+# other is compacted one level lower. The one that is compacted one level lower
+# should not delete more keys via the file's key-range expanding.
+#
+# Uses a snapshot to prevent range tombstone from being elided when it gets
+# compacted to the bottommost level.
+
+define target-file-sizes=(100, 1) snapshots=(1)
+L0
+  a.RANGEDEL.1:e
+L0
+  a.SET.2:v
+L0
+  c.SET.3:v
+L2
+  d.SET.0:v
+----
+mem: 1
+0: a-e a-a c-c
+2: d-d
+
+compact a-b
+----
+1: a-c c-e
+2: d-d
+
+compact d-e
+----
+1: a-c
+3: c-d d-e
+
+get seq=4
+c
+----
+v
+
+compact a-b L1
+----
+2: a-e
+3: c-d d-e
+
+# TODO(ajkr): uncomment after #26 is fixed
+# get seq=4
+# c
+# ----
+# v
