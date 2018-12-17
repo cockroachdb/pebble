@@ -110,7 +110,7 @@ func mvccForwardScan(d *pebble.DB, start, end, ts []byte) int {
 	var data bytealloc.A
 	var count int
 
-	for it.First(); it.Valid(); it.Next() {
+	for valid := it.First(); valid; valid = it.Next() {
 		key, keyTS, _ := mvccSplitKey(it.Key())
 		if bytes.Compare(keyTS, ts) <= 0 {
 			data, _ = data.Copy(key)
@@ -131,7 +131,7 @@ func mvccReverseScan(d *pebble.DB, start, end, ts []byte) int {
 	var data bytealloc.A
 	var count int
 
-	for it.Last(); it.Valid(); it.Prev() {
+	for valid := it.Last(); valid; valid = it.Prev() {
 		key, keyTS, _ := mvccSplitKey(it.Key())
 		if bytes.Compare(keyTS, ts) <= 0 {
 			data, _ = data.Copy(key)

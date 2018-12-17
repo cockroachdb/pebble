@@ -247,10 +247,11 @@ func (i *Iterator) mergeNext(key db.InternalKey) bool {
 }
 
 // SeekGE moves the iterator to the first key/value pair whose key is greater
-// than or equal to the given key.
-func (i *Iterator) SeekGE(key []byte) {
+// than or equal to the given key. Returns true if the iterator is pointing at
+// a valid entry and false otherwise.
+func (i *Iterator) SeekGE(key []byte) bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
@@ -258,14 +259,15 @@ func (i *Iterator) SeekGE(key []byte) {
 	}
 
 	i.iterValid = i.iter.SeekGE(key)
-	i.findNextEntry()
+	return i.findNextEntry()
 }
 
 // SeekLT moves the iterator to the last key/value pair whose key is less than
-// the given key.
-func (i *Iterator) SeekLT(key []byte) {
+// the given key. Returns true if the iterator is pointing at a valid entry and
+// false otherwise.
+func (i *Iterator) SeekLT(key []byte) bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) >= 0 {
@@ -273,41 +275,41 @@ func (i *Iterator) SeekLT(key []byte) {
 	}
 
 	i.iterValid = i.iter.SeekLT(key)
-	i.findPrevEntry()
+	return i.findPrevEntry()
 }
 
-// First moves the iterator the the first key/value pair.
-func (i *Iterator) First() {
+// First moves the iterator the the first key/value pair. Returns true if the
+// iterator is pointing at a valid entry and false otherwise.
+func (i *Iterator) First() bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-		i.SeekGE(lowerBound)
-		return
+		return i.SeekGE(lowerBound)
 	}
 
 	i.iterValid = i.iter.First()
-	i.findNextEntry()
+	return i.findNextEntry()
 }
 
-// Last moves the iterator the the last key/value pair.
-func (i *Iterator) Last() {
+// Last moves the iterator the the last key/value pair. Returns true if the
+// iterator is pointing at a valid entry and false otherwise.
+func (i *Iterator) Last() bool {
 	if i.err != nil {
-		return
+		return false
 	}
 
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-		i.SeekLT(upperBound)
-		return
+		return i.SeekLT(upperBound)
 	}
 
 	i.iterValid = i.iter.Last()
-	i.findPrevEntry()
+	return i.findPrevEntry()
 }
 
-// Next moves the iterator to the next key/value pair.
-// It returns whether the iterator is exhausted.
+// Next moves the iterator to the next key/value pair. Returns true if the
+// iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Next() bool {
 	if i.err != nil {
 		return false
@@ -323,8 +325,8 @@ func (i *Iterator) Next() bool {
 	return i.findNextEntry()
 }
 
-// Prev moves the iterator to the previous key/value pair.
-// It returns whether the iterator is exhausted.
+// Prev moves the iterator to the previous key/value pair. Returns true if the
+// iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Prev() bool {
 	if i.err != nil {
 		return false
