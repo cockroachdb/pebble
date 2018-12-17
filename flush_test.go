@@ -33,7 +33,6 @@ func TestManualFlush(t *testing.T) {
 			return ""
 
 		case "flush":
-			fmt.Printf("FLUSH\n")
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}

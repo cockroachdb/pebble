@@ -120,6 +120,7 @@ func (m *memTable) prepare(batch *Batch) error {
 }
 
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
+	var ins arenaskl.Inserter
 	startSeqNum := seqNum
 	invalidateTombstones := false
 	for iter := batch.iter(); ; seqNum++ {
@@ -134,7 +135,7 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 			atomic.AddUint32(&m.tombstones.count, 1)
 			invalidateTombstones = true
 		} else {
-			err = m.skl.Add(ikey, value)
+			err = ins.Add(&m.skl, ikey, value)
 		}
 		if err != nil {
 			return err
