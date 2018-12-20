@@ -204,6 +204,7 @@ func (m *mergingIter) initHeap() {
 			m.heap.items = append(m.heap.items, mergingIterItem{
 				index: i,
 				key:   t.Key(),
+				value: t.Value(),
 			})
 		}
 	}
@@ -342,7 +343,7 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	iter := m.iters[item.index]
 	if iter.Next() {
-		item.key = iter.Key()
+		item.key, item.value = iter.Key(), iter.Value()
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
@@ -410,7 +411,7 @@ func (m *mergingIter) prevEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	iter := m.iters[item.index]
 	if iter.Prev() {
-		item.key = iter.Key()
+		item.key, item.value = iter.Key(), iter.Value()
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
@@ -600,24 +601,15 @@ func (m *mergingIter) Prev() bool {
 }
 
 func (m *mergingIter) Key() db.InternalKey {
-	if m.heap.len() == 0 || m.err != nil {
-		return db.InvalidInternalKey
-	}
 	return m.heap.items[0].key
 }
 
 func (m *mergingIter) Value() []byte {
-	if m.heap.len() == 0 || m.err != nil {
-		return nil
-	}
-	return m.iters[m.heap.items[0].index].Value()
+	return m.heap.items[0].value
 }
 
 func (m *mergingIter) Valid() bool {
-	if m.heap.len() == 0 || m.err != nil {
-		return false
-	}
-	return true
+	return m.heap.len() > 0 && m.err == nil
 }
 
 func (m *mergingIter) Error() error {

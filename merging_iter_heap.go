@@ -9,6 +9,7 @@ import "github.com/petermattis/pebble/db"
 type mergingIterItem struct {
 	index int
 	key   db.InternalKey
+	value []byte
 }
 
 type mergingIterHeap struct {

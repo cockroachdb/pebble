@@ -232,10 +232,10 @@ func BenchmarkMergingIterNext(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								if !m.Valid() {
+								if !m.Next() {
 									m.First()
 								}
-								m.Next()
+								_, _ = m.Key(), m.Value()
 							}
 						})
 				}
@@ -261,10 +261,10 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								if !m.Valid() {
+								if !m.Prev() {
 									m.Last()
 								}
-								m.Prev()
+								_, _ = m.Key(), m.Value()
 							}
 						})
 				}
