@@ -343,7 +343,9 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 	iter := m.iters[item.index]
 	if iter.Next() {
 		item.key = iter.Key()
-		m.heap.fix(0)
+		if m.heap.len() > 1 {
+			m.heap.fix(0)
+		}
 	} else {
 		m.err = iter.Error()
 		if m.err == nil {
@@ -409,7 +411,9 @@ func (m *mergingIter) prevEntry(item *mergingIterItem) {
 	iter := m.iters[item.index]
 	if iter.Prev() {
 		item.key = iter.Key()
-		m.heap.fix(0)
+		if m.heap.len() > 1 {
+			m.heap.fix(0)
+		}
 	} else {
 		m.err = iter.Error()
 		if m.err == nil {
