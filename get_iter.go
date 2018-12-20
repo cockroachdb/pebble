@@ -15,6 +15,7 @@ import (
 // lazily.
 type getIter struct {
 	cmp          db.Compare
+	equal        db.Equal
 	newIters     tableNewIters
 	snapshot     uint64
 	key          []byte
@@ -82,7 +83,7 @@ func (g *getIter) Next() bool {
 					g.iter = nil
 					return false
 				}
-				if g.cmp(g.key, key.UserKey) == 0 {
+				if g.equal(g.key, key.UserKey) {
 					if !key.Visible(g.snapshot) {
 						g.valid = g.iter.Next()
 						continue

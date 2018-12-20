@@ -14,6 +14,13 @@ import (
 // must be 'less than' any non-empty slice.
 type Compare func(a, b []byte) int
 
+// Equal returns true if a and b are equivalent. For a given comparer,
+// Equal(a,b) must return the same result as Compare(a,b)==0. For most
+// comparers, Equal can be set to bytes.Equal. In rare cases, byte equality
+// differs from logical equality (e.g. a hidden suffix on keys that is not used
+// for comparison purposes).
+type Equal func(a, b []byte) bool
+
 // InlineKey returns a fixed length prefix of a user key such that InlineKey(a)
 // < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff a > b. If
 // InlineKey(a) == InlineKey(b) an additional comparison is required to
@@ -46,6 +53,7 @@ type Successor func(dst, a []byte) []byte
 // than' relationship.
 type Comparer struct {
 	Compare   Compare
+	Equal     Equal
 	InlineKey InlineKey
 	Separator Separator
 	Successor Successor
@@ -62,6 +70,7 @@ type Comparer struct {
 // It uses the natural ordering, consistent with bytes.Compare.
 var DefaultComparer = &Comparer{
 	Compare: bytes.Compare,
+	Equal:   bytes.Equal,
 
 	InlineKey: func(key []byte) uint64 {
 		var v uint64

@@ -124,6 +124,7 @@ type DB struct {
 	dirname   string
 	opts      *db.Options
 	cmp       db.Compare
+	equal     db.Equal
 	merge     db.Merge
 	inlineKey db.InlineKey
 
@@ -223,6 +224,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 
 	get := &buf.get
 	get.cmp = d.cmp
+	get.equal = d.equal
 	get.newIters = d.newIters
 	get.snapshot = seqNum
 	get.key = key
@@ -233,6 +235,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 
 	i := &buf.dbi
 	i.cmp = d.cmp
+	i.equal = d.equal
 	i.merge = d.merge
 	i.iter = get
 	i.version = current
@@ -409,6 +412,7 @@ func (d *DB) newIterInternal(
 	dbi := &buf.dbi
 	dbi.opts = o
 	dbi.cmp = d.cmp
+	dbi.equal = d.equal
 	dbi.merge = d.merge
 	dbi.version = current
 

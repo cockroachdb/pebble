@@ -434,6 +434,7 @@ func TestGetIter(t *testing.T) {
 	}
 
 	cmp := db.DefaultComparer.Compare
+	equal := db.DefaultComparer.Equal
 	for _, tc := range testCases {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
@@ -505,6 +506,7 @@ func TestGetIter(t *testing.T) {
 
 			get := &buf.get
 			get.cmp = cmp
+			get.equal = equal
 			get.newIters = newIter
 			get.key = ikey.UserKey
 			get.l0 = v.files[0]
@@ -513,6 +515,7 @@ func TestGetIter(t *testing.T) {
 
 			i := &buf.dbi
 			i.cmp = cmp
+			i.equal = equal
 			i.merge = db.DefaultMerger.Merge
 			i.iter = get
 

@@ -27,6 +27,7 @@ func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 // on-disk) when appropriate.
 type memTable struct {
 	cmp         db.Compare
+	equal       db.Equal
 	skl         arenaskl.Skiplist
 	rangeDelSkl arenaskl.Skiplist
 	emptySize   uint32
@@ -46,6 +47,7 @@ func newMemTable(o *db.Options) *memTable {
 	o = o.EnsureDefaults()
 	m := &memTable{
 		cmp:       o.Comparer.Compare,
+		equal:     o.Comparer.Equal,
 		refs:      1,
 		flushedCh: make(chan struct{}),
 	}
@@ -87,7 +89,7 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 		return nil, db.ErrNotFound
 	}
 	ikey := it.Key()
-	if m.cmp(key, ikey.UserKey) != 0 {
+	if !m.equal(key, ikey.UserKey) {
 		return nil, db.ErrNotFound
 	}
 	if ikey.Kind() == db.InternalKeyKindDelete {

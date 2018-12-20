@@ -33,6 +33,7 @@ const (
 type Iterator struct {
 	opts      *db.IterOptions
 	cmp       db.Compare
+	equal     db.Equal
 	merge     db.Merge
 	iter      internalIterator
 	version   *version
@@ -96,7 +97,7 @@ func (i *Iterator) nextUserKey() {
 		}
 		for {
 			i.iterValid = i.iter.Next()
-			if !i.iterValid || i.cmp(i.key, i.iter.Key().UserKey) != 0 {
+			if !i.iterValid || !i.equal(i.key, i.iter.Key().UserKey) {
 				break
 			}
 		}
@@ -117,7 +118,7 @@ func (i *Iterator) findPrevEntry() bool {
 		}
 
 		if i.valid {
-			if i.cmp(key.UserKey, i.key) < 0 {
+			if !i.equal(key.UserKey, i.key) {
 				// We've iterated to the previous user key.
 				i.pos = iterPosPrev
 				return true
@@ -187,7 +188,7 @@ func (i *Iterator) prevUserKey() {
 		}
 		for {
 			i.iterValid = i.iter.Prev()
-			if !i.iterValid || i.cmp(i.key, i.iter.Key().UserKey) != 0 {
+			if !i.iterValid || !i.equal(i.key, i.iter.Key().UserKey) {
 				break
 			}
 		}
@@ -211,7 +212,7 @@ func (i *Iterator) mergeNext(key db.InternalKey) bool {
 			return true
 		}
 		key = i.iter.Key()
-		if i.cmp(i.key, key.UserKey) != 0 {
+		if !i.equal(i.key, key.UserKey) {
 			// We've advanced to the next key.
 			i.pos = iterPosNext
 			return true

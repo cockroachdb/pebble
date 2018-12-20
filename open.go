@@ -63,11 +63,15 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		dirname:           dirname,
 		opts:              opts,
 		cmp:               opts.Comparer.Compare,
+		equal:             opts.Comparer.Equal,
 		merge:             opts.Merger.Merge,
 		inlineKey:         opts.Comparer.InlineKey,
 		commitController:  newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
 		compactController: newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
 		flushController:   newController(rate.NewLimiter(rate.Inf, defaultBurst)),
+	}
+	if d.equal == nil {
+		d.equal = bytes.Equal
 	}
 	tableCacheSize := opts.MaxOpenFiles - numNonTableCacheFiles
 	if tableCacheSize < minTableCacheSize {
