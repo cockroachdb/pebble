@@ -433,7 +433,7 @@ func (b *Batch) init(cap int) {
 	for n < cap {
 		n *= 2
 	}
-	b.data = rawalloc.New(n)
+	b.data = rawalloc.New(batchHeaderLen, n)
 	b.setCount(0)
 	b.setSeqNum(0)
 	b.data = b.data[:batchHeaderLen]
@@ -491,8 +491,7 @@ func (b *Batch) grow(n int) {
 		for newCap < newSize {
 			newCap *= 2
 		}
-		newData := rawalloc.New(newCap)
-		newData = newData[:len(b.data)]
+		newData := rawalloc.New(len(b.data), newCap)
 		copy(newData, b.data)
 		b.data = newData
 	}

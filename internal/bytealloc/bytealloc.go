@@ -14,6 +14,8 @@
 
 package bytealloc
 
+import "github.com/petermattis/pebble/internal/rawalloc"
+
 // An A provides chunk allocation of []byte, amortizing the overhead of each
 // allocation. Because the underlying storage for the slices is shared, they
 // should share a similar lifetime in order to avoid pinning large amounts of
@@ -36,7 +38,7 @@ func (a A) reserve(n int) A {
 	if allocSize < n {
 		allocSize = n
 	}
-	return make([]byte, 0, allocSize)
+	return rawalloc.New(0, allocSize)
 }
 
 // Alloc allocates a new chunk of memory with the specified length.

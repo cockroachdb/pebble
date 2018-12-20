@@ -18,7 +18,7 @@ package rawalloc
 // backing memory is uninitialized. This differs from make([]byte) which
 // guarantees that the backing memory for the slice is initialized to zero. Use
 // carefully.
-func New(len int) []byte {
-	ptr := mallocgc(uintptr(len), nil, false)
-	return (*[maxArrayLen]byte)(ptr)[:len:len]
+func New(len, cap int) []byte {
+	ptr := mallocgc(uintptr(cap), nil, false)
+	return (*[maxArrayLen]byte)(ptr)[:len:cap]
 }

@@ -45,7 +45,7 @@ func NewArena(size, extValueThreshold uint32) *Arena {
 	// of nil pointer.
 	return &Arena{
 		n:   1,
-		buf: rawalloc.New(int(size)),
+		buf: rawalloc.New(int(size), int(size)),
 	}
 }
 
