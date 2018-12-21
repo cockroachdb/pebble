@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 
 	"github.com/golang/snappy"
@@ -640,69 +639,17 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 		r.err = errors.New("pebble/table: nil file")
 		return r
 	}
-	stat, err := f.Stat()
+	footer, err := readFooter(f)
 	if err != nil {
-		r.err = fmt.Errorf("pebble/table: invalid table (could not stat file): %v", err)
-		return r
-	}
-
-	// legacy footer format:
-	//    metaindex handle (varint64 offset, varint64 size)
-	//    index handle     (varint64 offset, varint64 size)
-	//    <padding> to make the total size 2 * BlockHandle::kMaxEncodedLength
-	//    table_magic_number (8 bytes)
-	// new footer format:
-	//    checksum type (char, 1 byte)
-	//    metaindex handle (varint64 offset, varint64 size)
-	//    index handle     (varint64 offset, varint64 size)
-	//    <padding> to make the total size 2 * BlockHandle::kMaxEncodedLength + 1
-	//    footer version (4 bytes)
-	//    table_magic_number (8 bytes)
-	footer := make([]byte, footerLen)
-	if stat.Size() < int64(len(footer)) {
-		r.err = errors.New("pebble/table: invalid table (file size is too small)")
-		return r
-	}
-	_, err = f.ReadAt(footer, stat.Size()-int64(len(footer)))
-	if err != nil && err != io.EOF {
-		r.err = fmt.Errorf("pebble/table: invalid table (could not read footer): %v", err)
-		return r
-	}
-	if string(footer[magicOffset:footerLen]) != magic {
-		r.err = errors.New("pebble/table: invalid table (bad magic number)")
-		return r
-	}
-
-	version := binary.LittleEndian.Uint32(footer[versionOffset:magicOffset])
-	if version != formatVersion {
-		r.err = fmt.Errorf("pebble/table: unsupported format version %d", version)
-		return r
-	}
-
-	if footer[0] != checksumCRC32c {
-		r.err = fmt.Errorf("pebble/table: unsupported checksum type %d", footer[0])
-		return r
-	}
-	footer = footer[1:]
-
-	// Read the metaindex.
-	metaindexBH, n := decodeBlockHandle(footer)
-	if n == 0 {
-		r.err = errors.New("pebble/table: invalid table (bad metaindex block handle)")
-		return r
-	}
-	footer = footer[n:]
-	if err := r.readMetaindex(metaindexBH, o); err != nil {
 		r.err = err
 		return r
 	}
-
-	// Read the index into memory.
-	r.index.bh, n = decodeBlockHandle(footer)
-	if n == 0 {
-		r.err = errors.New("pebble/table: invalid table (bad index block handle)")
+	// Read the metaindex.
+	if err := r.readMetaindex(footer.metaindexBH, o); err != nil {
+		r.err = err
 		return r
 	}
+	r.index.bh = footer.indexBH
 
 	// index, r.err = r.readIndex()
 	// iter, _ := newBlockIter(r.compare, index)

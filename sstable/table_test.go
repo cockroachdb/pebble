@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
@@ -293,6 +294,7 @@ func testReader(t *testing.T, filename string, fp db.FilterPolicy) {
 	}
 }
 
+func TestReaderLevelDB(t *testing.T)            { testReader(t, "h.ldb", nil) }
 func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil) }
 func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil) }
 func TestReaderBlockBloomIgnored(t *testing.T)  { testReader(t, "h.block-bloom.no-compression.sst", nil) }
@@ -568,5 +570,109 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 		if globalSeqNum != i.Key().SeqNum() {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())
 		}
+	}
+}
+
+func TestFooterRoundTrip(t *testing.T) {
+	buf := make([]byte, 100+maxFooterLen)
+	for _, format := range []db.TableFormat{
+		db.TableFormatRocksDBv2,
+		db.TableFormatLevelDB,
+	} {
+		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
+			for _, checksum := range []uint8{checksumCRC32c} {
+				t.Run(fmt.Sprintf("checksum=%d", checksum), func(t *testing.T) {
+					footer := footer{
+						format:      format,
+						checksum:    checksum,
+						metaindexBH: blockHandle{offset: 1, length: 2},
+						indexBH:     blockHandle{offset: 3, length: 4},
+					}
+					for offset := range []int64{0, 1, 100} {
+						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
+							fs := storage.NewMem()
+							f, err := fs.Create("test")
+							if err != nil {
+								t.Fatal(err)
+							}
+							if _, err := f.Write(buf[:offset]); err != nil {
+								t.Fatal(err)
+							}
+							if _, err := f.Write(footer.encode(buf[100:])); err != nil {
+								t.Fatal(err)
+							}
+							if err := f.Close(); err != nil {
+								t.Fatal(err)
+							}
+
+							f, err = fs.Open("test")
+							if err != nil {
+								t.Fatal(err)
+							}
+							result, err := readFooter(f)
+							if err != nil {
+								t.Fatal(err)
+							}
+							if err := f.Close(); err != nil {
+								t.Fatal(err)
+							}
+
+							if diff := pretty.Diff(footer, result); diff != nil {
+								t.Fatalf("expected %+v, but found %+v\n%s",
+									footer, result, strings.Join(diff, "\n"))
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestReadFooter(t *testing.T) {
+	encode := func(format db.TableFormat, checksum uint8) string {
+		f := footer{
+			format:   format,
+			checksum: checksum,
+		}
+		return string(f.encode(make([]byte, maxFooterLen)))
+	}
+
+	testCases := []struct {
+		encoded  string
+		expected string
+	}{
+		{strings.Repeat("a", minFooterLen-1), "file size is too small"},
+		{strings.Repeat("a", levelDBFooterLen), "bad magic number"},
+		{strings.Repeat("a", rocksDBFooterLen), "bad magic number"},
+		{encode(db.TableFormatLevelDB, 0)[1:], "file size is too small"},
+		{encode(db.TableFormatRocksDBv2, 0)[1:], "footer too short"},
+		{encode(db.TableFormatRocksDBv2, noChecksum), "unsupported checksum type"},
+		{encode(db.TableFormatRocksDBv2, checksumXXHash), "unsupported checksum type"},
+	}
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			fs := storage.NewMem()
+			f, err := fs.Create("test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.Write([]byte(c.encoded)); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			f, err = fs.Open("test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := readFooter(f); err == nil {
+				t.Fatalf("expected %q, but found success", c.expected)
+			} else if !strings.Contains(err.Error(), c.expected) {
+				t.Fatalf("expected %q, but found %v", c.expected, err)
+			}
+		})
 	}
 }

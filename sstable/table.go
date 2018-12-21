@@ -61,6 +61,15 @@ To write a table with three entries:
 	return w.Close()
 */
 package sstable // import "github.com/petermattis/pebble/sstable"
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/storage"
+)
 
 /*
 The table file format looks like:
@@ -110,12 +119,6 @@ is a key that is >= every key in block i and is < every key i block i+1. The
 successor for the final block is a key that is >= every key in block N-1. The
 index block restart interval is 1: every entry is a restart point.
 
-The table footer is exactly 48 bytes long:
-  - the block handle for the metaindex block,
-  - the block handle for the index block,
-  - padding to take the two items above up to 40 bytes,
-  - an 8-byte magic string.
-
 A block handle is an offset and a length; the length does not include the 5
 byte trailer. Both numbers are varint-encoded, with no padding between the two
 values. The maximum size of an encoded block handle is therefore 20 bytes.
@@ -124,17 +127,25 @@ values. The maximum size of an encoded block handle is therefore 20 bytes.
 const (
 	blockTrailerLen   = 5
 	blockHandleMaxLen = 10 + 10
-	footerLen         = 1 + 2*blockHandleMaxLen + 4 + 8
-	magicOffset       = footerLen - len(magic)
-	versionOffset     = magicOffset - 4
 
-	magic = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
+	levelDBFooterLen   = 48
+	levelDBMagic       = "\x57\xfb\x80\x8b\x24\x75\x47\xdb"
+	levelDBMagicOffset = levelDBFooterLen - len(levelDBMagic)
+
+	rocksDBFooterLen     = 1 + 2*blockHandleMaxLen + 4 + 8
+	rocksDBMagic         = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
+	rocksDBMagicOffset   = rocksDBFooterLen - len(rocksDBMagic)
+	rocksDBVersionOffset = rocksDBMagicOffset - 4
+
+	minFooterLen = levelDBFooterLen
+	maxFooterLen = rocksDBFooterLen
+
+	levelDBFormatVersion  = 0
+	rocksDBFormatVersion2 = 2
 
 	noChecksum     = 0
 	checksumCRC32c = 1
 	checksumXXHash = 2
-
-	formatVersion = 2
 
 	// The block type gives the per-block compression format.
 	// These constants are part of the file format and should not be changed.
@@ -149,6 +160,115 @@ const (
 	metaRangeDelV2Name = "rocksdb.range_del2"
 )
 
-// TODO(peter): silence unused warnings.
-var _ = noChecksum
-var _ = checksumXXHash
+// legacy (LevelDB) footer format:
+//    metaindex handle (varint64 offset, varint64 size)
+//    index handle     (varint64 offset, varint64 size)
+//    <padding> to make the total size 2 * BlockHandle::kMaxEncodedLength
+//    table_magic_number (8 bytes)
+// new (RocksDB) footer format:
+//    checksum type (char, 1 byte)
+//    metaindex handle (varint64 offset, varint64 size)
+//    index handle     (varint64 offset, varint64 size)
+//    <padding> to make the total size 2 * BlockHandle::kMaxEncodedLength + 1
+//    footer version (4 bytes)
+//    table_magic_number (8 bytes)
+type footer struct {
+	format      db.TableFormat
+	checksum    uint8
+	metaindexBH blockHandle
+	indexBH     blockHandle
+}
+
+func readFooter(f storage.File) (footer, error) {
+	var footer footer
+	stat, err := f.Stat()
+	if err != nil {
+		return footer, fmt.Errorf("pebble/table: invalid table (could not stat file): %v", err)
+	}
+	if stat.Size() < minFooterLen {
+		return footer, errors.New("pebble/table: invalid table (file size is too small)")
+	}
+
+	buf := make([]byte, maxFooterLen)
+	off := stat.Size() - maxFooterLen
+	if off < 0 {
+		off = 0
+	}
+	n, err := f.ReadAt(buf, off)
+	if err != nil && err != io.EOF {
+		return footer, fmt.Errorf("pebble/table: invalid table (could not read footer): %v", err)
+	}
+	buf = buf[:n]
+
+	switch string(buf[len(buf)-len(rocksDBMagic):]) {
+	case levelDBMagic:
+		if len(buf) < levelDBFooterLen {
+			return footer, fmt.Errorf("pebble/table: invalid table (footer too short): %d", len(buf))
+		}
+		buf = buf[len(buf)-levelDBFooterLen:]
+		footer.format = db.TableFormatLevelDB
+		footer.checksum = checksumCRC32c
+
+	case rocksDBMagic:
+		if len(buf) < rocksDBFooterLen {
+			return footer, fmt.Errorf("pebble/table: invalid table (footer too short): %d", len(buf))
+		}
+		buf = buf[len(buf)-rocksDBFooterLen:]
+		version := binary.LittleEndian.Uint32(buf[rocksDBVersionOffset:rocksDBMagicOffset])
+		if version != rocksDBFormatVersion2 {
+			return footer, fmt.Errorf("pebble/table: unsupported format version %d", version)
+		}
+		footer.format = db.TableFormatRocksDBv2
+		footer.checksum = uint8(buf[0])
+		if footer.checksum != checksumCRC32c {
+			return footer, fmt.Errorf("pebble/table: unsupported checksum type %d", footer.checksum)
+		}
+		buf = buf[1:]
+
+	default:
+		return footer, errors.New("pebble/table: invalid table (bad magic number)")
+	}
+
+	{
+		var n int
+		footer.metaindexBH, n = decodeBlockHandle(buf)
+		if n == 0 {
+			return footer, errors.New("pebble/table: invalid table (bad metaindex block handle)")
+		}
+		buf = buf[n:]
+
+		footer.indexBH, n = decodeBlockHandle(buf)
+		if n == 0 {
+			return footer, errors.New("pebble/table: invalid table (bad index block handle)")
+		}
+	}
+
+	return footer, nil
+}
+
+func (f footer) encode(buf []byte) []byte {
+	switch f.format {
+	case db.TableFormatLevelDB:
+		buf = buf[:levelDBFooterLen]
+		for i := range buf {
+			buf[i] = 0
+		}
+		n := encodeBlockHandle(buf[0:], f.metaindexBH)
+		n += encodeBlockHandle(buf[n:], f.indexBH)
+		copy(buf[len(buf)-len(levelDBMagic):], levelDBMagic)
+
+	case db.TableFormatRocksDBv2:
+		buf = buf[:rocksDBFooterLen]
+		for i := range buf {
+			buf[i] = 0
+		}
+		buf[0] = f.checksum
+		n := 1
+		n += encodeBlockHandle(buf[n:], f.metaindexBH)
+		n += encodeBlockHandle(buf[n:], f.indexBH)
+		binary.LittleEndian.PutUint32(buf[rocksDBVersionOffset:], rocksDBFormatVersion2)
+		copy(buf[len(buf)-len(rocksDBMagic):], rocksDBMagic)
+	}
+
+	return buf
+}

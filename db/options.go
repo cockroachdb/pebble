@@ -98,6 +98,18 @@ func filterPolicyName(p FilterPolicy) string {
 	return p.Name()
 }
 
+// TableFormat specifies the format version for sstables. The legacy LevelDB
+// format is format version 0.
+type TableFormat uint32
+
+// The available table formats. Note that these values are not (and should not)
+// be serialized to disk. TableFormatRocksDBv2 is the default if otherwise
+// unspecified.
+const (
+	TableFormatRocksDBv2 TableFormat = iota
+	TableFormatLevelDB
+)
+
 // LevelOptions holds the optional per-level parameters.
 type LevelOptions struct {
 	// BlockRestartInterval is the number of keys between restart points
@@ -261,6 +273,12 @@ type Options struct {
 	//
 	// The default value uses the underlying operating system's file system.
 	Storage storage.Storage
+
+	// TableFormat specifies the format version for sstables. The default is
+	// TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
+	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
+	// by a wider range of tools and libraries.
+	TableFormat TableFormat
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a

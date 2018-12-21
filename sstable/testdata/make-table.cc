@@ -21,6 +21,7 @@
 const int N = 1000000;
 const char* infile = "h.txt";
 const char* outfiles[] = {
+  "h.ldb",
   "h.sst",
   "h.no-compression.sst",
   "h.block-bloom.no-compression.sst",
@@ -28,18 +29,21 @@ const char* outfiles[] = {
 };
 
 int write() {
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 5; ++i) {
     const char* outfile = outfiles[i];
     rocksdb::Status status;
 
     rocksdb::BlockBasedTableOptions table_options;
-    if (i >= 2) {
-      table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, i == 2));
+    if (i == 0) {
+      table_options.format_version = 0;
+    }
+    if (i >= 3) {
+      table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, i == 3));
     }
 
     rocksdb::Options options;
     options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
-    if (i >= 1) {
+    if (i >= 2) {
       options.compression = rocksdb::kNoCompression;
     }
 

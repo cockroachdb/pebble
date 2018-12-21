@@ -89,6 +89,7 @@ type Writer struct {
 	compression        db.Compression
 	separator          db.Separator
 	successor          db.Successor
+	tableFormat        db.TableFormat
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
 	// cannot be written until the first key in the next block is seen.
@@ -112,7 +113,7 @@ type Writer struct {
 	filter filterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
-	tmp [footerLen]byte
+	tmp [rocksDBFooterLen]byte
 }
 
 // Add adds a key/value pair to the table being written. For a given Writer,
@@ -421,17 +422,13 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Write the table footer.
-	footer := w.tmp[:footerLen]
-	for i := range footer {
-		footer[i] = 0
+	footer := footer{
+		format:      w.tableFormat,
+		checksum:    checksumCRC32c,
+		metaindexBH: metaindexBH,
+		indexBH:     indexBH,
 	}
-	footer[0] = checksumCRC32c
-	n := 1
-	n += encodeBlockHandle(footer[n:], metaindexBH)
-	n += encodeBlockHandle(footer[n:], indexBH)
-	binary.LittleEndian.PutUint32(footer[versionOffset:], formatVersion)
-	copy(footer[magicOffset:], magic)
-	if _, err := w.writer.Write(footer); err != nil {
+	if _, err := w.writer.Write(footer.encode(w.tmp[:])); err != nil {
 		w.err = err
 		return w.err
 	}
@@ -499,6 +496,7 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		compression:        lo.Compression,
 		separator:          o.Comparer.Separator,
 		successor:          o.Comparer.Successor,
+		tableFormat:        o.TableFormat,
 		block: blockWriter{
 			restartInterval: lo.BlockRestartInterval,
 		},
