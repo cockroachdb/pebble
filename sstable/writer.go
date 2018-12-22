@@ -116,6 +116,56 @@ type Writer struct {
 	tmp [rocksDBFooterLen]byte
 }
 
+// Set sets the value for the given key. The sequence number is set to
+// 0. Intended for use to externally construct an sstable before ingestion into
+// a DB.
+//
+// TODO(peter): untested
+func (w *Writer) Set(key, value []byte) error {
+	if w.err != nil {
+		return w.err
+	}
+	return w.addPoint(db.MakeInternalKey(key, 0, db.InternalKeyKindSet), value)
+}
+
+// Delete deletes the value for the given key. The sequence number is set to
+// 0. Intended for use to externally construct an sstable before ingestion into
+// a DB.
+//
+// TODO(peter): untested
+func (w *Writer) Delete(key []byte) error {
+	if w.err != nil {
+		return w.err
+	}
+	return w.addPoint(db.MakeInternalKey(key, 0, db.InternalKeyKindDelete), nil)
+}
+
+// DeleteRange deletes all of the keys (and values) in the range [start,end)
+// (inclusive on start, exclusive on end). The sequence number is set to
+// 0. Intended for use to externally construct an sstable before ingestion into
+// a DB.
+//
+// TODO(peter): untested
+func (w *Writer) DeleteRange(start, end []byte) error {
+	if w.err != nil {
+		return w.err
+	}
+	return w.addTombstone(db.MakeInternalKey(start, 0, db.InternalKeyKindRangeDelete), end)
+}
+
+// Merge adds an action to the DB that merges the value at key with the new
+// value. The details of the merge are dependent upon the configured merge
+// operator. The sequence number is set to 0. Intended for use to externally
+// construct an sstable before ingestion into a DB.
+//
+// TODO(peter): untested
+func (w *Writer) Merge(key, value []byte) error {
+	if w.err != nil {
+		return w.err
+	}
+	return w.addPoint(db.MakeInternalKey(key, 0, db.InternalKeyKindMerge), value)
+}
+
 // Add adds a key/value pair to the table being written. For a given Writer,
 // the keys passed to Add must be in increasing order. The exception to this
 // rule is range deletion tombstones. Range deletion tombstones need to be
