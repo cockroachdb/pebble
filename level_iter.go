@@ -86,7 +86,7 @@ func (l *levelIter) initLargestUserKey(largestUserKey *[]byte) {
 func (l *levelIter) findFileGE(key []byte) int {
 	// Find the earliest file whose largest key is >= ikey. Note that the range
 	// deletion sentinel key is handled specially and a search for K will not
-	// find a table for K<range-del-sentinel> is the largest key. This prevents
+	// find a table where K<range-del-sentinel> is the largest key. This prevents
 	// loading untruncated range deletions from a table which can't possibly
 	// contain the target key and is required for correctness by DB.Get.
 	//
