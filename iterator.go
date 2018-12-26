@@ -55,6 +55,8 @@ func (i *Iterator) findNextEntry() bool {
 
 	for i.iterValid {
 		key := i.iter.Key()
+		// TODO(peter): push the upper-bound check down into internalIterator as we
+		// can elide the check in many cases.
 		if upperBound != nil && i.cmp(key.UserKey, upperBound) >= 0 {
 			break
 		}
@@ -113,6 +115,8 @@ func (i *Iterator) findPrevEntry() bool {
 
 	for i.iterValid {
 		key := i.iter.Key()
+		// TODO(peter): push the lower-bound check down into internalIterator as we
+		// can elide the check in many cases.
 		if lowerBound != nil && i.cmp(key.UserKey, lowerBound) < 0 {
 			break
 		}
