@@ -25,7 +25,7 @@ func TestLevelIter(t *testing.T) {
 	var files []fileMetadata
 
 	newIters := func(
-		meta *fileMetadata, _ *db.IterOptions,
+		meta *fileMetadata, opts *db.IterOptions,
 	) (internalIterator, internalIterator, error) {
 		f := *iters[meta.fileNum]
 		return &f, nil, nil
@@ -75,6 +75,44 @@ func TestLevelIter(t *testing.T) {
 			iter := newLevelIter(&opts, db.DefaultComparer.Compare, newIters, files)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
+
+		case "load":
+			// The "load" command allows testing the iterator options passed to load
+			// sstables.
+			//
+			// load <key> [lower=<key>] [upper=<key>]
+			var opts db.IterOptions
+			var key string
+			for _, arg := range d.CmdArgs {
+				if len(arg.Vals) == 0 {
+					key = arg.Key
+					continue
+				}
+				if len(arg.Vals) != 1 {
+					return fmt.Sprintf("%s: %s=<value>", d.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "lower":
+					opts.LowerBound = []byte(arg.Vals[0])
+				case "upper":
+					opts.UpperBound = []byte(arg.Vals[0])
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
+			}
+
+			var tableOpts *db.IterOptions
+			newIters2 := func(
+				meta *fileMetadata, opts *db.IterOptions,
+			) (internalIterator, internalIterator, error) {
+				tableOpts = opts
+				return newIters(meta, opts)
+			}
+
+			iter := newLevelIter(&opts, db.DefaultComparer.Compare, newIters2, files)
+			iter.SeekGE([]byte(key))
+			lower, upper := tableOpts.GetLowerBound(), tableOpts.GetUpperBound()
+			return fmt.Sprintf("[%s,%s]\n", lower, upper)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
