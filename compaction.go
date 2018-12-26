@@ -306,8 +306,10 @@ func (c *compaction) newInputIter(
 	// levelIters per level, one which iterates over the point operations, and
 	// one which iterates over the range deletions. These two iterators are
 	// combined with a mergingIter.
-	newRangeDelIter := func(f *fileMetadata) (internalIterator, internalIterator, error) {
-		iter, rangeDelIter, err := newIters(f)
+	newRangeDelIter := func(
+		f *fileMetadata, _ *db.IterOptions,
+	) (internalIterator, internalIterator, error) {
+		iter, rangeDelIter, err := newIters(f, nil /* iter options */)
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
 			// immediately close it. One way to solve this would be to add new
@@ -336,7 +338,7 @@ func (c *compaction) newInputIter(
 	} else {
 		for i := range c.inputs[0] {
 			f := &c.inputs[0][i]
-			iter, rangeDelIter, err := newIters(f)
+			iter, rangeDelIter, err := newIters(f, nil /* iter options */)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}

@@ -421,6 +421,10 @@ func (d *DB) newIterInternal(
 	// sequence number currently.
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
+		// TODO(peter):
+		// if o.GetLowerBound() != nil || o.GetUpperBound() != nil {
+		// 	panic("not reached")
+		// }
 		iters = append(iters, mem.newIter(o))
 		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(o))
 		largestUserKeys = append(largestUserKeys, nil)
@@ -429,7 +433,7 @@ func (d *DB) newIterInternal(
 	// The level 0 files need to be added from newest to oldest.
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
-		iter, rangeDelIter, err := d.newIters(f)
+		iter, rangeDelIter, err := d.newIters(f, o)
 		if err != nil {
 			dbi.err = err
 			return dbi
