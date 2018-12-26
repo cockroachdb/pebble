@@ -129,7 +129,7 @@ func (g *getIter) Next() bool {
 			// Create iterators from L0 from newest to oldest.
 			if n := len(g.l0); n > 0 {
 				l := &g.l0[n-1]
-				g.iter, g.rangeDelIter, g.err = g.newIters(l)
+				g.iter, g.rangeDelIter, g.err = g.newIters(l, nil /* iter options */)
 				if g.err != nil {
 					return false
 				}

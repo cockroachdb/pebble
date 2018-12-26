@@ -12,7 +12,9 @@ import (
 
 // tableNewIters creates a new point and range-del iterator for the given file
 // number.
-type tableNewIters func(meta *fileMetadata) (internalIterator, internalIterator, error)
+type tableNewIters func(
+	meta *fileMetadata, opts *db.IterOptions,
+) (internalIterator, internalIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
 //
@@ -153,7 +155,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		var rangeDelIter internalIterator
-		l.iter, rangeDelIter, l.err = l.newIters(f)
+		l.iter, rangeDelIter, l.err = l.newIters(f, l.opts)
 		if l.err != nil || l.iter == nil {
 			return false
 		}

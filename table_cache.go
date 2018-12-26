@@ -49,7 +49,9 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	}
 }
 
-func (c *tableCache) newIters(meta *fileMetadata) (internalIterator, internalIterator, error) {
+func (c *tableCache) newIters(
+	meta *fileMetadata, opts *db.IterOptions,
+) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
@@ -67,7 +69,7 @@ func (c *tableCache) newIters(meta *fileMetadata) (internalIterator, internalIte
 	}
 	n.result <- x
 
-	iter := x.reader.NewIter(nil)
+	iter := x.reader.NewIter(opts)
 	atomic.AddInt32(&c.mu.iterCount, 1)
 	if raceEnabled {
 		c.mu.Lock()

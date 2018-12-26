@@ -429,6 +429,10 @@ func (d *DB) newIterInternal(
 	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
+		// TODO(peter):
+		// if o.GetLowerBound() != nil || o.GetUpperBound() != nil {
+		// 	panic("not reached")
+		// }
 		iters = append(iters, mem.newIter(o))
 		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(o))
 		largestUserKeys = append(largestUserKeys, nil)
@@ -438,7 +442,7 @@ func (d *DB) newIterInternal(
 	current := readState.current
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
-		iter, rangeDelIter, err := d.newIters(f)
+		iter, rangeDelIter, err := d.newIters(f, o)
 		if err != nil {
 			dbi.err = err
 			return dbi
