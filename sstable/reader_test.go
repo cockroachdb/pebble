@@ -167,7 +167,7 @@ func runTestReader(t *testing.T, o db.Options) {
 			case "get":
 				var b bytes.Buffer
 				for _, k := range strings.Split(d.Input, "\n") {
-					v, err := r.get([]byte(k), nil)
+					v, err := r.get([]byte(k))
 					if err != nil {
 						fmt.Fprintf(&b, "<err: %s>\n", err)
 					} else {
