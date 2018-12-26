@@ -5,8 +5,19 @@ TESTS = .
 .PHONY: all
 all:
 	@echo usage:
+	@echo "  make test"
+	@echo "  make testrace"
 	@echo "  make stress"
+	@echo "  make stressrace"
 	@echo "  make clean"
+
+.PHONY: test
+test:
+	go test ${GOFLAGS} -run ${TESTS} ${PKG}
+
+.PHONY: testrace
+testrace: GOFLAGS += -race
+testrace: test
 
 .PHONY: stress
 stress: $(patsubst %,%.stress,$(shell go list ${PKG}))
