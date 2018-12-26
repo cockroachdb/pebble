@@ -121,7 +121,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 	// Check that each key/value pair in wordCount is also in the table.
 	for k, v := range wordCount {
 		// Check using Get.
-		if v1, err := r.get([]byte(k), nil); string(v1) != string(v) || err != nil {
+		if v1, err := r.get([]byte(k)); string(v1) != string(v) || err != nil {
 			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
 		} else if len(v1) != cap(v1) {
 			return fmt.Errorf("Get %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
@@ -169,7 +169,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 	// Check that nonsense words are not in the table.
 	for _, s := range nonsenseWords {
 		// Check using Get.
-		if _, err := r.get([]byte(s), nil); err != db.ErrNotFound {
+		if _, err := r.get([]byte(s)); err != db.ErrNotFound {
 			return fmt.Errorf("Get %q: got %v, want ErrNotFound", s, err)
 		}
 
@@ -386,7 +386,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	key := []byte("m!....")
 	for i := 0; i < n; i++ {
 		binary.LittleEndian.PutUint32(key[2:6], uint32(i))
-		r.get(key, nil)
+		r.get(key)
 	}
 
 	if c.truePositives != 0 {
