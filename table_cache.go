@@ -92,7 +92,7 @@ func (c *tableCache) newIters(meta *fileMetadata) (internalIterator, internalIte
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	if rangeDelIter := x.reader.NewRangeDelIter(nil); rangeDelIter != nil {
+	if rangeDelIter := x.reader.NewRangeDelIter(); rangeDelIter != nil {
 		return iter, rangeDelIter, nil
 	}
 	// NB: Translate a nil range-del iterator into a nil interface.
