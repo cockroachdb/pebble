@@ -224,9 +224,12 @@ func (k InternalKey) Separator(
 ) InternalKey {
 	buf = sep(buf, k.UserKey, other.UserKey)
 	if len(buf) <= len(k.UserKey) && cmp(k.UserKey, buf) < 0 {
-		// The separator user key is physically shorter that k.UserKey, but
-		// logically after. Tack on the max sequence number to the shortened user
-		// key.
+		// The separator user key is physically shorter than k.UserKey (if it is
+		// longer, we'll continue to use "k"), but logically after. Tack on the max
+		// sequence number to the shortened user key. Note that we could tack on
+		// any sequence number and kind here to create a valid separator key. We
+		// use the max sequence number to match the behavior of LevelDB and
+		// RocksDB.
 		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
 	}
 	return k
@@ -238,9 +241,12 @@ func (k InternalKey) Separator(
 func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) InternalKey {
 	buf = succ(buf, k.UserKey)
 	if len(buf) <= len(k.UserKey) && cmp(k.UserKey, buf) < 0 {
-		// The successor user key is physically shorter that k.UserKey, but
-		// logically after. Tack on the max sequence number to the shortened user
-		// key.
+		// The successor user key is physically shorter that k.UserKey (if it is
+		// longer, we'll continue to use "k"), but logically after. Tack on the max
+		// sequence number to the shortened user key. Note that we could tack on
+		// any sequence number and kind here to create a valid separator key. We
+		// use the max sequence number to match the behavior of LevelDB and
+		// RocksDB.
 		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
 	}
 	return k
