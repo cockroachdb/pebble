@@ -56,7 +56,7 @@ func TestOptionsString(t *testing.T) {
   block_size=4096
   compression=Snappy
   filter_policy=none
-  filter_type=block
+  filter_type=table
   target_file_size=2097152
 `
 

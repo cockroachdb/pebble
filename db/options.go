@@ -40,14 +40,11 @@ type FilterType int
 
 // The available filter types.
 const (
-	BlockFilter FilterType = iota
-	TableFilter
+	TableFilter FilterType = iota
 )
 
 func (t FilterType) String() string {
 	switch t {
-	case BlockFilter:
-		return "block"
 	case TableFilter:
 		return "table"
 	}

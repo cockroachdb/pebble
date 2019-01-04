@@ -313,7 +313,6 @@ func TestReaderBloomUsed(t *testing.T) {
 	}
 
 	files := []string{
-		"h.block-bloom.no-compression.sst",
 		"h.table-bloom.no-compression.sst",
 	}
 	for _, f := range files {
@@ -352,7 +351,7 @@ func TestReaderBloomUsed(t *testing.T) {
 }
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
-	f, err := os.Open(filepath.FromSlash("testdata/h.block-bloom.no-compression.sst"))
+	f, err := os.Open(filepath.FromSlash("testdata/h.table-bloom.no-compression.sst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,9 +447,7 @@ func TestWriterRoundTrip(t *testing.T) {
 func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy, ftype db.FilterType) {
 	filename := "testdata/h.no-compression.sst"
 	if fp != nil {
-		if ftype == db.BlockFilter {
-			filename = "testdata/h.block-bloom.no-compression.sst"
-		} else {
+		if ftype == db.TableFilter {
 			filename = "testdata/h.table-bloom.no-compression.sst"
 		}
 	}
@@ -487,10 +484,6 @@ func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy, ftype db.FilterTy
 
 func TestNoCompressionOutput(t *testing.T) {
 	testNoCompressionOutput(t, nil, 0)
-}
-
-func TestBlockBloomNoCompressionOutput(t *testing.T) {
-	testNoCompressionOutput(t, bloom.FilterPolicy(10), db.BlockFilter)
 }
 
 func TestTableBloomNoCompressionOutput(t *testing.T) {

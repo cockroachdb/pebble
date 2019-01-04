@@ -10,7 +10,7 @@ import (
 	"github.com/petermattis/pebble/db"
 )
 
-func (f blockFilter) String() string {
+func (f tableFilter) String() string {
 	s := make([]byte, 8*len(f))
 	for i, x := range f {
 		for j := 0; j < 8; j++ {
@@ -24,22 +24,22 @@ func (f blockFilter) String() string {
 	return string(s)
 }
 
-func newBlockFilter(buf []byte, keys [][]byte, bitsPerKey int) blockFilter {
-	w := FilterPolicy(bitsPerKey).NewWriter(db.BlockFilter)
+func newTableFilter(buf []byte, keys [][]byte, bitsPerKey int) tableFilter {
+	w := FilterPolicy(bitsPerKey).NewWriter(db.TableFilter)
 	for _, key := range keys {
 		w.AddKey(key)
 	}
-	return blockFilter(w.Finish(nil))
+	return tableFilter(w.Finish(nil))
 }
 
 func TestSmallBloomFilter(t *testing.T) {
-	f := newBlockFilter(nil, [][]byte{
+	f := newTableFilter(nil, [][]byte{
 		[]byte("hello"),
 		[]byte("world"),
 	}, 10)
 	got := f.String()
-	// The magic want string comes from running the C++ leveldb code's bloom_test.cc.
-	want := "1...1.........1.........1.....1...1...1.....1.........1.....1....11....."
+	// TODO(tbg): verify that RocksDB produces the same string.
+	want := "........................1.....................................................1...............1.....................................1.......................................................................................................................1.....................................1.............................1.....................................................1.....................................................1...................1.................................1...1..........................11.....1..............................."
 	if got != want {
 		t.Fatalf("bits:\ngot  %q\nwant %q", got, want)
 	}
@@ -87,10 +87,14 @@ loop:
 		for i := 0; i < length; i++ {
 			keys = append(keys, le32(i))
 		}
-		f := newBlockFilter(nil, keys, 10)
-
-		if len(f) > (length*10/8)+40 {
-			t.Errorf("length=%d: len(f)=%d is too large", length, len(f))
+		f := newTableFilter(nil, keys, 10)
+		// The size of the table bloom filter is measured in multiples of the
+		// cache line size. The '+2' contribution captures the rounding up in the
+		// length division plus preferring an odd number of cache lines. As such,
+		// this formula isn't exact, but the exact formula is hard to read.
+		maxLen := 5 + ((length*10)/cacheLineBits+2)*cacheLineSize
+		if len(f) > maxLen {
+			t.Errorf("length=%d: len(f)=%d > max len %d", length, len(f), maxLen)
 			continue
 		}
 
