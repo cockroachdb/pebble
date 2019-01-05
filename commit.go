@@ -108,6 +108,9 @@ func (q *commitQueue) dequeue(cond *sync.Cond) *Batch {
 	}
 }
 
+// commitEnv contains the environment that a commitPipeline interacts
+// with. This allows fine-grained testing of commitPipeline behavior without
+// construction of an entire DB.
 type commitEnv struct {
 	// The mutex to use for synchronizing access to logSeqNum and serializing
 	// calls to write().
@@ -131,17 +134,76 @@ type commitEnv struct {
 	write func(b *Batch) (*memTable, error)
 }
 
-// A commitPipeline manages the commit commitPipeline: writing batches to the
-// WAL, optionally syncing the WAL, and applying the batches to the memtable. A
-// commitPipeline groups batches together before writing them to the WAL to
-// optimize the WAL write behavior. After a batch has been written to the WAL,
-// if the batch requested syncing it will wait for the next WAL sync to
-// occur. Next, the commitPipeline applies the written (and synced) batches to
-// the memtable concurrently (using the goroutine that called
-// commitPipeline.commit). Lastly, the commitPipeline publishes that visible
-// sequence number ensuring that the sequence number only ratchets up.
+// A commitPipeline manages the stages of committing a set of mutations
+// (contained in a single Batch) atomically to the DB. The steps are
+// conceptually:
 //
-// TODO(peter): Document the invariants the commitPipeline needs to maintain.
+//   1. Write the batch to the WAL and optionally sync the WAL
+//   2. Apply the mutations in the batch to the memtable
+//
+// These two simple steps are made complicated by the desire for high
+// performance. In the absence of concurrency, performance is limited by how
+// fast a batch can be written (and synced) to the WAL and then added to the
+// memtable, both of which are outside the purview of the commit
+// pipeline. Performance under concurrency is the primary concern of the commit
+// pipeline, though it also needs to maintain two invariants:
+//
+//   1. Batches need to be written to the WAL in sequence number order.
+//   2. Batches need to be made visible for reads in sequence number order. This
+//      invariant arises from the use of a single sequence number which
+//      indicates which mutations are visible.
+//
+// Taking these invariants into account, let's revisit the work the commit
+// pipeline needs to perform. Writing the batch to the WAL is necessarily
+// serialized as there is a single WAL object. The order of the entries in the
+// WAL defines the sequence number order. Note that writing to the WAL is
+// extremely fast, usually just a memory copy. Applying the mutations in a
+// batch to the memtable can occur concurrently as the underlying skiplist
+// supports concurrent insertions. Publishing the visible sequence number is
+// another serialization point, but one with a twist: the visible sequence
+// number cannot be bumped until the mutations for earlier batches have
+// finished applying to the memtable (the visible sequence number only ratchets
+// up). Lastly, if requested, the commit waits for the WAL to sync. Note that
+// waiting for the WAL sync after ratcheting the visible sequence number allows
+// another goroutine to read committed data before the WAL has synced. This is
+// similar behavior to RocksDB's manual WAL flush functionality. Application
+// code needs to protect against this if necessary.
+//
+// The full outline of the commit pipeline operation is as follows:
+//
+//   with DB mutex locked:
+//     assign batch sequence number
+//     write batch to WAL
+//   (optionally) add batch to WAL sync list
+//   apply batch to memtable (concurrently)
+//   wait for earlier batches to apply
+//   ratchet read sequence number
+//   (optionally) wait for the WAL to sync
+//
+// As soon as a batch has been written to the WAL, the DB mutex is released
+// allowing another batch to write to the WAL. Each commit operation
+// individually applies its batch to the memtable providing concurrency. The
+// WAL sync happens concurrently with applying to the memtable (see
+// commitPipeline.syncLoop).
+//
+// The "waits for earlier batches to apply" work is more complicated than might
+// be expected. The obvious approach would be to keep a queue of pending
+// batches and for each batch to wait for the previous batch to finish
+// committing. This approach was tried initially and turned out to be too
+// slow. The problem is that it causes excessive goroutine activity as each
+// committing goroutine needs to wake up in order for the next goroutine to be
+// unblocked. The approach taken in the current code is conceptually similar,
+// though it avoids waking a goroutine to perform work that another goroutine
+// can perform. A commitQueue (a single-producer, multiple-consumer queue)
+// holds the ordered list of committing batches. Addition to the queue is done
+// while holding the DB mutex ensuring the same ordering of batches in the
+// queue as the ordering in the WAL. When a batch finishes applying to the
+// memtable, it atomically updates its Batch.applied field. Ratcheting of the
+// visible sequence number is done by commitPipeline.publish which loops
+// dequeueing "applied" batches and ratcheting the visible sequence number. If
+// we hit an unapplied batch at the head of the queue we can block as we know
+// that committing of that unapplied batch will eventually find our (applied)
+// batch in the queue. See commitPipeline.publish for additional commentary.
 type commitPipeline struct {
 	env commitEnv
 	// Condition var to signal upon changes to the pending queue.
