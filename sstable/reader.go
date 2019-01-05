@@ -99,12 +99,7 @@ func (i *Iterator) loadBlock() bool {
 // at the first key in that block which is >= the given key. If unsuccessful,
 // it sets i.err to any error encountered, which may be nil if we have simply
 // exhausted the entire table.
-//
-// If f is non-nil, the caller is presumably looking for one specific key, as
-// opposed to iterating over a range of keys (where the minimum of that range
-// isn't necessarily in the table). In that case, i.err will be set to
-// db.ErrNotFound if f does not contain the key.
-func (i *Iterator) seekBlock(key []byte, f *blockFilterReader) bool {
+func (i *Iterator) seekBlock(key []byte) bool {
 	if !i.index.Valid() {
 		i.err = i.index.err
 		return false
@@ -115,17 +110,6 @@ func (i *Iterator) seekBlock(key []byte, f *blockFilterReader) bool {
 	if n == 0 || n != len(v) {
 		i.err = errors.New("pebble/table: corrupt index entry")
 		return false
-	}
-	if f != nil {
-		data, err := i.reader.readFilter()
-		if err != nil {
-			i.err = err
-			return false
-		}
-		if !f.mayContain(data, h.offset, key) {
-			i.err = db.ErrNotFound
-			return false
-		}
 	}
 	block, _, err := i.reader.readBlock(h)
 	if err != nil {
@@ -349,7 +333,6 @@ type Reader struct {
 	opts        *db.Options
 	cache       *cache.Cache
 	compare     db.Compare
-	blockFilter *blockFilterReader
 	tableFilter *tableFilterReader
 	Properties  Properties
 }
@@ -393,7 +376,7 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 	i := &Iterator{}
 	if err := i.init(r); err == nil {
 		i.index.SeekGE(key)
-		i.seekBlock(key, r.blockFilter)
+		i.seekBlock(key)
 	}
 
 	if !i.Valid() || r.compare(key, i.Key().UserKey) != 0 {
@@ -581,7 +564,6 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 			ftype  db.FilterType
 			prefix string
 		}{
-			{db.BlockFilter, "filter."},
 			{db.TableFilter, "fullfilter."},
 		}
 		var done bool
@@ -589,28 +571,11 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 			if bh, ok := meta[t.prefix+fp.Name()]; ok {
 				r.filter.bh = bh
 
-				// Read the filter block to a) make sure it exists and b) initialize
-				// the filter readers. Note that the filter readers do not (and should
-				// not) hold onto the block data. Instead, that data is read from the
-				// weakCachedBlock on every access.
-				b, err := r.readFilter()
-				if err != nil {
-					return err
-				}
-
 				switch t.ftype {
-				case db.BlockFilter:
-					r.blockFilter = newBlockFilterReader(b, fp)
-					if r.blockFilter == nil {
-						return errors.New("pebble/table: invalid table (bad filter block)")
-					}
 				case db.TableFilter:
 					r.tableFilter = newTableFilterReader(fp)
-					if r.tableFilter == nil {
-						return errors.New("pebble/table: invalid table (bad filter block)")
-					}
 				default:
-					panic(fmt.Sprintf("unknown filter type: %v", t.ftype))
+					return fmt.Errorf("unknown filter type: %v", t.ftype)
 				}
 
 				done = true

@@ -564,8 +564,6 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 
 	if lo.FilterPolicy != nil {
 		switch lo.FilterType {
-		case db.BlockFilter:
-			w.filter = newBlockFilterWriter(lo.FilterPolicy)
 		case db.TableFilter:
 			w.filter = newTableFilterWriter(lo.FilterPolicy)
 		default:

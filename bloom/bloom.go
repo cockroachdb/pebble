@@ -132,49 +132,6 @@ func hash(b []byte) uint32 {
 	return h
 }
 
-type blockFilterWriter struct {
-	bitsPerKey int
-	hashes     []uint32
-}
-
-// AddKey implements the db.FilterWriter interface.
-func (w *blockFilterWriter) AddKey(key []byte) {
-	h := hash(key)
-	if n := len(w.hashes); n == 0 || h != w.hashes[n-1] {
-		w.hashes = append(w.hashes, h)
-	}
-}
-
-// Finish implements the db.FilterWriter interface.
-func (w *blockFilterWriter) Finish(buf []byte) []byte {
-	if w.bitsPerKey < 0 {
-		w.bitsPerKey = 0
-	}
-	nProbes := calculateProbes(w.bitsPerKey)
-	nBits := len(w.hashes) * w.bitsPerKey
-	// For small len(keys), we can see a very high false positive rate. Fix it
-	// by enforcing a minimum bloom filter length.
-	if nBits < 64 {
-		nBits = 64
-	}
-	nBytes := (nBits + 7) / 8
-	nBits = nBytes * 8
-	buf, filter := extend(buf, nBytes+1)
-
-	for _, h := range w.hashes {
-		delta := h>>17 | h<<15
-		for j := uint32(0); j < nProbes; j++ {
-			bitPos := h % uint32(nBits)
-			filter[bitPos/8] |= 1 << (bitPos % 8)
-			h += delta
-		}
-	}
-	filter[nBytes] = uint8(nProbes)
-
-	w.hashes = w.hashes[:0]
-	return buf
-}
-
 type tableFilterWriter struct {
 	bitsPerKey int
 	hashes     []uint32
@@ -248,8 +205,6 @@ func (p FilterPolicy) Name() string {
 // MayContain implements the db.FilterPolicy interface.
 func (p FilterPolicy) MayContain(ftype db.FilterType, f, key []byte) bool {
 	switch ftype {
-	case db.BlockFilter:
-		return blockFilter(f).MayContain(key)
 	case db.TableFilter:
 		return tableFilter(f).MayContain(key)
 	default:
@@ -260,10 +215,6 @@ func (p FilterPolicy) MayContain(ftype db.FilterType, f, key []byte) bool {
 // NewWriter implements the db.FilterPolicy interface.
 func (p FilterPolicy) NewWriter(ftype db.FilterType) db.FilterWriter {
 	switch ftype {
-	case db.BlockFilter:
-		return &blockFilterWriter{
-			bitsPerKey: int(p),
-		}
 	case db.TableFilter:
 		return &tableFilterWriter{
 			bitsPerKey: int(p),
