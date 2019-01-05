@@ -307,8 +307,9 @@ func TestIterator(t *testing.T) {
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
-		cmp:  db.DefaultComparer.Compare,
-		iter: m.newIter(nil),
+		cmp:   db.DefaultComparer.Compare,
+		equal: db.DefaultComparer.Equal,
+		iter:  m.newIter(nil),
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -322,8 +323,9 @@ func BenchmarkIteratorSeekGE(b *testing.B) {
 func BenchmarkIteratorNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		cmp:  db.DefaultComparer.Compare,
-		iter: m.newIter(nil),
+		cmp:   db.DefaultComparer.Compare,
+		equal: db.DefaultComparer.Equal,
+		iter:  m.newIter(nil),
 	}
 
 	b.ResetTimer()
@@ -338,8 +340,9 @@ func BenchmarkIteratorNext(b *testing.B) {
 func BenchmarkIteratorPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		cmp:  db.DefaultComparer.Compare,
-		iter: m.newIter(nil),
+		cmp:   db.DefaultComparer.Compare,
+		equal: db.DefaultComparer.Equal,
+		iter:  m.newIter(nil),
 	}
 
 	b.ResetTimer()
