@@ -9,6 +9,7 @@ all:
 	@echo "  make testrace"
 	@echo "  make stress"
 	@echo "  make stressrace"
+	@echo "  make bench"
 	@echo "  make clean"
 
 .PHONY: test
@@ -29,6 +30,15 @@ stressrace: stress
 %.stress:
 	go test ${GOFLAGS} -i -v -c $*
 	stress -maxfails 1 ./$(*F).test -test.run ${TESTS}
+
+.PHONY: bench
+bench: GOFLAGS += -timeout 1h
+bench: $(patsubst %,%.bench,internal/arenaskl internal/batchskl internal/record sstable .)
+
+internal/arenaskl.bench: GOFLAGS += -cpu 1,8
+
+%.bench:
+	go test -run - -bench . -count 1 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
 
 .PHONY: clean
 clean:
