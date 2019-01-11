@@ -1,5 +1,6 @@
-PKG = ./...
+GO = go
 GOFLAGS =
+PKG = ./...
 TESTS = .
 
 .PHONY: all
@@ -14,21 +15,21 @@ all:
 
 .PHONY: test
 test:
-	go test ${GOFLAGS} -run ${TESTS} ${PKG}
+	$(GO) test ${GOFLAGS} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
 testrace: GOFLAGS += -race
 testrace: test
 
 .PHONY: stress
-stress: $(patsubst %,%.stress,$(shell go list ${PKG}))
+stress: $(patsubst %,%.stress,$(shell $(GO) list ${PKG}))
 
 .PHONY: stressrace
 stressrace: GOFLAGS += -race
 stressrace: stress
 
 %.stress:
-	go test ${GOFLAGS} -i -v -c $*
+	$(GO) test ${GOFLAGS} -i -v -c $*
 	stress -maxfails 1 ./$(*F).test -test.run ${TESTS}
 
 .PHONY: bench
@@ -38,7 +39,7 @@ bench: $(patsubst %,%.bench,internal/arenaskl internal/batchskl internal/record 
 internal/arenaskl.bench: GOFLAGS += -cpu 1,8
 
 %.bench:
-	go test -run - -bench . -count 1 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
+	$(GO) test -run - -bench . -count 1 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
 
 .PHONY: clean
 clean:
