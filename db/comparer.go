@@ -49,6 +49,44 @@ type Separator func(dst, a, b []byte) []byte
 // key, though it is valid to pass a nil.
 type Successor func(dst, a []byte) []byte
 
+// Version is the version associated to a user key, for example originating
+// from an MVCC versioning scheme.
+type Version uint64
+
+// Split separates the input key into a user prefix and, optionally, a version.
+// The prefix is used to populate the bloom filters (if enabled), similar to
+// RocksDB's prefix extractor
+// The version is unused at the time of writing but may be used in the future to
+// optimize the storage of historical versions.
+//
+// The returned prefix must have the following properties:
+//
+// 1) a starts with prefix(a),
+// 2) Compare(prefix(a), a) <= 0,
+// 3) If Compare(b, c) <= 0, then Compare(prefix(b), prefix(c)) <= 0, and
+// 4) prefix(prefix(a)) = prefix(a).
+//
+// Split should not need to allocate memory as it can return a slice pointing
+// into memory underlying the input slice.
+//
+// The returned boolean indicates whether the returned prefix is stable, that
+// is, whether appending to the input could possibly change the resulting
+// prefix. A key whose prefix is stable can be seeked to using the prefix bloom
+// filters For MVCC schemes which encode first the user key and then the
+// version, a prefix is usually stable if and only if the input key encoded the
+// timestamp portion.
+//
+// If Split is nil but bloom filters are enabled, the full keys will be added to
+// the bloom filters instead. It is currently not possible to add both a prefix
+// and the full key to the bloom filters.
+//
+// It is suggested to prefer a nil Split over a trivial implementation that
+// always returns the zero value for performance reasons.
+//
+// TODO(tbg,peter): is it worth carrying the Version around until we decide to
+// use it?
+type Split func(a []byte) (prefix []byte, stable bool, _ Version)
+
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer struct {
@@ -57,6 +95,7 @@ type Comparer struct {
 	InlineKey InlineKey
 	Separator Separator
 	Successor Successor
+	Split     Split
 
 	// Name is the name of the comparer.
 	//

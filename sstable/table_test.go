@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -234,6 +233,7 @@ func build(
 	compression db.Compression,
 	fp db.FilterPolicy,
 	ftype db.FilterType,
+	comparer *db.Comparer,
 ) (storage.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
@@ -256,6 +256,7 @@ func build(
 		Merger: &db.Merger{
 			Name: "nullptr",
 		},
+		Comparer: comparer,
 	}, db.LevelOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
@@ -433,61 +434,23 @@ func (c *countingFilterPolicy) MayContain(ftype db.FilterType, filter, key []byt
 }
 
 func TestWriterRoundTrip(t *testing.T) {
-	// Check that we can read a freshly made table.
-	f, err := build(db.DefaultCompression, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = check(f, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
+	for name, fp := range map[string]db.FilterPolicy{
+		"none":       nil,
+		"bloom10bit": bloom.FilterPolicy(10),
+	} {
+		t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
+			f, err := build(db.DefaultCompression, fp, db.TableFilter, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Check that we can read a freshly made table.
 
-func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy, ftype db.FilterType) {
-	filename := "testdata/h.no-compression.sst"
-	if fp != nil {
-		if ftype == db.TableFilter {
-			filename = "testdata/h.table-bloom.no-compression.sst"
-		}
+			err = check(f, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
-
-	// Check that a freshly made NoCompression table is byte-for-byte equal
-	// to a pre-made table.
-	want, err := ioutil.ReadFile(filepath.FromSlash(filename))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f, err := build(db.NoCompression, fp, ftype)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stat, err := f.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := make([]byte, stat.Size())
-	_, err = f.ReadAt(got, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(got, want) {
-		i := 0
-		for ; i < len(got) && i < len(want) && got[i] == want[i]; i++ {
-		}
-		t.Fatalf("built table does not match pre-made table. From byte %d onwards,\ngot:\n% x\nwant:\n% x",
-			i, got[i:], want[i:])
-	}
-}
-
-func TestNoCompressionOutput(t *testing.T) {
-	testNoCompressionOutput(t, nil, 0)
-}
-
-func TestTableBloomNoCompressionOutput(t *testing.T) {
-	testNoCompressionOutput(t, bloom.FilterPolicy(10), db.TableFilter)
 }
 
 func TestFinalBlockIsWritten(t *testing.T) {
