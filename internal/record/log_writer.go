@@ -273,7 +273,7 @@ func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 		return -1, w.err
 	}
 
-	for i := 0; len(p) > 0; i++ {
+	for i := 0; i == 0 || len(p) > 0; i++ {
 		p = w.emitFragment(i, p)
 	}
 
@@ -307,7 +307,7 @@ func (w *LogWriter) emitFragment(n int, p []byte) []byte {
 	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], uint16(r))
 	atomic.StoreInt32(&b.written, j)
 
-	if blockSize-b.written <= headerSize {
+	if blockSize-b.written < headerSize {
 		// There is no room for another fragment in the block, so fill the
 		// remaining bytes with zeros and queue the block for flushing.
 		for i := b.written; i < blockSize; i++ {
