@@ -28,22 +28,21 @@ func big(partial string, n int) string {
 	return strings.Repeat(partial, n/len(partial)+1)[:n]
 }
 
-// TestZeroBlocks tests that reading nothing but all-zero blocks gives io.EOF.
-// This includes decoding an empty stream.
-func TestZeroBlocks(t *testing.T) {
-	for i := 0; i < 3; i++ {
-		r := NewReader(bytes.NewReader(make([]byte, i*blockSize)))
-		if _, err := r.Next(); err != io.EOF {
-			t.Fatalf("%d blocks: got %v, want %v", i, err, io.EOF)
-		}
-	}
+type recordWriter interface {
+	WriteRecord([]byte) (int64, error)
+	Close() error
 }
 
-func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
+func testGeneratorWriter(
+	t *testing.T,
+	reset func(),
+	gen func() (string, bool),
+	newWriter func (io.Writer) recordWriter,
+) {
 	buf := new(bytes.Buffer)
 
 	reset()
-	w := NewWriter(buf)
+	w := newWriter(buf)
 	for {
 		s, ok := gen()
 		if !ok {
@@ -79,6 +78,20 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 	if _, err := r.Next(); err != io.EOF {
 		t.Fatalf("got %v, want %v", err, io.EOF)
 	}
+}
+
+func testGenerator( t *testing.T, reset func(), gen func() (string, bool)) {
+	t.Run("Writer", func (t *testing.T) {
+		testGeneratorWriter(t, reset, gen, func (w io.Writer) recordWriter {
+			return NewWriter(w)
+		})
+	})
+
+	t.Run("LogWriter", func (t *testing.T) {
+		testGeneratorWriter(t, reset, gen, func (w io.Writer) recordWriter {
+			return NewLogWriter(w)
+		})
+	})
 }
 
 func testLiterals(t *testing.T, s []string) {
