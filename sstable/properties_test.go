@@ -33,7 +33,7 @@ func TestPropertiesLoad(t *testing.T) {
 		RawKeySize:             23717,
 		RawValueSize:           1835,
 		Version:                2,
-		WholeKeyFiltering:      true,
+		WholeKeyFiltering:      false,
 		ValueOffsets: map[string]uint64{
 			"rocksdb.block.based.table.index.type":          13122,
 			"rocksdb.block.based.table.prefix.filtering":    13171,

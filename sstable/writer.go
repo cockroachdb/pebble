@@ -86,10 +86,13 @@ type Writer struct {
 	blockSizeThreshold int
 	bytesPerSync       int
 	compare            db.Compare
-	compression        db.Compression
-	separator          db.Separator
-	successor          db.Successor
-	tableFormat        db.TableFormat
+
+	split db.Split
+
+	compression db.Compression
+	separator   db.Separator
+	successor   db.Successor
+	tableFormat db.TableFormat
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
 	// cannot be written until the first key in the next block is seen.
@@ -109,7 +112,9 @@ type Writer struct {
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
 	compressedBuf []byte
-	// filter accumulates the filter block.
+	// filter accumulates the filter block. If populated, the filter ingests
+	// either the output of w.split (i.e. a prefix extractor) if w.split is not
+	// nil, or the full keys otherwise.
 	filter filterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
@@ -196,9 +201,8 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 	w.meta.updateSeqNum(key.SeqNum())
 	w.meta.updateLargestPoint(key)
 
-	if w.filter != nil {
-		w.filter.addKey(key.UserKey)
-	}
+	w.maybeAddToFilter(key.UserKey)
+
 	if w.props.NumEntries == 0 {
 		w.meta.SmallestPoint = key.Clone()
 	}
@@ -252,6 +256,17 @@ func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
 	w.props.NumRangeDeletions++
 	w.rangeDelBlock.add(key, value)
 	return nil
+}
+
+func (w *Writer) maybeAddToFilter(key []byte) {
+	if w.filter != nil {
+		if w.split != nil {
+			prefix := key[:w.split(key)]
+			w.filter.addKey(prefix)
+		} else {
+			w.filter.addKey(key)
+		}
+	}
 }
 
 func (w *Writer) maybeFlush(key db.InternalKey, value []byte) error {
@@ -543,6 +558,7 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		blockSizeThreshold: (lo.BlockSize*lo.BlockSizeThreshold + 99) / 100,
 		bytesPerSync:       o.BytesPerSync,
 		compare:            o.Comparer.Compare,
+		split:              o.Comparer.Split,
 		compression:        lo.Compression,
 		separator:          o.Comparer.Separator,
 		successor:          o.Comparer.Successor,
@@ -562,10 +578,17 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 		return w
 	}
 
+	w.props.PrefixExtractorName = "nullptr"
 	if lo.FilterPolicy != nil {
 		switch lo.FilterType {
 		case db.TableFilter:
 			w.filter = newTableFilterWriter(lo.FilterPolicy)
+			if w.split != nil {
+				w.props.PrefixExtractorName = o.Comparer.Name
+				w.props.PrefixFiltering = true
+			} else {
+				w.props.WholeKeyFiltering = true
+			}
 		default:
 			panic(fmt.Sprintf("unknown filter type: %v", lo.FilterType))
 		}
@@ -575,9 +598,7 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	w.props.ComparatorName = o.Comparer.Name
 	w.props.CompressionName = lo.Compression.String()
 	w.props.MergeOperatorName = o.Merger.Name
-	w.props.PrefixExtractorName = "nullptr"
 	w.props.PropertyCollectorNames = "[]"
-	w.props.WholeKeyFiltering = true
 	w.props.Version = 2 // TODO(peter): what is this?
 
 	// If f does not have a Flush method, do our own buffering.

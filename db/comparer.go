@@ -8,6 +8,8 @@ import (
 	"bytes"
 )
 
+// TODO(tbg): introduce a FeasibleKey type to make things clearer.
+
 // Compare returns -1, 0, or +1 depending on whether a is 'less than',
 // 'equal to' or 'greater than' b. The two arguments can only be 'equal'
 // if their contents are exactly equal. Furthermore, the empty slice
@@ -25,18 +27,21 @@ type Equal func(a, b []byte) bool
 // < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff a > b. If
 // InlineKey(a) == InlineKey(b) an additional comparison is required to
 // determine if the two keys are actually equal.
+// This helps optimize memtable comparisons for cache locality.
+//
+// TODO(tbg): this interacts with Split. Perhaps it ought to be folded into it.
 type InlineKey func(key []byte) uint64
 
-// Separator appends a sequence of bytes x to dst such that
-// a <= x && x < b, where 'less than' is consistent with Compare.
-// It returns the enlarged slice, like the built-in append function.
+// Given feasible keys a, b for which Compare(a, b) < 0, Separator returns a
+// feasible key k such that:
 //
-// Precondition: either a is 'less than' b, or b is an empty slice.
-// In the latter case, empty means 'positive infinity', and appending any
-// x such that a <= x will be valid.
+// 1. Compare(a, k) <= 0, and
+// 2. Compare(k, b) < 0.
 //
-// An implementation may simply be "return append(dst, a...)" but appending
-// fewer bytes will result in smaller tables.
+// As a special case, b may be nil in which case the second condition is dropped.
+//
+// Separator is used to construct SSTable index blocks. A trivial implementation
+// is `return a`, but appending fewer bytes leads to smaller SSTables.
 //
 // For example, if dst, a and b are the []byte equivalents of the strings
 // "aqua", "black" and "blue", then the result may be "aquablb".
@@ -44,18 +49,44 @@ type InlineKey func(key []byte) uint64
 // may be "aquah".
 type Separator func(dst, a, b []byte) []byte
 
-// Successor returns a successor key such that k <= a. A simple implementation
-// may return a unchanged. The dst parameter may be used to store the returned
-// key, though it is valid to pass a nil.
+// Given a feasible key a, Successor returns feasible key k such that Compare(k,
+// a) >= 0. A simple implementation may return a unchanged. The dst parameter
+// may be used to store the returned key, though it is valid to pass a nil. The
+// returned key must be feasible.
+//
+// TODO(tbg) it seems that Successor is just the special case of Separator in
+// which b is nil. Can we remove this?
 type Successor func(dst, a []byte) []byte
+
+// Split returns the length of the prefix of the user key that corresponds to
+// the key portion of an MVCC encoding scheme to enable the use of prefix bloom
+// filters.
+//
+// The method will only ever be called with feasible keys, that is, keys that
+// the user did could potentially store in the database. Typically this means
+// that the method must only handle valid MVCC encoded keys and should panic
+// on any other input.
+//
+// A trivial MVCC scheme is that in which Split() returns len(a). This
+// corresponds to assigning a constant version to each key in the database. For
+// performance reasons, it is preferable to use a `nil` split in this case.
+//
+// The returned prefix must have the following properties (where a and b are
+// feasible):
+//
+// 1) Compare(prefix(a), a) <= 0,
+// 2) If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
+// 3) if b begins with a, then prefix(b) = prefix(a).
+type Split func(a []byte) int
 
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer struct {
 	Compare   Compare
-	Equal     Equal
+	Equal     Equal // TODO(tbg): unused, remove?
 	InlineKey InlineKey
 	Separator Separator
+	Split     Split
 	Successor Successor
 
 	// Name is the name of the comparer.

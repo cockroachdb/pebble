@@ -333,6 +333,7 @@ type Reader struct {
 	opts        *db.Options
 	cache       *cache.Cache
 	compare     db.Compare
+	split       db.Split
 	tableFilter *tableFilterReader
 	Properties  Properties
 }
@@ -358,6 +359,8 @@ func (r *Reader) Close() error {
 	return nil
 }
 
+// get is a testing helper that simulates a read and helps verify bloom filters
+// until they are available through iterators.
 func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
@@ -368,7 +371,13 @@ func (r *Reader) get(key []byte, o *db.IterOptions) (value []byte, err error) {
 		if err != nil {
 			return nil, err
 		}
-		if !r.tableFilter.mayContain(data, key) {
+		var lookupKey []byte
+		if r.split != nil {
+			lookupKey = key[:r.split(key)]
+		} else {
+			lookupKey = key
+		}
+		if !r.tableFilter.mayContain(data, lookupKey) {
 			return nil, db.ErrNotFound
 		}
 	}
@@ -599,6 +608,7 @@ func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
 		opts:    o,
 		cache:   o.Cache,
 		compare: o.Comparer.Compare,
+		split:   o.Comparer.Split,
 	}
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")
