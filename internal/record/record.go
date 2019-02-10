@@ -166,6 +166,9 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					//
 					// Set r.err to be an error so r.Recover actually recovers.
 					r.err = errors.New("pebble/record: block appears to be zeroed")
+					if !r.recovering {
+						return r.err
+					}
 					r.Recover()
 					continue
 				}
