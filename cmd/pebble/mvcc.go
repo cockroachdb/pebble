@@ -18,7 +18,7 @@ import (
 var mvccComparer = &db.Comparer{
 	Compare: mvccCompare,
 
-	InlineKey: func(k []byte) uint64 {
+	AbbreviatedKey: func(k []byte) uint64 {
 		key, _, ok := mvccSplitKey(k)
 		if !ok {
 			return 0

@@ -121,12 +121,12 @@ type Writer interface {
 //		Comparer: myComparer,
 //	})
 type DB struct {
-	dirname   string
-	opts      *db.Options
-	cmp       db.Compare
-	equal     db.Equal
-	merge     db.Merge
-	inlineKey db.InlineKey
+	dirname        string
+	opts           *db.Options
+	cmp            db.Compare
+	equal          db.Equal
+	merge          db.Merge
+	abbreviatedKey db.AbbreviatedKey
 
 	tableCache tableCache
 	newIters   tableNewIters

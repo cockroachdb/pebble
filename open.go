@@ -65,7 +65,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		cmp:               opts.Comparer.Compare,
 		equal:             opts.Comparer.Equal,
 		merge:             opts.Merger.Merge,
-		inlineKey:         opts.Comparer.InlineKey,
+		abbreviatedKey:    opts.Comparer.AbbreviatedKey,
 		commitController:  newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
 		compactController: newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
 		flushController:   newController(rate.NewLimiter(rate.Inf, defaultBurst)),
