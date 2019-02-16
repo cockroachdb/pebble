@@ -80,12 +80,12 @@ type links struct {
 type node struct {
 	// The offset of the key in storage. See Storage.Get.
 	key uint32
-	// A fixed 8-byte inlineKey of the key, used to avoid retrieval of the key
+	// A fixed 8-byte abbreviation of the key, used to avoid retrieval of the key
 	// during seek operations. The key retrieval can be expensive purely due to
-	// cache misses while the inlineKey stored here will be in the same cache line
-	// as the key and the links making accessing and comparing against it almost
-	// free.
-	inlineKey uint64
+	// cache misses while the abbreviatedKey stored here will be in the same
+	// cache line as the key and the links making accessing and comparing against
+	// it almost free.
+	abbreviatedKey uint64
 	// Most nodes do not need to use the full height of the link tower, since the
 	// probability of each successive level decreases exponentially. Because
 	// these elements are never accessed, they do not need to be allocated.
@@ -99,11 +99,12 @@ type Storage interface {
 	// Get returns the key stored at the specified offset.
 	Get(offset uint32) db.InternalKey
 
-	// InlineKey returns a fixed length prefix of the specified key such that
-	// InlineKey(a) < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff
-	// a > b. If InlineKey(a) == InlineKey(b) an additional comparison is
-	// required to determine if the two keys are actually equal.
-	InlineKey(key []byte) uint64
+	// AbbreviatedKey returns a fixed length prefix of the specified key such
+	// that AbbreviatedKey(a) < AbbreviatedKey(b) iff a < b and AbbreviatedKey(a)
+	// > AbbreviatedKey(b) iff a > b. If AbbreviatedKey(a) == AbbreviatedKey(b)
+	// an additional comparison is required to determine if the two keys are
+	// actually equal.
+	AbbreviatedKey(key []byte) uint64
 
 	// Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
 	// to', or 'greater than' the key stored at b.
@@ -191,15 +192,15 @@ func (s *Skiplist) Reset(storage Storage, initBufSize int) {
 // already exists, then Add returns ErrRecordExists.
 func (s *Skiplist) Add(keyOffset uint32) error {
 	key := s.storage.Get(keyOffset)
-	inlineKey := s.storage.InlineKey(key.UserKey)
+	abbreviatedKey := s.storage.AbbreviatedKey(key.UserKey)
 
 	var spl [maxHeight]splice
-	if s.findSplice(key.UserKey, inlineKey, &spl) {
+	if s.findSplice(key.UserKey, abbreviatedKey, &spl) {
 		return ErrExists
 	}
 
 	height := s.randomHeight()
-	nd := s.newNode(height, keyOffset, inlineKey)
+	nd := s.newNode(height, keyOffset, abbreviatedKey)
 	// Increase s.height as necessary.
 	for ; s.height < height; s.height++ {
 		spl[s.height].next = s.tail
@@ -227,7 +228,7 @@ func (s *Skiplist) NewIter() Iterator {
 	return Iterator{list: s}
 }
 
-func (s *Skiplist) newNode(height, key uint32, inlineKey uint64) uint32 {
+func (s *Skiplist) newNode(height, key uint32, abbreviatedKey uint64) uint32 {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
@@ -237,7 +238,7 @@ func (s *Skiplist) newNode(height, key uint32, inlineKey uint64) uint32 {
 	nd := s.node(offset)
 
 	nd.key = key
-	nd.inlineKey = inlineKey
+	nd.abbreviatedKey = abbreviatedKey
 	return offset
 }
 
@@ -272,13 +273,13 @@ func (s *Skiplist) randomHeight() uint32 {
 }
 
 func (s *Skiplist) findSplice(
-	key []byte, inlineKey uint64, spl *[maxHeight]splice,
+	key []byte, abbreviatedKey uint64, spl *[maxHeight]splice,
 ) (found bool) {
 	var prev, next uint32
 	prev = s.head
 
 	for level := s.height - 1; ; level-- {
-		prev, next, found = s.findSpliceForLevel(key, inlineKey, level, prev)
+		prev, next, found = s.findSpliceForLevel(key, abbreviatedKey, level, prev)
 		spl[level].init(prev, next)
 		if level == 0 {
 			break
@@ -289,7 +290,7 @@ func (s *Skiplist) findSplice(
 }
 
 func (s *Skiplist) findSpliceForLevel(
-	key []byte, inlineKey uint64, level, start uint32,
+	key []byte, abbreviatedKey uint64, level, start uint32,
 ) (prev, next uint32, found bool) {
 	prev = start
 
@@ -301,12 +302,12 @@ func (s *Skiplist) findSpliceForLevel(
 			break
 		}
 
-		nextInlineKey := s.getInlineKey(next)
-		if inlineKey < nextInlineKey {
+		nextAbbreviatedKey := s.getAbbreviatedKey(next)
+		if abbreviatedKey < nextAbbreviatedKey {
 			// We are done for this level, since prev.key < key < next.key.
 			break
 		}
-		if inlineKey == nextInlineKey {
+		if abbreviatedKey == nextAbbreviatedKey {
 			cmp := s.storage.Compare(key, s.getKey(next))
 			if cmp == 0 {
 				// Equality case.
@@ -330,8 +331,8 @@ func (s *Skiplist) getKey(nd uint32) uint32 {
 	return s.node(nd).key
 }
 
-func (s *Skiplist) getInlineKey(nd uint32) uint64 {
-	return s.node(nd).inlineKey
+func (s *Skiplist) getAbbreviatedKey(nd uint32) uint64 {
+	return s.node(nd).abbreviatedKey
 }
 
 func (s *Skiplist) getNext(nd, h uint32) uint32 {

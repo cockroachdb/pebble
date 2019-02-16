@@ -45,9 +45,9 @@ type batchStorage struct {
 	//     - the varint-string user key,
 	//     - the varint-string value (if kind != delete).
 	// The sequence number and count are stored in little-endian order.
-	data      []byte
-	cmp       db.Compare
-	inlineKey db.InlineKey
+	data           []byte
+	cmp            db.Compare
+	abbreviatedKey db.AbbreviatedKey
 }
 
 // Get implements Storage.Get, as documented in the pebble/batchskl package.
@@ -60,10 +60,10 @@ func (s *batchStorage) Get(offset uint32) db.InternalKey {
 	return db.MakeInternalKey(key, uint64(offset)|db.InternalKeySeqNumBatch, kind)
 }
 
-// InlineKey implements Storage.InlineKey, as documented in the pebble/batchskl
-// package.
-func (s *batchStorage) InlineKey(key []byte) uint64 {
-	return s.inlineKey(key)
+// AbbreviatedKey implements Storage.AbbreviatedKey, as documented in the
+// pebble/batchskl package.
+func (s *batchStorage) AbbreviatedKey(key []byte) uint64 {
+	return s.abbreviatedKey(key)
 }
 
 // Compare implements Storage.Compare, as documented in the pebble/batchskl
@@ -133,7 +133,7 @@ func newBatch(db *DB) *Batch {
 func newIndexedBatch(db *DB, comparer *db.Comparer) *Batch {
 	i := indexedBatchPool.Get().(*indexedBatch)
 	i.batch.cmp = comparer.Compare
-	i.batch.inlineKey = comparer.InlineKey
+	i.batch.abbreviatedKey = comparer.AbbreviatedKey
 	i.batch.db = db
 	i.batch.index = &i.index
 	i.batch.index.Reset(&i.batch.batchStorage, 0)
@@ -146,7 +146,7 @@ func (b *Batch) release() {
 	// Go race detector complains.
 	b.reset()
 	b.cmp = nil
-	b.inlineKey = nil
+	b.abbreviatedKey = nil
 	b.memTableSize = 0
 	b.db = nil
 	b.flushable = nil

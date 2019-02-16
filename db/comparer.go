@@ -21,11 +21,12 @@ type Compare func(a, b []byte) int
 // for comparison purposes).
 type Equal func(a, b []byte) bool
 
-// InlineKey returns a fixed length prefix of a user key such that InlineKey(a)
-// < InlineKey(b) iff a < b and InlineKey(a) > InlineKey(b) iff a > b. If
-// InlineKey(a) == InlineKey(b) an additional comparison is required to
-// determine if the two keys are actually equal.
-type InlineKey func(key []byte) uint64
+// AbbreviatedKey returns a fixed length prefix of a user key such that
+// AbbreviatedKey(a) < AbbreviatedKey(b) iff a < b and AbbreviatedKey(a) >
+// AbbreviatedKey(b) iff a > b. If AbbreviatedKey(a) == AbbreviatedKey(b) an
+// additional comparison is required to determine if the two keys are actually
+// equal.
+type AbbreviatedKey func(key []byte) uint64
 
 // Separator appends a sequence of bytes x to dst such that
 // a <= x && x < b, where 'less than' is consistent with Compare.
@@ -52,11 +53,11 @@ type Successor func(dst, a []byte) []byte
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer struct {
-	Compare   Compare
-	Equal     Equal
-	InlineKey InlineKey
-	Separator Separator
-	Successor Successor
+	Compare        Compare
+	Equal          Equal
+	AbbreviatedKey AbbreviatedKey
+	Separator      Separator
+	Successor      Successor
 
 	// Name is the name of the comparer.
 	//
@@ -72,7 +73,7 @@ var DefaultComparer = &Comparer{
 	Compare: bytes.Compare,
 	Equal:   bytes.Equal,
 
-	InlineKey: func(key []byte) uint64 {
+	AbbreviatedKey: func(key []byte) uint64 {
 		var v uint64
 		n := 8
 		if n > len(key) {

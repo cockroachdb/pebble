@@ -71,8 +71,8 @@ func (d *testStorage) Get(offset uint32) db.InternalKey {
 	return db.InternalKey{UserKey: d.keys[offset]}
 }
 
-func (d *testStorage) InlineKey(key []byte) uint64 {
-	return db.DefaultComparer.InlineKey(key)
+func (d *testStorage) AbbreviatedKey(key []byte) uint64 {
+	return db.DefaultComparer.AbbreviatedKey(key)
 }
 
 func (d *testStorage) Compare(a []byte, b uint32) int {

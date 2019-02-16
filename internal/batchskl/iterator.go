@@ -48,7 +48,7 @@ func (it *Iterator) Close() error {
 // equal to the given key. Returns true if the iterator is pointing at a
 // valid entry and false otherwise.
 func (it *Iterator) SeekGE(key []byte) bool {
-	_, it.nd, _ = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
+	_, it.nd, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
 	return it.nd != it.list.tail
 }
 
@@ -56,7 +56,7 @@ func (it *Iterator) SeekGE(key []byte) bool {
 // key. Returns true if the iterator is pointing at a valid entry and false
 // otherwise.
 func (it *Iterator) SeekLT(key []byte) (found bool) {
-	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.InlineKey(key))
+	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
 	return it.nd != it.list.head
 }
 
@@ -114,11 +114,11 @@ func (it *Iterator) Valid() bool {
 }
 
 func (it *Iterator) seekForBaseSplice(
-	key []byte, inlineKey uint64,
+	key []byte, abbreviatedKey uint64,
 ) (prev, next uint32, found bool) {
 	prev = it.list.head
 	for level := it.list.height - 1; ; level-- {
-		prev, next, found = it.list.findSpliceForLevel(key, inlineKey, level, prev)
+		prev, next, found = it.list.findSpliceForLevel(key, abbreviatedKey, level, prev)
 		if found {
 			break
 		}
