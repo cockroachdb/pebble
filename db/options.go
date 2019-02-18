@@ -69,7 +69,7 @@ type FilterWriter interface {
 // Every FilterPolicy has a name. This names the algorithm itself, not any one
 // particular instance. Aspects specific to a particular instance, such as the
 // set of keys or any other parameters, will be encoded in the []byte filter
-// returned by NewFilter.
+// returned by NewWriter.
 //
 // The name may be written to files on disk, along with the filter data. To use
 // these filters, the FilterPolicy name at the time of writing must equal the
@@ -407,7 +407,21 @@ type IterOptions struct {
 	// false to skip scanning.
 	//
 	// TODO(peter): unimplemented.
-	TableFilter func(userProps map[string]string) bool
+	// TableFilter func(userProps map[string]string) bool
+
+	// If Prefix is true, the iterator will only be used to iterate over keys
+	// matching that of the key it is first positioned at. If the Comparer was
+	// supplied with a user-defined Split function and bloom filters are
+	// enabled, this allows for improved performance by skipping SSTables known
+	// not to contain the given prefix. The iterator will not properly observe
+	// keys not matching the prefix.
+	//
+	// TODO(tbg): should an assertion trip if the first key's prefix is unstable?
+	// TODO(tbg): should Prefix override (or sharpen) {Lower,Upper}Bound? When
+	// we see the first key, we get the prefix and a separator which should be
+	// a good {Lower,Upper}Bound.
+	// TODO(tbg): unimplemented.
+	// Prefix bool
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.

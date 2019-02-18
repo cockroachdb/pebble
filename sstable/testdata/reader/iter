@@ -1,5 +1,5 @@
 build
-a:1,b:2,c:3,d:4
+a:1=A,b:2=B,c:3=C,d:4=D
 ----
 
 iter
@@ -128,3 +128,16 @@ iter globalSeqNum=0
 seek-lt x
 ----
 <d:4>
+
+get
+b
+a
+f
+d
+c
+----
+B
+A
+<err: pebble: not found>
+D
+C

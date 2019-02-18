@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -111,8 +110,9 @@ func init() {
 	}
 }
 
-func check(f storage.File, fp db.FilterPolicy) error {
+func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 	r := NewReader(f, 0, &db.Options{
+		Comparer: comparer,
 		Levels: []db.LevelOptions{{
 			FilterPolicy: fp,
 		}},
@@ -234,6 +234,7 @@ func build(
 	compression db.Compression,
 	fp db.FilterPolicy,
 	ftype db.FilterType,
+	comparer *db.Comparer,
 ) (storage.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
@@ -256,6 +257,7 @@ func build(
 		Merger: &db.Merger{
 			Name: "nullptr",
 		},
+		Comparer: comparer,
 	}, db.LevelOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
@@ -280,25 +282,29 @@ func build(
 	return f1, nil
 }
 
-func testReader(t *testing.T, filename string, fp db.FilterPolicy) {
+func testReader(t *testing.T, filename string, comparer *db.Comparer, fp db.FilterPolicy) {
 	// Check that we can read a pre-made table.
 	f, err := os.Open(filepath.FromSlash("testdata/" + filename))
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	err = check(f, fp)
+	err = check(f, comparer, fp)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 }
 
-func TestReaderLevelDB(t *testing.T)            { testReader(t, "h.ldb", nil) }
-func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil) }
-func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil) }
-func TestReaderBlockBloomIgnored(t *testing.T)  { testReader(t, "h.block-bloom.no-compression.sst", nil) }
-func TestReaderTableBloomIgnored(t *testing.T)  { testReader(t, "h.table-bloom.no-compression.sst", nil) }
+func TestReaderLevelDB(t *testing.T)            { testReader(t, "h.ldb", nil, nil) }
+func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil, nil) }
+func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil, nil) }
+func TestReaderBlockBloomIgnored(t *testing.T) {
+	testReader(t, "h.block-bloom.no-compression.sst", nil, nil)
+}
+func TestReaderTableBloomIgnored(t *testing.T) {
+	testReader(t, "h.table-bloom.no-compression.sst", nil, nil)
+}
 
 func TestReaderBloomUsed(t *testing.T) {
 	// wantActualNegatives is the minimum number of nonsense words (i.e. false
@@ -312,39 +318,45 @@ func TestReaderBloomUsed(t *testing.T) {
 		}
 	}
 
-	files := []string{
-		"h.table-bloom.no-compression.sst",
+	files := []struct {
+		path     string
+		comparer *db.Comparer
+	}{
+		{"h.table-bloom.no-compression.sst", nil},
+		{"h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst", fixtureComparer},
 	}
-	for _, f := range files {
-		t.Run(f, func(t *testing.T) {
+	for _, tc := range files {
+		t.Run(tc.path, func(t *testing.T) {
 			for _, degenerate := range []bool{false, true} {
-				c := &countingFilterPolicy{
-					FilterPolicy: bloom.FilterPolicy(10),
-					degenerate:   degenerate,
-				}
-				testReader(t, f, c)
-
-				if c.truePositives != len(wordCount) {
-					t.Errorf("degenerate=%t: true positives: got %d, want %d", degenerate, c.truePositives, len(wordCount))
-				}
-				if c.falseNegatives != 0 {
-					t.Errorf("degenerate=%t: false negatives: got %d, want %d", degenerate, c.falseNegatives, 0)
-				}
-
-				if got := c.falsePositives + c.trueNegatives; got < wantActualNegatives {
-					t.Errorf("degenerate=%t: actual negatives (false positives + true negatives): "+
-						"got %d (%d + %d), want >= %d",
-						degenerate, got, c.falsePositives, c.trueNegatives, wantActualNegatives)
-				}
-
-				if !degenerate {
-					// The true negative count should be much greater than the false
-					// positive count.
-					if c.trueNegatives < 10*c.falsePositives {
-						t.Errorf("degenerate=%t: true negative to false positive ratio (%d:%d) is too small",
-							degenerate, c.trueNegatives, c.falsePositives)
+				t.Run(fmt.Sprintf("degenerate=%t", degenerate), func(t *testing.T) {
+					c := &countingFilterPolicy{
+						FilterPolicy: bloom.FilterPolicy(10),
+						degenerate:   degenerate,
 					}
-				}
+					testReader(t, tc.path, tc.comparer, c)
+
+					if c.truePositives != len(wordCount) {
+						t.Errorf("degenerate=%t: true positives: got %d, want %d", degenerate, c.truePositives, len(wordCount))
+					}
+					if c.falseNegatives != 0 {
+						t.Errorf("degenerate=%t: false negatives: got %d, want %d", degenerate, c.falseNegatives, 0)
+					}
+
+					if got := c.falsePositives + c.trueNegatives; got < wantActualNegatives {
+						t.Errorf("degenerate=%t: actual negatives (false positives + true negatives): "+
+							"got %d (%d + %d), want >= %d",
+							degenerate, got, c.falsePositives, c.trueNegatives, wantActualNegatives)
+					}
+
+					if !degenerate {
+						// The true negative count should be much greater than the false
+						// positive count.
+						if c.trueNegatives < 10*c.falsePositives {
+							t.Errorf("degenerate=%t: true negative to false positive ratio (%d:%d) is too small",
+								degenerate, c.trueNegatives, c.falsePositives)
+						}
+					}
+				})
 			}
 		})
 	}
@@ -433,61 +445,23 @@ func (c *countingFilterPolicy) MayContain(ftype db.FilterType, filter, key []byt
 }
 
 func TestWriterRoundTrip(t *testing.T) {
-	// Check that we can read a freshly made table.
-	f, err := build(db.DefaultCompression, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = check(f, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
+	for name, fp := range map[string]db.FilterPolicy{
+		"none":       nil,
+		"bloom10bit": bloom.FilterPolicy(10),
+	} {
+		t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
+			f, err := build(db.DefaultCompression, fp, db.TableFilter, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Check that we can read a freshly made table.
 
-func testNoCompressionOutput(t *testing.T, fp db.FilterPolicy, ftype db.FilterType) {
-	filename := "testdata/h.no-compression.sst"
-	if fp != nil {
-		if ftype == db.TableFilter {
-			filename = "testdata/h.table-bloom.no-compression.sst"
-		}
+			err = check(f, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
-
-	// Check that a freshly made NoCompression table is byte-for-byte equal
-	// to a pre-made table.
-	want, err := ioutil.ReadFile(filepath.FromSlash(filename))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f, err := build(db.NoCompression, fp, ftype)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stat, err := f.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := make([]byte, stat.Size())
-	_, err = f.ReadAt(got, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(got, want) {
-		i := 0
-		for ; i < len(got) && i < len(want) && got[i] == want[i]; i++ {
-		}
-		t.Fatalf("built table does not match pre-made table. From byte %d onwards,\ngot:\n% x\nwant:\n% x",
-			i, got[i:], want[i:])
-	}
-}
-
-func TestNoCompressionOutput(t *testing.T) {
-	testNoCompressionOutput(t, nil, 0)
-}
-
-func TestTableBloomNoCompressionOutput(t *testing.T) {
-	testNoCompressionOutput(t, bloom.FilterPolicy(10), db.TableFilter)
 }
 
 func TestFinalBlockIsWritten(t *testing.T) {
