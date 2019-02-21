@@ -31,8 +31,9 @@ type Equal func(a, b []byte) bool
 // < AbbreviatedKey(b) iff a < b and AbbreviatedKey(a) > AbbreviatedKey(b) iff a > b. If
 // AbbreviatedKey(a) == AbbreviatedKey(b) an additional comparison is required to
 // determine if the two keys are actually equal.
-// This helps optimize memtable comparisons for cache locality.
-// If a Split is specified, AbbreviatedKey usually returns the first eight bytes
+//
+// This helps optimize indexed batch comparisons for cache locality. If a Split
+// function is specified, AbbreviatedKey usually returns the first eight bytes
 // of the user key prefix in the order that gives the correct ordering.
 type AbbreviatedKey func(key []byte) uint64
 
