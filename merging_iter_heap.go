@@ -4,12 +4,14 @@
 
 package pebble
 
-import "github.com/petermattis/pebble/db"
+import (
+	"github.com/petermattis/pebble/db"
+)
 
 type mergingIterItem struct {
-	index int
-	key   db.InternalKey
-	value []byte
+	index          int
+	key            db.InternalKey
+	value          []byte
 	abbreviatedKey uint64
 }
 
@@ -24,7 +26,14 @@ func (h *mergingIterHeap) len() int {
 }
 
 func (h *mergingIterHeap) less(i, j int) bool {
-	ikey, jkey := h.items[i].key, h.items[j].key
+	iitem, jitem := h.items[i], h.items[j]
+	if iitem.abbreviatedKey < jitem.abbreviatedKey {
+		return !h.reverse
+	}
+	if iitem.abbreviatedKey > jitem.abbreviatedKey {
+		return h.reverse
+	}
+	ikey, jkey := iitem.key, jitem.key
 	if c := h.cmp.Compare(ikey.UserKey, jkey.UserKey); c != 0 {
 		if h.reverse {
 			return c > 0

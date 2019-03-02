@@ -28,10 +28,13 @@ type Compare func(a, b []byte) int
 // Equal is a (potentially faster) specialization of Compare.
 type Equal func(a, b []byte) bool
 
-// AbbreviatedKey returns a fixed length prefix of a user key such that AbbreviatedKey(a)
-// < AbbreviatedKey(b) iff a < b and AbbreviatedKey(a) > AbbreviatedKey(b) iff a > b. If
-// AbbreviatedKey(a) == AbbreviatedKey(b) an additional comparison is required to
-// determine if the two keys are actually equal.
+// AbbreviatedKey returns a fixed length prefix of a user key such that:
+//
+//   AbbreviatedKey(a) < AbbreviatedKey(b) implies a < b and
+//   AbbreviatedKey(a) > AbbreviatedKey(b) implies a > b.
+//
+// If AbbreviatedKey(a) == AbbreviatedKey(b) an additional comparison is
+// required to determine if the two keys are actually equal.
 //
 // This helps optimize indexed batch comparisons for cache locality. If a Split
 // function is specified, AbbreviatedKey usually returns the first eight bytes

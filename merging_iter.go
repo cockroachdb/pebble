@@ -201,11 +201,12 @@ func (m *mergingIter) initHeap() {
 	m.heap.items = m.heap.items[:0]
 	for i, t := range m.iters {
 		if t.Valid() {
+			key := t.Key()
 			m.heap.items = append(m.heap.items, mergingIterItem{
-				index: i,
-				key:   t.Key(),
-				value: t.Value(),
-				abbreviatedKey: m.heap.cmp.AbbreviatedKey(t.Key().UserKey),
+				index:          i,
+				key:            key,
+				value:          t.Value(),
+				abbreviatedKey: m.heap.cmp.AbbreviatedKey(key.UserKey),
 			})
 		}
 	}
@@ -344,7 +345,9 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	iter := m.iters[item.index]
 	if iter.Next() {
-		item.key, item.value = iter.Key(), iter.Value()
+		item.key = iter.Key()
+		item.value = iter.Value()
+		item.abbreviatedKey = m.heap.cmp.AbbreviatedKey(item.key.UserKey)
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
@@ -412,7 +415,9 @@ func (m *mergingIter) prevEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	iter := m.iters[item.index]
 	if iter.Prev() {
-		item.key, item.value = iter.Key(), iter.Value()
+		item.key = iter.Key()
+		item.value = iter.Value()
+		item.abbreviatedKey = m.heap.cmp.AbbreviatedKey(item.key.UserKey)
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
