@@ -244,14 +244,14 @@ func TestIterator(t *testing.T) {
 	var vals [][]byte
 
 	newIter := func(seqNum uint64, opts *db.IterOptions) *Iterator {
-		cmp := db.DefaultComparer.Compare
+		cmp := db.DefaultComparer
 		equal := db.DefaultComparer.Equal
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		iter := newMergingIter(cmp, &fakeIter{keys: keys, vals: vals})
 		iter.snapshot = seqNum
 		return &Iterator{
 			opts:  opts,
-			cmp:   cmp,
+			cmp:   cmp.Compare,
 			equal: equal,
 			merge: db.DefaultMerger.Merge,
 			iter:  iter,

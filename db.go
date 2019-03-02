@@ -123,10 +123,8 @@ type Writer interface {
 type DB struct {
 	dirname        string
 	opts           *db.Options
-	cmp            db.Compare
-	equal          db.Equal
+	cmp            *db.Comparer
 	merge          db.Merge
-	abbreviatedKey db.AbbreviatedKey
 
 	tableCache tableCache
 	newIters   tableNewIters
@@ -223,8 +221,8 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	}
 
 	get := &buf.get
-	get.cmp = d.cmp
-	get.equal = d.equal
+	get.cmp = d.cmp.Compare
+	get.equal = d.cmp.Equal
 	get.newIters = d.newIters
 	get.snapshot = seqNum
 	get.key = key
@@ -234,8 +232,8 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	get.version = current
 
 	i := &buf.dbi
-	i.cmp = d.cmp
-	i.equal = d.equal
+	i.cmp = d.cmp.Compare
+	i.equal = d.cmp.Equal
 	i.merge = d.merge
 	i.iter = get
 	i.version = current
@@ -411,8 +409,8 @@ func (d *DB) newIterInternal(
 
 	dbi := &buf.dbi
 	dbi.opts = o
-	dbi.cmp = d.cmp
-	dbi.equal = d.equal
+	dbi.cmp = d.cmp.Compare
+	dbi.equal = d.cmp.Equal
 	dbi.merge = d.merge
 	dbi.version = current
 
@@ -469,7 +467,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(o, d.cmp, d.newIters, current.files[level])
+		li.init(o, d.cmp.Compare, d.newIters, current.files[level])
 		li.initRangeDel(&rangeDelIters[0])
 		iters = append(iters, li)
 		rangeDelIters = rangeDelIters[1:]
@@ -574,7 +572,7 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	maxLevelWithFiles := 1
 	cur := d.mu.versions.currentVersion()
 	for level := 0; level < numLevels; level++ {
-		if len(cur.overlaps(level, d.cmp, start, end)) > 0 {
+		if len(cur.overlaps(level, d.cmp.Compare, start, end)) > 0 {
 			maxLevelWithFiles = level + 1
 		}
 	}
@@ -582,7 +580,7 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	// Determine if any memtable overlaps with the compaction range. We wait for
 	// any such overlap to flush (initiating a flush if necessary).
 	mem, err := func() (flushable, error) {
-		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
+		if ingestMemtableOverlaps(d.cmp.Compare, d.mu.mem.mutable, meta) {
 			mem := d.mu.mem.mutable
 			return mem, d.makeRoomForWrite(nil)
 		}
@@ -591,7 +589,7 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 		// for the newest table that overlaps.
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			mem := d.mu.mem.queue[i]
-			if ingestMemtableOverlaps(d.cmp, mem, meta) {
+			if ingestMemtableOverlaps(d.cmp.Compare, mem, meta) {
 				return mem, nil
 			}
 		}

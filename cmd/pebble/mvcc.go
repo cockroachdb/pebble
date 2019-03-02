@@ -26,6 +26,8 @@ var mvccComparer = &db.Comparer{
 		return db.DefaultComparer.AbbreviatedKey(key)
 	},
 
+	Equal: bytes.Equal,
+
 	Separator: func(dst, a, b []byte) []byte {
 		return append(dst, a...)
 	},

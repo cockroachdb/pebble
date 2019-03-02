@@ -20,7 +20,7 @@ import (
 
 func TestMergingIter(t *testing.T) {
 	newFunc := func(iters ...internalIterator) internalIterator {
-		return newMergingIter(db.DefaultComparer.Compare, iters...)
+		return newMergingIter(db.DefaultComparer, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual
@@ -55,7 +55,7 @@ func TestMergingIterSeek(t *testing.T) {
 				iters = append(iters, f)
 			}
 
-			iter := newMergingIter(db.DefaultComparer.Compare, iters...)
+			iter := newMergingIter(db.DefaultComparer, iters...)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
 
@@ -112,7 +112,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 						}
 					}
 
-					iter := newMergingIter(db.DefaultComparer.Compare, iters...)
+					iter := newMergingIter(db.DefaultComparer, iters...)
 					defer iter.Close()
 					return runInternalIterCmd(d, iter)
 
@@ -201,7 +201,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
-							m := newMergingIter(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(db.DefaultComparer, iters...)
 							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 							b.ResetTimer()
@@ -228,7 +228,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
-							m := newMergingIter(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(db.DefaultComparer, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -257,7 +257,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil)
 							}
-							m := newMergingIter(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(db.DefaultComparer, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {

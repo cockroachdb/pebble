@@ -559,7 +559,7 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 
 	for _, tc := range testCases {
 		c := compaction{
-			cmp:     db.DefaultComparer.Compare,
+			cmp:     db.DefaultComparer,
 			version: &tc.version,
 			level:   tc.level,
 		}
@@ -770,7 +770,7 @@ func TestManualCompaction(t *testing.T) {
 }
 
 func TestCompactionShouldStopBefore(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := db.DefaultComparer
 	var grandparents []fileMetadata
 
 	parseMeta := func(s string) fileMetadata {
@@ -806,7 +806,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 					}
 					grandparents = append(grandparents, meta)
 				}
-				sort.Sort(bySmallest{grandparents, cmp})
+				sort.Sort(bySmallest{grandparents, cmp.Compare})
 				return ""
 
 			case "compact":
@@ -848,7 +848,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 }
 
 func TestCompactionExpandInputs(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := db.DefaultComparer
 	var files []fileMetadata
 
 	parseMeta := func(s string) fileMetadata {
@@ -875,7 +875,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 					meta.fileNum = uint64(len(files))
 					files = append(files, meta)
 				}
-				sort.Sort(bySmallest{files, cmp})
+				sort.Sort(bySmallest{files, cmp.Compare})
 				return ""
 
 			case "expand-inputs":

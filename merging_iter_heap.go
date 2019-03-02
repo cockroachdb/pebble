@@ -10,10 +10,11 @@ type mergingIterItem struct {
 	index int
 	key   db.InternalKey
 	value []byte
+	abbreviatedKey uint64
 }
 
 type mergingIterHeap struct {
-	cmp     db.Compare
+	cmp     *db.Comparer
 	reverse bool
 	items   []mergingIterItem
 }
@@ -24,7 +25,7 @@ func (h *mergingIterHeap) len() int {
 
 func (h *mergingIterHeap) less(i, j int) bool {
 	ikey, jkey := h.items[i].key, h.items[j].key
-	if c := h.cmp(ikey.UserKey, jkey.UserKey); c != 0 {
+	if c := h.cmp.Compare(ikey.UserKey, jkey.UserKey); c != 0 {
 		if h.reverse {
 			return c > 0
 		}

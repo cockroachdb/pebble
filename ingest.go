@@ -246,7 +246,7 @@ func (d *DB) Ingest(paths []string) error {
 	}
 
 	// Verify the sstables do not overlap.
-	if err := ingestSortAndVerify(d.cmp, meta); err != nil {
+	if err := ingestSortAndVerify(d.cmp.Compare, meta); err != nil {
 		return err
 	}
 
@@ -265,7 +265,7 @@ func (d *DB) Ingest(paths []string) error {
 		// If the mutable memtable contains keys which overlap any of the sstables
 		// then flush the memtable. Note that apply will wait for the flushing to
 		// finish.
-		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
+		if ingestMemtableOverlaps(d.cmp.Compare, d.mu.mem.mutable, meta) {
 			mem = d.mu.mem.mutable
 			err = d.makeRoomForWrite(nil)
 			return
@@ -276,7 +276,7 @@ func (d *DB) Ingest(paths []string) error {
 		// for the newest table that overlaps.
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
-			if ingestMemtableOverlaps(d.cmp, m, meta) {
+			if ingestMemtableOverlaps(d.cmp.Compare, m, meta) {
 				mem = m
 				return
 			}
@@ -350,7 +350,7 @@ func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		m := meta[i]
-		ve.newFiles[i].level = ingestTargetLevel(d.cmp, current, m)
+		ve.newFiles[i].level = ingestTargetLevel(d.cmp.Compare, current, m)
 		ve.newFiles[i].meta = *m
 	}
 	if err := d.mu.versions.logAndApply(ve); err != nil {

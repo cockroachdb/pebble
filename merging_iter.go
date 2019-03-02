@@ -183,13 +183,13 @@ var _ internalIterator = (*mergingIter)(nil)
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func newMergingIter(cmp db.Compare, iters ...internalIterator) *mergingIter {
+func newMergingIter(cmp *db.Comparer, iters ...internalIterator) *mergingIter {
 	m := &mergingIter{}
 	m.init(cmp, iters...)
 	return m
 }
 
-func (m *mergingIter) init(cmp db.Compare, iters ...internalIterator) {
+func (m *mergingIter) init(cmp *db.Comparer, iters ...internalIterator) {
 	m.snapshot = db.InternalKeySeqNumMax
 	m.iters = iters
 	m.heap.cmp = cmp
@@ -205,6 +205,7 @@ func (m *mergingIter) initHeap() {
 				index: i,
 				key:   t.Key(),
 				value: t.Value(),
+				abbreviatedKey: m.heap.cmp.AbbreviatedKey(t.Key().UserKey),
 			})
 		}
 	}
@@ -230,7 +231,7 @@ func (m *mergingIter) initMinRangeDelIters(oldTopLevel int) {
 		if rangeDelIter == nil {
 			continue
 		}
-		_ = rangedel.SeekGE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+		_ = rangedel.SeekGE(m.heap.cmp.Compare, rangeDelIter, item.key.UserKey, m.snapshot)
 	}
 }
 
@@ -252,7 +253,7 @@ func (m *mergingIter) initMaxRangeDelIters(oldTopLevel int) {
 		if rangeDelIter == nil {
 			continue
 		}
-		_ = rangedel.SeekLE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+		_ = rangedel.SeekLE(m.heap.cmp.Compare, rangeDelIter, item.key.UserKey, m.snapshot)
 	}
 }
 
@@ -284,7 +285,7 @@ func (m *mergingIter) switchToMinHeap() {
 			valid = i.Next()
 		}
 		for ; valid; valid = i.Next() {
-			if db.InternalCompare(m.heap.cmp, key, i.Key()) < 0 {
+			if db.InternalCompare(m.heap.cmp.Compare, key, i.Key()) < 0 {
 				// key < iter-key
 				break
 			}
@@ -325,7 +326,7 @@ func (m *mergingIter) switchToMaxHeap() {
 			valid = i.Prev()
 		}
 		for ; valid; valid = i.Prev() {
-			if db.InternalCompare(m.heap.cmp, key, i.Key()) > 0 {
+			if db.InternalCompare(m.heap.cmp.Compare, key, i.Key()) > 0 {
 				// key > iter-key
 				break
 			}
@@ -372,14 +373,14 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 			Start: rangeDelIter.Key(),
 			End:   rangeDelIter.Value(),
 		}
-		if m.heap.cmp(tombstone.End, item.key.UserKey) <= 0 {
+		if m.heap.cmp.Compare(tombstone.End, item.key.UserKey) <= 0 {
 			// The current key is at or past the tombstone end key.
-			tombstone = rangedel.SeekGE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+			tombstone = rangedel.SeekGE(m.heap.cmp.Compare, rangeDelIter, item.key.UserKey, m.snapshot)
 		}
 		if tombstone.Empty() {
 			continue
 		}
-		if tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+		if tombstone.Contains(m.heap.cmp.Compare, item.key.UserKey) {
 			if level < item.index {
 				m.seekGE(tombstone.End, item.index)
 				return true
@@ -440,14 +441,14 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			Start: rangeDelIter.Key(),
 			End:   rangeDelIter.Value(),
 		}
-		if m.heap.cmp(item.key.UserKey, tombstone.Start.UserKey) < 0 {
+		if m.heap.cmp.Compare(item.key.UserKey, tombstone.Start.UserKey) < 0 {
 			// The current key is before the tombstone start key8.
-			tombstone = rangedel.SeekLE(m.heap.cmp, rangeDelIter, item.key.UserKey, m.snapshot)
+			tombstone = rangedel.SeekLE(m.heap.cmp.Compare, rangeDelIter, item.key.UserKey, m.snapshot)
 		}
 		if tombstone.Empty() {
 			continue
 		}
-		if tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+		if tombstone.Contains(m.heap.cmp.Compare, item.key.UserKey) {
 			if level < item.index {
 				m.seekLT(tombstone.Start.UserKey, item.index)
 				return true
@@ -505,8 +506,8 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 			if rangeDelIter := m.rangeDelIters[level]; rangeDelIter != nil {
 				// The level has a range-del iterator. Find the tombstone containing
 				// the search key.
-				tombstone := rangedel.SeekGE(m.heap.cmp, rangeDelIter, key, m.snapshot)
-				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) {
+				tombstone := rangedel.SeekGE(m.heap.cmp.Compare, rangeDelIter, key, m.snapshot)
+				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp.Compare, key) {
 					key = tombstone.End
 				}
 			}
@@ -532,8 +533,8 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 			if rangeDelIter := m.rangeDelIters[level]; rangeDelIter != nil {
 				// The level has a range-del iterator. Find the tombstone containing
 				// the search key.
-				tombstone := rangedel.SeekLE(m.heap.cmp, rangeDelIter, key, m.snapshot)
-				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) {
+				tombstone := rangedel.SeekLE(m.heap.cmp.Compare, rangeDelIter, key, m.snapshot)
+				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp.Compare, key) {
 					key = tombstone.Start.UserKey
 				}
 			}
