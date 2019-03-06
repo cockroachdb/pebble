@@ -28,9 +28,7 @@ func (m *memTable) set(key db.InternalKey, value []byte) error {
 			return err
 		}
 		atomic.AddUint32(&m.tombstones.count, 1)
-		m.tombstones.Lock()
-		m.tombstones.vals = nil
-		m.tombstones.Unlock()
+		atomic.StorePointer(&m.tombstones.vals, nil)
 		return nil
 	}
 	return m.skl.Add(key, value)

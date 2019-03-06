@@ -5,8 +5,8 @@
 package pebble
 
 import (
-	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
@@ -36,9 +36,12 @@ type memTable struct {
 	flushedCh   chan struct{}
 
 	tombstones struct {
+		// The count of the number of range tombstones stored in the memtable.
 		count uint32
-		sync.RWMutex
-		vals []rangedel.Tombstone
+		// A cached slice of tombstone fragments (*[]rangedel.Tombstone). The cache
+		// is invalidated whenever a range tombstone is added to the memtable, and
+		// populated whenever a range tombstone iterator is created.
+		vals unsafe.Pointer
 	}
 }
 
@@ -124,7 +127,6 @@ func (m *memTable) prepare(batch *Batch) error {
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	var ins arenaskl.Inserter
 	startSeqNum := seqNum
-	invalidateTombstones := false
 	for iter := batch.iter(); ; seqNum++ {
 		kind, ukey, value, ok := iter.next()
 		if !ok {
@@ -135,7 +137,7 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		if kind == db.InternalKeyKindRangeDelete {
 			err = m.rangeDelSkl.Add(ikey, value)
 			atomic.AddUint32(&m.tombstones.count, 1)
-			invalidateTombstones = true
+			atomic.StorePointer(&m.tombstones.vals, nil)
 		} else {
 			err = ins.Add(&m.skl, ikey, value)
 		}
@@ -145,11 +147,6 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	}
 	if seqNum != startSeqNum+uint64(batch.count()) {
 		panic("pebble: inconsistent batch count")
-	}
-	if invalidateTombstones {
-		m.tombstones.Lock()
-		m.tombstones.vals = nil
-		m.tombstones.Unlock()
 	}
 	return nil
 }
@@ -170,9 +167,11 @@ func (m *memTable) newRangeDelIter(*db.IterOptions) internalIterator {
 	// We need to return an iterator over fragmented tombstones. The fragmented
 	// tombstones are cached and the cache is invalided whenever a new range
 	// tombstone is added to the memtable.
-	m.tombstones.RLock()
-	tombstones := m.tombstones.vals
-	m.tombstones.RUnlock()
+	var tombstones []rangedel.Tombstone
+	tombstonesPtr := atomic.LoadPointer(&m.tombstones.vals)
+	if tombstonesPtr != nil {
+		tombstones = *(*[]rangedel.Tombstone)(tombstonesPtr)
+	}
 
 	if tombstones == nil {
 		frag := &rangedel.Fragmenter{
@@ -186,14 +185,23 @@ func (m *memTable) newRangeDelIter(*db.IterOptions) internalIterator {
 		}
 		frag.Finish()
 
-		m.tombstones.Lock()
-		// Adding tombstones to the memtable can only increase the number of
-		// fragmented tombstones. If there was already a cached value, only
-		// overwrite it if we generated more tombstones.
-		if len(m.tombstones.vals) < len(tombstones) {
-			m.tombstones.vals = tombstones
+		for newPtr := unsafe.Pointer(&tombstones); true; {
+			oldPtr := atomic.LoadPointer(&m.tombstones.vals)
+			if oldPtr != nil {
+				// Adding tombstones to the memtable can only increase the number of
+				// fragmented tombstones. If there was already a cached value, only
+				// overwrite it if we generated more tombstones.
+				oldTombstones := *(*[]rangedel.Tombstone)(tombstonesPtr)
+				if len(tombstones) < len(oldTombstones) {
+					break
+				}
+			}
+			if atomic.CompareAndSwapPointer(&m.tombstones.vals, oldPtr, newPtr) {
+				// We successfully installed our cached tombstone fragments.
+				break
+			}
+			// Someone else updated the cached tombstone fragments. Loop and try again.
 		}
-		m.tombstones.Unlock()
 	}
 
 	return rangedel.NewIter(m.cmp, tombstones)
