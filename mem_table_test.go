@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,10 +28,7 @@ func (m *memTable) set(key db.InternalKey, value []byte) error {
 		if err := m.rangeDelSkl.Add(key, value); err != nil {
 			return err
 		}
-		atomic.AddUint32(&m.tombstones.count, 1)
-		m.tombstones.Lock()
-		m.tombstones.vals = nil
-		m.tombstones.Unlock()
+		m.tombstones.invalidate(1)
 		return nil
 	}
 	return m.skl.Add(key, value)
@@ -281,6 +279,48 @@ func TestMemTableDeleteRange(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestMemTableConcurrentDeleteRange(t *testing.T) {
+	// Concurrently write and read range tombstones. Workers add range
+	// tombstones, and then immediately retrieve them verifying that the
+	// tombstones they've added are all present.
+
+	m := newMemTable(&db.Options{MemTableSize: 64 << 20})
+
+	const workers = 10
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	seqNum := uint64(1)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			start := ([]byte)(fmt.Sprintf("%03d", i))
+			end := ([]byte)(fmt.Sprintf("%03d", i+1))
+			for j := 0; j < 100; j++ {
+				b := newBatch(nil)
+				b.DeleteRange(start, end, nil)
+				n := atomic.AddUint64(&seqNum, 1) - 1
+				if err := m.apply(b, n); err != nil {
+					t.Fatal(err)
+				}
+				b.release()
+
+				var count int
+				it := m.newRangeDelIter(nil)
+				for valid := it.SeekGE(start); valid; valid = it.Next() {
+					if m.cmp(it.Key().UserKey, end) >= 0 {
+						break
+					}
+					count++
+				}
+				if j+1 != count {
+					t.Fatalf("%d: expected %d tombstones, but found %d", i, j+1, count)
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
 }
 
 func buildMemTable(b *testing.B) (*memTable, [][]byte) {
