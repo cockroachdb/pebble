@@ -5,7 +5,11 @@
 package db
 
 import (
+	"fmt"
+	"math/rand"
+	"sort"
 	"testing"
+	"time"
 )
 
 func TestDefAppendSeparator(t *testing.T) {
@@ -47,5 +51,68 @@ func TestDefAppendSeparator(t *testing.T) {
 				t.Errorf("a, b = %q, %q: got %q, want %q", tc.a, tc.b, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAbbreviatedKey(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randBytes := func(size int) []byte {
+		data := make([]byte, size)
+		for i := range data {
+			data[i] = byte(rng.Int() & 0xff)
+		}
+		return data
+	}
+
+	keys := make([][]byte, 10000)
+	for i := range keys {
+		keys[i] = randBytes(rng.Intn(16))
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return DefaultComparer.Compare(keys[i], keys[j]) < 0
+	})
+
+	for i := 1; i < len(keys); i++ {
+		last := DefaultComparer.AbbreviatedKey(keys[i-1])
+		cur := DefaultComparer.AbbreviatedKey(keys[i])
+		cmp := DefaultComparer.Compare(keys[i-1], keys[i])
+		if cmp == 0 {
+			if last != cur {
+				t.Fatalf("expected equal abbreviated keys: %x[%x] != %x[%x]",
+					last, keys[i-1], cur, keys[i])
+			}
+		} else {
+			if last > cur {
+				t.Fatalf("unexpected abbreviated key ordering: %x[%x] > %x[%x]",
+					last, keys[i-1], cur, keys[i])
+			}
+		}
+	}
+}
+
+func BenchmarkAbbreviatedKey(b *testing.B) {
+	rng := rand.New(rand.NewSource(1449168817))
+	randBytes := func(size int) []byte {
+		data := make([]byte, size)
+		for i := range data {
+			data[i] = byte(rng.Int() & 0xff)
+		}
+		return data
+	}
+	keys := make([][]byte, 10000)
+	for i := range keys {
+		keys[i] = randBytes(8)
+	}
+
+	b.ResetTimer()
+	var sum uint64
+	for i := 0; i < b.N; i++ {
+		j := i % len(keys)
+		sum += DefaultComparer.AbbreviatedKey(keys[j])
+	}
+
+	if testing.Verbose() {
+		// Ensure the compiler doesn't optimize away our benchmark.
+		fmt.Println(sum)
 	}
 }

@@ -6,6 +6,7 @@ package db
 
 import (
 	"bytes"
+	"encoding/binary"
 )
 
 // TODO(tbg): introduce a FeasibleKey type to make things clearer.
@@ -109,16 +110,15 @@ var DefaultComparer = &Comparer{
 	Equal:   bytes.Equal,
 
 	AbbreviatedKey: func(key []byte) uint64 {
-		var v uint64
-		n := 8
-		if n > len(key) {
-			n = len(key)
+		if len(key) >= 8 {
+			return binary.BigEndian.Uint64(key)
 		}
-		for _, b := range key[:n] {
+		var v uint64
+		for _, b := range key {
 			v <<= 8
 			v |= uint64(b)
 		}
-		return v
+		return v << uint(8*(8-len(key)))
 	},
 
 	Separator: func(dst, a, b []byte) []byte {
