@@ -23,16 +23,7 @@ var mvccComparer = &db.Comparer{
 		if !ok {
 			return 0
 		}
-		var v uint64
-		n := 8
-		if n > len(key) {
-			n = len(key)
-		}
-		for _, b := range key[:n] {
-			v <<= 8
-			v |= uint64(b)
-		}
-		return v
+		return db.DefaultComparer.AbbreviatedKey(key)
 	},
 
 	Separator: func(dst, a, b []byte) []byte {
