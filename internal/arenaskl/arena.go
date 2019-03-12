@@ -19,15 +19,16 @@ package arenaskl
 
 import (
 	"errors"
+	"math"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/petermattis/pebble/internal/rawalloc"
 )
 
-// Arena should be lock-free.
+// Arena is lock-free.
 type Arena struct {
-	n   uint32
+	n   uint64
 	buf []byte
 }
 
@@ -50,7 +51,12 @@ func NewArena(size, extValueThreshold uint32) *Arena {
 }
 
 func (a *Arena) Size() uint32 {
-	return atomic.LoadUint32(&a.n)
+	s := atomic.LoadUint64(&a.n)
+	if s > math.MaxUint32 {
+		// Saturate at MaxUint32.
+		return math.MaxUint32
+	}
+	return uint32(s)
 }
 
 func (a *Arena) Capacity() uint32 {
@@ -58,16 +64,22 @@ func (a *Arena) Capacity() uint32 {
 }
 
 func (a *Arena) alloc(size, align uint32) (uint32, error) {
+	// Verify that the arena isn't already full.
+	origSize := atomic.LoadUint64(&a.n)
+	if int(origSize) > len(a.buf) {
+		return 0, ErrArenaFull
+	}
+
 	// Pad the allocation with enough bytes to ensure the requested alignment.
 	padded := uint32(size) + align
 
-	newSize := atomic.AddUint32(&a.n, padded)
+	newSize := atomic.AddUint64(&a.n, uint64(padded))
 	if int(newSize) > len(a.buf) {
 		return 0, ErrArenaFull
 	}
 
 	// Return the aligned offset.
-	offset := (newSize - padded + uint32(align)) & ^uint32(align)
+	offset := (uint32(newSize) - padded + uint32(align)) & ^uint32(align)
 	return offset, nil
 }
 
