@@ -402,11 +402,12 @@ func (d *DB) newIterInternal(
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	var buf struct {
-		dbi           Iterator
-		merging       mergingIter
-		iters         [3 + numLevels]internalIterator
-		rangeDelIters [3 + numLevels]internalIterator
-		levels        [numLevels]levelIter
+		dbi                  Iterator
+		merging              mergingIter
+		iters                [3 + numLevels]internalIterator
+		rangeDelIters        [3 + numLevels]internalIterator
+		partitionUpperBounds [3 + numLevels][]byte
+		levels               [numLevels]levelIter
 	}
 
 	dbi := &buf.dbi
@@ -418,9 +419,11 @@ func (d *DB) newIterInternal(
 
 	iters := buf.iters[:0]
 	rangeDelIters := buf.rangeDelIters[:0]
+	partitionUpperBounds := buf.partitionUpperBounds[:0]
 	if batchIter != nil {
 		iters = append(iters, batchIter)
 		rangeDelIters = append(rangeDelIters, batchRangeDelIter)
+		partitionUpperBounds = append(partitionUpperBounds, nil)
 	}
 
 	// TODO(peter): We only need to add memtables which contain sequence numbers
@@ -430,6 +433,7 @@ func (d *DB) newIterInternal(
 		mem := memtables[i]
 		iters = append(iters, mem.newIter(o))
 		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(o))
+		partitionUpperBounds = append(partitionUpperBounds, nil)
 	}
 
 	// The level 0 files need to be added from newest to oldest.
@@ -442,6 +446,7 @@ func (d *DB) newIterInternal(
 		}
 		iters = append(iters, iter)
 		rangeDelIters = append(rangeDelIters, rangeDelIter)
+		partitionUpperBounds = append(partitionUpperBounds, nil)
 	}
 
 	start := len(rangeDelIters)
@@ -450,9 +455,12 @@ func (d *DB) newIterInternal(
 			continue
 		}
 		rangeDelIters = append(rangeDelIters, nil)
+		partitionUpperBounds = append(partitionUpperBounds, nil)
 	}
 	buf.merging.rangeDelIters = rangeDelIters
+	buf.merging.partitionUpperBounds = partitionUpperBounds
 	rangeDelIters = rangeDelIters[start:]
+	partitionUpperBounds = partitionUpperBounds[start:]
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
@@ -471,8 +479,10 @@ func (d *DB) newIterInternal(
 
 		li.init(o, d.cmp, d.newIters, current.files[level])
 		li.initRangeDel(&rangeDelIters[0])
+		li.initPartitionUpperBound(&partitionUpperBounds[0])
 		iters = append(iters, li)
 		rangeDelIters = rangeDelIters[1:]
+		partitionUpperBounds = partitionUpperBounds[1:]
 	}
 
 	buf.merging.init(d.cmp, iters...)

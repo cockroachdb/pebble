@@ -34,6 +34,15 @@ func TestRangeDel(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "compact":
+			if err := runCompactCommand(td, d); err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
 		case "get":
 			snap := Snapshot{
 				db:     d,
