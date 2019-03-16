@@ -402,11 +402,12 @@ func (d *DB) newIterInternal(
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	var buf struct {
-		dbi           Iterator
-		merging       mergingIter
-		iters         [3 + numLevels]internalIterator
-		rangeDelIters [3 + numLevels]internalIterator
-		levels        [numLevels]levelIter
+		dbi             Iterator
+		merging         mergingIter
+		iters           [3 + numLevels]internalIterator
+		rangeDelIters   [3 + numLevels]internalIterator
+		largestUserKeys [3 + numLevels][]byte
+		levels          [numLevels]levelIter
 	}
 
 	dbi := &buf.dbi
@@ -418,9 +419,11 @@ func (d *DB) newIterInternal(
 
 	iters := buf.iters[:0]
 	rangeDelIters := buf.rangeDelIters[:0]
+	largestUserKeys := buf.largestUserKeys[:0]
 	if batchIter != nil {
 		iters = append(iters, batchIter)
 		rangeDelIters = append(rangeDelIters, batchRangeDelIter)
+		largestUserKeys = append(largestUserKeys, nil)
 	}
 
 	// TODO(peter): We only need to add memtables which contain sequence numbers
@@ -430,6 +433,7 @@ func (d *DB) newIterInternal(
 		mem := memtables[i]
 		iters = append(iters, mem.newIter(o))
 		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(o))
+		largestUserKeys = append(largestUserKeys, nil)
 	}
 
 	// The level 0 files need to be added from newest to oldest.
@@ -442,6 +446,7 @@ func (d *DB) newIterInternal(
 		}
 		iters = append(iters, iter)
 		rangeDelIters = append(rangeDelIters, rangeDelIter)
+		largestUserKeys = append(largestUserKeys, nil)
 	}
 
 	start := len(rangeDelIters)
@@ -450,9 +455,12 @@ func (d *DB) newIterInternal(
 			continue
 		}
 		rangeDelIters = append(rangeDelIters, nil)
+		largestUserKeys = append(largestUserKeys, nil)
 	}
 	buf.merging.rangeDelIters = rangeDelIters
+	buf.merging.largestUserKeys = largestUserKeys
 	rangeDelIters = rangeDelIters[start:]
+	largestUserKeys = largestUserKeys[start:]
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
@@ -471,8 +479,10 @@ func (d *DB) newIterInternal(
 
 		li.init(o, d.cmp, d.newIters, current.files[level])
 		li.initRangeDel(&rangeDelIters[0])
+		li.initLargestUserKey(&largestUserKeys[0])
 		iters = append(iters, li)
 		rangeDelIters = rangeDelIters[1:]
+		largestUserKeys = largestUserKeys[1:]
 	}
 
 	buf.merging.init(d.cmp, iters...)

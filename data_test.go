@@ -156,19 +156,83 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 	return nil
 }
 
+func runCompactCommand(td *datadriven.TestData, d *DB) error {
+	if len(td.CmdArgs) > 2 {
+		return fmt.Errorf("%s expects at most two arguments", td.Cmd)
+	}
+	parts := strings.Split(td.CmdArgs[0].Key, "-")
+	if len(parts) != 2 {
+		return fmt.Errorf("expected <begin>-<end>: %s", td.Input)
+	}
+	if len(td.CmdArgs) == 2 {
+		levelString := td.CmdArgs[1].String()
+		iStart := db.MakeInternalKey([]byte(parts[0]), db.InternalKeySeqNumMax, db.InternalKeyKindMax)
+		iEnd := db.MakeInternalKey([]byte(parts[1]), 0, 0)
+		if levelString[0] != 'L' {
+			return fmt.Errorf("expected L<n>: %s", levelString)
+		}
+		level, err := strconv.Atoi(levelString[1:])
+		if err != nil {
+			return err
+		}
+		return d.manualCompact(&manualCompaction{
+			done:  make(chan error, 1),
+			level: level,
+			start: iStart,
+			end:   iEnd,
+		})
+	} else {
+		return d.Compact([]byte(parts[0]), []byte(parts[1]))
+	}
+}
+
 func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 	if td.Input == "" {
 		return nil, fmt.Errorf("empty test input")
 	}
 
 	fs := storage.NewMem()
-	d, err := Open("", &db.Options{
+	opts := db.Options{
 		Storage: fs,
-	})
+	}
+	var snapshots []uint64
+	for _, arg := range td.CmdArgs {
+		switch arg.Key {
+		case "target-file-sizes":
+			opts.Levels = make([]db.LevelOptions, len(arg.Vals))
+			for i := range arg.Vals {
+				size, err := strconv.ParseInt(arg.Vals[i], 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				opts.Levels[i].TargetFileSize = size
+			}
+		case "snapshots":
+			snapshots = make([]uint64, len(arg.Vals))
+			for i := range arg.Vals {
+				seqNum, err := strconv.ParseUint(arg.Vals[i], 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				snapshots[i] = seqNum
+				if i > 0 && snapshots[i] < snapshots[i-1] {
+					return nil, fmt.Errorf("Snapshots must be in ascending order")
+				}
+			}
+		default:
+			return nil, fmt.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
+		}
+	}
+	d, err := Open("", &opts)
 	if err != nil {
 		return nil, err
 	}
 	d.mu.Lock()
+	for i := range snapshots {
+		s := &Snapshot{db: d}
+		s.seqNum = snapshots[i]
+		d.mu.snapshots.pushBack(s)
+	}
 	defer d.mu.Unlock()
 
 	var mem *memTable

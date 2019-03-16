@@ -104,6 +104,18 @@ import (
 // "e" and find the range tombstone [d,h) and similar logic holds. By the time
 // we get to level 4 we're seeking to "n".
 //
+// One consequence of not truncating tombstone end keys to sstable boundaries is
+// the seeking process described above cannot always seek to the tombstone end
+// key in the older level. For example, imagine in the above example r3 is a
+// partitioned level (i.e., L1+ in our LSM), and the sstable containing [j, n)
+// has "k" as its upper boundary. In this situation, compactions involving keys
+// at or after "k" can output those keys to r4+, even if they're newer than our
+// tombstone [j, n). So instead of seeking to "n" in r4 we can only seek to "k".
+// To achieve this, the instance variable `largestUserKeys` maintains the
+// upper bounds of the current sstables in the partitioned levels. In this
+// example, `largestUserKeys[3]` holds "k", telling us to limit the seek
+// triggered by a tombstone in r3 to "k".
+//
 // During actual iteration levels can contain both point operations and range
 // deletions. Within a level, when a range deletion contains a point operation
 // the sequence numbers must must be checked to determine if the point
@@ -164,12 +176,13 @@ import (
 // scenarios and have each step display the current state (i.e. the current
 // heap and range-del iterator positioning).
 type mergingIter struct {
-	dir           int
-	snapshot      uint64
-	iters         []internalIterator
-	rangeDelIters []internalIterator
-	heap          mergingIterHeap
-	err           error
+	dir             int
+	snapshot        uint64
+	iters           []internalIterator
+	rangeDelIters   []internalIterator
+	largestUserKeys [][]byte
+	heap            mergingIterHeap
+	err             error
 }
 
 // mergingIter implements the internalIterator interface.
@@ -507,7 +520,12 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 				// the search key.
 				tombstone := rangedel.SeekGE(m.heap.cmp, rangeDelIter, key, m.snapshot)
 				if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) {
-					key = tombstone.End
+					if m.largestUserKeys[level] != nil &&
+						m.heap.cmp(m.largestUserKeys[level], tombstone.End) < 0 {
+						key = m.largestUserKeys[level]
+					} else {
+						key = tombstone.End
+					}
 				}
 			}
 		}

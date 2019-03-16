@@ -1127,3 +1127,68 @@ get seq=3
 a
 ----
 pebble: not found
+
+# A range tombstone straddles two SSTs. One is compacted to a lower level. Its
+# keys that are newer than the range tombstone should not disappear.
+#
+# Uses a snapshot to prevent range tombstone from being elided when it gets
+# compacted to the bottommost level.
+
+define target-file-sizes=(100, 1) snapshots=(1)
+L0
+  a.RANGEDEL.1:e
+L0
+  a.SET.2:v
+L0
+  c.SET.3:v
+----
+mem: 1
+0: a-e a-a c-c
+
+compact a-e
+----
+1: a-c c-e
+
+compact d-e
+----
+1: a-c
+2: c-e
+
+iter seq=4
+seek-ge b
+next
+----
+c:v
+.
+
+# Reverse the above test: compact the left file containing the split range
+# tombstone downwards, and iterate from right to left.
+
+define target-file-sizes=(100, 1) snapshots=(1)
+L0
+  a.RANGEDEL.1:e
+L0
+  a.SET.2:v
+L0
+  c.SET.3:v
+----
+mem: 1
+0: a-e a-a c-c
+
+compact a-e
+----
+1: a-c c-e
+
+compact a-b
+----
+1: c-e
+2: a-c
+
+iter seq=4
+seek-lt d
+prev
+prev
+----
+c:v
+a:v
+.

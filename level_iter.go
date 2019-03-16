@@ -40,6 +40,18 @@ type levelIter struct {
 	rangeDelIter *internalIterator
 	files        []fileMetadata
 	err          error
+	// Pointer into this level's entry in `mergingIter::largestUserKeys`. We populate it
+	// with the largest user key for the currently opened file. It is used to limit the optimization
+	// that seeks lower-level iterators past keys shadowed by a range tombstone. Limiting this
+	// seek to the file upper-bound is necessary since range tombstones are stored untruncated,
+	// while they only apply to keys within their containing file's boundaries. For a detailed
+	// example, see comment above `mergingIter`.
+	//
+	// This field differs from the `boundary` field in a few ways:
+	// - `boundary` is only populated when the iterator is positioned exactly on the sentinel key.
+	// - `boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
+	// - `boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
+	largestUserKey *[]byte
 }
 
 // levelIter implements the internalIterator interface.
@@ -65,6 +77,10 @@ func (l *levelIter) init(
 
 func (l *levelIter) initRangeDel(rangeDelIter *internalIterator) {
 	l.rangeDelIter = rangeDelIter
+}
+
+func (l *levelIter) initLargestUserKey(largestUserKey *[]byte) {
+	l.largestUserKey = largestUserKey
 }
 
 func (l *levelIter) findFileGE(key []byte) int {
@@ -143,6 +159,9 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 		if l.rangeDelIter != nil {
 			*l.rangeDelIter = rangeDelIter
+		}
+		if l.largestUserKey != nil {
+			*l.largestUserKey = f.largest.UserKey
 		}
 		return true
 	}
