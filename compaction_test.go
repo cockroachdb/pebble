@@ -747,14 +747,7 @@ func TestManualCompaction(t *testing.T) {
 			return b.String()
 
 		case "compact":
-			if len(td.CmdArgs) != 1 {
-				return fmt.Sprintf("%s expects 1 argument", td.Cmd)
-			}
-			parts := strings.Split(td.CmdArgs[0].Key, "-")
-			if len(parts) != 2 {
-				return fmt.Sprintf("malformed test case: %s", td.Input)
-			}
-			if err := d.Compact([]byte(parts[0]), []byte(parts[1])); err != nil {
+			if err := runCompactCommand(td, d); err != nil {
 				return err.Error()
 			}
 
