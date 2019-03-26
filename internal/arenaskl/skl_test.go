@@ -235,49 +235,56 @@ func TestConcurrentOneKey(t *testing.T) {
 	ikey := makeIkey("thekey")
 
 	for _, inserter := range []bool{false, true} {
-		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
-			// Set testing flag to make it easier to trigger unusual race conditions.
-			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-			l.testing = true
+		for _, startEmpty := range []bool{false, true} {
+			t.Run(fmt.Sprintf("inserter=%t,startEmpty=%t", inserter, startEmpty), func(t *testing.T) {
+				// Set testing flag to make it easier to trigger unusual race conditions.
+				l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+				l.testing = true
 
-			var wg sync.WaitGroup
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func(i int) {
-					defer wg.Done()
+				var wg sync.WaitGroup
+				for i := 0; i < n; i++ {
+					wg.Add(1)
+					go func(i int) {
+						defer wg.Done()
 
-					if inserter {
-						var ins Inserter
-						ins.Add(l, ikey, makeValue(i))
-					} else {
-						l.Add(ikey, makeValue(i))
+						if inserter {
+							var ins Inserter
+							ins.Add(l, ikey, makeValue(i))
+						} else {
+							l.Add(ikey, makeValue(i))
+						}
+					}(i)
+					if i == 0 && !startEmpty {
+						wg.Wait()
 					}
-				}(i)
-			}
-			// We expect that at least some write made it such that some read returns a value.
-			var sawValue int32
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				}
+				var sawValue int32
+				for i := 0; i < n; i++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
 
-					it := l.NewIter()
-					it.SeekGE(key)
-					if !it.Valid() || !bytes.Equal(key, it.Key().UserKey) {
-						return
-					}
+						it := l.NewIter()
+						it.SeekGE(key)
+						if !it.Valid() || !bytes.Equal(key, it.Key().UserKey) {
+							require.True(t, startEmpty)
+							return
+						}
 
-					atomic.StoreInt32(&sawValue, 1)
-					v, err := strconv.Atoi(string(it.Value()[1:]))
-					require.NoError(t, err)
-					require.True(t, 0 <= v && v < n)
-				}()
-			}
-			wg.Wait()
-			require.True(t, sawValue > 0)
-			require.Equal(t, 1, length(l))
-			require.Equal(t, 1, lengthRev(l))
-		})
+						atomic.AddInt32(&sawValue, 1)
+						v, err := strconv.Atoi(string(it.Value()[1:]))
+						require.NoError(t, err)
+						require.True(t, 0 <= v && v < n)
+					}()
+				}
+				wg.Wait()
+				if !startEmpty {
+					require.Equal(t, int32(n), sawValue)
+				}
+				require.Equal(t, 1, length(l))
+				require.Equal(t, 1, lengthRev(l))
+			})
+		}
 	}
 }
 
