@@ -241,10 +241,17 @@ func TestConcurrentOneKey(t *testing.T) {
 			l.testing = true
 
 			var wg sync.WaitGroup
+			writeDone := make(chan struct{}, 1)
 			for i := 0; i < n; i++ {
 				wg.Add(1)
 				go func(i int) {
-					defer wg.Done()
+					defer func() {
+						wg.Done()
+						select {
+						case writeDone <- struct{}{}:
+						default:
+						}
+					}()
 
 					if inserter {
 						var ins Inserter
@@ -254,7 +261,8 @@ func TestConcurrentOneKey(t *testing.T) {
 					}
 				}(i)
 			}
-			// We expect that at least some write made it such that some read returns a value.
+			// Wait until at least some write made it such that reads return a value.
+			<-writeDone
 			var sawValue int32
 			for i := 0; i < n; i++ {
 				wg.Add(1)
@@ -263,18 +271,17 @@ func TestConcurrentOneKey(t *testing.T) {
 
 					it := l.NewIter()
 					it.SeekGE(key)
-					if !it.Valid() || !bytes.Equal(key, it.Key().UserKey) {
-						return
-					}
+					require.True(t, it.Valid())
+					require.True(t, bytes.Equal(key, it.Key().UserKey))
 
-					atomic.StoreInt32(&sawValue, 1)
+					atomic.AddInt32(&sawValue, 1)
 					v, err := strconv.Atoi(string(it.Value()[1:]))
 					require.NoError(t, err)
 					require.True(t, 0 <= v && v < n)
 				}()
 			}
 			wg.Wait()
-			require.True(t, sawValue > 0)
+			require.Equal(t, int32(n), sawValue)
 			require.Equal(t, 1, length(l))
 			require.Equal(t, 1, lengthRev(l))
 		})
