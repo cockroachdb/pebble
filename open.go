@@ -14,7 +14,6 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
-	"github.com/petermattis/pebble/internal/rate"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/storage"
 )
@@ -55,20 +54,14 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *db.Options) (*DB, error) {
-	const defaultRateLimit = rate.Limit(50 << 20) // 50 MB/sec
-	const defaultBurst = 1 << 20                  // 1 MB
-
 	opts = opts.EnsureDefaults()
 	d := &DB{
-		dirname:           dirname,
-		opts:              opts,
-		cmp:               opts.Comparer.Compare,
-		equal:             opts.Comparer.Equal,
-		merge:             opts.Merger.Merge,
-		abbreviatedKey:    opts.Comparer.AbbreviatedKey,
-		commitController:  newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
-		compactController: newController(rate.NewLimiter(defaultRateLimit, defaultBurst)),
-		flushController:   newController(rate.NewLimiter(rate.Inf, defaultBurst)),
+		dirname:        dirname,
+		opts:           opts,
+		cmp:            opts.Comparer.Compare,
+		equal:          opts.Comparer.Equal,
+		merge:          opts.Merger.Merge,
+		abbreviatedKey: opts.Comparer.AbbreviatedKey,
 	}
 	if d.equal == nil {
 		d.equal = bytes.Equal
@@ -83,7 +76,6 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		mu:            &d.mu.Mutex,
 		logSeqNum:     &d.mu.versions.logSeqNum,
 		visibleSeqNum: &d.mu.versions.visibleSeqNum,
-		controller:    d.commitController,
 		apply:         d.commitApply,
 		sync:          d.commitSync,
 		write:         d.commitWrite,

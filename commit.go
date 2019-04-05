@@ -10,8 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/petermattis/pebble/internal/rate"
 )
 
 type commitQueueNode struct {
@@ -121,8 +119,6 @@ type commitEnv struct {
 	// The visible sequence number at which reads should be performed. Ratcheted
 	// upwards atomically as batches are applied to the memtable.
 	visibleSeqNum *uint64
-	// Controller for measuring and limiting the commit rate.
-	controller *controller
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
@@ -222,9 +218,6 @@ type commitPipeline struct {
 func newCommitPipeline(env commitEnv) *commitPipeline {
 	p := &commitPipeline{
 		env: env,
-	}
-	if p.env.controller == nil {
-		p.env.controller = newController(rate.NewLimiter(rate.Inf, 0))
 	}
 	p.cond.L = p.env.mu
 	p.pending.init()
@@ -362,8 +355,6 @@ func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, e
 		count++
 	}
 	b.commit.Add(count)
-
-	// p.env.controller.WaitN(len(b.data))
 
 	p.env.mu.Lock()
 

@@ -137,16 +137,6 @@ type DB struct {
 	largeBatchThreshold int
 	optionsFileNum      uint64
 
-	// Rate limiter for how much bandwidth to allow for commits, compactions, and
-	// flushes.
-	//
-	// TODO(peter): Add a controller module that balances the limits so that
-	// commits cannot happen faster than flushes and the backlog of compaction
-	// work does not grow too large.
-	commitController  *controller
-	compactController *controller
-	flushController   *controller
-
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
 	mu struct {
