@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
 )
@@ -121,7 +122,7 @@ func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 	end := start + len(inputs)
 	for ; end < len(files); end++ {
 		cur := &files[end-1]
-		next := files[end]
+		next := &files[end]
 		if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
 			break
 		}
@@ -232,6 +233,57 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	return true
 }
 
+// atomicUnitBounds returns the bounds of the atomic compaction unit containing
+// the specified sstable (identified by a pointer to its fileMetadata).
+func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
+	for i := range c.inputs {
+		files := c.inputs[i]
+		for j := range files {
+			if f == &files[j] {
+				lowerBound := f.smallest.UserKey
+				for k := j; k > 0; k-- {
+					cur := &files[k]
+					prev := &files[k-1]
+					if c.cmp(prev.largest.UserKey, cur.smallest.UserKey) < 0 {
+						break
+					}
+					if prev.largest.Trailer == db.InternalKeyRangeDeleteSentinel {
+						// The range deletion sentinel key is set for the largest key in a
+						// table when a range deletion tombstone straddles a table. It
+						// isn't necessary to include the next table in the atomic
+						// compaction unit as cur.largest.UserKey does not actually exist
+						// in the table.
+						break
+					}
+					lowerBound = prev.smallest.UserKey
+				}
+
+				upperBound := f.largest.UserKey
+				for k := j + 1; k < len(files); k++ {
+					cur := &files[k-1]
+					next := &files[k]
+					if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
+						break
+					}
+					if cur.largest.Trailer == db.InternalKeyRangeDeleteSentinel {
+						// The range deletion sentinel key is set for the largest key in a
+						// table when a range deletion tombstone straddles a table. It
+						// isn't necessary to include the next table in the atomic
+						// compaction unit as cur.largest.UserKey does not actually exist
+						// in the table.
+						break
+					}
+					// cur.largest.UserKey == next.largest.UserKey, so next is part of
+					// the atomic compaction unit.
+					upperBound = next.largest.UserKey
+				}
+				return lowerBound, upperBound
+			}
+		}
+	}
+	return nil, nil
+}
+
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
 	newIters tableNewIters,
@@ -267,11 +319,17 @@ func (c *compaction) newInputIter(
 				rangeDelIter = nil
 			}
 		}
+		if rangeDelIter != nil {
+			// Truncate the range tombstones returned by the iterator to the upper
+			// bound of the atomic compaction unit.
+			lowerBound, upperBound := c.atomicUnitBounds(f)
+			if lowerBound != nil || upperBound != nil {
+				rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound, upperBound)
+			}
+		}
 		return rangeDelIter, nil, err
 	}
 
-	// TODO(peter,rangedel): test that range tombstones are properly included in
-	// the output sstable.
 	if c.level != 0 {
 		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0]))
 		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0]))

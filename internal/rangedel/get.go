@@ -15,6 +15,9 @@ type iterator interface {
 	// than the given key.
 	SeekLT(key []byte) bool
 
+	// First moves the iterator the the first key/value pair.
+	First() bool
+
 	// Last moves the iterator the the last key/value pair.
 	Last() bool
 

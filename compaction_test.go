@@ -900,3 +900,56 @@ func TestCompactionExpandInputs(t *testing.T) {
 			}
 		})
 }
+
+func TestCompactionAtomicUnitBounds(t *testing.T) {
+	cmp := db.DefaultComparer.Compare
+	var files []fileMetadata
+
+	parseMeta := func(s string) fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		return fileMetadata{
+			smallest: db.ParseInternalKey(parts[0]),
+			largest:  db.ParseInternalKey(parts[1]),
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_atomic_unit_bounds",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "define":
+				files = nil
+				if len(d.Input) == 0 {
+					return ""
+				}
+				for _, data := range strings.Split(d.Input, "\n") {
+					meta := parseMeta(data)
+					meta.fileNum = uint64(len(files))
+					files = append(files, meta)
+				}
+				sort.Sort(bySmallest{files, cmp})
+				return ""
+
+			case "atomic-unit-bounds":
+				c := &compaction{
+					cmp: cmp,
+				}
+				c.inputs[0] = files
+				if len(d.CmdArgs) != 1 {
+					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
+				}
+				index, err := strconv.ParseInt(d.CmdArgs[0].String(), 10, 64)
+				if err != nil {
+					return err.Error()
+				}
+
+				lower, upper := c.atomicUnitBounds(&files[index])
+				return fmt.Sprintf("%s-%s\n", lower, upper)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
