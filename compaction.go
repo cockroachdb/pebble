@@ -121,7 +121,7 @@ func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 	end := start + len(inputs)
 	for ; end < len(files); end++ {
 		cur := &files[end-1]
-		next := files[end]
+		next := &files[end]
 		if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
 			break
 		}
@@ -232,6 +232,42 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	return true
 }
 
+// atomicCompactionUnitUpperBound returns the upper boundary of the atomic
+// compaction unit containing the specified sstable (identified by a pointer to
+// its fileMetadata).
+//
+// TODO(peter): This needs to be directly tested.
+func (c *compaction) atomicCompactionUnitUpperBound(f *fileMetadata) []byte {
+	for i := range c.inputs {
+		files := c.inputs[i]
+		for j := range files {
+			if f == &files[j] {
+				upperBound := f.largest.UserKey
+				for j = j + 1; j < len(files); j++ {
+					cur := &files[j-1]
+					next := files[j]
+					if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
+						break
+					}
+					if cur.largest.Trailer == db.InternalKeyRangeDeleteSentinel {
+						// The range deletion sentinel key is set for the largest key in a
+						// table when a range deletion tombstone straddles a table. It
+						// isn't necessary to include the next table in the atomic
+						// compaction unit as cur.largest.UserKey does not actually exist
+						// in the table.
+						break
+					}
+					// cur.largest.UserKey == next.largest.UserKey, so next is part of
+					// the atomic compaction unit.
+					upperBound = next.largest.UserKey
+				}
+				return upperBound
+			}
+		}
+	}
+	return nil
+}
+
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
 	newIters tableNewIters,
@@ -267,11 +303,20 @@ func (c *compaction) newInputIter(
 				rangeDelIter = nil
 			}
 		}
+		if rangeDelIter != nil {
+			// Truncate the range tombstones returned by the iterator to the upper
+			// bound of the atomic compaction unit.
+			if upperBound := c.atomicCompactionUnitUpperBound(f); upperBound != nil {
+				rangeDelIter = &truncatedRangeDelIter{
+					cmp:        c.cmp,
+					wrapped:    rangeDelIter,
+					upperBound: upperBound,
+				}
+			}
+		}
 		return rangeDelIter, nil, err
 	}
 
-	// TODO(peter,rangedel): test that range tombstones are properly included in
-	// the output sstable.
 	if c.level != 0 {
 		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0]))
 		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0]))
