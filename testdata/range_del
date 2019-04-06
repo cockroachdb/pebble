@@ -1192,3 +1192,49 @@ prev
 c:v
 a:v
 .
+
+# A range tombstone straddles two sstables. One is compacted two
+# levels lower. The other is compacted one level lower. The one that
+# is compacted one level lower should not see its boundaries expand
+# causing it to delete more keys. A snapshot is used to prevent range
+# tombstone from being elided when it gets compacted to the bottommost
+# level.
+
+define target-file-sizes=(100, 1) snapshots=(1)
+L0
+  a.RANGEDEL.1:e
+L0
+  a.SET.2:v
+L0
+  c.SET.3:v
+L2
+  d.SET.0:v
+----
+mem: 1
+0: a-e a-a c-c
+2: d-d
+
+compact a-b
+----
+1: a-c c-e
+2: d-d
+
+compact d-e
+----
+1: a-c
+3: c-d d-e
+
+get seq=4
+c
+----
+v
+
+compact a-b L1
+----
+2: a-c
+3: c-d d-e
+
+get seq=4
+c
+----
+v

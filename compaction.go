@@ -763,6 +763,25 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		deletedFiles: map[deletedFileEntry]bool{},
 	}
 
+	// Determine the largest key from the inputs in order to maintain the
+	// invariant that the outputs from a compaction have bounds that are within
+	// the bounds of the input. This is necessary because range tombstones are
+	// not truncated to sstable boundaries. A compaction could this result in the
+	// outputs having larger bounds than the inputs, which would allow the range
+	// tombstone to suddenly shadow a key that it shouldn't. For example,
+	// consider an sstable with bounds [a,c) containing the range tombstone
+	// [a,e). The output for a compaction involving that sstable must be within
+	// the bounds [a,c).
+	var largestInputKey db.InternalKey
+	for i := range c.inputs {
+		for j := range c.inputs[i] {
+			m := &c.inputs[i][j]
+			if db.InternalCompare(d.cmp, largestInputKey, m.largest) < 0 {
+				largestInputKey = m.largest
+			}
+		}
+	}
+
 	newOutput := func() error {
 		d.mu.Lock()
 		fileNum := d.mu.versions.nextFileNum()
@@ -840,6 +859,13 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 		meta.smallest = writerMeta.Smallest(d.cmp)
 		meta.largest = writerMeta.Largest(d.cmp)
+
+		// Bound the largest key of the sstable by the largest key of the
+		// compaction inputs. See the comment on largestInputKey for why this is
+		// necessary.
+		if db.InternalCompare(d.cmp, meta.largest, largestInputKey) > 0 {
+			meta.largest = largestInputKey
+		}
 
 		return nil
 	}
