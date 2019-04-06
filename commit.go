@@ -275,7 +275,7 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
-	mem, err := p.prepare(b, true /* writeWAL */, syncWAL)
+	mem, err := p.prepare(b, syncWAL)
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
@@ -345,7 +345,7 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	p.publish(b)
 }
 
-func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, error) {
+func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	n := uint64(b.count())
 	if n == invalidBatchCount {
 		return nil, ErrInvalidBatch
@@ -367,11 +367,7 @@ func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, e
 	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
-	var mem *memTable
-	var err error
-	if writeWAL {
-		mem, err = p.env.write(b)
-	}
+	mem, err := p.env.write(b)
 
 	p.env.mu.Unlock()
 
