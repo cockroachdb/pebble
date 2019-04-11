@@ -726,6 +726,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 					newLogFile.Close()
 				}
 			}
+			newLogFile = storage.NewSyncingFile(newLogFile, d.opts.BytesPerSync)
 
 			d.mu.Lock()
 			d.mu.mem.switching = false
