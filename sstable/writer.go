@@ -84,7 +84,6 @@ type Writer struct {
 	// The following fields are copied from db.Options.
 	blockSize          int
 	blockSizeThreshold int
-	bytesPerSync       int
 	compare            db.Compare
 
 	split db.Split
@@ -103,7 +102,6 @@ type Writer struct {
 	// offset is the offset (relative to the table start) of the next block
 	// to be written.
 	offset        uint64
-	syncOffset    uint64
 	block         blockWriter
 	indexBlock    blockWriter
 	rangeDelBlock blockWriter
@@ -362,18 +360,6 @@ func (w *Writer) writeRawBlock(b []byte, compression db.Compression) (blockHandl
 	bh := blockHandle{w.offset, uint64(len(b))}
 	w.offset += uint64(len(b)) + blockTrailerLen
 
-	// Sync the file periodically to smooth out disk traffic.
-	if w.bytesPerSync > 0 && (w.offset-w.syncOffset) >= uint64(w.bytesPerSync) {
-		if w.bufWriter != nil {
-			if err := w.bufWriter.Flush(); err != nil {
-				return blockHandle{}, err
-			}
-		}
-		if err := w.file.Sync(); err != nil {
-			return blockHandle{}, err
-		}
-		w.syncOffset = w.offset
-	}
 	return bh, nil
 }
 
@@ -550,13 +536,12 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
 	w := &Writer{
-		file: f,
+		file: storage.NewSyncingFile(f, o.BytesPerSync),
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
 		blockSize:          lo.BlockSize,
 		blockSizeThreshold: (lo.BlockSize*lo.BlockSizeThreshold + 99) / 100,
-		bytesPerSync:       o.BytesPerSync,
 		compare:            o.Comparer.Compare,
 		split:              o.Comparer.Split,
 		compression:        lo.Compression,
