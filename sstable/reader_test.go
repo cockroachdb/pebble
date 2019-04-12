@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -274,7 +275,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 					it.Next()
 				}
 				if testing.Verbose() {
-					fmt.Println(sum)
+					fmt.Fprint(ioutil.Discard, sum)
 				}
 			})
 	}
@@ -299,7 +300,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 					it.Prev()
 				}
 				if testing.Verbose() {
-					fmt.Println(sum)
+					fmt.Fprint(ioutil.Discard, sum)
 				}
 			})
 	}

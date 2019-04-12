@@ -146,9 +146,75 @@ func (i *blockIter) init(cmp db.Compare, block block, globalSeqNum uint64) error
 
 func (i *blockIter) readEntry() {
 	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
-	shared, ptr := decodeVarint(ptr)
-	unshared, ptr := decodeVarint(ptr)
-	value, ptr := decodeVarint(ptr)
+
+	// This is an ugly performance hack. Reading entries from blocks is one of
+	// the inner-most routines and decoding the 3 varints per-entry takes a
+	// significant time. Neither go1.11 or go1.12 will inline decodeVarint for
+	// us, so we do it manually. This provides a 10-15% performance improvement
+	// on blockIter benchmarks on both go1.11 and go1.12.
+	//
+	// TODO(peter): remove this hack if go:inline is ever supported.
+
+	var shared uint32
+	src := (*[5]uint8)(ptr)
+	if a := (*src)[0]; a < 128 {
+		shared = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		shared = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		shared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		shared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		shared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	var unshared uint32
+	src = (*[5]uint8)(ptr)
+	if a := (*src)[0]; a < 128 {
+		unshared = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		unshared = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		unshared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		unshared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		unshared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	var value uint32
+	src = (*[5]uint8)(ptr)
+	if a := (*src)[0]; a < 128 {
+		value = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		value = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		value = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		value = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
 	i.key = append(i.key[:shared], getBytes(ptr, int(unshared))...)
 	i.key = i.key[:len(i.key):len(i.key)]
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
@@ -205,9 +271,42 @@ func (i *blockIter) SeekGE(key []byte) bool {
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
-			// Decode the key at that restart point, and compare it to the key sought.
-			v1, ptr := decodeVarint(ptr)
-			_, ptr = decodeVarint(ptr)
+
+			// Decode the key at that restart point, and compare it to the key
+			// sought. See the comment in readEntry for why we manually inline the
+			// varint decoding.
+			var v1 uint32
+			src := (*[5]uint8)(ptr)
+			if a := (*src)[0]; a < 128 {
+				v1 = uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+				v1 = uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+				v1 = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+				v1 = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				d, e := d&0x7f, (*src)[4]
+				v1 = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
+			if src := (*[5]uint8)(ptr); (*src)[0] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if (*src)[1] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if (*src)[2] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if (*src)[3] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
 			s := getBytes(ptr, int(v1))
 			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) >= 0 {
 				index = h + 1 // preserves f(i-1) == false
@@ -261,9 +360,42 @@ func (i *blockIter) SeekLT(key []byte) bool {
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
-			// Decode the key at that restart point, and compare it to the key sought.
-			v1, ptr := decodeVarint(ptr)
-			_, ptr = decodeVarint(ptr)
+
+			// Decode the key at that restart point, and compare it to the key
+			// sought. See the comment in readEntry for why we manually inline the
+			// varint decoding.
+			var v1 uint32
+			src := (*[5]uint8)(ptr)
+			if a := (*src)[0]; a < 128 {
+				v1 = uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+				v1 = uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+				v1 = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+				v1 = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				d, e := d&0x7f, (*src)[4]
+				v1 = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
+			if src := (*[5]uint8)(ptr); (*src)[0] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if (*src)[1] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if (*src)[2] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if (*src)[3] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
 			s := getBytes(ptr, int(v1))
 			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) > 0 {
 				index = h + 1 // preserves f(i-1) == false

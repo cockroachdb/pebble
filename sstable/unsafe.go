@@ -12,22 +12,21 @@ func getBytes(ptr unsafe.Pointer, length int) []byte {
 
 func decodeVarint(ptr unsafe.Pointer) (uint32, unsafe.Pointer) {
 	src := (*[5]uint8)(ptr)
-	dst := uint32((*src)[0]) & 0x7f
-	if (*src)[0] < 128 {
-		return dst, unsafe.Pointer(uintptr(ptr) + 1)
+	if a := (*src)[0]; a < 128 {
+		return uint32(a),
+			unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		return uint32(b)<<7 | uint32(a),
+			unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		return uint32(c)<<14 | uint32(b)<<7 | uint32(a),
+			unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		return uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a),
+			unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		return uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a),
+			unsafe.Pointer(uintptr(ptr) + 5)
 	}
-	dst |= (uint32((*src)[1]&0x7f) << 7)
-	if (*src)[1] < 128 {
-		return dst, unsafe.Pointer(uintptr(ptr) + 2)
-	}
-	dst |= (uint32((*src)[2]&0x7f) << 14)
-	if (*src)[2] < 128 {
-		return dst, unsafe.Pointer(uintptr(ptr) + 3)
-	}
-	dst |= (uint32((*src)[3]&0x7f) << 21)
-	if (*src)[3] < 128 {
-		return dst, unsafe.Pointer(uintptr(ptr) + 4)
-	}
-	dst |= (uint32((*src)[4]&0x7f) << 28)
-	return dst, unsafe.Pointer(uintptr(ptr) + 5)
 }
