@@ -39,7 +39,7 @@ bench: $(patsubst %,%.bench,internal/arenaskl internal/batchskl internal/record 
 internal/arenaskl.bench: GOFLAGS += -cpu 1,8
 
 %.bench:
-	$(GO) test -run - -bench . -count 1 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
+	$(GO) test -run - -bench . -count 10 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
 
 .PHONY: clean
 clean:
