@@ -222,10 +222,17 @@ func (i *blockIter) readEntry() {
 }
 
 func (i *blockIter) decodeInternalKey(key []byte) {
-	n := len(key)
-	i.ikey = db.DecodeInternalKey(key[:n:n])
-	if i.globalSeqNum != 0 {
-		i.ikey.SetSeqNum(i.globalSeqNum)
+	// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+	// BlockIter benchmarks.
+	if n := len(key) - 8; n >= 0 {
+		i.ikey.Trailer = binary.LittleEndian.Uint64(key[n:])
+		i.ikey.UserKey = key[:n:n]
+		if i.globalSeqNum != 0 {
+			i.ikey.SetSeqNum(i.globalSeqNum)
+		}
+	} else {
+		i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+		i.ikey.UserKey = nil
 	}
 }
 
@@ -307,8 +314,21 @@ func (i *blockIter) SeekGE(key []byte) bool {
 				ptr = unsafe.Pointer(uintptr(ptr) + 5)
 			}
 
+			// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+			// BlockIter benchmarks.
 			s := getBytes(ptr, int(v1))
-			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) >= 0 {
+			var k db.InternalKey
+			if n := len(s) - 8; n >= 0 {
+				k.Trailer = binary.LittleEndian.Uint64(s[n:])
+				k.UserKey = s[:n:n]
+				// NB: We can't have duplicate keys if the globalSeqNum != 0, so we
+				// leave the seqnum on this key as 0 as it won't affect our search
+				// since ikey has the maximum seqnum.
+			} else {
+				k.Trailer = uint64(db.InternalKeyKindInvalid)
+			}
+
+			if db.InternalCompare(i.cmp, ikey, k) >= 0 {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
 				upper = h // preserves f(j) == true
@@ -330,11 +350,11 @@ func (i *blockIter) SeekGE(key []byte) bool {
 	// Iterate from that restart point to somewhere >= the key sought.
 	for valid := i.Valid(); valid; valid = i.Next() {
 		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
-			break
+			return true
 		}
 	}
 
-	return i.Valid()
+	return false
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -396,8 +416,21 @@ func (i *blockIter) SeekLT(key []byte) bool {
 				ptr = unsafe.Pointer(uintptr(ptr) + 5)
 			}
 
+			// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+			// BlockIter benchmarks.
 			s := getBytes(ptr, int(v1))
-			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) > 0 {
+			var k db.InternalKey
+			if n := len(s) - 8; n >= 0 {
+				k.Trailer = binary.LittleEndian.Uint64(s[n:])
+				k.UserKey = s[:n:n]
+				// NB: We can't have duplicate keys if the globalSeqNum != 0, so we
+				// leave the seqnum on this key as 0 as it won't affect our search
+				// since ikey has the maximum seqnum.
+			} else {
+				k.Trailer = uint64(db.InternalKeyKindInvalid)
+			}
+
+			if db.InternalCompare(i.cmp, ikey, k) > 0 {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
 				upper = h // preserves f(j) == true
