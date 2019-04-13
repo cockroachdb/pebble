@@ -8,6 +8,7 @@ package storage
 
 import (
 	"os"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -45,7 +46,7 @@ func (f *syncingFile) init() {
 }
 
 func (f *syncingFile) syncToFdatasync(_ int64) error {
-	f.syncOffset = f.offset
+	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
 	return syscall.Fdatasync(f.fd)
 }
 
@@ -56,6 +57,6 @@ func (f *syncingFile) syncToRange(offset int64) error {
 		waitBefore = 0x4
 	)
 
-	f.syncOffset = offset
+	f.ratchetSyncOffset(offset)
 	return syscall.SyncFileRange(f.fd, 0, offset, write|waitBefore)
 }

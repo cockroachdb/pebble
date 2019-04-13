@@ -7,6 +7,7 @@ package storage
 import (
 	"io/ioutil"
 	"os"
+	"sync/atomic"
 	"testing"
 )
 
@@ -31,7 +32,7 @@ func TestSyncingFile(t *testing.T) {
 	s = NewSyncingFile(f, 8<<10 /* 8 KB */)
 	s.(*syncingFile).fd = 1
 	s.(*syncingFile).syncTo = func(offset int64) error {
-		s.(*syncingFile).syncOffset = offset
+		s.(*syncingFile).ratchetSyncOffset(offset)
 		return nil
 	}
 
@@ -52,7 +53,7 @@ func TestSyncingFile(t *testing.T) {
 		if _, err := s.Write(make([]byte, c.n)); err != nil {
 			t.Fatal(err)
 		}
-		syncTo := s.(*syncingFile).syncOffset
+		syncTo := atomic.LoadInt64(&s.(*syncingFile).atomic.syncOffset)
 		if c.expectedSyncTo != syncTo {
 			t.Fatalf("%d: expected sync to %d, but found %d", i, c.expectedSyncTo, syncTo)
 		}
