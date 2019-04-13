@@ -216,14 +216,14 @@ func (i *blockIter) readEntry() {
 	}
 
 	i.key = append(i.key[:shared], getBytes(ptr, int(unshared))...)
-	i.key = i.key[:len(i.key):len(i.key)]
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
 	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
 }
 
 func (i *blockIter) decodeInternalKey(key []byte) {
-	i.ikey = db.DecodeInternalKey(key)
+	n := len(key)
+	i.ikey = db.DecodeInternalKey(key[:n:n])
 	if i.globalSeqNum != 0 {
 		i.ikey.SetSeqNum(i.globalSeqNum)
 	}
