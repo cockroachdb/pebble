@@ -518,7 +518,17 @@ func (i *blockIter) Next() bool {
 		return false
 	}
 	i.readEntry()
-	i.decodeInternalKey(i.key)
+	// Manually inlined version of i.decodeInternalKey(i.key).
+	if n := len(i.key) - 8; n >= 0 {
+		i.ikey.Trailer = binary.LittleEndian.Uint64(i.key[n:])
+		i.ikey.UserKey = i.key[:n:n]
+		if i.globalSeqNum != 0 {
+			i.ikey.SetSeqNum(i.globalSeqNum)
+		}
+	} else {
+		i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+		i.ikey.UserKey = nil
+	}
 	return true
 }
 
@@ -530,7 +540,17 @@ func (i *blockIter) Prev() bool {
 		e := &i.cached[n-1]
 		i.offset = e.offset
 		i.val = e.val
-		i.decodeInternalKey(e.key)
+		// Manually inlined version of i.decodeInternalKey(e.key).
+		if n := len(e.key) - 8; n >= 0 {
+			i.ikey.Trailer = binary.LittleEndian.Uint64(e.key[n:])
+			i.ikey.UserKey = e.key[:n:n]
+			if i.globalSeqNum != 0 {
+				i.ikey.SetSeqNum(i.globalSeqNum)
+			}
+		} else {
+			i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+			i.ikey.UserKey = nil
+		}
 		i.cached = i.cached[:n]
 		return true
 	}
