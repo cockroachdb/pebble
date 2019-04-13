@@ -59,9 +59,9 @@ func (f *syncingFile) syncToFdatasync(_ int64) error {
 
 func (f *syncingFile) syncToRange(offset int64) error {
 	const (
-		// waitAfter = 0x1
+		waitBefore = 0x1
 		write      = 0x2
-		waitBefore = 0x4
+		// waitAfter = 0x4
 	)
 
 	f.ratchetSyncOffset(offset)
