@@ -45,9 +45,16 @@ func (f *syncingFile) init() {
 	}
 }
 
+func (f *syncingFile) syncData() error {
+	if f.fd < 0 {
+		return f.File.Sync()
+	}
+	return syscall.Fdatasync(f.fd)
+}
+
 func (f *syncingFile) syncToFdatasync(_ int64) error {
 	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
-	return syscall.Fdatasync(f.fd)
+	return f.syncData()
 }
 
 func (f *syncingFile) syncToRange(offset int64) error {

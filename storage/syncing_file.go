@@ -4,7 +4,9 @@
 
 package storage
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+)
 
 type syncingFile struct {
 	File
@@ -70,7 +72,7 @@ func (f *syncingFile) Sync() error {
 	// offset, we still need to call the underlying file's sync for persistence
 	// guarantees (which are not provided by sync_file_range).
 	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
-	return f.File.Sync()
+	return f.syncData()
 }
 
 func (f *syncingFile) maybeSync() error {
