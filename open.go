@@ -165,7 +165,10 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	logFile = storage.NewSyncingFile(logFile, d.opts.BytesPerSync)
+	logFile = storage.NewSyncingFile(logFile, storage.SyncingFileOptions{
+		BytesPerSync:    d.opts.BytesPerSync,
+		PreallocateSize: d.walPreallocateSize(),
+	})
 	d.mu.log.LogWriter = record.NewLogWriter(logFile)
 
 	// Write a new manifest to disk.
