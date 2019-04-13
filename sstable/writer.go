@@ -537,7 +537,9 @@ func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	lo = *lo.EnsureDefaults()
 
 	if f != nil {
-		f = storage.NewSyncingFile(f, o.BytesPerSync)
+		f = storage.NewSyncingFile(f, storage.SyncingFileOptions{
+			BytesPerSync: o.BytesPerSync,
+		})
 	}
 
 	w := &Writer{

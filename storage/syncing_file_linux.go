@@ -7,14 +7,13 @@
 package storage
 
 import (
-	"os"
 	"sync/atomic"
 	"syscall"
 )
 
-func isSyncRangeSupported(fd int) bool {
+func isSyncRangeSupported(fd uintptr) bool {
 	var stat syscall.Statfs_t
-	if err := syscall.Fstatfs(fd, &stat); err != nil {
+	if err := syscall.Fstatfs(int(fd), &stat); err != nil {
 		return false
 	}
 
@@ -32,11 +31,9 @@ func isSyncRangeSupported(fd int) bool {
 }
 
 func (f *syncingFile) init() {
-	t, ok := f.File.(*os.File)
-	if !ok {
+	if f.fd == 0 {
 		return
 	}
-	f.fd = int(t.Fd())
 	f.useSyncRange = isSyncRangeSupported(f.fd)
 	if f.useSyncRange {
 		f.syncTo = f.syncToRange
@@ -46,10 +43,10 @@ func (f *syncingFile) init() {
 }
 
 func (f *syncingFile) syncData() error {
-	if f.fd < 0 {
+	if f.fd == 0 {
 		return f.File.Sync()
 	}
-	return syscall.Fdatasync(f.fd)
+	return syscall.Fdatasync(int(f.fd))
 }
 
 func (f *syncingFile) syncToFdatasync(_ int64) error {
@@ -65,5 +62,5 @@ func (f *syncingFile) syncToRange(offset int64) error {
 	)
 
 	f.ratchetSyncOffset(offset)
-	return syscall.SyncFileRange(f.fd, 0, offset, write|waitBefore)
+	return syscall.SyncFileRange(int(f.fd), 0, offset, write|waitBefore)
 }

@@ -662,6 +662,16 @@ func (d *DB) AsyncFlush() error {
 	return err
 }
 
+func (d *DB) walPreallocateSize() int {
+	// Set the WAL preallocate size to 110% of the memtable size. Note that there
+	// is a bit of apples and oranges in units here as the memtabls size
+	// corresponds to the memory usage of the memtable while the WAL size is the
+	// size of the batches (plus overhead) stored in the WAL.
+	size := d.opts.MemTableSize
+	size = (size / 10) + size
+	return size
+}
+
 func (d *DB) throttleWrite() {
 	if len(d.mu.versions.currentVersion().files[0]) <= d.opts.L0SlowdownWritesThreshold {
 		return
@@ -726,7 +736,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 					newLogFile.Close()
 				}
 			}
-			newLogFile = storage.NewSyncingFile(newLogFile, d.opts.BytesPerSync)
+			newLogFile = storage.NewSyncingFile(newLogFile, storage.SyncingFileOptions{
+				BytesPerSync:    d.opts.BytesPerSync,
+				PreallocateSize: d.walPreallocateSize(),
+			})
 
 			d.mu.Lock()
 			d.mu.mem.switching = false
