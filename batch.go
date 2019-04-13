@@ -80,7 +80,7 @@ func (s *batchStorage) Compare(a []byte, b uint32) int {
 
 // Batch is a sequence of Sets and/or Deletes that are applied atomically.
 type Batch struct {
-	batchStorage
+	storage batchStorage
 
 	memTableSize uint32
 
@@ -132,11 +132,11 @@ func newBatch(db *DB) *Batch {
 
 func newIndexedBatch(db *DB, comparer *db.Comparer) *Batch {
 	i := indexedBatchPool.Get().(*indexedBatch)
-	i.batch.cmp = comparer.Compare
-	i.batch.abbreviatedKey = comparer.AbbreviatedKey
+	i.batch.storage.cmp = comparer.Compare
+	i.batch.storage.abbreviatedKey = comparer.AbbreviatedKey
 	i.batch.db = db
 	i.batch.index = &i.index
-	i.batch.index.Reset(&i.batch.batchStorage, 0)
+	i.batch.index.Reset(&i.batch.storage, 0)
 	return &i.batch
 }
 
@@ -145,8 +145,8 @@ func (b *Batch) release() {
 	// the Batch.applied field. Without using an atomic to clear that field the
 	// Go race detector complains.
 	b.reset()
-	b.cmp = nil
-	b.abbreviatedKey = nil
+	b.storage.cmp = nil
+	b.storage.abbreviatedKey = nil
 	b.memTableSize = 0
 	b.db = nil
 	b.flushable = nil
@@ -177,25 +177,25 @@ func (b *Batch) refreshMemTableSize() {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
-	if len(batch.data) == 0 {
+	if len(batch.storage.data) == 0 {
 		return nil
 	}
-	if len(batch.data) < batchHeaderLen {
+	if len(batch.storage.data) < batchHeaderLen {
 		return errors.New("pebble: invalid batch")
 	}
 
-	offset := len(b.data)
+	offset := len(b.storage.data)
 	if offset == 0 {
 		b.init(offset)
 		offset = batchHeaderLen
 	}
-	b.data = append(b.data, batch.data[batchHeaderLen:]...)
+	b.storage.data = append(b.storage.data, batch.storage.data[batchHeaderLen:]...)
 
-	count := binary.LittleEndian.Uint32(batch.data[8:12])
+	count := binary.LittleEndian.Uint32(batch.storage.data[8:12])
 	b.setCount(b.count() + count)
 
-	for iter := batchReader(b.data[offset:]); len(iter) > 0; {
-		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
+	for iter := batchReader(b.storage.data[offset:]); len(iter) > 0; {
+		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.storage.data[0]))
 		kind, key, value, ok := iter.next()
 		if !ok {
 			break
@@ -204,7 +204,7 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 			var err error
 			if kind == db.InternalKeyKindRangeDelete {
 				if b.rangeDelIndex == nil {
-					b.rangeDelIndex = batchskl.NewSkiplist(&b.batchStorage, 0)
+					b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
 				}
 				err = b.rangeDelIndex.Add(uint32(offset))
 			} else {
@@ -233,13 +233,13 @@ func (b *Batch) Get(key []byte) (value []byte, err error) {
 }
 
 func (b *Batch) encodeKeyValue(key, value []byte, kind db.InternalKeyKind) uint32 {
-	pos := len(b.data)
+	pos := len(b.storage.data)
 	offset := uint32(pos)
 	b.grow(1 + 2*maxVarintLen32 + len(key) + len(value))
-	b.data[pos] = byte(kind)
+	b.storage.data[pos] = byte(kind)
 	pos, varlen1 := b.copyStr(pos+1, key)
 	_, varlen2 := b.copyStr(pos, value)
-	b.data = b.data[:len(b.data)-(2*maxVarintLen32-varlen1-varlen2)]
+	b.storage.data = b.storage.data[:len(b.storage.data)-(2*maxVarintLen32-varlen1-varlen2)]
 	return offset
 }
 
@@ -247,7 +247,7 @@ func (b *Batch) encodeKeyValue(key, value []byte, kind db.InternalKeyKind) uint3
 //
 // It is safe to modify the contents of the arguments after Set returns.
 func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
-	if len(b.data) == 0 {
+	if len(b.storage.data) == 0 {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if !b.increment() {
@@ -272,7 +272,7 @@ func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Merge returns.
 func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
-	if len(b.data) == 0 {
+	if len(b.storage.data) == 0 {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if !b.increment() {
@@ -295,19 +295,19 @@ func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Delete returns.
 func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
-	if len(b.data) == 0 {
+	if len(b.storage.data) == 0 {
 		b.init(len(key) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if !b.increment() {
 		return ErrInvalidBatch
 	}
 
-	pos := len(b.data)
+	pos := len(b.storage.data)
 	offset := uint32(pos)
 	b.grow(1 + maxVarintLen32 + len(key))
-	b.data[pos] = byte(db.InternalKeyKindDelete)
+	b.storage.data[pos] = byte(db.InternalKeyKindDelete)
 	pos, varlen1 := b.copyStr(pos+1, key)
-	b.data = b.data[:len(b.data)-(maxVarintLen32-varlen1)]
+	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
 
 	if b.index != nil {
 		if err := b.index.Add(offset); err != nil {
@@ -325,7 +325,7 @@ func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
 // It is safe to modify the contents of the arguments after DeleteRange
 // returns.
 func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
-	if len(b.data) == 0 {
+	if len(b.storage.data) == 0 {
 		b.init(len(start) + len(end) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	if !b.increment() {
@@ -337,7 +337,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 	if b.index != nil {
 		// Range deletions are rare, so we lazily allocate the index for them.
 		if b.rangeDelIndex == nil {
-			b.rangeDelIndex = batchskl.NewSkiplist(&b.batchStorage, 0)
+			b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
 		}
 		if err := b.rangeDelIndex.Add(offset); err != nil {
 			// We never add duplicate entries, so an error should never occur.
@@ -352,7 +352,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 // Repr returns the underlying batch representation. It is not safe to modify
 // the contents.
 func (b *Batch) Repr() []byte {
-	return b.data
+	return b.storage.data
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
@@ -373,7 +373,7 @@ func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
 		return newErrorIter(ErrNotIndexed)
 	}
 	return &batchIter{
-		cmp:   b.cmp,
+		cmp:   b.storage.cmp,
 		batch: b,
 		iter:  b.index.NewIter(),
 	}
@@ -392,13 +392,13 @@ func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
 	// tombstone is added to the batch.
 	if b.tombstones == nil {
 		frag := &rangedel.Fragmenter{
-			Cmp: b.cmp,
+			Cmp: b.storage.cmp,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}
 		it := &batchIter{
-			cmp:   b.cmp,
+			cmp:   b.storage.cmp,
 			batch: b,
 			iter:  b.rangeDelIndex.NewIter(),
 		}
@@ -408,7 +408,7 @@ func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
 		frag.Finish()
 	}
 
-	return rangedel.NewIter(b.cmp, b.tombstones)
+	return rangedel.NewIter(b.storage.cmp, b.tombstones)
 }
 
 // Commit applies the batch to its parent writer.
@@ -433,23 +433,23 @@ func (b *Batch) init(cap int) {
 	for n < cap {
 		n *= 2
 	}
-	b.data = rawalloc.New(batchHeaderLen, n)
+	b.storage.data = rawalloc.New(batchHeaderLen, n)
 	b.setCount(0)
 	b.setSeqNum(0)
-	b.data = b.data[:batchHeaderLen]
+	b.storage.data = b.storage.data[:batchHeaderLen]
 }
 
 func (b *Batch) reset() {
-	if b.data != nil {
-		if cap(b.data) > batchMaxRetainedSize {
+	if b.storage.data != nil {
+		if cap(b.storage.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
 			// retention size, don't re-use it. Let it be GC-ed instead.
 			// This prevents the memory from an unusually large batch from
 			// being held on to indefinitely.
-			b.data = nil
+			b.storage.data = nil
 		} else {
 			// Otherwise, reset the buffer for re-use.
-			b.data = b.data[:batchHeaderLen]
+			b.storage.data = b.storage.data[:batchHeaderLen]
 			b.setCount(0)
 			b.setSeqNum(0)
 		}
@@ -459,13 +459,13 @@ func (b *Batch) reset() {
 // seqNumData returns the 8 byte little-endian sequence number. Zero means that
 // the batch has not yet been applied.
 func (b *Batch) seqNumData() []byte {
-	return b.data[:8]
+	return b.storage.data[:8]
 }
 
 // countData returns the 4 byte little-endian count data. "\xff\xff\xff\xff"
 // means that the batch is invalid.
 func (b *Batch) countData() []byte {
-	return b.data[8:12]
+	return b.storage.data[8:12]
 }
 
 func (b *Batch) increment() (ok bool) {
@@ -485,17 +485,17 @@ func (b *Batch) increment() (ok bool) {
 }
 
 func (b *Batch) grow(n int) {
-	newSize := len(b.data) + n
-	if newSize > cap(b.data) {
-		newCap := 2 * cap(b.data)
+	newSize := len(b.storage.data) + n
+	if newSize > cap(b.storage.data) {
+		newCap := 2 * cap(b.storage.data)
 		for newCap < newSize {
 			newCap *= 2
 		}
-		newData := rawalloc.New(len(b.data), newCap)
-		copy(newData, b.data)
-		b.data = newData
+		newData := rawalloc.New(len(b.storage.data), newCap)
+		copy(newData, b.storage.data)
+		b.storage.data = newData
 	}
-	b.data = b.data[:newSize]
+	b.storage.data = b.storage.data[:newSize]
 }
 
 func putUvarint32(buf []byte, x uint32) int {
@@ -510,8 +510,8 @@ func putUvarint32(buf []byte, x uint32) int {
 }
 
 func (b *Batch) copyStr(pos int, s []byte) (int, int) {
-	n := putUvarint32(b.data[pos:], uint32(len(s)))
-	return pos + n + copy(b.data[pos+n:], s), n
+	n := putUvarint32(b.storage.data[pos:], uint32(len(s)))
+	return pos + n + copy(b.storage.data[pos+n:], s), n
 }
 
 func (b *Batch) setSeqNum(seqNum uint64) {
@@ -531,7 +531,7 @@ func (b *Batch) count() uint32 {
 }
 
 func (b *Batch) iter() batchReader {
-	return b.data[batchHeaderLen:]
+	return b.storage.data[batchHeaderLen:]
 }
 
 func batchDecode(data []byte, offset uint32) (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
@@ -652,7 +652,7 @@ func (i *batchIter) Key() db.InternalKey {
 }
 
 func (i *batchIter) Value() []byte {
-	_, _, value, ok := batchDecode(i.batch.data, i.iter.KeyOffset())
+	_, _, value, ok := batchDecode(i.batch.storage.data, i.iter.KeyOffset())
 	if !ok {
 		i.err = fmt.Errorf("corrupted batch")
 	}
@@ -711,7 +711,7 @@ var _ flushable = (*flushableBatch)(nil)
 // of the batch data.
 func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 	b := &flushableBatch{
-		data:            batch.data,
+		data:            batch.storage.data,
 		cmp:             comparer.Compare,
 		offsets:         make([]flushableBatchEntry, 0, batch.count()),
 		rangeDelOffsets: nil, // NB: assume no range deletions need indexing

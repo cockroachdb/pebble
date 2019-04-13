@@ -312,7 +312,7 @@ func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
 		// If this is a large batch, we need to clear the batch contents as the
 		// flushable batch may still be present in the flushables queue.
 		if batch.flushable != nil {
-			batch.data = nil
+			batch.storage.data = nil
 		}
 	}
 	return err
@@ -369,7 +369,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 		return d.mu.mem.mutable, nil
 	}
 
-	_, err := d.mu.log.WriteRecord(b.data)
+	_, err := d.mu.log.WriteRecord(b.storage.data)
 	if err != nil {
 		panic(err)
 	}
