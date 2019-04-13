@@ -236,11 +236,6 @@ func (i *blockIter) decodeInternalKey(key []byte) {
 	}
 }
 
-func (i *blockIter) loadEntry() {
-	i.readEntry()
-	i.decodeInternalKey(i.key)
-}
-
 func (i *blockIter) clearCache() {
 	i.cached = i.cached[:0]
 	i.cachedBuf = i.cachedBuf[:0]
@@ -345,7 +340,8 @@ func (i *blockIter) SeekGE(key []byte) bool {
 	if index > 0 {
 		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
 	}
-	i.loadEntry()
+	i.readEntry()
+	i.decodeInternalKey(i.key)
 
 	// Iterate from that restart point to somewhere >= the key sought.
 	for valid := i.Valid(); valid; valid = i.Next() {
@@ -460,7 +456,8 @@ func (i *blockIter) SeekLT(key []byte) bool {
 
 	for {
 		i.offset = i.nextOffset
-		i.loadEntry()
+		i.readEntry()
+		i.decodeInternalKey(i.key)
 		i.cacheEntry()
 
 		if i.cmp(i.ikey.UserKey, ikey.UserKey) >= 0 {
@@ -486,7 +483,8 @@ func (i *blockIter) First() bool {
 	if !i.Valid() {
 		return false
 	}
-	i.loadEntry()
+	i.readEntry()
+	i.decodeInternalKey(i.key)
 	return true
 }
 
@@ -519,7 +517,8 @@ func (i *blockIter) Next() bool {
 	if !i.Valid() {
 		return false
 	}
-	i.loadEntry()
+	i.readEntry()
+	i.decodeInternalKey(i.key)
 	return true
 }
 
