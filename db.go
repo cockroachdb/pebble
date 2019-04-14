@@ -137,6 +137,13 @@ type DB struct {
 	largeBatchThreshold int
 	optionsFileNum      uint64
 
+	// readState provides access to the state needed for reading without needing
+	// to acquire DB.mu.
+	readState struct {
+		sync.RWMutex
+		val *readState
+	}
+
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
 	mu struct {
@@ -192,14 +199,10 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 }
 
 func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
-	d.mu.Lock()
-	// Grab and reference the current version to prevent its underlying files
-	// from being deleted if we have a concurrent compaction. Note that
-	// version.unref() can be called without holding DB.mu.
-	current := d.mu.versions.currentVersion()
-	current.ref()
-	memtables := d.mu.mem.queue
-	d.mu.Unlock()
+	// Grab and reference the current readState. This prevents the underlying
+	// files in the associated version from being deleted if there is a current
+	// compaction. The readState is unref'd by Iterator.Close().
+	readState := d.loadReadState()
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
@@ -222,16 +225,16 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	get.snapshot = seqNum
 	get.key = key
 	get.batch = b
-	get.mem = memtables
-	get.l0 = current.files[0]
-	get.version = current
+	get.mem = readState.memtables
+	get.l0 = readState.current.files[0]
+	get.version = readState.current
 
 	i := &buf.dbi
 	i.cmp = d.cmp
 	i.equal = d.equal
 	i.merge = d.merge
 	i.iter = get
-	i.version = current
+	i.readState = readState
 
 	defer i.Close()
 	if !i.Next() {
@@ -379,14 +382,10 @@ func (d *DB) newIterInternal(
 	s *Snapshot,
 	o *db.IterOptions,
 ) *Iterator {
-	d.mu.Lock()
-	// Grab and reference the current version to prevent its underlying files
-	// from being deleted if we have a concurrent compaction. Note that
-	// version.unref() can be called without holding DB.mu.
-	current := d.mu.versions.currentVersion()
-	current.ref()
-	memtables := d.mu.mem.queue
-	d.mu.Unlock()
+	// Grab and reference the current readState. This prevents the underlying
+	// files in the associated version from being deleted if there is a current
+	// compaction. The readState is unref'd by Iterator.Close().
+	readState := d.loadReadState()
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
@@ -413,7 +412,7 @@ func (d *DB) newIterInternal(
 	dbi.cmp = d.cmp
 	dbi.equal = d.equal
 	dbi.merge = d.merge
-	dbi.version = current
+	dbi.readState = readState
 
 	iters := buf.iters[:0]
 	rangeDelIters := buf.rangeDelIters[:0]
@@ -427,6 +426,7 @@ func (d *DB) newIterInternal(
 	// TODO(peter): We only need to add memtables which contain sequence numbers
 	// older than seqNum. Unfortunately, memtables don't track their oldest
 	// sequence number currently.
+	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
 		iters = append(iters, mem.newIter(o))
@@ -435,6 +435,7 @@ func (d *DB) newIterInternal(
 	}
 
 	// The level 0 files need to be added from newest to oldest.
+	current := readState.current
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
 		iter, rangeDelIter, err := d.newIters(f)
@@ -557,6 +558,8 @@ func (d *DB) Close() error {
 	d.mu.closed = true
 
 	if err == nil {
+		d.readState.val.unrefLocked()
+
 		current := d.mu.versions.currentVersion()
 		for v := d.mu.versions.versions.front(); true; v = v.next {
 			refs := atomic.LoadInt32(&v.refs)
@@ -788,6 +791,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.mutable = newMemTable(d.opts)
 		}
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		d.updateReadStateLocked()
 		if (imm != nil && imm.unref()) || scheduleFlush {
 			d.maybeScheduleFlush()
 		}

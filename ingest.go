@@ -357,5 +357,6 @@ func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
 	if err := d.mu.versions.logAndApply(ve); err != nil {
 		return nil, err
 	}
+	d.updateReadStateLocked()
 	return ve, nil
 }

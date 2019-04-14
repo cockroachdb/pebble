@@ -174,6 +174,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if err := d.mu.versions.logAndApply(&ve); err != nil {
 		return nil, err
 	}
+	d.updateReadStateLocked()
 
 	// Write the current options to disk.
 	d.optionsFileNum = d.mu.versions.nextFileNum()
