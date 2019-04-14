@@ -110,11 +110,8 @@ func (q *commitQueue) dequeue(cond *sync.Cond) *Batch {
 // with. This allows fine-grained testing of commitPipeline behavior without
 // construction of an entire DB.
 type commitEnv struct {
-	// The mutex to use for synchronizing access to logSeqNum and serializing
-	// calls to write().
-	mu *sync.Mutex
-	// The next sequence number to give to a batch. Mutated atomically by the
-	// current WAL writer.
+	// The next sequence number to give to a batch. Protected by
+	// commitPipeline.mu.
 	logSeqNum *uint64
 	// The visible sequence number at which reads should be performed. Ratcheted
 	// upwards atomically as batches are applied to the memtable.
@@ -126,7 +123,7 @@ type commitEnv struct {
 	sync func() error
 	// Write the batch to the WAL. The data is not persisted until a call to
 	// sync() is performed. Returns the memtable the batch should be applied
-	// to. Called serially.
+	// to. Serial execution enforced by commitPipeline.mu.
 	write func(b *Batch) (*memTable, error)
 }
 
@@ -167,7 +164,7 @@ type commitEnv struct {
 //
 // The full outline of the commit pipeline operation is as follows:
 //
-//   with DB mutex locked:
+//   with commitPipeline mutex locked:
 //     assign batch sequence number
 //     write batch to WAL
 //   (optionally) add batch to WAL sync list
@@ -176,8 +173,8 @@ type commitEnv struct {
 //   ratchet read sequence number
 //   (optionally) wait for the WAL to sync
 //
-// As soon as a batch has been written to the WAL, the DB mutex is released
-// allowing another batch to write to the WAL. Each commit operation
+// As soon as a batch has been written to the WAL, the commitPipeline mutex is
+// released allowing another batch to write to the WAL. Each commit operation
 // individually applies its batch to the memtable providing concurrency. The
 // WAL sync happens concurrently with applying to the memtable (see
 // commitPipeline.syncLoop).
@@ -192,8 +189,8 @@ type commitEnv struct {
 // though it avoids waking a goroutine to perform work that another goroutine
 // can perform. A commitQueue (a single-producer, multiple-consumer queue)
 // holds the ordered list of committing batches. Addition to the queue is done
-// while holding the DB mutex ensuring the same ordering of batches in the
-// queue as the ordering in the WAL. When a batch finishes applying to the
+// while holding commitPipeline.mutex ensuring the same ordering of batches in
+// the queue as the ordering in the WAL. When a batch finishes applying to the
 // memtable, it atomically updates its Batch.applied field. Ratcheting of the
 // visible sequence number is done by commitPipeline.publish which loops
 // dequeueing "applied" batches and ratcheting the visible sequence number. If
@@ -202,6 +199,9 @@ type commitEnv struct {
 // batch in the queue. See commitPipeline.publish for additional commentary.
 type commitPipeline struct {
 	env commitEnv
+	// The mutex to use for synchronizing access to logSeqNum and serializing
+	// calls to commitEnv.write().
+	mu sync.Mutex
 	// Condition var to signal upon changes to the pending queue.
 	cond sync.Cond
 	// Queue of pending batches to commit.
@@ -219,7 +219,7 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 	p := &commitPipeline{
 		env: env,
 	}
-	p.cond.L = p.env.mu
+	p.cond.L = &p.mu
 	p.pending.init()
 	p.syncer.cond.L = &p.syncer.Mutex
 	go p.syncLoop()
@@ -300,8 +300,8 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 // number. AllocateSeqNum does not write to the WAL or add entries to the
 // memtable. AllocateSeqNum can be used to sequence an operation such as
 // sstable ingestion within the commit pipeline. The prepare callback is
-// invoked with commitEnv.mu held, making it suitable for flushing the memtable
-// if necessary.
+// invoked with commitPipeline.mu held, but note that DB.mu is not held and
+// must be locked if necessary.
 func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64)) {
 	// This method is similar to Commit and prepare. Be careful about trying to
 	// share additional code with those methods because Commit and prepare are
@@ -316,7 +316,7 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	b.setCount(1)
 	b.commit.Add(1)
 
-	p.env.mu.Lock()
+	p.mu.Lock()
 
 	// Enqueue the batch in the pending queue. Note that while the pending queue
 	// is lock-free, we want the order of batches to be the same as the sequence
@@ -324,9 +324,11 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	p.pending.enqueue(b, &p.cond)
 
 	// Assign the batch a sequence number.
-	seqNum := atomic.AddUint64(p.env.logSeqNum, 1) - 1
+	seqNum := *p.env.logSeqNum
+	*p.env.logSeqNum++
 	if seqNum == 0 {
-		seqNum = atomic.AddUint64(p.env.logSeqNum, 1) - 1
+		seqNum = *p.env.logSeqNum
+		*p.env.logSeqNum++
 		b.setCount(2)
 	}
 	b.setSeqNum(seqNum)
@@ -336,7 +338,7 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	// order to allow the commit pipeline to proceed.
 	prepare()
 
-	p.env.mu.Unlock()
+	p.mu.Unlock()
 
 	// Invoke the apply callback.
 	apply(b.seqNum())
@@ -356,7 +358,7 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	}
 	b.commit.Add(count)
 
-	p.env.mu.Lock()
+	p.mu.Lock()
 
 	// Enqueue the batch in the pending queue. Note that while the pending queue
 	// is lock-free, we want the order of batches to be the same as the sequence
@@ -364,12 +366,13 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	p.pending.enqueue(b, &p.cond)
 
 	// Assign the batch a sequence number.
-	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
+	b.setSeqNum(*p.env.logSeqNum)
+	*p.env.logSeqNum += n
 
 	// Write the data to the WAL.
 	mem, err := p.env.write(b)
 
-	p.env.mu.Unlock()
+	p.mu.Unlock()
 
 	if syncWAL {
 		s := &p.syncer

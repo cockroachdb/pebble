@@ -192,13 +192,7 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 }
 
 func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
-	var seqNum uint64
 	d.mu.Lock()
-	if s != nil {
-		seqNum = s.seqNum
-	} else {
-		seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
-	}
 	// Grab and reference the current version to prevent its underlying files
 	// from being deleted if we have a concurrent compaction. Note that
 	// version.unref() can be called without holding DB.mu.
@@ -206,6 +200,15 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	current.ref()
 	memtables := d.mu.mem.queue
 	d.mu.Unlock()
+
+	// Determine the seqnum to read at after grabbing the read state (current and
+	// memtables) above.
+	var seqNum uint64
+	if s != nil {
+		seqNum = s.seqNum
+	} else {
+		seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
+	}
 
 	var buf struct {
 		dbi Iterator
@@ -340,7 +343,7 @@ func (d *DB) commitSync() error {
 }
 
 func (d *DB) commitWrite(b *Batch) (*memTable, error) {
-	// NB: commitWrite is called with d.mu locked.
+	d.mu.Lock()
 
 	// Throttle writes if there are too many L0 tables.
 	d.throttleWrite()
@@ -349,9 +352,11 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 		b.flushable.seqNum = b.seqNum()
 	}
 
-	// Switch out the memtable if there was not enough room to store the
-	// batch.
-	if err := d.makeRoomForWrite(b); err != nil {
+	// Switch out the memtable if there was not enough room to store the batch.
+	err := d.makeRoomForWrite(b)
+
+	d.mu.Unlock()
+	if err != nil {
 		return nil, err
 	}
 
@@ -359,7 +364,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 		return d.mu.mem.mutable, nil
 	}
 
-	_, err := d.mu.log.WriteRecord(b.storage.data)
+	_, err = d.mu.log.WriteRecord(b.storage.data)
 	if err != nil {
 		panic(err)
 	}
@@ -374,13 +379,7 @@ func (d *DB) newIterInternal(
 	s *Snapshot,
 	o *db.IterOptions,
 ) *Iterator {
-	var seqNum uint64
 	d.mu.Lock()
-	if s != nil {
-		seqNum = s.seqNum
-	} else {
-		seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
-	}
 	// Grab and reference the current version to prevent its underlying files
 	// from being deleted if we have a concurrent compaction. Note that
 	// version.unref() can be called without holding DB.mu.
@@ -388,6 +387,15 @@ func (d *DB) newIterInternal(
 	current.ref()
 	memtables := d.mu.mem.queue
 	d.mu.Unlock()
+
+	// Determine the seqnum to read at after grabbing the read state (current and
+	// memtables) above.
+	var seqNum uint64
+	if s != nil {
+		seqNum = s.seqNum
+	} else {
+		seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
+	}
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
@@ -518,9 +526,11 @@ func (d *DB) NewIter(o *db.IterOptions) *Iterator {
 // deleted. Instead, a snapshot prevents deletion of sequence numbers
 // referenced by the snapshot.
 func (d *DB) NewSnapshot() *Snapshot {
-	s := &Snapshot{db: d}
+	s := &Snapshot{
+		db:     d,
+		seqNum: atomic.LoadUint64(&d.mu.versions.visibleSeqNum),
+	}
 	d.mu.Lock()
-	s.seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 	d.mu.snapshots.pushBack(s)
 	d.mu.Unlock()
 	return s
