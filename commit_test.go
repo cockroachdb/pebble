@@ -19,7 +19,6 @@ import (
 )
 
 type testCommitEnv struct {
-	mu            sync.Mutex
 	logSeqNum     uint64
 	visibleSeqNum uint64
 	writePos      int64
@@ -32,7 +31,6 @@ type testCommitEnv struct {
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		mu:            &e.mu,
 		logSeqNum:     &e.logSeqNum,
 		visibleSeqNum: &e.visibleSeqNum,
 		apply:         e.apply,
@@ -136,7 +134,6 @@ func BenchmarkCommitPipeline(b *testing.B) {
 			wal := record.NewLogWriter(ioutil.Discard)
 
 			nullCommitEnv := commitEnv{
-				mu:            new(sync.Mutex),
 				logSeqNum:     new(uint64),
 				visibleSeqNum: new(uint64),
 				apply: func(b *Batch, mem *memTable) error {
