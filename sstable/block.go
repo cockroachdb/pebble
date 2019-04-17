@@ -146,26 +146,94 @@ func (i *blockIter) init(cmp db.Compare, block block, globalSeqNum uint64) error
 
 func (i *blockIter) readEntry() {
 	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
-	shared, ptr := decodeVarint(ptr)
-	unshared, ptr := decodeVarint(ptr)
-	value, ptr := decodeVarint(ptr)
+
+	// This is an ugly performance hack. Reading entries from blocks is one of
+	// the inner-most routines and decoding the 3 varints per-entry takes a
+	// significant time. Neither go1.11 or go1.12 will inline decodeVarint for
+	// us, so we do it manually. This provides a 10-15% performance improvement
+	// on blockIter benchmarks on both go1.11 and go1.12.
+	//
+	// TODO(peter): remove this hack if go:inline is ever supported.
+
+	var shared uint32
+	src := (*[5]uint8)(ptr)
+	if a := (*src)[0]; a < 128 {
+		shared = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		shared = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		shared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		shared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		shared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	var unshared uint32
+	src = (*[5]uint8)(ptr)
+	if a := (*src)[0]; a < 128 {
+		unshared = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		unshared = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		unshared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		unshared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		unshared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	var value uint32
+	src = (*[5]uint8)(ptr)
+	if a := (*src)[0]; a < 128 {
+		value = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		value = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		value = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		value = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
 	i.key = append(i.key[:shared], getBytes(ptr, int(unshared))...)
-	i.key = i.key[:len(i.key):len(i.key)]
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
 	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
 }
 
 func (i *blockIter) decodeInternalKey(key []byte) {
-	i.ikey = db.DecodeInternalKey(key)
-	if i.globalSeqNum != 0 {
-		i.ikey.SetSeqNum(i.globalSeqNum)
+	// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+	// BlockIter benchmarks.
+	if n := len(key) - 8; n >= 0 {
+		i.ikey.Trailer = binary.LittleEndian.Uint64(key[n:])
+		i.ikey.UserKey = key[:n:n]
+		if i.globalSeqNum != 0 {
+			i.ikey.SetSeqNum(i.globalSeqNum)
+		}
+	} else {
+		i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+		i.ikey.UserKey = nil
 	}
-}
-
-func (i *blockIter) loadEntry() {
-	i.readEntry()
-	i.decodeInternalKey(i.key)
 }
 
 func (i *blockIter) clearCache() {
@@ -205,11 +273,57 @@ func (i *blockIter) SeekGE(key []byte) bool {
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
-			// Decode the key at that restart point, and compare it to the key sought.
-			v1, ptr := decodeVarint(ptr)
-			_, ptr = decodeVarint(ptr)
+
+			// Decode the key at that restart point, and compare it to the key
+			// sought. See the comment in readEntry for why we manually inline the
+			// varint decoding.
+			var v1 uint32
+			src := (*[5]uint8)(ptr)
+			if a := (*src)[0]; a < 128 {
+				v1 = uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+				v1 = uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+				v1 = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+				v1 = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				d, e := d&0x7f, (*src)[4]
+				v1 = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
+			if src := (*[5]uint8)(ptr); (*src)[0] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if (*src)[1] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if (*src)[2] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if (*src)[3] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
+			// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+			// BlockIter benchmarks.
 			s := getBytes(ptr, int(v1))
-			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) >= 0 {
+			var k db.InternalKey
+			if n := len(s) - 8; n >= 0 {
+				k.Trailer = binary.LittleEndian.Uint64(s[n:])
+				k.UserKey = s[:n:n]
+				// NB: We can't have duplicate keys if the globalSeqNum != 0, so we
+				// leave the seqnum on this key as 0 as it won't affect our search
+				// since ikey has the maximum seqnum.
+			} else {
+				k.Trailer = uint64(db.InternalKeyKindInvalid)
+			}
+
+			if db.InternalCompare(i.cmp, ikey, k) >= 0 {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
 				upper = h // preserves f(j) == true
@@ -226,16 +340,17 @@ func (i *blockIter) SeekGE(key []byte) bool {
 	if index > 0 {
 		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
 	}
-	i.loadEntry()
+	i.readEntry()
+	i.decodeInternalKey(i.key)
 
 	// Iterate from that restart point to somewhere >= the key sought.
 	for valid := i.Valid(); valid; valid = i.Next() {
 		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
-			break
+			return true
 		}
 	}
 
-	return i.Valid()
+	return false
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -261,11 +376,57 @@ func (i *blockIter) SeekLT(key []byte) bool {
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
-			// Decode the key at that restart point, and compare it to the key sought.
-			v1, ptr := decodeVarint(ptr)
-			_, ptr = decodeVarint(ptr)
+
+			// Decode the key at that restart point, and compare it to the key
+			// sought. See the comment in readEntry for why we manually inline the
+			// varint decoding.
+			var v1 uint32
+			src := (*[5]uint8)(ptr)
+			if a := (*src)[0]; a < 128 {
+				v1 = uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+				v1 = uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+				v1 = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+				v1 = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				d, e := d&0x7f, (*src)[4]
+				v1 = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
+			if src := (*[5]uint8)(ptr); (*src)[0] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 1)
+			} else if (*src)[1] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 2)
+			} else if (*src)[2] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 3)
+			} else if (*src)[3] < 128 {
+				ptr = unsafe.Pointer(uintptr(ptr) + 4)
+			} else {
+				ptr = unsafe.Pointer(uintptr(ptr) + 5)
+			}
+
+			// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+			// BlockIter benchmarks.
 			s := getBytes(ptr, int(v1))
-			if db.InternalCompare(i.cmp, ikey, db.DecodeInternalKey(s)) > 0 {
+			var k db.InternalKey
+			if n := len(s) - 8; n >= 0 {
+				k.Trailer = binary.LittleEndian.Uint64(s[n:])
+				k.UserKey = s[:n:n]
+				// NB: We can't have duplicate keys if the globalSeqNum != 0, so we
+				// leave the seqnum on this key as 0 as it won't affect our search
+				// since ikey has the maximum seqnum.
+			} else {
+				k.Trailer = uint64(db.InternalKeyKindInvalid)
+			}
+
+			if db.InternalCompare(i.cmp, ikey, k) > 0 {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
 				upper = h // preserves f(j) == true
@@ -295,7 +456,8 @@ func (i *blockIter) SeekLT(key []byte) bool {
 
 	for {
 		i.offset = i.nextOffset
-		i.loadEntry()
+		i.readEntry()
+		i.decodeInternalKey(i.key)
 		i.cacheEntry()
 
 		if i.cmp(i.ikey.UserKey, ikey.UserKey) >= 0 {
@@ -321,7 +483,8 @@ func (i *blockIter) First() bool {
 	if !i.Valid() {
 		return false
 	}
-	i.loadEntry()
+	i.readEntry()
+	i.decodeInternalKey(i.key)
 	return true
 }
 
@@ -354,7 +517,18 @@ func (i *blockIter) Next() bool {
 	if !i.Valid() {
 		return false
 	}
-	i.loadEntry()
+	i.readEntry()
+	// Manually inlined version of i.decodeInternalKey(i.key).
+	if n := len(i.key) - 8; n >= 0 {
+		i.ikey.Trailer = binary.LittleEndian.Uint64(i.key[n:])
+		i.ikey.UserKey = i.key[:n:n]
+		if i.globalSeqNum != 0 {
+			i.ikey.SetSeqNum(i.globalSeqNum)
+		}
+	} else {
+		i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+		i.ikey.UserKey = nil
+	}
 	return true
 }
 
@@ -366,7 +540,17 @@ func (i *blockIter) Prev() bool {
 		e := &i.cached[n-1]
 		i.offset = e.offset
 		i.val = e.val
-		i.decodeInternalKey(e.key)
+		// Manually inlined version of i.decodeInternalKey(e.key).
+		if n := len(e.key) - 8; n >= 0 {
+			i.ikey.Trailer = binary.LittleEndian.Uint64(e.key[n:])
+			i.ikey.UserKey = e.key[:n:n]
+			if i.globalSeqNum != 0 {
+				i.ikey.SetSeqNum(i.globalSeqNum)
+			}
+		} else {
+			i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+			i.ikey.UserKey = nil
+		}
 		i.cached = i.cached[:n]
 		return true
 	}
