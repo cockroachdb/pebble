@@ -275,7 +275,7 @@ func (p *commitPipeline) Close() {
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
 func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
-	if len(b.data) == 0 {
+	if len(b.storage.data) == 0 {
 		return nil
 	}
 
@@ -319,7 +319,7 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 
 	// Give the batch a count of 1 so that the log and visible sequence number
 	// are incremented correctly.
-	b.data = make([]byte, batchHeaderLen)
+	b.storage.data = make([]byte, batchHeaderLen)
 	b.setCount(1)
 	b.commit.Add(1)
 

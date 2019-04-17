@@ -53,7 +53,7 @@ func (e *testCommitEnv) sync() error {
 }
 
 func (e *testCommitEnv) write(b *Batch) (*memTable, error) {
-	n := int64(len(b.data))
+	n := int64(len(b.storage.data))
 	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
 	return nil, nil
@@ -163,7 +163,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						break
 					}
 
-					_, err := wal.WriteRecord(b.data)
+					_, err := wal.WriteRecord(b.storage.data)
 					return mem, err
 				},
 			}
