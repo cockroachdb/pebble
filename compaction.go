@@ -585,7 +585,6 @@ func (d *DB) writeLevel0Table(
 	if err != nil {
 		return fileMetadata{}, err
 	}
-	file = newRateLimitedFile(file, d.flushController)
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
 	var count int

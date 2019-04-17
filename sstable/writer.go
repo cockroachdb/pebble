@@ -535,8 +535,13 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
+
+	if f != nil {
+		f = storage.NewSyncingFile(f, o.BytesPerSync)
+	}
+
 	w := &Writer{
-		file: storage.NewSyncingFile(f, o.BytesPerSync),
+		file: f,
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
