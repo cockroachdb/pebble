@@ -22,7 +22,18 @@ type block struct {
 	buf     [blockSize]byte
 }
 
-// LogWriter writes records to an underlying io.Writer.
+type flusher interface {
+	Flush() error
+}
+
+type syncer interface {
+	Sync() error
+}
+
+// LogWriter writes records to an underlying io.Writer. In order to support WAL
+// file reuse, a LogWriter's records are tagged with the WAL's file
+// number. When reading a log file a record from a previous incarnation of the
+// file will return the error ErrInvalidLogNum.
 type LogWriter struct {
 	// w is the underlying writer.
 	w io.Writer
@@ -32,8 +43,10 @@ type LogWriter struct {
 	f flusher
 	// s is w as a syncer.
 	s syncer
-	// blockNumber is the zero based block number for the current block.
-	blockNumber int64
+	// logNum is the low 32-bits of the log's file number.
+	logNum uint32
+	// blockNum is the zero based block number for the current block.
+	blockNum int64
 	// err is any accumulated error. TODO(peter): This needs to be protected in
 	// some fashion. Perhaps using atomic.Value.
 	err error
@@ -62,16 +75,21 @@ type LogWriter struct {
 }
 
 // NewLogWriter returns a new LogWriter.
-func NewLogWriter(w io.Writer) *LogWriter {
+func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 	c, _ := w.(io.Closer)
 	f, _ := w.(flusher)
 	s, _ := w.(syncer)
 	r := &LogWriter{
-		w:    w,
-		c:    c,
-		f:    f,
-		s:    s,
-		free: make(chan *block, 4),
+		w: w,
+		c: c,
+		f: f,
+		s: s,
+		// NB: we truncate the 64-bit log number to 32-bits. This is ok because a)
+		// we are very unlikely to reach a file number of 4 billion and b) the log
+		// number is used as a validation check and using only the low 32-bits is
+		// sufficient for that purpose.
+		logNum: uint32(logNum),
+		free:   make(chan *block, 4),
 	}
 	for i := 0; i < cap(r.free); i++ {
 		r.free <- &block{}
@@ -152,7 +170,7 @@ func (w *LogWriter) queueBlock() {
 	w.err = w.flusher.err
 	f.Unlock()
 
-	w.blockNumber++
+	w.blockNum++
 }
 
 // Close flushes any unwritten data and closes the writer.
@@ -179,14 +197,6 @@ func (w *LogWriter) closed() bool {
 	closed := w.flusher.closed
 	w.flusher.Unlock()
 	return closed
-}
-
-// Flush flushes unwritten data. May be called concurrently with Write, Sync
-// and itself.
-func (w *LogWriter) Flush() error {
-	w.flushMu.Lock()
-	defer w.flushMu.Unlock()
-	return w.flushLocked()
 }
 
 func (w *LogWriter) flushLocked() error {
@@ -277,7 +287,7 @@ func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 		p = w.emitFragment(i, p)
 	}
 
-	offset := w.blockNumber*blockSize + int64(w.block.written)
+	offset := w.blockNum*blockSize + int64(w.block.written)
 	return offset, w.err
 }
 
@@ -285,29 +295,31 @@ func (w *LogWriter) emitFragment(n int, p []byte) []byte {
 	b := w.block
 	i := b.written
 	first := n == 0
-	last := blockSize-i-headerSize >= int32(len(p))
+	last := blockSize-i-recyclableHeaderSize >= int32(len(p))
 
 	if last {
 		if first {
-			b.buf[i+6] = fullChunkType
+			b.buf[i+6] = recyclableFullChunkType
 		} else {
-			b.buf[i+6] = lastChunkType
+			b.buf[i+6] = recyclableLastChunkType
 		}
 	} else {
 		if first {
-			b.buf[i+6] = firstChunkType
+			b.buf[i+6] = recyclableFirstChunkType
 		} else {
-			b.buf[i+6] = middleChunkType
+			b.buf[i+6] = recyclableMiddleChunkType
 		}
 	}
 
-	r := copy(b.buf[i+headerSize:], p)
-	j := i + int32(headerSize+r)
+	binary.LittleEndian.PutUint32(b.buf[i+7:i+11], w.logNum)
+
+	r := copy(b.buf[i+recyclableHeaderSize:], p)
+	j := i + int32(recyclableHeaderSize+r)
 	binary.LittleEndian.PutUint32(b.buf[i+0:i+4], crc.New(b.buf[i+6:j]).Value())
 	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], uint16(r))
 	atomic.StoreInt32(&b.written, j)
 
-	if blockSize-b.written < headerSize {
+	if blockSize-b.written < recyclableHeaderSize {
 		// There is no room for another fragment in the block, so fill the
 		// remaining bytes with zeros and queue the block for flushing.
 		for i := b.written; i < blockSize; i++ {
