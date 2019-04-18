@@ -10,8 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/petermattis/pebble/internal/rate"
 )
 
 type commitQueueNode struct {
@@ -121,8 +119,6 @@ type commitEnv struct {
 	// The visible sequence number at which reads should be performed. Ratcheted
 	// upwards atomically as batches are applied to the memtable.
 	visibleSeqNum *uint64
-	// Controller for measuring and limiting the commit rate.
-	controller *controller
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
@@ -223,9 +219,6 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 	p := &commitPipeline{
 		env: env,
 	}
-	if p.env.controller == nil {
-		p.env.controller = newController(rate.NewLimiter(rate.Inf, 0))
-	}
 	p.cond.L = p.env.mu
 	p.pending.init()
 	p.syncer.cond.L = &p.syncer.Mutex
@@ -282,7 +275,7 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
-	mem, err := p.prepare(b, true /* writeWAL */, syncWAL)
+	mem, err := p.prepare(b, syncWAL)
 	if err != nil {
 		// TODO(peter): what to do on error? the pipeline will be horked at this
 		// point.
@@ -352,7 +345,7 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	p.publish(b)
 }
 
-func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, error) {
+func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	n := uint64(b.count())
 	if n == invalidBatchCount {
 		return nil, ErrInvalidBatch
@@ -362,8 +355,6 @@ func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, e
 		count++
 	}
 	b.commit.Add(count)
-
-	// p.env.controller.WaitN(len(b.data))
 
 	p.env.mu.Lock()
 
@@ -376,11 +367,7 @@ func (p *commitPipeline) prepare(b *Batch, writeWAL, syncWAL bool) (*memTable, e
 	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
-	var mem *memTable
-	var err error
-	if writeWAL {
-		mem, err = p.env.write(b)
-	}
+	mem, err := p.env.write(b)
 
 	p.env.mu.Unlock()
 
