@@ -33,7 +33,7 @@ import (
 func length(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter()
+	it := s.NewIter(nil, nil)
 	for valid := it.First(); valid; valid = it.Next() {
 		count++
 	}
@@ -45,7 +45,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter()
+	it := s.NewIter(nil, nil)
 	for valid := it.Last(); valid; valid = it.Prev() {
 		count++
 	}
@@ -82,7 +82,7 @@ func (d *testStorage) Compare(a []byte, b uint32) int {
 func TestEmpty(t *testing.T) {
 	key := makeKey("aaa")
 	l := NewSkiplist(&testStorage{}, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -100,7 +100,7 @@ func TestEmpty(t *testing.T) {
 func TestBasic(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	// Try adding values.
 	require.Nil(t, l.Add(d.add("key1")))
@@ -126,7 +126,7 @@ func TestBasic(t *testing.T) {
 func TestSkiplistAdd(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	// Add empty key.
 	require.Nil(t, l.Add(d.add("")))
@@ -163,7 +163,7 @@ func TestIteratorNext(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -188,7 +188,7 @@ func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -212,7 +212,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	const n = 1000
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 	it.First()
@@ -254,7 +254,7 @@ func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 	it.First()
@@ -314,7 +314,7 @@ func BenchmarkReadWrite(b *testing.B) {
 				keys: make([][]byte, 0, b.N),
 			}
 			l := NewSkiplist(d, 0)
-			it := l.NewIter()
+			it := l.NewIter(nil, nil)
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 			b.ResetTimer()
@@ -348,7 +348,7 @@ func BenchmarkIterNext(b *testing.B) {
 		_ = l.Add(offset)
 	}
 
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.Valid() {
@@ -373,7 +373,7 @@ func BenchmarkIterPrev(b *testing.B) {
 		_ = l.Add(offset)
 	}
 
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.Valid() {
