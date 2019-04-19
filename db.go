@@ -429,10 +429,6 @@ func (d *DB) newIterInternal(
 	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
-		// TODO(peter):
-		// if o.GetLowerBound() != nil || o.GetUpperBound() != nil {
-		// 	panic("not reached")
-		// }
 		iters = append(iters, mem.newIter(o))
 		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(o))
 		largestUserKeys = append(largestUserKeys, nil)

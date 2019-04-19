@@ -122,7 +122,7 @@ func runTestReader(t *testing.T, o db.Options) {
 					}
 				}
 
-				iter := r.NewIter(nil)
+				iter := r.NewIter(nil /* lower */, nil /* upper */)
 				if err := iter.Error(); err != nil {
 					t.Fatal(err)
 				}
@@ -227,7 +227,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 				b.ResetTimer()
@@ -245,7 +245,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 				b.ResetTimer()
@@ -263,7 +263,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 
 				b.ResetTimer()
 				var sum int64
@@ -288,7 +288,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 
 				b.ResetTimer()
 				var sum int64

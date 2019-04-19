@@ -49,11 +49,19 @@ type block []byte
 // to seek for a given key, it first looks in the index for the block that
 // contains that key, and then looks inside that block.
 type Iterator struct {
-	reader    *Reader
-	index     blockIter
-	data      blockIter
-	err       error
-	closeHook func() error
+	cmp db.Compare
+	// Global lower/upper bound for the iterator.
+	lower []byte
+	upper []byte
+	// Per-block lower/upper bound. Nil if the bound does not apply to the block
+	// because we determined the block lies completely within the bound.
+	blockLower []byte
+	blockUpper []byte
+	reader     *Reader
+	index      blockIter
+	data       blockIter
+	err        error
+	closeHook  func() error
 }
 
 func (i *Iterator) init(r *Reader) error {
@@ -63,8 +71,33 @@ func (i *Iterator) init(r *Reader) error {
 	if i.err != nil {
 		return i.err
 	}
-	i.err = i.index.init(r.compare, index, r.Properties.GlobalSeqNum)
+	i.cmp = r.compare
+	i.err = i.index.init(i.cmp, index, r.Properties.GlobalSeqNum)
 	return i.err
+}
+
+func (i *Iterator) initBounds() {
+	if i.lower == nil && i.upper == nil {
+		return
+	}
+
+	// Trim the iteration bounds for the current block. We don't have to check
+	// the bounds on each iteration if the block is entirely contained within the
+	// iteration bounds.
+	i.blockLower = i.lower
+	if i.blockLower != nil && i.data.First() &&
+		i.cmp(i.blockLower, i.data.Key().UserKey) < 0 {
+		// The lower-bound is less than the first key in the block. No need
+		// to check the lower-bound again for this block.
+		i.blockLower = nil
+	}
+	i.blockUpper = i.upper
+	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) >= 0 {
+		// The upper-bound is greater than or equal to the index key which
+		// itself is greater than every key in the block. No need to check the
+		// upper-bound again for this block.
+		i.blockUpper = nil
+	}
 }
 
 // loadBlock loads the block at the current index position and leaves i.data
@@ -91,8 +124,12 @@ func (i *Iterator) loadBlock() bool {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.reader.compare, block, i.reader.Properties.GlobalSeqNum)
-	return i.err == nil
+	i.err = i.data.init(i.cmp, block, i.reader.Properties.GlobalSeqNum)
+	if i.err != nil {
+		return false
+	}
+	i.initBounds()
+	return true
 }
 
 // seekBlock loads the block at the current index position and positions i.data
@@ -116,24 +153,23 @@ func (i *Iterator) seekBlock(key []byte) bool {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.reader.compare, block, i.reader.Properties.GlobalSeqNum)
+	i.err = i.data.init(i.cmp, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		return false
 	}
 	// Look for the key inside that block.
+	i.initBounds()
 	i.data.SeekGE(key)
 	return true
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
-// package.
+// package. Note that SeekGE only checks the upper bound. It is up to the
+// caller to ensure that key is greater than or equal to the lower bound.
 func (i *Iterator) SeekGE(key []byte) bool {
 	if i.err != nil {
 		return false
 	}
-
-	// NB: the top-level Iterator has already adjusted key based on
-	// IterOptions.LowerBound.
 
 	if !i.index.SeekGE(key) {
 		return false
@@ -141,18 +177,22 @@ func (i *Iterator) SeekGE(key []byte) bool {
 	if !i.loadBlock() {
 		return false
 	}
-	return i.data.SeekGE(key)
+	if !i.data.SeekGE(key) {
+		return false
+	}
+	if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
+		return false
+	}
+	return true
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
-// package.
+// package. Note that SeekLT only checks the lower bound. It is up to the
+// caller to ensure that key is less than the upper bound.
 func (i *Iterator) SeekLT(key []byte) bool {
 	if i.err != nil {
 		return false
 	}
-
-	// NB: the top-level Iterator has already adjusted key based on
-	// IterOptions.UpperBound.
 
 	if !i.index.SeekGE(key) {
 		i.index.Last()
@@ -160,38 +200,42 @@ func (i *Iterator) SeekLT(key []byte) bool {
 	if !i.loadBlock() {
 		return false
 	}
-	if i.data.SeekLT(key) {
-		return true
+	if !i.data.SeekLT(key) {
+		// The index contains separator keys which may lie between
+		// user-keys. Consider the user-keys:
+		//
+		//   complete
+		// ---- new block ---
+		//   complexion
+		//
+		// If these two keys end one block and start the next, the index key may
+		// be chosen as "compleu". The SeekGE in the index block will then point
+		// us to the block containing "complexion". If this happens, we want the
+		// last key from the previous data block.
+		if !i.index.Prev() {
+			return false
+		}
+		if !i.loadBlock() {
+			return false
+		}
+		if !i.data.Last() {
+			return false
+		}
 	}
-	// The index contains separator keys which may lie between
-	// user-keys. Consider the user-keys:
-	//
-	//   complete
-	// ---- new block ---
-	//   complexion
-	//
-	// If these two keys end one block and start the next, the index key may
-	// be chosen as "compleu". The SeekGE in the index block will then point
-	// us to the block containing "complexion". If this happens, we want the
-	// last key from the previous data block.
-	if !i.index.Prev() {
+	if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
 		return false
 	}
-	if !i.loadBlock() {
-		return false
-	}
-	return i.data.Last()
+	return true
 }
 
 // First implements internalIterator.First, as documented in the pebble
-// package.
+// package. Note that First only checks the upper bound. It is up to the caller
+// to ensure that key is greater than or equal to the lower bound (e.g. via a
+// call to SeekGE(lower)).
 func (i *Iterator) First() bool {
 	if i.err != nil {
 		return false
 	}
-
-	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
-	// set.
 
 	if !i.index.First() {
 		return false
@@ -199,18 +243,23 @@ func (i *Iterator) First() bool {
 	if !i.loadBlock() {
 		return false
 	}
-	return i.data.First()
+	if !i.data.First() {
+		return false
+	}
+	if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
+		return false
+	}
+	return true
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
-// package.
+// package. Note that Last only checks the lower bound. It is up to the caller
+// to ensure that key is less than the upper bound (e.g. via a call to
+// SeekLT(upper))
 func (i *Iterator) Last() bool {
 	if i.err != nil {
 		return false
 	}
-
-	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
-	// set.
 
 	if !i.index.Last() {
 		return false
@@ -218,7 +267,13 @@ func (i *Iterator) Last() bool {
 	if !i.loadBlock() {
 		return false
 	}
-	return i.data.Last()
+	if !i.data.Last() {
+		return false
+	}
+	if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
+		return false
+	}
+	return true
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
@@ -228,6 +283,9 @@ func (i *Iterator) Next() bool {
 		return false
 	}
 	if i.data.Next() {
+		if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
+			return false
+		}
 		return true
 	}
 	for {
@@ -239,7 +297,13 @@ func (i *Iterator) Next() bool {
 			break
 		}
 		if i.loadBlock() {
-			return i.data.First()
+			if !i.data.First() {
+				return false
+			}
+			if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
+				return false
+			}
+			return true
 		}
 	}
 	return false
@@ -252,6 +316,9 @@ func (i *Iterator) Prev() bool {
 		return false
 	}
 	if i.data.Prev() {
+		if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
+			return false
+		}
 		return true
 	}
 	for {
@@ -263,7 +330,13 @@ func (i *Iterator) Prev() bool {
 			break
 		}
 		if i.loadBlock() {
-			return i.data.Last()
+			if !i.data.Last() {
+				return false
+			}
+			if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
+				return false
+			}
+			return true
 		}
 	}
 	return false
@@ -399,14 +472,14 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 }
 
 // NewIter returns an internal iterator for the contents of the table.
-func (r *Reader) NewIter(o *db.IterOptions) *Iterator {
+func (r *Reader) NewIter(lower, upper []byte) *Iterator {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.err != nil {
 		return &Iterator{err: r.err}
 	}
-	i := &Iterator{}
+	i := &Iterator{lower: lower, upper: upper}
 	_ = i.init(r)
 	return i
 }

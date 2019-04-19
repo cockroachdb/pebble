@@ -615,7 +615,7 @@ func TestCompaction(t *testing.T) {
 				defer f.Close()
 				r := sstable.NewReader(f, meta.fileNum, nil)
 				defer r.Close()
-				ss = append(ss, get1(r.NewIter(nil))+".")
+				ss = append(ss, get1(r.NewIter(nil /* lower */, nil /* upper */))+".")
 			}
 		}
 		sort.Strings(ss)

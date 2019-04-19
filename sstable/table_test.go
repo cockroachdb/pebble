@@ -10,11 +10,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/bloom"
@@ -119,7 +121,9 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 	})
 
 	// Check that each key/value pair in wordCount is also in the table.
+	words := make([]string, 0, len(wordCount))
 	for k, v := range wordCount {
+		words = append(words, k)
 		// Check using Get.
 		if v1, err := r.get([]byte(k)); string(v1) != string(v) || err != nil {
 			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
@@ -128,7 +132,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 		}
 
 		// Check using SeekGE.
-		i := r.NewIter(nil)
+		i := r.NewIter(nil /* lower */, nil /* upper */)
 		if !i.SeekGE([]byte(k)) || string(i.Key().UserKey) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
@@ -174,7 +178,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 		}
 
 		// Check using Find.
-		i := r.NewIter(nil)
+		i := r.NewIter(nil /* lower */, nil /* upper */)
 		if i.SeekGE([]byte(s)) && s == string(i.Key().UserKey) {
 			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
@@ -200,7 +204,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		n, i := 0, r.NewIter(nil)
+		n, i := 0, r.NewIter(nil /* lower */, nil /* upper */)
 		for valid := i.SeekGE([]byte(ct.start)); valid; valid = i.Next() {
 			n++
 		}
@@ -217,6 +221,84 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 		if n != ct.count {
 			return fmt.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
 		}
+		if err := i.Close(); err != nil {
+			return err
+		}
+	}
+
+	// Check lower/upper bounds behavior. Randomly choose a lower and upper bound
+	// and then guarantee that iteration finds the expected number if entries.
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	sort.Strings(words)
+	for i := 0; i < 10; i++ {
+		lowerIdx := -1
+		upperIdx := len(words)
+		if rng.Intn(5) != 0 {
+			lowerIdx = rng.Intn(len(words))
+		}
+		if rng.Intn(5) != 0 {
+			upperIdx = rng.Intn(len(words))
+		}
+		if lowerIdx > upperIdx {
+			lowerIdx, upperIdx = upperIdx, lowerIdx
+		}
+
+		var lower, upper []byte
+		if lowerIdx >= 0 {
+			lower = []byte(words[lowerIdx])
+		} else {
+			lowerIdx = 0
+		}
+		if upperIdx < len(words) {
+			upper = []byte(words[upperIdx])
+		}
+
+		i := r.NewIter(lower, upper)
+
+		{
+			// NB: the semantics of First are that it starts iteration from the
+			// beginning, not respecting the lower bound.
+			n := 0
+			for valid := i.First(); valid; valid = i.Next() {
+				n++
+			}
+			if expected := upperIdx; expected != n {
+				return fmt.Errorf("expected %d, but found %d", expected, n)
+			}
+		}
+
+		{
+			// NB: the semantics of Last are that it starts iteration from the end, not
+			// respecting the upper bound.
+			n := 0
+			for valid := i.Last(); valid; valid = i.Prev() {
+				n++
+			}
+			if expected := len(words) - lowerIdx; expected != n {
+				return fmt.Errorf("expected %d, but found %d", expected, n)
+			}
+		}
+
+		if lower != nil {
+			n := 0
+			for valid := i.SeekGE(lower); valid; valid = i.Next() {
+				n++
+			}
+			if expected := upperIdx - lowerIdx; expected != n {
+				return fmt.Errorf("expected %d, but found %d", expected, n)
+			}
+		}
+
+		if upper != nil {
+			n := 0
+			for valid := i.SeekLT(upper); valid; valid = i.Prev() {
+				n++
+			}
+			if expected := upperIdx - lowerIdx; expected != n {
+				return fmt.Errorf("expected %d, but found %d", expected, n)
+			}
+		}
+
 		if err := i.Close(); err != nil {
 			return err
 		}
@@ -500,7 +582,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				continue
 			}
 			r := NewReader(rf, 0, nil)
-			i := r.NewIter(nil)
+			i := r.NewIter(nil /* lower */, nil /* upper */)
 			for valid := i.First(); valid; valid = i.Next() {
 				got++
 			}
@@ -532,7 +614,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	const globalSeqNum = 42
 	r.Properties.GlobalSeqNum = globalSeqNum
 
-	i := r.NewIter(nil)
+	i := r.NewIter(nil /* lower */, nil /* upper */)
 	for valid := i.First(); valid; valid = i.Next() {
 		if globalSeqNum != i.Key().SeqNum() {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())

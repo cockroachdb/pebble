@@ -32,9 +32,12 @@ var testKeyValuePairs = []string{
 }
 
 type fakeIter struct {
+	lower    []byte
+	upper    []byte
 	keys     []db.InternalKey
 	vals     [][]byte
 	index    int
+	valid    bool
 	closeErr error
 }
 
@@ -55,13 +58,19 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	return &fakeIter{
 		keys:     ikeys,
 		index:    0,
+		valid:    len(ikeys) > 0,
 		closeErr: closeErr,
 	}
 }
 
 func (f *fakeIter) SeekGE(key []byte) bool {
+	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {
 		if db.DefaultComparer.Compare(key, f.Key().UserKey) <= 0 {
+			if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+				return false
+			}
+			f.valid = true
 			return true
 		}
 	}
@@ -69,8 +78,13 @@ func (f *fakeIter) SeekGE(key []byte) bool {
 }
 
 func (f *fakeIter) SeekLT(key []byte) bool {
+	f.valid = false
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
 		if db.DefaultComparer.Compare(key, f.Key().UserKey) > 0 {
+			if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+				return false
+			}
+			f.valid = true
 			return true
 		}
 	}
@@ -78,29 +92,61 @@ func (f *fakeIter) SeekLT(key []byte) bool {
 }
 
 func (f *fakeIter) First() bool {
+	f.valid = false
 	f.index = -1
-	return f.Next()
+	if !f.Next() {
+		return false
+	}
+	if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+		return false
+	}
+	f.valid = true
+	return true
 }
 
 func (f *fakeIter) Last() bool {
+	f.valid = false
 	f.index = len(f.keys)
-	return f.Prev()
+	if !f.Prev() {
+		return false
+	}
+	if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+		return false
+	}
+	f.valid = true
+	return true
 }
 
 func (f *fakeIter) Next() bool {
+	f.valid = false
 	if f.index == len(f.keys) {
 		return false
 	}
 	f.index++
-	return f.index < len(f.keys)
+	if f.index == len(f.keys) {
+		return false
+	}
+	if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+		return false
+	}
+	f.valid = true
+	return true
 }
 
 func (f *fakeIter) Prev() bool {
+	f.valid = false
 	if f.index < 0 {
 		return false
 	}
 	f.index--
-	return f.index >= 0
+	if f.index < 0 {
+		return false
+	}
+	if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+		return false
+	}
+	f.valid = true
+	return true
 }
 
 func (f *fakeIter) Key() db.InternalKey {
@@ -115,7 +161,7 @@ func (f *fakeIter) Value() []byte {
 }
 
 func (f *fakeIter) Valid() bool {
-	return f.index >= 0 && f.index < len(f.keys)
+	return f.index >= 0 && f.index < len(f.keys) && f.valid
 }
 
 func (f *fakeIter) Error() error {
@@ -247,7 +293,12 @@ func TestIterator(t *testing.T) {
 		cmp := db.DefaultComparer.Compare
 		equal := db.DefaultComparer.Equal
 		// NB: Use a mergingIter to filter entries newer than seqNum.
-		iter := newMergingIter(cmp, &fakeIter{keys: keys, vals: vals})
+		iter := newMergingIter(cmp, &fakeIter{
+			lower: opts.GetLowerBound(),
+			upper: opts.GetUpperBound(),
+			keys:  keys,
+			vals:  vals,
+		})
 		iter.snapshot = seqNum
 		return &Iterator{
 			opts:  opts,

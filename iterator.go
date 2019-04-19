@@ -49,18 +49,11 @@ type Iterator struct {
 }
 
 func (i *Iterator) findNextEntry() bool {
-	upperBound := i.opts.GetUpperBound()
 	i.valid = false
 	i.pos = iterPosCur
 
 	for i.iterValid {
 		key := i.iter.Key()
-		// TODO(peter): push the upper-bound check down into internalIterator as we
-		// can elide the check in many cases.
-		if upperBound != nil && i.cmp(key.UserKey, upperBound) >= 0 {
-			break
-		}
-
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
 			i.nextUserKey()
@@ -109,18 +102,11 @@ func (i *Iterator) nextUserKey() {
 }
 
 func (i *Iterator) findPrevEntry() bool {
-	lowerBound := i.opts.GetLowerBound()
 	i.valid = false
 	i.pos = iterPosCur
 
 	for i.iterValid {
 		key := i.iter.Key()
-		// TODO(peter): push the lower-bound check down into internalIterator as we
-		// can elide the check in many cases.
-		if lowerBound != nil && i.cmp(key.UserKey, lowerBound) < 0 {
-			break
-		}
-
 		if i.valid {
 			if !i.equal(key.UserKey, i.key) {
 				// We've iterated to the previous user key.
@@ -291,10 +277,10 @@ func (i *Iterator) First() bool {
 	}
 
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-		return i.SeekGE(lowerBound)
+		i.iterValid = i.iter.SeekGE(lowerBound)
+	} else {
+		i.iterValid = i.iter.First()
 	}
-
-	i.iterValid = i.iter.First()
 	return i.findNextEntry()
 }
 
@@ -306,10 +292,10 @@ func (i *Iterator) Last() bool {
 	}
 
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-		return i.SeekLT(upperBound)
+		i.iterValid = i.iter.SeekLT(upperBound)
+	} else {
+		i.iterValid = i.iter.Last()
 	}
-
-	i.iterValid = i.iter.Last()
 	return i.findPrevEntry()
 }
 
@@ -323,6 +309,14 @@ func (i *Iterator) Next() bool {
 	case iterPosCur:
 		i.nextUserKey()
 	case iterPosPrev:
+		// The underlying iterator is pointed to the previous key (this can only
+		// happen when switching iteration directions). We set i.valid to false
+		// here to force the calls to nextUserKey to save the current key i.iter is
+		// pointing at in order to determine when the next user-key is reached.
+		//
+		// TODO(peter): This is subtle. Perhaps we should provide a special version
+		// of nextUserKey which advances until a larger user key is found.
+		i.valid = false
 		i.nextUserKey()
 		i.nextUserKey()
 	case iterPosNext:
@@ -340,6 +334,14 @@ func (i *Iterator) Prev() bool {
 	case iterPosCur:
 		i.prevUserKey()
 	case iterPosNext:
+		// The underlying iterator is pointed to the next key (this can only happen
+		// when switching iteration directions). We set i.valid to false here to
+		// force the calls to prevUserKey to save the current key i.iter is
+		// pointing at in order to determine when the next user-key is reached.
+		//
+		// TODO(peter): This is subtle. Perhaps we should provide a special version
+		// of prevUserKey which advances until a smaller user key is found.
+		i.valid = false
 		i.prevUserKey()
 		i.prevUserKey()
 	case iterPosPrev:
