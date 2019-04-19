@@ -37,8 +37,10 @@ func (s *splice) init(prev, next *node) {
 // to construct an iterator. The current state of the iterator can be cloned by
 // simply value copying the struct. All iterator methods are thread-safe.
 type Iterator struct {
-	list *Skiplist
-	nd   *node
+	list  *Skiplist
+	nd    *node
+	lower []byte
+	upper []byte
 }
 
 // Close resets the iterator.
@@ -87,14 +89,26 @@ func (it *Iterator) Last() bool {
 // Valid() will be false after this call.
 func (it *Iterator) Next() bool {
 	it.nd = it.list.getNext(it.nd, 0)
-	return it.nd != it.list.tail
+	if it.nd == it.list.tail {
+		return false
+	}
+	if it.upper != nil && it.list.cmp(it.Key().UserKey, it.upper) >= 0 {
+		return false
+	}
+	return true
 }
 
 // Prev moves to the previous position. If there are no previous nodes, then
 // Valid() will be false after this call.
 func (it *Iterator) Prev() bool {
 	it.nd = it.list.getPrev(it.nd, 0)
-	return it.nd != it.list.head
+	if it.nd == it.list.head {
+		return false
+	}
+	if it.lower != nil && it.list.cmp(it.Key().UserKey, it.lower) < 0 {
+		return false
+	}
+	return true
 }
 
 // Key returns the key at the current position.

@@ -49,18 +49,11 @@ type Iterator struct {
 }
 
 func (i *Iterator) findNextEntry() bool {
-	upperBound := i.opts.GetUpperBound()
 	i.valid = false
 	i.pos = iterPosCur
 
 	for i.iterValid {
 		key := i.iter.Key()
-		// TODO(peter): push the upper-bound check down into internalIterator as we
-		// can elide the check in many cases.
-		if upperBound != nil && i.cmp(key.UserKey, upperBound) >= 0 {
-			break
-		}
-
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
 			i.nextUserKey()
@@ -109,18 +102,11 @@ func (i *Iterator) nextUserKey() {
 }
 
 func (i *Iterator) findPrevEntry() bool {
-	lowerBound := i.opts.GetLowerBound()
 	i.valid = false
 	i.pos = iterPosCur
 
 	for i.iterValid {
 		key := i.iter.Key()
-		// TODO(peter): push the lower-bound check down into internalIterator as we
-		// can elide the check in many cases.
-		if lowerBound != nil && i.cmp(key.UserKey, lowerBound) < 0 {
-			break
-		}
-
 		if i.valid {
 			if !i.equal(key.UserKey, i.key) {
 				// We've iterated to the previous user key.

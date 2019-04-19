@@ -375,7 +375,7 @@ func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
 	return &batchIter{
 		cmp:   b.storage.cmp,
 		batch: b,
-		iter:  b.index.NewIter(),
+		iter:  b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
 	}
 }
 
@@ -400,7 +400,7 @@ func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
 		it := &batchIter{
 			cmp:   b.storage.cmp,
 			batch: b,
-			iter:  b.rangeDelIndex.NewIter(),
+			iter:  b.rangeDelIndex.NewIter(nil, nil),
 		}
 		for it.Next() {
 			frag.Add(it.Key(), it.Value())

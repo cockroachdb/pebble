@@ -224,8 +224,8 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 
 // NewIter returns a new Iterator object. Note that it is safe for an iterator
 // to be copied by value.
-func (s *Skiplist) NewIter() Iterator {
-	return Iterator{list: s}
+func (s *Skiplist) NewIter(lower, upper []byte) Iterator {
+	return Iterator{list: s, lower: lower, upper: upper}
 }
 
 func (s *Skiplist) newNode(height, key uint32, abbreviatedKey uint64) uint32 {
