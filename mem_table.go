@@ -97,7 +97,7 @@ func (m *memTable) readyForFlush() bool {
 // Get gets the value for the given key. It returns ErrNotFound if the DB does
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
-	it := m.skl.NewIter()
+	it := m.skl.NewIter(nil, nil)
 	if !it.SeekGE(key) {
 		return nil, db.ErrNotFound
 	}
@@ -167,8 +167,8 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 // newIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
-func (m *memTable) newIter(*db.IterOptions) internalIterator {
-	it := m.skl.NewIter()
+func (m *memTable) newIter(o *db.IterOptions) internalIterator {
+	it := m.skl.NewIter(o.GetLowerBound(), o.GetUpperBound())
 	return &it
 }
 
@@ -216,7 +216,7 @@ func (f *rangeTombstoneFrags) get(m *memTable) []rangedel.Tombstone {
 				f.tombstones = append(f.tombstones, fragmented...)
 			},
 		}
-		for it := m.rangeDelSkl.NewIter(); it.Next(); {
+		for it := m.rangeDelSkl.NewIter(nil, nil); it.Next(); {
 			frag.Add(it.Key(), it.Value())
 		}
 		frag.Finish()
