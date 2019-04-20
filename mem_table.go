@@ -18,14 +18,31 @@ func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 	return arenaskl.MaxNodeSize(uint32(keyBytes)+8, uint32(valueBytes))
 }
 
-// memTable is a memory-backed implementation of the db.Reader interface.
+// A memTable implements an in-memory layer of the LSM. A memTable is mutable,
+// but append-only. Records are added, but never removed. Deletion is supported
+// via tombstones, but it is up to higher level code (see Iterator) to support
+// processing those tombstones.
 //
-// It is safe to call Get, Set, and Find concurrently.
+// A memTable is implemented on top of a lock-free arena-backed skiplist. An
+// arena is a fixed size contiguous chunk of memory (see
+// db.Options.MemTableSize). A memTable's memory consumtion is thus fixed at
+// the time of creation (with the exception of the cached fragmented range
+// tombstones). The arena-backed skiplist provides both forward and reverse
+// links which makes forward and reverse iteration the same speed.
 //
-// A memTable's memory consumption increases monotonically, even if keys are
-// deleted or values are updated with shorter slices. Users are responsible for
-// explicitly compacting a memTable into a separate DB (whether in-memory or
-// on-disk) when appropriate.
+// A batch is "applied" to a memTable in a two step process: prepare(batch) ->
+// apply(batch). memTable.prepare() is not thread-safe and must be called with
+// external sychronization. Preparation reserves space in the memTable for the
+// batch. Note that we pessimistically compute how much space a batch will
+// consume in the memTable (see memTableEntrySize and
+// Batch.memTableSize). Preparation is an O(1) operation. Applying a batch to
+// the memTable can be performed concurrently with other apply
+// operations. Applying a batch is an O(n logm) operation where N is the number
+// of records in the batch and M is the number of records in the memtable. The
+// commitPipeline serializes batch preparation, and allows batch application to
+// proceed concurrently.
+//
+// It is safe to call get, apply, newIter, and newRangeDelIter concurrently.
 type memTable struct {
 	cmp         db.Compare
 	equal       db.Equal
