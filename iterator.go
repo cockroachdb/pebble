@@ -36,7 +36,7 @@ type Iterator struct {
 	equal     db.Equal
 	merge     db.Merge
 	iter      internalIterator
-	version   *version
+	readState *readState
 	err       error
 	key       []byte
 	keyBuf    []byte
@@ -373,9 +373,9 @@ func (i *Iterator) Error() error {
 // It is valid to call Close multiple times. Other methods should not be
 // called after the iterator has been closed.
 func (i *Iterator) Close() error {
-	if i.version != nil {
-		i.version.unref()
-		i.version = nil
+	if i.readState != nil {
+		i.readState.unref()
+		i.readState = nil
 	}
 	if err := i.iter.Close(); err != nil && i.err != nil {
 		i.err = err

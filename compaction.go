@@ -480,6 +480,7 @@ func (d *DB) flush1() error {
 			close(d.mu.mem.queue[i].flushed())
 		}
 		d.mu.mem.queue = d.mu.mem.queue[n:]
+		d.updateReadStateLocked()
 		return nil
 	}
 
@@ -506,6 +507,7 @@ func (d *DB) flush1() error {
 		close(d.mu.mem.queue[i].flushed())
 	}
 	d.mu.mem.queue = d.mu.mem.queue[n:]
+	d.updateReadStateLocked()
 
 	// var newDirty int
 	// for _, mem := range d.mu.mem.queue {
@@ -747,6 +749,7 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
+	d.updateReadStateLocked()
 	d.deleteObsoleteFiles(jobID)
 	return nil
 }
