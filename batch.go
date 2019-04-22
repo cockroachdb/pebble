@@ -78,7 +78,100 @@ func (s *batchStorage) Compare(a []byte, b uint32) int {
 	return 1
 }
 
-// Batch is a sequence of Sets and/or Deletes that are applied atomically.
+// A Batch is a sequence of Sets, Merges, Deletes, and/or DeleteRanges that are
+// applied atomically. Batch implements the Reader interface, but only an
+// indexed batch supports reading (without error) via Get or NewIter. A
+// non-indexed batch will return ErrNotIndexed when read from .
+//
+// Indexing
+//
+// Batches can be optionally indexed (see DB.NewIndexedBatch). An indexed batch
+// allows iteration via an Iterator (see Batch.NewIter). The iterator provides
+// a merged view of the operations in the batch and the underlying
+// database. This is implemented by treating the batch as an additional layer
+// in the LSM where every entry in the batch is considered newer than any entry
+// in the underlying database (batch entries have the InternalKeySeqNumBatch
+// bit set). By treating the batch as an additional layer in the LSM, iteration
+// supports all batch operations (i.e. Set, Merge, Delete, and DeleteRange)
+// with minimal effort.
+//
+// The same key can be operated on multiple times in a batch, though only the
+// latest operation will be visible. For example, Put("a", "b"), Delete("a")
+// will cause the key "a" to not be visible in the batch. Put("a", "b"),
+// Put("a", "c") will cause a read of "a" to return the value "c".
+//
+// The batch index is implemented via an skiplist (internal/batchskl). While
+// the skiplist implementation is very fast, inserting into an indexed batch is
+// significantly slower than inserting into a non-indexed batch. Only use an
+// indexed batch if you require reading from it.
+//
+// Atomic commit
+//
+// The operations in a batch are persisted by calling Batch.Commit which is
+// equivalent to calling DB.Apply(batch). A batch is committed atomically by
+// writing the internal batch representation to the WAL, adding all of the
+// batch operations to the memtable associated with the WAL, and then
+// incrementing the visible sequence number so that subsequent reads can see
+// the effects of the batch operations. If WriteOptions.Sync is true, a call to
+// Batch.Commit will guarantee that the batch is persisted to disk before
+// returning. See commitPipeline for more on the implementation details.
+//
+// Large batches
+//
+// The size of a batch is limited only by available memory (be aware that
+// indexed batches require considerably additional memory for the skiplist
+// structure). A given WAL file has a single memtable associated with it (this
+// restriction could be removed, but doing so is onerous and complex). And a
+// memtable has a fixed size due to the underlying fixed size arena. Note that
+// this differs from RocksDB where a memtable can grow arbitrarily large using
+// a list of arena chunks. In RocksDB this is accomplished by storing pointers
+// in the arena memory, but that isn't possible in Go.
+//
+// During Batch.Commit, a batch which is larger than a threshold (>
+// MemTableSize/2) is wrapped in a flushableBatch and inserted into the queue
+// of memtables. A flushableBatch forces WAL to be rotated, but that happens
+// anyways when the memtable becomes full so this does not cause significant
+// WAL churn. Because the flushableBatch is readable as another layer in the
+// LSM, Batch.Commit returns as soon as the flushableBatch has been added to
+// the queue of memtables.
+//
+// Internally, a flushableBatch provides Iterator support by sorting the batch
+// contents (the batch is sorted once, when it is added to the memtable
+// queue). Sorting the batch contents and insertion of the contents into a
+// memtable have the same big-O time, but the constant factor dominates
+// here. Sorting is significantly faster and uses significantly less memory.
+//
+// Internal representation
+//
+// The internal batch representation is a contiguous byte buffer with a fixed
+// 12-byte header, followed by a series of records.
+//
+//   +-------------+------------+--- ... ---+
+//   | SeqNum (8B) | Count (4B) |  Entries  |
+//   +-------------+------------+--- ... ---+
+//
+// Each record has a 1-byte kind tag prefix, followed by 1 or 2 length prefixed
+// strings (varstring):
+//
+//   +-----------+-----------------+-------------------+
+//   | Kind (1B) | Key (varstring) | Value (varstring) |
+//   +-----------+-----------------+-------------------+
+//
+// A varstring is a varint32 followed by N bytes of data. The Kind tags are
+// exactly those specified by db.InternalKeyKind. The following table shows the
+// format for records of each kind:
+//
+//   InternalKeyKindDelete       varstring
+//   InternalKeyKindSet          varstring varstring
+//   InternalKeyKindMerge        varstring varstring
+//   InternalKeyKindRangeDelete  varstring varstring
+//
+// The intuitive understanding here are that the arguments to Delete(), Set(),
+// Merge(), and DeleteRange() are encoded into the batch.
+//
+// The internal batch representation is the on disk format for a batch in the
+// WAL, and thus stable. New record kinds may be added, but the existing ones
+// will not be modified.
 type Batch struct {
 	storage batchStorage
 

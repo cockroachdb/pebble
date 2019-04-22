@@ -213,6 +213,34 @@ func ingestTargetLevel(cmp db.Compare, v *version, meta *fileMetadata) int {
 // flushed. The ingested sstable files are moved into the DB and must reside on
 // the same filesystem as the DB. Sstables can be created for ingestion using
 // sstable.Writer.
+//
+// Ingestion loads each sstable into the lowest level of the LSM which it
+// doesn't overlap (see ingestTargetLevel). If an sstable overlaps a memtable,
+// ingestion forces the memtable to flush, and then waits for the flush to
+// occur.
+//
+// The steps for ingestion are:
+//
+//   1. Allocate file numbers for every sstable beign ingested.
+//   2. Load the metadata for all sstables being ingest.
+//   3. Sort the sstables by smallest key, verifying non overlap.
+//   4. Hard link the sstables into the DB directory.
+//   5. Allocate a sequence number to use for all of the entries in the
+//      sstables. This is the step where overlap with memtables is
+//      determined. If there is overlap, we remember the most recent memtable
+//      that overlaps.
+//   6. Update the sequence number in the ingested sstables.
+//   7. Wait for the most recent memtable that overlaps to flush (if any).
+//   8. Add the ingested sstables to the version (DB.ingestApply).
+//   9. Publish the ingestion sequence number.
+//
+// Note that if the mutable memtable overlaps with ingestion, a flush of the
+// memtable is forced equivalent to DB.Flush. Additionally, subsequent
+// mutations that get sequence numbers larger than the ingestion sequence
+// number get queued up behind the ingestion waiting for it to complete. This
+// can produce a noticeable hiccup in performance. See
+// https://github.com/petermattis/pebble/issues/25 for an idea for how to fix
+// this hiccup.
 func (d *DB) Ingest(paths []string) error {
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
