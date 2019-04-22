@@ -259,8 +259,9 @@ func (d *DB) Ingest(paths []string) error {
 	}
 
 	var mem flushable
-	prepareLocked := func() {
-		// NB: prepare is called with d.mu locked.
+	prepare := func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
 
 		// If the mutable memtable contains keys which overlap any of the sstables
 		// then flush the memtable. Note that apply will wait for the flushing to
@@ -286,7 +287,7 @@ func (d *DB) Ingest(paths []string) error {
 	var ve *versionEdit
 	apply := func(seqNum uint64) {
 		if err != nil {
-			// An error occurred during prepareLocked.
+			// An error occurred during prepare.
 			return
 		}
 
@@ -296,8 +297,8 @@ func (d *DB) Ingest(paths []string) error {
 			return
 		}
 
-		// If we flushed the mutable memtable in prepareLocked wait for the flush
-		// to finish.
+		// If we flushed the mutable memtable in prepare wait for the flush to
+		// finish.
 		if mem != nil {
 			<-mem.flushed()
 		}
@@ -307,7 +308,7 @@ func (d *DB) Ingest(paths []string) error {
 		ve, err = d.ingestApply(meta)
 	}
 
-	d.commit.AllocateSeqNum(prepareLocked, apply)
+	d.commit.AllocateSeqNum(prepare, apply)
 
 	if err != nil {
 		if err2 := ingestCleanup(d.opts.Storage, d.dirname, meta); err2 != nil {
