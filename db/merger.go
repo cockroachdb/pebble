@@ -11,15 +11,21 @@ package db
 //
 //   Merge(A, Merge(B, C)) == Merge(Merge(A, B), C)
 //
-// Examples of merge operators are integer addition and list append.
+// Examples of merge operators are integer addition, list append, and string
+// concatenation.
+//
+// Note that during forward scans merges are processed from newest to oldest
+// value, and in reverse scans merges are processed from oldest to newest
+// value. DO NOT rely on this ordering: compactions will create partial merge
+// results that may not show up in simple tests.
 type Merge func(key, oldValue, newValue, buf []byte) []byte
 
 // Merger defines an associative merge operation. The merge operation merges
-// two or more values for a single key. A merge operation is required by
-// writing value using {Batch,DB}.Merge(). The value at that key is merged with
-// any existing value. It is valid to Set a value at a key and then Merge a new
-// value. Similar to non-merged values, a merged value can be deleted by either
-// Delete or DeleteRange.
+// two or more values for a single key. A merge operation is requested by
+// writing a value using {Batch,DB}.Merge(). The value at that key is merged
+// with any existing value. It is valid to Set a value at a key and then Merge
+// a new value. Similar to non-merged values, a merged value can be deleted by
+// either Delete or DeleteRange.
 //
 // The merge operation is invoked when a merge value is encountered during a
 // read, either during a compaction or during iteration.
