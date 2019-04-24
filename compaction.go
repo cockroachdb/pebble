@@ -412,11 +412,6 @@ func (d *DB) flush() {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) flush1() error {
-	// var dirty int
-	// for _, mem := range d.mu.mem.queue {
-	// 	dirty += mem.ApproximateMemoryUsage()
-	// }
-
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
@@ -508,14 +503,6 @@ func (d *DB) flush1() error {
 	}
 	d.mu.mem.queue = d.mu.mem.queue[n:]
 	d.updateReadStateLocked()
-
-	// var newDirty int
-	// for _, mem := range d.mu.mem.queue {
-	// 	newDirty += mem.ApproximateMemoryUsage()
-	// }
-	// fmt.Printf("flushed %d: %.1f MB -> %.1f MB\n",
-	// 	n, float64(dirty)/(1<<20), float64(newDirty)/(1<<20))
-
 	d.deleteObsoleteFiles(jobID)
 	return nil
 }
