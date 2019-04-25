@@ -194,122 +194,124 @@ func (l *levelIter) loadFile(index, dir int) bool {
 	}
 }
 
-func (l *levelIter) SeekGE(key []byte) bool {
+func (l *levelIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	if !l.loadFile(l.findFileGE(key), 1) {
-		return false
+		return nil, nil
 	}
-	if l.iter.SeekGE(key) {
-		return true
+	if key, val := l.iter.SeekGE(key); key != nil {
+		return key, val
 	}
 	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) SeekLT(key []byte) bool {
+func (l *levelIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
 	if !l.loadFile(l.findFileLT(key), -1) {
-		return false
+		return nil, nil
 	}
-	if l.iter.SeekLT(key) {
-		return true
+	if key, val := l.iter.SeekLT(key); key != nil {
+		return key, val
 	}
 	return l.skipEmptyFileBackward()
 }
 
-func (l *levelIter) First() bool {
+func (l *levelIter) First() (*db.InternalKey, []byte) {
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
 	if !l.loadFile(0, 1) {
-		return false
+		return nil, nil
 	}
-	if l.iter.First() {
-		return true
+	if key, val := l.iter.First(); key != nil {
+		return key, val
 	}
 	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) Last() bool {
+func (l *levelIter) Last() (*db.InternalKey, []byte) {
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
 	if !l.loadFile(len(l.files)-1, -1) {
-		return false
+		return nil, nil
 	}
-	if l.iter.Last() {
-		return true
+	if key, val := l.iter.Last(); key != nil {
+		return key, val
 	}
 	return l.skipEmptyFileBackward()
 }
 
-func (l *levelIter) Next() bool {
+func (l *levelIter) Next() (*db.InternalKey, []byte) {
 	if l.err != nil {
-		return false
+		return nil, nil
 	}
 
 	if l.iter == nil {
 		if l.boundary != nil {
 			if l.loadFile(l.index+1, 1) {
-				if l.iter.First() {
-					return true
+				if key, val := l.iter.First(); key != nil {
+					return key, val
 				}
 				return l.skipEmptyFileForward()
 			}
-			return false
+			return nil, nil
 		}
 		if l.index == -1 && l.loadFile(0, 1) {
 			// The iterator was positioned off the beginning of the level. Position
 			// at the first entry.
-			if l.iter.First() {
-				return true
+			if key, val := l.iter.First(); key != nil {
+				return key, val
 			}
 			return l.skipEmptyFileForward()
 		}
-		return false
+		return nil, nil
 	}
 
-	if l.iter.Next() {
-		return true
+	if key, val := l.iter.Next(); key != nil {
+		return key, val
 	}
 	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) Prev() bool {
+func (l *levelIter) Prev() (*db.InternalKey, []byte) {
 	if l.err != nil {
-		return false
+		return nil, nil
 	}
 
 	if l.iter == nil {
 		if l.boundary != nil {
 			if l.loadFile(l.index-1, -1) {
-				if l.iter.Last() {
-					return true
+				if key, val := l.iter.Last(); key != nil {
+					return key, val
 				}
 				return l.skipEmptyFileBackward()
 			}
-			return false
+			return nil, nil
 		}
 		if n := len(l.files); l.index == n && l.loadFile(n-1, -1) {
 			// The iterator was positioned off the end of the level. Position at the
 			// last entry.
-			if l.iter.Last() {
-				return true
+			if key, val := l.iter.Last(); key != nil {
+				return key, val
 			}
 			return l.skipEmptyFileBackward()
 		}
-		return false
+		return nil, nil
 	}
 
-	if l.iter.Prev() {
-		return true
+	if key, val := l.iter.Prev(); key != nil {
+		return key, val
 	}
 	return l.skipEmptyFileBackward()
 }
 
-func (l *levelIter) skipEmptyFileForward() bool {
-	for valid := false; !valid; valid = l.iter.First() {
+func (l *levelIter) skipEmptyFileForward() (*db.InternalKey, []byte) {
+	var key *db.InternalKey
+	var val []byte
+	for ; key == nil; key, val = l.iter.First() {
 		if l.err = l.iter.Close(); l.err != nil {
-			return false
+			return nil, nil
 		}
 		l.iter = nil
 
@@ -319,23 +321,25 @@ func (l *levelIter) skipEmptyFileForward() bool {
 			// that key.
 			if f := &l.files[l.index]; f.largest.Kind() == db.InternalKeyKindRangeDelete {
 				l.boundary = &f.largest
-				return true
+				return l.boundary, nil
 			}
 			*l.rangeDelIter = nil
 		}
 
 		// Current file was exhausted. Move to the next file.
 		if !l.loadFile(l.index+1, 1) {
-			return false
+			return nil, nil
 		}
 	}
-	return true
+	return key, val
 }
 
-func (l *levelIter) skipEmptyFileBackward() bool {
-	for valid := false; !valid; valid = l.iter.Last() {
+func (l *levelIter) skipEmptyFileBackward() (*db.InternalKey, []byte) {
+	var key *db.InternalKey
+	var val []byte
+	for ; key == nil; key, val = l.iter.Last() {
 		if l.err = l.iter.Close(); l.err != nil {
-			return false
+			return nil, nil
 		}
 		l.iter = nil
 
@@ -345,25 +349,25 @@ func (l *levelIter) skipEmptyFileBackward() bool {
 			// that key.
 			if f := &l.files[l.index]; f.smallest.Kind() == db.InternalKeyKindRangeDelete {
 				l.boundary = &f.smallest
-				return true
+				return l.boundary, nil
 			}
 			*l.rangeDelIter = nil
 		}
 
 		// Current file was exhausted. Move to the previous file.
 		if !l.loadFile(l.index-1, -1) {
-			return false
+			return nil, nil
 		}
 	}
-	return true
+	return key, val
 }
 
-func (l *levelIter) Key() db.InternalKey {
+func (l *levelIter) Key() *db.InternalKey {
 	if l.iter == nil {
 		if l.boundary != nil {
-			return *l.boundary
+			return l.boundary
 		}
-		return db.InvalidInternalKey
+		return nil
 	}
 	return l.iter.Key()
 }

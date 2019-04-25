@@ -37,12 +37,12 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 	{
 		iter := r.NewIter(nil /* lower */, nil /* upper */)
 		defer iter.Close()
-		if iter.First() {
-			meta.smallest = iter.Key().Clone()
+		if key, _ := iter.First(); key != nil {
+			meta.smallest = key.Clone()
 			smallestSet = true
 		}
-		if iter.Last() {
-			meta.largest = iter.Key().Clone()
+		if key, _ := iter.Last(); key != nil {
+			meta.largest = key.Clone()
 			largestSet = true
 		}
 		if err := iter.Error(); err != nil {
@@ -52,18 +52,17 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 
 	if iter := r.NewRangeDelIter(); iter != nil {
 		defer iter.Close()
-		if iter.First() {
-			key := iter.Key()
+		if key, _ := iter.First(); key != nil {
 			if !smallestSet ||
-				db.InternalCompare(opts.Comparer.Compare, meta.smallest, key) > 0 {
+				db.InternalCompare(opts.Comparer.Compare, meta.smallest, *key) > 0 {
 				meta.smallest = key.Clone()
 			}
 		}
-		if iter.Last() {
-			key := db.MakeRangeDeleteSentinelKey(iter.Value())
+		if key, val := iter.Last(); key != nil {
+			end := db.MakeRangeDeleteSentinelKey(val)
 			if !largestSet ||
-				db.InternalCompare(opts.Comparer.Compare, meta.largest, key) < 0 {
-				meta.largest = key.Clone()
+				db.InternalCompare(opts.Comparer.Compare, meta.largest, end) < 0 {
+				meta.largest = end.Clone()
 			}
 		}
 	}
@@ -139,10 +138,11 @@ func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata)
 		defer iter.Close()
 
 		for _, m := range meta {
-			if !iter.SeekGE(m.smallest.UserKey) {
+			key, _ := iter.SeekGE(m.smallest.UserKey)
+			if key == nil {
 				continue
 			}
-			if cmp(iter.Key().UserKey, m.largest.UserKey) <= 0 {
+			if cmp(key.UserKey, m.largest.UserKey) <= 0 {
 				return true
 			}
 		}
@@ -152,17 +152,17 @@ func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata)
 	if iter := mem.newRangeDelIter(nil); iter != nil {
 		defer iter.Close()
 		for _, m := range meta {
-			valid := iter.SeekLT(m.smallest.UserKey)
-			if !valid {
-				valid = iter.Next()
+			key, val := iter.SeekLT(m.smallest.UserKey)
+			if key == nil {
+				key, val = iter.Next()
 			}
-			for ; valid; valid = iter.Next() {
-				if cmp(iter.Key().UserKey, m.largest.UserKey) > 0 {
+			for ; key != nil; key, val = iter.Next() {
+				if cmp(key.UserKey, m.largest.UserKey) > 0 {
 					// The start of the tombstone is after the largest key in the
 					// ingested table.
 					break
 				}
-				if cmp(iter.Value(), m.smallest.UserKey) > 0 {
+				if cmp(val, m.smallest.UserKey) > 0 {
 					// The end of the tombstone is greater than the smallest in the
 					// table. Note that the tombstone end key is exclusive, thus ">0"
 					// instead of ">=0".

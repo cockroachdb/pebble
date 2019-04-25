@@ -34,6 +34,57 @@ import (
 
 const arenaSize = 1 << 20
 
+// iterAdapter adapts the new Iterator API which returns the key and value from
+// positioning methods (Seek*, First, Last, Next, Prev) to the old API which
+// returned a boolean corresponding to Valid. Only used by test code.
+type iterAdapter struct {
+	Iterator
+}
+
+func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {
+	valid := key != nil
+	if valid != i.Valid() {
+		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
+	}
+	if valid {
+		if db.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
+			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
+		}
+		if !bytes.Equal(val, i.Value()) {
+			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.Value()))
+		}
+	}
+	return valid
+}
+
+func (i *iterAdapter) SeekGE(key []byte) bool {
+	return i.verify(i.Iterator.SeekGE(key))
+}
+
+func (i *iterAdapter) SeekLT(key []byte) bool {
+	return i.verify(i.Iterator.SeekLT(key))
+}
+
+func (i *iterAdapter) First() bool {
+	return i.verify(i.Iterator.First())
+}
+
+func (i *iterAdapter) Last() bool {
+	return i.verify(i.Iterator.Last())
+}
+
+func (i *iterAdapter) Next() bool {
+	return i.verify(i.Iterator.Next())
+}
+
+func (i *iterAdapter) Prev() bool {
+	return i.verify(i.Iterator.Prev())
+}
+
+func (i *iterAdapter) Key() db.InternalKey {
+	return *i.Iterator.Key()
+}
+
 func makeIntKey(i int) db.InternalKey {
 	return db.InternalKey{UserKey: []byte(fmt.Sprintf("%05d", i))}
 }
@@ -61,7 +112,7 @@ func makeInserterAdd(s *Skiplist) func(key db.InternalKey, value []byte) error {
 func length(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter(nil, nil)
+	it := iterAdapter{s.NewIter(nil, nil)}
 	for valid := it.First(); valid; valid = it.Next() {
 		count++
 	}
@@ -73,7 +124,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter(nil, nil)
+	it := iterAdapter{s.NewIter(nil, nil)}
 	for valid := it.Last(); valid; valid = it.Prev() {
 		count++
 	}
@@ -84,7 +135,7 @@ func lengthRev(s *Skiplist) int {
 func TestEmpty(t *testing.T) {
 	key := makeKey("aaa")
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 
@@ -121,7 +172,7 @@ func TestBasic(t *testing.T) {
 	for _, inserter := range []bool{false, true} {
 		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
 			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-			it := l.NewIter(nil, nil)
+			it := iterAdapter{l.NewIter(nil, nil)}
 
 			add := l.Add
 			if inserter {
@@ -216,7 +267,7 @@ func TestConcurrentBasic(t *testing.T) {
 				go func(i int) {
 					defer wg.Done()
 
-					it := l.NewIter(nil, nil)
+					it := iterAdapter{l.NewIter(nil, nil)}
 					require.True(t, it.SeekGE(makeKey(fmt.Sprintf("%05d", i))))
 					require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key().UserKey)
 				}(i)
@@ -269,7 +320,7 @@ func TestConcurrentOneKey(t *testing.T) {
 				go func() {
 					defer wg.Done()
 
-					it := l.NewIter(nil, nil)
+					it := iterAdapter{l.NewIter(nil, nil)}
 					it.SeekGE(key)
 					require.True(t, it.Valid())
 					require.True(t, bytes.Equal(key, it.Key().UserKey))
@@ -292,7 +343,7 @@ func TestSkiplistAdd(t *testing.T) {
 	for _, inserter := range []bool{false, true} {
 		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
 			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-			it := l.NewIter(nil, nil)
+			it := iterAdapter{l.NewIter(nil, nil)}
 
 			add := l.Add
 			if inserter {
@@ -307,7 +358,7 @@ func TestSkiplistAdd(t *testing.T) {
 			require.EqualValues(t, []byte{}, it.Value())
 
 			l = NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-			it = l.NewIter(nil, nil)
+			it = iterAdapter{l.NewIter(nil, nil)}
 
 			add = l.Add
 			if inserter {
@@ -381,7 +432,7 @@ func TestConcurrentAdd(t *testing.T) {
 
 			for f := 0; f < 2; f++ {
 				go func() {
-					it := l.NewIter(nil, nil)
+					it := iterAdapter{l.NewIter(nil, nil)}
 					add := l.Add
 					if inserter {
 						add = makeInserterAdd(l)
@@ -416,7 +467,7 @@ func TestConcurrentAdd(t *testing.T) {
 func TestIteratorNext(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 
@@ -441,7 +492,7 @@ func TestIteratorNext(t *testing.T) {
 func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 
@@ -466,7 +517,7 @@ func TestIteratorPrev(t *testing.T) {
 func TestIteratorSeekGE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 	it.First()
@@ -516,7 +567,7 @@ func TestIteratorSeekGE(t *testing.T) {
 func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 	it.First()
@@ -578,7 +629,7 @@ func TestIteratorBounds(t *testing.T) {
 		return makeIntKey(i).UserKey
 	}
 
-	it := l.NewIter(key(3), key(7))
+	it := iterAdapter{l.NewIter(key(3), key(7))}
 
 	// SeekGE within the lower and upper bound succeeds.
 	for i := 3; i <= 6; i++ {
@@ -657,13 +708,13 @@ func BenchmarkReadWrite(b *testing.B) {
 
 				for pb.Next() {
 					if rng.Float32() < readFrac {
-						it.SeekGE(randomKey(rng, buf).UserKey)
-						if it.Valid() {
-							_ = it.Key()
+						key, _ := it.SeekGE(randomKey(rng, buf).UserKey)
+						if key != nil {
+							_ = key
 							count++
 						}
 					} else {
-						l.Add(randomKey(rng, buf), nil)
+						_ = l.Add(randomKey(rng, buf), nil)
 					}
 				}
 			})

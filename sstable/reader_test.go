@@ -22,6 +22,57 @@ import (
 	"github.com/petermattis/pebble/storage"
 )
 
+// iterAdapter adapts the new Iterator API which returns the key and value from
+// positioning methods (Seek*, First, Last, Next, Prev) to the old API which
+// returned a boolean corresponding to Valid. Only used by test code.
+type iterAdapter struct {
+	*Iterator
+}
+
+func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {
+	valid := key != nil
+	if valid != i.Valid() {
+		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
+	}
+	if valid {
+		if db.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
+			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
+		}
+		if !bytes.Equal(val, i.Value()) {
+			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.Value()))
+		}
+	}
+	return valid
+}
+
+func (i *iterAdapter) SeekGE(key []byte) bool {
+	return i.verify(i.Iterator.SeekGE(key))
+}
+
+func (i *iterAdapter) SeekLT(key []byte) bool {
+	return i.verify(i.Iterator.SeekLT(key))
+}
+
+func (i *iterAdapter) First() bool {
+	return i.verify(i.Iterator.First())
+}
+
+func (i *iterAdapter) Last() bool {
+	return i.verify(i.Iterator.Last())
+}
+
+func (i *iterAdapter) Next() bool {
+	return i.verify(i.Iterator.Next())
+}
+
+func (i *iterAdapter) Prev() bool {
+	return i.verify(i.Iterator.Prev())
+}
+
+func (i *iterAdapter) Key() db.InternalKey {
+	return *i.Iterator.Key()
+}
+
 func TestReader(t *testing.T) {
 	levelOpts := map[string]db.LevelOptions{
 		// No bloom filters.
@@ -122,7 +173,7 @@ func runTestReader(t *testing.T, o db.Options) {
 					}
 				}
 
-				iter := r.NewIter(nil /* lower */, nil /* upper */)
+				iter := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 				if err := iter.Error(); err != nil {
 					t.Fatal(err)
 				}
@@ -267,12 +318,13 @@ func BenchmarkTableIterNext(b *testing.B) {
 
 				b.ResetTimer()
 				var sum int64
+				var key *db.InternalKey
 				for i := 0; i < b.N; i++ {
-					if !it.Valid() {
-						it.First()
+					if key == nil {
+						key, _ = it.First()
 					}
-					sum += int64(binary.BigEndian.Uint64(it.Key().UserKey))
-					it.Next()
+					sum += int64(binary.BigEndian.Uint64(key.UserKey))
+					key, _ = it.Next()
 				}
 				if testing.Verbose() {
 					fmt.Fprint(ioutil.Discard, sum)
@@ -292,12 +344,13 @@ func BenchmarkTableIterPrev(b *testing.B) {
 
 				b.ResetTimer()
 				var sum int64
+				var key *db.InternalKey
 				for i := 0; i < b.N; i++ {
-					if !it.Valid() {
-						it.Last()
+					if key == nil {
+						key, _ = it.Last()
 					}
-					sum += int64(binary.BigEndian.Uint64(it.Key().UserKey))
-					it.Prev()
+					sum += int64(binary.BigEndian.Uint64(key.UserKey))
+					key, _ = it.Prev()
 				}
 				if testing.Verbose() {
 					fmt.Fprint(ioutil.Discard, sum)

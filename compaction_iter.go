@@ -136,7 +136,8 @@ type compactionIter struct {
 	valueBuf []byte
 	// Is the current entry valid?
 	valid     bool
-	iterValid bool
+	iterKey   *db.InternalKey
+	iterValue []byte
 	// Skip indicates whether the remaining entries in the current snapshot
 	// stripe should be skipped or processed. Skipped is true at the start of a
 	// stripe and set to false afterwards.
@@ -179,20 +180,20 @@ func newCompactionIter(
 	return i
 }
 
-func (i *compactionIter) First() bool {
+func (i *compactionIter) First() (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
-	i.iterValid = i.iter.First()
-	if i.iterValid {
-		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iter.Key().SeqNum(), i.snapshots)
+	i.iterKey, i.iterValue = i.iter.First()
+	if i.iterKey != nil {
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
 	}
 	return i.Next()
 }
 
-func (i *compactionIter) Next() bool {
+func (i *compactionIter) Next() (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
 
 	if i.skip {
@@ -201,8 +202,8 @@ func (i *compactionIter) Next() bool {
 	}
 
 	i.valid = false
-	for i.iterValid {
-		i.key = i.iter.Key()
+	for i.iterKey != nil {
+		i.key = *i.iterKey
 		switch i.key.Kind() {
 		case db.InternalKeyKindDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
@@ -214,14 +215,14 @@ func (i *compactionIter) Next() bool {
 			}
 
 			i.saveKey()
-			i.value = i.iter.Value()
+			i.value = i.iterValue
 			i.valid = true
 			i.skip = true
-			return true
+			return &i.key, i.value
 
 		case db.InternalKeyKindRangeDelete:
 			i.key = i.cloneKey(i.key)
-			i.rangeDelFrag.Add(i.key, i.iter.Value())
+			i.rangeDelFrag.Add(i.key, i.iterValue)
 			i.nextInStripe()
 			continue
 
@@ -233,10 +234,10 @@ func (i *compactionIter) Next() bool {
 			}
 
 			i.saveKey()
-			i.value = i.iter.Value()
+			i.value = i.iterValue
 			i.valid = true
 			i.skip = true
-			return true
+			return &i.key, i.value
 
 		case db.InternalKeyKindMerge:
 			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
@@ -252,17 +253,17 @@ func (i *compactionIter) Next() bool {
 			// them through unmodified.
 			i.saveKey()
 			i.saveValue()
-			i.iterValid = i.iter.Next()
+			i.iterKey, i.iterValue = i.iter.Next()
 			i.valid = true
-			return true
+			return &i.key, i.value
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.key.Kind())
-			return false
+			return nil, nil
 		}
 	}
 
-	return false
+	return nil, nil
 }
 
 // snapshotIndex returns the index of the first sequence number in snapshots
@@ -283,11 +284,11 @@ func (i *compactionIter) skipStripe() {
 }
 
 func (i *compactionIter) nextInStripe() bool {
-	i.iterValid = i.iter.Next()
-	if !i.iterValid {
+	i.iterKey, i.iterValue = i.iter.Next()
+	if i.iterKey == nil {
 		return false
 	}
-	key := i.iter.Key()
+	key := i.iterKey
 	if i.cmp(i.key.UserKey, key.UserKey) != 0 {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
@@ -296,7 +297,7 @@ func (i *compactionIter) nextInStripe() bool {
 	case db.InternalKeyKindRangeDelete:
 		// Range tombstones are always added to the fragmenter. They are processed
 		// into stripes after fragmentation.
-		i.rangeDelFrag.Add(i.cloneKey(key), i.iter.Value())
+		i.rangeDelFrag.Add(i.cloneKey(*key), i.iterValue)
 		return true
 	case db.InternalKeyKindInvalid:
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
@@ -314,7 +315,7 @@ func (i *compactionIter) nextInStripe() bool {
 	return false
 }
 
-func (i *compactionIter) mergeNext() bool {
+func (i *compactionIter) mergeNext() (*db.InternalKey, []byte) {
 	// Save the current key and value.
 	i.saveKey()
 	i.saveValue()
@@ -325,63 +326,63 @@ func (i *compactionIter) mergeNext() bool {
 	for {
 		if !i.nextInStripe() {
 			i.skip = false
-			return true
+			return &i.key, i.value
 		}
-		key := i.iter.Key()
+		key := i.iterKey
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe.
 			i.valueBuf = i.value[:0]
 			i.skip = true
-			return true
+			return &i.key, i.value
 
 		case db.InternalKeyKindRangeDelete:
 			// We've hit a range deletion tombstone. Return everything up to this
 			// point and then skip entries until the next snapshot stripe.
 			i.skip = true
-			return true
+			return &i.key, i.value
 
 		case db.InternalKeyKindSet:
-			if i.rangeDelFrag.Deleted(key, i.curSnapshotSeqNum) {
+			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
-				return true
+				return &i.key, i.value
 			}
 
 			// We've hit a Set value. Merge with the existing value and return. We
 			// change the kind of the resulting key to a Set so that it shadows keys
 			// in lower levels. That is, MERGE+MERGE+SET -> SET.
-			i.value = i.merge(i.key.UserKey, i.value, i.iter.Value(), nil)
+			i.value = i.merge(i.key.UserKey, i.value, i.iterValue, nil)
 			i.valueBuf = i.value[:0]
 			i.key.SetKind(db.InternalKeyKindSet)
 			i.skip = true
-			return true
+			return &i.key, i.value
 
 		case db.InternalKeyKindMerge:
-			if i.rangeDelFrag.Deleted(key, i.curSnapshotSeqNum) {
+			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
-				return true
+				return &i.key, i.value
 			}
 
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			i.value = i.merge(i.key.UserKey, i.value, i.iter.Value(), nil)
+			i.value = i.merge(i.key.UserKey, i.value, i.iterValue, nil)
 			i.valueBuf = i.value[:0]
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", i.iter.Key().Kind())
-			return false
+			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+			return nil, nil
 		}
 	}
 }
 
 func (i *compactionIter) saveKey() {
-	i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+	i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 	i.key.UserKey = i.keyBuf
 }
 
 func (i *compactionIter) saveValue() {
-	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
+	i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
 	i.value = i.valueBuf
 }
 

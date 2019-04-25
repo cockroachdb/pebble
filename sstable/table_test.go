@@ -132,7 +132,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 		}
 
 		// Check using SeekGE.
-		i := r.NewIter(nil /* lower */, nil /* upper */)
+		i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 		if !i.SeekGE([]byte(k)) || string(i.Key().UserKey) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
@@ -178,7 +178,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 		}
 
 		// Check using Find.
-		i := r.NewIter(nil /* lower */, nil /* upper */)
+		i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 		if i.SeekGE([]byte(s)) && s == string(i.Key().UserKey) {
 			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
@@ -204,7 +204,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		n, i := 0, r.NewIter(nil /* lower */, nil /* upper */)
+		n, i := 0, iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 		for valid := i.SeekGE([]byte(ct.start)); valid; valid = i.Next() {
 			n++
 		}
@@ -253,7 +253,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 			upper = []byte(words[upperIdx])
 		}
 
-		i := r.NewIter(lower, upper)
+		i := iterAdapter{r.NewIter(lower, upper)}
 
 		{
 			// NB: the semantics of First are that it starts iteration from the
@@ -582,7 +582,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				continue
 			}
 			r := NewReader(rf, 0, nil)
-			i := r.NewIter(nil /* lower */, nil /* upper */)
+			i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 			for valid := i.First(); valid; valid = i.Next() {
 				got++
 			}
@@ -614,7 +614,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	const globalSeqNum = 42
 	r.Properties.GlobalSeqNum = globalSeqNum
 
-	i := r.NewIter(nil /* lower */, nil /* upper */)
+	i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 	for valid := i.First(); valid; valid = i.Next() {
 		if globalSeqNum != i.Key().SeqNum() {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())

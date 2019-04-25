@@ -28,33 +28,33 @@ type getIter struct {
 	mem          []flushable
 	l0           []fileMetadata
 	version      *version
-	valid        bool
+	iterKey      *db.InternalKey
+	iterValue    []byte
 	err          error
 }
 
 // getIter implements the internalIterator interface.
 var _ internalIterator = (*getIter)(nil)
 
-func (g *getIter) SeekGE(key []byte) bool {
+func (g *getIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (g *getIter) SeekLT(key []byte) bool {
+func (g *getIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (g *getIter) First() bool {
-	g.valid = g.Next()
-	return g.valid
+func (g *getIter) First() (*db.InternalKey, []byte) {
+	return g.Next()
 }
 
-func (g *getIter) Last() bool {
+func (g *getIter) Last() (*db.InternalKey, []byte) {
 	panic("pebble: Last unimplemented")
 }
 
-func (g *getIter) Next() bool {
+func (g *getIter) Next() (*db.InternalKey, []byte) {
 	if g.iter != nil {
-		g.valid = g.iter.Next()
+		g.iterKey, g.iterValue = g.iter.Next()
 	}
 
 	for {
@@ -67,13 +67,13 @@ func (g *getIter) Next() bool {
 			if g.rangeDelIter != nil {
 				g.tombstone = rangedel.Get(g.cmp, g.rangeDelIter, g.key, g.snapshot)
 				if g.err = g.rangeDelIter.Close(); g.err != nil {
-					return false
+					return nil, nil
 				}
 				g.rangeDelIter = nil
 			}
 
-			if g.valid {
-				key := g.iter.Key()
+			if g.iterKey != nil {
+				key := g.iterKey
 				if g.tombstone.Deletes(key.SeqNum()) {
 					// We have a range tombstone covering this key. Rather than return a
 					// point or range deletion here, we return false and close our
@@ -81,14 +81,14 @@ func (g *getIter) Next() bool {
 					// effectively stopping iteration.
 					g.err = g.iter.Close()
 					g.iter = nil
-					return false
+					return nil, nil
 				}
 				if g.equal(g.key, key.UserKey) {
 					if !key.Visible(g.snapshot) {
-						g.valid = g.iter.Next()
+						g.iterKey, g.iterValue = g.iter.Next()
 						continue
 					}
-					return true
+					return g.iterKey, g.iterValue
 				}
 			}
 			// We've advanced the iterator passed the desired key. Move on to the
@@ -96,7 +96,7 @@ func (g *getIter) Next() bool {
 			g.err = g.iter.Close()
 			g.iter = nil
 			if g.err != nil {
-				return false
+				return nil, nil
 			}
 		}
 
@@ -105,14 +105,14 @@ func (g *getIter) Next() bool {
 			g.iter = g.batch.newInternalIter(nil)
 			g.rangeDelIter = g.batch.newRangeDelIter(nil)
 			g.batch = nil
-			g.valid = g.iter.SeekGE(g.key)
+			g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
 			continue
 		}
 
 		// If we have a tombstone from a previous level it is guaranteed to delete
 		// keys in lower levels.
 		if !g.tombstone.Empty() {
-			return false
+			return nil, nil
 		}
 
 		// Create iterators from memtables from newest to oldest.
@@ -121,7 +121,7 @@ func (g *getIter) Next() bool {
 			g.iter = m.newIter(nil)
 			g.rangeDelIter = m.newRangeDelIter(nil)
 			g.mem = g.mem[:n-1]
-			g.valid = g.iter.SeekGE(g.key)
+			g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
 			continue
 		}
 
@@ -131,17 +131,17 @@ func (g *getIter) Next() bool {
 				l := &g.l0[n-1]
 				g.iter, g.rangeDelIter, g.err = g.newIters(l, nil /* iter options */)
 				if g.err != nil {
-					return false
+					return nil, nil
 				}
 				g.l0 = g.l0[:n-1]
-				g.valid = g.iter.SeekGE(g.key)
+				g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
 				continue
 			}
 			g.level++
 		}
 
 		if g.level >= numLevels {
-			return false
+			return nil, nil
 		}
 		if len(g.version.files[g.level]) == 0 {
 			g.level++
@@ -152,24 +152,24 @@ func (g *getIter) Next() bool {
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
-		g.valid = g.iter.SeekGE(g.key)
+		g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
 	}
 }
 
-func (g *getIter) Prev() bool {
+func (g *getIter) Prev() (*db.InternalKey, []byte) {
 	panic("pebble: Prev unimplemented")
 }
 
-func (g *getIter) Key() db.InternalKey {
-	return g.iter.Key()
+func (g *getIter) Key() *db.InternalKey {
+	return g.iterKey
 }
 
 func (g *getIter) Value() []byte {
-	return g.iter.Value()
+	return g.iterValue
 }
 
 func (g *getIter) Valid() bool {
-	return g.valid && g.err == nil
+	return g.iterKey != nil && g.err == nil
 }
 
 func (g *getIter) Error() error {

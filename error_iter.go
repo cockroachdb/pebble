@@ -16,32 +16,32 @@ func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekGE(key []byte) bool {
-	return false
+func (c *errorIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+	return nil, nil
 }
 
-func (c *errorIter) SeekLT(key []byte) bool {
-	return false
+func (c *errorIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+	return nil, nil
 }
 
-func (c *errorIter) First() bool {
-	return false
+func (c *errorIter) First() (*db.InternalKey, []byte) {
+	return nil, nil
 }
 
-func (c *errorIter) Last() bool {
-	return false
+func (c *errorIter) Last() (*db.InternalKey, []byte) {
+	return nil, nil
 }
 
-func (c *errorIter) Next() bool {
-	return false
+func (c *errorIter) Next() (*db.InternalKey, []byte) {
+	return nil, nil
 }
 
-func (c *errorIter) Prev() bool {
-	return false
+func (c *errorIter) Prev() (*db.InternalKey, []byte) {
+	return nil, nil
 }
 
-func (c *errorIter) Key() db.InternalKey {
-	return db.InvalidInternalKey
+func (c *errorIter) Key() *db.InternalKey {
+	return nil
 }
 
 func (c *errorIter) Value() []byte {

@@ -44,7 +44,8 @@ type Iterator struct {
 	valueBuf  []byte
 	valueBuf2 []byte
 	valid     bool
-	iterValid bool
+	iterKey   *db.InternalKey
+	iterValue []byte
 	pos       iterPos
 }
 
@@ -52,8 +53,8 @@ func (i *Iterator) findNextEntry() bool {
 	i.valid = false
 	i.pos = iterPosCur
 
-	for i.iterValid {
-		key := i.iter.Key()
+	for i.iterKey != nil {
+		key := *i.iterKey
 		switch key.Kind() {
 		case db.InternalKeyKindDelete:
 			i.nextUserKey()
@@ -62,13 +63,13 @@ func (i *Iterator) findNextEntry() bool {
 		case db.InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
 			// for more details.
-			i.iterValid = i.iter.Next()
+			i.iterKey, i.iterValue = i.iter.Next()
 			continue
 
 		case db.InternalKeyKindSet:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
-			i.value = i.iter.Value()
+			i.value = i.iterValue
 			i.valid = true
 			return true
 
@@ -85,19 +86,19 @@ func (i *Iterator) findNextEntry() bool {
 }
 
 func (i *Iterator) nextUserKey() {
-	if i.iterValid {
+	if i.iterKey != nil {
 		if !i.valid {
-			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+			i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 			i.key = i.keyBuf
 		}
 		for {
-			i.iterValid = i.iter.Next()
-			if !i.iterValid || !i.equal(i.key, i.iter.Key().UserKey) {
+			i.iterKey, i.iterValue = i.iter.Next()
+			if i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
 				break
 			}
 		}
 	} else {
-		i.iterValid = i.iter.First()
+		i.iterKey, i.iterValue = i.iter.First()
 	}
 }
 
@@ -105,8 +106,8 @@ func (i *Iterator) findPrevEntry() bool {
 	i.valid = false
 	i.pos = iterPosCur
 
-	for i.iterValid {
-		key := i.iter.Key()
+	for i.iterKey != nil {
+		key := *i.iterKey
 		if i.valid {
 			if !i.equal(key.UserKey, i.key) {
 				// We've iterated to the previous user key.
@@ -119,28 +120,28 @@ func (i *Iterator) findPrevEntry() bool {
 		case db.InternalKeyKindDelete:
 			i.value = nil
 			i.valid = false
-			i.iterValid = i.iter.Prev()
+			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
 		case db.InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
 			// for more details.
-			i.iterValid = i.iter.Prev()
+			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
 		case db.InternalKeyKindSet:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
-			i.value = i.iter.Value()
+			i.value = i.iterValue
 			i.valid = true
-			i.iterValid = i.iter.Prev()
+			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
 		case db.InternalKeyKindMerge:
 			if !i.valid {
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
-				i.value = i.iter.Value()
+				i.value = i.iterValue
 				i.valid = true
 			} else {
 				// The existing value is either stored in valueBuf2 or the underlying
@@ -148,12 +149,12 @@ func (i *Iterator) findPrevEntry() bool {
 				// merge(valueBuf, valueBuf2). Then we swap valueBuf and valueBuf2 in
 				// order to maintain the invariant that the existing value points to
 				// valueBuf2 (in preparation for handling th next merge value).
-				i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
+				i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
 				i.valueBuf = i.merge(i.key, i.valueBuf, i.value, nil)
 				i.valueBuf, i.valueBuf2 = i.valueBuf2, i.valueBuf
 				i.value = i.valueBuf2
 			}
-			i.iterValid = i.iter.Prev()
+			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
 		default:
@@ -171,37 +172,37 @@ func (i *Iterator) findPrevEntry() bool {
 }
 
 func (i *Iterator) prevUserKey() {
-	if i.iterValid {
+	if i.iterKey != nil {
 		if !i.valid {
-			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
+			i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 			i.key = i.keyBuf
 		}
 		for {
-			i.iterValid = i.iter.Prev()
-			if !i.iterValid || !i.equal(i.key, i.iter.Key().UserKey) {
+			i.iterKey, i.iterValue = i.iter.Prev()
+			if i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
 				break
 			}
 		}
 	} else {
-		i.iterValid = i.iter.Last()
+		i.iterKey, i.iterValue = i.iter.Last()
 	}
 }
 
 func (i *Iterator) mergeNext(key db.InternalKey) bool {
 	// Save the current key and value.
 	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
-	i.valueBuf = append(i.valueBuf[:0], i.iter.Value()...)
+	i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
 	i.key, i.value = i.keyBuf, i.valueBuf
 	i.valid = true
 
 	// Loop looking for older values for this key and merging them.
 	for {
-		i.iterValid = i.iter.Next()
-		if !i.iterValid {
+		i.iterKey, i.iterValue = i.iter.Next()
+		if i.iterKey == nil {
 			i.pos = iterPosNext
 			return true
 		}
-		key = i.iter.Key()
+		key = *i.iterKey
 		if !i.equal(i.key, key.UserKey) {
 			// We've advanced to the next key.
 			i.pos = iterPosNext
@@ -220,13 +221,13 @@ func (i *Iterator) mergeNext(key db.InternalKey) bool {
 
 		case db.InternalKeyKindSet:
 			// We've hit a Set value. Merge with the existing value and return.
-			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
+			i.value = i.merge(i.key, i.value, i.iterValue, nil)
 			return true
 
 		case db.InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			i.value = i.merge(i.key, i.value, i.iter.Value(), nil)
+			i.value = i.merge(i.key, i.value, i.iterValue, nil)
 			i.valueBuf = i.value[:0]
 			continue
 
@@ -249,7 +250,7 @@ func (i *Iterator) SeekGE(key []byte) bool {
 		key = lowerBound
 	}
 
-	i.iterValid = i.iter.SeekGE(key)
+	i.iterKey, i.iterValue = i.iter.SeekGE(key)
 	return i.findNextEntry()
 }
 
@@ -265,7 +266,7 @@ func (i *Iterator) SeekLT(key []byte) bool {
 		key = upperBound
 	}
 
-	i.iterValid = i.iter.SeekLT(key)
+	i.iterKey, i.iterValue = i.iter.SeekLT(key)
 	return i.findPrevEntry()
 }
 
@@ -277,9 +278,9 @@ func (i *Iterator) First() bool {
 	}
 
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-		i.iterValid = i.iter.SeekGE(lowerBound)
+		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
 	} else {
-		i.iterValid = i.iter.First()
+		i.iterKey, i.iterValue = i.iter.First()
 	}
 	return i.findNextEntry()
 }
@@ -292,9 +293,9 @@ func (i *Iterator) Last() bool {
 	}
 
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-		i.iterValid = i.iter.SeekLT(upperBound)
+		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
 	} else {
-		i.iterValid = i.iter.Last()
+		i.iterKey, i.iterValue = i.iter.Last()
 	}
 	return i.findPrevEntry()
 }
