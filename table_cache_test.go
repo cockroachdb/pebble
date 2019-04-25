@@ -186,7 +186,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, fileNum, got, fileNum)
 				return
 			}
-			if iter.Next() {
+			if key, _ := iter.Next(); key != nil {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: next.1: got true, want false", i, fileNum)
 				return
 			}

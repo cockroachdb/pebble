@@ -32,17 +32,18 @@ func SeekGE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the tombstone [a,e)
 	// and we'll have to move forward.
-	valid := iter.SeekLT(key)
+	iterKey, iterValue := iter.SeekLT(key)
 
 	// Invariant: key < iter.Key().UserKey
 
-	if valid && cmp(key, iter.Value()) < 0 {
+	if iterKey != nil && cmp(key, iterValue) < 0 {
 		// The current tombstones contains or is past the search key, but SeekLT
 		// returns the oldest entry for a key, so backup until we hit the previous
 		// tombstone or an entry which is not visible.
-		for savedKey := iter.Key().UserKey; ; {
-			if !iter.Prev() || cmp(savedKey, iter.Value()) >= 0 || !iter.Key().Visible(snapshot) {
-				iter.Next()
+		for savedKey := iterKey.UserKey; ; {
+			iterKey, iterValue = iter.Prev()
+			if iterKey == nil || cmp(savedKey, iterValue) >= 0 || !iterKey.Visible(snapshot) {
+				iterKey, iterValue = iter.Next()
 				break
 			}
 		}
@@ -51,11 +52,12 @@ func SeekGE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 		// as long as the search key lies past the end of the tombstone. See the
 		// comment at the start of this function about why this is necessary.
 		for {
-			if !iter.Next() {
+			iterKey, iterValue = iter.Next()
+			if iterKey == nil {
 				// We've run out of tombstones.
 				return Tombstone{}
 			}
-			if cmp(key, iter.Value()) < 0 {
+			if cmp(key, iterValue) < 0 {
 				break
 			}
 		}
@@ -64,14 +66,15 @@ func SeekGE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 	// Walk through the tombstones to find one the newest one that is visible
 	// (i.e. has a sequence number less than the snapshot sequence number).
 	for {
-		if start := iter.Key(); start.Visible(snapshot) {
+		if start := iterKey; start.Visible(snapshot) {
 			// The tombstone is visible at our read sequence number.
 			return Tombstone{
-				Start: start,
-				End:   iter.Value(),
+				Start: *start,
+				End:   iterValue,
 			}
 		}
-		if !iter.Next() {
+		iterKey, iterValue = iter.Next()
+		if iterKey == nil {
 			// We've run out of tombstones.
 			return Tombstone{}
 		}
@@ -96,30 +99,35 @@ func SeekLE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the tombstone [a,e)
 	// and we'll have to move forward.
-	if !iter.SeekLT(key) {
-		if !iter.Next() {
+	iterKey, iterValue := iter.SeekLT(key)
+	if iterKey == nil {
+		iterKey, iterValue = iter.Next()
+		if iterKey == nil {
 			// The iterator is empty.
 			return Tombstone{}
 		}
-		if cmp(key, iter.Key().UserKey) < 0 {
+		if cmp(key, iterKey.UserKey) < 0 {
 			// The search key lies before the first tombstone.
-			iter.Prev()
+			//
+			// TODO(peter): why is this call to iter.Prev() here?
+			iterKey, iterValue = iter.Prev()
 			return Tombstone{}
 		}
 		// Advance the iterator until we find a visible version or we hit the next
 		// tombstone.
 		for {
-			if start := iter.Key(); start.Visible(snapshot) {
+			if start := iterKey; start.Visible(snapshot) {
 				return Tombstone{
-					Start: start,
-					End:   iter.Value(),
+					Start: *start,
+					End:   iterValue,
 				}
 			}
-			if !iter.Next() {
+			iterKey, iterValue = iter.Next()
+			if iterKey == nil {
 				// We've run out of tombstones.
 				return Tombstone{}
 			}
-			if cmp(key, iter.Key().UserKey) < 0 {
+			if cmp(key, iterKey.UserKey) < 0 {
 				// We've hit the next tombstone.
 				invalidate(iter)
 				return Tombstone{}
@@ -129,24 +137,26 @@ func SeekLE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 
 	// Invariant: key >= iter.Key().UserKey
 
-	if cmp(key, iter.Value()) >= 0 {
+	if cmp(key, iterValue) >= 0 {
 		// The current tombstone lies before the search key. Check to see if the
 		// next tombstone contains the search key. If it doesn't, we'll backup and
 		// use the current tombstone.
-		if !iter.Next() || cmp(key, iter.Key().UserKey) < 0 {
-			iter.Prev()
+		iterKey, iterValue = iter.Next()
+		if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
+			iterKey, iterValue = iter.Prev()
 		} else {
 			// Advance the iterator until we find a visible version or we hit the
 			// next tombstone.
 			for {
-				if start := iter.Key(); start.Visible(snapshot) {
+				if start := iterKey; start.Visible(snapshot) {
 					return Tombstone{
-						Start: start,
-						End:   iter.Value(),
+						Start: *start,
+						End:   iterValue,
 					}
 				}
-				if !iter.Next() || cmp(key, iter.Key().UserKey) < 0 {
-					iter.Prev()
+				iterKey, iterValue = iter.Next()
+				if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
+					iterKey, iterValue = iter.Prev()
 					break
 				}
 			}
@@ -158,24 +168,24 @@ func SeekLE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 	// version. Walk backwards through the tombstones to find the newest one that
 	// is visible (i.e. has a sequence number less than the snapshot sequence
 	// number).
-	for savedKey := iter.Key().UserKey; ; {
-		valid := iter.Key().Visible(snapshot)
-		if !iter.Prev() {
+	for savedKey := iterKey.UserKey; ; {
+		valid := iterKey.Visible(snapshot)
+		iterKey, iterValue = iter.Prev()
+		if iterKey == nil {
 			break
 		}
 		if valid {
-			start := iter.Key()
-			if !start.Visible(snapshot) {
+			if !iterKey.Visible(snapshot) {
 				break
 			}
-			if cmp(savedKey, start.UserKey) != 0 {
+			if cmp(savedKey, iterKey.UserKey) != 0 {
 				break
 			}
 		}
 	}
 
-	iter.Next()
-	start := iter.Key()
+	iterKey, iterValue = iter.Next()
+	start := iterKey
 	if cmp(key, start.UserKey) < 0 {
 		// The current tombstone is after our search key.
 		invalidate(iter)
@@ -188,7 +198,7 @@ func SeekLE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 	}
 	// The tombstone is visible at our read sequence number.
 	return Tombstone{
-		Start: start,
-		End:   iter.Value(),
+		Start: *start,
+		End:   iterValue,
 	}
 }

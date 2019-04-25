@@ -1,6 +1,7 @@
 GO = go
 GOFLAGS =
 PKG = ./...
+BENCH_PKGS = internal/arenaskl internal/batchskl internal/record sstable .
 TESTS = .
 
 .PHONY: all
@@ -34,7 +35,7 @@ stressrace: stress
 
 .PHONY: bench
 bench: GOFLAGS += -timeout 1h
-bench: $(patsubst %,%.bench,internal/arenaskl internal/batchskl internal/record sstable .)
+bench: $(patsubst %,%.bench,$(if $(findstring ./...,${PKG}),${BENCH_PKGS},${PKG}))
 
 internal/arenaskl.bench: GOFLAGS += -cpu 1,8
 

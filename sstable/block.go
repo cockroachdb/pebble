@@ -252,7 +252,7 @@ func (i *blockIter) cacheEntry() {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *blockIter) SeekGE(key []byte) bool {
+func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	ikey := db.MakeSearchKey(key)
 
 	// Find the index of the smallest restart point whose key is > the key
@@ -344,18 +344,18 @@ func (i *blockIter) SeekGE(key []byte) bool {
 	i.decodeInternalKey(i.key)
 
 	// Iterate from that restart point to somewhere >= the key sought.
-	for valid := i.Valid(); valid; valid = i.Next() {
+	for ; i.Valid(); i.Next() {
 		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
-			return true
+			return &i.ikey, i.val
 		}
 	}
 
-	return false
+	return nil, nil
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *blockIter) SeekLT(key []byte) bool {
+func (i *blockIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	ikey := db.MakeSearchKey(key)
 
 	// Find the index of the smallest restart point whose key is >= the key
@@ -445,7 +445,7 @@ func (i *blockIter) SeekLT(key []byte) bool {
 		// sought.
 		i.offset = -1
 		i.nextOffset = 0
-		return false
+		return nil, nil
 	}
 
 	// Iterate from that restart point to somewhere >= the key sought, then back
@@ -464,7 +464,7 @@ func (i *blockIter) SeekLT(key []byte) bool {
 			// The current key is greater than or equal to our search key. Back up to
 			// the previous key which was less than our search key.
 			i.Prev()
-			return true
+			return &i.ikey, i.val
 		}
 
 		if i.nextOffset >= i.restarts {
@@ -473,27 +473,30 @@ func (i *blockIter) SeekLT(key []byte) bool {
 		}
 	}
 
-	return i.Valid()
+	if !i.Valid() {
+		return nil, nil
+	}
+	return &i.ikey, i.val
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *blockIter) First() bool {
+func (i *blockIter) First() (*db.InternalKey, []byte) {
 	i.offset = 0
 	if !i.Valid() {
-		return false
+		return nil, nil
 	}
 	i.readEntry()
 	i.decodeInternalKey(i.key)
-	return true
+	return &i.ikey, i.val
 }
 
 // Last implements internalIterator.Last, as documented in the pebble package.
-func (i *blockIter) Last() bool {
+func (i *blockIter) Last() (*db.InternalKey, []byte) {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
 	if !i.Valid() {
-		return false
+		return nil, nil
 	}
 
 	i.readEntry()
@@ -507,15 +510,15 @@ func (i *blockIter) Last() bool {
 	}
 
 	i.decodeInternalKey(i.key)
-	return true
+	return &i.ikey, i.val
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *blockIter) Next() bool {
+func (i *blockIter) Next() (*db.InternalKey, []byte) {
 	i.offset = i.nextOffset
 	if !i.Valid() {
-		return false
+		return nil, nil
 	}
 	i.readEntry()
 	// Manually inlined version of i.decodeInternalKey(i.key).
@@ -529,12 +532,12 @@ func (i *blockIter) Next() bool {
 		i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
 		i.ikey.UserKey = nil
 	}
-	return true
+	return &i.ikey, i.val
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *blockIter) Prev() bool {
+func (i *blockIter) Prev() (*db.InternalKey, []byte) {
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
@@ -552,13 +555,13 @@ func (i *blockIter) Prev() bool {
 			i.ikey.UserKey = nil
 		}
 		i.cached = i.cached[:n]
-		return true
+		return &i.ikey, i.val
 	}
 
 	if i.offset == 0 {
 		i.offset = -1
 		i.nextOffset = 0
-		return false
+		return nil, nil
 	}
 
 	targetOffset := i.offset
@@ -600,12 +603,12 @@ func (i *blockIter) Prev() bool {
 	}
 
 	i.decodeInternalKey(i.key)
-	return true
+	return &i.ikey, i.val
 }
 
 // Key implements internalIterator.Key, as documented in the pebble package.
-func (i *blockIter) Key() db.InternalKey {
-	return i.ikey
+func (i *blockIter) Key() *db.InternalKey {
+	return &i.ikey
 }
 
 // Value implements internalIterator.Value, as documented in the pebble
@@ -631,4 +634,14 @@ func (i *blockIter) Error() error {
 func (i *blockIter) Close() error {
 	i.val = nil
 	return i.err
+}
+
+// invalidate the iterator, positioning it below the first entry.
+func (i *blockIter) invalidateLower() {
+	i.offset = -1
+}
+
+// invalidate the iterator, positioning it after the last entry.
+func (i *blockIter) invalidateUpper() {
+	i.offset = i.restarts
 }

@@ -39,6 +39,7 @@ func (s *splice) init(prev, next *node) {
 type Iterator struct {
 	list  *Skiplist
 	nd    *node
+	key   db.InternalKey
 	lower []byte
 	upper []byte
 }
@@ -56,117 +57,109 @@ func (it *Iterator) Error() error {
 }
 
 // SeekGE moves the iterator to the first entry whose key is greater than or
-// equal to the given key. Returns true if the iterator is pointing at a valid
-// entry and false otherwise. Note that SeekGE only checks the upper bound. It
-// is up to the caller to ensure that key is greater than or equal to the lower
-// bound.
-func (it *Iterator) SeekGE(key []byte) bool {
+// equal to the given key. Returns the key and value if the iterator is
+// pointing at a valid entry, and (nil, nil) otherwise. Note that SeekGE only
+// checks the upper bound. It is up to the caller to ensure that key is greater
+// than or equal to the lower bound.
+func (it *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	_, it.nd, _ = it.seekForBaseSplice(key)
 	if it.nd == it.list.tail {
-		return false
+		return nil, nil
 	}
-	if it.upper != nil && it.list.cmp(it.upper, it.Key().UserKey) <= 0 {
+	it.decodeKey()
+	if it.upper != nil && it.list.cmp(it.upper, it.key.UserKey) <= 0 {
 		it.nd = it.list.tail
-		return false
+		return nil, nil
 	}
-	return true
+	return &it.key, it.Value()
 }
 
 // SeekLT moves the iterator to the last entry whose key is less than the given
-// key. Returns true if the iterator is pointing at a valid entry and false
-// otherwise. Note that SeekLT only checks the lower bound. It is up to the
-// caller to ensure that key is less than the upper bound.
-func (it *Iterator) SeekLT(key []byte) bool {
+// key. Returns the key and value if the iterator is pointing at a valid entry,
+// and (nil, nil) otherwise. Note that SeekLT only checks the lower bound. It
+// is up to the caller to ensure that key is less than the upper bound.
+func (it *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// the upper-bound.
 	it.nd, _, _ = it.seekForBaseSplice(key)
 	if it.nd == it.list.head {
-		return false
+		return nil, nil
 	}
-	if it.lower != nil && it.list.cmp(it.lower, it.Key().UserKey) > 0 {
+	it.decodeKey()
+	if it.lower != nil && it.list.cmp(it.lower, it.key.UserKey) > 0 {
 		it.nd = it.list.head
-		return false
+		return nil, nil
 	}
-	return true
+	return &it.key, it.Value()
 }
 
-// First seeks position at the first entry in list. Final state of iterator is
-// Valid() iff list is not empty. Note that First only checks the upper
-// bound. It is up to the caller to ensure that key is greater than or equal to
-// the lower bound (e.g. via a call to SeekGE(lower)).
-func (it *Iterator) First() bool {
+// First seeks position at the first entry in list. Returns the key and value
+// if the iterator is pointing at a valid entry, and (nil, nil) otherwise. Note
+// that First only checks the upper bound. It is up to the caller to ensure
+// that key is greater than or equal to the lower bound (e.g. via a call to SeekGE(lower)).
+func (it *Iterator) First() (*db.InternalKey, []byte) {
 	it.nd = it.list.getNext(it.list.head, 0)
 	if it.nd == it.list.tail {
-		return false
+		return nil, nil
 	}
-	if it.upper != nil && it.list.cmp(it.upper, it.Key().UserKey) <= 0 {
+	it.decodeKey()
+	if it.upper != nil && it.list.cmp(it.upper, it.key.UserKey) <= 0 {
 		it.nd = it.list.tail
-		return false
+		return nil, nil
 	}
-	return true
+	return &it.key, it.Value()
 }
 
-// Last seeks position at the last entry in list. Final state of iterator is
-// Valid() iff list is not empty. Note that Last only checks the lower
-// bound. It is up to the caller to ensure that key is less than the upper
-// bound (e.g. via a call to SeekLT(upper)).
-func (it *Iterator) Last() bool {
+// Last seeks position at the last entry in list. Returns the key and value if
+// the iterator is pointing at a valid entry, and (nil, nil) otherwise. Note
+// that Last only checks the lower bound. It is up to the caller to ensure that
+// key is less than the upper bound (e.g. via a call to SeekLT(upper)).
+func (it *Iterator) Last() (*db.InternalKey, []byte) {
 	it.nd = it.list.getPrev(it.list.tail, 0)
 	if it.nd == it.list.head {
-		return false
+		return nil, nil
 	}
-	if it.lower != nil && it.list.cmp(it.lower, it.Key().UserKey) > 0 {
+	it.decodeKey()
+	if it.lower != nil && it.list.cmp(it.lower, it.key.UserKey) > 0 {
 		it.nd = it.list.head
-		return false
+		return nil, nil
 	}
-	return true
+	return &it.key, it.Value()
 }
 
-// Next advances to the next position. If there are no following nodes, then
-// Valid() will be false after this call.
-func (it *Iterator) Next() bool {
+// Next advances to the next position. Returns the key and value if the
+// iterator is pointing at a valid entry, and (nil, nil) otherwise.
+func (it *Iterator) Next() (*db.InternalKey, []byte) {
 	it.nd = it.list.getNext(it.nd, 0)
 	if it.nd == it.list.tail {
-		return false
+		return nil, nil
 	}
-	if it.upper != nil && it.list.cmp(it.upper, it.Key().UserKey) <= 0 {
+	it.decodeKey()
+	if it.upper != nil && it.list.cmp(it.upper, it.key.UserKey) <= 0 {
 		it.nd = it.list.tail
-		return false
+		return nil, nil
 	}
-	return true
+	return &it.key, it.Value()
 }
 
-// Prev moves to the previous position. If there are no previous nodes, then
-// Valid() will be false after this call.
-func (it *Iterator) Prev() bool {
+// Prev moves to the previous position. Returns the key and value if the
+// iterator is pointing at a valid entry, and (nil, nil) otherwise.
+func (it *Iterator) Prev() (*db.InternalKey, []byte) {
 	it.nd = it.list.getPrev(it.nd, 0)
 	if it.nd == it.list.head {
-		return false
+		return nil, nil
 	}
-	if it.lower != nil && it.list.cmp(it.lower, it.Key().UserKey) > 0 {
+	it.decodeKey()
+	if it.lower != nil && it.list.cmp(it.lower, it.key.UserKey) > 0 {
 		it.nd = it.list.head
-		return false
+		return nil, nil
 	}
-	return true
+	return &it.key, it.Value()
 }
 
 // Key returns the key at the current position.
-func (it *Iterator) Key() db.InternalKey {
-	b := it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
-	// This is a manual inline of db.DecodeInternalKey, because the Go compiler
-	// seems to refuse to automatically inline it currently.
-	l := len(b) - 8
-	var trailer uint64
-	if l >= 0 {
-		trailer = binary.LittleEndian.Uint64(b[l:])
-		b = b[:l:l]
-	} else {
-		trailer = uint64(db.InternalKeyKindInvalid)
-	}
-	return db.InternalKey{
-		UserKey: b,
-		Trailer: trailer,
-	}
+func (it *Iterator) Key() *db.InternalKey {
+	return &it.key
 }
 
 // Value returns the value at the current position.
@@ -187,6 +180,20 @@ func (it *Iterator) Tail() bool {
 // Valid returns true iff the iterator is positioned at a valid node.
 func (it *Iterator) Valid() bool {
 	return it.nd != it.list.head && it.nd != it.list.tail
+}
+
+func (it *Iterator) decodeKey() {
+	b := it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
+	// This is a manual inline of db.DecodeInternalKey, because the Go compiler
+	// seems to refuse to automatically inline it currently.
+	l := len(b) - 8
+	if l >= 0 {
+		it.key.Trailer = binary.LittleEndian.Uint64(b[l:])
+		it.key.UserKey = b[:l:l]
+	} else {
+		it.key.Trailer = uint64(db.InternalKeyKindInvalid)
+		it.key.UserKey = nil
+	}
 }
 
 func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {

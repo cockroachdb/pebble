@@ -29,11 +29,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// iterAdapter adapts the new Iterator API which returns the key and value from
+// positioning methods (Seek*, First, Last, Next, Prev) to the old API which
+// returned a boolean corresponding to Valid. Only used by test code.
+type iterAdapter struct {
+	Iterator
+}
+
+func (i *iterAdapter) verify(key *db.InternalKey) bool {
+	valid := key != nil
+	if valid != i.Valid() {
+		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
+	}
+	if valid {
+		if db.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
+			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
+		}
+	}
+	return valid
+}
+
+func (i *iterAdapter) SeekGE(key []byte) bool {
+	return i.verify(i.Iterator.SeekGE(key))
+}
+
+func (i *iterAdapter) SeekLT(key []byte) bool {
+	return i.verify(i.Iterator.SeekLT(key))
+}
+
+func (i *iterAdapter) First() bool {
+	return i.verify(i.Iterator.First())
+}
+
+func (i *iterAdapter) Last() bool {
+	return i.verify(i.Iterator.Last())
+}
+
+func (i *iterAdapter) Next() bool {
+	return i.verify(i.Iterator.Next())
+}
+
+func (i *iterAdapter) Prev() bool {
+	return i.verify(i.Iterator.Prev())
+}
+
+func (i *iterAdapter) Key() db.InternalKey {
+	return *i.Iterator.Key()
+}
+
 // length iterates over skiplist to give exact size.
 func length(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter(nil, nil)
+	it := iterAdapter{s.NewIter(nil, nil)}
 	for valid := it.First(); valid; valid = it.Next() {
 		count++
 	}
@@ -45,7 +93,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter(nil, nil)
+	it := iterAdapter{s.NewIter(nil, nil)}
 	for valid := it.Last(); valid; valid = it.Prev() {
 		count++
 	}
@@ -82,7 +130,7 @@ func (d *testStorage) Compare(a []byte, b uint32) int {
 func TestEmpty(t *testing.T) {
 	key := makeKey("aaa")
 	l := NewSkiplist(&testStorage{}, 0)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 
@@ -100,7 +148,7 @@ func TestEmpty(t *testing.T) {
 func TestBasic(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	// Try adding values.
 	require.Nil(t, l.Add(d.add("key1")))
@@ -126,10 +174,12 @@ func TestBasic(t *testing.T) {
 func TestSkiplistAdd(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	// Add empty key.
 	require.Nil(t, l.Add(d.add("")))
+	require.EqualValues(t, []byte(nil), it.Key().UserKey)
+	require.True(t, it.First())
 	require.EqualValues(t, []byte{}, it.Key().UserKey)
 
 	// Add to empty list.
@@ -163,7 +213,7 @@ func TestIteratorNext(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 
@@ -188,7 +238,7 @@ func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 
@@ -212,7 +262,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	const n = 1000
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 	it.First()
@@ -254,7 +304,7 @@ func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter(nil, nil)
+	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
 	it.First()
@@ -306,7 +356,7 @@ func TestIteratorBounds(t *testing.T) {
 		}
 	}
 
-	it := l.NewIter(makeKey("00003"), makeKey("00007"))
+	it := iterAdapter{l.NewIter(makeKey("00003"), makeKey("00007"))}
 
 	// SeekGE within the lower and upper bound succeeds.
 	for i := 3; i <= 6; i++ {

@@ -266,11 +266,11 @@ func buildLevelIterTables(
 	meta := make([]fileMetadata, len(readers))
 	for i := range readers {
 		iter := readers[i].NewIter(nil /* lower */, nil /* upper */)
-		iter.First()
+		key, _ := iter.First()
 		meta[i].fileNum = uint64(i)
-		meta[i].smallest = iter.Key()
-		iter.Last()
-		meta[i].largest = iter.Key()
+		meta[i].smallest = *key
+		key, _ = iter.Last()
+		meta[i].largest = *key
 	}
 	return readers, meta, keys
 }

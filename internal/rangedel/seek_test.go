@@ -16,15 +16,59 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
+type iterAdapter struct {
+	*Iter
+}
+
+func (i *iterAdapter) verify(key *db.InternalKey, val []byte) (*db.InternalKey, []byte) {
+	valid := key != nil
+	if valid != i.Valid() {
+		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
+	}
+	if valid {
+		if db.InternalCompare(bytes.Compare, *key, *i.Key()) != 0 {
+			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
+		}
+		if !bytes.Equal(val, i.Value()) {
+			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.Value()))
+		}
+	}
+	return key, val
+}
+
+func (i *iterAdapter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+	return i.verify(i.Iter.SeekGE(key))
+}
+
+func (i *iterAdapter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+	return i.verify(i.Iter.SeekLT(key))
+}
+
+func (i *iterAdapter) First() (*db.InternalKey, []byte) {
+	return i.verify(i.Iter.First())
+}
+
+func (i *iterAdapter) Last() (*db.InternalKey, []byte) {
+	return i.verify(i.Iter.Last())
+}
+
+func (i *iterAdapter) Next() (*db.InternalKey, []byte) {
+	return i.verify(i.Iter.Next())
+}
+
+func (i *iterAdapter) Prev() (*db.InternalKey, []byte) {
+	return i.verify(i.Iter.Prev())
+}
+
 func TestSeek(t *testing.T) {
 	cmp := db.DefaultComparer.Compare
-	var iter iterator
+	iter := &iterAdapter{}
 
 	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			tombstones := buildTombstones(t, cmp, d.Input)
-			iter = NewIter(cmp, tombstones)
+			iter.Iter = NewIter(cmp, tombstones)
 			return formatTombstones(tombstones)
 
 		case "seek-ge", "seek-le":
@@ -51,7 +95,7 @@ func TestSeek(t *testing.T) {
 				var iTombstone Tombstone
 				if iter.Valid() {
 					iTombstone = Tombstone{
-						Start: iter.Key(),
+						Start: *iter.Key(),
 						End:   iter.Value(),
 					}
 				}
