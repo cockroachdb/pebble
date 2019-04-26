@@ -62,13 +62,36 @@
 // boundaries. The last block may be shorter than 32 KiB. Any unused bytes in a
 // block must be zero.
 //
-// A record maps to one or more chunks. Each chunk has a 7 byte header (a 4
-// byte checksum, a 2 byte little-endian uint16 length, and a 1 byte chunk type)
-// followed by a payload. The checksum is over the chunk type and the payload.
+// A record maps to one or more chunks. There are two chunk formats: legacy and
+// recyclable. The legacy chunk format:
+//
+//   +----------+-----------+-----------+--- ... ---+
+//   | CRC (4B) | Size (2B) | Type (1B) | Payload   |
+//   +----------+-----------+-----------+--- ... ---+
+//
+// CRC is computed over the type and payload
+// Size is the length of the payload in bytes
+// Type is the chunk type
 //
 // There are four chunk types: whether the chunk is the full record, or the
 // first, middle or last chunk of a multi-chunk record. A multi-chunk record
 // has one first chunk, zero or more middle chunks, and one last chunk.
+//
+// The recyclyable chunk format is similar to the legacy format, but extends
+// the chunk header with an additional log number field. This allows reuse
+// (recycling) of log files which can provide significantly better performance
+// when syncing frequently as it avoids needing to update the file
+// metadata. Additionally, recycling log files is a prequisite for using direct
+// IO with log writing. The recyclyable format is:
+//
+//   +----------+-----------+-----------+----------------+--- ... ---+
+//   | CRC (4B) | Size (2B) | Type (1B) | Log number (4B)| Payload   |
+//   +----------+-----------+-----------+----------------+--- ... ---+
+//
+// Recyclable chunks are distinguished from legacy chunks by the addition of 4
+// extra "recyclable" chunk types that map directly to the legacy chunk types
+// (i.e. full, first, middle, last). The CRC is computed over the type, log
+// number, and payload.
 //
 // The wire format allows for limited recovery in the face of data corruption:
 // on a format error (such as a checksum mismatch), the reader moves to the
@@ -94,12 +117,18 @@ const (
 	firstChunkType  = 2
 	middleChunkType = 3
 	lastChunkType   = 4
+
+	recyclableFullChunkType   = 5
+	recyclableFirstChunkType  = 6
+	recyclableMiddleChunkType = 7
+	recyclableLastChunkType   = 8
 )
 
 const (
-	blockSize     = 32 * 1024
-	blockSizeMask = blockSize - 1
-	headerSize    = 7
+	blockSize            = 32 * 1024
+	blockSizeMask        = blockSize - 1
+	legacyHeaderSize     = 7
+	recyclableHeaderSize = legacyHeaderSize + 4
 )
 
 var (
@@ -108,25 +137,24 @@ var (
 
 	// ErrNoLastRecord is returned if LastRecordOffset is called and there is no previous record.
 	ErrNoLastRecord = errors.New("pebble/record: no last record exists")
+
+	// ErrInvalidLogNum is returned if the log number in a record differs from
+	// the one expected.
+	ErrInvalidLogNum = errors.New("pebble/record: invalid log number")
 )
-
-type flusher interface {
-	Flush() error
-}
-
-type syncer interface {
-	Sync() error
-}
 
 // Reader reads records from an underlying io.Reader.
 type Reader struct {
 	// r is the underlying reader.
 	r io.Reader
+	// logNum is the low 32-bits of the log's file number. May be zero when used
+	// with log files that do not have a file number (e.g. the MANIFEST).
+	logNum uint32
 	// seq is the sequence number of the current record.
 	seq int
-	// buf[i:j] is the unread portion of the current chunk's payload.
-	// The low bound, i, excludes the chunk header.
-	i, j int
+	// buf[begin:end] is the unread portion of the current chunk's payload. The
+	// low bound, begin, excludes the chunk header.
+	begin, end int
 	// n is the number of bytes of buf that are valid. Once reading has started,
 	// only the final block can have n < blockSize.
 	n int
@@ -142,10 +170,13 @@ type Reader struct {
 	buf [blockSize]byte
 }
 
-// NewReader returns a new reader.
-func NewReader(r io.Reader) *Reader {
+// NewReader returns a new reader. If the file contains records encoded using
+// the recyclable record format, then the log number in those records must
+// match the specifed logNum.
+func NewReader(r io.Reader, logNum uint64) *Reader {
 	return &Reader{
-		r: r,
+		r:      r,
+		logNum: uint32(logNum),
 	}
 }
 
@@ -153,40 +184,60 @@ func NewReader(r io.Reader) *Reader {
 // next block into the buffer if necessary.
 func (r *Reader) nextChunk(wantFirst bool) error {
 	for {
-		if r.j+headerSize <= r.n {
-			checksum := binary.LittleEndian.Uint32(r.buf[r.j+0 : r.j+4])
-			length := binary.LittleEndian.Uint16(r.buf[r.j+4 : r.j+6])
-			chunkType := r.buf[r.j+6]
+		if r.end+legacyHeaderSize <= r.n {
+			checksum := binary.LittleEndian.Uint32(r.buf[r.end+0 : r.end+4])
+			length := binary.LittleEndian.Uint16(r.buf[r.end+4 : r.end+6])
+			chunkType := r.buf[r.end+6]
 
 			if checksum == 0 && length == 0 && chunkType == 0 {
+				if r.end+recyclableHeaderSize > r.n {
+					// Skip the rest of the block if the recyclable header size does not
+					// fit within it.
+					r.end = r.n
+					continue
+				}
 				if wantFirst || r.recovering {
 					// Skip the rest of the block, if it looks like it is all
-					// zeroes. This is common if the record file was created
-					// via mmap.
+					// zeroes. This is common if the record file was created via mmap.
 					//
 					// Set r.err to be an error so r.Recover actually recovers.
 					r.err = errors.New("pebble/record: block appears to be zeroed")
 					if !r.recovering {
 						return r.err
 					}
-					r.Recover()
+					r.recover()
 					continue
 				}
 				return errors.New("pebble/record: invalid chunk")
 			}
 
-			r.i = r.j + headerSize
-			r.j = r.j + headerSize + int(length)
-			if r.j > r.n {
+			headerSize := legacyHeaderSize
+			if chunkType >= recyclableFullChunkType && chunkType <= recyclableLastChunkType {
+				headerSize = recyclableHeaderSize
+				if r.end+headerSize > r.n {
+					return errors.New("pebble/record: invalid chunk (header overflows block)")
+				}
+
+				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
+				if logNum != r.logNum {
+					return ErrInvalidLogNum
+				}
+
+				chunkType -= (recyclableFullChunkType - 1)
+			}
+
+			r.begin = r.end + headerSize
+			r.end = r.begin + int(length)
+			if r.end > r.n {
 				if r.recovering {
-					r.Recover()
+					r.recover()
 					continue
 				}
 				return errors.New("pebble/record: invalid chunk (length overflows block)")
 			}
-			if checksum != crc.New(r.buf[r.i-1:r.j]).Value() {
+			if checksum != crc.New(r.buf[r.begin-headerSize+6:r.end]).Value() {
 				if r.recovering {
-					r.Recover()
+					r.recover()
 					continue
 				}
 				return errors.New("pebble/record: invalid chunk (checksum mismatch)")
@@ -201,7 +252,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			return nil
 		}
 		if r.n < blockSize && r.started {
-			if r.j != r.n {
+			if r.end != r.n {
 				return io.ErrUnexpectedEOF
 			}
 			return io.EOF
@@ -210,7 +261,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		if err != nil && err != io.ErrUnexpectedEOF {
 			return err
 		}
-		r.i, r.j, r.n = 0, 0, n
+		r.begin, r.end, r.n = 0, 0, n
 	}
 }
 
@@ -222,7 +273,7 @@ func (r *Reader) Next() (io.Reader, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	r.i = r.j
+	r.begin = r.end
 	r.err = r.nextChunk(true)
 	if r.err != nil {
 		return nil, r.err
@@ -231,24 +282,24 @@ func (r *Reader) Next() (io.Reader, error) {
 	return singleReader{r, r.seq}, nil
 }
 
-// Recover clears any errors read so far, so that calling Next will start
+// recover clears any errors read so far, so that calling Next will start
 // reading from the next good 32KiB block. If there are no such blocks, Next
-// will return io.EOF. Recover also marks the current reader, the one most
-// recently returned by Next, as stale. If Recover is called without any
-// prior error, then Recover is a no-op.
-func (r *Reader) Recover() {
+// will return io.EOF. recover also marks the current reader, the one most
+// recently returned by Next, as stale. If recover is called without any
+// prior error, then recover is a no-op.
+func (r *Reader) recover() {
 	if r.err == nil {
 		return
 	}
 	r.recovering = true
 	r.err = nil
 	// Discard the rest of the current block.
-	r.i, r.j, r.last = r.n, r.n, false
+	r.begin, r.end, r.last = r.n, r.n, false
 	// Invalidate any outstanding singleReader.
 	r.seq++
 }
 
-// SeekRecord seeks in the underlying io.Reader such that calling r.Next
+// seekRecord seeks in the underlying io.Reader such that calling r.Next
 // returns the record whose first chunk header starts at the provided offset.
 // Its behavior is undefined if the argument given is not such an offset, as
 // the bytes at that offset may coincidentally appear to be a valid header.
@@ -256,17 +307,17 @@ func (r *Reader) Recover() {
 // It returns ErrNotAnIOSeeker if the underlying io.Reader does not implement
 // io.Seeker.
 //
-// SeekRecord will fail and return an error if the Reader previously
+// seekRecord will fail and return an error if the Reader previously
 // encountered an error, including io.EOF. Such errors can be cleared by
-// calling Recover. Calling SeekRecord after Recover will make calling Next
+// calling Recover. Calling seekRecord after Recover will make calling Next
 // return the record at the given offset, instead of the record at the next
-// good 32KiB block as Recover normally would. Calling SeekRecord before
+// good 32KiB block as Recover normally would. Calling seekRecord before
 // Recover has no effect on Recover's semantics other than changing the
 // starting point for determining the next good 32KiB block.
 //
 // The offset is always relative to the start of the underlying io.Reader, so
 // negative values will result in an error as per io.Seeker.
-func (r *Reader) SeekRecord(offset int64) error {
+func (r *Reader) seekRecord(offset int64) error {
 	r.seq++
 	if r.err != nil {
 		return r.err
@@ -284,7 +335,7 @@ func (r *Reader) SeekRecord(offset int64) error {
 	}
 
 	// Clear the state of the internal reader.
-	r.i, r.j, r.n = 0, 0, 0
+	r.begin, r.end, r.n = 0, 0, 0
 	r.started, r.recovering, r.last = false, false, false
 	if r.err = r.nextChunk(false); r.err != nil {
 		return r.err
@@ -292,7 +343,7 @@ func (r *Reader) SeekRecord(offset int64) error {
 
 	// Now skip to the offset requested within the block. A subsequent
 	// call to Next will return the block at the requested offset.
-	r.i, r.j = c, c
+	r.begin, r.end = c, c
 
 	return nil
 }
@@ -310,7 +361,7 @@ func (x singleReader) Read(p []byte) (int, error) {
 	if r.err != nil {
 		return 0, r.err
 	}
-	for r.i == r.j {
+	for r.begin == r.end {
 		if r.last {
 			return 0, io.EOF
 		}
@@ -318,8 +369,8 @@ func (x singleReader) Read(p []byte) (int, error) {
 			return 0, r.err
 		}
 	}
-	n := copy(p, r.buf[r.i:r.j])
-	r.i += n
+	n := copy(p, r.buf[r.begin:r.end])
+	r.begin += n
 	return n, nil
 }
 
@@ -378,7 +429,7 @@ func NewWriter(w io.Writer) *Writer {
 
 // fillHeader fills in the header for the pending chunk.
 func (w *Writer) fillHeader(last bool) {
-	if w.i+headerSize > w.j || w.j > blockSize {
+	if w.i+legacyHeaderSize > w.j || w.j > blockSize {
 		panic("pebble/record: bad writer state")
 	}
 	if last {
@@ -395,7 +446,7 @@ func (w *Writer) fillHeader(last bool) {
 		}
 	}
 	binary.LittleEndian.PutUint32(w.buf[w.i+0:w.i+4], crc.New(w.buf[w.i+6:w.j]).Value())
-	binary.LittleEndian.PutUint16(w.buf[w.i+4:w.i+6], uint16(w.j-w.i-headerSize))
+	binary.LittleEndian.PutUint16(w.buf[w.i+4:w.i+6], uint16(w.j-w.i-legacyHeaderSize))
 }
 
 // writeBlock writes the buffered block to the underlying writer, and reserves
@@ -403,7 +454,7 @@ func (w *Writer) fillHeader(last bool) {
 func (w *Writer) writeBlock() {
 	_, w.err = w.w.Write(w.buf[w.written:])
 	w.i = 0
-	w.j = headerSize
+	w.j = legacyHeaderSize
 	w.written = 0
 	w.blockNumber++
 }
@@ -459,7 +510,7 @@ func (w *Writer) Next() (io.Writer, error) {
 		w.fillHeader(true)
 	}
 	w.i = w.j
-	w.j = w.j + headerSize
+	w.j = w.j + legacyHeaderSize
 	// Check if there is room in the block for the header.
 	if w.j > blockSize {
 		// Fill in the rest of the block with zeroes.

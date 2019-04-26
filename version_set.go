@@ -96,7 +96,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 		return fmt.Errorf("pebble: could not open manifest file %q for DB %q: %v", b, dirname, err)
 	}
 	defer manifest.Close()
-	rr := record.NewReader(manifest)
+	rr := record.NewReader(manifest, 0 /* logNum */)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF {

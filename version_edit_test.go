@@ -150,7 +150,7 @@ func TestVersionEditDecode(t *testing.T) {
 				t.Fatalf("filename=%q: open error: %v", tc.filename, err)
 			}
 			defer f.Close()
-			i, r := 0, record.NewReader(f)
+			i, r := 0, record.NewReader(f, 0 /* logNum */)
 			for {
 				rr, err := r.Next()
 				if err == io.EOF {

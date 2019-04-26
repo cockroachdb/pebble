@@ -37,7 +37,7 @@ func testGeneratorWriter(
 	t *testing.T,
 	reset func(),
 	gen func() (string, bool),
-	newWriter func (io.Writer) recordWriter,
+	newWriter func(io.Writer) recordWriter,
 ) {
 	buf := new(bytes.Buffer)
 
@@ -55,9 +55,8 @@ func testGeneratorWriter(
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-
 	reset()
-	r := NewReader(buf)
+	r := NewReader(buf, 0 /* logNum */)
 	for {
 		s, ok := gen()
 		if !ok {
@@ -80,16 +79,16 @@ func testGeneratorWriter(
 	}
 }
 
-func testGenerator( t *testing.T, reset func(), gen func() (string, bool)) {
-	t.Run("Writer", func (t *testing.T) {
-		testGeneratorWriter(t, reset, gen, func (w io.Writer) recordWriter {
+func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
+	t.Run("Writer", func(t *testing.T) {
+		testGeneratorWriter(t, reset, gen, func(w io.Writer) recordWriter {
 			return NewWriter(w)
 		})
 	})
 
-	t.Run("LogWriter", func (t *testing.T) {
-		testGeneratorWriter(t, reset, gen, func (w io.Writer) recordWriter {
-			return NewLogWriter(w)
+	t.Run("LogWriter", func(t *testing.T) {
+		testGeneratorWriter(t, reset, gen, func(w io.Writer) recordWriter {
+			return NewLogWriter(w, 0 /* logNum */)
 		})
 	})
 }
@@ -217,7 +216,7 @@ func TestFlush(t *testing.T) {
 		t.Fatalf("buffer length #5: got %d want %d", got, want)
 	}
 	// Check that reading those records give the right lengths.
-	r := NewReader(buf)
+	r := NewReader(buf, 0 /* logNum */)
 	wants := []int64{1, 2, 10000, 40000}
 	for i, want := range wants {
 		rr, _ := r.Next()
@@ -247,7 +246,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	r := NewReader(buf)
+	r := NewReader(buf, 0 /* logNum */)
 	for i := 0; i < n; i++ {
 		rr, _ := r.Next()
 		_, err := io.ReadFull(rr, p)
@@ -275,7 +274,7 @@ func TestStaleReader(t *testing.T) {
 		t.Fatalf("Close: %v\n", err)
 	}
 
-	r := NewReader(buf)
+	r := NewReader(buf, 0 /* logNum */)
 	r0, err := r.Next()
 	if err != nil {
 		t.Fatalf("reader.Next: %v", err)
@@ -366,36 +365,36 @@ func corruptBlock(buf []byte, blockNum int) {
 
 func TestRecoverNoOp(t *testing.T) {
 	recs, err := makeTestRecords(
-		blockSize-headerSize,
-		blockSize-headerSize,
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
+		blockSize-legacyHeaderSize,
+		blockSize-legacyHeaderSize,
 	)
 	if err != nil {
 		t.Fatalf("makeTestRecords: %v", err)
 	}
 
-	r := NewReader(bytes.NewReader(recs.buf))
+	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
 	_, err = r.Next()
 	if err != nil || r.err != nil {
 		t.Fatalf("reader.Next: %v reader.err: %v", err, r.err)
 	}
 
-	seq, i, j, n := r.seq, r.i, r.j, r.n
+	seq, begin, end, n := r.seq, r.begin, r.end, r.n
 
 	// Should be a no-op since r.err == nil.
-	r.Recover()
+	r.recover()
 
 	// r.err was nil, nothing should have changed.
-	if seq != r.seq || i != r.i || j != r.j || n != r.n {
+	if seq != r.seq || begin != r.begin || end != r.end || n != r.n {
 		t.Fatal("reader.Recover when no error existed, was not a no-op")
 	}
 }
 
 func TestBasicRecover(t *testing.T) {
 	recs, err := makeTestRecords(
-		blockSize-headerSize,
-		blockSize-headerSize,
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
+		blockSize-legacyHeaderSize,
+		blockSize-legacyHeaderSize,
 	)
 	if err != nil {
 		t.Fatalf("makeTestRecords: %v", err)
@@ -405,7 +404,7 @@ func TestBasicRecover(t *testing.T) {
 	corruptBlock(recs.buf, 1)
 
 	underlyingReader := bytes.NewReader(recs.buf)
-	r := NewReader(underlyingReader)
+	r := NewReader(underlyingReader, 0 /* logNum */)
 
 	// The first record r0 should be read just fine.
 	r0, err := r.Next()
@@ -430,7 +429,7 @@ func TestBasicRecover(t *testing.T) {
 	}
 
 	// Recover from that checksum mismatch.
-	r.Recover()
+	r.recover()
 	currentOffset, err := underlyingReader.Seek(0, os.SEEK_CUR)
 	if err != nil {
 		t.Fatalf("current offset: %v", err)
@@ -458,7 +457,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 	// a 7 byte header, the first record will roll over into 4 blocks.
 	recs, err := makeTestRecords(
 		blockSize*3,
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 		blockSize/2,
 	)
 	if err != nil {
@@ -471,7 +470,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 
 	// The first record should fail, but only when we read deeper beyond the
 	// first block.
-	r := NewReader(bytes.NewReader(recs.buf))
+	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
 	r0, err := r.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
@@ -487,7 +486,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 	}
 
 	// Recover from that checksum mismatch.
-	r.Recover()
+	r.recover()
 
 	// All of the data in the second record r1 is lost because the first record
 	// r0 shared a partial block with it. The second record also overlapped
@@ -509,11 +508,11 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 		// The first record will consume 3 entire blocks but a fraction of the 4th.
 		blockSize*3,
 		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-headerSize)-2*blockSize-2*headerSize,
+		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
 		// Consume the entirety of the 5th block.
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 		// Consume the entirety of the 6th block.
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 		// Consume roughly half of the 7th block.
 		blockSize/2,
 	)
@@ -529,7 +528,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 	corruptBlock(recs.buf, 5)
 
 	// The first record should fail, but only when we read deeper beyond the first block.
-	r := NewReader(bytes.NewReader(recs.buf))
+	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
 	r0, err := r.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
@@ -545,7 +544,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 	}
 
 	// Recover from that checksum mismatch.
-	r.Recover()
+	r.recover()
 
 	// All of the data in the second record is lost because the first
 	// record shared a partial block with it. The following two records
@@ -566,7 +565,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 // last record will be corrupted. It will then try Recover and verify that EOF
 // is returned.
 func verifyLastBlockRecover(recs *testRecords) error {
-	r := NewReader(bytes.NewReader(recs.buf))
+	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
 	// Loop to one element larger than the number of records to verify EOF.
 	for i := 0; i < len(recs.records)+1; i++ {
 		_, err := r.Next()
@@ -575,7 +574,7 @@ func verifyLastBlockRecover(recs *testRecords) error {
 			if err == nil {
 				return errors.New("Expected a checksum mismatch error, got nil")
 			}
-			r.Recover()
+			r.recover()
 		case len(recs.records):
 			if err != io.EOF {
 				return fmt.Errorf("Expected io.EOF, got %v", err)
@@ -594,7 +593,7 @@ func TestRecoverLastPartialBlock(t *testing.T) {
 		// The first record will consume 3 entire blocks but a fraction of the 4th.
 		blockSize*3,
 		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-headerSize)-2*blockSize-2*headerSize,
+		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
 		// Consume roughly half of the 5th block.
 		blockSize/2,
 	)
@@ -616,9 +615,9 @@ func TestRecoverLastCompleteBlock(t *testing.T) {
 		// The first record will consume 3 entire blocks but a fraction of the 4th.
 		blockSize*3,
 		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-headerSize)-2*blockSize-2*headerSize,
+		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
 		// Consume the entire 5th block.
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 	)
 	if err != nil {
 		t.Fatalf("makeTestRecords: %v", err)
@@ -638,11 +637,11 @@ func TestSeekRecord(t *testing.T) {
 		// The first record will consume 3 entire blocks but a fraction of the 4th.
 		blockSize*3,
 		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-headerSize)-2*blockSize-2*headerSize,
+		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
 		// Consume the entirety of the 5th block.
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 		// Consume the entirety of the 6th block.
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 		// Consume roughly half of the 7th block.
 		blockSize/2,
 	)
@@ -650,10 +649,10 @@ func TestSeekRecord(t *testing.T) {
 		t.Fatalf("makeTestRecords: %v", err)
 	}
 
-	r := NewReader(bytes.NewReader(recs.buf))
+	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
 	// Seek to a valid block offset, but within a multiblock record. This should cause the next call to
 	// Next after SeekRecord to return the next valid FIRST/FULL chunk of the subsequent record.
-	err = r.SeekRecord(blockSize)
+	err = r.seekRecord(blockSize)
 	if err != nil {
 		t.Fatalf("SeekRecord: %v", err)
 	}
@@ -668,17 +667,17 @@ func TestSeekRecord(t *testing.T) {
 
 	// Seek 3 bytes into the second block, which is still in the middle of the first record, but not
 	// at a valid chunk boundary. Should result in an error upon calling r.Next.
-	err = r.SeekRecord(blockSize + 3)
+	err = r.seekRecord(blockSize + 3)
 	if err != nil {
 		t.Fatalf("SeekRecord: %v", err)
 	}
 	if _, err = r.Next(); err == nil {
 		t.Fatalf("Expected an error seeking to an invalid chunk boundary")
 	}
-	r.Recover()
+	r.recover()
 
 	// Seek to the fifth block and verify all records can be read as appropriate.
-	err = r.SeekRecord(blockSize * 4)
+	err = r.seekRecord(blockSize * 4)
 	if err != nil {
 		t.Fatalf("SeekRecord: %v", err)
 	}
@@ -699,24 +698,24 @@ func TestSeekRecord(t *testing.T) {
 	check(2)
 
 	// Seek back to the fourth block, and read all subsequent records and verify them.
-	err = r.SeekRecord(blockSize * 3)
+	err = r.seekRecord(blockSize * 3)
 	if err != nil {
 		t.Fatalf("SeekRecord: %v", err)
 	}
 	check(1)
 
 	// Now seek past the end of the file and verify it causes an error.
-	err = r.SeekRecord(1 << 20)
+	err = r.seekRecord(1 << 20)
 	if err == nil {
 		t.Fatalf("Seek past the end of a file didn't cause an error")
 	}
 	if err != io.EOF {
 		t.Fatalf("Seeking past EOF raised unexpected error: %v", err)
 	}
-	r.Recover() // Verify recovery works.
+	r.recover() // Verify recovery works.
 
 	// Validate the current records are returned after seeking to a valid offset.
-	err = r.SeekRecord(blockSize * 4)
+	err = r.seekRecord(blockSize * 4)
 	if err != nil {
 		t.Fatalf("SeekRecord: %v", err)
 	}
@@ -728,11 +727,11 @@ func TestLastRecordOffset(t *testing.T) {
 		// The first record will consume 3 entire blocks but a fraction of the 4th.
 		blockSize*3,
 		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-headerSize)-2*blockSize-2*headerSize,
+		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
 		// Consume the entirety of the 5th block.
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 		// Consume the entirety of the 6th block.
-		blockSize-headerSize,
+		blockSize-legacyHeaderSize,
 		// Consume roughly half of the 7th block.
 		blockSize/2,
 	)
@@ -776,10 +775,52 @@ func TestNoLastRecordOffset(t *testing.T) {
 	}
 }
 
+func TestInvalidLogNum(t *testing.T) {
+	var buf bytes.Buffer
+	w := NewLogWriter(&buf, 1)
+	for i := 0; i < 10; i++ {
+		s := fmt.Sprintf("%04d\n", i)
+		if _, err := w.WriteRecord([]byte(s)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		r := NewReader(bytes.NewReader(buf.Bytes()), 1)
+		for i := 0; i < 10; i++ {
+			rr, err := r.Next()
+			if err != nil {
+				t.Fatal(err)
+			}
+			x, err := ioutil.ReadAll(rr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := fmt.Sprintf("%04d\n", i)
+			if s != string(x) {
+				t.Fatalf("expected %s, but found %s", s, x)
+			}
+		}
+		if _, err := r.Next(); err != io.EOF {
+			t.Fatalf("expected EOF, but found %s", err)
+		}
+	}
+
+	{
+		r := NewReader(bytes.NewReader(buf.Bytes()), 2)
+		if _, err := r.Next(); err != ErrInvalidLogNum {
+			t.Fatalf("expected %s, but found %s\n", ErrInvalidLogNum, err)
+		}
+	}
+}
+
 func BenchmarkRecordWrite(b *testing.B) {
 	for _, size := range []int{8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
-			w := NewLogWriter(ioutil.Discard)
+			w := NewLogWriter(ioutil.Discard, 0 /* logNum */)
 			defer w.Close()
 			buf := make([]byte, size)
 

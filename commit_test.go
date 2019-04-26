@@ -131,7 +131,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
 			b.SetParallelism(parallelism)
 			mem := newMemTable(nil)
-			wal := record.NewLogWriter(ioutil.Discard)
+			wal := record.NewLogWriter(ioutil.Discard, 0 /* logNum */)
 
 			nullCommitEnv := commitEnv{
 				logSeqNum:     new(uint64),

@@ -146,7 +146,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return logFiles[i].num < logFiles[j].num
 	})
 	for _, lf := range logFiles {
-		maxSeqNum, err := d.replayWAL(&ve, fs, filepath.Join(dirname, lf.name))
+		maxSeqNum, err := d.replayWAL(&ve, fs, filepath.Join(dirname, lf.name), lf.num)
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +168,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		BytesPerSync:    d.opts.BytesPerSync,
 		PreallocateSize: d.walPreallocateSize(),
 	})
-	d.mu.log.LogWriter = record.NewLogWriter(logFile)
+	d.mu.log.LogWriter = record.NewLogWriter(logFile, d.mu.log.number)
 
 	// Write a new manifest to disk.
 	if err := d.mu.versions.logAndApply(&ve); err != nil {
@@ -205,6 +205,7 @@ func (d *DB) replayWAL(
 	ve *versionEdit,
 	fs storage.Storage,
 	filename string,
+	logNum uint64,
 ) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
@@ -216,7 +217,7 @@ func (d *DB) replayWAL(
 		b   Batch
 		buf bytes.Buffer
 		mem *memTable
-		rr  = record.NewReader(file)
+		rr  = record.NewReader(file, logNum)
 	)
 	for {
 		r, err := rr.Next()

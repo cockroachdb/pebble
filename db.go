@@ -767,7 +767,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// have been applied.
 		if !d.opts.DisableWAL {
 			d.mu.log.number = newLogNumber
-			d.mu.log.LogWriter = record.NewLogWriter(newLogFile)
+			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNumber)
 		}
 		imm := d.mu.mem.mutable
 		if imm.empty() {
