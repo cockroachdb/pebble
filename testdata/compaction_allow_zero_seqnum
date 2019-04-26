@@ -1,0 +1,35 @@
+define
+L2
+  c.SET.2:2
+----
+2: c-c
+
+allow-zero-seqnum
+L0:b-b
+L0:c-c
+L0:d-d
+----
+true
+false
+true
+
+allow-zero-seqnum
+L0:c-c L0:d-d
+L0:c-c L1:d-d
+L0:b-b L0:b-c
+L0:b-b L1:b-c
+----
+false
+false
+false
+false
+
+# We only look for overlaps at L<N+2> as it isn't valid for a
+# compaction rooted at L<N> to not include overlapping tables at
+# L<N+1>.
+
+allow-zero-seqnum
+L1:c-c
+----
+true
+
