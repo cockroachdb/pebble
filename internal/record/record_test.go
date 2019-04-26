@@ -379,13 +379,13 @@ func TestRecoverNoOp(t *testing.T) {
 		t.Fatalf("reader.Next: %v reader.err: %v", err, r.err)
 	}
 
-	seq, i, j, n := r.seq, r.i, r.j, r.n
+	seq, begin, end, n := r.seq, r.begin, r.end, r.n
 
 	// Should be a no-op since r.err == nil.
 	r.recover()
 
 	// r.err was nil, nothing should have changed.
-	if seq != r.seq || i != r.i || j != r.j || n != r.n {
+	if seq != r.seq || begin != r.begin || end != r.end || n != r.n {
 		t.Fatal("reader.Recover when no error existed, was not a no-op")
 	}
 }

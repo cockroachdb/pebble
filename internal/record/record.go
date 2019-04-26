@@ -152,9 +152,9 @@ type Reader struct {
 	logNum uint32
 	// seq is the sequence number of the current record.
 	seq int
-	// buf[i:j] is the unread portion of the current chunk's payload.
-	// The low bound, i, excludes the chunk header.
-	i, j int
+	// buf[begin:end] is the unread portion of the current chunk's payload. The
+	// low bound, begin, excludes the chunk header.
+	begin, end int
 	// n is the number of bytes of buf that are valid. Once reading has started,
 	// only the final block can have n < blockSize.
 	n int
@@ -184,16 +184,16 @@ func NewReader(r io.Reader, logNum uint64) *Reader {
 // next block into the buffer if necessary.
 func (r *Reader) nextChunk(wantFirst bool) error {
 	for {
-		if r.j+legacyHeaderSize <= r.n {
-			checksum := binary.LittleEndian.Uint32(r.buf[r.j+0 : r.j+4])
-			length := binary.LittleEndian.Uint16(r.buf[r.j+4 : r.j+6])
-			chunkType := r.buf[r.j+6]
+		if r.end+legacyHeaderSize <= r.n {
+			checksum := binary.LittleEndian.Uint32(r.buf[r.end+0 : r.end+4])
+			length := binary.LittleEndian.Uint16(r.buf[r.end+4 : r.end+6])
+			chunkType := r.buf[r.end+6]
 
 			if checksum == 0 && length == 0 && chunkType == 0 {
-				if r.j+recyclableHeaderSize > r.n {
+				if r.end+recyclableHeaderSize > r.n {
 					// Skip the rest of the block if the recyclable header size does not
 					// fit within it.
-					r.j = r.n
+					r.end = r.n
 					continue
 				}
 				if wantFirst || r.recovering {
@@ -214,11 +214,11 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			headerSize := legacyHeaderSize
 			if chunkType >= recyclableFullChunkType && chunkType <= recyclableLastChunkType {
 				headerSize = recyclableHeaderSize
-				if r.j+headerSize > r.n {
+				if r.end+headerSize > r.n {
 					return errors.New("pebble/record: invalid chunk (header overflows block)")
 				}
 
-				logNum := binary.LittleEndian.Uint32(r.buf[r.j+7 : r.j+11])
+				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
 				if logNum != r.logNum {
 					return ErrInvalidLogNum
 				}
@@ -226,16 +226,16 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				chunkType -= (recyclableFullChunkType - 1)
 			}
 
-			r.i = r.j + headerSize
-			r.j = r.i + int(length)
-			if r.j > r.n {
+			r.begin = r.end + headerSize
+			r.end = r.begin + int(length)
+			if r.end > r.n {
 				if r.recovering {
 					r.recover()
 					continue
 				}
 				return errors.New("pebble/record: invalid chunk (length overflows block)")
 			}
-			if checksum != crc.New(r.buf[r.i-headerSize+6:r.j]).Value() {
+			if checksum != crc.New(r.buf[r.begin-headerSize+6:r.end]).Value() {
 				if r.recovering {
 					r.recover()
 					continue
@@ -252,7 +252,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			return nil
 		}
 		if r.n < blockSize && r.started {
-			if r.j != r.n {
+			if r.end != r.n {
 				return io.ErrUnexpectedEOF
 			}
 			return io.EOF
@@ -261,7 +261,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		if err != nil && err != io.ErrUnexpectedEOF {
 			return err
 		}
-		r.i, r.j, r.n = 0, 0, n
+		r.begin, r.end, r.n = 0, 0, n
 	}
 }
 
@@ -273,7 +273,7 @@ func (r *Reader) Next() (io.Reader, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	r.i = r.j
+	r.begin = r.end
 	r.err = r.nextChunk(true)
 	if r.err != nil {
 		return nil, r.err
@@ -294,7 +294,7 @@ func (r *Reader) recover() {
 	r.recovering = true
 	r.err = nil
 	// Discard the rest of the current block.
-	r.i, r.j, r.last = r.n, r.n, false
+	r.begin, r.end, r.last = r.n, r.n, false
 	// Invalidate any outstanding singleReader.
 	r.seq++
 }
@@ -335,7 +335,7 @@ func (r *Reader) seekRecord(offset int64) error {
 	}
 
 	// Clear the state of the internal reader.
-	r.i, r.j, r.n = 0, 0, 0
+	r.begin, r.end, r.n = 0, 0, 0
 	r.started, r.recovering, r.last = false, false, false
 	if r.err = r.nextChunk(false); r.err != nil {
 		return r.err
@@ -343,7 +343,7 @@ func (r *Reader) seekRecord(offset int64) error {
 
 	// Now skip to the offset requested within the block. A subsequent
 	// call to Next will return the block at the requested offset.
-	r.i, r.j = c, c
+	r.begin, r.end = c, c
 
 	return nil
 }
@@ -361,7 +361,7 @@ func (x singleReader) Read(p []byte) (int, error) {
 	if r.err != nil {
 		return 0, r.err
 	}
-	for r.i == r.j {
+	for r.begin == r.end {
 		if r.last {
 			return 0, io.EOF
 		}
@@ -369,8 +369,8 @@ func (x singleReader) Read(p []byte) (int, error) {
 			return 0, r.err
 		}
 	}
-	n := copy(p, r.buf[r.i:r.j])
-	r.i += n
+	n := copy(p, r.buf[r.begin:r.end])
+	r.begin += n
 	return n, nil
 }
 
