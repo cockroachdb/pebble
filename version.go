@@ -249,6 +249,9 @@ func (v *version) overlaps(
 	upper := sort.Search(len(files), func(i int) bool {
 		return cmp(files[i].smallest.UserKey, end) > 0
 	})
+	if lower >= upper {
+		return nil
+	}
 	return files[lower:upper]
 }
 

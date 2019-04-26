@@ -58,6 +58,7 @@ func TestCompactionIter(t *testing.T) {
 			db.DefaultMerger.Merge,
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
+			false, /* allowZeroSeqNum */
 			func([]byte) bool {
 				return elideTombstones
 			},

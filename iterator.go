@@ -86,13 +86,16 @@ func (i *Iterator) findNextEntry() bool {
 
 func (i *Iterator) nextUserKey() {
 	if i.iterValid {
-		if !i.valid {
+		done := i.iter.Key().SeqNum() == 0
+		if !done && !i.valid {
+			// If we're going to compare against the next key, we need to save the
+			// current key.
 			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
 			i.key = i.keyBuf
 		}
 		for {
 			i.iterValid = i.iter.Next()
-			if !i.iterValid || !i.equal(i.key, i.iter.Key().UserKey) {
+			if done || !i.iterValid || !i.equal(i.key, i.iter.Key().UserKey) {
 				break
 			}
 		}
@@ -173,6 +176,8 @@ func (i *Iterator) findPrevEntry() bool {
 func (i *Iterator) prevUserKey() {
 	if i.iterValid {
 		if !i.valid {
+			// If we're going to compare against the prev key, we need to save the
+			// current key.
 			i.keyBuf = append(i.keyBuf[:0], i.iter.Key().UserKey...)
 			i.key = i.keyBuf
 		}
