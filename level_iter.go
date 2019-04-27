@@ -12,7 +12,9 @@ import (
 
 // tableNewIters creates a new point and range-del iterator for the given file
 // number.
-type tableNewIters func(meta *fileMetadata) (internalIterator, internalIterator, error)
+type tableNewIters func(
+	meta *fileMetadata, opts *db.IterOptions,
+) (internalIterator, internalIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
 //
@@ -28,9 +30,10 @@ type tableNewIters func(meta *fileMetadata) (internalIterator, internalIterator,
 // heap. Note that Iterator treat a range deletion tombstone as a no-op and
 // processes range deletions via mergingIter.
 type levelIter struct {
-	opts  *db.IterOptions
-	cmp   db.Compare
-	index int
+	opts      *db.IterOptions
+	tableOpts *db.IterOptions
+	cmp       db.Compare
+	index     int
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone. Note that if boundary != nil, then
 	// iter == nil, and if iter != nil, then boundary == nil.
@@ -86,7 +89,7 @@ func (l *levelIter) initLargestUserKey(largestUserKey *[]byte) {
 func (l *levelIter) findFileGE(key []byte) int {
 	// Find the earliest file whose largest key is >= ikey. Note that the range
 	// deletion sentinel key is handled specially and a search for K will not
-	// find a table for K<range-del-sentinel> is the largest key. This prevents
+	// find a table where K<range-del-sentinel> is the largest key. This prevents
 	// loading untruncated range deletions from a table which can't possibly
 	// contain the target key and is required for correctness by DB.Get.
 	//
@@ -132,7 +135,8 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		f := &l.files[l.index]
-		if lowerBound := l.opts.GetLowerBound(); lowerBound != nil {
+		lowerBound := l.opts.GetLowerBound()
+		if lowerBound != nil {
 			if l.cmp(f.largest.UserKey, lowerBound) < 0 {
 				// The largest key in the sstable is smaller than the lower bound.
 				if dir < 0 {
@@ -140,8 +144,15 @@ func (l *levelIter) loadFile(index, dir int) bool {
 				}
 				continue
 			}
+			if l.cmp(lowerBound, f.smallest.UserKey) < 0 {
+				// The lower bound is smaller than the smallest key in the
+				// table. Iteration within the table does not need to check the lower
+				// bound.
+				lowerBound = nil
+			}
 		}
-		if upperBound := l.opts.GetUpperBound(); upperBound != nil {
+		upperBound := l.opts.GetUpperBound()
+		if upperBound != nil {
 			if l.cmp(f.smallest.UserKey, upperBound) >= 0 {
 				// The smallest key in the sstable is greater than or equal to the
 				// lower bound.
@@ -150,10 +161,26 @@ func (l *levelIter) loadFile(index, dir int) bool {
 				}
 				continue
 			}
+			if l.cmp(upperBound, f.largest.UserKey) > 0 {
+				// The upper bound is greater than the largest key in the
+				// table. Iteration within the table does not need to check the upper
+				// bound.
+				upperBound = nil
+			}
+		}
+
+		var opts *db.IterOptions
+		if lowerBound != nil || upperBound != nil {
+			if l.tableOpts == nil {
+				l.tableOpts = &db.IterOptions{}
+			}
+			l.tableOpts.LowerBound = lowerBound
+			l.tableOpts.UpperBound = upperBound
+			opts = l.tableOpts
 		}
 
 		var rangeDelIter internalIterator
-		l.iter, rangeDelIter, l.err = l.newIters(f)
+		l.iter, rangeDelIter, l.err = l.newIters(f, opts)
 		if l.err != nil || l.iter == nil {
 			return false
 		}

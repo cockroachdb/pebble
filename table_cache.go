@@ -49,7 +49,9 @@ func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, 
 	}
 }
 
-func (c *tableCache) newIters(meta *fileMetadata) (internalIterator, internalIterator, error) {
+func (c *tableCache) newIters(
+	meta *fileMetadata, opts *db.IterOptions,
+) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
@@ -67,7 +69,7 @@ func (c *tableCache) newIters(meta *fileMetadata) (internalIterator, internalIte
 	}
 	n.result <- x
 
-	iter := x.reader.NewIter(nil)
+	iter := x.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
 	atomic.AddInt32(&c.mu.iterCount, 1)
 	if raceEnabled {
 		c.mu.Lock()
@@ -92,7 +94,7 @@ func (c *tableCache) newIters(meta *fileMetadata) (internalIterator, internalIte
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	if rangeDelIter := x.reader.NewRangeDelIter(nil); rangeDelIter != nil {
+	if rangeDelIter := x.reader.NewRangeDelIter(); rangeDelIter != nil {
 		return iter, rangeDelIter, nil
 	}
 	// NB: Translate a nil range-del iterator into a nil interface.

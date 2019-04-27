@@ -17,7 +17,9 @@
 
 package batchskl
 
-import "github.com/petermattis/pebble/db"
+import (
+	"github.com/petermattis/pebble/db"
+)
 
 type splice struct {
 	prev uint32
@@ -33,8 +35,10 @@ func (s *splice) init(prev, next uint32) {
 // to construct an iterator. The current state of the iterator can be cloned
 // by simply value copying the struct.
 type Iterator struct {
-	list *Skiplist
-	nd   uint32
+	list  *Skiplist
+	nd    uint32
+	lower []byte
+	upper []byte
 }
 
 // Close resets the iterator.
@@ -45,47 +49,96 @@ func (it *Iterator) Close() error {
 }
 
 // SeekGE moves the iterator to the first entry whose key is greater than or
-// equal to the given key. Returns true if the iterator is pointing at a
-// valid entry and false otherwise.
+// equal to the given key. Returns true if the iterator is pointing at a valid
+// entry and false otherwise. Note that SeekGE only checks the upper bound. It
+// is up to the caller to ensure that key is greater than or equal to the lower
+// bound.
 func (it *Iterator) SeekGE(key []byte) bool {
 	_, it.nd, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
-	return it.nd != it.list.tail
+	if it.nd == it.list.tail {
+		return false
+	}
+	if it.upper != nil && it.list.storage.Compare(it.upper, it.list.getKey(it.nd)) <= 0 {
+		it.nd = it.list.tail
+		return false
+	}
+	return true
 }
 
 // SeekLT moves the iterator to the last entry whose key is less the given
 // key. Returns true if the iterator is pointing at a valid entry and false
-// otherwise.
+// otherwise. Note that SeekLT only checks the lower bound. It is up to the
+// caller to ensure that key is less than the upper bound.
 func (it *Iterator) SeekLT(key []byte) (found bool) {
 	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
-	return it.nd != it.list.head
+	if it.nd == it.list.head {
+		return false
+	}
+	if it.lower != nil && it.list.storage.Compare(it.lower, it.list.getKey(it.nd)) > 0 {
+		it.nd = it.list.head
+		return false
+	}
+	return true
 }
 
-// First seeks position at the first entry in list.
-// Final state of iterator is Valid() iff list is not empty.
+// First seeks position at the first entry in list. Final state of iterator is
+// Valid() iff list is not empty. Note that First only checks the upper
+// bound. It is up to the caller to ensure that key is greater than or equal to
+// the lower bound (e.g. via a call to SeekGE(lower)).
 func (it *Iterator) First() bool {
 	it.nd = it.list.getNext(it.list.head, 0)
-	return it.nd != it.list.tail
+	if it.nd == it.list.tail {
+		return false
+	}
+	if it.upper != nil && it.list.storage.Compare(it.upper, it.list.getKey(it.nd)) <= 0 {
+		it.nd = it.list.tail
+		return false
+	}
+	return true
 }
 
-// Last seeks position at the last entry in list.
-// Final state of iterator is Valid() iff list is not empty.
+// Last seeks position at the last entry in list. Final state of iterator is
+// Valid() iff list is not empty. Note that Last only checks the lower
+// bound. It is up to the caller to ensure that key is less than the upper
+// bound (e.g. via a call to SeekLT(upper)).
 func (it *Iterator) Last() bool {
 	it.nd = it.list.getPrev(it.list.tail, 0)
-	return it.nd != it.list.head
+	if it.nd == it.list.head {
+		return false
+	}
+	if it.lower != nil && it.list.storage.Compare(it.lower, it.list.getKey(it.nd)) > 0 {
+		it.nd = it.list.head
+		return false
+	}
+	return true
 }
 
 // Next advances to the next position. If there are no following nodes, then
 // Valid() will be false after this call.
 func (it *Iterator) Next() bool {
 	it.nd = it.list.getNext(it.nd, 0)
-	return it.nd != it.list.tail
+	if it.nd == it.list.tail {
+		return false
+	}
+	if it.upper != nil && it.list.storage.Compare(it.upper, it.list.getKey(it.nd)) <= 0 {
+		it.nd = it.list.tail
+		return false
+	}
+	return true
 }
 
 // Prev moves to the previous position. If there are no previous nodes, then
 // Valid() will be false after this call.
 func (it *Iterator) Prev() bool {
 	it.nd = it.list.getPrev(it.nd, 0)
-	return it.nd != it.list.head
+	if it.nd == it.list.head {
+		return false
+	}
+	if it.lower != nil && it.list.storage.Compare(it.lower, it.list.getKey(it.nd)) > 0 {
+		it.nd = it.list.head
+		return false
+	}
+	return true
 }
 
 // Key returns the key at the current position.
@@ -120,6 +173,11 @@ func (it *Iterator) seekForBaseSplice(
 	for level := it.list.height - 1; ; level-- {
 		prev, next, found = it.list.findSpliceForLevel(key, abbreviatedKey, level, prev)
 		if found {
+			if level != 0 {
+				// next is pointing at the target node, but we need to find previous on
+				// the bottom level.
+				prev = it.list.getPrev(next, 0)
+			}
 			break
 		}
 		if level == 0 {

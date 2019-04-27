@@ -35,7 +35,7 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 	smallestSet, largestSet := false, false
 
 	{
-		iter := r.NewIter(nil)
+		iter := r.NewIter(nil /* lower */, nil /* upper */)
 		defer iter.Close()
 		if iter.First() {
 			meta.smallest = iter.Key().Clone()
@@ -50,7 +50,7 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 		}
 	}
 
-	if iter := r.NewRangeDelIter(nil); iter != nil {
+	if iter := r.NewRangeDelIter(); iter != nil {
 		defer iter.Close()
 		if iter.First() {
 			key := iter.Key()

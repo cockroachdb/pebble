@@ -438,7 +438,7 @@ func (d *DB) newIterInternal(
 	current := readState.current
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
-		iter, rangeDelIter, err := d.newIters(f)
+		iter, rangeDelIter, err := d.newIters(f, o)
 		if err != nil {
 			dbi.err = err
 			return dbi

@@ -33,7 +33,7 @@ import (
 func length(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter()
+	it := s.NewIter(nil, nil)
 	for valid := it.First(); valid; valid = it.Next() {
 		count++
 	}
@@ -45,7 +45,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter()
+	it := s.NewIter(nil, nil)
 	for valid := it.Last(); valid; valid = it.Prev() {
 		count++
 	}
@@ -82,7 +82,7 @@ func (d *testStorage) Compare(a []byte, b uint32) int {
 func TestEmpty(t *testing.T) {
 	key := makeKey("aaa")
 	l := NewSkiplist(&testStorage{}, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -100,7 +100,7 @@ func TestEmpty(t *testing.T) {
 func TestBasic(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	// Try adding values.
 	require.Nil(t, l.Add(d.add("key1")))
@@ -126,7 +126,7 @@ func TestBasic(t *testing.T) {
 func TestSkiplistAdd(t *testing.T) {
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	// Add empty key.
 	require.Nil(t, l.Add(d.add("")))
@@ -163,7 +163,7 @@ func TestIteratorNext(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -188,7 +188,7 @@ func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -212,7 +212,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	const n = 1000
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 	it.First()
@@ -254,7 +254,7 @@ func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
 	l := NewSkiplist(d, 0)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 	it.First()
@@ -295,6 +295,74 @@ func TestIteratorSeekLT(t *testing.T) {
 	require.EqualValues(t, "", it.Key().UserKey)
 }
 
+// TODO(peter): test First and Last.
+func TestIteratorBounds(t *testing.T) {
+	d := &testStorage{}
+	l := NewSkiplist(d, 0)
+	for i := 1; i < 10; i++ {
+		err := l.Add(d.add(fmt.Sprintf("%05d", i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	it := l.NewIter(makeKey("00003"), makeKey("00007"))
+
+	// SeekGE within the lower and upper bound succeeds.
+	for i := 3; i <= 6; i++ {
+		key := makeKey(fmt.Sprintf("%05d", i))
+		require.True(t, it.SeekGE(key))
+		require.EqualValues(t, string(key), string(it.Key().UserKey))
+	}
+
+	// SeekGE before the lower bound still succeeds (only the upper bound is
+	// checked).
+	for i := 1; i < 3; i++ {
+		key := makeKey(fmt.Sprintf("%05d", i))
+		require.True(t, it.SeekGE(key))
+		require.EqualValues(t, string(key), string(it.Key().UserKey))
+	}
+
+	// SeekGE beyond the upper bound fails.
+	for i := 7; i < 10; i++ {
+		key := makeKey(fmt.Sprintf("%05d", i))
+		require.False(t, it.SeekGE(key))
+	}
+
+	require.True(t, it.SeekGE(makeKey("00006")))
+	require.EqualValues(t, "00006", it.Key().UserKey)
+
+	// Next into the upper bound fails.
+	require.False(t, it.Next())
+
+	// SeekLT within the lower and upper bound succeeds.
+	for i := 4; i <= 7; i++ {
+		key := makeKey(fmt.Sprintf("%05d", i))
+		require.True(t, it.SeekLT(key))
+		require.EqualValues(t, fmt.Sprintf("%05d", i-1), string(it.Key().UserKey))
+	}
+
+	// SeekLT beyond the upper bound still succeeds (only the lower bound is
+	// checked).
+	for i := 8; i < 9; i++ {
+		key := makeKey(fmt.Sprintf("%05d", i))
+		require.True(t, it.SeekLT(key))
+		require.EqualValues(t, fmt.Sprintf("%05d", i-1), string(it.Key().UserKey))
+	}
+
+	// SeekLT before the lower bound fails.
+	for i := 1; i < 4; i++ {
+		key := makeKey(fmt.Sprintf("%05d", i))
+		require.False(t, it.SeekLT(key))
+	}
+
+	require.True(t, it.SeekLT(makeKey("00004")))
+	require.EqualValues(t, "00003", it.Key().UserKey)
+
+	// Prev into the lower bound fails.
+	require.False(t, it.Prev())
+}
+
 func randomKey(rng *rand.Rand, b []byte) []byte {
 	key := rng.Uint32()
 	key2 := rng.Uint32()
@@ -314,7 +382,7 @@ func BenchmarkReadWrite(b *testing.B) {
 				keys: make([][]byte, 0, b.N),
 			}
 			l := NewSkiplist(d, 0)
-			it := l.NewIter()
+			it := l.NewIter(nil, nil)
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 			b.ResetTimer()
@@ -348,7 +416,7 @@ func BenchmarkIterNext(b *testing.B) {
 		_ = l.Add(offset)
 	}
 
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.Valid() {
@@ -373,7 +441,7 @@ func BenchmarkIterPrev(b *testing.B) {
 		_ = l.Add(offset)
 	}
 
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.Valid() {

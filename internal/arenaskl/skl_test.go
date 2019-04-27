@@ -61,7 +61,7 @@ func makeInserterAdd(s *Skiplist) func(key db.InternalKey, value []byte) error {
 func length(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter()
+	it := s.NewIter(nil, nil)
 	for valid := it.First(); valid; valid = it.Next() {
 		count++
 	}
@@ -73,7 +73,7 @@ func length(s *Skiplist) int {
 func lengthRev(s *Skiplist) int {
 	count := 0
 
-	it := s.NewIter()
+	it := s.NewIter(nil, nil)
 	for valid := it.Last(); valid; valid = it.Prev() {
 		count++
 	}
@@ -84,7 +84,7 @@ func lengthRev(s *Skiplist) int {
 func TestEmpty(t *testing.T) {
 	key := makeKey("aaa")
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -121,7 +121,7 @@ func TestBasic(t *testing.T) {
 	for _, inserter := range []bool{false, true} {
 		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
 			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-			it := l.NewIter()
+			it := l.NewIter(nil, nil)
 
 			add := l.Add
 			if inserter {
@@ -216,7 +216,7 @@ func TestConcurrentBasic(t *testing.T) {
 				go func(i int) {
 					defer wg.Done()
 
-					it := l.NewIter()
+					it := l.NewIter(nil, nil)
 					require.True(t, it.SeekGE(makeKey(fmt.Sprintf("%05d", i))))
 					require.EqualValues(t, fmt.Sprintf("%05d", i), it.Key().UserKey)
 				}(i)
@@ -269,7 +269,7 @@ func TestConcurrentOneKey(t *testing.T) {
 				go func() {
 					defer wg.Done()
 
-					it := l.NewIter()
+					it := l.NewIter(nil, nil)
 					it.SeekGE(key)
 					require.True(t, it.Valid())
 					require.True(t, bytes.Equal(key, it.Key().UserKey))
@@ -292,7 +292,7 @@ func TestSkiplistAdd(t *testing.T) {
 	for _, inserter := range []bool{false, true} {
 		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
 			l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-			it := l.NewIter()
+			it := l.NewIter(nil, nil)
 
 			add := l.Add
 			if inserter {
@@ -307,7 +307,7 @@ func TestSkiplistAdd(t *testing.T) {
 			require.EqualValues(t, []byte{}, it.Value())
 
 			l = NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-			it = l.NewIter()
+			it = l.NewIter(nil, nil)
 
 			add = l.Add
 			if inserter {
@@ -381,7 +381,7 @@ func TestConcurrentAdd(t *testing.T) {
 
 			for f := 0; f < 2; f++ {
 				go func() {
-					it := l.NewIter()
+					it := l.NewIter(nil, nil)
 					add := l.Add
 					if inserter {
 						add = makeInserterAdd(l)
@@ -416,7 +416,7 @@ func TestConcurrentAdd(t *testing.T) {
 func TestIteratorNext(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -441,7 +441,7 @@ func TestIteratorNext(t *testing.T) {
 func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 
@@ -466,7 +466,7 @@ func TestIteratorPrev(t *testing.T) {
 func TestIteratorSeekGE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 	it.First()
@@ -516,7 +516,7 @@ func TestIteratorSeekGE(t *testing.T) {
 func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 
 	require.False(t, it.Valid())
 	it.First()
@@ -564,6 +564,75 @@ func TestIteratorSeekLT(t *testing.T) {
 	require.EqualValues(t, "", it.Key().UserKey)
 }
 
+// TODO(peter): test First and Last.
+func TestIteratorBounds(t *testing.T) {
+	l := NewSkiplist(NewArena(arenaSize, 0), bytes.Compare)
+	for i := 1; i < 10; i++ {
+		err := l.Add(makeIntKey(i), makeValue(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	key := func(i int) []byte {
+		return makeIntKey(i).UserKey
+	}
+
+	it := l.NewIter(key(3), key(7))
+
+	// SeekGE within the lower and upper bound succeeds.
+	for i := 3; i <= 6; i++ {
+		k := key(i)
+		require.True(t, it.SeekGE(k))
+		require.EqualValues(t, string(k), string(it.Key().UserKey))
+	}
+
+	// SeekGE before the lower bound still succeeds (only the upper bound is
+	// checked).
+	for i := 1; i < 3; i++ {
+		k := key(i)
+		require.True(t, it.SeekGE(k))
+		require.EqualValues(t, string(k), string(it.Key().UserKey))
+	}
+
+	// SeekGE beyond the upper bound fails.
+	for i := 7; i < 10; i++ {
+		require.False(t, it.SeekGE(key(i)))
+	}
+
+	require.True(t, it.SeekGE(key(6)))
+	require.EqualValues(t, "00006", it.Key().UserKey)
+	require.EqualValues(t, "v00006", it.Value())
+
+	// Next into the upper bound fails.
+	require.False(t, it.Next())
+
+	// SeekLT within the lower and upper bound succeeds.
+	for i := 4; i <= 7; i++ {
+		require.True(t, it.SeekLT(key(i)))
+		require.EqualValues(t, string(key(i-1)), string(it.Key().UserKey))
+	}
+
+	// SeekLT beyond the upper bound still succeeds (only the lower bound is
+	// checked).
+	for i := 8; i < 9; i++ {
+		require.True(t, it.SeekLT(key(8)))
+		require.EqualValues(t, string(key(i-1)), string(it.Key().UserKey))
+	}
+
+	// SeekLT before the lower bound fails.
+	for i := 1; i < 4; i++ {
+		require.False(t, it.SeekLT(key(i)))
+	}
+
+	require.True(t, it.SeekLT(key(4)))
+	require.EqualValues(t, "00003", it.Key().UserKey)
+	require.EqualValues(t, "v00003", it.Value())
+
+	// Prev into the lower bound fails.
+	require.False(t, it.Prev())
+}
+
 func randomKey(rng *rand.Rand, b []byte) db.InternalKey {
 	key := rng.Uint32()
 	key2 := rng.Uint32()
@@ -582,7 +651,7 @@ func BenchmarkReadWrite(b *testing.B) {
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
-				it := l.NewIter()
+				it := l.NewIter(nil, nil)
 				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 				buf := make([]byte, 8)
 
@@ -629,7 +698,7 @@ func BenchmarkIterNext(b *testing.B) {
 		}
 	}
 
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.Valid() {
@@ -649,7 +718,7 @@ func BenchmarkIterPrev(b *testing.B) {
 		}
 	}
 
-	it := l.NewIter()
+	it := l.NewIter(nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.Valid() {

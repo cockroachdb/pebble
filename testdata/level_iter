@@ -100,6 +100,27 @@ first
 a:1
 a:1
 
+# levelIter trims lower/upper bound in the options passed to sstables.
+load a
+----
+[,]
+
+load a lower=a upper=b
+----
+[a,b]
+
+load a lower=a upper=c
+----
+[a,]
+
+load c lower=b upper=d
+----
+[,d]
+
+load c lower=b upper=e
+----
+[,]
+
 # levelIter only checks lower bound when loading sstables.
 iter lower=b
 seek-ge a

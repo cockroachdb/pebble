@@ -222,10 +222,14 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	return nil
 }
 
-// NewIter returns a new Iterator object. Note that it is safe for an iterator
-// to be copied by value.
-func (s *Skiplist) NewIter() Iterator {
-	return Iterator{list: s}
+// NewIter returns a new Iterator object. The lower and upper bound parameters
+// control the range of keys the iterator will return. Specifying for nil for
+// lower or upper bound disables the check for that boundary. Note that lower
+// bound is not checked on {SeekGE,First} and upper bound is not check on
+// {SeekLT,Last}. The user is expected to perform that check. Note that it is
+// safe for an iterator to be copied by value.
+func (s *Skiplist) NewIter(lower, upper []byte) Iterator {
+	return Iterator{list: s, lower: lower, upper: upper}
 }
 
 func (s *Skiplist) newNode(height, key uint32, abbreviatedKey uint64) uint32 {
