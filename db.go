@@ -374,6 +374,21 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 	return d.mu.mem.mutable, err
 }
 
+type iterAlloc struct {
+	dbi             Iterator
+	merging         mergingIter
+	iters           [3 + numLevels]internalIterator
+	rangeDelIters   [3 + numLevels]internalIterator
+	largestUserKeys [3 + numLevels][]byte
+	levels          [numLevels]levelIter
+}
+
+var iterAllocPool = sync.Pool{
+	New: func() interface{} {
+		return &iterAlloc{}
+	},
+}
+
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
 // level.
 func (d *DB) newIterInternal(
@@ -398,16 +413,9 @@ func (d *DB) newIterInternal(
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	var buf struct {
-		dbi             Iterator
-		merging         mergingIter
-		iters           [3 + numLevels]internalIterator
-		rangeDelIters   [3 + numLevels]internalIterator
-		largestUserKeys [3 + numLevels][]byte
-		levels          [numLevels]levelIter
-	}
-
+	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
+	dbi.alloc = buf
 	dbi.opts = o
 	dbi.cmp = d.cmp
 	dbi.equal = d.equal

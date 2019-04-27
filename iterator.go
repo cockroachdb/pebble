@@ -47,6 +47,7 @@ type Iterator struct {
 	iterKey   *db.InternalKey
 	iterValue []byte
 	pos       iterPos
+	alloc     *iterAlloc
 }
 
 func (i *Iterator) findNextEntry() bool {
@@ -391,5 +392,10 @@ func (i *Iterator) Close() error {
 	if err := i.iter.Close(); err != nil && i.err != nil {
 		i.err = err
 	}
-	return i.err
+	err := i.err
+	if alloc := i.alloc; alloc != nil {
+		*i = Iterator{}
+		iterAllocPool.Put(alloc)
+	}
+	return err
 }
