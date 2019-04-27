@@ -94,9 +94,9 @@ func (i *Iterator) initBounds() {
 		}
 	}
 	i.blockUpper = i.upper
-	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) >= 0 {
-		// The upper-bound is greater than or equal to the index key which
-		// itself is greater than every key in the block. No need to check the
+	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) > 0 {
+		// The upper-bound is greater than the index key which itself is greater
+		// than or equal to every key in the block. No need to check the
 		// upper-bound again for this block.
 		i.blockUpper = nil
 	}
