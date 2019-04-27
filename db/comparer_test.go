@@ -6,10 +6,11 @@ package db
 
 import (
 	"fmt"
-	"math/rand"
 	"sort"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/rand"
 )
 
 func TestDefAppendSeparator(t *testing.T) {
@@ -55,7 +56,7 @@ func TestDefAppendSeparator(t *testing.T) {
 }
 
 func TestAbbreviatedKey(t *testing.T) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	randBytes := func(size int) []byte {
 		data := make([]byte, size)
 		for i := range data {

@@ -47,7 +47,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
-	"math/rand"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -55,6 +54,7 @@ import (
 	"unsafe"
 
 	"github.com/petermattis/pebble/db"
+	"golang.org/x/exp/rand"
 )
 
 const (
@@ -86,7 +86,7 @@ type Skiplist struct {
 
 	rand struct {
 		sync.Mutex
-		src rand.Source64
+		src rand.PCGSource
 	}
 
 	// If set to true by tests, then extra delays are added to make it easier to
@@ -158,7 +158,7 @@ func (s *Skiplist) Reset(arena *Arena, cmp db.Compare) {
 		tail:   tail,
 		height: 1,
 	}
-	s.rand.src = rand.NewSource(time.Now().UnixNano()).(rand.Source64)
+	s.rand.src.Seed(uint64(time.Now().UnixNano()))
 }
 
 // Height returns the height of the highest tower within any of the nodes that

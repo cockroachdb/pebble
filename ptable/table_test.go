@@ -6,7 +6,6 @@ package ptable
 
 import (
 	"fmt"
-	"math/rand"
 	"sort"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 type testEnv []ColumnDef
@@ -202,7 +202,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 
 	r, keys := buildBenchmarkTable(b, blockSize, false /* NULL values */)
 	it := r.NewIter()
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

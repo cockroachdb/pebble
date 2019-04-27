@@ -7,7 +7,6 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +15,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 type tableCacheTestFile struct {

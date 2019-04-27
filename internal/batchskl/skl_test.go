@@ -21,12 +21,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/petermattis/pebble/db"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 // length iterates over skiplist to give exact size.
@@ -383,7 +383,7 @@ func BenchmarkReadWrite(b *testing.B) {
 			}
 			l := NewSkiplist(d, 0)
 			it := l.NewIter(nil, nil)
-			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+			rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -408,7 +408,7 @@ func BenchmarkIterNext(b *testing.B) {
 	}
 	l := NewSkiplist(d, 0)
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	for i := 0; i < len(buf); i += 8 {
 		key := randomKey(rng, buf[i:i+8])
 		offset := uint32(len(d.keys))
@@ -433,7 +433,7 @@ func BenchmarkIterPrev(b *testing.B) {
 	}
 	l := NewSkiplist(d, 0)
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	for i := 0; i < len(buf); i += 8 {
 		key := randomKey(rng, buf[i:i+8])
 		offset := uint32(len(d.keys))

@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"fmt"
-	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 func TestMergingIter(t *testing.T) {
@@ -202,7 +202,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
 							}
 							m := newMergingIter(db.DefaultComparer.Compare, iters...)
-							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {

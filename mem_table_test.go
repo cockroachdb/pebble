@@ -7,7 +7,6 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"golang.org/x/exp/rand"
 )
 
 // Set sets the value for the given key. It overwrites any previous value for
@@ -341,7 +341,7 @@ func buildMemTable(b *testing.B) (*memTable, [][]byte) {
 func BenchmarkMemTableIterSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := m.newIter(nil)
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

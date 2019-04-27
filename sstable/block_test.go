@@ -7,7 +7,6 @@ package sstable
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"golang.org/x/exp/rand"
 )
 
 func TestBlockWriter(t *testing.T) {
@@ -227,7 +227,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -269,7 +269,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {

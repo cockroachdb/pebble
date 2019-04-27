@@ -6,9 +6,10 @@ package ptable
 
 import (
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/rand"
 )
 
 func randNullBitmap(rng *rand.Rand, size int) NullBitmap {
@@ -21,7 +22,7 @@ func randNullBitmap(rng *rand.Rand, size int) NullBitmap {
 
 func BenchmarkNullBitmapGet(b *testing.B) {
 	const size = 4096
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	bmap := randNullBitmap(rng, size)
 	b.ResetTimer()
 
@@ -44,7 +45,7 @@ func BenchmarkNullBitmapGet(b *testing.B) {
 
 func BenchmarkNullBitmapRank(b *testing.B) {
 	const size = 4096
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	bmap := randNullBitmap(rng, size)
 	b.ResetTimer()
 

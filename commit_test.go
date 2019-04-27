@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/record"
+	"golang.org/x/exp/rand"
 )
 
 type testCommitEnv struct {
@@ -171,7 +171,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 			b.ResetTimer()
 
 			b.RunParallel(func(pb *testing.PB) {
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 				buf := make([]byte, keySize)
 
 				for pb.Next() {
