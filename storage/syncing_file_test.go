@@ -84,6 +84,7 @@ func BenchmarkSyncWrite(b *testing.B) {
 		var size int
 		buf := make([]byte, wsize)
 
+		b.SetBytes(int64(len(buf)))
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			if f == nil {
