@@ -168,8 +168,7 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
 func (m *memTable) newIter(o *db.IterOptions) internalIterator {
-	it := m.skl.NewIter(o.GetLowerBound(), o.GetUpperBound())
-	return &it
+	return m.skl.NewIter(o.GetLowerBound(), o.GetUpperBound())
 }
 
 func (m *memTable) newRangeDelIter(*db.IterOptions) internalIterator {
