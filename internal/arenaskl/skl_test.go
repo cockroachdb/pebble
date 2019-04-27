@@ -38,7 +38,7 @@ const arenaSize = 1 << 20
 // positioning methods (Seek*, First, Last, Next, Prev) to the old API which
 // returned a boolean corresponding to Valid. Only used by test code.
 type iterAdapter struct {
-	Iterator
+	*Iterator
 }
 
 func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {

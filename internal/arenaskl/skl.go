@@ -307,8 +307,10 @@ func (s *Skiplist) addInternal(key db.InternalKey, value []byte, ins *Inserter) 
 // bound is not checked on {SeekGE,First} and upper bound is not check on
 // {SeekLT,Last}. The user is expected to perform that check. Note that it is
 // safe for an iterator to be copied by value.
-func (s *Skiplist) NewIter(lower, upper []byte) Iterator {
-	return Iterator{list: s, nd: s.head, lower: lower, upper: upper}
+func (s *Skiplist) NewIter(lower, upper []byte) *Iterator {
+	it := iterPool.Get().(*Iterator)
+	*it = Iterator{list: s, nd: s.head, lower: lower, upper: upper}
+	return it
 }
 
 func (s *Skiplist) newNode(
