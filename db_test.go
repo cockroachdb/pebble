@@ -598,3 +598,19 @@ func TestCacheEvict(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFlushEmpty(t *testing.T) {
+	d, err := Open("", &db.Options{
+		Storage: storage.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Flushing an empty memtable should not fail.
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

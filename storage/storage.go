@@ -84,7 +84,7 @@ var Default Storage = defaultFS{}
 type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
-	return os.Create(name)
+	return os.OpenFile(name, os.O_RDWR|os.O_CREATE, 0666)
 }
 
 func (defaultFS) Link(oldname, newname string) error {

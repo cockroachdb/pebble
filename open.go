@@ -62,6 +62,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		equal:          opts.Comparer.Equal,
 		merge:          opts.Merger.Merge,
 		abbreviatedKey: opts.Comparer.AbbreviatedKey,
+		logRecycler:    logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 	}
 	if d.equal == nil {
 		d.equal = bytes.Equal
@@ -83,6 +84,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.mem.mutable = newMemTable(d.opts)
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+	d.mu.cleaner.cond.L = &d.mu.Mutex
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
 	d.mu.snapshots.init()

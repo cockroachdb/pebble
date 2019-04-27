@@ -144,6 +144,8 @@ type DB struct {
 		val *readState
 	}
 
+	logRecycler logRecycler
+
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
 	mu struct {
@@ -179,6 +181,11 @@ type DB struct {
 			compacting     bool
 			pendingOutputs map[uint64]struct{}
 			manual         []*manualCompaction
+		}
+
+		cleaner struct {
+			cond     sync.Cond
+			cleaning bool
 		}
 
 		// The list of active snapshots.
@@ -744,17 +751,39 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 
-			newLogFile, err = d.opts.Storage.Create(dbFilename(d.dirname, fileTypeLog, newLogNumber))
+			newLogName := dbFilename(d.dirname, fileTypeLog, newLogNumber)
+
+			// Try to use a recycled log file. Recycling log files is an important
+			// performance optimization as it is faster to sync a file that has
+			// already been written, than one which is being written for the first
+			// time. This is due to the need to sync file metadata when a file is
+			// being written for the first time. Note this is true even if file
+			// preallocation is performed (e.g. fallocate).
+			recycleLogNumber := d.logRecycler.peek()
+			if recycleLogNumber > 0 {
+				recycleLogName := dbFilename(d.dirname, fileTypeLog, recycleLogNumber)
+				err = d.opts.Storage.Rename(recycleLogName, newLogName)
+			}
+
+			if err == nil {
+				newLogFile, err = d.opts.Storage.Create(newLogName)
+			}
+
 			if err == nil {
 				err = d.mu.log.Close()
 				if err != nil {
 					newLogFile.Close()
+				} else {
+					newLogFile = storage.NewSyncingFile(newLogFile, storage.SyncingFileOptions{
+						BytesPerSync:    d.opts.BytesPerSync,
+						PreallocateSize: d.walPreallocateSize(),
+					})
 				}
 			}
-			newLogFile = storage.NewSyncingFile(newLogFile, storage.SyncingFileOptions{
-				BytesPerSync:    d.opts.BytesPerSync,
-				PreallocateSize: d.walPreallocateSize(),
-			})
+
+			if recycleLogNumber > 0 {
+				err = d.logRecycler.pop(recycleLogNumber)
+			}
 
 			d.mu.Lock()
 			d.mu.mem.switching = false
@@ -777,15 +806,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.log.number = newLogNumber
 			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNumber)
 		}
-		imm := d.mu.mem.mutable
-		if imm.empty() {
-			// If the mutable memtable is empty, then remove it from the queue. We'll
-			// reuse the memtable by leaving d.mu.mem.mutable non nil.
-			d.mu.mem.queue = d.mu.mem.queue[:len(d.mu.mem.queue)-1]
-			imm = nil
-		} else {
-			d.mu.mem.mutable = nil
-		}
+
 		var scheduleFlush bool
 		if b != nil && b.flushable != nil {
 			// The batch is too large to fit in the memtable so add it directly to
@@ -793,11 +814,16 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
 			scheduleFlush = true
 		}
-		if d.mu.mem.mutable == nil {
-			// Create a new memtable if we are flushing the previous mutable
-			// memtable.
-			d.mu.mem.mutable = newMemTable(d.opts)
-		}
+
+		// Create a new memtable, scheduling the previous one for flushing. We do
+		// this even if the previous memtable was empty because the DB.Flush
+		// mechanism is dependent on being able to wait for the empty memtable to
+		// flush. We can't just mark the empty memtable as flushed here because we
+		// also have to wait for all previous immutable tables to
+		// flush. Additionally, the memtable is tied to particular WAL file and we
+		// want to go through the flush path in order to recycle that WAL file.
+		imm := d.mu.mem.mutable
+		d.mu.mem.mutable = newMemTable(d.opts)
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 		d.updateReadStateLocked()
 		if (imm != nil && imm.unref()) || scheduleFlush {
