@@ -112,6 +112,7 @@ type blockIter struct {
 	ptr          unsafe.Pointer
 	data         []byte
 	key, val     []byte
+	keyBuf       [256]byte
 	ikey         db.InternalKey
 	cached       []blockEntry
 	cachedBuf    []byte
@@ -135,7 +136,7 @@ func (i *blockIter) init(cmp db.Compare, block block, globalSeqNum uint64) error
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
 	if i.key == nil {
-		i.key = make([]byte, 0, 256)
+		i.key = i.keyBuf[:0]
 	} else {
 		i.key = i.key[:0]
 	}
