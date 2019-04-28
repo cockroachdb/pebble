@@ -95,6 +95,9 @@ func setCurrentFile(dirname string, fs vfs.FS, fileNum uint64) error {
 	if _, err := fmt.Fprintf(f, "MANIFEST-%06d\n", fileNum); err != nil {
 		return err
 	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
