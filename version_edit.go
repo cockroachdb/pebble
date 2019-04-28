@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"sync/atomic"
 
 	"github.com/petermattis/pebble/db"
 )
@@ -406,7 +407,12 @@ func (b *bulkVersionEdit) apply(
 			if base == nil {
 				continue
 			}
-			v.files[level] = base.files[level]
+			files := base.files[level]
+			v.files[level] = files
+			// We still have to bump the ref count for all files.
+			for i := range files {
+				atomic.AddInt32(files[i].refs, 1)
+			}
 			continue
 		}
 
@@ -429,6 +435,10 @@ func (b *bulkVersionEdit) apply(
 				if dmap != nil && dmap[f.fileNum] {
 					continue
 				}
+				if f.refs == nil {
+					f.refs = new(int32)
+				}
+				atomic.AddInt32(f.refs, 1)
 				v.files[level] = append(v.files[level], f)
 			}
 		}

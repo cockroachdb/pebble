@@ -16,6 +16,12 @@ import (
 
 // fileMetadata holds the metadata for an on-disk table.
 type fileMetadata struct {
+	// reference count for the file: incremented when a file is added to a
+	// version and decremented when the version is unreferenced. The file is
+	// obsolete when the reference count falls to zero. This is a pointer because
+	// fileMetadata is copied by value from version to version, but we want the
+	// reference count to be shared.
+	refs *int32
 	// fileNum is the file number.
 	fileNum uint64
 	// size is the size of the file, in bytes.
@@ -134,6 +140,9 @@ type version struct {
 
 	files [numLevels][]fileMetadata
 
+	// The version set this version is associated with.
+	vs *versionSet
+
 	// The list the version is linked into.
 	list *versionList
 
@@ -179,9 +188,11 @@ func (v *version) ref() {
 
 func (v *version) unref() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
+		obsolete := v.unrefFiles()
 		l := v.list
 		l.mu.Lock()
 		l.remove(v)
+		v.vs.addObsoleteLocked(obsolete)
 		l.mu.Unlock()
 	}
 }
@@ -189,7 +200,21 @@ func (v *version) unref() {
 func (v *version) unrefLocked() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
 		v.list.remove(v)
+		v.vs.addObsoleteLocked(v.unrefFiles())
 	}
+}
+
+func (v *version) unrefFiles() []uint64 {
+	var obsolete []uint64
+	for _, files := range v.files {
+		for i := range files {
+			f := &files[i]
+			if atomic.AddInt32(f.refs, -1) == 0 {
+				obsolete = append(obsolete, f.fileNum)
+			}
+		}
+	}
+	return obsolete
 }
 
 // overlaps returns all elements of v.files[level] whose user key range

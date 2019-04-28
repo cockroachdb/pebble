@@ -846,6 +846,8 @@ type flushableBatch struct {
 	tombstones []rangedel.Tombstone
 
 	flushedCh chan struct{}
+
+	logNum uint64
 }
 
 var _ flushable = (*flushableBatch)(nil)
@@ -970,6 +972,10 @@ func (b *flushableBatch) flushed() chan struct{} {
 
 func (b *flushableBatch) readyForFlush() bool {
 	return true
+}
+
+func (b *flushableBatch) logNumber() uint64 {
+	return b.logNum
 }
 
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the

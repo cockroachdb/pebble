@@ -33,6 +33,7 @@ type flushable interface {
 	newRangeDelIter(o *db.IterOptions) internalIterator
 	flushed() chan struct{}
 	readyForFlush() bool
+	logNumber() uint64
 }
 
 // Reader is a readable key/value store.
@@ -164,7 +165,7 @@ type DB struct {
 		versions versionSet
 
 		log struct {
-			number uint64
+			queue []uint64
 			*record.LogWriter
 		}
 
@@ -837,18 +838,18 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			panic(err)
 		}
 
-		// NB: When the immutable memtable is flushed to disk it will apply a
-		// versionEdit to the manifest telling it that log files < d.mu.log.number
-		// have been applied.
 		if !d.opts.DisableWAL {
-			d.mu.log.number = newLogNumber
+			d.mu.log.queue = append(d.mu.log.queue, newLogNumber)
 			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNumber)
 		}
+
+		prevLogNumber := d.mu.mem.mutable.logNum
 
 		var scheduleFlush bool
 		if b != nil && b.flushable != nil {
 			// The batch is too large to fit in the memtable so add it directly to
 			// the immutable queue.
+			b.flushable.logNum = prevLogNumber
 			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
 			scheduleFlush = true
 		}
@@ -862,6 +863,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// want to go through the flush path in order to recycle that WAL file.
 		imm := d.mu.mem.mutable
 		d.mu.mem.mutable = newMemTable(d.opts)
+		// NB: When the immutable memtable is flushed to disk it will apply a
+		// versionEdit to the manifest telling it that log files <= newLogNumber
+		// have been applied.
+		d.mu.mem.mutable.logNum = newLogNumber
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 		d.updateReadStateLocked()
 		if (imm != nil && imm.unref()) || scheduleFlush {

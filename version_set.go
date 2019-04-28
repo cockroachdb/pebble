@@ -34,6 +34,10 @@ type versionSet struct {
 	versions versionList
 	picker   *compactionPicker
 
+	obsoleteTables    []uint64
+	obsoleteManifests []uint64
+	obsoleteOptions   []uint64
+
 	logNumber          uint64
 	prevLogNumber      uint64
 	nextFileNumber     uint64
@@ -173,20 +177,25 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 	}
 	ve.nextFileNumber = vs.nextFileNumber
 	ve.lastSequence = atomic.LoadUint64(&vs.logSeqNum)
-
-	var bve bulkVersionEdit
-	bve.accumulate(ve)
-	newVersion, err := bve.apply(vs.opts, vs.currentVersion(), vs.cmp)
-	if err != nil {
-		return err
-	}
+	currentVersion := vs.currentVersion()
+	var newVersion *version
 
 	var picker *compactionPicker
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
 
-		// TODO(peter): if vs.manifest becomes too large, create a new one.
+		var bve bulkVersionEdit
+		bve.accumulate(ve)
+
+		var err error
+		newVersion, err = bve.apply(vs.opts, currentVersion, vs.cmp)
+		if err != nil {
+			return err
+		}
+
+		// TODO(peter): if vs.manifest becomes too large, create a new one. Be sure
+		// to add the old manifest to obsoleteManifests.
 		if vs.manifest == nil {
 			if err := vs.createManifest(vs.dirname); err != nil {
 				return err
@@ -296,6 +305,7 @@ func (vs *versionSet) append(v *version) {
 	if !vs.versions.empty() {
 		vs.versions.back().unrefLocked()
 	}
+	v.vs = vs
 	v.ref()
 	vs.versions.pushBack(v)
 }
@@ -312,4 +322,8 @@ func (vs *versionSet) addLiveFileNums(m map[uint64]struct{}) {
 			}
 		}
 	}
+}
+
+func (vs *versionSet) addObsoleteLocked(obsolete []uint64) {
+	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
 }
