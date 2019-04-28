@@ -818,6 +818,27 @@ func TestInvalidLogNum(t *testing.T) {
 	}
 }
 
+func TestSize(t *testing.T) {
+	var buf bytes.Buffer
+	zeroes := make([]byte, 8<<10)
+	w := NewWriter(&buf)
+	for i := 0; i < 100; i++ {
+		n := rand.Intn(len(zeroes))
+		if _, err := w.WriteRecord(zeroes[:n]); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if buf.Len() != int(w.Size()) {
+			t.Fatalf("expected %d, but found %d", buf.Len(), w.Size())
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func BenchmarkRecordWrite(b *testing.B) {
 	for _, size := range []int{8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {

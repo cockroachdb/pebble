@@ -243,6 +243,11 @@ type Options struct {
 	// The default logger uses the Go standard library log package.
 	Logger Logger
 
+	// MaxManifestFileSize is the maximum size the MANIFEST file is allowed to
+	// become. When the MANIFEST exceeds this size it is rolled over and a new
+	// MANIFEST is created.
+	MaxManifestFileSize int64
+
 	// MaxOpenFiles is a soft limit on the number of open files that can be
 	// used by the DB.
 	//
@@ -322,6 +327,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Logger == nil {
 		o.Logger = defaultLogger{}
 	}
+	if o.MaxManifestFileSize == 0 {
+		o.MaxManifestFileSize = 128 << 20 // 128 MB
+	}
 	if o.MaxOpenFiles == 0 {
 		o.MaxOpenFiles = 1000
 	}
@@ -368,6 +376,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  l0_slowdown_writes_threshold=%d\n", o.L0SlowdownWritesThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  l1_max_bytes=%d\n", o.L1MaxBytes)
+	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)

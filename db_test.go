@@ -614,3 +614,61 @@ func TestFlushEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRollManifest(t *testing.T) {
+	d, err := Open("", &db.Options{
+		MaxManifestFileSize: 1,
+		VFS:                 vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifestFileNumber := func() uint64 {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.versions.manifestFileNumber
+	}
+
+	current := func() string {
+		f, err := d.opts.VFS.Open(dbFilename(d.dirname, fileTypeCurrent, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		stat, err := f.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := stat.Size()
+		b := make([]byte, n)
+		if _, err = f.ReadAt(b, 0); err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	lastManifestNum := manifestFileNumber()
+	for i := 0; i < 5; i++ {
+		if err := d.Set([]byte("a"), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		num := manifestFileNumber()
+		if lastManifestNum == num {
+			t.Fatalf("manifest failed to roll: %d == %d", lastManifestNum, num)
+		}
+		lastManifestNum = num
+
+		expectedCurrent := fmt.Sprintf("MANIFEST-%06d\n", lastManifestNum)
+		if v := current(); expectedCurrent != v {
+			t.Fatalf("expected %s, but found %s", expectedCurrent, v)
+		}
+	}
+
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -543,6 +543,11 @@ func (w *Writer) WriteRecord(p []byte) (int64, error) {
 	return offset, w.err
 }
 
+// Size returns the current size of the file.
+func (w *Writer) Size() int64 {
+	return w.blockNumber*blockSize + int64(w.j)
+}
+
 // LastRecordOffset returns the offset in the underlying io.Writer of the last
 // record so far - the one created by the most recent Next call. It is the
 // offset of the first chunk header, suitable to pass to Reader.SeekRecord.
