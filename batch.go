@@ -162,6 +162,7 @@ func (s *batchStorage) Compare(a []byte, b uint32) int {
 // format for records of each kind:
 //
 //   InternalKeyKindDelete       varstring
+//   InternalKeyKindLogData      varstring
 //   InternalKeyKindSet          varstring varstring
 //   InternalKeyKindMerge        varstring varstring
 //   InternalKeyKindRangeDelete  varstring varstring
@@ -439,6 +440,29 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 		b.tombstones = nil
 	}
 	b.memTableSize += memTableEntrySize(len(start), len(end))
+	return nil
+}
+
+// LogData adds the specified to the batch. The data will be written to the
+// WAL, but not added to memtables or sstables. Log data is never indexed,
+// which makes it useful for testing WAL performance.
+//
+// It is safe to modify the contents of the argument after LogData returns.
+//
+// TODO(peter): untested.
+func (b *Batch) LogData(data []byte, _ *db.WriteOptions) error {
+	if len(b.storage.data) == 0 {
+		b.init(len(data) + binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+
+	pos := len(b.storage.data)
+	b.grow(1 + maxVarintLen32 + len(data))
+	b.storage.data[pos] = byte(db.InternalKeyKindLogData)
+	pos, varlen1 := b.copyStr(pos+1, data)
+	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
 	return nil
 }
 

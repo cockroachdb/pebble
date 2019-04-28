@@ -145,10 +145,12 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		}
 		var err error
 		ikey := db.MakeInternalKey(ukey, seqNum, kind)
-		if kind == db.InternalKeyKindRangeDelete {
+		switch kind {
+		case db.InternalKeyKindRangeDelete:
 			err = m.rangeDelSkl.Add(ikey, value)
 			tombstoneCount++
-		} else {
+		case db.InternalKeyKindLogData:
+		default:
 			err = ins.Add(&m.skl, ikey, value)
 		}
 		if err != nil {

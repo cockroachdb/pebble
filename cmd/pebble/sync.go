@@ -30,6 +30,11 @@ func runSync(cmd *cobra.Command, args []string) {
 	reg := newHistogramRegistry()
 	var bytes, lastBytes uint64
 
+	opts := db.Sync
+	if disableWAL {
+		opts = db.NoSync
+	}
+
 	runTest(args[0], test{
 		init: func(d *pebble.DB, wg *sync.WaitGroup) {
 			wg.Add(concurrency)
@@ -63,16 +68,22 @@ func runSync(cmd *cobra.Command, args []string) {
 						var n uint64
 						for j := 0; j < 5; j++ {
 							block := randBlock(60, 80)
-							raw = encodeUint32Ascending(raw[:0], rand.Uint32())
-							key := mvccEncode(buf[:0], raw, 0, 0)
-							buf = key[:0]
 
-							if err := b.Set(key, block, nil); err != nil {
-								log.Fatal(err)
+							if walOnly {
+								if err := b.LogData(block, nil); err != nil {
+									log.Fatal(err)
+								}
+							} else {
+								raw = encodeUint32Ascending(raw[:0], rand.Uint32())
+								key := mvccEncode(buf[:0], raw, 0, 0)
+								buf = key[:0]
+								if err := b.Set(key, block, nil); err != nil {
+									log.Fatal(err)
+								}
 							}
 							n += uint64(len(block))
 						}
-						if err := b.Commit(db.Sync); err != nil {
+						if err := b.Commit(opts); err != nil {
 							log.Fatal(err)
 						}
 						latency.Record(time.Since(start))

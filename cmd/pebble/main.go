@@ -13,7 +13,9 @@ import (
 
 var (
 	concurrency int
+	disableWAL  bool
 	duration    time.Duration
+	walOnly     bool
 	wipe        bool
 )
 
@@ -33,10 +35,14 @@ func main() {
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd} {
 		cmd.Flags().IntVarP(
 			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
+		cmd.Flags().BoolVar(
+			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 		cmd.Flags().BoolVarP(
 			&wipe, "wipe", "w", false, "wipe the database before starting")
+		cmd.Flags().BoolVar(
+			&walOnly, "wal-only", false, "write data only to the WAL")
 	}
 
 	scanCmd.Flags().BoolVarP(

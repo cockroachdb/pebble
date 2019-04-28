@@ -81,6 +81,13 @@ type Writer interface {
 	// It is safe to modify the contents of the arguments after Delete returns.
 	DeleteRange(start, end []byte, o *db.WriteOptions) error
 
+	// LogData adds the specified to the batch. The data will be written to the
+	// WAL, but not added to memtables or sstables. Log data is never indexed,
+	// which makes it useful for testing WAL performance.
+	//
+	// It is safe to modify the contents of the argument after LogData returns.
+	LogData(data []byte, opts *db.WriteOptions) error
+
 	// Merge merges the value for the given key. The details of the merge are
 	// dependent upon the configured merge operation.
 	//
@@ -293,6 +300,20 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 	return d.Apply(b, opts)
 }
 
+// LogData adds the specified to the batch. The data will be written to the
+// WAL, but not added to memtables or sstables. Log data is never indexed,
+// which makes it useful for testing WAL performance.
+//
+// It is safe to modify the contents of the argument after LogData returns.
+//
+// TODO(peter): untested.
+func (d *DB) LogData(data []byte, opts *db.WriteOptions) error {
+	b := newBatch(d)
+	defer b.release()
+	_ = b.LogData(data, opts)
+	return d.Apply(b, opts)
+}
+
 // Apply the operations contained in the batch to the DB. If the batch is large
 // the contents of the batch may be retained by the database. If that occurs
 // the batch contents will be cleared preventing the caller from attempting to
@@ -300,10 +321,15 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
+	sync := opts.GetSync()
+	if sync && d.opts.DisableWAL {
+		return errors.New("pebble: WAL disabled")
+	}
+
 	if int(batch.memTableSize) >= d.largeBatchThreshold {
 		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
 	}
-	err := d.commit.Commit(batch, opts.GetSync())
+	err := d.commit.Commit(batch, sync)
 	if err == nil {
 		// If this is a large batch, we need to clear the batch contents as the
 		// flushable batch may still be present in the flushables queue.

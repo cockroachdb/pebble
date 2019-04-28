@@ -39,6 +39,11 @@ func runScan(cmd *cobra.Command, args []string) {
 		lastElapsed time.Duration
 	)
 
+	opts := db.Sync
+	if disableWAL {
+		opts = db.NoSync
+	}
+
 	runTest(args[0], test{
 		init: func(d *pebble.DB, wg *sync.WaitGroup) {
 			const count = 100000
@@ -63,7 +68,7 @@ func runScan(cmd *cobra.Command, args []string) {
 						log.Fatal(err)
 					}
 				}
-				if err := b.Commit(db.Sync); err != nil {
+				if err := b.Commit(opts); err != nil {
 					log.Fatal(err)
 				}
 			}
