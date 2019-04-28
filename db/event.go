@@ -79,6 +79,28 @@ type TableIngestInfo struct {
 	Err          error
 }
 
+// WALCreateInfo contains info about a WAL creation event.
+type WALCreateInfo struct {
+	// JobID is the ID of the job the caused the WAL to be created.
+	JobID int
+	Path  string
+	// The file number of the new WAL.
+	FileNum uint64
+	// The file number of a previous WAL which was recycled to create this
+	// one. Zero if recycling did not take place.
+	RecycledFileNum uint64
+	Err             error
+}
+
+// WALDeleteInfo contains the info for a WAL deletion event.
+type WALDeleteInfo struct {
+	// JobID is the ID of the job the caused the WAL to be deleted.
+	JobID   int
+	Path    string
+	FileNum uint64
+	Err     error
+}
+
 // EventListener contains a set of functions that will be invoked when various
 // significant DB events occur. Note that the functions should not run for an
 // excessive amount of time as they are invokved synchronously by the DB and
@@ -111,4 +133,10 @@ type EventListener struct {
 	// TableIngested is invoked after an externally created table has been
 	// ingested via a call to DB.Ingest().
 	TableIngested func(TableIngestInfo)
+
+	// WALCreated is invoked after a WAL has been created.
+	WALCreated func(WALCreateInfo)
+
+	// WALDeleted is invoked after a WAL has been delete.
+	WALDeleted func(WALDeleteInfo)
 }

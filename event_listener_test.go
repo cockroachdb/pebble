@@ -57,6 +57,13 @@ func TestEventListener(t *testing.T) {
 			TableIngested: func(info db.TableIngestInfo) {
 				fmt.Fprintf(&buf, "#%d: table ingested\n", info.JobID)
 			},
+			WALCreated: func(info db.WALCreateInfo) {
+				fmt.Fprintf(&buf, "#%d: WAL created: %d recycled=%d\n",
+					info.JobID, info.FileNum, info.RecycledFileNum)
+			},
+			WALDeleted: func(info db.WALDeleteInfo) {
+				fmt.Fprintf(&buf, "#%d: WAL deleted: %d\n", info.JobID, info.FileNum)
+			},
 		},
 	})
 	if err != nil {
@@ -82,16 +89,18 @@ func TestEventListener(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expected := `#2: flush begin
-#2: flush end: 6
-#3: compaction begin: L0 -> L1
-#3: compaction end: L0 -> L1
-#4: flush begin
-#4: flush end: 8
-#5: compaction begin: L0 -> L1
-#5: compaction end: L0 -> L1
-#5: table deleted: 6
-#5: table deleted: 8
+	expected := `#2: WAL created: 5 recycled=0
+#3: flush begin
+#3: flush end: 6
+#4: compaction begin: L0 -> L1
+#4: compaction end: L0 -> L1
+#5: WAL created: 7 recycled=3
+#6: flush begin
+#6: flush end: 8
+#7: compaction begin: L0 -> L1
+#7: compaction end: L0 -> L1
+#7: table deleted: 6
+#7: table deleted: 8
 `
 	if v := buf.String(); expected != v {
 		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)

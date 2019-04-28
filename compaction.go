@@ -1037,8 +1037,21 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		}
 		path := filepath.Join(d.dirname, filename)
 		err := fs.Remove(path)
+		if err == os.ErrNotExist {
+			continue
+		}
 
-		if err != os.ErrNotExist && fileType == fileTypeTable {
+		switch fileType {
+		case fileTypeLog:
+			if d.opts.EventListener != nil && d.opts.EventListener.WALDeleted != nil {
+				d.opts.EventListener.WALDeleted(db.WALDeleteInfo{
+					JobID:   jobID,
+					Path:    path,
+					FileNum: fileNum,
+					Err:     err,
+				})
+			}
+		case fileTypeTable:
 			if d.opts.EventListener != nil && d.opts.EventListener.TableDeleted != nil {
 				d.opts.EventListener.TableDeleted(db.TableDeleteInfo{
 					JobID:   jobID,

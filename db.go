@@ -747,6 +747,8 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		var err error
 
 		if !d.opts.DisableWAL {
+			jobID := d.mu.nextJobID
+			d.mu.nextJobID++
 			newLogNumber = d.mu.versions.nextFileNum()
 			d.mu.mem.switching = true
 			d.mu.Unlock()
@@ -783,6 +785,16 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 			if recycleLogNumber > 0 {
 				err = d.logRecycler.pop(recycleLogNumber)
+			}
+
+			if d.opts.EventListener != nil && d.opts.EventListener.WALCreated != nil {
+				d.opts.EventListener.WALCreated(db.WALCreateInfo{
+					JobID:           jobID,
+					Path:            newLogName,
+					FileNum:         newLogNumber,
+					RecycledFileNum: recycleLogNumber,
+					Err:             err,
+				})
 			}
 
 			d.mu.Lock()
