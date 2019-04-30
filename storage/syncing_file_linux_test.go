@@ -45,6 +45,7 @@ func BenchmarkDirectIOWrite(b *testing.B) {
 			buf = buf[:wsize]
 			init := true
 
+			b.SetBytes(int64(len(buf)))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if f == nil {

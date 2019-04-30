@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/petermattis/pebble"
@@ -27,6 +28,7 @@ var syncCmd = &cobra.Command{
 
 func runSync(cmd *cobra.Command, args []string) {
 	reg := newHistogramRegistry()
+	var bytes, lastBytes uint64
 
 	runTest(args[0], test{
 		init: func(d *pebble.DB, wg *sync.WaitGroup) {
@@ -58,6 +60,7 @@ func runSync(cmd *cobra.Command, args []string) {
 					for {
 						start := time.Now()
 						b := d.NewBatch()
+						var n uint64
 						for j := 0; j < 5; j++ {
 							block := randBlock(60, 80)
 							raw = encodeUint32Ascending(raw[:0], rand.Uint32())
@@ -67,11 +70,13 @@ func runSync(cmd *cobra.Command, args []string) {
 							if err := b.Set(key, block, nil); err != nil {
 								log.Fatal(err)
 							}
+							n += uint64(len(block))
 						}
 						if err := b.Commit(db.Sync); err != nil {
 							log.Fatal(err)
 						}
 						latency.Record(time.Since(start))
+						atomic.AddUint64(&bytes, n)
 					}
 				}()
 			}
@@ -79,28 +84,32 @@ func runSync(cmd *cobra.Command, args []string) {
 
 		tick: func(elapsed time.Duration, i int) {
 			if i%20 == 0 {
-				fmt.Println("_elapsed____ops/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+				fmt.Println("_elapsed____ops/sec___mb/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 			}
 			reg.Tick(func(tick histogramTick) {
 				h := tick.Hist
-				fmt.Printf("%8s %10.1f %8.1f %8.1f %8.1f %8.1f\n",
+				n := atomic.LoadUint64(&bytes)
+				fmt.Printf("%8s %10.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
 					time.Duration(elapsed.Seconds()+0.5)*time.Second,
 					float64(h.TotalCount())/tick.Elapsed.Seconds(),
+					float64(n-lastBytes)/(1024.0*1024.0)/tick.Elapsed.Seconds(),
 					time.Duration(h.ValueAtQuantile(50)).Seconds()*1000,
 					time.Duration(h.ValueAtQuantile(95)).Seconds()*1000,
 					time.Duration(h.ValueAtQuantile(99)).Seconds()*1000,
 					time.Duration(h.ValueAtQuantile(100)).Seconds()*1000,
 				)
+				lastBytes = n
 			})
 		},
 
 		done: func(elapsed time.Duration) {
-			fmt.Println("\n_elapsed_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+			fmt.Println("\n_elapsed___ops(total)_ops/sec(cum)_mb/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 			reg.Tick(func(tick histogramTick) {
 				h := tick.Cumulative
-				fmt.Printf("%7.1fs %14d %14.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n\n",
+				fmt.Printf("%7.1fs %12d %12.1f %11.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n\n",
 					elapsed.Seconds(), h.TotalCount(),
 					float64(h.TotalCount())/elapsed.Seconds(),
+					float64(atomic.LoadUint64(&bytes)/(1024.0*1024.0))/elapsed.Seconds(),
 					time.Duration(h.Mean()).Seconds()*1000,
 					time.Duration(h.ValueAtQuantile(50)).Seconds()*1000,
 					time.Duration(h.ValueAtQuantile(95)).Seconds()*1000,
