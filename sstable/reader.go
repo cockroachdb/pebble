@@ -64,15 +64,31 @@ type Iterator struct {
 	closeHook  func() error
 }
 
-func (i *Iterator) init(r *Reader) error {
-	i.reader = r
-	var index block
-	index, i.err = r.readIndex()
-	if i.err != nil {
-		return i.err
+var iterPool = sync.Pool{
+	New: func() interface{} {
+		return &Iterator{}
+	},
+}
+
+// Init initializes an iterator for reading from the table. It is synonmous
+// with Reader.NewIter, but allows for reusing of the Iterator between
+// different Readers.
+func (i *Iterator) Init(r *Reader, lower, upper []byte) error {
+	*i = Iterator{
+		lower:  lower,
+		upper:  upper,
+		reader: r,
+		err:    r.err,
 	}
-	i.cmp = r.compare
-	i.err = i.index.init(i.cmp, index, r.Properties.GlobalSeqNum)
+	if i.err == nil {
+		var index block
+		index, i.err = r.readIndex()
+		if i.err != nil {
+			return i.err
+		}
+		i.cmp = r.compare
+		i.err = i.index.init(i.cmp, index, r.Properties.GlobalSeqNum)
+	}
 	return i.err
 }
 
@@ -400,7 +416,10 @@ func (i *Iterator) Close() error {
 	if err := i.data.Close(); err != nil {
 		return err
 	}
-	return i.err
+	err := i.err
+	*i = Iterator{}
+	iterPool.Put(i)
+	return err
 }
 
 type weakCachedBlock struct {
@@ -470,8 +489,8 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		}
 	}
 
-	i := &Iterator{}
-	if err := i.init(r); err == nil {
+	i := iterPool.Get().(*Iterator)
+	if err := i.Init(r, nil, nil); err == nil {
 		i.index.SeekGE(key)
 		i.seekBlock(key)
 	}
@@ -491,11 +510,8 @@ func (r *Reader) NewIter(lower, upper []byte) *Iterator {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
-	if r.err != nil {
-		return &Iterator{err: r.err}
-	}
-	i := &Iterator{lower: lower, upper: upper}
-	_ = i.init(r)
+	i := iterPool.Get().(*Iterator)
+	_ = i.Init(r, lower, upper)
 	return i
 }
 

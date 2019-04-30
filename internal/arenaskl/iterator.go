@@ -19,6 +19,7 @@ package arenaskl
 
 import (
 	"encoding/binary"
+	"sync"
 
 	"github.com/petermattis/pebble/db"
 )
@@ -44,10 +45,19 @@ type Iterator struct {
 	upper []byte
 }
 
+var iterPool = sync.Pool{
+	New: func() interface{} {
+		return &Iterator{}
+	},
+}
+
 // Close resets the iterator.
 func (it *Iterator) Close() error {
 	it.list = nil
 	it.nd = nil
+	it.lower = nil
+	it.upper = nil
+	iterPool.Put(it)
 	return nil
 }
 
