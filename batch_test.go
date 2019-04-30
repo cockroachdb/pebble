@@ -231,7 +231,7 @@ func TestBatchDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter internalIterator
+			var iter internalIterAdapter
 			if len(td.CmdArgs) > 1 {
 				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
@@ -239,9 +239,9 @@ func TestBatchDeleteRange(t *testing.T) {
 				if td.CmdArgs[0].String() != "range-del" {
 					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
-				iter = b.newRangeDelIter(nil)
+				iter.internalIterator = b.newRangeDelIter(nil)
 			} else {
-				iter = b.newInternalIter(nil)
+				iter.internalIterator = b.newInternalIter(nil)
 			}
 			defer iter.Close()
 
@@ -317,7 +317,7 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 			}
 			b.seqNum = uint64(seqNum)
 
-			iter := b.newIter(nil)
+			iter := internalIterAdapter{b.newIter(nil)}
 			var buf bytes.Buffer
 			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
@@ -356,7 +356,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter internalIterator
+			var iter internalIterAdapter
 			if len(td.CmdArgs) > 1 {
 				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
@@ -364,9 +364,9 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 				if td.CmdArgs[0].String() != "range-del" {
 					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
-				iter = fb.newRangeDelIter(nil)
+				iter.internalIterator = fb.newRangeDelIter(nil)
 			} else {
-				iter = fb.newIter(nil)
+				iter.internalIterator = fb.newIter(nil)
 			}
 			defer iter.Close()
 

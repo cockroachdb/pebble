@@ -579,8 +579,8 @@ func (d *DB) writeLevel0Table(
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
 	var count int
-	for valid := iter.First(); valid; valid = iter.Next() {
-		if err1 := tw.Add(iter.Key(), iter.Value()); err1 != nil {
+	for key, val := iter.First(); key != nil; key, val = iter.Next() {
+		if err1 := tw.Add(*key, val); err1 != nil {
 			return fileMetadata{}, err1
 		}
 		count++
@@ -893,12 +893,11 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		return nil
 	}
 
-	for valid := iter.First(); valid; valid = iter.Next() {
-		key := iter.Key()
+	for key, val := iter.First(); key != nil; key, val = iter.Next() {
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
-		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(key)) {
-			if err := finishOutput(key); err != nil {
+		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {
+			if err := finishOutput(*key); err != nil {
 				return nil, pendingOutputs, err
 			}
 		}
@@ -909,7 +908,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			}
 		}
 
-		if err := tw.Add(key, iter.Value()); err != nil {
+		if err := tw.Add(*key, val); err != nil {
 			return nil, pendingOutputs, err
 		}
 	}

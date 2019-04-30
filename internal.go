@@ -28,35 +28,39 @@ import (
 // at a particular point in time.
 type internalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
-	// than or equal to the given key. Returns true if the iterator is pointing
-	// at a valid entry and false otherwise.
-	SeekGE(key []byte) bool
+	// than or equal to the given key. Returns the key and value if the iterator
+	// is pointing at a valid entry, and (nil, nil) otherwise.
+	SeekGE(key []byte) (*db.InternalKey, []byte)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
-	// than the given key. Returns true if the iterator is pointing at a valid
-	// entry and false otherwise.
-	SeekLT(key []byte) bool
+	// than the given key. Returns the key and value if the iterator is pointing
+	// at a valid entry, and (nil, nil) otherwise.
+	SeekLT(key []byte) (*db.InternalKey, []byte)
 
-	// First moves the iterator the the first key/value pair. Returns true if the
-	// iterator is pointing at a valid entry and false otherwise.
-	First() bool
+	// First moves the iterator the the first key/value pair. Returns the key and
+	// value if the iterator is pointing at a valid entry, and (nil, nil)
+	// otherwise.
+	First() (*db.InternalKey, []byte)
 
-	// Last moves the iterator the the last key/value pair. Returns true if the
-	// iterator is pointing at a valid entry and false otherwise.
-	Last() bool
+	// Last moves the iterator the the last key/value pair. Returns the key and
+	// value if the iterator is pointing at a valid entry, and (nil, nil)
+	// otherwise.
+	Last() (*db.InternalKey, []byte)
 
-	// Next moves the iterator to the next key/value pair. Returns true if the
-	// iterator is pointing at a valid entry and false otherwise.
-	Next() bool
+	// Next moves the iterator to the next key/value pair. Returns the key and
+	// value if the iterator is pointing at a valid entry, and (nil, nil)
+	// otherwise.
+	Next() (*db.InternalKey, []byte)
 
-	// Prev moves the iterator to the previous key/value pair. Returns true if the
-	// iterator is pointing at a valid entry and false otherwise.
-	Prev() bool
+	// Prev moves the iterator to the previous key/value pair. Returns the key
+	// and value if the iterator is pointing at a valid entry, and (nil, nil)
+	// otherwise.
+	Prev() (*db.InternalKey, []byte)
 
 	// Key returns the encoded internal key of the current key/value pair, or nil
-	// if done. The caller should not modify the contents of the returned slice,
+	// if done. The caller should not modify the contents of the returned key,
 	// and its contents may change on the next call to Next.
-	Key() db.InternalKey
+	Key() *db.InternalKey
 
 	// Value returns the value of the current key/value pair, or nil if done.
 	// The caller should not modify the contents of the returned slice, and

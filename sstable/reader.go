@@ -85,11 +85,13 @@ func (i *Iterator) initBounds() {
 	// the bounds on each iteration if the block is entirely contained within the
 	// iteration bounds.
 	i.blockLower = i.lower
-	if i.blockLower != nil && i.data.First() &&
-		i.cmp(i.blockLower, i.data.Key().UserKey) < 0 {
-		// The lower-bound is less than the first key in the block. No need
-		// to check the lower-bound again for this block.
-		i.blockLower = nil
+	if i.blockLower != nil {
+		key, _ := i.data.First()
+		if key != nil && i.cmp(i.blockLower, key.UserKey) < 0 {
+			// The lower-bound is less than the first key in the block. No need
+			// to check the lower-bound again for this block.
+			i.blockLower = nil
+		}
 	}
 	i.blockUpper = i.upper
 	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) >= 0 {
@@ -166,41 +168,44 @@ func (i *Iterator) seekBlock(key []byte) bool {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
-func (i *Iterator) SeekGE(key []byte) bool {
+func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
 
-	if !i.index.SeekGE(key) {
-		return false
+	if ikey, _ := i.index.SeekGE(key); ikey == nil {
+		return nil, nil
 	}
 	if !i.loadBlock() {
-		return false
+		return nil, nil
 	}
-	if !i.data.SeekGE(key) {
-		return false
+	ikey, val := i.data.SeekGE(key)
+	if ikey == nil {
+		return nil, nil
 	}
-	if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
-		return false
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+		i.data.offset = i.data.restarts
+		return nil, nil
 	}
-	return true
+	return ikey, val
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
-func (i *Iterator) SeekLT(key []byte) bool {
+func (i *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
 
-	if !i.index.SeekGE(key) {
+	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		i.index.Last()
 	}
 	if !i.loadBlock() {
-		return false
+		return nil, nil
 	}
-	if !i.data.SeekLT(key) {
+	ikey, val := i.data.SeekLT(key)
+	if ikey == nil {
 		// The index contains separator keys which may lie between
 		// user-keys. Consider the user-keys:
 		//
@@ -212,138 +217,148 @@ func (i *Iterator) SeekLT(key []byte) bool {
 		// be chosen as "compleu". The SeekGE in the index block will then point
 		// us to the block containing "complexion". If this happens, we want the
 		// last key from the previous data block.
-		if !i.index.Prev() {
-			return false
+		if ikey, val = i.index.Prev(); ikey == nil {
+			return nil, nil
 		}
 		if !i.loadBlock() {
-			return false
+			return nil, nil
 		}
-		if !i.data.Last() {
-			return false
+		if ikey, val = i.data.Last(); ikey == nil {
+			return nil, nil
 		}
 	}
-	if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
-		return false
+	if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
+		i.data.invalidateLower() // force i.data.Valid() to return false
+		return nil, nil
 	}
-	return true
+	return ikey, val
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package. Note that First only checks the upper bound. It is up to the caller
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
-func (i *Iterator) First() bool {
+func (i *Iterator) First() (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
 
-	if !i.index.First() {
-		return false
+	if ikey, _ := i.index.First(); ikey == nil {
+		return nil, nil
 	}
 	if !i.loadBlock() {
-		return false
+		return nil, nil
 	}
-	if !i.data.First() {
-		return false
+	ikey, val := i.data.First()
+	if ikey == nil {
+		return nil, nil
 	}
-	if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
-		return false
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+		i.data.invalidateUpper() // force i.data.Valid() to return false
+		return nil, nil
 	}
-	return true
+	return ikey, val
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package. Note that Last only checks the lower bound. It is up to the caller
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
-func (i *Iterator) Last() bool {
+func (i *Iterator) Last() (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
 
-	if !i.index.Last() {
-		return false
+	if ikey, _ := i.index.Last(); ikey == nil {
+		return nil, nil
 	}
 	if !i.loadBlock() {
-		return false
+		return nil, nil
 	}
-	if !i.data.Last() {
-		return false
+	if ikey, _ := i.data.Last(); ikey == nil {
+		return nil, nil
 	}
-	if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
-		return false
+	if i.blockLower != nil && i.cmp(i.data.ikey.UserKey, i.blockLower) < 0 {
+		i.data.offset = -1
+		return nil, nil
 	}
-	return true
+	return &i.data.ikey, i.data.val
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *Iterator) Next() bool {
+func (i *Iterator) Next() (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
-	if i.data.Next() {
-		if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
-			return false
+	if key, val := i.data.Next(); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.data.offset = i.data.restarts
+			return nil, nil
 		}
-		return true
+		return key, val
 	}
 	for {
 		if i.data.err != nil {
 			i.err = i.data.err
 			break
 		}
-		if !i.index.Next() {
+		if key, _ := i.index.Next(); key == nil {
 			break
 		}
 		if i.loadBlock() {
-			if !i.data.First() {
-				return false
+			key, val := i.data.First()
+			if key == nil {
+				return nil, nil
 			}
-			if i.blockUpper != nil && i.cmp(i.data.Key().UserKey, i.blockUpper) >= 0 {
-				return false
+			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+				i.data.offset = i.data.restarts
+				return nil, nil
 			}
-			return true
+			return key, val
 		}
 	}
-	return false
+	return nil, nil
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *Iterator) Prev() bool {
+func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 	if i.err != nil {
-		return false
+		return nil, nil
 	}
-	if i.data.Prev() {
-		if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
-			return false
+	if key, val := i.data.Prev(); key != nil {
+		if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
+			i.data.offset = -1
+			return nil, nil
 		}
-		return true
+		return key, val
 	}
 	for {
 		if i.data.err != nil {
 			i.err = i.data.err
 			break
 		}
-		if !i.index.Prev() {
+		if key, _ := i.index.Prev(); key == nil {
 			break
 		}
 		if i.loadBlock() {
-			if !i.data.Last() {
-				return false
+			key, val := i.data.Last()
+			if key == nil {
+				return nil, nil
 			}
-			if i.blockLower != nil && i.cmp(i.data.Key().UserKey, i.blockLower) < 0 {
-				return false
+			if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
+				i.data.offset = -1
+				return nil, nil
 			}
-			return true
+			return key, val
 		}
 	}
-	return false
+	return nil, nil
 }
 
 // Key implements internalIterator.Key, as documented in the pebble package.
-func (i *Iterator) Key() db.InternalKey {
+func (i *Iterator) Key() *db.InternalKey {
 	return i.data.Key()
 }
 

@@ -36,7 +36,7 @@ func (m *memTable) set(key db.InternalKey, value []byte) error {
 
 // count returns the number of entries in a DB.
 func (m *memTable) count() (n int) {
-	x := m.newIter(nil)
+	x := internalIterAdapter{m.newIter(nil)}
 	for valid := x.First(); valid; valid = x.Next() {
 		n++
 	}
@@ -79,7 +79,7 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
 	}
 	// Check an iterator.
-	s, x := "", m.newIter(nil)
+	s, x := "", internalIterAdapter{m.newIter(nil)}
 	for valid := x.SeekGE([]byte("mango")); valid; valid = x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
@@ -178,7 +178,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		"506",
 		"507",
 	}
-	x := m0.newIter(nil)
+	x := internalIterAdapter{m0.newIter(nil)}
 	x.SeekGE([]byte(wants[0]))
 	for _, want := range wants {
 		if !x.Valid() {
@@ -255,7 +255,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter internalIterator
+			var iter internalIterAdapter
 			if len(td.CmdArgs) > 1 {
 				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
@@ -263,9 +263,9 @@ func TestMemTableDeleteRange(t *testing.T) {
 				if td.CmdArgs[0].String() != "range-del" {
 					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
-				iter = mem.newRangeDelIter(nil)
+				iter.internalIterator = mem.newRangeDelIter(nil)
 			} else {
-				iter = mem.newIter(nil)
+				iter.internalIterator = mem.newIter(nil)
 			}
 			defer iter.Close()
 
@@ -307,7 +307,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 				b.release()
 
 				var count int
-				it := m.newRangeDelIter(nil)
+				it := internalIterAdapter{m.newRangeDelIter(nil)}
 				for valid := it.SeekGE(start); valid; valid = it.Next() {
 					if m.cmp(it.Key().UserKey, end) >= 0 {
 						break

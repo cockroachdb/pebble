@@ -37,6 +37,7 @@ func (s *splice) init(prev, next uint32) {
 type Iterator struct {
 	list  *Skiplist
 	nd    uint32
+	key   db.InternalKey
 	lower []byte
 	upper []byte
 }
@@ -53,97 +54,109 @@ func (it *Iterator) Close() error {
 // entry and false otherwise. Note that SeekGE only checks the upper bound. It
 // is up to the caller to ensure that key is greater than or equal to the lower
 // bound.
-func (it *Iterator) SeekGE(key []byte) bool {
+func (it *Iterator) SeekGE(key []byte) *db.InternalKey {
 	_, it.nd, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
 	if it.nd == it.list.tail {
-		return false
+		return nil
 	}
-	if it.upper != nil && it.list.storage.Compare(it.upper, it.list.getKey(it.nd)) <= 0 {
+	keyOffset := it.list.getKey(it.nd)
+	if it.upper != nil && it.list.storage.Compare(it.upper, keyOffset) <= 0 {
 		it.nd = it.list.tail
-		return false
+		return nil
 	}
-	return true
+	it.key = it.list.storage.Get(keyOffset)
+	return &it.key
 }
 
 // SeekLT moves the iterator to the last entry whose key is less the given
 // key. Returns true if the iterator is pointing at a valid entry and false
 // otherwise. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
-func (it *Iterator) SeekLT(key []byte) (found bool) {
+func (it *Iterator) SeekLT(key []byte) *db.InternalKey {
 	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
 	if it.nd == it.list.head {
-		return false
+		return nil
 	}
+	keyOffset := it.list.getKey(it.nd)
 	if it.lower != nil && it.list.storage.Compare(it.lower, it.list.getKey(it.nd)) > 0 {
 		it.nd = it.list.head
-		return false
+		return nil
 	}
-	return true
+	it.key = it.list.storage.Get(keyOffset)
+	return &it.key
 }
 
 // First seeks position at the first entry in list. Final state of iterator is
 // Valid() iff list is not empty. Note that First only checks the upper
 // bound. It is up to the caller to ensure that key is greater than or equal to
 // the lower bound (e.g. via a call to SeekGE(lower)).
-func (it *Iterator) First() bool {
+func (it *Iterator) First() *db.InternalKey {
 	it.nd = it.list.getNext(it.list.head, 0)
 	if it.nd == it.list.tail {
-		return false
+		return nil
 	}
-	if it.upper != nil && it.list.storage.Compare(it.upper, it.list.getKey(it.nd)) <= 0 {
+	keyOffset := it.list.getKey(it.nd)
+	if it.upper != nil && it.list.storage.Compare(it.upper, keyOffset) <= 0 {
 		it.nd = it.list.tail
-		return false
+		return nil
 	}
-	return true
+	it.key = it.list.storage.Get(keyOffset)
+	return &it.key
 }
 
 // Last seeks position at the last entry in list. Final state of iterator is
 // Valid() iff list is not empty. Note that Last only checks the lower
 // bound. It is up to the caller to ensure that key is less than the upper
 // bound (e.g. via a call to SeekLT(upper)).
-func (it *Iterator) Last() bool {
+func (it *Iterator) Last() *db.InternalKey {
 	it.nd = it.list.getPrev(it.list.tail, 0)
 	if it.nd == it.list.head {
-		return false
+		return nil
 	}
-	if it.lower != nil && it.list.storage.Compare(it.lower, it.list.getKey(it.nd)) > 0 {
+	keyOffset := it.list.getKey(it.nd)
+	if it.lower != nil && it.list.storage.Compare(it.lower, keyOffset) > 0 {
 		it.nd = it.list.head
-		return false
+		return nil
 	}
-	return true
+	it.key = it.list.storage.Get(keyOffset)
+	return &it.key
 }
 
 // Next advances to the next position. If there are no following nodes, then
 // Valid() will be false after this call.
-func (it *Iterator) Next() bool {
+func (it *Iterator) Next() *db.InternalKey {
 	it.nd = it.list.getNext(it.nd, 0)
 	if it.nd == it.list.tail {
-		return false
+		return nil
 	}
-	if it.upper != nil && it.list.storage.Compare(it.upper, it.list.getKey(it.nd)) <= 0 {
+	keyOffset := it.list.getKey(it.nd)
+	if it.upper != nil && it.list.storage.Compare(it.upper, keyOffset) <= 0 {
 		it.nd = it.list.tail
-		return false
+		return nil
 	}
-	return true
+	it.key = it.list.storage.Get(keyOffset)
+	return &it.key
 }
 
 // Prev moves to the previous position. If there are no previous nodes, then
 // Valid() will be false after this call.
-func (it *Iterator) Prev() bool {
+func (it *Iterator) Prev() *db.InternalKey {
 	it.nd = it.list.getPrev(it.nd, 0)
 	if it.nd == it.list.head {
-		return false
+		return nil
 	}
-	if it.lower != nil && it.list.storage.Compare(it.lower, it.list.getKey(it.nd)) > 0 {
+	keyOffset := it.list.getKey(it.nd)
+	if it.lower != nil && it.list.storage.Compare(it.lower, keyOffset) > 0 {
 		it.nd = it.list.head
-		return false
+		return nil
 	}
-	return true
+	it.key = it.list.storage.Get(keyOffset)
+	return &it.key
 }
 
 // Key returns the key at the current position.
-func (it *Iterator) Key() db.InternalKey {
-	return it.list.storage.Get(it.list.getKey(it.nd))
+func (it *Iterator) Key() *db.InternalKey {
+	return &it.key
 }
 
 // KeyOffset returns the key offset at the current position.

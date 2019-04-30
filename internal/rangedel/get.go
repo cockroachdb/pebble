@@ -13,35 +13,21 @@ import (
 type iterator interface {
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key.
-	SeekLT(key []byte) bool
+	SeekLT(key []byte) (*db.InternalKey, []byte)
 
 	// First moves the iterator the the first key/value pair.
-	First() bool
+	First() (*db.InternalKey, []byte)
 
 	// Last moves the iterator the the last key/value pair.
-	Last() bool
+	Last() (*db.InternalKey, []byte)
 
 	// Next moves the iterator to the next key/value pair.
 	// It returns whether the iterator is exhausted.
-	Next() bool
+	Next() (*db.InternalKey, []byte)
 
 	// Prev moves the iterator to the previous key/value pair.
 	// It returns whether the iterator is exhausted.
-	Prev() bool
-
-	// Key returns the encoded internal key of the current key/value pair, or nil
-	// if done. The caller should not modify the contents of the returned slice,
-	// and its contents may change on the next call to Next.
-	Key() db.InternalKey
-
-	// Value returns the value of the current key/value pair, or nil if done.
-	// The caller should not modify the contents of the returned slice, and
-	// its contents may change on the next call to Next.
-	Value() []byte
-
-	// Valid returns true if the iterator is positioned at a valid key/value pair
-	// and false otherwise.
-	Valid() bool
+	Prev() (*db.InternalKey, []byte)
 }
 
 // Get returns the newest tombstone that contains the target key. If no
@@ -63,12 +49,14 @@ func Get(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the tombstone [a,e)
 	// and we'll have to move forward.
-	if !iter.SeekLT(key) {
-		if !iter.Next() {
+	iterKey, iterValue := iter.SeekLT(key)
+	if iterKey == nil {
+		iterKey, iterValue = iter.Next()
+		if iterKey == nil {
 			// The iterator is empty.
 			return Tombstone{}
 		}
-		if cmp(key, iter.Key().UserKey) < 0 {
+		if cmp(key, iterKey.UserKey) < 0 {
 			// The search key lies before the first tombstone.
 			return Tombstone{}
 		}
@@ -76,13 +64,14 @@ func Get(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 
 	// Invariant: key >= iter.Key().UserKey
 
-	if cmp(key, iter.Value()) < 0 {
+	if cmp(key, iterValue) < 0 {
 		// The current tombstone contains the search key, but SeekLT returns the
 		// oldest entry for a key, so backup until we hit the previous tombstone or
 		// an entry which is not visible.
 		for {
-			if !iter.Prev() || cmp(key, iter.Value()) >= 0 || !iter.Key().Visible(snapshot) {
-				iter.Next()
+			iterKey, iterValue = iter.Prev()
+			if iterKey == nil || cmp(key, iterValue) >= 0 || !iterKey.Visible(snapshot) {
+				iterKey, iterValue = iter.Next()
 				break
 			}
 		}
@@ -91,26 +80,28 @@ func Get(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 		// as long as the search key lies past the end of the tombstone. See the
 		// comment at the start of this function about why this is necessary.
 		for {
-			if !iter.Next() || cmp(key, iter.Key().UserKey) < 0 {
+			iterKey, iterValue = iter.Next()
+			if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 				// We've run out of tombstones or we've moved on to a tombstone which
 				// starts after our search key.
 				return Tombstone{}
 			}
-			if cmp(key, iter.Value()) < 0 {
+			if cmp(key, iterValue) < 0 {
 				break
 			}
 		}
 	}
 
 	for {
-		if start := iter.Key(); start.Visible(snapshot) {
+		if start := iterKey; start.Visible(snapshot) {
 			// The tombstone is visible at our read sequence number.
 			return Tombstone{
-				Start: start,
-				End:   iter.Value(),
+				Start: *start,
+				End:   iterValue,
 			}
 		}
-		if !iter.Next() || cmp(key, iter.Key().UserKey) < 0 {
+		iterKey, iterValue = iter.Next()
+		if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 			// We've run out of tombstones or we've moved on to a tombstone which
 			// starts after our search key.
 			return Tombstone{}

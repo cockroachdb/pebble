@@ -26,7 +26,7 @@ func NewIter(cmp db.Compare, tombstones []Tombstone) *Iter {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *Iter) SeekGE(key []byte) bool {
+func (i *Iter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	// NB: manually inlined sort.Seach is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
@@ -45,12 +45,16 @@ func (i *Iter) SeekGE(key []byte) bool {
 	}
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
 	// true => answer is i.index.
-	return i.index < len(i.tombstones)
+	if i.index >= len(i.tombstones) {
+		return nil, nil
+	}
+	t := &i.tombstones[i.index]
+	return &t.Start, t.End
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *Iter) SeekLT(key []byte) bool {
+func (i *Iter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	// NB: manually inlined sort.Search is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
@@ -73,53 +77,67 @@ func (i *Iter) SeekLT(key []byte) bool {
 	// Since keys are strictly increasing, if i.index > 0 then i.index-1 will be
 	// the largest whose key is < the key sought.
 	i.index--
-	return i.index >= 0
+	if i.index < 0 {
+		return nil, nil
+	}
+	t := &i.tombstones[i.index]
+	return &t.Start, t.End
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *Iter) First() bool {
+func (i *Iter) First() (*db.InternalKey, []byte) {
 	if len(i.tombstones) == 0 {
-		return false
+		return nil, nil
 	}
 	i.index = 0
-	return true
+	t := &i.tombstones[i.index]
+	return &t.Start, t.End
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
-func (i *Iter) Last() bool {
+func (i *Iter) Last() (*db.InternalKey, []byte) {
 	if len(i.tombstones) == 0 {
-		return false
+		return nil, nil
 	}
 	i.index = len(i.tombstones) - 1
-	return true
+	t := &i.tombstones[i.index]
+	return &t.Start, t.End
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *Iter) Next() bool {
+func (i *Iter) Next() (*db.InternalKey, []byte) {
 	if i.index == len(i.tombstones) {
-		return false
+		return nil, nil
 	}
 	i.index++
-	return i.index < len(i.tombstones)
+	if i.index == len(i.tombstones) {
+		return nil, nil
+	}
+	t := &i.tombstones[i.index]
+	return &t.Start, t.End
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *Iter) Prev() bool {
+func (i *Iter) Prev() (*db.InternalKey, []byte) {
 	if i.index < 0 {
-		return false
+		return nil, nil
 	}
 	i.index--
-	return i.index >= 0
+	if i.index < 0 {
+		return nil, nil
+	}
+	t := &i.tombstones[i.index]
+	return &t.Start, t.End
 }
 
 // Key implements internalIterator.Key, as documented in the pebble
 // package.
-func (i *Iter) Key() db.InternalKey {
-	return i.tombstones[i.index].Start
+func (i *Iter) Key() *db.InternalKey {
+	return &i.tombstones[i.index].Start
 }
 
 // Value implements internalIterator.Value, as documented in the pebble

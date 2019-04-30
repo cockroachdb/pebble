@@ -216,7 +216,7 @@ func (m *mergingIter) initHeap() {
 		if t.Valid() {
 			m.heap.items = append(m.heap.items, mergingIterItem{
 				index: i,
-				key:   t.Key(),
+				key:   *t.Key(),
 				value: t.Value(),
 			})
 		}
@@ -292,12 +292,12 @@ func (m *mergingIter) switchToMinHeap() {
 		if i == cur {
 			continue
 		}
-		valid := i.Valid()
-		if !valid {
-			valid = i.Next()
+		iterKey := i.Key()
+		if iterKey == nil {
+			iterKey, _ = i.Next()
 		}
-		for ; valid; valid = i.Next() {
-			if db.InternalCompare(m.heap.cmp, key, i.Key()) < 0 {
+		for ; iterKey != nil; iterKey, _ = i.Next() {
+			if db.InternalCompare(m.heap.cmp, key, *iterKey) < 0 {
 				// key < iter-key
 				break
 			}
@@ -333,12 +333,12 @@ func (m *mergingIter) switchToMaxHeap() {
 		if i == cur {
 			continue
 		}
-		valid := i.Valid()
-		if !valid {
-			valid = i.Prev()
+		iterKey := i.Key()
+		if iterKey == nil {
+			iterKey, _ = i.Prev()
 		}
-		for ; valid; valid = i.Prev() {
-			if db.InternalCompare(m.heap.cmp, key, i.Key()) > 0 {
+		for ; iterKey != nil; iterKey, _ = i.Prev() {
+			if db.InternalCompare(m.heap.cmp, key, *iterKey) > 0 {
 				// key > iter-key
 				break
 			}
@@ -355,8 +355,8 @@ func (m *mergingIter) switchToMaxHeap() {
 func (m *mergingIter) nextEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	iter := m.iters[item.index]
-	if iter.Next() {
-		item.key, item.value = iter.Key(), iter.Value()
+	if key, value := iter.Next(); key != nil {
+		item.key, item.value = *key, value
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
@@ -382,7 +382,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 			continue
 		}
 		tombstone := rangedel.Tombstone{
-			Start: rangeDelIter.Key(),
+			Start: *rangeDelIter.Key(),
 			End:   rangeDelIter.Value(),
 		}
 		if m.heap.cmp(tombstone.End, item.key.UserKey) <= 0 {
@@ -406,25 +406,25 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	return false
 }
 
-func (m *mergingIter) findNextEntry() bool {
+func (m *mergingIter) findNextEntry() (*db.InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.rangeDelIters != nil && m.isNextEntryDeleted(item) {
 			continue
 		}
 		if item.key.Visible(m.snapshot) {
-			return true
+			return &item.key, item.value
 		}
 		m.nextEntry(item)
 	}
-	return false
+	return nil, nil
 }
 
 func (m *mergingIter) prevEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	iter := m.iters[item.index]
-	if iter.Prev() {
-		item.key, item.value = iter.Key(), iter.Value()
+	if key, value := iter.Prev(); key != nil {
+		item.key, item.value = *key, value
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
@@ -450,7 +450,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			continue
 		}
 		tombstone := rangedel.Tombstone{
-			Start: rangeDelIter.Key(),
+			Start: *rangeDelIter.Key(),
 			End:   rangeDelIter.Value(),
 		}
 		if m.heap.cmp(item.key.UserKey, tombstone.Start.UserKey) < 0 {
@@ -474,18 +474,18 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 	return false
 }
 
-func (m *mergingIter) findPrevEntry() bool {
+func (m *mergingIter) findPrevEntry() (*db.InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.rangeDelIters != nil && m.isPrevEntryDeleted(item) {
 			continue
 		}
 		if item.key.Visible(m.snapshot) {
-			return true
+			return &item.key, item.value
 		}
 		m.prevEntry(item)
 	}
-	return false
+	return nil, nil
 }
 
 func (m *mergingIter) seekGE(key []byte, level int) {
@@ -534,7 +534,7 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 	m.initMinHeap()
 }
 
-func (m *mergingIter) SeekGE(key []byte) bool {
+func (m *mergingIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
 }
@@ -561,30 +561,35 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 	m.initMaxHeap()
 }
 
-func (m *mergingIter) SeekLT(key []byte) bool {
+func (m *mergingIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	m.seekLT(key, 0 /* start level */)
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) First() bool {
+func (m *mergingIter) First() (*db.InternalKey, []byte) {
+	m.heap.items = m.heap.items[:0]
 	for _, t := range m.iters {
+		// TODO(peter): save key and value so we don't have to access t.Key() and
+		// t.Value() in initHeap().
 		t.First()
 	}
 	m.initMinHeap()
 	return m.findNextEntry()
 }
 
-func (m *mergingIter) Last() bool {
+func (m *mergingIter) Last() (*db.InternalKey, []byte) {
 	for _, t := range m.iters {
+		// TODO(peter): save key and value so we don't have to access t.Key() and
+		// t.Value() in initHeap().
 		t.Last()
 	}
 	m.initMaxHeap()
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) Next() bool {
+func (m *mergingIter) Next() (*db.InternalKey, []byte) {
 	if m.err != nil {
-		return false
+		return nil, nil
 	}
 
 	if m.dir != 1 {
@@ -593,16 +598,16 @@ func (m *mergingIter) Next() bool {
 	}
 
 	if m.heap.len() == 0 {
-		return false
+		return nil, nil
 	}
 
 	m.nextEntry(&m.heap.items[0])
 	return m.findNextEntry()
 }
 
-func (m *mergingIter) Prev() bool {
+func (m *mergingIter) Prev() (*db.InternalKey, []byte) {
 	if m.err != nil {
-		return false
+		return nil, nil
 	}
 
 	if m.dir != -1 {
@@ -611,15 +616,15 @@ func (m *mergingIter) Prev() bool {
 	}
 
 	if m.heap.len() == 0 {
-		return false
+		return nil, nil
 	}
 
 	m.prevEntry(&m.heap.items[0])
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) Key() db.InternalKey {
-	return m.heap.items[0].key
+func (m *mergingIter) Key() *db.InternalKey {
+	return &m.heap.items[0].key
 }
 
 func (m *mergingIter) Value() []byte {

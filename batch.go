@@ -495,8 +495,12 @@ func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
 			batch: b,
 			iter:  b.rangeDelIndex.NewIter(nil, nil),
 		}
-		for it.Next() {
-			frag.Add(it.Key(), it.Value())
+		for {
+			key, val := it.Next()
+			if key == nil {
+				break
+			}
+			frag.Add(*key, val)
 		}
 		frag.Finish()
 	}
@@ -716,31 +720,55 @@ type batchIter struct {
 // batchIter implements the internalIterator interface.
 var _ internalIterator = (*batchIter)(nil)
 
-func (i *batchIter) SeekGE(key []byte) bool {
-	return i.iter.SeekGE(key)
+func (i *batchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+	ikey := i.iter.SeekGE(key)
+	if ikey == nil {
+		return nil, nil
+	}
+	return ikey, i.Value()
 }
 
-func (i *batchIter) SeekLT(key []byte) bool {
-	return i.iter.SeekLT(key)
+func (i *batchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+	ikey := i.iter.SeekLT(key)
+	if ikey == nil {
+		return nil, nil
+	}
+	return ikey, i.Value()
 }
 
-func (i *batchIter) First() bool {
-	return i.iter.First()
+func (i *batchIter) First() (*db.InternalKey, []byte) {
+	ikey := i.iter.First()
+	if ikey == nil {
+		return nil, nil
+	}
+	return ikey, i.Value()
 }
 
-func (i *batchIter) Last() bool {
-	return i.iter.Last()
+func (i *batchIter) Last() (*db.InternalKey, []byte) {
+	ikey := i.iter.Last()
+	if ikey == nil {
+		return nil, nil
+	}
+	return ikey, i.Value()
 }
 
-func (i *batchIter) Next() bool {
-	return i.iter.Next()
+func (i *batchIter) Next() (*db.InternalKey, []byte) {
+	ikey := i.iter.Next()
+	if ikey == nil {
+		return nil, nil
+	}
+	return ikey, i.Value()
 }
 
-func (i *batchIter) Prev() bool {
-	return i.iter.Prev()
+func (i *batchIter) Prev() (*db.InternalKey, []byte) {
+	ikey := i.iter.Prev()
+	if ikey == nil {
+		return nil, nil
+	}
+	return ikey, i.Value()
 }
 
-func (i *batchIter) Key() db.InternalKey {
+func (i *batchIter) Key() *db.InternalKey {
 	return i.iter.Key()
 }
 
@@ -899,8 +927,12 @@ func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) internalIterator {
 			cmp:     b.cmp,
 			index:   -1,
 		}
-		for it.Next() {
-			frag.Add(it.Key(), it.Value())
+		for {
+			key, val := it.Next()
+			if key == nil {
+				break
+			}
+			frag.Add(*key, val)
 		}
 		frag.Finish()
 	}
@@ -925,59 +957,78 @@ type flushableBatchIter struct {
 	cmp     db.Compare
 	reverse bool
 	index   int
+	key     db.InternalKey
 	err     error
 }
 
 // flushableBatchIter implements the internalIterator interface.
 var _ internalIterator = (*flushableBatchIter)(nil)
 
-func (i *flushableBatchIter) SeekGE(key []byte) bool {
+func (i *flushableBatchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	ikey := db.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
 	})
-	return i.index < len(i.offsets)
+	if i.index >= len(i.offsets) {
+		return nil, nil
+	}
+	i.key = i.getKey(i.index)
+	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) SeekLT(key []byte) bool {
+func (i *flushableBatchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	ikey := db.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	i.index--
-	return i.index >= 0
+	if i.index < 0 {
+		return nil, nil
+	}
+	i.key = i.getKey(i.index)
+	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) First() bool {
+func (i *flushableBatchIter) First() (*db.InternalKey, []byte) {
 	if len(i.offsets) == 0 {
-		return false
+		return nil, nil
 	}
 	i.index = 0
-	return true
+	i.key = i.getKey(i.index)
+	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) Last() bool {
+func (i *flushableBatchIter) Last() (*db.InternalKey, []byte) {
 	if len(i.offsets) == 0 {
-		return false
+		return nil, nil
 	}
 	i.index = len(i.offsets) - 1
-	return true
+	i.key = i.getKey(i.index)
+	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) Next() bool {
+func (i *flushableBatchIter) Next() (*db.InternalKey, []byte) {
 	if i.index == len(i.offsets) {
-		return false
+		return nil, nil
 	}
 	i.index++
-	return i.index < len(i.offsets)
+	if i.index == len(i.offsets) {
+		return nil, nil
+	}
+	i.key = i.getKey(i.index)
+	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) Prev() bool {
+func (i *flushableBatchIter) Prev() (*db.InternalKey, []byte) {
 	if i.index < 0 {
-		return false
+		return nil, nil
 	}
 	i.index--
-	return i.index >= 0
+	if i.index < 0 {
+		return nil, nil
+	}
+	i.key = i.getKey(i.index)
+	return &i.key, i.Value()
 }
 
 func (i *flushableBatchIter) getKey(index int) db.InternalKey {
@@ -987,8 +1038,8 @@ func (i *flushableBatchIter) getKey(index int) db.InternalKey {
 	return db.MakeInternalKey(key, i.batch.seqNum+uint64(e.index), kind)
 }
 
-func (i *flushableBatchIter) Key() db.InternalKey {
-	return i.getKey(i.index)
+func (i *flushableBatchIter) Key() *db.InternalKey {
+	return &i.key
 }
 
 func (i *flushableBatchIter) Value() []byte {

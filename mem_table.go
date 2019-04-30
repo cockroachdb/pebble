@@ -98,17 +98,17 @@ func (m *memTable) readyForFlush() bool {
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter(nil, nil)
-	if !it.SeekGE(key) {
+	ikey, val := it.SeekGE(key)
+	if ikey == nil {
 		return nil, db.ErrNotFound
 	}
-	ikey := it.Key()
 	if !m.equal(key, ikey.UserKey) {
 		return nil, db.ErrNotFound
 	}
 	if ikey.Kind() == db.InternalKeyKindDelete {
 		return nil, db.ErrNotFound
 	}
-	return it.Value(), nil
+	return val, nil
 }
 
 // Prepare reserves space for the batch in the memtable and references the
@@ -216,8 +216,9 @@ func (f *rangeTombstoneFrags) get(m *memTable) []rangedel.Tombstone {
 				f.tombstones = append(f.tombstones, fragmented...)
 			},
 		}
-		for it := m.rangeDelSkl.NewIter(nil, nil); it.Next(); {
-			frag.Add(it.Key(), it.Value())
+		it := m.rangeDelSkl.NewIter(nil, nil)
+		for key, val := it.First(); key != nil; key, val = it.Next() {
+			frag.Add(*key, val)
 		}
 		frag.Finish()
 	})

@@ -63,94 +63,97 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) SeekGE(key []byte) bool {
+func (f *fakeIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {
 		if db.DefaultComparer.Compare(key, f.Key().UserKey) <= 0 {
 			if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
-				return false
+				return nil, nil
 			}
 			f.valid = true
-			return true
+			return f.Key(), f.Value()
 		}
 	}
-	return false
+	return nil, nil
 }
 
-func (f *fakeIter) SeekLT(key []byte) bool {
+func (f *fakeIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	f.valid = false
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
 		if db.DefaultComparer.Compare(key, f.Key().UserKey) > 0 {
 			if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
-				return false
+				return nil, nil
 			}
 			f.valid = true
-			return true
+			return f.Key(), f.Value()
 		}
 	}
-	return false
+	return nil, nil
 }
 
-func (f *fakeIter) First() bool {
+func (f *fakeIter) First() (*db.InternalKey, []byte) {
 	f.valid = false
 	f.index = -1
-	if !f.Next() {
-		return false
+	if key, _ := f.Next(); key == nil {
+		return nil, nil
 	}
 	if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
-		return false
+		return nil, nil
 	}
 	f.valid = true
-	return true
+	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Last() bool {
+func (f *fakeIter) Last() (*db.InternalKey, []byte) {
 	f.valid = false
 	f.index = len(f.keys)
-	if !f.Prev() {
-		return false
+	if key, _ := f.Prev(); key == nil {
+		return nil, nil
 	}
 	if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
-		return false
+		return nil, nil
 	}
 	f.valid = true
-	return true
+	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Next() bool {
+func (f *fakeIter) Next() (*db.InternalKey, []byte) {
 	f.valid = false
 	if f.index == len(f.keys) {
-		return false
+		return nil, nil
 	}
 	f.index++
 	if f.index == len(f.keys) {
-		return false
+		return nil, nil
 	}
 	if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
-		return false
+		return nil, nil
 	}
 	f.valid = true
-	return true
+	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Prev() bool {
+func (f *fakeIter) Prev() (*db.InternalKey, []byte) {
 	f.valid = false
 	if f.index < 0 {
-		return false
+		return nil, nil
 	}
 	f.index--
 	if f.index < 0 {
-		return false
+		return nil, nil
 	}
 	if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
-		return false
+		return nil, nil
 	}
 	f.valid = true
-	return true
+	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Key() db.InternalKey {
-	return f.keys[f.index]
+func (f *fakeIter) Key() *db.InternalKey {
+	if f.index >= 0 && f.index < len(f.keys) {
+		return &f.keys[f.index]
+	}
+	return nil
 }
 
 func (f *fakeIter) Value() []byte {
@@ -226,8 +229,8 @@ func testIterator(
 	for _, tc := range testCases {
 		var b bytes.Buffer
 		iter := newFunc(tc.iters...)
-		for valid := iter.First(); valid; valid = iter.Next() {
-			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
+		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+			fmt.Fprintf(&b, "<%s:%d>", key.UserKey, key.SeqNum())
 		}
 		if err := iter.Close(); err != nil {
 			fmt.Fprintf(&b, "err=%v", err)

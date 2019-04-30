@@ -12,10 +12,10 @@ import (
 // iterator is truncated to be contained within the range [lower, upper).
 func Truncate(cmp db.Compare, iter iterator, lower, upper []byte) *Iter {
 	var tombstones []Tombstone
-	for valid := iter.First(); valid; valid = iter.Next() {
+	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		t := Tombstone{
-			Start: iter.Key(),
-			End:   iter.Value(),
+			Start: *key,
+			End:   value,
 		}
 		if cmp(t.Start.UserKey, lower) < 0 {
 			t.Start.UserKey = lower

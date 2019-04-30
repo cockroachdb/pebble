@@ -503,10 +503,10 @@ func TestIngest(t *testing.T) {
 					if iter == nil {
 						continue
 					}
-					for valid := iter.First(); valid; valid = iter.Next() {
-						key := iter.Key()
-						key.SetSeqNum(10000)
-						if err := w.Add(key, iter.Value()); err != nil {
+					for key, val := iter.First(); key != nil; key, val = iter.Next() {
+						tmp := *key
+						tmp.SetSeqNum(10000)
+						if err := w.Add(tmp, val); err != nil {
 							return err.Error()
 						}
 					}
