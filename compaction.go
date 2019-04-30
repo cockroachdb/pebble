@@ -198,6 +198,29 @@ func (c *compaction) shouldStopBefore(key db.InternalKey) bool {
 	return false
 }
 
+// allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
+// snapshots requiring them to be kept. It performs this determination by
+// looking for an sstable which overlaps the bounds of the compaction at a
+// lower level in the LSM.
+func (c *compaction) allowZeroSeqNum() bool {
+	var lower, upper []byte
+	for i := range c.inputs {
+		files := c.inputs[i]
+		for j := range files {
+			f := &files[j]
+			if lower == nil || c.cmp(lower, f.smallest.UserKey) > 0 {
+				lower = f.smallest.UserKey
+			}
+			if upper == nil || c.cmp(upper, f.largest.UserKey) < 0 {
+				upper = f.largest.UserKey
+			}
+		}
+	}
+	// [lower,upper] now cover the bounds of the compaction inputs. Check to see
+	// if those bounds overlap an sstable at a lower level.
+	return c.elideRangeTombstone(lower, upper)
+}
+
 // elideTombstone returns true if it is ok to elide a tombstone for the
 // specified key. A return value of true guarantees that there are no key/value
 // pairs at c.level+2 or higher that possibly contain the specified user key.
@@ -550,8 +573,30 @@ func (d *DB) writeLevel0Table(
 		return true
 	}
 
+	// Allow zeroing of seqnum if the bounds of the compaction do not overlap
+	// with any lower level LSM. Note that this treats range tombstones as point
+	// entries. That is fine for this usage, but beware of adapting this for
+	// another purpose.
+	allowZeroSeqNum := func() bool {
+		if len(version.files[0]) > 0 {
+			// We can only allow zeroing of seqnum for L0 tables if no other L0
+			// tables exist. Otherwise we may violate the invariant that L0 tables
+			// are ordered by increasing seqnum. This could be relaxed with a bit
+			// more intelligence in how a new L0 table is merged into the existing
+			// set of L0 tables.
+			return false
+		}
+		lower, _ := iiter.First()
+		upper, _ := iiter.Last()
+		if lower == nil || upper == nil {
+			return false
+		}
+		return elideRangeTombstone(lower.UserKey, upper.UserKey)
+	}()
+
 	iter := newCompactionIter(
 		d.cmp, d.merge, iiter, snapshots,
+		allowZeroSeqNum,
 		func([]byte) bool { return false },
 		elideRangeTombstone,
 	)
@@ -620,14 +665,6 @@ func (d *DB) writeLevel0Table(
 	meta.smallestSeqNum = writerMeta.SmallestSeqNum
 	meta.largestSeqNum = writerMeta.LargestSeqNum
 	tw = nil
-
-	// TODO(peter): After a flush we set the commit rate to 110% of the flush
-	// rate. The rationale behind the 110% is to account for slack. Investigate a
-	// more principled way of setting this.
-	// d.commitController.limiter.SetLimit(rate.Limit(d.flushController.sensor.Rate()))
-	// if false {
-	// 	fmt.Printf("flush: %.1f MB/s\n", d.flushController.sensor.Rate()/float64(1<<20))
-	// }
 
 	// TODO(peter): compaction stats.
 
@@ -788,7 +825,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		return nil, pendingOutputs, err
 	}
 	iter := newCompactionIter(d.cmp, d.merge, iiter, snapshots,
-		c.elideTombstone, c.elideRangeTombstone)
+		c.allowZeroSeqNum(), c.elideTombstone, c.elideRangeTombstone)
 
 	var (
 		filenames []string

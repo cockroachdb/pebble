@@ -155,6 +155,7 @@ type compactionIter struct {
 	tombstones []rangedel.Tombstone
 	// Byte allocator for the tombstone keys.
 	alloc               bytealloc.A
+	allowZeroSeqNum     bool
 	elideTombstone      func(key []byte) bool
 	elideRangeTombstone func(start, end []byte) bool
 }
@@ -164,6 +165,7 @@ func newCompactionIter(
 	merge db.Merge,
 	iter internalIterator,
 	snapshots []uint64,
+	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
 ) *compactionIter {
@@ -172,6 +174,7 @@ func newCompactionIter(
 		merge:               merge,
 		iter:                iter,
 		snapshots:           snapshots,
+		allowZeroSeqNum:     allowZeroSeqNum,
 		elideTombstone:      elideTombstone,
 		elideRangeTombstone: elideRangeTombstone,
 	}
@@ -237,6 +240,7 @@ func (i *compactionIter) Next() (*db.InternalKey, []byte) {
 			i.value = i.iterValue
 			i.valid = true
 			i.skip = true
+			i.maybeZeroSeqnum()
 			return &i.key, i.value
 
 		case db.InternalKeyKindMerge:
@@ -246,6 +250,11 @@ func (i *compactionIter) Next() (*db.InternalKey, []byte) {
 				continue
 			}
 
+			// NB: it is important to call maybeZeroSeqnum before mergeNext as
+			// merging advances the iterator, adjusting curSnapshotIdx and thus
+			// invalidating the state that maybeZeroSeqnum uses to make its
+			// determination.
+			i.maybeZeroSeqnum()
 			return i.mergeNext()
 
 		case db.InternalKeyKindInvalid:
@@ -321,7 +330,7 @@ func (i *compactionIter) mergeNext() (*db.InternalKey, []byte) {
 	i.saveValue()
 	i.valid = true
 
-	// Loop looking for older values in the current snapshot stripe and merging
+	// Loop looking for older values in the current snapshot stripe and merge
 	// them.
 	for {
 		if !i.nextInStripe() {
@@ -448,4 +457,23 @@ func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
 		}
 		currentIdx = idx
 	}
+}
+
+// maybeZeroSeqnum attempts to set the seqnum for the current key to 0. Doing
+// so improves compression and enables an optimization during forward iteration
+// to skip some key comparisons. The seqnum for an entry can be zeroed if the
+// entry is on the bottom snapshot stripe and on the bottom level of the LSM.
+func (i *compactionIter) maybeZeroSeqnum() {
+	if !i.allowZeroSeqNum {
+		// TODO(peter): allowZeroSeqNum applies to the entire compaction. We could
+		// make the determination on a key by key basis, similar to what is done
+		// for elideTombstone. Need to add a benchmark for compactionIter to verify
+		// that isn't too expensive.
+		return
+	}
+	if i.curSnapshotIdx > 0 {
+		// This is not the last snapshot
+		return
+	}
+	i.key.SetSeqNum(0)
 }

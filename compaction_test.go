@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -950,6 +951,82 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
+
+func TestCompactionAllowZeroSeqNum(t *testing.T) {
+	var d *DB
+
+	metaRE := regexp.MustCompile(`^L([0-9]+):([^-]+)-(.+)$`)
+	parseMeta := func(s string) (level int, meta fileMetadata) {
+		match := metaRE.FindStringSubmatch(s)
+		if match == nil {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		level, err := strconv.Atoi(match[1])
+		if err != nil {
+			t.Fatalf("malformed table spec: %s: %s", s, err)
+		}
+		meta = fileMetadata{
+			smallest: db.InternalKey{UserKey: []byte(match[2])},
+			largest:  db.InternalKey{UserKey: []byte(match[3])},
+		}
+		return level, meta
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_allow_zero_seqnum",
+		func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				var err error
+				if d, err = runDBDefineCmd(td); err != nil {
+					return err.Error()
+				}
+
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().String()
+				d.mu.Unlock()
+				return s
+
+			case "allow-zero-seqnum":
+				d.mu.Lock()
+				c := &compaction{
+					cmp:     d.cmp,
+					version: d.mu.versions.currentVersion(),
+				}
+				d.mu.Unlock()
+
+				var buf bytes.Buffer
+				for _, line := range strings.Split(td.Input, "\n") {
+					parts := strings.Fields(line)
+					if len(parts) == 0 {
+						continue
+					}
+					c.inputs[0] = nil
+					c.inputs[1] = nil
+					c.level = -1
+
+					for _, p := range parts {
+						level, meta := parseMeta(p)
+						i := 0
+						switch {
+						case c.level == -1:
+							c.level = level
+						case c.level+1 == level:
+							i = 1
+						case c.level != level:
+							return fmt.Sprintf("invalid level %d: expected %d or %d",
+								level, c.level, c.level+1)
+						}
+						c.inputs[i] = append(c.inputs[i], meta)
+					}
+					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
+				}
+				return buf.String()
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
 }
