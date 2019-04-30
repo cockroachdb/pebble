@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -22,6 +21,7 @@ import (
 	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 // nonsenseWords are words that aren't in testdata/h.txt.
@@ -228,7 +228,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 
 	// Check lower/upper bounds behavior. Randomly choose a lower and upper bound
 	// and then guarantee that iteration finds the expected number if entries.
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	sort.Strings(words)
 	for i := 0; i < 10; i++ {
 		lowerIdx := -1

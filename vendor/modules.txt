@@ -19,3 +19,5 @@ github.com/spf13/pflag
 # github.com/stretchr/testify v1.2.2
 github.com/stretchr/testify/require
 github.com/stretchr/testify/assert
+# golang.org/x/exp v0.0.0-20190426190305-956cc1757749
+golang.org/x/exp/rand

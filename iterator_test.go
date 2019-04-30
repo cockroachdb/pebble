@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"golang.org/x/exp/rand"
 )
 
 var testKeyValuePairs = []string{
@@ -365,7 +365,7 @@ func BenchmarkIteratorSeekGE(b *testing.B) {
 		equal: db.DefaultComparer.Equal,
 		iter:  m.newIter(nil),
 	}
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

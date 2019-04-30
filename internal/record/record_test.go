@@ -10,10 +10,11 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"strings"
 	"testing"
+
+	"golang.org/x/exp/rand"
 )
 
 func short(s string) string {

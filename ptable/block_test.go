@@ -6,11 +6,12 @@ package ptable
 
 import (
 	"fmt"
-	"math/rand"
 	"reflect"
 	"testing"
 	"time"
 	"unsafe"
+
+	"golang.org/x/exp/rand"
 )
 
 func randBlock(rng *rand.Rand, rows int, schema []ColumnType) ([]byte, []interface{}) {
@@ -171,7 +172,7 @@ func testSchema(t *testing.T, rng *rand.Rand, rows int, schema []ColumnType) {
 }
 
 func TestBlockWriter(t *testing.T) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	randInt := func(lo, hi int) int {
 		return lo + rng.Intn(hi-lo)
 	}
@@ -217,7 +218,7 @@ func TestBlockWriterNullValues(t *testing.T) {
 }
 
 func BenchmarkBlock(b *testing.B) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	blocks := make([][]byte, 128)
 	for i := range blocks {
 		blocks[i], _ = randBlock(rng, 4096, []ColumnType{ColumnTypeInt64})

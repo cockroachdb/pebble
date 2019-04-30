@@ -23,7 +23,6 @@ import (
 
 	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/db"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -88,7 +87,7 @@ var fixtures = map[fixtureOpts]struct {
 func runTestFixtureOutput(opts fixtureOpts) error {
 	fixture, ok := fixtures[opts]
 	if !ok {
-		return errors.Errorf("fixture missing: %+v", opts)
+		return fmt.Errorf("fixture missing: %+v", opts)
 	}
 
 	compression := db.NoCompression

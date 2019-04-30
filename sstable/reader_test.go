@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,6 +19,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 // iterAdapter adapts the new Iterator API which returns the key and value from
@@ -279,7 +279,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
 				it := r.NewIter(nil /* lower */, nil /* upper */)
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -297,7 +297,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
 				it := r.NewIter(nil /* lower */, nil /* upper */)
-				rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {

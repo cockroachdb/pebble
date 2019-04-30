@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"regexp"
 	"sort"
 	"strconv"
@@ -21,6 +20,7 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 func TestIngestLoad(t *testing.T) {
@@ -69,7 +69,7 @@ func TestIngestLoad(t *testing.T) {
 
 func TestIngestLoadRand(t *testing.T) {
 	mem := storage.NewMem()
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	cmp := db.DefaultComparer.Compare
 
 	randBytes := func(size int) []byte {

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 // try repeatedly calls f, sleeping between calls with exponential back-off,

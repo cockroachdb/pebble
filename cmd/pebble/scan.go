@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/petermattis/pebble"
 	"github.com/petermattis/pebble/db"
 	"github.com/spf13/cobra"
+	"golang.org/x/exp/rand"
 )
 
 var (
@@ -77,7 +77,7 @@ func runScan(cmd *cobra.Command, args []string) {
 				go func(i int) {
 					defer wg.Done()
 
-					rng := rand.New(rand.NewSource(int64(i)))
+					rng := rand.New(rand.NewSource(uint64(i)))
 					startKeyBuf := append(make([]byte, 0, 64), []byte("key-")...)
 					endKeyBuf := append(make([]byte, 0, 64), []byte("key-")...)
 					minTS := encodeUint64Ascending(nil, math.MaxUint64)

@@ -8,10 +8,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"testing"
 	"time"
 	"unsafe"
+
+	"golang.org/x/exp/rand"
 )
 
 func TestDecodeVarint(t *testing.T) {
@@ -39,7 +40,7 @@ func TestDecodeVarint(t *testing.T) {
 }
 
 func BenchmarkDecodeVarint(b *testing.B) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	vals := make([]unsafe.Pointer, 10000)
 	for i := range vals {
 		buf := make([]byte, 5)

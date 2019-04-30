@@ -5,15 +5,16 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
-	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/petermattis/pebble"
 	"github.com/petermattis/pebble/db"
 	"github.com/spf13/cobra"
+	"golang.org/x/exp/rand"
 )
 
 var syncCmd = &cobra.Command{
@@ -35,14 +36,21 @@ func runSync(cmd *cobra.Command, args []string) {
 				go func() {
 					defer wg.Done()
 
-					rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+					rand := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 					var raw []byte
 					var buf []byte
 
 					randBlock := func(min, max int) []byte {
 						data := make([]byte, rand.Intn(max-min)+min)
-						for i := range data {
-							data[i] = byte(rand.Int() & 0xff)
+						tmp := data
+						for len(tmp) >= 8 {
+							binary.LittleEndian.PutUint64(tmp, rand.Uint64())
+							tmp = tmp[8:]
+						}
+						r := rand.Uint64()
+						for i := 0; i < len(tmp); i++ {
+							tmp[i] = byte(r)
+							r >>= 8
 						}
 						return data
 					}

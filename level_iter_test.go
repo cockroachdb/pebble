@@ -7,7 +7,6 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/storage"
+	"golang.org/x/exp/rand"
 )
 
 func TestLevelIter(t *testing.T) {
@@ -291,7 +291,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
 							l := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
-							rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
