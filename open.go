@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -124,13 +125,12 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 
-	// Replay any newer log files than the ones named in the manifest.
-	var ve versionEdit
 	ls, err := fs.List(dirname)
 	if err != nil {
 		return nil, err
 	}
 
+	// Replay any newer log files than the ones named in the manifest.
 	type fileNumAndName struct {
 		num  uint64
 		name string
@@ -138,13 +138,24 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	var logFiles []fileNumAndName
 	for _, filename := range ls {
 		ft, fn, ok := parseDBFilename(filename)
-		if ok && ft == fileTypeLog && (fn >= d.mu.versions.logNumber || fn == d.mu.versions.prevLogNumber) {
-			logFiles = append(logFiles, fileNumAndName{fn, filename})
+		if !ok {
+			continue
+		}
+		switch ft {
+		case fileTypeLog:
+			if fn >= d.mu.versions.logNumber || fn == d.mu.versions.prevLogNumber {
+				logFiles = append(logFiles, fileNumAndName{fn, filename})
+			}
+		case fileTypeOptions:
+			if err := checkOptions(opts, filepath.Join(dirname, filename)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	sort.Slice(logFiles, func(i, j int) bool {
 		return logFiles[i].num < logFiles[j].num
 	})
+	var ve versionEdit
 	for _, lf := range logFiles {
 		maxSeqNum, err := d.replayWAL(&ve, fs, filepath.Join(dirname, lf.name), lf.num)
 		if err != nil {
@@ -282,4 +293,18 @@ func (d *DB) replayWAL(
 	}
 
 	return maxSeqNum, nil
+}
+
+func checkOptions(opts *db.Options, path string) error {
+	f, err := opts.Storage.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	return opts.Check(string(data))
 }

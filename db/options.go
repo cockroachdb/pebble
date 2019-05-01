@@ -7,6 +7,7 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/storage"
@@ -385,6 +386,55 @@ func (o *Options) String() string {
 	}
 
 	return buf.String()
+}
+
+// Check verifies the options are compatible with the previous options
+// serialized by Options.String(). For example, the Comparer and Merger must be
+// the same, or data will not be able to be properly read from the DB.
+func (o *Options) Check(s string) error {
+	var section string
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) == 0 {
+			// Skip blank lines.
+			continue
+		}
+		if line[0] == ';' || line[0] == '#' {
+			// Skip comments.
+			continue
+		}
+		n := len(line)
+		if line[0] == '[' && line[n-1] == ']' {
+			// Parse section.
+			section = line[1 : n-1]
+			continue
+		}
+
+		pos := strings.Index(line, "=")
+		if pos < 0 {
+			return fmt.Errorf("pebble: invalid key=value syntax: %s", line)
+		}
+
+		key := strings.TrimSpace(line[:pos])
+		value := strings.TrimSpace(line[pos+1:])
+
+		switch section {
+		case "Options":
+			switch key {
+			case "comparer":
+				if value != o.Comparer.Name {
+					return fmt.Errorf("pebble: comparer name from file %q != comparer name from options %q",
+						value, o.Comparer.Name)
+				}
+			case "merger":
+				if value != o.Merger.Name {
+					return fmt.Errorf("pebble: merger name from file %q != meger name from options %q",
+						value, o.Merger.Name)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // IterOptions hold the optional per-query parameters for NewIter.
