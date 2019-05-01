@@ -6,6 +6,8 @@ package db
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLevelOptions(t *testing.T) {
@@ -65,4 +67,20 @@ func TestOptionsString(t *testing.T) {
 	if v := opts.String(); expected != v {
 		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)
 	}
+}
+
+func TestOptionsCheck(t *testing.T) {
+	var opts *Options
+	opts = opts.EnsureDefaults()
+	s := opts.String()
+	require.NoError(t, opts.Check(s))
+	require.Regexp(t, `invalid key=value syntax`, opts.Check("foo\n"))
+
+	tmp := *opts
+	tmp.Comparer = &Comparer{Name: "foo"}
+	require.Regexp(t, `comparer name from file.*!=.*`, tmp.Check(s))
+
+	tmp = *opts
+	tmp.Merger = &Merger{Name: "foo"}
+	require.Regexp(t, `merger name from file.*!=.*`, tmp.Check(s))
 }

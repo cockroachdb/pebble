@@ -14,6 +14,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/storage"
+	"github.com/stretchr/testify/require"
 )
 
 func TestErrorIfDBExists(t *testing.T) {
@@ -162,4 +163,31 @@ func TestOpenCloseOpenClose(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestOpenOptionsCheck(t *testing.T) {
+	mem := storage.NewMem()
+	opts := &db.Options{Storage: mem}
+
+	d, err := Open("", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	opts = &db.Options{
+		Comparer: &db.Comparer{Name: "foo"},
+		Storage:  mem,
+	}
+	_, err = Open("", opts)
+	require.Regexp(t, `comparer name from file.*!=.*`, err)
+
+	opts = &db.Options{
+		Merger:  &db.Merger{Name: "bar"},
+		Storage: mem,
+	}
+	_, err = Open("", opts)
+	require.Regexp(t, `merger name from file.*!=.*`, err)
 }
