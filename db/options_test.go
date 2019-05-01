@@ -83,4 +83,31 @@ func TestOptionsCheck(t *testing.T) {
 	tmp = *opts
 	tmp.Merger = &Merger{Name: "foo"}
 	require.Regexp(t, `merger name from file.*!=.*`, tmp.Check(s))
+
+	// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
+	// different section names and keys.
+	s = `
+[CFOptions "default"]
+  comparator=rocksdb-comparer
+  merge_operator=rocksdb-merger
+`
+	tmp = *opts
+	tmp.Comparer = &Comparer{Name: "foo"}
+	require.Regexp(t, `comparer name from file.*!=.*`, tmp.Check(s))
+
+	tmp.Comparer = &Comparer{Name: "rocksdb-comparer"}
+	tmp.Merger = &Merger{Name: "foo"}
+	require.Regexp(t, `merger name from file.*!=.*`, tmp.Check(s))
+
+	tmp.Merger = &Merger{Name: "rocksdb-merger"}
+	require.NoError(t, tmp.Check(s))
+
+	// RocksDB allows the merge operator to be unspecified, in which case it
+	// shows up as "nullptr".
+	s = `
+[CFOptions "default"]
+  merge_operator=nullptr
+`
+	tmp = *opts
+	require.NoError(t, tmp.Check(s))
 }

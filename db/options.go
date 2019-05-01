@@ -417,20 +417,23 @@ func (o *Options) Check(s string) error {
 
 		key := strings.TrimSpace(line[:pos])
 		value := strings.TrimSpace(line[pos+1:])
+		path := section + "." + key
 
-		switch section {
-		case "Options":
-			switch key {
-			case "comparer":
-				if value != o.Comparer.Name {
-					return fmt.Errorf("pebble: comparer name from file %q != comparer name from options %q",
-						value, o.Comparer.Name)
-				}
-			case "merger":
-				if value != o.Merger.Name {
-					return fmt.Errorf("pebble: merger name from file %q != meger name from options %q",
-						value, o.Merger.Name)
-				}
+		// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
+		// different section names and keys. The "CFOptions ..." paths below are
+		// the RocksDB versions.
+		switch path {
+		case "Options.comparer", `CFOptions "default".comparator`:
+			if value != o.Comparer.Name {
+				return fmt.Errorf("pebble: comparer name from file %q != comparer name from options %q",
+					value, o.Comparer.Name)
+			}
+		case "Options.merger", `CFOptions "default".merge_operator`:
+			// RocksDB allows the merge operator to be unspecified, in which case it
+			// shows up as "nullptr".
+			if value != "nullptr" && value != o.Merger.Name {
+				return fmt.Errorf("pebble: merger name from file %q != meger name from options %q",
+					value, o.Merger.Name)
 			}
 		}
 	}
