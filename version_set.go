@@ -29,6 +29,9 @@ type versionSet struct {
 	fs      vfs.FS
 	cmp     db.Compare
 	cmpName string
+	// Dynamic base level allows the dynamic base level computation to be
+	// disabled. Used by tests which want to create specific LSM structures.
+	dynamicBaseLevel bool
 
 	// Mutable fields.
 	versions versionList
@@ -62,6 +65,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 	vs.fs = opts.VFS
 	vs.cmp = opts.Comparer.Compare
 	vs.cmpName = opts.Comparer.Name
+	vs.dynamicBaseLevel = true
 	vs.versions.init()
 	// For historical reasons, the next file number is initialized to 2.
 	vs.nextFileNumber = 2
@@ -225,6 +229,9 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 			}
 		}
 		picker = newCompactionPicker(newVersion, vs.opts)
+		if !vs.dynamicBaseLevel {
+			picker.baseLevel = 1
+		}
 		return nil
 	}(); err != nil {
 		return err

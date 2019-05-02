@@ -181,9 +181,8 @@ func runCompactCommand(td *datadriven.TestData, d *DB) error {
 			start: iStart,
 			end:   iEnd,
 		})
-	} else {
-		return d.Compact([]byte(parts[0]), []byte(parts[1]))
 	}
+	return d.Compact([]byte(parts[0]), []byte(parts[1]))
 }
 
 func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
@@ -227,6 +226,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 		return nil, err
 	}
 	d.mu.Lock()
+	d.mu.versions.dynamicBaseLevel = false
 	for i := range snapshots {
 		s := &Snapshot{db: d}
 		s.seqNum = snapshots[i]

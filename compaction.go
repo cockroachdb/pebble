@@ -39,9 +39,13 @@ type compaction struct {
 	cmp     db.Compare
 	version *version
 
-	// level is the level that is being compacted. Inputs from level and
-	// level+1 will be merged to produce a set of level+1 files.
-	level int
+	// startLevel is the level that is being compacted. Inputs from startLevel
+	// and outputLevel will be merged to produce a set of outputLevel files.
+	startLevel int
+	// outputLevel is the level that files are being produced in. outputLevel is
+	// equal to startLevel+1 except when startLevel is 0 in which case it is
+	// equal to compactionPicker.baseLevel.
+	outputLevel int
 
 	// maxOutputFileSize is the maximum size of an individual table created
 	// during compaction.
@@ -64,14 +68,32 @@ type compaction struct {
 	seenKey         bool   // some output key has been seen
 }
 
-func newCompaction(opts *db.Options, cur *version, level int) *compaction {
+func newCompaction(opts *db.Options, cur *version, startLevel, baseLevel int) *compaction {
+	if startLevel > 0 && startLevel < baseLevel {
+		panic(fmt.Sprintf("invalid compaction: start level %d should be empty (base level %d)",
+			startLevel, baseLevel))
+	}
+
+	outputLevel := startLevel + 1
+	if startLevel == 0 {
+		outputLevel = baseLevel
+	}
+	if outputLevel >= numLevels-1 {
+		outputLevel = numLevels - 1
+	}
+	// Output level is in the range [baseLevel,numLevels]. For the purpose of
+	// determining the target output file size, overlap bytes, and expanded
+	// bytes, we want to adjust the range to [1,numLevels].
+	adjustedOutputLevel := 1 + outputLevel - baseLevel
+
 	c := &compaction{
 		cmp:               opts.Comparer.Compare,
 		version:           cur,
-		level:             level,
-		maxOutputFileSize: uint64(opts.Level(level + 1).TargetFileSize),
-		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, level+1),
-		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, level+1),
+		startLevel:        startLevel,
+		outputLevel:       outputLevel,
+		maxOutputFileSize: uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
+		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
+		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
 	}
 	return c
 }
@@ -81,7 +103,7 @@ func newCompaction(opts *db.Options, cur *version, level int) *compaction {
 func (c *compaction) setupOtherInputs() {
 	c.inputs[0] = c.expandInputs(c.inputs[0])
 	smallest0, largest0 := ikeyRange(c.cmp, c.inputs[0], nil)
-	c.inputs[1] = c.version.overlaps(c.level+1, c.cmp, smallest0.UserKey, largest0.UserKey)
+	c.inputs[1] = c.version.overlaps(c.outputLevel, c.cmp, smallest0.UserKey, largest0.UserKey)
 	smallest01, largest01 := ikeyRange(c.cmp, c.inputs[0], c.inputs[1])
 
 	// Grow the inputs if it doesn't affect the number of level+1 files.
@@ -89,9 +111,9 @@ func (c *compaction) setupOtherInputs() {
 		smallest01, largest01 = ikeyRange(c.cmp, c.inputs[0], c.inputs[1])
 	}
 
-	// Compute the set of level+2 files that overlap this compaction.
-	if c.level+2 < numLevels {
-		c.grandparents = c.version.overlaps(c.level+2, c.cmp, smallest01.UserKey, largest01.UserKey)
+	// Compute the set of outputLevel+1 files that overlap this compaction.
+	if c.outputLevel+1 < numLevels {
+		c.grandparents = c.version.overlaps(c.outputLevel+1, c.cmp, smallest01.UserKey, largest01.UserKey)
 	}
 }
 
@@ -101,12 +123,12 @@ func (c *compaction) setupOtherInputs() {
 // current input tables such that the rightmost table has a "clean cut". A
 // clean cut is either a change in user keys, or
 func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
-	if c.level == 0 {
+	if c.startLevel == 0 {
 		// We already call version.overlaps for L0 and that call guarantees that we
 		// get a "clean cut".
 		return inputs
 	}
-	files := c.version.files[c.level]
+	files := c.version.files[c.startLevel]
 	// Pointer arithmetic to figure out the index if inputs[0] with
 	// files[0]. This requires that the inputs slice is a sub-slice of
 	// files. This is true for non-L0 files returned from version.overlaps.
@@ -145,7 +167,7 @@ func (c *compaction) grow(sm, la db.InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
 	}
-	grow0 := c.version.overlaps(c.level, c.cmp, sm.UserKey, la.UserKey)
+	grow0 := c.version.overlaps(c.startLevel, c.cmp, sm.UserKey, la.UserKey)
 	grow0 = c.expandInputs(grow0)
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
@@ -154,7 +176,7 @@ func (c *compaction) grow(sm, la db.InternalKey) bool {
 		return false
 	}
 	sm1, la1 := ikeyRange(c.cmp, grow0, nil)
-	grow1 := c.version.overlaps(c.level+1, c.cmp, sm1.UserKey, la1.UserKey)
+	grow1 := c.version.overlaps(c.outputLevel, c.cmp, sm1.UserKey, la1.UserKey)
 	if len(grow1) != len(c.inputs[1]) {
 		return false
 	}
@@ -227,7 +249,7 @@ func (c *compaction) elideTombstone(key []byte) bool {
 	// TODO(peter): this can be faster if ukey is always increasing between
 	// successive elideTombstones calls and we can keep some state in between
 	// calls.
-	for level := c.level + 2; level < numLevels; level++ {
+	for level := c.outputLevel + 1; level < numLevels; level++ {
 		for _, f := range c.version.files[level] {
 			if c.cmp(key, f.largest.UserKey) <= 0 {
 				if c.cmp(key, f.smallest.UserKey) >= 0 {
@@ -244,9 +266,10 @@ func (c *compaction) elideTombstone(key []byte) bool {
 
 // elideRangeTombstone returns true if it is ok to elide the specified range
 // tombstone. A return value of true guarantees that there are no key/value
-// pairs at c.level+2 or higher that possibly overlap the specified tombstone.
+// pairs at c.outputLevel+1 or higher that possibly overlap the specified
+// tombstone.
 func (c *compaction) elideRangeTombstone(start, end []byte) bool {
-	for level := c.level + 2; level < numLevels; level++ {
+	for level := c.outputLevel + 1; level < numLevels; level++ {
 		overlaps := c.version.overlaps(level, c.cmp, start, end)
 		if len(overlaps) > 0 {
 			return false
@@ -354,7 +377,7 @@ func (c *compaction) newInputIter(
 		return rangeDelIter, nil, err
 	}
 
-	if c.level != 0 {
+	if c.startLevel != 0 {
 		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0]))
 		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0]))
 	} else {
@@ -379,7 +402,11 @@ func (c *compaction) newInputIter(
 func (c *compaction) String() string {
 	var buf bytes.Buffer
 	for i := range c.inputs {
-		fmt.Fprintf(&buf, "%d:", i+c.level)
+		level := c.startLevel
+		if i == 1 {
+			level = c.outputLevel
+		}
+		fmt.Fprintf(&buf, "%d:", level)
 		for _, f := range c.inputs[i] {
 			fmt.Fprintf(&buf, " %d:%s-%s", f.fileNum, f.smallest, f.largest)
 		}
@@ -389,10 +416,11 @@ func (c *compaction) String() string {
 }
 
 type manualCompaction struct {
-	level int
-	done  chan error
-	start db.InternalKey
-	end   db.InternalKey
+	level       int
+	outputLevel int
+	done        chan error
+	start       db.InternalKey
+	end         db.InternalKey
 }
 
 // maybeScheduleFlush schedules a flush if necessary.
@@ -743,8 +771,8 @@ func (d *DB) compact1() (err error) {
 			Err:   err,
 		}
 		if err != nil {
-			info.Input.Level = c.level
-			info.Output.Level = c.level + 1
+			info.Input.Level = c.startLevel
+			info.Output.Level = c.outputLevel
 			for i := range c.inputs {
 				for j := range c.inputs[i] {
 					m := &c.inputs[i][j]
@@ -788,14 +816,14 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
 	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
-		totalSize(c.grandparents) <= maxGrandparentOverlapBytes(d.opts, c.level+1) {
+		totalSize(c.grandparents) <= maxGrandparentOverlapBytes(d.opts, c.outputLevel) {
 		meta := &c.inputs[0][0]
 		return &versionEdit{
 			deletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{level: c.level, fileNum: meta.fileNum}: true,
+				deletedFileEntry{level: c.startLevel, fileNum: meta.fileNum}: true,
 			},
 			newFiles: []newFileEntry{
-				{level: c.level + 1, meta: *meta},
+				{level: c.outputLevel, meta: *meta},
 			},
 		}, nil, nil
 	}
@@ -859,10 +887,10 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			return err
 		}
 		filenames = append(filenames, filename)
-		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.level+1))
+		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.outputLevel))
 
 		ve.newFiles = append(ve.newFiles, newFileEntry{
-			level: c.level + 1,
+			level: c.outputLevel,
 			meta: fileMetadata{
 				fileNum: fileNum,
 			},
@@ -961,9 +989,13 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	}
 
 	for i := range c.inputs {
+		level := c.startLevel
+		if i == 1 {
+			level = c.outputLevel
+		}
 		for _, f := range c.inputs[i] {
 			ve.deletedFiles[deletedFileEntry{
-				level:   c.level + i,
+				level:   level,
 				fileNum: f.fileNum,
 			}] = true
 		}

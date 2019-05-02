@@ -232,11 +232,11 @@ func (p *compactionPicker) pickAuto(opts *db.Options) (c *compaction) {
 	}
 
 	vers := p.vers
-	c = newCompaction(opts, vers, p.level)
-	c.inputs[0] = vers.files[c.level][p.file : p.file+1]
+	c = newCompaction(opts, vers, p.level, p.baseLevel)
+	c.inputs[0] = vers.files[c.startLevel][p.file : p.file+1]
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
-	if c.level == 0 {
+	if c.startLevel == 0 {
 		cmp := opts.Comparer.Compare
 		smallest, largest := ikeyRange(cmp, c.inputs[0], nil)
 		c.inputs[0] = vers.overlaps(0, cmp, smallest.UserKey, largest.UserKey)
@@ -256,7 +256,8 @@ func (p *compactionPicker) pickManual(opts *db.Options, manual *manualCompaction
 
 	// TODO(peter): The logic here is untested and possibly incomplete.
 	cur := p.vers
-	c = newCompaction(opts, cur, manual.level)
+	c = newCompaction(opts, cur, manual.level, p.baseLevel)
+	manual.outputLevel = c.outputLevel
 	cmp := opts.Comparer.Compare
 	c.inputs[0] = cur.overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
 	if len(c.inputs[0]) == 0 {
