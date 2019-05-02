@@ -5,7 +5,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"log"
 	"sync"
@@ -46,28 +45,12 @@ func runSync(cmd *cobra.Command, args []string) {
 					rand := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 					var raw []byte
 					var buf []byte
-
-					randBlock := func(min, max int) []byte {
-						data := make([]byte, rand.Intn(max-min)+min)
-						tmp := data
-						for len(tmp) >= 8 {
-							binary.LittleEndian.PutUint64(tmp, rand.Uint64())
-							tmp = tmp[8:]
-						}
-						r := rand.Uint64()
-						for i := 0; i < len(tmp); i++ {
-							tmp[i] = byte(r)
-							r >>= 8
-						}
-						return data
-					}
-
 					for {
 						start := time.Now()
 						b := d.NewBatch()
 						var n uint64
 						for j := 0; j < 5; j++ {
-							block := randBlock(60, 80)
+							block := randomBlock(rand, 60, 80, 1.0)
 
 							if walOnly {
 								if err := b.LogData(block, nil); err != nil {
