@@ -401,6 +401,15 @@ func (b *bulkVersionEdit) apply(
 ) (*version, error) {
 	v := new(version)
 	for level := range v.files {
+		if len(b.added[level]) == 0 && len(b.deleted[level]) == 0 {
+			// There are no edits on this level.
+			if base == nil {
+				continue
+			}
+			v.files[level] = base.files[level]
+			continue
+		}
+
 		combined := [2][]fileMetadata{
 			nil,
 			b.added[level],
