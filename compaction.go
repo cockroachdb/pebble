@@ -493,31 +493,29 @@ func (d *DB) flush1() error {
 		d.opts.EventListener.FlushEnd(info)
 	}
 
-	if err == errEmptyTable {
-		// The flush succeed, but produced an empty sstable. Mark all the
-		// memtables we flushed as flushed.
-		for i := 0; i < n; i++ {
-			close(d.mu.mem.queue[i].flushed())
-		}
-		d.mu.mem.queue = d.mu.mem.queue[n:]
-		d.updateReadStateLocked()
-		return nil
-	}
-
-	if err != nil {
+	if err != nil && err != errEmptyTable {
 		return err
 	}
 
-	err = d.mu.versions.logAndApply(&versionEdit{
+	// The flush succeeded or it produced an empty sstable. In either case we
+	// want to bump the log number.
+	ve := &versionEdit{
 		logNumber: d.mu.log.number,
-		newFiles: []newFileEntry{
-			{level: 0, meta: meta},
-		},
-	})
-	if _, ok := d.mu.compact.pendingOutputs[meta.fileNum]; !ok {
-		panic("pebble: expected pending output not present")
 	}
-	delete(d.mu.compact.pendingOutputs, meta.fileNum)
+	if err != errEmptyTable {
+		ve.newFiles = []newFileEntry{
+			{level: 0, meta: meta},
+		}
+	}
+
+	err = d.mu.versions.logAndApply(ve)
+	for i := range ve.newFiles {
+		f := &ve.newFiles[i]
+		if _, ok := d.mu.compact.pendingOutputs[f.meta.fileNum]; !ok {
+			panic("pebble: expected pending output not present")
+		}
+		delete(d.mu.compact.pendingOutputs, f.meta.fileNum)
+	}
 	if err != nil {
 		return err
 	}
@@ -970,10 +968,20 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles(jobID int) {
+	// Only allow a single delete obsolete files job to run at a time.
+	for d.mu.cleaner.cleaning {
+		d.mu.cleaner.cond.Wait()
+	}
+	d.mu.cleaner.cleaning = true
+
 	// Release d.mu while doing I/O
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
-	defer d.mu.Lock()
+	defer func() {
+		d.mu.Lock()
+		d.mu.cleaner.cleaning = false
+		d.mu.cleaner.cond.Signal()
+	}()
 
 	fs := d.opts.Storage
 	list, err := fs.List(d.dirname)
@@ -1008,6 +1016,9 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		case fileTypeLog:
 			// TODO(peter): also look at prevLogNumber?
 			keep = fileNum >= logNumber
+			if !keep {
+				keep = d.logRecycler.add(fileNum)
+			}
 		case fileTypeManifest:
 			keep = fileNum >= manifestFileNumber
 		case fileTypeOptions:
@@ -1026,8 +1037,21 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		}
 		path := filepath.Join(d.dirname, filename)
 		err := fs.Remove(path)
+		if err == os.ErrNotExist {
+			continue
+		}
 
-		if err != os.ErrNotExist && fileType == fileTypeTable {
+		switch fileType {
+		case fileTypeLog:
+			if d.opts.EventListener != nil && d.opts.EventListener.WALDeleted != nil {
+				d.opts.EventListener.WALDeleted(db.WALDeleteInfo{
+					JobID:   jobID,
+					Path:    path,
+					FileNum: fileNum,
+					Err:     err,
+				})
+			}
+		case fileTypeTable:
 			if d.opts.EventListener != nil && d.opts.EventListener.TableDeleted != nil {
 				d.opts.EventListener.TableDeleted(db.TableDeleteInfo{
 					JobID:   jobID,
