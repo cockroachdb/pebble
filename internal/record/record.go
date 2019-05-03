@@ -138,9 +138,8 @@ var (
 	// ErrNoLastRecord is returned if LastRecordOffset is called and there is no previous record.
 	ErrNoLastRecord = errors.New("pebble/record: no last record exists")
 
-	// ErrInvalidLogNum is returned if the log number in a record differs from
-	// the one expected.
-	ErrInvalidLogNum = errors.New("pebble/record: invalid log number")
+	// ErrZeroedChunk is returned if a chunk is encountered that is zeroed.
+	ErrZeroedChunk = errors.New("pebble/record: zeroed chunk")
 )
 
 // Reader reads records from an underlying io.Reader.
@@ -196,19 +195,16 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					r.end = r.n
 					continue
 				}
-				if wantFirst || r.recovering {
+				if r.recovering {
 					// Skip the rest of the block, if it looks like it is all
-					// zeroes. This is common if the record file was created via mmap.
+					// zeroes. This is common with WAL preallocation.
 					//
-					// Set r.err to be an error so r.Recover actually recovers.
+					// Set r.err to be an error so r.recover actually recovers.
 					r.err = errors.New("pebble/record: block appears to be zeroed")
-					if !r.recovering {
-						return r.err
-					}
 					r.recover()
 					continue
 				}
-				return errors.New("pebble/record: invalid chunk")
+				return ErrZeroedChunk
 			}
 
 			headerSize := legacyHeaderSize
@@ -220,7 +216,8 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 
 				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
 				if logNum != r.logNum {
-					return ErrInvalidLogNum
+					// Treat a record from a previous instance of the log as EOF.
+					return io.EOF
 				}
 
 				chunkType -= (recyclableFullChunkType - 1)

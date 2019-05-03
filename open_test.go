@@ -5,6 +5,8 @@
 package pebble
 
 import (
+	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -75,9 +77,9 @@ func TestNewDBFilenames(t *testing.T) {
 	}
 }
 
-func TestOpenCloseOpenClose(t *testing.T) {
+func testOpenCloseOpenClose(t *testing.T, fs storage.Storage, root string) {
 	opts := &db.Options{
-		Storage: storage.NewMem(),
+		Storage: fs,
 	}
 
 	for _, startFromEmpty := range []bool{false, true} {
@@ -86,6 +88,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 			if startFromEmpty {
 				dirname = "startFromEmpty" + strconv.Itoa(length)
 			}
+			dirname = filepath.Join(root, dirname)
 
 			got, xxx := []byte(nil), ""
 			if length >= 0 {
@@ -112,12 +115,6 @@ func TestOpenCloseOpenClose(t *testing.T) {
 					startFromEmpty, length, err)
 				continue
 			}
-
-			// TODO(peter): make the second Open recover (without a fatal "corrupt
-			// log file" error) even if the d0 database was not closed but the xxx
-			// value is large enough to write a partial record. Writing to the
-			// database should not corrupt it even if the writer process was killed
-			// part-way through.
 
 			d1, err := Open(dirname, opts)
 			if err != nil {
@@ -162,6 +159,31 @@ func TestOpenCloseOpenClose(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestOpenCloseOpenClose(t *testing.T) {
+	for _, fstype := range []string{"disk", "mem"} {
+		t.Run(fstype, func(t *testing.T) {
+			var fs storage.Storage
+			var dir string
+			switch fstype {
+			case "disk":
+				var err error
+				dir, err = ioutil.TempDir("", "open-close")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() {
+					_ = os.RemoveAll(dir)
+				}()
+				fs = storage.Default
+			case "mem":
+				dir = ""
+				fs = storage.NewMem()
+			}
+			testOpenCloseOpenClose(t, fs, dir)
+		})
 	}
 }
 
