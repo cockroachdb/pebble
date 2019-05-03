@@ -193,6 +193,7 @@ func runTest(dir string, t test) {
 	db, err := pebble.Open(dir, &db.Options{
 		Cache:                       cache.New(1 << 30),
 		Comparer:                    mvccComparer,
+		DisableWAL:                  disableWAL,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
 		L0CompactionThreshold:       2,
