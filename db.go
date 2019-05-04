@@ -371,21 +371,7 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (d *DB) commitSync() error {
-	if d.opts.DisableWAL {
-		return errors.New("pebble: WAL disabled")
-	}
-
-	d.mu.Lock()
-	log := d.mu.log.LogWriter
-	d.mu.Unlock()
-	// NB: The log might have been closed after we unlock d.mu. That's ok because
-	// it will have been synced and all we're guaranteeing is that the log that
-	// was open at the start of this call was synced by the end of it.
-	return log.Sync()
-}
-
-func (d *DB) commitWrite(b *Batch) (*memTable, error) {
+func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 	d.mu.Lock()
 
 	// Throttle writes if there are too many L0 tables.
@@ -411,7 +397,7 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 		return d.mu.mem.mutable, nil
 	}
 
-	size, err := d.mu.log.WriteRecord(b.storage.data)
+	size, err := d.mu.log.SyncRecord(b.storage.data, wg)
 	if err != nil {
 		panic(err)
 	}

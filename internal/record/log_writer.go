@@ -30,6 +30,164 @@ type syncer interface {
 	Sync() error
 }
 
+const (
+	syncConcurrencyBits = 9
+
+	// SyncConcurrency is the maximum number of concurrent sync operations that
+	// can be performed. Exported as this value also limits the commit
+	// concurrency in commitPipeline.
+	SyncConcurrency = 1 << syncConcurrencyBits
+)
+
+// syncQueue is a lock-free fixed-size single-producer, single-consumer
+// queue. The single-producer can push to the head, and the single-consumer can
+// pop multiple values from the tail. Popping calls Done() on each of the
+// available *sync.WaitGroup elements.
+type syncQueue struct {
+	// headTail packs together a 32-bit head index and a 32-bit tail index. Both
+	// are indexes into slots modulo len(slots)-1.
+	//
+	// tail = index of oldest data in queue
+	// head = index of next slot to fill
+	//
+	// Slots in the range [tail, head) are owned by consumers.  A consumer
+	// continues to own a slot outside this range until it nils the slot, at
+	// which point ownership passes to the producer.
+	//
+	// The head index is stored in the most-significant bits so that we can
+	// atomically add to it and the overflow is harmless.
+	headTail uint64
+
+	// slots is a ring buffer of values stored in this queue. The size must be a
+	// power of 2. A slot is in use until the tail index has moved beyond it.
+	slots [SyncConcurrency]*sync.WaitGroup
+}
+
+const dequeueBits = 32
+
+func (q *syncQueue) unpack(ptrs uint64) (head, tail uint32) {
+	const mask = 1<<dequeueBits - 1
+	head = uint32((ptrs >> dequeueBits) & mask)
+	tail = uint32(ptrs & mask)
+	return
+}
+
+func (q *syncQueue) push(wg *sync.WaitGroup) {
+	ptrs := atomic.LoadUint64(&q.headTail)
+	head, tail := q.unpack(ptrs)
+	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
+		panic("queue is full")
+	}
+
+	slot := &q.slots[head&uint32(len(q.slots)-1)]
+	*slot = wg
+
+	// Increment head. This passes ownership of slot to dequeue and acts as a
+	// store barrier for writing the slot.
+	atomic.AddUint64(&q.headTail, 1<<dequeueBits)
+}
+
+func (q *syncQueue) empty() bool {
+	head, tail := q.load()
+	return head == tail
+}
+
+func (q *syncQueue) load() (head, tail uint32) {
+	ptrs := atomic.LoadUint64(&q.headTail)
+	head, tail = q.unpack(ptrs)
+	return head, tail
+}
+
+func (q *syncQueue) pop(head, tail uint32) {
+	if tail == head {
+		// Queue is empty.
+		return
+	}
+
+	for ; tail != head; tail++ {
+		slot := &q.slots[tail&uint32(len(q.slots)-1)]
+		wg := *slot
+		if wg == nil {
+			panic("nil waiter")
+		}
+		*slot = nil
+		// We need to bump the tail count before signalling the wait group as
+		// signalling the wait group can trigger release a blocked goroutine which
+		// will try to enqueue before we've "freed" space in the queue.
+		atomic.AddUint64(&q.headTail, 1)
+		wg.Done()
+	}
+}
+
+// flusherCond is a specialized condition variable that is safe to signal for
+// readiness without holding the associated mutex in some circumstances. In
+// particular, when waiter is added to syncQueue, this condition variable can
+// be signalled without holding flusher.Mutex.
+type flusherCond struct {
+	mu   *sync.Mutex
+	q    *syncQueue
+	cond sync.Cond
+}
+
+func (c *flusherCond) init(mu *sync.Mutex, q *syncQueue) {
+	c.mu = mu
+	c.q = q
+	// Yes, this is a bit circular, but that is intentional. flusherCond.cond.L
+	// points flusherCond so that when cond.L.Unlock is called flusherCond.Unlock
+	// will be called and we can check the !syncQueue.empty() condition.
+	c.cond.L = c
+}
+
+func (c *flusherCond) Signal() {
+	// Pass-through to the cond var.
+	c.cond.Signal()
+}
+
+func (c *flusherCond) Wait() {
+	// Pass-through to the cond var. Note that internally the cond var implements
+	// Wait as:
+	//
+	//   t := notifyListAdd()
+	//   L.Unlock()
+	//   notifyListWait(t)
+	//   L.Lock()
+	//
+	// We've configured the cond var to call flusherReady.Unlock() which allows
+	// us to check the !syncQueue.empty() condition without a danger of missing a
+	// notification. Any call to flusherReady.Signal() after notifyListAdd() is
+	// called will cause the subsequent notifyListWait() to return immediately.
+	c.cond.Wait()
+}
+
+func (c *flusherCond) Lock() {
+	c.mu.Lock()
+}
+
+func (c *flusherCond) Unlock() {
+	c.mu.Unlock()
+	if !c.q.empty() {
+		// If the current goroutine is about to block on sync.Cond.Wait, this call
+		// to Signal will prevent that. The comment in Wait above explains a bit
+		// about what is going on here, but it is worth reiterating:
+		//
+		//   flusherCond.Wait()
+		//     sync.Cond.Wait()
+		//       t := notifyListAdd()
+		//       flusherCond.Unlock()    <-- we are here
+		//       notifyListWait(t)
+		//       flusherCond.Lock()
+		//
+		// The call to Signal here results in:
+		//
+		//     sync.Cond.Signal()
+		//       notifyListNotifyOne()
+		//
+		// The call to notifyListNotifyOne() will prevent the call to
+		// notifyListWait(t) from blocking.
+		c.cond.Signal()
+	}
+}
+
 // LogWriter writes records to an underlying io.Writer. In order to support WAL
 // file reuse, a LogWriter's records are tagged with the WAL's file
 // number. When reading a log file a record from a previous incarnation of the
@@ -54,23 +212,19 @@ type LogWriter struct {
 	block *block
 	free  chan *block
 
-	// Protects against concurrent calls to Flush/Sync().
-	flushMu sync.Mutex
-
 	flusher struct {
 		sync.Mutex
-		// Cond var signalled when there are blocks to flush or the Writer has been
-		// closed.
-		ready sync.Cond
-		// Cond var signalled when flushing of pending blocks has been completed.
-		done sync.Cond
-		// Is flushing currently active?
-		flushing bool
+		// Flusher ready is a condition variable that is signalled when there are
+		// blocks to flush, syncing has been requested, or the LogWriter has been
+		// closed. For signalling of a sync, it is safe to call without holding
+		// flusher.Mutex.
+		ready flusherCond
 		// Has the writer been closed?
 		closed bool
 		// Accumulated flush error.
 		err     error
 		pending []*block
+		syncQ   syncQueue
 	}
 }
 
@@ -95,8 +249,7 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 		r.free <- &block{}
 	}
 	r.block = <-r.free
-	r.flusher.ready.L = &r.flusher.Mutex
-	r.flusher.done.L = &r.flusher.Mutex
+	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
 	go r.flushLoop()
 	return r
 }
@@ -107,24 +260,27 @@ func (w *LogWriter) flushLoop() {
 	defer f.Unlock()
 
 	for {
+		var data []byte
 		for {
 			if f.closed {
 				return
 			}
-			if f.flushing {
-				f.done.Wait()
-				continue
+			// Grab the portion of the current block that requires flushing. Note that
+			// the current block can be added to the pending blocks list after we release
+			// the flusher lock, but it won't be part of pending.
+			written := atomic.LoadInt32(&w.block.written)
+			data = w.block.buf[w.block.flushed:written]
+			w.block.flushed = written
+			if len(f.pending) > 0 || len(data) > 0 || !f.syncQ.empty() {
+				break
 			}
-			if len(f.pending) == 0 {
-				f.ready.Wait()
-				continue
-			}
-			break
+			f.ready.Wait()
+			continue
 		}
 
 		pending := f.pending
-		f.pending = nil
-		f.flushing = true
+		f.pending = f.pending[len(f.pending):]
+		head, tail := f.syncQ.load()
 
 		f.Unlock()
 
@@ -134,14 +290,23 @@ func (w *LogWriter) flushLoop() {
 				break
 			}
 		}
+		if err == nil && len(data) > 0 {
+			_, err = w.w.Write(data)
+		}
+		if err == nil && head != tail {
+			if w.s != nil {
+				err = w.s.Sync()
+			}
+			if err == nil {
+				f.syncQ.pop(head, tail)
+			}
+		}
 
 		f.Lock()
 		f.err = err
 		if f.err != nil {
 			return
 		}
-		f.flushing = false
-		f.done.Signal()
 	}
 }
 
@@ -173,16 +338,22 @@ func (w *LogWriter) queueBlock() {
 	w.blockNum++
 }
 
-// Close flushes any unwritten data and closes the writer.
+// Close flushes and syncs any unwritten data and closes the writer.
 func (w *LogWriter) Close() error {
-	w.flusher.Lock()
-	w.flusher.closed = true
-	w.flusher.ready.Signal()
-	w.flusher.Unlock()
+	f := &w.flusher
 
-	if err := w.Sync(); err != nil {
-		return err
-	}
+	// Force a sync of any unwritten data.
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	f.syncQ.push(wg)
+	f.ready.Signal()
+	wg.Wait()
+
+	f.Lock()
+	f.closed = true
+	f.ready.Signal()
+	f.Unlock()
+
 	if w.c != nil {
 		if err := w.c.Close(); err != nil {
 			return err
@@ -192,99 +363,29 @@ func (w *LogWriter) Close() error {
 	return nil
 }
 
-func (w *LogWriter) closed() bool {
-	w.flusher.Lock()
-	closed := w.flusher.closed
-	w.flusher.Unlock()
-	return closed
-}
-
-func (w *LogWriter) flushLocked() error {
-	if w.err != nil {
-		if w.closed() {
-			return nil
-		}
-		return w.err
-	}
-
-	w.flusher.Lock()
-	// Wait for any existing flushing to complete.
-	for w.flusher.flushing {
-		w.flusher.done.Wait()
-	}
-	// Block any new flushing from starting.
-	w.flusher.flushing = true
-	// Grab the list of pending blocks to be flushed.
-	pending := w.flusher.pending
-	w.flusher.pending = nil
-	// Grab the portion of the current block that requires flushing. Note that
-	// the current block can be added to the pending blocks list after we release
-	// the flusher lock, but it won't be part of pending.
-	written := atomic.LoadInt32(&w.block.written)
-	data := w.block.buf[w.block.flushed:written]
-	w.block.flushed = written
-	w.flusher.Unlock()
-
-	// Flush any pending blocks.
-	var err error
-	for _, t := range pending {
-		if err = w.flushBlock(t); err != nil {
-			break
-		}
-	}
-	if err == nil && len(data) > 0 {
-		_, err = w.w.Write(data)
-	}
-
-	// Release the flush loop.
-	w.flusher.Lock()
-	w.err = err
-	w.flusher.err = err
-	w.flusher.flushing = false
-	w.flusher.done.Signal()
-	w.flusher.Unlock()
-
-	if w.f != nil {
-		w.err = w.f.Flush()
-		return w.err
-	}
-	return nil
-}
-
-// Sync flushes unwritten data and synchronizes the underlying file. May be
-// called concurrently with Write, Flush and itself.
-func (w *LogWriter) Sync() error {
-	w.flushMu.Lock()
-	defer w.flushMu.Unlock()
-
-	if err := w.flushLocked(); err != nil {
-		if w.closed() {
-			return nil
-		}
-		return err
-	}
-
-	if w.s != nil {
-		w.err = w.s.Sync()
-		if w.err != nil {
-			if w.closed() {
-				return nil
-			}
-		}
-		return w.err
-	}
-	return nil
-}
-
 // WriteRecord writes a complete record. Returns the offset just past the end
 // of the record.
 func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
+	return w.SyncRecord(p, nil)
+}
+
+// SyncRecord writes a complete record. If wg!= nil the record will be
+// asynchronously persisted to the underlying writer and done will be called on
+// the wait group upon completion. Returns the offset just past the end of the
+// record.
+func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup) (int64, error) {
 	if w.err != nil {
 		return -1, w.err
 	}
 
 	for i := 0; i == 0 || len(p) > 0; i++ {
 		p = w.emitFragment(i, p)
+	}
+
+	if wg != nil {
+		f := &w.flusher
+		f.syncQ.push(wg)
+		f.ready.Signal()
 	}
 
 	offset := w.blockNum*blockSize + int64(w.block.written)
