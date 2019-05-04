@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,7 +76,7 @@ func TestLogRecycler(t *testing.T) {
 
 func TestRecycleLogs(t *testing.T) {
 	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
+		VFS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)

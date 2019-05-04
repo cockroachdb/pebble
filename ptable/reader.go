@@ -15,7 +15,7 @@ import (
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 // Iter ...
@@ -123,7 +123,7 @@ func (i *Iter) loadBlock() {
 
 // Reader ...
 type Reader struct {
-	file    storage.File
+	file    vfs.File
 	fileNum uint64 // TODO(peter): needed for block cache
 	err     error
 	index   []byte
@@ -132,7 +132,7 @@ type Reader struct {
 }
 
 // NewReader ...
-func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
+func NewReader(f vfs.File, fileNum uint64, o *db.Options) *Reader {
 	o = o.EnsureDefaults()
 	r := &Reader{
 		file:    f,

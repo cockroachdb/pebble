@@ -12,7 +12,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 type iterCmdOpt int
@@ -191,9 +191,8 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 		return nil, fmt.Errorf("empty test input")
 	}
 
-	fs := storage.NewMem()
 	opts := db.Options{
-		Storage: fs,
+		VFS: vfs.NewMem(),
 	}
 	var snapshots []uint64
 	for _, arg := range td.CmdArgs {
@@ -248,7 +247,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
 			iter = newMergingIter(d.cmp, iter, rangeDelIter)
 		}
-		meta, err := d.writeLevel0Table(d.opts.Storage, iter,
+		meta, err := d.writeLevel0Table(d.opts.VFS, iter,
 			false /* allowRangeTombstoneElision */)
 		if err != nil {
 			return nil

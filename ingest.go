@@ -10,16 +10,16 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, error) {
-	stat, err := opts.Storage.Stat(path)
+	stat, err := opts.VFS.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	f, err := opts.Storage.Open(path)
+	f, err := opts.VFS.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func ingestSortAndVerify(cmp db.Compare, meta []*fileMetadata) error {
 }
 
 func ingestCleanup(
-	fs storage.Storage, dirname string, meta []*fileMetadata,
+	fs vfs.FS, dirname string, meta []*fileMetadata,
 ) error {
 	var firstErr error
 	for i := range meta {
@@ -119,9 +119,9 @@ func ingestLink(
 ) error {
 	for i := range paths {
 		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
-		err := opts.Storage.Link(paths[i], target)
+		err := opts.VFS.Link(paths[i], target)
 		if err != nil {
-			if err2 := ingestCleanup(opts.Storage, dirname, meta[:i]); err2 != nil {
+			if err2 := ingestCleanup(opts.VFS, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
 			return err
@@ -339,7 +339,7 @@ func (d *DB) Ingest(paths []string) error {
 	d.commit.AllocateSeqNum(prepare, apply)
 
 	if err != nil {
-		if err2 := ingestCleanup(d.opts.Storage, d.dirname, meta); err2 != nil {
+		if err2 := ingestCleanup(d.opts.VFS, d.dirname, meta); err2 != nil {
 			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
 		}
 	}

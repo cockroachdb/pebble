@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 type fileType int
@@ -84,7 +84,7 @@ func parseDBFilename(filename string) (fileType fileType, fileNum uint64, ok boo
 	return 0, 0, false
 }
 
-func setCurrentFile(dirname string, fs storage.Storage, fileNum uint64) error {
+func setCurrentFile(dirname string, fs vfs.FS, fileNum uint64) error {
 	newFilename := dbFilename(dirname, fileTypeCurrent, fileNum)
 	oldFilename := fmt.Sprintf("%s.%06d.dbtmp", newFilename, fileNum)
 	fs.Remove(oldFilename)

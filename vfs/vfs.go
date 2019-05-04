@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package storage
+package vfs
 
 import (
 	"io"
@@ -22,11 +22,11 @@ type File interface {
 	Sync() error
 }
 
-// Storage is a namespace for files.
+// FS is a namespace for files.
 //
 // The names are filepath names: they may be / separated or \ separated,
 // depending on the underlying operating system.
-type Storage interface {
+type FS interface {
 	// Create creates the named file for writing, truncating it if it already
 	// exists.
 	Create(name string) (File, error)
@@ -77,9 +77,9 @@ type Storage interface {
 	Stat(name string) (os.FileInfo, error)
 }
 
-// Default is a Storage implementation backed by the underlying operating
-// system's file system.
-var Default Storage = defaultFS{}
+// Default is a FS implementation backed by the underlying operating system's
+// file system.
+var Default FS = defaultFS{}
 
 type defaultFS struct{}
 

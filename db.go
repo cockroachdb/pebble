@@ -16,7 +16,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/record"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 const (
@@ -769,7 +769,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 
 		var newLogNumber uint64
-		var newLogFile storage.File
+		var newLogFile vfs.File
 		var err error
 
 		if !d.opts.DisableWAL {
@@ -790,11 +790,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			recycleLogNumber := d.logRecycler.peek()
 			if recycleLogNumber > 0 {
 				recycleLogName := dbFilename(d.dirname, fileTypeLog, recycleLogNumber)
-				err = d.opts.Storage.Rename(recycleLogName, newLogName)
+				err = d.opts.VFS.Rename(recycleLogName, newLogName)
 			}
 
 			if err == nil {
-				newLogFile, err = d.opts.Storage.Create(newLogName)
+				newLogFile, err = d.opts.VFS.Create(newLogName)
 			}
 
 			if err == nil {
@@ -802,7 +802,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				if err != nil {
 					newLogFile.Close()
 				} else {
-					newLogFile = storage.NewSyncingFile(newLogFile, storage.SyncingFileOptions{
+					newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
 						BytesPerSync:    d.opts.BytesPerSync,
 						PreallocateSize: d.walPreallocateSize(),
 					})

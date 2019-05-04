@@ -14,7 +14,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func TestBatch(t *testing.T) {
@@ -115,7 +115,7 @@ func TestBatchGet(t *testing.T) {
 	for _, method := range []string{"build", "apply"} {
 		t.Run(method, func(t *testing.T) {
 			d, err := Open("", &db.Options{
-				Storage: storage.NewMem(),
+				VFS: vfs.NewMem(),
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)

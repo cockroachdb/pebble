@@ -15,7 +15,7 @@ import (
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 // blockHandle is the file offset and length of a block.
@@ -430,7 +430,7 @@ type weakCachedBlock struct {
 
 // Reader is a table reader.
 type Reader struct {
-	file        storage.File
+	file        vfs.File
 	fileNum     uint64
 	err         error
 	index       weakCachedBlock
@@ -704,7 +704,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f storage.File, fileNum uint64, o *db.Options) *Reader {
+func NewReader(f vfs.File, fileNum uint64, o *db.Options) *Reader {
 	o = o.EnsureDefaults()
 	r := &Reader{
 		file:    f,

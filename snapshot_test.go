@@ -13,7 +13,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func TestSnapshotListToSlice(t *testing.T) {
@@ -49,7 +49,7 @@ func TestSnapshot(t *testing.T) {
 		case "define":
 			var err error
 			d, err = Open("", &db.Options{
-				Storage: storage.NewMem(),
+				VFS: vfs.NewMem(),
 			})
 			if err != nil {
 				return err.Error()

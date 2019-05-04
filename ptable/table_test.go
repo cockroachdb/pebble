@@ -12,7 +12,7 @@ import (
 
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -97,7 +97,7 @@ func (r testRow) Bytes(col int) []byte {
 
 func TestTable(t *testing.T) {
 	const count int64 = 1000
-	mem := storage.NewMem()
+	mem := vfs.NewMem()
 	env := newEnv(ColumnDef{Type: ColumnTypeInt64})
 
 	{
@@ -162,7 +162,7 @@ func TestTable(t *testing.T) {
 }
 
 func buildBenchmarkTable(b *testing.B, blockSize int, nullValues bool) (*Reader, [][]byte) {
-	mem := storage.NewMem()
+	mem := vfs.NewMem()
 	f0, err := mem.Create("bench")
 	if err != nil {
 		b.Fatal(err)

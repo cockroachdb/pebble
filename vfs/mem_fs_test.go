@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package storage
+package vfs
 
 import (
 	"io"
@@ -193,7 +193,7 @@ func TestList(t *testing.T) {
 	}
 
 	{
-		got := fs.(*memStorage).String()
+		got := fs.(*memFS).String()
 		want := normalize(`          /
        0    a
             bar/

@@ -14,7 +14,7 @@
 
 // +build darwin
 
-package storage
+package vfs
 
 import (
 	"syscall"
