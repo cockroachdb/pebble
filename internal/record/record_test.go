@@ -6,6 +6,7 @@ package record
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/exp/rand"
 )
@@ -425,7 +427,7 @@ func TestBasicRecover(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected an error while reading a corrupted record")
 	}
-	if !strings.Contains(err.Error(), "checksum mismatch") {
+	if err != ErrInvalidChunk {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
@@ -482,7 +484,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected a checksum mismatch error, got nil")
 	}
-	if !strings.Contains(err.Error(), "checksum mismatch") {
+	if err != ErrInvalidChunk {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
@@ -540,7 +542,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 	if err == nil {
 		t.Fatal("Exptected a checksum mismatch error, got nil")
 	}
-	if !strings.Contains(err.Error(), "checksum mismatch") {
+	if err != ErrInvalidChunk {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 
@@ -836,6 +838,63 @@ func TestSize(t *testing.T) {
 	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRecycleLog(t *testing.T) {
+	const min = 16
+	const max = 4096
+
+	rnd := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	randBlock := func() []byte {
+		data := make([]byte, rand.Intn(max-min)+min)
+		tmp := data
+		for len(tmp) >= 8 {
+			binary.LittleEndian.PutUint64(tmp, rand.Uint64())
+			tmp = tmp[8:]
+		}
+		r := rand.Uint64()
+		for i := 0; i < len(tmp); i++ {
+			tmp[i] = byte(r)
+			r >>= 8
+		}
+		return data
+	}
+
+	// Recycle a log file 100 times, writing a random number of records filled
+	// with random data.
+	backing := make([]byte, 1<<20)
+	for i := 1; i <= 100; i++ {
+		w := NewLogWriter(bytes.NewBuffer(backing[:0]), uint64(i))
+		sizes := make([]int, 10+rnd.Intn(100))
+		for j := range sizes {
+			data := randBlock()
+			if _, err := w.WriteRecord(data); err != nil {
+				t.Fatalf("%d/%d: %v", i, j, err)
+			}
+			sizes[j] = len(data)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("%d: %v", i, err)
+		}
+
+		r := NewReader(bytes.NewReader(backing), uint64(i))
+		for j := range sizes {
+			rr, err := r.Next()
+			if err != nil {
+				t.Fatalf("%d/%d: %v", i, j, err)
+			}
+			x, err := ioutil.ReadAll(rr)
+			if err != nil {
+				t.Fatalf("%d/%d: %v", i, j, err)
+			}
+			if sizes[j] != len(x) {
+				t.Fatalf("%d/%d: expected record %d, but found %d", i, j, sizes[j], len(x))
+			}
+		}
+		if _, err := r.Next(); err != io.EOF && err != ErrZeroedChunk && err != ErrInvalidChunk {
+			t.Fatalf("%d: expected EOF, but found %v", i, err)
+		}
 	}
 }
 
