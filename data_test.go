@@ -12,7 +12,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 type iterCmdOpt int
@@ -191,9 +191,8 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 		return nil, fmt.Errorf("empty test input")
 	}
 
-	fs := storage.NewMem()
 	opts := db.Options{
-		Storage: fs,
+		Storage: vfs.NewMem(),
 	}
 	var snapshots []uint64
 	for _, arg := range td.CmdArgs {

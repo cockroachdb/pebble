@@ -4,7 +4,7 @@
 
 // +build darwin dragonfly freebsd linux netbsd openbsd solaris
 
-package storage
+package vfs
 
 import (
 	"io"

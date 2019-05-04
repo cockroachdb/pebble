@@ -14,7 +14,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/internal/rangedel"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func TestWriter(t *testing.T) {
@@ -27,8 +27,8 @@ func TestWriter(t *testing.T) {
 				r = nil
 			}
 
-			fs := storage.NewMem()
-			f0, err := fs.Create("test")
+			mem := vfs.NewMem()
+			f0, err := mem.Create("test")
 			if err != nil {
 				return err.Error()
 			}
@@ -79,7 +79,7 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			f1, err := fs.Open("test")
+			f1, err := mem.Open("test")
 			if err != nil {
 				return err.Error()
 			}
@@ -95,8 +95,8 @@ func TestWriter(t *testing.T) {
 				r = nil
 			}
 
-			fs := storage.NewMem()
-			f0, err := fs.Create("test")
+			mem := vfs.NewMem()
+			f0, err := mem.Create("test")
 			if err != nil {
 				return err.Error()
 			}
@@ -118,7 +118,7 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			f1, err := fs.Open("test")
+			f1, err := mem.Open("test")
 			if err != nil {
 				return err.Error()
 			}

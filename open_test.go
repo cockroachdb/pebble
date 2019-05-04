@@ -15,15 +15,15 @@ import (
 	"testing"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
 func TestErrorIfDBExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
-		fs := storage.NewMem()
+		mem := vfs.NewMem()
 		d0, err := Open("", &db.Options{
-			Storage: fs,
+			Storage: mem,
 		})
 		if err != nil {
 			t.Errorf("b=%v: d0 Open: %v", b, err)
@@ -35,7 +35,7 @@ func TestErrorIfDBExists(t *testing.T) {
 		}
 
 		d1, err := Open("", &db.Options{
-			Storage:         fs,
+			Storage:         mem,
 			ErrorIfDBExists: b,
 		})
 		if d1 != nil {
@@ -50,9 +50,9 @@ func TestErrorIfDBExists(t *testing.T) {
 
 func TestNewDBFilenames(t *testing.T) {
 	fooBar := filepath.Join("foo", "bar")
-	fs := storage.NewMem()
+	mem := vfs.NewMem()
 	d, err := Open(fooBar, &db.Options{
-		Storage: fs,
+		Storage: mem,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -60,7 +60,7 @@ func TestNewDBFilenames(t *testing.T) {
 	if err := d.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	got, err := fs.List(fooBar)
+	got, err := mem.List(fooBar)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestNewDBFilenames(t *testing.T) {
 	}
 }
 
-func testOpenCloseOpenClose(t *testing.T, fs storage.Storage, root string) {
+func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 	opts := &db.Options{
 		Storage: fs,
 	}
@@ -165,7 +165,7 @@ func testOpenCloseOpenClose(t *testing.T, fs storage.Storage, root string) {
 func TestOpenCloseOpenClose(t *testing.T) {
 	for _, fstype := range []string{"disk", "mem"} {
 		t.Run(fstype, func(t *testing.T) {
-			var fs storage.Storage
+			var fs vfs.FS
 			var dir string
 			switch fstype {
 			case "disk":
@@ -177,10 +177,10 @@ func TestOpenCloseOpenClose(t *testing.T) {
 				defer func() {
 					_ = os.RemoveAll(dir)
 				}()
-				fs = storage.Default
+				fs = vfs.Default
 			case "mem":
 				dir = ""
-				fs = storage.NewMem()
+				fs = vfs.NewMem()
 			}
 			testOpenCloseOpenClose(t, fs, dir)
 		})
@@ -188,7 +188,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 }
 
 func TestOpenOptionsCheck(t *testing.T) {
-	mem := storage.NewMem()
+	mem := vfs.NewMem()
 	opts := &db.Options{Storage: mem}
 
 	d, err := Open("", opts)

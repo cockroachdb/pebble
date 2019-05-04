@@ -18,7 +18,7 @@ import (
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -126,7 +126,7 @@ func runTestReader(t *testing.T, o db.Options) {
 		return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet), []byte(s[k+1:])
 	}
 
-	fs := storage.NewMem()
+	mem := vfs.NewMem()
 	var r *Reader
 
 	datadriven.Walk(t, "testdata/reader", func(t *testing.T, path string) {
@@ -135,10 +135,10 @@ func runTestReader(t *testing.T, o db.Options) {
 			case "build":
 				if r != nil {
 					r.Close()
-					fs.Remove("sstable")
+					mem.Remove("sstable")
 				}
 
-				f, err := fs.Create("sstable")
+				f, err := mem.Create("sstable")
 				if err != nil {
 					return err.Error()
 				}
@@ -149,7 +149,7 @@ func runTestReader(t *testing.T, o db.Options) {
 				}
 				w.Close()
 
-				f, err = fs.Open("sstable")
+				f, err = mem.Open("sstable")
 				if err != nil {
 					return err.Error()
 				}
@@ -234,7 +234,7 @@ func runTestReader(t *testing.T, o db.Options) {
 }
 
 func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader, [][]byte) {
-	mem := storage.NewMem()
+	mem := vfs.NewMem()
 	f0, err := mem.Create("bench")
 	if err != nil {
 		b.Fatal(err)

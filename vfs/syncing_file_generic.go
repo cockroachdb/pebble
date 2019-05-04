@@ -4,7 +4,7 @@
 
 // +build !linux
 
-package storage
+package vfs
 
 func (f *syncingFile) init() {
 	f.syncTo = f.syncToGeneric

@@ -13,7 +13,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 const (
@@ -93,7 +93,7 @@ type Writer struct {
 var indexColTypes = []ColumnType{ColumnTypeBytes, ColumnTypeInt64}
 
 // NewWriter ...
-func NewWriter(f storage.File, env *Env, _ *db.Options, lo *db.LevelOptions) *Writer {
+func NewWriter(f vfs.File, env *Env, _ *db.Options, lo *db.LevelOptions) *Writer {
 	lo = lo.EnsureDefaults()
 	w := &Writer{
 		env:         env,

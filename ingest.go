@@ -10,7 +10,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, error) {
@@ -100,7 +100,7 @@ func ingestSortAndVerify(cmp db.Compare, meta []*fileMetadata) error {
 }
 
 func ingestCleanup(
-	fs storage.Storage, dirname string, meta []*fileMetadata,
+	fs vfs.FS, dirname string, meta []*fileMetadata,
 ) error {
 	var firstErr error
 	for i := range meta {

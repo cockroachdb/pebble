@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 // Compression is the per-block compression algorithm to use.
@@ -270,7 +270,7 @@ type Options struct {
 	// Storage maps file names to byte storage.
 	//
 	// The default value uses the underlying operating system's file system.
-	Storage storage.Storage
+	Storage vfs.FS
 
 	// TableFormat specifies the format version for sstables. The default is
 	// TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
@@ -335,7 +335,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Merger = DefaultMerger
 	}
 	if o.Storage == nil {
-		o.Storage = storage.Default
+		o.Storage = vfs.Default
 	}
 	return o
 }

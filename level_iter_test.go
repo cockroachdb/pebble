@@ -16,7 +16,7 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -122,7 +122,7 @@ func TestLevelIter(t *testing.T) {
 
 func TestLevelIterBoundaries(t *testing.T) {
 	cmp := db.DefaultComparer.Compare
-	fs := storage.NewMem()
+	mem := vfs.NewMem()
 	var readers []*sstable.Reader
 	var files []fileMetadata
 
@@ -135,7 +135,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
-			fs = storage.NewMem()
+			mem = vfs.NewMem()
 			readers = nil
 			files = nil
 			return ""
@@ -143,7 +143,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 		case "build":
 			fileNum := uint64(len(readers))
 			name := fmt.Sprint(fileNum)
-			f0, err := fs.Create(name)
+			f0, err := mem.Create(name)
 			if err != nil {
 				return err.Error()
 			}
@@ -183,7 +183,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 				return err.Error()
 			}
 
-			f1, err := fs.Open(name)
+			f1, err := mem.Open(name)
 			if err != nil {
 				return err.Error()
 			}
@@ -216,8 +216,8 @@ func TestLevelIterBoundaries(t *testing.T) {
 func buildLevelIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
 ) ([]*sstable.Reader, []fileMetadata, [][]byte) {
-	mem := storage.NewMem()
-	files := make([]storage.File, count)
+	mem := vfs.NewMem()
+	files := make([]vfs.File, count)
 	for i := range files {
 		f, err := mem.Create(fmt.Sprintf("bench%d", i))
 		if err != nil {

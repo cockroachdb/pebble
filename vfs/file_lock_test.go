@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package storage_test
+package vfs_test
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 var lockFilename = flag.String("lockfile", "", "File to lock. A non-empty value implies a child process.")
@@ -47,7 +47,7 @@ func TestLock(t *testing.T) {
 	}
 
 	t.Logf("Locking %s\n", filename)
-	lock, err := storage.Default.Lock(filename)
+	lock, err := vfs.Default.Lock(filename)
 	if err != nil {
 		t.Fatalf("Could not lock %s: %v", filename, err)
 	}

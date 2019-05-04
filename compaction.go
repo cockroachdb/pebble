@@ -16,7 +16,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
@@ -539,7 +539,7 @@ func (d *DB) flush1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(
-	fs storage.Storage, iiter internalIterator, allowRangeTombstoneElision bool,
+	fs vfs.FS, iiter internalIterator, allowRangeTombstoneElision bool,
 ) (meta fileMetadata, err error) {
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
@@ -599,7 +599,7 @@ func (d *DB) writeLevel0Table(
 		elideRangeTombstone,
 	)
 	var (
-		file storage.File
+		file vfs.File
 		tw   *sstable.Writer
 	)
 	defer func() {

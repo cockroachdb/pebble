@@ -16,7 +16,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/record"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func createDB(dirname string, opts *db.Options) (retErr error) {
@@ -95,12 +95,11 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	defer d.mu.Unlock()
 
 	// Lock the database directory.
-	fs := opts.Storage
-	err := fs.MkdirAll(dirname, 0755)
+	err := opts.Storage.MkdirAll(dirname, 0755)
 	if err != nil {
 		return nil, err
 	}
-	fileLock, err := fs.Lock(dbFilename(dirname, fileTypeLock, 0))
+	fileLock, err := opts.Storage.Lock(dbFilename(dirname, fileTypeLock, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +109,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		}
 	}()
 
-	if _, err := fs.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) {
+	if _, err := opts.Storage.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) {
 		// Create the DB if it did not already exist.
 		if err := createDB(dirname, opts); err != nil {
 			return nil, err
@@ -127,7 +126,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 
-	ls, err := fs.List(dirname)
+	ls, err := opts.Storage.List(dirname)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +158,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	})
 	var ve versionEdit
 	for _, lf := range logFiles {
-		maxSeqNum, err := d.replayWAL(&ve, fs, filepath.Join(dirname, lf.name), lf.num)
+		maxSeqNum, err := d.replayWAL(&ve, opts.Storage, filepath.Join(dirname, lf.name), lf.num)
 		if err != nil {
 			return nil, err
 		}
@@ -173,11 +172,11 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	// Create an empty .log file.
 	ve.logNumber = d.mu.versions.nextFileNum()
 	d.mu.log.number = ve.logNumber
-	logFile, err := fs.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
+	logFile, err := opts.Storage.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
 	if err != nil {
 		return nil, err
 	}
-	logFile = storage.NewSyncingFile(logFile, storage.SyncingFileOptions{
+	logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
 		BytesPerSync:    d.opts.BytesPerSync,
 		PreallocateSize: d.walPreallocateSize(),
 	})
@@ -191,7 +190,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 
 	// Write the current options to disk.
 	d.optionsFileNum = d.mu.versions.nextFileNum()
-	optionsFile, err := fs.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
+	optionsFile, err := opts.Storage.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +215,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
 	ve *versionEdit,
-	fs storage.Storage,
+	fs vfs.FS,
 	filename string,
 	logNum uint64,
 ) (maxSeqNum uint64, err error) {

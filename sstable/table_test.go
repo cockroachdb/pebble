@@ -20,7 +20,7 @@ import (
 	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -112,7 +112,7 @@ func init() {
 	}
 }
 
-func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
+func check(f vfs.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 	r := NewReader(f, 0, &db.Options{
 		Comparer: comparer,
 		Levels: []db.LevelOptions{{
@@ -308,7 +308,7 @@ func check(f storage.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 }
 
 var (
-	memFileSystem = storage.NewMem()
+	memFileSystem = vfs.NewMem()
 	tmpFileCount  int
 )
 
@@ -317,7 +317,7 @@ func build(
 	fp db.FilterPolicy,
 	ftype db.FilterType,
 	comparer *db.Comparer,
-) (storage.File, error) {
+) (vfs.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
 	i := 0
@@ -555,7 +555,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 	for nk := 0; nk <= len(keys); nk++ {
 	loop:
 		for _, vLen := range valueLengths {
-			got, memFS := 0, storage.NewMem()
+			got, memFS := 0, vfs.NewMem()
 
 			wf, err := memFS.Create("foo")
 			if err != nil {
@@ -639,8 +639,8 @@ func TestFooterRoundTrip(t *testing.T) {
 					}
 					for offset := range []int64{0, 1, 100} {
 						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
-							fs := storage.NewMem()
-							f, err := fs.Create("test")
+							mem := vfs.NewMem()
+							f, err := mem.Create("test")
 							if err != nil {
 								t.Fatal(err)
 							}
@@ -654,7 +654,7 @@ func TestFooterRoundTrip(t *testing.T) {
 								t.Fatal(err)
 							}
 
-							f, err = fs.Open("test")
+							f, err = mem.Open("test")
 							if err != nil {
 								t.Fatal(err)
 							}
@@ -701,8 +701,8 @@ func TestReadFooter(t *testing.T) {
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
-			fs := storage.NewMem()
-			f, err := fs.Create("test")
+			mem := vfs.NewMem()
+			f, err := mem.Create("test")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -713,7 +713,7 @@ func TestReadFooter(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			f, err = fs.Open("test")
+			f, err = mem.Open("test")
 			if err != nil {
 				t.Fatal(err)
 			}

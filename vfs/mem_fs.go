@@ -2,11 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// Package storage provides a memory-backed storage.FileSystem implementation.
-//
-// It can be useful for tests, and also for LevelDB instances that should not
-// ever touch persistent storage, such as a web browser's private browsing mode.
-package storage // import "github.com/petermattis/pebble/storage"
+package vfs // import "github.com/petermattis/pebble/vfs"
 
 import (
 	"bytes"
@@ -28,9 +24,9 @@ func (nopCloser) Close() error {
 	return nil
 }
 
-// NewMem returns a new memory-backed Storage implementation.
-func NewMem() Storage {
-	return &memStorage{
+// NewMem returns a new memory-backed FS implementation.
+func NewMem() FS {
+	return &memFS{
 		root: &node{
 			children: make(map[string]*node),
 			isDir:    true,
@@ -38,13 +34,13 @@ func NewMem() Storage {
 	}
 }
 
-// memStorage implements Storage
-type memStorage struct {
+// memFS implements FS.
+type memFS struct {
 	mu   sync.Mutex
 	root *node
 }
 
-func (y *memStorage) String() string {
+func (y *memFS) String() string {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
@@ -69,7 +65,7 @@ func (y *memStorage) String() string {
 //   - "/", "y", false
 //   - "/y/", "z", false
 //   - "/y/z/", "", true
-func (y *memStorage) walk(fullname string, f func(dir *node, frag string, final bool) error) error {
+func (y *memFS) walk(fullname string, f func(dir *node, frag string, final bool) error) error {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
@@ -99,22 +95,22 @@ func (y *memStorage) walk(fullname string, f func(dir *node, frag string, final 
 		}
 		child := dir.children[frag]
 		if child == nil {
-			return errors.New("pebble/storage: no such directory")
+			return errors.New("pebble/vfs: no such directory")
 		}
 		if !child.isDir {
-			return errors.New("pebble/storage: not a directory")
+			return errors.New("pebble/vfs: not a directory")
 		}
 		dir, fullname = child, remaining
 	}
 	return nil
 }
 
-func (y *memStorage) Create(fullname string) (File, error) {
+func (y *memFS) Create(fullname string) (File, error) {
 	var ret *file
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/storage: empty file name")
+				return errors.New("pebble/vfs: empty file name")
 			}
 			n := &node{name: frag}
 			dir.children[frag] = n
@@ -131,12 +127,12 @@ func (y *memStorage) Create(fullname string) (File, error) {
 	return ret, nil
 }
 
-func (y *memStorage) Link(oldname, newname string) error {
+func (y *memFS) Link(oldname, newname string) error {
 	var n *node
 	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/storage: empty file name")
+				return errors.New("pebble/vfs: empty file name")
 			}
 			n = dir.children[frag]
 		}
@@ -146,12 +142,12 @@ func (y *memStorage) Link(oldname, newname string) error {
 		return err
 	}
 	if n == nil {
-		return errors.New("pebble/storage: no such file or directory")
+		return errors.New("pebble/vfs: no such file or directory")
 	}
 	return y.walk(newname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/storage: empty file name")
+				return errors.New("pebble/vfs: empty file name")
 			}
 			dir.children[frag] = n
 		}
@@ -159,12 +155,12 @@ func (y *memStorage) Link(oldname, newname string) error {
 	})
 }
 
-func (y *memStorage) Open(fullname string) (File, error) {
+func (y *memFS) Open(fullname string) (File, error) {
 	var ret *file
 	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/storage: empty file name")
+				return errors.New("pebble/vfs: empty file name")
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &file{
@@ -188,11 +184,11 @@ func (y *memStorage) Open(fullname string) (File, error) {
 	return ret, nil
 }
 
-func (y *memStorage) Remove(fullname string) error {
+func (y *memFS) Remove(fullname string) error {
 	return y.walk(fullname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/storage: empty file name")
+				return errors.New("pebble/vfs: empty file name")
 			}
 			_, ok := dir.children[frag]
 			if !ok {
@@ -204,12 +200,12 @@ func (y *memStorage) Remove(fullname string) error {
 	})
 }
 
-func (y *memStorage) Rename(oldname, newname string) error {
+func (y *memFS) Rename(oldname, newname string) error {
 	var n *node
 	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/storage: empty file name")
+				return errors.New("pebble/vfs: empty file name")
 			}
 			n = dir.children[frag]
 			delete(dir.children, frag)
@@ -220,12 +216,12 @@ func (y *memStorage) Rename(oldname, newname string) error {
 		return err
 	}
 	if n == nil {
-		return errors.New("pebble/storage: no such file or directory")
+		return errors.New("pebble/vfs: no such file or directory")
 	}
 	return y.walk(newname, func(dir *node, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/storage: empty file name")
+				return errors.New("pebble/vfs: empty file name")
 			}
 			dir.children[frag] = n
 		}
@@ -233,13 +229,13 @@ func (y *memStorage) Rename(oldname, newname string) error {
 	})
 }
 
-func (y *memStorage) MkdirAll(dirname string, perm os.FileMode) error {
+func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
 	return y.walk(dirname, func(dir *node, frag string, final bool) error {
 		if frag == "" {
 			if final {
 				return nil
 			}
-			return errors.New("pebble/storage: empty file name")
+			return errors.New("pebble/vfs: empty file name")
 		}
 		child := dir.children[frag]
 		if child == nil {
@@ -251,19 +247,19 @@ func (y *memStorage) MkdirAll(dirname string, perm os.FileMode) error {
 			return nil
 		}
 		if !child.isDir {
-			return errors.New("pebble/storage: not a directory")
+			return errors.New("pebble/vfs: not a directory")
 		}
 		return nil
 	})
 }
 
-func (y *memStorage) Lock(fullname string) (io.Closer, error) {
-	// FileSystem.Lock excludes other processes, but other processes cannot
-	// see this process' memory, so Lock is a no-op.
+func (y *memFS) Lock(fullname string) (io.Closer, error) {
+	// FS.Lock excludes other processes, but other processes cannot see this
+	// process' memory, so Lock is a no-op.
 	return nopCloser{}, nil
 }
 
-func (y *memStorage) List(dirname string) ([]string, error) {
+func (y *memFS) List(dirname string) ([]string, error) {
 	if !strings.HasSuffix(dirname, sep) {
 		dirname += sep
 	}
@@ -283,7 +279,7 @@ func (y *memStorage) List(dirname string) ([]string, error) {
 	return ret, err
 }
 
-func (y *memStorage) Stat(name string) (os.FileInfo, error) {
+func (y *memFS) Stat(name string) (os.FileInfo, error) {
 	f, err := y.Open(name)
 	if err != nil {
 		if pe, ok := err.(*os.PathError); ok {
@@ -370,10 +366,10 @@ func (f *file) Close() error {
 
 func (f *file) Read(p []byte) (int, error) {
 	if !f.read {
-		return 0, errors.New("pebble/storage: file was not opened for reading")
+		return 0, errors.New("pebble/vfs: file was not opened for reading")
 	}
 	if f.n.isDir {
-		return 0, errors.New("pebble/storage: cannot read a directory")
+		return 0, errors.New("pebble/vfs: cannot read a directory")
 	}
 	if f.rpos >= len(f.n.data) {
 		return 0, io.EOF
@@ -385,10 +381,10 @@ func (f *file) Read(p []byte) (int, error) {
 
 func (f *file) ReadAt(p []byte, off int64) (int, error) {
 	if !f.read {
-		return 0, errors.New("pebble/storage: file was not opened for reading")
+		return 0, errors.New("pebble/vfs: file was not opened for reading")
 	}
 	if f.n.isDir {
-		return 0, errors.New("pebble/storage: cannot read a directory")
+		return 0, errors.New("pebble/vfs: cannot read a directory")
 	}
 	if off >= int64(len(f.n.data)) {
 		return 0, io.EOF
@@ -398,10 +394,10 @@ func (f *file) ReadAt(p []byte, off int64) (int, error) {
 
 func (f *file) Write(p []byte) (int, error) {
 	if !f.write {
-		return 0, errors.New("pebble/storage: file was not created for writing")
+		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
 	if f.n.isDir {
-		return 0, errors.New("pebble/storage: cannot write a directory")
+		return 0, errors.New("pebble/vfs: cannot write a directory")
 	}
 	f.n.modTime = time.Now()
 	f.n.data = append(f.n.data, p...)
