@@ -912,7 +912,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				// so force the boundary to a key that we know is larger than the
 				// previous key.
 				writerMeta.SmallestRange = db.MakeInternalKey(
-					prevMeta.largest.UserKey, 0, db.InternalKeyKindRangeDelete)
+					prevMeta.largest.UserKey, 0, 0 /* kind */)
 			}
 		}
 

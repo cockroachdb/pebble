@@ -1289,3 +1289,23 @@ get seq=4
 c
 ----
 v
+
+# The below setup shouldn't currently be possible since it involves two versions
+# of the same user key both with seqnum zero. Still, verify compaction succeeds
+# in this scenario. It used to cause a non-overlapping file invariant failure.
+
+define target-file-sizes=(100, 1) snapshots=(1)
+L0
+  a.RANGEDEL.1:b
+L1
+  a.SET.0:v
+L1
+  a.SET.0:v
+----
+mem: 1
+0: a-b
+1: a-a a-a
+
+compact a-b L0
+----
+1: a-a a-b
