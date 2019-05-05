@@ -905,7 +905,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			// This is not the first output. Bound the smallest range key by the
 			// previous tables largest key.
 			prevMeta := &ve.newFiles[n-2].meta
-			if d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.largest.UserKey) <= 0 {
+			if writerMeta.SmallestRange.UserKey != nil &&
+				d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.largest.UserKey) <= 0 {
 				// The range boundary user key is less than or equal to the previous
 				// table's largest key. We need the tables to be key-space partitioned,
 				// so force the boundary to a key that we know is larger than the
@@ -915,7 +916,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			}
 		}
 
-		if key.UserKey != nil {
+		if key.UserKey != nil && writerMeta.LargestRange.UserKey != nil {
 			if d.cmp(writerMeta.LargestRange.UserKey, key.UserKey) >= 0 {
 				writerMeta.LargestRange = key
 				writerMeta.LargestRange.Trailer = db.InternalKeyRangeDeleteSentinel
