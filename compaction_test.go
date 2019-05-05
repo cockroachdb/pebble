@@ -710,6 +710,17 @@ func TestManualCompaction(t *testing.T) {
 			b.Commit(nil)
 			return ""
 
+		case "define":
+			var err error
+			if d, err = runDBDefineCmd(td); err != nil {
+				return err.Error()
+			}
+
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
 		case "iter":
 			iter := d.NewIter(nil)
 			defer iter.Close()

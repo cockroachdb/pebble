@@ -1282,7 +1282,7 @@ compact f-f L0
 
 compact a-f L1
 ----
-2: a-c c-f
+2: a-c f-f
 3: c-d d-e
 
 get seq=4

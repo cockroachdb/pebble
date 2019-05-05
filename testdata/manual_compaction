@@ -34,3 +34,17 @@ del-range a e
 
 compact a-d
 ----
+
+# Test that a multi-output-file compaction generates non-overlapping files.
+
+define target-file-sizes=(100, 1)
+L0
+  a.SET.2:v
+L0
+  b.SET.1:v
+----
+0: b-b a-a
+
+compact a-b
+----
+1: a-a b-b
