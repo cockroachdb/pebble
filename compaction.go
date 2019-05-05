@@ -910,6 +910,14 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				// table's largest key. We need the tables to be key-space partitioned,
 				// so force the boundary to a key that we know is larger than the
 				// previous key.
+				//
+				// We use seqnum zero since seqnums are in descending order, and our
+				// goal is to ensure this forged key does not overlap with the previous
+				// file. `db.InternalKeyRangeDeleteSentinel` is actually the first key
+				// kind as key kinds are also in descending order. But, this is OK
+				// because choosing seqnum zero is already enough to prevent overlap
+				// (the previous file could not end with a key at seqnum zero if this
+				// file had a tombstone extending into it).
 				writerMeta.SmallestRange = db.MakeInternalKey(
 					prevMeta.largest.UserKey, 0, db.InternalKeyKindRangeDelete)
 			}
