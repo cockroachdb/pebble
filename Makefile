@@ -1,8 +1,9 @@
-GO = go
-GOFLAGS =
-PKG = ./...
-BENCH_PKGS = internal/arenaskl internal/batchskl internal/record sstable .
-TESTS = .
+GO := go
+GOFLAGS :=
+PKG := ./...
+BENCH_PKGS := internal/arenaskl internal/batchskl internal/record sstable .
+STRESSFLAGS :=
+TESTS := .
 
 .PHONY: all
 all:
@@ -22,16 +23,10 @@ test:
 testrace: GOFLAGS += -race
 testrace: test
 
-.PHONY: stress
-stress: $(patsubst %,%.stress,$(shell $(GO) list ${PKG}))
-
-.PHONY: stressrace
+.PHONY: stress stressrace
 stressrace: GOFLAGS += -race
-stressrace: stress
-
-%.stress:
-	$(GO) test ${GOFLAGS} -i -v -c $*
-	stress -maxfails 1 ./$(*F).test -test.run ${TESTS}
+stress stressrace:
+	$(GO) test -v ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run "${TESTS}" -timeout 0 ${PKG}
 
 .PHONY: bench
 bench: GOFLAGS += -timeout 1h
