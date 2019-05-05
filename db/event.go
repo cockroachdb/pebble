@@ -140,3 +140,112 @@ type EventListener struct {
 	// WALDeleted is invoked after a WAL has been delete.
 	WALDeleted func(WALDeleteInfo)
 }
+
+// EnsureDefaults fills in the nil callbacks with default ones. The default
+// callback records the event info to `logger.Infof`.
+//
+// It is valid to call EnsureDefaults on a nil receiver. In that case a non-nil
+// result with all default callbacks would be returned.
+func (listener *EventListener) EnsureDefaults(logger Logger) *EventListener {
+	if listener == nil {
+		listener = &EventListener{}
+	}
+	if listener.BackgroundError == nil {
+		listener.BackgroundError = func(err error) {
+			logger.Infof("Encountered background error: %s", err.Error())
+		}
+	}
+	if listener.CompactionBegin == nil {
+		listener.CompactionBegin = func(info CompactionInfo) {
+			if len(info.Input.Tables[1]) > 0 {
+				logger.Infof(
+					"[JOB %d] Compacting %d@%d and %d@%d sstables to L%d",
+					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
+					len(info.Input.Tables[1]), info.Input.Level+1, info.Input.Level+1)
+			} else {
+				logger.Infof(
+					"[JOB %d] Compacting %d@%d sstables to L%d",
+					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
+					info.Input.Level+1)
+			}
+		}
+	}
+	if listener.CompactionEnd == nil {
+		listener.CompactionEnd = func(info CompactionInfo) {
+			if info.Err == nil {
+				logger.Infof(
+					"[JOB %d] Compacted to L%d; %d new sstables",
+					info.JobID, info.Output.Level, len(info.Output.Tables))
+			} else {
+				logger.Infof(
+					"[JOB %d] Compaction to L%d encountered error: %s",
+					info.JobID, info.Output.Level, info.Err.Error())
+			}
+		}
+	}
+	if listener.FlushBegin == nil {
+		listener.FlushBegin = func(info FlushInfo) {
+			logger.Infof("[JOB %d] Flushing", info.JobID)
+		}
+	}
+	if listener.FlushEnd == nil {
+		listener.FlushEnd = func(info FlushInfo) {
+			if info.Err == nil {
+				logger.Infof(
+					"[JOB %d] Flushed sstable #%d", info.JobID,
+					info.Output.FileNum)
+			} else {
+				logger.Infof(
+					"[JOB %d] Flush encountered error: %s", info.JobID,
+					info.Err.Error())
+			}
+		}
+	}
+	if listener.TableDeleted == nil {
+		listener.TableDeleted = func(info TableDeleteInfo) {
+			if info.Err == nil {
+				logger.Infof("[JOB %d] Deleted sstable #%d", info.JobID, info.FileNum)
+			} else {
+				logger.Infof(
+					"[JOB %d] Delete encountered error for sstable #%d: %s", info.JobID,
+					info.FileNum, info.Err.Error())
+			}
+		}
+	}
+	if listener.TableIngested == nil {
+		listener.TableIngested = func(info TableIngestInfo) {
+			if info.Err == nil {
+				logger.Infof("[JOB %d] Ingested %d sstables", info.JobID, len(info.Tables))
+			} else {
+				logger.Infof("[JOB %d] Ingest encountered error: %s", info.Err.Error())
+			}
+		}
+	}
+	if listener.WALCreated == nil {
+		listener.WALCreated = func(info WALCreateInfo) {
+			if info.Err == nil {
+				if info.RecycledFileNum == 0 {
+					logger.Infof("[JOB %d] Created WAL #%d", info.JobID, info.FileNum)
+				} else {
+					logger.Infof(
+						"[JOB %d] Created WAL #%d by recycling #%d", info.JobID,
+						info.FileNum, info.RecycledFileNum)
+				}
+			} else {
+				logger.Infof("[JOB %d] Create WAL encountered error: %s", info.Err.Error())
+			}
+		}
+	}
+	if listener.WALDeleted == nil {
+		listener.WALDeleted = func(info WALDeleteInfo) {
+			if info.Err == nil {
+				logger.Infof("[JOB %d] Deleted WAL #%d", info.JobID, info.FileNum)
+			} else {
+				logger.Infof(
+					"[JOB %d] Delete WAL encountered error: %s", info.JobID,
+					info.Err.Error())
+			}
+		}
+	}
+	return listener
+}

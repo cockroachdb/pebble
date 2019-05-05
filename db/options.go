@@ -322,6 +322,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Logger == nil {
 		o.Logger = defaultLogger{}
 	}
+	// `o.EventListener` uses `o.Logger` so must be initialized
+	// after it, even though that breaks alphabetical ordering.
+	o.EventListener = o.EventListener.EnsureDefaults(o.Logger)
 	if o.MaxOpenFiles == 0 {
 		o.MaxOpenFiles = 1000
 	}

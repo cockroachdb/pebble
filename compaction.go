@@ -698,7 +698,9 @@ func (d *DB) compact() {
 	defer d.mu.Unlock()
 	if err := d.compact1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
-		_ = err
+		if d.opts.EventListener != nil && d.opts.EventListener.BackgroundError != nil {
+			d.opts.EventListener.BackgroundError(err)
+		}
 	}
 	d.mu.compact.compacting = false
 	// The previous compaction may have produced too many files in a
@@ -729,34 +731,31 @@ func (d *DB) compact1() (err error) {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	if d.opts.EventListener != nil && d.opts.EventListener.CompactionBegin != nil {
-		info := db.CompactionInfo{
-			JobID: jobID,
+	info := db.CompactionInfo{
+		JobID: jobID,
+	}
+	info.Input.Level = c.level
+	info.Output.Level = c.level + 1
+	for i := range c.inputs {
+		for j := range c.inputs[i] {
+			m := &c.inputs[i][j]
+			info.Input.Tables[i] = append(info.Input.Tables[i], m.tableInfo(d.dirname))
 		}
+	}
+	if d.opts.EventListener != nil && d.opts.EventListener.CompactionBegin != nil {
 		d.opts.EventListener.CompactionBegin(info)
 	}
 
 	ve, pendingOutputs, err := d.compactDiskTables(c)
 
+	info.Err = err
+	if err == nil {
+		for i := range ve.newFiles {
+			e := &ve.newFiles[i]
+			info.Output.Tables = append(info.Output.Tables, e.meta.tableInfo(d.dirname))
+		}
+	}
 	if d.opts.EventListener != nil && d.opts.EventListener.CompactionEnd != nil {
-		info := db.CompactionInfo{
-			JobID: jobID,
-			Err:   err,
-		}
-		if err != nil {
-			info.Input.Level = c.level
-			info.Output.Level = c.level + 1
-			for i := range c.inputs {
-				for j := range c.inputs[i] {
-					m := &c.inputs[i][j]
-					info.Input.Tables[i] = append(info.Input.Tables[i], m.tableInfo(d.dirname))
-				}
-			}
-			for i := range ve.newFiles {
-				e := &ve.newFiles[i]
-				info.Output.Tables = append(info.Output.Tables, e.meta.tableInfo(d.dirname))
-			}
-		}
 		d.opts.EventListener.CompactionEnd(info)
 	}
 
