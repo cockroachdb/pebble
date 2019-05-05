@@ -519,13 +519,20 @@ func (d *DB) flush1() error {
 		return err
 	}
 
-	// Mark all the memtables we flushed as flushed.
-	for i := 0; i < n; i++ {
-		close(d.mu.mem.queue[i].flushed())
-	}
+	flushed := d.mu.mem.queue[:n]
 	d.mu.mem.queue = d.mu.mem.queue[n:]
 	d.updateReadStateLocked()
 	d.deleteObsoleteFiles(jobID)
+
+	// Mark all the memtables we flushed as flushed. Note that we do this last so
+	// that a synchronous call to DB.Flush() will not return until the deletion
+	// of obsolete files from this job have completed. This makes testing easier
+	// and provides similar behavior to manual compactions where the compaction
+	// is not marked as completed until the deletion of obsolete files job has
+	// completed.
+	for i := range flushed {
+		close(flushed[i].flushed())
+	}
 	return nil
 }
 
