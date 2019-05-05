@@ -15,7 +15,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func TestRangeDel(t *testing.T) {
@@ -115,7 +115,7 @@ func TestRangeDel(t *testing.T) {
 func TestRangeDelCompactionTruncation(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
+		VFS: vfs.NewMem(),
 		Levels: []db.LevelOptions{
 			{TargetFileSize: 100},
 			{TargetFileSize: 100},
@@ -246,10 +246,10 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 		b.Run(fmt.Sprintf("entries=%d", entries), func(b *testing.B) {
 			for _, deleted := range []int{entries, entries - 1} {
 				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
-					fs := storage.NewMem()
+					mem := vfs.NewMem()
 					d, err := Open("", &db.Options{
-						Cache:   cache.New(128 << 20), // 128 MB
-						Storage: fs,
+						Cache: cache.New(128 << 20), // 128 MB
+						VFS:   mem,
 					})
 					if err != nil {
 						b.Fatal(err)
@@ -262,7 +262,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 
 					// Create an sstable with N entries and ingest it. This is a fast way
 					// to get a lot of entries into pebble.
-					f, err := fs.Create("ext")
+					f, err := mem.Create("ext")
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -281,7 +281,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 					if err := d.Ingest([]string{"ext"}); err != nil {
 						b.Fatal(err)
 					}
-					if err := fs.Remove("ext"); err != nil {
+					if err := mem.Remove("ext"); err != nil {
 						b.Fatal(err)
 					}
 

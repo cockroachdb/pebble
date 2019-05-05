@@ -18,7 +18,7 @@ import (
 
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -88,12 +88,12 @@ func TestTry(t *testing.T) {
 // containing:
 //   - /x
 //   - /y
-func cloneFileSystem(srcFS storage.Storage, dirname string) (storage.Storage, error) {
+func cloneFileSystem(srcFS vfs.FS, dirname string) (vfs.FS, error) {
 	if len(dirname) == 0 || dirname[len(dirname)-1] != os.PathSeparator {
 		dirname += string(os.PathSeparator)
 	}
 
-	dstFS := storage.NewMem()
+	dstFS := vfs.NewMem()
 	list, err := srcFS.List(dirname)
 	if err != nil {
 		return nil, err
@@ -190,13 +190,13 @@ func TestBasicReads(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		fs, err := cloneFileSystem(storage.Default, "testdata/"+tc.dirname)
+		fs, err := cloneFileSystem(vfs.Default, "testdata/"+tc.dirname)
 		if err != nil {
 			t.Errorf("%s: cloneFileSystem failed: %v", tc.dirname, err)
 			continue
 		}
 		d, err := Open("", &db.Options{
-			Storage: fs,
+			VFS: fs,
 		})
 		if err != nil {
 			t.Errorf("%s: Open failed: %v", tc.dirname, err)
@@ -223,7 +223,7 @@ func TestBasicReads(t *testing.T) {
 
 func TestBasicWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
+		VFS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -362,7 +362,7 @@ func TestBasicWrites(t *testing.T) {
 
 func TestRandomWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		Storage:      storage.NewMem(),
+		VFS:          vfs.NewMem(),
 		MemTableSize: 8 * 1024,
 	})
 	if err != nil {
@@ -418,7 +418,7 @@ func TestRandomWrites(t *testing.T) {
 
 func TestLargeBatch(t *testing.T) {
 	d, err := Open("", &db.Options{
-		Storage:                     storage.NewMem(),
+		VFS:                         vfs.NewMem(),
 		MemTableSize:                1400,
 		MemTableStopWritesThreshold: 100,
 	})
@@ -469,7 +469,7 @@ func TestLargeBatch(t *testing.T) {
 
 func TestGetMerge(t *testing.T) {
 	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
+		VFS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -511,7 +511,7 @@ func TestIterLeak(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
 					d, err := Open("", &db.Options{
-						Storage: storage.NewMem(),
+						VFS: vfs.NewMem(),
 					})
 					if err != nil {
 						t.Fatal(err)
@@ -552,8 +552,8 @@ func TestIterLeak(t *testing.T) {
 func TestCacheEvict(t *testing.T) {
 	cache := cache.New(10 << 20)
 	d, err := Open("", &db.Options{
-		Cache:   cache,
-		Storage: storage.NewMem(),
+		Cache: cache,
+		VFS:   vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +601,7 @@ func TestCacheEvict(t *testing.T) {
 
 func TestFlushEmpty(t *testing.T) {
 	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
+		VFS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)

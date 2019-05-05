@@ -19,17 +19,17 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
 func TestIngestLoad(t *testing.T) {
-	fs := storage.NewMem()
+	mem := vfs.NewMem()
 
 	datadriven.RunTest(t, "testdata/ingest_load", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "load":
-			f, err := fs.Create("ext")
+			f, err := mem.Create("ext")
 			if err != nil {
 				return err.Error()
 			}
@@ -49,7 +49,7 @@ func TestIngestLoad(t *testing.T) {
 
 			opts := &db.Options{
 				Comparer: db.DefaultComparer,
-				Storage:  fs,
+				VFS:      mem,
 			}
 			meta, err := ingestLoad(opts, []string{"ext"}, []uint64{1})
 			if err != nil {
@@ -68,7 +68,7 @@ func TestIngestLoad(t *testing.T) {
 }
 
 func TestIngestLoadRand(t *testing.T) {
-	mem := storage.NewMem()
+	mem := vfs.NewMem()
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	cmp := db.DefaultComparer.Compare
 
@@ -129,7 +129,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 	opts := &db.Options{
 		Comparer: db.DefaultComparer,
-		Storage:  mem,
+		VFS:      mem,
 	}
 	meta, err := ingestLoad(opts, paths, pending)
 	if err != nil {
@@ -143,7 +143,7 @@ func TestIngestLoadRand(t *testing.T) {
 func TestIngestLoadNonExistent(t *testing.T) {
 	opts := &db.Options{
 		Comparer: db.DefaultComparer,
-		Storage:  storage.NewMem(),
+		VFS:      vfs.NewMem(),
 	}
 	if _, err := ingestLoad(opts, []string{"non-existent"}, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
@@ -151,7 +151,7 @@ func TestIngestLoadNonExistent(t *testing.T) {
 }
 
 func TestIngestLoadEmpty(t *testing.T) {
-	mem := storage.NewMem()
+	mem := vfs.NewMem()
 	f, err := mem.Create("empty")
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestIngestLoadEmpty(t *testing.T) {
 
 	opts := &db.Options{
 		Comparer: db.DefaultComparer,
-		Storage:  mem,
+		VFS:      mem,
 	}
 	if _, err := ingestLoad(opts, []string{"empty"}, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
@@ -244,8 +244,8 @@ func TestIngestLink(t *testing.T) {
 	const count = 10
 	for i := 0; i <= count; i++ {
 		t.Run("", func(t *testing.T) {
-			mem := storage.NewMem()
-			opts := &db.Options{Storage: mem}
+			mem := vfs.NewMem()
+			opts := &db.Options{VFS: mem}
 			opts.EnsureDefaults()
 			if err := mem.MkdirAll(dir, 0755); err != nil {
 				t.Fatal(err)
@@ -466,14 +466,14 @@ func TestIngestTargetLevel(t *testing.T) {
 }
 
 func TestIngest(t *testing.T) {
-	fs := storage.NewMem()
-	err := fs.MkdirAll("ext", 0755)
+	mem := vfs.NewMem()
+	err := mem.MkdirAll("ext", 0755)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	d, err := Open("", &db.Options{
-		Storage:               fs,
+		VFS:                   mem,
 		L0CompactionThreshold: 100,
 	})
 	if err != nil {
@@ -490,7 +490,7 @@ func TestIngest(t *testing.T) {
 
 			switch td.Cmd {
 			case "ingest":
-				f, err := fs.Create("ext/0")
+				f, err := mem.Create("ext/0")
 				if err != nil {
 					return err.Error()
 				}
@@ -521,7 +521,7 @@ func TestIngest(t *testing.T) {
 				if err := d.Ingest([]string{"ext/0"}); err != nil {
 					return err.Error()
 				}
-				if err := fs.Remove("ext/0"); err != nil {
+				if err := mem.Remove("ext/0"); err != nil {
 					return err.Error()
 				}
 

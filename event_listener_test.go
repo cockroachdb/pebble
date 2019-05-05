@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 type syncedBuffer struct {
@@ -35,7 +35,7 @@ func TestEventListener(t *testing.T) {
 	var buf syncedBuffer
 
 	d, err := Open("", &db.Options{
-		Storage: storage.NewMem(),
+		VFS: vfs.NewMem(),
 		EventListener: &db.EventListener{
 			CompactionBegin: func(info db.CompactionInfo) {
 				fmt.Fprintf(&buf, "#%d: compaction begin: L%d -> L%d\n", info.JobID,

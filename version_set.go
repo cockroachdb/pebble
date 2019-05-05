@@ -13,7 +13,7 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/record"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 // versionSet manages a collection of immutable versions, and manages the
@@ -26,7 +26,7 @@ type versionSet struct {
 	dirname string
 	mu      *sync.Mutex
 	opts    *db.Options
-	fs      storage.Storage
+	fs      vfs.FS
 	cmp     db.Compare
 	cmpName string
 
@@ -41,7 +41,7 @@ type versionSet struct {
 	visibleSeqNum      uint64 // visible seqNum (<= logSeqNum)
 	manifestFileNumber uint64
 
-	manifestFile storage.File
+	manifestFile vfs.File
 	manifest     *record.Writer
 
 	writing    bool
@@ -55,7 +55,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 	vs.versions.mu = mu
 	vs.writerCond.L = mu
 	vs.opts = opts
-	vs.fs = opts.Storage
+	vs.fs = opts.VFS
 	vs.cmp = opts.Comparer.Compare
 	vs.cmpName = opts.Comparer.Name
 	vs.versions.init()
@@ -231,7 +231,7 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 func (vs *versionSet) createManifest(dirname string) (err error) {
 	var (
 		filename     = dbFilename(dirname, fileTypeManifest, vs.manifestFileNumber)
-		manifestFile storage.File
+		manifestFile vfs.File
 		manifest     *record.Writer
 	)
 	defer func() {

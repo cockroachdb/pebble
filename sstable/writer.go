@@ -16,7 +16,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
 	"github.com/petermattis/pebble/internal/rangedel"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 // WriterMetadata holds info about a finished sstable.
@@ -78,7 +78,7 @@ func (m *WriterMetadata) Largest(cmp db.Compare) db.InternalKey {
 type Writer struct {
 	writer    io.Writer
 	bufWriter *bufio.Writer
-	file      storage.File
+	file      vfs.File
 	meta      WriterMetadata
 	err       error
 	// The following fields are copied from db.Options.
@@ -532,12 +532,12 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f storage.File, o *db.Options, lo db.LevelOptions) *Writer {
+func NewWriter(f vfs.File, o *db.Options, lo db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
 
 	if f != nil {
-		f = storage.NewSyncingFile(f, storage.SyncingFileOptions{
+		f = vfs.NewSyncingFile(f, vfs.SyncingFileOptions{
 			BytesPerSync: o.BytesPerSync,
 		})
 	}

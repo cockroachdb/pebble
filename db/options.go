@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 // Compression is the per-block compression algorithm to use.
@@ -267,16 +267,16 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
-	// Storage maps file names to byte storage.
-	//
-	// The default value uses the underlying operating system's file system.
-	Storage storage.Storage
-
 	// TableFormat specifies the format version for sstables. The default is
 	// TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
 	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
 	// by a wider range of tools and libraries.
 	TableFormat TableFormat
+
+	// VFS provides the interface for persistent file storage.
+	//
+	// The default value uses the underlying operating system's file system.
+	VFS vfs.FS
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
@@ -334,8 +334,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
-	if o.Storage == nil {
-		o.Storage = storage.Default
+	if o.VFS == nil {
+		o.VFS = vfs.Default
 	}
 	return o
 }

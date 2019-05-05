@@ -68,7 +68,7 @@ import (
 	"io"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 /*
@@ -179,7 +179,7 @@ type footer struct {
 	indexBH     blockHandle
 }
 
-func readFooter(f storage.File) (footer, error) {
+func readFooter(f vfs.File) (footer, error) {
 	var footer footer
 	stat, err := f.Stat()
 	if err != nil {

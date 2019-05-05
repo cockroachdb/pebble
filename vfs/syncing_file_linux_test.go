@@ -4,7 +4,7 @@
 
 // +build linux
 
-package storage
+package vfs
 
 import (
 	"fmt"

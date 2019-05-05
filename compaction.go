@@ -16,7 +16,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
@@ -479,7 +479,7 @@ func (d *DB) flush1() error {
 		})
 	}
 
-	meta, err := d.writeLevel0Table(d.opts.Storage, iter,
+	meta, err := d.writeLevel0Table(d.opts.VFS, iter,
 		true /* allowRangeTombstoneElision */)
 
 	if d.opts.EventListener != nil && d.opts.EventListener.FlushEnd != nil {
@@ -539,7 +539,7 @@ func (d *DB) flush1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(
-	fs storage.Storage, iiter internalIterator, allowRangeTombstoneElision bool,
+	fs vfs.FS, iiter internalIterator, allowRangeTombstoneElision bool,
 ) (meta fileMetadata, err error) {
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
@@ -599,7 +599,7 @@ func (d *DB) writeLevel0Table(
 		elideRangeTombstone,
 	)
 	var (
-		file storage.File
+		file vfs.File
 		tw   *sstable.Writer
 	)
 	defer func() {
@@ -838,7 +838,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 		if retErr != nil {
 			for _, filename := range filenames {
-				d.opts.Storage.Remove(filename)
+				d.opts.VFS.Remove(filename)
 			}
 		}
 	}()
@@ -855,7 +855,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		d.mu.Unlock()
 
 		filename := dbFilename(d.dirname, fileTypeTable, fileNum)
-		file, err := d.opts.Storage.Create(filename)
+		file, err := d.opts.VFS.Create(filename)
 		if err != nil {
 			return err
 		}
@@ -984,7 +984,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		d.mu.cleaner.cond.Signal()
 	}()
 
-	fs := d.opts.Storage
+	fs := d.opts.VFS
 	list, err := fs.List(d.dirname)
 	if err != nil {
 		// Ignore any filesystem errors.

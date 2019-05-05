@@ -15,15 +15,15 @@ import (
 	"testing"
 
 	"github.com/petermattis/pebble/db"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
 func TestErrorIfDBExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
-		fs := storage.NewMem()
+		mem := vfs.NewMem()
 		d0, err := Open("", &db.Options{
-			Storage: fs,
+			VFS: mem,
 		})
 		if err != nil {
 			t.Errorf("b=%v: d0 Open: %v", b, err)
@@ -35,7 +35,7 @@ func TestErrorIfDBExists(t *testing.T) {
 		}
 
 		d1, err := Open("", &db.Options{
-			Storage:         fs,
+			VFS:             mem,
 			ErrorIfDBExists: b,
 		})
 		if d1 != nil {
@@ -50,9 +50,9 @@ func TestErrorIfDBExists(t *testing.T) {
 
 func TestNewDBFilenames(t *testing.T) {
 	fooBar := filepath.Join("foo", "bar")
-	fs := storage.NewMem()
+	mem := vfs.NewMem()
 	d, err := Open(fooBar, &db.Options{
-		Storage: fs,
+		VFS: mem,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -60,7 +60,7 @@ func TestNewDBFilenames(t *testing.T) {
 	if err := d.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	got, err := fs.List(fooBar)
+	got, err := mem.List(fooBar)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -77,9 +77,9 @@ func TestNewDBFilenames(t *testing.T) {
 	}
 }
 
-func testOpenCloseOpenClose(t *testing.T, fs storage.Storage, root string) {
+func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 	opts := &db.Options{
-		Storage: fs,
+		VFS: fs,
 	}
 
 	for _, startFromEmpty := range []bool{false, true} {
@@ -144,7 +144,7 @@ func testOpenCloseOpenClose(t *testing.T, fs storage.Storage, root string) {
 			}
 
 			{
-				got, err := opts.Storage.List(dirname)
+				got, err := opts.VFS.List(dirname)
 				if err != nil {
 					t.Fatalf("List: %v", err)
 				}
@@ -165,7 +165,7 @@ func testOpenCloseOpenClose(t *testing.T, fs storage.Storage, root string) {
 func TestOpenCloseOpenClose(t *testing.T) {
 	for _, fstype := range []string{"disk", "mem"} {
 		t.Run(fstype, func(t *testing.T) {
-			var fs storage.Storage
+			var fs vfs.FS
 			var dir string
 			switch fstype {
 			case "disk":
@@ -177,10 +177,10 @@ func TestOpenCloseOpenClose(t *testing.T) {
 				defer func() {
 					_ = os.RemoveAll(dir)
 				}()
-				fs = storage.Default
+				fs = vfs.Default
 			case "mem":
 				dir = ""
-				fs = storage.NewMem()
+				fs = vfs.NewMem()
 			}
 			testOpenCloseOpenClose(t, fs, dir)
 		})
@@ -188,8 +188,8 @@ func TestOpenCloseOpenClose(t *testing.T) {
 }
 
 func TestOpenOptionsCheck(t *testing.T) {
-	mem := storage.NewMem()
-	opts := &db.Options{Storage: mem}
+	mem := vfs.NewMem()
+	opts := &db.Options{VFS: mem}
 
 	d, err := Open("", opts)
 	if err != nil {
@@ -201,14 +201,14 @@ func TestOpenOptionsCheck(t *testing.T) {
 
 	opts = &db.Options{
 		Comparer: &db.Comparer{Name: "foo"},
-		Storage:  mem,
+		VFS:      mem,
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `comparer name from file.*!=.*`, err)
 
 	opts = &db.Options{
-		Merger:  &db.Merger{Name: "bar"},
-		Storage: mem,
+		Merger: &db.Merger{Name: "bar"},
+		VFS:    mem,
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `merger name from file.*!=.*`, err)

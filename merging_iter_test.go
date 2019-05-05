@@ -14,7 +14,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -127,8 +127,8 @@ func TestMergingIterNextPrev(t *testing.T) {
 func buildMergingIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
 ) ([]*sstable.Reader, [][]byte) {
-	mem := storage.NewMem()
-	files := make([]storage.File, count)
+	mem := vfs.NewMem()
+	files := make([]vfs.File, count)
 	for i := range files {
 		f, err := mem.Create(fmt.Sprintf("bench%d", i))
 		if err != nil {

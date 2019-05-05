@@ -17,7 +17,7 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 func TestPickCompaction(t *testing.T) {
@@ -579,9 +579,9 @@ func TestCompaction(t *testing.T) {
 	// size.
 	const valueSize = 3500
 
-	fs := storage.NewMem()
+	mem := vfs.NewMem()
 	d, err := Open("", &db.Options{
-		Storage:      fs,
+		VFS:          mem,
 		MemTableSize: memTableSize,
 	})
 	if err != nil {
@@ -609,7 +609,7 @@ func TestCompaction(t *testing.T) {
 		v := d.mu.versions.currentVersion()
 		for _, files := range v.files {
 			for _, meta := range files {
-				f, err := fs.Open(dbFilename("", fileTypeTable, meta.fileNum))
+				f, err := mem.Open(dbFilename("", fileTypeTable, meta.fileNum))
 				if err != nil {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}
@@ -687,14 +687,14 @@ func TestCompaction(t *testing.T) {
 }
 
 func TestManualCompaction(t *testing.T) {
-	fs := storage.NewMem()
-	err := fs.MkdirAll("ext", 0755)
+	mem := vfs.NewMem()
+	err := mem.MkdirAll("ext", 0755)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	d, err := Open("", &db.Options{
-		Storage: fs,
+		VFS: mem,
 	})
 	if err != nil {
 		t.Fatal(err)

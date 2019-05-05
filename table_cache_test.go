@@ -14,12 +14,12 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
 type tableCacheTestFile struct {
-	storage.File
+	vfs.File
 	fs   *tableCacheTestFS
 	name string
 }
@@ -34,20 +34,20 @@ func (f *tableCacheTestFile) Close() error {
 }
 
 type tableCacheTestFS struct {
-	storage.Storage
+	vfs.FS
 
 	mu          sync.Mutex
 	openCounts  map[string]int
 	closeCounts map[string]int
 }
 
-func (fs *tableCacheTestFS) Open(name string) (storage.File, error) {
+func (fs *tableCacheTestFS) Open(name string) (vfs.File, error) {
 	fs.mu.Lock()
 	if fs.openCounts != nil {
 		fs.openCounts[name]++
 	}
 	fs.mu.Unlock()
-	f, err := fs.Storage.Open(name)
+	f, err := fs.FS.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ const (
 func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	xxx := bytes.Repeat([]byte("x"), tableCacheTestNumTables)
 	fs := &tableCacheTestFS{
-		Storage: storage.NewMem(),
+		FS: vfs.NewMem(),
 	}
 	for i := 0; i < tableCacheTestNumTables; i++ {
 		f, err := fs.Create(dbFilename("", fileTypeTable, uint64(i)))

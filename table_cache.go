@@ -14,12 +14,12 @@ import (
 
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/storage"
+	"github.com/petermattis/pebble/vfs"
 )
 
 type tableCache struct {
 	dirname string
-	fs      storage.Storage
+	fs      vfs.FS
 	opts    *db.Options
 	size    int
 
@@ -34,7 +34,7 @@ type tableCache struct {
 	}
 }
 
-func (c *tableCache) init(dirname string, fs storage.Storage, opts *db.Options, size int) {
+func (c *tableCache) init(dirname string, fs vfs.FS, opts *db.Options, size int) {
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts
