@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"unsafe"
 
@@ -500,7 +499,7 @@ func (d *DB) flush1() error {
 	// The flush succeeded or it produced an empty sstable. In either case we
 	// want to bump the log number.
 	ve := &versionEdit{
-		logNumber: d.mu.log.number,
+		logNumber: d.mu.mem.queue[n].logNumber(),
 	}
 	if err != errEmptyTable {
 		ve.newFiles = []newFileEntry{
@@ -964,25 +963,18 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	return ve, pendingOutputs, nil
 }
 
-// deleteObsoleteFiles deletes those files that are no longer needed.
+// scanObsoleteFiles scans the filesystem for files that are no longer needed
+// and adds those to the internal lists of obsolete files. Note that he files
+// are not actually deleted by this method. A subsequent call to
+// deleteObsoleteFiles must be performed.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) deleteObsoleteFiles(jobID int) {
-	// Only allow a single delete obsolete files job to run at a time.
-	for d.mu.cleaner.cleaning {
-		d.mu.cleaner.cond.Wait()
-	}
-	d.mu.cleaner.cleaning = true
-
+func (d *DB) scanObsoleteFiles() {
 	// Release d.mu while doing I/O
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
-	defer func() {
-		d.mu.Lock()
-		d.mu.cleaner.cleaning = false
-		d.mu.cleaner.cond.Signal()
-	}()
+	defer d.mu.Lock()
 
 	fs := d.opts.VFS
 	list, err := fs.List(d.dirname)
@@ -990,9 +982,6 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		// Ignore any filesystem errors.
 		return
 	}
-	// We sort to make the order of deletions deterministic, which is nice for
-	// tests.
-	sort.Strings(list)
 
 	// Grab d.mu again in order to get a snapshot of the live state. Note that we
 	// need to this after the directory list because after releasing the lock
@@ -1007,60 +996,161 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	manifestFileNumber := d.mu.versions.manifestFileNumber
 	d.mu.Unlock()
 
+	var obsoleteLogs []uint64
+	var obsoleteTables []uint64
+	var obsoleteManifests []uint64
+	var obsoleteOptions []uint64
+
 	for _, filename := range list {
 		fileType, fileNum, ok := parseDBFilename(filename)
 		if !ok {
 			continue
 		}
-		keep := true
 		switch fileType {
 		case fileTypeLog:
 			// TODO(peter): also look at prevLogNumber?
-			keep = fileNum >= logNumber
-			if !keep {
-				keep = d.logRecycler.add(fileNum)
+			if fileNum >= logNumber {
+				continue
 			}
+			obsoleteLogs = append(obsoleteLogs, fileNum)
 		case fileTypeManifest:
-			keep = fileNum >= manifestFileNumber
+			if fileNum >= manifestFileNumber {
+				continue
+			}
+			obsoleteManifests = append(obsoleteManifests, fileNum)
 		case fileTypeOptions:
-			keep = fileNum >= d.optionsFileNum
+			if fileNum >= d.optionsFileNum {
+				continue
+			}
+			obsoleteOptions = append(obsoleteOptions, fileNum)
 		case fileTypeTable:
-			_, keep = liveFileNums[fileNum]
+			if _, ok := liveFileNums[fileNum]; ok {
+				continue
+			}
+			obsoleteTables = append(obsoleteTables, fileNum)
 		default:
 			// Don't delete files we don't know about.
 			continue
 		}
-		if keep {
-			continue
-		}
-		if fileType == fileTypeTable {
-			d.tableCache.evict(fileNum)
-		}
-		path := filepath.Join(d.dirname, filename)
-		err := fs.Remove(path)
-		if err == os.ErrNotExist {
-			continue
-		}
+	}
 
-		switch fileType {
-		case fileTypeLog:
-			if d.opts.EventListener != nil && d.opts.EventListener.WALDeleted != nil {
-				d.opts.EventListener.WALDeleted(db.WALDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
+	d.mu.Lock()
+	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
+	d.mu.versions.obsoleteTables = merge(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
+	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
+	d.mu.Unlock()
+}
+
+// deleteObsoleteFiles deletes those files that are no longer needed.
+//
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) deleteObsoleteFiles(jobID int) {
+	// Only allow a single delete obsolete files job to run at a time.
+	for d.mu.cleaner.cleaning {
+		d.mu.cleaner.cond.Wait()
+	}
+	d.mu.cleaner.cleaning = true
+	defer func() {
+		d.mu.cleaner.cleaning = false
+		d.mu.cleaner.cond.Signal()
+	}()
+
+	var obsoleteLogs []uint64
+	for i := range d.mu.log.queue {
+		// NB: d.mu.versions.logNumber is the file number of the latest log that
+		// has had its contents persisted to the LSM.
+		if d.mu.log.queue[i] >= d.mu.versions.logNumber {
+			obsoleteLogs = d.mu.log.queue[:i]
+			d.mu.log.queue = d.mu.log.queue[i:]
+			break
+		}
+	}
+	obsoleteTables := d.mu.versions.obsoleteTables
+	d.mu.versions.obsoleteTables = nil
+
+	obsoleteManifests := d.mu.versions.obsoleteManifests
+	d.mu.versions.obsoleteManifests = nil
+
+	obsoleteOptions := d.mu.versions.obsoleteOptions
+	d.mu.versions.obsoleteOptions = nil
+
+	// Release d.mu while doing I/O
+	// Note the unusual order: Unlock and then Lock.
+	d.mu.Unlock()
+	defer d.mu.Lock()
+
+	files := [4]struct {
+		fileType fileType
+		obsolete []uint64
+	}{
+		{fileTypeLog, obsoleteLogs},
+		{fileTypeTable, obsoleteTables},
+		{fileTypeManifest, obsoleteManifests},
+		{fileTypeOptions, obsoleteOptions},
+	}
+	for _, f := range files {
+		// We sort to make the order of deletions deterministic, which is nice for
+		// tests.
+		sort.Slice(f.obsolete, func(i, j int) bool {
+			return f.obsolete[i] < f.obsolete[j]
+		})
+		for _, fileNum := range f.obsolete {
+			switch f.fileType {
+			case fileTypeLog:
+				if d.logRecycler.add(fileNum) {
+					continue
+				}
+			case fileTypeTable:
+				d.tableCache.evict(fileNum)
 			}
-		case fileTypeTable:
-			if d.opts.EventListener != nil && d.opts.EventListener.TableDeleted != nil {
-				d.opts.EventListener.TableDeleted(db.TableDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
+
+			path := dbFilename(d.dirname, f.fileType, fileNum)
+			err := d.opts.VFS.Remove(path)
+
+			if err != os.ErrNotExist && d.opts.EventListener != nil {
+				switch f.fileType {
+				case fileTypeLog:
+					if d.opts.EventListener.WALDeleted != nil {
+						d.opts.EventListener.WALDeleted(db.WALDeleteInfo{
+							JobID:   jobID,
+							Path:    path,
+							FileNum: fileNum,
+							Err:     err,
+						})
+					}
+				case fileTypeTable:
+					if d.opts.EventListener.TableDeleted != nil {
+						d.opts.EventListener.TableDeleted(db.TableDeleteInfo{
+							JobID:   jobID,
+							Path:    path,
+							FileNum: fileNum,
+							Err:     err,
+						})
+					}
+				}
 			}
 		}
 	}
+}
+
+func merge(a, b []uint64) []uint64 {
+	if len(b) == 0 {
+		return a
+	}
+
+	a = append(a, b...)
+	sort.Slice(a, func(i, j int) bool {
+		return a[i] < a[j]
+	})
+
+	n := 0
+	for i := 0; i < len(a); i++ {
+		if n == 0 || a[i] != a[n-1] {
+			a[n] = a[i]
+			n++
+		}
+	}
+	return a[:n]
 }

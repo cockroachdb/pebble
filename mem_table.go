@@ -53,6 +53,7 @@ type memTable struct {
 	refs        int32
 	flushedCh   chan struct{}
 	tombstones  rangeTombstoneCache
+	logNum      uint64
 }
 
 // newMemTable returns a new MemTable.
@@ -92,6 +93,10 @@ func (m *memTable) flushed() chan struct{} {
 
 func (m *memTable) readyForFlush() bool {
 	return atomic.LoadInt32(&m.refs) == 0
+}
+
+func (m *memTable) logNumber() uint64 {
+	return m.logNum
 }
 
 // Get gets the value for the given key. It returns ErrNotFound if the DB does

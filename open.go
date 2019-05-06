@@ -171,7 +171,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 
 	// Create an empty .log file.
 	ve.logNumber = d.mu.versions.nextFileNum()
-	d.mu.log.number = ve.logNumber
+	d.mu.log.queue = append(d.mu.log.queue, ve.logNumber)
 	logFile, err := opts.VFS.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
 	if err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		BytesPerSync:    d.opts.BytesPerSync,
 		PreallocateSize: d.walPreallocateSize(),
 	})
-	d.mu.log.LogWriter = record.NewLogWriter(logFile, d.mu.log.number)
+	d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
 
 	// Write a new manifest to disk.
 	if err := d.mu.versions.logAndApply(&ve); err != nil {
@@ -201,6 +201,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
+	d.scanObsoleteFiles()
 	d.deleteObsoleteFiles(jobID)
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()

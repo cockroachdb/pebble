@@ -85,7 +85,7 @@ func TestRecycleLogs(t *testing.T) {
 	logNum := func() uint64 {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.number
+		return d.mu.log.queue[len(d.mu.log.queue)-1]
 	}
 
 	// Flush the memtable a few times, forcing rotation of the WAL. We should see
