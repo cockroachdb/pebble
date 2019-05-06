@@ -864,8 +864,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		imm := d.mu.mem.mutable
 		d.mu.mem.mutable = newMemTable(d.opts)
 		// NB: When the immutable memtable is flushed to disk it will apply a
-		// versionEdit to the manifest telling it that log files <= newLogNumber
-		// have been applied.
+		// versionEdit to the manifest telling it that log files < newLogNumber
+		// have been applied. newLogNumber corresponds to the WAL that contains
+		// mutations that are present in the new memtable.
 		d.mu.mem.mutable.logNum = newLogNumber
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 		d.updateReadStateLocked()
