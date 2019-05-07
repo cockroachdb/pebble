@@ -67,9 +67,9 @@ func TestNewDBFilenames(t *testing.T) {
 	sort.Strings(got)
 	// TODO(peter): should there be a LOCK file here?
 	want := []string{
-		"000003.log",
+		"000002.log",
 		"CURRENT",
-		"MANIFEST-000002",
+		"MANIFEST-000003",
 		"OPTIONS-000004",
 	}
 	if !reflect.DeepEqual(got, want) {

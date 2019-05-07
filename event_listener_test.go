@@ -94,7 +94,7 @@ func TestEventListener(t *testing.T) {
 #3: flush end: 6
 #4: compaction begin: L0 -> L1
 #4: compaction end: L0 -> L1
-#5: WAL created: 7 recycled=3
+#5: WAL created: 7 recycled=2
 #6: flush begin
 #6: flush end: 8
 #7: compaction begin: L0 -> L1

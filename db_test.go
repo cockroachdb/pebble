@@ -19,6 +19,7 @@ import (
 	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -610,6 +611,81 @@ func TestFlushEmpty(t *testing.T) {
 	if err := d.Flush(); err != nil {
 		t.Fatal(err)
 	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRollManifest(t *testing.T) {
+	d, err := Open("", &db.Options{
+		MaxManifestFileSize: 1,
+		VFS:                 vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifestFileNumber := func() uint64 {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.versions.manifestFileNumber
+	}
+
+	current := func() string {
+		f, err := d.opts.VFS.Open(dbFilename(d.dirname, fileTypeCurrent, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		stat, err := f.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := stat.Size()
+		b := make([]byte, n)
+		if _, err = f.ReadAt(b, 0); err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	lastManifestNum := manifestFileNumber()
+	for i := 0; i < 5; i++ {
+		if err := d.Set([]byte("a"), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		num := manifestFileNumber()
+		if lastManifestNum == num {
+			t.Fatalf("manifest failed to roll: %d == %d", lastManifestNum, num)
+		}
+		lastManifestNum = num
+
+		expectedCurrent := fmt.Sprintf("MANIFEST-%06d\n", lastManifestNum)
+		if v := current(); expectedCurrent != v {
+			t.Fatalf("expected %s, but found %s", expectedCurrent, v)
+		}
+	}
+
+	files, err := d.opts.VFS.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifests []string
+	for _, filename := range files {
+		fileType, _, ok := parseDBFilename(filename)
+		if !ok {
+			continue
+		}
+		if fileType == fileTypeManifest {
+			manifests = append(manifests, filename)
+		}
+	}
+	expected := []string{fmt.Sprintf("MANIFEST-%06d", lastManifestNum)}
+	require.EqualValues(t, expected, manifests)
+
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
 	}

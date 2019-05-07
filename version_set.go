@@ -144,7 +144,6 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 	}
 	vs.markFileNumUsed(vs.logNumber)
 	vs.markFileNumUsed(vs.prevLogNumber)
-	vs.manifestFileNumber = vs.nextFileNum()
 
 	newVersion, err := bve.apply(opts, nil, vs.cmp)
 	if err != nil {
@@ -180,6 +179,13 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 	currentVersion := vs.currentVersion()
 	var newVersion *version
 
+	// Generate a new manifest if we don't currently have one, or the current one
+	// is too large.
+	var newManifestFileNumber uint64
+	if vs.manifest == nil || vs.manifest.Size() >= vs.opts.MaxManifestFileSize {
+		newManifestFileNumber = vs.nextFileNum()
+	}
+
 	var picker *compactionPicker
 	if err := func() error {
 		vs.mu.Unlock()
@@ -194,10 +200,8 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 			return err
 		}
 
-		// TODO(peter): if vs.manifest becomes too large, create a new one. Be sure
-		// to add the old manifest to obsoleteManifests.
-		if vs.manifest == nil {
-			if err := vs.createManifest(vs.dirname); err != nil {
+		if newManifestFileNumber != 0 {
+			if err := vs.createManifest(vs.dirname, newManifestFileNumber); err != nil {
 				return err
 			}
 		}
@@ -215,8 +219,10 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 		if err := vs.manifestFile.Sync(); err != nil {
 			return err
 		}
-		if err := setCurrentFile(vs.dirname, vs.fs, vs.manifestFileNumber); err != nil {
-			return err
+		if newManifestFileNumber != 0 {
+			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNumber); err != nil {
+				return err
+			}
 		}
 		picker = newCompactionPicker(newVersion, vs.opts)
 		return nil
@@ -232,14 +238,20 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 	if ve.prevLogNumber != 0 {
 		vs.prevLogNumber = ve.prevLogNumber
 	}
+	if newManifestFileNumber != 0 {
+		if vs.manifestFileNumber != 0 {
+			vs.obsoleteManifests = append(vs.obsoleteManifests, vs.manifestFileNumber)
+		}
+		vs.manifestFileNumber = newManifestFileNumber
+	}
 	vs.picker = picker
 	return nil
 }
 
 // createManifest creates a manifest file that contains a snapshot of vs.
-func (vs *versionSet) createManifest(dirname string) (err error) {
+func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error) {
 	var (
-		filename     = dbFilename(dirname, fileTypeManifest, vs.manifestFileNumber)
+		filename     = dbFilename(dirname, fileTypeManifest, fileNum)
 		manifestFile vfs.File
 		manifest     *record.Writer
 	)
