@@ -130,6 +130,7 @@ type Writer interface {
 //	})
 type DB struct {
 	dirname        string
+	dir            vfs.File
 	opts           *db.Options
 	cmp            db.Compare
 	equal          db.Equal
@@ -599,6 +600,8 @@ func (d *DB) Close() error {
 	d.commit.Close()
 	d.mu.closed = true
 
+	err = firstError(err, d.dir.Close())
+
 	if err == nil {
 		d.readState.val.unrefLocked()
 
@@ -796,6 +799,12 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 			if err == nil {
 				newLogFile, err = d.opts.FS.Create(newLogName)
+			}
+
+			if err == nil {
+				// TODO(peter): RocksDB delays sync of the parent directory until the
+				// first time the log is synced. Is that worthwhile?
+				err = d.dir.Sync()
 			}
 
 			if err == nil {

@@ -99,6 +99,10 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.dir, err = opts.FS.OpenDir(dirname)
+	if err != nil {
+		return nil, err
+	}
 	fileLock, err := opts.FS.Lock(dbFilename(dirname, fileTypeLock, 0))
 	if err != nil {
 		return nil, err
@@ -112,6 +116,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if _, err := opts.FS.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) {
 		// Create the DB if it did not already exist.
 		if err := createDB(dirname, opts); err != nil {
+			return nil, err
+		}
+		if err := d.dir.Sync(); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
@@ -176,6 +183,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := d.dir.Sync(); err != nil {
+		return nil, err
+	}
 	logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
 		BytesPerSync:    d.opts.BytesPerSync,
 		PreallocateSize: d.walPreallocateSize(),
@@ -183,7 +193,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
 
 	// Write a new manifest to disk.
-	if err := d.mu.versions.logAndApply(&ve); err != nil {
+	if err := d.mu.versions.logAndApply(&ve, d.dir); err != nil {
 		return nil, err
 	}
 	d.updateReadStateLocked()
@@ -198,6 +208,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 	optionsFile.Close()
+	if err := d.dir.Sync(); err != nil {
+		return nil, err
+	}
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -284,7 +297,7 @@ func (d *DB) replayWAL(
 	}
 
 	if mem != nil && !mem.empty() {
-		meta, err := d.writeLevel0Table(fs, mem.newIter(nil),
+		meta, err := d.writeLevel0Table(mem.newIter(nil),
 			true /* allowRangeTombstoneElision */)
 		if err != nil {
 			return 0, err

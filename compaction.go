@@ -478,8 +478,7 @@ func (d *DB) flush1() error {
 		})
 	}
 
-	meta, err := d.writeLevel0Table(d.opts.FS, iter,
-		true /* allowRangeTombstoneElision */)
+	meta, err := d.writeLevel0Table(iter, true /* allowRangeTombstoneElision */)
 
 	if d.opts.EventListener != nil && d.opts.EventListener.FlushEnd != nil {
 		info := db.FlushInfo{
@@ -507,7 +506,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
-	err = d.mu.versions.logAndApply(ve)
+	err = d.mu.versions.logAndApply(ve, d.dir)
 	for i := range ve.newFiles {
 		f := &ve.newFiles[i]
 		if _, ok := d.mu.compact.pendingOutputs[f.meta.fileNum]; !ok {
@@ -538,7 +537,7 @@ func (d *DB) flush1() error {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) writeLevel0Table(
-	fs vfs.FS, iiter internalIterator, allowRangeTombstoneElision bool,
+	iiter internalIterator, allowRangeTombstoneElision bool,
 ) (meta fileMetadata, err error) {
 	meta.fileNum = d.mu.versions.nextFileNum()
 	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
@@ -609,12 +608,12 @@ func (d *DB) writeLevel0Table(
 			err = firstError(err, tw.Close())
 		}
 		if err != nil {
-			fs.Remove(filename)
+			d.opts.FS.Remove(filename)
 			meta = fileMetadata{}
 		}
 	}()
 
-	file, err = fs.Create(filename)
+	file, err = d.opts.FS.Create(filename)
 	if err != nil {
 		return fileMetadata{}, err
 	}
@@ -650,6 +649,10 @@ func (d *DB) writeLevel0Table(
 		// The flush may have produced an empty table if a range tombstone deleted
 		// all the entries in the table and the range tombstone could be elided.
 		return fileMetadata{}, errEmptyTable
+	}
+
+	if err := d.dir.Sync(); err != nil {
+		return fileMetadata{}, err
 	}
 
 	writerMeta, err := tw.Metadata()
@@ -762,7 +765,7 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
-	err = d.mu.versions.logAndApply(ve)
+	err = d.mu.versions.logAndApply(ve, d.dir)
 	for _, fileNum := range pendingOutputs {
 		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 			panic("pebble: expected pending output not present")
@@ -957,7 +960,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	}
 
 	if err := finishOutput(db.InternalKey{}); err != nil {
-		return nil, pendingOutputs, nil
+		return nil, pendingOutputs, err
 	}
 
 	for i := range c.inputs {
@@ -967,6 +970,10 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 				fileNum: f.fileNum,
 			}] = true
 		}
+	}
+
+	if err := d.dir.Sync(); err != nil {
+		return nil, pendingOutputs, err
 	}
 	return ve, pendingOutputs, nil
 }

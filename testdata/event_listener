@@ -1,0 +1,82 @@
+open
+----
+open-dir: db
+create: db/MANIFEST-000001
+create: db/CURRENT.000001.dbtmp
+sync: db/CURRENT.000001.dbtmp
+rename: db/CURRENT.000001.dbtmp -> db/CURRENT
+sync: db
+create: db/000002.log
+sync: db
+create: db/MANIFEST-000003
+sync: db/MANIFEST-000003
+create: db/CURRENT.000003.dbtmp
+sync: db/CURRENT.000003.dbtmp
+rename: db/CURRENT.000003.dbtmp -> db/CURRENT
+sync: db
+create: db/OPTIONS-000004
+sync: db
+
+flush
+----
+sync: db/000002.log
+create: db/000005.log
+sync: db
+sync: db/000002.log
+#2: WAL created: 5 recycled=0
+#3: flush begin
+create: db/000006.sst
+sync: db/000006.sst
+sync: db
+#3: flush end: 6
+create: db/MANIFEST-000007
+sync: db/MANIFEST-000007
+create: db/CURRENT.000007.dbtmp
+sync: db/CURRENT.000007.dbtmp
+rename: db/CURRENT.000007.dbtmp -> db/CURRENT
+sync: db
+
+compact
+----
+sync: db/000005.log
+rename: db/000002.log -> db/000008.log
+create: db/000008.log
+sync: db
+sync: db/000005.log
+#4: WAL created: 8 recycled=2
+#5: flush begin
+create: db/000009.sst
+sync: db/000009.sst
+sync: db
+#5: flush end: 9
+create: db/MANIFEST-000010
+sync: db/MANIFEST-000010
+create: db/CURRENT.000010.dbtmp
+sync: db/CURRENT.000010.dbtmp
+rename: db/CURRENT.000010.dbtmp -> db/CURRENT
+sync: db
+#6: compaction begin: L0 -> L1
+create: db/000011.sst
+sync: db/000011.sst
+sync: db
+#6: compaction end: L0 -> L1
+create: db/MANIFEST-000012
+sync: db/MANIFEST-000012
+create: db/CURRENT.000012.dbtmp
+sync: db/CURRENT.000012.dbtmp
+rename: db/CURRENT.000012.dbtmp -> db/CURRENT
+sync: db
+#6: table deleted: 6
+#6: table deleted: 9
+
+ingest
+----
+link: ext/0 -> db/000013.sst
+sync: db
+create: db/MANIFEST-000014
+sync: db/MANIFEST-000014
+create: db/CURRENT.000014.dbtmp
+sync: db/CURRENT.000014.dbtmp
+rename: db/CURRENT.000014.dbtmp -> db/CURRENT
+sync: db
+#7: table ingested

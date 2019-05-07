@@ -7,6 +7,7 @@ package vfs
 import (
 	"io"
 	"os"
+	"syscall"
 )
 
 // File is a readable, writable sequence of bytes.
@@ -36,6 +37,9 @@ type FS interface {
 
 	// Open opens the named file for reading.
 	Open(name string) (File, error)
+
+	// OpenDir opens the named directory for syncing.
+	OpenDir(name string) (File, error)
 
 	// Remove removes the named file or directory.
 	Remove(name string) error
@@ -84,7 +88,7 @@ var Default FS = defaultFS{}
 type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
-	return os.OpenFile(name, os.O_RDWR|os.O_CREATE, 0666)
+	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
 }
 
 func (defaultFS) Link(oldname, newname string) error {
@@ -92,7 +96,11 @@ func (defaultFS) Link(oldname, newname string) error {
 }
 
 func (defaultFS) Open(name string) (File, error) {
-	return os.Open(name)
+	return os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+}
+
+func (defaultFS) OpenDir(name string) (File, error) {
+	return os.OpenFile(name, syscall.O_CLOEXEC, 0)
 }
 
 func (defaultFS) Remove(name string) error {

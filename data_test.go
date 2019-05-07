@@ -247,8 +247,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
 			iter = newMergingIter(d.cmp, iter, rangeDelIter)
 		}
-		meta, err := d.writeLevel0Table(d.opts.FS, iter,
-			false /* allowRangeTombstoneElision */)
+		meta, err := d.writeLevel0Table(iter, false /* allowRangeTombstoneElision */)
 		if err != nil {
 			return nil
 		}
@@ -304,7 +303,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 	}
 
 	if len(ve.newFiles) > 0 {
-		if err := d.mu.versions.logAndApply(ve); err != nil {
+		if err := d.mu.versions.logAndApply(ve, d.dir); err != nil {
 			return nil, err
 		}
 		d.updateReadStateLocked()
