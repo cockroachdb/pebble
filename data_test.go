@@ -192,7 +192,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 	}
 
 	opts := db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 	}
 	var snapshots []uint64
 	for _, arg := range td.CmdArgs {
@@ -247,7 +247,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
 			iter = newMergingIter(d.cmp, iter, rangeDelIter)
 		}
-		meta, err := d.writeLevel0Table(d.opts.VFS, iter,
+		meta, err := d.writeLevel0Table(d.opts.FS, iter,
 			false /* allowRangeTombstoneElision */)
 		if err != nil {
 			return nil

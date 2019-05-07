@@ -23,7 +23,7 @@ func TestErrorIfDBExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
 		mem := vfs.NewMem()
 		d0, err := Open("", &db.Options{
-			VFS: mem,
+			FS: mem,
 		})
 		if err != nil {
 			t.Errorf("b=%v: d0 Open: %v", b, err)
@@ -35,7 +35,7 @@ func TestErrorIfDBExists(t *testing.T) {
 		}
 
 		d1, err := Open("", &db.Options{
-			VFS:             mem,
+			FS:              mem,
 			ErrorIfDBExists: b,
 		})
 		if d1 != nil {
@@ -52,7 +52,7 @@ func TestNewDBFilenames(t *testing.T) {
 	fooBar := filepath.Join("foo", "bar")
 	mem := vfs.NewMem()
 	d, err := Open(fooBar, &db.Options{
-		VFS: mem,
+		FS: mem,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -79,7 +79,7 @@ func TestNewDBFilenames(t *testing.T) {
 
 func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 	opts := &db.Options{
-		VFS: fs,
+		FS: fs,
 	}
 
 	for _, startFromEmpty := range []bool{false, true} {
@@ -144,7 +144,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 			}
 
 			{
-				got, err := opts.VFS.List(dirname)
+				got, err := opts.FS.List(dirname)
 				if err != nil {
 					t.Fatalf("List: %v", err)
 				}
@@ -189,7 +189,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 
 func TestOpenOptionsCheck(t *testing.T) {
 	mem := vfs.NewMem()
-	opts := &db.Options{VFS: mem}
+	opts := &db.Options{FS: mem}
 
 	d, err := Open("", opts)
 	if err != nil {
@@ -201,14 +201,14 @@ func TestOpenOptionsCheck(t *testing.T) {
 
 	opts = &db.Options{
 		Comparer: &db.Comparer{Name: "foo"},
-		VFS:      mem,
+		FS:       mem,
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `comparer name from file.*!=.*`, err)
 
 	opts = &db.Options{
 		Merger: &db.Merger{Name: "bar"},
-		VFS:    mem,
+		FS:     mem,
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `merger name from file.*!=.*`, err)

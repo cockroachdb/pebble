@@ -16,7 +16,7 @@ import (
 
 func TestManualFlush(t *testing.T) {
 	d, err := Open("", &db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestManualFlush(t *testing.T) {
 
 		case "reset":
 			d, err = Open("", &db.Options{
-				VFS: vfs.NewMem(),
+				FS: vfs.NewMem(),
 			})
 			if err != nil {
 				return err.Error()

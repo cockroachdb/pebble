@@ -791,11 +791,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			recycleLogNumber := d.logRecycler.peek()
 			if recycleLogNumber > 0 {
 				recycleLogName := dbFilename(d.dirname, fileTypeLog, recycleLogNumber)
-				err = d.opts.VFS.Rename(recycleLogName, newLogName)
+				err = d.opts.FS.Rename(recycleLogName, newLogName)
 			}
 
 			if err == nil {
-				newLogFile, err = d.opts.VFS.Create(newLogName)
+				newLogFile, err = d.opts.FS.Create(newLogName)
 			}
 
 			if err == nil {

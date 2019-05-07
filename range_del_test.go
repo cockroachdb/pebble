@@ -115,7 +115,7 @@ func TestRangeDel(t *testing.T) {
 func TestRangeDelCompactionTruncation(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 		Levels: []db.LevelOptions{
 			{TargetFileSize: 100},
 			{TargetFileSize: 100},
@@ -249,7 +249,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 					mem := vfs.NewMem()
 					d, err := Open("", &db.Options{
 						Cache: cache.New(128 << 20), // 128 MB
-						VFS:   mem,
+						FS:    mem,
 					})
 					if err != nil {
 						b.Fatal(err)

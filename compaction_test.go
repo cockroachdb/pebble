@@ -581,7 +581,7 @@ func TestCompaction(t *testing.T) {
 
 	mem := vfs.NewMem()
 	d, err := Open("", &db.Options{
-		VFS:          mem,
+		FS:           mem,
 		MemTableSize: memTableSize,
 	})
 	if err != nil {
@@ -694,7 +694,7 @@ func TestManualCompaction(t *testing.T) {
 	}
 
 	d, err := Open("", &db.Options{
-		VFS: mem,
+		FS: mem,
 	})
 	if err != nil {
 		t.Fatal(err)

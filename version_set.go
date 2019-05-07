@@ -59,7 +59,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 	vs.versions.mu = mu
 	vs.writerCond.L = mu
 	vs.opts = opts
-	vs.fs = opts.VFS
+	vs.fs = opts.FS
 	vs.cmp = opts.Comparer.Compare
 	vs.cmpName = opts.Comparer.Name
 	vs.versions.init()

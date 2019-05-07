@@ -35,7 +35,7 @@ func TestEventListener(t *testing.T) {
 	var buf syncedBuffer
 
 	d, err := Open("", &db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 		EventListener: &db.EventListener{
 			CompactionBegin: func(info db.CompactionInfo) {
 				fmt.Fprintf(&buf, "#%d: compaction begin: L%d -> L%d\n", info.JobID,

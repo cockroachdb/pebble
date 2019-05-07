@@ -478,7 +478,7 @@ func (d *DB) flush1() error {
 		})
 	}
 
-	meta, err := d.writeLevel0Table(d.opts.VFS, iter,
+	meta, err := d.writeLevel0Table(d.opts.FS, iter,
 		true /* allowRangeTombstoneElision */)
 
 	if d.opts.EventListener != nil && d.opts.EventListener.FlushEnd != nil {
@@ -837,7 +837,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 		if retErr != nil {
 			for _, filename := range filenames {
-				d.opts.VFS.Remove(filename)
+				d.opts.FS.Remove(filename)
 			}
 		}
 	}()
@@ -854,7 +854,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		d.mu.Unlock()
 
 		filename := dbFilename(d.dirname, fileTypeTable, fileNum)
-		file, err := d.opts.VFS.Create(filename)
+		file, err := d.opts.FS.Create(filename)
 		if err != nil {
 			return err
 		}
@@ -984,7 +984,7 @@ func (d *DB) scanObsoleteFiles() {
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	fs := d.opts.VFS
+	fs := d.opts.FS
 	list, err := fs.List(d.dirname)
 	if err != nil {
 		// Ignore any filesystem errors.
@@ -1115,7 +1115,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			}
 
 			path := dbFilename(d.dirname, f.fileType, fileNum)
-			err := d.opts.VFS.Remove(path)
+			err := d.opts.FS.Remove(path)
 
 			if err != os.ErrNotExist && d.opts.EventListener != nil {
 				switch f.fileType {

@@ -49,7 +49,7 @@ func TestIngestLoad(t *testing.T) {
 
 			opts := &db.Options{
 				Comparer: db.DefaultComparer,
-				VFS:      mem,
+				FS:       mem,
 			}
 			meta, err := ingestLoad(opts, []string{"ext"}, []uint64{1})
 			if err != nil {
@@ -129,7 +129,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 	opts := &db.Options{
 		Comparer: db.DefaultComparer,
-		VFS:      mem,
+		FS:       mem,
 	}
 	meta, err := ingestLoad(opts, paths, pending)
 	if err != nil {
@@ -143,7 +143,7 @@ func TestIngestLoadRand(t *testing.T) {
 func TestIngestLoadNonExistent(t *testing.T) {
 	opts := &db.Options{
 		Comparer: db.DefaultComparer,
-		VFS:      vfs.NewMem(),
+		FS:       vfs.NewMem(),
 	}
 	if _, err := ingestLoad(opts, []string{"non-existent"}, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
@@ -160,7 +160,7 @@ func TestIngestLoadEmpty(t *testing.T) {
 
 	opts := &db.Options{
 		Comparer: db.DefaultComparer,
-		VFS:      mem,
+		FS:       mem,
 	}
 	if _, err := ingestLoad(opts, []string{"empty"}, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
@@ -245,7 +245,7 @@ func TestIngestLink(t *testing.T) {
 	for i := 0; i <= count; i++ {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
-			opts := &db.Options{VFS: mem}
+			opts := &db.Options{FS: mem}
 			opts.EnsureDefaults()
 			if err := mem.MkdirAll(dir, 0755); err != nil {
 				t.Fatal(err)
@@ -473,7 +473,7 @@ func TestIngest(t *testing.T) {
 	}
 
 	d, err := Open("", &db.Options{
-		VFS:                   mem,
+		FS:                    mem,
 		L0CompactionThreshold: 100,
 	})
 	if err != nil {
