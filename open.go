@@ -251,10 +251,11 @@ func (d *DB) replayWAL(
 			_, err = io.Copy(&buf, r)
 		}
 		if err != nil {
-			// It is common to encounter a zeroed chunk due to WAL preallocation. We
-			// need to distinguish this from EOF in order to recognize that the
-			// record was truncated, but want to otherwise treat it like EOF.
-			if err == io.EOF || err == record.ErrZeroedChunk {
+			// It is common to encounter a zeroed or invalid chunk due to WAL
+			// preallocation and WAL recycling. We need to distinguish these errors
+			// from EOF in order to recognize that the record was truncated, but want
+			// to otherwise treat them like EOF.
+			if err == io.EOF || err == record.ErrZeroedChunk || err == record.ErrInvalidChunk {
 				break
 			}
 			return 0, err

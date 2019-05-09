@@ -138,8 +138,14 @@ var (
 	// ErrNoLastRecord is returned if LastRecordOffset is called and there is no previous record.
 	ErrNoLastRecord = errors.New("pebble/record: no last record exists")
 
-	// ErrZeroedChunk is returned if a chunk is encountered that is zeroed.
+	// ErrZeroedChunk is returned if a chunk is encountered that is zeroed. This
+	// usually occurs due to log file preallocation.
 	ErrZeroedChunk = errors.New("pebble/record: zeroed chunk")
+
+	// ErrInvalidChunk is returned if a chunk is encountered with an invalid
+	// header, length, or checksum. This usually occurs when a log is recycled,
+	// but can also occur due to corruption.
+	ErrInvalidChunk = errors.New("pebble/record: invalid chunk")
 )
 
 // Reader reads records from an underlying io.Reader.
@@ -200,7 +206,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					// zeroes. This is common with WAL preallocation.
 					//
 					// Set r.err to be an error so r.recover actually recovers.
-					r.err = errors.New("pebble/record: block appears to be zeroed")
+					r.err = ErrZeroedChunk
 					r.recover()
 					continue
 				}
@@ -211,7 +217,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			if chunkType >= recyclableFullChunkType && chunkType <= recyclableLastChunkType {
 				headerSize = recyclableHeaderSize
 				if r.end+headerSize > r.n {
-					return errors.New("pebble/record: invalid chunk (header overflows block)")
+					return ErrInvalidChunk
 				}
 
 				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
@@ -230,14 +236,14 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					r.recover()
 					continue
 				}
-				return errors.New("pebble/record: invalid chunk (length overflows block)")
+				return ErrInvalidChunk
 			}
 			if checksum != crc.New(r.buf[r.begin-headerSize+6:r.end]).Value() {
 				if r.recovering {
 					r.recover()
 					continue
 				}
-				return errors.New("pebble/record: invalid chunk (checksum mismatch)")
+				return ErrInvalidChunk
 			}
 			if wantFirst {
 				if chunkType != fullChunkType && chunkType != firstChunkType {
