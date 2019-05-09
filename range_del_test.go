@@ -30,6 +30,8 @@ func TestRangeDel(t *testing.T) {
 			}
 
 			d.mu.Lock()
+			// Disable the "dynamic base level" code for this test.
+			d.mu.versions.picker.baseLevel = 1
 			s := fmt.Sprintf("mem: %d\n%s", len(d.mu.mem.queue), d.mu.versions.currentVersion())
 			d.mu.Unlock()
 			return s
@@ -39,6 +41,8 @@ func TestRangeDel(t *testing.T) {
 				return err.Error()
 			}
 			d.mu.Lock()
+			// Disable the "dynamic base level" code for this test.
+			d.mu.versions.picker.baseLevel = 1
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
@@ -126,6 +130,10 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
+
+	d.mu.Lock()
+	d.mu.versions.dynamicBaseLevel = false
+	d.mu.Unlock()
 
 	lsm := func() string {
 		d.mu.Lock()

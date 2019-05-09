@@ -69,8 +69,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 0,
+				score:     99,
+				level:     0,
+				baseLevel: 1,
 			},
 			want: "100  ",
 		},
@@ -96,8 +97,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 0,
+				score:     99,
+				level:     0,
+				baseLevel: 1,
 			},
 			want: "100  ",
 		},
@@ -123,8 +125,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 0,
+				score:     99,
+				level:     0,
+				baseLevel: 1,
 			},
 			want: "100,110  ",
 		},
@@ -150,8 +153,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 0,
+				score:     99,
+				level:     0,
+				baseLevel: 1,
 			},
 			want: "100,110  ",
 		},
@@ -185,8 +189,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 0,
+				score:     99,
+				level:     0,
+				baseLevel: 1,
 			},
 			want: "100  ",
 		},
@@ -246,8 +251,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 0,
+				score:     99,
+				level:     0,
+				baseLevel: 1,
 			},
 			want: "100 210 310,320,330",
 		},
@@ -299,8 +305,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 1,
+				score:     99,
+				level:     1,
+				baseLevel: 1,
 			},
 			want: "200,210,220 300 ",
 		},
@@ -352,8 +359,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 1,
+				score:     99,
+				level:     1,
+				baseLevel: 1,
 			},
 			want: "200 300 ",
 		},
@@ -405,8 +413,9 @@ func TestPickCompaction(t *testing.T) {
 				},
 			},
 			picker: compactionPicker{
-				score: 99,
-				level: 1,
+				score:     99,
+				level:     1,
+				baseLevel: 1,
 			},
 			want: "200 300 ",
 		},
@@ -436,7 +445,7 @@ func TestPickCompaction(t *testing.T) {
 	}
 }
 
-func TestIsBaseLevelForUkey(t *testing.T) {
+func TestElideTombstone(t *testing.T) {
 	testCases := []struct {
 		desc    string
 		level   int
@@ -560,9 +569,10 @@ func TestIsBaseLevelForUkey(t *testing.T) {
 
 	for _, tc := range testCases {
 		c := compaction{
-			cmp:     db.DefaultComparer.Compare,
-			version: &tc.version,
-			level:   tc.level,
+			cmp:         db.DefaultComparer.Compare,
+			version:     &tc.version,
+			startLevel:  tc.level,
+			outputLevel: tc.level + 1,
 		}
 		for ukey, want := range tc.wants {
 			if got := c.elideTombstone([]byte(ukey)); got != want {
@@ -852,6 +862,33 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 		})
 }
 
+func TestCompactionOutputLevel(t *testing.T) {
+	opts := (*db.Options)(nil).EnsureDefaults()
+	version := &version{}
+
+	datadriven.RunTest(t, "testdata/compaction_output_level",
+		func(d *datadriven.TestData) (res string) {
+			defer func() {
+				if r := recover(); r != nil {
+					res = fmt.Sprintln(r)
+				}
+			}()
+
+			switch d.Cmd {
+			case "compact":
+				var start, base int
+				d.ScanArgs(t, "start", &start)
+				d.ScanArgs(t, "base", &base)
+				c := newCompaction(opts, version, start, base)
+				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
+					c.outputLevel, c.maxOutputFileSize)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
+
 func TestCompactionExpandInputs(t *testing.T) {
 	cmp := db.DefaultComparer.Compare
 	var files []fileMetadata
@@ -885,11 +922,11 @@ func TestCompactionExpandInputs(t *testing.T) {
 
 			case "expand-inputs":
 				c := &compaction{
-					cmp:     cmp,
-					version: &version{},
-					level:   1,
+					cmp:        cmp,
+					version:    &version{},
+					startLevel: 1,
 				}
-				c.version.files[c.level] = files
+				c.version.files[c.startLevel] = files
 				if len(d.CmdArgs) != 1 {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
@@ -1016,22 +1053,23 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					}
 					c.inputs[0] = nil
 					c.inputs[1] = nil
-					c.level = -1
+					c.startLevel = -1
 
 					for _, p := range parts {
 						level, meta := parseMeta(p)
 						i := 0
 						switch {
-						case c.level == -1:
-							c.level = level
-						case c.level+1 == level:
+						case c.startLevel == -1:
+							c.startLevel = level
+						case c.startLevel+1 == level:
 							i = 1
-						case c.level != level:
+						case c.startLevel != level:
 							return fmt.Sprintf("invalid level %d: expected %d or %d",
-								level, c.level, c.level+1)
+								level, c.startLevel, c.startLevel+1)
 						}
 						c.inputs[i] = append(c.inputs[i], meta)
 					}
+					c.outputLevel = c.startLevel + 1
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}
 				return buf.String()

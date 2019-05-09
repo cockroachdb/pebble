@@ -665,7 +665,7 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 		<-mem.flushed()
 	}
 
-	for level := 0; level < maxLevelWithFiles; level++ {
+	for level := 0; level < maxLevelWithFiles; {
 		manual := &manualCompaction{
 			done:  make(chan error, 1),
 			level: level,
@@ -674,6 +674,12 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 		}
 		if err := d.manualCompact(manual); err != nil {
 			return err
+		}
+		level = manual.outputLevel
+		if level == numLevels-1 {
+			// A manual compaction of the bottommost level occured. There is no next
+			// level to try and compact.
+			break
 		}
 	}
 	return nil
