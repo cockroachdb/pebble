@@ -130,12 +130,15 @@ type Writer interface {
 //	})
 type DB struct {
 	dirname        string
-	dir            vfs.File
+	walDirname     string
 	opts           *db.Options
 	cmp            db.Compare
 	equal          db.Equal
 	merge          db.Merge
 	abbreviatedKey db.AbbreviatedKey
+
+	dataDir vfs.File
+	walDir  vfs.File
 
 	tableCache tableCache
 	newIters   tableNewIters
@@ -600,7 +603,7 @@ func (d *DB) Close() error {
 	d.commit.Close()
 	d.mu.closed = true
 
-	err = firstError(err, d.dir.Close())
+	err = firstError(err, d.dataDir.Close())
 
 	if err == nil {
 		d.readState.val.unrefLocked()
@@ -789,7 +792,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 
-			newLogName := dbFilename(d.dirname, fileTypeLog, newLogNumber)
+			newLogName := dbFilename(d.walDirname, fileTypeLog, newLogNumber)
 
 			// Try to use a recycled log file. Recycling log files is an important
 			// performance optimization as it is faster to sync a file that has
@@ -799,7 +802,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// preallocation is performed (e.g. fallocate).
 			recycleLogNumber := d.logRecycler.peek()
 			if recycleLogNumber > 0 {
-				recycleLogName := dbFilename(d.dirname, fileTypeLog, recycleLogNumber)
+				recycleLogName := dbFilename(d.walDirname, fileTypeLog, recycleLogNumber)
 				err = d.opts.FS.Rename(recycleLogName, newLogName)
 			}
 
@@ -810,7 +813,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			if err == nil {
 				// TODO(peter): RocksDB delays sync of the parent directory until the
 				// first time the log is synced. Is that worthwhile?
-				err = d.dir.Sync()
+				err = d.walDir.Sync()
 			}
 
 			if err == nil {

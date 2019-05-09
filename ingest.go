@@ -289,7 +289,7 @@ func (d *DB) Ingest(paths []string) error {
 	// point before we update the MANIFEST (via logAndApply), otherwise a crash
 	// can have the tables referenced in the MANIFEST, but not present in the
 	// directory.
-	if err := d.dir.Sync(); err != nil {
+	if err := d.dataDir.Sync(); err != nil {
 		return err
 	}
 
@@ -389,7 +389,7 @@ func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
 		ve.newFiles[i].level = ingestTargetLevel(d.cmp, current, m)
 		ve.newFiles[i].meta = *m
 	}
-	if err := d.mu.versions.logAndApply(ve, d.dir); err != nil {
+	if err := d.mu.versions.logAndApply(ve, d.dataDir); err != nil {
 		return nil, err
 	}
 	d.updateReadStateLocked()

@@ -534,7 +534,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
-	err = d.mu.versions.logAndApply(ve, d.dir)
+	err = d.mu.versions.logAndApply(ve, d.dataDir)
 	for i := range ve.newFiles {
 		f := &ve.newFiles[i]
 		if _, ok := d.mu.compact.pendingOutputs[f.meta.fileNum]; !ok {
@@ -686,7 +686,7 @@ func (d *DB) writeLevel0Table(
 		return fileMetadata{}, errEmptyTable
 	}
 
-	if err := d.dir.Sync(); err != nil {
+	if err := d.dataDir.Sync(); err != nil {
 		return fileMetadata{}, err
 	}
 
@@ -800,7 +800,7 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
-	err = d.mu.versions.logAndApply(ve, d.dir)
+	err = d.mu.versions.logAndApply(ve, d.dataDir)
 	for _, fileNum := range pendingOutputs {
 		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 			panic("pebble: expected pending output not present")
@@ -1011,7 +1011,7 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}
 
-	if err := d.dir.Sync(); err != nil {
+	if err := d.dataDir.Sync(); err != nil {
 		return nil, pendingOutputs, err
 	}
 	return ve, pendingOutputs, nil
@@ -1035,6 +1035,15 @@ func (d *DB) scanObsoleteFiles() {
 	if err != nil {
 		// Ignore any filesystem errors.
 		return
+	}
+
+	if d.dirname != d.walDirname {
+		list2, err := fs.List(d.walDirname)
+		if err != nil {
+			// Ignore any filesystem errors.
+		} else {
+			list = append(list, list2...)
+		}
 	}
 
 	// Grab d.mu again in order to get a snapshot of the live state. Note that we

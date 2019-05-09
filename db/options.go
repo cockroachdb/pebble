@@ -286,6 +286,11 @@ type Options struct {
 	// of TableFormatRocksDBv2. We should ensure it is only used when writing an
 	// sstable directly, and not used when opening a database.
 	TableFormat TableFormat
+
+	// WALDir specifies the directory to store write-ahead logs (WALs) in. If
+	// empty (the default), WALs will be stored in the same directory as sstables
+	// (i.e. the directory passed to pebble.Open).
+	WALDir string
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
@@ -385,6 +390,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 
 	for i := range o.Levels {
 		l := &o.Levels[i]

@@ -303,7 +303,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 	}
 
 	if len(ve.newFiles) > 0 {
-		if err := d.mu.versions.logAndApply(ve, d.dir); err != nil {
+		if err := d.mu.versions.logAndApply(ve, d.dataDir); err != nil {
 			return nil, err
 		}
 		d.updateReadStateLocked()

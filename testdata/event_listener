@@ -1,13 +1,14 @@
 open
 ----
 open-dir: db
+open-dir: wal
 create: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp
 sync: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
 sync: db
-create: db/000002.log
-sync: db
+create: wal/000002.log
+sync: wal
 create: db/MANIFEST-000003
 sync: db/MANIFEST-000003
 create: db/CURRENT.000003.dbtmp
@@ -19,10 +20,10 @@ sync: db
 
 flush
 ----
-sync: db/000002.log
-create: db/000005.log
-sync: db
-sync: db/000002.log
+sync: wal/000002.log
+create: wal/000005.log
+sync: wal
+sync: wal/000002.log
 #2: WAL created: 5 recycled=0
 #3: flush begin
 create: db/000006.sst
@@ -38,11 +39,11 @@ sync: db
 
 compact
 ----
-sync: db/000005.log
-rename: db/000002.log -> db/000008.log
-create: db/000008.log
-sync: db
-sync: db/000005.log
+sync: wal/000005.log
+rename: wal/000002.log -> wal/000008.log
+create: wal/000008.log
+sync: wal
+sync: wal/000005.log
 #4: WAL created: 8 recycled=2
 #5: flush begin
 create: db/000009.sst
