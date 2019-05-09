@@ -14,12 +14,12 @@ import (
 )
 
 func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, error) {
-	stat, err := opts.VFS.Stat(path)
+	stat, err := opts.FS.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	f, err := opts.VFS.Open(path)
+	f, err := opts.FS.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -119,9 +119,9 @@ func ingestLink(
 ) error {
 	for i := range paths {
 		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
-		err := opts.VFS.Link(paths[i], target)
+		err := opts.FS.Link(paths[i], target)
 		if err != nil {
-			if err2 := ingestCleanup(opts.VFS, dirname, meta[:i]); err2 != nil {
+			if err2 := ingestCleanup(opts.FS, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
 			return err
@@ -285,6 +285,13 @@ func (d *DB) Ingest(paths []string) error {
 	if err := ingestLink(d.opts, d.dirname, paths, meta); err != nil {
 		return err
 	}
+	// Fsync the directory we added the tables to. We need to do this at some
+	// point before we update the MANIFEST (via logAndApply), otherwise a crash
+	// can have the tables referenced in the MANIFEST, but not present in the
+	// directory.
+	if err := d.dir.Sync(); err != nil {
+		return err
+	}
 
 	var mem flushable
 	prepare := func() {
@@ -339,7 +346,7 @@ func (d *DB) Ingest(paths []string) error {
 	d.commit.AllocateSeqNum(prepare, apply)
 
 	if err != nil {
-		if err2 := ingestCleanup(d.opts.VFS, d.dirname, meta); err2 != nil {
+		if err2 := ingestCleanup(d.opts.FS, d.dirname, meta); err2 != nil {
 			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
 		}
 	}
@@ -382,7 +389,7 @@ func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
 		ve.newFiles[i].level = ingestTargetLevel(d.cmp, current, m)
 		ve.newFiles[i].meta = *m
 	}
-	if err := d.mu.versions.logAndApply(ve); err != nil {
+	if err := d.mu.versions.logAndApply(ve, d.dir); err != nil {
 		return nil, err
 	}
 	d.updateReadStateLocked()

@@ -49,7 +49,7 @@ func TestSnapshot(t *testing.T) {
 		case "define":
 			var err error
 			d, err = Open("", &db.Options{
-				VFS: vfs.NewMem(),
+				FS: vfs.NewMem(),
 			})
 			if err != nil {
 				return err.Error()

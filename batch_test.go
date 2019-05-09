@@ -115,7 +115,7 @@ func TestBatchGet(t *testing.T) {
 	for _, method := range []string{"build", "apply"} {
 		t.Run(method, func(t *testing.T) {
 			d, err := Open("", &db.Options{
-				VFS: vfs.NewMem(),
+				FS: vfs.NewMem(),
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)

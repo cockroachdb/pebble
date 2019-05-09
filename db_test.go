@@ -197,7 +197,7 @@ func TestBasicReads(t *testing.T) {
 			continue
 		}
 		d, err := Open("", &db.Options{
-			VFS: fs,
+			FS: fs,
 		})
 		if err != nil {
 			t.Errorf("%s: Open failed: %v", tc.dirname, err)
@@ -224,7 +224,7 @@ func TestBasicReads(t *testing.T) {
 
 func TestBasicWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -363,7 +363,7 @@ func TestBasicWrites(t *testing.T) {
 
 func TestRandomWrites(t *testing.T) {
 	d, err := Open("", &db.Options{
-		VFS:          vfs.NewMem(),
+		FS:           vfs.NewMem(),
 		MemTableSize: 8 * 1024,
 	})
 	if err != nil {
@@ -419,7 +419,7 @@ func TestRandomWrites(t *testing.T) {
 
 func TestLargeBatch(t *testing.T) {
 	d, err := Open("", &db.Options{
-		VFS:                         vfs.NewMem(),
+		FS:                          vfs.NewMem(),
 		MemTableSize:                1400,
 		MemTableStopWritesThreshold: 100,
 	})
@@ -470,7 +470,7 @@ func TestLargeBatch(t *testing.T) {
 
 func TestGetMerge(t *testing.T) {
 	d, err := Open("", &db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -512,7 +512,7 @@ func TestIterLeak(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
 					d, err := Open("", &db.Options{
-						VFS: vfs.NewMem(),
+						FS: vfs.NewMem(),
 					})
 					if err != nil {
 						t.Fatal(err)
@@ -554,7 +554,7 @@ func TestCacheEvict(t *testing.T) {
 	cache := cache.New(10 << 20)
 	d, err := Open("", &db.Options{
 		Cache: cache,
-		VFS:   vfs.NewMem(),
+		FS:    vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -602,7 +602,7 @@ func TestCacheEvict(t *testing.T) {
 
 func TestFlushEmpty(t *testing.T) {
 	d, err := Open("", &db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -619,7 +619,7 @@ func TestFlushEmpty(t *testing.T) {
 func TestRollManifest(t *testing.T) {
 	d, err := Open("", &db.Options{
 		MaxManifestFileSize: 1,
-		VFS:                 vfs.NewMem(),
+		FS:                  vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -632,7 +632,7 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	current := func() string {
-		f, err := d.opts.VFS.Open(dbFilename(d.dirname, fileTypeCurrent, 0))
+		f, err := d.opts.FS.Open(dbFilename(d.dirname, fileTypeCurrent, 0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -669,7 +669,7 @@ func TestRollManifest(t *testing.T) {
 		}
 	}
 
-	files, err := d.opts.VFS.List("")
+	files, err := d.opts.FS.List("")
 	if err != nil {
 		t.Fatal(err)
 	}

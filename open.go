@@ -26,13 +26,13 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 		nextFileNumber: manifestFileNum + 1,
 	}
 	manifestFilename := dbFilename(dirname, fileTypeManifest, manifestFileNum)
-	f, err := opts.VFS.Create(manifestFilename)
+	f, err := opts.FS.Create(manifestFilename)
 	if err != nil {
 		return fmt.Errorf("pebble: could not create %q: %v", manifestFilename, err)
 	}
 	defer func() {
 		if retErr != nil {
-			opts.VFS.Remove(manifestFilename)
+			opts.FS.Remove(manifestFilename)
 		}
 	}()
 	defer f.Close()
@@ -50,7 +50,7 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 	if err != nil {
 		return err
 	}
-	return setCurrentFile(dirname, opts.VFS, manifestFileNum)
+	return setCurrentFile(dirname, opts.FS, manifestFileNum)
 }
 
 // Open opens a LevelDB whose files live in the given directory.
@@ -72,7 +72,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(dirname, opts.VFS, d.opts, tableCacheSize)
+	d.tableCache.init(dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.logSeqNum,
@@ -95,11 +95,15 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	defer d.mu.Unlock()
 
 	// Lock the database directory.
-	err := opts.VFS.MkdirAll(dirname, 0755)
+	err := opts.FS.MkdirAll(dirname, 0755)
 	if err != nil {
 		return nil, err
 	}
-	fileLock, err := opts.VFS.Lock(dbFilename(dirname, fileTypeLock, 0))
+	d.dir, err = opts.FS.OpenDir(dirname)
+	if err != nil {
+		return nil, err
+	}
+	fileLock, err := opts.FS.Lock(dbFilename(dirname, fileTypeLock, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -109,9 +113,12 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		}
 	}()
 
-	if _, err := opts.VFS.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) {
+	if _, err := opts.FS.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) {
 		// Create the DB if it did not already exist.
 		if err := createDB(dirname, opts); err != nil {
+			return nil, err
+		}
+		if err := d.dir.Sync(); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
@@ -126,7 +133,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 
-	ls, err := opts.VFS.List(dirname)
+	ls, err := opts.FS.List(dirname)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +165,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	})
 	var ve versionEdit
 	for _, lf := range logFiles {
-		maxSeqNum, err := d.replayWAL(&ve, opts.VFS, filepath.Join(dirname, lf.name), lf.num)
+		maxSeqNum, err := d.replayWAL(&ve, opts.FS, filepath.Join(dirname, lf.name), lf.num)
 		if err != nil {
 			return nil, err
 		}
@@ -172,8 +179,11 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	// Create an empty .log file.
 	ve.logNumber = d.mu.versions.nextFileNum()
 	d.mu.log.queue = append(d.mu.log.queue, ve.logNumber)
-	logFile, err := opts.VFS.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
+	logFile, err := opts.FS.Create(dbFilename(dirname, fileTypeLog, ve.logNumber))
 	if err != nil {
+		return nil, err
+	}
+	if err := d.dir.Sync(); err != nil {
 		return nil, err
 	}
 	logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
@@ -183,14 +193,14 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
 
 	// Write a new manifest to disk.
-	if err := d.mu.versions.logAndApply(&ve); err != nil {
+	if err := d.mu.versions.logAndApply(&ve, d.dir); err != nil {
 		return nil, err
 	}
 	d.updateReadStateLocked()
 
 	// Write the current options to disk.
 	d.optionsFileNum = d.mu.versions.nextFileNum()
-	optionsFile, err := opts.VFS.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
+	optionsFile, err := opts.FS.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
 	if err != nil {
 		return nil, err
 	}
@@ -198,6 +208,9 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		return nil, err
 	}
 	optionsFile.Close()
+	if err := d.dir.Sync(); err != nil {
+		return nil, err
+	}
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -284,7 +297,7 @@ func (d *DB) replayWAL(
 	}
 
 	if mem != nil && !mem.empty() {
-		meta, err := d.writeLevel0Table(fs, mem.newIter(nil),
+		meta, err := d.writeLevel0Table(mem.newIter(nil),
 			true /* allowRangeTombstoneElision */)
 		if err != nil {
 			return 0, err
@@ -300,7 +313,7 @@ func (d *DB) replayWAL(
 }
 
 func checkOptions(opts *db.Options, path string) error {
-	f, err := opts.VFS.Open(path)
+	f, err := opts.FS.Open(path)
 	if err != nil {
 		return err
 	}

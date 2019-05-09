@@ -59,7 +59,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 	vs.versions.mu = mu
 	vs.writerCond.L = mu
 	vs.opts = opts
-	vs.fs = opts.VFS
+	vs.fs = opts.FS
 	vs.cmp = opts.Comparer.Compare
 	vs.cmpName = opts.Comparer.Name
 	vs.versions.init()
@@ -157,7 +157,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 // to the current version, and installs the new version. DB.mu must be held
 // when calling this method and will be released temporarily while performing
 // file I/O.
-func (vs *versionSet) logAndApply(ve *versionEdit) error {
+func (vs *versionSet) logAndApply(ve *versionEdit, dir vfs.File) error {
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
 	for vs.writing {
@@ -221,6 +221,9 @@ func (vs *versionSet) logAndApply(ve *versionEdit) error {
 		}
 		if newManifestFileNumber != 0 {
 			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNumber); err != nil {
+				return err
+			}
+			if err := dir.Sync(); err != nil {
 				return err
 			}
 		}

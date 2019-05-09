@@ -27,8 +27,8 @@ func (nopCloser) Close() error {
 // NewMem returns a new memory-backed FS implementation.
 func NewMem() FS {
 	return &memFS{
-		root: &node{
-			children: make(map[string]*node),
+		root: &memNode{
+			children: make(map[string]*memNode),
 			isDir:    true,
 		},
 	}
@@ -37,7 +37,7 @@ func NewMem() FS {
 // memFS implements FS.
 type memFS struct {
 	mu   sync.Mutex
-	root *node
+	root *memNode
 }
 
 func (y *memFS) String() string {
@@ -65,7 +65,7 @@ func (y *memFS) String() string {
 //   - "/", "y", false
 //   - "/y/", "z", false
 //   - "/y/z/", "", true
-func (y *memFS) walk(fullname string, f func(dir *node, frag string, final bool) error) error {
+func (y *memFS) walk(fullname string, f func(dir *memNode, frag string, final bool) error) error {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
@@ -106,15 +106,15 @@ func (y *memFS) walk(fullname string, f func(dir *node, frag string, final bool)
 }
 
 func (y *memFS) Create(fullname string) (File, error) {
-	var ret *file
-	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
+	var ret *memFile
+	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n := &node{name: frag}
+			n := &memNode{name: frag}
 			dir.children[frag] = n
-			ret = &file{
+			ret = &memFile{
 				n:     n,
 				write: true,
 			}
@@ -128,8 +128,8 @@ func (y *memFS) Create(fullname string) (File, error) {
 }
 
 func (y *memFS) Link(oldname, newname string) error {
-	var n *node
-	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
+	var n *memNode
+	err := y.walk(oldname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
@@ -144,7 +144,7 @@ func (y *memFS) Link(oldname, newname string) error {
 	if n == nil {
 		return errors.New("pebble/vfs: no such file or directory")
 	}
-	return y.walk(newname, func(dir *node, frag string, final bool) error {
+	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
@@ -155,15 +155,21 @@ func (y *memFS) Link(oldname, newname string) error {
 	})
 }
 
-func (y *memFS) Open(fullname string) (File, error) {
-	var ret *file
-	err := y.walk(fullname, func(dir *node, frag string, final bool) error {
+func (y *memFS) open(fullname string, allowEmptyName bool) (File, error) {
+	var ret *memFile
+	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				return errors.New("pebble/vfs: empty file name")
+				if !allowEmptyName {
+					return errors.New("pebble/vfs: empty file name")
+				}
+				ret = &memFile{
+					n: dir,
+				}
+				return nil
 			}
 			if n := dir.children[frag]; n != nil {
-				ret = &file{
+				ret = &memFile{
 					n:    n,
 					read: true,
 				}
@@ -184,8 +190,16 @@ func (y *memFS) Open(fullname string) (File, error) {
 	return ret, nil
 }
 
+func (y *memFS) Open(fullname string) (File, error) {
+	return y.open(fullname, false /* allowEmptyName */)
+}
+
+func (y *memFS) OpenDir(fullname string) (File, error) {
+	return y.open(fullname, true /* allowEmptyName */)
+}
+
 func (y *memFS) Remove(fullname string) error {
-	return y.walk(fullname, func(dir *node, frag string, final bool) error {
+	return y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
@@ -201,8 +215,8 @@ func (y *memFS) Remove(fullname string) error {
 }
 
 func (y *memFS) Rename(oldname, newname string) error {
-	var n *node
-	err := y.walk(oldname, func(dir *node, frag string, final bool) error {
+	var n *memNode
+	err := y.walk(oldname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
@@ -218,7 +232,7 @@ func (y *memFS) Rename(oldname, newname string) error {
 	if n == nil {
 		return errors.New("pebble/vfs: no such file or directory")
 	}
-	return y.walk(newname, func(dir *node, frag string, final bool) error {
+	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
@@ -230,7 +244,7 @@ func (y *memFS) Rename(oldname, newname string) error {
 }
 
 func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
-	return y.walk(dirname, func(dir *node, frag string, final bool) error {
+	return y.walk(dirname, func(dir *memNode, frag string, final bool) error {
 		if frag == "" {
 			if final {
 				return nil
@@ -239,9 +253,9 @@ func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
 		}
 		child := dir.children[frag]
 		if child == nil {
-			dir.children[frag] = &node{
+			dir.children[frag] = &memNode{
 				name:     frag,
-				children: make(map[string]*node),
+				children: make(map[string]*memNode),
 				isDir:    true,
 			}
 			return nil
@@ -264,7 +278,7 @@ func (y *memFS) List(dirname string) ([]string, error) {
 		dirname += sep
 	}
 	var ret []string
-	err := y.walk(dirname, func(dir *node, frag string, final bool) error {
+	err := y.walk(dirname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag != "" {
 				panic("unreachable")
@@ -291,43 +305,43 @@ func (y *memFS) Stat(name string) (os.FileInfo, error) {
 	return f.Stat()
 }
 
-// node holds a file's data or a directory's children, and implements os.FileInfo.
-type node struct {
+// memNode holds a file's data or a directory's children, and implements os.FileInfo.
+type memNode struct {
 	name     string
 	data     []byte
 	modTime  time.Time
-	children map[string]*node
+	children map[string]*memNode
 	isDir    bool
 }
 
-func (f *node) IsDir() bool {
+func (f *memNode) IsDir() bool {
 	return f.isDir
 }
 
-func (f *node) ModTime() time.Time {
+func (f *memNode) ModTime() time.Time {
 	return f.modTime
 }
 
-func (f *node) Mode() os.FileMode {
+func (f *memNode) Mode() os.FileMode {
 	if f.isDir {
 		return os.ModeDir | 0755
 	}
 	return 0755
 }
 
-func (f *node) Name() string {
+func (f *memNode) Name() string {
 	return f.name
 }
 
-func (f *node) Size() int64 {
+func (f *memNode) Size() int64 {
 	return int64(len(f.data))
 }
 
-func (f *node) Sys() interface{} {
+func (f *memNode) Sys() interface{} {
 	return nil
 }
 
-func (f *node) dump(w *bytes.Buffer, level int) {
+func (f *memNode) dump(w *bytes.Buffer, level int) {
 	if f.isDir {
 		w.WriteString("          ")
 	} else {
@@ -353,18 +367,18 @@ func (f *node) dump(w *bytes.Buffer, level int) {
 	}
 }
 
-// file is a reader or writer of a node's data, and implements File.
-type file struct {
-	n           *node
+// memFile is a reader or writer of a node's data, and implements File.
+type memFile struct {
+	n           *memNode
 	rpos        int
 	read, write bool
 }
 
-func (f *file) Close() error {
+func (f *memFile) Close() error {
 	return nil
 }
 
-func (f *file) Read(p []byte) (int, error) {
+func (f *memFile) Read(p []byte) (int, error) {
 	if !f.read {
 		return 0, errors.New("pebble/vfs: file was not opened for reading")
 	}
@@ -379,7 +393,7 @@ func (f *file) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (f *file) ReadAt(p []byte, off int64) (int, error) {
+func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 	if !f.read {
 		return 0, errors.New("pebble/vfs: file was not opened for reading")
 	}
@@ -392,7 +406,7 @@ func (f *file) ReadAt(p []byte, off int64) (int, error) {
 	return copy(p, f.n.data[off:]), nil
 }
 
-func (f *file) Write(p []byte) (int, error) {
+func (f *memFile) Write(p []byte) (int, error) {
 	if !f.write {
 		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
@@ -404,10 +418,10 @@ func (f *file) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (f *file) Stat() (os.FileInfo, error) {
+func (f *memFile) Stat() (os.FileInfo, error) {
 	return f.n, nil
 }
 
-func (f *file) Sync() error {
+func (f *memFile) Sync() error {
 	return nil
 }

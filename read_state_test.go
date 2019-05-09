@@ -16,7 +16,7 @@ import (
 
 func BenchmarkReadState(b *testing.B) {
 	d, err := Open("", &db.Options{
-		VFS: vfs.NewMem(),
+		FS: vfs.NewMem(),
 	})
 	if err != nil {
 		b.Fatal(err)

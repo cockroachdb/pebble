@@ -218,6 +218,11 @@ type Options struct {
 	// flushes, compactions, and table deletion.
 	EventListener *EventListener
 
+	// FS provides the interface for persistent file storage.
+	//
+	// The default value uses the underlying operating system's file system.
+	FS vfs.FS
+
 	// The number of files necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
@@ -276,12 +281,11 @@ type Options struct {
 	// TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
 	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
 	// by a wider range of tools and libraries.
-	TableFormat TableFormat
-
-	// VFS provides the interface for persistent file storage.
 	//
-	// The default value uses the underlying operating system's file system.
-	VFS vfs.FS
+	// TODO(peter): TableFormatLevelDB does not support all of the functionality
+	// of TableFormatRocksDBv2. We should ensure it is only used when writing an
+	// sstable directly, and not used when opening a database.
+	TableFormat TableFormat
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
@@ -342,8 +346,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
-	if o.VFS == nil {
-		o.VFS = vfs.Default
+	if o.FS == nil {
+		o.FS = vfs.Default
 	}
 	return o
 }
