@@ -140,7 +140,8 @@ func runYcsb(cmd *cobra.Command, args []string) error {
 							elapsed := time.Since(start)
 							writeLatency.Record(elapsed)
 						}
-						if atomic.AddUint64(&numSuccess, 1) >= ycsbConfig.numOps {
+						if ycsbConfig.numOps > 0 &&
+							atomic.AddUint64(&numSuccess, 1) >= ycsbConfig.numOps {
 							break
 						}
 					}
