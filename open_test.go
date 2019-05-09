@@ -65,7 +65,6 @@ func TestNewDBFilenames(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	sort.Strings(got)
-	// TODO(peter): should there be a LOCK file here?
 	want := []string{
 		"000002.log",
 		"CURRENT",
