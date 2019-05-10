@@ -78,11 +78,7 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *db.Options) {
 
 	levelMultiplier := 10.0
 
-	l0Size := int64(totalSize(v.files[0]))
-	baseBytesMax := opts.L1MaxBytes
-	if baseBytesMax < l0Size {
-		baseBytesMax = l0Size
-	}
+	baseBytesMax := opts.LBaseMaxBytes
 	baseBytesMin := int64(float64(baseBytesMax) / levelMultiplier)
 
 	curLevelSize := maxLevelSize
@@ -108,27 +104,6 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *db.Options) {
 			baseLevelSize = baseBytesMax
 		} else {
 			baseLevelSize = curLevelSize
-		}
-	}
-
-	if l0Size > baseLevelSize &&
-		(l0Size > opts.L1MaxBytes ||
-			(len(v.files)/2) >= opts.L0CompactionThreshold) {
-		// We adjust the base level according to actual L0 size, and adjust the
-		// level multiplier accordingly, when:
-		//
-		//   1. the L0 size is larger than level size base, or
-		//   2. number of L0 files reaches twice the L0->L1 compaction threshold
-		//
-		// We don't do this otherwise to keep the LSM-tree structure stable unless
-		// the L0 compaction is backlogged.
-		baseLevelSize = l0Size
-		if p.baseLevel == numLevels-1 {
-			levelMultiplier = 1.0
-		} else {
-			levelMultiplier = math.Pow(
-				float64(maxLevelSize)/float64(baseLevelSize),
-				1.0/float64(numLevels-p.baseLevel-1))
 		}
 	}
 
