@@ -135,6 +135,7 @@ func TestEventListener(t *testing.T) {
 				FS:                  loggingFS{mem, &buf},
 				EventListener:       newLoggingEventListener(&buf),
 				MaxManifestFileSize: 1,
+				WALDir:              "wal",
 			})
 			if err != nil {
 				return err.Error()
