@@ -74,6 +74,7 @@ type versionEdit struct {
 	lastSequence   uint64
 	deletedFiles   map[deletedFileEntry]bool // A set of deletedFileEntry values.
 	newFiles       []newFileEntry
+	metrics        map[int]*LevelMetrics // level -> metrics update
 }
 
 func (v *versionEdit) decode(r io.Reader) error {

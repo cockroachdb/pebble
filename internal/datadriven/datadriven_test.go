@@ -17,13 +17,9 @@ package datadriven
 import (
 	"fmt"
 	"testing"
-
-	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 )
 
 func TestDataDriven(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-
 	input := `
 # NB: we allow duplicate args. It's unclear at this time whether this is useful,
 # either way, ScanArgs simply picks the first occurrence.

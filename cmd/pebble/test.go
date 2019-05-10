@@ -240,6 +240,7 @@ func runTest(dir string, t test) {
 
 		case <-done:
 			t.done(time.Since(start))
+			fmt.Printf("%s", db.Metrics())
 			return
 		}
 	}

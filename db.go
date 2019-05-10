@@ -33,7 +33,7 @@ type flushable interface {
 	newRangeDelIter(o *db.IterOptions) internalIterator
 	flushed() chan struct{}
 	readyForFlush() bool
-	logNumber() uint64
+	logInfo() (num, size uint64)
 }
 
 // Reader is a readable key/value store.
@@ -169,7 +169,9 @@ type DB struct {
 		versions versionSet
 
 		log struct {
-			queue []uint64
+			queue   []uint64
+			size    uint64
+			bytesIn uint64
 			*record.LogWriter
 		}
 
@@ -396,6 +398,10 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 	// Switch out the memtable if there was not enough room to store the batch.
 	err := d.makeRoomForWrite(b)
 
+	if err == nil {
+		d.mu.log.bytesIn += uint64(len(b.storage.data))
+	}
+
 	d.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -405,10 +411,12 @@ func (d *DB) commitWrite(b *Batch) (*memTable, error) {
 		return d.mu.mem.mutable, nil
 	}
 
-	_, err = d.mu.log.WriteRecord(b.storage.data)
+	size, err := d.mu.log.WriteRecord(b.storage.data)
 	if err != nil {
 		panic(err)
 	}
+
+	atomic.StoreUint64(&d.mu.log.size, uint64(size))
 	return d.mu.mem.mutable, err
 }
 
@@ -719,6 +727,28 @@ func (d *DB) AsyncFlush() error {
 	return err
 }
 
+// Metrics returns metrics about the database.
+func (d *DB) Metrics() *VersionMetrics {
+	metrics := &VersionMetrics{}
+	d.mu.Lock()
+	*metrics = d.mu.versions.metrics
+	metrics.WAL.Size = atomic.LoadUint64(&d.mu.log.size)
+	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
+	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
+		_, size := d.mu.mem.queue[i].logInfo()
+		metrics.WAL.Size += size
+	}
+	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
+	metrics.Levels[0].Score = float64(metrics.Levels[0].NumFiles) / float64(d.opts.L0CompactionThreshold)
+	if p := d.mu.versions.picker; p != nil {
+		for level := 1; level < numLevels; level++ {
+			metrics.Levels[level].Score = float64(metrics.Levels[level].Size) / float64(p.levelMaxBytes[level])
+		}
+	}
+	d.mu.Unlock()
+	return metrics
+}
+
 func (d *DB) walPreallocateSize() int {
 	// Set the WAL preallocate size to 110% of the memtable size. Note that there
 	// is a bit of apples and oranges in units here as the memtabls size
@@ -783,6 +813,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 		var newLogNumber uint64
 		var newLogFile vfs.File
+		var prevLogSize uint64
 		var err error
 
 		if !d.opts.DisableWAL {
@@ -817,6 +848,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			}
 
 			if err == nil {
+				prevLogSize = uint64(d.mu.log.Size())
 				err = d.mu.log.Close()
 				if err != nil {
 					newLogFile.Close()
@@ -845,6 +877,8 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.Lock()
 			d.mu.mem.switching = false
 			d.mu.mem.cond.Broadcast()
+
+			d.mu.versions.metrics.WAL.Files++
 		}
 
 		if err != nil {
@@ -861,7 +895,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNumber)
 		}
 
-		prevLogNumber := d.mu.mem.mutable.logNum
+		imm := d.mu.mem.mutable
+		imm.logSize = prevLogSize
+		prevLogNumber := imm.logNum
 
 		var scheduleFlush bool
 		if b != nil && b.flushable != nil {
@@ -879,7 +915,6 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// also have to wait for all previous immutable tables to
 		// flush. Additionally, the memtable is tied to particular WAL file and we
 		// want to go through the flush path in order to recycle that WAL file.
-		imm := d.mu.mem.mutable
 		d.mu.mem.mutable = newMemTable(d.opts)
 		// NB: When the immutable memtable is flushed to disk it will apply a
 		// versionEdit to the manifest telling it that log files < newLogNumber

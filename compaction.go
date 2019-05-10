@@ -525,13 +525,22 @@ func (d *DB) flush1() error {
 
 	// The flush succeeded or it produced an empty sstable. In either case we
 	// want to bump the log number.
+	metrics := &LevelMetrics{}
 	ve := &versionEdit{
-		logNumber: d.mu.mem.queue[n].logNumber(),
+		metrics: map[int]*LevelMetrics{
+			0: metrics,
+		},
+	}
+	ve.logNumber, _ = d.mu.mem.queue[n].logInfo()
+	for i := 0; i < n; i++ {
+		_, size := d.mu.mem.queue[i].logInfo()
+		metrics.BytesIn += size
 	}
 	if err != errEmptyTable {
 		ve.newFiles = []newFileEntry{
 			{level: 0, meta: meta},
 		}
+		metrics.BytesWritten = meta.size
 	}
 
 	err = d.mu.versions.logAndApply(ve, d.dataDir)
@@ -835,6 +844,11 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 			newFiles: []newFileEntry{
 				{level: c.outputLevel, meta: *meta},
 			},
+			metrics: map[int]*LevelMetrics{
+				c.outputLevel: &LevelMetrics{
+					BytesMoved: meta.size,
+				},
+			},
 		}, nil, nil
 	}
 
@@ -880,8 +894,17 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		}
 	}()
 
+	metrics := &LevelMetrics{
+		BytesIn:   totalSize(c.inputs[0]),
+		BytesRead: totalSize(c.inputs[1]),
+	}
+	metrics.BytesRead += metrics.BytesIn
+
 	ve = &versionEdit{
 		deletedFiles: map[deletedFileEntry]bool{},
+		metrics: map[int]*LevelMetrics{
+			c.outputLevel: metrics,
+		},
 	}
 
 	newOutput := func() error {
@@ -936,6 +959,8 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		meta.size = writerMeta.Size
 		meta.smallestSeqNum = writerMeta.SmallestSeqNum
 		meta.largestSeqNum = writerMeta.LargestSeqNum
+
+		metrics.BytesWritten += meta.size
 
 		// The handling of range boundaries is a bit complicated.
 		if n := len(ve.newFiles); n > 1 {
@@ -1127,9 +1152,11 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		if d.mu.log.queue[i] >= d.mu.versions.logNumber {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
+			d.mu.versions.metrics.WAL.Files -= uint64(len(obsoleteLogs))
 			break
 		}
 	}
+
 	obsoleteTables := d.mu.versions.obsoleteTables
 	d.mu.versions.obsoleteTables = nil
 

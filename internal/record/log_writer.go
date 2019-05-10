@@ -291,6 +291,11 @@ func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 	return offset, w.err
 }
 
+// Size returns the current size of the file.
+func (w *LogWriter) Size() int64 {
+	return w.blockNum*blockSize + int64(w.block.written)
+}
+
 func (w *LogWriter) emitFragment(n int, p []byte) []byte {
 	b := w.block
 	i := b.written

@@ -380,14 +380,22 @@ func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
 
 	ve := &versionEdit{
 		newFiles: make([]newFileEntry, len(meta)),
+		metrics:  make(map[int]*LevelMetrics),
 	}
 	current := d.mu.versions.currentVersion()
 	for i := range meta {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		m := meta[i]
-		ve.newFiles[i].level = ingestTargetLevel(d.cmp, current, m)
-		ve.newFiles[i].meta = *m
+		f := &ve.newFiles[i]
+		f.level = ingestTargetLevel(d.cmp, current, m)
+		f.meta = *m
+		metrics := ve.metrics[f.level]
+		if metrics == nil {
+			metrics = &LevelMetrics{}
+			ve.metrics[f.level] = metrics
+		}
+		metrics.BytesIngested += m.size
 	}
 	if err := d.mu.versions.logAndApply(ve, d.dataDir); err != nil {
 		return nil, err
