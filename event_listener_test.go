@@ -183,6 +183,9 @@ func TestEventListener(t *testing.T) {
 			}
 			return buf.String()
 
+		case "metrics":
+			return d.Metrics().String()
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}

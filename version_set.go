@@ -37,6 +37,8 @@ type versionSet struct {
 	versions versionList
 	picker   *compactionPicker
 
+	metrics VersionMetrics
+
 	obsoleteTables    []uint64
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
@@ -255,6 +257,17 @@ func (vs *versionSet) logAndApply(ve *versionEdit, dir vfs.File) error {
 		vs.manifestFileNumber = newManifestFileNumber
 	}
 	vs.picker = picker
+
+	if ve.metrics != nil {
+		for level, update := range ve.metrics {
+			vs.metrics.Levels[level].Add(update)
+		}
+	}
+	for i := range vs.metrics.Levels {
+		l := &vs.metrics.Levels[i]
+		l.NumFiles = uint64(len(newVersion.files[i]))
+		l.Size = uint64(totalSize(newVersion.files[i]))
+	}
 	return nil
 }
 

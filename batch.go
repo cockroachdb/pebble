@@ -974,8 +974,8 @@ func (b *flushableBatch) readyForFlush() bool {
 	return true
 }
 
-func (b *flushableBatch) logNumber() uint64 {
-	return b.logNum
+func (b *flushableBatch) logInfo() (uint64, uint64) {
+	return b.logNum, 0 /* logSize */
 }
 
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
