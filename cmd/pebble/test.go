@@ -199,7 +199,7 @@ func runTest(dir string, t test) {
 		L0CompactionThreshold:       2,
 		L0SlowdownWritesThreshold:   20,
 		L0StopWritesThreshold:       32,
-		L1MaxBytes:                  64 << 20, // 64 MB
+		LBaseMaxBytes:               64 << 20, // 64 MB
 		Levels: []db.LevelOptions{{
 			BlockSize: 32 << 10,
 		}},

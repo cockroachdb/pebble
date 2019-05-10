@@ -234,10 +234,12 @@ type Options struct {
 	// threshold is reached.
 	L0StopWritesThreshold int
 
-	// The maximum number of bytes for L1. The maximum number of bytes for other
-	// levels is computed dynamically based on this value. When the maximum
-	// number of bytes for a level is exceeded, compaction is requested.
-	L1MaxBytes int64
+	// The maximum number of bytes for LBase. The base level is the level which
+	// L0 is compacted into. The base level is determined dynamically based on
+	// the existing data in the LSM. The maximum number of bytes for other levels
+	// is computed dynamically based on the base level's maximum size. When the
+	// maximum number of bytes for a level is exceeded, compaction is requested.
+	LBaseMaxBytes int64
 
 	// Per-level options. Options for at least one level must be specified. The
 	// options for the last level are used for all subsequent levels.
@@ -314,8 +316,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.L0StopWritesThreshold <= 0 {
 		o.L0StopWritesThreshold = 12
 	}
-	if o.L1MaxBytes <= 0 {
-		o.L1MaxBytes = 64 << 20 // 64 MB
+	if o.LBaseMaxBytes <= 0 {
+		o.LBaseMaxBytes = 64 << 20 // 64 MB
 	}
 	if o.Levels == nil {
 		o.Levels = make([]LevelOptions, 1)
@@ -384,7 +386,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_slowdown_writes_threshold=%d\n", o.L0SlowdownWritesThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
-	fmt.Fprintf(&buf, "  l1_max_bytes=%d\n", o.L1MaxBytes)
+	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
