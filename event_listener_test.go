@@ -34,6 +34,20 @@ func (b *syncedBuffer) Write(p []byte) (n int, err error) {
 	return b.buf.Write(p)
 }
 
+func (b *syncedBuffer) Infof(format string, args ...interface{}) {
+	s := fmt.Sprintf(format, args...)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf.Write([]byte(s))
+	if n := len(s); n == 0 || s[n-1] != '\n' {
+		b.buf.Write([]byte("\n"))
+	}
+}
+
+func (b *syncedBuffer) Fatalf(format string, args ...interface{}) {
+	panic(fmt.Sprintf(format, args...))
+}
+
 func (b *syncedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -84,38 +98,6 @@ func (f loggingFile) Sync() error {
 	return f.File.Sync()
 }
 
-func newLoggingEventListener(w io.Writer) *db.EventListener {
-	return &db.EventListener{
-		CompactionBegin: func(info db.CompactionInfo) {
-			fmt.Fprintf(w, "#%d: compaction begin: L%d -> L%d\n", info.JobID,
-				info.Input.Level, info.Input.Level+1)
-		},
-		CompactionEnd: func(info db.CompactionInfo) {
-			fmt.Fprintf(w, "#%d: compaction end: L%d -> L%d\n", info.JobID,
-				info.Input.Level, info.Input.Level+1)
-		},
-		FlushBegin: func(info db.FlushInfo) {
-			fmt.Fprintf(w, "#%d: flush begin\n", info.JobID)
-		},
-		FlushEnd: func(info db.FlushInfo) {
-			fmt.Fprintf(w, "#%d: flush end: %d\n", info.JobID, info.Output.FileNum)
-		},
-		TableDeleted: func(info db.TableDeleteInfo) {
-			fmt.Fprintf(w, "#%d: table deleted: %d\n", info.JobID, info.FileNum)
-		},
-		TableIngested: func(info db.TableIngestInfo) {
-			fmt.Fprintf(w, "#%d: table ingested\n", info.JobID)
-		},
-		WALCreated: func(info db.WALCreateInfo) {
-			fmt.Fprintf(w, "#%d: WAL created: %d recycled=%d\n",
-				info.JobID, info.FileNum, info.RecycledFileNum)
-		},
-		WALDeleted: func(info db.WALDeleteInfo) {
-			fmt.Fprintf(w, "#%d: WAL deleted: %d\n", info.JobID, info.FileNum)
-		},
-	}
-}
-
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
 	var d *DB
@@ -133,7 +115,7 @@ func TestEventListener(t *testing.T) {
 			var err error
 			d, err = Open("db", &db.Options{
 				FS:                  loggingFS{mem, &buf},
-				EventListener:       newLoggingEventListener(&buf),
+				EventListener:       db.NewLoggingEventListener(&buf),
 				MaxManifestFileSize: 1,
 				WALDir:              "wal",
 			})

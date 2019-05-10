@@ -24,12 +24,12 @@ sync: wal/000002.log
 create: wal/000005.log
 sync: wal
 sync: wal/000002.log
-#2: WAL created: 5 recycled=0
-#3: flush begin
+[JOB 2] WAL created 000005
+[JOB 3] flushing
 create: db/000006.sst
 sync: db/000006.sst
 sync: db
-#3: flush end: 6
+[JOB 3] flushed sstable 000006
 create: db/MANIFEST-000007
 sync: db/MANIFEST-000007
 create: db/CURRENT.000007.dbtmp
@@ -44,31 +44,31 @@ rename: wal/000002.log -> wal/000008.log
 create: wal/000008.log
 sync: wal
 sync: wal/000005.log
-#4: WAL created: 8 recycled=2
-#5: flush begin
+[JOB 4] WAL created 000008 (recycled 000002)
+[JOB 5] flushing
 create: db/000009.sst
 sync: db/000009.sst
 sync: db
-#5: flush end: 9
+[JOB 5] flushed sstable 000009
 create: db/MANIFEST-000010
 sync: db/MANIFEST-000010
 create: db/CURRENT.000010.dbtmp
 sync: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
-#6: compaction begin: L0 -> L1
+[JOB 6] compacting 2:L0 to L6
 create: db/000011.sst
 sync: db/000011.sst
 sync: db
-#6: compaction end: L0 -> L1
+[JOB 6] compacted 2:L0 to L6
 create: db/MANIFEST-000012
 sync: db/MANIFEST-000012
 create: db/CURRENT.000012.dbtmp
 sync: db/CURRENT.000012.dbtmp
 rename: db/CURRENT.000012.dbtmp -> db/CURRENT
 sync: db
-#6: table deleted: 6
-#6: table deleted: 9
+[JOB 6] sstable deleted 000006
+[JOB 6] sstable deleted 000009
 
 ingest
 ----
@@ -80,7 +80,7 @@ create: db/CURRENT.000014.dbtmp
 sync: db/CURRENT.000014.dbtmp
 rename: db/CURRENT.000014.dbtmp -> db/CURRENT
 sync: db
-#7: table ingested
+[JOB 7] ingested 1 sstable
 
 metrics
 ----

@@ -140,3 +140,94 @@ type EventListener struct {
 	// WALDeleted is invoked after a WAL has been delete.
 	WALDeleted func(WALDeleteInfo)
 }
+
+// NewLoggingEventListener creates an EventListener that logs all events to the
+// specified logger.
+func NewLoggingEventListener(logger Logger) *EventListener {
+	return &EventListener{
+		BackgroundError: func(err error) {
+			logger.Infof("background error: %s", err)
+		},
+		CompactionBegin: func(info CompactionInfo) {
+			if len(info.Input.Tables[1]) > 0 {
+				logger.Infof("[JOB %d] compacting %d:L%d and %d:L%d to L%d",
+					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
+					len(info.Input.Tables[1]), info.Output.Level, info.Output.Level)
+			} else {
+				logger.Infof("[JOB %d] compacting %d:L%d to L%d",
+					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
+					info.Output.Level)
+			}
+		},
+		CompactionEnd: func(info CompactionInfo) {
+			if info.Err != nil {
+				logger.Infof("[JOB %d] compaction to L%d error: %s",
+					info.JobID, info.Output.Level, info.Err)
+				return
+			}
+
+			if len(info.Input.Tables[1]) > 0 {
+				logger.Infof("[JOB %d] compacted %d:L%d and %d:L%d to L%d",
+					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
+					len(info.Input.Tables[1]), info.Output.Level, info.Output.Level)
+			} else {
+				logger.Infof("[JOB %d] compacted %d:L%d to L%d",
+					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
+					info.Output.Level)
+			}
+		},
+		FlushBegin: func(info FlushInfo) {
+			logger.Infof("[JOB %d] flushing", info.JobID)
+		},
+		FlushEnd: func(info FlushInfo) {
+			if info.Err != nil {
+				logger.Infof("[JOB %d] flush error: %s", info.JobID, info.Err)
+				return
+			}
+
+			logger.Infof("[JOB %d] flushed sstable %06d", info.JobID, info.Output.FileNum)
+		},
+		TableDeleted: func(info TableDeleteInfo) {
+			if info.Err != nil {
+				logger.Infof("[JOB %d] sstable delete error %06d: %s", info.JobID,
+					info.FileNum, info.Err)
+				return
+			}
+
+			logger.Infof("[JOB %d] sstable deleted %06d", info.JobID, info.FileNum)
+		},
+		TableIngested: func(info TableIngestInfo) {
+			if info.Err != nil {
+				logger.Infof("[JOB %d] ingest error: %s", info.Err)
+				return
+			}
+
+			var plural string
+			if len(info.Tables) != 1 {
+				plural = "s"
+			}
+			logger.Infof("[JOB %d] ingested %d sstable%s", info.JobID, len(info.Tables), plural)
+		},
+		WALCreated: func(info WALCreateInfo) {
+			if info.Err != nil {
+				logger.Infof("[JOB %d] WAL create error: %s", info.Err)
+				return
+			}
+
+			if info.RecycledFileNum == 0 {
+				logger.Infof("[JOB %d] WAL created %06d", info.JobID, info.FileNum)
+			} else {
+				logger.Infof("[JOB %d] WAL created %06d (recycled %06d)", info.JobID,
+					info.FileNum, info.RecycledFileNum)
+			}
+		},
+		WALDeleted: func(info WALDeleteInfo) {
+			if info.Err != nil {
+				logger.Infof("[JOB %d] WAL delete error: %s", info.JobID, info.Err)
+				return
+			}
+
+			logger.Infof("[JOB %d] WAL deleted %06d", info.JobID, info.FileNum)
+		},
+	}
+}
