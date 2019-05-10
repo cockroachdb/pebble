@@ -190,7 +190,7 @@ func runTest(dir string, t test) {
 
 	fmt.Printf("dir %s\nconcurrency %d\n", dir, concurrency)
 
-	db, err := pebble.Open(dir, &db.Options{
+	opts := &db.Options{
 		Cache:                       cache.New(1 << 30),
 		Comparer:                    mvccComparer,
 		DisableWAL:                  disableWAL,
@@ -203,7 +203,18 @@ func runTest(dir string, t test) {
 		Levels: []db.LevelOptions{{
 			BlockSize: 32 << 10,
 		}},
-	})
+	}
+	opts.EnsureDefaults()
+
+	if verbose {
+		opts.EventListener = db.NewLoggingEventListener(nil)
+		opts.EventListener.TableDeleted = nil
+		opts.EventListener.TableIngested = nil
+		opts.EventListener.WALCreated = nil
+		opts.EventListener.WALDeleted = nil
+	}
+
+	db, err := pebble.Open(dir, opts)
 	if err != nil {
 		log.Fatal(err)
 	}

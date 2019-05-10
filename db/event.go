@@ -4,6 +4,8 @@
 
 package db
 
+import "github.com/petermattis/pebble/internal/humanize"
+
 // TableInfo contains the common information for table related events.
 type TableInfo struct {
 	// Path is the location of the file on disk.
@@ -141,23 +143,31 @@ type EventListener struct {
 	WALDeleted func(WALDeleteInfo)
 }
 
+func totalSize(tables []TableInfo) uint64 {
+	var size uint64
+	for i := range tables {
+		size += tables[i].Size
+	}
+	return size
+}
+
 // NewLoggingEventListener creates an EventListener that logs all events to the
 // specified logger.
 func NewLoggingEventListener(logger Logger) *EventListener {
+	if logger == nil {
+		logger = defaultLogger{}
+	}
+
 	return &EventListener{
 		BackgroundError: func(err error) {
 			logger.Infof("background error: %s", err)
 		},
 		CompactionBegin: func(info CompactionInfo) {
-			if len(info.Input.Tables[1]) > 0 {
-				logger.Infof("[JOB %d] compacting %d:L%d and %d:L%d to L%d",
-					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
-					len(info.Input.Tables[1]), info.Output.Level, info.Output.Level)
-			} else {
-				logger.Infof("[JOB %d] compacting %d:L%d to L%d",
-					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
-					info.Output.Level)
-			}
+			logger.Infof("[JOB %d] compacting L%d -> L%d: %d+%d (%s + %s)",
+				info.JobID, info.Input.Level, info.Output.Level,
+				len(info.Input.Tables[0]), len(info.Input.Tables[1]),
+				humanize.Uint64(totalSize(info.Input.Tables[0])),
+				humanize.Uint64(totalSize(info.Input.Tables[1])))
 		},
 		CompactionEnd: func(info CompactionInfo) {
 			if info.Err != nil {
@@ -166,18 +176,16 @@ func NewLoggingEventListener(logger Logger) *EventListener {
 				return
 			}
 
-			if len(info.Input.Tables[1]) > 0 {
-				logger.Infof("[JOB %d] compacted %d:L%d and %d:L%d to L%d",
-					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
-					len(info.Input.Tables[1]), info.Output.Level, info.Output.Level)
-			} else {
-				logger.Infof("[JOB %d] compacted %d:L%d to L%d",
-					info.JobID, len(info.Input.Tables[0]), info.Input.Level,
-					info.Output.Level)
-			}
+			logger.Infof("[JOB %d] compacted L%d -> L%d: %d+%d (%s + %s) -> %d (%s)",
+				info.JobID, info.Input.Level, info.Output.Level,
+				len(info.Input.Tables[0]), len(info.Input.Tables[1]),
+				humanize.Uint64(totalSize(info.Input.Tables[0])),
+				humanize.Uint64(totalSize(info.Input.Tables[1])),
+				len(info.Output.Tables),
+				humanize.Uint64(totalSize(info.Output.Tables)))
 		},
 		FlushBegin: func(info FlushInfo) {
-			logger.Infof("[JOB %d] flushing", info.JobID)
+			logger.Infof("[JOB %d] flushing to L0", info.JobID)
 		},
 		FlushEnd: func(info FlushInfo) {
 			if info.Err != nil {
@@ -185,7 +193,8 @@ func NewLoggingEventListener(logger Logger) *EventListener {
 				return
 			}
 
-			logger.Infof("[JOB %d] flushed sstable %06d", info.JobID, info.Output.FileNum)
+			logger.Infof("[JOB %d] flushed to L0 (%s)", info.JobID,
+				humanize.Uint64(info.Output.Size))
 		},
 		TableDeleted: func(info TableDeleteInfo) {
 			if info.Err != nil {
@@ -202,11 +211,11 @@ func NewLoggingEventListener(logger Logger) *EventListener {
 				return
 			}
 
-			var plural string
-			if len(info.Tables) != 1 {
-				plural = "s"
+			for i := range info.Tables {
+				t := &info.Tables[i]
+				logger.Infof("[JOB %d] ingested to L%d (%s)", info.JobID,
+					t.Level, humanize.Uint64(t.Size))
 			}
-			logger.Infof("[JOB %d] ingested %d sstable%s", info.JobID, len(info.Tables), plural)
 		},
 		WALCreated: func(info WALCreateInfo) {
 			if info.Err != nil {

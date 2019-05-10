@@ -5,6 +5,7 @@
 package main
 
 import (
+	"log"
 	"math"
 	"os"
 	"time"
@@ -16,6 +17,7 @@ var (
 	concurrency int
 	disableWAL  bool
 	duration    time.Duration
+	verbose     bool
 	walOnly     bool
 	wipe        bool
 )
@@ -27,6 +29,8 @@ var rootCmd = &cobra.Command{
 }
 
 func main() {
+	log.SetFlags(0)
+
 	cobra.EnableCommandSorting = false
 	rootCmd.AddCommand(
 		scanCmd,
@@ -41,6 +45,8 @@ func main() {
 			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
+		cmd.Flags().BoolVarP(
+			&verbose, "verbose", "v", false, "enable verbose event logging")
 		cmd.Flags().BoolVarP(
 			&wipe, "wipe", "w", false, "wipe the database before starting")
 		cmd.Flags().BoolVar(

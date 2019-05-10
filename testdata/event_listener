@@ -25,11 +25,11 @@ create: wal/000005.log
 sync: wal
 sync: wal/000002.log
 [JOB 2] WAL created 000005
-[JOB 3] flushing
+[JOB 3] flushing to L0
 create: db/000006.sst
 sync: db/000006.sst
 sync: db
-[JOB 3] flushed sstable 000006
+[JOB 3] flushed to L0 (959 B)
 create: db/MANIFEST-000007
 sync: db/MANIFEST-000007
 create: db/CURRENT.000007.dbtmp
@@ -45,22 +45,22 @@ create: wal/000008.log
 sync: wal
 sync: wal/000005.log
 [JOB 4] WAL created 000008 (recycled 000002)
-[JOB 5] flushing
+[JOB 5] flushing to L0
 create: db/000009.sst
 sync: db/000009.sst
 sync: db
-[JOB 5] flushed sstable 000009
+[JOB 5] flushed to L0 (959 B)
 create: db/MANIFEST-000010
 sync: db/MANIFEST-000010
 create: db/CURRENT.000010.dbtmp
 sync: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
-[JOB 6] compacting 2:L0 to L6
+[JOB 6] compacting L0 -> L6: 2+0 (1.9 K + 0 B)
 create: db/000011.sst
 sync: db/000011.sst
 sync: db
-[JOB 6] compacted 2:L0 to L6
+[JOB 6] compacted L0 -> L6: 2+0 (1.9 K + 0 B) -> 1 (959 B)
 create: db/MANIFEST-000012
 sync: db/MANIFEST-000012
 create: db/CURRENT.000012.dbtmp
@@ -80,7 +80,7 @@ create: db/CURRENT.000014.dbtmp
 sync: db/CURRENT.000014.dbtmp
 rename: db/CURRENT.000014.dbtmp -> db/CURRENT
 sync: db
-[JOB 7] ingested 1 sstable
+[JOB 7] ingested to L5 (959 B)
 
 metrics
 ----
