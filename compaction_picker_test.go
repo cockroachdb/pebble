@@ -27,7 +27,7 @@ func TestCompactionPickerLevelMaxBytes(t *testing.T) {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
 				var err error
-				opts.L1MaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
+				opts.LBaseMaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
 				if err != nil {
 					return err.Error()
 				}
@@ -89,7 +89,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
 				var err error
-				opts.L1MaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
+				opts.LBaseMaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
 				if err != nil {
 					return err.Error()
 				}
