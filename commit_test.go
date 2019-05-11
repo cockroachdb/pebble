@@ -34,7 +34,6 @@ func (e *testCommitEnv) env() commitEnv {
 		logSeqNum:     &e.logSeqNum,
 		visibleSeqNum: &e.visibleSeqNum,
 		apply:         e.apply,
-		sync:          e.sync,
 		write:         e.write,
 	}
 }
@@ -46,11 +45,7 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (e *testCommitEnv) sync() error {
-	return nil
-}
-
-func (e *testCommitEnv) write(b *Batch) (*memTable, error) {
+func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup) (*memTable, error) {
 	n := int64(len(b.storage.data))
 	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
@@ -144,10 +139,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					mem.unref()
 					return nil
 				},
-				sync: func() error {
-					return wal.Sync()
-				},
-				write: func(b *Batch) (*memTable, error) {
+				write: func(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 					for {
 						err := mem.prepare(b)
 						if err == arenaskl.ErrArenaFull {
@@ -160,7 +152,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						break
 					}
 
-					_, err := wal.WriteRecord(b.storage.data)
+					_, err := wal.SyncRecord(b.storage.data, wg)
 					return mem, err
 				},
 			}
