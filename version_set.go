@@ -232,7 +232,7 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 			if err := dir.Sync(); err != nil {
 				return err
 			}
-			if vs.opts.EventListener != nil && vs.opts.EventListener.ManifestDeleted != nil {
+			if vs.opts.EventListener.ManifestDeleted != nil {
 				vs.opts.EventListener.ManifestCreated(db.ManifestCreateInfo{
 					JobID:   jobID,
 					Path:    dbFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),

@@ -276,14 +276,25 @@ type EventListener struct {
 	WALDeleted func(WALDeleteInfo)
 }
 
-// NewLoggingEventListener creates an EventListener that logs all events to the
+// EnsureDefaults ensures that background error events are logged to the
+// specified logger if a handler for those events hasn't been otherwise
+// specified.
+func (l *EventListener) EnsureDefaults(logger Logger) {
+	if l.BackgroundError == nil {
+		l.BackgroundError = func(err error) {
+			logger.Infof("background error: %s", err)
+		}
+	}
+}
+
+// MakeLoggingEventListener creates an EventListener that logs all events to the
 // specified logger.
-func NewLoggingEventListener(logger Logger) *EventListener {
+func MakeLoggingEventListener(logger Logger) EventListener {
 	if logger == nil {
 		logger = defaultLogger{}
 	}
 
-	return &EventListener{
+	return EventListener{
 		BackgroundError: func(err error) {
 			logger.Infof("background error: %s", err)
 		},

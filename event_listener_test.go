@@ -115,7 +115,7 @@ func TestEventListener(t *testing.T) {
 			var err error
 			d, err = Open("db", &db.Options{
 				FS:                  loggingFS{mem, &buf},
-				EventListener:       db.NewLoggingEventListener(&buf),
+				EventListener:       db.MakeLoggingEventListener(&buf),
 				MaxManifestFileSize: 1,
 				WALDir:              "wal",
 			})

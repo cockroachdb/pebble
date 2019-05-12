@@ -850,7 +850,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				err = d.logRecycler.pop(recycleLogNumber)
 			}
 
-			if d.opts.EventListener != nil && d.opts.EventListener.WALCreated != nil {
+			if d.opts.EventListener.WALCreated != nil {
 				d.opts.EventListener.WALCreated(db.WALCreateInfo{
 					JobID:           jobID,
 					Path:            newLogName,

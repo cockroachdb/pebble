@@ -207,7 +207,7 @@ func runTest(dir string, t test) {
 	opts.EnsureDefaults()
 
 	if verbose {
-		opts.EventListener = db.NewLoggingEventListener(nil)
+		opts.EventListener = db.MakeLoggingEventListener(nil)
 		opts.EventListener.TableDeleted = nil
 		opts.EventListener.TableIngested = nil
 		opts.EventListener.WALCreated = nil

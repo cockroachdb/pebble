@@ -216,7 +216,7 @@ type Options struct {
 
 	// EventListener provides hooks to listening to significant DB events such as
 	// flushes, compactions, and table deletion.
-	EventListener *EventListener
+	EventListener EventListener
 
 	// FS provides the interface for persistent file storage.
 	//
@@ -338,6 +338,7 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Logger == nil {
 		o.Logger = defaultLogger{}
 	}
+	o.EventListener.EnsureDefaults(o.Logger)
 	if o.MaxManifestFileSize == 0 {
 		o.MaxManifestFileSize = 128 << 20 // 128 MB
 	}

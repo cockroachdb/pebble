@@ -351,7 +351,7 @@ func (d *DB) Ingest(paths []string) error {
 		}
 	}
 
-	if d.opts.EventListener != nil && d.opts.EventListener.TableIngested != nil {
+	if d.opts.EventListener.TableIngested != nil {
 		info := db.TableIngestInfo{
 			JobID:        jobID,
 			GlobalSeqNum: meta[0].smallestSeqNum,

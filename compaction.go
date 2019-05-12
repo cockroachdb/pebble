@@ -500,7 +500,7 @@ func (d *DB) flush1() error {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	if d.opts.EventListener != nil && d.opts.EventListener.FlushBegin != nil {
+	if d.opts.EventListener.FlushBegin != nil {
 		d.opts.EventListener.FlushBegin(db.FlushInfo{
 			JobID: jobID,
 		})
@@ -508,7 +508,7 @@ func (d *DB) flush1() error {
 
 	meta, err := d.writeLevel0Table(iter, true /* allowRangeTombstoneElision */)
 
-	if d.opts.EventListener != nil && d.opts.EventListener.FlushEnd != nil {
+	if d.opts.EventListener.FlushEnd != nil {
 		info := db.FlushInfo{
 			JobID: jobID,
 			Err:   err,
@@ -742,7 +742,7 @@ func (d *DB) compact() {
 	defer d.mu.Unlock()
 	if err := d.compact1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
-		if d.opts.EventListener != nil && d.opts.EventListener.BackgroundError != nil {
+		if d.opts.EventListener.BackgroundError != nil {
 			d.opts.EventListener.BackgroundError(err)
 		}
 	}
@@ -778,7 +778,7 @@ func (d *DB) compact1() (err error) {
 	info := db.CompactionInfo{
 		JobID: jobID,
 	}
-	if d.opts.EventListener != nil && d.opts.EventListener.CompactionBegin != nil {
+	if d.opts.EventListener.CompactionBegin != nil || d.opts.EventListener.CompactionEnd != nil {
 		info.Input.Level = c.startLevel
 		info.Output.Level = c.outputLevel
 		for i := range c.inputs {
@@ -787,12 +787,14 @@ func (d *DB) compact1() (err error) {
 				info.Input.Tables[i] = append(info.Input.Tables[i], m.tableInfo(d.dirname))
 			}
 		}
+	}
+	if d.opts.EventListener.CompactionBegin != nil {
 		d.opts.EventListener.CompactionBegin(info)
 	}
 
 	ve, pendingOutputs, err := d.compactDiskTables(c)
 
-	if d.opts.EventListener != nil && d.opts.EventListener.CompactionEnd != nil {
+	if d.opts.EventListener.CompactionEnd != nil {
 		info.Err = err
 		if err == nil {
 			for i := range ve.newFiles {
@@ -1196,7 +1198,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			path := dbFilename(d.dirname, f.fileType, fileNum)
 			err := d.opts.FS.Remove(path)
 
-			if err != os.ErrNotExist && d.opts.EventListener != nil {
+			if err != os.ErrNotExist {
 				switch f.fileType {
 				case fileTypeLog:
 					if d.opts.EventListener.WALDeleted != nil {
