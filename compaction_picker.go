@@ -49,14 +49,14 @@ func (p *compactionPicker) compactionNeeded() bool {
 func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	// Determine the first non-empty level and the maximum size of any level.
 	firstNonEmptyLevel := -1
-	var maxLevelSize int64
+	var botLevelSize int64
 	for level := 1; level < numLevels; level++ {
 		levelSize := int64(totalSize(v.files[level]))
-		if levelSize > 0 && firstNonEmptyLevel == -1 {
-			firstNonEmptyLevel = level
-		}
-		if maxLevelSize < levelSize {
-			maxLevelSize = levelSize
+		if levelSize > 0 {
+			if firstNonEmptyLevel == -1 {
+				firstNonEmptyLevel = level
+			}
+			botLevelSize = levelSize
 		}
 	}
 
@@ -67,7 +67,7 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 		p.levelMaxBytes[level] = math.MaxInt64
 	}
 
-	if maxLevelSize == 0 {
+	if botLevelSize == 0 {
 		// No levels for L1 and up contain any data. Target L0 compactions for the
 		// last level.
 		p.baseLevel = numLevels - 1
@@ -79,17 +79,15 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	baseBytesMax := opts.LBaseMaxBytes
 	baseBytesMin := int64(float64(baseBytesMax) / levelMultiplier)
 
-	curLevelSize := maxLevelSize
+	curLevelSize := botLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
 		curLevelSize = int64(float64(curLevelSize) / levelMultiplier)
 	}
 
-	var baseLevelSize int64
 	if curLevelSize <= baseBytesMin {
-		// If we make target size of last level to be maxLevelSize, target size of
+		// If we make target size of last level to be botLevelSize, target size of
 		// the first non-empty level would be smaller than baseBytesMin. We set it
 		// be baseBytesMin.
-		baseLevelSize = baseBytesMin + 1
 		p.baseLevel = firstNonEmptyLevel
 	} else {
 		// Compute base level (where L0 data is compacted to).
@@ -98,24 +96,25 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 			p.baseLevel--
 			curLevelSize = int64(float64(curLevelSize) / levelMultiplier)
 		}
-		if curLevelSize > baseBytesMax {
-			baseLevelSize = baseBytesMax
-		} else {
-			baseLevelSize = curLevelSize
-		}
 	}
 
-	levelSize := baseLevelSize
+	var smoothedLevelMultiplier float64
+	if p.baseLevel < numLevels-1 {
+		smoothedLevelMultiplier = math.Pow(
+			float64(botLevelSize)/float64(baseBytesMax),
+			1.0/float64(numLevels-p.baseLevel-1))
+	} else {
+		smoothedLevelMultiplier = 1.0
+	}
+
+	levelSize := baseBytesMax
 	for level := p.baseLevel; level < numLevels; level++ {
 		if level > p.baseLevel {
-			if levelSize > 0 && float64(math.MaxInt64/levelSize) >= levelMultiplier {
-				levelSize = int64(float64(levelSize) * levelMultiplier)
+			if levelSize > 0 && float64(math.MaxInt64/levelSize) >= smoothedLevelMultiplier {
+				levelSize = int64(float64(levelSize) * smoothedLevelMultiplier)
 			}
 		}
 		p.levelMaxBytes[level] = levelSize
-		if p.levelMaxBytes[level] < baseBytesMax {
-			p.levelMaxBytes[level] = baseBytesMax
-		}
 	}
 }
 
