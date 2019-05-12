@@ -163,7 +163,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 // to the current version, and installs the new version. DB.mu must be held
 // when calling this method and will be released temporarily while performing
 // file I/O.
-func (vs *versionSet) logAndApply(ve *versionEdit, dir vfs.File) error {
+func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) error {
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
 	for vs.writing {
@@ -231,6 +231,14 @@ func (vs *versionSet) logAndApply(ve *versionEdit, dir vfs.File) error {
 			}
 			if err := dir.Sync(); err != nil {
 				return err
+			}
+			if vs.opts.EventListener != nil && vs.opts.EventListener.ManifestDeleted != nil {
+				vs.opts.EventListener.ManifestCreated(db.ManifestCreateInfo{
+					JobID:   jobID,
+					Path:    dbFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
+					FileNum: newManifestFileNumber,
+					Err:     err,
+				})
 			}
 		}
 		picker = newCompactionPicker(newVersion, vs.opts)

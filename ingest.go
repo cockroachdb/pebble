@@ -340,7 +340,7 @@ func (d *DB) Ingest(paths []string) error {
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(meta)
+		ve, err = d.ingestApply(jobID, meta)
 	}
 
 	d.commit.AllocateSeqNum(prepare, apply)
@@ -374,7 +374,7 @@ func (d *DB) Ingest(paths []string) error {
 	return err
 }
 
-func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
+func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -397,7 +397,7 @@ func (d *DB) ingestApply(meta []*fileMetadata) (*versionEdit, error) {
 		}
 		metrics.BytesIngested += m.size
 	}
-	if err := d.mu.versions.logAndApply(ve, d.dataDir); err != nil {
+	if err := d.mu.versions.logAndApply(jobID, ve, d.dataDir); err != nil {
 		return nil, err
 	}
 	d.updateReadStateLocked()

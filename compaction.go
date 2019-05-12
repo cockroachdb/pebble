@@ -543,7 +543,7 @@ func (d *DB) flush1() error {
 		metrics.BytesWritten = meta.size
 	}
 
-	err = d.mu.versions.logAndApply(ve, d.dataDir)
+	err = d.mu.versions.logAndApply(jobID, ve, d.dataDir)
 	for i := range ve.newFiles {
 		f := &ve.newFiles[i]
 		if _, ok := d.mu.compact.pendingOutputs[f.meta.fileNum]; !ok {
@@ -806,7 +806,7 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
-	err = d.mu.versions.logAndApply(ve, d.dataDir)
+	err = d.mu.versions.logAndApply(jobID, ve, d.dataDir)
 	for _, fileNum := range pendingOutputs {
 		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 			panic("pebble: expected pending output not present")
@@ -1201,6 +1201,15 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 				case fileTypeLog:
 					if d.opts.EventListener.WALDeleted != nil {
 						d.opts.EventListener.WALDeleted(db.WALDeleteInfo{
+							JobID:   jobID,
+							Path:    path,
+							FileNum: fileNum,
+							Err:     err,
+						})
+					}
+				case fileTypeManifest:
+					if d.opts.EventListener.ManifestDeleted != nil {
+						d.opts.EventListener.ManifestDeleted(db.ManifestDeleteInfo{
 							JobID:   jobID,
 							Path:    path,
 							FileNum: fileNum,

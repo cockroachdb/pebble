@@ -108,6 +108,41 @@ func (i FlushInfo) String() string {
 		humanize.Uint64(i.Output.Size))
 }
 
+// ManifestCreateInfo contains info about a manifest creation event.
+type ManifestCreateInfo struct {
+	// JobID is the ID of the job the caused the manifest to be created.
+	JobID int
+	Path  string
+	// The file number of the new Manifest.
+	FileNum uint64
+	Err     error
+}
+
+func (i ManifestCreateInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] MANIFEST create error: %s", i.JobID, i.Err)
+	}
+
+	return fmt.Sprintf("[JOB %d] MANIFEST created %06d", i.JobID, i.FileNum)
+}
+
+// ManifestDeleteInfo contains the info for a Manifest deletion event.
+type ManifestDeleteInfo struct {
+	// JobID is the ID of the job the caused the Manifest to be deleted.
+	JobID   int
+	Path    string
+	FileNum uint64
+	Err     error
+}
+
+func (i ManifestDeleteInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] MANIFEST delete error: %s", i.JobID, i.Err)
+	}
+
+	return fmt.Sprintf("[JOB %d] MANIFEST deleted %06d", i.JobID, i.FileNum)
+}
+
 // TableDeleteInfo contains the info for a table deletion event.
 type TableDeleteInfo struct {
 	JobID   int
@@ -221,6 +256,12 @@ type EventListener struct {
 	// installed.
 	FlushEnd func(FlushInfo)
 
+	// ManifestCreated is invoked after a manifest has been created.
+	ManifestCreated func(ManifestCreateInfo)
+
+	// ManifestDeleted is invoked after a manifest has been deleted.
+	ManifestDeleted func(ManifestDeleteInfo)
+
 	// TableDeleted is invoked after a table has been deleted.
 	TableDeleted func(TableDeleteInfo)
 
@@ -231,7 +272,7 @@ type EventListener struct {
 	// WALCreated is invoked after a WAL has been created.
 	WALCreated func(WALCreateInfo)
 
-	// WALDeleted is invoked after a WAL has been delete.
+	// WALDeleted is invoked after a WAL has been deleted.
 	WALDeleted func(WALDeleteInfo)
 }
 
@@ -256,6 +297,12 @@ func NewLoggingEventListener(logger Logger) *EventListener {
 			logger.Infof("%s", info.String())
 		},
 		FlushEnd: func(info FlushInfo) {
+			logger.Infof("%s", info.String())
+		},
+		ManifestCreated: func(info ManifestCreateInfo) {
+			logger.Infof("%s", info.String())
+		},
+		ManifestDeleted: func(info ManifestDeleteInfo) {
 			logger.Infof("%s", info.String())
 		},
 		TableDeleted: func(info TableDeleteInfo) {

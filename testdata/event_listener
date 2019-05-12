@@ -15,8 +15,10 @@ create: db/CURRENT.000003.dbtmp
 sync: db/CURRENT.000003.dbtmp
 rename: db/CURRENT.000003.dbtmp -> db/CURRENT
 sync: db
+[JOB 0] MANIFEST created 000003
 create: db/OPTIONS-000004
 sync: db
+[JOB 1] MANIFEST deleted 000001
 
 flush
 ----
@@ -36,6 +38,8 @@ create: db/CURRENT.000007.dbtmp
 sync: db/CURRENT.000007.dbtmp
 rename: db/CURRENT.000007.dbtmp -> db/CURRENT
 sync: db
+[JOB 3] MANIFEST created 000007
+[JOB 3] MANIFEST deleted 000003
 
 compact
 ----
@@ -56,6 +60,8 @@ create: db/CURRENT.000010.dbtmp
 sync: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
+[JOB 5] MANIFEST created 000010
+[JOB 5] MANIFEST deleted 000007
 [JOB 6] compacting L0 -> L6: 2+0 (1.9 K + 0 B)
 create: db/000011.sst
 sync: db/000011.sst
@@ -67,8 +73,10 @@ create: db/CURRENT.000012.dbtmp
 sync: db/CURRENT.000012.dbtmp
 rename: db/CURRENT.000012.dbtmp -> db/CURRENT
 sync: db
+[JOB 6] MANIFEST created 000012
 [JOB 6] sstable deleted 000006
 [JOB 6] sstable deleted 000009
+[JOB 6] MANIFEST deleted 000010
 
 ingest
 ----
@@ -80,6 +88,7 @@ create: db/CURRENT.000014.dbtmp
 sync: db/CURRENT.000014.dbtmp
 rename: db/CURRENT.000014.dbtmp -> db/CURRENT
 sync: db
+[JOB 7] MANIFEST created 000014
 [JOB 7] ingested to L5 (959 B)
 
 metrics

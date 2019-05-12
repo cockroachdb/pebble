@@ -206,7 +206,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 	d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
 
 	// Write a new manifest to disk.
-	if err := d.mu.versions.logAndApply(&ve, d.dataDir); err != nil {
+	if err := d.mu.versions.logAndApply(0, &ve, d.dataDir); err != nil {
 		return nil, err
 	}
 	d.updateReadStateLocked()
