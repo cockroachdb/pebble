@@ -4,7 +4,12 @@
 
 package db
 
-import "github.com/petermattis/pebble/internal/humanize"
+import (
+	"bytes"
+	"fmt"
+
+	"github.com/petermattis/pebble/internal/humanize"
+)
 
 // TableInfo contains the common information for table related events.
 type TableInfo struct {
@@ -22,6 +27,14 @@ type TableInfo struct {
 	SmallestSeqNum uint64
 	// LargestSeqNum is the largest sequence number in the table.
 	LargestSeqNum uint64
+}
+
+func totalSize(tables []TableInfo) uint64 {
+	var size uint64
+	for i := range tables {
+		size += tables[i].Size
+	}
+	return size
 }
 
 // CompactionInfo contains the info for a compaction event.
@@ -47,6 +60,29 @@ type CompactionInfo struct {
 	Err error
 }
 
+func (i CompactionInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] compaction to L%d error: %s",
+			i.JobID, i.Output.Level, i.Err)
+	}
+
+	if len(i.Output.Tables) == 0 {
+		return fmt.Sprintf("[JOB %d] compacting L%d -> L%d: %d+%d (%s + %s)",
+			i.JobID, i.Input.Level, i.Output.Level,
+			len(i.Input.Tables[0]), len(i.Input.Tables[1]),
+			humanize.Uint64(totalSize(i.Input.Tables[0])),
+			humanize.Uint64(totalSize(i.Input.Tables[1])))
+	}
+
+	return fmt.Sprintf("[JOB %d] compacted L%d -> L%d: %d+%d (%s + %s) -> %d (%s)",
+		i.JobID, i.Input.Level, i.Output.Level,
+		len(i.Input.Tables[0]), len(i.Input.Tables[1]),
+		humanize.Uint64(totalSize(i.Input.Tables[0])),
+		humanize.Uint64(totalSize(i.Input.Tables[1])),
+		len(i.Output.Tables),
+		humanize.Uint64(totalSize(i.Output.Tables)))
+}
+
 // FlushInfo contains the info for a flush event.
 type FlushInfo struct {
 	// JobID is the ID of the flush job.
@@ -59,12 +95,33 @@ type FlushInfo struct {
 	Err    error
 }
 
+func (i FlushInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] flush error: %s", i.JobID, i.Err)
+	}
+
+	if i.Output.FileNum == 0 {
+		return fmt.Sprintf("[JOB %d] flushing to L0", i.JobID)
+	}
+
+	return fmt.Sprintf("[JOB %d] flushed to L0 (%s)", i.JobID,
+		humanize.Uint64(i.Output.Size))
+}
+
 // TableDeleteInfo contains the info for a table deletion event.
 type TableDeleteInfo struct {
 	JobID   int
 	Path    string
 	FileNum uint64
 	Err     error
+}
+
+func (i TableDeleteInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] sstable delete error %06d: %s",
+			i.JobID, i.FileNum, i.Err)
+	}
+	return fmt.Sprintf("[JOB %d] sstable deleted %06d", i.JobID, i.FileNum)
 }
 
 // TableIngestInfo contains the info for a table ingestion event.
@@ -81,6 +138,20 @@ type TableIngestInfo struct {
 	Err          error
 }
 
+func (i TableIngestInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] ingest error: %s", i.JobID, i.Err)
+	}
+
+	var buf bytes.Buffer
+	for j := range i.Tables {
+		t := &i.Tables[j]
+		fmt.Fprintf(&buf, "[JOB %d] ingested to L%d (%s)\n", i.JobID,
+			t.Level, humanize.Uint64(t.Size))
+	}
+	return buf.String()
+}
+
 // WALCreateInfo contains info about a WAL creation event.
 type WALCreateInfo struct {
 	// JobID is the ID of the job the caused the WAL to be created.
@@ -94,6 +165,19 @@ type WALCreateInfo struct {
 	Err             error
 }
 
+func (i WALCreateInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] WAL create error: %s", i.JobID, i.Err)
+	}
+
+	if i.RecycledFileNum == 0 {
+		return fmt.Sprintf("[JOB %d] WAL created %06d", i.JobID, i.FileNum)
+	}
+
+	return fmt.Sprintf("[JOB %d] WAL created %06d (recycled %06d)",
+		i.JobID, i.FileNum, i.RecycledFileNum)
+}
+
 // WALDeleteInfo contains the info for a WAL deletion event.
 type WALDeleteInfo struct {
 	// JobID is the ID of the job the caused the WAL to be deleted.
@@ -101,6 +185,14 @@ type WALDeleteInfo struct {
 	Path    string
 	FileNum uint64
 	Err     error
+}
+
+func (i WALDeleteInfo) String() string {
+	if i.Err != nil {
+		return fmt.Sprintf("[JOB %d] WAL delete error: %s", i.JobID, i.Err)
+	}
+
+	return fmt.Sprintf("[JOB %d] WAL deleted %06d", i.JobID, i.FileNum)
 }
 
 // EventListener contains a set of functions that will be invoked when various
@@ -143,14 +235,6 @@ type EventListener struct {
 	WALDeleted func(WALDeleteInfo)
 }
 
-func totalSize(tables []TableInfo) uint64 {
-	var size uint64
-	for i := range tables {
-		size += tables[i].Size
-	}
-	return size
-}
-
 // NewLoggingEventListener creates an EventListener that logs all events to the
 // specified logger.
 func NewLoggingEventListener(logger Logger) *EventListener {
@@ -163,80 +247,28 @@ func NewLoggingEventListener(logger Logger) *EventListener {
 			logger.Infof("background error: %s", err)
 		},
 		CompactionBegin: func(info CompactionInfo) {
-			logger.Infof("[JOB %d] compacting L%d -> L%d: %d+%d (%s + %s)",
-				info.JobID, info.Input.Level, info.Output.Level,
-				len(info.Input.Tables[0]), len(info.Input.Tables[1]),
-				humanize.Uint64(totalSize(info.Input.Tables[0])),
-				humanize.Uint64(totalSize(info.Input.Tables[1])))
+			logger.Infof("%s", info.String())
 		},
 		CompactionEnd: func(info CompactionInfo) {
-			if info.Err != nil {
-				logger.Infof("[JOB %d] compaction to L%d error: %s",
-					info.JobID, info.Output.Level, info.Err)
-				return
-			}
-
-			logger.Infof("[JOB %d] compacted L%d -> L%d: %d+%d (%s + %s) -> %d (%s)",
-				info.JobID, info.Input.Level, info.Output.Level,
-				len(info.Input.Tables[0]), len(info.Input.Tables[1]),
-				humanize.Uint64(totalSize(info.Input.Tables[0])),
-				humanize.Uint64(totalSize(info.Input.Tables[1])),
-				len(info.Output.Tables),
-				humanize.Uint64(totalSize(info.Output.Tables)))
+			logger.Infof("%s", info.String())
 		},
 		FlushBegin: func(info FlushInfo) {
-			logger.Infof("[JOB %d] flushing to L0", info.JobID)
+			logger.Infof("%s", info.String())
 		},
 		FlushEnd: func(info FlushInfo) {
-			if info.Err != nil {
-				logger.Infof("[JOB %d] flush error: %s", info.JobID, info.Err)
-				return
-			}
-
-			logger.Infof("[JOB %d] flushed to L0 (%s)", info.JobID,
-				humanize.Uint64(info.Output.Size))
+			logger.Infof("%s", info.String())
 		},
 		TableDeleted: func(info TableDeleteInfo) {
-			if info.Err != nil {
-				logger.Infof("[JOB %d] sstable delete error %06d: %s", info.JobID,
-					info.FileNum, info.Err)
-				return
-			}
-
-			logger.Infof("[JOB %d] sstable deleted %06d", info.JobID, info.FileNum)
+			logger.Infof("%s", info.String())
 		},
 		TableIngested: func(info TableIngestInfo) {
-			if info.Err != nil {
-				logger.Infof("[JOB %d] ingest error: %s", info.Err)
-				return
-			}
-
-			for i := range info.Tables {
-				t := &info.Tables[i]
-				logger.Infof("[JOB %d] ingested to L%d (%s)", info.JobID,
-					t.Level, humanize.Uint64(t.Size))
-			}
+			logger.Infof("%s", info.String())
 		},
 		WALCreated: func(info WALCreateInfo) {
-			if info.Err != nil {
-				logger.Infof("[JOB %d] WAL create error: %s", info.Err)
-				return
-			}
-
-			if info.RecycledFileNum == 0 {
-				logger.Infof("[JOB %d] WAL created %06d", info.JobID, info.FileNum)
-			} else {
-				logger.Infof("[JOB %d] WAL created %06d (recycled %06d)", info.JobID,
-					info.FileNum, info.RecycledFileNum)
-			}
+			logger.Infof("%s", info.String())
 		},
 		WALDeleted: func(info WALDeleteInfo) {
-			if info.Err != nil {
-				logger.Infof("[JOB %d] WAL delete error: %s", info.JobID, info.Err)
-				return
-			}
-
-			logger.Infof("[JOB %d] WAL deleted %06d", info.JobID, info.FileNum)
+			logger.Infof("%s", info.String())
 		},
 	}
 }
