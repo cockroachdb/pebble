@@ -710,8 +710,6 @@ func (d *DB) writeLevel0Table(
 	meta.largestSeqNum = writerMeta.LargestSeqNum
 	tw = nil
 
-	// TODO(peter): compaction stats.
-
 	return meta, nil
 }
 
