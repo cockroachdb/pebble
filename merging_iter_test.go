@@ -199,7 +199,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							readers, keys := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
-								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i] = readers[i].NewIter(nil, nil, false)
 							}
 							m := newMergingIter(db.DefaultComparer.Compare, iters...)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -226,7 +226,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
-								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i] = readers[i].NewIter(nil, nil, false)
 							}
 							m := newMergingIter(db.DefaultComparer.Compare, iters...)
 
@@ -256,7 +256,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
-								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i] = readers[i].NewIter(nil, nil, false)
 							}
 							m := newMergingIter(db.DefaultComparer.Compare, iters...)
 

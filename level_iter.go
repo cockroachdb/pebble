@@ -176,6 +176,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			}
 			l.tableOpts.LowerBound = lowerBound
 			l.tableOpts.UpperBound = upperBound
+			l.tableOpts.PrefixSeek = l.opts.GetPrefixSeek()
 			opts = l.tableOpts
 		}
 

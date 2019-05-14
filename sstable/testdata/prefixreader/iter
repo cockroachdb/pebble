@@ -1,0 +1,123 @@
+build
+a:1=A,aa:2=AA,c:3=C,d:4=D
+----
+
+iter
+seek-ge a
+next
+next
+----
+<a:1><aa:2>.
+
+iter
+seek-ge aa
+next
+----
+<aa:2>.
+
+iter
+seek-ge aa
+prev
+----
+<aa:2>.
+
+iter
+seek-ge c
+prev
+----
+<c:3>.
+
+iter
+seek-ge b
+----
+.
+
+iter
+seek-ge c
+next
+----
+<c:3>.
+
+iter
+seek-ge d
+next
+----
+<d:4>.
+
+iter
+seek-ge e
+----
+.
+
+iter
+seek-ge c
+seek-ge d
+seek-ge e
+----
+<c:3><d:4>.
+
+iter
+seek-ge c
+next
+seek-ge a
+next
+next
+----
+<c:3>.<a:1><aa:2>.
+
+iter
+seek-ge aa
+next
+seek-ge a
+next
+next
+seek-ge c
+next
+----
+<aa:2>.<a:1><aa:2>.<c:3>.
+
+iter
+seek-ge c
+next
+seek-ge aa
+next
+seek-ge a
+next
+next
+----
+<c:3>.<aa:2>.<a:1><aa:2>.
+
+iter
+seek-ge a
+next
+next
+prev
+----
+<a:1><aa:2>..
+
+iter
+seek-ge a
+next
+prev
+prev
+----
+<a:1><aa:2><a:1>.
+
+iter
+seek-ge a
+prev
+----
+<a:1>.
+
+get
+a
+aa
+f
+d
+c
+----
+A
+AA
+<err: pebble: not found>
+D
+C

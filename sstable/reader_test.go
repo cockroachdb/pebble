@@ -101,6 +101,16 @@ func TestReader(t *testing.T) {
 		},
 	}
 
+	testDirs := map[string]string {
+		"default": "testdata/reader",
+		"prefixFilter": "testdata/prefixreader",
+	}
+
+	prefixSeek := map[string]bool {
+		"default" : false,
+		"prefixFilter": true,
+	}
+
 	for lName, levelOpt := range levelOpts {
 		for oName, opt := range opts {
 			levelOpt.EnsureDefaults()
@@ -109,13 +119,13 @@ func TestReader(t *testing.T) {
 			o.EnsureDefaults()
 
 			t.Run(fmt.Sprintf("opts=%s,levelOpts=%s", oName, lName), func(t *testing.T) {
-				runTestReader(t, o)
+				runTestReader(t, o, testDirs[oName], prefixSeek[oName])
 			})
 		}
 	}
 }
 
-func runTestReader(t *testing.T, o db.Options) {
+func runTestReader(t *testing.T, o db.Options, dir string, prefixSeek bool) {
 	makeIkeyValue := func(s string) (db.InternalKey, []byte) {
 		j := strings.Index(s, ":")
 		k := strings.Index(s, "=")
@@ -129,7 +139,7 @@ func runTestReader(t *testing.T, o db.Options) {
 	mem := vfs.NewMem()
 	var r *Reader
 
-	datadriven.Walk(t, "testdata/reader", func(t *testing.T, path string) {
+	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "build":
@@ -173,7 +183,7 @@ func runTestReader(t *testing.T, o db.Options) {
 					}
 				}
 
-				iter := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+				iter := iterAdapter{r.NewIter(nil, nil, prefixSeek)}
 				if err := iter.Error(); err != nil {
 					t.Fatal(err)
 				}
@@ -278,7 +288,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it := r.NewIter(nil, nil, false)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
@@ -296,7 +306,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it := r.NewIter(nil, nil, false)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
@@ -314,7 +324,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it := r.NewIter(nil, nil, false)
 
 				b.ResetTimer()
 				var sum int64
@@ -340,7 +350,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it := r.NewIter(nil, nil, false)
 
 				b.ResetTimer()
 				var sum int64

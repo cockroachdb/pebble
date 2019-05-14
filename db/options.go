@@ -484,19 +484,16 @@ type IterOptions struct {
 	// TODO(peter): unimplemented.
 	// TableFilter func(userProps map[string]string) bool
 
-	// If Prefix is true, the iterator will only be used to iterate over keys
-	// matching that of the key it is first positioned at. If the Comparer was
-	// supplied with a user-defined Split function and bloom filters are
+	// If PrefixSeek is true, the iterator will only be used to iterate over keys
+	// matching the prefix of the key that is passed in SeekGE. If the Comparer
+	// was supplied with a user-defined Split function and bloom filters are
 	// enabled, this allows for improved performance by skipping SSTables known
-	// not to contain the given prefix. The iterator will not properly observe
-	// keys not matching the prefix.
+	// not to contain the given prefix. The iterator will not observe keys not
+	// matching the prefix. Note that First(), Last(), and SeekLT() are not
+	// supported in this mode.
 	//
 	// TODO(tbg): should an assertion trip if the first key's prefix is unstable?
-	// TODO(tbg): should Prefix override (or sharpen) {Lower,Upper}Bound? When
-	// we see the first key, we get the prefix and a separator which should be
-	// a good {Lower,Upper}Bound.
-	// TODO(tbg): unimplemented.
-	// Prefix bool
+	PrefixSeek bool
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.
@@ -513,6 +510,11 @@ func (o *IterOptions) GetUpperBound() []byte {
 		return nil
 	}
 	return o.UpperBound
+}
+
+// GetPrefixSeek returns PrefixSeek or false if the receiver is nil
+func (o *IterOptions) GetPrefixSeek() bool {
+	return o != nil && o.PrefixSeek
 }
 
 // WriteOptions hold the optional per-query parameters for Set and Delete

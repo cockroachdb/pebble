@@ -35,7 +35,7 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 	smallestSet, largestSet := false, false
 
 	{
-		iter := r.NewIter(nil /* lower */, nil /* upper */)
+		iter := r.NewIter(nil, nil, false)
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
 			meta.smallest = key.Clone()

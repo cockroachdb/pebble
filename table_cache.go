@@ -69,7 +69,7 @@ func (c *tableCache) newIters(
 	}
 	n.result <- x
 
-	iter := x.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+	iter := x.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound(), opts.GetPrefixSeek())
 	atomic.AddInt32(&c.mu.iterCount, 1)
 	if raceEnabled {
 		c.mu.Lock()
