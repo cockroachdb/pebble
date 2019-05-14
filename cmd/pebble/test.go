@@ -226,11 +226,12 @@ func runTest(dir string, t test) {
 	defer ticker.Stop()
 
 	done := make(chan os.Signal, 3)
+	workersDone := make(chan struct{})
 	signal.Notify(done, os.Interrupt)
 
 	go func() {
 		wg.Wait()
-		done <- syscall.Signal(0)
+		close(workersDone)
 	}()
 
 	if duration > 0 {
@@ -243,14 +244,49 @@ func runTest(dir string, t test) {
 	stopProf := startCPUProfile()
 	defer stopProf()
 
+	backgroundCompactions := func(m *pebble.VersionMetrics) bool {
+		// The last level never gets selected as an input level for compaction,
+		// only as an output level, so ignore it for the purposes of determining if
+		// background compactions are still needed.
+		for i := range m.Levels[:len(m.Levels)-1] {
+			if m.Levels[i].Score >= 1 {
+				return true
+			}
+		}
+		return false
+	}
+
 	start := time.Now()
 	for i := 0; ; i++ {
 		select {
 		case <-ticker.C:
-			t.tick(time.Since(start), i)
+			if workersDone != nil {
+				t.tick(time.Since(start), i)
+				if verbose && (i%10) == 9 {
+					fmt.Printf("%s", db.Metrics())
+				}
+			} else if waitCompactions {
+				m := db.Metrics()
+				fmt.Printf("%s", m)
+				if !backgroundCompactions(m) {
+					return
+				}
+			}
+
+		case <-workersDone:
+			workersDone = nil
+			t.done(time.Since(start))
+			m := db.Metrics()
+			fmt.Printf("%s", m)
+			if !waitCompactions || !backgroundCompactions(m) {
+				return
+			}
+			fmt.Printf("waiting for background compactions\n")
 
 		case <-done:
-			t.done(time.Since(start))
+			if workersDone != nil {
+				t.done(time.Since(start))
+			}
 			fmt.Printf("%s", db.Metrics())
 			return
 		}

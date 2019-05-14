@@ -14,12 +14,13 @@ import (
 )
 
 var (
-	concurrency int
-	disableWAL  bool
-	duration    time.Duration
-	verbose     bool
-	walOnly     bool
-	wipe        bool
+	concurrency     int
+	disableWAL      bool
+	duration        time.Duration
+	verbose         bool
+	walOnly         bool
+	waitCompactions bool
+	wipe            bool
 )
 
 var rootCmd = &cobra.Command{
@@ -47,6 +48,9 @@ func main() {
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 		cmd.Flags().BoolVarP(
 			&verbose, "verbose", "v", false, "enable verbose event logging")
+		cmd.Flags().BoolVar(
+			&waitCompactions, "wait-compactions", false,
+			"wait for background compactions to complete after load stops")
 		cmd.Flags().BoolVarP(
 			&wipe, "wipe", "w", false, "wipe the database before starting")
 		cmd.Flags().BoolVar(
