@@ -16,7 +16,6 @@ import (
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/crc"
 	"github.com/petermattis/pebble/internal/rangedel"
-	"github.com/petermattis/pebble/vfs"
 )
 
 // WriterMetadata holds info about a finished sstable.
@@ -73,12 +72,21 @@ func (m *WriterMetadata) Largest(cmp db.Compare) db.InternalKey {
 	return m.LargestRange
 }
 
+type flusher interface {
+	Flush() error
+}
+
+type writeCloseSyncer interface {
+	io.WriteCloser
+	Sync() error
+}
+
 // Writer is a table writer. It implements the DB interface, as documented
 // in the pebble/db package.
 type Writer struct {
 	writer    io.Writer
 	bufWriter *bufio.Writer
-	file      vfs.File
+	syncer    writeCloseSyncer
 	meta      WriterMetadata
 	err       error
 	// The following fields are copied from db.Options.
@@ -351,12 +359,16 @@ func (w *Writer) writeRawBlock(b []byte, compression db.Compression) (blockHandl
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
 
 	// Write the bytes to the file.
-	if _, err := w.writer.Write(b); err != nil {
+	n, err := w.writer.Write(b)
+	if err != nil {
 		return blockHandle{}, err
 	}
-	if _, err := w.writer.Write(w.tmp[:5]); err != nil {
+	w.meta.Size += uint64(n)
+	n, err = w.writer.Write(w.tmp[:5])
+	if err != nil {
 		return blockHandle{}, err
 	}
+	w.meta.Size += uint64(n)
 	bh := blockHandle{w.offset, uint64(len(b))}
 	w.offset += uint64(len(b)) + blockTrailerLen
 
@@ -367,14 +379,14 @@ func (w *Writer) writeRawBlock(b []byte, compression db.Compression) (blockHandl
 // table was written to.
 func (w *Writer) Close() (err error) {
 	defer func() {
-		if w.file == nil {
+		if w.syncer == nil {
 			return
 		}
-		err1 := w.file.Close()
+		err1 := w.syncer.Close()
 		if err == nil {
 			err = err1
 		}
-		w.file = nil
+		w.syncer = nil
 	}()
 	if w.err != nil {
 		return w.err
@@ -479,10 +491,12 @@ func (w *Writer) Close() (err error) {
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
-	if _, err := w.writer.Write(footer.encode(w.tmp[:])); err != nil {
+	var n int
+	if n, err = w.writer.Write(footer.encode(w.tmp[:])); err != nil {
 		w.err = err
 		return w.err
 	}
+	w.meta.Size += uint64(n)
 
 	// Flush the buffer.
 	if w.bufWriter != nil {
@@ -492,23 +506,10 @@ func (w *Writer) Close() (err error) {
 		}
 	}
 
-	if err := w.file.Sync(); err != nil {
+	if err := w.syncer.Sync(); err != nil {
 		w.err = err
 		return err
 	}
-
-	stat, err := w.file.Stat()
-	if err != nil {
-		w.err = err
-		return err
-	}
-
-	size := stat.Size()
-	if size < 0 {
-		w.err = fmt.Errorf("pebble: file has negative size %d", size)
-		return err
-	}
-	w.meta.Size = uint64(size)
 
 	// Make any future calls to Set or Close return an error.
 	w.err = errors.New("pebble: writer is closed")
@@ -524,7 +525,7 @@ func (w *Writer) EstimatedSize() uint64 {
 // Metadata returns the metadata for the finished sstable. Only valid to call
 // after the sstable has been finished.
 func (w *Writer) Metadata() (*WriterMetadata, error) {
-	if w.file != nil {
+	if w.syncer != nil {
 		return nil, errors.New("pebble: writer is not closed")
 	}
 	return &w.meta, nil
@@ -532,18 +533,12 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f vfs.File, o *db.Options, lo db.LevelOptions) *Writer {
+func NewWriter(f writeCloseSyncer, o *db.Options, lo db.LevelOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
 
-	if f != nil {
-		f = vfs.NewSyncingFile(f, vfs.SyncingFileOptions{
-			BytesPerSync: o.BytesPerSync,
-		})
-	}
-
 	w := &Writer{
-		file: f,
+		syncer: f,
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
@@ -594,9 +589,6 @@ func NewWriter(f vfs.File, o *db.Options, lo db.LevelOptions) *Writer {
 	w.props.Version = 2 // TODO(peter): what is this?
 
 	// If f does not have a Flush method, do our own buffering.
-	type flusher interface {
-		Flush() error
-	}
 	if _, ok := f.(flusher); ok {
 		w.writer = f
 	} else {

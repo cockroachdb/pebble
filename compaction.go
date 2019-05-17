@@ -661,6 +661,9 @@ func (d *DB) writeLevel0Table(
 	if err != nil {
 		return fileMetadata{}, err
 	}
+	file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
+		BytesPerSync: d.opts.BytesPerSync,
+	})
 	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
 
 	var count int
@@ -918,6 +921,9 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 		if err != nil {
 			return err
 		}
+		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
+			BytesPerSync: d.opts.BytesPerSync,
+		})
 		filenames = append(filenames, filename)
 		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.outputLevel))
 
