@@ -27,6 +27,14 @@ import (
 // key/value pairs are not guaranteed to be a consistent snapshot of that DB
 // at a particular point in time.
 type internalIterator interface {
+	// SeekPrefixGE moves the iterator to the first key/value pair whose key is
+	// greater than or equal to the given key and shares a common prefix with the
+	// given key. Returns the key and value if the iterator is pointing at a
+	// valid entry, and (nil, nil) otherwise. Note that a user-defined Split
+	// function must be supplied to the Comparer. Also note that the iterator will
+	// not observe keys not matching the prefix.
+	SeekPrefixGE(key []byte) (*db.InternalKey, []byte)
+
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key. Returns the key and value if the iterator
 	// is pointing at a valid entry, and (nil, nil) otherwise.

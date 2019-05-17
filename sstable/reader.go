@@ -63,7 +63,6 @@ type Iterator struct {
 	err        error
 	closeHook  func() error
 	prefix     []byte
-	prefixSeek bool
 }
 
 var iterPool = sync.Pool{
@@ -75,13 +74,12 @@ var iterPool = sync.Pool{
 // Init initializes an iterator for reading from the table. It is synonmous
 // with Reader.NewIter, but allows for reusing of the Iterator between
 // different Readers.
-func (i *Iterator) Init(r *Reader, lower, upper []byte, prefixSeek bool) error {
+func (i *Iterator) Init(r *Reader, lower, upper []byte) error {
 	*i = Iterator{
-		lower:      lower,
-		upper:      upper,
-		reader:     r,
-		err:        r.err,
-		prefixSeek: prefixSeek,
+		lower:  lower,
+		upper:  upper,
+		reader: r,
+		err:    r.err,
 	}
 	if i.err == nil {
 		var index block
@@ -92,13 +90,6 @@ func (i *Iterator) Init(r *Reader, lower, upper []byte, prefixSeek bool) error {
 		i.cmp = r.compare
 		i.err = i.index.init(i.cmp, index, r.Properties.GlobalSeqNum)
 	}
-
-	// TODO(ryan): Should a check be done here? Or should we somehow support
-	// prefixSeek even if split hasn't been supplied
-	if prefixSeek && r.split == nil {
-		i.err = errors.New("pebble/table: invalid prefix seek config")
-	}
-
 	return i.err
 }
 
@@ -191,44 +182,28 @@ func (i *Iterator) seekBlock(key []byte) bool {
 	return true
 }
 
-// validPrefix returns true if the key has a valid prefix and false otherwise
-func (i *Iterator) validPrefix(userKey []byte) bool {
-	return !i.prefixSeek || bytes.HasPrefix(userKey, i.prefix)
-}
-
-// withinLowerBound returns true if the key is within the lower bound and false
-// otherwise
-func (i *Iterator) withinLowerBound(userKey []byte) bool {
-	return i.blockLower == nil || i.cmp(userKey, i.blockLower) >= 0
-}
-
-// withinUpperBound returns true if the key is within the upper bound and false
-// otherwise
-func (i *Iterator) withinUpperBound(userKey []byte) bool {
-	return i.blockUpper == nil || i.cmp(userKey, i.blockUpper) < 0
-}
-
-// SeekGE implements internalIterator.SeekGE, as documented in the pebble
-// package. Note that SeekGE only checks the upper bound. It is up to the
-// caller to ensure that key is greater than or equal to the lower bound.
-func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
+// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
+// pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
+// to the caller to ensure that key is greater than or equal to the lower bound.
+func (i *Iterator) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	if i.reader.split == nil {
+		panic("pebble: split must be provided for SeekPrefixGE")
+	}
 	if i.err != nil {
 		return nil, nil
 	}
 
-	if i.prefixSeek && i.reader.split != nil {
-		i.prefix = key[:i.reader.split(key)]
+	i.prefix = key[:i.reader.split(key)]
 
-		// Check prefix bloom filter
-		if i.reader.tableFilter != nil {
-			data, err := i.reader.readFilter()
-			if err != nil {
-				return nil, nil
-			}
-			if !i.reader.tableFilter.mayContain(data, i.prefix) {
-				i.data.invalidateUpper() // force i.data.Valid() to return false
-				return nil, nil
-			}
+	// Check prefix bloom filter
+	if i.reader.tableFilter != nil {
+		data, err := i.reader.readFilter()
+		if err != nil {
+			return nil, nil
+		}
+		if !i.reader.tableFilter.mayContain(data, i.prefix) {
+			i.data.invalidateUpper() // force i.data.Valid() to return false
+			return nil, nil
 		}
 	}
 
@@ -242,7 +217,34 @@ func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	if ikey == nil {
 		return nil, nil
 	}
-	if !i.validPrefix(ikey.UserKey) || !i.withinUpperBound(ikey.UserKey) {
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 ||
+		i.prefix != nil && !bytes.HasPrefix(ikey.UserKey, i.prefix) {
+		i.data.invalidateUpper() // force i.data.Valid() to return false
+		return nil, nil
+	}
+	return ikey, val
+}
+
+// SeekGE implements internalIterator.SeekGE, as documented in the pebble
+// package. Note that SeekGE only checks the upper bound. It is up to the
+// caller to ensure that key is greater than or equal to the lower bound.
+func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
+	if i.err != nil {
+		return nil, nil
+	}
+
+	i.prefix = nil
+	if ikey, _ := i.index.SeekGE(key); ikey == nil {
+		return nil, nil
+	}
+	if !i.loadBlock() {
+		return nil, nil
+	}
+	ikey, val := i.data.SeekGE(key)
+	if ikey == nil {
+		return nil, nil
+	}
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
 		i.data.invalidateUpper() // force i.data.Valid() to return false
 		return nil, nil
 	}
@@ -253,15 +255,11 @@ func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
 func (i *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
-	if i.prefixSeek {
-		// SeekLT is invalid if using prefix iteration
-		panic("pebble: SeekLT unimplemented")
-	}
-
 	if i.err != nil {
 		return nil, nil
 	}
 
+	i.prefix = nil
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		i.index.Last()
 	}
@@ -291,7 +289,7 @@ func (i *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
 			return nil, nil
 		}
 	}
-	if !i.withinLowerBound(ikey.UserKey) {
+	if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
 		i.data.invalidateLower() // force i.data.Valid() to return false
 		return nil, nil
 	}
@@ -303,15 +301,11 @@ func (i *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *Iterator) First() (*db.InternalKey, []byte) {
-	if i.prefixSeek {
-		// First is invalid if using prefix iteration
-		panic("pebble: First unimplemented")
-	}
-
 	if i.err != nil {
 		return nil, nil
 	}
 
+	i.prefix = nil
 	if ikey, _ := i.index.First(); ikey == nil {
 		return nil, nil
 	}
@@ -322,7 +316,7 @@ func (i *Iterator) First() (*db.InternalKey, []byte) {
 	if ikey == nil {
 		return nil, nil
 	}
-	if !i.withinUpperBound(ikey.UserKey) {
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
 		i.data.invalidateUpper() // force i.data.Valid() to return false
 		return nil, nil
 	}
@@ -334,15 +328,11 @@ func (i *Iterator) First() (*db.InternalKey, []byte) {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *Iterator) Last() (*db.InternalKey, []byte) {
-	if i.prefixSeek {
-		// Last is invalid if using prefix iteration
-		panic("pebble: Last unimplemented")
-	}
-
 	if i.err != nil {
 		return nil, nil
 	}
 
+	i.prefix = nil
 	if ikey, _ := i.index.Last(); ikey == nil {
 		return nil, nil
 	}
@@ -352,7 +342,7 @@ func (i *Iterator) Last() (*db.InternalKey, []byte) {
 	if ikey, _ := i.data.Last(); ikey == nil {
 		return nil, nil
 	}
-	if !i.withinLowerBound(i.data.ikey.UserKey) {
+	if i.blockLower != nil && i.cmp(i.data.ikey.UserKey, i.blockLower) < 0 {
 		i.data.invalidateLower()
 		return nil, nil
 	}
@@ -366,7 +356,8 @@ func (i *Iterator) Next() (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := i.data.Next(); key != nil {
-		if !i.validPrefix(key.UserKey) || !i.withinUpperBound(key.UserKey) {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 ||
+			i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 			i.data.invalidateUpper()
 			return nil, nil
 		}
@@ -385,7 +376,8 @@ func (i *Iterator) Next() (*db.InternalKey, []byte) {
 			if key == nil {
 				return nil, nil
 			}
-			if !i.validPrefix(key.UserKey) || !i.withinUpperBound(key.UserKey) {
+			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 ||
+				i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 				i.data.invalidateUpper()
 				return nil, nil
 			}
@@ -402,7 +394,8 @@ func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := i.data.Prev(); key != nil {
-		if !i.validPrefix(key.UserKey) || !i.withinLowerBound(key.UserKey) {
+		if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 ||
+			i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 			i.data.invalidateLower()
 			return nil, nil
 		}
@@ -421,7 +414,8 @@ func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 			if key == nil {
 				return nil, nil
 			}
-			if !i.validPrefix(key.UserKey) || !i.withinLowerBound(key.UserKey) {
+			if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 ||
+				i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 				i.data.invalidateLower()
 				return nil, nil
 			}
@@ -548,7 +542,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	i := iterPool.Get().(*Iterator)
-	if err := i.Init(r, nil, nil, false); err == nil {
+	if err := i.Init(r, nil, nil); err == nil {
 		i.index.SeekGE(key)
 		i.seekBlock(key)
 	}
@@ -564,12 +558,12 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 }
 
 // NewIter returns an internal iterator for the contents of the table.
-func (r *Reader) NewIter(lower, upper []byte, prefixSeek bool) *Iterator {
+func (r *Reader) NewIter(lower, upper []byte) *Iterator {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	i := iterPool.Get().(*Iterator)
-	_ = i.Init(r, lower, upper, prefixSeek)
+	_ = i.Init(r, lower, upper)
 	return i
 }
 

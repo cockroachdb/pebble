@@ -744,6 +744,10 @@ type batchIter struct {
 // batchIter implements the internalIterator interface.
 var _ internalIterator = (*batchIter)(nil)
 
+func (i *batchIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
 func (i *batchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	ikey := i.iter.SeekGE(key)
 	if ikey == nil {
@@ -993,6 +997,10 @@ type flushableBatchIter struct {
 
 // flushableBatchIter implements the internalIterator interface.
 var _ internalIterator = (*flushableBatchIter)(nil)
+
+func (i *flushableBatchIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
 
 func (i *flushableBatchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	ikey := db.MakeSearchKey(key)

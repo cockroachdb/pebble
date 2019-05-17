@@ -129,7 +129,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 	newIters := func(
 		meta *fileMetadata, _ *db.IterOptions,
 	) (internalIterator, internalIterator, error) {
-		return readers[meta.fileNum].NewIter(nil, nil, false), nil, nil
+		return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 	}
 
 	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
@@ -265,7 +265,7 @@ func buildLevelIterTables(
 
 	meta := make([]fileMetadata, len(readers))
 	for i := range readers {
-		iter := readers[i].NewIter(nil, nil, false)
+		iter := readers[i].NewIter(nil /* lower */, nil /* upper */)
 		key, _ := iter.First()
 		meta[i].fileNum = uint64(i)
 		meta[i].smallest = *key
@@ -288,7 +288,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *db.IterOptions,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.fileNum].NewIter(nil, nil, false), nil, nil
+								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
 							l := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -316,7 +316,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *db.IterOptions,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.fileNum].NewIter(nil, nil, false), nil, nil
+								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
 							l := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
 
@@ -346,7 +346,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *db.IterOptions,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.fileNum].NewIter(nil, nil, false), nil, nil
+								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
 							l := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
 

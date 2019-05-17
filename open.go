@@ -63,6 +63,7 @@ func Open(dirname string, opts *db.Options) (*DB, error) {
 		cmp:            opts.Comparer.Compare,
 		equal:          opts.Comparer.Equal,
 		merge:          opts.Merger.Merge,
+		split:          opts.Comparer.Split,
 		abbreviatedKey: opts.Comparer.AbbreviatedKey,
 		logRecycler:    logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 	}

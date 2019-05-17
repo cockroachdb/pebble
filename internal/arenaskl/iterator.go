@@ -66,6 +66,10 @@ func (it *Iterator) Error() error {
 	return nil
 }
 
+func (it *Iterator) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
 // SeekGE moves the iterator to the first entry whose key is greater than or
 // equal to the given key. Returns the key and value if the iterator is
 // pointing at a valid entry, and (nil, nil) otherwise. Note that SeekGE only

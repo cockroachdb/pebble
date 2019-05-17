@@ -45,6 +45,10 @@ func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {
 	return valid
 }
 
+func (i *iterAdapter) SeekPrefixGE(key []byte) bool {
+	return i.verify(i.Iterator.SeekPrefixGE(key))
+}
+
 func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.verify(i.Iterator.SeekGE(key))
 }
@@ -106,11 +110,6 @@ func TestReader(t *testing.T) {
 		"prefixFilter": "testdata/prefixreader",
 	}
 
-	prefixSeek := map[string]bool {
-		"default" : false,
-		"prefixFilter": true,
-	}
-
 	for lName, levelOpt := range levelOpts {
 		for oName, opt := range opts {
 			levelOpt.EnsureDefaults()
@@ -119,13 +118,13 @@ func TestReader(t *testing.T) {
 			o.EnsureDefaults()
 
 			t.Run(fmt.Sprintf("opts=%s,levelOpts=%s", oName, lName), func(t *testing.T) {
-				runTestReader(t, o, testDirs[oName], prefixSeek[oName])
+				runTestReader(t, o, testDirs[oName])
 			})
 		}
 	}
 }
 
-func runTestReader(t *testing.T, o db.Options, dir string, prefixSeek bool) {
+func runTestReader(t *testing.T, o db.Options, dir string) {
 	makeIkeyValue := func(s string) (db.InternalKey, []byte) {
 		j := strings.Index(s, ":")
 		k := strings.Index(s, "=")
@@ -183,7 +182,7 @@ func runTestReader(t *testing.T, o db.Options, dir string, prefixSeek bool) {
 					}
 				}
 
-				iter := iterAdapter{r.NewIter(nil, nil, prefixSeek)}
+				iter := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 				if err := iter.Error(); err != nil {
 					t.Fatal(err)
 				}
@@ -195,6 +194,11 @@ func runTestReader(t *testing.T, o db.Options, dir string, prefixSeek bool) {
 						continue
 					}
 					switch parts[0] {
+					case "seek-prefix-ge":
+						if len(parts) != 2 {
+							return fmt.Sprintf("seek-prefix-ge <key>\n")
+						}
+						iter.SeekPrefixGE([]byte(strings.TrimSpace(parts[1])))
 					case "seek-ge":
 						if len(parts) != 2 {
 							return fmt.Sprintf("seek-ge <key>\n")
@@ -288,7 +292,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil, nil, false)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
@@ -306,7 +310,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil, nil, false)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
@@ -324,7 +328,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil, nil, false)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 
 				b.ResetTimer()
 				var sum int64
@@ -350,7 +354,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil, nil, false)
+				it := r.NewIter(nil /* lower */, nil /* upper */)
 
 				b.ResetTimer()
 				var sum int64

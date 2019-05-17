@@ -3,92 +3,92 @@ a:1=A,aa:2=AA,c:3=C,d:4=D
 ----
 
 iter
-seek-ge a
+seek-prefix-ge a
 next
 next
 ----
 <a:1><aa:2>.
 
 iter
-seek-ge aa
+seek-prefix-ge aa
 next
 ----
 <aa:2>.
 
 iter
-seek-ge aa
+seek-prefix-ge aa
 prev
 ----
 <aa:2>.
 
 iter
-seek-ge c
+seek-prefix-ge c
 prev
 ----
 <c:3>.
 
 iter
-seek-ge b
+seek-prefix-ge b
 ----
 .
 
 iter
-seek-ge c
+seek-prefix-ge c
 next
 ----
 <c:3>.
 
 iter
-seek-ge d
+seek-prefix-ge d
 next
 ----
 <d:4>.
 
 iter
-seek-ge e
+seek-prefix-ge e
 ----
 .
 
 iter
-seek-ge c
-seek-ge d
-seek-ge e
+seek-prefix-ge c
+seek-prefix-ge d
+seek-prefix-ge e
 ----
 <c:3><d:4>.
 
 iter
-seek-ge c
+seek-prefix-ge c
 next
-seek-ge a
+seek-prefix-ge a
 next
 next
 ----
 <c:3>.<a:1><aa:2>.
 
 iter
-seek-ge aa
+seek-prefix-ge aa
 next
-seek-ge a
+seek-prefix-ge a
 next
 next
-seek-ge c
+seek-prefix-ge c
 next
 ----
 <aa:2>.<a:1><aa:2>.<c:3>.
 
 iter
-seek-ge c
+seek-prefix-ge c
 next
-seek-ge aa
+seek-prefix-ge aa
 next
-seek-ge a
+seek-prefix-ge a
 next
 next
 ----
 <c:3>.<aa:2>.<a:1><aa:2>.
 
 iter
-seek-ge a
+seek-prefix-ge a
 next
 next
 prev
@@ -96,7 +96,7 @@ prev
 <a:1><aa:2>..
 
 iter
-seek-ge a
+seek-prefix-ge a
 next
 prev
 prev
@@ -104,10 +104,79 @@ prev
 <a:1><aa:2><a:1>.
 
 iter
-seek-ge a
+seek-prefix-ge a
 prev
 ----
 <a:1>.
+
+iter
+seek-prefix-ge a
+seek-ge a
+next
+next
+next
+next
+----
+<a:1><a:1><aa:2><c:3><d:4>.
+
+iter
+seek-prefix-ge a
+seek-ge aa
+next
+next
+next
+----
+<a:1><aa:2><c:3><d:4>.
+
+iter
+seek-prefix-ge aa
+seek-ge c
+next
+next
+----
+<aa:2><c:3><d:4>.
+
+iter
+seek-prefix-ge aa
+seek-lt c
+next
+next
+next
+----
+<aa:2><aa:2><c:3><d:4>.
+
+iter
+seek-prefix-ge aa
+seek-lt c
+prev
+prev
+----
+<aa:2><aa:2><a:1>.
+
+iter
+seek-lt c
+seek-prefix-ge aa
+prev
+----
+<aa:2><aa:2>.
+
+iter
+seek-lt c
+seek-prefix-ge a
+next
+next
+
+----
+<aa:2><a:1><aa:2>.
+
+iter
+seek-ge aa
+seek-prefix-ge a
+next
+next
+
+----
+<aa:2><a:1><aa:2>.
 
 get
 a

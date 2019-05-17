@@ -24,6 +24,10 @@ func NewIter(cmp db.Compare, tombstones []Tombstone) *Iter {
 	}
 }
 
+func (i *Iter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *Iter) SeekGE(key []byte) (*db.InternalKey, []byte) {

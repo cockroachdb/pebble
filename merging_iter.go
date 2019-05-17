@@ -183,6 +183,7 @@ type mergingIter struct {
 	largestUserKeys [][]byte
 	heap            mergingIterHeap
 	err             error
+	seekPrefix      bool
 }
 
 // mergingIter implements the internalIterator interface.
@@ -393,10 +394,17 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 			continue
 		}
 		if tombstone.Contains(m.heap.cmp, item.key.UserKey) {
-			if level < item.index {
+			// If seekPrefix is true, we do not want to seek from the end of
+			// the tombstone because that key might have a different prefix from
+			// the original key. Instead, we just try the next key.
+			if m.seekPrefix && level < item.index {
+				m.nextEntry(item)
+				return true
+			} else if level < item.index {
 				m.seekGE(tombstone.End, item.index)
 				return true
 			}
+
 			if tombstone.Deletes(item.key.SeqNum()) {
 				m.nextEntry(item)
 				return true
@@ -461,10 +469,17 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			continue
 		}
 		if tombstone.Contains(m.heap.cmp, item.key.UserKey) {
-			if level < item.index {
+			// If seekPrefix is true, we do not want to seek from the start of
+			// the tombstone because that key might have a different prefix from
+			// the original key. Instead, we just try the previous key
+			if m.seekPrefix && level < item.index {
+				m.prevEntry(item)
+				return true
+			} else if level < item.index {
 				m.seekLT(tombstone.Start.UserKey, item.index)
 				return true
 			}
+
 			if tombstone.Deletes(item.key.SeqNum()) {
 				m.prevEntry(item)
 				return true
@@ -512,7 +527,11 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 
 	for ; level < len(m.iters); level++ {
 		iter := m.iters[level]
-		iter.SeekGE(key)
+		if m.seekPrefix {
+			iter.SeekPrefixGE(key)
+		} else {
+			iter.SeekGE(key)
+		}
 
 		if m.rangeDelIters != nil {
 			if rangeDelIter := m.rangeDelIters[level]; rangeDelIter != nil {
@@ -534,7 +553,14 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 	m.initMinHeap()
 }
 
+func (m *mergingIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	m.seekPrefix = true
+	m.seekGE(key, 0 /* start level */)
+	return m.findNextEntry()
+}
+
 func (m *mergingIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+	m.seekPrefix = false
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
 }
@@ -562,11 +588,13 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 }
 
 func (m *mergingIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+	m.seekPrefix = false
 	m.seekLT(key, 0 /* start level */)
 	return m.findPrevEntry()
 }
 
 func (m *mergingIter) First() (*db.InternalKey, []byte) {
+	m.seekPrefix = false
 	m.heap.items = m.heap.items[:0]
 	for _, t := range m.iters {
 		// TODO(peter): save key and value so we don't have to access t.Key() and
@@ -578,6 +606,7 @@ func (m *mergingIter) First() (*db.InternalKey, []byte) {
 }
 
 func (m *mergingIter) Last() (*db.InternalKey, []byte) {
+	m.seekPrefix = false
 	for _, t := range m.iters {
 		// TODO(peter): save key and value so we don't have to access t.Key() and
 		// t.Value() in initHeap().

@@ -95,7 +95,6 @@ func mvccForwardScan(d *pebble.DB, start, end, ts []byte) int {
 	it := d.NewIter(&db.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),
-		PrefixSeek: false,
 	})
 	defer it.Close()
 
@@ -117,7 +116,6 @@ func mvccReverseScan(d *pebble.DB, start, end, ts []byte) int {
 	it := d.NewIter(&db.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),
-		PrefixSeek: false,
 	})
 	defer it.Close()
 

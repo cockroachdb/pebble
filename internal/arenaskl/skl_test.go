@@ -57,6 +57,10 @@ func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {
 	return valid
 }
 
+func (i *iterAdapter) SeekPrefixGE(key []byte) bool {
+	return i.verify(i.Iterator.SeekPrefixGE(key))
+}
+
 func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.verify(i.Iterator.SeekGE(key))
 }

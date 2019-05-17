@@ -63,6 +63,10 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	}
 }
 
+func (f *fakeIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
 func (f *fakeIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {

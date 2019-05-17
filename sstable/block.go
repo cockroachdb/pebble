@@ -251,6 +251,12 @@ func (i *blockIter) cacheEntry() {
 	})
 }
 
+// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
+// pebble package.
+func (i *blockIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {

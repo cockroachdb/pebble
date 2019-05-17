@@ -176,7 +176,6 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			}
 			l.tableOpts.LowerBound = lowerBound
 			l.tableOpts.UpperBound = upperBound
-			l.tableOpts.PrefixSeek = l.opts.GetPrefixSeek()
 			opts = l.tableOpts
 		}
 
@@ -193,6 +192,18 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 		return true
 	}
+}
+
+func (l *levelIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+	// NB: the top-level Iterator has already adjusted key based on
+	// IterOptions.LowerBound.
+	if !l.loadFile(l.findFileGE(key), 1) {
+		return nil, nil
+	}
+	if key, val := l.iter.SeekPrefixGE(key); key != nil {
+		return key, val
+	}
+	return l.skipEmptyFileForward()
 }
 
 func (l *levelIter) SeekGE(key []byte) (*db.InternalKey, []byte) {

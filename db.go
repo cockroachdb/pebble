@@ -135,6 +135,7 @@ type DB struct {
 	cmp            db.Compare
 	equal          db.Equal
 	merge          db.Merge
+	split          db.Split
 	abbreviatedKey db.AbbreviatedKey
 
 	dataDir vfs.File
@@ -254,6 +255,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	i.cmp = d.cmp
 	i.equal = d.equal
 	i.merge = d.merge
+	i.split = d.split
 	i.iter = get
 	i.readState = readState
 
@@ -452,6 +454,7 @@ func (d *DB) newIterInternal(
 	dbi.cmp = d.cmp
 	dbi.equal = d.equal
 	dbi.merge = d.merge
+	dbi.split = d.split
 	dbi.readState = readState
 
 	iters := buf.iters[:0]
