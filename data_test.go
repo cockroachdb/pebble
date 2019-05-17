@@ -243,18 +243,19 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 			return nil
 		}
 
-		iter := mem.newIter(nil)
-		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
-			iter = newMergingIter(d.cmp, iter, rangeDelIter)
-		}
-		meta, err := d.writeLevel0Table(iter, false /* allowRangeTombstoneElision */)
+		c := newFlush(d.opts, d.mu.versions.currentVersion(),
+			d.mu.versions.picker.baseLevel, []flushable{mem})
+		c.disableRangeTombstoneElision = true
+		newVE, _, err := d.runCompaction(c)
 		if err != nil {
 			return nil
 		}
-		ve.newFiles = append(ve.newFiles, newFileEntry{
-			level: level,
-			meta:  meta,
-		})
+		for _, f := range newVE.newFiles {
+			ve.newFiles = append(ve.newFiles, newFileEntry{
+				level: level,
+				meta:  f.meta,
+			})
+		}
 		level = -1
 		return nil
 	}

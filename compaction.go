@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"unsafe"
@@ -57,7 +58,13 @@ type compaction struct {
 	// a compaction results in a larger size, the original compaction is used
 	// instead.
 	maxExpandedBytes uint64
+	// disableRangeTombstoneElision disables elision of range tombstones. Used by
+	// tests to allow range tombstones to be added to tables where they would
+	// otherwise be elided.
+	disableRangeTombstoneElision bool
 
+	// flushing contains the flushables (aka memtables) that are being flushed.
+	flushing []flushable
 	// inputs are the tables to be compacted.
 	inputs [2][]fileMetadata
 
@@ -86,7 +93,7 @@ func newCompaction(opts *db.Options, cur *version, startLevel, baseLevel int) *c
 	// bytes, we want to adjust the range to [1,numLevels].
 	adjustedOutputLevel := 1 + outputLevel - baseLevel
 
-	c := &compaction{
+	return &compaction{
 		cmp:               opts.Comparer.Compare,
 		version:           cur,
 		startLevel:        startLevel,
@@ -94,6 +101,70 @@ func newCompaction(opts *db.Options, cur *version, startLevel, baseLevel int) *c
 		maxOutputFileSize: uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
 		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
 		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
+	}
+}
+
+func newFlush(opts *db.Options, cur *version, baseLevel int, flushing []flushable) *compaction {
+	c := &compaction{
+		cmp:               opts.Comparer.Compare,
+		version:           cur,
+		startLevel:        -1,
+		outputLevel:       0,
+		maxOutputFileSize: math.MaxUint64,
+		maxOverlapBytes:   math.MaxUint64,
+		maxExpandedBytes:  math.MaxUint64,
+		flushing:          flushing,
+	}
+
+	// TODO(peter): When we allow flushing to create multiple tables we'll want
+	// to choose sstable boundaries based on the grandparents. But for now we
+	// want to create a single table during flushing so this is all commented
+	// out.
+	if false {
+		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
+		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
+		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
+
+		var smallest db.InternalKey
+		var largest db.InternalKey
+		smallestSet, largestSet := false, false
+
+		updatePointBounds := func(iter internalIterator) {
+			if key, _ := iter.First(); key != nil {
+				if !smallestSet ||
+					db.InternalCompare(c.cmp, smallest, *key) > 0 {
+					smallestSet = true
+					smallest = key.Clone()
+				}
+			}
+			if key, _ := iter.Last(); key != nil {
+				if !largestSet ||
+					db.InternalCompare(c.cmp, largest, *key) < 0 {
+					largestSet = true
+					largest = key.Clone()
+				}
+			}
+		}
+
+		updateRangeBounds := func(iter internalIterator) {
+			if key, _ := iter.First(); key != nil {
+				if !smallestSet ||
+					db.InternalCompare(c.cmp, smallest, *key) > 0 {
+					smallestSet = true
+					smallest = key.Clone()
+				}
+			}
+		}
+
+		for i := range flushing {
+			f := flushing[i]
+			updatePointBounds(f.newIter(nil))
+			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
+				updateRangeBounds(rangeDelIter)
+			}
+		}
+
+		c.grandparents = c.version.overlaps(baseLevel, c.cmp, smallest.UserKey, largest.UserKey)
 	}
 	return c
 }
@@ -185,6 +256,21 @@ func (c *compaction) grow(sm, la db.InternalKey) bool {
 	return true
 }
 
+func (c *compaction) trivialMove() bool {
+	if len(c.flushing) != 0 {
+		return false
+	}
+	// Check for a trivial move of one table from one level to the next. We avoid
+	// such a move if there is lots of overlapping grandparent data. Otherwise,
+	// the move could create a parent file that will require a very expensive
+	// merge later on.
+	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
+		totalSize(c.grandparents) <= c.maxOverlapBytes {
+		return true
+	}
+	return false
+}
+
 // shouldStopBefore returns true if the output to the current table should be
 // finished and a new table started before adding the specified key. This is
 // done in order to prevent a table at level N from overlapping too much data
@@ -223,7 +309,23 @@ func (c *compaction) shouldStopBefore(key db.InternalKey) bool {
 // snapshots requiring them to be kept. It performs this determination by
 // looking for an sstable which overlaps the bounds of the compaction at a
 // lower level in the LSM.
-func (c *compaction) allowZeroSeqNum() bool {
+func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
+	if len(c.flushing) != 0 {
+		if len(c.version.files[0]) > 0 {
+			// We can only allow zeroing of seqnum for L0 tables if no other L0 tables
+			// exist. Otherwise we may violate the invariant that L0 tables are ordered
+			// by increasing seqnum. This could be relaxed with a bit more intelligence
+			// in how a new L0 table is merged into the existing set of L0 tables.
+			return false
+		}
+		lower, _ := iter.First()
+		upper, _ := iter.Last()
+		if lower == nil || upper == nil {
+			return false
+		}
+		return c.elideRangeTombstone(lower.UserKey, upper.UserKey)
+	}
+
 	var lower, upper []byte
 	for i := range c.inputs {
 		files := c.inputs[i]
@@ -246,10 +348,21 @@ func (c *compaction) allowZeroSeqNum() bool {
 // specified key. A return value of true guarantees that there are no key/value
 // pairs at c.level+2 or higher that possibly contain the specified user key.
 func (c *compaction) elideTombstone(key []byte) bool {
-	// TODO(peter): this can be faster if ukey is always increasing between
+	if len(c.flushing) != 0 {
+		return false
+	}
+
+	level := c.outputLevel + 1
+	if c.outputLevel == 0 {
+		// Level 0 can contain overlapping sstables so we need to check it for
+		// overlaps.
+		level = 0
+	}
+
+	// TODO(peter): this can be faster if key is always increasing between
 	// successive elideTombstones calls and we can keep some state in between
 	// calls.
-	for level := c.outputLevel + 1; level < numLevels; level++ {
+	for ; level < numLevels; level++ {
 		for _, f := range c.version.files[level] {
 			if c.cmp(key, f.largest.UserKey) <= 0 {
 				if c.cmp(key, f.smallest.UserKey) >= 0 {
@@ -269,7 +382,18 @@ func (c *compaction) elideTombstone(key []byte) bool {
 // pairs at c.outputLevel+1 or higher that possibly overlap the specified
 // tombstone.
 func (c *compaction) elideRangeTombstone(start, end []byte) bool {
-	for level := c.outputLevel + 1; level < numLevels; level++ {
+	if c.disableRangeTombstoneElision {
+		return false
+	}
+
+	level := c.outputLevel + 1
+	if c.outputLevel == 0 {
+		// Level 0 can contain overlapping sstables so we need to check it for
+		// overlaps.
+		level = 0
+	}
+
+	for ; level < numLevels; level++ {
 		overlaps := c.version.overlaps(level, c.cmp, start, end)
 		if len(overlaps) > 0 {
 			return false
@@ -333,6 +457,27 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 func (c *compaction) newInputIter(
 	newIters tableNewIters,
 ) (_ internalIterator, retErr error) {
+	if len(c.flushing) != 0 {
+		if len(c.flushing) == 1 {
+			f := c.flushing[0]
+			iter := f.newIter(nil)
+			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
+				return newMergingIter(c.cmp, iter, rangeDelIter), nil
+			}
+			return iter, nil
+		}
+		iters := make([]internalIterator, 0, 2*len(c.flushing))
+		for i := range c.flushing {
+			f := c.flushing[i]
+			iters = append(iters, f.newIter(nil))
+			rangeDelIter := f.newRangeDelIter(nil)
+			if rangeDelIter != nil {
+				iters = append(iters, rangeDelIter)
+			}
+		}
+		return newMergingIter(c.cmp, iters...), nil
+	}
+
 	iters := make([]internalIterator, 0, 2*len(c.inputs[0])+1)
 	defer func() {
 		if retErr != nil {
@@ -400,6 +545,10 @@ func (c *compaction) newInputIter(
 }
 
 func (c *compaction) String() string {
+	if len(c.flushing) != 0 {
+		return "flush\n"
+	}
+
 	var buf bytes.Buffer
 	for i := range c.inputs {
 		level := c.startLevel
@@ -445,8 +594,10 @@ func (d *DB) flush() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if err := d.flush1(); err != nil {
-		// TODO(peter): count consecutive compaction errors and backoff.
-		_ = err
+		// TODO(peter): count consecutive flush errors and backoff.
+		if d.opts.EventListener.BackgroundError != nil {
+			d.opts.EventListener.BackgroundError(err)
+		}
 	}
 	d.mu.compact.flushing = false
 	// More flush work may have arrived while we were flushing, so schedule
@@ -475,28 +626,8 @@ func (d *DB) flush1() error {
 		return nil
 	}
 
-	// TODO(peter,rangedel): test that range tombstones are properly included in
-	// the output sstable. Should propbably pull out the code below into a method
-	// that can be separately tested.
-	var iter internalIterator
-	if n == 1 {
-		mem := d.mu.mem.queue[0]
-		iter = mem.newIter(nil)
-		if rangeDelIter := mem.newRangeDelIter(nil); rangeDelIter != nil {
-			iter = newMergingIter(d.cmp, iter, rangeDelIter)
-		}
-	} else {
-		iters := make([]internalIterator, 0, 2*n)
-		for i := 0; i < n; i++ {
-			mem := d.mu.mem.queue[i]
-			iters = append(iters, mem.newIter(nil))
-			rangeDelIter := mem.newRangeDelIter(nil)
-			if rangeDelIter != nil {
-				iters = append(iters, rangeDelIter)
-			}
-		}
-		iter = newMergingIter(d.cmp, iters...)
-	}
+	c := newFlush(d.opts, d.mu.versions.currentVersion(),
+		d.mu.versions.picker.baseLevel, d.mu.mem.queue[:n])
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -506,7 +637,7 @@ func (d *DB) flush1() error {
 		})
 	}
 
-	meta, err := d.writeLevel0Table(iter, true /* allowRangeTombstoneElision */)
+	ve, pendingOutputs, err := d.runCompaction(c)
 
 	if d.opts.EventListener.FlushEnd != nil {
 		info := db.FlushInfo{
@@ -514,42 +645,36 @@ func (d *DB) flush1() error {
 			Err:   err,
 		}
 		if err == nil {
-			info.Output = meta.tableInfo(d.dirname)
+			for i := range ve.newFiles {
+				e := &ve.newFiles[i]
+				info.Output = append(info.Output, e.meta.tableInfo(d.dirname))
+			}
+			if len(ve.newFiles) == 0 {
+				info.Err = errEmptyTable
+			}
 		}
 		d.opts.EventListener.FlushEnd(info)
 	}
 
-	if err != nil && err != errEmptyTable {
+	if err != nil {
 		return err
 	}
 
 	// The flush succeeded or it produced an empty sstable. In either case we
 	// want to bump the log number.
-	metrics := &LevelMetrics{}
-	ve := &versionEdit{
-		metrics: map[int]*LevelMetrics{
-			0: metrics,
-		},
-	}
 	ve.logNumber, _ = d.mu.mem.queue[n].logInfo()
+	metrics := ve.metrics[0]
 	for i := 0; i < n; i++ {
 		_, size := d.mu.mem.queue[i].logInfo()
 		metrics.BytesIn += size
 	}
-	if err != errEmptyTable {
-		ve.newFiles = []newFileEntry{
-			{level: 0, meta: meta},
-		}
-		metrics.BytesWritten = meta.size
-	}
 
 	err = d.mu.versions.logAndApply(jobID, ve, d.dataDir)
-	for i := range ve.newFiles {
-		f := &ve.newFiles[i]
-		if _, ok := d.mu.compact.pendingOutputs[f.meta.fileNum]; !ok {
+	for _, fileNum := range pendingOutputs {
+		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 			panic("pebble: expected pending output not present")
 		}
-		delete(d.mu.compact.pendingOutputs, f.meta.fileNum)
+		delete(d.mu.compact.pendingOutputs, fileNum)
 	}
 	if err != nil {
 		return err
@@ -570,150 +695,6 @@ func (d *DB) flush1() error {
 		close(flushed[i].flushed())
 	}
 	return nil
-}
-
-// writeLevel0Table writes a memtable to a level-0 on-disk table.
-//
-// If no error is returned, it adds the file number of that on-disk table to
-// d.pendingOutputs. It is the caller's responsibility to remove that fileNum
-// from that set when it has been applied to d.mu.versions.
-//
-// d.mu must be held when calling this, but the mutex may be dropped and
-// re-acquired during the course of this method.
-func (d *DB) writeLevel0Table(
-	iiter internalIterator, allowRangeTombstoneElision bool,
-) (meta fileMetadata, err error) {
-	meta.fileNum = d.mu.versions.nextFileNum()
-	filename := dbFilename(d.dirname, fileTypeTable, meta.fileNum)
-	d.mu.compact.pendingOutputs[meta.fileNum] = struct{}{}
-	defer func(fileNum uint64) {
-		if err != nil {
-			delete(d.mu.compact.pendingOutputs, fileNum)
-		}
-	}(meta.fileNum)
-
-	snapshots := d.mu.snapshots.toSlice()
-	version := d.mu.versions.currentVersion()
-
-	// Release the d.mu lock while doing I/O.
-	// Note the unusual order: Unlock and then Lock.
-	d.mu.Unlock()
-	defer d.mu.Lock()
-
-	elideRangeTombstone := func(start, end []byte) bool {
-		if !allowRangeTombstoneElision {
-			return false
-		}
-		for level := 0; level < numLevels; level++ {
-			overlaps := version.overlaps(level, d.cmp, start, end)
-			if len(overlaps) > 0 {
-				return false
-			}
-		}
-		return true
-	}
-
-	// Allow zeroing of seqnum if the bounds of the compaction do not overlap
-	// with any lower level LSM. Note that this treats range tombstones as point
-	// entries. That is fine for this usage, but beware of adapting this for
-	// another purpose.
-	allowZeroSeqNum := func() bool {
-		if len(version.files[0]) > 0 {
-			// We can only allow zeroing of seqnum for L0 tables if no other L0
-			// tables exist. Otherwise we may violate the invariant that L0 tables
-			// are ordered by increasing seqnum. This could be relaxed with a bit
-			// more intelligence in how a new L0 table is merged into the existing
-			// set of L0 tables.
-			return false
-		}
-		lower, _ := iiter.First()
-		upper, _ := iiter.Last()
-		if lower == nil || upper == nil {
-			return false
-		}
-		return elideRangeTombstone(lower.UserKey, upper.UserKey)
-	}()
-
-	iter := newCompactionIter(
-		d.cmp, d.merge, iiter, snapshots,
-		allowZeroSeqNum,
-		func([]byte) bool { return false },
-		elideRangeTombstone,
-	)
-	var (
-		file vfs.File
-		tw   *sstable.Writer
-	)
-	defer func() {
-		if iter != nil {
-			err = firstError(err, iter.Close())
-		}
-		if tw != nil {
-			err = firstError(err, tw.Close())
-		}
-		if err != nil {
-			d.opts.FS.Remove(filename)
-			meta = fileMetadata{}
-		}
-	}()
-
-	file, err = d.opts.FS.Create(filename)
-	if err != nil {
-		return fileMetadata{}, err
-	}
-	file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
-		BytesPerSync: d.opts.BytesPerSync,
-	})
-	tw = sstable.NewWriter(file, d.opts, d.opts.Level(0))
-
-	var count int
-	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		if err1 := tw.Add(*key, val); err1 != nil {
-			return fileMetadata{}, err1
-		}
-		count++
-	}
-
-	for _, v := range iter.Tombstones(nil) {
-		if err1 := tw.Add(v.Start, v.End); err1 != nil {
-			return fileMetadata{}, err1
-		}
-		count++
-	}
-
-	if err1 := iter.Close(); err1 != nil {
-		iter = nil
-		return fileMetadata{}, err1
-	}
-	iter = nil
-
-	if err1 := tw.Close(); err1 != nil {
-		tw = nil
-		return fileMetadata{}, err1
-	}
-
-	if count == 0 {
-		// The flush may have produced an empty table if a range tombstone deleted
-		// all the entries in the table and the range tombstone could be elided.
-		return fileMetadata{}, errEmptyTable
-	}
-
-	if err := d.dataDir.Sync(); err != nil {
-		return fileMetadata{}, err
-	}
-
-	writerMeta, err := tw.Metadata()
-	if err != nil {
-		return fileMetadata{}, err
-	}
-	meta.size = writerMeta.Size
-	meta.smallest = writerMeta.Smallest(d.cmp)
-	meta.largest = writerMeta.Largest(d.cmp)
-	meta.smallestSeqNum = writerMeta.SmallestSeqNum
-	meta.largestSeqNum = writerMeta.LargestSeqNum
-	tw = nil
-
-	return meta, nil
 }
 
 // maybeScheduleCompaction schedules a compaction if necessary.
@@ -795,7 +776,7 @@ func (d *DB) compact1() (err error) {
 		d.opts.EventListener.CompactionBegin(info)
 	}
 
-	ve, pendingOutputs, err := d.compactDiskTables(c)
+	ve, pendingOutputs, err := d.runCompaction(c)
 
 	if d.opts.EventListener.CompactionEnd != nil {
 		info.Err = err
@@ -826,18 +807,19 @@ func (d *DB) compact1() (err error) {
 	return nil
 }
 
-// compactDiskTables runs a compaction that produces new on-disk tables from
-// old on-disk tables.
+// runCompactions runs a compaction that produces new on-disk tables from
+// memtables or old on-disk tables.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs []uint64, retErr error) {
+func (d *DB) runCompaction(c *compaction) (
+	ve *versionEdit, pendingOutputs []uint64, retErr error,
+) {
 	// Check for a trivial move of one table from one level to the next. We avoid
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
-	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
-		totalSize(c.grandparents) <= maxGrandparentOverlapBytes(d.opts, c.outputLevel) {
+	if c.trivialMove() {
 		meta := &c.inputs[0][0]
 		return &versionEdit{
 			deletedFiles: map[deletedFileEntry]bool{
@@ -870,13 +852,12 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	c.cmp = d.cmp
 	iiter, err := c.newInputIter(d.newIters)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
-	iter := newCompactionIter(d.cmp, d.merge, iiter, snapshots,
-		c.allowZeroSeqNum(), c.elideTombstone, c.elideRangeTombstone)
+	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots,
+		c.allowZeroSeqNum(iiter), c.elideTombstone, c.elideRangeTombstone)
 
 	var (
 		filenames []string
@@ -937,17 +918,22 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 	}
 
 	finishOutput := func(key db.InternalKey) error {
-		if tw == nil {
-			return nil
-		}
-
 		// NB: clone the key because the data can be held on to by the call to
 		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
 		key = key.Clone()
 		for _, v := range iter.Tombstones(key.UserKey) {
+			if tw == nil {
+				if err := newOutput(); err != nil {
+					return err
+				}
+			}
 			if err := tw.Add(v.Start, v.End); err != nil {
 				return err
 			}
+		}
+
+		if tw == nil {
+			return nil
 		}
 
 		if err := tw.Close(); err != nil {
@@ -1000,7 +986,6 @@ func (d *DB) compactDiskTables(c *compaction) (ve *versionEdit, pendingOutputs [
 
 		meta.smallest = writerMeta.Smallest(d.cmp)
 		meta.largest = writerMeta.Largest(d.cmp)
-
 		return nil
 	}
 

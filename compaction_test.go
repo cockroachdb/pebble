@@ -1070,7 +1070,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.inputs[i] = append(c.inputs[i], meta)
 					}
 					c.outputLevel = c.startLevel + 1
-					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
+					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum(nil))
 				}
 				return buf.String()
 

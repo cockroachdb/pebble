@@ -311,16 +311,20 @@ func (d *DB) replayWAL(
 	}
 
 	if mem != nil && !mem.empty() {
-		meta, err := d.writeLevel0Table(mem.newIter(nil),
-			true /* allowRangeTombstoneElision */)
+		c := newFlush(d.opts, d.mu.versions.currentVersion(),
+			1 /* base level */, []flushable{mem})
+		newVE, pendingOutputs, err := d.runCompaction(c)
 		if err != nil {
 			return 0, err
 		}
-		ve.newFiles = append(ve.newFiles, newFileEntry{level: 0, meta: meta})
-		// Strictly speaking, it's too early to delete meta.fileNum from d.pendingOutputs,
-		// but we are replaying the log file, which happens before Open returns, so there
-		// is no possibility of deleteObsoleteFiles being called concurrently here.
-		delete(d.mu.compact.pendingOutputs, meta.fileNum)
+		ve.newFiles = append(ve.newFiles, newVE.newFiles...)
+		// Strictly speaking, it's too early to delete from d.pendingOutputs, but
+		// we are replaying the log file, which happens before Open returns, so
+		// there is no possibility of deleteObsoleteFiles being called concurrently
+		// here.
+		for _, fileNum := range pendingOutputs {
+			delete(d.mu.compact.pendingOutputs, fileNum)
+		}
 	}
 
 	return maxSeqNum, nil
