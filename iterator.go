@@ -278,10 +278,10 @@ func (i *Iterator) SeekGE(key []byte) bool {
 
 // SeekPrefixGE moves the iterator to the first key/value pair whose key is
 // greater than or equal to the given key and shares a common prefix with the
-// given key. Returns the key and value if the iterator is pointing at a
-// valid entry, and (nil, nil) otherwise. Note that a user-defined Split
-// function must be supplied to the Comparer. Also note that the iterator will
-// not observe keys not matching the prefix.
+// given key. Returns true if the iterator is pointing at a valid entry and
+// false otherwise. Note that a user-defined Split function must be supplied to
+// the Comparer. Also note that the iterator will not observe keys not matching
+// the prefix.
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	if i.split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
@@ -292,7 +292,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	}
 
 	// Make a copy of the prefix so that modifications to the key after
-	// SeekPrefixGE returns does not affect the stored prefix
+	// SeekPrefixGE returns does not affect the stored prefix.
 	prefixLen := i.split(key)
 	i.prefix = make([]byte, prefixLen)
 	copy(i.prefix, key[:prefixLen])

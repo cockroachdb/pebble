@@ -206,7 +206,7 @@ func runTestReader(t *testing.T, o db.Options, dir string) {
 							return fmt.Sprintf("seek-prefix-ge <key>\n")
 						}
 						prefix = []byte(strings.TrimSpace(parts[1]))
-						iter.SeekPrefixGE(prefix, []byte(strings.TrimSpace(parts[1])))
+						iter.SeekPrefixGE(prefix, prefix /* key */)
 					case "seek-lt":
 						if len(parts) != 2 {
 							return fmt.Sprintf("seek-lt <key>\n")

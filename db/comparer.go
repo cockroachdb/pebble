@@ -172,10 +172,6 @@ var DefaultComparer = &Comparer{
 	Name: "leveldb.BytewiseComparator",
 }
 
-var DefaultSplit = func(a []byte) int{
-	return len(a)
-}
-
 // SharedPrefixLen returns the largest i such that a[:i] equals b[:i].
 // This function can be useful in implementing the Comparer interface.
 func SharedPrefixLen(a, b []byte) int {

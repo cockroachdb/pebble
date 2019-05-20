@@ -179,6 +179,11 @@ func (f *fakeIter) Close() error {
 	return f.closeErr
 }
 
+//
+var fixtureSplit = func(a []byte) int {
+	return len(a)
+}
+
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
@@ -299,7 +304,7 @@ func TestIterator(t *testing.T) {
 	newIter := func(seqNum uint64, opts *db.IterOptions) *Iterator {
 		cmp := db.DefaultComparer.Compare
 		equal := db.DefaultComparer.Equal
-		split := db.DefaultSplit
+		split := fixtureSplit
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		iter := newMergingIter(cmp, &fakeIter{
 			lower: opts.GetLowerBound(),
