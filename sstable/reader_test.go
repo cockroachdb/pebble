@@ -45,12 +45,12 @@ func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {
 	return valid
 }
 
-func (i *iterAdapter) SeekPrefixGE(key []byte) bool {
-	return i.verify(i.Iterator.SeekPrefixGE(key))
-}
-
 func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.verify(i.Iterator.SeekGE(key))
+}
+
+func (i *iterAdapter) SeekPrefixGE(prefix, key []byte) bool {
+	return i.verify(i.Iterator.SeekPrefixGE(prefix, key))
 }
 
 func (i *iterAdapter) SeekLT(key []byte) bool {
@@ -188,37 +188,43 @@ func runTestReader(t *testing.T, o db.Options, dir string) {
 				}
 
 				var b bytes.Buffer
+				var prefix []byte
 				for _, line := range strings.Split(d.Input, "\n") {
 					parts := strings.Fields(line)
 					if len(parts) == 0 {
 						continue
 					}
 					switch parts[0] {
-					case "seek-prefix-ge":
-						if len(parts) != 2 {
-							return fmt.Sprintf("seek-prefix-ge <key>\n")
-						}
-						iter.SeekPrefixGE([]byte(strings.TrimSpace(parts[1])))
 					case "seek-ge":
 						if len(parts) != 2 {
 							return fmt.Sprintf("seek-ge <key>\n")
 						}
+						prefix = nil
 						iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+					case "seek-prefix-ge":
+						if len(parts) != 2 {
+							return fmt.Sprintf("seek-prefix-ge <key>\n")
+						}
+						prefix = []byte(strings.TrimSpace(parts[1]))
+						iter.SeekPrefixGE(prefix, []byte(strings.TrimSpace(parts[1])))
 					case "seek-lt":
 						if len(parts) != 2 {
 							return fmt.Sprintf("seek-lt <key>\n")
 						}
+						prefix = nil
 						iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 					case "first":
+						prefix = nil
 						iter.First()
 					case "last":
+						prefix = nil
 						iter.Last()
 					case "next":
 						iter.Next()
 					case "prev":
 						iter.Prev()
 					}
-					if iter.Valid() {
+					if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey){
 						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 					} else if err := iter.Error(); err != nil {
 						fmt.Fprintf(&b, "<err=%v>", err)
@@ -245,6 +251,10 @@ func runTestReader(t *testing.T, o db.Options, dir string) {
 			}
 		})
 	})
+}
+
+func checkValidPrefix(prefix, key []byte) bool {
+	return prefix == nil || bytes.HasPrefix(key, prefix)
 }
 
 func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader, [][]byte) {

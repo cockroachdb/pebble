@@ -33,25 +33,25 @@ const (
 // key/value pairs are not guaranteed to be a consistent snapshot of that DB
 // at a particular point in time.
 type Iterator struct {
-	opts       *db.IterOptions
-	cmp        db.Compare
-	equal      db.Equal
-	merge      db.Merge
-	split      db.Split
-	iter       internalIterator
-	readState  *readState
-	err        error
-	key        []byte
-	keyBuf     []byte
-	value      []byte
-	valueBuf   []byte
-	valueBuf2  []byte
-	valid      bool
-	iterKey    *db.InternalKey
-	iterValue  []byte
-	pos        iterPos
-	alloc      *iterAlloc
-	prefixSeek bool
+	opts      *db.IterOptions
+	cmp       db.Compare
+	equal     db.Equal
+	merge     db.Merge
+	split     db.Split
+	iter      internalIterator
+	readState *readState
+	err       error
+	key       []byte
+	keyBuf    []byte
+	value     []byte
+	valueBuf  []byte
+	valueBuf2 []byte
+	valid     bool
+	iterKey   *db.InternalKey
+	iterValue []byte
+	pos       iterPos
+	alloc     *iterAlloc
+	prefix    []byte
 }
 
 func (i *Iterator) findNextEntry() bool {
@@ -72,6 +72,9 @@ func (i *Iterator) findNextEntry() bool {
 			continue
 
 		case db.InternalKeyKindSet:
+			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+				return false
+			}
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iterValue
@@ -79,6 +82,9 @@ func (i *Iterator) findNextEntry() bool {
 			return true
 
 		case db.InternalKeyKindMerge:
+			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+				return false
+			}
 			return i.mergeNext(key)
 
 		default:
@@ -104,7 +110,7 @@ func (i *Iterator) nextUserKey() {
 			}
 			done = i.iterKey.SeqNum() == 0
 		}
-	} else if !i.prefixSeek { // Do not call .First() in prefix iteration mode
+	} else {
 		i.iterKey, i.iterValue = i.iter.First()
 	}
 }
@@ -137,6 +143,9 @@ func (i *Iterator) findPrevEntry() bool {
 			continue
 
 		case db.InternalKeyKindSet:
+			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+				return false
+			}
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iterValue
@@ -146,6 +155,9 @@ func (i *Iterator) findPrevEntry() bool {
 
 		case db.InternalKeyKindMerge:
 			if !i.valid {
+				if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+					return false
+				}
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
 				i.value = i.iterValue
@@ -192,7 +204,7 @@ func (i *Iterator) prevUserKey() {
 				break
 			}
 		}
-	} else if !i.prefixSeek { // Do not call .Last() in prefix iteration mode
+	} else {
 		i.iterKey, i.iterValue = i.iter.Last()
 	}
 }
@@ -247,6 +259,23 @@ func (i *Iterator) mergeNext(key db.InternalKey) bool {
 	}
 }
 
+// SeekGE moves the iterator to the first key/value pair whose key is greater
+// than or equal to the given key. Returns true if the iterator is pointing at
+// a valid entry and false otherwise.
+func (i *Iterator) SeekGE(key []byte) bool {
+	if i.err != nil {
+		return false
+	}
+
+	i.prefix = nil
+	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
+		key = lowerBound
+	}
+
+	i.iterKey, i.iterValue = i.iter.SeekGE(key)
+	return i.findNextEntry()
+}
+
 // SeekPrefixGE moves the iterator to the first key/value pair whose key is
 // greater than or equal to the given key and shares a common prefix with the
 // given key. Returns the key and value if the iterator is pointing at a
@@ -262,35 +291,21 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		return false
 	}
 
-	i.prefixSeek = true
+	// Make a copy of the prefix so that modifications to the key after
+	// SeekPrefixGE returns does not affect the stored prefix
+	prefixLen := i.split(key)
+	i.prefix = make([]byte, prefixLen)
+	copy(i.prefix, key[:prefixLen])
+
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
-		// Use bytes.Equal instead of i.equal since we are comparing prefixes
-		// and i.equal is meant for full key comparisons
-		if !bytes.Equal(key[:i.split(key)], lowerBound[:i.split(lowerBound)]) {
+		if !bytes.HasPrefix(lowerBound, i.prefix) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of lowerBound")
 		} else {
 			key = lowerBound
 		}
 	}
 
-	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(key)
-	return i.findNextEntry()
-}
-
-// SeekGE moves the iterator to the first key/value pair whose key is greater
-// than or equal to the given key. Returns true if the iterator is pointing at
-// a valid entry and false otherwise.
-func (i *Iterator) SeekGE(key []byte) bool {
-	if i.err != nil {
-		return false
-	}
-
-	i.prefixSeek = false
-	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
-		key = lowerBound
-	}
-
-	i.iterKey, i.iterValue = i.iter.SeekGE(key)
+	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefix, key)
 	return i.findNextEntry()
 }
 
@@ -302,7 +317,7 @@ func (i *Iterator) SeekLT(key []byte) bool {
 		return false
 	}
 
-	i.prefixSeek = false
+	i.prefix = nil
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) >= 0 {
 		key = upperBound
 	}
@@ -318,7 +333,7 @@ func (i *Iterator) First() bool {
 		return false
 	}
 
-	i.prefixSeek = false
+	i.prefix = nil
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
 	} else {
@@ -334,7 +349,7 @@ func (i *Iterator) Last() bool {
 		return false
 	}
 
-	i.prefixSeek = false
+	i.prefix = nil
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
 	} else {

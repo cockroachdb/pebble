@@ -24,10 +24,6 @@ func NewIter(cmp db.Compare, tombstones []Tombstone) *Iter {
 	}
 }
 
-func (i *Iter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *Iter) SeekGE(key []byte) (*db.InternalKey, []byte) {
@@ -54,6 +50,11 @@ func (i *Iter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	}
 	t := &i.tombstones[i.index]
 	return &t.Start, t.End
+}
+
+func (i *Iter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	// This should never be called as prefix iteration is only done for point records.
+	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble

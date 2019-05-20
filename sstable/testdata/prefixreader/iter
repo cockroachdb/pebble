@@ -91,9 +91,8 @@ iter
 seek-prefix-ge a
 next
 next
-prev
 ----
-<a:1><aa:2>..
+<a:1><aa:2>.
 
 iter
 seek-prefix-ge a
@@ -177,6 +176,11 @@ next
 
 ----
 <aa:2><a:1><aa:2>.
+
+iter
+seek-prefix-ge 1
+----
+.
 
 get
 a

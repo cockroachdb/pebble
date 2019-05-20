@@ -473,8 +473,8 @@ func (b *Batch) Repr() []byte {
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
-// return false). The iterator can be positioned via a call to SeekGE, SeekLT,
-// First or Last. Only indexed batches support iterators.
+// return false). The iterator can be positioned via a call to SeekGE,
+// SeekPrefixGE, SeekLT, First or Last. Only indexed batches support iterators.
 func (b *Batch) NewIter(o *db.IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}
@@ -744,16 +744,16 @@ type batchIter struct {
 // batchIter implements the internalIterator interface.
 var _ internalIterator = (*batchIter)(nil)
 
-func (i *batchIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
 func (i *batchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	ikey := i.iter.SeekGE(key)
 	if ikey == nil {
 		return nil, nil
 	}
 	return ikey, i.Value()
+}
+
+func (i *batchIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return i.SeekGE(key)
 }
 
 func (i *batchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
@@ -998,10 +998,6 @@ type flushableBatchIter struct {
 // flushableBatchIter implements the internalIterator interface.
 var _ internalIterator = (*flushableBatchIter)(nil)
 
-func (i *flushableBatchIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
 func (i *flushableBatchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	ikey := db.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
@@ -1012,6 +1008,10 @@ func (i *flushableBatchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	}
 	i.key = i.getKey(i.index)
 	return &i.key, i.Value()
+}
+
+func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return i.SeekGE(key)
 }
 
 func (i *flushableBatchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {

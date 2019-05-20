@@ -62,7 +62,6 @@ type Iterator struct {
 	data       blockIter
 	err        error
 	closeHook  func() error
-	prefix     []byte
 }
 
 var iterPool = sync.Pool{
@@ -182,29 +181,12 @@ func (i *Iterator) seekBlock(key []byte) bool {
 	return true
 }
 
-// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
-// pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
-// to the caller to ensure that key is greater than or equal to the lower bound.
-func (i *Iterator) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
-	if i.reader.split == nil {
-		panic("pebble: split must be provided for SeekPrefixGE")
-	}
+// SeekGE implements internalIterator.SeekGE, as documented in the pebble
+// package. Note that SeekGE only checks the upper bound. It is up to the
+// caller to ensure that key is greater than or equal to the lower bound.
+func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
-	}
-
-	i.prefix = key[:i.reader.split(key)]
-
-	// Check prefix bloom filter
-	if i.reader.tableFilter != nil {
-		data, err := i.reader.readFilter()
-		if err != nil {
-			return nil, nil
-		}
-		if !i.reader.tableFilter.mayContain(data, i.prefix) {
-			i.data.invalidateUpper() // force i.data.Valid() to return false
-			return nil, nil
-		}
 	}
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
@@ -217,23 +199,33 @@ func (i *Iterator) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
 	if ikey == nil {
 		return nil, nil
 	}
-	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 ||
-		i.prefix != nil && !bytes.HasPrefix(ikey.UserKey, i.prefix) {
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
 		i.data.invalidateUpper() // force i.data.Valid() to return false
 		return nil, nil
 	}
 	return ikey, val
 }
 
-// SeekGE implements internalIterator.SeekGE, as documented in the pebble
-// package. Note that SeekGE only checks the upper bound. It is up to the
-// caller to ensure that key is greater than or equal to the lower bound.
-func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
+// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
+// pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
+// to the caller to ensure that key is greater than or equal to the lower bound.
+func (i *Iterator) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
 
-	i.prefix = nil
+	// Check prefix bloom filter.
+	if i.reader.tableFilter != nil {
+		data, err := i.reader.readFilter()
+		if err != nil {
+			return nil, nil
+		}
+		if !i.reader.tableFilter.mayContain(data, prefix) {
+			i.data.invalidateUpper() // force i.data.Valid() to return false
+			return nil, nil
+		}
+	}
+
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		return nil, nil
 	}
@@ -259,7 +251,6 @@ func (i *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 
-	i.prefix = nil
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		i.index.Last()
 	}
@@ -305,7 +296,6 @@ func (i *Iterator) First() (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 
-	i.prefix = nil
 	if ikey, _ := i.index.First(); ikey == nil {
 		return nil, nil
 	}
@@ -332,7 +322,6 @@ func (i *Iterator) Last() (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 
-	i.prefix = nil
 	if ikey, _ := i.index.Last(); ikey == nil {
 		return nil, nil
 	}
@@ -356,8 +345,7 @@ func (i *Iterator) Next() (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := i.data.Next(); key != nil {
-		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 ||
-			i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
 			i.data.invalidateUpper()
 			return nil, nil
 		}
@@ -376,8 +364,7 @@ func (i *Iterator) Next() (*db.InternalKey, []byte) {
 			if key == nil {
 				return nil, nil
 			}
-			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 ||
-				i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
 				i.data.invalidateUpper()
 				return nil, nil
 			}
@@ -394,8 +381,7 @@ func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := i.data.Prev(); key != nil {
-		if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 ||
-			i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+		if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
 			i.data.invalidateLower()
 			return nil, nil
 		}
@@ -414,8 +400,7 @@ func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 			if key == nil {
 				return nil, nil
 			}
-			if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 ||
-				i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
+			if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
 				i.data.invalidateLower()
 				return nil, nil
 			}

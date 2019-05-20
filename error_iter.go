@@ -16,11 +16,11 @@ func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
+func (c *errorIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (c *errorIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
 	return nil, nil
 }
 

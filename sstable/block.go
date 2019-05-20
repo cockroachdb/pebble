@@ -251,12 +251,6 @@ func (i *blockIter) cacheEntry() {
 	})
 }
 
-// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
-// pebble package.
-func (i *blockIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
@@ -358,6 +352,13 @@ func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	}
 
 	return nil, nil
+}
+
+// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
+// pebble package.
+func (i *blockIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	// This should never be called as prefix iteration is handled by sstable.Iterator.
+	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble

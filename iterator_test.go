@@ -63,10 +63,6 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
 func (f *fakeIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {
@@ -79,6 +75,10 @@ func (f *fakeIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 		}
 	}
 	return nil, nil
+}
+
+func (f *fakeIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return f.SeekGE(key)
 }
 
 func (f *fakeIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
@@ -299,6 +299,7 @@ func TestIterator(t *testing.T) {
 	newIter := func(seqNum uint64, opts *db.IterOptions) *Iterator {
 		cmp := db.DefaultComparer.Compare
 		equal := db.DefaultComparer.Equal
+		split := db.DefaultSplit
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		iter := newMergingIter(cmp, &fakeIter{
 			lower: opts.GetLowerBound(),
@@ -311,6 +312,7 @@ func TestIterator(t *testing.T) {
 			opts:  opts,
 			cmp:   cmp,
 			equal: equal,
+			split: split,
 			merge: db.DefaultMerger.Merge,
 			iter:  iter,
 		}

@@ -36,12 +36,12 @@ type getIter struct {
 // getIter implements the internalIterator interface.
 var _ internalIterator = (*getIter)(nil)
 
-func (g *getIter) SeekPrefixGE(key []byte) (*db.InternalKey, []byte) {
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
 func (g *getIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
+}
+
+func (g *getIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 func (g *getIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
