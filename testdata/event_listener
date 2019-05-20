@@ -31,7 +31,7 @@ sync: wal/000002.log
 create: db/000006.sst
 sync: db/000006.sst
 sync: db
-[JOB 3] flushed to L0 (959 B)
+[JOB 3] flushed to L0: 1 (959 B)
 create: db/MANIFEST-000007
 sync: db/MANIFEST-000007
 create: db/CURRENT.000007.dbtmp
@@ -53,7 +53,7 @@ sync: wal/000005.log
 create: db/000009.sst
 sync: db/000009.sst
 sync: db
-[JOB 5] flushed to L0 (959 B)
+[JOB 5] flushed to L0: 1 (959 B)
 create: db/MANIFEST-000010
 sync: db/MANIFEST-000010
 create: db/CURRENT.000010.dbtmp
