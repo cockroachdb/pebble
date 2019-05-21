@@ -40,6 +40,10 @@ func (g *getIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
+func (g *getIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
 func (g *getIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	panic("pebble: SeekLT unimplemented")
 }

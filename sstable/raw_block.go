@@ -142,6 +142,13 @@ func (i *rawBlockIter) SeekGE(key []byte) bool {
 	return i.Valid()
 }
 
+// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
+// pebble package.
+func (i *rawBlockIter) SeekPrefixGE(key []byte) bool {
+	// This should never be called as prefix iteration is never used with raw blocks.
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
 func (i *rawBlockIter) SeekLT(key []byte) bool {

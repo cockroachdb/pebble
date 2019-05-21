@@ -84,6 +84,10 @@ func (it *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return &it.key, it.Value()
 }
 
+func (it *Iterator) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return it.SeekGE(key)
+}
+
 // SeekLT moves the iterator to the last entry whose key is less than the given
 // key. Returns the key and value if the iterator is pointing at a valid entry,
 // and (nil, nil) otherwise. Note that SeekLT only checks the lower bound. It

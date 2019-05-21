@@ -49,6 +49,10 @@ func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.verify(i.Iterator.SeekGE(key))
 }
 
+func (i *iterAdapter) SeekPrefixGE(prefix, key []byte) bool {
+	return i.verify(i.Iterator.SeekPrefixGE(prefix, key))
+}
+
 func (i *iterAdapter) SeekLT(key []byte) bool {
 	return i.verify(i.Iterator.SeekLT(key))
 }
@@ -101,6 +105,11 @@ func TestReader(t *testing.T) {
 		},
 	}
 
+	testDirs := map[string]string {
+		"default": "testdata/reader",
+		"prefixFilter": "testdata/prefixreader",
+	}
+
 	for lName, levelOpt := range levelOpts {
 		for oName, opt := range opts {
 			levelOpt.EnsureDefaults()
@@ -109,13 +118,13 @@ func TestReader(t *testing.T) {
 			o.EnsureDefaults()
 
 			t.Run(fmt.Sprintf("opts=%s,levelOpts=%s", oName, lName), func(t *testing.T) {
-				runTestReader(t, o)
+				runTestReader(t, o, testDirs[oName])
 			})
 		}
 	}
 }
 
-func runTestReader(t *testing.T, o db.Options) {
+func runTestReader(t *testing.T, o db.Options, dir string) {
 	makeIkeyValue := func(s string) (db.InternalKey, []byte) {
 		j := strings.Index(s, ":")
 		k := strings.Index(s, "=")
@@ -129,7 +138,7 @@ func runTestReader(t *testing.T, o db.Options) {
 	mem := vfs.NewMem()
 	var r *Reader
 
-	datadriven.Walk(t, "testdata/reader", func(t *testing.T, path string) {
+	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "build":
@@ -179,6 +188,7 @@ func runTestReader(t *testing.T, o db.Options) {
 				}
 
 				var b bytes.Buffer
+				var prefix []byte
 				for _, line := range strings.Split(d.Input, "\n") {
 					parts := strings.Fields(line)
 					if len(parts) == 0 {
@@ -189,22 +199,32 @@ func runTestReader(t *testing.T, o db.Options) {
 						if len(parts) != 2 {
 							return fmt.Sprintf("seek-ge <key>\n")
 						}
+						prefix = nil
 						iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+					case "seek-prefix-ge":
+						if len(parts) != 2 {
+							return fmt.Sprintf("seek-prefix-ge <key>\n")
+						}
+						prefix = []byte(strings.TrimSpace(parts[1]))
+						iter.SeekPrefixGE(prefix, prefix /* key */)
 					case "seek-lt":
 						if len(parts) != 2 {
 							return fmt.Sprintf("seek-lt <key>\n")
 						}
+						prefix = nil
 						iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 					case "first":
+						prefix = nil
 						iter.First()
 					case "last":
+						prefix = nil
 						iter.Last()
 					case "next":
 						iter.Next()
 					case "prev":
 						iter.Prev()
 					}
-					if iter.Valid() {
+					if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey){
 						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 					} else if err := iter.Error(); err != nil {
 						fmt.Fprintf(&b, "<err=%v>", err)
@@ -231,6 +251,10 @@ func runTestReader(t *testing.T, o db.Options) {
 			}
 		})
 	})
+}
+
+func checkValidPrefix(prefix, key []byte) bool {
+	return prefix == nil || bytes.HasPrefix(key, prefix)
 }
 
 func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader, [][]byte) {

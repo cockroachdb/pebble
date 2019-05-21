@@ -61,6 +61,10 @@ func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.verify(i.Iterator.SeekGE(key))
 }
 
+func (i *iterAdapter) SeekPrefixGE(prefix, key []byte) bool {
+	return i.verify(i.Iterator.SeekPrefixGE(prefix, key))
+}
+
 func (i *iterAdapter) SeekLT(key []byte) bool {
 	return i.verify(i.Iterator.SeekLT(key))
 }

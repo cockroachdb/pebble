@@ -183,6 +183,7 @@ type mergingIter struct {
 	largestUserKeys [][]byte
 	heap            mergingIterHeap
 	err             error
+	prefix          []byte
 }
 
 // mergingIter implements the internalIterator interface.
@@ -512,7 +513,11 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 
 	for ; level < len(m.iters); level++ {
 		iter := m.iters[level]
-		iter.SeekGE(key)
+		if m.prefix != nil {
+			iter.SeekPrefixGE(m.prefix, key)
+		} else {
+			iter.SeekGE(key)
+		}
 
 		if m.rangeDelIters != nil {
 			if rangeDelIter := m.rangeDelIters[level]; rangeDelIter != nil {
@@ -535,6 +540,13 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 }
 
 func (m *mergingIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+	m.prefix = nil
+	m.seekGE(key, 0 /* start level */)
+	return m.findNextEntry()
+}
+
+func (m *mergingIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	m.prefix = prefix
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
 }
@@ -542,7 +554,7 @@ func (m *mergingIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 func (m *mergingIter) seekLT(key []byte, level int) {
 	// See the comment in seekLT regarding using tombstones to adjust the seek
 	// target per level.
-
+	m.prefix = nil
 	for ; level < len(m.iters); level++ {
 		m.iters[level].SeekLT(key)
 
@@ -562,11 +574,13 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 }
 
 func (m *mergingIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+	m.prefix = nil
 	m.seekLT(key, 0 /* start level */)
 	return m.findPrevEntry()
 }
 
 func (m *mergingIter) First() (*db.InternalKey, []byte) {
+	m.prefix = nil
 	m.heap.items = m.heap.items[:0]
 	for _, t := range m.iters {
 		// TODO(peter): save key and value so we don't have to access t.Key() and
@@ -578,6 +592,7 @@ func (m *mergingIter) First() (*db.InternalKey, []byte) {
 }
 
 func (m *mergingIter) Last() (*db.InternalKey, []byte) {
+	m.prefix = nil
 	for _, t := range m.iters {
 		// TODO(peter): save key and value so we don't have to access t.Key() and
 		// t.Value() in initHeap().

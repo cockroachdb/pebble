@@ -1,0 +1,18 @@
+build
+a:1=A,aa:2=AA,aaa:3=AAA,aaaa:4=AAAA,b:5=B
+----
+
+get
+b
+ab
+a
+aaa
+aa
+aaaa
+----
+B
+<err: pebble: not found>
+A
+AAA
+AA
+AAAA

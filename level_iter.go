@@ -206,6 +206,18 @@ func (l *levelIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return l.skipEmptyFileForward()
 }
 
+func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	// NB: the top-level Iterator has already adjusted key based on
+	// IterOptions.LowerBound.
+	if !l.loadFile(l.findFileGE(key), 1) {
+		return nil, nil
+	}
+	if key, val := l.iter.SeekPrefixGE(prefix, key); key != nil {
+		return key, val
+	}
+	return l.skipEmptyFileForward()
+}
+
 func (l *levelIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.

@@ -77,6 +77,10 @@ func (f *fakeIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return nil, nil
 }
 
+func (f *fakeIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return f.SeekGE(key)
+}
+
 func (f *fakeIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	f.valid = false
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
@@ -295,6 +299,7 @@ func TestIterator(t *testing.T) {
 	newIter := func(seqNum uint64, opts *db.IterOptions) *Iterator {
 		cmp := db.DefaultComparer.Compare
 		equal := db.DefaultComparer.Equal
+		split := func(a []byte) int { return len(a) }
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		iter := newMergingIter(cmp, &fakeIter{
 			lower: opts.GetLowerBound(),
@@ -307,6 +312,7 @@ func TestIterator(t *testing.T) {
 			opts:  opts,
 			cmp:   cmp,
 			equal: equal,
+			split: split,
 			merge: db.DefaultMerger.Merge,
 			iter:  iter,
 		}

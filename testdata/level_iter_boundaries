@@ -27,7 +27,25 @@ a#1,15:
 .
 
 iter
+seek-prefix-ge c
+seek-prefix-ge d
+seek-lt b
+prev
+----
+.
+.
+a#1,15:
+.
+
+iter
 seek-ge e
+seek-lt a
+----
+.
+.
+
+iter
+seek-prefix-ge e
 seek-lt a
 ----
 .
