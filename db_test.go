@@ -618,8 +618,9 @@ func TestFlushEmpty(t *testing.T) {
 
 func TestRollManifest(t *testing.T) {
 	d, err := Open("", &db.Options{
-		MaxManifestFileSize: 1,
-		FS:                  vfs.NewMem(),
+		MaxManifestFileSize:   1,
+		L0CompactionThreshold: 10,
+		FS:                    vfs.NewMem(),
 	})
 	if err != nil {
 		t.Fatal(err)
