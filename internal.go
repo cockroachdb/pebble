@@ -32,6 +32,14 @@ type internalIterator interface {
 	// is pointing at a valid entry, and (nil, nil) otherwise.
 	SeekGE(key []byte) (*db.InternalKey, []byte)
 
+	// SeekPrefixGE moves the iterator to the first key/value pair whose key
+	// starts with the given prefix and is greater than or equal to the given
+	// key. Returns the key and value if the iterator is pointing at a valid
+	// entry, and (nil, nil) otherwise. Note that the iterator will still observe
+	// keys not matching the prefix. It is up to the user to check if the prefix
+	// matches, and iteration beyond the prefix is undefined.
+	SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte)
+
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key. Returns the key and value if the iterator is pointing
 	// at a valid entry, and (nil, nil) otherwise.

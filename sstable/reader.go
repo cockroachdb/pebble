@@ -200,7 +200,44 @@ func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
-		i.data.offset = i.data.restarts
+		i.data.invalidateUpper() // force i.data.Valid() to return false
+		return nil, nil
+	}
+	return ikey, val
+}
+
+// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
+// pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
+// to the caller to ensure that key is greater than or equal to the lower bound.
+func (i *Iterator) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	if i.err != nil {
+		return nil, nil
+	}
+
+	// Check prefix bloom filter.
+	if i.reader.tableFilter != nil {
+		data, err := i.reader.readFilter()
+		if err != nil {
+			return nil, nil
+		}
+		if !i.reader.tableFilter.mayContain(data, prefix) {
+			i.data.invalidateUpper() // force i.data.Valid() to return false
+			return nil, nil
+		}
+	}
+
+	if ikey, _ := i.index.SeekGE(key); ikey == nil {
+		return nil, nil
+	}
+	if !i.loadBlock() {
+		return nil, nil
+	}
+	ikey, val := i.data.SeekGE(key)
+	if ikey == nil {
+		return nil, nil
+	}
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+		i.data.invalidateUpper() // force i.data.Valid() to return false
 		return nil, nil
 	}
 	return ikey, val
@@ -295,7 +332,7 @@ func (i *Iterator) Last() (*db.InternalKey, []byte) {
 		return nil, nil
 	}
 	if i.blockLower != nil && i.cmp(i.data.ikey.UserKey, i.blockLower) < 0 {
-		i.data.offset = -1
+		i.data.invalidateLower()
 		return nil, nil
 	}
 	return &i.data.ikey, i.data.val
@@ -309,7 +346,7 @@ func (i *Iterator) Next() (*db.InternalKey, []byte) {
 	}
 	if key, val := i.data.Next(); key != nil {
 		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
-			i.data.offset = i.data.restarts
+			i.data.invalidateUpper()
 			return nil, nil
 		}
 		return key, val
@@ -328,7 +365,7 @@ func (i *Iterator) Next() (*db.InternalKey, []byte) {
 				return nil, nil
 			}
 			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
-				i.data.offset = i.data.restarts
+				i.data.invalidateUpper()
 				return nil, nil
 			}
 			return key, val
@@ -345,7 +382,7 @@ func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 	}
 	if key, val := i.data.Prev(); key != nil {
 		if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
-			i.data.offset = -1
+			i.data.invalidateLower()
 			return nil, nil
 		}
 		return key, val
@@ -364,7 +401,7 @@ func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 				return nil, nil
 			}
 			if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
-				i.data.offset = -1
+				i.data.invalidateLower()
 				return nil, nil
 			}
 			return key, val

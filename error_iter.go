@@ -20,6 +20,10 @@ func (c *errorIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return nil, nil
 }
 
+func (c *errorIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return nil, nil
+}
+
 func (c *errorIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	return nil, nil
 }

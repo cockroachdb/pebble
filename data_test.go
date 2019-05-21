@@ -21,6 +21,10 @@ const (
 	iterCmdVerboseKey iterCmdOpt = iota
 )
 
+func checkValidPrefix(prefix, key []byte) bool {
+	return prefix == nil || bytes.HasPrefix(key, prefix)
+}
+
 func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 	var b bytes.Buffer
 	for _, line := range strings.Split(d.Input, "\n") {
@@ -35,6 +39,11 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 				return fmt.Sprintf("seek-ge <key>\n")
 			}
 			valid = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+		case "seek-prefix-ge":
+			if len(parts) != 2 {
+				return fmt.Sprintf("seek-prefix-ge <key>\n")
+			}
+			valid = iter.SeekPrefixGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-lt":
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-lt <key>\n")
@@ -51,12 +60,12 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
-		if valid != iter.Valid() {
+		if err := iter.Error(); err != nil {
+			fmt.Fprintf(&b, "err=%v\n", err)
+		} else if valid != iter.Valid() {
 			fmt.Fprintf(&b, "mismatched valid states: %t vs %t\n", valid, iter.Valid())
 		} else if valid {
 			fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
-		} else if err := iter.Error(); err != nil {
-			fmt.Fprintf(&b, "err=%v\n", err)
 		} else {
 			fmt.Fprintf(&b, ".\n")
 		}
@@ -73,6 +82,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 	}
 
 	var b bytes.Buffer
+	var prefix []byte
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
@@ -83,15 +93,25 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-ge <key>\n")
 			}
+			prefix = nil
 			iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+		case "seek-prefix-ge":
+			if len(parts) != 2 {
+				return fmt.Sprintf("seek-prefix-ge <key>\n")
+			}
+			prefix = []byte(strings.TrimSpace(parts[1]))
+			iter.SeekPrefixGE(prefix, prefix /* key */)
 		case "seek-lt":
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-lt <key>\n")
 			}
+			prefix = nil
 			iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 		case "first":
+			prefix = nil
 			iter.First()
 		case "last":
+			prefix = nil
 			iter.Last()
 		case "next":
 			iter.Next()
@@ -100,7 +120,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
-		if iter.Valid() {
+		if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
 			if verboseKey {
 				fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
 			} else {

@@ -45,6 +45,24 @@ a:c
 .
 a:c
 
+iter seq=2
+seek-prefix-ge a
+next
+prev
+----
+a:b
+.
+a:b
+
+iter seq=3
+seek-prefix-ge a
+next
+prev
+----
+a:c
+.
+a:c
+
 
 define
 a.DEL.2:
@@ -77,6 +95,15 @@ a:b
 .
 a:b
 
+iter seq=3
+seek-prefix-ge a
+----
+.
+
+iter seq=2
+seek-prefix-ge 1
+----
+.
 
 define
 a.DEL.2:
@@ -98,6 +125,21 @@ seek-ge a
 
 iter seq=2
 seek-ge a
+----
+a:b
+
+iter seq=4
+seek-prefix-ge a
+----
+.
+
+iter seq=3
+seek-prefix-ge a
+----
+.
+
+iter seq=2
+seek-prefix-ge a
 ----
 a:b
 
@@ -170,6 +212,35 @@ a:a
 .
 a:a
 
+iter seq=4
+seek-prefix-ge a
+next
+----
+a:a
+.
+
+iter seq=4
+seek-prefix-ge b
+next
+----
+b:b
+.
+
+
+iter seq=4
+seek-prefix-ge c
+next
+----
+c:c
+.
+
+
+iter seq=4
+seek-prefix-ge d
+----
+.
+
+
 define
 a.SET.b2:b
 b.SET.2:c
@@ -211,6 +282,187 @@ next
 a:b
 .
 a:b
+
+iter seq=2
+seek-prefix-ge a
+next
+prev
+----
+a:b
+.
+a:b
+
+iter seq=2
+seek-prefix-ge b
+----
+.
+
+
+define
+a.SET.1:a
+aa.SET.2:aa
+aaa.SET.3:aaa
+b.SET.4:b
+----
+
+iter seq=5
+seek-prefix-ge a
+next
+next
+next
+----
+a:a
+aa:aa
+aaa:aaa
+.
+
+iter seq=5
+seek-prefix-ge a
+next
+next
+prev
+next
+next
+----
+a:a
+aa:aa
+aaa:aaa
+aa:aa
+aaa:aaa
+.
+
+iter seq=5
+seek-prefix-ge aa
+prev
+----
+aa:aa
+.
+
+iter seq=5
+seek-prefix-ge aa
+next
+prev
+next
+next
+----
+aa:aa
+aaa:aaa
+aa:aa
+aaa:aaa
+.
+
+iter seq=5
+seek-prefix-ge aa
+next
+prev
+prev
+----
+aa:aa
+aaa:aaa
+aa:aa
+.
+
+iter seq=5
+seek-prefix-ge aaa
+next
+----
+aaa:aaa
+.
+
+iter seq=5
+seek-prefix-ge aaa
+prev
+----
+aaa:aaa
+.
+
+iter seq=5
+seek-prefix-ge b
+next
+----
+b:b
+.
+
+iter seq=5
+seek-prefix-ge aa
+last
+prev
+prev
+prev
+prev
+----
+aa:aa
+b:b
+aaa:aaa
+aa:aa
+a:a
+.
+
+iter seq=5
+seek-prefix-ge aa
+first
+next
+next
+next
+next
+----
+aa:aa
+a:a
+aa:aa
+aaa:aaa
+b:b
+.
+
+iter seq=5
+seek-prefix-ge aaa
+seek-ge aa
+next
+next
+next
+----
+aaa:aaa
+aa:aa
+aaa:aaa
+b:b
+.
+
+iter seq=5
+seek-prefix-ge aaa
+seek-ge aaa
+next
+next
+----
+aaa:aaa
+aaa:aaa
+b:b
+.
+
+iter seq=5
+seek-prefix-ge aaa
+seek-lt aa
+next
+next
+next
+next
+----
+aaa:aaa
+a:a
+aa:aa
+aaa:aaa
+b:b
+.
+
+
+iter seq=5
+seek-prefix-ge aaa
+seek-lt b
+next
+next
+----
+aaa:aaa
+aaa:aaa
+b:b
+.
 
 
 # NB: RANGEDEL entries are ignored.
@@ -343,6 +595,147 @@ a:d
 b:b
 a:d
 
+iter seq=3
+seek-prefix-ge a
+next
+----
+a:cd
+.
+
+iter seq=2
+seek-prefix-ge a
+next
+----
+a:d
+.
+
+iter seq=4
+seek-prefix-ge a
+next
+prev
+next
+----
+a:bcd
+.
+a:bcd
+.
+
+iter seq=2
+seek-prefix-ge a
+next
+prev
+next
+----
+a:d
+.
+a:d
+.
+
+iter seq=3
+seek-prefix-ge a
+next
+prev
+next
+----
+a:cd
+.
+a:cd
+.
+
+iter seq=3
+seek-prefix-ge c
+----
+.
+
+iter seq=3
+seek-prefix-ge 1
+----
+.
+
+iter seq=3
+seek-prefix-ge a
+prev
+----
+a:cd
+.
+
+
+# NB: RANGEDEL entries are ignored.
+define
+a.RANGEDEL.4:c
+a.MERGE.3:b
+a.RANGEDEL.2:c
+a.MERGE.2:c
+a.RANGEDEL.1:c
+a.MERGE.1:d
+aa.RANGEDEL.3:c
+aa.MERGE.2:a
+aa.RANGEDEL.1:c
+aa.MERGE.1:b
+b.RANGEDEL.3:c
+b.MERGE.2:a
+b.RANGEDEL.1:c
+b.MERGE.1:b
+----
+
+iter seq=3
+seek-prefix-ge a
+next
+next
+----
+a:cd
+aa:ab
+.
+
+iter seq=2
+seek-prefix-ge a
+next
+next
+----
+a:d
+aa:b
+.
+
+iter seq=4
+seek-prefix-ge a
+next
+prev
+next
+----
+a:bcd
+aa:ab
+a:bcd
+aa:ab
+
+iter seq=2
+seek-prefix-ge a
+next
+prev
+next
+----
+a:d
+aa:b
+a:d
+aa:b
+
+iter seq=3
+seek-prefix-ge aa
+next
+prev
+next
+----
+aa:ab
+.
+aa:ab
+.
+
+iter seq=4
+seek-prefix-ge aa
+prev
+----
+aa:ab
+.
+
 define
 a.SET.1:a
 b.SET.1:b
@@ -432,6 +825,145 @@ seek-ge a
 next
 ----
 b:b
+.
+
+
+define
+a.SET.1:a
+aa.SET.1:aa
+aaa.SET.1:aaa
+b.SET.1:b
+----
+
+iter seq=2 lower=a
+seek-prefix-ge a
+first
+prev
+----
+a:a
+a:a
+.
+
+
+iter seq=2 lower=aa
+seek-prefix-ge a
+next
+prev
+prev
+----
+aa:aa
+aaa:aaa
+aa:aa
+.
+
+iter seq=2 lower=b
+seek-prefix-ge a
+----
+err=pebble: SeekPrefixGE supplied with key outside of lower bound
+
+iter seq=2 lower=aaa
+seek-prefix-ge a
+----
+aaa:aaa
+
+iter seq=2 lower=aa
+seek-prefix-ge a
+next
+next
+----
+aa:aa
+aaa:aaa
+.
+
+iter seq=2 lower=aa
+seek-prefix-ge a
+first
+next
+next
+next
+----
+aa:aa
+aa:aa
+aaa:aaa
+b:b
+.
+
+iter seq=2 lower=a upper=aa
+seek-prefix-ge a
+next
+----
+a:a
+.
+
+iter seq=2 lower=a upper=aaa
+seek-prefix-ge a
+next
+next
+----
+a:a
+aa:aa
+.
+
+iter seq=2 lower=a upper=b
+seek-prefix-ge a
+next
+next
+next
+----
+a:a
+aa:aa
+aaa:aaa
+.
+
+iter seq=2 lower=a upper=c
+seek-prefix-ge a
+next
+next
+next
+----
+a:a
+aa:aa
+aaa:aaa
+.
+
+iter seq=2 lower=aa upper=aaa
+seek-prefix-ge a
+next
+----
+aa:aa
+.
+
+iter seq=2 lower=aa upper=b
+seek-prefix-ge a
+next
+next
+----
+aa:aa
+aaa:aaa
+.
+
+iter seq=2 lower=aa upper=aa
+seek-prefix-ge a
+----
+.
+
+iter seq=2 lower=aa upper=aa
+seek-prefix-ge a
+----
+.
+
+iter seq=2 lower=a upper=aaa
+seek-prefix-ge aa
+prev
+----
+aa:aa
+.
+
+iter seq=2 lower=a upper=aaa
+seek-prefix-ge aa
+next
+----
+aa:aa
 .
 
 # NB: RANGEDEL entries are ignored.

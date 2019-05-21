@@ -473,8 +473,8 @@ func (b *Batch) Repr() []byte {
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
-// return false). The iterator can be positioned via a call to SeekGE, SeekLT,
-// First or Last. Only indexed batches support iterators.
+// return false). The iterator can be positioned via a call to SeekGE,
+// SeekPrefixGE, SeekLT, First or Last. Only indexed batches support iterators.
 func (b *Batch) NewIter(o *db.IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}
@@ -752,6 +752,10 @@ func (i *batchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
+func (i *batchIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return i.SeekGE(key)
+}
+
 func (i *batchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	ikey := i.iter.SeekLT(key)
 	if ikey == nil {
@@ -1004,6 +1008,10 @@ func (i *flushableBatchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	}
 	i.key = i.getKey(i.index)
 	return &i.key, i.Value()
+}
+
+func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+	return i.SeekGE(key)
 }
 
 func (i *flushableBatchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
