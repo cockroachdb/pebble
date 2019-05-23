@@ -4,13 +4,11 @@
 
 package rangedel
 
-import (
-	"github.com/petermattis/pebble/db"
-)
+import "github.com/petermattis/pebble/internal/base"
 
 // Truncate creates a new iterator where every tombstone in the supplied
 // iterator is truncated to be contained within the range [lower, upper).
-func Truncate(cmp db.Compare, iter iterator, lower, upper []byte) *Iter {
+func Truncate(cmp base.Compare, iter iterator, lower, upper []byte) *Iter {
 	var tombstones []Tombstone
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		t := Tombstone{

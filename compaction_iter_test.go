@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
@@ -23,14 +23,14 @@ func TestSnapshotIndex(t *testing.T) {
 		expectedIndex  int
 		expectedSeqNum uint64
 	}{
-		{[]uint64{}, 1, 0, db.InternalKeySeqNumMax},
+		{[]uint64{}, 1, 0, InternalKeySeqNumMax},
 		{[]uint64{1}, 0, 0, 1},
-		{[]uint64{1}, 1, 1, db.InternalKeySeqNumMax},
-		{[]uint64{1}, 2, 1, db.InternalKeySeqNumMax},
+		{[]uint64{1}, 1, 1, InternalKeySeqNumMax},
+		{[]uint64{1}, 2, 1, InternalKeySeqNumMax},
 		{[]uint64{1, 3}, 1, 1, 3},
 		{[]uint64{1, 3}, 2, 1, 3},
-		{[]uint64{1, 3}, 3, 2, db.InternalKeySeqNumMax},
-		{[]uint64{1, 3}, 4, 2, db.InternalKeySeqNumMax},
+		{[]uint64{1, 3}, 3, 2, InternalKeySeqNumMax},
+		{[]uint64{1, 3}, 4, 2, InternalKeySeqNumMax},
 		{[]uint64{1, 3, 3}, 2, 1, 3},
 	}
 	for _, c := range testCases {
@@ -47,15 +47,15 @@ func TestSnapshotIndex(t *testing.T) {
 }
 
 func TestCompactionIter(t *testing.T) {
-	var keys []db.InternalKey
+	var keys []InternalKey
 	var vals [][]byte
 	var snapshots []uint64
 	var elideTombstones bool
 
 	newIter := func() *compactionIter {
 		return newCompactionIter(
-			db.DefaultComparer.Compare,
-			db.DefaultMerger.Merge,
+			DefaultComparer.Compare,
+			DefaultMerger.Merge,
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
 			false, /* allowZeroSeqNum */
@@ -75,7 +75,7 @@ func TestCompactionIter(t *testing.T) {
 			vals = vals[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				keys = append(keys, db.ParseInternalKey(key[:j]))
+				keys = append(keys, base.ParseInternalKey(key[:j]))
 				vals = append(vals, []byte(key[j+1:]))
 			}
 			return ""

@@ -21,7 +21,7 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 type splice struct {
@@ -40,7 +40,7 @@ func (s *splice) init(prev, next *node) {
 type Iterator struct {
 	list  *Skiplist
 	nd    *node
-	key   db.InternalKey
+	key   base.InternalKey
 	lower []byte
 	upper []byte
 }
@@ -71,7 +71,7 @@ func (it *Iterator) Error() error {
 // pointing at a valid entry, and (nil, nil) otherwise. Note that SeekGE only
 // checks the upper bound. It is up to the caller to ensure that key is greater
 // than or equal to the lower bound.
-func (it *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (it *Iterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	_, it.nd, _ = it.seekForBaseSplice(key)
 	if it.nd == it.list.tail {
 		return nil, nil
@@ -84,7 +84,7 @@ func (it *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return &it.key, it.Value()
 }
 
-func (it *Iterator) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (it *Iterator) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
 	return it.SeekGE(key)
 }
 
@@ -92,7 +92,7 @@ func (it *Iterator) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
 // key. Returns the key and value if the iterator is pointing at a valid entry,
 // and (nil, nil) otherwise. Note that SeekLT only checks the lower bound. It
 // is up to the caller to ensure that key is less than the upper bound.
-func (it *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (it *Iterator) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// the upper-bound.
 	it.nd, _, _ = it.seekForBaseSplice(key)
@@ -111,7 +111,7 @@ func (it *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
 // if the iterator is pointing at a valid entry, and (nil, nil) otherwise. Note
 // that First only checks the upper bound. It is up to the caller to ensure
 // that key is greater than or equal to the lower bound (e.g. via a call to SeekGE(lower)).
-func (it *Iterator) First() (*db.InternalKey, []byte) {
+func (it *Iterator) First() (*base.InternalKey, []byte) {
 	it.nd = it.list.getNext(it.list.head, 0)
 	if it.nd == it.list.tail {
 		return nil, nil
@@ -128,7 +128,7 @@ func (it *Iterator) First() (*db.InternalKey, []byte) {
 // the iterator is pointing at a valid entry, and (nil, nil) otherwise. Note
 // that Last only checks the lower bound. It is up to the caller to ensure that
 // key is less than the upper bound (e.g. via a call to SeekLT(upper)).
-func (it *Iterator) Last() (*db.InternalKey, []byte) {
+func (it *Iterator) Last() (*base.InternalKey, []byte) {
 	it.nd = it.list.getPrev(it.list.tail, 0)
 	if it.nd == it.list.head {
 		return nil, nil
@@ -143,7 +143,7 @@ func (it *Iterator) Last() (*db.InternalKey, []byte) {
 
 // Next advances to the next position. Returns the key and value if the
 // iterator is pointing at a valid entry, and (nil, nil) otherwise.
-func (it *Iterator) Next() (*db.InternalKey, []byte) {
+func (it *Iterator) Next() (*base.InternalKey, []byte) {
 	it.nd = it.list.getNext(it.nd, 0)
 	if it.nd == it.list.tail {
 		return nil, nil
@@ -158,7 +158,7 @@ func (it *Iterator) Next() (*db.InternalKey, []byte) {
 
 // Prev moves to the previous position. Returns the key and value if the
 // iterator is pointing at a valid entry, and (nil, nil) otherwise.
-func (it *Iterator) Prev() (*db.InternalKey, []byte) {
+func (it *Iterator) Prev() (*base.InternalKey, []byte) {
 	it.nd = it.list.getPrev(it.nd, 0)
 	if it.nd == it.list.head {
 		return nil, nil
@@ -172,7 +172,7 @@ func (it *Iterator) Prev() (*db.InternalKey, []byte) {
 }
 
 // Key returns the key at the current position.
-func (it *Iterator) Key() *db.InternalKey {
+func (it *Iterator) Key() *base.InternalKey {
 	return &it.key
 }
 
@@ -198,20 +198,20 @@ func (it *Iterator) Valid() bool {
 
 func (it *Iterator) decodeKey() {
 	b := it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
-	// This is a manual inline of db.DecodeInternalKey, because the Go compiler
+	// This is a manual inline of base.DecodeInternalKey, because the Go compiler
 	// seems to refuse to automatically inline it currently.
 	l := len(b) - 8
 	if l >= 0 {
 		it.key.Trailer = binary.LittleEndian.Uint64(b[l:])
 		it.key.UserKey = b[:l:l]
 	} else {
-		it.key.Trailer = uint64(db.InternalKeyKindInvalid)
+		it.key.Trailer = uint64(base.InternalKeyKindInvalid)
 		it.key.UserKey = nil
 	}
 }
 
 func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {
-	ikey := db.MakeSearchKey(key)
+	ikey := base.MakeSearchKey(key)
 	level := int(it.list.Height() - 1)
 
 	prev = it.list.head

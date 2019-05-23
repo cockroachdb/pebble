@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/rangedel"
 )
 
@@ -25,7 +25,7 @@ func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 //
 // A memTable is implemented on top of a lock-free arena-backed skiplist. An
 // arena is a fixed size contiguous chunk of memory (see
-// db.Options.MemTableSize). A memTable's memory consumtion is thus fixed at
+// Options.MemTableSize). A memTable's memory consumtion is thus fixed at
 // the time of creation (with the exception of the cached fragmented range
 // tombstones). The arena-backed skiplist provides both forward and reverse
 // links which makes forward and reverse iteration the same speed.
@@ -44,8 +44,8 @@ func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 //
 // It is safe to call get, apply, newIter, and newRangeDelIter concurrently.
 type memTable struct {
-	cmp         db.Compare
-	equal       db.Equal
+	cmp         Compare
+	equal       Equal
 	skl         arenaskl.Skiplist
 	rangeDelSkl arenaskl.Skiplist
 	emptySize   uint32
@@ -58,7 +58,7 @@ type memTable struct {
 }
 
 // newMemTable returns a new MemTable.
-func newMemTable(o *db.Options) *memTable {
+func newMemTable(o *Options) *memTable {
 	o = o.EnsureDefaults()
 	m := &memTable{
 		cmp:       o.Comparer.Compare,
@@ -106,13 +106,13 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter(nil, nil)
 	ikey, val := it.SeekGE(key)
 	if ikey == nil {
-		return nil, db.ErrNotFound
+		return nil, ErrNotFound
 	}
 	if !m.equal(key, ikey.UserKey) {
-		return nil, db.ErrNotFound
+		return nil, ErrNotFound
 	}
-	if ikey.Kind() == db.InternalKeyKindDelete {
-		return nil, db.ErrNotFound
+	if ikey.Kind() == InternalKeyKindDelete {
+		return nil, ErrNotFound
 	}
 	return val, nil
 }
@@ -150,12 +150,12 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 			break
 		}
 		var err error
-		ikey := db.MakeInternalKey(ukey, seqNum, kind)
+		ikey := base.MakeInternalKey(ukey, seqNum, kind)
 		switch kind {
-		case db.InternalKeyKindRangeDelete:
+		case InternalKeyKindRangeDelete:
 			err = m.rangeDelSkl.Add(ikey, value)
 			tombstoneCount++
-		case db.InternalKeyKindLogData:
+		case InternalKeyKindLogData:
 		default:
 			err = ins.Add(&m.skl, ikey, value)
 		}
@@ -175,11 +175,11 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 // newIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
-func (m *memTable) newIter(o *db.IterOptions) internalIterator {
+func (m *memTable) newIter(o *IterOptions) internalIterator {
 	return m.skl.NewIter(o.GetLowerBound(), o.GetUpperBound())
 }
 
-func (m *memTable) newRangeDelIter(*db.IterOptions) internalIterator {
+func (m *memTable) newRangeDelIter(*IterOptions) internalIterator {
 	tombstones := m.tombstones.get(m)
 	if tombstones == nil {
 		return nil

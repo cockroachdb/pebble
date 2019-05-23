@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 type tombstonesByEndKey struct {
-	cmp db.Compare
+	cmp base.Compare
 	buf []Tombstone
 }
 
@@ -38,7 +38,7 @@ func (v *tombstonesBySeqNum) Swap(i, j int) {
 // tombstones are split at their overlap points. The fragmented tombstones are
 // output to the supplied Output function.
 type Fragmenter struct {
-	Cmp db.Compare
+	Cmp base.Compare
 	// Emit is called to emit a chunk of tombstone fragments. Every tombstone
 	// within the chunk has the same start and end key, and differ only by
 	// sequence number.
@@ -141,7 +141,7 @@ func (f *Fragmenter) checkInvariants() {
 // method returns and should not be modified. This is safe for tombstones that
 // are added from a memtable or batch. It is not safe for a tombstone added
 // from an sstable where the range-del block has been prefix compressed.
-func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
+func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
@@ -182,7 +182,7 @@ func (f *Fragmenter) Add(start db.InternalKey, end []byte) {
 // tombstones. The key must be consistent with the ordering of the
 // tombstones. That is, it is invalid to specify a key here that is out of
 // order with the tombstone start keys passed to Add.
-func (f *Fragmenter) Deleted(key db.InternalKey, snapshot uint64) bool {
+func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
@@ -259,7 +259,7 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 			// new:    c------
 			done = append(done, Tombstone{Start: t.Start, End: key})
 			f.pending = append(f.pending, Tombstone{
-				Start: db.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
+				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
 				End:   t.End,
 			})
 		} else {

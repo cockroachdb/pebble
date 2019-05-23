@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/db"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
@@ -39,9 +38,9 @@ func runScan(cmd *cobra.Command, args []string) {
 		lastElapsed time.Duration
 	)
 
-	opts := db.Sync
+	opts := pebble.Sync
 	if disableWAL {
-		opts = db.NoSync
+		opts = pebble.NoSync
 	}
 
 	runTest(args[0], test{

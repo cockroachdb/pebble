@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 func TestIkeyRange(t *testing.T) {
@@ -65,13 +65,13 @@ func TestIkeyRange(t *testing.T) {
 			}
 		}
 
-		smallest0, largest0 := ikeyRange(db.DefaultComparer.Compare, f, nil)
+		smallest0, largest0 := ikeyRange(DefaultComparer.Compare, f, nil)
 		got0 := string(smallest0.UserKey) + "-" + string(largest0.UserKey)
 		if got0 != tc.want {
 			t.Errorf("first []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got0, tc.want)
 		}
 
-		smallest1, largest1 := ikeyRange(db.DefaultComparer.Compare, nil, f)
+		smallest1, largest1 := ikeyRange(DefaultComparer.Compare, nil, f)
 		got1 := string(smallest1.UserKey) + "-" + string(largest1.UserKey)
 		if got1 != tc.want {
 			t.Errorf("second []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got1, tc.want)
@@ -83,81 +83,81 @@ func TestOverlaps(t *testing.T) {
 	m00 := fileMetadata{
 		fileNum:  700,
 		size:     1,
-		smallest: db.ParseInternalKey("b.SET.7008"),
-		largest:  db.ParseInternalKey("e.SET.7009"),
+		smallest: base.ParseInternalKey("b.SET.7008"),
+		largest:  base.ParseInternalKey("e.SET.7009"),
 	}
 	m01 := fileMetadata{
 		fileNum:  701,
 		size:     1,
-		smallest: db.ParseInternalKey("c.SET.7018"),
-		largest:  db.ParseInternalKey("f.SET.7019"),
+		smallest: base.ParseInternalKey("c.SET.7018"),
+		largest:  base.ParseInternalKey("f.SET.7019"),
 	}
 	m02 := fileMetadata{
 		fileNum:  702,
 		size:     1,
-		smallest: db.ParseInternalKey("f.SET.7028"),
-		largest:  db.ParseInternalKey("g.SET.7029"),
+		smallest: base.ParseInternalKey("f.SET.7028"),
+		largest:  base.ParseInternalKey("g.SET.7029"),
 	}
 	m03 := fileMetadata{
 		fileNum:  703,
 		size:     1,
-		smallest: db.ParseInternalKey("x.SET.7038"),
-		largest:  db.ParseInternalKey("y.SET.7039"),
+		smallest: base.ParseInternalKey("x.SET.7038"),
+		largest:  base.ParseInternalKey("y.SET.7039"),
 	}
 	m04 := fileMetadata{
 		fileNum:  704,
 		size:     1,
-		smallest: db.ParseInternalKey("n.SET.7048"),
-		largest:  db.ParseInternalKey("p.SET.7049"),
+		smallest: base.ParseInternalKey("n.SET.7048"),
+		largest:  base.ParseInternalKey("p.SET.7049"),
 	}
 	m05 := fileMetadata{
 		fileNum:  705,
 		size:     1,
-		smallest: db.ParseInternalKey("p.SET.7058"),
-		largest:  db.ParseInternalKey("p.SET.7059"),
+		smallest: base.ParseInternalKey("p.SET.7058"),
+		largest:  base.ParseInternalKey("p.SET.7059"),
 	}
 	m06 := fileMetadata{
 		fileNum:  706,
 		size:     1,
-		smallest: db.ParseInternalKey("p.SET.7068"),
-		largest:  db.ParseInternalKey("u.SET.7069"),
+		smallest: base.ParseInternalKey("p.SET.7068"),
+		largest:  base.ParseInternalKey("u.SET.7069"),
 	}
 	m07 := fileMetadata{
 		fileNum:  707,
 		size:     1,
-		smallest: db.ParseInternalKey("r.SET.7078"),
-		largest:  db.ParseInternalKey("s.SET.7079"),
+		smallest: base.ParseInternalKey("r.SET.7078"),
+		largest:  base.ParseInternalKey("s.SET.7079"),
 	}
 
 	m10 := fileMetadata{
 		fileNum:  710,
 		size:     1,
-		smallest: db.ParseInternalKey("d.SET.7108"),
-		largest:  db.ParseInternalKey("g.SET.7109"),
+		smallest: base.ParseInternalKey("d.SET.7108"),
+		largest:  base.ParseInternalKey("g.SET.7109"),
 	}
 	m11 := fileMetadata{
 		fileNum:  711,
 		size:     1,
-		smallest: db.ParseInternalKey("g.SET.7118"),
-		largest:  db.ParseInternalKey("j.SET.7119"),
+		smallest: base.ParseInternalKey("g.SET.7118"),
+		largest:  base.ParseInternalKey("j.SET.7119"),
 	}
 	m12 := fileMetadata{
 		fileNum:  712,
 		size:     1,
-		smallest: db.ParseInternalKey("n.SET.7128"),
-		largest:  db.ParseInternalKey("p.SET.7129"),
+		smallest: base.ParseInternalKey("n.SET.7128"),
+		largest:  base.ParseInternalKey("p.SET.7129"),
 	}
 	m13 := fileMetadata{
 		fileNum:  713,
 		size:     1,
-		smallest: db.ParseInternalKey("p.SET.7138"),
-		largest:  db.ParseInternalKey("p.SET.7139"),
+		smallest: base.ParseInternalKey("p.SET.7138"),
+		largest:  base.ParseInternalKey("p.SET.7139"),
 	}
 	m14 := fileMetadata{
 		fileNum:  714,
 		size:     1,
-		smallest: db.ParseInternalKey("p.SET.7148"),
-		largest:  db.ParseInternalKey("u.SET.7149"),
+		smallest: base.ParseInternalKey("p.SET.7148"),
+		largest:  base.ParseInternalKey("u.SET.7149"),
 	}
 
 	v := version{
@@ -238,7 +238,7 @@ func TestOverlaps(t *testing.T) {
 		{2, "a", "z", ""},
 	}
 
-	cmp := db.DefaultComparer.Compare
+	cmp := DefaultComparer.Compare
 	for _, tc := range testCases {
 		o := v.overlaps(tc.level, cmp, []byte(tc.ukey0), []byte(tc.ukey1))
 		s := make([]string, len(o))

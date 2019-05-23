@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
@@ -30,7 +30,7 @@ func TestPickCompaction(t *testing.T) {
 		return strings.Join(ss, ",")
 	}
 
-	opts := (*db.Options)(nil).EnsureDefaults()
+	opts := (*Options)(nil).EnsureDefaults()
 	testCases := []struct {
 		desc    string
 		version version
@@ -45,8 +45,8 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  100,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.101"),
-							largest:  db.ParseInternalKey("j.SET.102"),
+							smallest: base.ParseInternalKey("i.SET.101"),
+							largest:  base.ParseInternalKey("j.SET.102"),
 						},
 					},
 				},
@@ -62,8 +62,8 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  100,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.101"),
-							largest:  db.ParseInternalKey("j.SET.102"),
+							smallest: base.ParseInternalKey("i.SET.101"),
+							largest:  base.ParseInternalKey("j.SET.102"),
 						},
 					},
 				},
@@ -84,14 +84,14 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  100,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.101"),
-							largest:  db.ParseInternalKey("j.SET.102"),
+							smallest: base.ParseInternalKey("i.SET.101"),
+							largest:  base.ParseInternalKey("j.SET.102"),
 						},
 						{
 							fileNum:  110,
 							size:     1,
-							smallest: db.ParseInternalKey("k.SET.111"),
-							largest:  db.ParseInternalKey("l.SET.112"),
+							smallest: base.ParseInternalKey("k.SET.111"),
+							largest:  base.ParseInternalKey("l.SET.112"),
 						},
 					},
 				},
@@ -112,14 +112,14 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  100,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.101"),
-							largest:  db.ParseInternalKey("p.SET.102"),
+							smallest: base.ParseInternalKey("i.SET.101"),
+							largest:  base.ParseInternalKey("p.SET.102"),
 						},
 						{
 							fileNum:  110,
 							size:     1,
-							smallest: db.ParseInternalKey("j.SET.111"),
-							largest:  db.ParseInternalKey("q.SET.112"),
+							smallest: base.ParseInternalKey("j.SET.111"),
+							largest:  base.ParseInternalKey("q.SET.112"),
 						},
 					},
 				},
@@ -140,14 +140,14 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  100,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.101"),
-							largest:  db.ParseInternalKey("i.SET.102"),
+							smallest: base.ParseInternalKey("i.SET.101"),
+							largest:  base.ParseInternalKey("i.SET.102"),
 						},
 						{
 							fileNum:  110,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.111"),
-							largest:  db.ParseInternalKey("i.SET.112"),
+							smallest: base.ParseInternalKey("i.SET.111"),
+							largest:  base.ParseInternalKey("i.SET.112"),
 						},
 					},
 				},
@@ -168,22 +168,22 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  100,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.101"),
-							largest:  db.ParseInternalKey("i.SET.102"),
+							smallest: base.ParseInternalKey("i.SET.101"),
+							largest:  base.ParseInternalKey("i.SET.102"),
 						},
 					},
 					1: []fileMetadata{
 						{
 							fileNum:  200,
 							size:     1,
-							smallest: db.ParseInternalKey("a.SET.201"),
-							largest:  db.ParseInternalKey("b.SET.202"),
+							smallest: base.ParseInternalKey("a.SET.201"),
+							largest:  base.ParseInternalKey("b.SET.202"),
 						},
 						{
 							fileNum:  210,
 							size:     1,
-							smallest: db.ParseInternalKey("y.SET.211"),
-							largest:  db.ParseInternalKey("z.SET.212"),
+							smallest: base.ParseInternalKey("y.SET.211"),
+							largest:  base.ParseInternalKey("z.SET.212"),
 						},
 					},
 				},
@@ -204,48 +204,48 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  100,
 							size:     1,
-							smallest: db.ParseInternalKey("i.SET.101"),
-							largest:  db.ParseInternalKey("t.SET.102"),
+							smallest: base.ParseInternalKey("i.SET.101"),
+							largest:  base.ParseInternalKey("t.SET.102"),
 						},
 					},
 					1: []fileMetadata{
 						{
 							fileNum:  200,
 							size:     1,
-							smallest: db.ParseInternalKey("a.SET.201"),
-							largest:  db.ParseInternalKey("e.SET.202"),
+							smallest: base.ParseInternalKey("a.SET.201"),
+							largest:  base.ParseInternalKey("e.SET.202"),
 						},
 						{
 							fileNum:  210,
 							size:     1,
-							smallest: db.ParseInternalKey("f.SET.211"),
-							largest:  db.ParseInternalKey("j.SET.212"),
+							smallest: base.ParseInternalKey("f.SET.211"),
+							largest:  base.ParseInternalKey("j.SET.212"),
 						},
 					},
 					2: []fileMetadata{
 						{
 							fileNum:  300,
 							size:     1,
-							smallest: db.ParseInternalKey("a.SET.301"),
-							largest:  db.ParseInternalKey("b.SET.302"),
+							smallest: base.ParseInternalKey("a.SET.301"),
+							largest:  base.ParseInternalKey("b.SET.302"),
 						},
 						{
 							fileNum:  310,
 							size:     1,
-							smallest: db.ParseInternalKey("c.SET.311"),
-							largest:  db.ParseInternalKey("g.SET.312"),
+							smallest: base.ParseInternalKey("c.SET.311"),
+							largest:  base.ParseInternalKey("g.SET.312"),
 						},
 						{
 							fileNum:  320,
 							size:     1,
-							smallest: db.ParseInternalKey("h.SET.321"),
-							largest:  db.ParseInternalKey("m.SET.322"),
+							smallest: base.ParseInternalKey("h.SET.321"),
+							largest:  base.ParseInternalKey("m.SET.322"),
 						},
 						{
 							fileNum:  330,
 							size:     1,
-							smallest: db.ParseInternalKey("n.SET.331"),
-							largest:  db.ParseInternalKey("z.SET.332"),
+							smallest: base.ParseInternalKey("n.SET.331"),
+							largest:  base.ParseInternalKey("z.SET.332"),
 						},
 					},
 				},
@@ -266,40 +266,40 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  200,
 							size:     1,
-							smallest: db.ParseInternalKey("i1.SET.201"),
-							largest:  db.ParseInternalKey("i2.SET.202"),
+							smallest: base.ParseInternalKey("i1.SET.201"),
+							largest:  base.ParseInternalKey("i2.SET.202"),
 						},
 						{
 							fileNum:  210,
 							size:     1,
-							smallest: db.ParseInternalKey("j1.SET.211"),
-							largest:  db.ParseInternalKey("j2.SET.212"),
+							smallest: base.ParseInternalKey("j1.SET.211"),
+							largest:  base.ParseInternalKey("j2.SET.212"),
 						},
 						{
 							fileNum:  220,
 							size:     1,
-							smallest: db.ParseInternalKey("k1.SET.221"),
-							largest:  db.ParseInternalKey("k2.SET.222"),
+							smallest: base.ParseInternalKey("k1.SET.221"),
+							largest:  base.ParseInternalKey("k2.SET.222"),
 						},
 						{
 							fileNum:  230,
 							size:     1,
-							smallest: db.ParseInternalKey("l1.SET.231"),
-							largest:  db.ParseInternalKey("l2.SET.232"),
+							smallest: base.ParseInternalKey("l1.SET.231"),
+							largest:  base.ParseInternalKey("l2.SET.232"),
 						},
 					},
 					2: []fileMetadata{
 						{
 							fileNum:  300,
 							size:     1,
-							smallest: db.ParseInternalKey("a0.SET.301"),
-							largest:  db.ParseInternalKey("l0.SET.302"),
+							smallest: base.ParseInternalKey("a0.SET.301"),
+							largest:  base.ParseInternalKey("l0.SET.302"),
 						},
 						{
 							fileNum:  310,
 							size:     1,
-							smallest: db.ParseInternalKey("l2.SET.311"),
-							largest:  db.ParseInternalKey("z2.SET.312"),
+							smallest: base.ParseInternalKey("l2.SET.311"),
+							largest:  base.ParseInternalKey("z2.SET.312"),
 						},
 					},
 				},
@@ -320,40 +320,40 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  200,
 							size:     1,
-							smallest: db.ParseInternalKey("i1.SET.201"),
-							largest:  db.ParseInternalKey("i2.SET.202"),
+							smallest: base.ParseInternalKey("i1.SET.201"),
+							largest:  base.ParseInternalKey("i2.SET.202"),
 						},
 						{
 							fileNum:  210,
 							size:     1,
-							smallest: db.ParseInternalKey("j1.SET.211"),
-							largest:  db.ParseInternalKey("j2.SET.212"),
+							smallest: base.ParseInternalKey("j1.SET.211"),
+							largest:  base.ParseInternalKey("j2.SET.212"),
 						},
 						{
 							fileNum:  220,
 							size:     1,
-							smallest: db.ParseInternalKey("k1.SET.221"),
-							largest:  db.ParseInternalKey("k2.SET.222"),
+							smallest: base.ParseInternalKey("k1.SET.221"),
+							largest:  base.ParseInternalKey("k2.SET.222"),
 						},
 						{
 							fileNum:  230,
 							size:     1,
-							smallest: db.ParseInternalKey("l1.SET.231"),
-							largest:  db.ParseInternalKey("l2.SET.232"),
+							smallest: base.ParseInternalKey("l1.SET.231"),
+							largest:  base.ParseInternalKey("l2.SET.232"),
 						},
 					},
 					2: []fileMetadata{
 						{
 							fileNum:  300,
 							size:     1,
-							smallest: db.ParseInternalKey("a0.SET.301"),
-							largest:  db.ParseInternalKey("j0.SET.302"),
+							smallest: base.ParseInternalKey("a0.SET.301"),
+							largest:  base.ParseInternalKey("j0.SET.302"),
 						},
 						{
 							fileNum:  310,
 							size:     1,
-							smallest: db.ParseInternalKey("j2.SET.311"),
-							largest:  db.ParseInternalKey("z2.SET.312"),
+							smallest: base.ParseInternalKey("j2.SET.311"),
+							largest:  base.ParseInternalKey("z2.SET.312"),
 						},
 					},
 				},
@@ -374,40 +374,40 @@ func TestPickCompaction(t *testing.T) {
 						{
 							fileNum:  200,
 							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
-							smallest: db.ParseInternalKey("i1.SET.201"),
-							largest:  db.ParseInternalKey("i2.SET.202"),
+							smallest: base.ParseInternalKey("i1.SET.201"),
+							largest:  base.ParseInternalKey("i2.SET.202"),
 						},
 						{
 							fileNum:  210,
 							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
-							smallest: db.ParseInternalKey("j1.SET.211"),
-							largest:  db.ParseInternalKey("j2.SET.212"),
+							smallest: base.ParseInternalKey("j1.SET.211"),
+							largest:  base.ParseInternalKey("j2.SET.212"),
 						},
 						{
 							fileNum:  220,
 							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
-							smallest: db.ParseInternalKey("k1.SET.221"),
-							largest:  db.ParseInternalKey("k2.SET.222"),
+							smallest: base.ParseInternalKey("k1.SET.221"),
+							largest:  base.ParseInternalKey("k2.SET.222"),
 						},
 						{
 							fileNum:  230,
 							size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
-							smallest: db.ParseInternalKey("l1.SET.231"),
-							largest:  db.ParseInternalKey("l2.SET.232"),
+							smallest: base.ParseInternalKey("l1.SET.231"),
+							largest:  base.ParseInternalKey("l2.SET.232"),
 						},
 					},
 					2: []fileMetadata{
 						{
 							fileNum:  300,
 							size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
-							smallest: db.ParseInternalKey("a0.SET.301"),
-							largest:  db.ParseInternalKey("l0.SET.302"),
+							smallest: base.ParseInternalKey("a0.SET.301"),
+							largest:  base.ParseInternalKey("l0.SET.302"),
 						},
 						{
 							fileNum:  310,
 							size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
-							smallest: db.ParseInternalKey("l2.SET.311"),
-							largest:  db.ParseInternalKey("z2.SET.312"),
+							smallest: base.ParseInternalKey("l2.SET.311"),
+							largest:  base.ParseInternalKey("z2.SET.312"),
 						},
 					},
 				},
@@ -424,8 +424,8 @@ func TestPickCompaction(t *testing.T) {
 	for _, tc := range testCases {
 		vs := &versionSet{
 			opts:    opts,
-			cmp:     db.DefaultComparer.Compare,
-			cmpName: db.DefaultComparer.Name,
+			cmp:     DefaultComparer.Compare,
+			cmpName: DefaultComparer.Name,
 		}
 		vs.versions.init()
 		vs.append(&tc.version)
@@ -467,42 +467,42 @@ func TestElideTombstone(t *testing.T) {
 				files: [numLevels][]fileMetadata{
 					1: []fileMetadata{
 						{
-							smallest: db.ParseInternalKey("c.SET.801"),
-							largest:  db.ParseInternalKey("g.SET.800"),
+							smallest: base.ParseInternalKey("c.SET.801"),
+							largest:  base.ParseInternalKey("g.SET.800"),
 						},
 						{
-							smallest: db.ParseInternalKey("x.SET.701"),
-							largest:  db.ParseInternalKey("y.SET.700"),
+							smallest: base.ParseInternalKey("x.SET.701"),
+							largest:  base.ParseInternalKey("y.SET.700"),
 						},
 					},
 					2: []fileMetadata{
 						{
-							smallest: db.ParseInternalKey("d.SET.601"),
-							largest:  db.ParseInternalKey("h.SET.600"),
+							smallest: base.ParseInternalKey("d.SET.601"),
+							largest:  base.ParseInternalKey("h.SET.600"),
 						},
 						{
-							smallest: db.ParseInternalKey("r.SET.501"),
-							largest:  db.ParseInternalKey("t.SET.500"),
+							smallest: base.ParseInternalKey("r.SET.501"),
+							largest:  base.ParseInternalKey("t.SET.500"),
 						},
 					},
 					3: []fileMetadata{
 						{
-							smallest: db.ParseInternalKey("f.SET.401"),
-							largest:  db.ParseInternalKey("g.SET.400"),
+							smallest: base.ParseInternalKey("f.SET.401"),
+							largest:  base.ParseInternalKey("g.SET.400"),
 						},
 						{
-							smallest: db.ParseInternalKey("w.SET.301"),
-							largest:  db.ParseInternalKey("x.SET.300"),
+							smallest: base.ParseInternalKey("w.SET.301"),
+							largest:  base.ParseInternalKey("x.SET.300"),
 						},
 					},
 					4: []fileMetadata{
 						{
-							smallest: db.ParseInternalKey("f.SET.201"),
-							largest:  db.ParseInternalKey("m.SET.200"),
+							smallest: base.ParseInternalKey("f.SET.201"),
+							largest:  base.ParseInternalKey("m.SET.200"),
 						},
 						{
-							smallest: db.ParseInternalKey("t.SET.101"),
-							largest:  db.ParseInternalKey("t.SET.100"),
+							smallest: base.ParseInternalKey("t.SET.101"),
+							largest:  base.ParseInternalKey("t.SET.100"),
 						},
 					},
 				},
@@ -537,20 +537,20 @@ func TestElideTombstone(t *testing.T) {
 				files: [numLevels][]fileMetadata{
 					6: []fileMetadata{
 						{
-							smallest: db.ParseInternalKey("i.SET.401"),
-							largest:  db.ParseInternalKey("i.SET.400"),
+							smallest: base.ParseInternalKey("i.SET.401"),
+							largest:  base.ParseInternalKey("i.SET.400"),
 						},
 						{
-							smallest: db.ParseInternalKey("i.SET.301"),
-							largest:  db.ParseInternalKey("k.SET.300"),
+							smallest: base.ParseInternalKey("i.SET.301"),
+							largest:  base.ParseInternalKey("k.SET.300"),
 						},
 						{
-							smallest: db.ParseInternalKey("k.SET.201"),
-							largest:  db.ParseInternalKey("m.SET.200"),
+							smallest: base.ParseInternalKey("k.SET.201"),
+							largest:  base.ParseInternalKey("m.SET.200"),
 						},
 						{
-							smallest: db.ParseInternalKey("m.SET.101"),
-							largest:  db.ParseInternalKey("m.SET.100"),
+							smallest: base.ParseInternalKey("m.SET.101"),
+							largest:  base.ParseInternalKey("m.SET.100"),
 						},
 					},
 				},
@@ -569,7 +569,7 @@ func TestElideTombstone(t *testing.T) {
 
 	for _, tc := range testCases {
 		c := compaction{
-			cmp:         db.DefaultComparer.Compare,
+			cmp:         DefaultComparer.Compare,
 			version:     &tc.version,
 			startLevel:  tc.level,
 			outputLevel: tc.level + 1,
@@ -590,7 +590,7 @@ func TestCompaction(t *testing.T) {
 	const valueSize = 3500
 
 	mem := vfs.NewMem()
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS:           mem,
 		MemTableSize: memTableSize,
 	})
@@ -703,7 +703,7 @@ func TestManualCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: mem,
 	})
 	if err != nil {
@@ -785,7 +785,7 @@ func TestManualCompaction(t *testing.T) {
 }
 
 func TestCompactionShouldStopBefore(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := DefaultComparer.Compare
 	var grandparents []fileMetadata
 
 	parseMeta := func(s string) fileMetadata {
@@ -794,8 +794,8 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		return fileMetadata{
-			smallest: db.InternalKey{UserKey: []byte(parts[0])},
-			largest:  db.InternalKey{UserKey: []byte(parts[1])},
+			smallest: InternalKey{UserKey: []byte(parts[0])},
+			largest:  InternalKey{UserKey: []byte(parts[1])},
 		}
 	}
 
@@ -847,7 +847,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 					if i == 0 {
 						smallest = key
 					}
-					if c.shouldStopBefore(db.MakeInternalKey([]byte(key), 0, 0)) {
+					if c.shouldStopBefore(base.MakeInternalKey([]byte(key), 0, 0)) {
 						fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
 						smallest = key
 					}
@@ -863,7 +863,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 }
 
 func TestCompactionOutputLevel(t *testing.T) {
-	opts := (*db.Options)(nil).EnsureDefaults()
+	opts := (*Options)(nil).EnsureDefaults()
 	version := &version{}
 
 	datadriven.RunTest(t, "testdata/compaction_output_level",
@@ -890,7 +890,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 }
 
 func TestCompactionExpandInputs(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := DefaultComparer.Compare
 	var files []fileMetadata
 
 	parseMeta := func(s string) fileMetadata {
@@ -899,8 +899,8 @@ func TestCompactionExpandInputs(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		return fileMetadata{
-			smallest: db.ParseInternalKey(parts[0]),
-			largest:  db.ParseInternalKey(parts[1]),
+			smallest: base.ParseInternalKey(parts[0]),
+			largest:  base.ParseInternalKey(parts[1]),
 		}
 	}
 
@@ -951,7 +951,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 }
 
 func TestCompactionAtomicUnitBounds(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := DefaultComparer.Compare
 	var files []fileMetadata
 
 	parseMeta := func(s string) fileMetadata {
@@ -960,8 +960,8 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		return fileMetadata{
-			smallest: db.ParseInternalKey(parts[0]),
-			largest:  db.ParseInternalKey(parts[1]),
+			smallest: base.ParseInternalKey(parts[0]),
+			largest:  base.ParseInternalKey(parts[1]),
 		}
 	}
 
@@ -1017,8 +1017,8 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			t.Fatalf("malformed table spec: %s: %s", s, err)
 		}
 		meta = fileMetadata{
-			smallest: db.InternalKey{UserKey: []byte(match[2])},
-			largest:  db.InternalKey{UserKey: []byte(match[3])},
+			smallest: InternalKey{UserKey: []byte(match[2])},
+			largest:  InternalKey{UserKey: []byte(match[3])},
 		}
 		return level, meta
 	}

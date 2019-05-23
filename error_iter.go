@@ -4,8 +4,6 @@
 
 package pebble
 
-import "github.com/petermattis/pebble/db"
-
 type errorIter struct {
 	err error
 }
@@ -16,35 +14,35 @@ func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (c *errorIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (c *errorIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (c *errorIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) First() (*db.InternalKey, []byte) {
+func (c *errorIter) First() (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) Last() (*db.InternalKey, []byte) {
+func (c *errorIter) Last() (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) Next() (*db.InternalKey, []byte) {
+func (c *errorIter) Next() (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) Prev() (*db.InternalKey, []byte) {
+func (c *errorIter) Prev() (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) Key() *db.InternalKey {
+func (c *errorIter) Key() *InternalKey {
 	return nil
 }
 

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -131,8 +131,8 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}
-		tw := sstable.NewWriter(f, nil, db.LevelOptions{})
-		ik := db.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
+		tw := sstable.NewWriter(f, nil, LevelOptions{})
+		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
 			return nil, nil, fmt.Errorf("tw.Set: %v", err)
 		}
@@ -146,7 +146,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	fs.closeCounts = map[string]int{}
 	fs.mu.Unlock()
 
-	opts := &db.Options{}
+	opts := &Options{}
 	opts.EnsureDefaults()
 	c := &tableCache{}
 	c.init("", fs, opts, tableCacheTestCacheSize)

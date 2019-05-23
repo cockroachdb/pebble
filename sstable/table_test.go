@@ -19,7 +19,7 @@ import (
 
 	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/bloom"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -113,10 +113,10 @@ func init() {
 	}
 }
 
-func check(f vfs.File, comparer *db.Comparer, fp db.FilterPolicy) error {
-	r := NewReader(f, 0, &db.Options{
+func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
+	r := NewReader(f, 0, &Options{
 		Comparer: comparer,
-		Levels: []db.LevelOptions{{
+		Levels: []TableOptions{{
 			FilterPolicy: fp,
 		}},
 	})
@@ -174,7 +174,7 @@ func check(f vfs.File, comparer *db.Comparer, fp db.FilterPolicy) error {
 	// Check that nonsense words are not in the table.
 	for _, s := range nonsenseWords {
 		// Check using Get.
-		if _, err := r.get([]byte(s)); err != db.ErrNotFound {
+		if _, err := r.get([]byte(s)); err != base.ErrNotFound {
 			return fmt.Errorf("Get %q: got %v, want ErrNotFound", s, err)
 		}
 
@@ -314,11 +314,11 @@ var (
 )
 
 func build(
-	compression db.Compression,
-	fp db.FilterPolicy,
-	ftype db.FilterType,
-	comparer *db.Comparer,
-	propCollector func() db.TablePropertyCollector,
+	compression Compression,
+	fp FilterPolicy,
+	ftype FilterType,
+	comparer *Comparer,
+	propCollector func() TablePropertyCollector,
 ) (vfs.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
@@ -338,8 +338,8 @@ func build(
 	defer f0.Close()
 	tmpFileCount++
 
-	opts := &db.Options{
-		Merger: &db.Merger{
+	opts := &Options{
+		Merger: &base.Merger{
 			Name: "nullptr",
 		},
 		Comparer: comparer,
@@ -348,16 +348,16 @@ func build(
 		opts.TablePropertyCollectors = append(opts.TablePropertyCollectors, propCollector)
 	}
 
-	levelOpts := db.LevelOptions{
+	tableOpts := TableOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
 		FilterType:   ftype,
 	}
 
-	w := NewWriter(f0, opts, levelOpts)
+	w := NewWriter(f0, opts, tableOpts)
 	for _, k := range keys {
 		v := wordCount[k]
-		ikey := db.MakeInternalKey([]byte(k), 0, db.InternalKeyKindSet)
+		ikey := base.MakeInternalKey([]byte(k), 0, InternalKeyKindSet)
 		if err := w.Add(ikey, []byte(v)); err != nil {
 			return nil, err
 		}
@@ -374,7 +374,7 @@ func build(
 	return f1, nil
 }
 
-func testReader(t *testing.T, filename string, comparer *db.Comparer, fp db.FilterPolicy) {
+func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPolicy) {
 	// Check that we can read a pre-made table.
 	f, err := os.Open(filepath.FromSlash("testdata/" + filename))
 	if err != nil {
@@ -412,7 +412,7 @@ func TestReaderBloomUsed(t *testing.T) {
 
 	files := []struct {
 		path     string
-		comparer *db.Comparer
+		comparer *Comparer
 	}{
 		{"h.table-bloom.no-compression.sst", nil},
 		{"h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst", fixtureComparer},
@@ -462,8 +462,8 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r := NewReader(f, 0, &db.Options{
-		Levels: []db.LevelOptions{{
+	r := NewReader(f, 0, &Options{
+		Levels: []TableOptions{{
 			FilterPolicy: c,
 		}},
 	})
@@ -503,7 +503,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 }
 
 type countingFilterPolicy struct {
-	db.FilterPolicy
+	FilterPolicy
 	degenerate bool
 
 	truePositives  int
@@ -512,7 +512,7 @@ type countingFilterPolicy struct {
 	trueNegatives  int
 }
 
-func (c *countingFilterPolicy) MayContain(ftype db.FilterType, filter, key []byte) bool {
+func (c *countingFilterPolicy) MayContain(ftype FilterType, filter, key []byte) bool {
 	got := true
 	if c.degenerate {
 		// When degenerate is true, we override the embedded FilterPolicy's
@@ -537,12 +537,12 @@ func (c *countingFilterPolicy) MayContain(ftype db.FilterType, filter, key []byt
 }
 
 func TestWriterRoundTrip(t *testing.T) {
-	for name, fp := range map[string]db.FilterPolicy{
+	for name, fp := range map[string]FilterPolicy{
 		"none":       nil,
 		"bloom10bit": bloom.FilterPolicy(10),
 	} {
 		t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
-			f, err := build(db.DefaultCompression, fp, db.TableFilter, nil, nil)
+			f, err := build(base.DefaultCompression, fp, TableFilter, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -572,11 +572,11 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 				continue
 			}
-			w := NewWriter(wf, nil, db.LevelOptions{
+			w := NewWriter(wf, nil, TableOptions{
 				BlockSize: blockSize,
 			})
 			for _, k := range keys[:nk] {
-				if err := w.Add(db.InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
+				if err := w.Add(InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
 					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
 					continue loop
 				}
@@ -634,9 +634,9 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 
 func TestFooterRoundTrip(t *testing.T) {
 	buf := make([]byte, 100+maxFooterLen)
-	for _, format := range []db.TableFormat{
-		db.TableFormatRocksDBv2,
-		db.TableFormatLevelDB,
+	for _, format := range []TableFormat{
+		TableFormatRocksDBv2,
+		TableFormatLevelDB,
 	} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
 			for _, checksum := range []uint8{checksumCRC32c} {
@@ -689,7 +689,7 @@ func TestFooterRoundTrip(t *testing.T) {
 }
 
 func TestReadFooter(t *testing.T) {
-	encode := func(format db.TableFormat, checksum uint8) string {
+	encode := func(format TableFormat, checksum uint8) string {
 		f := footer{
 			format:   format,
 			checksum: checksum,
@@ -704,10 +704,10 @@ func TestReadFooter(t *testing.T) {
 		{strings.Repeat("a", minFooterLen-1), "file size is too small"},
 		{strings.Repeat("a", levelDBFooterLen), "bad magic number"},
 		{strings.Repeat("a", rocksDBFooterLen), "bad magic number"},
-		{encode(db.TableFormatLevelDB, 0)[1:], "file size is too small"},
-		{encode(db.TableFormatRocksDBv2, 0)[1:], "footer too short"},
-		{encode(db.TableFormatRocksDBv2, noChecksum), "unsupported checksum type"},
-		{encode(db.TableFormatRocksDBv2, checksumXXHash), "unsupported checksum type"},
+		{encode(TableFormatLevelDB, 0)[1:], "file size is too small"},
+		{encode(TableFormatRocksDBv2, 0)[1:], "footer too short"},
+		{encode(TableFormatRocksDBv2, noChecksum), "unsupported checksum type"},
+		{encode(TableFormatRocksDBv2, checksumXXHash), "unsupported checksum type"},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
@@ -738,7 +738,7 @@ func TestReadFooter(t *testing.T) {
 
 type errorPropCollector struct{}
 
-func (errorPropCollector) Add(key db.InternalKey, _ []byte) error {
+func (errorPropCollector) Add(key InternalKey, _ []byte) error {
 	return fmt.Errorf("add %s failed", key)
 }
 
@@ -757,13 +757,13 @@ func TestTablePropertyCollectorErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := &db.Options{}
+	opts := &Options{}
 	opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-		func() db.TablePropertyCollector {
+		func() TablePropertyCollector {
 			return errorPropCollector{}
 		})
 
-	w := NewWriter(f, opts, db.LevelOptions{})
+	w := NewWriter(f, opts, TableOptions{})
 	require.Regexp(t, `add a#0,1 failed`, w.Set([]byte("a"), []byte("b")))
 	require.Regexp(t, `add c#0,0 failed`, w.Delete([]byte("c")))
 	require.Regexp(t, `add d#0,15 failed`, w.DeleteRange([]byte("d"), []byte("e")))

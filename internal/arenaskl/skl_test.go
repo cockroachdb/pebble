@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -41,13 +41,13 @@ type iterAdapter struct {
 	*Iterator
 }
 
-func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {
+func (i *iterAdapter) verify(key *base.InternalKey, val []byte) bool {
 	valid := key != nil
 	if valid != i.Valid() {
 		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
 	}
 	if valid {
-		if db.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
+		if base.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
 			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
 		}
 		if !bytes.Equal(val, i.Value()) {
@@ -85,29 +85,29 @@ func (i *iterAdapter) Prev() bool {
 	return i.verify(i.Iterator.Prev())
 }
 
-func (i *iterAdapter) Key() db.InternalKey {
+func (i *iterAdapter) Key() base.InternalKey {
 	return *i.Iterator.Key()
 }
 
-func makeIntKey(i int) db.InternalKey {
-	return db.InternalKey{UserKey: []byte(fmt.Sprintf("%05d", i))}
+func makeIntKey(i int) base.InternalKey {
+	return base.InternalKey{UserKey: []byte(fmt.Sprintf("%05d", i))}
 }
 
 func makeKey(s string) []byte {
 	return []byte(s)
 }
 
-func makeIkey(s string) db.InternalKey {
-	return db.InternalKey{UserKey: []byte(s)}
+func makeIkey(s string) base.InternalKey {
+	return base.InternalKey{UserKey: []byte(s)}
 }
 
 func makeValue(i int) []byte {
 	return []byte(fmt.Sprintf("v%05d", i))
 }
 
-func makeInserterAdd(s *Skiplist) func(key db.InternalKey, value []byte) error {
+func makeInserterAdd(s *Skiplist) func(key base.InternalKey, value []byte) error {
 	ins := &Inserter{}
-	return func(key db.InternalKey, value []byte) error {
+	return func(key base.InternalKey, value []byte) error {
 		return ins.Add(s, key, value)
 	}
 }
@@ -355,7 +355,7 @@ func TestSkiplistAdd(t *testing.T) {
 			}
 
 			// Add nil key and value (treated same as empty).
-			err := add(db.InternalKey{}, nil)
+			err := add(base.InternalKey{}, nil)
 			require.Nil(t, err)
 			require.True(t, it.SeekGE([]byte{}))
 			require.EqualValues(t, []byte{}, it.Key().UserKey)
@@ -558,7 +558,7 @@ func TestIteratorSeekGE(t *testing.T) {
 	require.False(t, it.Valid())
 
 	// Test seek for empty key.
-	ins.Add(l, db.InternalKey{}, nil)
+	ins.Add(l, base.InternalKey{}, nil)
 	require.True(t, it.SeekGE([]byte{}))
 	require.True(t, it.Valid())
 	require.EqualValues(t, "", it.Key().UserKey)
@@ -610,7 +610,7 @@ func TestIteratorSeekLT(t *testing.T) {
 	require.EqualValues(t, "v01990", it.Value())
 
 	// Test seek for empty key.
-	ins.Add(l, db.InternalKey{}, nil)
+	ins.Add(l, base.InternalKey{}, nil)
 	require.False(t, it.SeekLT([]byte{}))
 	require.False(t, it.Valid())
 
@@ -688,12 +688,12 @@ func TestIteratorBounds(t *testing.T) {
 	require.False(t, it.Prev())
 }
 
-func randomKey(rng *rand.Rand, b []byte) db.InternalKey {
+func randomKey(rng *rand.Rand, b []byte) base.InternalKey {
 	key := rng.Uint32()
 	key2 := rng.Uint32()
 	binary.LittleEndian.PutUint32(b, key)
 	binary.LittleEndian.PutUint32(b[4:], key2)
-	return db.InternalKey{UserKey: b}
+	return base.InternalKey{UserKey: b}
 }
 
 // Standard test. Some fraction is read. Some fraction is write. Writes have
@@ -734,7 +734,7 @@ func BenchmarkOrderedWrite(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		binary.BigEndian.PutUint64(buf, uint64(i))
-		if err := ins.Add(l, db.InternalKey{UserKey: buf}, nil); err == ErrArenaFull {
+		if err := ins.Add(l, base.InternalKey{UserKey: buf}, nil); err == ErrArenaFull {
 			b.StopTimer()
 			l = NewSkiplist(NewArena(uint32((b.N+2)*maxNodeSize), 0), bytes.Compare)
 			ins = Inserter{}

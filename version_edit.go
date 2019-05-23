@@ -14,7 +14,7 @@ import (
 	"sort"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 // TODO(peter): describe the MANIFEST file format, independently of the C++
@@ -219,8 +219,8 @@ func (v *versionEdit) decode(r io.Reader) error {
 				meta: fileMetadata{
 					fileNum:             fileNum,
 					size:                size,
-					smallest:            db.DecodeInternalKey(smallest),
-					largest:             db.DecodeInternalKey(largest),
+					smallest:            base.DecodeInternalKey(smallest),
+					largest:             base.DecodeInternalKey(largest),
 					smallestSeqNum:      smallestSeqNum,
 					largestSeqNum:       largestSeqNum,
 					markedForCompaction: markedForCompaction,
@@ -349,7 +349,7 @@ func (e versionEditEncoder) writeBytes(p []byte) {
 	e.Write(p)
 }
 
-func (e versionEditEncoder) writeKey(k db.InternalKey) {
+func (e versionEditEncoder) writeKey(k InternalKey) {
 	e.writeUvarint(uint64(k.Size()))
 	e.Write(k.UserKey)
 	buf := k.EncodeTrailer()
@@ -399,7 +399,7 @@ func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
 //
 // base may be nil, which is equivalent to a pointer to a zero version.
 func (b *bulkVersionEdit) apply(
-	opts *db.Options, base *version, cmp db.Compare,
+	opts *Options, base *version, cmp Compare,
 ) (*version, error) {
 	v := new(version)
 	for level := range v.files {

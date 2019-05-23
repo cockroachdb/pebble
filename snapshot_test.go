@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -48,7 +47,7 @@ func TestSnapshot(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			var err error
-			d, err = Open("", &db.Options{
+			d, err = Open("", &Options{
 				FS: vfs.NewMem(),
 			})
 			if err != nil {

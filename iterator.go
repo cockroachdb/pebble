@@ -8,8 +8,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-
-	"github.com/petermattis/pebble/db"
 )
 
 type iterPos int8
@@ -33,11 +31,11 @@ const (
 // key/value pairs are not guaranteed to be a consistent snapshot of that DB
 // at a particular point in time.
 type Iterator struct {
-	opts      *db.IterOptions
-	cmp       db.Compare
-	equal     db.Equal
-	merge     db.Merge
-	split     db.Split
+	opts      *IterOptions
+	cmp       Compare
+	equal     Equal
+	merge     Merge
+	split     Split
 	iter      internalIterator
 	readState *readState
 	err       error
@@ -47,7 +45,7 @@ type Iterator struct {
 	valueBuf  []byte
 	valueBuf2 []byte
 	valid     bool
-	iterKey   *db.InternalKey
+	iterKey   *InternalKey
 	iterValue []byte
 	pos       iterPos
 	alloc     *iterAlloc
@@ -61,17 +59,17 @@ func (i *Iterator) findNextEntry() bool {
 	for i.iterKey != nil {
 		key := *i.iterKey
 		switch key.Kind() {
-		case db.InternalKeyKindDelete:
+		case InternalKeyKindDelete:
 			i.nextUserKey()
 			continue
 
-		case db.InternalKeyKindRangeDelete:
+		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
 			// for more details.
 			i.iterKey, i.iterValue = i.iter.Next()
 			continue
 
-		case db.InternalKeyKindSet:
+		case InternalKeyKindSet:
 			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 				return false
 			}
@@ -81,7 +79,7 @@ func (i *Iterator) findNextEntry() bool {
 			i.valid = true
 			return true
 
-		case db.InternalKeyKindMerge:
+		case InternalKeyKindMerge:
 			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 				return false
 			}
@@ -130,19 +128,19 @@ func (i *Iterator) findPrevEntry() bool {
 		}
 
 		switch key.Kind() {
-		case db.InternalKeyKindDelete:
+		case InternalKeyKindDelete:
 			i.value = nil
 			i.valid = false
 			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
-		case db.InternalKeyKindRangeDelete:
+		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
 			// for more details.
 			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
-		case db.InternalKeyKindSet:
+		case InternalKeyKindSet:
 			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 				return false
 			}
@@ -153,7 +151,7 @@ func (i *Iterator) findPrevEntry() bool {
 			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
-		case db.InternalKeyKindMerge:
+		case InternalKeyKindMerge:
 			if !i.valid {
 				if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 					return false
@@ -209,7 +207,7 @@ func (i *Iterator) prevUserKey() {
 	}
 }
 
-func (i *Iterator) mergeNext(key db.InternalKey) bool {
+func (i *Iterator) mergeNext(key InternalKey) bool {
 	// Save the current key and value.
 	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 	i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
@@ -230,22 +228,22 @@ func (i *Iterator) mergeNext(key db.InternalKey) bool {
 			return true
 		}
 		switch key.Kind() {
-		case db.InternalKeyKindDelete:
+		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this
 			// point.
 			return true
 
-		case db.InternalKeyKindRangeDelete:
+		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
 			// for more details.
 			continue
 
-		case db.InternalKeyKindSet:
+		case InternalKeyKindSet:
 			// We've hit a Set value. Merge with the existing value and return.
 			i.value = i.merge(i.key, i.value, i.iterValue, nil)
 			return true
 
-		case db.InternalKeyKindMerge:
+		case InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
 			i.value = i.merge(i.key, i.value, i.iterValue, nil)

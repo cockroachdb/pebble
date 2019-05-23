@@ -9,13 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
 func BenchmarkReadState(b *testing.B) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
 	if err != nil {

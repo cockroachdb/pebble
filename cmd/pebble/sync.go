@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/db"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
@@ -29,9 +28,9 @@ func runSync(cmd *cobra.Command, args []string) {
 	reg := newHistogramRegistry()
 	var bytes, lastBytes uint64
 
-	opts := db.Sync
+	opts := pebble.Sync
 	if disableWAL {
-		opts = db.NoSync
+		opts = pebble.NoSync
 	}
 
 	runTest(args[0], test{

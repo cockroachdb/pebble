@@ -4,9 +4,7 @@
 
 package rangedel
 
-import (
-	"github.com/petermattis/pebble/db"
-)
+import "github.com/petermattis/pebble/internal/base"
 
 // invalidate the specified iterator by moving it past the last entry.
 func invalidate(iter iterator) {
@@ -19,7 +17,7 @@ func invalidate(iter iterator) {
 // tombstones older than the snapshot sequence number are visible). The
 // iterator must contain fragmented tombstones: any overlapping tombstones must
 // have the same start and end key.
-func SeekGE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
+func SeekGE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//
@@ -86,7 +84,7 @@ func SeekGE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombston
 // tombstones older than the snapshot sequence number are visible). The
 // iterator must contain fragmented tombstones: any overlapping tombstones must
 // have the same start and end key.
-func SeekLE(cmp db.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
+func SeekLE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//

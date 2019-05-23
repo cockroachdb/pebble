@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -28,9 +28,15 @@ const (
 	numNonTableCacheFiles = 10
 )
 
+var (
+	// ErrNotFound is returned when a get operation does not find the requested
+	// key.
+	ErrNotFound = base.ErrNotFound
+)
+
 type flushable interface {
-	newIter(o *db.IterOptions) internalIterator
-	newRangeDelIter(o *db.IterOptions) internalIterator
+	newIter(o *IterOptions) internalIterator
+	newRangeDelIter(o *IterOptions) internalIterator
 	flushed() chan struct{}
 	readyForFlush() bool
 	logInfo() (num, size uint64)
@@ -50,7 +56,7 @@ type Reader interface {
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to SeekGE,
 	// SeekLT, First or Last.
-	NewIter(o *db.IterOptions) *Iterator
+	NewIter(o *IterOptions) *Iterator
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader
 	// or io.Writer, depending on how the DB was created.
@@ -68,38 +74,38 @@ type Writer interface {
 	// Apply the operations contained in the batch to the DB.
 	//
 	// It is safe to modify the contents of the arguments after Apply returns.
-	Apply(batch *Batch, o *db.WriteOptions) error
+	Apply(batch *Batch, o *WriteOptions) error
 
 	// Delete deletes the value for the given key. Deletes are blind all will
 	// succeed even if the given key does not exist.
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.
-	Delete(key []byte, o *db.WriteOptions) error
+	Delete(key []byte, o *WriteOptions) error
 
 	// DeleteRange deletes all of the keys (and values) in the range [start,end)
 	// (inclusive on start, exclusive on end).
 	//
 	// It is safe to modify the contents of the arguments after Delete returns.
-	DeleteRange(start, end []byte, o *db.WriteOptions) error
+	DeleteRange(start, end []byte, o *WriteOptions) error
 
 	// LogData adds the specified to the batch. The data will be written to the
 	// WAL, but not added to memtables or sstables. Log data is never indexed,
 	// which makes it useful for testing WAL performance.
 	//
 	// It is safe to modify the contents of the argument after LogData returns.
-	LogData(data []byte, opts *db.WriteOptions) error
+	LogData(data []byte, opts *WriteOptions) error
 
 	// Merge merges the value for the given key. The details of the merge are
 	// dependent upon the configured merge operation.
 	//
 	// It is safe to modify the contents of the arguments after Merge returns.
-	Merge(key, value []byte, o *db.WriteOptions) error
+	Merge(key, value []byte, o *WriteOptions) error
 
 	// Set sets the value for the given key. It overwrites any previous value
 	// for that key; a DB is not a multi-map.
 	//
 	// It is safe to modify the contents of the arguments after Set returns.
-	Set(key, value []byte, o *db.WriteOptions) error
+	Set(key, value []byte, o *WriteOptions) error
 }
 
 // DB provides a concurrent, persistent ordered key/value store.
@@ -118,25 +124,25 @@ type Writer interface {
 //	}
 //	return iter.Close()
 //
-// The Options struct in the db package holds the optional parameters for the
-// DB, including a Comparer to define a 'less than' relationship over keys. It
-// is always valid to pass a nil *Options, which means to use the default
-// parameter values. Any zero field of a non-nil *Options also means to use the
-// default value for that parameter. Thus, the code below uses a custom
-// Comparer, but the default values for every other parameter:
+// The Options struct holds the optional parameters for the DB, including a
+// Comparer to define a 'less than' relationship over keys. It is always valid
+// to pass a nil *Options, which means to use the default parameter values. Any
+// zero field of a non-nil *Options also means to use the default value for
+// that parameter. Thus, the code below uses a custom Comparer, but the default
+// values for every other parameter:
 //
-//	db := pebble.Open(&db.Options{
+//	db := pebble.Open(&Options{
 //		Comparer: myComparer,
 //	})
 type DB struct {
 	dirname        string
 	walDirname     string
-	opts           *db.Options
-	cmp            db.Compare
-	equal          db.Equal
-	merge          db.Merge
-	split          db.Split
-	abbreviatedKey db.AbbreviatedKey
+	opts           *Options
+	cmp            Compare
+	equal          Equal
+	merge          Merge
+	split          Split
+	abbreviatedKey AbbreviatedKey
 
 	dataDir vfs.File
 	walDir  vfs.File
@@ -265,7 +271,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return nil, db.ErrNotFound
+		return nil, ErrNotFound
 	}
 	return i.Value(), nil
 }
@@ -274,7 +280,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 // for that key; a DB is not a multi-map.
 //
 // It is safe to modify the contents of the arguments after Set returns.
-func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
+func (d *DB) Set(key, value []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
 	_ = b.Set(key, value, opts)
@@ -285,7 +291,7 @@ func (d *DB) Set(key, value []byte, opts *db.WriteOptions) error {
 // succeed even if the given key does not exist.
 //
 // It is safe to modify the contents of the arguments after Delete returns.
-func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
+func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
 	_ = b.Delete(key, opts)
@@ -297,7 +303,7 @@ func (d *DB) Delete(key []byte, opts *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after DeleteRange
 // returns.
-func (d *DB) DeleteRange(start, end []byte, opts *db.WriteOptions) error {
+func (d *DB) DeleteRange(start, end []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
 	_ = b.DeleteRange(start, end, opts)
@@ -309,7 +315,7 @@ func (d *DB) DeleteRange(start, end []byte, opts *db.WriteOptions) error {
 // operator.
 //
 // It is safe to modify the contents of the arguments after Merge returns.
-func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
+func (d *DB) Merge(key, value []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
 	_ = b.Merge(key, value, opts)
@@ -323,7 +329,7 @@ func (d *DB) Merge(key, value []byte, opts *db.WriteOptions) error {
 // It is safe to modify the contents of the argument after LogData returns.
 //
 // TODO(peter): untested.
-func (d *DB) LogData(data []byte, opts *db.WriteOptions) error {
+func (d *DB) LogData(data []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
 	_ = b.LogData(data, opts)
@@ -336,7 +342,7 @@ func (d *DB) LogData(data []byte, opts *db.WriteOptions) error {
 // reuse them.
 //
 // It is safe to modify the contents of the arguments after Apply returns.
-func (d *DB) Apply(batch *Batch, opts *db.WriteOptions) error {
+func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	sync := opts.GetSync()
 	if sync && d.opts.DisableWAL {
 		return errors.New("pebble: WAL disabled")
@@ -429,7 +435,7 @@ func (d *DB) newIterInternal(
 	batchIter internalIterator,
 	batchRangeDelIter internalIterator,
 	s *Snapshot,
-	o *db.IterOptions,
+	o *IterOptions,
 ) *Iterator {
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
@@ -556,7 +562,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 // to maintain a long-lived point-in-time view of the DB state can lead to an
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
-func (d *DB) NewIter(o *db.IterOptions) *Iterator {
+func (d *DB) NewIter(o *IterOptions) *Iterator {
 	return d.newIterInternal(nil, /* batchIter */
 		nil /* batchRangeDelIter */, nil /* snapshot */, o)
 }
@@ -624,8 +630,8 @@ func (d *DB) Close() error {
 
 // Compact the specified range of keys in the database.
 func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
-	iStart := db.MakeInternalKey(start, db.InternalKeySeqNumMax, db.InternalKeyKindMax)
-	iEnd := db.MakeInternalKey(end, 0, 0)
+	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
+	iEnd := base.MakeInternalKey(end, 0, 0)
 	meta := []*fileMetadata{&fileMetadata{smallest: iStart, largest: iEnd}}
 
 	d.mu.Lock()
@@ -854,7 +860,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			}
 
 			if d.opts.EventListener.WALCreated != nil {
-				d.opts.EventListener.WALCreated(db.WALCreateInfo{
+				d.opts.EventListener.WALCreated(WALCreateInfo{
 					JobID:           jobID,
 					Path:            newLogName,
 					FileNum:         newLogNumber,

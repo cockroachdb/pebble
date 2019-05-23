@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -36,13 +36,13 @@ type iterAdapter struct {
 	Iterator
 }
 
-func (i *iterAdapter) verify(key *db.InternalKey) bool {
+func (i *iterAdapter) verify(key *base.InternalKey) bool {
 	valid := key != nil
 	if valid != i.Valid() {
 		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
 	}
 	if valid {
-		if db.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
+		if base.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
 			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
 		}
 	}
@@ -73,7 +73,7 @@ func (i *iterAdapter) Prev() bool {
 	return i.verify(i.Iterator.Prev())
 }
 
-func (i *iterAdapter) Key() db.InternalKey {
+func (i *iterAdapter) Key() base.InternalKey {
 	return *i.Iterator.Key()
 }
 
@@ -115,12 +115,12 @@ func (d *testStorage) add(key string) uint32 {
 	return offset
 }
 
-func (d *testStorage) Get(offset uint32) db.InternalKey {
-	return db.InternalKey{UserKey: d.keys[offset]}
+func (d *testStorage) Get(offset uint32) base.InternalKey {
+	return base.InternalKey{UserKey: d.keys[offset]}
 }
 
 func (d *testStorage) AbbreviatedKey(key []byte) uint64 {
-	return db.DefaultComparer.AbbreviatedKey(key)
+	return base.DefaultComparer.AbbreviatedKey(key)
 }
 
 func (d *testStorage) Compare(a []byte, b uint32) int {

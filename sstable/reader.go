@@ -13,7 +13,7 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/crc"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -49,7 +49,7 @@ type block []byte
 // to seek for a given key, it first looks in the index for the block that
 // contains that key, and then looks inside that block.
 type Iterator struct {
-	cmp db.Compare
+	cmp Compare
 	// Global lower/upper bound for the iterator.
 	lower []byte
 	upper []byte
@@ -184,7 +184,7 @@ func (i *Iterator) seekBlock(key []byte) bool {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
-func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (i *Iterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -209,7 +209,7 @@ func (i *Iterator) SeekGE(key []byte) (*db.InternalKey, []byte) {
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
-func (i *Iterator) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (i *Iterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -246,7 +246,7 @@ func (i *Iterator) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
-func (i *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (i *Iterator) SeekLT(key []byte) (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -291,7 +291,7 @@ func (i *Iterator) SeekLT(key []byte) (*db.InternalKey, []byte) {
 // package. Note that First only checks the upper bound. It is up to the caller
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
-func (i *Iterator) First() (*db.InternalKey, []byte) {
+func (i *Iterator) First() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -317,7 +317,7 @@ func (i *Iterator) First() (*db.InternalKey, []byte) {
 // package. Note that Last only checks the lower bound. It is up to the caller
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
-func (i *Iterator) Last() (*db.InternalKey, []byte) {
+func (i *Iterator) Last() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -340,7 +340,7 @@ func (i *Iterator) Last() (*db.InternalKey, []byte) {
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *Iterator) Next() (*db.InternalKey, []byte) {
+func (i *Iterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -376,7 +376,7 @@ func (i *Iterator) Next() (*db.InternalKey, []byte) {
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *Iterator) Prev() (*db.InternalKey, []byte) {
+func (i *Iterator) Prev() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -411,7 +411,7 @@ func (i *Iterator) Prev() (*db.InternalKey, []byte) {
 }
 
 // Key implements internalIterator.Key, as documented in the pebble package.
-func (i *Iterator) Key() *db.InternalKey {
+func (i *Iterator) Key() *InternalKey {
 	return i.data.Key()
 }
 
@@ -474,10 +474,10 @@ type Reader struct {
 	filter      weakCachedBlock
 	rangeDel    weakCachedBlock
 	rangeDelV2  bool
-	opts        *db.Options
+	opts        *Options
 	cache       *cache.Cache
-	compare     db.Compare
-	split       db.Split
+	compare     Compare
+	split       Split
 	tableFilter *tableFilterReader
 	Properties  Properties
 }
@@ -522,7 +522,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 			lookupKey = key
 		}
 		if !r.tableFilter.mayContain(data, lookupKey) {
-			return nil, db.ErrNotFound
+			return nil, base.ErrNotFound
 		}
 	}
 
@@ -535,7 +535,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	if !i.Valid() || r.compare(key, i.Key().UserKey) != 0 {
 		err := i.Close()
 		if err == nil {
-			err = db.ErrNotFound
+			err = base.ErrNotFound
 		}
 		return nil, err
 	}
@@ -666,7 +666,7 @@ func (r *Reader) readBlock(bh blockHandle) (block, cache.WeakHandle, error) {
 	return nil, nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
 }
 
-func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
+func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
 	b, _, err := r.readBlock(metaindexBH)
 	if err != nil {
 		return err
@@ -711,10 +711,10 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 			continue
 		}
 		types := []struct {
-			ftype  db.FilterType
+			ftype  FilterType
 			prefix string
 		}{
-			{db.TableFilter, "fullfilter."},
+			{TableFilter, "fullfilter."},
 		}
 		var done bool
 		for _, t := range types {
@@ -722,7 +722,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 				r.filter.bh = bh
 
 				switch t.ftype {
-				case db.TableFilter:
+				case TableFilter:
 					r.tableFilter = newTableFilterReader(fp)
 				default:
 					return fmt.Errorf("unknown filter type: %v", t.ftype)
@@ -741,7 +741,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *db.Options) error {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f vfs.File, fileNum uint64, o *db.Options) *Reader {
+func NewReader(f vfs.File, fileNum uint64, o *Options) *Reader {
 	o = o.EnsureDefaults()
 	r := &Reader{
 		file:    f,

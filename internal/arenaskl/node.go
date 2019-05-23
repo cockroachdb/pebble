@@ -21,7 +21,7 @@ import (
 	"math"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 // MaxNodeSize returns the maximum space needed for a node with the specified
@@ -59,7 +59,7 @@ type node struct {
 }
 
 func newNode(
-	arena *Arena, height uint32, key db.InternalKey, value []byte,
+	arena *Arena, height uint32, key base.InternalKey, value []byte,
 ) (nd *node, err error) {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")

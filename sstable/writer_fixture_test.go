@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/petermattis/pebble/bloom"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 const (
@@ -40,7 +40,7 @@ type keyCountPropertyCollector struct {
 	count int
 }
 
-func (c *keyCountPropertyCollector) Add(key db.InternalKey, value []byte) error {
+func (c *keyCountPropertyCollector) Add(key InternalKey, value []byte) error {
 	c.count++
 	return nil
 }
@@ -55,8 +55,8 @@ func (c *keyCountPropertyCollector) Name() string {
 }
 
 //go:generate make -C ./testdata
-var fixtureComparer = func() *db.Comparer {
-	c := *db.DefaultComparer
+var fixtureComparer = func() *Comparer {
+	c := *base.DefaultComparer
 	// NB: this is named as such only to match the built-in RocksDB comparer.
 	c.Name = "leveldb.BytewiseComparator"
 	c.Split = func(a []byte) int {
@@ -85,18 +85,18 @@ func (o fixtureOpts) String() string {
 
 var fixtures = map[fixtureOpts]struct {
 	filename      string
-	comparer      *db.Comparer
-	propCollector func() db.TablePropertyCollector
+	comparer      *Comparer
+	propCollector func() TablePropertyCollector
 }{
 	{compressed, noFullKeyBloom, noPrefixFilter}: {
 		"testdata/h.sst", nil,
-		func() db.TablePropertyCollector {
+		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
 	{uncompressed, noFullKeyBloom, noPrefixFilter}: {
 		"testdata/h.no-compression.sst", nil,
-		func() db.TablePropertyCollector {
+		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
@@ -115,16 +115,16 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		return fmt.Errorf("fixture missing: %+v", opts)
 	}
 
-	compression := db.NoCompression
+	compression := base.NoCompression
 	if opts.compression {
-		compression = db.SnappyCompression
+		compression = base.SnappyCompression
 	}
 
-	var fp db.FilterPolicy
+	var fp base.FilterPolicy
 	if opts.fullKeyFilter || opts.prefixFilter {
 		fp = bloom.FilterPolicy(10)
 	}
-	ftype := db.TableFilter
+	ftype := base.TableFilter
 
 	// Check that a freshly made table is byte-for-byte equal to a pre-made
 	// table.

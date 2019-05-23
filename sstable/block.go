@@ -9,7 +9,7 @@ import (
 	"errors"
 	"unsafe"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 func uvarintLen(v uint32) int {
@@ -37,7 +37,7 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	if w.nEntries%w.restartInterval == 0 {
 		w.restarts = append(w.restarts, uint32(len(w.buf)))
 	} else {
-		shared = db.SharedPrefixLen(w.curKey, w.prevKey)
+		shared = base.SharedPrefixLen(w.curKey, w.prevKey)
 	}
 
 	n := binary.PutUvarint(w.tmp[0:], uint64(shared))
@@ -51,7 +51,7 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	w.nEntries++
 }
 
-func (w *blockWriter) add(key db.InternalKey, value []byte) {
+func (w *blockWriter) add(key InternalKey, value []byte) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := key.Size()
@@ -103,7 +103,7 @@ type blockEntry struct {
 
 // blockIter is an iterator over a single block of data.
 type blockIter struct {
-	cmp          db.Compare
+	cmp          Compare
 	offset       int
 	nextOffset   int
 	restarts     int
@@ -113,18 +113,18 @@ type blockIter struct {
 	data         []byte
 	key, val     []byte
 	keyBuf       [256]byte
-	ikey         db.InternalKey
+	ikey         InternalKey
 	cached       []blockEntry
 	cachedBuf    []byte
 	err          error
 }
 
-func newBlockIter(cmp db.Compare, block block) (*blockIter, error) {
+func newBlockIter(cmp Compare, block block) (*blockIter, error) {
 	i := &blockIter{}
 	return i, i.init(cmp, block, 0)
 }
 
-func (i *blockIter) init(cmp db.Compare, block block, globalSeqNum uint64) error {
+func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
@@ -223,7 +223,7 @@ func (i *blockIter) readEntry() {
 }
 
 func (i *blockIter) decodeInternalKey(key []byte) {
-	// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+	// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
 	// BlockIter benchmarks.
 	if n := len(key) - 8; n >= 0 {
 		i.ikey.Trailer = binary.LittleEndian.Uint64(key[n:])
@@ -232,7 +232,7 @@ func (i *blockIter) decodeInternalKey(key []byte) {
 			i.ikey.SetSeqNum(i.globalSeqNum)
 		}
 	} else {
-		i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
 		i.ikey.UserKey = nil
 	}
 }
@@ -253,8 +253,8 @@ func (i *blockIter) cacheEntry() {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
-	ikey := db.MakeSearchKey(key)
+func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	ikey := base.MakeSearchKey(key)
 
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
@@ -310,10 +310,10 @@ func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 				ptr = unsafe.Pointer(uintptr(ptr) + 5)
 			}
 
-			// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+			// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
 			// BlockIter benchmarks.
 			s := getBytes(ptr, int(v1))
-			var k db.InternalKey
+			var k InternalKey
 			if n := len(s) - 8; n >= 0 {
 				k.Trailer = binary.LittleEndian.Uint64(s[n:])
 				k.UserKey = s[:n:n]
@@ -321,10 +321,10 @@ func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 				// leave the seqnum on this key as 0 as it won't affect our search
 				// since ikey has the maximum seqnum.
 			} else {
-				k.Trailer = uint64(db.InternalKeyKindInvalid)
+				k.Trailer = uint64(InternalKeyKindInvalid)
 			}
 
-			if db.InternalCompare(i.cmp, ikey, k) >= 0 {
+			if base.InternalCompare(i.cmp, ikey, k) >= 0 {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
 				upper = h // preserves f(j) == true
@@ -346,7 +346,7 @@ func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 
 	// Iterate from that restart point to somewhere >= the key sought.
 	for ; i.Valid(); i.Next() {
-		if db.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
+		if base.InternalCompare(i.cmp, i.ikey, ikey) >= 0 {
 			return &i.ikey, i.val
 		}
 	}
@@ -356,15 +356,15 @@ func (i *blockIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package.
-func (i *blockIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (i *blockIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	// This should never be called as prefix iteration is handled by sstable.Iterator.
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *blockIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
-	ikey := db.MakeSearchKey(key)
+func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	ikey := base.MakeSearchKey(key)
 
 	// Find the index of the smallest restart point whose key is >= the key
 	// sought; index will be numRestarts if there is no such restart point.
@@ -420,10 +420,10 @@ func (i *blockIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 				ptr = unsafe.Pointer(uintptr(ptr) + 5)
 			}
 
-			// Manually inlining db.DecodeInternalKey provides a 5-10% speedup on
+			// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
 			// BlockIter benchmarks.
 			s := getBytes(ptr, int(v1))
-			var k db.InternalKey
+			var k InternalKey
 			if n := len(s) - 8; n >= 0 {
 				k.Trailer = binary.LittleEndian.Uint64(s[n:])
 				k.UserKey = s[:n:n]
@@ -431,10 +431,10 @@ func (i *blockIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 				// leave the seqnum on this key as 0 as it won't affect our search
 				// since ikey has the maximum seqnum.
 			} else {
-				k.Trailer = uint64(db.InternalKeyKindInvalid)
+				k.Trailer = uint64(InternalKeyKindInvalid)
 			}
 
-			if db.InternalCompare(i.cmp, ikey, k) > 0 {
+			if base.InternalCompare(i.cmp, ikey, k) > 0 {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
 				upper = h // preserves f(j) == true
@@ -489,7 +489,7 @@ func (i *blockIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *blockIter) First() (*db.InternalKey, []byte) {
+func (i *blockIter) First() (*InternalKey, []byte) {
 	i.offset = 0
 	if !i.Valid() {
 		return nil, nil
@@ -500,7 +500,7 @@ func (i *blockIter) First() (*db.InternalKey, []byte) {
 }
 
 // Last implements internalIterator.Last, as documented in the pebble package.
-func (i *blockIter) Last() (*db.InternalKey, []byte) {
+func (i *blockIter) Last() (*InternalKey, []byte) {
 	// Seek forward from the last restart point.
 	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
 	if !i.Valid() {
@@ -523,7 +523,7 @@ func (i *blockIter) Last() (*db.InternalKey, []byte) {
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *blockIter) Next() (*db.InternalKey, []byte) {
+func (i *blockIter) Next() (*InternalKey, []byte) {
 	i.offset = i.nextOffset
 	if !i.Valid() {
 		return nil, nil
@@ -537,7 +537,7 @@ func (i *blockIter) Next() (*db.InternalKey, []byte) {
 			i.ikey.SetSeqNum(i.globalSeqNum)
 		}
 	} else {
-		i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
 		i.ikey.UserKey = nil
 	}
 	return &i.ikey, i.val
@@ -545,7 +545,7 @@ func (i *blockIter) Next() (*db.InternalKey, []byte) {
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *blockIter) Prev() (*db.InternalKey, []byte) {
+func (i *blockIter) Prev() (*InternalKey, []byte) {
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
@@ -559,7 +559,7 @@ func (i *blockIter) Prev() (*db.InternalKey, []byte) {
 				i.ikey.SetSeqNum(i.globalSeqNum)
 			}
 		} else {
-			i.ikey.Trailer = uint64(db.InternalKeyKindInvalid)
+			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
 			i.ikey.UserKey = nil
 		}
 		i.cached = i.cached[:n]
@@ -615,7 +615,7 @@ func (i *blockIter) Prev() (*db.InternalKey, []byte) {
 }
 
 // Key implements internalIterator.Key, as documented in the pebble package.
-func (i *blockIter) Key() *db.InternalKey {
+func (i *blockIter) Key() *InternalKey {
 	return &i.ikey
 }
 

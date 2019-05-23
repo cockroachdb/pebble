@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
@@ -25,7 +25,7 @@ func TestLevelIter(t *testing.T) {
 	var files []fileMetadata
 
 	newIters := func(
-		meta *fileMetadata, opts *db.IterOptions,
+		meta *fileMetadata, opts *IterOptions,
 	) (internalIterator, internalIterator, error) {
 		f := *iters[meta.fileNum]
 		return &f, nil, nil
@@ -41,7 +41,7 @@ func TestLevelIter(t *testing.T) {
 				f := &fakeIter{}
 				for _, key := range strings.Fields(line) {
 					j := strings.Index(key, ":")
-					f.keys = append(f.keys, db.ParseInternalKey(key[:j]))
+					f.keys = append(f.keys, base.ParseInternalKey(key[:j]))
 					f.vals = append(f.vals, []byte(key[j+1:]))
 				}
 				iters = append(iters, f)
@@ -57,7 +57,7 @@ func TestLevelIter(t *testing.T) {
 			return ""
 
 		case "iter":
-			var opts db.IterOptions
+			var opts IterOptions
 			for _, arg := range d.CmdArgs {
 				if len(arg.Vals) != 1 {
 					return fmt.Sprintf("%s: %s=<value>", d.Cmd, arg.Key)
@@ -72,7 +72,7 @@ func TestLevelIter(t *testing.T) {
 				}
 			}
 
-			iter := newLevelIter(&opts, db.DefaultComparer.Compare, newIters, files)
+			iter := newLevelIter(&opts, DefaultComparer.Compare, newIters, files)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
 
@@ -81,7 +81,7 @@ func TestLevelIter(t *testing.T) {
 			// sstables.
 			//
 			// load <key> [lower=<key>] [upper=<key>]
-			var opts db.IterOptions
+			var opts IterOptions
 			var key string
 			for _, arg := range d.CmdArgs {
 				if len(arg.Vals) == 0 {
@@ -101,15 +101,15 @@ func TestLevelIter(t *testing.T) {
 				}
 			}
 
-			var tableOpts *db.IterOptions
+			var tableOpts *IterOptions
 			newIters2 := func(
-				meta *fileMetadata, opts *db.IterOptions,
+				meta *fileMetadata, opts *IterOptions,
 			) (internalIterator, internalIterator, error) {
 				tableOpts = opts
 				return newIters(meta, opts)
 			}
 
-			iter := newLevelIter(&opts, db.DefaultComparer.Compare, newIters2, files)
+			iter := newLevelIter(&opts, DefaultComparer.Compare, newIters2, files)
 			iter.SeekGE([]byte(key))
 			lower, upper := tableOpts.GetLowerBound(), tableOpts.GetUpperBound()
 			return fmt.Sprintf("[%s,%s]\n", lower, upper)
@@ -121,13 +121,13 @@ func TestLevelIter(t *testing.T) {
 }
 
 func TestLevelIterBoundaries(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := DefaultComparer.Compare
 	mem := vfs.NewMem()
 	var readers []*sstable.Reader
 	var files []fileMetadata
 
 	newIters := func(
-		meta *fileMetadata, _ *db.IterOptions,
+		meta *fileMetadata, _ *IterOptions,
 	) (internalIterator, internalIterator, error) {
 		return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 	}
@@ -148,7 +148,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 				return err.Error()
 			}
 
-			w := sstable.NewWriter(f0, nil, db.LevelOptions{})
+			w := sstable.NewWriter(f0, nil, LevelOptions{})
 			var tombstones []rangedel.Tombstone
 			f := rangedel.Fragmenter{
 				Cmp: cmp,
@@ -158,10 +158,10 @@ func TestLevelIterBoundaries(t *testing.T) {
 			}
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				ikey := db.ParseInternalKey(key[:j])
+				ikey := base.ParseInternalKey(key[:j])
 				value := []byte(key[j+1:])
 				switch ikey.Kind() {
-				case db.InternalKeyKindRangeDelete:
+				case InternalKeyKindRangeDelete:
 					f.Add(ikey, value)
 				default:
 					if err := w.Add(ikey, value); err != nil {
@@ -201,7 +201,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			return buf.String()
 
 		case "iter":
-			iter := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
+			iter := newLevelIter(nil, DefaultComparer.Compare, newIters, files)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
@@ -229,10 +229,10 @@ func buildLevelIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], nil, db.LevelOptions{
+		writers[i] = sstable.NewWriter(files[i], nil, LevelOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
-			Compression:          db.NoCompression,
+			Compression:          NoCompression,
 		})
 	}
 
@@ -243,7 +243,7 @@ func buildLevelIterTables(
 		for ; w.EstimatedSize() < targetSize; i++ {
 			key := []byte(fmt.Sprintf("%08d", i))
 			keys = append(keys, key)
-			ikey := db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
+			ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
 			w.Add(ikey, nil)
 		}
 		if err := w.Close(); err != nil {
@@ -258,7 +258,7 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i] = sstable.NewReader(f, uint64(i), &db.Options{
+		readers[i] = sstable.NewReader(f, uint64(i), &Options{
 			Cache: cache,
 		})
 	}
@@ -286,11 +286,11 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 						func(b *testing.B) {
 							readers, files, keys := buildLevelIterTables(b, blockSize, restartInterval, count)
 							newIters := func(
-								meta *fileMetadata, _ *db.IterOptions,
+								meta *fileMetadata, _ *IterOptions,
 							) (internalIterator, internalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
-							l := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
+							l := newLevelIter(nil, DefaultComparer.Compare, newIters, files)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
@@ -314,11 +314,11 @@ func BenchmarkLevelIterNext(b *testing.B) {
 						func(b *testing.B) {
 							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
 							newIters := func(
-								meta *fileMetadata, _ *db.IterOptions,
+								meta *fileMetadata, _ *IterOptions,
 							) (internalIterator, internalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
-							l := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
+							l := newLevelIter(nil, DefaultComparer.Compare, newIters, files)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -344,11 +344,11 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 						func(b *testing.B) {
 							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
 							newIters := func(
-								meta *fileMetadata, _ *db.IterOptions,
+								meta *fileMetadata, _ *IterOptions,
 							) (internalIterator, internalIterator, error) {
 								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
-							l := newLevelIter(nil, db.DefaultComparer.Compare, newIters, files)
+							l := newLevelIter(nil, DefaultComparer.Compare, newIters, files)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {

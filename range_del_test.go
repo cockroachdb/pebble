@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
@@ -50,7 +50,7 @@ func TestRangeDel(t *testing.T) {
 		case "get":
 			snap := Snapshot{
 				db:     d,
-				seqNum: db.InternalKeySeqNumMax,
+				seqNum: InternalKeySeqNumMax,
 			}
 
 			for _, arg := range td.CmdArgs {
@@ -83,7 +83,7 @@ func TestRangeDel(t *testing.T) {
 		case "iter":
 			snap := Snapshot{
 				db:     d,
-				seqNum: db.InternalKeySeqNumMax,
+				seqNum: InternalKeySeqNumMax,
 			}
 
 			for _, arg := range td.CmdArgs {
@@ -118,9 +118,9 @@ func TestRangeDel(t *testing.T) {
 // disk, only in memory.
 func TestRangeDelCompactionTruncation(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
-		Levels: []db.LevelOptions{
+		Levels: []LevelOptions{
 			{TargetFileSize: 100},
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
@@ -255,7 +255,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 			for _, deleted := range []int{entries, entries - 1} {
 				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
 					mem := vfs.NewMem()
-					d, err := Open("", &db.Options{
+					d, err := Open("", &Options{
 						Cache: cache.New(128 << 20), // 128 MB
 						FS:    mem,
 					})
@@ -274,11 +274,11 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					w := sstable.NewWriter(f, nil, db.LevelOptions{
+					w := sstable.NewWriter(f, nil, LevelOptions{
 						BlockSize: 32 << 10, // 32 KB
 					})
 					for i := 0; i < entries; i++ {
-						key := db.MakeInternalKey(makeKey(i), 0, db.InternalKeyKindSet)
+						key := base.MakeInternalKey(makeKey(i), 0, InternalKeyKindSet)
 						if err := w.Add(key, nil); err != nil {
 							b.Fatal(err)
 						}

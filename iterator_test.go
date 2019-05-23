@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"golang.org/x/exp/rand"
 )
@@ -34,24 +34,24 @@ var testKeyValuePairs = []string{
 type fakeIter struct {
 	lower    []byte
 	upper    []byte
-	keys     []db.InternalKey
+	keys     []InternalKey
 	vals     [][]byte
 	index    int
 	valid    bool
 	closeErr error
 }
 
-func fakeIkey(s string) db.InternalKey {
+func fakeIkey(s string) InternalKey {
 	j := strings.Index(s, ":")
 	seqNum, err := strconv.Atoi(s[j+1:])
 	if err != nil {
 		panic(err)
 	}
-	return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet)
+	return base.MakeInternalKey([]byte(s[:j]), uint64(seqNum), InternalKeyKindSet)
 }
 
 func newFakeIterator(closeErr error, keys ...string) *fakeIter {
-	ikeys := make([]db.InternalKey, len(keys))
+	ikeys := make([]InternalKey, len(keys))
 	for i, k := range keys {
 		ikeys[i] = fakeIkey(k)
 	}
@@ -63,11 +63,11 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	}
 }
 
-func (f *fakeIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (f *fakeIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {
-		if db.DefaultComparer.Compare(key, f.Key().UserKey) <= 0 {
-			if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+		if DefaultComparer.Compare(key, f.Key().UserKey) <= 0 {
+			if f.upper != nil && DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
 				return nil, nil
 			}
 			f.valid = true
@@ -77,15 +77,15 @@ func (f *fakeIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return nil, nil
 }
 
-func (f *fakeIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (f *fakeIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	return f.SeekGE(key)
 }
 
-func (f *fakeIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (f *fakeIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
-		if db.DefaultComparer.Compare(key, f.Key().UserKey) > 0 {
-			if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+		if DefaultComparer.Compare(key, f.Key().UserKey) > 0 {
+			if f.lower != nil && DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
 				return nil, nil
 			}
 			f.valid = true
@@ -95,33 +95,33 @@ func (f *fakeIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	return nil, nil
 }
 
-func (f *fakeIter) First() (*db.InternalKey, []byte) {
+func (f *fakeIter) First() (*InternalKey, []byte) {
 	f.valid = false
 	f.index = -1
 	if key, _ := f.Next(); key == nil {
 		return nil, nil
 	}
-	if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+	if f.upper != nil && DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
 		return nil, nil
 	}
 	f.valid = true
 	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Last() (*db.InternalKey, []byte) {
+func (f *fakeIter) Last() (*InternalKey, []byte) {
 	f.valid = false
 	f.index = len(f.keys)
 	if key, _ := f.Prev(); key == nil {
 		return nil, nil
 	}
-	if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+	if f.lower != nil && DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
 		return nil, nil
 	}
 	f.valid = true
 	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Next() (*db.InternalKey, []byte) {
+func (f *fakeIter) Next() (*InternalKey, []byte) {
 	f.valid = false
 	if f.index == len(f.keys) {
 		return nil, nil
@@ -130,14 +130,14 @@ func (f *fakeIter) Next() (*db.InternalKey, []byte) {
 	if f.index == len(f.keys) {
 		return nil, nil
 	}
-	if f.upper != nil && db.DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+	if f.upper != nil && DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
 		return nil, nil
 	}
 	f.valid = true
 	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Prev() (*db.InternalKey, []byte) {
+func (f *fakeIter) Prev() (*InternalKey, []byte) {
 	f.valid = false
 	if f.index < 0 {
 		return nil, nil
@@ -146,14 +146,14 @@ func (f *fakeIter) Prev() (*db.InternalKey, []byte) {
 	if f.index < 0 {
 		return nil, nil
 	}
-	if f.lower != nil && db.DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+	if f.lower != nil && DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
 		return nil, nil
 	}
 	f.valid = true
 	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) Key() *db.InternalKey {
+func (f *fakeIter) Key() *InternalKey {
 	if f.index >= 0 && f.index < len(f.keys) {
 		return &f.keys[f.index]
 	}
@@ -293,12 +293,12 @@ func testIterator(
 }
 
 func TestIterator(t *testing.T) {
-	var keys []db.InternalKey
+	var keys []InternalKey
 	var vals [][]byte
 
-	newIter := func(seqNum uint64, opts *db.IterOptions) *Iterator {
-		cmp := db.DefaultComparer.Compare
-		equal := db.DefaultComparer.Equal
+	newIter := func(seqNum uint64, opts *IterOptions) *Iterator {
+		cmp := DefaultComparer.Compare
+		equal := DefaultComparer.Equal
 		split := func(a []byte) int { return len(a) }
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		iter := newMergingIter(cmp, &fakeIter{
@@ -313,7 +313,7 @@ func TestIterator(t *testing.T) {
 			cmp:   cmp,
 			equal: equal,
 			split: split,
-			merge: db.DefaultMerger.Merge,
+			merge: DefaultMerger.Merge,
 			iter:  iter,
 		}
 	}
@@ -325,14 +325,14 @@ func TestIterator(t *testing.T) {
 			vals = vals[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				keys = append(keys, db.ParseInternalKey(key[:j]))
+				keys = append(keys, base.ParseInternalKey(key[:j]))
 				vals = append(vals, []byte(key[j+1:]))
 			}
 			return ""
 
 		case "iter":
 			var seqNum int
-			var opts db.IterOptions
+			var opts IterOptions
 
 			for _, arg := range d.CmdArgs {
 				if len(arg.Vals) != 1 {
@@ -368,7 +368,7 @@ type minSeqNumPropertyCollector struct {
 	minSeqNum uint64
 }
 
-func (c *minSeqNumPropertyCollector) Add(key db.InternalKey, value []byte) error {
+func (c *minSeqNumPropertyCollector) Add(key InternalKey, value []byte) error {
 	if c.minSeqNum == 0 || c.minSeqNum > key.SeqNum() {
 		c.minSeqNum = key.SeqNum()
 	}
@@ -390,9 +390,9 @@ func TestIteratorTableFilter(t *testing.T) {
 	datadriven.RunTest(t, "testdata/iterator_table_filter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			opts := &db.Options{}
+			opts := &Options{}
 			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-				func() db.TablePropertyCollector {
+				func() TablePropertyCollector {
 					return &minSeqNumPropertyCollector{}
 				})
 
@@ -411,7 +411,7 @@ func TestIteratorTableFilter(t *testing.T) {
 		case "iter":
 			// We're using an iterator table filter to approximate what is done by
 			// snapshots.
-			iterOpts := &db.IterOptions{}
+			iterOpts := &IterOptions{}
 			for _, arg := range td.CmdArgs {
 				if len(arg.Vals) != 1 {
 					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
@@ -439,7 +439,7 @@ func TestIteratorTableFilter(t *testing.T) {
 			// sequence number, otherwise the DB appears empty.
 			snap := Snapshot{
 				db:     d,
-				seqNum: db.InternalKeySeqNumMax,
+				seqNum: InternalKeySeqNumMax,
 			}
 			iter := snap.NewIter(iterOpts)
 			defer iter.Close()
@@ -454,8 +454,8 @@ func TestIteratorTableFilter(t *testing.T) {
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
-		cmp:   db.DefaultComparer.Compare,
-		equal: db.DefaultComparer.Equal,
+		cmp:   DefaultComparer.Compare,
+		equal: DefaultComparer.Equal,
 		iter:  m.newIter(nil),
 	}
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -470,8 +470,8 @@ func BenchmarkIteratorSeekGE(b *testing.B) {
 func BenchmarkIteratorNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		cmp:   db.DefaultComparer.Compare,
-		equal: db.DefaultComparer.Equal,
+		cmp:   DefaultComparer.Compare,
+		equal: DefaultComparer.Equal,
 		iter:  m.newIter(nil),
 	}
 
@@ -487,8 +487,8 @@ func BenchmarkIteratorNext(b *testing.B) {
 func BenchmarkIteratorPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		cmp:   db.DefaultComparer.Compare,
-		equal: db.DefaultComparer.Equal,
+		cmp:   DefaultComparer.Compare,
+		equal: DefaultComparer.Equal,
 		iter:  m.newIter(nil),
 	}
 

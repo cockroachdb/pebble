@@ -18,7 +18,6 @@ import (
 	"github.com/codahale/hdrhistogram"
 	"github.com/petermattis/pebble"
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
 )
 
 const (
@@ -190,7 +189,7 @@ func runTest(dir string, t test) {
 
 	fmt.Printf("dir %s\nconcurrency %d\n", dir, concurrency)
 
-	opts := &db.Options{
+	opts := &pebble.Options{
 		Cache:                       cache.New(1 << 30),
 		Comparer:                    mvccComparer,
 		DisableWAL:                  disableWAL,
@@ -200,14 +199,14 @@ func runTest(dir string, t test) {
 		L0SlowdownWritesThreshold:   20,
 		L0StopWritesThreshold:       32,
 		LBaseMaxBytes:               64 << 20, // 64 MB
-		Levels: []db.LevelOptions{{
+		Levels: []pebble.LevelOptions{{
 			BlockSize: 32 << 10,
 		}},
 	}
 	opts.EnsureDefaults()
 
 	if verbose {
-		opts.EventListener = db.MakeLoggingEventListener(nil)
+		opts.EventListener = pebble.MakeLoggingEventListener(nil)
 		opts.EventListener.TableDeleted = nil
 		opts.EventListener.TableIngested = nil
 		opts.EventListener.WALCreated = nil

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/bytealloc"
 	"github.com/petermattis/pebble/internal/rangedel"
 )
@@ -44,7 +43,7 @@ import (
 // internal iterator collapsing MERGE operations for the same key until it
 // encounters a SET or DELETE operation. For example, the keys a.MERGE.4,
 // a.MERGE.3, a.MERGE.2 will be collapsed to a.MERGE.4 and the values will be
-// merged using the specified db.Merger.
+// merged using the specified Merger.
 //
 // An interesting case here occurs when MERGE is combined with SET. Consider
 // the entries a.MERGE.3 and a.SET.2. The collapsed key will be a.SET.3. The
@@ -122,11 +121,11 @@ import (
 // keys. Just as with point deletions, a range deletion covering an entry can
 // cause the entry to be elided.
 type compactionIter struct {
-	cmp   db.Compare
-	merge db.Merge
+	cmp   Compare
+	merge Merge
 	iter  internalIterator
 	err   error
-	key   db.InternalKey
+	key   InternalKey
 	value []byte
 	// Temporary buffer used for storing the previous user key in order to
 	// determine when iteration has advanced to a new user key and thus a new
@@ -136,7 +135,7 @@ type compactionIter struct {
 	valueBuf []byte
 	// Is the current entry valid?
 	valid     bool
-	iterKey   *db.InternalKey
+	iterKey   *InternalKey
 	iterValue []byte
 	// Skip indicates whether the remaining entries in the current snapshot
 	// stripe should be skipped or processed. Skipped is true at the start of a
@@ -161,8 +160,8 @@ type compactionIter struct {
 }
 
 func newCompactionIter(
-	cmp db.Compare,
-	merge db.Merge,
+	cmp Compare,
+	merge Merge,
 	iter internalIterator,
 	snapshots []uint64,
 	allowZeroSeqNum bool,
@@ -183,7 +182,7 @@ func newCompactionIter(
 	return i
 }
 
-func (i *compactionIter) First() (*db.InternalKey, []byte) {
+func (i *compactionIter) First() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -194,7 +193,7 @@ func (i *compactionIter) First() (*db.InternalKey, []byte) {
 	return i.Next()
 }
 
-func (i *compactionIter) Next() (*db.InternalKey, []byte) {
+func (i *compactionIter) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
@@ -208,7 +207,7 @@ func (i *compactionIter) Next() (*db.InternalKey, []byte) {
 	for i.iterKey != nil {
 		i.key = *i.iterKey
 		switch i.key.Kind() {
-		case db.InternalKeyKindDelete:
+		case InternalKeyKindDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
 			// skip to the next stripe (which will be the next user key).
 			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
@@ -223,13 +222,13 @@ func (i *compactionIter) Next() (*db.InternalKey, []byte) {
 			i.skip = true
 			return &i.key, i.value
 
-		case db.InternalKeyKindRangeDelete:
+		case InternalKeyKindRangeDelete:
 			i.key = i.cloneKey(i.key)
 			i.rangeDelFrag.Add(i.key, i.iterValue)
 			i.nextInStripe()
 			continue
 
-		case db.InternalKeyKindSet:
+		case InternalKeyKindSet:
 			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
 				i.saveKey()
 				i.skipStripe()
@@ -243,7 +242,7 @@ func (i *compactionIter) Next() (*db.InternalKey, []byte) {
 			i.maybeZeroSeqnum()
 			return &i.key, i.value
 
-		case db.InternalKeyKindMerge:
+		case InternalKeyKindMerge:
 			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
 				i.saveKey()
 				i.skipStripe()
@@ -257,7 +256,7 @@ func (i *compactionIter) Next() (*db.InternalKey, []byte) {
 			i.maybeZeroSeqnum()
 			return i.mergeNext()
 
-		case db.InternalKeyKindInvalid:
+		case InternalKeyKindInvalid:
 			// NB: Invalid keys occur when there is some error parsing the key. Pass
 			// them through unmodified.
 			i.saveKey()
@@ -282,7 +281,7 @@ func snapshotIndex(seq uint64, snapshots []uint64) (int, uint64) {
 		return snapshots[i] > seq
 	})
 	if index >= len(snapshots) {
-		return index, db.InternalKeySeqNumMax
+		return index, InternalKeySeqNumMax
 	}
 	return index, snapshots[index]
 }
@@ -303,12 +302,12 @@ func (i *compactionIter) nextInStripe() bool {
 		return false
 	}
 	switch key.Kind() {
-	case db.InternalKeyKindRangeDelete:
+	case InternalKeyKindRangeDelete:
 		// Range tombstones are always added to the fragmenter. They are processed
 		// into stripes after fragmentation.
 		i.rangeDelFrag.Add(i.cloneKey(*key), i.iterValue)
 		return true
-	case db.InternalKeyKindInvalid:
+	case InternalKeyKindInvalid:
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
 	}
@@ -324,7 +323,7 @@ func (i *compactionIter) nextInStripe() bool {
 	return false
 }
 
-func (i *compactionIter) mergeNext() (*db.InternalKey, []byte) {
+func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 	// Save the current key and value.
 	i.saveKey()
 	i.saveValue()
@@ -339,20 +338,20 @@ func (i *compactionIter) mergeNext() (*db.InternalKey, []byte) {
 		}
 		key := i.iterKey
 		switch key.Kind() {
-		case db.InternalKeyKindDelete:
+		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe.
 			i.valueBuf = i.value[:0]
 			i.skip = true
 			return &i.key, i.value
 
-		case db.InternalKeyKindRangeDelete:
+		case InternalKeyKindRangeDelete:
 			// We've hit a range deletion tombstone. Return everything up to this
 			// point and then skip entries until the next snapshot stripe.
 			i.skip = true
 			return &i.key, i.value
 
-		case db.InternalKeyKindSet:
+		case InternalKeyKindSet:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
 				return &i.key, i.value
@@ -363,11 +362,11 @@ func (i *compactionIter) mergeNext() (*db.InternalKey, []byte) {
 			// in lower levels. That is, MERGE+MERGE+SET -> SET.
 			i.value = i.merge(i.key.UserKey, i.value, i.iterValue, nil)
 			i.valueBuf = i.value[:0]
-			i.key.SetKind(db.InternalKeyKindSet)
+			i.key.SetKind(InternalKeyKindSet)
 			i.skip = true
 			return &i.key, i.value
 
-		case db.InternalKeyKindMerge:
+		case InternalKeyKindMerge:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
 				return &i.key, i.value
@@ -395,12 +394,12 @@ func (i *compactionIter) saveValue() {
 	i.value = i.valueBuf
 }
 
-func (i *compactionIter) cloneKey(key db.InternalKey) db.InternalKey {
+func (i *compactionIter) cloneKey(key InternalKey) InternalKey {
 	i.alloc, key.UserKey = i.alloc.Copy(key.UserKey)
 	return key
 }
 
-func (i *compactionIter) Key() db.InternalKey {
+func (i *compactionIter) Key() InternalKey {
 	return i.key
 }
 

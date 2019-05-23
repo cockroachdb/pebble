@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/kr/pretty"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
@@ -33,13 +33,13 @@ func TestIngestLoad(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, nil, db.LevelOptions{})
+			w := sstable.NewWriter(f, nil, LevelOptions{})
 			for _, data := range strings.Split(td.Input, "\n") {
 				j := strings.Index(data, ":")
 				if j < 0 {
 					return fmt.Sprintf("malformed input: %s\n", data)
 				}
-				key := db.ParseInternalKey(data[:j])
+				key := base.ParseInternalKey(data[:j])
 				value := []byte(data[j+1:])
 				if err := w.Add(key, value); err != nil {
 					return err.Error()
@@ -47,8 +47,8 @@ func TestIngestLoad(t *testing.T) {
 			}
 			w.Close()
 
-			opts := &db.Options{
-				Comparer: db.DefaultComparer,
+			opts := &Options{
+				Comparer: DefaultComparer,
 				FS:       mem,
 			}
 			meta, err := ingestLoad(opts, []string{"ext"}, []uint64{1})
@@ -70,7 +70,7 @@ func TestIngestLoad(t *testing.T) {
 func TestIngestLoadRand(t *testing.T) {
 	mem := vfs.NewMem()
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-	cmp := db.DefaultComparer.Compare
+	cmp := DefaultComparer.Compare
 
 	randBytes := func(size int) []byte {
 		data := make([]byte, size)
@@ -97,21 +97,21 @@ func TestIngestLoadRand(t *testing.T) {
 			}
 			defer f.Close()
 
-			keys := make([]db.InternalKey, 1+rng.Intn(100))
+			keys := make([]InternalKey, 1+rng.Intn(100))
 			for i := range keys {
-				keys[i] = db.MakeInternalKey(
+				keys[i] = base.MakeInternalKey(
 					randBytes(1+rng.Intn(10)),
-					uint64(rng.Int63n(int64(db.InternalKeySeqNumMax))),
-					db.InternalKeyKindSet)
+					uint64(rng.Int63n(int64(InternalKeySeqNumMax))),
+					InternalKeyKindSet)
 			}
 			sort.Slice(keys, func(i, j int) bool {
-				return db.InternalCompare(cmp, keys[i], keys[j]) < 0
+				return base.InternalCompare(cmp, keys[i], keys[j]) < 0
 			})
 
 			expected[i].smallest = keys[0]
 			expected[i].largest = keys[len(keys)-1]
 
-			w := sstable.NewWriter(f, nil, db.LevelOptions{})
+			w := sstable.NewWriter(f, nil, LevelOptions{})
 			for i := range keys {
 				w.Add(keys[i], nil)
 			}
@@ -127,8 +127,8 @@ func TestIngestLoadRand(t *testing.T) {
 		}()
 	}
 
-	opts := &db.Options{
-		Comparer: db.DefaultComparer,
+	opts := &Options{
+		Comparer: DefaultComparer,
 		FS:       mem,
 	}
 	meta, err := ingestLoad(opts, paths, pending)
@@ -141,8 +141,8 @@ func TestIngestLoadRand(t *testing.T) {
 }
 
 func TestIngestLoadNonExistent(t *testing.T) {
-	opts := &db.Options{
-		Comparer: db.DefaultComparer,
+	opts := &Options{
+		Comparer: DefaultComparer,
 		FS:       vfs.NewMem(),
 	}
 	if _, err := ingestLoad(opts, []string{"non-existent"}, []uint64{1}); err == nil {
@@ -158,8 +158,8 @@ func TestIngestLoadEmpty(t *testing.T) {
 	}
 	f.Close()
 
-	opts := &db.Options{
-		Comparer: db.DefaultComparer,
+	opts := &Options{
+		Comparer: DefaultComparer,
 		FS:       mem,
 	}
 	if _, err := ingestLoad(opts, []string{"empty"}, []uint64{1}); err == nil {
@@ -196,10 +196,10 @@ func TestIngestSortAndVerify(t *testing.T) {
 
 	comparers := []struct {
 		name string
-		cmp  db.Compare
+		cmp  Compare
 	}{
-		{"default", db.DefaultComparer.Compare},
-		{"reverse", func(a, b []byte) int { return db.DefaultComparer.Compare(b, a) }},
+		{"default", DefaultComparer.Compare},
+		{"reverse", func(a, b []byte) int { return DefaultComparer.Compare(b, a) }},
 	}
 
 	for _, comparer := range comparers {
@@ -217,8 +217,8 @@ func TestIngestSortAndVerify(t *testing.T) {
 							parts[0], parts[1] = parts[1], parts[0]
 						}
 						meta = append(meta, &fileMetadata{
-							smallest: db.InternalKey{UserKey: []byte(parts[0])},
-							largest:  db.InternalKey{UserKey: []byte(parts[1])},
+							smallest: InternalKey{UserKey: []byte(parts[0])},
+							largest:  InternalKey{UserKey: []byte(parts[1])},
 						})
 					}
 					if err := ingestSortAndVerify(cmp, meta); !isError(err, c.expected) {
@@ -245,7 +245,7 @@ func TestIngestLink(t *testing.T) {
 	for i := 0; i <= count; i++ {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
-			opts := &db.Options{FS: mem}
+			opts := &Options{FS: mem}
 			opts.EnsureDefaults()
 			if err := mem.MkdirAll(dir, 0755); err != nil {
 				t.Fatal(err)
@@ -327,13 +327,13 @@ func TestIngestLink(t *testing.T) {
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
-	comparers := []db.Comparer{
-		{Name: "default", Compare: db.DefaultComparer.Compare},
+	comparers := []Comparer{
+		{Name: "default", Compare: DefaultComparer.Compare},
 		{Name: "reverse", Compare: func(a, b []byte) int {
-			return db.DefaultComparer.Compare(b, a)
+			return DefaultComparer.Compare(b, a)
 		}},
 	}
-	m := make(map[string]*db.Comparer)
+	m := make(map[string]*Comparer)
 	for i := range comparers {
 		c := &comparers[i]
 		m[c.Name] = c
@@ -352,8 +352,8 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					parts[0], parts[1] = parts[1], parts[0]
 				}
 				return &fileMetadata{
-					smallest: db.InternalKey{UserKey: []byte(parts[0])},
-					largest:  db.InternalKey{UserKey: []byte(parts[1])},
+					smallest: InternalKey{UserKey: []byte(parts[0])},
+					largest:  InternalKey{UserKey: []byte(parts[1])},
 				}
 			}
 
@@ -365,7 +365,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 						return err.Error()
 					}
 
-					opts := &db.Options{
+					opts := &Options{
 						Comparer: &comparer,
 					}
 					opts.EnsureDefaults()
@@ -405,7 +405,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 }
 
 func TestIngestTargetLevel(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := DefaultComparer.Compare
 	var vers *version
 
 	parseMeta := func(s string) fileMetadata {
@@ -414,8 +414,8 @@ func TestIngestTargetLevel(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		return fileMetadata{
-			smallest: db.InternalKey{UserKey: []byte(parts[0])},
-			largest:  db.InternalKey{UserKey: []byte(parts[1])},
+			smallest: InternalKey{UserKey: []byte(parts[0])},
+			largest:  InternalKey{UserKey: []byte(parts[1])},
 		}
 	}
 
@@ -472,7 +472,7 @@ func TestIngest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS:                    mem,
 		L0CompactionThreshold: 100,
 	})
@@ -494,7 +494,7 @@ func TestIngest(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				w := sstable.NewWriter(f, nil, db.LevelOptions{})
+				w := sstable.NewWriter(f, nil, LevelOptions{})
 				iters := []internalIterator{
 					b.newInternalIter(nil),
 					b.newRangeDelIter(nil),

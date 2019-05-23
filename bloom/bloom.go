@@ -9,7 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 const (
@@ -137,7 +137,7 @@ type tableFilterWriter struct {
 	hashes     []uint32
 }
 
-// AddKey implements the db.FilterWriter interface.
+// AddKey implements the base.FilterWriter interface.
 func (w *tableFilterWriter) AddKey(key []byte) {
 	h := hash(key)
 	if n := len(w.hashes); n == 0 || h != w.hashes[n-1] {
@@ -145,7 +145,7 @@ func (w *tableFilterWriter) AddKey(key []byte) {
 	}
 }
 
-// Finish implements the db.FilterWriter interface.
+// Finish implements the base.FilterWriter interface.
 func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	// The table filter format matches the RocksDB full-file filter format.
 	var nBits, nLines int
@@ -184,17 +184,16 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	return buf
 }
 
-// FilterPolicy implements the db.FilterPolicy interface from the pebble/db
-// package.
+// FilterPolicy implements the FilterPolicy interface from the pebble package.
 //
 // The integer value is the approximate number of bits used per key. A good
 // value is 10, which yields a filter with ~ 1% false positive rate.
 //
 // It is valid to use the other API in this package (pebble/bloom) without
-// using this type or the pebble/db package.
+// using this type or the pebble package.
 type FilterPolicy int
 
-// Name implements the db.FilterPolicy interface.
+// Name implements the pebble.FilterPolicy interface.
 func (p FilterPolicy) Name() string {
 	// This string looks arbitrary, but its value is written to LevelDB .sst
 	// files, and should be this exact value to be compatible with those files
@@ -202,20 +201,20 @@ func (p FilterPolicy) Name() string {
 	return "rocksdb.BuiltinBloomFilter"
 }
 
-// MayContain implements the db.FilterPolicy interface.
-func (p FilterPolicy) MayContain(ftype db.FilterType, f, key []byte) bool {
+// MayContain implements the pebble.FilterPolicy interface.
+func (p FilterPolicy) MayContain(ftype base.FilterType, f, key []byte) bool {
 	switch ftype {
-	case db.TableFilter:
+	case base.TableFilter:
 		return tableFilter(f).MayContain(key)
 	default:
 		panic(fmt.Sprintf("unknown filter type: %v", ftype))
 	}
 }
 
-// NewWriter implements the db.FilterPolicy interface.
-func (p FilterPolicy) NewWriter(ftype db.FilterType) db.FilterWriter {
+// NewWriter implements the pebble.FilterPolicy interface.
+func (p FilterPolicy) NewWriter(ftype base.FilterType) base.FilterWriter {
 	switch ftype {
-	case db.TableFilter:
+	case base.TableFilter:
 		return &tableFilterWriter{
 			bitsPerKey: int(p),
 		}

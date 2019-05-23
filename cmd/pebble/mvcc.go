@@ -8,14 +8,13 @@ import (
 	"bytes"
 
 	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/bytealloc"
 )
 
 // MVCC encoding and decoding routines adapted from CockroachDB sources. Used
 // to perform apples-to-apples benchmarking for CockroachDB's usage of RocksDB.
 
-var mvccComparer = &db.Comparer{
+var mvccComparer = &pebble.Comparer{
 	Compare: mvccCompare,
 
 	AbbreviatedKey: func(k []byte) uint64 {
@@ -23,7 +22,7 @@ var mvccComparer = &db.Comparer{
 		if !ok {
 			return 0
 		}
-		return db.DefaultComparer.AbbreviatedKey(key)
+		return pebble.DefaultComparer.AbbreviatedKey(key)
 	},
 
 	Separator: func(dst, a, b []byte) []byte {
@@ -92,7 +91,7 @@ func mvccEncode(dst, key []byte, walltime uint64, logical uint32) []byte {
 }
 
 func mvccForwardScan(d *pebble.DB, start, end, ts []byte) int {
-	it := d.NewIter(&db.IterOptions{
+	it := d.NewIter(&pebble.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),
 	})
@@ -113,7 +112,7 @@ func mvccForwardScan(d *pebble.DB, start, end, ts []byte) int {
 }
 
 func mvccReverseScan(d *pebble.DB, start, end, ts []byte) int {
-	it := d.NewIter(&db.IterOptions{
+	it := d.NewIter(&pebble.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),
 	})
