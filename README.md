@@ -14,7 +14,7 @@ needed by CockroachDB:
 
 * Block-based tables
 * Indexed batches
-* Iterator options (lower/upper bound, [[TODO: table filter]](https://github.com/petermattis/pebble/issues/6))
+* Iterator options (lower/upper bound, table filter)
 * Level-based compaction
 * Manual compaction
 * Merge operator

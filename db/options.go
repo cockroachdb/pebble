@@ -516,9 +516,7 @@ type IterOptions struct {
 	// TableFilter can be used to filter the tables that are scanned during
 	// iteration based on the user properties. Return true to scan the table and
 	// false to skip scanning.
-	//
-	// TODO(peter): unimplemented.
-	// TableFilter func(userProps map[string]string) bool
+	TableFilter func(userProps map[string]string) bool
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.

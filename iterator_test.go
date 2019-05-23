@@ -364,6 +364,93 @@ func TestIterator(t *testing.T) {
 	})
 }
 
+type minSeqNumPropertyCollector struct {
+	minSeqNum uint64
+}
+
+func (c *minSeqNumPropertyCollector) Add(key db.InternalKey, value []byte) error {
+	if c.minSeqNum == 0 || c.minSeqNum > key.SeqNum() {
+		c.minSeqNum = key.SeqNum()
+	}
+	return nil
+}
+
+func (c *minSeqNumPropertyCollector) Finish(userProps map[string]string) error {
+	userProps["test.min-seq-num"] = fmt.Sprint(c.minSeqNum)
+	return nil
+}
+
+func (c *minSeqNumPropertyCollector) Name() string {
+	return "minSeqNumPropertyCollector"
+}
+
+func TestIteratorTableFilter(t *testing.T) {
+	var d *DB
+
+	datadriven.RunTest(t, "testdata/iterator_table_filter", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			opts := &db.Options{}
+			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
+				func() db.TablePropertyCollector {
+					return &minSeqNumPropertyCollector{}
+				})
+
+			var err error
+			if d, err = runDBDefineCmd(td, opts); err != nil {
+				return err.Error()
+			}
+
+			d.mu.Lock()
+			// Disable the "dynamic base level" code for this test.
+			d.mu.versions.picker.baseLevel = 1
+			s := d.mu.versions.currentVersion().DebugString()
+			d.mu.Unlock()
+			return s
+
+		case "iter":
+			// We're using an iterator table filter to approximate what is done by
+			// snapshots.
+			iterOpts := &db.IterOptions{}
+			for _, arg := range td.CmdArgs {
+				if len(arg.Vals) != 1 {
+					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "filter":
+					seqNum, err := strconv.ParseUint(arg.Vals[0], 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+					iterOpts.TableFilter = func(userProps map[string]string) bool {
+						minSeqNum, err := strconv.ParseUint(userProps["test.min-seq-num"], 10, 64)
+						if err != nil {
+							return true
+						}
+						return minSeqNum < seqNum
+					}
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+				}
+			}
+
+			// TODO(peter): runDBDefineCmd doesn't properly update the visible
+			// sequence number. So we have to use a snapshot with a very large
+			// sequence number, otherwise the DB appears empty.
+			snap := Snapshot{
+				db:     d,
+				seqNum: db.InternalKeySeqNumMax,
+			}
+			iter := snap.NewIter(iterOpts)
+			defer iter.Close()
+			return runIterCmd(td, iter)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
