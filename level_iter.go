@@ -31,7 +31,7 @@ type tableNewIters func(
 // processes range deletions via mergingIter.
 type levelIter struct {
 	opts      *db.IterOptions
-	tableOpts *db.IterOptions
+	tableOpts db.IterOptions
 	cmp       db.Compare
 	index     int
 	// The key to return when iterating past an sstable boundary and that
@@ -72,6 +72,9 @@ func (l *levelIter) init(
 	opts *db.IterOptions, cmp db.Compare, newIters tableNewIters, files []fileMetadata,
 ) {
 	l.opts = opts
+	if l.opts != nil {
+		l.tableOpts.TableFilter = l.opts.TableFilter
+	}
 	l.cmp = cmp
 	l.index = -1
 	l.newIters = newIters
@@ -135,25 +138,25 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		f := &l.files[l.index]
-		lowerBound := l.opts.GetLowerBound()
-		if lowerBound != nil {
-			if l.cmp(f.largest.UserKey, lowerBound) < 0 {
+		l.tableOpts.LowerBound = l.opts.GetLowerBound()
+		if l.tableOpts.LowerBound != nil {
+			if l.cmp(f.largest.UserKey, l.tableOpts.LowerBound) < 0 {
 				// The largest key in the sstable is smaller than the lower bound.
 				if dir < 0 {
 					return false
 				}
 				continue
 			}
-			if l.cmp(lowerBound, f.smallest.UserKey) < 0 {
+			if l.cmp(l.tableOpts.LowerBound, f.smallest.UserKey) < 0 {
 				// The lower bound is smaller than the smallest key in the
 				// table. Iteration within the table does not need to check the lower
 				// bound.
-				lowerBound = nil
+				l.tableOpts.LowerBound = nil
 			}
 		}
-		upperBound := l.opts.GetUpperBound()
-		if upperBound != nil {
-			if l.cmp(f.smallest.UserKey, upperBound) >= 0 {
+		l.tableOpts.UpperBound = l.opts.GetUpperBound()
+		if l.tableOpts.UpperBound != nil {
+			if l.cmp(f.smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
 				// The smallest key in the sstable is greater than or equal to the
 				// lower bound.
 				if dir > 0 {
@@ -161,26 +164,16 @@ func (l *levelIter) loadFile(index, dir int) bool {
 				}
 				continue
 			}
-			if l.cmp(upperBound, f.largest.UserKey) > 0 {
+			if l.cmp(l.tableOpts.UpperBound, f.largest.UserKey) > 0 {
 				// The upper bound is greater than the largest key in the
 				// table. Iteration within the table does not need to check the upper
 				// bound.
-				upperBound = nil
+				l.tableOpts.UpperBound = nil
 			}
-		}
-
-		var opts *db.IterOptions
-		if lowerBound != nil || upperBound != nil {
-			if l.tableOpts == nil {
-				l.tableOpts = &db.IterOptions{}
-			}
-			l.tableOpts.LowerBound = lowerBound
-			l.tableOpts.UpperBound = upperBound
-			opts = l.tableOpts
 		}
 
 		var rangeDelIter internalIterator
-		l.iter, rangeDelIter, l.err = l.newIters(f, opts)
+		l.iter, rangeDelIter, l.err = l.newIters(f, &l.tableOpts)
 		if l.err != nil || l.iter == nil {
 			return false
 		}

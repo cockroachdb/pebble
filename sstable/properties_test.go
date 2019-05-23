@@ -29,11 +29,14 @@ func TestPropertiesLoad(t *testing.T) {
 		NumDataBlocks:          7,
 		NumEntries:             1710,
 		PrefixExtractorName:    "nullptr",
-		PropertyCollectorNames: "[]",
+		PropertyCollectorNames: "[KeyCountPropertyCollector]",
 		RawKeySize:             23717,
 		RawValueSize:           1835,
 		Version:                2,
-		WholeKeyFiltering:      false,
+		UserProperties: map[string]string{
+			"test.key-count": "1710",
+		},
+		WholeKeyFiltering: false,
 		ValueOffsets: map[string]uint64{
 			"rocksdb.block.based.table.index.type":          13122,
 			"rocksdb.block.based.table.prefix.filtering":    13171,
@@ -55,8 +58,9 @@ func TestPropertiesLoad(t *testing.T) {
 			"rocksdb.oldest.key.time":                       13673,
 			"rocksdb.prefix.extractor.name":                 13706,
 			"rocksdb.property.collectors":                   13743,
-			"rocksdb.raw.key.size":                          13768,
-			"rocksdb.raw.value.size":                        13796,
+			"rocksdb.raw.key.size":                          13793,
+			"rocksdb.raw.value.size":                        13821,
+			"test.key-count":                                13840,
 		},
 	}
 

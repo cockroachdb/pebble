@@ -108,6 +108,27 @@ const (
 	TableFormatLevelDB
 )
 
+// TablePropertyCollector provides a hook for collecting user-defined
+// properties based on the keys and values stored in an sstable. A new
+// TablePropertyCollector is created for an sstable when the sstable is being
+// written.
+type TablePropertyCollector interface {
+	// Add is called with each new entry added to the sstable. While the sstable
+	// is itself sorted by key, do not assume that the entries are added in any
+	// order. In particular, the ordering of point entries and range tombstones
+	// is unspecified.
+	Add(key InternalKey, value []byte) error
+
+	// Finish is called when all entries have been added to the sstable. The
+	// collected properties (if any) should be added to the specified map. Note
+	// that in case of an error during sstable construction, Finish may not be
+	// called.
+	Finish(userProps map[string]string) error
+
+	// The name of the property collector.
+	Name() string
+}
+
 // LevelOptions holds the optional per-level parameters.
 type LevelOptions struct {
 	// BlockRestartInterval is the number of keys between restart points
@@ -289,6 +310,11 @@ type Options struct {
 	// sstable directly, and not used when opening a database.
 	TableFormat TableFormat
 
+	// TablePropertyCollectors is a list of TablePropertyCollector creation
+	// functions. A new TablePropertyCollector is created for each sstable built
+	// and lives for the lifetime of the table.
+	TablePropertyCollectors []func() TablePropertyCollector
+
 	// WALDir specifies the directory to store write-ahead logs (WALs) in. If
 	// empty (the default), WALs will be stored in the same directory as sstables
 	// (i.e. the directory passed to pebble.Open).
@@ -393,6 +419,16 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	fmt.Fprintf(&buf, "  table_property_collectors=[")
+	for i := range o.TablePropertyCollectors {
+		if i > 0 {
+			fmt.Fprintf(&buf, ",")
+		}
+		// NB: This creates a new TablePropertyCollector, but Options.String() is
+		// called rarely so the overhead of doing so is not consequential.
+		fmt.Fprintf(&buf, "%s", o.TablePropertyCollectors[i]().Name())
+	}
+	fmt.Fprintf(&buf, "]\n")
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 
 	for i := range o.Levels {
@@ -480,9 +516,7 @@ type IterOptions struct {
 	// TableFilter can be used to filter the tables that are scanned during
 	// iteration based on the user properties. Return true to scan the table and
 	// false to skip scanning.
-	//
-	// TODO(peter): unimplemented.
-	// TableFilter func(userProps map[string]string) bool
+	TableFilter func(userProps map[string]string) bool
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.

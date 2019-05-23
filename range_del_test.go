@@ -25,7 +25,7 @@ func TestRangeDel(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			var err error
-			if d, err = runDBDefineCmd(td); err != nil {
+			if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
 				return err.Error()
 			}
 

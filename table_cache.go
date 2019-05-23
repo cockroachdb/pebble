@@ -17,6 +17,8 @@ import (
 	"github.com/petermattis/pebble/vfs"
 )
 
+var emptyIter = &errorIter{err: nil}
+
 type tableCache struct {
 	dirname string
 	fs      vfs.FS
@@ -68,6 +70,14 @@ func (c *tableCache) newIters(
 		return nil, nil, x.err
 	}
 	n.result <- x
+
+	if opts != nil &&
+		opts.TableFilter != nil &&
+		!opts.TableFilter(x.reader.Properties.UserProperties) {
+		// Return the empty iterator. This iterator has no mutable state, so
+		// using a singleton is fine.
+		return emptyIter, nil, nil
+	}
 
 	iter := x.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
 	atomic.AddInt32(&c.mu.iterCount, 1)

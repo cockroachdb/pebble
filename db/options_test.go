@@ -53,6 +53,7 @@ func TestOptionsString(t *testing.T) {
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
   merger=pebble.concatenate
+  table_property_collectors=[]
   wal_dir=
 
 [Level "0"]

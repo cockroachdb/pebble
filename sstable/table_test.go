@@ -21,6 +21,7 @@ import (
 	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -317,6 +318,7 @@ func build(
 	fp db.FilterPolicy,
 	ftype db.FilterType,
 	comparer *db.Comparer,
+	propCollector func() db.TablePropertyCollector,
 ) (vfs.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
@@ -335,16 +337,24 @@ func build(
 	}
 	defer f0.Close()
 	tmpFileCount++
-	w := NewWriter(f0, &db.Options{
+
+	opts := &db.Options{
 		Merger: &db.Merger{
 			Name: "nullptr",
 		},
 		Comparer: comparer,
-	}, db.LevelOptions{
+	}
+	if propCollector != nil {
+		opts.TablePropertyCollectors = append(opts.TablePropertyCollectors, propCollector)
+	}
+
+	levelOpts := db.LevelOptions{
 		Compression:  compression,
 		FilterPolicy: fp,
 		FilterType:   ftype,
-	})
+	}
+
+	w := NewWriter(f0, opts, levelOpts)
 	for _, k := range keys {
 		v := wordCount[k]
 		ikey := db.MakeInternalKey([]byte(k), 0, db.InternalKeyKindSet)
@@ -532,7 +542,7 @@ func TestWriterRoundTrip(t *testing.T) {
 		"bloom10bit": bloom.FilterPolicy(10),
 	} {
 		t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
-			f, err := build(db.DefaultCompression, fp, db.TableFilter, nil)
+			f, err := build(db.DefaultCompression, fp, db.TableFilter, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -724,4 +734,39 @@ func TestReadFooter(t *testing.T) {
 			}
 		})
 	}
+}
+
+type errorPropCollector struct{}
+
+func (errorPropCollector) Add(key db.InternalKey, _ []byte) error {
+	return fmt.Errorf("add %s failed", key)
+}
+
+func (errorPropCollector) Finish(_ map[string]string) error {
+	return fmt.Errorf("finish failed")
+}
+
+func (errorPropCollector) Name() string {
+	return "errorPropCollector"
+}
+
+func TestTablePropertyCollectorErrors(t *testing.T) {
+	mem := vfs.NewMem()
+	f, err := mem.Create("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &db.Options{}
+	opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
+		func() db.TablePropertyCollector {
+			return errorPropCollector{}
+		})
+
+	w := NewWriter(f, opts, db.LevelOptions{})
+	require.Regexp(t, `add a#0,1 failed`, w.Set([]byte("a"), []byte("b")))
+	require.Regexp(t, `add c#0,0 failed`, w.Delete([]byte("c")))
+	require.Regexp(t, `add d#0,15 failed`, w.DeleteRange([]byte("d"), []byte("e")))
+	require.Regexp(t, `add f#0,2 failed`, w.Merge([]byte("f"), []byte("g")))
+	require.Regexp(t, `finish failed`, w.Close())
 }

@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -109,11 +110,12 @@ type Writer struct {
 	pendingBH blockHandle
 	// offset is the offset (relative to the table start) of the next block
 	// to be written.
-	offset        uint64
-	block         blockWriter
-	indexBlock    blockWriter
-	rangeDelBlock blockWriter
-	props         Properties
+	offset         uint64
+	block          blockWriter
+	indexBlock     blockWriter
+	rangeDelBlock  blockWriter
+	props          Properties
+	propCollectors []db.TablePropertyCollector
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -204,6 +206,12 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 		return err
 	}
 
+	for i := range w.propCollectors {
+		if err := w.propCollectors[i].Add(key, value); err != nil {
+			return err
+		}
+	}
+
 	w.meta.updateSeqNum(key.SeqNum())
 	w.meta.updateLargestPoint(key)
 
@@ -251,6 +259,12 @@ func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
 					rangedel.Tombstone{Start: key, End: value})
 				return w.err
 			}
+		}
+	}
+
+	for i := range w.propCollectors {
+		if err := w.propCollectors[i].Add(key, value); err != nil {
+			return err
 		}
 	}
 
@@ -452,6 +466,16 @@ func (w *Writer) Close() (err error) {
 	}
 
 	{
+		userProps := make(map[string]string)
+		for i := range w.propCollectors {
+			if err := w.propCollectors[i].Finish(userProps); err != nil {
+				return err
+			}
+		}
+		if len(userProps) > 0 {
+			w.props.UserProperties = userProps
+		}
+
 		// Write the properties block.
 		var raw rawBlockWriter
 		raw.restartInterval = 1
@@ -587,6 +611,21 @@ func NewWriter(f writeCloseSyncer, o *db.Options, lo db.LevelOptions) *Writer {
 	w.props.MergeOperatorName = o.Merger.Name
 	w.props.PropertyCollectorNames = "[]"
 	w.props.Version = 2 // TODO(peter): what is this?
+
+	if len(o.TablePropertyCollectors) > 0 {
+		w.propCollectors = make([]db.TablePropertyCollector, len(o.TablePropertyCollectors))
+		var buf bytes.Buffer
+		buf.WriteString("[")
+		for i := range o.TablePropertyCollectors {
+			w.propCollectors[i] = o.TablePropertyCollectors[i]()
+			if i > 0 {
+				buf.WriteString(",")
+			}
+			buf.WriteString(w.propCollectors[i].Name())
+		}
+		buf.WriteString("]")
+		w.props.PropertyCollectorNames = buf.String()
+	}
 
 	// If f does not have a Flush method, do our own buffering.
 	if _, ok := f.(flusher); ok {

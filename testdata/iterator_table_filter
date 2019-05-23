@@ -1,0 +1,46 @@
+define
+L0
+  a.SET.4:4
+L1
+  a.SET.3:3
+L2
+  a.SET.2:2
+L3
+  a.SET.1:1
+----
+0: a#4,1-a#4,1
+1: a#3,1-a#3,1
+2: a#2,1-a#2,1
+3: a#1,1-a#1,1
+
+iter
+first
+----
+a:4
+
+# Only scan tables with min-seq-num < filter.
+
+iter filter=5
+first
+----
+a:4
+
+iter filter=4
+first
+----
+a:3
+
+iter filter=3
+first
+----
+a:2
+
+iter filter=2
+first
+----
+a:1
+
+iter filter=1
+first
+----
+.

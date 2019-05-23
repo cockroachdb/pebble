@@ -36,6 +36,24 @@ const (
 	fullKeyBloom   = true
 )
 
+type keyCountPropertyCollector struct {
+	count int
+}
+
+func (c *keyCountPropertyCollector) Add(key db.InternalKey, value []byte) error {
+	c.count++
+	return nil
+}
+
+func (c *keyCountPropertyCollector) Finish(userProps map[string]string) error {
+	userProps["test.key-count"] = fmt.Sprint(c.count)
+	return nil
+}
+
+func (c *keyCountPropertyCollector) Name() string {
+	return "KeyCountPropertyCollector"
+}
+
 //go:generate make -C ./testdata
 var fixtureComparer = func() *db.Comparer {
 	c := *db.DefaultComparer
@@ -66,21 +84,28 @@ func (o fixtureOpts) String() string {
 }
 
 var fixtures = map[fixtureOpts]struct {
-	filename string
-	comparer *db.Comparer
+	filename      string
+	comparer      *db.Comparer
+	propCollector func() db.TablePropertyCollector
 }{
 	{compressed, noFullKeyBloom, noPrefixFilter}: {
 		"testdata/h.sst", nil,
+		func() db.TablePropertyCollector {
+			return &keyCountPropertyCollector{}
+		},
 	},
 	{uncompressed, noFullKeyBloom, noPrefixFilter}: {
 		"testdata/h.no-compression.sst", nil,
+		func() db.TablePropertyCollector {
+			return &keyCountPropertyCollector{}
+		},
 	},
 	{uncompressed, fullKeyBloom, noPrefixFilter}: {
-		"testdata/h.table-bloom.no-compression.sst", nil,
+		"testdata/h.table-bloom.no-compression.sst", nil, nil,
 	},
 	{uncompressed, noFullKeyBloom, prefixFilter}: {
 		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-		fixtureComparer,
+		fixtureComparer, nil,
 	},
 }
 
@@ -108,7 +133,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		return err
 	}
 
-	f, err := build(compression, fp, ftype, fixture.comparer)
+	f, err := build(compression, fp, ftype, fixture.comparer, fixture.propCollector)
 	if err != nil {
 		return err
 	}

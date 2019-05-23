@@ -205,14 +205,14 @@ func runCompactCommand(td *datadriven.TestData, d *DB) error {
 	return d.Compact([]byte(parts[0]), []byte(parts[1]))
 }
 
-func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
+func runDBDefineCmd(td *datadriven.TestData, opts *db.Options) (*DB, error) {
 	if td.Input == "" {
 		return nil, fmt.Errorf("empty test input")
 	}
 
-	opts := db.Options{
-		FS: vfs.NewMem(),
-	}
+	opts = opts.EnsureDefaults()
+	opts.FS = vfs.NewMem()
+
 	var snapshots []uint64
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
@@ -241,7 +241,7 @@ func runDBDefineCmd(td *datadriven.TestData) (*DB, error) {
 			return nil, fmt.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
 	}
-	d, err := Open("", &opts)
+	d, err := Open("", opts)
 	if err != nil {
 		return nil, err
 	}

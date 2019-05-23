@@ -20,17 +20,6 @@
 #include "rocksdb/table.h"
 
 const char* infile = "h.txt";
-const char* outfiles[] = {
-  "h.ldb", // omitted
-  "h.sst",
-  "h.no-compression.sst",
-  "h.block-bloom.no-compression.sst",
-  "h.table-bloom.no-compression.sst",
-  "h.block-bloom.no-compression.prefix_extractor.sst", // omitted
-  "h.table-bloom.no-compression.prefix_extractor.sst", // omitted
-  "h.block-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst", // omitted
-  "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-};
 
 // A dummy prefix extractor that cuts off the last two bytes for keys of
 // length three or over. This is not a valid prefix extractor and barely
@@ -51,44 +40,137 @@ class PrefixExtractor : public rocksdb::SliceTransform {
   virtual bool InDomain(const rocksdb::Slice& src) const { return true; }
 };
 
+class KeyCountPropertyCollector : public rocksdb::TablePropertiesCollector {
+ public:
+  KeyCountPropertyCollector()
+      : count_(0) {
+  }
+
+  rocksdb::Status AddUserKey(const rocksdb::Slice&, const rocksdb::Slice&,
+                             rocksdb::EntryType type, rocksdb::SequenceNumber,
+                             uint64_t) override {
+    count_++;
+    return rocksdb::Status::OK();
+  }
+
+  rocksdb::Status Finish(rocksdb::UserCollectedProperties* properties) override {
+    char buf[16];
+    sprintf(buf, "%d", count_);
+    *properties = rocksdb::UserCollectedProperties{
+      {"test.key-count", buf},
+    };
+    return rocksdb::Status::OK();
+  }
+
+  const char* Name() const override { return "KeyCountPropertyCollector"; }
+
+  rocksdb::UserCollectedProperties GetReadableProperties() const override {
+    return rocksdb::UserCollectedProperties{};
+  }
+
+ private:
+  int count_;
+};
+
+class KeyCountPropertyCollectorFactory : public rocksdb::TablePropertiesCollectorFactory {
+  virtual rocksdb::TablePropertiesCollector* CreateTablePropertiesCollector(
+      rocksdb::TablePropertiesCollectorFactory::Context context) override {
+    return new KeyCountPropertyCollector();
+  }
+  const char* Name() const override { return "KeyCountPropertyCollector"; }
+};
+
 int write() {
   for (int i = 0; i < 9; ++i) {
-    if (i == 0 || i == 5 || i == 6 || i == 7) {
-        // TODO(peter): instill sanity.
-        continue;
-    }
-    const char* outfile = outfiles[i];
-    rocksdb::Status status;
-
-    rocksdb::BlockBasedTableOptions table_options;
-    // This bool defaults to true, so set it to false explicitly when we're not
-    // also enabling bloom filters. Otherwise, the pebble tests need to specify
-    // the corresponding property, which is awkward.
-    table_options.whole_key_filtering = (i >= 3);
-
-    if (i == 0) {
-      table_options.format_version = 0;
-    }
-    if (i >= 3) {
-      table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, (i % 2) == 1));
-    }
-
     rocksdb::Options options;
-    if (i >= 5) {
-      options.prefix_extractor.reset(new PrefixExtractor);
-      table_options.whole_key_filtering = true;
-    }
-    if (i >= 7) {
-      table_options.whole_key_filtering = false;
+    rocksdb::BlockBasedTableOptions table_options;
+    const char* outfile;
+
+    switch (i) {
+      case 0:
+        outfile = "h.ldb";
+        table_options.format_version = 0;
+        table_options.whole_key_filtering = false;
+        break;
+
+      case 1:
+        outfile = "h.sst";
+        options.table_properties_collector_factories.emplace_back(
+            new KeyCountPropertyCollectorFactory);
+        table_options.whole_key_filtering = false;
+        break;
+
+      case 2:
+        outfile = "h.no-compression.sst";
+        options.table_properties_collector_factories.emplace_back(
+            new KeyCountPropertyCollectorFactory);
+        options.compression = rocksdb::kNoCompression;
+        table_options.whole_key_filtering = false;
+        break;
+
+      case 3:
+        outfile = "h.block-bloom.no-compression.sst";
+        options.compression = rocksdb::kNoCompression;
+        table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+        table_options.whole_key_filtering = true;
+        break;
+
+      case 4:
+        outfile = "h.table-bloom.no-compression.sst";
+        options.compression = rocksdb::kNoCompression;
+        table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+        table_options.whole_key_filtering = true;
+        break;
+
+      case 5:
+        // TODO(peter): unused at this time
+        //
+        // outfile = "h.block-bloom.no-compression.prefix_extractor.sst";
+        // options.compression = rocksdb::kNoCompression;
+        // options.prefix_extractor.reset(new PrefixExtractor);
+        // table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+        // table_options.whole_key_filtering = true;
+        // break;
+        continue;
+
+      case 6:
+        // TODO(peter): unused at this time
+        //
+        // outfile = "h.table-bloom.no-compression.prefix_extractor.sst";
+        // options.compression = rocksdb::kNoCompression;
+        // options.prefix_extractor.reset(new PrefixExtractor);
+        // table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+        // table_options.whole_key_filtering = true;
+        // break;
+        continue;
+
+      case 7:
+        // TODO(peter): unused at this time
+        //
+        // outfile = "h.block-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst";
+        // options.compression = rocksdb::kNoCompression;
+        // options.prefix_extractor.reset(new PrefixExtractor);
+        // table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
+        // table_options.whole_key_filtering = false;
+        // break;
+        continue;
+
+      case 8:
+        outfile = "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst";
+        options.compression = rocksdb::kNoCompression;
+        options.prefix_extractor.reset(new PrefixExtractor);
+        table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+        table_options.whole_key_filtering = false;
+        break;
+
+      default:
+        continue;
     }
 
     options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
-    if (i >= 2) {
-      options.compression = rocksdb::kNoCompression;
-    }
 
     std::unique_ptr<rocksdb::SstFileWriter> tb(new rocksdb::SstFileWriter({}, options));
-    status = tb->Open(outfile);
+    rocksdb::Status status = tb->Open(outfile);
     if (!status.ok()) {
       std::cerr << "SstFileWriter::Open: " << status.ToString() << std::endl;
       return 1;
