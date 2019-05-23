@@ -2,11 +2,11 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package db
+package pebble
 
 import (
-	"errors"
+	"github.com/petermattis/pebble/internal/base"
 )
 
-// ErrNotFound means that a get or delete call did not find the requested key.
-var ErrNotFound = errors.New("pebble: not found")
+// Logger exports the base.Logger type.
+type Logger = base.Logger

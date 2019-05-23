@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 // fileMetadata holds the metadata for an on-disk table.
@@ -28,8 +28,8 @@ type fileMetadata struct {
 	size uint64
 	// smallest and largest are the inclusive bounds for the internal keys
 	// stored in the table.
-	smallest db.InternalKey
-	largest  db.InternalKey
+	smallest InternalKey
+	largest  InternalKey
 	// smallest and largest sequence numbers in the table.
 	smallestSeqNum uint64
 	largestSeqNum  uint64
@@ -41,8 +41,8 @@ func (m *fileMetadata) String() string {
 	return fmt.Sprintf("%d:%s-%s", m.fileNum, m.smallest, m.largest)
 }
 
-func (m *fileMetadata) tableInfo(dirname string) db.TableInfo {
-	return db.TableInfo{
+func (m *fileMetadata) tableInfo(dirname string) TableInfo {
+	return TableInfo{
 		Path:           dbFilename(dirname, fileTypeTable, m.fileNum),
 		FileNum:        m.fileNum,
 		Size:           m.size,
@@ -63,7 +63,7 @@ func totalSize(f []fileMetadata) (size uint64) {
 
 // ikeyRange returns the minimum smallest and maximum largest internalKey for
 // all the fileMetadata in f0 and f1.
-func ikeyRange(ucmp db.Compare, f0, f1 []fileMetadata) (smallest, largest db.InternalKey) {
+func ikeyRange(ucmp Compare, f0, f1 []fileMetadata) (smallest, largest InternalKey) {
 	first := true
 	for _, f := range [2][]fileMetadata{f0, f1} {
 		for _, meta := range f {
@@ -72,10 +72,10 @@ func ikeyRange(ucmp db.Compare, f0, f1 []fileMetadata) (smallest, largest db.Int
 				smallest, largest = meta.smallest, meta.largest
 				continue
 			}
-			if db.InternalCompare(ucmp, meta.smallest, smallest) < 0 {
+			if base.InternalCompare(ucmp, meta.smallest, smallest) < 0 {
 				smallest = meta.smallest
 			}
-			if db.InternalCompare(ucmp, meta.largest, largest) > 0 {
+			if base.InternalCompare(ucmp, meta.largest, largest) > 0 {
 				largest = meta.largest
 			}
 		}
@@ -104,12 +104,12 @@ func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
 type bySmallest struct {
 	dat []fileMetadata
-	cmp db.Compare
+	cmp Compare
 }
 
 func (b bySmallest) Len() int { return len(b.dat) }
 func (b bySmallest) Less(i, j int) bool {
-	return db.InternalCompare(b.cmp, b.dat[i].smallest, b.dat[j].smallest) < 0
+	return base.InternalCompare(b.cmp, b.dat[i].smallest, b.dat[j].smallest) < 0
 }
 func (b bySmallest) Swap(i, j int) { b.dat[i], b.dat[j] = b.dat[j], b.dat[i] }
 
@@ -224,7 +224,7 @@ func (v *version) unrefFiles() []uint64 {
 // [start, end] range is expanded to the union of those matching ranges so far
 // and the computation is repeated until [start, end] stabilizes.
 func (v *version) overlaps(
-	level int, cmp db.Compare, start, end []byte,
+	level int, cmp Compare, start, end []byte,
 ) (ret []fileMetadata) {
 	if level == 0 {
 		// The sstables in level 0 can overlap with each other. As soon as we find
@@ -283,7 +283,7 @@ func (v *version) overlaps(
 // checkOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
-func (v *version) checkOrdering(cmp db.Compare) error {
+func (v *version) checkOrdering(cmp Compare) error {
 	for level, ff := range v.files {
 		if level == 0 {
 			for i := 1; i < len(ff); i++ {
@@ -302,11 +302,11 @@ func (v *version) checkOrdering(cmp db.Compare) error {
 			for i := 1; i < len(ff); i++ {
 				prev := &ff[i-1]
 				f := &ff[i]
-				if db.InternalCompare(cmp, prev.largest, f.smallest) >= 0 {
+				if base.InternalCompare(cmp, prev.largest, f.smallest) >= 0 {
 					return fmt.Errorf("level non-0 files are not in increasing ikey order: %s, %s\n%s",
 						prev.largest, f.smallest, v.DebugString())
 				}
-				if db.InternalCompare(cmp, f.smallest, f.largest) > 0 {
+				if base.InternalCompare(cmp, f.smallest, f.largest) > 0 {
 					return fmt.Errorf("level non-0 file has inconsistent bounds: %s, %s",
 						f.smallest, f.largest)
 				}

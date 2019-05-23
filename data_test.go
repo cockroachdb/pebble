@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -186,8 +186,8 @@ func runCompactCommand(td *datadriven.TestData, d *DB) error {
 	}
 	if len(td.CmdArgs) == 2 {
 		levelString := td.CmdArgs[1].String()
-		iStart := db.MakeInternalKey([]byte(parts[0]), db.InternalKeySeqNumMax, db.InternalKeyKindMax)
-		iEnd := db.MakeInternalKey([]byte(parts[1]), 0, 0)
+		iStart := base.MakeInternalKey([]byte(parts[0]), InternalKeySeqNumMax, InternalKeyKindMax)
+		iEnd := base.MakeInternalKey([]byte(parts[1]), 0, 0)
 		if levelString[0] != 'L' {
 			return fmt.Errorf("expected L<n>: %s", levelString)
 		}
@@ -205,7 +205,7 @@ func runCompactCommand(td *datadriven.TestData, d *DB) error {
 	return d.Compact([]byte(parts[0]), []byte(parts[1]))
 }
 
-func runDBDefineCmd(td *datadriven.TestData, opts *db.Options) (*DB, error) {
+func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	if td.Input == "" {
 		return nil, fmt.Errorf("empty test input")
 	}
@@ -217,7 +217,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *db.Options) (*DB, error) {
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
 		case "target-file-sizes":
-			opts.Levels = make([]db.LevelOptions, len(arg.Vals))
+			opts.Levels = make([]LevelOptions, len(arg.Vals))
 			for i := range arg.Vals {
 				size, err := strconv.ParseInt(arg.Vals[i], 10, 64)
 				if err != nil {
@@ -311,7 +311,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *db.Options) (*DB, error) {
 
 		for _, data := range fields {
 			i := strings.Index(data, ":")
-			key := db.ParseInternalKey(data[:i])
+			key := base.ParseInternalKey(data[:i])
 			value := []byte(data[i+1:])
 			if err := mem.set(key, value); err != nil {
 				return nil, err

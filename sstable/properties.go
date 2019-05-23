@@ -12,8 +12,6 @@ import (
 	"reflect"
 	"sort"
 	"unsafe"
-
-	"github.com/petermattis/pebble/db"
 )
 
 var propTagMap = make(map[string]reflect.StructField)
@@ -300,6 +298,6 @@ func (p *Properties) save(w *rawBlockWriter) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		w.add(db.InternalKey{UserKey: []byte(key)}, m[key])
+		w.add(InternalKey{UserKey: []byte(key)}, m[key])
 	}
 }

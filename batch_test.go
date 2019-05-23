@@ -12,38 +12,38 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/vfs"
 )
 
 func TestBatch(t *testing.T) {
 	testCases := []struct {
-		kind       db.InternalKeyKind
+		kind       InternalKeyKind
 		key, value string
 	}{
-		{db.InternalKeyKindSet, "roses", "red"},
-		{db.InternalKeyKindSet, "violets", "blue"},
-		{db.InternalKeyKindDelete, "roses", ""},
-		{db.InternalKeyKindSet, "", ""},
-		{db.InternalKeyKindSet, "", "non-empty"},
-		{db.InternalKeyKindDelete, "", ""},
-		{db.InternalKeyKindSet, "grass", "green"},
-		{db.InternalKeyKindSet, "grass", "greener"},
-		{db.InternalKeyKindSet, "eleventy", strings.Repeat("!!11!", 100)},
-		{db.InternalKeyKindDelete, "nosuchkey", ""},
-		{db.InternalKeyKindSet, "binarydata", "\x00"},
-		{db.InternalKeyKindSet, "binarydata", "\xff"},
-		{db.InternalKeyKindMerge, "merge", "mergedata"},
+		{InternalKeyKindSet, "roses", "red"},
+		{InternalKeyKindSet, "violets", "blue"},
+		{InternalKeyKindDelete, "roses", ""},
+		{InternalKeyKindSet, "", ""},
+		{InternalKeyKindSet, "", "non-empty"},
+		{InternalKeyKindDelete, "", ""},
+		{InternalKeyKindSet, "grass", "green"},
+		{InternalKeyKindSet, "grass", "greener"},
+		{InternalKeyKindSet, "eleventy", strings.Repeat("!!11!", 100)},
+		{InternalKeyKindDelete, "nosuchkey", ""},
+		{InternalKeyKindSet, "binarydata", "\x00"},
+		{InternalKeyKindSet, "binarydata", "\xff"},
+		{InternalKeyKindMerge, "merge", "mergedata"},
 	}
 	var b Batch
 	for _, tc := range testCases {
 		switch tc.kind {
-		case db.InternalKeyKindSet:
+		case InternalKeyKindSet:
 			b.Set([]byte(tc.key), []byte(tc.value), nil)
-		case db.InternalKeyKindMerge:
+		case InternalKeyKindMerge:
 			b.Merge([]byte(tc.key), []byte(tc.value), nil)
-		case db.InternalKeyKindDelete:
+		case InternalKeyKindDelete:
 			b.Delete([]byte(tc.key), nil)
 		}
 	}
@@ -114,7 +114,7 @@ func TestBatchIncrement(t *testing.T) {
 func TestBatchGet(t *testing.T) {
 	for _, method := range []string{"build", "apply"} {
 		t.Run(method, func(t *testing.T) {
-			d, err := Open("", &db.Options{
+			d, err := Open("", &Options{
 				FS: vfs.NewMem(),
 			})
 			if err != nil {
@@ -179,21 +179,21 @@ func TestBatchIter(t *testing.T) {
 				case "define":
 					switch method {
 					case "build":
-						b = newIndexedBatch(nil, db.DefaultComparer)
+						b = newIndexedBatch(nil, DefaultComparer)
 					case "apply":
 						b = newBatch(nil)
 					}
 
 					for _, key := range strings.Split(d.Input, "\n") {
 						j := strings.Index(key, ":")
-						ikey := db.ParseInternalKey(key[:j])
+						ikey := base.ParseInternalKey(key[:j])
 						value := []byte(fmt.Sprint(ikey.SeqNum()))
 						b.Set(ikey.UserKey, value, nil)
 					}
 
 					switch method {
 					case "apply":
-						tmp := newIndexedBatch(nil, db.DefaultComparer)
+						tmp := newIndexedBatch(nil, DefaultComparer)
 						tmp.Apply(b, nil)
 						b = tmp
 					}
@@ -223,7 +223,7 @@ func TestBatchDeleteRange(t *testing.T) {
 
 		case "define":
 			if b == nil {
-				b = newIndexedBatch(nil, db.DefaultComparer)
+				b = newIndexedBatch(nil, DefaultComparer)
 			}
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
@@ -248,7 +248,7 @@ func TestBatchDeleteRange(t *testing.T) {
 			var buf bytes.Buffer
 			for valid := iter.First(); valid; valid = iter.Next() {
 				key := iter.Key()
-				key.SetSeqNum(key.SeqNum() &^ db.InternalKeySeqNumBatch)
+				key.SetSeqNum(key.SeqNum() &^ InternalKeySeqNumBatch)
 				fmt.Fprintf(&buf, "%s:%s\n", key, iter.Value())
 			}
 			return buf.String()
@@ -267,11 +267,11 @@ func TestFlushableBatchIter(t *testing.T) {
 			batch := newBatch(nil)
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				ikey := db.ParseInternalKey(key[:j])
+				ikey := base.ParseInternalKey(key[:j])
 				value := []byte(fmt.Sprint(ikey.SeqNum()))
 				batch.Set(ikey.UserKey, value, nil)
 			}
-			b = newFlushableBatch(batch, db.DefaultComparer)
+			b = newFlushableBatch(batch, DefaultComparer)
 			return ""
 
 		case "iter":
@@ -293,18 +293,18 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 			batch := newBatch(nil)
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				ikey := db.ParseInternalKey(key[:j])
+				ikey := base.ParseInternalKey(key[:j])
 				value := []byte(fmt.Sprint(ikey.SeqNum()))
 				switch ikey.Kind() {
-				case db.InternalKeyKindDelete:
+				case InternalKeyKindDelete:
 					batch.Delete(ikey.UserKey, nil)
-				case db.InternalKeyKindSet:
+				case InternalKeyKindSet:
 					batch.Set(ikey.UserKey, value, nil)
-				case db.InternalKeyKindMerge:
+				case InternalKeyKindMerge:
 					batch.Merge(ikey.UserKey, value, nil)
 				}
 			}
-			b = newFlushableBatch(batch, db.DefaultComparer)
+			b = newFlushableBatch(batch, DefaultComparer)
 			return ""
 
 		case "dump":
@@ -352,7 +352,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
-			fb = newFlushableBatch(b, db.DefaultComparer)
+			fb = newFlushableBatch(b, DefaultComparer)
 			return ""
 
 		case "scan":
@@ -425,7 +425,7 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 			end = b.N
 		}
 
-		batch := newIndexedBatch(nil, db.DefaultComparer)
+		batch := newIndexedBatch(nil, DefaultComparer)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value, nil)

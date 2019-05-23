@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
@@ -20,7 +19,7 @@ func TestCompactionPickerLevelMaxBytes(t *testing.T) {
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				opts := &db.Options{}
+				opts := &Options{}
 				opts.EnsureDefaults()
 
 				if len(d.CmdArgs) != 1 {
@@ -82,7 +81,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "pick":
-				opts := &db.Options{}
+				opts := &Options{}
 				opts.EnsureDefaults()
 
 				if len(d.CmdArgs) != 1 {

@@ -13,13 +13,12 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
 
-func createDB(dirname string, opts *db.Options) (retErr error) {
+func createDB(dirname string, opts *Options) (retErr error) {
 	const manifestFileNum = 1
 	ve := versionEdit{
 		comparatorName: opts.Comparer.Name,
@@ -54,7 +53,7 @@ func createDB(dirname string, opts *db.Options) (retErr error) {
 }
 
 // Open opens a LevelDB whose files live in the given directory.
-func Open(dirname string, opts *db.Options) (*DB, error) {
+func Open(dirname string, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
 	d := &DB{
 		dirname:        dirname,
@@ -331,7 +330,7 @@ func (d *DB) replayWAL(
 	return maxSeqNum, nil
 }
 
-func checkOptions(opts *db.Options, path string) error {
+func checkOptions(opts *Options, path string) error {
 	f, err := opts.FS.Open(path)
 	if err != nil {
 		return err

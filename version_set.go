@@ -11,7 +11,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -25,9 +24,9 @@ type versionSet struct {
 	// Immutable fields.
 	dirname string
 	mu      *sync.Mutex
-	opts    *db.Options
+	opts    *Options
 	fs      vfs.FS
-	cmp     db.Compare
+	cmp     Compare
 	cmpName string
 	// Dynamic base level allows the dynamic base level computation to be
 	// disabled. Used by tests which want to create specific LSM structures.
@@ -58,7 +57,7 @@ type versionSet struct {
 }
 
 // load loads the version set from the manifest file.
-func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) error {
+func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
 	vs.dirname = dirname
 	vs.mu = mu
 	vs.versions.mu = mu
@@ -123,7 +122,7 @@ func (vs *versionSet) load(dirname string, opts *db.Options, mu *sync.Mutex) err
 		if ve.comparatorName != "" {
 			if ve.comparatorName != vs.cmpName {
 				return fmt.Errorf("pebble: manifest file %q for DB %q: "+
-					"comparer name from file %q != comparer name from db.Options %q",
+					"comparer name from file %q != comparer name from Options %q",
 					b, dirname, ve.comparatorName, vs.cmpName)
 			}
 		}
@@ -233,7 +232,7 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 				return err
 			}
 			if vs.opts.EventListener.ManifestDeleted != nil {
-				vs.opts.EventListener.ManifestCreated(db.ManifestCreateInfo{
+				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
 					Path:    dbFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
 					FileNum: newManifestFileNumber,

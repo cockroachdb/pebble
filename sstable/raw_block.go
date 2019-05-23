@@ -9,15 +9,13 @@ import (
 	"errors"
 	"sort"
 	"unsafe"
-
-	"github.com/petermattis/pebble/db"
 )
 
 type rawBlockWriter struct {
 	blockWriter
 }
 
-func (w *rawBlockWriter) add(key db.InternalKey, value []byte) {
+func (w *rawBlockWriter) add(key InternalKey, value []byte) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := len(key.UserKey)
@@ -36,7 +34,7 @@ func (w *rawBlockWriter) add(key db.InternalKey, value []byte) {
 // reducing duplication is difficult due to the blockIter being performance
 // critical.
 type rawBlockIter struct {
-	cmp         db.Compare
+	cmp         Compare
 	offset      int
 	nextOffset  int
 	restarts    int
@@ -44,18 +42,18 @@ type rawBlockIter struct {
 	ptr         unsafe.Pointer
 	data        []byte
 	key, val    []byte
-	ikey        db.InternalKey
+	ikey        InternalKey
 	cached      []blockEntry
 	cachedBuf   []byte
 	err         error
 }
 
-func newRawBlockIter(cmp db.Compare, block block) (*rawBlockIter, error) {
+func newRawBlockIter(cmp Compare, block block) (*rawBlockIter, error) {
 	i := &rawBlockIter{}
 	return i, i.init(cmp, block)
 }
 
-func (i *rawBlockIter) init(cmp db.Compare, block block) error {
+func (i *rawBlockIter) init(cmp Compare, block block) error {
 	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
@@ -237,7 +235,7 @@ func (i *rawBlockIter) Prev() bool {
 }
 
 // Key implements internalIterator.Key, as documented in the pebble package.
-func (i *rawBlockIter) Key() db.InternalKey {
+func (i *rawBlockIter) Key() InternalKey {
 	return i.ikey
 }
 

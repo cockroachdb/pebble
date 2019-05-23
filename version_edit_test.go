@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/kr/pretty"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/record"
 )
 
@@ -61,8 +61,8 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					meta: fileMetadata{
 						fileNum:  805,
 						size:     8050,
-						smallest: db.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
-						largest:  db.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						smallest: base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
+						largest:  base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 					},
 				},
 				{
@@ -70,8 +70,8 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					meta: fileMetadata{
 						fileNum:             806,
 						size:                8060,
-						smallest:            db.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
-						largest:             db.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						smallest:            base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
+						largest:             base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 						smallestSeqNum:      3,
 						largestSeqNum:       5,
 						markedForCompaction: true,
@@ -131,8 +131,8 @@ func TestVersionEditDecode(t *testing.T) {
 							meta: fileMetadata{
 								fileNum:        4,
 								size:           986,
-								smallest:       db.MakeInternalKey([]byte("bar"), 5, db.InternalKeyKindDelete),
-								largest:        db.MakeInternalKey([]byte("foo"), 4, db.InternalKeyKindSet),
+								smallest:       base.MakeInternalKey([]byte("bar"), 5, InternalKeyKindDelete),
+								largest:        base.MakeInternalKey([]byte("foo"), 4, InternalKeyKindSet),
 								smallestSeqNum: 3,
 								largestSeqNum:  5,
 							},

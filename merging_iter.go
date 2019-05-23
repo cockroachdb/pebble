@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/rangedel"
 )
 
@@ -197,14 +197,14 @@ var _ internalIterator = (*mergingIter)(nil)
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func newMergingIter(cmp db.Compare, iters ...internalIterator) *mergingIter {
+func newMergingIter(cmp Compare, iters ...internalIterator) *mergingIter {
 	m := &mergingIter{}
 	m.init(cmp, iters...)
 	return m
 }
 
-func (m *mergingIter) init(cmp db.Compare, iters ...internalIterator) {
-	m.snapshot = db.InternalKeySeqNumMax
+func (m *mergingIter) init(cmp Compare, iters ...internalIterator) {
+	m.snapshot = InternalKeySeqNumMax
 	m.iters = iters
 	m.heap.cmp = cmp
 	m.heap.items = make([]mergingIterItem, 0, len(iters))
@@ -298,7 +298,7 @@ func (m *mergingIter) switchToMinHeap() {
 			iterKey, _ = i.Next()
 		}
 		for ; iterKey != nil; iterKey, _ = i.Next() {
-			if db.InternalCompare(m.heap.cmp, key, *iterKey) < 0 {
+			if base.InternalCompare(m.heap.cmp, key, *iterKey) < 0 {
 				// key < iter-key
 				break
 			}
@@ -339,7 +339,7 @@ func (m *mergingIter) switchToMaxHeap() {
 			iterKey, _ = i.Prev()
 		}
 		for ; iterKey != nil; iterKey, _ = i.Prev() {
-			if db.InternalCompare(m.heap.cmp, key, *iterKey) > 0 {
+			if base.InternalCompare(m.heap.cmp, key, *iterKey) > 0 {
 				// key > iter-key
 				break
 			}
@@ -407,7 +407,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	return false
 }
 
-func (m *mergingIter) findNextEntry() (*db.InternalKey, []byte) {
+func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.rangeDelIters != nil && m.isNextEntryDeleted(item) {
@@ -475,7 +475,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 	return false
 }
 
-func (m *mergingIter) findPrevEntry() (*db.InternalKey, []byte) {
+func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.rangeDelIters != nil && m.isPrevEntryDeleted(item) {
@@ -539,13 +539,13 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 	m.initMinHeap()
 }
 
-func (m *mergingIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (m *mergingIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	m.prefix = nil
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
 }
 
-func (m *mergingIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (m *mergingIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	m.prefix = prefix
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
@@ -573,13 +573,13 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 	m.initMaxHeap()
 }
 
-func (m *mergingIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (m *mergingIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	m.prefix = nil
 	m.seekLT(key, 0 /* start level */)
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) First() (*db.InternalKey, []byte) {
+func (m *mergingIter) First() (*InternalKey, []byte) {
 	m.prefix = nil
 	m.heap.items = m.heap.items[:0]
 	for _, t := range m.iters {
@@ -591,7 +591,7 @@ func (m *mergingIter) First() (*db.InternalKey, []byte) {
 	return m.findNextEntry()
 }
 
-func (m *mergingIter) Last() (*db.InternalKey, []byte) {
+func (m *mergingIter) Last() (*InternalKey, []byte) {
 	m.prefix = nil
 	for _, t := range m.iters {
 		// TODO(peter): save key and value so we don't have to access t.Key() and
@@ -602,7 +602,7 @@ func (m *mergingIter) Last() (*db.InternalKey, []byte) {
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) Next() (*db.InternalKey, []byte) {
+func (m *mergingIter) Next() (*InternalKey, []byte) {
 	if m.err != nil {
 		return nil, nil
 	}
@@ -620,7 +620,7 @@ func (m *mergingIter) Next() (*db.InternalKey, []byte) {
 	return m.findNextEntry()
 }
 
-func (m *mergingIter) Prev() (*db.InternalKey, []byte) {
+func (m *mergingIter) Prev() (*InternalKey, []byte) {
 	if m.err != nil {
 		return nil, nil
 	}
@@ -638,7 +638,7 @@ func (m *mergingIter) Prev() (*db.InternalKey, []byte) {
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) Key() *db.InternalKey {
+func (m *mergingIter) Key() *InternalKey {
 	return &m.heap.items[0].key
 }
 

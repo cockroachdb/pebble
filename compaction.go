@@ -13,7 +13,7 @@ import (
 	"sort"
 	"unsafe"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
@@ -24,20 +24,20 @@ var errEmptyTable = errors.New("pebble: empty table")
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
-func expandedCompactionByteSizeLimit(opts *db.Options, level int) uint64 {
+func expandedCompactionByteSizeLimit(opts *Options, level int) uint64 {
 	return uint64(25 * opts.Level(level).TargetFileSize)
 }
 
 // maxGrandparentOverlapBytes is the maximum bytes of overlap with level+2
 // before we stop building a single file in a level to level+1 compaction.
-func maxGrandparentOverlapBytes(opts *db.Options, level int) uint64 {
+func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }
 
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
-	cmp     db.Compare
+	cmp     Compare
 	version *version
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
@@ -75,7 +75,7 @@ type compaction struct {
 	seenKey         bool   // some output key has been seen
 }
 
-func newCompaction(opts *db.Options, cur *version, startLevel, baseLevel int) *compaction {
+func newCompaction(opts *Options, cur *version, startLevel, baseLevel int) *compaction {
 	if startLevel > 0 && startLevel < baseLevel {
 		panic(fmt.Sprintf("invalid compaction: start level %d should be empty (base level %d)",
 			startLevel, baseLevel))
@@ -104,7 +104,7 @@ func newCompaction(opts *db.Options, cur *version, startLevel, baseLevel int) *c
 	}
 }
 
-func newFlush(opts *db.Options, cur *version, baseLevel int, flushing []flushable) *compaction {
+func newFlush(opts *Options, cur *version, baseLevel int, flushing []flushable) *compaction {
 	c := &compaction{
 		cmp:               opts.Comparer.Compare,
 		version:           cur,
@@ -125,21 +125,21 @@ func newFlush(opts *db.Options, cur *version, baseLevel int, flushing []flushabl
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
 		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
 
-		var smallest db.InternalKey
-		var largest db.InternalKey
+		var smallest InternalKey
+		var largest InternalKey
 		smallestSet, largestSet := false, false
 
 		updatePointBounds := func(iter internalIterator) {
 			if key, _ := iter.First(); key != nil {
 				if !smallestSet ||
-					db.InternalCompare(c.cmp, smallest, *key) > 0 {
+					base.InternalCompare(c.cmp, smallest, *key) > 0 {
 					smallestSet = true
 					smallest = key.Clone()
 				}
 			}
 			if key, _ := iter.Last(); key != nil {
 				if !largestSet ||
-					db.InternalCompare(c.cmp, largest, *key) < 0 {
+					base.InternalCompare(c.cmp, largest, *key) < 0 {
 					largestSet = true
 					largest = key.Clone()
 				}
@@ -149,7 +149,7 @@ func newFlush(opts *db.Options, cur *version, baseLevel int, flushing []flushabl
 		updateRangeBounds := func(iter internalIterator) {
 			if key, _ := iter.First(); key != nil {
 				if !smallestSet ||
-					db.InternalCompare(c.cmp, smallest, *key) > 0 {
+					base.InternalCompare(c.cmp, smallest, *key) > 0 {
 					smallestSet = true
 					smallest = key.Clone()
 				}
@@ -218,7 +218,7 @@ func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 		if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
 			break
 		}
-		if cur.largest.Trailer == db.InternalKeyRangeDeleteSentinel {
+		if cur.largest.Trailer == InternalKeyRangeDeleteSentinel {
 			// The range deletion sentinel key is set for the largest key in a table
 			// when a range deletion tombstone straddles a table. It isn't necessary
 			// to include the next table in the compaction as cur.largest.UserKey
@@ -234,7 +234,7 @@ func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 // grow grows the number of inputs at c.level without changing the number of
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
-func (c *compaction) grow(sm, la db.InternalKey) bool {
+func (c *compaction) grow(sm, la InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
 	}
@@ -286,10 +286,10 @@ func (c *compaction) trivialMove() bool {
 // better to adjust shouldStopBefore to not stop output in the middle of a
 // user-key. Perhaps this isn't a problem if the compaction picking heuristics
 // always pick the right (older) sibling for compaction first.
-func (c *compaction) shouldStopBefore(key db.InternalKey) bool {
+func (c *compaction) shouldStopBefore(key InternalKey) bool {
 	for len(c.grandparents) > 0 {
 		g := &c.grandparents[0]
-		if db.InternalCompare(c.cmp, key, g.largest) <= 0 {
+		if base.InternalCompare(c.cmp, key, g.largest) <= 0 {
 			break
 		}
 		if c.seenKey {
@@ -416,7 +416,7 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 					if c.cmp(prev.largest.UserKey, cur.smallest.UserKey) < 0 {
 						break
 					}
-					if prev.largest.Trailer == db.InternalKeyRangeDeleteSentinel {
+					if prev.largest.Trailer == InternalKeyRangeDeleteSentinel {
 						// The range deletion sentinel key is set for the largest key in a
 						// table when a range deletion tombstone straddles a table. It
 						// isn't necessary to include the next table in the atomic
@@ -434,7 +434,7 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 					if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
 						break
 					}
-					if cur.largest.Trailer == db.InternalKeyRangeDeleteSentinel {
+					if cur.largest.Trailer == InternalKeyRangeDeleteSentinel {
 						// The range deletion sentinel key is set for the largest key in a
 						// table when a range deletion tombstone straddles a table. It
 						// isn't necessary to include the next table in the atomic
@@ -497,7 +497,7 @@ func (c *compaction) newInputIter(
 	// one which iterates over the range deletions. These two iterators are
 	// combined with a mergingIter.
 	newRangeDelIter := func(
-		f *fileMetadata, _ *db.IterOptions,
+		f *fileMetadata, _ *IterOptions,
 	) (internalIterator, internalIterator, error) {
 		iter, rangeDelIter, err := newIters(f, nil /* iter options */)
 		if err == nil {
@@ -568,8 +568,8 @@ type manualCompaction struct {
 	level       int
 	outputLevel int
 	done        chan error
-	start       db.InternalKey
-	end         db.InternalKey
+	start       InternalKey
+	end         InternalKey
 }
 
 // maybeScheduleFlush schedules a flush if necessary.
@@ -632,7 +632,7 @@ func (d *DB) flush1() error {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	if d.opts.EventListener.FlushBegin != nil {
-		d.opts.EventListener.FlushBegin(db.FlushInfo{
+		d.opts.EventListener.FlushBegin(FlushInfo{
 			JobID: jobID,
 		})
 	}
@@ -640,7 +640,7 @@ func (d *DB) flush1() error {
 	ve, pendingOutputs, err := d.runCompaction(c)
 
 	if d.opts.EventListener.FlushEnd != nil {
-		info := db.FlushInfo{
+		info := FlushInfo{
 			JobID: jobID,
 			Err:   err,
 		}
@@ -759,7 +759,7 @@ func (d *DB) compact1() (err error) {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	info := db.CompactionInfo{
+	info := CompactionInfo{
 		JobID: jobID,
 	}
 	if d.opts.EventListener.CompactionBegin != nil || d.opts.EventListener.CompactionEnd != nil {
@@ -917,7 +917,7 @@ func (d *DB) runCompaction(c *compaction) (
 		return nil
 	}
 
-	finishOutput := func(key db.InternalKey) error {
+	finishOutput := func(key InternalKey) error {
 		// NB: clone the key because the data can be held on to by the call to
 		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
 		key = key.Clone()
@@ -967,20 +967,20 @@ func (d *DB) runCompaction(c *compaction) (
 				//
 				// We use seqnum zero since seqnums are in descending order, and our
 				// goal is to ensure this forged key does not overlap with the previous
-				// file. `db.InternalKeyRangeDeleteSentinel` is actually the first key
+				// file. `InternalKeyRangeDeleteSentinel` is actually the first key
 				// kind as key kinds are also in descending order. But, this is OK
 				// because choosing seqnum zero is already enough to prevent overlap
 				// (the previous file could not end with a key at seqnum zero if this
 				// file had a tombstone extending into it).
-				writerMeta.SmallestRange = db.MakeInternalKey(
-					prevMeta.largest.UserKey, 0, db.InternalKeyKindRangeDelete)
+				writerMeta.SmallestRange = base.MakeInternalKey(
+					prevMeta.largest.UserKey, 0, InternalKeyKindRangeDelete)
 			}
 		}
 
 		if key.UserKey != nil && writerMeta.LargestRange.UserKey != nil {
 			if d.cmp(writerMeta.LargestRange.UserKey, key.UserKey) >= 0 {
 				writerMeta.LargestRange = key
-				writerMeta.LargestRange.Trailer = db.InternalKeyRangeDeleteSentinel
+				writerMeta.LargestRange.Trailer = InternalKeyRangeDeleteSentinel
 			}
 		}
 
@@ -1009,7 +1009,7 @@ func (d *DB) runCompaction(c *compaction) (
 		}
 	}
 
-	if err := finishOutput(db.InternalKey{}); err != nil {
+	if err := finishOutput(InternalKey{}); err != nil {
 		return nil, pendingOutputs, err
 	}
 
@@ -1193,7 +1193,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 				switch f.fileType {
 				case fileTypeLog:
 					if d.opts.EventListener.WALDeleted != nil {
-						d.opts.EventListener.WALDeleted(db.WALDeleteInfo{
+						d.opts.EventListener.WALDeleted(WALDeleteInfo{
 							JobID:   jobID,
 							Path:    path,
 							FileNum: fileNum,
@@ -1202,7 +1202,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 					}
 				case fileTypeManifest:
 					if d.opts.EventListener.ManifestDeleted != nil {
-						d.opts.EventListener.ManifestDeleted(db.ManifestDeleteInfo{
+						d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
 							JobID:   jobID,
 							Path:    path,
 							FileNum: fileNum,
@@ -1211,7 +1211,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 					}
 				case fileTypeTable:
 					if d.opts.EventListener.TableDeleted != nil {
-						d.opts.EventListener.TableDeleted(db.TableDeleteInfo{
+						d.opts.EventListener.TableDeleted(TableDeleteInfo{
 							JobID:   jobID,
 							Path:    path,
 							FileNum: fileNum,

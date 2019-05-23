@@ -4,19 +4,17 @@
 
 package rangedel
 
-import (
-	"github.com/petermattis/pebble/db"
-)
+import "github.com/petermattis/pebble/internal/base"
 
 // Iter is an iterator over a set of fragmented tombstones.
 type Iter struct {
-	cmp        db.Compare
+	cmp        base.Compare
 	tombstones []Tombstone
 	index      int
 }
 
 // NewIter returns a new iterator over a set of fragmented tombstones.
-func NewIter(cmp db.Compare, tombstones []Tombstone) *Iter {
+func NewIter(cmp base.Compare, tombstones []Tombstone) *Iter {
 	return &Iter{
 		cmp:        cmp,
 		tombstones: tombstones,
@@ -26,18 +24,18 @@ func NewIter(cmp db.Compare, tombstones []Tombstone) *Iter {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *Iter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	// NB: manually inlined sort.Seach is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
 	// Invariant: f(index-1) == false, f(upper) == true.
-	ikey := db.MakeSearchKey(key)
+	ikey := base.MakeSearchKey(key)
 	i.index = 0
 	upper := len(i.tombstones)
 	for i.index < upper {
 		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
 		// i.index ≤ h < upper
-		if db.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) >= 0 {
+		if base.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) >= 0 {
 			i.index = h + 1 // preserves f(i-1) == false
 		} else {
 			upper = h // preserves f(j) == true
@@ -52,25 +50,25 @@ func (i *Iter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return &t.Start, t.End
 }
 
-func (i *Iter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (i *Iter) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
 	// This should never be called as prefix iteration is only done for point records.
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *Iter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	// NB: manually inlined sort.Search is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
 	// Invariant: f(index-1) == false, f(upper) == true.
-	ikey := db.MakeSearchKey(key)
+	ikey := base.MakeSearchKey(key)
 	i.index = 0
 	upper := len(i.tombstones)
 	for i.index < upper {
 		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
 		// i.index ≤ h < upper
-		if db.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) > 0 {
+		if base.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) > 0 {
 			i.index = h + 1 // preserves f(i-1) == false
 		} else {
 			upper = h // preserves f(j) == true
@@ -91,7 +89,7 @@ func (i *Iter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *Iter) First() (*db.InternalKey, []byte) {
+func (i *Iter) First() (*base.InternalKey, []byte) {
 	if len(i.tombstones) == 0 {
 		return nil, nil
 	}
@@ -102,7 +100,7 @@ func (i *Iter) First() (*db.InternalKey, []byte) {
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
-func (i *Iter) Last() (*db.InternalKey, []byte) {
+func (i *Iter) Last() (*base.InternalKey, []byte) {
 	if len(i.tombstones) == 0 {
 		return nil, nil
 	}
@@ -113,7 +111,7 @@ func (i *Iter) Last() (*db.InternalKey, []byte) {
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *Iter) Next() (*db.InternalKey, []byte) {
+func (i *Iter) Next() (*base.InternalKey, []byte) {
 	if i.index == len(i.tombstones) {
 		return nil, nil
 	}
@@ -127,7 +125,7 @@ func (i *Iter) Next() (*db.InternalKey, []byte) {
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *Iter) Prev() (*db.InternalKey, []byte) {
+func (i *Iter) Prev() (*base.InternalKey, []byte) {
 	if i.index < 0 {
 		return nil, nil
 	}
@@ -141,7 +139,7 @@ func (i *Iter) Prev() (*db.InternalKey, []byte) {
 
 // Key implements internalIterator.Key, as documented in the pebble
 // package.
-func (i *Iter) Key() *db.InternalKey {
+func (i *Iter) Key() *base.InternalKey {
 	return &i.tombstones[i.index].Start
 }
 

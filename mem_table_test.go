@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/arenaskl"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"golang.org/x/exp/rand"
 )
@@ -23,8 +23,8 @@ import (
 // Set sets the value for the given key. It overwrites any previous value for
 // that key; a DB is not a multi-map. NB: this might have unexpected
 // interaction with prepare/apply. Caveat emptor!
-func (m *memTable) set(key db.InternalKey, value []byte) error {
-	if key.Kind() == db.InternalKeyKindRangeDelete {
+func (m *memTable) set(key InternalKey, value []byte) error {
+	if key.Kind() == InternalKeyKindRangeDelete {
 		if err := m.rangeDelSkl.Add(key, value); err != nil {
 			return err
 		}
@@ -46,8 +46,8 @@ func (m *memTable) count() (n int) {
 	return n
 }
 
-func ikey(s string) db.InternalKey {
-	return db.MakeInternalKey([]byte(s), 0, db.InternalKeyKindSet)
+func ikey(s string) InternalKey {
+	return base.MakeInternalKey([]byte(s), 0, InternalKeyKindSet)
 }
 
 func TestMemTableBasic(t *testing.T) {
@@ -57,8 +57,8 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
 	v, err := m.get([]byte("cherry"))
-	if string(v) != "" || err != db.ErrNotFound {
-		t.Fatalf("1.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
+	if string(v) != "" || err != ErrNotFound {
+		t.Fatalf("1.get: got (%q, %v), want (%q, %v)", v, err, "", ErrNotFound)
 	}
 	// Add some key/value pairs.
 	m.set(ikey("cherry"), []byte("red"))
@@ -75,8 +75,8 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("6.get: got (%q, %v), want (%q, %v)", v, err, "purple", error(nil))
 	}
 	v, err = m.get([]byte("lychee"))
-	if string(v) != "" || err != db.ErrNotFound {
-		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", db.ErrNotFound)
+	if string(v) != "" || err != ErrNotFound {
+		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", ErrNotFound)
 	}
 	// Check an iterator.
 	s, x := "", internalIterAdapter{m.newIter(nil)}
@@ -108,7 +108,7 @@ func TestMemTableCount(t *testing.T) {
 		if j := m.count(); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
 		}
-		m.set(db.InternalKey{UserKey: []byte{byte(i)}}, nil)
+		m.set(InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
 	if err := m.close(); err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestMemTableEmpty(t *testing.T) {
 		t.Errorf("got !empty, want empty")
 	}
 	// Add one key/value pair with an empty key and empty value.
-	m.set(db.InternalKey{}, nil)
+	m.set(InternalKey{}, nil)
 	if m.empty() {
 		t.Errorf("got empty, want !empty")
 	}
@@ -212,7 +212,7 @@ func TestMemTableIter(t *testing.T) {
 			mem = newMemTable(nil)
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				if err := mem.set(db.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
+				if err := mem.set(base.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
 					return err.Error()
 				}
 			}
@@ -286,7 +286,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	// tombstones, and then immediately retrieve them verifying that the
 	// tombstones they've added are all present.
 
-	m := newMemTable(&db.Options{MemTableSize: 64 << 20})
+	m := newMemTable(&Options{MemTableSize: 64 << 20})
 
 	const workers = 10
 	var wg sync.WaitGroup
@@ -326,11 +326,11 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 func buildMemTable(b *testing.B) (*memTable, [][]byte) {
 	m := newMemTable(nil)
 	var keys [][]byte
-	var ikey db.InternalKey
+	var ikey InternalKey
 	for i := 0; ; i++ {
 		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
-		ikey = db.MakeInternalKey(key, 0, db.InternalKeyKindSet)
+		ikey = base.MakeInternalKey(key, 0, InternalKeyKindSet)
 		if m.set(ikey, nil) == arenaskl.ErrArenaFull {
 			break
 		}

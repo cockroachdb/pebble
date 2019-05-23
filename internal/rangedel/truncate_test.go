@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
 func TestTruncate(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := base.DefaultComparer.Compare
 	var iter iterator
 
 	datadriven.RunTest(t, "testdata/truncate", func(d *datadriven.TestData) string {

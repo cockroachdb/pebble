@@ -4,10 +4,6 @@
 
 package sstable
 
-import (
-	"github.com/petermattis/pebble/db"
-)
-
 type filterWriter interface {
 	addKey(key []byte)
 	finishBlock(blockOffset uint64) error
@@ -17,30 +13,30 @@ type filterWriter interface {
 }
 
 type tableFilterReader struct {
-	policy db.FilterPolicy
+	policy FilterPolicy
 }
 
-func newTableFilterReader(policy db.FilterPolicy) *tableFilterReader {
+func newTableFilterReader(policy FilterPolicy) *tableFilterReader {
 	return &tableFilterReader{
 		policy: policy,
 	}
 }
 
 func (f *tableFilterReader) mayContain(data, key []byte) bool {
-	return f.policy.MayContain(db.TableFilter, data, key)
+	return f.policy.MayContain(TableFilter, data, key)
 }
 
 type tableFilterWriter struct {
-	policy db.FilterPolicy
-	writer db.FilterWriter
+	policy FilterPolicy
+	writer FilterWriter
 	// count is the count of the number of keys added to the filter.
 	count int
 }
 
-func newTableFilterWriter(policy db.FilterPolicy) *tableFilterWriter {
+func newTableFilterWriter(policy FilterPolicy) *tableFilterWriter {
 	return &tableFilterWriter{
 		policy: policy,
-		writer: policy.NewWriter(db.TableFilter),
+		writer: policy.NewWriter(TableFilter),
 	}
 }
 

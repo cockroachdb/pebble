@@ -16,7 +16,7 @@ import (
 
 	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -29,13 +29,13 @@ type iterAdapter struct {
 	*Iterator
 }
 
-func (i *iterAdapter) verify(key *db.InternalKey, val []byte) bool {
+func (i *iterAdapter) verify(key *InternalKey, val []byte) bool {
 	valid := key != nil
 	if valid != i.Valid() {
 		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
 	}
 	if valid {
-		if db.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
+		if base.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
 			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
 		}
 		if !bytes.Equal(val, i.Value()) {
@@ -73,66 +73,66 @@ func (i *iterAdapter) Prev() bool {
 	return i.verify(i.Iterator.Prev())
 }
 
-func (i *iterAdapter) Key() db.InternalKey {
+func (i *iterAdapter) Key() InternalKey {
 	return *i.Iterator.Key()
 }
 
 func TestReader(t *testing.T) {
-	levelOpts := map[string]db.LevelOptions{
+	tableOpts := map[string]TableOptions{
 		// No bloom filters.
-		"default": db.LevelOptions{},
-		"bloom10bit": db.LevelOptions{
+		"default": TableOptions{},
+		"bloom10bit": TableOptions{
 			// The standard policy.
 			FilterPolicy: bloom.FilterPolicy(10),
-			FilterType:   db.TableFilter,
+			FilterType:   base.TableFilter,
 		},
-		"bloom1bit": db.LevelOptions{
+		"bloom1bit": TableOptions{
 			// A policy with many false positives.
 			FilterPolicy: bloom.FilterPolicy(1),
-			FilterType:   db.TableFilter,
+			FilterType:   base.TableFilter,
 		},
-		"bloom100bit": db.LevelOptions{
+		"bloom100bit": TableOptions{
 			// A policy unlikely to have false positives.
 			FilterPolicy: bloom.FilterPolicy(100),
-			FilterType:   db.TableFilter,
+			FilterType:   base.TableFilter,
 		},
 	}
 
-	opts := map[string]*db.Options{
+	opts := map[string]*Options{
 		"default": {},
 		"prefixFilter": {
 			Comparer: fixtureComparer,
 		},
 	}
 
-	testDirs := map[string]string {
-		"default": "testdata/reader",
+	testDirs := map[string]string{
+		"default":      "testdata/reader",
 		"prefixFilter": "testdata/prefixreader",
 	}
 
-	for lName, levelOpt := range levelOpts {
+	for lName, tableOpt := range tableOpts {
 		for oName, opt := range opts {
-			levelOpt.EnsureDefaults()
+			tableOpt.EnsureDefaults()
 			o := *opt
-			o.Levels = []db.LevelOptions{levelOpt}
+			o.Levels = []TableOptions{tableOpt}
 			o.EnsureDefaults()
 
-			t.Run(fmt.Sprintf("opts=%s,levelOpts=%s", oName, lName), func(t *testing.T) {
+			t.Run(fmt.Sprintf("opts=%s,tableOpts=%s", oName, lName), func(t *testing.T) {
 				runTestReader(t, o, testDirs[oName])
 			})
 		}
 	}
 }
 
-func runTestReader(t *testing.T, o db.Options, dir string) {
-	makeIkeyValue := func(s string) (db.InternalKey, []byte) {
+func runTestReader(t *testing.T, o Options, dir string) {
+	makeIkeyValue := func(s string) (InternalKey, []byte) {
 		j := strings.Index(s, ":")
 		k := strings.Index(s, "=")
 		seqNum, err := strconv.Atoi(s[j+1 : k])
 		if err != nil {
 			panic(err)
 		}
-		return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet), []byte(s[k+1:])
+		return base.MakeInternalKey([]byte(s[:j]), uint64(seqNum), InternalKeyKindSet), []byte(s[k+1:])
 	}
 
 	mem := vfs.NewMem()
@@ -224,7 +224,7 @@ func runTestReader(t *testing.T, o db.Options, dir string) {
 					case "prev":
 						iter.Prev()
 					}
-					if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey){
+					if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
 						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 					} else if err := iter.Error(); err != nil {
 						fmt.Fprintf(&b, "<err=%v>", err)
@@ -265,14 +265,14 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	}
 	defer f0.Close()
 
-	w := NewWriter(f0, nil, db.LevelOptions{
+	w := NewWriter(f0, nil, TableOptions{
 		BlockRestartInterval: restartInterval,
 		BlockSize:            blockSize,
 		FilterPolicy:         nil,
 	})
 
 	var keys [][]byte
-	var ikey db.InternalKey
+	var ikey InternalKey
 	for i := uint64(0); i < 1e6; i++ {
 		key := make([]byte, 8)
 		binary.BigEndian.PutUint64(key, i)
@@ -290,7 +290,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
-	return NewReader(f1, 0, &db.Options{
+	return NewReader(f1, 0, &Options{
 		Cache: cache.New(128 << 20),
 	}), keys
 }
@@ -342,7 +342,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 
 				b.ResetTimer()
 				var sum int64
-				var key *db.InternalKey
+				var key *InternalKey
 				for i := 0; i < b.N; i++ {
 					if key == nil {
 						key, _ = it.First()
@@ -368,7 +368,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 
 				b.ResetTimer()
 				var sum int64
-				var key *db.InternalKey
+				var key *InternalKey
 				for i := 0; i < b.N; i++ {
 					if key == nil {
 						key, _ = it.Last()

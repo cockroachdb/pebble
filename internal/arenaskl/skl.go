@@ -53,7 +53,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"golang.org/x/exp/rand"
 )
 
@@ -79,7 +79,7 @@ var ErrRecordExists = errors.New("record with this key already exists")
 // appropriately during retrieval.
 type Skiplist struct {
 	arena  *Arena
-	cmp    db.Compare
+	cmp    base.Compare
 	head   *node
 	tail   *node
 	height uint32 // Current height. 1 <= height <= maxHeight. CAS.
@@ -101,7 +101,7 @@ type Inserter struct {
 }
 
 // Add TODO(peter)
-func (ins *Inserter) Add(list *Skiplist, key db.InternalKey, value []byte) error {
+func (ins *Inserter) Add(list *Skiplist, key base.InternalKey, value []byte) error {
 	return list.addInternal(key, value, ins)
 }
 
@@ -122,14 +122,14 @@ func init() {
 
 // NewSkiplist constructs and initializes a new, empty skiplist. All nodes, keys,
 // and values in the skiplist will be allocated from the given arena.
-func NewSkiplist(arena *Arena, cmp db.Compare) *Skiplist {
+func NewSkiplist(arena *Arena, cmp base.Compare) *Skiplist {
 	skl := &Skiplist{}
 	skl.Reset(arena, cmp)
 	return skl
 }
 
 // Reset the skiplist to empty and re-initialize.
-func (s *Skiplist) Reset(arena *Arena, cmp db.Compare) {
+func (s *Skiplist) Reset(arena *Arena, cmp base.Compare) {
 	// Allocate head and tail nodes.
 	head, err := newRawNode(arena, maxHeight, 0, 0)
 	if err != nil {
@@ -174,12 +174,12 @@ func (s *Skiplist) Size() uint32 { return s.arena.Size() }
 // Add adds a new key if it does not yet exist. If the key already exists, then
 // Add returns ErrRecordExists. If there isn't enough room in the arena, then
 // Add returns ErrArenaFull.
-func (s *Skiplist) Add(key db.InternalKey, value []byte) error {
+func (s *Skiplist) Add(key base.InternalKey, value []byte) error {
 	var ins Inserter
 	return s.addInternal(key, value, &ins)
 }
 
-func (s *Skiplist) addInternal(key db.InternalKey, value []byte, ins *Inserter) error {
+func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter) error {
 	if s.findSplice(key, ins) {
 		// Found a matching node, but handle case where it's been deleted.
 		return ErrRecordExists
@@ -314,7 +314,7 @@ func (s *Skiplist) NewIter(lower, upper []byte) *Iterator {
 }
 
 func (s *Skiplist) newNode(
-	key db.InternalKey, value []byte,
+	key base.InternalKey, value []byte,
 ) (nd *node, height uint32, err error) {
 	height = s.randomHeight()
 	nd, err = newNode(s.arena, height, key, value)
@@ -349,7 +349,7 @@ func (s *Skiplist) randomHeight() uint32 {
 	return h
 }
 
-func (s *Skiplist) findSplice(key db.InternalKey, ins *Inserter) (found bool) {
+func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) {
 	listHeight := s.Height()
 	var level int
 
@@ -397,7 +397,7 @@ func (s *Skiplist) findSplice(key db.InternalKey, ins *Inserter) (found bool) {
 }
 
 func (s *Skiplist) findSpliceForLevel(
-	key db.InternalKey, level int, start *node,
+	key base.InternalKey, level int, start *node,
 ) (prev, next *node, found bool) {
 	prev = start
 
@@ -423,7 +423,7 @@ func (s *Skiplist) findSpliceForLevel(
 			if n >= 0 {
 				nextTrailer = binary.LittleEndian.Uint64(nextKey[n:])
 			} else {
-				nextTrailer = uint64(db.InternalKeyKindInvalid)
+				nextTrailer = uint64(base.InternalKeyKindInvalid)
 			}
 			if key.Trailer == nextTrailer {
 				// Internal key equality.
@@ -443,7 +443,7 @@ func (s *Skiplist) findSpliceForLevel(
 	return
 }
 
-func (s *Skiplist) keyIsAfterNode(nd *node, key db.InternalKey) bool {
+func (s *Skiplist) keyIsAfterNode(nd *node, key base.InternalKey) bool {
 	ndKey := s.arena.buf[nd.keyOffset : nd.keyOffset+nd.keySize]
 	n := nd.keySize - 8
 	cmp := s.cmp(ndKey[:n], key.UserKey)
@@ -458,7 +458,7 @@ func (s *Skiplist) keyIsAfterNode(nd *node, key db.InternalKey) bool {
 	if n >= 0 {
 		ndTrailer = binary.LittleEndian.Uint64(ndKey[n:])
 	} else {
-		ndTrailer = uint64(db.InternalKeyKindInvalid)
+		ndTrailer = uint64(base.InternalKeyKindInvalid)
 	}
 	if key.Trailer == ndTrailer {
 		// Internal key equality.

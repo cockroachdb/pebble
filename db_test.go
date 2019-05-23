@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -196,7 +195,7 @@ func TestBasicReads(t *testing.T) {
 			t.Errorf("%s: cloneFileSystem failed: %v", tc.dirname, err)
 			continue
 		}
-		d, err := Open("", &db.Options{
+		d, err := Open("", &Options{
 			FS: fs,
 		})
 		if err != nil {
@@ -205,7 +204,7 @@ func TestBasicReads(t *testing.T) {
 		}
 		for key, want := range tc.wantMap {
 			got, err := d.Get([]byte(key))
-			if err != nil && err != db.ErrNotFound {
+			if err != nil && err != ErrNotFound {
 				t.Errorf("%s: Get(%q) failed: %v", tc.dirname, key, err)
 				continue
 			}
@@ -223,7 +222,7 @@ func TestBasicReads(t *testing.T) {
 }
 
 func TestBasicWrites(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
 	if err != nil {
@@ -339,7 +338,7 @@ func TestBasicWrites(t *testing.T) {
 		fail := false
 		for _, name := range names {
 			g, err := d.Get([]byte(name))
-			if err != nil && err != db.ErrNotFound {
+			if err != nil && err != ErrNotFound {
 				t.Errorf("#%d %s: Get(%q): %v", i, tc, name, err)
 				fail = true
 			}
@@ -362,7 +361,7 @@ func TestBasicWrites(t *testing.T) {
 }
 
 func TestRandomWrites(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS:           vfs.NewMem(),
 		MemTableSize: 8 * 1024,
 	})
@@ -400,7 +399,7 @@ func TestRandomWrites(t *testing.T) {
 		for k := range keys {
 			got := -1
 			if v, err := d.Get(keys[k]); err != nil {
-				if err != db.ErrNotFound {
+				if err != ErrNotFound {
 					t.Fatalf("Get: %v", err)
 				}
 			} else {
@@ -418,7 +417,7 @@ func TestRandomWrites(t *testing.T) {
 }
 
 func TestLargeBatch(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS:                          vfs.NewMem(),
 		MemTableSize:                1400,
 		MemTableStopWritesThreshold: 100,
@@ -469,7 +468,7 @@ func TestLargeBatch(t *testing.T) {
 }
 
 func TestGetMerge(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
 	if err != nil {
@@ -511,7 +510,7 @@ func TestIterLeak(t *testing.T) {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
-					d, err := Open("", &db.Options{
+					d, err := Open("", &Options{
 						FS: vfs.NewMem(),
 					})
 					if err != nil {
@@ -552,7 +551,7 @@ func TestIterLeak(t *testing.T) {
 
 func TestCacheEvict(t *testing.T) {
 	cache := cache.New(10 << 20)
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		Cache: cache,
 		FS:    vfs.NewMem(),
 	})
@@ -601,7 +600,7 @@ func TestCacheEvict(t *testing.T) {
 }
 
 func TestFlushEmpty(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
 	if err != nil {
@@ -617,7 +616,7 @@ func TestFlushEmpty(t *testing.T) {
 }
 
 func TestRollManifest(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		MaxManifestFileSize:   1,
 		L0CompactionThreshold: 10,
 		FS:                    vfs.NewMem(),

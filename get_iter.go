@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/rangedel"
 )
 
@@ -14,8 +13,8 @@ import (
 // internalIterator, but specialized for Get operations so that it loads data
 // lazily.
 type getIter struct {
-	cmp          db.Compare
-	equal        db.Equal
+	cmp          Compare
+	equal        Equal
 	newIters     tableNewIters
 	snapshot     uint64
 	key          []byte
@@ -28,7 +27,7 @@ type getIter struct {
 	mem          []flushable
 	l0           []fileMetadata
 	version      *version
-	iterKey      *db.InternalKey
+	iterKey      *InternalKey
 	iterValue    []byte
 	err          error
 }
@@ -36,27 +35,27 @@ type getIter struct {
 // getIter implements the internalIterator interface.
 var _ internalIterator = (*getIter)(nil)
 
-func (g *getIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (g *getIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (g *getIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (g *getIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (g *getIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (g *getIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (g *getIter) First() (*db.InternalKey, []byte) {
+func (g *getIter) First() (*InternalKey, []byte) {
 	return g.Next()
 }
 
-func (g *getIter) Last() (*db.InternalKey, []byte) {
+func (g *getIter) Last() (*InternalKey, []byte) {
 	panic("pebble: Last unimplemented")
 }
 
-func (g *getIter) Next() (*db.InternalKey, []byte) {
+func (g *getIter) Next() (*InternalKey, []byte) {
 	if g.iter != nil {
 		g.iterKey, g.iterValue = g.iter.Next()
 	}
@@ -160,11 +159,11 @@ func (g *getIter) Next() (*db.InternalKey, []byte) {
 	}
 }
 
-func (g *getIter) Prev() (*db.InternalKey, []byte) {
+func (g *getIter) Prev() (*InternalKey, []byte) {
 	panic("pebble: Prev unimplemented")
 }
 
-func (g *getIter) Key() *db.InternalKey {
+func (g *getIter) Key() *InternalKey {
 	return g.iterKey
 }
 
