@@ -6,14 +6,12 @@ package pebble
 
 import (
 	"sort"
-
-	"github.com/petermattis/pebble/db"
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
 // number.
 type tableNewIters func(
-	meta *fileMetadata, opts *db.IterOptions,
+	meta *fileMetadata, opts *IterOptions,
 ) (internalIterator, internalIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
@@ -30,14 +28,14 @@ type tableNewIters func(
 // heap. Note that Iterator treat a range deletion tombstone as a no-op and
 // processes range deletions via mergingIter.
 type levelIter struct {
-	opts      *db.IterOptions
-	tableOpts db.IterOptions
-	cmp       db.Compare
+	opts      *IterOptions
+	tableOpts IterOptions
+	cmp       Compare
 	index     int
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone. Note that if boundary != nil, then
 	// iter == nil, and if iter != nil, then boundary == nil.
-	boundary     *db.InternalKey
+	boundary     *InternalKey
 	iter         internalIterator
 	newIters     tableNewIters
 	rangeDelIter *internalIterator
@@ -61,7 +59,7 @@ type levelIter struct {
 var _ internalIterator = (*levelIter)(nil)
 
 func newLevelIter(
-	opts *db.IterOptions, cmp db.Compare, newIters tableNewIters, files []fileMetadata,
+	opts *IterOptions, cmp Compare, newIters tableNewIters, files []fileMetadata,
 ) *levelIter {
 	l := &levelIter{}
 	l.init(opts, cmp, newIters, files)
@@ -69,7 +67,7 @@ func newLevelIter(
 }
 
 func (l *levelIter) init(
-	opts *db.IterOptions, cmp db.Compare, newIters tableNewIters, files []fileMetadata,
+	opts *IterOptions, cmp Compare, newIters tableNewIters, files []fileMetadata,
 ) {
 	l.opts = opts
 	if l.opts != nil {
@@ -103,7 +101,7 @@ func (l *levelIter) findFileGE(key []byte) int {
 		if c > 0 {
 			return true
 		}
-		return c == 0 && largest.Trailer != db.InternalKeyRangeDeleteSentinel
+		return c == 0 && largest.Trailer != InternalKeyRangeDeleteSentinel
 	})
 }
 
@@ -187,7 +185,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 	}
 }
 
-func (l *levelIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	if !l.loadFile(l.findFileGE(key), 1) {
@@ -199,7 +197,7 @@ func (l *levelIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	if !l.loadFile(l.findFileGE(key), 1) {
@@ -211,7 +209,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
 	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
 	if !l.loadFile(l.findFileLT(key), -1) {
@@ -223,7 +221,7 @@ func (l *levelIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	return l.skipEmptyFileBackward()
 }
 
-func (l *levelIter) First() (*db.InternalKey, []byte) {
+func (l *levelIter) First() (*InternalKey, []byte) {
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
 	if !l.loadFile(0, 1) {
@@ -235,7 +233,7 @@ func (l *levelIter) First() (*db.InternalKey, []byte) {
 	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) Last() (*db.InternalKey, []byte) {
+func (l *levelIter) Last() (*InternalKey, []byte) {
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
 	if !l.loadFile(len(l.files)-1, -1) {
@@ -247,7 +245,7 @@ func (l *levelIter) Last() (*db.InternalKey, []byte) {
 	return l.skipEmptyFileBackward()
 }
 
-func (l *levelIter) Next() (*db.InternalKey, []byte) {
+func (l *levelIter) Next() (*InternalKey, []byte) {
 	if l.err != nil {
 		return nil, nil
 	}
@@ -279,7 +277,7 @@ func (l *levelIter) Next() (*db.InternalKey, []byte) {
 	return l.skipEmptyFileForward()
 }
 
-func (l *levelIter) Prev() (*db.InternalKey, []byte) {
+func (l *levelIter) Prev() (*InternalKey, []byte) {
 	if l.err != nil {
 		return nil, nil
 	}
@@ -311,8 +309,8 @@ func (l *levelIter) Prev() (*db.InternalKey, []byte) {
 	return l.skipEmptyFileBackward()
 }
 
-func (l *levelIter) skipEmptyFileForward() (*db.InternalKey, []byte) {
-	var key *db.InternalKey
+func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
+	var key *InternalKey
 	var val []byte
 	for ; key == nil; key, val = l.iter.First() {
 		if l.err = l.iter.Close(); l.err != nil {
@@ -324,7 +322,7 @@ func (l *levelIter) skipEmptyFileForward() (*db.InternalKey, []byte) {
 			// We're being used as part of an Iterator and we've reached the end of
 			// the sstable. If the boundary is a range deletion tombstone, return
 			// that key.
-			if f := &l.files[l.index]; f.largest.Kind() == db.InternalKeyKindRangeDelete {
+			if f := &l.files[l.index]; f.largest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.largest
 				return l.boundary, nil
 			}
@@ -339,8 +337,8 @@ func (l *levelIter) skipEmptyFileForward() (*db.InternalKey, []byte) {
 	return key, val
 }
 
-func (l *levelIter) skipEmptyFileBackward() (*db.InternalKey, []byte) {
-	var key *db.InternalKey
+func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
+	var key *InternalKey
 	var val []byte
 	for ; key == nil; key, val = l.iter.Last() {
 		if l.err = l.iter.Close(); l.err != nil {
@@ -352,7 +350,7 @@ func (l *levelIter) skipEmptyFileBackward() (*db.InternalKey, []byte) {
 			// We're being used as part of an Iterator and we've reached the end of
 			// the sstable. If the boundary is a range deletion tombstone, return
 			// that key.
-			if f := &l.files[l.index]; f.smallest.Kind() == db.InternalKeyKindRangeDelete {
+			if f := &l.files[l.index]; f.smallest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.smallest
 				return l.boundary, nil
 			}
@@ -367,7 +365,7 @@ func (l *levelIter) skipEmptyFileBackward() (*db.InternalKey, []byte) {
 	return key, val
 }
 
-func (l *levelIter) Key() *db.InternalKey {
+func (l *levelIter) Key() *InternalKey {
 	if l.iter == nil {
 		if l.boundary != nil {
 			return l.boundary

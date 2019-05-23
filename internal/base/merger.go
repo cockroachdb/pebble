@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package db
+package base
 
 // Merge merges oldValue and newValue, and returns the merged value. The buf
 // parameter can be used to store the newly merged value in order to avoid

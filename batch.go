@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/batchskl"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/internal/rawalloc"
@@ -46,18 +46,18 @@ type batchStorage struct {
 	//     - the varint-string value (if kind != delete).
 	// The sequence number and count are stored in little-endian order.
 	data           []byte
-	cmp            db.Compare
-	abbreviatedKey db.AbbreviatedKey
+	cmp            Compare
+	abbreviatedKey AbbreviatedKey
 }
 
 // Get implements Storage.Get, as documented in the pebble/batchskl package.
-func (s *batchStorage) Get(offset uint32) db.InternalKey {
-	kind := db.InternalKeyKind(s.data[offset])
+func (s *batchStorage) Get(offset uint32) InternalKey {
+	kind := InternalKeyKind(s.data[offset])
 	_, key, ok := batchDecodeStr(s.data[offset+1:])
 	if !ok {
 		panic(fmt.Sprintf("corrupted batch entry: %d", offset))
 	}
-	return db.MakeInternalKey(key, uint64(offset)|db.InternalKeySeqNumBatch, kind)
+	return base.MakeInternalKey(key, uint64(offset)|InternalKeySeqNumBatch, kind)
 }
 
 // AbbreviatedKey implements Storage.AbbreviatedKey, as documented in the
@@ -158,7 +158,7 @@ func (s *batchStorage) Compare(a []byte, b uint32) int {
 //   +-----------+-----------------+-------------------+
 //
 // A varstring is a varint32 followed by N bytes of data. The Kind tags are
-// exactly those specified by db.InternalKeyKind. The following table shows the
+// exactly those specified by InternalKeyKind. The following table shows the
 // format for records of each kind:
 //
 //   InternalKeyKindDelete       varstring
@@ -224,7 +224,7 @@ func newBatch(db *DB) *Batch {
 	return b
 }
 
-func newIndexedBatch(db *DB, comparer *db.Comparer) *Batch {
+func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i := indexedBatchPool.Get().(*indexedBatch)
 	i.batch.storage.cmp = comparer.Compare
 	i.batch.storage.abbreviatedKey = comparer.AbbreviatedKey
@@ -270,7 +270,7 @@ func (b *Batch) refreshMemTableSize() {
 // Apply the operations contained in the batch to the receiver batch.
 //
 // It is safe to modify the contents of the arguments after Apply returns.
-func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
+func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 	if len(batch.storage.data) == 0 {
 		return nil
 	}
@@ -296,7 +296,7 @@ func (b *Batch) Apply(batch *Batch, _ *db.WriteOptions) error {
 		}
 		if b.index != nil {
 			var err error
-			if kind == db.InternalKeyKindRangeDelete {
+			if kind == InternalKeyKindRangeDelete {
 				if b.rangeDelIndex == nil {
 					b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
 				}
@@ -326,7 +326,7 @@ func (b *Batch) Get(key []byte) (value []byte, err error) {
 	return b.db.getInternal(key, b, nil /* snapshot */)
 }
 
-func (b *Batch) encodeKeyValue(key, value []byte, kind db.InternalKeyKind) uint32 {
+func (b *Batch) encodeKeyValue(key, value []byte, kind InternalKeyKind) uint32 {
 	pos := len(b.storage.data)
 	offset := uint32(pos)
 	b.grow(1 + 2*maxVarintLen32 + len(key) + len(value))
@@ -340,7 +340,7 @@ func (b *Batch) encodeKeyValue(key, value []byte, kind db.InternalKeyKind) uint3
 // Set adds an action to the batch that sets the key to map to the value.
 //
 // It is safe to modify the contents of the arguments after Set returns.
-func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
+func (b *Batch) Set(key, value []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
@@ -348,7 +348,7 @@ func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
 		return ErrInvalidBatch
 	}
 
-	offset := b.encodeKeyValue(key, value, db.InternalKeyKindSet)
+	offset := b.encodeKeyValue(key, value, InternalKeyKindSet)
 
 	if b.index != nil {
 		if err := b.index.Add(offset); err != nil {
@@ -365,7 +365,7 @@ func (b *Batch) Set(key, value []byte, _ *db.WriteOptions) error {
 // operator.
 //
 // It is safe to modify the contents of the arguments after Merge returns.
-func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
+func (b *Batch) Merge(key, value []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(key) + len(value) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
@@ -373,7 +373,7 @@ func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
 		return ErrInvalidBatch
 	}
 
-	offset := b.encodeKeyValue(key, value, db.InternalKeyKindMerge)
+	offset := b.encodeKeyValue(key, value, InternalKeyKindMerge)
 
 	if b.index != nil {
 		if err := b.index.Add(offset); err != nil {
@@ -388,7 +388,7 @@ func (b *Batch) Merge(key, value []byte, _ *db.WriteOptions) error {
 // Delete adds an action to the batch that deletes the entry for key.
 //
 // It is safe to modify the contents of the arguments after Delete returns.
-func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
+func (b *Batch) Delete(key []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(key) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
@@ -399,7 +399,7 @@ func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
 	pos := len(b.storage.data)
 	offset := uint32(pos)
 	b.grow(1 + maxVarintLen32 + len(key))
-	b.storage.data[pos] = byte(db.InternalKeyKindDelete)
+	b.storage.data[pos] = byte(InternalKeyKindDelete)
 	pos, varlen1 := b.copyStr(pos+1, key)
 	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
 
@@ -418,7 +418,7 @@ func (b *Batch) Delete(key []byte, _ *db.WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after DeleteRange
 // returns.
-func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
+func (b *Batch) DeleteRange(start, end []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(start) + len(end) + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
@@ -426,7 +426,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 		return ErrInvalidBatch
 	}
 
-	offset := b.encodeKeyValue(start, end, db.InternalKeyKindRangeDelete)
+	offset := b.encodeKeyValue(start, end, InternalKeyKindRangeDelete)
 
 	if b.index != nil {
 		// Range deletions are rare, so we lazily allocate the index for them.
@@ -450,7 +450,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *db.WriteOptions) error {
 // It is safe to modify the contents of the argument after LogData returns.
 //
 // TODO(peter): untested.
-func (b *Batch) LogData(data []byte, _ *db.WriteOptions) error {
+func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(data) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
@@ -460,7 +460,7 @@ func (b *Batch) LogData(data []byte, _ *db.WriteOptions) error {
 
 	pos := len(b.storage.data)
 	b.grow(1 + maxVarintLen32 + len(data))
-	b.storage.data[pos] = byte(db.InternalKeyKindLogData)
+	b.storage.data[pos] = byte(InternalKeyKindLogData)
 	pos, varlen1 := b.copyStr(pos+1, data)
 	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
 	return nil
@@ -475,7 +475,7 @@ func (b *Batch) Repr() []byte {
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekPrefixGE, SeekLT, First or Last. Only indexed batches support iterators.
-func (b *Batch) NewIter(o *db.IterOptions) *Iterator {
+func (b *Batch) NewIter(o *IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}
 	}
@@ -485,7 +485,7 @@ func (b *Batch) NewIter(o *db.IterOptions) *Iterator {
 
 // newInternalIter creates a new internalIterator that iterates over the
 // contents of the batch.
-func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
+func (b *Batch) newInternalIter(o *IterOptions) internalIterator {
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}
@@ -496,7 +496,7 @@ func (b *Batch) newInternalIter(o *db.IterOptions) internalIterator {
 	}
 }
 
-func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
+func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}
@@ -533,11 +533,11 @@ func (b *Batch) newRangeDelIter(o *db.IterOptions) internalIterator {
 }
 
 // Commit applies the batch to its parent writer.
-func (b *Batch) Commit(o *db.WriteOptions) error {
+func (b *Batch) Commit(o *WriteOptions) error {
 	return b.db.Apply(b, o)
 }
 
-// Close implements DB.Close, as documented in the pebble/db package.
+// Close closes the batch without committing it.
 func (b *Batch) Close() error {
 	b.release()
 	return nil
@@ -655,13 +655,13 @@ func (b *Batch) iter() batchReader {
 	return b.storage.data[batchHeaderLen:]
 }
 
-func batchDecode(data []byte, offset uint32) (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
+func batchDecode(data []byte, offset uint32) (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
 	p := data[offset:]
 	if len(p) == 0 {
 		return 0, nil, nil, false
 	}
-	kind, p = db.InternalKeyKind(p[0]), p[1:]
-	if kind > db.InternalKeyKindMax {
+	kind, p = InternalKeyKind(p[0]), p[1:]
+	if kind > InternalKeyKindMax {
 		return 0, nil, nil, false
 	}
 	p, ukey, ok = batchDecodeStr(p)
@@ -669,7 +669,7 @@ func batchDecode(data []byte, offset uint32) (kind db.InternalKeyKind, ukey []by
 		return 0, nil, nil, false
 	}
 	switch kind {
-	case db.InternalKeyKindSet, db.InternalKeyKindMerge, db.InternalKeyKindRangeDelete:
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
 		_, value, ok = batchDecodeStr(p)
 		if !ok {
 			return 0, nil, nil, false
@@ -694,13 +694,13 @@ type batchReader []byte
 
 // next returns the next operation in this batch.
 // The final return value is false if the batch is corrupi.
-func (r *batchReader) next() (kind db.InternalKeyKind, ukey []byte, value []byte, ok bool) {
+func (r *batchReader) next() (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
 	p := *r
 	if len(p) == 0 {
 		return 0, nil, nil, false
 	}
-	kind, *r = db.InternalKeyKind(p[0]), p[1:]
-	if kind > db.InternalKeyKindMax {
+	kind, *r = InternalKeyKind(p[0]), p[1:]
+	if kind > InternalKeyKindMax {
 		return 0, nil, nil, false
 	}
 	ukey, ok = r.nextStr()
@@ -708,7 +708,7 @@ func (r *batchReader) next() (kind db.InternalKeyKind, ukey []byte, value []byte
 		return 0, nil, nil, false
 	}
 	switch kind {
-	case db.InternalKeyKindSet, db.InternalKeyKindMerge, db.InternalKeyKindRangeDelete:
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
 		value, ok = r.nextStr()
 		if !ok {
 			return 0, nil, nil, false
@@ -734,7 +734,7 @@ func (r *batchReader) nextStr() (s []byte, ok bool) {
 // Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
 // two in sync.
 type batchIter struct {
-	cmp     db.Compare
+	cmp     Compare
 	batch   *Batch
 	reverse bool
 	iter    batchskl.Iterator
@@ -744,7 +744,7 @@ type batchIter struct {
 // batchIter implements the internalIterator interface.
 var _ internalIterator = (*batchIter)(nil)
 
-func (i *batchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	ikey := i.iter.SeekGE(key)
 	if ikey == nil {
 		return nil, nil
@@ -752,11 +752,11 @@ func (i *batchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (i *batchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	return i.SeekGE(key)
 }
 
-func (i *batchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	ikey := i.iter.SeekLT(key)
 	if ikey == nil {
 		return nil, nil
@@ -764,7 +764,7 @@ func (i *batchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) First() (*db.InternalKey, []byte) {
+func (i *batchIter) First() (*InternalKey, []byte) {
 	ikey := i.iter.First()
 	if ikey == nil {
 		return nil, nil
@@ -772,7 +772,7 @@ func (i *batchIter) First() (*db.InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) Last() (*db.InternalKey, []byte) {
+func (i *batchIter) Last() (*InternalKey, []byte) {
 	ikey := i.iter.Last()
 	if ikey == nil {
 		return nil, nil
@@ -780,7 +780,7 @@ func (i *batchIter) Last() (*db.InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) Next() (*db.InternalKey, []byte) {
+func (i *batchIter) Next() (*InternalKey, []byte) {
 	ikey := i.iter.Next()
 	if ikey == nil {
 		return nil, nil
@@ -788,7 +788,7 @@ func (i *batchIter) Next() (*db.InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) Prev() (*db.InternalKey, []byte) {
+func (i *batchIter) Prev() (*InternalKey, []byte) {
 	ikey := i.iter.Prev()
 	if ikey == nil {
 		return nil, nil
@@ -796,7 +796,7 @@ func (i *batchIter) Prev() (*db.InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) Key() *db.InternalKey {
+func (i *batchIter) Key() *InternalKey {
 	return i.iter.Key()
 }
 
@@ -831,7 +831,7 @@ type flushableBatchEntry struct {
 // flushableBatch wraps an existing batch and provides the interfaces needed
 // for making the batch flushable (i.e. able to mimic a memtable).
 type flushableBatch struct {
-	cmp  db.Compare
+	cmp  Compare
 	data []byte
 
 	// The base sequence number for the entries in the batch. This is the same
@@ -860,7 +860,7 @@ var _ flushable = (*flushableBatch)(nil)
 // interface. This allows the batch to act like a memtable and be placed in the
 // queue of flushable memtables. Note that the flushable batch takes ownership
 // of the batch data.
-func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
+func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
 		data:            batch.storage.data,
 		cmp:             comparer.Compare,
@@ -888,7 +888,7 @@ func newFlushableBatch(batch *Batch, comparer *db.Comparer) *flushableBatch {
 				uintptr(unsafe.Pointer(&b.data[0])))
 			entry.keyEnd = entry.keyStart + keySize
 		}
-		if kind == db.InternalKeyKindRangeDelete {
+		if kind == InternalKeyKindRangeDelete {
 			b.rangeDelOffsets = append(b.rangeDelOffsets, entry)
 		} else {
 			b.offsets = append(b.offsets, entry)
@@ -926,7 +926,7 @@ func (b *flushableBatch) Swap(i, j int) {
 	b.offsets[i], b.offsets[j] = b.offsets[j], b.offsets[i]
 }
 
-func (b *flushableBatch) newIter(o *db.IterOptions) internalIterator {
+func (b *flushableBatch) newIter(o *IterOptions) internalIterator {
 	return &flushableBatchIter{
 		batch:   b,
 		data:    b.data,
@@ -936,7 +936,7 @@ func (b *flushableBatch) newIter(o *db.IterOptions) internalIterator {
 	}
 }
 
-func (b *flushableBatch) newRangeDelIter(o *db.IterOptions) internalIterator {
+func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
 	if len(b.rangeDelOffsets) == 0 {
 		return nil
 	}
@@ -988,20 +988,20 @@ type flushableBatchIter struct {
 	batch   *flushableBatch
 	data    []byte
 	offsets []flushableBatchEntry
-	cmp     db.Compare
+	cmp     Compare
 	reverse bool
 	index   int
-	key     db.InternalKey
+	key     InternalKey
 	err     error
 }
 
 // flushableBatchIter implements the internalIterator interface.
 var _ internalIterator = (*flushableBatchIter)(nil)
 
-func (i *flushableBatchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
-	ikey := db.MakeSearchKey(key)
+func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
-		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
+		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
 	})
 	if i.index >= len(i.offsets) {
 		return nil, nil
@@ -1010,14 +1010,14 @@ func (i *flushableBatchIter) SeekGE(key []byte) (*db.InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte) {
+func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	return i.SeekGE(key)
 }
 
-func (i *flushableBatchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
-	ikey := db.MakeSearchKey(key)
+func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
-		return db.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
+		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	i.index--
 	if i.index < 0 {
@@ -1027,7 +1027,7 @@ func (i *flushableBatchIter) SeekLT(key []byte) (*db.InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) First() (*db.InternalKey, []byte) {
+func (i *flushableBatchIter) First() (*InternalKey, []byte) {
 	if len(i.offsets) == 0 {
 		return nil, nil
 	}
@@ -1036,7 +1036,7 @@ func (i *flushableBatchIter) First() (*db.InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) Last() (*db.InternalKey, []byte) {
+func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
 	if len(i.offsets) == 0 {
 		return nil, nil
 	}
@@ -1045,7 +1045,7 @@ func (i *flushableBatchIter) Last() (*db.InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) Next() (*db.InternalKey, []byte) {
+func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
 	if i.index == len(i.offsets) {
 		return nil, nil
 	}
@@ -1057,7 +1057,7 @@ func (i *flushableBatchIter) Next() (*db.InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) Prev() (*db.InternalKey, []byte) {
+func (i *flushableBatchIter) Prev() (*InternalKey, []byte) {
 	if i.index < 0 {
 		return nil, nil
 	}
@@ -1069,14 +1069,14 @@ func (i *flushableBatchIter) Prev() (*db.InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) getKey(index int) db.InternalKey {
+func (i *flushableBatchIter) getKey(index int) InternalKey {
 	e := &i.offsets[index]
-	kind := db.InternalKeyKind(i.data[e.offset])
+	kind := InternalKeyKind(i.data[e.offset])
 	key := i.data[e.keyStart:e.keyEnd]
-	return db.MakeInternalKey(key, i.batch.seqNum+uint64(e.index), kind)
+	return base.MakeInternalKey(key, i.batch.seqNum+uint64(e.index), kind)
 }
 
-func (i *flushableBatchIter) Key() *db.InternalKey {
+func (i *flushableBatchIter) Key() *InternalKey {
 	return &i.key
 }
 

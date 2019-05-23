@@ -4,16 +4,14 @@
 
 package pebble
 
-import "github.com/petermattis/pebble/db"
-
 type mergingIterItem struct {
 	index int
-	key   db.InternalKey
+	key   InternalKey
 	value []byte
 }
 
 type mergingIterHeap struct {
-	cmp     db.Compare
+	cmp     Compare
 	reverse bool
 	items   []mergingIterItem
 }

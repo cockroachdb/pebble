@@ -9,13 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/vfs"
 )
 
 func TestManualFlush(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
 	if err != nil {
@@ -69,7 +68,7 @@ func TestManualFlush(t *testing.T) {
 			return s
 
 		case "reset":
-			d, err = Open("", &db.Options{
+			d, err = Open("", &Options{
 				FS: vfs.NewMem(),
 			})
 			if err != nil {

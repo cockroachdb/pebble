@@ -17,9 +17,7 @@
 
 package batchskl
 
-import (
-	"github.com/petermattis/pebble/db"
-)
+import "github.com/petermattis/pebble/internal/base"
 
 type splice struct {
 	prev uint32
@@ -37,7 +35,7 @@ func (s *splice) init(prev, next uint32) {
 type Iterator struct {
 	list  *Skiplist
 	nd    uint32
-	key   db.InternalKey
+	key   base.InternalKey
 	lower []byte
 	upper []byte
 }
@@ -54,7 +52,7 @@ func (it *Iterator) Close() error {
 // entry and false otherwise. Note that SeekGE only checks the upper bound. It
 // is up to the caller to ensure that key is greater than or equal to the lower
 // bound.
-func (it *Iterator) SeekGE(key []byte) *db.InternalKey {
+func (it *Iterator) SeekGE(key []byte) *base.InternalKey {
 	_, it.nd, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
 	if it.nd == it.list.tail {
 		return nil
@@ -72,7 +70,7 @@ func (it *Iterator) SeekGE(key []byte) *db.InternalKey {
 // key. Returns true if the iterator is pointing at a valid entry and false
 // otherwise. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
-func (it *Iterator) SeekLT(key []byte) *db.InternalKey {
+func (it *Iterator) SeekLT(key []byte) *base.InternalKey {
 	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
 	if it.nd == it.list.head {
 		return nil
@@ -90,7 +88,7 @@ func (it *Iterator) SeekLT(key []byte) *db.InternalKey {
 // Valid() iff list is not empty. Note that First only checks the upper
 // bound. It is up to the caller to ensure that key is greater than or equal to
 // the lower bound (e.g. via a call to SeekGE(lower)).
-func (it *Iterator) First() *db.InternalKey {
+func (it *Iterator) First() *base.InternalKey {
 	it.nd = it.list.getNext(it.list.head, 0)
 	if it.nd == it.list.tail {
 		return nil
@@ -108,7 +106,7 @@ func (it *Iterator) First() *db.InternalKey {
 // Valid() iff list is not empty. Note that Last only checks the lower
 // bound. It is up to the caller to ensure that key is less than the upper
 // bound (e.g. via a call to SeekLT(upper)).
-func (it *Iterator) Last() *db.InternalKey {
+func (it *Iterator) Last() *base.InternalKey {
 	it.nd = it.list.getPrev(it.list.tail, 0)
 	if it.nd == it.list.head {
 		return nil
@@ -124,7 +122,7 @@ func (it *Iterator) Last() *db.InternalKey {
 
 // Next advances to the next position. If there are no following nodes, then
 // Valid() will be false after this call.
-func (it *Iterator) Next() *db.InternalKey {
+func (it *Iterator) Next() *base.InternalKey {
 	it.nd = it.list.getNext(it.nd, 0)
 	if it.nd == it.list.tail {
 		return nil
@@ -140,7 +138,7 @@ func (it *Iterator) Next() *db.InternalKey {
 
 // Prev moves to the previous position. If there are no previous nodes, then
 // Valid() will be false after this call.
-func (it *Iterator) Prev() *db.InternalKey {
+func (it *Iterator) Prev() *base.InternalKey {
 	it.nd = it.list.getPrev(it.nd, 0)
 	if it.nd == it.list.head {
 		return nil
@@ -155,7 +153,7 @@ func (it *Iterator) Prev() *db.InternalKey {
 }
 
 // Key returns the key at the current position.
-func (it *Iterator) Key() *db.InternalKey {
+func (it *Iterator) Key() *base.InternalKey {
 	return &it.key
 }
 

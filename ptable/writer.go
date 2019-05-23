@@ -11,7 +11,7 @@ import (
 	"io"
 
 	"github.com/golang/snappy"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/crc"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -74,7 +74,7 @@ type Writer struct {
 	err       error
 	// The next four fields are copied from a db.Options.
 	blockSize   int
-	compression db.Compression
+	compression base.Compression
 	// The data block and index block writers.
 	block      blockWriter
 	indexBlock blockWriter
@@ -93,7 +93,7 @@ type Writer struct {
 var indexColTypes = []ColumnType{ColumnTypeBytes, ColumnTypeInt64}
 
 // NewWriter ...
-func NewWriter(f vfs.File, env *Env, _ *db.Options, lo *db.LevelOptions) *Writer {
+func NewWriter(f vfs.File, env *Env, _ *base.Options, lo *base.LevelOptions) *Writer {
 	lo = lo.EnsureDefaults()
 	w := &Writer{
 		env:         env,
@@ -238,7 +238,7 @@ func (w *Writer) maybeFinishBlock() {
 func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 	b := block.Finish()
 	blockType := byte(noCompressionBlockType)
-	if w.compression == db.SnappyCompression {
+	if w.compression == base.SnappyCompression {
 		compressed := snappy.Encode(w.compressedBuf, b)
 		w.compressedBuf = compressed[:cap(compressed)]
 		if len(compressed) < len(b)-len(b)/8 {

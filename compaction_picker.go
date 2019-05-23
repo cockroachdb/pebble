@@ -6,8 +6,6 @@ package pebble
 
 import (
 	"math"
-
-	"github.com/petermattis/pebble/db"
 )
 
 // compactionPicker holds the state and logic for picking a compaction. A
@@ -32,7 +30,7 @@ type compactionPicker struct {
 	file  int
 }
 
-func newCompactionPicker(v *version, opts *db.Options) *compactionPicker {
+func newCompactionPicker(v *version, opts *Options) *compactionPicker {
 	p := &compactionPicker{
 		vers: v,
 	}
@@ -48,7 +46,7 @@ func (p *compactionPicker) compactionNeeded() bool {
 	return p.score >= 1
 }
 
-func (p *compactionPicker) initLevelMaxBytes(v *version, opts *db.Options) {
+func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	// Determine the first non-empty level and the maximum size of any level.
 	firstNonEmptyLevel := -1
 	var maxLevelSize int64
@@ -124,7 +122,7 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *db.Options) {
 // initTarget initializes the compaction score and level. If the compaction
 // score indicates compaction is needed, a target table within the target level
 // is selected for compaction.
-func (p *compactionPicker) initTarget(v *version, opts *db.Options) {
+func (p *compactionPicker) initTarget(v *version, opts *Options) {
 	// We treat level-0 specially by bounding the number of files instead of
 	// number of bytes for two reasons:
 	//
@@ -201,7 +199,7 @@ func (p *compactionPicker) initTarget(v *version, opts *db.Options) {
 }
 
 // pickAuto picks the best compaction, if any.
-func (p *compactionPicker) pickAuto(opts *db.Options) (c *compaction) {
+func (p *compactionPicker) pickAuto(opts *Options) (c *compaction) {
 	if !p.compactionNeeded() {
 		return nil
 	}
@@ -224,7 +222,7 @@ func (p *compactionPicker) pickAuto(opts *db.Options) (c *compaction) {
 	return c
 }
 
-func (p *compactionPicker) pickManual(opts *db.Options, manual *manualCompaction) (c *compaction) {
+func (p *compactionPicker) pickManual(opts *Options, manual *manualCompaction) (c *compaction) {
 	if p == nil {
 		return nil
 	}

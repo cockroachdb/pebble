@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
@@ -105,7 +105,7 @@ func TestTable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		w := NewWriter(f, env, nil, &db.LevelOptions{BlockSize: 100})
+		w := NewWriter(f, env, nil, &base.LevelOptions{BlockSize: 100})
 		for i := int64(0); i < count; i++ {
 			if err := w.AddRow(makeRow(i)); err != nil {
 				t.Fatal(err)
@@ -170,7 +170,7 @@ func buildBenchmarkTable(b *testing.B, blockSize int, nullValues bool) (*Reader,
 	defer f0.Close()
 
 	env := newEnv(ColumnDef{Type: ColumnTypeInt64}, ColumnDef{Type: ColumnTypeInt64})
-	w := NewWriter(f0, env, nil, &db.LevelOptions{BlockSize: blockSize})
+	w := NewWriter(f0, env, nil, &base.LevelOptions{BlockSize: blockSize})
 	var keys [][]byte
 	for i := int64(0); i < 1e6; i++ {
 		var r testRow
@@ -192,7 +192,7 @@ func buildBenchmarkTable(b *testing.B, blockSize int, nullValues bool) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
-	return NewReader(f1, 0, &db.Options{
+	return NewReader(f1, 0, &base.Options{
 		Cache: cache.New(128 << 20),
 	}), keys
 }

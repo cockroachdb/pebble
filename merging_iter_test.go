@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
@@ -20,7 +20,7 @@ import (
 
 func TestMergingIter(t *testing.T) {
 	newFunc := func(iters ...internalIterator) internalIterator {
-		return newMergingIter(db.DefaultComparer.Compare, iters...)
+		return newMergingIter(DefaultComparer.Compare, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual
@@ -49,13 +49,13 @@ func TestMergingIterSeek(t *testing.T) {
 				f := &fakeIter{}
 				for _, key := range strings.Fields(line) {
 					j := strings.Index(key, ":")
-					f.keys = append(f.keys, db.ParseInternalKey(key[:j]))
+					f.keys = append(f.keys, base.ParseInternalKey(key[:j]))
 					f.vals = append(f.vals, []byte(key[j+1:]))
 				}
 				iters = append(iters, f)
 			}
 
-			iter := newMergingIter(db.DefaultComparer.Compare, iters...)
+			iter := newMergingIter(DefaultComparer.Compare, iters...)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
 
@@ -107,12 +107,12 @@ func TestMergingIterNextPrev(t *testing.T) {
 						iters[i] = f
 						for _, key := range strings.Fields(c[i]) {
 							j := strings.Index(key, ":")
-							f.keys = append(f.keys, db.ParseInternalKey(key[:j]))
+							f.keys = append(f.keys, base.ParseInternalKey(key[:j]))
 							f.vals = append(f.vals, []byte(key[j+1:]))
 						}
 					}
 
-					iter := newMergingIter(db.DefaultComparer.Compare, iters...)
+					iter := newMergingIter(DefaultComparer.Compare, iters...)
 					defer iter.Close()
 					return runInternalIterCmd(d, iter)
 
@@ -140,10 +140,10 @@ func buildMergingIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], nil, db.LevelOptions{
+		writers[i] = sstable.NewWriter(files[i], nil, LevelOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
-			Compression:          db.NoCompression,
+			Compression:          NoCompression,
 		})
 	}
 
@@ -156,7 +156,7 @@ func buildMergingIterTables(
 	}
 
 	var keys [][]byte
-	var ikey db.InternalKey
+	var ikey InternalKey
 	targetSize := uint64(count * (2 << 20))
 	for i := 0; estimatedSize() < targetSize; i++ {
 		key := []byte(fmt.Sprintf("%08d", i))
@@ -180,7 +180,7 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i] = sstable.NewReader(f, uint64(i), &db.Options{
+		readers[i] = sstable.NewReader(f, uint64(i), &Options{
 			Cache: cache,
 		})
 	}
@@ -201,7 +201,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
 							}
-							m := newMergingIter(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(DefaultComparer.Compare, iters...)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
@@ -228,7 +228,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
 							}
-							m := newMergingIter(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(DefaultComparer.Compare, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -258,7 +258,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							for i := range readers {
 								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
 							}
-							m := newMergingIter(db.DefaultComparer.Compare, iters...)
+							m := newMergingIter(DefaultComparer.Compare, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {

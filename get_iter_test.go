@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 func TestGetIter(t *testing.T) {
@@ -433,15 +433,15 @@ func TestGetIter(t *testing.T) {
 		},
 	}
 
-	cmp := db.DefaultComparer.Compare
-	equal := db.DefaultComparer.Equal
+	cmp := DefaultComparer.Compare
+	equal := DefaultComparer.Equal
 	for _, tc := range testCases {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
 		// m is a map from file numbers to DBs.
 		m := map[uint64]*memTable{}
 		newIter := func(
-			meta *fileMetadata, _ *db.IterOptions,
+			meta *fileMetadata, _ *IterOptions,
 		) (internalIterator, internalIterator, error) {
 			d, ok := m[meta.fileNum]
 			if !ok {
@@ -461,7 +461,7 @@ func TestGetIter(t *testing.T) {
 			}
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
-				ikey := db.ParseInternalKey(s[0])
+				ikey := base.ParseInternalKey(s[0])
 				err := d.set(ikey, []byte(s[1]))
 				if err != nil {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
@@ -473,10 +473,10 @@ func TestGetIter(t *testing.T) {
 					meta.largest = ikey
 					meta.largestSeqNum = ikey.SeqNum()
 				} else {
-					if db.InternalCompare(cmp, ikey, meta.smallest) < 0 {
+					if base.InternalCompare(cmp, ikey, meta.smallest) < 0 {
 						meta.smallest = ikey
 					}
-					if db.InternalCompare(cmp, ikey, meta.largest) > 0 {
+					if base.InternalCompare(cmp, ikey, meta.largest) > 0 {
 						meta.largest = ikey
 					}
 					if meta.smallestSeqNum > ikey.SeqNum() {
@@ -500,7 +500,7 @@ func TestGetIter(t *testing.T) {
 			continue
 		}
 
-		get := func(v *version, ikey db.InternalKey) ([]byte, error) {
+		get := func(v *version, ikey InternalKey) ([]byte, error) {
 			var buf struct {
 				dbi Iterator
 				get getIter
@@ -518,7 +518,7 @@ func TestGetIter(t *testing.T) {
 			i := &buf.dbi
 			i.cmp = cmp
 			i.equal = equal
-			i.merge = db.DefaultMerger.Merge
+			i.merge = DefaultMerger.Merge
 			i.iter = get
 
 			defer i.Close()
@@ -527,18 +527,18 @@ func TestGetIter(t *testing.T) {
 				if err != nil {
 					return nil, err
 				}
-				return nil, db.ErrNotFound
+				return nil, ErrNotFound
 			}
 			return i.Value(), nil
 		}
 
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
-			ikey := db.ParseInternalKey(s[0])
+			ikey := base.ParseInternalKey(s[0])
 			value, err := get(&v, ikey)
 			got, want := "", s[1]
 			if err != nil {
-				if err != db.ErrNotFound {
+				if err != ErrNotFound {
 					t.Errorf("desc=%q: query=%q: %v", desc, s[0], err)
 					continue
 				}

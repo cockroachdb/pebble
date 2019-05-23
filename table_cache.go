@@ -12,7 +12,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -22,7 +21,7 @@ var emptyIter = &errorIter{err: nil}
 type tableCache struct {
 	dirname string
 	fs      vfs.FS
-	opts    *db.Options
+	opts    *Options
 	size    int
 
 	mu struct {
@@ -36,7 +35,7 @@ type tableCache struct {
 	}
 }
 
-func (c *tableCache) init(dirname string, fs vfs.FS, opts *db.Options, size int) {
+func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size int) {
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts
@@ -52,7 +51,7 @@ func (c *tableCache) init(dirname string, fs vfs.FS, opts *db.Options, size int)
 }
 
 func (c *tableCache) newIters(
-	meta *fileMetadata, opts *db.IterOptions,
+	meta *fileMetadata, opts *IterOptions,
 ) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we

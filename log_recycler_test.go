@@ -7,7 +7,6 @@ package pebble
 import (
 	"testing"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +74,7 @@ func TestLogRecycler(t *testing.T) {
 }
 
 func TestRecycleLogs(t *testing.T) {
-	d, err := Open("", &db.Options{
+	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
 	if err != nil {

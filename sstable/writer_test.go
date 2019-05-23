@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/vfs"
@@ -33,20 +33,20 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			w := NewWriter(f0, nil, db.LevelOptions{})
+			w := NewWriter(f0, nil, TableOptions{})
 			var tombstones []rangedel.Tombstone
 			f := rangedel.Fragmenter{
-				Cmp: db.DefaultComparer.Compare,
+				Cmp: DefaultComparer.Compare,
 				Emit: func(fragmented []rangedel.Tombstone) {
 					tombstones = append(tombstones, fragmented...)
 				},
 			}
 			for _, data := range strings.Split(td.Input, "\n") {
 				j := strings.Index(data, ":")
-				key := db.ParseInternalKey(data[:j])
+				key := base.ParseInternalKey(data[:j])
 				value := []byte(data[j+1:])
 				switch key.Kind() {
-				case db.InternalKeyKindRangeDelete:
+				case InternalKeyKindRangeDelete:
 					var err error
 					func() {
 						defer func() {
@@ -101,10 +101,10 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			w := NewWriter(f0, nil, db.LevelOptions{})
+			w := NewWriter(f0, nil, TableOptions{})
 			for _, data := range strings.Split(td.Input, "\n") {
 				j := strings.Index(data, ":")
-				key := db.ParseInternalKey(data[:j])
+				key := base.ParseInternalKey(data[:j])
 				value := []byte(data[j+1:])
 				if err := w.Add(key, value); err != nil {
 					return err.Error()

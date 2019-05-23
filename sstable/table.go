@@ -67,7 +67,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/vfs"
 )
 
@@ -149,8 +148,8 @@ const (
 
 	// The block type gives the per-block compression format.
 	// These constants are part of the file format and should not be changed.
-	// They are different from the db.Compression constants because the latter
-	// are designed so that the zero value of the db.Compression type means to
+	// They are different from the Compression constants because the latter
+	// are designed so that the zero value of the Compression type means to
 	// use the default compression (which is snappy).
 	noCompressionBlockType     byte = 0
 	snappyCompressionBlockType byte = 1
@@ -173,7 +172,7 @@ const (
 //    footer version (4 bytes)
 //    table_magic_number (8 bytes)
 type footer struct {
-	format      db.TableFormat
+	format      TableFormat
 	checksum    uint8
 	metaindexBH blockHandle
 	indexBH     blockHandle
@@ -206,7 +205,7 @@ func readFooter(f vfs.File) (footer, error) {
 			return footer, fmt.Errorf("pebble/table: invalid table (footer too short): %d", len(buf))
 		}
 		buf = buf[len(buf)-levelDBFooterLen:]
-		footer.format = db.TableFormatLevelDB
+		footer.format = TableFormatLevelDB
 		footer.checksum = checksumCRC32c
 
 	case rocksDBMagic:
@@ -218,7 +217,7 @@ func readFooter(f vfs.File) (footer, error) {
 		if version != rocksDBFormatVersion2 {
 			return footer, fmt.Errorf("pebble/table: unsupported format version %d", version)
 		}
-		footer.format = db.TableFormatRocksDBv2
+		footer.format = TableFormatRocksDBv2
 		footer.checksum = uint8(buf[0])
 		if footer.checksum != checksumCRC32c {
 			return footer, fmt.Errorf("pebble/table: unsupported checksum type %d", footer.checksum)
@@ -248,7 +247,7 @@ func readFooter(f vfs.File) (footer, error) {
 
 func (f footer) encode(buf []byte) []byte {
 	switch f.format {
-	case db.TableFormatLevelDB:
+	case TableFormatLevelDB:
 		buf = buf[:levelDBFooterLen]
 		for i := range buf {
 			buf[i] = 0
@@ -257,7 +256,7 @@ func (f footer) encode(buf []byte) []byte {
 		n += encodeBlockHandle(buf[n:], f.indexBH)
 		copy(buf[len(buf)-len(levelDBMagic):], levelDBMagic)
 
-	case db.TableFormatRocksDBv2:
+	case TableFormatRocksDBv2:
 		buf = buf[:rocksDBFooterLen]
 		for i := range buf {
 			buf[i] = 0

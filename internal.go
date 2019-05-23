@@ -5,9 +5,29 @@
 package pebble
 
 import (
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/sstable"
 )
+
+// InternalKeyKind exports the base.InternalKeyKind type.
+type InternalKeyKind = base.InternalKeyKind
+
+// These constants are part of the file format, and should not be changed.
+const (
+	InternalKeyKindDelete          = base.InternalKeyKindDelete
+	InternalKeyKindSet             = base.InternalKeyKindSet
+	InternalKeyKindMerge           = base.InternalKeyKindMerge
+	InternalKeyKindLogData         = base.InternalKeyKindLogData
+	InternalKeyKindRangeDelete     = base.InternalKeyKindRangeDelete
+	InternalKeyKindMax             = base.InternalKeyKindMax
+	InternalKeyKindInvalid         = base.InternalKeyKindInvalid
+	InternalKeySeqNumBatch         = base.InternalKeySeqNumBatch
+	InternalKeySeqNumMax           = base.InternalKeySeqNumMax
+	InternalKeyRangeDeleteSentinel = base.InternalKeyRangeDeleteSentinel
+)
+
+// InternalKey exports the base.InternalKey type.
+type InternalKey = base.InternalKey
 
 // internalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
@@ -30,7 +50,7 @@ type internalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key. Returns the key and value if the iterator
 	// is pointing at a valid entry, and (nil, nil) otherwise.
-	SeekGE(key []byte) (*db.InternalKey, []byte)
+	SeekGE(key []byte) (*InternalKey, []byte)
 
 	// SeekPrefixGE moves the iterator to the first key/value pair whose key
 	// starts with the given prefix and is greater than or equal to the given
@@ -38,37 +58,37 @@ type internalIterator interface {
 	// entry, and (nil, nil) otherwise. Note that the iterator will still observe
 	// keys not matching the prefix. It is up to the user to check if the prefix
 	// matches, and iteration beyond the prefix is undefined.
-	SeekPrefixGE(prefix, key []byte) (*db.InternalKey, []byte)
+	SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key. Returns the key and value if the iterator is pointing
 	// at a valid entry, and (nil, nil) otherwise.
-	SeekLT(key []byte) (*db.InternalKey, []byte)
+	SeekLT(key []byte) (*InternalKey, []byte)
 
 	// First moves the iterator the the first key/value pair. Returns the key and
 	// value if the iterator is pointing at a valid entry, and (nil, nil)
 	// otherwise.
-	First() (*db.InternalKey, []byte)
+	First() (*InternalKey, []byte)
 
 	// Last moves the iterator the the last key/value pair. Returns the key and
 	// value if the iterator is pointing at a valid entry, and (nil, nil)
 	// otherwise.
-	Last() (*db.InternalKey, []byte)
+	Last() (*InternalKey, []byte)
 
 	// Next moves the iterator to the next key/value pair. Returns the key and
 	// value if the iterator is pointing at a valid entry, and (nil, nil)
 	// otherwise.
-	Next() (*db.InternalKey, []byte)
+	Next() (*InternalKey, []byte)
 
 	// Prev moves the iterator to the previous key/value pair. Returns the key
 	// and value if the iterator is pointing at a valid entry, and (nil, nil)
 	// otherwise.
-	Prev() (*db.InternalKey, []byte)
+	Prev() (*InternalKey, []byte)
 
 	// Key returns the encoded internal key of the current key/value pair, or nil
 	// if done. The caller should not modify the contents of the returned key,
 	// and its contents may change on the next call to Next.
-	Key() *db.InternalKey
+	Key() *InternalKey
 
 	// Value returns the value of the current key/value pair, or nil if done.
 	// The caller should not modify the contents of the returned slice, and

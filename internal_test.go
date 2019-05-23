@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 // internalIterAdapter adapts the new internalIterator interface which returns
@@ -19,13 +19,13 @@ type internalIterAdapter struct {
 	internalIterator
 }
 
-func (i *internalIterAdapter) verify(key *db.InternalKey, val []byte) bool {
+func (i *internalIterAdapter) verify(key *InternalKey, val []byte) bool {
 	valid := key != nil
 	if valid != i.Valid() {
 		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
 	}
 	if valid {
-		if db.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
+		if base.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
 			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
 		}
 		if !bytes.Equal(val, i.Value()) {
@@ -63,6 +63,6 @@ func (i *internalIterAdapter) Prev() bool {
 	return i.verify(i.internalIterator.Prev())
 }
 
-func (i *internalIterAdapter) Key() db.InternalKey {
+func (i *internalIterAdapter) Key() InternalKey {
 	return *i.internalIterator.Key()
 }

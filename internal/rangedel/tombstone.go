@@ -7,25 +7,25 @@ package rangedel // import "github.com/petermattis/pebble/internal/rangedel"
 import (
 	"fmt"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 // Tombstone is a range deletion tombstone. A range deletion tombstone deletes
 // all of the keys in the range [start,end). Note that the start key is
 // inclusive and the end key is exclusive.
 type Tombstone struct {
-	Start db.InternalKey
+	Start base.InternalKey
 	End   []byte
 }
 
 // Empty returns true if the tombstone does not cover any keys.
 func (t Tombstone) Empty() bool {
-	return t.Start.Kind() != db.InternalKeyKindRangeDelete
+	return t.Start.Kind() != base.InternalKeyKindRangeDelete
 }
 
 // Contains returns true if the specified key resides within the range
 // tombstone bounds.
-func (t Tombstone) Contains(cmp db.Compare, key []byte) bool {
+func (t Tombstone) Contains(cmp base.Compare, key []byte) bool {
 	return cmp(t.Start.UserKey, key) <= 0 && cmp(key, t.End) < 0
 }
 

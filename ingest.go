@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
 )
 
-func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, error) {
+func ingestLoad1(opts *Options, path string, fileNum uint64) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
 		return nil, err
@@ -30,8 +30,8 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 	meta := &fileMetadata{}
 	meta.fileNum = fileNum
 	meta.size = uint64(stat.Size())
-	meta.smallest = db.InternalKey{}
-	meta.largest = db.InternalKey{}
+	meta.smallest = InternalKey{}
+	meta.largest = InternalKey{}
 	smallestSet, largestSet := false, false
 
 	{
@@ -54,14 +54,14 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
 			if !smallestSet ||
-				db.InternalCompare(opts.Comparer.Compare, meta.smallest, *key) > 0 {
+				base.InternalCompare(opts.Comparer.Compare, meta.smallest, *key) > 0 {
 				meta.smallest = key.Clone()
 			}
 		}
 		if key, val := iter.Last(); key != nil {
-			end := db.MakeRangeDeleteSentinelKey(val)
+			end := base.MakeRangeDeleteSentinelKey(val)
 			if !largestSet ||
-				db.InternalCompare(opts.Comparer.Compare, meta.largest, end) < 0 {
+				base.InternalCompare(opts.Comparer.Compare, meta.largest, end) < 0 {
 				meta.largest = end.Clone()
 			}
 		}
@@ -70,7 +70,7 @@ func ingestLoad1(opts *db.Options, path string, fileNum uint64) (*fileMetadata, 
 	return meta, nil
 }
 
-func ingestLoad(opts *db.Options, paths []string, pending []uint64) ([]*fileMetadata, error) {
+func ingestLoad(opts *Options, paths []string, pending []uint64) ([]*fileMetadata, error) {
 	meta := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		var err error
@@ -82,7 +82,7 @@ func ingestLoad(opts *db.Options, paths []string, pending []uint64) ([]*fileMeta
 	return meta, nil
 }
 
-func ingestSortAndVerify(cmp db.Compare, meta []*fileMetadata) error {
+func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
 	if len(meta) <= 1 {
 		return nil
 	}
@@ -115,7 +115,7 @@ func ingestCleanup(
 }
 
 func ingestLink(
-	opts *db.Options, dirname string, paths []string, meta []*fileMetadata,
+	opts *Options, dirname string, paths []string, meta []*fileMetadata,
 ) error {
 	for i := range paths {
 		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
@@ -131,7 +131,7 @@ func ingestLink(
 	return nil
 }
 
-func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata) bool {
+func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
 	{
 		// Check overlap with point operations.
 		iter := mem.newIter(nil)
@@ -176,11 +176,11 @@ func ingestMemtableOverlaps(cmp db.Compare, mem flushable, meta []*fileMetadata)
 }
 
 func ingestUpdateSeqNum(
-	opts *db.Options, dirname string, seqNum uint64, meta []*fileMetadata,
+	opts *Options, dirname string, seqNum uint64, meta []*fileMetadata,
 ) error {
 	for _, m := range meta {
-		m.smallest = db.MakeInternalKey(m.smallest.UserKey, seqNum, m.smallest.Kind())
-		m.largest = db.MakeInternalKey(m.largest.UserKey, seqNum, m.largest.Kind())
+		m.smallest = base.MakeInternalKey(m.smallest.UserKey, seqNum, m.smallest.Kind())
+		m.largest = base.MakeInternalKey(m.largest.UserKey, seqNum, m.largest.Kind())
 		// Setting smallestSeqNum == largestSeqNum triggers the setting of
 		// Properties.GlobalSeqNum when an sstable is loaded.
 		m.smallestSeqNum = seqNum
@@ -192,7 +192,7 @@ func ingestUpdateSeqNum(
 	return nil
 }
 
-func ingestTargetLevel(cmp db.Compare, v *version, meta *fileMetadata) int {
+func ingestTargetLevel(cmp Compare, v *version, meta *fileMetadata) int {
 	// Find the lowest level which does not have any files which overlap meta.
 	if len(v.overlaps(0, cmp, meta.smallest.UserKey, meta.largest.UserKey)) != 0 {
 		return 0
@@ -352,14 +352,14 @@ func (d *DB) Ingest(paths []string) error {
 	}
 
 	if d.opts.EventListener.TableIngested != nil {
-		info := db.TableIngestInfo{
+		info := TableIngestInfo{
 			JobID:        jobID,
 			GlobalSeqNum: meta[0].smallestSeqNum,
 			Err:          err,
 		}
 		if ve != nil {
 			info.Tables = make([]struct {
-				db.TableInfo
+				TableInfo
 				Level int
 			}, len(ve.newFiles))
 			for i := range ve.newFiles {

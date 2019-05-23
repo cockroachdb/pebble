@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
@@ -23,14 +23,14 @@ func TestIter(t *testing.T) {
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				tombstones = append(tombstones, Tombstone{
-					Start: db.ParseInternalKey(key[:j]),
+					Start: base.ParseInternalKey(key[:j]),
 					End:   []byte(key[j+1:]),
 				})
 			}
 			return ""
 
 		case "iter":
-			iter := NewIter(db.DefaultComparer.Compare, tombstones)
+			iter := NewIter(base.DefaultComparer.Compare, tombstones)
 			defer iter.Close()
 
 			var b bytes.Buffer

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
@@ -28,12 +28,12 @@ func parseTombstone(t *testing.T, s string) Tombstone {
 		t.Fatal(err)
 	}
 	return Tombstone{
-		Start: db.MakeInternalKey([]byte(m[2]), uint64(seqNum), db.InternalKeyKindRangeDelete),
+		Start: base.MakeInternalKey([]byte(m[2]), uint64(seqNum), base.InternalKeyKindRangeDelete),
 		End:   []byte(m[3]),
 	}
 }
 
-func buildTombstones(t *testing.T, cmp db.Compare, s string) []Tombstone {
+func buildTombstones(t *testing.T, cmp base.Compare, s string) []Tombstone {
 	var tombstones []Tombstone
 	f := &Fragmenter{
 		Cmp: cmp,
@@ -78,7 +78,7 @@ func formatTombstones(tombstones []Tombstone) string {
 }
 
 func TestFragmenter(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := base.DefaultComparer.Compare
 
 	var getRe = regexp.MustCompile(`(\w+)#(\d+)`)
 
@@ -146,7 +146,7 @@ func TestFragmenterDeleted(t *testing.T) {
 		switch d.Cmd {
 		case "build":
 			f := &Fragmenter{
-				Cmp: db.DefaultComparer.Compare,
+				Cmp: base.DefaultComparer.Compare,
 				Emit: func(fragmented []Tombstone) {
 				},
 			}
@@ -157,14 +157,14 @@ func TestFragmenterDeleted(t *testing.T) {
 					t := parseTombstone(t, strings.TrimPrefix(line, "add "))
 					f.Add(t.Start, t.End)
 				case strings.HasPrefix(line, "deleted "):
-					key := db.ParseInternalKey(strings.TrimPrefix(line, "deleted "))
+					key := base.ParseInternalKey(strings.TrimPrefix(line, "deleted "))
 					func() {
 						defer func() {
 							if r := recover(); r != nil {
 								fmt.Fprintf(&buf, "%s: %s\n", key, r)
 							}
 						}()
-						fmt.Fprintf(&buf, "%s: %t\n", key, f.Deleted(key, db.InternalKeySeqNumMax))
+						fmt.Fprintf(&buf, "%s: %t\n", key, f.Deleted(key, base.InternalKeySeqNumMax))
 					}()
 				}
 			}

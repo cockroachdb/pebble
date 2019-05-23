@@ -7,7 +7,7 @@ package bloom
 import (
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 )
 
 func (f tableFilter) String() string {
@@ -25,7 +25,7 @@ func (f tableFilter) String() string {
 }
 
 func newTableFilter(buf []byte, keys [][]byte, bitsPerKey int) tableFilter {
-	w := FilterPolicy(bitsPerKey).NewWriter(db.TableFilter)
+	w := FilterPolicy(bitsPerKey).NewWriter(base.TableFilter)
 	for _, key := range keys {
 		w.AddKey(key)
 	}

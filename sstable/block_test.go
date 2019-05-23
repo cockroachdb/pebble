@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"golang.org/x/exp/rand"
 )
 
 func TestBlockWriter(t *testing.T) {
-	ikey := func(s string) db.InternalKey {
-		return db.InternalKey{UserKey: []byte(s)}
+	ikey := func(s string) InternalKey {
+		return InternalKey{UserKey: []byte(s)}
 	}
 
 	w := &rawBlockWriter{
@@ -114,13 +114,13 @@ func TestBlockIter(t *testing.T) {
 }
 
 func TestBlockIter2(t *testing.T) {
-	makeIkey := func(s string) db.InternalKey {
+	makeIkey := func(s string) InternalKey {
 		j := strings.Index(s, ":")
 		seqNum, err := strconv.Atoi(s[j+1:])
 		if err != nil {
 			panic(err)
 		}
-		return db.MakeInternalKey([]byte(s[:j]), uint64(seqNum), db.InternalKeyKindSet)
+		return base.MakeInternalKey([]byte(s[:j]), uint64(seqNum), InternalKeyKindSet)
 	}
 
 	var block []byte
@@ -214,7 +214,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					restartInterval: restartInterval,
 				}
 
-				var ikey db.InternalKey
+				var ikey InternalKey
 				var keys [][]byte
 				for i := 0; w.estimatedSize() < blockSize; i++ {
 					key := []byte(fmt.Sprintf("%05d", i))
@@ -256,7 +256,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 					restartInterval: restartInterval,
 				}
 
-				var ikey db.InternalKey
+				var ikey InternalKey
 				var keys [][]byte
 				for i := 0; w.estimatedSize() < blockSize; i++ {
 					key := []byte(fmt.Sprintf("%05d", i))
@@ -305,7 +305,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 					restartInterval: restartInterval,
 				}
 
-				var ikey db.InternalKey
+				var ikey InternalKey
 				for i := 0; w.estimatedSize() < blockSize; i++ {
 					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
 					w.add(ikey, nil)
@@ -337,7 +337,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 					restartInterval: restartInterval,
 				}
 
-				var ikey db.InternalKey
+				var ikey InternalKey
 				for i := 0; w.estimatedSize() < blockSize; i++ {
 					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
 					w.add(ikey, nil)

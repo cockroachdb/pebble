@@ -4,8 +4,6 @@
 
 package pebble
 
-import "github.com/petermattis/pebble/db"
-
 // Snapshot provides a read-only point-in-time view of the DB state.
 type Snapshot struct {
 	// The db the snapshot was created from.
@@ -33,7 +31,7 @@ func (s *Snapshot) Get(key []byte) ([]byte, error) {
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
-func (s *Snapshot) NewIter(o *db.IterOptions) *Iterator {
+func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
 	return s.db.newIterInternal(nil /* batchIter */, nil /* batchRangeDelIter */, s, o)
 }
 

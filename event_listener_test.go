@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
@@ -113,9 +113,9 @@ func TestEventListener(t *testing.T) {
 		case "open":
 			buf.Reset()
 			var err error
-			d, err = Open("db", &db.Options{
+			d, err = Open("db", &Options{
 				FS:                  loggingFS{mem, &buf},
-				EventListener:       db.MakeLoggingEventListener(&buf),
+				EventListener:       MakeLoggingEventListener(&buf),
 				MaxManifestFileSize: 1,
 				WALDir:              "wal",
 			})
@@ -150,8 +150,8 @@ func TestEventListener(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, nil, db.LevelOptions{})
-			if err := w.Add(db.MakeInternalKey([]byte("a"), 0, db.InternalKeyKindSet), nil); err != nil {
+			w := sstable.NewWriter(f, nil, LevelOptions{})
+			if err := w.Add(base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), nil); err != nil {
 				return err.Error()
 			}
 			if err := w.Close(); err != nil {

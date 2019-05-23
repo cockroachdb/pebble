@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 )
 
@@ -20,13 +20,13 @@ type iterAdapter struct {
 	*Iter
 }
 
-func (i *iterAdapter) verify(key *db.InternalKey, val []byte) (*db.InternalKey, []byte) {
+func (i *iterAdapter) verify(key *base.InternalKey, val []byte) (*base.InternalKey, []byte) {
 	valid := key != nil
 	if valid != i.Valid() {
 		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
 	}
 	if valid {
-		if db.InternalCompare(bytes.Compare, *key, *i.Key()) != 0 {
+		if base.InternalCompare(bytes.Compare, *key, *i.Key()) != 0 {
 			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
 		}
 		if !bytes.Equal(val, i.Value()) {
@@ -36,32 +36,32 @@ func (i *iterAdapter) verify(key *db.InternalKey, val []byte) (*db.InternalKey, 
 	return key, val
 }
 
-func (i *iterAdapter) SeekGE(key []byte) (*db.InternalKey, []byte) {
+func (i *iterAdapter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	return i.verify(i.Iter.SeekGE(key))
 }
 
-func (i *iterAdapter) SeekLT(key []byte) (*db.InternalKey, []byte) {
+func (i *iterAdapter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	return i.verify(i.Iter.SeekLT(key))
 }
 
-func (i *iterAdapter) First() (*db.InternalKey, []byte) {
+func (i *iterAdapter) First() (*base.InternalKey, []byte) {
 	return i.verify(i.Iter.First())
 }
 
-func (i *iterAdapter) Last() (*db.InternalKey, []byte) {
+func (i *iterAdapter) Last() (*base.InternalKey, []byte) {
 	return i.verify(i.Iter.Last())
 }
 
-func (i *iterAdapter) Next() (*db.InternalKey, []byte) {
+func (i *iterAdapter) Next() (*base.InternalKey, []byte) {
 	return i.verify(i.Iter.Next())
 }
 
-func (i *iterAdapter) Prev() (*db.InternalKey, []byte) {
+func (i *iterAdapter) Prev() (*base.InternalKey, []byte) {
 	return i.verify(i.Iter.Prev())
 }
 
 func TestSeek(t *testing.T) {
-	cmp := db.DefaultComparer.Compare
+	cmp := base.DefaultComparer.Compare
 	iter := &iterAdapter{}
 
 	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {

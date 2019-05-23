@@ -14,7 +14,7 @@ import (
 	"math"
 
 	"github.com/golang/snappy"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/crc"
 	"github.com/petermattis/pebble/internal/rangedel"
 )
@@ -22,10 +22,10 @@ import (
 // WriterMetadata holds info about a finished sstable.
 type WriterMetadata struct {
 	Size           uint64
-	SmallestPoint  db.InternalKey
-	SmallestRange  db.InternalKey
-	LargestPoint   db.InternalKey
-	LargestRange   db.InternalKey
+	SmallestPoint  InternalKey
+	SmallestRange  InternalKey
+	LargestPoint   InternalKey
+	LargestRange   InternalKey
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
 }
@@ -39,35 +39,35 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-func (m *WriterMetadata) updateLargestPoint(key db.InternalKey) {
+func (m *WriterMetadata) updateLargestPoint(key InternalKey) {
 	// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer.
 	m.LargestPoint.UserKey = append(m.LargestPoint.UserKey[:0], key.UserKey...)
 	m.LargestPoint.Trailer = key.Trailer
 }
 
 // Smallest returns the smaller of SmallestPoint and SmallestRange.
-func (m *WriterMetadata) Smallest(cmp db.Compare) db.InternalKey {
+func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
 	if m.SmallestPoint.UserKey == nil {
 		return m.SmallestRange
 	}
 	if m.SmallestRange.UserKey == nil {
 		return m.SmallestPoint
 	}
-	if db.InternalCompare(cmp, m.SmallestPoint, m.SmallestRange) < 0 {
+	if base.InternalCompare(cmp, m.SmallestPoint, m.SmallestRange) < 0 {
 		return m.SmallestPoint
 	}
 	return m.SmallestRange
 }
 
 // Largest returns the larget of LargestPoint and LargestRange.
-func (m *WriterMetadata) Largest(cmp db.Compare) db.InternalKey {
+func (m *WriterMetadata) Largest(cmp Compare) InternalKey {
 	if m.LargestPoint.UserKey == nil {
 		return m.LargestRange
 	}
 	if m.LargestRange.UserKey == nil {
 		return m.LargestPoint
 	}
-	if db.InternalCompare(cmp, m.LargestPoint, m.LargestRange) > 0 {
+	if base.InternalCompare(cmp, m.LargestPoint, m.LargestRange) > 0 {
 		return m.LargestPoint
 	}
 	return m.LargestRange
@@ -82,25 +82,23 @@ type writeCloseSyncer interface {
 	Sync() error
 }
 
-// Writer is a table writer. It implements the DB interface, as documented
-// in the pebble/db package.
+// Writer is a table writer.
 type Writer struct {
 	writer    io.Writer
 	bufWriter *bufio.Writer
 	syncer    writeCloseSyncer
 	meta      WriterMetadata
 	err       error
-	// The following fields are copied from db.Options.
+	// The following fields are copied from Options.
 	blockSize          int
 	blockSizeThreshold int
-	compare            db.Compare
+	compare            Compare
+	split              Split
 
-	split db.Split
-
-	compression db.Compression
-	separator   db.Separator
-	successor   db.Successor
-	tableFormat db.TableFormat
+	compression Compression
+	separator   Separator
+	successor   Successor
+	tableFormat TableFormat
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
 	// cannot be written until the first key in the next block is seen.
@@ -115,7 +113,7 @@ type Writer struct {
 	indexBlock     blockWriter
 	rangeDelBlock  blockWriter
 	props          Properties
-	propCollectors []db.TablePropertyCollector
+	propCollectors []TablePropertyCollector
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -138,7 +136,7 @@ func (w *Writer) Set(key, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(db.MakeInternalKey(key, 0, db.InternalKeyKindSet), value)
+	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindSet), value)
 }
 
 // Delete deletes the value for the given key. The sequence number is set to
@@ -150,7 +148,7 @@ func (w *Writer) Delete(key []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(db.MakeInternalKey(key, 0, db.InternalKeyKindDelete), nil)
+	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil)
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -163,7 +161,7 @@ func (w *Writer) DeleteRange(start, end []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addTombstone(db.MakeInternalKey(start, 0, db.InternalKeyKindRangeDelete), end)
+	return w.addTombstone(base.MakeInternalKey(start, 0, InternalKeyKindRangeDelete), end)
 }
 
 // Merge adds an action to the DB that merges the value at key with the new
@@ -176,7 +174,7 @@ func (w *Writer) Merge(key, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(db.MakeInternalKey(key, 0, db.InternalKeyKindMerge), value)
+	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value)
 }
 
 // Add adds a key/value pair to the table being written. For a given Writer,
@@ -185,19 +183,19 @@ func (w *Writer) Merge(key, value []byte) error {
 // added ordered by their start key, but they can be added out of order from
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by rangedel.Fragmenter).
-func (w *Writer) Add(key db.InternalKey, value []byte) error {
+func (w *Writer) Add(key InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
 
-	if key.Kind() == db.InternalKeyKindRangeDelete {
+	if key.Kind() == InternalKeyKindRangeDelete {
 		return w.addTombstone(key, value)
 	}
 	return w.addPoint(key, value)
 }
 
-func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
-	if db.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
+func (w *Writer) addPoint(key InternalKey, value []byte) error {
+	if base.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
 		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", w.meta.LargestPoint, key)
 		return w.err
 	}
@@ -221,7 +219,7 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 		w.meta.SmallestPoint = key.Clone()
 	}
 	w.props.NumEntries++
-	if key.Kind() == db.InternalKeyKindDelete {
+	if key.Kind() == InternalKeyKindDelete {
 		w.props.NumDeletions++
 	}
 	w.props.RawKeySize += uint64(key.Size())
@@ -230,11 +228,11 @@ func (w *Writer) addPoint(key db.InternalKey, value []byte) error {
 	return nil
 }
 
-func (w *Writer) addTombstone(key db.InternalKey, value []byte) error {
+func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 	if w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
-		prevKey := db.DecodeInternalKey(w.rangeDelBlock.curKey)
+		prevKey := base.DecodeInternalKey(w.rangeDelBlock.curKey)
 		switch c := w.compare(prevKey.UserKey, key.UserKey); {
 		case c > 0:
 			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
@@ -289,7 +287,7 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 	}
 }
 
-func (w *Writer) maybeFlush(key db.InternalKey, value []byte) error {
+func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 	if size := w.block.estimatedSize(); size < w.blockSize {
 		// The block is currently smaller than the target size.
 		if size <= w.blockSizeThreshold {
@@ -321,14 +319,14 @@ func (w *Writer) maybeFlush(key db.InternalKey, value []byte) error {
 }
 
 // flushPendingBH adds any pending block handle to the index entries.
-func (w *Writer) flushPendingBH(key db.InternalKey) {
+func (w *Writer) flushPendingBH(key InternalKey) {
 	if w.pendingBH.length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return
 	}
-	prevKey := db.DecodeInternalKey(w.block.curKey)
-	var sep db.InternalKey
+	prevKey := base.DecodeInternalKey(w.block.curKey)
+	var sep InternalKey
 	if key.UserKey == nil && key.Trailer == 0 {
 		sep = prevKey.Successor(w.compare, w.successor, nil)
 	} else {
@@ -354,9 +352,9 @@ func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 	return bh, err
 }
 
-func (w *Writer) writeRawBlock(b []byte, compression db.Compression) (blockHandle, error) {
+func (w *Writer) writeRawBlock(b []byte, compression Compression) (blockHandle, error) {
 	blockType := noCompressionBlockType
-	if compression == db.SnappyCompression {
+	if compression == SnappyCompression {
 		// Compress the buffer, discarding the result if the improvement isn't at
 		// least 12.5%.
 		compressed := snappy.Encode(w.compressedBuf, b)
@@ -408,7 +406,7 @@ func (w *Writer) Close() (err error) {
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
-	w.flushPendingBH(db.InternalKey{})
+	w.flushPendingBH(InternalKey{})
 	if w.block.nEntries > 0 || w.indexBlock.nEntries == 0 {
 		bh, err := w.finishBlock(&w.block)
 		if err != nil {
@@ -416,7 +414,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		w.pendingBH = bh
-		w.flushPendingBH(db.InternalKey{})
+		w.flushPendingBH(InternalKey{})
 	}
 	w.props.DataSize = w.offset
 	w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
@@ -430,13 +428,13 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		bh, err := w.writeRawBlock(b, db.NoCompression)
+		bh, err := w.writeRawBlock(b, NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
 		}
 		n := encodeBlockHandle(w.tmp[:], bh)
-		metaindex.add(db.InternalKey{UserKey: []byte(w.filter.metaName())}, w.tmp[:n])
+		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.tmp[:n])
 		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.length
 	}
@@ -448,7 +446,7 @@ func (w *Writer) Close() (err error) {
 		// we need to make this into a range deletion sentinel because sstable
 		// boundaries are inclusive while the end key of a range deletion tombstone
 		// is exclusive.
-		w.meta.LargestRange = db.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
+		w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
 		b := w.rangeDelBlock.finish()
 		bh, err := w.writeRawBlock(b, w.compression)
 		if err != nil {
@@ -461,8 +459,8 @@ func (w *Writer) Close() (err error) {
 		// name so that old code can continue to find the range-del block and new
 		// code knows that the range tombstones in the block are fragmented and
 		// sorted.
-		metaindex.add(db.InternalKey{UserKey: []byte(metaRangeDelName)}, w.tmp[:n])
-		metaindex.add(db.InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.tmp[:n])
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
 	}
 
 	{
@@ -484,13 +482,13 @@ func (w *Writer) Close() (err error) {
 		// property.
 		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
 		w.props.save(&raw)
-		bh, err := w.writeRawBlock(raw.finish(), db.NoCompression)
+		bh, err := w.writeRawBlock(raw.finish(), NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
 		}
 		n := encodeBlockHandle(w.tmp[:], bh)
-		metaindex.add(db.InternalKey{UserKey: []byte(metaPropertiesName)}, w.tmp[:n])
+		metaindex.add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.tmp[:n])
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
@@ -557,7 +555,7 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f writeCloseSyncer, o *db.Options, lo db.LevelOptions) *Writer {
+func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
 
@@ -592,7 +590,7 @@ func NewWriter(f writeCloseSyncer, o *db.Options, lo db.LevelOptions) *Writer {
 	w.props.PrefixExtractorName = "nullptr"
 	if lo.FilterPolicy != nil {
 		switch lo.FilterType {
-		case db.TableFilter:
+		case TableFilter:
 			w.filter = newTableFilterWriter(lo.FilterPolicy)
 			if w.split != nil {
 				w.props.PrefixExtractorName = o.Comparer.Name
@@ -613,7 +611,7 @@ func NewWriter(f writeCloseSyncer, o *db.Options, lo db.LevelOptions) *Writer {
 	w.props.Version = 2 // TODO(peter): what is this?
 
 	if len(o.TablePropertyCollectors) > 0 {
-		w.propCollectors = make([]db.TablePropertyCollector, len(o.TablePropertyCollectors))
+		w.propCollectors = make([]TablePropertyCollector, len(o.TablePropertyCollectors))
 		var buf bytes.Buffer
 		buf.WriteString("[")
 		for i := range o.TablePropertyCollectors {

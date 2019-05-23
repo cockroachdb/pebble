@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble"
-	pebble_db "github.com/petermattis/pebble/db"
 	"github.com/spf13/cobra"
 )
 
@@ -133,7 +132,7 @@ func runYcsb(cmd *cobra.Command, args []string) error {
 								key := mvccEncode(buf[:0], raw, 0, 0)
 								b.Set(key, val, nil)
 							}
-							err := b.Commit(pebble_db.Sync)
+							err := b.Commit(pebble.Sync)
 							if err != nil {
 								log.Fatal(err)
 							}

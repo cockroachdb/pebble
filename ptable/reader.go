@@ -13,7 +13,7 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/crc"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -21,7 +21,7 @@ import (
 // Iter ...
 type Iter struct {
 	reader *Reader
-	cmp    db.Compare
+	cmp    base.Compare
 	index  Block
 	data   Block
 	pos    int32
@@ -128,11 +128,11 @@ type Reader struct {
 	err     error
 	index   []byte
 	cache   *cache.Cache
-	cmp     db.Compare
+	cmp     base.Compare
 }
 
 // NewReader ...
-func NewReader(f vfs.File, fileNum uint64, o *db.Options) *Reader {
+func NewReader(f vfs.File, fileNum uint64, o *base.Options) *Reader {
 	o = o.EnsureDefaults()
 	r := &Reader{
 		file:    f,

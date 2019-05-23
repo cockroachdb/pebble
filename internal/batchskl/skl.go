@@ -61,7 +61,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/petermattis/pebble/db"
+	"github.com/petermattis/pebble/internal/base"
 	"golang.org/x/exp/rand"
 )
 
@@ -98,7 +98,7 @@ type node struct {
 // Storage defines the storage interface for retrieval and comparison of keys.
 type Storage interface {
 	// Get returns the key stored at the specified offset.
-	Get(offset uint32) db.InternalKey
+	Get(offset uint32) base.InternalKey
 
 	// AbbreviatedKey returns a fixed length prefix of the specified key such
 	// that AbbreviatedKey(a) < AbbreviatedKey(b) iff a < b and AbbreviatedKey(a)

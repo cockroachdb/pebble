@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/db"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +21,7 @@ import (
 func TestErrorIfDBExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
 		mem := vfs.NewMem()
-		d0, err := Open("", &db.Options{
+		d0, err := Open("", &Options{
 			FS: mem,
 		})
 		if err != nil {
@@ -34,7 +33,7 @@ func TestErrorIfDBExists(t *testing.T) {
 			continue
 		}
 
-		d1, err := Open("", &db.Options{
+		d1, err := Open("", &Options{
 			FS:              mem,
 			ErrorIfDBExists: b,
 		})
@@ -51,7 +50,7 @@ func TestErrorIfDBExists(t *testing.T) {
 func TestNewDBFilenames(t *testing.T) {
 	fooBar := filepath.Join("foo", "bar")
 	mem := vfs.NewMem()
-	d, err := Open(fooBar, &db.Options{
+	d, err := Open(fooBar, &Options{
 		FS: mem,
 	})
 	if err != nil {
@@ -77,7 +76,7 @@ func TestNewDBFilenames(t *testing.T) {
 }
 
 func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
-	opts := &db.Options{
+	opts := &Options{
 		FS: fs,
 	}
 
@@ -195,7 +194,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 
 func TestOpenOptionsCheck(t *testing.T) {
 	mem := vfs.NewMem()
-	opts := &db.Options{FS: mem}
+	opts := &Options{FS: mem}
 
 	d, err := Open("", opts)
 	if err != nil {
@@ -205,15 +204,15 @@ func TestOpenOptionsCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts = &db.Options{
-		Comparer: &db.Comparer{Name: "foo"},
+	opts = &Options{
+		Comparer: &Comparer{Name: "foo"},
 		FS:       mem,
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `comparer name from file.*!=.*`, err)
 
-	opts = &db.Options{
-		Merger: &db.Merger{Name: "bar"},
+	opts = &Options{
+		Merger: &Merger{Name: "bar"},
 		FS:     mem,
 	}
 	_, err = Open("", opts)
