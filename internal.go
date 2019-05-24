@@ -107,6 +107,11 @@ type internalIterator interface {
 	// It is valid to call Close multiple times. Other methods should not be
 	// called after the iterator has been closed.
 	Close() error
+
+	// SetBounds sets the lower and upper bounds for the iterator. Note that the
+	// result of Next and Prev will be undefined until the iterator has been
+	// repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+	SetBounds(lower, upper []byte)
 }
 
 // sstable.Iterator implements the internalIterator interface.

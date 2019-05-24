@@ -166,3 +166,10 @@ func (i *Iter) Error() error {
 func (i *Iter) Close() error {
 	return nil
 }
+
+// SetBounds implements internalIterator.SetBounds, as documented in the pebble
+// package.
+func (i *Iter) SetBounds(lower, upper []byte) {
+	// This should never be called as bounds are only used for point records.
+	panic("pebble: SetBounds unimplemented")
+}

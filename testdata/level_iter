@@ -166,6 +166,14 @@ first
 a:1
 a:1
 
+iter
+set-bounds lower=a
+seek-ge a
+first
+----
+a:1
+a:1
+
 # levelIter trims lower/upper bound in the options passed to sstables.
 load a
 ----
@@ -202,6 +210,22 @@ first
 c:3
 c:3
 
+iter
+set-bounds lower=b
+seek-ge a
+first
+----
+a:1
+a:1
+
+iter
+set-bounds lower=c
+seek-ge a
+first
+----
+c:3
+c:3
+
 # levelIter only checks lower bound when loading sstables.
 iter lower=d
 seek-ge a
@@ -224,6 +248,30 @@ last
 dd:5
 dd:5
 
+iter
+set-bounds lower=d
+seek-ge a
+first
+----
+c:3
+c:3
+
+iter
+set-bounds lower=e
+seek-ge a
+first
+----
+.
+.
+
+iter
+set-bounds upper=e
+seek-lt e
+last
+----
+dd:5
+dd:5
+
 # levelIter only checks upper bound when loading sstables.
 iter upper=d
 seek-lt e
@@ -233,6 +281,22 @@ d:4
 d:4
 
 iter upper=c
+seek-lt e
+last
+----
+b:2
+b:2
+
+iter
+set-bounds upper=d
+seek-lt e
+last
+----
+d:4
+d:4
+
+iter
+set-bounds upper=c
 seek-lt e
 last
 ----
@@ -255,6 +319,30 @@ last
 .
 
 iter upper=dd
+seek-prefix-ge d
+next
+----
+d:4
+.
+
+iter
+set-bounds upper=b
+seek-lt e
+last
+----
+b:2
+b:2
+
+iter
+set-bounds upper=a
+seek-lt e
+last
+----
+.
+.
+
+iter
+set-bounds upper=dd
 seek-prefix-ge d
 next
 ----
@@ -289,4 +377,30 @@ seek-prefix-ge dd
 prev
 ----
 dd:5
+.
+
+iter lower=c
+seek-lt c
+----
+.
+
+iter
+seek-lt c
+set-bounds lower=c
+seek-lt c
+----
+b:2
+.
+
+iter upper=c
+seek-ge c
+----
+.
+
+iter
+seek-ge c
+set-bounds upper=c
+seek-ge c
+----
+c:3
 .

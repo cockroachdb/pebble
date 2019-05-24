@@ -411,3 +411,11 @@ func (l *levelIter) Close() error {
 	}
 	return l.err
 }
+
+func (l *levelIter) SetBounds(lower, upper []byte) {
+	l.opts.LowerBound = lower
+	l.opts.UpperBound = upper
+	if l.iter != nil {
+		l.iter.SetBounds(lower, upper)
+	}
+}

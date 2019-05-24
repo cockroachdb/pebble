@@ -196,6 +196,14 @@ func (it *Iterator) Valid() bool {
 	return it.nd != it.list.head && it.nd != it.list.tail
 }
 
+// SetBounds sets the lower and upper bounds for the iterator. Note that the
+// result of Next and Prev will be undefined until the iterator has been
+// repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+func (it *Iterator) SetBounds(lower, upper []byte) {
+	it.lower = lower
+	it.upper = upper
+}
+
 func (it *Iterator) decodeKey() {
 	b := it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
 	// This is a manual inline of base.DecodeInternalKey, because the Go compiler
