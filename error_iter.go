@@ -61,3 +61,5 @@ func (c *errorIter) Error() error {
 func (c *errorIter) Close() error {
 	return c.err
 }
+
+func (c *errorIter) SetBounds(lower, upper []byte) {}

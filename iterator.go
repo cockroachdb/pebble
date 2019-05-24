@@ -450,3 +450,18 @@ func (i *Iterator) Close() error {
 	}
 	return err
 }
+
+// SetBounds sets the lower and upper bounds for the iterator. Note that the
+// iterator will always be invalidated and must be repositioned with a call to
+// SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+func (i* Iterator) SetBounds(lower, upper []byte) {
+	i.prefix = nil
+	i.iterKey = nil
+	i.iterValue = nil
+	i.pos = iterPosCur
+	i.valid = false
+
+	i.opts.LowerBound = lower
+	i.opts.UpperBound = upper
+	i.iter.SetBounds(lower, upper)
+}

@@ -676,6 +676,12 @@ func (m *mergingIter) Close() error {
 	return m.err
 }
 
+func (m *mergingIter) SetBounds(lower, upper []byte) {
+	for _, iter := range m.iters {
+		iter.SetBounds(lower, upper)
+	}
+}
+
 func (m *mergingIter) DebugString() string {
 	var buf bytes.Buffer
 	sep := ""

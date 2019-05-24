@@ -179,6 +179,11 @@ func (f *fakeIter) Close() error {
 	return f.closeErr
 }
 
+func (f *fakeIter) SetBounds(lower, upper []byte) {
+	f.lower = lower
+	f.upper = upper
+}
+
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
