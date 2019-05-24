@@ -94,11 +94,14 @@ type Writer struct {
 	blockSizeThreshold int
 	compare            Compare
 	split              Split
-
-	compression Compression
-	separator   Separator
-	successor   Successor
-	tableFormat TableFormat
+	compression        Compression
+	separator          Separator
+	successor          Successor
+	tableFormat        TableFormat
+	// Internal flag to allow creation of range-del-v1 format blocks. Only used
+	// for testing. Note that v2 format blocks are backwards compatible with v1
+	// format blocks.
+	rangeDelV1Format bool
 	// A table is a series of blocks and a block's index entry contains a
 	// separator key between one block and the next. Thus, a finished block
 	// cannot be written until the first key in the next block is seen.
@@ -229,7 +232,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addTombstone(key InternalKey, value []byte) error {
-	if w.rangeDelBlock.nEntries > 0 {
+	if !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
 		prevKey := base.DecodeInternalKey(w.rangeDelBlock.curKey)
@@ -270,6 +273,15 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 
 	if w.props.NumRangeDeletions == 0 {
 		w.meta.SmallestRange = key.Clone()
+		w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(value).Clone()
+	} else if w.rangeDelV1Format {
+		if base.InternalCompare(w.compare, w.meta.SmallestRange, key) > 0 {
+			w.meta.SmallestRange = key.Clone()
+		}
+		end := base.MakeRangeDeleteSentinelKey(value)
+		if base.InternalCompare(w.compare, w.meta.LargestRange, end) < 0 {
+			w.meta.LargestRange = end.Clone()
+		}
 	}
 	w.props.NumRangeDeletions++
 	w.rangeDelBlock.add(key, value)
@@ -441,12 +453,14 @@ func (w *Writer) Close() (err error) {
 
 	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
-		// Because the range tombstones are fragmented, the end key of the last
-		// added range tombstone will be the largest range tombstone key. Note that
-		// we need to make this into a range deletion sentinel because sstable
-		// boundaries are inclusive while the end key of a range deletion tombstone
-		// is exclusive.
-		w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
+		if !w.rangeDelV1Format {
+			// Because the range tombstones are fragmented, the end key of the last
+			// added range tombstone will be the largest range tombstone key. Note
+			// that we need to make this into a range deletion sentinel because
+			// sstable boundaries are inclusive while the end key of a range deletion
+			// tombstone is exclusive.
+			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
+		}
 		b := w.rangeDelBlock.finish()
 		bh, err := w.writeRawBlock(b, w.compression)
 		if err != nil {
@@ -460,7 +474,9 @@ func (w *Writer) Close() (err error) {
 		// code knows that the range tombstones in the block are fragmented and
 		// sorted.
 		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.tmp[:n])
-		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
+		if !w.rangeDelV1Format {
+			metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
+		}
 	}
 
 	{

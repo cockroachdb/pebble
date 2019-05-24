@@ -11,6 +11,19 @@ import (
 	"github.com/petermattis/pebble/internal/base"
 )
 
+type tombstonesByStartKey struct {
+	cmp base.Compare
+	buf []Tombstone
+}
+
+func (v *tombstonesByStartKey) Len() int { return len(v.buf) }
+func (v *tombstonesByStartKey) Less(i, j int) bool {
+	return base.InternalCompare(v.cmp, v.buf[i].Start, v.buf[j].Start) < 0
+}
+func (v *tombstonesByStartKey) Swap(i, j int) {
+	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
+}
+
 type tombstonesByEndKey struct {
 	cmp base.Compare
 	buf []Tombstone
@@ -32,6 +45,17 @@ func (v *tombstonesBySeqNum) Less(i, j int) bool {
 }
 func (v *tombstonesBySeqNum) Swap(i, j int) {
 	(*v)[i], (*v)[j] = (*v)[j], (*v)[i]
+}
+
+// Sort the tombstones by start key. This is the ordering required by the
+// Fragmenter. Usually tombstones are naturally sorted by their start key, but
+// that isn't true for tombstones in the legacy range-del-v1 block format.
+func Sort(cmp base.Compare, tombstones []Tombstone) {
+	sorter := tombstonesByStartKey{
+		cmp: cmp,
+		buf: tombstones,
+	}
+	sort.Sort(&sorter)
 }
 
 // Fragmenter fragments a set of range tombstones such that overlapping
