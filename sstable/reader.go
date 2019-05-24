@@ -459,6 +459,13 @@ func (i *Iterator) Close() error {
 	return err
 }
 
+// SetBounds implements internalIterator.SetBounds, as documented in the pebble
+// package.
+func (i *Iterator) SetBounds(lower, upper []byte) {
+	i.lower = lower
+	i.upper = upper
+}
+
 type weakCachedBlock struct {
 	bh     blockHandle
 	mu     sync.RWMutex

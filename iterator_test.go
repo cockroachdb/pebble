@@ -179,6 +179,11 @@ func (f *fakeIter) Close() error {
 	return f.closeErr
 }
 
+func (f *fakeIter) SetBounds(lower, upper []byte) {
+	f.lower = lower
+	f.upper = upper
+}
+
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
@@ -296,7 +301,7 @@ func TestIterator(t *testing.T) {
 	var keys []InternalKey
 	var vals [][]byte
 
-	newIter := func(seqNum uint64, opts *IterOptions) *Iterator {
+	newIter := func(seqNum uint64, opts IterOptions) *Iterator {
 		cmp := DefaultComparer.Compare
 		equal := DefaultComparer.Equal
 		split := func(a []byte) int { return len(a) }
@@ -354,7 +359,7 @@ func TestIterator(t *testing.T) {
 				}
 			}
 
-			iter := newIter(uint64(seqNum), &opts)
+			iter := newIter(uint64(seqNum), opts)
 			defer iter.Close()
 			return runIterCmd(d, iter)
 

@@ -451,12 +451,17 @@ func (d *DB) newIterInternal(
 		seqNum = atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 	}
 
+	var iterOptions IterOptions
+	if o != nil {
+		iterOptions = *o
+	}
+
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	dbi.alloc = buf
-	dbi.opts = o
+	dbi.opts = iterOptions
 	dbi.cmp = d.cmp
 	dbi.equal = d.equal
 	dbi.merge = d.merge
@@ -478,8 +483,8 @@ func (d *DB) newIterInternal(
 	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
-		iters = append(iters, mem.newIter(o))
-		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(o))
+		iters = append(iters, mem.newIter(&iterOptions))
+		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(&iterOptions))
 		largestUserKeys = append(largestUserKeys, nil)
 	}
 
@@ -487,7 +492,7 @@ func (d *DB) newIterInternal(
 	current := readState.current
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
-		iter, rangeDelIter, err := d.newIters(f, o)
+		iter, rangeDelIter, err := d.newIters(f, &iterOptions)
 		if err != nil {
 			dbi.err = err
 			return dbi
@@ -525,7 +530,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(o, d.cmp, d.newIters, current.files[level])
+		li.init(&iterOptions, d.cmp, d.newIters, current.files[level])
 		li.initRangeDel(&rangeDelIters[0])
 		li.initLargestUserKey(&largestUserKeys[0])
 		iters = append(iters, li)
