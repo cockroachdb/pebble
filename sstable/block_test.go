@@ -14,6 +14,7 @@ import (
 
 	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -202,6 +203,34 @@ func TestBlockIter2(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestBlockIterKeyStability(t *testing.T) {
+	w := &blockWriter{restartInterval: 1}
+	expected := [][]byte{
+		[]byte("apple"),
+		[]byte("apricot"),
+		[]byte("banana"),
+	}
+	for i := range expected {
+		w.add(InternalKey{UserKey: expected[i]}, nil)
+	}
+	block := w.finish()
+
+	i, err := newBlockIter(bytes.Compare, block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Loop over the block entries, storing each key slice.
+	var keys [][]byte
+	for key, _ := i.First(); key != nil; key, _ = i.Next() {
+		keys = append(keys, key.UserKey)
+	}
+
+	// Check that the slices match our expected values. Note that this is only
+	// guaranteed because of the usage of a restart-interval of 1 so that prefix
+	// compression was not performed.
+	require.EqualValues(t, expected, keys)
 }
 
 func BenchmarkBlockIterSeekGE(b *testing.B) {

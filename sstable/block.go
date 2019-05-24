@@ -112,6 +112,7 @@ type blockIter struct {
 	ptr          unsafe.Pointer
 	data         []byte
 	key, val     []byte
+	fullKey      []byte
 	keyBuf       [256]byte
 	ikey         InternalKey
 	cached       []blockEntry
@@ -135,10 +136,10 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	i.globalSeqNum = globalSeqNum
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
-	if i.key == nil {
-		i.key = i.keyBuf[:0]
+	if i.fullKey == nil {
+		i.fullKey = i.keyBuf[:0]
 	} else {
-		i.key = i.key[:0]
+		i.fullKey = i.fullKey[:0]
 	}
 	i.val = nil
 	i.clearCache()
@@ -216,7 +217,17 @@ func (i *blockIter) readEntry() {
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
 
-	i.key = append(i.key[:shared], getBytes(ptr, int(unshared))...)
+	unsharedKey := getBytes(ptr, int(unshared))
+	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
+	if shared == 0 {
+		// Provide stability for the key across positioning calls if the key
+		// doesn't share a prefix with the previous key. This removes requiring the
+		// key to be copied if the caller knows the block has a restart interval of
+		// 1. An important example of this is range-del blocks.
+		i.key = unsharedKey
+	} else {
+		i.key = i.fullKey
+	}
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
 	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
