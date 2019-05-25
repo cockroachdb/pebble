@@ -57,6 +57,25 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 			valid = iter.Next()
 		case "prev":
 			valid = iter.Prev()
+		case "set-bounds":
+			if len(parts) <= 1 || len(parts) > 3 {
+				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+			}
+			var lower []byte
+			var upper []byte
+			for _, part := range parts[1:] {
+				arg := strings.Split(strings.TrimSpace(part), "=")
+				switch arg[0] {
+				case "lower":
+					lower = []byte(arg[1])
+				case "upper":
+					upper = []byte(arg[1])
+				default:
+					return fmt.Sprintf("set-bounds: unknown arg: %s", arg)
+				}
+			}
+			iter.SetBounds(lower, upper)
+			valid = iter.Valid()
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
@@ -117,6 +136,25 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 			iter.Next()
 		case "prev":
 			iter.Prev()
+		case "set-bounds":
+			if len(parts) <= 1 || len(parts) > 3 {
+				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+			}
+			var lower []byte
+			var upper []byte
+			for _, part := range parts[1:] {
+				arg := strings.Split(strings.TrimSpace(part), "=")
+				switch arg[0] {
+				case "lower":
+					lower = []byte(arg[1])
+				case "upper":
+					upper = []byte(arg[1])
+				default:
+					return fmt.Sprintf("set-bounds: unknown arg: %s", arg)
+				}
+			}
+			iter.SetBounds(lower, upper)
+			continue
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}

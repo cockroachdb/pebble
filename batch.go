@@ -821,6 +821,10 @@ func (i *batchIter) Close() error {
 	return i.err
 }
 
+func (i *batchIter) SetBounds(lower, upper []byte) {
+	i.iter.SetBounds(lower, upper)
+}
+
 type flushableBatchEntry struct {
 	offset   uint32
 	index    uint32
@@ -1099,4 +1103,9 @@ func (i *flushableBatchIter) Error() error {
 
 func (i *flushableBatchIter) Close() error {
 	return i.err
+}
+
+func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
+	// This should not be called as bounds are not used for this iterator.
+	panic("TODO(ryan): pebble: SetBounds unimplemented")
 }
