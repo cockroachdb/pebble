@@ -23,8 +23,8 @@ const (
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
 //
-// An iterator is not necessarily goroutine-safe, but it is safe to use
-// multiple iterators concurrently, with each in a dedicated goroutine.
+// An iterator is not goroutine-safe, but it is safe to use multiple iterators
+// concurrently, with each in a dedicated goroutine.
 //
 // It is also safe to use an iterator concurrently with modifying its
 // underlying DB, if that DB permits modification. However, the resultant
@@ -454,7 +454,7 @@ func (i *Iterator) Close() error {
 // SetBounds sets the lower and upper bounds for the iterator. Note that the
 // iterator will always be invalidated and must be repositioned with a call to
 // SeekGE, SeekPrefixGE, SeekLT, First, or Last.
-func (i* Iterator) SetBounds(lower, upper []byte) {
+func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.prefix = nil
 	i.iterKey = nil
 	i.iterValue = nil
