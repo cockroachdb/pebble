@@ -17,11 +17,11 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-var (
-	scanRows      = 100
-	scanValueSize = 8
-	scanReverse   = false
-)
+var scanConfig struct {
+	reverse   bool
+	rows      int
+	valueSize int
+}
 
 var scanCmd = &cobra.Command{
 	Use:   "scan <dir>",
@@ -29,6 +29,15 @@ var scanCmd = &cobra.Command{
 	Long:  ``,
 	Args:  cobra.ExactArgs(1),
 	Run:   runScan,
+}
+
+func init() {
+	scanCmd.Flags().BoolVarP(
+		&scanConfig.reverse, "reverse", "r", false, "reverse scan")
+	scanCmd.Flags().IntVar(
+		&scanConfig.rows, "rows", 100, "number of rows to scan in each operation")
+	scanCmd.Flags().IntVar(
+		&scanConfig.valueSize, "value", 8, "size of values to scan")
 }
 
 func runScan(cmd *cobra.Command, args []string) {
@@ -62,7 +71,7 @@ func runScan(cmd *cobra.Command, args []string) {
 				b := d.NewBatch()
 				for end := i + batch; i < end; i++ {
 					keys[i] = mvccEncode(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
-					value := randBytes(scanValueSize)
+					value := randBytes(scanConfig.valueSize)
 					if err := b.Set(keys[i], value, nil); err != nil {
 						log.Fatal(err)
 					}
@@ -87,19 +96,19 @@ func runScan(cmd *cobra.Command, args []string) {
 					minTS := encodeUint64Ascending(nil, math.MaxUint64)
 
 					for {
-						startIdx := rng.Int31n(int32(len(keys) - scanRows))
+						startIdx := rng.Int31n(int32(len(keys) - scanConfig.rows))
 						startKey := encodeUint32Ascending(startKeyBuf[:4], uint32(startIdx))
-						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(scanRows)))
+						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(scanConfig.rows)))
 
 						var count int
-						if scanReverse {
+						if scanConfig.reverse {
 							count = mvccReverseScan(d, startKey, endKey, minTS)
 						} else {
 							count = mvccForwardScan(d, startKey, endKey, minTS)
 						}
 
-						if count != scanRows {
-							log.Fatalf("scanned %d, expected %d\n", count, scanRows)
+						if count != scanConfig.rows {
+							log.Fatalf("scanned %d, expected %d\n", count, scanConfig.rows)
 						}
 
 						atomic.AddInt64(&scanned, int64(count))
@@ -118,7 +127,7 @@ func runScan(cmd *cobra.Command, args []string) {
 			fmt.Printf("%8s %14.1f %12.1f %12.1f\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
 				float64(cur-lastScanned)/dur.Seconds(),
-				float64(int64(scanValueSize)*(cur-lastScanned))/(dur.Seconds()*(1<<20)),
+				float64(int64(scanConfig.valueSize)*(cur-lastScanned))/(dur.Seconds()*(1<<20)),
 				float64(dur)/float64(cur-lastScanned),
 			)
 			lastScanned = cur
@@ -131,7 +140,7 @@ func runScan(cmd *cobra.Command, args []string) {
 			fmt.Printf("%7.1fs %14.1f %12.1f %12.1f\n\n",
 				elapsed.Seconds(),
 				float64(cur)/elapsed.Seconds(),
-				float64(int64(scanValueSize)*cur)/(elapsed.Seconds()*(1<<20)),
+				float64(int64(scanConfig.valueSize)*cur)/(elapsed.Seconds()*(1<<20)),
 				float64(elapsed)/float64(cur),
 			)
 		},
