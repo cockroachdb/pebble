@@ -102,6 +102,14 @@ func TestWriter(t *testing.T) {
 			}
 
 			w := NewWriter(f0, nil, TableOptions{})
+			for i := range td.CmdArgs {
+				arg := &td.CmdArgs[i]
+				if arg.Key == "range-del-v1" {
+					w.rangeDelV1Format = true
+					break
+				}
+			}
+
 			for _, data := range strings.Split(td.Input, "\n") {
 				j := strings.Index(data, ":")
 				key := base.ParseInternalKey(data[:j])
