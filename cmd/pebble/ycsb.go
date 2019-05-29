@@ -28,7 +28,7 @@ const (
 	ycsbNumOps
 )
 
-var ycsb2Config struct {
+var ycsbConfig struct {
 	batch       string
 	keys        string
 	initialKeys int
@@ -38,8 +38,8 @@ var ycsb2Config struct {
 	values      string
 }
 
-var ycsb2Cmd = &cobra.Command{
-	Use:   "ycsb2 <dir>",
+var ycsbCmd = &cobra.Command{
+	Use:   "ycsb <dir>",
 	Short: "run customizable YCSB workload",
 	Long: `
 Run a customizable YCSB workload. The workload is specified by the --workload
@@ -75,29 +75,29 @@ Standard workloads:
   F: 100% inserts
 `,
 	Args: cobra.ExactArgs(1),
-	RunE: runYcsb2,
+	RunE: runYcsb,
 }
 
 func init() {
-	ycsb2Cmd.Flags().StringVar(
-		&ycsb2Config.batch, "batch", "1",
+	ycsbCmd.Flags().StringVar(
+		&ycsbConfig.batch, "batch", "1",
 		"batch size distribution [{zipf,uniform}:]min[-max]")
-	ycsb2Cmd.Flags().StringVar(
-		&ycsb2Config.keys, "keys", "zipf", "latest, uniform, or zipf")
-	ycsb2Cmd.Flags().IntVar(
-		&ycsb2Config.initialKeys, "initial-keys", 10000,
+	ycsbCmd.Flags().StringVar(
+		&ycsbConfig.keys, "keys", "zipf", "latest, uniform, or zipf")
+	ycsbCmd.Flags().IntVar(
+		&ycsbConfig.initialKeys, "initial-keys", 10000,
 		"initial number of keys to insert before beginning workload")
-	ycsb2Cmd.Flags().Uint64VarP(
-		&ycsb2Config.numOps, "num-ops", "n", 0,
+	ycsbCmd.Flags().Uint64VarP(
+		&ycsbConfig.numOps, "num-ops", "n", 0,
 		"maximum number of operations (0 means unlimited)")
-	ycsb2Cmd.Flags().StringVar(
-		&ycsb2Config.scans, "scans", "zipf:1-1000",
+	ycsbCmd.Flags().StringVar(
+		&ycsbConfig.scans, "scans", "zipf:1-1000",
 		"scan length distribution [{zipf,uniform}:]min[-max]")
-	ycsb2Cmd.Flags().StringVar(
-		&ycsb2Config.workload, "workload", "B",
+	ycsbCmd.Flags().StringVar(
+		&ycsbConfig.workload, "workload", "B",
 		"workload type (A-F) or spec (read=X,update=Y,...)")
-	ycsb2Cmd.Flags().StringVar(
-		&ycsb2Config.values, "values", "1000",
+	ycsbCmd.Flags().StringVar(
+		&ycsbConfig.values, "values", "1000",
 		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
@@ -183,41 +183,41 @@ func ycsbParseKeyDist(d string) (randvar.Dynamic, error) {
 	case "latest":
 		return randvar.NewDefaultSkewedLatest(nil)
 	case "uniform":
-		return randvar.NewUniform(nil, 1, uint64(ycsb2Config.initialKeys)), nil
+		return randvar.NewUniform(nil, 1, uint64(ycsbConfig.initialKeys)), nil
 	case "zipf":
-		return randvar.NewZipf(nil, 1, uint64(ycsb2Config.initialKeys), 0.99)
+		return randvar.NewZipf(nil, 1, uint64(ycsbConfig.initialKeys), 0.99)
 	default:
 		return nil, fmt.Errorf("unknown distribution: %s", d)
 	}
 }
 
-func runYcsb2(cmd *cobra.Command, args []string) error {
-	weights, err := ycsbParseWorkload(ycsb2Config.workload)
+func runYcsb(cmd *cobra.Command, args []string) error {
+	weights, err := ycsbParseWorkload(ycsbConfig.workload)
 	if err != nil {
 		return err
 	}
 
-	keyDist, err := ycsbParseKeyDist(ycsb2Config.keys)
+	keyDist, err := ycsbParseKeyDist(ycsbConfig.keys)
 	if err != nil {
 		return err
 	}
 
-	batchDist, err := parseRandVarSpec(ycsb2Config.batch)
+	batchDist, err := parseRandVarSpec(ycsbConfig.batch)
 	if err != nil {
 		return err
 	}
 
-	scanDist, err := parseRandVarSpec(ycsb2Config.scans)
+	scanDist, err := parseRandVarSpec(ycsbConfig.scans)
 	if err != nil {
 		return err
 	}
 
-	valueDist, targetCompression, err := parseValuesSpec(ycsb2Config.values)
+	valueDist, targetCompression, err := parseValuesSpec(ycsbConfig.values)
 	if err != nil {
 		return err
 	}
 
-	y := newYcsb2(weights, keyDist, batchDist, scanDist, valueDist, targetCompression)
+	y := newYcsb(weights, keyDist, batchDist, scanDist, valueDist, targetCompression)
 	runTest(args[0], test{
 		init: y.init,
 		tick: y.tick,
@@ -226,7 +226,7 @@ func runYcsb2(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-type ycsb2 struct {
+type ycsb struct {
 	writeOpts         *pebble.WriteOptions
 	reg               *histogramRegistry
 	weights           ycsbWeights
@@ -244,13 +244,13 @@ type ycsb2 struct {
 	latency           [ycsbNumOps]*namedHistogram
 }
 
-func newYcsb2(
+func newYcsb(
 	weights ycsbWeights,
 	keyDist randvar.Dynamic,
 	batchDist, scanDist, valueDist randvar.Static,
 	targetCompression float64,
-) *ycsb2 {
-	y := &ycsb2{
+) *ycsb {
+	y := &ycsb{
 		reg:               newHistogramRegistry(),
 		ops:               randvar.NewWeighted(nil, weights...),
 		keyDist:           keyDist,
@@ -287,12 +287,12 @@ func newYcsb2(
 	return y
 }
 
-func (y *ycsb2) init(db *pebble.DB, wg *sync.WaitGroup) {
-	if ycsb2Config.initialKeys > 0 {
+func (y *ycsb) init(db *pebble.DB, wg *sync.WaitGroup) {
+	if ycsbConfig.initialKeys > 0 {
 		rng := randvar.NewRand()
 
 		b := db.NewBatch()
-		for i := 1; i <= ycsb2Config.initialKeys; i++ {
+		for i := 1; i <= ycsbConfig.initialKeys; i++ {
 			if len(b.Repr()) >= 1<<20 {
 				if err := b.Commit(y.writeOpts); err != nil {
 					log.Fatal(err)
@@ -305,7 +305,7 @@ func (y *ycsb2) init(db *pebble.DB, wg *sync.WaitGroup) {
 			log.Fatal(err)
 		}
 
-		y.keyNum = ackseq.New(uint64(ycsb2Config.initialKeys))
+		y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys))
 	}
 
 	wg.Add(concurrency)
@@ -314,7 +314,7 @@ func (y *ycsb2) init(db *pebble.DB, wg *sync.WaitGroup) {
 	}
 }
 
-func (y *ycsb2) run(db *pebble.DB, wg *sync.WaitGroup) {
+func (y *ycsb) run(db *pebble.DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	rng := randvar.NewRand()
@@ -336,14 +336,14 @@ func (y *ycsb2) run(db *pebble.DB, wg *sync.WaitGroup) {
 		}
 
 		y.latency[op].Record(time.Since(start))
-		if ycsb2Config.numOps > 0 &&
-			atomic.AddUint64(&y.numOps, 1) >= ycsb2Config.numOps {
+		if ycsbConfig.numOps > 0 &&
+			atomic.AddUint64(&y.numOps, 1) >= ycsbConfig.numOps {
 			break
 		}
 	}
 }
 
-func (y *ycsb2) hashKey(key uint64) uint64 {
+func (y *ycsb) hashKey(key uint64) uint64 {
 	// Inlined version of fnv.New64 + Write.
 	const offset64 = 14695981039346656037
 	const prime64 = 1099511628211
@@ -357,23 +357,23 @@ func (y *ycsb2) hashKey(key uint64) uint64 {
 	return h
 }
 
-func (y *ycsb2) makeKey(keyNum uint64) []byte {
+func (y *ycsb) makeKey(keyNum uint64) []byte {
 	key := make([]byte, 4, 24)
 	copy(key, "user")
 	return strconv.AppendUint(key, y.hashKey(keyNum), 10)
 }
 
-func (y *ycsb2) nextReadKey() []byte {
+func (y *ycsb) nextReadKey() []byte {
 	keyNum := y.hashKey(y.keyDist.Uint64()) % y.keyNum.Base()
 	return y.makeKey(keyNum)
 }
 
-func (y *ycsb2) randBytes(rng *rand.Rand) []byte {
+func (y *ycsb) randBytes(rng *rand.Rand) []byte {
 	length := int(y.valueDist.Uint64())
 	return randomBlock(rng, length, length, y.targetCompression)
 }
 
-func (y *ycsb2) insert(db *pebble.DB, rng *rand.Rand) {
+func (y *ycsb) insert(db *pebble.DB, rng *rand.Rand) {
 	count := y.batchDist.Uint64()
 	keyNums := make([]uint64, count)
 
@@ -400,7 +400,7 @@ func (y *ycsb2) insert(db *pebble.DB, rng *rand.Rand) {
 	}
 }
 
-func (y *ycsb2) read(db *pebble.DB, rng *rand.Rand) {
+func (y *ycsb) read(db *pebble.DB, rng *rand.Rand) {
 	key := y.nextReadKey()
 	iter := db.NewIter(nil)
 	iter.SeekGE(key)
@@ -410,7 +410,7 @@ func (y *ycsb2) read(db *pebble.DB, rng *rand.Rand) {
 	atomic.AddUint64(&y.numKeys[ycsbRead], 1)
 }
 
-func (y *ycsb2) scan(db *pebble.DB, rng *rand.Rand) {
+func (y *ycsb) scan(db *pebble.DB, rng *rand.Rand) {
 	i, count := 0, y.scanDist.Uint64()
 	iter := db.NewIter(nil)
 	key := y.nextReadKey()
@@ -426,7 +426,7 @@ func (y *ycsb2) scan(db *pebble.DB, rng *rand.Rand) {
 	atomic.AddUint64(&y.numKeys[ycsbScan], count)
 }
 
-func (y *ycsb2) update(db *pebble.DB, rng *rand.Rand) {
+func (y *ycsb) update(db *pebble.DB, rng *rand.Rand) {
 	count := int(y.batchDist.Uint64())
 	b := db.NewBatch()
 	for i := 0; i < count; i++ {
@@ -438,7 +438,7 @@ func (y *ycsb2) update(db *pebble.DB, rng *rand.Rand) {
 	atomic.AddUint64(&y.numKeys[ycsbUpdate], uint64(count))
 }
 
-func (y *ycsb2) tick(elapsed time.Duration, i int) {
+func (y *ycsb) tick(elapsed time.Duration, i int) {
 	if i%20 == 0 {
 		fmt.Println("____optype__elapsed____ops/sec___keys/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	}
@@ -462,7 +462,7 @@ func (y *ycsb2) tick(elapsed time.Duration, i int) {
 	})
 }
 
-func (y *ycsb2) done(elapsed time.Duration) {
+func (y *ycsb) done(elapsed time.Duration) {
 	fmt.Println("\n____optype__elapsed_____ops(total)___ops/sec(cum)__keys/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	y.reg.Tick(func(tick histogramTick) {
 		op := y.opsMap[tick.Name]
