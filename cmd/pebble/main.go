@@ -35,11 +35,10 @@ func main() {
 	rootCmd.AddCommand(
 		scanCmd,
 		syncCmd,
-		ycsbCmd,
 		ycsb2Cmd,
 	)
 
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd, ycsb2Cmd} {
+	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsb2Cmd} {
 		cmd.Flags().IntVarP(
 			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
 		cmd.Flags().BoolVar(
