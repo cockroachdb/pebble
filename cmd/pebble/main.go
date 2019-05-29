@@ -53,8 +53,6 @@ func main() {
 			"wait for background compactions to complete after load stops")
 		cmd.Flags().BoolVarP(
 			&wipe, "wipe", "w", false, "wipe the database before starting")
-		cmd.Flags().BoolVar(
-			&walOnly, "wal-only", false, "write data only to the WAL")
 	}
 
 	if err := rootCmd.Execute(); err != nil {

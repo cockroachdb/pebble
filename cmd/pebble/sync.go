@@ -16,12 +16,21 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+var syncConfig struct {
+	walOnly bool
+}
+
 var syncCmd = &cobra.Command{
 	Use:   "sync <dir>",
 	Short: "run the sync benchmark",
 	Long:  ``,
 	Args:  cobra.ExactArgs(1),
 	Run:   runSync,
+}
+
+func init() {
+	syncCmd.Flags().BoolVar(
+		&syncConfig.walOnly, "wal-only", false, "write data only to the WAL")
 }
 
 func runSync(cmd *cobra.Command, args []string) {
@@ -51,7 +60,7 @@ func runSync(cmd *cobra.Command, args []string) {
 						for j := 0; j < 5; j++ {
 							block := randomBlock(rand, 60, 80, 1.0)
 
-							if walOnly {
+							if syncConfig.walOnly {
 								if err := b.LogData(block, nil); err != nil {
 									log.Fatal(err)
 								}
