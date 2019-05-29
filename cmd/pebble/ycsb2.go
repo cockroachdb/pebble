@@ -7,7 +7,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -99,7 +98,7 @@ func init() {
 		"workload type (A-F) or spec (read=X,update=Y,...)")
 	ycsb2Cmd.Flags().StringVar(
 		&ycsb2Config.values, "values", "1000",
-		"value distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
+		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
 type ycsbWeights []float64
@@ -192,55 +191,6 @@ func ycsbParseKeyDist(d string) (randvar.Dynamic, error) {
 	}
 }
 
-var randVarRE = regexp.MustCompile(`^(?:(uniform|zipf):)?(\d+)(?:-(\d+))?$`)
-
-func ycsbParseRandVar(d string) (randvar.Static, error) {
-	m := randVarRE.FindStringSubmatch(d)
-	if m == nil {
-		return nil, fmt.Errorf("invalid random var spec: %s", d)
-	}
-
-	min, err := strconv.Atoi(m[2])
-	if err != nil {
-		return nil, err
-	}
-	max := min
-	if m[3] != "" {
-		max, err = strconv.Atoi(m[3])
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	switch strings.ToLower(m[1]) {
-	case "", "uniform":
-		return randvar.NewUniform(nil, uint64(min), uint64(max)), nil
-	case "zipf":
-		return randvar.NewZipf(nil, uint64(min), uint64(max), 0.99)
-	default:
-		return nil, fmt.Errorf("unknown distribution: %s", m[1])
-	}
-}
-
-func ycsbParseValues(v string) (randvar.Static, float64, error) {
-	parts := strings.Split(v, "/")
-	if len(parts) == 0 || len(parts) > 2 {
-		return nil, 0, fmt.Errorf("invalid values spec: %s", v)
-	}
-	r, err := ycsbParseRandVar(parts[0])
-	if err != nil {
-		return nil, 0, err
-	}
-	targetCompression := 1.0
-	if len(parts) == 2 {
-		targetCompression, err = strconv.ParseFloat(parts[1], 64)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-	return r, targetCompression, nil
-}
-
 func runYcsb2(cmd *cobra.Command, args []string) error {
 	weights, err := ycsbParseWorkload(ycsb2Config.workload)
 	if err != nil {
@@ -252,17 +202,17 @@ func runYcsb2(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	batchDist, err := ycsbParseRandVar(ycsb2Config.batch)
+	batchDist, err := parseRandVarSpec(ycsb2Config.batch)
 	if err != nil {
 		return err
 	}
 
-	scanDist, err := ycsbParseRandVar(ycsb2Config.scans)
+	scanDist, err := parseRandVarSpec(ycsb2Config.scans)
 	if err != nil {
 		return err
 	}
 
-	valueDist, targetCompression, err := ycsbParseValues(ycsb2Config.values)
+	valueDist, targetCompression, err := parseValuesSpec(ycsb2Config.values)
 	if err != nil {
 		return err
 	}
