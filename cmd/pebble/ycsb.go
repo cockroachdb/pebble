@@ -370,7 +370,7 @@ func (y *ycsb) nextReadKey() []byte {
 
 func (y *ycsb) randBytes(rng *rand.Rand) []byte {
 	length := int(y.valueDist.Uint64())
-	return randomBlock(rng, length, length, y.targetCompression)
+	return randomBlock(rng, length, y.targetCompression)
 }
 
 func (y *ycsb) insert(db *pebble.DB, rng *rand.Rand) {

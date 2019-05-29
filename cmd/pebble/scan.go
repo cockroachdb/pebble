@@ -80,7 +80,7 @@ func runScan(cmd *cobra.Command, args []string) {
 				for end := i + batch; i < end; i++ {
 					keys[i] = mvccEncode(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
 					length := int(valueDist.Uint64())
-					value := randomBlock(rng, length, length, targetCompression)
+					value := randomBlock(rng, length, targetCompression)
 					if err := b.Set(keys[i], value, nil); err != nil {
 						log.Fatal(err)
 					}

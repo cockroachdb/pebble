@@ -69,9 +69,8 @@ func parseValuesSpec(v string) (randvar.Static, float64, error) {
 }
 
 func randomBlock(
-	r *rand.Rand, minBlockBytes, maxBlockBytes int, targetCompressionRatio float64,
+	r *rand.Rand, size int, targetCompressionRatio float64,
 ) []byte {
-	size := r.Intn(maxBlockBytes-minBlockBytes+1) + minBlockBytes
 	uniqueSize := int(float64(size) / targetCompressionRatio)
 	if uniqueSize < 1 {
 		uniqueSize = 1

@@ -80,7 +80,7 @@ func runSync(cmd *cobra.Command, args []string) {
 						count := int(batchDist.Uint64())
 						for j := 0; j < count; j++ {
 							length := int(valueDist.Uint64())
-							block := randomBlock(rand, length, length, targetCompression)
+							block := randomBlock(rand, length, targetCompression)
 
 							if syncConfig.walOnly {
 								if err := b.LogData(block, nil); err != nil {
