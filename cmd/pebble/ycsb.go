@@ -364,7 +364,9 @@ func (y *ycsb) makeKey(keyNum uint64) []byte {
 }
 
 func (y *ycsb) nextReadKey() []byte {
-	keyNum := y.hashKey(y.keyDist.Uint64()) % y.keyNum.Base()
+	// NB: the range of values returned by keyDist is tied to the range returned
+	// by keyNum.Base. See how these are both incremented by ycsb.insert().
+	keyNum := y.keyDist.Uint64()
 	return y.makeKey(keyNum)
 }
 
