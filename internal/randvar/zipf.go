@@ -79,64 +79,45 @@ func NewZipf(rng *rand.Rand, min, max uint64, theta float64) (*Zipf, error) {
 	z.mu.max = max
 
 	// Compute hidden parameters.
-	var err error
-	z.zeta2, err = computeZetaFromScratch(2, theta)
-	if err != nil {
-		return nil, fmt.Errorf("unable to compute zeta(2,theta): %s", err)
-	}
-	zetaN, err := computeZetaFromScratch(max+1-min, theta)
-	if err != nil {
-		return nil, fmt.Errorf("unable to compute zeta(2,%d): %s", max, err)
-	}
+	z.zeta2 = computeZetaFromScratch(2, theta)
+	z.mu.zetaN = computeZetaFromScratch(max+1-min, theta)
 	z.alpha = 1.0 / (1.0 - theta)
-	z.mu.eta = (1 - math.Pow(2.0/float64(z.mu.max+1-z.min), 1.0-theta)) / (1.0 - z.zeta2/zetaN)
-	z.mu.zetaN = zetaN
+	z.mu.eta = (1 - math.Pow(2.0/float64(z.mu.max+1-z.min), 1.0-theta)) / (1.0 - z.zeta2/z.mu.zetaN)
 	return z, nil
 }
 
 // computeZetaIncrementally recomputes zeta(max, theta), assuming that sum =
 // zeta(oldMax, theta). Returns zeta(max, theta), computed incrementally.
-func computeZetaIncrementally(oldMax, max uint64, theta float64, sum float64) (float64, error) {
+func computeZetaIncrementally(oldMax, max uint64, theta float64, sum float64) float64 {
 	if max < oldMax {
-		return 0, fmt.Errorf("unable to increment max backwards!")
+		panic(fmt.Errorf("unable to increment max backwards!"))
 	}
 	for i := oldMax + 1; i <= max; i++ {
 		sum += 1.0 / math.Pow(float64(i), theta)
 	}
-	return sum, nil
+	return sum
 }
 
 // The function zeta computes the value
 // zeta(n, theta) = (1/1)^theta + (1/2)^theta + (1/3)^theta + ... + (1/n)^theta
-func computeZetaFromScratch(n uint64, theta float64) (float64, error) {
+func computeZetaFromScratch(n uint64, theta float64) float64 {
 	if n == defaultMax && theta == defaultTheta {
 		// Precomputed value, borrowed from ScrambledZipfianGenerator.java. This is
 		// quite slow to calculate from scratch due to the large n value.
-		return defaultZetaN, nil
+		return defaultZetaN
 	}
-	zeta, err := computeZetaIncrementally(0, n, theta, 0.0)
-	if err != nil {
-		return zeta, fmt.Errorf("could not compute zeta: %s", err)
-	}
-	return zeta, nil
+	return computeZetaIncrementally(0, n, theta, 0.0)
 }
 
 // IncMax increments max and recomputes the internal values that depend on
 // it. Returns an error if the recomputation failed.
-func (z *Zipf) IncMax() error {
+func (z *Zipf) IncMax(delta int) {
 	z.mu.Lock()
-	zetaN, err := computeZetaIncrementally(
-		z.mu.max, z.mu.max+1, z.theta, z.mu.zetaN)
-	if err != nil {
-		z.mu.Unlock()
-		return fmt.Errorf("unable to incrementally compute zeta: %s", err)
-	}
-	eta := (1 - math.Pow(2.0/float64(z.mu.max+1-z.min), 1.0-z.theta)) / (1.0 - z.zeta2/zetaN)
-	z.mu.eta = eta
-	z.mu.zetaN = zetaN
-	z.mu.max++
+	oldMax := z.mu.max
+	z.mu.max += uint64(delta)
+	z.mu.zetaN = computeZetaIncrementally(oldMax, z.mu.max, z.theta, z.mu.zetaN)
+	z.mu.eta = (1 - math.Pow(2.0/float64(z.mu.max-z.min), 1.0-z.theta)) / (1.0 - z.zeta2/z.mu.zetaN)
 	z.mu.Unlock()
-	return nil
 }
 
 // Uint64 draws a new value between min and max, with probabilities according

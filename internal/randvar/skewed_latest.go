@@ -53,14 +53,11 @@ func NewSkewedLatest(rng *rand.Rand, min, max uint64, theta float64) (*SkewedLat
 }
 
 // IncMax increments max.
-func (z *SkewedLatest) IncMax() error {
+func (z *SkewedLatest) IncMax(delta int) {
 	z.mu.Lock()
-	err := z.mu.zipf.IncMax()
-	if err == nil {
-		z.mu.max++
-	}
+	z.mu.zipf.IncMax(delta)
+	z.mu.max += uint64(delta)
 	z.mu.Unlock()
-	return err
 }
 
 // Uint64 returns a random Uint64 between min and max, where keys near max are

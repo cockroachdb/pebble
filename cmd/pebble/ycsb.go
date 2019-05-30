@@ -394,10 +394,8 @@ func (y *ycsb) insert(db *pebble.DB, rng *rand.Rand) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		for j := 0; j < delta; j++ {
-			if err := y.keyDist.IncMax(); err != nil {
-				log.Fatal(err)
-			}
+		if delta > 0 {
+			y.keyDist.IncMax(delta)
 		}
 	}
 }

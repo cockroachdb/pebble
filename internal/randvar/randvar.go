@@ -16,5 +16,5 @@ type Dynamic interface {
 	Static
 
 	// Increment the max value the variable will return.
-	IncMax() error
+	IncMax(delta int)
 }

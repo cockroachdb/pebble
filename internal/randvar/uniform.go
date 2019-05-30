@@ -43,11 +43,10 @@ func NewUniform(rng *rand.Rand, min, max uint64) *Uniform {
 }
 
 // IncMax increments max.
-func (g *Uniform) IncMax() error {
+func (g *Uniform) IncMax(delta int) {
 	g.mu.Lock()
-	g.mu.max++
+	g.mu.max += uint64(delta)
 	g.mu.Unlock()
-	return nil
 }
 
 // Uint64 returns a random Uint64 between min and max, drawn from a uniform

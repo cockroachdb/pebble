@@ -40,10 +40,7 @@ func TestZeta(t *testing.T) {
 
 	t.Run("FromScratch", func(t *testing.T) {
 		for _, test := range zetaTests {
-			computedZeta, err := computeZetaFromScratch(test.n, test.theta)
-			if err != nil {
-				t.Fatalf("Failed to compute zeta(%d,%f): %s", test.n, test.theta, err)
-			}
+			computedZeta := computeZetaFromScratch(test.n, test.theta)
 			if math.Abs(computedZeta-test.expected) > 0.000000001 {
 				t.Fatalf("expected %6.4f, got %6.4f", test.expected, computedZeta)
 			}
@@ -58,19 +55,12 @@ func TestZeta(t *testing.T) {
 		for _, test := range zetaTests {
 			// If theta has changed, recompute from scratch
 			if test.theta != oldTheta {
-				var err error
-				oldZetaN, err = computeZetaFromScratch(test.n, test.theta)
-				if err != nil {
-					t.Fatalf("Failed to compute zeta(%d,%f): %s", test.n, test.theta, err)
-				}
+				oldZetaN = computeZetaFromScratch(test.n, test.theta)
 				oldN = test.n
 				continue
 			}
 
-			computedZeta, err := computeZetaIncrementally(oldN, test.n, test.theta, oldZetaN)
-			if err != nil {
-				t.Fatalf("Failed to compute zeta(%d,%f) incrementally: %s", test.n, test.theta, err)
-			}
+			computedZeta := computeZetaIncrementally(oldN, test.n, test.theta, oldZetaN)
 			if math.Abs(computedZeta-test.expected) > 0.000000001 {
 				t.Fatalf("expected %6.4f, got %6.4f", test.expected, computedZeta)
 			}
