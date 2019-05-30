@@ -7,6 +7,7 @@ package ackseq
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -20,44 +21,32 @@ const (
 // S keeps track of the largest sequence number such that all sequence numbers
 // in the range [0,v) have been acknowledged.
 type S struct {
-	mu struct {
+	next uint64
+	mu   struct {
 		sync.Mutex
 		base   uint64
-		next   uint64
 		window [windowBytes]uint8
 	}
 }
 
 // New creates a new acknowledged sequence tracker with the specified base
 // sequence number. All of the sequence numbers in the range [0,base) are
-// considered acknowledged. Next() will return base upon first call. The window
-// size controls how many
+// considered acknowledged. Next() will return base upon first call.
 func New(base uint64) *S {
-	s := &S{}
+	s := &S{
+		next: base,
+	}
 	s.mu.base = base
-	s.mu.next = s.mu.base
 	return s
-}
-
-// Base returns the latest seqnum for which every seqnum in the range [0,base)
-// has been acknowledged.
-func (s *S) Base() uint64 {
-	s.mu.Lock()
-	result := s.mu.base
-	s.mu.Unlock()
-	return result
 }
 
 // Next returns the next sequence number to use.
 func (s *S) Next() uint64 {
-	s.mu.Lock()
-	result := s.mu.next
-	s.mu.next++
-	s.mu.Unlock()
-	return result
+	return atomic.AddUint64(&s.next, 1) - 1
 }
 
-// Ack acknowledges the specified seqNum, adjusting base as necessary.
+// Ack acknowledges the specified seqNum, adjusting base as necessary,
+// returning the number of newly acknowledged sequence numbers.
 func (s *S) Ack(seqNum uint64) (int, error) {
 	s.mu.Lock()
 	if s.getLocked(seqNum) {
