@@ -937,6 +937,8 @@ func (b *flushableBatch) newIter(o *IterOptions) internalIterator {
 		offsets: b.offsets,
 		cmp:     b.cmp,
 		index:   -1,
+		lower:   o.GetLowerBound(),
+		upper:   o.GetUpperBound(),
 	}
 }
 
@@ -997,6 +999,8 @@ type flushableBatchIter struct {
 	index   int
 	key     InternalKey
 	err     error
+	lower   []byte
+	upper   []byte
 }
 
 // flushableBatchIter implements the internalIterator interface.
@@ -1011,6 +1015,10 @@ func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 	i.key = i.getKey(i.index)
+	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
+		i.index = len(i.offsets)
+		return nil, nil
+	}
 	return &i.key, i.Value()
 }
 
@@ -1028,6 +1036,10 @@ func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 	i.key = i.getKey(i.index)
+	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
+		i.index = -1
+		return nil, nil
+	}
 	return &i.key, i.Value()
 }
 
@@ -1037,6 +1049,10 @@ func (i *flushableBatchIter) First() (*InternalKey, []byte) {
 	}
 	i.index = 0
 	i.key = i.getKey(i.index)
+	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
+		i.index = len(i.offsets)
+		return nil, nil
+	}
 	return &i.key, i.Value()
 }
 
@@ -1046,6 +1062,10 @@ func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
 	}
 	i.index = len(i.offsets) - 1
 	i.key = i.getKey(i.index)
+	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
+		i.index = -1
+		return nil, nil
+	}
 	return &i.key, i.Value()
 }
 
@@ -1058,6 +1078,10 @@ func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	i.key = i.getKey(i.index)
+	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
+		i.index = len(i.offsets)
+		return nil, nil
+	}
 	return &i.key, i.Value()
 }
 
@@ -1070,6 +1094,10 @@ func (i *flushableBatchIter) Prev() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	i.key = i.getKey(i.index)
+	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
+		i.index = -1
+		return nil, nil
+	}
 	return &i.key, i.Value()
 }
 
@@ -1106,6 +1134,6 @@ func (i *flushableBatchIter) Close() error {
 }
 
 func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
-	// This should not be called as bounds are not used for this iterator.
-	panic("TODO(ryan): pebble: SetBounds unimplemented")
+	i.lower = lower
+	i.upper = upper
 }

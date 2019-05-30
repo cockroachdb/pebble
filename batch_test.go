@@ -285,7 +285,7 @@ func TestFlushableBatchIter(t *testing.T) {
 	})
 }
 
-func TestFlushableBatchSeqNum(t *testing.T) {
+func TestFlushableBatch(t *testing.T) {
 	var b *flushableBatch
 	datadriven.RunTest(t, "testdata/flushable_batch", func(d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -306,6 +306,26 @@ func TestFlushableBatchSeqNum(t *testing.T) {
 			}
 			b = newFlushableBatch(batch, DefaultComparer)
 			return ""
+
+		case "iter":
+			var opts IterOptions
+			for _, arg := range d.CmdArgs {
+				if len(arg.Vals) != 1 {
+					return fmt.Sprintf("%s: %s=<value>", d.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "lower":
+					opts.LowerBound = []byte(arg.Vals[0])
+				case "upper":
+					opts.UpperBound = []byte(arg.Vals[0])
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
+			}
+
+			iter := b.newIter(&opts)
+			defer iter.Close()
+			return runInternalIterCmd(d, iter)
 
 		case "dump":
 			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
