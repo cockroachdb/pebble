@@ -7,17 +7,70 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
 	"hash"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/petermattis/pebble/internal/randvar"
 	"golang.org/x/exp/rand"
 )
 
+var randVarRE = regexp.MustCompile(`^(?:(uniform|zipf):)?(\d+)(?:-(\d+))?$`)
+
+func parseRandVarSpec(d string) (randvar.Static, error) {
+	m := randVarRE.FindStringSubmatch(d)
+	if m == nil {
+		return nil, fmt.Errorf("invalid random var spec: %s", d)
+	}
+
+	min, err := strconv.Atoi(m[2])
+	if err != nil {
+		return nil, err
+	}
+	max := min
+	if m[3] != "" {
+		max, err = strconv.Atoi(m[3])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	switch strings.ToLower(m[1]) {
+	case "", "uniform":
+		return randvar.NewUniform(nil, uint64(min), uint64(max)), nil
+	case "zipf":
+		return randvar.NewZipf(nil, uint64(min), uint64(max), 0.99)
+	default:
+		return nil, fmt.Errorf("unknown distribution: %s", m[1])
+	}
+}
+
+func parseValuesSpec(v string) (randvar.Static, float64, error) {
+	parts := strings.Split(v, "/")
+	if len(parts) == 0 || len(parts) > 2 {
+		return nil, 0, fmt.Errorf("invalid values spec: %s", v)
+	}
+	r, err := parseRandVarSpec(parts[0])
+	if err != nil {
+		return nil, 0, err
+	}
+	targetCompression := 1.0
+	if len(parts) == 2 {
+		targetCompression, err = strconv.ParseFloat(parts[1], 64)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+	return r, targetCompression, nil
+}
+
 func randomBlock(
-	r *rand.Rand, minBlockBytes, maxBlockBytes int, targetCompressionRatio float64,
+	r *rand.Rand, size int, targetCompressionRatio float64,
 ) []byte {
-	size := r.Intn(maxBlockBytes-minBlockBytes+1) + minBlockBytes
 	uniqueSize := int(float64(size) / targetCompressionRatio)
 	if uniqueSize < 1 {
 		uniqueSize = 1

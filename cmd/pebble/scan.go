@@ -17,11 +17,11 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-var (
-	scanRows      = 100
-	scanValueSize = 8
-	scanReverse   = false
-)
+var scanConfig struct {
+	reverse bool
+	rows    string
+	values  string
+}
 
 var scanCmd = &cobra.Command{
 	Use:   "scan <dir>",
@@ -31,9 +31,21 @@ var scanCmd = &cobra.Command{
 	Run:   runScan,
 }
 
+func init() {
+	scanCmd.Flags().BoolVarP(
+		&scanConfig.reverse, "reverse", "r", false, "reverse scan")
+	scanCmd.Flags().StringVar(
+		&scanConfig.rows, "rows", "100", "number of rows to scan in each operation")
+	scanCmd.Flags().StringVar(
+		&scanConfig.values, "values", "8",
+		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
+}
+
 func runScan(cmd *cobra.Command, args []string) {
 	var (
+		bytes       int64
 		scanned     int64
+		lastBytes   int64
 		lastScanned int64
 		lastElapsed time.Duration
 	)
@@ -43,26 +55,32 @@ func runScan(cmd *cobra.Command, args []string) {
 		opts = pebble.NoSync
 	}
 
+	rowDist, err := parseRandVarSpec(scanConfig.rows)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	valueDist, targetCompression, err := parseValuesSpec(scanConfig.values)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	runTest(args[0], test{
 		init: func(d *pebble.DB, wg *sync.WaitGroup) {
 			const count = 100000
 			const batch = 1000
 
 			rng := rand.New(rand.NewSource(1449168817))
-			randBytes := func(size int) []byte {
-				data := make([]byte, size)
-				for i := range data {
-					data[i] = byte(rng.Int() & 0xff)
-				}
-				return data
-			}
 			keys := make([][]byte, count)
 
 			for i := 0; i < count; {
 				b := d.NewBatch()
 				for end := i + batch; i < end; i++ {
 					keys[i] = mvccEncode(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
-					value := randBytes(scanValueSize)
+					length := int(valueDist.Uint64())
+					value := randomBlock(rng, length, targetCompression)
 					if err := b.Set(keys[i], value, nil); err != nil {
 						log.Fatal(err)
 					}
@@ -87,21 +105,24 @@ func runScan(cmd *cobra.Command, args []string) {
 					minTS := encodeUint64Ascending(nil, math.MaxUint64)
 
 					for {
-						startIdx := rng.Int31n(int32(len(keys) - scanRows))
+						rows := int(rowDist.Uint64())
+						startIdx := rng.Int31n(int32(len(keys) - rows))
 						startKey := encodeUint32Ascending(startKeyBuf[:4], uint32(startIdx))
-						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(scanRows)))
+						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(rows)))
 
 						var count int
-						if scanReverse {
-							count = mvccReverseScan(d, startKey, endKey, minTS)
+						var nbytes int64
+						if scanConfig.reverse {
+							count, nbytes = mvccReverseScan(d, startKey, endKey, minTS)
 						} else {
-							count = mvccForwardScan(d, startKey, endKey, minTS)
+							count, nbytes = mvccForwardScan(d, startKey, endKey, minTS)
 						}
 
-						if count != scanRows {
-							log.Fatalf("scanned %d, expected %d\n", count, scanRows)
+						if count != rows {
+							log.Fatalf("scanned %d, expected %d\n", count, rows)
 						}
 
+						atomic.AddInt64(&bytes, nbytes)
 						atomic.AddInt64(&scanned, int64(count))
 					}
 				}(i)
@@ -113,26 +134,29 @@ func runScan(cmd *cobra.Command, args []string) {
 				fmt.Println("_elapsed_______rows/sec_______MB/sec_______ns/row")
 			}
 
-			cur := atomic.LoadInt64(&scanned)
+			curBytes := atomic.LoadInt64(&bytes)
+			curScanned := atomic.LoadInt64(&scanned)
 			dur := elapsed - lastElapsed
 			fmt.Printf("%8s %14.1f %12.1f %12.1f\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
-				float64(cur-lastScanned)/dur.Seconds(),
-				float64(int64(scanValueSize)*(cur-lastScanned))/(dur.Seconds()*(1<<20)),
-				float64(dur)/float64(cur-lastScanned),
+				float64(curScanned-lastScanned)/dur.Seconds(),
+				float64(curBytes-lastBytes)/(dur.Seconds()*(1<<20)),
+				float64(dur)/float64(curScanned-lastScanned),
 			)
-			lastScanned = cur
+			lastBytes = curBytes
+			lastScanned = curScanned
 			lastElapsed = elapsed
 		},
 
 		done: func(elapsed time.Duration) {
-			cur := atomic.LoadInt64(&scanned)
+			curBytes := atomic.LoadInt64(&bytes)
+			curScanned := atomic.LoadInt64(&scanned)
 			fmt.Println("\n_elapsed___ops/sec(cum)__MB/sec(cum)__ns/row(avg)")
 			fmt.Printf("%7.1fs %14.1f %12.1f %12.1f\n\n",
 				elapsed.Seconds(),
-				float64(cur)/elapsed.Seconds(),
-				float64(int64(scanValueSize)*cur)/(elapsed.Seconds()*(1<<20)),
-				float64(elapsed)/float64(cur),
+				float64(curScanned)/elapsed.Seconds(),
+				float64(curBytes)/(elapsed.Seconds()*(1<<20)),
+				float64(elapsed)/float64(curScanned),
 			)
 		},
 	})

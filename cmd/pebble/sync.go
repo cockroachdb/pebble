@@ -16,12 +16,29 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+var syncConfig struct {
+	batch   string
+	walOnly bool
+	values  string
+}
+
 var syncCmd = &cobra.Command{
 	Use:   "sync <dir>",
 	Short: "run the sync benchmark",
 	Long:  ``,
 	Args:  cobra.ExactArgs(1),
 	Run:   runSync,
+}
+
+func init() {
+	syncCmd.Flags().StringVar(
+		&syncConfig.batch, "batch", "5",
+		"batch size distribution [{zipf,uniform}:]min[-max]")
+	syncCmd.Flags().BoolVar(
+		&syncConfig.walOnly, "wal-only", false, "write data only to the WAL")
+	syncCmd.Flags().StringVar(
+		&syncConfig.values, "values", "uniform:60-80/1.0",
+		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
 func runSync(cmd *cobra.Command, args []string) {
@@ -31,6 +48,18 @@ func runSync(cmd *cobra.Command, args []string) {
 	opts := pebble.Sync
 	if disableWAL {
 		opts = pebble.NoSync
+	}
+
+	batchDist, err := parseRandVarSpec(syncConfig.batch)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	valueDist, targetCompression, err := parseValuesSpec(syncConfig.values)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 
 	runTest(args[0], test{
@@ -48,10 +77,12 @@ func runSync(cmd *cobra.Command, args []string) {
 						start := time.Now()
 						b := d.NewBatch()
 						var n uint64
-						for j := 0; j < 5; j++ {
-							block := randomBlock(rand, 60, 80, 1.0)
+						count := int(batchDist.Uint64())
+						for j := 0; j < count; j++ {
+							length := int(valueDist.Uint64())
+							block := randomBlock(rand, length, targetCompression)
 
-							if walOnly {
+							if syncConfig.walOnly {
 								if err := b.LogData(block, nil); err != nil {
 									log.Fatal(err)
 								}

@@ -90,7 +90,7 @@ func mvccEncode(dst, key []byte, walltime uint64, logical uint32) []byte {
 	return dst
 }
 
-func mvccForwardScan(d *pebble.DB, start, end, ts []byte) int {
+func mvccForwardScan(d *pebble.DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),
@@ -99,6 +99,7 @@ func mvccForwardScan(d *pebble.DB, start, end, ts []byte) int {
 
 	var data bytealloc.A
 	var count int
+	var nbytes int64
 
 	for valid := it.First(); valid; valid = it.Next() {
 		key, keyTS, _ := mvccSplitKey(it.Key())
@@ -107,11 +108,12 @@ func mvccForwardScan(d *pebble.DB, start, end, ts []byte) int {
 			data, _ = data.Copy(it.Value())
 		}
 		count++
+		nbytes += int64(len(it.Key()) + len(it.Value()))
 	}
-	return count
+	return count, nbytes
 }
 
-func mvccReverseScan(d *pebble.DB, start, end, ts []byte) int {
+func mvccReverseScan(d *pebble.DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),
@@ -120,6 +122,7 @@ func mvccReverseScan(d *pebble.DB, start, end, ts []byte) int {
 
 	var data bytealloc.A
 	var count int
+	var nbytes int64
 
 	for valid := it.Last(); valid; valid = it.Prev() {
 		key, keyTS, _ := mvccSplitKey(it.Key())
@@ -128,6 +131,7 @@ func mvccReverseScan(d *pebble.DB, start, end, ts []byte) int {
 			data, _ = data.Copy(it.Value())
 		}
 		count++
+		nbytes += int64(len(it.Key()) + len(it.Value()))
 	}
-	return count
+	return count, nbytes
 }
