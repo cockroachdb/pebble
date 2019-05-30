@@ -36,3 +36,107 @@ dump seq=1000
 a#1002,1:1
 b#1001,1:1
 c#1000,1:1
+
+iter
+first
+next
+next
+next
+----
+a:1
+b:1
+c:1
+.
+
+iter
+last
+prev
+prev
+prev
+----
+c:1
+b:1
+a:1
+.
+
+iter lower=b
+seek-ge b
+prev
+----
+b:1
+.
+
+iter lower=c
+seek-lt b
+----
+.
+
+iter lower=e
+last
+----
+.
+
+iter upper=1
+first
+----
+.
+
+iter upper=b
+first
+next
+----
+a:1
+.
+
+iter upper=b
+seek-ge b
+----
+.
+
+iter
+set-bounds lower=b
+seek-ge b
+prev
+----
+b:1
+.
+
+iter
+set-bounds lower=c
+seek-lt b
+----
+.
+
+iter
+set-bounds lower=e
+last
+----
+.
+
+iter
+set-bounds upper=1
+first
+----
+.
+
+iter
+set-bounds upper=b
+first
+next
+----
+a:1
+.
+
+iter
+set-bounds upper=b
+seek-ge b
+----
+.
+
+iter
+first
+set-bounds upper=b
+seek-ge b
+----
+a:1
+.
