@@ -71,6 +71,34 @@ func TestZeta(t *testing.T) {
 	})
 }
 
+func TestZetaIncMax(t *testing.T) {
+	// Construct a zipf generator covering the range [0,10] incrementally.
+	z0, err := NewZipf(nil, 0, 0, 0.99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		z0.IncMax(1)
+	}
+
+	// Contruct a zipf generator covering the range [0,10] via the constructor.
+	z10, err := NewZipf(nil, 0, 10, 0.99)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	z0.mu.Lock()
+	defer z0.mu.Unlock()
+	z10.mu.Lock()
+	defer z10.mu.Unlock()
+	if z0.mu.zetaN != z10.mu.zetaN {
+		t.Fatalf("expected zetaN %v, but found %v", z10.mu.zetaN, z0.mu.zetaN)
+	}
+	if z0.mu.eta != z10.mu.eta {
+		t.Fatalf("expected eta %v, but found %v", z10.mu.eta, z0.mu.eta)
+	}
+}
+
 func TestNewZipf(t *testing.T) {
 	var gens = []struct {
 		min, max uint64

@@ -46,6 +46,7 @@ type Zipf struct {
 	min   uint64
 	// Internally computed constants.
 	alpha, zeta2 float64
+	halfPowTheta float64
 	// Mutable state.
 	mu struct {
 		sync.Mutex
@@ -80,6 +81,7 @@ func NewZipf(rng *rand.Rand, min, max uint64, theta float64) (*Zipf, error) {
 
 	// Compute hidden parameters.
 	z.zeta2 = computeZetaFromScratch(2, theta)
+	z.halfPowTheta = 1.0 + math.Pow(0.5, z.theta)
 	z.mu.zetaN = computeZetaFromScratch(max+1-min, theta)
 	z.alpha = 1.0 / (1.0 - theta)
 	z.mu.eta = (1 - math.Pow(2.0/float64(z.mu.max+1-z.min), 1.0-theta)) / (1.0 - z.zeta2/z.mu.zetaN)
@@ -90,7 +92,7 @@ func NewZipf(rng *rand.Rand, min, max uint64, theta float64) (*Zipf, error) {
 // zeta(oldMax, theta). Returns zeta(max, theta), computed incrementally.
 func computeZetaIncrementally(oldMax, max uint64, theta float64, sum float64) float64 {
 	if max < oldMax {
-		panic(fmt.Errorf("unable to increment max backwards!"))
+		panic("unable to decrement max!")
 	}
 	for i := oldMax + 1; i <= max; i++ {
 		sum += 1.0 / math.Pow(float64(i), theta)
@@ -115,8 +117,8 @@ func (z *Zipf) IncMax(delta int) {
 	z.mu.Lock()
 	oldMax := z.mu.max
 	z.mu.max += uint64(delta)
-	z.mu.zetaN = computeZetaIncrementally(oldMax, z.mu.max, z.theta, z.mu.zetaN)
-	z.mu.eta = (1 - math.Pow(2.0/float64(z.mu.max-z.min), 1.0-z.theta)) / (1.0 - z.zeta2/z.mu.zetaN)
+	z.mu.zetaN = computeZetaIncrementally(oldMax+1-z.min, z.mu.max+1-z.min, z.theta, z.mu.zetaN)
+	z.mu.eta = (1 - math.Pow(2.0/float64(z.mu.max+1-z.min), 1.0-z.theta)) / (1.0 - z.zeta2/z.mu.zetaN)
 	z.mu.Unlock()
 }
 
@@ -129,11 +131,11 @@ func (z *Zipf) Uint64() uint64 {
 	var result uint64
 	if uz < 1.0 {
 		result = z.min
-	} else if uz < 1.0+math.Pow(0.5, z.theta) {
+	} else if uz < z.halfPowTheta {
 		result = z.min + 1
 	} else {
 		spread := float64(z.mu.max + 1 - z.min)
-		result = z.min + uint64(int64(spread*math.Pow(z.mu.eta*u-z.mu.eta+1.0, z.alpha)))
+		result = z.min + uint64(spread*math.Pow(z.mu.eta*u-z.mu.eta+1.0, z.alpha))
 	}
 	z.mu.Unlock()
 	return result
