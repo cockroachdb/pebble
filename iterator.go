@@ -109,7 +109,11 @@ func (i *Iterator) nextUserKey() {
 			done = i.iterKey.SeqNum() == 0
 		}
 	} else {
-		i.iterKey, i.iterValue = i.iter.First()
+		if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
+		} else {
+			i.iterKey, i.iterValue = i.iter.First()
+		}
 	}
 }
 
@@ -203,7 +207,11 @@ func (i *Iterator) prevUserKey() {
 			}
 		}
 	} else {
-		i.iterKey, i.iterValue = i.iter.Last()
+		if upperBound := i.opts.GetUpperBound(); upperBound != nil {
+			i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
+		} else {
+			i.iterKey, i.iterValue = i.iter.Last()
+		}
 	}
 }
 

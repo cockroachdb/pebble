@@ -995,6 +995,28 @@ last
 .
 a:a
 
+iter seq=2
+last
+next
+set-bounds upper=c
+prev
+----
+d:d
+.
+.
+b:b
+
+iter seq=2
+first
+prev
+set-bounds lower=b
+next
+----
+a:a
+.
+.
+b:b
+
 define
 a.SET.1:a
 aa.SET.1:aa
