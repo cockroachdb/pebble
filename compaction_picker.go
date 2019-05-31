@@ -49,14 +49,14 @@ func (p *compactionPicker) compactionNeeded() bool {
 func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	// Determine the first non-empty level and the maximum size of any level.
 	firstNonEmptyLevel := -1
-	var botLevelSize int64
+	var bottomLevelSize int64
 	for level := 1; level < numLevels; level++ {
 		levelSize := int64(totalSize(v.files[level]))
 		if levelSize > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
 			}
-			botLevelSize = levelSize
+			bottomLevelSize = levelSize
 		}
 	}
 
@@ -67,7 +67,7 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 		p.levelMaxBytes[level] = math.MaxInt64
 	}
 
-	if botLevelSize == 0 {
+	if bottomLevelSize == 0 {
 		// No levels for L1 and up contain any data. Target L0 compactions for the
 		// last level.
 		p.baseLevel = numLevels - 1
@@ -79,13 +79,13 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	baseBytesMax := opts.LBaseMaxBytes
 	baseBytesMin := int64(float64(baseBytesMax) / levelMultiplier)
 
-	curLevelSize := botLevelSize
+	curLevelSize := bottomLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
 		curLevelSize = int64(float64(curLevelSize) / levelMultiplier)
 	}
 
 	if curLevelSize <= baseBytesMin {
-		// If we make target size of last level to be botLevelSize, target size of
+		// If we make target size of last level to be bottomLevelSize, target size of
 		// the first non-empty level would be smaller than baseBytesMin. We set it
 		// be baseBytesMin.
 		p.baseLevel = firstNonEmptyLevel
@@ -101,7 +101,7 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	var smoothedLevelMultiplier float64
 	if p.baseLevel < numLevels-1 {
 		smoothedLevelMultiplier = math.Pow(
-			float64(botLevelSize)/float64(baseBytesMax),
+			float64(bottomLevelSize)/float64(baseBytesMax),
 			1.0/float64(numLevels-p.baseLevel-1))
 	} else {
 		smoothedLevelMultiplier = 1.0
