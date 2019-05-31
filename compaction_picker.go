@@ -107,14 +107,19 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 		smoothedLevelMultiplier = 1.0
 	}
 
-	levelSize := baseBytesMax
+	levelSize := float64(baseBytesMax)
 	for level := p.baseLevel; level < numLevels; level++ {
-		if level > p.baseLevel {
-			if levelSize > 0 && float64(math.MaxInt64/levelSize) >= smoothedLevelMultiplier {
-				levelSize = int64(float64(levelSize) * smoothedLevelMultiplier)
-			}
+		if level > p.baseLevel && levelSize > 0 {
+			levelSize *= smoothedLevelMultiplier
 		}
-		p.levelMaxBytes[level] = levelSize
+		// Round the result since test cases use small target level sizes, which
+		// can be impacted by floating-point imprecision + integer truncation.
+		roundedLevelSize := math.Round(levelSize)
+		if roundedLevelSize > float64(math.MaxInt64) {
+			p.levelMaxBytes[level] = math.MaxInt64
+		} else {
+			p.levelMaxBytes[level] = int64(roundedLevelSize)
+		}
 	}
 }
 
