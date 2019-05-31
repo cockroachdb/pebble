@@ -522,7 +522,7 @@ func TestGetIter(t *testing.T) {
 			i.iter = get
 
 			defer i.Close()
-			if !i.Next() {
+			if !i.First() {
 				err := i.Error()
 				if err != nil {
 					return nil, err

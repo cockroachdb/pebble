@@ -95,21 +95,20 @@ func (i *Iterator) findNextEntry() bool {
 }
 
 func (i *Iterator) nextUserKey() {
-	if i.iterKey != nil {
-		done := i.iterKey.SeqNum() == 0
-		if !i.valid {
-			i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
-			i.key = i.keyBuf
+	if i.iterKey == nil {
+		return
+	}
+	done := i.iterKey.SeqNum() == 0
+	if !i.valid {
+		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.key = i.keyBuf
+	}
+	for {
+		i.iterKey, i.iterValue = i.iter.Next()
+		if done || i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
+			break
 		}
-		for {
-			i.iterKey, i.iterValue = i.iter.Next()
-			if done || i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
-				break
-			}
-			done = i.iterKey.SeqNum() == 0
-		}
-	} else {
-		i.iterKey, i.iterValue = i.iter.First()
+		done = i.iterKey.SeqNum() == 0
 	}
 }
 
@@ -189,21 +188,20 @@ func (i *Iterator) findPrevEntry() bool {
 }
 
 func (i *Iterator) prevUserKey() {
-	if i.iterKey != nil {
-		if !i.valid {
-			// If we're going to compare against the prev key, we need to save the
-			// current key.
-			i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
-			i.key = i.keyBuf
+	if i.iterKey == nil {
+		return
+	}
+	if !i.valid {
+		// If we're going to compare against the prev key, we need to save the
+		// current key.
+		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.key = i.keyBuf
+	}
+	for {
+		i.iterKey, i.iterValue = i.iter.Prev()
+		if i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
+			break
 		}
-		for {
-			i.iterKey, i.iterValue = i.iter.Prev()
-			if i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
-				break
-			}
-		}
-	} else {
-		i.iterKey, i.iterValue = i.iter.Last()
 	}
 }
 

@@ -266,7 +266,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	i.readState = readState
 
 	defer i.Close()
-	if !i.Next() {
+	if !i.First() {
 		err := i.Error()
 		if err != nil {
 			return nil, err
