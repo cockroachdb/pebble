@@ -14,20 +14,18 @@ prev
 ----
 a:1
 .
-a:1
+.
 
 iter snapshot=2
 first
 next
 next
 prev
-prev
 ----
 a:1
 b:2
 .
-b:2
-a:1
+.
 
 iter snapshot=3
 first
@@ -35,16 +33,12 @@ next
 next
 next
 prev
-prev
-prev
 ----
 a:1
 b:2
 c:3
 .
-c:3
-b:2
-a:1
+.
 
 define
 set a 1
@@ -62,7 +56,7 @@ prev
 ----
 a:1
 .
-a:1
+.
 
 iter snapshot=2
 first
@@ -71,7 +65,7 @@ prev
 ----
 a:2
 .
-a:2
+.
 
 iter snapshot=3
 first
@@ -80,7 +74,7 @@ prev
 ----
 a:3
 .
-a:3
+.
 
 define
 set a 1
@@ -99,7 +93,7 @@ prev
 ----
 a:1
 .
-a:1
+.
 
 iter snapshot=2
 first
@@ -108,7 +102,7 @@ prev
 ----
 a:2
 .
-a:2
+.
 
 iter snapshot=3
 first
@@ -117,7 +111,7 @@ prev
 ----
 a:3
 .
-a:3
+.
 
 define
 merge a 1
@@ -136,7 +130,7 @@ prev
 ----
 a:1
 .
-a:1
+.
 
 iter snapshot=2
 first
@@ -145,7 +139,7 @@ prev
 ----
 a:21
 .
-a:21
+.
 
 iter snapshot=3
 first
@@ -154,4 +148,4 @@ prev
 ----
 a:321
 .
-a:321
+.
