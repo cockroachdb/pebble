@@ -95,21 +95,20 @@ func (i *Iterator) findNextEntry() bool {
 }
 
 func (i *Iterator) nextUserKey() {
-	if i.iterKey != nil {
-		done := i.iterKey.SeqNum() == 0
-		if !i.valid {
-			i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
-			i.key = i.keyBuf
+	if i.iterKey == nil {
+		return
+	}
+	done := i.iterKey.SeqNum() == 0
+	if !i.valid {
+		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.key = i.keyBuf
+	}
+	for {
+		i.iterKey, i.iterValue = i.iter.Next()
+		if done || i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
+			break
 		}
-		for {
-			i.iterKey, i.iterValue = i.iter.Next()
-			if done || i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
-				break
-			}
-			done = i.iterKey.SeqNum() == 0
-		}
-	} else {
-		i.iterKey, i.iterValue = i.iter.First()
+		done = i.iterKey.SeqNum() == 0
 	}
 }
 
@@ -189,21 +188,20 @@ func (i *Iterator) findPrevEntry() bool {
 }
 
 func (i *Iterator) prevUserKey() {
-	if i.iterKey != nil {
-		if !i.valid {
-			// If we're going to compare against the prev key, we need to save the
-			// current key.
-			i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
-			i.key = i.keyBuf
+	if i.iterKey == nil {
+		return
+	}
+	if !i.valid {
+		// If we're going to compare against the prev key, we need to save the
+		// current key.
+		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.key = i.keyBuf
+	}
+	for {
+		i.iterKey, i.iterValue = i.iter.Prev()
+		if i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
+			break
 		}
-		for {
-			i.iterKey, i.iterValue = i.iter.Prev()
-			if i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
-				break
-			}
-		}
-	} else {
-		i.iterKey, i.iterValue = i.iter.Last()
 	}
 }
 
@@ -374,7 +372,17 @@ func (i *Iterator) Next() bool {
 		// TODO(peter): This is subtle. Perhaps we should provide a special version
 		// of nextUserKey which advances until a larger user key is found.
 		i.valid = false
-		i.nextUserKey()
+		if i.iterKey == nil {
+			// We're positioned before the first key. Need to reposition to point to
+			// the first key.
+			if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
+			} else {
+				i.iterKey, i.iterValue = i.iter.First()
+			}
+		} else {
+			i.nextUserKey()
+		}
 		i.nextUserKey()
 	case iterPosNext:
 	}
@@ -399,7 +407,17 @@ func (i *Iterator) Prev() bool {
 		// TODO(peter): This is subtle. Perhaps we should provide a special version
 		// of prevUserKey which advances until a smaller user key is found.
 		i.valid = false
-		i.prevUserKey()
+		if i.iterKey == nil {
+			// We're positioned after the last key. Need to reposition to point to
+			// the last key.
+			if upperBound := i.opts.GetUpperBound(); upperBound != nil {
+				i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
+			} else {
+				i.iterKey, i.iterValue = i.iter.Last()
+			}
+		} else {
+			i.prevUserKey()
+		}
 		i.prevUserKey()
 	case iterPosPrev:
 	}
