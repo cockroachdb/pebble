@@ -9,12 +9,12 @@ matrix:
     - name: "go1.11.x"
       go: 1.11.x
       gobuild_args: -v
-    - name: "go1.11.x race"
-      go: 1.11.x
-      gobuild_args: -v -race
     - name: "go1.12.x"
       go: 1.12.x
       gobuild_args: -v
+    - name: "go1.12.x race"
+      go: 1.12.x
+      gobuild_args: -v -race
 
 notifications:
   email:
