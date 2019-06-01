@@ -13,6 +13,7 @@ import (
 
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSnapshotListToSlice(t *testing.T) {
@@ -162,4 +163,34 @@ func TestSnapshot(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestSnapshotClosed(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap := d.NewSnapshot()
+	if err := snap.Close(); err != nil {
+		t.Fatal(err)
+	}
+	require.EqualValues(t, ErrClosed, snap.Close())
+
+	_, err = snap.Get(nil)
+	require.EqualValues(t, ErrClosed, err)
+
+	iter := snap.NewIter(nil)
+	require.EqualValues(t, ErrClosed, iter.Error())
+	require.False(t, iter.SeekGE(nil))
+	require.False(t, iter.SeekPrefixGE(nil))
+	require.False(t, iter.SeekLT(nil))
+	require.False(t, iter.First())
+	require.False(t, iter.Last())
+	require.False(t, iter.Next())
+	require.False(t, iter.Prev())
+	require.False(t, iter.Valid())
+	require.EqualValues(t, ErrClosed, iter.Error())
 }

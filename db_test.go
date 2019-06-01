@@ -690,3 +690,53 @@ func TestRollManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDBClosed(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	require.EqualValues(t, ErrClosed, d.Close())
+
+	require.EqualValues(t, ErrClosed, d.Compact(nil, nil))
+	require.EqualValues(t, ErrClosed, d.Flush())
+	require.EqualValues(t, ErrClosed, d.AsyncFlush())
+
+	_, err = d.Get(nil)
+	require.EqualValues(t, ErrClosed, err)
+	require.EqualValues(t, ErrClosed, d.Delete(nil, nil))
+	require.EqualValues(t, ErrClosed, d.DeleteRange(nil, nil, nil))
+	require.EqualValues(t, ErrClosed, d.LogData(nil, nil))
+	require.EqualValues(t, ErrClosed, d.Merge(nil, nil, nil))
+	require.EqualValues(t, ErrClosed, d.Set(nil, nil, nil))
+
+	checkIter := func(iter *Iterator) {
+		t.Helper()
+		require.EqualValues(t, ErrClosed, iter.Error())
+		require.False(t, iter.SeekGE(nil))
+		require.False(t, iter.SeekPrefixGE(nil))
+		require.False(t, iter.SeekLT(nil))
+		require.False(t, iter.First())
+		require.False(t, iter.Last())
+		require.False(t, iter.Next())
+		require.False(t, iter.Prev())
+		require.False(t, iter.Valid())
+		require.EqualValues(t, ErrClosed, iter.Error())
+	}
+
+	checkIter(d.NewIter(nil))
+
+	require.EqualValues(t, (*Snapshot)(nil), d.NewSnapshot())
+
+	b := d.NewBatch()
+	_ = b.Set(nil, nil, nil)
+	require.EqualValues(t, ErrClosed, b.Commit(nil))
+	require.EqualValues(t, ErrClosed, d.Apply(b, nil))
+
+	checkIter(d.NewIndexedBatch().NewIter(nil))
+}
