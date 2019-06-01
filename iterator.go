@@ -279,12 +279,12 @@ func (i *Iterator) SeekGE(key []byte) bool {
 // the Comparer. Also note that the iterator will not observe keys not matching
 // the prefix.
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
-	if i.split == nil {
-		panic("pebble: split must be provided for SeekPrefixGE")
-	}
-
 	if i.err != nil {
 		return false
+	}
+
+	if i.split == nil {
+		panic("pebble: split must be provided for SeekPrefixGE")
 	}
 
 	// Make a copy of the prefix so that modifications to the key after
