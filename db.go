@@ -32,6 +32,9 @@ var (
 	// ErrNotFound is returned when a get operation does not find the requested
 	// key.
 	ErrNotFound = base.ErrNotFound
+	// ErrClosed is returned when an operation is performed on a closed snapshot
+	// or DB.
+	ErrClosed = errors.New("pebble: closed")
 )
 
 type flushable interface {
@@ -165,12 +168,13 @@ type DB struct {
 
 	logRecycler logRecycler
 
+	closed int32 // updated atomically
+
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
 	mu struct {
 		sync.Mutex
 
-		closed    bool
 		nextJobID int
 
 		versions versionSet
@@ -227,6 +231,10 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 }
 
 func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
@@ -343,6 +351,10 @@ func (d *DB) LogData(data []byte, opts *WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+
 	sync := opts.GetSync()
 	if sync && d.opts.DisableWAL {
 		return errors.New("pebble: WAL disabled")
@@ -437,6 +449,10 @@ func (d *DB) newIterInternal(
 	s *Snapshot,
 	o *IterOptions,
 ) *Iterator {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
@@ -578,6 +594,10 @@ func (d *DB) NewIter(o *IterOptions) *Iterator {
 // deleted. Instead, a snapshot prevents deletion of sequence numbers
 // referenced by the snapshot.
 func (d *DB) NewSnapshot() *Snapshot {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+
 	s := &Snapshot{
 		db:     d,
 		seqNum: atomic.LoadUint64(&d.mu.versions.visibleSeqNum),
@@ -596,9 +616,10 @@ func (d *DB) NewSnapshot() *Snapshot {
 func (d *DB) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.mu.closed {
-		return nil
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
 	}
+	atomic.StoreInt32(&d.closed, 1)
 	for d.mu.compact.compacting || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}
@@ -606,7 +627,6 @@ func (d *DB) Close() error {
 	err = firstError(err, d.mu.log.Close())
 	err = firstError(err, d.fileLock.Close())
 	d.commit.Close()
-	d.mu.closed = true
 
 	err = firstError(err, d.dataDir.Close())
 
@@ -632,6 +652,10 @@ func (d *DB) Close() error {
 
 // Compact the specified range of keys in the database.
 func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
 	meta := []*fileMetadata{&fileMetadata{smallest: iStart, largest: iEnd}}
@@ -703,6 +727,10 @@ func (d *DB) manualCompact(manual *manualCompaction) error {
 
 // Flush the memtable to stable storage.
 func (d *DB) Flush() error {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+
 	d.mu.Lock()
 	mem := d.mu.mem.mutable
 	err := d.makeRoomForWrite(nil)
@@ -718,6 +746,10 @@ func (d *DB) Flush() error {
 //
 // TODO(peter): untested
 func (d *DB) AsyncFlush() error {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+
 	d.mu.Lock()
 	err := d.makeRoomForWrite(nil)
 	d.mu.Unlock()

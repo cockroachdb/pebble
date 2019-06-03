@@ -25,6 +25,9 @@ var _ Reader = (*Snapshot)(nil)
 // The caller should not modify the contents of the returned slice, but it is
 // safe to modify the contents of the argument after Get returns.
 func (s *Snapshot) Get(key []byte) ([]byte, error) {
+	if s.db == nil {
+		panic(ErrClosed)
+	}
 	return s.db.getInternal(key, nil /* batch */, s)
 }
 
@@ -32,6 +35,9 @@ func (s *Snapshot) Get(key []byte) ([]byte, error) {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
 func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
+	if s.db == nil {
+		panic(ErrClosed)
+	}
 	return s.db.newIterInternal(nil /* batchIter */, nil /* batchRangeDelIter */, s, o)
 }
 
@@ -40,9 +46,13 @@ func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
 // leak of resources on disk due to the entries the snapshot is preventing from
 // being deleted.
 func (s *Snapshot) Close() error {
+	if s.db == nil {
+		panic(ErrClosed)
+	}
 	s.db.mu.Lock()
 	s.db.mu.snapshots.remove(s)
 	s.db.mu.Unlock()
+	s.db = nil
 	return nil
 }
 

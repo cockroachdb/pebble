@@ -690,3 +690,45 @@ func TestRollManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDBClosed(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	catch := func(f func()) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = r.(error)
+			}
+		}()
+		f()
+		return nil
+	}
+
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Close() }))
+
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Compact(nil, nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Flush() }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.AsyncFlush() }))
+
+	require.EqualValues(t, ErrClosed, catch(func() { _, _ = d.Get(nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Delete(nil, nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.DeleteRange(nil, nil, nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.LogData(nil, nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Merge(nil, nil, nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Set(nil, nil, nil) }))
+
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.NewSnapshot() }))
+
+	b := d.NewIndexedBatch()
+	require.EqualValues(t, ErrClosed, catch(func() { _ = b.Commit(nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Apply(b, nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = b.NewIter(nil) }))
+}
