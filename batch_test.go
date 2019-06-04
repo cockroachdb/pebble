@@ -35,21 +35,31 @@ func TestBatch(t *testing.T) {
 		{InternalKeyKindSet, "binarydata", "\x00"},
 		{InternalKeyKindSet, "binarydata", "\xff"},
 		{InternalKeyKindMerge, "merge", "mergedata"},
+		{InternalKeyKindMerge, "merge", ""},
+		{InternalKeyKindMerge, "", ""},
+		{InternalKeyKindRangeDelete, "a", "b"},
+		{InternalKeyKindRangeDelete, "", ""},
+		{InternalKeyKindLogData, "logdata", ""},
+		{InternalKeyKindLogData, "", ""},
 	}
 	var b Batch
 	for _, tc := range testCases {
 		switch tc.kind {
 		case InternalKeyKindSet:
-			b.Set([]byte(tc.key), []byte(tc.value), nil)
+			_ = b.Set([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindMerge:
-			b.Merge([]byte(tc.key), []byte(tc.value), nil)
+			_ = b.Merge([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindDelete:
-			b.Delete([]byte(tc.key), nil)
+			_ = b.Delete([]byte(tc.key), nil)
+		case InternalKeyKindRangeDelete:
+			_ = b.DeleteRange([]byte(tc.key), []byte(tc.value), nil)
+		case InternalKeyKindLogData:
+			_ = b.LogData([]byte(tc.key), nil)
 		}
 	}
-	iter := b.iter()
+	r := b.Reader()
 	for _, tc := range testCases {
-		kind, k, v, ok := iter.next()
+		kind, k, v, ok := r.Next()
 		if !ok {
 			t.Fatalf("next returned !ok: test case = %v", tc)
 		}
@@ -59,8 +69,8 @@ func TestBatch(t *testing.T) {
 				kind, key, value, tc.kind, tc.key, tc.value)
 		}
 	}
-	if len(iter) != 0 {
-		t.Errorf("iterator was not exhausted: remaining bytes = %q", iter)
+	if len(r) != 0 {
+		t.Errorf("reader was not exhausted: remaining bytes = %q", r)
 	}
 }
 

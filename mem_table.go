@@ -144,8 +144,8 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	var ins arenaskl.Inserter
 	var tombstoneCount uint32
 	startSeqNum := seqNum
-	for iter := batch.iter(); ; seqNum++ {
-		kind, ukey, value, ok := iter.next()
+	for r := batch.Reader(); ; seqNum++ {
+		kind, ukey, value, ok := r.Next()
 		if !ok {
 			break
 		}
