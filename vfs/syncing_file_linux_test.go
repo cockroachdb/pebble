@@ -15,6 +15,31 @@ import (
 	"unsafe"
 )
 
+func TestSyncRangeSmokeTest(t *testing.T) {
+	testCases := []struct {
+		err      error
+		expected bool
+	}{
+		{nil, true},
+		{syscall.EINVAL, true},
+		{syscall.ENOSYS, false},
+	}
+	for i, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			ok := syncRangeSmokeTest(uintptr(i),
+				func(fd int, off int64, n int64, flags int) (err error) {
+					if i != fd {
+						t.Fatalf("expected fd %d, but got %d", i, fd)
+					}
+					return c.err
+				})
+			if c.expected != ok {
+				t.Fatalf("expected %t, but got %t: %v", c.expected, ok, c.err)
+			}
+		})
+	}
+}
+
 func BenchmarkDirectIOWrite(b *testing.B) {
 	const targetSize = 16 << 20
 	const alignment = 4096
