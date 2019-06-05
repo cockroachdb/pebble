@@ -19,7 +19,7 @@ import (
 
 const (
 	// Max rate for all compactions. This is intentionally set low enough that
-	// user writes will have to be delayed
+	// user writes will have to be delayed.
 	maxCompactionRate     = 80 << 20 // 80 MB/s
 
 	memtableSize          = 64 << 20 // 64 MB
@@ -315,7 +315,7 @@ func (db *DB) printLevels() {
 
 // simulateWrite simulates user writes.
 func simulateWrite(db *DB) {
-	limiter := rate.NewLimiter(10<<20, 10<<20) // 10 mb
+	limiter := rate.NewLimiter(10<<20, 10<<20) // 10 MB/s
 	fmt.Printf("filling at 10 MB/sec\n")
 
 	setRate := func(mb int) {
