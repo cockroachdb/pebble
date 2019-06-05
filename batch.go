@@ -258,8 +258,8 @@ func (b *Batch) release() {
 
 func (b *Batch) refreshMemTableSize() {
 	b.memTableSize = 0
-	for iter := b.iter(); ; {
-		_, key, value, ok := iter.next()
+	for r := b.Reader(); ; {
+		_, key, value, ok := r.Next()
 		if !ok {
 			break
 		}
@@ -288,9 +288,9 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 	count := binary.LittleEndian.Uint32(batch.storage.data[8:12])
 	b.setCount(b.count() + count)
 
-	for iter := batchReader(b.storage.data[offset:]); len(iter) > 0; {
+	for iter := BatchReader(b.storage.data[offset:]); len(iter) > 0; {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.storage.data[0]))
-		kind, key, value, ok := iter.next()
+		kind, key, value, ok := iter.Next()
 		if !ok {
 			break
 		}
@@ -448,8 +448,6 @@ func (b *Batch) DeleteRange(start, end []byte, _ *WriteOptions) error {
 // which makes it useful for testing WAL performance.
 //
 // It is safe to modify the contents of the argument after LogData returns.
-//
-// TODO(peter): untested.
 func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(data) + binary.MaxVarintLen64 + batchHeaderLen)
@@ -651,7 +649,9 @@ func (b *Batch) count() uint32 {
 	return binary.LittleEndian.Uint32(b.countData())
 }
 
-func (b *Batch) iter() batchReader {
+// Reader returns a BatchReader for the current batch contents. If the batch is
+// mutated, the new entries will not be visible to the reader.
+func (b *Batch) Reader() BatchReader {
 	return b.storage.data[batchHeaderLen:]
 }
 
@@ -690,11 +690,18 @@ func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 	return data[v:], data[:v], true
 }
 
-type batchReader []byte
+// BatchReader iterates over the entries contained in a batch.
+type BatchReader []byte
 
-// next returns the next operation in this batch.
-// The final return value is false if the batch is corrupi.
-func (r *batchReader) next() (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
+// MakeBatchReader constructs a BatchReader from a batch representation. The
+// header (containing the batch count and seqnum) is ignored.
+func MakeBatchReader(repr []byte) BatchReader {
+	return repr[batchHeaderLen:]
+}
+
+// Next returns the next entry in this batch. The final return value is false
+// if the batch is corrupt. The end of batch is reached when len(r)==0.
+func (r *BatchReader) Next() (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
 	p := *r
 	if len(p) == 0 {
 		return 0, nil, nil, false
@@ -717,7 +724,7 @@ func (r *batchReader) next() (kind InternalKeyKind, ukey []byte, value []byte, o
 	return kind, ukey, value, true
 }
 
-func (r *batchReader) nextStr() (s []byte, ok bool) {
+func (r *BatchReader) nextStr() (s []byte, ok bool) {
 	p := *r
 	u, numBytes := binary.Uvarint(p)
 	if numBytes <= 0 {
@@ -874,9 +881,9 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	}
 
 	var index uint32
-	for iter := batchReader(b.data[batchHeaderLen:]); len(iter) > 0; index++ {
+	for iter := BatchReader(b.data[batchHeaderLen:]); len(iter) > 0; index++ {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
-		kind, key, _, ok := iter.next()
+		kind, key, _, ok := iter.Next()
 		if !ok {
 			break
 		}
