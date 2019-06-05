@@ -150,6 +150,13 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if d.dirname != d.walDirname {
+		ls2, err := opts.FS.List(d.dirname)
+		if err != nil {
+			return nil, err
+		}
+		ls = append(ls, ls2...)
+	}
 
 	// Replay any newer log files than the ones named in the manifest.
 	type fileNumAndName struct {
@@ -227,7 +234,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	d.scanObsoleteFiles()
+	d.scanObsoleteFiles(ls)
 	d.deleteObsoleteFiles(jobID)
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()

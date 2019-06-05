@@ -83,9 +83,9 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 	for _, startFromEmpty := range []bool{false, true} {
 		for _, walDirname := range []string{"", "wal"} {
 			for _, length := range []int{-1, 0, 1, 1000, 10000, 100000} {
-				dirname := "sharedDatabase"
+				dirname := "sharedDatabase" + walDirname
 				if startFromEmpty {
-					dirname = "startFromEmpty" + strconv.Itoa(length)
+					dirname = "startFromEmpty" + walDirname + strconv.Itoa(length)
 				}
 				dirname = filepath.Join(root, dirname)
 				if walDirname == "" {
@@ -101,7 +101,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 
 				d0, err := Open(dirname, opts)
 				if err != nil {
-					t.Errorf("sfe=%t, length=%d: Open #0: %v",
+					t.Fatalf("sfe=%t, length=%d: Open #0: %v",
 						startFromEmpty, length, err)
 					continue
 				}
