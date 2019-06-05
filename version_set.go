@@ -207,6 +207,14 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 
 		if newManifestFileNumber != 0 {
 			if err := vs.createManifest(vs.dirname, newManifestFileNumber); err != nil {
+				if vs.opts.EventListener.ManifestCreated != nil {
+					vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
+						JobID:   jobID,
+						Path:    dbFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
+						FileNum: newManifestFileNumber,
+						Err:     err,
+					})
+				}
 				return err
 			}
 		}
@@ -215,28 +223,37 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 		if err != nil {
 			return err
 		}
+		// NB: Any error from this point on is considered fatal as we don't now if
+		// the MANIFEST write occurred or not. Trying to determine that is
+		// fraught. Instead we rely on the standard recovery mechanism run when a
+		// database is open. In particular, that mechanism generates a new MANIFEST
+		// and ensures it is synced.
 		if err := ve.encode(w); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST write failed: %v", err)
 			return err
 		}
 		if err := vs.manifest.Flush(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
 			return err
 		}
 		if err := vs.manifestFile.Sync(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST sync failed: %v", err)
 			return err
 		}
 		if newManifestFileNumber != 0 {
 			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNumber); err != nil {
+				vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 				return err
 			}
 			if err := dir.Sync(); err != nil {
+				vs.opts.Logger.Fatalf("MANIFEST dirsync failed: %v", err)
 				return err
 			}
-			if vs.opts.EventListener.ManifestDeleted != nil {
+			if vs.opts.EventListener.ManifestCreated != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
 					Path:    dbFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
 					FileNum: newManifestFileNumber,
-					Err:     err,
 				})
 			}
 		}
@@ -290,7 +307,6 @@ func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error)
 			manifest.Close()
 		}
 		if manifestFile != nil {
-			manifestFile.Sync()
 			manifestFile.Close()
 		}
 		if err != nil {

@@ -227,7 +227,9 @@ func Open(dirname string, opts *Options) (*DB, error) {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	d.scanObsoleteFiles()
+	if err := d.scanObsoleteFiles(); err != nil {
+		d.opts.Logger.Fatalf("unable to scan for obsolete files: %v", err)
+	}
 	d.deleteObsoleteFiles(jobID)
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()

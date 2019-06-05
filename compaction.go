@@ -1040,7 +1040,7 @@ func (d *DB) runCompaction(c *compaction) (
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) scanObsoleteFiles() {
+func (d *DB) scanObsoleteFiles() error {
 	// Release d.mu while doing I/O
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
@@ -1050,16 +1050,15 @@ func (d *DB) scanObsoleteFiles() {
 	list, err := fs.List(d.dirname)
 	if err != nil {
 		// Ignore any filesystem errors.
-		return
+		return err
 	}
 
 	if d.dirname != d.walDirname {
 		list2, err := fs.List(d.walDirname)
 		if err != nil {
-			// Ignore any filesystem errors.
-		} else {
-			list = append(list, list2...)
+			return err
 		}
+		list = append(list, list2...)
 	}
 
 	// Grab d.mu again in order to get a snapshot of the live state. Note that we
@@ -1119,6 +1118,7 @@ func (d *DB) scanObsoleteFiles() {
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
 	d.mu.Unlock()
+	return nil
 }
 
 // deleteObsoleteFiles deletes those files that are no longer needed.
@@ -1189,36 +1189,40 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 
 			path := dbFilename(d.dirname, f.fileType, fileNum)
 			err := d.opts.FS.Remove(path)
+			if err == os.ErrNotExist {
+				continue
+			}
 
-			if err != os.ErrNotExist {
-				switch f.fileType {
-				case fileTypeLog:
-					if d.opts.EventListener.WALDeleted != nil {
-						d.opts.EventListener.WALDeleted(WALDeleteInfo{
-							JobID:   jobID,
-							Path:    path,
-							FileNum: fileNum,
-							Err:     err,
-						})
-					}
-				case fileTypeManifest:
-					if d.opts.EventListener.ManifestDeleted != nil {
-						d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-							JobID:   jobID,
-							Path:    path,
-							FileNum: fileNum,
-							Err:     err,
-						})
-					}
-				case fileTypeTable:
-					if d.opts.EventListener.TableDeleted != nil {
-						d.opts.EventListener.TableDeleted(TableDeleteInfo{
-							JobID:   jobID,
-							Path:    path,
-							FileNum: fileNum,
-							Err:     err,
-						})
-					}
+			// TODO(peter): need to handle this errror, probably by re-adding the
+			// file that couldn't be deleted to one of the obsolete slices map.
+
+			switch f.fileType {
+			case fileTypeLog:
+				if d.opts.EventListener.WALDeleted != nil {
+					d.opts.EventListener.WALDeleted(WALDeleteInfo{
+						JobID:   jobID,
+						Path:    path,
+						FileNum: fileNum,
+						Err:     err,
+					})
+				}
+			case fileTypeManifest:
+				if d.opts.EventListener.ManifestDeleted != nil {
+					d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
+						JobID:   jobID,
+						Path:    path,
+						FileNum: fileNum,
+						Err:     err,
+					})
+				}
+			case fileTypeTable:
+				if d.opts.EventListener.TableDeleted != nil {
+					d.opts.EventListener.TableDeleted(TableDeleteInfo{
+						JobID:   jobID,
+						Path:    path,
+						FileNum: fileNum,
+						Err:     err,
+					})
 				}
 			}
 		}
