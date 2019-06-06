@@ -24,6 +24,12 @@ import (
 	"github.com/petermattis/pebble/internal/base"
 )
 
+const (
+	// crossoverThreshold is the threshold at which we start comparing the lower
+	// and upper bound node pointers rather than the user keys on each iteration.
+	crossoverThreshold = 15
+)
+
 type splice struct {
 	prev *node
 	next *node
@@ -43,6 +49,11 @@ type Iterator struct {
 	key   base.InternalKey
 	lower []byte
 	upper []byte
+
+	prevCount uint32
+	nextCount uint32
+	lowerNode *node
+	upperNode *node
 }
 
 var iterPool = sync.Pool{
@@ -149,9 +160,27 @@ func (it *Iterator) Next() (*base.InternalKey, []byte) {
 		return nil, nil
 	}
 	it.decodeKey()
-	if it.upper != nil && it.list.cmp(it.upper, it.key.UserKey) <= 0 {
-		it.nd = it.list.tail
-		return nil, nil
+	if it.upper != nil {
+		if it.nextCount >= crossoverThreshold {
+			if it.upperNode == nil {
+				// Cache upper bound node.
+				_, it.upperNode, _ = it.seekForBaseSplice(it.upper)
+				if it.upperNode == it.list.tail {
+					// Upper bound node does not exist. Do not check upper bound again.
+					it.upper = nil
+				}
+			}
+			if it.nd == it.upperNode {
+				it.nd = it.list.tail
+				return nil, nil
+			}
+		} else {
+			it.nextCount++
+			if it.list.cmp(it.upper, it.key.UserKey) <= 0 {
+				it.nd = it.list.tail
+				return nil, nil
+			}
+		}
 	}
 	return &it.key, it.Value()
 }
@@ -164,9 +193,27 @@ func (it *Iterator) Prev() (*base.InternalKey, []byte) {
 		return nil, nil
 	}
 	it.decodeKey()
-	if it.lower != nil && it.list.cmp(it.lower, it.key.UserKey) > 0 {
-		it.nd = it.list.head
-		return nil, nil
+	if it.lower != nil {
+		if it.prevCount >= crossoverThreshold {
+			if it.lowerNode == nil {
+				// Cache lower bound key.
+				it.lowerNode, _, _ = it.seekForBaseSplice(it.lower)
+				if it.lowerNode == it.list.head {
+					// Lower bound node does not exist. Do not check lower bound again.
+					it.lower = nil
+				}
+			}
+			if it.nd == it.lowerNode {
+				it.nd = it.list.head
+				return nil, nil
+			}
+		} else {
+			it.prevCount++
+			if it.list.cmp(it.lower, it.key.UserKey) > 0 {
+				it.nd = it.list.head
+				return nil, nil
+			}
+		}
 	}
 	return &it.key, it.Value()
 }
@@ -200,6 +247,10 @@ func (it *Iterator) Valid() bool {
 // result of Next and Prev will be undefined until the iterator has been
 // repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
 func (it *Iterator) SetBounds(lower, upper []byte) {
+	it.prevCount = 0
+	it.nextCount = 0
+	it.lowerNode = nil
+	it.upperNode = nil
 	it.lower = lower
 	it.upper = upper
 }
