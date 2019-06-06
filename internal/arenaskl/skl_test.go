@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -655,10 +656,11 @@ func TestIteratorBounds(t *testing.T) {
 		require.False(t, it.SeekGE(key(i)))
 	}
 
-	require.True(t, it.SeekGE(key(6)))
-	require.EqualValues(t, "00006", it.Key().UserKey)
-	require.EqualValues(t, "v00006", it.Value())
+	require.True(t, it.SeekGE(key(5)))
+	require.EqualValues(t, "00005", it.Key().UserKey)
+	require.EqualValues(t, "v00005", it.Value())
 
+	require.True(t, it.Next())
 	// Next into the upper bound fails.
 	require.False(t, it.Next())
 
@@ -680,10 +682,11 @@ func TestIteratorBounds(t *testing.T) {
 		require.False(t, it.SeekLT(key(i)))
 	}
 
-	require.True(t, it.SeekLT(key(4)))
-	require.EqualValues(t, "00003", it.Key().UserKey)
-	require.EqualValues(t, "v00003", it.Value())
+	require.True(t, it.SeekLT(key(5)))
+	require.EqualValues(t, "00004", it.Key().UserKey)
+	require.EqualValues(t, "v00004", it.Value())
 
+	require.True(t, it.Prev())
 	// Prev into the lower bound fails.
 	require.False(t, it.Prev())
 }
@@ -780,6 +783,74 @@ func BenchmarkIterPrev(b *testing.B) {
 			it.Last()
 		}
 		it.Prev()
+	}
+}
+
+func BenchmarkIterBoundNext(b *testing.B) {
+	for _, keyCount := range []int{1, 10, 15, 30, 100, 1000} {
+		b.Run(fmt.Sprintf("keyCount=%d", keyCount), func(b *testing.B) {
+			l := NewSkiplist(NewArena(64<<10, 0), bytes.Compare)
+
+			upper := make([]byte, 8)
+			binary.LittleEndian.PutUint32(upper, math.MaxUint32)
+			binary.LittleEndian.PutUint32(upper[4:], math.MaxUint32)
+			l.Add(base.InternalKey{UserKey: upper}, nil)
+
+			rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+			buf := make([]byte, 8)
+			for i := 0; i < keyCount; i++ {
+				if err := l.Add(randomKey(rng, buf), nil); err == ErrArenaFull {
+					panic("Arena not large enough to hold all the keys")
+				}
+			}
+
+			it := l.NewIter(nil, upper)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if !it.Valid() {
+					it.SetBounds(nil, upper)
+					it.First()
+				}
+				it.Next()
+			}
+		})
+	}
+}
+
+func BenchmarkIterBoundPrev(b *testing.B) {
+	for _, keyCount := range []int{1, 10, 15, 30, 100, 1000} {
+		b.Run(fmt.Sprintf("keyCount=%d", keyCount), func(b *testing.B) {
+			l := NewSkiplist(NewArena(64<<10, 0), bytes.Compare)
+
+			// This is needed because there must be a key less than lower, otherwise
+			// lower is set to nil since it is deemed unneeded.
+			lessThanLower := make([]byte, 8)
+			binary.LittleEndian.PutUint32(lessThanLower, 0)
+			binary.LittleEndian.PutUint32(lessThanLower[4:], 0)
+			l.Add(base.InternalKey{UserKey: lessThanLower}, nil)
+
+			rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+			buf := make([]byte, 8)
+			for i := 0; i < keyCount; i++ {
+				if err := l.Add(randomKey(rng, buf), nil); err == ErrArenaFull {
+					panic("Arena not large enough to hold all the keys")
+				}
+			}
+
+			lower := make([]byte, 8)
+			binary.LittleEndian.PutUint32(lower, 1)
+			binary.LittleEndian.PutUint32(lower[4:], 1)
+
+			it := l.NewIter(lower, nil)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if !it.Valid() {
+					it.SetBounds(lower, nil)
+					it.Last()
+				}
+				it.Prev()
+			}
+		})
 	}
 }
 
