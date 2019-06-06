@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -698,7 +699,7 @@ func randomKey(rng *rand.Rand, b []byte) base.InternalKey {
 
 // Standard test. Some fraction is read. Some fraction is write. Writes have
 // to go through mutex lock.
-func BenchmarkReadWrite(b *testing.B) {
+/*func BenchmarkReadWrite(b *testing.B) {
 	for i := 0; i <= 10; i++ {
 		readFrac := float32(i) / 10.0
 		b.Run(fmt.Sprintf("frac_%d", i*10), func(b *testing.B) {
@@ -725,8 +726,8 @@ func BenchmarkReadWrite(b *testing.B) {
 		})
 	}
 }
-
-func BenchmarkOrderedWrite(b *testing.B) {
+*/
+/*func BenchmarkOrderedWrite(b *testing.B) {
 	l := NewSkiplist(NewArena(8<<20, 0), bytes.Compare)
 	var ins Inserter
 	buf := make([]byte, 8)
@@ -742,8 +743,8 @@ func BenchmarkOrderedWrite(b *testing.B) {
 		}
 	}
 }
-
-func BenchmarkIterNext(b *testing.B) {
+*/
+/*func BenchmarkIterNext(b *testing.B) {
 	l := NewSkiplist(NewArena(64<<10, 0), bytes.Compare)
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	buf := make([]byte, 8)
@@ -774,6 +775,63 @@ func BenchmarkIterPrev(b *testing.B) {
 	}
 
 	it := l.NewIter(nil, nil)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !it.Valid() {
+			it.Last()
+		}
+		it.Prev()
+	}
+}
+*/
+func BenchmarkIterBoundNext(b *testing.B) {
+	l := NewSkiplist(NewArena(64<<10, 0), bytes.Compare)
+
+	upper := make([]byte, 8)
+	binary.LittleEndian.PutUint32(upper, math.MaxUint32)
+	binary.LittleEndian.PutUint32(upper[4:], math.MaxUint32)
+	l.Add(base.InternalKey{UserKey: upper}, nil)
+
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	buf := make([]byte, 8)
+	for {
+		if err := l.Add(randomKey(rng, buf), nil); err == ErrArenaFull {
+			break
+		}
+	}
+
+	it := l.NewIter(nil, upper)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !it.Valid() {
+			it.First()
+		}
+		it.Next()
+	}
+}
+
+func BenchmarkIterBoundPrev(b *testing.B) {
+	l := NewSkiplist(NewArena(64<<10, 0), bytes.Compare)
+
+	// This is needed because there must be a key less than lower, otherwise
+	// lower is set to nil since it is deemed unneeded.
+	lessThanLower := make([]byte, 8)
+	binary.LittleEndian.PutUint32(lessThanLower, 0)
+	binary.LittleEndian.PutUint32(lessThanLower[4:], 0)
+
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	buf := make([]byte, 8)
+	for {
+		if err := l.Add(randomKey(rng, buf), nil); err == ErrArenaFull {
+			break
+		}
+	}
+
+	lower := make([]byte, 8)
+	binary.LittleEndian.PutUint32(lower, 1)
+	binary.LittleEndian.PutUint32(lower[4:], 1)
+
+	it := l.NewIter(lower, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.Valid() {

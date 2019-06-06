@@ -1,0 +1,45 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/petermattis/pebble/internal/arenaskl
+BenchmarkIterBoundNext     	100000000	        12.5 ns/op
+BenchmarkIterBoundNext     	100000000	        12.5 ns/op
+BenchmarkIterBoundNext     	100000000	        12.5 ns/op
+BenchmarkIterBoundNext     	100000000	        12.6 ns/op
+BenchmarkIterBoundNext     	100000000	        12.4 ns/op
+BenchmarkIterBoundNext     	100000000	        12.5 ns/op
+BenchmarkIterBoundNext     	100000000	        12.6 ns/op
+BenchmarkIterBoundNext     	100000000	        12.5 ns/op
+BenchmarkIterBoundNext     	100000000	        12.6 ns/op
+BenchmarkIterBoundNext     	100000000	        12.4 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.4 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.4 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.6 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.7 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.6 ns/op
+BenchmarkIterBoundNext-8   	100000000	        12.4 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.4 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.5 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.7 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.6 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.6 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.5 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.7 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.9 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.7 ns/op
+BenchmarkIterBoundPrev     	100000000	        12.7 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.6 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.6 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.7 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.6 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.5 ns/op
+BenchmarkIterBoundPrev-8   	100000000	        12.5 ns/op
+PASS
+ok  	github.com/petermattis/pebble/internal/arenaskl	50.923s

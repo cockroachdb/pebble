@@ -43,6 +43,9 @@ type Iterator struct {
 	key   base.InternalKey
 	lower []byte
 	upper []byte
+
+	lowerNode *node
+	upperNode *node
 }
 
 var iterPool = sync.Pool{
@@ -149,9 +152,19 @@ func (it *Iterator) Next() (*base.InternalKey, []byte) {
 		return nil, nil
 	}
 	it.decodeKey()
-	if it.upper != nil && it.list.cmp(it.upper, it.key.UserKey) <= 0 {
-		it.nd = it.list.tail
-		return nil, nil
+	if it.upper != nil {
+		if it.upperNode == nil {
+			// Cache upper bound node.
+			it.upperNode = it.seekNodeGE(it.upper)
+			if it.upperNode == nil {
+				// Upper bound node does not exist. Do not check upper bound again.
+				it.upper = nil
+			}
+		}
+		if it.nd == it.upperNode {
+			it.nd = it.list.tail
+			return nil, nil
+		}
 	}
 	return &it.key, it.Value()
 }
@@ -164,9 +177,19 @@ func (it *Iterator) Prev() (*base.InternalKey, []byte) {
 		return nil, nil
 	}
 	it.decodeKey()
-	if it.lower != nil && it.list.cmp(it.lower, it.key.UserKey) > 0 {
-		it.nd = it.list.head
-		return nil, nil
+	if it.lower != nil {
+		if it.lowerNode == nil {
+			// Cache lower bound key.
+			it.lowerNode = it.seekNodeLT(it.lower)
+			if it.lowerNode == nil {
+				// Lower bound node does not exist. Do not check lower bound again.
+				it.lower = nil
+			}
+		}
+		if it.nd == it.lowerNode {
+			it.nd = it.list.head
+			return nil, nil
+		}
 	}
 	return &it.key, it.Value()
 }
@@ -200,8 +223,26 @@ func (it *Iterator) Valid() bool {
 // result of Next and Prev will be undefined until the iterator has been
 // repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
 func (it *Iterator) SetBounds(lower, upper []byte) {
+	it.lowerNode = nil
+	it.upperNode = nil
 	it.lower = lower
 	it.upper = upper
+}
+
+func (it *Iterator) seekNodeGE(upper []byte) *node {
+	_, nd, _ := it.seekForBaseSplice(upper)
+	if nd == it.list.tail {
+		return nil
+	}
+	return nd
+}
+
+func (it *Iterator) seekNodeLT(lower []byte) *node {
+	nd, _, _ := it.seekForBaseSplice(lower)
+	if it.nd == it.list.head {
+		return nil
+	}
+	return nd
 }
 
 func (it *Iterator) decodeKey() {
