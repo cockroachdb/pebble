@@ -1037,35 +1037,7 @@ func (d *DB) runCompaction(c *compaction) (
 // and adds those to the internal lists of obsolete files. Note that he files
 // are not actually deleted by this method. A subsequent call to
 // deleteObsoleteFiles must be performed.
-//
-// d.mu must be held when calling this, but the mutex may be dropped and
-// re-acquired during the course of this method.
-func (d *DB) scanObsoleteFiles() {
-	// Release d.mu while doing I/O
-	// Note the unusual order: Unlock and then Lock.
-	d.mu.Unlock()
-	defer d.mu.Lock()
-
-	fs := d.opts.FS
-	list, err := fs.List(d.dirname)
-	if err != nil {
-		// Ignore any filesystem errors.
-		return
-	}
-
-	if d.dirname != d.walDirname {
-		list2, err := fs.List(d.walDirname)
-		if err != nil {
-			// Ignore any filesystem errors.
-		} else {
-			list = append(list, list2...)
-		}
-	}
-
-	// Grab d.mu again in order to get a snapshot of the live state. Note that we
-	// need to this after the directory list because after releasing the lock
-	// again new files can be created.
-	d.mu.Lock()
+func (d *DB) scanObsoleteFiles(list []string) {
 	liveFileNums := make(map[uint64]struct{}, len(d.mu.compact.pendingOutputs))
 	for fileNum := range d.mu.compact.pendingOutputs {
 		liveFileNums[fileNum] = struct{}{}
@@ -1073,7 +1045,6 @@ func (d *DB) scanObsoleteFiles() {
 	d.mu.versions.addLiveFileNums(liveFileNums)
 	logNumber := d.mu.versions.logNumber
 	manifestFileNumber := d.mu.versions.manifestFileNumber
-	d.mu.Unlock()
 
 	var obsoleteLogs []uint64
 	var obsoleteTables []uint64
@@ -1113,12 +1084,10 @@ func (d *DB) scanObsoleteFiles() {
 		}
 	}
 
-	d.mu.Lock()
 	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
 	d.mu.versions.obsoleteTables = merge(d.mu.versions.obsoleteTables, obsoleteTables)
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
-	d.mu.Unlock()
 }
 
 // deleteObsoleteFiles deletes those files that are no longer needed.
@@ -1189,36 +1158,40 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 
 			path := dbFilename(d.dirname, f.fileType, fileNum)
 			err := d.opts.FS.Remove(path)
+			if err == os.ErrNotExist {
+				continue
+			}
 
-			if err != os.ErrNotExist {
-				switch f.fileType {
-				case fileTypeLog:
-					if d.opts.EventListener.WALDeleted != nil {
-						d.opts.EventListener.WALDeleted(WALDeleteInfo{
-							JobID:   jobID,
-							Path:    path,
-							FileNum: fileNum,
-							Err:     err,
-						})
-					}
-				case fileTypeManifest:
-					if d.opts.EventListener.ManifestDeleted != nil {
-						d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-							JobID:   jobID,
-							Path:    path,
-							FileNum: fileNum,
-							Err:     err,
-						})
-					}
-				case fileTypeTable:
-					if d.opts.EventListener.TableDeleted != nil {
-						d.opts.EventListener.TableDeleted(TableDeleteInfo{
-							JobID:   jobID,
-							Path:    path,
-							FileNum: fileNum,
-							Err:     err,
-						})
-					}
+			// TODO(peter): need to handle this errror, probably by re-adding the
+			// file that couldn't be deleted to one of the obsolete slices map.
+
+			switch f.fileType {
+			case fileTypeLog:
+				if d.opts.EventListener.WALDeleted != nil {
+					d.opts.EventListener.WALDeleted(WALDeleteInfo{
+						JobID:   jobID,
+						Path:    path,
+						FileNum: fileNum,
+						Err:     err,
+					})
+				}
+			case fileTypeManifest:
+				if d.opts.EventListener.ManifestDeleted != nil {
+					d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
+						JobID:   jobID,
+						Path:    path,
+						FileNum: fileNum,
+						Err:     err,
+					})
+				}
+			case fileTypeTable:
+				if d.opts.EventListener.TableDeleted != nil {
+					d.opts.EventListener.TableDeleted(TableDeleteInfo{
+						JobID:   jobID,
+						Path:    path,
+						FileNum: fileNum,
+						Err:     err,
+					})
 				}
 			}
 		}
