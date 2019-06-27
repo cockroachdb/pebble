@@ -14,6 +14,7 @@ import (
 	"sort"
 
 	"github.com/petermattis/pebble/internal/arenaskl"
+	"github.com/petermattis/pebble/internal/rate"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -81,6 +82,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
+	d.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.mem.mutable = newMemTable(d.opts)

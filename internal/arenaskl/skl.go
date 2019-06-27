@@ -313,6 +313,16 @@ func (s *Skiplist) NewIter(lower, upper []byte) *Iterator {
 	return it
 }
 
+// NewFlushIter returns a new flushIterator, which is similar to an Iterator
+// but also sets the current number of the bytes that have been iterated
+// through.
+func (s *Skiplist) NewFlushIter(bytesFlushed *uint64) *flushIterator {
+	return &flushIterator{
+		Iterator:      Iterator{list: s, nd: s.head},
+		bytesIterated: bytesFlushed,
+	}
+}
+
 func (s *Skiplist) newNode(
 	key base.InternalKey, value []byte,
 ) (nd *node, height uint32, err error) {

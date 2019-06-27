@@ -52,6 +52,7 @@ func TestOptionsString(t *testing.T) {
   max_open_files=1000
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
+  min_flush_rate=4194304
   merger=pebble.concatenate
   table_property_collectors=[]
   wal_dir=

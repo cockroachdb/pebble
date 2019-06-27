@@ -9,9 +9,10 @@ import (
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
-// number.
+// number. If bytesIterated is specified, it is incremented as the given file is
+// iterated through.
 type tableNewIters func(
-	meta *fileMetadata, opts *IterOptions,
+	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
@@ -53,21 +54,31 @@ type levelIter struct {
 	// - `boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
 	// - `boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
 	largestUserKey *[]byte
+	// bytesIterated keeps track of the number of bytes iterated during compaction.
+	bytesIterated *uint64
 }
 
 // levelIter implements the internalIterator interface.
 var _ internalIterator = (*levelIter)(nil)
 
 func newLevelIter(
-	opts *IterOptions, cmp Compare, newIters tableNewIters, files []fileMetadata,
+	opts *IterOptions,
+	cmp Compare,
+	newIters tableNewIters,
+	files []fileMetadata,
+	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, newIters, files)
+	l.init(opts, cmp, newIters, files, bytesIterated)
 	return l
 }
 
 func (l *levelIter) init(
-	opts *IterOptions, cmp Compare, newIters tableNewIters, files []fileMetadata,
+	opts *IterOptions,
+	cmp Compare,
+	newIters tableNewIters,
+	files []fileMetadata,
+	bytesIterated *uint64,
 ) {
 	l.opts = opts
 	if l.opts != nil {
@@ -77,6 +88,7 @@ func (l *levelIter) init(
 	l.index = -1
 	l.newIters = newIters
 	l.files = files
+	l.bytesIterated = bytesIterated
 }
 
 func (l *levelIter) initRangeDel(rangeDelIter *internalIterator) {
@@ -171,7 +183,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		var rangeDelIter internalIterator
-		l.iter, rangeDelIter, l.err = l.newIters(f, &l.tableOpts)
+		l.iter, rangeDelIter, l.err = l.newIters(f, &l.tableOpts, l.bytesIterated)
 		if l.err != nil || l.iter == nil {
 			return false
 		}

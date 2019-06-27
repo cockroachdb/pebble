@@ -8,6 +8,7 @@ package pebble // import "github.com/petermattis/pebble"
 import (
 	"errors"
 	"fmt"
+	"github.com/petermattis/pebble/internal/rate"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -39,7 +40,9 @@ var (
 
 type flushable interface {
 	newIter(o *IterOptions) internalIterator
+	newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator
 	newRangeDelIter(o *IterOptions) internalIterator
+	totalBytes() uint64
 	flushed() chan struct{}
 	readyForFlush() bool
 	logInfo() (num, size uint64)
@@ -169,6 +172,8 @@ type DB struct {
 	logRecycler logRecycler
 
 	closed int32 // updated atomically
+
+	flushLimiter *rate.Limiter
 
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
@@ -505,7 +510,7 @@ func (d *DB) newIterInternal(
 	current := readState.current
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
-		iter, rangeDelIter, err := d.newIters(f, &dbi.opts)
+		iter, rangeDelIter, err := d.newIters(f, &dbi.opts, nil)
 		if err != nil {
 			dbi.err = err
 			return dbi
@@ -543,7 +548,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(&dbi.opts, d.cmp, d.newIters, current.files[level])
+		li.init(&dbi.opts, d.cmp, d.newIters, current.files[level], nil)
 		li.initRangeDel(&rangeDelIters[0])
 		li.initLargestUserKey(&largestUserKeys[0])
 		iters = append(iters, li)
