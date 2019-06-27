@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"github.com/petermattis/pebble/internal/rate"
 	"io"
 	"io/ioutil"
 	"os"
@@ -85,6 +86,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.mem.mutable = newMemTable(d.opts)
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+	d.mu.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
 	d.mu.cleaner.cond.L = &d.mu.Mutex
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})

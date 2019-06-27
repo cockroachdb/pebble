@@ -8,6 +8,7 @@ package pebble // import "github.com/petermattis/pebble"
 import (
 	"errors"
 	"fmt"
+	"github.com/petermattis/pebble/internal/rate"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -39,7 +40,10 @@ var (
 
 type flushable interface {
 	newIter(o *IterOptions) internalIterator
+	newFlushIter(o *IterOptions) internalIterator
 	newRangeDelIter(o *IterOptions) internalIterator
+	bytesFlushed() uint32
+	totalBytes() uint32
 	flushed() chan struct{}
 	readyForFlush() bool
 	logInfo() (num, size uint64)
@@ -199,6 +203,8 @@ type DB struct {
 			// log.LogWriter are invalid while switching is true.
 			switching bool
 		}
+
+		flushLimiter *rate.Limiter
 
 		compact struct {
 			cond           sync.Cond

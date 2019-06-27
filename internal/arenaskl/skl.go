@@ -84,6 +84,10 @@ type Skiplist struct {
 	tail   *node
 	height uint32 // Current height. 1 <= height <= maxHeight. CAS.
 
+	// bytesIterated is used by FlushIterator to keep track of the number of bytes
+	// flushed.
+	bytesIterated uint32
+
 	rand struct {
 		sync.Mutex
 		src rand.PCGSource
@@ -170,6 +174,9 @@ func (s *Skiplist) Arena() *Arena { return s.arena }
 
 // Size returns the number of bytes that have allocated from the arena.
 func (s *Skiplist) Size() uint32 { return s.arena.Size() }
+
+// BytesIterated returns the number of bytes that have been iterated through.
+func (s *Skiplist) BytesIterated() uint32 { return s.bytesIterated }
 
 // Add adds a new key if it does not yet exist. If the key already exists, then
 // Add returns ErrRecordExists. If there isn't enough room in the arena, then
@@ -310,6 +317,16 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 func (s *Skiplist) NewIter(lower, upper []byte) *Iterator {
 	it := iterPool.Get().(*Iterator)
 	*it = Iterator{list: s, nd: s.head, lower: lower, upper: upper}
+	return it
+}
+
+// NewFlushIter returns a new FlushIterator, which is similar to an Iterator
+// but also sets the current number of the bytes that have been iterated
+// through. Note that only one FlushIterator can be used concurrently for an
+// underlying skiplist.
+func (s *Skiplist) NewFlushIter(lower, upper []byte) *FlushIterator {
+	it := flushIterPool.Get().(*FlushIterator)
+	*it = FlushIterator{list: s, nd: s.head, lower: lower, upper: upper}
 	return it
 }
 

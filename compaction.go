@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/petermattis/pebble/internal/base"
@@ -461,7 +462,7 @@ func (c *compaction) newInputIter(
 	if len(c.flushing) != 0 {
 		if len(c.flushing) == 1 {
 			f := c.flushing[0]
-			iter := f.newIter(nil)
+			iter := f.newFlushIter(nil)
 			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 				return newMergingIter(c.cmp, iter, rangeDelIter), nil
 			}
@@ -470,7 +471,7 @@ func (c *compaction) newInputIter(
 		iters := make([]internalIterator, 0, 2*len(c.flushing))
 		for i := range c.flushing {
 			f := c.flushing[i]
-			iters = append(iters, f.newIter(nil))
+			iters = append(iters, f.newFlushIter(nil))
 			rangeDelIter := f.newRangeDelIter(nil)
 			if rangeDelIter != nil {
 				iters = append(iters, rangeDelIter)
@@ -991,6 +992,20 @@ func (d *DB) runCompaction(c *compaction) (
 	}
 
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
+		// Slow down memtable flushing to match fill rate.
+		if c.flushing != nil {
+			var dirtyBytes uint32
+			for _, m := range d.mu.mem.queue {
+				dirtyBytes += m.totalBytes() - m.bytesFlushed()
+			}
+
+			if dirtyBytes <= uint32(d.opts.MemTableSize * 105/100) {
+				// TODO(ryan): Use rate limiter here instead of sleeping.
+				// To use a rate limiter, we need to expose node size through
+				// the iterator somehow.
+				time.Sleep(time.Millisecond)
+			}
+		}
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
 		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {

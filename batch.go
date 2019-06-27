@@ -845,6 +845,8 @@ type flushableBatch struct {
 	cmp  Compare
 	data []byte
 
+	memTableSize uint32
+
 	// The base sequence number for the entries in the batch. This is the same
 	// value as Batch.seqNum() and is cached here for performance.
 	seqNum uint64
@@ -874,6 +876,7 @@ var _ flushable = (*flushableBatch)(nil)
 func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
 		data:            batch.storage.data,
+		memTableSize:    batch.memTableSize,
 		cmp:             comparer.Compare,
 		offsets:         make([]flushableBatchEntry, 0, batch.count()),
 		rangeDelOffsets: nil, // NB: assume no range deletions need indexing
@@ -949,6 +952,10 @@ func (b *flushableBatch) newIter(o *IterOptions) internalIterator {
 	}
 }
 
+func (b *flushableBatch) newFlushIter(o *IterOptions) internalIterator {
+	return b.newIter(o)
+}
+
 func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
 	if len(b.rangeDelOffsets) == 0 {
 		return nil
@@ -981,6 +988,16 @@ func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
 	}
 
 	return rangedel.NewIter(b.cmp, b.tombstones)
+}
+
+func (b *flushableBatch) bytesFlushed() uint32 {
+	// TODO(ryan): This needs to be implemented. Need to figure out how.
+	// Perhaps b.memTableSize * (iteration_index / num_elements)?
+	return 0
+}
+
+func (b *flushableBatch) totalBytes() uint32 {
+	return b.memTableSize
 }
 
 func (b *flushableBatch) flushed() chan struct{} {
