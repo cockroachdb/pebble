@@ -179,12 +179,20 @@ func (m *memTable) newIter(o *IterOptions) internalIterator {
 	return m.skl.NewIter(o.GetLowerBound(), o.GetUpperBound())
 }
 
+func (m *memTable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+	return m.skl.NewFlushIter(o.GetLowerBound(), o.GetUpperBound(), bytesFlushed)
+}
+
 func (m *memTable) newRangeDelIter(*IterOptions) internalIterator {
 	tombstones := m.tombstones.get(m)
 	if tombstones == nil {
 		return nil
 	}
 	return rangedel.NewIter(m.cmp, tombstones)
+}
+
+func (m *memTable) totalBytes() uint64 {
+	return uint64(m.skl.Size())
 }
 
 func (m *memTable) close() error {

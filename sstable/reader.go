@@ -467,6 +467,92 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.upper = upper
 }
 
+// compactionIterator is similar to Iterator but it increments the number of
+// bytes that have been iterated through.
+type compactionIterator struct {
+	*Iterator
+	bytesIterated *uint64
+}
+
+func (i *compactionIterator) SeekGE(key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekGE unimplemented")
+}
+
+func (i *compactionIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
+func (i *compactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekLT unimplemented")
+}
+
+func (i *compactionIterator) First() (*InternalKey, []byte) {
+	if i.err != nil {
+		return nil, nil
+	}
+
+	if ikey, _ := i.index.First(); ikey == nil {
+		return nil, nil
+	}
+	if !i.loadBlock() {
+		return nil, nil
+	}
+	ikey, val := i.data.First()
+	if ikey == nil {
+		return nil, nil
+	}
+	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+		i.data.invalidateUpper() // force i.data.Valid() to return false
+		return nil, nil
+	}
+	*i.bytesIterated += uint64(ikey.Size() + len(val))
+	return ikey, val
+}
+
+func (i *compactionIterator) Last() (*InternalKey, []byte) {
+	panic("pebble: Last unimplemented")
+}
+
+func (i *compactionIterator) Next() (*InternalKey, []byte) {
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.data.Next(); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.data.invalidateUpper()
+			return nil, nil
+		}
+		*i.bytesIterated += uint64(key.Size() + len(val))
+		return key, val
+	}
+	for {
+		if i.data.err != nil {
+			i.err = i.data.err
+			break
+		}
+		if key, _ := i.index.Next(); key == nil {
+			break
+		}
+		if i.loadBlock() {
+			key, val := i.data.First()
+			if key == nil {
+				return nil, nil
+			}
+			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+				i.data.invalidateUpper()
+				return nil, nil
+			}
+			*i.bytesIterated += uint64(key.Size() + len(val))
+			return key, val
+		}
+	}
+	return nil, nil
+}
+
+func (i *compactionIterator) Prev() (*InternalKey, []byte) {
+	panic("pebble: Prev unimplemented")
+}
+
 type weakCachedBlock struct {
 	bh     blockHandle
 	mu     sync.RWMutex
@@ -560,6 +646,17 @@ func (r *Reader) NewIter(lower, upper []byte) *Iterator {
 	i := iterPool.Get().(*Iterator)
 	_ = i.Init(r, lower, upper)
 	return i
+}
+
+// NewCompactionIter returns an internal iterator similar to NewIter but it also increments
+// the number of bytes iterated.
+func (r *Reader) NewCompactionIter(lower, upper []byte, bytesIterated *uint64) *compactionIterator {
+	i := iterPool.Get().(*Iterator)
+	_ = i.Init(r, lower, upper)
+	return &compactionIterator{
+		Iterator:      i,
+		bytesIterated: bytesIterated,
+	}
 }
 
 // NewRangeDelIter returns an internal iterator for the contents of the
