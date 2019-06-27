@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -66,6 +67,8 @@ type compaction struct {
 
 	// flushing contains the flushables (aka memtables) that are being flushed.
 	flushing []flushable
+	// bytesIterated contains the number of bytes that have been flushed/compacted.
+	bytesIterated uint64
 	// inputs are the tables to be compacted.
 	inputs [2][]fileMetadata
 
@@ -461,7 +464,7 @@ func (c *compaction) newInputIter(
 	if len(c.flushing) != 0 {
 		if len(c.flushing) == 1 {
 			f := c.flushing[0]
-			iter := f.newIter(nil)
+			iter := f.newFlushIter(nil, &c.bytesIterated)
 			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 				return newMergingIter(c.cmp, iter, rangeDelIter), nil
 			}
@@ -470,7 +473,7 @@ func (c *compaction) newInputIter(
 		iters := make([]internalIterator, 0, 2*len(c.flushing))
 		for i := range c.flushing {
 			f := c.flushing[i]
-			iters = append(iters, f.newIter(nil))
+			iters = append(iters, f.newFlushIter(nil, &c.bytesIterated))
 			rangeDelIter := f.newRangeDelIter(nil)
 			if rangeDelIter != nil {
 				iters = append(iters, rangeDelIter)
@@ -498,9 +501,9 @@ func (c *compaction) newInputIter(
 	// one which iterates over the range deletions. These two iterators are
 	// combined with a mergingIter.
 	newRangeDelIter := func(
-		f *fileMetadata, _ *IterOptions,
+		f *fileMetadata, _ *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
-		iter, rangeDelIter, err := newIters(f, nil /* iter options */)
+		iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
 			// immediately close it. One way to solve this would be to add new
@@ -524,12 +527,12 @@ func (c *compaction) newInputIter(
 	}
 
 	if c.startLevel != 0 {
-		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0]))
-		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0]))
+		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0], &c.bytesIterated))
+		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0], &c.bytesIterated))
 	} else {
 		for i := range c.inputs[0] {
 			f := &c.inputs[0][i]
-			iter, rangeDelIter, err := newIters(f, nil /* iter options */)
+			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
@@ -540,8 +543,8 @@ func (c *compaction) newInputIter(
 		}
 	}
 
-	iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[1]))
-	iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[1]))
+	iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[1], &c.bytesIterated))
+	iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[1], &c.bytesIterated))
 	return newMergingIter(c.cmp, iters...), nil
 }
 
@@ -990,7 +993,35 @@ func (d *DB) runCompaction(c *compaction) (
 		return nil
 	}
 
+	var prevBytesIterated uint64
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
+		// Slow down memtable flushing to match fill rate.
+		if c.flushing != nil {
+			// dirtyBytes represents unflushed bytes in all the memtables, even
+			// the ones which aren't being flushed such as the mutable memtable.
+			d.mu.Lock()
+			dirtyBytes := d.memTableTotalBytesLocked()
+			d.mu.Unlock()
+			dirtyBytes -= uint64(c.bytesIterated)
+
+			flushAmount := c.bytesIterated - prevBytesIterated
+			prevBytesIterated = c.bytesIterated
+
+			if dirtyBytes <= uint64(d.opts.MemTableSize * 105/100) {
+				burst := d.flushLimiter.Burst()
+				if flushAmount > uint64(burst) {
+					err := d.flushLimiter.WaitN(context.Background(), burst)
+					if err != nil {
+						return nil, pendingOutputs, err
+					}
+					flushAmount -= uint64(burst)
+				}
+				err := d.flushLimiter.WaitN(context.Background(), int(flushAmount))
+				if err != nil {
+					return nil, pendingOutputs, err
+				}
+			}
+		}
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
 		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {
@@ -1031,6 +1062,15 @@ func (d *DB) runCompaction(c *compaction) (
 		return nil, pendingOutputs, err
 	}
 	return ve, pendingOutputs, nil
+}
+
+// memTableTotalBytesLocked returns the total number of bytes in the memtables.
+// Note that this includes the mutable memtable as well.
+func (d *DB) memTableTotalBytesLocked() (totalBytes uint64) {
+	for _, m := range d.mu.mem.queue {
+		totalBytes += m.totalBytes()
+	}
+	return totalBytes
 }
 
 // scanObsoleteFiles scans the filesystem for files that are no longer needed

@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"github.com/petermattis/pebble/internal/rate"
 	"io"
 	"io/ioutil"
 	"os"
@@ -81,6 +82,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
+	d.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.mem.mutable = newMemTable(d.opts)
