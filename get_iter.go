@@ -132,7 +132,10 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			// Create iterators from L0 from newest to oldest.
 			if n := len(g.l0); n > 0 {
 				l := &g.l0[n-1]
-				g.iter, g.rangeDelIter, g.err = g.newIters(l, nil /* iter options */)
+				g.iter, g.rangeDelIter, g.err = g.newIters(
+					l,
+					nil /* iter options */,
+					nil /* bytes iterated */)
 				if g.err != nil {
 					return nil, nil
 				}
@@ -151,7 +154,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			continue
 		}
 
-		g.levelIter.init(nil, g.cmp, g.newIters, g.version.files[g.level])
+		g.levelIter.init(nil, g.cmp, g.newIters, g.version.files[g.level], nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter

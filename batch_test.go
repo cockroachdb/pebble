@@ -412,6 +412,27 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 	})
 }
 
+func TestFlushableBatchBytesIterated(t *testing.T) {
+	batch := newBatch(nil)
+	for j := 0; j < 1000; j++ {
+		key := make([]byte, 8 + j%3)
+		value := make([]byte, 7 + j%5)
+		batch.Set(key, value, nil)
+
+		fb := newFlushableBatch(batch, DefaultComparer)
+
+		var bytesIterated uint64
+		it := fb.newFlushIter(nil, &bytesIterated)
+
+		for it.First(); it.Valid(); it.Next() {}
+
+		expected := fb.totalBytes()
+		if bytesIterated != expected {
+			t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+		}
+	}
+}
+
 func BenchmarkBatchSet(b *testing.B) {
 	value := make([]byte, 10)
 	for i := range value {

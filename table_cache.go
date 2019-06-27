@@ -51,7 +51,7 @@ func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size int) {
 }
 
 func (c *tableCache) newIters(
-	meta *fileMetadata, opts *IterOptions,
+	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
 	// refCount. If opening the underlying table resulted in error, then we
@@ -77,29 +77,61 @@ func (c *tableCache) newIters(
 		// using a singleton is fine.
 		return emptyIter, nil, nil
 	}
-
-	iter := x.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
-	atomic.AddInt32(&c.mu.iterCount, 1)
-	if raceEnabled {
-		c.mu.Lock()
-		c.mu.iters[iter] = debug.Stack()
-		c.mu.Unlock()
-	}
-
-	iter.SetCloseHook(func() error {
-		c.mu.Lock()
-		atomic.AddInt32(&c.mu.iterCount, -1)
+	var iter internalIterator
+	if bytesIterated != nil {
+		tableCompactionIter := x.reader.NewCompactionIter(
+			opts.GetLowerBound(),
+			opts.GetUpperBound(),
+			bytesIterated)
+		atomic.AddInt32(&c.mu.iterCount, 1)
 		if raceEnabled {
-			delete(c.mu.iters, iter)
+			c.mu.Lock()
+			c.mu.iters[tableCompactionIter.Iterator] = debug.Stack()
+			c.mu.Unlock()
 		}
-		n.refCount--
-		if n.refCount == 0 {
-			c.mu.releasing++
-			go n.release(c)
+
+		tableCompactionIter.Iterator.SetCloseHook(func() error {
+			c.mu.Lock()
+			atomic.AddInt32(&c.mu.iterCount, -1)
+			if raceEnabled {
+				delete(c.mu.iters, tableCompactionIter.Iterator)
+			}
+			n.refCount--
+			if n.refCount == 0 {
+				c.mu.releasing++
+				go n.release(c)
+			}
+			c.mu.Unlock()
+			return nil
+		})
+
+		iter = tableCompactionIter
+	} else {
+		tableIter := x.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+		atomic.AddInt32(&c.mu.iterCount, 1)
+		if raceEnabled {
+			c.mu.Lock()
+			c.mu.iters[tableIter] = debug.Stack()
+			c.mu.Unlock()
 		}
-		c.mu.Unlock()
-		return nil
-	})
+
+		tableIter.SetCloseHook(func() error {
+			c.mu.Lock()
+			atomic.AddInt32(&c.mu.iterCount, -1)
+			if raceEnabled {
+				delete(c.mu.iters, tableIter)
+			}
+			n.refCount--
+			if n.refCount == 0 {
+				c.mu.releasing++
+				go n.release(c)
+			}
+			c.mu.Unlock()
+			return nil
+		})
+
+		iter = tableIter
+	}
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.

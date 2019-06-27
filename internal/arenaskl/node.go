@@ -47,6 +47,7 @@ type node struct {
 	// If valueSize is negative, the value is stored separately from the node in
 	// arena.extValues.
 	valueSize int32
+	allocSize uint32
 
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
@@ -90,7 +91,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	nodeSize := uint32(maxNodeSize - unusedSize)
 	valueIndex := int32(valueSize)
 
-	nodeOffset, err := arena.alloc(nodeSize+keySize+valueSize, align4)
+	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, align4)
 	if err != nil {
 		return
 	}
@@ -99,6 +100,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	nd.keyOffset = nodeOffset + nodeSize
 	nd.keySize = uint32(keySize)
 	nd.valueSize = valueIndex
+	nd.allocSize = allocSize
 	return
 }
 
