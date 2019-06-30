@@ -68,7 +68,7 @@ func runScan(cmd *cobra.Command, args []string) {
 	}
 
 	runTest(args[0], test{
-		init: func(d *pebble.DB, wg *sync.WaitGroup) {
+		init: func(d DB, wg *sync.WaitGroup) {
 			const count = 100000
 			const batch = 1000
 

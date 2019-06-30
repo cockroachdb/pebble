@@ -35,8 +35,8 @@ var ycsbConfig struct {
 	prepopulatedKeys int
 	numOps           uint64
 	scans            string
-	workload         string
 	values           string
+	workload         string
 }
 
 var ycsbCmd = &cobra.Command{
@@ -295,7 +295,7 @@ func newYcsb(
 	return y
 }
 
-func (y *ycsb) init(db *pebble.DB, wg *sync.WaitGroup) {
+func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 	if ycsbConfig.initialKeys > 0 {
 		rng := randvar.NewRand()
 
@@ -324,7 +324,7 @@ func (y *ycsb) init(db *pebble.DB, wg *sync.WaitGroup) {
 	}
 }
 
-func (y *ycsb) run(db *pebble.DB, wg *sync.WaitGroup) {
+func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	rng := randvar.NewRand()
@@ -368,9 +368,14 @@ func (y *ycsb) hashKey(key uint64) uint64 {
 }
 
 func (y *ycsb) makeKey(keyNum uint64) []byte {
-	key := make([]byte, 4, 24)
+	key := make([]byte, 4, 24+10)
 	copy(key, "user")
-	return strconv.AppendUint(key, y.hashKey(keyNum), 10)
+	key = strconv.AppendUint(key, y.hashKey(keyNum), 10)
+	// Use the MVCC encoding for keys. This appends a timestamp with
+	// walltime=1. That knowledge is utilized by rocksDB.Scan.
+	key = append(key, '\x00', '\x00', '\x00', '\x00', '\x00',
+		'\x00', '\x00', '\x00', '\x01', '\x08')
+	return key
 }
 
 func (y *ycsb) nextReadKey() []byte {
@@ -385,7 +390,7 @@ func (y *ycsb) randBytes(rng *rand.Rand) []byte {
 	return randomBlock(rng, length, y.targetCompression)
 }
 
-func (y *ycsb) insert(db *pebble.DB, rng *rand.Rand) {
+func (y *ycsb) insert(db DB, rng *rand.Rand) {
 	count := y.batchDist.Uint64()
 	keyNums := make([]uint64, count)
 
@@ -410,7 +415,7 @@ func (y *ycsb) insert(db *pebble.DB, rng *rand.Rand) {
 	}
 }
 
-func (y *ycsb) read(db *pebble.DB, rng *rand.Rand) {
+func (y *ycsb) read(db DB, rng *rand.Rand) {
 	key := y.nextReadKey()
 	iter := db.NewIter(nil)
 	iter.SeekGE(key)
@@ -420,23 +425,16 @@ func (y *ycsb) read(db *pebble.DB, rng *rand.Rand) {
 	atomic.AddUint64(&y.numKeys[ycsbRead], 1)
 }
 
-func (y *ycsb) scan(db *pebble.DB, rng *rand.Rand) {
-	i, count := 0, y.scanDist.Uint64()
-	iter := db.NewIter(nil)
+func (y *ycsb) scan(db DB, rng *rand.Rand) {
+	count := y.scanDist.Uint64()
 	key := y.nextReadKey()
-	for valid := iter.SeekGE([]byte(key)); valid; valid = iter.Next() {
-		i++
-		if i >= int(count) {
-			break
-		}
-	}
-	if err := iter.Close(); err != nil {
+	if err := db.Scan(key, int64(count)); err != nil {
 		log.Fatal(err)
 	}
 	atomic.AddUint64(&y.numKeys[ycsbScan], count)
 }
 
-func (y *ycsb) update(db *pebble.DB, rng *rand.Rand) {
+func (y *ycsb) update(db DB, rng *rand.Rand) {
 	count := int(y.batchDist.Uint64())
 	b := db.NewBatch()
 	for i := 0; i < count; i++ {

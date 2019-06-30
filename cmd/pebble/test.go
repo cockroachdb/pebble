@@ -17,7 +17,6 @@ import (
 
 	"github.com/codahale/hdrhistogram"
 	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/cache"
 )
 
 const (
@@ -30,12 +29,37 @@ func startCPUProfile() func() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// runtime.SetBlockProfileRate(1)
+	// runtime.SetMutexProfileFraction(1)
+
 	if err := pprof.StartCPUProfile(f); err != nil {
 		log.Fatal(err)
 	}
 	return func() {
 		pprof.StopCPUProfile()
 		f.Close()
+
+		// if p := pprof.Lookup("mutex"); p != nil {
+		// 	f, err := os.Create("mutex.prof")
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	if err := p.WriteTo(f, 0); err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	f.Close()
+		// }
+
+		// if p := pprof.Lookup("block"); p != nil {
+		// 	f, err := os.Create("block.prof")
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	if err := p.WriteTo(f, 0); err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	f.Close()
+		// }
 	}
 }
 
@@ -139,8 +163,8 @@ func (w *histogramRegistry) Tick(fn func(histogramTick)) {
 	var names []string
 	for _, hist := range registered {
 		hist.tick(func(h *hdrhistogram.Histogram) {
-			if m, ok := merged[hist.name]; ok {
-				m.Merge(h)
+			if p, ok := merged[hist.name]; ok {
+				p.Merge(h)
 			} else {
 				merged[hist.name] = h
 				names = append(names, hist.name)
@@ -173,7 +197,7 @@ func (w *histogramRegistry) Tick(fn func(histogramTick)) {
 }
 
 type test struct {
-	init func(db *pebble.DB, wg *sync.WaitGroup)
+	init func(db DB, wg *sync.WaitGroup)
 	tick func(elapsed time.Duration, i int)
 	done func(elapsed time.Duration)
 }
@@ -189,33 +213,11 @@ func runTest(dir string, t test) {
 
 	fmt.Printf("dir %s\nconcurrency %d\n", dir, concurrency)
 
-	opts := &pebble.Options{
-		Cache:                       cache.New(1 << 30),
-		Comparer:                    mvccComparer,
-		DisableWAL:                  disableWAL,
-		MemTableSize:                64 << 20,
-		MemTableStopWritesThreshold: 4,
-		L0CompactionThreshold:       2,
-		L0SlowdownWritesThreshold:   20,
-		L0StopWritesThreshold:       32,
-		LBaseMaxBytes:               64 << 20, // 64 MB
-		Levels: []pebble.LevelOptions{{
-			BlockSize: 32 << 10,
-		}},
-	}
-	opts.EnsureDefaults()
-
-	if verbose {
-		opts.EventListener = pebble.MakeLoggingEventListener(nil)
-		opts.EventListener.TableDeleted = nil
-		opts.EventListener.TableIngested = nil
-		opts.EventListener.WALCreated = nil
-		opts.EventListener.WALDeleted = nil
-	}
-
-	db, err := pebble.Open(dir, opts)
-	if err != nil {
-		log.Fatal(err)
+	var db DB
+	if rocksdb {
+		db = newRocksDB(dir)
+	} else {
+		db = newPebbleDB(dir)
 	}
 
 	var wg sync.WaitGroup
@@ -243,12 +245,12 @@ func runTest(dir string, t test) {
 	stopProf := startCPUProfile()
 	defer stopProf()
 
-	backgroundCompactions := func(m *pebble.VersionMetrics) bool {
+	backgroundCompactions := func(p *pebble.VersionMetrics) bool {
 		// The last level never gets selected as an input level for compaction,
 		// only as an output level, so ignore it for the purposes of determining if
 		// background compactions are still needed.
-		for i := range m.Levels[:len(m.Levels)-1] {
-			if m.Levels[i].Score >= 1 {
+		for i := range p.Levels[:len(p.Levels)-1] {
+			if p.Levels[i].Score > 1 {
 				return true
 			}
 		}
@@ -265,9 +267,9 @@ func runTest(dir string, t test) {
 					fmt.Printf("%s", db.Metrics())
 				}
 			} else if waitCompactions {
-				m := db.Metrics()
-				fmt.Printf("%s", m)
-				if !backgroundCompactions(m) {
+				p := db.Metrics()
+				fmt.Printf("%s", p)
+				if !backgroundCompactions(p) {
 					return
 				}
 			}
@@ -275,9 +277,9 @@ func runTest(dir string, t test) {
 		case <-workersDone:
 			workersDone = nil
 			t.done(time.Since(start))
-			m := db.Metrics()
-			fmt.Printf("%s", m)
-			if !waitCompactions || !backgroundCompactions(m) {
+			p := db.Metrics()
+			fmt.Printf("%s", p)
+			if !waitCompactions || !backgroundCompactions(p) {
 				return
 			}
 			fmt.Printf("waiting for background compactions\n")
