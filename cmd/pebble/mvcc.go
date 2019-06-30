@@ -90,7 +90,7 @@ func mvccEncode(dst, key []byte, walltime uint64, logical uint32) []byte {
 	return dst
 }
 
-func mvccForwardScan(d *pebble.DB, start, end, ts []byte) (int, int64) {
+func mvccForwardScan(d DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),
@@ -113,7 +113,7 @@ func mvccForwardScan(d *pebble.DB, start, end, ts []byte) (int, int64) {
 	return count, nbytes
 }
 
-func mvccReverseScan(d *pebble.DB, start, end, ts []byte) (int, int64) {
+func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
 		LowerBound: mvccEncode(nil, start, 0, 0),
 		UpperBound: mvccEncode(nil, end, 0, 0),

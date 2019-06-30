@@ -63,7 +63,7 @@ func runSync(cmd *cobra.Command, args []string) {
 	}
 
 	runTest(args[0], test{
-		init: func(d *pebble.DB, wg *sync.WaitGroup) {
+		init: func(d DB, wg *sync.WaitGroup) {
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				latency := reg.Register("ops")
