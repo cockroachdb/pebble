@@ -29,13 +29,14 @@ const (
 )
 
 var ycsbConfig struct {
-	batch       string
-	keys        string
-	initialKeys int
-	numOps      uint64
-	scans       string
-	workload    string
-	values      string
+	batch            string
+	keys             string
+	initialKeys      int
+	prepopulatedKeys int
+	numOps           uint64
+	scans            string
+	workload         string
+	values           string
 }
 
 var ycsbCmd = &cobra.Command{
@@ -87,6 +88,9 @@ func init() {
 	ycsbCmd.Flags().IntVar(
 		&ycsbConfig.initialKeys, "initial-keys", 10000,
 		"initial number of keys to insert before beginning workload")
+	ycsbCmd.Flags().IntVar(
+		&ycsbConfig.prepopulatedKeys, "prepopulated-keys", 0,
+		"number of keys that were previously inserted into the database")
 	ycsbCmd.Flags().Uint64VarP(
 		&ycsbConfig.numOps, "num-ops", "n", 0,
 		"maximum number of operations (0 means unlimited)")
@@ -179,19 +183,24 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 }
 
 func ycsbParseKeyDist(d string) (randvar.Dynamic, error) {
+	totalKeys := uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys)
 	switch strings.ToLower(d) {
 	case "latest":
 		return randvar.NewDefaultSkewedLatest(nil)
 	case "uniform":
-		return randvar.NewUniform(nil, 1, uint64(ycsbConfig.initialKeys)), nil
+		return randvar.NewUniform(nil, 1, totalKeys), nil
 	case "zipf":
-		return randvar.NewZipf(nil, 1, uint64(ycsbConfig.initialKeys), 0.99)
+		return randvar.NewZipf(nil, 1, totalKeys, 0.99)
 	default:
 		return nil, fmt.Errorf("unknown distribution: %s", d)
 	}
 }
 
 func runYcsb(cmd *cobra.Command, args []string) error {
+	if wipe && ycsbConfig.prepopulatedKeys > 0 {
+		return fmt.Errorf("--wipe and --prepopulated-keys both specified which is nonsensical")
+	}
+
 	weights, err := ycsbParseWorkload(ycsbConfig.workload)
 	if err != nil {
 		return err
@@ -229,7 +238,6 @@ func runYcsb(cmd *cobra.Command, args []string) error {
 type ycsb struct {
 	writeOpts         *pebble.WriteOptions
 	reg               *histogramRegistry
-	weights           ycsbWeights
 	ops               *randvar.Weighted
 	keyDist           randvar.Dynamic
 	batchDist         randvar.Static
@@ -299,14 +307,16 @@ func (y *ycsb) init(db *pebble.DB, wg *sync.WaitGroup) {
 				}
 				b = db.NewBatch()
 			}
-			_ = b.Set(y.makeKey(uint64(i)), y.randBytes(rng), nil)
+			_ = b.Set(y.makeKey(uint64(i+ycsbConfig.prepopulatedKeys)), y.randBytes(rng), nil)
 		}
 		if err := b.Commit(y.writeOpts); err != nil {
 			log.Fatal(err)
 		}
-
-		y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys))
+		fmt.Printf("inserted keys [%d-%d)\n",
+			1+ycsbConfig.prepopulatedKeys,
+			1+ycsbConfig.prepopulatedKeys+ycsbConfig.initialKeys)
 	}
+	y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys))
 
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
