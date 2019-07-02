@@ -67,7 +67,7 @@ type tableCacheShard struct {
 		iterCount int32
 		iters     map[*sstable.Iterator][]byte
 		dummy     tableCacheNode
-		releasing int
+		releasing int32
 	}
 }
 
@@ -96,12 +96,7 @@ func (c *tableCacheShard) newIters(
 	n := c.findNode(meta)
 	<-n.loaded
 	if n.err != nil {
-		if !c.unrefNode(n) {
-			// Try loading the table again; the error may be transient.
-			//
-			// TODO(peter): This could loop forever. That doesn't seem right.
-			go n.load(c)
-		}
+		c.unrefNode(n)
 		return nil, nil, n.err
 	}
 
@@ -122,17 +117,13 @@ func (c *tableCacheShard) newIters(
 	}
 
 	iter.SetCloseHook(func() error {
-		c.mu.Lock()
-		atomic.AddInt32(&c.mu.iterCount, -1)
 		if raceEnabled {
+			c.mu.Lock()
 			delete(c.mu.iters, iter)
+			c.mu.Unlock()
 		}
-		n.refCount--
-		if n.refCount == 0 {
-			c.mu.releasing++
-			go n.release(c)
-		}
-		c.mu.Unlock()
+		c.unrefNode(n)
+		atomic.AddInt32(&c.mu.iterCount, -1)
 		return nil
 	})
 
@@ -152,17 +143,16 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 	delete(c.mu.nodes, n.meta.fileNum)
 	n.next.prev = n.prev
 	n.prev.next = n.next
-	n.refCount--
-	if n.refCount == 0 {
-		c.mu.releasing++
-		go n.release(c)
-	}
+	c.unrefNode(n)
 }
 
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
 func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
+	// TODO(peter): Experimentation shows that this lock is still a
+	// bottleneck. Investigate
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -190,7 +180,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	n.next.prev = n
 	n.prev.next = n
 	// The caller is responsible for decrementing the refCount.
-	n.refCount++
+	atomic.AddInt32(&n.refCount, 1)
 	return n
 }
 
@@ -200,17 +190,11 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 // node has already been removed from that map.
 //
 // Returns true if the node was released and false otherwise.
-func (c *tableCacheShard) unrefNode(n *tableCacheNode) bool {
-	c.mu.Lock()
-	n.refCount--
-	res := false
-	if n.refCount == 0 {
-		c.mu.releasing++
+func (c *tableCacheShard) unrefNode(n *tableCacheNode) {
+	if atomic.AddInt32(&n.refCount, -1) == 0 {
+		atomic.AddInt32(&c.mu.releasing, 1)
 		go n.release(c)
-		res = true
 	}
-	c.mu.Unlock()
-	return res
 }
 
 func (c *tableCacheShard) evict(fileNum uint64) {
@@ -240,9 +224,8 @@ func (c *tableCacheShard) Close() error {
 	}
 
 	for n := c.mu.dummy.next; n != &c.mu.dummy; n = n.next {
-		n.refCount--
-		if n.refCount == 0 {
-			c.mu.releasing++
+		if atomic.AddInt32(&n.refCount, -1) == 0 {
+			atomic.AddInt32(&c.mu.releasing, 1)
 			go n.release(c)
 		}
 	}
@@ -250,7 +233,11 @@ func (c *tableCacheShard) Close() error {
 	c.mu.dummy.next = nil
 	c.mu.dummy.prev = nil
 
-	for c.mu.releasing > 0 {
+	// While c.mu.releasing is updated atomically, we use a condition variable to
+	// signal when it changes. Note that all iterators must have been closed
+	// before tableCacheShard.Close was called, so there will be no concurrent
+	// increments of c.mu.releasing at this point.
+	for atomic.LoadInt32(&c.mu.releasing) > 0 {
 		c.mu.cond.Wait()
 	}
 	return nil
@@ -265,7 +252,7 @@ type tableCacheNode struct {
 	// The remaining fields are protected by the tableCache mutex.
 
 	next, prev *tableCacheNode
-	refCount   int
+	refCount   int32
 }
 
 func (n *tableCacheNode) load(c *tableCacheShard) {
@@ -291,8 +278,10 @@ func (n *tableCacheNode) release(c *tableCacheShard) {
 	if n.reader != nil {
 		_ = n.reader.Close()
 	}
+	// Update c.mu.releasing atomically, but also under the c.mu lock. This is
+	// required for correct operation of the condition variable.
 	c.mu.Lock()
-	c.mu.releasing--
+	atomic.AddInt32(&c.mu.releasing, -1)
 	c.mu.Unlock()
 	c.mu.cond.Signal()
 }
