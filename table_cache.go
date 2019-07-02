@@ -58,27 +58,26 @@ func (c *tableCache) newIters(
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
 	n := c.findNode(meta)
-	x := <-n.result
-	if x.err != nil {
+	<-n.loaded
+	if n.err != nil {
 		if !c.unrefNode(n) {
 			// Try loading the table again; the error may be transient.
 			//
 			// TODO(peter): This could loop forever. That doesn't seem right.
 			go n.load(c)
 		}
-		return nil, nil, x.err
+		return nil, nil, n.err
 	}
-	n.result <- x
 
 	if opts != nil &&
 		opts.TableFilter != nil &&
-		!opts.TableFilter(x.reader.Properties.UserProperties) {
+		!opts.TableFilter(n.reader.Properties.UserProperties) {
 		// Return the empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
 		return emptyIter, nil, nil
 	}
 
-	iter := x.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+	iter := n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
 	atomic.AddInt32(&c.mu.iterCount, 1)
 	if raceEnabled {
 		c.mu.Lock()
@@ -103,7 +102,7 @@ func (c *tableCache) newIters(
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	if rangeDelIter := x.reader.NewRangeDelIter(); rangeDelIter != nil {
+	if rangeDelIter := n.reader.NewRangeDelIter(); rangeDelIter != nil {
 		return iter, rangeDelIter, nil
 	}
 	// NB: Translate a nil range-del iterator into a nil interface.
@@ -136,7 +135,7 @@ func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
 		n = &tableCacheNode{
 			meta:     meta,
 			refCount: 1,
-			result:   make(chan tableReaderOrError, 1),
+			loaded:   make(chan struct{}),
 		}
 		c.mu.nodes[meta.fileNum] = n
 		if len(c.mu.nodes) > c.size {
@@ -221,14 +220,11 @@ func (c *tableCache) Close() error {
 	return nil
 }
 
-type tableReaderOrError struct {
-	reader *sstable.Reader
-	err    error
-}
-
 type tableCacheNode struct {
 	meta   *fileMetadata
-	result chan tableReaderOrError
+	reader *sstable.Reader
+	err    error
+	loaded chan struct{}
 
 	// The remaining fields are protected by the tableCache mutex.
 
@@ -240,21 +236,24 @@ func (n *tableCacheNode) load(c *tableCache) {
 	// Try opening the fileTypeTable first.
 	f, err := c.fs.Open(dbFilename(c.dirname, fileTypeTable, n.meta.fileNum))
 	if err != nil {
-		n.result <- tableReaderOrError{err: err}
+		n.err = err
+		close(n.loaded)
 		return
 	}
 	r := sstable.NewReader(f, n.meta.fileNum, c.opts)
 	if n.meta.smallestSeqNum == n.meta.largestSeqNum {
 		r.Properties.GlobalSeqNum = n.meta.largestSeqNum
 	}
-	n.result <- tableReaderOrError{reader: r}
+	n.reader = r
+	close(n.loaded)
 }
 
 func (n *tableCacheNode) release(c *tableCache) {
-	x := <-n.result
-	if x.err == nil {
-		// Nothing to be done about an error at this point.
-		_ = x.reader.Close()
+	<-n.loaded
+	// Nothing to be done about an error at this point. Close the reader if it is
+	// open.
+	if n.reader != nil {
+		_ = n.reader.Close()
 	}
 	c.mu.Lock()
 	c.mu.releasing--
