@@ -18,7 +18,7 @@ func TestCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cache := New(200)
+	cache := newShards(200, 1)
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
@@ -47,7 +47,7 @@ func TestCache(t *testing.T) {
 }
 
 func TestWeakHandle(t *testing.T) {
-	cache := New(5)
+	cache := newShards(5, 1)
 	cache.Set(1, 0, bytes.Repeat([]byte("a"), 5))
 	h := cache.Set(0, 0, bytes.Repeat([]byte("b"), 5))
 	if v := h.Get(); string(v) != "bbbbb" {
@@ -60,7 +60,7 @@ func TestWeakHandle(t *testing.T) {
 }
 
 func TestEvictFile(t *testing.T) {
-	cache := New(100)
+	cache := newShards(100, 1)
 	cache.Set(0, 0, bytes.Repeat([]byte("a"), 5))
 	cache.Set(1, 0, bytes.Repeat([]byte("a"), 5))
 	cache.Set(2, 0, bytes.Repeat([]byte("a"), 5))

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,41 @@ import (
 var emptyIter = &errorIter{err: nil}
 
 type tableCache struct {
+	shards []tableCacheShard
+}
+
+func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size int) {
+	c.shards = make([]tableCacheShard, runtime.NumCPU())
+	for i := range c.shards {
+		c.shards[i].init(dirname, fs, opts, size/len(c.shards))
+	}
+}
+
+func (c *tableCache) getShard(fileNum uint64) *tableCacheShard {
+	return &c.shards[fileNum%uint64(len(c.shards))]
+}
+
+func (c *tableCache) newIters(
+	meta *fileMetadata, opts *IterOptions,
+) (internalIterator, internalIterator, error) {
+	return c.getShard(meta.fileNum).newIters(meta, opts)
+}
+
+func (c *tableCache) evict(fileNum uint64) {
+	c.getShard(fileNum).evict(fileNum)
+}
+
+func (c *tableCache) Close() error {
+	for i := range c.shards {
+		err := c.shards[i].Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type tableCacheShard struct {
 	dirname string
 	fs      vfs.FS
 	opts    *Options
@@ -35,7 +71,7 @@ type tableCache struct {
 	}
 }
 
-func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size int) {
+func (c *tableCacheShard) init(dirname string, fs vfs.FS, opts *Options, size int) {
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts
@@ -50,7 +86,7 @@ func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size int) {
 	}
 }
 
-func (c *tableCache) newIters(
+func (c *tableCacheShard) newIters(
 	meta *fileMetadata, opts *IterOptions,
 ) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing n's
@@ -109,10 +145,10 @@ func (c *tableCache) newIters(
 	return iter, nil, nil
 }
 
-// releaseNode releases a node from the tableCache.
+// releaseNode releases a node from the tableCacheShard.
 //
 // c.mu must be held when calling this.
-func (c *tableCache) releaseNode(n *tableCacheNode) {
+func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 	delete(c.mu.nodes, n.meta.fileNum)
 	n.next.prev = n.prev
 	n.prev.next = n.next
@@ -126,7 +162,7 @@ func (c *tableCache) releaseNode(n *tableCacheNode) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
+func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -160,11 +196,11 @@ func (c *tableCache) findNode(meta *fileMetadata) *tableCacheNode {
 
 // unrefNode decrements the reference count for the specified node, releasing
 // it if the reference count fell to 0. Note that the node has a reference if
-// it is present in tableCache.mu.nodes, so a reference count of 0 means the
+// it is present in tableCacheShard.mu.nodes, so a reference count of 0 means the
 // node has already been removed from that map.
 //
 // Returns true if the node was released and false otherwise.
-func (c *tableCache) unrefNode(n *tableCacheNode) bool {
+func (c *tableCacheShard) unrefNode(n *tableCacheNode) bool {
 	c.mu.Lock()
 	n.refCount--
 	res := false
@@ -177,7 +213,7 @@ func (c *tableCache) unrefNode(n *tableCacheNode) bool {
 	return res
 }
 
-func (c *tableCache) evict(fileNum uint64) {
+func (c *tableCacheShard) evict(fileNum uint64) {
 	c.mu.Lock()
 	if n := c.mu.nodes[fileNum]; n != nil {
 		c.releaseNode(n)
@@ -187,7 +223,7 @@ func (c *tableCache) evict(fileNum uint64) {
 	c.opts.Cache.EvictFile(fileNum)
 }
 
-func (c *tableCache) Close() error {
+func (c *tableCacheShard) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -232,7 +268,7 @@ type tableCacheNode struct {
 	refCount   int
 }
 
-func (n *tableCacheNode) load(c *tableCache) {
+func (n *tableCacheNode) load(c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
 	f, err := c.fs.Open(dbFilename(c.dirname, fileTypeTable, n.meta.fileNum))
 	if err != nil {
@@ -248,7 +284,7 @@ func (n *tableCacheNode) load(c *tableCache) {
 	close(n.loaded)
 }
 
-func (n *tableCacheNode) release(c *tableCache) {
+func (n *tableCacheNode) release(c *tableCacheShard) {
 	<-n.loaded
 	// Nothing to be done about an error at this point. Close the reader if it is
 	// open.
