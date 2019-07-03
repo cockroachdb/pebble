@@ -490,7 +490,7 @@ func (o *Options) Check(s string) error {
 			// RocksDB allows the merge operator to be unspecified, in which case it
 			// shows up as "nullptr".
 			if value != "nullptr" && value != o.Merger.Name {
-				return fmt.Errorf("pebble: merger name from file %q != meger name from options %q",
+				return fmt.Errorf("pebble: merger name from file %q != merger name from options %q",
 					value, o.Merger.Name)
 			}
 		}
