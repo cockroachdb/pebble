@@ -149,7 +149,7 @@ type WeakHandle interface {
 }
 
 type shard struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	maxSize  int64
 	coldSize int64
@@ -166,10 +166,9 @@ type shard struct {
 }
 
 func (c *shard) Get(fileNum, offset uint64) []byte {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+	c.mu.RLock()
 	e := c.blocks[key{fileNum: fileNum, offset: offset}]
+	c.mu.RUnlock()
 	if e == nil {
 		return nil
 	}
