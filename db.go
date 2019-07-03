@@ -8,14 +8,13 @@ package pebble // import "github.com/petermattis/pebble"
 import (
 	"errors"
 	"fmt"
-	"github.com/petermattis/pebble/internal/rate"
 	"io"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/base"
+	"github.com/petermattis/pebble/internal/rate"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -398,9 +397,6 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 
 func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 	d.mu.Lock()
-
-	// Throttle writes if there are too many L0 tables.
-	d.throttleWrite()
 
 	if b.flushable != nil {
 		b.flushable.seqNum = b.seqNum()
@@ -795,22 +791,6 @@ func (d *DB) walPreallocateSize() int {
 	size := d.opts.MemTableSize
 	size = (size / 10) + size
 	return size
-}
-
-func (d *DB) throttleWrite() {
-	if len(d.mu.versions.currentVersion().files[0]) <= d.opts.L0SlowdownWritesThreshold {
-		return
-	}
-	// fmt.Printf("L0 slowdown writes threshold\n")
-	// We are getting close to hitting a hard limit on the number of L0
-	// files. Rather than delaying a single write by several seconds when we hit
-	// the hard limit, start delaying each individual write by 1ms to reduce
-	// latency variance.
-	//
-	// TODO(peter): Use more sophisticated rate limiting.
-	d.mu.Unlock()
-	time.Sleep(1 * time.Millisecond)
-	d.mu.Lock()
 }
 
 func (d *DB) makeRoomForWrite(b *Batch) error {
