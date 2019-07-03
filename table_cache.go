@@ -17,16 +17,18 @@ import (
 	"github.com/petermattis/pebble/vfs"
 )
 
+const defaultTableCacheHitBuffer = 64
+
 var emptyIter = &errorIter{err: nil}
 
 type tableCache struct {
 	shards []tableCacheShard
 }
 
-func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size int) {
+func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size, hitBuffer int) {
 	c.shards = make([]tableCacheShard, runtime.NumCPU())
 	for i := range c.shards {
-		c.shards[i].init(dirname, fs, opts, size/len(c.shards))
+		c.shards[i].init(dirname, fs, opts, size/len(c.shards), hitBuffer)
 	}
 }
 
@@ -61,7 +63,7 @@ type tableCacheShard struct {
 	size    int
 
 	mu struct {
-		sync.Mutex
+		sync.RWMutex
 		cond      sync.Cond
 		nodes     map[uint64]*tableCacheNode
 		iterCount int32
@@ -69,17 +71,27 @@ type tableCacheShard struct {
 		dummy     tableCacheNode
 		releasing int32
 	}
+
+	hitsPool *sync.Pool
 }
 
-func (c *tableCacheShard) init(dirname string, fs vfs.FS, opts *Options, size int) {
+func (c *tableCacheShard) init(dirname string, fs vfs.FS, opts *Options, size, hitBuffer int) {
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts
 	c.size = size
-	c.mu.cond.L = &c.mu.Mutex
+	c.mu.cond.L = &c.mu.RWMutex
 	c.mu.nodes = make(map[uint64]*tableCacheNode)
 	c.mu.dummy.next = &c.mu.dummy
 	c.mu.dummy.prev = &c.mu.dummy
+	c.hitsPool = &sync.Pool{
+		New: func() interface{} {
+			return &tableCacheHits{
+				hits:  make([]*tableCacheNode, 0, hitBuffer),
+				shard: c,
+			}
+		},
+	}
 
 	if raceEnabled {
 		c.mu.iters = make(map[*sstable.Iterator][]byte)
@@ -143,18 +155,59 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 	delete(c.mu.nodes, n.meta.fileNum)
 	n.next.prev = n.prev
 	n.prev.next = n.next
+	n.prev = nil
+	n.next = nil
 	c.unrefNode(n)
+}
+
+// unrefNode decrements the reference count for the specified node, releasing
+// it if the reference count fell to 0. Note that the node has a reference if
+// it is present in tableCacheShard.mu.nodes, so a reference count of 0 means the
+// node has already been removed from that map.
+//
+// Returns true if the node was released and false otherwise.
+func (c *tableCacheShard) unrefNode(n *tableCacheNode) {
+	if atomic.AddInt32(&n.refCount, -1) == 0 {
+		atomic.AddInt32(&c.mu.releasing, 1)
+		go n.release(c)
+	}
 }
 
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
 func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
-	// TODO(peter): Experimentation shows that this lock is still a
-	// bottleneck. Investigate
+	// Fast-path for a hit in the cache. We grab the lock in shared mode, and use
+	// a batching mechanism to perform updates to the LRU list.
+	c.mu.RLock()
+	if n := c.mu.nodes[meta.fileNum]; n != nil {
+		// The caller is responsible for decrementing the refCount.
+		atomic.AddInt32(&n.refCount, 1)
+		c.mu.RUnlock()
+
+		// Record a hit for the node. This has to be done with tableCacheShard.mu
+		// unlocked as it might result in a call to
+		// tableCacheShard.recordHits. Note that the sync.Pool acts as a
+		// thread-local cache of the accesses. This is lossy (a GC can result in
+		// the sync.Pool be cleared), but that is ok as we don't need perfect
+		// accuracy for the LRU list.
+		hits := c.hitsPool.Get().(*tableCacheHits)
+		hits.recordHit(n)
+		c.hitsPool.Put(hits)
+		return n
+	}
+	c.mu.RUnlock()
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	{
+		// Flush the thread-local hits buffer as we already have the shard locked
+		// exclusively.
+		hits := c.hitsPool.Get().(*tableCacheHits)
+		hits.flushLocked()
+		c.hitsPool.Put(hits)
+	}
 
 	n := c.mu.nodes[meta.fileNum]
 	if n == nil {
@@ -184,19 +237,6 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	return n
 }
 
-// unrefNode decrements the reference count for the specified node, releasing
-// it if the reference count fell to 0. Note that the node has a reference if
-// it is present in tableCacheShard.mu.nodes, so a reference count of 0 means the
-// node has already been removed from that map.
-//
-// Returns true if the node was released and false otherwise.
-func (c *tableCacheShard) unrefNode(n *tableCacheNode) {
-	if atomic.AddInt32(&n.refCount, -1) == 0 {
-		atomic.AddInt32(&c.mu.releasing, 1)
-		go n.release(c)
-	}
-}
-
 func (c *tableCacheShard) evict(fileNum uint64) {
 	c.mu.Lock()
 	if n := c.mu.nodes[fileNum]; n != nil {
@@ -205,6 +245,29 @@ func (c *tableCacheShard) evict(fileNum uint64) {
 	c.mu.Unlock()
 
 	c.opts.Cache.EvictFile(fileNum)
+}
+
+func (c *tableCacheShard) recordHits(hits []*tableCacheNode) {
+	c.mu.Lock()
+	c.recordHitsLocked(hits)
+	c.mu.Unlock()
+}
+
+func (c *tableCacheShard) recordHitsLocked(hits []*tableCacheNode) {
+	for _, n := range hits {
+		if n.next == nil || n.prev == nil {
+			// The node is no longer on the LRU list.
+			continue
+		}
+		// Remove n from the doubly-linked list.
+		n.next.prev = n.prev
+		n.prev.next = n.next
+		// Insert n at the front of the doubly-linked list.
+		n.next = c.mu.dummy.next
+		n.prev = &c.mu.dummy
+		n.next.prev = n
+		n.prev.next = n
+	}
 }
 
 func (c *tableCacheShard) Close() error {
@@ -284,4 +347,24 @@ func (n *tableCacheNode) release(c *tableCacheShard) {
 	atomic.AddInt32(&c.mu.releasing, -1)
 	c.mu.Unlock()
 	c.mu.cond.Signal()
+}
+
+// tableCacheHits batches a set of node accesses in order to amortize exclusive
+// lock acquisition.
+type tableCacheHits struct {
+	hits  []*tableCacheNode
+	shard *tableCacheShard
+}
+
+func (f *tableCacheHits) recordHit(n *tableCacheNode) {
+	f.hits = append(f.hits, n)
+	if len(f.hits) == cap(f.hits) {
+		f.shard.recordHits(f.hits)
+		f.hits = f.hits[:0]
+	}
+}
+
+func (f *tableCacheHits) flushLocked() {
+	f.shard.recordHitsLocked(f.hits)
+	f.hits = f.hits[:0]
 }

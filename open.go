@@ -73,7 +73,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(dirname, opts.FS, d.opts, tableCacheSize)
+	d.tableCache.init(dirname, opts.FS, d.opts, tableCacheSize, defaultTableCacheHitBuffer)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.logSeqNum,
