@@ -247,10 +247,6 @@ type Options struct {
 	// The number of files necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
-	// Soft limit on the number of L0 files. Writes are slowed down when this
-	// threshold is reached.
-	L0SlowdownWritesThreshold int
-
 	// Hard limit on the number of L0 files. Writes are stopped when this
 	// threshold is reached.
 	L0StopWritesThreshold int
@@ -340,9 +336,6 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
 	}
-	if o.L0SlowdownWritesThreshold <= 0 {
-		o.L0SlowdownWritesThreshold = 8
-	}
 	if o.L0StopWritesThreshold <= 0 {
 		o.L0StopWritesThreshold = 12
 	}
@@ -418,7 +411,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
-	fmt.Fprintf(&buf, "  l0_slowdown_writes_threshold=%d\n", o.L0SlowdownWritesThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
