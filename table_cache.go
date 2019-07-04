@@ -64,15 +64,15 @@ type tableCacheShard struct {
 
 	mu struct {
 		sync.RWMutex
-		cond      sync.Cond
-		nodes     map[uint64]*tableCacheNode
-		iterCount int32
-		iters     map[*sstable.Iterator][]byte
-		dummy     tableCacheNode
-		releasing int32
+		nodes map[uint64]*tableCacheNode
+		// The iters map is only created and populated in race builds.
+		iters map[*sstable.Iterator][]byte
+		lru   tableCacheNode
 	}
 
-	hitsPool *sync.Pool
+	iterCount int32
+	releasing sync.WaitGroup
+	hitsPool  *sync.Pool
 }
 
 func (c *tableCacheShard) init(dirname string, fs vfs.FS, opts *Options, size, hitBuffer int) {
@@ -80,10 +80,9 @@ func (c *tableCacheShard) init(dirname string, fs vfs.FS, opts *Options, size, h
 	c.fs = fs
 	c.opts = opts
 	c.size = size
-	c.mu.cond.L = &c.mu.RWMutex
 	c.mu.nodes = make(map[uint64]*tableCacheNode)
-	c.mu.dummy.next = &c.mu.dummy
-	c.mu.dummy.prev = &c.mu.dummy
+	c.mu.lru.next = &c.mu.lru
+	c.mu.lru.prev = &c.mu.lru
 	c.hitsPool = &sync.Pool{
 		New: func() interface{} {
 			return &tableCacheHits{
@@ -121,7 +120,7 @@ func (c *tableCacheShard) newIters(
 	}
 
 	iter := n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
-	atomic.AddInt32(&c.mu.iterCount, 1)
+	atomic.AddInt32(&c.iterCount, 1)
 	if raceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
@@ -135,7 +134,7 @@ func (c *tableCacheShard) newIters(
 			c.mu.Unlock()
 		}
 		c.unrefNode(n)
-		atomic.AddInt32(&c.mu.iterCount, -1)
+		atomic.AddInt32(&c.iterCount, -1)
 		return nil
 	})
 
@@ -168,7 +167,7 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 // Returns true if the node was released and false otherwise.
 func (c *tableCacheShard) unrefNode(n *tableCacheNode) {
 	if atomic.AddInt32(&n.refCount, -1) == 0 {
-		atomic.AddInt32(&c.mu.releasing, 1)
+		c.releasing.Add(1)
 		go n.release(c)
 	}
 }
@@ -219,7 +218,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 		c.mu.nodes[meta.fileNum] = n
 		if len(c.mu.nodes) > c.size {
 			// Release the tail node.
-			c.releaseNode(c.mu.dummy.prev)
+			c.releaseNode(c.mu.lru.prev)
 		}
 		go n.load(c)
 	} else {
@@ -228,8 +227,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 		n.prev.next = n.next
 	}
 	// Insert n at the front of the doubly-linked list.
-	n.next = c.mu.dummy.next
-	n.prev = &c.mu.dummy
+	n.next = c.mu.lru.next
+	n.prev = &c.mu.lru
 	n.next.prev = n
 	n.prev.next = n
 	// The caller is responsible for decrementing the refCount.
@@ -263,8 +262,8 @@ func (c *tableCacheShard) recordHitsLocked(hits []*tableCacheNode) {
 		n.next.prev = n.prev
 		n.prev.next = n.next
 		// Insert n at the front of the doubly-linked list.
-		n.next = c.mu.dummy.next
-		n.prev = &c.mu.dummy
+		n.next = c.mu.lru.next
+		n.prev = &c.mu.lru
 		n.next.prev = n
 		n.prev.next = n
 	}
@@ -274,7 +273,7 @@ func (c *tableCacheShard) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if v := atomic.LoadInt32(&c.mu.iterCount); v > 0 {
+	if v := atomic.LoadInt32(&c.iterCount); v > 0 {
 		if !raceEnabled {
 			return fmt.Errorf("leaked iterators: %d", v)
 		}
@@ -286,23 +285,17 @@ func (c *tableCacheShard) Close() error {
 		return errors.New(buf.String())
 	}
 
-	for n := c.mu.dummy.next; n != &c.mu.dummy; n = n.next {
+	for n := c.mu.lru.next; n != &c.mu.lru; n = n.next {
 		if atomic.AddInt32(&n.refCount, -1) == 0 {
-			atomic.AddInt32(&c.mu.releasing, 1)
+			c.releasing.Add(1)
 			go n.release(c)
 		}
 	}
 	c.mu.nodes = nil
-	c.mu.dummy.next = nil
-	c.mu.dummy.prev = nil
+	c.mu.lru.next = nil
+	c.mu.lru.prev = nil
 
-	// While c.mu.releasing is updated atomically, we use a condition variable to
-	// signal when it changes. Note that all iterators must have been closed
-	// before tableCacheShard.Close was called, so there will be no concurrent
-	// increments of c.mu.releasing at this point.
-	for atomic.LoadInt32(&c.mu.releasing) > 0 {
-		c.mu.cond.Wait()
-	}
+	c.releasing.Wait()
 	return nil
 }
 
@@ -341,12 +334,7 @@ func (n *tableCacheNode) release(c *tableCacheShard) {
 	if n.reader != nil {
 		_ = n.reader.Close()
 	}
-	// Update c.mu.releasing atomically, but also under the c.mu lock. This is
-	// required for correct operation of the condition variable.
-	c.mu.Lock()
-	atomic.AddInt32(&c.mu.releasing, -1)
-	c.mu.Unlock()
-	c.mu.cond.Signal()
+	c.releasing.Done()
 }
 
 // tableCacheHits batches a set of node accesses in order to amortize exclusive
