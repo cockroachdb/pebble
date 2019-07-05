@@ -760,8 +760,10 @@ func (d *DB) AsyncFlush() error {
 // Metrics returns metrics about the database.
 func (d *DB) Metrics() *VersionMetrics {
 	metrics := &VersionMetrics{}
+	recycledLogs := d.logRecycler.count()
 	d.mu.Lock()
 	*metrics = d.mu.versions.metrics
+	metrics.WAL.ObsoleteFiles = int64(recycledLogs)
 	metrics.WAL.Size = atomic.LoadUint64(&d.mu.log.size)
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {

@@ -15,7 +15,7 @@ import (
 // size of the files, and compaction related metrics.
 type LevelMetrics struct {
 	// The total number of files in the level.
-	NumFiles uint64
+	NumFiles int64
 	// The total size in bytes of the files in the level.
 	Size uint64
 	// The level's compaction score.
@@ -71,7 +71,9 @@ func (m *LevelMetrics) format(buf *bytes.Buffer) {
 type VersionMetrics struct {
 	WAL struct {
 		// Number of live WAL files.
-		Files uint64
+		Files int64
+		// Number of obsolete WAL files.
+		ObsoleteFiles int64
 		// Size of the live data in the WAL files. Note that with WAL file
 		// recycling this is less than the actual on-disk size of the WAL files.
 		Size uint64

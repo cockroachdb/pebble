@@ -213,6 +213,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		PreallocateSize: d.walPreallocateSize(),
 	})
 	d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
+	d.mu.versions.metrics.WAL.Files++
 
 	// Write a new manifest to disk.
 	if err := d.mu.versions.logAndApply(0, &ve, d.dataDir); err != nil {

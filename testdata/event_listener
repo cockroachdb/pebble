@@ -94,7 +94,7 @@ sync: db
 metrics
 ----
 level__files____size___score______in__ingest____move____read___write___w-amp
-  WAL      0    27 B       -    32 B       -       -       -    81 B     2.5
+  WAL      1    27 B       -    32 B       -       -       -    81 B     2.5
     0      0     0 B    0.00    54 B     0 B     0 B     0 B   1.9 K    35.5
     1      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
     2      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0

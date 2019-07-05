@@ -55,6 +55,12 @@ func (r *logRecycler) peek() uint64 {
 	return r.mu.logNums[0]
 }
 
+func (r *logRecycler) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.mu.logNums)
+}
+
 // pop removes the log number at the head of the recycling queue, enforcing
 // that it matches the specifed logNum. An error is returned of the recycling
 // queue is empty or the head log number does not match the specified one.

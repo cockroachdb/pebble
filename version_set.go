@@ -289,7 +289,7 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 	}
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = uint64(len(newVersion.files[i]))
+		l.NumFiles = int64(len(newVersion.files[i]))
 		l.Size = uint64(totalSize(newVersion.files[i]))
 	}
 	return nil
