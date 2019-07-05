@@ -65,11 +65,11 @@ func newNode(
 		panic("height cannot be less than one or greater than the max height")
 	}
 	keySize := key.Size()
-	if keySize > math.MaxUint32 {
+	if int64(keySize) > math.MaxUint32 {
 		panic("key is too large")
 	}
 	valueSize := len(value)
-	if len(value) > math.MaxUint32 {
+	if int64(len(value)) > math.MaxUint32 {
 		panic("value is too large")
 	}
 
