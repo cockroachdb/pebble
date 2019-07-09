@@ -257,6 +257,76 @@ func checkValidPrefix(prefix, key []byte) bool {
 	return prefix == nil || bytes.HasPrefix(key, prefix)
 }
 
+func TestBytesIteratedCompressed(t *testing.T) {
+	for _, blockSize := range []int{10, 100, 1000, 4096} {
+		for _, numEntries := range []uint64{0, 1, 1e5} {
+			r := buildTestTable(t, numEntries, blockSize, SnappyCompression)
+			var bytesIterated uint64
+			citer := r.NewCompactionIter(&bytesIterated)
+			for citer.First(); citer.Valid(); citer.Next() {}
+
+			expected := r.Properties.DataSize
+			// There is some inaccuracy due to compression estimation.
+			if bytesIterated < expected * 99/100 || bytesIterated > expected * 101/100 {
+				t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+			}
+		}
+	}
+}
+
+func TestBytesIteratedUncompressed(t *testing.T) {
+	for _, blockSize := range []int{10, 100, 1000, 4096} {
+		for _, numEntries := range []uint64{0, 1, 1e5} {
+			r := buildTestTable(t, numEntries, blockSize, NoCompression)
+			var bytesIterated uint64
+			citer := r.NewCompactionIter(&bytesIterated)
+			for citer.First(); citer.Valid(); citer.Next() {}
+
+			expected := r.Properties.DataSize
+			if bytesIterated != expected {
+				t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+			}
+		}
+	}
+}
+
+func buildTestTable(t *testing.T, numEntries uint64, blockSize int, compression Compression) *Reader {
+	mem := vfs.NewMem()
+	f0, err := mem.Create("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f0.Close()
+
+	w := NewWriter(f0, nil, TableOptions{
+		BlockSize:    blockSize,
+		Compression:  compression,
+		FilterPolicy: nil,
+	})
+
+	var ikey InternalKey
+	for i := uint64(0); i < numEntries; i++ {
+		key := make([]byte, 8 + i%3)
+		value := make([]byte, 7 + i%5)
+		binary.BigEndian.PutUint64(key, i)
+		ikey.UserKey = key
+		w.Add(ikey, value)
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-open that filename for reading.
+	f1, err := mem.Open("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewReader(f1, 0, &Options{
+		Cache: cache.New(128 << 20),
+	})
+}
+
 func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader, [][]byte) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("bench")

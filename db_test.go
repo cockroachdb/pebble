@@ -421,6 +421,7 @@ func TestLargeBatch(t *testing.T) {
 		FS:                          vfs.NewMem(),
 		MemTableSize:                1400,
 		MemTableStopWritesThreshold: 100,
+		MinFlushRate:                4 << 20,
 	})
 	if err != nil {
 		t.Fatal(err)

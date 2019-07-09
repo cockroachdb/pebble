@@ -61,6 +61,7 @@ type Iterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
+	dataBH     blockHandle
 	err        error
 	closeHook  func() error
 }
@@ -133,12 +134,13 @@ func (i *Iterator) loadBlock() bool {
 	}
 	// Load the next block.
 	v := i.index.Value()
-	h, n := decodeBlockHandle(v)
+	var n int
+	i.dataBH, n = decodeBlockHandle(v)
 	if n == 0 || n != len(v) {
 		i.err = errors.New("pebble/table: corrupt index entry")
 		return false
 	}
-	block, _, err := i.reader.readBlock(h, nil /* transform */)
+	block, _, err := i.reader.readBlock(i.dataBH, nil /* transform */)
 	if err != nil {
 		i.err = err
 		return false
@@ -341,6 +343,8 @@ func (i *Iterator) Last() (*InternalKey, []byte) {
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
+// Note: compactionIterator.Next mirrors the implementation of Iterator.Next
+// due to performance. Keep the two in sync.
 func (i *Iterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
@@ -467,6 +471,100 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.upper = upper
 }
 
+// compactionIterator is similar to Iterator but it increments the number of
+// bytes that have been iterated through.
+type compactionIterator struct {
+	*Iterator
+	bytesIterated *uint64
+	prevOffset    uint64
+}
+
+func (i *compactionIterator) SeekGE(key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekGE unimplemented")
+}
+
+func (i *compactionIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
+func (i *compactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekLT unimplemented")
+}
+
+func (i *compactionIterator) First() (*InternalKey, []byte) {
+	key, val := i.Iterator.First()
+	if key == nil {
+		// An empty sstable will still encode the block trailer and restart points, so bytes
+		// iterated must be incremented.
+
+		// We must use i.dataBH.length instead of (4*(i.data.numRestarts+1)) to calculate the
+		// number of bytes for the restart points, since i.dataBH.length accounts for
+		// compression. When uncompressed, i.dataBH.length == (4*(i.data.numRestarts+1))
+		*i.bytesIterated += blockTrailerLen + i.dataBH.length
+		return nil, nil
+	}
+	// If the sstable only has 1 entry, we are at the last entry in the block and we must
+	// increment bytes iterated by the size of the block trailer and restart points.
+	if i.data.nextOffset + (4*(i.data.numRestarts+1)) == len(i.data.data) {
+		i.prevOffset = blockTrailerLen + i.dataBH.length
+	} else {
+		// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
+		// i.data.nextOffset is the uncompressed size of the first record.
+		i.prevOffset = (uint64(i.data.nextOffset) * i.dataBH.length) / uint64(len(i.data.data))
+	}
+	*i.bytesIterated += i.prevOffset
+	return key, val
+}
+
+func (i *compactionIterator) Last() (*InternalKey, []byte) {
+	panic("pebble: Last unimplemented")
+}
+
+// Note: compactionIterator.Next mirrors the implementation of Iterator.Next
+// due to performance. Keep the two in sync.
+func (i *compactionIterator) Next() (*InternalKey, []byte) {
+	if i.err != nil {
+		return nil, nil
+	}
+	key, val := i.data.Next()
+	if key == nil {
+		for {
+			if i.data.err != nil {
+				i.err = i.data.err
+				return nil, nil
+			}
+			if key, _ := i.index.Next(); key == nil {
+				return nil, nil
+			}
+			if i.loadBlock() {
+				key, val = i.data.First()
+				if key == nil {
+					return nil, nil
+				}
+				break
+			}
+		}
+	}
+
+	// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
+	// i.data.nextOffset is the uncompressed position of the current record in the block.
+	// i.dataBH.offset is the offset of the block in the sstable before decompression.
+	recordOffset := (uint64(i.data.nextOffset) * i.dataBH.length) / uint64(len(i.data.data))
+	curOffset := i.dataBH.offset + recordOffset
+	// Last entry in the block must increment bytes iterated by the size of the block trailer
+	// and restart points.
+	if i.data.nextOffset + (4*(i.data.numRestarts+1)) == len(i.data.data) {
+		curOffset += blockTrailerLen + uint64(4*(i.data.numRestarts+1))
+	}
+	*i.bytesIterated += uint64(curOffset - i.prevOffset)
+	i.prevOffset = curOffset
+	return key, val
+}
+
+func (i *compactionIterator) Prev() (*InternalKey, []byte) {
+	panic("pebble: Prev unimplemented")
+}
+
 type weakCachedBlock struct {
 	bh     blockHandle
 	mu     sync.RWMutex
@@ -560,6 +658,17 @@ func (r *Reader) NewIter(lower, upper []byte) *Iterator {
 	i := iterPool.Get().(*Iterator)
 	_ = i.Init(r, lower, upper)
 	return i
+}
+
+// NewCompactionIter returns an internal iterator similar to NewIter but it also increments
+// the number of bytes iterated.
+func (r *Reader) NewCompactionIter(bytesIterated *uint64) *compactionIterator {
+	i := iterPool.Get().(*Iterator)
+	_ = i.Init(r, nil /* lower */, nil /* upper */)
+	return &compactionIterator{
+		Iterator:      i,
+		bytesIterated: bytesIterated,
+	}
 }
 
 // NewRangeDelIter returns an internal iterator for the contents of the

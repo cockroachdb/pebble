@@ -45,13 +45,13 @@ func TestOptionsString(t *testing.T) {
   comparer=leveldb.BytewiseComparator
   disable_wal=false
   l0_compaction_threshold=4
-  l0_slowdown_writes_threshold=8
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
   max_manifest_file_size=134217728
   max_open_files=1000
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
+  min_flush_rate=4194304
   merger=pebble.concatenate
   table_property_collectors=[]
   wal_dir=

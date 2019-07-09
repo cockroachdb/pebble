@@ -63,11 +63,11 @@ func (a *Arena) Capacity() uint32 {
 	return uint32(len(a.buf))
 }
 
-func (a *Arena) alloc(size, align uint32) (uint32, error) {
+func (a *Arena) alloc(size, align uint32) (uint32, uint32, error) {
 	// Verify that the arena isn't already full.
 	origSize := atomic.LoadUint64(&a.n)
 	if int(origSize) > len(a.buf) {
-		return 0, ErrArenaFull
+		return 0, 0, ErrArenaFull
 	}
 
 	// Pad the allocation with enough bytes to ensure the requested alignment.
@@ -75,12 +75,12 @@ func (a *Arena) alloc(size, align uint32) (uint32, error) {
 
 	newSize := atomic.AddUint64(&a.n, uint64(padded))
 	if int(newSize) > len(a.buf) {
-		return 0, ErrArenaFull
+		return 0, 0, ErrArenaFull
 	}
 
 	// Return the aligned offset.
 	offset := (uint32(newSize) - padded + uint32(align)) & ^uint32(align)
-	return offset, nil
+	return offset, padded, nil
 }
 
 func (a *Arena) getBytes(offset uint32, size uint32) []byte {

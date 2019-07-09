@@ -247,10 +247,6 @@ type Options struct {
 	// The number of files necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
-	// Soft limit on the number of L0 files. Writes are slowed down when this
-	// threshold is reached.
-	L0SlowdownWritesThreshold int
-
 	// Hard limit on the number of L0 files. Writes are stopped when this
 	// threshold is reached.
 	L0StopWritesThreshold int
@@ -300,6 +296,10 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
+	// MinFlushRate sets the minimum rate at which the MemTables are flushed. The
+	// default is 4 MB/s.
+	MinFlushRate int
+
 	// TableFormat specifies the format version for sstables. The default is
 	// TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
 	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
@@ -335,9 +335,6 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
-	}
-	if o.L0SlowdownWritesThreshold <= 0 {
-		o.L0SlowdownWritesThreshold = 8
 	}
 	if o.L0StopWritesThreshold <= 0 {
 		o.L0StopWritesThreshold = 12
@@ -380,6 +377,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
+	if o.MinFlushRate == 0 {
+		o.MinFlushRate = 4 << 20 // 4 MB/s
+	}
 	if o.FS == nil {
 		o.FS = vfs.Default
 	}
@@ -411,13 +411,13 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
-	fmt.Fprintf(&buf, "  l0_slowdown_writes_threshold=%d\n", o.L0SlowdownWritesThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
+	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.MinFlushRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {

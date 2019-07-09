@@ -143,6 +143,8 @@ func (it *Iterator) Last() (*base.InternalKey, []byte) {
 
 // Next advances to the next position. Returns the key and value if the
 // iterator is pointing at a valid entry, and (nil, nil) otherwise.
+// Note: flushIterator.Next mirrors the implementation of Iterator.Next
+// due to performance. Keep the two in sync.
 func (it *Iterator) Next() (*base.InternalKey, []byte) {
 	it.nd = it.list.getNext(it.nd, 0)
 	if it.nd == it.list.tail {

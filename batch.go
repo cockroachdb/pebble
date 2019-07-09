@@ -892,8 +892,10 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 			index:  uint32(index),
 		}
 		if keySize := uint32(len(key)); keySize == 0 {
-			entry.keyStart = uint32(offset)
-			entry.keyEnd = uint32(offset)
+			// Must add 2 to the offset. One byte encodes `kind` and the next
+			// byte encodes `0`, which is the length of the key.
+			entry.keyStart = uint32(offset)+2
+			entry.keyEnd = entry.keyStart
 		} else {
 			entry.keyStart = uint32(uintptr(unsafe.Pointer(&key[0])) -
 				uintptr(unsafe.Pointer(&b.data[0])))
@@ -949,6 +951,19 @@ func (b *flushableBatch) newIter(o *IterOptions) internalIterator {
 	}
 }
 
+func (b *flushableBatch) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+	return &flushFlushableBatchIter{
+		flushableBatchIter: flushableBatchIter{
+			batch:   b,
+			data:    b.data,
+			offsets: b.offsets,
+			cmp:     b.cmp,
+			index:   -1,
+		},
+		bytesIterated: bytesFlushed,
+	}
+}
+
 func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
 	if len(b.rangeDelOffsets) == 0 {
 		return nil
@@ -981,6 +996,10 @@ func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
 	}
 
 	return rangedel.NewIter(b.cmp, b.tombstones)
+}
+
+func (b *flushableBatch) totalBytes() uint64 {
+	return uint64(len(b.data) - batchHeaderLen)
 }
 
 func (b *flushableBatch) flushed() chan struct{} {
@@ -1076,6 +1095,8 @@ func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
+// Note: flushFlushableBatchIter.Next mirrors the implementation of
+// flushableBatchIter.Next due to performance. Keep the two in sync.
 func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
 	if i.index == len(i.offsets) {
 		return nil, nil
@@ -1120,10 +1141,26 @@ func (i *flushableBatchIter) Key() *InternalKey {
 }
 
 func (i *flushableBatchIter) Value() []byte {
-	offset := i.offsets[i.index].offset
-	_, _, value, ok := batchDecode(i.batch.data, offset)
-	if !ok {
+	p := i.data[i.offsets[i.index].offset:]
+	if len(p) == 0 {
 		i.err = fmt.Errorf("corrupted batch")
+		return nil
+	}
+	kind := InternalKeyKind(p[0])
+	if kind > InternalKeyKindMax {
+		i.err = fmt.Errorf("corrupted batch")
+		return nil
+	}
+	var value []byte
+	var ok bool
+	switch kind {
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
+		keyEnd := i.offsets[i.index].keyEnd
+		_, value, ok = batchDecodeStr(i.data[keyEnd:])
+		if !ok {
+			i.err = fmt.Errorf("corrupted batch")
+			return nil
+		}
 	}
 	return value
 }
@@ -1143,4 +1180,81 @@ func (i *flushableBatchIter) Close() error {
 func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
 	i.lower = lower
 	i.upper = upper
+}
+
+// flushFlushableBatchIter is similar to flushableBatchIter but it keeps track
+// of number of bytes iterated.
+type flushFlushableBatchIter struct {
+	flushableBatchIter
+	bytesIterated *uint64
+}
+
+// flushFlushableBatchIter implements the internalIterator interface.
+var _ internalIterator = (*flushFlushableBatchIter)(nil)
+
+func (i *flushFlushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekGE unimplemented")
+}
+
+func (i *flushFlushableBatchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekPrefixGE unimplemented")
+}
+
+func (i *flushFlushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	panic("pebble: SeekLT unimplemented")
+}
+
+func (i *flushFlushableBatchIter) First() (*InternalKey, []byte) {
+	key, val := i.flushableBatchIter.First()
+	if key == nil {
+		return nil, nil
+	}
+	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
+	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
+	return key, val
+}
+
+// Note: flushFlushableBatchIter.Next mirrors the implementation of
+// flushableBatchIter.Next due to performance. Keep the two in sync.
+func (i *flushFlushableBatchIter) Next() (*InternalKey, []byte) {
+	if i.index == len(i.offsets) {
+		return nil, nil
+	}
+	i.index++
+	if i.index == len(i.offsets) {
+		return nil, nil
+	}
+	i.key = i.getKey(i.index)
+	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
+	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
+	return &i.key, i.Value()
+}
+
+func (i flushFlushableBatchIter) Prev() (*InternalKey, []byte) {
+	panic("pebble: Prev unimplemented")
+}
+
+func (i flushFlushableBatchIter) valueSize() uint64 {
+	p := i.data[i.offsets[i.index].offset:]
+	if len(p) == 0 {
+		i.err = fmt.Errorf("corrupted batch")
+		return 0
+	}
+	kind := InternalKeyKind(p[0])
+	if kind > InternalKeyKindMax {
+		i.err = fmt.Errorf("corrupted batch")
+		return 0
+	}
+	var length uint64
+	switch kind {
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
+		keyEnd := i.offsets[i.index].keyEnd
+		v, n := binary.Uvarint(i.data[keyEnd:])
+		if n <= 0 {
+			i.err = fmt.Errorf("corrupted batch")
+			return 0
+		}
+		length = v + uint64(n)
+	}
+	return length
 }

@@ -11,10 +11,10 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/base"
+	"github.com/petermattis/pebble/internal/rate"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -39,7 +39,9 @@ var (
 
 type flushable interface {
 	newIter(o *IterOptions) internalIterator
+	newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator
 	newRangeDelIter(o *IterOptions) internalIterator
+	totalBytes() uint64
 	flushed() chan struct{}
 	readyForFlush() bool
 	logInfo() (num, size uint64)
@@ -169,6 +171,8 @@ type DB struct {
 	logRecycler logRecycler
 
 	closed int32 // updated atomically
+
+	flushLimiter *rate.Limiter
 
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
@@ -394,9 +398,6 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 	d.mu.Lock()
 
-	// Throttle writes if there are too many L0 tables.
-	d.throttleWrite()
-
 	if b.flushable != nil {
 		b.flushable.seqNum = b.seqNum()
 	}
@@ -505,7 +506,7 @@ func (d *DB) newIterInternal(
 	current := readState.current
 	for i := len(current.files[0]) - 1; i >= 0; i-- {
 		f := &current.files[0][i]
-		iter, rangeDelIter, err := d.newIters(f, &dbi.opts)
+		iter, rangeDelIter, err := d.newIters(f, &dbi.opts, nil)
 		if err != nil {
 			dbi.err = err
 			return dbi
@@ -543,7 +544,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(&dbi.opts, d.cmp, d.newIters, current.files[level])
+		li.init(&dbi.opts, d.cmp, d.newIters, current.files[level], nil)
 		li.initRangeDel(&rangeDelIters[0])
 		li.initLargestUserKey(&largestUserKeys[0])
 		iters = append(iters, li)
@@ -790,22 +791,6 @@ func (d *DB) walPreallocateSize() int {
 	size := d.opts.MemTableSize
 	size = (size / 10) + size
 	return size
-}
-
-func (d *DB) throttleWrite() {
-	if len(d.mu.versions.currentVersion().files[0]) <= d.opts.L0SlowdownWritesThreshold {
-		return
-	}
-	// fmt.Printf("L0 slowdown writes threshold\n")
-	// We are getting close to hitting a hard limit on the number of L0
-	// files. Rather than delaying a single write by several seconds when we hit
-	// the hard limit, start delaying each individual write by 1ms to reduce
-	// latency variance.
-	//
-	// TODO(peter): Use more sophisticated rate limiting.
-	d.mu.Unlock()
-	time.Sleep(1 * time.Millisecond)
-	d.mu.Lock()
 }
 
 func (d *DB) makeRoomForWrite(b *Batch) error {
