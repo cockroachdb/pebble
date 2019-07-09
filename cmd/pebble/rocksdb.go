@@ -29,7 +29,7 @@ func newRocksDB(dir string) DB {
 		engine.RocksDBConfig{
 			Dir: dir,
 		},
-		engine.NewRocksDBCache(1<<30 /* 1GB */),
+		engine.NewRocksDBCache(cacheSize),
 	)
 	if err != nil {
 		log.Fatal(err)
