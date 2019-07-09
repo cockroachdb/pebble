@@ -20,6 +20,7 @@ It is MIT licensed, like the original.
 package cache // import "github.com/petermattis/pebble/cache"
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -147,9 +148,8 @@ type WeakHandle interface {
 	Get() []byte
 }
 
-// Cache ...
-type Cache struct {
-	mu sync.Mutex
+type shard struct {
+	mu sync.RWMutex
 
 	maxSize  int64
 	coldSize int64
@@ -165,43 +165,17 @@ type Cache struct {
 	countTest int64
 }
 
-// New creates a new cache of the specified size. Memory for the cache is
-// allocated on demand, not during initialization.
-func New(size int64) *Cache {
-	return &Cache{
-		maxSize:  size,
-		coldSize: size,
-		blocks:   make(map[key]*entry),
-		files:    make(map[uint64]*entry),
-	}
-}
-
-// Get retrieves the cache value for the specified file and offset, returning
-// nil if no value is present.
-func (c *Cache) Get(fileNum, offset uint64) []byte {
-	if c == nil {
-		return nil
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+func (c *shard) Get(fileNum, offset uint64) []byte {
+	c.mu.RLock()
 	e := c.blocks[key{fileNum: fileNum, offset: offset}]
+	c.mu.RUnlock()
 	if e == nil {
 		return nil
 	}
 	return e.Get()
 }
 
-// Set sets the cache value for the specified file and offset, overwriting an
-// existing value if present. A WeakHandle is returned which provides faster
-// retrieval of the cached value than Get (lock-free and avoidance of the map
-// lookup).
-func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
-	if c == nil {
-		return nil
-	}
-
+func (c *shard) Set(fileNum, offset uint64, value []byte) WeakHandle {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -248,11 +222,7 @@ func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *Cache) EvictFile(fileNum uint64) {
-	if c == nil {
-		return
-	}
-
+func (c *shard) EvictFile(fileNum uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -277,23 +247,15 @@ func (c *Cache) EvictFile(fileNum uint64) {
 	}
 }
 
-// MaxSize returns the max size of the cache.
-func (c *Cache) MaxSize() int64 {
-	if c == nil {
-		return 0
-	}
-	return c.maxSize
-}
-
 // Size returns the current space used by the cache.
-func (c *Cache) Size() int64 {
+func (c *shard) Size() int64 {
 	c.mu.Lock()
 	size := c.countHot + c.countCold
 	c.mu.Unlock()
 	return size
 }
 
-func (c *Cache) metaAdd(key key, e *entry) {
+func (c *shard) metaAdd(key key, e *entry) {
 	c.evict()
 
 	c.blocks[key] = e
@@ -318,7 +280,7 @@ func (c *Cache) metaAdd(key key, e *entry) {
 	}
 }
 
-func (c *Cache) metaDel(e *entry) {
+func (c *shard) metaDel(e *entry) {
 	delete(c.blocks, e.key)
 
 	if e == c.handHot {
@@ -345,13 +307,13 @@ func (c *Cache) metaDel(e *entry) {
 	}
 }
 
-func (c *Cache) evict() {
+func (c *shard) evict() {
 	for c.maxSize <= c.countHot+c.countCold {
 		c.runHandCold()
 	}
 }
 
-func (c *Cache) runHandCold() {
+func (c *shard) runHandCold() {
 	if c.handCold == nil {
 		return
 	}
@@ -381,7 +343,7 @@ func (c *Cache) runHandCold() {
 	}
 }
 
-func (c *Cache) runHandHot() {
+func (c *shard) runHandHot() {
 	if c.handHot == c.handTest {
 		c.runHandTest()
 	}
@@ -403,7 +365,7 @@ func (c *Cache) runHandHot() {
 	c.handHot = c.handHot.next()
 }
 
-func (c *Cache) runHandTest() {
+func (c *shard) runHandTest() {
 	if c.countCold > 0 && c.handTest == c.handCold {
 		c.runHandCold()
 	}
@@ -425,4 +387,102 @@ func (c *Cache) runHandTest() {
 	}
 
 	c.handTest = c.handTest.next()
+}
+
+// Cache ...
+type Cache struct {
+	maxSize int64
+	shards  []shard
+}
+
+// New creates a new cache of the specified size. Memory for the cache is
+// allocated on demand, not during initialization.
+func New(size int64) *Cache {
+	return newShards(size, runtime.NumCPU())
+}
+
+func newShards(size int64, shards int) *Cache {
+	c := &Cache{
+		maxSize: size,
+		shards:  make([]shard, shards),
+	}
+	for i := range c.shards {
+		c.shards[i] = shard{
+			maxSize:  size / int64(len(c.shards)),
+			coldSize: size / int64(len(c.shards)),
+			blocks:   make(map[key]*entry),
+			files:    make(map[uint64]*entry),
+		}
+	}
+	return c
+}
+
+func (c *Cache) getShard(fileNum, offset uint64) *shard {
+	// Inlined version of fnv.New64 + Write.
+	const offset64 = 14695981039346656037
+	const prime64 = 1099511628211
+
+	h := uint64(offset64)
+	for i := 0; i < 8; i++ {
+		h *= prime64
+		h ^= uint64(fileNum & 0xff)
+		fileNum >>= 8
+	}
+	for i := 0; i < 8; i++ {
+		h *= prime64
+		h ^= uint64(offset & 0xff)
+		offset >>= 8
+	}
+
+	return &c.shards[h%uint64(len(c.shards))]
+}
+
+// Get retrieves the cache value for the specified file and offset, returning
+// nil if no value is present.
+func (c *Cache) Get(fileNum, offset uint64) []byte {
+	if c == nil {
+		return nil
+	}
+	return c.getShard(fileNum, offset).Get(fileNum, offset)
+}
+
+// Set sets the cache value for the specified file and offset, overwriting an
+// existing value if present. A WeakHandle is returned which provides faster
+// retrieval of the cached value than Get (lock-free and avoidance of the map
+// lookup).
+func (c *Cache) Set(fileNum, offset uint64, value []byte) WeakHandle {
+	if c == nil {
+		return nil
+	}
+	return c.getShard(fileNum, offset).Set(fileNum, offset, value)
+}
+
+// EvictFile evicts all of the cache values for the specified file.
+func (c *Cache) EvictFile(fileNum uint64) {
+	if c == nil {
+		return
+	}
+	for i := range c.shards {
+		c.shards[i].EvictFile(fileNum)
+	}
+}
+
+// MaxSize returns the max size of the cache.
+func (c *Cache) MaxSize() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.maxSize
+}
+
+// Size returns the current space used by the cache.
+func (c *Cache) Size() int64 {
+	if c == nil {
+		return 0
+	}
+	var size int64
+	for i := range c.shards {
+		size += c.shards[i].Size()
+	}
+	return size
 }

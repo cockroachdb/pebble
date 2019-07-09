@@ -117,8 +117,9 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 }
 
 const (
-	tableCacheTestNumTables = 300
-	tableCacheTestCacheSize = 100
+	tableCacheTestNumTables     = 300
+	tableCacheTestCacheSize     = 100
+	tableCacheTestHitBufferSize = 64
 )
 
 func newTableCache() (*tableCache, *tableCacheTestFS, error) {
@@ -149,7 +150,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	opts := &Options{}
 	opts.EnsureDefaults()
 	c := &tableCache{}
-	c.init("", fs, opts, tableCacheTestCacheSize)
+	c.init("", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
 	return c, fs, nil
 }
 
