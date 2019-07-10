@@ -9,6 +9,7 @@ import (
 	"errors"
 	"unsafe"
 
+	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/internal/base"
 )
 
@@ -117,6 +118,7 @@ type blockIter struct {
 	ikey         InternalKey
 	cached       []blockEntry
 	cachedBuf    []byte
+	cacheHandle  cache.Handle
 	err          error
 }
 
@@ -144,6 +146,11 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	i.val = nil
 	i.clearCache()
 	return nil
+}
+
+func (i *blockIter) setCacheHandle(h cache.Handle) {
+	i.cacheHandle.Release()
+	i.cacheHandle = h
 }
 
 func (i *blockIter) readEntry() {
@@ -651,6 +658,7 @@ func (i *blockIter) Error() error {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *blockIter) Close() error {
+	i.cacheHandle.Release()
 	i.val = nil
 	return i.err
 }

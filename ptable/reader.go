@@ -118,7 +118,8 @@ func (i *Iter) loadBlock() {
 		i.err = err
 		return
 	}
-	i.data.init(b)
+	i.data.init(b.Get())
+	b.Release()
 }
 
 // Reader ...
@@ -206,7 +207,10 @@ func NewReader(f vfs.File, fileNum uint64, o *base.Options) *Reader {
 		r.err = errors.New("pebble/table: invalid table (bad index block handle)")
 		return r
 	}
-	r.index, r.err = r.readBlock(indexBH)
+	var h cache.Handle
+	h, r.err = r.readBlock(indexBH)
+	r.index = h.Get()
+	h.Release()
 	return r
 }
 
@@ -244,32 +248,32 @@ func (r *Reader) NewIter() *Iter {
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(bh blockHandle) ([]byte, error) {
-	if b := r.cache.Get(r.fileNum, bh.offset); b != nil {
-		return b, nil
+func (r *Reader) readBlock(bh blockHandle) (cache.Handle, error) {
+	if h := r.cache.Get(r.fileNum, bh.offset); h.Get() != nil {
+		return h, nil
 	}
 
 	b := make([]byte, bh.length+blockTrailerLen)
 	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
-		return nil, err
+		return cache.Handle{}, err
 	}
 	checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
 	checksum1 := crc.New(b[:bh.length+1]).Value()
 	if checksum0 != checksum1 {
-		return nil, errors.New("pebble/table: invalid table (checksum mismatch)")
+		return cache.Handle{}, errors.New("pebble/table: invalid table (checksum mismatch)")
 	}
 	switch b[bh.length] {
 	case noCompressionBlockType:
 		b = b[:bh.length]
-		r.cache.Set(r.fileNum, bh.offset, b)
-		return b, nil
+		h := r.cache.Set(r.fileNum, bh.offset, b)
+		return h, nil
 	case snappyCompressionBlockType:
 		b, err := snappy.Decode(nil, b[:bh.length])
 		if err != nil {
-			return nil, err
+			return cache.Handle{}, err
 		}
-		r.cache.Set(r.fileNum, bh.offset, b)
-		return b, nil
+		h := r.cache.Set(r.fileNum, bh.offset, b)
+		return h, nil
 	}
-	return nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
+	return cache.Handle{}, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
 }

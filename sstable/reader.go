@@ -140,12 +140,13 @@ func (i *Iterator) loadBlock() bool {
 		i.err = errors.New("pebble/table: corrupt index entry")
 		return false
 	}
-	block, _, err := i.reader.readBlock(i.dataBH, nil /* transform */)
+	block, err := i.reader.readBlock(i.dataBH, nil /* transform */)
 	if err != nil {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.cmp, block, i.reader.Properties.GlobalSeqNum)
+	i.data.setCacheHandle(block)
+	i.err = i.data.init(i.cmp, block.Get(), i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		return false
 	}
@@ -169,12 +170,13 @@ func (i *Iterator) seekBlock(key []byte) bool {
 		i.err = errors.New("pebble/table: corrupt index entry")
 		return false
 	}
-	block, _, err := i.reader.readBlock(h, nil /* transform */)
+	block, err := i.reader.readBlock(h, nil /* transform */)
 	if err != nil {
 		i.err = err
 		return false
 	}
-	i.err = i.data.init(i.cmp, block, i.reader.Properties.GlobalSeqNum)
+	i.data.setCacheHandle(block)
+	i.err = i.data.init(i.cmp, block.Get(), i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		return false
 	}
@@ -505,7 +507,7 @@ func (i *compactionIterator) First() (*InternalKey, []byte) {
 	}
 	// If the sstable only has 1 entry, we are at the last entry in the block and we must
 	// increment bytes iterated by the size of the block trailer and restart points.
-	if i.data.nextOffset + (4*(i.data.numRestarts+1)) == len(i.data.data) {
+	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == len(i.data.data) {
 		i.prevOffset = blockTrailerLen + i.dataBH.length
 	} else {
 		// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
@@ -553,7 +555,7 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	curOffset := i.dataBH.offset + recordOffset
 	// Last entry in the block must increment bytes iterated by the size of the block trailer
 	// and restart points.
-	if i.data.nextOffset + (4*(i.data.numRestarts+1)) == len(i.data.data) {
+	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == len(i.data.data) {
 		curOffset += blockTrailerLen + uint64(4*(i.data.numRestarts+1))
 	}
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
@@ -719,10 +721,14 @@ func (r *Reader) readWeakCachedBlock(
 
 	// Slow-path: read the index block from disk. This checks the cache again,
 	// but that is ok because somebody else might have inserted it for us.
-	b, h, err := r.readBlock(w.bh, transform)
-	if err == nil && h != nil {
+	h, err := r.readBlock(w.bh, transform)
+	if err != nil {
+		return nil, err
+	}
+	b = h.Get()
+	if wh := h.Weak(); wh != nil {
 		w.mu.Lock()
-		w.handle = h
+		w.handle = wh
 		w.mu.Unlock()
 	}
 	return b, err
@@ -731,45 +737,55 @@ func (r *Reader) readWeakCachedBlock(
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(
 	bh blockHandle, transform blockTransform,
-) (block, cache.WeakHandle, error) {
-	if b := r.cache.Get(r.fileNum, bh.offset); b != nil {
-		return b, nil, nil
+) (cache.Handle, error) {
+	if h := r.cache.Get(r.fileNum, bh.offset); h.Get() != nil {
+		return h, nil
 	}
 
-	b := make([]byte, bh.length+blockTrailerLen)
+	b := r.cache.Alloc(int(bh.length + blockTrailerLen))
 	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
-		return nil, nil, err
+		return cache.Handle{}, err
 	}
 
 	checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
 	checksum1 := crc.New(b[:bh.length+1]).Value()
 	if checksum0 != checksum1 {
-		return nil, nil, errors.New("pebble/table: invalid table (checksum mismatch)")
+		return cache.Handle{}, errors.New("pebble/table: invalid table (checksum mismatch)")
 	}
 
-	switch b[bh.length] {
+	typ := b[bh.length]
+	b = b[:bh.length]
+
+	switch typ {
 	case noCompressionBlockType:
-		b = b[:bh.length]
+		break
 	case snappyCompressionBlockType:
-		var err error
-		b, err = snappy.Decode(nil, b[:bh.length])
+		decodedLen, err := snappy.DecodedLen(b)
 		if err != nil {
-			return nil, nil, err
+			return cache.Handle{}, err
 		}
+		decoded := r.cache.Alloc(decodedLen)
+		decoded, err = snappy.Decode(decoded, b)
+		if err != nil {
+			return cache.Handle{}, err
+		}
+		r.cache.Free(b)
+		b = decoded
 	default:
-		return nil, nil, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])
+		return cache.Handle{}, fmt.Errorf("pebble/table: unknown block compression: %d", typ)
 	}
 
 	if transform != nil {
+		// Transforming blocks is rare, so we don't bother to use cache.Alloc.
 		var err error
 		b, err = transform(b)
 		if err != nil {
-			return nil, nil, err
+			return cache.Handle{}, err
 		}
 	}
 
 	h := r.cache.Set(r.fileNum, bh.offset, b)
-	return b, h, nil
+	return h, nil
 }
 
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
@@ -815,11 +831,12 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
-	b, _, err := r.readBlock(metaindexBH, nil /* transform */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */)
 	if err != nil {
 		return err
 	}
-	i, err := newRawBlockIter(bytes.Compare, b)
+	i, err := newRawBlockIter(bytes.Compare, b.Get())
+	b.Release()
 	if err != nil {
 		return err
 	}
@@ -837,11 +854,14 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, _, err = r.readBlock(bh, nil /* transform */)
+		b, err = r.readBlock(bh, nil /* transform */)
 		if err != nil {
 			return err
 		}
-		if err := r.Properties.load(b, bh.offset); err != nil {
+		data := b.Get()
+		err := r.Properties.load(data, bh.offset)
+		b.Release()
+		if err != nil {
 			return err
 		}
 	}
