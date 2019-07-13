@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	cacheSize       int64
 	concurrency     int
 	disableWAL      bool
 	duration        time.Duration
@@ -40,6 +41,8 @@ func main() {
 	)
 
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
+		cmd.Flags().Int64Var(
+			&cacheSize, "cache", 1<<30, "cache size")
 		cmd.Flags().IntVarP(
 			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
 		cmd.Flags().BoolVar(

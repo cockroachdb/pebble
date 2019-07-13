@@ -20,6 +20,7 @@ func TestCache(t *testing.T) {
 
 	cache := newShards(200, 1)
 	scanner := bufio.NewScanner(f)
+	line := 1
 
 	for scanner.Scan() {
 		fields := bytes.Fields(scanner.Bytes())
@@ -31,18 +32,20 @@ func TestCache(t *testing.T) {
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		v := cache.Get(uint64(key), 0)
-		if v == nil {
+		h := cache.Get(uint64(key), 0)
+		if v := h.Get(); v == nil {
 			cache.Set(uint64(key), 0, append([]byte(nil), fields[0][0]))
 		} else {
 			hit = true
 			if !bytes.Equal(v, fields[0][:1]) {
-				t.Errorf("cache returned bad data: got %s , want %s\n", v, fields[0][:1])
+				t.Errorf("%d: cache returned bad data: got %s , want %s\n", line, v, fields[0][:1])
 			}
 		}
+		h.Release()
 		if hit != wantHit {
-			t.Errorf("cache hit mismatch: got %v, want %v\n", hit, wantHit)
+			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
 		}
+		line++
 	}
 }
 
@@ -53,8 +56,13 @@ func TestWeakHandle(t *testing.T) {
 	if v := h.Get(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
+	w := h.Weak()
+	h.Release()
+	if v := w.Get(); string(v) != "bbbbb" {
+		t.Fatalf("expected bbbbb, but found %v", v)
+	}
 	cache.Set(2, 0, bytes.Repeat([]byte("a"), 5))
-	if v := h.Get(); v != nil {
+	if v := w.Get(); v != nil {
 		t.Fatalf("expected nil, but found %s", v)
 	}
 }

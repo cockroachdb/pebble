@@ -20,7 +20,8 @@ import (
 
 // Adapters for rocksDB
 type rocksDB struct {
-	d *engine.RocksDB
+	d       *engine.RocksDB
+	ballast []byte
 }
 
 func newRocksDB(dir string) DB {
@@ -29,12 +30,15 @@ func newRocksDB(dir string) DB {
 		engine.RocksDBConfig{
 			Dir: dir,
 		},
-		engine.NewRocksDBCache(1<<30 /* 1GB */),
+		engine.NewRocksDBCache(cacheSize),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return rocksDB{r}
+	return rocksDB{
+		d:       r,
+		ballast: make([]byte, 1<<30),
+	}
 }
 
 type rocksDBIterator struct {
