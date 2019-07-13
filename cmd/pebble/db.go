@@ -17,7 +17,7 @@ import (
 type DB interface {
 	NewIter(*pebble.IterOptions) iterator
 	NewBatch() batch
-	Scan(key []byte, count int64) error
+	Scan(key []byte, count int64, reverse bool) error
 	Metrics() *pebble.VersionMetrics
 	Flush() error
 }
@@ -94,15 +94,26 @@ func (p pebbleDB) NewBatch() batch {
 	return p.d.NewBatch()
 }
 
-func (p pebbleDB) Scan(key []byte, count int64) error {
+func (p pebbleDB) Scan(key []byte, count int64, reverse bool) error {
 	var data bytealloc.A
 	iter := p.d.NewIter(nil)
-	for i, valid := 0, iter.SeekGE(key); valid; valid = iter.Next() {
-		data, _ = data.Copy(iter.Key())
-		data, _ = data.Copy(iter.Value())
-		i++
-		if i >= int(count) {
-			break
+	if reverse {
+		for i, valid := 0, iter.SeekLT(key); valid; valid = iter.Prev() {
+			data, _ = data.Copy(iter.Key())
+			data, _ = data.Copy(iter.Value())
+			i++
+			if i >= int(count) {
+				break
+			}
+		}
+	} else {
+		for i, valid := 0, iter.SeekGE(key); valid; valid = iter.Next() {
+			data, _ = data.Copy(iter.Key())
+			data, _ = data.Copy(iter.Value())
+			i++
+			if i >= int(count) {
+				break
+			}
 		}
 	}
 	return iter.Close()
