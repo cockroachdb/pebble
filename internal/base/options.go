@@ -297,7 +297,7 @@ type Options struct {
 	Merger *Merger
 
 	// MinFlushRate sets the minimum rate at which the MemTables are flushed. The
-	// default is 4 MB/s.
+	// default is 1 MB/s.
 	MinFlushRate int
 
 	// TableFormat specifies the format version for sstables. The default is
@@ -378,7 +378,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Merger = DefaultMerger
 	}
 	if o.MinFlushRate == 0 {
-		o.MinFlushRate = 4 << 20 // 4 MB/s
+		o.MinFlushRate = 1 << 20 // 1 MB/s
 	}
 	if o.FS == nil {
 		o.FS = vfs.Default
