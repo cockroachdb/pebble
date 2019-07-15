@@ -63,7 +63,7 @@ type Iterator struct {
 	data       blockIter
 	dataBH     blockHandle
 	err        error
-	closeHook  func() error
+	closeHook  func(i *Iterator) error
 }
 
 var iterPool = sync.Pool{
@@ -445,7 +445,7 @@ func (i *Iterator) Error() error {
 
 // SetCloseHook sets a function that will be called when the iterator is
 // closed.
-func (i *Iterator) SetCloseHook(fn func() error) {
+func (i *Iterator) SetCloseHook(fn func(i *Iterator) error) {
 	i.closeHook = fn
 }
 
@@ -453,7 +453,7 @@ func (i *Iterator) SetCloseHook(fn func() error) {
 // package.
 func (i *Iterator) Close() error {
 	if i.closeHook != nil {
-		if err := i.closeHook(); err != nil {
+		if err := i.closeHook(i); err != nil {
 			return err
 		}
 	}

@@ -128,17 +128,7 @@ func (c *tableCacheShard) newIters(
 			c.mu.Unlock()
 		}
 
-		tableCompactionIter.SetCloseHook(func() error {
-			if raceEnabled {
-				c.mu.Lock()
-				delete(c.mu.iters, tableCompactionIter.Iterator)
-				c.mu.Unlock()
-			}
-			c.unrefNode(n)
-			atomic.AddInt32(&c.iterCount, -1)
-			return nil
-		})
-
+		tableCompactionIter.SetCloseHook(n.closeHook)
 		iter = tableCompactionIter
 	} else {
 		tableIter := n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
@@ -149,17 +139,7 @@ func (c *tableCacheShard) newIters(
 			c.mu.Unlock()
 		}
 
-		tableIter.SetCloseHook(func() error {
-			if raceEnabled {
-				c.mu.Lock()
-				delete(c.mu.iters, tableIter)
-				c.mu.Unlock()
-			}
-			c.unrefNode(n)
-			atomic.AddInt32(&c.iterCount, -1)
-			return nil
-		})
-
+		tableIter.SetCloseHook(n.closeHook)
 		iter = tableIter
 	}
 
@@ -236,6 +216,18 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	n := c.mu.nodes[meta.fileNum]
 	if n == nil {
 		n = &tableCacheNode{
+			// Cache the closure invoked when an iterator is closed. This avoids an
+			// allocation on every call to newIters.
+			closeHook: func(i *sstable.Iterator) error {
+				if raceEnabled {
+					c.mu.Lock()
+					delete(c.mu.iters, i)
+					c.mu.Unlock()
+				}
+				c.unrefNode(n)
+				atomic.AddInt32(&c.iterCount, -1)
+				return nil
+			},
 			meta:     meta,
 			refCount: 1,
 			loaded:   make(chan struct{}),
@@ -325,6 +317,8 @@ func (c *tableCacheShard) Close() error {
 }
 
 type tableCacheNode struct {
+	closeHook func(i *sstable.Iterator) error
+
 	meta   *fileMetadata
 	reader *sstable.Reader
 	err    error
