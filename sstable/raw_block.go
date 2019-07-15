@@ -96,12 +96,13 @@ func (i *rawBlockIter) clearCache() {
 }
 
 func (i *rawBlockIter) cacheEntry() {
-	i.cachedBuf = append(i.cachedBuf, i.key...)
 	i.cached = append(i.cached, blockEntry{
-		offset: i.offset,
-		key:    i.cachedBuf[len(i.cachedBuf)-len(i.key) : len(i.cachedBuf) : len(i.cachedBuf)],
-		val:    i.val,
+		offset:   i.offset,
+		keyStart: len(i.cachedBuf),
+		keyEnd:   len(i.cachedBuf) + len(i.key),
+		val:      i.val,
 	})
+	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
@@ -199,7 +200,7 @@ func (i *rawBlockIter) Prev() bool {
 		e := &i.cached[n-1]
 		i.offset = e.offset
 		i.val = e.val
-		i.ikey.UserKey = e.key
+		i.ikey.UserKey = i.cachedBuf[e.keyStart:e.keyEnd]
 		i.cached = i.cached[:n]
 		return true
 	}

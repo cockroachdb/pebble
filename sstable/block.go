@@ -97,9 +97,10 @@ func (w *blockWriter) estimatedSize() int {
 }
 
 type blockEntry struct {
-	offset int
-	key    []byte
-	val    []byte
+	offset   int
+	keyStart int
+	keyEnd   int
+	val      []byte
 }
 
 // blockIter is an iterator over a single block of data.
@@ -261,12 +262,13 @@ func (i *blockIter) clearCache() {
 }
 
 func (i *blockIter) cacheEntry() {
-	i.cachedBuf = append(i.cachedBuf, i.key...)
 	i.cached = append(i.cached, blockEntry{
-		offset: i.offset,
-		key:    i.cachedBuf[len(i.cachedBuf)-len(i.key) : len(i.cachedBuf) : len(i.cachedBuf)],
-		val:    i.val,
+		offset:   i.offset,
+		keyStart: len(i.cachedBuf),
+		keyEnd:   len(i.cachedBuf) + len(i.key),
+		val:      i.val,
 	})
+	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
@@ -569,10 +571,11 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 		e := &i.cached[n-1]
 		i.offset = e.offset
 		i.val = e.val
-		// Manually inlined version of i.decodeInternalKey(e.key).
-		if n := len(e.key) - 8; n >= 0 {
-			i.ikey.Trailer = binary.LittleEndian.Uint64(e.key[n:])
-			i.ikey.UserKey = e.key[:n:n]
+		// Manually inlined version of i.decodeInternalKey(key).
+		key := i.cachedBuf[e.keyStart:e.keyEnd]
+		if n := len(key) - 8; n >= 0 {
+			i.ikey.Trailer = binary.LittleEndian.Uint64(key[n:])
+			i.ikey.UserKey = key[:n:n]
 			if i.globalSeqNum != 0 {
 				i.ikey.SetSeqNum(i.globalSeqNum)
 			}
