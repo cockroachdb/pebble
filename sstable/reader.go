@@ -507,7 +507,7 @@ func (i *compactionIterator) First() (*InternalKey, []byte) {
 	}
 	// If the sstable only has 1 entry, we are at the last entry in the block and we must
 	// increment bytes iterated by the size of the block trailer and restart points.
-	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == len(i.data.data) {
+	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
 		i.prevOffset = blockTrailerLen + i.dataBH.length
 	} else {
 		// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
@@ -555,7 +555,7 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	curOffset := i.dataBH.offset + recordOffset
 	// Last entry in the block must increment bytes iterated by the size of the block trailer
 	// and restart points.
-	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == len(i.data.data) {
+	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
 		curOffset += blockTrailerLen + uint64(4*(i.data.numRestarts+1))
 	}
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)

@@ -35,10 +35,10 @@ func (w *rawBlockWriter) add(key InternalKey, value []byte) {
 // critical.
 type rawBlockIter struct {
 	cmp         Compare
-	offset      int
-	nextOffset  int
-	restarts    int
-	numRestarts int
+	offset      int32
+	nextOffset  int32
+	restarts    int32
+	numRestarts int32
 	ptr         unsafe.Pointer
 	data        []byte
 	key, val    []byte
@@ -54,12 +54,12 @@ func newRawBlockIter(cmp Compare, block block) (*rawBlockIter, error) {
 }
 
 func (i *rawBlockIter) init(cmp Compare, block block) error {
-	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
+	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
 	}
 	i.cmp = cmp
-	i.restarts = len(block) - 4*(1+numRestarts)
+	i.restarts = int32(len(block)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
@@ -82,7 +82,7 @@ func (i *rawBlockIter) readEntry() {
 	i.key = i.key[:len(i.key):len(i.key)]
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
-	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
+	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
 }
 
 func (i *rawBlockIter) loadEntry() {
@@ -96,11 +96,18 @@ func (i *rawBlockIter) clearCache() {
 }
 
 func (i *rawBlockIter) cacheEntry() {
+	var valStart int32
+	valSize := int32(len(i.val))
+	if valSize > 0 {
+		valStart = int32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
+	}
+
 	i.cached = append(i.cached, blockEntry{
 		offset:   i.offset,
-		keyStart: len(i.cachedBuf),
-		keyEnd:   len(i.cachedBuf) + len(i.key),
-		val:      i.val,
+		keyStart: int32(len(i.cachedBuf)),
+		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
+		valStart: valStart,
+		valSize:  valSize,
 	})
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
@@ -111,8 +118,8 @@ func (i *rawBlockIter) SeekGE(key []byte) bool {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
-	index := sort.Search(i.numRestarts, func(j int) bool {
-		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
+	index := sort.Search(int(i.numRestarts), func(j int) bool {
+		offset := int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*j:]))
 		// For a restart point, there are 0 bytes shared with the previous key.
 		// The varint encoding of 0 occupies 1 byte.
 		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -128,7 +135,7 @@ func (i *rawBlockIter) SeekGE(key []byte) bool {
 	// 0, then all keys in this block are larger than the key sought, and offset
 	// remains at zero.
 	if index > 0 {
-		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*(index-1):]))
 	}
 	i.loadEntry()
 
@@ -165,7 +172,7 @@ func (i *rawBlockIter) First() bool {
 // Last implements internalIterator.Last, as documented in the pebble package.
 func (i *rawBlockIter) Last() bool {
 	// Seek forward from the last restart point.
-	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
+	i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
 
 	i.readEntry()
 	i.clearCache()
@@ -199,7 +206,7 @@ func (i *rawBlockIter) Prev() bool {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
 		i.offset = e.offset
-		i.val = e.val
+		i.val = getBytes(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart)), int(e.valSize))
 		i.ikey.UserKey = i.cachedBuf[e.keyStart:e.keyEnd]
 		i.cached = i.cached[:n]
 		return true
@@ -212,13 +219,13 @@ func (i *rawBlockIter) Prev() bool {
 	}
 
 	targetOffset := i.offset
-	index := sort.Search(i.numRestarts, func(j int) bool {
-		offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*j:]))
+	index := sort.Search(int(i.numRestarts), func(j int) bool {
+		offset := int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*j:]))
 		return offset >= targetOffset
 	})
 	i.offset = 0
 	if index > 0 {
-		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*(index-1):]))
 	}
 
 	i.readEntry()

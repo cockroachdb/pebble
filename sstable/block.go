@@ -97,19 +97,20 @@ func (w *blockWriter) estimatedSize() int {
 }
 
 type blockEntry struct {
-	offset   int
-	keyStart int
-	keyEnd   int
-	val      []byte
+	offset   int32
+	keyStart int32
+	keyEnd   int32
+	valStart int32
+	valSize  int32
 }
 
 // blockIter is an iterator over a single block of data.
 type blockIter struct {
 	cmp          Compare
-	offset       int
-	nextOffset   int
-	restarts     int
-	numRestarts  int
+	offset       int32
+	nextOffset   int32
+	restarts     int32
+	numRestarts  int32
 	globalSeqNum uint64
 	ptr          unsafe.Pointer
 	data         []byte
@@ -129,12 +130,12 @@ func newBlockIter(cmp Compare, block block) (*blockIter, error) {
 }
 
 func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
-	numRestarts := int(binary.LittleEndian.Uint32(block[len(block)-4:]))
+	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
 	}
 	i.cmp = cmp
-	i.restarts = len(block) - 4*(1+numRestarts)
+	i.restarts = int32(len(block)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
 	i.globalSeqNum = globalSeqNum
 	i.ptr = unsafe.Pointer(&block[0])
@@ -238,7 +239,7 @@ func (i *blockIter) readEntry() {
 	}
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
-	i.nextOffset = int(uintptr(ptr)-uintptr(i.ptr)) + int(value)
+	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
 }
 
 func (i *blockIter) decodeInternalKey(key []byte) {
@@ -262,11 +263,18 @@ func (i *blockIter) clearCache() {
 }
 
 func (i *blockIter) cacheEntry() {
+	var valStart int32
+	valSize := int32(len(i.val))
+	if valSize > 0 {
+		valStart = int32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
+	}
+
 	i.cached = append(i.cached, blockEntry{
 		offset:   i.offset,
-		keyStart: len(i.cachedBuf),
-		keyEnd:   len(i.cachedBuf) + len(i.key),
-		val:      i.val,
+		keyStart: int32(len(i.cachedBuf)),
+		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
+		valStart: valStart,
+		valSize:  valSize,
 	})
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
@@ -279,7 +287,7 @@ func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
-	var index int
+	var index int32
 
 	{
 		// NB: manually inlined sort.Seach is ~5% faster.
@@ -288,9 +296,9 @@ func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int(uint(index+upper) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 			// index ≤ h < upper
-			offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -359,7 +367,7 @@ func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	// 0, then all keys in this block are larger than the key sought, and offset
 	// remains at zero.
 	if index > 0 {
-		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
 	}
 	i.readEntry()
 	i.decodeInternalKey(i.key)
@@ -389,7 +397,7 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	// Find the index of the smallest restart point whose key is >= the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
-	var index int
+	var index int32
 
 	{
 		// NB: manually inlined sort.Search is ~5% faster.
@@ -398,9 +406,9 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int(uint(index+upper) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 			// index ≤ h < upper
-			offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -467,7 +475,7 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	// Since keys are strictly increasing, if index > 0 then the restart point at
 	// index-1 will be the largest whose key is < the key sought.
 	if index > 0 {
-		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
 	} else if index == 0 {
 		// If index == 0 then all keys in this block are larger than the key
 		// sought.
@@ -522,7 +530,7 @@ func (i *blockIter) First() (*InternalKey, []byte) {
 // Last implements internalIterator.Last, as documented in the pebble package.
 func (i *blockIter) Last() (*InternalKey, []byte) {
 	// Seek forward from the last restart point.
-	i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
+	i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
 	if !i.Valid() {
 		return nil, nil
 	}
@@ -570,7 +578,7 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
 		i.offset = e.offset
-		i.val = e.val
+		i.val = getBytes(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart)), int(e.valSize))
 		// Manually inlined version of i.decodeInternalKey(key).
 		key := i.cachedBuf[e.keyStart:e.keyEnd]
 		if n := len(key) - 8; n >= 0 {
@@ -594,7 +602,7 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 	}
 
 	targetOffset := i.offset
-	var index int
+	var index int32
 
 	{
 		// NB: manually inlined sort.Sort is ~5% faster.
@@ -603,9 +611,9 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int(uint(index+upper) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 			// index ≤ h < upper
-			offset := int(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
 			if offset < targetOffset {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
@@ -618,7 +626,7 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 
 	i.offset = 0
 	if index > 0 {
-		i.offset = int(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
 	}
 
 	i.readEntry()
