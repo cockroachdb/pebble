@@ -172,6 +172,13 @@ type DB struct {
 
 	closed int32 // updated atomically
 
+	compactionLimiter *rate.Limiter
+
+	// bytesFlushed is the number of bytes flushed in the current flush. This
+	// must be read/written atomically since it is accessed by both the flush
+	// and compaction routines.
+	bytesFlushed uint64
+
 	flushLimiter *rate.Limiter
 
 	// TODO(peter): describe exactly what this mutex protects. So far: every
