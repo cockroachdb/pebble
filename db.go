@@ -172,6 +172,11 @@ type DB struct {
 
 	closed int32 // updated atomically
 
+	compactionLimiter          *rate.Limiter
+	compactionDebt             uint64
+	pendingFlushCompactionDebt uint64
+	estimatedWAmp              float64
+
 	flushLimiter *rate.Limiter
 
 	// TODO(peter): describe exactly what this mutex protects. So far: every

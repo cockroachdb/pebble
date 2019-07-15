@@ -685,6 +685,10 @@ func (d *DB) flush1() error {
 		return err
 	}
 
+	// Refresh compaction debt estimate since flush has been applied.
+	d.pendingFlushCompactionDebt = 0
+	d.compactionDebt = d.mu.versions.picker.estimatedCompactionDebt()
+
 	flushed := d.mu.mem.queue[:n]
 	d.mu.mem.queue = d.mu.mem.queue[n:]
 	d.updateReadStateLocked()
@@ -807,6 +811,10 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Recompute estimated w-amp since compaction has been applied.
+	d.estimatedWAmp = d.mu.versions.picker.estimatedWAmp()
+
 	d.updateReadStateLocked()
 	d.deleteObsoleteFiles(jobID)
 	return nil
@@ -851,6 +859,20 @@ func (d *DB) runCompaction(c *compaction) (
 	}()
 
 	snapshots := d.mu.snapshots.toSlice()
+
+	// compactionSlowdownThreshold is the low watermark for compaction debt. If compaction
+	// debt is below this threshold, we slow down compactions. If compaction debt is above
+	// this threshold, we let compactions continue as fast as possible. We want to keep
+	// compaction debt as low as possible to match the speed of flushes. This threshold
+	// is set so that a single flush cannot contribute enough compaction debt to overshoot
+	// the threshold.
+	var compactionSlowdownThreshold uint64
+	if c.flushing == nil {
+		compactionSlowdownThreshold =
+			uint64(d.mu.versions.picker.estimatedMaxWAmp() * float64(d.opts.MemTableSize))
+	}
+	d.compactionDebt = d.mu.versions.picker.estimatedCompactionDebt()
+	d.estimatedWAmp = d.mu.versions.picker.estimatedWAmp()
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
@@ -1019,6 +1041,8 @@ func (d *DB) runCompaction(c *compaction) (
 			flushAmount := c.bytesIterated - prevBytesIterated
 			prevBytesIterated = c.bytesIterated
 
+			d.pendingFlushCompactionDebt += uint64(d.estimatedWAmp * float64(flushAmount))
+
 			// We slow down memtable flushing when the dirty bytes indicator falls
 			// below the low watermark, which is 105% memtable size. This will only
 			// occur if memtable flushing can keep up with the pace of incoming
@@ -1045,6 +1069,41 @@ func (d *DB) runCompaction(c *compaction) (
 				}
 				d.flushLimiter.AllowN(time.Now(), int(flushAmount))
 			}
+		} else {
+			var curCompactionDebt uint64
+			if d.compactionDebt + d.pendingFlushCompactionDebt > c.bytesIterated {
+				curCompactionDebt = d.compactionDebt + d.pendingFlushCompactionDebt - c.bytesIterated
+			}
+
+			compactAmount := c.bytesIterated - prevBytesIterated
+			// We slow down compactions when the compaction debt falls below the slowdown
+			// threshold, which is set dynamically based on the number of non-empty levels.
+			// This will only occur if compactions can keep up with the pace of flushes. If
+			// bytes are flushed faster than how fast compactions can occur, compactions
+			// proceed at maximum (unthrottled) speed.
+			if curCompactionDebt <= compactionSlowdownThreshold {
+				burst := d.compactionLimiter.Burst()
+				for compactAmount > uint64(burst) {
+					err := d.compactionLimiter.WaitN(context.Background(), burst)
+					if err != nil {
+						return nil, pendingOutputs, err
+					}
+					compactAmount -= uint64(burst)
+				}
+				err := d.compactionLimiter.WaitN(context.Background(), int(compactAmount))
+				if err != nil {
+					return nil, pendingOutputs, err
+				}
+			} else {
+				burst := d.compactionLimiter.Burst()
+				for compactAmount > uint64(burst) {
+					d.compactionLimiter.AllowN(time.Now(), burst)
+					compactAmount -= uint64(burst)
+				}
+				d.compactionLimiter.AllowN(time.Now(), int(compactAmount))
+			}
+
+			prevBytesIterated = c.bytesIterated
 		}
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.

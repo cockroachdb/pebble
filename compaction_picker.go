@@ -12,11 +12,15 @@ import (
 // compaction picker is associated with a single version. A new compaction
 // picker is created and initialized every time a new version is installed.
 type compactionPicker struct {
+	opts *Options
 	vers *version
 
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
 	baseLevel int
+
+	// smoothedLevelMultiplier is the size ratio between one level and the next.
+	smoothedLevelMultiplier float64
 
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
@@ -32,6 +36,7 @@ type compactionPicker struct {
 
 func newCompactionPicker(v *version, opts *Options) *compactionPicker {
 	p := &compactionPicker{
+		opts: opts,
 		vers: v,
 	}
 	p.initLevelMaxBytes(v, opts)
@@ -44,6 +49,115 @@ func (p *compactionPicker) compactionNeeded() bool {
 		return false
 	}
 	return p.score >= 1
+}
+
+// estimatedCompactionDebt estimates the number of bytes which need to be
+// compacted before the LSM tree becomes stable.
+func (p *compactionPicker) estimatedCompactionDebt() uint64 {
+	if p == nil {
+		return 0
+	}
+
+	var levelSize uint64
+	for _, file := range p.vers.files[0] {
+		levelSize += file.size
+	}
+
+	estimatedCompactionDebt := levelSize
+	bytesAddedToNextLevel := levelSize
+
+	var nextLevelSize uint64
+	for level := p.baseLevel; level < numLevels - 1; level++ {
+		if nextLevelSize > 0 {
+			levelSize = nextLevelSize
+			nextLevelSize = 0
+		} else {
+			levelSize = 0
+			for _, file := range p.vers.files[level] {
+				levelSize += file.size
+			}
+		}
+
+		if level == p.baseLevel {
+			estimatedCompactionDebt += levelSize
+		}
+
+		levelSize += bytesAddedToNextLevel
+		bytesAddedToNextLevel = 0
+		if levelSize > uint64(p.levelMaxBytes[level]) {
+			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
+			for _, file := range p.vers.files[level + 1] {
+				nextLevelSize += file.size
+			}
+
+			levelRatio := float64(nextLevelSize)/float64(levelSize)
+			estimatedCompactionDebt += uint64(float64(bytesAddedToNextLevel) * (levelRatio + 1))
+		}
+	}
+
+	return estimatedCompactionDebt
+}
+
+// estimatedWAmp estimates the write amp per byte that is added to L0.
+func (p *compactionPicker) estimatedWAmp() float64 {
+	if p == nil {
+		return 0
+	}
+
+	var levelSize uint64
+	for _, file := range p.vers.files[0] {
+		levelSize += file.size
+	}
+	// We add memtable size here to account for overflow into the next level.
+	levelSize += uint64(p.opts.MemTableSize)
+
+	estimatedWAmp := 1.0
+
+	bytesAddedToNextLevel := levelSize
+	var nextLevelSize uint64
+	for level := p.baseLevel; level < numLevels - 1; level++ {
+		if nextLevelSize > 0 {
+			levelSize = nextLevelSize
+			nextLevelSize = 0
+		} else {
+			levelSize = 0
+			for _, file := range p.vers.files[level] {
+				levelSize += file.size
+			}
+		}
+
+		if level == p.baseLevel {
+			// We need to use an estimate of average L0 size because the actual L0 size
+			// is very jumpy.
+			// TODO(ryan): There is probably a better way to estimate this. Maybe we can
+			// look at how many L0 files were compacted in the last L0->Lbase compaction.
+			estimatedAverageL0Size := p.opts.L0CompactionThreshold * p.opts.MemTableSize
+			estimatedWAmp += float64(levelSize) / float64(estimatedAverageL0Size)
+		}
+
+		levelSize += bytesAddedToNextLevel
+		bytesAddedToNextLevel = 0
+		if levelSize > uint64(p.levelMaxBytes[level]) {
+			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
+			for _, file := range p.vers.files[level + 1] {
+				nextLevelSize += file.size
+			}
+
+			levelRatio := float64(nextLevelSize)/float64(levelSize)
+			estimatedWAmp += levelRatio + 1
+		} else {
+			// Return because next levels no longer contribute to compaction debt.
+			return float64(estimatedWAmp)
+		}
+	}
+
+	return float64(estimatedWAmp)
+}
+
+// estimatedMaxWAmp estimates the maximum possible write amp per byte that is
+// added to L0.
+func (p *compactionPicker) estimatedMaxWAmp() float64 {
+	return float64(numLevels - p.baseLevel) * (p.smoothedLevelMultiplier + 1)
 }
 
 func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
@@ -98,19 +212,18 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 		}
 	}
 
-	var smoothedLevelMultiplier float64
 	if p.baseLevel < numLevels-1 {
-		smoothedLevelMultiplier = math.Pow(
+		p.smoothedLevelMultiplier = math.Pow(
 			float64(bottomLevelSize)/float64(baseBytesMax),
 			1.0/float64(numLevels-p.baseLevel-1))
 	} else {
-		smoothedLevelMultiplier = 1.0
+		p.smoothedLevelMultiplier = 1.0
 	}
 
 	levelSize := float64(baseBytesMax)
 	for level := p.baseLevel; level < numLevels; level++ {
 		if level > p.baseLevel && levelSize > 0 {
-			levelSize *= smoothedLevelMultiplier
+			levelSize *= p.smoothedLevelMultiplier
 		}
 		// Round the result since test cases use small target level sizes, which
 		// can be impacted by floating-point imprecision + integer truncation.
