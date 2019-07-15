@@ -296,8 +296,12 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
-	// MinFlushRate sets the minimum rate at which the MemTables are flushed. The
+	// MinCompactionRate sets the minimum rate at which compactions occur. The
 	// default is 4 MB/s.
+	MinCompactionRate int
+
+	// MinFlushRate sets the minimum rate at which the MemTables are flushed. The
+	// default is 1 MB/s.
 	MinFlushRate int
 
 	// TableFormat specifies the format version for sstables. The default is
@@ -377,8 +381,11 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
+	if o.MinCompactionRate == 0 {
+		o.MinCompactionRate = 4 << 20 // 4 MB/s
+	}
 	if o.MinFlushRate == 0 {
-		o.MinFlushRate = 4 << 20 // 4 MB/s
+		o.MinFlushRate = 1 << 20 // 1 MB/s
 	}
 	if o.FS == nil {
 		o.FS = vfs.Default
@@ -417,6 +424,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
+	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.MinCompactionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.MinFlushRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")

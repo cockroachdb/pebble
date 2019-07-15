@@ -54,7 +54,8 @@ func newPebbleDB(dir string) DB {
 		DisableWAL:                  disableWAL,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
-		MinFlushRate:                4 << 20,
+		MinCompactionRate:           4 << 20, // 4 MB/s
+		MinFlushRate:                1 << 20, // 1 MB/s
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       32,
 		LBaseMaxBytes:               64 << 20, // 64 MB
