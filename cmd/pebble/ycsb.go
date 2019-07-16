@@ -24,6 +24,7 @@ const (
 	ycsbInsert = iota
 	ycsbRead
 	ycsbScan
+	ycsbReverseScan
 	ycsbUpdate
 	ycsbNumOps
 )
@@ -162,6 +163,8 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 			iWeights[ycsbRead] = weight
 		case "scan":
 			iWeights[ycsbScan] = weight
+		case "rscan":
+			iWeights[ycsbReverseScan] = weight
 		case "update":
 			iWeights[ycsbUpdate] = weight
 		}
@@ -291,6 +294,7 @@ func newYcsb(
 	y.latency[ycsbInsert] = maybeRegister(ycsbInsert, "insert")
 	y.latency[ycsbRead] = maybeRegister(ycsbRead, "read")
 	y.latency[ycsbScan] = maybeRegister(ycsbScan, "scan")
+	y.latency[ycsbReverseScan] = maybeRegister(ycsbReverseScan, "rscan")
 	y.latency[ycsbUpdate] = maybeRegister(ycsbUpdate, "update")
 	return y
 }
@@ -338,7 +342,9 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 		case ycsbRead:
 			y.read(db, rng)
 		case ycsbScan:
-			y.scan(db, rng)
+			y.scan(db, rng, false /* reverse */)
+		case ycsbReverseScan:
+			y.scan(db, rng, true /* reverse */)
 		case ycsbUpdate:
 			y.update(db, rng)
 		default:
@@ -425,10 +431,10 @@ func (y *ycsb) read(db DB, rng *rand.Rand) {
 	atomic.AddUint64(&y.numKeys[ycsbRead], 1)
 }
 
-func (y *ycsb) scan(db DB, rng *rand.Rand) {
+func (y *ycsb) scan(db DB, rng *rand.Rand, reverse bool) {
 	count := y.scanDist.Uint64()
 	key := y.nextReadKey()
-	if err := db.Scan(key, int64(count)); err != nil {
+	if err := db.Scan(key, int64(count), reverse); err != nil {
 		log.Fatal(err)
 	}
 	atomic.AddUint64(&y.numKeys[ycsbScan], count)

@@ -156,22 +156,30 @@ func (r rocksDB) NewBatch() batch {
 	return rocksDBBatch{r.d.NewBatch()}
 }
 
-func (r rocksDB) Scan(key []byte, count int64) error {
+func (r rocksDB) Scan(key []byte, count int64, reverse bool) error {
 	// TODO: unnecessary overhead here. Change the interface.
 	beginKey, _, ok := mvccSplitKey(key)
 	if !ok {
 		panic("mvccSplitKey failed")
 	}
+	endKey := roachpb.KeyMax
 	ropts := engine.IterOptions{
 		LowerBound: key,
 	}
+	if reverse {
+		endKey = beginKey
+		beginKey = roachpb.KeyMin
+		ropts.UpperBound = key
+		ropts.LowerBound = nil
+	}
+
 	iter := r.d.NewIterator(ropts)
 	defer iter.Close()
 	// We hard code a timestamp with walltime=1 in the data, so we just have to
 	// use a larger timestamp here (walltime=10).
 	ts := hlc.Timestamp{WallTime: 10}
 	_, numKVs, _, intents, err := iter.MVCCScan(
-		beginKey, roachpb.KeyMax, count, ts, engine.MVCCScanOptions{},
+		beginKey, endKey, count, ts, engine.MVCCScanOptions{Reverse: reverse},
 	)
 	if numKVs > count {
 		panic("MVCCScan returned too many keys")
