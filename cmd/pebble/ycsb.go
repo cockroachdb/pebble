@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"github.com/petermattis/pebble"
 	"github.com/petermattis/pebble/internal/ackseq"
 	"github.com/petermattis/pebble/internal/randvar"
+	"github.com/petermattis/pebble/internal/rate"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
@@ -250,6 +252,7 @@ type ycsb struct {
 	prevNumKeys       [ycsbNumOps]uint64
 	opsMap            map[string]int
 	latency           [ycsbNumOps]*namedHistogram
+	limiter           *rate.Limiter
 }
 
 func newYcsb(
@@ -317,6 +320,7 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 			1+ycsbConfig.prepopulatedKeys+ycsbConfig.initialKeys)
 	}
 	y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys))
+	y.limiter = rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
 
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
@@ -329,6 +333,7 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 
 	rng := randvar.NewRand()
 	for {
+		y.limiter.Wait(context.Background())
 		start := time.Now()
 
 		op := y.ops.Int()

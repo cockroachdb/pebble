@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble"
+	"github.com/petermattis/pebble/internal/rate"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
@@ -94,6 +96,7 @@ func runScan(cmd *cobra.Command, args []string) {
 				log.Fatal(err)
 			}
 
+			limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				go func(i int) {
@@ -105,6 +108,7 @@ func runScan(cmd *cobra.Command, args []string) {
 					minTS := encodeUint64Ascending(nil, math.MaxUint64)
 
 					for {
+						limiter.Wait(context.Background())
 						rows := int(rowDist.Uint64())
 						startIdx := rng.Int31n(int32(len(keys) - rows))
 						startKey := encodeUint32Ascending(startKeyBuf[:4], uint32(startIdx))

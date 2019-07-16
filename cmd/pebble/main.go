@@ -6,6 +6,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"os"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 var (
 	concurrency     int
+	maxOpsPerSec    int
 	disableWAL      bool
 	duration        time.Duration
 	rocksdb         bool
@@ -42,6 +44,8 @@ func main() {
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
 		cmd.Flags().IntVarP(
 			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
+		cmd.Flags().IntVarP(
+			&maxOpsPerSec, "max-ops-per-sec", "m", math.MaxInt32, "max ops per second")
 		cmd.Flags().BoolVar(
 			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
 		cmd.Flags().DurationVarP(

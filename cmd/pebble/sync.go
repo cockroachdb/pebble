@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble"
+	"github.com/petermattis/pebble/internal/rate"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
@@ -64,6 +66,7 @@ func runSync(cmd *cobra.Command, args []string) {
 
 	runTest(args[0], test{
 		init: func(d DB, wg *sync.WaitGroup) {
+			limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				latency := reg.Register("ops")
@@ -74,6 +77,7 @@ func runSync(cmd *cobra.Command, args []string) {
 					var raw []byte
 					var buf []byte
 					for {
+						limiter.Wait(context.Background())
 						start := time.Now()
 						b := d.NewBatch()
 						var n uint64
