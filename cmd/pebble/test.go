@@ -39,6 +39,17 @@ func startCPUProfile() func() {
 		pprof.StopCPUProfile()
 		f.Close()
 
+		if p := pprof.Lookup("heap"); p != nil {
+			f, err := os.Create("heap.prof")
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err := p.WriteTo(f, 0); err != nil {
+				log.Fatal(err)
+			}
+			f.Close()
+		}
+
 		// if p := pprof.Lookup("mutex"); p != nil {
 		// 	f, err := os.Create("mutex.prof")
 		// 	if err != nil {
