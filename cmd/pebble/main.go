@@ -6,6 +6,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"os"
 	"time"
 
@@ -17,6 +18,7 @@ var (
 	concurrency     int
 	disableWAL      bool
 	duration        time.Duration
+	maxOpsPerSec    int
 	rocksdb         bool
 	verbose         bool
 	walOnly         bool
@@ -49,6 +51,8 @@ func main() {
 			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
+		cmd.Flags().IntVarP(
+			&maxOpsPerSec, "max-ops-per-sec", "m", math.MaxInt32, "max ops per second")
 		cmd.Flags().BoolVar(
 			&rocksdb, "rocksdb", false,
 			"use rocksdb storage engine instead of pebble")
