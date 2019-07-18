@@ -108,10 +108,7 @@ type Writer struct {
 	// pendingBH is the blockHandle of a finished block that is waiting for
 	// the next call to Set. If the writer is not in this state, pendingBH
 	// is zero.
-	pendingBH blockHandle
-	// offset is the offset (relative to the table start) of the next block
-	// to be written.
-	offset         uint64
+	pendingBH      blockHandle
 	block          blockWriter
 	indexBlock     blockWriter
 	rangeDelBlock  blockWriter
@@ -356,7 +353,7 @@ func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 
 	// Calculate filters.
 	if w.filter != nil {
-		w.filter.finishBlock(w.offset)
+		w.filter.finishBlock(w.meta.Size)
 	}
 
 	// Reset the per-block state.
@@ -381,6 +378,7 @@ func (w *Writer) writeRawBlock(b []byte, compression Compression) (blockHandle, 
 	// Calculate the checksum.
 	checksum := crc.New(b).Update(w.tmp[:1]).Value()
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
+	bh := blockHandle{w.meta.Size, uint64(len(b))}
 
 	// Write the bytes to the file.
 	n, err := w.writer.Write(b)
@@ -388,13 +386,11 @@ func (w *Writer) writeRawBlock(b []byte, compression Compression) (blockHandle, 
 		return blockHandle{}, err
 	}
 	w.meta.Size += uint64(n)
-	n, err = w.writer.Write(w.tmp[:5])
+	n, err = w.writer.Write(w.tmp[:blockTrailerLen])
 	if err != nil {
 		return blockHandle{}, err
 	}
 	w.meta.Size += uint64(n)
-	bh := blockHandle{w.offset, uint64(len(b))}
-	w.offset += uint64(len(b)) + blockTrailerLen
 
 	return bh, nil
 }
@@ -428,7 +424,7 @@ func (w *Writer) Close() (err error) {
 		w.pendingBH = bh
 		w.flushPendingBH(InternalKey{})
 	}
-	w.props.DataSize = w.offset
+	w.props.DataSize = w.meta.Size
 	w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 	// Write the filter block.
@@ -557,7 +553,7 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // called to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
-	return w.offset + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
+	return w.meta.Size + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call
