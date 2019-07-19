@@ -74,8 +74,9 @@ func TestLogRecycler(t *testing.T) {
 }
 
 func TestRecycleLogs(t *testing.T) {
+	mem := vfs.NewMem()
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS: mem,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +86,11 @@ func TestRecycleLogs(t *testing.T) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.mu.log.queue[len(d.mu.log.queue)-1]
+	}
+	logCount := func() int {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return len(d.mu.log.queue)
 	}
 
 	// Flush the memtable a few times, forcing rotation of the WAL. We should see
@@ -105,6 +111,23 @@ func TestRecycleLogs(t *testing.T) {
 
 	require.EqualValues(t, []uint64{curLog}, d.logRecycler.logNums())
 
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err = Open("", &Options{
+		FS: mem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics := d.Metrics()
+	if n := logCount(); n != int(metrics.WAL.Files) {
+		t.Fatalf("expected %d WAL files, but found %d", n, metrics.WAL.Files)
+	}
+	if n := d.logRecycler.count(); n != int(metrics.WAL.ObsoleteFiles) {
+		t.Fatalf("expected %d obsolete WAL files, but found %d", n, metrics.WAL.ObsoleteFiles)
+	}
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
 	}

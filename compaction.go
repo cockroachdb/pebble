@@ -997,7 +997,7 @@ func (d *DB) runCompaction(c *compaction) (
 	var prevBytesIterated uint64
 	var iterCount int
 	totalBytes := d.memTableTotalBytes()
-	refreshDirtyBytesThreshold := uint64(d.opts.MemTableSize * 5/100)
+	refreshDirtyBytesThreshold := uint64(d.opts.MemTableSize * 5 / 100)
 
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
 		// Slow down memtable flushing to match fill rate.
@@ -1007,7 +1007,7 @@ func (d *DB) runCompaction(c *compaction) (
 			// byte count requires grabbing DB.mu which is expensive.
 			if iterCount >= 1000 || c.bytesIterated > refreshDirtyBytesThreshold {
 				totalBytes = d.memTableTotalBytes()
-				refreshDirtyBytesThreshold = c.bytesIterated + uint64(d.opts.MemTableSize * 5/100)
+				refreshDirtyBytesThreshold = c.bytesIterated + uint64(d.opts.MemTableSize*5/100)
 				iterCount = 0
 			}
 			iterCount++
@@ -1024,7 +1024,7 @@ func (d *DB) runCompaction(c *compaction) (
 			// occur if memtable flushing can keep up with the pace of incoming
 			// writes. If writes come in faster than how fast the memtable can flush,
 			// flushing proceeds at maximum (unthrottled) speed.
-			if dirtyBytes <= uint64(d.opts.MemTableSize * 105/100) {
+			if dirtyBytes <= uint64(d.opts.MemTableSize*105/100) {
 				burst := d.flushLimiter.Burst()
 				for flushAmount > uint64(burst) {
 					err := d.flushLimiter.WaitN(context.Background(), burst)
@@ -1151,6 +1151,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	}
 
 	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
+	d.mu.versions.metrics.WAL.Files += int64(len(obsoleteLogs))
 	d.mu.versions.obsoleteTables = merge(d.mu.versions.obsoleteTables, obsoleteTables)
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
@@ -1178,7 +1179,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		if d.mu.log.queue[i] >= d.mu.versions.logNumber {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
-			d.mu.versions.metrics.WAL.Files -= uint64(len(obsoleteLogs))
+			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))
 			break
 		}
 	}
