@@ -118,20 +118,20 @@ import (
 //
 // During actual iteration levels can contain both point operations and range
 // deletions. Within a level, when a range deletion contains a point operation
-// the sequence numbers must must be checked to determine if the point
-// operation is newer or older than the range deletion tombstone. The
-// mergingIter maintains the invariant that the range deletion iterators for
-// all levels newer that the current iteration key (L < m.heap.items[0].index)
-// are positioned at the next (or previous during reverse iteration) range
-// deletion tombstone. We know those levels don't contain a range deletion
-// tombstone that covers the current key because if they did the current key
-// would be deleted. The range deletion iterator for the current key's level is
-// positioned at a range tombstone covering or past the current key. The
-// position of all of other range deletion iterators is unspecified. Whenever a
-// key from those levels becomes the current key, their range deletion
-// iterators need to be positioned. This lazy positioning avoids seeking the
-// range deletion iterators for keys that are never considered. (A similar bit
-// of lazy evaluation can be done for the point iterators, but is still TBD).
+// the sequence numbers must be checked to determine if the point operation is
+// newer or older than the range deletion tombstone. The mergingIter maintains
+// the invariant that the range deletion iterators for all levels newer that
+// the current iteration key (L < m.heap.items[0].index) are positioned at the
+// next (or previous during reverse iteration) range deletion tombstone. We
+// know those levels don't contain a range deletion tombstone that covers the
+// current key because if they did the current key would be deleted. The range
+// deletion iterator for the current key's level is positioned at a range
+// tombstone covering or past the current key. The position of all of other
+// range deletion iterators is unspecified. Whenever a key from those levels
+// becomes the current key, their range deletion iterators need to be
+// positioned. This lazy positioning avoids seeking the range deletion
+// iterators for keys that are never considered. (A similar bit of lazy
+// evaluation can be done for the point iterators, but is still TBD).
 //
 // For a full example, consider the following setup:
 //
@@ -166,7 +166,7 @@ import (
 // tombstone of [a,e) so we need to advance the r2 range deletion iterator to
 // [q,v).
 //
-// The next key is "i". Because this key is on p2, a level above "e", we don't
+// The next key is "i". Because this key is in p2, a level above "e", we don't
 // have to reposition any range deletion iterators and instead see that "i" is
 // covered by the range tombstone [g,k). The iterator is immediately advanced
 // to "n" which is covered by the range tombstone [m,q) causing the iterator to
