@@ -31,7 +31,7 @@ sync: wal/000002.log
 create: db/000006.sst
 sync: db/000006.sst
 sync: db
-[JOB 3] flushed to L0: 1 (959 B)
+[JOB 3] flushed to L0: 1 (825 B)
 create: db/MANIFEST-000007
 sync: db/MANIFEST-000007
 create: db/CURRENT.000007.dbtmp
@@ -53,7 +53,7 @@ sync: wal/000005.log
 create: db/000009.sst
 sync: db/000009.sst
 sync: db
-[JOB 5] flushed to L0: 1 (959 B)
+[JOB 5] flushed to L0: 1 (825 B)
 create: db/MANIFEST-000010
 sync: db/MANIFEST-000010
 create: db/CURRENT.000010.dbtmp
@@ -62,11 +62,11 @@ rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
 [JOB 5] MANIFEST created 000010
 [JOB 5] MANIFEST deleted 000007
-[JOB 6] compacting L0 -> L6: 2+0 (1.9 K + 0 B)
+[JOB 6] compacting L0 -> L6: 2+0 (1.6 K + 0 B)
 create: db/000011.sst
 sync: db/000011.sst
 sync: db
-[JOB 6] compacted L0 -> L6: 2+0 (1.9 K + 0 B) -> 1 (959 B)
+[JOB 6] compacted L0 -> L6: 2+0 (1.6 K + 0 B) -> 1 (825 B)
 create: db/MANIFEST-000012
 sync: db/MANIFEST-000012
 create: db/CURRENT.000012.dbtmp
@@ -89,17 +89,17 @@ sync: db/CURRENT.000014.dbtmp
 rename: db/CURRENT.000014.dbtmp -> db/CURRENT
 sync: db
 [JOB 7] MANIFEST created 000014
-[JOB 7] ingested to L5 (959 B)
+[JOB 7] ingested to L5 (825 B)
 
 metrics
 ----
 level__files____size___score______in__ingest____move____read___write___w-amp
   WAL      1    27 B       -    32 B       -       -       -    81 B     2.5
-    0      0     0 B    0.00    54 B     0 B     0 B     0 B   1.9 K    35.5
+    0      0     0 B    0.00    54 B     0 B     0 B     0 B   1.6 K    30.6
     1      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
     2      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
     3      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
     4      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
-    5      1   959 B    0.00     0 B   959 B     0 B     0 B     0 B     0.0
-    6      1   959 B    1.00   1.9 K     0 B     0 B   1.9 K   959 B     0.5
-total      2   1.9 K    0.00   1.0 K   959 B     0 B   1.9 K   3.8 K     3.8
+    5      1   825 B    0.00     0 B   825 B     0 B     0 B     0 B     0.0
+    6      1   825 B    1.00   1.6 K     0 B     0 B   1.6 K   825 B     0.5
+total      2   1.6 K    0.00   906 B   825 B     0 B   1.6 K   3.3 K     3.7

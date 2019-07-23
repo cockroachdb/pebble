@@ -219,8 +219,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		w.meta.SmallestPoint = key.Clone()
 	}
 	w.props.NumEntries++
-	if key.Kind() == InternalKeyKindDelete {
+	switch key.Kind() {
+	case InternalKeyKindDelete:
 		w.props.NumDeletions++
+	case InternalKeyKindMerge:
+		w.props.NumMergeOperands++
 	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
@@ -283,6 +286,11 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 	w.props.NumRangeDeletions++
 	w.rangeDelBlock.add(key, value)
 	return nil
+}
+
+func (w *Writer) compressionOptions() string {
+	// TODO: Implement compression options.
+	return "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
 }
 
 func (w *Writer) maybeAddToFilter(key []byte) {
@@ -426,6 +434,10 @@ func (w *Writer) Close() (err error) {
 	}
 	w.props.DataSize = w.meta.Size
 	w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
+	// NB: RocksDB includes the block trailer length in the index size
+	// property, though it doesn't include the trailer in the filter size
+	// property.
+	w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
 
 	// Write the filter block.
 	var metaindex rawBlockWriter
@@ -447,6 +459,12 @@ func (w *Writer) Close() (err error) {
 		w.props.FilterSize = bh.length
 	}
 
+	// Write the index block.
+	indexBH, err := w.finishBlock(&w.indexBlock)
+	if err != nil {
+		w.err = err
+		return w.err
+	}
 	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
 		if !w.rangeDelV1Format {
@@ -488,11 +506,8 @@ func (w *Writer) Close() (err error) {
 
 		// Write the properties block.
 		var raw rawBlockWriter
-		raw.restartInterval = 1
-		// NB: RocksDB includes the block trailer length in the index size
-		// property, though it doesn't include the trailer in the filter size
-		// property.
-		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
+		raw.restartInterval = math.MaxInt32
+		w.props.CompressionOptions = w.compressionOptions()
 		w.props.save(&raw)
 		bh, err := w.writeRawBlock(raw.finish(), NoCompression)
 		if err != nil {
@@ -506,13 +521,6 @@ func (w *Writer) Close() (err error) {
 	// Write the metaindex block. It might be an empty block, if the filter
 	// policy is nil.
 	metaindexBH, err := w.finishBlock(&metaindex.blockWriter)
-	if err != nil {
-		w.err = err
-		return w.err
-	}
-
-	// Write the index block.
-	indexBH, err := w.finishBlock(&w.indexBlock)
 	if err != nil {
 		w.err = err
 		return w.err
