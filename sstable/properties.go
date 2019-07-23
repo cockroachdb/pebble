@@ -14,6 +14,8 @@ import (
 	"unsafe"
 )
 
+const propertiesBlockRestartInterval = math.MaxInt32
+
 var propTagMap = make(map[string]reflect.StructField)
 
 var columnFamilyIDField = func() reflect.StructField {
@@ -59,11 +61,15 @@ type Properties struct {
 	ComparatorName string `prop:"rocksdb.comparator"`
 	// The compression algorithm used to compress blocks.
 	CompressionName string `prop:"rocksdb.compression"`
+	// The compression options used to compress blocks.
+	CompressionOptions string `prop:"rocksdb.compression_options"`
 	// The time when the SST file was created. Since SST files are immutable,
 	// this is equivalent to last modified time.
 	CreationTime uint64 `prop:"rocksdb.creation.time"`
 	// The total size of all data blocks.
 	DataSize uint64 `prop:"rocksdb.data.size"`
+	// Actual SST file creation time. 0 means unknown.
+	FileCreationTime uint64 `prop:"rocksdb.file.creation.time"`
 	// The name of the filter policy used in this table. Empty if no filter
 	// policy is used.
 	FilterPolicyName string `prop:"rocksdb.filter.policy"`
@@ -84,16 +90,20 @@ type Properties struct {
 	IndexSize uint64 `prop:"rocksdb.index.size"`
 	// The index type. TODO(peter): add a more detailed description.
 	IndexType uint32 `prop:"rocksdb.block.based.table.index.type"`
+	// Whether delta encoding is used to encode the index values.
+	IndexValueIsDeltaEncoded uint64 `prop:"rocksdb.index.value.is.delta.encoded"`
 	// The name of the merge operator used in this table. Empty if no merge
 	// operator is used.
 	MergeOperatorName string `prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
 	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
-	// the number of deletion entries in this table.
+	// The number of deletion entries in this table.
 	NumDeletions uint64 `prop:"rocksdb.deleted.keys"`
-	// the number of entries in this table.
+	// The number of entries in this table.
 	NumEntries uint64 `prop:"rocksdb.num.entries"`
-	// the number of range deletions in this table.
+	// The number of merge operands in the table.
+	NumMergeOperands uint64 `prop:"rocksdb.merge.operands"`
+	// The number of range deletions in this table.
 	NumRangeDeletions uint64 `prop:"rocksdb.num.range-deletions"`
 	// Timestamp of the earliest key. 0 if unknown.
 	OldestKeyTime uint64 `prop:"rocksdb.oldest.key.time"`
@@ -250,8 +260,14 @@ func (p *Properties) save(w *rawBlockWriter) {
 	if p.CompressionName != "" {
 		p.saveString(m, unsafe.Offsetof(p.CompressionName), p.CompressionName)
 	}
+	if p.CompressionOptions != "" {
+		p.saveString(m, unsafe.Offsetof(p.CompressionOptions), p.CompressionOptions)
+	}
 	p.saveUvarint(m, unsafe.Offsetof(p.CreationTime), p.CreationTime)
 	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
+	if p.FileCreationTime > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.FileCreationTime), p.FileCreationTime)
+	}
 	if p.FilterPolicyName != "" {
 		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
 	}
@@ -259,26 +275,22 @@ func (p *Properties) save(w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.FixedKeyLen), p.FixedKeyLen)
 	p.saveUvarint(m, unsafe.Offsetof(p.FormatVersion), p.FormatVersion)
 	p.saveUint64(m, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
-	if p.IndexKeyIsUserKey != 0 {
-		p.saveUvarint(m, unsafe.Offsetof(p.IndexKeyIsUserKey), p.IndexKeyIsUserKey)
-	}
+	p.saveUvarint(m, unsafe.Offsetof(p.IndexKeyIsUserKey), p.IndexKeyIsUserKey)
 	if p.IndexPartitions != 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.IndexPartitions), p.IndexPartitions)
 		p.saveUvarint(m, unsafe.Offsetof(p.TopLevelIndexSize), p.TopLevelIndexSize)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexSize), p.IndexSize)
 	p.saveUint32(m, unsafe.Offsetof(p.IndexType), p.IndexType)
+	p.saveUvarint(m, unsafe.Offsetof(p.IndexValueIsDeltaEncoded), p.IndexValueIsDeltaEncoded)
 	if p.MergeOperatorName != "" {
 		p.saveString(m, unsafe.Offsetof(p.MergeOperatorName), p.MergeOperatorName)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDataBlocks), p.NumDataBlocks)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumEntries), p.NumEntries)
-	if p.NumDeletions != 0 {
-		p.saveUvarint(m, unsafe.Offsetof(p.NumDeletions), p.NumDeletions)
-	}
-	if p.NumRangeDeletions != 0 {
-		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
-	}
+	p.saveUvarint(m, unsafe.Offsetof(p.NumDeletions), p.NumDeletions)
+	p.saveUvarint(m, unsafe.Offsetof(p.NumMergeOperands), p.NumMergeOperands)
+	p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
 	p.saveUvarint(m, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
 	if p.PrefixExtractorName != "" {
 		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
