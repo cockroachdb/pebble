@@ -468,7 +468,7 @@ type Cache struct {
 // New creates a new cache of the specified size. Memory for the cache is
 // allocated on demand, not during initialization.
 func New(size int64) *Cache {
-	return newShards(size, runtime.NumCPU())
+	return newShards(size, 2*runtime.NumCPU())
 }
 
 func newShards(size int64, shards int) *Cache {
