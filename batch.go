@@ -853,11 +853,9 @@ type flushableBatch struct {
 	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
 	// flushable batch is indexed such that batch entry i will be given the
 	// sequence number flushableBatch.seqNum+i.
-	offsets         []flushableBatchEntry
-	rangeDelOffsets []flushableBatchEntry
+	offsets []flushableBatchEntry
 
-	// Fragmented range deletion tombstones. Created and cached the first time a
-	// range deletion iterator is requested.
+	// Fragmented range deletion tombstones.
 	tombstones []rangedel.Tombstone
 
 	flushedCh chan struct{}
@@ -873,14 +871,14 @@ var _ flushable = (*flushableBatch)(nil)
 // of the batch data.
 func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
-		data:            batch.storage.data,
-		cmp:             comparer.Compare,
-		offsets:         make([]flushableBatchEntry, 0, batch.count()),
-		rangeDelOffsets: nil, // NB: assume no range deletions need indexing
-		flushedCh:       make(chan struct{}),
+		data:      batch.storage.data,
+		cmp:       comparer.Compare,
+		offsets:   make([]flushableBatchEntry, 0, batch.count()),
+		flushedCh: make(chan struct{}),
 	}
 
 	var index uint32
+	var rangeDelOffsets []flushableBatchEntry
 	for iter := BatchReader(b.data[batchHeaderLen:]); len(iter) > 0; index++ {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
 		kind, key, _, ok := iter.Next()
@@ -894,7 +892,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		if keySize := uint32(len(key)); keySize == 0 {
 			// Must add 2 to the offset. One byte encodes `kind` and the next
 			// byte encodes `0`, which is the length of the key.
-			entry.keyStart = uint32(offset)+2
+			entry.keyStart = uint32(offset) + 2
 			entry.keyEnd = entry.keyStart
 		} else {
 			entry.keyStart = uint32(uintptr(unsafe.Pointer(&key[0])) -
@@ -902,7 +900,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 			entry.keyEnd = entry.keyStart + keySize
 		}
 		if kind == InternalKeyKindRangeDelete {
-			b.rangeDelOffsets = append(b.rangeDelOffsets, entry)
+			rangeDelOffsets = append(rangeDelOffsets, entry)
 		} else {
 			b.offsets = append(b.offsets, entry)
 		}
@@ -910,9 +908,33 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 
 	// Sort both offsets and rangeDelOffsets.
 	sort.Sort(b)
-	b.rangeDelOffsets, b.offsets = b.offsets, b.rangeDelOffsets
+	rangeDelOffsets, b.offsets = b.offsets, rangeDelOffsets
 	sort.Sort(b)
-	b.rangeDelOffsets, b.offsets = b.offsets, b.rangeDelOffsets
+	rangeDelOffsets, b.offsets = b.offsets, rangeDelOffsets
+
+	if len(rangeDelOffsets) > 0 {
+		frag := &rangedel.Fragmenter{
+			Cmp: b.cmp,
+			Emit: func(fragmented []rangedel.Tombstone) {
+				b.tombstones = append(b.tombstones, fragmented...)
+			},
+		}
+		it := &flushableBatchIter{
+			batch:   b,
+			data:    b.data,
+			offsets: rangeDelOffsets,
+			cmp:     b.cmp,
+			index:   -1,
+		}
+		for {
+			key, val := it.Next()
+			if key == nil {
+				break
+			}
+			frag.Add(*key, val)
+		}
+		frag.Finish()
+	}
 	return b
 }
 
@@ -965,36 +987,9 @@ func (b *flushableBatch) newFlushIter(o *IterOptions, bytesFlushed *uint64) inte
 }
 
 func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
-	if len(b.rangeDelOffsets) == 0 {
+	if len(b.tombstones) == 0 {
 		return nil
 	}
-
-	// Fragment the range tombstones the first time a range deletion iterator is
-	// requested.
-	if b.tombstones == nil {
-		frag := &rangedel.Fragmenter{
-			Cmp: b.cmp,
-			Emit: func(fragmented []rangedel.Tombstone) {
-				b.tombstones = append(b.tombstones, fragmented...)
-			},
-		}
-		it := &flushableBatchIter{
-			batch:   b,
-			data:    b.data,
-			offsets: b.rangeDelOffsets,
-			cmp:     b.cmp,
-			index:   -1,
-		}
-		for {
-			key, val := it.Next()
-			if key == nil {
-				break
-			}
-			frag.Add(*key, val)
-		}
-		frag.Finish()
-	}
-
 	return rangedel.NewIter(b.cmp, b.tombstones)
 }
 
