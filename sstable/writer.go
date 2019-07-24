@@ -219,8 +219,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		w.meta.SmallestPoint = key.Clone()
 	}
 	w.props.NumEntries++
-	if key.Kind() == InternalKeyKindDelete {
+	switch key.Kind() {
+	case InternalKeyKindDelete:
 		w.props.NumDeletions++
+	case InternalKeyKindMerge:
+		w.props.NumMergeOperands++
 	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
@@ -426,6 +429,10 @@ func (w *Writer) Close() (err error) {
 	}
 	w.props.DataSize = w.meta.Size
 	w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
+	// NB: RocksDB includes the block trailer length in the index size
+	// property, though it doesn't include the trailer in the filter size
+	// property.
+	w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
 
 	// Write the filter block.
 	var metaindex rawBlockWriter
@@ -447,6 +454,12 @@ func (w *Writer) Close() (err error) {
 		w.props.FilterSize = bh.length
 	}
 
+	// Write the index block.
+	indexBH, err := w.finishBlock(&w.indexBlock)
+	if err != nil {
+		w.err = err
+		return w.err
+	}
 	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
 		if !w.rangeDelV1Format {
@@ -488,11 +501,11 @@ func (w *Writer) Close() (err error) {
 
 		// Write the properties block.
 		var raw rawBlockWriter
-		raw.restartInterval = 1
-		// NB: RocksDB includes the block trailer length in the index size
-		// property, though it doesn't include the trailer in the filter size
-		// property.
-		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
+		// The restart interval is set to infinity because the properties block
+		// is always read sequentially and cached in a heap located object. This
+		// reduces table size without a significant impact on performance.
+		raw.restartInterval = propertiesBlockRestartInterval
+		w.props.CompressionOptions = rocksDBCompressionOptions
 		w.props.save(&raw)
 		bh, err := w.writeRawBlock(raw.finish(), NoCompression)
 		if err != nil {
@@ -506,13 +519,6 @@ func (w *Writer) Close() (err error) {
 	// Write the metaindex block. It might be an empty block, if the filter
 	// policy is nil.
 	metaindexBH, err := w.finishBlock(&metaindex.blockWriter)
-	if err != nil {
-		w.err = err
-		return w.err
-	}
-
-	// Write the index block.
-	indexBH, err := w.finishBlock(&w.indexBlock)
 	if err != nil {
 		w.err = err
 		return w.err

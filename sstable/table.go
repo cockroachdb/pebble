@@ -157,6 +157,13 @@ const (
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"
+
+	// RocksDB always includes this in the properties block. Since Pebble
+	// doesn't use zstd compression, the string will always be the same.
+	// This should be removed if we ever decide to diverge from the RocksDB
+	// properties block.
+	rocksDBCompressionOptions =
+		"window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
 )
 
 // legacy (LevelDB) footer format:
