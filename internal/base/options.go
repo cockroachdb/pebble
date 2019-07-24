@@ -315,6 +315,14 @@ type Options struct {
 	// and lives for the lifetime of the table.
 	TablePropertyCollectors []func() TablePropertyCollector
 
+	// Enable two level indexes. With two level indexes, the index/filter of a SST
+	// file is partitioned into smaller blocks with an additional top-level index
+	// on them. When reading an index/filter, only the top-level index is loaded
+	// into memory. The two level index/filter then uses the top-level index to load
+	// on demand into the block cache the partitions that are required to perform
+	// the index/filter query.
+	TwoLevelIndex bool
+
 	// WALDir specifies the directory to store write-ahead logs (WALs) in. If
 	// empty (the default), WALs will be stored in the same directory as sstables
 	// (i.e. the directory passed to pebble.Open).

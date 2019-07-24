@@ -319,6 +319,7 @@ func build(
 	ftype FilterType,
 	comparer *Comparer,
 	propCollector func() TablePropertyCollector,
+	twoLevelIndex bool,
 ) (vfs.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
@@ -343,6 +344,7 @@ func build(
 			Name: "nullptr",
 		},
 		Comparer: comparer,
+		TwoLevelIndex: twoLevelIndex,
 	}
 	if propCollector != nil {
 		opts.TablePropertyCollectors = append(opts.TablePropertyCollectors, propCollector)
@@ -542,7 +544,7 @@ func TestWriterRoundTrip(t *testing.T) {
 		"bloom10bit": bloom.FilterPolicy(10),
 	} {
 		t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
-			f, err := build(base.DefaultCompression, fp, TableFilter, nil, nil)
+			f, err := build(base.DefaultCompression, fp, TableFilter, nil, nil, false)
 			if err != nil {
 				t.Fatal(err)
 			}

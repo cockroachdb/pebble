@@ -96,6 +96,11 @@ func (w *blockWriter) estimatedSize() int {
 	return len(w.buf) + 4*(len(w.restarts)+1)
 }
 
+type twoLevelIndexWriter struct {
+	blockWriter
+	partitions []blockWriter
+}
+
 type blockEntry struct {
 	offset   int32
 	keyStart int32
