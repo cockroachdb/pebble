@@ -158,6 +158,15 @@ const (
 	metaRangeDelName   = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"
 
+	// Index Types.
+	// A space efficient index block that is optimized for binary-search-based
+	// index.
+	binarySearchIndex = 0
+	// hashSearchIndex               = 1
+	// A two-level index implementation. Both levels are binary search indexes.
+	twoLevelIndex = 2
+	// binarySearchWithFirstKeyIndex = 3
+
 	// RocksDB always includes this in the properties block. Since Pebble
 	// doesn't use zstd compression, the string will always be the same.
 	// This should be removed if we ever decide to diverge from the RocksDB

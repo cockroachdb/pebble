@@ -81,7 +81,7 @@ class KeyCountPropertyCollectorFactory : public rocksdb::TablePropertiesCollecto
 };
 
 int write() {
-  for (int i = 0; i < 9; ++i) {
+  for (int i = 0; i < 10; ++i) {
     rocksdb::Options options;
     rocksdb::BlockBasedTableOptions table_options;
     const char* outfile;
@@ -165,6 +165,16 @@ int write() {
         options.prefix_extractor.reset(new PrefixExtractor);
         table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
         table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+        table_options.whole_key_filtering = false;
+        break;
+
+      case 9:
+        outfile = "h.no-compression.two_level_index.sst";
+        options.table_properties_collector_factories.emplace_back(
+            new KeyCountPropertyCollectorFactory);
+        options.compression = rocksdb::kNoCompression;
+        table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
+        table_options.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
         table_options.whole_key_filtering = false;
         break;
 

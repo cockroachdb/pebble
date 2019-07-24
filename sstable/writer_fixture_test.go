@@ -107,6 +107,14 @@ var fixtures = map[fixtureOpts]struct {
 		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
 		fixtureComparer, nil,
 	},
+	/*
+	TODO(ryan): Uncomment this when two level index reader is implemented
+	{uncompressed, noFullKeyBloom, noPrefixFilter}: {
+		"testdata/h.no-compression.two_level_index.sst", nil,
+		func() TablePropertyCollector {
+			return &keyCountPropertyCollector{}
+		},
+	},*/
 }
 
 func runTestFixtureOutput(opts fixtureOpts) error {

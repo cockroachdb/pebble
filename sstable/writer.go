@@ -98,6 +98,22 @@ type Writer struct {
 	separator          Separator
 	successor          Successor
 	tableFormat        TableFormat
+	// With two level indexes, the index/filter of a SST file is partitioned into
+	// smaller blocks with an additional top-level index on them. When reading an
+	// index/filter, only the top-level index is loaded into memory. The two level
+	// index/filter then uses the top-level index to load on demand into the block
+	// cache the partitions that are required to perform the index/filter query.
+	//
+	// Two level indexes are enabled automatically when there is more than one
+	// index block.
+	//
+	// This is useful when there are very large index blocks, which generally occurs
+	// with the usage of large keys. With large index blocks, the index blocks fight
+	// the data blocks for block cache space and the index blocks are likely to be
+	// re-read many times from the disk. The top level index, which has a much
+	// smaller memory footprint, can be used to prevent the entire index block from
+	// being loaded into the block cache.
+	twoLevelIndex      bool
 	// Internal flag to allow creation of range-del-v1 format blocks. Only used
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
@@ -125,6 +141,9 @@ type Writer struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
 	tmp [rocksDBFooterLen]byte
+
+	topLevelIndexBlock blockWriter
+	indexPartitions    []blockWriter
 }
 
 // Set sets the value for the given key. The sequence number is set to
@@ -345,7 +364,17 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
 	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
+
+	if w.indexBlock.estimatedSize() >= w.blockSize*(len(w.indexPartitions)+1) {
+		// Enable two level indexes if there is more than one index block.
+		// TODO(ryan): Change this to `true` and uncomment when the reader
+		// is implemented.
+		w.twoLevelIndex = false
+		//w.finishIndexBlock()
+	}
+
 	w.indexBlock.add(sep, w.tmp[:n])
+
 	w.pendingBH = blockHandle{}
 }
 
@@ -362,6 +391,43 @@ func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
 	// Reset the per-block state.
 	block.reset()
 	return bh, err
+}
+
+// finishIndexBlock finishes the current index block and adds it to the top
+// level index block. This is only used when two level indexes are enabled.
+func (w *Writer) finishIndexBlock() {
+	w.indexPartitions = append(w.indexPartitions, w.indexBlock)
+	w.indexBlock = blockWriter{
+		restartInterval: 1,
+	}
+}
+
+func (w *Writer) writeTwoLevelIndex() (blockHandle, error) {
+	// Add the final unfinished index.
+	w.finishIndexBlock()
+
+	for _, b := range w.indexPartitions {
+		sep := base.DecodeInternalKey(b.curKey)
+		bh, _ := w.writeRawBlock(b.finish(), w.compression)
+
+		if w.filter != nil {
+			w.filter.finishBlock(w.meta.Size)
+		}
+
+		n := encodeBlockHandle(w.tmp[:], bh)
+		w.topLevelIndexBlock.add(sep, w.tmp[:n])
+
+		w.props.IndexSize += uint64(len(b.buf))
+	}
+
+	// NB: RocksDB includes the block trailer length in the index size
+	// property, though it doesn't include the trailer in the top level
+	// index size property.
+	w.props.IndexPartitions = uint64(len(w.indexPartitions))
+	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.estimatedSize())
+	w.props.IndexSize += w.props.TopLevelIndexSize + blockTrailerLen
+
+	return w.finishBlock(&w.topLevelIndexBlock)
 }
 
 func (w *Writer) writeRawBlock(b []byte, compression Compression) (blockHandle, error) {
@@ -429,10 +495,6 @@ func (w *Writer) Close() (err error) {
 	}
 	w.props.DataSize = w.meta.Size
 	w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
-	// NB: RocksDB includes the block trailer length in the index size
-	// property, though it doesn't include the trailer in the filter size
-	// property.
-	w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
 
 	// Write the filter block.
 	var metaindex rawBlockWriter
@@ -454,12 +516,30 @@ func (w *Writer) Close() (err error) {
 		w.props.FilterSize = bh.length
 	}
 
-	// Write the index block.
-	indexBH, err := w.finishBlock(&w.indexBlock)
-	if err != nil {
-		w.err = err
-		return w.err
+	var indexBH blockHandle
+	if w.twoLevelIndex {
+		w.props.IndexType = twoLevelIndex
+		// Write the two level index block.
+		indexBH, err = w.writeTwoLevelIndex()
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+	} else {
+		w.props.IndexType = binarySearchIndex
+		// NB: RocksDB includes the block trailer length in the index size
+		// property, though it doesn't include the trailer in the filter size
+		// property.
+		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
+
+		// Write the single level index block.
+		indexBH, err = w.finishBlock(&w.indexBlock)
+		if err != nil {
+			w.err = err
+			return w.err
+		}
 	}
+
 	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
 		if !w.rangeDelV1Format {
@@ -597,6 +677,9 @@ func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 			restartInterval: 1,
 		},
 		rangeDelBlock: blockWriter{
+			restartInterval: 1,
+		},
+		topLevelIndexBlock: blockWriter{
 			restartInterval: 1,
 		},
 	}
