@@ -34,6 +34,9 @@ const (
 
 	noFullKeyBloom = false
 	fullKeyBloom   = true
+
+	noTwoLevelIndex = false
+	twoLevelIndex = true
 )
 
 type keyCountPropertyCollector struct {
@@ -74,12 +77,13 @@ type fixtureOpts struct {
 	compression   bool
 	fullKeyFilter bool
 	prefixFilter  bool
+	twoLevelIndex bool
 }
 
 func (o fixtureOpts) String() string {
 	return fmt.Sprintf(
-		"compressed=%t,fullKeyFilter=%t,prefixFilter=%t",
-		o.compression, o.fullKeyFilter, o.prefixFilter,
+		"compressed=%t,fullKeyFilter=%t,prefixFilter=%t,twoLevelIndex=%t",
+		o.compression, o.fullKeyFilter, o.prefixFilter, o.twoLevelIndex,
 	)
 }
 
@@ -88,25 +92,33 @@ var fixtures = map[fixtureOpts]struct {
 	comparer      *Comparer
 	propCollector func() TablePropertyCollector
 }{
-	{compressed, noFullKeyBloom, noPrefixFilter}: {
+	{compressed, noFullKeyBloom, noPrefixFilter, noTwoLevelIndex}: {
 		"testdata/h.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
-	{uncompressed, noFullKeyBloom, noPrefixFilter}: {
+	{uncompressed, noFullKeyBloom, noPrefixFilter, noTwoLevelIndex}: {
 		"testdata/h.no-compression.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
-	{uncompressed, fullKeyBloom, noPrefixFilter}: {
+	{uncompressed, fullKeyBloom, noPrefixFilter, noTwoLevelIndex}: {
 		"testdata/h.table-bloom.no-compression.sst", nil, nil,
 	},
-	{uncompressed, noFullKeyBloom, prefixFilter}: {
+	{uncompressed, noFullKeyBloom, prefixFilter, noTwoLevelIndex}: {
 		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
 		fixtureComparer, nil,
 	},
+	/*
+	TODO(ryan): Uncomment this when two level index reader is implemented
+	{uncompressed, noFullKeyBloom, noPrefixFilter, twoLevelIndex}: {
+		"testdata/h.no-compression.two_level_index.sst", nil,
+		func() TablePropertyCollector {
+			return &keyCountPropertyCollector{}
+		},
+	},*/
 }
 
 func runTestFixtureOutput(opts fixtureOpts) error {
@@ -133,7 +145,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		return err
 	}
 
-	f, err := build(compression, fp, ftype, fixture.comparer, fixture.propCollector)
+	f, err := build(compression, fp, ftype, fixture.comparer, fixture.propCollector, opts.twoLevelIndex)
 	if err != nil {
 		return err
 	}
