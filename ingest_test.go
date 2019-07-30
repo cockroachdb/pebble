@@ -105,7 +105,7 @@ func TestIngestLoadRand(t *testing.T) {
 					InternalKeyKindSet)
 			}
 			sort.Slice(keys, func(i, j int) bool {
-				return base.InternalCompare(cmp, keys[i], keys[j]) < 0
+				return sstableKeyCompare(cmp, keys[i], keys[j]) < 0
 			})
 
 			expected[i].smallest = keys[0]
@@ -187,11 +187,14 @@ func TestIngestSortAndVerify(t *testing.T) {
 		expected string
 	}{
 		{"", ""},
-		{"a-b", ""},
-		{"a-b c-d e-f", ""},
-		{"c-d a-b e-f", ""},
-		{"a-b b-d e-f", "files have overlapping ranges"},
-		{"c-d d-e a-b", "files have overlapping ranges"},
+		{"a-b]", ""},
+		{"a-b] c-d] e-f]", ""},
+		{"c-d] a-b] e-f]", ""},
+		{"a-b] b-d] e-f]", "files have overlapping ranges"},
+		{"c-d] d-e] a-b]", "files have overlapping ranges"},
+		{"a-b) b-d) e-f)", ""},
+		{"a-b) c-e) e-f)", ""},
+		{"a-b) b-e) e-f)", ""},
 	}
 
 	comparers := []struct {
@@ -213,19 +216,37 @@ func TestIngestSortAndVerify(t *testing.T) {
 						if len(parts) != 2 {
 							t.Fatalf("malformed test case: %s", c.input)
 						}
-						if cmp([]byte(parts[0]), []byte(parts[1])) > 0 {
-							parts[0], parts[1] = parts[1], parts[0]
+						a, b := []byte(parts[0]), []byte(parts[1])
+						var isSentinel bool
+						l := len(b)
+						if b[l - 1] == ']' {
+							isSentinel = false
+						} else if b[l - 1] == ')' {
+							isSentinel = true
+						} else {
+							t.Fatalf("malformed test case: %s", c.input)
+						}
+						b = b[:l-1]
+						if cmp(a, b) > 0 {
+							a, b = b, a
+						}
+						smallest := base.MakeInternalKey(a, 0, InternalKeyKindSet)
+						var largest InternalKey
+						if isSentinel {
+							largest = base.MakeRangeDeleteSentinelKey(b)
+						} else {
+							largest = base.MakeInternalKey(b, 0, InternalKeyKindSet)
 						}
 						meta = append(meta, &fileMetadata{
-							smallest: InternalKey{UserKey: []byte(parts[0])},
-							largest:  InternalKey{UserKey: []byte(parts[1])},
+							smallest: smallest,
+							largest:  largest,
 						})
 					}
 					if err := ingestSortAndVerify(cmp, meta); !isError(err, c.expected) {
 						t.Fatalf("expected %s, but found %v", c.expected, err)
 					}
 					sorted := sort.SliceIsSorted(meta, func(i, j int) bool {
-						return cmp(meta[i].smallest.UserKey, meta[j].smallest.UserKey) < 0
+						return base.InternalCompare(cmp, meta[i].smallest, meta[j].smallest) < 0
 					})
 					if !sorted {
 						t.Fatalf("expected files to be sorted")
