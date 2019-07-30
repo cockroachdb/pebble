@@ -218,10 +218,7 @@ func (k InternalKey) EncodeTrailer() [8]byte {
 // to store the returned InternalKey.UserKey, though it is valid to pass a
 // nil. See the Separator type for details on separator keys.
 func (k InternalKey) Separator(
-	cmp Compare,
-	sep Separator,
-	buf []byte,
-	other InternalKey,
+	cmp Compare, sep Separator, buf []byte, other InternalKey,
 ) InternalKey {
 	buf = sep(buf, k.UserKey, other.UserKey)
 	if len(buf) <= len(k.UserKey) && cmp(k.UserKey, buf) < 0 {
