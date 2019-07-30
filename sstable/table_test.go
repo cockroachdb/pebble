@@ -349,6 +349,7 @@ func build(
 	}
 
 	tableOpts := TableOptions{
+		BlockSize:    2048,
 		Compression:  compression,
 		FilterPolicy: fp,
 		FilterType:   ftype,
