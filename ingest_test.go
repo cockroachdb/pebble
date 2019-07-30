@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -168,70 +167,67 @@ func TestIngestLoadEmpty(t *testing.T) {
 }
 
 func TestIngestSortAndVerify(t *testing.T) {
-	isError := func(err error, re string) bool {
-		if err == nil && re == "" {
-			return true
-		}
-		if err == nil || re == "" {
-			return false
-		}
-		matched, merr := regexp.MatchString(re, err.Error())
-		if merr != nil {
-			return false
-		}
-		return matched
+	comparers := []Comparer{
+		{Name: "default", Compare: DefaultComparer.Compare},
+		{Name: "reverse", Compare: func(a, b []byte) int {
+			return DefaultComparer.Compare(b, a)
+		}},
 	}
-
-	testCases := []struct {
-		input    string
-		expected string
-	}{
-		{"", ""},
-		{"a-b", ""},
-		{"a-b c-d e-f", ""},
-		{"c-d a-b e-f", ""},
-		{"a-b b-d e-f", "files have overlapping ranges"},
-		{"c-d d-e a-b", "files have overlapping ranges"},
-	}
-
-	comparers := []struct {
-		name string
-		cmp  Compare
-	}{
-		{"default", DefaultComparer.Compare},
-		{"reverse", func(a, b []byte) int { return DefaultComparer.Compare(b, a) }},
+	m := make(map[string]*Comparer)
+	for i := range comparers {
+		c := &comparers[i]
+		m[c.Name] = c
 	}
 
 	for _, comparer := range comparers {
-		t.Run(comparer.name, func(t *testing.T) {
-			cmp := comparer.cmp
-			for _, c := range testCases {
-				t.Run("", func(t *testing.T) {
+		cmp := comparer.Compare
+		t.Run(comparer.Name, func(t *testing.T) {
+			datadriven.RunTest(t, "testdata/ingest_sort_and_verify", func(d *datadriven.TestData) string {
+				switch d.Cmd {
+				case "define":
+					if len(d.CmdArgs) > 1 {
+						return fmt.Sprintf("%s expects at most 1 argument", d.Cmd)
+					}
+					if len(d.CmdArgs) == 1 {
+						comparer := m[d.CmdArgs[0].String()]
+						if comparer == nil {
+							return fmt.Sprintf("%s unknown comparer: %s", d.Cmd, d.CmdArgs[0].String())
+						}
+						cmp = comparer.Compare
+					}
+					return ""
+
+				case "ingest":
+					var buf bytes.Buffer
 					var meta []*fileMetadata
-					for _, p := range strings.Fields(c.input) {
-						parts := strings.Split(p, "-")
+					for _, data := range strings.Split(d.Input, "\n") {
+						parts := strings.Split(data, "-")
 						if len(parts) != 2 {
-							t.Fatalf("malformed test case: %s", c.input)
+							return fmt.Sprintf("malformed test case: %s", d.Input)
 						}
 						if cmp([]byte(parts[0]), []byte(parts[1])) > 0 {
 							parts[0], parts[1] = parts[1], parts[0]
 						}
+						smallest := base.ParseInternalKey(parts[0])
+						largest := base.ParseInternalKey(parts[1])
 						meta = append(meta, &fileMetadata{
-							smallest: InternalKey{UserKey: []byte(parts[0])},
-							largest:  InternalKey{UserKey: []byte(parts[1])},
+							smallest: smallest,
+							largest:  largest,
 						})
 					}
-					if err := ingestSortAndVerify(cmp, meta); !isError(err, c.expected) {
-						t.Fatalf("expected %s, but found %v", c.expected, err)
-					}
+					fmt.Fprintf(&buf, "%v\n", ingestSortAndVerify(cmp, meta))
 					sorted := sort.SliceIsSorted(meta, func(i, j int) bool {
 						return cmp(meta[i].smallest.UserKey, meta[j].smallest.UserKey) < 0
 					})
 					if !sorted {
-						t.Fatalf("expected files to be sorted")
+						return fmt.Sprintf("expected files to be sorted")
 					}
-				})
-			}
+					return buf.String()
+
+				default:
+					return fmt.Sprintf("unknown command: %s", d.Cmd)
+				}
+			})
 		})
 	}
 }

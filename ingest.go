@@ -13,6 +13,21 @@ import (
 	"github.com/petermattis/pebble/vfs"
 )
 
+func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
+	c := userCmp(a.UserKey, b.UserKey)
+	if c != 0 {
+		return c
+	}
+	if a.Trailer == InternalKeyRangeDeleteSentinel {
+		if b.Trailer != InternalKeyRangeDeleteSentinel {
+			return -1
+		}
+	} else if b.Trailer == InternalKeyRangeDeleteSentinel {
+		return 1
+	}
+	return 0
+}
+
 func ingestLoad1(opts *Options, path string, fileNum uint64) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
@@ -92,16 +107,14 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
 	})
 
 	for i := 1; i < len(meta); i++ {
-		if cmp(meta[i-1].largest.UserKey, meta[i].smallest.UserKey) >= 0 {
+		if sstableKeyCompare(cmp, meta[i-1].largest, meta[i].smallest) >= 0 {
 			return fmt.Errorf("files have overlapping ranges")
 		}
 	}
 	return nil
 }
 
-func ingestCleanup(
-	fs vfs.FS, dirname string, meta []*fileMetadata,
-) error {
+func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
 		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
@@ -114,9 +127,7 @@ func ingestCleanup(
 	return firstErr
 }
 
-func ingestLink(
-	opts *Options, dirname string, paths []string, meta []*fileMetadata,
-) error {
+func ingestLink(opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
 	for i := range paths {
 		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
 		err := opts.FS.Link(paths[i], target)
@@ -175,9 +186,7 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 	return false
 }
 
-func ingestUpdateSeqNum(
-	opts *Options, dirname string, seqNum uint64, meta []*fileMetadata,
-) error {
+func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fileMetadata) error {
 	for _, m := range meta {
 		m.smallest = base.MakeInternalKey(m.smallest.UserKey, seqNum, m.smallest.Kind())
 		m.largest = base.MakeInternalKey(m.largest.UserKey, seqNum, m.largest.Kind())
