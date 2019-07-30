@@ -86,6 +86,9 @@ int write() {
     rocksdb::BlockBasedTableOptions table_options;
     const char* outfile;
 
+    table_options.block_size = 2048;
+    table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
+
     switch (i) {
       case 0:
         outfile = "h.ldb";
@@ -97,7 +100,6 @@ int write() {
         outfile = "h.sst";
         options.table_properties_collector_factories.emplace_back(
             new KeyCountPropertyCollectorFactory);
-        table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
         table_options.whole_key_filtering = false;
         break;
 
@@ -106,14 +108,12 @@ int write() {
         options.table_properties_collector_factories.emplace_back(
             new KeyCountPropertyCollectorFactory);
         options.compression = rocksdb::kNoCompression;
-        table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
         table_options.whole_key_filtering = false;
         break;
 
       case 3:
         outfile = "h.block-bloom.no-compression.sst";
         options.compression = rocksdb::kNoCompression;
-        table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
         table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, true));
         table_options.whole_key_filtering = true;
         break;
@@ -121,7 +121,6 @@ int write() {
       case 4:
         outfile = "h.table-bloom.no-compression.sst";
         options.compression = rocksdb::kNoCompression;
-        table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
         table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
         table_options.whole_key_filtering = true;
         break;
@@ -163,7 +162,6 @@ int write() {
         outfile = "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst";
         options.compression = rocksdb::kNoCompression;
         options.prefix_extractor.reset(new PrefixExtractor);
-        table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
         table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
         table_options.whole_key_filtering = false;
         break;
