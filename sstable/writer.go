@@ -308,10 +308,10 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 			return nil
 		}
 		newSize := size + key.Size() + len(value)
-		if w.block.nEntries&w.block.restartInterval == 0 {
+		if w.block.nEntries%w.block.restartInterval == 0 {
 			newSize += 4
 		}
-		// TODO(peter): newSize += 4                              // varint for shared key bytes
+		newSize += 4                              // varint for shared prefix length
 		newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
 		newSize += uvarintLen(uint32(len(value))) // varint for value size
 		if newSize <= w.blockSize {
