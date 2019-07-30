@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -34,6 +35,9 @@ const (
 
 	noFullKeyBloom = false
 	fullKeyBloom   = true
+
+	defaultIndexBlockSize = math.MaxInt32
+	smallIndexBlockSize   = 128
 )
 
 type keyCountPropertyCollector struct {
@@ -71,9 +75,10 @@ var fixtureComparer = func() *Comparer {
 }()
 
 type fixtureOpts struct {
-	compression   bool
-	fullKeyFilter bool
-	prefixFilter  bool
+	compression    bool
+	fullKeyFilter  bool
+	prefixFilter   bool
+	indexBlockSize int
 }
 
 func (o fixtureOpts) String() string {
@@ -88,33 +93,31 @@ var fixtures = map[fixtureOpts]struct {
 	comparer      *Comparer
 	propCollector func() TablePropertyCollector
 }{
-	{compressed, noFullKeyBloom, noPrefixFilter}: {
+	{compressed, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
-	{uncompressed, noFullKeyBloom, noPrefixFilter}: {
+	{uncompressed, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.no-compression.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
-	{uncompressed, fullKeyBloom, noPrefixFilter}: {
+	{uncompressed, fullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.table-bloom.no-compression.sst", nil, nil,
 	},
-	{uncompressed, noFullKeyBloom, prefixFilter}: {
+	{uncompressed, noFullKeyBloom, prefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
 		fixtureComparer, nil,
 	},
-	/*
-	TODO(ryan): Uncomment this when two level index reader is implemented
-	{uncompressed, noFullKeyBloom, noPrefixFilter}: {
+	{uncompressed, noFullKeyBloom, noPrefixFilter, smallIndexBlockSize}: {
 		"testdata/h.no-compression.two_level_index.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
-	},*/
+	},
 }
 
 func runTestFixtureOutput(opts fixtureOpts) error {
@@ -141,7 +144,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		return err
 	}
 
-	f, err := build(compression, fp, ftype, fixture.comparer, fixture.propCollector)
+	f, err := build(compression, fp, ftype, fixture.comparer, fixture.propCollector, 2048, opts.indexBlockSize)
 	if err != nil {
 		return err
 	}

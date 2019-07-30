@@ -69,7 +69,7 @@ type tableCacheShard struct {
 		sync.RWMutex
 		nodes map[uint64]*tableCacheNode
 		// The iters map is only created and populated in race builds.
-		iters map[*sstable.Iterator][]byte
+		iters map[sstable.Iterator][]byte
 		lru   tableCacheNode
 	}
 
@@ -99,7 +99,7 @@ func (c *tableCacheShard) init(
 	}
 
 	if raceEnabled {
-		c.mu.iters = make(map[*sstable.Iterator][]byte)
+		c.mu.iters = make(map[sstable.Iterator][]byte)
 	}
 }
 
@@ -124,30 +124,19 @@ func (c *tableCacheShard) newIters(
 		// using a singleton is fine.
 		return emptyIter, nil, nil
 	}
-	var iter internalIterator
+	var iter sstable.Iterator
 	if bytesIterated != nil {
-		tableCompactionIter := n.reader.NewCompactionIter(bytesIterated)
-		atomic.AddInt32(&c.iterCount, 1)
-		if raceEnabled {
-			c.mu.Lock()
-			c.mu.iters[tableCompactionIter.Iterator] = debug.Stack()
-			c.mu.Unlock()
-		}
-
-		tableCompactionIter.SetCloseHook(n.closeHook)
-		iter = tableCompactionIter
+		iter = n.reader.NewCompactionIter(bytesIterated)
 	} else {
-		tableIter := n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
-		atomic.AddInt32(&c.iterCount, 1)
-		if raceEnabled {
-			c.mu.Lock()
-			c.mu.iters[tableIter] = debug.Stack()
-			c.mu.Unlock()
-		}
-
-		tableIter.SetCloseHook(n.closeHook)
-		iter = tableIter
+		iter = n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
 	}
+	atomic.AddInt32(&c.iterCount, 1)
+	if raceEnabled {
+		c.mu.Lock()
+		c.mu.iters[iter] = debug.Stack()
+		c.mu.Unlock()
+	}
+	iter.SetCloseHook(n.closeHook)
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
@@ -224,7 +213,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 		n = &tableCacheNode{
 			// Cache the closure invoked when an iterator is closed. This avoids an
 			// allocation on every call to newIters.
-			closeHook: func(i *sstable.Iterator) error {
+			closeHook: func(i sstable.Iterator) error {
 				if raceEnabled {
 					c.mu.Lock()
 					delete(c.mu.iters, i)
@@ -323,7 +312,7 @@ func (c *tableCacheShard) Close() error {
 }
 
 type tableCacheNode struct {
-	closeHook func(i *sstable.Iterator) error
+	closeHook func(i sstable.Iterator) error
 
 	meta   *fileMetadata
 	reader *sstable.Reader

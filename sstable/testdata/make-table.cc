@@ -171,8 +171,9 @@ int write() {
         options.table_properties_collector_factories.emplace_back(
             new KeyCountPropertyCollectorFactory);
         options.compression = rocksdb::kNoCompression;
-        table_options.index_shortening = rocksdb::BlockBasedTableOptions::IndexShorteningMode::kShortenSeparatorsAndSuccessor;
         table_options.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
+        // Use small metadata_block_size to stress two_level_index.
+        table_options.metadata_block_size = 128;
         table_options.whole_key_filtering = false;
         break;
 

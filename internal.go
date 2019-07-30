@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/sstable"
 )
 
 // InternalKeyKind exports the base.InternalKeyKind type.
@@ -30,6 +29,3 @@ const (
 type InternalKey = base.InternalKey
 
 type internalIterator = base.InternalIterator
-
-// sstable.Iterator implements the internalIterator interface.
-var _ internalIterator = (*sstable.Iterator)(nil)

@@ -90,14 +90,16 @@ type Writer struct {
 	meta      WriterMetadata
 	err       error
 	// The following fields are copied from Options.
-	blockSize          int
-	blockSizeThreshold int
-	compare            Compare
-	split              Split
-	compression        Compression
-	separator          Separator
-	successor          Successor
-	tableFormat        TableFormat
+	blockSize               int
+	blockSizeThreshold      int
+	indexBlockSize          int
+	indexBlockSizeThreshold int
+	compare                 Compare
+	split                   Split
+	compression             Compression
+	separator               Separator
+	successor               Successor
+	tableFormat             TableFormat
 	// With two level indexes, the index/filter of a SST file is partitioned into
 	// smaller blocks with an additional top-level index on them. When reading an
 	// index/filter, only the top-level index is loaded into memory. The two level
@@ -113,7 +115,7 @@ type Writer struct {
 	// re-read many times from the disk. The top level index, which has a much
 	// smaller memory footprint, can be used to prevent the entire index block from
 	// being loaded into the block cache.
-	twoLevelIndex      bool
+	twoLevelIndex bool
 	// Internal flag to allow creation of range-del-v1 format blocks. Only used
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
@@ -319,24 +321,8 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if size := w.block.estimatedSize(); size < w.blockSize {
-		// The block is currently smaller than the target size.
-		if size <= w.blockSizeThreshold {
-			// The block is smaller than the threshold size at which we'll consider
-			// flushing it.
-			return nil
-		}
-		newSize := size + key.Size() + len(value)
-		if w.block.nEntries%w.block.restartInterval == 0 {
-			newSize += 4
-		}
-		newSize += 4                              // varint for shared prefix length
-		newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-		newSize += uvarintLen(uint32(len(value))) // varint for value size
-		if newSize <= w.blockSize {
-			// The block plus the new entry is smaller than the target size.
-			return nil
-		}
+	if !shouldFlush(key, value, w.block, w.blockSize, w.blockSizeThreshold) {
+		return nil
 	}
 
 	bh, err := w.finishBlock(&w.block)
@@ -365,17 +351,39 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	}
 	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
 
-	if w.indexBlock.estimatedSize() >= w.blockSize*(len(w.indexPartitions)+1) {
+	if shouldFlush(sep, w.tmp[:n], w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
 		// Enable two level indexes if there is more than one index block.
-		// TODO(ryan): Change this to `true` and uncomment when the reader
-		// is implemented.
-		w.twoLevelIndex = false
-		//w.finishIndexBlock()
+		w.twoLevelIndex = true
+		w.finishIndexBlock()
 	}
 
 	w.indexBlock.add(sep, w.tmp[:n])
 
 	w.pendingBH = blockHandle{}
+}
+
+func shouldFlush(key InternalKey, value []byte, block blockWriter, blockSize, sizeThreshold int) bool {
+	if size := block.estimatedSize(); size < blockSize {
+		// The block is currently smaller than the target size.
+		if size <= sizeThreshold {
+			// The block is smaller than the threshold size at which we'll consider
+			// flushing it.
+			return false
+		}
+		newSize := size + key.Size() + len(value)
+		if block.nEntries%block.restartInterval == 0 {
+			newSize += 4
+		}
+		newSize += 4                              // varint for shared prefix length
+		newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
+		newSize += uvarintLen(uint32(len(value))) // varint for value size
+		if newSize <= blockSize {
+			// The block plus the new entry is smaller than the target size.
+			return false
+		}
+	}
+
+	return true
 }
 
 // finishBlock finishes the current block and returns its block handle, which is
@@ -418,6 +426,7 @@ func (w *Writer) writeTwoLevelIndex() (blockHandle, error) {
 		w.topLevelIndexBlock.add(sep, w.tmp[:n])
 
 		w.props.IndexSize += uint64(len(b.buf))
+		w.props.NumDataBlocks += uint64(b.nEntries)
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size
@@ -494,7 +503,6 @@ func (w *Writer) Close() (err error) {
 		w.flushPendingBH(InternalKey{})
 	}
 	w.props.DataSize = w.meta.Size
-	w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 	// Write the filter block.
 	var metaindex rawBlockWriter
@@ -531,6 +539,7 @@ func (w *Writer) Close() (err error) {
 		// property, though it doesn't include the trailer in the filter size
 		// property.
 		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
+		w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 		// Write the single level index block.
 		indexBH, err = w.finishBlock(&w.indexBlock)
@@ -662,14 +671,16 @@ func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
-		blockSize:          lo.BlockSize,
-		blockSizeThreshold: (lo.BlockSize*lo.BlockSizeThreshold + 99) / 100,
-		compare:            o.Comparer.Compare,
-		split:              o.Comparer.Split,
-		compression:        lo.Compression,
-		separator:          o.Comparer.Separator,
-		successor:          o.Comparer.Successor,
-		tableFormat:        o.TableFormat,
+		blockSize:               lo.BlockSize,
+		blockSizeThreshold:      (lo.BlockSize*lo.BlockSizeThreshold + 99) / 100,
+		indexBlockSize:          lo.IndexBlockSize,
+		indexBlockSizeThreshold: (lo.IndexBlockSize*lo.BlockSizeThreshold + 99) / 100,
+		compare:                 o.Comparer.Compare,
+		split:                   o.Comparer.Split,
+		compression:             lo.Compression,
+		separator:               o.Comparer.Separator,
+		successor:               o.Comparer.Successor,
+		tableFormat:             o.TableFormat,
 		block: blockWriter{
 			restartInterval: lo.BlockRestartInterval,
 		},

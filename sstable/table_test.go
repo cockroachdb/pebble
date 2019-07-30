@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -319,6 +320,8 @@ func build(
 	ftype FilterType,
 	comparer *Comparer,
 	propCollector func() TablePropertyCollector,
+	blockSize int,
+	indexBlockSize int,
 ) (vfs.File, error) {
 	// Create a sorted list of wordCount's keys.
 	keys := make([]string, len(wordCount))
@@ -349,10 +352,11 @@ func build(
 	}
 
 	tableOpts := TableOptions{
-		BlockSize:    2048,
-		Compression:  compression,
-		FilterPolicy: fp,
-		FilterType:   ftype,
+		BlockSize:      blockSize,
+		Compression:    compression,
+		FilterPolicy:   fp,
+		FilterType:     ftype,
+		IndexBlockSize: indexBlockSize,
 	}
 
 	w := NewWriter(f0, opts, tableOpts)
@@ -538,77 +542,86 @@ func (c *countingFilterPolicy) MayContain(ftype FilterType, filter, key []byte) 
 }
 
 func TestWriterRoundTrip(t *testing.T) {
-	for name, fp := range map[string]FilterPolicy{
-		"none":       nil,
-		"bloom10bit": bloom.FilterPolicy(10),
-	} {
-		t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
-			f, err := build(base.DefaultCompression, fp, TableFilter, nil, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Check that we can read a freshly made table.
+	blockSizes := []int{100, 1000, 2048, 4096, math.MaxInt32}
+	for _, blockSize := range blockSizes {
+		for _, indexBlockSize := range blockSizes {
+			for name, fp := range map[string]FilterPolicy{
+				"none":       nil,
+				"bloom10bit": bloom.FilterPolicy(10),
+			} {
+				t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
+					f, err := build(base.DefaultCompression, fp, TableFilter,
+						nil, nil, blockSize, indexBlockSize)
+					if err != nil {
+						t.Fatal(err)
+					}
+					// Check that we can read a freshly made table.
 
-			err = check(f, nil, nil)
-			if err != nil {
-				t.Fatal(err)
+					err = check(f, nil, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+				})
 			}
-		})
+		}
 	}
 }
 
 func TestFinalBlockIsWritten(t *testing.T) {
-	const blockSize = 100
 	keys := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
 	valueLengths := []int{0, 1, 22, 28, 33, 40, 50, 61, 87, 100, 143, 200}
 	xxx := bytes.Repeat([]byte("x"), valueLengths[len(valueLengths)-1])
+	for _, blockSize := range []int{5, 10, 25, 50, 100} {
+		for _, indexBlockSize := range []int{5, 10, 25, 50, 100, math.MaxInt32} {
+			for nk := 0; nk <= len(keys); nk++ {
+			loop:
+				for _, vLen := range valueLengths {
+					got, memFS := 0, vfs.NewMem()
 
-	for nk := 0; nk <= len(keys); nk++ {
-	loop:
-		for _, vLen := range valueLengths {
-			got, memFS := 0, vfs.NewMem()
+					wf, err := memFS.Create("foo")
+					if err != nil {
+						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
+						continue
+					}
+					w := NewWriter(wf, nil, TableOptions{
+						BlockSize:      blockSize,
+						IndexBlockSize: indexBlockSize,
+					})
+					for _, k := range keys[:nk] {
+						if err := w.Add(InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
+							t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
+							continue loop
+						}
+					}
+					if err := w.Close(); err != nil {
+						t.Errorf("nk=%d, vLen=%d: writer close: %v", nk, vLen, err)
+						continue
+					}
 
-			wf, err := memFS.Create("foo")
-			if err != nil {
-				t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
-				continue
-			}
-			w := NewWriter(wf, nil, TableOptions{
-				BlockSize: blockSize,
-			})
-			for _, k := range keys[:nk] {
-				if err := w.Add(InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
-					t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
-					continue loop
+					rf, err := memFS.Open("foo")
+					if err != nil {
+						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
+						continue
+					}
+					r := NewReader(rf, 0, 0, nil)
+					i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+					for valid := i.First(); valid; valid = i.Next() {
+						got++
+					}
+					if err := i.Close(); err != nil {
+						t.Errorf("nk=%d, vLen=%d: Iterator close: %v", nk, vLen, err)
+						continue
+					}
+					if err := r.Close(); err != nil {
+						t.Errorf("nk=%d, vLen=%d: reader close: %v", nk, vLen, err)
+						continue
+					}
+
+					if got != nk {
+						t.Errorf("nk=%2d, vLen=%3d: got %2d keys, want %2d", nk, vLen, got, nk)
+						continue
+					}
 				}
-			}
-			if err := w.Close(); err != nil {
-				t.Errorf("nk=%d, vLen=%d: writer close: %v", nk, vLen, err)
-				continue
-			}
-
-			rf, err := memFS.Open("foo")
-			if err != nil {
-				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
-				continue
-			}
-			r := NewReader(rf, 0, 0, nil)
-			i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
-			for valid := i.First(); valid; valid = i.Next() {
-				got++
-			}
-			if err := i.Close(); err != nil {
-				t.Errorf("nk=%d, vLen=%d: Iterator close: %v", nk, vLen, err)
-				continue
-			}
-			if err := r.Close(); err != nil {
-				t.Errorf("nk=%d, vLen=%d: reader close: %v", nk, vLen, err)
-				continue
-			}
-
-			if got != nk {
-				t.Errorf("nk=%2d, vLen=%3d: got %2d keys, want %2d", nk, vLen, got, nk)
-				continue
 			}
 		}
 	}
