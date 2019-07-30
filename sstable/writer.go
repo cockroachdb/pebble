@@ -367,10 +367,8 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 
 	if w.indexBlock.estimatedSize() >= w.blockSize*(len(w.indexPartitions)+1) {
 		// Enable two level indexes if there is more than one index block.
-		// TODO(ryan): Change this to `true` and uncomment when the reader
-		// is implemented.
-		w.twoLevelIndex = false
-		//w.finishIndexBlock()
+		w.twoLevelIndex = true
+		w.finishIndexBlock()
 	}
 
 	w.indexBlock.add(sep, w.tmp[:n])

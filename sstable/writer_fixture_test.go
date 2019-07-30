@@ -108,7 +108,7 @@ var fixtures = map[fixtureOpts]struct {
 		fixtureComparer, nil,
 	},
 	/*
-	TODO(ryan): Uncomment this when two level index reader is implemented
+	TODO(ryan): Uncomment this when we have byte equality with RocksDB.
 	{uncompressed, noFullKeyBloom, noPrefixFilter}: {
 		"testdata/h.no-compression.two_level_index.sst", nil,
 		func() TablePropertyCollector {

@@ -26,7 +26,7 @@ import (
 // positioning methods (Seek*, First, Last, Next, Prev) to the old API which
 // returned a boolean corresponding to Valid. Only used by test code.
 type iterAdapter struct {
-	*Iterator
+	TableIterator
 }
 
 func (i *iterAdapter) verify(key *InternalKey, val []byte) bool {
@@ -46,35 +46,35 @@ func (i *iterAdapter) verify(key *InternalKey, val []byte) bool {
 }
 
 func (i *iterAdapter) SeekGE(key []byte) bool {
-	return i.verify(i.Iterator.SeekGE(key))
+	return i.verify(i.TableIterator.SeekGE(key))
 }
 
 func (i *iterAdapter) SeekPrefixGE(prefix, key []byte) bool {
-	return i.verify(i.Iterator.SeekPrefixGE(prefix, key))
+	return i.verify(i.TableIterator.SeekPrefixGE(prefix, key))
 }
 
 func (i *iterAdapter) SeekLT(key []byte) bool {
-	return i.verify(i.Iterator.SeekLT(key))
+	return i.verify(i.TableIterator.SeekLT(key))
 }
 
 func (i *iterAdapter) First() bool {
-	return i.verify(i.Iterator.First())
+	return i.verify(i.TableIterator.First())
 }
 
 func (i *iterAdapter) Last() bool {
-	return i.verify(i.Iterator.Last())
+	return i.verify(i.TableIterator.Last())
 }
 
 func (i *iterAdapter) Next() bool {
-	return i.verify(i.Iterator.Next())
+	return i.verify(i.TableIterator.Next())
 }
 
 func (i *iterAdapter) Prev() bool {
-	return i.verify(i.Iterator.Prev())
+	return i.verify(i.TableIterator.Prev())
 }
 
 func (i *iterAdapter) Key() InternalKey {
-	return *i.Iterator.Key()
+	return *i.TableIterator.Key()
 }
 
 func TestReader(t *testing.T) {
