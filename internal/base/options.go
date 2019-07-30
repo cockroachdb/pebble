@@ -172,6 +172,15 @@ type LevelOptions struct {
 	// filters should be preferred except under constrained memory situations.
 	FilterType FilterType
 
+	// IndexBlockSize is the target uncompressed size in bytes of each index
+	// block. When the index block size is larger than this target, two-level
+	// indexes are automatically enabled. Setting this option to a large value
+	// (such as math.MaxInt32) disables the automatic creation of two-level
+	// indexes.
+	//
+	// The default value is the value of BlockSize.
+	IndexBlockSize int
+
 	// The target file size for the level.
 	TargetFileSize int64
 }
@@ -194,6 +203,9 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	}
 	if o.Compression <= DefaultCompression || o.Compression >= nCompression {
 		o.Compression = SnappyCompression
+	}
+	if o.IndexBlockSize <= 0 {
+		o.IndexBlockSize = o.BlockSize
 	}
 	if o.TargetFileSize <= 0 {
 		o.TargetFileSize = 2 << 20 // 2 MB
@@ -477,6 +489,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression)
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
+		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
 		fmt.Fprintf(&buf, "  target_file_size=%d\n", l.TargetFileSize)
 	}
 
