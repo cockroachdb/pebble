@@ -1,0 +1,24 @@
+init compaction
+ratelimit: 1
+amount: 0
+----
+0
+
+init compaction
+ratelimit: 1
+amount: 1
+----
+0
+
+init compaction
+ratelimit: 1
+amount: 2
+----
+1
+
+
+init compaction
+ratelimit: 1
+amount: 3
+----
+2
