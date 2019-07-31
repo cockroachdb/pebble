@@ -251,13 +251,16 @@ func (p *compactionPicker) initTarget(v *version, opts *Options) {
 }
 
 // pickAuto picks the best compaction, if any.
-func (p *compactionPicker) pickAuto(opts *Options) (c *compaction) {
+func (p *compactionPicker) pickAuto(
+	opts *Options,
+	bytesCompacted *uint64,
+) (c *compaction) {
 	if !p.compactionNeeded() {
 		return nil
 	}
 
 	vers := p.vers
-	c = newCompaction(opts, vers, p.level, p.baseLevel)
+	c = newCompaction(opts, vers, p.level, p.baseLevel, bytesCompacted)
 	c.inputs[0] = vers.files[c.startLevel][p.file : p.file+1]
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
@@ -274,14 +277,18 @@ func (p *compactionPicker) pickAuto(opts *Options) (c *compaction) {
 	return c
 }
 
-func (p *compactionPicker) pickManual(opts *Options, manual *manualCompaction) (c *compaction) {
+func (p *compactionPicker) pickManual(
+	opts *Options,
+	manual *manualCompaction,
+	bytesCompacted *uint64,
+) (c *compaction) {
 	if p == nil {
 		return nil
 	}
 
 	// TODO(peter): The logic here is untested and possibly incomplete.
 	cur := p.vers
-	c = newCompaction(opts, cur, manual.level, p.baseLevel)
+	c = newCompaction(opts, cur, manual.level, p.baseLevel, bytesCompacted)
 	manual.outputLevel = c.outputLevel
 	cmp := opts.Comparer.Compare
 	c.inputs[0] = cur.overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
