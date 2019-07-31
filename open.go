@@ -82,6 +82,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
+	d.compactionLimiter = rate.NewLimiter(rate.Limit(d.opts.MinCompactionRate), d.opts.MinCompactionRate)
 	d.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.cond.L = &d.mu.Mutex
