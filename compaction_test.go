@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -569,10 +570,11 @@ func TestElideTombstone(t *testing.T) {
 
 	for _, tc := range testCases {
 		c := compaction{
-			cmp:         DefaultComparer.Compare,
-			version:     &tc.version,
-			startLevel:  tc.level,
-			outputLevel: tc.level + 1,
+			cmp:           DefaultComparer.Compare,
+			version:       &tc.version,
+			startLevel:    tc.level,
+			outputLevel:   tc.level + 1,
+			bytesIterated: new(uint64),
 		}
 		for ukey, want := range tc.wants {
 			if got := c.elideTombstone([]byte(ukey)); got != want {
@@ -597,6 +599,8 @@ func TestCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	mockLimiter := mockLimiter{burst: int(math.MaxInt32)}
+	d.compactionLimiter = &mockLimiter
 
 	get1 := func(iter internalIterator) (ret string) {
 		b := &bytes.Buffer{}
@@ -693,6 +697,13 @@ func TestCompaction(t *testing.T) {
 
 	if err := d.Close(); err != nil {
 		t.Fatalf("db Close: %v", err)
+	}
+
+	if !(mockLimiter.allowCount > 0) {
+		t.Errorf("limiter allow: got %d, want >%d", mockLimiter.allowCount, 0)
+	}
+	if mockLimiter.waitCount != 0 {
+		t.Errorf("limiter wait: got %d, want %d", mockLimiter.waitCount, 0)
 	}
 }
 
@@ -826,8 +837,9 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 
 			case "compact":
 				c := &compaction{
-					cmp:          cmp,
-					grandparents: grandparents,
+					cmp:           cmp,
+					grandparents:  grandparents,
+					bytesIterated: new(uint64),
 				}
 				if len(d.CmdArgs) != 1 {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
@@ -922,9 +934,10 @@ func TestCompactionExpandInputs(t *testing.T) {
 
 			case "expand-inputs":
 				c := &compaction{
-					cmp:        cmp,
-					version:    &version{},
-					startLevel: 1,
+					cmp:           cmp,
+					version:       &version{},
+					startLevel:    1,
+					bytesIterated: new(uint64),
 				}
 				c.version.files[c.startLevel] = files
 				if len(d.CmdArgs) != 1 {
@@ -983,7 +996,8 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 
 			case "atomic-unit-bounds":
 				c := &compaction{
-					cmp: cmp,
+					cmp:           cmp,
+					bytesIterated: new(uint64),
 				}
 				c.inputs[0] = files
 				if len(d.CmdArgs) != 1 {
@@ -1040,8 +1054,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			case "allow-zero-seqnum":
 				d.mu.Lock()
 				c := &compaction{
-					cmp:     d.cmp,
-					version: d.mu.versions.currentVersion(),
+					cmp:           d.cmp,
+					version:       d.mu.versions.currentVersion(),
+					bytesIterated: new(uint64),
 				}
 				d.mu.Unlock()
 

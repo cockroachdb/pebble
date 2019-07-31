@@ -6,14 +6,12 @@ package pebble
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"sort"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"github.com/petermattis/pebble/internal/base"
@@ -68,8 +66,10 @@ type compaction struct {
 
 	// flushing contains the flushables (aka memtables) that are being flushed.
 	flushing []flushable
-	// bytesIterated contains the number of bytes that have been flushed/compacted.
-	bytesIterated uint64
+	// bytesIterated points to the variable to increment during compaction/flushing.
+	bytesIterated *uint64
+	// bytesCompacted contains the number of bytes that have been compacted.
+	bytesCompacted uint64
 	// inputs are the tables to be compacted.
 	inputs [2][]fileMetadata
 
@@ -98,7 +98,7 @@ func newCompaction(opts *Options, cur *version, startLevel, baseLevel int) *comp
 	// bytes, we want to adjust the range to [1,numLevels].
 	adjustedOutputLevel := 1 + outputLevel - baseLevel
 
-	return &compaction{
+	c := &compaction{
 		cmp:               opts.Comparer.Compare,
 		version:           cur,
 		startLevel:        startLevel,
@@ -107,9 +107,19 @@ func newCompaction(opts *Options, cur *version, startLevel, baseLevel int) *comp
 		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
 		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
 	}
+	// Incrementing c.bytesIterated will increment c.bytesCompacted.
+	c.bytesIterated = &c.bytesCompacted
+
+	return c
 }
 
-func newFlush(opts *Options, cur *version, baseLevel int, flushing []flushable) *compaction {
+func newFlush(
+	opts *Options,
+	cur *version,
+	baseLevel int,
+	flushing []flushable,
+	bytesFlushed *uint64,
+) *compaction {
 	c := &compaction{
 		cmp:               opts.Comparer.Compare,
 		version:           cur,
@@ -119,6 +129,7 @@ func newFlush(opts *Options, cur *version, baseLevel int, flushing []flushable) 
 		maxOverlapBytes:   math.MaxUint64,
 		maxExpandedBytes:  math.MaxUint64,
 		flushing:          flushing,
+		bytesIterated:     bytesFlushed,
 	}
 
 	// TODO(peter): When we allow flushing to create multiple tables we'll want
@@ -465,7 +476,7 @@ func (c *compaction) newInputIter(
 	if len(c.flushing) != 0 {
 		if len(c.flushing) == 1 {
 			f := c.flushing[0]
-			iter := f.newFlushIter(nil, &c.bytesIterated)
+			iter := f.newFlushIter(nil, c.bytesIterated)
 			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 				return newMergingIter(c.cmp, iter, rangeDelIter), nil
 			}
@@ -474,7 +485,7 @@ func (c *compaction) newInputIter(
 		iters := make([]internalIterator, 0, 2*len(c.flushing))
 		for i := range c.flushing {
 			f := c.flushing[i]
-			iters = append(iters, f.newFlushIter(nil, &c.bytesIterated))
+			iters = append(iters, f.newFlushIter(nil, c.bytesIterated))
 			rangeDelIter := f.newRangeDelIter(nil)
 			if rangeDelIter != nil {
 				iters = append(iters, rangeDelIter)
@@ -504,7 +515,7 @@ func (c *compaction) newInputIter(
 	newRangeDelIter := func(
 		f *fileMetadata, _ *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
-		iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
+		iter, rangeDelIter, err := newIters(f, nil /* iter options */, c.bytesIterated)
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
 			// immediately close it. One way to solve this would be to add new
@@ -528,12 +539,12 @@ func (c *compaction) newInputIter(
 	}
 
 	if c.startLevel != 0 {
-		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0], &c.bytesIterated))
-		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0], &c.bytesIterated))
+		iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[0], c.bytesIterated))
+		iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[0], c.bytesIterated))
 	} else {
 		for i := range c.inputs[0] {
 			f := &c.inputs[0][i]
-			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
+			iter, rangeDelIter, err := newIters(f, nil /* iter options */, c.bytesIterated)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
 			}
@@ -544,8 +555,8 @@ func (c *compaction) newInputIter(
 		}
 	}
 
-	iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[1], &c.bytesIterated))
-	iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[1], &c.bytesIterated))
+	iters = append(iters, newLevelIter(nil, c.cmp, newIters, c.inputs[1], c.bytesIterated))
+	iters = append(iters, newLevelIter(nil, c.cmp, newRangeDelIter, c.inputs[1], c.bytesIterated))
 	return newMergingIter(c.cmp, iters...), nil
 }
 
@@ -575,6 +586,26 @@ type manualCompaction struct {
 	done        chan error
 	start       InternalKey
 	end         InternalKey
+}
+
+func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
+	bytesFlushed := atomic.LoadUint64(&d.bytesFlushed)
+
+	d.mu.Lock()
+	estimatedMaxWAmp := d.mu.versions.picker.estimatedMaxWAmp
+	pacerInfo := compactionPacerInfo{
+		slowdownThreshold: uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
+		totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
+	}
+	d.mu.Unlock()
+
+	return pacerInfo
+}
+
+func (d *DB) getFlushPacerInfo() flushPacerInfo {
+	return flushPacerInfo{
+		totalBytes: d.memTableTotalBytes(),
+	}
 }
 
 // maybeScheduleFlush schedules a flush if necessary.
@@ -632,7 +663,7 @@ func (d *DB) flush1() error {
 	}
 
 	c := newFlush(d.opts, d.mu.versions.currentVersion(),
-		d.mu.versions.picker.baseLevel, d.mu.mem.queue[:n])
+		d.mu.versions.picker.baseLevel, d.mu.mem.queue[:n], &d.bytesFlushed)
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -642,7 +673,12 @@ func (d *DB) flush1() error {
 		})
 	}
 
-	ve, pendingOutputs, err := d.runCompaction(c)
+	flushPacer := newFlushPacer(flushPacerEnv{
+		limiter:      d.flushLimiter,
+		memTableSize: uint64(d.opts.MemTableSize),
+		getInfo:      d.getFlushPacerInfo,
+	})
+	ve, pendingOutputs, err := d.runCompaction(c, flushPacer)
 
 	if d.opts.EventListener.FlushEnd != nil {
 		info := FlushInfo{
@@ -784,7 +820,12 @@ func (d *DB) compact1() (err error) {
 		d.opts.EventListener.CompactionBegin(info)
 	}
 
-	ve, pendingOutputs, err := d.runCompaction(c)
+	compactionPacer := newCompactionPacer(compactionPacerEnv{
+		limiter:      d.compactionLimiter,
+		memTableSize: uint64(d.opts.MemTableSize),
+		getInfo:      d.getCompactionPacerInfo,
+	})
+	ve, pendingOutputs, err := d.runCompaction(c, compactionPacer)
 
 	if d.opts.EventListener.CompactionEnd != nil {
 		info.Err = err
@@ -821,7 +862,7 @@ func (d *DB) compact1() (err error) {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) runCompaction(c *compaction) (
+func (d *DB) runCompaction(c *compaction, pacer pacer) (
 	ve *versionEdit, pendingOutputs []uint64, retErr error,
 ) {
 	// Check for a trivial move of one table from one level to the next. We avoid
@@ -998,118 +1039,11 @@ func (d *DB) runCompaction(c *compaction) (
 		return nil
 	}
 
-	var prevBytesIterated uint64
-	var iterCount int
-	totalBytes := d.memTableTotalBytes()
-	refreshDirtyBytesThreshold := uint64(d.opts.MemTableSize * 5 / 100)
-
-	var compactionSlowdownThreshold uint64
-	var totalCompactionDebt uint64
-	var estimatedMaxWAmp float64
-
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		// Slow down memtable flushing to match fill rate.
-		if c.flushing != nil {
-			// Recalculate total memtable bytes only once every 1000 iterations or
-			// when the refresh threshold is hit since getting the total memtable
-			// byte count requires grabbing DB.mu which is expensive.
-			if iterCount >= 1000 || c.bytesIterated > refreshDirtyBytesThreshold {
-				totalBytes = d.memTableTotalBytes()
-				refreshDirtyBytesThreshold = c.bytesIterated + uint64(d.opts.MemTableSize*5/100)
-				iterCount = 0
-			}
-			iterCount++
-
-			// dirtyBytes is the total number of bytes in the memtables minus the number of
-			// bytes flushed. It represents unflushed bytes in all the memtables, even the
-			// ones which aren't being flushed such as the mutable memtable.
-			dirtyBytes := totalBytes - c.bytesIterated
-			flushAmount := c.bytesIterated - prevBytesIterated
-			prevBytesIterated = c.bytesIterated
-
-			atomic.StoreUint64(&d.bytesFlushed, c.bytesIterated)
-
-			// We slow down memtable flushing when the dirty bytes indicator falls
-			// below the low watermark, which is 105% memtable size. This will only
-			// occur if memtable flushing can keep up with the pace of incoming
-			// writes. If writes come in faster than how fast the memtable can flush,
-			// flushing proceeds at maximum (unthrottled) speed.
-			if dirtyBytes <= uint64(d.opts.MemTableSize*105/100) {
-				burst := d.flushLimiter.Burst()
-				for flushAmount > uint64(burst) {
-					err := d.flushLimiter.WaitN(context.Background(), burst)
-					if err != nil {
-						return nil, pendingOutputs, err
-					}
-					flushAmount -= uint64(burst)
-				}
-				err := d.flushLimiter.WaitN(context.Background(), int(flushAmount))
-				if err != nil {
-					return nil, pendingOutputs, err
-				}
-			} else {
-				burst := d.flushLimiter.Burst()
-				for flushAmount > uint64(burst) {
-					d.flushLimiter.AllowN(time.Now(), burst)
-					flushAmount -= uint64(burst)
-				}
-				d.flushLimiter.AllowN(time.Now(), int(flushAmount))
-			}
-		} else {
-			bytesFlushed := atomic.LoadUint64(&d.bytesFlushed)
-
-			if iterCount >= 1000 || c.bytesIterated > refreshDirtyBytesThreshold {
-				d.mu.Lock()
-				estimatedMaxWAmp = d.mu.versions.picker.estimatedMaxWAmp
-				// compactionSlowdownThreshold is the low watermark for compaction debt. If compaction
-				// debt is below this threshold, we slow down compactions. If compaction debt is above
-				// this threshold, we let compactions continue as fast as possible. We want to keep
-				// compaction speed as slow as possible to match the speed of flushes. This threshold
-				// is set so that a single flush cannot contribute enough compaction debt to overshoot
-				// the threshold.
-				compactionSlowdownThreshold = uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize))
-				totalCompactionDebt = d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed)
-				d.mu.Unlock()
-				refreshDirtyBytesThreshold = c.bytesIterated + uint64(d.opts.MemTableSize*5/100)
-				iterCount = 0
-			}
-			iterCount++
-
-			var curCompactionDebt uint64
-			if totalCompactionDebt > c.bytesIterated {
-				curCompactionDebt = totalCompactionDebt - c.bytesIterated
-			}
-
-			compactAmount := c.bytesIterated - prevBytesIterated
-			// We slow down compactions when the compaction debt falls below the slowdown
-			// threshold, which is set dynamically based on the number of non-empty levels.
-			// This will only occur if compactions can keep up with the pace of flushes. If
-			// bytes are flushed faster than how fast compactions can occur, compactions
-			// proceed at maximum (unthrottled) speed.
-			if curCompactionDebt <= compactionSlowdownThreshold {
-				burst := d.compactionLimiter.Burst()
-				for compactAmount > uint64(burst) {
-					err := d.compactionLimiter.WaitN(context.Background(), burst)
-					if err != nil {
-						return nil, pendingOutputs, err
-					}
-					compactAmount -= uint64(burst)
-				}
-				err := d.compactionLimiter.WaitN(context.Background(), int(compactAmount))
-				if err != nil {
-					return nil, pendingOutputs, err
-				}
-			} else {
-				burst := d.compactionLimiter.Burst()
-				for compactAmount > uint64(burst) {
-					d.compactionLimiter.AllowN(time.Now(), burst)
-					compactAmount -= uint64(burst)
-				}
-				d.compactionLimiter.AllowN(time.Now(), int(compactAmount))
-			}
-
-			prevBytesIterated = c.bytesIterated
+		if err := pacer.maybeThrottle(*c.bytesIterated); err != nil {
+			return nil, pendingOutputs, err
 		}
+
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
 		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {

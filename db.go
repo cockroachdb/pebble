@@ -14,7 +14,6 @@ import (
 
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/rate"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -173,14 +172,14 @@ type DB struct {
 
 	closed int32 // updated atomically
 
-	compactionLimiter *rate.Limiter
+	compactionLimiter limiter
 
 	// bytesFlushed is the number of bytes flushed in the current flush. This
 	// must be read/written atomically since it is accessed by both the flush
 	// and compaction routines.
 	bytesFlushed uint64
 
-	flushLimiter *rate.Limiter
+	flushLimiter limiter
 
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
