@@ -304,7 +304,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			d.mu.versions.picker.baseLevel, []flushable{mem})
 		c.disableRangeTombstoneElision = true
-		newVE, _, err := d.runCompaction(c)
+		newVE, _, err := d.runCompaction(c, nilPacer)
 		if err != nil {
 			return nil
 		}
