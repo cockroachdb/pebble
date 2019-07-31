@@ -324,7 +324,8 @@ func (d *DB) replayWAL(
 	if mem != nil && !mem.empty() {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, []flushable{mem})
-		newVE, pendingOutputs, err := d.runCompaction(c)
+		noopPacer := d.newNoopPacer()
+		newVE, pendingOutputs, err := d.runCompaction(c, noopPacer)
 		if err != nil {
 			return 0, err
 		}

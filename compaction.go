@@ -6,14 +6,12 @@ package pebble
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"sort"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"github.com/petermattis/pebble/internal/base"
@@ -642,7 +640,8 @@ func (d *DB) flush1() error {
 		})
 	}
 
-	ve, pendingOutputs, err := d.runCompaction(c)
+	flushPacer := d.newFlushPacer()
+	ve, pendingOutputs, err := d.runCompaction(c, flushPacer)
 
 	if d.opts.EventListener.FlushEnd != nil {
 		info := FlushInfo{
@@ -784,7 +783,8 @@ func (d *DB) compact1() (err error) {
 		d.opts.EventListener.CompactionBegin(info)
 	}
 
-	ve, pendingOutputs, err := d.runCompaction(c)
+	compactionPacer := d.newCompactionPacer()
+	ve, pendingOutputs, err := d.runCompaction(c, compactionPacer)
 
 	if d.opts.EventListener.CompactionEnd != nil {
 		info.Err = err
@@ -816,12 +816,35 @@ func (d *DB) compact1() (err error) {
 	return nil
 }
 
+func (d *DB) newCompactionPacer() *compactionPacer {
+	return &compactionPacer{
+		internalPacer: internalPacer{
+			db: d,
+			limiter: d.compactionLimiter,
+		},
+	}
+}
+
+func (d *DB) newFlushPacer() *flushPacer {
+	return &flushPacer{
+		internalPacer: internalPacer{
+			db: d,
+			limiter: d.flushLimiter,
+			slowdownThreshold: uint64(d.opts.MemTableSize*105/100),
+		},
+	}
+}
+
+func (d *DB) newNoopPacer() *noopPacer {
+	return &noopPacer{}
+}
+
 // runCompactions runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) runCompaction(c *compaction) (
+func (d *DB) runCompaction(c *compaction, pacer pacer) (
 	ve *versionEdit, pendingOutputs []uint64, retErr error,
 ) {
 	// Check for a trivial move of one table from one level to the next. We avoid
@@ -998,118 +1021,11 @@ func (d *DB) runCompaction(c *compaction) (
 		return nil
 	}
 
-	var prevBytesIterated uint64
-	var iterCount int
-	totalBytes := d.memTableTotalBytes()
-	refreshDirtyBytesThreshold := uint64(d.opts.MemTableSize * 5 / 100)
-
-	var compactionSlowdownThreshold uint64
-	var totalCompactionDebt uint64
-	var estimatedMaxWAmp float64
-
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		// Slow down memtable flushing to match fill rate.
-		if c.flushing != nil {
-			// Recalculate total memtable bytes only once every 1000 iterations or
-			// when the refresh threshold is hit since getting the total memtable
-			// byte count requires grabbing DB.mu which is expensive.
-			if iterCount >= 1000 || c.bytesIterated > refreshDirtyBytesThreshold {
-				totalBytes = d.memTableTotalBytes()
-				refreshDirtyBytesThreshold = c.bytesIterated + uint64(d.opts.MemTableSize*5/100)
-				iterCount = 0
-			}
-			iterCount++
-
-			// dirtyBytes is the total number of bytes in the memtables minus the number of
-			// bytes flushed. It represents unflushed bytes in all the memtables, even the
-			// ones which aren't being flushed such as the mutable memtable.
-			dirtyBytes := totalBytes - c.bytesIterated
-			flushAmount := c.bytesIterated - prevBytesIterated
-			prevBytesIterated = c.bytesIterated
-
-			atomic.StoreUint64(&d.bytesFlushed, c.bytesIterated)
-
-			// We slow down memtable flushing when the dirty bytes indicator falls
-			// below the low watermark, which is 105% memtable size. This will only
-			// occur if memtable flushing can keep up with the pace of incoming
-			// writes. If writes come in faster than how fast the memtable can flush,
-			// flushing proceeds at maximum (unthrottled) speed.
-			if dirtyBytes <= uint64(d.opts.MemTableSize*105/100) {
-				burst := d.flushLimiter.Burst()
-				for flushAmount > uint64(burst) {
-					err := d.flushLimiter.WaitN(context.Background(), burst)
-					if err != nil {
-						return nil, pendingOutputs, err
-					}
-					flushAmount -= uint64(burst)
-				}
-				err := d.flushLimiter.WaitN(context.Background(), int(flushAmount))
-				if err != nil {
-					return nil, pendingOutputs, err
-				}
-			} else {
-				burst := d.flushLimiter.Burst()
-				for flushAmount > uint64(burst) {
-					d.flushLimiter.AllowN(time.Now(), burst)
-					flushAmount -= uint64(burst)
-				}
-				d.flushLimiter.AllowN(time.Now(), int(flushAmount))
-			}
-		} else {
-			bytesFlushed := atomic.LoadUint64(&d.bytesFlushed)
-
-			if iterCount >= 1000 || c.bytesIterated > refreshDirtyBytesThreshold {
-				d.mu.Lock()
-				estimatedMaxWAmp = d.mu.versions.picker.estimatedMaxWAmp
-				// compactionSlowdownThreshold is the low watermark for compaction debt. If compaction
-				// debt is below this threshold, we slow down compactions. If compaction debt is above
-				// this threshold, we let compactions continue as fast as possible. We want to keep
-				// compaction speed as slow as possible to match the speed of flushes. This threshold
-				// is set so that a single flush cannot contribute enough compaction debt to overshoot
-				// the threshold.
-				compactionSlowdownThreshold = uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize))
-				totalCompactionDebt = d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed)
-				d.mu.Unlock()
-				refreshDirtyBytesThreshold = c.bytesIterated + uint64(d.opts.MemTableSize*5/100)
-				iterCount = 0
-			}
-			iterCount++
-
-			var curCompactionDebt uint64
-			if totalCompactionDebt > c.bytesIterated {
-				curCompactionDebt = totalCompactionDebt - c.bytesIterated
-			}
-
-			compactAmount := c.bytesIterated - prevBytesIterated
-			// We slow down compactions when the compaction debt falls below the slowdown
-			// threshold, which is set dynamically based on the number of non-empty levels.
-			// This will only occur if compactions can keep up with the pace of flushes. If
-			// bytes are flushed faster than how fast compactions can occur, compactions
-			// proceed at maximum (unthrottled) speed.
-			if curCompactionDebt <= compactionSlowdownThreshold {
-				burst := d.compactionLimiter.Burst()
-				for compactAmount > uint64(burst) {
-					err := d.compactionLimiter.WaitN(context.Background(), burst)
-					if err != nil {
-						return nil, pendingOutputs, err
-					}
-					compactAmount -= uint64(burst)
-				}
-				err := d.compactionLimiter.WaitN(context.Background(), int(compactAmount))
-				if err != nil {
-					return nil, pendingOutputs, err
-				}
-			} else {
-				burst := d.compactionLimiter.Burst()
-				for compactAmount > uint64(burst) {
-					d.compactionLimiter.AllowN(time.Now(), burst)
-					compactAmount -= uint64(burst)
-				}
-				d.compactionLimiter.AllowN(time.Now(), int(compactAmount))
-			}
-
-			prevBytesIterated = c.bytesIterated
+		if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
+			return nil, pendingOutputs, err
 		}
+
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
 		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {
