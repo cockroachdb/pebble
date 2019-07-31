@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -432,7 +433,7 @@ func TestPickCompaction(t *testing.T) {
 		vs.picker = &tc.picker
 		vs.picker.vers = &tc.version
 
-		c, got := vs.picker.pickAuto(opts), ""
+		c, got := vs.picker.pickAuto(opts, new(uint64)), ""
 		if c != nil {
 			got0 := fileNums(c.inputs[0])
 			got1 := fileNums(c.inputs[1])
@@ -597,6 +598,8 @@ func TestCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	mockLimiter := mockCountLimiter{burst: int(math.MaxInt32)}
+	d.compactionLimiter = &mockLimiter
 
 	get1 := func(iter internalIterator) (ret string) {
 		b := &bytes.Buffer{}
@@ -693,6 +696,13 @@ func TestCompaction(t *testing.T) {
 
 	if err := d.Close(); err != nil {
 		t.Fatalf("db Close: %v", err)
+	}
+
+	if !(mockLimiter.allowCount > 0) {
+		t.Errorf("limiter allow: got %d, want >%d", mockLimiter.allowCount, 0)
+	}
+	if mockLimiter.waitCount != 0 {
+		t.Errorf("limiter wait: got %d, want %d", mockLimiter.waitCount, 0)
 	}
 }
 
@@ -879,7 +889,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				var start, base int
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
-				c := newCompaction(opts, version, start, base)
+				c := newCompaction(opts, version, start, base, new(uint64))
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel, c.maxOutputFileSize)
 
