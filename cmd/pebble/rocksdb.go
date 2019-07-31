@@ -227,7 +227,7 @@ func (r rocksDB) Metrics() *pebble.VersionMetrics {
 			if level < 0 || level > 6 {
 				panic("expected at most 7 levels")
 			}
-			vMetrics.Levels[level].NumFiles, _ = strconv.ParseUint(strings.Split(fields[1], "/")[0], 10, 64)
+			vMetrics.Levels[level].NumFiles, _ = strconv.ParseInt(strings.Split(fields[1], "/")[0], 10, 64)
 			size, _ := strconv.ParseFloat(fields[2], 64)
 			if fields[3] == "KB" {
 				size *= 1024.0
