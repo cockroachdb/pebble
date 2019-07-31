@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -597,6 +598,8 @@ func TestCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	mockLimiter := mockLimiter{burst: int(math.MaxInt32)}
+	d.compactionLimiter = &mockLimiter
 
 	get1 := func(iter internalIterator) (ret string) {
 		b := &bytes.Buffer{}
@@ -693,6 +696,15 @@ func TestCompaction(t *testing.T) {
 
 	if err := d.Close(); err != nil {
 		t.Fatalf("db Close: %v", err)
+	}
+
+	wantAllowCount := 1479
+	wantWaitCount := 0
+	if mockLimiter.allowCount != wantAllowCount {
+		t.Errorf("limiter allow: got %d, want %d", mockLimiter.allowCount, wantAllowCount)
+	}
+	if mockLimiter.waitCount != wantWaitCount {
+		t.Errorf("limiter wait: got %d, want %d", mockLimiter.waitCount, wantWaitCount)
 	}
 }
 
