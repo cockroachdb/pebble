@@ -645,10 +645,10 @@ func TestFooterRoundTrip(t *testing.T) {
 					footer := footer{
 						format:      format,
 						checksum:    checksum,
-						metaindexBH: blockHandle{offset: 1, length: 2},
-						indexBH:     blockHandle{offset: 3, length: 4},
+						metaindexBH: BlockHandle{offset: 1, length: 2},
+						indexBH:     BlockHandle{offset: 3, length: 4},
 					}
-					for offset := range []int64{0, 1, 100} {
+					for _, offset := range []int64{0, 1, 100} {
 						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 							mem := vfs.NewMem()
 							f, err := mem.Create("test")
@@ -658,12 +658,15 @@ func TestFooterRoundTrip(t *testing.T) {
 							if _, err := f.Write(buf[:offset]); err != nil {
 								t.Fatal(err)
 							}
-							if _, err := f.Write(footer.encode(buf[100:])); err != nil {
+							encoded := footer.encode(buf[100:])
+							if _, err := f.Write(encoded); err != nil {
 								t.Fatal(err)
 							}
 							if err := f.Close(); err != nil {
 								t.Fatal(err)
 							}
+							footer.footerBH.offset = uint64(offset)
+							footer.footerBH.length = uint64(len(encoded))
 
 							f, err = mem.Open("test")
 							if err != nil {

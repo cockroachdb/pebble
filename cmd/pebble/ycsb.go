@@ -44,7 +44,7 @@ var ycsbConfig struct {
 
 var ycsbCmd = &cobra.Command{
 	Use:   "ycsb <dir>",
-	Short: "run customizable YCSB workload",
+	Short: "run customizable YCSB benchmark",
 	Long: `
 Run a customizable YCSB workload. The workload is specified by the --workload
 flag which can take either one of the standard workload mixes (A-F), or

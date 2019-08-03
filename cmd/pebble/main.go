@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/petermattis/pebble/tool"
 	"github.com/spf13/cobra"
 )
 
@@ -21,26 +22,31 @@ var (
 	maxOpsPerSec    int
 	rocksdb         bool
 	verbose         bool
-	walOnly         bool
 	waitCompactions bool
 	wipe            bool
 )
-
-var rootCmd = &cobra.Command{
-	Use:   "pebble [command] (flags)",
-	Short: "pebble benchmarking/introspection tool",
-	Long:  ``,
-}
 
 func main() {
 	log.SetFlags(0)
 
 	cobra.EnableCommandSorting = false
-	rootCmd.AddCommand(
+
+	benchCmd := &cobra.Command{
+		Use:   "bench",
+		Short: "benchmarks",
+	}
+	benchCmd.AddCommand(
 		scanCmd,
 		syncCmd,
 		ycsbCmd,
 	)
+
+	rootCmd := &cobra.Command{
+		Use:   "pebble [command] (flags)",
+		Short: "pebble benchmarking/introspection tool",
+	}
+	rootCmd.AddCommand(benchCmd)
+	rootCmd.AddCommand(tool.AllCmds...)
 
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(

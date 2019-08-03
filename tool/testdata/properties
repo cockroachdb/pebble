@@ -1,0 +1,147 @@
+sstable properties
+----
+requires at least 1 arg(s), only received 0
+
+sstable properties
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+version           2
+size              
+  file            14978
+  data            13913
+    blocks        14
+  index           325
+    blocks        1
+    top-level     0
+  filter          0
+  raw-key         23717
+  raw-value       1835
+records           1710
+  set             1710
+  delete          0
+  range-delete    0
+  merge           0
+  global-seq-num  0
+index             
+  key             internal key
+  value           raw encoded
+comparator        leveldb.BytewiseComparator
+merger            -
+filter            -
+  prefix          false
+  whole-key       false
+compression       Snappy
+  options         window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+user properties   
+  collectors      [KeyCountPropertyCollector]
+  test.key-count  1710
+
+sstable properties
+../sstable/testdata/h.ldb
+----
+../sstable/testdata/h.ldb
+version           2
+size              
+  file            14927
+  data            13913
+    blocks        14
+  index           325
+    blocks        1
+    top-level     0
+  filter          0
+  raw-key         23717
+  raw-value       1835
+records           1710
+  set             1710
+  delete          0
+  range-delete    0
+  merge           0
+  global-seq-num  0
+index             
+  key             internal key
+  value           raw encoded
+comparator        leveldb.BytewiseComparator
+merger            -
+filter            -
+  prefix          false
+  whole-key       false
+compression       Snappy
+  options         window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+user properties   
+  collectors      []
+
+sstable properties
+../sstable/testdata/h.no-compression.two_level_index.sst
+----
+../sstable/testdata/h.no-compression.two_level_index.sst
+version           2
+size              
+  file            27776
+  data            26717
+    blocks        7
+  index           192
+    blocks        2
+    top-level     25
+  filter          0
+  raw-key         23717
+  raw-value       1835
+records           1710
+  set             1710
+  delete          0
+  range-delete    0
+  merge           0
+  global-seq-num  0
+index             
+  key             internal key
+  value           raw encoded
+comparator        leveldb.BytewiseComparator
+merger            -
+filter            -
+  prefix          false
+  whole-key       false
+compression       NoCompression
+  options         window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+user properties   
+  collectors      [KeyCountPropertyCollector]
+  test.key-count  1710
+
+sstable properties
+-v
+../sstable/testdata/h.no-compression.two_level_index.sst
+----
+../sstable/testdata/h.no-compression.two_level_index.sst
+rocksdb.column.family.id: -
+rocksdb.column.family.name: 
+rocksdb.comparator: leveldb.BytewiseComparator
+rocksdb.compression: NoCompression
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.creation.time: 0
+rocksdb.data.size: 26717
+rocksdb.file.creation.time: 0
+rocksdb.filter.policy: 
+rocksdb.filter.size: 0
+rocksdb.fixed.key.length: 0
+rocksdb.format.version: 0
+rocksdb.external_sst_file.global_seqno: 0
+rocksdb.index.key.is.user.key: 0
+rocksdb.index.partitions: 1
+rocksdb.index.size: 192
+rocksdb.block.based.table.index.type: 2
+rocksdb.index.value.is.delta.encoded: 0
+rocksdb.merge.operator: nullptr
+rocksdb.num.data.blocks: 7
+rocksdb.deleted.keys: 0
+rocksdb.num.entries: 1710
+rocksdb.merge.operands: 0
+rocksdb.num.range-deletions: 0
+rocksdb.oldest.key.time: 0
+rocksdb.prefix.extractor.name: nullptr
+rocksdb.block.based.table.prefix.filtering: false
+rocksdb.property.collectors: [KeyCountPropertyCollector]
+rocksdb.raw.key.size: 23717
+rocksdb.raw.value.size: 1835
+rocksdb.top-level.index.size: 25
+rocksdb.external_sst_file.version: 2
+rocksdb.block.based.table.whole.key.filtering: false
+test.key-count: 1710
