@@ -78,13 +78,13 @@ func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 	compactionDebt += (levelSize * bytesAddedToNextLevel) / estimatedL0CompactionSize
 
 	var nextLevelSize uint64
-	for level := p.baseLevel; level < numLevels - 1; level++ {
+	for level := p.baseLevel; level < numLevels-1; level++ {
 		levelSize += bytesAddedToNextLevel
 		bytesAddedToNextLevel = 0
-		nextLevelSize = totalSize(p.vers.files[level + 1])
+		nextLevelSize = totalSize(p.vers.files[level+1])
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
-			levelRatio := float64(nextLevelSize)/float64(levelSize)
+			levelRatio := float64(nextLevelSize) / float64(levelSize)
 			compactionDebt += uint64(float64(bytesAddedToNextLevel) * (levelRatio + 1))
 		}
 		levelSize = nextLevelSize
@@ -153,7 +153,7 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 		p.smoothedLevelMultiplier = 1.0
 	}
 
-	p.estimatedMaxWAmp = float64(numLevels - p.baseLevel) * (p.smoothedLevelMultiplier + 1)
+	p.estimatedMaxWAmp = float64(numLevels-p.baseLevel) * (p.smoothedLevelMultiplier + 1)
 
 	levelSize := float64(baseBytesMax)
 	for level := p.baseLevel; level < numLevels; level++ {
@@ -265,7 +265,7 @@ func (p *compactionPicker) pickAuto(opts *Options) (c *compaction) {
 		cmp := opts.Comparer.Compare
 		smallest, largest := ikeyRange(cmp, c.inputs[0], nil)
 		c.inputs[0] = vers.overlaps(0, cmp, smallest.UserKey, largest.UserKey)
-		if len(c.inputs) == 0 {
+		if len(c.inputs[0]) == 0 {
 			panic("pebble: empty compaction")
 		}
 	}
