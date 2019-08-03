@@ -1,0 +1,6 @@
+sstable check
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+
+# TODO(peter): generate an sstable with corruption

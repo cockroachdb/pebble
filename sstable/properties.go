@@ -168,7 +168,7 @@ func (p *Properties) String() string {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		fmt.Fprintf(&buf, "%s: %s\n", keys, p.UserProperties[key])
+		fmt.Fprintf(&buf, "%s: %s\n", key, p.UserProperties[key])
 	}
 	return buf.String()
 }

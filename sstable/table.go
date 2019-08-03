@@ -171,8 +171,7 @@ const (
 	// doesn't use zstd compression, the string will always be the same.
 	// This should be removed if we ever decide to diverge from the RocksDB
 	// properties block.
-	rocksDBCompressionOptions =
-		"window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
+	rocksDBCompressionOptions = "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
 )
 
 // legacy (LevelDB) footer format:
@@ -190,8 +189,9 @@ const (
 type footer struct {
 	format      TableFormat
 	checksum    uint8
-	metaindexBH blockHandle
-	indexBH     blockHandle
+	metaindexBH BlockHandle
+	indexBH     BlockHandle
+	footerBH    BlockHandle
 }
 
 func readFooter(f vfs.File) (footer, error) {
@@ -220,7 +220,9 @@ func readFooter(f vfs.File) (footer, error) {
 		if len(buf) < levelDBFooterLen {
 			return footer, fmt.Errorf("pebble/table: invalid table (footer too short): %d", len(buf))
 		}
+		footer.footerBH.Offset = uint64(off+int64(len(buf))) - levelDBFooterLen
 		buf = buf[len(buf)-levelDBFooterLen:]
+		footer.footerBH.Length = uint64(len(buf))
 		footer.format = TableFormatLevelDB
 		footer.checksum = checksumCRC32c
 
@@ -228,7 +230,9 @@ func readFooter(f vfs.File) (footer, error) {
 		if len(buf) < rocksDBFooterLen {
 			return footer, fmt.Errorf("pebble/table: invalid table (footer too short): %d", len(buf))
 		}
+		footer.footerBH.Offset = uint64(off+int64(len(buf))) - rocksDBFooterLen
 		buf = buf[len(buf)-rocksDBFooterLen:]
+		footer.footerBH.Length = uint64(len(buf))
 		version := binary.LittleEndian.Uint32(buf[rocksDBVersionOffset:rocksDBMagicOffset])
 		if version != rocksDBFormatVersion2 {
 			return footer, fmt.Errorf("pebble/table: unsupported format version %d", version)

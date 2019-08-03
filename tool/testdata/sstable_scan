@@ -1,0 +1,39 @@
+sstable scan
+--start=arm
+--end=aside
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+arm#0,1 [32]
+armed#0,1 [32]
+armour#0,1 [31]
+arms#0,1 [32]
+arrant#0,1 [31]
+art#0,1 [36]
+artery#0,1 [31]
+article#0,1 [31]
+articles#0,1 [31]
+as#0,1 [35 36]
+
+sstable scan
+--end=abused
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+a#0,1 [39 37]
+aboard#0,1 [32]
+about#0,1 [32]
+above#0,1 [31]
+abroad#0,1 [31]
+absurd#0,1 [31]
+
+sstable scan
+--start=you
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+you#0,1 [31 31 30]
+young#0,1 [36]
+your#0,1 [34 39]
+yourself#0,1 [37]
+youth#0,1 [35]

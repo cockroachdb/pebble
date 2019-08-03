@@ -126,7 +126,7 @@ type Writer struct {
 	// pendingBH is the blockHandle of a finished block that is waiting for
 	// the next call to Set. If the writer is not in this state, pendingBH
 	// is zero.
-	pendingBH      blockHandle
+	pendingBH      BlockHandle
 	block          blockWriter
 	indexBlock     blockWriter
 	rangeDelBlock  blockWriter
@@ -337,7 +337,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 
 // flushPendingBH adds any pending block handle to the index entries.
 func (w *Writer) flushPendingBH(key InternalKey) {
-	if w.pendingBH.length == 0 {
+	if w.pendingBH.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return
@@ -359,7 +359,7 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 
 	w.indexBlock.add(sep, w.tmp[:n])
 
-	w.pendingBH = blockHandle{}
+	w.pendingBH = BlockHandle{}
 }
 
 func shouldFlush(key InternalKey, value []byte, block blockWriter, blockSize, sizeThreshold int) bool {
@@ -388,7 +388,7 @@ func shouldFlush(key InternalKey, value []byte, block blockWriter, blockSize, si
 
 // finishBlock finishes the current block and returns its block handle, which is
 // its offset and length in the table.
-func (w *Writer) finishBlock(block *blockWriter) (blockHandle, error) {
+func (w *Writer) finishBlock(block *blockWriter) (BlockHandle, error) {
 	bh, err := w.writeRawBlock(block.finish(), w.compression)
 
 	// Calculate filters.
@@ -410,7 +410,7 @@ func (w *Writer) finishIndexBlock() {
 	}
 }
 
-func (w *Writer) writeTwoLevelIndex() (blockHandle, error) {
+func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	// Add the final unfinished index.
 	w.finishIndexBlock()
 
@@ -439,7 +439,7 @@ func (w *Writer) writeTwoLevelIndex() (blockHandle, error) {
 	return w.finishBlock(&w.topLevelIndexBlock)
 }
 
-func (w *Writer) writeRawBlock(b []byte, compression Compression) (blockHandle, error) {
+func (w *Writer) writeRawBlock(b []byte, compression Compression) (BlockHandle, error) {
 	blockType := noCompressionBlockType
 	if compression == SnappyCompression {
 		// Compress the buffer, discarding the result if the improvement isn't at
@@ -456,17 +456,17 @@ func (w *Writer) writeRawBlock(b []byte, compression Compression) (blockHandle, 
 	// Calculate the checksum.
 	checksum := crc.New(b).Update(w.tmp[:1]).Value()
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
-	bh := blockHandle{w.meta.Size, uint64(len(b))}
+	bh := BlockHandle{w.meta.Size, uint64(len(b))}
 
 	// Write the bytes to the file.
 	n, err := w.writer.Write(b)
 	if err != nil {
-		return blockHandle{}, err
+		return BlockHandle{}, err
 	}
 	w.meta.Size += uint64(n)
 	n, err = w.writer.Write(w.tmp[:blockTrailerLen])
 	if err != nil {
-		return blockHandle{}, err
+		return BlockHandle{}, err
 	}
 	w.meta.Size += uint64(n)
 
@@ -521,10 +521,10 @@ func (w *Writer) Close() (err error) {
 		n := encodeBlockHandle(w.tmp[:], bh)
 		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.tmp[:n])
 		w.props.FilterPolicyName = w.filter.policyName()
-		w.props.FilterSize = bh.length
+		w.props.FilterSize = bh.Length
 	}
 
-	var indexBH blockHandle
+	var indexBH BlockHandle
 	if w.twoLevelIndex {
 		w.props.IndexType = twoLevelIndex
 		// Write the two level index block.
