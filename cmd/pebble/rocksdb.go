@@ -7,7 +7,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -192,7 +191,6 @@ func (r rocksDB) Scan(key []byte, count int64, reverse bool) error {
 
 func (r rocksDB) Metrics() *pebble.VersionMetrics {
 	stats := r.d.GetCompactionStats()
-	fmt.Printf(stats)
 	var inLevelsSection bool
 	var vMetrics pebble.VersionMetrics
 	for _, line := range strings.Split(stats, "\n") {
