@@ -114,7 +114,7 @@ func init() {
 }
 
 func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
-	r := NewReader(f, 0, &Options{
+	r := NewReader(f, 0, 0, &Options{
 		Comparer: comparer,
 		Levels: []TableOptions{{
 			FilterPolicy: fp,
@@ -463,7 +463,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r := NewReader(f, 0, &Options{
+	r := NewReader(f, 0, 0, &Options{
 		Levels: []TableOptions{{
 			FilterPolicy: c,
 		}},
@@ -592,7 +592,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 				continue
 			}
-			r := NewReader(rf, 0, nil)
+			r := NewReader(rf, 0, 0, nil)
 			i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 			for valid := i.First(); valid; valid = i.Next() {
 				got++
@@ -619,7 +619,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := NewReader(f, 0, nil)
+	r := NewReader(f, 0, 0, nil)
 	defer r.Close()
 
 	const globalSeqNum = 42

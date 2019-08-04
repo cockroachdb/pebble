@@ -150,7 +150,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	opts := &Options{}
 	opts.EnsureDefaults()
 	c := &tableCache{}
-	c.init("", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
+	c.init(0, "", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
 	return c, fs, nil
 }
 
@@ -172,7 +172,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Unlock()
 			iter, _, err := c.newIters(
 				&fileMetadata{fileNum: uint64(fileNum)},
-				nil /* iter options */,
+				nil, /* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
@@ -234,7 +234,7 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			iter, _, err := c.newIters(
 				&fileMetadata{fileNum: uint64(j)},
-				nil /* iter options */,
+				nil, /* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -272,7 +272,7 @@ func TestTableCacheEvictions(t *testing.T) {
 		j := rng.Intn(tableCacheTestNumTables)
 		iter, _, err := c.newIters(
 			&fileMetadata{fileNum: uint64(j)},
-			nil /* iter options */,
+			nil, /* iter options */
 			nil /* bytes iterated */)
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -315,7 +315,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 	}
 	if _, _, err := c.newIters(
 		&fileMetadata{fileNum: 0},
-		nil /* iter options */,
+		nil, /* iter options */
 		nil /* bytes iterated */); err != nil {
 		t.Fatal(err)
 	}

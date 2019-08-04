@@ -41,7 +41,7 @@ func TestOptionsString(t *testing.T) {
 
 [Options]
   bytes_per_sync=524288
-  cache_size=0
+  cache_size=8388608
   comparer=leveldb.BytewiseComparator
   disable_wal=false
   l0_compaction_threshold=4

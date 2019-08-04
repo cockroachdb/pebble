@@ -125,7 +125,8 @@ func (i *Iter) loadBlock() {
 // Reader ...
 type Reader struct {
 	file    vfs.File
-	fileNum uint64 // TODO(peter): needed for block cache
+	dbNum   uint64
+	fileNum uint64
 	err     error
 	index   []byte
 	cache   *cache.Cache
@@ -137,6 +138,7 @@ func NewReader(f vfs.File, fileNum uint64, o *base.Options) *Reader {
 	o = o.EnsureDefaults()
 	r := &Reader{
 		file:    f,
+		dbNum:   0, // TODO(peter): needed for block cache
 		fileNum: fileNum,
 		cache:   o.Cache,
 		cmp:     o.Comparer.Compare,
@@ -249,7 +251,7 @@ func (r *Reader) NewIter() *Iter {
 
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(bh blockHandle) (cache.Handle, error) {
-	if h := r.cache.Get(r.fileNum, bh.offset); h.Get() != nil {
+	if h := r.cache.Get(r.dbNum, r.fileNum, bh.offset); h.Get() != nil {
 		return h, nil
 	}
 
@@ -265,14 +267,14 @@ func (r *Reader) readBlock(bh blockHandle) (cache.Handle, error) {
 	switch b[bh.length] {
 	case noCompressionBlockType:
 		b = b[:bh.length]
-		h := r.cache.Set(r.fileNum, bh.offset, b)
+		h := r.cache.Set(r.dbNum, r.fileNum, bh.offset, b)
 		return h, nil
 	case snappyCompressionBlockType:
 		b, err := snappy.Decode(nil, b[:bh.length])
 		if err != nil {
 			return cache.Handle{}, err
 		}
-		h := r.cache.Set(r.fileNum, bh.offset, b)
+		h := r.cache.Set(r.dbNum, r.fileNum, bh.offset, b)
 		return h, nil
 	}
 	return cache.Handle{}, fmt.Errorf("pebble/table: unknown block compression: %d", b[bh.length])

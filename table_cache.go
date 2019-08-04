@@ -25,10 +25,12 @@ type tableCache struct {
 	shards []tableCacheShard
 }
 
-func (c *tableCache) init(dirname string, fs vfs.FS, opts *Options, size, hitBuffer int) {
+func (c *tableCache) init(
+	dbNum uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
+) {
 	c.shards = make([]tableCacheShard, runtime.NumCPU())
 	for i := range c.shards {
-		c.shards[i].init(dirname, fs, opts, size/len(c.shards), hitBuffer)
+		c.shards[i].init(dbNum, dirname, fs, opts, size/len(c.shards), hitBuffer)
 	}
 }
 
@@ -57,6 +59,7 @@ func (c *tableCache) Close() error {
 }
 
 type tableCacheShard struct {
+	dbNum   uint64
 	dirname string
 	fs      vfs.FS
 	opts    *Options
@@ -75,7 +78,10 @@ type tableCacheShard struct {
 	hitsPool  *sync.Pool
 }
 
-func (c *tableCacheShard) init(dirname string, fs vfs.FS, opts *Options, size, hitBuffer int) {
+func (c *tableCacheShard) init(
+	dbNum uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
+) {
+	c.dbNum = dbNum
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts
@@ -260,7 +266,7 @@ func (c *tableCacheShard) evict(fileNum uint64) {
 	}
 	c.mu.Unlock()
 
-	c.opts.Cache.EvictFile(fileNum)
+	c.opts.Cache.EvictFile(c.dbNum, fileNum)
 }
 
 func (c *tableCacheShard) recordHits(hits []*tableCacheNode) {
@@ -338,7 +344,7 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 		close(n.loaded)
 		return
 	}
-	r := sstable.NewReader(f, n.meta.fileNum, c.opts)
+	r := sstable.NewReader(f, c.dbNum, n.meta.fileNum, c.opts)
 	if n.meta.smallestSeqNum == n.meta.largestSeqNum {
 		r.Properties.GlobalSeqNum = n.meta.largestSeqNum
 	}

@@ -32,9 +32,9 @@ func TestCache(t *testing.T) {
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		h := cache.Get(uint64(key), 0)
+		h := cache.Get(0, uint64(key), 0)
 		if v := h.Get(); v == nil {
-			cache.Set(uint64(key), 0, append([]byte(nil), fields[0][0]))
+			cache.Set(0, uint64(key), 0, append([]byte(nil), fields[0][0]))
 		} else {
 			hit = true
 			if !bytes.Equal(v, fields[0][:1]) {
@@ -51,8 +51,8 @@ func TestCache(t *testing.T) {
 
 func TestWeakHandle(t *testing.T) {
 	cache := newShards(5, 1)
-	cache.Set(1, 0, bytes.Repeat([]byte("a"), 5))
-	h := cache.Set(0, 0, bytes.Repeat([]byte("b"), 5))
+	cache.Set(0, 1, 0, bytes.Repeat([]byte("a"), 5))
+	h := cache.Set(0, 0, 0, bytes.Repeat([]byte("b"), 5))
 	if v := h.Get(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
@@ -61,7 +61,7 @@ func TestWeakHandle(t *testing.T) {
 	if v := w.Get(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
-	cache.Set(2, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(0, 2, 0, bytes.Repeat([]byte("a"), 5))
 	if v := w.Get(); v != nil {
 		t.Fatalf("expected nil, but found %s", v)
 	}
@@ -69,24 +69,45 @@ func TestWeakHandle(t *testing.T) {
 
 func TestEvictFile(t *testing.T) {
 	cache := newShards(100, 1)
-	cache.Set(0, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(1, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(2, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(2, 1, bytes.Repeat([]byte("a"), 5))
-	cache.Set(2, 2, bytes.Repeat([]byte("a"), 5))
+	cache.Set(0, 0, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(0, 1, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(0, 2, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(0, 2, 1, bytes.Repeat([]byte("a"), 5))
+	cache.Set(0, 2, 2, bytes.Repeat([]byte("a"), 5))
 	if expected, size := int64(25), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFile(0)
+	cache.EvictFile(0, 0)
 	if expected, size := int64(20), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFile(1)
+	cache.EvictFile(0, 1)
 	if expected, size := int64(15), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFile(2)
+	cache.EvictFile(0, 2)
 	if expected, size := int64(0), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
+	}
+}
+
+func TestMultipleDBs(t *testing.T) {
+	cache := newShards(100, 1)
+	cache.Set(0, 0, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 0, 0, bytes.Repeat([]byte("b"), 5))
+	if expected, size := int64(10), cache.Size(); expected != size {
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
+	}
+	cache.EvictFile(0, 0)
+	if expected, size := int64(5), cache.Size(); expected != size {
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
+	}
+	h := cache.Get(0, 0, 0)
+	if v := h.Get(); v != nil {
+		t.Fatalf("expected not present, but found %s", v)
+	}
+	h = cache.Get(1, 0, 0)
+	if v := h.Get(); string(v) != "bbbbb" {
+		t.Fatalf("expected bbbbb, but found %v", v)
 	}
 }
