@@ -8,13 +8,16 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type syncedBuffer struct {
@@ -172,4 +175,131 @@ func TestEventListener(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+type createDelayingFS struct {
+	vfs.FS
+	index          int32         // index of sstable whose creation will be delayed
+	createReleased chan struct{} // when closed, the delayed sstable creation can proceed
+	createDelayed  chan struct{} // if non-nil, will be closed before delaying sstable creation
+}
+
+func (fs *createDelayingFS) Create(name string) (vfs.File, error) {
+	if strings.HasSuffix(name, ".sst") && atomic.AddInt32(&fs.index, -1) == -1 {
+		if fs.createDelayed != nil {
+			close(fs.createDelayed)
+		}
+		<-fs.createReleased
+	}
+	return fs.FS.Create(name)
+}
+
+// Verify `WriteStallBegin()` and `WriteStallEnd()` events for stalls triggered
+// for reaching memtable count limit.
+func TestWriteStallForMemTableLimit(t *testing.T) {
+	const memTableLimitReason = "memtable count limit reached"
+	const memTableLimit = 2
+
+	stallBegan := make(chan struct{})
+	stallEnded := make(chan struct{})
+	mem := vfs.NewMem()
+	// `customFS` delays the sstable with index 0, which is the first flushed sstable.
+	// Delay until writes stall, which we trigger by calling `AsyncFlush()` again while
+	// the first flush is still delayed.
+	customFS := createDelayingFS{
+		FS:             mem,
+		index:          0,
+		createReleased: stallBegan,
+		createDelayed:  nil,
+	}
+	listener := EventListener{
+		WriteStallBegin: func(info WriteStallBeginInfo) {
+			require.EqualValues(t, memTableLimitReason, info.Reason)
+			close(stallBegan)
+		},
+		WriteStallEnd: func() {
+			close(stallEnded)
+		},
+	}
+	d, err := Open("db", &Options{
+		EventListener:               listener,
+		FS:                          &customFS,
+		MemTableStopWritesThreshold: memTableLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < memTableLimit; i++ {
+		if err := d.Set([]byte("a"), nil, NoSync); err != nil {
+			t.Fatal(err)
+		}
+		_, err := d.AsyncFlush()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	<-stallBegan
+	<-stallEnded
+}
+
+// Verify `WriteStallBegin()` and `WriteStallEnd()` events for stalls triggered
+// for reaching L0 file count limit.
+func TestWriteStallForL0FileLimit(t *testing.T) {
+	const l0FileLimitReason = "L0 file count limit exceeded"
+	const (
+		l0FileCompactionTrigger = 2
+		l0FileStopTrigger       = 4
+	)
+
+	stallBegan := make(chan struct{})
+	stallEnded := make(chan struct{})
+	createDelayed := make(chan struct{})
+	mem := vfs.NewMem()
+	// The indexes of the first few sstables are as follows:
+	//
+	// * index 0: first flushed sstable
+	// * index 1: second flushed sstable
+	// * index 2: first sstable created by L0->Lbase compaction
+	//
+	// `customFS` delays the sstable with index 2, i.e., an Lbase file created during
+	// compaction. Delay until writes stall, which we trigger by calling `Flush()`
+	// repeatedly while the L0->Lbase compaction is still delayed.
+	customFS := createDelayingFS{mem, l0FileCompactionTrigger /* index */, stallBegan, /* createReleased */
+		createDelayed}
+	listener := EventListener{
+		WriteStallBegin: func(info WriteStallBeginInfo) {
+			require.EqualValues(t, l0FileLimitReason, info.Reason)
+			close(stallBegan)
+		},
+		WriteStallEnd: func() {
+			close(stallEnded)
+		},
+	}
+	d, err := Open("db", &Options{
+		EventListener:         listener,
+		FS:                    &customFS,
+		L0CompactionThreshold: l0FileCompactionTrigger,
+		L0StopWritesThreshold: l0FileStopTrigger,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO(ajkr): Are the two files pending L0->Lbase not counted towards the
+	// limit? Shouldn't they be?
+	for i := 0; i < l0FileStopTrigger+l0FileCompactionTrigger; i++ {
+		if err := d.Set([]byte("a"), nil, NoSync); err != nil {
+			t.Fatal(err)
+		}
+		d.Flush()
+		if i == l0FileCompactionTrigger-1 {
+			// make sure compaction gets started on the Lbase file before
+			// we proceed to flushing the next sstable (we wouldn't want the
+			// delay to be applied on an L0 file accidentally).
+			<-createDelayed
+		}
+	}
+	<-stallBegan
+	<-stallEnded
 }

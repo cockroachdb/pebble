@@ -230,6 +230,14 @@ func (i WALDeleteInfo) String() string {
 	return fmt.Sprintf("[JOB %d] WAL deleted %06d", i.JobID, i.FileNum)
 }
 
+type WriteStallBeginInfo struct {
+	Reason string
+}
+
+func (i WriteStallBeginInfo) String() string {
+	return fmt.Sprintf("write stall beginning: %s", i.Reason)
+}
+
 // EventListener contains a set of functions that will be invoked when various
 // significant DB events occur. Note that the functions should not run for an
 // excessive amount of time as they are invokved synchronously by the DB and
@@ -274,6 +282,12 @@ type EventListener struct {
 
 	// WALDeleted is invoked after a WAL has been deleted.
 	WALDeleted func(WALDeleteInfo)
+
+	// WriteStallBegin is invoked when writes are intentionally delayed.
+	WriteStallBegin func(WriteStallBeginInfo)
+
+	// WriteStallEnd is invoked when delayed writes are released.
+	WriteStallEnd func()
 }
 
 // EnsureDefaults ensures that background error events are logged to the
@@ -327,6 +341,12 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		},
 		WALDeleted: func(info WALDeleteInfo) {
 			logger.Infof("%s", info.String())
+		},
+		WriteStallBegin: func(info WriteStallBeginInfo) {
+			logger.Infof("%s", info.String())
+		},
+		WriteStallEnd: func() {
+			logger.Infof("write stall ending")
 		},
 	}
 }

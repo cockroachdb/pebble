@@ -46,7 +46,7 @@ func TestManualFlush(t *testing.T) {
 			cur := d.mu.versions.currentVersion()
 			d.mu.Unlock()
 
-			if err := d.AsyncFlush(); err != nil {
+			if _, err := d.AsyncFlush(); err != nil {
 				return err.Error()
 			}
 

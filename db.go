@@ -757,6 +757,19 @@ func (d *DB) manualCompact(manual *manualCompaction) error {
 
 // Flush the memtable to stable storage.
 func (d *DB) Flush() error {
+	flushDone, err := d.AsyncFlush()
+	if err != nil {
+		return err
+	}
+	<-flushDone
+	return nil
+}
+
+// AsyncFlush asynchronously flushes the memtable to stable storage.
+//
+// If no error is returned, the caller can receive from the returned channel in
+// order to wait for the flush to complete.
+func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
 	}
@@ -768,26 +781,9 @@ func (d *DB) Flush() error {
 	d.mu.Unlock()
 	d.commit.mu.Unlock()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	<-mem.flushed()
-	return nil
-}
-
-// AsyncFlush asynchronously flushes the memtable to stable storage.
-//
-// TODO(peter): untested
-func (d *DB) AsyncFlush() error {
-	if atomic.LoadInt32(&d.closed) != 0 {
-		panic(ErrClosed)
-	}
-
-	d.commit.mu.Lock()
-	d.mu.Lock()
-	err := d.makeRoomForWrite(nil)
-	d.mu.Unlock()
-	d.commit.mu.Unlock()
-	return err
+	return mem.flushed(), nil
 }
 
 // Metrics returns metrics about the database.
@@ -839,6 +835,7 @@ func (d *DB) walPreallocateSize() int {
 // may be released and reacquired.
 func (d *DB) makeRoomForWrite(b *Batch) error {
 	force := b == nil || b.flushable != nil
+	stalled := false
 	for {
 		if d.mu.mem.switching {
 			d.mu.mem.cond.Wait()
@@ -846,25 +843,48 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 		if b != nil && b.flushable == nil {
 			err := d.mu.mem.mutable.prepare(b)
-			if err == nil {
-				return nil
-			}
 			if err != arenaskl.ErrArenaFull {
+				if stalled {
+					stalled = false
+					if d.opts.EventListener.WriteStallEnd != nil {
+						d.opts.EventListener.WriteStallEnd()
+					}
+				}
 				return err
 			}
 		} else if !force {
+			if stalled {
+				stalled = false
+				if d.opts.EventListener.WriteStallEnd != nil {
+					d.opts.EventListener.WriteStallEnd()
+				}
+			}
 			return nil
 		}
 		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
 			// We have filled up the current memtable, but the previous one is still
 			// being compacted, so we wait.
-			// fmt.Printf("memtable stop writes threshold\n")
+			if !stalled {
+				stalled = true
+				if d.opts.EventListener.WriteStallBegin != nil {
+					d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+						Reason: "memtable count limit reached",
+					})
+				}
+			}
 			d.mu.compact.cond.Wait()
 			continue
 		}
 		if len(d.mu.versions.currentVersion().files[0]) > d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
-			// fmt.Printf("L0 stop writes threshold\n")
+			if !stalled {
+				stalled = true
+				if d.opts.EventListener.WriteStallBegin != nil {
+					d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+						Reason: "L0 file count limit exceeded",
+					})
+				}
+			}
 			d.mu.compact.cond.Wait()
 			continue
 		}
