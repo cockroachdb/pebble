@@ -15,6 +15,7 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type syncedBuffer struct {
@@ -172,4 +173,88 @@ func TestEventListener(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+type writeDelayingFS struct {
+	vfs.FS
+	writesDelayed  chan struct{}
+	writesReleased chan struct{}
+}
+
+func (fs writeDelayingFS) Create(name string) (vfs.File, error) {
+	f, err := fs.FS.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return writeDelayingFile{f, fs.writesDelayed, fs.writesReleased}, nil
+}
+
+type writeDelayingFile struct {
+	vfs.File
+	writesDelayed  chan struct{}
+	writesReleased chan struct{}
+}
+
+func (f writeDelayingFile) Write(p []byte) (n int, err error) {
+	select {
+	case <-f.writesDelayed:
+		<-f.writesReleased
+	default:
+	}
+	return f.File.Write(p)
+}
+
+// Verify `WriteStallBegin()` and `WriteStallEnd()` events. The setup logic
+// is a bit different so it is tested separately from the other events for now.
+func TestWriteStallEvents(t *testing.T) {
+	mem := vfs.NewMem()
+
+	flushBegan := make(chan struct{})
+	var flushBeganOnce sync.Once
+	stallBegan := make(chan struct{})
+	stallEnded := make(chan struct{})
+	// Delay writes once flush starts until write stall happens. Since WAL is disabled this
+	// results in delaying manifest writes, which blocks flush from finishing. That causes
+	// memtables to accumulate, eventually resulting in a stall.
+	customFS := writeDelayingFS{mem, flushBegan /* writesDelayed */, stallBegan /* writesReleased */}
+	listener := EventListener{
+		FlushBegin: func(info FlushInfo) {
+			flushBeganOnce.Do(func() {
+				close(flushBegan)
+			})
+		},
+		WriteStallBegin: func(info WriteStallBeginInfo) {
+			require.EqualValues(t, "memtable count limit reached", info.Reason)
+			close(stallBegan)
+		},
+		WriteStallEnd: func() {
+			close(stallEnded)
+		},
+	}
+	d, err := Open("db", &Options{
+		DisableWAL:                  true,
+		EventListener:               listener,
+		FS:                          customFS,
+		MemTableStopWritesThreshold: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var flushesDone []<-chan struct{}
+	for i := 0; i < 2; i++ {
+		if err := d.Set([]byte("a"), nil, &WriteOptions{Sync: false}); err != nil {
+			t.Fatal(err)
+		}
+		flushDone, err := d.AsyncFlush()
+		if err != nil {
+			t.Fatal(err)
+		}
+		flushesDone = append(flushesDone, flushDone)
+	}
+	<-stallBegan
+	<-stallEnded
+	for _, flushDone := range flushesDone {
+		<-flushDone
+	}
 }
