@@ -33,6 +33,12 @@ type WALCreateInfo = base.WALCreateInfo
 // WALDeleteInfo exports the base.WALDeleteInfo type.
 type WALDeleteInfo = base.WALDeleteInfo
 
+// WriteStallBeginInfo exports the base.WriteStallBeginInfo type.
+type WriteStallBeginInfo = base.WriteStallBeginInfo
+
+// WriteStallEndInfo exports the base.WriteStallEndInfo type.
+type WriteStallEndInfo = base.WriteStallEndInfo
+
 // EventListener exports the base.EventListener type.
 type EventListener = base.EventListener
 

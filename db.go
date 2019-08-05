@@ -823,14 +823,32 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
 			// We have filled up the current memtable, but the previous one is still
 			// being compacted, so we wait.
-			// fmt.Printf("memtable stop writes threshold\n")
+			if d.opts.EventListener.WriteStallBegin != nil {
+				d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+					Reason: "memtable count limit reached",
+				})
+			}
 			d.mu.compact.cond.Wait()
+			if d.opts.EventListener.WriteStallEnd != nil {
+				d.opts.EventListener.WriteStallEnd(WriteStallEndInfo{
+					Reason: "memtable count within bounds",
+				})
+			}
 			continue
 		}
 		if len(d.mu.versions.currentVersion().files[0]) > d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
-			// fmt.Printf("L0 stop writes threshold\n")
+			if d.opts.EventListener.WriteStallBegin != nil {
+				d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+					Reason: "L0 file count limit exceeded",
+				})
+			}
 			d.mu.compact.cond.Wait()
+			if d.opts.EventListener.WriteStallEnd != nil {
+				d.opts.EventListener.WriteStallEnd(WriteStallEndInfo{
+					Reason: "L0 file count within bounds",
+				})
+			}
 			continue
 		}
 
