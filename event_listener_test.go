@@ -15,6 +15,7 @@ import (
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type syncedBuffer struct {
@@ -172,4 +173,76 @@ func TestEventListener(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+type writeDelayingFS struct {
+	vfs.FS
+	writesReleased chan struct{}
+}
+
+func (fs writeDelayingFS) Create(name string) (vfs.File, error) {
+	f, err := fs.FS.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	if fs.writesReleased == nil {
+		return f, nil
+	}
+	return writeDelayingFile{f, fs.writesReleased}, nil
+}
+
+type writeDelayingFile struct {
+	vfs.File
+	writesReleased chan struct{}
+}
+
+func (f writeDelayingFile) Write(p []byte) (n int, err error) {
+	<-f.writesReleased
+	return f.File.Write(p)
+}
+
+// Verify `WriteStallBegin()` and `WriteStallEnd()` events. The setup logic
+// is a bit different so it is tested separately from the other events for now.
+func TestWriteStallEvents(t *testing.T) {
+	mem := vfs.NewMem()
+	customFS := writeDelayingFS{mem, nil /* writesReleased */}
+
+	stallBegan := make(chan struct{})
+	stallEnded := make(chan struct{})
+	listener := EventListener{
+		WriteStallBegin: func(info WriteStallBeginInfo) {
+			require.EqualValues(t, "memtable count limit reached", info.Reason)
+			close(stallBegan)
+		},
+		WriteStallEnd: func() {
+			close(stallEnded)
+		},
+	}
+	d, err := Open("db", &Options{
+		DisableWAL:                  true,
+		EventListener:               listener,
+		FS:                          customFS,
+		MemTableStopWritesThreshold: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// from now on delay writes until stall happens. Since WAL is disabled this results
+	// in delaying manifest writes, which blocks the flush thread. That causes memtables
+	// to accumulate, eventually resulting in a stall.
+	customFS.writesReleased = stallBegan
+	var flushesDone []chan struct{}
+	for i := 0; i < 2; i++ {
+		flushDone, err := d.AsyncFlush()
+		if err != nil {
+			t.Fatal(err)
+		}
+		flushesDone = append(flushesDone, flushDone)
+	}
+	<-stallBegan
+	<-stallEnded
+	for _, flushDone := range flushesDone {
+		<-flushDone
+	}
 }
