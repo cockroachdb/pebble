@@ -716,7 +716,7 @@ func TestDBClosed(t *testing.T) {
 
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Compact(nil, nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Flush() }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.AsyncFlush() }))
+	require.EqualValues(t, ErrClosed, catch(func() { _, _ = d.AsyncFlush() }))
 
 	require.EqualValues(t, ErrClosed, catch(func() { _, _ = d.Get(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Delete(nil, nil) }))
@@ -757,7 +757,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 			case 1:
 				err = d.Flush()
 			case 2:
-				err = d.AsyncFlush()
+				_, err = d.AsyncFlush()
 			}
 			if err != nil {
 				t.Fatal(err)
