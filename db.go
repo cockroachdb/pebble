@@ -195,6 +195,10 @@ type DB struct {
 			queue   []uint64
 			size    uint64
 			bytesIn uint64
+			// The LogWriter is protected by commitPipeline.mu. This allows log
+			// writes to be performed without holding DB.mu, but requires both
+			// commitPipeline.mu and DB.mu to be held when rotating the WAL/memtable
+			// (i.e. makeRoomForWrite).
 			*record.LogWriter
 		}
 
@@ -417,13 +421,18 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 		d.mu.log.bytesIn += uint64(len(b.storage.data))
 	}
 
+	// Grab a reference to the memtable while holding DB.mu. Note that
+	// makeRoomForWrite() add a reference to the memtable which will prevent it
+	// from being flushed until we unreference it.
+	mem := d.mu.mem.mutable
+
 	d.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
 
 	if d.opts.DisableWAL {
-		return d.mu.mem.mutable, nil
+		return mem, nil
 	}
 
 	size, err := d.mu.log.SyncRecord(b.storage.data, wg)
@@ -432,7 +441,7 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 	}
 
 	atomic.StoreUint64(&d.mu.log.size, uint64(size))
-	return d.mu.mem.mutable, err
+	return mem, err
 }
 
 type iterAlloc struct {
@@ -683,7 +692,19 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	mem, err := func() (flushable, error) {
 		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
 			mem := d.mu.mem.mutable
-			return mem, d.makeRoomForWrite(nil)
+
+			// We have to hold both commitPipeline.mu and DB.mu when calling
+			// makeRoomForWrite(). Lock order requirements elsewhere force us to
+			// unlock DB.mu in order to grab commitPipeline.mu first.
+			d.mu.Unlock()
+			d.commit.mu.Lock()
+			d.mu.Lock()
+			defer d.commit.mu.Unlock()
+			if mem == d.mu.mem.mutable {
+				// Only flush if the active memtable is unchanged.
+				return mem, d.makeRoomForWrite(nil)
+			}
+			return mem, nil
 		}
 		// Check to see if any files overlap with any of the immutable
 		// memtables. The queue is ordered from oldest to newest. We want to wait
@@ -740,10 +761,12 @@ func (d *DB) Flush() error {
 		panic(ErrClosed)
 	}
 
+	d.commit.mu.Lock()
 	d.mu.Lock()
 	mem := d.mu.mem.mutable
 	err := d.makeRoomForWrite(nil)
 	d.mu.Unlock()
+	d.commit.mu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -759,9 +782,11 @@ func (d *DB) AsyncFlush() error {
 		panic(ErrClosed)
 	}
 
+	d.commit.mu.Lock()
 	d.mu.Lock()
 	err := d.makeRoomForWrite(nil)
 	d.mu.Unlock()
+	d.commit.mu.Unlock()
 	return err
 }
 
@@ -803,6 +828,15 @@ func (d *DB) walPreallocateSize() int {
 	return size
 }
 
+// makeRoomForWrite ensures that the memtable has room to hold the contents of
+// Batch. It reserves the space in the memtable and adds a reference to the
+// memtable. The caller must later ensure that the memtable is unreferenced. If
+// the memtable is full, or a nil Batch is provided, the current memtable is
+// rotated (marked as immutable) and a new mutable memtable is allocated. This
+// memtable rotation also causes a log rotation.
+//
+// Both DB.mu and commitPipeline.mu must be held by the caller. Note that DB.mu
+// may be released and reacquired.
 func (d *DB) makeRoomForWrite(b *Batch) error {
 	force := b == nil || b.flushable != nil
 	for {

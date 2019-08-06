@@ -732,3 +732,41 @@ func TestDBClosed(t *testing.T) {
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Apply(b, nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = b.NewIter(nil) }))
 }
+
+func TestDBConcurrentCommitCompactFlush(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Concurrently commit, compact, and flush in order to stress the locking around
+	// those operations.
+	const n = 1000
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			_ = d.Set([]byte(fmt.Sprint(i)), nil, nil)
+			var err error
+			switch i % 3 {
+			case 0:
+				err = d.Compact(nil, []byte("\xff"))
+			case 1:
+				err = d.Flush()
+			case 2:
+				err = d.AsyncFlush()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
