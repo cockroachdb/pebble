@@ -50,7 +50,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}
-			meta, err := ingestLoad(opts, []string{"ext"}, []uint64{1})
+			meta, err := ingestLoad(opts, []string{"ext"}, 0, []uint64{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -130,7 +130,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	meta, err := ingestLoad(opts, paths, pending)
+	meta, err := ingestLoad(opts, paths, 0, pending)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestIngestLoadNonExistent(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       vfs.NewMem(),
 	}
-	if _, err := ingestLoad(opts, []string{"non-existent"}, []uint64{1}); err == nil {
+	if _, err := ingestLoad(opts, []string{"non-existent"}, 0, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -161,7 +161,7 @@ func TestIngestLoadEmpty(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	if _, err := ingestLoad(opts, []string{"empty"}, []uint64{1}); err == nil {
+	if _, err := ingestLoad(opts, []string{"empty"}, 0, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }

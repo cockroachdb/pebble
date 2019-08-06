@@ -28,7 +28,7 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 	return 0
 }
 
-func ingestLoad1(opts *Options, path string, fileNum uint64) (*fileMetadata, error) {
+func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func ingestLoad1(opts *Options, path string, fileNum uint64) (*fileMetadata, err
 		return nil, err
 	}
 
-	r := sstable.NewReader(f, fileNum, opts)
+	r := sstable.NewReader(f, dbNum, fileNum, opts)
 	defer r.Close()
 
 	meta := &fileMetadata{}
@@ -85,11 +85,13 @@ func ingestLoad1(opts *Options, path string, fileNum uint64) (*fileMetadata, err
 	return meta, nil
 }
 
-func ingestLoad(opts *Options, paths []string, pending []uint64) ([]*fileMetadata, error) {
+func ingestLoad(
+	opts *Options, paths []string, dbNum uint64, pending []uint64,
+) ([]*fileMetadata, error) {
 	meta := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		var err error
-		meta[i], err = ingestLoad1(opts, paths[i], pending[i])
+		meta[i], err = ingestLoad1(opts, paths[i], dbNum, pending[i])
 		if err != nil {
 			return nil, err
 		}
@@ -277,7 +279,7 @@ func (d *DB) Ingest(paths []string) error {
 	}()
 
 	// Load the metadata for all of the files being ingested.
-	meta, err := ingestLoad(d.opts, paths, pendingOutputs)
+	meta, err := ingestLoad(d.opts, paths, d.dbNum, pendingOutputs)
 	if err != nil {
 		return err
 	}

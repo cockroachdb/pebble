@@ -137,6 +137,7 @@ func runTestReader(t *testing.T, o Options, dir string) {
 
 	mem := vfs.NewMem()
 	var r *Reader
+	var dbNum uint64
 
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
@@ -162,7 +163,8 @@ func runTestReader(t *testing.T, o Options, dir string) {
 				if err != nil {
 					return err.Error()
 				}
-				r = NewReader(f, 0, &o)
+				r = NewReader(f, dbNum, 0, &o)
+				dbNum++
 				return ""
 
 			case "iter":
@@ -263,11 +265,12 @@ func TestBytesIteratedCompressed(t *testing.T) {
 			r := buildTestTable(t, numEntries, blockSize, SnappyCompression)
 			var bytesIterated uint64
 			citer := r.NewCompactionIter(&bytesIterated)
-			for citer.First(); citer.Valid(); citer.Next() {}
+			for citer.First(); citer.Valid(); citer.Next() {
+			}
 
 			expected := r.Properties.DataSize
 			// There is some inaccuracy due to compression estimation.
-			if bytesIterated < expected * 99/100 || bytesIterated > expected * 101/100 {
+			if bytesIterated < expected*99/100 || bytesIterated > expected*101/100 {
 				t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
 			}
 		}
@@ -280,7 +283,8 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 			r := buildTestTable(t, numEntries, blockSize, NoCompression)
 			var bytesIterated uint64
 			citer := r.NewCompactionIter(&bytesIterated)
-			for citer.First(); citer.Valid(); citer.Next() {}
+			for citer.First(); citer.Valid(); citer.Next() {
+			}
 
 			expected := r.Properties.DataSize
 			if bytesIterated != expected {
@@ -306,8 +310,8 @@ func buildTestTable(t *testing.T, numEntries uint64, blockSize int, compression 
 
 	var ikey InternalKey
 	for i := uint64(0); i < numEntries; i++ {
-		key := make([]byte, 8 + i%3)
-		value := make([]byte, 7 + i%5)
+		key := make([]byte, 8+i%3)
+		value := make([]byte, 7+i%5)
 		binary.BigEndian.PutUint64(key, i)
 		ikey.UserKey = key
 		w.Add(ikey, value)
@@ -322,7 +326,7 @@ func buildTestTable(t *testing.T, numEntries uint64, blockSize int, compression 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewReader(f1, 0, &Options{
+	return NewReader(f1, 0, 0, &Options{
 		Cache: cache.New(128 << 20),
 	})
 }
@@ -360,7 +364,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
-	return NewReader(f1, 0, &Options{
+	return NewReader(f1, 0, 0, &Options{
 		Cache: cache.New(128 << 20),
 	}), keys
 }

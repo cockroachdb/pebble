@@ -213,7 +213,9 @@ type Options struct {
 	// The default value is 512KB.
 	BytesPerSync int
 
-	// TODO(peter): provide a cache interface.
+	// Cache is used to cache uncompressed blocks from sstables.
+	//
+	// The default cache size is 8 MB.
 	Cache *cache.Cache
 
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
@@ -222,6 +224,14 @@ type Options struct {
 	//
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
+
+	// Comparers is a map from comparer name to comparer. It is used for
+	// debugging tools which may be used on multiple databases configured with
+	// different comparers. It is not necessary to populate this comparers map
+	// during normal usage of a DB.
+	//
+	// TODO(peter): unimplemented.
+	Comparers map[string]*Comparer
 
 	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
 	// crash recovery, but can improve performance if crash recovery is not
@@ -238,6 +248,14 @@ type Options struct {
 	// EventListener provides hooks to listening to significant DB events such as
 	// flushes, compactions, and table deletion.
 	EventListener EventListener
+
+	// Filters is a map from filter policy name to filter policy. It is used for
+	// debugging tools which may be used on multiple databases configured with
+	// different filter policies. It is not necessary to populate this filters
+	// map during normal usage of a DB.
+	//
+	// TODO(peter): unimplemented.
+	Filters map[string]FilterPolicy
 
 	// FS provides the interface for persistent file storage.
 	//
@@ -296,6 +314,14 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
+	// Mergers is a map from merger name to merger. It is used for debugging
+	// tools which may be used on multiple databases configured with different
+	// mergers. It is not necessary to populate this mergers map during normal
+	// usage of a DB.
+	//
+	// TODO(peter): unimplemented.
+	Mergers map[string]*Merger
+
 	// MinCompactionRate sets the minimum rate at which compactions occur. The
 	// default is 4 MB/s.
 	MinCompactionRate int
@@ -332,7 +358,10 @@ func (o *Options) EnsureDefaults() *Options {
 		o = &Options{}
 	}
 	if o.BytesPerSync <= 0 {
-		o.BytesPerSync = 512 << 10
+		o.BytesPerSync = 512 << 10 // 512 KB
+	}
+	if o.Cache == nil {
+		o.Cache = cache.New(8 << 20) // 8 MB
 	}
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer

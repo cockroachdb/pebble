@@ -12,12 +12,26 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/petermattis/pebble/internal/arenaskl"
 	"github.com/petermattis/pebble/internal/rate"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
+
+var dbNumAlloc = struct {
+	sync.Mutex
+	seq uint64
+}{seq: 1}
+
+func allocDBNum() uint64 {
+	dbNumAlloc.Lock()
+	num := dbNumAlloc.seq
+	dbNumAlloc.seq++
+	dbNumAlloc.Unlock()
+	return num
+}
 
 func createDB(dirname string, opts *Options) (retErr error) {
 	const manifestFileNum = 1
@@ -57,6 +71,7 @@ func createDB(dirname string, opts *Options) (retErr error) {
 func Open(dirname string, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
 	d := &DB{
+		dbNum:          allocDBNum(),
 		dirname:        dirname,
 		walDirname:     opts.WALDir,
 		opts:           opts,
@@ -74,7 +89,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(dirname, opts.FS, d.opts, tableCacheSize, defaultTableCacheHitBuffer)
+	d.tableCache.init(d.dbNum, dirname, opts.FS, d.opts, tableCacheSize, defaultTableCacheHitBuffer)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.logSeqNum,

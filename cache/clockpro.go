@@ -46,9 +46,14 @@ func (p entryType) String() string {
 	return "unknown"
 }
 
-type key struct {
+type fileKey struct {
+	dbNum   uint64
 	fileNum uint64
-	offset  uint64
+}
+
+type key struct {
+	fileKey
+	offset uint64
 }
 
 type value struct {
@@ -213,8 +218,8 @@ type shard struct {
 
 	maxSize  int64
 	coldSize int64
-	blocks   map[key]*entry    // fileNum+offset -> block
-	files    map[uint64]*entry // fileNum -> list of blocks
+	blocks   map[key]*entry     // fileNum+offset -> block
+	files    map[fileKey]*entry // fileNum -> list of blocks
 
 	handHot  *entry
 	handCold *entry
@@ -225,9 +230,9 @@ type shard struct {
 	countTest int64
 }
 
-func (c *shard) Get(fileNum, offset uint64) Handle {
+func (c *shard) Get(dbNum, fileNum, offset uint64) Handle {
 	c.mu.RLock()
-	e := c.blocks[key{fileNum: fileNum, offset: offset}]
+	e := c.blocks[key{fileKey{dbNum, fileNum}, offset}]
 	var value *value
 	if e != nil {
 		value = e.getValue()
@@ -242,11 +247,11 @@ func (c *shard) Get(fileNum, offset uint64) Handle {
 	return Handle{value: value, free: c.free}
 }
 
-func (c *shard) Set(fileNum, offset uint64, value []byte) Handle {
+func (c *shard) Set(dbNum, fileNum, offset uint64, value []byte) Handle {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	k := key{fileNum: fileNum, offset: offset}
+	k := key{fileKey{dbNum, fileNum}, offset}
 	e := c.blocks[k]
 	v := newValue(value)
 
@@ -291,11 +296,11 @@ func (c *shard) Set(fileNum, offset uint64, value []byte) Handle {
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *shard) EvictFile(fileNum uint64) {
+func (c *shard) EvictFile(dbNum, fileNum uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	blocks := c.files[fileNum]
+	blocks := c.files[fileKey{dbNum, fileNum}]
 	if blocks == nil {
 		return
 	}
@@ -342,8 +347,8 @@ func (c *shard) metaAdd(key key, e *entry) {
 		c.handCold = c.handCold.prev()
 	}
 
-	if fileBlocks := c.files[key.fileNum]; fileBlocks == nil {
-		c.files[key.fileNum] = e
+	if fileBlocks := c.files[key.fileKey]; fileBlocks == nil {
+		c.files[key.fileKey] = e
 	} else {
 		fileBlocks.linkFile(e)
 	}
@@ -370,9 +375,9 @@ func (c *shard) metaDel(e *entry) {
 	}
 
 	if next := e.unlinkFile(); e == next {
-		delete(c.files, e.key.fileNum)
+		delete(c.files, e.key.fileKey)
 	} else {
-		c.files[e.key.fileNum] = next
+		c.files[e.key.fileKey] = next
 	}
 }
 
@@ -488,18 +493,23 @@ func newShards(size int64, shards int) *Cache {
 			maxSize:  size / int64(len(c.shards)),
 			coldSize: size / int64(len(c.shards)),
 			blocks:   make(map[key]*entry),
-			files:    make(map[uint64]*entry),
+			files:    make(map[fileKey]*entry),
 		}
 	}
 	return c
 }
 
-func (c *Cache) getShard(fileNum, offset uint64) *shard {
+func (c *Cache) getShard(dbNum, fileNum, offset uint64) *shard {
 	// Inlined version of fnv.New64 + Write.
 	const offset64 = 14695981039346656037
 	const prime64 = 1099511628211
 
 	h := uint64(offset64)
+	for i := 0; i < 8; i++ {
+		h *= prime64
+		h ^= uint64(dbNum & 0xff)
+		dbNum >>= 8
+	}
 	for i := 0; i < 8; i++ {
 		h *= prime64
 		h ^= uint64(fileNum & 0xff)
@@ -516,47 +526,32 @@ func (c *Cache) getShard(fileNum, offset uint64) *shard {
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Cache) Get(fileNum, offset uint64) Handle {
-	if c == nil {
-		return Handle{}
-	}
-	return c.getShard(fileNum, offset).Get(fileNum, offset)
+func (c *Cache) Get(dbNum, fileNum, offset uint64) Handle {
+	return c.getShard(dbNum, fileNum, offset).Get(dbNum, fileNum, offset)
 }
 
 // Set sets the cache value for the specified file and offset, overwriting an
 // existing value if present. A Handle is returned which provides faster
 // retrieval of the cached value than Get (lock-free and avoidance of the map
 // lookup).
-func (c *Cache) Set(fileNum, offset uint64, value []byte) Handle {
-	if c == nil {
-		return Handle{value: newValue(value)}
-	}
-	return c.getShard(fileNum, offset).Set(fileNum, offset, value)
+func (c *Cache) Set(dbNum, fileNum, offset uint64, value []byte) Handle {
+	return c.getShard(dbNum, fileNum, offset).Set(dbNum, fileNum, offset, value)
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *Cache) EvictFile(fileNum uint64) {
-	if c == nil {
-		return
-	}
+func (c *Cache) EvictFile(dbNum, fileNum uint64) {
 	for i := range c.shards {
-		c.shards[i].EvictFile(fileNum)
+		c.shards[i].EvictFile(dbNum, fileNum)
 	}
 }
 
 // MaxSize returns the max size of the cache.
 func (c *Cache) MaxSize() int64 {
-	if c == nil {
-		return 0
-	}
 	return c.maxSize
 }
 
 // Size returns the current space used by the cache.
 func (c *Cache) Size() int64 {
-	if c == nil {
-		return 0
-	}
 	var size int64
 	for i := range c.shards {
 		size += c.shards[i].Size()
@@ -567,9 +562,6 @@ func (c *Cache) Size() int64 {
 // Alloc allocates a byte slice of the specified size, possibly reusing
 // previously allocated but unused memory.
 func (c *Cache) Alloc(n int) []byte {
-	if c == nil {
-		return make([]byte, n)
-	}
 	a := c.allocPool.Get().(*allocCache)
 	b := a.alloc(n)
 	c.allocPool.Put(a)
@@ -579,9 +571,6 @@ func (c *Cache) Alloc(n int) []byte {
 // Free frees the specified slice of memory. The buffer will possibly be
 // reused, making it invalid to use the buffer after calling Free.
 func (c *Cache) Free(b []byte) {
-	if c == nil {
-		return
-	}
 	a := c.allocPool.Get().(*allocCache)
 	a.free(b)
 	c.allocPool.Put(a)

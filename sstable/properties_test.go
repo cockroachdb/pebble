@@ -78,7 +78,7 @@ func TestPropertiesLoad(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		r := NewReader(f, 0, nil)
+		r := NewReader(f, 0, 0, nil)
 
 		if diff := pretty.Diff(expected, r.Properties); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))

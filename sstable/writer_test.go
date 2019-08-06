@@ -83,7 +83,7 @@ func TestWriter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r = NewReader(f1, 0, nil)
+			r = NewReader(f1, 0, 0, nil)
 			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
 				meta.SmallestRange, meta.LargestRange,
@@ -130,7 +130,7 @@ func TestWriter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r = NewReader(f1, 0, nil)
+			r = NewReader(f1, 0, 0, nil)
 			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
 				meta.SmallestRange, meta.LargestRange,
