@@ -424,7 +424,13 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 		var bytesIterated uint64
 		it := fb.newFlushIter(nil, &bytesIterated)
 
-		for it.First(); it.Valid(); it.Next() {}
+		var prevIterated uint64
+		for it.First(); it.Valid(); it.Next() {
+			if bytesIterated < prevIterated {
+				t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+			}
+			prevIterated = bytesIterated
+		}
 
 		expected := fb.totalBytes()
 		if bytesIterated != expected {

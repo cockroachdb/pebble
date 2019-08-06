@@ -319,7 +319,7 @@ func buildTestTable(t *testing.T, numEntries uint64, blockSize int, compression 
 	var ikey InternalKey
 	for i := uint64(0); i < numEntries; i++ {
 		key := make([]byte, 8+i%3)
-		value := make([]byte, 7+i%5)
+		value := make([]byte, i%100)
 		binary.BigEndian.PutUint64(key, i)
 		ikey.UserKey = key
 		w.Add(ikey, value)
