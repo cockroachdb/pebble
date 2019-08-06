@@ -79,7 +79,7 @@ func (q *commitQueue) enqueue(b *Batch) {
 		}
 
 		// The head slot is free, so we own it.
-		*slot = unsafe.Pointer(b)
+		atomic.StorePointer(slot, unsafe.Pointer(b))
 
 		// Increment head. This passes ownership of slot to dequeue and acts as a
 		// store barrier for writing the slot.
@@ -89,7 +89,6 @@ func (q *commitQueue) enqueue(b *Batch) {
 }
 
 func (q *commitQueue) dequeue() *Batch {
-	var slot *unsafe.Pointer
 	for {
 		ptrs := atomic.LoadUint64(&q.headTail)
 		head, tail := q.unpack(ptrs)
@@ -98,26 +97,28 @@ func (q *commitQueue) dequeue() *Batch {
 			return nil
 		}
 
+		slot := &q.slots[tail&uint32(len(q.slots)-1)]
+		b := (*Batch)(atomic.LoadPointer(slot))
+		if b == nil || atomic.LoadUint32(&b.applied) == 0 {
+			// The batch is not ready to be dequeued, or another goroutine has
+			// already dequeued it.
+			return nil
+		}
+
 		// Confirm head and tail (for our speculative check above) and increment
 		// tail. If this succeeds, then we own the slot at tail.
 		ptrs2 := q.pack(head, tail+1)
 		if atomic.CompareAndSwapUint64(&q.headTail, ptrs, ptrs2) {
-			// Success.
-			slot = &q.slots[tail&uint32(len(q.slots)-1)]
-			break
+			// We now own slot.
+			//
+			// Tell enqueue that we're done with this slot. Zeroing the slot is also
+			// important so we don't leave behind references that could keep this object
+			// live longer than necessary.
+			atomic.StorePointer(slot, nil)
+			// At this point enqueue owns the slot.
+			return b
 		}
 	}
-
-	// We now own slot.
-	b := (*Batch)(*slot)
-
-	// Tell enqueue that we're done with this slot. Zeroing the slot is also
-	// important so we don't leave behind references that could keep this object
-	// live longer than necessary.
-	atomic.StorePointer(slot, nil)
-	// At this point enqueue owns the slot.
-
-	return b
 }
 
 // commitEnv contains the environment that a commitPipeline interacts
@@ -295,12 +296,13 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	// number order.
 	p.pending.enqueue(b)
 
-	// Assign the batch a sequence number.
-	seqNum := *p.env.logSeqNum
-	*p.env.logSeqNum++
+	// Assign the batch a sequence number. Note that logSeqNum is not protected
+	// by commitPipeline.mu or DB.mu and thus needs to be incremented atomically.
+	seqNum := atomic.AddUint64(p.env.logSeqNum, 1) - 1
 	if seqNum == 0 {
-		seqNum = *p.env.logSeqNum
-		*p.env.logSeqNum++
+		// We can't use the value 0 for the global seqnum during ingestion, because
+		// 0 indicates no global seqnum. So allocate another seqnum.
+		seqNum = atomic.AddUint64(p.env.logSeqNum, 1) - 1
 		b.setCount(2)
 	}
 	b.setSeqNum(seqNum)
@@ -344,9 +346,9 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	// number order.
 	p.pending.enqueue(b)
 
-	// Assign the batch a sequence number.
-	b.setSeqNum(*p.env.logSeqNum)
-	*p.env.logSeqNum += n
+	// Assign the batch a sequence number. Note that logSeqNum is not protected
+	// by commitPipeline.mu or DB.mu and thus needs to be incremented atomically.
+	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
 	mem, err := p.env.write(b, syncWG)
@@ -374,6 +376,9 @@ func (p *commitPipeline) publish(b *Batch) {
 			// the WAL sync to finish.
 			b.commit.Wait()
 			break
+		}
+		if atomic.LoadUint32(&t.applied) != 1 {
+			panic("not reached")
 		}
 
 		// We're responsible for publishing the sequence number for batch t, but
