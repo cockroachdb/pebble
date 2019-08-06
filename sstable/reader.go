@@ -556,7 +556,7 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	// Last entry in the block must increment bytes iterated by the size of the block trailer
 	// and restart points.
 	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		curOffset += blockTrailerLen + uint64(4*(i.data.numRestarts+1))
+		curOffset = i.dataBH.offset + i.dataBH.length + blockTrailerLen
 	}
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset

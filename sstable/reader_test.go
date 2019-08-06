@@ -263,9 +263,13 @@ func TestBytesIteratedCompressed(t *testing.T) {
 	for _, blockSize := range []int{10, 100, 1000, 4096} {
 		for _, numEntries := range []uint64{0, 1, 1e5} {
 			r := buildTestTable(t, numEntries, blockSize, SnappyCompression)
-			var bytesIterated uint64
+			var bytesIterated, prevIterated uint64
 			citer := r.NewCompactionIter(&bytesIterated)
 			for citer.First(); citer.Valid(); citer.Next() {
+				if bytesIterated < prevIterated {
+					t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+				}
+				prevIterated = bytesIterated
 			}
 
 			expected := r.Properties.DataSize
@@ -281,9 +285,13 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 	for _, blockSize := range []int{10, 100, 1000, 4096} {
 		for _, numEntries := range []uint64{0, 1, 1e5} {
 			r := buildTestTable(t, numEntries, blockSize, NoCompression)
-			var bytesIterated uint64
+			var bytesIterated, prevIterated uint64
 			citer := r.NewCompactionIter(&bytesIterated)
 			for citer.First(); citer.Valid(); citer.Next() {
+				if bytesIterated < prevIterated {
+					t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+				}
+				prevIterated = bytesIterated
 			}
 
 			expected := r.Properties.DataSize
