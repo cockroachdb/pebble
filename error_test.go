@@ -60,7 +60,7 @@ func (fs *errorFS) Link(oldname, newname string) error {
 	return fs.fs.Link(oldname, newname)
 }
 
-func (fs *errorFS) Open(name string) (vfs.File, error) {
+func (fs *errorFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
@@ -68,7 +68,11 @@ func (fs *errorFS) Open(name string) (vfs.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return errorFile{f, fs}, nil
+	ef := errorFile{f, fs}
+	for _, opt := range opts {
+		opt.Apply(ef)
+	}
+	return ef, nil
 }
 
 func (fs *errorFS) OpenDir(name string) (vfs.File, error) {

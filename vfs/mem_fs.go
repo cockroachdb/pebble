@@ -40,6 +40,8 @@ type memFS struct {
 	root *memNode
 }
 
+var _ FS = &memFS{}
+
 func (y *memFS) String() string {
 	y.mu.Lock()
 	defer y.mu.Unlock()
@@ -190,7 +192,7 @@ func (y *memFS) open(fullname string, allowEmptyName bool) (File, error) {
 	return ret, nil
 }
 
-func (y *memFS) Open(fullname string) (File, error) {
+func (y *memFS) Open(fullname string, opts ...OpenOption) (File, error) {
 	return y.open(fullname, false /* allowEmptyName */)
 }
 
