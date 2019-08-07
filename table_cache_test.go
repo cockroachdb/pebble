@@ -41,13 +41,16 @@ type tableCacheTestFS struct {
 	closeCounts map[string]int
 }
 
-func (fs *tableCacheTestFS) Open(name string) (vfs.File, error) {
+func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	fs.mu.Lock()
 	if fs.openCounts != nil {
 		fs.openCounts[name]++
 	}
 	fs.mu.Unlock()
-	f, err := fs.FS.Open(name)
+	f, err := fs.FS.Open(name, opts...)
+	if len(opts) < 1 || opts[0] != vfs.RandomReadsOption {
+		return nil, fmt.Errorf("sstable file %s not opened with random reads option", name)
+	}
 	if err != nil {
 		return nil, err
 	}

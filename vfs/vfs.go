@@ -23,6 +23,13 @@ type File interface {
 	Sync() error
 }
 
+// OpenOptions provide an interface to do work on file handles in the Open()
+// call.
+type OpenOption interface {
+	// Apply is called on the file handle after it's opened.
+	Apply(File)
+}
+
 // FS is a namespace for files.
 //
 // The names are filepath names: they may be / separated or \ separated,
@@ -35,8 +42,8 @@ type FS interface {
 	// Link creates newname as a hard link to the oldname file.
 	Link(oldname, newname string) error
 
-	// Open opens the named file for reading.
-	Open(name string) (File, error)
+	// Open opens the named file for reading. openOptions provides
+	Open(name string, opts ...OpenOption) (File, error)
 
 	// OpenDir opens the named directory for syncing.
 	OpenDir(name string) (File, error)
@@ -95,8 +102,15 @@ func (defaultFS) Link(oldname, newname string) error {
 	return os.Link(oldname, newname)
 }
 
-func (defaultFS) Open(name string) (File, error) {
-	return os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
+	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, opt := range opts {
+		opt.Apply(file)
+	}
+	return file, nil
 }
 
 func (defaultFS) OpenDir(name string) (File, error) {
@@ -126,4 +140,19 @@ func (defaultFS) List(dir string) ([]string, error) {
 
 func (defaultFS) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)
+}
+
+
+type randomReadsOption struct{}
+
+// RandomReadsOption is an OpenOption that optimizes opened file handle for
+// random reads, by calling  fadvise() with POSIX_FADV_RANDOM on Linux systems
+// to disable readahead. Only works when specified to defaultFS.
+var RandomReadsOption OpenOption = &randomReadsOption{}
+
+// Apply implements the OpenOption interface.
+func (randomReadsOption) Apply(f File) {
+	if osFile, ok := f.(*os.File); ok {
+		_ = fadviseRandom(osFile.Fd())
+	}
 }
