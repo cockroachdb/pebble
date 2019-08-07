@@ -96,7 +96,7 @@ func TestBasics(t *testing.T) {
 		case "link":
 			err = fs.Link(normalize(s[1]), normalize(s[2]))
 		case "open":
-			g, err = fs.Open(normalize(s[1]))
+			g, err = fs.Open(normalize(s[1]), false)
 		case "mkdirall":
 			err = fs.MkdirAll(normalize(s[1]), 0755)
 		case "remove":

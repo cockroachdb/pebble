@@ -272,7 +272,7 @@ func (d *DB) replayWAL(
 	filename string,
 	logNum uint64,
 ) (maxSeqNum uint64, err error) {
-	file, err := fs.Open(filename)
+	file, err := fs.Open(filename, false)
 	if err != nil {
 		return 0, err
 	}
@@ -357,7 +357,7 @@ func (d *DB) replayWAL(
 }
 
 func checkOptions(opts *Options, path string) error {
-	f, err := opts.FS.Open(path)
+	f, err := opts.FS.Open(path, false)
 	if err != nil {
 		return err
 	}

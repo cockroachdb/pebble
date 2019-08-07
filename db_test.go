@@ -99,7 +99,7 @@ func cloneFileSystem(srcFS vfs.FS, dirname string) (vfs.FS, error) {
 		return nil, err
 	}
 	for _, name := range list {
-		srcFile, err := srcFS.Open(dirname + name)
+		srcFile, err := srcFS.Open(dirname + name, false)
 		if err != nil {
 			return nil, err
 		}
@@ -632,7 +632,7 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	current := func() string {
-		f, err := d.opts.FS.Open(dbFilename(d.dirname, fileTypeCurrent, 0))
+		f, err := d.opts.FS.Open(dbFilename(d.dirname, fileTypeCurrent, 0), false)
 		if err != nil {
 			t.Fatal(err)
 		}

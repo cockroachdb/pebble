@@ -60,11 +60,11 @@ func (fs *errorFS) Link(oldname, newname string) error {
 	return fs.fs.Link(oldname, newname)
 }
 
-func (fs *errorFS) Open(name string) (vfs.File, error) {
+func (fs *errorFS) Open(name string, randomReads bool) (vfs.File, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.Open(name)
+	f, err := fs.fs.Open(name, randomReads)
 	if err != nil {
 		return nil, err
 	}

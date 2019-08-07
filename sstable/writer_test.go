@@ -79,7 +79,7 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			f1, err := mem.Open("test")
+			f1, err := mem.Open("test", true)
 			if err != nil {
 				return err.Error()
 			}
@@ -126,7 +126,7 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			f1, err := mem.Open("test")
+			f1, err := mem.Open("test", true)
 			if err != nil {
 				return err.Error()
 			}

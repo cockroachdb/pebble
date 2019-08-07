@@ -619,7 +619,7 @@ func TestCompaction(t *testing.T) {
 		v := d.mu.versions.currentVersion()
 		for _, files := range v.files {
 			for _, meta := range files {
-				f, err := mem.Open(dbFilename("", fileTypeTable, meta.fileNum))
+				f, err := mem.Open(dbFilename("", fileTypeTable, meta.fileNum), false)
 				if err != nil {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}

@@ -34,7 +34,7 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 		return nil, err
 	}
 
-	f, err := opts.FS.Open(path)
+	f, err := opts.FS.Open(path, true)
 	if err != nil {
 		return nil, err
 	}

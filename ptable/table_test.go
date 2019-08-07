@@ -117,7 +117,7 @@ func TestTable(t *testing.T) {
 	}
 
 	{
-		f, err := mem.Open("test")
+		f, err := mem.Open("test", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +188,7 @@ func buildBenchmarkTable(b *testing.B, blockSize int, nullValues bool) (*Reader,
 	}
 
 	// Re-open that filename for reading.
-	f1, err := mem.Open("bench")
+	f1, err := mem.Open("bench", false)
 	if err != nil {
 		b.Fatal(err)
 	}

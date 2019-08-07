@@ -175,7 +175,7 @@ func runTestReader(t *testing.T, o Options, dir string) {
 				}
 				w.Close()
 
-				f, err = mem.Open("sstable")
+				f, err = mem.Open("sstable", true)
 				if err != nil {
 					return err.Error()
 				}
@@ -358,7 +358,7 @@ func buildTestTable(
 	}
 
 	// Re-open that filename for reading.
-	f1, err := mem.Open("test")
+	f1, err := mem.Open("test", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	}
 
 	// Re-open that filename for reading.
-	f1, err := mem.Open("bench")
+	f1, err := mem.Open("bench", true)
 	if err != nil {
 		b.Fatal(err)
 	}

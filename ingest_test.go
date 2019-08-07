@@ -289,7 +289,7 @@ func TestIngestLink(t *testing.T) {
 					if uint64(j) != fileNum {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
-					f, err := mem.Open(dir + "/" + files[j])
+					f, err := mem.Open(dir + "/" + files[j], false)
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -35,8 +35,10 @@ type FS interface {
 	// Link creates newname as a hard link to the oldname file.
 	Link(oldname, newname string) error
 
-	// Open opens the named file for reading.
-	Open(name string) (File, error)
+	// Open opens the named file for reading. randomReads specifies if this file
+	// should be optimized for random reads by disabling readahead, such as with
+	// SSTable files.
+	Open(name string, randomReads bool) (File, error)
 
 	// OpenDir opens the named directory for syncing.
 	OpenDir(name string) (File, error)
@@ -95,8 +97,16 @@ func (defaultFS) Link(oldname, newname string) error {
 	return os.Link(oldname, newname)
 }
 
-func (defaultFS) Open(name string) (File, error) {
-	return os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+func (defaultFS) Open(name string, randomReads bool) (File, error) {
+	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	if randomReads {
+		// Disable readahead on SSTable files.
+		return file, FadviseRandom(file.Fd())
+	}
+	return file, nil
 }
 
 func (defaultFS) OpenDir(name string) (File, error) {

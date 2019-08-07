@@ -72,7 +72,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.nextFileNumber = 2
 
 	// Read the CURRENT file to find the current manifest file.
-	current, err := vs.fs.Open(dbFilename(dirname, fileTypeCurrent, 0))
+	current, err := vs.fs.Open(dbFilename(dirname, fileTypeCurrent, 0), false)
 	if err != nil {
 		return fmt.Errorf("pebble: could not open CURRENT file for DB %q: %v", dirname, err)
 	}
@@ -100,7 +100,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
-	manifest, err := vs.fs.Open(dirname + string(os.PathSeparator) + string(b))
+	manifest, err := vs.fs.Open(dirname + string(os.PathSeparator) + string(b), false)
 	if err != nil {
 		return fmt.Errorf("pebble: could not open manifest file %q for DB %q: %v", b, dirname, err)
 	}

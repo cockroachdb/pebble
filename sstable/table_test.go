@@ -372,7 +372,7 @@ func build(
 	}
 
 	// Re-open that filename for reading.
-	f1, err := memFileSystem.Open(filename)
+	f1, err := memFileSystem.Open(filename, true)
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +598,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						continue
 					}
 
-					rf, err := memFS.Open("foo")
+					rf, err := memFS.Open("foo", true)
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 						continue
@@ -678,7 +678,7 @@ func TestFooterRoundTrip(t *testing.T) {
 								t.Fatal(err)
 							}
 
-							f, err = mem.Open("test")
+							f, err = mem.Open("test", true)
 							if err != nil {
 								t.Fatal(err)
 							}
@@ -737,7 +737,7 @@ func TestReadFooter(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			f, err = mem.Open("test")
+			f, err = mem.Open("test", true)
 			if err != nil {
 				t.Fatal(err)
 			}
