@@ -128,6 +128,13 @@ func (fs *errorFS) Stat(name string) (os.FileInfo, error) {
 	return fs.fs.Stat(name)
 }
 
+func (fs *errorFS) Fd(file vfs.File) (uintptr, error) {
+	if err := fs.maybeError(); err != nil {
+		return 0, err
+	}
+	return fs.fs.Fd(file)
+}
+
 type errorFile struct {
 	file vfs.File
 	fs   *errorFS

@@ -344,6 +344,9 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 		close(n.loaded)
 		return
 	}
+	if fd, err := c.fs.Fd(f); err == nil {
+		_ = vfs.FadviseRandom(fd)
+	}
 	r := sstable.NewReader(f, c.dbNum, n.meta.fileNum, c.opts)
 	if n.meta.smallestSeqNum == n.meta.largestSeqNum {
 		r.Properties.GlobalSeqNum = n.meta.largestSeqNum

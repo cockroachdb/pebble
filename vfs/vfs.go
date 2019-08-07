@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"errors"
 	"io"
 	"os"
 	"syscall"
@@ -79,6 +80,9 @@ type FS interface {
 
 	// Stat returns an os.FileInfo describing the named file.
 	Stat(name string) (os.FileInfo, error)
+
+	// Fd returns a uintptr file descriptor for a file created with Open().
+	Fd(file File) (uintptr, error)
 }
 
 // Default is a FS implementation backed by the underlying operating system's
@@ -126,4 +130,11 @@ func (defaultFS) List(dir string) ([]string, error) {
 
 func (defaultFS) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)
+}
+
+func (defaultFS) Fd(file File) (uintptr, error) {
+	if osfile, ok := file.(*os.File); ok {
+		return osfile.Fd(), nil
+	}
+	return 0, errors.New("file descriptor requested for non-os.file")
 }

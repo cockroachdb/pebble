@@ -40,6 +40,8 @@ type memFS struct {
 	root *memNode
 }
 
+var _ FS = &memFS{}
+
 func (y *memFS) String() string {
 	y.mu.Lock()
 	defer y.mu.Unlock()
@@ -303,6 +305,10 @@ func (y *memFS) Stat(name string) (os.FileInfo, error) {
 	}
 	defer f.Close()
 	return f.Stat()
+}
+
+func (y *memFS) Fd(file File) (uintptr, error) {
+	return 0, errors.New("file descriptor requested for non-os.file")
 }
 
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
