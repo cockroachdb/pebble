@@ -52,6 +52,30 @@ func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup) (*memTable, error) {
 	return nil, nil
 }
 
+func TestCommitQueue(t *testing.T) {
+	var q commitQueue
+	var batches [16]Batch
+	for i := range batches {
+		q.enqueue(&batches[i])
+	}
+	if b := q.dequeue(); b != nil {
+		t.Fatalf("unexpectedly dequeued batch: %p", b)
+	}
+	atomic.StoreUint32(&batches[1].applied, 1)
+	if b := q.dequeue(); b != nil {
+		t.Fatalf("unexpectedly dequeued batch: %p", b)
+	}
+	for i := range batches {
+		atomic.StoreUint32(&batches[i].applied, 1)
+		if b := q.dequeue(); b != &batches[i] {
+			t.Fatalf("%d: expected batch %p, but found %p", i, &batches[i], b)
+		}
+	}
+	if b := q.dequeue(); b != nil {
+		t.Fatalf("unexpectedly dequeued batch: %p", b)
+	}
+}
+
 func TestCommitPipeline(t *testing.T) {
 	var e testCommitEnv
 	p := newCommitPipeline(e.env())
