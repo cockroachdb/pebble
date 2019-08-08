@@ -26,7 +26,7 @@ records           1710
 index             
   key             internal key
   value           raw encoded
-comparator        leveldb.BytewiseComparator
+comparer          leveldb.BytewiseComparator
 merger            -
 filter            -
   prefix          false
@@ -61,7 +61,7 @@ records           1710
 index             
   key             internal key
   value           raw encoded
-comparator        leveldb.BytewiseComparator
+comparer          leveldb.BytewiseComparator
 merger            -
 filter            -
   prefix          false
@@ -95,7 +95,7 @@ records           1710
 index             
   key             internal key
   value           raw encoded
-comparator        leveldb.BytewiseComparator
+comparer          leveldb.BytewiseComparator
 merger            -
 filter            -
   prefix          false

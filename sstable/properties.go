@@ -57,8 +57,8 @@ type Properties struct {
 	// Name of the column family with which this SST file is associated. Empty if
 	// the column family is unknown.
 	ColumnFamilyName string `prop:"rocksdb.column.family.name"`
-	// The name of the comparator used in this table.
-	ComparatorName string `prop:"rocksdb.comparator"`
+	// The name of the comparer used in this table.
+	ComparerName string `prop:"rocksdb.comparator"`
 	// The compression algorithm used to compress blocks.
 	CompressionName string `prop:"rocksdb.compression"`
 	// The compression options used to compress blocks.
@@ -92,9 +92,8 @@ type Properties struct {
 	IndexType uint32 `prop:"rocksdb.block.based.table.index.type"`
 	// Whether delta encoding is used to encode the index values.
 	IndexValueIsDeltaEncoded uint64 `prop:"rocksdb.index.value.is.delta.encoded"`
-	// The name of the merge operator used in this table. Empty if no merge
-	// operator is used.
-	MergeOperatorName string `prop:"rocksdb.merge.operator"`
+	// The name of the merger used in this table. Empty if no merger is used.
+	MergerName string `prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
 	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
 	// The number of deletion entries in this table.
@@ -254,8 +253,8 @@ func (p *Properties) save(w *rawBlockWriter) {
 	if p.ColumnFamilyName != "" {
 		p.saveString(m, unsafe.Offsetof(p.ColumnFamilyName), p.ColumnFamilyName)
 	}
-	if p.ComparatorName != "" {
-		p.saveString(m, unsafe.Offsetof(p.ComparatorName), p.ComparatorName)
+	if p.ComparerName != "" {
+		p.saveString(m, unsafe.Offsetof(p.ComparerName), p.ComparerName)
 	}
 	if p.CompressionName != "" {
 		p.saveString(m, unsafe.Offsetof(p.CompressionName), p.CompressionName)
@@ -283,8 +282,8 @@ func (p *Properties) save(w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexSize), p.IndexSize)
 	p.saveUint32(m, unsafe.Offsetof(p.IndexType), p.IndexType)
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexValueIsDeltaEncoded), p.IndexValueIsDeltaEncoded)
-	if p.MergeOperatorName != "" {
-		p.saveString(m, unsafe.Offsetof(p.MergeOperatorName), p.MergeOperatorName)
+	if p.MergerName != "" {
+		p.saveString(m, unsafe.Offsetof(p.MergerName), p.MergerName)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDataBlocks), p.NumDataBlocks)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumEntries), p.NumEntries)

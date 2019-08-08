@@ -39,8 +39,11 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 		return nil, err
 	}
 
-	r := sstable.NewReader(f, dbNum, fileNum, opts)
+	r, err := sstable.NewReader(f, dbNum, fileNum, opts)
 	defer r.Close()
+	if err != nil {
+		return nil, err
+	}
 
 	meta := &fileMetadata{}
 	meta.fileNum = fileNum

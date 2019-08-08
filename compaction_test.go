@@ -624,7 +624,10 @@ func TestCompaction(t *testing.T) {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}
 				defer f.Close()
-				r := sstable.NewReader(f, 0, meta.fileNum, nil)
+				r, err := sstable.NewReader(f, 0, meta.fileNum, nil)
+				if err != nil {
+					return "", "", fmt.Errorf("NewReader: %v", err)
+				}
 				defer r.Close()
 				ss = append(ss, get1(r.NewIter(nil /* lower */, nil /* upper */))+".")
 			}

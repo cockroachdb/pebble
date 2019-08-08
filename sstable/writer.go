@@ -716,9 +716,9 @@ func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 	}
 
 	w.props.ColumnFamilyID = math.MaxInt32
-	w.props.ComparatorName = o.Comparer.Name
+	w.props.ComparerName = o.Comparer.Name
 	w.props.CompressionName = lo.Compression.String()
-	w.props.MergeOperatorName = o.Merger.Name
+	w.props.MergerName = o.Merger.Name
 	w.props.PropertyCollectorNames = "[]"
 	w.props.Version = 2 // TODO(peter): what is this?
 

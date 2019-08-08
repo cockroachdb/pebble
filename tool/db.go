@@ -50,7 +50,7 @@ be in use by another process.
 
 // DBScanCmd implements db scan.
 var DBScanCmd = &cobra.Command{
-	Use:   "db <dir>",
+	Use:   "scan <dir>",
 	Short: "print db records",
 	Long: `
 Print the records in the DB. Requires that the specified database not be in use

@@ -18,7 +18,7 @@ import (
 
 var sstableConfig struct {
 	// TODO(peter): Make the options configurable. In particular, we want to be
-	// able to register comparators, and mergers. We also want to be able to
+	// able to register comparers, and mergers. We also want to be able to
 	// register key/value pretty printers.
 	opts    *sstable.Options
 	start   string
@@ -112,10 +112,15 @@ func runSSTableCheck(cmd *cobra.Command, args []string) {
 				return
 			}
 
-			r := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			fmt.Fprintf(stdout, "%s\n", arg)
+
+			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
 			defer r.Close()
 
-			fmt.Fprintf(stdout, "%s\n", arg)
+			if err != nil {
+				fmt.Fprintf(stdout, "%s\n", err)
+				return
+			}
 
 			iter := r.NewIter(nil, nil)
 			for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
@@ -136,15 +141,21 @@ func runSSTableLayout(cmd *cobra.Command, args []string) {
 				return
 			}
 
-			r := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			fmt.Fprintf(stdout, "%s\n", arg)
+
+			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
 			defer r.Close()
+
+			if err != nil {
+				fmt.Fprintf(stdout, "%s\n", err)
+				return
+			}
 
 			l, err := r.Layout()
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
 			}
-			fmt.Fprintf(stdout, "%s\n", arg)
 			l.Describe(stdout, sstableConfig.verbose, r)
 		}()
 	}
@@ -159,10 +170,16 @@ func runSSTableProperties(cmd *cobra.Command, args []string) {
 				return
 			}
 
-			r := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			fmt.Fprintf(stdout, "%s\n", arg)
+
+			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
 			defer r.Close()
 
-			fmt.Fprintf(stdout, "%s\n", arg)
+			if err != nil {
+				fmt.Fprintf(stdout, "%s\n", err)
+				return
+			}
+
 			if sstableConfig.verbose {
 				fmt.Fprintf(stdout, "%s", r.Properties.String())
 				return
@@ -214,8 +231,8 @@ func runSSTableProperties(cmd *cobra.Command, args []string) {
 			} else {
 				fmt.Fprintf(tw, "raw encoded\n")
 			}
-			fmt.Fprintf(tw, "comparator\t%s\n", r.Properties.ComparatorName)
-			fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergeOperatorName))
+			fmt.Fprintf(tw, "comparer\t%s\n", r.Properties.ComparerName)
+			fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergerName))
 			fmt.Fprintf(tw, "filter\t%s\n", formatNull(r.Properties.FilterPolicyName))
 			fmt.Fprintf(tw, "  prefix\t%t\n", r.Properties.PrefixFiltering)
 			fmt.Fprintf(tw, "  whole-key\t%t\n", r.Properties.WholeKeyFiltering)
@@ -245,10 +262,15 @@ func runSSTableScan(cmd *cobra.Command, args []string) {
 				return
 			}
 
-			r := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			fmt.Fprintf(stdout, "%s\n", arg)
+
+			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
 			defer r.Close()
 
-			fmt.Fprintf(stdout, "%s\n", arg)
+			if err != nil {
+				fmt.Fprintf(stdout, "%s\n", err)
+				return
+			}
 
 			// TODO(peter): Allow the start and end key to be specified in hex.
 			var start, end []byte
