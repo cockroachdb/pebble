@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -26,7 +27,7 @@ import (
 // positioning methods (Seek*, First, Last, Next, Prev) to the old API which
 // returned a boolean corresponding to Valid. Only used by test code.
 type iterAdapter struct {
-	*Iterator
+	Iterator
 }
 
 func (i *iterAdapter) verify(key *InternalKey, val []byte) bool {
@@ -98,6 +99,13 @@ func TestReader(t *testing.T) {
 		},
 	}
 
+	blockSizes := map[string]int{
+		"5bytes": 5,
+		"10bytes": 10,
+		"25bytes": 25,
+		"Maxbytes": math.MaxInt32,
+	}
+
 	opts := map[string]*Options{
 		"default": {},
 		"prefixFilter": {
@@ -105,21 +113,29 @@ func TestReader(t *testing.T) {
 		},
 	}
 
+	// TODO(ryan): Add more tests for two level iterator using prebuilt SSTs.
 	testDirs := map[string]string{
 		"default":      "testdata/reader",
 		"prefixFilter": "testdata/prefixreader",
 	}
 
-	for lName, tableOpt := range tableOpts {
-		for oName, opt := range opts {
-			tableOpt.EnsureDefaults()
-			o := *opt
-			o.Levels = []TableOptions{tableOpt}
-			o.EnsureDefaults()
+	for dName, blockSize := range blockSizes {
+		for iName, indexBlockSize := range blockSizes {
+			for lName, tableOpt := range tableOpts {
+				for oName, opt := range opts {
+					tableOpt.BlockSize = blockSize
+					tableOpt.IndexBlockSize = indexBlockSize
+					tableOpt.EnsureDefaults()
+					o := *opt
+					o.Levels = []TableOptions{tableOpt}
+					o.EnsureDefaults()
 
-			t.Run(fmt.Sprintf("opts=%s,tableOpts=%s", oName, lName), func(t *testing.T) {
-				runTestReader(t, o, testDirs[oName])
-			})
+					t.Run(
+						fmt.Sprintf("opts=%s,tableOpts=%s,blockSize=%s,indexSize=%s",
+							oName, lName, dName, iName),
+						func(t *testing.T) {runTestReader(t, o, testDirs[oName])})
+				}
+			}
 		}
 	}
 }
@@ -260,49 +276,60 @@ func checkValidPrefix(prefix, key []byte) bool {
 }
 
 func TestBytesIteratedCompressed(t *testing.T) {
-	for _, blockSize := range []int{10, 100, 1000, 4096} {
-		for _, numEntries := range []uint64{0, 1, 1e5} {
-			r := buildTestTable(t, numEntries, blockSize, SnappyCompression)
-			var bytesIterated, prevIterated uint64
-			citer := r.NewCompactionIter(&bytesIterated)
-			for citer.First(); citer.Valid(); citer.Next() {
-				if bytesIterated < prevIterated {
-					t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
+	for _, blockSize := range blockSizes {
+		for _, indexBlockSize := range blockSizes {
+			for _, numEntries := range []uint64{0, 1, 1e5} {
+				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, SnappyCompression)
+				var bytesIterated, prevIterated uint64
+				citer := r.NewCompactionIter(&bytesIterated)
+				for citer.First(); citer.Valid(); citer.Next() {
+					if bytesIterated < prevIterated {
+						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+					}
+					prevIterated = bytesIterated
 				}
-				prevIterated = bytesIterated
-			}
 
-			expected := r.Properties.DataSize
-			// There is some inaccuracy due to compression estimation.
-			if bytesIterated < expected*99/100 || bytesIterated > expected*101/100 {
-				t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+				expected := r.Properties.DataSize
+				// There is some inaccuracy due to compression estimation.
+				if bytesIterated < expected*99/100 || bytesIterated > expected*101/100 {
+					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+				}
 			}
 		}
 	}
 }
 
 func TestBytesIteratedUncompressed(t *testing.T) {
-	for _, blockSize := range []int{10, 100, 1000, 4096} {
-		for _, numEntries := range []uint64{0, 1, 1e5} {
-			r := buildTestTable(t, numEntries, blockSize, NoCompression)
-			var bytesIterated, prevIterated uint64
-			citer := r.NewCompactionIter(&bytesIterated)
-			for citer.First(); citer.Valid(); citer.Next() {
-				if bytesIterated < prevIterated {
-					t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
+	for _, blockSize := range blockSizes {
+		for _, indexBlockSize := range blockSizes {
+			for _, numEntries := range []uint64{0, 1, 1e5} {
+				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, NoCompression)
+				var bytesIterated, prevIterated uint64
+				citer := r.NewCompactionIter(&bytesIterated)
+				for citer.First(); citer.Valid(); citer.Next() {
+					if bytesIterated < prevIterated {
+						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+					}
+					prevIterated = bytesIterated
 				}
-				prevIterated = bytesIterated
-			}
 
-			expected := r.Properties.DataSize
-			if bytesIterated != expected {
-				t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+				expected := r.Properties.DataSize
+				if bytesIterated != expected {
+					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+				}
 			}
 		}
 	}
 }
 
-func buildTestTable(t *testing.T, numEntries uint64, blockSize int, compression Compression) *Reader {
+func buildTestTable(
+	t *testing.T,
+	numEntries uint64,
+	blockSize, indexBlockSize int,
+	compression Compression,
+) *Reader {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
 	if err != nil {
@@ -311,9 +338,10 @@ func buildTestTable(t *testing.T, numEntries uint64, blockSize int, compression 
 	defer f0.Close()
 
 	w := NewWriter(f0, nil, TableOptions{
-		BlockSize:    blockSize,
-		Compression:  compression,
-		FilterPolicy: nil,
+		BlockSize:      blockSize,
+		IndexBlockSize: indexBlockSize,
+		Compression:    compression,
+		FilterPolicy:   nil,
 	})
 
 	var ikey InternalKey
