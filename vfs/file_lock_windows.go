@@ -2,6 +2,8 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
+// +build windows
+
 package vfs
 
 import (
@@ -18,7 +20,7 @@ func (l lockCloser) Close() error {
 	return syscall.Close(l.fd)
 }
 
-func (defFS) Lock(name string) (io.Closer, error) {
+func (defaultFS) Lock(name string) (io.Closer, error) {
 	p, err := syscall.UTF16PtrFromString(name)
 	if err != nil {
 		return nil, err
