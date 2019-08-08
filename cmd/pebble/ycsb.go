@@ -385,7 +385,7 @@ func (y *ycsb) makeKey(keyNum uint64) []byte {
 	// Use the MVCC encoding for keys. This appends a timestamp with
 	// walltime=1. That knowledge is utilized by rocksDB.Scan.
 	key = append(key, '\x00', '\x00', '\x00', '\x00', '\x00',
-		'\x00', '\x00', '\x00', '\x01', '\x08')
+		'\x00', '\x00', '\x00', '\x01', '\x09')
 	return key
 }
 
