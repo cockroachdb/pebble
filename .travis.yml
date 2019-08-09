@@ -15,6 +15,14 @@ matrix:
     - name: "go1.12.x race"
       go: 1.12.x
       gobuild_args: -v -race
+    - name: "go1.12.x windows"
+      go: 1.12.x
+      # NB: "env: GOOS=windows" does not have the desired effect.
+      script: GOOS=windows go build -v ./...
+    - name: "go1.12.x freebsd"
+      go: 1.12.x
+      # NB: "env: GOOS=freebsd" does not have the desired effect.
+      script: GOOS=freebsd go build -v ./...
 
 notifications:
   email:
