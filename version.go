@@ -289,13 +289,24 @@ func (v *version) checkOrdering(cmp Compare) error {
 			for i := 1; i < len(ff); i++ {
 				prev := &ff[i-1]
 				f := &ff[i]
-				if prev.largestSeqNum >= f.largestSeqNum {
-					return fmt.Errorf("level 0 files are not in increasing largest seqNum order: %d, %d",
-						prev.largestSeqNum, f.largestSeqNum)
-				}
-				if prev.smallestSeqNum >= f.smallestSeqNum {
-					return fmt.Errorf("level 0 files are not in increasing smallest seqNum order: %d, %d",
-						prev.smallestSeqNum, f.smallestSeqNum)
+				if f.smallestSeqNum == f.largestSeqNum &&
+					prev.smallestSeqNum == prev.largestSeqNum {
+					// Both prev and f have global sequence numbers. We allow such
+					// sstables to have the same sequence number which can occur if they
+					// were added via a single Ingest call.
+					if prev.largestSeqNum > f.largestSeqNum {
+						return fmt.Errorf("level 0 files are not in increasing largest seqNum order: %d, %d",
+							prev.largestSeqNum, f.largestSeqNum)
+					}
+				} else {
+					if prev.largestSeqNum >= f.largestSeqNum {
+						return fmt.Errorf("level 0 files are not in increasing largest seqNum order: %d, %d",
+							prev.largestSeqNum, f.largestSeqNum)
+					}
+					if prev.smallestSeqNum >= f.smallestSeqNum {
+						return fmt.Errorf("level 0 files are not in increasing smallest seqNum order: %d, %d",
+							prev.smallestSeqNum, f.smallestSeqNum)
+					}
 				}
 			}
 		} else {

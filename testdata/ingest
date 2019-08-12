@@ -1,6 +1,9 @@
-ingest
+build ext0
 set a 1
 set b 2
+----
+
+ingest ext0
 ----
 
 lsm
@@ -23,9 +26,12 @@ b
 a:1
 b:2
 
-ingest
+build ext1
 set a 3
 del b
+----
+
+ingest ext1
 ----
 
 lsm
@@ -47,10 +53,13 @@ b
 a:3
 b: pebble: not found
 
-ingest
+build ext2
 set a 4
 set b 5
 set c 6
+----
+
+ingest ext2
 ----
 
 lsm
@@ -77,9 +86,12 @@ a:4
 b:5
 c:6
 
-ingest
+build ext3
 merge b 5
 del c
+----
+
+ingest ext3
 ----
 
 lsm
@@ -107,9 +119,12 @@ a:4
 b:55
 c: pebble: not found
 
-ingest
+build ext4
 set x 7
 set y 8
+----
+
+ingest ext4
 ----
 
 lsm
@@ -140,8 +155,11 @@ set j 9
 set k 10
 ----
 
-ingest
+build ext5
 set k 11
+----
+
+ingest ext5
 ----
 
 lsm
@@ -170,8 +188,11 @@ batch
 set m 12
 ----
 
-ingest
+build ext6
 set n 13
+----
+
+ingest ext6
 ----
 
 lsm
@@ -189,9 +210,12 @@ n
 m:12
 n:13
 
-ingest
+build ext7
 del-range a c
 del-range x z
+----
+
+ingest ext7
 ----
 
 lsm
@@ -226,10 +250,13 @@ y: pebble: not found
 # A set operation takes precedence over a range deletion at the same
 # sequence number as can occur during ingestion.
 
-ingest
+build ext8
 set j 20
 del-range j k
 set m 30
+----
+
+ingest ext8
 ----
 
 get
@@ -240,3 +267,35 @@ m
 j:20
 k:11
 m:30
+
+build ext9
+del-range a x
+----
+
+build ext10
+set y 40
+----
+
+# Ingesting two files into L0 is allowed.
+
+ingest ext9 ext10
+----
+
+get
+j
+k
+m
+y
+----
+j: pebble: not found
+k: pebble: not found
+m: pebble: not found
+y:40
+
+lsm
+----
+0: j-k k-k m-m a-z j-m a-x y-y
+3: b-c
+4: a-c
+5: a-b
+6: a-b n-n x-y
