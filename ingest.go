@@ -199,6 +199,7 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 		// Properties.GlobalSeqNum when an sstable is loaded.
 		m.smallestSeqNum = seqNum
 		m.largestSeqNum = seqNum
+		seqNum++
 
 		// TODO(peter): Update the global sequence number property. This is only
 		// necessary for compatibility with RocksDB.
@@ -357,7 +358,7 @@ func (d *DB) Ingest(paths []string) error {
 		ve, err = d.ingestApply(jobID, meta)
 	}
 
-	d.commit.AllocateSeqNum(prepare, apply)
+	d.commit.AllocateSeqNum(len(meta), prepare, apply)
 
 	if err != nil {
 		if err2 := ingestCleanup(d.opts.FS, d.dirname, meta); err2 != nil {
