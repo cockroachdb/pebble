@@ -266,14 +266,14 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	return nil
 }
 
-// AllocateSeqNum allocates a sequence number, invokes the prepare callback,
-// then the apply callback, and then publishes the sequence
-// number. AllocateSeqNum does not write to the WAL or add entries to the
+// AllocateSeqNum allocates count sequence numbers, invokes the prepare
+// callback, then the apply callback, and then publishes the sequence
+// numbers. AllocateSeqNum does not write to the WAL or add entries to the
 // memtable. AllocateSeqNum can be used to sequence an operation such as
 // sstable ingestion within the commit pipeline. The prepare callback is
 // invoked with commitPipeline.mu held, but note that DB.mu is not held and
 // must be locked if necessary.
-func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64)) {
+func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(seqNum uint64)) {
 	// This method is similar to Commit and prepare. Be careful about trying to
 	// share additional code with those methods because Commit and prepare are
 	// performance critical code paths.
@@ -284,7 +284,7 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	// Give the batch a count of 1 so that the log and visible sequence number
 	// are incremented correctly.
 	b.storage.data = make([]byte, batchHeaderLen)
-	b.setCount(1)
+	b.setCount(uint32(count))
 	b.commit.Add(1)
 
 	p.sem <- struct{}{}
@@ -296,14 +296,16 @@ func (p *commitPipeline) AllocateSeqNum(prepare func(), apply func(seqNum uint64
 	// number order.
 	p.pending.enqueue(b)
 
-	// Assign the batch a sequence number. Note that logSeqNum is not protected
-	// by commitPipeline.mu or DB.mu and thus needs to be incremented atomically.
-	seqNum := atomic.AddUint64(p.env.logSeqNum, 1) - 1
+	// Assign the batch a sequence number. Note that we use atomic operations
+	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
+	// mutual exclusion for other goroutines writing to logSeqNum.
+	seqNum := atomic.AddUint64(p.env.logSeqNum, uint64(count)) - uint64(count)
 	if seqNum == 0 {
 		// We can't use the value 0 for the global seqnum during ingestion, because
-		// 0 indicates no global seqnum. So allocate another seqnum.
-		seqNum = atomic.AddUint64(p.env.logSeqNum, 1) - 1
-		b.setCount(2)
+		// 0 indicates no global seqnum. So allocate one more seqnum.
+		atomic.AddUint64(p.env.logSeqNum, 1)
+		seqNum++
+		b.setCount(1 + uint32(count))
 	}
 	b.setSeqNum(seqNum)
 
@@ -346,8 +348,9 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	// number order.
 	p.pending.enqueue(b)
 
-	// Assign the batch a sequence number. Note that logSeqNum is not protected
-	// by commitPipeline.mu or DB.mu and thus needs to be incremented atomically.
+	// Assign the batch a sequence number. Note that we use atomic operations
+	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
+	// mutual exclusion for other goroutines writing to logSeqNum.
 	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.

@@ -463,15 +463,20 @@ func TestIngest(t *testing.T) {
 
 	datadriven.RunTest(t, "testdata/ingest", func(td *datadriven.TestData) string {
 		switch td.Cmd {
-		case "ingest", "batch":
+		case "build", "batch":
 			b := d.NewIndexedBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
 
 			switch td.Cmd {
-			case "ingest":
-				f, err := mem.Create("ext/0")
+			case "build":
+				if len(td.CmdArgs) != 1 {
+					return "build <path>: argument missing\n"
+				}
+				path := td.CmdArgs[0].String()
+
+				f, err := mem.Create(path)
 				if err != nil {
 					return err.Error()
 				}
@@ -499,15 +504,27 @@ func TestIngest(t *testing.T) {
 					return err.Error()
 				}
 
-				if err := d.Ingest([]string{"ext/0"}); err != nil {
-					return err.Error()
-				}
-				if err := mem.Remove("ext/0"); err != nil {
-					return err.Error()
-				}
-
 			case "batch":
 				if err := b.Commit(nil); err != nil {
+					return err.Error()
+				}
+			}
+			return ""
+
+		case "ingest":
+			if len(td.CmdArgs) == 0 {
+				return "ingest <paths>: path arguments missing\n"
+			}
+			var paths []string
+			for _, arg := range td.CmdArgs {
+				paths = append(paths, arg.String())
+			}
+
+			if err := d.Ingest(paths); err != nil {
+				return err.Error()
+			}
+			for _, path := range paths {
+				if err := mem.Remove(path); err != nil {
 					return err.Error()
 				}
 			}

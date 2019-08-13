@@ -372,45 +372,73 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "broken invariants 0: non-increasing level 0 file numbers",
+			description: "broken invariants 0: non-increasing level 0 sequence numbers",
 			badOrdering: true,
 			tables: []testTable{
-				{
-					level:   0,
-					fileNum: 20,
-				},
 				{
 					level:   0,
 					fileNum: 19,
+					data: []string{
+						"a.SET.101 a",
+						"b.SET.102 b",
+					},
+				},
+				{
+					level:   0,
+					fileNum: 20,
+					data: []string{
+						"c.SET.101 c",
+					},
 				},
 			},
 		},
 
 		{
-			description: "broken invariants 1: non-increasing level 0 file numbers",
+			description: "broken invariants 1: non-increasing level 0 sequence numbers",
 			badOrdering: true,
 			tables: []testTable{
 				{
 					level:   0,
+					fileNum: 19,
+					data: []string{
+						"a.SET.101 a",
+						"b.SET.102 b",
+					},
+				},
+				{
+					level:   0,
 					fileNum: 20,
-				},
-				{
-					level:   0,
-					fileNum: 21,
-				},
-				{
-					level:   0,
-					fileNum: 21,
-				},
-				{
-					level:   0,
-					fileNum: 22,
+					data: []string{
+						"c.SET.100 c",
+						"d.SET.101 d",
+					},
 				},
 			},
 		},
 
 		{
-			description: "broken invariants 2: level non-0 overlapping internal key ranges",
+			description: "broken invariants 2: non-increasing level 0 sequence numbers",
+			badOrdering: true,
+			tables: []testTable{
+				{
+					level:   0,
+					fileNum: 19,
+					data: []string{
+						"a.SET.101 a",
+					},
+				},
+				{
+					level:   0,
+					fileNum: 20,
+					data: []string{
+						"a.SET.101 a",
+					},
+				},
+			},
+		},
+
+		{
+			description: "broken invariants 3: level non-0 overlapping internal key ranges",
 			badOrdering: true,
 			tables: []testTable{
 				{

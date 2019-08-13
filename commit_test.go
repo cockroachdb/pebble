@@ -117,13 +117,13 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 	wg.Add(n)
 	var prepareCount uint64
 	var applyCount uint64
-	for i := 0; i < n; i++ {
+	for i := 1; i <= n; i++ {
 		go func(i int) {
 			defer wg.Done()
-			p.AllocateSeqNum(func() {
-				atomic.AddUint64(&prepareCount, 1)
+			p.AllocateSeqNum(i, func() {
+				atomic.AddUint64(&prepareCount, uint64(1))
 			}, func(seqNum uint64) {
-				atomic.AddUint64(&applyCount, 1)
+				atomic.AddUint64(&applyCount, uint64(1))
 			})
 		}(i)
 	}
@@ -137,11 +137,12 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 	}
 	// AllocateSeqNum always returns a non-zero sequence number causing the
 	// values we see to be offset from 1.
-	if s := atomic.LoadUint64(&e.logSeqNum); n+1 != s {
-		t.Fatalf("expected %d, but found %d", n+1, s)
+	const total = 1 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	if s := atomic.LoadUint64(&e.logSeqNum); total != s {
+		t.Fatalf("expected %d, but found %d", total, s)
 	}
-	if s := atomic.LoadUint64(&e.visibleSeqNum); n+1 != s {
-		t.Fatalf("expected %d, but found %d", n+1, s)
+	if s := atomic.LoadUint64(&e.visibleSeqNum); total != s {
+		t.Fatalf("expected %d, but found %d", total, s)
 	}
 }
 
