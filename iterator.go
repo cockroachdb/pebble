@@ -368,9 +368,6 @@ func (i *Iterator) Next() bool {
 		// happen when switching iteration directions). We set i.valid to false
 		// here to force the calls to nextUserKey to save the current key i.iter is
 		// pointing at in order to determine when the next user-key is reached.
-		//
-		// TODO(peter): This is subtle. Perhaps we should provide a special version
-		// of nextUserKey which advances until a larger user key is found.
 		i.valid = false
 		if i.iterKey == nil {
 			// We're positioned before the first key. Need to reposition to point to
@@ -403,9 +400,6 @@ func (i *Iterator) Prev() bool {
 		// when switching iteration directions). We set i.valid to false here to
 		// force the calls to prevUserKey to save the current key i.iter is
 		// pointing at in order to determine when the next user-key is reached.
-		//
-		// TODO(peter): This is subtle. Perhaps we should provide a special version
-		// of prevUserKey which advances until a smaller user key is found.
 		i.valid = false
 		if i.iterKey == nil {
 			// We're positioned after the last key. Need to reposition to point to
