@@ -241,8 +241,6 @@ type Options struct {
 	// debugging tools which may be used on multiple databases configured with
 	// different comparers. It is not necessary to populate this comparers map
 	// during normal usage of a DB.
-	//
-	// TODO(peter): unimplemented.
 	Comparers map[string]*Comparer
 
 	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
@@ -265,8 +263,6 @@ type Options struct {
 	// debugging tools which may be used on multiple databases configured with
 	// different filter policies. It is not necessary to populate this filters
 	// map during normal usage of a DB.
-	//
-	// TODO(peter): unimplemented.
 	Filters map[string]FilterPolicy
 
 	// FS provides the interface for persistent file storage.
@@ -330,8 +326,6 @@ type Options struct {
 	// tools which may be used on multiple databases configured with different
 	// mergers. It is not necessary to populate this mergers map during normal
 	// usage of a DB.
-	//
-	// TODO(peter): unimplemented.
 	Mergers map[string]*Merger
 
 	// MinCompactionRate sets the minimum rate at which compactions occur. The
@@ -377,6 +371,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer
+	}
+	if o.FS == nil {
+		o.FS = vfs.Default
 	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
@@ -428,10 +425,41 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.MinFlushRate == 0 {
 		o.MinFlushRate = 1 << 20 // 1 MB/s
 	}
-	if o.FS == nil {
-		o.FS = vfs.Default
-	}
+
+	o.initMaps()
 	return o
+}
+
+// initMaps initializes the Comparers, Filters, and Mergers maps.
+func (o *Options) initMaps() {
+	if o.Comparers == nil {
+		o.Comparers = make(map[string]*Comparer)
+	}
+	if _, ok := o.Comparers[o.Comparer.Name]; !ok {
+		o.Comparers[o.Comparer.Name] = o.Comparer
+	}
+
+	if o.Merger != nil {
+		if o.Mergers == nil {
+			o.Mergers = make(map[string]*Merger)
+		}
+		if _, ok := o.Mergers[o.Merger.Name]; !ok {
+			o.Mergers[o.Merger.Name] = o.Merger
+		}
+	}
+
+	for i := range o.Levels {
+		l := &o.Levels[i]
+		if l.FilterPolicy != nil {
+			if o.Filters == nil {
+				o.Filters = make(map[string]FilterPolicy)
+			}
+			name := l.FilterPolicy.Name()
+			if _, ok := o.Filters[name]; !ok {
+				o.Filters[name] = l.FilterPolicy
+			}
+		}
+	}
 }
 
 // Level returns the LevelOptions for the specified level.
@@ -445,6 +473,15 @@ func (o *Options) Level(level int) LevelOptions {
 		l.TargetFileSize *= 2
 	}
 	return l
+}
+
+// Clone creates a shallow-copy of the supplied options.
+func (o *Options) Clone() *Options {
+	n := &Options{}
+	if o != nil {
+		*n = *o
+	}
+	return n
 }
 
 func (o *Options) String() string {

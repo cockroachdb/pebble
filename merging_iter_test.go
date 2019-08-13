@@ -180,9 +180,12 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i] = sstable.NewReader(f, 0, uint64(i), &Options{
+		readers[i], err = sstable.NewReader(f, 0, uint64(i), &Options{
 			Cache: cache,
 		})
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 	return readers, keys
 }

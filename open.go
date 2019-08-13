@@ -69,7 +69,10 @@ func createDB(dirname string, opts *Options) (retErr error) {
 
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *Options) (*DB, error) {
+	// Make a copy of the options so that we don't mutate the passed in options.
+	opts = opts.Clone()
 	opts = opts.EnsureDefaults()
+
 	d := &DB{
 		dbNum:          allocDBNum(),
 		dirname:        dirname,

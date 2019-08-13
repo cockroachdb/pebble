@@ -9,7 +9,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"sort"
 	"sync"
+	"unsafe"
 
 	"github.com/golang/snappy"
 	"github.com/petermattis/pebble/cache"
@@ -19,26 +22,26 @@ import (
 	"github.com/petermattis/pebble/vfs"
 )
 
-// blockHandle is the file offset and length of a block.
-type blockHandle struct {
-	offset, length uint64
+// BlockHandle is the file offset and length of a block.
+type BlockHandle struct {
+	Offset, Length uint64
 }
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
-func decodeBlockHandle(src []byte) (blockHandle, int) {
+func decodeBlockHandle(src []byte) (BlockHandle, int) {
 	offset, n := binary.Uvarint(src)
 	length, m := binary.Uvarint(src[n:])
 	if n == 0 || m == 0 {
-		return blockHandle{}, 0
+		return BlockHandle{}, 0
 	}
-	return blockHandle{offset, length}, n + m
+	return BlockHandle{offset, length}, n + m
 }
 
-func encodeBlockHandle(dst []byte, b blockHandle) int {
-	n := binary.PutUvarint(dst, b.offset)
-	m := binary.PutUvarint(dst[n:], b.length)
+func encodeBlockHandle(dst []byte, b BlockHandle) int {
+	n := binary.PutUvarint(dst, b.Offset)
+	m := binary.PutUvarint(dst[n:], b.Length)
 	return n + m
 }
 
@@ -69,7 +72,7 @@ type singleLevelIterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
-	dataBH     blockHandle
+	dataBH     BlockHandle
 	err        error
 	closeHook  func(i Iterator) error
 }
@@ -289,7 +292,7 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		// be chosen as "compleu". The SeekGE in the index block will then point
 		// us to the block containing "complexion". If this happens, we want the
 		// last key from the previous data block.
-		if ikey, val = i.index.Prev(); ikey == nil {
+		if ikey, _ = i.index.Prev(); ikey == nil {
 			return nil, nil
 		}
 		if !i.loadBlock() {
@@ -513,20 +516,20 @@ func (i *compactionIterator) First() (*InternalKey, []byte) {
 		// An empty sstable will still encode the block trailer and restart points, so bytes
 		// iterated must be incremented.
 
-		// We must use i.dataBH.length instead of (4*(i.data.numRestarts+1)) to calculate the
-		// number of bytes for the restart points, since i.dataBH.length accounts for
-		// compression. When uncompressed, i.dataBH.length == (4*(i.data.numRestarts+1))
-		*i.bytesIterated += blockTrailerLen + i.dataBH.length
+		// We must use i.dataBH.Length instead of (4*(i.data.numRestarts+1)) to calculate the
+		// number of bytes for the restart points, since i.dataBH.Length accounts for
+		// compression. When uncompressed, i.dataBH.Length == (4*(i.data.numRestarts+1))
+		*i.bytesIterated += blockTrailerLen + i.dataBH.Length
 		return nil, nil
 	}
 	// If the sstable only has 1 entry, we are at the last entry in the block and we must
 	// increment bytes iterated by the size of the block trailer and restart points.
 	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		i.prevOffset = blockTrailerLen + i.dataBH.length
+		i.prevOffset = blockTrailerLen + i.dataBH.Length
 	} else {
-		// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
+		// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
 		// i.data.nextOffset is the uncompressed size of the first record.
-		i.prevOffset = (uint64(i.data.nextOffset) * i.dataBH.length) / uint64(len(i.data.data))
+		i.prevOffset = (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
 	}
 	*i.bytesIterated += i.prevOffset
 	return key, val
@@ -562,15 +565,15 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 		}
 	}
 
-	// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
+	// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
 	// i.data.nextOffset is the uncompressed position of the current record in the block.
-	// i.dataBH.offset is the offset of the block in the sstable before decompression.
-	recordOffset := (uint64(i.data.nextOffset) * i.dataBH.length) / uint64(len(i.data.data))
-	curOffset := i.dataBH.offset + recordOffset
+	// i.dataBH.Offset is the offset of the block in the sstable before decompression.
+	recordOffset := (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
+	curOffset := i.dataBH.Offset + recordOffset
 	// Last entry in the block must increment bytes iterated by the size of the block trailer
 	// and restart points.
 	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		curOffset = i.dataBH.offset + i.dataBH.length + blockTrailerLen
+		curOffset = i.dataBH.Offset + i.dataBH.Length + blockTrailerLen
 	}
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
@@ -849,20 +852,20 @@ func (i *twoLevelCompactionIterator) First() (*InternalKey, []byte) {
 		// An empty sstable will still encode the block trailer and restart points, so bytes
 		// iterated must be incremented.
 
-		// We must use i.dataBH.length instead of (4*(i.data.numRestarts+1)) to calculate the
-		// number of bytes for the restart points, since i.dataBH.length accounts for
-		// compression. When uncompressed, i.dataBH.length == (4*(i.data.numRestarts+1))
-		*i.bytesIterated += blockTrailerLen + i.dataBH.length
+		// We must use i.dataBH.Length instead of (4*(i.data.numRestarts+1)) to calculate the
+		// number of bytes for the restart points, since i.dataBH.Length accounts for
+		// compression. When uncompressed, i.dataBH.Length == (4*(i.data.numRestarts+1))
+		*i.bytesIterated += blockTrailerLen + i.dataBH.Length
 		return nil, nil
 	}
 	// If the sstable only has 1 entry, we are at the last entry in the block and we must
 	// increment bytes iterated by the size of the block trailer and restart points.
 	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		i.prevOffset = blockTrailerLen + i.dataBH.length
+		i.prevOffset = blockTrailerLen + i.dataBH.Length
 	} else {
-		// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
+		// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
 		// i.data.nextOffset is the uncompressed size of the first record.
-		i.prevOffset = (uint64(i.data.nextOffset) * i.dataBH.length) / uint64(len(i.data.data))
+		i.prevOffset = (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
 	}
 	*i.bytesIterated += i.prevOffset
 	return key, val
@@ -898,15 +901,15 @@ func (i *twoLevelCompactionIterator) Next() (*InternalKey, []byte) {
 		}
 	}
 
-	// i.dataBH.length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
+	// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
 	// i.data.nextOffset is the uncompressed position of the current record in the block.
-	// i.dataBH.offset is the offset of the block in the sstable before decompression.
-	recordOffset := (uint64(i.data.nextOffset) * i.dataBH.length) / uint64(len(i.data.data))
-	curOffset := i.dataBH.offset + recordOffset
+	// i.dataBH.Offset is the offset of the block in the sstable before decompression.
+	recordOffset := (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
+	curOffset := i.dataBH.Offset + recordOffset
 	// Last entry in the block must increment bytes iterated by the size of the block trailer
 	// and restart points.
 	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		curOffset = i.dataBH.offset + i.dataBH.length + blockTrailerLen
+		curOffset = i.dataBH.Offset + i.dataBH.Length + blockTrailerLen
 	}
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
@@ -918,7 +921,7 @@ func (i *twoLevelCompactionIterator) Prev() (*InternalKey, []byte) {
 }
 
 type weakCachedBlock struct {
-	bh     blockHandle
+	bh     BlockHandle
 	mu     sync.RWMutex
 	handle cache.WeakHandle
 }
@@ -935,6 +938,9 @@ type Reader struct {
 	filter            weakCachedBlock
 	rangeDel          weakCachedBlock
 	rangeDelTransform blockTransform
+	propertiesBH      BlockHandle
+	metaIndexBH       BlockHandle
+	footerBH          BlockHandle
 	opts              *Options
 	cache             *cache.Cache
 	compare           Compare
@@ -1039,7 +1045,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) Iterator {
 // range-del block for the table. Returns nil if the table does not contain any
 // range deletions.
 func (r *Reader) NewRangeDelIter() *blockIter {
-	if r.rangeDel.bh.length == 0 {
+	if r.rangeDel.bh.Length == 0 {
 		return nil
 	}
 	b, err := r.readRangeDel()
@@ -1098,25 +1104,25 @@ func (r *Reader) readWeakCachedBlock(
 
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(
-	bh blockHandle, transform blockTransform,
+	bh BlockHandle, transform blockTransform,
 ) (cache.Handle, error) {
-	if h := r.cache.Get(r.dbNum, r.fileNum, bh.offset); h.Get() != nil {
+	if h := r.cache.Get(r.dbNum, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
 	}
 
-	b := r.cache.Alloc(int(bh.length + blockTrailerLen))
-	if _, err := r.file.ReadAt(b, int64(bh.offset)); err != nil {
+	b := r.cache.Alloc(int(bh.Length + blockTrailerLen))
+	if _, err := r.file.ReadAt(b, int64(bh.Offset)); err != nil {
 		return cache.Handle{}, err
 	}
 
-	checksum0 := binary.LittleEndian.Uint32(b[bh.length+1:])
-	checksum1 := crc.New(b[:bh.length+1]).Value()
+	checksum0 := binary.LittleEndian.Uint32(b[bh.Length+1:])
+	checksum1 := crc.New(b[:bh.Length+1]).Value()
 	if checksum0 != checksum1 {
 		return cache.Handle{}, errors.New("pebble/table: invalid table (checksum mismatch)")
 	}
 
-	typ := b[bh.length]
-	b = b[:bh.length]
+	typ := b[bh.Length]
+	b = b[:bh.Length]
 
 	switch typ {
 	case noCompressionBlockType:
@@ -1146,7 +1152,7 @@ func (r *Reader) readBlock(
 		}
 	}
 
-	h := r.cache.Set(r.dbNum, r.fileNum, bh.offset, b)
+	h := r.cache.Set(r.dbNum, r.fileNum, bh.Offset, b)
 	return h, nil
 }
 
@@ -1192,7 +1198,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	return rangeDelBlock.finish(), nil
 }
 
-func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
+func (r *Reader) readMetaindex(metaindexBH BlockHandle, o *Options) error {
 	b, err := r.readBlock(metaindexBH, nil /* transform */)
 	if err != nil {
 		return err
@@ -1203,7 +1209,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
 		return err
 	}
 
-	meta := map[string]blockHandle{}
+	meta := map[string]BlockHandle{}
 	for valid := i.First(); valid; valid = i.Next() {
 		bh, n := decodeBlockHandle(i.Value())
 		if n == 0 {
@@ -1221,7 +1227,8 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
 			return err
 		}
 		data := b.Get()
-		err := r.Properties.load(data, bh.offset)
+		r.propertiesBH = bh
+		err := r.Properties.load(data, bh.Offset)
 		b.Release()
 		if err != nil {
 			return err
@@ -1235,11 +1242,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
 		r.rangeDelTransform = r.transformRangeDelV1
 	}
 
-	for level := range r.opts.Levels {
-		fp := r.opts.Levels[level].FilterPolicy
-		if fp == nil {
-			continue
-		}
+	for name, fp := range r.opts.Filters {
 		types := []struct {
 			ftype  FilterType
 			prefix string
@@ -1248,7 +1251,7 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
 		}
 		var done bool
 		for _, t := range types {
-			if bh, ok := meta[t.prefix+fp.Name()]; ok {
+			if bh, ok := meta[t.prefix+name]; ok {
 				r.filter.bh = bh
 
 				switch t.ftype {
@@ -1269,10 +1272,70 @@ func (r *Reader) readMetaindex(metaindexBH blockHandle, o *Options) error {
 	return nil
 }
 
+// Layout returns the layout (block organization) for an sstable.
+func (r *Reader) Layout() (*Layout, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
+	l := &Layout{
+		Data:       make([]BlockHandle, 0, r.Properties.NumDataBlocks),
+		Filter:     r.filter.bh,
+		RangeDel:   r.rangeDel.bh,
+		Properties: r.propertiesBH,
+		MetaIndex:  r.metaIndexBH,
+		Footer:     r.footerBH,
+	}
+
+	index, err := r.readIndex()
+	if err != nil {
+		return nil, err
+	}
+
+	if r.Properties.IndexPartitions == 0 {
+		l.Index = append(l.Index, r.index.bh)
+		iter, _ := newBlockIter(r.compare, index)
+		for key, value := iter.First(); key != nil; key, value = iter.Next() {
+			dataBH, n := decodeBlockHandle(value)
+			if n == 0 || n != len(value) {
+				return nil, errors.New("pebble/table: corrupt index entry")
+			}
+			l.Data = append(l.Data, dataBH)
+		}
+	} else {
+		l.TopIndex = r.index.bh
+		topIter, _ := newBlockIter(r.compare, index)
+		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
+			indexBH, n := decodeBlockHandle(value)
+			if n == 0 || n != len(value) {
+				return nil, errors.New("pebble/table: corrupt index entry")
+			}
+			l.Index = append(l.Index, indexBH)
+
+			subIndex, err := r.readBlock(indexBH, nil /* transform */)
+			if err != nil {
+				return nil, err
+			}
+			iter, _ := newBlockIter(r.compare, subIndex.Get())
+			for key, value := iter.First(); key != nil; key, value = iter.Next() {
+				dataBH, n := decodeBlockHandle(value)
+				if n == 0 || n != len(value) {
+					return nil, errors.New("pebble/table: corrupt index entry")
+				}
+				l.Data = append(l.Data, dataBH)
+			}
+			subIndex.Release()
+		}
+	}
+
+	return l, nil
+}
+
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f vfs.File, dbNum, fileNum uint64, o *Options) *Reader {
+func NewReader(f vfs.File, dbNum, fileNum uint64, o *Options) (*Reader, error) {
 	o = o.EnsureDefaults()
+
 	r := &Reader{
 		file:    f,
 		dbNum:   dbNum,
@@ -1284,24 +1347,201 @@ func NewReader(f vfs.File, dbNum, fileNum uint64, o *Options) *Reader {
 	}
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")
-		return r
+		return r, r.err
 	}
 	footer, err := readFooter(f)
 	if err != nil {
 		r.err = err
-		return r
+		return r, r.err
 	}
 	// Read the metaindex.
 	if err := r.readMetaindex(footer.metaindexBH, o); err != nil {
 		r.err = err
-		return r
+		return r, r.err
 	}
 	r.index.bh = footer.indexBH
+	r.metaIndexBH = footer.metaindexBH
+	r.footerBH = footer.footerBH
 
-	// index, r.err = r.readIndex()
-	// iter, _ := newBlockIter(r.compare, index)
-	// for valid := iter.First(); valid; valid = iter.Next() {
-	// 	fmt.Printf("%s#%d\n", iter.Key().UserKey, iter.Key().SeqNum())
-	// }
-	return r
+	if r.Properties.ComparerName == "" {
+		r.compare = o.Comparer.Compare
+		r.split = o.Comparer.Split
+	} else if comparer, ok := o.Comparers[r.Properties.ComparerName]; ok {
+		r.compare = comparer.Compare
+		r.split = comparer.Split
+	} else {
+		r.err = fmt.Errorf("pebble/table: %d: unknown comparer %s",
+			fileNum, r.Properties.ComparerName)
+	}
+
+	if name := r.Properties.MergerName; name != "" && name != "nullptr" {
+		if _, ok := o.Mergers[r.Properties.MergerName]; !ok {
+			r.err = fmt.Errorf("pebble/table: %d: unknown merger %s",
+				fileNum, r.Properties.MergerName)
+		}
+	}
+	return r, r.err
+}
+
+// Layout describes the block organization of an sstable.
+type Layout struct {
+	Data       []BlockHandle
+	Index      []BlockHandle
+	TopIndex   BlockHandle
+	Filter     BlockHandle
+	RangeDel   BlockHandle
+	Properties BlockHandle
+	MetaIndex  BlockHandle
+	Footer     BlockHandle
+}
+
+// Describe returns a description of the layout. If the verbose parameter is
+// true, details of the structure of each block are returned as well.
+func (l *Layout) Describe(w io.Writer, verbose bool, r *Reader) {
+	type block struct {
+		BlockHandle
+		name string
+	}
+	var blocks []block
+
+	for i := range l.Data {
+		blocks = append(blocks, block{l.Data[i], "data"})
+	}
+	for i := range l.Index {
+		blocks = append(blocks, block{l.Index[i], "index"})
+	}
+	if l.TopIndex.Length != 0 {
+		blocks = append(blocks, block{l.TopIndex, "top-index"})
+	}
+	if l.Filter.Length != 0 {
+		blocks = append(blocks, block{l.Filter, "filter"})
+	}
+	if l.RangeDel.Length != 0 {
+		blocks = append(blocks, block{l.RangeDel, "range-del"})
+	}
+	if l.Properties.Length != 0 {
+		blocks = append(blocks, block{l.Properties, "properties"})
+	}
+	if l.MetaIndex.Length != 0 {
+		blocks = append(blocks, block{l.MetaIndex, "meta-index"})
+	}
+	if l.Footer.Length != 0 {
+		if l.Footer.Length == levelDBFooterLen {
+			blocks = append(blocks, block{l.Footer, "leveldb-footer"})
+		} else {
+			blocks = append(blocks, block{l.Footer, "footer"})
+		}
+	}
+
+	sort.Slice(blocks, func(i, j int) bool {
+		return blocks[i].Offset < blocks[j].Offset
+	})
+
+	for i := range blocks {
+		b := &blocks[i]
+		fmt.Fprintf(w, "%10d  %s (%d)\n", b.Offset, b.name, b.Length)
+
+		if !verbose {
+			continue
+		}
+		if b.name == "footer" || b.name == "leveldb-footer" || b.name == "filter" {
+			continue
+		}
+
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */)
+		if err != nil {
+			fmt.Fprintf(w, "  [err: %s]\n", err)
+			continue
+		}
+
+		getRestart := func(data []byte, restarts, i int32) int32 {
+			return int32(binary.LittleEndian.Uint32(data[restarts+4*i:]))
+		}
+
+		formatIsRestart := func(data []byte, restarts, numRestarts, offset int32) {
+			i := sort.Search(int(numRestarts), func(i int) bool {
+				return getRestart(data, restarts, int32(i)) >= offset
+			})
+			if i < int(numRestarts) && getRestart(data, restarts, int32(i)) == offset {
+				fmt.Fprintf(w, " [restart]\n")
+			} else {
+				fmt.Fprintf(w, "\n")
+			}
+		}
+
+		formatRestarts := func(data []byte, restarts, numRestarts int32) {
+			for i := int32(0); i < numRestarts; i++ {
+				offset := getRestart(data, restarts, i)
+				fmt.Fprintf(w, "%10d    [restart %d]\n",
+					b.Offset+uint64(restarts+4*i), b.Offset+uint64(offset))
+			}
+		}
+
+		switch b.name {
+		case "data":
+			iter, _ := newBlockIter(r.compare, h.Get())
+			for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
+				shared, ptr := decodeVarint(ptr)
+				unshared, ptr := decodeVarint(ptr)
+				value, _ := decodeVarint(ptr)
+
+				total := iter.nextOffset - iter.offset
+				// The format of the numbers in the record line is:
+				//
+				//   (<total> = <length> [<shared>] + <unshared> + <value>)
+				//
+				// <total>    is the total number of bytes for the record.
+				// <length>   is the size of the 3 varint encoded integers for <shared>,
+				//            <unshared>, and <value>.
+				// <shared>   is the number of key bytes shared with the previous key.
+				// <unshared> is the number of unshared key bytes.
+				// <value>    is the number of value bytes.
+				fmt.Fprintf(w, "%10d    record (%d = %d [%d] + %d + %d)",
+					b.Offset+uint64(iter.offset), total,
+					total-int32(unshared+value), shared, unshared, value)
+				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
+			}
+			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+		case "index", "top-index":
+			iter, _ := newBlockIter(r.compare, h.Get())
+			for key, value := iter.First(); key != nil; key, value = iter.Next() {
+				bh, n := decodeBlockHandle(value)
+				if n == 0 || n != len(value) {
+					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
+					continue
+				}
+				fmt.Fprintf(w, "%10d    block:%d/%d",
+					b.Offset+uint64(iter.offset), bh.Offset, bh.Length)
+				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
+			}
+			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+		case "properties":
+			iter, _ := newRawBlockIter(r.compare, h.Get())
+			for valid := iter.First(); valid; valid = iter.Next() {
+				fmt.Fprintf(w, "%10d    %s (%d)",
+					b.Offset+uint64(iter.offset), iter.Key().UserKey, iter.nextOffset-iter.offset)
+				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
+			}
+			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+		case "meta-index":
+			iter, _ := newRawBlockIter(r.compare, h.Get())
+			for valid := iter.First(); valid; valid = iter.Next() {
+				value := iter.Value()
+				bh, n := decodeBlockHandle(value)
+				if n == 0 || n != len(value) {
+					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
+					continue
+				}
+
+				fmt.Fprintf(w, "%10d    %s block:%d/%d",
+					b.Offset+uint64(iter.offset), iter.Key().UserKey,
+					bh.Offset, bh.Length)
+				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
+			}
+			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+		}
+
+		h.Release()
+	}
 }

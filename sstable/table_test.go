@@ -115,12 +115,15 @@ func init() {
 }
 
 func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
-	r := NewReader(f, 0, 0, &Options{
+	r, err := NewReader(f, 0, 0, &Options{
 		Comparer: comparer,
 		Levels: []TableOptions{{
 			FilterPolicy: fp,
 		}},
 	})
+	if err != nil {
+		return err
+	}
 
 	// Check that each key/value pair in wordCount is also in the table.
 	words := make([]string, 0, len(wordCount))
@@ -467,11 +470,14 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r := NewReader(f, 0, 0, &Options{
+	r, err := NewReader(f, 0, 0, &Options{
 		Levels: []TableOptions{{
 			FilterPolicy: c,
 		}},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	const n = 10000
 	// key is a buffer that will be re-used for n Get calls, each with a
@@ -603,7 +609,10 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 						continue
 					}
-					r := NewReader(rf, 0, 0, nil)
+					r, err := NewReader(rf, 0, 0, nil)
+					if err != nil {
+						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
+					}
 					i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
 					for valid := i.First(); valid; valid = i.Next() {
 						got++
@@ -632,7 +641,10 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := NewReader(f, 0, 0, nil)
+	r, err := NewReader(f, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer r.Close()
 
 	const globalSeqNum = 42
@@ -658,10 +670,10 @@ func TestFooterRoundTrip(t *testing.T) {
 					footer := footer{
 						format:      format,
 						checksum:    checksum,
-						metaindexBH: blockHandle{offset: 1, length: 2},
-						indexBH:     blockHandle{offset: 3, length: 4},
+						metaindexBH: BlockHandle{Offset: 1, Length: 2},
+						indexBH:     BlockHandle{Offset: 3, Length: 4},
 					}
-					for offset := range []int64{0, 1, 100} {
+					for _, offset := range []int64{0, 1, 100} {
 						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 							mem := vfs.NewMem()
 							f, err := mem.Create("test")
@@ -671,12 +683,15 @@ func TestFooterRoundTrip(t *testing.T) {
 							if _, err := f.Write(buf[:offset]); err != nil {
 								t.Fatal(err)
 							}
-							if _, err := f.Write(footer.encode(buf[100:])); err != nil {
+							encoded := footer.encode(buf[100:])
+							if _, err := f.Write(encoded); err != nil {
 								t.Fatal(err)
 							}
 							if err := f.Close(); err != nil {
 								t.Fatal(err)
 							}
+							footer.footerBH.Offset = uint64(offset)
+							footer.footerBH.Length = uint64(len(encoded))
 
 							f, err = mem.Open("test")
 							if err != nil {

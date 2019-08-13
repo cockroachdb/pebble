@@ -187,7 +187,11 @@ func TestLevelIterBoundaries(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			readers = append(readers, sstable.NewReader(f1, 0, 0, nil))
+			r, err := sstable.NewReader(f1, 0, 0, nil)
+			if err != nil {
+				return err.Error()
+			}
+			readers = append(readers, r)
 			files = append(files, fileMetadata{
 				fileNum:  fileNum,
 				smallest: meta.Smallest(cmp),
@@ -258,9 +262,12 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i] = sstable.NewReader(f, 0, uint64(i), &Options{
+		readers[i], err = sstable.NewReader(f, 0, uint64(i), &Options{
 			Cache: cache,
 		})
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	meta := make([]fileMetadata, len(readers))

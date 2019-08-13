@@ -21,12 +21,12 @@ import (
 func TestPropertiesLoad(t *testing.T) {
 	expected := Properties{
 		ColumnFamilyID:         math.MaxInt32,
-		ComparatorName:         "leveldb.BytewiseComparator",
+		ComparerName:           "leveldb.BytewiseComparator",
 		CompressionName:        "Snappy",
 		CompressionOptions:     "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
 		DataSize:               13913,
 		IndexSize:              325,
-		MergeOperatorName:      "nullptr",
+		MergerName:             "nullptr",
 		NumDataBlocks:          14,
 		NumEntries:             1710,
 		PrefixExtractorName:    "nullptr",
@@ -78,7 +78,10 @@ func TestPropertiesLoad(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		r := NewReader(f, 0, 0, nil)
+		r, err := NewReader(f, 0, 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if diff := pretty.Diff(expected, r.Properties); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
@@ -90,7 +93,7 @@ func TestPropertiesSave(t *testing.T) {
 	expected := &Properties{
 		ColumnFamilyID:           1,
 		ColumnFamilyName:         "column family name",
-		ComparatorName:           "comparator name",
+		ComparerName:             "comparator name",
 		CompressionName:          "compression name",
 		CompressionOptions:       "compression option",
 		CreationTime:             2,
@@ -105,7 +108,7 @@ func TestPropertiesSave(t *testing.T) {
 		IndexSize:                10,
 		IndexType:                11,
 		IndexValueIsDeltaEncoded: 12,
-		MergeOperatorName:        "merge operator name",
+		MergerName:               "merge operator name",
 		NumDataBlocks:            13,
 		NumDeletions:             14,
 		NumEntries:               15,
