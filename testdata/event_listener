@@ -29,6 +29,7 @@ sync: wal/000002.log
 [JOB 2] WAL created 000005
 [JOB 3] flushing to L0
 create: db/000006.sst
+[JOB 3] flushing: sstable created 000006
 sync: db/000006.sst
 sync: db
 [JOB 3] flushed to L0: 1 (825 B)
@@ -51,6 +52,7 @@ sync: wal/000005.log
 [JOB 4] WAL created 000008 (recycled 000002)
 [JOB 5] flushing to L0
 create: db/000009.sst
+[JOB 5] flushing: sstable created 000009
 sync: db/000009.sst
 sync: db
 [JOB 5] flushed to L0: 1 (825 B)
@@ -64,6 +66,7 @@ sync: db
 [JOB 5] MANIFEST deleted 000007
 [JOB 6] compacting L0 -> L6: 2+0 (1.6 K + 0 B)
 create: db/000011.sst
+[JOB 6] compacting: sstable created 000011
 sync: db/000011.sst
 sync: db
 [JOB 6] compacted L0 -> L6: 2+0 (1.6 K + 0 B) -> 1 (825 B)

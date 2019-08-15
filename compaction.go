@@ -601,7 +601,7 @@ func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
 	d.mu.Lock()
 	estimatedMaxWAmp := d.mu.versions.picker.estimatedMaxWAmp
 	pacerInfo := compactionPacerInfo{
-		slowdownThreshold: uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
+		slowdownThreshold:   uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
 		totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
 	}
 	d.mu.Unlock()
@@ -685,7 +685,7 @@ func (d *DB) flush1() error {
 		memTableSize: uint64(d.opts.MemTableSize),
 		getInfo:      d.getFlushPacerInfo,
 	})
-	ve, pendingOutputs, err := d.runCompaction(c, flushPacer)
+	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
 
 	if d.opts.EventListener.FlushEnd != nil {
 		info := FlushInfo{
@@ -832,7 +832,7 @@ func (d *DB) compact1() (err error) {
 		memTableSize: uint64(d.opts.MemTableSize),
 		getInfo:      d.getCompactionPacerInfo,
 	})
-	ve, pendingOutputs, err := d.runCompaction(c, compactionPacer)
+	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
 	if d.opts.EventListener.CompactionEnd != nil {
 		info.Err = err
@@ -869,7 +869,7 @@ func (d *DB) compact1() (err error) {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) runCompaction(c *compaction, pacer pacer) (
+func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 	ve *versionEdit, pendingOutputs []uint64, retErr error,
 ) {
 	// Check for a trivial move of one table from one level to the next. We avoid
@@ -958,6 +958,18 @@ func (d *DB) runCompaction(c *compaction, pacer pacer) (
 		file, err := d.opts.FS.Create(filename)
 		if err != nil {
 			return err
+		}
+		if d.opts.EventListener.TableCreated != nil {
+			reason := "flushing"
+			if c.flushing == nil {
+				reason = "compacting"
+			}
+			d.opts.EventListener.TableCreated(TableCreateInfo{
+				JobID:   jobID,
+				Reason:  reason,
+				Path:    filename,
+				FileNum: fileNum,
+			})
 		}
 		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,

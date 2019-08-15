@@ -21,6 +21,9 @@ type ManifestCreateInfo = base.ManifestCreateInfo
 // ManifestDeleteInfo exports the base.ManifestDeleteInfo type.
 type ManifestDeleteInfo = base.ManifestDeleteInfo
 
+// TableCreateInfo exports the base.TableCreateInfo type.
+type TableCreateInfo = base.TableCreateInfo
+
 // TableDeleteInfo exports the base.TableDeleteInfo type.
 type TableDeleteInfo = base.TableDeleteInfo
 
