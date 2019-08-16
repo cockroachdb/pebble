@@ -827,12 +827,7 @@ func (d *DB) compact1() (err error) {
 		d.opts.EventListener.CompactionBegin(info)
 	}
 
-	compactionPacer := newCompactionPacer(compactionPacerEnv{
-		limiter:      d.compactionLimiter,
-		memTableSize: uint64(d.opts.MemTableSize),
-		getInfo:      d.getCompactionPacerInfo,
-	})
-	ve, pendingOutputs, err := d.runCompaction(c, compactionPacer)
+	ve, pendingOutputs, err := d.runCompaction(c, d.autoTunedPacer)
 
 	if d.opts.EventListener.CompactionEnd != nil {
 		info.Err = err

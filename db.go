@@ -185,6 +185,8 @@ type DB struct {
 
 	flushLimiter limiter
 
+	autoTunedPacer pacer
+
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
 	mu struct {

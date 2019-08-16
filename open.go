@@ -84,6 +84,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		split:          opts.Comparer.Split,
 		abbreviatedKey: opts.Comparer.AbbreviatedKey,
 		logRecycler:    logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
+		autoTunedPacer: newAutoTunedCompactionPacer(),
 	}
 	if d.equal == nil {
 		d.equal = bytes.Equal
