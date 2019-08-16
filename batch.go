@@ -741,11 +741,10 @@ func (r *BatchReader) nextStr() (s []byte, ok bool) {
 // Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
 // two in sync.
 type batchIter struct {
-	cmp     Compare
-	batch   *Batch
-	reverse bool
-	iter    batchskl.Iterator
-	err     error
+	cmp   Compare
+	batch *Batch
+	iter  batchskl.Iterator
+	err   error
 }
 
 // batchIter implements the internalIterator interface.
@@ -1016,7 +1015,6 @@ type flushableBatchIter struct {
 	data    []byte
 	offsets []flushableBatchEntry
 	cmp     Compare
-	reverse bool
 	index   int
 	key     InternalKey
 	err     error
