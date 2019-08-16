@@ -37,3 +37,40 @@ young#0,1 [36]
 your#0,1 [34 39]
 yourself#0,1 [37]
 youth#0,1 [35]
+
+sstable scan
+--key=%x
+--value=null
+--start=you
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+796f75#0,1
+796f756e67#0,1
+796f7572#0,1
+796f757273656c66#0,1
+796f757468#0,1
+
+sstable scan
+--key=%q
+--value=null
+--start=hex:796f75
+--end=raw:yourself
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+"you"#0,1
+"young"#0,1
+"your"#0,1
+
+sstable scan
+--key=null
+--value=[%x]
+--start=hex:796f75
+--end=raw:yourself
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+[313130]
+[36]
+[3439]

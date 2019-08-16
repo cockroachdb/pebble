@@ -46,7 +46,7 @@ func main() {
 		Short: "pebble benchmarking/introspection tool",
 	}
 	rootCmd.AddCommand(benchCmd)
-	rootCmd.AddCommand(tool.AllCmds...)
+	rootCmd.AddCommand(tool.New().Commands...)
 
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(

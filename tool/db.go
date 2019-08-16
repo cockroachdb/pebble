@@ -7,78 +7,72 @@ package tool
 import (
 	"fmt"
 
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/spf13/cobra"
 )
 
-// AllCmds is a list of all of the tool commands.
-var AllCmds = []*cobra.Command{
-	DBCmd,
-	ManifestCmd,
-	SSTableCmd,
-	WALCmd,
+// dbT implements db-level tools, including both configuration state and the
+// commands themselves.
+type dbT struct {
+	Root  *cobra.Command
+	Check *cobra.Command
+	LSM   *cobra.Command
+	Scan  *cobra.Command
 }
 
-// DBCmd is the root of the DB commands.
-var DBCmd = &cobra.Command{
-	Use:   "db",
-	Short: "DB introspection tools",
-}
+func newDB(opts *base.Options) *dbT {
+	d := &dbT{}
 
-// DBCheckCmd implements db check.
-var DBCheckCmd = &cobra.Command{
-	Use:   "check <dir>",
-	Short: "verify checksums and metadata",
-	Long: `
+	d.Root = &cobra.Command{
+		Use:   "db",
+		Short: "DB introspection tools",
+	}
+	d.Check = &cobra.Command{
+		Use:   "check <dir>",
+		Short: "verify checksums and metadata",
+		Long: `
 Verify sstable, manifest, and WAL checksums. Requires that the specified
 database not be in use by another process.
 `,
-	Args: cobra.ExactArgs(1),
-	Run:  runDBCheck,
-}
-
-// DBLSMCmd implements db lsm.
-var DBLSMCmd = &cobra.Command{
-	Use:   "lsm <dir>",
-	Short: "print LSM structure",
-	Long: `
+		Args: cobra.ExactArgs(1),
+		Run:  d.runCheck,
+	}
+	d.LSM = &cobra.Command{
+		Use:   "lsm <dir>",
+		Short: "print LSM structure",
+		Long: `
 Print the structure of the LSM tree. Requires that the specified database not
 be in use by another process.
 `,
-	Args: cobra.ExactArgs(1),
-	Run:  runDBLSM,
-}
-
-// DBScanCmd implements db scan.
-var DBScanCmd = &cobra.Command{
-	Use:   "scan <dir>",
-	Short: "print db records",
-	Long: `
+		Args: cobra.ExactArgs(1),
+		Run:  d.runLSM,
+	}
+	d.Scan = &cobra.Command{
+		Use:   "scan <dir>",
+		Short: "print db records",
+		Long: `
 Print the records in the DB. Requires that the specified database not be in use
 by another process.
 `,
-	Args: cobra.ExactArgs(1),
-	Run:  runDBScan,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runScan,
+	}
+
+	d.Root.AddCommand(d.Check, d.LSM, d.Scan)
+	return d
 }
 
-func init() {
-	DBCmd.AddCommand(
-		DBCheckCmd,
-		DBLSMCmd,
-		DBScanCmd,
-	)
-}
-
-func runDBCheck(cmd *cobra.Command, args []string) {
+func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
 	fmt.Fprintf(stderr, "TODO(peter): \"db check\" unimplemented\n")
 	osExit(1)
 }
 
-func runDBLSM(cmd *cobra.Command, args []string) {
+func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
 	fmt.Fprintf(stderr, "TODO(peter): \"db lsm\" unimplemented\n")
 	osExit(1)
 }
 
-func runDBScan(cmd *cobra.Command, args []string) {
+func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	fmt.Fprintf(stderr, "TODO(peter): \"db scan\" unimplemented\n")
 	osExit(1)
 }

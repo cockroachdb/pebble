@@ -7,31 +7,39 @@ package tool
 import (
 	"fmt"
 
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/spf13/cobra"
 )
 
-// ManifestCmd is the root of the manifest commands.
-var ManifestCmd = &cobra.Command{
-	Use:   "manifest",
-	Short: "manifest introspection tools",
+// manifestT implements manifest-level tools, including both configuration
+// state and the commands themselves.
+type manifestT struct {
+	Root *cobra.Command
+	Dump *cobra.Command
 }
 
-// ManifestDumpCmd implements manifest dump.
-var ManifestDumpCmd = &cobra.Command{
-	Use:   "dump <manifest-files>",
-	Short: "print manifest contents",
-	Long: `
+func newManifest(opts *base.Options) *manifestT {
+	m := &manifestT{}
+
+	m.Root = &cobra.Command{
+		Use:   "manifest",
+		Short: "manifest introspection tools",
+	}
+	m.Dump = &cobra.Command{
+		Use:   "dump <manifest-files>",
+		Short: "print manifest contents",
+		Long: `
 Print the contents of the MANIFEST files.
 `,
-	Args: cobra.MinimumNArgs(1),
-	Run:  runManifestDump,
+		Args: cobra.MinimumNArgs(1),
+		Run:  m.runDump,
+	}
+
+	m.Root.AddCommand(m.Dump)
+	return m
 }
 
-func init() {
-	ManifestCmd.AddCommand(ManifestDumpCmd)
-}
-
-func runManifestDump(cmd *cobra.Command, args []string) {
+func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 	fmt.Fprintf(stderr, "TODO(peter): \"manifest dump\" unimplemented\n")
 	osExit(1)
 }
