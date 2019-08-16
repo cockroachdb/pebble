@@ -1,0 +1,44 @@
+wal dump
+----
+requires at least 1 arg(s), only received 0
+
+wal dump
+../testdata/db-stage-2/000003.log
+----
+../testdata/db-stage-2/000003.log
+1,1,21,0,SET(foo,<3>)
+2,1,21,28,SET(bar,<3>)
+3,1,23,56,SET(baz,<5>)
+4,1,22,86,SET(foo,<4>)
+5,1,17,115,DEL(bar)
+EOF
+
+wal dump
+../testdata/db-stage-4/000006.log
+----
+../testdata/db-stage-4/000006.log
+6,1,22,0,SET(foo,<4>)
+7,1,22,29,SET(quux,<3>)
+8,1,17,58,DEL(baz)
+EOF
+
+wal dump
+../testdata/db-stage-4/000006.log
+--key=%x
+--value=%x
+----
+../testdata/db-stage-4/000006.log
+6,1,22,0,SET(666f6f,66697665)
+7,1,22,29,SET(71757578,736978)
+8,1,17,58,DEL(62617a)
+EOF
+
+wal dump
+../testdata/db-stage-4/000006.log
+--value=quoted
+----
+../testdata/db-stage-4/000006.log
+6,1,22,0,SET(foo,five)
+7,1,22,29,SET(quux,six)
+8,1,17,58,DEL(baz)
+EOF
