@@ -41,7 +41,7 @@ func newSSTable(opts *base.Options) *sstableT {
 		opts: opts,
 	}
 	s.fmtKey.mustSet("quoted")
-	s.fmtValue.mustSet("hex")
+	s.fmtValue.mustSet("[%x]")
 
 	s.Root = &cobra.Command{
 		Use:   "sstable",
