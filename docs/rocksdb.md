@@ -18,6 +18,8 @@ differences.
 * [Large Batches](#large-batches)
 * [Commit Pipeline](#commit-pipeline)
 * [Range Deletions](#range-deletions)
+* [Flush and Compaction Pacing](#flush-and-compaction-pacing)
+* [Write Throttling](#write-throttling)
 * [Other Differences](#other-differences)
 
 ## Internal Keys
@@ -633,6 +635,117 @@ see that `i` is covered by the range tombstone `[g,k)`. The iterator
 is immediately advanced to `n` which is covered by the range tombstone
 `[m,q)` causing the iterator to advance to `o` which is visible.
 
+## Flush and Compaction Pacing
+
+Flushes and compactions in LSM trees are problematic because they
+contend with foreground traffic, resulting in write and read latency
+spikes. Without throttling the rate of flushes and compactions, they
+occur "as fast as possible" (which is not entirely true, since we
+have a `bytes_per_sync` option). This instantaneous usage of CPU and
+disk IO results in potentially huge latency spikes for writes and
+reads which occur in parallel to the flushes and compactions.
+
+RocksDB attempts to solve this issue by offering an option to limit
+the speed of flushes and compactions. A maximum `bytes/sec` can be
+specified through the options, and background IO usage will be limited
+to the specified amount. Flushes are given priority over compactions,
+but they still use the same rate limiter. Though simple to implement
+and understand, this option is fragile for various reasons.
+
+1) If the rate limit is configured too low, the DB will stall and
+write throughput will be affected.
+2) If the rate limit is configured too high, the write and read
+latency spikes will persist.
+3) A different configuration is needed per system depending on the
+speed of the storage device.
+4) Write rates typically do not stay the same throughout the lifetime
+of the DB (higher throughput during certain times of the day, etc) but
+the rate limit cannot be configured during runtime.
+
+RocksDB also offers an
+["auto-tuned" rate limiter](https://rocksdb.org/blog/2017/12/18/17-auto-tuned-rate-limiter.html)
+which uses a simple multiplicative-increase, multiplicative-decrease
+algorithm to dynamically adjust the background IO rate limit depending
+on how much of the rate limiter has been exhausted in an interval.
+This solves the problem of having a static rate limit, but Pebble
+attempts to improve on this with a different pacing mechanism.
+
+Pebble's pacing mechanism uses separate rate limiters for flushes and
+compactions. Both the flush and compaction pacing mechanisms work by
+attempting to flush and compact only as fast as needed and no faster.
+This is achieved differently for flushes versus compactions.
+
+For flush pacing, Pebble keeps the rate at which the memtable is
+flushed at the same rate as user writes. This ensures that disk IO
+used by flushes remains steady. When a mutable memtable becomes full
+and is marked immutable, it is typically flushed as fast as possible.
+Instead of flushing as fast as possible, what we do is look at the
+total number of bytes in all the memtables (mutable + queue of
+immutables) and subtract the number of bytes that have been flushed in
+the current flush. This number gives us the total number of bytes
+which remain to be flushed. If we keep this number steady at a constant
+level, we have the invariant that the flush rate is equal to the write
+rate.
+
+When the number of bytes remaining to be flushed falls below our
+target level, we slow down the speed of flushing. We keep a minimum
+rate at which the memtable is flushed so that flushes proceed even if
+writes have stopped. When the number of bytes remaining to be flushed
+goes above our target level, we allow the flush to proceed as fast as
+possible, without applying any rate limiting. However, note that the
+second case would indicate that writes are occurring faster than the
+memtable can flush, which would be an unsustainable rate. The LSM
+would soon hit the memtable count stall condition and writes would be
+completely stopped.
+
+For compaction pacing, Pebble uses an estimation of compaction debt,
+which is the number of bytes which need to be compacted before no
+further compactions are needed. This estimation is calculated by
+looking at the number of bytes that have been flushed by the current
+flush routine, adding those bytes to the size of the level 0 sstables,
+then seeing how many bytes exceed the target number of bytes for the
+level 0 sstables. We multiply the number of bytes exceeded by the
+the level ratio and add that number to the compaction debt estimate.
+We repeat this process until the final level, which gives us a final
+compaction debt estimate for the entire LSM tree.
+
+Like with flush pacing, we want to keep the compaction debt at a
+constant level. This ensures that compactions occur only as fast as
+needed and no faster. If the compaction debt estimate falls below our
+target level, we slow down compactions. We maintain a minimum
+compaction rate so that compactions proceed even if flushes have
+stopped. If the compaction debt goes above our target level, we let
+compactions proceed as fast as possible without any rate limiting.
+Just like with flush pacing, this would indicate that writes are
+occurring faster than the background compactions can keep up with,
+which is an unsustainable rate. The LSM's read amplification would
+increase and the L0 file count stall condition would be hit.
+
+With the combined flush and compaction pacing mechanisms, flushes and
+compactions only occur as fast as needed and no faster, which reduces
+latency spikes for user read and write operations.
+
+## Write throttling
+
+RocksDB adds artificial delays to user writes when certain thresholds
+are met, such as `l0_slowdown_writes_threshold`. These artificial
+delays occur when the system is close to stalling to lessen the write
+pressure so that flushing and compactions can catch up. On the surface
+this seems good, since write stalls would seemingly be eliminated and
+replaced with gradual slowdowns. Closed loop write latency benchmarks
+would show the elimination of abrupt write stalls, which seems
+desirable.
+
+However, this doesn't do anything to improve latencies in an open loop
+model, which is the model more likely to resemble real world use
+cases. Artificial delays increase write latencies without a clear
+benefit. Writes stalls in an open loop system would indicate that
+writes are generated faster than the system could possibly handle,
+which adding artificial delays won't solve.
+
+For this reason, Pebble doesn't add artificial delays to user writes
+and writes are served as quickly as possible.
+
 ### Other Differences
 
 * `internalIterator` API which minimizes indirect (virtual) function
@@ -644,5 +757,4 @@ is immediately advanced to `n` which is covered by the range tombstone
 * Improved `Iterator` API
   + `SeekPrefixGE` for prefix iteration
   + `SetBounds` for adjusting the bounds on an existing `Iterator`
-* Improved flush and compaction pacing mechanisms
 * Simpler `Get` implementation
