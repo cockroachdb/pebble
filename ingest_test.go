@@ -279,7 +279,7 @@ func TestIngestLink(t *testing.T) {
 					t.Fatalf("expected %d files, but found:\n%s", count, strings.Join(files, "\n"))
 				}
 				for j := range files {
-					ftype, fileNum, ok := parseDBFilename(files[j])
+					ftype, fileNum, ok := base.ParseFilename(files[j])
 					if !ok {
 						t.Fatalf("unable to parse filename: %s", files[j])
 					}

@@ -43,7 +43,7 @@ func (m *fileMetadata) String() string {
 
 func (m *fileMetadata) tableInfo(dirname string) TableInfo {
 	return TableInfo{
-		Path:           dbFilename(dirname, fileTypeTable, m.fileNum),
+		Path:           base.MakeFilename(dirname, fileTypeTable, m.fileNum),
 		FileNum:        m.fileNum,
 		Size:           m.size,
 		Smallest:       m.smallest,

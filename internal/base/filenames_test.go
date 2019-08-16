@@ -2,14 +2,14 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package pebble
+package base
 
 import (
 	"path/filepath"
 	"testing"
 )
 
-func TestParseDBFilename(t *testing.T) {
+func TestParseFilename(t *testing.T) {
 	testCases := map[string]bool{
 		"000000.log":          true,
 		"000000.log.zip":      false,
@@ -35,7 +35,7 @@ func TestParseDBFilename(t *testing.T) {
 		"OPTIONS-123456.doc":  false,
 	}
 	for tc, want := range testCases {
-		_, _, got := parseDBFilename(filepath.Join("foo", tc))
+		_, _, got := ParseFilename(filepath.Join("foo", tc))
 		if got != want {
 			t.Errorf("%q: got %v, want %v", tc, got, want)
 		}
@@ -43,15 +43,15 @@ func TestParseDBFilename(t *testing.T) {
 }
 
 func TestFilenameRoundTrip(t *testing.T) {
-	testCases := map[fileType]bool{
+	testCases := map[FileType]bool{
 		// CURRENT and LOCK files aren't numbered.
-		fileTypeCurrent: false,
-		fileTypeLock:    false,
+		FileTypeCurrent: false,
+		FileTypeLock:    false,
 		// The remaining file types are numbered.
-		fileTypeLog:      true,
-		fileTypeManifest: true,
-		fileTypeTable:    true,
-		fileTypeOptions:  true,
+		FileTypeLog:      true,
+		FileTypeManifest: true,
+		FileTypeTable:    true,
+		FileTypeOptions:  true,
 	}
 	for fileType, numbered := range testCases {
 		fileNums := []uint64{0}
@@ -59,8 +59,8 @@ func TestFilenameRoundTrip(t *testing.T) {
 			fileNums = []uint64{0, 1, 2, 3, 10, 42, 99, 1001}
 		}
 		for _, fileNum := range fileNums {
-			filename := dbFilename("foo", fileType, fileNum)
-			gotFT, gotFN, gotOK := parseDBFilename(filename)
+			filename := MakeFilename("foo", fileType, fileNum)
+			gotFT, gotFN, gotOK := ParseFilename(filename)
 			if !gotOK {
 				t.Errorf("could not parse %q", filename)
 				continue

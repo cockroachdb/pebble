@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -72,7 +73,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.nextFileNumber = 2
 
 	// Read the CURRENT file to find the current manifest file.
-	current, err := vs.fs.Open(dbFilename(dirname, fileTypeCurrent, 0))
+	current, err := vs.fs.Open(base.MakeFilename(dirname, fileTypeCurrent, 0))
 	if err != nil {
 		return fmt.Errorf("pebble: could not open CURRENT file for DB %q: %v", dirname, err)
 	}
@@ -210,7 +211,7 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 				if vs.opts.EventListener.ManifestCreated != nil {
 					vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 						JobID:   jobID,
-						Path:    dbFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
+						Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
 						FileNum: newManifestFileNumber,
 						Err:     err,
 					})
@@ -252,7 +253,7 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 			if vs.opts.EventListener.ManifestCreated != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
-					Path:    dbFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
+					Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
 					FileNum: newManifestFileNumber,
 				})
 			}
@@ -298,7 +299,7 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 // createManifest creates a manifest file that contains a snapshot of vs.
 func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error) {
 	var (
-		filename     = dbFilename(dirname, fileTypeManifest, fileNum)
+		filename     = base.MakeFilename(dirname, fileTypeManifest, fileNum)
 		manifestFile vfs.File
 		manifest     *record.Writer
 	)

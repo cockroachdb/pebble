@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/petermattis/pebble/internal/arenaskl"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/rate"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
@@ -39,7 +40,7 @@ func createDB(dirname string, opts *Options) (retErr error) {
 		comparatorName: opts.Comparer.Name,
 		nextFileNumber: manifestFileNum + 1,
 	}
-	manifestFilename := dbFilename(dirname, fileTypeManifest, manifestFileNum)
+	manifestFilename := base.MakeFilename(dirname, fileTypeManifest, manifestFileNum)
 	f, err := opts.FS.Create(manifestFilename)
 	if err != nil {
 		return fmt.Errorf("pebble: could not create %q: %v", manifestFilename, err)
@@ -122,7 +123,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 	}
-	fileLock, err := opts.FS.Lock(dbFilename(dirname, fileTypeLock, 0))
+	fileLock, err := opts.FS.Lock(base.MakeFilename(dirname, fileTypeLock, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		d.walDir, err = opts.FS.OpenDir(d.walDirname)
 	}
 
-	if _, err := opts.FS.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) && !d.opts.ReadOnly {
+	if _, err := opts.FS.Stat(base.MakeFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) && !d.opts.ReadOnly {
 		// Create the DB if it did not already exist.
 		if err := createDB(dirname, opts); err != nil {
 			return nil, err
@@ -190,7 +191,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	}
 	var logFiles []fileNumAndName
 	for _, filename := range ls {
-		ft, fn, ok := parseDBFilename(filename)
+		ft, fn, ok := base.ParseFilename(filename)
 		if !ok {
 			continue
 		}
@@ -229,7 +230,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		// Create an empty .log file.
 		ve.logNumber = d.mu.versions.nextFileNum()
 		d.mu.log.queue = append(d.mu.log.queue, ve.logNumber)
-		logFile, err := opts.FS.Create(dbFilename(d.walDirname, fileTypeLog, ve.logNumber))
+		logFile, err := opts.FS.Create(base.MakeFilename(d.walDirname, fileTypeLog, ve.logNumber))
 		if err != nil {
 			return nil, err
 		}
@@ -253,7 +254,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.
 		d.optionsFileNum = d.mu.versions.nextFileNum()
-		optionsFile, err := opts.FS.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
+		optionsFile, err := opts.FS.Create(base.MakeFilename(dirname, fileTypeOptions, d.optionsFileNum))
 		if err != nil {
 			return nil, err
 		}

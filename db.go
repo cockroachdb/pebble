@@ -920,7 +920,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 
-			newLogName := dbFilename(d.walDirname, fileTypeLog, newLogNumber)
+			newLogName := base.MakeFilename(d.walDirname, fileTypeLog, newLogNumber)
 
 			// Try to use a recycled log file. Recycling log files is an important
 			// performance optimization as it is faster to sync a file that has
@@ -930,7 +930,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// preallocation is performed (e.g. fallocate).
 			recycleLogNumber := d.logRecycler.peek()
 			if recycleLogNumber > 0 {
-				recycleLogName := dbFilename(d.walDirname, fileTypeLog, recycleLogNumber)
+				recycleLogName := base.MakeFilename(d.walDirname, fileTypeLog, recycleLogNumber)
 				err = d.opts.FS.Rename(recycleLogName, newLogName)
 			}
 
