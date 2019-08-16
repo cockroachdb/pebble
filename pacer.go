@@ -7,7 +7,10 @@ package pebble
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
+
+	"github.com/petermattis/pebble/internal/rate"
 )
 
 var nilPacer = &noopPacer{}
@@ -210,6 +213,81 @@ func (p *flushPacer) maybeThrottle(bytesIterated uint64) error {
 	// writes. If writes come in faster than how fast the memtable can flush,
 	// flushing proceeds at maximum (unthrottled) speed.
 	return p.limit(flushAmount, dirtyBytes)
+}
+
+const (
+	// Interval in which we readjust the rate (in ms).
+	recalculateInterval = time.Millisecond * 100
+	refillsPerSecond    = 10
+
+	maximumRate          = 1000 << 20 // 1 GB/s
+	minimumRate          = 50 << 20 // 50 MB/s
+	lowWatermarkPercent  = 50
+	highWatermarkPercent = 90
+
+	// Tune by 5% each time.
+	adjustmentFactorPercent = 5
+)
+
+type autoTunedCompactionPacer struct {
+	limiter *rate.Limiter
+
+	// last time the limiter was adjusted
+	lastRefresh time.Time
+
+	curAmount   int
+	maxCapacity int
+
+	prevBytesIterated uint64
+}
+
+func newAutoTunedCompactionPacer() *autoTunedCompactionPacer {
+	return &autoTunedCompactionPacer{
+		limiter:     rate.NewLimiter(maximumRate, math.MaxInt32),
+		lastRefresh: time.Now(),
+		maxCapacity: maximumRate / refillsPerSecond,
+	}
+}
+
+func (p *autoTunedCompactionPacer) maybeThrottle(bytesIterated uint64) error {
+	var compactAmount int
+	if bytesIterated > p.prevBytesIterated {
+		compactAmount = int(bytesIterated - p.prevBytesIterated)
+	}
+	p.prevBytesIterated = bytesIterated
+
+	err := p.limiter.WaitN(context.Background(), int(compactAmount))
+	if err != nil {
+		return err
+	}
+
+	p.curAmount += compactAmount
+
+	now := time.Now()
+	elapsedTime := now.Sub(p.lastRefresh)
+	if elapsedTime > recalculateInterval {
+		p.lastRefresh = now
+
+		drainedPercent := uint64(p.curAmount / p.maxCapacity) *
+			uint64(elapsedTime / recalculateInterval) * 100
+
+		if drainedPercent < lowWatermarkPercent {
+			limit := uint64(p.limiter.Limit()) * (100 - adjustmentFactorPercent) / 100
+			if uint64(limit) > minimumRate {
+				p.limiter.SetLimit(rate.Limit(limit))
+			}
+		} else if drainedPercent > highWatermarkPercent {
+			limit := uint64(p.limiter.Limit()) * (100 + adjustmentFactorPercent) / 100
+			if uint64(limit) < maximumRate {
+				p.limiter.SetLimit(rate.Limit(limit))
+			}
+		}
+
+		p.curAmount = 0
+		p.maxCapacity = int(p.limiter.Limit()) / refillsPerSecond
+	}
+
+	return nil
 }
 
 type noopPacer struct {}
