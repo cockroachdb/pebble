@@ -286,7 +286,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 	b.storage.data = append(b.storage.data, batch.storage.data[batchHeaderLen:]...)
 
 	count := binary.LittleEndian.Uint32(batch.storage.data[8:12])
-	b.setCount(b.count() + count)
+	b.setCount(b.Count() + count)
 
 	for iter := BatchReader(b.storage.data[offset:]); len(iter) > 0; {
 		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.storage.data[0]))
@@ -459,7 +459,7 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	pos := len(b.storage.data)
 	b.grow(1 + maxVarintLen32 + len(data))
 	b.storage.data[pos] = byte(InternalKeyKindLogData)
-	pos, varlen1 := b.copyStr(pos+1, data)
+	_, varlen1 := b.copyStr(pos+1, data)
 	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
 	return nil
 }
@@ -468,6 +468,17 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 // the contents.
 func (b *Batch) Repr() []byte {
 	return b.storage.data
+}
+
+// SetRepr sets the underlying batch representation. The batch takes ownership
+// of the supplied slice. It is not safe to modify it afterwards until the
+// Batch is no longer in use.
+func (b *Batch) SetRepr(data []byte) error {
+	if len(data) < batchHeaderLen {
+		return fmt.Errorf("invalid batch")
+	}
+	b.storage.data = data
+	return nil
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
@@ -637,7 +648,10 @@ func (b *Batch) setSeqNum(seqNum uint64) {
 	binary.LittleEndian.PutUint64(b.seqNumData(), seqNum)
 }
 
-func (b *Batch) seqNum() uint64 {
+// SeqNum returns the batch sequence number which is applied to the first
+// record in the batch. The sequence number is incremented for each subsequent
+// record.
+func (b *Batch) SeqNum() uint64 {
 	return binary.LittleEndian.Uint64(b.seqNumData())
 }
 
@@ -645,7 +659,8 @@ func (b *Batch) setCount(v uint32) {
 	binary.LittleEndian.PutUint32(b.countData(), v)
 }
 
-func (b *Batch) count() uint32 {
+// Count returns the number of records in the batch.
+func (b *Batch) Count() uint32 {
 	return binary.LittleEndian.Uint32(b.countData())
 }
 
@@ -872,7 +887,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
 		data:      batch.storage.data,
 		cmp:       comparer.Compare,
-		offsets:   make([]flushableBatchEntry, 0, batch.count()),
+		offsets:   make([]flushableBatchEntry, 0, batch.Count()),
 		flushedCh: make(chan struct{}),
 	}
 

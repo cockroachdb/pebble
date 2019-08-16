@@ -398,7 +398,7 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 		// This is a large batch which was already added to the immutable queue.
 		return nil
 	}
-	err := mem.apply(b, b.seqNum())
+	err := mem.apply(b, b.SeqNum())
 	if err != nil {
 		return err
 	}
@@ -414,7 +414,7 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 	d.mu.Lock()
 
 	if b.flushable != nil {
-		b.flushable.seqNum = b.seqNum()
+		b.flushable.seqNum = b.SeqNum()
 	}
 
 	// Switch out the memtable if there was not enough room to store the batch.
