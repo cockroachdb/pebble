@@ -330,8 +330,8 @@ func (d *DB) replayWAL(
 		b = Batch{}
 		b.storage.data = buf.Bytes()
 		b.refreshMemTableSize()
-		seqNum := b.seqNum()
-		maxSeqNum = seqNum + uint64(b.count())
+		seqNum := b.SeqNum()
+		maxSeqNum = seqNum + uint64(b.Count())
 
 		if mem == nil {
 			mem = newMemTable(d.opts)
