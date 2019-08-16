@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/cache"
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -632,7 +633,7 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	current := func() string {
-		f, err := d.opts.FS.Open(dbFilename(d.dirname, fileTypeCurrent, 0))
+		f, err := d.opts.FS.Open(base.MakeFilename(d.dirname, fileTypeCurrent, 0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -675,7 +676,7 @@ func TestRollManifest(t *testing.T) {
 	}
 	var manifests []string
 	for _, filename := range files {
-		fileType, _, ok := parseDBFilename(filename)
+		fileType, _, ok := base.ParseFilename(filename)
 		if !ok {
 			continue
 		}

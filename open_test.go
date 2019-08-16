@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -154,7 +155,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 					}
 					var optionsCount int
 					for _, s := range got {
-						if t, _, ok := parseDBFilename(s); ok && t == fileTypeOptions {
+						if t, _, ok := base.ParseFilename(s); ok && t == fileTypeOptions {
 							optionsCount++
 						}
 					}

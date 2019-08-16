@@ -122,7 +122,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
 func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
-		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
+		target := base.MakeFilename(dirname, fileTypeTable, meta[i].fileNum)
 		if err := fs.Remove(target); err != nil {
 			if firstErr != nil {
 				firstErr = err
@@ -134,7 +134,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 
 func ingestLink(opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
 	for i := range paths {
-		target := dbFilename(dirname, fileTypeTable, meta[i].fileNum)
+		target := base.MakeFilename(dirname, fileTypeTable, meta[i].fileNum)
 		err := opts.FS.Link(paths[i], target)
 		if err != nil {
 			if err2 := ingestCleanup(opts.FS, dirname, meta[:i]); err2 != nil {
