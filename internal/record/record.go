@@ -155,6 +155,8 @@ type Reader struct {
 	// logNum is the low 32-bits of the log's file number. May be zero when used
 	// with log files that do not have a file number (e.g. the MANIFEST).
 	logNum uint32
+	// blockNum is the zero based block number currently held in buf.
+	blockNum int64
 	// seq is the sequence number of the current record.
 	seq int
 	// buf[begin:end] is the unread portion of the current chunk's payload. The
@@ -180,8 +182,9 @@ type Reader struct {
 // match the specifed logNum.
 func NewReader(r io.Reader, logNum uint64) *Reader {
 	return &Reader{
-		r:      r,
-		logNum: uint32(logNum),
+		r:        r,
+		logNum:   uint32(logNum),
+		blockNum: -1,
 	}
 }
 
@@ -265,6 +268,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			return err
 		}
 		r.begin, r.end, r.n = 0, 0, n
+		r.blockNum++
 	}
 }
 
@@ -283,6 +287,15 @@ func (r *Reader) Next() (io.Reader, error) {
 	}
 	r.started = true
 	return singleReader{r, r.seq}, nil
+}
+
+// Offset returns the current offset within the file. If called immediately
+// before a call to Next(), Offset() will return the record offset.
+func (r *Reader) Offset() int64 {
+	if r.blockNum < 0 {
+		return 0
+	}
+	return int64(r.blockNum)*blockSize + int64(r.end)
 }
 
 // recover clears any errors read so far, so that calling Next will start

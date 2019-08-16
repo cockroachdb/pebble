@@ -635,6 +635,37 @@ func TestRecoverLastCompleteBlock(t *testing.T) {
 	}
 }
 
+func TestReaderOffset(t *testing.T) {
+	recs, err := makeTestRecords(
+		blockSize*2,
+		400,
+		500,
+		600,
+		700,
+		800,
+		9000,
+		1000,
+	)
+	if err != nil {
+		t.Fatalf("makeTestRecords: %v", err)
+	}
+
+	// The first record should fail, but only when we read deeper beyond the first block.
+	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	for i, offset := range recs.offsets {
+		if offset != r.Offset() {
+			t.Fatalf("%d: expected offset %d, but found %d", i, offset, r.Offset())
+		}
+		rec, err := r.Next()
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if _, err = ioutil.ReadAll(rec); err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+	}
+}
+
 func TestSeekRecord(t *testing.T) {
 	recs, err := makeTestRecords(
 		// The first record will consume 3 entire blocks but a fraction of the 4th.
