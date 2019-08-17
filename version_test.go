@@ -257,7 +257,7 @@ func TestVersionUnref(t *testing.T) {
 		mu: &sync.Mutex{},
 	}
 	list.init()
-	v := &version{vs: &versionSet{}}
+	v := &version{deleted: func([]uint64) {}}
 	v.ref()
 	list.pushBack(v)
 	v.unref()
