@@ -100,15 +100,30 @@ func formatSize(w io.Writer, v []byte) {
 	fmt.Fprintf(w, "<%d>", len(v))
 }
 
+func formatKey(w io.Writer, fmtKey formatter, key *base.InternalKey) bool {
+	if fmtKey.spec == "null" {
+		return false
+	}
+	fmtKey.fn(w, key.UserKey)
+	fmt.Fprintf(w, "#%d,%d", key.SeqNum(), key.Kind())
+	return true
+}
+
+func formatKeyRange(w io.Writer, fmtKey formatter, start, end *base.InternalKey) {
+	if fmtKey.spec == "null" {
+		return
+	}
+	w.Write([]byte{'['})
+	formatKey(w, fmtKey, start)
+	w.Write([]byte{'-'})
+	formatKey(w, fmtKey, end)
+	w.Write([]byte{']'})
+}
+
 func formatKeyValue(
 	w io.Writer, fmtKey formatter, fmtValue formatter, key *base.InternalKey, value []byte,
 ) {
-	needDelimiter := false
-	if fmtKey.spec != "null" {
-		fmtKey.fn(w, key.UserKey)
-		fmt.Fprintf(w, "#%d,%d", key.SeqNum(), key.Kind())
-		needDelimiter = true
-	}
+	needDelimiter := formatKey(w, fmtKey, key)
 	if fmtValue.spec != "null" {
 		if needDelimiter {
 			w.Write([]byte{' '})
