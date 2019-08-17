@@ -39,6 +39,9 @@ type versionSet struct {
 
 	metrics VersionMetrics
 
+	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
+	// on the creation of every version.
+	obsoleteFn        func(obsolete []uint64)
 	obsoleteTables    []uint64
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
@@ -69,6 +72,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.cmpName = opts.Comparer.Name
 	vs.dynamicBaseLevel = true
 	vs.versions.init()
+	vs.obsoleteFn = vs.addObsoleteLocked
 	// For historical reasons, the next file number is initialized to 2.
 	vs.nextFileNumber = 2
 
@@ -364,7 +368,7 @@ func (vs *versionSet) append(v *version) {
 	if !vs.versions.empty() {
 		vs.versions.back().unrefLocked()
 	}
-	v.vs = vs
+	v.deleted = vs.obsoleteFn
 	v.ref()
 	vs.versions.pushBack(v)
 }

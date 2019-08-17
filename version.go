@@ -140,8 +140,9 @@ type version struct {
 
 	files [numLevels][]fileMetadata
 
-	// The version set this version is associated with.
-	vs *versionSet
+	// The callback to invoke when the last reference to a version is
+	// removed. Will be called with list.mu held.
+	deleted func(obsolete []uint64)
 
 	// The list the version is linked into.
 	list *versionList
@@ -192,7 +193,7 @@ func (v *version) unref() {
 		l := v.list
 		l.mu.Lock()
 		l.remove(v)
-		v.vs.addObsoleteLocked(obsolete)
+		v.deleted(obsolete)
 		l.mu.Unlock()
 	}
 }
@@ -200,7 +201,7 @@ func (v *version) unref() {
 func (v *version) unrefLocked() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
 		v.list.remove(v)
-		v.vs.addObsoleteLocked(v.unrefFiles())
+		v.deleted(v.unrefFiles())
 	}
 }
 
