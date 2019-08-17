@@ -108,7 +108,7 @@ func (l *levelIter) findFileGE(key []byte) int {
 	//
 	// TODO(peter): inline the binary search.
 	return sort.Search(len(l.files), func(i int) bool {
-		largest := &l.files[i].largest
+		largest := &l.files[i].Largest
 		c := l.cmp(largest.UserKey, key)
 		if c > 0 {
 			return true
@@ -120,7 +120,7 @@ func (l *levelIter) findFileGE(key []byte) int {
 func (l *levelIter) findFileLT(key []byte) int {
 	// Find the last file whose smallest key is < ikey.
 	index := sort.Search(len(l.files), func(i int) bool {
-		return l.cmp(l.files[i].smallest.UserKey, key) >= 0
+		return l.cmp(l.files[i].Smallest.UserKey, key) >= 0
 	})
 	return index - 1
 }
@@ -150,14 +150,14 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		f := &l.files[l.index]
 		l.tableOpts.LowerBound = l.opts.GetLowerBound()
 		if l.tableOpts.LowerBound != nil {
-			if l.cmp(f.largest.UserKey, l.tableOpts.LowerBound) < 0 {
+			if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
 				// The largest key in the sstable is smaller than the lower bound.
 				if dir < 0 {
 					return false
 				}
 				continue
 			}
-			if l.cmp(l.tableOpts.LowerBound, f.smallest.UserKey) < 0 {
+			if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) < 0 {
 				// The lower bound is smaller than the smallest key in the
 				// table. Iteration within the table does not need to check the lower
 				// bound.
@@ -166,7 +166,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 		l.tableOpts.UpperBound = l.opts.GetUpperBound()
 		if l.tableOpts.UpperBound != nil {
-			if l.cmp(f.smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
+			if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
 				// The smallest key in the sstable is greater than or equal to the
 				// lower bound.
 				if dir > 0 {
@@ -174,7 +174,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 				}
 				continue
 			}
-			if l.cmp(l.tableOpts.UpperBound, f.largest.UserKey) > 0 {
+			if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
 				// The upper bound is greater than the largest key in the
 				// table. Iteration within the table does not need to check the upper
 				// bound.
@@ -191,7 +191,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			*l.rangeDelIter = rangeDelIter
 		}
 		if l.largestUserKey != nil {
-			*l.largestUserKey = f.largest.UserKey
+			*l.largestUserKey = f.Largest.UserKey
 		}
 		return true
 	}
@@ -334,8 +334,8 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			// We're being used as part of an Iterator and we've reached the end of
 			// the sstable. If the boundary is a range deletion tombstone, return
 			// that key.
-			if f := &l.files[l.index]; f.largest.Kind() == InternalKeyKindRangeDelete {
-				l.boundary = &f.largest
+			if f := &l.files[l.index]; f.Largest.Kind() == InternalKeyKindRangeDelete {
+				l.boundary = &f.Largest
 				return l.boundary, nil
 			}
 			*l.rangeDelIter = nil
@@ -362,8 +362,8 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			// We're being used as part of an Iterator and we've reached the end of
 			// the sstable. If the boundary is a range deletion tombstone, return
 			// that key.
-			if f := &l.files[l.index]; f.smallest.Kind() == InternalKeyKindRangeDelete {
-				l.boundary = &f.smallest
+			if f := &l.files[l.index]; f.Smallest.Kind() == InternalKeyKindRangeDelete {
+				l.boundary = &f.Smallest
 				return l.boundary, nil
 			}
 			*l.rangeDelIter = nil

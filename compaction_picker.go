@@ -6,6 +6,8 @@ package pebble
 
 import (
 	"math"
+
+	"github.com/petermattis/pebble/internal/manifest"
 )
 
 // compactionPicker holds the state and logic for picking a compaction. A
@@ -62,10 +64,10 @@ func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 		return 0
 	}
 
-	compactionDebt := totalSize(p.vers.files[0]) + l0ExtraSize
+	compactionDebt := totalSize(p.vers.Files[0]) + l0ExtraSize
 	bytesAddedToNextLevel := compactionDebt
 
-	levelSize := totalSize(p.vers.files[p.baseLevel])
+	levelSize := totalSize(p.vers.Files[p.baseLevel])
 	// estimatedL0CompactionSize is the estimated size of the L0 component in the
 	// current or next L0->LBase compaction. This is needed to estimate the number
 	// of L0->LBase compactions which will need to occur for the LSM tree to
@@ -81,7 +83,7 @@ func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 	for level := p.baseLevel; level < numLevels-1; level++ {
 		levelSize += bytesAddedToNextLevel
 		bytesAddedToNextLevel = 0
-		nextLevelSize = totalSize(p.vers.files[level+1])
+		nextLevelSize = totalSize(p.vers.Files[level+1])
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			levelRatio := float64(nextLevelSize) / float64(levelSize)
@@ -98,7 +100,7 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	firstNonEmptyLevel := -1
 	var bottomLevelSize int64
 	for level := 1; level < numLevels; level++ {
-		levelSize := int64(totalSize(v.files[level]))
+		levelSize := int64(totalSize(v.Files[level]))
 		if levelSize > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
@@ -185,11 +187,11 @@ func (p *compactionPicker) initTarget(v *version, opts *Options) {
 	// wish to avoid too many files when the individual file size is small
 	// (perhaps because of a small write-buffer setting, or very high
 	// compression ratios, or lots of overwrites/deletions).
-	p.score = float64(len(v.files[0])) / float64(opts.L0CompactionThreshold)
+	p.score = float64(len(v.Files[0])) / float64(opts.L0CompactionThreshold)
 	p.level = 0
 
 	for level := 1; level < numLevels-1; level++ {
-		score := float64(totalSize(v.files[level])) / float64(p.levelMaxBytes[level])
+		score := float64(totalSize(v.Files[level])) / float64(p.levelMaxBytes[level])
 		if p.score < score {
 			p.score = score
 			p.level = level
@@ -220,11 +222,11 @@ func (p *compactionPicker) initTarget(v *version, opts *Options) {
 		// The current heuristic matches the RocksDB kOldestSmallestSeqFirst
 		// heuristic.
 		smallestSeqNum := uint64(math.MaxUint64)
-		files := v.files[p.level]
+		files := v.Files[p.level]
 		for i := range files {
 			f := &files[i]
-			if smallestSeqNum > f.smallestSeqNum {
-				smallestSeqNum = f.smallestSeqNum
+			if smallestSeqNum > f.SmallestSeqNum {
+				smallestSeqNum = f.SmallestSeqNum
 				p.file = i
 			}
 		}
@@ -233,10 +235,10 @@ func (p *compactionPicker) initTarget(v *version, opts *Options) {
 
 	// No levels exceeded their size threshold. Check for forced compactions.
 	for level := 0; level < numLevels-1; level++ {
-		files := v.files[p.level]
+		files := v.Files[p.level]
 		for i := range files {
 			f := &files[i]
-			if f.markedForCompaction {
+			if f.MarkedForCompaction {
 				p.score = 1.0
 				p.level = level
 				p.file = i
@@ -261,13 +263,13 @@ func (p *compactionPicker) pickAuto(
 
 	vers := p.vers
 	c = newCompaction(opts, vers, p.level, p.baseLevel, bytesCompacted)
-	c.inputs[0] = vers.files[c.startLevel][p.file : p.file+1]
+	c.inputs[0] = vers.Files[c.startLevel][p.file : p.file+1]
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if c.startLevel == 0 {
 		cmp := opts.Comparer.Compare
-		smallest, largest := ikeyRange(cmp, c.inputs[0], nil)
-		c.inputs[0] = vers.overlaps(0, cmp, smallest.UserKey, largest.UserKey)
+		smallest, largest := manifest.KeyRange(cmp, c.inputs[0], nil)
+		c.inputs[0] = vers.Overlaps(0, cmp, smallest.UserKey, largest.UserKey)
 		if len(c.inputs[0]) == 0 {
 			panic("pebble: empty compaction")
 		}
@@ -291,7 +293,7 @@ func (p *compactionPicker) pickManual(
 	c = newCompaction(opts, cur, manual.level, p.baseLevel, bytesCompacted)
 	manual.outputLevel = c.outputLevel
 	cmp := opts.Comparer.Compare
-	c.inputs[0] = cur.overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
+	c.inputs[0] = cur.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
 	if len(c.inputs[0]) == 0 {
 		return nil
 	}

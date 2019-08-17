@@ -629,7 +629,7 @@ func TestRollManifest(t *testing.T) {
 	manifestFileNumber := func() uint64 {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.versions.manifestFileNumber
+		return d.mu.versions.manifestFileNum
 	}
 
 	current := func() string {

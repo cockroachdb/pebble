@@ -9,63 +9,11 @@ import (
 	"fmt"
 
 	"github.com/petermattis/pebble/internal/humanize"
+	"github.com/petermattis/pebble/internal/manifest"
 )
 
-// LevelMetrics holds per-level metrics such as the number of files and total
-// size of the files, and compaction related metrics.
-type LevelMetrics struct {
-	// The total number of files in the level.
-	NumFiles int64
-	// The total size in bytes of the files in the level.
-	Size uint64
-	// The level's compaction score.
-	Score float64
-	// The number of incoming bytes from other levels read during
-	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
-	// the bytes written to the WAL.
-	BytesIn uint64
-	// The number of bytes ingested.
-	BytesIngested uint64
-	// The number of bytes moved into the level by a "move" compaction.
-	BytesMoved uint64
-	// The number of bytes read for compactions at the level. This includes bytes
-	// read from other levels (BytesIn), as well as bytes read for the level.
-	BytesRead uint64
-	// The number of bytes written during compactions.
-	BytesWritten uint64
-}
-
-// Add updates the counter metrics for the level.
-func (m *LevelMetrics) Add(u *LevelMetrics) {
-	m.BytesIn += u.BytesIn
-	m.BytesIngested += u.BytesIngested
-	m.BytesMoved += u.BytesMoved
-	m.BytesRead += u.BytesRead
-	m.BytesWritten += u.BytesWritten
-}
-
-// WriteAmp computes the write amplification for compactions at this
-// level. Computed as BytesWritten / BytesIn.
-func (m *LevelMetrics) WriteAmp() float64 {
-	if m.BytesIn == 0 {
-		return 0
-	}
-	return float64(m.BytesWritten) / float64(m.BytesIn)
-}
-
-func (m *LevelMetrics) format(buf *bytes.Buffer) {
-	fmt.Fprintf(buf, "%6d %7s %7.2f %7s %7s %7s %7s %7s %7.1f\n",
-		m.NumFiles,
-		humanize.Uint64(m.Size),
-		m.Score,
-		humanize.Uint64(m.BytesIn),
-		humanize.Uint64(m.BytesIngested),
-		humanize.Uint64(m.BytesMoved),
-		humanize.Uint64(m.BytesRead),
-		humanize.Uint64(m.BytesWritten),
-		m.WriteAmp(),
-	)
-}
+// LevelMetrics exports the manifest.LevelMetrics type.
+type LevelMetrics = manifest.LevelMetrics
 
 // VersionMetrics holds metrics for each level.
 type VersionMetrics struct {
@@ -125,7 +73,7 @@ func (m *VersionMetrics) String() string {
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
 		fmt.Fprintf(&buf, "%5d ", level)
-		l.format(&buf)
+		l.Format(&buf)
 		total.Add(l)
 		total.NumFiles += l.NumFiles
 		total.Size += l.Size
@@ -137,6 +85,6 @@ func (m *VersionMetrics) String() string {
 	// ingested.
 	total.BytesWritten += total.BytesIn
 	fmt.Fprintf(&buf, "total ")
-	total.format(&buf)
+	total.Format(&buf)
 	return buf.String()
 }
