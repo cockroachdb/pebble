@@ -55,7 +55,6 @@ Print the contents of the WAL files.
 }
 
 func (w *walT) runDump(cmd *cobra.Command, args []string) {
-	// Sequence,Count,ByteSize,Physical Offset,Key(s)
 	for _, arg := range args {
 		func() {
 			// Parse the filename in order to extract the file number. This is
@@ -103,15 +102,14 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "corrupt log file %q: %v", arg, err)
 					return
 				}
-				// TODO(peter): This is similar to the `ldb dump_wal` tool output. Can
-				// we do better?
-				fmt.Fprintf(stdout, "%d,%d,%d,%d", b.SeqNum(), b.Count(), len(b.Repr()), offset)
+				fmt.Fprintf(stdout, "%d(%d) seq=%d count=%d\n",
+					offset, len(b.Repr()), b.SeqNum(), b.Count())
 				for r := b.Reader(); ; {
 					kind, ukey, value, ok := r.Next()
 					if !ok {
 						break
 					}
-					fmt.Fprintf(stdout, ",%s(", kind)
+					fmt.Fprintf(stdout, "    %s(", kind)
 					switch kind {
 					case base.InternalKeyKindDelete:
 						w.fmtKey.fn(stdout, ukey)
@@ -130,9 +128,8 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 						stdout.Write([]byte{','})
 						w.fmtKey.fn(stdout, value)
 					}
-					fmt.Fprintf(stdout, ")")
+					fmt.Fprintf(stdout, ")\n")
 				}
-				fmt.Fprintf(stdout, "\n")
 			}
 		}()
 	}
