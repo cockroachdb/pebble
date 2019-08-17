@@ -27,7 +27,7 @@ func TestLevelIter(t *testing.T) {
 	newIters := func(
 		meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
-		f := *iters[meta.fileNum]
+		f := *iters[meta.FileNum]
 		return &f, nil, nil
 	}
 
@@ -47,10 +47,10 @@ func TestLevelIter(t *testing.T) {
 				iters = append(iters, f)
 
 				meta := fileMetadata{
-					fileNum: uint64(len(files)),
+					FileNum: uint64(len(files)),
 				}
-				meta.smallest = f.keys[0]
-				meta.largest = f.keys[len(f.keys)-1]
+				meta.Smallest = f.keys[0]
+				meta.Largest = f.keys[len(f.keys)-1]
 				files = append(files, meta)
 			}
 
@@ -129,7 +129,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 	newIters := func(
 		meta *fileMetadata, _ *IterOptions, _ *uint64,
 	) (internalIterator, internalIterator, error) {
-		return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+		return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 	}
 
 	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
@@ -193,14 +193,14 @@ func TestLevelIterBoundaries(t *testing.T) {
 			}
 			readers = append(readers, r)
 			files = append(files, fileMetadata{
-				fileNum:  fileNum,
-				smallest: meta.Smallest(cmp),
-				largest:  meta.Largest(cmp),
+				FileNum:  fileNum,
+				Smallest: meta.Smallest(cmp),
+				Largest:  meta.Largest(cmp),
 			})
 
 			var buf bytes.Buffer
 			for _, f := range files {
-				fmt.Fprintf(&buf, "%d: %s-%s\n", f.fileNum, f.smallest, f.largest)
+				fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
 			}
 			return buf.String()
 
@@ -274,10 +274,10 @@ func buildLevelIterTables(
 	for i := range readers {
 		iter := readers[i].NewIter(nil /* lower */, nil /* upper */)
 		key, _ := iter.First()
-		meta[i].fileNum = uint64(i)
-		meta[i].smallest = *key
+		meta[i].FileNum = uint64(i)
+		meta[i].Smallest = *key
 		key, _ = iter.Last()
-		meta[i].largest = *key
+		meta[i].Largest = *key
 	}
 	return readers, meta, keys
 }
@@ -295,7 +295,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
 							l := newLevelIter(nil, DefaultComparer.Compare, newIters, files, nil)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -323,7 +323,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
 							l := newLevelIter(nil, DefaultComparer.Compare, newIters, files, nil)
 
@@ -353,7 +353,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.fileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
 							l := newLevelIter(nil, DefaultComparer.Compare, newIters, files, nil)
 

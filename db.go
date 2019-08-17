@@ -284,7 +284,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	get.key = key
 	get.batch = b
 	get.mem = readState.memtables
-	get.l0 = readState.current.files[0]
+	get.l0 = readState.current.Files[0]
 	get.version = readState.current
 
 	i := &buf.dbi
@@ -532,8 +532,8 @@ func (d *DB) newIterInternal(
 
 	// The level 0 files need to be added from newest to oldest.
 	current := readState.current
-	for i := len(current.files[0]) - 1; i >= 0; i-- {
-		f := &current.files[0][i]
+	for i := len(current.Files[0]) - 1; i >= 0; i-- {
+		f := &current.Files[0][i]
 		iter, rangeDelIter, err := d.newIters(f, &dbi.opts, nil)
 		if err != nil {
 			dbi.err = err
@@ -545,8 +545,8 @@ func (d *DB) newIterInternal(
 	}
 
 	start := len(rangeDelIters)
-	for level := 1; level < len(current.files); level++ {
-		if len(current.files[level]) == 0 {
+	for level := 1; level < len(current.Files); level++ {
+		if len(current.Files[level]) == 0 {
 			continue
 		}
 		rangeDelIters = append(rangeDelIters, nil)
@@ -559,8 +559,8 @@ func (d *DB) newIterInternal(
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
-	for level := 1; level < len(current.files); level++ {
-		if len(current.files[level]) == 0 {
+	for level := 1; level < len(current.Files); level++ {
+		if len(current.Files[level]) == 0 {
 			continue
 		}
 
@@ -572,7 +572,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(&dbi.opts, d.cmp, d.newIters, current.files[level], nil)
+		li.init(&dbi.opts, d.cmp, d.newIters, current.Files[level], nil)
 		li.initRangeDel(&rangeDelIters[0])
 		li.initLargestUserKey(&largestUserKeys[0])
 		iters = append(iters, li)
@@ -667,8 +667,8 @@ func (d *DB) Close() error {
 		d.readState.val.unrefLocked()
 
 		current := d.mu.versions.currentVersion()
-		for v := d.mu.versions.versions.front(); true; v = v.next {
-			refs := atomic.LoadInt32(&v.refs)
+		for v := d.mu.versions.versions.Front(); true; v = v.Next() {
+			refs := v.Refs()
 			if v == current {
 				if refs != 1 {
 					return fmt.Errorf("leaked iterators: current\n%s", v)
@@ -694,13 +694,13 @@ func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
-	meta := []*fileMetadata{&fileMetadata{smallest: iStart, largest: iEnd}}
+	meta := []*fileMetadata{&fileMetadata{Smallest: iStart, Largest: iEnd}}
 
 	d.mu.Lock()
 	maxLevelWithFiles := 1
 	cur := d.mu.versions.currentVersion()
 	for level := 0; level < numLevels; level++ {
-		if len(cur.overlaps(level, d.cmp, start, end)) > 0 {
+		if len(cur.Overlaps(level, d.cmp, start, end)) > 0 {
 			maxLevelWithFiles = level + 1
 		}
 	}
@@ -896,7 +896,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.compact.cond.Wait()
 			continue
 		}
-		if len(d.mu.versions.currentVersion().files[0]) > d.opts.L0StopWritesThreshold {
+		if len(d.mu.versions.currentVersion().Files[0]) > d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
 			if !stalled {
 				stalled = true
@@ -918,7 +918,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if !d.opts.DisableWAL {
 			jobID := d.mu.nextJobID
 			d.mu.nextJobID++
-			newLogNumber = d.mu.versions.nextFileNum()
+			newLogNumber = d.mu.versions.getNextFileNum()
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 

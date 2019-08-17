@@ -12,9 +12,21 @@ import (
 	"sync/atomic"
 
 	"github.com/petermattis/pebble/internal/base"
+	"github.com/petermattis/pebble/internal/manifest"
 	"github.com/petermattis/pebble/internal/record"
 	"github.com/petermattis/pebble/vfs"
 )
+
+const numLevels = manifest.NumLevels
+
+// Provide type aliases for the various manifest structs.
+type bulkVersionEdit = manifest.BulkVersionEdit
+type deletedFileEntry = manifest.DeletedFileEntry
+type fileMetadata = manifest.FileMetadata
+type newFileEntry = manifest.NewFileEntry
+type version = manifest.Version
+type versionEdit = manifest.VersionEdit
+type versionList = manifest.VersionList
 
 // versionSet manages a collection of immutable versions, and manages the
 // creation of a new version from the most recent version. A new versions is
@@ -46,12 +58,12 @@ type versionSet struct {
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
 
-	logNumber          uint64
-	prevLogNumber      uint64
-	nextFileNumber     uint64
-	logSeqNum          uint64 // next seqNum to use for WAL writes
-	visibleSeqNum      uint64 // visible seqNum (<= logSeqNum)
-	manifestFileNumber uint64
+	logNum          uint64
+	prevLogNum      uint64
+	nextFileNum     uint64
+	logSeqNum       uint64 // next seqNum to use for WAL writes
+	visibleSeqNum   uint64 // visible seqNum (<= logSeqNum)
+	manifestFileNum uint64
 
 	manifestFile vfs.File
 	manifest     *record.Writer
@@ -64,17 +76,16 @@ type versionSet struct {
 func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
 	vs.dirname = dirname
 	vs.mu = mu
-	vs.versions.mu = mu
 	vs.writerCond.L = mu
 	vs.opts = opts
 	vs.fs = opts.FS
 	vs.cmp = opts.Comparer.Compare
 	vs.cmpName = opts.Comparer.Name
 	vs.dynamicBaseLevel = true
-	vs.versions.init()
+	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	// For historical reasons, the next file number is initialized to 2.
-	vs.nextFileNumber = 2
+	vs.nextFileNum = 2
 
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(base.MakeFilename(dirname, fileTypeCurrent, 0))
@@ -120,42 +131,42 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			return err
 		}
 		var ve versionEdit
-		err = ve.decode(r)
+		err = ve.Decode(r)
 		if err != nil {
 			return err
 		}
-		if ve.comparatorName != "" {
-			if ve.comparatorName != vs.cmpName {
+		if ve.ComparerName != "" {
+			if ve.ComparerName != vs.cmpName {
 				return fmt.Errorf("pebble: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from Options %q",
-					b, dirname, ve.comparatorName, vs.cmpName)
+					b, dirname, ve.ComparerName, vs.cmpName)
 			}
 		}
-		bve.accumulate(&ve)
-		if ve.logNumber != 0 {
-			vs.logNumber = ve.logNumber
+		bve.Accumulate(&ve)
+		if ve.LogNum != 0 {
+			vs.logNum = ve.LogNum
 		}
-		if ve.prevLogNumber != 0 {
-			vs.prevLogNumber = ve.prevLogNumber
+		if ve.PrevLogNum != 0 {
+			vs.prevLogNum = ve.PrevLogNum
 		}
-		if ve.nextFileNumber != 0 {
-			vs.nextFileNumber = ve.nextFileNumber
+		if ve.NextFileNum != 0 {
+			vs.nextFileNum = ve.NextFileNum
 		}
-		if ve.lastSequence != 0 {
-			vs.logSeqNum = ve.lastSequence
+		if ve.LastSeqNum != 0 {
+			vs.logSeqNum = ve.LastSeqNum
 		}
 	}
-	if vs.logNumber == 0 || vs.nextFileNumber == 0 {
-		if vs.nextFileNumber == 2 {
+	if vs.logNum == 0 || vs.nextFileNum == 0 {
+		if vs.nextFileNum == 2 {
 			// We have a freshly created DB.
 		} else {
 			return fmt.Errorf("pebble: incomplete manifest file %q for DB %q", b, dirname)
 		}
 	}
-	vs.markFileNumUsed(vs.logNumber)
-	vs.markFileNumUsed(vs.prevLogNumber)
+	vs.markFileNumUsed(vs.logNum)
+	vs.markFileNumUsed(vs.prevLogNum)
 
-	newVersion, err := bve.apply(opts, nil, vs.cmp)
+	newVersion, err := bve.Apply(opts, nil, vs.cmp)
 	if err != nil {
 		return err
 	}
@@ -167,7 +178,12 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 // to the current version, and installs the new version. DB.mu must be held
 // when calling this method and will be released temporarily while performing
 // file I/O.
-func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) error {
+func (vs *versionSet) logAndApply(
+	jobID int,
+	ve *versionEdit,
+	metrics map[int]*LevelMetrics,
+	dir vfs.File,
+) error {
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
 	for vs.writing {
@@ -179,21 +195,21 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 		vs.writerCond.Signal()
 	}()
 
-	if ve.logNumber != 0 {
-		if ve.logNumber < vs.logNumber || vs.nextFileNumber <= ve.logNumber {
-			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.logNumber))
+	if ve.LogNum != 0 {
+		if ve.LogNum < vs.logNum || vs.nextFileNum <= ve.LogNum {
+			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.LogNum))
 		}
 	}
-	ve.nextFileNumber = vs.nextFileNumber
-	ve.lastSequence = atomic.LoadUint64(&vs.logSeqNum)
+	ve.NextFileNum = vs.nextFileNum
+	ve.LastSeqNum = atomic.LoadUint64(&vs.logSeqNum)
 	currentVersion := vs.currentVersion()
 	var newVersion *version
 
 	// Generate a new manifest if we don't currently have one, or the current one
 	// is too large.
-	var newManifestFileNumber uint64
+	var newManifestFileNum uint64
 	if vs.manifest == nil || vs.manifest.Size() >= vs.opts.MaxManifestFileSize {
-		newManifestFileNumber = vs.nextFileNum()
+		newManifestFileNum = vs.getNextFileNum()
 	}
 
 	var picker *compactionPicker
@@ -202,21 +218,21 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 		defer vs.mu.Lock()
 
 		var bve bulkVersionEdit
-		bve.accumulate(ve)
+		bve.Accumulate(ve)
 
 		var err error
-		newVersion, err = bve.apply(vs.opts, currentVersion, vs.cmp)
+		newVersion, err = bve.Apply(vs.opts, currentVersion, vs.cmp)
 		if err != nil {
 			return err
 		}
 
-		if newManifestFileNumber != 0 {
-			if err := vs.createManifest(vs.dirname, newManifestFileNumber); err != nil {
+		if newManifestFileNum != 0 {
+			if err := vs.createManifest(vs.dirname, newManifestFileNum); err != nil {
 				if vs.opts.EventListener.ManifestCreated != nil {
 					vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 						JobID:   jobID,
-						Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
-						FileNum: newManifestFileNumber,
+						Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
+						FileNum: newManifestFileNum,
 						Err:     err,
 					})
 				}
@@ -233,7 +249,7 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 		// fraught. Instead we rely on the standard recovery mechanism run when a
 		// database is open. In particular, that mechanism generates a new MANIFEST
 		// and ensures it is synced.
-		if err := ve.encode(w); err != nil {
+		if err := ve.Encode(w); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST write failed: %v", err)
 			return err
 		}
@@ -245,8 +261,8 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 			vs.opts.Logger.Fatalf("MANIFEST sync failed: %v", err)
 			return err
 		}
-		if newManifestFileNumber != 0 {
-			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNumber); err != nil {
+		if newManifestFileNum != 0 {
+			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNum); err != nil {
 				vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 				return err
 			}
@@ -257,8 +273,8 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 			if vs.opts.EventListener.ManifestCreated != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
-					Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNumber),
-					FileNum: newManifestFileNumber,
+					Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
+					FileNum: newManifestFileNum,
 				})
 			}
 		}
@@ -273,29 +289,29 @@ func (vs *versionSet) logAndApply(jobID int, ve *versionEdit, dir vfs.File) erro
 
 	// Install the new version.
 	vs.append(newVersion)
-	if ve.logNumber != 0 {
-		vs.logNumber = ve.logNumber
+	if ve.LogNum != 0 {
+		vs.logNum = ve.LogNum
 	}
-	if ve.prevLogNumber != 0 {
-		vs.prevLogNumber = ve.prevLogNumber
+	if ve.PrevLogNum != 0 {
+		vs.prevLogNum = ve.PrevLogNum
 	}
-	if newManifestFileNumber != 0 {
-		if vs.manifestFileNumber != 0 {
-			vs.obsoleteManifests = append(vs.obsoleteManifests, vs.manifestFileNumber)
+	if newManifestFileNum != 0 {
+		if vs.manifestFileNum != 0 {
+			vs.obsoleteManifests = append(vs.obsoleteManifests, vs.manifestFileNum)
 		}
-		vs.manifestFileNumber = newManifestFileNumber
+		vs.manifestFileNum = newManifestFileNum
 	}
 	vs.picker = picker
 
-	if ve.metrics != nil {
-		for level, update := range ve.metrics {
+	if metrics != nil {
+		for level, update := range metrics {
 			vs.metrics.Levels[level].Add(update)
 		}
 	}
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = int64(len(newVersion.files[i]))
-		l.Size = uint64(totalSize(newVersion.files[i]))
+		l.NumFiles = int64(len(newVersion.Files[i]))
+		l.Size = uint64(totalSize(newVersion.Files[i]))
 	}
 	return nil
 }
@@ -325,13 +341,13 @@ func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error)
 	manifest = record.NewWriter(manifestFile)
 
 	snapshot := versionEdit{
-		comparatorName: vs.cmpName,
+		ComparerName: vs.cmpName,
 	}
-	for level, fileMetadata := range vs.currentVersion().files {
+	for level, fileMetadata := range vs.currentVersion().Files {
 		for _, meta := range fileMetadata {
-			snapshot.newFiles = append(snapshot.newFiles, newFileEntry{
-				level: level,
-				meta:  meta,
+			snapshot.NewFiles = append(snapshot.NewFiles, newFileEntry{
+				Level: level,
+				Meta:  meta,
 			})
 		}
 	}
@@ -340,7 +356,7 @@ func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error)
 	if err1 != nil {
 		return err1
 	}
-	if err := snapshot.encode(w); err != nil {
+	if err := snapshot.Encode(w); err != nil {
 		return err
 	}
 
@@ -350,39 +366,43 @@ func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error)
 }
 
 func (vs *versionSet) markFileNumUsed(fileNum uint64) {
-	if vs.nextFileNumber <= fileNum {
-		vs.nextFileNumber = fileNum + 1
+	if vs.nextFileNum <= fileNum {
+		vs.nextFileNum = fileNum + 1
 	}
 }
 
-func (vs *versionSet) nextFileNum() uint64 {
-	x := vs.nextFileNumber
-	vs.nextFileNumber++
+func (vs *versionSet) getNextFileNum() uint64 {
+	x := vs.nextFileNum
+	vs.nextFileNum++
 	return x
 }
 
 func (vs *versionSet) append(v *version) {
-	if v.refs != 0 {
+	if v.Refs() != 0 {
 		panic("pebble: version should be unreferenced")
 	}
-	if !vs.versions.empty() {
-		vs.versions.back().unrefLocked()
+	if !vs.versions.Empty() {
+		vs.versions.Back().UnrefLocked()
 	}
-	v.deleted = vs.obsoleteFn
-	v.ref()
-	vs.versions.pushBack(v)
+	v.Deleted = vs.obsoleteFn
+	v.Ref()
+	vs.versions.PushBack(v)
 }
 
 func (vs *versionSet) currentVersion() *version {
-	return vs.versions.back()
+	return vs.versions.Back()
 }
 
 func (vs *versionSet) addLiveFileNums(m map[uint64]struct{}) {
-	for v := vs.versions.root.next; v != &vs.versions.root; v = v.next {
-		for _, ff := range v.files {
+	current := vs.currentVersion()
+	for v := vs.versions.Front(); true; v = v.Next() {
+		for _, ff := range v.Files {
 			for _, f := range ff {
-				m[f.fileNum] = struct{}{}
+				m[f.FileNum] = struct{}{}
 			}
+		}
+		if v == current {
+			break
 		}
 	}
 }

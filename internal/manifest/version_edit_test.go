@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package pebble
+package manifest
 
 import (
 	"bytes"
@@ -19,13 +19,13 @@ import (
 	"github.com/petermattis/pebble/internal/record"
 )
 
-func checkRoundTrip(e0 versionEdit) error {
-	var e1 versionEdit
+func checkRoundTrip(e0 VersionEdit) error {
+	var e1 VersionEdit
 	buf := new(bytes.Buffer)
-	if err := e0.encode(buf); err != nil {
+	if err := e0.Encode(buf); err != nil {
 		return fmt.Errorf("encode: %v", err)
 	}
-	if err := e1.decode(buf); err != nil {
+	if err := e1.Decode(buf); err != nil {
 		return fmt.Errorf("decode: %v", err)
 	}
 	if !reflect.DeepEqual(e1, e0) {
@@ -35,46 +35,46 @@ func checkRoundTrip(e0 versionEdit) error {
 }
 
 func TestVersionEditRoundTrip(t *testing.T) {
-	testCases := []versionEdit{
+	testCases := []VersionEdit{
 		// An empty version edit.
 		{},
 		// A complete version edit.
 		{
-			comparatorName: "11",
-			logNumber:      22,
-			prevLogNumber:  33,
-			nextFileNumber: 44,
-			lastSequence:   55,
-			deletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{
-					level:   3,
-					fileNum: 703,
+			ComparerName: "11",
+			LogNum:       22,
+			PrevLogNum:   33,
+			NextFileNum:  44,
+			LastSeqNum:   55,
+			DeletedFiles: map[DeletedFileEntry]bool{
+				DeletedFileEntry{
+					Level:   3,
+					FileNum: 703,
 				}: true,
-				deletedFileEntry{
-					level:   4,
-					fileNum: 704,
+				DeletedFileEntry{
+					Level:   4,
+					FileNum: 704,
 				}: true,
 			},
-			newFiles: []newFileEntry{
+			NewFiles: []NewFileEntry{
 				{
-					level: 5,
-					meta: fileMetadata{
-						fileNum:  805,
-						size:     8050,
-						smallest: base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
-						largest:  base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+					Level: 5,
+					Meta: FileMetadata{
+						FileNum:  805,
+						Size:     8050,
+						Smallest: base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
+						Largest:  base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 					},
 				},
 				{
-					level: 6,
-					meta: fileMetadata{
-						fileNum:             806,
-						size:                8060,
-						smallest:            base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
-						largest:             base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
-						smallestSeqNum:      3,
-						largestSeqNum:       5,
-						markedForCompaction: true,
+					Level: 6,
+					Meta: FileMetadata{
+						FileNum:             806,
+						Size:                8060,
+						Smallest:            base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
+						Largest:             base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						SmallestSeqNum:      3,
+						LargestSeqNum:       5,
+						MarkedForCompaction: true,
 					},
 				},
 			},
@@ -91,7 +91,7 @@ func TestVersionEditDecode(t *testing.T) {
 	testCases := []struct {
 		filename     string
 		encodedEdits []string
-		edits        []versionEdit
+		edits        []VersionEdit
 	}{
 		// db-stage-1 and db-stage-2 have the same manifest.
 		{
@@ -99,9 +99,9 @@ func TestVersionEditDecode(t *testing.T) {
 			encodedEdits: []string{
 				"\x02\x00\x03\x02\x04\x00",
 			},
-			edits: []versionEdit{
+			edits: []VersionEdit{
 				{
-					nextFileNumber: 2,
+					NextFileNum: 2,
 				},
 			},
 		},
@@ -115,26 +115,26 @@ func TestVersionEditDecode(t *testing.T) {
 					"\x00\x05\x00\x00\x00\x00\x00\x00\vfoo\x01\x04\x00" +
 					"\x00\x00\x00\x00\x00\x03\x05",
 			},
-			edits: []versionEdit{
+			edits: []VersionEdit{
 				{
-					comparatorName: "leveldb.BytewiseComparator",
+					ComparerName: "leveldb.BytewiseComparator",
 				},
 				{},
 				{
-					logNumber:      4,
-					prevLogNumber:  0,
-					nextFileNumber: 6,
-					lastSequence:   5,
-					newFiles: []newFileEntry{
+					LogNum:      4,
+					PrevLogNum:  0,
+					NextFileNum: 6,
+					LastSeqNum:  5,
+					NewFiles: []NewFileEntry{
 						{
-							level: 0,
-							meta: fileMetadata{
-								fileNum:        4,
-								size:           986,
-								smallest:       base.MakeInternalKey([]byte("bar"), 5, InternalKeyKindDelete),
-								largest:        base.MakeInternalKey([]byte("foo"), 4, InternalKeyKindSet),
-								smallestSeqNum: 3,
-								largestSeqNum:  5,
+							Level: 0,
+							Meta: FileMetadata{
+								FileNum:        4,
+								Size:           986,
+								Smallest:       base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
+								Largest:        base.MakeInternalKey([]byte("foo"), 4, base.InternalKeyKindSet),
+								SmallestSeqNum: 3,
+								LargestSeqNum:  5,
 							},
 						},
 					},
@@ -145,7 +145,7 @@ func TestVersionEditDecode(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
-			f, err := os.Open("testdata/" + tc.filename)
+			f, err := os.Open("../../testdata/" + tc.filename)
 			if err != nil {
 				t.Fatalf("filename=%q: open error: %v", tc.filename, err)
 			}
@@ -171,8 +171,8 @@ func TestVersionEditDecode(t *testing.T) {
 					t.Fatalf("filename=%q i=%d: got encoded %q, want %q", tc.filename, i, s, tc.encodedEdits[i])
 				}
 
-				var edit versionEdit
-				err = edit.decode(bytes.NewReader(encodedEdit))
+				var edit VersionEdit
+				err = edit.Decode(bytes.NewReader(encodedEdit))
 				if err != nil {
 					t.Fatalf("filename=%q i=%d: decode error: %v", tc.filename, i, err)
 				}

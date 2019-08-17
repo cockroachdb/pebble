@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/petermattis/pebble/internal/base"
+	"github.com/petermattis/pebble/internal/manifest"
 	"github.com/petermattis/pebble/internal/rangedel"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
@@ -33,6 +34,14 @@ func expandedCompactionByteSizeLimit(opts *Options, level int) uint64 {
 // before we stop building a single file in a level to level+1 compaction.
 func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
+}
+
+// totalSize returns the total size of all the files in f.
+func totalSize(f []fileMetadata) (size uint64) {
+	for _, x := range f {
+		size += x.Size
+	}
+	return size
 }
 
 // compaction is a table compaction from one level to the next, starting from a
@@ -82,6 +91,8 @@ type compaction struct {
 	grandparents    []fileMetadata
 	overlappedBytes uint64 // bytes of overlap with grandparent tables
 	seenKey         bool   // some output key has been seen
+
+	metrics map[int]*LevelMetrics
 }
 
 func newCompaction(
@@ -187,7 +198,7 @@ func newFlush(
 			}
 		}
 
-		c.grandparents = c.version.overlaps(baseLevel, c.cmp, smallest.UserKey, largest.UserKey)
+		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, smallest.UserKey, largest.UserKey)
 	}
 	return c
 }
@@ -196,18 +207,18 @@ func newFlush(
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupOtherInputs() {
 	c.inputs[0] = c.expandInputs(c.inputs[0])
-	smallest0, largest0 := ikeyRange(c.cmp, c.inputs[0], nil)
-	c.inputs[1] = c.version.overlaps(c.outputLevel, c.cmp, smallest0.UserKey, largest0.UserKey)
-	smallest01, largest01 := ikeyRange(c.cmp, c.inputs[0], c.inputs[1])
+	smallest0, largest0 := manifest.KeyRange(c.cmp, c.inputs[0], nil)
+	c.inputs[1] = c.version.Overlaps(c.outputLevel, c.cmp, smallest0.UserKey, largest0.UserKey)
+	smallest01, largest01 := manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
 
 	// Grow the inputs if it doesn't affect the number of level+1 files.
 	if c.grow(smallest01, largest01) {
-		smallest01, largest01 = ikeyRange(c.cmp, c.inputs[0], c.inputs[1])
+		smallest01, largest01 = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
 	}
 
 	// Compute the set of outputLevel+1 files that overlap this compaction.
 	if c.outputLevel+1 < numLevels {
-		c.grandparents = c.version.overlaps(c.outputLevel+1, c.cmp, smallest01.UserKey, largest01.UserKey)
+		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, smallest01.UserKey, largest01.UserKey)
 	}
 }
 
@@ -222,7 +233,7 @@ func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 		// get a "clean cut".
 		return inputs
 	}
-	files := c.version.files[c.startLevel]
+	files := c.version.Files[c.startLevel]
 	// Pointer arithmetic to figure out the index if inputs[0] with
 	// files[0]. This requires that the inputs slice is a sub-slice of
 	// files. This is true for non-L0 files returned from version.overlaps.
@@ -238,10 +249,10 @@ func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 	for ; end < len(files); end++ {
 		cur := &files[end-1]
 		next := &files[end]
-		if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
+		if c.cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
 			break
 		}
-		if cur.largest.Trailer == InternalKeyRangeDeleteSentinel {
+		if cur.Largest.Trailer == InternalKeyRangeDeleteSentinel {
 			// The range deletion sentinel key is set for the largest key in a table
 			// when a range deletion tombstone straddles a table. It isn't necessary
 			// to include the next table in the compaction as cur.largest.UserKey
@@ -261,7 +272,7 @@ func (c *compaction) grow(sm, la InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
 	}
-	grow0 := c.version.overlaps(c.startLevel, c.cmp, sm.UserKey, la.UserKey)
+	grow0 := c.version.Overlaps(c.startLevel, c.cmp, sm.UserKey, la.UserKey)
 	grow0 = c.expandInputs(grow0)
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
@@ -269,8 +280,8 @@ func (c *compaction) grow(sm, la InternalKey) bool {
 	if totalSize(grow0)+totalSize(c.inputs[1]) >= c.maxExpandedBytes {
 		return false
 	}
-	sm1, la1 := ikeyRange(c.cmp, grow0, nil)
-	grow1 := c.version.overlaps(c.outputLevel, c.cmp, sm1.UserKey, la1.UserKey)
+	sm1, la1 := manifest.KeyRange(c.cmp, grow0, nil)
+	grow1 := c.version.Overlaps(c.outputLevel, c.cmp, sm1.UserKey, la1.UserKey)
 	if len(grow1) != len(c.inputs[1]) {
 		return false
 	}
@@ -312,11 +323,11 @@ func (c *compaction) trivialMove() bool {
 func (c *compaction) shouldStopBefore(key InternalKey) bool {
 	for len(c.grandparents) > 0 {
 		g := &c.grandparents[0]
-		if base.InternalCompare(c.cmp, key, g.largest) <= 0 {
+		if base.InternalCompare(c.cmp, key, g.Largest) <= 0 {
 			break
 		}
 		if c.seenKey {
-			c.overlappedBytes += g.size
+			c.overlappedBytes += g.Size
 		}
 		c.grandparents = c.grandparents[1:]
 	}
@@ -334,7 +345,7 @@ func (c *compaction) shouldStopBefore(key InternalKey) bool {
 // lower level in the LSM.
 func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
 	if len(c.flushing) != 0 {
-		if len(c.version.files[0]) > 0 {
+		if len(c.version.Files[0]) > 0 {
 			// We can only allow zeroing of seqnum for L0 tables if no other L0 tables
 			// exist. Otherwise we may violate the invariant that L0 tables are ordered
 			// by increasing seqnum. This could be relaxed with a bit more intelligence
@@ -354,11 +365,11 @@ func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
 		files := c.inputs[i]
 		for j := range files {
 			f := &files[j]
-			if lower == nil || c.cmp(lower, f.smallest.UserKey) > 0 {
-				lower = f.smallest.UserKey
+			if lower == nil || c.cmp(lower, f.Smallest.UserKey) > 0 {
+				lower = f.Smallest.UserKey
 			}
-			if upper == nil || c.cmp(upper, f.largest.UserKey) < 0 {
-				upper = f.largest.UserKey
+			if upper == nil || c.cmp(upper, f.Largest.UserKey) < 0 {
+				upper = f.Largest.UserKey
 			}
 		}
 	}
@@ -386,9 +397,9 @@ func (c *compaction) elideTombstone(key []byte) bool {
 	// successive elideTombstones calls and we can keep some state in between
 	// calls.
 	for ; level < numLevels; level++ {
-		for _, f := range c.version.files[level] {
-			if c.cmp(key, f.largest.UserKey) <= 0 {
-				if c.cmp(key, f.smallest.UserKey) >= 0 {
+		for _, f := range c.version.Files[level] {
+			if c.cmp(key, f.Largest.UserKey) <= 0 {
+				if c.cmp(key, f.Smallest.UserKey) >= 0 {
 					return false
 				}
 				// For levels below level 0, the files within a level are in
@@ -417,7 +428,7 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	}
 
 	for ; level < numLevels; level++ {
-		overlaps := c.version.overlaps(level, c.cmp, start, end)
+		overlaps := c.version.Overlaps(level, c.cmp, start, end)
 		if len(overlaps) > 0 {
 			return false
 		}
@@ -432,14 +443,14 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 		files := c.inputs[i]
 		for j := range files {
 			if f == &files[j] {
-				lowerBound := f.smallest.UserKey
+				lowerBound := f.Smallest.UserKey
 				for k := j; k > 0; k-- {
 					cur := &files[k]
 					prev := &files[k-1]
-					if c.cmp(prev.largest.UserKey, cur.smallest.UserKey) < 0 {
+					if c.cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
 						break
 					}
-					if prev.largest.Trailer == InternalKeyRangeDeleteSentinel {
+					if prev.Largest.Trailer == InternalKeyRangeDeleteSentinel {
 						// The range deletion sentinel key is set for the largest key in a
 						// table when a range deletion tombstone straddles a table. It
 						// isn't necessary to include the next table in the atomic
@@ -447,17 +458,17 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 						// in the table.
 						break
 					}
-					lowerBound = prev.smallest.UserKey
+					lowerBound = prev.Smallest.UserKey
 				}
 
-				upperBound := f.largest.UserKey
+				upperBound := f.Largest.UserKey
 				for k := j + 1; k < len(files); k++ {
 					cur := &files[k-1]
 					next := &files[k]
-					if c.cmp(cur.largest.UserKey, next.smallest.UserKey) < 0 {
+					if c.cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
 						break
 					}
-					if cur.largest.Trailer == InternalKeyRangeDeleteSentinel {
+					if cur.Largest.Trailer == InternalKeyRangeDeleteSentinel {
 						// The range deletion sentinel key is set for the largest key in a
 						// table when a range deletion tombstone straddles a table. It
 						// isn't necessary to include the next table in the atomic
@@ -467,7 +478,7 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 					}
 					// cur.largest.UserKey == next.largest.UserKey, so next is part of
 					// the atomic compaction unit.
-					upperBound = next.largest.UserKey
+					upperBound = next.Largest.UserKey
 				}
 				return lowerBound, upperBound
 			}
@@ -553,7 +564,7 @@ func (c *compaction) newInputIter(
 			f := &c.inputs[0][i]
 			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 			if err != nil {
-				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.fileNum, err)
+				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.FileNum, err)
 			}
 			iters = append(iters, iter)
 			if rangeDelIter != nil {
@@ -580,7 +591,7 @@ func (c *compaction) String() string {
 		}
 		fmt.Fprintf(&buf, "%d:", level)
 		for _, f := range c.inputs[i] {
-			fmt.Fprintf(&buf, " %d:%s-%s", f.fileNum, f.smallest, f.largest)
+			fmt.Fprintf(&buf, " %d:%s-%s", f.FileNum, f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -693,11 +704,11 @@ func (d *DB) flush1() error {
 			Err:   err,
 		}
 		if err == nil {
-			for i := range ve.newFiles {
-				e := &ve.newFiles[i]
-				info.Output = append(info.Output, e.meta.tableInfo(d.dirname))
+			for i := range ve.NewFiles {
+				e := &ve.NewFiles[i]
+				info.Output = append(info.Output, e.Meta.TableInfo(d.dirname))
 			}
-			if len(ve.newFiles) == 0 {
+			if len(ve.NewFiles) == 0 {
 				info.Err = errEmptyTable
 			}
 		}
@@ -710,14 +721,14 @@ func (d *DB) flush1() error {
 
 	// The flush succeeded or it produced an empty sstable. In either case we
 	// want to bump the log number.
-	ve.logNumber, _ = d.mu.mem.queue[n].logInfo()
-	metrics := ve.metrics[0]
+	ve.LogNum, _ = d.mu.mem.queue[n].logInfo()
+	metrics := c.metrics[0]
 	for i := 0; i < n; i++ {
 		_, size := d.mu.mem.queue[i].logInfo()
 		metrics.BytesIn += size
 	}
 
-	err = d.mu.versions.logAndApply(jobID, ve, d.dataDir)
+	err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
 	for _, fileNum := range pendingOutputs {
 		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 			panic("pebble: expected pending output not present")
@@ -819,7 +830,7 @@ func (d *DB) compact1() (err error) {
 		for i := range c.inputs {
 			for j := range c.inputs[i] {
 				m := &c.inputs[i][j]
-				info.Input.Tables[i] = append(info.Input.Tables[i], m.tableInfo(d.dirname))
+				info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo(d.dirname))
 			}
 		}
 	}
@@ -837,9 +848,9 @@ func (d *DB) compact1() (err error) {
 	if d.opts.EventListener.CompactionEnd != nil {
 		info.Err = err
 		if err == nil {
-			for i := range ve.newFiles {
-				e := &ve.newFiles[i]
-				info.Output.Tables = append(info.Output.Tables, e.meta.tableInfo(d.dirname))
+			for i := range ve.NewFiles {
+				e := &ve.NewFiles[i]
+				info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo(d.dirname))
 			}
 		}
 		d.opts.EventListener.CompactionEnd(info)
@@ -848,7 +859,7 @@ func (d *DB) compact1() (err error) {
 	if err != nil {
 		return err
 	}
-	err = d.mu.versions.logAndApply(jobID, ve, d.dataDir)
+	err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
 	for _, fileNum := range pendingOutputs {
 		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 			panic("pebble: expected pending output not present")
@@ -878,19 +889,20 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 	// merge later on.
 	if c.trivialMove() {
 		meta := &c.inputs[0][0]
-		return &versionEdit{
-			deletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{level: c.startLevel, fileNum: meta.fileNum}: true,
+		c.metrics = map[int]*LevelMetrics{
+			c.outputLevel: &LevelMetrics{
+				BytesMoved: meta.Size,
 			},
-			newFiles: []newFileEntry{
-				{level: c.outputLevel, meta: *meta},
+		}
+		ve := &versionEdit{
+			DeletedFiles: map[deletedFileEntry]bool{
+				deletedFileEntry{Level: c.startLevel, FileNum: meta.FileNum}: true,
 			},
-			metrics: map[int]*LevelMetrics{
-				c.outputLevel: &LevelMetrics{
-					BytesMoved: meta.size,
-				},
+			NewFiles: []newFileEntry{
+				{Level: c.outputLevel, Meta: *meta},
 			},
-		}, nil, nil
+		}
+		return ve, nil, nil
 	}
 
 	defer func() {
@@ -934,22 +946,22 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		}
 	}()
 
+	ve = &versionEdit{
+		DeletedFiles: map[deletedFileEntry]bool{},
+	}
+
 	metrics := &LevelMetrics{
 		BytesIn:   totalSize(c.inputs[0]),
 		BytesRead: totalSize(c.inputs[1]),
 	}
 	metrics.BytesRead += metrics.BytesIn
-
-	ve = &versionEdit{
-		deletedFiles: map[deletedFileEntry]bool{},
-		metrics: map[int]*LevelMetrics{
-			c.outputLevel: metrics,
-		},
+	c.metrics = map[int]*LevelMetrics{
+		c.outputLevel: metrics,
 	}
 
 	newOutput := func() error {
 		d.mu.Lock()
-		fileNum := d.mu.versions.nextFileNum()
+		fileNum := d.mu.versions.getNextFileNum()
 		d.mu.compact.pendingOutputs[fileNum] = struct{}{}
 		pendingOutputs = append(pendingOutputs, fileNum)
 		d.mu.Unlock()
@@ -977,10 +989,10 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		filenames = append(filenames, filename)
 		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.outputLevel))
 
-		ve.newFiles = append(ve.newFiles, newFileEntry{
-			level: c.outputLevel,
-			meta: fileMetadata{
-				fileNum: fileNum,
+		ve.NewFiles = append(ve.NewFiles, newFileEntry{
+			Level: c.outputLevel,
+			Meta: fileMetadata{
+				FileNum: fileNum,
 			},
 		})
 		return nil
@@ -1015,20 +1027,20 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 			return err
 		}
 		tw = nil
-		meta := &ve.newFiles[len(ve.newFiles)-1].meta
-		meta.size = writerMeta.Size
-		meta.smallestSeqNum = writerMeta.SmallestSeqNum
-		meta.largestSeqNum = writerMeta.LargestSeqNum
+		meta := &ve.NewFiles[len(ve.NewFiles)-1].Meta
+		meta.Size = writerMeta.Size
+		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
+		meta.LargestSeqNum = writerMeta.LargestSeqNum
 
-		metrics.BytesWritten += meta.size
+		metrics.BytesWritten += meta.Size
 
 		// The handling of range boundaries is a bit complicated.
-		if n := len(ve.newFiles); n > 1 {
+		if n := len(ve.NewFiles); n > 1 {
 			// This is not the first output. Bound the smallest range key by the
 			// previous tables largest key.
-			prevMeta := &ve.newFiles[n-2].meta
+			prevMeta := &ve.NewFiles[n-2].Meta
 			if writerMeta.SmallestRange.UserKey != nil &&
-				d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.largest.UserKey) <= 0 {
+				d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey) <= 0 {
 				// The range boundary user key is less than or equal to the previous
 				// table's largest key. We need the tables to be key-space partitioned,
 				// so force the boundary to a key that we know is larger than the
@@ -1042,7 +1054,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 				// (the previous file could not end with a key at seqnum zero if this
 				// file had a tombstone extending into it).
 				writerMeta.SmallestRange = base.MakeInternalKey(
-					prevMeta.largest.UserKey, 0, InternalKeyKindRangeDelete)
+					prevMeta.Largest.UserKey, 0, InternalKeyKindRangeDelete)
 			}
 		}
 
@@ -1053,8 +1065,8 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 			}
 		}
 
-		meta.smallest = writerMeta.Smallest(d.cmp)
-		meta.largest = writerMeta.Largest(d.cmp)
+		meta.Smallest = writerMeta.Smallest(d.cmp)
+		meta.Largest = writerMeta.Largest(d.cmp)
 		return nil
 	}
 
@@ -1094,9 +1106,9 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 			level = c.outputLevel
 		}
 		for _, f := range c.inputs[i] {
-			ve.deletedFiles[deletedFileEntry{
-				level:   level,
-				fileNum: f.fileNum,
+			ve.DeletedFiles[deletedFileEntry{
+				Level:   level,
+				FileNum: f.FileNum,
 			}] = true
 		}
 	}
@@ -1128,8 +1140,8 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		liveFileNums[fileNum] = struct{}{}
 	}
 	d.mu.versions.addLiveFileNums(liveFileNums)
-	logNumber := d.mu.versions.logNumber
-	manifestFileNumber := d.mu.versions.manifestFileNumber
+	logNumber := d.mu.versions.logNum
+	manifestFileNumber := d.mu.versions.manifestFileNum
 
 	var obsoleteLogs []uint64
 	var obsoleteTables []uint64
@@ -1195,7 +1207,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	for i := range d.mu.log.queue {
 		// NB: d.mu.versions.logNumber is the file number of the latest log that
 		// has had its contents persisted to the LSM.
-		if d.mu.log.queue[i] >= d.mu.versions.logNumber {
+		if d.mu.log.queue[i] >= d.mu.versions.logNum {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
 			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))

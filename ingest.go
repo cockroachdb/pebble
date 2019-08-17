@@ -46,21 +46,21 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 	}
 
 	meta := &fileMetadata{}
-	meta.fileNum = fileNum
-	meta.size = uint64(stat.Size())
-	meta.smallest = InternalKey{}
-	meta.largest = InternalKey{}
+	meta.FileNum = fileNum
+	meta.Size = uint64(stat.Size())
+	meta.Smallest = InternalKey{}
+	meta.Largest = InternalKey{}
 	smallestSet, largestSet := false, false
 
 	{
 		iter := r.NewIter(nil /* lower */, nil /* upper */)
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
-			meta.smallest = key.Clone()
+			meta.Smallest = key.Clone()
 			smallestSet = true
 		}
 		if key, _ := iter.Last(); key != nil {
-			meta.largest = key.Clone()
+			meta.Largest = key.Clone()
 			largestSet = true
 		}
 		if err := iter.Error(); err != nil {
@@ -72,15 +72,15 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
 			if !smallestSet ||
-				base.InternalCompare(opts.Comparer.Compare, meta.smallest, *key) > 0 {
-				meta.smallest = key.Clone()
+				base.InternalCompare(opts.Comparer.Compare, meta.Smallest, *key) > 0 {
+				meta.Smallest = key.Clone()
 			}
 		}
 		if key, val := iter.Last(); key != nil {
 			end := base.MakeRangeDeleteSentinelKey(val)
 			if !largestSet ||
-				base.InternalCompare(opts.Comparer.Compare, meta.largest, end) < 0 {
-				meta.largest = end.Clone()
+				base.InternalCompare(opts.Comparer.Compare, meta.Largest, end) < 0 {
+				meta.Largest = end.Clone()
 			}
 		}
 	}
@@ -108,11 +108,11 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
 	}
 
 	sort.Slice(meta, func(i, j int) bool {
-		return cmp(meta[i].smallest.UserKey, meta[j].smallest.UserKey) < 0
+		return cmp(meta[i].Smallest.UserKey, meta[j].Smallest.UserKey) < 0
 	})
 
 	for i := 1; i < len(meta); i++ {
-		if sstableKeyCompare(cmp, meta[i-1].largest, meta[i].smallest) >= 0 {
+		if sstableKeyCompare(cmp, meta[i-1].Largest, meta[i].Smallest) >= 0 {
 			return fmt.Errorf("files have overlapping ranges")
 		}
 	}
@@ -122,7 +122,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
 func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
-		target := base.MakeFilename(dirname, fileTypeTable, meta[i].fileNum)
+		target := base.MakeFilename(dirname, fileTypeTable, meta[i].FileNum)
 		if err := fs.Remove(target); err != nil {
 			if firstErr != nil {
 				firstErr = err
@@ -134,7 +134,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 
 func ingestLink(opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
 	for i := range paths {
-		target := base.MakeFilename(dirname, fileTypeTable, meta[i].fileNum)
+		target := base.MakeFilename(dirname, fileTypeTable, meta[i].FileNum)
 		err := opts.FS.Link(paths[i], target)
 		if err != nil {
 			if err2 := ingestCleanup(opts.FS, dirname, meta[:i]); err2 != nil {
@@ -154,11 +154,11 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 		defer iter.Close()
 
 		for _, m := range meta {
-			key, _ := iter.SeekGE(m.smallest.UserKey)
+			key, _ := iter.SeekGE(m.Smallest.UserKey)
 			if key == nil {
 				continue
 			}
-			if cmp(key.UserKey, m.largest.UserKey) <= 0 {
+			if cmp(key.UserKey, m.Largest.UserKey) <= 0 {
 				return true
 			}
 		}
@@ -168,17 +168,17 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 	if iter := mem.newRangeDelIter(nil); iter != nil {
 		defer iter.Close()
 		for _, m := range meta {
-			key, val := iter.SeekLT(m.smallest.UserKey)
+			key, val := iter.SeekLT(m.Smallest.UserKey)
 			if key == nil {
 				key, val = iter.Next()
 			}
 			for ; key != nil; key, val = iter.Next() {
-				if cmp(key.UserKey, m.largest.UserKey) > 0 {
+				if cmp(key.UserKey, m.Largest.UserKey) > 0 {
 					// The start of the tombstone is after the largest key in the
 					// ingested table.
 					break
 				}
-				if cmp(val, m.smallest.UserKey) > 0 {
+				if cmp(val, m.Smallest.UserKey) > 0 {
 					// The end of the tombstone is greater than the smallest in the
 					// table. Note that the tombstone end key is exclusive, thus ">0"
 					// instead of ">=0".
@@ -193,12 +193,12 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 
 func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fileMetadata) error {
 	for _, m := range meta {
-		m.smallest = base.MakeInternalKey(m.smallest.UserKey, seqNum, m.smallest.Kind())
-		m.largest = base.MakeInternalKey(m.largest.UserKey, seqNum, m.largest.Kind())
+		m.Smallest = base.MakeInternalKey(m.Smallest.UserKey, seqNum, m.Smallest.Kind())
+		m.Largest = base.MakeInternalKey(m.Largest.UserKey, seqNum, m.Largest.Kind())
 		// Setting smallestSeqNum == largestSeqNum triggers the setting of
 		// Properties.GlobalSeqNum when an sstable is loaded.
-		m.smallestSeqNum = seqNum
-		m.largestSeqNum = seqNum
+		m.SmallestSeqNum = seqNum
+		m.LargestSeqNum = seqNum
 		seqNum++
 
 		// TODO(peter): Update the global sequence number property. This is only
@@ -209,13 +209,13 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 
 func ingestTargetLevel(cmp Compare, v *version, meta *fileMetadata) int {
 	// Find the lowest level which does not have any files which overlap meta.
-	if len(v.overlaps(0, cmp, meta.smallest.UserKey, meta.largest.UserKey)) != 0 {
+	if len(v.Overlaps(0, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
 		return 0
 	}
 
 	level := 1
 	for ; level < numLevels; level++ {
-		if len(v.overlaps(level, cmp, meta.smallest.UserKey, meta.largest.UserKey)) != 0 {
+		if len(v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
 			break
 		}
 	}
@@ -265,7 +265,7 @@ func (d *DB) Ingest(paths []string) error {
 	d.mu.Lock()
 	pendingOutputs := make([]uint64, len(paths))
 	for i := range paths {
-		pendingOutputs[i] = d.mu.versions.nextFileNum()
+		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}
 	for _, fileNum := range pendingOutputs {
 		d.mu.compact.pendingOutputs[fileNum] = struct{}{}
@@ -369,18 +369,18 @@ func (d *DB) Ingest(paths []string) error {
 	if d.opts.EventListener.TableIngested != nil {
 		info := TableIngestInfo{
 			JobID:        jobID,
-			GlobalSeqNum: meta[0].smallestSeqNum,
+			GlobalSeqNum: meta[0].SmallestSeqNum,
 			Err:          err,
 		}
 		if ve != nil {
 			info.Tables = make([]struct {
 				TableInfo
 				Level int
-			}, len(ve.newFiles))
-			for i := range ve.newFiles {
-				e := &ve.newFiles[i]
-				info.Tables[i].Level = e.level
-				info.Tables[i].TableInfo = e.meta.tableInfo(d.dirname)
+			}, len(ve.NewFiles))
+			for i := range ve.NewFiles {
+				e := &ve.NewFiles[i]
+				info.Tables[i].Level = e.Level
+				info.Tables[i].TableInfo = e.Meta.TableInfo(d.dirname)
 			}
 		}
 		d.opts.EventListener.TableIngested(info)
@@ -394,25 +394,25 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	defer d.mu.Unlock()
 
 	ve := &versionEdit{
-		newFiles: make([]newFileEntry, len(meta)),
-		metrics:  make(map[int]*LevelMetrics),
+		NewFiles: make([]newFileEntry, len(meta)),
 	}
+	metrics := make(map[int]*LevelMetrics)
 	current := d.mu.versions.currentVersion()
 	for i := range meta {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		m := meta[i]
-		f := &ve.newFiles[i]
-		f.level = ingestTargetLevel(d.cmp, current, m)
-		f.meta = *m
-		metrics := ve.metrics[f.level]
-		if metrics == nil {
-			metrics = &LevelMetrics{}
-			ve.metrics[f.level] = metrics
+		f := &ve.NewFiles[i]
+		f.Level = ingestTargetLevel(d.cmp, current, m)
+		f.Meta = *m
+		levelMetrics := metrics[f.Level]
+		if levelMetrics == nil {
+			levelMetrics = &LevelMetrics{}
+			metrics[f.Level] = levelMetrics
 		}
-		metrics.BytesIngested += m.size
+		levelMetrics.BytesIngested += m.Size
 	}
-	if err := d.mu.versions.logAndApply(jobID, ve, d.dataDir); err != nil {
+	if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir); err != nil {
 		return nil, err
 	}
 	d.updateReadStateLocked()

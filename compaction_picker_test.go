@@ -38,7 +38,7 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 			if err != nil {
 				return nil, nil, err.Error()
 			}
-			if vers.files[level] != nil {
+			if vers.Files[level] != nil {
 				return nil, nil, fmt.Sprintf("level %d already filled", level)
 			}
 			size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
@@ -47,13 +47,13 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 			}
 			if level == 0 {
 				for i := uint64(0); i < size; i++ {
-					vers.files[level] = append(vers.files[level], fileMetadata{
-						size: 1,
+					vers.Files[level] = append(vers.Files[level], fileMetadata{
+						Size: 1,
 					})
 				}
 			} else {
-				vers.files[level] = append(vers.files[level], fileMetadata{
-					size: size,
+				vers.Files[level] = append(vers.Files[level], fileMetadata{
+					Size: size,
 				})
 			}
 		}

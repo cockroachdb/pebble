@@ -134,7 +134,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 				l := &g.l0[n-1]
 				g.iter, g.rangeDelIter, g.err = g.newIters(
 					l,
-					nil /* iter options */,
+					nil, /* iter options */
 					nil /* bytes iterated */)
 				if g.err != nil {
 					return nil, nil
@@ -149,12 +149,12 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level >= numLevels {
 			return nil, nil
 		}
-		if len(g.version.files[g.level]) == 0 {
+		if len(g.version.Files[g.level]) == 0 {
 			g.level++
 			continue
 		}
 
-		g.levelIter.init(nil, g.cmp, g.newIters, g.version.files[g.level], nil)
+		g.levelIter.init(nil, g.cmp, g.newIters, g.version.Files[g.level], nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
