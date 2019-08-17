@@ -9,101 +9,107 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"github.com/petermattis/pebble/bloom"
 	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
-var sstableConfig struct {
-	// TODO(peter): Make the options configurable. In particular, we want to be
-	// able to register comparers, and mergers. We also want to be able to
-	// register key/value pretty printers.
-	opts    *sstable.Options
-	start   string
-	end     string
-	verbose bool
+// sstableT implements sstable-level tools, including both configuration state
+// and the commands themselves.
+type sstableT struct {
+	Root       *cobra.Command
+	Check      *cobra.Command
+	Layout     *cobra.Command
+	Properties *cobra.Command
+	Scan       *cobra.Command
+
+	// Configuration and state.
+	opts  *sstable.Options
+	dbNum uint64
+
+	// Flags.
+	fmtKey   formatter
+	fmtValue formatter
+	start    key
+	end      key
+	verbose  bool
 }
 
-// SSTableCmd is the root of the sstable commands.
-var SSTableCmd = &cobra.Command{
-	Use:   "sstable",
-	Short: "sstable introspection tools",
-}
+func newSSTable(opts *base.Options) *sstableT {
+	s := &sstableT{
+		opts: opts,
+	}
+	s.fmtKey.mustSet("quoted")
+	s.fmtValue.mustSet("hex")
 
-// SSTableCheckCmd implements sstable check.
-var SSTableCheckCmd = &cobra.Command{
-	Use:   "check <sstables>",
-	Short: "verify checksums and metadata",
-	Long:  ``,
-	Args:  cobra.MinimumNArgs(1),
-	Run:   runSSTableCheck,
-}
-
-// SSTableLayoutCmd implements sstable layout.
-var SSTableLayoutCmd = &cobra.Command{
-	Use:   "layout <sstables>",
-	Short: "print sstable block and record layout",
-	Long: `
+	s.Root = &cobra.Command{
+		Use:   "sstable",
+		Short: "sstable introspection tools",
+	}
+	s.Check = &cobra.Command{
+		Use:   "check <sstables>",
+		Short: "verify checksums and metadata",
+		Long:  ``,
+		Args:  cobra.MinimumNArgs(1),
+		Run:   s.runCheck,
+	}
+	s.Layout = &cobra.Command{
+		Use:   "layout <sstables>",
+		Short: "print sstable block and record layout",
+		Long: `
 Print the layout for the sstables. The -v flag controls whether record layout
 is displayed or omitted.
 `,
-	Args: cobra.MinimumNArgs(1),
-	Run:  runSSTableLayout,
-}
-
-// SSTablePropertiesCmd implements sstable properties.
-var SSTablePropertiesCmd = &cobra.Command{
-	Use:   "properties <sstables>",
-	Short: "print sstable properties",
-	Long: `
+		Args: cobra.MinimumNArgs(1),
+		Run:  s.runLayout,
+	}
+	s.Properties = &cobra.Command{
+		Use:   "properties <sstables>",
+		Short: "print sstable properties",
+		Long: `
 Print the properties for the sstables. The -v flag controls whether the
 properties are pretty-printed or displayed in a verbose/raw format.
 `,
-	Args: cobra.MinimumNArgs(1),
-	Run:  runSSTableProperties,
-}
-
-// SSTableScanCmd implements sstable scan.
-var SSTableScanCmd = &cobra.Command{
-	Use:   "scan <sstables>",
-	Short: "print sstable records",
-	Long: `
+		Args: cobra.MinimumNArgs(1),
+		Run:  s.runProperties,
+	}
+	s.Scan = &cobra.Command{
+		Use:   "scan <sstables>",
+		Short: "print sstable records",
+		Long: `
 Print the records in the sstables. The sstables are scanned in command line
 order which means the records will be printed in that order.
 `,
-	Args: cobra.MinimumNArgs(1),
-	Run:  runSSTableScan,
-}
+		Args: cobra.MinimumNArgs(1),
+		Run:  s.runScan,
+	}
 
-func init() {
-	SSTableCmd.AddCommand(
-		SSTableCheckCmd,
-		SSTableLayoutCmd,
-		SSTablePropertiesCmd,
-		SSTableScanCmd,
-	)
-	for _, cmd := range []*cobra.Command{SSTableLayoutCmd, SSTablePropertiesCmd} {
+	s.Root.AddCommand(s.Check, s.Layout, s.Properties, s.Scan)
+	for _, cmd := range []*cobra.Command{s.Layout, s.Properties} {
 		cmd.Flags().BoolVarP(
-			&sstableConfig.verbose, "verbose", "v", false,
+			&s.verbose, "verbose", "v", false,
 			"verbose output")
 	}
 
-	SSTableScanCmd.Flags().StringVar(
-		&sstableConfig.start, "start", "", "start key for the scan")
-	SSTableScanCmd.Flags().StringVar(
-		&sstableConfig.end, "end", "", "end key for the scan")
+	s.Scan.Flags().Var(
+		&s.fmtKey, "key", "key formatter")
+	s.Scan.Flags().Var(
+		&s.fmtValue, "value", "value formatter")
+	s.Scan.Flags().Var(
+		&s.start, "start", "start key for the scan")
+	s.Scan.Flags().Var(
+		&s.end, "end", "end key for the scan")
 
-	sstableConfig.opts = &sstable.Options{
-		Levels: []sstable.TableOptions{{
-			FilterPolicy: bloom.FilterPolicy(10),
-			FilterType:   base.TableFilter,
-		}},
-	}
+	return s
 }
 
-func runSSTableCheck(cmd *cobra.Command, args []string) {
+func (s *sstableT) nextDBNum() uint64 {
+	s.dbNum++
+	return s.dbNum
+}
+
+func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
 			f, err := vfs.Default.Open(arg)
@@ -114,7 +120,7 @@ func runSSTableCheck(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
 			defer r.Close()
 
 			if err != nil {
@@ -132,7 +138,7 @@ func runSSTableCheck(cmd *cobra.Command, args []string) {
 	}
 }
 
-func runSSTableLayout(cmd *cobra.Command, args []string) {
+func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
 			f, err := vfs.Default.Open(arg)
@@ -143,7 +149,7 @@ func runSSTableLayout(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
 			defer r.Close()
 
 			if err != nil {
@@ -156,12 +162,12 @@ func runSSTableLayout(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
 			}
-			l.Describe(stdout, sstableConfig.verbose, r)
+			l.Describe(stdout, s.verbose, r)
 		}()
 	}
 }
 
-func runSSTableProperties(cmd *cobra.Command, args []string) {
+func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
 			f, err := vfs.Default.Open(arg)
@@ -172,7 +178,7 @@ func runSSTableProperties(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
 			defer r.Close()
 
 			if err != nil {
@@ -180,7 +186,7 @@ func runSSTableProperties(cmd *cobra.Command, args []string) {
 				return
 			}
 
-			if sstableConfig.verbose {
+			if s.verbose {
 				fmt.Fprintf(stdout, "%s", r.Properties.String())
 				return
 			}
@@ -253,7 +259,7 @@ func runSSTableProperties(cmd *cobra.Command, args []string) {
 	}
 }
 
-func runSSTableScan(cmd *cobra.Command, args []string) {
+func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
 			f, err := vfs.Default.Open(arg)
@@ -264,7 +270,7 @@ func runSSTableScan(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, nextDBNum(), 0, sstableConfig.opts)
+			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
 			defer r.Close()
 
 			if err != nil {
@@ -272,20 +278,9 @@ func runSSTableScan(cmd *cobra.Command, args []string) {
 				return
 			}
 
-			// TODO(peter): Allow the start and end key to be specified in hex.
-			var start, end []byte
-			if sstableConfig.start != "" {
-				start = []byte(sstableConfig.start)
-			}
-			if sstableConfig.end != "" {
-				end = []byte(sstableConfig.end)
-			}
-
-			iter := r.NewIter(nil, end)
-			for key, value := iter.SeekGE(start); key != nil; key, value = iter.Next() {
-				// TODO(peter): Allow a pretty printer to be provided for keys and
-				// values.
-				fmt.Fprintf(stdout, "%s [% x]\n", key, value)
+			iter := r.NewIter(nil, s.end)
+			for key, value := iter.SeekGE(s.start); key != nil; key, value = iter.Next() {
+				formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
 			}
 			if err := iter.Close(); err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
