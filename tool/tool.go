@@ -43,7 +43,7 @@ func New() *T {
 	t.RegisterMerger(base.DefaultMerger)
 
 	t.db = newDB(&t.opts)
-	t.manifest = newManifest(&t.opts)
+	t.manifest = newManifest(&t.opts, t.comparers)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)
 	t.wal = newWAL(&t.opts)
 	t.Commands = []*cobra.Command{
