@@ -9,7 +9,11 @@ next
 next
 next
 ----
-<a:1><b:2><c:3><d:4>.
+<a:1>
+<b:2>
+<c:3>
+<d:4>
+.
 
 iter
 seek-ge a
@@ -18,7 +22,11 @@ next
 next
 next
 ----
-<a:1><b:2><c:3><d:4>.
+<a:1>
+<b:2>
+<c:3>
+<d:4>
+.
 
 iter
 seek-ge b
@@ -26,20 +34,26 @@ next
 next
 next
 ----
-<b:2><c:3><d:4>.
+<b:2>
+<c:3>
+<d:4>
+.
 
 iter
 seek-ge c
 next
 next
 ----
-<c:3><d:4>.
+<c:3>
+<d:4>
+.
 
 iter
 seek-ge d
 next
 ----
-<d:4>.
+<d:4>
+.
 
 iter
 seek-ge e
@@ -52,7 +66,10 @@ seek-ge c
 seek-ge d
 seek-ge e
 ----
-<b:2><c:3><d:4>.
+<b:2>
+<c:3>
+<d:4>
+.
 
 iter
 last
@@ -61,7 +78,11 @@ prev
 prev
 prev
 ----
-<d:4><c:3><b:2><a:1>.
+<d:4>
+<c:3>
+<b:2>
+<a:1>
+.
 
 iter
 seek-lt e
@@ -70,7 +91,11 @@ prev
 prev
 prev
 ----
-<d:4><c:3><b:2><a:1>.
+<d:4>
+<c:3>
+<b:2>
+<a:1>
+.
 
 iter
 seek-lt d
@@ -78,20 +103,26 @@ prev
 prev
 prev
 ----
-<c:3><b:2><a:1>.
+<c:3>
+<b:2>
+<a:1>
+.
 
 iter
 seek-lt c
 prev
 prev
 ----
-<b:2><a:1>.
+<b:2>
+<a:1>
+.
 
 iter
 seek-lt b
 prev
 ----
-<a:1>.
+<a:1>
+.
 
 iter
 seek-lt a
@@ -104,7 +135,10 @@ seek-lt c
 seek-lt b
 seek-lt a
 ----
-<c:3><b:2><a:1>.
+<c:3>
+<b:2>
+<a:1>
+.
 
 iter globalSeqNum=1
 first
@@ -113,7 +147,11 @@ next
 next
 next
 ----
-<a:1><b:1><c:1><d:1>.
+<a:1>
+<b:1>
+<c:1>
+<d:1>
+.
 
 iter globalSeqNum=10
 first
@@ -122,7 +160,11 @@ next
 next
 next
 ----
-<a:10><b:10><c:10><d:10>.
+<a:10>
+<b:10>
+<c:10>
+<d:10>
+.
 
 iter globalSeqNum=0
 seek-lt x
