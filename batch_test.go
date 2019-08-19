@@ -121,6 +121,48 @@ func TestBatchIncrement(t *testing.T) {
 	}
 }
 
+func TestBatchOpDoesIncrement(t *testing.T) {
+	var b Batch
+	key := []byte("foo")
+	value := []byte("bar")
+
+	if b.Count() != 0 {
+		t.Fatalf("new batch has a nonzero count: %d", b.Count())
+	}
+
+	// Should increment count by 1
+	_ = b.Set(key, value, nil)
+	if b.Count() != 1 {
+		t.Fatalf("expected count: %d, got %d", 1, b.Count())
+	}
+
+	var b2 Batch
+	// Should increment count by 1 each
+	_ = b2.Set(key, value, nil)
+	_ = b2.Delete(key, nil)
+	if b2.Count() != 2 {
+		t.Fatalf("expected count: %d, got %d", 2, b2.Count())
+	}
+
+	// Should increment count by b2.count()
+	_ = b.Apply(&b2, nil)
+	if b.Count() != 3 {
+		t.Fatalf("expected count: %d, got %d", 3, b.Count())
+	}
+
+	// Should increment count by 1
+	_ = b.Merge(key, value, nil)
+	if b.Count() != 4 {
+		t.Fatalf("expected count: %d, got %d", 4, b.Count())
+	}
+
+	// Should NOT increment count.
+	_ = b.LogData([]byte("foobarbaz"), nil)
+	if b.Count() != 4 {
+		t.Fatalf("expected count: %d, got %d", 4, b.Count())
+	}
+}
+
 func TestBatchGet(t *testing.T) {
 	for _, method := range []string{"build", "apply"} {
 		t.Run(method, func(t *testing.T) {
@@ -445,6 +487,7 @@ func BenchmarkBatchSet(b *testing.B) {
 		value[i] = byte(i)
 	}
 	key := make([]byte, 8)
+	batch := newBatch(nil)
 
 	b.ResetTimer()
 
@@ -455,12 +498,11 @@ func BenchmarkBatchSet(b *testing.B) {
 			end = b.N
 		}
 
-		batch := newBatch(nil)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value, nil)
 		}
-		batch.release()
+		batch.Reset()
 	}
 
 	b.StopTimer()
@@ -472,6 +514,7 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 		value[i] = byte(i)
 	}
 	key := make([]byte, 8)
+	batch := newIndexedBatch(nil, DefaultComparer)
 
 	b.ResetTimer()
 
@@ -482,12 +525,81 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 			end = b.N
 		}
 
-		batch := newIndexedBatch(nil, DefaultComparer)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value, nil)
 		}
-		batch.release()
+		batch.Reset()
+	}
+
+	b.StopTimer()
+}
+
+func BenchmarkBatchSetDeferred(b *testing.B) {
+	value := make([]byte, 10)
+	for i := range value {
+		value[i] = byte(i)
+	}
+	key := make([]byte, 8)
+	batch := newBatch(nil)
+
+	b.ResetTimer()
+
+	const batchSize = 1000
+	for i := 0; i < b.N; i += batchSize {
+		end := i + batchSize
+		if end > b.N {
+			end = b.N
+		}
+
+		for j := i; j < end; j++ {
+			binary.BigEndian.PutUint64(key, uint64(j))
+			deferredOp, err := batch.SetDeferred(len(key), len(value), nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			copy(deferredOp.Key, key)
+			copy(deferredOp.Value, value)
+
+			deferredOp.Finish()
+		}
+		batch.Reset()
+	}
+
+	b.StopTimer()
+}
+
+func BenchmarkIndexedBatchSetDeferred(b *testing.B) {
+	value := make([]byte, 10)
+	for i := range value {
+		value[i] = byte(i)
+	}
+	key := make([]byte, 8)
+	batch := newIndexedBatch(nil, DefaultComparer)
+
+	b.ResetTimer()
+
+	const batchSize = 1000
+	for i := 0; i < b.N; i += batchSize {
+		end := i + batchSize
+		if end > b.N {
+			end = b.N
+		}
+
+		for j := i; j < end; j++ {
+			binary.BigEndian.PutUint64(key, uint64(j))
+			deferredOp, err := batch.SetDeferred(len(key), len(value), nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			copy(deferredOp.Key, key)
+			copy(deferredOp.Value, value)
+
+			deferredOp.Finish()
+		}
+		batch.Reset()
 	}
 
 	b.StopTimer()
