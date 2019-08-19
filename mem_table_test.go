@@ -282,7 +282,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 			if err := mem.apply(b, seqNum); err != nil {
 				return err.Error()
 			}
-			seqNum += uint64(b.count())
+			seqNum += uint64(b.Count())
 			return ""
 
 		case "scan":

@@ -326,7 +326,7 @@ func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(se
 }
 
 func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
-	n := uint64(b.count())
+	n := uint64(b.Count())
 	if n == invalidBatchCount {
 		return nil, ErrInvalidBatch
 	}
@@ -390,7 +390,7 @@ func (p *commitPipeline) publish(b *Batch) {
 		// that the sequence number ratchets up.
 		for {
 			curSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)
-			newSeqNum := t.seqNum() + uint64(t.count())
+			newSeqNum := t.seqNum() + uint64(t.Count())
 			if newSeqNum <= curSeqNum {
 				// t's sequence number has already been published.
 				break
