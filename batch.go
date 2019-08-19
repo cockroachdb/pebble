@@ -234,11 +234,20 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	return &i.batch
 }
 
+// NewBatchFromRepr instantiates a new Batch from a supplied byte
+// representation. The byte slice isn't copied, so callers must ensure this call
+// is safe and b.storage.data doesn't get unintentionally overwritten.
+func NewBatchFromRepr(repr []byte) *Batch {
+	b := &Batch{}
+	b.storage.data = repr
+	return b
+}
+
 func (b *Batch) release() {
 	// NB: This is ugly, but necessary so that we can use atomic.StoreUint32 for
 	// the Batch.applied field. Without using an atomic to clear that field the
 	// Go race detector complains.
-	b.reset()
+	b.Reset()
 	b.storage.cmp = nil
 	b.storage.abbreviatedKey = nil
 	b.memTableSize = 0
@@ -452,9 +461,7 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(data) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
-	if !b.increment() {
-		return ErrInvalidBatch
-	}
+	// Do not increment b.count - to match RocksDB behaviour.
 
 	pos := len(b.storage.data)
 	b.grow(1 + maxVarintLen32 + len(data))
@@ -468,6 +475,14 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 // the contents.
 func (b *Batch) Repr() []byte {
 	return b.storage.data
+}
+
+// MaybeInit initializes the underlying data byte slice if it has not been
+// initialized already. The capacity is set to cap.
+func (b *Batch) MaybeInit(cap int) {
+	if len(b.storage.data) == 0 {
+		b.init(cap)
+	}
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
@@ -558,7 +573,7 @@ func (b *Batch) init(cap int) {
 	b.storage.data = b.storage.data[:batchHeaderLen]
 }
 
-func (b *Batch) reset() {
+func (b *Batch) Reset() {
 	if b.storage.data != nil {
 		if cap(b.storage.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
