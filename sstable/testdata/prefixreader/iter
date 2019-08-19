@@ -7,25 +7,30 @@ seek-prefix-ge a
 next
 next
 ----
-<a:1><aa:2>.
+<a:1>
+<aa:2>
+.
 
 iter
 seek-prefix-ge aa
 next
 ----
-<aa:2>.
+<aa:2>
+.
 
 iter
 seek-prefix-ge aa
 prev
 ----
-<aa:2>.
+<aa:2>
+.
 
 iter
 seek-prefix-ge c
 prev
 ----
-<c:3>.
+<c:3>
+.
 
 iter
 seek-prefix-ge b
@@ -36,13 +41,15 @@ iter
 seek-prefix-ge c
 next
 ----
-<c:3>.
+<c:3>
+.
 
 iter
 seek-prefix-ge d
 next
 ----
-<d:4>.
+<d:4>
+.
 
 iter
 seek-prefix-ge e
@@ -54,7 +61,9 @@ seek-prefix-ge c
 seek-prefix-ge d
 seek-prefix-ge e
 ----
-<c:3><d:4>.
+<c:3>
+<d:4>
+.
 
 iter
 seek-prefix-ge c
@@ -63,7 +72,11 @@ seek-prefix-ge a
 next
 next
 ----
-<c:3>.<a:1><aa:2>.
+<c:3>
+.
+<a:1>
+<aa:2>
+.
 
 iter
 seek-prefix-ge aa
@@ -74,7 +87,13 @@ next
 seek-prefix-ge c
 next
 ----
-<aa:2>.<a:1><aa:2>.<c:3>.
+<aa:2>
+.
+<a:1>
+<aa:2>
+.
+<c:3>
+.
 
 iter
 seek-prefix-ge c
@@ -85,14 +104,22 @@ seek-prefix-ge a
 next
 next
 ----
-<c:3>.<aa:2>.<a:1><aa:2>.
+<c:3>
+.
+<aa:2>
+.
+<a:1>
+<aa:2>
+.
 
 iter
 seek-prefix-ge a
 next
 next
 ----
-<a:1><aa:2>.
+<a:1>
+<aa:2>
+.
 
 iter
 seek-prefix-ge a
@@ -100,13 +127,17 @@ next
 prev
 prev
 ----
-<a:1><aa:2><a:1>.
+<a:1>
+<aa:2>
+<a:1>
+.
 
 iter
 seek-prefix-ge a
 prev
 ----
-<a:1>.
+<a:1>
+.
 
 iter
 seek-prefix-ge a
@@ -116,7 +147,12 @@ next
 next
 next
 ----
-<a:1><a:1><aa:2><c:3><d:4>.
+<a:1>
+<a:1>
+<aa:2>
+<c:3>
+<d:4>
+.
 
 iter
 seek-prefix-ge a
@@ -125,7 +161,11 @@ next
 next
 next
 ----
-<a:1><aa:2><c:3><d:4>.
+<a:1>
+<aa:2>
+<c:3>
+<d:4>
+.
 
 iter
 seek-prefix-ge aa
@@ -133,7 +173,10 @@ seek-ge c
 next
 next
 ----
-<aa:2><c:3><d:4>.
+<aa:2>
+<c:3>
+<d:4>
+.
 
 iter
 seek-prefix-ge aa
@@ -142,7 +185,11 @@ next
 next
 next
 ----
-<aa:2><aa:2><c:3><d:4>.
+<aa:2>
+<aa:2>
+<c:3>
+<d:4>
+.
 
 iter
 seek-prefix-ge aa
@@ -150,14 +197,19 @@ seek-lt c
 prev
 prev
 ----
-<aa:2><aa:2><a:1>.
+<aa:2>
+<aa:2>
+<a:1>
+.
 
 iter
 seek-lt c
 seek-prefix-ge aa
 prev
 ----
-<aa:2><aa:2>.
+<aa:2>
+<aa:2>
+.
 
 iter
 seek-lt c
@@ -166,7 +218,10 @@ next
 next
 
 ----
-<aa:2><a:1><aa:2>.
+<aa:2>
+<a:1>
+<aa:2>
+.
 
 iter
 seek-ge aa
@@ -175,7 +230,10 @@ next
 next
 
 ----
-<aa:2><a:1><aa:2>.
+<aa:2>
+<a:1>
+<aa:2>
+.
 
 iter
 seek-prefix-ge 1

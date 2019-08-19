@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -113,7 +115,6 @@ func TestReader(t *testing.T) {
 		},
 	}
 
-	// TODO(ryan): Add more tests for two level iterator using prebuilt SSTs.
 	testDirs := map[string]string{
 		"default":      "testdata/reader",
 		"prefixFilter": "testdata/prefixreader",
@@ -133,14 +134,43 @@ func TestReader(t *testing.T) {
 					t.Run(
 						fmt.Sprintf("opts=%s,tableOpts=%s,blockSize=%s,indexSize=%s",
 							oName, lName, dName, iName),
-						func(t *testing.T) {runTestReader(t, o, testDirs[oName])})
+						func(t *testing.T) {runTestReader(t, o, testDirs[oName], nil /* Reader */)})
 				}
 			}
 		}
 	}
 }
 
-func runTestReader(t *testing.T, o Options, dir string) {
+func TestHamletReader(t *testing.T) {
+	prebuiltSSTs := []string{
+		"testdata/h.ldb",
+		"testdata/h.sst",
+		"testdata/h.no-compression.sst",
+		"testdata/h.no-compression.two_level_index.sst",
+		"testdata/h.block-bloom.no-compression.sst",
+		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
+		"testdata/h.table-bloom.no-compression.sst",
+	}
+
+	for _, prebuiltSST := range prebuiltSSTs {
+		f, err := os.Open(filepath.FromSlash(prebuiltSST))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		r, err := NewReader(f, 0 /* dbNum */, 0 /* fileNum */, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Run(
+			fmt.Sprintf("sst=%s", prebuiltSST),
+			func(t *testing.T) {runTestReader(t, Options{}, "testdata/hamletreader", r)},
+		)
+	}
+}
+
+func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 	makeIkeyValue := func(s string) (InternalKey, []byte) {
 		j := strings.Index(s, ":")
 		k := strings.Index(s, "=")
@@ -152,7 +182,6 @@ func runTestReader(t *testing.T, o Options, dir string) {
 	}
 
 	mem := vfs.NewMem()
-	var r *Reader
 	var dbNum uint64
 
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
@@ -252,8 +281,8 @@ func runTestReader(t *testing.T, o Options, dir string) {
 					} else {
 						fmt.Fprintf(&b, ".")
 					}
+					b.WriteString("\n")
 				}
-				b.WriteString("\n")
 				return b.String()
 
 			case "get":
