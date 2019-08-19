@@ -78,6 +78,36 @@ func (s *batchStorage) Compare(a []byte, b uint32) int {
 	return 1
 }
 
+// DeferredBatchOp represents a batch operation (eg. set, merge, delete) that is
+// being inserted into the batch. Indexing is not performed on the specified key
+// until Finish is called, hence the name deferred. This struct lets the caller
+// copy or encode keys/values directly into the batch representation instead of
+// copying into an intermediary buffer then having pebble.Batch copy off of it.
+type DeferredBatchOp struct {
+	batch *Batch
+
+	// Key and Value point to parts of the binary batch representation where
+	// keys and values should be encoded/copied into. len(Key) and len(Value)
+	// bytes must be copied into these slices respectively before calling
+	// Finish(). Changing where these slices point to is not allowed.
+	Key, Value []byte
+	offset uint32
+}
+
+// Finish completes the addition of this batch operation, and adds it to the
+// index if necessary. Must be called once (and exactly once) keys/values
+// have been filled into Key and Value. Not calling Finish or not
+// copying/encoding keys will result in an incomplete index, and calling Finish
+// twice may result in a panic.
+func (d DeferredBatchOp) Finish() {
+	if d.batch.index != nil {
+		if err := d.batch.index.Add(d.offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
+		}
+	}
+}
+
 // A Batch is a sequence of Sets, Merges, Deletes, and/or DeleteRanges that are
 // applied atomically. Batch implements the Reader interface, but only an
 // indexed batch supports reading (without error) via Get or NewIter. A
@@ -238,14 +268,21 @@ func (b *Batch) release() {
 	// NB: This is ugly, but necessary so that we can use atomic.StoreUint32 for
 	// the Batch.applied field. Without using an atomic to clear that field the
 	// Go race detector complains.
-	b.reset()
+	b.Reset()
 	b.storage.cmp = nil
 	b.storage.abbreviatedKey = nil
 	b.memTableSize = 0
-	b.db = nil
+
 	b.flushable = nil
 	b.commit = sync.WaitGroup{}
 	atomic.StoreUint32(&b.applied, 0)
+
+	if b.db == nil {
+		// Batch not created using newBatch or newIndexedBatch, so don't put it
+		// back in the pool.
+		return
+	}
+	b.db = nil
 
 	if b.index == nil {
 		batchPool.Put(b)
@@ -337,6 +374,29 @@ func (b *Batch) encodeKeyValue(key, value []byte, kind InternalKeyKind) uint32 {
 	return offset
 }
 
+func (b *Batch) encodeKeyValuePlaceholders(
+	keyLen, valueLen int, kind InternalKeyKind,
+) (keyDest, valueDest []byte, offset uint32) {
+	pos := len(b.storage.data)
+	offset = uint32(pos)
+	b.grow(1 + 2*maxVarintLen32 + keyLen + valueLen)
+	b.storage.data[pos] = byte(kind)
+	pos++
+
+	varlen1 := putUvarint32(b.storage.data[pos:], uint32(keyLen))
+	pos += varlen1
+	keyDest = b.storage.data[pos:pos+keyLen]
+	pos += keyLen
+
+	varlen2 := putUvarint32(b.storage.data[pos:], uint32(valueLen))
+	pos += varlen2
+	valueDest = b.storage.data[pos:pos+valueLen]
+	pos += valueLen
+	b.storage.data = b.storage.data[:len(b.storage.data)-(2*maxVarintLen32-varlen1-varlen2)]
+
+	return
+}
+
 // Set adds an action to the batch that sets the key to map to the value.
 //
 // It is safe to modify the contents of the arguments after Set returns.
@@ -358,6 +418,33 @@ func (b *Batch) Set(key, value []byte, _ *WriteOptions) error {
 	}
 	b.memTableSize += memTableEntrySize(len(key), len(value))
 	return nil
+}
+
+// SetDeferred is similar to Set in that it adds a set operation to the batch,
+// except it only takes in key/value lengths insted of complete slices, letting
+// the caller encode into those objects and then call Finish() on the returned
+// object.
+func (b *Batch) SetDeferred(keyLen, valueLen int, _ *WriteOptions) (DeferredBatchOp, error) {
+	// Code duplication between Set and SetDeferred lets us preserve the fast
+	// path where the entire byte slices are available (in the Set case).
+	if len(b.storage.data) == 0 {
+		b.init(keyLen + valueLen + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return DeferredBatchOp{}, ErrInvalidBatch
+	}
+
+	keyDest, valueDest, offset := b.encodeKeyValuePlaceholders(keyLen, valueLen, InternalKeyKindSet)
+
+	deferredOp := DeferredBatchOp{
+		batch:  b,
+		Key:    keyDest,
+		Value:  valueDest,
+		offset: offset,
+	}
+
+	b.memTableSize += memTableEntrySize(keyLen, valueLen)
+	return deferredOp, nil
 }
 
 // Merge adds an action to the batch that merges the value at key with the new
@@ -383,6 +470,33 @@ func (b *Batch) Merge(key, value []byte, _ *WriteOptions) error {
 	}
 	b.memTableSize += memTableEntrySize(len(key), len(value))
 	return nil
+}
+
+// MergeDeferred is similar to Merge in that it adds a merge operation to the
+// batch, except it only takes in key/value lengths insted of complete slices,
+// letting the caller encode into those objects and then call Finish() on the
+// returned object.
+func (b *Batch) MergeDeferred(keyLen, valueLen int, _ *WriteOptions) (DeferredBatchOp, error) {
+	// Code duplication with Merge is so that the Merge case (where byte slices
+	// are provided) can preserve the fast path.
+	if len(b.storage.data) == 0 {
+		b.init(keyLen + valueLen + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return DeferredBatchOp{}, ErrInvalidBatch
+	}
+
+	keyDest, valueDest, offset := b.encodeKeyValuePlaceholders(keyLen, valueLen, InternalKeyKindMerge)
+
+	deferredOp := DeferredBatchOp{
+		batch:  b,
+		Key:    keyDest,
+		Value:  valueDest,
+		offset: offset,
+	}
+
+	b.memTableSize += memTableEntrySize(keyLen, valueLen)
+	return deferredOp, nil
 }
 
 // Delete adds an action to the batch that deletes the entry for key.
@@ -411,6 +525,39 @@ func (b *Batch) Delete(key []byte, _ *WriteOptions) error {
 	}
 	b.memTableSize += memTableEntrySize(len(key), 0)
 	return nil
+}
+
+// DeleteDeferred is similar to Delete in that it adds a delete operation to the
+// batch, except it only takes in key/value lengths insted of complete slices,
+// letting the caller encode into those objects and then call Finish() on the
+// returned object.
+func (b *Batch) DeleteDeferred(keyLen int, _ *WriteOptions) (DeferredBatchOp, error) {
+	// Code duplication with Delete is so that the Delete case (where byte
+	// slices are provided) can preserve the fast path.
+	if len(b.storage.data) == 0 {
+		b.init(keyLen + binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return DeferredBatchOp{}, ErrInvalidBatch
+	}
+
+	deferredOp := DeferredBatchOp{
+		batch:     b,
+	}
+
+	pos := len(b.storage.data)
+	deferredOp.offset = uint32(pos)
+	b.grow(1 + maxVarintLen32 +  keyLen)
+	b.storage.data[pos] = byte(InternalKeyKindDelete)
+	pos++
+	varlen1 := putUvarint32(b.storage.data[pos:], uint32(keyLen))
+	pos += varlen1
+	deferredOp.Key = b.storage.data[pos:pos+keyLen]
+
+	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
+
+	b.memTableSize += memTableEntrySize(keyLen,0)
+	return deferredOp, nil
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -452,9 +599,9 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(data) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
-	if !b.increment() {
-		return ErrInvalidBatch
-	}
+	// Since LogData only writes to the WAL and does not affect the memtable,
+	// we don't increment b.count here. b.count only tracks operations that
+	// are applied to the memtable.
 
 	pos := len(b.storage.data)
 	b.grow(1 + maxVarintLen32 + len(data))
@@ -467,6 +614,9 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 // Repr returns the underlying batch representation. It is not safe to modify
 // the contents.
 func (b *Batch) Repr() []byte {
+	if len(b.storage.data) == 0 {
+		b.init(batchHeaderLen)
+	}
 	return b.storage.data
 }
 
@@ -569,7 +719,11 @@ func (b *Batch) init(cap int) {
 	b.storage.data = b.storage.data[:batchHeaderLen]
 }
 
-func (b *Batch) reset() {
+// Reset clears the underlying byte slice and effectively empties the batch for
+// reuse. Used in cases where Batch is only being used to build a batch, and
+// where the end result is a Repr() call, not a Commit call or a Close call.
+// Commits and Closes take care of releasing resources when appropriate.
+func (b *Batch) Reset() {
 	if b.storage.data != nil {
 		if cap(b.storage.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
@@ -659,8 +813,12 @@ func (b *Batch) setCount(v uint32) {
 	binary.LittleEndian.PutUint32(b.countData(), v)
 }
 
-// Count returns the number of records in the batch.
+// Count returns the count of memtable-modifying operations in this batch. All
+// operations with the except of LogData increment this count.
 func (b *Batch) Count() uint32 {
+	if len(b.storage.data) == 0 {
+		return 0
+	}
 	return binary.LittleEndian.Uint32(b.countData())
 }
 
