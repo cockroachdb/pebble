@@ -121,6 +121,49 @@ func TestBatchIncrement(t *testing.T) {
 	}
 }
 
+func TestBatchOpDoesIncrement(t *testing.T) {
+	var b Batch
+	key := []byte("foo")
+	value := []byte("bar")
+	b.init(200)
+
+	if b.count() != 0 {
+		t.Fatalf("new batch has a nonzero count: %d", b.count())
+	}
+
+	// Should increment count by 1
+	_ = b.Set(key, value, nil)
+	if b.count() != 1 {
+		t.Fatalf("expected count: %d, got %d", 1, b.count())
+	}
+
+	var b2 Batch
+	// Should increment count by 1 each
+	_ = b2.Set(key, value, nil)
+	_ = b2.Delete(key, nil)
+	if b2.count() != 2 {
+		t.Fatalf("expected count: %d, got %d", 2, b2.count())
+	}
+
+	// Should increment count by b2.count()
+	_ = b.Apply(&b2, nil)
+	if b.count() != 3 {
+		t.Fatalf("expected count: %d, got %d", 3, b.count())
+	}
+
+	// Should increment count by 1
+	_ = b.Merge(key, value, nil)
+	if b.count() != 4 {
+		t.Fatalf("expected count: %d, got %d", 4, b.count())
+	}
+
+	// Should NOT increment count.
+	_ = b.LogData([]byte("foobarbaz"), nil)
+	if b.count() != 4 {
+		t.Fatalf("expected count: %d, got %d", 4, b.count())
+	}
+}
+
 func TestBatchGet(t *testing.T) {
 	for _, method := range []string{"build", "apply"} {
 		t.Run(method, func(t *testing.T) {

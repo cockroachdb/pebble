@@ -198,6 +198,12 @@ type Batch struct {
 	applied uint32 // updated atomically
 }
 
+// Encodeable represents any object that can be encoded into a byte slice.
+type Encodeable interface {
+	Encode(dest []byte)
+	Len() int
+}
+
 var _ Reader = (*Batch)(nil)
 var _ Writer = (*Batch)(nil)
 
@@ -238,10 +244,17 @@ func (b *Batch) release() {
 	// NB: This is ugly, but necessary so that we can use atomic.StoreUint32 for
 	// the Batch.applied field. Without using an atomic to clear that field the
 	// Go race detector complains.
-	b.reset()
+	b.Reset()
 	b.storage.cmp = nil
 	b.storage.abbreviatedKey = nil
 	b.memTableSize = 0
+
+	if b.db == nil {
+		// Batch not created using newBatch or newIndexedBatch, so don't put it
+		// back in the pool.
+		return
+	}
+
 	b.db = nil
 	b.flushable = nil
 	b.commit = sync.WaitGroup{}
@@ -337,6 +350,26 @@ func (b *Batch) encodeKeyValue(key, value []byte, kind InternalKeyKind) uint32 {
 	return offset
 }
 
+func (b *Batch) encodeKeyValueEncodeables(key, value Encodeable, kind InternalKeyKind) uint32 {
+	pos := len(b.storage.data)
+	offset := uint32(pos)
+	b.grow(1 + 2*maxVarintLen32 + key.Len() + value.Len())
+	b.storage.data[pos] = byte(kind)
+	pos++
+
+	varlen1 := putUvarint32(b.storage.data[pos:], uint32(key.Len()))
+	pos += varlen1
+	key.Encode(b.storage.data[pos:])
+	pos += key.Len()
+
+	varlen2 := putUvarint32(b.storage.data[pos:], uint32(value.Len()))
+	pos += varlen2
+	value.Encode(b.storage.data[pos:])
+	pos += varlen2
+	b.storage.data = b.storage.data[:len(b.storage.data)-(2*maxVarintLen32-varlen1-varlen2)]
+	return offset
+}
+
 // Set adds an action to the batch that sets the key to map to the value.
 //
 // It is safe to modify the contents of the arguments after Set returns.
@@ -357,6 +390,30 @@ func (b *Batch) Set(key, value []byte, _ *WriteOptions) error {
 		}
 	}
 	b.memTableSize += memTableEntrySize(len(key), len(value))
+	return nil
+}
+
+// SetEncodeable is similar to Set in that it adds a Set operation to the batch,
+// except instead of accepting byte slices for key/value, it takes an Encodeable
+// which is useful for cases where we don't want to double-copy (eg. once into
+// an intermediary buffer byte slice and then into the batch representation).
+func (b *Batch) SetEncodeable(key, value Encodeable, _ *WriteOptions) error {
+	if len(b.storage.data) == 0 {
+		b.init(key.Len() + value.Len() + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+
+	offset := b.encodeKeyValueEncodeables(key, value, InternalKeyKindSet)
+
+	if b.index != nil {
+		if err := b.index.Add(offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
+		}
+	}
+	b.memTableSize += memTableEntrySize(key.Len(), value.Len())
 	return nil
 }
 
@@ -385,6 +442,31 @@ func (b *Batch) Merge(key, value []byte, _ *WriteOptions) error {
 	return nil
 }
 
+// MergeEncodeable is similar to Merge in that it adds a Merge operation to the
+// batch, except instead of accepting byte slices for key/value, it takes an
+// Encodeable which is useful for cases where we don't want to double-copy (eg.
+// once into an intermediary buffer byte slice and then into the batch
+// representation).
+func (b *Batch) MergeEncodeable(key, value Encodeable, _ *WriteOptions) error {
+	if len(b.storage.data) == 0 {
+		b.init(key.Len() + value.Len() + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+
+	offset := b.encodeKeyValueEncodeables(key, value, InternalKeyKindMerge)
+
+	if b.index != nil {
+		if err := b.index.Add(offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
+		}
+	}
+	b.memTableSize += memTableEntrySize(key.Len(), value.Len())
+	return nil
+}
+
 // Delete adds an action to the batch that deletes the entry for key.
 //
 // It is safe to modify the contents of the arguments after Delete returns.
@@ -410,6 +492,40 @@ func (b *Batch) Delete(key []byte, _ *WriteOptions) error {
 		}
 	}
 	b.memTableSize += memTableEntrySize(len(key), 0)
+	return nil
+}
+
+// DeleteEncodeable is similar to Delete in that it adds a Delete operation to
+// the batch, except instead of accepting byte slices for key, it takes an
+// Encodeable which is useful for cases where we don't want to double-copy (eg.
+// once into an intermediary buffer byte slice and then into the batch
+// representation).
+func (b *Batch) DeleteEncodeable(key Encodeable, _ *WriteOptions) error {
+	if len(b.storage.data) == 0 {
+		b.init(key.Len() + binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+
+	pos := len(b.storage.data)
+	offset := uint32(pos)
+	b.grow(1 + maxVarintLen32 +  key.Len())
+	b.storage.data[pos] = byte(InternalKeyKindDelete)
+	pos++
+	varlen1 := putUvarint32(b.storage.data[pos:], uint32(key.Len()))
+	pos += varlen1
+	key.Encode(b.storage.data[pos:])
+
+	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
+
+	if b.index != nil {
+		if err := b.index.Add(offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
+		}
+	}
+	b.memTableSize += memTableEntrySize(key.Len(),0)
 	return nil
 }
 
@@ -452,9 +568,9 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	if len(b.storage.data) == 0 {
 		b.init(len(data) + binary.MaxVarintLen64 + batchHeaderLen)
 	}
-	if !b.increment() {
-		return ErrInvalidBatch
-	}
+	// Since LogData only writes to the WAL and does not affect the memtable,
+	// we don't increment b.count here. b.count only tracks operations that
+	// are applied to the memtable.
 
 	pos := len(b.storage.data)
 	b.grow(1 + maxVarintLen32 + len(data))
@@ -467,7 +583,21 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 // Repr returns the underlying batch representation. It is not safe to modify
 // the contents.
 func (b *Batch) Repr() []byte {
+	if len(b.storage.data) == 0 {
+		b.init(batchHeaderLen)
+	}
 	return b.storage.data
+}
+
+// SetRepr sets the underlying batch representation. The batch takes ownership
+// of the supplied slice. It is not safe to modify it afterwards until the
+// Batch is no longer in use.
+func (b *Batch) SetRepr(data []byte) error {
+	if len(data) < batchHeaderLen {
+		return fmt.Errorf("invalid batch")
+	}
+	b.storage.data = data
+	return nil
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
@@ -558,7 +688,11 @@ func (b *Batch) init(cap int) {
 	b.storage.data = b.storage.data[:batchHeaderLen]
 }
 
-func (b *Batch) reset() {
+// Reset clears the underlying bute slice and effectively empties the batch for
+// reuse. Used in cases where Batch is only being used to build a batch, and
+// where the end result is a Repr() call, not a Commit call or a Close call.
+// Commits and Closes take care of releasing resources when appropriate.
+func (b *Batch) Reset() {
 	if b.storage.data != nil {
 		if cap(b.storage.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
