@@ -102,9 +102,9 @@ func TestReader(t *testing.T) {
 	}
 
 	blockSizes := map[string]int{
-		"5bytes": 5,
-		"10bytes": 10,
-		"25bytes": 25,
+		"5bytes":   5,
+		"10bytes":  10,
+		"25bytes":  25,
 		"Maxbytes": math.MaxInt32,
 	}
 
@@ -134,7 +134,7 @@ func TestReader(t *testing.T) {
 					t.Run(
 						fmt.Sprintf("opts=%s,tableOpts=%s,blockSize=%s,indexSize=%s",
 							oName, lName, dName, iName),
-						func(t *testing.T) {runTestReader(t, o, testDirs[oName], nil /* Reader */)})
+						func(t *testing.T) { runTestReader(t, o, testDirs[oName], nil /* Reader */) })
 				}
 			}
 		}
@@ -165,7 +165,7 @@ func TestHamletReader(t *testing.T) {
 
 		t.Run(
 			fmt.Sprintf("sst=%s", prebuiltSST),
-			func(t *testing.T) {runTestReader(t, Options{}, "testdata/hamletreader", r)},
+			func(t *testing.T) { runTestReader(t, Options{}, "testdata/hamletreader", r) },
 		)
 	}
 }
@@ -303,6 +303,103 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 	})
 }
 
+func TestReaderCheckComparerMerger(t *testing.T) {
+	const testTable = "test"
+
+	testComparer := &base.Comparer{
+		Name:      "test.comparer",
+		Compare:   base.DefaultComparer.Compare,
+		Equal:     base.DefaultComparer.Equal,
+		Separator: base.DefaultComparer.Separator,
+		Successor: base.DefaultComparer.Successor,
+	}
+	testMerger := &base.Merger{
+		Name:  "test.merger",
+		Merge: base.DefaultMerger.Merge,
+	}
+	opts := &Options{
+		Comparer: testComparer,
+		Merger:   testMerger,
+	}
+
+	mem := vfs.NewMem()
+	f0, err := mem.Create(testTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := NewWriter(f0, opts, TableOptions{})
+	if err := w.Set([]byte("test"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	testCases := []struct {
+		comparers []*base.Comparer
+		mergers   []*base.Merger
+		expected  string
+	}{
+		{
+			[]*base.Comparer{testComparer},
+			[]*base.Merger{testMerger},
+			"",
+		},
+		{
+			[]*base.Comparer{testComparer, base.DefaultComparer},
+			[]*base.Merger{testMerger, base.DefaultMerger},
+			"",
+		},
+		{
+			[]*base.Comparer{},
+			[]*base.Merger{testMerger},
+			"unknown comparer test.comparer",
+		},
+		{
+			[]*base.Comparer{base.DefaultComparer},
+			[]*base.Merger{testMerger},
+			"unknown comparer test.comparer",
+		},
+		{
+			[]*base.Comparer{testComparer},
+			[]*base.Merger{},
+			"unknown merger test.merger",
+		},
+		{
+			[]*base.Comparer{testComparer},
+			[]*base.Merger{base.DefaultMerger},
+			"unknown merger test.merger",
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			f1, err := mem.Open(testTable)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := &Options{
+				Comparers: make(map[string]*base.Comparer),
+				Mergers:   make(map[string]*base.Merger),
+			}
+			for _, comparer := range c.comparers {
+				opts.Comparers[comparer.Name] = comparer
+			}
+			for _, merger := range c.mergers {
+				opts.Mergers[merger.Name] = merger
+			}
+			r, err := NewReader(f1, 0, 0, opts)
+			if err != nil {
+				if !strings.HasSuffix(err.Error(), c.expected) {
+					t.Fatalf("expected %q, but found %q", c.expected, err.Error())
+				}
+			} else if c.expected != "" {
+				t.Fatalf("expected %q, but found success", c.expected)
+			}
+			_ = r.Close()
+		})
+	}
+}
 func checkValidPrefix(prefix, key []byte) bool {
 	return prefix == nil || bytes.HasPrefix(key, prefix)
 }
