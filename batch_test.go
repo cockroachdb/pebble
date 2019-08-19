@@ -18,10 +18,31 @@ import (
 )
 
 func TestBatch(t *testing.T) {
-	testCases := []struct {
+	type testCase struct {
 		kind       InternalKeyKind
 		key, value string
-	}{
+	}
+
+	verifyTestCases := func(b Batch, testCases []testCase) {
+		r := b.Reader()
+
+		for _, tc := range testCases {
+			kind, k, v, ok := r.Next()
+			if !ok {
+				t.Fatalf("next returned !ok: test case = %v", tc)
+			}
+			key, value := string(k), string(v)
+			if kind != tc.kind || key != tc.key || value != tc.value {
+				t.Errorf("got (%d, %q, %q), want (%d, %q, %q)",
+					kind, key, value, tc.kind, tc.key, tc.value)
+			}
+		}
+		if len(r) != 0 {
+			t.Errorf("reader was not exhausted: remaining bytes = %q", r)
+		}
+	}
+
+	testCases := []testCase{
 		{InternalKeyKindSet, "roses", "red"},
 		{InternalKeyKindSet, "violets", "blue"},
 		{InternalKeyKindDelete, "roses", ""},
@@ -57,21 +78,37 @@ func TestBatch(t *testing.T) {
 			_ = b.LogData([]byte(tc.key), nil)
 		}
 	}
-	r := b.Reader()
+	verifyTestCases(b, testCases)
+
+	b.Reset()
+	// Run the same operations, this time using the Deferred variants of each
+	// operation (eg. SetDeferred).
 	for _, tc := range testCases {
-		kind, k, v, ok := r.Next()
-		if !ok {
-			t.Fatalf("next returned !ok: test case = %v", tc)
-		}
-		key, value := string(k), string(v)
-		if kind != tc.kind || key != tc.key || value != tc.value {
-			t.Errorf("got (%d, %q, %q), want (%d, %q, %q)",
-				kind, key, value, tc.kind, tc.key, tc.value)
+		key := []byte(tc.key)
+		value := []byte(tc.value)
+		switch tc.kind {
+		case InternalKeyKindSet:
+			d, _ := b.SetDeferred(len(key), len(value), nil)
+			copy(d.Key, key)
+			copy(d.Value, value)
+			d.Finish()
+		case InternalKeyKindMerge:
+			d, _ := b.MergeDeferred(len(key), len(value), nil)
+			copy(d.Key, key)
+			copy(d.Value, value)
+			d.Finish()
+		case InternalKeyKindDelete:
+			d, _ := b.DeleteDeferred(len(key), nil)
+			copy(d.Key, key)
+			copy(d.Value, value)
+			d.Finish()
+		case InternalKeyKindRangeDelete:
+			_ = b.DeleteRange([]byte(tc.key), []byte(tc.value), nil)
+		case InternalKeyKindLogData:
+			_ = b.LogData([]byte(tc.key), nil)
 		}
 	}
-	if len(r) != 0 {
-		t.Errorf("reader was not exhausted: remaining bytes = %q", r)
-	}
+	verifyTestCases(b, testCases)
 }
 
 func TestBatchIncrement(t *testing.T) {
@@ -118,6 +155,48 @@ func TestBatchIncrement(t *testing.T) {
 		if got != want {
 			t.Errorf("input=%d: got %d, want %d", tc, got, want)
 		}
+	}
+}
+
+func TestBatchOpDoesIncrement(t *testing.T) {
+	var b Batch
+	key := []byte("foo")
+	value := []byte("bar")
+
+	if b.Count() != 0 {
+		t.Fatalf("new batch has a nonzero count: %d", b.Count())
+	}
+
+	// Should increment count by 1
+	_ = b.Set(key, value, nil)
+	if b.Count() != 1 {
+		t.Fatalf("expected count: %d, got %d", 1, b.Count())
+	}
+
+	var b2 Batch
+	// Should increment count by 1 each
+	_ = b2.Set(key, value, nil)
+	_ = b2.Delete(key, nil)
+	if b2.Count() != 2 {
+		t.Fatalf("expected count: %d, got %d", 2, b2.Count())
+	}
+
+	// Should increment count by b2.count()
+	_ = b.Apply(&b2, nil)
+	if b.Count() != 3 {
+		t.Fatalf("expected count: %d, got %d", 3, b.Count())
+	}
+
+	// Should increment count by 1
+	_ = b.Merge(key, value, nil)
+	if b.Count() != 4 {
+		t.Fatalf("expected count: %d, got %d", 4, b.Count())
+	}
+
+	// Should NOT increment count.
+	_ = b.LogData([]byte("foobarbaz"), nil)
+	if b.Count() != 4 {
+		t.Fatalf("expected count: %d, got %d", 4, b.Count())
 	}
 }
 
@@ -445,6 +524,7 @@ func BenchmarkBatchSet(b *testing.B) {
 		value[i] = byte(i)
 	}
 	key := make([]byte, 8)
+	batch := newBatch(nil)
 
 	b.ResetTimer()
 
@@ -455,12 +535,11 @@ func BenchmarkBatchSet(b *testing.B) {
 			end = b.N
 		}
 
-		batch := newBatch(nil)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value, nil)
 		}
-		batch.release()
+		batch.Reset()
 	}
 
 	b.StopTimer()
@@ -472,6 +551,7 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 		value[i] = byte(i)
 	}
 	key := make([]byte, 8)
+	batch := newIndexedBatch(nil, DefaultComparer)
 
 	b.ResetTimer()
 
@@ -482,12 +562,81 @@ func BenchmarkIndexedBatchSet(b *testing.B) {
 			end = b.N
 		}
 
-		batch := newIndexedBatch(nil, DefaultComparer)
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
 			batch.Set(key, value, nil)
 		}
-		batch.release()
+		batch.Reset()
+	}
+
+	b.StopTimer()
+}
+
+func BenchmarkBatchSetDeferred(b *testing.B) {
+	value := make([]byte, 10)
+	for i := range value {
+		value[i] = byte(i)
+	}
+	key := make([]byte, 8)
+	batch := newBatch(nil)
+
+	b.ResetTimer()
+
+	const batchSize = 1000
+	for i := 0; i < b.N; i += batchSize {
+		end := i + batchSize
+		if end > b.N {
+			end = b.N
+		}
+
+		for j := i; j < end; j++ {
+			binary.BigEndian.PutUint64(key, uint64(j))
+			deferredOp, err := batch.SetDeferred(len(key), len(value), nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			copy(deferredOp.Key, key)
+			copy(deferredOp.Value, value)
+
+			deferredOp.Finish()
+		}
+		batch.Reset()
+	}
+
+	b.StopTimer()
+}
+
+func BenchmarkIndexedBatchSetDeferred(b *testing.B) {
+	value := make([]byte, 10)
+	for i := range value {
+		value[i] = byte(i)
+	}
+	key := make([]byte, 8)
+	batch := newIndexedBatch(nil, DefaultComparer)
+
+	b.ResetTimer()
+
+	const batchSize = 1000
+	for i := 0; i < b.N; i += batchSize {
+		end := i + batchSize
+		if end > b.N {
+			end = b.N
+		}
+
+		for j := i; j < end; j++ {
+			binary.BigEndian.PutUint64(key, uint64(j))
+			deferredOp, err := batch.SetDeferred(len(key), len(value), nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			copy(deferredOp.Key, key)
+			copy(deferredOp.Value, value)
+
+			deferredOp.Finish()
+		}
+		batch.Reset()
 	}
 
 	b.StopTimer()
