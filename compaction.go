@@ -954,7 +954,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		pendingOutputs = append(pendingOutputs, fileNum)
 		d.mu.Unlock()
 
-		filename := dbFilename(d.dirname, fileTypeTable, fileNum)
+		filename := base.MakeFilename(d.dirname, fileTypeTable, fileNum)
 		file, err := d.opts.FS.Create(filename)
 		if err != nil {
 			return err
@@ -1137,7 +1137,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	var obsoleteOptions []uint64
 
 	for _, filename := range list {
-		fileType, fileNum, ok := parseDBFilename(filename)
+		fileType, fileNum, ok := base.ParseFilename(filename)
 		if !ok {
 			continue
 		}
@@ -1242,7 +1242,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 				d.tableCache.evict(fileNum)
 			}
 
-			path := dbFilename(d.dirname, f.fileType, fileNum)
+			path := base.MakeFilename(d.dirname, f.fileType, fileNum)
 			err := d.opts.FS.Remove(path)
 			if err == os.ErrNotExist {
 				continue

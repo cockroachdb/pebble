@@ -404,7 +404,7 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 		// This is a large batch which was already added to the immutable queue.
 		return nil
 	}
-	err := mem.apply(b, b.seqNum())
+	err := mem.apply(b, b.SeqNum())
 	if err != nil {
 		return err
 	}
@@ -420,7 +420,7 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 	d.mu.Lock()
 
 	if b.flushable != nil {
-		b.flushable.seqNum = b.seqNum()
+		b.flushable.seqNum = b.SeqNum()
 	}
 
 	// Switch out the memtable if there was not enough room to store the batch.
@@ -920,7 +920,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 
-			newLogName := dbFilename(d.walDirname, fileTypeLog, newLogNumber)
+			newLogName := base.MakeFilename(d.walDirname, fileTypeLog, newLogNumber)
 
 			// Try to use a recycled log file. Recycling log files is an important
 			// performance optimization as it is faster to sync a file that has
@@ -930,7 +930,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// preallocation is performed (e.g. fallocate).
 			recycleLogNumber := d.logRecycler.peek()
 			if recycleLogNumber > 0 {
-				recycleLogName := dbFilename(d.walDirname, fileTypeLog, recycleLogNumber)
+				recycleLogName := base.MakeFilename(d.walDirname, fileTypeLog, recycleLogNumber)
 				err = d.opts.FS.Rename(recycleLogName, newLogName)
 			}
 

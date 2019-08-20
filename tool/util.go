@@ -64,12 +64,12 @@ func (f *formatter) Type() string {
 func (f *formatter) Set(spec string) error {
 	f.spec = spec
 	switch spec {
-	case "hex":
-		f.fn = formatHex
 	case "null":
 		f.fn = formatNull
 	case "quoted":
 		f.fn = formatQuoted
+	case "size":
+		f.fn = formatSize
 	default:
 		if strings.Count(spec, "%") != 1 {
 			return fmt.Errorf("unknown formatter: %q", spec)
@@ -87,10 +87,6 @@ func (f *formatter) mustSet(spec string) {
 	}
 }
 
-func formatHex(w io.Writer, v []byte) {
-	fmt.Fprintf(w, "[% x]", v)
-}
-
 func formatNull(w io.Writer, v []byte) {
 }
 
@@ -98,6 +94,10 @@ func formatQuoted(w io.Writer, v []byte) {
 	q := strconv.AppendQuote(make([]byte, 0, len(v)), string(v))
 	q = q[1 : len(q)-1]
 	w.Write(q)
+}
+
+func formatSize(w io.Writer, v []byte) {
+	fmt.Fprintf(w, "<%d>", len(v))
 }
 
 func formatKeyValue(

@@ -40,7 +40,7 @@ func (e *testCommitEnv) env() commitEnv {
 
 func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	e.applyBuf.Lock()
-	e.applyBuf.buf = append(e.applyBuf.buf, b.seqNum())
+	e.applyBuf.buf = append(e.applyBuf.buf, b.SeqNum())
 	e.applyBuf.Unlock()
 	return nil
 }
@@ -157,7 +157,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 				logSeqNum:     new(uint64),
 				visibleSeqNum: new(uint64),
 				apply: func(b *Batch, mem *memTable) error {
-					err := mem.apply(b, b.seqNum())
+					err := mem.apply(b, b.SeqNum())
 					if err != nil {
 						return err
 					}

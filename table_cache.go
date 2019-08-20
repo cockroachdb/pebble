@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
 )
@@ -327,7 +328,8 @@ type tableCacheNode struct {
 
 func (n *tableCacheNode) load(c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
-	f, err := c.fs.Open(dbFilename(c.dirname, fileTypeTable, n.meta.fileNum), vfs.RandomReadsOption)
+	f, err := c.fs.Open(base.MakeFilename(c.dirname, fileTypeTable, n.meta.fileNum),
+		vfs.RandomReadsOption)
 	if err != nil {
 		n.err = err
 		close(n.loaded)
