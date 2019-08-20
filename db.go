@@ -34,6 +34,9 @@ var (
 	// ErrClosed is returned when an operation is performed on a closed snapshot
 	// or DB.
 	ErrClosed = errors.New("pebble: closed")
+	// ErrReadOnly is returned when a write operation is performed on a read-only
+	// database.
+	ErrReadOnly = errors.New("pebble: read-only")
 )
 
 type flushable interface {
@@ -373,6 +376,9 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
 	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
 
 	sync := opts.GetSync()
 	if sync && d.opts.DisableWAL {
@@ -645,7 +651,11 @@ func (d *DB) Close() error {
 		d.mu.compact.cond.Wait()
 	}
 	err := d.tableCache.Close()
-	err = firstError(err, d.mu.log.Close())
+	if !d.opts.ReadOnly {
+		err = firstError(err, d.mu.log.Close())
+	} else if d.mu.log.LogWriter != nil {
+		panic("pebble: log-writer should be nil in read-only mode")
+	}
 	err = firstError(err, d.fileLock.Close())
 	d.commit.Close()
 
@@ -675,6 +685,9 @@ func (d *DB) Close() error {
 func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
 	}
 
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
@@ -775,6 +788,9 @@ func (d *DB) Flush() error {
 func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
+	}
+	if d.opts.ReadOnly {
+		return nil, ErrReadOnly
 	}
 
 	d.commit.mu.Lock()

@@ -1,6 +1,8 @@
 open
 ----
+mkdir-all: db 0755
 open-dir: db
+mkdir-all: wal 0755
 open-dir: wal
 create: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp

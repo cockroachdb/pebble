@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -88,6 +89,11 @@ func (fs loggingFS) OpenDir(name string) (vfs.File, error) {
 func (fs loggingFS) Rename(oldname, newname string) error {
 	fmt.Fprintf(fs.w, "rename: %s -> %s\n", oldname, newname)
 	return fs.FS.Rename(oldname, newname)
+}
+
+func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
+	fmt.Fprintf(fs.w, "mkdir-all: %s %#o\n", dir, perm)
+	return fs.FS.MkdirAll(dir, perm)
 }
 
 type loggingFile struct {
