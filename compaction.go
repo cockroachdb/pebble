@@ -601,7 +601,7 @@ func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
 	d.mu.Lock()
 	estimatedMaxWAmp := d.mu.versions.picker.estimatedMaxWAmp
 	pacerInfo := compactionPacerInfo{
-		slowdownThreshold: uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
+		slowdownThreshold:   uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
 		totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
 	}
 	d.mu.Unlock()
@@ -619,7 +619,7 @@ func (d *DB) getFlushPacerInfo() flushPacerInfo {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleFlush() {
-	if d.mu.compact.flushing || atomic.LoadInt32(&d.closed) != 0 {
+	if d.mu.compact.flushing || atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
 		return
 	}
 	if len(d.mu.mem.queue) <= 1 {
@@ -752,7 +752,7 @@ func (d *DB) flush1() error {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if d.mu.compact.compacting || atomic.LoadInt32(&d.closed) != 0 {
+	if d.mu.compact.compacting || atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
 		return
 	}
 

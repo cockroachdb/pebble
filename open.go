@@ -116,9 +116,11 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	defer d.mu.Unlock()
 
 	// Lock the database directory.
-	err := opts.FS.MkdirAll(dirname, 0755)
-	if err != nil {
-		return nil, err
+	if !d.opts.ReadOnly {
+		err := opts.FS.MkdirAll(dirname, 0755)
+		if err != nil {
+			return nil, err
+		}
 	}
 	fileLock, err := opts.FS.Lock(dbFilename(dirname, fileTypeLock, 0))
 	if err != nil {
@@ -140,14 +142,16 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	if d.walDirname == d.dirname {
 		d.walDir = d.dataDir
 	} else {
-		err := opts.FS.MkdirAll(d.walDirname, 0755)
-		if err != nil {
-			return nil, err
+		if !d.opts.ReadOnly {
+			err := opts.FS.MkdirAll(d.walDirname, 0755)
+			if err != nil {
+				return nil, err
+			}
 		}
 		d.walDir, err = opts.FS.OpenDir(d.walDirname)
 	}
 
-	if _, err := opts.FS.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) {
+	if _, err := opts.FS.Stat(dbFilename(dirname, fileTypeCurrent, 0)); os.IsNotExist(err) && !d.opts.ReadOnly {
 		// Create the DB if it did not already exist.
 		if err := createDB(dirname, opts); err != nil {
 			return nil, err
@@ -217,41 +221,45 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	}
 	d.mu.versions.visibleSeqNum = d.mu.versions.logSeqNum
 
-	// Create an empty .log file.
-	ve.logNumber = d.mu.versions.nextFileNum()
-	d.mu.log.queue = append(d.mu.log.queue, ve.logNumber)
-	logFile, err := opts.FS.Create(dbFilename(d.walDirname, fileTypeLog, ve.logNumber))
-	if err != nil {
-		return nil, err
-	}
-	if err := d.walDir.Sync(); err != nil {
-		return nil, err
-	}
-	logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
-		BytesPerSync:    d.opts.BytesPerSync,
-		PreallocateSize: d.walPreallocateSize(),
-	})
-	d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
-	d.mu.versions.metrics.WAL.Files++
+	if !d.opts.ReadOnly {
+		// Create an empty .log file.
+		ve.logNumber = d.mu.versions.nextFileNum()
+		d.mu.log.queue = append(d.mu.log.queue, ve.logNumber)
+		logFile, err := opts.FS.Create(dbFilename(d.walDirname, fileTypeLog, ve.logNumber))
+		if err != nil {
+			return nil, err
+		}
+		if err := d.walDir.Sync(); err != nil {
+			return nil, err
+		}
+		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
+			BytesPerSync:    d.opts.BytesPerSync,
+			PreallocateSize: d.walPreallocateSize(),
+		})
+		d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
+		d.mu.versions.metrics.WAL.Files++
 
-	// Write a new manifest to disk.
-	if err := d.mu.versions.logAndApply(0, &ve, d.dataDir); err != nil {
-		return nil, err
+		// Write a new manifest to disk.
+		if err := d.mu.versions.logAndApply(0, &ve, d.dataDir); err != nil {
+			return nil, err
+		}
 	}
 	d.updateReadStateLocked()
 
-	// Write the current options to disk.
-	d.optionsFileNum = d.mu.versions.nextFileNum()
-	optionsFile, err := opts.FS.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
-	if err != nil {
-		return nil, err
-	}
-	if _, err := optionsFile.Write([]byte(opts.String())); err != nil {
-		return nil, err
-	}
-	optionsFile.Close()
-	if err := d.dataDir.Sync(); err != nil {
-		return nil, err
+	if !d.opts.ReadOnly {
+		// Write the current options to disk.
+		d.optionsFileNum = d.mu.versions.nextFileNum()
+		optionsFile, err := opts.FS.Create(dbFilename(dirname, fileTypeOptions, d.optionsFileNum))
+		if err != nil {
+			return nil, err
+		}
+		if _, err := optionsFile.Write([]byte(opts.String())); err != nil {
+			return nil, err
+		}
+		optionsFile.Close()
+		if err := d.dataDir.Sync(); err != nil {
+			return nil, err
+		}
 	}
 
 	jobID := d.mu.nextJobID
@@ -287,6 +295,13 @@ func (d *DB) replayWAL(
 		mem *memTable
 		rr  = record.NewReader(file, logNum)
 	)
+
+	// In read-only mode, we replay directly into the mutable memtable which will
+	// never be flushed.
+	if d.opts.ReadOnly {
+		mem = d.mu.mem.mutable
+	}
+
 	for {
 		r, err := rr.Next()
 		if err == nil {
@@ -339,7 +354,7 @@ func (d *DB) replayWAL(
 		buf.Reset()
 	}
 
-	if mem != nil && !mem.empty() {
+	if mem != nil && !mem.empty() && !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, []flushable{mem}, &d.bytesFlushed)
 		newVE, pendingOutputs, err := d.runCompaction(c, nilPacer)

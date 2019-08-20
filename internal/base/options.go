@@ -336,6 +336,12 @@ type Options struct {
 	// default is 1 MB/s.
 	MinFlushRate int
 
+	// ReadOnly indicates that the DB should be opened in read-only mode. Writes
+	// to the DB will return an error, background compactions are disabled, and
+	// the flush that normally occurs after replaying the WAL at startup is
+	// disabled.
+	ReadOnly bool
+
 	// TableFormat specifies the format version for sstables. The default is
 	// TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
 	// TableFormatLevelDB to create LevelDB compatible sstable which can be used

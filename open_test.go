@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -217,4 +218,100 @@ func TestOpenOptionsCheck(t *testing.T) {
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `merger name from file.*!=.*`, err)
+}
+
+func TestOpenReadOnly(t *testing.T) {
+	mem := vfs.NewMem()
+
+	{
+		// Opening a non-existent DB in read-only mode should result in no mutable
+		// filesystem operations.
+		var buf syncedBuffer
+		_, err := Open("non-existent", &Options{
+			FS:       loggingFS{mem, &buf},
+			ReadOnly: true,
+			WALDir:   "non-existent-waldir",
+		})
+		if err == nil {
+			t.Fatalf("expected error, but found success")
+		}
+		const expected = `open-dir: non-existent`
+		if trimmed := strings.TrimSpace(buf.String()); expected != trimmed {
+			t.Fatalf("expected %s, but found %s", expected, trimmed)
+		}
+	}
+
+	var contents []string
+	{
+		// Create a new DB and populate it with a small amount of data.
+		d, err := Open("", &Options{
+			FS: mem,
+		})
+		require.NoError(t, err)
+		require.NoError(t, d.Set([]byte("test"), nil, nil))
+		require.NoError(t, d.Close())
+		contents, err = mem.List("")
+		require.NoError(t, err)
+		sort.Strings(contents)
+	}
+
+	{
+		// Re-open the DB read-only. The directory contents should be unchanged.
+		d, err := Open("", &Options{
+			FS:       mem,
+			ReadOnly: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify various write operations fail in read-only mode.
+		require.EqualValues(t, ErrReadOnly, d.Compact(nil, nil))
+		require.EqualValues(t, ErrReadOnly, d.Flush())
+		require.EqualValues(t, ErrReadOnly, func() error { _, err := d.AsyncFlush(); return err }())
+
+		require.EqualValues(t, ErrReadOnly, d.Delete(nil, nil))
+		require.EqualValues(t, ErrReadOnly, d.DeleteRange(nil, nil, nil))
+		require.EqualValues(t, ErrReadOnly, d.LogData(nil, nil))
+		require.EqualValues(t, ErrReadOnly, d.Merge(nil, nil, nil))
+		require.EqualValues(t, ErrReadOnly, d.Set(nil, nil, nil))
+
+		// Verify we can still read in read-only mode.
+		require.NoError(t, func() error { _, err := d.Get([]byte("test")); return err }())
+
+		checkIter := func(iter *Iterator) {
+			t.Helper()
+
+			var keys []string
+			for valid := iter.First(); valid; valid = iter.Next() {
+				keys = append(keys, string(iter.Key()))
+			}
+			require.NoError(t, iter.Close())
+			expectedKeys := []string{"test"}
+			if diff := pretty.Diff(keys, expectedKeys); diff != nil {
+				t.Fatalf("%s\n%s", strings.Join(diff, "\n"), keys)
+			}
+		}
+
+		checkIter(d.NewIter(nil))
+
+		b := d.NewIndexedBatch()
+		checkIter(b.NewIter(nil))
+		require.EqualValues(t, ErrReadOnly, b.Commit(nil))
+		require.EqualValues(t, ErrReadOnly, d.Apply(b, nil))
+
+		s := d.NewSnapshot()
+		checkIter(s.NewIter(nil))
+		require.NoError(t, s.Close())
+
+		require.NoError(t, d.Close())
+
+		newContents, err := mem.List("")
+		require.NoError(t, err)
+
+		sort.Strings(newContents)
+		if diff := pretty.Diff(contents, newContents); diff != nil {
+			t.Fatalf("%s", strings.Join(diff, "\n"))
+		}
+	}
 }
