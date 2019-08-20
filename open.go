@@ -208,9 +208,13 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	sort.Slice(logFiles, func(i, j int) bool {
 		return logFiles[i].num < logFiles[j].num
 	})
+
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+
 	var ve versionEdit
 	for _, lf := range logFiles {
-		maxSeqNum, err := d.replayWAL(&ve, opts.FS, filepath.Join(d.walDirname, lf.name), lf.num)
+		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS, filepath.Join(d.walDirname, lf.name), lf.num)
 		if err != nil {
 			return nil, err
 		}
@@ -262,8 +266,6 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 	}
 
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
 	d.scanObsoleteFiles(ls)
 	d.deleteObsoleteFiles(jobID)
 	d.maybeScheduleFlush()
@@ -278,6 +280,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
+	jobID int,
 	ve *versionEdit,
 	fs vfs.FS,
 	filename string,
@@ -357,7 +360,7 @@ func (d *DB) replayWAL(
 	if mem != nil && !mem.empty() && !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, []flushable{mem}, &d.bytesFlushed)
-		newVE, pendingOutputs, err := d.runCompaction(c, nilPacer)
+		newVE, pendingOutputs, err := d.runCompaction(jobID, c, nilPacer)
 		if err != nil {
 			return 0, err
 		}
