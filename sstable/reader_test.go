@@ -378,17 +378,15 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			opts := &Options{
-				Comparers: make(map[string]*base.Comparer),
-				Mergers:   make(map[string]*base.Merger),
-			}
+			comparers := make(Comparers)
 			for _, comparer := range c.comparers {
-				opts.Comparers[comparer.Name] = comparer
+				comparers[comparer.Name] = comparer
 			}
+			mergers := make(Mergers)
 			for _, merger := range c.mergers {
-				opts.Mergers[merger.Name] = merger
+				mergers[merger.Name] = merger
 			}
-			r, err := NewReader(f1, 0, 0, opts)
+			r, err := NewReader(f1, 0, 0, nil, comparers, mergers)
 			if err != nil {
 				if !strings.HasSuffix(err.Error(), c.expected) {
 					t.Fatalf("expected %q, but found %q", c.expected, err.Error())

@@ -928,6 +928,44 @@ type weakCachedBlock struct {
 
 type blockTransform func([]byte) ([]byte, error)
 
+// OpenOptions provide an interface to do work on Reader while it is being
+// opened.
+type OpenOption interface {
+	// Apply is called on the reader its opened.
+	Apply(*Reader)
+}
+
+// Comparers is a map from comparer name to comparer. It is used for debugging
+// tools which may be used on multiple databases configured with different
+// comparers. Comparers implements the OpenOption interface and can be passed
+// as a parameter to NewReader.
+type Comparers map[string]*Comparer
+
+// Apply applies the comparers option to the reader.
+func (c Comparers) Apply(r *Reader) {
+	if r.compare != nil {
+		return
+	}
+	if comparer, ok := c[r.Properties.ComparerName]; ok {
+		r.compare = comparer.Compare
+		r.split = comparer.Split
+	}
+}
+
+// Mergers is a map from merger name to merger. It is used for debugging tools
+// which may be used on multiple databases configured with different
+// mergers. Mergers implements the OpenOption interface and can be passed as
+// a parameter to NewReader.
+type Mergers map[string]*Merger
+
+// Apply applies the mergers option to the reader.
+func (m Mergers) Apply(r *Reader) {
+	if r.mergerOK {
+		return
+	}
+	_, r.mergerOK = m[r.Properties.MergerName]
+}
+
 // Reader is a table reader.
 type Reader struct {
 	file              vfs.File
@@ -945,6 +983,7 @@ type Reader struct {
 	cache             *cache.Cache
 	compare           Compare
 	split             Split
+	mergerOK          bool
 	tableFilter       *tableFilterReader
 	Properties        Properties
 }
@@ -1333,7 +1372,9 @@ func (r *Reader) Layout() (*Layout, error) {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f vfs.File, dbNum, fileNum uint64, o *Options) (*Reader, error) {
+func NewReader(
+	f vfs.File, dbNum, fileNum uint64, o *Options, extraOpts ...OpenOption,
+) (*Reader, error) {
 	o = o.EnsureDefaults()
 
 	r := &Reader{
@@ -1342,8 +1383,6 @@ func NewReader(f vfs.File, dbNum, fileNum uint64, o *Options) (*Reader, error) {
 		fileNum: fileNum,
 		opts:    o,
 		cache:   o.Cache,
-		compare: o.Comparer.Compare,
-		split:   o.Comparer.Split,
 	}
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")
@@ -1363,19 +1402,25 @@ func NewReader(f vfs.File, dbNum, fileNum uint64, o *Options) (*Reader, error) {
 	r.metaIndexBH = footer.metaindexBH
 	r.footerBH = footer.footerBH
 
-	if r.Properties.ComparerName == "" {
+	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.compare = o.Comparer.Compare
 		r.split = o.Comparer.Split
-	} else if comparer, ok := o.Comparers[r.Properties.ComparerName]; ok {
-		r.compare = comparer.Compare
-		r.split = comparer.Split
-	} else {
+	}
+
+	if o.Merger != nil && o.Merger.Name == r.Properties.MergerName {
+		r.mergerOK = true
+	}
+
+	for _, opt := range extraOpts {
+		opt.Apply(r)
+	}
+
+	if r.compare == nil {
 		r.err = fmt.Errorf("pebble/table: %d: unknown comparer %s",
 			fileNum, r.Properties.ComparerName)
 	}
-
-	if name := r.Properties.MergerName; name != "" && name != "nullptr" {
-		if _, ok := o.Mergers[r.Properties.MergerName]; !ok {
+	if !r.mergerOK {
+		if name := r.Properties.MergerName; name != "" && name != "nullptr" {
 			r.err = fmt.Errorf("pebble/table: %d: unknown merger %s",
 				fileNum, r.Properties.MergerName)
 		}

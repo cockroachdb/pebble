@@ -237,12 +237,6 @@ type Options struct {
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
 
-	// Comparers is a map from comparer name to comparer. It is used for
-	// debugging tools which may be used on multiple databases configured with
-	// different comparers. It is not necessary to populate this comparers map
-	// during normal usage of a DB.
-	Comparers map[string]*Comparer
-
 	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
 	// crash recovery, but can improve performance if crash recovery is not
 	// needed (e.g. when only temporary state is being stored in the database).
@@ -321,12 +315,6 @@ type Options struct {
 	//
 	// The default merger concatenates values.
 	Merger *Merger
-
-	// Mergers is a map from merger name to merger. It is used for debugging
-	// tools which may be used on multiple databases configured with different
-	// mergers. It is not necessary to populate this mergers map during normal
-	// usage of a DB.
-	Mergers map[string]*Merger
 
 	// MinCompactionRate sets the minimum rate at which compactions occur. The
 	// default is 4 MB/s.
@@ -438,22 +426,6 @@ func (o *Options) EnsureDefaults() *Options {
 
 // initMaps initializes the Comparers, Filters, and Mergers maps.
 func (o *Options) initMaps() {
-	if o.Comparers == nil {
-		o.Comparers = make(map[string]*Comparer)
-	}
-	if _, ok := o.Comparers[o.Comparer.Name]; !ok {
-		o.Comparers[o.Comparer.Name] = o.Comparer
-	}
-
-	if o.Merger != nil {
-		if o.Mergers == nil {
-			o.Mergers = make(map[string]*Merger)
-		}
-		if _, ok := o.Mergers[o.Merger.Name]; !ok {
-			o.Mergers[o.Merger.Name] = o.Merger
-		}
-	}
-
 	for i := range o.Levels {
 		l := &o.Levels[i]
 		if l.FilterPolicy != nil {
