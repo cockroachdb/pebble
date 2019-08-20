@@ -59,8 +59,9 @@ Pebble offers several improvements over RocksDB:
 * Seamless merged iteration of indexed batches. The mutations in the
   batch conceptually occupy another memtable level.
 * Smaller, more approachable code base.
-* [[TODO]](https://github.com/petermattis/pebble/issues/7) Pacing of
-  user writes vs flushes vs compactions.
+* Pacing of flushes vs compactions: Pebble smooths latency spikes
+  caused by flushes and compactions by only flushing/compacting as
+  fast as necessary to keep up with user writes.
 
 ## Pedigree
 
