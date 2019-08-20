@@ -90,10 +90,14 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					// preallocation and WAL recycling. We need to distinguish these
 					// errors from EOF in order to recognize that the record was
 					// truncated, but want to otherwise treat them like EOF.
-					if err == record.ErrZeroedChunk || err == record.ErrInvalidChunk {
-						err = io.EOF
+					switch err {
+					case record.ErrZeroedChunk:
+						fmt.Fprintf(stdout, "EOF [%s] (may be due to WAL preallocation)\n", err)
+					case record.ErrInvalidChunk:
+						fmt.Fprintf(stdout, "EOF [%s] (may be due to WAL recycling)\n", err)
+					default:
+						fmt.Fprintf(stdout, "%s\n", err)
 					}
-					fmt.Fprintf(stdout, "%s\n", err)
 					return
 				}
 
