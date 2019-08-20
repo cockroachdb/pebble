@@ -25,8 +25,10 @@ type sstableT struct {
 	Scan       *cobra.Command
 
 	// Configuration and state.
-	opts  *sstable.Options
-	dbNum uint64
+	opts      *sstable.Options
+	comparers sstable.Comparers
+	mergers   sstable.Mergers
+	dbNum     uint64
 
 	// Flags.
 	fmtKey   formatter
@@ -36,9 +38,13 @@ type sstableT struct {
 	verbose  bool
 }
 
-func newSSTable(opts *base.Options) *sstableT {
+func newSSTable(
+	opts *base.Options, comparers sstable.Comparers, mergers sstable.Mergers,
+) *sstableT {
 	s := &sstableT{
-		opts: opts,
+		opts:      opts,
+		comparers: comparers,
+		mergers:   mergers,
 	}
 	s.fmtKey.mustSet("quoted")
 	s.fmtValue.mustSet("hex")
@@ -104,9 +110,9 @@ order which means the records will be printed in that order.
 	return s
 }
 
-func (s *sstableT) nextDBNum() uint64 {
+func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 	s.dbNum++
-	return s.dbNum
+	return sstable.NewReader(f, s.dbNum, 0, s.opts, s.comparers, s.mergers)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
@@ -120,7 +126,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
+			r, err := s.newReader(f)
 			defer r.Close()
 
 			if err != nil {
@@ -149,7 +155,7 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
+			r, err := s.newReader(f)
 			defer r.Close()
 
 			if err != nil {
@@ -178,7 +184,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
+			r, err := s.newReader(f)
 			defer r.Close()
 
 			if err != nil {
@@ -270,7 +276,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 
 			fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := sstable.NewReader(f, s.nextDBNum(), 0, s.opts)
+			r, err := s.newReader(f)
 			defer r.Close()
 
 			if err != nil {

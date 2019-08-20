@@ -29,3 +29,6 @@ type Comparer = base.Comparer
 
 // DefaultComparer exports the base.DefaultComparer variable.
 var DefaultComparer = base.DefaultComparer
+
+// Merger exports the base.Merger type.
+type Merger = base.Merger
