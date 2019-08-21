@@ -191,11 +191,19 @@ int write() {
     }
     std::ifstream in(infile);
     std::string s;
+    std::string rangeDelStart;
     for (int i = 0; getline(in, s); i++) {
       std::string key(s, 8);
       std::string val(s, 0, 7);
       val = val.substr(1 + val.rfind(' '));
       tb->Put(key.c_str(), val.c_str());
+      // Add range deletions of varying length.
+      if (i % 97 == 0) {
+        rangeDelStart = key;
+      }
+      if (i % 100 == 0) {
+        tb->DeleteRange(rangeDelStart, key.c_str());
+      }
     }
 
     rocksdb::ExternalSstFileInfo info;

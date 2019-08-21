@@ -363,11 +363,25 @@ func build(
 	}
 
 	w := NewWriter(f0, opts, tableOpts)
-	for _, k := range keys {
+	// Use rangeDelV1Format for testing byte equality with RocksDB.
+	w.rangeDelV1Format = true
+	var rangeDelStart []byte
+	for i, k := range keys {
 		v := wordCount[k]
 		ikey := base.MakeInternalKey([]byte(k), 0, InternalKeyKindSet)
 		if err := w.Add(ikey, []byte(v)); err != nil {
 			return nil, err
+		}
+		// This mirrors the logic in `make-table.cc`. It adds range deletions of
+		// varying length every 100 keys added.
+		if i % 97 == 0 {
+			rangeDelStart = make([]byte, len(ikey.UserKey))
+			copy(rangeDelStart, ikey.UserKey)
+		}
+		if i % 100 == 0 {
+			if err := w.DeleteRange(rangeDelStart, ikey.UserKey); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err := w.Close(); err != nil {
@@ -655,6 +669,45 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 		if globalSeqNum != i.Key().SeqNum() {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())
 		}
+	}
+}
+
+func TestMetaIndexEntriesSorted(t *testing.T) {
+	f, err := build(base.DefaultCompression, nil /* filter policy */,
+		TableFilter, nil, nil, 4096, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := NewReader(f, 0 /* dbNum */, 0 /* fileNum */, nil /* extra opts */)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := r.readBlock(r.metaIndexBH, nil /* transform */)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, err := newRawBlockIter(bytes.Compare, b.Get())
+	b.Release()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var prevKey []byte
+	for valid := i.First(); valid; valid = i.Next() {
+		_, n := decodeBlockHandle(i.Value())
+		if n == 0 {
+			t.Fatal("pebble/table: invalid table (bad filter block handle)")
+		}
+		if bytes.Compare(prevKey, i.Key().UserKey) >= 0 {
+			t.Fatalf("metaindex block out of order: %s < %s", prevKey, i.Key().UserKey)
+		}
+		prevKey = make([]byte, len(i.Key().UserKey))
+		copy(prevKey, i.Key().UserKey)
+	}
+	if err := i.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
