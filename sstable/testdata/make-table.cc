@@ -189,13 +189,28 @@ int write() {
       std::cerr << "SstFileWriter::Open: " << status.ToString() << std::endl;
       return 1;
     }
+
+    int rangeDelLength = 0;
+    int rangeDelCounter = 0;
     std::ifstream in(infile);
     std::string s;
+    std::string rangeDelStart;
     for (int i = 0; getline(in, s); i++) {
       std::string key(s, 8);
       std::string val(s, 0, 7);
       val = val.substr(1 + val.rfind(' '));
       tb->Put(key.c_str(), val.c_str());
+      // Add range deletions of increasing length.
+      if (i % 100 == 0) {
+        rangeDelStart = key;
+        rangeDelCounter = 0;
+        rangeDelLength++;
+      }
+      rangeDelCounter++;
+
+      if (rangeDelCounter == rangeDelLength) {
+        tb->DeleteRange(rangeDelStart, key.c_str());
+      }
     }
 
     rocksdb::ExternalSstFileInfo info;

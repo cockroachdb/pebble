@@ -21,9 +21,10 @@ sstable layout
      12722  data (1025)
      13752  data (156)
      13913  index (245)
-     14163  properties (719)
-     14887  meta-index (33)
-     14925  footer (53)
+     14163  range-del (421)
+     14589  properties (719)
+     15313  meta-index (61)
+     15379  footer (53)
 
 sstable layout
 ../sstable/testdata/h.ldb
@@ -44,9 +45,10 @@ sstable layout
      12722  data (1025)
      13752  data (156)
      13913  index (245)
-     14163  properties (673)
-     14841  meta-index (33)
-     14879  leveldb-footer (48)
+     14163  range-del (421)
+     14589  properties (673)
+     15267  meta-index (61)
+     15333  leveldb-footer (48)
 
 sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
@@ -68,9 +70,10 @@ sstable layout
      26545  data (249)
      26799  filter (2245)
      29049  index (325)
-     29379  properties (717)
-     30101  meta-index (83)
-     30189  footer (53)
+     29379  range-del (421)
+     29805  properties (717)
+     30527  meta-index (112)
+     30644  footer (53)
 
 sstable layout
 ../sstable/testdata/h.no-compression.two_level_index.sst
@@ -94,9 +97,10 @@ sstable layout
      26924  index (118)
      27047  index (95)
      27147  top-index (70)
-     27222  properties (765)
-     27992  meta-index (34)
-     28031  footer (53)
+     27222  range-del (421)
+     27648  properties (765)
+     28418  meta-index (63)
+     28486  footer (53)
 
 sstable layout
 -v
@@ -1979,40 +1983,43 @@ sstable layout
      27201    [restart 27147]
      27205    [restart 27166]
      27209    [restart 27185]
-     27222  properties (765)
-     27222    rocksdb.block.based.table.index.type (43) [restart]
-     27265    rocksdb.block.based.table.prefix.filtering (20)
-     27285    rocksdb.block.based.table.whole.key.filtering (23)
-     27308    rocksdb.column.family.id (24)
-     27332    rocksdb.comparator (37)
-     27369    rocksdb.compression (23)
-     27392    rocksdb.compression_options (106)
-     27498    rocksdb.creation.time (16)
-     27514    rocksdb.data.size (15)
-     27529    rocksdb.deleted.keys (15)
-     27544    rocksdb.external_sst_file.global_seqno (41)
-     27585    rocksdb.external_sst_file.version (14)
-     27599    rocksdb.filter.size (15)
-     27614    rocksdb.fixed.key.length (18)
-     27632    rocksdb.format.version (17)
-     27649    rocksdb.index.key.is.user.key (25)
-     27674    rocksdb.index.partitions (14)
-     27688    rocksdb.index.size (9)
-     27697    rocksdb.index.value.is.delta.encoded (26)
-     27723    rocksdb.merge.operands (18)
-     27741    rocksdb.merge.operator (13)
-     27754    rocksdb.num.data.blocks (19)
-     27773    rocksdb.num.entries (12)
-     27785    rocksdb.num.range-deletions (19)
-     27804    rocksdb.oldest.key.time (19)
-     27823    rocksdb.prefix.extractor.name (31)
-     27854    rocksdb.property.collectors (47)
-     27901    rocksdb.raw.key.size (18)
-     27919    rocksdb.raw.value.size (15)
-     27934    rocksdb.top-level.index.size (24)
-     27958    test.key-count (21)
-     27979    [restart 27222]
-     27992  meta-index (34)
-     27992    rocksdb.properties block:27222/765 [restart]
-     28018    [restart 27992]
-     28031  footer (53)
+     27222  range-del (421)
+     27648  properties (765)
+     27648    rocksdb.block.based.table.index.type (43) [restart]
+     27691    rocksdb.block.based.table.prefix.filtering (20)
+     27711    rocksdb.block.based.table.whole.key.filtering (23)
+     27734    rocksdb.column.family.id (24)
+     27758    rocksdb.comparator (37)
+     27795    rocksdb.compression (23)
+     27818    rocksdb.compression_options (106)
+     27924    rocksdb.creation.time (16)
+     27940    rocksdb.data.size (15)
+     27955    rocksdb.deleted.keys (15)
+     27970    rocksdb.external_sst_file.global_seqno (41)
+     28011    rocksdb.external_sst_file.version (14)
+     28025    rocksdb.filter.size (15)
+     28040    rocksdb.fixed.key.length (18)
+     28058    rocksdb.format.version (17)
+     28075    rocksdb.index.key.is.user.key (25)
+     28100    rocksdb.index.partitions (14)
+     28114    rocksdb.index.size (9)
+     28123    rocksdb.index.value.is.delta.encoded (26)
+     28149    rocksdb.merge.operands (18)
+     28167    rocksdb.merge.operator (13)
+     28180    rocksdb.num.data.blocks (19)
+     28199    rocksdb.num.entries (12)
+     28211    rocksdb.num.range-deletions (19)
+     28230    rocksdb.oldest.key.time (19)
+     28249    rocksdb.prefix.extractor.name (31)
+     28280    rocksdb.property.collectors (47)
+     28327    rocksdb.raw.key.size (18)
+     28345    rocksdb.raw.value.size (15)
+     28360    rocksdb.top-level.index.size (24)
+     28384    test.key-count (21)
+     28405    [restart 27648]
+     28418  meta-index (63)
+     28418    rocksdb.properties block:27648/765 [restart]
+     28444    rocksdb.range_del block:27222/421 [restart]
+     28469    [restart 28418]
+     28473    [restart 28444]
+     28486  footer (53)
