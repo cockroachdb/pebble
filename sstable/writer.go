@@ -549,7 +549,13 @@ func (w *Writer) Close() (err error) {
 		}
 	}
 
-	// Write the range-del block.
+	// Write the range-del block. The block handle must be stored and added to
+	// the meta index block after the properties block has been written. This is
+	// because RocksDB relies on the ordering of the block handles within the
+	// metaindex block. Although the range deletion block is written before the
+	// properties block, the range deletion block handle must be written after
+	// the properties block handle within the meta index block.
+	var rangeDelBH BlockHandle
 	if w.props.NumRangeDeletions > 0 {
 		if !w.rangeDelV1Format {
 			// Because the range tombstones are fragmented, the end key of the last
@@ -560,20 +566,10 @@ func (w *Writer) Close() (err error) {
 			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
 		}
 		b := w.rangeDelBlock.finish()
-		bh, err := w.writeRawBlock(b, w.compression)
+		rangeDelBH, err = w.writeRawBlock(b, w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
-		}
-		n := encodeBlockHandle(w.tmp[:], bh)
-		// The v2 range-del block encoding is backwards compatible with the v1
-		// encoding. We add meta-index entries for both the old name and the new
-		// name so that old code can continue to find the range-del block and new
-		// code knows that the range tombstones in the block are fragmented and
-		// sorted.
-		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.tmp[:n])
-		if !w.rangeDelV1Format {
-			metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
 		}
 	}
 
@@ -603,6 +599,20 @@ func (w *Writer) Close() (err error) {
 		}
 		n := encodeBlockHandle(w.tmp[:], bh)
 		metaindex.add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.tmp[:n])
+	}
+
+	// Write the range deletion block handle to the metaindex block.
+	if w.props.NumRangeDeletions > 0 {
+		n := encodeBlockHandle(w.tmp[:], rangeDelBH)
+		// The v2 range-del block encoding is backwards compatible with the v1
+		// encoding. We add meta-index entries for both the old name and the new
+		// name so that old code can continue to find the range-del block and new
+		// code knows that the range tombstones in the block are fragmented and
+		// sorted.
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.tmp[:n])
+		if !w.rangeDelV1Format {
+			metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
+		}
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
