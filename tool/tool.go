@@ -34,15 +34,20 @@ type T struct {
 
 // New creates a new introspection tool.
 func New() *T {
-	t := &T{}
-	t.opts.Filters = make(map[string]FilterPolicy)
-	t.comparers = make(sstable.Comparers)
-	t.mergers = make(sstable.Mergers)
+	t := &T{
+		opts: base.Options{
+			Filters:  make(map[string]FilterPolicy),
+			ReadOnly: true,
+		},
+		comparers: make(sstable.Comparers),
+		mergers:   make(sstable.Mergers),
+	}
+
 	t.RegisterComparer(base.DefaultComparer)
 	t.RegisterFilter(bloom.FilterPolicy(10))
 	t.RegisterMerger(base.DefaultMerger)
 
-	t.db = newDB(&t.opts)
+	t.db = newDB(&t.opts, t.comparers, t.mergers)
 	t.manifest = newManifest(&t.opts, t.comparers)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)
 	t.wal = newWAL(&t.opts)

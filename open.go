@@ -267,8 +267,10 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 	}
 
-	d.scanObsoleteFiles(ls)
-	d.deleteObsoleteFiles(jobID)
+	if !d.opts.ReadOnly {
+		d.scanObsoleteFiles(ls)
+		d.deleteObsoleteFiles(jobID)
+	}
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
@@ -357,7 +359,14 @@ func (d *DB) replayWAL(
 		buf.Reset()
 	}
 
-	if mem != nil && !mem.empty() && !d.opts.ReadOnly {
+	if d.opts.ReadOnly {
+		// In read-only mode, each WAL file is replayed into its own memtable. This
+		// is done so that the WAL metrics can be accurately provided.
+		mem.logSize = uint64(rr.Offset())
+		d.mu.mem.mutable = newMemTable(d.opts)
+		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		d.mu.versions.metrics.WAL.Files++
+	} else if mem != nil && !mem.empty() {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, []flushable{mem}, &d.bytesFlushed)
 		newVE, pendingOutputs, err := d.runCompaction(jobID, c, nilPacer)
