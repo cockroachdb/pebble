@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/petermattis/pebble/internal/base"
 )
@@ -18,6 +19,7 @@ import (
 var stdout = io.Writer(os.Stdout)
 var stderr = io.Writer(os.Stderr)
 var osExit = os.Exit
+var timeNow = time.Now
 
 type key []byte
 

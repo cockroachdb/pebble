@@ -156,6 +156,12 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		return err
 	}
 	vs.append(newVersion)
+
+	for i := range vs.metrics.Levels {
+		l := &vs.metrics.Levels[i]
+		l.NumFiles = int64(len(newVersion.files[i]))
+		l.Size = uint64(totalSize(newVersion.files[i]))
+	}
 	return nil
 }
 
