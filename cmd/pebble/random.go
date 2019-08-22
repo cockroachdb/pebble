@@ -16,10 +16,31 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/internal/randvar"
+	"github.com/petermattis/pebble/internal/rate"
 	"golang.org/x/exp/rand"
 )
 
 var randVarRE = regexp.MustCompile(`^(?:(uniform|zipf):)?(\d+)(?:-(\d+))?$`)
+
+func newFluctuatingRateLimiter(maxOpsPerSec string) (*rate.Limiter, error) {
+	rateDist, fluctuateDuration, err := parseRateSpec(maxOpsPerSec)
+	if err != nil {
+		return nil, err
+	}
+	limiter := rate.NewLimiter(rate.Limit(rateDist.Uint64()), 1)
+	if fluctuateDuration != 0 {
+		go func(limiter *rate.Limiter) {
+			ticker := time.NewTicker(fluctuateDuration)
+			for i := 0; ; i++ {
+				select {
+				case <-ticker.C:
+					limiter.SetLimit(rate.Limit(rateDist.Uint64()))
+				}
+			}
+		}(limiter)
+	}
+	return limiter, nil
+}
 
 func parseRandVarSpec(d string) (randvar.Static, error) {
 	m := randVarRE.FindStringSubmatch(d)
@@ -47,6 +68,27 @@ func parseRandVarSpec(d string) (randvar.Static, error) {
 	default:
 		return nil, fmt.Errorf("unknown distribution: %s", m[1])
 	}
+}
+
+func parseRateSpec(v string) (randvar.Static, time.Duration, error) {
+	parts := strings.Split(v, "/")
+	if len(parts) == 0 || len(parts) > 2 {
+		return nil, 0, fmt.Errorf("invalid max-ops-per-sec spec: %s", v)
+	}
+	r, err := parseRandVarSpec(parts[0])
+	if err != nil {
+		return nil, 0, err
+	}
+	// Don't fluctuate by default.
+	fluctuateDuration := time.Duration(0)
+	if len(parts) == 2 {
+		fluctuateDurationFloat, err := strconv.ParseFloat(parts[1], 64)
+		if err != nil {
+			return nil, 0, err
+		}
+		fluctuateDuration = time.Duration(fluctuateDurationFloat) * time.Second
+	}
+	return r, fluctuateDuration, nil
 }
 
 func parseValuesSpec(v string) (randvar.Static, float64, error) {

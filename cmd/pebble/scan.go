@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/internal/rate"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
@@ -96,7 +95,11 @@ func runScan(cmd *cobra.Command, args []string) {
 				log.Fatal(err)
 			}
 
-			limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
+			limiter, err := newFluctuatingRateLimiter(maxOpsPerSec)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				go func(i int) {

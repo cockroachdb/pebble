@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/internal/rate"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
@@ -66,7 +65,11 @@ func runSync(cmd *cobra.Command, args []string) {
 
 	runTest(args[0], test{
 		init: func(d DB, wg *sync.WaitGroup) {
-			limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
+			limiter, err := newFluctuatingRateLimiter(maxOpsPerSec)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				latency := reg.Register("ops")
