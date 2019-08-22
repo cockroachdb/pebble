@@ -598,6 +598,11 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	return nil
 }
 
+// Empty returns true if the batch is empty, and false otherwise.
+func (b *Batch) Empty() bool {
+	return len(b.storage.data) <= batchHeaderLen
+}
+
 // Repr returns the underlying batch representation. It is not safe to modify
 // the contents. Reset() will not change the contents of the returned value,
 // though any other mutation operation may do so.
