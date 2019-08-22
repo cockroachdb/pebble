@@ -15,15 +15,16 @@ import (
 )
 
 var (
-	cacheSize       int64
-	concurrency     int
-	disableWAL      bool
-	duration        time.Duration
-	maxOpsPerSec    int
-	rocksdb         bool
-	verbose         bool
-	waitCompactions bool
-	wipe            bool
+	cacheSize         int64
+	concurrency       int
+	disableWAL        bool
+	duration          time.Duration
+	findPeakOpsPerSec bool
+	maxOpsPerSec      int
+	rocksdb           bool
+	verbose           bool
+	waitCompactions   bool
+	wipe              bool
 )
 
 func main() {
@@ -57,6 +58,9 @@ func main() {
 			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
+		cmd.Flags().BoolVar(
+			&findPeakOpsPerSec, "find-peak-ops-per-sec", false,
+			"search for the peak sustainable (i.e., no write stalls) throughput")
 		cmd.Flags().IntVarP(
 			&maxOpsPerSec, "max-ops-per-sec", "m", math.MaxInt32, "max ops per second")
 		cmd.Flags().BoolVar(

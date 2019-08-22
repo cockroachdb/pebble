@@ -62,6 +62,9 @@ type Limiter struct {
 	last time.Time
 	// lastEvent is the latest time of a rate-limited event (past or future)
 	lastEvent time.Time
+	// totalReserved is the number of tokens for which we've returned reservations.
+	// It counts all tokens even if their reservation is unvested.
+	totalReserved int64
 }
 
 // Limit returns the maximum overall event rate.
@@ -77,6 +80,12 @@ func (lim *Limiter) Limit() Limit {
 // A zero Burst allows no events, unless limit == Inf.
 func (lim *Limiter) Burst() int {
 	return lim.burst
+}
+
+func (lim *Limiter) TotalReserved() int64 {
+	lim.mu.Lock()
+	defer lim.mu.Unlock()
+	return lim.totalReserved
 }
 
 // NewLimiter returns a new Limiter that allows events up to rate r and permits
@@ -161,6 +170,7 @@ func (r *Reservation) CancelAt(now time.Time) {
 		return
 	}
 
+	r.lim.totalReserved -= int64(r.tokens)
 	// calculate tokens to restore
 	// The duration between lim.lastEvent and r.timeToAct tells us how many tokens were reserved
 	// after r was obtained. These tokens should not be restored.
@@ -284,6 +294,7 @@ func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duratio
 	lim.mu.Lock()
 
 	if lim.limit == Inf {
+		lim.totalReserved += int64(n)
 		lim.mu.Unlock()
 		return Reservation{
 			ok:        true,
@@ -323,6 +334,7 @@ func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duratio
 		lim.last = now
 		lim.tokens = tokens
 		lim.lastEvent = r.timeToAct
+		lim.totalReserved += int64(n)
 	} else {
 		lim.last = last
 	}

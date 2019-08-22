@@ -70,7 +70,7 @@ func runScan(cmd *cobra.Command, args []string) {
 	}
 
 	runTest(args[0], test{
-		init: func(d DB, wg *sync.WaitGroup) {
+		init: func(d DB, limiter *rate.Limiter, wg *sync.WaitGroup) {
 			const count = 100000
 			const batch = 1000
 
@@ -96,7 +96,6 @@ func runScan(cmd *cobra.Command, args []string) {
 				log.Fatal(err)
 			}
 
-			limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				go func(i int) {

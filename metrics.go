@@ -82,7 +82,8 @@ type VersionMetrics struct {
 		// Number of bytes written to the WAL.
 		BytesWritten uint64
 	}
-	Levels [numLevels]LevelMetrics
+	Levels                  [numLevels]LevelMetrics
+	EstimatedCompactionDebt uint64
 }
 
 func (m *VersionMetrics) formatWAL(buf *bytes.Buffer) {

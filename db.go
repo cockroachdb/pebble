@@ -808,6 +808,7 @@ func (d *DB) Metrics() *VersionMetrics {
 		for level := 1; level < numLevels; level++ {
 			metrics.Levels[level].Score = float64(metrics.Levels[level].Size) / float64(p.levelMaxBytes[level])
 		}
+		metrics.EstimatedCompactionDebt = p.estimatedCompactionDebt(0 /*l0ExtraSize*/)
 	}
 	d.mu.Unlock()
 	return metrics
