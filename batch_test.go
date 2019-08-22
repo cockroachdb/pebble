@@ -24,7 +24,7 @@ func TestBatch(t *testing.T) {
 		key, value string
 	}
 
-	verifyTestCases := func(b Batch, testCases []testCase) {
+	verifyTestCases := func(b *Batch, testCases []testCase) {
 		r := b.Reader()
 
 		for _, tc := range testCases {
@@ -79,7 +79,7 @@ func TestBatch(t *testing.T) {
 			_ = b.LogData([]byte(tc.key), nil)
 		}
 	}
-	verifyTestCases(b, testCases)
+	verifyTestCases(&b, testCases)
 
 	b.Reset()
 	// Run the same operations, this time using the Deferred variants of each
@@ -112,7 +112,7 @@ func TestBatch(t *testing.T) {
 			_ = b.LogData([]byte(tc.key), nil)
 		}
 	}
-	verifyTestCases(b, testCases)
+	verifyTestCases(&b, testCases)
 }
 
 func TestBatchEmpty(t *testing.T) {
