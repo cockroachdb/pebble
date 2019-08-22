@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"runtime/pprof"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/codahale/hdrhistogram"
 	"github.com/petermattis/pebble"
+	"github.com/petermattis/pebble/internal/rate"
 )
 
 const (
@@ -208,12 +210,16 @@ func (w *histogramRegistry) Tick(fn func(histogramTick)) {
 }
 
 type test struct {
-	init func(db DB, wg *sync.WaitGroup)
+	init func(db DB, limiter *rate.Limiter, wg *sync.WaitGroup)
 	tick func(elapsed time.Duration, i int)
 	done func(elapsed time.Duration)
 }
 
 func runTest(dir string, t test) {
+	if rocksdb && findPeakOpsPerSec {
+		log.Fatalf("--rocksdb together with --find-peak-ops-per-sec is unsupported")
+	}
+
 	// Check if the directory exists.
 	if wipe {
 		fmt.Printf("wiping %s\n", dir)
@@ -231,8 +237,9 @@ func runTest(dir string, t test) {
 		db = newPebbleDB(dir)
 	}
 
+	limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
 	var wg sync.WaitGroup
-	t.init(db, &wg)
+	t.init(db, limiter, &wg)
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -269,6 +276,11 @@ func runTest(dir string, t test) {
 	}
 
 	start := time.Now()
+	findPeakUpdate := make(chan findPeakBounds)
+	if findPeakOpsPerSec {
+		go findPeakLoop(db, limiter, findPeakUpdate)
+	}
+	var prevBounds findPeakBounds
 	for i := 0; ; i++ {
 		select {
 		case <-ticker.C:
@@ -286,6 +298,9 @@ func runTest(dir string, t test) {
 			}
 
 		case <-workersDone:
+			if findPeakOpsPerSec {
+				log.Fatalf("workers finished early; peak sustainable throughput not found\n")
+			}
 			workersDone = nil
 			t.done(time.Since(start))
 			p := db.Metrics()
@@ -294,6 +309,19 @@ func runTest(dir string, t test) {
 				return
 			}
 			fmt.Printf("waiting for background compactions\n")
+
+		case bounds := <-findPeakUpdate:
+			if bounds == prevBounds {
+				// The bounds only remain the same if the actual rate is outside the searched range
+				log.Fatalf("unable to achieve rate in range [%.f, %.f]; peak sustainable throughput not found\n",
+					bounds.lower, bounds.upper)
+			} else if bounds.upper-bounds.lower < bounds.upper/100 || bounds.upper-bounds.lower < 1 {
+				fmt.Printf("peak sustainable throughput: %.f\n", math.Round((bounds.lower+bounds.upper)/2))
+				done <- syscall.Signal(0)
+			} else {
+				fmt.Printf("peak ops/sec range narrowed to [%.f, %.f]\n", bounds.lower, bounds.upper)
+			}
+			prevBounds = bounds
 
 		case <-done:
 			if workersDone != nil {
