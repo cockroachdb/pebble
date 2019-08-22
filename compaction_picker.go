@@ -56,7 +56,10 @@ func (p *compactionPicker) compactionNeeded() bool {
 }
 
 // estimatedCompactionDebt estimates the number of bytes which need to be
-// compacted before the LSM tree becomes stable.
+// compacted before the LSM tree becomes stable. To get the smoothed debt,
+// the caller can pass in the bytes processed by a pending flush as `l0ExtraSize`,
+// and subtract the bytes processed by a pending compaction from the result.
+// Note in `DB` these values are available in `bytesFlushed` and `bytesCompacted`.
 func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 	if p == nil {
 		return 0

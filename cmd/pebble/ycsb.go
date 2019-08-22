@@ -148,7 +148,7 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 	if weights := ycsbWorkloads[w]; weights != nil {
 		return weights, nil
 	}
-	iWeights := make([]int, 4)
+	iWeights := make([]int, ycsbNumOps)
 	for _, p := range strings.Split(w, ",") {
 		parts := strings.Split(p, "=")
 		if len(parts) != 2 {
@@ -180,7 +180,7 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 		return nil, fmt.Errorf("zero weight specified: %s", w)
 	}
 
-	weights := make(ycsbWeights, 4)
+	weights := make(ycsbWeights, ycsbNumOps)
 	for i := range weights {
 		weights[i] = float64(iWeights[i]) / float64(sum)
 	}
@@ -302,7 +302,7 @@ func newYcsb(
 	return y
 }
 
-func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
+func (y *ycsb) init(db DB, limiter *rate.Limiter, wg *sync.WaitGroup) {
 	if ycsbConfig.initialKeys > 0 {
 		rng := randvar.NewRand()
 
@@ -324,7 +324,7 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 			1+ycsbConfig.prepopulatedKeys+ycsbConfig.initialKeys)
 	}
 	y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys))
-	y.limiter = rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
+	y.limiter = limiter
 
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {

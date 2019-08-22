@@ -179,8 +179,8 @@ type DB struct {
 	// and compaction routines.
 	bytesFlushed uint64
 	// bytesCompacted is the number of bytes compacted in the current compaction.
-	// This is used as a dummy variable to increment during compaction, and the
-	// value is not used anywhere.
+	// This is incremented during compaction, and the value is used for metrics.
+	// It must be read/written atomically.
 	bytesCompacted uint64
 
 	flushLimiter limiter
@@ -808,6 +808,9 @@ func (d *DB) Metrics() *VersionMetrics {
 		for level := 1; level < numLevels; level++ {
 			metrics.Levels[level].Score = float64(metrics.Levels[level].Size) / float64(p.levelMaxBytes[level])
 		}
+		bytesFlushed := atomic.LoadUint64(&d.bytesFlushed)
+		bytesCompacted := atomic.LoadUint64(&d.bytesCompacted)
+		metrics.EstimatedCompactionDebt = p.estimatedCompactionDebt(bytesFlushed) - bytesCompacted
 	}
 	d.mu.Unlock()
 	return metrics
