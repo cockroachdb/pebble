@@ -236,7 +236,7 @@ func (p *commitPipeline) Close() {
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
 func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
-	if len(b.storage.data) == 0 {
+	if b.Empty() {
 		return nil
 	}
 

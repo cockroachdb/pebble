@@ -15,6 +15,7 @@ import (
 	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/petermattis/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBatch(t *testing.T) {
@@ -112,6 +113,36 @@ func TestBatch(t *testing.T) {
 		}
 	}
 	verifyTestCases(b, testCases)
+}
+
+func TestBatchEmpty(t *testing.T) {
+	var b Batch
+	require.True(t, b.Empty())
+
+	b.Set(nil, nil, nil)
+	require.False(t, b.Empty())
+	b.Reset()
+	require.True(t, b.Empty())
+
+	b.Merge(nil, nil, nil)
+	require.False(t, b.Empty())
+	b.Reset()
+	require.True(t, b.Empty())
+
+	b.Delete(nil, nil)
+	require.False(t, b.Empty())
+	b.Reset()
+	require.True(t, b.Empty())
+
+	b.DeleteRange(nil, nil, nil)
+	require.False(t, b.Empty())
+	b.Reset()
+	require.True(t, b.Empty())
+
+	b.LogData(nil, nil)
+	require.False(t, b.Empty())
+	b.Reset()
+	require.True(t, b.Empty())
 }
 
 func TestBatchIncrement(t *testing.T) {
