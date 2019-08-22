@@ -66,7 +66,15 @@ func runSync(cmd *cobra.Command, args []string) {
 
 	runTest(args[0], test{
 		init: func(d DB, wg *sync.WaitGroup) {
-			limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
+			rateDist, fluctuateDuration, err := parseRateSpec(maxOpsPerSec)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			limiter := rate.NewLimiter(rate.Limit(rateDist.Uint64()), 1)
+			if fluctuateDuration != 0 {
+				go fluctuateRate(rateDist, fluctuateDuration, limiter)
+			}
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				latency := reg.Register("ops")
