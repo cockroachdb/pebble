@@ -329,8 +329,7 @@ func (d *DB) replayWAL(
 		// TODO(peter): If the batch is too large to fit in the memtable, flush the
 		// existing memtable and write the batch as a separate L0 table.
 		b = Batch{}
-		b.storage.data = buf.Bytes()
-		b.refreshMemTableSize()
+		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
 

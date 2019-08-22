@@ -103,7 +103,10 @@ func TestBatch(t *testing.T) {
 			copy(d.Value, value)
 			d.Finish()
 		case InternalKeyKindRangeDelete:
-			_ = b.DeleteRange([]byte(tc.key), []byte(tc.value), nil)
+			d, _ := b.DeleteRangeDeferred(len(key), len(value), nil)
+			copy(d.Key, key)
+			copy(d.Value, value)
+			d.Finish()
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
 		}
@@ -142,12 +145,12 @@ func TestBatchIncrement(t *testing.T) {
 		0xffffffff,
 	}
 	for _, tc := range testCases {
-		var buf [12]byte
+		var buf [batchHeaderLen]byte
 		binary.LittleEndian.PutUint32(buf[8:12], tc)
 		var b Batch
-		b.storage.data = buf[:]
+		b.SetRepr(buf[:])
 		b.increment()
-		got := binary.LittleEndian.Uint32(buf[8:12])
+		got := binary.LittleEndian.Uint32(b.Repr()[8:12])
 		want := tc + 1
 		if tc == 0xffffffff {
 			want = tc
@@ -494,8 +497,8 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 func TestFlushableBatchBytesIterated(t *testing.T) {
 	batch := newBatch(nil)
 	for j := 0; j < 1000; j++ {
-		key := make([]byte, 8 + j%3)
-		value := make([]byte, 7 + j%5)
+		key := make([]byte, 8+j%3)
+		value := make([]byte, 7+j%5)
 		batch.Set(key, value, nil)
 
 		fb := newFlushableBatch(batch, DefaultComparer)
