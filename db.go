@@ -417,6 +417,8 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 }
 
 func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
+	repr := b.Repr()
+
 	d.mu.Lock()
 
 	if b.flushable != nil {
@@ -427,7 +429,7 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 	err := d.makeRoomForWrite(b)
 
 	if err == nil {
-		d.mu.log.bytesIn += uint64(len(b.storage.data))
+		d.mu.log.bytesIn += uint64(len(repr))
 	}
 
 	// Grab a reference to the memtable while holding DB.mu. Note that
@@ -444,7 +446,7 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 		return mem, nil
 	}
 
-	size, err := d.mu.log.SyncRecord(b.storage.data, wg)
+	size, err := d.mu.log.SyncRecord(repr, wg)
 	if err != nil {
 		panic(err)
 	}
