@@ -8,19 +8,19 @@ sstable properties
 ../sstable/testdata/h.sst
 version           2
 size              
-  file            14978
+  file            15432
   data            13913
     blocks        14
   index           325
     blocks        1
     top-level     0
   filter          0
-  raw-key         23717
-  raw-value       1835
-records           1710
-  set             1710
-  delete          0
-  range-delete    0
+  raw-key         23938
+  raw-value       1912
+records           1727
+  set             1693
+  delete          17
+  range-delete    17
   merge           0
   global-seq-num  0
 index             
@@ -35,7 +35,7 @@ compression       Snappy
   options         window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 user properties   
   collectors      [KeyCountPropertyCollector]
-  test.key-count  1710
+  test.key-count  1727
 
 sstable properties
 ../sstable/testdata/h.ldb
@@ -43,19 +43,19 @@ sstable properties
 ../sstable/testdata/h.ldb
 version           2
 size              
-  file            14927
+  file            15381
   data            13913
     blocks        14
   index           325
     blocks        1
     top-level     0
   filter          0
-  raw-key         23717
-  raw-value       1835
-records           1710
-  set             1710
-  delete          0
-  range-delete    0
+  raw-key         23938
+  raw-value       1912
+records           1727
+  set             1693
+  delete          17
+  range-delete    17
   merge           0
   global-seq-num  0
 index             
@@ -77,19 +77,19 @@ sstable properties
 ../sstable/testdata/h.no-compression.two_level_index.sst
 version           2
 size              
-  file            28084
+  file            28539
   data            26799
     blocks        14
   index           408
     blocks        4
     top-level     70
   filter          0
-  raw-key         23717
-  raw-value       1835
-records           1710
-  set             1710
-  delete          0
-  range-delete    0
+  raw-key         23938
+  raw-value       1912
+records           1727
+  set             1693
+  delete          17
+  range-delete    17
   merge           0
   global-seq-num  0
 index             
@@ -104,7 +104,7 @@ compression       NoCompression
   options         window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 user properties   
   collectors      [KeyCountPropertyCollector]
-  test.key-count  1710
+  test.key-count  1727
 
 sstable properties
 -v
@@ -131,17 +131,17 @@ rocksdb.block.based.table.index.type: 2
 rocksdb.index.value.is.delta.encoded: 0
 rocksdb.merge.operator: nullptr
 rocksdb.num.data.blocks: 14
-rocksdb.deleted.keys: 0
-rocksdb.num.entries: 1710
+rocksdb.deleted.keys: 17
+rocksdb.num.entries: 1727
 rocksdb.merge.operands: 0
-rocksdb.num.range-deletions: 0
+rocksdb.num.range-deletions: 17
 rocksdb.oldest.key.time: 0
 rocksdb.prefix.extractor.name: nullptr
 rocksdb.block.based.table.prefix.filtering: false
 rocksdb.property.collectors: [KeyCountPropertyCollector]
-rocksdb.raw.key.size: 23717
-rocksdb.raw.value.size: 1835
+rocksdb.raw.key.size: 23938
+rocksdb.raw.value.size: 1912
 rocksdb.top-level.index.size: 70
 rocksdb.external_sst_file.version: 2
 rocksdb.block.based.table.whole.key.filtering: false
-test.key-count: 1710
+test.key-count: 1727
