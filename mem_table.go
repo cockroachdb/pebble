@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -164,7 +165,8 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		}
 	}
 	if seqNum != startSeqNum+uint64(batch.Count()) {
-		panic("pebble: inconsistent batch count")
+		panic(fmt.Sprintf("pebble: inconsistent batch count: %d vs %d",
+			seqNum, startSeqNum+uint64(batch.Count())))
 	}
 	if tombstoneCount != 0 {
 		m.tombstones.invalidate(tombstoneCount)
