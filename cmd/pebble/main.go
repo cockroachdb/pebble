@@ -15,15 +15,18 @@ import (
 )
 
 var (
-	cacheSize       int64
-	concurrency     int
-	disableWAL      bool
-	duration        time.Duration
-	maxOpsPerSec    int
-	rocksdb         bool
-	verbose         bool
-	waitCompactions bool
-	wipe            bool
+	cacheSize         int64
+	concurrency       int
+	disableWAL        bool
+	duration          time.Duration
+	fluctuate         bool
+	fluctuateAmount   int
+	fluctuateDuration time.Duration
+	maxOpsPerSec      int
+	rocksdb           bool
+	verbose           bool
+	waitCompactions   bool
+	wipe              bool
 )
 
 func main() {
@@ -57,6 +60,12 @@ func main() {
 			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
+		cmd.Flags().BoolVarP(
+			&fluctuate, "fluctuate", "f", false, "fluctuate read/write rate. Only valid when max-ops-per-sec is enabled")
+		cmd.Flags().IntVarP(
+			&fluctuateAmount, "fluctuate-amount", "a", 0, "the percentage to fluctuate by if fluctuate is enabled")
+		cmd.Flags().DurationVarP(
+			&fluctuateDuration, "fluctuate-duration", "p", 0, "the duration that each fluctuation lasts if fluctuate is enabled")
 		cmd.Flags().IntVarP(
 			&maxOpsPerSec, "max-ops-per-sec", "m", math.MaxInt32, "max ops per second")
 		cmd.Flags().BoolVar(

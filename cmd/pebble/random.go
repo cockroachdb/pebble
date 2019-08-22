@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,10 +17,32 @@ import (
 	"time"
 
 	"github.com/petermattis/pebble/internal/randvar"
+	"github.com/petermattis/pebble/internal/rate"
 	"golang.org/x/exp/rand"
 )
 
 var randVarRE = regexp.MustCompile(`^(?:(uniform|zipf):)?(\d+)(?:-(\d+))?$`)
+
+func fluctuateRate(limiter *rate.Limiter) {
+	// Start with the low fluctuation.
+	fluctuateLow := true
+	ticker := time.NewTicker(fluctuateDuration)
+	for i := 0; ; i++ {
+		select {
+		case <-ticker.C:
+			var adjustmentFactor float64
+			if fluctuateLow {
+				adjustmentFactor = math.Max(float64(100-fluctuateAmount),0) / 100
+			} else {
+				adjustmentFactor = float64(100+fluctuateAmount) / 100
+			}
+			limiter.SetLimit(rate.Limit(float64(maxOpsPerSec) * adjustmentFactor))
+
+			// Flip fluctuation.
+			fluctuateLow = !fluctuateLow
+		}
+	}
+}
 
 func parseRandVarSpec(d string) (randvar.Static, error) {
 	m := randVarRE.FindStringSubmatch(d)

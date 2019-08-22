@@ -97,6 +97,9 @@ func runScan(cmd *cobra.Command, args []string) {
 			}
 
 			limiter := rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
+			if fluctuate {
+				go fluctuateRate(limiter)
+			}
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				go func(i int) {

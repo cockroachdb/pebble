@@ -325,7 +325,9 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 	}
 	y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys))
 	y.limiter = rate.NewLimiter(rate.Limit(maxOpsPerSec), 1)
-
+	if fluctuate {
+		go fluctuateRate(y.limiter)
+	}
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
 		go y.run(db, wg)
