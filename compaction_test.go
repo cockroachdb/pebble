@@ -860,7 +860,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 					if i == 0 {
 						smallest = key
 					}
-					if c.shouldStopBefore(base.MakeInternalKey([]byte(key), 0, 0)) {
+					if c.shouldStopBefore(base.MakeInternalKey([]byte(key), 0, 0), nil /* val */) {
 						fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
 						smallest = key
 					}

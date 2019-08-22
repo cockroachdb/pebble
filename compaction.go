@@ -309,10 +309,18 @@ func (c *compaction) trivialMove() bool {
 // better to adjust shouldStopBefore to not stop output in the middle of a
 // user-key. Perhaps this isn't a problem if the compaction picking heuristics
 // always pick the right (older) sibling for compaction first.
-func (c *compaction) shouldStopBefore(key InternalKey) bool {
+func (c *compaction) shouldStopBefore(key InternalKey, val []byte) bool {
+	var compareKey InternalKey
+	if key.Kind() == InternalKeyKindRangeDelete {
+		// If range deletion, use the end key since that is larger.
+		compareKey = base.DecodeInternalKey(val)
+	} else {
+		compareKey = key
+	}
+
 	for len(c.grandparents) > 0 {
 		g := &c.grandparents[0]
-		if base.InternalCompare(c.cmp, key, g.largest) <= 0 {
+		if base.InternalCompare(c.cmp, compareKey, g.largest) <= 0 {
 			break
 		}
 		if c.seenKey {
@@ -1067,7 +1075,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
 		// shouldStopBefore decision.
-		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {
+		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key, val)) {
 			if err := finishOutput(*key); err != nil {
 				return nil, pendingOutputs, err
 			}
