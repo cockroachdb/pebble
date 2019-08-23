@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
 	"github.com/spf13/cobra"
 )
@@ -47,14 +49,34 @@ func runTests(t *testing.T, path string) {
 				stderr = &buf
 				osExit = func(int) {}
 
+				var secs int64
+				timeNow = func() time.Time { secs++; return time.Unix(secs, 0) }
+
 				defer func() {
 					stdout = os.Stdout
 					stderr = os.Stderr
 					osExit = os.Exit
+					timeNow = time.Now
 				}()
 
+				tool := New()
+				// Register a test comparer and merger so that we can check the
+				// behavior of tools when the comparer and merger do not match.
+				tool.RegisterComparer(func() *Comparer {
+					var c Comparer
+					c = *base.DefaultComparer
+					c.Name = "test-comparer"
+					return &c
+				}())
+				tool.RegisterMerger(func() *Merger {
+					var m Merger
+					m = *base.DefaultMerger
+					m.Name = "test-merger"
+					return &m
+				}())
+
 				c := &cobra.Command{}
-				c.AddCommand(New().Commands...)
+				c.AddCommand(tool.Commands...)
 				c.SetArgs(args)
 				c.SetOutput(&buf)
 				if err := c.Execute(); err != nil {
