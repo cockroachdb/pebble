@@ -8,6 +8,10 @@ import (
 	"fmt"
 
 	"github.com/petermattis/pebble/internal/base"
+	"github.com/petermattis/pebble/internal/manifest"
+	"github.com/petermattis/pebble/internal/record"
+	"github.com/petermattis/pebble/sstable"
+	"github.com/petermattis/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -16,10 +20,18 @@ import (
 type manifestT struct {
 	Root *cobra.Command
 	Dump *cobra.Command
+
+	opts      *sstable.Options
+	comparers sstable.Comparers
+	fmtKey    formatter
 }
 
-func newManifest(opts *base.Options) *manifestT {
-	m := &manifestT{}
+func newManifest(opts *base.Options, comparers sstable.Comparers) *manifestT {
+	m := &manifestT{
+		opts:      opts,
+		comparers: comparers,
+	}
+	m.fmtKey.mustSet("quoted")
 
 	m.Root = &cobra.Command{
 		Use:   "manifest",
@@ -36,10 +48,101 @@ Print the contents of the MANIFEST files.
 	}
 
 	m.Root.AddCommand(m.Dump)
+
+	m.Dump.Flags().Var(
+		&m.fmtKey, "key", "key formatter")
 	return m
 }
 
 func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
-	fmt.Fprintf(stderr, "TODO(peter): \"manifest dump\" unimplemented\n")
-	osExit(1)
+	for _, arg := range args {
+		func() {
+			f, err := vfs.Default.Open(arg)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			defer f.Close()
+
+			fmt.Fprintf(stdout, "%s\n", arg)
+
+			var bve manifest.BulkVersionEdit
+			var cmp *base.Comparer
+			rr := record.NewReader(f, 0 /* logNum */)
+			for {
+				offset := rr.Offset()
+				r, err := rr.Next()
+				if err != nil {
+					fmt.Fprintf(stdout, "%s\n", err)
+					break
+				}
+
+				var ve manifest.VersionEdit
+				err = ve.Decode(r)
+				if err != nil {
+					fmt.Fprintf(stdout, "%s\n", err)
+					break
+				}
+				bve.Accumulate(&ve)
+
+				empty := true
+				fmt.Fprintf(stdout, "%d\n", offset)
+				if ve.ComparerName != "" {
+					empty = false
+					fmt.Fprintf(stdout, "  comparer:     %s", ve.ComparerName)
+					cmp = m.comparers[ve.ComparerName]
+					if cmp == nil {
+						fmt.Fprintf(stdout, " (unknown)")
+					}
+					fmt.Fprintf(stdout, "\n")
+				}
+				if ve.LogNum != 0 {
+					empty = false
+					fmt.Fprintf(stdout, "  log-num:      %d\n", ve.LogNum)
+				}
+				if ve.PrevLogNum != 0 {
+					empty = false
+					fmt.Fprintf(stdout, "  prev-log-num: %d\n", ve.PrevLogNum)
+				}
+				if ve.LastSeqNum != 0 {
+					empty = false
+					fmt.Fprintf(stdout, "  last-seq-num: %d\n", ve.LastSeqNum)
+				}
+				for df := range ve.DeletedFiles {
+					empty = false
+					fmt.Fprintf(stdout, "  deleted:      L%d %d\n", df.Level, df.FileNum)
+				}
+				for _, nf := range ve.NewFiles {
+					empty = false
+					fmt.Fprintf(stdout, "  added:        L%d %d:%d",
+						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
+					formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
+					fmt.Fprintf(stdout, "\n")
+				}
+				if empty {
+					// NB: An empty version edit can happen if we log a version edit with
+					// a zero field. RocksDB does this with a version edit that contains
+					// `LogNum == 0`.
+					fmt.Fprintf(stdout, "  <empty>\n")
+				}
+			}
+
+			if cmp != nil {
+				v, err := bve.Apply(m.opts, nil, cmp.Compare)
+				if err != nil {
+					fmt.Fprintf(stdout, "%s\n", err)
+					return
+				}
+				for level := range v.Files {
+					fmt.Fprintf(stdout, "--- L%d ---\n", level)
+					for j := range v.Files[level] {
+						f := &v.Files[level][j]
+						fmt.Fprintf(stdout, "  %d:%d", f.FileNum, f.Size)
+						formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
+						fmt.Fprintf(stdout, "\n")
+					}
+				}
+			}
+		}()
+	}
 }

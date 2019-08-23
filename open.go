@@ -37,8 +37,8 @@ func allocDBNum() uint64 {
 func createDB(dirname string, opts *Options) (retErr error) {
 	const manifestFileNum = 1
 	ve := versionEdit{
-		comparatorName: opts.Comparer.Name,
-		nextFileNumber: manifestFileNum + 1,
+		ComparerName: opts.Comparer.Name,
+		NextFileNum:  manifestFileNum + 1,
 	}
 	manifestFilename := base.MakeFilename(dirname, fileTypeManifest, manifestFileNum)
 	f, err := opts.FS.Create(manifestFilename)
@@ -57,7 +57,7 @@ func createDB(dirname string, opts *Options) (retErr error) {
 	if err != nil {
 		return err
 	}
-	err = ve.encode(w)
+	err = ve.Encode(w)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 		switch ft {
 		case fileTypeLog:
-			if fn >= d.mu.versions.logNumber || fn == d.mu.versions.prevLogNumber {
+			if fn >= d.mu.versions.logNum || fn == d.mu.versions.prevLogNum {
 				logFiles = append(logFiles, fileNumAndName{fn, filename})
 			}
 		case fileTypeOptions:
@@ -228,9 +228,9 @@ func Open(dirname string, opts *Options) (*DB, error) {
 
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.
-		ve.logNumber = d.mu.versions.nextFileNum()
-		d.mu.log.queue = append(d.mu.log.queue, ve.logNumber)
-		logFile, err := opts.FS.Create(base.MakeFilename(d.walDirname, fileTypeLog, ve.logNumber))
+		ve.LogNum = d.mu.versions.getNextFileNum()
+		d.mu.log.queue = append(d.mu.log.queue, ve.LogNum)
+		logFile, err := opts.FS.Create(base.MakeFilename(d.walDirname, fileTypeLog, ve.LogNum))
 		if err != nil {
 			return nil, err
 		}
@@ -241,11 +241,11 @@ func Open(dirname string, opts *Options) (*DB, error) {
 			BytesPerSync:    d.opts.BytesPerSync,
 			PreallocateSize: d.walPreallocateSize(),
 		})
-		d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.logNumber)
+		d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.LogNum)
 		d.mu.versions.metrics.WAL.Files++
 
 		// Write a new manifest to disk.
-		if err := d.mu.versions.logAndApply(0, &ve, d.dataDir); err != nil {
+		if err := d.mu.versions.logAndApply(0, &ve, nil, d.dataDir); err != nil {
 			return nil, err
 		}
 	}
@@ -253,7 +253,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.
-		d.optionsFileNum = d.mu.versions.nextFileNum()
+		d.optionsFileNum = d.mu.versions.getNextFileNum()
 		optionsFile, err := opts.FS.Create(base.MakeFilename(dirname, fileTypeOptions, d.optionsFileNum))
 		if err != nil {
 			return nil, err
@@ -364,7 +364,7 @@ func (d *DB) replayWAL(
 		if err != nil {
 			return 0, err
 		}
-		ve.newFiles = append(ve.newFiles, newVE.newFiles...)
+		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
 		// Strictly speaking, it's too early to delete from d.pendingOutputs, but
 		// we are replaying the log file, which happens before Open returns, so
 		// there is no possibility of deleteObsoleteFiles being called concurrently

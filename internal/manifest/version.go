@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package pebble
+package manifest
 
 import (
 	"bytes"
@@ -14,108 +14,119 @@ import (
 	"github.com/petermattis/pebble/internal/base"
 )
 
-// fileMetadata holds the metadata for an on-disk table.
-type fileMetadata struct {
+type Compare = base.Compare
+type InternalKey = base.InternalKey
+type Options = base.Options
+type TableInfo = base.TableInfo
+
+// FileMetadata holds the metadata for an on-disk table.
+type FileMetadata struct {
 	// reference count for the file: incremented when a file is added to a
 	// version and decremented when the version is unreferenced. The file is
 	// obsolete when the reference count falls to zero. This is a pointer because
 	// fileMetadata is copied by value from version to version, but we want the
 	// reference count to be shared.
 	refs *int32
-	// fileNum is the file number.
-	fileNum uint64
-	// size is the size of the file, in bytes.
-	size uint64
-	// smallest and largest are the inclusive bounds for the internal keys
+	// FileNum is the file number.
+	FileNum uint64
+	// Size is the Size of the file, in bytes.
+	Size uint64
+	// Smallest and Largest are the inclusive bounds for the internal keys
 	// stored in the table.
-	smallest InternalKey
-	largest  InternalKey
-	// smallest and largest sequence numbers in the table.
-	smallestSeqNum uint64
-	largestSeqNum  uint64
+	Smallest InternalKey
+	Largest  InternalKey
+	// Smallest and largest sequence numbers in the table.
+	SmallestSeqNum uint64
+	LargestSeqNum  uint64
 	// true if client asked us nicely to compact this file.
-	markedForCompaction bool
+	MarkedForCompaction bool
 }
 
-func (m *fileMetadata) String() string {
-	return fmt.Sprintf("%d:%s-%s", m.fileNum, m.smallest, m.largest)
+func (m *FileMetadata) String() string {
+	return fmt.Sprintf("%d:%s-%s", m.FileNum, m.Smallest, m.Largest)
 }
 
-func (m *fileMetadata) tableInfo(dirname string) TableInfo {
+// TableInfo returns a subset of the FileMetadata state formatted as a
+// TableInfo.
+func (m *FileMetadata) TableInfo(dirname string) TableInfo {
 	return TableInfo{
-		Path:           base.MakeFilename(dirname, fileTypeTable, m.fileNum),
-		FileNum:        m.fileNum,
-		Size:           m.size,
-		Smallest:       m.smallest,
-		Largest:        m.largest,
-		SmallestSeqNum: m.smallestSeqNum,
-		LargestSeqNum:  m.largestSeqNum,
+		Path:           base.MakeFilename(dirname, base.FileTypeTable, m.FileNum),
+		FileNum:        m.FileNum,
+		Size:           m.Size,
+		Smallest:       m.Smallest,
+		Largest:        m.Largest,
+		SmallestSeqNum: m.SmallestSeqNum,
+		LargestSeqNum:  m.LargestSeqNum,
 	}
 }
 
-// totalSize returns the total size of all the files in f.
-func totalSize(f []fileMetadata) (size uint64) {
-	for _, x := range f {
-		size += x.size
-	}
-	return size
-}
-
-// ikeyRange returns the minimum smallest and maximum largest internalKey for
+// KeyRange returns the minimum smallest and maximum largest internalKey for
 // all the fileMetadata in f0 and f1.
-func ikeyRange(ucmp Compare, f0, f1 []fileMetadata) (smallest, largest InternalKey) {
+func KeyRange(ucmp Compare, f0, f1 []FileMetadata) (smallest, largest InternalKey) {
 	first := true
-	for _, f := range [2][]fileMetadata{f0, f1} {
+	for _, f := range [2][]FileMetadata{f0, f1} {
 		for _, meta := range f {
 			if first {
 				first = false
-				smallest, largest = meta.smallest, meta.largest
+				smallest, largest = meta.Smallest, meta.Largest
 				continue
 			}
-			if base.InternalCompare(ucmp, meta.smallest, smallest) < 0 {
-				smallest = meta.smallest
+			if base.InternalCompare(ucmp, meta.Smallest, smallest) < 0 {
+				smallest = meta.Smallest
 			}
-			if base.InternalCompare(ucmp, meta.largest, largest) > 0 {
-				largest = meta.largest
+			if base.InternalCompare(ucmp, meta.Largest, largest) > 0 {
+				largest = meta.Largest
 			}
 		}
 	}
 	return smallest, largest
 }
 
-type bySeqNum []fileMetadata
+type bySeqNum []FileMetadata
 
 func (b bySeqNum) Len() int { return len(b) }
 func (b bySeqNum) Less(i, j int) bool {
 	// NB: This is the same ordering that RocksDB uses for L0 files.
 
 	// Sort first by largest sequence number.
-	if b[i].largestSeqNum != b[j].largestSeqNum {
-		return b[i].largestSeqNum < b[j].largestSeqNum
+	if b[i].LargestSeqNum != b[j].LargestSeqNum {
+		return b[i].LargestSeqNum < b[j].LargestSeqNum
 	}
 	// Then by smallest sequence number.
-	if b[i].smallestSeqNum != b[j].smallestSeqNum {
-		return b[i].smallestSeqNum < b[j].smallestSeqNum
+	if b[i].SmallestSeqNum != b[j].SmallestSeqNum {
+		return b[i].SmallestSeqNum < b[j].SmallestSeqNum
 	}
 	// Break ties by file number.
-	return b[i].fileNum < b[j].fileNum
+	return b[i].FileNum < b[j].FileNum
 }
 func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
+// SortBySeqNum sorts the specified files by decreasing sequence number.
+func SortBySeqNum(files []FileMetadata) {
+	sort.Sort(bySeqNum(files))
+}
+
 type bySmallest struct {
-	dat []fileMetadata
+	dat []FileMetadata
 	cmp Compare
 }
 
 func (b bySmallest) Len() int { return len(b.dat) }
 func (b bySmallest) Less(i, j int) bool {
-	return base.InternalCompare(b.cmp, b.dat[i].smallest, b.dat[j].smallest) < 0
+	return base.InternalCompare(b.cmp, b.dat[i].Smallest, b.dat[j].Smallest) < 0
 }
 func (b bySmallest) Swap(i, j int) { b.dat[i], b.dat[j] = b.dat[j], b.dat[i] }
 
-const numLevels = 7
+// SortBySmallest sorts the specified files by smallest key using the supplied
+// comparison function to order user keys.
+func SortBySmallest(files []FileMetadata, cmp Compare) {
+	sort.Sort(bySmallest{files, cmp})
+}
 
-// version is a collection of file metadata for on-disk tables at various
+// NumLevels is the number of levels a Version contains.
+const NumLevels = 7
+
+// Version is a collection of file metadata for on-disk tables at various
 // levels. In-memory DBs are written to level-0 tables, and compactions
 // migrate data from level N to level N+1. The tables map internal keys (which
 // are a user key, a delete or set bit, and a sequence number) to user values.
@@ -135,106 +146,128 @@ const numLevels = 7
 // Finally, for every internal key in a table at level X, there is no internal
 // key in a higher level table that has both the same user key and a higher
 // sequence number.
-type version struct {
+type Version struct {
 	refs int32
 
-	files [numLevels][]fileMetadata
+	Files [NumLevels][]FileMetadata
 
-	// The version set this version is associated with.
-	vs *versionSet
+	// The callback to invoke when the last reference to a version is
+	// removed. Will be called with list.mu held.
+	Deleted func(obsolete []uint64)
 
 	// The list the version is linked into.
-	list *versionList
+	list *VersionList
 
 	// The next/prev link for the versionList doubly-linked list of versions.
-	prev, next *version
+	prev, next *Version
 }
 
-func (v *version) String() string {
+func (v *Version) String() string {
 	var buf bytes.Buffer
-	for level := 0; level < numLevels; level++ {
-		if len(v.files[level]) == 0 {
+	for level := 0; level < NumLevels; level++ {
+		if len(v.Files[level]) == 0 {
 			continue
 		}
 		fmt.Fprintf(&buf, "%d:", level)
-		for j := range v.files[level] {
-			f := &v.files[level][j]
-			fmt.Fprintf(&buf, " %s-%s", f.smallest.UserKey, f.largest.UserKey)
+		for j := range v.Files[level] {
+			f := &v.Files[level][j]
+			fmt.Fprintf(&buf, " %s-%s", f.Smallest.UserKey, f.Largest.UserKey)
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
 	return buf.String()
 }
 
-func (v *version) DebugString() string {
+// DebugString returns an alternative format to String() which includes
+// sequence number and kind information for the sstable boundaries.
+func (v *Version) DebugString() string {
 	var buf bytes.Buffer
-	for level := 0; level < numLevels; level++ {
-		if len(v.files[level]) == 0 {
+	for level := 0; level < NumLevels; level++ {
+		if len(v.Files[level]) == 0 {
 			continue
 		}
 		fmt.Fprintf(&buf, "%d:", level)
-		for j := range v.files[level] {
-			f := &v.files[level][j]
-			fmt.Fprintf(&buf, " %s-%s", f.smallest, f.largest)
+		for j := range v.Files[level] {
+			f := &v.Files[level][j]
+			fmt.Fprintf(&buf, " %s-%s", f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
 	return buf.String()
 }
 
-func (v *version) ref() {
+// Refs returns the number of references to the version.
+func (v *Version) Refs() int32 {
+	return atomic.LoadInt32(&v.refs)
+}
+
+// Ref increments the version refcount.
+func (v *Version) Ref() {
 	atomic.AddInt32(&v.refs, 1)
 }
 
-func (v *version) unref() {
+// Unref decrements the version refcount. If the last reference to the version
+// was removed, the version is removed from the list of versions and the
+// Deleted callback is invoked. Requires that the VersionList mutex is NOT
+// locked.
+func (v *Version) Unref() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
 		obsolete := v.unrefFiles()
 		l := v.list
 		l.mu.Lock()
-		l.remove(v)
-		v.vs.addObsoleteLocked(obsolete)
+		l.Remove(v)
+		v.Deleted(obsolete)
 		l.mu.Unlock()
 	}
 }
 
-func (v *version) unrefLocked() {
+// UnrefLocked decrements the version refcount. If the last reference to the
+// version was removed, the version is removed from the list of versions and
+// the Deleted callback is invoked. Requires that the VersionList mutex is
+// already locked.
+func (v *Version) UnrefLocked() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
-		v.list.remove(v)
-		v.vs.addObsoleteLocked(v.unrefFiles())
+		v.list.Remove(v)
+		v.Deleted(v.unrefFiles())
 	}
 }
 
-func (v *version) unrefFiles() []uint64 {
+func (v *Version) unrefFiles() []uint64 {
 	var obsolete []uint64
-	for _, files := range v.files {
+	for _, files := range v.Files {
 		for i := range files {
 			f := &files[i]
 			if atomic.AddInt32(f.refs, -1) == 0 {
-				obsolete = append(obsolete, f.fileNum)
+				obsolete = append(obsolete, f.FileNum)
 			}
 		}
 	}
 	return obsolete
 }
 
-// overlaps returns all elements of v.files[level] whose user key range
+// Next returns the next version in the list of versions.
+func (v *Version) Next() *Version {
+	return v.next
+}
+
+// Overlaps returns all elements of v.files[level] whose user key range
 // intersects the inclusive range [start, end]. If level is non-zero then the
 // user key ranges of v.files[level] are assumed to not overlap (although they
 // may touch). If level is zero then that assumption cannot be made, and the
 // [start, end] range is expanded to the union of those matching ranges so far
 // and the computation is repeated until [start, end] stabilizes.
-func (v *version) overlaps(
+func (v *Version) Overlaps(
 	level int, cmp Compare, start, end []byte,
-) (ret []fileMetadata) {
+) (ret []FileMetadata) {
 	if level == 0 {
 		// The sstables in level 0 can overlap with each other. As soon as we find
 		// one sstable that overlaps with our target range, we need to expand the
 		// range and find all sstables that overlap with the expanded range.
 	loop:
 		for {
-			for _, meta := range v.files[level] {
-				smallest := meta.smallest.UserKey
-				largest := meta.largest.UserKey
+			for _, meta := range v.Files[level] {
+				smallest := meta.Smallest.UserKey
+				largest := meta.Largest.UserKey
 				if cmp(largest, start) < 0 {
 					// meta is completely before the specified range; skip it.
 					continue
@@ -267,12 +300,12 @@ func (v *version) overlaps(
 
 	// Binary search to find the range of files which overlaps with our target
 	// range.
-	files := v.files[level]
+	files := v.Files[level]
 	lower := sort.Search(len(files), func(i int) bool {
-		return cmp(files[i].largest.UserKey, start) >= 0
+		return cmp(files[i].Largest.UserKey, start) >= 0
 	})
 	upper := sort.Search(len(files), func(i int) bool {
-		return cmp(files[i].smallest.UserKey, end) > 0
+		return cmp(files[i].Smallest.UserKey, end) > 0
 	})
 	if lower >= upper {
 		return nil
@@ -280,35 +313,35 @@ func (v *version) overlaps(
 	return files[lower:upper]
 }
 
-// checkOrdering checks that the files are consistent with respect to
+// CheckOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
-func (v *version) checkOrdering(cmp Compare) error {
-	for level, ff := range v.files {
+func (v *Version) CheckOrdering(cmp Compare) error {
+	for level, ff := range v.Files {
 		if level == 0 {
 			for i := 1; i < len(ff); i++ {
 				prev := &ff[i-1]
 				f := &ff[i]
-				if prev.largestSeqNum >= f.largestSeqNum {
+				if prev.LargestSeqNum >= f.LargestSeqNum {
 					return fmt.Errorf("level 0 files are not in increasing largest seqNum order: %d, %d",
-						prev.largestSeqNum, f.largestSeqNum)
+						prev.LargestSeqNum, f.LargestSeqNum)
 				}
-				if prev.smallestSeqNum >= f.smallestSeqNum {
+				if prev.SmallestSeqNum >= f.SmallestSeqNum {
 					return fmt.Errorf("level 0 files are not in increasing smallest seqNum order: %d, %d",
-						prev.smallestSeqNum, f.smallestSeqNum)
+						prev.SmallestSeqNum, f.SmallestSeqNum)
 				}
 			}
 		} else {
 			for i := 1; i < len(ff); i++ {
 				prev := &ff[i-1]
 				f := &ff[i]
-				if base.InternalCompare(cmp, prev.largest, f.smallest) >= 0 {
+				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
 					return fmt.Errorf("level non-0 files are not in increasing ikey order: %s, %s\n%s",
-						prev.largest, f.smallest, v.DebugString())
+						prev.Largest, f.Smallest, v.DebugString())
 				}
-				if base.InternalCompare(cmp, f.smallest, f.largest) > 0 {
+				if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
 					return fmt.Errorf("level non-0 file has inconsistent bounds: %s, %s",
-						f.smallest, f.largest)
+						f.Smallest, f.Largest)
 				}
 			}
 		}
@@ -316,29 +349,40 @@ func (v *version) checkOrdering(cmp Compare) error {
 	return nil
 }
 
-type versionList struct {
+// VersionList holds a list of versions. The versions are ordered from oldest
+// to newest.
+type VersionList struct {
 	mu   *sync.Mutex
-	root version
+	root Version
 }
 
-func (l *versionList) init() {
+// Init initializes the version list.
+func (l *VersionList) Init(mu *sync.Mutex) {
+	l.mu = mu
 	l.root.next = &l.root
 	l.root.prev = &l.root
 }
 
-func (l *versionList) empty() bool {
+// Empty returns true if the list is empty, and false otherwise.
+func (l *VersionList) Empty() bool {
 	return l.root.next == &l.root
 }
 
-func (l *versionList) front() *version {
+// Front returns the oldest version in the list. Note that this version is only
+// valid if Empty() returns true.
+func (l *VersionList) Front() *Version {
 	return l.root.next
 }
 
-func (l *versionList) back() *version {
+// Back returns the newest version in the list. Note that this version is only
+// valid if Empty() returns true.
+func (l *VersionList) Back() *Version {
 	return l.root.prev
 }
 
-func (l *versionList) pushBack(v *version) {
+// PushBack adds a new version to the back of the list. This new version
+// becomes the "newest" version in the list.
+func (l *VersionList) PushBack(v *Version) {
 	if v.list != nil || v.prev != nil || v.next != nil {
 		panic("pebble: version list is inconsistent")
 	}
@@ -349,7 +393,8 @@ func (l *versionList) pushBack(v *version) {
 	v.list = l
 }
 
-func (l *versionList) remove(v *version) {
+// Remove removes the specified version from the list.
+func (l *VersionList) Remove(v *Version) {
 	if v == &l.root {
 		panic("pebble: cannot remove version list root node")
 	}

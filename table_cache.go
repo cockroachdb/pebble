@@ -42,7 +42,7 @@ func (c *tableCache) getShard(fileNum uint64) *tableCacheShard {
 func (c *tableCache) newIters(
 	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error) {
-	return c.getShard(meta.fileNum).newIters(meta, opts, bytesIterated)
+	return c.getShard(meta.FileNum).newIters(meta, opts, bytesIterated)
 }
 
 func (c *tableCache) evict(fileNum uint64) {
@@ -152,7 +152,7 @@ func (c *tableCacheShard) newIters(
 //
 // c.mu must be held when calling this.
 func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
-	delete(c.mu.nodes, n.meta.fileNum)
+	delete(c.mu.nodes, n.meta.FileNum)
 	n.next.prev = n.prev
 	n.prev.next = n.next
 	n.prev = nil
@@ -180,7 +180,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	// Fast-path for a hit in the cache. We grab the lock in shared mode, and use
 	// a batching mechanism to perform updates to the LRU list.
 	c.mu.RLock()
-	if n := c.mu.nodes[meta.fileNum]; n != nil {
+	if n := c.mu.nodes[meta.FileNum]; n != nil {
 		// The caller is responsible for decrementing the refCount.
 		atomic.AddInt32(&n.refCount, 1)
 		c.mu.RUnlock()
@@ -209,7 +209,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 		c.hitsPool.Put(hits)
 	}
 
-	n := c.mu.nodes[meta.fileNum]
+	n := c.mu.nodes[meta.FileNum]
 	if n == nil {
 		n = &tableCacheNode{
 			// Cache the closure invoked when an iterator is closed. This avoids an
@@ -228,7 +228,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 			refCount: 1,
 			loaded:   make(chan struct{}),
 		}
-		c.mu.nodes[meta.fileNum] = n
+		c.mu.nodes[meta.FileNum] = n
 		if len(c.mu.nodes) > c.size {
 			// Release the tail node.
 			c.releaseNode(c.mu.lru.prev)
@@ -328,16 +328,16 @@ type tableCacheNode struct {
 
 func (n *tableCacheNode) load(c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
-	f, err := c.fs.Open(base.MakeFilename(c.dirname, fileTypeTable, n.meta.fileNum),
+	f, err := c.fs.Open(base.MakeFilename(c.dirname, fileTypeTable, n.meta.FileNum),
 		vfs.RandomReadsOption)
 	if err != nil {
 		n.err = err
 		close(n.loaded)
 		return
 	}
-	n.reader, n.err = sstable.NewReader(f, c.dbNum, n.meta.fileNum, c.opts)
-	if n.meta.smallestSeqNum == n.meta.largestSeqNum {
-		n.reader.Properties.GlobalSeqNum = n.meta.largestSeqNum
+	n.reader, n.err = sstable.NewReader(f, c.dbNum, n.meta.FileNum, c.opts)
+	if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
+		n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
 	}
 	close(n.loaded)
 }

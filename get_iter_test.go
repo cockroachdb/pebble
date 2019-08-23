@@ -471,7 +471,7 @@ func TestGetIter(t *testing.T) {
 		newIter := func(
 			meta *fileMetadata, _ *IterOptions, _ *uint64,
 		) (internalIterator, internalIterator, error) {
-			d, ok := m[meta.fileNum]
+			d, ok := m[meta.FileNum]
 			if !ok {
 				return nil, nil, errors.New("no such file")
 			}
@@ -485,7 +485,7 @@ func TestGetIter(t *testing.T) {
 			m[tt.fileNum] = d
 
 			meta := fileMetadata{
-				fileNum: tt.fileNum,
+				FileNum: tt.fileNum,
 			}
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
@@ -496,30 +496,30 @@ func TestGetIter(t *testing.T) {
 				}
 
 				if i == 0 {
-					meta.smallest = ikey
-					meta.smallestSeqNum = ikey.SeqNum()
-					meta.largest = ikey
-					meta.largestSeqNum = ikey.SeqNum()
+					meta.Smallest = ikey
+					meta.SmallestSeqNum = ikey.SeqNum()
+					meta.Largest = ikey
+					meta.LargestSeqNum = ikey.SeqNum()
 				} else {
-					if base.InternalCompare(cmp, ikey, meta.smallest) < 0 {
-						meta.smallest = ikey
+					if base.InternalCompare(cmp, ikey, meta.Smallest) < 0 {
+						meta.Smallest = ikey
 					}
-					if base.InternalCompare(cmp, ikey, meta.largest) > 0 {
-						meta.largest = ikey
+					if base.InternalCompare(cmp, ikey, meta.Largest) > 0 {
+						meta.Largest = ikey
 					}
-					if meta.smallestSeqNum > ikey.SeqNum() {
-						meta.smallestSeqNum = ikey.SeqNum()
+					if meta.SmallestSeqNum > ikey.SeqNum() {
+						meta.SmallestSeqNum = ikey.SeqNum()
 					}
-					if meta.largestSeqNum < ikey.SeqNum() {
-						meta.largestSeqNum = ikey.SeqNum()
+					if meta.LargestSeqNum < ikey.SeqNum() {
+						meta.LargestSeqNum = ikey.SeqNum()
 					}
 				}
 			}
 
-			v.files[tt.level] = append(v.files[tt.level], meta)
+			v.Files[tt.level] = append(v.Files[tt.level], meta)
 		}
 
-		err := v.checkOrdering(cmp)
+		err := v.CheckOrdering(cmp)
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
 			continue
@@ -539,7 +539,7 @@ func TestGetIter(t *testing.T) {
 			get.equal = equal
 			get.newIters = newIter
 			get.key = ikey.UserKey
-			get.l0 = v.files[0]
+			get.l0 = v.Files[0]
 			get.version = v
 			get.snapshot = ikey.SeqNum() + 1
 

@@ -37,7 +37,7 @@ func (s *readState) ref() {
 // is held by the caller.
 func (s *readState) unref() {
 	if atomic.AddInt32(&s.refcnt, -1) == 0 {
-		s.current.unref()
+		s.current.Unref()
 	}
 }
 
@@ -47,7 +47,7 @@ func (s *readState) unref() {
 // unref() if DB.mu is NOT held by the caller.
 func (s *readState) unrefLocked() {
 	if atomic.AddInt32(&s.refcnt, -1) == 0 {
-		s.current.unrefLocked()
+		s.current.UnrefLocked()
 	}
 }
 
@@ -69,7 +69,7 @@ func (d *DB) updateReadStateLocked() {
 		current:   d.mu.versions.currentVersion(),
 		memtables: d.mu.mem.queue,
 	}
-	s.current.ref()
+	s.current.Ref()
 
 	d.readState.Lock()
 	old := d.readState.val

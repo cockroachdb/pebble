@@ -53,6 +53,8 @@ func (m *LevelMetrics) WriteAmp() float64 {
 	return float64(m.BytesWritten) / float64(m.BytesIn)
 }
 
+// format generates a string of the receiver's metrics, formatting it into the
+// supplied buffer.
 func (m *LevelMetrics) format(buf *bytes.Buffer) {
 	fmt.Fprintf(buf, "%6d %7s %7.2f %7s %7s %7s %7s %7s %7.1f\n",
 		m.NumFiles,

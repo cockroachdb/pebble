@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package pebble
+package manifest
 
 import (
 	"bufio"
@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"sync/atomic"
 
 	"github.com/petermattis/pebble/internal/base"
@@ -56,28 +55,34 @@ const (
 	customTagNonSafeIgnoreMask = 1 << 6
 )
 
-type deletedFileEntry struct {
-	level   int
-	fileNum uint64
+// DeletedFileEntry holds the state for a file deletion from a level. The file
+// itself might still be referenced by another level.
+type DeletedFileEntry struct {
+	Level   int
+	FileNum uint64
 }
 
-type newFileEntry struct {
-	level int
-	meta  fileMetadata
+// NewFileEntry holds the state for a new file or one moved from a different
+// level.
+type NewFileEntry struct {
+	Level int
+	Meta  FileMetadata
 }
 
-type versionEdit struct {
-	comparatorName string
-	logNumber      uint64
-	prevLogNumber  uint64
-	nextFileNumber uint64
-	lastSequence   uint64
-	deletedFiles   map[deletedFileEntry]bool // A set of deletedFileEntry values.
-	newFiles       []newFileEntry
-	metrics        map[int]*LevelMetrics // level -> metrics update
+// VersionEdit holds the state for an edit to a Version along with other
+// on-disk state (log numbers, next file number, and the last sequence number).
+type VersionEdit struct {
+	ComparerName string
+	LogNum       uint64
+	PrevLogNum   uint64
+	NextFileNum  uint64
+	LastSeqNum   uint64
+	DeletedFiles map[DeletedFileEntry]bool // set of DeletedFileEntry values
+	NewFiles     []NewFileEntry
 }
 
-func (v *versionEdit) decode(r io.Reader) error {
+// Decode decodes an edit from the specified reader.
+func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {
 		br = bufio.NewReader(r)
@@ -97,28 +102,28 @@ func (v *versionEdit) decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.comparatorName = string(s)
+			v.ComparerName = string(s)
 
 		case tagLogNumber:
 			n, err := d.readUvarint()
 			if err != nil {
 				return err
 			}
-			v.logNumber = n
+			v.LogNum = n
 
 		case tagNextFileNumber:
 			n, err := d.readUvarint()
 			if err != nil {
 				return err
 			}
-			v.nextFileNumber = n
+			v.NextFileNum = n
 
 		case tagLastSequence:
 			n, err := d.readUvarint()
 			if err != nil {
 				return err
 			}
-			v.lastSequence = n
+			v.LastSeqNum = n
 
 		case tagCompactPointer:
 			if _, err := d.readLevel(); err != nil {
@@ -138,10 +143,10 @@ func (v *versionEdit) decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			if v.deletedFiles == nil {
-				v.deletedFiles = make(map[deletedFileEntry]bool)
+			if v.DeletedFiles == nil {
+				v.DeletedFiles = make(map[DeletedFileEntry]bool)
 			}
-			v.deletedFiles[deletedFileEntry{level, fileNum}] = true
+			v.DeletedFiles[DeletedFileEntry{level, fileNum}] = true
 
 		case tagNewFile, tagNewFile2, tagNewFile3, tagNewFile4:
 			level, err := d.readLevel()
@@ -214,16 +219,16 @@ func (v *versionEdit) decode(r io.Reader) error {
 					}
 				}
 			}
-			v.newFiles = append(v.newFiles, newFileEntry{
-				level: level,
-				meta: fileMetadata{
-					fileNum:             fileNum,
-					size:                size,
-					smallest:            base.DecodeInternalKey(smallest),
-					largest:             base.DecodeInternalKey(largest),
-					smallestSeqNum:      smallestSeqNum,
-					largestSeqNum:       largestSeqNum,
-					markedForCompaction: markedForCompaction,
+			v.NewFiles = append(v.NewFiles, NewFileEntry{
+				Level: level,
+				Meta: FileMetadata{
+					FileNum:             fileNum,
+					Size:                size,
+					Smallest:            base.DecodeInternalKey(smallest),
+					Largest:             base.DecodeInternalKey(largest),
+					SmallestSeqNum:      smallestSeqNum,
+					LargestSeqNum:       largestSeqNum,
+					MarkedForCompaction: markedForCompaction,
 				},
 			})
 
@@ -232,7 +237,7 @@ func (v *versionEdit) decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.prevLogNumber = n
+			v.PrevLogNum = n
 
 		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
 			return fmt.Errorf("column families are not supported")
@@ -244,50 +249,51 @@ func (v *versionEdit) decode(r io.Reader) error {
 	return nil
 }
 
-func (v *versionEdit) encode(w io.Writer) error {
+// Encode encodes an edit to the specified writer.
+func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
-	if v.comparatorName != "" {
+	if v.ComparerName != "" {
 		e.writeUvarint(tagComparator)
-		e.writeString(v.comparatorName)
+		e.writeString(v.ComparerName)
 	}
-	if v.logNumber != 0 {
+	if v.LogNum != 0 {
 		e.writeUvarint(tagLogNumber)
-		e.writeUvarint(v.logNumber)
+		e.writeUvarint(v.LogNum)
 	}
-	if v.prevLogNumber != 0 {
+	if v.PrevLogNum != 0 {
 		e.writeUvarint(tagPrevLogNumber)
-		e.writeUvarint(v.prevLogNumber)
+		e.writeUvarint(v.PrevLogNum)
 	}
-	if v.nextFileNumber != 0 {
+	if v.NextFileNum != 0 {
 		e.writeUvarint(tagNextFileNumber)
-		e.writeUvarint(v.nextFileNumber)
+		e.writeUvarint(v.NextFileNum)
 	}
-	if v.lastSequence != 0 {
+	if v.LastSeqNum != 0 {
 		e.writeUvarint(tagLastSequence)
-		e.writeUvarint(v.lastSequence)
+		e.writeUvarint(v.LastSeqNum)
 	}
-	for x := range v.deletedFiles {
+	for x := range v.DeletedFiles {
 		e.writeUvarint(tagDeletedFile)
-		e.writeUvarint(uint64(x.level))
-		e.writeUvarint(x.fileNum)
+		e.writeUvarint(uint64(x.Level))
+		e.writeUvarint(x.FileNum)
 	}
-	for _, x := range v.newFiles {
+	for _, x := range v.NewFiles {
 		var customFields bool
-		if x.meta.markedForCompaction {
+		if x.Meta.MarkedForCompaction {
 			customFields = true
 			e.writeUvarint(tagNewFile4)
 		} else {
 			e.writeUvarint(tagNewFile2)
 		}
-		e.writeUvarint(uint64(x.level))
-		e.writeUvarint(x.meta.fileNum)
-		e.writeUvarint(x.meta.size)
-		e.writeKey(x.meta.smallest)
-		e.writeKey(x.meta.largest)
-		e.writeUvarint(x.meta.smallestSeqNum)
-		e.writeUvarint(x.meta.largestSeqNum)
+		e.writeUvarint(uint64(x.Level))
+		e.writeUvarint(x.Meta.FileNum)
+		e.writeUvarint(x.Meta.Size)
+		e.writeKey(x.Meta.Smallest)
+		e.writeKey(x.Meta.Largest)
+		e.writeUvarint(x.Meta.SmallestSeqNum)
+		e.writeUvarint(x.Meta.LargestSeqNum)
 		if customFields {
-			if x.meta.markedForCompaction {
+			if x.Meta.MarkedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
@@ -323,7 +329,7 @@ func (d versionEditDecoder) readLevel() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if u >= numLevels {
+	if u >= NumLevels {
 		return 0, errCorruptManifest
 	}
 	return int(u), nil
@@ -367,49 +373,49 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 	e.Write(buf[:n])
 }
 
-// bulkVersionEdit summarizes the files added and deleted from a set of version
+// BulkVersionEdit summarizes the files added and deleted from a set of version
 // edits.
-//
-// The C++ LevelDB code calls this concept a VersionSet::Builder.
-type bulkVersionEdit struct {
-	added   [numLevels][]fileMetadata
-	deleted [numLevels]map[uint64]bool // map[uint64]bool is a set of fileNums.
+type BulkVersionEdit struct {
+	Added   [NumLevels][]FileMetadata
+	Deleted [NumLevels]map[uint64]bool // map[uint64]bool is a set of fileNums
 }
 
-func (b *bulkVersionEdit) accumulate(ve *versionEdit) {
-	for df := range ve.deletedFiles {
-		dmap := b.deleted[df.level]
+// Accumulate adds the file addition and deletions in the specified version
+// edit to the bulk edit's internal state.
+func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
+	for df := range ve.DeletedFiles {
+		dmap := b.Deleted[df.Level]
 		if dmap == nil {
 			dmap = make(map[uint64]bool)
-			b.deleted[df.level] = dmap
+			b.Deleted[df.Level] = dmap
 		}
-		dmap[df.fileNum] = true
+		dmap[df.FileNum] = true
 	}
 
-	for _, nf := range ve.newFiles {
-		if dmap := b.deleted[nf.level]; dmap != nil {
-			delete(dmap, nf.meta.fileNum)
+	for _, nf := range ve.NewFiles {
+		if dmap := b.Deleted[nf.Level]; dmap != nil {
+			delete(dmap, nf.Meta.FileNum)
 		}
-		b.added[nf.level] = append(b.added[nf.level], nf.meta)
+		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
 	}
 }
 
-// apply applies the delta b to a base version to produce a new version. The
+// Apply applies the delta b to a base version to produce a new version. The
 // new version is consistent with respect to the internal key comparer icmp.
 //
 // base may be nil, which is equivalent to a pointer to a zero version.
-func (b *bulkVersionEdit) apply(
-	opts *Options, base *version, cmp Compare,
-) (*version, error) {
-	v := new(version)
-	for level := range v.files {
-		if len(b.added[level]) == 0 && len(b.deleted[level]) == 0 {
+func (b *BulkVersionEdit) Apply(
+	opts *Options, base *Version, cmp Compare,
+) (*Version, error) {
+	v := new(Version)
+	for level := range v.Files {
+		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
 			// There are no edits on this level.
 			if base == nil {
 				continue
 			}
-			files := base.files[level]
-			v.files[level] = files
+			files := base.Files[level]
+			v.Files[level] = files
 			// We still have to bump the ref count for all files.
 			for i := range files {
 				atomic.AddInt32(files[i].refs, 1)
@@ -417,30 +423,30 @@ func (b *bulkVersionEdit) apply(
 			continue
 		}
 
-		combined := [2][]fileMetadata{
+		combined := [2][]FileMetadata{
 			nil,
-			b.added[level],
+			b.Added[level],
 		}
 		if base != nil {
-			combined[0] = base.files[level]
+			combined[0] = base.Files[level]
 		}
 		n := len(combined[0]) + len(combined[1])
 		if n == 0 {
 			continue
 		}
-		v.files[level] = make([]fileMetadata, 0, n)
-		dmap := b.deleted[level]
+		v.Files[level] = make([]FileMetadata, 0, n)
+		dmap := b.Deleted[level]
 
 		for _, ff := range combined {
 			for _, f := range ff {
-				if dmap != nil && dmap[f.fileNum] {
+				if dmap != nil && dmap[f.FileNum] {
 					continue
 				}
 				if f.refs == nil {
 					f.refs = new(int32)
 				}
 				atomic.AddInt32(f.refs, 1)
-				v.files[level] = append(v.files[level], f)
+				v.Files[level] = append(v.Files[level], f)
 			}
 		}
 
@@ -449,12 +455,12 @@ func (b *bulkVersionEdit) apply(
 		// efficient to sort b.addFiles[level] and then merge the two sorted
 		// slices.
 		if level == 0 {
-			sort.Sort(bySeqNum(v.files[level]))
+			SortBySeqNum(v.Files[level])
 		} else {
-			sort.Sort(bySmallest{v.files[level], cmp})
+			SortBySmallest(v.Files[level], cmp)
 		}
 	}
-	if err := v.checkOrdering(cmp); err != nil {
+	if err := v.CheckOrdering(cmp); err != nil {
 		return nil, fmt.Errorf("pebble: internal error: %v", err)
 	}
 	return v, nil

@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package pebble
+package manifest
 
 import (
 	"fmt"
@@ -12,6 +12,10 @@ import (
 
 	"github.com/petermattis/pebble/internal/base"
 )
+
+func ikey(s string) InternalKey {
+	return base.MakeInternalKey([]byte(s), 0, base.InternalKeyKindSet)
+}
 
 func TestIkeyRange(t *testing.T) {
 	testCases := []struct {
@@ -55,23 +59,23 @@ func TestIkeyRange(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		var f []fileMetadata
+		var f []FileMetadata
 		if tc.input != "" {
 			for _, s := range strings.Split(tc.input, " ") {
-				f = append(f, fileMetadata{
-					smallest: ikey(s[0:1]),
-					largest:  ikey(s[2:3]),
+				f = append(f, FileMetadata{
+					Smallest: ikey(s[0:1]),
+					Largest:  ikey(s[2:3]),
 				})
 			}
 		}
 
-		smallest0, largest0 := ikeyRange(DefaultComparer.Compare, f, nil)
+		smallest0, largest0 := KeyRange(base.DefaultComparer.Compare, f, nil)
 		got0 := string(smallest0.UserKey) + "-" + string(largest0.UserKey)
 		if got0 != tc.want {
 			t.Errorf("first []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got0, tc.want)
 		}
 
-		smallest1, largest1 := ikeyRange(DefaultComparer.Compare, nil, f)
+		smallest1, largest1 := KeyRange(base.DefaultComparer.Compare, nil, f)
 		got1 := string(smallest1.UserKey) + "-" + string(largest1.UserKey)
 		if got1 != tc.want {
 			t.Errorf("second []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got1, tc.want)
@@ -80,88 +84,88 @@ func TestIkeyRange(t *testing.T) {
 }
 
 func TestOverlaps(t *testing.T) {
-	m00 := fileMetadata{
-		fileNum:  700,
-		size:     1,
-		smallest: base.ParseInternalKey("b.SET.7008"),
-		largest:  base.ParseInternalKey("e.SET.7009"),
+	m00 := FileMetadata{
+		FileNum:  700,
+		Size:     1,
+		Smallest: base.ParseInternalKey("b.SET.7008"),
+		Largest:  base.ParseInternalKey("e.SET.7009"),
 	}
-	m01 := fileMetadata{
-		fileNum:  701,
-		size:     1,
-		smallest: base.ParseInternalKey("c.SET.7018"),
-		largest:  base.ParseInternalKey("f.SET.7019"),
+	m01 := FileMetadata{
+		FileNum:  701,
+		Size:     1,
+		Smallest: base.ParseInternalKey("c.SET.7018"),
+		Largest:  base.ParseInternalKey("f.SET.7019"),
 	}
-	m02 := fileMetadata{
-		fileNum:  702,
-		size:     1,
-		smallest: base.ParseInternalKey("f.SET.7028"),
-		largest:  base.ParseInternalKey("g.SET.7029"),
+	m02 := FileMetadata{
+		FileNum:  702,
+		Size:     1,
+		Smallest: base.ParseInternalKey("f.SET.7028"),
+		Largest:  base.ParseInternalKey("g.SET.7029"),
 	}
-	m03 := fileMetadata{
-		fileNum:  703,
-		size:     1,
-		smallest: base.ParseInternalKey("x.SET.7038"),
-		largest:  base.ParseInternalKey("y.SET.7039"),
+	m03 := FileMetadata{
+		FileNum:  703,
+		Size:     1,
+		Smallest: base.ParseInternalKey("x.SET.7038"),
+		Largest:  base.ParseInternalKey("y.SET.7039"),
 	}
-	m04 := fileMetadata{
-		fileNum:  704,
-		size:     1,
-		smallest: base.ParseInternalKey("n.SET.7048"),
-		largest:  base.ParseInternalKey("p.SET.7049"),
+	m04 := FileMetadata{
+		FileNum:  704,
+		Size:     1,
+		Smallest: base.ParseInternalKey("n.SET.7048"),
+		Largest:  base.ParseInternalKey("p.SET.7049"),
 	}
-	m05 := fileMetadata{
-		fileNum:  705,
-		size:     1,
-		smallest: base.ParseInternalKey("p.SET.7058"),
-		largest:  base.ParseInternalKey("p.SET.7059"),
+	m05 := FileMetadata{
+		FileNum:  705,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7058"),
+		Largest:  base.ParseInternalKey("p.SET.7059"),
 	}
-	m06 := fileMetadata{
-		fileNum:  706,
-		size:     1,
-		smallest: base.ParseInternalKey("p.SET.7068"),
-		largest:  base.ParseInternalKey("u.SET.7069"),
+	m06 := FileMetadata{
+		FileNum:  706,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7068"),
+		Largest:  base.ParseInternalKey("u.SET.7069"),
 	}
-	m07 := fileMetadata{
-		fileNum:  707,
-		size:     1,
-		smallest: base.ParseInternalKey("r.SET.7078"),
-		largest:  base.ParseInternalKey("s.SET.7079"),
-	}
-
-	m10 := fileMetadata{
-		fileNum:  710,
-		size:     1,
-		smallest: base.ParseInternalKey("d.SET.7108"),
-		largest:  base.ParseInternalKey("g.SET.7109"),
-	}
-	m11 := fileMetadata{
-		fileNum:  711,
-		size:     1,
-		smallest: base.ParseInternalKey("g.SET.7118"),
-		largest:  base.ParseInternalKey("j.SET.7119"),
-	}
-	m12 := fileMetadata{
-		fileNum:  712,
-		size:     1,
-		smallest: base.ParseInternalKey("n.SET.7128"),
-		largest:  base.ParseInternalKey("p.SET.7129"),
-	}
-	m13 := fileMetadata{
-		fileNum:  713,
-		size:     1,
-		smallest: base.ParseInternalKey("p.SET.7138"),
-		largest:  base.ParseInternalKey("p.SET.7139"),
-	}
-	m14 := fileMetadata{
-		fileNum:  714,
-		size:     1,
-		smallest: base.ParseInternalKey("p.SET.7148"),
-		largest:  base.ParseInternalKey("u.SET.7149"),
+	m07 := FileMetadata{
+		FileNum:  707,
+		Size:     1,
+		Smallest: base.ParseInternalKey("r.SET.7078"),
+		Largest:  base.ParseInternalKey("s.SET.7079"),
 	}
 
-	v := version{
-		files: [numLevels][]fileMetadata{
+	m10 := FileMetadata{
+		FileNum:  710,
+		Size:     1,
+		Smallest: base.ParseInternalKey("d.SET.7108"),
+		Largest:  base.ParseInternalKey("g.SET.7109"),
+	}
+	m11 := FileMetadata{
+		FileNum:  711,
+		Size:     1,
+		Smallest: base.ParseInternalKey("g.SET.7118"),
+		Largest:  base.ParseInternalKey("j.SET.7119"),
+	}
+	m12 := FileMetadata{
+		FileNum:  712,
+		Size:     1,
+		Smallest: base.ParseInternalKey("n.SET.7128"),
+		Largest:  base.ParseInternalKey("p.SET.7129"),
+	}
+	m13 := FileMetadata{
+		FileNum:  713,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7138"),
+		Largest:  base.ParseInternalKey("p.SET.7139"),
+	}
+	m14 := FileMetadata{
+		FileNum:  714,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7148"),
+		Largest:  base.ParseInternalKey("u.SET.7149"),
+	}
+
+	v := Version{
+		Files: [NumLevels][]FileMetadata{
 			0: {m00, m01, m02, m03, m04, m05, m06, m07},
 			1: {m10, m11, m12, m13, m14},
 		},
@@ -238,12 +242,12 @@ func TestOverlaps(t *testing.T) {
 		{2, "a", "z", ""},
 	}
 
-	cmp := DefaultComparer.Compare
+	cmp := base.DefaultComparer.Compare
 	for _, tc := range testCases {
-		o := v.overlaps(tc.level, cmp, []byte(tc.ukey0), []byte(tc.ukey1))
+		o := v.Overlaps(tc.level, cmp, []byte(tc.ukey0), []byte(tc.ukey1))
 		s := make([]string, len(o))
 		for i, meta := range o {
-			s[i] = fmt.Sprintf("m%02d", meta.fileNum%100)
+			s[i] = fmt.Sprintf("m%02d", meta.FileNum%100)
 		}
 		got := strings.Join(s, " ")
 		if got != tc.want {
@@ -253,15 +257,13 @@ func TestOverlaps(t *testing.T) {
 }
 
 func TestVersionUnref(t *testing.T) {
-	list := &versionList{
-		mu: &sync.Mutex{},
-	}
-	list.init()
-	v := &version{vs: &versionSet{}}
-	v.ref()
-	list.pushBack(v)
-	v.unref()
-	if !list.empty() {
+	list := &VersionList{}
+	list.Init(&sync.Mutex{})
+	v := &Version{Deleted: func([]uint64) {}}
+	v.Ref()
+	list.PushBack(v)
+	v.Unref()
+	if !list.Empty() {
 		t.Fatalf("expected version list to be empty")
 	}
 }

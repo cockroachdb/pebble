@@ -17,6 +17,7 @@ import (
 	"github.com/kr/pretty"
 	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/petermattis/pebble/internal/manifest"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/petermattis/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -56,7 +57,7 @@ func TestIngestLoad(t *testing.T) {
 			}
 			var buf bytes.Buffer
 			for _, m := range meta {
-				fmt.Fprintf(&buf, "%d: %s-%s\n", m.fileNum, m.smallest, m.largest)
+				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest, m.Largest)
 			}
 			return buf.String()
 
@@ -86,7 +87,7 @@ func TestIngestLoadRand(t *testing.T) {
 		paths[i] = fmt.Sprint(i)
 		pending[i] = uint64(rng.Int63())
 		expected[i] = &fileMetadata{
-			fileNum: pending[i],
+			FileNum: pending[i],
 		}
 
 		func() {
@@ -107,8 +108,8 @@ func TestIngestLoadRand(t *testing.T) {
 				return base.InternalCompare(cmp, keys[i], keys[j]) < 0
 			})
 
-			expected[i].smallest = keys[0]
-			expected[i].largest = keys[len(keys)-1]
+			expected[i].Smallest = keys[0]
+			expected[i].Largest = keys[len(keys)-1]
 
 			w := sstable.NewWriter(f, nil, LevelOptions{})
 			for i := range keys {
@@ -122,7 +123,7 @@ func TestIngestLoadRand(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			expected[i].size = meta.Size
+			expected[i].Size = meta.Size
 		}()
 	}
 
@@ -197,8 +198,8 @@ func TestIngestSortAndVerify(t *testing.T) {
 						return fmt.Sprintf("range %v-%v is not valid", smallest, largest)
 					}
 					meta = append(meta, &fileMetadata{
-						smallest: smallest,
-						largest:  largest,
+						Smallest: smallest,
+						Largest:  largest,
 					})
 				}
 				err := ingestSortAndVerify(cmp, meta)
@@ -206,7 +207,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 					return fmt.Sprintf("%v\n", err)
 				}
 				for i := range meta {
-					fmt.Fprintf(&buf, "%v-%v\n", meta[i].smallest, meta[i].largest)
+					fmt.Fprintf(&buf, "%v-%v\n", meta[i].Smallest, meta[i].Largest)
 				}
 				return buf.String()
 
@@ -238,7 +239,7 @@ func TestIngestLink(t *testing.T) {
 			for j := range paths {
 				paths[j] = fmt.Sprintf("external%d", j)
 				meta[j] = &fileMetadata{}
-				meta[j].fileNum = uint64(j)
+				meta[j].FileNum = uint64(j)
 				f, err := mem.Create(paths[j])
 				if err != nil {
 					t.Fatal(err)
@@ -333,8 +334,8 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					parts[0], parts[1] = parts[1], parts[0]
 				}
 				return &fileMetadata{
-					smallest: InternalKey{UserKey: []byte(parts[0])},
-					largest:  InternalKey{UserKey: []byte(parts[1])},
+					Smallest: InternalKey{UserKey: []byte(parts[0])},
+					Largest:  InternalKey{UserKey: []byte(parts[1])},
 				}
 			}
 
@@ -395,8 +396,8 @@ func TestIngestTargetLevel(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		return fileMetadata{
-			smallest: InternalKey{UserKey: []byte(parts[0])},
-			largest:  InternalKey{UserKey: []byte(parts[1])},
+			Smallest: InternalKey{UserKey: []byte(parts[0])},
+			Largest:  InternalKey{UserKey: []byte(parts[1])},
 		}
 	}
 
@@ -416,17 +417,17 @@ func TestIngestTargetLevel(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				if vers.files[level] != nil {
+				if vers.Files[level] != nil {
 					return fmt.Sprintf("level %d already filled", level)
 				}
 				for _, table := range strings.Fields(parts[1]) {
-					vers.files[level] = append(vers.files[level], parseMeta(table))
+					vers.Files[level] = append(vers.Files[level], parseMeta(table))
 				}
 
 				if level == 0 {
-					sort.Sort(bySeqNum(vers.files[level]))
+					manifest.SortBySeqNum(vers.Files[level])
 				} else {
-					sort.Sort(bySmallest{vers.files[level], cmp})
+					manifest.SortBySmallest(vers.Files[level], cmp)
 				}
 			}
 			return ""

@@ -308,10 +308,10 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if err != nil {
 			return nil
 		}
-		for _, f := range newVE.newFiles {
-			ve.newFiles = append(ve.newFiles, newFileEntry{
-				level: level,
-				meta:  f.meta,
+		for _, f := range newVE.NewFiles {
+			ve.NewFiles = append(ve.NewFiles, newFileEntry{
+				Level: level,
+				Meta:  f.Meta,
 			})
 		}
 		level = -1
@@ -361,16 +361,16 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
-	if len(ve.newFiles) > 0 {
+	if len(ve.NewFiles) > 0 {
 		jobID := d.mu.nextJobID
 		d.mu.nextJobID++
-		if err := d.mu.versions.logAndApply(jobID, ve, d.dataDir); err != nil {
+		if err := d.mu.versions.logAndApply(jobID, ve, nil, d.dataDir); err != nil {
 			return nil, err
 		}
 		d.updateReadStateLocked()
-		for i := range ve.newFiles {
-			meta := &ve.newFiles[i].meta
-			delete(d.mu.compact.pendingOutputs, meta.fileNum)
+		for i := range ve.NewFiles {
+			meta := &ve.NewFiles[i].Meta
+			delete(d.mu.compact.pendingOutputs, meta.FileNum)
 		}
 	}
 
