@@ -43,13 +43,14 @@ internal/arenaskl.bench: GOFLAGS += -cpu 1,8
 %.bench:
 	${GO} test -run - -bench . -count 10 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
 
-# The cmd/pebble/rocksdb.go file causes various cockroach dependencies
-# to be pulled in which is undesirable. Hack around this by
-# temporarily moving hiding that file.
+# The cmd/pebble/{badger,boltdb,rocksdb}.go files causes various
+# cockroach dependencies to be pulled in which is undesirable. Hack
+# around this by temporarily moving hiding that file.
 mod-update:
-	mv cmd/pebble/rocksdb.go cmd/pebble/_rocksdb.go
+	mkdir -p cmd/pebble/_bak
+	mv cmd/pebble/{badger,boltdb,rocksdb}.go cmd/pebble/_bak
 	GO111MODULE=on go mod vendor
-	mv cmd/pebble/_rocksdb.go cmd/pebble/rocksdb.go
+	mv cmd/pebble/_bak/* cmd/pebble && rmdir cmd/pebble/_bak
 
 .PHONY: clean
 clean:
