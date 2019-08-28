@@ -63,6 +63,10 @@ func (i *Iterator) findNextEntry() bool {
 			i.nextUserKey()
 			continue
 
+		case InternalKeyKindSingleDelete:
+			i.nextUserKey()
+			continue
+
 		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
 			// for more details.
@@ -128,6 +132,12 @@ func (i *Iterator) findPrevEntry() bool {
 
 		switch key.Kind() {
 		case InternalKeyKindDelete:
+			i.value = nil
+			i.valid = false
+			i.iterKey, i.iterValue = i.iter.Prev()
+			continue
+
+		case InternalKeyKindSingleDelete:
 			i.value = nil
 			i.valid = false
 			i.iterKey, i.iterValue = i.iter.Prev()
@@ -228,6 +238,11 @@ func (i *Iterator) mergeNext(key InternalKey) bool {
 		switch key.Kind() {
 		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this
+			// point.
+			return true
+
+		case InternalKeyKindSingleDelete:
+			// We've hit a single deletion tombstone. Return everything up to this
 			// point.
 			return true
 

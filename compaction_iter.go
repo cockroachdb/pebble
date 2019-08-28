@@ -222,6 +222,20 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			i.skip = true
 			return &i.key, i.value
 
+		case InternalKeyKindSingleDelete:
+			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
+				i.saveKey()
+				i.skipStripe()
+				continue
+			}
+
+			i.singleDeleteNext()
+			if i.valid {
+				return &i.key, i.value
+			} else {
+				return i.Next()
+			}
+
 		case InternalKeyKindRangeDelete:
 			i.key = i.cloneKey(i.key)
 			i.rangeDelFrag.Add(i.key, i.iterValue)
@@ -376,6 +390,50 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 			// continue looping.
 			i.value = i.merge(i.key.UserKey, i.value, i.iterValue, nil)
 			i.valueBuf = i.value[:0]
+
+		default:
+			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+			return nil, nil
+		}
+	}
+}
+
+func (i *compactionIter) singleDeleteNext() (*InternalKey, []byte) {
+	// Save the current key.
+	i.saveKey()
+	i.valid = true
+
+	// Loop looking for older values in the current snapshot stripe and
+	// single delete them.
+	for {
+		if !i.nextInStripe() {
+			i.skip = false
+			return &i.key, i.value
+		}
+		key := i.iterKey
+		switch key.Kind() {
+		case InternalKeyKindDelete:
+			// We've hit Delete. SingleDelete transform to Delete.
+			i.key.SetKind(InternalKeyKindDelete)
+			continue
+
+		case InternalKeyKindSet:
+			i.valid = false
+			continue
+
+		case InternalKeyKindMerge:
+			// We've hit Merge. SingleDelete transform to Delete.
+			i.key.SetKind(InternalKeyKindDelete)
+			continue
+
+		case InternalKeyKindSingleDelete:
+			continue
+
+		case InternalKeyKindRangeDelete:
+			// We've hit a range deletion tombstone. Return everything up to this
+			// point and then skip entries until the next snapshot stripe.
+			i.skip = true
+			return &i.key, i.value
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
