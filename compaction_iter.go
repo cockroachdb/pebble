@@ -222,6 +222,15 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			i.skip = true
 			return &i.key, i.value
 
+		case InternalKeyKindSingleDelete:
+			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
+				i.saveKey()
+				i.skipStripe()
+				continue
+			}
+
+			return i.singleDeleteNext()
+
 		case InternalKeyKindRangeDelete:
 			i.key = i.cloneKey(i.key)
 			i.rangeDelFrag.Add(i.key, i.iterValue)
@@ -381,6 +390,47 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
 			return nil, nil
 		}
+	}
+}
+
+func (i *compactionIter) singleDeleteNext() (*InternalKey, []byte) {
+	// Save the current key.
+	i.saveKey()
+	i.valid = true
+
+	if !i.nextInStripe() {
+		i.skip = false
+		return &i.key, i.value
+	}
+
+	key := i.iterKey
+	switch key.Kind() {
+	case InternalKeyKindDelete:
+		// We've hit Delete. SingleDelete transform to Delete.
+		i.key.SetKind(InternalKeyKindDelete)
+		i.nextInStripe()
+		return &i.key, i.value
+
+	case InternalKeyKindSet:
+		i.nextInStripe()
+		return i.Next()
+
+	case InternalKeyKindMerge:
+		// We've hit Merge. SingleDelete transform to Delete.
+		i.key.SetKind(InternalKeyKindDelete)
+		i.nextInStripe()
+		return &i.key, i.value
+
+	case InternalKeyKindSingleDelete:
+		i.nextInStripe()
+		return &i.key, i.value
+
+	case InternalKeyKindRangeDelete:
+		return i.Next()
+
+	default:
+		i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+		return nil, nil
 	}
 }
 

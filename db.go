@@ -89,6 +89,13 @@ type Writer interface {
 	// It is safe to modify the contents of the arguments after Delete returns.
 	Delete(key []byte, o *WriteOptions) error
 
+	// SingleDelete deletes the value for the given key. Requires that the key
+	// exist and was not overwritten. This feature is performance optimization
+	// for a very specific workload.
+	//
+	// It is safe to modify the contents of the arguments after Delete returns.
+	SingleDelete(key []byte, o *WriteOptions) error
+
 	// DeleteRange deletes all of the keys (and values) in the range [start,end)
 	// (inclusive on start, exclusive on end).
 	//
@@ -325,6 +332,14 @@ func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
 	_ = b.Delete(key, opts)
+	return d.Apply(b, opts)
+}
+
+// SingleDelete is part of Writer.
+func (d *DB) SingleDelete(key []byte, opts *WriteOptions) error {
+	b := newBatch(d)
+	defer b.release()
+	_ = b.SingleDelete(key, opts)
 	return d.Apply(b, opts)
 }
 
