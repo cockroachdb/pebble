@@ -207,7 +207,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	for i.iterKey != nil {
 		i.key = *i.iterKey
 		switch i.key.Kind() {
-		case InternalKeyKindDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
 			// skip to the next stripe (which will be the next user key).
 			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
@@ -216,11 +216,17 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				continue
 			}
 
-			i.saveKey()
-			i.value = i.iterValue
-			i.valid = true
-			i.skip = true
-			return &i.key, i.value
+			switch i.key.Kind() {
+			case InternalKeyKindDelete:
+				i.saveKey()
+				i.value = i.iterValue
+				i.valid = true
+				i.skip = true
+				return &i.key, i.value
+
+			case InternalKeyKindSingleDelete:
+				return i.singleDeleteNext()
+			}
 
 		case InternalKeyKindRangeDelete:
 			i.key = i.cloneKey(i.key)
@@ -381,6 +387,47 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
 			return nil, nil
 		}
+	}
+}
+
+func (i *compactionIter) singleDeleteNext() (*InternalKey, []byte) {
+	// Save the current key.
+	i.saveKey()
+	i.valid = true
+
+	if !i.nextInStripe() {
+		i.skip = false
+		return &i.key, i.value
+	}
+
+	key := i.iterKey
+	switch key.Kind() {
+	case InternalKeyKindDelete:
+		// We've hit a Delete, transform the SingleDelete into a full Delete.
+		i.key.SetKind(InternalKeyKindDelete)
+		i.nextInStripe()
+		return &i.key, i.value
+
+	case InternalKeyKindSet:
+		i.nextInStripe()
+		return i.Next()
+
+	case InternalKeyKindMerge:
+		// We've hit a Merge, transform the SingleDelete into a full Delete.
+		i.key.SetKind(InternalKeyKindDelete)
+		i.nextInStripe()
+		return &i.key, i.value
+
+	case InternalKeyKindSingleDelete:
+		i.nextInStripe()
+		return &i.key, i.value
+
+	case InternalKeyKindRangeDelete:
+		return i.Next()
+
+	default:
+		i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+		return nil, nil
 	}
 }
 
