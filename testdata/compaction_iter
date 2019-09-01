@@ -273,6 +273,21 @@ a#1,255:c
 .
 
 define
+a.INVALID.2:c
+a.RANGEDEL.1:d
+----
+
+iter
+first
+next
+tombstones
+----
+a#2,255:c
+.
+a-d#1
+.
+
+define
 a.MERGE.2:b
 a.MERGE.1:c
 a.MERGE.0:d
@@ -811,4 +826,44 @@ tombstones
 ----
 .
 a-c#2
+.
+
+define
+a.RANGEDEL.3:d
+a.DEL.2:a
+a.SET.1:a
+d.DEL.2:a
+----
+
+iter
+first
+tombstones
+----
+d#2,0:a
+a-d#3
+.
+
+iter snapshots=3
+first
+next
+next
+----
+a#2,0:a
+d#2,0:a
+.
+
+iter snapshots=2
+first
+next
+next
+----
+a#1,1:a
+d#2,0:a
+.
+
+iter snapshots=1
+first
+next
+----
+d#2,0:a
 .

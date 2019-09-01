@@ -189,6 +189,11 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 	i.iterKey, i.iterValue = i.iter.First()
 	if i.iterKey != nil {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
+		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
+			// Range tombstones are always added to the fragmenter. They are
+			// processed into stripes after fragmentation.
+			i.rangeDelFrag.Add(i.cloneKey(*i.iterKey), i.iterValue)
+		}
 	}
 	return i.Next()
 }
@@ -206,6 +211,12 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	i.valid = false
 	for i.iterKey != nil {
 		i.key = *i.iterKey
+		if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
+			i.saveKey()
+			i.skipStripe()
+			continue
+		}
+
 		switch i.key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
@@ -232,19 +243,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				continue
 			}
 
-		case InternalKeyKindRangeDelete:
-			i.key = i.cloneKey(i.key)
-			i.rangeDelFrag.Add(i.key, i.iterValue)
-			i.nextInStripe()
-			continue
-
 		case InternalKeyKindSet:
-			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
-				i.saveKey()
-				i.skipStripe()
-				continue
-			}
-
 			i.saveKey()
 			i.value = i.iterValue
 			i.valid = true
@@ -253,12 +252,6 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return &i.key, i.value
 
 		case InternalKeyKindMerge:
-			if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
-				i.saveKey()
-				i.skipStripe()
-				continue
-			}
-
 			// NB: it is important to call maybeZeroSeqnum before mergeNext as
 			// merging advances the iterator, adjusting curSnapshotIdx and thus
 			// invalidating the state that maybeZeroSeqnum uses to make its
@@ -266,12 +259,16 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			i.maybeZeroSeqnum()
 			return i.mergeNext()
 
+		case InternalKeyKindRangeDelete:
+			i.nextInStripe()
+			continue
+
 		case InternalKeyKindInvalid:
 			// NB: Invalid keys occur when there is some error parsing the key. Pass
 			// them through unmodified.
 			i.saveKey()
 			i.saveValue()
-			i.iterKey, i.iterValue = i.iter.Next()
+			i.iterNext()
 			i.valid = true
 			return &i.key, i.value
 
@@ -301,9 +298,21 @@ func (i *compactionIter) skipStripe() {
 	}
 }
 
-func (i *compactionIter) nextInStripe() bool {
+func (i *compactionIter) iterNext() bool {
 	i.iterKey, i.iterValue = i.iter.Next()
 	if i.iterKey == nil {
+		return false
+	}
+	if i.iterKey.Kind() == InternalKeyKindRangeDelete {
+		// Range tombstones are always added to the fragmenter. They are processed
+		// into stripes after fragmentation.
+		i.rangeDelFrag.Add(i.cloneKey(*i.iterKey), i.iterValue)
+	}
+	return true
+}
+
+func (i *compactionIter) nextInStripe() bool {
+	if !i.iterNext() {
 		return false
 	}
 	key := i.iterKey
@@ -313,9 +322,6 @@ func (i *compactionIter) nextInStripe() bool {
 	}
 	switch key.Kind() {
 	case InternalKeyKindRangeDelete:
-		// Range tombstones are always added to the fragmenter. They are processed
-		// into stripes after fragmentation.
-		i.rangeDelFrag.Add(i.cloneKey(*key), i.iterValue)
 		return true
 	case InternalKeyKindInvalid:
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
