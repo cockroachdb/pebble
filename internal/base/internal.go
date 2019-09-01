@@ -25,7 +25,7 @@ const (
 	// InternalKeyKindColumnFamilyDeletion                     = 4
 	// InternalKeyKindColumnFamilyValue                        = 5
 	// InternalKeyKindColumnFamilyMerge                        = 6
-	// InternalKeyKindSingleDelete                             = 7
+	InternalKeyKindSingleDelete = 7
 	// InternalKeyKindColumnFamilySingleDelete                 = 8
 	// InternalKeyKindBeginPrepareXID                          = 9
 	// InternalKeyKindEndPrepareXID                            = 10
@@ -67,13 +67,14 @@ const (
 )
 
 var internalKeyKindNames = []string{
-	InternalKeyKindDelete:      "DEL",
-	InternalKeyKindSet:         "SET",
-	InternalKeyKindMerge:       "MERGE",
-	InternalKeyKindLogData:     "LOGDATA",
-	InternalKeyKindRangeDelete: "RANGEDEL",
-	InternalKeyKindMax:         "MAX",
-	InternalKeyKindInvalid:     "INVALID",
+	InternalKeyKindDelete:       "DEL",
+	InternalKeyKindSet:          "SET",
+	InternalKeyKindMerge:        "MERGE",
+	InternalKeyKindLogData:      "LOGDATA",
+	InternalKeyKindSingleDelete: "SINGLEDEL",
+	InternalKeyKindRangeDelete:  "RANGEDEL",
+	InternalKeyKindMax:          "MAX",
+	InternalKeyKindInvalid:      "INVALID",
 }
 
 func (k InternalKeyKind) String() string {
@@ -130,12 +131,13 @@ func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
 }
 
 var kindsMap = map[string]InternalKeyKind{
-	"DEL":      InternalKeyKindDelete,
-	"RANGEDEL": InternalKeyKindRangeDelete,
-	"SET":      InternalKeyKindSet,
-	"MERGE":    InternalKeyKindMerge,
-	"INVALID":  InternalKeyKindInvalid,
-	"MAX":      InternalKeyKindMax,
+	"DEL":       InternalKeyKindDelete,
+	"SINGLEDEL": InternalKeyKindSingleDelete,
+	"RANGEDEL":  InternalKeyKindRangeDelete,
+	"SET":       InternalKeyKindSet,
+	"MERGE":     InternalKeyKindMerge,
+	"INVALID":   InternalKeyKindInvalid,
+	"MAX":       InternalKeyKindMax,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The
