@@ -73,6 +73,10 @@ type compactionPacerInfo struct {
 	// the threshold.
 	slowdownThreshold   uint64
 	totalCompactionDebt uint64
+	// totalDirtyBytes is the number of dirty bytes in memtables. The compaction
+	// pacer can monitor changes to this value to determine if user writes have
+	// stopped.
+	totalDirtyBytes uint64
 }
 
 // compactionPacerEnv defines the environment in which the compaction rate limiter
@@ -92,6 +96,7 @@ type compactionPacer struct {
 	internalPacer
 	env                 compactionPacerEnv
 	totalCompactionDebt uint64
+	totalDirtyBytes     uint64
 }
 
 func newCompactionPacer(env compactionPacerEnv) *compactionPacer {
@@ -121,8 +126,18 @@ func (p *compactionPacer) maybeThrottle(bytesIterated uint64) error {
 		pacerInfo := p.env.getInfo()
 		p.slowdownThreshold = pacerInfo.slowdownThreshold
 		p.totalCompactionDebt = pacerInfo.totalCompactionDebt
-		p.refreshBytesThreshold = bytesIterated + (p.env.memTableSize*5/100)
+		p.refreshBytesThreshold = bytesIterated + (p.env.memTableSize * 5 / 100)
 		p.iterCount = 1000
+		if p.totalDirtyBytes == pacerInfo.totalDirtyBytes {
+			// The total dirty bytes in the memtables have not changed since the
+			// previous call: user writes have completely stopped. Allow the
+			// compaction to proceed as fast as possible until the next
+			// recalculation. We adjust the recalculation threshold so that we can be
+			// nimble in the face of new user writes.
+			p.totalCompactionDebt += p.slowdownThreshold
+			p.iterCount = 100
+		}
+		p.totalDirtyBytes = pacerInfo.totalDirtyBytes
 	}
 	p.iterCount--
 
@@ -161,8 +176,9 @@ type flushPacerEnv struct {
 // rate limit is applied.
 type flushPacer struct {
 	internalPacer
-	env        flushPacerEnv
-	totalBytes uint64
+	env                flushPacerEnv
+	totalBytes         uint64
+	adjustedTotalBytes uint64
 }
 
 func newFlushPacer(env flushPacerEnv) *flushPacer {
@@ -170,7 +186,7 @@ func newFlushPacer(env flushPacerEnv) *flushPacer {
 		env: env,
 		internalPacer: internalPacer{
 			limiter:           env.limiter,
-			slowdownThreshold: env.memTableSize*105/100,
+			slowdownThreshold: env.memTableSize * 105 / 100,
 		},
 	}
 }
@@ -191,16 +207,26 @@ func (p *flushPacer) maybeThrottle(bytesIterated uint64) error {
 	// byte count requires grabbing DB.mu which is expensive.
 	if p.iterCount == 0 || bytesIterated > p.refreshBytesThreshold {
 		pacerInfo := p.env.getInfo()
-		p.totalBytes = pacerInfo.totalBytes
-		p.refreshBytesThreshold = bytesIterated + (p.env.memTableSize*5/100)
 		p.iterCount = 1000
+		p.refreshBytesThreshold = bytesIterated + (p.env.memTableSize * 5 / 100)
+		p.adjustedTotalBytes = pacerInfo.totalBytes
+		if p.totalBytes == pacerInfo.totalBytes {
+			// The total bytes in the memtables have not changed since the previous
+			// call: user writes have completely stopped. Allow the flush to proceed
+			// as fast as possible until the next recalculation. We adjust the
+			// recalculation threshold so that we can be nimble in the face of new
+			// user writes.
+			p.adjustedTotalBytes += p.slowdownThreshold
+			p.iterCount = 100
+		}
+		p.totalBytes = pacerInfo.totalBytes
 	}
 	p.iterCount--
 
 	// dirtyBytes is the total number of bytes in the memtables minus the number of
 	// bytes flushed. It represents unflushed bytes in all the memtables, even the
 	// ones which aren't being flushed such as the mutable memtable.
-	dirtyBytes := p.totalBytes - bytesIterated
+	dirtyBytes := p.adjustedTotalBytes - bytesIterated
 	flushAmount := bytesIterated - p.prevBytesIterated
 	p.prevBytesIterated = bytesIterated
 
@@ -212,7 +238,7 @@ func (p *flushPacer) maybeThrottle(bytesIterated uint64) error {
 	return p.limit(flushAmount, dirtyBytes)
 }
 
-type noopPacer struct {}
+type noopPacer struct{}
 
 func (p *noopPacer) maybeThrottle(_ uint64) error {
 	return nil

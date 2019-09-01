@@ -121,6 +121,15 @@ wait: 2
 
 init compaction
 burst: 10
+bytesIterated: 2
+currentTotal: 12
+dirtyBytes: 0
+slowdownThreshold: 10
+----
+allow: 2
+
+init compaction
+burst: 10
 bytesIterated: 3
 currentTotal: 14
 slowdownThreshold: 10

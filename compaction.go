@@ -615,15 +615,22 @@ func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
 		slowdownThreshold:   uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
 		totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
 	}
+	for _, m := range d.mu.mem.queue {
+		pacerInfo.totalDirtyBytes += m.totalBytes()
+	}
 	d.mu.Unlock()
 
 	return pacerInfo
 }
 
 func (d *DB) getFlushPacerInfo() flushPacerInfo {
-	return flushPacerInfo{
-		totalBytes: d.memTableTotalBytes(),
+	var pacerInfo flushPacerInfo
+	d.mu.Lock()
+	for _, m := range d.mu.mem.queue {
+		pacerInfo.totalBytes += m.totalBytes()
 	}
+	d.mu.Unlock()
+	return pacerInfo
 }
 
 // maybeScheduleFlush schedules a flush if necessary.
@@ -1117,17 +1124,6 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		return nil, pendingOutputs, err
 	}
 	return ve, pendingOutputs, nil
-}
-
-// memTableTotalBytes returns the total number of bytes in the memtables. Note
-// that this includes the mutable memtable as well.
-func (d *DB) memTableTotalBytes() (totalBytes uint64) {
-	d.mu.Lock()
-	for _, m := range d.mu.mem.queue {
-		totalBytes += m.totalBytes()
-	}
-	d.mu.Unlock()
-	return totalBytes
 }
 
 // scanObsoleteFiles scans the filesystem for files that are no longer needed
