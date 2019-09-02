@@ -207,7 +207,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	for i.iterKey != nil {
 		i.key = *i.iterKey
 		switch i.key.Kind() {
-		case InternalKeyKindDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
 			// skip to the next stripe (which will be the next user key).
 			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
@@ -216,11 +216,22 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				continue
 			}
 
-			i.saveKey()
-			i.value = i.iterValue
-			i.valid = true
-			i.skip = true
-			return &i.key, i.value
+			switch i.key.Kind() {
+			case InternalKeyKindDelete:
+				i.saveKey()
+				i.value = i.iterValue
+				i.valid = true
+				i.skip = true
+				return &i.key, i.value
+
+			case InternalKeyKindSingleDelete:
+				key, value := i.singleDeleteNext()
+				if i.valid {
+					return key, value
+				}
+
+				return i.Next()
+			}
 
 		case InternalKeyKindRangeDelete:
 			i.key = i.cloneKey(i.key)
@@ -381,6 +392,43 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
 			return nil, nil
 		}
+	}
+}
+
+func (i *compactionIter) singleDeleteNext() (*InternalKey, []byte) {
+	// Save the current key.
+	i.saveKey()
+	i.valid = true
+
+	if !i.nextInStripe() {
+		i.skip = false
+		return &i.key, i.value
+	}
+
+	key := i.iterKey
+	switch key.Kind() {
+	case InternalKeyKindDelete, InternalKeyKindMerge:
+		// We've hit a Delete or Merge, transform the SingleDelete into a full Delete.
+		i.key.SetKind(InternalKeyKindDelete)
+		i.skip = true
+		return &i.key, i.value
+
+	case InternalKeyKindSet:
+		i.skipStripe()
+		i.valid = false
+		return nil, nil
+
+	case InternalKeyKindSingleDelete:
+		i.nextInStripe()
+		return &i.key, i.value
+
+	case InternalKeyKindRangeDelete:
+		i.valid = false
+		return nil, nil
+
+	default:
+		i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+		return nil, nil
 	}
 }
 
