@@ -127,6 +127,8 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 						w.fmtValue.fn(stdout, value)
 					case base.InternalKeyKindLogData:
 						w.fmtValue.fn(stdout, ukey)
+					case base.InternalKeyKindSingleDelete:
+						w.fmtKey.fn(stdout, ukey)
 					case base.InternalKeyKindRangeDelete:
 						w.fmtKey.fn(stdout, ukey)
 						stdout.Write([]byte{','})

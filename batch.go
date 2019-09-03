@@ -526,6 +526,59 @@ func (b *Batch) DeleteDeferred(keyLen int, _ *WriteOptions) (*DeferredBatchOp, e
 	return &b.deferredOp, nil
 }
 
+// SingleDelete adds an action to the batch that single deletes the entry for key.
+// See Writer.SingleDelete for more details on the semantics of SingleDelete.
+//
+// It is safe to modify the contents of the arguments after SingleDelete returns.
+func (b *Batch) SingleDelete(key []byte, _ *WriteOptions) error {
+	deferredOp, err := b.SingleDeleteDeferred(len(key), nil)
+	if err != nil {
+		return err
+	}
+	copy(deferredOp.Key, key)
+	// TODO(peter): Manually inline DeferredBatchOp.Finish(). Mid-stack inlining
+	// in go1.13 will remove the need for this.
+	if b.index != nil {
+		if err := b.index.Add(deferredOp.offset); err != nil {
+			// We never add duplicate entries, so an error should never occur.
+			panic(err)
+		}
+	}
+	return nil
+}
+
+// SingleDeleteDeferred is similar to SingleDelete in that it adds a single delete
+// operation to the batch, except it only takes in key/value lengths instead of
+// complete slices, letting the caller encode into those objects and then call
+// Finish() on the returned object.
+func (b *Batch) SingleDeleteDeferred(keyLen int, _ *WriteOptions) (*DeferredBatchOp, error) {
+	// Code duplication with Delete is so that the Delete case (where byte
+	// slices are provided) can preserve the fast path.
+	if len(b.storage.data) == 0 {
+		b.init(keyLen + binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return nil, ErrInvalidBatch
+	}
+
+	b.memTableSize += memTableEntrySize(keyLen, 0)
+
+	pos := len(b.storage.data)
+	b.deferredOp.offset = uint32(pos)
+	b.grow(1 + maxVarintLen32 + keyLen)
+	b.storage.data[pos] = byte(InternalKeyKindSingleDelete)
+	pos++
+	varlen1 := putUvarint32(b.storage.data[pos:], uint32(keyLen))
+	pos += varlen1
+	b.deferredOp.Key = b.storage.data[pos : pos+keyLen]
+	b.deferredOp.Value = nil
+
+	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
+
+	b.deferredOp.index = b.index
+	return &b.deferredOp, nil
+}
+
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
 // (inclusive on start, exclusive on end).
 //
