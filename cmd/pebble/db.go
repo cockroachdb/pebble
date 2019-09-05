@@ -45,6 +45,11 @@ type batch interface {
 // interfaces, it can simply forward calls for everything.
 type pebbleDB struct {
 	d *pebble.DB
+	// These channels are used to convey when write stall mode begins/ends.
+	// Write stalls are slowdown triggers for `--find-peak-ops-per-sec`. If
+	// that option is unset then these will both be nil.
+	stallBegan chan struct{}
+	stallEnded chan struct{}
 }
 
 func newPebbleDB(dir string) DB {
@@ -75,12 +80,31 @@ func newPebbleDB(dir string) DB {
 		opts.EventListener.WALCreated = nil
 		opts.EventListener.WALDeleted = nil
 	}
+	var stallBegan, stallEnded chan struct{}
+	if findPeakOpsPerSec {
+		stallBegan = make(chan struct{}, 1)
+		stallEnded = make(chan struct{}, 1)
+		origWriteStallBegin := opts.EventListener.WriteStallBegin
+		opts.EventListener.WriteStallBegin = func(info pebble.WriteStallBeginInfo) {
+			stallBegan <- struct{}{}
+			if origWriteStallBegin != nil {
+				origWriteStallBegin(info)
+			}
+		}
+		origWriteStallEnd := opts.EventListener.WriteStallEnd
+		opts.EventListener.WriteStallEnd = func() {
+			stallEnded <- struct{}{}
+			if origWriteStallEnd != nil {
+				origWriteStallEnd()
+			}
+		}
+	}
 
 	p, err := pebble.Open(dir, opts)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return pebbleDB{p}
+	return pebbleDB{p, stallBegan, stallEnded}
 }
 
 func (p pebbleDB) Flush() error {
