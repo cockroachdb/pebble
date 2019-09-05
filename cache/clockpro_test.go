@@ -91,6 +91,14 @@ func TestEvictFile(t *testing.T) {
 	}
 }
 
+func TestEvictAll(t *testing.T) {
+	// Verify that it is okay to evict all of the data from a cache. Previously
+	// this would trigger a nil-pointer dereference.
+	cache := newShards(100, 1)
+	cache.Set(0, 0, 0, bytes.Repeat([]byte("a"), 101))
+	cache.Set(0, 1, 0, bytes.Repeat([]byte("a"), 101))
+}
+
 func TestMultipleDBs(t *testing.T) {
 	cache := newShards(100, 1)
 	cache.Set(0, 0, 0, bytes.Repeat([]byte("a"), 5))

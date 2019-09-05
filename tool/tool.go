@@ -6,6 +6,7 @@ package tool
 
 import (
 	"github.com/petermattis/pebble/bloom"
+	"github.com/petermattis/pebble/cache"
 	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/sstable"
 	"github.com/spf13/cobra"
@@ -36,6 +37,7 @@ type T struct {
 func New() *T {
 	t := &T{
 		opts: base.Options{
+			Cache:    cache.New(128 << 20 /* 128 MB */),
 			Filters:  make(map[string]FilterPolicy),
 			ReadOnly: true,
 		},

@@ -3785,3 +3785,55 @@ sstable layout
      28469    [restart 28418]
      28473    [restart 28444]
      28486  footer (53)
+
+sstable layout
+-v
+testdata/out-of-order.sst
+----
+testdata/out-of-order.sst
+         0  data (28)
+         0    record (12 = 3 [0] + 9 + 0) [restart]
+              a#0,1 []
+        12    record (12 = 3 [0] + 9 + 0)
+              c#0,1 []
+        24    record (12 = 3 [0] + 9 + 0)
+              b#0,1 []
+              WARNING: OUT OF ORDER KEYS!
+        36    [restart 0]
+        33  index (22)
+        33    block:0/28 [restart]
+        47    [restart 33]
+        60  properties (678)
+        60    rocksdb.block.based.table.index.type (43) [restart]
+       103    rocksdb.block.based.table.prefix.filtering (20)
+       123    rocksdb.block.based.table.whole.key.filtering (23)
+       146    rocksdb.column.family.id (24)
+       170    rocksdb.comparator (37)
+       207    rocksdb.compression (16)
+       223    rocksdb.compression_options (106)
+       329    rocksdb.creation.time (16)
+       345    rocksdb.data.size (13)
+       358    rocksdb.deleted.keys (15)
+       373    rocksdb.external_sst_file.global_seqno (41)
+       414    rocksdb.external_sst_file.version (14)
+       428    rocksdb.filter.size (15)
+       443    rocksdb.fixed.key.length (18)
+       461    rocksdb.format.version (17)
+       478    rocksdb.index.key.is.user.key (25)
+       503    rocksdb.index.size (8)
+       511    rocksdb.index.value.is.delta.encoded (26)
+       537    rocksdb.merge.operands (18)
+       555    rocksdb.merge.operator (24)
+       579    rocksdb.num.data.blocks (19)
+       598    rocksdb.num.entries (11)
+       609    rocksdb.num.range-deletions (19)
+       628    rocksdb.oldest.key.time (19)
+       647    rocksdb.prefix.extractor.name (31)
+       678    rocksdb.property.collectors (22)
+       700    rocksdb.raw.key.size (16)
+       716    rocksdb.raw.value.size (14)
+       730    [restart 60]
+       743  meta-index (32)
+       743    rocksdb.properties block:60/678 [restart]
+       767    [restart 743]
+       780  footer (53)

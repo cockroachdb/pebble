@@ -295,8 +295,14 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			}
 
 			iter := r.NewIter(nil, s.end)
+			var lastKey base.InternalKey
 			for key, value := iter.SeekGE(s.start); key != nil; key, value = iter.Next() {
 				formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
+				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+					fmt.Fprintf(stdout, "    WARNING: OUT OF ORDER KEYS!\n")
+				}
+				lastKey.Trailer = key.Trailer
+				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 			}
 			if err := iter.Close(); err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
