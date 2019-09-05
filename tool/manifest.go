@@ -128,7 +128,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			}
 
 			if cmp != nil {
-				v, err := bve.Apply(m.opts, nil, cmp.Compare)
+				v, err := bve.Apply(nil, cmp.Compare, m.fmtKey.fn)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return

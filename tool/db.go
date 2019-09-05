@@ -159,14 +159,14 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 		if fmtKeys || fmtValues {
 			needDelimiter := false
 			if fmtKeys {
-				d.fmtKey.fn(stdout, iter.Key())
+				fmt.Fprintf(stdout, "%s", d.fmtKey.fn(iter.Key()))
 				needDelimiter = true
 			}
 			if fmtValues {
 				if needDelimiter {
 					stdout.Write([]byte{' '})
 				}
-				d.fmtValue.fn(stdout, iter.Value())
+				fmt.Fprintf(stdout, "%s", d.fmtValue.fn(iter.Value()))
 			}
 			stdout.Write([]byte{'\n'})
 		}

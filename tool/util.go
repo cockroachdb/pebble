@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -52,7 +51,7 @@ func (k *key) Set(v string) error {
 
 type formatter struct {
 	spec string
-	fn   func(w io.Writer, v []byte)
+	fn   base.Formatter
 }
 
 func (f *formatter) String() string {
@@ -76,8 +75,8 @@ func (f *formatter) Set(spec string) error {
 		if strings.Count(spec, "%") != 1 {
 			return fmt.Errorf("unknown formatter: %q", spec)
 		}
-		f.fn = func(w io.Writer, v []byte) {
-			fmt.Fprintf(w, f.spec, v)
+		f.fn = func(v []byte) fmt.Formatter {
+			return fmtFormatter{f.spec, v}
 		}
 	}
 	return nil
@@ -89,25 +88,43 @@ func (f *formatter) mustSet(spec string) {
 	}
 }
 
-func formatNull(w io.Writer, v []byte) {
+type fmtFormatter struct {
+	fmt string
+	v   []byte
 }
 
-func formatQuoted(w io.Writer, v []byte) {
-	q := strconv.AppendQuote(make([]byte, 0, len(v)), string(v))
-	q = q[1 : len(q)-1]
-	w.Write(q)
+func (f fmtFormatter) Format(s fmt.State, c rune) {
+	fmt.Fprintf(s, f.fmt, f.v)
 }
 
-func formatSize(w io.Writer, v []byte) {
-	fmt.Fprintf(w, "<%d>", len(v))
+type nullFormatter struct{}
+
+func (nullFormatter) Format(s fmt.State, c rune) {
+}
+
+func formatNull(v []byte) fmt.Formatter {
+	return nullFormatter{}
+}
+
+func formatQuoted(v []byte) fmt.Formatter {
+	return base.FormatBytes(v)
+}
+
+type sizeFormatter []byte
+
+func (v sizeFormatter) Format(s fmt.State, c rune) {
+	fmt.Fprintf(s, "<%d>", len(v))
+}
+
+func formatSize(v []byte) fmt.Formatter {
+	return sizeFormatter(v)
 }
 
 func formatKey(w io.Writer, fmtKey formatter, key *base.InternalKey) bool {
 	if fmtKey.spec == "null" {
 		return false
 	}
-	fmtKey.fn(w, key.UserKey)
-	fmt.Fprintf(w, "#%d,%d", key.SeqNum(), key.Kind())
+	fmt.Fprintf(w, "%s", key.Pretty(fmtKey.fn))
 	return true
 }
 
@@ -115,11 +132,7 @@ func formatKeyRange(w io.Writer, fmtKey formatter, start, end *base.InternalKey)
 	if fmtKey.spec == "null" {
 		return
 	}
-	w.Write([]byte{'['})
-	formatKey(w, fmtKey, start)
-	w.Write([]byte{'-'})
-	formatKey(w, fmtKey, end)
-	w.Write([]byte{']'})
+	fmt.Fprintf(w, "[%s-%s]", start.Pretty(fmtKey.fn), end.Pretty(fmtKey.fn))
 }
 
 func formatKeyValue(
@@ -127,10 +140,9 @@ func formatKeyValue(
 ) {
 	if key.Kind() == base.InternalKeyKindRangeDelete {
 		if fmtKey.spec != "null" {
-			fmtKey.fn(w, key.UserKey)
-			w.Write([]byte{'-'})
-			fmtKey.fn(w, value)
-			fmt.Fprintf(w, "#%d,%d", key.SeqNum(), key.Kind())
+			fmt.Fprintf(w, "%s-%s#%d,%d",
+				fmtKey.fn(key.UserKey), fmtKey.fn(value),
+				key.SeqNum(), key.Kind())
 		}
 	} else {
 		needDelimiter := formatKey(w, fmtKey, key)
@@ -138,7 +150,7 @@ func formatKeyValue(
 			if needDelimiter {
 				w.Write([]byte{' '})
 			}
-			fmtValue.fn(stdout, value)
+			fmt.Fprintf(w, "%s", fmtValue.fn(value))
 		}
 	}
 	w.Write([]byte{'\n'})

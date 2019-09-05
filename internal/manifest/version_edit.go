@@ -405,7 +405,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 //
 // base may be nil, which is equivalent to a pointer to a zero version.
 func (b *BulkVersionEdit) Apply(
-	opts *Options, base *Version, cmp Compare,
+	base *Version, cmp Compare, format base.Formatter,
 ) (*Version, error) {
 	v := new(Version)
 	for level := range v.Files {
@@ -460,7 +460,7 @@ func (b *BulkVersionEdit) Apply(
 			SortBySmallest(v.Files[level], cmp)
 		}
 	}
-	if err := v.CheckOrdering(cmp); err != nil {
+	if err := v.CheckOrdering(cmp, format); err != nil {
 		return nil, fmt.Errorf("pebble: internal error: %v", err)
 	}
 	return v, nil

@@ -302,10 +302,19 @@ func (k InternalKey) Clone() InternalKey {
 
 // String returns a string representation of the key.
 func (k InternalKey) String() string {
-	return fmt.Sprintf("%s#%d,%d", k.UserKey, k.SeqNum(), k.Kind())
+	return fmt.Sprintf("%s#%d,%d", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
 }
 
-// Pretty returns a pretty-printed string representation of the key.
-func (k InternalKey) Pretty(f func([]byte) string) string {
-	return fmt.Sprintf("%s#%d,%d", f(k.UserKey), k.SeqNum(), k.Kind())
+// Pretty returns a formatter for the key.
+func (k InternalKey) Pretty(f Formatter) fmt.Formatter {
+	return prettyInternalKey{k, f}
+}
+
+type prettyInternalKey struct {
+	InternalKey
+	formatter Formatter
+}
+
+func (k prettyInternalKey) Format(s fmt.State, c rune) {
+	fmt.Fprintf(s, "%s#%d,%d", k.formatter(k.UserKey), k.SeqNum(), k.Kind())
 }

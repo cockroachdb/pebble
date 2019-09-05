@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -37,7 +38,7 @@ func TestManualFlush(t *testing.T) {
 			}
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
 
@@ -63,7 +64,7 @@ func TestManualFlush(t *testing.T) {
 			}
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
 

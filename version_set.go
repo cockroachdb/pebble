@@ -166,7 +166,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.markFileNumUsed(vs.logNum)
 	vs.markFileNumUsed(vs.prevLogNum)
 
-	newVersion, err := bve.Apply(opts, nil, vs.cmp)
+	newVersion, err := bve.Apply(nil, vs.cmp, opts.Comparer.Format)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (vs *versionSet) logAndApply(
 		bve.Accumulate(ve)
 
 		var err error
-		newVersion, err = bve.Apply(vs.opts, currentVersion, vs.cmp)
+		newVersion, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.Format)
 		if err != nil {
 			return err
 		}

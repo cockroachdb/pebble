@@ -163,6 +163,11 @@ type Version struct {
 }
 
 func (v *Version) String() string {
+	return v.Pretty(base.DefaultFormatter)
+}
+
+// Pretty returns a string representation of the version.
+func (v *Version) Pretty(format base.Formatter) string {
 	var buf bytes.Buffer
 	for level := 0; level < NumLevels; level++ {
 		if len(v.Files[level]) == 0 {
@@ -171,7 +176,7 @@ func (v *Version) String() string {
 		fmt.Fprintf(&buf, "%d:", level)
 		for j := range v.Files[level] {
 			f := &v.Files[level][j]
-			fmt.Fprintf(&buf, " %s-%s", f.Smallest.UserKey, f.Largest.UserKey)
+			fmt.Fprintf(&buf, " %s-%s", format(f.Smallest.UserKey), format(f.Largest.UserKey))
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -180,7 +185,7 @@ func (v *Version) String() string {
 
 // DebugString returns an alternative format to String() which includes
 // sequence number and kind information for the sstable boundaries.
-func (v *Version) DebugString() string {
+func (v *Version) DebugString(format base.Formatter) string {
 	var buf bytes.Buffer
 	for level := 0; level < NumLevels; level++ {
 		if len(v.Files[level]) == 0 {
@@ -189,7 +194,7 @@ func (v *Version) DebugString() string {
 		fmt.Fprintf(&buf, "%d:", level)
 		for j := range v.Files[level] {
 			f := &v.Files[level][j]
-			fmt.Fprintf(&buf, " %s-%s", f.Smallest, f.Largest)
+			fmt.Fprintf(&buf, " %s-%s", f.Smallest.Pretty(format), f.Largest.Pretty(format))
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -316,7 +321,7 @@ func (v *Version) Overlaps(
 // CheckOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
-func (v *Version) CheckOrdering(cmp Compare) error {
+func (v *Version) CheckOrdering(cmp Compare, format base.Formatter) error {
 	for level, ff := range v.Files {
 		if level == 0 {
 			for i := 1; i < len(ff); i++ {
@@ -337,11 +342,11 @@ func (v *Version) CheckOrdering(cmp Compare) error {
 				f := &ff[i]
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
 					return fmt.Errorf("level non-0 files are not in increasing ikey order: %s, %s\n%s",
-						prev.Largest, f.Smallest, v.DebugString())
+						prev.Largest.Pretty(format), f.Smallest.Pretty(format), v.DebugString(format))
 				}
 				if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
 					return fmt.Errorf("level non-0 file has inconsistent bounds: %s, %s",
-						f.Smallest, f.Largest)
+						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 			}
 		}

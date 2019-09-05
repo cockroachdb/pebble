@@ -40,3 +40,20 @@ func (t Tombstone) String() string {
 	}
 	return fmt.Sprintf("%s-%s#%d", t.Start.UserKey, t.End, t.Start.SeqNum())
 }
+
+// Pretty returns a formatter for the tombstone.
+func (t Tombstone) Pretty(f base.Formatter) fmt.Formatter {
+	return prettyTombstone{t, f}
+}
+
+type prettyTombstone struct {
+	Tombstone
+	formatter base.Formatter
+}
+
+func (t prettyTombstone) Format(s fmt.State, c rune) {
+	if t.Empty() {
+		fmt.Fprintf(s, "<empty>")
+	}
+	fmt.Fprintf(s, "%s-%s#%d", t.formatter(t.Start.UserKey), t.formatter(t.End), t.Start.SeqNum())
+}
