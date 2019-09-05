@@ -125,12 +125,21 @@ func formatKeyRange(w io.Writer, fmtKey formatter, start, end *base.InternalKey)
 func formatKeyValue(
 	w io.Writer, fmtKey formatter, fmtValue formatter, key *base.InternalKey, value []byte,
 ) {
-	needDelimiter := formatKey(w, fmtKey, key)
-	if fmtValue.spec != "null" {
-		if needDelimiter {
-			w.Write([]byte{' '})
+	if key.Kind() == base.InternalKeyKindRangeDelete {
+		if fmtKey.spec != "null" {
+			fmtKey.fn(w, key.UserKey)
+			w.Write([]byte{'-'})
+			fmtKey.fn(w, value)
+			fmt.Fprintf(w, "#%d,%d", key.SeqNum(), key.Kind())
 		}
-		fmtValue.fn(stdout, value)
+	} else {
+		needDelimiter := formatKey(w, fmtKey, key)
+		if fmtValue.spec != "null" {
+			if needDelimiter {
+				w.Write([]byte{' '})
+			}
+			fmtValue.fn(stdout, value)
+		}
 	}
 	w.Write([]byte{'\n'})
 }

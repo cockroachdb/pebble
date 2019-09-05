@@ -98,6 +98,10 @@ order which means the records will be printed in that order.
 			"verbose output")
 	}
 
+	s.Layout.Flags().Var(
+		&s.fmtKey, "key", "key formatter")
+	s.Layout.Flags().Var(
+		&s.fmtValue, "value", "value formatter")
 	s.Scan.Flags().Var(
 		&s.fmtKey, "key", "key formatter")
 	s.Scan.Flags().Var(
@@ -168,7 +172,13 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
 			}
-			l.Describe(stdout, s.verbose, r)
+			fmtRecord := func(key *base.InternalKey, value []byte) {
+				formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
+			}
+			if s.fmtKey.spec == "null" && s.fmtValue.spec == "null" {
+				fmtRecord = nil
+			}
+			l.Describe(stdout, s.verbose, r, fmtRecord)
 		}()
 	}
 }

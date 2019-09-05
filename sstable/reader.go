@@ -1442,7 +1442,12 @@ type Layout struct {
 
 // Describe returns a description of the layout. If the verbose parameter is
 // true, details of the structure of each block are returned as well.
-func (l *Layout) Describe(w io.Writer, verbose bool, r *Reader) {
+func (l *Layout) Describe(
+	w io.Writer,
+	verbose bool,
+	r *Reader,
+	fmtRecord func(key *base.InternalKey, value []byte),
+) {
 	type block struct {
 		BlockHandle
 		name string
@@ -1523,13 +1528,13 @@ func (l *Layout) Describe(w io.Writer, verbose bool, r *Reader) {
 		}
 
 		switch b.name {
-		case "data":
+		case "data", "range-del":
 			iter, _ := newBlockIter(r.compare, h.Get())
-			for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
 				shared, ptr := decodeVarint(ptr)
 				unshared, ptr := decodeVarint(ptr)
-				value, _ := decodeVarint(ptr)
+				value2, _ := decodeVarint(ptr)
 
 				total := iter.nextOffset - iter.offset
 				// The format of the numbers in the record line is:
@@ -1544,8 +1549,12 @@ func (l *Layout) Describe(w io.Writer, verbose bool, r *Reader) {
 				// <value>    is the number of value bytes.
 				fmt.Fprintf(w, "%10d    record (%d = %d [%d] + %d + %d)",
 					b.Offset+uint64(iter.offset), total,
-					total-int32(unshared+value), shared, unshared, value)
+					total-int32(unshared+value2), shared, unshared, value2)
 				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
+				if fmtRecord != nil {
+					fmt.Fprintf(w, "              ")
+					fmtRecord(key, value)
+				}
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 		case "index", "top-index":
