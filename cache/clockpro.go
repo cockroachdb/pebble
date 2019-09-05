@@ -103,10 +103,16 @@ func (e *entry) init() *entry {
 }
 
 func (e *entry) next() *entry {
+	if e == nil {
+		return nil
+	}
 	return e.blockLink.next
 }
 
 func (e *entry) prev() *entry {
+	if e == nil {
+		return nil
+	}
 	return e.blockLink.prev
 }
 

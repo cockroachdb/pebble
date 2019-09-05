@@ -105,7 +105,7 @@ func (i *singleLevelIterator) Init(r *Reader, lower, upper []byte) error {
 		if i.err != nil {
 			return i.err
 		}
-		i.cmp = r.compare
+		i.cmp = r.Compare
 		i.err = i.index.init(i.cmp, index, r.Properties.GlobalSeqNum)
 	}
 	return i.err
@@ -633,7 +633,7 @@ func (i *twoLevelIterator) Init(r *Reader, lower, upper []byte) error {
 			i.err = err
 			return i.err
 		}
-		i.cmp = r.compare
+		i.cmp = r.Compare
 		i.err = i.topLevelIndex.init(i.cmp, topLevelIndex, r.Properties.GlobalSeqNum)
 	}
 	return i.err
@@ -943,11 +943,11 @@ type Comparers map[string]*Comparer
 
 // Apply applies the comparers option to the reader.
 func (c Comparers) Apply(r *Reader) {
-	if r.compare != nil {
+	if r.Compare != nil {
 		return
 	}
 	if comparer, ok := c[r.Properties.ComparerName]; ok {
-		r.compare = comparer.Compare
+		r.Compare = comparer.Compare
 		r.split = comparer.Split
 	}
 }
@@ -981,7 +981,7 @@ type Reader struct {
 	footerBH          BlockHandle
 	opts              *Options
 	cache             *cache.Cache
-	compare           Compare
+	Compare           Compare
 	split             Split
 	mergerOK          bool
 	tableFilter       *tableFilterReader
@@ -1035,7 +1035,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	i := r.NewIter(nil /* lower */, nil /* upper */)
 	i.SeekGE(key)
 
-	if !i.Valid() || r.compare(key, i.Key().UserKey) != 0 {
+	if !i.Valid() || r.Compare(key, i.Key().UserKey) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = base.ErrNotFound
@@ -1093,7 +1093,7 @@ func (r *Reader) NewRangeDelIter() *blockIter {
 		panic(err)
 	}
 	i := &blockIter{}
-	if err := i.init(r.compare, b, r.Properties.GlobalSeqNum); err != nil {
+	if err := i.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
 		// TODO(peter): propagate the error
 		panic(err)
 	}
@@ -1201,7 +1201,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.compare, b, r.Properties.GlobalSeqNum); err != nil {
+	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	var tombstones []rangedel.Tombstone
@@ -1212,14 +1212,14 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 		}
 		tombstones = append(tombstones, t)
 	}
-	rangedel.Sort(r.compare, tombstones)
+	rangedel.Sort(r.Compare, tombstones)
 
 	// Fragment the tombstones, outputting them directly to a block writer.
 	rangeDelBlock := blockWriter{
 		restartInterval: 1,
 	}
 	frag := rangedel.Fragmenter{
-		Cmp: r.compare,
+		Cmp: r.Compare,
 		Emit: func(fragmented []rangedel.Tombstone) {
 			for i := range fragmented {
 				t := &fragmented[i]
@@ -1333,7 +1333,7 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.index.bh)
-		iter, _ := newBlockIter(r.compare, index)
+		iter, _ := newBlockIter(r.Compare, index)
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, n := decodeBlockHandle(value)
 			if n == 0 || n != len(value) {
@@ -1343,7 +1343,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	} else {
 		l.TopIndex = r.index.bh
-		topIter, _ := newBlockIter(r.compare, index)
+		topIter, _ := newBlockIter(r.Compare, index)
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, n := decodeBlockHandle(value)
 			if n == 0 || n != len(value) {
@@ -1355,7 +1355,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, err
 			}
-			iter, _ := newBlockIter(r.compare, subIndex.Get())
+			iter, _ := newBlockIter(r.Compare, subIndex.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				dataBH, n := decodeBlockHandle(value)
 				if n == 0 || n != len(value) {
@@ -1403,7 +1403,7 @@ func NewReader(
 	r.footerBH = footer.footerBH
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
-		r.compare = o.Comparer.Compare
+		r.Compare = o.Comparer.Compare
 		r.split = o.Comparer.Split
 	}
 
@@ -1415,7 +1415,7 @@ func NewReader(
 		opt.Apply(r)
 	}
 
-	if r.compare == nil {
+	if r.Compare == nil {
 		r.err = fmt.Errorf("pebble/table: %d: unknown comparer %s",
 			fileNum, r.Properties.ComparerName)
 	}
@@ -1527,9 +1527,10 @@ func (l *Layout) Describe(
 			}
 		}
 
+		var lastKey InternalKey
 		switch b.name {
 		case "data", "range-del":
-			iter, _ := newBlockIter(r.compare, h.Get())
+			iter, _ := newBlockIter(r.Compare, h.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
 				shared, ptr := decodeVarint(ptr)
@@ -1555,10 +1556,16 @@ func (l *Layout) Describe(
 					fmt.Fprintf(w, "              ")
 					fmtRecord(key, value)
 				}
+
+				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+					fmt.Fprintf(w, "              WARNING: OUT OF ORDER KEYS!\n")
+				}
+				lastKey.Trailer = key.Trailer
+				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 		case "index", "top-index":
-			iter, _ := newBlockIter(r.compare, h.Get())
+			iter, _ := newBlockIter(r.Compare, h.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				bh, n := decodeBlockHandle(value)
 				if n == 0 || n != len(value) {
@@ -1571,7 +1578,7 @@ func (l *Layout) Describe(
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 		case "properties":
-			iter, _ := newRawBlockIter(r.compare, h.Get())
+			iter, _ := newRawBlockIter(r.Compare, h.Get())
 			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(w, "%10d    %s (%d)",
 					b.Offset+uint64(iter.offset), iter.Key().UserKey, iter.nextOffset-iter.offset)
@@ -1579,7 +1586,7 @@ func (l *Layout) Describe(
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 		case "meta-index":
-			iter, _ := newRawBlockIter(r.compare, h.Get())
+			iter, _ := newRawBlockIter(r.Compare, h.Get())
 			for valid := iter.First(); valid; valid = iter.Next() {
 				value := iter.Value()
 				bh, n := decodeBlockHandle(value)

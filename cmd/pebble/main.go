@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/petermattis/pebble/internal/base"
 	"github.com/petermattis/pebble/tool"
 	"github.com/spf13/cobra"
 )
@@ -46,7 +47,18 @@ func main() {
 		Short: "pebble benchmarking/introspection tool",
 	}
 	rootCmd.AddCommand(benchCmd)
-	rootCmd.AddCommand(tool.New().Commands...)
+
+	t := tool.New()
+	t.RegisterComparer(mvccComparer)
+	t.RegisterMerger(func() *base.Merger {
+		// TODO(peter): This isn't the actual cockroach_merge_operator, but a
+		// placeholder so we can examine cockroach generated sstables.
+		var m base.Merger
+		m = *base.DefaultMerger
+		m.Name = "cockroach_merge_operator"
+		return &m
+	}())
+	rootCmd.AddCommand(t.Commands...)
 
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(
