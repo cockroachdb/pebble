@@ -6,9 +6,6 @@ script: go test -v ./...
 
 matrix:
   include:
-    - name: "go1.11.x"
-      go: 1.11.x
-      gobuild_args: -v
     - name: "go1.12.x"
       go: 1.12.x
       gobuild_args: -v
@@ -23,6 +20,12 @@ matrix:
       go: 1.12.x
       # NB: "env: GOOS=freebsd" does not have the desired effect.
       script: GOOS=freebsd go build -v ./...
+    - name: "go1.13.x"
+      go: 1.13.x
+      gobuild_args: -v
+    - name: "go1.13.x race"
+      go: 1.13.x
+      gobuild_args: -v -race
 
 notifications:
   email:
