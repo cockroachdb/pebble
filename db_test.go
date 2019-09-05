@@ -506,6 +506,109 @@ func TestGetMerge(t *testing.T) {
 	}
 }
 
+func TestSingleDeleteGet(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := d.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	key := []byte("key")
+	val := []byte("val")
+
+	d.Set(key, val, nil)
+	verifyGet(t, d, key, val)
+
+	key2 := []byte("key2")
+	val2 := []byte("val2")
+
+	d.Set(key2, val2, nil)
+	verifyGet(t, d, key2, val2)
+
+	d.SingleDelete(key2, nil)
+	verifyGetNotFound(t, d, key2)
+}
+
+func TestSingleDeleteFlush(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := d.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	key := []byte("key")
+	valFirst := []byte("first")
+	valSecond := []byte("second")
+	key2 := []byte("key2")
+	val2 := []byte("val2")
+
+	d.Set(key, valFirst, nil)
+	d.Set(key2, val2, nil)
+	d.Flush()
+
+	d.SingleDelete(key, nil)
+	d.Set(key, valSecond, nil)
+	d.Delete(key2, nil)
+	d.Set(key2, val2, nil)
+	d.Flush()
+
+	d.SingleDelete(key, nil)
+	d.Delete(key2, nil)
+	d.Flush()
+
+	verifyGetNotFound(t, d, key)
+	verifyGetNotFound(t, d, key2)
+}
+
+func TestUnremovableSingleDelete(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := d.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	key := []byte("key")
+	valFirst := []byte("valFirst")
+	valSecond := []byte("valSecond")
+
+	d.Set(key, valFirst, nil)
+	ss := d.NewSnapshot()
+	d.SingleDelete(key, nil)
+	d.Set(key, valSecond, nil)
+	d.Flush()
+
+	verifyGetSnapshot(t, ss, key, valFirst)
+	verifyGet(t, d, key, valSecond)
+
+	d.SingleDelete(key, nil)
+
+	verifyGetSnapshot(t, ss, key, valFirst)
+	verifyGetNotFound(t, d, key)
+
+	d.Flush()
+
+	verifyGetSnapshot(t, ss, key, valFirst)
+	verifyGetNotFound(t, d, key)
+}
+
 func TestIterLeak(t *testing.T) {
 	for _, leak := range []bool{true, false} {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
@@ -769,5 +872,89 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func BenchmarkDelete(b *testing.B) {
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	const keyCount = 10000
+	var keys [keyCount][]byte
+	for i := 0; i < keyCount; i++ {
+		keys[i] = []byte(strconv.Itoa(rng.Int()))
+	}
+	val := bytes.Repeat([]byte("x"), 10)
+
+	benchmark := func(b *testing.B, useSingleDelete bool) {
+		d, err := Open(
+			"",
+			&Options{
+				FS: vfs.NewMem(),
+			})
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer func() {
+			if err := d.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}()
+
+		b.StartTimer()
+		for _, key := range keys {
+			d.Set(key, val, nil)
+			if useSingleDelete {
+				d.SingleDelete(key, nil)
+			} else {
+				d.Delete(key, nil)
+			}
+		}
+		// Manually flush as it is flushing/compaction where SingleDelete
+		// performance shows up. With SingleDelete, we can elide all of the
+		// SingleDelete and Set records.
+		if err := d.Flush(); err != nil {
+			b.Fatal(err)
+		}
+		b.StopTimer()
+	}
+
+	b.Run("delete", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			benchmark(b, false)
+		}
+	})
+
+	b.Run("single-delete", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			benchmark(b, true)
+		}
+	})
+}
+
+func verifyGet(t *testing.T, d *DB, key, expected []byte) {
+	val, err := d.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(expected, val) {
+		t.Fatalf("expected %s, but got %s", expected, val)
+	}
+}
+
+func verifyGetNotFound(t *testing.T, d *DB, key []byte) {
+	val, err := d.Get(key)
+	if err != base.ErrNotFound {
+		t.Fatalf("expected nil, but got %s", val)
+	}
+}
+
+func verifyGetSnapshot(t *testing.T, ss *Snapshot, key, expected []byte) {
+	val, err := ss.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(expected, val) {
+		t.Fatalf("expected %s, but got %s", expected, val)
 	}
 }

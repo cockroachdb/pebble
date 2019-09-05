@@ -112,10 +112,12 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 	if !m.equal(key, ikey.UserKey) {
 		return nil, ErrNotFound
 	}
-	if ikey.Kind() == InternalKeyKindDelete {
+	switch ikey.Kind() {
+	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 		return nil, ErrNotFound
+	default:
+		return val, nil
 	}
-	return val, nil
 }
 
 // Prepare reserves space for the batch in the memtable and references the
