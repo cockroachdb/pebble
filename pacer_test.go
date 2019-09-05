@@ -65,6 +65,7 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 				}
 
 				burst := uint64(1)
+				dirtyBytes := uint64(1)
 				var bytesIterated uint64
 				var currentTotal uint64
 				var slowdownThreshold uint64
@@ -87,6 +88,8 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 							bytesIterated = varValue
 						case "currentTotal":
 							currentTotal = varValue
+						case "dirtyBytes":
+							dirtyBytes = varValue
 						case "slowdownThreshold":
 							slowdownThreshold = varValue
 						default:
@@ -102,6 +105,7 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 						return compactionPacerInfo{
 							slowdownThreshold:   slowdownThreshold,
 							totalCompactionDebt: currentTotal,
+							totalDirtyBytes:     dirtyBytes,
 						}
 					}
 					compactionPacer := newCompactionPacer(compactionPacerEnv{
