@@ -47,13 +47,16 @@ func TestBatch(t *testing.T) {
 		{InternalKeyKindSet, "roses", "red"},
 		{InternalKeyKindSet, "violets", "blue"},
 		{InternalKeyKindDelete, "roses", ""},
+		{InternalKeyKindSingleDelete, "roses", ""},
 		{InternalKeyKindSet, "", ""},
 		{InternalKeyKindSet, "", "non-empty"},
 		{InternalKeyKindDelete, "", ""},
+		{InternalKeyKindSingleDelete, "", ""},
 		{InternalKeyKindSet, "grass", "green"},
 		{InternalKeyKindSet, "grass", "greener"},
 		{InternalKeyKindSet, "eleventy", strings.Repeat("!!11!", 100)},
 		{InternalKeyKindDelete, "nosuchkey", ""},
+		{InternalKeyKindSingleDelete, "nosuchkey", ""},
 		{InternalKeyKindSet, "binarydata", "\x00"},
 		{InternalKeyKindSet, "binarydata", "\xff"},
 		{InternalKeyKindMerge, "merge", "mergedata"},
@@ -73,6 +76,8 @@ func TestBatch(t *testing.T) {
 			_ = b.Merge([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindDelete:
 			_ = b.Delete([]byte(tc.key), nil)
+		case InternalKeyKindSingleDelete:
+			_ = b.SingleDelete([]byte(tc.key), nil)
 		case InternalKeyKindRangeDelete:
 			_ = b.DeleteRange([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindLogData:
@@ -100,6 +105,11 @@ func TestBatch(t *testing.T) {
 			d.Finish()
 		case InternalKeyKindDelete:
 			d, _ := b.DeleteDeferred(len(key), nil)
+			copy(d.Key, key)
+			copy(d.Value, value)
+			d.Finish()
+		case InternalKeyKindSingleDelete:
+			d, _ := b.SingleDeleteDeferred(len(key), nil)
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()

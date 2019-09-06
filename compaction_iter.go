@@ -207,7 +207,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	for i.iterKey != nil {
 		i.key = *i.iterKey
 		switch i.key.Kind() {
-		case InternalKeyKindDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
 			// skip to the next stripe (which will be the next user key).
 			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
@@ -216,11 +216,21 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				continue
 			}
 
-			i.saveKey()
-			i.value = i.iterValue
-			i.valid = true
-			i.skip = true
-			return &i.key, i.value
+			switch i.key.Kind() {
+			case InternalKeyKindDelete:
+				i.saveKey()
+				i.value = i.iterValue
+				i.valid = true
+				i.skip = true
+				return &i.key, i.value
+
+			case InternalKeyKindSingleDelete:
+				if i.singleDeleteNext() {
+					return &i.key, i.value
+				}
+
+				continue
+			}
 
 		case InternalKeyKindRangeDelete:
 			i.key = i.cloneKey(i.key)
@@ -380,6 +390,45 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
 			return nil, nil
+		}
+	}
+}
+
+func (i *compactionIter) singleDeleteNext() bool {
+	// Save the current key.
+	i.saveKey()
+	i.valid = true
+
+	// Loop until finds a key to be passed to the next level.
+	for {
+		if !i.nextInStripe() {
+			i.skip = false
+			return true
+		}
+
+		key := i.iterKey
+		switch key.Kind() {
+		case InternalKeyKindDelete, InternalKeyKindMerge:
+			// We've hit a Delete or Merge, transform the SingleDelete into a full Delete.
+			i.key.SetKind(InternalKeyKindDelete)
+			i.skip = true
+			return true
+
+		case InternalKeyKindSet:
+			i.nextInStripe()
+			i.valid = false
+			return false
+
+		case InternalKeyKindSingleDelete:
+			continue
+
+		case InternalKeyKindRangeDelete:
+			i.valid = false
+			return false
+
+		default:
+			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+			return false
 		}
 	}
 }

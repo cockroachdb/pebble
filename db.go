@@ -89,6 +89,26 @@ type Writer interface {
 	// It is safe to modify the contents of the arguments after Delete returns.
 	Delete(key []byte, o *WriteOptions) error
 
+	// SingleDelete is similar to Delete in that it deletes the value for the given key. Like Delete,
+	// it is a blind operation that will succeed even if the given key does not exist.
+	//
+	// WARNING: Undefined (non-deterministic) behavior will result if a key is overwritten and
+	// then deleted using SingleDelete. The record may appear deleted immediately, but be
+	// resurrected at a later time after compactions have been performed. Or the record may
+	// be deleted permanently. A Delete operation lays down a "tombstone" which shadows all
+	// previous versions of a key. The SingleDelete operation is akin to "anti-matter" and will
+	// only delete the most recently written version for a key. These different semantics allow
+	// the DB to avoid propagating a SingleDelete operation during a compaction as soon as the
+	// corresponding Set operation is encountered. These semantics require extreme care to handle
+	// properly. Only use if you have a workload where the performance gain is critical and you
+	// can guarantee that a record is written once and then deleted once.
+	//
+	// SingleDelete is internally transformed into a Delete if the most recent record for a key is either
+	// a Merge or Delete record.
+	//
+	// It is safe to modify the contents of the arguments after SingleDelete returns.
+	SingleDelete(key []byte, o *WriteOptions) error
+
 	// DeleteRange deletes all of the keys (and values) in the range [start,end)
 	// (inclusive on start, exclusive on end).
 	//
@@ -325,6 +345,17 @@ func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
 	_ = b.Delete(key, opts)
+	return d.Apply(b, opts)
+}
+
+// SingleDelete adds an action to the batch that single deletes the entry for key.
+// See Writer.SingleDelete for more details on the semantics of SingleDelete.
+//
+// It is safe to modify the contents of the arguments after SingleDelete returns.
+func (d *DB) SingleDelete(key []byte, opts *WriteOptions) error {
+	b := newBatch(d)
+	defer b.release()
+	_ = b.SingleDelete(key, opts)
 	return d.Apply(b, opts)
 }
 

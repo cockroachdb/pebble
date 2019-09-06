@@ -59,7 +59,7 @@ func (i *Iterator) findNextEntry() bool {
 	for i.iterKey != nil {
 		key := *i.iterKey
 		switch key.Kind() {
-		case InternalKeyKindDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			i.nextUserKey()
 			continue
 
@@ -127,7 +127,7 @@ func (i *Iterator) findPrevEntry() bool {
 		}
 
 		switch key.Kind() {
-		case InternalKeyKindDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			i.value = nil
 			i.valid = false
 			i.iterKey, i.iterValue = i.iter.Prev()
@@ -226,7 +226,7 @@ func (i *Iterator) mergeNext(key InternalKey) bool {
 			return true
 		}
 		switch key.Kind() {
-		case InternalKeyKindDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// We've hit a deletion tombstone. Return everything up to this
 			// point.
 			return true
