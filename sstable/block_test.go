@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )

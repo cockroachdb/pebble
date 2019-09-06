@@ -9,8 +9,8 @@ import (
 	"errors"
 	"unsafe"
 
-	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/cache"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 func uvarintLen(v uint32) int {

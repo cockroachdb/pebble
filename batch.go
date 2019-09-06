@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/batchskl"
-	"github.com/petermattis/pebble/internal/rangedel"
-	"github.com/petermattis/pebble/internal/rawalloc"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/batchskl"
+	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/rawalloc"
 )
 
 const (

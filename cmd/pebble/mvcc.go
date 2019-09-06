@@ -7,8 +7,8 @@ package main
 import (
 	"bytes"
 
-	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 )
 
 // MVCC encoding and decoding routines adapted from CockroachDB sources. Used

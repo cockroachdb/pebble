@@ -3,7 +3,7 @@
 // the LICENSE file.
 
 // Package pebble provides an ordered key/value store.
-package pebble // import "github.com/petermattis/pebble"
+package pebble // import "github.com/cockroachdb/pebble"
 
 import (
 	"errors"
@@ -12,10 +12,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/internal/arenaskl"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/record"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/arenaskl"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 const (

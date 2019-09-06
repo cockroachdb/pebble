@@ -13,7 +13,7 @@ import (
 	"io"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // TODO(peter): describe the MANIFEST file format, independently of the C++

@@ -15,11 +15,11 @@ import (
 	"unsafe"
 
 	"github.com/golang/snappy"
-	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/crc"
-	"github.com/petermattis/pebble/internal/rangedel"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/cache"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // BlockHandle is the file offset and length of a block.

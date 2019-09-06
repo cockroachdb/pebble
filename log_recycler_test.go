@@ -7,7 +7,7 @@ package pebble
 import (
 	"testing"
 
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 

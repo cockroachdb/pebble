@@ -13,10 +13,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 

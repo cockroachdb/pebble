@@ -7,7 +7,7 @@ package bloom
 import (
 	"testing"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 func (f tableFilter) String() string {

@@ -1,4 +1,4 @@
-module github.com/petermattis/pebble
+module github.com/cockroachdb/pebble
 
 require (
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 func TestGetIter(t *testing.T) {

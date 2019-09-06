@@ -15,11 +15,11 @@ import (
 	"time"
 
 	"github.com/kr/pretty"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/internal/manifest"
-	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 

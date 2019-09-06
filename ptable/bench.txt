@@ -1,6 +1,6 @@
 goos: darwin
 goarch: amd64
-pkg: github.com/petermattis/pebble/ptable
+pkg: github.com/cockroachdb/pebble/ptable
 BenchmarkBlock/not-null-8    	2000000000	         0.42 ns/op
 BenchmarkBlock/not-null-8    	2000000000	         0.42 ns/op
 BenchmarkBlock/not-null-8    	2000000000	         0.42 ns/op
@@ -82,4 +82,4 @@ BenchmarkTableIterPrev-8     	1000000000	         2.33 ns/op
 BenchmarkTableIterPrev-8     	1000000000	         2.35 ns/op
 BenchmarkTableIterPrev-8     	1000000000	         2.30 ns/op
 PASS
-ok  	github.com/petermattis/pebble/ptable	302.320s
+ok  	github.com/cockroachdb/pebble/ptable	302.320s

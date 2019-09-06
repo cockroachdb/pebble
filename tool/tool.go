@@ -5,10 +5,10 @@
 package tool
 
 import (
-	"github.com/petermattis/pebble/bloom"
-	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/sstable"
+	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/cache"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
 )
 

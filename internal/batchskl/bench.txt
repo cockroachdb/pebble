@@ -1,6 +1,6 @@
 goos: darwin
 goarch: amd64
-pkg: github.com/petermattis/pebble/internal/batchskl
+pkg: github.com/cockroachdb/pebble/internal/batchskl
 BenchmarkReadWrite/frac_0-8         	 1000000	      1135 ns/op
 BenchmarkReadWrite/frac_0-8         	 1000000	      1108 ns/op
 BenchmarkReadWrite/frac_0-8         	 1000000	      1121 ns/op
@@ -132,4 +132,4 @@ BenchmarkIterPrev-8                 	300000000	         4.89 ns/op
 BenchmarkIterPrev-8                 	300000000	         4.96 ns/op
 BenchmarkIterPrev-8                 	300000000	         4.93 ns/op
 PASS
-ok  	github.com/petermattis/pebble/internal/batchskl	336.012s
+ok  	github.com/cockroachdb/pebble/internal/batchskl	336.012s

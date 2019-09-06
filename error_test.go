@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 type panicLogger struct{}

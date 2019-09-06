@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/petermattis/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/humanize"
 )
 
 // LevelMetrics holds per-level metrics such as the number of files and total

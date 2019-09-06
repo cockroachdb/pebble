@@ -5,7 +5,7 @@
 package sstable
 
 import (
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // InternalKeyKind exports the base.InternalKeyKind type.

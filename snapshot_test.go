@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 

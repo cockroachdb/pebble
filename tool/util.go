@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 var stdout = io.Writer(os.Stdout)

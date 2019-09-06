@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 type mockCountLimiter struct {

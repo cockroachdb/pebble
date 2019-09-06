@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -254,7 +254,7 @@ func ingestTargetLevel(cmp Compare, v *version, meta *fileMetadata) int {
 // mutations that get sequence numbers larger than the ingestion sequence
 // number get queued up behind the ingestion waiting for it to complete. This
 // can produce a noticeable hiccup in performance. See
-// https://github.com/petermattis/pebble/issues/25 for an idea for how to fix
+// https://github.com/cockroachdb/pebble/issues/25 for an idea for how to fix
 // this hiccup.
 func (d *DB) Ingest(paths []string) error {
 	// Allocate file numbers for all of the files being ingested and mark them as

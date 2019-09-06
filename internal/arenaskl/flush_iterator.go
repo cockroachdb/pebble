@@ -18,7 +18,7 @@
 package arenaskl
 
 import (
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // flushIterator is an iterator over the skiplist object. Use Skiplist.NewFlushIter

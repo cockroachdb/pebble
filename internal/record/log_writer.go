@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/crc"
 )
 
 type block struct {

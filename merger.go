@@ -4,7 +4,7 @@
 
 package pebble
 
-import "github.com/petermattis/pebble/internal/base"
+import "github.com/cockroachdb/pebble/internal/base"
 
 // Merge exports the base.Merge type.
 type Merge = base.Merge

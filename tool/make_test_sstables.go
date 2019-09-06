@@ -10,8 +10,8 @@ package main
 import (
 	"log"
 
-	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 func makeOutOfOrder() {

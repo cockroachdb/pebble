@@ -4,7 +4,7 @@
 
 package rangedel
 
-import "github.com/petermattis/pebble/internal/base"
+import "github.com/cockroachdb/pebble/internal/base"
 
 // iterator is a subset of the pebble.internalIterator interface needed for
 // range deletion iteration.

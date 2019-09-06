@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/cache"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )

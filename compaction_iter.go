@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/petermattis/pebble/internal/bytealloc"
-	"github.com/petermattis/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 // compactionIter provides a forward-only iterator that encapsulates the logic

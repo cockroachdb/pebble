@@ -14,9 +14,9 @@ import (
 	"math"
 
 	"github.com/golang/snappy"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/crc"
-	"github.com/petermattis/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 // WriterMetadata holds info about a finished sstable.

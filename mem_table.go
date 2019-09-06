@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/petermattis/pebble/internal/arenaskl"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/arenaskl"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint32 {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 func TestIter(t *testing.T) {

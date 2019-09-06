@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 func ikey(s string) InternalKey {

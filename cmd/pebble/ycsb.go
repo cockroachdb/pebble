@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/internal/ackseq"
-	"github.com/petermattis/pebble/internal/randvar"
-	"github.com/petermattis/pebble/internal/rate"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/ackseq"
+	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )

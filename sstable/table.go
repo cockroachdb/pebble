@@ -60,14 +60,14 @@ To write a table with three entries:
 	}
 	return w.Close()
 */
-package sstable // import "github.com/petermattis/pebble/sstable"
+package sstable // import "github.com/cockroachdb/pebble/sstable"
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 /*
