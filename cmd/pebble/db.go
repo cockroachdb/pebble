@@ -57,7 +57,7 @@ func newPebbleDB(dir string) DB {
 		MinCompactionRate:           4 << 20, // 4 MB/s
 		MinFlushRate:                1 << 20, // 1 MB/s
 		L0CompactionThreshold:       2,
-		L0StopWritesThreshold:       32,
+		L0StopWritesThreshold:       400,
 		LBaseMaxBytes:               64 << 20, // 64 MB
 		Levels: []pebble.LevelOptions{{
 			BlockSize: 32 << 10,
