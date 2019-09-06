@@ -4,7 +4,7 @@
 
 package rangedel
 
-import "github.com/petermattis/pebble/internal/base"
+import "github.com/cockroachdb/pebble/internal/base"
 
 // Iter is an iterator over a set of fragmented tombstones.
 type Iter struct {

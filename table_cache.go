@@ -13,9 +13,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/sstable"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 const defaultTableCacheHitBuffer = 64

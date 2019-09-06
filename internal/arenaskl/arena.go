@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/petermattis/pebble/internal/rawalloc"
+	"github.com/cockroachdb/pebble/internal/rawalloc"
 )
 
 // Arena is lock-free.

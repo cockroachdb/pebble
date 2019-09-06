@@ -41,7 +41,7 @@ Key differences:
 - Iterator includes mutator functions.
 */
 
-package arenaskl // import "github.com/petermattis/pebble/internal/arenaskl"
+package arenaskl // import "github.com/cockroachdb/pebble/internal/arenaskl"
 
 import (
 	"encoding/binary"
@@ -53,7 +53,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 	"golang.org/x/exp/rand"
 )
 

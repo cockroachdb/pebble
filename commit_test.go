@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/internal/arenaskl"
-	"github.com/petermattis/pebble/internal/record"
+	"github.com/cockroachdb/pebble/internal/arenaskl"
+	"github.com/cockroachdb/pebble/internal/record"
 	"golang.org/x/exp/rand"
 )
 

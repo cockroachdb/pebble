@@ -7,9 +7,9 @@ package main
 import (
 	"log"
 
-	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/cache"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 )
 
 // DB specifies the minimal interfaces that need to be implemented to support

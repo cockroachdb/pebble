@@ -51,7 +51,7 @@ Key differences:
 - Node storage grows to an arbitrary size.
 */
 
-package batchskl // import "github.com/petermattis/pebble/internal/batchskl"
+package batchskl // import "github.com/cockroachdb/pebble/internal/batchskl"
 
 import (
 	"bytes"
@@ -61,7 +61,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 	"golang.org/x/exp/rand"
 )
 

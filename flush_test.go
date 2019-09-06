@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/petermattis/pebble/internal/datadriven"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 func TestManualFlush(t *testing.T) {

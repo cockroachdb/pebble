@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/petermattis/pebble/cache"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/cache"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // Compression is the per-block compression algorithm to use.

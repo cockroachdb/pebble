@@ -5,7 +5,7 @@
 package pebble
 
 import (
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // Logger exports the base.Logger type.

@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/petermattis/pebble"
+	"github.com/cockroachdb/pebble"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )

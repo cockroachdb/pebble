@@ -5,7 +5,7 @@
 package pebble
 
 import (
-	"github.com/petermattis/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 // getIter is an internal iterator used to perform gets. It iterates through

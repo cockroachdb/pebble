@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // internalIterAdapter adapts the new internalIterator interface which returns

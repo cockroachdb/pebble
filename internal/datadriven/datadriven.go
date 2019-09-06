@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package datadriven // import "github.com/petermattis/pebble/internal/datadriven"
+package datadriven // import "github.com/cockroachdb/pebble/internal/datadriven"
 
 import (
 	"bufio"

@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/petermattis/pebble/internal/record"
+	"github.com/cockroachdb/pebble/internal/record"
 )
 
 // The maximum concurrency allowed for commit operations. This limit is

@@ -1,6 +1,6 @@
 goos: darwin
 goarch: amd64
-pkg: github.com/petermattis/pebble
+pkg: github.com/cockroachdb/pebble
 BenchmarkBatchSet-8          	50000000	        28.0 ns/op
 BenchmarkBatchSet-8          	50000000	        27.7 ns/op
 BenchmarkBatchSet-8          	50000000	        28.0 ns/op
@@ -402,4 +402,4 @@ BenchmarkRangeDelIterate/entries=100000/deleted=99999-8          	 1000000	     
 BenchmarkRangeDelIterate/entries=100000/deleted=99999-8          	 1000000	      2196 ns/op
 BenchmarkRangeDelIterate/entries=100000/deleted=99999-8          	 1000000	      2179 ns/op
 PASS
-ok  	github.com/petermattis/pebble	918.951s
+ok  	github.com/cockroachdb/pebble	918.951s

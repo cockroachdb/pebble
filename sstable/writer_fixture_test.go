@@ -22,8 +22,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/petermattis/pebble/bloom"
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 const (

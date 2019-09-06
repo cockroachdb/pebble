@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/codahale/hdrhistogram"
-	"github.com/petermattis/pebble"
+	"github.com/cockroachdb/pebble"
 )
 
 const (

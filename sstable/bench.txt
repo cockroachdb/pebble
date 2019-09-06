@@ -1,6 +1,6 @@
 goos: darwin
 goarch: amd64
-pkg: github.com/petermattis/pebble/sstable
+pkg: github.com/cockroachdb/pebble/sstable
 BenchmarkBlockIterSeekGE/restart=16-8         	 5000000	       351 ns/op
 BenchmarkBlockIterSeekGE/restart=16-8         	 5000000	       350 ns/op
 BenchmarkBlockIterSeekGE/restart=16-8         	 5000000	       351 ns/op
@@ -92,4 +92,4 @@ BenchmarkDecodeVarint-8                       	500000000	         3.82 ns/op
 BenchmarkDecodeVarint-8                       	500000000	         3.78 ns/op
 BenchmarkDecodeVarint-8                       	500000000	         3.84 ns/op
 PASS
-ok  	github.com/petermattis/pebble/sstable	210.804s
+ok  	github.com/cockroachdb/pebble/sstable	210.804s

@@ -7,9 +7,9 @@ package tool
 import (
 	"fmt"
 
-	"github.com/petermattis/pebble"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/sstable"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
 )
 

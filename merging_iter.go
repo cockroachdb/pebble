@@ -8,8 +8,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 // mergingIter provides a merged view of multiple iterators from different

@@ -4,7 +4,7 @@
 
 package rangedel
 
-import "github.com/petermattis/pebble/internal/base"
+import "github.com/cockroachdb/pebble/internal/base"
 
 // invalidate the specified iterator by moving it past the last entry.
 func invalidate(iter iterator) {

@@ -11,10 +11,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/manifest"
-	"github.com/petermattis/pebble/internal/record"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 const numLevels = manifest.NumLevels

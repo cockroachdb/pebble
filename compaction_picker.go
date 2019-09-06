@@ -7,7 +7,7 @@ package pebble
 import (
 	"math"
 
-	"github.com/petermattis/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // compactionPicker holds the state and logic for picking a compaction. A

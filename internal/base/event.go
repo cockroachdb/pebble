@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/petermattis/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/humanize"
 )
 
 // TableInfo contains the common information for table related events.

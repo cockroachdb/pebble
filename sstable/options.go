@@ -4,7 +4,7 @@
 
 package sstable
 
-import "github.com/petermattis/pebble/internal/base"
+import "github.com/cockroachdb/pebble/internal/base"
 
 // Compression exports the base.Compression type.
 type Compression = base.Compression

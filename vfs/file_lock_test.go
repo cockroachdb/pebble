@@ -12,7 +12,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 var lockFilename = flag.String("lockfile", "", "File to lock. A non-empty value implies a child process.")

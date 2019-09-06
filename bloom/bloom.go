@@ -3,13 +3,13 @@
 // the LICENSE file.
 
 // Package bloom implements Bloom filters.
-package bloom // import "github.com/petermattis/pebble/bloom"
+package bloom // import "github.com/cockroachdb/pebble/bloom"
 
 import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/petermattis/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 const (

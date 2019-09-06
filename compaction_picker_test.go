@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petermattis/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 func loadVersion(d *datadriven.TestData) (*version, *Options, string) {

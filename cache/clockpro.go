@@ -17,7 +17,7 @@ The original paper: http://static.usenix.org/event/usenix05/tech/general/full_pa
 
 It is MIT licensed, like the original.
 */
-package cache // import "github.com/petermattis/pebble/cache"
+package cache // import "github.com/cockroachdb/pebble/cache"
 
 import (
 	"runtime"

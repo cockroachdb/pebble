@@ -14,11 +14,11 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/petermattis/pebble/internal/arenaskl"
-	"github.com/petermattis/pebble/internal/base"
-	"github.com/petermattis/pebble/internal/rate"
-	"github.com/petermattis/pebble/internal/record"
-	"github.com/petermattis/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/arenaskl"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rate"
+	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 var dbNumAlloc = struct {

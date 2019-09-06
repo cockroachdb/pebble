@@ -1,6 +1,6 @@
 goos: darwin
 goarch: amd64
-pkg: github.com/petermattis/pebble/internal/arenaskl
+pkg: github.com/cockroachdb/pebble/internal/arenaskl
 BenchmarkReadWrite/frac_0           	 1000000	      1467 ns/op
 BenchmarkReadWrite/frac_0           	 1000000	      1441 ns/op
 BenchmarkReadWrite/frac_0           	 1000000	      1417 ns/op
@@ -282,4 +282,4 @@ BenchmarkIterPrev-8                 	500000000	         3.93 ns/op
 BenchmarkIterPrev-8                 	500000000	         3.87 ns/op
 BenchmarkIterPrev-8                 	500000000	         3.89 ns/op
 PASS
-ok  	github.com/petermattis/pebble/internal/arenaskl	653.540s
+ok  	github.com/cockroachdb/pebble/internal/arenaskl	653.540s
