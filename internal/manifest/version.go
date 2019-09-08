@@ -322,33 +322,9 @@ func (v *Version) Overlaps(
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
 func (v *Version) CheckOrdering(cmp Compare, format base.Formatter) error {
-	for level, ff := range v.Files {
-		if level == 0 {
-			for i := 1; i < len(ff); i++ {
-				prev := &ff[i-1]
-				f := &ff[i]
-				if prev.LargestSeqNum >= f.LargestSeqNum {
-					return fmt.Errorf("level 0 files are not in increasing largest seqNum order: %d, %d",
-						prev.LargestSeqNum, f.LargestSeqNum)
-				}
-				if prev.SmallestSeqNum >= f.SmallestSeqNum {
-					return fmt.Errorf("level 0 files are not in increasing smallest seqNum order: %d, %d",
-						prev.SmallestSeqNum, f.SmallestSeqNum)
-				}
-			}
-		} else {
-			for i := 1; i < len(ff); i++ {
-				prev := &ff[i-1]
-				f := &ff[i]
-				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
-					return fmt.Errorf("level non-0 files are not in increasing ikey order: %s, %s\n%s",
-						prev.Largest.Pretty(format), f.Smallest.Pretty(format), v.DebugString(format))
-				}
-				if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
-					return fmt.Errorf("level non-0 file has inconsistent bounds: %s, %s",
-						f.Smallest.Pretty(format), f.Largest.Pretty(format))
-				}
-			}
+	for level, files := range v.Files {
+		if err := CheckOrdering(cmp, format, level, files); err != nil {
+			return fmt.Errorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
 	return nil
@@ -411,4 +387,40 @@ func (l *VersionList) Remove(v *Version) {
 	v.next = nil // avoid memory leaks
 	v.prev = nil // avoid memory leaks
 	v.list = nil // avoid memory leaks
+}
+
+// CheckOrdering checks that the files are consistent with respect to
+// increasing file numbers (for level 0 files) and increasing and non-
+// overlapping internal key ranges (for non-level 0 files).
+func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMetadata) error {
+	if level == 0 {
+		for i := 1; i < len(files); i++ {
+			prev := &files[i-1]
+			f := &files[i]
+			if prev.LargestSeqNum >= f.LargestSeqNum {
+				return fmt.Errorf("L0 files %06d and %06d are not in increasing largest seqnum order: %d vs %d",
+					prev.FileNum, f.FileNum, prev.LargestSeqNum, f.LargestSeqNum)
+			}
+			if prev.SmallestSeqNum >= f.SmallestSeqNum {
+				return fmt.Errorf("L0 files %06d and %06d are not in increasing smallest seqnum order: %d vs %d",
+					prev.FileNum, f.FileNum, prev.SmallestSeqNum, f.SmallestSeqNum)
+			}
+		}
+	} else {
+		for i := 0; i < len(files); i++ {
+			f := &files[i]
+			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
+				return fmt.Errorf("L%d file %06d has inconsistent bounds: %s vs %s",
+					level, f.FileNum, f.Smallest.Pretty(format), f.Largest.Pretty(format))
+			}
+			if i > 0 {
+				prev := &files[i-1]
+				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
+					return fmt.Errorf("L%d files %06d and %06d are not in increasing key order: %s vs %s",
+						level, prev.FileNum, f.FileNum, prev.Largest.Pretty(format), f.Smallest.Pretty(format))
+				}
+			}
+		}
+	}
+	return nil
 }

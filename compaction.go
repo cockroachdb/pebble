@@ -48,6 +48,8 @@ func totalSize(f []fileMetadata) (size uint64) {
 // given version.
 type compaction struct {
 	cmp     Compare
+	format  base.Formatter
+	logger  base.Logger
 	version *version
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
@@ -121,6 +123,8 @@ func newCompaction(
 
 	return &compaction{
 		cmp:                 opts.Comparer.Compare,
+		format:              opts.Comparer.Format,
+		logger:              opts.Logger,
 		version:             cur,
 		startLevel:          startLevel,
 		outputLevel:         outputLevel,
@@ -140,6 +144,8 @@ func newFlush(
 ) *compaction {
 	c := &compaction{
 		cmp:                 opts.Comparer.Compare,
+		format:              opts.Comparer.Format,
+		logger:              opts.Logger,
 		version:             cur,
 		startLevel:          -1,
 		outputLevel:         0,
@@ -510,6 +516,15 @@ func (c *compaction) newInputIter(
 			}
 		}
 		return newMergingIter(c.cmp, iters...), nil
+	}
+
+	// Check that the LSM ordering invariants are ok in order to prevent
+	// generating corrupted sstables due to a violation of those invariants.
+	if err := manifest.CheckOrdering(c.cmp, c.format, c.startLevel, c.inputs[0]); err != nil {
+		c.logger.Fatalf("%s", err)
+	}
+	if err := manifest.CheckOrdering(c.cmp, c.format, c.outputLevel, c.inputs[1]); err != nil {
+		c.logger.Fatalf("%s", err)
 	}
 
 	iters := make([]internalIterator, 0, 2*len(c.inputs[0])+1)

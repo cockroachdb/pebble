@@ -1093,3 +1093,86 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			}
 		})
 }
+
+func TestCompactionCheckOrdering(t *testing.T) {
+	parseMeta := func(s string) fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		m := fileMetadata{
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		return m
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_check_ordering",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "check-ordering":
+				c := &compaction{
+					cmp:         DefaultComparer.Compare,
+					format:      DefaultComparer.Format,
+					logger:      panicLogger{},
+					startLevel:  -1,
+					outputLevel: -1,
+				}
+				var files *[]fileMetadata
+				fileNum := uint64(1)
+
+				for _, data := range strings.Split(d.Input, "\n") {
+					switch data {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err := strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+						if c.startLevel == -1 {
+							c.startLevel = level
+							files = &c.inputs[0]
+						} else if c.outputLevel == -1 {
+							if c.startLevel >= level {
+								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel, level)
+							}
+							c.outputLevel = level
+							files = &c.inputs[1]
+						} else {
+							return fmt.Sprintf("outputLevel already set\n")
+						}
+
+					default:
+						meta := parseMeta(data)
+						meta.FileNum = fileNum
+						fileNum++
+						*files = append(*files, meta)
+					}
+				}
+
+				// Note that we configure a panicLogger to be used when a fatal error
+				// is logged. If a panic occurs, we catch the value and transform it
+				// back into a string stored in result.
+				result := "OK"
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							result = fmt.Sprint(r)
+						}
+					}()
+
+					newIters := func(
+						_ *fileMetadata, _ *IterOptions, _ *uint64,
+					) (internalIterator, internalIterator, error) {
+						return &errorIter{}, nil, nil
+					}
+					_, _ = c.newInputIter(newIters)
+				}()
+				return result
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
