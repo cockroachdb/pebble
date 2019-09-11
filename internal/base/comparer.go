@@ -7,20 +7,17 @@ package base
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"strconv"
+	"unicode/utf8"
 )
 
-// TODO(tbg): introduce a FeasibleKey type to make things clearer.
-
-// Compare returns -1, 0, or +1 depending on whether a is 'less than',
-// 'equal to' or 'greater than' b. The two arguments can only be 'equal'
-// if their contents are exactly equal. Furthermore, the empty slice
-// must be 'less than' any non-empty slice.
-//
-// TODO(tbg): clarify what keys this needs to compare. It definitely needs to
-// compare feasible keys (i.e. any user keys, but also those returned by
-// Successor and Separator), as well as keys returned by Split (which are not
-// themselves feasible, but are feasible keys with their version suffix
-// trimmmed). Anything else?
+// Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
+// to' or 'greater than' b. The two arguments can only be 'equal' if their
+// contents are exactly equal. Furthermore, the empty slice must be 'less than'
+// any non-empty slice. Compare is used to compare user keys, such as those
+// passed as arguments to the various DB methods, as well as those returned
+// from Separator, Successor, and Split.
 type Compare func(a, b []byte) int
 
 // Equal returns true if a and b are equivalent. For a given Compare,
@@ -38,16 +35,19 @@ type Equal func(a, b []byte) bool
 // of the user key prefix in the order that gives the correct ordering.
 type AbbreviatedKey func(key []byte) uint64
 
-// Given feasible keys a, b for which Compare(a, b) < 0, Separator returns a
-// feasible key k such that:
+// Formatter returns a formatter for the user key.
+type Formatter func(key []byte) fmt.Formatter
+
+// Separator is used to construct SSTable index blocks. A trivial implementation
+// is `return a`, but appending fewer bytes leads to smaller SSTables.
+//
+// Given keys a, b for which Compare(a, b) < 0, Separator returns a key k such
+// that:
 //
 // 1. Compare(a, k) <= 0, and
 // 2. Compare(k, b) < 0.
 //
 // As a special case, b may be nil in which case the second condition is dropped.
-//
-// Separator is used to construct SSTable index blocks. A trivial implementation
-// is `return a`, but appending fewer bytes leads to smaller SSTables.
 //
 // For example, if dst, a and b are the []byte equivalents of the strings
 // "aqua", "black" and "blue", then the result may be "aquablb".
@@ -55,30 +55,26 @@ type AbbreviatedKey func(key []byte) uint64
 // may be "aquah".
 type Separator func(dst, a, b []byte) []byte
 
-// Given a feasible key a, Successor returns feasible key k such that Compare(k,
-// a) >= 0. A simple implementation may return a unchanged. The dst parameter
-// may be used to store the returned key, though it is valid to pass a nil. The
-// returned key must be feasible.
-//
-// TODO(tbg) it seems that Successor is just the special case of Separator in
-// which b is nil. Can we remove this?
+// Successor returns a shortened key given a key a, such that Compare(k, a) >=
+// 0. A simple implementation may return a unchanged. The dst parameter may be
+// used to store the returned key, though it is valid to pass nil. The returned
+// key must be valid to pass to Compare.
 type Successor func(dst, a []byte) []byte
 
 // Split returns the length of the prefix of the user key that corresponds to
 // the key portion of an MVCC encoding scheme to enable the use of prefix bloom
 // filters.
 //
-// The method will only ever be called with feasible keys, that is, keys that
-// the user could potentially store in the database. Typically this means
-// that the method must only handle valid MVCC encoded keys and should panic
-// on any other input.
+// The method will only ever be called with valid MVCC keys, that is, keys that
+// the user could potentially store in the database. Typically this means that
+// the method must only handle valid MVCC encoded keys and should panic on any
+// other input.
 //
 // A trivial MVCC scheme is one in which Split() returns len(a). This
 // corresponds to assigning a constant version to each key in the database. For
 // performance reasons, it is preferable to use a `nil` split in this case.
 //
-// The returned prefix must have the following properties (where a and b are
-// feasible):
+// The returned prefix must have the following properties:
 //
 // 1) bytes.HasPrefix(a, prefix(a))
 // 2) Compare(prefix(a), a) <= 0,
@@ -92,6 +88,7 @@ type Comparer struct {
 	Compare        Compare
 	Equal          Equal
 	AbbreviatedKey AbbreviatedKey
+	Format         Formatter
 	Separator      Separator
 	Split          Split
 	Successor      Successor
@@ -102,6 +99,12 @@ type Comparer struct {
 	// database with a different comparer from the one it was created with
 	// will result in an error.
 	Name string
+}
+
+// DefaultFormatter is the default implementation of user key formatting:
+// non-ASCII data is formatted as escaped hexadecimal values.
+var DefaultFormatter = func(key []byte) fmt.Formatter {
+	return FormatBytes(key)
 }
 
 // DefaultComparer is the default implementation of the Comparer interface.
@@ -121,6 +124,8 @@ var DefaultComparer = &Comparer{
 		}
 		return v << uint(8*(8-len(key)))
 	},
+
+	Format: DefaultFormatter,
 
 	Separator: func(dst, a, b []byte) []byte {
 		i, n := SharedPrefixLen(a, b), len(dst)
@@ -156,7 +161,7 @@ var DefaultComparer = &Comparer{
 		return dst
 	},
 
-	Successor: func(dst, a []byte) []byte {
+	Successor: func(dst, a []byte) (ret []byte) {
 		for i := 0; i < len(a); i++ {
 			if a[i] != 0xff {
 				dst = append(dst, a[:i+1]...)
@@ -164,6 +169,7 @@ var DefaultComparer = &Comparer{
 				return dst
 			}
 		}
+		// a is a run of 0xffs, leave it alone.
 		return append(dst, a...)
 	},
 
@@ -183,4 +189,25 @@ func SharedPrefixLen(a, b []byte) int {
 		i++
 	}
 	return i
+}
+
+// FormatBytes formats a byte slice using hexadecimal escapes for non-ASCII
+// data.
+type FormatBytes []byte
+
+const lowerhex = "0123456789abcdef"
+
+// Format implements the fmt.Formatter interface.
+func (p FormatBytes) Format(s fmt.State, c rune) {
+	buf := make([]byte, 0, len(p))
+	for _, b := range p {
+		if b < utf8.RuneSelf && strconv.IsPrint(rune(b)) {
+			buf = append(buf, b)
+			continue
+		}
+		buf = append(buf, `\x`...)
+		buf = append(buf, lowerhex[byte(b)>>4])
+		buf = append(buf, lowerhex[byte(b)&0xF])
+	}
+	s.Write(buf)
 }

@@ -137,7 +137,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 
 	lsm := func() string {
 		d.mu.Lock()
-		s := d.mu.versions.currentVersion().DebugString()
+		s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 		d.mu.Unlock()
 		return s
 	}

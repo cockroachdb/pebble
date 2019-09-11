@@ -116,23 +116,17 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "    %s(", kind)
 					switch kind {
 					case base.InternalKeyKindDelete:
-						w.fmtKey.fn(stdout, ukey)
+						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindSet:
-						w.fmtKey.fn(stdout, ukey)
-						stdout.Write([]byte{','})
-						w.fmtValue.fn(stdout, value)
+						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtValue.fn(value))
 					case base.InternalKeyKindMerge:
-						w.fmtKey.fn(stdout, ukey)
-						stdout.Write([]byte{','})
-						w.fmtValue.fn(stdout, value)
+						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtValue.fn(value))
 					case base.InternalKeyKindLogData:
-						w.fmtValue.fn(stdout, ukey)
+						fmt.Fprintf(stdout, "%s", w.fmtValue.fn(value))
 					case base.InternalKeyKindSingleDelete:
-						w.fmtKey.fn(stdout, ukey)
+						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindRangeDelete:
-						w.fmtKey.fn(stdout, ukey)
-						stdout.Write([]byte{','})
-						w.fmtKey.fn(stdout, value)
+						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtKey.fn(value))
 					}
 					fmt.Fprintf(stdout, ")\n")
 				}

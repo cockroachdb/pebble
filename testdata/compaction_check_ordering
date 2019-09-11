@@ -1,0 +1,90 @@
+check-ordering
+L0
+  a.SET.1-b.SET.2
+----
+OK
+
+check-ordering
+L0
+  a.SET.1-b.SET.2
+  c.SET.3-d.SET.4
+----
+OK
+
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.2
+----
+fatal: L0 files 000001 and 000002 are not in increasing largest seqnum order: 4 vs 2
+
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+----
+fatal: L0 files 000001 and 000002 are not in increasing smallest seqnum order: 3 vs 1
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+----
+OK
+
+check-ordering
+L1
+  b.SET.1-a.SET.2
+----
+fatal: L1 file 000001 has inconsistent bounds: b#1,1 vs a#2,1
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  c.SET.3-d.SET.4
+----
+OK
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  d.SET.3-c.SET.4
+----
+fatal: L1 file 000002 has inconsistent bounds: d#3,1 vs c#4,1
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  b.SET.1-d.SET.4
+----
+OK
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  b.SET.2-d.SET.4
+----
+fatal: L1 files 000001 and 000002 are not in increasing key order: b#2,1 vs b#2,1
+
+check-ordering
+L1
+  a.SET.1-c.SET.2
+  b.SET.3-d.SET.4
+----
+fatal: L1 files 000001 and 000002 are not in increasing key order: c#2,1 vs b#3,1
+
+check-ordering
+L1
+  a.SET.1-c.SET.2
+L2
+  b.SET.3-d.SET.4
+----
+OK
+
+check-ordering
+L1
+  a.SET.1-c.SET.2
+L2
+  b.SET.3-d.SET.4
+  c.SET.5-e.SET.6
+----
+fatal: L2 files 000002 and 000003 are not in increasing key order: d#4,1 vs c#5,1

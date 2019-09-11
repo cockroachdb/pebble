@@ -13,10 +13,10 @@ import (
 	"io"
 	"math"
 
-	"github.com/golang/snappy"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/golang/snappy"
 )
 
 // WriterMetadata holds info about a finished sstable.
@@ -96,6 +96,7 @@ type Writer struct {
 	indexBlockSizeThreshold int
 	compare                 Compare
 	split                   Split
+	formatter               base.Formatter
 	compression             Compression
 	separator               Separator
 	successor               Successor
@@ -217,7 +218,8 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	if base.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
-		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", w.meta.LargestPoint, key)
+		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+			w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
 		return w.err
 	}
 
@@ -259,26 +261,28 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		prevKey := base.DecodeInternalKey(w.rangeDelBlock.curKey)
 		switch c := w.compare(prevKey.UserKey, key.UserKey); {
 		case c > 0:
-			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
+			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+				prevKey.Pretty(w.formatter), key.Pretty(w.formatter))
 			return w.err
 		case c == 0:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
 				w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					rangedel.Tombstone{Start: prevKey, End: prevValue},
-					rangedel.Tombstone{Start: key, End: value})
+					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatter),
+					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatter))
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
-				w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s", prevKey, key)
+				w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+					prevKey.Pretty(w.formatter), key.Pretty(w.formatter))
 				return w.err
 			}
 		default:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
 				w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					rangedel.Tombstone{Start: prevKey, End: prevValue},
-					rangedel.Tombstone{Start: key, End: value})
+					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatter),
+					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatter))
 				return w.err
 			}
 		}
@@ -688,6 +692,7 @@ func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 		indexBlockSizeThreshold: (lo.IndexBlockSize*lo.BlockSizeThreshold + 99) / 100,
 		compare:                 o.Comparer.Compare,
 		split:                   o.Comparer.Split,
+		formatter:               o.Comparer.Format,
 		compression:             lo.Compression,
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
