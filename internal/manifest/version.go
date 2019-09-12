@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -260,27 +261,33 @@ func (v *Version) Overlaps(
 	level int, cmp Compare, start, end []byte,
 ) (ret []FileMetadata) {
 	if level == 0 {
-		// The sstables in level 0 can overlap with each other. As soon as we find
-		// one sstable that overlaps with our target range, we need to expand the
-		// range and find all sstables that overlap with the expanded range.
-	loop:
+		fmt.Fprintf(os.Stdout, "start: %s, end: %s\n", start, end)
+		var rejectedIndices []int
+		var indicesToTry []int
+		for i := 0; i < len(v.Files[level]); i++ {
+			indicesToTry = append(indicesToTry, i)
+		}
+		restart := false
 		for {
-			for _, meta := range v.Files[level] {
-				smallest := meta.Smallest.UserKey
-				largest := meta.Largest.UserKey
+			for _, i := range indicesToTry {
+				smallest := v.Files[level][i].Smallest.UserKey
+				largest := v.Files[level][i].Largest.UserKey
 				if cmp(largest, start) < 0 {
-					// meta is completely before the specified range; skip it.
+					// file is completely before the specified range; skip it.
+					rejectedIndices = append(rejectedIndices, i)
 					continue
 				}
 				if cmp(smallest, end) > 0 {
-					// meta is completely after the specified range; skip it.
+					// file is completely after the specified range; skip it.
+					rejectedIndices = append(rejectedIndices, i)
 					continue
 				}
-				ret = append(ret, meta)
+				fmt.Fprintf(os.Stdout, "start: %s, end: %s, index: %d\n", start, end, i)
+				ret = append(ret, v.Files[level][i])
 
 				// If level == 0, check if the newly added fileMetadata has
-				// expanded the range. If so, restart the search.
-				restart := false
+				// expanded the range. Expand the range immediately for files
+				// we have not yet checked.
 				if cmp(smallest, start) < 0 {
 					start = smallest
 					restart = true
@@ -289,15 +296,19 @@ func (v *Version) Overlaps(
 					end = largest
 					restart = true
 				}
-				if restart {
-					ret = ret[:0]
-					continue loop
-				}
 			}
-			return ret
-		}
-	}
 
+			if restart {
+				// Need to retry the files we had rejected.
+				indicesToTry = append(indicesToTry[:0], rejectedIndices...)
+				rejectedIndices = rejectedIndices[:0]
+				restart = false
+			} else {
+				break;
+			}
+		}
+		return 
+	}
 	// Binary search to find the range of files which overlaps with our target
 	// range.
 	files := v.Files[level]
