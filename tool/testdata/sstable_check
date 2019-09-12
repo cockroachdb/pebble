@@ -3,4 +3,52 @@ sstable check
 ----
 ../sstable/testdata/h.sst
 
-# TODO(peter): generate an sstable with corruption
+sstable check
+testdata/out-of-order.sst
+----
+testdata/out-of-order.sst
+WARNING: OUT OF ORDER KEYS!
+    c#0,1 >= b#0,1
+
+sstable check
+--key=%x
+testdata/out-of-order.sst
+----
+testdata/out-of-order.sst
+WARNING: OUT OF ORDER KEYS!
+    63#0,1 >= 62#0,1
+
+sstable check
+--key=pretty
+testdata/out-of-order.sst
+----
+testdata/out-of-order.sst
+WARNING: OUT OF ORDER KEYS!
+    c#0,1 >= b#0,1
+
+sstable check
+--key=pretty:test-comparer
+testdata/out-of-order.sst
+----
+testdata/out-of-order.sst
+WARNING: OUT OF ORDER KEYS!
+    test formatter: c#0,1 >= test formatter: b#0,1
+
+sstable check
+--key=null
+testdata/out-of-order.sst
+----
+testdata/out-of-order.sst
+WARNING: OUT OF ORDER KEYS!
+
+sstable check
+testdata/corrupted.sst
+----
+testdata/corrupted.sst
+pebble/table: invalid table (checksum mismatch)
+
+sstable check
+testdata/bad-magic.sst
+----
+testdata/bad-magic.sst
+pebble/table: invalid table (bad magic number)
