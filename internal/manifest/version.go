@@ -261,16 +261,22 @@ func (v *Version) Next() *Version {
 // may touch). If level is zero then that assumption cannot be made, and the
 // [start, end] range is expanded to the union of those matching ranges so far
 // and the computation is repeated until [start, end] stabilizes.
+// The returned files are a subsequence of the input files, i.e., the ordering
+// is not changed.
 func (v *Version) Overlaps(
 	level int, cmp Compare, start, end []byte,
 ) (ret []FileMetadata) {
 	if level == 0 {
-		// The sstables in level 0 can overlap with each other. As soon as we find
-		// one sstable that overlaps with our target range, we need to expand the
-		// range and find all sstables that overlap with the expanded range.
-	loop:
+		// Indices that have been selected as overlapping.
+		selectedIndices := make([]bool, len(v.Files[level]))
+		numSelected := 0
 		for {
-			for _, meta := range v.Files[level] {
+			restart := false
+			for i, selected := range selectedIndices {
+				if selected {
+					continue
+				}
+				meta := &v.Files[level][i]
 				smallest := meta.Smallest.UserKey
 				largest := meta.Largest.UserKey
 				if cmp(largest, start) < 0 {
@@ -281,11 +287,15 @@ func (v *Version) Overlaps(
 					// meta is completely after the specified range; skip it.
 					continue
 				}
-				ret = append(ret, meta)
+				// Overlaps.
+				selectedIndices[i] = true
+				numSelected++
 
-				// If level == 0, check if the newly added fileMetadata has
-				// expanded the range. If so, restart the search.
-				restart := false
+				// Since level == 0, check if the newly added fileMetadata has
+				// expanded the range. We expand the range immediately for files
+				// we have remaining to check in this loop. All already checked
+				// and unselected files will need to be rechecked via the
+				// restart below.
 				if cmp(smallest, start) < 0 {
 					start = smallest
 					restart = true
@@ -294,15 +304,21 @@ func (v *Version) Overlaps(
 					end = largest
 					restart = true
 				}
-				if restart {
-					ret = ret[:0]
-					continue loop
-				}
 			}
-			return ret
-		}
-	}
 
+			if !restart {
+				ret = make([]FileMetadata, 0, numSelected)
+				for i, selected := range selectedIndices {
+					if selected {
+						ret = append(ret, v.Files[level][i])
+					}
+				}
+				break
+			}
+			// Continue looping to retry the files that were not selected.
+		}
+		return
+	}
 	// Binary search to find the range of files which overlaps with our target
 	// range.
 	files := v.Files[level]
