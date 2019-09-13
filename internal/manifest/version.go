@@ -265,22 +265,22 @@ func (v *Version) Overlaps(
 		// Indices that have been selected as overlapping.
 		selectedIndices := make([]bool, len(v.Files[level]))
 		numSelected := 0
-		restart := false
 		for {
+			restart := false
 			for i, selected := range selectedIndices {
 				if selected { continue }
 				meta := &v.Files[level][i]
 				smallest := meta.Smallest.UserKey
 				largest := meta.Largest.UserKey
 				if cmp(largest, start) < 0 {
-					// file is completely before the specified range; skip it.
+					// meta is completely before the specified range; skip it.
 					continue
 				}
 				if cmp(smallest, end) > 0 {
-					// file is completely after the specified range; skip it.
+					// meta is completely after the specified range; skip it.
 					continue
 				}
-				// Overlaps
+				// Overlaps.
 				selectedIndices[i] = true
 				numSelected++
 
@@ -299,21 +299,16 @@ func (v *Version) Overlaps(
 				}
 			}
 
-			if restart {
-				// Need to retry the files we have not selected.
-				restart = false
-			} else {
-				// TODO: is there a better way to reserve numSelected in ret?
-				ret = append(ret, make([]FileMetadata, numSelected)...)
-				j := 0
+			if !restart {
+				ret = make([]FileMetadata, 0, numSelected)
 				for i, selected := range selectedIndices {
-					if (selected) {
-						ret[j] = v.Files[level][i]
-						j++
+					if selected {
+						ret = append(ret, v.Files[level][i])
 					}
 				}
 				break;
 			}
+			// Continue looping to retry the files that were not selected.
 		}
 		return
 	}
