@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 var stdout = io.Writer(os.Stdout)
@@ -50,8 +51,10 @@ func (k *key) Set(v string) error {
 }
 
 type formatter struct {
-	spec string
-	fn   base.Formatter
+	spec        string
+	fn          base.Formatter
+	setByUser   bool
+	comparer    string
 }
 
 func (f *formatter) String() string {
@@ -64,14 +67,28 @@ func (f *formatter) Type() string {
 
 func (f *formatter) Set(spec string) error {
 	f.spec = spec
+	f.setByUser = true
 	switch spec {
 	case "null":
 		f.fn = formatNull
 	case "quoted":
 		f.fn = formatQuoted
+	case "pretty":
+		// Using "pretty" defaults to base.FormatBytes (just like formatQuoted),
+		// except with the ability of having the comparer-provided formatter
+		// overwrite f.fn if there is one specified. We determine whether to
+		// do that overwrite through setByUser.
+		f.fn = formatQuoted
+		f.setByUser = false
 	case "size":
 		f.fn = formatSize
 	default:
+		if strings.HasPrefix(spec, "pretty:") {
+			// Usage: pretty:<comparer-name>
+			f.comparer = spec[7:]
+			f.fn = formatQuoted
+			return nil
+		}
 		if strings.Count(spec, "%") != 1 {
 			return fmt.Errorf("unknown formatter: %q", spec)
 		}
@@ -85,6 +102,27 @@ func (f *formatter) Set(spec string) error {
 func (f *formatter) mustSet(spec string) {
 	if err := f.Set(spec); err != nil {
 		panic(err)
+	}
+	f.setByUser = false
+}
+
+// Sets the appropriate formatter function for this comparer.
+func (f *formatter) setForComparer(comparerName string, comparers sstable.Comparers) {
+	if f.setByUser && len(f.comparer) == 0 {
+		// User specified a different formatter, no-op.
+		return
+	}
+
+	if len(f.comparer) > 0 {
+		// User specified a comparer to reference for formatting, which takes
+		// precedence.
+		comparerName = f.comparer
+	} else if len(comparerName) == 0 {
+		return
+	}
+
+	if cmp := comparers[comparerName]; cmp != nil && cmp.Format != nil {
+		f.fn = cmp.Format
 	}
 }
 
