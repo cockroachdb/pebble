@@ -50,8 +50,10 @@ func (k *key) Set(v string) error {
 }
 
 type formatter struct {
-	spec string
-	fn   base.Formatter
+	spec        string
+	fn          base.Formatter
+	setByUser   bool
+	comparer    string
 }
 
 func (f *formatter) String() string {
@@ -64,14 +66,28 @@ func (f *formatter) Type() string {
 
 func (f *formatter) Set(spec string) error {
 	f.spec = spec
+	f.setByUser = true
 	switch spec {
 	case "null":
 		f.fn = formatNull
 	case "quoted":
 		f.fn = formatQuoted
+	case "pretty":
+		// Using "pretty" defaults to base.FormatBytes (just like formatQuoted),
+		// except with the ability of having the comparer-provided formatter
+		// overwrite f.fn if there is one specified. We determine whether to
+		// do that overwrite through setByUser.
+		f.fn = formatQuoted
+		f.setByUser = false
 	case "size":
 		f.fn = formatSize
 	default:
+		if strings.HasPrefix(spec, "pretty:") {
+			// Usage: pretty:<comparer-name>
+			f.comparer = spec[7:]
+			f.fn = formatQuoted
+			return nil
+		}
 		if strings.Count(spec, "%") != 1 {
 			return fmt.Errorf("unknown formatter: %q", spec)
 		}
@@ -86,6 +102,7 @@ func (f *formatter) mustSet(spec string) {
 	if err := f.Set(spec); err != nil {
 		panic(err)
 	}
+	f.setByUser = false
 }
 
 type fmtFormatter struct {

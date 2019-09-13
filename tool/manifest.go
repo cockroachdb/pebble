@@ -93,8 +93,18 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					cmp = m.comparers[ve.ComparerName]
 					if cmp == nil {
 						fmt.Fprintf(stdout, " (unknown)")
+					} else if !m.fmtKey.setByUser && cmp.Format != nil {
+						m.fmtKey.fn = cmp.Format
 					}
 					fmt.Fprintf(stdout, "\n")
+				}
+				if len(m.fmtKey.comparer) > 0 {
+					for i := range m.comparers {
+						if m.comparers[i].Name == m.fmtKey.comparer && m.comparers[i].Format != nil {
+							m.fmtKey.fn = m.comparers[i].Format
+							break
+						}
+					}
 				}
 				if ve.LogNum != 0 {
 					empty = false

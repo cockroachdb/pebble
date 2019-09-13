@@ -52,7 +52,7 @@ func New() *T {
 	t.db = newDB(&t.opts, t.comparers, t.mergers)
 	t.manifest = newManifest(&t.opts, t.comparers)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)
-	t.wal = newWAL(&t.opts)
+	t.wal = newWAL(&t.opts, t.comparers)
 	t.Commands = []*cobra.Command{
 		t.db.Root,
 		t.manifest.Root,

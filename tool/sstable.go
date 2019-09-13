@@ -167,6 +167,20 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 				return
 			}
 
+			// Update the internal formatter if this comparator has one specified.
+			if !s.fmtKey.setByUser || len(s.fmtKey.comparer) > 0 {
+				comparerToFind := r.Properties.ComparerName
+				if len(s.fmtKey.comparer) > 0 {
+					comparerToFind = s.fmtKey.comparer
+				}
+				for i := range s.comparers {
+					if s.comparers[i].Name == comparerToFind && s.comparers[i].Format != nil {
+						s.fmtKey.fn = s.comparers[i].Format
+						break
+					}
+				}
+			}
+
 			l, err := r.Layout()
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
@@ -292,6 +306,20 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
+			}
+
+			// Update the internal formatter if this comparator has one specified.
+			if !s.fmtKey.setByUser || len(s.fmtKey.comparer) > 0 {
+				comparerToFind := r.Properties.ComparerName
+				if len(s.fmtKey.comparer) > 0 {
+					comparerToFind = s.fmtKey.comparer
+				}
+				for i := range s.comparers {
+					if s.comparers[i].Name == comparerToFind && s.comparers[i].Format != nil {
+						s.fmtKey.fn = s.comparers[i].Format
+						break
+					}
+				}
 			}
 
 			iter := r.NewIter(nil, s.end)
