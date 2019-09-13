@@ -80,7 +80,15 @@ func TestCommitPipeline(t *testing.T) {
 	var e testCommitEnv
 	p := newCommitPipeline(e.env())
 
-	const n = 10000
+	n := 10000
+	if raceEnabled {
+		// Under race builds we have to limit the concurrency or we hit the
+		// following error:
+		//
+		//   race: limit on 8128 simultaneously alive goroutines is exceeded, dying
+		n = 1000
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 0; i < n; i++ {
@@ -93,17 +101,17 @@ func TestCommitPipeline(t *testing.T) {
 	}
 	wg.Wait()
 
-	if s := atomic.LoadUint64(&e.writeCount); n != s {
+	if s := atomic.LoadUint64(&e.writeCount); uint64(n) != s {
 		t.Fatalf("expected %d written batches, but found %d", n, s)
 	}
 	if n != len(e.applyBuf.buf) {
 		t.Fatalf("expected %d written batches, but found %d",
 			n, len(e.applyBuf.buf))
 	}
-	if s := atomic.LoadUint64(&e.logSeqNum); n != s {
+	if s := atomic.LoadUint64(&e.logSeqNum); uint64(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
 	}
-	if s := atomic.LoadUint64(&e.visibleSeqNum); n != s {
+	if s := atomic.LoadUint64(&e.visibleSeqNum); uint64(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
 	}
 }

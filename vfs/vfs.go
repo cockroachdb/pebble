@@ -23,7 +23,7 @@ type File interface {
 	Sync() error
 }
 
-// OpenOptions provide an interface to do work on file handles in the Open()
+// OpenOption provide an interface to do work on file handles in the Open()
 // call.
 type OpenOption interface {
 	// Apply is called on the file handle after it's opened.
@@ -141,7 +141,6 @@ func (defaultFS) List(dir string) ([]string, error) {
 func (defaultFS) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)
 }
-
 
 type randomReadsOption struct{}
 

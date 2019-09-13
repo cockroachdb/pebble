@@ -229,10 +229,10 @@ func testIterator(
 			"sub-iterator errors",
 			[]internalIterator{
 				newFakeIterator(nil, "a0:0", "a1:1"),
-				newFakeIterator(errors.New("the sky is falling!"), "b2:2", "b3:3", "b4:4"),
-				newFakeIterator(errors.New("run for your lives!"), "c5:5", "c6:6"),
+				newFakeIterator(errors.New("the sky is falling"), "b2:2", "b3:3", "b4:4"),
+				newFakeIterator(errors.New("run for your lives"), "c5:5", "c6:6"),
 			},
-			"<a0:0><a1:1><b2:2><b3:3><b4:4>err=the sky is falling!",
+			"<a0:0><a1:1><b2:2><b3:3><b4:4>err=the sky is falling",
 		},
 	}
 	for _, tc := range testCases {

@@ -71,6 +71,9 @@ const (
 	linksSize   = int(unsafe.Sizeof(links{}))
 )
 
+// ErrExists indicates that a duplicate record was inserted. This should never
+// happen for normal usage of batchskl as every key should have a unique
+// sequence number.
 var ErrExists = errors.New("record with this key already exists")
 
 type links struct {

@@ -14,12 +14,12 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/golang/snappy"
 	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/golang/snappy"
 )
 
 // BlockHandle is the file offset and length of a block.
@@ -928,7 +928,7 @@ type weakCachedBlock struct {
 
 type blockTransform func([]byte) ([]byte, error)
 
-// OpenOptions provide an interface to do work on Reader while it is being
+// OpenOption provide an interface to do work on Reader while it is being
 // opened.
 type OpenOption interface {
 	// Apply is called on the reader its opened.
@@ -1070,20 +1070,19 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) Iterator {
 			twoLevelIterator: i,
 			bytesIterated:    bytesIterated,
 		}
-	} else {
-		i := singleLevelIterPool.Get().(*singleLevelIterator)
-		_ = i.Init(r, nil /* lower */, nil /* upper */)
-		return &compactionIterator{
-			singleLevelIterator: i,
-			bytesIterated:       bytesIterated,
-		}
+	}
+	i := singleLevelIterPool.Get().(*singleLevelIterator)
+	_ = i.Init(r, nil /* lower */, nil /* upper */)
+	return &compactionIterator{
+		singleLevelIterator: i,
+		bytesIterated:       bytesIterated,
 	}
 }
 
 // NewRangeDelIter returns an internal iterator for the contents of the
 // range-del block for the table. Returns nil if the table does not contain any
 // range deletions.
-func (r *Reader) NewRangeDelIter() *blockIter {
+func (r *Reader) NewRangeDelIter() base.InternalIterator {
 	if r.rangeDel.bh.Length == 0 {
 		return nil
 	}

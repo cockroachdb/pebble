@@ -22,8 +22,8 @@ func NewIter(cmp base.Compare, tombstones []Tombstone) *Iter {
 	}
 }
 
-// SeekGE implements internalIterator.SeekGE, as documented in the pebble
-// package.
+// SeekGE implements InternalIterator.SeekGE, as documented in the
+// internal/base package.
 func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	// NB: manually inlined sort.Seach is ~5% faster.
 	//
@@ -50,13 +50,15 @@ func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	return &t.Start, t.End
 }
 
+// SeekPrefixGE implements InternalIterator.SeekPrefixGE, as documented in the
+// internal/base package.
 func (i *Iter) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
 	// This should never be called as prefix iteration is only done for point records.
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-// SeekLT implements internalIterator.SeekLT, as documented in the pebble
-// package.
+// SeekLT implements InternalIterator.SeekLT, as documented in the
+// internal/base package.
 func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	// NB: manually inlined sort.Search is ~5% faster.
 	//
@@ -87,7 +89,7 @@ func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	return &t.Start, t.End
 }
 
-// First implements internalIterator.First, as documented in the pebble
+// First implements InternalIterator.First, as documented in the internal/base
 // package.
 func (i *Iter) First() (*base.InternalKey, []byte) {
 	if len(i.tombstones) == 0 {
@@ -98,7 +100,7 @@ func (i *Iter) First() (*base.InternalKey, []byte) {
 	return &t.Start, t.End
 }
 
-// Last implements internalIterator.Last, as documented in the pebble
+// Last implements InternalIterator.Last, as documented in the internal/base
 // package.
 func (i *Iter) Last() (*base.InternalKey, []byte) {
 	if len(i.tombstones) == 0 {
@@ -109,7 +111,7 @@ func (i *Iter) Last() (*base.InternalKey, []byte) {
 	return &t.Start, t.End
 }
 
-// Next implements internalIterator.Next, as documented in the pebble
+// Next implements InternalIterator.Next, as documented in the internal/base
 // package.
 func (i *Iter) Next() (*base.InternalKey, []byte) {
 	if i.index == len(i.tombstones) {
@@ -123,7 +125,7 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 	return &t.Start, t.End
 }
 
-// Prev implements internalIterator.Prev, as documented in the pebble
+// Prev implements InternalIterator.Prev, as documented in the internal/base
 // package.
 func (i *Iter) Prev() (*base.InternalKey, []byte) {
 	if i.index < 0 {
@@ -137,38 +139,38 @@ func (i *Iter) Prev() (*base.InternalKey, []byte) {
 	return &t.Start, t.End
 }
 
-// Key implements internalIterator.Key, as documented in the pebble
+// Key implements InternalIterator.Key, as documented in the internal/base
 // package.
 func (i *Iter) Key() *base.InternalKey {
 	return &i.tombstones[i.index].Start
 }
 
-// Value implements internalIterator.Value, as documented in the pebble
+// Value implements InternalIterator.Value, as documented in the internal/base
 // package.
 func (i *Iter) Value() []byte {
 	return i.tombstones[i.index].End
 }
 
-// Valid implements internalIterator.Valid, as documented in the pebble
+// Valid implements InternalIterator.Valid, as documented in the internal/base
 // package.
 func (i *Iter) Valid() bool {
 	return i.index >= 0 && i.index < len(i.tombstones)
 }
 
-// Error implements internalIterator.Error, as documented in the pebble
+// Error implements InternalIterator.Error, as documented in the internal/base
 // package.
 func (i *Iter) Error() error {
 	return nil
 }
 
-// Close implements internalIterator.Close, as documented in the pebble
+// Close implements InternalIterator.Close, as documented in the internal/base
 // package.
 func (i *Iter) Close() error {
 	return nil
 }
 
-// SetBounds implements internalIterator.SetBounds, as documented in the pebble
-// package.
+// SetBounds implements InternalIterator.SetBounds, as documented in the
+// internal/base package.
 func (i *Iter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are only used for point records.
 	panic("pebble: SetBounds unimplemented")

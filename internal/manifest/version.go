@@ -14,9 +14,16 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// Compare exports the base.Compare type.
 type Compare = base.Compare
+
+// InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
+
+// Options exports the base.Options type.
 type Options = base.Options
+
+// TableInfo exports the base.TableInfo type.
 type TableInfo = base.TableInfo
 
 // FileMetadata holds the metadata for an on-disk table.
