@@ -50,8 +50,10 @@ func (k *key) Set(v string) error {
 }
 
 type formatter struct {
-	spec string
-	fn   base.Formatter
+	spec        string
+	fn          base.Formatter
+	internalFmt base.Formatter
+	setByUser   bool
 }
 
 func (f *formatter) String() string {
@@ -64,11 +66,21 @@ func (f *formatter) Type() string {
 
 func (f *formatter) Set(spec string) error {
 	f.spec = spec
+	f.setByUser = true
 	switch spec {
 	case "null":
 		f.fn = formatNull
 	case "quoted":
 		f.fn = formatQuoted
+	case "pretty":
+		f.fn = func(v []byte) fmt.Formatter {
+			return fmtFormatter{parent: f, v: v}
+		}
+		// We use setByUser to govern whether we use the comparator-set
+		// formatter (i.e. f.internalFmt) or the user-specified one. Since
+		// "pretty" is the same as using the comparator formatter, set setByUser
+		// to false to simplify logic in fmtFormatter.Format .
+		f.setByUser = false
 	case "size":
 		f.fn = formatSize
 	default:
@@ -76,7 +88,7 @@ func (f *formatter) Set(spec string) error {
 			return fmt.Errorf("unknown formatter: %q", spec)
 		}
 		f.fn = func(v []byte) fmt.Formatter {
-			return fmtFormatter{f.spec, v}
+			return fmtFormatter{f, f.spec, v}
 		}
 	}
 	return nil
@@ -86,14 +98,20 @@ func (f *formatter) mustSet(spec string) {
 	if err := f.Set(spec); err != nil {
 		panic(err)
 	}
+	f.setByUser = false
 }
 
 type fmtFormatter struct {
-	fmt string
-	v   []byte
+	parent      *formatter
+	fmt         string
+	v           []byte
 }
 
 func (f fmtFormatter) Format(s fmt.State, c rune) {
+	if f.parent.internalFmt != nil && !f.parent.setByUser {
+		fmt.Fprintf(s, "%s", f.parent.internalFmt(f.v))
+		return
+	}
 	fmt.Fprintf(s, f.fmt, f.v)
 }
 
