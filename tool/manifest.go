@@ -128,6 +128,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			}
 
 			if cmp != nil {
+				m.fmtKey.internalFmt = cmp.Format
 				v, err := bve.Apply(nil, cmp.Compare, m.fmtKey.fn)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)

@@ -45,11 +45,11 @@ sstable scan
 ../sstable/testdata/h.sst
 ----
 ../sstable/testdata/h.sst
-796f75#0,1
-796f756e67#0,1
-796f7572#0,1
-796f757273656c66#0,1
-796f757468#0,1
+you#0,1
+young#0,1
+your#0,1
+yourself#0,1
+youth#0,1
 
 sstable scan
 --key=%q
@@ -59,9 +59,9 @@ sstable scan
 ../sstable/testdata/h.sst
 ----
 ../sstable/testdata/h.sst
-"you"#0,1
-"young"#0,1
-"your"#0,1
+you#0,1
+young#0,1
+your#0,1
 
 sstable scan
 --key=null

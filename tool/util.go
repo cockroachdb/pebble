@@ -50,8 +50,9 @@ func (k *key) Set(v string) error {
 }
 
 type formatter struct {
-	spec string
-	fn   base.Formatter
+	spec        string
+	fn          base.Formatter
+	internalFmt base.Formatter
 }
 
 func (f *formatter) String() string {
@@ -76,7 +77,7 @@ func (f *formatter) Set(spec string) error {
 			return fmt.Errorf("unknown formatter: %q", spec)
 		}
 		f.fn = func(v []byte) fmt.Formatter {
-			return fmtFormatter{f.spec, v}
+			return fmtFormatter{f, f.spec, v}
 		}
 	}
 	return nil
@@ -89,11 +90,16 @@ func (f *formatter) mustSet(spec string) {
 }
 
 type fmtFormatter struct {
-	fmt string
-	v   []byte
+	parent      *formatter
+	fmt         string
+	v           []byte
 }
 
 func (f fmtFormatter) Format(s fmt.State, c rune) {
+	if f.parent.internalFmt != nil {
+		fmt.Fprintf(s, f.fmt, f.parent.internalFmt(f.v))
+		return
+	}
 	fmt.Fprintf(s, f.fmt, f.v)
 }
 
