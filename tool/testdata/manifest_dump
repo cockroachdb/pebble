@@ -77,3 +77,49 @@ EOF
 --- L4 ---
 --- L5 ---
 --- L6 ---
+
+manifest dump
+../testdata/db-stage-4/MANIFEST-000005
+--key=pretty
+----
+../testdata/db-stage-4/MANIFEST-000005
+0
+  comparer:     leveldb.BytewiseComparator
+35
+  <empty>
+44
+  log-num:      4
+  last-seq-num: 5
+  added:        L0 4:986[bar#5,0-foo#4,1]
+EOF
+--- L0 ---
+  4:986[bar#5,0-foo#4,1]
+--- L1 ---
+--- L2 ---
+--- L3 ---
+--- L4 ---
+--- L5 ---
+--- L6 ---
+
+manifest dump
+../testdata/db-stage-4/MANIFEST-000005
+--key=pretty:test-comparer
+----
+../testdata/db-stage-4/MANIFEST-000005
+0
+  comparer:     leveldb.BytewiseComparator
+35
+  <empty>
+44
+  log-num:      4
+  last-seq-num: 5
+  added:        L0 4:986[test formatter: bar#5,0-test formatter: foo#4,1]
+EOF
+--- L0 ---
+  4:986[test formatter: bar#5,0-test formatter: foo#4,1]
+--- L1 ---
+--- L2 ---
+--- L3 ---
+--- L4 ---
+--- L5 ---
+--- L6 ---

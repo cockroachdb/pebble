@@ -76,6 +76,54 @@ sstable scan
 [3439]
 
 sstable scan
+--key=pretty
+--value=[%x]
+--start=hex:796f75
+--end=raw:yourself
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+you#0,1 [313130]
+young#0,1 [36]
+your#0,1 [3439]
+
+sstable scan
+--key=pretty
+--value=[%x]
+--start=hex:796f75
+--end=raw:yourself
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+you#0,1 [313130]
+young#0,1 [36]
+your#0,1 [3439]
+
+sstable scan
+--key=pretty
+--value=[%x]
+--start=hex:796f75
+--end=raw:yourself
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+you#0,1 [313130]
+young#0,1 [36]
+your#0,1 [3439]
+
+sstable scan
+--key=pretty:test-comparer
+--value=[%x]
+--start=hex:796f75
+--end=raw:yourself
+../sstable/testdata/h.sst
+----
+../sstable/testdata/h.sst
+test formatter: you#0,1 [313130]
+test formatter: young#0,1 [36]
+test formatter: your#0,1 [3439]
+
+sstable scan
 testdata/out-of-order.sst
 ----
 testdata/out-of-order.sst

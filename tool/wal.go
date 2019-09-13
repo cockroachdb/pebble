@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -24,12 +25,15 @@ type walT struct {
 
 	fmtKey   formatter
 	fmtValue formatter
+
+	comparers sstable.Comparers
 }
 
-func newWAL(opts *base.Options) *walT {
+func newWAL(opts *base.Options, comparers sstable.Comparers) *walT {
 	w := &walT{}
 	w.fmtKey.mustSet("quoted")
 	w.fmtValue.mustSet("size")
+	w.comparers = comparers
 
 	w.Root = &cobra.Command{
 		Use:   "wal",
@@ -55,6 +59,7 @@ Print the contents of the WAL files.
 }
 
 func (w *walT) runDump(cmd *cobra.Command, args []string) {
+	w.fmtKey.setForComparer("", w.comparers)
 	for _, arg := range args {
 		func() {
 			// Parse the filename in order to extract the file number. This is

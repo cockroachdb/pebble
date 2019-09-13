@@ -96,6 +96,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					}
 					fmt.Fprintf(stdout, "\n")
 				}
+				m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				if ve.LogNum != 0 {
 					empty = false
 					fmt.Fprintf(stdout, "  log-num:      %d\n", ve.LogNum)
