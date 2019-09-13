@@ -20,7 +20,7 @@ import (
 const (
 	// Max rate for all compactions. This is intentionally set low enough that
 	// user writes will have to be delayed.
-	maxCompactionRate     = 80 << 20 // 80 MB/s
+	maxCompactionRate = 80 << 20 // 80 MB/s
 
 	memtableSize          = 64 << 20 // 64 MB
 	memtableStopThreshold = 2 * memtableSize
@@ -30,17 +30,17 @@ const (
 	l0SlowdownThreshold   = 4
 	l0CompactionThreshold = 1
 
-	levelRatio            = 10
-	numLevels             = 7
+	levelRatio = 10
+	numLevels  = 7
 
 	// Slowdown threshold is set at the compaction debt incurred by the largest
 	// possible compaction.
-	compactionDebtSlowdownThreshold = memtableSize*(numLevels-2)
+	compactionDebtSlowdownThreshold = memtableSize * (numLevels - 2)
 )
 
 type compactionPacer struct {
-	level             int64
-	drainer           *rate.Limiter
+	level   int64
+	drainer *rate.Limiter
 }
 
 func newCompactionPacer() *compactionPacer {
@@ -86,6 +86,7 @@ func (p *flushPacer) drain(n int64) {
 	atomic.AddInt64(&p.level, -n)
 }
 
+// DB models a RocksDB DB.
 type DB struct {
 	mu         sync.Mutex
 	flushPacer *flushPacer
@@ -94,11 +95,11 @@ type DB struct {
 	fill       int64
 	drain      int64
 
-	compactionMu        sync.Mutex
-	compactionPacer     *compactionPacer
+	compactionMu    sync.Mutex
+	compactionPacer *compactionPacer
 	// L0 is represented as an array of integers whereas every other level
 	// is represented as a single integer.
-	L0                  []*int64
+	L0 []*int64
 	// Non-L0 sstables. sstables[0] == L1.
 	sstables            []int64
 	maxSSTableSizes     []int64
@@ -106,7 +107,7 @@ type DB struct {
 	prevCompactionDebt  float64
 	previouslyInDebt    bool
 
-	writeLimiter        *rate.Limiter
+	writeLimiter *rate.Limiter
 }
 
 func newDB() *DB {
@@ -262,7 +263,7 @@ func (db *DB) delayUserWrites() {
 			}
 		} else {
 			// Debt is shrinking.
-			drainLimit := db.writeLimiter.Limit() * 1/0.8
+			drainLimit := db.writeLimiter.Limit() * 1 / 0.8
 			if drainLimit <= maxWriteRate {
 				db.writeLimiter.SetLimit(drainLimit)
 			}
