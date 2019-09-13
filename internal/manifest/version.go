@@ -257,37 +257,41 @@ func (v *Version) Next() *Version {
 // may touch). If level is zero then that assumption cannot be made, and the
 // [start, end] range is expanded to the union of those matching ranges so far
 // and the computation is repeated until [start, end] stabilizes.
+// The returned files are a subsequence of the input files, i.e., the ordering
+// is not changed.
 func (v *Version) Overlaps(
 	level int, cmp Compare, start, end []byte,
 ) (ret []FileMetadata) {
 	if level == 0 {
 		fmt.Fprintf(os.Stdout, "start: %s, end: %s\n", start, end)
-		var rejectedIndices []int
-		var indicesToTry []int
-		for i := 0; i < len(v.Files[level]); i++ {
-			indicesToTry = append(indicesToTry, i)
-		}
+		// Indices that have been selected as overlapping.
+		selectedIndices := make([]bool, len(v.Files[level]))
+		numSelected := 0
 		restart := false
 		for {
-			for _, i := range indicesToTry {
-				smallest := v.Files[level][i].Smallest.UserKey
-				largest := v.Files[level][i].Largest.UserKey
+			for i, selected := range selectedIndices {
+				if selected { continue }
+				meta := &v.Files[level][i]
+				smallest := meta.Smallest.UserKey
+				largest := meta.Largest.UserKey
 				if cmp(largest, start) < 0 {
 					// file is completely before the specified range; skip it.
-					rejectedIndices = append(rejectedIndices, i)
 					continue
 				}
 				if cmp(smallest, end) > 0 {
 					// file is completely after the specified range; skip it.
-					rejectedIndices = append(rejectedIndices, i)
 					continue
 				}
 				fmt.Fprintf(os.Stdout, "start: %s, end: %s, index: %d\n", start, end, i)
-				ret = append(ret, v.Files[level][i])
+				// Overlaps
+				selectedIndices[i] = true
+				numSelected++
 
-				// If level == 0, check if the newly added fileMetadata has
-				// expanded the range. Expand the range immediately for files
-				// we have not yet checked.
+				// Since level == 0, check if the newly added fileMetadata has
+				// expanded the range. We expand the range immediately for files
+				// we have remaining to check in this loop. All already checked
+				// and unselected files will need to be rechecked via the
+				// restart below.
 				if cmp(smallest, start) < 0 {
 					start = smallest
 					restart = true
@@ -299,15 +303,22 @@ func (v *Version) Overlaps(
 			}
 
 			if restart {
-				// Need to retry the files we had rejected.
-				indicesToTry = append(indicesToTry[:0], rejectedIndices...)
-				rejectedIndices = rejectedIndices[:0]
+				// Need to retry the files we have not selected.
 				restart = false
 			} else {
+				// TODO: is there a better way to reserve numSelected in ret?
+				ret = append(ret, make([]FileMetadata, numSelected)...)
+				j := 0
+				for i, selected := range selectedIndices {
+					if (selected) {
+						ret[j] = v.Files[level][i]
+						j++
+					}
+				}
 				break;
 			}
 		}
-		return 
+		return
 	}
 	// Binary search to find the range of files which overlaps with our target
 	// range.
