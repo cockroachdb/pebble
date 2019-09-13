@@ -167,6 +167,9 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 				return
 			}
 
+			// Update the internal formatter if this comparator has one specified.
+			s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+
 			l, err := r.Layout()
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
@@ -293,6 +296,9 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
 			}
+
+			// Update the internal formatter if this comparator has one specified.
+			s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 
 			iter := r.NewIter(nil, s.end)
 			var lastKey base.InternalKey

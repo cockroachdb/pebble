@@ -46,6 +46,34 @@ EOF
 
 wal dump
 ../testdata/db-stage-4/000006.log
+--key=pretty
+--value=%x
+----
+../testdata/db-stage-4/000006.log
+0(22) seq=6 count=1
+    SET(foo,66697665)
+29(22) seq=7 count=1
+    SET(quux,736978)
+58(17) seq=8 count=1
+    DEL(baz)
+EOF
+
+wal dump
+../testdata/db-stage-4/000006.log
+--key=pretty:test-comparer
+--value=%x
+----
+../testdata/db-stage-4/000006.log
+0(22) seq=6 count=1
+    SET(test formatter: foo,66697665)
+29(22) seq=7 count=1
+    SET(test formatter: quux,736978)
+58(17) seq=8 count=1
+    DEL(test formatter: baz)
+EOF
+
+wal dump
+../testdata/db-stage-4/000006.log
 --value=quoted
 ----
 ../testdata/db-stage-4/000006.log
