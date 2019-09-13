@@ -7,7 +7,6 @@ package manifest
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -263,7 +262,6 @@ func (v *Version) Overlaps(
 	level int, cmp Compare, start, end []byte,
 ) (ret []FileMetadata) {
 	if level == 0 {
-		fmt.Fprintf(os.Stdout, "start: %s, end: %s\n", start, end)
 		// Indices that have been selected as overlapping.
 		selectedIndices := make([]bool, len(v.Files[level]))
 		numSelected := 0
@@ -282,7 +280,6 @@ func (v *Version) Overlaps(
 					// file is completely after the specified range; skip it.
 					continue
 				}
-				fmt.Fprintf(os.Stdout, "start: %s, end: %s, index: %d\n", start, end, i)
 				// Overlaps
 				selectedIndices[i] = true
 				numSelected++
