@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kr/pretty"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/kr/pretty"
 	"golang.org/x/exp/rand"
 )
 
@@ -255,7 +255,7 @@ func TestIngestLink(t *testing.T) {
 				mem.Remove(paths[i])
 			}
 
-			err := ingestLink(opts, dir, paths, meta)
+			err := ingestLink(0 /* jobID */, opts, dir, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")

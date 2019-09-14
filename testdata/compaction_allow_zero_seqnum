@@ -2,7 +2,8 @@ define
 L2
   c.SET.2:2
 ----
-2: c-c
+2:
+  5:[c-c]
 
 allow-zero-seqnum
 L0:b-b

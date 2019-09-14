@@ -173,12 +173,12 @@ func (v *Version) Pretty(format base.Formatter) string {
 		if len(v.Files[level]) == 0 {
 			continue
 		}
-		fmt.Fprintf(&buf, "%d:", level)
+		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
 			f := &v.Files[level][j]
-			fmt.Fprintf(&buf, " %s-%s", format(f.Smallest.UserKey), format(f.Largest.UserKey))
+			fmt.Fprintf(&buf, "  %d:[%s-%s]\n", f.FileNum,
+				format(f.Smallest.UserKey), format(f.Largest.UserKey))
 		}
-		fmt.Fprintf(&buf, "\n")
 	}
 	return buf.String()
 }
@@ -191,12 +191,12 @@ func (v *Version) DebugString(format base.Formatter) string {
 		if len(v.Files[level]) == 0 {
 			continue
 		}
-		fmt.Fprintf(&buf, "%d:", level)
+		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
 			f := &v.Files[level][j]
-			fmt.Fprintf(&buf, " %s-%s", f.Smallest.Pretty(format), f.Largest.Pretty(format))
+			fmt.Fprintf(&buf, "  %d:[%s-%s]\n", f.FileNum,
+				f.Smallest.Pretty(format), f.Largest.Pretty(format))
 		}
-		fmt.Fprintf(&buf, "\n")
 	}
 	return buf.String()
 }

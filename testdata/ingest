@@ -8,7 +8,8 @@ ingest ext0
 
 lsm
 ----
-6: a-b
+6:
+  5:[a-b]
 
 iter
 seek-ge a
@@ -36,8 +37,10 @@ ingest ext1
 
 lsm
 ----
-5: a-b
-6: a-b
+5:
+  6:[a-b]
+6:
+  5:[a-b]
 
 iter
 seek-ge a
@@ -64,9 +67,12 @@ ingest ext2
 
 lsm
 ----
-4: a-c
-5: a-b
-6: a-b
+4:
+  7:[a-c]
+5:
+  6:[a-b]
+6:
+  5:[a-b]
 
 iter
 seek-ge a
@@ -96,10 +102,14 @@ ingest ext3
 
 lsm
 ----
-3: b-c
-4: a-c
-5: a-b
-6: a-b
+3:
+  8:[b-c]
+4:
+  7:[a-c]
+5:
+  6:[a-b]
+6:
+  5:[a-b]
 
 iter
 seek-ge a
@@ -129,10 +139,15 @@ ingest ext4
 
 lsm
 ----
-3: b-c
-4: a-c
-5: a-b
-6: a-b x-y
+3:
+  8:[b-c]
+4:
+  7:[a-c]
+5:
+  6:[a-b]
+6:
+  5:[a-b]
+  9:[x-y]
 
 iter
 seek-lt y
@@ -164,11 +179,18 @@ ingest ext5
 
 lsm
 ----
-0: j-k k-k
-3: b-c
-4: a-c
-5: a-b
-6: a-b x-y
+0:
+  12:[j-k]
+  10:[k-k]
+3:
+  8:[b-c]
+4:
+  7:[a-c]
+5:
+  6:[a-b]
+6:
+  5:[a-b]
+  9:[x-y]
 
 iter
 seek-ge j
@@ -197,11 +219,19 @@ ingest ext6
 
 lsm
 ----
-0: j-k k-k
-3: b-c
-4: a-c
-5: a-b
-6: a-b n-n x-y
+0:
+  12:[j-k]
+  10:[k-k]
+3:
+  8:[b-c]
+4:
+  7:[a-c]
+5:
+  6:[a-b]
+6:
+  5:[a-b]
+  13:[n-n]
+  9:[x-y]
 
 get
 m
@@ -220,11 +250,21 @@ ingest ext7
 
 lsm
 ----
-0: j-k k-k m-m a-z
-3: b-c
-4: a-c
-5: a-b
-6: a-b n-n x-y
+0:
+  12:[j-k]
+  10:[k-k]
+  16:[m-m]
+  14:[a-z]
+3:
+  8:[b-c]
+4:
+  7:[a-c]
+5:
+  6:[a-b]
+6:
+  5:[a-b]
+  13:[n-n]
+  9:[x-y]
 
 get
 a
@@ -294,8 +334,21 @@ y:40
 
 lsm
 ----
-0: j-k k-k m-m a-z j-m a-x y-y
-3: b-c
-4: a-c
-5: a-b
-6: a-b n-n x-y
+0:
+  12:[j-k]
+  10:[k-k]
+  16:[m-m]
+  14:[a-z]
+  17:[j-m]
+  18:[a-x]
+  19:[y-y]
+3:
+  8:[b-c]
+4:
+  7:[a-c]
+5:
+  6:[a-b]
+6:
+  5:[a-b]
+  13:[n-n]
+  9:[x-y]
