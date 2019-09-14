@@ -70,7 +70,7 @@ type Fragmenter struct {
 	// pending contains the list of pending range tombstone fragments that have
 	// not been flushed to the block writer. Note that the tombstones have not
 	// been fragmented on the end keys yet. That happens as the tombstones are
-	// flushed.
+	// flushed. All pending tombstones have the same Start.UserKey.
 	pending  []Tombstone
 	doneBuf  []Tombstone
 	sortBuf  tombstonesByEndKey
@@ -169,6 +169,10 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
+	if f.Cmp(start.UserKey, end) >= 0 {
+		// An empty tombstone, we can ignore it.
+		return
+	}
 	if raceEnabled {
 		f.checkInvariants()
 		defer f.checkInvariants()
@@ -223,8 +227,8 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 	flush := true
 	for _, t := range f.pending {
 		if f.Cmp(key.UserKey, t.End) < 0 {
-			// NB: A range deletion tombstone deletes a point operation at the same
-			// sequence number.
+			// NB: A range deletion tombstone does not delete a point operation at
+			// the same sequence number.
 			if t.Start.Visible(snapshot) && t.Start.SeqNum() > seqNum {
 				return true
 			}
@@ -244,9 +248,8 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 	return false
 }
 
-// FlushTo flushes all of the fragments before key. Used internally by Add to
-// flush tombstone fragments, and can be used externally to fragment tombstones
-// during compaction when a tombstone straddles an sstable boundary.
+// FlushTo flushes all of the fragments before key. Can be used to fragment
+// tombstones during compaction when a tombstone straddles an sstable boundary.
 func (f *Fragmenter) FlushTo(key []byte) {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
@@ -263,8 +266,8 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	}
 
 	// At this point we know that the new start key is greater than the pending
-	// tombstones start keys. We flush the pending first set of fragments for the
-	// pending tombstones.
+	// tombstones start keys. We flush the first set of fragments for the pending
+	// tombstones.
 	f.flush(f.pending, false /* all */)
 
 	for i := range f.pending {
@@ -272,11 +275,15 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	}
 }
 
+// Flushes all pending tombstones up to key (exclusive).
 func (f *Fragmenter) truncateAndFlush(key []byte) {
 	done := f.doneBuf[:0]
 	pending := f.pending
 	f.pending = f.pending[:0]
 
+	// pending and f.pending share the same underlying storage. As we iterate
+	// over pending we append to f.pending, but only one entry is appended in
+	// each iteration, after we have read the entry being overwritten.
 	for _, t := range pending {
 		if f.Cmp(key, t.End) < 0 {
 			//   t: a--+--e
@@ -313,6 +320,8 @@ func (f *Fragmenter) flush(buf []Tombstone, all bool) {
 
 	// Loop over the range tombstones, splitting by end key.
 	for len(buf) > 0 {
+		// A prefix of range tombstones will end at split. remove represents the
+		// count of that prefix.
 		remove := 1
 		split := buf[0].End
 		f.flushBuf = append(f.flushBuf[:0], buf[0])
