@@ -14,12 +14,12 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/golang/snappy"
 	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/golang/snappy"
 )
 
 // BlockHandle is the file offset and length of a block.
@@ -65,6 +65,9 @@ type singleLevelIterator struct {
 	// Global lower/upper bound for the iterator.
 	lower []byte
 	upper []byte
+	// Current key and value iterator is pointed at.
+	key   *InternalKey
+	value []byte
 	// Per-block lower/upper bound. Nil if the bound does not apply to the block
 	// because we determined the block lies completely within the bound.
 	blockLower []byte
@@ -211,21 +214,22 @@ func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	i.key = nil
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		return nil, nil
 	}
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.SeekGE(key)
-	if ikey == nil {
+	i.key, i.value = i.data.SeekGE(key)
+	if i.key == nil {
 		return nil, nil
 	}
-	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
-		i.data.invalidateUpper() // force i.data.Valid() to return false
+	if i.blockUpper != nil && i.cmp(i.key.UserKey, i.blockUpper) >= 0 {
+		i.key = nil
 		return nil, nil
 	}
-	return ikey, val
+	return i.key, i.value
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -236,6 +240,8 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 		return nil, nil
 	}
 
+	i.key = nil
+
 	// Check prefix bloom filter.
 	if i.reader.tableFilter != nil {
 		data, err := i.reader.readFilter()
@@ -243,7 +249,6 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 			return nil, nil
 		}
 		if !i.reader.tableFilter.mayContain(data, prefix) {
-			i.data.invalidateUpper() // force i.data.Valid() to return false
 			return nil, nil
 		}
 	}
@@ -254,15 +259,15 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.SeekGE(key)
-	if ikey == nil {
+	i.key, i.value = i.data.SeekGE(key)
+	if i.key == nil {
 		return nil, nil
 	}
-	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
-		i.data.invalidateUpper() // force i.data.Valid() to return false
+	if i.blockUpper != nil && i.cmp(i.key.UserKey, i.blockUpper) >= 0 {
+		i.key = nil
 		return nil, nil
 	}
-	return ikey, val
+	return i.key, i.value
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -273,14 +278,15 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	i.key = nil
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		i.index.Last()
 	}
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.SeekLT(key)
-	if ikey == nil {
+	i.key, i.value = i.data.SeekLT(key)
+	if i.key == nil {
 		// The index contains separator keys which may lie between
 		// user-keys. Consider the user-keys:
 		//
@@ -292,21 +298,21 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		// be chosen as "compleu". The SeekGE in the index block will then point
 		// us to the block containing "complexion". If this happens, we want the
 		// last key from the previous data block.
-		if ikey, _ = i.index.Prev(); ikey == nil {
+		if ikey, _ := i.index.Prev(); ikey == nil {
 			return nil, nil
 		}
 		if !i.loadBlock() {
 			return nil, nil
 		}
-		if ikey, val = i.data.Last(); ikey == nil {
+		if i.key, i.value = i.data.Last(); i.key == nil {
 			return nil, nil
 		}
 	}
-	if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
-		i.data.invalidateLower() // force i.data.Valid() to return false
+	if i.blockLower != nil && i.cmp(i.key.UserKey, i.blockLower) < 0 {
+		i.key = nil
 		return nil, nil
 	}
-	return ikey, val
+	return i.key, i.value
 }
 
 // First implements internalIterator.First, as documented in the pebble
@@ -324,15 +330,15 @@ func (i *singleLevelIterator) First() (*InternalKey, []byte) {
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.First()
-	if ikey == nil {
+	i.key, i.value = i.data.First()
+	if i.key == nil {
 		return nil, nil
 	}
-	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
-		i.data.invalidateUpper() // force i.data.Valid() to return false
+	if i.blockUpper != nil && i.cmp(i.key.UserKey, i.blockUpper) >= 0 {
+		i.key = nil
 		return nil, nil
 	}
-	return ikey, val
+	return i.key, i.value
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -350,14 +356,14 @@ func (i *singleLevelIterator) Last() (*InternalKey, []byte) {
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	if ikey, _ := i.data.Last(); ikey == nil {
+	if i.key, i.value = i.data.Last(); i.key == nil {
 		return nil, nil
 	}
-	if i.blockLower != nil && i.cmp(i.data.ikey.UserKey, i.blockLower) < 0 {
-		i.data.invalidateLower()
+	if i.blockLower != nil && i.cmp(i.key.UserKey, i.blockLower) < 0 {
+		i.key = nil
 		return nil, nil
 	}
-	return &i.data.ikey, i.data.val
+	return i.key, i.value
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
@@ -368,12 +374,12 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	if key, val := i.data.Next(); key != nil {
-		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
-			i.data.invalidateUpper()
+	if i.key, i.value = i.data.Next(); i.key != nil {
+		if i.blockUpper != nil && i.cmp(i.key.UserKey, i.blockUpper) >= 0 {
+			i.key = nil
 			return nil, nil
 		}
-		return key, val
+		return i.key, i.value
 	}
 	for {
 		if i.data.err != nil {
@@ -384,15 +390,15 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 			break
 		}
 		if i.loadBlock() {
-			key, val := i.data.First()
-			if key == nil {
+			i.key, i.value = i.data.First()
+			if i.key == nil {
 				return nil, nil
 			}
-			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
-				i.data.invalidateUpper()
+			if i.blockUpper != nil && i.cmp(i.key.UserKey, i.blockUpper) >= 0 {
+				i.key = nil
 				return nil, nil
 			}
-			return key, val
+			return i.key, i.value
 		}
 	}
 	return nil, nil
@@ -404,12 +410,12 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	if key, val := i.data.Prev(); key != nil {
-		if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
-			i.data.invalidateLower()
+	if i.key, i.value = i.data.Prev(); i.key != nil {
+		if i.blockLower != nil && i.cmp(i.key.UserKey, i.blockLower) < 0 {
+			i.key = nil
 			return nil, nil
 		}
-		return key, val
+		return i.key, i.value
 	}
 	for {
 		if i.data.err != nil {
@@ -420,15 +426,15 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 			break
 		}
 		if i.loadBlock() {
-			key, val := i.data.Last()
-			if key == nil {
+			i.key, i.value = i.data.Last()
+			if i.key == nil {
 				return nil, nil
 			}
-			if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
-				i.data.invalidateLower()
+			if i.blockLower != nil && i.cmp(i.key.UserKey, i.blockLower) < 0 {
+				i.key = nil
 				return nil, nil
 			}
-			return key, val
+			return i.key, i.value
 		}
 	}
 	return nil, nil
@@ -436,19 +442,19 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 
 // Key implements internalIterator.Key, as documented in the pebble package.
 func (i *singleLevelIterator) Key() *InternalKey {
-	return i.data.Key()
+	return i.key
 }
 
 // Value implements internalIterator.Value, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Value() []byte {
-	return i.data.Value()
+	return i.value
 }
 
 // Valid implements internalIterator.Valid, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Valid() bool {
-	return i.data.Valid()
+	return i.key != nil
 }
 
 // Error implements internalIterator.Error, as documented in the pebble
@@ -545,8 +551,8 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	key, val := i.data.Next()
-	if key == nil {
+	i.key, i.value = i.data.Next()
+	if i.key == nil {
 		for {
 			if i.data.err != nil {
 				i.err = i.data.err
@@ -556,8 +562,8 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 				return nil, nil
 			}
 			if i.loadBlock() {
-				key, val = i.data.First()
-				if key == nil {
+				i.key, i.value = i.data.First()
+				if i.key == nil {
 					return nil, nil
 				}
 				break
@@ -577,7 +583,7 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	}
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
-	return key, val
+	return i.key, i.value
 }
 
 func (i *compactionIterator) Prev() (*InternalKey, []byte) {
@@ -612,10 +618,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 	}
 	i.index.setCacheHandle(indexBlock)
 	i.err = i.index.init(i.cmp, indexBlock.Get(), i.reader.Properties.GlobalSeqNum)
-	if i.err != nil {
-		return false
-	}
-	return true
+	return i.err == nil
 }
 
 func (i *twoLevelIterator) Init(r *Reader, lower, upper []byte) error {
@@ -647,6 +650,7 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	i.key = nil
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		return nil, nil
 	}
@@ -666,6 +670,7 @@ func (i *twoLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byt
 		return nil, nil
 	}
 
+	i.key = nil
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		return nil, nil
 	}
@@ -685,6 +690,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	i.key = nil
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
 			return nil, nil
@@ -709,9 +715,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		if !i.loadIndex() {
 			return nil, nil
 		}
-		if ikey, val = i.singleLevelIterator.Last(); ikey == nil {
-			return nil, nil
-		}
+		return i.singleLevelIterator.Last()
 	}
 
 	return ikey, val
@@ -726,6 +730,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	i.key = nil
 	if ikey, _ := i.topLevelIndex.First(); ikey == nil {
 		return nil, nil
 	}
@@ -746,6 +751,7 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	i.key = nil
 	if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
 		return nil, nil
 	}
@@ -768,20 +774,17 @@ func (i *twoLevelIterator) Next() (*InternalKey, []byte) {
 	if key, val := i.singleLevelIterator.Next(); key != nil {
 		return key, val
 	}
-	for {
-		if i.index.err != nil {
-			i.err = i.index.err
-			break
-		}
-		if ikey, _ := i.topLevelIndex.Next(); ikey == nil {
-			return nil, nil
-		}
-		if !i.loadIndex() {
-			return nil, nil
-		}
-		return i.singleLevelIterator.First()
+	if i.index.err != nil {
+		i.err = i.index.err
+		return nil, nil
 	}
-	return nil, nil
+	if ikey, _ := i.topLevelIndex.Next(); ikey == nil {
+		return nil, nil
+	}
+	if !i.loadIndex() {
+		return nil, nil
+	}
+	return i.singleLevelIterator.First()
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -793,20 +796,17 @@ func (i *twoLevelIterator) Prev() (*InternalKey, []byte) {
 	if key, val := i.singleLevelIterator.Prev(); key != nil {
 		return key, val
 	}
-	for {
-		if i.index.err != nil {
-			i.err = i.index.err
-			break
-		}
-		if ikey, _ := i.topLevelIndex.Prev(); ikey == nil {
-			return nil, nil
-		}
-		if !i.loadIndex() {
-			return nil, nil
-		}
-		return i.singleLevelIterator.Last()
+	if i.index.err != nil {
+		i.err = i.index.err
+		return nil, nil
 	}
-	return nil, nil
+	if ikey, _ := i.topLevelIndex.Prev(); ikey == nil {
+		return nil, nil
+	}
+	if !i.loadIndex() {
+		return nil, nil
+	}
+	return i.singleLevelIterator.Last()
 }
 
 // Close implements internalIterator.Close, as documented in the pebble
@@ -1033,16 +1033,16 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	i := r.NewIter(nil /* lower */, nil /* upper */)
-	i.SeekGE(key)
+	ikey, value := i.SeekGE(key)
 
-	if !i.Valid() || r.Compare(key, i.Key().UserKey) != 0 {
+	if ikey == nil || r.Compare(key, ikey.UserKey) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = base.ErrNotFound
 		}
 		return nil, err
 	}
-	return i.Value(), i.Close()
+	return value, i.Close()
 }
 
 // NewIter returns an iterator for the contents of the table.

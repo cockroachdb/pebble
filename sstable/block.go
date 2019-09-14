@@ -678,13 +678,3 @@ func (i *blockIter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are handled by sstable.Iterator.
 	panic("pebble: SetBounds unimplemented")
 }
-
-// invalidate the iterator, positioning it below the first entry.
-func (i *blockIter) invalidateLower() {
-	i.offset = -1
-}
-
-// invalidate the iterator, positioning it after the last entry.
-func (i *blockIter) invalidateUpper() {
-	i.offset = i.restarts
-}
