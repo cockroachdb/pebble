@@ -562,6 +562,13 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 	}
 }
 
+func TestEmptyFlushableBatch(t *testing.T) {
+	// Verify that we can create a flushable batch on an empty batch.
+	fb := newFlushableBatch(newBatch(nil), DefaultComparer)
+	it := &internalIterAdapter{fb.newIter(nil)}
+	require.False(t, it.First())
+}
+
 func BenchmarkBatchSet(b *testing.B) {
 	value := make([]byte, 10)
 	for i := range value {
