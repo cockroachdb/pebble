@@ -35,10 +35,19 @@ build
 1:             m-----s
 1:                   s------z
 
+# An empty tombstone will not get emitted.
 build
 1: a-a
 ----
+
+build
+3: a-a
+3: a-b
+2: a-b
 1: a-a
+----
+3: ab
+2: ab
 
 build
 1: a---e

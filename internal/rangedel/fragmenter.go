@@ -315,16 +315,20 @@ func (f *Fragmenter) flush(buf []Tombstone, all bool) {
 	for len(buf) > 0 {
 		remove := 1
 		split := buf[0].End
-		f.flushBuf = append(f.flushBuf[:0], buf[0])
+		if f.Cmp(buf[0].Start.UserKey, split) < 0 {
+			f.flushBuf = append(f.flushBuf[:0], buf[0])
+		}
 
 		for i := 1; i < len(buf); i++ {
 			if f.Cmp(split, buf[i].End) == 0 {
 				remove++
 			}
-			f.flushBuf = append(f.flushBuf, Tombstone{
-				Start: buf[i].Start,
-				End:   split,
-			})
+			if f.Cmp(buf[i].Start.UserKey, split) < 0 {
+				f.flushBuf = append(f.flushBuf, Tombstone{
+					Start: buf[i].Start,
+					End:   split,
+				})
+			}
 		}
 
 		buf = buf[remove:]
