@@ -232,7 +232,9 @@ func (c *compaction) setupOtherInputs() {
 // invariant that the versions of keys at level+1 are older than the versions
 // of keys at level. This is achieved by adding tables to the right of the
 // current input tables such that the rightmost table has a "clean cut". A
-// clean cut is either a change in user keys, or
+// clean cut is either a change in user keys, or when the largest key in the
+// left sstable is a range tombstone sentinel key
+// (InternalKeyRangeDeleteSentinel).
 func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
 	if c.startLevel == 0 {
 		// We already call version.overlaps for L0 and that call guarantees that we
@@ -718,6 +720,7 @@ func (d *DB) flush1() error {
 
 	info := FlushInfo{
 		JobID: jobID,
+		Done:  true,
 		Err:   err,
 	}
 	if err == nil {
@@ -728,39 +731,41 @@ func (d *DB) flush1() error {
 		if len(ve.NewFiles) == 0 {
 			info.Err = errEmptyTable
 		}
-	}
-	d.opts.EventListener.FlushEnd(info)
 
-	if err != nil {
-		return err
-	}
-
-	// The flush succeeded or it produced an empty sstable. In either case we
-	// want to bump the log number.
-	ve.LogNum, _ = d.mu.mem.queue[n].logInfo()
-	metrics := c.metrics[0]
-	for i := 0; i < n; i++ {
-		_, size := d.mu.mem.queue[i].logInfo()
-		metrics.BytesIn += size
-	}
-
-	err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
-	for _, fileNum := range pendingOutputs {
-		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
-			panic("pebble: expected pending output not present")
+		// The flush succeeded or it produced an empty sstable. In either case we
+		// want to bump the log number.
+		ve.LogNum, _ = d.mu.mem.queue[n].logInfo()
+		metrics := c.metrics[0]
+		for i := 0; i < n; i++ {
+			_, size := d.mu.mem.queue[i].logInfo()
+			metrics.BytesIn += size
 		}
-		delete(d.mu.compact.pendingOutputs, fileNum)
+
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
+		for _, fileNum := range pendingOutputs {
+			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
+				panic("pebble: expected pending output not present")
+			}
+			delete(d.mu.compact.pendingOutputs, fileNum)
+			if err != nil {
+				// TODO(peter): untested.
+				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileNum)
+			}
+		}
 	}
-	if err != nil {
-		return err
-	}
+
+	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
 	atomic.StoreUint64(&d.bytesFlushed, 0)
 
-	flushed := d.mu.mem.queue[:n]
-	d.mu.mem.queue = d.mu.mem.queue[n:]
-	d.updateReadStateLocked()
+	var flushed []flushable
+	if err == nil {
+		flushed = d.mu.mem.queue[:n]
+		d.mu.mem.queue = d.mu.mem.queue[n:]
+		d.updateReadStateLocked()
+	}
+
 	d.deleteObsoleteFiles(jobID)
 
 	// Mark all the memtables we flushed as flushed. Note that we do this last so
@@ -772,7 +777,7 @@ func (d *DB) flush1() error {
 	for i := range flushed {
 		close(flushed[i].flushed())
 	}
-	return nil
+	return err
 }
 
 // maybeScheduleCompaction schedules a compaction if necessary.
@@ -855,6 +860,21 @@ func (d *DB) compact1() (err error) {
 	})
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
+	if err == nil {
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
+		for _, fileNum := range pendingOutputs {
+			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
+				panic("pebble: expected pending output not present")
+			}
+			delete(d.mu.compact.pendingOutputs, fileNum)
+			if err != nil {
+				// TODO(peter): untested.
+				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileNum)
+			}
+		}
+	}
+
+	info.Done = true
 	info.Err = err
 	if err == nil {
 		for i := range ve.NewFiles {
@@ -864,23 +884,16 @@ func (d *DB) compact1() (err error) {
 	}
 	d.opts.EventListener.CompactionEnd(info)
 
-	if err != nil {
-		return err
+	// Update the read state before deleting obsolete files because the
+	// read-state update will cause the previous version to be unref'd and if
+	// there are no references obsolete tables will be added to the obsolete
+	// table list.
+	if err == nil {
+		d.updateReadStateLocked()
 	}
-	err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
-	for _, fileNum := range pendingOutputs {
-		if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
-			panic("pebble: expected pending output not present")
-		}
-		delete(d.mu.compact.pendingOutputs, fileNum)
-	}
-	if err != nil {
-		return err
-	}
-
-	d.updateReadStateLocked()
 	d.deleteObsoleteFiles(jobID)
-	return nil
+
+	return err
 }
 
 // runCompactions runs a compaction that produces new on-disk tables from

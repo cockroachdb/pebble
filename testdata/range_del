@@ -640,7 +640,10 @@ L1
   a.SET.1:1
 ----
 mem: 1
-1: a-a a-a a-a
+1:
+  5:[a-a]
+  6:[a-a]
+  7:[a-a]
 
 get seq=1
 a
@@ -716,7 +719,10 @@ L1
   a.MERGE.1:1
 ----
 mem: 1
-1: a-a a-a a-a
+1:
+  5:[a-a]
+  6:[a-a]
+  7:[a-a]
 
 get seq=1
 a
@@ -796,9 +802,12 @@ L3
   a.MERGE.1:1
 ----
 mem: 1
-1: a-a
-2: a-a
-3: a-a
+1:
+  5:[a-a]
+2:
+  6:[a-a]
+3:
+  7:[a-a]
 
 get seq=1
 a
@@ -906,10 +915,14 @@ L3
   d.SET.1:1
 ----
 mem: 1
-0: a-d
-1: a-d
-2: a-d
-3: a-d
+0:
+  5:[a-d]
+1:
+  6:[a-d]
+2:
+  7:[a-d]
+3:
+  8:[a-d]
 
 get seq=2
 a
@@ -1028,8 +1041,12 @@ L2
   d.SET.1:1
 ----
 mem: 1
-1: a-b b-c c-d
-2: a-d
+1:
+  5:[a-b]
+  6:[b-c]
+  7:[c-d]
+2:
+  8:[a-d]
 
 get seq=2
 a
@@ -1120,8 +1137,10 @@ L2
   a.SET.2:2
 ----
 mem: 1
-1: a-b
-2: a-a
+1:
+  5:[a-b]
+2:
+  6:[a-a]
 
 get seq=3
 a
@@ -1143,16 +1162,23 @@ L0
   c.SET.3:v
 ----
 mem: 1
-0: a-e a-a c-c
+0:
+  5:[a-e]
+  6:[a-a]
+  7:[c-c]
 
 compact a-e
 ----
-1: a-c c-e
+1:
+  8:[a-c]
+  9:[c-e]
 
 compact d-e
 ----
-1: a-c
-2: c-e
+1:
+  8:[a-c]
+2:
+  9:[c-e]
 
 iter seq=4
 seek-ge b
@@ -1173,16 +1199,23 @@ L0
   c.SET.3:v
 ----
 mem: 1
-0: a-e a-a c-c
+0:
+  5:[a-e]
+  6:[a-a]
+  7:[c-c]
 
 compact a-e
 ----
-1: a-c c-e
+1:
+  8:[a-c]
+  9:[c-e]
 
 compact a-b
 ----
-1: c-e
-2: a-c
+1:
+  9:[c-e]
+2:
+  8:[a-c]
 
 iter seq=4
 seek-lt d
@@ -1211,18 +1244,28 @@ L2
   d.SET.0:v
 ----
 mem: 1
-0: a-e a-a c-c
-2: d-d
+0:
+  5:[a-e]
+  6:[a-a]
+  7:[c-c]
+2:
+  8:[d-d]
 
 compact a-b
 ----
-1: a-c c-e
-2: d-d
+1:
+  9:[a-c]
+  10:[c-e]
+2:
+  8:[d-d]
 
 compact d-e
 ----
-1: a-c
-3: c-d d-e
+1:
+  9:[a-c]
+3:
+  13:[c-d]
+  14:[d-e]
 
 get seq=4
 c
@@ -1231,8 +1274,11 @@ v
 
 compact a-b L1
 ----
-2: a-c
-3: c-d d-e
+2:
+  15:[a-c]
+3:
+  13:[c-d]
+  14:[d-e]
 
 get seq=4
 c
@@ -1255,20 +1301,33 @@ L2
   d.SET.0:v
 ----
 mem: 1
-0: a-e a-a c-c f-f
-2: d-d
+0:
+  5:[a-e]
+  6:[a-a]
+  7:[c-c]
+  8:[f-f]
+2:
+  9:[d-d]
 
 compact a-b
 ----
-0: f-f
-1: a-c c-e
-2: d-d
+0:
+  8:[f-f]
+1:
+  10:[a-c]
+  11:[c-e]
+2:
+  9:[d-d]
 
 compact d-e
 ----
-0: f-f
-1: a-c
-3: c-d d-e
+0:
+  8:[f-f]
+1:
+  10:[a-c]
+3:
+  14:[c-d]
+  15:[d-e]
 
 get seq=4
 c
@@ -1277,13 +1336,21 @@ v
 
 compact f-f L0
 ----
-1: a-c f-f
-3: c-d d-e
+1:
+  10:[a-c]
+  8:[f-f]
+3:
+  14:[c-d]
+  15:[d-e]
 
 compact a-f L1
 ----
-2: a-c f-f
-3: c-d d-e
+2:
+  16:[a-c]
+  17:[f-f]
+3:
+  14:[c-d]
+  15:[d-e]
 
 get seq=4
 c

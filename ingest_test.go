@@ -245,7 +245,7 @@ func TestIngestLink(t *testing.T) {
 				mem.Remove(paths[i])
 			}
 
-			err := ingestLink(opts, dir, paths, meta)
+			err := ingestLink(0 /* jobID */, opts, dir, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")

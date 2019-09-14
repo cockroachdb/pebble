@@ -5,7 +5,8 @@ set b 2
 
 compact a-b
 ----
-6: a-b
+6:
+  6:[a-b]
 
 batch
 set c 3
@@ -14,7 +15,9 @@ set d 4
 
 compact c-d
 ----
-6: a-b c-d
+6:
+  6:[a-b]
+  8:[c-d]
 
 batch
 set b 5
@@ -23,7 +26,8 @@ set c 6
 
 compact a-d
 ----
-6: a-d
+6:
+  11:[a-d]
 
 # This also tests flushing a memtable that only contains range
 # deletions.
@@ -43,8 +47,12 @@ L0
 L0
   b.SET.1:v
 ----
-0: b-b a-a
+0:
+  6:[b-b]
+  5:[a-a]
 
 compact a-b
 ----
-1: a-a b-b
+1:
+  7:[a-a]
+  8:[b-b]
