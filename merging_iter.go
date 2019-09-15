@@ -293,9 +293,11 @@ func (m *mergingIter) switchToMinHeap() {
 		if i == cur {
 			continue
 		}
-		iterKey := i.Key()
-		if iterKey == nil {
-			iterKey, _ = i.Next()
+		var iterKey *InternalKey
+		if i.Valid() {
+			iterKey = i.Key()
+		} else {
+			iterKey, _ = i.First()
 		}
 		for ; iterKey != nil; iterKey, _ = i.Next() {
 			if base.InternalCompare(m.heap.cmp, key, *iterKey) < 0 {
@@ -334,9 +336,11 @@ func (m *mergingIter) switchToMaxHeap() {
 		if i == cur {
 			continue
 		}
-		iterKey := i.Key()
-		if iterKey == nil {
-			iterKey, _ = i.Prev()
+		var iterKey *InternalKey
+		if i.Valid() {
+			iterKey = i.Key()
+		} else {
+			iterKey, _ = i.Last()
 		}
 		for ; iterKey != nil; iterKey, _ = i.Prev() {
 			if base.InternalCompare(m.heap.cmp, key, *iterKey) > 0 {
