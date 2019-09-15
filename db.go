@@ -898,18 +898,14 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			if err != arenaskl.ErrArenaFull {
 				if stalled {
 					stalled = false
-					if d.opts.EventListener.WriteStallEnd != nil {
-						d.opts.EventListener.WriteStallEnd()
-					}
+					d.opts.EventListener.WriteStallEnd()
 				}
 				return err
 			}
 		} else if !force {
 			if stalled {
 				stalled = false
-				if d.opts.EventListener.WriteStallEnd != nil {
-					d.opts.EventListener.WriteStallEnd()
-				}
+				d.opts.EventListener.WriteStallEnd()
 			}
 			return nil
 		}
@@ -918,11 +914,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// being compacted, so we wait.
 			if !stalled {
 				stalled = true
-				if d.opts.EventListener.WriteStallBegin != nil {
-					d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
-						Reason: "memtable count limit reached",
-					})
-				}
+				d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+					Reason: "memtable count limit reached",
+				})
 			}
 			d.mu.compact.cond.Wait()
 			continue
@@ -931,11 +925,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// There are too many level-0 files, so we wait.
 			if !stalled {
 				stalled = true
-				if d.opts.EventListener.WriteStallBegin != nil {
-					d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
-						Reason: "L0 file count limit exceeded",
-					})
-				}
+				d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+					Reason: "L0 file count limit exceeded",
+				})
 			}
 			d.mu.compact.cond.Wait()
 			continue
@@ -994,15 +986,13 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				err = d.logRecycler.pop(recycleLogNumber)
 			}
 
-			if d.opts.EventListener.WALCreated != nil {
-				d.opts.EventListener.WALCreated(WALCreateInfo{
-					JobID:           jobID,
-					Path:            newLogName,
-					FileNum:         newLogNumber,
-					RecycledFileNum: recycleLogNumber,
-					Err:             err,
-				})
-			}
+			d.opts.EventListener.WALCreated(WALCreateInfo{
+				JobID:           jobID,
+				Path:            newLogName,
+				FileNum:         newLogNumber,
+				RecycledFileNum: recycleLogNumber,
+				Err:             err,
+			})
 
 			d.mu.Lock()
 			d.mu.mem.switching = false

@@ -671,9 +671,7 @@ func (d *DB) flush() {
 	defer d.mu.Unlock()
 	if err := d.flush1(); err != nil {
 		// TODO(peter): count consecutive flush errors and backoff.
-		if d.opts.EventListener.BackgroundError != nil {
-			d.opts.EventListener.BackgroundError(err)
-		}
+		d.opts.EventListener.BackgroundError(err)
 	}
 	d.mu.compact.flushing = false
 	// More flush work may have arrived while we were flushing, so schedule
@@ -707,11 +705,9 @@ func (d *DB) flush1() error {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	if d.opts.EventListener.FlushBegin != nil {
-		d.opts.EventListener.FlushBegin(FlushInfo{
-			JobID: jobID,
-		})
-	}
+	d.opts.EventListener.FlushBegin(FlushInfo{
+		JobID: jobID,
+	})
 
 	flushPacer := newFlushPacer(flushPacerEnv{
 		limiter:      d.flushLimiter,
@@ -720,22 +716,20 @@ func (d *DB) flush1() error {
 	})
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
 
-	if d.opts.EventListener.FlushEnd != nil {
-		info := FlushInfo{
-			JobID: jobID,
-			Err:   err,
-		}
-		if err == nil {
-			for i := range ve.NewFiles {
-				e := &ve.NewFiles[i]
-				info.Output = append(info.Output, e.Meta.TableInfo(d.dirname))
-			}
-			if len(ve.NewFiles) == 0 {
-				info.Err = errEmptyTable
-			}
-		}
-		d.opts.EventListener.FlushEnd(info)
+	info := FlushInfo{
+		JobID: jobID,
+		Err:   err,
 	}
+	if err == nil {
+		for i := range ve.NewFiles {
+			e := &ve.NewFiles[i]
+			info.Output = append(info.Output, e.Meta.TableInfo(d.dirname))
+		}
+		if len(ve.NewFiles) == 0 {
+			info.Err = errEmptyTable
+		}
+	}
+	d.opts.EventListener.FlushEnd(info)
 
 	if err != nil {
 		return err
@@ -810,9 +804,7 @@ func (d *DB) compact() {
 	defer d.mu.Unlock()
 	if err := d.compact1(); err != nil {
 		// TODO(peter): count consecutive compaction errors and backoff.
-		if d.opts.EventListener.BackgroundError != nil {
-			d.opts.EventListener.BackgroundError(err)
-		}
+		d.opts.EventListener.BackgroundError(err)
 	}
 	d.mu.compact.compacting = false
 	// The previous compaction may have produced too many files in a
@@ -846,19 +838,15 @@ func (d *DB) compact1() (err error) {
 	info := CompactionInfo{
 		JobID: jobID,
 	}
-	if d.opts.EventListener.CompactionBegin != nil || d.opts.EventListener.CompactionEnd != nil {
-		info.Input.Level = c.startLevel
-		info.Output.Level = c.outputLevel
-		for i := range c.inputs {
-			for j := range c.inputs[i] {
-				m := &c.inputs[i][j]
-				info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo(d.dirname))
-			}
+	info.Input.Level = c.startLevel
+	info.Output.Level = c.outputLevel
+	for i := range c.inputs {
+		for j := range c.inputs[i] {
+			m := &c.inputs[i][j]
+			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo(d.dirname))
 		}
 	}
-	if d.opts.EventListener.CompactionBegin != nil {
-		d.opts.EventListener.CompactionBegin(info)
-	}
+	d.opts.EventListener.CompactionBegin(info)
 
 	compactionPacer := newCompactionPacer(compactionPacerEnv{
 		limiter:      d.compactionLimiter,
@@ -867,16 +855,14 @@ func (d *DB) compact1() (err error) {
 	})
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
-	if d.opts.EventListener.CompactionEnd != nil {
-		info.Err = err
-		if err == nil {
-			for i := range ve.NewFiles {
-				e := &ve.NewFiles[i]
-				info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo(d.dirname))
-			}
+	info.Err = err
+	if err == nil {
+		for i := range ve.NewFiles {
+			e := &ve.NewFiles[i]
+			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo(d.dirname))
 		}
-		d.opts.EventListener.CompactionEnd(info)
 	}
+	d.opts.EventListener.CompactionEnd(info)
 
 	if err != nil {
 		return err
@@ -993,18 +979,16 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		if err != nil {
 			return err
 		}
-		if d.opts.EventListener.TableCreated != nil {
-			reason := "flushing"
-			if c.flushing == nil {
-				reason = "compacting"
-			}
-			d.opts.EventListener.TableCreated(TableCreateInfo{
-				JobID:   jobID,
-				Reason:  reason,
-				Path:    filename,
-				FileNum: fileNum,
-			})
+		reason := "flushing"
+		if c.flushing == nil {
+			reason = "compacting"
 		}
+		d.opts.EventListener.TableCreated(TableCreateInfo{
+			JobID:   jobID,
+			Reason:  reason,
+			Path:    filename,
+			FileNum: fileNum,
+		})
 		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,
 		})
@@ -1276,32 +1260,26 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 
 			switch f.fileType {
 			case fileTypeLog:
-				if d.opts.EventListener.WALDeleted != nil {
-					d.opts.EventListener.WALDeleted(WALDeleteInfo{
-						JobID:   jobID,
-						Path:    path,
-						FileNum: fileNum,
-						Err:     err,
-					})
-				}
+				d.opts.EventListener.WALDeleted(WALDeleteInfo{
+					JobID:   jobID,
+					Path:    path,
+					FileNum: fileNum,
+					Err:     err,
+				})
 			case fileTypeManifest:
-				if d.opts.EventListener.ManifestDeleted != nil {
-					d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-						JobID:   jobID,
-						Path:    path,
-						FileNum: fileNum,
-						Err:     err,
-					})
-				}
+				d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
+					JobID:   jobID,
+					Path:    path,
+					FileNum: fileNum,
+					Err:     err,
+				})
 			case fileTypeTable:
-				if d.opts.EventListener.TableDeleted != nil {
-					d.opts.EventListener.TableDeleted(TableDeleteInfo{
-						JobID:   jobID,
-						Path:    path,
-						FileNum: fileNum,
-						Err:     err,
-					})
-				}
+				d.opts.EventListener.TableDeleted(TableDeleteInfo{
+					JobID:   jobID,
+					Path:    path,
+					FileNum: fileNum,
+					Err:     err,
+				})
 			}
 		}
 	}

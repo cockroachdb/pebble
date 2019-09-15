@@ -300,6 +300,10 @@ func (d *DB) Ingest(paths []string) error {
 	if err != nil {
 		return err
 	}
+	if len(meta) == 0 {
+		// All of the sstables to be ingested were empty. Nothing to do.
+		return nil
+	}
 
 	// Verify the sstables do not overlap.
 	if err := ingestSortAndVerify(d.cmp, meta); err != nil {
@@ -379,25 +383,23 @@ func (d *DB) Ingest(paths []string) error {
 		}
 	}
 
-	if d.opts.EventListener.TableIngested != nil {
-		info := TableIngestInfo{
-			JobID:        jobID,
-			GlobalSeqNum: meta[0].SmallestSeqNum,
-			Err:          err,
-		}
-		if ve != nil {
-			info.Tables = make([]struct {
-				TableInfo
-				Level int
-			}, len(ve.NewFiles))
-			for i := range ve.NewFiles {
-				e := &ve.NewFiles[i]
-				info.Tables[i].Level = e.Level
-				info.Tables[i].TableInfo = e.Meta.TableInfo(d.dirname)
-			}
-		}
-		d.opts.EventListener.TableIngested(info)
+	info := TableIngestInfo{
+		JobID:        jobID,
+		GlobalSeqNum: meta[0].SmallestSeqNum,
+		Err:          err,
 	}
+	if ve != nil {
+		info.Tables = make([]struct {
+			TableInfo
+			Level int
+		}, len(ve.NewFiles))
+		for i := range ve.NewFiles {
+			e := &ve.NewFiles[i]
+			info.Tables[i].Level = e.Level
+			info.Tables[i].TableInfo = e.Meta.TableInfo(d.dirname)
+		}
+	}
+	d.opts.EventListener.TableIngested(info)
 
 	return err
 }
