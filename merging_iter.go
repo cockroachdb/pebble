@@ -644,18 +644,6 @@ func (m *mergingIter) Prev() (*InternalKey, []byte) {
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) Key() *InternalKey {
-	return &m.heap.items[0].key
-}
-
-func (m *mergingIter) Value() []byte {
-	return m.heap.items[0].value
-}
-
-func (m *mergingIter) Valid() bool {
-	return m.heap.len() > 0 && m.err == nil
-}
-
 func (m *mergingIter) Error() error {
 	if m.heap.len() == 0 || m.err != nil {
 		return m.err

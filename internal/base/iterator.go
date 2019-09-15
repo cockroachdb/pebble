@@ -60,20 +60,6 @@ type InternalIterator interface {
 	// otherwise.
 	Prev() (*InternalKey, []byte)
 
-	// Key returns the encoded internal key of the current key/value pair, or nil
-	// if done. The caller should not modify the contents of the returned key,
-	// and its contents may change on the next call to Next.
-	Key() *InternalKey
-
-	// Value returns the value of the current key/value pair, or nil if done.
-	// The caller should not modify the contents of the returned slice, and
-	// its contents may change on the next call to Next.
-	Value() []byte
-
-	// Valid returns true if the iterator is positioned at a valid key/value pair
-	// and false otherwise.
-	Valid() bool
-
 	// Error returns any accumulated error.
 	Error() error
 

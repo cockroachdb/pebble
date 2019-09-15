@@ -30,54 +30,60 @@ import (
 // returned a boolean corresponding to Valid. Only used by test code.
 type iterAdapter struct {
 	Iterator
+	key *InternalKey
+	val []byte
 }
 
-func (i *iterAdapter) verify(key *InternalKey, val []byte) bool {
-	valid := key != nil
-	if valid != i.Valid() {
-		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
+func newIterAdapter(iter Iterator) *iterAdapter {
+	return &iterAdapter{
+		Iterator: iter,
 	}
-	if valid {
-		if base.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
-			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
-		}
-		if !bytes.Equal(val, i.Value()) {
-			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.Value()))
-		}
-	}
-	return valid
+}
+
+func (i *iterAdapter) update(key *InternalKey, val []byte) bool {
+	i.key = key
+	i.val = val
+	return i.key != nil
 }
 
 func (i *iterAdapter) SeekGE(key []byte) bool {
-	return i.verify(i.Iterator.SeekGE(key))
+	return i.update(i.Iterator.SeekGE(key))
 }
 
 func (i *iterAdapter) SeekPrefixGE(prefix, key []byte) bool {
-	return i.verify(i.Iterator.SeekPrefixGE(prefix, key))
+	return i.update(i.Iterator.SeekPrefixGE(prefix, key))
 }
 
 func (i *iterAdapter) SeekLT(key []byte) bool {
-	return i.verify(i.Iterator.SeekLT(key))
+	return i.update(i.Iterator.SeekLT(key))
 }
 
 func (i *iterAdapter) First() bool {
-	return i.verify(i.Iterator.First())
+	return i.update(i.Iterator.First())
 }
 
 func (i *iterAdapter) Last() bool {
-	return i.verify(i.Iterator.Last())
+	return i.update(i.Iterator.Last())
 }
 
 func (i *iterAdapter) Next() bool {
-	return i.verify(i.Iterator.Next())
+	return i.update(i.Iterator.Next())
 }
 
 func (i *iterAdapter) Prev() bool {
-	return i.verify(i.Iterator.Prev())
+	return i.update(i.Iterator.Prev())
 }
 
-func (i *iterAdapter) Key() InternalKey {
-	return *i.Iterator.Key()
+func (i *iterAdapter) Key() *InternalKey {
+	return i.key
+}
+
+func (i *iterAdapter) Value() []byte {
+	return i.val
+}
+
+func (i *iterAdapter) Valid() bool {
+	return i.key != nil
 }
 
 func TestReader(t *testing.T) {
@@ -232,7 +238,7 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 					}
 				}
 
-				iter := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+				iter := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 				if err := iter.Error(); err != nil {
 					t.Fatal(err)
 				}
@@ -410,7 +416,7 @@ func TestBytesIteratedCompressed(t *testing.T) {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, SnappyCompression)
 				var bytesIterated, prevIterated uint64
 				citer := r.NewCompactionIter(&bytesIterated)
-				for citer.First(); citer.Valid(); citer.Next() {
+				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
 					if bytesIterated < prevIterated {
 						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 					}
@@ -435,7 +441,7 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, NoCompression)
 				var bytesIterated, prevIterated uint64
 				citer := r.NewCompactionIter(&bytesIterated)
-				for citer.First(); citer.Valid(); citer.Next() {
+				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
 					if bytesIterated < prevIterated {
 						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 					}

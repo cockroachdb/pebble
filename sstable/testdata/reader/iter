@@ -61,6 +61,13 @@ seek-ge e
 .
 
 iter
+seek-ge d
+seek-ge z
+----
+<d:4>
+.
+
+iter
 seek-ge b
 seek-ge c
 seek-ge d

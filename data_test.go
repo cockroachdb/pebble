@@ -107,35 +107,37 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 		if len(parts) == 0 {
 			continue
 		}
+		var key *InternalKey
+		var value []byte
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-ge <key>\n")
 			}
 			prefix = nil
-			iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+			key, value = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-prefix-ge <key>\n")
 			}
 			prefix = []byte(strings.TrimSpace(parts[1]))
-			iter.SeekPrefixGE(prefix, prefix /* key */)
+			key, value = iter.SeekPrefixGE(prefix, prefix /* key */)
 		case "seek-lt":
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-lt <key>\n")
 			}
 			prefix = nil
-			iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+			key, value = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 		case "first":
 			prefix = nil
-			iter.First()
+			key, value = iter.First()
 		case "last":
 			prefix = nil
-			iter.Last()
+			key, value = iter.Last()
 		case "next":
-			iter.Next()
+			key, value = iter.Next()
 		case "prev":
-			iter.Prev()
+			key, value = iter.Prev()
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
 				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
@@ -158,11 +160,11 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
-		if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
+		if key != nil && checkValidPrefix(prefix, key.UserKey) {
 			if verboseKey {
-				fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+				fmt.Fprintf(&b, "%s:%s\n", key, value)
 			} else {
-				fmt.Fprintf(&b, "%s:%s\n", iter.Key().UserKey, iter.Value())
+				fmt.Fprintf(&b, "%s:%s\n", key.UserKey, value)
 			}
 		} else if err := iter.Error(); err != nil {
 			fmt.Fprintf(&b, "err=%v\n", err)

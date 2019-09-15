@@ -181,15 +181,15 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
 			}
-			iter.SeekGE([]byte("k"))
+			key, value := iter.SeekGE([]byte("k"))
 			if concurrent {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}
-			if !iter.Valid() {
+			if key == nil {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: valid.0: got false, want true", i, fileNum)
 				return
 			}
-			if got := len(iter.Value()); got != fileNum {
+			if got := len(value); got != fileNum {
 				errc <- fmt.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, fileNum, got, fileNum)
 				return
 			}

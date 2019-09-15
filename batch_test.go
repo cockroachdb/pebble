@@ -470,7 +470,7 @@ func TestFlushableBatch(t *testing.T) {
 			}
 			b.seqNum = uint64(seqNum)
 
-			iter := internalIterAdapter{b.newIter(nil)}
+			iter := newInternalIterAdapter(b.newIter(nil))
 			var buf bytes.Buffer
 			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
@@ -548,7 +548,7 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 		it := fb.newFlushIter(nil, &bytesIterated)
 
 		var prevIterated uint64
-		for it.First(); it.Valid(); it.Next() {
+		for key, _ := it.First(); key != nil; key, _ = it.Next() {
 			if bytesIterated < prevIterated {
 				t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 			}

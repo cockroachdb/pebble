@@ -81,7 +81,7 @@ func (it *Iterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
 		it.nd = it.list.tail
 		return nil, nil
 	}
-	return &it.key, it.Value()
+	return &it.key, it.value()
 }
 
 func (it *Iterator) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
@@ -104,7 +104,7 @@ func (it *Iterator) SeekLT(key []byte) (*base.InternalKey, []byte) {
 		it.nd = it.list.head
 		return nil, nil
 	}
-	return &it.key, it.Value()
+	return &it.key, it.value()
 }
 
 // First seeks position at the first entry in list. Returns the key and value
@@ -121,7 +121,7 @@ func (it *Iterator) First() (*base.InternalKey, []byte) {
 		it.nd = it.list.tail
 		return nil, nil
 	}
-	return &it.key, it.Value()
+	return &it.key, it.value()
 }
 
 // Last seeks position at the last entry in list. Returns the key and value if
@@ -138,7 +138,7 @@ func (it *Iterator) Last() (*base.InternalKey, []byte) {
 		it.nd = it.list.head
 		return nil, nil
 	}
-	return &it.key, it.Value()
+	return &it.key, it.value()
 }
 
 // Next advances to the next position. Returns the key and value if the
@@ -155,7 +155,7 @@ func (it *Iterator) Next() (*base.InternalKey, []byte) {
 		it.nd = it.list.tail
 		return nil, nil
 	}
-	return &it.key, it.Value()
+	return &it.key, it.value()
 }
 
 // Prev moves to the previous position. Returns the key and value if the
@@ -170,16 +170,11 @@ func (it *Iterator) Prev() (*base.InternalKey, []byte) {
 		it.nd = it.list.head
 		return nil, nil
 	}
-	return &it.key, it.Value()
+	return &it.key, it.value()
 }
 
-// Key returns the key at the current position.
-func (it *Iterator) Key() *base.InternalKey {
-	return &it.key
-}
-
-// Value returns the value at the current position.
-func (it *Iterator) Value() []byte {
+// value returns the value at the current position.
+func (it *Iterator) value() []byte {
 	return it.nd.getValue(it.list.arena)
 }
 
@@ -191,11 +186,6 @@ func (it *Iterator) Head() bool {
 // Tail true iff the iterator is positioned at the sentinel tail node.
 func (it *Iterator) Tail() bool {
 	return it.nd == it.list.tail
-}
-
-// Valid returns true iff the iterator is positioned at a valid node.
-func (it *Iterator) Valid() bool {
-	return it.nd != it.list.head && it.nd != it.list.tail
 }
 
 // SetBounds sets the lower and upper bounds for the iterator. Note that the

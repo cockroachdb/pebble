@@ -18,10 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kr/pretty"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -137,7 +137,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using SeekGE.
-		i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+		i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 		if !i.SeekGE([]byte(k)) || string(i.Key().UserKey) != k {
 			return fmt.Errorf("Find %q: key was not in the table", k)
 		}
@@ -183,7 +183,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using Find.
-		i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+		i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 		if i.SeekGE([]byte(s)) && s == string(i.Key().UserKey) {
 			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
@@ -209,7 +209,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		n, i := 0, iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+		n, i := 0, newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 		for valid := i.SeekGE([]byte(ct.start)); valid; valid = i.Next() {
 			n++
 		}
@@ -258,7 +258,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			upper = []byte(words[upperIdx])
 		}
 
-		i := iterAdapter{r.NewIter(lower, upper)}
+		i := newIterAdapter(r.NewIter(lower, upper))
 
 		{
 			// NB: the semantics of First are that it starts iteration from the
@@ -376,7 +376,7 @@ func build(
 		}
 		// This mirrors the logic in `make-table.cc`. It adds range deletions of
 		// increasing length for every 100 keys added.
-		if i % 100 == 0 {
+		if i%100 == 0 {
 			rangeDelStart = ikey.Clone()
 			rangeDelCounter = 0
 			rangeDelLength++
@@ -632,7 +632,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
-					i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+					i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 					for valid := i.First(); valid; valid = i.Next() {
 						got++
 					}
@@ -669,7 +669,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	const globalSeqNum = 42
 	r.Properties.GlobalSeqNum = globalSeqNum
 
-	i := iterAdapter{r.NewIter(nil /* lower */, nil /* upper */)}
+	i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 	for valid := i.First(); valid; valid = i.Next() {
 		if globalSeqNum != i.Key().SeqNum() {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())
@@ -678,7 +678,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 }
 
 func TestMetaIndexEntriesSorted(t *testing.T) {
-	f, err := build(base.DefaultCompression, nil /* filter policy */,
+	f, err := build(base.DefaultCompression, nil, /* filter policy */
 		TableFilter, nil, nil, 4096, 4096)
 	if err != nil {
 		t.Fatal(err)

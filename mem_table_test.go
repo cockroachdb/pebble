@@ -36,7 +36,7 @@ func (m *memTable) set(key InternalKey, value []byte) error {
 
 // count returns the number of entries in a DB.
 func (m *memTable) count() (n int) {
-	x := internalIterAdapter{m.newIter(nil)}
+	x := newInternalIterAdapter(m.newIter(nil))
 	for valid := x.First(); valid; valid = x.Next() {
 		n++
 	}
@@ -48,7 +48,7 @@ func (m *memTable) count() (n int) {
 
 // bytesIterated returns the number of bytes iterated in a DB.
 func (m *memTable) bytesIterated(t *testing.T) (bytesIterated uint64) {
-	x := internalIterAdapter{m.newFlushIter(nil, &bytesIterated)}
+	x := newInternalIterAdapter(m.newFlushIter(nil, &bytesIterated))
 	var prevIterated uint64
 	for valid := x.First(); valid; valid = x.Next() {
 		if bytesIterated < prevIterated {
@@ -95,7 +95,7 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", ErrNotFound)
 	}
 	// Check an iterator.
-	s, x := "", internalIterAdapter{m.newIter(nil)}
+	s, x := "", newInternalIterAdapter(m.newIter(nil))
 	for valid := x.SeekGE([]byte("mango")); valid; valid = x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
@@ -209,7 +209,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		"506",
 		"507",
 	}
-	x := internalIterAdapter{m0.newIter(nil)}
+	x := newInternalIterAdapter(m0.newIter(nil))
 	x.SeekGE([]byte(wants[0]))
 	for _, want := range wants {
 		if !x.Valid() {
@@ -338,7 +338,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 				b.release()
 
 				var count int
-				it := internalIterAdapter{m.newRangeDelIter(nil)}
+				it := newInternalIterAdapter(m.newRangeDelIter(nil))
 				for valid := it.SeekGE(start); valid; valid = it.Next() {
 					if m.cmp(it.Key().UserKey, end) >= 0 {
 						break
@@ -386,10 +386,11 @@ func BenchmarkMemTableIterNext(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !iter.Valid() {
-			iter.First()
+		key, _ := iter.Next()
+		if key == nil {
+			key, _ = iter.First()
 		}
-		iter.Next()
+		_ = key
 	}
 }
 
@@ -399,9 +400,10 @@ func BenchmarkMemTableIterPrev(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !iter.Valid() {
-			iter.Last()
+		key, _ := iter.Prev()
+		if key == nil {
+			key, _ = iter.Last()
 		}
-		iter.Prev()
+		_ = key
 	}
 }

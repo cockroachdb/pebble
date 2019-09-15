@@ -275,7 +275,7 @@ func testIterator(
 		for i, split := range splits {
 			iters[i] = newFakeIterator(nil, split...)
 		}
-		iter := newFunc(iters...)
+		iter := newInternalIterAdapter(newFunc(iters...))
 		iter.First()
 
 		j := 0
