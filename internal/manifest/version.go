@@ -60,6 +60,25 @@ func (m *FileMetadata) TableInfo(dirname string) TableInfo {
 	}
 }
 
+func (m *FileMetadata) lessSeqNum(b *FileMetadata) bool {
+	// NB: This is the same ordering that RocksDB uses for L0 files.
+
+	// Sort first by largest sequence number.
+	if m.LargestSeqNum != b.LargestSeqNum {
+		return m.LargestSeqNum < b.LargestSeqNum
+	}
+	// Then by smallest sequence number.
+	if m.SmallestSeqNum != b.SmallestSeqNum {
+		return m.SmallestSeqNum < b.SmallestSeqNum
+	}
+	// Break ties by file number.
+	return m.FileNum < b.FileNum
+}
+
+func (m *FileMetadata) lessSmallestKey(b *FileMetadata, cmp Compare) bool {
+	return base.InternalCompare(cmp, m.Smallest, b.Smallest) < 0
+}
+
 // KeyRange returns the minimum smallest and maximum largest internalKey for
 // all the fileMetadata in f0 and f1.
 func KeyRange(ucmp Compare, f0, f1 []FileMetadata) (smallest, largest InternalKey) {
@@ -86,18 +105,7 @@ type bySeqNum []FileMetadata
 
 func (b bySeqNum) Len() int { return len(b) }
 func (b bySeqNum) Less(i, j int) bool {
-	// NB: This is the same ordering that RocksDB uses for L0 files.
-
-	// Sort first by largest sequence number.
-	if b[i].LargestSeqNum != b[j].LargestSeqNum {
-		return b[i].LargestSeqNum < b[j].LargestSeqNum
-	}
-	// Then by smallest sequence number.
-	if b[i].SmallestSeqNum != b[j].SmallestSeqNum {
-		return b[i].SmallestSeqNum < b[j].SmallestSeqNum
-	}
-	// Break ties by file number.
-	return b[i].FileNum < b[j].FileNum
+	return b[i].lessSeqNum(&b[j])
 }
 func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
@@ -107,15 +115,15 @@ func SortBySeqNum(files []FileMetadata) {
 }
 
 type bySmallest struct {
-	dat []FileMetadata
-	cmp Compare
+	files []FileMetadata
+	cmp   Compare
 }
 
-func (b bySmallest) Len() int { return len(b.dat) }
+func (b bySmallest) Len() int { return len(b.files) }
 func (b bySmallest) Less(i, j int) bool {
-	return base.InternalCompare(b.cmp, b.dat[i].Smallest, b.dat[j].Smallest) < 0
+	return b.files[i].lessSmallestKey(&b.files[j], b.cmp)
 }
-func (b bySmallest) Swap(i, j int) { b.dat[i], b.dat[j] = b.dat[j], b.dat[i] }
+func (b bySmallest) Swap(i, j int) { b.files[i], b.files[j] = b.files[j], b.files[i] }
 
 // SortBySmallest sorts the specified files by smallest key using the supplied
 // comparison function to order user keys.
@@ -131,11 +139,15 @@ const NumLevels = 7
 // migrate data from level N to level N+1. The tables map internal keys (which
 // are a user key, a delete or set bit, and a sequence number) to user values.
 //
-// The tables at level 0 are sorted by increasing fileNum. If two level 0
-// tables have fileNums i and j and i < j, then the sequence numbers of every
-// internal key in table i are all less than those for table j. The range of
-// internal keys [fileMetadata.smallest, fileMetadata.largest] in each level 0
-// table may overlap.
+// The tables at level 0 are sorted by largest sequence number. Due to file
+// ingestion, there may be overlap in the ranges of sequence numbers contain in
+// level 0 sstables. In particular, it is valid for one level 0 sstable to have
+// the seqnum range [1,100] while an adjacent sstable has the seqnum range
+// [50,50]. This occurs when the [50,50] table was ingested and given a global
+// seqnum. The ingestion code will have ensured that the [50,50] sstable will
+// not have any keys that overlap with the [1,100] in the seqnum range
+// [1,49]. The range of internal keys [fileMetadata.smallest,
+// fileMetadata.largest] in each level 0 table may overlap.
 //
 // The tables at any non-0 level are sorted by their internal key range and any
 // two tables at the same non-0 level do not overlap.
@@ -390,20 +402,40 @@ func (l *VersionList) Remove(v *Version) {
 }
 
 // CheckOrdering checks that the files are consistent with respect to
-// increasing file numbers (for level 0 files) and increasing and non-
+// increasing largest seqnums (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
 func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMetadata) error {
 	if level == 0 {
 		for i := 1; i < len(files); i++ {
-			prev := &files[i-1]
 			f := &files[i]
-			if prev.LargestSeqNum >= f.LargestSeqNum {
-				return fmt.Errorf("L0 files %06d and %06d are not in increasing largest seqnum order: %d vs %d",
-					prev.FileNum, f.FileNum, prev.LargestSeqNum, f.LargestSeqNum)
+			prev := &files[i-1]
+			// The ordering for L0 sstables is unintuitive. L0 sstables can overlap
+			// in seqnum space. That is, it is valid to have one sstable with the
+			// seqnum range [1,100] while another sstable has the seqnum range
+			// [50,50]. This can occur when the second sstable has been ingested into
+			// L0.
+			if !prev.lessSeqNum(f) {
+				return fmt.Errorf("L0 files %06d and %06d are not properly ordered: %d-%d vs %d-%d",
+					prev.FileNum, f.FileNum,
+					prev.SmallestSeqNum, prev.LargestSeqNum,
+					f.SmallestSeqNum, f.LargestSeqNum)
 			}
-			if prev.SmallestSeqNum >= f.SmallestSeqNum {
-				return fmt.Errorf("L0 files %06d and %06d are not in increasing smallest seqnum order: %d vs %d",
-					prev.FileNum, f.FileNum, prev.SmallestSeqNum, f.SmallestSeqNum)
+			if f.SmallestSeqNum == f.LargestSeqNum {
+				// This sstable was an ingested and given a global seqnum.
+				if prev.SmallestSeqNum == prev.LargestSeqNum && prev.SmallestSeqNum == f.SmallestSeqNum {
+					return fmt.Errorf("L0 files %06d and %06d have overlapping seqnums: %d-%d vs %d-%d",
+						prev.FileNum, f.FileNum,
+						prev.SmallestSeqNum, prev.LargestSeqNum,
+						f.SmallestSeqNum, f.LargestSeqNum)
+				}
+			} else if prev.SmallestSeqNum != prev.LargestSeqNum &&
+				prev.LargestSeqNum >= f.SmallestSeqNum {
+				// Neither of the files was ingested. There shouldn't be any overlap
+				// between the sstable seqnum ranges.
+				return fmt.Errorf("L0 files %06d and %06d have overlapping seqnums: %d-%d vs %d-%d",
+					prev.FileNum, f.FileNum,
+					prev.SmallestSeqNum, prev.LargestSeqNum,
+					f.SmallestSeqNum, f.LargestSeqNum)
 			}
 		}
 	} else {
@@ -415,9 +447,17 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMe
 			}
 			if i > 0 {
 				prev := &files[i-1]
+				if !prev.lessSmallestKey(f, cmp) {
+					return fmt.Errorf("L%d files %06d and %06d are not properly ordered: %s-%s vs %s-%s",
+						level, prev.FileNum, f.FileNum,
+						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
+						f.Smallest.Pretty(format), f.Largest.Pretty(format))
+				}
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
-					return fmt.Errorf("L%d files %06d and %06d are not in increasing key order: %s vs %s",
-						level, prev.FileNum, f.FileNum, prev.Largest.Pretty(format), f.Smallest.Pretty(format))
+					return fmt.Errorf("L%d files %06d and %06d have overlapping ranges: %s-%s vs %s-%s",
+						level, prev.FileNum, f.FileNum,
+						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
+						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 			}
 		}
