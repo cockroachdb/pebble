@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kr/pretty"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/kr/pretty"
 	"golang.org/x/exp/rand"
 )
 
@@ -51,7 +51,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}
-			meta, err := ingestLoad(opts, []string{"ext"}, 0, []uint64{1})
+			meta, _, err := ingestLoad(opts, []string{"ext"}, 0, []uint64{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -131,7 +131,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	meta, err := ingestLoad(opts, paths, 0, pending)
+	meta, _, err := ingestLoad(opts, paths, 0, pending)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,19 +140,9 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 }
 
-func TestIngestLoadNonExistent(t *testing.T) {
-	opts := &Options{
-		Comparer: DefaultComparer,
-		FS:       vfs.NewMem(),
-	}
-	if _, err := ingestLoad(opts, []string{"non-existent"}, 0, []uint64{1}); err == nil {
-		t.Fatalf("expected error, but found success")
-	}
-}
-
-func TestIngestLoadEmpty(t *testing.T) {
+func TestIngestLoadInvalid(t *testing.T) {
 	mem := vfs.NewMem()
-	f, err := mem.Create("empty")
+	f, err := mem.Create("invalid")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +152,7 @@ func TestIngestLoadEmpty(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	if _, err := ingestLoad(opts, []string{"empty"}, 0, []uint64{1}); err == nil {
+	if _, _, err := ingestLoad(opts, []string{"invalid"}, 0, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -513,9 +503,6 @@ func TestIngest(t *testing.T) {
 			return ""
 
 		case "ingest":
-			if len(td.CmdArgs) == 0 {
-				return "ingest <paths>: path arguments missing\n"
-			}
 			var paths []string
 			for _, arg := range td.CmdArgs {
 				paths = append(paths, arg.String())

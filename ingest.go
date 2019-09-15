@@ -51,15 +51,18 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 	meta.Smallest = InternalKey{}
 	meta.Largest = InternalKey{}
 	smallestSet, largestSet := false, false
+	empty := true
 
 	{
 		iter := r.NewIter(nil /* lower */, nil /* upper */)
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
+			empty = false
 			meta.Smallest = key.Clone()
 			smallestSet = true
 		}
 		if key, _ := iter.Last(); key != nil {
+			empty = false
 			meta.Largest = key.Clone()
 			largestSet = true
 		}
@@ -71,12 +74,14 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 	if iter := r.NewRangeDelIter(); iter != nil {
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
+			empty = false
 			if !smallestSet ||
 				base.InternalCompare(opts.Comparer.Compare, meta.Smallest, *key) > 0 {
 				meta.Smallest = key.Clone()
 			}
 		}
 		if key, val := iter.Last(); key != nil {
+			empty = false
 			end := base.MakeRangeDeleteSentinelKey(val)
 			if !largestSet ||
 				base.InternalCompare(opts.Comparer.Compare, meta.Largest, end) < 0 {
@@ -85,21 +90,28 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 		}
 	}
 
+	if empty {
+		return nil, nil
+	}
 	return meta, nil
 }
 
 func ingestLoad(
 	opts *Options, paths []string, dbNum uint64, pending []uint64,
-) ([]*fileMetadata, error) {
-	meta := make([]*fileMetadata, len(paths))
+) ([]*fileMetadata, []string, error) {
+	meta := make([]*fileMetadata, 0, len(paths))
+	newPaths := make([]string, 0, len(paths))
 	for i := range paths {
-		var err error
-		meta[i], err = ingestLoad1(opts, paths[i], dbNum, pending[i])
+		m, err := ingestLoad1(opts, paths[i], dbNum, pending[i])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if m != nil {
+			meta = append(meta, m)
+			newPaths = append(newPaths, paths[i])
 		}
 	}
-	return meta, nil
+	return meta, newPaths, nil
 }
 
 func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
@@ -282,8 +294,9 @@ func (d *DB) Ingest(paths []string) error {
 		d.mu.Unlock()
 	}()
 
-	// Load the metadata for all of the files being ingested.
-	meta, err := ingestLoad(d.opts, paths, d.dbNum, pendingOutputs)
+	// Load the metadata for all of the files being ingested. This step detects
+	// and elides empty sstables.
+	meta, paths, err := ingestLoad(d.opts, paths, d.dbNum, pendingOutputs)
 	if err != nil {
 		return err
 	}
