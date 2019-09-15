@@ -276,6 +276,7 @@ func testIterator(
 			iters[i] = newFakeIterator(nil, split...)
 		}
 		iter := newFunc(iters...)
+		iter.First()
 
 		j := 0
 		for ; iter.Valid() && j < len(testKeyValuePairs); j++ {
