@@ -502,6 +502,44 @@ e-f#1
 .
 
 define
+a.RANGEDEL.10:k
+f.SET.9:f
+f.SET.8:f
+----
+
+iter snapshots=(9,10)
+first
+tombstones f
+next
+tombstones
+----
+f#9,1:f
+a-k#10
+.
+f#8,1:f
+f-k#10
+.
+
+define
+f.RANGEDEL.10:k
+f.SET.9:f
+f.SET.8:f
+----
+
+iter snapshots=(9,10)
+first
+tombstones f
+next
+tombstones
+----
+f#9,1:f
+f-k#10
+.
+f#8,1:f
+f-k#10
+.
+
+define
 a.SET.1:a
 b.RANGEDEL.2:d
 c.RANGEDEL.3:e
