@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/batch"
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rawalloc"
@@ -1042,8 +1043,14 @@ func (i *batchIter) SetBounds(lower, upper []byte) {
 }
 
 type flushableBatchEntry struct {
-	offset   uint32
-	index    uint32
+	// offset is the byte offset of the record within the batch repr.
+	offset uint32
+	// index is the 0-based ordinal number of the record within the batch. Used
+	// to compute the seqnum for the record.
+	index uint32
+	// key{Start,End} are the start and end byte offsets of the key within the
+	// batch repr. Cached to avoid decoding the key length on every
+	// comparison. The value is stored starting at keyEnd.
 	keyStart uint32
 	keyEnd   uint32
 }
@@ -1086,32 +1093,35 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		flushedCh: make(chan struct{}),
 	}
 
-	var index uint32
 	var rangeDelOffsets []flushableBatchEntry
-	for iter := BatchReader(b.data[batchHeaderLen:]); len(iter) > 0; index++ {
-		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
-		kind, key, _, ok := iter.Next()
-		if !ok {
-			break
-		}
-		entry := flushableBatchEntry{
-			offset: uint32(offset),
-			index:  uint32(index),
-		}
-		if keySize := uint32(len(key)); keySize == 0 {
-			// Must add 2 to the offset. One byte encodes `kind` and the next
-			// byte encodes `0`, which is the length of the key.
-			entry.keyStart = uint32(offset) + 2
-			entry.keyEnd = entry.keyStart
-		} else {
-			entry.keyStart = uint32(uintptr(unsafe.Pointer(&key[0])) -
-				uintptr(unsafe.Pointer(&b.data[0])))
-			entry.keyEnd = entry.keyStart + keySize
-		}
-		if kind == InternalKeyKindRangeDelete {
-			rangeDelOffsets = append(rangeDelOffsets, entry)
-		} else {
-			b.offsets = append(b.offsets, entry)
+	if len(b.data) > batchHeaderLen {
+		// Non-empty batch.
+		var index uint32
+		for iter := BatchReader(b.data[batchHeaderLen:]); len(iter) > 0; index++ {
+			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
+			kind, key, _, ok := iter.Next()
+			if !ok {
+				break
+			}
+			entry := flushableBatchEntry{
+				offset: uint32(offset),
+				index:  uint32(index),
+			}
+			if keySize := uint32(len(key)); keySize == 0 {
+				// Must add 2 to the offset. One byte encodes `kind` and the next
+				// byte encodes `0`, which is the length of the key.
+				entry.keyStart = uint32(offset) + 2
+				entry.keyEnd = entry.keyStart
+			} else {
+				entry.keyStart = uint32(uintptr(unsafe.Pointer(&key[0])) -
+					uintptr(unsafe.Pointer(&b.data[0])))
+				entry.keyEnd = entry.keyStart + keySize
+			}
+			if kind == InternalKeyKindRangeDelete {
+				rangeDelOffsets = append(rangeDelOffsets, entry)
+			} else {
+				b.offsets = append(b.offsets, entry)
+			}
 		}
 	}
 
@@ -1460,4 +1470,20 @@ func (i flushFlushableBatchIter) valueSize() uint64 {
 		length = v + uint64(n)
 	}
 	return length
+}
+
+// batchSort returns iterators for the sorted contents of the batch. It is
+// intended for testing use only. The batch.Sort dance is done to prevent
+// exposing this method in the public pebble interface.
+func batchSort(i interface{}) (internalIterator, internalIterator) {
+	b := i.(*Batch)
+	if b.Indexed() {
+		return b.newInternalIter(nil), b.newRangeDelIter(nil)
+	}
+	f := newFlushableBatch(b, b.db.opts.Comparer)
+	return f.newIter(nil), f.newRangeDelIter(nil)
+}
+
+func init() {
+	batch.Sort = batchSort
 }
