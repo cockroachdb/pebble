@@ -517,7 +517,6 @@ tombstones
 a#1,1:a
 d#4,1:d
 b-c#2
-c-d#3
 .
 c-d#3
 d-e#3
@@ -532,8 +531,6 @@ tombstones
 a#1,1:a
 d#4,1:d
 b-c#2
-c-d#3
-c-d#2
 .
 c-d#3
 c-d#2
@@ -554,7 +551,7 @@ tombstones
 ----
 a#1,1:a
 c#4,1:d
-b-d#2
+b-c#2
 .
 c-d#2
 .

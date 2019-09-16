@@ -41,6 +41,12 @@ build
 ----
 
 build
+2:   c-e
+1: a-c
+----
+pebble: keys must be added in order: c#2,15 > a#1,15
+
+build
 3: a-a
 3: a-b
 2: a-b
