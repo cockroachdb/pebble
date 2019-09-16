@@ -1,3 +1,21 @@
+ingest
+----
+
+ingest non-existent
+----
+stat non-existent: file does not exist
+
+# Elide ingestion of empty sstables.
+
+build ext0
+----
+
+ingest ext0
+----
+
+lsm
+----
+
 build ext0
 set a 1
 set b 2

@@ -309,12 +309,52 @@ type EventListener struct {
 
 // EnsureDefaults ensures that background error events are logged to the
 // specified logger if a handler for those events hasn't been otherwise
-// specified.
+// specified. Ensure all handlers are non-nil so that we don't have to check
+// for nil-ness before invoking.
 func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.BackgroundError == nil {
 		l.BackgroundError = func(err error) {
 			logger.Infof("background error: %s", err)
 		}
+	}
+	if l.CompactionBegin == nil {
+		l.CompactionBegin = func(info CompactionInfo) {}
+	}
+	if l.CompactionEnd == nil {
+		l.CompactionEnd = func(info CompactionInfo) {}
+	}
+	if l.FlushBegin == nil {
+		l.FlushBegin = func(info FlushInfo) {}
+	}
+	if l.FlushEnd == nil {
+		l.FlushEnd = func(info FlushInfo) {}
+	}
+	if l.ManifestCreated == nil {
+		l.ManifestCreated = func(info ManifestCreateInfo) {}
+	}
+	if l.ManifestDeleted == nil {
+		l.ManifestDeleted = func(info ManifestDeleteInfo) {}
+	}
+	if l.TableCreated == nil {
+		l.TableCreated = func(info TableCreateInfo) {}
+	}
+	if l.TableDeleted == nil {
+		l.TableDeleted = func(info TableDeleteInfo) {}
+	}
+	if l.TableIngested == nil {
+		l.TableIngested = func(info TableIngestInfo) {}
+	}
+	if l.WALCreated == nil {
+		l.WALCreated = func(info WALCreateInfo) {}
+	}
+	if l.WALDeleted == nil {
+		l.WALDeleted = func(info WALDeleteInfo) {}
+	}
+	if l.WriteStallBegin == nil {
+		l.WriteStallBegin = func(info WriteStallBeginInfo) {}
+	}
+	if l.WriteStallEnd == nil {
+		l.WriteStallEnd = func() {}
 	}
 }
 

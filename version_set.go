@@ -234,14 +234,12 @@ func (vs *versionSet) logAndApply(
 
 		if newManifestFileNum != 0 {
 			if err := vs.createManifest(vs.dirname, newManifestFileNum); err != nil {
-				if vs.opts.EventListener.ManifestCreated != nil {
-					vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-						JobID:   jobID,
-						Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
-						FileNum: newManifestFileNum,
-						Err:     err,
-					})
-				}
+				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
+					JobID:   jobID,
+					Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
+					FileNum: newManifestFileNum,
+					Err:     err,
+				})
 				return err
 			}
 		}
@@ -276,13 +274,11 @@ func (vs *versionSet) logAndApply(
 				vs.opts.Logger.Fatalf("MANIFEST dirsync failed: %v", err)
 				return err
 			}
-			if vs.opts.EventListener.ManifestCreated != nil {
-				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-					JobID:   jobID,
-					Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
-					FileNum: newManifestFileNum,
-				})
-			}
+			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
+				JobID:   jobID,
+				Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
+				FileNum: newManifestFileNum,
+			})
 		}
 		picker = newCompactionPicker(newVersion, vs.opts)
 		if !vs.dynamicBaseLevel {
