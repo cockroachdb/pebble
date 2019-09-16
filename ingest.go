@@ -144,7 +144,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	return firstErr
 }
 
-func ingestLink(opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
+func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
 	for i := range paths {
 		target := base.MakeFilename(dirname, fileTypeTable, meta[i].FileNum)
 		err := opts.FS.Link(paths[i], target)
@@ -153,6 +153,14 @@ func ingestLink(opts *Options, dirname string, paths []string, meta []*fileMetad
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
 			return err
+		}
+		if opts.EventListener.TableCreated != nil {
+			opts.EventListener.TableCreated(TableCreateInfo{
+				JobID:   jobID,
+				Reason:  "ingesting",
+				Path:    target,
+				FileNum: meta[i].FileNum,
+			})
 		}
 	}
 
@@ -220,7 +228,13 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 }
 
 func ingestTargetLevel(cmp Compare, v *version, meta *fileMetadata) int {
-	// Find the lowest level which does not have any files which overlap meta.
+	// Find the lowest level which does not have any files which overlap meta. We
+	// search from L0 to L6 looking for whether there are any files in the level
+	// which overlap meta. We want the "lowest" level (where lower means
+	// increasing level number) in order to reduce write amplification. We can't
+	// place meta at or below a level in which it has overlap because doing so
+	// could violate the invariant that for a given key the sequence numbers in
+	// higher levels will be larger than those in lower levels.
 	if len(v.Overlaps(0, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
 		return 0
 	}
@@ -314,7 +328,7 @@ func (d *DB) Ingest(paths []string) error {
 	// referenced by a version, they won't be used. If the hard linking fails
 	// (e.g. because the files reside on a different filesystem) we undo our work
 	// and return an error.
-	if err := ingestLink(d.opts, d.dirname, paths, meta); err != nil {
+	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
 		return err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
