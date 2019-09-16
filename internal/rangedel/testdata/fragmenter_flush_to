@@ -24,10 +24,14 @@ flush-to c
 ----
 pebble: flush-to key (c) < flushed key (d)
 
+# Note that the duplication of the fragments is expected. The flush-to
+# is emitting tombstones to different sstables.
+
 build
 3: a--d
 flush-to a
 ----
+3: a--d
 3: a--d
 
 build
@@ -37,12 +41,13 @@ flush-to d
 ----
 3: a--d
 2:    d--g
+2:    d--g
 
 build
 2: a----f
 flush-to c
 ----
-2: a-c
+2: a----f
 2:   c--f
 
 build
@@ -50,6 +55,15 @@ build
 flush-to f
 ----
 2: a----f
+
+build
+3: a-c
+1: a-----g
+flush-to d
+----
+3: a-c
+1: a-c
+1:    d--g
 
 build
 3: a-c
@@ -61,8 +75,6 @@ flush-to d
 3: a-c
 2: a-c
 1: a-c
-2:   cd
-1:   cd
 3:    de
 2:    de
 1:    de

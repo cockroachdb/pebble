@@ -267,8 +267,23 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 	return false
 }
 
-// FlushTo flushes all of the fragments before key. Can be used to fragment
-// tombstones during compaction when a tombstone straddles an sstable boundary.
+// FlushTo flushes all of the fragments before key. Used during compaction to
+// force emitting of tombstones which straddle an sstable boundary. Note that
+// the emitted tombstones are not truncated to the specified key. Consider the
+// scenario:
+//
+//     a---------k#10
+//          f#8
+//          f#7
+//
+// If the compaction logic splits f#8 and f#7 into different sstables, we can't
+// truncate the tombstone [a,k) at f. Doing so could produce an sstable with
+// the records:
+//
+//     a----f#10
+//          f#8
+//
+// The tombstone [a,f) does not cover the key f.
 func (f *Fragmenter) FlushTo(key []byte) {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
@@ -281,6 +296,7 @@ func (f *Fragmenter) FlushTo(key []byte) {
 				key, f.flushedKey))
 		}
 	}
+	f.flushedKey = append(f.flushedKey[:0], key...)
 
 	if len(f.pending) > 0 {
 		// Since all of the pending tombstones have the same start key, we only need
@@ -289,13 +305,28 @@ func (f *Fragmenter) FlushTo(key []byte) {
 		case c > 0:
 			panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
 				f.pending[0].Start, key))
+		case c == 0:
+			return
 		}
 	}
 
 	// At this point we know that the new start key is greater than the pending
 	// tombstones start keys. We flush the first set of fragments for the pending
 	// tombstones.
-	f.truncateAndFlush(key)
+	f.flush(f.pending, false /* all */)
+
+	pending := f.pending
+	f.pending = f.pending[:0]
+	for _, t := range pending {
+		if f.Cmp(key, t.End) < 0 {
+			//   t: a--+--e
+			// new:    c------
+			f.pending = append(f.pending, Tombstone{
+				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
+				End:   t.End,
+			})
+		}
+	}
 }
 
 // Flushes all pending tombstones up to key (exclusive).
