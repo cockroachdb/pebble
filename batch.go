@@ -1069,6 +1069,9 @@ type flushableBatch struct {
 	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
 	// flushable batch is indexed such that batch entry i will be given the
 	// sequence number flushableBatch.seqNum+i.
+	// Sorted in increasing order of key and decreasing order of offset (since
+	// higher offsets correspond to higher sequence numbers).
+	// Does not include range deletion entries.
 	offsets []flushableBatchEntry
 
 	// Fragmented range deletion tombstones.
@@ -1231,15 +1234,24 @@ func (b *flushableBatch) logInfo() (uint64, uint64) {
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
 // two in sync.
 type flushableBatchIter struct {
-	batch   *flushableBatch
-	data    []byte
+	// === Members to be initialized by creator. ===
+	batch *flushableBatch
+	// The bytes backing the batch. Always the same as batch.data?
+	data []byte
+	// The sorted entries. This is not always equal to batch.offsets.
 	offsets []flushableBatchEntry
 	cmp     Compare
-	index   int
-	key     InternalKey
-	err     error
-	lower   []byte
-	upper   []byte
+	// Must be initialized to -1. It is the index into offsets that represents
+	// the current iterator position.
+	index int
+
+	// === For internal use by the implementation. ===
+	key InternalKey
+	err error
+
+	// === Optionally initialize to bounds of iteration, if any. ===
+	lower []byte
+	upper []byte
 }
 
 // flushableBatchIter implements the internalIterator interface.
@@ -1248,11 +1260,12 @@ var _ internalIterator = (*flushableBatchIter)(nil)
 func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
-		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
+		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	if i.index >= len(i.offsets) {
 		return nil, nil
 	}
+	// TODO: why is i.index not conforming to i.lower constraint?
 	i.key = i.getKey(i.index)
 	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
 		i.index = len(i.offsets)
@@ -1286,6 +1299,7 @@ func (i *flushableBatchIter) First() (*InternalKey, []byte) {
 	if len(i.offsets) == 0 {
 		return nil, nil
 	}
+	// TODO: why is i.index not conforming to i.lower constraint?
 	i.index = 0
 	i.key = i.getKey(i.index)
 	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
@@ -1301,6 +1315,7 @@ func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
 	}
 	i.index = len(i.offsets) - 1
 	i.key = i.getKey(i.index)
+	// TODO: why is i.index not conforming to i.upper constraint?
 	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
 		i.index = -1
 		return nil, nil
@@ -1314,6 +1329,9 @@ func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
 	if i.index == len(i.offsets) {
 		return nil, nil
 	}
+	// TODO: if one calls Prev() and iterates before i.lower,
+	// i.index will be set to -1 and this will return it to 0, so
+	// don't we need to conform to i.lower here?
 	i.index++
 	if i.index == len(i.offsets) {
 		return nil, nil
