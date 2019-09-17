@@ -1,0 +1,181 @@
+check-ordering
+L0
+  a.SET.1-b.SET.2
+----
+OK
+
+check-ordering
+L0
+  a.SET.1-b.SET.2
+  c.SET.3-d.SET.4
+----
+OK
+
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.2
+----
+L0 files 000001 and 000002 are not properly ordered: 3-4 vs 1-2
+0:
+  1:[c#3,1-d#4,1]
+  2:[a#1,1-b#2,1]
+
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+----
+L0 flushed file 000002 overlaps with the largest seqnum of a preceding flushed file: 1-5 vs 4
+0:
+  1:[c#3,1-d#4,1]
+  2:[a#1,1-b#5,1]
+
+check-ordering
+L0
+  a.SET.3-d.SET.3
+  a.SET.1-b.SET.2
+----
+L0 files 000001 and 000002 are not properly ordered: 3-3 vs 1-2
+0:
+  1:[a#3,1-d#3,1]
+  2:[a#1,1-b#2,1]
+
+check-ordering
+L0
+  a.SET.2-d.SET.4
+  a.SET.3-b.SET.3
+----
+L0 files 000001 and 000002 are not properly ordered: 2-4 vs 3-3
+0:
+  1:[a#2,1-d#4,1]
+  2:[a#3,1-b#3,1]
+
+check-ordering
+L0
+  a.SET.3-d.SET.3
+  a.SET.3-b.SET.3
+----
+L0 file 000002 does not have strictly increasing largest seqnum: 3-3 vs 3
+0:
+  1:[a#3,1-d#3,1]
+  2:[a#3,1-b#3,1]
+
+check-ordering
+L0
+  a.SET.3-d.SET.3
+  a.SET.3-d.SET.5
+----
+L0 flushed file 000002 has an ingested file coincident with smallest seqnum: 3-5
+0:
+  1:[a#3,1-d#3,1]
+  2:[a#3,1-d#5,1]
+
+check-ordering
+L0
+  a.SET.4-d.SET.4
+  a.SET.3-d.SET.5
+----
+OK
+
+check-ordering
+L0
+  a.SET.3-d.SET.5
+  a.SET.5-d.SET.5
+----
+L0 file 000002 does not have strictly increasing largest seqnum: 5-5 vs 5
+0:
+  1:[a#3,1-d#5,1]
+  2:[a#5,1-d#5,1]
+
+check-ordering
+L0
+  a.SET.4-d.SET.4
+  a.SET.5-d.SET.5
+  a.SET.4-d.SET.6
+----
+L0 flushed file 000003 has an ingested file coincident with smallest seqnum: 4-6
+0:
+  1:[a#4,1-d#4,1]
+  2:[a#5,1-d#5,1]
+  3:[a#4,1-d#6,1]
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+----
+OK
+
+check-ordering
+L1
+  b.SET.1-a.SET.2
+----
+L1 file 000001 has inconsistent bounds: b#1,1 vs a#2,1
+1:
+  1:[b#1,1-a#2,1]
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  c.SET.3-d.SET.4
+----
+OK
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  d.SET.3-c.SET.4
+----
+L1 file 000002 has inconsistent bounds: d#3,1 vs c#4,1
+1:
+  1:[a#1,1-b#2,1]
+  2:[d#3,1-c#4,1]
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  b.SET.1-d.SET.4
+----
+OK
+
+check-ordering
+L1
+  a.SET.1-b.SET.2
+  b.SET.2-d.SET.4
+----
+L1 files 000001 and 000002 have overlapping ranges: a#1,1-b#2,1 vs b#2,1-d#4,1
+1:
+  1:[a#1,1-b#2,1]
+  2:[b#2,1-d#4,1]
+
+check-ordering
+L1
+  a.SET.1-c.SET.2
+  b.SET.3-d.SET.4
+----
+L1 files 000001 and 000002 have overlapping ranges: a#1,1-c#2,1 vs b#3,1-d#4,1
+1:
+  1:[a#1,1-c#2,1]
+  2:[b#3,1-d#4,1]
+
+check-ordering
+L1
+  a.SET.1-c.SET.2
+L2
+  b.SET.3-d.SET.4
+----
+OK
+
+check-ordering
+L1
+  a.SET.1-c.SET.2
+L2
+  b.SET.3-d.SET.4
+  c.SET.5-e.SET.6
+----
+L2 files 000002 and 000003 have overlapping ranges: b#3,1-d#4,1 vs c#5,1-e#6,1
+1:
+  1:[a#1,1-c#2,1]
+2:
+  2:[b#3,1-d#4,1]
+  3:[c#5,1-e#6,1]

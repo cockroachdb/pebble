@@ -418,40 +418,82 @@ func (l *VersionList) Remove(v *Version) {
 }
 
 // CheckOrdering checks that the files are consistent with respect to
-// increasing largest seqnums (for level 0 files) and increasing and non-
+// seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
 func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMetadata) error {
 	if level == 0 {
-		for i := 1; i < len(files); i++ {
+		// We have 2 kinds of files:
+		// - Files with exactly one sequence number: these could be either ingested files
+		//   or flushed files. We cannot tell the difference between them based on FileMetadata,
+		//   so our consistency checking here uses the weaker checks assuming it is an ingested
+		//   file.
+		// - Files with multiple sequence numbers: these are necessarily flushed files.
+		//
+		// The only overlapping sequence number case is an ingested file contained in the sequence
+		// numbers of the flushed file -- it must be fully contained (not coincident with either
+		// end of the flushed file) since the memtable must have been at [a, b-1] (where b > a)
+		// when the ingested file was assigned sequence num b, and the memtable got a subsequent
+		// update that was given sequence num b+1, before being flushed.
+		//
+		// So a sequence [1000, 1000] [1002, 1002] [1000, 2000] is invalid since the first and
+		// third file are inconsistent with each other. So comparing adjacent files is insufficient
+		// for consistency checking.
+		//
+		// Visually we have something like
+		// x------y x-----------yx-------------y (flushed files where x, y are the endpoints)
+		//     y       y  y        y             (y's represent ingested files)
+		// And these are ordered in increasing order of y. Note that y's must be unique.
+
+		// The largest sequence number of a flushed file. Increasing.
+		var largestFlushedSeqNum uint64
+
+		// The largest sequence number of any file. Increasing.
+		var largestSeqNum uint64
+
+		// The ingested file sequence numbers that have not yet been checked to be compatible with
+		// flushed files.
+		// They are checked when largestFlushedSeqNum advances past them.
+		var uncheckedIngestedSeqNums []uint64
+
+		for i := 0; i < len(files); i++ {
 			f := &files[i]
-			prev := &files[i-1]
-			// The ordering for L0 sstables is unintuitive. L0 sstables can overlap
-			// in seqnum space. That is, it is valid to have one sstable with the
-			// seqnum range [1,100] while another sstable has the seqnum range
-			// [50,50]. This can occur when the second sstable has been ingested into
-			// L0.
-			if !prev.lessSeqNum(f) {
-				return fmt.Errorf("L0 files %06d and %06d are not properly ordered: %d-%d vs %d-%d",
-					prev.FileNum, f.FileNum,
-					prev.SmallestSeqNum, prev.LargestSeqNum,
-					f.SmallestSeqNum, f.LargestSeqNum)
-			}
-			if f.SmallestSeqNum == f.LargestSeqNum {
-				// This sstable was an ingested and given a global seqnum.
-				if prev.SmallestSeqNum == prev.LargestSeqNum && prev.SmallestSeqNum == f.SmallestSeqNum {
-					return fmt.Errorf("L0 files %06d and %06d have overlapping seqnums: %d-%d vs %d-%d",
+			if i > 0 {
+				// Validate that the sorting is sane.
+				prev := &files[i-1]
+				if !prev.lessSeqNum(f) {
+					return fmt.Errorf("L0 files %06d and %06d are not properly ordered: %d-%d vs %d-%d",
 						prev.FileNum, f.FileNum,
 						prev.SmallestSeqNum, prev.LargestSeqNum,
 						f.SmallestSeqNum, f.LargestSeqNum)
 				}
-			} else if prev.SmallestSeqNum != prev.LargestSeqNum &&
-				prev.LargestSeqNum >= f.SmallestSeqNum {
-				// Neither of the files was ingested. There shouldn't be any overlap
-				// between the sstable seqnum ranges.
-				return fmt.Errorf("L0 files %06d and %06d have overlapping seqnums: %d-%d vs %d-%d",
-					prev.FileNum, f.FileNum,
-					prev.SmallestSeqNum, prev.LargestSeqNum,
-					f.SmallestSeqNum, f.LargestSeqNum)
+			}
+			if i > 0 && largestSeqNum >= f.LargestSeqNum {
+				return fmt.Errorf("L0 file %06d does not have strictly increasing "+
+					"largest seqnum: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, largestSeqNum)
+			}
+			largestSeqNum = f.LargestSeqNum
+			if f.SmallestSeqNum == f.LargestSeqNum {
+				// Ingested file.
+				uncheckedIngestedSeqNums = append(uncheckedIngestedSeqNums, f.LargestSeqNum)
+			} else {
+				// Flushed file.
+				// Two flushed files cannot overlap.
+				if largestFlushedSeqNum > 0 && f.SmallestSeqNum <= largestFlushedSeqNum {
+					return fmt.Errorf("L0 flushed file %06d overlaps with the largest seqnum of a "+
+						"preceding flushed file: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum,
+						largestFlushedSeqNum)
+				}
+				largestFlushedSeqNum = f.LargestSeqNum
+				// Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
+				// We do not need to check that they are not coincident with f.LargestSeqNum because we
+				// have already confirmed that LargestSeqNums were increasing.
+				for _, seq := range uncheckedIngestedSeqNums {
+					if seq == f.SmallestSeqNum {
+						return fmt.Errorf("L0 flushed file %06d has an ingested file coincident with "+
+							"smallest seqnum: %d-%d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum)
+					}
+				}
+				uncheckedIngestedSeqNums = uncheckedIngestedSeqNums[:0]
 			}
 		}
 	} else {
