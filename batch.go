@@ -372,7 +372,16 @@ func (b *Batch) Get(key []byte) (value []byte, err error) {
 	return b.db.getInternal(key, b, nil /* snapshot */)
 }
 
-func (b *Batch) prepareRecord(keyLen, valueLen int, kind InternalKeyKind) {
+func (b *Batch) prepareDeferredKeyValueRecord(
+	keyLen, valueLen int, kind InternalKeyKind) error {
+	if len(b.storage.data) == 0 {
+		b.init(keyLen + valueLen + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+	b.memTableSize += memTableEntrySize(keyLen, valueLen)
+
 	pos := len(b.storage.data)
 	b.deferredOp.offset = uint32(pos)
 	b.grow(1 + 2*maxVarintLen32 + keyLen + valueLen)
@@ -388,7 +397,36 @@ func (b *Batch) prepareRecord(keyLen, valueLen int, kind InternalKeyKind) {
 	pos += varlen2
 	b.deferredOp.Value = b.storage.data[pos : pos+valueLen]
 	pos += valueLen
-	b.storage.data = b.storage.data[:len(b.storage.data)-(2*maxVarintLen32-varlen1-varlen2)]
+	// Shrink data since varints may be shorter than the upper bound.
+	b.storage.data =
+		b.storage.data[:len(b.storage.data)-(2*maxVarintLen32-varlen1-varlen2)]
+	return nil
+}
+
+func (b *Batch) prepareDeferredKeyRecord(
+	keyLen int, kind InternalKeyKind) error {
+	if len(b.storage.data) == 0 {
+		b.init(keyLen + binary.MaxVarintLen64 + batchHeaderLen)
+	}
+	if !b.increment() {
+		return ErrInvalidBatch
+	}
+	b.memTableSize += memTableEntrySize(keyLen, 0)
+
+	pos := len(b.storage.data)
+	b.deferredOp.offset = uint32(pos)
+	b.grow(1 + maxVarintLen32 + keyLen)
+	b.storage.data[pos] = byte(kind)
+	pos++
+
+	varlen1 := putUvarint32(b.storage.data[pos:], uint32(keyLen))
+	pos += varlen1
+	b.deferredOp.Key = b.storage.data[pos : pos+keyLen]
+	b.deferredOp.Value = nil
+
+	// Shrink data since varint may be shorter than the upper bound.
+	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
+	return nil
 }
 
 // Set adds an action to the batch that sets the key to map to the value.
@@ -417,17 +455,10 @@ func (b *Batch) Set(key, value []byte, _ *WriteOptions) error {
 // letting the caller encode into those objects and then call Finish() on the
 // returned object.
 func (b *Batch) SetDeferred(keyLen, valueLen int, _ *WriteOptions) (*DeferredBatchOp, error) {
-	// Code duplication between Set and SetDeferred lets us preserve the fast
-	// path where the entire byte slices are available (in the Set case).
-	if len(b.storage.data) == 0 {
-		b.init(keyLen + valueLen + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	err := b.prepareDeferredKeyValueRecord(keyLen, valueLen, InternalKeyKindSet)
+	if err != nil {
+		return nil, err
 	}
-	if !b.increment() {
-		return nil, ErrInvalidBatch
-	}
-
-	b.memTableSize += memTableEntrySize(keyLen, valueLen)
-	b.prepareRecord(keyLen, valueLen, InternalKeyKindSet)
 	b.deferredOp.index = b.index
 	return &b.deferredOp, nil
 }
@@ -460,17 +491,10 @@ func (b *Batch) Merge(key, value []byte, _ *WriteOptions) error {
 // letting the caller encode into those objects and then call Finish() on the
 // returned object.
 func (b *Batch) MergeDeferred(keyLen, valueLen int, _ *WriteOptions) (*DeferredBatchOp, error) {
-	// Code duplication with Merge is so that the Merge case (where byte slices
-	// are provided) can preserve the fast path.
-	if len(b.storage.data) == 0 {
-		b.init(keyLen + valueLen + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	err := b.prepareDeferredKeyValueRecord(keyLen, valueLen, InternalKeyKindMerge)
+	if err != nil {
+		return nil, err
 	}
-	if !b.increment() {
-		return nil, ErrInvalidBatch
-	}
-
-	b.memTableSize += memTableEntrySize(keyLen, valueLen)
-	b.prepareRecord(keyLen, valueLen, InternalKeyKindMerge)
 	b.deferredOp.index = b.index
 	return &b.deferredOp, nil
 }
@@ -500,29 +524,10 @@ func (b *Batch) Delete(key []byte, _ *WriteOptions) error {
 // slices, letting the caller encode into those objects and then call Finish()
 // on the returned object.
 func (b *Batch) DeleteDeferred(keyLen int, _ *WriteOptions) (*DeferredBatchOp, error) {
-	// Code duplication with Delete is so that the Delete case (where byte
-	// slices are provided) can preserve the fast path.
-	if len(b.storage.data) == 0 {
-		b.init(keyLen + binary.MaxVarintLen64 + batchHeaderLen)
+	err := b.prepareDeferredKeyRecord(keyLen, InternalKeyKindDelete)
+	if err != nil {
+		return nil, err
 	}
-	if !b.increment() {
-		return nil, ErrInvalidBatch
-	}
-
-	b.memTableSize += memTableEntrySize(keyLen, 0)
-
-	pos := len(b.storage.data)
-	b.deferredOp.offset = uint32(pos)
-	b.grow(1 + maxVarintLen32 + keyLen)
-	b.storage.data[pos] = byte(InternalKeyKindDelete)
-	pos++
-	varlen1 := putUvarint32(b.storage.data[pos:], uint32(keyLen))
-	pos += varlen1
-	b.deferredOp.Key = b.storage.data[pos : pos+keyLen]
-	b.deferredOp.Value = nil
-
-	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
-
 	b.deferredOp.index = b.index
 	return &b.deferredOp, nil
 }
@@ -553,29 +558,10 @@ func (b *Batch) SingleDelete(key []byte, _ *WriteOptions) error {
 // complete slices, letting the caller encode into those objects and then call
 // Finish() on the returned object.
 func (b *Batch) SingleDeleteDeferred(keyLen int, _ *WriteOptions) (*DeferredBatchOp, error) {
-	// Code duplication with Delete is so that the Delete case (where byte
-	// slices are provided) can preserve the fast path.
-	if len(b.storage.data) == 0 {
-		b.init(keyLen + binary.MaxVarintLen64 + batchHeaderLen)
+	err := b.prepareDeferredKeyRecord(keyLen, InternalKeyKindSingleDelete)
+	if err != nil {
+		return nil, err
 	}
-	if !b.increment() {
-		return nil, ErrInvalidBatch
-	}
-
-	b.memTableSize += memTableEntrySize(keyLen, 0)
-
-	pos := len(b.storage.data)
-	b.deferredOp.offset = uint32(pos)
-	b.grow(1 + maxVarintLen32 + keyLen)
-	b.storage.data[pos] = byte(InternalKeyKindSingleDelete)
-	pos++
-	varlen1 := putUvarint32(b.storage.data[pos:], uint32(keyLen))
-	pos += varlen1
-	b.deferredOp.Key = b.storage.data[pos : pos+keyLen]
-	b.deferredOp.Value = nil
-
-	b.storage.data = b.storage.data[:len(b.storage.data)-(maxVarintLen32-varlen1)]
-
 	b.deferredOp.index = b.index
 	return &b.deferredOp, nil
 }
@@ -610,16 +596,10 @@ func (b *Batch) DeleteRange(start, end []byte, _ *WriteOptions) error {
 // populated with the start key, and DeferredBatchOp.Value should be populated
 // with the end key.
 func (b *Batch) DeleteRangeDeferred(startLen, endLen int, _ *WriteOptions) (*DeferredBatchOp, error) {
-	if len(b.storage.data) == 0 {
-		b.init(startLen + endLen + 2*binary.MaxVarintLen64 + batchHeaderLen)
+	err := b.prepareDeferredKeyValueRecord(startLen, endLen, InternalKeyKindRangeDelete)
+	if err != nil {
+		return nil, err
 	}
-	if !b.increment() {
-		return nil, ErrInvalidBatch
-	}
-
-	b.memTableSize += memTableEntrySize(startLen, endLen)
-	b.prepareRecord(startLen, endLen, InternalKeyKindRangeDelete)
-
 	if b.index != nil {
 		b.tombstones = nil
 		// Range deletions are rare, so we lazily allocate the index for them.
@@ -1069,6 +1049,11 @@ type flushableBatch struct {
 	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
 	// flushable batch is indexed such that batch entry i will be given the
 	// sequence number flushableBatch.seqNum+i.
+	//
+	// Sorted in increasing order of key and decreasing order of offset (since
+	// higher offsets correspond to higher sequence numbers).
+	//
+	// Does not include range deletion entries.
 	offsets []flushableBatchEntry
 
 	// Fragmented range deletion tombstones.
@@ -1231,24 +1216,35 @@ func (b *flushableBatch) logInfo() (uint64, uint64) {
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
 // two in sync.
 type flushableBatchIter struct {
-	batch   *flushableBatch
-	data    []byte
+	// Members to be initialized by creator.
+	batch *flushableBatch
+	// The bytes backing the batch. Always the same as batch.data?
+	data []byte
+	// The sorted entries. This is not always equal to batch.offsets.
 	offsets []flushableBatchEntry
 	cmp     Compare
-	index   int
-	key     InternalKey
-	err     error
-	lower   []byte
-	upper   []byte
+	// Must be initialized to -1. It is the index into offsets that represents
+	// the current iterator position.
+	index int
+
+	// For internal use by the implementation.
+	key InternalKey
+	err error
+
+	// Optionally initialize to bounds of iteration, if any.
+	lower []byte
+	upper []byte
 }
 
 // flushableBatchIter implements the internalIterator interface.
 var _ internalIterator = (*flushableBatchIter)(nil)
 
+// SeekGE implements internalIterator.SeekGE, as documented in the pebble
+// package.
 func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
-		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) < 0
+		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	if i.index >= len(i.offsets) {
 		return nil, nil
@@ -1261,10 +1257,14 @@ func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
+// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
+// pebble package.
 func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	return i.SeekGE(key)
 }
 
+// SeekLT implements internalIterator.SeekLT, as documented in the pebble
+// package.
 func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
@@ -1282,6 +1282,8 @@ func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
+// First implements internalIterator.First, as documented in the pebble
+// package.
 func (i *flushableBatchIter) First() (*InternalKey, []byte) {
 	if len(i.offsets) == 0 {
 		return nil, nil
@@ -1295,6 +1297,8 @@ func (i *flushableBatchIter) First() (*InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
+// Last implements internalIterator.Last, as documented in the pebble
+// package.
 func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
 	if len(i.offsets) == 0 {
 		return nil, nil
