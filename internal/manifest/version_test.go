@@ -6,11 +6,13 @@ package manifest
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 func ikey(s string) InternalKey {
@@ -266,4 +268,61 @@ func TestVersionUnref(t *testing.T) {
 	if !list.Empty() {
 		t.Fatalf("expected version list to be empty")
 	}
+}
+
+func TestCheckOrdering(t *testing.T) {
+	parseMeta := func(s string) FileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		m := FileMetadata{
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		return m
+	}
+
+	datadriven.RunTest(t, "testdata/version_check_ordering",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "check-ordering":
+				// TODO(sumeer): move this Version parsing code to utils, to
+				// avoid repeating it, and make it the inverse of
+				// Version.DebugString().
+				v := Version{}
+				var files *[]FileMetadata
+				fileNum := uint64(1)
+
+				for _, data := range strings.Split(d.Input, "\n") {
+					switch data {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err := strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+						files = &v.Files[level]
+
+					default:
+						meta := parseMeta(data)
+						meta.FileNum = fileNum
+						fileNum++
+						*files = append(*files, meta)
+					}
+				}
+
+				cmp := base.DefaultComparer.Compare
+				result := "OK"
+				err := v.CheckOrdering(cmp, base.DefaultFormatter)
+				if err != nil {
+					result = fmt.Sprint(err)
+				}
+				return result
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
 }

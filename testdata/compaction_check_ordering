@@ -23,7 +23,7 @@ L0
   c.SET.3-d.SET.4
   a.SET.1-b.SET.5
 ----
-fatal: L0 files 000001 and 000002 have overlapping seqnums: 3-4 vs 1-5
+fatal: L0 flushed file 000002 overlaps with the largest seqnum of a preceding flushed file: 1-5 vs 4
 
 check-ordering
 L0
@@ -44,7 +44,7 @@ L0
   a.SET.3-d.SET.3
   a.SET.3-b.SET.3
 ----
-fatal: L0 files 000001 and 000002 have overlapping seqnums: 3-3 vs 3-3
+fatal: L0 file 000002 does not have strictly increasing largest seqnum: 3-3 vs 3
 
 check-ordering
 L1
