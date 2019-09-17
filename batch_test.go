@@ -306,42 +306,64 @@ func TestBatchIter(t *testing.T) {
 	var b *Batch
 
 	for _, method := range []string{"build", "apply"} {
-		t.Run(method, func(t *testing.T) {
-			datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
-				switch d.Cmd {
-				case "define":
-					switch method {
-					case "build":
-						b = newIndexedBatch(nil, DefaultComparer)
-					case "apply":
-						b = newBatch(nil)
+		for _, testdata := range []string{
+			"testdata/internal_iter_next", "testdata/internal_iter_bounds"} {
+			t.Run(method, func(t *testing.T) {
+				datadriven.RunTest(t, testdata, func(d *datadriven.TestData) string {
+					switch d.Cmd {
+					case "define":
+						switch method {
+						case "build":
+							b = newIndexedBatch(nil, DefaultComparer)
+						case "apply":
+							b = newBatch(nil)
+						}
+
+						for _, key := range strings.Split(d.Input, "\n") {
+							j := strings.Index(key, ":")
+							ikey := base.ParseInternalKey(key[:j])
+							value := []byte(key[j+1:])
+							b.Set(ikey.UserKey, value, nil)
+						}
+
+						switch method {
+						case "apply":
+							tmp := newIndexedBatch(nil, DefaultComparer)
+							tmp.Apply(b, nil)
+							b = tmp
+						}
+						return ""
+
+					case "iter":
+						var options IterOptions
+						for _, arg := range d.CmdArgs {
+							switch arg.Key {
+							case "lower":
+								if len(arg.Vals) != 1 {
+									return fmt.Sprintf(
+										"%s expects at most 1 value for lower", d.Cmd)
+								}
+								options.LowerBound = []byte(arg.Vals[0])
+							case "upper":
+								if len(arg.Vals) != 1 {
+									return fmt.Sprintf(
+										"%s expects at most 1 value for upper", d.Cmd)
+								}
+								options.UpperBound = []byte(arg.Vals[0])
+							default:
+								return fmt.Sprintf("unknown arg: %s", arg.Key)
+							}
+						}
+						iter := b.newInternalIter(&options)
+						defer iter.Close()
+						return runInternalIterCmd(d, iter)
+
+					default:
+						return fmt.Sprintf("unknown command: %s", d.Cmd)
 					}
-
-					for _, key := range strings.Split(d.Input, "\n") {
-						j := strings.Index(key, ":")
-						ikey := base.ParseInternalKey(key[:j])
-						value := []byte(fmt.Sprint(ikey.SeqNum()))
-						b.Set(ikey.UserKey, value, nil)
-					}
-
-					switch method {
-					case "apply":
-						tmp := newIndexedBatch(nil, DefaultComparer)
-						tmp.Apply(b, nil)
-						b = tmp
-					}
-					return ""
-
-				case "iter":
-					iter := b.newInternalIter(nil)
-					defer iter.Close()
-					return runInternalIterCmd(d, iter)
-
-				default:
-					return fmt.Sprintf("unknown command: %s", d.Cmd)
-				}
+				})
 			})
-		})
+		}
 	}
 }
 
