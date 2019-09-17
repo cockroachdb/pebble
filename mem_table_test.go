@@ -237,27 +237,49 @@ func TestMemTable1000Entries(t *testing.T) {
 
 func TestMemTableIter(t *testing.T) {
 	var mem *memTable
-	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
-		switch d.Cmd {
-		case "define":
-			mem = newMemTable(nil)
-			for _, key := range strings.Split(d.Input, "\n") {
-				j := strings.Index(key, ":")
-				if err := mem.set(base.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
-					return err.Error()
+	for _, testdata := range []string{
+		"testdata/internal_iter_next", "testdata/internal_iter_bounds"} {
+		datadriven.RunTest(t, testdata, func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "define":
+				mem = newMemTable(nil)
+				for _, key := range strings.Split(d.Input, "\n") {
+					j := strings.Index(key, ":")
+					if err := mem.set(base.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
+						return err.Error()
+					}
 				}
+				return ""
+
+			case "iter":
+				var options IterOptions
+				for _, arg := range d.CmdArgs {
+					switch arg.Key {
+					case "lower":
+						if len(arg.Vals) != 1 {
+							return fmt.Sprintf(
+								"%s expects at most 1 value for lower", d.Cmd)
+						}
+						options.LowerBound = []byte(arg.Vals[0])
+					case "upper":
+						if len(arg.Vals) != 1 {
+							return fmt.Sprintf(
+								"%s expects at most 1 value for upper", d.Cmd)
+						}
+						options.UpperBound = []byte(arg.Vals[0])
+					default:
+						return fmt.Sprintf("unknown arg: %s", arg.Key)
+					}
+				}
+				iter := mem.newIter(&options)
+				defer iter.Close()
+				return runInternalIterCmd(d, iter)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
-			return ""
-
-		case "iter":
-			iter := mem.newIter(nil)
-			defer iter.Close()
-			return runInternalIterCmd(d, iter)
-
-		default:
-			return fmt.Sprintf("unknown command: %s", d.Cmd)
-		}
-	})
+		})
+	}
 }
 
 func TestMemTableDeleteRange(t *testing.T) {
