@@ -70,25 +70,33 @@ type Fragmenter struct {
 	// pending contains the list of pending range tombstone fragments that have
 	// not been flushed to the block writer. Note that the tombstones have not
 	// been fragmented on the end keys yet. That happens as the tombstones are
-	// flushed.
-	pending  []Tombstone
-	doneBuf  []Tombstone
-	sortBuf  tombstonesByEndKey
+	// flushed. All pending tombstones have the same Start.UserKey.
+	pending []Tombstone
+	// doneBuf is used to buffer completed tombstone fragments when flushing to a
+	// specific key (e.g. FlushTo). It is cached in the Fragmenter to allow
+	// reuse.
+	doneBuf []Tombstone
+	// sortBuf is used to sort fragments by end key when flushing.
+	sortBuf tombstonesByEndKey
+	// flushBuf is used to sort fragments by seqnum before emitting.
 	flushBuf tombstonesBySeqNum
-	finished bool
+	// flushedKey is the key that fragments have been flushed up to. Any
+	// additional tombstones added to the fragmenter must have a start key >=
+	// flushedKey. A nil value indicates flushedKey has not been set.
+	flushedKey []byte
+	finished   bool
 }
 
-func (f *Fragmenter) checkSameStart(buf []Tombstone) {
+func (f *Fragmenter) checkInvariants(buf []Tombstone) {
 	for i := 1; i < len(buf); i++ {
+		if f.Cmp(buf[i].Start.UserKey, buf[i].End) >= 0 {
+			panic(fmt.Sprintf("pebble: empty pending tombstone invariant violated: %s", buf[i]))
+		}
 		if f.Cmp(buf[i-1].Start.UserKey, buf[i].Start.UserKey) != 0 {
 			panic(fmt.Sprintf("pebble: pending tombstone invariant violated: %s %s",
 				buf[i-1].Start, buf[i].Start))
 		}
 	}
-}
-
-func (f *Fragmenter) checkInvariants() {
-	f.checkSameStart(f.pending)
 }
 
 // Add adds a tombstone to the fragmenter. Tombstones may overlap and the
@@ -169,9 +177,20 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
+	if f.flushedKey != nil {
+		switch c := f.Cmp(start.UserKey, f.flushedKey); {
+		case c < 0:
+			panic(fmt.Sprintf("pebble: start key (%s) < flushed key (%s)",
+				start.UserKey, f.flushedKey))
+		}
+	}
+	if f.Cmp(start.UserKey, end) >= 0 {
+		// An empty tombstone, we can ignore it.
+		return
+	}
 	if raceEnabled {
-		f.checkInvariants()
-		defer f.checkInvariants()
+		f.checkInvariants(f.pending)
+		defer func() { f.checkInvariants(f.pending) }()
 	}
 
 	if len(f.pending) > 0 {
@@ -223,8 +242,8 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 	flush := true
 	for _, t := range f.pending {
 		if f.Cmp(key.UserKey, t.End) < 0 {
-			// NB: A range deletion tombstone deletes a point operation at the same
-			// sequence number.
+			// NB: A range deletion tombstone does not delete a point operation at
+			// the same sequence number.
 			if t.Start.Visible(snapshot) && t.Start.SeqNum() > seqNum {
 				return true
 			}
@@ -238,50 +257,100 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 		// optimization to allow flushing the pending tombstones as early as
 		// possible so that we don't have to continually reconsider them in
 		// Deleted.
-		f.flush(f.pending, true /* all */)
+		f.flush(f.pending, nil)
 		f.pending = f.pending[:0]
 	}
 	return false
 }
 
-// FlushTo flushes all of the fragments before key. Used internally by Add to
-// flush tombstone fragments, and can be used externally to fragment tombstones
-// during compaction when a tombstone straddles an sstable boundary.
+// FlushTo flushes all of the fragments before key. Used during compaction to
+// force emitting of tombstones which straddle an sstable boundary. Note that
+// the emitted tombstones are not truncated to the specified key. Consider the
+// scenario:
+//
+//     a---------k#10
+//          f#8
+//          f#7
+//
+// If the compaction logic splits f#8 and f#7 into different sstables, we can't
+// truncate the tombstone [a,k) at f. Doing so could produce an sstable with
+// the records:
+//
+//     a----f#10
+//          f#8
+//
+// The tombstone [a,f) does not cover the key f.
 func (f *Fragmenter) FlushTo(key []byte) {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
-	if len(f.pending) == 0 {
-		return
+
+	if f.flushedKey != nil {
+		switch c := f.Cmp(key, f.flushedKey); {
+		case c < 0:
+			panic(fmt.Sprintf("pebble: flush-to key (%s) < flushed key (%s)",
+				key, f.flushedKey))
+		}
 	}
-	// Since all of the pending tombstones have the same start key, we only need
-	// to compare against the first one.
-	switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
-	case c > 0:
-		panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
-			f.pending[0].Start, key))
+	f.flushedKey = append(f.flushedKey[:0], key...)
+
+	if len(f.pending) > 0 {
+		// Since all of the pending tombstones have the same start key, we only need
+		// to compare against the first one.
+		switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
+		case c > 0:
+			panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
+				f.pending[0].Start, key))
+		}
+		// Note that we explicitly do not return early here if Start.UserKey ==
+		// key. Similar to the scenario described above, consider:
+		//
+		//          f----k#10
+		//          f#8
+		//          f#7
+		//
+		// If the compaction logic splits f#8 and f#7 into different sstables, we
+		// have to emit the tombstone [f,k) in both sstables.
 	}
 
 	// At this point we know that the new start key is greater than the pending
-	// tombstones start keys. We flush the pending first set of fragments for the
-	// pending tombstones.
-	f.flush(f.pending, false /* all */)
+	// tombstones start keys. We flush all tombstone fragments with a start key
+	// <= key.
+	f.flush(f.pending, key)
 
-	for i := range f.pending {
-		f.pending[i].Start.UserKey = key
-	}
-}
-
-func (f *Fragmenter) truncateAndFlush(key []byte) {
-	done := f.doneBuf[:0]
+	// Truncate the pending tombstones to start with key, filtering any which
+	// would become empty.
 	pending := f.pending
 	f.pending = f.pending[:0]
-
 	for _, t := range pending {
 		if f.Cmp(key, t.End) < 0 {
 			//   t: a--+--e
 			// new:    c------
-			done = append(done, Tombstone{Start: t.Start, End: key})
+			f.pending = append(f.pending, Tombstone{
+				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
+				End:   t.End,
+			})
+		}
+	}
+}
+
+// Flushes all pending tombstones up to key (exclusive).
+func (f *Fragmenter) truncateAndFlush(key []byte) {
+	f.flushedKey = append(f.flushedKey[:0], key...)
+	done := f.doneBuf[:0]
+	pending := f.pending
+	f.pending = f.pending[:0]
+
+	// pending and f.pending share the same underlying storage. As we iterate
+	// over pending we append to f.pending, but only one entry is appended in
+	// each iteration, after we have read the entry being overwritten.
+	for _, t := range pending {
+		if f.Cmp(key, t.End) < 0 {
+			//   t: a--+--e
+			// new:    c------
+			if f.Cmp(t.Start.UserKey, key) < 0 {
+				done = append(done, Tombstone{Start: t.Start, End: key})
+			}
 			f.pending = append(f.pending, Tombstone{
 				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
 				End:   t.End,
@@ -294,14 +363,26 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 	}
 
 	f.doneBuf = done[:0]
-	f.flush(done, true /* all */)
+	f.flush(done, nil)
 }
 
 // flush a group of range tombstones to the block. The tombstones are required
-// to all have the same start key.
-func (f *Fragmenter) flush(buf []Tombstone, all bool) {
+// to all have the same start key. We flush all tombstone fragments until
+// startKey > lastKey. If lastKey is nil, all tombstone fragments are
+// flushed. The specification of a non-nil lastKey occurs during compaction
+// where we want to flush (but not truncate) all tombstones that start at or
+// before the first key in the next sstable. Consider:
+//
+//   a---e#10
+//   a------h#9
+//
+// If a compaction splits the sstables at key c we want the first sstable to
+// contain the tombstones [a,e)#10 and [a,e)#9. Fragmentation would naturally
+// produce a tombstone [e,h)#9, but we don't need to output that tombstone to
+// the first sstable.
+func (f *Fragmenter) flush(buf []Tombstone, lastKey []byte) {
 	if raceEnabled {
-		f.checkSameStart(buf)
+		f.checkInvariants(buf)
 	}
 
 	// Sort the tombstones by end key. This will allow us to walk over the
@@ -313,6 +394,8 @@ func (f *Fragmenter) flush(buf []Tombstone, all bool) {
 
 	// Loop over the range tombstones, splitting by end key.
 	for len(buf) > 0 {
+		// A prefix of range tombstones will end at split. remove represents the
+		// count of that prefix.
 		remove := 1
 		split := buf[0].End
 		f.flushBuf = append(f.flushBuf[:0], buf[0])
@@ -327,16 +410,15 @@ func (f *Fragmenter) flush(buf []Tombstone, all bool) {
 			})
 		}
 
-		buf = buf[remove:]
-
 		sort.Sort(&f.flushBuf)
 		f.Emit(f.flushBuf)
 
-		if !all {
+		if lastKey != nil && f.Cmp(split, lastKey) > 0 {
 			break
 		}
 
 		// Adjust the start key for every remaining tombstone.
+		buf = buf[remove:]
 		for i := range buf {
 			buf[i].Start.UserKey = split
 		}
@@ -349,6 +431,6 @@ func (f *Fragmenter) Finish() {
 	if f.finished {
 		panic("pebble: tombstone fragmenter already finished")
 	}
-	f.flush(f.pending, true /* all */)
+	f.flush(f.pending, nil)
 	f.finished = true
 }
