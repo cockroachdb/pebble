@@ -23,25 +23,25 @@ const (
 	// latencies after all writes are completed. In this mode, all writes
 	// are immediately queued. If this is disabled, writes come in continually
 	// at different rates.
-	measureLatency        = false
+	measureLatency = false
 
-	writeAmount           = 2000 << 20 // 2 GB
+	writeAmount = 2000 << 20 // 2 GB
 
 	// Max rate for all compactions. This is intentionally set low enough that
 	// user writes will have to be delayed.
-	maxCompactionRate     = 100 << 20 // 100 MB/s
-	minCompactionRate     = 20 << 20 // 20 MB/s
+	maxCompactionRate = 100 << 20 // 100 MB/s
+	minCompactionRate = 20 << 20  // 20 MB/s
 
-	memtableSize          = 64 << 20 // 64 MB
-	maxMemtableCount      = 5
-	drainDelayThreshold   = 1.05 * memtableSize
-	maxFlushRate          = 30 << 20 // 30 MB/s
-	minFlushRate          = 4 << 20 // 4 MB/s
+	memtableSize        = 64 << 20 // 64 MB
+	maxMemtableCount    = 5
+	drainDelayThreshold = 1.05 * memtableSize
+	maxFlushRate        = 30 << 20 // 30 MB/s
+	minFlushRate        = 4 << 20  // 4 MB/s
 
 	l0CompactionThreshold = 1
 
-	levelRatio            = 10
-	numLevels             = 7
+	levelRatio = 10
+	numLevels  = 7
 
 	compactionDebtSlowdownThreshold = 2 * memtableSize
 )
@@ -75,13 +75,13 @@ func (p *compactionPacer) drain(n int64, delay bool) bool {
 }
 
 type flushPacer struct {
-	level             int64
-	drainDelayLevel   float64
-	fillCond          sync.Cond
+	level           int64
+	drainDelayLevel float64
+	fillCond        sync.Cond
 	// minDrainer is the drainer which sets the minimum speed of draining.
-	minDrainer        *rate.Limiter
+	minDrainer *rate.Limiter
 	// maxDrainer is the drainer which sets the maximum speed of draining.
-	maxDrainer        *rate.Limiter
+	maxDrainer *rate.Limiter
 }
 
 func newFlushPacer(mu *sync.Mutex) *flushPacer {
@@ -110,6 +110,7 @@ func (p *flushPacer) drain(n int64, delay bool) bool {
 	return float64(level) <= p.drainDelayLevel
 }
 
+// DB models a Pebble DB.
 type DB struct {
 	mu         sync.Mutex
 	flushPacer *flushPacer
@@ -118,11 +119,11 @@ type DB struct {
 	fill       int64
 	drain      int64
 
-	compactionMu        sync.Mutex
-	compactionPacer     *compactionPacer
+	compactionMu    sync.Mutex
+	compactionPacer *compactionPacer
 	// L0 is represented as an array of integers whereas every other level
 	// is represented as a single integer.
-	L0                  []*int64
+	L0 []*int64
 	// Non-L0 sstables. sstables[0] == L1.
 	sstables            []int64
 	maxSSTableSizes     []int64
@@ -361,9 +362,9 @@ func simulateWrite(db *DB, measureLatencyMode bool) {
 
 		// Calculate latency percentiles
 		totalWrites += size
-		if percentileIndex < len(percentiles) && totalWrites > (percentiles[percentileIndex] * writeAmount / 100) {
+		if percentileIndex < len(percentiles) && totalWrites > (percentiles[percentileIndex]*writeAmount/100) {
 			percentileTimes = append(percentileTimes, time.Now())
-			percentileIndex += 1
+			percentileIndex++
 		}
 	}
 

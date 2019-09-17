@@ -20,16 +20,23 @@ import (
 
 var table = crc32.MakeTable(crc32.Castagnoli)
 
+// CRC is a small convenience wrapper for computing the CRC32 checksum used by
+// pebble. This is the same algorithm as used by RocksDB.
 type CRC uint32
 
+// New returns the result of adding the bytes to the zero-value CRC.
 func New(b []byte) CRC {
 	return CRC(0).Update(b)
 }
 
+// Update returns the result of adding the bytes to the CRC.
 func (c CRC) Update(b []byte) CRC {
 	return CRC(crc32.Update(uint32(c), table, b))
 }
 
+// Value returns the cooked CRC value. The additional processing is to lessen
+// the probability of arbitrary key/value data coincidentally containing bytes
+// that look like a checksum.
 func (c CRC) Value() uint32 {
 	return uint32(c>>15|c<<17) + 0xa282ead8
 }

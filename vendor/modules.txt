@@ -2,6 +2,8 @@
 github.com/codahale/hdrhistogram
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
+# github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
+github.com/ghemawat/stream
 # github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 github.com/golang/snappy
 # github.com/inconshreveable/mousetrap v1.0.0
@@ -22,4 +24,4 @@ github.com/stretchr/testify/assert
 # golang.org/x/exp v0.0.0-20190426190305-956cc1757749
 golang.org/x/exp/rand
 # golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa
-golang.org/x/sys
+golang.org/x/sys/unix

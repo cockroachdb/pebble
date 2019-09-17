@@ -1,17 +1,17 @@
 language: go
 
-install: go get -t -v ./...
-
-script: go test -v ./...
+install:
+  - go get -t -v ./...
+  - go get -v golang.org/x/lint/golint
 
 matrix:
   include:
     - name: "go1.12.x"
       go: 1.12.x
-      gobuild_args: -v
+      script: make test
     - name: "go1.12.x race"
       go: 1.12.x
-      gobuild_args: -v -race
+      script: make testrace
     - name: "go1.12.x windows"
       go: 1.12.x
       # NB: "env: GOOS=windows" does not have the desired effect.
@@ -22,10 +22,10 @@ matrix:
       script: GOOS=freebsd go build -v ./...
     - name: "go1.13.x"
       go: 1.13.x
-      gobuild_args: -v
+      script: make test
     - name: "go1.13.x race"
       go: 1.13.x
-      gobuild_args: -v -race
+      script: make testrace
 
 notifications:
   email:

@@ -37,6 +37,8 @@ const (
 )
 
 var (
+	// ErrArenaFull indicates that the arena is full and cannot perform any more
+	// allocations.
 	ErrArenaFull = errors.New("allocation failed because arena is full")
 )
 
@@ -50,6 +52,7 @@ func NewArena(size, extValueThreshold uint32) *Arena {
 	}
 }
 
+// Size returns the number of bytes allocated by the arena.
 func (a *Arena) Size() uint32 {
 	s := atomic.LoadUint64(&a.n)
 	if s > math.MaxUint32 {
@@ -59,6 +62,7 @@ func (a *Arena) Size() uint32 {
 	return uint32(s)
 }
 
+// Capacity returns the capacity of the arena.
 func (a *Arena) Capacity() uint32 {
 	return uint32(len(a.buf))
 }

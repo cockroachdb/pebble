@@ -84,6 +84,10 @@ func (it *Iterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	return &it.key, it.Value()
 }
 
+// SeekPrefixGE moves the iterator to the first entry whose key is greater than
+// or equal to the given key. This method is equivalent to SeekGE and is
+// provided so that an arenaskl.Iterator implements the
+// internal/base.InternalIterator interface.
 func (it *Iterator) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
 	return it.SeekGE(key)
 }

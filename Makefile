@@ -14,6 +14,7 @@ all:
 	@echo "  make stress"
 	@echo "  make stressrace"
 	@echo "  make bench"
+	@echo "  make mod-update"
 	@echo "  make clean"
 
 .PHONY: test
@@ -41,6 +42,14 @@ internal/arenaskl.bench: GOFLAGS += -cpu 1,8
 
 %.bench:
 	${GO} test -run - -bench . -count 10 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
+
+# The cmd/pebble/rocksdb.go file causes various cockroach dependencies
+# to be pulled in which is undesirable. Hack around this by
+# temporarily moving hiding that file.
+mod-update:
+	mv cmd/pebble/rocksdb.go cmd/pebble/_rocksdb.go
+	GO111MODULE=on go mod vendor
+	mv cmd/pebble/_rocksdb.go cmd/pebble/rocksdb.go
 
 .PHONY: clean
 clean:
