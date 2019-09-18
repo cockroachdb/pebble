@@ -66,8 +66,8 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 func (f *fakeIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {
-		if DefaultComparer.Compare(key, f.Key().UserKey) <= 0 {
-			if f.upper != nil && DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+		if DefaultComparer.Compare(key, f.key().UserKey) <= 0 {
+			if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
 				return nil, nil
 			}
 			f.valid = true
@@ -84,8 +84,8 @@ func (f *fakeIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 func (f *fakeIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
-		if DefaultComparer.Compare(key, f.Key().UserKey) > 0 {
-			if f.lower != nil && DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+		if DefaultComparer.Compare(key, f.key().UserKey) > 0 {
+			if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
 				return nil, nil
 			}
 			f.valid = true
@@ -101,7 +101,7 @@ func (f *fakeIter) First() (*InternalKey, []byte) {
 	if key, _ := f.Next(); key == nil {
 		return nil, nil
 	}
-	if f.upper != nil && DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+	if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
 		return nil, nil
 	}
 	f.valid = true
@@ -114,7 +114,7 @@ func (f *fakeIter) Last() (*InternalKey, []byte) {
 	if key, _ := f.Prev(); key == nil {
 		return nil, nil
 	}
-	if f.lower != nil && DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+	if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
 		return nil, nil
 	}
 	f.valid = true
@@ -130,7 +130,7 @@ func (f *fakeIter) Next() (*InternalKey, []byte) {
 	if f.index == len(f.keys) {
 		return nil, nil
 	}
-	if f.upper != nil && DefaultComparer.Compare(f.upper, f.Key().UserKey) <= 0 {
+	if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
 		return nil, nil
 	}
 	f.valid = true
@@ -146,18 +146,32 @@ func (f *fakeIter) Prev() (*InternalKey, []byte) {
 	if f.index < 0 {
 		return nil, nil
 	}
-	if f.lower != nil && DefaultComparer.Compare(f.lower, f.Key().UserKey) > 0 {
+	if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
 		return nil, nil
 	}
 	f.valid = true
 	return f.Key(), f.Value()
 }
 
+// key returns the current Key the iterator is positioned at regardless of the
+// value of f.valid.
+func (f *fakeIter) key() *InternalKey {
+	return &f.keys[f.index]
+}
+
 func (f *fakeIter) Key() *InternalKey {
-	if f.index >= 0 && f.index < len(f.keys) {
+	if f.valid {
 		return &f.keys[f.index]
 	}
-	return nil
+	// It is invalid to call Key() when Valid() returns false. Rather than
+	// returning nil here which would technically be more correct, return a
+	// non-nil key which is the behavior of some InternalIterator
+	// implementations. This provides better testing of users of
+	// InternalIterators.
+	if f.index < 0 {
+		return &f.keys[0]
+	}
+	return &f.keys[len(f.keys)-1]
 }
 
 func (f *fakeIter) Value() []byte {
@@ -261,7 +275,8 @@ func testIterator(
 		for i, split := range splits {
 			iters[i] = newFakeIterator(nil, split...)
 		}
-		iter := newFunc(iters...)
+		iter := newInternalIterAdapter(newFunc(iters...))
+		iter.First()
 
 		j := 0
 		for ; iter.Valid() && j < len(testKeyValuePairs); j++ {

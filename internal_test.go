@@ -4,65 +4,64 @@
 
 package pebble
 
-import (
-	"bytes"
-	"fmt"
-
-	"github.com/cockroachdb/pebble/internal/base"
-)
-
 // internalIterAdapter adapts the new internalIterator interface which returns
 // the key and value from positioning methods (Seek*, First, Last, Next, Prev)
 // to the old interface which returned a boolean corresponding to Valid. Only
 // used by test code.
 type internalIterAdapter struct {
 	internalIterator
+	key *InternalKey
+	val []byte
 }
 
-func (i *internalIterAdapter) verify(key *InternalKey, val []byte) bool {
-	valid := key != nil
-	if valid != i.Valid() {
-		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
+func newInternalIterAdapter(iter internalIterator) *internalIterAdapter {
+	return &internalIterAdapter{
+		internalIterator: iter,
 	}
-	if valid {
-		if base.InternalCompare(bytes.Compare, *key, i.Key()) != 0 {
-			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
-		}
-		if !bytes.Equal(val, i.Value()) {
-			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.Value()))
-		}
-	}
-	return valid
+}
+
+func (i *internalIterAdapter) update(key *InternalKey, val []byte) bool {
+	i.key = key
+	i.val = val
+	return i.key != nil
 }
 
 func (i *internalIterAdapter) SeekGE(key []byte) bool {
-	return i.verify(i.internalIterator.SeekGE(key))
+	return i.update(i.internalIterator.SeekGE(key))
 }
 
 func (i *internalIterAdapter) SeekPrefixGE(prefix, key []byte) bool {
-	return i.verify(i.internalIterator.SeekPrefixGE(prefix, key))
+	return i.update(i.internalIterator.SeekPrefixGE(prefix, key))
 }
 
 func (i *internalIterAdapter) SeekLT(key []byte) bool {
-	return i.verify(i.internalIterator.SeekLT(key))
+	return i.update(i.internalIterator.SeekLT(key))
 }
 
 func (i *internalIterAdapter) First() bool {
-	return i.verify(i.internalIterator.First())
+	return i.update(i.internalIterator.First())
 }
 
 func (i *internalIterAdapter) Last() bool {
-	return i.verify(i.internalIterator.Last())
+	return i.update(i.internalIterator.Last())
 }
 
 func (i *internalIterAdapter) Next() bool {
-	return i.verify(i.internalIterator.Next())
+	return i.update(i.internalIterator.Next())
 }
 
 func (i *internalIterAdapter) Prev() bool {
-	return i.verify(i.internalIterator.Prev())
+	return i.update(i.internalIterator.Prev())
 }
 
-func (i *internalIterAdapter) Key() InternalKey {
-	return *i.internalIterator.Key()
+func (i *internalIterAdapter) Key() *InternalKey {
+	return i.key
+}
+
+func (i *internalIterAdapter) Value() []byte {
+	return i.val
+}
+
+func (i *internalIterAdapter) Valid() bool {
+	return i.key != nil
 }

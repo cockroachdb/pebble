@@ -487,12 +487,10 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 }
 
 type iterAlloc struct {
-	dbi             Iterator
-	merging         mergingIter
-	iters           [3 + numLevels]internalIterator
-	rangeDelIters   [3 + numLevels]internalIterator
-	largestUserKeys [3 + numLevels][]byte
-	levels          [numLevels]levelIter
+	dbi     Iterator
+	merging mergingIter
+	mlevels [3 + numLevels]mergingIterLevel
+	levels  [numLevels]levelIter
 }
 
 var iterAllocPool = sync.Pool{
@@ -541,13 +539,12 @@ func (d *DB) newIterInternal(
 		dbi.opts = *o
 	}
 
-	iters := buf.iters[:0]
-	rangeDelIters := buf.rangeDelIters[:0]
-	largestUserKeys := buf.largestUserKeys[:0]
+	mlevels := buf.mlevels[:0]
 	if batchIter != nil {
-		iters = append(iters, batchIter)
-		rangeDelIters = append(rangeDelIters, batchRangeDelIter)
-		largestUserKeys = append(largestUserKeys, nil)
+		mlevels = append(mlevels, mergingIterLevel{
+			iter:         batchIter,
+			rangeDelIter: batchRangeDelIter,
+		})
 	}
 
 	// TODO(peter): We only need to add memtables which contain sequence numbers
@@ -556,9 +553,10 @@ func (d *DB) newIterInternal(
 	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
-		iters = append(iters, mem.newIter(&dbi.opts))
-		rangeDelIters = append(rangeDelIters, mem.newRangeDelIter(&dbi.opts))
-		largestUserKeys = append(largestUserKeys, nil)
+		mlevels = append(mlevels, mergingIterLevel{
+			iter:         mem.newIter(&dbi.opts),
+			rangeDelIter: mem.newRangeDelIter(&dbi.opts),
+		})
 	}
 
 	// The level 0 files need to be added from newest to oldest.
@@ -570,23 +568,24 @@ func (d *DB) newIterInternal(
 			dbi.err = err
 			return dbi
 		}
-		iters = append(iters, iter)
-		rangeDelIters = append(rangeDelIters, rangeDelIter)
-		largestUserKeys = append(largestUserKeys, nil)
+		mlevels = append(mlevels, mergingIterLevel{
+			iter:         iter,
+			rangeDelIter: rangeDelIter,
+		})
 	}
 
-	start := len(rangeDelIters)
+	// Determine the final size for mlevels so that we can avoid any more
+	// reallocations. This is important because each levelIter will hold a
+	// reference to elements in mlevels.
+	start := len(mlevels)
 	for level := 1; level < len(current.Files); level++ {
 		if len(current.Files[level]) == 0 {
 			continue
 		}
-		rangeDelIters = append(rangeDelIters, nil)
-		largestUserKeys = append(largestUserKeys, nil)
+		mlevels = append(mlevels, mergingIterLevel{})
 	}
-	buf.merging.rangeDelIters = rangeDelIters
-	buf.merging.largestUserKeys = largestUserKeys
-	rangeDelIters = rangeDelIters[start:]
-	largestUserKeys = largestUserKeys[start:]
+	finalMLevels := mlevels
+	mlevels = mlevels[start:]
 
 	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
@@ -604,14 +603,13 @@ func (d *DB) newIterInternal(
 		}
 
 		li.init(&dbi.opts, d.cmp, d.newIters, current.Files[level], nil)
-		li.initRangeDel(&rangeDelIters[0])
-		li.initLargestUserKey(&largestUserKeys[0])
-		iters = append(iters, li)
-		rangeDelIters = rangeDelIters[1:]
-		largestUserKeys = largestUserKeys[1:]
+		li.initRangeDel(&mlevels[0].rangeDelIter)
+		li.initLargestUserKey(&mlevels[0].largestUserKey)
+		mlevels[0].iter = li
+		mlevels = mlevels[1:]
 	}
 
-	buf.merging.init(d.cmp, iters...)
+	buf.merging.init(d.cmp, finalMLevels...)
 	buf.merging.snapshot = seqNum
 	dbi.iter = &buf.merging
 	return dbi

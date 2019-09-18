@@ -65,7 +65,7 @@ func (it *flushIterator) Next() (*base.InternalKey, []byte) {
 	}
 	it.decodeKey()
 	*it.bytesIterated += uint64(it.nd.allocSize)
-	return &it.key, it.Value()
+	return &it.key, it.value()
 }
 
 func (it *flushIterator) Prev() (*base.InternalKey, []byte) {

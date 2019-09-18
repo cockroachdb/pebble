@@ -377,30 +377,6 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 	return key, val
 }
 
-func (l *levelIter) Key() *InternalKey {
-	if l.iter == nil {
-		if l.boundary != nil {
-			return l.boundary
-		}
-		return nil
-	}
-	return l.iter.Key()
-}
-
-func (l *levelIter) Value() []byte {
-	if l.iter == nil {
-		return nil
-	}
-	return l.iter.Value()
-}
-
-func (l *levelIter) Valid() bool {
-	if l.iter == nil {
-		return l.boundary != nil
-	}
-	return l.iter.Valid()
-}
-
 func (l *levelIter) Error() error {
 	if l.err != nil || l.iter == nil {
 		return l.err

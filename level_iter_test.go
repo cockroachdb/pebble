@@ -329,10 +329,11 @@ func BenchmarkLevelIterNext(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								if !l.Valid() {
-									l.First()
+								key, _ := l.Next()
+								if key == nil {
+									key, _ = l.First()
 								}
-								l.Next()
+								_ = key
 							}
 						})
 				}
@@ -359,10 +360,11 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								if !l.Valid() {
-									l.Last()
+								key, _ := l.Prev()
+								if key == nil {
+									key, _ = l.Last()
 								}
-								l.Prev()
+								_ = key
 							}
 						})
 				}
