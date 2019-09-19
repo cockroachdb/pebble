@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -39,6 +40,7 @@ func New() *T {
 		opts: base.Options{
 			Cache:    cache.New(128 << 20 /* 128 MB */),
 			Filters:  make(map[string]FilterPolicy),
+			FS:       vfs.Default,
 			ReadOnly: true,
 		},
 		comparers: make(sstable.Comparers),
@@ -75,4 +77,9 @@ func (t *T) RegisterFilter(f FilterPolicy) {
 // RegisterMerger registers a merger for use by the introspection tools.
 func (t *T) RegisterMerger(m *Merger) {
 	t.mergers[m.Name] = m
+}
+
+// setFS sets the filesystem implementation to use by the introspection tools.
+func (t *T) setFS(fs vfs.FS) {
+	t.opts.FS = fs
 }

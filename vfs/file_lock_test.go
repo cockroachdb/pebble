@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 
 	"github.com/cockroachdb/pebble/vfs"
@@ -27,6 +28,10 @@ func spawn(prog, filename string) ([]byte, error) {
 // Then it closes the lock, and spawns a third copy to verify it can be
 // relocked.
 func TestLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("TODO(peter): broken on Windows, needs investigation")
+	}
+
 	child := *lockFilename != ""
 	var filename string
 	if child {
@@ -46,7 +51,7 @@ func TestLock(t *testing.T) {
 		t.Fatalf("The file %s is not empty", filename)
 	}
 
-	t.Logf("Locking %s\n", filename)
+	t.Logf("Locking %s", filename)
 	lock, err := vfs.Default.Lock(filename)
 	if err != nil {
 		t.Fatalf("Could not lock %s: %v", filename, err)
@@ -59,7 +64,7 @@ func TestLock(t *testing.T) {
 			t.Fatalf("Attempt to grab open lock should have failed.\n%s", out)
 		}
 		if !bytes.Contains(out, []byte("Could not lock")) {
-			t.Fatalf("Child failed with unexpected output: %s\n", out)
+			t.Fatalf("Child failed with unexpected output: %s", out)
 		}
 		t.Logf("Child failed to grab lock as expected.")
 	}

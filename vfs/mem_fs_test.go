@@ -13,13 +13,6 @@ import (
 	"testing"
 )
 
-func normalize(name string) string {
-	if os.PathSeparator == '/' {
-		return name
-	}
-	return strings.Replace(name, "/", string(os.PathSeparator), -1)
-}
-
 func TestBasics(t *testing.T) {
 	fs := NewMem()
 	testCases := []string{
@@ -92,17 +85,17 @@ func TestBasics(t *testing.T) {
 		)
 		switch s[0] {
 		case "create":
-			g, err = fs.Create(normalize(s[1]))
+			g, err = fs.Create(s[1])
 		case "link":
-			err = fs.Link(normalize(s[1]), normalize(s[2]))
+			err = fs.Link(s[1], s[2])
 		case "open":
-			g, err = fs.Open(normalize(s[1]))
+			g, err = fs.Open(s[1])
 		case "mkdirall":
-			err = fs.MkdirAll(normalize(s[1]), 0755)
+			err = fs.MkdirAll(s[1], 0755)
 		case "remove":
-			err = fs.Remove(normalize(s[1]))
+			err = fs.Remove(s[1])
 		case "rename":
-			err = fs.Rename(normalize(s[1]), normalize(s[2]))
+			err = fs.Rename(s[1], s[2])
 		case "f.write":
 			_, err = f.Write([]byte(s[1]))
 		case "f.read":
@@ -166,7 +159,7 @@ func TestList(t *testing.T) {
 		"/foo/2",
 	}
 	for _, dirname := range dirnames {
-		err := fs.MkdirAll(normalize(dirname), 0755)
+		err := fs.MkdirAll(dirname, 0755)
 		if err != nil {
 			t.Fatalf("MkdirAll %q: %v", dirname, err)
 		}
@@ -183,7 +176,7 @@ func TestList(t *testing.T) {
 		"/foot",
 	}
 	for _, filename := range filenames {
-		f, err := fs.Create(normalize(filename))
+		f, err := fs.Create(filename)
 		if err != nil {
 			t.Fatalf("Create %q: %v", filename, err)
 		}
@@ -194,7 +187,7 @@ func TestList(t *testing.T) {
 
 	{
 		got := fs.(*memFS).String()
-		want := normalize(`          /
+		const want = `          /
        0    a
             bar/
        0      baz
@@ -206,7 +199,7 @@ func TestList(t *testing.T) {
        0        b
        0      3
        0    foot
-`)
+`
 		if got != want {
 			t.Fatalf("String:\n----got----\n%s----want----\n%s", got, want)
 		}
@@ -229,7 +222,7 @@ func TestList(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		s := strings.Split(tc, ":")
-		list, _ := fs.List(normalize(s[0]))
+		list, _ := fs.List(s[0])
 		sort.Strings(list)
 		got := strings.Join(list, " ")
 		want := s[1]

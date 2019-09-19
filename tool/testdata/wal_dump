@@ -5,7 +5,7 @@ requires at least 1 arg(s), only received 0
 wal dump
 ../testdata/db-stage-2/000003.log
 ----
-../testdata/db-stage-2/000003.log
+000003.log
 0(21) seq=1 count=1
     SET(foo,<3>)
 28(21) seq=2 count=1
@@ -21,7 +21,7 @@ EOF
 wal dump
 ../testdata/db-stage-4/000006.log
 ----
-../testdata/db-stage-4/000006.log
+000006.log
 0(22) seq=6 count=1
     SET(foo,<4>)
 29(22) seq=7 count=1
@@ -35,7 +35,7 @@ wal dump
 --key=%x
 --value=%x
 ----
-../testdata/db-stage-4/000006.log
+000006.log
 0(22) seq=6 count=1
     SET(666f6f,66697665)
 29(22) seq=7 count=1
@@ -49,7 +49,7 @@ wal dump
 --key=pretty
 --value=%x
 ----
-../testdata/db-stage-4/000006.log
+000006.log
 0(22) seq=6 count=1
     SET(foo,66697665)
 29(22) seq=7 count=1
@@ -63,7 +63,7 @@ wal dump
 --key=pretty:test-comparer
 --value=%x
 ----
-../testdata/db-stage-4/000006.log
+000006.log
 0(22) seq=6 count=1
     SET(test formatter: foo,66697665)
 29(22) seq=7 count=1
@@ -76,7 +76,7 @@ wal dump
 ../testdata/db-stage-4/000006.log
 --value=quoted
 ----
-../testdata/db-stage-4/000006.log
+000006.log
 0(22) seq=6 count=1
     SET(foo,five)
 29(22) seq=7 count=1

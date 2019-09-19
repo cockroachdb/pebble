@@ -4,6 +4,7 @@ mkdir-all: db 0755
 open-dir: db
 mkdir-all: wal 0755
 open-dir: wal
+lock: db/LOCK
 create: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp
 sync: db/CURRENT.000001.dbtmp

@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +33,13 @@ func runTests(t *testing.T, path string) {
 		root = next
 	}
 
+	normalize := func(name string) string {
+		if os.PathSeparator == '/' {
+			return name
+		}
+		return strings.Replace(name, "/", string(os.PathSeparator), -1)
+	}
+
 	for _, path := range paths {
 		name, err := filepath.Rel(root, path)
 		if err != nil {
@@ -44,6 +52,19 @@ func runTests(t *testing.T, path string) {
 					args = append(args, arg.String())
 				}
 				args = append(args, strings.Fields(d.Input)...)
+
+				// The testdata files contain paths with "/" path separators, but we
+				// might be running on a sytem with a different path separator
+				// (e.g. Windows). Copy the input data into a mem filesystem which
+				// always uses "/" for the path separator.
+				fs := vfs.NewMem()
+				for i := range args {
+					if ok, err := vfs.Clone(vfs.Default, fs, normalize(args[i]), ""); err != nil {
+						return err.Error()
+					} else if ok {
+						args[i] = fs.PathBase(args[i])
+					}
+				}
 
 				var buf bytes.Buffer
 				stdout = &buf
@@ -61,6 +82,7 @@ func runTests(t *testing.T, path string) {
 				}()
 
 				tool := New()
+				tool.setFS(fs)
 				// Register a test comparer and merger so that we can check the
 				// behavior of tools when the comparer and merger do not match.
 				tool.RegisterComparer(func() *Comparer {
