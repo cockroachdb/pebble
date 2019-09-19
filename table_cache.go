@@ -328,7 +328,7 @@ type tableCacheNode struct {
 
 func (n *tableCacheNode) load(c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
-	f, err := c.fs.Open(base.MakeFilename(c.dirname, fileTypeTable, n.meta.FileNum),
+	f, err := c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum),
 		vfs.RandomReadsOption)
 	if err != nil {
 		n.err = err

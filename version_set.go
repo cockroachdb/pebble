@@ -5,9 +5,9 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"sync"
 	"sync/atomic"
 
@@ -88,7 +88,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.nextFileNum = 2
 
 	// Read the CURRENT file to find the current manifest file.
-	current, err := vs.fs.Open(base.MakeFilename(dirname, fileTypeCurrent, 0))
+	current, err := vs.fs.Open(base.MakeFilename(vs.fs, dirname, fileTypeCurrent, 0))
 	if err != nil {
 		return fmt.Errorf("pebble: could not open CURRENT file for DB %q: %v", dirname, err)
 	}
@@ -112,11 +112,11 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	if b[n-1] != '\n' {
 		return fmt.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
 	}
-	b = b[:n-1]
+	b = bytes.TrimSpace(b)
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
-	manifest, err := vs.fs.Open(dirname + string(os.PathSeparator) + string(b))
+	manifest, err := vs.fs.Open(vs.fs.PathJoin(dirname, string(b)))
 	if err != nil {
 		return fmt.Errorf("pebble: could not open manifest file %q for DB %q: %v", b, dirname, err)
 	}
@@ -236,7 +236,7 @@ func (vs *versionSet) logAndApply(
 			if err := vs.createManifest(vs.dirname, newManifestFileNum); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
-					Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
+					Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 					FileNum: newManifestFileNum,
 					Err:     err,
 				})
@@ -276,7 +276,7 @@ func (vs *versionSet) logAndApply(
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 				JobID:   jobID,
-				Path:    base.MakeFilename(vs.dirname, fileTypeManifest, newManifestFileNum),
+				Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 				FileNum: newManifestFileNum,
 			})
 		}
@@ -321,7 +321,7 @@ func (vs *versionSet) logAndApply(
 // createManifest creates a manifest file that contains a snapshot of vs.
 func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error) {
 	var (
-		filename     = base.MakeFilename(dirname, fileTypeManifest, fileNum)
+		filename     = base.MakeFilename(vs.fs, dirname, fileTypeManifest, fileNum)
 		manifestFile vfs.File
 		manifest     *record.Writer
 	)

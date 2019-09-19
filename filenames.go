@@ -23,7 +23,7 @@ const (
 )
 
 func setCurrentFile(dirname string, fs vfs.FS, fileNum uint64) error {
-	newFilename := base.MakeFilename(dirname, fileTypeCurrent, fileNum)
+	newFilename := base.MakeFilename(fs, dirname, fileTypeCurrent, fileNum)
 	oldFilename := fmt.Sprintf("%s.%06d.dbtmp", newFilename, fileNum)
 	fs.Remove(oldFilename)
 	f, err := fs.Create(oldFilename)

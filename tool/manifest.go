@@ -11,7 +11,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +20,7 @@ type manifestT struct {
 	Root *cobra.Command
 	Dump *cobra.Command
 
-	opts      *sstable.Options
+	opts      *base.Options
 	comparers sstable.Comparers
 	fmtKey    formatter
 }
@@ -57,7 +56,7 @@ Print the contents of the MANIFEST files.
 func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
-			f, err := vfs.Default.Open(arg)
+			f, err := m.opts.FS.Open(arg)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return

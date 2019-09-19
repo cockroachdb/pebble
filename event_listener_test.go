@@ -95,6 +95,11 @@ func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
 	return fs.FS.MkdirAll(dir, perm)
 }
 
+func (fs loggingFS) Lock(name string) (io.Closer, error) {
+	fmt.Fprintf(fs.w, "lock: %s\n", name)
+	return fs.FS.Lock(name)
+}
+
 type loggingFile struct {
 	vfs.File
 	name string

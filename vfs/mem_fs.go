@@ -10,19 +10,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-const sep = string(os.PathSeparator)
-
-type nopCloser struct{}
-
-func (nopCloser) Close() error {
-	return nil
-}
+const sep = "/"
 
 // NewMem returns a new memory-backed FS implementation.
 func NewMem() FS {
@@ -74,18 +69,18 @@ func (y *memFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 	// For memfs, the current working directory is the same as the root directory,
 	// so we strip off any leading "/"s to make fullname a relative path, and
 	// the walk starts at y.root.
-	for len(fullname) > 0 && fullname[0] == os.PathSeparator {
+	for len(fullname) > 0 && fullname[0] == sep[0] {
 		fullname = fullname[1:]
 	}
 	dir := y.root
 
 	for {
 		frag, remaining := fullname, ""
-		i := strings.IndexRune(fullname, os.PathSeparator)
+		i := strings.IndexRune(fullname, rune(sep[0]))
 		final := i < 0
 		if !final {
 			frag, remaining = fullname[:i], fullname[i+1:]
-			for len(remaining) > 0 && remaining[0] == os.PathSeparator {
+			for len(remaining) > 0 && remaining[0] == sep[0] {
 				remaining = remaining[1:]
 			}
 		}
@@ -97,10 +92,18 @@ func (y *memFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 		}
 		child := dir.children[frag]
 		if child == nil {
-			return errors.New("pebble/vfs: no such directory")
+			return &os.PathError{
+				Op:   "open",
+				Path: fullname,
+				Err:  os.ErrNotExist,
+			}
 		}
 		if !child.isDir {
-			return errors.New("pebble/vfs: not a directory")
+			return &os.PathError{
+				Op:   "open",
+				Path: fullname,
+				Err:  errors.New("not a directory"),
+			}
 		}
 		dir, fullname = child, remaining
 	}
@@ -144,7 +147,11 @@ func (y *memFS) Link(oldname, newname string) error {
 		return err
 	}
 	if n == nil {
-		return errors.New("pebble/vfs: no such file or directory")
+		return &os.PathError{
+			Op:   "open",
+			Path: oldname,
+			Err:  os.ErrNotExist,
+		}
 	}
 	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -232,7 +239,11 @@ func (y *memFS) Rename(oldname, newname string) error {
 		return err
 	}
 	if n == nil {
-		return errors.New("pebble/vfs: no such file or directory")
+		return &os.PathError{
+			Op:   "open",
+			Path: oldname,
+			Err:  os.ErrNotExist,
+		}
 	}
 	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -263,7 +274,11 @@ func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
 			return nil
 		}
 		if !child.isDir {
-			return errors.New("pebble/vfs: not a directory")
+			return &os.PathError{
+				Op:   "open",
+				Path: dirname,
+				Err:  errors.New("not a directory"),
+			}
 		}
 		return nil
 	})
@@ -271,8 +286,9 @@ func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
 
 func (y *memFS) Lock(fullname string) (io.Closer, error) {
 	// FS.Lock excludes other processes, but other processes cannot see this
-	// process' memory, so Lock is a no-op.
-	return nopCloser{}, nil
+	// process' memory. We translate Lock into Create so that have the normal
+	// detection of non-existent directory paths.
+	return y.Create(fullname)
 }
 
 func (y *memFS) List(dirname string) ([]string, error) {
@@ -305,6 +321,18 @@ func (y *memFS) Stat(name string) (os.FileInfo, error) {
 	}
 	defer f.Close()
 	return f.Stat()
+}
+
+func (*memFS) PathBase(p string) string {
+	// Note that memFS uses forward slashes for its separator, hence the use of
+	// path.Base, not filepath.Base.
+	return path.Base(p)
+}
+
+func (*memFS) PathJoin(elem ...string) string {
+	// Note that memFS uses forward slashes for its separator, hence the use of
+	// path.Join, not filepath.Join.
+	return path.Join(elem...)
 }
 
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
@@ -357,7 +385,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 		w.WriteByte('\n')
 		return
 	}
-	w.WriteByte(os.PathSeparator)
+	w.WriteByte(sep[0])
 	w.WriteByte('\n')
 	names := make([]string, 0, len(f.children))
 	for name := range f.children {
