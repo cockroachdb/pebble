@@ -77,6 +77,10 @@ type VersionEdit struct {
 	PrevLogNum   uint64
 	NextFileNum  uint64
 	LastSeqNum   uint64
+
+	// A file num may be present in both deleted files and new files when it
+	// is moved from a lower level to a higher level (when the compaction
+	// found that there was no overlapping file at the higher level).
 	DeletedFiles map[DeletedFileEntry]bool // set of DeletedFileEntry values
 	NewFiles     []NewFileEntry
 }
@@ -393,6 +397,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 	}
 
 	for _, nf := range ve.NewFiles {
+		// TODO: why should this file exist in b.Deleted for its new level?
 		if dmap := b.Deleted[nf.Level]; dmap != nil {
 			delete(dmap, nf.Meta.FileNum)
 		}
@@ -455,6 +460,10 @@ func (b *BulkVersionEdit) Apply(
 		// efficient to sort b.addFiles[level] and then merge the two sorted
 		// slices.
 		if level == 0 {
+			// Since we iterated over files in the base version before the
+			// added files, and the added files are accumulated in order of the
+			// version edits, this slice should already be sorted in order of
+			// increasing sequence number. But we sort it just to be sure.
 			SortBySeqNum(v.Files[level])
 		} else {
 			SortBySmallest(v.Files[level], cmp)
