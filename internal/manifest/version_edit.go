@@ -73,10 +73,29 @@ type NewFileEntry struct {
 // on-disk state (log numbers, next file number, and the last sequence number).
 type VersionEdit struct {
 	ComparerName string
+
+	// TODO(peter): fix this to be the correct explanation.
+	//
+	// The WAL log file number corresponding to the changes that were applied
+	// (i.e., the changes have been flushed to an sstable) in this version edit.
+	// This indicates all data in WAL log file numbers <= LogNum has been
+	// written to sstables.
+	// This is an optional field, and 0 represents it is not set.
 	LogNum       uint64
+
+	// Probably unused, but we are keeping it for now (especially since we
+	// need to have this be visible in tools that examine VersionEdits in
+	// MANIFEST files).
 	PrevLogNum   uint64
+
+	// See comment for versionSet.nextFileNum
 	NextFileNum  uint64
+
 	LastSeqNum   uint64
+
+	// A file num may be present in both deleted files and new files when it
+	// is moved from a lower level to a higher level (when the compaction
+	// found that there was no overlapping file at the higher level).
 	DeletedFiles map[DeletedFileEntry]bool // set of DeletedFileEntry values
 	NewFiles     []NewFileEntry
 }
@@ -393,8 +412,12 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 	}
 
 	for _, nf := range ve.NewFiles {
+		// A new file should not have been deleted in this or a preceding
+		// VersionEdit at the same level (though files can move across levels).
 		if dmap := b.Deleted[nf.Level]; dmap != nil {
-			delete(dmap, nf.Meta.FileNum)
+			if _, ok := dmap[nf.Meta.FileNum]; ok {
+				panic(fmt.Sprintf("file deleted %d before it was inserted\n", nf.Meta.FileNum))
+			}
 		}
 		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
 	}
@@ -455,6 +478,10 @@ func (b *BulkVersionEdit) Apply(
 		// efficient to sort b.addFiles[level] and then merge the two sorted
 		// slices.
 		if level == 0 {
+			// Since we iterated over files in the base version before the
+			// added files, and the added files are accumulated in order of the
+			// version edits, this slice should already be sorted in order of
+			// increasing sequence number. But we sort it just to be sure.
 			SortBySeqNum(v.Files[level])
 		} else {
 			SortBySmallest(v.Files[level], cmp)
