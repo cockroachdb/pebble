@@ -123,3 +123,24 @@ EOF
 --- L4 ---
 --- L5 ---
 --- L6 ---
+
+manifest check
+----
+requires at least 1 arg(s), only received 0
+
+manifest check
+../testdata/db-stage-1/MANIFEST-000001
+----
+
+manifest check
+../testdata/db-stage-2/MANIFEST-000001
+----
+
+manifest check
+../testdata/db-stage-3/MANIFEST-000005
+----
+
+manifest check
+../testdata/db-stage-4/MANIFEST-000005
+----
+

@@ -6,20 +6,21 @@ package tool
 
 import (
 	"fmt"
-
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
+	"io"
 )
 
 // manifestT implements manifest-level tools, including both configuration
 // state and the commands themselves.
 type manifestT struct {
-	Root *cobra.Command
-	Dump *cobra.Command
+	Root  *cobra.Command
+	Dump  *cobra.Command
+	Check *cobra.Command
 
 	opts      *sstable.Options
 	comparers sstable.Comparers
@@ -37,6 +38,8 @@ func newManifest(opts *base.Options, comparers sstable.Comparers) *manifestT {
 		Use:   "manifest",
 		Short: "manifest introspection tools",
 	}
+
+	// Add dump command
 	m.Dump = &cobra.Command{
 		Use:   "dump <manifest-files>",
 		Short: "print manifest contents",
@@ -51,6 +54,21 @@ Print the contents of the MANIFEST files.
 
 	m.Dump.Flags().Var(
 		&m.fmtKey, "key", "key formatter")
+
+	// Add check command
+	m.Check = &cobra.Command{
+		Use:   "check <manifest-files>",
+		Short: "check manifest contents",
+		Long: `
+Check the contents of the MANIFEST files.
+`,
+		Args: cobra.MinimumNArgs(1),
+		Run:  m.runCheck,
+	}
+	m.Root.AddCommand(m.Check)
+	m.Check.Flags().Var(
+		&m.fmtKey, "key", "key formatter")
+
 	return m
 }
 
@@ -143,6 +161,90 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 						fmt.Fprintf(stdout, "\n")
 					}
 				}
+			}
+		}()
+	}
+}
+
+func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
+	for _, arg := range args {
+		func() {
+			f, err := vfs.Default.Open(arg)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			defer f.Close()
+
+			var v *manifest.Version
+			var cmp *base.Comparer
+			rr := record.NewReader(f, 0 /* logNum */)
+			for {
+				offset := rr.Offset()
+				r, err := rr.Next()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n", arg, offset, err)
+					break
+				}
+
+				var ve manifest.VersionEdit
+				err = ve.Decode(r)
+				if err != nil {
+					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n", arg, offset, err)
+					break
+				}
+				var bve manifest.BulkVersionEdit
+				bve.Accumulate(&ve)
+
+				empty := true
+				if ve.ComparerName != "" {
+					empty = false
+					cmp = m.comparers[ve.ComparerName]
+					if cmp == nil {
+						fmt.Fprintf(stdout, "%s: offset: %d comparer %s not found",
+							arg, offset, ve.ComparerName)
+						break
+					}
+				}
+				m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
+				empty = empty || ve.LogNum != 0 || ve.PrevLogNum != 0 ||
+					ve.LastSeqNum != 0 || len(ve.DeletedFiles) > 0 ||
+					len(ve.NewFiles) > 0
+				if empty {
+					continue
+				}
+				// TODO(sbhola): add option to Apply that reports all errors instead of
+				// one error.
+				newv, err := bve.Apply(v, cmp.Compare, m.fmtKey.fn)
+				if err != nil {
+					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
+						arg, offset, err)
+					fmt.Fprintf(stdout, "Version state before failed Apply\n")
+					for level := range v.Files {
+						fmt.Fprintf(stdout, "--- L%d ---\n", level)
+						for j := range v.Files[level] {
+							f := &v.Files[level][j]
+							fmt.Fprintf(stdout, "  %d:%d", f.FileNum, f.Size)
+							formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
+							fmt.Fprintf(stdout, "\n")
+						}
+					}
+					fmt.Fprintf(stdout, "Version edit that failed\n")
+					for df := range ve.DeletedFiles {
+						fmt.Fprintf(stdout, "  deleted: L%d %d\n", df.Level, df.FileNum)
+					}
+					for _, nf := range ve.NewFiles {
+						fmt.Fprintf(stdout, "  added: L%d %d:%d",
+							nf.Level, nf.Meta.FileNum, nf.Meta.Size)
+						formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
+						fmt.Fprintf(stdout, "\n")
+					}
+					break
+				}
+				v = newv
 			}
 		}()
 	}
