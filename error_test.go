@@ -132,6 +132,14 @@ func (fs *errorFS) Stat(name string) (os.FileInfo, error) {
 	return fs.fs.Stat(name)
 }
 
+func (fs *errorFS) PathBase(path string) string {
+	return fs.fs.PathBase(path)
+}
+
+func (fs *errorFS) PathJoin(elem ...string) string {
+	return fs.fs.PathJoin(elem...)
+}
+
 type errorFile struct {
 	file vfs.File
 	fs   *errorFS

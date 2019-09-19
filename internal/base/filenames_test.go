@@ -5,8 +5,9 @@
 package base
 
 import (
-	"path/filepath"
 	"testing"
+
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 func TestParseFilename(t *testing.T) {
@@ -34,8 +35,9 @@ func TestParseFilename(t *testing.T) {
 		"OPTIONS-123456":      true,
 		"OPTIONS-123456.doc":  false,
 	}
+	fs := vfs.NewMem()
 	for tc, want := range testCases {
-		_, _, got := ParseFilename(filepath.Join("foo", tc))
+		_, _, got := ParseFilename(fs, fs.PathJoin("foo", tc))
 		if got != want {
 			t.Errorf("%q: got %v, want %v", tc, got, want)
 		}
@@ -53,14 +55,15 @@ func TestFilenameRoundTrip(t *testing.T) {
 		FileTypeTable:    true,
 		FileTypeOptions:  true,
 	}
+	fs := vfs.NewMem()
 	for fileType, numbered := range testCases {
 		fileNums := []uint64{0}
 		if numbered {
 			fileNums = []uint64{0, 1, 2, 3, 10, 42, 99, 1001}
 		}
 		for _, fileNum := range fileNums {
-			filename := MakeFilename("foo", fileType, fileNum)
-			gotFT, gotFN, gotOK := ParseFilename(filename)
+			filename := MakeFilename(fs, "foo", fileType, fileNum)
+			gotFT, gotFN, gotOK := ParseFilename(fs, filename)
 			if !gotOK {
 				t.Errorf("could not parse %q", filename)
 				continue

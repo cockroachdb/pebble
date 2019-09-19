@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,17 +90,13 @@ func TestTry(t *testing.T) {
 //   - /x
 //   - /y
 func cloneFileSystem(srcFS vfs.FS, dirname string) (vfs.FS, error) {
-	if len(dirname) == 0 || dirname[len(dirname)-1] != os.PathSeparator {
-		dirname += string(os.PathSeparator)
-	}
-
 	dstFS := vfs.NewMem()
 	list, err := srcFS.List(dirname)
 	if err != nil {
 		return nil, err
 	}
 	for _, name := range list {
-		srcFile, err := srcFS.Open(dirname + name)
+		srcFile, err := srcFS.Open(srcFS.PathJoin(dirname, name))
 		if err != nil {
 			return nil, err
 		}
@@ -191,34 +187,31 @@ func TestBasicReads(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		fs, err := cloneFileSystem(vfs.Default, "testdata/"+tc.dirname)
-		if err != nil {
-			t.Errorf("%s: cloneFileSystem failed: %v", tc.dirname, err)
-			continue
-		}
-		d, err := Open("", &Options{
-			FS: fs,
+		t.Run(tc.dirname, func(t *testing.T) {
+			fs, err := cloneFileSystem(vfs.Default, filepath.Join("testdata", tc.dirname))
+			if err != nil {
+				t.Fatalf("%s: cloneFileSystem failed: %v", tc.dirname, err)
+			}
+			d, err := Open("", &Options{
+				FS: fs,
+			})
+			if err != nil {
+				t.Fatalf("%s: Open failed: %v", tc.dirname, err)
+			}
+			for key, want := range tc.wantMap {
+				got, err := d.Get([]byte(key))
+				if err != nil && err != ErrNotFound {
+					t.Fatalf("%s: Get(%q) failed: %v", tc.dirname, key, err)
+				}
+				if string(got) != string(want) {
+					t.Fatalf("%s: Get(%q): got %q, want %q", tc.dirname, key, got, want)
+				}
+			}
+			err = d.Close()
+			if err != nil {
+				t.Fatalf("%s: Close failed: %v", tc.dirname, err)
+			}
 		})
-		if err != nil {
-			t.Errorf("%s: Open failed: %v", tc.dirname, err)
-			continue
-		}
-		for key, want := range tc.wantMap {
-			got, err := d.Get([]byte(key))
-			if err != nil && err != ErrNotFound {
-				t.Errorf("%s: Get(%q) failed: %v", tc.dirname, key, err)
-				continue
-			}
-			if string(got) != string(want) {
-				t.Errorf("%s: Get(%q): got %q, want %q", tc.dirname, key, got, want)
-				continue
-			}
-		}
-		err = d.Close()
-		if err != nil {
-			t.Errorf("%s: Close failed: %v", tc.dirname, err)
-			continue
-		}
 	}
 }
 
@@ -736,7 +729,7 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	current := func() string {
-		f, err := d.opts.FS.Open(base.MakeFilename(d.dirname, fileTypeCurrent, 0))
+		f, err := d.opts.FS.Open(base.MakeFilename(d.opts.FS, d.dirname, fileTypeCurrent, 0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -779,7 +772,7 @@ func TestRollManifest(t *testing.T) {
 	}
 	var manifests []string
 	for _, filename := range files {
-		fileType, _, ok := base.ParseFilename(filename)
+		fileType, _, ok := base.ParseFilename(d.opts.FS, filename)
 		if !ok {
 			continue
 		}

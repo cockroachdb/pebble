@@ -6,10 +6,10 @@ package base
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // FileType enumerates the types of files found in a DB.
@@ -26,30 +26,27 @@ const (
 )
 
 // MakeFilename builds a filename from components.
-func MakeFilename(dirname string, fileType FileType, fileNum uint64) string {
-	for len(dirname) > 0 && dirname[len(dirname)-1] == os.PathSeparator {
-		dirname = dirname[:len(dirname)-1]
-	}
+func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum uint64) string {
 	switch fileType {
 	case FileTypeLog:
-		return fmt.Sprintf("%s%c%06d.log", dirname, os.PathSeparator, fileNum)
+		return fs.PathJoin(dirname, fmt.Sprintf("%06d.log", fileNum))
 	case FileTypeLock:
-		return fmt.Sprintf("%s%cLOCK", dirname, os.PathSeparator)
+		return fs.PathJoin(dirname, "LOCK")
 	case FileTypeTable:
-		return fmt.Sprintf("%s%c%06d.sst", dirname, os.PathSeparator, fileNum)
+		return fs.PathJoin(dirname, fmt.Sprintf("%06d.sst", fileNum))
 	case FileTypeManifest:
-		return fmt.Sprintf("%s%cMANIFEST-%06d", dirname, os.PathSeparator, fileNum)
+		return fs.PathJoin(dirname, fmt.Sprintf("MANIFEST-%06d", fileNum))
 	case FileTypeCurrent:
-		return fmt.Sprintf("%s%cCURRENT", dirname, os.PathSeparator)
+		return fs.PathJoin(dirname, "CURRENT")
 	case FileTypeOptions:
-		return fmt.Sprintf("%s%cOPTIONS-%06d", dirname, os.PathSeparator, fileNum)
+		return fs.PathJoin(dirname, fmt.Sprintf("OPTIONS-%06d", fileNum))
 	}
 	panic("unreachable")
 }
 
 // ParseFilename parses the components from a filename.
-func ParseFilename(filename string) (fileType FileType, fileNum uint64, ok bool) {
-	filename = filepath.Base(filename)
+func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum uint64, ok bool) {
+	filename = fs.PathBase(filename)
 	switch {
 	case filename == "CURRENT":
 		return FileTypeCurrent, 0, true

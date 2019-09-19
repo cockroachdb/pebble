@@ -7,16 +7,15 @@ package pebble
 import (
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/kr/pretty"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,8 +49,8 @@ func TestErrorIfDBExists(t *testing.T) {
 }
 
 func TestNewDBFilenames(t *testing.T) {
-	fooBar := filepath.Join("foo", "bar")
 	mem := vfs.NewMem()
+	fooBar := mem.PathJoin("foo", "bar")
 	d, err := Open(fooBar, &Options{
 		FS: mem,
 	})
@@ -89,11 +88,11 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 				if startFromEmpty {
 					dirname = "startFromEmpty" + walDirname + strconv.Itoa(length)
 				}
-				dirname = filepath.Join(root, dirname)
+				dirname = fs.PathJoin(root, dirname)
 				if walDirname == "" {
 					opts.WALDir = ""
 				} else {
-					opts.WALDir = filepath.Join(dirname, walDirname)
+					opts.WALDir = fs.PathJoin(dirname, walDirname)
 				}
 
 				got, xxx := []byte(nil), ""
@@ -156,7 +155,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 					}
 					var optionsCount int
 					for _, s := range got {
-						if t, _, ok := base.ParseFilename(s); ok && t == fileTypeOptions {
+						if t, _, ok := base.ParseFilename(opts.FS, s); ok && t == fileTypeOptions {
 							optionsCount++
 						}
 					}

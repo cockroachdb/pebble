@@ -32,6 +32,13 @@ func runTests(t *testing.T, path string) {
 		root = next
 	}
 
+	normalize := func(name string) string {
+		if os.PathSeparator == '/' {
+			return name
+		}
+		return strings.Replace(name, "/", string(os.PathSeparator), -1)
+	}
+
 	for _, path := range paths {
 		name, err := filepath.Rel(root, path)
 		if err != nil {
@@ -44,6 +51,13 @@ func runTests(t *testing.T, path string) {
 					args = append(args, arg.String())
 				}
 				args = append(args, strings.Fields(d.Input)...)
+				var replacements []string
+				for i := range args {
+					if norm := normalize(args[i]); args[i] != norm {
+						args[i] = norm
+						replacements = append(replacements, norm, args[i])
+					}
+				}
 
 				var buf bytes.Buffer
 				stdout = &buf
@@ -89,7 +103,14 @@ func runTests(t *testing.T, path string) {
 				if err := c.Execute(); err != nil {
 					return err.Error()
 				}
-				return buf.String()
+
+				// On Windows we need to replace all of the occurrences of paths with
+				// their "unix" equivalent.
+				out := buf.String()
+				if len(replacements) > 0 {
+					out = strings.NewReplacer(replacements...).Replace(out)
+				}
+				return out
 			})
 		})
 	}

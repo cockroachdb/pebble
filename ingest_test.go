@@ -270,7 +270,7 @@ func TestIngestLink(t *testing.T) {
 					t.Fatalf("expected %d files, but found:\n%s", count, strings.Join(files, "\n"))
 				}
 				for j := range files {
-					ftype, fileNum, ok := base.ParseFilename(files[j])
+					ftype, fileNum, ok := base.ParseFilename(mem, files[j])
 					if !ok {
 						t.Fatalf("unable to parse filename: %s", files[j])
 					}
@@ -280,7 +280,7 @@ func TestIngestLink(t *testing.T) {
 					if uint64(j) != fileNum {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
-					f, err := mem.Open(dir + "/" + files[j])
+					f, err := mem.Open(mem.PathJoin(dir, files[j]))
 					if err != nil {
 						t.Fatal(err)
 					}

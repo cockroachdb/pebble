@@ -10,13 +10,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-const sep = string(os.PathSeparator)
+const sep = "/"
 
 type nopCloser struct{}
 
@@ -74,18 +75,18 @@ func (y *memFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 	// For memfs, the current working directory is the same as the root directory,
 	// so we strip off any leading "/"s to make fullname a relative path, and
 	// the walk starts at y.root.
-	for len(fullname) > 0 && fullname[0] == os.PathSeparator {
+	for len(fullname) > 0 && fullname[0] == sep[0] {
 		fullname = fullname[1:]
 	}
 	dir := y.root
 
 	for {
 		frag, remaining := fullname, ""
-		i := strings.IndexRune(fullname, os.PathSeparator)
+		i := strings.IndexRune(fullname, rune(sep[0]))
 		final := i < 0
 		if !final {
 			frag, remaining = fullname[:i], fullname[i+1:]
-			for len(remaining) > 0 && remaining[0] == os.PathSeparator {
+			for len(remaining) > 0 && remaining[0] == sep[0] {
 				remaining = remaining[1:]
 			}
 		}
@@ -307,6 +308,18 @@ func (y *memFS) Stat(name string) (os.FileInfo, error) {
 	return f.Stat()
 }
 
+func (*memFS) PathBase(p string) string {
+	// Note that memFS uses forward slashes for its separator, hence the use of
+	// path.Base, not filepath.Base.
+	return path.Base(p)
+}
+
+func (*memFS) PathJoin(elem ...string) string {
+	// Note that memFS uses forward slashes for its separator, hence the use of
+	// path.Join, not filepath.Join.
+	return path.Join(elem...)
+}
+
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
 	name     string
@@ -357,7 +370,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 		w.WriteByte('\n')
 		return
 	}
-	w.WriteByte(os.PathSeparator)
+	w.WriteByte(sep[0])
 	w.WriteByte('\n')
 	names := make([]string, 0, len(f.children))
 	for name := range f.children {

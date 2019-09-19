@@ -168,7 +168,8 @@ func TestLongRunningQPS(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
-	if runtime.GOOS == "openbsd" {
+	switch runtime.GOOS {
+	case "openbsd", "windows":
 		t.Skip("low resolution time.Sleep invalidates test (golang.org/issue/14183)")
 		return
 	}

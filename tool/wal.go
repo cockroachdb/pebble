@@ -66,7 +66,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 			// necessary in case WAL recycling was used (which it is usually is). If
 			// we can't parse the filename or it isn't a log file, we'll plow ahead
 			// anyways (which will likely fail when we try to read the file).
-			_, fileNum, ok := base.ParseFilename(arg)
+			_, fileNum, ok := base.ParseFilename(vfs.Default, arg)
 			if !ok {
 				fileNum = 0
 			}
