@@ -79,7 +79,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 
 		numStillOpen := 0
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilename("", fileTypeTable, uint64(i))
+			filename := base.MakeFilename(fs, "", fileTypeTable, uint64(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -109,7 +109,7 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 		defer fs.mu.Unlock()
 
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilename("", fileTypeTable, uint64(i))
+			filename := base.MakeFilename(fs, "", fileTypeTable, uint64(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
 				return fmt.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
@@ -131,7 +131,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 		FS: vfs.NewMem(),
 	}
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		f, err := fs.Create(base.MakeFilename("", fileTypeTable, uint64(i)))
+		f, err := fs.Create(base.MakeFilename(fs, "", fileTypeTable, uint64(i)))
 		if err != nil {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}

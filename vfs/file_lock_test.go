@@ -37,6 +37,11 @@ func TestLock(t *testing.T) {
 			t.Fatal(err)
 		}
 		filename = f.Name()
+		// NB: On Windows, locking will fail if the file is already open by the
+		// current process, so we close the lockfile here.
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
 		defer os.Remove(filename)
 	}
 
@@ -46,7 +51,7 @@ func TestLock(t *testing.T) {
 		t.Fatalf("The file %s is not empty", filename)
 	}
 
-	t.Logf("Locking %s\n", filename)
+	t.Logf("Locking: %s", filename)
 	lock, err := vfs.Default.Lock(filename)
 	if err != nil {
 		t.Fatalf("Could not lock %s: %v", filename, err)
@@ -59,7 +64,7 @@ func TestLock(t *testing.T) {
 			t.Fatalf("Attempt to grab open lock should have failed.\n%s", out)
 		}
 		if !bytes.Contains(out, []byte("Could not lock")) {
-			t.Fatalf("Child failed with unexpected output: %s\n", out)
+			t.Fatalf("Child failed with unexpected output: %s", out)
 		}
 		t.Logf("Child failed to grab lock as expected.")
 	}

@@ -726,7 +726,7 @@ func (d *DB) flush1() error {
 	if err == nil {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
-			info.Output = append(info.Output, e.Meta.TableInfo(d.dirname))
+			info.Output = append(info.Output, e.Meta.TableInfo(d.opts.FS, d.dirname))
 		}
 		if len(ve.NewFiles) == 0 {
 			info.Err = errEmptyTable
@@ -848,7 +848,7 @@ func (d *DB) compact1() (err error) {
 	for i := range c.inputs {
 		for j := range c.inputs[i] {
 			m := &c.inputs[i][j]
-			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo(d.dirname))
+			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo(d.opts.FS, d.dirname))
 		}
 	}
 	d.opts.EventListener.CompactionBegin(info)
@@ -879,7 +879,7 @@ func (d *DB) compact1() (err error) {
 	if err == nil {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
-			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo(d.dirname))
+			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo(d.opts.FS, d.dirname))
 		}
 	}
 	d.opts.EventListener.CompactionEnd(info)
@@ -987,7 +987,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		pendingOutputs = append(pendingOutputs, fileNum)
 		d.mu.Unlock()
 
-		filename := base.MakeFilename(d.dirname, fileTypeTable, fileNum)
+		filename := base.MakeFilename(d.opts.FS, d.dirname, fileTypeTable, fileNum)
 		file, err := d.opts.FS.Create(filename)
 		if err != nil {
 			return err
@@ -1157,7 +1157,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	var obsoleteOptions []uint64
 
 	for _, filename := range list {
-		fileType, fileNum, ok := base.ParseFilename(filename)
+		fileType, fileNum, ok := base.ParseFilename(d.opts.FS, filename)
 		if !ok {
 			continue
 		}
@@ -1262,7 +1262,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 				d.tableCache.evict(fileNum)
 			}
 
-			path := base.MakeFilename(d.dirname, f.fileType, fileNum)
+			path := base.MakeFilename(d.opts.FS, d.dirname, f.fileType, fileNum)
 			err := d.opts.FS.Remove(path)
 			if err == os.ErrNotExist {
 				continue

@@ -5,7 +5,7 @@ accepts 1 arg(s), received 0
 db check
 non-existent
 ----
-open non-existent/LOCK: no such file or directory
+open non-existent: file does not exist
 
 db check
 ../testdata/db-stage-4
@@ -22,7 +22,7 @@ db check
 ../testdata/db-stage-4
 --comparer=test-comparer
 ----
-pebble: manifest file "MANIFEST-000005" for DB "../testdata/db-stage-4": comparer name from file "leveldb.BytewiseComparator" != comparer name from Options "test-comparer"
+pebble: manifest file "MANIFEST-000005" for DB "db-stage-4": comparer name from file "leveldb.BytewiseComparator" != comparer name from Options "test-comparer"
 
 db check
 ../testdata/db-stage-4

@@ -20,6 +20,8 @@ func (l lockCloser) Close() error {
 	return syscall.Close(l.fd)
 }
 
+// Lock locks the given file. On Windows, Locking will fail if the file is
+// already open by the current process.
 func (defaultFS) Lock(name string) (io.Closer, error) {
 	p, err := syscall.UTF16PtrFromString(name)
 	if err != nil {

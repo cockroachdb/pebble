@@ -5,7 +5,7 @@ accepts 1 arg(s), received 0
 db lsm
 non-existent
 ----
-open non-existent/LOCK: no such file or directory
+open non-existent: file does not exist
 
 db lsm
 ../testdata/db-stage-4
