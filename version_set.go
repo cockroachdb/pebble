@@ -58,11 +58,26 @@ type versionSet struct {
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
 
+	// The WAL log file number corresponding to changes that have been applied.
+	//
+	// TODO(peter): fix this to be the correct explanation.
 	logNum          uint64
-	prevLogNum      uint64
+
+	// Probably unused, but we are keeping it for now.
+	prevLogNum   uint64
+
+	// The next file number. A single counter is used to assign file numbers
+	// for the WAL, MANIFEST, sstable, and OPTIONS files.
 	nextFileNum     uint64
+
+	// The upper bound on sequence numbers that have been assigned so far.
+	// A suffix of these sequence numbers may not have been written to a
+	// WAL. Both logSeqNum and visibleSeqNum are atomically updated by the
+	// commitPipeline.
 	logSeqNum       uint64 // next seqNum to use for WAL writes
 	visibleSeqNum   uint64 // visible seqNum (<= logSeqNum)
+
+	// The current manifest file number.
 	manifestFileNum uint64
 
 	manifestFile vfs.File
@@ -156,7 +171,10 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			vs.logSeqNum = ve.LastSeqNum
 		}
 	}
-	if vs.logNum == 0 || vs.nextFileNum == 0 {
+	// We have already set vs.nextFileNum = 2 at the beginning of the
+	// function and could have only updated it to some other non-zero value,
+	// so it cannot be 0 here.
+	if vs.logNum == 0 {
 		if vs.nextFileNum == 2 {
 			// We have a freshly created DB.
 		} else {
@@ -206,7 +224,15 @@ func (vs *versionSet) logAndApply(
 			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.LogNum))
 		}
 	}
+	// This is the next manifest filenum, but if the current file is too big we
+	// will write this ve to the next file which means what ve encodes is the
+	// current filenum and not the next one.
+	//
+	// TODO(sbhola): figure out why this is correct and update comment.
 	ve.NextFileNum = vs.nextFileNum
+
+	// LastSeqNum is set to the current upper bound on the assigned sequence
+	// numbers.
 	ve.LastSeqNum = atomic.LoadUint64(&vs.logSeqNum)
 	currentVersion := vs.currentVersion()
 	var newVersion *version

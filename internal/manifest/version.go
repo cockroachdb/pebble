@@ -117,7 +117,7 @@ func (b bySeqNum) Less(i, j int) bool {
 }
 func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
-// SortBySeqNum sorts the specified files by decreasing sequence number.
+// SortBySeqNum sorts the specified files by increasing sequence number.
 func SortBySeqNum(files []FileMetadata) {
 	sort.Sort(bySeqNum(files))
 }
