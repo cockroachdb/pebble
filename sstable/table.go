@@ -2,65 +2,64 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-/*
-Package sstable implements readers and writers of pebble tables.
-
-Tables are either opened for reading or created for writing but not both.
-
-A reader can create iterators, which allow seeking and next/prev
-iteration. There may be multiple key/value pairs that have the same key and
-different sequence numbers.
-
-A reader can be used concurrently. Multiple goroutines can call NewIter
-concurrently, and each iterator can run concurrently with other iterators.
-However, any particular iterator should not be used concurrently, and iterators
-should not be used once a reader is closed.
-
-A writer writes key/value pairs in increasing key order, and cannot be used
-concurrently. A table cannot be read until the writer has finished.
-
-Readers and writers can be created with various options. Passing a nil
-Options pointer is valid and means to use the default values.
-
-One such option is to define the 'less than' ordering for keys. The default
-Comparer uses the natural ordering consistent with bytes.Compare. The same
-ordering should be used for reading and writing a table.
-
-To return the value for a key:
-
-	r := table.NewReader(file, options)
-	defer r.Close()
-	return r.Get(key)
-
-To count the number of entries in a table:
-
-	i, n := r.NewIter(ropts), 0
-	for valid := i.First(); valid; valid = i.Next() {
-		n++
-	}
-	if err := i.Close(); err != nil {
-		return 0, err
-	}
-	return n, nil
-
-To write a table with three entries:
-
-	w := table.NewWriter(file, options)
-	if err := w.Set([]byte("apple"), []byte("red"), wopts); err != nil {
-		w.Close()
-		return err
-	}
-	if err := w.Set([]byte("banana"), []byte("yellow"), wopts); err != nil {
-		w.Close()
-		return err
-	}
-	if err := w.Set([]byte("cherry"), []byte("red"), wopts); err != nil {
-		w.Close()
-		return err
-	}
-	return w.Close()
-*/
+// Package sstable implements readers and writers of pebble tables.
+//
+// Tables are either opened for reading or created for writing but not both.
+//
+// A reader can create iterators, which allow seeking and next/prev
+// iteration. There may be multiple key/value pairs that have the same key and
+// different sequence numbers.
+//
+// A reader can be used concurrently. Multiple goroutines can call NewIter
+// concurrently, and each iterator can run concurrently with other iterators.
+// However, any particular iterator should not be used concurrently, and iterators
+// should not be used once a reader is closed.
+//
+// A writer writes key/value pairs in increasing key order, and cannot be used
+// concurrently. A table cannot be read until the writer has finished.
+//
+// Readers and writers can be created with various options. Passing a nil
+// Options pointer is valid and means to use the default values.
+//
+// One such option is to define the 'less than' ordering for keys. The default
+// Comparer uses the natural ordering consistent with bytes.Compare. The same
+// ordering should be used for reading and writing a table.
+//
+// To return the value for a key:
+//
+// 	r := table.NewReader(file, options)
+// 	defer r.Close()
+// 	return r.Get(key)
+//
+// To count the number of entries in a table:
+//
+// 	i, n := r.NewIter(ropts), 0
+// 	for valid := i.First(); valid; valid = i.Next() {
+// 		n++
+// 	}
+// 	if err := i.Close(); err != nil {
+// 		return 0, err
+// 	}
+// 	return n, nil
+//
+// To write a table with three entries:
+//
+// 	w := table.NewWriter(file, options)
+// 	if err := w.Set([]byte("apple"), []byte("red"), wopts); err != nil {
+// 		w.Close()
+// 		return err
+// 	}
+// 	if err := w.Set([]byte("banana"), []byte("yellow"), wopts); err != nil {
+// 		w.Close()
+// 		return err
+// 	}
+// 	if err := w.Set([]byte("cherry"), []byte("red"), wopts); err != nil {
+// 		w.Close()
+// 		return err
+// 	}
+// 	return w.Close()
 package sstable // import "github.com/cockroachdb/pebble/sstable"
+
 import (
 	"encoding/binary"
 	"errors"

@@ -134,7 +134,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
 func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
-		target := base.MakeFilename(dirname, fileTypeTable, meta[i].FileNum)
+		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
 		if err := fs.Remove(target); err != nil {
 			if firstErr != nil {
 				firstErr = err
@@ -146,7 +146,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 
 func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
 	for i := range paths {
-		target := base.MakeFilename(dirname, fileTypeTable, meta[i].FileNum)
+		target := base.MakeFilename(opts.FS, dirname, fileTypeTable, meta[i].FileNum)
 		err := opts.FS.Link(paths[i], target)
 		if err != nil {
 			if err2 := ingestCleanup(opts.FS, dirname, meta[:i]); err2 != nil {
@@ -410,7 +410,7 @@ func (d *DB) Ingest(paths []string) error {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
 			info.Tables[i].Level = e.Level
-			info.Tables[i].TableInfo = e.Meta.TableInfo(d.dirname)
+			info.Tables[i].TableInfo = e.Meta.TableInfo(d.opts.FS, d.dirname)
 		}
 	}
 	d.opts.EventListener.TableIngested(info)

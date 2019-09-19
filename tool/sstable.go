@@ -124,7 +124,7 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
-			f, err := vfs.Default.Open(arg)
+			f, err := s.opts.FS.Open(arg)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
@@ -166,7 +166,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
-			f, err := vfs.Default.Open(arg)
+			f, err := s.opts.FS.Open(arg)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
@@ -204,7 +204,7 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
-			f, err := vfs.Default.Open(arg)
+			f, err := s.opts.FS.Open(arg)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
@@ -296,7 +296,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
-			f, err := vfs.Default.Open(arg)
+			f, err := s.opts.FS.Open(arg)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return

@@ -3,7 +3,7 @@ sstable scan
 --end=aside
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 arm#0,1 [32]
 armed#0,1 [32]
 armour#0,1 [31]
@@ -19,7 +19,7 @@ sstable scan
 --end=abused
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 a#0,1 [3937]
 aboard#0,1 [32]
 about#0,1 [32]
@@ -31,7 +31,7 @@ sstable scan
 --start=you
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 you#0,1 [313130]
 young#0,1 [36]
 your#0,1 [3439]
@@ -44,7 +44,7 @@ sstable scan
 --start=you
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 796f75#0,1
 796f756e67#0,1
 796f7572#0,1
@@ -58,7 +58,7 @@ sstable scan
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 "you"#0,1
 "young"#0,1
 "your"#0,1
@@ -70,7 +70,7 @@ sstable scan
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 [313130]
 [36]
 [3439]
@@ -82,7 +82,7 @@ sstable scan
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 you#0,1 [313130]
 young#0,1 [36]
 your#0,1 [3439]
@@ -94,7 +94,7 @@ sstable scan
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 you#0,1 [313130]
 young#0,1 [36]
 your#0,1 [3439]
@@ -106,7 +106,7 @@ sstable scan
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 you#0,1 [313130]
 young#0,1 [36]
 your#0,1 [3439]
@@ -118,7 +118,7 @@ sstable scan
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 test formatter: you#0,1 [313130]
 test formatter: young#0,1 [36]
 test formatter: your#0,1 [3439]
@@ -126,7 +126,7 @@ test formatter: your#0,1 [3439]
 sstable scan
 testdata/out-of-order.sst
 ----
-testdata/out-of-order.sst
+out-of-order.sst
 a#0,1 []
 c#0,1 []
 b#0,1 []
