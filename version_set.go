@@ -58,11 +58,31 @@ type versionSet struct {
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
 
+	// Best guesses based on some code reading and rocksdb docs. Confirm with
+	// Peter.
+	//
+	// The latest WAL log file number.
 	logNum          uint64
+	// ?? "Previous" WAL log file number?
 	prevLogNum      uint64
+	// The next manifest file number.
+	// Unclear: why is this being incremented based on WAL file numbers in
+	// the following calls. Are the manifest file numbers supposed to be lower
+	// bounds on the WAL files they contain (hmm, that won't make sense since
+	// a manifest starts with a snapshot of the current db state so in the
+	// worst case could contain all WAL files since the beginning of time).
+	//  vs.markFileNumUsed(vs.logNum)
+	//	vs.markFileNumUsed(vs.prevLogNum)
 	nextFileNum     uint64
+
+	// The upper bound on sequence numbers that have been assigned so far.
+	// A suffix of these sequence numbers may not have been written to a
+	// WAL. Both logSeqNum and visibleSeqNum are atomically updated by the
+	// commitPipeline.
 	logSeqNum       uint64 // next seqNum to use for WAL writes
 	visibleSeqNum   uint64 // visible seqNum (<= logSeqNum)
+
+	// The current manifest file number.
 	manifestFileNum uint64
 
 	manifestFile vfs.File
@@ -156,6 +176,9 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			vs.logSeqNum = ve.LastSeqNum
 		}
 	}
+	// Unclear: we have already set vs.nextFileNum = 2 at the beginning of the
+	// function and could have only updated it to some other non-zero value,
+	// so it cannot be 0 here.
 	if vs.logNum == 0 || vs.nextFileNum == 0 {
 		if vs.nextFileNum == 2 {
 			// We have a freshly created DB.
@@ -206,7 +229,17 @@ func (vs *versionSet) logAndApply(
 			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.LogNum))
 		}
 	}
+	// Unclear: why are we setting ve.NextFileNum here? Presumably this is the
+	// next manifest filenum, but if the current file is too big we will
+	// write this ve to the next file which means what the ve encodes is the
+	// current filenum and not the next one.
 	ve.NextFileNum = vs.nextFileNum
+
+	// Unclear: why is vs.logSeqNum being used to set ve.LastSeqNum and not vice
+	// versa. If logSeqNum is indeed the last sequence number of any record in
+	// pebble, the ve would know how it should be updated based on the mutations
+	// in this ve. Perhaps this is an upper bound and not representing the
+	// sequence numbers in this ve.
 	ve.LastSeqNum = atomic.LoadUint64(&vs.logSeqNum)
 	currentVersion := vs.currentVersion()
 	var newVersion *version

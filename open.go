@@ -197,6 +197,8 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 		switch ft {
 		case fileTypeLog:
+			// Unclear: why is fn == d.mu.versions.logNum is not
+			// considered part of the manifest. And same for prevLogNum.
 			if fn >= d.mu.versions.logNum || fn == d.mu.versions.prevLogNum {
 				logFiles = append(logFiles, fileNumAndName{fn, filename})
 			}
