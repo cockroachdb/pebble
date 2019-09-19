@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/codahale/hdrhistogram"
 	"github.com/cockroachdb/pebble"
+	"github.com/codahale/hdrhistogram"
 )
 
 const (
@@ -225,10 +225,15 @@ func runTest(dir string, t test) {
 	fmt.Printf("dir %s\nconcurrency %d\n", dir, concurrency)
 
 	var db DB
-	if rocksdb {
-		db = newRocksDB(dir)
-	} else {
+	switch engineType {
+	case "badger":
+		db = newBadgerDB(dir)
+	case "boltdb":
+		db = newBoltDB(dir)
+	case "pebble":
 		db = newPebbleDB(dir)
+	case "rocksdb":
+		db = newRocksDB(dir)
 	}
 
 	var wg sync.WaitGroup

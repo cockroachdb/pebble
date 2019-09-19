@@ -19,8 +19,8 @@ var (
 	concurrency     int
 	disableWAL      bool
 	duration        time.Duration
+	engineType      string
 	maxOpsPerSec    string
-	rocksdb         bool
 	verbose         bool
 	waitCompactions bool
 	wipe            bool
@@ -69,10 +69,9 @@ func main() {
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 		cmd.Flags().StringVarP(
+			&engineType, "engine", "e", "pebble", "engine type (pebble [default], badger, boltdb, rocksdb)")
+		cmd.Flags().StringVarP(
 			&maxOpsPerSec, "rate", "m", "1000000", "max ops per second [{zipf,uniform}:]min[-max][/period (sec)]")
-		cmd.Flags().BoolVar(
-			&rocksdb, "rocksdb", false,
-			"use rocksdb storage engine instead of pebble")
 		cmd.Flags().BoolVarP(
 			&verbose, "verbose", "v", false, "enable verbose event logging")
 		cmd.Flags().BoolVar(
