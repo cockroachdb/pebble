@@ -217,3 +217,44 @@ j#1,15:m
 m#2,15:s
 m#1,15:s
 s#1,15:z
+
+# Setting a very small index-block-size results in a two-level index.
+
+build index-block-size=1
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:   [a#1,1,c#1,1]
+range:   [#0,0,#0,0]
+seqnums: [1,1]
+
+layout
+----
+         0  data (37)
+        42  index (8)
+        55  index (22)
+        82  top-index (39)
+       126  properties (716)
+       847  meta-index (32)
+       884  footer (53)
+
+# Enabling leveldb format disables the creation of a two-level index
+# (the input data here mirrors the test case above).
+
+build leveldb index-block-size=1
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:   [a#1,1,c#1,1]
+range:   [#0,0,#0,0]
+seqnums: [1,1]
+
+layout
+----
+         0  data (37)
+        42  index (22)
+        69  properties (678)
+       752  meta-index (32)
+       789  leveldb-footer (48)

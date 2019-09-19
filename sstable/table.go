@@ -290,3 +290,13 @@ func (f footer) encode(buf []byte) []byte {
 
 	return buf
 }
+
+func supportsTwoLevelIndex(format TableFormat) bool {
+	switch format {
+	case TableFormatLevelDB:
+		return false
+	case TableFormatRocksDBv2:
+		return true
+	}
+	return true
+}

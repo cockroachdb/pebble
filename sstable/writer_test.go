@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -33,7 +34,30 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			w := NewWriter(f0, nil, TableOptions{})
+			var opts Options
+			var tableOpts TableOptions
+			for _, arg := range td.CmdArgs {
+				switch arg.Key {
+				case "leveldb":
+					if len(arg.Vals) != 0 {
+						return fmt.Sprintf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
+					}
+					opts.TableFormat = TableFormatLevelDB
+				case "index-block-size":
+					if len(arg.Vals) != 1 {
+						return fmt.Sprintf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
+					}
+					var err error
+					tableOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+				default:
+					return fmt.Sprintf("%s: unknown arg %s", td.Cmd, arg.Key)
+				}
+			}
+
+			w := NewWriter(f0, &opts, tableOpts)
 			var tombstones []rangedel.Tombstone
 			f := rangedel.Fragmenter{
 				Cmp: DefaultComparer.Compare,
@@ -63,6 +87,7 @@ func TestWriter(t *testing.T) {
 					if err := w.Add(key, value); err != nil {
 						return err.Error()
 					}
+
 				}
 			}
 			f.Finish()
@@ -163,6 +188,15 @@ func TestWriter(t *testing.T) {
 			for key, val := iter.First(); key != nil; key, val = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", key, val)
 			}
+			return buf.String()
+
+		case "layout":
+			l, err := r.Layout()
+			if err != nil {
+				return err.Error()
+			}
+			var buf bytes.Buffer
+			l.Describe(&buf, false, r, nil)
 			return buf.String()
 
 		default:
