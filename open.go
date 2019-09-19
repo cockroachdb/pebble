@@ -197,7 +197,8 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 		switch ft {
 		case fileTypeLog:
-			if fn >= d.mu.versions.logNum || fn == d.mu.versions.prevLogNum {
+			// Unclear: why not fn > d.mu.versions.logNum.
+			if fn >= d.mu.versions.logNum {
 				logFiles = append(logFiles, fileNumAndName{fn, filename})
 			}
 		case fileTypeOptions:
