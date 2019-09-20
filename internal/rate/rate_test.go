@@ -211,7 +211,7 @@ func TestLongRunningQPS(t *testing.T) {
 		t.Errorf("numOK = %d, want %d (ideal %f)", numOK, want, ideal)
 	}
 	// We should get very close to the number of requests allowed.
-	if want := int32(0.999 * ideal); numOK < want {
+	if want := int32(0.99 * ideal); numOK < want {
 		t.Errorf("numOK = %d, want %d (ideal %f)", numOK, want, ideal)
 	}
 }
