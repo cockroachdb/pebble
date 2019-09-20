@@ -46,7 +46,7 @@ type flushable interface {
 	totalBytes() uint64
 	flushed() chan struct{}
 	readyForFlush() bool
-	logInfo() (num, size uint64)
+	logInfo() (logNum, size uint64)
 }
 
 // Reader is a readable key/value store.
@@ -934,7 +934,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			continue
 		}
 
-		var newLogNumber uint64
+		var newLogNum uint64
 		var newLogFile vfs.File
 		var prevLogSize uint64
 		var err error
@@ -942,11 +942,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if !d.opts.DisableWAL {
 			jobID := d.mu.nextJobID
 			d.mu.nextJobID++
-			newLogNumber = d.mu.versions.getNextFileNum()
+			newLogNum = d.mu.versions.getNextFileNum()
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 
-			newLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, newLogNumber)
+			newLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
 
 			// Try to use a recycled log file. Recycling log files is an important
 			// performance optimization as it is faster to sync a file that has
@@ -954,9 +954,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// time. This is due to the need to sync file metadata when a file is
 			// being written for the first time. Note this is true even if file
 			// preallocation is performed (e.g. fallocate).
-			recycleLogNumber := d.logRecycler.peek()
-			if recycleLogNumber > 0 {
-				recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLogNumber)
+			recycleLogNum := d.logRecycler.peek()
+			if recycleLogNum > 0 {
+				recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLogNum)
 				err = d.opts.FS.Rename(recycleLogName, newLogName)
 			}
 
@@ -983,15 +983,15 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				}
 			}
 
-			if recycleLogNumber > 0 {
-				err = d.logRecycler.pop(recycleLogNumber)
+			if recycleLogNum > 0 {
+				err = d.logRecycler.pop(recycleLogNum)
 			}
 
 			d.opts.EventListener.WALCreated(WALCreateInfo{
 				JobID:           jobID,
 				Path:            newLogName,
-				FileNum:         newLogNumber,
-				RecycledFileNum: recycleLogNumber,
+				FileNum:         newLogNum,
+				RecycledFileNum: recycleLogNum,
 				Err:             err,
 			})
 
@@ -1012,21 +1012,23 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 
 		if !d.opts.DisableWAL {
-			d.mu.log.queue = append(d.mu.log.queue, newLogNumber)
-			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNumber)
+			d.mu.log.queue = append(d.mu.log.queue, newLogNum)
+			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum)
 		}
 
 		imm := d.mu.mem.mutable
 		imm.logSize = prevLogSize
-		prevLogNumber := imm.logNum
 
-		var scheduleFlush bool
 		if b != nil && b.flushable != nil {
 			// The batch is too large to fit in the memtable so add it directly to
-			// the immutable queue.
-			b.flushable.logNum = prevLogNumber
+			// the immutable queue. The flushable batch is associated with the same
+			// memtable as the immutable memtable, but logically occurs after it in
+			// seqnum space. So give the flushable batch the logNum and clear it from
+			// the immutable log. This is done as a defensive measure to prevent the
+			// WAL containing the large batch from being deleted prematurely if the
+			// corresponding memtable is flushed without flushing the large batch.
+			b.flushable.logNum, imm.logNum = imm.logNum, 0
 			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
-			scheduleFlush = true
 		}
 
 		// Create a new memtable, scheduling the previous one for flushing. We do
@@ -1037,14 +1039,15 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// flush. Additionally, the memtable is tied to particular WAL file and we
 		// want to go through the flush path in order to recycle that WAL file.
 		d.mu.mem.mutable = newMemTable(d.opts)
-		// NB: When the immutable memtable is flushed to disk it will apply a
-		// versionEdit to the manifest telling it that log files < newLogNumber
-		// have been applied. newLogNumber corresponds to the WAL that contains
-		// mutations that are present in the new memtable.
-		d.mu.mem.mutable.logNum = newLogNumber
+		// NB: newLogNum corresponds to the WAL that contains mutations that are
+		// present in the new memtable. When immutable memtables are flushed to
+		// disk, a VersionEdit will be created telling the manifest the minimum
+		// unflushed log number (which will be the next one in d.mu.mem.mutable
+		// that was not flushed).
+		d.mu.mem.mutable.logNum = newLogNum
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 		d.updateReadStateLocked()
-		if (imm != nil && imm.unref()) || scheduleFlush {
+		if imm.unref() {
 			d.maybeScheduleFlush()
 		}
 		force = false
