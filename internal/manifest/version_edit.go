@@ -78,29 +78,29 @@ type VersionEdit struct {
 	// specified at Open matches the comparer that was previously used.
 	ComparerName string
 
-	// TODO(peter): fix this to be the correct explanation.
+	// MinUnflushedLogNum is the smallest WAL log file number corresponding to
+	// mutations that have not been flushed to an sstable.
 	//
-	// The WAL log file number corresponding to the changes that were applied
-	// (i.e., the changes have been flushed to an sstable) in this version edit.
-	// This indicates all data in WAL log file numbers <= LogNum has been
-	// written to sstables.
 	// This is an optional field, and 0 represents it is not set.
-	LogNum uint64
+	MinUnflushedLogNum uint64
 
-	// Probably unused, but we are keeping it for now (especially since we
-	// need to have this be visible in tools that examine VersionEdits in
-	// MANIFEST files).
-	PrevLogNum uint64
+	// ObsoletePrevLogNum is a historic artifact from LevelDB that is not used by
+	// Pebble (or RocksDB).
+	ObsoletePrevLogNum uint64
 
-	// See comment for versionSet.nextFileNum
+	// The next file number. A single counter is used to assign file numbers
+	// for the WAL, MANIFEST, sstable, and OPTIONS files.
 	NextFileNum uint64
 
+	// LastSeqNum is an upper bound on the sequence numbers that have been
+	// assigned in flushed WALs. Unflushed WALs (that will be replayed during
+	// recovery) may contain sequence numbers greater than this value.
 	LastSeqNum uint64
 
 	// A file num may be present in both deleted files and new files when it
 	// is moved from a lower level to a higher level (when the compaction
 	// found that there was no overlapping file at the higher level).
-	DeletedFiles map[DeletedFileEntry]bool // set of DeletedFileEntry values
+	DeletedFiles map[DeletedFileEntry]bool
 	NewFiles     []NewFileEntry
 }
 
@@ -132,7 +132,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.LogNum = n
+			v.MinUnflushedLogNum = n
 
 		case tagNextFileNumber:
 			n, err := d.readUvarint()
@@ -260,7 +260,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.PrevLogNum = n
+			v.ObsoletePrevLogNum = n
 
 		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
 			return fmt.Errorf("column families are not supported")
@@ -279,13 +279,13 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagComparator)
 		e.writeString(v.ComparerName)
 	}
-	if v.LogNum != 0 {
+	if v.MinUnflushedLogNum != 0 {
 		e.writeUvarint(tagLogNumber)
-		e.writeUvarint(v.LogNum)
+		e.writeUvarint(v.MinUnflushedLogNum)
 	}
-	if v.PrevLogNum != 0 {
+	if v.ObsoletePrevLogNum != 0 {
 		e.writeUvarint(tagPrevLogNumber)
-		e.writeUvarint(v.PrevLogNum)
+		e.writeUvarint(v.ObsoletePrevLogNum)
 	}
 	if v.NextFileNum != 0 {
 		e.writeUvarint(tagNextFileNumber)
