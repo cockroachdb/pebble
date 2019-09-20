@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kr/pretty"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/kr/pretty"
 )
 
 func checkRoundTrip(e0 VersionEdit) error {
@@ -40,11 +40,11 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		{},
 		// A complete version edit.
 		{
-			ComparerName: "11",
-			LogNum:       22,
-			PrevLogNum:   33,
-			NextFileNum:  44,
-			LastSeqNum:   55,
+			ComparerName:       "11",
+			MinUnflushedLogNum: 22,
+			ObsoletePrevLogNum: 33,
+			NextFileNum:        44,
+			LastSeqNum:         55,
 			DeletedFiles: map[DeletedFileEntry]bool{
 				DeletedFileEntry{
 					Level:   3,
@@ -121,10 +121,10 @@ func TestVersionEditDecode(t *testing.T) {
 				},
 				{},
 				{
-					LogNum:      4,
-					PrevLogNum:  0,
-					NextFileNum: 6,
-					LastSeqNum:  5,
+					MinUnflushedLogNum: 4,
+					ObsoletePrevLogNum: 0,
+					NextFileNum:        6,
+					LastSeqNum:         5,
 					NewFiles: []NewFileEntry{
 						{
 							Level: 0,

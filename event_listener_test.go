@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -48,7 +49,8 @@ func (b *syncedBuffer) Infof(format string, args ...interface{}) {
 }
 
 func (b *syncedBuffer) Fatalf(format string, args ...interface{}) {
-	panic(fmt.Sprintf(format, args...))
+	b.Infof(format, args...)
+	runtime.Goexit()
 }
 
 func (b *syncedBuffer) String() string {

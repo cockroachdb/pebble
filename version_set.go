@@ -58,12 +58,12 @@ type versionSet struct {
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
 
-	logNum          uint64
-	prevLogNum      uint64
-	nextFileNum     uint64
-	logSeqNum       uint64 // next seqNum to use for WAL writes
-	visibleSeqNum   uint64 // visible seqNum (<= logSeqNum)
-	manifestFileNum uint64
+	minUnflushedLogNum uint64
+	obsoletePrevLogNum uint64
+	nextFileNum        uint64
+	logSeqNum          uint64 // next seqNum to use for WAL writes
+	visibleSeqNum      uint64 // visible seqNum (<= logSeqNum)
+	manifestFileNum    uint64
 
 	manifestFile vfs.File
 	manifest     *record.Writer
@@ -114,6 +114,11 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	}
 	b = bytes.TrimSpace(b)
 
+	var ok bool
+	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
+		return fmt.Errorf("pebble: MANIFEST name %q is malformed", b)
+	}
+
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
 	manifest, err := vs.fs.Open(vs.fs.PathJoin(dirname, string(b)))
@@ -143,11 +148,11 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			}
 		}
 		bve.Accumulate(&ve)
-		if ve.LogNum != 0 {
-			vs.logNum = ve.LogNum
+		if ve.MinUnflushedLogNum != 0 {
+			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 		}
-		if ve.PrevLogNum != 0 {
-			vs.prevLogNum = ve.PrevLogNum
+		if ve.ObsoletePrevLogNum != 0 {
+			vs.obsoletePrevLogNum = ve.ObsoletePrevLogNum
 		}
 		if ve.NextFileNum != 0 {
 			vs.nextFileNum = ve.NextFileNum
@@ -156,21 +161,23 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			vs.logSeqNum = ve.LastSeqNum
 		}
 	}
-	if vs.logNum == 0 || vs.nextFileNum == 0 {
+	if vs.minUnflushedLogNum == 0 || vs.nextFileNum == 0 {
 		if vs.nextFileNum == 2 {
 			// We have a freshly created DB.
 		} else {
 			return fmt.Errorf("pebble: incomplete manifest file %q for DB %q", b, dirname)
 		}
 	}
-	vs.markFileNumUsed(vs.logNum)
-	vs.markFileNumUsed(vs.prevLogNum)
+	vs.markFileNumUsed(vs.minUnflushedLogNum)
+	vs.markFileNumUsed(vs.obsoletePrevLogNum)
 
 	newVersion, err := bve.Apply(nil, vs.cmp, opts.Comparer.Format)
 	if err != nil {
 		return err
 	}
 	vs.append(newVersion)
+
+	vs.picker = newCompactionPicker(newVersion, vs.opts)
 
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
@@ -201,9 +208,11 @@ func (vs *versionSet) logAndApply(
 		vs.writerCond.Signal()
 	}()
 
-	if ve.LogNum != 0 {
-		if ve.LogNum < vs.logNum || vs.nextFileNum <= ve.LogNum {
-			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.LogNum))
+	if ve.MinUnflushedLogNum != 0 {
+		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
+			vs.nextFileNum <= ve.MinUnflushedLogNum {
+			panic(fmt.Sprintf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
+				ve.MinUnflushedLogNum))
 		}
 	}
 	ve.NextFileNum = vs.nextFileNum
@@ -291,11 +300,11 @@ func (vs *versionSet) logAndApply(
 
 	// Install the new version.
 	vs.append(newVersion)
-	if ve.LogNum != 0 {
-		vs.logNum = ve.LogNum
+	if ve.MinUnflushedLogNum != 0 {
+		vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 	}
-	if ve.PrevLogNum != 0 {
-		vs.prevLogNum = ve.PrevLogNum
+	if ve.ObsoletePrevLogNum != 0 {
+		vs.obsoletePrevLogNum = ve.ObsoletePrevLogNum
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {

@@ -96,13 +96,13 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "\n")
 				}
 				m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
-				if ve.LogNum != 0 {
+				if ve.MinUnflushedLogNum != 0 {
 					empty = false
-					fmt.Fprintf(stdout, "  log-num:      %d\n", ve.LogNum)
+					fmt.Fprintf(stdout, "  log-num:      %d\n", ve.MinUnflushedLogNum)
 				}
-				if ve.PrevLogNum != 0 {
+				if ve.ObsoletePrevLogNum != 0 {
 					empty = false
-					fmt.Fprintf(stdout, "  prev-log-num: %d\n", ve.PrevLogNum)
+					fmt.Fprintf(stdout, "  prev-log-num: %d\n", ve.ObsoletePrevLogNum)
 				}
 				if ve.LastSeqNum != 0 {
 					empty = false

@@ -72,13 +72,34 @@ type NewFileEntry struct {
 // VersionEdit holds the state for an edit to a Version along with other
 // on-disk state (log numbers, next file number, and the last sequence number).
 type VersionEdit struct {
+	// ComparerName is the value of Options.Comparer.Name. This is only set in
+	// the first VersionEdit in a manifest and is used to verify that the
+	// comparer specified at Open matches the comparer that was previously used.
 	ComparerName string
-	LogNum       uint64
-	PrevLogNum   uint64
-	NextFileNum  uint64
-	LastSeqNum   uint64
-	DeletedFiles map[DeletedFileEntry]bool // set of DeletedFileEntry values
-	NewFiles     []NewFileEntry
+
+	// MinUnflushedLogNum is the smallest WAL log file number corresponding to
+	// mutations that have not been flushed to an sstable.
+	MinUnflushedLogNum uint64
+
+	// ObsoletePrevLogNum is a historic artifact from LevelDB that is not used by
+	// Pebble (or RocksDB).
+	ObsoletePrevLogNum uint64
+
+	// The next file number. A single counter is used to assign file numbers for
+	// the WAL, MANIFEST, sstable, and OPTIONS files.
+	NextFileNum uint64
+
+	// LastSeqNum corresponds to the seqnum of the last record in the most
+	// recently flushed log file.
+	LastSeqNum uint64
+
+	// DeletedFiles is a set of deleted file entries used to mutate the Version
+	// when a flush or compaction occurs.
+	DeletedFiles map[DeletedFileEntry]bool
+
+	// NewFiles is the set of new file entries used to mutate the Version when a
+	// flush or compaction occurs.
+	NewFiles []NewFileEntry
 }
 
 // Decode decodes an edit from the specified reader.
@@ -109,7 +130,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.LogNum = n
+			v.MinUnflushedLogNum = n
 
 		case tagNextFileNumber:
 			n, err := d.readUvarint()
@@ -237,7 +258,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.PrevLogNum = n
+			v.ObsoletePrevLogNum = n
 
 		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
 			return fmt.Errorf("column families are not supported")
@@ -256,13 +277,13 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagComparator)
 		e.writeString(v.ComparerName)
 	}
-	if v.LogNum != 0 {
+	if v.MinUnflushedLogNum != 0 {
 		e.writeUvarint(tagLogNumber)
-		e.writeUvarint(v.LogNum)
+		e.writeUvarint(v.MinUnflushedLogNum)
 	}
-	if v.PrevLogNum != 0 {
+	if v.ObsoletePrevLogNum != 0 {
 		e.writeUvarint(tagPrevLogNumber)
-		e.writeUvarint(v.PrevLogNum)
+		e.writeUvarint(v.ObsoletePrevLogNum)
 	}
 	if v.NextFileNum != 0 {
 		e.writeUvarint(tagNextFileNumber)
