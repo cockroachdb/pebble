@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +22,7 @@ type walT struct {
 	Root *cobra.Command
 	Dump *cobra.Command
 
+	opts     *base.Options
 	fmtKey   formatter
 	fmtValue formatter
 
@@ -30,7 +30,9 @@ type walT struct {
 }
 
 func newWAL(opts *base.Options, comparers sstable.Comparers) *walT {
-	w := &walT{}
+	w := &walT{
+		opts: opts,
+	}
 	w.fmtKey.mustSet("quoted")
 	w.fmtValue.mustSet("size")
 	w.comparers = comparers
@@ -66,12 +68,12 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 			// necessary in case WAL recycling was used (which it is usually is). If
 			// we can't parse the filename or it isn't a log file, we'll plow ahead
 			// anyways (which will likely fail when we try to read the file).
-			_, fileNum, ok := base.ParseFilename(arg)
+			_, fileNum, ok := base.ParseFilename(w.opts.FS, arg)
 			if !ok {
 				fileNum = 0
 			}
 
-			f, err := vfs.Default.Open(arg)
+			f, err := w.opts.FS.Open(arg)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return

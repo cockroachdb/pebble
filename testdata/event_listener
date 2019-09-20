@@ -4,10 +4,13 @@ mkdir-all: db 0755
 open-dir: db
 mkdir-all: wal 0755
 open-dir: wal
+lock: db/LOCK
 create: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp
 sync: db/CURRENT.000001.dbtmp
+close: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
+close: db/MANIFEST-000001
 sync: db
 create: wal/000002.log
 sync: wal
@@ -15,10 +18,12 @@ create: db/MANIFEST-000003
 sync: db/MANIFEST-000003
 create: db/CURRENT.000003.dbtmp
 sync: db/CURRENT.000003.dbtmp
+close: db/CURRENT.000003.dbtmp
 rename: db/CURRENT.000003.dbtmp -> db/CURRENT
 sync: db
 [JOB 0] MANIFEST created 000003
 create: db/OPTIONS-000004
+close: db/OPTIONS-000004
 sync: db
 [JOB 1] MANIFEST deleted 000001
 
@@ -28,16 +33,19 @@ sync: wal/000002.log
 create: wal/000005.log
 sync: wal
 sync: wal/000002.log
+close: wal/000002.log
 [JOB 2] WAL created 000005
 [JOB 3] flushing to L0
 create: db/000006.sst
 [JOB 3] flushing: sstable created 000006
 sync: db/000006.sst
+close: db/000006.sst
 sync: db
 create: db/MANIFEST-000007
 sync: db/MANIFEST-000007
 create: db/CURRENT.000007.dbtmp
 sync: db/CURRENT.000007.dbtmp
+close: db/CURRENT.000007.dbtmp
 rename: db/CURRENT.000007.dbtmp -> db/CURRENT
 sync: db
 [JOB 3] MANIFEST created 000007
@@ -51,16 +59,19 @@ rename: wal/000002.log -> wal/000008.log
 create: wal/000008.log
 sync: wal
 sync: wal/000005.log
+close: wal/000005.log
 [JOB 4] WAL created 000008 (recycled 000002)
 [JOB 5] flushing to L0
 create: db/000009.sst
 [JOB 5] flushing: sstable created 000009
 sync: db/000009.sst
+close: db/000009.sst
 sync: db
 create: db/MANIFEST-000010
 sync: db/MANIFEST-000010
 create: db/CURRENT.000010.dbtmp
 sync: db/CURRENT.000010.dbtmp
+close: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
 [JOB 5] MANIFEST created 000010
@@ -70,11 +81,13 @@ sync: db
 create: db/000011.sst
 [JOB 6] compacting: sstable created 000011
 sync: db/000011.sst
+close: db/000011.sst
 sync: db
 create: db/MANIFEST-000012
 sync: db/MANIFEST-000012
 create: db/CURRENT.000012.dbtmp
 sync: db/CURRENT.000012.dbtmp
+close: db/CURRENT.000012.dbtmp
 rename: db/CURRENT.000012.dbtmp -> db/CURRENT
 sync: db
 [JOB 6] MANIFEST created 000012
@@ -92,6 +105,7 @@ create: db/MANIFEST-000014
 sync: db/MANIFEST-000014
 create: db/CURRENT.000014.dbtmp
 sync: db/CURRENT.000014.dbtmp
+close: db/CURRENT.000014.dbtmp
 rename: db/CURRENT.000014.dbtmp -> db/CURRENT
 sync: db
 [JOB 7] MANIFEST created 000014
@@ -109,3 +123,10 @@ level__files____size___score______in__ingest____move____read___write___w-amp
     5      1   825 B    0.00     0 B   825 B     0 B     0 B     0 B     0.0
     6      1   825 B    1.00   1.6 K     0 B     0 B   1.6 K   825 B     0.5
 total      2   1.6 K    0.00   906 B   825 B     0 B   1.6 K   3.3 K     3.7
+
+close
+----
+sync: wal/000008.log
+close: wal/000008.log
+close: db
+close: wal

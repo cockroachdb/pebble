@@ -24,13 +24,13 @@ func (l panicLogger) Fatalf(format string, args ...interface{}) {
 }
 
 type errorFS struct {
-	fs    vfs.FS
+	vfs.FS
 	index int32
 }
 
 func newErrorFS(index int32) *errorFS {
 	return &errorFS{
-		fs:    vfs.NewMem(),
+		FS:    vfs.NewMem(),
 		index: index,
 	}
 }
@@ -46,7 +46,7 @@ func (fs *errorFS) Create(name string) (vfs.File, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.Create(name)
+	f, err := fs.FS.Create(name)
 	if err != nil {
 		return nil, err
 	}
@@ -57,14 +57,14 @@ func (fs *errorFS) Link(oldname, newname string) error {
 	if err := fs.maybeError(); err != nil {
 		return err
 	}
-	return fs.fs.Link(oldname, newname)
+	return fs.FS.Link(oldname, newname)
 }
 
 func (fs *errorFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.Open(name)
+	f, err := fs.FS.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (fs *errorFS) OpenDir(name string) (vfs.File, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.OpenDir(name)
+	f, err := fs.FS.OpenDir(name)
 	if err != nil {
 		return nil, err
 	}
@@ -87,49 +87,49 @@ func (fs *errorFS) OpenDir(name string) (vfs.File, error) {
 }
 
 func (fs *errorFS) Remove(name string) error {
-	if _, err := fs.fs.Stat(name); os.IsNotExist(err) {
+	if _, err := fs.FS.Stat(name); os.IsNotExist(err) {
 		return nil
 	}
 
 	if err := fs.maybeError(); err != nil {
 		return err
 	}
-	return fs.fs.Remove(name)
+	return fs.FS.Remove(name)
 }
 
 func (fs *errorFS) Rename(oldname, newname string) error {
 	if err := fs.maybeError(); err != nil {
 		return err
 	}
-	return fs.fs.Rename(oldname, newname)
+	return fs.FS.Rename(oldname, newname)
 }
 
 func (fs *errorFS) MkdirAll(dir string, perm os.FileMode) error {
 	if err := fs.maybeError(); err != nil {
 		return err
 	}
-	return fs.fs.MkdirAll(dir, perm)
+	return fs.FS.MkdirAll(dir, perm)
 }
 
 func (fs *errorFS) Lock(name string) (io.Closer, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
-	return fs.fs.Lock(name)
+	return fs.FS.Lock(name)
 }
 
 func (fs *errorFS) List(dir string) ([]string, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
-	return fs.fs.List(dir)
+	return fs.FS.List(dir)
 }
 
 func (fs *errorFS) Stat(name string) (os.FileInfo, error) {
 	if err := fs.maybeError(); err != nil {
 		return nil, err
 	}
-	return fs.fs.Stat(name)
+	return fs.FS.Stat(name)
 }
 
 type errorFile struct {

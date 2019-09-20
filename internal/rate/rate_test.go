@@ -168,7 +168,8 @@ func TestLongRunningQPS(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
-	if runtime.GOOS == "openbsd" {
+	switch runtime.GOOS {
+	case "openbsd", "windows":
 		t.Skip("low resolution time.Sleep invalidates test (golang.org/issue/14183)")
 		return
 	}
@@ -210,7 +211,7 @@ func TestLongRunningQPS(t *testing.T) {
 		t.Errorf("numOK = %d, want %d (ideal %f)", numOK, want, ideal)
 	}
 	// We should get very close to the number of requests allowed.
-	if want := int32(0.999 * ideal); numOK < want {
+	if want := int32(0.99 * ideal); numOK < want {
 		t.Errorf("numOK = %d, want %d (ideal %f)", numOK, want, ideal)
 	}
 }

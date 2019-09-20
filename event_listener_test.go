@@ -95,10 +95,20 @@ func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
 	return fs.FS.MkdirAll(dir, perm)
 }
 
+func (fs loggingFS) Lock(name string) (io.Closer, error) {
+	fmt.Fprintf(fs.w, "lock: %s\n", name)
+	return fs.FS.Lock(name)
+}
+
 type loggingFile struct {
 	vfs.File
 	name string
 	w    io.Writer
+}
+
+func (f loggingFile) Close() error {
+	fmt.Fprintf(f.w, "close: %s\n", f.name)
+	return f.File.Close()
 }
 
 func (f loggingFile) Sync() error {
@@ -130,6 +140,11 @@ func TestEventListener(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			return buf.String()
+
+		case "close":
+			buf.Reset()
+			d.Close()
 			return buf.String()
 
 		case "flush":

@@ -5,7 +5,7 @@ requires at least 1 arg(s), only received 0
 sstable properties
 ../sstable/testdata/h.sst
 ----
-../sstable/testdata/h.sst
+h.sst
 version           2
 size              
   file            15432
@@ -40,7 +40,7 @@ user properties
 sstable properties
 ../sstable/testdata/h.ldb
 ----
-../sstable/testdata/h.ldb
+h.ldb
 version           2
 size              
   file            15381
@@ -74,7 +74,7 @@ user properties
 sstable properties
 ../sstable/testdata/h.no-compression.two_level_index.sst
 ----
-../sstable/testdata/h.no-compression.two_level_index.sst
+h.no-compression.two_level_index.sst
 version           2
 size              
   file            28539
@@ -110,7 +110,7 @@ sstable properties
 -v
 ../sstable/testdata/h.no-compression.two_level_index.sst
 ----
-../sstable/testdata/h.no-compression.two_level_index.sst
+h.no-compression.two_level_index.sst
 rocksdb.column.family.id: -
 rocksdb.column.family.name: 
 rocksdb.comparator: leveldb.BytewiseComparator
