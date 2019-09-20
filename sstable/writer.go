@@ -359,7 +359,8 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	}
 	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
 
-	if shouldFlush(sep, w.tmp[:n], w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
+	if supportsTwoLevelIndex(w.tableFormat) &&
+		shouldFlush(sep, w.tmp[:n], w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
 		w.finishIndexBlock()
