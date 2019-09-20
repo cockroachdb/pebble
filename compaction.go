@@ -22,6 +22,7 @@ import (
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
+var errFlushInvariant = errors.New("pebble: flush next log number is unset")
 
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
@@ -702,6 +703,16 @@ func (d *DB) flush1() error {
 		return nil
 	}
 
+	// Require that every memtable being flushed has a log number less than the
+	// new minimum unflushed log number.
+	minUnflushedLogNum, _ := d.mu.mem.queue[n].logInfo()
+	for i := 0; i < n; i++ {
+		logNum, _ := d.mu.mem.queue[i].logInfo()
+		if logNum >= minUnflushedLogNum {
+			return errFlushInvariant
+		}
+	}
+
 	c := newFlush(d.opts, d.mu.versions.currentVersion(),
 		d.mu.versions.picker.baseLevel, d.mu.mem.queue[:n], &d.bytesFlushed)
 
@@ -733,8 +744,9 @@ func (d *DB) flush1() error {
 		}
 
 		// The flush succeeded or it produced an empty sstable. In either case we
-		// want to bump the log number.
-		ve.LogNum, _ = d.mu.mem.queue[n].logInfo()
+		// want to bump the minimum unflushed log number to the log number of the
+		// oldest unflushed memtable.
+		ve.MinUnflushedLogNum, _ = d.mu.mem.queue[n].logInfo()
 		metrics := c.metrics[0]
 		for i := 0; i < n; i++ {
 			_, size := d.mu.mem.queue[i].logInfo()
@@ -1148,8 +1160,8 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		liveFileNums[fileNum] = struct{}{}
 	}
 	d.mu.versions.addLiveFileNums(liveFileNums)
-	logNumber := d.mu.versions.logNum
-	manifestFileNumber := d.mu.versions.manifestFileNum
+	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
+	manifestFileNum := d.mu.versions.manifestFileNum
 
 	var obsoleteLogs []uint64
 	var obsoleteTables []uint64
@@ -1163,13 +1175,12 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		}
 		switch fileType {
 		case fileTypeLog:
-			// TODO(peter): also look at prevLogNumber?
-			if fileNum >= logNumber {
+			if fileNum >= minUnflushedLogNum {
 				continue
 			}
 			obsoleteLogs = append(obsoleteLogs, fileNum)
 		case fileTypeManifest:
-			if fileNum >= manifestFileNumber {
+			if fileNum >= manifestFileNum {
 				continue
 			}
 			obsoleteManifests = append(obsoleteManifests, fileNum)
@@ -1213,9 +1224,11 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 
 	var obsoleteLogs []uint64
 	for i := range d.mu.log.queue {
-		// NB: d.mu.versions.logNumber is the file number of the latest log that
-		// has had its contents persisted to the LSM.
-		if d.mu.log.queue[i] >= d.mu.versions.logNum {
+		// NB: d.mu.versions.minUnflushedLogNum is the log number of the earliest
+		// log that has not had its contents flushed to an sstable. We can recycle
+		// the prefix of d.mu.log.queue with log numbers less than
+		// minUnflushedLogNum.
+		if d.mu.log.queue[i] >= d.mu.versions.minUnflushedLogNum {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
 			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))

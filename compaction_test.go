@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1175,4 +1176,54 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+}
+
+func TestFlushInvariant(t *testing.T) {
+	for i := 0; i < 2; i++ {
+		t.Run("", func(t *testing.T) {
+			errCh := make(chan error)
+			defer close(errCh)
+			d, err := Open("", &Options{
+				FS: vfs.NewMem(),
+				EventListener: EventListener{
+					BackgroundError: func(err error) {
+						errCh <- err
+						runtime.Goexit() // ensure we don't try to reschedule the flush
+					},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := d.Set([]byte("hello"), nil, nil); err != nil {
+				t.Fatal(err)
+			}
+
+			// Contort the DB into a state where it does something invalid.
+			d.mu.Lock()
+			switch i {
+			case 0:
+				// Force the next log number to be 0.
+				d.mu.versions.nextFileNum = 0
+			case 1:
+				// Force the flushing memtable to have a log number equal to the new
+				// log's number.
+				d.mu.mem.mutable.logNum = d.mu.versions.nextFileNum
+			}
+			d.mu.Unlock()
+
+			flushCh, err := d.AsyncFlush()
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-errCh:
+				if errFlushInvariant != err {
+					t.Fatalf("expected %q, but found %v", errFlushInvariant, err)
+				}
+			case <-flushCh:
+				t.Fatalf("expected error but found success")
+			}
+		})
+	}
 }
