@@ -447,7 +447,7 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
+func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
 	repr := b.Repr()
 
 	d.mu.Lock()
@@ -477,7 +477,7 @@ func (d *DB) commitWrite(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
 		return mem, nil
 	}
 
-	size, err := d.mu.log.SyncRecord(repr, wg)
+	size, err := d.mu.log.SyncRecord(repr, syncWG, syncErr)
 	if err != nil {
 		panic(err)
 	}
