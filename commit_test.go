@@ -45,7 +45,7 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup) (*memTable, error) {
+func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup, _ *error) (*memTable, error) {
 	n := int64(len(b.storage.data))
 	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
@@ -172,7 +172,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					mem.unref()
 					return nil
 				},
-				write: func(b *Batch, wg *sync.WaitGroup) (*memTable, error) {
+				write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
 					for {
 						err := mem.prepare(b)
 						if err == arenaskl.ErrArenaFull {
@@ -185,7 +185,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						break
 					}
 
-					_, err := wal.SyncRecord(b.storage.data, wg)
+					_, err := wal.SyncRecord(b.storage.data, syncWG, syncErr)
 					return mem, err
 				},
 			}

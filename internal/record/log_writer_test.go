@@ -5,10 +5,22 @@
 package record
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/cockroachdb/pebble/vfs"
 )
+
+type syncErrorFile struct {
+	vfs.File
+	err error
+}
+
+func (f syncErrorFile) Sync() error {
+	return f.err
+}
 
 func TestSyncQueue(t *testing.T) {
 	var q syncQueue
@@ -23,7 +35,7 @@ func TestSyncQueue(t *testing.T) {
 				return
 			}
 			head, tail := q.load()
-			q.pop(head, tail)
+			q.pop(head, tail, nil)
 		}
 	}()
 
@@ -39,7 +51,7 @@ func TestSyncQueue(t *testing.T) {
 				// syncQueue is a single-producer, single-consumer queue. We need to
 				// provide mutual exclusion on the producer side.
 				commitMu.Lock()
-				q.push(wg)
+				q.push(wg, new(error))
 				commitMu.Unlock()
 				wg.Wait()
 			}
@@ -79,7 +91,7 @@ func TestFlusherCond(t *testing.T) {
 			}
 
 			head, tail := q.load()
-			q.pop(head, tail)
+			q.pop(head, tail, nil)
 		}
 	}()
 
@@ -99,7 +111,7 @@ func TestFlusherCond(t *testing.T) {
 				// syncQueue is a single-producer, single-consumer queue. We need to
 				// provide mutual exclusion on the producer side.
 				commitMu.Lock()
-				q.push(wg)
+				q.push(wg, new(error))
 				commitMu.Unlock()
 				c.Signal()
 				wg.Wait()
@@ -113,4 +125,25 @@ func TestFlusherCond(t *testing.T) {
 	c.Signal()
 	mu.Unlock()
 	flusherWG.Wait()
+}
+
+func TestSyncError(t *testing.T) {
+	mem := vfs.NewMem()
+	f, err := mem.Create("log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	injectedErr := fmt.Errorf("injected error")
+	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0)
+
+	var syncErr error
+	var syncWG sync.WaitGroup
+	syncWG.Add(1)
+	if _, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr); err != nil {
+		t.Fatal(err)
+	}
+	syncWG.Wait()
+	if injectedErr != syncErr {
+		t.Fatalf("unexpected %v but found %v", injectedErr, syncErr)
+	}
 }

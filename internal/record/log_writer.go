@@ -39,6 +39,11 @@ const (
 	SyncConcurrency = 1 << syncConcurrencyBits
 )
 
+type syncSlot struct {
+	wg  *sync.WaitGroup
+	err *error
+}
+
 // syncQueue is a lock-free fixed-size single-producer, single-consumer
 // queue. The single-producer can push to the head, and the single-consumer can
 // pop multiple values from the tail. Popping calls Done() on each of the
@@ -60,7 +65,7 @@ type syncQueue struct {
 
 	// slots is a ring buffer of values stored in this queue. The size must be a
 	// power of 2. A slot is in use until the tail index has moved beyond it.
-	slots [SyncConcurrency]*sync.WaitGroup
+	slots [SyncConcurrency]syncSlot
 }
 
 const dequeueBits = 32
@@ -72,7 +77,7 @@ func (q *syncQueue) unpack(ptrs uint64) (head, tail uint32) {
 	return
 }
 
-func (q *syncQueue) push(wg *sync.WaitGroup) {
+func (q *syncQueue) push(wg *sync.WaitGroup, err *error) {
 	ptrs := atomic.LoadUint64(&q.headTail)
 	head, tail := q.unpack(ptrs)
 	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
@@ -80,7 +85,8 @@ func (q *syncQueue) push(wg *sync.WaitGroup) {
 	}
 
 	slot := &q.slots[head&uint32(len(q.slots)-1)]
-	*slot = wg
+	slot.wg = wg
+	slot.err = err
 
 	// Increment head. This passes ownership of slot to dequeue and acts as a
 	// store barrier for writing the slot.
@@ -98,7 +104,7 @@ func (q *syncQueue) load() (head, tail uint32) {
 	return head, tail
 }
 
-func (q *syncQueue) pop(head, tail uint32) {
+func (q *syncQueue) pop(head, tail uint32, err error) {
 	if tail == head {
 		// Queue is empty.
 		return
@@ -106,11 +112,13 @@ func (q *syncQueue) pop(head, tail uint32) {
 
 	for ; tail != head; tail++ {
 		slot := &q.slots[tail&uint32(len(q.slots)-1)]
-		wg := *slot
+		wg := slot.wg
 		if wg == nil {
 			panic("nil waiter")
 		}
-		*slot = nil
+		*slot.err = err
+		slot.wg = nil
+		slot.err = nil
 		// We need to bump the tail count before signalling the wait group as
 		// signalling the wait group can trigger release a blocked goroutine which
 		// will try to enqueue before we've "freed" space in the queue.
@@ -293,18 +301,19 @@ func (w *LogWriter) flushLoop() {
 		if err == nil && len(data) > 0 {
 			_, err = w.w.Write(data)
 		}
-		if err == nil && head != tail {
-			if w.s != nil {
+		if head != tail {
+			if err == nil && w.s != nil {
 				err = w.s.Sync()
 			}
-			if err == nil {
-				f.syncQ.pop(head, tail)
-			}
+			f.syncQ.pop(head, tail, err)
 		}
 
 		f.Lock()
 		f.err = err
 		if f.err != nil {
+			// TODO(peter): There might be new waiters that we should propagate f.err
+			// to. Because f.err is now set, we only have to perform a single extra
+			// clearing of those waiters as no new ones can arrive via SyncRecord().
 			return
 		}
 	}
@@ -344,8 +353,9 @@ func (w *LogWriter) Close() error {
 
 	// Force a sync of any unwritten data.
 	wg := &sync.WaitGroup{}
+	var err error
 	wg.Add(1)
-	f.syncQ.push(wg)
+	f.syncQ.push(wg, &err)
 	f.ready.Signal()
 	wg.Wait()
 
@@ -360,31 +370,38 @@ func (w *LogWriter) Close() error {
 		}
 	}
 	w.err = errors.New("pebble/record: closed LogWriter")
-	return nil
+	return err
 }
 
 // WriteRecord writes a complete record. Returns the offset just past the end
 // of the record.
 func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
-	return w.SyncRecord(p, nil)
+	return w.SyncRecord(p, nil, nil)
 }
 
 // SyncRecord writes a complete record. If wg!= nil the record will be
 // asynchronously persisted to the underlying writer and done will be called on
 // the wait group upon completion. Returns the offset just past the end of the
 // record.
-func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup) (int64, error) {
+func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64, error) {
 	if w.err != nil {
 		return -1, w.err
 	}
 
+	// TODO(peter): why do we need to support empty records?
+	// TestBoundary/LogWriter fails if we don't, but is that actual valid usage.
 	for i := 0; i == 0 || len(p) > 0; i++ {
 		p = w.emitFragment(i, p)
 	}
 
 	if wg != nil {
+		// If we've been asked to persist the record, add the WaitGroup to the sync
+		// queue and signal the flushLoop. Note that flushLoop will write partial
+		// blocks to the file if syncing has been requested. The contract is that
+		// any record written to the LogWriter to this point will be flushed to the
+		// OS and synced to disk.
 		f := &w.flusher
-		f.syncQ.push(wg)
+		f.syncQ.push(wg, err)
 		f.ready.Signal()
 	}
 
