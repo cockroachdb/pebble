@@ -83,8 +83,7 @@ type versionSet struct {
 	writerCond sync.Cond
 }
 
-// load loads the version set from the manifest file.
-func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
+func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	vs.dirname = dirname
 	vs.mu = mu
 	vs.writerCond.L = mu
@@ -95,8 +94,58 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
-	// For historical reasons, the next file number is initialized to 2.
-	vs.nextFileNum = 2
+	vs.nextFileNum = 1
+}
+
+// create creates a version set for a fresh DB.
+func (vs *versionSet) create(
+	jobID int, dirname string, dir vfs.File, opts *Options, mu *sync.Mutex,
+) error {
+	vs.init(dirname, opts, mu)
+	newVersion := &version{}
+	vs.append(newVersion)
+	vs.picker = newCompactionPicker(newVersion, vs.opts)
+
+	// Note that a "snapshot" version edit is written to the manifest when it is
+	// created.
+	vs.manifestFileNum = vs.getNextFileNum()
+	err := vs.createManifest(vs.dirname, vs.manifestFileNum)
+	if err == nil {
+		if err = vs.manifest.Flush(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
+		}
+	}
+	if err == nil {
+		if err = vs.manifestFile.Sync(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST sync failed: %v", err)
+		}
+	}
+	if err == nil {
+		if err = setCurrentFile(vs.dirname, vs.fs, vs.manifestFileNum); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
+		}
+	}
+	if err == nil {
+		if err = dir.Sync(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST dirsync failed: %v", err)
+		}
+	}
+
+	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
+		JobID:   jobID,
+		Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
+		FileNum: vs.manifestFileNum,
+		Err:     err,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// load loads the version set from the manifest file.
+func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
+	vs.init(dirname, opts, mu)
 
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(base.MakeFilename(vs.fs, dirname, fileTypeCurrent, 0))

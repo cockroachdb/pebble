@@ -33,40 +33,6 @@ func allocDBNum() uint64 {
 	return num
 }
 
-func createDB(dirname string, opts *Options) (retErr error) {
-	const manifestFileNum = 1
-	ve := versionEdit{
-		ComparerName: opts.Comparer.Name,
-		NextFileNum:  manifestFileNum + 1,
-	}
-	manifestFilename := base.MakeFilename(opts.FS, dirname, fileTypeManifest, manifestFileNum)
-	f, err := opts.FS.Create(manifestFilename)
-	if err != nil {
-		return fmt.Errorf("pebble: could not create %q: %v", manifestFilename, err)
-	}
-	defer func() {
-		if retErr != nil {
-			opts.FS.Remove(manifestFilename)
-		}
-	}()
-	defer f.Close()
-
-	recWriter := record.NewWriter(f)
-	w, err := recWriter.Next()
-	if err != nil {
-		return err
-	}
-	err = ve.Encode(w)
-	if err != nil {
-		return err
-	}
-	err = recWriter.Close()
-	if err != nil {
-		return err
-	}
-	return setCurrentFile(dirname, opts.FS, manifestFileNum)
-}
-
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *Options) (*DB, error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
@@ -168,21 +134,18 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	currentName := base.MakeFilename(opts.FS, dirname, fileTypeCurrent, 0)
 	if _, err := opts.FS.Stat(currentName); os.IsNotExist(err) && !d.opts.ReadOnly {
 		// Create the DB if it did not already exist.
-		if err := createDB(dirname, opts); err != nil {
-			return nil, err
-		}
-		if err := d.dataDir.Sync(); err != nil {
+		if err := d.mu.versions.create(jobID, dirname, d.dataDir, opts, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("pebble: database %q: %v", dirname, err)
 	} else if opts.ErrorIfDBExists {
 		return nil, fmt.Errorf("pebble: database %q already exists", dirname)
-	}
-
-	// Load the version set.
-	if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
-		return nil, err
+	} else {
+		// Load the version set.
+		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
+			return nil, err
+		}
 	}
 
 	ls, err := opts.FS.List(d.walDirname)
