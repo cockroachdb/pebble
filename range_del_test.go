@@ -176,8 +176,8 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  9:[a#2,15-b#72057594037927935,15]
-  10:[b#1,1-d#72057594037927935,15]
+  8:[a#2,15-b#72057594037927935,15]
+  9:[b#1,1-d#72057594037927935,15]
 `)
 
 	// Compact again to move one of the tables to L2.
@@ -186,9 +186,9 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  9:[a#2,15-b#72057594037927935,15]
+  8:[a#2,15-b#72057594037927935,15]
 2:
-  10:[b#1,1-d#72057594037927935,15]
+  9:[b#1,1-d#72057594037927935,15]
 `)
 
 	// Write "b" and "c" to a new table.
@@ -203,11 +203,11 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 0:
-  12:[b#3,1-c#4,1]
+  11:[b#3,1-c#4,1]
 1:
-  9:[a#2,15-b#72057594037927935,15]
+  8:[a#2,15-b#72057594037927935,15]
 2:
-  10:[b#1,1-d#72057594037927935,15]
+  9:[b#1,1-d#72057594037927935,15]
 `)
 
 	// "b" is still visible at this point as it should be.
@@ -241,12 +241,12 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  13:[a#2,15-b#72057594037927935,15]
+  12:[a#2,15-b#72057594037927935,15]
 2:
-  15:[b#3,1-b#3,1]
+  14:[b#3,1-b#3,1]
 3:
-  18:[b#2,15-c#72057594037927935,15]
-  19:[c#4,1-d#72057594037927935,15]
+  17:[b#2,15-c#72057594037927935,15]
+  18:[c#4,1-d#72057594037927935,15]
 `)
 
 	// The L1 table still contains a tombstone from [a,d) which will improperly

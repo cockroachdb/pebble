@@ -69,8 +69,8 @@ func TestNewDBFilenames(t *testing.T) {
 		"000002.log",
 		"CURRENT",
 		"LOCK",
-		"MANIFEST-000003",
-		"OPTIONS-000004",
+		"MANIFEST-000001",
+		"OPTIONS-000003",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("\ngot  %v\nwant %v", got, want)
