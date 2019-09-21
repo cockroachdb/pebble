@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kr/pretty"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/kr/pretty"
 )
 
 func checkRoundTrip(e0 VersionEdit) error {
@@ -188,6 +188,70 @@ func TestVersionEditDecode(t *testing.T) {
 			}
 			if i != len(tc.edits) {
 				t.Fatalf("filename=%q: got %d edits, want %d", tc.filename, i, len(tc.edits))
+			}
+		})
+	}
+}
+
+func TestVersionEditEncodeLastSeqNum(t *testing.T) {
+	testCases := []struct {
+		edit    VersionEdit
+		encoded string
+	}{
+		// If ComparerName is unset, LastSeqNum is only encoded if non-zero.
+		{VersionEdit{LastSeqNum: 0}, ""},
+		{VersionEdit{LastSeqNum: 1}, "\x04\x01"},
+		// For compatibility with RocksDB, if ComparerName is set we always encode
+		// LastSeqNum.
+		{VersionEdit{ComparerName: "foo", LastSeqNum: 0}, "\x01\x03\x66\x6f\x6f\x04\x00"},
+		{VersionEdit{ComparerName: "foo", LastSeqNum: 1}, "\x01\x03\x66\x6f\x6f\x04\x01"},
+	}
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := c.edit.Encode(&buf); err != nil {
+				t.Fatal(err)
+			}
+			if result := buf.String(); c.encoded != result {
+				t.Fatalf("expected %x, but found %x", c.encoded, result)
+			}
+
+			if c.edit.ComparerName != "" {
+				// Manually decode the version edit so that we can verify the contents
+				// even if the LastSeqNum decodes to 0.
+				d := versionEditDecoder{strings.NewReader(c.encoded)}
+
+				// Decode ComparerName.
+				tag, err := d.readUvarint()
+				if err != nil {
+					t.Fatal()
+				}
+				if tag != tagComparator {
+					t.Fatalf("expected %d, but found %d", tagComparator, tag)
+				}
+				s, err := d.readBytes()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if c.edit.ComparerName != string(s) {
+					t.Fatalf("expected %q, but found %q", c.edit.ComparerName, s)
+				}
+
+				// Decode LastSeqNum.
+				tag, err = d.readUvarint()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tag != tagLastSequence {
+					t.Fatalf("expected %d, but found %d", tagLastSequence, tag)
+				}
+				val, err := d.readUvarint()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if c.edit.LastSeqNum != val {
+					t.Fatalf("expected %d, but found %d", c.edit.LastSeqNum, val)
+				}
 			}
 		})
 	}

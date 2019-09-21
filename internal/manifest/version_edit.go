@@ -72,6 +72,10 @@ type NewFileEntry struct {
 // VersionEdit holds the state for an edit to a Version along with other
 // on-disk state (log numbers, next file number, and the last sequence number).
 type VersionEdit struct {
+	// ComparerName is the value of Options.Comparer.Name. This is only set in
+	// the first VersionEdit in a manifest (either when the DB is created, or
+	// when a new manifest is created) and is used to verify that the comparer
+	// specified at Open matches the comparer that was previously used.
 	ComparerName string
 
 	// TODO(peter): fix this to be the correct explanation.
@@ -81,17 +85,17 @@ type VersionEdit struct {
 	// This indicates all data in WAL log file numbers <= LogNum has been
 	// written to sstables.
 	// This is an optional field, and 0 represents it is not set.
-	LogNum       uint64
+	LogNum uint64
 
 	// Probably unused, but we are keeping it for now (especially since we
 	// need to have this be visible in tools that examine VersionEdits in
 	// MANIFEST files).
-	PrevLogNum   uint64
+	PrevLogNum uint64
 
 	// See comment for versionSet.nextFileNum
-	NextFileNum  uint64
+	NextFileNum uint64
 
-	LastSeqNum   uint64
+	LastSeqNum uint64
 
 	// A file num may be present in both deleted files and new files when it
 	// is moved from a lower level to a higher level (when the compaction
@@ -287,7 +291,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagNextFileNumber)
 		e.writeUvarint(v.NextFileNum)
 	}
-	if v.LastSeqNum != 0 {
+	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
+	// even though its value is zero. We detect this by encoding LastSeqNum when
+	// ComparerName is set.
+	if v.LastSeqNum != 0 || v.ComparerName != "" {
 		e.writeUvarint(tagLastSequence)
 		e.writeUvarint(v.LastSeqNum)
 	}
