@@ -192,3 +192,29 @@ func TestVersionEditDecode(t *testing.T) {
 		})
 	}
 }
+
+func TestVersionEditEncodeLastSeqNum(t *testing.T) {
+	testCases := []struct {
+		edit    VersionEdit
+		encoded string
+	}{
+		// If ComparerName is unset, LastSeqNum is only encoded if non-zero.
+		{VersionEdit{LastSeqNum: 0}, ""},
+		{VersionEdit{LastSeqNum: 1}, "\x04\x01"},
+		// For compatibility with RocksDB, if ComparerName is set we always encode
+		// LastSeqNum.
+		{VersionEdit{ComparerName: "foo", LastSeqNum: 0}, "\x01\x03\x66\x6f\x6f\x04\x00"},
+		{VersionEdit{ComparerName: "foo", LastSeqNum: 1}, "\x01\x03\x66\x6f\x6f\x04\x01"},
+	}
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := c.edit.Encode(&buf); err != nil {
+				t.Fatal(err)
+			}
+			if result := buf.String(); c.encoded != result {
+				t.Fatalf("expected %x, but found %x", c.encoded, result)
+			}
+		})
+	}
+}

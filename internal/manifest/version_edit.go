@@ -287,7 +287,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagNextFileNumber)
 		e.writeUvarint(v.NextFileNum)
 	}
-	if v.LastSeqNum != 0 {
+	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
+	// even though its value is zero. We detect this by encoding LastSeqNum when
+	// ComparerName is set.
+	if v.LastSeqNum != 0 || v.ComparerName != "" {
 		e.writeUvarint(tagLastSequence)
 		e.writeUvarint(v.LastSeqNum)
 	}
