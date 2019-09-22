@@ -62,9 +62,6 @@ type versionSet struct {
 	// mutations that have not been flushed to an sstable.
 	minUnflushedLogNum uint64
 
-	// Probably unused, but we are keeping it for now.
-	obsoletePrevLogNum uint64
-
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
 	nextFileNum uint64
@@ -165,9 +162,6 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		if ve.MinUnflushedLogNum != 0 {
 			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 		}
-		if ve.ObsoletePrevLogNum != 0 {
-			vs.obsoletePrevLogNum = ve.ObsoletePrevLogNum
-		}
 		if ve.NextFileNum != 0 {
 			vs.nextFileNum = ve.NextFileNum
 		}
@@ -186,7 +180,6 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
-	vs.markFileNumUsed(vs.obsoletePrevLogNum)
 
 	newVersion, err := bve.Apply(nil, vs.cmp, opts.Comparer.Format)
 	if err != nil {
@@ -327,9 +320,6 @@ func (vs *versionSet) logAndApply(
 	vs.append(newVersion)
 	if ve.MinUnflushedLogNum != 0 {
 		vs.minUnflushedLogNum = ve.MinUnflushedLogNum
-	}
-	if ve.ObsoletePrevLogNum != 0 {
-		vs.obsoletePrevLogNum = ve.ObsoletePrevLogNum
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {

@@ -85,7 +85,9 @@ type VersionEdit struct {
 	MinUnflushedLogNum uint64
 
 	// ObsoletePrevLogNum is a historic artifact from LevelDB that is not used by
-	// Pebble (or RocksDB).
+	// Pebble, RocksDB, or even LevelDB. Its use in LevelDB was deprecated in
+	// 6/2011. We keep it around purely for informational purposes when
+	// displaying MANIFEST contents.
 	ObsoletePrevLogNum uint64
 
 	// The next file number. A single counter is used to assign file numbers
