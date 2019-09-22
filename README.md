@@ -22,6 +22,7 @@ needed by CockroachDB:
 * Range deletion tombstones
 * Prefix iteration
 * Reverse iteration
+* Single delete
 * Snapshots
 * SSTable ingestion
 * Table-level bloom filters
@@ -39,7 +40,6 @@ Pebble:
 * Persistent cache
 * Pin iterator key / value
 * Plain table format
-* Single delete
 * SSTable ingest-behind
 * Sub-compactions
 * Transactions
@@ -62,6 +62,10 @@ Pebble offers several improvements over RocksDB:
 * Pacing of flushes vs compactions: Pebble smooths latency spikes
   caused by flushes and compactions by only flushing/compacting as
   fast as necessary to keep up with user writes.
+
+See the [Pebble vs RocksDB: Implementation
+Differences](docs/rocksdb.md) doc for more details on implementation
+differences.
 
 ## Pedigree
 
