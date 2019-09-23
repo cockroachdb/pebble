@@ -423,6 +423,11 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if err == nil {
 		// If this is a large batch, we need to clear the batch contents as the
 		// flushable batch may still be present in the flushables queue.
+		//
+		// TODO(peter): Currently large batches are written to the WAL. We could
+		// skip the WAL write and instead wait for the large batch to be flushed to
+		// an sstable. For a 100 MB batch, this might actually be faster. For a 1
+		// GB batch this is almost certainly faster.
 		if batch.flushable != nil {
 			batch.storage.data = nil
 		}
@@ -448,18 +453,32 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 }
 
 func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+	var size int64
 	repr := b.Repr()
 
-	d.mu.Lock()
-
 	if b.flushable != nil {
+		// We have a large batch. Such batches are special in that they don't get
+		// added to the memtable, and are instead inserted into the queue of
+		// memtables. The call to makeRoomForWrite with this batch will force the
+		// current memtable to be flushed. We want the large batch to be part of
+		// the same log, so we add it to the WAL here, rather than after the call
+		// to makeRoomForWrite().
 		b.flushable.seqNum = b.SeqNum()
+		if !d.opts.DisableWAL {
+			var err error
+			size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
+
+	d.mu.Lock()
 
 	// Switch out the memtable if there was not enough room to store the batch.
 	err := d.makeRoomForWrite(b)
 
-	if err == nil {
+	if err == nil && !d.opts.DisableWAL {
 		d.mu.log.bytesIn += uint64(len(repr))
 	}
 
@@ -478,9 +497,11 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		return mem, nil
 	}
 
-	size, err := d.mu.log.SyncRecord(repr, syncWG, syncErr)
-	if err != nil {
-		panic(err)
+	if b.flushable == nil {
+		size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	atomic.StoreUint64(&d.mu.log.size, uint64(size))
@@ -1030,11 +1051,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// WAL containing the large batch from being deleted prematurely if the
 			// corresponding memtable is flushed without flushing the large batch.
 			//
-			// TODO(peter): This is wrong! We're adding the flushable batch to the
-			// queue and associating it with the previous log file, but it will be
-			// written to the new log file in commitWrite. I think we need to change
-			// commitWrite so that a flushable batch gets added to the log before
-			// makeRoomForWrite is called.
+			// See DB.commitWrite for the special handling of log writes for large
+			// batches. In particular, the large batch has already written to
+			// imm.logNum.
 			b.flushable.logNum, imm.logNum = imm.logNum, 0
 			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
 		}
