@@ -754,6 +754,7 @@ func TestDBClosed(t *testing.T) {
 	require.EqualValues(t, ErrClosed, catch(func() { _, _ = d.Get(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Delete(nil, nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.DeleteRange(nil, nil, nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Ingest(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.LogData(nil, nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Merge(nil, nil, nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Set(nil, nil, nil) }))

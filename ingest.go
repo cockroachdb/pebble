@@ -7,6 +7,7 @@ package pebble
 import (
 	"fmt"
 	"sort"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
@@ -283,6 +284,13 @@ func ingestTargetLevel(cmp Compare, v *version, meta *fileMetadata) int {
 // https://github.com/cockroachdb/pebble/issues/25 for an idea for how to fix
 // this hiccup.
 func (d *DB) Ingest(paths []string) error {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
+
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
 	// the file number ordering to be out of alignment with sequence number
