@@ -371,13 +371,46 @@ func TestLargeBatch(t *testing.T) {
 		}
 	}
 
+	logNum := func() uint64 {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.log.queue[len(d.mu.log.queue)-1]
+	}
+	fileSize := func(fileNum uint64) int64 {
+		info, err := d.opts.FS.Stat(base.MakeFilename(d.opts.FS, "", fileTypeLog, fileNum))
+		if err != nil {
+			t.Fatal()
+		}
+		return info.Size()
+	}
+
+	startLogNum := logNum()
+	startLogStartSize := fileSize(startLogNum)
+
 	// Write two keys with values that are larger than the memtable size.
 	if err := d.Set([]byte("a"), bytes.Repeat([]byte("a"), 512), nil); err != nil {
 		t.Fatal(err)
 	}
 
+	// Verify that the large batch was written to the WAL that existed before it
+	// was committed. We verify that WAL rotation occurred, where the large batch
+	// was written to, and that the new WAL is empty.
+	endLogNum := logNum()
+	if startLogNum == endLogNum {
+		t.Fatal("expected WAL rotation")
+	}
+	startLogEndSize := fileSize(startLogNum)
+	if startLogEndSize == startLogStartSize {
+		t.Fatalf("expected large batch to be written to %06d.log, but file size unchanged at %d",
+			startLogNum, startLogEndSize)
+	}
+	endLogSize := fileSize(endLogNum)
+	if endLogSize != 0 {
+		t.Fatalf("expected %06d.log to be empty, but found %d", endLogNum, endLogSize)
+	}
+
 	// Verify this results in one L0 table being created.
-	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  6:[a-a]\n"))
+	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  5:[a-a]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +420,7 @@ func TestLargeBatch(t *testing.T) {
 	}
 
 	// Verify this results in a second L0 table being created.
-	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  6:[a-a]\n  8:[b-b]\n"))
+	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  5:[a-a]\n  7:[b-b]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}

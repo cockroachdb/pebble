@@ -58,24 +58,20 @@ type versionSet struct {
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
 
-	// The WAL log file number corresponding to changes that have been applied.
-	//
-	// TODO(peter): fix this to be the correct explanation.
-	logNum          uint64
-
-	// Probably unused, but we are keeping it for now.
-	prevLogNum   uint64
+	// minUnflushedLogNum is the smallest WAL log file number corresponding to
+	// mutations that have not been flushed to an sstable.
+	minUnflushedLogNum uint64
 
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
-	nextFileNum     uint64
+	nextFileNum uint64
 
 	// The upper bound on sequence numbers that have been assigned so far.
 	// A suffix of these sequence numbers may not have been written to a
 	// WAL. Both logSeqNum and visibleSeqNum are atomically updated by the
 	// commitPipeline.
-	logSeqNum       uint64 // next seqNum to use for WAL writes
-	visibleSeqNum   uint64 // visible seqNum (<= logSeqNum)
+	logSeqNum     uint64 // next seqNum to use for WAL writes
+	visibleSeqNum uint64 // visible seqNum (<= logSeqNum)
 
 	// The current manifest file number.
 	manifestFileNum uint64
@@ -87,8 +83,7 @@ type versionSet struct {
 	writerCond sync.Cond
 }
 
-// load loads the version set from the manifest file.
-func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
+func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	vs.dirname = dirname
 	vs.mu = mu
 	vs.writerCond.L = mu
@@ -99,8 +94,58 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
-	// For historical reasons, the next file number is initialized to 2.
-	vs.nextFileNum = 2
+	vs.nextFileNum = 1
+}
+
+// create creates a version set for a fresh DB.
+func (vs *versionSet) create(
+	jobID int, dirname string, dir vfs.File, opts *Options, mu *sync.Mutex,
+) error {
+	vs.init(dirname, opts, mu)
+	newVersion := &version{}
+	vs.append(newVersion)
+	vs.picker = newCompactionPicker(newVersion, vs.opts)
+
+	// Note that a "snapshot" version edit is written to the manifest when it is
+	// created.
+	vs.manifestFileNum = vs.getNextFileNum()
+	err := vs.createManifest(vs.dirname, vs.manifestFileNum)
+	if err == nil {
+		if err = vs.manifest.Flush(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
+		}
+	}
+	if err == nil {
+		if err = vs.manifestFile.Sync(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST sync failed: %v", err)
+		}
+	}
+	if err == nil {
+		if err = setCurrentFile(vs.dirname, vs.fs, vs.manifestFileNum); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
+		}
+	}
+	if err == nil {
+		if err = dir.Sync(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST dirsync failed: %v", err)
+		}
+	}
+
+	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
+		JobID:   jobID,
+		Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
+		FileNum: vs.manifestFileNum,
+		Err:     err,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// load loads the version set from the manifest file.
+func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
+	vs.init(dirname, opts, mu)
 
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(base.MakeFilename(vs.fs, dirname, fileTypeCurrent, 0))
@@ -128,6 +173,11 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		return fmt.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
 	}
 	b = bytes.TrimSpace(b)
+
+	var ok bool
+	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
+		return fmt.Errorf("pebble: MANIFEST name %q is malformed", b)
+	}
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
@@ -158,11 +208,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			}
 		}
 		bve.Accumulate(&ve)
-		if ve.LogNum != 0 {
-			vs.logNum = ve.LogNum
-		}
-		if ve.PrevLogNum != 0 {
-			vs.prevLogNum = ve.PrevLogNum
+		if ve.MinUnflushedLogNum != 0 {
+			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 		}
 		if ve.NextFileNum != 0 {
 			vs.nextFileNum = ve.NextFileNum
@@ -174,21 +221,22 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	// We have already set vs.nextFileNum = 2 at the beginning of the
 	// function and could have only updated it to some other non-zero value,
 	// so it cannot be 0 here.
-	if vs.logNum == 0 {
+	if vs.minUnflushedLogNum == 0 {
 		if vs.nextFileNum == 2 {
 			// We have a freshly created DB.
 		} else {
 			return fmt.Errorf("pebble: incomplete manifest file %q for DB %q", b, dirname)
 		}
 	}
-	vs.markFileNumUsed(vs.logNum)
-	vs.markFileNumUsed(vs.prevLogNum)
+	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
 	newVersion, err := bve.Apply(nil, vs.cmp, opts.Comparer.Format)
 	if err != nil {
 		return err
 	}
 	vs.append(newVersion)
+
+	vs.picker = newCompactionPicker(newVersion, vs.opts)
 
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
@@ -219,9 +267,11 @@ func (vs *versionSet) logAndApply(
 		vs.writerCond.Signal()
 	}()
 
-	if ve.LogNum != 0 {
-		if ve.LogNum < vs.logNum || vs.nextFileNum <= ve.LogNum {
-			panic(fmt.Sprintf("pebble: inconsistent versionEdit logNumber %d", ve.LogNum))
+	if ve.MinUnflushedLogNum != 0 {
+		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
+			vs.nextFileNum <= ve.MinUnflushedLogNum {
+			panic(fmt.Sprintf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
+				ve.MinUnflushedLogNum))
 		}
 	}
 	// This is the next manifest filenum, but if the current file is too big we
@@ -317,11 +367,8 @@ func (vs *versionSet) logAndApply(
 
 	// Install the new version.
 	vs.append(newVersion)
-	if ve.LogNum != 0 {
-		vs.logNum = ve.LogNum
-	}
-	if ve.PrevLogNum != 0 {
-		vs.prevLogNum = ve.PrevLogNum
+	if ve.MinUnflushedLogNum != 0 {
+		vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {

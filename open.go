@@ -33,40 +33,6 @@ func allocDBNum() uint64 {
 	return num
 }
 
-func createDB(dirname string, opts *Options) (retErr error) {
-	const manifestFileNum = 1
-	ve := versionEdit{
-		ComparerName: opts.Comparer.Name,
-		NextFileNum:  manifestFileNum + 1,
-	}
-	manifestFilename := base.MakeFilename(opts.FS, dirname, fileTypeManifest, manifestFileNum)
-	f, err := opts.FS.Create(manifestFilename)
-	if err != nil {
-		return fmt.Errorf("pebble: could not create %q: %v", manifestFilename, err)
-	}
-	defer func() {
-		if retErr != nil {
-			opts.FS.Remove(manifestFilename)
-		}
-	}()
-	defer f.Close()
-
-	recWriter := record.NewWriter(f)
-	w, err := recWriter.Next()
-	if err != nil {
-		return err
-	}
-	err = ve.Encode(w)
-	if err != nil {
-		return err
-	}
-	err = recWriter.Close()
-	if err != nil {
-		return err
-	}
-	return setCurrentFile(dirname, opts.FS, manifestFileNum)
-}
-
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *Options) (*DB, error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
@@ -162,25 +128,24 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 	}()
 
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+
 	currentName := base.MakeFilename(opts.FS, dirname, fileTypeCurrent, 0)
 	if _, err := opts.FS.Stat(currentName); os.IsNotExist(err) && !d.opts.ReadOnly {
 		// Create the DB if it did not already exist.
-		if err := createDB(dirname, opts); err != nil {
-			return nil, err
-		}
-		if err := d.dataDir.Sync(); err != nil {
+		if err := d.mu.versions.create(jobID, dirname, d.dataDir, opts, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("pebble: database %q: %v", dirname, err)
 	} else if opts.ErrorIfDBExists {
 		return nil, fmt.Errorf("pebble: database %q already exists", dirname)
-	}
-
-	// Load the version set.
-	err = d.mu.versions.load(dirname, opts, &d.mu.Mutex)
-	if err != nil {
-		return nil, err
+	} else {
+		// Load the version set.
+		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
+			return nil, err
+		}
 	}
 
 	ls, err := opts.FS.List(d.walDirname)
@@ -208,8 +173,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 		switch ft {
 		case fileTypeLog:
-			// TODO(peter): add a comment about why this is >= and not >
-			if fn >= d.mu.versions.logNum {
+			if fn >= d.mu.versions.minUnflushedLogNum {
 				logFiles = append(logFiles, fileNumAndName{fn, filename})
 			}
 		case fileTypeOptions:
@@ -221,9 +185,6 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	sort.Slice(logFiles, func(i, j int) bool {
 		return logFiles[i].num < logFiles[j].num
 	})
-
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
 
 	var ve versionEdit
 	for _, lf := range logFiles {
@@ -240,25 +201,34 @@ func Open(dirname string, opts *Options) (*DB, error) {
 
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.
-		ve.LogNum = d.mu.versions.getNextFileNum()
-		d.mu.log.queue = append(d.mu.log.queue, ve.LogNum)
-		logFile, err := opts.FS.Create(
-			base.MakeFilename(opts.FS, d.walDirname, fileTypeLog, ve.LogNum))
+		newLogNum := d.mu.versions.getNextFileNum()
+		newLogName := base.MakeFilename(opts.FS, d.walDirname, fileTypeLog, newLogNum)
+		d.mu.log.queue = append(d.mu.log.queue, newLogNum)
+		logFile, err := opts.FS.Create(newLogName)
 		if err != nil {
 			return nil, err
 		}
 		if err := d.walDir.Sync(); err != nil {
 			return nil, err
 		}
+		d.opts.EventListener.WALCreated(WALCreateInfo{
+			JobID:   jobID,
+			Path:    newLogName,
+			FileNum: newLogNum,
+		})
+
 		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
 			BytesPerSync:    d.opts.BytesPerSync,
 			PreallocateSize: d.walPreallocateSize(),
 		})
-		d.mu.log.LogWriter = record.NewLogWriter(logFile, ve.LogNum)
+		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum)
 		d.mu.versions.metrics.WAL.Files++
 
-		// Write a new manifest to disk.
-		if err := d.mu.versions.logAndApply(0, &ve, nil, d.dataDir); err != nil {
+		// This logic is slightly different than RocksDB's. Specifically, RocksDB
+		// sets MinUnflushedLogNum to max-recovered-log-num + 1. We set it to the
+		// newLogNum. There should be no difference in using either value.
+		ve.MinUnflushedLogNum = newLogNum
+		if err := d.mu.versions.logAndApply(jobID, &ve, nil, d.dataDir); err != nil {
 			return nil, err
 		}
 	}

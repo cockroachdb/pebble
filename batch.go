@@ -234,8 +234,9 @@ type Batch struct {
 	// memtable.
 	flushable *flushableBatch
 
-	commit  sync.WaitGroup
-	applied uint32 // updated atomically
+	commit    sync.WaitGroup
+	commitErr error
+	applied   uint32 // updated atomically
 }
 
 var _ Reader = (*Batch)(nil)
@@ -285,6 +286,7 @@ func (b *Batch) release() {
 
 	b.flushable = nil
 	b.commit = sync.WaitGroup{}
+	b.commitErr = nil
 	atomic.StoreUint32(&b.applied, 0)
 
 	if b.db == nil {

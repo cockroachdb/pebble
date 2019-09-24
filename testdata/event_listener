@@ -6,14 +6,16 @@ mkdir-all: wal 0755
 open-dir: wal
 lock: db/LOCK
 create: db/MANIFEST-000001
+sync: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp
 sync: db/CURRENT.000001.dbtmp
 close: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
-close: db/MANIFEST-000001
 sync: db
+[JOB 1] MANIFEST created 000001
 create: wal/000002.log
 sync: wal
+[JOB 1] WAL created 000002
 create: db/MANIFEST-000003
 sync: db/MANIFEST-000003
 create: db/CURRENT.000003.dbtmp
@@ -21,7 +23,7 @@ sync: db/CURRENT.000003.dbtmp
 close: db/CURRENT.000003.dbtmp
 rename: db/CURRENT.000003.dbtmp -> db/CURRENT
 sync: db
-[JOB 0] MANIFEST created 000003
+[JOB 1] MANIFEST created 000003
 create: db/OPTIONS-000004
 close: db/OPTIONS-000004
 sync: db

@@ -134,11 +134,12 @@ type commitEnv struct {
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
-	// Write the batch to the WAL. If wg!=nil, the data will be persisted
-	// asynchronously and done will be called on wait group upon
-	// completion. Returns the memtable the batch should be applied to. Serial
-	// execution enforced by commitPipeline.mu.
-	write func(b *Batch, wg *sync.WaitGroup) (*memTable, error)
+	// Write the batch to the WAL. If wg != nil, the data will be persisted
+	// asynchronously and done will be called on wg upon completion. If wg != nil
+	// and err != nil, a failure to persist the WAL will populate *err. Returns
+	// the memtable the batch should be applied to. Serial execution enforced by
+	// commitPipeline.mu.
+	write func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error)
 }
 
 // A commitPipeline manages the stages of committing a set of mutations
@@ -263,6 +264,12 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	p.publish(b)
 
 	<-p.sem
+
+	if b.commitErr != nil {
+		// TODO(peter): what to do on a log sync error? the pipeline will be horked
+		// at this point.
+		panic(b.commitErr)
+	}
 	return nil
 }
 
@@ -337,8 +344,9 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	b.commit.Add(count)
 
 	var syncWG *sync.WaitGroup
+	var syncErr *error
 	if syncWAL {
-		syncWG = &b.commit
+		syncWG, syncErr = &b.commit, &b.commitErr
 	}
 
 	p.mu.Lock()
@@ -354,7 +362,7 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
-	mem, err := p.env.write(b, syncWG)
+	mem, err := p.env.write(b, syncWG, syncErr)
 
 	p.mu.Unlock()
 

@@ -3,7 +3,7 @@ L2
   c.SET.2:2
 ----
 2:
-  5:[c-c]
+  4:[c-c]
 
 allow-zero-seqnum
 L0:b-b
