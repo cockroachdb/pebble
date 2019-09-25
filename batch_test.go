@@ -414,6 +414,24 @@ func TestBatchDeleteRange(t *testing.T) {
 	})
 }
 
+func TestBatchLogData(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer d.Close()
+	b := d.NewIndexedBatch()
+
+	if err := b.LogData([]byte("foobar"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Commit(Sync); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFlushableBatchIter(t *testing.T) {
 	var b *flushableBatch
 	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
