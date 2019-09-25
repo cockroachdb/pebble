@@ -181,7 +181,6 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 			var v *manifest.Version
 			var cmp *base.Comparer
 			rr := record.NewReader(f, 0 /* logNum */)
-			var bve manifest.BulkVersionEdit
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()
@@ -201,6 +200,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					ok = false
 					break
 				}
+				var bve manifest.BulkVersionEdit
 				bve.Accumulate(&ve)
 
 				empty := true

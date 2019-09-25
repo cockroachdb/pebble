@@ -151,7 +151,6 @@ OK
 manifest dump
 ./testdata/MANIFEST-invalid
 ----
-----
 MANIFEST-invalid
 0
   comparer:     leveldb.BytewiseComparator
@@ -162,25 +161,14 @@ MANIFEST-invalid
   comparer:     leveldb.BytewiseComparator
   log-num:      3
   last-seq-num: 20
-  added:        L0 1:0[#0,0-#0,0]
+  added:        L0 2:0[#0,0-#0,0]
 EOF
-pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
-0:
-  1:[#0,0-#0,0]
-  1:[#0,0-#0,0]
+pebble: internal error: L0 files 000001 and 000002 are not properly ordered: 2-5 vs 1-4
 
-----
-----
 manifest check
 ./testdata/MANIFEST-invalid
 ----
-----
-MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
-0:
-  1:[#0,0-#0,0]
-  1:[#0,0-#0,0]
-  1:[#0,0-#0,0]
-
+MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 files 000001 and 000002 are not properly ordered: 2-5 vs 1-4
 Version state before failed Apply
 --- L0 ---
   1:0[#0,0-#0,0]
@@ -191,6 +179,4 @@ Version state before failed Apply
 --- L5 ---
 --- L6 ---
 Version edit that failed
-  added: L0 1:0[#0,0-#0,0]
-----
-----
+  added: L0 2:0[#0,0-#0,0]
