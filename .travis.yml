@@ -9,7 +9,7 @@ matrix:
     - name: "go1.12.x-linux"
       go: 1.12.x
       os: linux
-      script: make test
+      script: make generate test
     - name: "go1.12.x-darwin"
       go: 1.12.x
       os: osx
