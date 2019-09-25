@@ -1179,50 +1179,59 @@ func TestCompactionCheckOrdering(t *testing.T) {
 }
 
 func TestFlushInvariant(t *testing.T) {
-	for i := 0; i < 2; i++ {
-		t.Run("", func(t *testing.T) {
-			errCh := make(chan error)
-			defer close(errCh)
-			d, err := Open("", &Options{
-				FS: vfs.NewMem(),
-				EventListener: EventListener{
-					BackgroundError: func(err error) {
-						errCh <- err
-						runtime.Goexit() // ensure we don't try to reschedule the flush
-					},
-				},
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := d.Set([]byte("hello"), nil, nil); err != nil {
-				t.Fatal(err)
-			}
+	for _, disableWAL := range []bool{false, true} {
+		t.Run(fmt.Sprintf("disableWAL=%t", disableWAL), func(t *testing.T) {
+			for i := 0; i < 2; i++ {
+				t.Run("", func(t *testing.T) {
+					errCh := make(chan error)
+					defer close(errCh)
+					d, err := Open("", &Options{
+						DisableWAL: disableWAL,
+						FS:         vfs.NewMem(),
+						EventListener: EventListener{
+							BackgroundError: func(err error) {
+								errCh <- err
+								runtime.Goexit() // ensure we don't try to reschedule the flush
+							},
+						},
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := d.Set([]byte("hello"), nil, NoSync); err != nil {
+						t.Fatal(err)
+					}
 
-			// Contort the DB into a state where it does something invalid.
-			d.mu.Lock()
-			switch i {
-			case 0:
-				// Force the next log number to be 0.
-				d.mu.versions.nextFileNum = 0
-			case 1:
-				// Force the flushing memtable to have a log number equal to the new
-				// log's number.
-				d.mu.mem.mutable.logNum = d.mu.versions.nextFileNum
-			}
-			d.mu.Unlock()
+					// Contort the DB into a state where it does something invalid.
+					d.mu.Lock()
+					switch i {
+					case 0:
+						// Force the next log number to be 0.
+						d.mu.versions.nextFileNum = 0
+					case 1:
+						// Force the flushing memtable to have a log number equal to the new
+						// log's number.
+						d.mu.mem.mutable.logNum = d.mu.versions.nextFileNum
+					}
+					d.mu.Unlock()
 
-			flushCh, err := d.AsyncFlush()
-			if err != nil {
-				t.Fatal(err)
-			}
-			select {
-			case err := <-errCh:
-				if errFlushInvariant != err {
-					t.Fatalf("expected %q, but found %v", errFlushInvariant, err)
-				}
-			case <-flushCh:
-				t.Fatalf("expected error but found success")
+					flushCh, err := d.AsyncFlush()
+					if err != nil {
+						t.Fatal(err)
+					}
+					select {
+					case err := <-errCh:
+						if disableWAL {
+							t.Fatalf("expected success, but found %v", err)
+						} else if errFlushInvariant != err {
+							t.Fatalf("expected %q, but found %v", errFlushInvariant, err)
+						}
+					case <-flushCh:
+						if !disableWAL {
+							t.Fatalf("expected error but found success")
+						}
+					}
+				})
 			}
 		})
 	}

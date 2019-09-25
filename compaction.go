@@ -706,10 +706,12 @@ func (d *DB) flush1() error {
 	// Require that every memtable being flushed has a log number less than the
 	// new minimum unflushed log number.
 	minUnflushedLogNum, _ := d.mu.mem.queue[n].logInfo()
-	for i := 0; i < n; i++ {
-		logNum, _ := d.mu.mem.queue[i].logInfo()
-		if logNum >= minUnflushedLogNum {
-			return errFlushInvariant
+	if !d.opts.DisableWAL {
+		for i := 0; i < n; i++ {
+			logNum, _ := d.mu.mem.queue[i].logInfo()
+			if logNum >= minUnflushedLogNum {
+				return errFlushInvariant
+			}
 		}
 	}
 
@@ -746,7 +748,7 @@ func (d *DB) flush1() error {
 		// The flush succeeded or it produced an empty sstable. In either case we
 		// want to bump the minimum unflushed log number to the log number of the
 		// oldest unflushed memtable.
-		ve.MinUnflushedLogNum, _ = d.mu.mem.queue[n].logInfo()
+		ve.MinUnflushedLogNum = minUnflushedLogNum
 		metrics := c.metrics[0]
 		for i := 0; i < n; i++ {
 			_, size := d.mu.mem.queue[i].logInfo()
