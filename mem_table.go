@@ -159,6 +159,9 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 			err = m.rangeDelSkl.Add(ikey, value)
 			tombstoneCount++
 		case InternalKeyKindLogData:
+			// Don't increment seqNum for LogData, since these are not applied
+			// to the memtable.
+			seqNum--
 		default:
 			err = ins.Add(&m.skl, ikey, value)
 		}
