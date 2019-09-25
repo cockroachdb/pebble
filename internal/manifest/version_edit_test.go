@@ -7,10 +7,12 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 	"io"
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -255,4 +257,98 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVersionEditApply(t *testing.T) {
+	parseMeta := func(s string) (*FileMetadata, error) {
+		parts := strings.Split(s, ":")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		fileNum, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil {
+			return nil, err
+		}
+		parts = strings.Split(strings.TrimSpace(parts[1]), "-")
+		m := FileMetadata{
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		m.FileNum = uint64(fileNum)
+		return &m, nil
+	}
+
+	datadriven.RunTest(t, "testdata/version_edit_apply",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "apply":
+				// TODO(sumeer): move this Version parsing code to utils, to
+				// avoid repeating it, and make it the inverse of
+				// Version.DebugString().
+				var v *Version
+				ve := &VersionEdit{}
+				isVersion := true
+				isDelete := true
+				var level int
+				var err error
+				for _, data := range strings.Split(d.Input, "\n") {
+					data = strings.TrimSpace(data)
+					switch data {
+					case "edit":
+						isVersion = false
+					case "delete":
+						isVersion = false
+						isDelete = true
+					case "add":
+						isVersion = false
+						isDelete = false
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err = strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+					default:
+						if isVersion || !isDelete {
+							meta, err := parseMeta(data)
+							if err != nil {
+								return err.Error()
+							}
+							if isVersion {
+								meta.refs = new(int32)
+								if v == nil {
+									v = new(Version)
+								}
+								v.Files[level] = append(v.Files[level], *meta)
+							} else {
+								ve.NewFiles =
+									append(ve.NewFiles, NewFileEntry{Level: level, Meta: *meta})
+							}
+						} else {
+							fileNum, err := strconv.Atoi(data)
+							if err != nil {
+								return err.Error()
+							}
+							dfe := DeletedFileEntry{Level: level, FileNum: uint64(fileNum)}
+							if ve.DeletedFiles == nil {
+								ve.DeletedFiles = make(map[DeletedFileEntry]bool)
+							}
+							ve.DeletedFiles[dfe] = true
+						}
+					}
+				}
+				bve := BulkVersionEdit{}
+				bve.Accumulate(ve)
+				var newv *Version
+				newv, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter)
+				if err != nil {
+					return err.Error()
+				}
+				return newv.DebugString(base.DefaultFormatter)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
 }
