@@ -35,7 +35,7 @@ func makeManifest1() {
 	writer := record.NewWriter(f)
 	var ve manifest.VersionEdit
 	ve.ComparerName = "leveldb.BytewiseComparator"
-	ve.LogNum = 2
+	ve.MinUnflushedLogNum = 2
 	ve.NextFileNum = 5
 	ve.LastSeqNum = 20
 	ve.NewFiles = []manifest.NewFileEntry{
@@ -43,10 +43,10 @@ func makeManifest1() {
 			FileNum: 1, SmallestSeqNum: 2, LargestSeqNum: 5}}}
 	writeVE(writer, &ve)
 
-	ve.LogNum = 3
+	ve.MinUnflushedLogNum = 3
 	ve.NewFiles = []manifest.NewFileEntry{
 		{0, manifest.FileMetadata{
-			FileNum: 1, SmallestSeqNum: 1, LargestSeqNum: 4}}}
+			FileNum: 2, SmallestSeqNum: 1, LargestSeqNum: 4}}}
 	writeVE(writer, &ve)
 
 	err = writer.Close()
