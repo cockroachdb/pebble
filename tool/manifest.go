@@ -167,7 +167,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 }
 
 func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
-	var ok bool = true
+	ok := true
 	for _, arg := range args {
 		func() {
 			f, err := m.opts.FS.Open(arg)

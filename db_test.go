@@ -468,6 +468,29 @@ func TestGetMerge(t *testing.T) {
 	}
 }
 
+func TestLogData(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := d.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	if err := d.LogData([]byte("foo"), Sync); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.LogData([]byte("bar"), Sync); err != nil {
+		t.Fatal(err)
+	}
+	// TODO(itsbilal): Confirm that we wrote some bytes to the WAL.
+	// For now, LogData proceeding ahead without a panic is good enough.
+}
+
 func TestSingleDeleteGet(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),

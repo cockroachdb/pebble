@@ -388,8 +388,6 @@ func (d *DB) Merge(key, value []byte, opts *WriteOptions) error {
 // which makes it useful for testing WAL performance.
 //
 // It is safe to modify the contents of the argument after LogData returns.
-//
-// TODO(peter): untested.
 func (d *DB) LogData(data []byte, opts *WriteOptions) error {
 	b := newBatch(d)
 	defer b.release()
