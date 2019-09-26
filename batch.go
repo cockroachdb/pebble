@@ -15,8 +15,8 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/batch"
 	"github.com/cockroachdb/pebble/internal/batchskl"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rawalloc"
 )
@@ -1491,5 +1491,5 @@ func batchSort(i interface{}) (internalIterator, internalIterator) {
 }
 
 func init() {
-	batch.Sort = batchSort
+	private.BatchSort = batchSort
 }

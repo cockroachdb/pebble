@@ -43,6 +43,10 @@ internal/arenaskl.bench: GOFLAGS += -cpu 1,8
 %.bench:
 	${GO} test -run - -bench . -count 10 ${GOFLAGS} ./$* 2>&1 | tee $*/bench.txt.new
 
+.PHONY: generate
+generate:
+	${GO} generate ${PKG}
+
 # The cmd/pebble/{badger,boltdb,rocksdb}.go files causes various
 # cockroach dependencies to be pulled in which is undesirable. Hack
 # around this by temporarily moving hiding that file.

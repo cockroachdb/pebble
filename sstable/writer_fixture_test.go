@@ -58,7 +58,6 @@ func (c *keyCountPropertyCollector) Name() string {
 	return "KeyCountPropertyCollector"
 }
 
-//go:generate make -C ./testdata
 var fixtureComparer = func() *Comparer {
 	c := *base.DefaultComparer
 	// NB: this is named as such only to match the built-in RocksDB comparer.

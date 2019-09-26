@@ -10,6 +10,7 @@ package main
 import (
 	"log"
 
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -21,6 +22,7 @@ func makeOutOfOrder() {
 		log.Fatal(err)
 	}
 	w := sstable.NewWriter(f, nil, sstable.TableOptions{})
+	private.SSTableWriterDisableKeyOrderChecks(w)
 
 	set := func(key string) {
 		if err := w.Set([]byte(key), nil); err != nil {
@@ -28,8 +30,6 @@ func makeOutOfOrder() {
 		}
 	}
 
-	// NB: The check for out-of-order keys needs to be disabled in order for this
-	// to work without error. Currently this is in sstable/Writer.addPoint.
 	set("a")
 	set("c")
 	set("b")
