@@ -73,17 +73,17 @@ func TestBlockIter(t *testing.T) {
 			t.Fatal(err)
 		}
 		i.SeekGE([]byte(tc.key))
-		for j, kWant := range []string{"apple", "apricot", "banana"}[tc.index:] {
+		for j, keyWant := range []string{"apple", "apricot", "banana"}[tc.index:] {
 			if !i.Valid() {
-				t.Fatalf("key=%q, index=%d, j=%d: Valid got false, want true", tc.key, tc.index, j)
+				t.Fatalf("key=%q, index=%d, j=%d: Valid got false, keyWant true", tc.key, tc.index, j)
 			}
-			if kGot := string(i.Key().UserKey); kGot != kWant {
-				t.Fatalf("key=%q, index=%d, j=%d: got %q, want %q", tc.key, tc.index, j, kGot, kWant)
+			if keyGot := string(i.Key().UserKey); keyGot != keyWant {
+				t.Fatalf("key=%q, index=%d, j=%d: got %q, keyWant %q", tc.key, tc.index, j, keyGot, keyWant)
 			}
 			i.Next()
 		}
 		if i.Valid() {
-			t.Fatalf("key=%q, index=%d: Valid got true, want false", tc.key, tc.index)
+			t.Fatalf("key=%q, index=%d: Valid got true, keyWant false", tc.key, tc.index)
 		}
 		if err := i.Close(); err != nil {
 			t.Fatalf("key=%q, index=%d: got err=%v", tc.key, tc.index, err)
@@ -96,12 +96,12 @@ func TestBlockIter(t *testing.T) {
 			t.Fatal(err)
 		}
 		i.Last()
-		for j, kWant := range []string{"banana", "apricot", "apple"} {
+		for j, keyWant := range []string{"banana", "apricot", "apple"} {
 			if !i.Valid() {
 				t.Fatalf("j=%d: Valid got false, want true", j)
 			}
-			if kGot := string(i.Key().UserKey); kGot != kWant {
-				t.Fatalf("j=%d: got %q, want %q", j, kGot, kWant)
+			if keyGot := string(i.Key().UserKey); keyGot != keyWant {
+				t.Fatalf("j=%d: got %q, want %q", j, keyGot, keyWant)
 			}
 			i.Prev()
 		}
