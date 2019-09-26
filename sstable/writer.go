@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/golang/snappy"
 )
@@ -101,6 +102,10 @@ type Writer struct {
 	separator               Separator
 	successor               Successor
 	tableFormat             TableFormat
+	// disableKeyOrderChecks disables the checks that keys are added to an
+	// sstable in order. It is intended for internal use only in the construction
+	// of invalid sstables for testing. See tool/make_test_sstables.go.
+	disableKeyOrderChecks bool
 	// With two level indexes, the index/filter of a SST file is partitioned into
 	// smaller blocks with an additional top-level index on them. When reading an
 	// index/filter, only the top-level index is loaded into memory. The two level
@@ -217,7 +222,8 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
-	if base.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
+	if !w.disableKeyOrderChecks &&
+		base.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
 		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
 			w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
 		return w.err
@@ -255,7 +261,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addTombstone(key InternalKey, value []byte) error {
-	if !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
+	if !w.disableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
 		prevKey := base.DecodeInternalKey(w.rangeDelBlock.curKey)
@@ -762,4 +768,11 @@ func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 		w.writer = w.bufWriter
 	}
 	return w
+}
+
+func init() {
+	private.SSTableWriterDisableKeyOrderChecks = func(i interface{}) {
+		w := i.(*Writer)
+		w.disableKeyOrderChecks = true
+	}
 }
