@@ -13,10 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/record"
 )
 
-// The maximum concurrency allowed for commit operations. This limit is
-// enforced by commitPipeline.sem.
-const commitConcurrency = record.SyncConcurrency
-
 // commitQueue is a lock-free fixed-size single-producer, multi-consumer
 // queue. The single producer can enqueue (push) to the head, and consumers can
 // dequeue (pop) from the tail.
@@ -42,7 +38,7 @@ type commitQueue struct {
 	// power of 2. A slot is in use until *both* the tail index has moved beyond
 	// it and the slot value has been set to nil. The slot value is set to nil
 	// atomically by the consumer and read atomically by the producer.
-	slots [commitConcurrency]unsafe.Pointer
+	slots [record.SyncConcurrency]unsafe.Pointer
 }
 
 const dequeueBits = 32
@@ -61,31 +57,29 @@ func (q *commitQueue) pack(head, tail uint32) uint64 {
 }
 
 func (q *commitQueue) enqueue(b *Batch) {
-	for {
-		ptrs := atomic.LoadUint64(&q.headTail)
-		head, tail := q.unpack(ptrs)
-		if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
-			// Queue is full.
-			panic("not reached")
-		}
-		slot := &q.slots[head&uint32(len(q.slots)-1)]
-
-		// Check if the head slot has been released by dequeue.
-		for atomic.LoadPointer(slot) != nil {
-			// Another goroutine is still cleaning up the tail, so the queue is
-			// actually still full. We spin because this should resolve itself
-			// momentarily.
-			runtime.Gosched()
-		}
-
-		// The head slot is free, so we own it.
-		atomic.StorePointer(slot, unsafe.Pointer(b))
-
-		// Increment head. This passes ownership of slot to dequeue and acts as a
-		// store barrier for writing the slot.
-		atomic.AddUint64(&q.headTail, 1<<dequeueBits)
-		return
+	ptrs := atomic.LoadUint64(&q.headTail)
+	head, tail := q.unpack(ptrs)
+	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
+		// Queue is full. This should never be reached because commitPipeline.sem
+		// limits the number of concurrent operations.
+		panic("pebble: not reached")
 	}
+	slot := &q.slots[head&uint32(len(q.slots)-1)]
+
+	// Check if the head slot has been released by dequeue.
+	for atomic.LoadPointer(slot) != nil {
+		// Another goroutine is still cleaning up the tail, so the queue is
+		// actually still full. We spin because this should resolve itself
+		// momentarily.
+		runtime.Gosched()
+	}
+
+	// The head slot is free, so we own it.
+	atomic.StorePointer(slot, unsafe.Pointer(b))
+
+	// Increment head. This passes ownership of slot to dequeue and acts as a
+	// store barrier for writing the slot.
+	atomic.AddUint64(&q.headTail, 1<<dequeueBits)
 }
 
 func (q *commitQueue) dequeue() *Batch {
@@ -225,7 +219,10 @@ type commitPipeline struct {
 func newCommitPipeline(env commitEnv) *commitPipeline {
 	p := &commitPipeline{
 		env: env,
-		sem: make(chan struct{}, commitConcurrency),
+		// NB: the commit concurrency is one less than SyncConcurrency because we
+		// have to allow one "slot" for a concurrent WAL rotation which will close
+		// and sync the WAL.
+		sem: make(chan struct{}, record.SyncConcurrency-1),
 	}
 	return p
 }

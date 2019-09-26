@@ -34,8 +34,9 @@ const (
 	syncConcurrencyBits = 9
 
 	// SyncConcurrency is the maximum number of concurrent sync operations that
-	// can be performed. Exported as this value also limits the commit
-	// concurrency in commitPipeline.
+	// can be performed. Note that a sync operation is initiated either by a call
+	// to SyncRecord or by a call to Close. Exported as this value also limits
+	// the commit concurrency in commitPipeline.
 	SyncConcurrency = 1 << syncConcurrencyBits
 )
 
@@ -81,7 +82,7 @@ func (q *syncQueue) push(wg *sync.WaitGroup, err *error) {
 	ptrs := atomic.LoadUint64(&q.headTail)
 	head, tail := q.unpack(ptrs)
 	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
-		panic("queue is full")
+		panic("pebble: queue is full")
 	}
 
 	slot := &q.slots[head&uint32(len(q.slots)-1)]
@@ -406,7 +407,11 @@ func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64,
 	}
 
 	offset := w.blockNum*blockSize + int64(w.block.written)
-	return offset, w.err
+	// Note that we don't return w.err here as a concurrent call to Close would
+	// race with our read. That's ok because the only error we could be seeing is
+	// one to syncing for which the caller can receive notification of by passing
+	// in a non-nil err argument.
+	return offset, nil
 }
 
 // Size returns the current size of the file.
