@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -151,6 +152,93 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 	}
 	if s := atomic.LoadUint64(&e.visibleSeqNum); total != s {
 		t.Fatalf("expected %d, but found %d", total, s)
+	}
+}
+
+type syncDelayFile struct {
+	vfs.File
+	waiting chan struct{}
+	done    chan struct{}
+}
+
+func (f *syncDelayFile) Sync() error {
+	select {
+	case f.waiting <- struct{}{}:
+	default:
+	}
+	<-f.done
+	return nil
+}
+
+func TestCommitPipelineWALClose(t *testing.T) {
+	// This test stresses the edge case of N goroutines blocked in the
+	// commitPipeline waiting for the log to sync when we concurrently decide to
+	// rotate and close the log.
+
+	mem := vfs.NewMem()
+	f, err := mem.Create("test-wal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// syncDelayFile will send to the waiting channel when Sync is called, and
+	// then block on the done channel befor returning from that call.
+	sf := &syncDelayFile{
+		File:    f,
+		waiting: make(chan struct{}, 1),
+		done:    make(chan struct{}),
+	}
+
+	// A basic commitEnv which writes to a WAL.
+	wal := record.NewLogWriter(sf, 0 /* logNum */)
+	testEnv := commitEnv{
+		logSeqNum:     new(uint64),
+		visibleSeqNum: new(uint64),
+		apply: func(b *Batch, mem *memTable) error {
+			return nil
+		},
+		write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+			_, err := wal.SyncRecord(b.storage.data, syncWG, syncErr)
+			return nil, err
+		},
+	}
+	p := newCommitPipeline(testEnv)
+
+	// Launch N (commitConcurrency) goroutines which each create a batch and
+	// commit it with sync==true. Because of the syncDelayFile, none of these
+	// operations can complete until syncDelayFile.done is closed.
+	errCh := make(chan error, cap(p.sem))
+	for i := 0; i < cap(errCh); i++ {
+		go func(i int) {
+			b := &Batch{}
+			if err := b.LogData([]byte("foo"), nil); err != nil {
+				errCh <- err
+				return
+			}
+			errCh <- p.Commit(b, true /* sync */)
+		}(i)
+	}
+
+	<-sf.waiting
+	// At this point, we know at least one operation is blocked waiting for the
+	// Sync to finish, but most likely all are blocked.
+
+	// Fire off another goroutine which will wait a short period of time and then
+	// released the Sync. There isn't a clean way to do this as the wal.Close()
+	// below will block indefinitely until the Sync is released.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		close(sf.done)
+	}()
+
+	// Close the WAL. A "queue is full" panic means that something is broken.
+	if err := wal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < cap(errCh); i++ {
+		err := <-errCh
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
