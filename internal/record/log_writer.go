@@ -388,8 +388,10 @@ func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64,
 		return -1, w.err
 	}
 
-	// TODO(peter): why do we need to support empty records?
-	// TestBoundary/LogWriter fails if we don't, but is that actual valid usage.
+	// The `i == 0` condition ensures we handle empty records. Such records can
+	// possibly be generated for VersionEdits stored in the MANIFEST. While the
+	// MANIFEST is currently written using Writer, it is good to support the same
+	// semantics with LogWriter.
 	for i := 0; i == 0 || len(p) > 0; i++ {
 		p = w.emitFragment(i, p)
 	}
