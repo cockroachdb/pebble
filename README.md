@@ -13,24 +13,25 @@ RocksDB and is specifically targetting the use case and feature set
 needed by CockroachDB:
 
 * Block-based tables
+* Checkpoints
 * Indexed batches
 * Iterator options (lower/upper bound, table filter)
 * Level-based compaction
 * Manual compaction
 * Merge operator
 * Prefix bloom filters
-* Range deletion tombstones
 * Prefix iteration
+* Range deletion tombstones
 * Reverse iteration
+* SSTable ingestion
 * Single delete
 * Snapshots
-* SSTable ingestion
 * Table-level bloom filters
 
 RocksDB has a large number of features that are not implemented in
 Pebble:
 
-* Backups and checkpoints
+* Backups
 * Column families
 * Delete files in range
 * FIFO compaction style

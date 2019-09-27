@@ -253,6 +253,7 @@ type DB struct {
 		cleaner struct {
 			cond     sync.Cond
 			cleaning bool
+			disabled int
 		}
 
 		// The list of active snapshots.

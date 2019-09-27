@@ -1209,15 +1209,54 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
 }
 
+// disableFileDeletions waits for any in-progress deletion to finish, and then
+// disables file deletions. The caller is required to call enableFileDeletions
+// in order to enable file deletions again. It is ok for multiple callers to
+// disable file deletions simultaneously, though they must all invoke
+// enableFileDeletions in order for file deletions to be re-enabled (there is
+// an internal reference count on file deletion disablement).
+//
+// d.mu must be held when calling this method.
+func (d *DB) disableFileDeletions() {
+	for d.mu.cleaner.cleaning {
+		d.mu.cleaner.cond.Wait()
+	}
+	d.mu.cleaner.disabled++
+}
+
+// enableFileDeletions enables previously disabled file deletions. Note that if
+// file deletions have been re-enabled, the current goroutine will be used to
+// perform the queued up deletions.
+//
+// d.mu must be held when calling this method.
+func (d *DB) enableFileDeletions() {
+	if d.mu.cleaner.disabled <= 0 {
+		panic("pebble: file deletion disablement invariant violated")
+	}
+	d.mu.cleaner.disabled--
+	if d.mu.cleaner.disabled > 0 {
+		return
+	}
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+	d.deleteObsoleteFiles(jobID)
+}
+
 // deleteObsoleteFiles deletes those files that are no longer needed.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles(jobID int) {
 	// Only allow a single delete obsolete files job to run at a time.
-	for d.mu.cleaner.cleaning {
+	for d.mu.cleaner.cleaning && d.mu.cleaner.disabled == 0 {
 		d.mu.cleaner.cond.Wait()
 	}
+	if d.mu.cleaner.disabled > 0 {
+		// File deletions are currently disabled. When they are re-enabled a new
+		// job will be allocated to catch
+		return
+	}
+
 	d.mu.cleaner.cleaning = true
 	defer func() {
 		d.mu.cleaner.cleaning = false

@@ -1,0 +1,157 @@
+open db
+----
+mkdir-all: db 0755
+open-dir: db
+lock: db/LOCK
+create: db/MANIFEST-000001
+sync: db/MANIFEST-000001
+create: db/CURRENT.000001.dbtmp
+sync: db/CURRENT.000001.dbtmp
+close: db/CURRENT.000001.dbtmp
+rename: db/CURRENT.000001.dbtmp -> db/CURRENT
+sync: db
+create: db/000002.log
+sync: db
+sync: db/MANIFEST-000001
+create: db/OPTIONS-000003
+close: db/OPTIONS-000003
+sync: db
+
+batch db
+set a 1
+set b 2
+set c 3
+----
+sync: db/000002.log
+
+flush db
+----
+create: db/000004.log
+sync: db
+sync: db/000002.log
+close: db/000002.log
+create: db/000005.sst
+sync: db/000005.sst
+close: db/000005.sst
+sync: db
+sync: db/MANIFEST-000001
+
+batch db
+set b 5
+set d 7
+set e 8
+----
+sync: db/000004.log
+
+flush db
+----
+rename: db/000002.log -> db/000006.log
+create: db/000006.log
+sync: db
+sync: db/000004.log
+close: db/000004.log
+create: db/000007.sst
+sync: db/000007.sst
+close: db/000007.sst
+sync: db
+sync: db/MANIFEST-000001
+
+batch db
+set f 9
+set g 10
+----
+sync: db/000006.log
+
+checkpoint db checkpoint1
+----
+mkdir-all: checkpoint1 0755
+open-dir: checkpoint1
+link: db/OPTIONS-000003 -> checkpoint1/OPTIONS-000003
+create: checkpoint1/MANIFEST-000001
+sync: checkpoint1/MANIFEST-000001
+close: checkpoint1/MANIFEST-000001
+create: checkpoint1/CURRENT.000001.dbtmp
+sync: checkpoint1/CURRENT.000001.dbtmp
+close: checkpoint1/CURRENT.000001.dbtmp
+rename: checkpoint1/CURRENT.000001.dbtmp -> checkpoint1/CURRENT
+link: db/000005.sst -> checkpoint1/000005.sst
+link: db/000007.sst -> checkpoint1/000007.sst
+create: checkpoint1/000006.log
+sync: checkpoint1/000006.log
+close: checkpoint1/000006.log
+sync: checkpoint1
+close: checkpoint1
+
+checkpoint db checkpoint1
+----
+checkpoint checkpoint1: file already exists
+
+compact db
+----
+rename: db/000004.log -> db/000008.log
+create: db/000008.log
+sync: db
+sync: db/000006.log
+close: db/000006.log
+create: db/000009.sst
+sync: db/000009.sst
+close: db/000009.sst
+sync: db
+sync: db/MANIFEST-000001
+create: db/000010.sst
+sync: db/000010.sst
+close: db/000010.sst
+sync: db
+sync: db/MANIFEST-000001
+
+batch db
+set h 11
+----
+sync: db/000008.log
+
+list db
+----
+000006.log
+000008.log
+000010.sst
+CURRENT
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+
+list checkpoint1
+----
+000005.sst
+000006.log
+000007.sst
+CURRENT
+MANIFEST-000001
+OPTIONS-000003
+
+open checkpoint1 readonly
+----
+open-dir: checkpoint1
+lock: checkpoint1/LOCK
+
+scan checkpoint1
+----
+a 1
+b 5
+c 3
+d 7
+e 8
+f 9
+g 10
+.
+
+scan db
+----
+a 1
+b 5
+c 3
+d 7
+e 8
+f 9
+g 10
+h 11
+.

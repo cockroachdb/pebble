@@ -98,37 +98,95 @@ sync: db
 [JOB 6] sstable deleted 000009
 [JOB 6] MANIFEST deleted 000010
 
+disable-file-deletions
+----
+
+flush
+----
+sync: wal/000008.log
+rename: wal/000005.log -> wal/000013.log
+create: wal/000013.log
+sync: wal
+sync: wal/000008.log
+close: wal/000008.log
+[JOB 7] WAL created 000013 (recycled 000005)
+[JOB 8] flushing to L0
+create: db/000014.sst
+[JOB 8] flushing: sstable created 000014
+sync: db/000014.sst
+close: db/000014.sst
+sync: db
+create: db/MANIFEST-000015
+sync: db/MANIFEST-000015
+create: db/CURRENT.000015.dbtmp
+sync: db/CURRENT.000015.dbtmp
+close: db/CURRENT.000015.dbtmp
+rename: db/CURRENT.000015.dbtmp -> db/CURRENT
+sync: db
+[JOB 8] MANIFEST created 000015
+[JOB 8] flushed to L0: 1 (825 B)
+
+enable-file-deletions
+----
+[JOB 9] MANIFEST deleted 000012
+
 ingest
 ----
-link: ext/0 -> db/000013.sst
-[JOB 7] ingesting: sstable created 000013
+link: ext/0 -> db/000016.sst
+[JOB 10] ingesting: sstable created 000016
 sync: db
-create: db/MANIFEST-000014
-sync: db/MANIFEST-000014
-create: db/CURRENT.000014.dbtmp
-sync: db/CURRENT.000014.dbtmp
-close: db/CURRENT.000014.dbtmp
-rename: db/CURRENT.000014.dbtmp -> db/CURRENT
+create: db/MANIFEST-000017
+sync: db/MANIFEST-000017
+create: db/CURRENT.000017.dbtmp
+sync: db/CURRENT.000017.dbtmp
+close: db/CURRENT.000017.dbtmp
+rename: db/CURRENT.000017.dbtmp -> db/CURRENT
 sync: db
-[JOB 7] MANIFEST created 000014
-[JOB 7] ingested to L5 (825 B)
+[JOB 10] MANIFEST created 000017
+[JOB 10] MANIFEST deleted 000015
+[JOB 10] ingested to L0 (825 B)
 
 metrics
 ----
 level__files____size___score______in__ingest____move____read___write___w-amp
-  WAL      1    27 B       -    32 B       -       -       -    81 B     2.5
-    0      0     0 B    0.00    54 B     0 B     0 B     0 B   1.6 K    30.6
+  WAL      1    27 B       -    48 B       -       -       -   108 B     2.2
+    0      2   1.6 K    0.50    81 B   825 B     0 B     0 B   2.4 K    30.6
     1      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
     2      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
     3      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
     4      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
-    5      1   825 B    0.00     0 B   825 B     0 B     0 B     0 B     0.0
-    6      1   825 B    1.00   1.6 K     0 B     0 B   1.6 K   825 B     0.5
-total      2   1.6 K    0.00   906 B   825 B     0 B   1.6 K   3.3 K     3.7
+    5      0     0 B    0.00     0 B     0 B     0 B     0 B     0 B     0.0
+    6      1   825 B    0.00   1.6 K     0 B     0 B   1.6 K   825 B     0.5
+total      3   2.4 K    0.00   933 B   825 B     0 B   1.6 K   4.1 K     4.5
+
+checkpoint
+----
+mkdir-all: checkpoint 0755
+open-dir: checkpoint
+link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
+create: checkpoint/MANIFEST-000017
+sync: checkpoint/MANIFEST-000017
+close: checkpoint/MANIFEST-000017
+create: checkpoint/CURRENT.000017.dbtmp
+sync: checkpoint/CURRENT.000017.dbtmp
+close: checkpoint/CURRENT.000017.dbtmp
+rename: checkpoint/CURRENT.000017.dbtmp -> checkpoint/CURRENT
+link: db/000014.sst -> checkpoint/000014.sst
+link: db/000016.sst -> checkpoint/000016.sst
+link: db/000011.sst -> checkpoint/000011.sst
+create: checkpoint/000013.log
+sync: checkpoint/000013.log
+close: checkpoint/000013.log
+sync: checkpoint
+close: checkpoint
+
+enable-file-deletions
+----
+pebble: file deletion disablement invariant violated
 
 close
 ----
-sync: wal/000008.log
-close: wal/000008.log
+sync: wal/000013.log
+close: wal/000013.log
 close: db
 close: wal
