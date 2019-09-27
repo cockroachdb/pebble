@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -42,11 +41,6 @@ func TestIngestLoad(t *testing.T) {
 				}
 				key := base.ParseInternalKey(data[:j])
 				value := []byte(data[j+1:])
-				// Disable the key-order checks if we're trying to insert an invalid
-				// key.
-				if key.Kind() == InternalKeyKindInvalid {
-					private.SSTableWriterDisableKeyOrderChecks(w)
-				}
 				if err := w.Add(key, value); err != nil {
 					return err.Error()
 				}
