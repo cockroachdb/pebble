@@ -148,7 +148,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
 	for i := range paths {
 		target := base.MakeFilename(opts.FS, dirname, fileTypeTable, meta[i].FileNum)
-		err := opts.FS.Link(paths[i], target)
+		err := vfs.LinkOrCopy(opts.FS, paths[i], target)
 		if err != nil {
 			if err2 := ingestCleanup(opts.FS, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
@@ -334,8 +334,9 @@ func (d *DB) Ingest(paths []string) error {
 
 	// Hard link the sstables into the DB directory. Since the sstables aren't
 	// referenced by a version, they won't be used. If the hard linking fails
-	// (e.g. because the files reside on a different filesystem) we undo our work
-	// and return an error.
+	// (e.g. because the files reside on a different filesystem), ingestLink will
+	// fall back to copying, and if that fails we undo our work and return an
+	// error.
 	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
 		return err
 	}

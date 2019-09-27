@@ -1,0 +1,58 @@
+define
+link a b
+create a
+link a b
+link a b
+link c d
+remove b
+link-or-copy a b
+remove b
+----
+link: a -> b [file does not exist]
+create: a [<nil>]
+link: a -> b [<nil>]
+link: a -> b [file already exists]
+link: c -> d [file does not exist]
+remove: b [<nil>]
+link: a -> b [<nil>]
+remove: b [<nil>]
+
+define linkErr=ErrExist
+create a
+link a b
+link-or-copy a b
+----
+create: a [<nil>]
+link: a -> b [file already exists]
+link: a -> b [file already exists]
+
+define linkErr=ErrNotExist
+create a
+link a b
+link-or-copy a b
+----
+create: a [<nil>]
+link: a -> b [file does not exist]
+link: a -> b [file does not exist]
+
+define linkErr=ErrPermission
+create a
+link a b
+link-or-copy a b
+----
+create: a [<nil>]
+link: a -> b [permission denied]
+link: a -> b [permission denied]
+
+define linkErr=random
+create a
+link a b
+link-or-copy a b
+----
+create: a [<nil>]
+link: a -> b [random]
+link: a -> b [random]
+open: a [<nil>]
+create: b [<nil>]
+close: b [<nil>]
+close: a [<nil>]

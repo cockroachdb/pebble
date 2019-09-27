@@ -170,3 +170,40 @@ func (randomReadsOption) Apply(f File) {
 		_ = fadviseRandom(osFile.Fd())
 	}
 }
+
+// LinkOrCopy creates newname as a hard link to the oldname file. If creating
+// the hard link fails, LinkOrCopy falls back to copying the file (which may
+// also fail if newname doesn't exist or oldname already exists).
+func LinkOrCopy(fs FS, oldname, newname string) error {
+	err := fs.Link(oldname, newname)
+	if err == nil {
+		return nil
+	}
+	// Whitelist a handful of errors which we know won't be fixed by copying the
+	// file.
+	if os.IsExist(err) || os.IsNotExist(err) || os.IsPermission(err) {
+		return err
+	}
+
+	// Note that we don't check for the specifics of the error code as it isn't
+	// easy to do so in a portable manner. On Unix we'd have to check for
+	// LinkError.Err == syscall.EXDEV. On Windows we'd have to check for
+	// ERROR_NOT_SAME_DEVICE, ERROR_INVALID_FUNCTION, and
+	// ERROR_INVALID_PARAMETER. Rather that such OS specific checks, we fall back
+	// to always trying to copy if hard-linking failed.
+
+	src, err := fs.Open(oldname)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := fs.Create(newname)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	_, err = io.Copy(dst, src)
+	return err
+}

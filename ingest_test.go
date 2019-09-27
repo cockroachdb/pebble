@@ -298,6 +298,40 @@ func TestIngestLink(t *testing.T) {
 	}
 }
 
+func TestIngestLinkFallback(t *testing.T) {
+	// Verify that ingestLink succeeds if linking fails by falling back to
+	// copying.
+	mem := vfs.NewMem()
+	src, err := mem.Create("source")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &Options{FS: &errorFS{mem, 0}}
+	opts.EnsureDefaults()
+
+	meta := []*fileMetadata{{FileNum: 1}}
+	if err := ingestLink(0, opts, "", []string{"source"}, meta); err != nil {
+		t.Fatal(err)
+	}
+
+	dest, err := mem.Open("000001.sst")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// We should be able to write bytes to src, and not have them show up in
+	// dest.
+	_, _ = src.Write([]byte("test"))
+	data, err := ioutil.ReadAll(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Fatalf("expected copy, but files appear to be hard linked: [%s] unexpectedly found", data)
+	}
+}
+
 func TestIngestMemtableOverlaps(t *testing.T) {
 	comparers := []Comparer{
 		{Name: "default", Compare: DefaultComparer.Compare},
