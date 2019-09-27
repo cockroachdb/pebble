@@ -146,11 +146,22 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 }
 
 func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
+	// Wrap the normal filesystem with one which wraps newly created files with
+	// vfs.NewSyncingFile.
+	fs := syncingFS{
+		FS: opts.FS,
+		syncOpts: vfs.SyncingFileOptions{
+			BytesPerSync: opts.BytesPerSync,
+		},
+	}
+
 	for i := range paths {
-		target := base.MakeFilename(opts.FS, dirname, fileTypeTable, meta[i].FileNum)
-		err := vfs.LinkOrCopy(opts.FS, paths[i], target)
+		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
+		// TODO(peter): should use something like checkpointFS here in case a copy
+		// is required.
+		err := vfs.LinkOrCopy(fs, paths[i], target)
 		if err != nil {
-			if err2 := ingestCleanup(opts.FS, dirname, meta[:i]); err2 != nil {
+			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
 			return err
@@ -454,5 +465,6 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 		return nil, err
 	}
 	d.updateReadStateLocked()
+	d.deleteObsoleteFiles(jobID)
 	return ve, nil
 }
