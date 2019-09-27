@@ -1209,20 +1209,29 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
 }
 
+// disableFileDeletions, waiting for any in-progress deletion to finish. The
+// caller is required to invoke the returned closure to enable file deletions
+// again.
+//
+// d.mu must be held when calling this method.
+func (d *DB) disableFileDeletions() func() {
+	for d.mu.cleaner.cleaning {
+		d.mu.cleaner.cond.Wait()
+	}
+	d.mu.cleaner.cleaning = true
+	return func() {
+		d.mu.cleaner.cleaning = false
+		d.mu.cleaner.cond.Signal()
+	}
+}
+
 // deleteObsoleteFiles deletes those files that are no longer needed.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles(jobID int) {
 	// Only allow a single delete obsolete files job to run at a time.
-	for d.mu.cleaner.cleaning {
-		d.mu.cleaner.cond.Wait()
-	}
-	d.mu.cleaner.cleaning = true
-	defer func() {
-		d.mu.cleaner.cleaning = false
-		d.mu.cleaner.cond.Signal()
-	}()
+	defer d.disableFileDeletions()()
 
 	var obsoleteLogs []uint64
 	for i := range d.mu.log.queue {

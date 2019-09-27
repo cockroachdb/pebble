@@ -126,6 +126,26 @@ level__files____size___score______in__ingest____move____read___write___w-amp
     6      1   825 B    1.00   1.6 K     0 B     0 B   1.6 K   825 B     0.5
 total      2   1.6 K    0.00   906 B   825 B     0 B   1.6 K   3.3 K     3.7
 
+checkpoint
+----
+mkdir-all: checkpoint 0755
+open-dir: checkpoint
+link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
+create: checkpoint/MANIFEST-000014
+sync: checkpoint/MANIFEST-000014
+close: checkpoint/MANIFEST-000014
+create: checkpoint/CURRENT.000014.dbtmp
+sync: checkpoint/CURRENT.000014.dbtmp
+close: checkpoint/CURRENT.000014.dbtmp
+rename: checkpoint/CURRENT.000014.dbtmp -> checkpoint/CURRENT
+link: db/000013.sst -> checkpoint/000013.sst
+link: db/000011.sst -> checkpoint/000011.sst
+create: checkpoint/000008.log
+sync: checkpoint/000008.log
+close: checkpoint/000008.log
+sync: checkpoint
+close: checkpoint
+
 close
 ----
 sync: wal/000008.log

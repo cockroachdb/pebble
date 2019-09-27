@@ -146,7 +146,9 @@ func TestEventListener(t *testing.T) {
 
 		case "close":
 			buf.Reset()
-			d.Close()
+			if err := d.Close(); err != nil {
+				return err.Error()
+			}
 			return buf.String()
 
 		case "flush":
@@ -165,6 +167,13 @@ func TestEventListener(t *testing.T) {
 				return err.Error()
 			}
 			if err := d.Compact([]byte("a"), []byte("b")); err != nil {
+				return err.Error()
+			}
+			return buf.String()
+
+		case "checkpoint":
+			buf.Reset()
+			if err := d.Checkpoint("checkpoint"); err != nil {
 				return err.Error()
 			}
 			return buf.String()
