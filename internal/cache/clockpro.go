@@ -15,7 +15,7 @@
 // The original paper: http://static.usenix.org/event/usenix05/tech/general/full_papers/jiang/jiang_html/html.html
 //
 // It is MIT licensed, like the original.
-package cache // import "github.com/cockroachdb/pebble/cache"
+package cache // import "github.com/cockroachdb/pebble/internal/cache"
 
 import (
 	"runtime"

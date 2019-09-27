@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/sstable"
@@ -267,7 +266,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
 					mem := vfs.NewMem()
 					d, err := Open("", &Options{
-						Cache: cache.New(128 << 20), // 128 MB
+						Cache: NewCache(128 << 20), // 128 MB
 						FS:    mem,
 					})
 					if err != nil {

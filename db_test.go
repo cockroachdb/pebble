@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -639,7 +638,7 @@ func TestIterLeak(t *testing.T) {
 }
 
 func TestCacheEvict(t *testing.T) {
-	cache := cache.New(10 << 20)
+	cache := NewCache(10 << 20)
 	d, err := Open("", &Options{
 		Cache: cache,
 		FS:    vfs.NewMem(),
