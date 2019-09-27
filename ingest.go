@@ -349,6 +349,8 @@ func (d *DB) Ingest(paths []string) error {
 
 	var mem flushable
 	prepare := func() {
+		// Note that d.commit.mu is held by commitPipeline when calling prepare.
+
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
