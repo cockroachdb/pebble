@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"

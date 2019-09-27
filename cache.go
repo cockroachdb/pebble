@@ -4,7 +4,10 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/cache"
+import "github.com/cockroachdb/pebble/internal/cache"
+
+// Cache exports the cache.Cache type.
+type Cache = cache.Cache
 
 // NewCache creates a new cache of the specified size. Memory for the cache is
 // allocated on demand, not during initialization.
