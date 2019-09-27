@@ -5,55 +5,65 @@ malformed input:
 load
 a.SET.1:
 ----
-1: a#1,1-a#1,1
+pebble: external sstable has non-zero seqnum: a#1,1
 
 load
-a.SET.1:
-b.SET.2:
+a.INVALID.0:
 ----
-1: a#1,1-b#2,1
+pebble: external sstable has corrupted key: a#0,255
 
 load
-a.DEL.1:
+a.SET.0:
 ----
-1: a#1,0-a#1,0
+1: a#0,1-a#0,1
 
 load
-a.DEL.1:
-b.DEL.2:
+a.SET.0:
+b.SET.0:
 ----
-1: a#1,0-b#2,0
+1: a#0,1-b#0,1
 
 load
-a.MERGE.1:
+a.DEL.0:
 ----
-1: a#1,2-a#1,2
+1: a#0,0-a#0,0
 
 load
-a.MERGE.1:
-b.MERGE.2:
+a.DEL.0:
+b.DEL.0:
 ----
-1: a#1,2-b#2,2
+1: a#0,0-b#0,0
 
 load
-a.RANGEDEL.1:b
+a.MERGE.0:
 ----
-1: a#1,15-b#72057594037927935,15
+1: a#0,2-a#0,2
 
 load
-a.SET.1:
-a.RANGEDEL.2:b
+a.MERGE.0:
+b.MERGE.0:
 ----
-1: a#2,15-b#72057594037927935,15
+1: a#0,2-b#0,2
 
 load
-a.SET.2:
-a.RANGEDEL.1:b
+a.RANGEDEL.0:b
 ----
-1: a#2,1-b#72057594037927935,15
+1: a#0,15-b#72057594037927935,15
 
 load
-b.SET.1:
-a.RANGEDEL.2:b
+a.SET.0:
+a.RANGEDEL.0:b
 ----
-1: a#2,15-b#1,1
+1: a#0,15-b#72057594037927935,15
+
+load
+a.SET.0:
+a.RANGEDEL.0:b
+----
+1: a#0,15-b#72057594037927935,15
+
+load
+b.SET.0:
+a.RANGEDEL.0:b
+----
+1: a#0,15-b#0,1

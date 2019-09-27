@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -41,6 +42,11 @@ func TestIngestLoad(t *testing.T) {
 				}
 				key := base.ParseInternalKey(data[:j])
 				value := []byte(data[j+1:])
+				// Disable the key-order checks if we're trying to insert an invalid
+				// key.
+				if key.Kind() == InternalKeyKindInvalid {
+					private.SSTableWriterDisableKeyOrderChecks(w)
+				}
 				if err := w.Add(key, value); err != nil {
 					return err.Error()
 				}
@@ -101,7 +107,7 @@ func TestIngestLoadRand(t *testing.T) {
 			for i := range keys {
 				keys[i] = base.MakeInternalKey(
 					randBytes(1+rng.Intn(10)),
-					uint64(rng.Int63n(int64(InternalKeySeqNumMax))),
+					0,
 					InternalKeyKindSet)
 			}
 			sort.Slice(keys, func(i, j int) bool {
@@ -113,6 +119,10 @@ func TestIngestLoadRand(t *testing.T) {
 
 			w := sstable.NewWriter(f, nil, LevelOptions{})
 			for i := range keys {
+				if i > 0 && base.InternalCompare(cmp, keys[i-1], keys[i]) == 0 {
+					// Duplicate key, ignore.
+					continue
+				}
 				w.Add(keys[i], nil)
 			}
 			if err := w.Close(); err != nil {
@@ -516,7 +526,7 @@ func TestIngest(t *testing.T) {
 					}
 					for key, val := iter.First(); key != nil; key, val = iter.Next() {
 						tmp := *key
-						tmp.SetSeqNum(10000)
+						tmp.SetSeqNum(0)
 						if err := w.Add(tmp, val); err != nil {
 							return err.Error()
 						}
