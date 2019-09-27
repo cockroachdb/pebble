@@ -147,16 +147,25 @@ func (y *memFS) Link(oldname, newname string) error {
 		return err
 	}
 	if n == nil {
-		return &os.PathError{
-			Op:   "open",
-			Path: oldname,
-			Err:  os.ErrNotExist,
+		return &os.LinkError{
+			Op:  "link",
+			Old: oldname,
+			New: newname,
+			Err: os.ErrNotExist,
 		}
 	}
 	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
+			}
+			if _, ok := dir.children[frag]; ok {
+				return &os.LinkError{
+					Op:  "link",
+					Old: oldname,
+					New: newname,
+					Err: os.ErrExist,
+				}
 			}
 			dir.children[frag] = n
 		}

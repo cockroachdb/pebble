@@ -148,7 +148,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
 	for i := range paths {
 		target := base.MakeFilename(opts.FS, dirname, fileTypeTable, meta[i].FileNum)
-		err := opts.FS.Link(paths[i], target)
+		err := vfs.LinkOrCopy(opts.FS, paths[i], target)
 		if err != nil {
 			if err2 := ingestCleanup(opts.FS, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
