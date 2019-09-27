@@ -5,8 +5,8 @@
 package tool
 
 import (
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -41,7 +41,7 @@ type T struct {
 func New() *T {
 	t := &T{
 		opts: base.Options{
-			Cache:    cache.New(128 << 20 /* 128 MB */),
+			Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
 			Filters:  make(map[string]FilterPolicy),
 			FS:       vfs.Default,
 			ReadOnly: true,

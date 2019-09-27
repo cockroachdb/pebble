@@ -8,7 +8,6 @@ import (
 	"log"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 )
 
@@ -49,7 +48,7 @@ type pebbleDB struct {
 
 func newPebbleDB(dir string) DB {
 	opts := &pebble.Options{
-		Cache:                       cache.New(cacheSize),
+		Cache:                       pebble.NewCache(cacheSize),
 		Comparer:                    mvccComparer,
 		DisableWAL:                  disableWAL,
 		MemTableSize:                64 << 20,

@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/cache"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -255,7 +254,7 @@ func buildLevelIterTables(
 		}
 	}
 
-	cache := cache.New(128 << 20)
+	cache := NewCache(128 << 20)
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))
