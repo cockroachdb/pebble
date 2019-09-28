@@ -5,6 +5,7 @@
 package base
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -115,4 +116,58 @@ func TestOptionsCheck(t *testing.T) {
 `
 	tmp = *opts
 	require.NoError(t, tmp.Check(s))
+}
+
+func TestOptionsParse(t *testing.T) {
+	testComparer := *DefaultComparer
+	testComparer.Name = "test-comparer"
+	testMerger := *DefaultMerger
+	testMerger.Name = "test-merger"
+
+	hooks := &ParseHooks{
+		NewComparer: func(name string) (*Comparer, error) {
+			if name == testComparer.Name {
+				return &testComparer, nil
+			}
+			return nil, fmt.Errorf("unknown comparer: %q", name)
+		},
+		NewMerger: func(name string) (*Merger, error) {
+			if name == testMerger.Name {
+				return &testMerger, nil
+			}
+			return nil, fmt.Errorf("unknown merger: %q", name)
+		},
+	}
+
+	testCases := []struct {
+		comparer *Comparer
+		merger   *Merger
+	}{
+		{nil, nil},
+		{&testComparer, nil},
+		{nil, &testMerger},
+	}
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			var opts Options
+			opts.Comparer = c.comparer
+			opts.Merger = c.merger
+			opts.WALDir = "wal"
+			opts.Levels = make([]LevelOptions, 3)
+			opts.Levels[0].BlockSize = 1024
+			opts.Levels[1].BlockSize = 2048
+			opts.Levels[2].BlockSize = 4096
+			opts.EnsureDefaults()
+			str := opts.String()
+
+			var parsedOptions Options
+			if err := parsedOptions.Parse(str, hooks); err != nil {
+				t.Fatal(err)
+			}
+			parsedStr := parsedOptions.String()
+			if str != parsedStr {
+				t.Fatalf("expected\n%s\nbut found\n%s", str, parsedStr)
+			}
+		})
+	}
 }

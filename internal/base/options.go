@@ -7,6 +7,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -508,10 +509,7 @@ func (o *Options) String() string {
 	return buf.String()
 }
 
-// Check verifies the options are compatible with the previous options
-// serialized by Options.String(). For example, the Comparer and Merger must be
-// the same, or data will not be able to be properly read from the DB.
-func (o *Options) Check(s string) error {
+func parseOptions(s string, fn func(section, key, value string) error) error {
 	var section string
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
@@ -537,12 +535,157 @@ func (o *Options) Check(s string) error {
 
 		key := strings.TrimSpace(line[:pos])
 		value := strings.TrimSpace(line[pos+1:])
-		path := section + "." + key
+		if err := fn(section, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
+// ParseHooks contains callbacks to create options fields which can have
+// user-defined implementations.
+type ParseHooks struct {
+	NewComparer     func(name string) (*Comparer, error)
+	NewFilterPolicy func(name string) (FilterPolicy, error)
+	NewMerger       func(name string) (*Merger, error)
+}
+
+// Parse parses the options from the specified string. Note that certain
+// options cannot be parsed into populated fields. For example, comparer and
+// merger.
+func (o *Options) Parse(s string, hooks *ParseHooks) error {
+	return parseOptions(s, func(section, key, value string) error {
+		switch {
+		case section == "Version":
+			switch key {
+			case "pebble_version":
+			default:
+				return fmt.Errorf("pebble: unknown option: %s.%s", section, key)
+			}
+			return nil
+
+		case section == "Options":
+			var err error
+			switch key {
+			case "bytes_per_sync":
+				o.BytesPerSync, err = strconv.Atoi(value)
+			case "cache_size":
+				n, err := strconv.ParseInt(value, 10, 64)
+				if err == nil {
+					o.Cache = cache.New(n)
+				}
+			case "comparer":
+				switch value {
+				case "leveldb.BytewiseComparator":
+					o.Comparer = DefaultComparer
+				default:
+					if hooks != nil && hooks.NewComparer != nil {
+						o.Comparer, err = hooks.NewComparer(value)
+					}
+				}
+			case "disable_wal":
+				o.DisableWAL, err = strconv.ParseBool(value)
+			case "l0_compaction_threshold":
+				o.L0CompactionThreshold, err = strconv.Atoi(value)
+			case "l0_stop_writes_threshold":
+				o.L0StopWritesThreshold, err = strconv.Atoi(value)
+			case "lbase_max_bytes":
+				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
+			case "max_manifest_file_size":
+				o.MaxManifestFileSize, err = strconv.ParseInt(value, 10, 64)
+			case "max_open_files":
+				o.MaxOpenFiles, err = strconv.Atoi(value)
+			case "mem_table_size":
+				o.MemTableSize, err = strconv.Atoi(value)
+			case "mem_table_stop_writes_threshold":
+				o.MemTableStopWritesThreshold, err = strconv.Atoi(value)
+			case "min_compaction_rate":
+				o.MinCompactionRate, err = strconv.Atoi(value)
+			case "min_flush_rate":
+				o.MinFlushRate, err = strconv.Atoi(value)
+			case "merger":
+				switch value {
+				case "pebble.concatenate":
+					o.Merger = DefaultMerger
+				default:
+					if hooks != nil && hooks.NewMerger != nil {
+						o.Merger, err = hooks.NewMerger(value)
+					}
+				}
+			case "table_property_collectors":
+				// TODO(peter): set o.TablePropertyCollectors
+			case "wal_dir":
+				o.WALDir = value
+			default:
+				return fmt.Errorf("pebble: unknown option: %s.%s", section, key)
+			}
+			return err
+
+		case strings.HasPrefix(section, "Level "):
+			var index int
+			if n, err := fmt.Sscanf(section, `Level "%d"`, &index); err != nil {
+				return err
+			} else if n != 1 {
+				return fmt.Errorf("pebble: unknown section: %q", section)
+			}
+
+			if len(o.Levels) <= index {
+				newLevels := make([]LevelOptions, index+1)
+				copy(newLevels, o.Levels)
+				o.Levels = newLevels
+			}
+			l := &o.Levels[index]
+
+			var err error
+			switch key {
+			case "block_restart_interval":
+				l.BlockRestartInterval, err = strconv.Atoi(value)
+			case "block_size":
+				l.BlockSize, err = strconv.Atoi(value)
+			case "compression":
+				switch value {
+				case "Default":
+					l.Compression = DefaultCompression
+				case "NoCompression":
+					l.Compression = NoCompression
+				case "Snappy":
+					l.Compression = SnappyCompression
+				default:
+					return fmt.Errorf("pebble: unknown compression: %q", value)
+				}
+			case "filter_policy":
+				if hooks != nil && hooks.NewFilterPolicy != nil {
+					l.FilterPolicy, err = hooks.NewFilterPolicy(value)
+				}
+			case "filter_type":
+				switch value {
+				case "table":
+					l.FilterType = TableFilter
+				default:
+					return fmt.Errorf("pebble: unknown filter type: %q", value)
+				}
+			case "index_block_size":
+				l.IndexBlockSize, err = strconv.Atoi(value)
+			case "target_file_size":
+				l.TargetFileSize, err = strconv.ParseInt(value, 10, 64)
+			default:
+				return fmt.Errorf("pebble: unknown option: %s.%s", section, key)
+			}
+			return err
+		}
+		return fmt.Errorf("pebble: unknown section: %q", section)
+	})
+}
+
+// Check verifies the options are compatible with the previous options
+// serialized by Options.String(). For example, the Comparer and Merger must be
+// the same, or data will not be able to be properly read from the DB.
+func (o *Options) Check(s string) error {
+	return parseOptions(s, func(section, key, value string) error {
 		// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
 		// different section names and keys. The "CFOptions ..." paths below are
 		// the RocksDB versions.
-		switch path {
+		switch section + "." + key {
 		case "Options.comparer", `CFOptions "default".comparator`:
 			if value != o.Comparer.Name {
 				return fmt.Errorf("pebble: comparer name from file %q != comparer name from options %q",
@@ -556,6 +699,6 @@ func (o *Options) Check(s string) error {
 					value, o.Merger.Name)
 			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
