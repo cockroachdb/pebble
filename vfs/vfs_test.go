@@ -79,6 +79,12 @@ func (f loggingFile) Close() error {
 	return err
 }
 
+func (f loggingFile) Sync() error {
+	err := f.File.Sync()
+	fmt.Fprintf(f.w, "sync: %s [%v]\n", f.name, err)
+	return err
+}
+
 func runTestVFS(t *testing.T, baseFS FS, dir string) {
 	var buf bytes.Buffer
 	fs := loggingFS{FS: baseFS, w: &buf}

@@ -146,7 +146,9 @@ func TestEventListener(t *testing.T) {
 
 		case "close":
 			buf.Reset()
-			d.Close()
+			if err := d.Close(); err != nil {
+				return err.Error()
+			}
 			return buf.String()
 
 		case "flush":
@@ -167,6 +169,34 @@ func TestEventListener(t *testing.T) {
 			if err := d.Compact([]byte("a"), []byte("b")); err != nil {
 				return err.Error()
 			}
+			return buf.String()
+
+		case "checkpoint":
+			buf.Reset()
+			if err := d.Checkpoint("checkpoint"); err != nil {
+				return err.Error()
+			}
+			return buf.String()
+
+		case "disable-file-deletions":
+			buf.Reset()
+			d.mu.Lock()
+			d.disableFileDeletions()
+			d.mu.Unlock()
+			return buf.String()
+
+		case "enable-file-deletions":
+			buf.Reset()
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Fprint(&buf, r)
+					}
+				}()
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				d.enableFileDeletions()
+			}()
 			return buf.String()
 
 		case "ingest":
