@@ -14,14 +14,15 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
 
 var scanConfig struct {
 	reverse bool
-	rows    string
-	values  string
+	rows    *randvar.Flag
+	values  *randvar.BytesFlag
 }
 
 var scanCmd = &cobra.Command{
@@ -35,10 +36,12 @@ var scanCmd = &cobra.Command{
 func init() {
 	scanCmd.Flags().BoolVarP(
 		&scanConfig.reverse, "reverse", "r", false, "reverse scan")
-	scanCmd.Flags().StringVar(
-		&scanConfig.rows, "rows", "100", "number of rows to scan in each operation")
-	scanCmd.Flags().StringVar(
-		&scanConfig.values, "values", "8",
+	scanConfig.rows = randvar.NewFlag("100")
+	scanCmd.Flags().Var(
+		scanConfig.rows, "rows", "number of rows to scan in each operation")
+	scanConfig.values = randvar.NewBytesFlag("8")
+	scanCmd.Flags().Var(
+		scanConfig.values, "values",
 		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
@@ -56,17 +59,7 @@ func runScan(cmd *cobra.Command, args []string) {
 		opts = pebble.NoSync
 	}
 
-	rowDist, err := parseRandVarSpec(scanConfig.rows)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	valueDist, targetCompression, err := parseValuesSpec(scanConfig.values)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	rowDist := scanConfig.rows
 
 	runTest(args[0], test{
 		init: func(d DB, wg *sync.WaitGroup) {
@@ -80,8 +73,7 @@ func runScan(cmd *cobra.Command, args []string) {
 				b := d.NewBatch()
 				for end := i + batch; i < end; i++ {
 					keys[i] = mvccEncode(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
-					length := int(valueDist.Uint64())
-					value := randomBlock(rng, length, targetCompression)
+					value := scanConfig.values.Bytes(rng)
 					if err := b.Set(keys[i], value, nil); err != nil {
 						log.Fatal(err)
 					}
@@ -95,11 +87,8 @@ func runScan(cmd *cobra.Command, args []string) {
 				log.Fatal(err)
 			}
 
-			limiter, err := newFluctuatingRateLimiter(maxOpsPerSec)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+			limiter := maxOpsPerSec.newRateLimiter()
+
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				go func(i int) {

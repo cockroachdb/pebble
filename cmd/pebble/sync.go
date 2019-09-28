@@ -13,14 +13,15 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
 )
 
 var syncConfig struct {
-	batch   string
+	batch   *randvar.Flag
 	walOnly bool
-	values  string
+	values  *randvar.BytesFlag
 }
 
 var syncCmd = &cobra.Command{
@@ -32,13 +33,15 @@ var syncCmd = &cobra.Command{
 }
 
 func init() {
-	syncCmd.Flags().StringVar(
-		&syncConfig.batch, "batch", "5",
+	syncConfig.batch = randvar.NewFlag("5")
+	syncCmd.Flags().Var(
+		syncConfig.batch, "batch",
 		"batch size distribution [{zipf,uniform}:]min[-max]")
 	syncCmd.Flags().BoolVar(
 		&syncConfig.walOnly, "wal-only", false, "write data only to the WAL")
-	syncCmd.Flags().StringVar(
-		&syncConfig.values, "values", "uniform:60-80/1.0",
+	syncConfig.values = randvar.NewBytesFlag("uniform:60-80/1.0")
+	syncCmd.Flags().Var(
+		syncConfig.values, "values",
 		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
@@ -51,25 +54,12 @@ func runSync(cmd *cobra.Command, args []string) {
 		opts = pebble.NoSync
 	}
 
-	batchDist, err := parseRandVarSpec(syncConfig.batch)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	valueDist, targetCompression, err := parseValuesSpec(syncConfig.values)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	batchDist := syncConfig.batch
 
 	runTest(args[0], test{
 		init: func(d DB, wg *sync.WaitGroup) {
-			limiter, err := newFluctuatingRateLimiter(maxOpsPerSec)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+			limiter := maxOpsPerSec.newRateLimiter()
+
 			wg.Add(concurrency)
 			for i := 0; i < concurrency; i++ {
 				latency := reg.Register("ops")
@@ -86,8 +76,7 @@ func runSync(cmd *cobra.Command, args []string) {
 						var n uint64
 						count := int(batchDist.Uint64())
 						for j := 0; j < count; j++ {
-							length := int(valueDist.Uint64())
-							block := randomBlock(rand, length, targetCompression)
+							block := syncConfig.values.Bytes(rand)
 
 							if syncConfig.walOnly {
 								if err := b.LogData(block, nil); err != nil {

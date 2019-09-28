@@ -32,13 +32,13 @@ const (
 )
 
 var ycsbConfig struct {
-	batch            string
+	batch            *randvar.Flag
 	keys             string
 	initialKeys      int
 	prepopulatedKeys int
 	numOps           uint64
-	scans            string
-	values           string
+	scans            *randvar.Flag
+	values           *randvar.BytesFlag
 	workload         string
 }
 
@@ -83,8 +83,9 @@ Standard workloads:
 }
 
 func init() {
-	ycsbCmd.Flags().StringVar(
-		&ycsbConfig.batch, "batch", "1",
+	ycsbConfig.batch = randvar.NewFlag("1")
+	ycsbCmd.Flags().Var(
+		ycsbConfig.batch, "batch",
 		"batch size distribution [{zipf,uniform}:]min[-max]")
 	ycsbCmd.Flags().StringVar(
 		&ycsbConfig.keys, "keys", "zipf", "latest, uniform, or zipf")
@@ -97,14 +98,16 @@ func init() {
 	ycsbCmd.Flags().Uint64VarP(
 		&ycsbConfig.numOps, "num-ops", "n", 0,
 		"maximum number of operations (0 means unlimited)")
-	ycsbCmd.Flags().StringVar(
-		&ycsbConfig.scans, "scans", "zipf:1-1000",
+	ycsbConfig.scans = randvar.NewFlag("zipf:1-1000")
+	ycsbCmd.Flags().Var(
+		ycsbConfig.scans, "scans",
 		"scan length distribution [{zipf,uniform}:]min[-max]")
 	ycsbCmd.Flags().StringVar(
 		&ycsbConfig.workload, "workload", "B",
 		"workload type (A-F) or spec (read=X,update=Y,...)")
-	ycsbCmd.Flags().StringVar(
-		&ycsbConfig.values, "values", "1000",
+	ycsbConfig.values = randvar.NewBytesFlag("1000")
+	ycsbCmd.Flags().Var(
+		ycsbConfig.values, "values",
 		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
@@ -216,22 +219,14 @@ func runYcsb(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	batchDist, err := parseRandVarSpec(ycsbConfig.batch)
+	batchDist := ycsbConfig.batch
+	scanDist := ycsbConfig.scans
 	if err != nil {
 		return err
 	}
 
-	scanDist, err := parseRandVarSpec(ycsbConfig.scans)
-	if err != nil {
-		return err
-	}
-
-	valueDist, targetCompression, err := parseValuesSpec(ycsbConfig.values)
-	if err != nil {
-		return err
-	}
-
-	y := newYcsb(weights, keyDist, batchDist, scanDist, valueDist, targetCompression)
+	valueDist := ycsbConfig.values
+	y := newYcsb(weights, keyDist, batchDist, scanDist, valueDist)
 	runTest(args[0], test{
 		init: y.init,
 		tick: y.tick,
@@ -241,37 +236,35 @@ func runYcsb(cmd *cobra.Command, args []string) error {
 }
 
 type ycsb struct {
-	writeOpts         *pebble.WriteOptions
-	reg               *histogramRegistry
-	ops               *randvar.Weighted
-	keyDist           randvar.Dynamic
-	batchDist         randvar.Static
-	scanDist          randvar.Static
-	valueDist         randvar.Static
-	targetCompression float64
-	keyNum            *ackseq.S
-	numOps            uint64
-	numKeys           [ycsbNumOps]uint64
-	prevNumKeys       [ycsbNumOps]uint64
-	opsMap            map[string]int
-	latency           [ycsbNumOps]*namedHistogram
-	limiter           *rate.Limiter
+	writeOpts   *pebble.WriteOptions
+	reg         *histogramRegistry
+	ops         *randvar.Weighted
+	keyDist     randvar.Dynamic
+	batchDist   randvar.Static
+	scanDist    randvar.Static
+	valueDist   *randvar.BytesFlag
+	keyNum      *ackseq.S
+	numOps      uint64
+	numKeys     [ycsbNumOps]uint64
+	prevNumKeys [ycsbNumOps]uint64
+	opsMap      map[string]int
+	latency     [ycsbNumOps]*namedHistogram
+	limiter     *rate.Limiter
 }
 
 func newYcsb(
 	weights ycsbWeights,
 	keyDist randvar.Dynamic,
-	batchDist, scanDist, valueDist randvar.Static,
-	targetCompression float64,
+	batchDist, scanDist randvar.Static,
+	valueDist *randvar.BytesFlag,
 ) *ycsb {
 	y := &ycsb{
-		reg:               newHistogramRegistry(),
-		ops:               randvar.NewWeighted(nil, weights...),
-		keyDist:           keyDist,
-		batchDist:         batchDist,
-		scanDist:          scanDist,
-		valueDist:         valueDist,
-		targetCompression: targetCompression,
+		reg:       newHistogramRegistry(),
+		ops:       randvar.NewWeighted(nil, weights...),
+		keyDist:   keyDist,
+		batchDist: batchDist,
+		scanDist:  scanDist,
+		valueDist: valueDist,
 	}
 	y.writeOpts = pebble.Sync
 	if disableWAL {
@@ -325,12 +318,8 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 	}
 	y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys))
 
-	var err error
-	y.limiter, err = newFluctuatingRateLimiter(maxOpsPerSec)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	y.limiter = maxOpsPerSec.newRateLimiter()
+
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
 		go y.run(db, wg)
@@ -402,8 +391,7 @@ func (y *ycsb) nextReadKey() []byte {
 }
 
 func (y *ycsb) randBytes(rng *rand.Rand) []byte {
-	length := int(y.valueDist.Uint64())
-	return randomBlock(rng, length, y.targetCompression)
+	return y.valueDist.Bytes(rng)
 }
 
 func (y *ycsb) insert(db DB, rng *rand.Rand) {
