@@ -7,6 +7,7 @@ package record
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -105,17 +106,17 @@ func (q *syncQueue) load() (head, tail uint32) {
 	return head, tail
 }
 
-func (q *syncQueue) pop(head, tail uint32, err error) {
+func (q *syncQueue) pop(head, tail uint32, err error) error {
 	if tail == head {
 		// Queue is empty.
-		return
+		return nil
 	}
 
 	for ; tail != head; tail++ {
 		slot := &q.slots[tail&uint32(len(q.slots)-1)]
 		wg := slot.wg
 		if wg == nil {
-			panic("nil waiter")
+			return fmt.Errorf("nil waiter at %d", tail&uint32(len(q.slots)-1))
 		}
 		*slot.err = err
 		slot.wg = nil
@@ -126,6 +127,8 @@ func (q *syncQueue) pop(head, tail uint32, err error) {
 		atomic.AddUint64(&q.headTail, 1)
 		wg.Done()
 	}
+
+	return nil
 }
 
 // flusherCond is a specialized condition variable that is safe to signal for
@@ -306,7 +309,13 @@ func (w *LogWriter) flushLoop() {
 			if err == nil && w.s != nil {
 				err = w.s.Sync()
 			}
-			f.syncQ.pop(head, tail, err)
+			if popErr := f.syncQ.pop(head, tail, err); popErr != nil {
+				// This slightly odd code structure prevents panic'ing without the lock
+				// held which would immediately hit a Go runtime error when the defer
+				// tries to unlock a mutex that isn't locked.
+				f.Lock()
+				panic(popErr)
+			}
 		}
 
 		f.Lock()

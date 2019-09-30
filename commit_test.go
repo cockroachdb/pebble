@@ -190,10 +190,13 @@ func TestCommitPipelineWALClose(t *testing.T) {
 
 	// A basic commitEnv which writes to a WAL.
 	wal := record.NewLogWriter(sf, 0 /* logNum */)
+	var walDone sync.WaitGroup
 	testEnv := commitEnv{
 		logSeqNum:     new(uint64),
 		visibleSeqNum: new(uint64),
 		apply: func(b *Batch, mem *memTable) error {
+			// At this point, we've called SyncRecord but the sync is blocked.
+			walDone.Done()
 			return nil
 		},
 		write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
@@ -207,6 +210,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	// commit it with sync==true. Because of the syncDelayFile, none of these
 	// operations can complete until syncDelayFile.done is closed.
 	errCh := make(chan error, cap(p.sem))
+	walDone.Add(cap(errCh))
 	for i := 0; i < cap(errCh); i++ {
 		go func(i int) {
 			b := &Batch{}
@@ -222,13 +226,11 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	// At this point, we know at least one operation is blocked waiting for the
 	// Sync to finish, but most likely all are blocked.
 
-	// Fire off another goroutine which will wait a short period of time and then
-	// released the Sync. There isn't a clean way to do this as the wal.Close()
-	// below will block indefinitely until the Sync is released.
-	go func() {
-		time.Sleep(20 * time.Millisecond)
-		close(sf.done)
-	}()
+	// Wait for all of the WAL writes to queue up. This ensures we don't violate
+	// the concurrency requirements of LogWriter, and also ensures all of the WAL
+	// writes are queued.
+	walDone.Wait()
+	close(sf.done)
 
 	// Close the WAL. A "queue is full" panic means that something is broken.
 	if err := wal.Close(); err != nil {
