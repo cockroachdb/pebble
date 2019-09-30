@@ -119,3 +119,8 @@ func TestMultipleDBs(t *testing.T) {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
 }
+
+func TestZeroSize(t *testing.T) {
+	cache := newShards(0, 1)
+	cache.Set(0, 0, 0, bytes.Repeat([]byte("a"), 5))
+}

@@ -386,16 +386,12 @@ func (c *shard) metaDel(e *entry) {
 }
 
 func (c *shard) evict() {
-	for c.maxSize <= c.countHot+c.countCold {
+	for c.maxSize <= c.countHot+c.countCold && c.handCold != nil {
 		c.runHandCold()
 	}
 }
 
 func (c *shard) runHandCold() {
-	if c.handCold == nil {
-		return
-	}
-
 	e := c.handCold
 	if e.ptype == etCold {
 		if atomic.LoadInt32(&e.ref) == 1 {
@@ -408,7 +404,7 @@ func (c *shard) runHandCold() {
 			e.ptype = etTest
 			c.countCold -= e.size
 			c.countTest += e.size
-			for c.maxSize < c.countTest {
+			for c.maxSize < c.countTest && c.handTest != nil {
 				c.runHandTest()
 			}
 		}
@@ -416,17 +412,17 @@ func (c *shard) runHandCold() {
 
 	c.handCold = c.handCold.next()
 
-	for c.maxSize-c.coldSize <= c.countHot {
+	for c.maxSize-c.coldSize <= c.countHot && c.handHot != nil {
 		c.runHandHot()
 	}
 }
 
 func (c *shard) runHandHot() {
-	if c.handHot == c.handTest {
+	if c.handHot == c.handTest && c.handTest != nil {
 		c.runHandTest()
-	}
-	if c.handHot == nil {
-		return
+		if c.handHot == nil {
+			return
+		}
 	}
 
 	e := c.handHot
@@ -444,11 +440,11 @@ func (c *shard) runHandHot() {
 }
 
 func (c *shard) runHandTest() {
-	if c.countCold > 0 && c.handTest == c.handCold {
+	if c.countCold > 0 && c.handTest == c.handCold && c.handCold != nil {
 		c.runHandCold()
-	}
-	if c.handTest == nil {
-		return
+		if c.handTest == nil {
+			return
+		}
 	}
 
 	e := c.handTest
