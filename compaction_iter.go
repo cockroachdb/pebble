@@ -189,11 +189,6 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 	i.iterKey, i.iterValue = i.iter.First()
 	if i.iterKey != nil {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
-		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
-			// Range tombstones are always added to the fragmenter. They are
-			// processed into stripes after fragmentation.
-			i.rangeDelFrag.Add(i.cloneKey(*i.iterKey), i.iterValue)
-		}
 	}
 	return i.Next()
 }
@@ -211,6 +206,11 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	i.valid = false
 	for i.iterKey != nil {
 		i.key = *i.iterKey
+		if i.key.Kind() == InternalKeyKindRangeDelete {
+			// Range tombstones are always added to the fragmenter. They are
+			// processed into stripes after fragmentation.
+			i.rangeDelFrag.Add(i.cloneKey(i.key), i.iterValue)
+		}
 		if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
 			i.saveKey()
 			i.skipStripe()
@@ -300,15 +300,7 @@ func (i *compactionIter) skipStripe() {
 
 func (i *compactionIter) iterNext() bool {
 	i.iterKey, i.iterValue = i.iter.Next()
-	if i.iterKey == nil {
-		return false
-	}
-	if i.iterKey.Kind() == InternalKeyKindRangeDelete {
-		// Range tombstones are always added to the fragmenter. They are processed
-		// into stripes after fragmentation.
-		i.rangeDelFrag.Add(i.cloneKey(*i.iterKey), i.iterValue)
-	}
-	return true
+	return i.iterKey != nil
 }
 
 func (i *compactionIter) nextInStripe() bool {
@@ -318,10 +310,22 @@ func (i *compactionIter) nextInStripe() bool {
 	key := i.iterKey
 	if i.cmp(i.key.UserKey, key.UserKey) != 0 {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
+		// If i.iterKey is a range tombstone, it will be added to the fragmenter in
+		// the next call to compactionIter.Next(). This prevents the tombstone from
+		// being emitted to the previous sstable if it couldn't possibly overlap
+		// keys in that sstable.
 		return false
 	}
 	switch key.Kind() {
 	case InternalKeyKindRangeDelete:
+		if key.Kind() == InternalKeyKindRangeDelete {
+			// Range tombstones are always added to the fragmenter. They are
+			// processed into stripes after fragmentation. Note that we only add
+			// range tombstones to the fragmenter when they have the same start key
+			// as i.key. Adding tombstones earlier can violate a rangedel.Fragmenter
+			// invariant and lead to too many tombstones being added to an sstable.
+			i.rangeDelFrag.Add(i.cloneKey(*key), i.iterValue)
+		}
 		return true
 	case InternalKeyKindInvalid:
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
