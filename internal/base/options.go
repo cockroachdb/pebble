@@ -6,6 +6,7 @@ package base
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -612,6 +613,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						o.Merger, err = hooks.NewMerger(value)
 					}
 				}
+			case "table_format":
+				switch value {
+				case "leveldb":
+					o.TableFormat = TableFormatLevelDB
+				case "rocksdbv2":
+					o.TableFormat = TableFormatRocksDBv2
+				default:
+					return fmt.Errorf("pebble: unknown table format: %q", value)
+				}
 			case "table_property_collectors":
 				// TODO(peter): set o.TablePropertyCollectors
 			case "wal_dir":
@@ -701,4 +711,30 @@ func (o *Options) Check(s string) error {
 		}
 		return nil
 	})
+}
+
+// Validate verifies that the options are mutually consistent. For example,
+// L0StopWritesThreshold must be >= L0CompactionThreshold, otherwise a write
+// stall would persist indefinitely.
+func (o *Options) Validate() error {
+	// Note that we can presume Options.EnsureDefaults has been called, so there
+	// is no need to check for zero values.
+
+	var buf strings.Builder
+	if o.L0StopWritesThreshold < o.L0CompactionThreshold {
+		fmt.Fprintf(&buf, "L0StopWritesThreshold (%d) must be >= L0CompactionThreshold (%d)\n",
+			o.L0StopWritesThreshold, o.L0CompactionThreshold)
+	}
+	if o.MemTableStopWritesThreshold < 2 {
+		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",
+			o.MemTableStopWritesThreshold)
+	}
+	switch o.TableFormat {
+	case TableFormatLevelDB:
+		fmt.Fprintf(&buf, "TableFormatLevelDB not supported for DB\n")
+	}
+	if buf.Len() == 0 {
+		return nil
+	}
+	return errors.New(buf.String())
 }

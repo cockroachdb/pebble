@@ -6,6 +6,7 @@ package base
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -167,6 +168,59 @@ func TestOptionsParse(t *testing.T) {
 			parsedStr := parsedOptions.String()
 			if str != parsedStr {
 				t.Fatalf("expected\n%s\nbut found\n%s", str, parsedStr)
+			}
+		})
+	}
+}
+
+func TestOptionsValidate(t *testing.T) {
+	testCases := []struct {
+		options  string
+		expected string
+	}{
+		{``, ``},
+		{`
+[Options]
+  l0_compaction_threshold=2
+  l0_stop_writes_threshold=1
+`,
+			`L0StopWritesThreshold .* must be >= L0CompactionThreshold .*`,
+		},
+		{`
+[Options]
+  mem_table_stop_writes_threshold=1
+`,
+			`MemTableStopWritesThreshold .* must be >= 2`,
+		},
+		{`
+[Options]
+  table_format=leveldb
+`,
+			`TableFormatLevelDB not supported for DB`,
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			var opts Options
+			opts.EnsureDefaults()
+			if err := opts.Parse(c.options, nil); err != nil {
+				t.Fatal(err)
+			}
+			err := opts.Validate()
+			if c.expected == "" {
+				if err != nil {
+					t.Fatalf("expected success, but found %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected %q, but found success\n%s", c.expected, opts.String())
+				}
+				if ok, merr := regexp.MatchString(c.expected, err.Error()); merr != nil {
+					t.Fatal(merr)
+				} else if !ok {
+					t.Fatalf("expected %q, but found %v", c.expected, err)
+				}
 			}
 		})
 	}
