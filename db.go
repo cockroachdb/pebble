@@ -932,7 +932,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			return nil
 		}
 		// force || err == ErrArenaFull, so we need to rotate the current memtable.
-		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
+		if len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold {
 			// We have filled up the current memtable, but the previous one is still
 			// being compacted, so we wait.
 			if !stalled {
