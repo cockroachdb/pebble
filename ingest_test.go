@@ -612,3 +612,46 @@ func TestIngest(t *testing.T) {
 		}
 	})
 }
+
+func TestIngestCompact(t *testing.T) {
+	var buf syncedBuffer
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		EventListener:         MakeLoggingEventListener(&buf),
+		FS:                    mem,
+		L0CompactionThreshold: 1,
+		L0StopWritesThreshold: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := mem.Create("ext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := sstable.NewWriter(f, nil, LevelOptions{})
+	key := []byte("a")
+	if err := w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ingest the same sstable multiple times. Compaction should take place as
+	// ingestion happens, preventing an indefinite write stall from occurring.
+	for i := 0; i < 20; i++ {
+		if i == 10 {
+			// Half-way through the ingestions, set a key in the memtable to force
+			// overlap with the memtable which will require the memtable to be
+			// flushed.
+			if err := d.Set(key, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := d.Ingest([]string{"ext"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
