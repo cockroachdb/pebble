@@ -905,3 +905,20 @@ next
 ----
 d#2,0:a
 .
+
+define
+a.MERGE.2:a
+b.RANGEDEL.1:c
+----
+
+iter
+first
+tombstones a
+next
+tombstones
+----
+a#2,2:a
+.
+.
+b-c#1
+.
