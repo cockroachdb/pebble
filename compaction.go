@@ -1318,39 +1318,93 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			}
 
 			path := base.MakeFilename(d.opts.FS, d.dirname, f.fileType, fileNum)
-			err := d.opts.FS.Remove(path)
-			if err == os.ErrNotExist {
-				continue
-			}
-
-			// TODO(peter): need to handle this errror, probably by re-adding the
-			// file that couldn't be deleted to one of the obsolete slices map.
-
-			switch f.fileType {
-			case fileTypeLog:
-				d.opts.EventListener.WALDeleted(WALDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
-			case fileTypeManifest:
-				d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
-			case fileTypeTable:
-				d.opts.EventListener.TableDeleted(TableDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
-			}
+			d.deleteObsoleteFile(f.fileType, jobID, path, fileNum)
 		}
 	}
+}
+
+// deleteObsoleteFile deletes file that is no longer needed.
+func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileNum uint64) {
+	// TODO(peter): need to handle this errror, probably by re-adding the
+	// file that couldn't be deleted to one of the obsolete slices map.
+	var err error
+	if d.opts.Cleaner == ArchiveCleaner {
+		err = d.archivebsoleteFile(fileType, path)
+	}
+
+	if err == nil {
+		err = d.opts.FS.Remove(path)
+		if err == os.ErrNotExist {
+			return
+		}
+	}
+
+	switch fileType {
+	case fileTypeLog:
+		d.opts.EventListener.WALDeleted(WALDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
+	case fileTypeManifest:
+		d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
+	case fileTypeTable:
+		d.opts.EventListener.TableDeleted(TableDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
+	}
+}
+
+// archivebsoleteFile archives file that is no longer needed.
+func (d *DB) archivebsoleteFile(fileType fileType, path string) error {
+	switch fileType {
+	case fileTypeLog, fileTypeManifest, fileTypeTable:
+		break
+	default:
+		return nil
+	}
+
+	destDir := "archive"
+
+	fs := syncingFS{
+		FS: d.opts.FS,
+		syncOpts: vfs.SyncingFileOptions{
+			BytesPerSync: d.opts.BytesPerSync,
+		},
+	}
+
+	if err := fs.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+	dir, err := fs.OpenDir(destDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = dir.Close()
+
+		if err != nil {
+			// Attempt to cleanup on error.
+			paths, _ := fs.List(destDir)
+			for _, path := range paths {
+				_ = fs.Remove(path)
+			}
+			_ = fs.Remove(destDir)
+		}
+	}()
+
+	destPath := fs.PathJoin(destDir, fs.PathBase(path))
+	err = vfs.LinkOrCopy(fs, path, destPath)
+	return err
 }
 
 func merge(a, b []uint64) []uint64 {

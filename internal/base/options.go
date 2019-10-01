@@ -13,6 +13,29 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// Cleaner is the type of cleaner.
+type Cleaner int
+
+// The available clearner types.
+const (
+	DefaultCleaner Cleaner = iota
+	CleanCleaner
+	ArchiveCleaner
+)
+
+func (c Cleaner) String() string {
+	switch c {
+	case DefaultCleaner:
+		return "Default"
+	case CleanCleaner:
+		return "Clean"
+	case ArchiveCleaner:
+		return "Archive"
+	default:
+		return "Unknown"
+	}
+}
+
 // Compression is the per-block compression algorithm to use.
 type Compression int
 
@@ -346,6 +369,11 @@ type Options struct {
 	// empty (the default), WALs will be stored in the same directory as sstables
 	// (i.e. the directory passed to pebble.Open).
 	WALDir string
+
+	// Cleaner defines the cleaner to use.
+	//
+	// The default value (DefaultCleaner) uses clean cleaner.
+	Cleaner Cleaner
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
@@ -359,6 +387,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Cache == nil {
 		o.Cache = cache.New(8 << 20) // 8 MB
+	}
+	if o.Cleaner == DefaultCleaner {
+		o.Cleaner = CleanCleaner
 	}
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer
@@ -468,6 +499,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "[Options]\n")
 	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
 	fmt.Fprintf(&buf, "  cache_size=%d\n", o.Cache.MaxSize())
+	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)

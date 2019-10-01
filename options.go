@@ -6,6 +6,16 @@ package pebble
 
 import "github.com/cockroachdb/pebble/internal/base"
 
+// Cleaner exports the base.Cleaner type.
+type Cleaner = base.Cleaner
+
+// Exported Cleaner constants.
+const (
+	DefaultCleaner = base.DefaultCleaner
+	CleanCleaner   = base.CleanCleaner
+	ArchiveCleaner = base.ArchiveCleaner
+)
+
 // Compression exports the base.Compression type.
 type Compression = base.Compression
 
