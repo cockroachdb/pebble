@@ -157,8 +157,6 @@ func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta [
 
 	for i := range paths {
 		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
-		// TODO(peter): should use something like checkpointFS here in case a copy
-		// is required.
 		err := vfs.LinkOrCopy(fs, paths[i], target)
 		if err != nil {
 			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
