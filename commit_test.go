@@ -157,15 +157,10 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 
 type syncDelayFile struct {
 	vfs.File
-	waiting chan struct{}
-	done    chan struct{}
+	done chan struct{}
 }
 
 func (f *syncDelayFile) Sync() error {
-	select {
-	case f.waiting <- struct{}{}:
-	default:
-	}
 	<-f.done
 	return nil
 }
@@ -180,12 +175,11 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// syncDelayFile will send to the waiting channel when Sync is called, and
-	// then block on the done channel befor returning from that call.
+	// syncDelayFile will block on the done channel befor returning from Sync
+	// call.
 	sf := &syncDelayFile{
-		File:    f,
-		waiting: make(chan struct{}, 1),
-		done:    make(chan struct{}),
+		File: f,
+		done: make(chan struct{}),
 	}
 
 	// A basic commitEnv which writes to a WAL.
@@ -221,10 +215,6 @@ func TestCommitPipelineWALClose(t *testing.T) {
 			errCh <- p.Commit(b, true /* sync */)
 		}(i)
 	}
-
-	<-sf.waiting
-	// At this point, we know at least one operation is blocked waiting for the
-	// Sync to finish, but most likely all are blocked.
 
 	// Wait for all of the WAL writes to queue up. This ensures we don't violate
 	// the concurrency requirements of LogWriter, and also ensures all of the WAL
