@@ -4,19 +4,7 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/vfs"
+import "github.com/cockroachdb/pebble/internal/base"
 
-// syncingFS wraps a vfs.FS with one that wraps newly created files with
-// vfs.NewSyncingFile.
-type syncingFS struct {
-	vfs.FS
-	syncOpts vfs.SyncingFileOptions
-}
-
-func (fs syncingFS) Create(name string) (vfs.File, error) {
-	f, err := fs.FS.Create(name)
-	if err != nil {
-		return nil, err
-	}
-	return vfs.NewSyncingFile(f, fs.syncOpts), nil
-}
+// syncingFS exports the base.SyncingFS type.
+type syncingFS = base.SyncingFS

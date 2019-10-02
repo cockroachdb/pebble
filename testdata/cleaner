@@ -1,0 +1,34 @@
+open db
+----
+
+batch db
+set a 1
+set b 2
+set c 3
+----
+
+flush db
+----
+
+batch db
+set d 4
+----
+
+compact db
+----
+
+list db
+----
+000004.log
+000006.log
+000008.sst
+CURRENT
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+archive
+
+list db/archive
+----
+000005.sst
+000007.sst

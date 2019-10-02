@@ -231,6 +231,11 @@ type Options struct {
 	// The default cache size is 8 MB.
 	Cache *cache.Cache
 
+	// Cleaner cleans obsolete files.
+	//
+	// The default cleaner uses the DeleteCleaner.
+	Cleaner Cleaner
+
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
@@ -360,6 +365,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Cache == nil {
 		o.Cache = cache.New(8 << 20) // 8 MB
 	}
+	if o.Cleaner == nil {
+		o.Cleaner = DeleteCleaner{}
+	}
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer
 	}
@@ -468,6 +476,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "[Options]\n")
 	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
 	fmt.Fprintf(&buf, "  cache_size=%d\n", o.Cache.MaxSize())
+	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)

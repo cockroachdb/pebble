@@ -57,7 +57,7 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
 		FS: d.opts.FS,
-		syncOpts: vfs.SyncingFileOptions{
+		SyncOpts: vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,
 		},
 	}

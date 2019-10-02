@@ -150,7 +150,7 @@ func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta [
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
 		FS: opts.FS,
-		syncOpts: vfs.SyncingFileOptions{
+		SyncOpts: vfs.SyncingFileOptions{
 			BytesPerSync: opts.BytesPerSync,
 		},
 	}
