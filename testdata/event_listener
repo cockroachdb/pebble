@@ -51,7 +51,7 @@ close: db/CURRENT.000007.dbtmp
 rename: db/CURRENT.000007.dbtmp -> db/CURRENT
 sync: db
 [JOB 3] MANIFEST created 000007
-[JOB 3] flushed to L0: 1 (825 B)
+[JOB 3] flushed to L0 [000006] (825 B)
 [JOB 3] MANIFEST deleted 000003
 
 compact
@@ -77,9 +77,9 @@ close: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
 [JOB 5] MANIFEST created 000010
-[JOB 5] flushed to L0: 1 (825 B)
+[JOB 5] flushed to L0 [000009] (825 B)
 [JOB 5] MANIFEST deleted 000007
-[JOB 6] compacting L0 -> L6: 2+0 (1.6 K + 0 B)
+[JOB 6] compacting L0 [000006 000009] (1.6 K) + L6 [] (0 B)
 create: db/000011.sst
 [JOB 6] compacting: sstable created 000011
 sync: db/000011.sst
@@ -93,7 +93,7 @@ close: db/CURRENT.000012.dbtmp
 rename: db/CURRENT.000012.dbtmp -> db/CURRENT
 sync: db
 [JOB 6] MANIFEST created 000012
-[JOB 6] compacted L0 -> L6: 2+0 (1.6 K + 0 B) -> 1 (825 B)
+[JOB 6] compacted L0 [000006 000009] (1.6 K) + L6 [] (0 B) -> L6 [000011] (825 B)
 [JOB 6] sstable deleted 000006
 [JOB 6] sstable deleted 000009
 [JOB 6] MANIFEST deleted 000010
@@ -124,7 +124,7 @@ close: db/CURRENT.000015.dbtmp
 rename: db/CURRENT.000015.dbtmp -> db/CURRENT
 sync: db
 [JOB 8] MANIFEST created 000015
-[JOB 8] flushed to L0: 1 (825 B)
+[JOB 8] flushed to L0 [000014] (825 B)
 
 enable-file-deletions
 ----
