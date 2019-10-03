@@ -64,6 +64,8 @@ func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 		return 0
 	}
 
+	// We assume that all the bytes in L0 need to be compacted to L1. This is unlike
+	// the RocksDB logic that figures out whether L0 needs compaction.
 	compactionDebt := totalSize(p.vers.Files[0]) + l0ExtraSize
 	bytesAddedToNextLevel := compactionDebt
 
@@ -75,8 +77,12 @@ func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 	estimatedL0CompactionSize := uint64(p.opts.L0CompactionThreshold * p.opts.MemTableSize)
 	// The ratio bytesAddedToNextLevel(L0 Size)/estimatedL0CompactionSize is the
 	// estimated number of L0->LBase compactions which will need to occur for the
-	// LSM tree to become stable. We multiply this by levelSize(LBase size) to
-	// estimate the compaction debt incurred by LBase in the L0->LBase compactions.
+	// LSM tree to become stable. Let this ratio be N.
+	//
+	// We assume that each of these N compactions will overlap with all the current bytes
+	// in LBase, so we multiply N * totalSize(LBase) to count the contribution of LBase inputs
+	// to these compactions. Note that each compaction is adding bytes to LBase that will take
+	// part in future compactions, but we have already counted those.
 	compactionDebt += (levelSize * bytesAddedToNextLevel) / estimatedL0CompactionSize
 
 	var nextLevelSize uint64
@@ -87,6 +93,8 @@ func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			levelRatio := float64(nextLevelSize) / float64(levelSize)
+			// The current level contributes bytesAddedToNextLevel to compactions.
+			// The next level contributes levelRatio * bytesAddedToNextLevel.
 			compactionDebt += uint64(float64(bytesAddedToNextLevel) * (levelRatio + 1))
 		}
 		levelSize = nextLevelSize
