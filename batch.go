@@ -1079,7 +1079,13 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		offsets:   make([]flushableBatchEntry, 0, batch.Count()),
 		flushedCh: make(chan struct{}),
 	}
-
+	if b.data != nil {
+		// Note that this sequence number is not correct when this batch has not
+		// been applied since the sequence number has not been assigned yet. The
+		// correct sequence number will be set later. But it is correct when the
+		// batch is being replayed from the WAL.
+		b.seqNum = batch.SeqNum()
+	}
 	var rangeDelOffsets []flushableBatchEntry
 	if len(b.data) > batchHeaderLen {
 		// Non-empty batch.

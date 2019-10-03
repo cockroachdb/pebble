@@ -283,19 +283,52 @@ func (d *DB) replayWAL(
 	defer file.Close()
 
 	var (
-		b   Batch
-		buf bytes.Buffer
-		mem *memTable
-		rr  = record.NewReader(file, logNum)
+		b               Batch
+		buf             bytes.Buffer
+		mem             *memTable
+		toFlush         []flushable
+		rr              = record.NewReader(file, logNum)
+		offset          int64 // byte offset in rr
+		lastFlushOffset int64
 	)
 
-	// In read-only mode, we replay directly into the mutable memtable which will
-	// never be flushed.
 	if d.opts.ReadOnly {
+		// In read-only mode, we replay directly into the mutable memtable which will
+		// never be flushed.
 		mem = d.mu.mem.mutable
 	}
 
+	// Flushes the current memtable, if not nil.
+	flushMem := func() {
+		if mem == nil {
+			return
+		}
+		var logSize uint64
+		if offset >= lastFlushOffset {
+			logSize = uint64(offset - lastFlushOffset)
+		}
+		// Else, this was the initial memtable in the read-only case which must have
+		// been empty, but we need to flush it since we don't want to add to it later.
+		mem.logSize = logSize
+		lastFlushOffset = offset
+		if !d.opts.ReadOnly {
+			toFlush = append(toFlush, mem)
+		}
+		mem = nil
+	}
+	// Creates a new memtable if there is no current memtable.
+	ensureMem := func() {
+		if mem != nil {
+			return
+		}
+		mem = newMemTable(d.opts)
+		if d.opts.ReadOnly {
+			d.mu.mem.mutable = mem
+			d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		}
+	}
 	for {
+		offset = rr.Offset()
 		r, err := rr.Next()
 		if err == nil {
 			_, err = io.Copy(&buf, r)
@@ -315,47 +348,55 @@ func (d *DB) replayWAL(
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
 
-		// TODO(peter): If the batch is too large to fit in the memtable, flush the
-		// existing memtable and write the batch as a separate L0 table.
 		b = Batch{}
 		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
 
-		if mem == nil {
-			mem = newMemTable(d.opts)
-		}
-
-		for {
-			err := mem.prepare(&b)
-			if err == arenaskl.ErrArenaFull {
-				// TODO(peter): write the memtable to disk.
-				panic(err)
+		if b.memTableSize >= uint32(d.largeBatchThreshold) {
+			flushMem()
+			// Make a copy of the data slice since it is currently owned by buf and will
+			// be reused in the next iteration.
+			b.storage.data = append([]byte(nil), b.storage.data...)
+			b.flushable = newFlushableBatch(&b, d.opts.Comparer)
+			if d.opts.ReadOnly {
+				d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
+			} else {
+				toFlush = append(toFlush, b.flushable)
 			}
-			if err != nil {
+		} else {
+			ensureMem()
+			if err = mem.prepare(&b); err != nil && err != arenaskl.ErrArenaFull {
 				return 0, err
 			}
-			break
+			if err == arenaskl.ErrArenaFull {
+				flushMem()
+				ensureMem()
+				// The arena cannot be full.
+				err = mem.prepare(&b)
+				if err != nil {
+					return 0, err
+				}
+			}
+			if err = mem.apply(&b, seqNum); err != nil {
+				return 0, err
+			}
+			mem.unref()
 		}
-
-		if err := mem.apply(&b, seqNum); err != nil {
-			return 0, err
-		}
-		mem.unref()
-
 		buf.Reset()
 	}
-
+	flushMem()
+	// mem is nil here.
 	if d.opts.ReadOnly {
-		// In read-only mode, each WAL file is replayed into its own memtable. This
-		// is done so that the WAL metrics can be accurately provided.
-		mem.logSize = uint64(rr.Offset())
-		d.mu.mem.mutable = newMemTable(d.opts)
-		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		// We need to restore the invariant that the last memtable in d.mu.mem.queue is the
+		// mutable one for the next WAL file, since in read-only mode, each WAL file is replayed
+		// into its own set of memtables. This is done so that the WAL metrics can be accurately
+		// provided.
+		ensureMem()
 		d.mu.versions.metrics.WAL.Files++
-	} else if mem != nil && !mem.empty() {
+	} else {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, []flushable{mem}, &d.bytesFlushed)
+			1 /* base level */, toFlush, &d.bytesFlushed)
 		newVE, pendingOutputs, err := d.runCompaction(jobID, c, nilPacer)
 		if err != nil {
 			return 0, err
@@ -369,7 +410,6 @@ func (d *DB) replayWAL(
 			delete(d.mu.compact.pendingOutputs, fileNum)
 		}
 	}
-
 	return maxSeqNum, nil
 }
 

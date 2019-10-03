@@ -462,6 +462,9 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		// current memtable to be flushed. We want the large batch to be part of
 		// the same log, so we add it to the WAL here, rather than after the call
 		// to makeRoomForWrite().
+		//
+		// Set the sequence number since it was not set to the correct value earlier
+		// (see comment in newFlushableBatch()).
 		b.flushable.seqNum = b.SeqNum()
 		if !d.opts.DisableWAL {
 			var err error
@@ -1077,7 +1080,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if b != nil && b.flushable != nil {
 			// The batch is too large to fit in the memtable so add it directly to
 			// the immutable queue. The flushable batch is associated with the same
-			// memtable as the immutable memtable, but logically occurs after it in
+			// log as the immutable memtable, but logically occurs after it in
 			// seqnum space. So give the flushable batch the logNum and clear it from
 			// the immutable log. This is done as a defensive measure to prevent the
 			// WAL containing the large batch from being deleted prematurely if the
