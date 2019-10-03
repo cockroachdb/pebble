@@ -91,6 +91,7 @@ type entry struct {
 	size  int64
 	ptype entryType
 	ref   int32
+	shard *shard
 }
 
 func (e *entry) init() *entry {
@@ -166,6 +167,9 @@ func (e *entry) Get() []byte {
 		return nil
 	}
 	atomic.StoreInt32(&e.ref, 1)
+	// Record a cache hit because the entry is being used as a WeakHandle and
+	// successfully avoided a more expensive shard.Get() operation.
+	atomic.AddInt64(&e.shard.hits, 1)
 	return v.buf
 }
 
@@ -181,6 +185,8 @@ type Handle struct {
 // Get returns the value stored in handle.
 func (h Handle) Get() []byte {
 	if h.value != nil {
+		// NB: We don't increment shard.hits in this code path because we only want
+		// to record a hit when the handle is retrieved from the cache.
 		return h.value.buf
 	}
 	return nil
@@ -219,6 +225,9 @@ type WeakHandle interface {
 type shard struct {
 	free func([]byte)
 
+	hits   int64
+	misses int64
+
 	mu sync.RWMutex
 
 	maxSize  int64
@@ -249,6 +258,11 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 		}
 	}
 	c.mu.RUnlock()
+	if value == nil {
+		atomic.AddInt64(&c.misses, 1)
+	} else {
+		atomic.AddInt64(&c.hits, 1)
+	}
 	return Handle{value: value, free: c.free}
 }
 
@@ -263,7 +277,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 	switch {
 	case e == nil:
 		// no cache entry? add it
-		e = &entry{ptype: etCold, key: k, size: int64(len(value))}
+		e = &entry{ptype: etCold, key: k, size: int64(len(value)), shard: c}
 		e.init()
 		e.setValue(v, c.free)
 		c.metaAdd(k, e)
@@ -332,9 +346,9 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 
 // Size returns the current space used by the cache.
 func (c *shard) Size() int64 {
-	c.mu.Lock()
+	c.mu.RLock()
 	size := c.countHot + c.countCold
-	c.mu.Unlock()
+	c.mu.RUnlock()
 	return size
 }
 
@@ -480,6 +494,18 @@ func (c *shard) runHandTest() {
 	c.handTest = c.handTest.next()
 }
 
+// Metrics holds metrics for the cache.
+type Metrics struct {
+	// The number of bytes inuse by the cache.
+	Size int64
+	// The count of objects (blocks or tables) in the cache.
+	Count int64
+	// The number of cache hits.
+	Hits int64
+	// The number of cache misses.
+	Misses int64
+}
+
 // Cache ...
 type Cache struct {
 	maxSize   int64
@@ -605,6 +631,21 @@ func (c *Cache) Free(b []byte) {
 	a := c.allocPool.Get().(*allocCache)
 	a.free(b)
 	c.allocPool.Put(a)
+}
+
+// Metrics returns the metrics for the cache.
+func (c *Cache) Metrics() Metrics {
+	var m Metrics
+	for i := range c.shards {
+		s := &c.shards[i]
+		s.mu.RLock()
+		m.Count += int64(len(s.blocks))
+		m.Size += s.countHot + s.countCold
+		s.mu.RUnlock()
+		m.Hits += atomic.LoadInt64(&s.hits)
+		m.Misses += atomic.LoadInt64(&s.misses)
+	}
+	return m
 }
 
 // NewID returns a new ID to be used as a namespace for cached file

@@ -49,7 +49,7 @@ type versionSet struct {
 	versions versionList
 	picker   *compactionPicker
 
-	metrics VersionMetrics
+	metrics Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
@@ -389,6 +389,14 @@ func (vs *versionSet) logAndApply(
 		l.Size = uint64(totalSize(newVersion.Files[i]))
 	}
 	return nil
+}
+
+func (vs *versionSet) incrementCompactions() {
+	vs.metrics.Compact.Count++
+}
+
+func (vs *versionSet) incrementFlushes() {
+	vs.metrics.Flush.Count++
 }
 
 // createManifest creates a manifest file that contains a snapshot of vs.
