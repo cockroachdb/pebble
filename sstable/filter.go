@@ -4,6 +4,33 @@
 
 package sstable
 
+import "sync/atomic"
+
+// FilterMetrics holds metrics for the filter policy.
+type FilterMetrics struct {
+	// The number of hits for the filter policy. This is the
+	// number of times the filter policy was successfully used to avoid access
+	// of a data block.
+	Hits int64
+	// The number of misses for the filter policy. This is the number of times
+	// the filter policy was checked but was unable to filter an access of a data
+	// block.
+	Misses int64
+}
+
+var dummyFilterMetrics FilterMetrics
+
+func (m *FilterMetrics) readerApply(r *Reader) {
+	if r.tableFilter != nil {
+		r.tableFilter.metrics = m
+	}
+}
+
+// BlockHandle is the file offset and length of a block.
+type BlockHandle struct {
+	Offset, Length uint64
+}
+
 type filterWriter interface {
 	addKey(key []byte)
 	finishBlock(blockOffset uint64) error
@@ -13,17 +40,25 @@ type filterWriter interface {
 }
 
 type tableFilterReader struct {
-	policy FilterPolicy
+	policy  FilterPolicy
+	metrics *FilterMetrics
 }
 
 func newTableFilterReader(policy FilterPolicy) *tableFilterReader {
 	return &tableFilterReader{
-		policy: policy,
+		policy:  policy,
+		metrics: &dummyFilterMetrics,
 	}
 }
 
 func (f *tableFilterReader) mayContain(data, key []byte) bool {
-	return f.policy.MayContain(TableFilter, data, key)
+	mayContain := f.policy.MayContain(TableFilter, data, key)
+	if mayContain {
+		atomic.AddInt64(&f.metrics.Misses, 1)
+	} else {
+		atomic.AddInt64(&f.metrics.Hits, 1)
+	}
+	return mayContain
 }
 
 type tableFilterWriter struct {

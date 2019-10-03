@@ -615,7 +615,7 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 			prevIterated = bytesIterated
 		}
 
-		expected := fb.totalBytes()
+		expected := fb.inuseBytes()
 		if bytesIterated != expected {
 			t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
 		}

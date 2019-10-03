@@ -123,7 +123,7 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 				case "flush":
 					getInfo := func() flushPacerInfo {
 						return flushPacerInfo{
-							totalBytes: currentTotal,
+							inuseBytes: currentTotal,
 						}
 					}
 					flushPacer := newFlushPacer(flushPacerEnv{

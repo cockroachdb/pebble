@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -24,7 +25,8 @@ const defaultTableCacheHitBuffer = 64
 var emptyIter = &errorIter{err: nil}
 
 type tableCache struct {
-	shards []tableCacheShard
+	shards        []tableCacheShard
+	filterMetrics FilterMetrics
 }
 
 func (c *tableCache) init(
@@ -33,6 +35,7 @@ func (c *tableCache) init(
 	c.shards = make([]tableCacheShard, runtime.NumCPU())
 	for i := range c.shards {
 		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards), hitBuffer)
+		c.shards[i].filterMetrics = &c.filterMetrics
 	}
 }
 
@@ -48,6 +51,32 @@ func (c *tableCache) newIters(
 
 func (c *tableCache) evict(fileNum uint64) {
 	c.getShard(fileNum).evict(fileNum)
+}
+
+func (c *tableCache) metrics() (CacheMetrics, FilterMetrics) {
+	var m CacheMetrics
+	for i := range c.shards {
+		s := &c.shards[i]
+		s.mu.RLock()
+		m.Count += int64(len(s.mu.nodes))
+		s.mu.RUnlock()
+		m.Hits += atomic.LoadInt64(&s.hits)
+		m.Misses += atomic.LoadInt64(&s.misses)
+	}
+	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
+	f := FilterMetrics{
+		Hits:   atomic.LoadInt64(&c.filterMetrics.Hits),
+		Misses: atomic.LoadInt64(&c.filterMetrics.Misses),
+	}
+	return m, f
+}
+
+func (c *tableCache) iterCount() int64 {
+	var n int64
+	for i := range c.shards {
+		n += int64(atomic.LoadInt32(&c.shards[i].iterCount))
+	}
+	return n
 }
 
 func (c *tableCache) Close() error {
@@ -75,9 +104,12 @@ type tableCacheShard struct {
 		lru   tableCacheNode
 	}
 
-	iterCount int32
-	releasing sync.WaitGroup
-	hitsPool  *sync.Pool
+	hits          int64
+	misses        int64
+	iterCount     int32
+	releasing     sync.WaitGroup
+	hitsPool      *sync.Pool
+	filterMetrics *FilterMetrics
 }
 
 func (c *tableCacheShard) init(
@@ -182,9 +214,12 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	// a batching mechanism to perform updates to the LRU list.
 	c.mu.RLock()
 	if n := c.mu.nodes[meta.FileNum]; n != nil {
+		// Fast-path hit.
+
 		// The caller is responsible for decrementing the refCount.
 		atomic.AddInt32(&n.refCount, 1)
 		c.mu.RUnlock()
+		atomic.AddInt64(&c.hits, 1)
 
 		// Record a hit for the node. This has to be done with tableCacheShard.mu
 		// unlocked as it might result in a call to
@@ -212,6 +247,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 
 	n := c.mu.nodes[meta.FileNum]
 	if n == nil {
+		// Slow-path miss.
+		atomic.AddInt64(&c.misses, 1)
 		n = &tableCacheNode{
 			// Cache the closure invoked when an iterator is closed. This avoids an
 			// allocation on every call to newIters.
@@ -236,6 +273,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 		}
 		go n.load(c)
 	} else {
+		// Slow-path hit.
+		atomic.AddInt64(&c.hits, 1)
 		// Remove n from the doubly-linked list.
 		n.next.prev = n.prev
 		n.prev.next = n.next
@@ -337,7 +376,7 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 		return
 	}
 	cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
-	n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts)
+	n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
 	if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
 		n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
 	}

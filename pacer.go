@@ -159,7 +159,7 @@ func (p *compactionPacer) maybeThrottle(bytesIterated uint64) error {
 
 // flushPacerInfo contains information necessary for compaction pacing.
 type flushPacerInfo struct {
-	totalBytes uint64
+	inuseBytes uint64
 }
 
 // flushPacerEnv defines the environment in which the compaction rate limiter is
@@ -177,8 +177,8 @@ type flushPacerEnv struct {
 type flushPacer struct {
 	internalPacer
 	env                flushPacerEnv
-	totalBytes         uint64
-	adjustedTotalBytes uint64
+	inuseBytes         uint64
+	adjustedInuseBytes uint64
 }
 
 func newFlushPacer(env flushPacerEnv) *flushPacer {
@@ -202,31 +202,31 @@ func (p *flushPacer) maybeThrottle(bytesIterated uint64) error {
 		return errors.New("pebble: maybeThrottle supplied with invalid bytesIterated")
 	}
 
-	// Recalculate total memtable bytes only once every 1000 iterations or
-	// when the refresh threshold is hit since getting the total memtable
-	// byte count requires grabbing DB.mu which is expensive.
+	// Recalculate inuse memtable bytes only once every 1000 iterations or when
+	// the refresh threshold is hit since getting the inuse memtable byte count
+	// requires grabbing DB.mu which is expensive.
 	if p.iterCount == 0 || bytesIterated > p.refreshBytesThreshold {
 		pacerInfo := p.env.getInfo()
 		p.iterCount = 1000
 		p.refreshBytesThreshold = bytesIterated + (p.env.memTableSize * 5 / 100)
-		p.adjustedTotalBytes = pacerInfo.totalBytes
-		if p.totalBytes == pacerInfo.totalBytes {
-			// The total bytes in the memtables have not changed since the previous
+		p.adjustedInuseBytes = pacerInfo.inuseBytes
+		if p.inuseBytes == pacerInfo.inuseBytes {
+			// The inuse bytes in the memtables have not changed since the previous
 			// call: user writes have completely stopped. Allow the flush to proceed
 			// as fast as possible until the next recalculation. We adjust the
 			// recalculation threshold so that we can be nimble in the face of new
 			// user writes.
-			p.adjustedTotalBytes += p.slowdownThreshold
+			p.adjustedInuseBytes += p.slowdownThreshold
 			p.iterCount = 100
 		}
-		p.totalBytes = pacerInfo.totalBytes
+		p.inuseBytes = pacerInfo.inuseBytes
 	}
 	p.iterCount--
 
-	// dirtyBytes is the total number of bytes in the memtables minus the number of
+	// dirtyBytes is the inuse number of bytes in the memtables minus the number of
 	// bytes flushed. It represents unflushed bytes in all the memtables, even the
 	// ones which aren't being flushed such as the mutable memtable.
-	dirtyBytes := p.adjustedTotalBytes - bytesIterated
+	dirtyBytes := p.adjustedInuseBytes - bytesIterated
 	flushAmount := bytesIterated - p.prevBytesIterated
 	p.prevBytesIterated = bytesIterated
 

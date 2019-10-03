@@ -486,6 +486,7 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 			metrics[f.Level] = levelMetrics
 		}
 		levelMetrics.BytesIngested += m.Size
+		levelMetrics.TablesIngested++
 	}
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir); err != nil {
 		return nil, err
