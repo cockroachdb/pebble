@@ -261,7 +261,7 @@ func runTest(dir string, t test) {
 	stopProf := startCPUProfile()
 	defer stopProf()
 
-	backgroundCompactions := func(p *pebble.VersionMetrics) bool {
+	backgroundCompactions := func(p *pebble.Metrics) bool {
 		// The last level never gets selected as an input level for compaction,
 		// only as an output level, so ignore it for the purposes of determining if
 		// background compactions are still needed.
