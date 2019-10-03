@@ -280,19 +280,24 @@ func (d *DB) replayWAL(
 	defer file.Close()
 
 	var (
-		b   Batch
-		buf bytes.Buffer
-		mem *memTable
-		rr  = record.NewReader(file, logNum)
+		b       Batch
+		buf     bytes.Buffer
+		mem     *memTable
+		toFlush []flushable
+		rr      = record.NewReader(file, logNum)
 	)
 
-	// In read-only mode, we replay directly into the mutable memtable which will
-	// never be flushed.
 	if d.opts.ReadOnly {
+		// In read-only mode, we replay directly into the mutable memtable which will
+		// never be flushed.
 		mem = d.mu.mem.mutable
+	} else {
+		mem = newMemTable(d.opts)
 	}
 
+	var lastFlushOffset int64
 	for {
+		offset := rr.Offset()
 		r, err := rr.Next()
 		if err == nil {
 			_, err = io.Copy(&buf, r)
@@ -312,47 +317,79 @@ func (d *DB) replayWAL(
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
 
-		// TODO(peter): If the batch is too large to fit in the memtable, flush the
-		// existing memtable and write the batch as a separate L0 table.
 		b = Batch{}
 		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
 
-		if mem == nil {
-			mem = newMemTable(d.opts)
-		}
-
-		for {
-			err := mem.prepare(&b)
-			if err == arenaskl.ErrArenaFull {
-				// TODO(peter): write the memtable to disk.
-				panic(err)
+		// Flushes the current memtable, if not empty.
+		flushMem := func() {
+			if mem.empty() {
+				return
 			}
-			if err != nil {
+			mem.logSize = uint64(offset - lastFlushOffset)
+			lastFlushOffset = offset
+			toFlush = append(toFlush, mem)
+			mem = nil
+		}
+		// Creates a new memtable if there is no current memtable. If there is one, it must
+		// have been empty. flushMem and createMem are split into separate functions since
+		// in the read-only case we may need to insert a flushable batch into d.mu.mem.queue
+		// after the flush and before the create.
+		createMem := func() {
+			if mem != nil {
+				return
+			}
+			mem = newMemTable(d.opts)
+			if d.opts.ReadOnly {
+				d.mu.mem.mutable = mem
+				d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+			}
+		}
+		if b.memTableSize >= uint32(d.largeBatchThreshold) {
+			flushMem()
+			b.flushable = newFlushableBatch(&b, d.opts.Comparer)
+			toFlush = append(toFlush, b.flushable)
+			if d.opts.ReadOnly {
+				d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
+			}
+			createMem()
+		} else {
+			if err = mem.prepare(&b); err != nil && err != arenaskl.ErrArenaFull {
 				return 0, err
 			}
-			break
+			if err == arenaskl.ErrArenaFull {
+				flushMem()
+				createMem()
+				// The arena cannot be full.
+				err = mem.prepare(&b)
+				if err != nil {
+					return 0, err
+				}
+			}
+			if err = mem.apply(&b, seqNum); err != nil {
+				return 0, err
+			}
+			mem.unref()
 		}
-
-		if err := mem.apply(&b, seqNum); err != nil {
-			return 0, err
-		}
-		mem.unref()
-
 		buf.Reset()
 	}
-
+	if !mem.empty() {
+		mem.logSize = uint64(rr.Offset() - lastFlushOffset)
+		toFlush = append(toFlush, mem)
+	}
 	if d.opts.ReadOnly {
-		// In read-only mode, each WAL file is replayed into its own memtable. This
-		// is done so that the WAL metrics can be accurately provided.
-		mem.logSize = uint64(rr.Offset())
-		d.mu.mem.mutable = newMemTable(d.opts)
-		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		// In read-only mode, each WAL file is replayed into its own set of memtables. This
+		// is done so that the WAL metrics can be accurately provided. Create a new mutable
+		// memtable for the next WAL file.
+		if !mem.empty() {
+			d.mu.mem.mutable = newMemTable(d.opts)
+			d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		}
 		d.mu.versions.metrics.WAL.Files++
-	} else if mem != nil && !mem.empty() {
+	} else {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, []flushable{mem}, &d.bytesFlushed)
+			1 /* base level */, toFlush, &d.bytesFlushed)
 		newVE, pendingOutputs, err := d.runCompaction(jobID, c, nilPacer)
 		if err != nil {
 			return 0, err
@@ -366,7 +403,6 @@ func (d *DB) replayWAL(
 			delete(d.mu.compact.pendingOutputs, fileNum)
 		}
 	}
-
 	return maxSeqNum, nil
 }
 
