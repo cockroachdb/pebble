@@ -23,11 +23,6 @@ import (
 	"github.com/golang/snappy"
 )
 
-// BlockHandle is the file offset and length of a block.
-type BlockHandle struct {
-	Offset, Length uint64
-}
-
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.

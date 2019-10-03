@@ -635,7 +635,7 @@ func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
 		totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
 	}
 	for _, m := range d.mu.mem.queue {
-		pacerInfo.totalDirtyBytes += m.totalBytes()
+		pacerInfo.totalDirtyBytes += m.inuseBytes()
 	}
 	d.mu.Unlock()
 
@@ -646,7 +646,7 @@ func (d *DB) getFlushPacerInfo() flushPacerInfo {
 	var pacerInfo flushPacerInfo
 	d.mu.Lock()
 	for _, m := range d.mu.mem.queue {
-		pacerInfo.totalBytes += m.totalBytes()
+		pacerInfo.inuseBytes += m.inuseBytes()
 	}
 	d.mu.Unlock()
 	return pacerInfo
@@ -769,6 +769,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
+	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
@@ -897,6 +898,7 @@ func (d *DB) compact1() (err error) {
 			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
 		}
 	}
+	d.mu.versions.incrementCompactions()
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
@@ -927,7 +929,8 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		meta := &c.inputs[0][0]
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel: &LevelMetrics{
-				BytesMoved: meta.Size,
+				BytesMoved:  meta.Size,
+				TablesMoved: 1,
 			},
 		}
 		ve := &versionEdit{
@@ -1070,6 +1073,11 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
 
 		metrics.BytesWritten += meta.Size
+		if c.flushing == nil {
+			metrics.TablesCompacted++
+		} else {
+			metrics.TablesFlushed++
+		}
 
 		// The handling of range boundaries is a bit complicated.
 		if n := len(ve.NewFiles); n > 1 {

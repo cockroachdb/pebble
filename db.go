@@ -43,6 +43,7 @@ type flushable interface {
 	newIter(o *IterOptions) internalIterator
 	newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator
 	newRangeDelIter(o *IterOptions) internalIterator
+	inuseBytes() uint64
 	totalBytes() uint64
 	flushed() chan struct{}
 	readyForFlush() bool
@@ -870,11 +871,17 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 }
 
 // Metrics returns metrics about the database.
-func (d *DB) Metrics() *VersionMetrics {
-	metrics := &VersionMetrics{}
+func (d *DB) Metrics() *Metrics {
+	metrics := &Metrics{}
 	recycledLogs := d.logRecycler.count()
+
 	d.mu.Lock()
 	*metrics = d.mu.versions.metrics
+	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
+	for _, m := range d.mu.mem.queue {
+		metrics.MemTable.Size += m.totalBytes()
+	}
+	metrics.MemTable.Count = int64(len(d.mu.mem.queue))
 	metrics.WAL.ObsoleteFiles = int64(recycledLogs)
 	metrics.WAL.Size = atomic.LoadUint64(&d.mu.log.size)
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
@@ -890,6 +897,10 @@ func (d *DB) Metrics() *VersionMetrics {
 		}
 	}
 	d.mu.Unlock()
+
+	metrics.BlockCache = d.opts.Cache.Metrics()
+	metrics.TableCache, metrics.Filter = d.tableCache.metrics()
+	metrics.TableIters = int64(d.tableCache.iterCount())
 	return metrics
 }
 

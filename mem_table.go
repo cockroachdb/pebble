@@ -198,8 +198,12 @@ func (m *memTable) newRangeDelIter(*IterOptions) internalIterator {
 	return rangedel.NewIter(m.cmp, tombstones)
 }
 
-func (m *memTable) totalBytes() uint64 {
+func (m *memTable) inuseBytes() uint64 {
 	return uint64(m.skl.Size() - m.emptySize)
+}
+
+func (m *memTable) totalBytes() uint64 {
+	return uint64(m.skl.Arena().Capacity())
 }
 
 func (m *memTable) close() error {

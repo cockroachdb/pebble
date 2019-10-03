@@ -135,7 +135,7 @@ func TestMemTableBytesIterated(t *testing.T) {
 	m := newMemTable(nil)
 	for i := 0; i < 200; i++ {
 		bytesIterated := m.bytesIterated(t)
-		expected := m.totalBytes()
+		expected := m.inuseBytes()
 		if bytesIterated != expected {
 			t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
 		}
