@@ -1079,7 +1079,9 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		offsets:   make([]flushableBatchEntry, 0, batch.Count()),
 		flushedCh: make(chan struct{}),
 	}
-
+	if b.data != nil {
+		b.seqNum = batch.SeqNum()
+	}
 	var rangeDelOffsets []flushableBatchEntry
 	if len(b.data) > batchHeaderLen {
 		// Non-empty batch.
