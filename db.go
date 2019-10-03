@@ -884,6 +884,39 @@ func (d *DB) Metrics() *VersionMetrics {
 	return metrics
 }
 
+// SSTables retrieves the current sstables. The returned slice is indexed by
+// level and each level is indexed by the position of the sstable within the
+// level. Note that this information may be out of date due to concurrent
+// flushes and compactions.
+func (d *DB) SSTables() [][]TableInfo {
+	// Grab and reference the current readState.
+	readState := d.loadReadState()
+	defer readState.unref()
+
+	// TODO(peter): This is somewhat expensive, especially on a large
+	// database. It might be worthwhile to unify TableInfo and FileMetadata and
+	// then we could simply return current.Files. Note that RocksDB is doing
+	// something similar to the current code, so perhaps it isn't too bad.
+	srcLevels := readState.current.Files
+	var totalTables int
+	for i := range srcLevels {
+		totalTables += len(srcLevels[i])
+	}
+
+	destTables := make([]TableInfo, totalTables)
+	destLevels := make([][]TableInfo, len(srcLevels))
+	for i := range destLevels {
+		srcLevel := srcLevels[i]
+		destLevel := destTables[:len(srcLevel):len(srcLevel)]
+		destTables = destTables[len(srcLevel):]
+		for j := range destLevel {
+			destLevel[j] = srcLevel[j].TableInfo()
+		}
+		destLevels[i] = destLevel
+	}
+	return destLevels
+}
+
 func (d *DB) walPreallocateSize() int {
 	// Set the WAL preallocate size to 110% of the memtable size. Note that there
 	// is a bit of apples and oranges in units here as the memtabls size

@@ -223,6 +223,20 @@ func TestEventListener(t *testing.T) {
 		case "metrics":
 			return d.Metrics().String()
 
+		case "sstables":
+			var buf bytes.Buffer
+			for i, level := range d.SSTables() {
+				if len(level) == 0 {
+					continue
+				}
+				fmt.Fprintf(&buf, "%d:\n", i)
+				for _, m := range level {
+					fmt.Fprintf(&buf, "  %d:[%s-%s]\n",
+						m.FileNum, m.Smallest.UserKey, m.Largest.UserKey)
+				}
+			}
+			return buf.String()
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}

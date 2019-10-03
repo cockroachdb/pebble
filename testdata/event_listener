@@ -159,6 +159,14 @@ level__files____size___score______in__ingest____move____read___write___w-amp
     6      1   825 B    0.00   1.6 K     0 B     0 B   1.6 K   825 B     0.5
 total      3   2.4 K    0.00   933 B   825 B     0 B   1.6 K   4.1 K     4.5
 
+sstables
+----
+0:
+  14:[a-a]
+  16:[a-a]
+6:
+  11:[a-a]
+
 checkpoint
 ----
 mkdir-all: checkpoint 0755
