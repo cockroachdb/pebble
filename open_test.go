@@ -335,3 +335,68 @@ func TestOpenReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenWALReplay(t *testing.T) {
+	mem := vfs.NewMem()
+
+	var contents []string
+	largeValue := []byte(strings.Repeat("a", 100<<10))
+	hugeValue := []byte(strings.Repeat("b", 10<<20))
+	checkIter := func(iter *Iterator) {
+		t.Helper()
+
+		var keys []string
+		for valid := iter.First(); valid; valid = iter.Next() {
+			keys = append(keys, string(iter.Key()))
+		}
+		require.NoError(t, iter.Close())
+		expectedKeys := []string{"1", "2", "3", "4", "5"}
+		if diff := pretty.Diff(keys, expectedKeys); diff != nil {
+			t.Fatalf("%s\n%s", strings.Join(diff, "\n"), keys)
+		}
+	}
+	for _, reOpen := range []string{"rw", "r"} {
+		t.Log(reOpen)
+		// Create a new DB and populate it with some data.
+		d, err := Open(reOpen, &Options{
+			FS:           mem,
+			MemTableSize: 32 << 20,
+		})
+		require.NoError(t, err)
+		// All these values will fit in a single memtable, so on closing the db there
+		// will be no sst and all the data is in the WAL.
+		require.NoError(t, d.Set([]byte("1"), largeValue, nil))
+		require.NoError(t, d.Set([]byte("2"), largeValue, nil))
+		require.NoError(t, d.Set([]byte("3"), largeValue, nil))
+		require.NoError(t, d.Set([]byte("4"), hugeValue, nil))
+		require.NoError(t, d.Set([]byte("5"), largeValue, nil))
+		checkIter(d.NewIter(nil))
+		require.NoError(t, d.Close())
+		contents, err = mem.List(reOpen)
+		require.NoError(t, err)
+		sort.Strings(contents)
+		for _, fname := range contents {
+			t.Log(fname)
+		}
+
+		readOnly := false
+		if reOpen == "r" {
+			readOnly = true
+		}
+		// Re-open the DB with a smaller memtable. Values for 1, 2 will fit in first memtable;
+		// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
+		// which will cause the previous memtable to be flushed; value for 5 will go in the next
+		// memtable
+		d, err = Open(reOpen, &Options{
+			FS:           mem,
+			MemTableSize: 300 << 10,
+			ReadOnly:     readOnly,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		checkIter(d.NewIter(nil))
+		require.NoError(t, d.Close())
+	}
+}
