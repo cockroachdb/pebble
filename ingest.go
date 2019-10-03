@@ -29,6 +29,18 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 	return 0
 }
 
+func ingestValidateKey(opts *Options, key *InternalKey) error {
+	if key.Kind() == InternalKeyKindInvalid {
+		return fmt.Errorf("pebble: external sstable has corrupted key: %s",
+			key.Pretty(opts.Comparer.Format))
+	}
+	if key.SeqNum() != 0 {
+		return fmt.Errorf("pebble: external sstable has non-zero seqnum: %s",
+			key.Pretty(opts.Comparer.Format))
+	}
+	return nil
+}
+
 func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
@@ -58,11 +70,17 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 		iter := r.NewIter(nil /* lower */, nil /* upper */)
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
+			if err := ingestValidateKey(opts, key); err != nil {
+				return nil, err
+			}
 			empty = false
 			meta.Smallest = key.Clone()
 			smallestSet = true
 		}
 		if key, _ := iter.Last(); key != nil {
+			if err := ingestValidateKey(opts, key); err != nil {
+				return nil, err
+			}
 			empty = false
 			meta.Largest = key.Clone()
 			largestSet = true
@@ -75,6 +93,9 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 	if iter := r.NewRangeDelIter(); iter != nil {
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
+			if err := ingestValidateKey(opts, key); err != nil {
+				return nil, err
+			}
 			empty = false
 			if !smallestSet ||
 				base.InternalCompare(opts.Comparer.Compare, meta.Smallest, *key) > 0 {
@@ -82,6 +103,9 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 			}
 		}
 		if key, val := iter.Last(); key != nil {
+			if err := ingestValidateKey(opts, key); err != nil {
+				return nil, err
+			}
 			empty = false
 			end := base.MakeRangeDeleteSentinelKey(val)
 			if !largestSet ||
@@ -126,7 +150,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
 
 	for i := 1; i < len(meta); i++ {
 		if sstableKeyCompare(cmp, meta[i-1].Largest, meta[i].Smallest) >= 0 {
-			return fmt.Errorf("files have overlapping ranges")
+			return fmt.Errorf("pebble: external sstables have overlapping ranges")
 		}
 	}
 	return nil
