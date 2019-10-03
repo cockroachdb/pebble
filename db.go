@@ -861,8 +861,8 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 }
 
 // Metrics returns metrics about the database.
-func (d *DB) Metrics() *VersionMetrics {
-	metrics := &VersionMetrics{}
+func (d *DB) Metrics() *Metrics {
+	metrics := &Metrics{}
 	recycledLogs := d.logRecycler.count()
 	d.mu.Lock()
 	*metrics = d.mu.versions.metrics

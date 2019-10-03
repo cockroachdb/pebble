@@ -33,6 +33,15 @@ type LevelMetrics struct {
 	BytesRead uint64
 	// The number of bytes written during compactions.
 	BytesWritten uint64
+	// TODO(peter): The number of sstables compacted to this level.
+	TablesCompacted int
+	// TODO(peter): The number of sstables flushed to this level.
+	TablesFlushed int
+	// TODO(peter): The number of sstables moved to this level by a "move"
+	// compaction.
+	TablesMoved int
+	// TODO(peter): The number of sstables ingested into the level.
+	TablesIngested int
 }
 
 // Add updates the counter metrics for the level.
@@ -69,8 +78,52 @@ func (m *LevelMetrics) format(buf *bytes.Buffer) {
 	)
 }
 
-// VersionMetrics holds metrics for each level.
-type VersionMetrics struct {
+// Metrics holds metrics for various subsystems of the DB such as the Cache,
+// Compactions, WAL, and per-Level metrics.
+type Metrics struct {
+	Cache struct {
+		// TODO(peter): The number of bytes inuse by the cache.
+		Inuse int64
+		// TODO(peter): The number of cache hits.
+		Hits int64
+		// TODO(peter): The number of cache misses.
+		Misses int64
+	}
+
+	Compaction struct {
+		// TODO(peter): The total number of compactions.
+		Count int
+		// TODO(peter): An estimate of the number of bytes that need to be compacted
+		// for the LSM to reach a stable state.
+		EstimatedDebt uint64
+	}
+
+	Flush struct {
+		// TODO(peter): The total number of flushes.
+		Count int
+	}
+
+	Filter struct {
+		// TODO(peter): The number of hits for the filter policy. This is the
+		// number of times the filter policy was successfully used to avoid access
+		// of a data block.
+		Hits int64
+		// TODO(peter): The number of misses for the filter policy. This is the
+		// number of times the filter policy was checked but was unable to filter
+		// an access of a data block.
+		Misses int64
+	}
+
+	Levels [numLevels]LevelMetrics
+
+	Mem struct {
+		// TODO(peter): The number of bytes allocated by memtables and large
+		// (flushable) batches.
+		MemTable int64
+		// TODO(peter): The number of bytes allocated by the table cache.
+		TableCache int64
+	}
+
 	WAL struct {
 		// Number of live WAL files.
 		Files int64
@@ -84,10 +137,9 @@ type VersionMetrics struct {
 		// Number of bytes written to the WAL.
 		BytesWritten uint64
 	}
-	Levels [numLevels]LevelMetrics
 }
 
-func (m *VersionMetrics) formatWAL(buf *bytes.Buffer) {
+func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 	var writeAmp float64
 	if m.WAL.BytesIn > 0 {
 		writeAmp = float64(m.WAL.BytesWritten) / float64(m.WAL.BytesIn)
@@ -119,7 +171,7 @@ func (m *VersionMetrics) formatWAL(buf *bytes.Buffer) {
 // includes record fragment overhead. Write amplification is computed as
 // bytes-written / bytes-in, except for the total row where bytes-in is
 // replaced with WAL-bytes-written + bytes-ingested.
-func (m *VersionMetrics) String() string {
+func (m *Metrics) String() string {
 	var buf bytes.Buffer
 	var total LevelMetrics
 	fmt.Fprintf(&buf, "level__files____size___score______in__ingest____move____read___write___w-amp\n")

@@ -49,7 +49,7 @@ type versionSet struct {
 	versions versionList
 	picker   *compactionPicker
 
-	metrics VersionMetrics
+	metrics Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
