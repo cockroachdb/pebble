@@ -462,7 +462,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		// current memtable to be flushed. We want the large batch to be part of
 		// the same log, so we add it to the WAL here, rather than after the call
 		// to makeRoomForWrite().
-		b.flushable.seqNum = b.SeqNum()
+		b.flushable.setSeqNum(b.SeqNum())
 		if !d.opts.DisableWAL {
 			var err error
 			size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)

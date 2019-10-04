@@ -245,10 +245,20 @@ func TestBatchOpDoesIncrement(t *testing.T) {
 }
 
 func TestBatchGet(t *testing.T) {
-	for _, method := range []string{"build", "apply"} {
-		t.Run(method, func(t *testing.T) {
+	testCases := []struct {
+		method       string
+		memTableSize int
+	}{
+		{"build", 64 << 20},
+		{"build", 1 << 10},
+		{"apply", 64 << 20},
+	}
+
+	for _, c := range testCases {
+		t.Run(fmt.Sprintf("%s,mem=%d", c.method, c.memTableSize), func(t *testing.T) {
 			d, err := Open("", &Options{
-				FS: vfs.NewMem(),
+				FS:           vfs.NewMem(),
+				MemTableSize: c.memTableSize,
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -259,7 +269,7 @@ func TestBatchGet(t *testing.T) {
 			datadriven.RunTest(t, "testdata/batch_get", func(td *datadriven.TestData) string {
 				switch td.Cmd {
 				case "define":
-					switch method {
+					switch c.method {
 					case "build":
 						b = d.NewIndexedBatch()
 					case "apply":
@@ -270,7 +280,7 @@ func TestBatchGet(t *testing.T) {
 						return err.Error()
 					}
 
-					switch method {
+					switch c.method {
 					case "apply":
 						tmp := d.NewIndexedBatch()
 						tmp.Apply(b, nil)
@@ -282,6 +292,7 @@ func TestBatchGet(t *testing.T) {
 					if err := b.Commit(nil); err != nil {
 						return err.Error()
 					}
+					b = nil
 					return ""
 
 				case "get":
@@ -457,6 +468,8 @@ func TestFlushableBatch(t *testing.T) {
 					batch.Set(ikey.UserKey, value, nil)
 				case InternalKeyKindMerge:
 					batch.Merge(ikey.UserKey, value, nil)
+				case InternalKeyKindRangeDelete:
+					batch.DeleteRange(ikey.UserKey, value, nil)
 				}
 			}
 			b = newFlushableBatch(batch, DefaultComparer)
@@ -490,14 +503,23 @@ func TestFlushableBatch(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			b.seqNum = uint64(seqNum)
+			b.setSeqNum(uint64(seqNum))
+
+			var buf bytes.Buffer
 
 			iter := newInternalIterAdapter(b.newIter(nil))
-			var buf bytes.Buffer
 			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
 			}
 			iter.Close()
+
+			if rangeDelIter := b.newRangeDelIter(nil); rangeDelIter != nil {
+				iter := newInternalIterAdapter(rangeDelIter)
+				for valid := iter.First(); valid; valid = iter.Next() {
+					fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+				}
+				iter.Close()
+			}
 			return buf.String()
 
 		default:
@@ -520,7 +542,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			b := newBatch(nil)
 			// NB: We can't actually add to the flushable batch as we can to a
 			// memtable (which shares the "testdata/delete_range" data), so we fake
-			// it be concatenating the input and rebuilding the flushable batch from
+			// it by concatenating the input and rebuilding the flushable batch from
 			// scratch.
 			input += "\n" + td.Input
 			td.Input = input
