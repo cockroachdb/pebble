@@ -485,6 +485,7 @@ func TestIngest(t *testing.T) {
 	d, err := Open("", &Options{
 		FS:                    mem,
 		L0CompactionThreshold: 100,
+		L0StopWritesThreshold: 100,
 	})
 	if err != nil {
 		t.Fatal(err)

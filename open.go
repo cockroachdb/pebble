@@ -38,6 +38,9 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
 	opts = opts.EnsureDefaults()
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
 
 	d := &DB{
 		dbNum:          allocDBNum(),
