@@ -14,8 +14,6 @@ import (
 
 // TableInfo contains the common information for table related events.
 type TableInfo struct {
-	// Path is the location of the file on disk.
-	Path string
 	// FileNum is the internal DB identifier for the table.
 	FileNum uint64
 	// Size is the size of the file in bytes.

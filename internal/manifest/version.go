@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/vfs"
 )
 
 // Compare exports the base.Compare type.
@@ -56,9 +55,8 @@ func (m *FileMetadata) String() string {
 
 // TableInfo returns a subset of the FileMetadata state formatted as a
 // TableInfo.
-func (m *FileMetadata) TableInfo(fs vfs.FS, dirname string) TableInfo {
+func (m *FileMetadata) TableInfo() TableInfo {
 	return TableInfo{
-		Path:           base.MakeFilename(fs, dirname, base.FileTypeTable, m.FileNum),
 		FileNum:        m.FileNum,
 		Size:           m.Size,
 		Smallest:       m.Smallest,

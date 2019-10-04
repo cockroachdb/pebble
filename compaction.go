@@ -739,7 +739,7 @@ func (d *DB) flush1() error {
 	if err == nil {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
-			info.Output = append(info.Output, e.Meta.TableInfo(d.opts.FS, d.dirname))
+			info.Output = append(info.Output, e.Meta.TableInfo())
 		}
 		if len(ve.NewFiles) == 0 {
 			info.Err = errEmptyTable
@@ -862,7 +862,7 @@ func (d *DB) compact1() (err error) {
 	for i := range c.inputs {
 		for j := range c.inputs[i] {
 			m := &c.inputs[i][j]
-			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo(d.opts.FS, d.dirname))
+			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo())
 		}
 	}
 	d.opts.EventListener.CompactionBegin(info)
@@ -893,7 +893,7 @@ func (d *DB) compact1() (err error) {
 	if err == nil {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
-			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo(d.opts.FS, d.dirname))
+			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
 		}
 	}
 	d.opts.EventListener.CompactionEnd(info)

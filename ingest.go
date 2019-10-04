@@ -454,7 +454,7 @@ func (d *DB) Ingest(paths []string) error {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
 			info.Tables[i].Level = e.Level
-			info.Tables[i].TableInfo = e.Meta.TableInfo(d.opts.FS, d.dirname)
+			info.Tables[i].TableInfo = e.Meta.TableInfo()
 		}
 	}
 	d.opts.EventListener.TableIngested(info)
