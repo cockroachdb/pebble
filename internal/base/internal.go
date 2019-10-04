@@ -145,7 +145,10 @@ var kindsMap = map[string]InternalKeyKind{
 func ParseInternalKey(s string) InternalKey {
 	x := strings.Split(s, ".")
 	ukey := x[0]
-	kind := kindsMap[x[1]]
+	kind, ok := kindsMap[x[1]]
+	if !ok {
+		panic(fmt.Sprintf("unknown kind: %q", x[1]))
+	}
 	j := 0
 	if x[2][0] == 'b' {
 		j = 1
