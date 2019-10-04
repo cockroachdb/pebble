@@ -344,6 +344,12 @@ func (*memFS) PathJoin(elem ...string) string {
 	return path.Join(elem...)
 }
 
+func (*memFS) PathDir(p string) string {
+	// Note that memFS uses forward slashes for its separator, hence the use of
+	// path.Dir, not filepath.Dir.
+	return path.Dir(p)
+}
+
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
 	name     string

@@ -1318,38 +1318,42 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			}
 
 			path := base.MakeFilename(d.opts.FS, d.dirname, f.fileType, fileNum)
-			err := d.opts.FS.Remove(path)
-			if err == os.ErrNotExist {
-				continue
-			}
-
-			// TODO(peter): need to handle this errror, probably by re-adding the
-			// file that couldn't be deleted to one of the obsolete slices map.
-
-			switch f.fileType {
-			case fileTypeLog:
-				d.opts.EventListener.WALDeleted(WALDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
-			case fileTypeManifest:
-				d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
-			case fileTypeTable:
-				d.opts.EventListener.TableDeleted(TableDeleteInfo{
-					JobID:   jobID,
-					Path:    path,
-					FileNum: fileNum,
-					Err:     err,
-				})
-			}
+			d.deleteObsoleteFile(f.fileType, jobID, path, fileNum)
 		}
+	}
+}
+
+// deleteObsoleteFile deletes file that is no longer needed.
+func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileNum uint64) {
+	// TODO(peter): need to handle this error, probably by re-adding the
+	// file that couldn't be deleted to one of the obsolete slices map.
+	err := d.opts.Cleaner.Clean(d.opts.FS, fileType, path)
+	if err == os.ErrNotExist {
+		return
+	}
+
+	switch fileType {
+	case fileTypeLog:
+		d.opts.EventListener.WALDeleted(WALDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
+	case fileTypeManifest:
+		d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
+	case fileTypeTable:
+		d.opts.EventListener.TableDeleted(TableDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
 	}
 }
 

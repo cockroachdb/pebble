@@ -97,6 +97,9 @@ type FS interface {
 	// PathJoin joins any number of path elements into a single path, adding a
 	// separator if necessary.
 	PathJoin(elem ...string) string
+
+	// PathDir returns all but the last element of path, typically the path's directory.
+	PathDir(path string) string
 }
 
 // Default is a FS implementation backed by the underlying operating system's
@@ -155,6 +158,10 @@ func (defaultFS) PathBase(path string) string {
 
 func (defaultFS) PathJoin(elem ...string) string {
 	return filepath.Join(elem...)
+}
+
+func (defaultFS) PathDir(path string) string {
+	return filepath.Dir(path)
 }
 
 type randomReadsOption struct{}
