@@ -555,6 +555,7 @@ func parseOptions(s string, fn func(section, key, value string) error) error {
 // ParseHooks contains callbacks to create options fields which can have
 // user-defined implementations.
 type ParseHooks struct {
+	NewCleaner      func(name string) (Cleaner, error)
 	NewComparer     func(name string) (*Comparer, error)
 	NewFilterPolicy func(name string) (FilterPolicy, error)
 	NewMerger       func(name string) (*Merger, error)
@@ -583,6 +584,17 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				n, err := strconv.ParseInt(value, 10, 64)
 				if err == nil {
 					o.Cache = cache.New(n)
+				}
+			case "cleaner":
+				switch value {
+				case "archive":
+					o.Cleaner = ArchiveCleaner{}
+				case "delete":
+					o.Cleaner = DeleteCleaner{}
+				default:
+					if hooks != nil && hooks.NewCleaner != nil {
+						o.Cleaner, err = hooks.NewCleaner(value)
+					}
 				}
 			case "comparer":
 				switch value {

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,6 +121,16 @@ func TestOptionsCheck(t *testing.T) {
 	require.NoError(t, tmp.Check(s))
 }
 
+type testCleaner struct{}
+
+func (testCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
+	return nil
+}
+
+func (testCleaner) String() string {
+	return "test-cleaner"
+}
+
 func TestOptionsParse(t *testing.T) {
 	testComparer := *DefaultComparer
 	testComparer.Name = "test-comparer"
@@ -127,6 +138,12 @@ func TestOptionsParse(t *testing.T) {
 	testMerger.Name = "test-merger"
 
 	hooks := &ParseHooks{
+		NewCleaner: func(name string) (Cleaner, error) {
+			if name == (testCleaner{}).String() {
+				return testCleaner{}, nil
+			}
+			return nil, fmt.Errorf("unknown cleaner: %q", name)
+		},
 		NewComparer: func(name string) (*Comparer, error) {
 			if name == testComparer.Name {
 				return &testComparer, nil
@@ -142,12 +159,13 @@ func TestOptionsParse(t *testing.T) {
 	}
 
 	testCases := []struct {
+		cleaner  Cleaner
 		comparer *Comparer
 		merger   *Merger
 	}{
-		{nil, nil},
-		{&testComparer, nil},
-		{nil, &testMerger},
+		{testCleaner{}, nil, nil},
+		{nil, &testComparer, nil},
+		{nil, nil, &testMerger},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
