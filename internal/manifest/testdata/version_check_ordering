@@ -101,6 +101,14 @@ L0 flushed file 000003 has an ingested file coincident with smallest seqnum: 4-6
   3:[a#4,1-d#6,1]
 
 check-ordering
+L0
+  a.SET.0-d.SET.0
+  a.SET.0-d.SET.0
+  a.SET.0-d.SET.3
+----
+OK
+
+check-ordering
 L1
   a.SET.1-b.SET.2
 ----
