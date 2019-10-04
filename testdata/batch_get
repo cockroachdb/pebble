@@ -106,6 +106,9 @@ get b
 commit
 ----
 
+define
+----
+
 get b
 ----
 43

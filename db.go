@@ -465,7 +465,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		//
 		// Set the sequence number since it was not set to the correct value earlier
 		// (see comment in newFlushableBatch()).
-		b.flushable.seqNum = b.SeqNum()
+		b.flushable.setSeqNum(b.SeqNum())
 		if !d.opts.DisableWAL {
 			var err error
 			size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
