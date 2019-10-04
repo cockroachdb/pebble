@@ -477,18 +477,18 @@ func (b *BulkVersionEdit) Apply(
 		//   be added and deleted). And we can delay checking consistency of it until we merge
 		//   currFiles, addedFiles and deletedMap.
 		if level == 0 {
-			// - Note that any single sequence number (ssn) files contained inside a multi-sequence
+			// - Note that any ingested single sequence number (ssn) file contained inside a multi-sequence
 			//   number (msn) file must have been added before the latter. So it is not possible for
 			//   an ssn file to be in addedFiles and its corresponding msn file to be in currFiles,
 			//   but the reverse is possible. So for consistency checking we may need to look back
-			//   into currFiles for ssn files that overlap with an msn file in addedFiles. Also note
-			//   that LargestSeqNums must be strictly increasing across the slice formed by
-			//   concatenating addedFiles and currFiles and that this also is the desired sort order
-			//   of the unioned set of files. See the CheckOrdering func in version.go for a more
-			//   detailed explanation.
+			//   into currFiles for ssn files that overlap with an msn file in addedFiles.
+			// - The previous bullet does not hold for sequence number 0 files that can be added
+			//   later. See the CheckOrdering func in version.go for a detailed explanation.
+			//   Due to these files, the LargestSeqNums may not be increasing across the slice formed by
+			//   concatenating addedFiles and currFiles.
 			// - Instead of constructing a custom variant of the CheckOrdering logic, that is aware
 			//   of the 2 slices, we observe that the number of L0 files is small so we can afford
-			//   to repeat the full check on the concatenated slices (and CheckOrdering only does
+			//   to repeat the full check on the combined slices (and CheckOrdering only does
 			//   sequence num comparisons and not expensive key comparisons).
 			for _, ff := range [2][]FileMetadata{currFiles, addedFiles} {
 				for i := range ff {
@@ -503,6 +503,7 @@ func (b *BulkVersionEdit) Apply(
 					v.Files[level] = append(v.Files[level], *f)
 				}
 			}
+			SortBySeqNum(v.Files[level])
 			if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
 				return nil, fmt.Errorf("pebble: internal error: %v", err)
 			}
