@@ -163,12 +163,12 @@ MANIFEST-invalid
   last-seq-num: 20
   added:        L0 2:0[#0,0-#0,0]
 EOF
-pebble: internal error: L0 files 000001 and 000002 are not properly ordered: 2-5 vs 1-4
+pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
 
 manifest check
 ./testdata/MANIFEST-invalid
 ----
-MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 files 000001 and 000002 are not properly ordered: 2-5 vs 1-4
+MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
 Version state before failed Apply
 --- L0 ---
   1:0[#0,0-#0,0]

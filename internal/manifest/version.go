@@ -432,14 +432,16 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMe
 		// - Files with exactly one sequence number: these could be either ingested files
 		//   or flushed files. We cannot tell the difference between them based on FileMetadata,
 		//   so our consistency checking here uses the weaker checks assuming it is an ingested
-		//   file.
+		//   file (except for the 0 sequence number case below).
 		// - Files with multiple sequence numbers: these are necessarily flushed files.
 		//
-		// The only overlapping sequence number case is an ingested file contained in the sequence
-		// numbers of the flushed file -- it must be fully contained (not coincident with either
-		// end of the flushed file) since the memtable must have been at [a, b-1] (where b > a)
-		// when the ingested file was assigned sequence num b, and the memtable got a subsequent
-		// update that was given sequence num b+1, before being flushed.
+		// Two cases of overlapping sequence numbers:
+		// Case 1:
+		// An ingested file contained in the sequence numbers of the flushed file -- it must be
+		// fully contained (not coincident with either end of the flushed file) since the memtable
+		// must have been at [a, b-1] (where b > a) when the ingested file was assigned sequence
+		// num b, and the memtable got a subsequent update that was given sequence num b+1, before
+		// being flushed.
 		//
 		// So a sequence [1000, 1000] [1002, 1002] [1000, 2000] is invalid since the first and
 		// third file are inconsistent with each other. So comparing adjacent files is insufficient
@@ -449,6 +451,12 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMe
 		// x------y x-----------yx-------------y (flushed files where x, y are the endpoints)
 		//     y       y  y        y             (y's represent ingested files)
 		// And these are ordered in increasing order of y. Note that y's must be unique.
+		//
+		// Case 2:
+		// A flushed file that did not overlap in keys with any file in any level, but does overlap
+		// in the file key intervals. This file is placed in L0 since it overlaps in the file
+		// key intervals but since it has no overlapping data, it is assigned a sequence number
+		// of 0 in RocksDB. We handle this case for compatibility with RocksDB.
 
 		// The largest sequence number of a flushed file. Increasing.
 		var largestFlushedSeqNum uint64
@@ -466,12 +474,19 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMe
 			if i > 0 {
 				// Validate that the sorting is sane.
 				prev := &files[i-1]
-				if !prev.lessSeqNum(f) {
+				if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
+					// Multiple files satisfying case 2 mentioned above.
+				} else if !prev.lessSeqNum(f) {
 					return fmt.Errorf("L0 files %06d and %06d are not properly ordered: %d-%d vs %d-%d",
 						prev.FileNum, f.FileNum,
 						prev.SmallestSeqNum, prev.LargestSeqNum,
 						f.SmallestSeqNum, f.LargestSeqNum)
 				}
+			}
+			if f.LargestSeqNum == 0 && f.LargestSeqNum == f.SmallestSeqNum {
+				// We don't add these to uncheckedIngestedSeqNums since there could be flushed
+				// files of the form [0, N] where N > 0.
+				continue
 			}
 			if i > 0 && largestSeqNum >= f.LargestSeqNum {
 				return fmt.Errorf("L0 file %06d does not have strictly increasing "+
