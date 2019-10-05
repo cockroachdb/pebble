@@ -41,7 +41,7 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 	return nil
 }
 
-func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetadata, error) {
+func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 		return nil, err
 	}
 
-	r, err := sstable.NewReader(f, dbNum, fileNum, opts)
+	r, err := sstable.NewReader(f, cacheID, fileNum, opts)
 	defer r.Close()
 	if err != nil {
 		return nil, err
@@ -122,12 +122,12 @@ func ingestLoad1(opts *Options, path string, dbNum, fileNum uint64) (*fileMetada
 }
 
 func ingestLoad(
-	opts *Options, paths []string, dbNum uint64, pending []uint64,
+	opts *Options, paths []string, cacheID uint64, pending []uint64,
 ) ([]*fileMetadata, []string, error) {
 	meta := make([]*fileMetadata, 0, len(paths))
 	newPaths := make([]string, 0, len(paths))
 	for i := range paths {
-		m, err := ingestLoad1(opts, paths[i], dbNum, pending[i])
+		m, err := ingestLoad1(opts, paths[i], cacheID, pending[i])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -351,7 +351,7 @@ func (d *DB) Ingest(paths []string) error {
 
 	// Load the metadata for all of the files being ingested. This step detects
 	// and elides empty sstables.
-	meta, paths, err := ingestLoad(d.opts, paths, d.dbNum, pendingOutputs)
+	meta, paths, err := ingestLoad(d.opts, paths, d.cacheID, pendingOutputs)
 	if err != nil {
 		return err
 	}

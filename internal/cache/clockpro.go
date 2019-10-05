@@ -45,7 +45,7 @@ func (p entryType) String() string {
 }
 
 type fileKey struct {
-	dbNum   uint64
+	id      uint64
 	fileNum uint64
 }
 
@@ -234,9 +234,9 @@ type shard struct {
 	countTest int64
 }
 
-func (c *shard) Get(dbNum, fileNum, offset uint64) Handle {
+func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	c.mu.RLock()
-	e := c.blocks[key{fileKey{dbNum, fileNum}, offset}]
+	e := c.blocks[key{fileKey{id, fileNum}, offset}]
 	var value *value
 	if e != nil {
 		value = e.getValue()
@@ -251,11 +251,11 @@ func (c *shard) Get(dbNum, fileNum, offset uint64) Handle {
 	return Handle{value: value, free: c.free}
 }
 
-func (c *shard) Set(dbNum, fileNum, offset uint64, value []byte) Handle {
+func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	k := key{fileKey{dbNum, fileNum}, offset}
+	k := key{fileKey{id, fileNum}, offset}
 	e := c.blocks[k]
 	v := newValue(value)
 
@@ -300,11 +300,11 @@ func (c *shard) Set(dbNum, fileNum, offset uint64, value []byte) Handle {
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *shard) EvictFile(dbNum, fileNum uint64) {
+func (c *shard) EvictFile(id, fileNum uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	blocks := c.files[fileKey{dbNum, fileNum}]
+	blocks := c.files[fileKey{id, fileNum}]
 	if blocks == nil {
 		return
 	}
@@ -466,6 +466,7 @@ func (c *shard) runHandTest() {
 // Cache ...
 type Cache struct {
 	maxSize   int64
+	idAlloc   uint64
 	shards    []shard
 	allocPool *sync.Pool
 }
@@ -479,6 +480,7 @@ func New(size int64) *Cache {
 func newShards(size int64, shards int) *Cache {
 	c := &Cache{
 		maxSize: size,
+		idAlloc: 1,
 		shards:  make([]shard, shards),
 		allocPool: &sync.Pool{
 			New: func() interface{} {
@@ -499,7 +501,11 @@ func newShards(size int64, shards int) *Cache {
 	return c
 }
 
-func (c *Cache) getShard(dbNum, fileNum, offset uint64) *shard {
+func (c *Cache) getShard(id, fileNum, offset uint64) *shard {
+	if id == 0 {
+		panic("pebble: 0 cache ID is invalid")
+	}
+
 	// Inlined version of fnv.New64 + Write.
 	const offset64 = 14695981039346656037
 	const prime64 = 1099511628211
@@ -507,8 +513,8 @@ func (c *Cache) getShard(dbNum, fileNum, offset uint64) *shard {
 	h := uint64(offset64)
 	for i := 0; i < 8; i++ {
 		h *= prime64
-		h ^= uint64(dbNum & 0xff)
-		dbNum >>= 8
+		h ^= uint64(id & 0xff)
+		id >>= 8
 	}
 	for i := 0; i < 8; i++ {
 		h *= prime64
@@ -526,22 +532,25 @@ func (c *Cache) getShard(dbNum, fileNum, offset uint64) *shard {
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Cache) Get(dbNum, fileNum, offset uint64) Handle {
-	return c.getShard(dbNum, fileNum, offset).Get(dbNum, fileNum, offset)
+func (c *Cache) Get(id, fileNum, offset uint64) Handle {
+	return c.getShard(id, fileNum, offset).Get(id, fileNum, offset)
 }
 
 // Set sets the cache value for the specified file and offset, overwriting an
 // existing value if present. A Handle is returned which provides faster
 // retrieval of the cached value than Get (lock-free and avoidance of the map
 // lookup).
-func (c *Cache) Set(dbNum, fileNum, offset uint64, value []byte) Handle {
-	return c.getShard(dbNum, fileNum, offset).Set(dbNum, fileNum, offset, value)
+func (c *Cache) Set(id, fileNum, offset uint64, value []byte) Handle {
+	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value)
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *Cache) EvictFile(dbNum, fileNum uint64) {
+func (c *Cache) EvictFile(id, fileNum uint64) {
+	if id == 0 {
+		panic("pebble: 0 cache ID is invalid")
+	}
 	for i := range c.shards {
-		c.shards[i].EvictFile(dbNum, fileNum)
+		c.shards[i].EvictFile(id, fileNum)
 	}
 }
 
@@ -574,4 +583,10 @@ func (c *Cache) Free(b []byte) {
 	a := c.allocPool.Get().(*allocCache)
 	a.free(b)
 	c.allocPool.Put(a)
+}
+
+// NewID returns a new ID to be used as a namespace for cached file
+// blocks.
+func (c *Cache) NewID() uint64 {
+	return atomic.AddUint64(&c.idAlloc, 1)
 }

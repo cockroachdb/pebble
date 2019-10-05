@@ -173,13 +173,14 @@ func buildMergingIterTables(
 	}
 
 	cache := NewCache(128 << 20)
+	cacheID := cache.NewID()
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(f, 0, uint64(i), &Options{
+		readers[i], err = sstable.NewReader(f, cacheID, uint64(i), &Options{
 			Cache: cache,
 		})
 		if err != nil {

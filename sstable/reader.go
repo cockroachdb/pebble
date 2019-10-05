@@ -942,7 +942,7 @@ func (m Mergers) Apply(r *Reader) {
 // Reader is a table reader.
 type Reader struct {
 	file              vfs.File
-	dbNum             uint64
+	cacheID           uint64
 	fileNum           uint64
 	err               error
 	index             weakCachedBlock
@@ -1117,7 +1117,7 @@ func (r *Reader) readWeakCachedBlock(
 func (r *Reader) readBlock(
 	bh BlockHandle, transform blockTransform,
 ) (cache.Handle, error) {
-	if h := r.cache.Get(r.dbNum, r.fileNum, bh.Offset); h.Get() != nil {
+	if h := r.cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
 	}
 
@@ -1163,7 +1163,7 @@ func (r *Reader) readBlock(
 		}
 	}
 
-	h := r.cache.Set(r.dbNum, r.fileNum, bh.Offset, b)
+	h := r.cache.Set(r.cacheID, r.fileNum, bh.Offset, b)
 	return h, nil
 }
 
@@ -1345,13 +1345,16 @@ func (r *Reader) Layout() (*Layout, error) {
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(
-	f vfs.File, dbNum, fileNum uint64, o *Options, extraOpts ...OpenOption,
+	f vfs.File, cacheID, fileNum uint64, o *Options, extraOpts ...OpenOption,
 ) (*Reader, error) {
 	o = o.EnsureDefaults()
+	if cacheID == 0 {
+		cacheID = o.Cache.NewID()
+	}
 
 	r := &Reader{
 		file:    f,
-		dbNum:   dbNum,
+		cacheID: cacheID,
 		fileNum: fileNum,
 		opts:    o,
 		cache:   o.Cache,

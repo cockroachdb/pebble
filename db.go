@@ -162,7 +162,7 @@ type Writer interface {
 //		Comparer: myComparer,
 //	})
 type DB struct {
-	dbNum          uint64
+	cacheID        uint64
 	dirname        string
 	walDirname     string
 	opts           *Options

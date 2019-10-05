@@ -684,7 +684,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := NewReader(f, 0 /* dbNum */, 0 /* fileNum */, nil /* extra opts */)
+	r, err := NewReader(f, 0 /* cacheID */, 0 /* fileNum */, nil /* extra opts */)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -164,7 +164,7 @@ func TestHamletReader(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		r, err := NewReader(f, 0 /* dbNum */, 0 /* fileNum */, nil)
+		r, err := NewReader(f, 0 /* cacheID */, 0 /* fileNum */, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +188,6 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 	}
 
 	mem := vfs.NewMem()
-	var dbNum uint64
 
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
@@ -214,11 +213,10 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 				if err != nil {
 					return err.Error()
 				}
-				r, err = NewReader(f, dbNum, 0, &o)
+				r, err = NewReader(f, 0, 0, &o)
 				if err != nil {
 					return err.Error()
 				}
-				dbNum++
 				return ""
 
 			case "iter":
