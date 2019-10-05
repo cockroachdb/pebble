@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/golang/snappy"
@@ -904,8 +905,9 @@ type blockTransform func([]byte) ([]byte, error)
 // OpenOption provide an interface to do work on Reader while it is being
 // opened.
 type OpenOption interface {
-	// Apply is called on the reader its opened.
-	Apply(*Reader)
+	// apply is called on the reader during opening in order to set internal
+	// parameters.
+	apply(*Reader)
 }
 
 // Comparers is a map from comparer name to comparer. It is used for debugging
@@ -914,9 +916,8 @@ type OpenOption interface {
 // as a parameter to NewReader.
 type Comparers map[string]*Comparer
 
-// Apply applies the comparers option to the reader.
-func (c Comparers) Apply(r *Reader) {
-	if r.Compare != nil {
+func (c Comparers) apply(r *Reader) {
+	if r.Compare != nil || r.Properties.ComparerName == "" {
 		return
 	}
 	if comparer, ok := c[r.Properties.ComparerName]; ok {
@@ -931,12 +932,37 @@ func (c Comparers) Apply(r *Reader) {
 // a parameter to NewReader.
 type Mergers map[string]*Merger
 
-// Apply applies the mergers option to the reader.
-func (m Mergers) Apply(r *Reader) {
-	if r.mergerOK {
+func (m Mergers) apply(r *Reader) {
+	if r.mergerOK || r.Properties.MergerName == "" {
 		return
 	}
 	_, r.mergerOK = m[r.Properties.MergerName]
+}
+
+// cacheOpts is a Reader open option for specifying the cache ID and sstable file
+// number. If not specified, a unique cache ID will be used.
+type cacheOpts struct {
+	cacheID uint64
+	fileNum uint64
+}
+
+// Marker function to indicate the option should be applied before reading the
+// sstable properties.
+func (c *cacheOpts) preApply() {}
+
+func (c *cacheOpts) apply(r *Reader) {
+	if r.cacheID == 0 {
+		r.cacheID = c.cacheID
+	}
+	if r.fileNum == 0 {
+		r.fileNum = c.fileNum
+	}
+}
+
+func init() {
+	private.SSTableCacheOpts = func(cacheID, fileNum uint64) interface{} {
+		return &cacheOpts{cacheID, fileNum}
+	}
 }
 
 // Reader is a table reader.
@@ -1345,24 +1371,33 @@ func (r *Reader) Layout() (*Layout, error) {
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(
-	f vfs.File, cacheID, fileNum uint64, o *Options, extraOpts ...OpenOption,
+	f vfs.File, o *Options, extraOpts ...OpenOption,
 ) (*Reader, error) {
 	o = o.EnsureDefaults()
-	if cacheID == 0 {
-		cacheID = o.Cache.NewID()
-	}
 
 	r := &Reader{
-		file:    f,
-		cacheID: cacheID,
-		fileNum: fileNum,
-		opts:    o,
-		cache:   o.Cache,
+		file:  f,
+		opts:  o,
+		cache: o.Cache,
 	}
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")
 		return r, r.err
 	}
+
+	// Note that the extra options are applied twice. First here for pre-apply
+	// options, and then below for post-apply options. Pre and post refer to
+	// before and after reading the metaindex and properties.
+	type preApply interface{ preApply() }
+	for _, opt := range extraOpts {
+		if _, ok := opt.(preApply); ok {
+			opt.apply(r)
+		}
+	}
+	if r.cacheID == 0 {
+		r.cacheID = r.cache.NewID()
+	}
+
 	footer, err := readFooter(f)
 	if err != nil {
 		r.err = err
@@ -1386,18 +1421,22 @@ func NewReader(
 		r.mergerOK = true
 	}
 
+	// Apply the extra options again now that the comparer and merger names are
+	// known.
 	for _, opt := range extraOpts {
-		opt.Apply(r)
+		if _, ok := opt.(preApply); !ok {
+			opt.apply(r)
+		}
 	}
 
 	if r.Compare == nil {
 		r.err = fmt.Errorf("pebble/table: %d: unknown comparer %s",
-			fileNum, r.Properties.ComparerName)
+			r.fileNum, r.Properties.ComparerName)
 	}
 	if !r.mergerOK {
 		if name := r.Properties.MergerName; name != "" && name != "nullptr" {
 			r.err = fmt.Errorf("pebble/table: %d: unknown merger %s",
-				fileNum, r.Properties.MergerName)
+				r.fileNum, r.Properties.MergerName)
 		}
 	}
 	return r, r.err

@@ -108,7 +108,7 @@ func TestWriter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err = NewReader(f1, 0, 0, nil)
+			r, err = NewReader(f1, nil)
 			if err != nil {
 				return err.Error()
 			}
@@ -158,7 +158,7 @@ func TestWriter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err = NewReader(f1, 0, 0, nil)
+			r, err = NewReader(f1, nil)
 			if err != nil {
 				return err.Error()
 			}

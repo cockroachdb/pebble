@@ -115,7 +115,7 @@ func init() {
 }
 
 func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
-	r, err := NewReader(f, 0, 0, &Options{
+	r, err := NewReader(f, &Options{
 		Comparer: comparer,
 		Levels: []TableOptions{{
 			FilterPolicy: fp,
@@ -489,7 +489,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r, err := NewReader(f, 0, 0, &Options{
+	r, err := NewReader(f, &Options{
 		Levels: []TableOptions{{
 			FilterPolicy: c,
 		}},
@@ -628,7 +628,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 						continue
 					}
-					r, err := NewReader(rf, 0, 0, nil)
+					r, err := NewReader(rf, nil)
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
@@ -660,7 +660,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewReader(f, 0, 0, nil)
+	r, err := NewReader(f, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +684,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := NewReader(f, 0 /* cacheID */, 0 /* fileNum */, nil /* extra opts */)
+	r, err := NewReader(f, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

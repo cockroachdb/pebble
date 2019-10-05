@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -52,7 +53,8 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 		return nil, err
 	}
 
-	r, err := sstable.NewReader(f, cacheID, fileNum, opts)
+	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.OpenOption)
+	r, err := sstable.NewReader(f, opts, cacheOpts)
 	defer r.Close()
 	if err != nil {
 		return nil, err

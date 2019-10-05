@@ -45,6 +45,7 @@ func (p entryType) String() string {
 }
 
 type fileKey struct {
+	// id is the namespace for fileNums.
 	id      uint64
 	fileNum uint64
 }
