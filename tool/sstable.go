@@ -116,7 +116,7 @@ order which means the records will be printed in that order.
 }
 
 func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
-	return sstable.NewReader(f, 0, 0, s.opts, s.comparers, s.mergers)
+	return sstable.NewReader(f, s.opts, s.comparers, s.mergers)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {

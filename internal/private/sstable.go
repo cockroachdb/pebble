@@ -4,6 +4,10 @@
 
 package private
 
+// SSTableCacheOpts is a hook for specifying cache options to
+// sstable.NewReader.
+var SSTableCacheOpts func(cacheID, fileNum uint64) interface{}
+
 // SSTableWriterDisableKeyOrderChecks is a hook for disabling the key ordering
 // invariant check performed by sstable.Writer. It is intended for internal use
 // only in the construction of invalid sstables for testing. See

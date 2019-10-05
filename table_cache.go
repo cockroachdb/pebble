@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -335,7 +336,8 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 		close(n.loaded)
 		return
 	}
-	n.reader, n.err = sstable.NewReader(f, c.cacheID, n.meta.FileNum, c.opts)
+	cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.OpenOption)
+	n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts)
 	if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
 		n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
 	}
