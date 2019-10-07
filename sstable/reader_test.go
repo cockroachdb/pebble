@@ -164,7 +164,7 @@ func TestHamletReader(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		r, err := NewReader(f, 0 /* dbNum */, 0 /* fileNum */, nil)
+		r, err := NewReader(f, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +188,6 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 	}
 
 	mem := vfs.NewMem()
-	var dbNum uint64
 
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
@@ -214,11 +213,10 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 				if err != nil {
 					return err.Error()
 				}
-				r, err = NewReader(f, dbNum, 0, &o)
+				r, err = NewReader(f, &o)
 				if err != nil {
 					return err.Error()
 				}
-				dbNum++
 				return ""
 
 			case "iter":
@@ -392,7 +390,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 			for _, merger := range c.mergers {
 				mergers[merger.Name] = merger
 			}
-			r, err := NewReader(f1, 0, 0, nil, comparers, mergers)
+			r, err := NewReader(f1, nil, comparers, mergers)
 			if err != nil {
 				if !strings.HasSuffix(err.Error(), c.expected) {
 					t.Fatalf("expected %q, but found %q", c.expected, err.Error())
@@ -495,7 +493,7 @@ func buildTestTable(
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewReader(f1, 0, 0, &Options{
+	r, err := NewReader(f1, &Options{
 		Cache: cache.New(128 << 20),
 	})
 	if err != nil {
@@ -537,7 +535,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
-	r, err := NewReader(f1, 0, 0, &Options{
+	r, err := NewReader(f1, &Options{
 		Cache: cache.New(128 << 20),
 	})
 	if err != nil {

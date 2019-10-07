@@ -28,7 +28,6 @@ type sstableT struct {
 	opts      *sstable.Options
 	comparers sstable.Comparers
 	mergers   sstable.Mergers
-	dbNum     uint64
 
 	// Flags.
 	fmtKey   formatter
@@ -117,8 +116,7 @@ order which means the records will be printed in that order.
 }
 
 func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
-	s.dbNum++
-	return sstable.NewReader(f, s.dbNum, 0, s.opts, s.comparers, s.mergers)
+	return sstable.NewReader(f, s.opts, s.comparers, s.mergers)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {

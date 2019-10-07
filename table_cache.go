@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -27,11 +28,11 @@ type tableCache struct {
 }
 
 func (c *tableCache) init(
-	dbNum uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
+	cacheID uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
 ) {
 	c.shards = make([]tableCacheShard, runtime.NumCPU())
 	for i := range c.shards {
-		c.shards[i].init(dbNum, dirname, fs, opts, size/len(c.shards), hitBuffer)
+		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards), hitBuffer)
 	}
 }
 
@@ -60,7 +61,7 @@ func (c *tableCache) Close() error {
 }
 
 type tableCacheShard struct {
-	dbNum   uint64
+	cacheID uint64
 	dirname string
 	fs      vfs.FS
 	opts    *Options
@@ -80,9 +81,9 @@ type tableCacheShard struct {
 }
 
 func (c *tableCacheShard) init(
-	dbNum uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
+	cacheID uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
 ) {
-	c.dbNum = dbNum
+	c.cacheID = cacheID
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts
@@ -256,7 +257,7 @@ func (c *tableCacheShard) evict(fileNum uint64) {
 	}
 	c.mu.Unlock()
 
-	c.opts.Cache.EvictFile(c.dbNum, fileNum)
+	c.opts.Cache.EvictFile(c.cacheID, fileNum)
 }
 
 func (c *tableCacheShard) recordHits(hits []*tableCacheNode) {
@@ -335,7 +336,8 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 		close(n.loaded)
 		return
 	}
-	n.reader, n.err = sstable.NewReader(f, c.dbNum, n.meta.FileNum, c.opts)
+	cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.OpenOption)
+	n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts)
 	if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
 		n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
 	}

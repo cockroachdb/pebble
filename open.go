@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
-	"sync"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -19,19 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
 )
-
-var dbNumAlloc = struct {
-	sync.Mutex
-	seq uint64
-}{seq: 1}
-
-func allocDBNum() uint64 {
-	dbNumAlloc.Lock()
-	num := dbNumAlloc.seq
-	dbNumAlloc.seq++
-	dbNumAlloc.Unlock()
-	return num
-}
 
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *Options) (*DB, error) {
@@ -43,7 +29,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	}
 
 	d := &DB{
-		dbNum:          allocDBNum(),
+		cacheID:        opts.Cache.NewID(),
 		dirname:        dirname,
 		walDirname:     opts.WALDir,
 		opts:           opts,
@@ -61,7 +47,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(d.dbNum, dirname, opts.FS, d.opts, tableCacheSize, defaultTableCacheHitBuffer)
+	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize, defaultTableCacheHitBuffer)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.logSeqNum,

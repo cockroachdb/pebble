@@ -153,7 +153,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	opts := &Options{}
 	opts.EnsureDefaults()
 	c := &tableCache{}
-	c.init(0, "", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
+	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
 	return c, fs, nil
 }
 

@@ -186,7 +186,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err := sstable.NewReader(f1, 0, 0, nil)
+			r, err := sstable.NewReader(f1, nil)
 			if err != nil {
 				return err.Error()
 			}
@@ -254,16 +254,14 @@ func buildLevelIterTables(
 		}
 	}
 
-	cache := NewCache(128 << 20)
+	opts := &Options{Cache: NewCache(128 << 20)}
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(f, 0, uint64(i), &Options{
-			Cache: cache,
-		})
+		readers[i], err = sstable.NewReader(f, opts)
 		if err != nil {
 			b.Fatal(err)
 		}
