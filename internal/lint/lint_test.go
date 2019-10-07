@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"go/build"
 	"os/exec"
+	"runtime"
 	"testing"
 
 	"github.com/ghemawat/stream"
@@ -29,29 +30,41 @@ func dirCmd(
 	return stream.ReadLines(bytes.NewReader(out))
 }
 
+func ignoreGoMod() stream.Filter {
+	return stream.GrepNot(`^go: (finding|extracting|downloading)`)
+}
+
 func TestLint(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("lint checks skipped on Windows")
+	}
+
 	const root = "github.com/cockroachdb/pebble"
 
-	pkg, err := build.Import(root, "", 0)
+	pkg, err := build.Import(root, "../..", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	f := dirCmd(t, "", "go", "list", root+"/...")
 	var pkgs []string
-	stream.ForEach(f, func(s string) {
-		pkgs = append(pkgs, s)
-	})
+	if err := stream.ForEach(
+		stream.Sequence(
+			dirCmd(t, pkg.Dir, "go", "list", "./..."),
+			ignoreGoMod(),
+		), func(s string) {
+			pkgs = append(pkgs, s)
+		}); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("TestGolint", func(t *testing.T) {
 		t.Parallel()
 
-		filter := dirCmd(t, pkg.Dir, "golint", pkgs...)
 		// This is overkill right now, but provides a structure for filtering out
 		// lint errors we don't care about.
 		if err := stream.ForEach(
 			stream.Sequence(
-				filter,
+				dirCmd(t, pkg.Dir, "golint", pkgs...),
 			), func(s string) {
 				t.Errorf("\n%s", s)
 			}); err != nil {
@@ -62,11 +75,11 @@ func TestLint(t *testing.T) {
 	t.Run("TestGoVet", func(t *testing.T) {
 		t.Parallel()
 
-		filter := dirCmd(t, pkg.Dir, "go", "vet", "-all", "./...")
 		if err := stream.ForEach(
 			stream.Sequence(
-				filter,
+				dirCmd(t, pkg.Dir, "go", "vet", "-all", "./..."),
 				stream.GrepNot(`^#`), // ignore comment lines
+				ignoreGoMod(),
 			), func(s string) {
 				t.Errorf("\n%s", s)
 			}); err != nil {
