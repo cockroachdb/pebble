@@ -415,6 +415,9 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 		return errors.New("pebble: WAL disabled")
 	}
 
+	if batch.memTableSize == 0 {
+		batch.refreshMemTableSize()
+	}
 	if int(batch.memTableSize) >= d.largeBatchThreshold {
 		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
 	}
