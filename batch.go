@@ -766,6 +766,7 @@ func (b *Batch) Reset() {
 		} else {
 			// Otherwise, reset the buffer for re-use.
 			b.storage.data = b.storage.data[:batchHeaderLen]
+			b.setSeqNum(0)
 		}
 		b.count = 0
 	}
@@ -1138,16 +1139,23 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 			cmp:     b.cmp,
 			index:   -1,
 		}
-		for {
-			key, val := it.Next()
-			if key == nil {
-				break
-			}
+		for key, val := it.First(); key != nil; key, val = it.Next() {
 			frag.Add(*key, val)
 		}
 		frag.Finish()
 	}
 	return b
+}
+
+func (b *flushableBatch) setSeqNum(seqNum uint64) {
+	if b.seqNum != 0 {
+		panic(fmt.Sprintf("pebble: flushableBatch.seqNum already set: %d", b.seqNum))
+	}
+	b.seqNum = seqNum
+	for i := range b.tombstones {
+		start := &b.tombstones[i].Start
+		start.SetSeqNum(seqNum + start.SeqNum())
+	}
 }
 
 func (b *flushableBatch) Len() int {
