@@ -334,7 +334,7 @@ func (d *DB) replayWAL(
 			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
 		}
 
-		b = Batch{}
+		b = Batch{db: d}
 		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())

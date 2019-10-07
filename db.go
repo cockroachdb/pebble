@@ -409,12 +409,18 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
+	if batch.db != nil && batch.db != d {
+		panic(fmt.Sprintf("pebble: batch db mismatch: %p != %p", batch.db, d))
+	}
 
 	sync := opts.GetSync()
 	if sync && d.opts.DisableWAL {
 		return errors.New("pebble: WAL disabled")
 	}
 
+	if batch.db == nil {
+		batch.refreshMemTableSize()
+	}
 	if int(batch.memTableSize) >= d.largeBatchThreshold {
 		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
 	}
