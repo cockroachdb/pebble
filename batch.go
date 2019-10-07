@@ -210,7 +210,8 @@ type Batch struct {
 
 	memTableSize uint32
 
-	// The db to which the batch will be committed.
+	// The db to which the batch will be committed. Do not change this field
+	// after the batch has been created as it might invalidate internal state.
 	db *DB
 
 	// The count of records in the batch. This count will be stored in the batch
@@ -307,6 +308,10 @@ func (b *Batch) release() {
 
 func (b *Batch) refreshMemTableSize() {
 	b.memTableSize = 0
+	if len(b.storage.data) < batchHeaderLen {
+		return
+	}
+
 	for r := b.Reader(); ; {
 		_, key, value, ok := r.Next()
 		if !ok {
@@ -336,28 +341,32 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 
 	b.setCount(b.Count() + batch.Count())
 
-	for iter := BatchReader(b.storage.data[offset:]); len(iter) > 0; {
-		offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.storage.data[0]))
-		kind, key, value, ok := iter.Next()
-		if !ok {
-			break
-		}
-		if b.index != nil {
-			var err error
-			if kind == InternalKeyKindRangeDelete {
-				if b.rangeDelIndex == nil {
-					b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
+	if b.db != nil || b.index != nil {
+		// Only iterate over the new entries if we need to track memTableSize or in
+		// order to update the index.
+		for iter := BatchReader(b.storage.data[offset:]); len(iter) > 0; {
+			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.storage.data[0]))
+			kind, key, value, ok := iter.Next()
+			if !ok {
+				break
+			}
+			if b.index != nil {
+				var err error
+				if kind == InternalKeyKindRangeDelete {
+					if b.rangeDelIndex == nil {
+						b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
+					}
+					err = b.rangeDelIndex.Add(uint32(offset))
+				} else {
+					err = b.index.Add(uint32(offset))
 				}
-				err = b.rangeDelIndex.Add(uint32(offset))
-			} else {
-				err = b.index.Add(uint32(offset))
+				if err != nil {
+					// We never add duplicate entries, so an error should never occur.
+					panic(err)
+				}
 			}
-			if err != nil {
-				// We never add duplicate entries, so an error should never occur.
-				panic(err)
-			}
+			b.memTableSize += memTableEntrySize(len(key), len(value))
 		}
-		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
 	return nil
 }
@@ -659,7 +668,10 @@ func (b *Batch) SetRepr(data []byte) error {
 	}
 	b.storage.data = data
 	b.count = binary.LittleEndian.Uint32(b.countData())
-	b.refreshMemTableSize()
+	if b.db != nil {
+		// Only track memTableSize for batches that will be committed to the DB.
+		b.refreshMemTableSize()
+	}
 	return nil
 }
 
