@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -766,6 +767,7 @@ func (b *Batch) Reset() {
 		} else {
 			// Otherwise, reset the buffer for re-use.
 			b.storage.data = b.storage.data[:batchHeaderLen]
+			b.setSeqNum(0)
 		}
 		b.count = 0
 	}
@@ -1064,6 +1066,8 @@ type flushableBatch struct {
 	flushedCh chan struct{}
 
 	logNum uint64
+
+	seqNumStack []byte
 }
 
 var _ flushable = (*flushableBatch)(nil)
@@ -1085,6 +1089,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		// correct sequence number will be set later. But it is correct when the
 		// batch is being replayed from the WAL.
 		b.seqNum = batch.SeqNum()
+		b.seqNumStack = debug.Stack()
 	}
 	var rangeDelOffsets []flushableBatchEntry
 	if len(b.data) > batchHeaderLen {
@@ -1148,9 +1153,10 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 
 func (b *flushableBatch) setSeqNum(seqNum uint64) {
 	if b.seqNum != 0 {
-		panic(fmt.Sprintf("pebble: flushableBatch.seqNum already set: %d", b.seqNum))
+		panic(fmt.Sprintf("pebble: flushableBatch.seqNum already set: %d\n%s", b.seqNum, b.seqNumStack))
 	}
 	b.seqNum = seqNum
+	b.seqNumStack = debug.Stack()
 	for i := range b.tombstones {
 		start := &b.tombstones[i].Start
 		start.SetSeqNum(seqNum + start.SeqNum())
