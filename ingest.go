@@ -55,10 +55,10 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 
 	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.OpenOption)
 	r, err := sstable.NewReader(f, opts, cacheOpts)
-	defer r.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer r.Close()
 
 	meta := &fileMetadata{}
 	meta.FileNum = fileNum
