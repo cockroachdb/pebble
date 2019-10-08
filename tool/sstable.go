@@ -131,12 +131,12 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "%s\n", arg)
 
 			r, err := s.newReader(f)
-			defer r.Close()
 
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
 			}
+			defer r.Close()
 
 			// Update the internal formatter if this comparator has one specified.
 			s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)

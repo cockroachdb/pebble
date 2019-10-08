@@ -176,6 +176,25 @@ func TestHamletReader(t *testing.T) {
 	}
 }
 
+func TestInvalidReader(t *testing.T) {
+	testCases := []struct {
+		file     vfs.File
+		expected string
+	}{
+		{nil, "nil file"},
+		{vfs.NewMemFile([]byte("invalid sst bytes")), "invalid table"},
+	}
+	for _, tc := range testCases {
+		r, err := NewReader(tc.file, nil /* options */)
+		if !strings.Contains(err.Error(), tc.expected) {
+			t.Fatalf("expected %q, but found %q", tc.expected, err.Error())
+		}
+		if r != nil {
+			t.Fatalf("found non-nil reader returned with non-nil error %q", err.Error())
+		}
+	}
+}
+
 func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 	makeIkeyValue := func(s string) (InternalKey, []byte) {
 		j := strings.Index(s, ":")
@@ -392,13 +411,18 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 			}
 			r, err := NewReader(f1, nil, comparers, mergers)
 			if err != nil {
+				if r != nil {
+					t.Fatalf("found non-nil reader returned with non-nil error %q", err.Error())
+				}
 				if !strings.HasSuffix(err.Error(), c.expected) {
 					t.Fatalf("expected %q, but found %q", c.expected, err.Error())
 				}
 			} else if c.expected != "" {
 				t.Fatalf("expected %q, but found success", c.expected)
 			}
-			_ = r.Close()
+			if r != nil {
+				_ = r.Close()
+			}
 		})
 	}
 }
