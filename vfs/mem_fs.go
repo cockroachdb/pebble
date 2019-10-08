@@ -29,6 +29,15 @@ func NewMem() FS {
 	}
 }
 
+// NewMemFile returns a memory-backed File implementation.
+func NewMemFile(data []byte) File {
+	return &memFile{
+		n: &memNode{
+			data: data,
+		},
+	}
+}
+
 // memFS implements FS.
 type memFS struct {
 	mu   sync.Mutex

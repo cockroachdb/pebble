@@ -1382,7 +1382,7 @@ func NewReader(
 	}
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")
-		return r, r.err
+		return nil, r.Close()
 	}
 
 	// Note that the extra options are applied twice. First here for pre-apply
@@ -1401,12 +1401,12 @@ func NewReader(
 	footer, err := readFooter(f)
 	if err != nil {
 		r.err = err
-		return r, r.err
+		return nil, r.Close()
 	}
 	// Read the metaindex.
 	if err := r.readMetaindex(footer.metaindexBH, o); err != nil {
 		r.err = err
-		return r, r.err
+		return nil, r.Close()
 	}
 	r.index.bh = footer.indexBH
 	r.metaIndexBH = footer.metaindexBH
@@ -1439,7 +1439,10 @@ func NewReader(
 				r.fileNum, r.Properties.MergerName)
 		}
 	}
-	return r, r.err
+	if r.err != nil {
+		return nil, r.Close()
+	}
+	return r, nil
 }
 
 // Layout describes the block organization of an sstable.
