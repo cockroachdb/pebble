@@ -37,6 +37,7 @@ func NewMemFile(data []byte) File {
 			data:    data,
 			modTime: time.Now(),
 		},
+		read: true,
 	}
 }
 

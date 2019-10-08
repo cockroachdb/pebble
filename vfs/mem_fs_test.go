@@ -231,3 +231,20 @@ func TestList(t *testing.T) {
 		}
 	}
 }
+
+func TestMemFile(t *testing.T) {
+	want := "foo"
+	f := NewMemFile([]byte(want))
+	buf := make([]byte, len(want))
+	_, err := f.Read(buf)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if got := string(buf); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	_, err = f.Read(buf)
+	if err != io.EOF {
+		t.Fatalf("got %v, want EOF", err)
+	}
+}
