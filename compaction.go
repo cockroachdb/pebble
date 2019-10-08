@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -1020,7 +1021,8 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 			BytesPerSync: d.opts.BytesPerSync,
 		})
 		filenames = append(filenames, filename)
-		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.outputLevel))
+		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
+		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.outputLevel), cacheOpts)
 
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel,
