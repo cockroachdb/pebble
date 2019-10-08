@@ -14,6 +14,7 @@ import (
 	"math"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -90,6 +91,11 @@ type Writer struct {
 	syncer    writeCloseSyncer
 	meta      WriterMetadata
 	err       error
+	// cacheID and fileNum are used to remove blocks written to the sstable from
+	// the cache, providing a defense in depth against bugs which cause cache
+	// collisions.
+	cacheID uint64
+	fileNum uint64
 	// The following fields are copied from Options.
 	blockSize               int
 	blockSizeThreshold      int
@@ -102,6 +108,7 @@ type Writer struct {
 	separator               Separator
 	successor               Successor
 	tableFormat             TableFormat
+	cache                   *cache.Cache
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -473,6 +480,15 @@ func (w *Writer) writeRawBlock(b []byte, compression Compression) (BlockHandle, 
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
 	bh := BlockHandle{w.meta.Size, uint64(len(b))}
 
+	if w.cacheID != 0 && w.fileNum != 0 {
+		// Remove the block being written from the cache. This provides defense in
+		// depth against bugs which cause cache collisions.
+		//
+		// TODO(peter): Alternatively, we could add the uncompressed value to the
+		// cache.
+		w.cache.Delete(w.cacheID, w.fileNum, bh.Offset)
+	}
+
 	// Write the bytes to the file.
 	n, err := w.writer.Write(b)
 	if err != nil {
@@ -682,9 +698,22 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 	return &w.meta, nil
 }
 
+// WriterOption provide an interface to do work on Writer while it is being
+// opened.
+type WriterOption interface {
+	// writerAPply is called on the writer during opening in order to set
+	// internal parameters.
+	writerApply(*Writer)
+}
+
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
+func NewWriter(
+	f writeCloseSyncer,
+	o *Options,
+	lo TableOptions,
+	extraOpts ...WriterOption,
+) *Writer {
 	o = o.EnsureDefaults()
 	lo = *lo.EnsureDefaults()
 
@@ -704,6 +733,7 @@ func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
 		tableFormat:             o.TableFormat,
+		cache:                   o.Cache,
 		block: blockWriter{
 			restartInterval: lo.BlockRestartInterval,
 		},
@@ -720,6 +750,13 @@ func NewWriter(f writeCloseSyncer, o *Options, lo TableOptions) *Writer {
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
 		return w
+	}
+
+	type preApply interface{ preApply() }
+	for _, opt := range extraOpts {
+		if _, ok := opt.(preApply); ok {
+			opt.writerApply(w)
+		}
 	}
 
 	w.props.PrefixExtractorName = "nullptr"
