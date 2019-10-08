@@ -300,6 +300,18 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 	return Handle{entry: e, value: v, free: c.free}
 }
 
+// Delete deletes the cached value for the specified file and offset.
+func (c *shard) Delete(id, fileNum, offset uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	e := c.blocks[key{fileKey{id, fileNum}, offset}]
+	if e == nil {
+		return
+	}
+	c.metaEvict(e)
+}
+
 // EvictFile evicts all of the cache values for the specified file.
 func (c *shard) EvictFile(id, fileNum uint64) {
 	c.mu.Lock()
@@ -310,16 +322,8 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 		return
 	}
 	for b, n := blocks, (*entry)(nil); ; b = n {
-		switch b.ptype {
-		case etHot:
-			c.countHot -= b.size
-		case etCold:
-			c.countCold -= b.size
-		case etTest:
-			c.countTest -= b.size
-		}
 		n = b.fileLink.next
-		c.metaDel(b)
+		c.metaEvict(b)
 		if b == n {
 			break
 		}
@@ -384,6 +388,18 @@ func (c *shard) metaDel(e *entry) {
 	} else {
 		c.files[e.key.fileKey] = next
 	}
+}
+
+func (c *shard) metaEvict(e *entry) {
+	switch e.ptype {
+	case etHot:
+		c.countHot -= e.size
+	case etCold:
+		c.countCold -= e.size
+	case etTest:
+		c.countTest -= e.size
+	}
+	c.metaDel(e)
 }
 
 func (c *shard) evict() {
@@ -543,6 +559,11 @@ func (c *Cache) Get(id, fileNum, offset uint64) Handle {
 // lookup).
 func (c *Cache) Set(id, fileNum, offset uint64, value []byte) Handle {
 	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value)
+}
+
+// Delete deletes the cached value for the specified file and offset.
+func (c *Cache) Delete(id, fileNum, offset uint64) {
+	c.getShard(id, fileNum, offset).Delete(id, fileNum, offset)
 }
 
 // EvictFile evicts all of the cache values for the specified file.

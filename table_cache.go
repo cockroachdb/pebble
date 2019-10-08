@@ -336,7 +336,7 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 		close(n.loaded)
 		return
 	}
-	cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.OpenOption)
+	cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
 	n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts)
 	if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
 		n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum

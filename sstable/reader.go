@@ -902,12 +902,12 @@ type weakCachedBlock struct {
 
 type blockTransform func([]byte) ([]byte, error)
 
-// OpenOption provide an interface to do work on Reader while it is being
+// ReaderOption provide an interface to do work on Reader while it is being
 // opened.
-type OpenOption interface {
-	// apply is called on the reader during opening in order to set internal
+type ReaderOption interface {
+	// readerApply is called on the reader during opening in order to set internal
 	// parameters.
-	apply(*Reader)
+	readerApply(*Reader)
 }
 
 // Comparers is a map from comparer name to comparer. It is used for debugging
@@ -916,7 +916,7 @@ type OpenOption interface {
 // as a parameter to NewReader.
 type Comparers map[string]*Comparer
 
-func (c Comparers) apply(r *Reader) {
+func (c Comparers) readerApply(r *Reader) {
 	if r.Compare != nil || r.Properties.ComparerName == "" {
 		return
 	}
@@ -932,7 +932,7 @@ func (c Comparers) apply(r *Reader) {
 // a parameter to NewReader.
 type Mergers map[string]*Merger
 
-func (m Mergers) apply(r *Reader) {
+func (m Mergers) readerApply(r *Reader) {
 	if r.mergerOK || r.Properties.MergerName == "" {
 		return
 	}
@@ -950,12 +950,21 @@ type cacheOpts struct {
 // sstable properties.
 func (c *cacheOpts) preApply() {}
 
-func (c *cacheOpts) apply(r *Reader) {
+func (c *cacheOpts) readerApply(r *Reader) {
 	if r.cacheID == 0 {
 		r.cacheID = c.cacheID
 	}
 	if r.fileNum == 0 {
 		r.fileNum = c.fileNum
+	}
+}
+
+func (c *cacheOpts) writerApply(w *Writer) {
+	if w.cacheID == 0 {
+		w.cacheID = c.cacheID
+	}
+	if w.fileNum == 0 {
+		w.fileNum = c.fileNum
 	}
 }
 
@@ -1371,8 +1380,7 @@ func (r *Reader) Layout() (*Layout, error) {
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(
-	f vfs.File, o *Options, extraOpts ...OpenOption,
-) (*Reader, error) {
+	f vfs.File, o *Options, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.EnsureDefaults()
 
 	r := &Reader{
@@ -1391,7 +1399,7 @@ func NewReader(
 	type preApply interface{ preApply() }
 	for _, opt := range extraOpts {
 		if _, ok := opt.(preApply); ok {
-			opt.apply(r)
+			opt.readerApply(r)
 		}
 	}
 	if r.cacheID == 0 {
@@ -1425,7 +1433,7 @@ func NewReader(
 	// known.
 	for _, opt := range extraOpts {
 		if _, ok := opt.(preApply); !ok {
-			opt.apply(r)
+			opt.readerApply(r)
 		}
 	}
 

@@ -67,6 +67,31 @@ func TestWeakHandle(t *testing.T) {
 	}
 }
 
+func TestCacheDelete(t *testing.T) {
+	cache := newShards(100, 1)
+	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 1, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 2, 0, bytes.Repeat([]byte("a"), 5))
+	if expected, size := int64(15), cache.Size(); expected != size {
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
+	}
+	cache.Delete(1, 1, 0)
+	if expected, size := int64(10), cache.Size(); expected != size {
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
+	}
+	if h := cache.Get(1, 0, 0); h.Get() == nil {
+		t.Fatalf("expected to find block 0/0")
+	}
+	if h := cache.Get(1, 1, 0); h.Get() != nil {
+		t.Fatalf("expected to not find block 1/0")
+	}
+	// Deleting a non-existing block does nothing.
+	cache.Delete(1, 1, 0)
+	if expected, size := int64(10), cache.Size(); expected != size {
+		t.Fatalf("expected cache size %d, but found %d", expected, size)
+	}
+}
+
 func TestEvictFile(t *testing.T) {
 	cache := newShards(100, 1)
 	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 5))
