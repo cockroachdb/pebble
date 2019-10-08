@@ -6,6 +6,7 @@ package vfs
 
 import (
 	"io"
+	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
@@ -229,5 +230,17 @@ func TestList(t *testing.T) {
 		if got != want {
 			t.Errorf("List %q: got %q, want %q", s[0], got, want)
 		}
+	}
+}
+
+func TestMemFile(t *testing.T) {
+	want := "foo"
+	f := NewMemFile([]byte(want))
+	buf, err := ioutil.ReadAll(f)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if got := string(buf); got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
