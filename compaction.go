@@ -51,7 +51,7 @@ func totalSize(f []fileMetadata) (size uint64) {
 type compaction struct {
 	cmp     Compare
 	format  base.Formatter
-	logger  base.Logger
+	logger  Logger
 	version *version
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
