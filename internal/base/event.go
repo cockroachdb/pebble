@@ -383,7 +383,7 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 // specified logger.
 func MakeLoggingEventListener(logger Logger) EventListener {
 	if logger == nil {
-		logger = defaultLogger{}
+		logger = DefaultLogger{}
 	}
 
 	return EventListener{

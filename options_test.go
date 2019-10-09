@@ -2,13 +2,14 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package base
+package pebble
 
 import (
 	"fmt"
 	"regexp"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -123,7 +124,7 @@ func TestOptionsCheck(t *testing.T) {
 
 type testCleaner struct{}
 
-func (testCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
+func (testCleaner) Clean(fs vfs.FS, fileType base.FileType, path string) error {
 	return nil
 }
 
