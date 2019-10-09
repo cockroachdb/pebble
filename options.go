@@ -394,7 +394,7 @@ func (o *Options) EnsureDefaults() *Options {
 		}
 	}
 	if o.Logger == nil {
-		o.Logger = base.DefaultLogger{}
+		o.Logger = DefaultLogger{}
 	}
 	o.EventListener.EnsureDefaults(o.Logger)
 	if o.MaxManifestFileSize == 0 {
