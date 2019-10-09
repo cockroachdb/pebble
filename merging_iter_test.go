@@ -139,7 +139,7 @@ func buildMergingIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], nil, LevelOptions{
+		writers[i] = sstable.NewWriter(files[i], sstable.TableOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,
@@ -172,7 +172,7 @@ func buildMergingIterTables(
 		}
 	}
 
-	opts := &Options{Cache: NewCache(128 << 20)}
+	opts := sstable.Options{Cache: NewCache(128 << 20)}
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))

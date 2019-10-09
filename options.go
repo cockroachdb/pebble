@@ -4,7 +4,10 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
+)
 
 // Compression exports the base.Compression type.
 type Compression = base.Compression
@@ -117,4 +120,34 @@ var NoSync = &WriteOptions{Sync: false}
 // GetSync returns the Sync value or true if the receiver is nil.
 func (o *WriteOptions) GetSync() bool {
 	return o == nil || o.Sync
+}
+
+func makeReaderOptions(opts *base.Options) sstable.Options {
+	var o sstable.Options
+	if opts != nil {
+		o.Cache = opts.Cache
+		o.Comparer = opts.Comparer
+		o.Filters = opts.Filters
+		o.Merger = opts.Merger
+	}
+	return o
+}
+
+func makeTableOptions(opts *base.Options, levelOpts base.LevelOptions) sstable.TableOptions {
+	var o sstable.TableOptions
+	if opts != nil {
+		o.Cache = opts.Cache
+		o.Comparer = opts.Comparer
+		o.Merger = opts.Merger
+		o.TableFormat = opts.TableFormat
+		o.TablePropertyCollectors = opts.TablePropertyCollectors
+	}
+	o.BlockRestartInterval = levelOpts.BlockRestartInterval
+	o.BlockSize = levelOpts.BlockSize
+	o.BlockSizeThreshold = levelOpts.BlockSizeThreshold
+	o.Compression = levelOpts.Compression
+	o.FilterPolicy = levelOpts.FilterPolicy
+	o.FilterType = levelOpts.FilterType
+	o.IndexBlockSize = levelOpts.IndexBlockSize
+	return o
 }
