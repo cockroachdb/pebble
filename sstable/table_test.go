@@ -574,7 +574,7 @@ func TestWriterRoundTrip(t *testing.T) {
 				"bloom10bit": bloom.FilterPolicy(10),
 			} {
 				t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
-					f, err := build(base.DefaultCompression, fp, TableFilter,
+					f, err := build(DefaultCompression, fp, TableFilter,
 						nil, nil, blockSize, indexBlockSize)
 					if err != nil {
 						t.Fatal(err)
@@ -677,7 +677,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 }
 
 func TestMetaIndexEntriesSorted(t *testing.T) {
-	f, err := build(base.DefaultCompression, nil, /* filter policy */
+	f, err := build(DefaultCompression, nil, /* filter policy */
 		TableFilter, nil, nil, 4096, 4096)
 	if err != nil {
 		t.Fatal(err)

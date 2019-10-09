@@ -9,15 +9,29 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 )
 
-// Compression exports the base.Compression type.
-type Compression = base.Compression
+// Compression is the per-block compression algorithm to use.
+type Compression int
 
-// Exported Compression constants.
+// The available compression types.
 const (
-	DefaultCompression = base.DefaultCompression
-	NoCompression      = base.NoCompression
-	SnappyCompression  = base.SnappyCompression
+	DefaultCompression Compression = iota
+	NoCompression
+	SnappyCompression
+	NCompression
 )
+
+func (c Compression) String() string {
+	switch c {
+	case DefaultCompression:
+		return "Default"
+	case NoCompression:
+		return "NoCompression"
+	case SnappyCompression:
+		return "Snappy"
+	default:
+		return "Unknown"
+	}
+}
 
 // FilterType exports the base.FilterType type.
 type FilterType = base.FilterType
@@ -33,17 +47,38 @@ type FilterWriter = base.FilterWriter
 // FilterPolicy exports the base.FilterPolicy type.
 type FilterPolicy = base.FilterPolicy
 
-// TableFormat exports the base.TableFormat type.
-type TableFormat = base.TableFormat
+// TableFormat specifies the format version for sstables. The legacy LevelDB
+// format is format version 0.
+type TableFormat uint32
 
-// Exported TableFormat constants.
+// The available table formats. Note that these values are not (and should not)
+// be serialized to disk. TableFormatRocksDBv2 is the default if otherwise
+// unspecified.
 const (
-	TableFormatRocksDBv2 = base.TableFormatRocksDBv2
-	TableFormatLevelDB   = base.TableFormatLevelDB
+	TableFormatRocksDBv2 TableFormat = iota
+	TableFormatLevelDB
 )
 
-// TablePropertyCollector exports the base.TablePropertyCollector type.
-type TablePropertyCollector = base.TablePropertyCollector
+// TablePropertyCollector provides a hook for collecting user-defined
+// properties based on the keys and values stored in an sstable. A new
+// TablePropertyCollector is created for an sstable when the sstable is being
+// written.
+type TablePropertyCollector interface {
+	// Add is called with each new entry added to the sstable. While the sstable
+	// is itself sorted by key, do not assume that the entries are added in any
+	// order. In particular, the ordering of point entries and range tombstones
+	// is unspecified.
+	Add(key InternalKey, value []byte) error
+
+	// Finish is called when all entries have been added to the sstable. The
+	// collected properties (if any) should be added to the specified map. Note
+	// that in case of an error during sstable construction, Finish may not be
+	// called.
+	Finish(userProps map[string]string) error
+
+	// The name of the property collector.
+	Name() string
+}
 
 // Options holds the parameters needed for reading an sstable.
 type Options struct {
@@ -180,8 +215,8 @@ func (o TableOptions) ensureDefaults() TableOptions {
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
 	}
-	if o.Compression <= DefaultCompression || o.Compression >= base.NCompression {
-		o.Compression = base.SnappyCompression
+	if o.Compression <= DefaultCompression || o.Compression >= NCompression {
+		o.Compression = SnappyCompression
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
