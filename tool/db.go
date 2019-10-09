@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
 )
@@ -22,7 +21,7 @@ type dbT struct {
 	Scan  *cobra.Command
 
 	// Configuration.
-	opts      *sstable.Options
+	opts      *pebble.Options
 	comparers sstable.Comparers
 	mergers   sstable.Mergers
 
@@ -36,7 +35,7 @@ type dbT struct {
 }
 
 func newDB(
-	opts *base.Options, comparers sstable.Comparers, mergers sstable.Mergers,
+	opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers,
 ) *dbT {
 	d := &dbT{
 		opts:      opts,

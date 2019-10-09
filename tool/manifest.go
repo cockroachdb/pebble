@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
@@ -22,12 +23,12 @@ type manifestT struct {
 	Dump  *cobra.Command
 	Check *cobra.Command
 
-	opts      *base.Options
+	opts      *pebble.Options
 	comparers sstable.Comparers
 	fmtKey    formatter
 }
 
-func newManifest(opts *base.Options, comparers sstable.Comparers) *manifestT {
+func newManifest(opts *pebble.Options, comparers sstable.Comparers) *manifestT {
 	m := &manifestT{
 		opts:      opts,
 		comparers: comparers,
