@@ -860,6 +860,53 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 	}
 }
 
+func TestDBApplyBatchNilDB(t *testing.T) {
+	d, err := Open("", &Options{FS: vfs.NewMem()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b1 := &Batch{}
+	b1.Set([]byte("test"), nil, nil)
+
+	b2 := &Batch{}
+	b2.Apply(b1, nil)
+	if b2.memTableSize != 0 {
+		t.Fatalf("expected memTableSize to not be set")
+	}
+	if err := d.Apply(b2, nil); err != nil {
+		t.Fatal(err)
+	}
+	if b1.memTableSize != b2.memTableSize {
+		t.Fatalf("expected memTableSize %d, but found %d", b1.memTableSize, b2.memTableSize)
+	}
+}
+
+func TestDBApplyBatchMismatch(t *testing.T) {
+	srcDB, err := Open("", &Options{FS: vfs.NewMem()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyDB, err := Open("", &Options{FS: vfs.NewMem()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = func() (err error) {
+		defer func() {
+			if v := recover(); v != nil {
+				err = fmt.Errorf("%v", v)
+			}
+		}()
+
+		b := srcDB.NewBatch()
+		b.Set([]byte("test"), nil, nil)
+		return applyDB.Apply(b, nil)
+	}()
+	if err == nil || !strings.Contains(err.Error(), "pebble: batch db mismatch:") {
+		t.Fatalf("expected error, but found %v", err)
+	}
+}
+
 func BenchmarkDelete(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	const keyCount = 10000
