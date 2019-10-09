@@ -125,9 +125,9 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		return fmt.Errorf("fixture missing: %+v", opts)
 	}
 
-	compression := base.NoCompression
+	compression := NoCompression
 	if opts.compression {
-		compression = base.SnappyCompression
+		compression = SnappyCompression
 	}
 
 	var fp base.FilterPolicy

@@ -11,30 +11,6 @@ const (
 	DefaultBlockSizeThreshold   = 90
 )
 
-// Compression is the per-block compression algorithm to use.
-type Compression int
-
-// The available compression types.
-const (
-	DefaultCompression Compression = iota
-	NoCompression
-	SnappyCompression
-	NCompression
-)
-
-func (c Compression) String() string {
-	switch c {
-	case DefaultCompression:
-		return "Default"
-	case NoCompression:
-		return "NoCompression"
-	case SnappyCompression:
-		return "Snappy"
-	default:
-		return "Unknown"
-	}
-}
-
 // FilterType is the level at which to apply a filter: block or table.
 type FilterType int
 
@@ -86,37 +62,4 @@ type FilterPolicy interface {
 
 	// NewWriter creates a new FilterWriter.
 	NewWriter(ftype FilterType) FilterWriter
-}
-
-// TableFormat specifies the format version for sstables. The legacy LevelDB
-// format is format version 0.
-type TableFormat uint32
-
-// The available table formats. Note that these values are not (and should not)
-// be serialized to disk. TableFormatRocksDBv2 is the default if otherwise
-// unspecified.
-const (
-	TableFormatRocksDBv2 TableFormat = iota
-	TableFormatLevelDB
-)
-
-// TablePropertyCollector provides a hook for collecting user-defined
-// properties based on the keys and values stored in an sstable. A new
-// TablePropertyCollector is created for an sstable when the sstable is being
-// written.
-type TablePropertyCollector interface {
-	// Add is called with each new entry added to the sstable. While the sstable
-	// is itself sorted by key, do not assume that the entries are added in any
-	// order. In particular, the ordering of point entries and range tombstones
-	// is unspecified.
-	Add(key InternalKey, value []byte) error
-
-	// Finish is called when all entries have been added to the sstable. The
-	// collected properties (if any) should be added to the specified map. Note
-	// that in case of an error during sstable construction, Finish may not be
-	// called.
-	Finish(userProps map[string]string) error
-
-	// The name of the property collector.
-	Name() string
 }
