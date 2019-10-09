@@ -18,13 +18,13 @@ import (
 )
 
 // Compression exports the base.Compression type.
-type Compression = base.Compression
+type Compression = sstable.Compression
 
 // Exported Compression constants.
 const (
-	DefaultCompression = base.DefaultCompression
-	NoCompression      = base.NoCompression
-	SnappyCompression  = base.SnappyCompression
+	DefaultCompression = sstable.DefaultCompression
+	NoCompression      = sstable.NoCompression
+	SnappyCompression  = sstable.SnappyCompression
 )
 
 // FilterType exports the base.FilterType type.
@@ -42,16 +42,16 @@ type FilterWriter = base.FilterWriter
 type FilterPolicy = base.FilterPolicy
 
 // TableFormat exports the base.TableFormat type.
-type TableFormat = base.TableFormat
+type TableFormat = sstable.TableFormat
 
 // Exported TableFormat constants.
 const (
-	TableFormatRocksDBv2 = base.TableFormatRocksDBv2
-	TableFormatLevelDB   = base.TableFormatLevelDB
+	TableFormatRocksDBv2 = sstable.TableFormatRocksDBv2
+	TableFormatLevelDB   = sstable.TableFormatLevelDB
 )
 
 // TablePropertyCollector exports the base.TablePropertyCollector type.
-type TablePropertyCollector = base.TablePropertyCollector
+type TablePropertyCollector = sstable.TablePropertyCollector
 
 // IterOptions hold the optional per-query parameters for NewIter.
 //
@@ -196,7 +196,7 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o.BlockSizeThreshold <= 0 {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
 	}
-	if o.Compression <= DefaultCompression || o.Compression >= base.NCompression {
+	if o.Compression <= DefaultCompression || o.Compression >= sstable.NCompression {
 		o.Compression = SnappyCompression
 	}
 	if o.IndexBlockSize <= 0 {
