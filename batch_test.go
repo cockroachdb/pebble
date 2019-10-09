@@ -94,27 +94,27 @@ func TestBatch(t *testing.T) {
 		value := []byte(tc.value)
 		switch tc.kind {
 		case InternalKeyKindSet:
-			d, _ := b.SetDeferred(len(key), len(value), nil)
+			d := b.SetDeferred(len(key), len(value))
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
 		case InternalKeyKindMerge:
-			d, _ := b.MergeDeferred(len(key), len(value), nil)
+			d := b.MergeDeferred(len(key), len(value))
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
 		case InternalKeyKindDelete:
-			d, _ := b.DeleteDeferred(len(key), nil)
+			d := b.DeleteDeferred(len(key))
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
 		case InternalKeyKindSingleDelete:
-			d, _ := b.SingleDeleteDeferred(len(key), nil)
+			d := b.SingleDeleteDeferred(len(key))
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
 		case InternalKeyKindRangeDelete:
-			d, _ := b.DeleteRangeDeferred(len(key), len(value), nil)
+			d := b.DeleteRangeDeferred(len(key), len(value))
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
@@ -183,22 +183,38 @@ func TestBatchIncrement(t *testing.T) {
 		0x04000001,
 		0x7fffffff,
 		0xfffffffe,
-		0xffffffff,
 	}
 	for _, tc := range testCases {
 		var buf [batchHeaderLen]byte
 		binary.LittleEndian.PutUint32(buf[8:12], tc)
 		var b Batch
 		b.SetRepr(buf[:])
-		b.increment()
+		b.count++
 		got := binary.LittleEndian.Uint32(b.Repr()[8:12])
 		want := tc + 1
-		if tc == 0xffffffff {
-			want = tc
-		}
 		if got != want {
 			t.Errorf("input=%d: got %d, want %d", tc, got, want)
 		}
+	}
+
+	err := func() (err error) {
+		defer func() {
+			if v := recover(); v != nil {
+				if verr, ok := v.(error); ok {
+					err = verr
+				}
+			}
+		}()
+		var buf [batchHeaderLen]byte
+		binary.LittleEndian.PutUint32(buf[8:12], 0xffffffff)
+		var b Batch
+		b.SetRepr(buf[:])
+		b.count++
+		b.Repr()
+		return nil
+	}()
+	if err != ErrInvalidBatch {
+		t.Fatalf("expected %v, but found %v", ErrInvalidBatch, err)
 	}
 }
 
@@ -686,10 +702,7 @@ func BenchmarkBatchSetDeferred(b *testing.B) {
 
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
-			deferredOp, err := batch.SetDeferred(len(key), len(value), nil)
-			if err != nil {
-				b.Fatal(err)
-			}
+			deferredOp := batch.SetDeferred(len(key), len(value))
 
 			copy(deferredOp.Key, key)
 			copy(deferredOp.Value, value)
@@ -721,10 +734,7 @@ func BenchmarkIndexedBatchSetDeferred(b *testing.B) {
 
 		for j := i; j < end; j++ {
 			binary.BigEndian.PutUint64(key, uint64(j))
-			deferredOp, err := batch.SetDeferred(len(key), len(value), nil)
-			if err != nil {
-				b.Fatal(err)
-			}
+			deferredOp := batch.SetDeferred(len(key), len(value))
 
 			copy(deferredOp.Key, key)
 			copy(deferredOp.Value, value)
