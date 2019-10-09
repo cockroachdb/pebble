@@ -114,11 +114,9 @@ func TestReader(t *testing.T) {
 		"Maxbytes": math.MaxInt32,
 	}
 
-	opts := map[string]*Options{
-		"default": {},
-		"prefixFilter": {
-			Comparer: fixtureComparer,
-		},
+	opts := map[string]*Comparer{
+		"default":      nil,
+		"prefixFilter": fixtureComparer,
 	}
 
 	testDirs := map[string]string{
@@ -129,18 +127,15 @@ func TestReader(t *testing.T) {
 	for dName, blockSize := range blockSizes {
 		for iName, indexBlockSize := range blockSizes {
 			for lName, tableOpt := range tableOpts {
-				for oName, opt := range opts {
+				for oName, cmp := range opts {
 					tableOpt.BlockSize = blockSize
+					tableOpt.Comparer = cmp
 					tableOpt.IndexBlockSize = indexBlockSize
-					tableOpt.EnsureDefaults()
-					o := *opt
-					o.Levels = []TableOptions{tableOpt}
-					o.EnsureDefaults()
 
 					t.Run(
 						fmt.Sprintf("opts=%s,tableOpts=%s,blockSize=%s,indexSize=%s",
 							oName, lName, dName, iName),
-						func(t *testing.T) { runTestReader(t, o, testDirs[oName], nil /* Reader */) })
+						func(t *testing.T) { runTestReader(t, tableOpt, testDirs[oName], nil /* Reader */) })
 				}
 			}
 		}
@@ -164,14 +159,14 @@ func TestHamletReader(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		r, err := NewReader(f, nil)
+		r, err := NewReader(f, Options{})
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		t.Run(
 			fmt.Sprintf("sst=%s", prebuiltSST),
-			func(t *testing.T) { runTestReader(t, Options{}, "testdata/hamletreader", r) },
+			func(t *testing.T) { runTestReader(t, TableOptions{}, "testdata/hamletreader", r) },
 		)
 	}
 }
@@ -185,7 +180,7 @@ func TestInvalidReader(t *testing.T) {
 		{vfs.NewMemFile([]byte("invalid sst bytes")), "invalid table"},
 	}
 	for _, tc := range testCases {
-		r, err := NewReader(tc.file, nil /* options */)
+		r, err := NewReader(tc.file, Options{})
 		if !strings.Contains(err.Error(), tc.expected) {
 			t.Fatalf("expected %q, but found %q", tc.expected, err.Error())
 		}
@@ -195,7 +190,7 @@ func TestInvalidReader(t *testing.T) {
 	}
 }
 
-func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
+func runTestReader(t *testing.T, o TableOptions, dir string, r *Reader) {
 	makeIkeyValue := func(s string) (InternalKey, []byte) {
 		j := strings.Index(s, ":")
 		k := strings.Index(s, "=")
@@ -221,7 +216,7 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 				if err != nil {
 					return err.Error()
 				}
-				w := NewWriter(f, &o, o.Levels[0])
+				w := NewWriter(f, o)
 				for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
 					k, v := makeIkeyValue(e)
 					w.Add(k, v)
@@ -232,7 +227,7 @@ func runTestReader(t *testing.T, o Options, dir string, r *Reader) {
 				if err != nil {
 					return err.Error()
 				}
-				r, err = NewReader(f, &o)
+				r, err = NewReader(f, Options{})
 				if err != nil {
 					return err.Error()
 				}
@@ -340,7 +335,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 		Name:  "test.merger",
 		Merge: base.DefaultMerger.Merge,
 	}
-	opts := &Options{
+	tableOpts := TableOptions{
 		Comparer: testComparer,
 		Merger:   testMerger,
 	}
@@ -350,7 +345,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := NewWriter(f0, opts, TableOptions{})
+	w := NewWriter(f0, tableOpts)
 	if err := w.Set([]byte("test"), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +404,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 			for _, merger := range c.mergers {
 				mergers[merger.Name] = merger
 			}
-			r, err := NewReader(f1, nil, comparers, mergers)
+			r, err := NewReader(f1, Options{}, comparers, mergers)
 			if err != nil {
 				if r != nil {
 					t.Fatalf("found non-nil reader returned with non-nil error %q", err.Error())
@@ -492,7 +487,7 @@ func buildTestTable(
 	}
 	defer f0.Close()
 
-	w := NewWriter(f0, nil, TableOptions{
+	w := NewWriter(f0, TableOptions{
 		BlockSize:      blockSize,
 		IndexBlockSize: indexBlockSize,
 		Compression:    compression,
@@ -517,7 +512,7 @@ func buildTestTable(
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewReader(f1, &Options{
+	r, err := NewReader(f1, Options{
 		Cache: cache.New(128 << 20),
 	})
 	if err != nil {
@@ -534,7 +529,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	}
 	defer f0.Close()
 
-	w := NewWriter(f0, nil, TableOptions{
+	w := NewWriter(f0, TableOptions{
 		BlockRestartInterval: restartInterval,
 		BlockSize:            blockSize,
 		FilterPolicy:         nil,
@@ -559,7 +554,7 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
-	r, err := NewReader(f1, &Options{
+	r, err := NewReader(f1, Options{
 		Cache: cache.New(128 << 20),
 	})
 	if err != nil {

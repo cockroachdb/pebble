@@ -115,12 +115,16 @@ func init() {
 }
 
 func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
-	r, err := NewReader(f, &Options{
+	opts := Options{
 		Comparer: comparer,
-		Levels: []TableOptions{{
-			FilterPolicy: fp,
-		}},
-	})
+	}
+	if fp != nil {
+		opts.Filters = map[string]FilterPolicy{
+			fp.Name(): fp,
+		}
+	}
+
+	r, err := NewReader(f, opts)
 	if err != nil {
 		return err
 	}
@@ -344,25 +348,20 @@ func build(
 	defer f0.Close()
 	tmpFileCount++
 
-	opts := &Options{
-		Merger: &base.Merger{
-			Name: "nullptr",
-		},
-		Comparer: comparer,
-	}
-	if propCollector != nil {
-		opts.TablePropertyCollectors = append(opts.TablePropertyCollectors, propCollector)
-	}
-
 	tableOpts := TableOptions{
 		BlockSize:      blockSize,
+		Comparer:       comparer,
 		Compression:    compression,
 		FilterPolicy:   fp,
 		FilterType:     ftype,
 		IndexBlockSize: indexBlockSize,
+		Merger:         &base.Merger{Name: "nullptr"},
+	}
+	if propCollector != nil {
+		tableOpts.TablePropertyCollectors = append(tableOpts.TablePropertyCollectors, propCollector)
 	}
 
-	w := NewWriter(f0, opts, tableOpts)
+	w := NewWriter(f0, tableOpts)
 	// Use rangeDelV1Format for testing byte equality with RocksDB.
 	w.rangeDelV1Format = true
 	var rangeDelLength int
@@ -489,10 +488,10 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r, err := NewReader(f, &Options{
-		Levels: []TableOptions{{
-			FilterPolicy: c,
-		}},
+	r, err := NewReader(f, Options{
+		Filters: map[string]FilterPolicy{
+			c.Name(): c,
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -608,7 +607,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 						continue
 					}
-					w := NewWriter(wf, nil, TableOptions{
+					w := NewWriter(wf, TableOptions{
 						BlockSize:      blockSize,
 						IndexBlockSize: indexBlockSize,
 					})
@@ -628,7 +627,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 						continue
 					}
-					r, err := NewReader(rf, nil)
+					r, err := NewReader(rf, Options{})
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
@@ -660,7 +659,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewReader(f, nil)
+	r, err := NewReader(f, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +683,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := NewReader(f, nil)
+	r, err := NewReader(f, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -840,13 +839,13 @@ func TestTablePropertyCollectorErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := &Options{}
+	var opts TableOptions
 	opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
 		func() TablePropertyCollector {
 			return errorPropCollector{}
 		})
 
-	w := NewWriter(f, opts, TableOptions{})
+	w := NewWriter(f, opts)
 	require.Regexp(t, `add a#0,1 failed`, w.Set([]byte("a"), []byte("b")))
 	require.Regexp(t, `add c#0,0 failed`, w.Delete([]byte("c")))
 	require.Regexp(t, `add d#0,15 failed`, w.DeleteRange([]byte("d"), []byte("e")))

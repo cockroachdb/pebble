@@ -23,7 +23,7 @@ const (
 	DefaultCompression Compression = iota
 	NoCompression
 	SnappyCompression
-	nCompression
+	NCompression
 )
 
 func (c Compression) String() string {
@@ -204,7 +204,7 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o.BlockSizeThreshold <= 0 {
 		o.BlockSizeThreshold = 90
 	}
-	if o.Compression <= DefaultCompression || o.Compression >= nCompression {
+	if o.Compression <= DefaultCompression || o.Compression >= NCompression {
 		o.Compression = SnappyCompression
 	}
 	if o.IndexBlockSize <= 0 {

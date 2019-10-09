@@ -32,7 +32,7 @@ type T struct {
 	manifest  *manifestT
 	sstable   *sstableT
 	wal       *walT
-	opts      base.Options
+	opts      pebble.Options
 	comparers sstable.Comparers
 	mergers   sstable.Mergers
 }
@@ -40,7 +40,7 @@ type T struct {
 // New creates a new introspection tool.
 func New() *T {
 	t := &T{
-		opts: base.Options{
+		opts: pebble.Options{
 			Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
 			Filters:  make(map[string]FilterPolicy),
 			FS:       vfs.Default,

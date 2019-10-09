@@ -80,7 +80,7 @@ func TestPropertiesLoad(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		r, err := NewReader(f, nil)
+		r, err := NewReader(f, Options{})
 		if err != nil {
 			t.Fatal(err)
 		}
