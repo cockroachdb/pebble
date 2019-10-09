@@ -167,27 +167,21 @@ type TableOptions struct {
 	TablePropertyCollectors []func() TablePropertyCollector
 }
 
-var defaultLevelOptions base.LevelOptions
-
-func init() {
-	defaultLevelOptions.EnsureDefaults()
-}
-
 func (o TableOptions) ensureDefaults() TableOptions {
 	if o.BlockRestartInterval <= 0 {
-		o.BlockRestartInterval = defaultLevelOptions.BlockRestartInterval
+		o.BlockRestartInterval = base.DefaultBlockRestartInterval
 	}
 	if o.BlockSize <= 0 {
-		o.BlockSize = defaultLevelOptions.BlockSize
+		o.BlockSize = base.DefaultBlockSize
 	}
 	if o.BlockSizeThreshold <= 0 {
-		o.BlockSizeThreshold = defaultLevelOptions.BlockSizeThreshold
+		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
 	}
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
 	}
 	if o.Compression <= DefaultCompression || o.Compression >= base.NCompression {
-		o.Compression = defaultLevelOptions.Compression
+		o.Compression = base.SnappyCompression
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize

@@ -16,13 +16,16 @@ type Logger interface {
 	Fatalf(format string, args ...interface{})
 }
 
-type defaultLogger struct{}
+// DefaultLogger logs to the Go stdlib logs.
+type DefaultLogger struct{}
 
-func (defaultLogger) Infof(format string, args ...interface{}) {
+// Infof implements the Logger.Infof interface.
+func (DefaultLogger) Infof(format string, args ...interface{}) {
 	_ = log.Output(2, fmt.Sprintf(format, args...))
 }
 
-func (defaultLogger) Fatalf(format string, args ...interface{}) {
+// Fatalf implements the Logger.Fatalf interface.
+func (DefaultLogger) Fatalf(format string, args ...interface{}) {
 	_ = log.Output(2, fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
