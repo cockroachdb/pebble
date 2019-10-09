@@ -230,6 +230,7 @@ type shard struct {
 
 	mu sync.RWMutex
 
+	reserved int64
 	maxSize  int64
 	coldSize int64
 	blocks   map[key]*entry     // fileNum+offset -> block
@@ -280,8 +281,9 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 		e = &entry{ptype: etCold, key: k, size: int64(len(value)), shard: c}
 		e.init()
 		e.setValue(v, c.free)
-		c.metaAdd(k, e)
-		c.countCold += e.size
+		if c.metaAdd(k, e) {
+			c.countCold += e.size
+		}
 
 	case e.getValue() != nil:
 		// cache entry was a hot or cold page
@@ -299,16 +301,17 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 	default:
 		// cache entry was a test page
 		c.coldSize += e.size
-		if c.coldSize > c.maxSize {
-			c.coldSize = c.maxSize
+		if c.coldSize > c.targetSize() {
+			c.coldSize = c.targetSize()
 		}
 		atomic.StoreInt32(&e.ref, 0)
 		e.setValue(v, c.free)
 		e.ptype = etHot
 		c.countTest -= e.size
 		c.metaDel(e)
-		c.metaAdd(k, e)
-		c.countHot += e.size
+		if c.metaAdd(k, e) {
+			c.countHot += e.size
+		}
 	}
 
 	return Handle{entry: e, value: v, free: c.free}
@@ -344,6 +347,13 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 	}
 }
 
+func (c *shard) Reserve(n int) {
+	c.mu.Lock()
+	c.reserved += int64(n)
+	c.evict()
+	c.mu.Unlock()
+}
+
 // Size returns the current space used by the cache.
 func (c *shard) Size() int64 {
 	c.mu.RLock()
@@ -352,8 +362,18 @@ func (c *shard) Size() int64 {
 	return size
 }
 
-func (c *shard) metaAdd(key key, e *entry) {
+func (c *shard) targetSize() int64 {
+	return c.maxSize - c.reserved
+}
+
+// Add the entry to the cache, returning true if the entry was added and false
+// if it would not fit in the cache.
+func (c *shard) metaAdd(key key, e *entry) bool {
 	c.evict()
+	if e.size > c.targetSize() {
+		// The entry is larger than the target cache size.
+		return false
+	}
 
 	c.blocks[key] = e
 
@@ -375,6 +395,7 @@ func (c *shard) metaAdd(key key, e *entry) {
 	} else {
 		fileBlocks.linkFile(e)
 	}
+	return true
 }
 
 func (c *shard) metaDel(e *entry) {
@@ -417,7 +438,7 @@ func (c *shard) metaEvict(e *entry) {
 }
 
 func (c *shard) evict() {
-	for c.maxSize <= c.countHot+c.countCold && c.handCold != nil {
+	for c.targetSize() <= c.countHot+c.countCold && c.handCold != nil {
 		c.runHandCold()
 	}
 }
@@ -435,7 +456,7 @@ func (c *shard) runHandCold() {
 			e.ptype = etTest
 			c.countCold -= e.size
 			c.countTest += e.size
-			for c.maxSize < c.countTest && c.handTest != nil {
+			for c.targetSize() < c.countTest && c.handTest != nil {
 				c.runHandTest()
 			}
 		}
@@ -443,7 +464,7 @@ func (c *shard) runHandCold() {
 
 	c.handCold = c.handCold.next()
 
-	for c.maxSize-c.coldSize <= c.countHot && c.handHot != nil {
+	for c.targetSize()-c.coldSize <= c.countHot && c.handHot != nil {
 		c.runHandHot()
 	}
 }
@@ -631,6 +652,27 @@ func (c *Cache) Free(b []byte) {
 	a := c.allocPool.Get().(*allocCache)
 	a.free(b)
 	c.allocPool.Put(a)
+}
+
+// Reserve N bytes in the cache. This effectively shrinks the size of the cache
+// by N bytes, without actually consuming any memory. The returned closure
+// should be invoked to release the reservation.
+func (c *Cache) Reserve(n int) func() {
+	// Round-up the per-shard reservation. Most reservations should be large, so
+	// this probably doesn't matter in practice.
+	shardN := (n + len(c.shards) - 1) / len(c.shards)
+	for i := range c.shards {
+		c.shards[i].Reserve(shardN)
+	}
+	return func() {
+		if shardN == -1 {
+			panic("pebble: cache reservation already released")
+		}
+		for i := range c.shards {
+			c.shards[i].Reserve(-shardN)
+		}
+		shardN = -1
+	}
 }
 
 // Metrics returns the metrics for the cache.

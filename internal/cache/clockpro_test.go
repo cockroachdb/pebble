@@ -6,9 +6,12 @@ package cache
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCache(t *testing.T) {
@@ -148,4 +151,41 @@ func TestMultipleDBs(t *testing.T) {
 func TestZeroSize(t *testing.T) {
 	cache := newShards(0, 1)
 	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 5))
+}
+
+func TestReserve(t *testing.T) {
+	cache := newShards(2, 2)
+	cache.Set(1, 0, 0, []byte("a"))
+	cache.Set(2, 0, 0, []byte("a"))
+	require.EqualValues(t, 2, cache.Size())
+	r := cache.Reserve(1)
+	require.EqualValues(t, 0, cache.Size())
+	cache.Set(1, 0, 0, []byte("a"))
+	cache.Set(2, 0, 0, []byte("a"))
+	require.EqualValues(t, 0, cache.Size())
+	r()
+	require.EqualValues(t, 0, cache.Size())
+	cache.Set(1, 0, 0, []byte("a"))
+	cache.Set(2, 0, 0, []byte("a"))
+	require.EqualValues(t, 2, cache.Size())
+}
+
+func TestReserveDoubleRelease(t *testing.T) {
+	cache := newShards(100, 1)
+	r := cache.Reserve(10)
+	r()
+
+	result := func() (result string) {
+		defer func() {
+			if v := recover(); v != nil {
+				result = fmt.Sprint(v)
+			}
+		}()
+		r()
+		return ""
+	}()
+	const expected = "pebble: cache reservation already released"
+	if expected != result {
+		t.Fatalf("expected %q, but found %q", expected, result)
+	}
 }
