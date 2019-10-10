@@ -121,7 +121,6 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 		Cache:    s.opts.Cache,
 		Comparer: s.opts.Comparer,
 		Filters:  s.opts.Filters,
-		Merger:   s.opts.Merger,
 	}
 	return sstable.NewReader(f, o, s.comparers, s.mergers)
 }
