@@ -101,10 +101,9 @@ type ReaderOptions struct {
 	Filters map[string]FilterPolicy
 
 	// Merger defines the associative merge operation to use for merging values
-	// written with {Batch,DB}.Merge.
-	//
-	// The default merger concatenates values.
-	Merger *Merger
+	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
+	// with the value stored in the sstable when it was written.
+	MergerName string
 }
 
 func (o ReaderOptions) ensureDefaults() ReaderOptions {
@@ -114,8 +113,8 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
 	}
-	if o.Merger == nil {
-		o.Merger = base.DefaultMerger
+	if o.MergerName == "" {
+		o.MergerName = base.DefaultMerger.Name
 	}
 	return o
 }
@@ -185,10 +184,9 @@ type WriterOptions struct {
 	IndexBlockSize int
 
 	// Merger defines the associative merge operation to use for merging values
-	// written with {Batch,DB}.Merge.
-	//
-	// The default merger concatenates values.
-	Merger *Merger
+	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
+	// with the value stored in the sstable when it was written.
+	MergerName string
 
 	// TableFormat specifies the format version for writing sstables. The default
 	// is TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
@@ -221,8 +219,8 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
 	}
-	if o.Merger == nil {
-		o.Merger = base.DefaultMerger
+	if o.MergerName == "" {
+		o.MergerName = base.DefaultMerger.Name
 	}
 	return o
 }

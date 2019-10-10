@@ -775,7 +775,7 @@ func NewWriter(
 	w.props.ColumnFamilyID = math.MaxInt32
 	w.props.ComparerName = o.Comparer.Name
 	w.props.CompressionName = o.Compression.String()
-	w.props.MergerName = o.Merger.Name
+	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
 	w.props.Version = 2 // TODO(peter): what is this?
 

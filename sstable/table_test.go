@@ -355,7 +355,7 @@ func build(
 		FilterPolicy:   fp,
 		FilterType:     ftype,
 		IndexBlockSize: indexBlockSize,
-		Merger:         &base.Merger{Name: "nullptr"},
+		MergerName:     "nullptr",
 	}
 	if propCollector != nil {
 		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
