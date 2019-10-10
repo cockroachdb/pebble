@@ -450,7 +450,7 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	if err != nil {
 		return err
 	}
-	if mem.unref() {
+	if mem.writerUnref() {
 		d.mu.Lock()
 		d.maybeScheduleFlush()
 		d.mu.Unlock()
@@ -1126,7 +1126,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		d.mu.mem.mutable.logNum = newLogNum
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 		d.updateReadStateLocked()
-		if imm.unref() {
+		if imm.writerUnref() {
 			d.maybeScheduleFlush()
 		}
 		force = false

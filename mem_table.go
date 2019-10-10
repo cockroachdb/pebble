@@ -51,7 +51,7 @@ type memTable struct {
 	rangeDelSkl arenaskl.Skiplist
 	emptySize   uint32
 	reserved    uint32
-	refs        int32
+	writerRefs  int32
 	flushedCh   chan struct{}
 	tombstones  rangeTombstoneCache
 	logNum      uint64
@@ -62,10 +62,10 @@ type memTable struct {
 func newMemTable(o *Options) *memTable {
 	o = o.EnsureDefaults()
 	m := &memTable{
-		cmp:       o.Comparer.Compare,
-		equal:     o.Comparer.Equal,
-		refs:      1,
-		flushedCh: make(chan struct{}),
+		cmp:        o.Comparer.Compare,
+		equal:      o.Comparer.Equal,
+		writerRefs: 1,
+		flushedCh:  make(chan struct{}),
 	}
 	arena := arenaskl.NewArena(uint32(o.MemTableSize), 0)
 	m.skl.Reset(arena, m.cmp)
@@ -74,14 +74,17 @@ func newMemTable(o *Options) *memTable {
 	return m
 }
 
-func (m *memTable) ref() {
-	atomic.AddInt32(&m.refs, 1)
+func (m *memTable) writerRef() {
+	switch v := atomic.AddInt32(&m.writerRefs, 1); {
+	case v <= 1:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	}
 }
 
-func (m *memTable) unref() bool {
-	switch v := atomic.AddInt32(&m.refs, -1); {
+func (m *memTable) writerUnref() bool {
+	switch v := atomic.AddInt32(&m.writerRefs, -1); {
 	case v < 0:
-		panic("pebble: inconsistent reference count")
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
 		return true
 	default:
@@ -94,7 +97,7 @@ func (m *memTable) flushed() chan struct{} {
 }
 
 func (m *memTable) readyForFlush() bool {
-	return atomic.LoadInt32(&m.refs) == 0
+	return atomic.LoadInt32(&m.writerRefs) == 0
 }
 
 func (m *memTable) logInfo() (uint64, uint64) {
@@ -126,7 +129,7 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 // unref() after the batch has been applied.
 func (m *memTable) prepare(batch *Batch) error {
 	a := m.skl.Arena()
-	if atomic.LoadInt32(&m.refs) == 1 {
+	if atomic.LoadInt32(&m.writerRefs) == 1 {
 		// If there are no other concurrent apply operations, we can update the
 		// reserved bytes setting to accurately reflect how many bytes of been
 		// allocated vs the over-estimation present in memTableEntrySize.
@@ -139,7 +142,7 @@ func (m *memTable) prepare(batch *Batch) error {
 	}
 	m.reserved += batch.memTableSize
 
-	m.ref()
+	m.writerRef()
 	return nil
 }
 

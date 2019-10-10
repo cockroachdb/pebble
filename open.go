@@ -369,7 +369,7 @@ func (d *DB) replayWAL(
 			if err = mem.apply(&b, seqNum); err != nil {
 				return 0, err
 			}
-			mem.unref()
+			mem.writerUnref()
 		}
 		buf.Reset()
 	}

@@ -249,7 +249,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					if err != nil {
 						return err
 					}
-					mem.unref()
+					mem.writerUnref()
 					return nil
 				},
 				write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
