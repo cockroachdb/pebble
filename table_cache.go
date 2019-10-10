@@ -64,7 +64,7 @@ type tableCacheShard struct {
 	cacheID uint64
 	dirname string
 	fs      vfs.FS
-	opts    sstable.Options
+	opts    sstable.ReaderOptions
 	size    int
 
 	mu struct {

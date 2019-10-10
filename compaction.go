@@ -995,7 +995,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		c.outputLevel: metrics,
 	}
 
-	tableOptions := makeTableOptions(d.opts, d.opts.Level(c.outputLevel))
+	writerOpts := makeWriterOptions(d.opts, d.opts.Level(c.outputLevel))
 
 	newOutput := func() error {
 		d.mu.Lock()
@@ -1024,7 +1024,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		})
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
-		tw = sstable.NewWriter(file, tableOptions, cacheOpts)
+		tw = sstable.NewWriter(file, writerOpts, cacheOpts)
 
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel,
