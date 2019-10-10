@@ -115,7 +115,7 @@ func init() {
 }
 
 func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
-	opts := Options{
+	opts := ReaderOptions{
 		Comparer: comparer,
 	}
 	if fp != nil {
@@ -348,7 +348,7 @@ func build(
 	defer f0.Close()
 	tmpFileCount++
 
-	tableOpts := TableOptions{
+	writerOpts := WriterOptions{
 		BlockSize:      blockSize,
 		Comparer:       comparer,
 		Compression:    compression,
@@ -358,10 +358,10 @@ func build(
 		Merger:         &base.Merger{Name: "nullptr"},
 	}
 	if propCollector != nil {
-		tableOpts.TablePropertyCollectors = append(tableOpts.TablePropertyCollectors, propCollector)
+		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
 	}
 
-	w := NewWriter(f0, tableOpts)
+	w := NewWriter(f0, writerOpts)
 	// Use rangeDelV1Format for testing byte equality with RocksDB.
 	w.rangeDelV1Format = true
 	var rangeDelLength int
@@ -488,7 +488,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r, err := NewReader(f, Options{
+	r, err := NewReader(f, ReaderOptions{
 		Filters: map[string]FilterPolicy{
 			c.Name(): c,
 		},
@@ -607,7 +607,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 						continue
 					}
-					w := NewWriter(wf, TableOptions{
+					w := NewWriter(wf, WriterOptions{
 						BlockSize:      blockSize,
 						IndexBlockSize: indexBlockSize,
 					})
@@ -627,7 +627,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 						continue
 					}
-					r, err := NewReader(rf, Options{})
+					r, err := NewReader(rf, ReaderOptions{})
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
@@ -659,7 +659,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewReader(f, Options{})
+	r, err := NewReader(f, ReaderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -683,7 +683,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := NewReader(f, Options{})
+	r, err := NewReader(f, ReaderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -839,7 +839,7 @@ func TestTablePropertyCollectorErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var opts TableOptions
+	var opts WriterOptions
 	opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
 		func() TablePropertyCollector {
 			return errorPropCollector{}
