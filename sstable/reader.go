@@ -955,7 +955,7 @@ type Reader struct {
 	propertiesBH      BlockHandle
 	metaIndexBH       BlockHandle
 	footerBH          BlockHandle
-	opts              Options
+	opts              ReaderOptions
 	Compare           Compare
 	split             Split
 	mergerOK          bool
@@ -1347,7 +1347,7 @@ func (r *Reader) Layout() (*Layout, error) {
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(
-	f vfs.File, o Options, extraOpts ...ReaderOption) (*Reader, error) {
+	f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.ensureDefaults()
 	r := &Reader{
 		file: f,

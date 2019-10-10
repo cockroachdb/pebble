@@ -80,8 +80,8 @@ type TablePropertyCollector interface {
 	Name() string
 }
 
-// Options holds the parameters needed for reading an sstable.
-type Options struct {
+// ReaderOptions holds the parameters needed for reading an sstable.
+type ReaderOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default cache size is a zero-size cache.
@@ -107,7 +107,7 @@ type Options struct {
 	Merger *Merger
 }
 
-func (o Options) ensureDefaults() Options {
+func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	if o.Cache == nil {
 		o.Cache = cache.New(0)
 	}
@@ -120,8 +120,8 @@ func (o Options) ensureDefaults() Options {
 	return o
 }
 
-// TableOptions holds the parameters used to control building an sstable.
-type TableOptions struct {
+// WriterOptions holds the parameters used to control building an sstable.
+type WriterOptions struct {
 	// BlockRestartInterval is the number of keys between restart points
 	// for delta encoding of keys.
 	//
@@ -202,7 +202,7 @@ type TableOptions struct {
 	TablePropertyCollectors []func() TablePropertyCollector
 }
 
-func (o TableOptions) ensureDefaults() TableOptions {
+func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.BlockRestartInterval <= 0 {
 		o.BlockRestartInterval = base.DefaultBlockRestartInterval
 	}

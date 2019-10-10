@@ -759,8 +759,8 @@ func (o *Options) Validate() error {
 	return errors.New(buf.String())
 }
 
-func makeReaderOptions(opts *Options) sstable.Options {
-	var o sstable.Options
+func makeReaderOptions(opts *Options) sstable.ReaderOptions {
+	var o sstable.ReaderOptions
 	if opts != nil {
 		o.Cache = opts.Cache
 		o.Comparer = opts.Comparer
@@ -770,8 +770,8 @@ func makeReaderOptions(opts *Options) sstable.Options {
 	return o
 }
 
-func makeTableOptions(opts *Options, levelOpts LevelOptions) sstable.TableOptions {
-	var o sstable.TableOptions
+func makeWriterOptions(opts *Options, levelOpts LevelOptions) sstable.WriterOptions {
+	var o sstable.WriterOptions
 	if opts != nil {
 		o.Cache = opts.Cache
 		o.Comparer = opts.Comparer

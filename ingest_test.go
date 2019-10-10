@@ -33,7 +33,7 @@ func TestIngestLoad(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, sstable.TableOptions{})
+			w := sstable.NewWriter(f, sstable.WriterOptions{})
 			for _, data := range strings.Split(td.Input, "\n") {
 				j := strings.Index(data, ":")
 				if j < 0 {
@@ -111,7 +111,7 @@ func TestIngestLoadRand(t *testing.T) {
 			expected[i].Smallest = keys[0]
 			expected[i].Largest = keys[len(keys)-1]
 
-			w := sstable.NewWriter(f, sstable.TableOptions{})
+			w := sstable.NewWriter(f, sstable.WriterOptions{})
 			for i := range keys {
 				if i > 0 && base.InternalCompare(cmp, keys[i-1], keys[i]) == 0 {
 					// Duplicate key, ignore.
@@ -510,7 +510,7 @@ func TestIngest(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				w := sstable.NewWriter(f, sstable.TableOptions{})
+				w := sstable.NewWriter(f, sstable.WriterOptions{})
 				iters := []internalIterator{
 					b.newInternalIter(nil),
 					b.newRangeDelIter(nil),
@@ -635,7 +635,7 @@ func TestIngestCompact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := sstable.NewWriter(f, sstable.TableOptions{})
+	w := sstable.NewWriter(f, sstable.WriterOptions{})
 	key := []byte("a")
 	if err := w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil); err != nil {
 		t.Fatal(err)

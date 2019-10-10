@@ -710,7 +710,7 @@ type WriterOption interface {
 // close the file.
 func NewWriter(
 	f writeCloseSyncer,
-	o TableOptions,
+	o WriterOptions,
 	extraOpts ...WriterOption,
 ) *Writer {
 	o = o.ensureDefaults()

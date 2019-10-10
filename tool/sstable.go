@@ -117,7 +117,7 @@ order which means the records will be printed in that order.
 }
 
 func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
-	o := sstable.Options{
+	o := sstable.ReaderOptions{
 		Cache:    s.opts.Cache,
 		Comparer: s.opts.Comparer,
 		Filters:  s.opts.Filters,
