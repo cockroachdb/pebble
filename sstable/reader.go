@@ -1390,7 +1390,7 @@ func NewReader(
 		r.split = o.Comparer.Split
 	}
 
-	if o.Merger != nil && o.Merger.Name == r.Properties.MergerName {
+	if o.MergerName == r.Properties.MergerName {
 		r.mergerOK = true
 	}
 

@@ -765,7 +765,9 @@ func makeReaderOptions(opts *Options) sstable.ReaderOptions {
 		o.Cache = opts.Cache
 		o.Comparer = opts.Comparer
 		o.Filters = opts.Filters
-		o.Merger = opts.Merger
+		if opts.Merger != nil {
+			o.MergerName = opts.Merger.Name
+		}
 	}
 	return o
 }
@@ -775,7 +777,9 @@ func makeWriterOptions(opts *Options, levelOpts LevelOptions) sstable.WriterOpti
 	if opts != nil {
 		o.Cache = opts.Cache
 		o.Comparer = opts.Comparer
-		o.Merger = opts.Merger
+		if opts.Merger != nil {
+			o.MergerName = opts.Merger.Name
+		}
 		o.TableFormat = opts.TableFormat
 		o.TablePropertyCollectors = opts.TablePropertyCollectors
 	}

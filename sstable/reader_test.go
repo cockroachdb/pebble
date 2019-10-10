@@ -336,8 +336,8 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 		Merge: base.DefaultMerger.Merge,
 	}
 	writerOpts := WriterOptions{
-		Comparer: testComparer,
-		Merger:   testMerger,
+		Comparer:   testComparer,
+		MergerName: "test.merger",
 	}
 
 	mem := vfs.NewMem()
