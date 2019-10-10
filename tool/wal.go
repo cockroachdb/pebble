@@ -22,14 +22,14 @@ type walT struct {
 	Root *cobra.Command
 	Dump *cobra.Command
 
-	opts     *base.Options
+	opts     *pebble.Options
 	fmtKey   formatter
 	fmtValue formatter
 
 	comparers sstable.Comparers
 }
 
-func newWAL(opts *base.Options, comparers sstable.Comparers) *walT {
+func newWAL(opts *pebble.Options, comparers sstable.Comparers) *walT {
 	w := &walT{
 		opts: opts,
 	}

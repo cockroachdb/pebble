@@ -284,7 +284,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					w := sstable.NewWriter(f, nil, LevelOptions{
+					w := sstable.NewWriter(f, sstable.WriterOptions{
 						BlockSize: 32 << 10, // 32 KB
 					})
 					for i := 0; i < entries; i++ {

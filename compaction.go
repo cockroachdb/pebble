@@ -51,7 +51,7 @@ func totalSize(f []fileMetadata) (size uint64) {
 type compaction struct {
 	cmp     Compare
 	format  base.Formatter
-	logger  base.Logger
+	logger  Logger
 	version *version
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
@@ -995,6 +995,8 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		c.outputLevel: metrics,
 	}
 
+	writerOpts := makeWriterOptions(d.opts, d.opts.Level(c.outputLevel))
+
 	newOutput := func() error {
 		d.mu.Lock()
 		fileNum := d.mu.versions.getNextFileNum()
@@ -1022,7 +1024,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		})
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
-		tw = sstable.NewWriter(file, d.opts, d.opts.Level(c.outputLevel), cacheOpts)
+		tw = sstable.NewWriter(file, writerOpts, cacheOpts)
 
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel,

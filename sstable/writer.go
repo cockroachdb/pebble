@@ -710,32 +710,29 @@ type WriterOption interface {
 // close the file.
 func NewWriter(
 	f writeCloseSyncer,
-	o *Options,
-	lo TableOptions,
+	o WriterOptions,
 	extraOpts ...WriterOption,
 ) *Writer {
-	o = o.EnsureDefaults()
-	lo = *lo.EnsureDefaults()
-
+	o = o.ensureDefaults()
 	w := &Writer{
 		syncer: f,
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
-		blockSize:               lo.BlockSize,
-		blockSizeThreshold:      (lo.BlockSize*lo.BlockSizeThreshold + 99) / 100,
-		indexBlockSize:          lo.IndexBlockSize,
-		indexBlockSizeThreshold: (lo.IndexBlockSize*lo.BlockSizeThreshold + 99) / 100,
+		blockSize:               o.BlockSize,
+		blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
+		indexBlockSize:          o.IndexBlockSize,
+		indexBlockSizeThreshold: (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
 		compare:                 o.Comparer.Compare,
 		split:                   o.Comparer.Split,
 		formatter:               o.Comparer.Format,
-		compression:             lo.Compression,
+		compression:             o.Compression,
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
 		tableFormat:             o.TableFormat,
 		cache:                   o.Cache,
 		block: blockWriter{
-			restartInterval: lo.BlockRestartInterval,
+			restartInterval: o.BlockRestartInterval,
 		},
 		indexBlock: blockWriter{
 			restartInterval: 1,
@@ -760,10 +757,10 @@ func NewWriter(
 	}
 
 	w.props.PrefixExtractorName = "nullptr"
-	if lo.FilterPolicy != nil {
-		switch lo.FilterType {
+	if o.FilterPolicy != nil {
+		switch o.FilterType {
 		case TableFilter:
-			w.filter = newTableFilterWriter(lo.FilterPolicy)
+			w.filter = newTableFilterWriter(o.FilterPolicy)
 			if w.split != nil {
 				w.props.PrefixExtractorName = o.Comparer.Name
 				w.props.PrefixFiltering = true
@@ -771,14 +768,14 @@ func NewWriter(
 				w.props.WholeKeyFiltering = true
 			}
 		default:
-			panic(fmt.Sprintf("unknown filter type: %v", lo.FilterType))
+			panic(fmt.Sprintf("unknown filter type: %v", o.FilterType))
 		}
 	}
 
 	w.props.ColumnFamilyID = math.MaxInt32
 	w.props.ComparerName = o.Comparer.Name
-	w.props.CompressionName = lo.Compression.String()
-	w.props.MergerName = o.Merger.Name
+	w.props.CompressionName = o.Compression.String()
+	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
 	w.props.Version = 2 // TODO(peter): what is this?
 

@@ -64,7 +64,7 @@ type tableCacheShard struct {
 	cacheID uint64
 	dirname string
 	fs      vfs.FS
-	opts    *Options
+	opts    sstable.ReaderOptions
 	size    int
 
 	mu struct {
@@ -86,7 +86,7 @@ func (c *tableCacheShard) init(
 	c.cacheID = cacheID
 	c.dirname = dirname
 	c.fs = fs
-	c.opts = opts
+	c.opts = makeReaderOptions(opts)
 	c.size = size
 	c.mu.nodes = make(map[uint64]*tableCacheNode)
 	c.mu.lru.next = &c.mu.lru

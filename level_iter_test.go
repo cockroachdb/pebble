@@ -147,7 +147,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 				return err.Error()
 			}
 
-			w := sstable.NewWriter(f0, nil, LevelOptions{})
+			w := sstable.NewWriter(f0, sstable.WriterOptions{})
 			var tombstones []rangedel.Tombstone
 			f := rangedel.Fragmenter{
 				Cmp: cmp,
@@ -186,7 +186,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err := sstable.NewReader(f1, nil)
+			r, err := sstable.NewReader(f1, sstable.ReaderOptions{})
 			if err != nil {
 				return err.Error()
 			}
@@ -232,7 +232,7 @@ func buildLevelIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], nil, LevelOptions{
+		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,
@@ -254,7 +254,7 @@ func buildLevelIterTables(
 		}
 	}
 
-	opts := &Options{Cache: NewCache(128 << 20)}
+	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))

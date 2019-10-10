@@ -172,38 +172,6 @@ func (i *singleLevelIterator) loadBlock() bool {
 	return true
 }
 
-// seekBlock loads the block at the current index position and positions i.data
-// at the first key in that block which is >= the given key. If unsuccessful,
-// it sets i.err to any error encountered, which may be nil if we have simply
-// exhausted the entire table.
-func (i *singleLevelIterator) seekBlock(key []byte) bool {
-	if !i.index.Valid() {
-		i.err = i.index.err
-		return false
-	}
-	// Load the next block.
-	v := i.index.Value()
-	h, n := decodeBlockHandle(v)
-	if n == 0 || n != len(v) {
-		i.err = errors.New("pebble/table: corrupt index entry")
-		return false
-	}
-	block, err := i.reader.readBlock(h, nil /* transform */)
-	if err != nil {
-		i.err = err
-		return false
-	}
-	i.data.setCacheHandle(block)
-	i.err = i.data.init(i.cmp, block.Get(), i.reader.Properties.GlobalSeqNum)
-	if i.err != nil {
-		return false
-	}
-	// Look for the key inside that block.
-	i.initBounds()
-	i.data.SeekGE(key)
-	return true
-}
-
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
@@ -987,8 +955,7 @@ type Reader struct {
 	propertiesBH      BlockHandle
 	metaIndexBH       BlockHandle
 	footerBH          BlockHandle
-	opts              *Options
-	cache             *cache.Cache
+	opts              ReaderOptions
 	Compare           Compare
 	split             Split
 	mergerOK          bool
@@ -1152,11 +1119,11 @@ func (r *Reader) readWeakCachedBlock(
 func (r *Reader) readBlock(
 	bh BlockHandle, transform blockTransform,
 ) (cache.Handle, error) {
-	if h := r.cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
+	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
 	}
 
-	b := r.cache.Alloc(int(bh.Length + blockTrailerLen))
+	b := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
 	if _, err := r.file.ReadAt(b, int64(bh.Offset)); err != nil {
 		return cache.Handle{}, err
 	}
@@ -1178,12 +1145,12 @@ func (r *Reader) readBlock(
 		if err != nil {
 			return cache.Handle{}, err
 		}
-		decoded := r.cache.Alloc(decodedLen)
+		decoded := r.opts.Cache.Alloc(decodedLen)
 		decoded, err = snappy.Decode(decoded, b)
 		if err != nil {
 			return cache.Handle{}, err
 		}
-		r.cache.Free(b)
+		r.opts.Cache.Free(b)
 		b = decoded
 	default:
 		return cache.Handle{}, fmt.Errorf("pebble/table: unknown block compression: %d", typ)
@@ -1198,7 +1165,7 @@ func (r *Reader) readBlock(
 		}
 	}
 
-	h := r.cache.Set(r.cacheID, r.fileNum, bh.Offset, b)
+	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, b)
 	return h, nil
 }
 
@@ -1244,7 +1211,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	return rangeDelBlock.finish(), nil
 }
 
-func (r *Reader) readMetaindex(metaindexBH BlockHandle, o *Options) error {
+func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	b, err := r.readBlock(metaindexBH, nil /* transform */)
 	if err != nil {
 		return err
@@ -1380,13 +1347,11 @@ func (r *Reader) Layout() (*Layout, error) {
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(
-	f vfs.File, o *Options, extraOpts ...ReaderOption) (*Reader, error) {
-	o = o.EnsureDefaults()
-
+	f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+	o = o.ensureDefaults()
 	r := &Reader{
-		file:  f,
-		opts:  o,
-		cache: o.Cache,
+		file: f,
+		opts: o,
 	}
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")
@@ -1403,7 +1368,7 @@ func NewReader(
 		}
 	}
 	if r.cacheID == 0 {
-		r.cacheID = r.cache.NewID()
+		r.cacheID = r.opts.Cache.NewID()
 	}
 
 	footer, err := readFooter(f)
@@ -1412,7 +1377,7 @@ func NewReader(
 		return nil, r.Close()
 	}
 	// Read the metaindex.
-	if err := r.readMetaindex(footer.metaindexBH, o); err != nil {
+	if err := r.readMetaindex(footer.metaindexBH); err != nil {
 		r.err = err
 		return nil, r.Close()
 	}
@@ -1425,7 +1390,7 @@ func NewReader(
 		r.split = o.Comparer.Split
 	}
 
-	if o.Merger != nil && o.Merger.Name == r.Properties.MergerName {
+	if o.MergerName == r.Properties.MergerName {
 		r.mergerOK = true
 	}
 

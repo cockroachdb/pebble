@@ -20,11 +20,21 @@ type Compare = base.Compare
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
 
-// Options exports the base.Options type.
-type Options = base.Options
-
-// TableInfo exports the base.TableInfo type.
-type TableInfo = base.TableInfo
+// TableInfo contains the common information for table related events.
+type TableInfo struct {
+	// FileNum is the internal DB identifier for the table.
+	FileNum uint64
+	// Size is the size of the file in bytes.
+	Size uint64
+	// Smallest is the smallest internal key in the table.
+	Smallest InternalKey
+	// Largest is the largest internal key in the table.
+	Largest InternalKey
+	// SmallestSeqNum is the smallest sequence number in the table.
+	SmallestSeqNum uint64
+	// LargestSeqNum is the largest sequence number in the table.
+	LargestSeqNum uint64
+}
 
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {

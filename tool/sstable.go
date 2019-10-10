@@ -9,6 +9,7 @@ import (
 	"sort"
 	"text/tabwriter"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -25,7 +26,7 @@ type sstableT struct {
 	Scan       *cobra.Command
 
 	// Configuration and state.
-	opts      *sstable.Options
+	opts      *pebble.Options
 	comparers sstable.Comparers
 	mergers   sstable.Mergers
 
@@ -38,7 +39,7 @@ type sstableT struct {
 }
 
 func newSSTable(
-	opts *base.Options, comparers sstable.Comparers, mergers sstable.Mergers,
+	opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers,
 ) *sstableT {
 	s := &sstableT{
 		opts:      opts,
@@ -116,7 +117,12 @@ order which means the records will be printed in that order.
 }
 
 func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
-	return sstable.NewReader(f, s.opts, s.comparers, s.mergers)
+	o := sstable.ReaderOptions{
+		Cache:    s.opts.Cache,
+		Comparer: s.opts.Comparer,
+		Filters:  s.opts.Filters,
+	}
+	return sstable.NewReader(f, o, s.comparers, s.mergers)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {

@@ -35,21 +35,20 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			var opts Options
-			var tableOpts TableOptions
+			var writerOpts WriterOptions
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
 				case "leveldb":
 					if len(arg.Vals) != 0 {
 						return fmt.Sprintf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
 					}
-					opts.TableFormat = TableFormatLevelDB
+					writerOpts.TableFormat = TableFormatLevelDB
 				case "index-block-size":
 					if len(arg.Vals) != 1 {
 						return fmt.Sprintf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
 					}
 					var err error
-					tableOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
+					writerOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
 					if err != nil {
 						return err.Error()
 					}
@@ -58,7 +57,7 @@ func TestWriter(t *testing.T) {
 				}
 			}
 
-			w := NewWriter(f0, &opts, tableOpts)
+			w := NewWriter(f0, writerOpts)
 			var tombstones []rangedel.Tombstone
 			f := rangedel.Fragmenter{
 				Cmp: DefaultComparer.Compare,
@@ -109,7 +108,7 @@ func TestWriter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err = NewReader(f1, nil)
+			r, err = NewReader(f1, ReaderOptions{})
 			if err != nil {
 				return err.Error()
 			}
@@ -130,7 +129,7 @@ func TestWriter(t *testing.T) {
 				return err.Error()
 			}
 
-			w := NewWriter(f0, nil, TableOptions{})
+			w := NewWriter(f0, WriterOptions{})
 			for i := range td.CmdArgs {
 				arg := &td.CmdArgs[i]
 				if arg.Key == "range-del-v1" {
@@ -159,7 +158,7 @@ func TestWriter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err = NewReader(f1, nil)
+			r, err = NewReader(f1, ReaderOptions{})
 			if err != nil {
 				return err.Error()
 			}
@@ -209,7 +208,8 @@ func TestWriter(t *testing.T) {
 func TestWriterClearCache(t *testing.T) {
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
-	opts := &Options{Cache: cache.New(64 << 20)}
+	opts := ReaderOptions{Cache: cache.New(64 << 20)}
+	writerOpts := WriterOptions{Cache: opts.Cache}
 	cacheOpts := &cacheOpts{cacheID: 1, fileNum: 1}
 	invalidData := []byte("invalid data")
 
@@ -219,7 +219,7 @@ func TestWriterClearCache(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		w := NewWriter(f, opts, TableOptions{}, cacheOpts)
+		w := NewWriter(f, writerOpts, cacheOpts)
 		if err := w.Set([]byte("hello"), []byte("world")); err != nil {
 			t.Fatal(err)
 		}

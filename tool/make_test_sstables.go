@@ -21,7 +21,7 @@ func makeOutOfOrder() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	w := sstable.NewWriter(f, nil, sstable.TableOptions{})
+	w := sstable.NewWriter(f, sstable.WriterOptions{})
 	private.SSTableWriterDisableKeyOrderChecks(w)
 
 	set := func(key string) {

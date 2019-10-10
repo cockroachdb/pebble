@@ -54,7 +54,7 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 	}
 
 	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.ReaderOption)
-	r, err := sstable.NewReader(f, opts, cacheOpts)
+	r, err := sstable.NewReader(f, makeReaderOptions(opts), cacheOpts)
 	if err != nil {
 		return nil, err
 	}

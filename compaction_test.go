@@ -629,7 +629,7 @@ func TestCompaction(t *testing.T) {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}
 				defer f.Close()
-				r, err := sstable.NewReader(f, nil)
+				r, err := sstable.NewReader(f, sstable.ReaderOptions{})
 				if err != nil {
 					return "", "", fmt.Errorf("NewReader: %v", err)
 				}
