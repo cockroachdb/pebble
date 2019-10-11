@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 
@@ -296,27 +297,7 @@ func (w *LogWriter) flushLoop() {
 
 		f.Unlock()
 
-		var err error
-		for _, b := range pending {
-			if err = w.flushBlock(b); err != nil {
-				break
-			}
-		}
-		if err == nil && len(data) > 0 {
-			_, err = w.w.Write(data)
-		}
-		if head != tail {
-			if err == nil && w.s != nil {
-				err = w.s.Sync()
-			}
-			if popErr := f.syncQ.pop(head, tail, err); popErr != nil {
-				// This slightly odd code structure prevents panic'ing without the lock
-				// held which would immediately hit a Go runtime error when the defer
-				// tries to unlock a mutex that isn't locked.
-				f.Lock()
-				panic(popErr)
-			}
-		}
+		err := w.flushPending(data, pending, head, tail)
 
 		f.Lock()
 		f.err = err
@@ -327,6 +308,38 @@ func (w *LogWriter) flushLoop() {
 			return
 		}
 	}
+}
+
+func (w *LogWriter) flushPending(data []byte, pending []*block, head, tail uint32) (err error) {
+	defer func() {
+		// Translate panics into errors. The errors will cause flushLoop to shut
+		// down, but allows us to do so in a controlled way and avoid swallowing
+		// the stack that created the panic if panic'ing itself hits a panic
+		// (e.g. unlock of unlocked mutex).
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v\n%s", err, debug.Stack())
+		}
+	}()
+
+	for _, b := range pending {
+		if err = w.flushBlock(b); err != nil {
+			break
+		}
+	}
+	if err == nil && len(data) > 0 {
+		_, err = w.w.Write(data)
+	}
+	if head != tail {
+		if err == nil && w.s != nil {
+			err = w.s.Sync()
+		}
+		f := &w.flusher
+		if popErr := f.syncQ.pop(head, tail, err); popErr != nil {
+			return popErr
+		}
+	}
+
+	return err
 }
 
 func (w *LogWriter) flushBlock(b *block) error {
