@@ -17,7 +17,7 @@ type DB interface {
 	NewIter(*pebble.IterOptions) iterator
 	NewBatch() batch
 	Scan(key []byte, count int64, reverse bool) error
-	Metrics() *pebble.VersionMetrics
+	Metrics() *pebble.Metrics
 	Flush() error
 }
 
@@ -119,6 +119,6 @@ func (p pebbleDB) Scan(key []byte, count int64, reverse bool) error {
 	return iter.Close()
 }
 
-func (p pebbleDB) Metrics() *pebble.VersionMetrics {
+func (p pebbleDB) Metrics() *pebble.Metrics {
 	return p.d.Metrics()
 }
