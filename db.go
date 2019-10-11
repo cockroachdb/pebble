@@ -45,6 +45,8 @@ type flushable interface {
 	newRangeDelIter(o *IterOptions) internalIterator
 	inuseBytes() uint64
 	totalBytes() uint64
+	readerRef()
+	readerUnref()
 	flushed() chan struct{}
 	readyForFlush() bool
 	logInfo() (logNum, size uint64)
@@ -195,6 +197,8 @@ type DB struct {
 	logRecycler logRecycler
 
 	closed int32 // updated atomically
+
+	memTableReserved int64 // number of bytes reserved in the cache for memtables
 
 	compactionLimiter limiter
 
@@ -742,6 +746,13 @@ func (d *DB) Close() error {
 				return fmt.Errorf("leaked iterators:\n%s", v)
 			}
 		}
+
+		for _, mem := range d.mu.mem.queue {
+			mem.readerUnref()
+		}
+		if reserved := atomic.LoadInt64(&d.memTableReserved); reserved != 0 {
+			return fmt.Errorf("leaked memtable reservation: %d", reserved)
+		}
 	}
 	return err
 }
@@ -951,6 +962,10 @@ func (d *DB) walPreallocateSize() int {
 	return size
 }
 
+func (d *DB) newMemTable() *memTable {
+	return newMemTable(d.opts, &d.memTableReserved)
+}
+
 // makeRoomForWrite ensures that the memtable has room to hold the contents of
 // Batch. It reserves the space in the memtable and adds a reference to the
 // memtable. The caller must later ensure that the memtable is unreferenced. If
@@ -1117,7 +1132,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// also have to wait for all previous immutable tables to
 		// flush. Additionally, the memtable is tied to particular WAL file and we
 		// want to go through the flush path in order to recycle that WAL file.
-		d.mu.mem.mutable = newMemTable(d.opts)
+		d.mu.mem.mutable = d.newMemTable()
 		// NB: newLogNum corresponds to the WAL that contains mutations that are
 		// present in the new memtable. When immutable memtables are flushed to
 		// disk, a VersionEdit will be created telling the manifest the minimum

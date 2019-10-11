@@ -791,6 +791,11 @@ func (d *DB) flush1() error {
 	// is not marked as completed until the deletion of obsolete files job has
 	// completed.
 	for i := range flushed {
+		// The order of these operations matters here for ease of testing. Removing
+		// the reader reference first allows tests to be guaranteed that the
+		// memtable reservation has been released by the time a synchronous flush
+		// returns.
+		flushed[i].readerUnref()
 		close(flushed[i].flushed())
 	}
 	return err

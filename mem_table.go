@@ -49,29 +49,81 @@ type memTable struct {
 	equal       Equal
 	skl         arenaskl.Skiplist
 	rangeDelSkl arenaskl.Skiplist
-	emptySize   uint32
-	reserved    uint32
-	writerRefs  int32
-	flushedCh   chan struct{}
-	tombstones  rangeTombstoneCache
-	logNum      uint64
-	logSize     uint64
+	// emptySize is the amount of allocated space in the arena when the memtable
+	// is empty.
+	emptySize uint32
+	// reserved tracks the amount of space used by the memtable, both by actual
+	// data stored in the memtable as well as inflight batch commit
+	// operations. This value is incremented pessimistically by prepare() in
+	// order to account for the space needed by a batch.
+	reserved uint32
+	// readerRefs tracks the read references on the memtable. The two sources of
+	// reader references are DB.mu.mem.queue and readState.memtables. The memory
+	// reserved by the memtable in the cache is released when the reader refs
+	// drop to zero. When the reader refs drops to zero, the writer refs will
+	// already be zero because the memtable will have been flushed and that only
+	// occurs once the writer refs drops to zero.
+	readerRefs int32
+	// writerRefs tracks the write references on the memtable. The two sources of
+	// writer references are the memtable being on DB.mu.mem.queue and from
+	// inflight mutations that have reserved space in the memtable but not yet
+	// applied. The memtable cannot be flushed to disk until the writer refs
+	// drops to zero.
+	writerRefs int32
+	flushedCh  chan struct{}
+	tombstones rangeTombstoneCache
+	logNum     uint64
+	logSize    uint64
+	// Closure to invoke to release memory accounting bytes.
+	releaseMemAccountingBytes func()
 }
 
 // newMemTable returns a new MemTable.
-func newMemTable(o *Options) *memTable {
+func newMemTable(o *Options, memAccountingBytes *int64) *memTable {
 	o = o.EnsureDefaults()
 	m := &memTable{
 		cmp:        o.Comparer.Compare,
 		equal:      o.Comparer.Equal,
+		readerRefs: 1,
 		writerRefs: 1,
 		flushedCh:  make(chan struct{}),
 	}
+
+	if memAccountingBytes != nil {
+		size := o.MemTableSize
+		atomic.AddInt64(memAccountingBytes, int64(size))
+		releaseAccountingReservation := o.Cache.Reserve(size)
+		m.releaseMemAccountingBytes = func() {
+			atomic.AddInt64(memAccountingBytes, -int64(size))
+			releaseAccountingReservation()
+		}
+	}
+
 	arena := arenaskl.NewArena(uint32(o.MemTableSize), 0)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.emptySize = arena.Size()
 	return m
+}
+
+func (m *memTable) readerRef() {
+	switch v := atomic.AddInt32(&m.readerRefs, 1); {
+	case v <= 1:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	}
+}
+
+func (m *memTable) readerUnref() {
+	switch v := atomic.AddInt32(&m.readerRefs, -1); {
+	case v < 0:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	case v == 0:
+		if m.releaseMemAccountingBytes == nil {
+			panic(fmt.Sprintf("pebble: memtable reservation already released"))
+		}
+		m.releaseMemAccountingBytes()
+		m.releaseMemAccountingBytes = nil
+	}
 }
 
 func (m *memTable) writerRef() {
@@ -126,7 +178,7 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 // Prepare reserves space for the batch in the memtable and references the
 // memtable preventing it from being flushed until the batch is applied. Note
 // that prepare is not thread-safe, while apply is. The caller must call
-// unref() after the batch has been applied.
+// writerUnref() after the batch has been applied.
 func (m *memTable) prepare(batch *Batch) error {
 	a := m.skl.Arena()
 	if atomic.LoadInt32(&m.writerRefs) == 1 {
