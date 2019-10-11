@@ -389,7 +389,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 						}
 					}
 
-					mem = newMemTable(opts)
+					mem = newMemTable(opts, nil /* reservation */)
 					if err := mem.apply(b, 0); err != nil {
 						return err.Error()
 					}
