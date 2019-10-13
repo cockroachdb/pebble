@@ -145,7 +145,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		expected = strings.TrimSpace(expected)
 		actual := strings.TrimSpace(lsm())
 		if expected != actual {
-			t.Fatalf("expected\n%sbut found\n%s", expected, actual)
+			t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
 		}
 	}
 
@@ -244,7 +244,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 2:
   14:[b#3,1-b#3,1]
 3:
-  17:[b#2,15-c#72057594037927935,15]
+  17:[b#1,1-c#72057594037927935,15]
   18:[c#4,1-d#72057594037927935,15]
 `)
 
