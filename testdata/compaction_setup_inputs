@@ -1,0 +1,87 @@
+setup-inputs a a
+L0
+  a.SET.1-b.SET.2
+----
+L0
+  1:a#1,1-b#2,1
+
+setup-inputs c c
+L0
+  a.SET.1-b.SET.2
+----
+
+# Verify we expand the start level inputs to a clean cut.
+setup-inputs a a
+L1
+  a.SET.1-b.SET.2
+  b.SET.1-c.SET.2
+----
+L1
+  1:a#1,1-b#2,1
+  2:b#1,1-c#2,1
+
+# The range deletion sentinel acts as a clean cut boundary.
+setup-inputs a a
+L1
+  a.SET.1-b.RANGEDEL.72057594037927935
+  b.SET.1-c.SET.2
+----
+L1
+  1:a#1,1-b#72057594037927935,15
+
+# Verify we expand the output level inputs to a clean cut.
+setup-inputs a a
+L1
+  a.SET.5-b.SET.6
+L2
+  a.SET.3-c.SET.4
+  c.SET.3-d.SET.2
+----
+L1
+  1:a#5,1-b#6,1
+L2
+  2:a#3,1-c#4,1
+  3:c#3,1-d#2,1
+
+# Verify we expand the output level inputs to a clean cut.
+setup-inputs a a
+L1
+  a.SET.5-b.SET.6
+L2
+  a.SET.3-c.RANGEDEL.72057594037927935
+  c.SET.3-d.SET.2
+----
+L1
+  1:a#5,1-b#6,1
+L2
+  2:a#3,1-c#72057594037927935,15
+
+# Verify we grow the start level inputs to include all sstables which
+# lie within the output level bounds.
+setup-inputs a a
+L1
+  a.SET.5-b.SET.6
+  c.SET.4-e.SET.3
+L2
+  a.SET.3-d.SET.4
+----
+L1
+  1:a#5,1-b#6,1
+  2:c#4,1-e#3,1
+L2
+  3:a#3,1-d#4,1
+
+# We won't grow the start level inputs if doing so would grow the
+# output level inputs.
+setup-inputs a a
+L1
+  a.SET.5-b.SET.6
+  c.SET.4-e.SET.3
+L2
+  a.SET.3-d.SET.4
+  e.SET.2-f.SET.1
+----
+L1
+  1:a#5,1-b#6,1
+L2
+  3:a#3,1-d#4,1

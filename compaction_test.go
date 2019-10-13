@@ -904,6 +904,102 @@ func TestCompactionOutputLevel(t *testing.T) {
 		})
 }
 
+func TestCompactionSetupInputs(t *testing.T) {
+	parseMeta := func(s string) fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		m := fileMetadata{
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		return m
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "setup-inputs":
+				if len(d.CmdArgs) != 2 {
+					return fmt.Sprintf("setup-inputs <start> <end>")
+				}
+
+				c := &compaction{
+					cmp:              DefaultComparer.Compare,
+					format:           DefaultComparer.Format,
+					version:          &version{},
+					startLevel:       -1,
+					outputLevel:      -1,
+					maxExpandedBytes: 1 << 30,
+				}
+				var files *[]fileMetadata
+				fileNum := uint64(1)
+
+				for _, data := range strings.Split(d.Input, "\n") {
+					switch data {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err := strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+						if c.startLevel == -1 {
+							c.startLevel = level
+							files = &c.version.Files[level]
+						} else if c.outputLevel == -1 {
+							if c.startLevel >= level {
+								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel, level)
+							}
+							c.outputLevel = level
+							files = &c.version.Files[level]
+						} else {
+							return fmt.Sprintf("outputLevel already set\n")
+						}
+
+					default:
+						meta := parseMeta(data)
+						meta.FileNum = fileNum
+						fileNum++
+						*files = append(*files, meta)
+					}
+				}
+
+				if c.outputLevel == -1 {
+					c.outputLevel = c.startLevel + 1
+				}
+				c.inputs[0] = c.version.Overlaps(c.startLevel, c.cmp,
+					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String()))
+
+				c.setupInputs()
+
+				var buf bytes.Buffer
+				for i := range c.inputs {
+					files := c.inputs[i]
+					if len(files) == 0 {
+						continue
+					}
+
+					switch i {
+					case 0:
+						fmt.Fprintf(&buf, "L%d\n", c.startLevel)
+					case 1:
+						fmt.Fprintf(&buf, "L%d\n", c.outputLevel)
+					}
+
+					for j := range files {
+						fmt.Fprintf(&buf, "  %s\n", files[j])
+					}
+				}
+				return buf.String()
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
+
 func TestCompactionExpandInputs(t *testing.T) {
 	cmp := DefaultComparer.Compare
 	var files []fileMetadata
@@ -950,7 +1046,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 					return err.Error()
 				}
 
-				inputs := c.expandInputs(files[index : index+1])
+				inputs := c.expandInputs(c.startLevel, files[index:index+1])
 
 				var buf bytes.Buffer
 				for i := range inputs {
