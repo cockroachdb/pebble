@@ -759,36 +759,41 @@ func (o *Options) Validate() error {
 	return errors.New(buf.String())
 }
 
-func makeReaderOptions(opts *Options) sstable.ReaderOptions {
-	var o sstable.ReaderOptions
-	if opts != nil {
-		o.Cache = opts.Cache
-		o.Comparer = opts.Comparer
-		o.Filters = opts.Filters
-		if opts.Merger != nil {
-			o.MergerName = opts.Merger.Name
+// MakeReaderOptions constructs sstable.ReaderOptions from the corresponding
+// options in the receiver.
+func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
+	var readerOpts sstable.ReaderOptions
+	if o != nil {
+		readerOpts.Cache = o.Cache
+		readerOpts.Comparer = o.Comparer
+		readerOpts.Filters = o.Filters
+		if o.Merger != nil {
+			readerOpts.MergerName = o.Merger.Name
 		}
 	}
-	return o
+	return readerOpts
 }
 
-func makeWriterOptions(opts *Options, levelOpts LevelOptions) sstable.WriterOptions {
-	var o sstable.WriterOptions
-	if opts != nil {
-		o.Cache = opts.Cache
-		o.Comparer = opts.Comparer
-		if opts.Merger != nil {
-			o.MergerName = opts.Merger.Name
+// MakeWriterOptions constructs sstable.WriterOptions for the specified level
+// from the corresponding options in the receiver.
+func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
+	var writerOpts sstable.WriterOptions
+	if o != nil {
+		writerOpts.Cache = o.Cache
+		writerOpts.Comparer = o.Comparer
+		if o.Merger != nil {
+			writerOpts.MergerName = o.Merger.Name
 		}
-		o.TableFormat = opts.TableFormat
-		o.TablePropertyCollectors = opts.TablePropertyCollectors
+		writerOpts.TableFormat = o.TableFormat
+		writerOpts.TablePropertyCollectors = o.TablePropertyCollectors
 	}
-	o.BlockRestartInterval = levelOpts.BlockRestartInterval
-	o.BlockSize = levelOpts.BlockSize
-	o.BlockSizeThreshold = levelOpts.BlockSizeThreshold
-	o.Compression = levelOpts.Compression
-	o.FilterPolicy = levelOpts.FilterPolicy
-	o.FilterType = levelOpts.FilterType
-	o.IndexBlockSize = levelOpts.IndexBlockSize
-	return o
+	levelOpts := o.Level(level)
+	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval
+	writerOpts.BlockSize = levelOpts.BlockSize
+	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
+	writerOpts.Compression = levelOpts.Compression
+	writerOpts.FilterPolicy = levelOpts.FilterPolicy
+	writerOpts.FilterType = levelOpts.FilterType
+	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
+	return writerOpts
 }

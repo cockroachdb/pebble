@@ -1013,7 +1013,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		c.outputLevel: metrics,
 	}
 
-	writerOpts := makeWriterOptions(d.opts, d.opts.Level(c.outputLevel))
+	writerOpts := d.opts.MakeWriterOptions(c.outputLevel)
 
 	newOutput := func() error {
 		d.mu.Lock()
