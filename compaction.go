@@ -89,6 +89,9 @@ type compaction struct {
 	atomicBytesIterated *uint64
 	// inputs are the tables to be compacted.
 	inputs [2][]fileMetadata
+	// The boundaries of the input data.
+	smallest InternalKey
+	largest  InternalKey
 
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries.
@@ -215,18 +218,18 @@ func newFlush(
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupOtherInputs() {
 	c.inputs[0] = c.expandInputs(c.inputs[0])
-	smallest0, largest0 := manifest.KeyRange(c.cmp, c.inputs[0], nil)
-	c.inputs[1] = c.version.Overlaps(c.outputLevel, c.cmp, smallest0.UserKey, largest0.UserKey)
-	smallest01, largest01 := manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+	c.inputs[1] = c.version.Overlaps(c.outputLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
 
 	// Grow the inputs if it doesn't affect the number of level+1 files.
-	if c.grow(smallest01, largest01) {
-		smallest01, largest01 = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+	if c.grow(c.smallest, c.largest) {
+		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
 	}
 
 	// Compute the set of outputLevel+1 files that overlap this compaction.
 	if c.outputLevel+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, smallest01.UserKey, largest01.UserKey)
+		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
 }
 
@@ -463,9 +466,9 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 					if prev.Largest.Trailer == InternalKeyRangeDeleteSentinel {
 						// The range deletion sentinel key is set for the largest key in a
 						// table when a range deletion tombstone straddles a table. It
-						// isn't necessary to include the next table in the atomic
-						// compaction unit as cur.largest.UserKey does not actually exist
-						// in the table.
+						// isn't necessary to include the prev table in the atomic
+						// compaction unit as prev.largest.UserKey does not actually exist
+						// in the prev table.
 						break
 					}
 					lowerBound = prev.Smallest.UserKey
@@ -483,7 +486,7 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 						// table when a range deletion tombstone straddles a table. It
 						// isn't necessary to include the next table in the atomic
 						// compaction unit as cur.largest.UserKey does not actually exist
-						// in the table.
+						// in the current table.
 						break
 					}
 					// cur.largest.UserKey == next.largest.UserKey, so next is part of
@@ -969,8 +972,9 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
+	allowZeroSeqNum := c.allowZeroSeqNum(iiter)
 	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots,
-		c.allowZeroSeqNum(iiter), c.elideTombstone, c.elideRangeTombstone)
+		allowZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
 	var (
 		filenames []string
@@ -1098,11 +1102,11 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 				//
 				// We use seqnum zero since seqnums are in descending order, and our
 				// goal is to ensure this forged key does not overlap with the previous
-				// file. `InternalKeyRangeDeleteSentinel` is actually the first key
-				// kind as key kinds are also in descending order. But, this is OK
-				// because choosing seqnum zero is already enough to prevent overlap
-				// (the previous file could not end with a key at seqnum zero if this
-				// file had a tombstone extending into it).
+				// file. `InternalKeyKindRangeDelete` is actually the first key kind as
+				// key kinds are also in descending order. But, this is OK because
+				// choosing seqnum zero is already enough to prevent overlap (the
+				// previous file could not end with a key at seqnum zero if this file
+				// had a tombstone extending into it).
 				writerMeta.SmallestRange = base.MakeInternalKey(
 					prevMeta.Largest.UserKey, 0, InternalKeyKindRangeDelete)
 			}
@@ -1117,6 +1121,45 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 
 		meta.Smallest = writerMeta.Smallest(d.cmp)
 		meta.Largest = writerMeta.Largest(d.cmp)
+
+		// Truncate the sstable bounds to the compaction input bounds (c.smallest
+		// and c.largest). This is necessary to prevent a range tombstone from
+		// unintentionally adjusting the smallest key for the first sstable output
+		// by a compaction. Consider a scenario where an sstable has a lower
+		// boundary of b#0,15 but contains the range tombstone [b-c)#10.
+		if c.smallest.UserKey != nil {
+			switch v := d.cmp(meta.Smallest.UserKey, c.smallest.UserKey); {
+			case v > 0:
+				// Nothing to do.
+			case v == 0:
+				if meta.Smallest.Trailer <= c.smallest.Trailer {
+					break
+				}
+				meta.Smallest = c.smallest
+			case v < 0:
+				return fmt.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
+					meta.Smallest.Pretty(d.opts.Comparer.Format),
+					c.smallest.Pretty(d.opts.Comparer.Format))
+			}
+		}
+		if c.largest.UserKey != nil {
+			switch v := d.cmp(meta.Largest.UserKey, c.largest.UserKey); {
+			case v < 0:
+				// Nothing to do.
+			case v == 0:
+				if meta.Largest.Trailer >= c.largest.Trailer {
+					break
+				}
+				if allowZeroSeqNum && meta.Largest.SeqNum() == 0 {
+					break
+				}
+				fallthrough
+			case v > 0:
+				return fmt.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
+					meta.Largest.Pretty(d.opts.Comparer.Format),
+					c.largest.Pretty(d.opts.Comparer.Format))
+			}
+		}
 		return nil
 	}
 
