@@ -59,7 +59,7 @@ type FileMetadata struct {
 	MarkedForCompaction bool
 }
 
-func (m *FileMetadata) String() string {
+func (m FileMetadata) String() string {
 	return fmt.Sprintf("%d:%s-%s", m.FileNum, m.Smallest, m.Largest)
 }
 

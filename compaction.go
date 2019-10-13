@@ -214,39 +214,49 @@ func newFlush(
 	return c
 }
 
-// setupOtherInputs fills in the rest of the compaction inputs, regardless of
+// setupInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
-func (c *compaction) setupOtherInputs() {
-	c.inputs[0] = c.expandInputs(c.inputs[0])
+func (c *compaction) setupInputs() {
+	// Expand the initial inputs to a clean cut.
+	c.inputs[0] = c.expandInputs(c.startLevel, c.inputs[0])
 	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+
+	// Determine the sstables in the output level which overlap with the input
+	// sstables, and then expand those tables to a clean cut.
 	c.inputs[1] = c.version.Overlaps(c.outputLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+	c.inputs[1] = c.expandInputs(c.outputLevel, c.inputs[1])
 	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
 
-	// Grow the inputs if it doesn't affect the number of level+1 files.
+	// Grow the sstables in c.startLevel as long as it doesn't affect the number
+	// of sstables included from c.outputLevel.
 	if c.grow(c.smallest, c.largest) {
 		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
 	}
 
-	// Compute the set of outputLevel+1 files that overlap this compaction.
+	// Compute the set of outputLevel+1 files that overlap this compaction (these
+	// are the grandparent sstables).
 	if c.outputLevel+1 < numLevels {
 		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
 }
 
-// expandInputs expands the files in inputs[0] in order to maintain the
-// invariant that the versions of keys at level+1 are older than the versions
-// of keys at level. This is achieved by adding tables to the right of the
-// current input tables such that the rightmost table has a "clean cut". A
-// clean cut is either a change in user keys, or when the largest key in the
-// left sstable is a range tombstone sentinel key
-// (InternalKeyRangeDeleteSentinel).
-func (c *compaction) expandInputs(inputs []fileMetadata) []fileMetadata {
-	if c.startLevel == 0 {
-		// We already call version.overlaps for L0 and that call guarantees that we
-		// get a "clean cut".
+// expandInputs expands the files in inputs in order to maintain the invariant
+// that the versions of keys at level+1 are older than the versions of keys at
+// level. This is achieved by adding tables to the right of the current input
+// tables such that the rightmost table has a "clean cut". A clean cut is
+// either a change in user keys, or when the largest key in the left sstable is
+// a range tombstone sentinel key (InternalKeyRangeDeleteSentinel).
+func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetadata {
+	if level == 0 {
+		// We already called version.Overlaps for L0 and that call guarantees that
+		// we get a "clean cut".
 		return inputs
 	}
-	files := c.version.Files[c.startLevel]
+	if len(inputs) == 0 {
+		// Nothing to expand.
+		return inputs
+	}
+	files := c.version.Files[level]
 	// Pointer arithmetic to figure out the index if inputs[0] with
 	// files[0]. This requires that the inputs slice is a sub-slice of
 	// files. This is true for non-L0 files returned from version.overlaps.
@@ -286,7 +296,7 @@ func (c *compaction) grow(sm, la InternalKey) bool {
 		return false
 	}
 	grow0 := c.version.Overlaps(c.startLevel, c.cmp, sm.UserKey, la.UserKey)
-	grow0 = c.expandInputs(grow0)
+	grow0 = c.expandInputs(c.startLevel, grow0)
 	if len(grow0) <= len(c.inputs[0]) {
 		return false
 	}
@@ -295,6 +305,7 @@ func (c *compaction) grow(sm, la InternalKey) bool {
 	}
 	sm1, la1 := manifest.KeyRange(c.cmp, grow0, nil)
 	grow1 := c.version.Overlaps(c.outputLevel, c.cmp, sm1.UserKey, la1.UserKey)
+	grow1 = c.expandInputs(c.outputLevel, grow1)
 	if len(grow1) != len(c.inputs[1]) {
 		return false
 	}
