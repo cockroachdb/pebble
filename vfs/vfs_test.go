@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -35,13 +36,21 @@ func normalizeError(err error) error {
 
 type loggingFS struct {
 	FS
+	base    string
 	w       io.Writer
 	linkErr error
 }
 
+func (fs loggingFS) stripBase(path string) string {
+	if strings.HasPrefix(path, fs.base+"/") {
+		return path[len(fs.base)+1:]
+	}
+	return path
+}
+
 func (fs loggingFS) Create(name string) (File, error) {
 	f, err := fs.FS.Create(name)
-	fmt.Fprintf(fs.w, "create: %s [%v]\n", fs.PathBase(name), normalizeError(err))
+	fmt.Fprintf(fs.w, "create: %s [%v]\n", fs.stripBase(name), normalizeError(err))
 	return loggingFile{f, fs.PathBase(name), fs.w}, err
 }
 
@@ -51,19 +60,25 @@ func (fs loggingFS) Link(oldname, newname string) error {
 		err = fs.FS.Link(oldname, newname)
 	}
 	fmt.Fprintf(fs.w, "link: %s -> %s [%v]\n",
-		fs.PathBase(oldname), fs.PathBase(newname), normalizeError(err))
+		fs.stripBase(oldname), fs.stripBase(newname), normalizeError(err))
+	return err
+}
+
+func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
+	err := fs.FS.MkdirAll(dir, perm)
+	fmt.Fprintf(fs.w, "mkdir: %s [%v]\n", fs.stripBase(dir), normalizeError(err))
 	return err
 }
 
 func (fs loggingFS) Open(name string, opts ...OpenOption) (File, error) {
 	f, err := fs.FS.Open(name, opts...)
-	fmt.Fprintf(fs.w, "open: %s [%v]\n", fs.PathBase(name), normalizeError(err))
-	return loggingFile{f, fs.PathBase(name), fs.w}, err
+	fmt.Fprintf(fs.w, "open: %s [%v]\n", fs.stripBase(name), normalizeError(err))
+	return loggingFile{f, fs.stripBase(name), fs.w}, err
 }
 
 func (fs loggingFS) Remove(name string) error {
 	err := fs.FS.Remove(name)
-	fmt.Fprintf(fs.w, "remove: %s [%v]\n", fs.PathBase(name), normalizeError(err))
+	fmt.Fprintf(fs.w, "remove: %s [%v]\n", fs.stripBase(name), normalizeError(err))
 	return err
 }
 
@@ -87,7 +102,7 @@ func (f loggingFile) Sync() error {
 
 func runTestVFS(t *testing.T, baseFS FS, dir string) {
 	var buf bytes.Buffer
-	fs := loggingFS{FS: baseFS, w: &buf}
+	fs := loggingFS{FS: baseFS, base: dir, w: &buf}
 
 	datadriven.RunTest(t, "testdata/vfs", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -122,6 +137,12 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 				}
 
 				switch parts[0] {
+				case "clone":
+					if len(parts) != 3 {
+						return fmt.Sprintf("clone <src> <dest>")
+					}
+					_, _ = Clone(fs, fs, fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
+
 				case "create":
 					if len(parts) != 2 {
 						return fmt.Sprintf("create <name>")
@@ -139,6 +160,22 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 						return fmt.Sprintf("link-or-copy <oldname> <newname>")
 					}
 					_ = LinkOrCopy(fs, fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
+
+				case "list":
+					if len(parts) != 2 {
+						return fmt.Sprintf("list <dir>")
+					}
+					paths, _ := fs.List(fs.PathJoin(dir, parts[1]))
+					sort.Strings(paths)
+					for _, p := range paths {
+						fmt.Fprintln(&buf, p)
+					}
+
+				case "mkdir":
+					if len(parts) != 2 {
+						return fmt.Sprintf("mkdir <dir>")
+					}
+					_ = fs.MkdirAll(fs.PathJoin(dir, parts[1]), 0755)
 
 				case "remove":
 					if len(parts) != 2 {

@@ -57,3 +57,43 @@ create: b [<nil>]
 sync: b [<nil>]
 close: b [<nil>]
 close: a [<nil>]
+
+define
+mkdir d
+create d/a
+mkdir  d/b
+create d/b/c
+----
+mkdir: d [<nil>]
+create: d/a [<nil>]
+mkdir: d/b [<nil>]
+create: d/b/c [<nil>]
+
+define
+clone d e
+----
+open: d [<nil>]
+close: d [<nil>]
+mkdir: e [<nil>]
+open: d/a [<nil>]
+close: d/a [<nil>]
+create: e/a [<nil>]
+close: a [<nil>]
+open: d/b [<nil>]
+close: d/b [<nil>]
+mkdir: e/b [<nil>]
+open: d/b/c [<nil>]
+close: d/b/c [<nil>]
+create: e/b/c [<nil>]
+close: c [<nil>]
+
+define
+list e
+----
+a
+b
+
+define
+list e/b
+----
+c

@@ -7,6 +7,7 @@ package vfs
 import (
 	"io/ioutil"
 	"os"
+	"sort"
 )
 
 // Clone recursively copies a directory structure from srcFS to dstFS. srcPath
@@ -15,9 +16,8 @@ import (
 // compatible with the dstFS path format. Returns (true,nil) on a successful
 // copy, (false,nil) if srcPath does not exist, and (false,err) if an error
 // occurred.
-func Clone(srcFS, dstFS FS, srcPath, dstDir string) (bool, error) {
-	dstPath := dstFS.PathJoin(dstDir, srcFS.PathBase(srcPath))
-	srcFile, err := Default.Open(srcPath)
+func Clone(srcFS, dstFS FS, srcPath, dstPath string) (bool, error) {
+	srcFile, err := srcFS.Open(srcPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Ignore non-existent errors. Those will translate into non-existent
@@ -43,8 +43,10 @@ func Clone(srcFS, dstFS FS, srcPath, dstDir string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		// Sort the paths so we get deterministic test output.
+		sort.Strings(list)
 		for _, name := range list {
-			_, err := Clone(srcFS, dstFS, srcFS.PathJoin(srcPath, name), dstPath)
+			_, err := Clone(srcFS, dstFS, srcFS.PathJoin(srcPath, name), dstFS.PathJoin(dstPath, name))
 			if err != nil {
 				return false, err
 			}
