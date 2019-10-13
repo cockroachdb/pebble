@@ -59,7 +59,9 @@ func runTests(t *testing.T, path string) {
 				// always uses "/" for the path separator.
 				fs := vfs.NewMem()
 				for i := range args {
-					if ok, err := vfs.Clone(vfs.Default, fs, normalize(args[i]), ""); err != nil {
+					src := normalize(args[i])
+					dest := vfs.Default.PathBase(src)
+					if ok, err := vfs.Clone(vfs.Default, fs, src, dest); err != nil {
 						return err.Error()
 					} else if ok {
 						args[i] = fs.PathBase(args[i])

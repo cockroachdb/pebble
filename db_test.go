@@ -123,7 +123,7 @@ func TestBasicReads(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.dirname, func(t *testing.T) {
 			fs := vfs.NewMem()
-			_, err := vfs.Clone(vfs.Default, fs, filepath.Join("testdata", tc.dirname), "")
+			_, err := vfs.Clone(vfs.Default, fs, filepath.Join("testdata", tc.dirname), tc.dirname)
 			if err != nil {
 				t.Fatalf("%s: cloneFileSystem failed: %v", tc.dirname, err)
 			}
