@@ -153,10 +153,10 @@ func (e *entry) unlinkFile() *entry {
 	return next
 }
 
-func (e *entry) setValue(v *value, free func([]byte)) {
+func (e *entry) setValue(v *value) {
 	if old := e.getValue(); old != nil {
-		if old.release() && free != nil {
-			free(old.buf)
+		if old.release() {
+			allocFree(old.buf)
 		}
 	}
 	atomic.StorePointer(&e.val, unsafe.Pointer(v))
@@ -184,7 +184,6 @@ func (e *entry) Get() []byte {
 type Handle struct {
 	entry *entry
 	value *value
-	free  func([]byte)
 }
 
 // Get returns the value stored in handle.
@@ -200,8 +199,8 @@ func (h Handle) Get() []byte {
 // Release releases the reference to the cache entry.
 func (h Handle) Release() {
 	if h.value != nil {
-		if h.value.release() && h.free != nil {
-			h.free(h.value.buf)
+		if h.value.release() {
+			allocFree(h.value.buf)
 		}
 		h.value = nil
 	}
@@ -228,8 +227,6 @@ type WeakHandle interface {
 }
 
 type shard struct {
-	free func([]byte)
-
 	hits   int64
 	misses int64
 
@@ -269,7 +266,7 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	} else {
 		atomic.AddInt64(&c.hits, 1)
 	}
-	return Handle{value: value, free: c.free}
+	return Handle{value: value}
 }
 
 func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
@@ -285,14 +282,14 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 		// no cache entry? add it
 		e = &entry{ptype: etCold, key: k, size: int64(len(value)), shard: c}
 		e.init()
-		e.setValue(v, c.free)
+		e.setValue(v)
 		if c.metaAdd(k, e) {
 			c.sizeCold += e.size
 		}
 
 	case e.getValue() != nil:
 		// cache entry was a hot or cold page
-		e.setValue(v, c.free)
+		e.setValue(v)
 		atomic.StoreInt32(&e.referenced, 1)
 		delta := int64(len(value)) - e.size
 		e.size = int64(len(value))
@@ -310,7 +307,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 			c.coldSize = c.targetSize()
 		}
 		atomic.StoreInt32(&e.referenced, 0)
-		e.setValue(v, c.free)
+		e.setValue(v)
 		e.ptype = etHot
 		c.sizeTest -= e.size
 		c.metaDel(e)
@@ -319,7 +316,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 		}
 	}
 
-	return Handle{entry: e, value: v, free: c.free}
+	return Handle{entry: e, value: v}
 }
 
 // Delete deletes the cached value for the specified file and offset.
@@ -457,7 +454,7 @@ func (c *shard) runHandCold() {
 			c.sizeCold -= e.size
 			c.sizeHot += e.size
 		} else {
-			e.setValue(nil, c.free)
+			e.setValue(nil)
 			e.ptype = etTest
 			c.sizeCold -= e.size
 			c.sizeTest += e.size
@@ -537,9 +534,6 @@ type Cache struct {
 	maxSize int64
 	idAlloc uint64
 	shards  []shard
-	// TODO(peter): Should this be a global. Do we get anything by having this be
-	// per-Cache?
-	allocPool *sync.Pool
 }
 
 // New creates a new cache of the specified size. Memory for the cache is
@@ -553,16 +547,9 @@ func newShards(size int64, shards int) *Cache {
 		maxSize: size,
 		idAlloc: 1,
 		shards:  make([]shard, shards),
-		allocPool: &sync.Pool{
-			New: func() interface{} {
-				return &allocCache{}
-			},
-		},
 	}
-	free := c.Free
 	for i := range c.shards {
 		c.shards[i] = shard{
-			free:     free,
 			maxSize:  size / int64(len(c.shards)),
 			coldSize: size / int64(len(c.shards)),
 			blocks:   make(map[key]*entry),
@@ -647,18 +634,13 @@ func (c *Cache) Size() int64 {
 // Alloc allocates a byte slice of the specified size, possibly reusing
 // previously allocated but unused memory.
 func (c *Cache) Alloc(n int) []byte {
-	a := c.allocPool.Get().(*allocCache)
-	b := a.alloc(n)
-	c.allocPool.Put(a)
-	return b
+	return allocNew(n)
 }
 
 // Free frees the specified slice of memory. The buffer will possibly be
 // reused, making it invalid to use the buffer after calling Free.
 func (c *Cache) Free(b []byte) {
-	a := c.allocPool.Get().(*allocCache)
-	a.free(b)
-	c.allocPool.Put(a)
+	allocFree(b)
 }
 
 // Reserve N bytes in the cache. This effectively shrinks the size of the cache

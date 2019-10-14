@@ -4,6 +4,8 @@
 
 package cache
 
+import "sync"
+
 const (
 	// The min size of a byte slice held in an allocCache instance. Byte slices
 	// smaller than this value will not be cached.
@@ -16,6 +18,28 @@ const (
 	// be O(num-cpus) allocCaches per Cache.
 	allocCacheSizeLimit = 512 * 1024
 )
+
+var allocPool = sync.Pool{
+	New: func() interface{} {
+		return &allocCache{}
+	},
+}
+
+// allocNew allocates a slice of size n. The use of sync.Pool provides a
+// per-cpu cache of allocCache structures to allocate from.
+func allocNew(n int) []byte {
+	a := allocPool.Get().(*allocCache)
+	b := a.alloc(n)
+	allocPool.Put(a)
+	return b
+}
+
+// allocFree releases the specified slice back to a per-cpu cache of buffers.
+func allocFree(b []byte) {
+	a := allocPool.Get().(*allocCache)
+	a.free(b)
+	allocPool.Put(a)
+}
 
 // allocCache implements a small cache for the byte slice allocations used by
 // the Cache. If an allocCache is empty, allocations are passed through to the
