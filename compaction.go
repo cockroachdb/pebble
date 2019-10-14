@@ -246,6 +246,18 @@ func (c *compaction) setupInputs() {
 // tables such that the rightmost table has a "clean cut". A clean cut is
 // either a change in user keys, or when the largest key in the left sstable is
 // a range tombstone sentinel key (InternalKeyRangeDeleteSentinel).
+//
+// Note that a "clean cut" is only required on the right side of a compaction,
+// not the left. The reason for this is due to range tombstone
+// truncation. Range tombstones are truncated to "atomic compaction unit"
+// boundaries during compaction. If sstable A and B form an atomic compaction
+// unit (i.e. the largest key in A has the same user key as the smallest key in
+// B), we can compaction sstable B to a lower level while maintaining the
+// seqnum invariant mentioned above. Additionally, sstable A, which wasn't
+// compacted will never be part of a prefix of an atomic compaction unit again
+// until it is compacted to a lower level. This is because any older version of
+// the largest key in A is already at a lower level. Newer versions are at
+// higher levels, or "to the left" of sstable A on its level.
 func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetadata {
 	if level == 0 {
 		// We already called version.Overlaps for L0 and that call guarantees that
@@ -580,7 +592,12 @@ func (c *compaction) newInputIter(
 		}
 		if rangeDelIter != nil {
 			// Truncate the range tombstones returned by the iterator to the upper
-			// bound of the atomic compaction unit.
+			// bound of the atomic compaction unit. Note that we need do this
+			// truncation at read time in order to handle RocksDB generated sstables
+			// which do not truncate range tombstones to atomic compaction unit
+			// boundaries at write time. Because we're doing the truncation at read
+			// time, we follow RocksDB's lead and do not truncate tombstones to
+			// atomic unit boundaries at compaction time.
 			lowerBound, upperBound := c.atomicUnitBounds(f)
 			if lowerBound != nil || upperBound != nil {
 				rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound, upperBound)
@@ -1136,8 +1153,32 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		// Truncate the sstable bounds to the compaction input bounds (c.smallest
 		// and c.largest). This is necessary to prevent a range tombstone from
 		// unintentionally adjusting the smallest key for the first sstable output
-		// by a compaction. Consider a scenario where an sstable has a lower
-		// boundary of b#0,15 but contains the range tombstone [b-c)#10.
+		// by a compaction. Consider the following scenario:
+		//
+		//   L5:
+		//     7:[a#5,1-c#3,1]
+		//       [a-e)#4,15
+		//     8:[c#2,1-e#1,1]
+		//       [c-e)#4,15
+		//
+		// Here we have two sstables in L5 and a range tombstone which spanned
+		// them. Range tombstone fragmentation during compaction truncated the
+		// tombstone in sstable 8 to start with the key c. Note that these two
+		// sstables are part of the same atomic compaction unit because the key c
+		// is present in both. But we allow compacting the right side of this
+		// atomic compaction unit without compacting the left. If sstable 8 is
+		// compacted to L5 again (via an L4->L5 compaction), the range tombstone
+		// [c-e)#4 would become the smallest key in the output from that compaction
+		// and could extend the smallest boundary so it overlaps sstable 7:
+		//
+		//   L5:
+		//     7:[a#5,1-c#3,1]
+		//       [a-e)#4,15
+		//     9:[c#4,15-e#1,1]
+		//       [c-e)#4,15
+		//
+		// In order to prevent this, we truncate the sstable bounds to the
+		// compaction input bounds. See TestRangeDelCompactionTruncation2.
 		if c.smallest.UserKey != nil {
 			switch v := d.cmp(meta.Smallest.UserKey, c.smallest.UserKey); {
 			case v > 0:

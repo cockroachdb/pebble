@@ -259,6 +259,208 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 }
 
+// This is an alternate scenario to the one created in
+// TestRangeDelCompactionTruncation that would result in the bounds for an
+// sstable expanding to overlap its left neighbor if we failed to truncate an
+// sstable's boundaries to the compaction input boundaries.
+func TestRangeDelCompactionTruncation2(t *testing.T) {
+	// Use a small target file size so that there is a single key per sstable.
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+		Levels: []LevelOptions{
+			{TargetFileSize: 100},
+			{TargetFileSize: 100},
+			{TargetFileSize: 1},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+
+	lsm := func() string {
+		d.mu.Lock()
+		s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+		d.mu.Unlock()
+		return s
+	}
+	expectLSM := func(expected string) {
+		t.Helper()
+		expected = strings.TrimSpace(expected)
+		actual := strings.TrimSpace(lsm())
+		if expected != actual {
+			t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
+		}
+	}
+
+	if err := d.Set([]byte("b"), bytes.Repeat([]byte("b"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap1 := d.NewSnapshot()
+	defer snap1.Close()
+	// Flush so that each version of "b" ends up in its own L0 table. If we
+	// allowed both versions in the same L0 table, compaction could trivially
+	// move the single L0 table to L1.
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap2 := d.NewSnapshot()
+	defer snap2.Close()
+	if err := d.DeleteRange([]byte("a"), []byte("d"), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Compact to produce the L1 tables.
+	if err := d.Compact([]byte("b"), []byte("b")); err != nil {
+		t.Fatal(err)
+	}
+	expectLSM(`
+6:
+  8:[a#2,15-b#1,1]
+  9:[b#0,15-d#72057594037927935,15]
+`)
+
+	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
+		t.Fatal(err)
+	}
+	expectLSM(`
+6:
+  8:[a#2,15-b#1,1]
+  12:[b#0,15-c#72057594037927935,15]
+  13:[c#3,1-d#72057594037927935,15]
+`)
+}
+
+func TestRangeDelCompactionTruncation3(t *testing.T) {
+	t.Skip("demonstrates need for expanding clean cuts to the left during compaction")
+
+	// Use a small target file size so that there is a single key per sstable.
+	d, err := Open("tmp", &Options{
+		Cleaner: ArchiveCleaner{},
+		FS:      vfs.NewMem(),
+		Levels: []LevelOptions{
+			{TargetFileSize: 100},
+			{TargetFileSize: 100},
+			{TargetFileSize: 1},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+
+	d.mu.Lock()
+	d.mu.versions.dynamicBaseLevel = false
+	d.mu.Unlock()
+
+	lsm := func() string {
+		d.mu.Lock()
+		s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+		d.mu.Unlock()
+		return s
+	}
+	expectLSM := func(expected string) {
+		t.Helper()
+		expected = strings.TrimSpace(expected)
+		actual := strings.TrimSpace(lsm())
+		if expected != actual {
+			t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
+		}
+	}
+
+	if err := d.Set([]byte("b"), bytes.Repeat([]byte("b"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap1 := d.NewSnapshot()
+	defer snap1.Close()
+
+	// Flush so that each version of "b" ends up in its own L0 table. If we
+	// allowed both versions in the same L0 table, compaction could trivially
+	// move the single L0 table to L1.
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap2 := d.NewSnapshot()
+	defer snap2.Close()
+
+	if err := d.DeleteRange([]byte("a"), []byte("d"), nil); err != nil {
+		t.Fatal(err)
+	}
+	snap3 := d.NewSnapshot()
+	defer snap3.Close()
+
+	if _, err := d.Get([]byte("b")); err != ErrNotFound {
+		t.Fatalf("expected not found, but found %v", err)
+	}
+
+	// Compact a few times to move the tables down to L3.
+	for i := 0; i < 3; i++ {
+		if err := d.Compact([]byte("b"), []byte("b")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expectLSM(`
+3:
+  12:[a#2,15-b#1,1]
+  13:[b#0,15-d#72057594037927935,15]
+`)
+
+	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
+		t.Fatal(err)
+	}
+	expectLSM(`
+3:
+  12:[a#2,15-b#1,1]
+4:
+  19:[b#0,15-c#72057594037927935,15]
+  20:[c#3,1-d#72057594037927935,15]
+`)
+
+	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
+		t.Fatal(err)
+	}
+	expectLSM(`
+3:
+  12:[a#2,15-b#1,1]
+5:
+  21:[b#0,15-c#72057594037927935,15]
+  22:[c#3,1-d#72057594037927935,15]
+`)
+
+	if _, err := d.Get([]byte("b")); err != ErrNotFound {
+		t.Fatalf("expected not found, but found %v", err)
+	}
+
+	if err := d.Compact([]byte("a"), []byte("a")); err != nil {
+		t.Fatal(err)
+	}
+	expectLSM(`
+4:
+  23:[a#2,15-b#1,1]
+5:
+  21:[b#0,15-c#72057594037927935,15]
+  22:[c#3,1-d#72057594037927935,15]
+`)
+
+	if v, err := d.Get([]byte("b")); err != ErrNotFound {
+		t.Fatalf("expected not found, but found %v [%s]", err, v)
+	}
+}
+
 func BenchmarkRangeDelIterate(b *testing.B) {
 	for _, entries := range []int{10, 1000, 100000} {
 		b.Run(fmt.Sprintf("entries=%d", entries), func(b *testing.B) {
