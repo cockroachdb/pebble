@@ -56,7 +56,10 @@ type key struct {
 }
 
 type value struct {
-	buf  []byte
+	buf []byte
+	// The number of references on the value. When refs drops to 0, the buf
+	// associated with the value may be reused. This is a form of manual memory
+	// management. See Cache.Free.
 	refs int32
 }
 
@@ -90,8 +93,10 @@ type entry struct {
 	}
 	size  int64
 	ptype entryType
-	ref   int32
-	shard *shard
+	// referenced is atomically set to indicate that this entry has been accessed
+	// since the last time one of the clock hands swept it.
+	referenced int32
+	shard      *shard
 }
 
 func (e *entry) init() *entry {
@@ -166,7 +171,7 @@ func (e *entry) Get() []byte {
 	if v == nil {
 		return nil
 	}
-	atomic.StoreInt32(&e.ref, 1)
+	atomic.StoreInt32(&e.referenced, 1)
 	// Record a cache hit because the entry is being used as a WeakHandle and
 	// successfully avoided a more expensive shard.Get() operation.
 	atomic.AddInt64(&e.shard.hits, 1)
@@ -230,19 +235,19 @@ type shard struct {
 
 	mu sync.RWMutex
 
-	reserved int64
-	maxSize  int64
-	coldSize int64
-	blocks   map[key]*entry     // fileNum+offset -> block
-	files    map[fileKey]*entry // fileNum -> list of blocks
+	reservedSize int64
+	maxSize      int64
+	coldSize     int64
+	blocks       map[key]*entry     // fileNum+offset -> block
+	files        map[fileKey]*entry // fileNum -> list of blocks
 
 	handHot  *entry
 	handCold *entry
 	handTest *entry
 
-	countHot  int64
-	countCold int64
-	countTest int64
+	sizeHot  int64
+	sizeCold int64
+	sizeTest int64
 }
 
 func (c *shard) Get(id, fileNum, offset uint64) Handle {
@@ -253,7 +258,7 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 		value = e.getValue()
 		if value != nil {
 			value.acquire()
-			atomic.StoreInt32(&e.ref, 1)
+			atomic.StoreInt32(&e.referenced, 1)
 		} else {
 			e = nil
 		}
@@ -282,19 +287,19 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 		e.init()
 		e.setValue(v, c.free)
 		if c.metaAdd(k, e) {
-			c.countCold += e.size
+			c.sizeCold += e.size
 		}
 
 	case e.getValue() != nil:
 		// cache entry was a hot or cold page
 		e.setValue(v, c.free)
-		atomic.StoreInt32(&e.ref, 1)
+		atomic.StoreInt32(&e.referenced, 1)
 		delta := int64(len(value)) - e.size
 		e.size = int64(len(value))
 		if e.ptype == etHot {
-			c.countHot += delta
+			c.sizeHot += delta
 		} else {
-			c.countCold += delta
+			c.sizeCold += delta
 		}
 		c.evict()
 
@@ -304,13 +309,13 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 		if c.coldSize > c.targetSize() {
 			c.coldSize = c.targetSize()
 		}
-		atomic.StoreInt32(&e.ref, 0)
+		atomic.StoreInt32(&e.referenced, 0)
 		e.setValue(v, c.free)
 		e.ptype = etHot
-		c.countTest -= e.size
+		c.sizeTest -= e.size
 		c.metaDel(e)
 		if c.metaAdd(k, e) {
-			c.countHot += e.size
+			c.sizeHot += e.size
 		}
 	}
 
@@ -349,7 +354,7 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 
 func (c *shard) Reserve(n int) {
 	c.mu.Lock()
-	c.reserved += int64(n)
+	c.reservedSize += int64(n)
 	c.evict()
 	c.mu.Unlock()
 }
@@ -357,13 +362,13 @@ func (c *shard) Reserve(n int) {
 // Size returns the current space used by the cache.
 func (c *shard) Size() int64 {
 	c.mu.RLock()
-	size := c.countHot + c.countCold
+	size := c.sizeHot + c.sizeCold
 	c.mu.RUnlock()
 	return size
 }
 
 func (c *shard) targetSize() int64 {
-	return c.maxSize - c.reserved
+	return c.maxSize - c.reservedSize
 }
 
 // Add the entry to the cache, returning true if the entry was added and false
@@ -428,17 +433,17 @@ func (c *shard) metaDel(e *entry) {
 func (c *shard) metaEvict(e *entry) {
 	switch e.ptype {
 	case etHot:
-		c.countHot -= e.size
+		c.sizeHot -= e.size
 	case etCold:
-		c.countCold -= e.size
+		c.sizeCold -= e.size
 	case etTest:
-		c.countTest -= e.size
+		c.sizeTest -= e.size
 	}
 	c.metaDel(e)
 }
 
 func (c *shard) evict() {
-	for c.targetSize() <= c.countHot+c.countCold && c.handCold != nil {
+	for c.targetSize() <= c.sizeHot+c.sizeCold && c.handCold != nil {
 		c.runHandCold()
 	}
 }
@@ -446,17 +451,17 @@ func (c *shard) evict() {
 func (c *shard) runHandCold() {
 	e := c.handCold
 	if e.ptype == etCold {
-		if atomic.LoadInt32(&e.ref) == 1 {
-			atomic.StoreInt32(&e.ref, 0)
+		if atomic.LoadInt32(&e.referenced) == 1 {
+			atomic.StoreInt32(&e.referenced, 0)
 			e.ptype = etHot
-			c.countCold -= e.size
-			c.countHot += e.size
+			c.sizeCold -= e.size
+			c.sizeHot += e.size
 		} else {
 			e.setValue(nil, c.free)
 			e.ptype = etTest
-			c.countCold -= e.size
-			c.countTest += e.size
-			for c.targetSize() < c.countTest && c.handTest != nil {
+			c.sizeCold -= e.size
+			c.sizeTest += e.size
+			for c.targetSize() < c.sizeTest && c.handTest != nil {
 				c.runHandTest()
 			}
 		}
@@ -464,7 +469,7 @@ func (c *shard) runHandCold() {
 
 	c.handCold = c.handCold.next()
 
-	for c.targetSize()-c.coldSize <= c.countHot && c.handHot != nil {
+	for c.targetSize()-c.coldSize <= c.sizeHot && c.handHot != nil {
 		c.runHandHot()
 	}
 }
@@ -479,12 +484,12 @@ func (c *shard) runHandHot() {
 
 	e := c.handHot
 	if e.ptype == etHot {
-		if atomic.LoadInt32(&e.ref) == 1 {
-			atomic.StoreInt32(&e.ref, 0)
+		if atomic.LoadInt32(&e.referenced) == 1 {
+			atomic.StoreInt32(&e.referenced, 0)
 		} else {
 			e.ptype = etCold
-			c.countHot -= e.size
-			c.countCold += e.size
+			c.sizeHot -= e.size
+			c.sizeCold += e.size
 		}
 	}
 
@@ -492,7 +497,7 @@ func (c *shard) runHandHot() {
 }
 
 func (c *shard) runHandTest() {
-	if c.countCold > 0 && c.handTest == c.handCold && c.handCold != nil {
+	if c.sizeCold > 0 && c.handTest == c.handCold && c.handCold != nil {
 		c.runHandCold()
 		if c.handTest == nil {
 			return
@@ -505,7 +510,7 @@ func (c *shard) runHandTest() {
 		c.metaDel(c.handTest)
 		c.handTest = prev
 
-		c.countTest -= e.size
+		c.sizeTest -= e.size
 		c.coldSize -= e.size
 		if c.coldSize < 0 {
 			c.coldSize = 0
@@ -529,9 +534,11 @@ type Metrics struct {
 
 // Cache ...
 type Cache struct {
-	maxSize   int64
-	idAlloc   uint64
-	shards    []shard
+	maxSize int64
+	idAlloc uint64
+	shards  []shard
+	// TODO(peter): Should this be a global. Do we get anything by having this be
+	// per-Cache?
 	allocPool *sync.Pool
 }
 
@@ -682,7 +689,7 @@ func (c *Cache) Metrics() Metrics {
 		s := &c.shards[i]
 		s.mu.RLock()
 		m.Count += int64(len(s.blocks))
-		m.Size += s.countHot + s.countCold
+		m.Size += s.sizeHot + s.sizeCold
 		s.mu.RUnlock()
 		m.Hits += atomic.LoadInt64(&s.hits)
 		m.Misses += atomic.LoadInt64(&s.misses)
