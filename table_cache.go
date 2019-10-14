@@ -118,7 +118,7 @@ func (c *tableCacheShard) init(
 	c.cacheID = cacheID
 	c.dirname = dirname
 	c.fs = fs
-	c.opts = makeReaderOptions(opts)
+	c.opts = opts.MakeReaderOptions()
 	c.size = size
 	c.mu.nodes = make(map[uint64]*tableCacheNode)
 	c.mu.lru.next = &c.mu.lru
