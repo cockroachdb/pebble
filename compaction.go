@@ -580,7 +580,10 @@ func (c *compaction) newInputIter(
 		}
 		if rangeDelIter != nil {
 			// Truncate the range tombstones returned by the iterator to the upper
-			// bound of the atomic compaction unit.
+			// bound of the atomic compaction unit. Note that we do this truncation
+			// at read time vs when the sstables are written in order to handle
+			// RocksDB generated sstables which do not truncate range tombstones to
+			// atomic compaction unit boundaries at write time.
 			lowerBound, upperBound := c.atomicUnitBounds(f)
 			if lowerBound != nil || upperBound != nil {
 				rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound, upperBound)
