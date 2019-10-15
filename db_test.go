@@ -467,6 +467,54 @@ func TestGetMerge(t *testing.T) {
 	}
 }
 
+func TestMergeOrderSameAfterFlush(t *testing.T) {
+	// Ensure compaction iterator (used by flush) and user iterator process merge
+	// operands in the same order
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := []byte("a")
+	verify := func(expected string) {
+		iter := d.NewIter(nil)
+		if !iter.SeekGE([]byte("a")) {
+			t.Fatal("expected one value, but got empty iterator")
+		}
+		if expected != string(iter.Value()) {
+			t.Fatalf("expected %s, but got %s", expected, string(iter.Value()))
+		}
+		if !iter.SeekLT([]byte("b")) {
+			t.Fatal("expected one value, but got empty iterator")
+		}
+		if expected != string(iter.Value()) {
+			t.Fatalf("expected %s, but got %s", expected, string(iter.Value()))
+		}
+		if err := iter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := d.Merge(key, []byte("0"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Merge(key, []byte("1"), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	verify("01")
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	verify("01")
+
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLogData(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),

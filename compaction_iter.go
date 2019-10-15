@@ -380,7 +380,7 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 			// We've hit a Set value. Merge with the existing value and return. We
 			// change the kind of the resulting key to a Set so that it shadows keys
 			// in lower levels. That is, MERGE+MERGE+SET -> SET.
-			i.value = i.merge(i.key.UserKey, i.value, i.iterValue, nil)
+			i.value = i.merge(i.key.UserKey, i.iterValue, i.value, nil)
 			i.valueBuf = i.value[:0]
 			i.key.SetKind(InternalKeyKindSet)
 			i.skip = true
@@ -394,7 +394,7 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			i.value = i.merge(i.key.UserKey, i.value, i.iterValue, nil)
+			i.value = i.merge(i.key.UserKey, i.iterValue, i.value, nil)
 			i.valueBuf = i.value[:0]
 
 		default:

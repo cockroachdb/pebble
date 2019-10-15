@@ -468,15 +468,15 @@ b:b
 # NB: RANGEDEL entries are ignored.
 define
 a.RANGEDEL.4:c
-a.MERGE.3:b
+a.MERGE.3:d
 a.RANGEDEL.2:c
 a.MERGE.2:c
 a.RANGEDEL.1:c
-a.SET.1:d
+a.SET.1:b
 b.RANGEDEL.3:c
-b.MERGE.2:a
+b.MERGE.2:b
 b.RANGEDEL.1:c
-b.MERGE.1:b
+b.MERGE.1:a
 ----
 
 iter seq=4
@@ -494,15 +494,15 @@ iter seq=3
 seek-ge a
 next
 ----
-a:cd
+a:bc
 b:ab
 
 iter seq=2
 seek-ge a
 next
 ----
-a:d
-b:b
+a:b
+b:a
 
 iter seq=4
 seek-lt c
@@ -520,14 +520,14 @@ seek-lt c
 prev
 ----
 b:ab
-a:cd
+a:bc
 
 iter seq=2
 seek-lt c
 prev
 ----
-b:b
-a:d
+b:a
+a:b
 
 iter seq=4
 seek-ge a
@@ -546,9 +546,9 @@ next
 prev
 next
 ----
-a:cd
+a:bc
 b:ab
-a:cd
+a:bc
 b:ab
 
 iter seq=2
@@ -557,10 +557,10 @@ next
 prev
 next
 ----
-a:d
-b:b
-a:d
-b:b
+a:b
+b:a
+a:b
+b:a
 
 iter seq=4
 seek-lt c
@@ -580,9 +580,9 @@ next
 prev
 ----
 b:ab
-a:cd
+a:bc
 b:ab
-a:cd
+a:bc
 
 iter seq=2
 seek-lt c
@@ -590,23 +590,23 @@ prev
 next
 prev
 ----
-b:b
-a:d
-b:b
-a:d
+b:a
+a:b
+b:a
+a:b
 
 iter seq=3
 seek-prefix-ge a
 next
 ----
-a:cd
+a:bc
 .
 
 iter seq=2
 seek-prefix-ge a
 next
 ----
-a:d
+a:b
 .
 
 iter seq=4
@@ -626,9 +626,9 @@ next
 prev
 next
 ----
-a:d
+a:b
 .
-a:d
+a:b
 .
 
 iter seq=3
@@ -637,9 +637,9 @@ next
 prev
 next
 ----
-a:cd
+a:bc
 .
-a:cd
+a:bc
 .
 
 iter seq=3
@@ -656,26 +656,26 @@ iter seq=3
 seek-prefix-ge a
 prev
 ----
-a:cd
+a:bc
 .
 
 
 # NB: RANGEDEL entries are ignored.
 define
 a.RANGEDEL.4:c
-a.MERGE.3:b
+a.MERGE.3:d
 a.RANGEDEL.2:c
 a.MERGE.2:c
 a.RANGEDEL.1:c
-a.MERGE.1:d
+a.MERGE.1:b
 aa.RANGEDEL.3:c
-aa.MERGE.2:a
+aa.MERGE.2:b
 aa.RANGEDEL.1:c
-aa.MERGE.1:b
+aa.MERGE.1:a
 b.RANGEDEL.3:c
-b.MERGE.2:a
+b.MERGE.2:b
 b.RANGEDEL.1:c
-b.MERGE.1:b
+b.MERGE.1:a
 ----
 
 iter seq=3
@@ -683,7 +683,7 @@ seek-prefix-ge a
 next
 next
 ----
-a:cd
+a:bc
 aa:ab
 .
 
@@ -692,8 +692,8 @@ seek-prefix-ge a
 next
 next
 ----
-a:d
-aa:b
+a:b
+aa:a
 .
 
 iter seq=4
@@ -713,10 +713,10 @@ next
 prev
 next
 ----
-a:d
-aa:b
-a:d
-aa:b
+a:b
+aa:a
+a:b
+aa:a
 
 iter seq=3
 seek-prefix-ge aa
