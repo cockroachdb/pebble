@@ -206,10 +206,11 @@ func (h Handle) Release() {
 	}
 }
 
-// Weak returns a weak handle and clears the strong reference, preventing the
-// underlying data storage from being reused. Clearing the strong reference
-// allows the underlying data to be evicted and GC'd, but the buffer will not
-// be reused.
+// Weak converts the strong handle into a weak handle. A WeakHandle allows the
+// underlying data to be evicted and GC'd, though WeakHandle.Get() can be used
+// to quickly determine if the data is still cached or not. Note that the
+// reference count on the value is NOT decremented which will prevent the
+// buffer from ever being reused until it is GC'd by the Go runtime.
 func (h Handle) Weak() WeakHandle {
 	h.value = nil
 	if h.entry == nil {
