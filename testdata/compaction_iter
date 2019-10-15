@@ -130,11 +130,11 @@ c#3,1:c
 .
 
 define
-a.MERGE.3:b
+a.MERGE.3:d
 a.MERGE.2:c
-a.SET.1:d
-b.MERGE.2:a
-b.MERGE.1:b
+a.SET.1:b
+b.MERGE.2:b
+b.MERGE.1:a
 ----
 
 iter
@@ -152,8 +152,8 @@ next
 next
 next
 ----
-a#3,2:b
-a#2,1:cd
+a#3,2:d
+a#2,1:bc
 b#2,2:ab
 .
 
@@ -415,15 +415,15 @@ a-e#3
 
 define
 a.RANGEDEL.3:c
-b.MERGE.5:b
-b.MERGE.4:c
-b.MERGE.2:d
-b.MERGE.1:e
-d.MERGE.5:b
-d.MERGE.4:c
+b.MERGE.5:e
+b.MERGE.4:d
+b.MERGE.2:c
+b.MERGE.1:b
+d.MERGE.5:c
+d.MERGE.4:b
 d.RANGEDEL.3:f
-d.MERGE.2:d
-d.MERGE.1:e
+d.MERGE.2:e
+d.MERGE.1:d
 ----
 
 iter
@@ -432,7 +432,7 @@ next
 next
 tombstones
 ----
-b#5,2:bc
+b#5,2:de
 d#5,2:bc
 .
 a-c#3
@@ -820,7 +820,7 @@ iter
 first
 next
 ----
-a#2,1:ba
+a#2,1:ab
 .
 
 iter snapshots=2
@@ -836,7 +836,7 @@ iter snapshots=3
 first
 next
 ----
-a#2,1:ba
+a#2,1:ab
 .
 
 iter snapshots=(2,3,4)

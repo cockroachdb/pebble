@@ -164,9 +164,9 @@ func (i *Iterator) findPrevEntry() bool {
 				// iterators value. We append the new value to valueBuf in order to
 				// merge(valueBuf, valueBuf2). Then we swap valueBuf and valueBuf2 in
 				// order to maintain the invariant that the existing value points to
-				// valueBuf2 (in preparation for handling th next merge value).
+				// valueBuf2 (in preparation for handling the next merge value).
 				i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
-				i.valueBuf = i.merge(i.key, i.valueBuf, i.value, nil)
+				i.valueBuf = i.merge(i.key, i.value, i.valueBuf, nil)
 				i.valueBuf, i.valueBuf2 = i.valueBuf2, i.valueBuf
 				i.value = i.valueBuf2
 			}
@@ -238,13 +238,13 @@ func (i *Iterator) mergeNext(key InternalKey) bool {
 
 		case InternalKeyKindSet:
 			// We've hit a Set value. Merge with the existing value and return.
-			i.value = i.merge(i.key, i.value, i.iterValue, nil)
+			i.value = i.merge(i.key, i.iterValue, i.value, nil)
 			return true
 
 		case InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			i.value = i.merge(i.key, i.value, i.iterValue, nil)
+			i.value = i.merge(i.key, i.iterValue, i.value, nil)
 			i.valueBuf = i.value[:0]
 			continue
 
