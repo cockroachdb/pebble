@@ -31,7 +31,7 @@ b
 c
 ----
 c
-cb
+bc
 c
 
 get seq=6
@@ -40,7 +40,7 @@ b
 c
 ----
 d
-dcb
+bcd
 d
 
 get seq=7
@@ -67,7 +67,7 @@ b
 c
 ----
 d
-dcb
+bcd
 d
 
 iter seq=6
@@ -89,20 +89,20 @@ seek-lt c
 seek-lt d
 ----
 a:d
-b:dcb
+b:bcd
 c:d
 .
 a:d
-b:dcb
+b:bcd
 c:d
 .
 c:d
-b:dcb
+b:bcd
 a:d
 .
 .
 a:d
-b:dcb
+b:bcd
 c:d
 
 iter seq=7
@@ -173,7 +173,7 @@ b
 c
 ----
 c
-cb
+bc
 c
 
 get seq=6
@@ -182,7 +182,7 @@ b
 c
 ----
 d
-dcb
+bcd
 d
 
 get seq=7
@@ -209,7 +209,7 @@ b
 c
 ----
 d
-dcb
+bcd
 d
 
 iter seq=6
@@ -231,20 +231,20 @@ seek-lt c
 seek-lt d
 ----
 a:d
-b:dcb
+b:bcd
 c:d
 .
 a:d
-b:dcb
+b:bcd
 c:d
 .
 c:d
-b:dcb
+b:bcd
 a:d
 .
 .
 a:d
-b:dcb
+b:bcd
 c:d
 
 iter seq=7
@@ -737,12 +737,12 @@ a
 get seq=3
 a
 ----
-21
+12
 
 get seq=4
 a
 ----
-321
+123
 
 iter seq=2
 first
@@ -767,12 +767,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:21
-a:21
+a:12
+a:12
 .
-a:21
+a:12
 .
-a:21
+a:12
 
 iter seq=4
 first
@@ -782,12 +782,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:321
-a:321
+a:123
+a:123
 .
-a:321
+a:123
 .
-a:321
+a:123
 
 # User-key spread across multiple levels.
 
@@ -822,17 +822,17 @@ a
 get seq=3
 a
 ----
-21
+12
 
 get seq=4
 a
 ----
-321
+123
 
 get seq=5
 a
 ----
-4321
+1234
 
 iter seq=2
 first
@@ -857,12 +857,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:21
-a:21
+a:12
+a:12
 .
-a:21
+a:12
 .
-a:21
+a:12
 
 iter seq=4
 first
@@ -872,12 +872,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:321
-a:321
+a:123
+a:123
 .
-a:321
+a:123
 .
-a:321
+a:123
 
 iter seq=5
 first
@@ -887,12 +887,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:4321
-a:4321
+a:1234
+a:1234
 .
-a:4321
+a:1234
 .
-a:4321
+a:1234
 
 # Range deletions on multiple levels.
 define

@@ -48,7 +48,7 @@ merge a 3
 
 get a
 ----
-321
+123
 
 commit
 ----
@@ -59,7 +59,7 @@ merge a 4
 
 get a
 ----
-4321
+1234
 
 commit
 ----
@@ -101,7 +101,7 @@ merge b 4
 
 get b
 ----
-43
+34
 
 commit
 ----
@@ -111,4 +111,4 @@ define
 
 get b
 ----
-43
+34
