@@ -56,7 +56,10 @@ type key struct {
 }
 
 type value struct {
-	buf  []byte
+	buf []byte
+	// The number of references on the value. When refs drops to 0, the buf
+	// associated with the value may be reused. This is a form of manual memory
+	// management. See Cache.Free.
 	refs int32
 }
 
@@ -90,8 +93,10 @@ type entry struct {
 	}
 	size  int64
 	ptype entryType
-	ref   int32
-	shard *shard
+	// referenced is atomically set to indicate that this entry has been accessed
+	// since the last time one of the clock hands swept it.
+	referenced int32
+	shard      *shard
 }
 
 func (e *entry) init() *entry {
@@ -148,10 +153,10 @@ func (e *entry) unlinkFile() *entry {
 	return next
 }
 
-func (e *entry) setValue(v *value, free func([]byte)) {
+func (e *entry) setValue(v *value) {
 	if old := e.getValue(); old != nil {
-		if old.release() && free != nil {
-			free(old.buf)
+		if old.release() {
+			allocFree(old.buf)
 		}
 	}
 	atomic.StorePointer(&e.val, unsafe.Pointer(v))
@@ -166,7 +171,7 @@ func (e *entry) Get() []byte {
 	if v == nil {
 		return nil
 	}
-	atomic.StoreInt32(&e.ref, 1)
+	atomic.StoreInt32(&e.referenced, 1)
 	// Record a cache hit because the entry is being used as a WeakHandle and
 	// successfully avoided a more expensive shard.Get() operation.
 	atomic.AddInt64(&e.shard.hits, 1)
@@ -179,7 +184,6 @@ func (e *entry) Get() []byte {
 type Handle struct {
 	entry *entry
 	value *value
-	free  func([]byte)
 }
 
 // Get returns the value stored in handle.
@@ -195,22 +199,29 @@ func (h Handle) Get() []byte {
 // Release releases the reference to the cache entry.
 func (h Handle) Release() {
 	if h.value != nil {
-		if h.value.release() && h.free != nil {
-			h.free(h.value.buf)
+		if h.value.release() {
+			allocFree(h.value.buf)
 		}
-		h.value = nil
 	}
 }
 
-// Weak returns a weak handle and clears the strong reference, preventing the
-// underlying data storage from being reused. Clearing the strong reference
-// allows the underlying data to be evicted and GC'd, but the buffer will not
-// be reused.
+// Weak converts the (strong) handle into a WeakHandle. A WeakHandle allows the
+// underlying data to be evicted and GC'd, while allowing WeakHandle.Get() to
+// be used to quickly determine if the data is still cached or not. Note that
+// the reference count on the value is incremented which will prevent the
+// associated buffer from ever being reused until it is GC'd by the Go
+// runtime. It is not necessary to call Handle.Release() after calling Weak().
 func (h Handle) Weak() WeakHandle {
-	h.value = nil
 	if h.entry == nil {
 		return nil // return a nil interface, not (*entry)(nil)
 	}
+	// Add a reference to the value which will never be cleared. This is
+	// necessary because WeakHandle.Get() performs an atomic load of the value,
+	// but we need to ensure that nothing can concurrently be freeing the buffer
+	// for reuse. Rather than add additional locking to this code path, we add a
+	// reference here so that the underlying buffer can never be reused. And we
+	// rely on the Go runtime to eventually GC the buffer.
+	h.value.acquire()
 	return h.entry
 }
 
@@ -223,25 +234,24 @@ type WeakHandle interface {
 }
 
 type shard struct {
-	free func([]byte)
-
 	hits   int64
 	misses int64
 
 	mu sync.RWMutex
 
-	maxSize  int64
-	coldSize int64
-	blocks   map[key]*entry     // fileNum+offset -> block
-	files    map[fileKey]*entry // fileNum -> list of blocks
+	reservedSize int64
+	maxSize      int64
+	coldSize     int64
+	blocks       map[key]*entry     // fileNum+offset -> block
+	files        map[fileKey]*entry // fileNum -> list of blocks
 
 	handHot  *entry
 	handCold *entry
 	handTest *entry
 
-	countHot  int64
-	countCold int64
-	countTest int64
+	sizeHot  int64
+	sizeCold int64
+	sizeTest int64
 }
 
 func (c *shard) Get(id, fileNum, offset uint64) Handle {
@@ -252,7 +262,7 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 		value = e.getValue()
 		if value != nil {
 			value.acquire()
-			atomic.StoreInt32(&e.ref, 1)
+			atomic.StoreInt32(&e.referenced, 1)
 		} else {
 			e = nil
 		}
@@ -263,7 +273,7 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	} else {
 		atomic.AddInt64(&c.hits, 1)
 	}
-	return Handle{value: value, free: c.free}
+	return Handle{value: value}
 }
 
 func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
@@ -279,39 +289,41 @@ func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
 		// no cache entry? add it
 		e = &entry{ptype: etCold, key: k, size: int64(len(value)), shard: c}
 		e.init()
-		e.setValue(v, c.free)
-		c.metaAdd(k, e)
-		c.countCold += e.size
+		e.setValue(v)
+		if c.metaAdd(k, e) {
+			c.sizeCold += e.size
+		}
 
 	case e.getValue() != nil:
 		// cache entry was a hot or cold page
-		e.setValue(v, c.free)
-		atomic.StoreInt32(&e.ref, 1)
+		e.setValue(v)
+		atomic.StoreInt32(&e.referenced, 1)
 		delta := int64(len(value)) - e.size
 		e.size = int64(len(value))
 		if e.ptype == etHot {
-			c.countHot += delta
+			c.sizeHot += delta
 		} else {
-			c.countCold += delta
+			c.sizeCold += delta
 		}
 		c.evict()
 
 	default:
 		// cache entry was a test page
 		c.coldSize += e.size
-		if c.coldSize > c.maxSize {
-			c.coldSize = c.maxSize
+		if c.coldSize > c.targetSize() {
+			c.coldSize = c.targetSize()
 		}
-		atomic.StoreInt32(&e.ref, 0)
-		e.setValue(v, c.free)
+		atomic.StoreInt32(&e.referenced, 0)
+		e.setValue(v)
 		e.ptype = etHot
-		c.countTest -= e.size
+		c.sizeTest -= e.size
 		c.metaDel(e)
-		c.metaAdd(k, e)
-		c.countHot += e.size
+		if c.metaAdd(k, e) {
+			c.sizeHot += e.size
+		}
 	}
 
-	return Handle{entry: e, value: v, free: c.free}
+	return Handle{entry: e, value: v}
 }
 
 // Delete deletes the cached value for the specified file and offset.
@@ -344,16 +356,33 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 	}
 }
 
+func (c *shard) Reserve(n int) {
+	c.mu.Lock()
+	c.reservedSize += int64(n)
+	c.evict()
+	c.mu.Unlock()
+}
+
 // Size returns the current space used by the cache.
 func (c *shard) Size() int64 {
 	c.mu.RLock()
-	size := c.countHot + c.countCold
+	size := c.sizeHot + c.sizeCold
 	c.mu.RUnlock()
 	return size
 }
 
-func (c *shard) metaAdd(key key, e *entry) {
+func (c *shard) targetSize() int64 {
+	return c.maxSize - c.reservedSize
+}
+
+// Add the entry to the cache, returning true if the entry was added and false
+// if it would not fit in the cache.
+func (c *shard) metaAdd(key key, e *entry) bool {
 	c.evict()
+	if e.size > c.targetSize() {
+		// The entry is larger than the target cache size.
+		return false
+	}
 
 	c.blocks[key] = e
 
@@ -375,6 +404,7 @@ func (c *shard) metaAdd(key key, e *entry) {
 	} else {
 		fileBlocks.linkFile(e)
 	}
+	return true
 }
 
 func (c *shard) metaDel(e *entry) {
@@ -407,17 +437,17 @@ func (c *shard) metaDel(e *entry) {
 func (c *shard) metaEvict(e *entry) {
 	switch e.ptype {
 	case etHot:
-		c.countHot -= e.size
+		c.sizeHot -= e.size
 	case etCold:
-		c.countCold -= e.size
+		c.sizeCold -= e.size
 	case etTest:
-		c.countTest -= e.size
+		c.sizeTest -= e.size
 	}
 	c.metaDel(e)
 }
 
 func (c *shard) evict() {
-	for c.maxSize <= c.countHot+c.countCold && c.handCold != nil {
+	for c.targetSize() <= c.sizeHot+c.sizeCold && c.handCold != nil {
 		c.runHandCold()
 	}
 }
@@ -425,17 +455,17 @@ func (c *shard) evict() {
 func (c *shard) runHandCold() {
 	e := c.handCold
 	if e.ptype == etCold {
-		if atomic.LoadInt32(&e.ref) == 1 {
-			atomic.StoreInt32(&e.ref, 0)
+		if atomic.LoadInt32(&e.referenced) == 1 {
+			atomic.StoreInt32(&e.referenced, 0)
 			e.ptype = etHot
-			c.countCold -= e.size
-			c.countHot += e.size
+			c.sizeCold -= e.size
+			c.sizeHot += e.size
 		} else {
-			e.setValue(nil, c.free)
+			e.setValue(nil)
 			e.ptype = etTest
-			c.countCold -= e.size
-			c.countTest += e.size
-			for c.maxSize < c.countTest && c.handTest != nil {
+			c.sizeCold -= e.size
+			c.sizeTest += e.size
+			for c.targetSize() < c.sizeTest && c.handTest != nil {
 				c.runHandTest()
 			}
 		}
@@ -443,7 +473,7 @@ func (c *shard) runHandCold() {
 
 	c.handCold = c.handCold.next()
 
-	for c.maxSize-c.coldSize <= c.countHot && c.handHot != nil {
+	for c.targetSize()-c.coldSize <= c.sizeHot && c.handHot != nil {
 		c.runHandHot()
 	}
 }
@@ -458,12 +488,12 @@ func (c *shard) runHandHot() {
 
 	e := c.handHot
 	if e.ptype == etHot {
-		if atomic.LoadInt32(&e.ref) == 1 {
-			atomic.StoreInt32(&e.ref, 0)
+		if atomic.LoadInt32(&e.referenced) == 1 {
+			atomic.StoreInt32(&e.referenced, 0)
 		} else {
 			e.ptype = etCold
-			c.countHot -= e.size
-			c.countCold += e.size
+			c.sizeHot -= e.size
+			c.sizeCold += e.size
 		}
 	}
 
@@ -471,7 +501,7 @@ func (c *shard) runHandHot() {
 }
 
 func (c *shard) runHandTest() {
-	if c.countCold > 0 && c.handTest == c.handCold && c.handCold != nil {
+	if c.sizeCold > 0 && c.handTest == c.handCold && c.handCold != nil {
 		c.runHandCold()
 		if c.handTest == nil {
 			return
@@ -484,7 +514,7 @@ func (c *shard) runHandTest() {
 		c.metaDel(c.handTest)
 		c.handTest = prev
 
-		c.countTest -= e.size
+		c.sizeTest -= e.size
 		c.coldSize -= e.size
 		if c.coldSize < 0 {
 			c.coldSize = 0
@@ -508,10 +538,9 @@ type Metrics struct {
 
 // Cache ...
 type Cache struct {
-	maxSize   int64
-	idAlloc   uint64
-	shards    []shard
-	allocPool *sync.Pool
+	maxSize int64
+	idAlloc uint64
+	shards  []shard
 }
 
 // New creates a new cache of the specified size. Memory for the cache is
@@ -525,16 +554,9 @@ func newShards(size int64, shards int) *Cache {
 		maxSize: size,
 		idAlloc: 1,
 		shards:  make([]shard, shards),
-		allocPool: &sync.Pool{
-			New: func() interface{} {
-				return &allocCache{}
-			},
-		},
 	}
-	free := c.Free
 	for i := range c.shards {
 		c.shards[i] = shard{
-			free:     free,
 			maxSize:  size / int64(len(c.shards)),
 			coldSize: size / int64(len(c.shards)),
 			blocks:   make(map[key]*entry),
@@ -619,18 +641,34 @@ func (c *Cache) Size() int64 {
 // Alloc allocates a byte slice of the specified size, possibly reusing
 // previously allocated but unused memory.
 func (c *Cache) Alloc(n int) []byte {
-	a := c.allocPool.Get().(*allocCache)
-	b := a.alloc(n)
-	c.allocPool.Put(a)
-	return b
+	return allocNew(n)
 }
 
 // Free frees the specified slice of memory. The buffer will possibly be
 // reused, making it invalid to use the buffer after calling Free.
 func (c *Cache) Free(b []byte) {
-	a := c.allocPool.Get().(*allocCache)
-	a.free(b)
-	c.allocPool.Put(a)
+	allocFree(b)
+}
+
+// Reserve N bytes in the cache. This effectively shrinks the size of the cache
+// by N bytes, without actually consuming any memory. The returned closure
+// should be invoked to release the reservation.
+func (c *Cache) Reserve(n int) func() {
+	// Round-up the per-shard reservation. Most reservations should be large, so
+	// this probably doesn't matter in practice.
+	shardN := (n + len(c.shards) - 1) / len(c.shards)
+	for i := range c.shards {
+		c.shards[i].Reserve(shardN)
+	}
+	return func() {
+		if shardN == -1 {
+			panic("pebble: cache reservation already released")
+		}
+		for i := range c.shards {
+			c.shards[i].Reserve(-shardN)
+		}
+		shardN = -1
+	}
 }
 
 // Metrics returns the metrics for the cache.
@@ -640,7 +678,7 @@ func (c *Cache) Metrics() Metrics {
 		s := &c.shards[i]
 		s.mu.RLock()
 		m.Count += int64(len(s.blocks))
-		m.Size += s.countHot + s.countCold
+		m.Size += s.sizeHot + s.sizeCold
 		s.mu.RUnlock()
 		m.Hits += atomic.LoadInt64(&s.hits)
 		m.Misses += atomic.LoadInt64(&s.misses)

@@ -1203,6 +1203,13 @@ func (b *flushableBatch) totalBytes() uint64 {
 	return uint64(cap(b.data))
 }
 
+func (b *flushableBatch) readerRef() {
+	// TODO(peter): account for large batch memory in the cache.
+}
+
+func (b *flushableBatch) readerUnref() {
+}
+
 func (b *flushableBatch) flushed() chan struct{} {
 	return b.flushedCh
 }

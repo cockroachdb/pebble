@@ -12,10 +12,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -682,6 +684,83 @@ func TestIterLeak(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestMemTableReservation(t *testing.T) {
+	opts := &Options{
+		Cache:        cache.New(1 << 20 /* 1 MB */),
+		MemTableSize: 2 << 20, /* 2 MB */
+		FS:           vfs.NewMem(),
+	}
+	opts.EnsureDefaults()
+
+	// Add a block to the cache. Note that the memtable size is larger than the
+	// cache size, so opening the DB should cause this block to be evicted.
+	tmpID := opts.Cache.NewID()
+	opts.Cache.Set(tmpID, 0, 0, []byte("hello world"))
+
+	d, err := Open("", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checkReserved := func(expected int64) {
+		t.Helper()
+		if reserved := atomic.LoadInt64(&d.memTableReserved); expected != reserved {
+			t.Fatalf("expected %d reserved, but found %d", expected, reserved)
+		}
+	}
+
+	checkReserved(int64(opts.MemTableSize))
+	if refs := atomic.LoadInt32(&d.mu.mem.mutable.readerRefs); refs != 2 {
+		t.Fatalf("expected 2 refs, but found %d", refs)
+	}
+	// Verify the memtable reservation has caused our test block to be evicted.
+	if h := opts.Cache.Get(tmpID, 0, 0); h.Get() != nil {
+		t.Fatalf("expected failure, but found success: %s", h.Get())
+	}
+
+	// Flush the memtable. The memtable reservation should be unchanged because a
+	// new memtable will be allocated.
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	checkReserved(int64(opts.MemTableSize))
+
+	// Flush in the presence of an active iterator. The iterator will hold a
+	// reference to a readState which will in turn hold a reader reference to the
+	// memtable. While the iterator is open, there will be the memory for 2
+	// memtables reserved.
+	iter := d.NewIter(nil)
+	if err := d.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	checkReserved(2 * int64(opts.MemTableSize))
+	if err := iter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	checkReserved(int64(opts.MemTableSize))
+
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMemTableReservationLeak(t *testing.T) {
+	d, err := Open("", &Options{FS: vfs.NewMem()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	d.mu.mem.mutable.readerRef()
+	d.mu.Unlock()
+	if err := d.Close(); err == nil {
+		t.Fatalf("expected failure, but found success")
+	} else if !strings.HasPrefix(err.Error(), "leaked memtable reservation:") {
+		t.Fatalf("expected leaked memtable reservation, but found %+v", err)
+	} else {
+		t.Log(err.Error())
 	}
 }
 

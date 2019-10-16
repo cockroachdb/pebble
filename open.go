@@ -59,7 +59,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.cond.L = &d.mu.Mutex
-	d.mu.mem.mutable = newMemTable(d.opts)
+	d.mu.mem.mutable = d.newMemTable()
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 	d.mu.cleaner.cond.L = &d.mu.Mutex
 	d.mu.compact.cond.L = &d.mu.Mutex
@@ -307,7 +307,7 @@ func (d *DB) replayWAL(
 		if mem != nil {
 			return
 		}
-		mem = newMemTable(d.opts)
+		mem = d.newMemTable()
 		if d.opts.ReadOnly {
 			d.mu.mem.mutable = mem
 			d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
@@ -369,7 +369,7 @@ func (d *DB) replayWAL(
 			if err = mem.apply(&b, seqNum); err != nil {
 				return 0, err
 			}
-			mem.unref()
+			mem.writerUnref()
 		}
 		buf.Reset()
 	}
@@ -396,6 +396,9 @@ func (d *DB) replayWAL(
 		// here.
 		for _, fileNum := range pendingOutputs {
 			delete(d.mu.compact.pendingOutputs, fileNum)
+		}
+		for i := range toFlush {
+			toFlush[i].readerUnref()
 		}
 	}
 	return maxSeqNum, nil
