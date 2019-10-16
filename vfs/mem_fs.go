@@ -234,6 +234,25 @@ func (y *memFS) Remove(fullname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
+			child, ok := dir.children[frag]
+			if !ok {
+				return os.ErrNotExist
+			}
+			if len(child.children) > 0 {
+				return os.ErrExist
+			}
+			delete(dir.children, frag)
+		}
+		return nil
+	})
+}
+
+func (y *memFS) RemoveAll(fullname string) error {
+	return y.walk(fullname, func(dir *memNode, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("pebble/vfs: empty file name")
+			}
 			_, ok := dir.children[frag]
 			if !ok {
 				return os.ErrNotExist

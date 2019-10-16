@@ -52,6 +52,11 @@ type FS interface {
 	// Remove removes the named file or directory.
 	Remove(name string) error
 
+	// Remove removes the named file or directory and any children it
+	// contains. It removes everything it can but returns the first error it
+	// encounters.
+	RemoveAll(name string) error
+
 	// Rename renames a file. It overwrites the file at newname if one exists,
 	// the same as os.Rename.
 	Rename(oldname, newname string) error
@@ -129,6 +134,10 @@ func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 
 func (defaultFS) Remove(name string) error {
 	return os.Remove(name)
+}
+
+func (defaultFS) RemoveAll(name string) error {
+	return os.RemoveAll(name)
 }
 
 func (defaultFS) Rename(oldname, newname string) error {
