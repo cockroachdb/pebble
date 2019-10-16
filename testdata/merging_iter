@@ -1,0 +1,195 @@
+#========== Next Cases ============
+# The rangedel should not delete any points in any sstable.  The two files were involved in an
+# L0=>L0 compaction and then the second file got moved to a lower level.
+define
+L0
+a.SET.30 c.SET.27
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:f
+L
+e.SET.10 g.SET.20
+e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:f
+----
+
+# This triggered a bug in isNextEntryDeleted() because the rangedel iterator was not nil,
+# even though we had moved past the iterator position of that file. Wrapping L0 in levelIter
+# was sufficient to fix this.
+iter
+first
+next
+next
+next
+----
+a#30,1:30
+c#27,1:27
+e#10,1:10
+g#20,1:20
+
+# This triggered a bug in seekGE where we use the RANGEDEL inappropriately. Wrapping L0 in levelIter
+# was sufficient to fix this.
+iter
+seek-ge d
+next
+----
+e#10,1:10
+g#20,1:20
+
+# We keep the rangedel alive by having a point in the higher level past the first point in the
+# lower level. This was a different bug in isNextEntryDeleted() in that we seek to h and hide
+# the key at g which should not be hidden.
+define
+L
+a.SET.15 f.SET.16
+a.SET.15:15 c.SET.13:13 f.SET.16:16 a.RANGEDEL.12:h
+L
+e.SET.10 g.SET.15
+e.SET.10:10 g.SET.15:15
+----
+
+iter
+first
+next
+next
+next
+----
+a#15,1:15
+c#13,1:13
+f#16,1:16
+g#15,1:15
+
+# The rangedel should not delete any points in any sstable.  The two files were involved in an
+# L0=>L0 compaction and then the first file got moved to a lower level.
+# In practice, the 1000 below will be the InternalKeyRangeDeleteSentinel
+define
+L0
+c.SET.30 f.RANGEDEL.0
+c.SET.30:30 d.SET.27:27 a.RANGEDEL.8:f
+L
+a.SET.10 c.SET.1000
+a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:f
+----
+
+# This triggered a bug in isNextEntryDeleted() because the tombstone at the higher level extends
+# into an sstable at a lower level that has smaller keys. This requires that tombstone containment
+# should respect file bounds.
+iter
+first
+next
+next
+next
+----
+a#10,1:10
+b#12,1:12
+c#30,1:30
+d#27,1:27
+
+# This triggered a bug in seekGE() where tombstone.Contains() was being used.
+iter
+seek-ge a
+next
+next
+next
+----
+a#10,1:10
+b#12,1:12
+c#30,1:30
+d#27,1:27
+
+#========== Prev Cases ============
+
+# The rangedel should not delete any points in any sstable.  The two files were involved in an
+# L0=>L0 compaction and then the second file got moved to a lower level.
+define
+L0
+d.SET.30 e.SET.27
+d.SET.30:30 e.SET.27:27 b.RANGEDEL.8:f
+L
+a.SET.10 b.SET.20
+a.SET.10:10 b.SET.20:20 b.RANGEDEL.8:f
+----
+
+# This triggered a bug in isPrevEntryDeleted() because the rangedel iterator was not nil,
+# even though we had moved before the iterator position of that file. Wrapping L0 in levelIter
+# was sufficient to fix this.
+iter
+last
+prev
+prev
+prev
+----
+e#27,1:27
+d#30,1:30
+b#20,1:20
+a#10,1:10
+
+# This triggered a bug in seekLT where we use the RANGEDEL inappropriately. Wrapping L0 in levelIter
+# was sufficient to fix this.
+iter
+seek-lt d
+prev
+----
+b#20,1:20
+a#10,1:10
+
+# We keep the rangedel alive by having a point in the higher level before the last point in the
+# lower level. This was a different bug in isPrevEntryDeleted() in that we seekLT a and hide
+# the key at b which should not be hidden.
+define
+L
+c.SET.15 g.SET.16
+c.SET.15:15 f.SET.13:13 g.SET.16:16 a.RANGEDEL.12:h
+L
+b.SET.14 d.SET.10
+b.SET.14:14 d.SET.10:10
+----
+
+iter
+last
+prev
+prev
+prev
+----
+g#16,1:16
+f#13,1:13
+c#15,1:15
+b#14,1:14
+
+# The rangedel should not delete any points in any sstable.  The two files were involved in an
+# L0=>L0 compaction and then the second file got moved to a lower level.
+# In practice, the 1000 below will be the InternalKeyRangeDeleteSentinel.
+# These tests don't pass. It is possible that the sentinel invalidates the arguments on why
+# it is sufficient to check the user key bounds of an sstable.
+
+define
+L0
+a.SET.10 c.SET.1000
+a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:f
+L
+c.SET.30 f.RANGEDEL.0
+c.SET.30:30 d.SET.27:27 a.RANGEDEL.8:f
+----
+
+# This triggered a bug in isPrevEntryDeleted() because the tombstone at the higher level extends
+# into an sstable at a lower level that has larger keys. This requires that tombstone containment
+# should respect file bounds.
+iter
+last
+prev
+prev
+prev
+----
+d#27,1:27
+c#30,1:30
+b#12,1:12
+a#10,1:10
+
+# This triggered a bug in seekLT() where tombstone.Contains() was being used.
+iter
+seek-lt e
+prev
+prev
+prev
+----
+d#27,1:27
+c#30,1:30
+b#12,1:12
+a#10,1:10

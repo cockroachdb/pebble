@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -67,7 +68,7 @@ func TestMergingIterSeek(t *testing.T) {
 func TestMergingIterNextPrev(t *testing.T) {
 	// The data is the same in each of these cases, but divided up amongst the
 	// iterators differently. This data must match the definition in
-	// testdata/internal_iter.
+	// testdata/internal_iter_next.
 	iterCases := [][]string{
 		[]string{
 			"a.SET.2:2 a.SET.1:1 b.SET.2:2 b.SET.1:1 c.SET.2:2 c.SET.1:1",
@@ -121,6 +122,131 @@ func TestMergingIterNextPrev(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestMergingIterCornerCases(t *testing.T) {
+	memFS := vfs.NewMem()
+	cmp := DefaultComparer.Compare
+	type levelInfo struct {
+		isL0  bool
+		files []fileMetadata
+	}
+	var levels []levelInfo
+	// Indexed by fileNum
+	var readers []*sstable.Reader
+	var fileNum uint64 = 0
+	newIters :=
+		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
+			r := readers[meta.FileNum]
+			return r.NewIter(nil, nil), r.NewRangeDelIter(), nil
+		}
+	datadriven.RunTest(t, "testdata/merging_iter", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			lines := strings.Split(d.Input, "\n")
+			levels = levels[:0]
+			for i := 0; i < len(lines); i++ {
+				line := lines[i]
+				line = strings.TrimSpace(line)
+				if line == "L" || line == "L0" {
+					// start next level
+					switch line {
+					case "L":
+						levels = append(levels, levelInfo{})
+					case "L0":
+						levels = append(levels, levelInfo{isL0: true})
+					}
+					continue
+				}
+				li := &levels[len(levels)-1]
+				keys := strings.Fields(line)
+				smallestKey := base.ParseInternalKey(keys[0])
+				largestKey := base.ParseInternalKey(keys[1])
+				li.files = append(li.files, fileMetadata{
+					FileNum: fileNum, Smallest: smallestKey, Largest: largestKey})
+
+				i++
+				line = lines[i]
+				line = strings.TrimSpace(line)
+				name := fmt.Sprint(fileNum)
+				fileNum++
+				f, err := memFS.Create(name)
+				if err != nil {
+					return err.Error()
+				}
+				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				var tombstones []rangedel.Tombstone
+				frag := rangedel.Fragmenter{
+					Cmp: cmp,
+					Emit: func(fragmented []rangedel.Tombstone) {
+						tombstones = append(tombstones, fragmented...)
+					},
+				}
+				keyvalues := strings.Fields(line)
+				for _, kv := range keyvalues {
+					j := strings.Index(kv, ":")
+					ikey := base.ParseInternalKey(kv[:j])
+					value := []byte(kv[j+1:])
+					switch ikey.Kind() {
+					case InternalKeyKindRangeDelete:
+						frag.Add(ikey, value)
+					default:
+						if err := w.Add(ikey, value); err != nil {
+							return err.Error()
+						}
+					}
+				}
+				frag.Finish()
+				for _, v := range tombstones {
+					if err := w.Add(v.Start, v.End); err != nil {
+						return err.Error()
+					}
+				}
+				if err := w.Close(); err != nil {
+					return err.Error()
+				}
+				f, err = memFS.Open(name)
+				if err != nil {
+					return err.Error()
+				}
+				r, err := sstable.NewReader(f, sstable.ReaderOptions{})
+				if err != nil {
+					return err.Error()
+				}
+				readers = append(readers, r)
+			}
+			return ""
+		case "iter":
+			var levelIters = make([]mergingIterLevel, len(levels))
+			for i, l := range levels {
+				if l.isL0 && len(l.files) != 1 {
+					return "L0 levels for merging should only have 1 file"
+				}
+				// TODO: delete
+				/*
+					if l.isL0 {
+						iter, rangeDelIter, err := newIters(&l.files[0], nil, nil)
+						if err != nil {
+							return err.Error()
+						}
+						levelIters[i] = mergingIterLevel{iter: iter, rangeDelIter: rangeDelIter}
+					}
+				*/
+				li := &levelIter{}
+				li.init(nil, cmp, newIters, l.files, nil)
+				levelIters[i] = mergingIterLevel{iter: li}
+				li.initRangeDel(&levelIters[i].rangeDelIter)
+				li.initSmallestUserKey(&levelIters[i].smallestUserKey)
+				li.initLargestUserKey(&levelIters[i].largestUserKey)
+			}
+			miter := &mergingIter{}
+			miter.init(cmp, levelIters...)
+			defer miter.Close()
+			return runInternalIterCmd(d, miter, iterCmdVerboseKey)
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
 }
 
 func buildMergingIterTables(

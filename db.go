@@ -621,6 +621,8 @@ func (d *DB) newIterInternal(
 	}
 
 	// The level 0 files need to be added from newest to oldest.
+	// TODO(sbhola): wrap L0 files in levelIter since they could contain untruncated tombstones
+	// due to L0=>L0 compactions.
 	current := readState.current
 	for i := len(current.Files[0]) - 1; i >= 0; i-- {
 		f := &current.Files[0][i]
@@ -665,6 +667,7 @@ func (d *DB) newIterInternal(
 
 		li.init(&dbi.opts, d.cmp, d.newIters, current.Files[level], nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
+		li.initSmallestUserKey(&mlevels[0].smallestUserKey)
 		li.initLargestUserKey(&mlevels[0].largestUserKey)
 		mlevels[0].iter = li
 		mlevels = mlevels[1:]
