@@ -62,7 +62,12 @@ type mergingIterLevel struct {
 // delete "b#8", yet older versions of "b" might spill over to the next
 // sstable. So the boundary key for this sstable must be "b#8". Adjusting the
 // end key of tombstones to be optionally inclusive or contain a sequence
-// number would be possible solutions. The approach taken here performs an
+// number would be possible solutions (such solutions have potentially serious
+// issues: tombstones have exclusive end keys since an inclusive deletion end can be converted to
+// an exclusive one while the reverse transformation is not possible; the semantics of a sequence
+// number for the end key of a range tombstone are murky).
+//
+// The approach taken here performs an
 // implicit truncation of the tombstone to the sstable boundaries.
 //
 // During initialization of a mergingIter, the range deletion iterators for
@@ -85,7 +90,7 @@ type mergingIterLevel struct {
 // e#72057594037927935,15 as a key. During reverse iteration levelIter will
 // return a#10,15 as a key. These sentinel keys act as bookends to point
 // iteration and allow mergingIter to keep a table and its associated range
-// tombstones loaded as long as their are keys at lower levels that are within
+// tombstones loaded as long as there are keys at lower levels that are within
 // the bounds of the table.
 //
 // The final piece to the range deletion puzzle is the LSM invariant that for a
@@ -177,7 +182,7 @@ type mergingIterLevel struct {
 // as the previous key "b" so we don't have to reposition any of the range
 // deletion iterators, but merely check whether "d" is now contained by any of
 // the range tombstones at higher levels or has stepped past the range
-// tombstone in its own level. In this case, there is nothing to be done.
+// tombstone in its own level or higher levels. In this case, there is nothing to be done.
 //
 // Advancing the iterator again finds "e". Since "e" comes from p3, we have to
 // position the r3 range deletion iterator, which is empty. "e" is past the r2
@@ -403,6 +408,10 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 		}
 		if m.heap.cmp(l.tombstone.End, item.key.UserKey) <= 0 {
 			// The current key is at or past the tombstone end key.
+			// NB: for the case that this l.rangeDelIter is provided by a levelIter we know that
+			// the levelIter must be positioned at a key >= item.key. So it is sufficient to seek the
+			// current l.rangeDelIter (since any range del iterators that will be provided by the
+			// levelIter in the future cannot contain item.key).
 			l.tombstone = rangedel.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey, m.snapshot)
 		}
 		if l.tombstone.Empty() {
@@ -410,6 +419,10 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 		}
 		if l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
 			if level < item.index {
+				// TODO(sbhola): should this be m.seekGE(l.tombstone.End, level + 1)? Would be
+				// slightly tighter than the current.
+				// TODO(sbhola): shouldn't this first call to seekGE do
+				//    m.seekGE(min(l.tombstone.End, l.largestUserKey).
 				m.seekGE(l.tombstone.End, item.index)
 				return true
 			}

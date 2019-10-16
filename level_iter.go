@@ -100,11 +100,19 @@ func (l *levelIter) initLargestUserKey(largestUserKey *[]byte) {
 }
 
 func (l *levelIter) findFileGE(key []byte) int {
-	// Find the earliest file whose largest key is >= ikey. Note that the range
-	// deletion sentinel key is handled specially and a search for K will not
-	// find a table where K<range-del-sentinel> is the largest key. This prevents
-	// loading untruncated range deletions from a table which can't possibly
+	// Find the earliest file whose largest key is >= ikey.
+	//
+	// If the earliest file has its largest key == ikey and that largest key is a
+	// range deletion sentinel, we know that we manufactured this sentinel to convert
+	// the exclusive range deletion end key into an inclusive key (reminder: [start, end)#seqnum
+	// is the form of a range deletion sentinel which can contribute a largest key = end#sentinel).
+	// In this case we don't return this as the earliest file since there is nothing actually
+	// equal to key in it.
+	//
+	// Additionally, this prevents loading untruncated range deletions from a table which can't possibly
 	// contain the target key and is required for correctness by DB.Get.
+	// TODO(sbhola): add a comment on why this is required for correctness or add a pointer to a
+	// comment since we are loading untruncated range deletions in many files.
 	//
 	// TODO(peter): inline the binary search.
 	return sort.Search(len(l.files), func(i int) bool {
@@ -138,6 +146,9 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		l.iter = nil
 	}
 	if l.rangeDelIter != nil {
+		// TODO(sbhola): add comment on why we are not closing (*l.rangeDelIter) if it is not nil,
+		// and propagating the error, since it does not seem that mergingIter calls close() on it
+		// before the levelIter switches it to a different one.
 		*l.rangeDelIter = nil
 	}
 
@@ -157,8 +168,8 @@ func (l *levelIter) loadFile(index, dir int) bool {
 				}
 				continue
 			}
-			if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) < 0 {
-				// The lower bound is smaller than the smallest key in the
+			if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
+				// The lower bound is smaller or equal to the smallest key in the
 				// table. Iteration within the table does not need to check the lower
 				// bound.
 				l.tableOpts.LowerBound = nil
@@ -177,7 +188,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
 				// The upper bound is greater than the largest key in the
 				// table. Iteration within the table does not need to check the upper
-				// bound.
+				// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
 				l.tableOpts.UpperBound = nil
 			}
 		}
@@ -258,12 +269,19 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 }
 
 func (l *levelIter) Next() (*InternalKey, []byte) {
+	// TODO(sbhola): why does Next() return early if l.err is already nil but the Seek*() and other
+	// methods above do not do that?
 	if l.err != nil {
 		return nil, nil
 	}
 
 	if l.iter == nil {
+		// One of the following cases:
+		// - Was positioned at boundary key and now stepping past it.
+		// - Positioned before the beginning.
+		// - None of the above: must have exhausted the iterator -- nothing to return.
 		if l.boundary != nil {
+			// levelIter is being stepped past the boundary key, so now we can load the next file.
 			if l.loadFile(l.index+1, 1) {
 				if key, val := l.iter.First(); key != nil {
 					return key, val
@@ -324,6 +342,14 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 	var key *InternalKey
 	var val []byte
+	// The first iteration of this loop starts with an already exhausted l.iter. If the corresponding
+	// l.rangeDelIter contributes the largest key of the file, we need to pretend that the iterator
+	// is not exhausted to allow for the mergingIter to finish consuming the l.rangeDelIter before
+	// levelIter switches the rangeDelIter from under it. This pretense is done by returning the
+	// largest key of the file.
+	// Subsequent iterations will examine consecutive files such that the first file that does
+	// not have an exhausted iterator causes the code to return that key, else if the rangeDelIter
+	// contributes the largest key of the file, we do the behavior described above.
 	for ; key == nil; key, val = l.iter.First() {
 		if l.err = l.iter.Close(); l.err != nil {
 			return nil, nil
@@ -338,6 +364,7 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 				l.boundary = &f.Largest
 				return l.boundary, nil
 			}
+			// TODO(sbhola): Close() before setting to nil in case it has an error?
 			*l.rangeDelIter = nil
 		}
 
