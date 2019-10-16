@@ -82,6 +82,12 @@ func (fs loggingFS) Remove(name string) error {
 	return err
 }
 
+func (fs loggingFS) RemoveAll(name string) error {
+	err := fs.FS.RemoveAll(name)
+	fmt.Fprintf(fs.w, "remove-all: %s [%v]\n", fs.stripBase(name), normalizeError(err))
+	return err
+}
+
 type loggingFile struct {
 	File
 	name string
@@ -182,6 +188,12 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 						return fmt.Sprintf("remove <name>")
 					}
 					_ = fs.Remove(fs.PathJoin(dir, parts[1]))
+
+				case "remove-all":
+					if len(parts) != 2 {
+						return fmt.Sprintf("remove-all <name>")
+					}
+					_ = fs.RemoveAll(fs.PathJoin(dir, parts[1]))
 				}
 			}
 

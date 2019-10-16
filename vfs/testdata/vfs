@@ -97,3 +97,19 @@ define
 list e/b
 ----
 c
+
+define
+list /
+remove e
+remove-all e
+list /
+----
+a
+b
+d
+e
+remove: e [file already exists]
+remove-all: e [<nil>]
+a
+b
+d
