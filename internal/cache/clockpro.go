@@ -215,6 +215,12 @@ func (h Handle) Weak() WeakHandle {
 	if h.entry == nil {
 		return nil // return a nil interface, not (*entry)(nil)
 	}
+	// Add a reference to the value which will never be cleared. This is
+	// necessary because WeakHandle.Get() performs an atomic load of the value,
+	// but we need to ensure that nothing can concurrently be freeing the buffer
+	// for reuse. Rather than add additional locking to this code path, we add a
+	// reference here so that the underlying buffer can never be reused. And we
+	// rely on the Go runtime to eventually GC the buffer.
 	h.value.acquire()
 	return h.entry
 }
