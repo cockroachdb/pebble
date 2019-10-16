@@ -1,0 +1,273 @@
+# Format for define command:
+# Levels are ordered from higher to lower, and each new level starts with an L
+# Each level is defined using an even number of lines where every pair of lines represents
+# a file. The files within a level are ordered from smaller to larger keys.
+# Each file is defined using: the first line specifies the smallest and largest internal
+# keys and the second line the point key-value pairs in the sstable in order. The rangedel
+# key-value pairs should also be in increasing order relative to the other rangedel pairs.
+# The largest file key can take the form of <userkey>.RANGEDEL.72057594037927935, which
+# represents the range deletion sentinel.
+
+# The rangedel should not delete any points in any sstable.  The two files were involved in a
+# compaction and then the second file got moved to a lower level.
+define
+L
+a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:f
+L
+e.SET.10 g.SET.20
+e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:f
+----
+Level 1
+  file 0: [a#30,1-e#72057594037927935,15]
+Level 2
+  file 0: [e#10,1-g#20,1]
+
+# isNextEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
+# that are after it.
+iter
+first
+next
+next
+next
+next
+----
+a#30,1:30
+c#27,1:27
+e#72057594037927935,15:
+e#10,1:10
+g#20,1:20
+
+# seekGE() should not allow the rangedel to act on points in the lower sstable that are after it.
+iter
+seek-ge d
+next
+next
+----
+e#72057594037927935,15:
+e#10,1:10
+g#20,1:20
+
+# isPrevEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
+# that are after it.
+iter
+last
+prev
+prev
+prev
+----
+g#20,1:20
+e#10,1:10
+c#27,1:27
+a#30,1:30
+
+# seekLT() should not allow the rangedel to act on points in the lower sstable that are after it.
+iter
+seek-lt h
+prev
+prev
+prev
+----
+g#20,1:20
+e#10,1:10
+c#27,1:27
+a#30,1:30
+
+# We keep the rangedel alive by having a point in the higher level past the first point in the
+# lower level. This rangedel hides that first point in the lower level but we should not seek to
+# h and hide the second point.
+define
+L
+a.SET.15 f.SET.16
+a.SET.15:15 c.SET.13:13 f.SET.16:16 a.RANGEDEL.12:h
+L
+e.SET.10 g.SET.15
+e.SET.10:10 g.SET.15:15
+----
+Level 1
+  file 0: [a#15,1-f#16,1]
+Level 2
+  file 0: [e#10,1-g#15,1]
+
+iter
+first
+next
+next
+next
+----
+a#15,1:15
+c#13,1:13
+f#16,1:16
+g#15,1:15
+
+iter
+seek-ge d
+next
+----
+f#16,1:16
+g#15,1:15
+
+iter
+last
+prev
+prev
+prev
+----
+g#15,1:15
+f#16,1:16
+c#13,1:13
+a#15,1:15
+
+# The rangedel should not delete any points in any sstable.  The two files were involved in an
+# compaction and then the first file got moved to a lower level.
+define
+L
+c.SET.30 f.RANGEDEL.0
+c.SET.30:30 d.SET.27:27 a.RANGEDEL.8:f
+L
+a.SET.10 c.RANGEDEL.72057594037927935
+a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:f
+----
+Level 1
+  file 0: [c#30,1-f#0,15]
+Level 2
+  file 0: [a#10,1-c#72057594037927935,15]
+
+# isNextEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
+# that are before it.
+iter
+first
+next
+next
+next
+----
+a#10,1:10
+b#12,1:12
+c#30,1:30
+d#27,1:27
+
+# seekGE() should not allow the rangedel to act on points in the lower sstable that are before it.
+iter
+seek-ge a
+next
+next
+next
+----
+a#10,1:10
+b#12,1:12
+c#30,1:30
+d#27,1:27
+
+# isPrevEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
+# that are before it.
+iter
+last
+prev
+prev
+prev
+----
+d#27,1:27
+c#30,1:30
+b#12,1:12
+a#10,1:10
+
+# seekLT() should not allow the rangedel to act on points in the lower sstable that are before it.
+iter
+seek-lt e
+prev
+prev
+prev
+----
+d#27,1:27
+c#30,1:30
+b#12,1:12
+a#10,1:10
+
+# We keep the rangedel alive in prev iteration by having a point in the higher level before
+# the last point in the lower level. This rangedel hides that first point in the lower level
+# but we should not seek to a and hide the second point.
+define
+L
+c.SET.15 g.SET.16
+c.SET.15:15 f.SET.13:13 g.SET.16:16 a.RANGEDEL.12:h
+L
+b.SET.14 d.SET.10
+b.SET.14:14 d.SET.10:10
+----
+Level 1
+  file 0: [c#15,1-g#16,1]
+Level 2
+  file 0: [b#14,1-d#10,1]
+
+iter
+last
+prev
+prev
+prev
+----
+g#16,1:16
+f#13,1:13
+c#15,1:15
+b#14,1:14
+
+iter
+seek-lt f
+prev
+----
+c#15,1:15
+b#14,1:14
+
+# The rangedel should not delete anything.
+define
+L
+a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
+L
+e.SET.10 g.SET.20
+e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
+----
+Level 1
+  file 0: [a#30,1-e#72057594037927935,15]
+Level 2
+  file 0: [e#10,1-g#20,1]
+
+# When doing seek-lt f, the rangedel should not apply to e in the lower sstable. This is the
+# reason we cannot just use largest user key to constrain the rangedel and we need to
+# know whether it is the sentinel key.
+iter
+seek-lt f
+prev
+prev
+----
+e#10,1:10
+c#27,1:27
+a#30,1:30
+
+iter
+seek-ge e
+next
+----
+e#10,1:10
+g#20,1:20
+
+iter
+first
+seek-ge e
+next
+----
+a#30,1:30
+e#10,1:10
+g#20,1:20
+
+iter
+first
+next
+next
+next
+next
+----
+a#30,1:30
+c#27,1:27
+e#72057594037927935,15:
+e#10,1:10
+g#20,1:20

@@ -563,10 +563,7 @@ var iterAllocPool = sync.Pool{
 // newIterInternal constructs a new iterator, merging in batchIter as an extra
 // level.
 func (d *DB) newIterInternal(
-	batchIter internalIterator,
-	batchRangeDelIter internalIterator,
-	s *Snapshot,
-	o *IterOptions,
+	batchIter internalIterator, batchRangeDelIter internalIterator, s *Snapshot, o *IterOptions,
 ) *Iterator {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
@@ -621,6 +618,10 @@ func (d *DB) newIterInternal(
 	}
 
 	// The level 0 files need to be added from newest to oldest.
+	//
+	// Note that level 0 files do not contain untruncated tombstones, even in the presence of
+	// L0=>L0 compactions since such compactions output a single file. Therefore, we do not
+	// need to wrap level 0 files individually in level iterators.
 	current := readState.current
 	for i := len(current.Files[0]) - 1; i >= 0; i-- {
 		f := &current.Files[0][i]
@@ -665,7 +666,8 @@ func (d *DB) newIterInternal(
 
 		li.init(&dbi.opts, d.cmp, d.newIters, current.Files[level], nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
-		li.initLargestUserKey(&mlevels[0].largestUserKey)
+		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
+			&mlevels[0].isLargestUserKeyRangeDelSentinel)
 		mlevels[0].iter = li
 		mlevels = mlevels[1:]
 	}
@@ -787,7 +789,9 @@ func (d *DB) Close() error {
 }
 
 // Compact the specified range of keys in the database.
-func (d *DB) Compact(start, end []byte /* CompactionOptions */) error {
+func (d *DB) Compact(
+	start, end []byte, /* CompactionOptions */
+) error {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
 	}
