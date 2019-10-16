@@ -179,13 +179,13 @@ load a
 ----
 [,]
 
-load a lower=a upper=b
+load b lower=aa upper=b
 ----
-[a,b]
+[aa,b]
 
-load a lower=a upper=c
+load b lower=aa upper=c
 ----
-[a,]
+[aa,]
 
 load c lower=b upper=d
 ----

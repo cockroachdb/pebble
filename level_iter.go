@@ -4,9 +4,7 @@
 
 package pebble
 
-import (
-	"sort"
-)
+import "sort"
 
 // tableNewIters creates a new point and range-del iterator for the given file
 // number. If bytesIterated is specified, it is incremented as the given file is
@@ -42,18 +40,56 @@ type levelIter struct {
 	rangeDelIter *internalIterator
 	files        []fileMetadata
 	err          error
-	// Pointer into this level's entry in `mergingIter::largestUserKeys`. We populate it
-	// with the largest user key for the currently opened file. It is used to limit the optimization
-	// that seeks lower-level iterators past keys shadowed by a range tombstone. Limiting this
-	// seek to the file upper-bound is necessary since range tombstones are stored untruncated,
-	// while they only apply to keys within their containing file's boundaries. For a detailed
-	// example, see comment above `mergingIter`.
+
+	// Pointer into this level's entry in `mergingIterLevel::smallestUserKey,largestUserKey`.
+	// We populate it with the corresponding bounds for the currently opened file. It is used for
+	// two purposes (described for forward iteration. The explanation for backward iteration is
+	// similar.)
+	// - To limit the optimization that seeks lower-level iterators past keys shadowed by a range
+	//   tombstone. Limiting this seek to the file largestUserKey is necessary since
+	//   range tombstones are stored untruncated, while they only apply to keys within their
+	//   containing file's boundaries. For a detailed example, see comment above `mergingIter`.
+	// - To constrain the tombstone to act-within the bounds of the sstable when checking
+	//   containment. For forward iteration we need the smallestUserKey.
 	//
-	// This field differs from the `boundary` field in a few ways:
+	// An example is sstable bounds [c#8, g#12] containing a tombstone [b, i)#7.
+	// - When doing a SeekGE to user key X, the levelIter is at this sstable because X is either within
+	//   the sstable bounds or earlier than the start of the sstable (and there is no sstable in
+	//   between at this level). If X >= smallestUserKey, and the tombstone [b, i) contains X,
+	//   it is correct to SeekGE the sstables at lower levels to min(g, i) (i.e., min of
+	//   largestUserKey, tombstone.End) since any user key preceding min(g, i) must be covered by this
+	//   tombstone (since it cannot have a version younger than this tombstone as it is at a lower
+	//   level). And even if X = smallestUserKey or equal to the start user key of the tombstone,
+	//   if the above conditions are satisfied we know that the internal keys corresponding to X at
+	//   lower levels must have a version smaller than that in this file (again because of the level
+	//   argument). So we don't need to use sequence numbers for this comparison.
+	// - When checking whether this tombstone deletes internal key X we know that the levelIter is at this
+	//   sstable so (repeating the above) X.UserKey is either within the sstable bounds or earlier than the
+	//   start of the sstable (and there is no sstable in between at this level).
+	//   - X is at at a lower level. If X.UserKey >= smallestUserKey, and the tombstone contains
+	//     X.UserKey, we know X is deleted. This argument also works when X is a user key (we use
+	//     it when seeking to test whether a user key is deleted).
+	//   - X is at the same level. X must be within the sstable bounds of the tombstone so the
+	//     X.UserKey >= smallestUserKey comparison is trivially true. In addition to the tombstone containing
+	//     X we need to compare the sequence number of X and the tombstone (we don't need to look
+	//     at how this tombstone is truncated to act-within the file bounds, which are InternalKeys,
+	//     since X and the tombstone are from the same file).
+	//
+	// Iterating backwards has one more complication when checking whether a tombstone deletes
+	// internal key X at a lower level (the construction we do here also works for a user key X).
+	// Consider sstable bounds [c#8, g#InternalRangeDelSentinel] containing a tombstone [b, i)#7.
+	// If we are positioned at key g#10 at a lower sstable, the tombstone we will see is [b, i)#7,
+	// since the higher sstable is positioned at a key <= g#10. We should not use this tombstone
+	// to delete g#10. This requires knowing that the largestUserKey is a range delete sentinel,
+	// which we set in a separate bool below.
+	//
+	// These fields differs from the `boundary` field in a few ways:
 	// - `boundary` is only populated when the iterator is positioned exactly on the sentinel key.
 	// - `boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
 	// - `boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
-	largestUserKey *[]byte
+	smallestUserKey, largestUserKey  *[]byte
+	isLargestUserKeyRangeDelSentinel *bool
+
 	// bytesIterated keeps track of the number of bytes iterated during compaction.
 	bytesIterated *uint64
 }
@@ -95,16 +131,27 @@ func (l *levelIter) initRangeDel(rangeDelIter *internalIterator) {
 	l.rangeDelIter = rangeDelIter
 }
 
-func (l *levelIter) initLargestUserKey(largestUserKey *[]byte) {
+func (l *levelIter) initSmallestLargestUserKey(
+	smallestUserKey, largestUserKey *[]byte, isLargestUserKeyRangeDelSentinel *bool,
+) {
+	l.smallestUserKey = smallestUserKey
 	l.largestUserKey = largestUserKey
+	l.isLargestUserKeyRangeDelSentinel = isLargestUserKeyRangeDelSentinel
 }
 
 func (l *levelIter) findFileGE(key []byte) int {
-	// Find the earliest file whose largest key is >= ikey. Note that the range
-	// deletion sentinel key is handled specially and a search for K will not
-	// find a table where K<range-del-sentinel> is the largest key. This prevents
-	// loading untruncated range deletions from a table which can't possibly
-	// contain the target key and is required for correctness by DB.Get.
+	// Find the earliest file whose largest key is >= ikey.
+	//
+	// If the earliest file has its largest key == ikey and that largest key is a
+	// range deletion sentinel, we know that we manufactured this sentinel to convert
+	// the exclusive range deletion end key into an inclusive key (reminder: [start, end)#seqnum
+	// is the form of a range deletion sentinel which can contribute a largest key = end#sentinel).
+	// In this case we don't return this as the earliest file since there is nothing actually
+	// equal to key in it.
+	//
+	// Additionally, this prevents loading untruncated range deletions from a table which can't
+	// possibly contain the target key and is required for correctness by mergingIter.SeekGE
+	// (see the comment in that function).
 	//
 	// TODO(peter): inline the binary search.
 	return sort.Search(len(l.files), func(i int) bool {
@@ -138,6 +185,14 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		l.iter = nil
 	}
 	if l.rangeDelIter != nil {
+		// Close the rangeDelIter too since the mergingIter does not call close() on it (it can't
+		// because it does not know when the levelIter will switch it).
+		rdi := *l.rangeDelIter
+		if rdi != nil {
+			if l.err = rdi.Close(); l.err != nil {
+				return false
+			}
+		}
 		*l.rangeDelIter = nil
 	}
 
@@ -157,8 +212,8 @@ func (l *levelIter) loadFile(index, dir int) bool {
 				}
 				continue
 			}
-			if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) < 0 {
-				// The lower bound is smaller than the smallest key in the
+			if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
+				// The lower bound is smaller or equal to the smallest key in the
 				// table. Iteration within the table does not need to check the lower
 				// bound.
 				l.tableOpts.LowerBound = nil
@@ -177,7 +232,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
 				// The upper bound is greater than the largest key in the
 				// table. Iteration within the table does not need to check the upper
-				// bound.
+				// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
 				l.tableOpts.UpperBound = nil
 			}
 		}
@@ -190,8 +245,14 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		if l.rangeDelIter != nil {
 			*l.rangeDelIter = rangeDelIter
 		}
+		if l.smallestUserKey != nil {
+			*l.smallestUserKey = f.Smallest.UserKey
+		}
 		if l.largestUserKey != nil {
 			*l.largestUserKey = f.Largest.UserKey
+		}
+		if l.isLargestUserKeyRangeDelSentinel != nil {
+			*l.isLargestUserKeyRangeDelSentinel = f.Largest.Trailer == InternalKeyRangeDeleteSentinel
 		}
 		return true
 	}
@@ -263,7 +324,12 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 	}
 
 	if l.iter == nil {
+		// One of the following cases:
+		// - Was positioned at boundary key and now stepping past it.
+		// - Positioned before the beginning.
+		// - None of the above: must have exhausted the iterator -- nothing to return.
 		if l.boundary != nil {
+			// levelIter is being stepped past the boundary key, so now we can load the next file.
 			if l.loadFile(l.index+1, 1) {
 				if key, val := l.iter.First(); key != nil {
 					return key, val
@@ -324,6 +390,15 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 	var key *InternalKey
 	var val []byte
+	// The first iteration of this loop starts with an already exhausted l.iter. If the corresponding
+	// l.rangeDelIter contributes the largest key of the file, we need to pretend that the iterator
+	// is not exhausted to allow for the mergingIter to finish consuming the l.rangeDelIter before
+	// levelIter switches the rangeDelIter from under it. This pretense is done by returning the
+	// largest key of the file.
+	//
+	// Subsequent iterations will examine consecutive files such that the first file that does
+	// not have an exhausted iterator causes the code to return that key, else if the rangeDelIter
+	// contributes the largest key of the file, we do the behavior described above.
 	for ; key == nil; key, val = l.iter.First() {
 		if l.err = l.iter.Close(); l.err != nil {
 			return nil, nil
@@ -337,6 +412,12 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			if f := &l.files[l.index]; f.Largest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Largest
 				return l.boundary, nil
+			}
+			rdi := *l.rangeDelIter
+			if rdi != nil {
+				if l.err = rdi.Close(); l.err != nil {
+					return nil, nil
+				}
 			}
 			*l.rangeDelIter = nil
 		}
@@ -352,6 +433,15 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 	var key *InternalKey
 	var val []byte
+	// The first iteration of this loop starts with an already exhausted l.iter. If the corresponding
+	// l.rangeDelIter contributes the smallest key of the file, we need to pretend that the iterator
+	// is not exhausted to allow for the mergingIter to finish consuming the l.rangeDelIter before
+	// levelIter switches the rangeDelIter from under it. This pretense is done by returning the
+	// smallest key of the file.
+	//
+	// Subsequent iterations will examine consecutive files such that the first file that does
+	// not have an exhausted iterator causes the code to return that key, else if the rangeDelIter
+	// contributes the smallest key of the file, we do the behavior described above.
 	for ; key == nil; key, val = l.iter.Last() {
 		if l.err = l.iter.Close(); l.err != nil {
 			return nil, nil
@@ -365,6 +455,12 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			if f := &l.files[l.index]; f.Smallest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Smallest
 				return l.boundary, nil
+			}
+			rdi := *l.rangeDelIter
+			if rdi != nil {
+				if l.err = rdi.Close(); l.err != nil {
+					return nil, nil
+				}
 			}
 			*l.rangeDelIter = nil
 		}
