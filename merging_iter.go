@@ -22,10 +22,13 @@ type mergingIterLevel struct {
 	// iterKey and iterValue cache the current key and value iter are pointed at.
 	iterKey   *InternalKey
 	iterValue []byte
-	// largestUserKey is set to the sstable boundary key when using
-	// levelIter. See levelIter.initLargestUserKey and the Range Deletions
-	// comment below.
-	largestUserKey []byte
+
+	// smallestUserKey, largestUserKey, isLargestUserKeyRangeDelSentinel are set using the sstable
+	// boundary keys when using levelIter. See levelIter comment and the Range Deletions comment
+	// below.
+	smallestUserKey, largestUserKey  []byte
+	isLargestUserKeyRangeDelSentinel bool
+
 	// tombstone caches the tombstone rangeDelIter is currently pointed at.
 	tombstone rangedel.Tombstone
 }
@@ -55,14 +58,19 @@ type mergingIterLevel struct {
 // tombstones are fragmented by splitting them at any overlapping points. This
 // fragmentation guarantees that within an sstable tombstones will either be
 // distinct or will have identical start and end user keys. While range
-// tombstones are fragmented within an sstable, the end keys are not truncated
+// tombstones are fragmented within an sstable, the start and end keys are not truncated
 // to sstable boundaries. This is necessary because the tombstone end key is
 // exclusive and does not have a sequence number. Consider an sstable
 // containing the range tombstone [a,c)#9 and the key "b#8". The tombstone must
 // delete "b#8", yet older versions of "b" might spill over to the next
 // sstable. So the boundary key for this sstable must be "b#8". Adjusting the
 // end key of tombstones to be optionally inclusive or contain a sequence
-// number would be possible solutions. The approach taken here performs an
+// number would be possible solutions (such solutions have potentially serious
+// issues: tombstones have exclusive end keys since an inclusive deletion end can
+// be converted to an exclusive one while the reverse transformation is not possible;
+// the semantics of a sequence number for the end key of a range tombstone are murky).
+//
+// The approach taken here performs an
 // implicit truncation of the tombstone to the sstable boundaries.
 //
 // During initialization of a mergingIter, the range deletion iterators for
@@ -85,7 +93,7 @@ type mergingIterLevel struct {
 // e#72057594037927935,15 as a key. During reverse iteration levelIter will
 // return a#10,15 as a key. These sentinel keys act as bookends to point
 // iteration and allow mergingIter to keep a table and its associated range
-// tombstones loaded as long as their are keys at lower levels that are within
+// tombstones loaded as long as there are keys at lower levels that are within
 // the bounds of the table.
 //
 // The final piece to the range deletion puzzle is the LSM invariant that for a
@@ -129,7 +137,7 @@ type mergingIterLevel struct {
 // n) has "k" as its upper boundary. In this situation, compactions involving
 // keys at or after "k" can output those keys to r4+, even if they're newer
 // than our tombstone [j, n). So instead of seeking to "n" in r4 we can only
-// seek to "k".  To achieve this, the instance variable `largestUserKey`
+// seek to "k".  To achieve this, the instance variable `largestUserKey.`
 // maintains the upper bounds of the current sstables in the partitioned
 // levels. In this example, `levels[3].largestUserKey` holds "k", telling us to
 // limit the seek triggered by a tombstone in r3 to "k".
@@ -177,7 +185,7 @@ type mergingIterLevel struct {
 // as the previous key "b" so we don't have to reposition any of the range
 // deletion iterators, but merely check whether "d" is now contained by any of
 // the range tombstones at higher levels or has stepped past the range
-// tombstone in its own level. In this case, there is nothing to be done.
+// tombstone in its own level or higher levels. In this case, there is nothing to be done.
 //
 // Advancing the iterator again finds "e". Since "e" comes from p3, we have to
 // position the r3 range deletion iterator, which is empty. "e" is past the r2
@@ -251,6 +259,11 @@ func (m *mergingIter) initMinHeap() {
 	m.initMinRangeDelIters(-1)
 }
 
+// The level of the previous top element was oldTopLevel. Note that all range delete
+// iterators < oldTopLevel are positioned past the key of the previous top element and
+// the range delete iterator == oldTopLevel is positioned at or past the key of the
+// previous top element. We need to position the range delete iterators from oldTopLevel + 1
+// to the level of the current top element.
 func (m *mergingIter) initMinRangeDelIters(oldTopLevel int) {
 	if m.heap.len() == 0 {
 		return
@@ -274,6 +287,11 @@ func (m *mergingIter) initMaxHeap() {
 	m.initMaxRangeDelIters(-1)
 }
 
+// The level of the previous top element was oldTopLevel. Note that all range delete
+// iterators < oldTopLevel are positioned before the key of the previous top element and
+// the range delete iterator == oldTopLevel is positioned at or before the key of the
+// previous top element. We need to position the range delete iterators from oldTopLevel + 1
+// to the level of the current top element.
 func (m *mergingIter) initMaxRangeDelIters(oldTopLevel int) {
 	if m.heap.len() == 0 {
 		return
@@ -372,6 +390,7 @@ func (m *mergingIter) switchToMaxHeap() {
 	m.initMaxHeap()
 }
 
+// Steps to the next entry. item is the current top item in the heap.
 func (m *mergingIter) nextEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	l := &m.levels[item.index]
@@ -386,9 +405,16 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 			m.heap.pop()
 		}
 	}
+	// TODO(sbhola): this is unnecessary -- we are inconsistent wrt maintaining the position
+	// invariant of the range deletion iterators. We are maintaining it for nextEntry()
+	// but not in seek. And isNextEntryDeleted() ensures that if the tombstone is too small
+	// that we do rangedel.SeekGE().
 	m.initMinRangeDelIters(oldTopLevel)
 }
 
+// isNextEntryDeleted() starts from the current entry (as the next entry) and if it is deleted,
+// moves the iterators forward as needed and returns true, else it returns false. item is the top
+// item in the heap.
 func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	// Look for a range deletion tombstone containing item.key at higher
 	// levels (level < item.index). If we find such a range tombstone we know
@@ -403,14 +429,58 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 		}
 		if m.heap.cmp(l.tombstone.End, item.key.UserKey) <= 0 {
 			// The current key is at or past the tombstone end key.
+			//
+			// NB: for the case that this l.rangeDelIter is provided by a levelIter we know that
+			// the levelIter must be positioned at a key >= item.key. So it is sufficient to seek the
+			// current l.rangeDelIter (since any range del iterators that will be provided by the
+			// levelIter in the future cannot contain item.key). Also, it is possible that we
+			// will encounter parts of the range delete that should be ignored -- we handle that
+			// below.
 			l.tombstone = rangedel.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey, m.snapshot)
 		}
 		if l.tombstone.Empty() {
 			continue
 		}
-		if l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+
+		// Reasoning for correctness of untruncated tombstone handling when the untruncated
+		// tombstone is at a higher level:
+		// The iterator corresponding to this tombstone is still in the heap so it must be
+		// positioned >= item.key. Which means the Largest key bound of the sstable containing this
+		// tombstone is >= item.key. So the upper limit of this tombstone cannot be file-bounds-constrained
+		// to < item.key. But it is possible that item.key < smallestUserKey, in which
+		// case this tombstone should be ignored.
+		//
+		// Example 1:
+		// sstable bounds [c#8, g#12] containing a tombstone [b, i)#7, and key is c#6. The
+		// smallestUserKey is c, so we know the key is within the file bounds and the tombstone
+		// [b, i) covers it.
+		//
+		// Example 2:
+		// Same sstable bounds but key is b#10. The smallestUserKey is c, so the tombstone [b, i)
+		// does not cover this key.
+		//
+		// For a tombstone at the same level as the key, the file bounds are trivially satisfied.
+		if (l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, item.key.UserKey) <= 0) &&
+			l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
 			if level < item.index {
-				m.seekGE(l.tombstone.End, item.index)
+				// We could also do m.seekGE(..., level + 1). The levels from
+				// [level + 1, item.index) are already after item.key so seeking them may be
+				// wasteful.
+
+				// We can seek up to the min of largestUserKey and tombstone.End.
+				//
+				// Using example 1 above, we can seek to the smaller of g and i, which is g.
+				//
+				// Another example, where the sstable bounds are [c#8, i#InternalRangeDelSentinel],
+				// and the tombstone is [b, i)#8. Seeking to i is correct since it is seeking up to
+				// the exclusive bound of the tombstone. We do not need to look at
+				// isLargestKeyRangeDelSentinel
+				seekKey := l.tombstone.End
+				if l.largestUserKey != nil && m.heap.cmp(l.largestUserKey, seekKey) < 0 {
+					seekKey = l.largestUserKey
+				}
+
+				m.seekGE(seekKey, item.index)
 				return true
 			}
 			if l.tombstone.Deletes(item.key.SeqNum()) {
@@ -422,6 +492,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	return false
 }
 
+// Starting from the current entry, finds the first (next) entry that can be returned.
 func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
@@ -436,6 +507,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 	return nil, nil
 }
 
+// Steps to the prev entry. item is the current top item in the heap.
 func (m *mergingIter) prevEntry(item *mergingIterItem) {
 	oldTopLevel := item.index
 	l := &m.levels[item.index]
@@ -450,9 +522,16 @@ func (m *mergingIter) prevEntry(item *mergingIterItem) {
 			m.heap.pop()
 		}
 	}
+	// TODO(sbhola): this is unnecessary -- we are inconsistent wrt maintaining the position
+	// invariant of the range deletion iterators. We are maintaining it for prevEntry()
+	// but not in seek. And isPrevEntryDeleted() ensures that if the tombstone is too large
+	// that we do rangedel.SeekLE().
 	m.initMaxRangeDelIters(oldTopLevel)
 }
 
+// isPrevEntryDeleted() starts from the current entry (as the prev entry) and if it is deleted,
+// moves the iterators backward as needed and returns true, else it returns false. item is the top
+// item in the heap.
 func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 	// Look for a range deletion tombstone containing item.key at higher
 	// levels (level < item.index). If we find such a range tombstone we know
@@ -466,15 +545,67 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			continue
 		}
 		if m.heap.cmp(item.key.UserKey, l.tombstone.Start.UserKey) < 0 {
-			// The current key is before the tombstone start key8.
+			// The current key is before the tombstone start key.
+			//
+			// NB: for the case that this l.rangeDelIter is provided by a levelIter we know that
+			// the levelIter must be positioned at a key < item.key. So it is sufficient to seek the
+			// current l.rangeDelIter (since any range del iterators that will be provided by the
+			// levelIter in the future cannot contain item.key). Also, it is it is possible that we
+			// will encounter parts of the range delete that should be ignored -- we handle that
+			// below.
 			l.tombstone = rangedel.SeekLE(m.heap.cmp, l.rangeDelIter, item.key.UserKey, m.snapshot)
 		}
 		if l.tombstone.Empty() {
 			continue
 		}
-		if l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+
+		// Reasoning for correctness of untruncated tombstone handling when the untruncated
+		// tombstone is at a higher level:
+		//
+		// The iterator corresponding to this tombstone is still in the heap so it must be
+		// positioned <= item.key. Which means the Smallest key bound of the sstable containing this
+		// tombstone is <= item.key. So the lower limit of this tombstone cannot have been
+		// file-bounds-constrained to > item.key. But it is possible that item.key >= Largest
+		// key bound of this sstable, in which case this tombstone should be ignored.
+		//
+		// Example 1:
+		// sstable bounds [c#8, g#12] containing a tombstone [b, i)#7, and key is f#6. The
+		// largestUserKey is g, so we know the key is within the file bounds and the tombstone
+		// [b, i) covers it.
+		//
+		// Example 2:
+		// Same sstable but the key is g#6. This cannot happen since the [b, i)#7 untruncated
+		// tombstone was involved in a compaction which must have had a file to the right of this
+		// sstable that is part of the same atomic compaction group for future compactions. That
+		// file must have bounds that cover g#6 and this levelIter must be at that file.
+		//
+		// Example 3:
+		// sstable bounds [c#8, g#RangeDelSentinel] containing [b, i)#7 and the key is g#10.
+		// This key is not deleted by this tombstone. We need to look at
+		// isLargestUserKeyRangeDelSentinel.
+		//
+		// For a tombstone at the same level as the key, the file bounds are trivially satisfied.
+
+		// Default to within bounds.
+		withinLargestSSTableBound := true
+		if l.largestUserKey != nil {
+			cmpResult := m.heap.cmp(l.largestUserKey, item.key.UserKey)
+			withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyRangeDelSentinel)
+		}
+		if withinLargestSSTableBound && l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
 			if level < item.index {
-				m.seekLT(l.tombstone.Start.UserKey, item.index)
+				// We could also do m.seekLT(..., level + 1). The levels from
+				// [level + 1, item.index) are already before item.key so seeking them may be
+				// wasteful.
+
+				// We can seek up to the max of smallestUserKey and tombstone.Start.UserKey.
+				//
+				// Using example 1 above, we can seek to the larger of c and b, which is c.
+				seekKey := l.tombstone.Start.UserKey
+				if l.smallestUserKey != nil && m.heap.cmp(l.smallestUserKey, seekKey) > 0 {
+					seekKey = l.smallestUserKey
+				}
+				m.seekLT(seekKey, item.index)
 				return true
 			}
 			if l.tombstone.Deletes(item.key.SeqNum()) {
@@ -486,6 +617,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 	return false
 }
 
+// Starting from the current entry, finds the first (prev) entry that can be returned.
 func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
@@ -500,6 +632,7 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 	return nil, nil
 }
 
+// Seeks levels >= level to >= key. Additionally uses range tombstones to extend the seeks.
 func (m *mergingIter) seekGE(key []byte, level int) {
 	// When seeking, we can use tombstones to adjust the key we seek to on each
 	// level. Consider the series of range tombstones:
@@ -533,10 +666,26 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil {
 			// The level has a range-del iterator. Find the tombstone containing
 			// the search key.
+			//
+			// For untruncated tombstones that are possibly file-bounds-constrained, we are using a
+			// levelIter which will set smallestUserKey and largestUserKey. Since the levelIter
+			// is at this file we know that largestUserKey >= key, so we know that the
+			// tombstone we find cannot be file-bounds-constrained in its upper bound to something < key.
+			// We do need to  compare with smallestUserKey to ensure that the tombstone is not
+			// file-bounds-constrained in its lower bound.
+			//
+			// See the detailed comments in isNextEntryDeleted() on why similar containment and
+			// seeking logic is correct. The subtle difference here is that key is a user key,
+			// so we can have a sstable with bounds [c#8, i#InternalRangeDelSentinel], and the
+			// tombstone is [b, k)#8 and the seek key is i: levelIter.SeekGE(i) will move past
+			// this sstable since it realizes the largest key is a InternalRangeDelSentinel.
 			tombstone := rangedel.SeekGE(m.heap.cmp, rangeDelIter, key, m.snapshot)
-			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) {
+			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) &&
+				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {
 				if l.largestUserKey != nil &&
 					m.heap.cmp(l.largestUserKey, tombstone.End) < 0 {
+					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
+					// but that is harmless for this seek optimization.
 					key = l.largestUserKey
 				} else {
 					key = tombstone.End
@@ -560,8 +709,9 @@ func (m *mergingIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	return m.findNextEntry()
 }
 
+// Seeks levels >= level to < key. Additionally uses range tombstones to extend the seeks.
 func (m *mergingIter) seekLT(key []byte, level int) {
-	// See the comment in seekLT regarding using tombstones to adjust the seek
+	// See the comment in seekGE regarding using tombstones to adjust the seek
 	// target per level.
 	m.prefix = nil
 	for ; level < len(m.levels); level++ {
@@ -571,9 +721,34 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil {
 			// The level has a range-del iterator. Find the tombstone containing
 			// the search key.
+			//
+			// For untruncated tombstones that are possibly file-bounds-constrained we are using a
+			// levelIter which will set smallestUserKey and largestUserKey. Since the levelIter
+			// is at this file we know that smallestUserKey <= key, so we know that the
+			// tombstone we find cannot be file-bounds-constrained in its lower bound to something > key.
+			// We do need to  compare with largestUserKey to ensure that the tombstone is not
+			// file-bounds-constrained in its upper bound.
+			//
+			// See the detailed comments in isPrevEntryDeleted() on why similar containment and
+			// seeking logic is correct.
+
+			// Default to within bounds.
+			withinLargestSSTableBound := true
+			if l.largestUserKey != nil {
+				cmpResult := m.heap.cmp(l.largestUserKey, key)
+				withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyRangeDelSentinel)
+			}
+
 			tombstone := rangedel.SeekLE(m.heap.cmp, rangeDelIter, key, m.snapshot)
-			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) {
-				key = tombstone.Start.UserKey
+			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
+				if l.smallestUserKey != nil &&
+					m.heap.cmp(l.smallestUserKey, tombstone.Start.UserKey) >= 0 {
+					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
+					// but that is harmless for this seek optimization.
+					key = l.smallestUserKey
+				} else {
+					key = tombstone.Start.UserKey
+				}
 			}
 		}
 	}
