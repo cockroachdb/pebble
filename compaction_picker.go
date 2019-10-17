@@ -283,7 +283,7 @@ func (p *compactionPicker) pickAuto(
 		}
 	}
 
-	c.setupOtherInputs()
+	c.setupInputs()
 	return c
 }
 
@@ -296,7 +296,6 @@ func (p *compactionPicker) pickManual(
 		return nil
 	}
 
-	// TODO(peter): The logic here is untested and possibly incomplete.
 	cur := p.vers
 	c = newCompaction(opts, cur, manual.level, p.baseLevel, bytesCompacted)
 	manual.outputLevel = c.outputLevel
@@ -305,6 +304,6 @@ func (p *compactionPicker) pickManual(
 	if len(c.inputs[0]) == 0 {
 		return nil
 	}
-	c.setupOtherInputs()
+	c.setupInputs()
 	return c
 }

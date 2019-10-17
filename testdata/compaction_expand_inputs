@@ -37,6 +37,7 @@ expand-inputs 0
 
 expand-inputs 1
 ----
+0: a#1,1-b#2,1
 1: b#1,1-d#4,1
 
 expand-inputs 2
@@ -57,6 +58,7 @@ expand-inputs 0
 
 expand-inputs 1
 ----
+0: a#1,1-b#2,1
 1: b#1,1-d#4,1
 2: d#2,1-f#6,1
 
