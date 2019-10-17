@@ -241,11 +241,10 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	expectLSM(`
 1:
   12:[a#2,15-b#72057594037927935,15]
-2:
-  14:[b#3,1-b#3,1]
 3:
-  17:[b#1,1-c#72057594037927935,15]
-  18:[c#4,1-d#72057594037927935,15]
+  17:[b#3,1-b#3,1]
+  18:[b#1,1-c#72057594037927935,15]
+  19:[c#4,1-d#72057594037927935,15]
 `)
 
 	// The L1 table still contains a tombstone from [a,d) which will improperly
@@ -332,15 +331,15 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	}
 	expectLSM(`
 6:
-  8:[a#2,15-b#1,1]
-  12:[b#0,15-c#72057594037927935,15]
-  13:[c#3,1-d#72057594037927935,15]
+  12:[a#2,15-b#1,1]
+  13:[b#0,15-c#72057594037927935,15]
+  14:[c#3,1-d#72057594037927935,15]
 `)
 }
 
+// TODO(peter): rewrite this test, TestRangeDelCompactionTruncation, and
+// TestRangeDelCompactionTruncation2 as data-driven tests.
 func TestRangeDelCompactionTruncation3(t *testing.T) {
-	t.Skip("demonstrates need for expanding clean cuts to the left during compaction")
-
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("tmp", &Options{
 		Cleaner: ArchiveCleaner{},
@@ -423,22 +422,20 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectLSM(`
-3:
-  12:[a#2,15-b#1,1]
 4:
-  19:[b#0,15-c#72057594037927935,15]
-  20:[c#3,1-d#72057594037927935,15]
+  20:[a#2,15-b#1,1]
+  21:[b#0,15-c#72057594037927935,15]
+  22:[c#3,1-d#72057594037927935,15]
 `)
 
 	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
 		t.Fatal(err)
 	}
 	expectLSM(`
-3:
-  12:[a#2,15-b#1,1]
 5:
-  21:[b#0,15-c#72057594037927935,15]
-  22:[c#3,1-d#72057594037927935,15]
+  23:[a#2,15-b#1,1]
+  24:[b#0,15-c#72057594037927935,15]
+  25:[c#3,1-d#72057594037927935,15]
 `)
 
 	if _, err := d.Get([]byte("b")); err != ErrNotFound {
@@ -449,11 +446,11 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectLSM(`
-4:
-  23:[a#2,15-b#1,1]
 5:
-  21:[b#0,15-c#72057594037927935,15]
-  22:[c#3,1-d#72057594037927935,15]
+  25:[c#3,1-d#72057594037927935,15]
+6:
+  26:[a#2,15-b#1,1]
+  27:[b#0,15-c#72057594037927935,15]
 `)
 
 	if v, err := d.Get([]byte("b")); err != ErrNotFound {

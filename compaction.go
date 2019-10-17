@@ -247,17 +247,31 @@ func (c *compaction) setupInputs() {
 // either a change in user keys, or when the largest key in the left sstable is
 // a range tombstone sentinel key (InternalKeyRangeDeleteSentinel).
 //
-// Note that a "clean cut" is only required on the right side of a compaction,
-// not the left. The reason for this is due to range tombstone
-// truncation. Range tombstones are truncated to "atomic compaction unit"
-// boundaries during compaction. If sstable A and B form an atomic compaction
-// unit (i.e. the largest key in A has the same user key as the smallest key in
-// B), we can compaction sstable B to a lower level while maintaining the
-// seqnum invariant mentioned above. Additionally, sstable A, which wasn't
-// compacted will never be part of a prefix of an atomic compaction unit again
-// until it is compacted to a lower level. This is because any older version of
-// the largest key in A is already at a lower level. Newer versions are at
-// higher levels, or "to the left" of sstable A on its level.
+// In addition to maintaining the seqnum invariant, expandInputs is used to
+// provide clean boundaries for range tombstone truncation during
+// compaction. In order to achieve these clean boundaries, expandInputs needs
+// to find a "clean cut" on the left edge of the compaction as well. This is
+// necessary in order for "atomic compaction units" to always be compacted as a
+// unit. Failure to do this leads to a subtle bug with truncation of range
+// tombstones to atomic compaction unit boundaries. Consider the scenario:
+//
+//   L3:
+//     12:[a#2,15-b#1,1]
+//     13:[b#0,15-d#72057594037927935,15]
+//
+// These sstables contain a range tombstone [a-d)#2 which spans the two
+// sstables. The two sstables need to always be kept together. Compacting
+// sstable 13 independently of sstable 12 would result in:
+//
+//   L3:
+//     12:[a#2,15-b#1,1]
+//   L4:
+//     14:[b#0,15-d#72057594037927935,15]
+//
+// This state is still ok, but when sstable 12 is next compacted, its range
+// tombstones will be truncated at "b" (the largest key in its atomic
+// compaction unit). In the scenario here, that could result in b#1 becoming
+// visible when it should be deleted.
 func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetadata {
 	if level == 0 {
 		// We already called version.Overlaps for L0 and that call guarantees that
@@ -281,6 +295,25 @@ func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetada
 		panic("pebble: invalid input slice")
 	}
 	end := start + len(inputs)
+
+	for ; start > 0; start-- {
+		cur := &files[start]
+		prev := &files[start-1]
+		if c.cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
+			break
+		}
+		if prev.Largest.Trailer == InternalKeyRangeDeleteSentinel {
+			// The range deletion sentinel key is set for the largest key in a
+			// table when a range deletion tombstone straddles a table. It
+			// isn't necessary to include the prev table in the atomic
+			// compaction unit as prev.largest.UserKey does not actually exist
+			// in the prev table.
+			break
+		}
+		// prev.Largest.UserKey == cur.Smallest.UserKey, so we need to include prev
+		// in the compaction.
+	}
+
 	for ; end < len(files); end++ {
 		cur := &files[end-1]
 		next := &files[end]
@@ -294,7 +327,7 @@ func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetada
 			// does not actually exist in the table.
 			break
 		}
-		// cur.largest.UserKey == next.largest.UserKey, so we need to include next
+		// cur.Largest.UserKey == next.Smallest.UserKey, so we need to include next
 		// in the compaction.
 	}
 	return files[start:end]
@@ -1150,44 +1183,15 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		meta.Smallest = writerMeta.Smallest(d.cmp)
 		meta.Largest = writerMeta.Largest(d.cmp)
 
-		// Truncate the sstable bounds to the compaction input bounds (c.smallest
-		// and c.largest). This is necessary to prevent a range tombstone from
-		// unintentionally adjusting the smallest key for the first sstable output
-		// by a compaction. Consider the following scenario:
-		//
-		//   L5:
-		//     7:[a#5,1-c#3,1]
-		//       [a-e)#4,15
-		//     8:[c#2,1-e#1,1]
-		//       [c-e)#4,15
-		//
-		// Here we have two sstables in L5 and a range tombstone which spanned
-		// them. Range tombstone fragmentation during compaction truncated the
-		// tombstone in sstable 8 to start with the key c. Note that these two
-		// sstables are part of the same atomic compaction unit because the key c
-		// is present in both. But we allow compacting the right side of this
-		// atomic compaction unit without compacting the left. If sstable 8 is
-		// compacted to L5 again (via an L4->L5 compaction), the range tombstone
-		// [c-e)#4 would become the smallest key in the output from that compaction
-		// and could extend the smallest boundary so it overlaps sstable 7:
-		//
-		//   L5:
-		//     7:[a#5,1-c#3,1]
-		//       [a-e)#4,15
-		//     9:[c#4,15-e#1,1]
-		//       [c-e)#4,15
-		//
-		// In order to prevent this, we truncate the sstable bounds to the
-		// compaction input bounds. See TestRangeDelCompactionTruncation2.
+		// Verify that the sstable bounds fall within the compaction input
+		// bounds. This is a sanity check that we don't have a logic error
+		// elsewhere that causes the sstable bounds to accidentally expand past the
+		// compaction input bounds as doing so could lead to various badness such
+		// as keys being deleted by a range tombstone incorrectly.
 		if c.smallest.UserKey != nil {
 			switch v := d.cmp(meta.Smallest.UserKey, c.smallest.UserKey); {
-			case v > 0:
+			case v >= 0:
 				// Nothing to do.
-			case v == 0:
-				if meta.Smallest.Trailer <= c.smallest.Trailer {
-					break
-				}
-				meta.Smallest = c.smallest
 			case v < 0:
 				return fmt.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
 					meta.Smallest.Pretty(d.opts.Comparer.Format),
@@ -1196,7 +1200,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		}
 		if c.largest.UserKey != nil {
 			switch v := d.cmp(meta.Largest.UserKey, c.largest.UserKey); {
-			case v < 0:
+			case v <= 0:
 				// Nothing to do.
 			case v == 0:
 				if meta.Largest.Trailer >= c.largest.Trailer {
