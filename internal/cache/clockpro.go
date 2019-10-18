@@ -359,6 +359,9 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 func (c *shard) Reserve(n int) {
 	c.mu.Lock()
 	c.reservedSize += int64(n)
+	if c.reservedSize > c.maxSize {
+		c.reservedSize = c.maxSize
+	}
 	c.evict()
 	c.mu.Unlock()
 }
