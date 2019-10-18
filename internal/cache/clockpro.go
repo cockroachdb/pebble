@@ -372,7 +372,11 @@ func (c *shard) Size() int64 {
 }
 
 func (c *shard) targetSize() int64 {
-	return c.maxSize - c.reservedSize
+	target := c.maxSize - c.reservedSize
+	if target < 1 {
+		return 1
+	}
+	return target
 }
 
 // Add the entry to the cache, returning true if the entry was added and false

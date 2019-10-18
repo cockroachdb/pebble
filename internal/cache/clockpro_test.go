@@ -154,7 +154,7 @@ func TestZeroSize(t *testing.T) {
 }
 
 func TestReserve(t *testing.T) {
-	cache := newShards(2, 2)
+	cache := newShards(4, 2)
 	cache.Set(1, 0, 0, []byte("a"))
 	cache.Set(2, 0, 0, []byte("a"))
 	require.EqualValues(t, 2, cache.Size())
@@ -162,12 +162,14 @@ func TestReserve(t *testing.T) {
 	require.EqualValues(t, 0, cache.Size())
 	cache.Set(1, 0, 0, []byte("a"))
 	cache.Set(2, 0, 0, []byte("a"))
-	require.EqualValues(t, 0, cache.Size())
+	cache.Set(3, 0, 0, []byte("a"))
+	cache.Set(4, 0, 0, []byte("a"))
+	require.EqualValues(t, 2, cache.Size())
 	r()
-	require.EqualValues(t, 0, cache.Size())
+	require.EqualValues(t, 2, cache.Size())
 	cache.Set(1, 0, 0, []byte("a"))
 	cache.Set(2, 0, 0, []byte("a"))
-	require.EqualValues(t, 2, cache.Size())
+	require.EqualValues(t, 4, cache.Size())
 }
 
 func TestReserveDoubleRelease(t *testing.T) {
