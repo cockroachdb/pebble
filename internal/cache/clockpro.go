@@ -372,7 +372,14 @@ func (c *shard) Size() int64 {
 }
 
 func (c *shard) targetSize() int64 {
-	return c.maxSize - c.reservedSize
+	target := c.maxSize - c.reservedSize
+	// Always return a positive integer for targetSize. This is so that we don't
+	// end up in an infinite loop in evict(), in cases where reservedSize is
+	// greater than or equal to maxSize.
+	if target < 1 {
+		return 1
+	}
+	return target
 }
 
 // Add the entry to the cache, returning true if the entry was added and false
