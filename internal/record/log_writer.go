@@ -232,8 +232,10 @@ type LogWriter struct {
 		// closed. For signalling of a sync, it is safe to call without holding
 		// flusher.Mutex.
 		ready flusherCond
-		// Has the writer been closed?
-		closed bool
+		// Set to true when the flush loop should be closed.
+		close bool
+		// Closed when the flush loop has terminated.
+		closed chan struct{}
 		// Accumulated flush error.
 		err     error
 		pending []*block
@@ -263,6 +265,7 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 	}
 	r.block = <-r.free
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
+	r.flusher.closed = make(chan struct{})
 	go r.flushLoop()
 	return r
 }
@@ -270,14 +273,14 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 func (w *LogWriter) flushLoop() {
 	f := &w.flusher
 	f.Lock()
-	defer f.Unlock()
+	defer func() {
+		close(f.closed)
+		f.Unlock()
+	}()
 
 	for {
 		var data []byte
 		for {
-			if f.closed {
-				return
-			}
 			// Grab the portion of the current block that requires flushing. Note that
 			// the current block can be added to the pending blocks list after we release
 			// the flusher lock, but it won't be part of pending.
@@ -286,6 +289,9 @@ func (w *LogWriter) flushLoop() {
 			w.block.flushed = written
 			if len(f.pending) > 0 || len(data) > 0 || !f.syncQ.empty() {
 				break
+			}
+			if f.close {
+				return
 			}
 			f.ready.Wait()
 			continue
@@ -374,18 +380,21 @@ func (w *LogWriter) queueBlock() {
 func (w *LogWriter) Close() error {
 	f := &w.flusher
 
-	// Force a sync of any unwritten data.
-	wg := &sync.WaitGroup{}
-	var err error
-	wg.Add(1)
-	f.syncQ.push(wg, &err)
-	f.ready.Signal()
-	wg.Wait()
-
+	// Signal the flush loop to close.
 	f.Lock()
-	f.closed = true
+	f.close = true
 	f.ready.Signal()
 	f.Unlock()
+
+	// Wait for the flush loop to close. The flush loop will not close until all
+	// pending data has been written or an error occurs.
+	<-f.closed
+
+	// Sync any buffered data to disk.
+	err := w.flusher.err
+	if err == nil && w.s != nil {
+		err = w.s.Sync()
+	}
 
 	if w.c != nil {
 		if err := w.c.Close(); err != nil {
