@@ -57,6 +57,8 @@ type FileMetadata struct {
 	LargestSeqNum  uint64
 	// true if client asked us nicely to compact this file.
 	MarkedForCompaction bool
+	// Path is the file path of an SSTable being ingested.
+	Path string
 }
 
 func (m FileMetadata) String() string {

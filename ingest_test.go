@@ -51,7 +51,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}
-			meta, _, err := ingestLoad(opts, []string{"ext"}, 0, []uint64{1})
+			meta, err := ingestLoad(opts, []string{"ext"}, 0, []uint64{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -88,6 +88,7 @@ func TestIngestLoadRand(t *testing.T) {
 		pending[i] = uint64(rng.Int63())
 		expected[i] = &fileMetadata{
 			FileNum: pending[i],
+			Path: paths[i],
 		}
 
 		func() {
@@ -135,7 +136,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	meta, _, err := ingestLoad(opts, paths, 0, pending)
+	meta, err := ingestLoad(opts, paths, 0, pending)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +157,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	if _, _, err := ingestLoad(opts, []string{"invalid"}, 0, []uint64{1}); err == nil {
+	if _, err := ingestLoad(opts, []string{"invalid"}, 0, []uint64{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -234,6 +235,7 @@ func TestIngestLink(t *testing.T) {
 				paths[j] = fmt.Sprintf("external%d", j)
 				meta[j] = &fileMetadata{}
 				meta[j].FileNum = uint64(j)
+				meta[j].Path = paths[j]
 				f, err := mem.Create(paths[j])
 				if err != nil {
 					t.Fatal(err)
@@ -249,7 +251,7 @@ func TestIngestLink(t *testing.T) {
 				mem.Remove(paths[i])
 			}
 
-			err := ingestLink(0 /* jobID */, opts, dir, paths, meta)
+			err := ingestLink(0 /* jobID */, opts, dir, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -314,8 +316,8 @@ func TestIngestLinkFallback(t *testing.T) {
 	opts := &Options{FS: &errorFS{mem, 0}}
 	opts.EnsureDefaults()
 
-	meta := []*fileMetadata{{FileNum: 1}}
-	if err := ingestLink(0, opts, "", []string{"source"}, meta); err != nil {
+	meta := []*fileMetadata{{FileNum: 1, Path: "source"}}
+	if err := ingestLink(0, opts, "", meta); err != nil {
 		t.Fatal(err)
 	}
 

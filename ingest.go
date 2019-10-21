@@ -65,6 +65,7 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 	meta.Size = uint64(stat.Size())
 	meta.Smallest = InternalKey{}
 	meta.Largest = InternalKey{}
+	meta.Path = path
 	smallestSet, largestSet := false, false
 	empty := true
 
@@ -125,20 +126,18 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 
 func ingestLoad(
 	opts *Options, paths []string, cacheID uint64, pending []uint64,
-) ([]*fileMetadata, []string, error) {
+) ([]*fileMetadata, error) {
 	meta := make([]*fileMetadata, 0, len(paths))
-	newPaths := make([]string, 0, len(paths))
 	for i := range paths {
 		m, err := ingestLoad1(opts, paths[i], cacheID, pending[i])
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if m != nil {
 			meta = append(meta, m)
-			newPaths = append(newPaths, paths[i])
 		}
 	}
-	return meta, newPaths, nil
+	return meta, nil
 }
 
 func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
@@ -171,7 +170,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	return firstErr
 }
 
-func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
+func ingestLink(jobID int, opts *Options, dirname string, meta []*fileMetadata) error {
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
@@ -181,9 +180,9 @@ func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta [
 		},
 	}
 
-	for i := range paths {
+	for i := range meta {
 		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
-		err := vfs.LinkOrCopy(fs, paths[i], target)
+		err := vfs.LinkOrCopy(fs, meta[i].Path, target)
 		if err != nil {
 			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
@@ -353,7 +352,7 @@ func (d *DB) Ingest(paths []string) error {
 
 	// Load the metadata for all of the files being ingested. This step detects
 	// and elides empty sstables.
-	meta, paths, err := ingestLoad(d.opts, paths, d.cacheID, pendingOutputs)
+	meta, err := ingestLoad(d.opts, paths, d.cacheID, pendingOutputs)
 	if err != nil {
 		return err
 	}
@@ -372,7 +371,7 @@ func (d *DB) Ingest(paths []string) error {
 	// (e.g. because the files reside on a different filesystem), ingestLink will
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
+	if err := ingestLink(jobID, d.opts, d.dirname, meta); err != nil {
 		return err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
