@@ -275,15 +275,12 @@ func (w *LogWriter) flushLoop() {
 	}()
 
 	for {
-		var data []byte
 		for {
 			// Grab the portion of the current block that requires flushing. Note that
 			// the current block can be added to the pending blocks list after we release
 			// the flusher lock, but it won't be part of pending.
 			written := atomic.LoadInt32(&w.block.written)
-			data = w.block.buf[w.block.flushed:written]
-			w.block.flushed = written
-			if len(f.pending) > 0 || len(data) > 0 || !f.syncQ.empty() {
+			if len(f.pending) > 0 || written > w.block.flushed || !f.syncQ.empty() {
 				break
 			}
 			if f.close {
@@ -296,6 +293,16 @@ func (w *LogWriter) flushLoop() {
 		pending := f.pending
 		f.pending = f.pending[len(f.pending):]
 		head, tail := f.syncQ.load()
+
+		// Grab the portion of the current block that requires flushing. Note that
+		// the current block can be added to the pending blocks list after we
+		// release the flusher lock, but it won't be part of pending. This has to
+		// be ordered after we get the list of sync waiters from syncQ in order to
+		// prevent a race where a waiter adds itself to syncQ but is ordered before
+		// data it has buffered to the current block.
+		written := atomic.LoadInt32(&w.block.written)
+		data := w.block.buf[w.block.flushed:written]
+		w.block.flushed = written
 
 		f.Unlock()
 
