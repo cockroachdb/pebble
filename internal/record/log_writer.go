@@ -275,15 +275,12 @@ func (w *LogWriter) flushLoop() {
 	}()
 
 	for {
-		var data []byte
 		for {
 			// Grab the portion of the current block that requires flushing. Note that
 			// the current block can be added to the pending blocks list after we release
 			// the flusher lock, but it won't be part of pending.
 			written := atomic.LoadInt32(&w.block.written)
-			data = w.block.buf[w.block.flushed:written]
-			w.block.flushed = written
-			if len(f.pending) > 0 || len(data) > 0 || !f.syncQ.empty() {
+			if len(f.pending) > 0 || written > w.block.flushed || !f.syncQ.empty() {
 				break
 			}
 			if f.close {
@@ -296,6 +293,16 @@ func (w *LogWriter) flushLoop() {
 		pending := f.pending
 		f.pending = f.pending[len(f.pending):]
 		head, tail := f.syncQ.load()
+
+		// Grab the portion of the current block that requires flushing. Note that
+		// the current block can be added to the pending blocks list after we
+		// release the flusher lock, but it won't be part of pending. This has to
+		// be ordered after we get the list of sync waiters from syncQ in order to
+		// prevent a race where a waiter adds itself to syncQ, but this thread
+		// picks up the entry in syncQ and not the buffered data.
+		written := atomic.LoadInt32(&w.block.written)
+		data := w.block.buf[w.block.flushed:written]
+		w.block.flushed = written
 
 		f.Unlock()
 
@@ -386,7 +393,9 @@ func (w *LogWriter) Close() error {
 	// pending data has been written or an error occurs.
 	<-f.closed
 
-	// Sync any buffered data to disk.
+	// Sync any flushed data to disk. NB: flushLoop will sync after flushing the
+	// last buffered data only if it was requested via syncQ, so we need to sync
+	// here to ensure that all the data is synced.
 	err := w.flusher.err
 	if err == nil && w.s != nil {
 		err = w.s.Sync()
