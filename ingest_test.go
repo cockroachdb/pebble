@@ -175,13 +175,14 @@ func TestIngestSortAndVerify(t *testing.T) {
 			case "ingest":
 				var buf bytes.Buffer
 				var meta []*fileMetadata
+				var paths []string
 				var cmpName string
 				d.ScanArgs(t, "cmp", &cmpName)
 				cmp := comparers[cmpName]
 				if cmp == nil {
 					return fmt.Sprintf("%s unknown comparer: %s", d.Cmd, cmpName)
 				}
-				for _, data := range strings.Split(d.Input, "\n") {
+				for i, data := range strings.Split(d.Input, "\n") {
 					parts := strings.Split(data, "-")
 					if len(parts) != 2 {
 						return fmt.Sprintf("malformed test case: %s", d.Input)
@@ -195,13 +196,14 @@ func TestIngestSortAndVerify(t *testing.T) {
 						Smallest: smallest,
 						Largest:  largest,
 					})
+					paths = append(paths, strconv.Itoa(i))
 				}
-				err := ingestSortAndVerify(cmp, meta)
+				err := ingestSortAndVerify(cmp, meta, paths)
 				if err != nil {
 					return fmt.Sprintf("%v\n", err)
 				}
 				for i := range meta {
-					fmt.Fprintf(&buf, "%v-%v\n", meta[i].Smallest, meta[i].Largest)
+					fmt.Fprintf(&buf, "%s: %v-%v\n", paths[i], meta[i].Smallest, meta[i].Largest)
 				}
 				return buf.String()
 

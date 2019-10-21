@@ -141,13 +141,37 @@ func ingestLoad(
 	return meta, newPaths, nil
 }
 
-func ingestSortAndVerify(cmp Compare, meta []*fileMetadata) error {
+// Struct for sorting metadatas by smallest user keys, while ensuring the
+// matching path also gets swapped to the same index. For use in
+// ingestSortAndVerify.
+type metaAndPaths struct {
+	meta  []*fileMetadata
+	paths []string
+	cmp   Compare
+}
+
+func (m metaAndPaths) Len() int {
+	return len(m.meta)
+}
+
+func (m metaAndPaths) Less(i, j int) bool {
+	return m.cmp(m.meta[i].Smallest.UserKey, m.meta[j].Smallest.UserKey) < 0
+}
+
+func (m metaAndPaths) Swap(i, j int) {
+	m.meta[i], m.meta[j] = m.meta[j], m.meta[i]
+	m.paths[i], m.paths[j] = m.paths[j], m.paths[i]
+}
+
+func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) error {
 	if len(meta) <= 1 {
 		return nil
 	}
 
-	sort.Slice(meta, func(i, j int) bool {
-		return cmp(meta[i].Smallest.UserKey, meta[j].Smallest.UserKey) < 0
+	sort.Sort(&metaAndPaths{
+		meta:  meta,
+		paths: paths,
+		cmp:   cmp,
 	})
 
 	for i := 1; i < len(meta); i++ {
@@ -363,7 +387,7 @@ func (d *DB) Ingest(paths []string) error {
 	}
 
 	// Verify the sstables do not overlap.
-	if err := ingestSortAndVerify(d.cmp, meta); err != nil {
+	if err := ingestSortAndVerify(d.cmp, meta, paths); err != nil {
 		return err
 	}
 
