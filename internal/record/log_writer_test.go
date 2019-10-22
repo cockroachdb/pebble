@@ -147,3 +147,44 @@ func TestSyncError(t *testing.T) {
 		t.Fatalf("unexpected %v but found %v", injectedErr, syncErr)
 	}
 }
+
+type syncFile struct {
+	writePos int64
+	syncPos  int64
+}
+
+func (f *syncFile) Write(buf []byte) (int, error) {
+	n := len(buf)
+	atomic.AddInt64(&f.writePos, int64(n))
+	return n, nil
+}
+
+func (f *syncFile) Sync() error {
+	atomic.StoreInt64(&f.syncPos, atomic.LoadInt64(&f.writePos))
+	return nil
+}
+
+func TestSyncRecord(t *testing.T) {
+	f := &syncFile{}
+	w := NewLogWriter(f, 0)
+
+	var syncErr error
+	for i := 0; i < 100000; i++ {
+		var syncWG sync.WaitGroup
+		syncWG.Add(1)
+		offset, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		syncWG.Wait()
+		if syncErr != nil {
+			t.Fatal(syncErr)
+		}
+		if v := atomic.LoadInt64(&f.writePos); offset != v {
+			t.Fatalf("expected write pos %d, but found %d", offset, v)
+		}
+		if v := atomic.LoadInt64(&f.syncPos); offset != v {
+			t.Fatalf("expected sync pos %d, but found %d", offset, v)
+		}
+	}
+}

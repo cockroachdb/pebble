@@ -210,8 +210,6 @@ type LogWriter struct {
 	w io.Writer
 	// c is w as a closer.
 	c io.Closer
-	// f is w as a flusher.
-	f flusher
 	// s is w as a syncer.
 	s syncer
 	// logNum is the low 32-bits of the log's file number.
@@ -232,8 +230,10 @@ type LogWriter struct {
 		// closed. For signalling of a sync, it is safe to call without holding
 		// flusher.Mutex.
 		ready flusherCond
-		// Has the writer been closed?
-		closed bool
+		// Set to true when the flush loop should be closed.
+		close bool
+		// Closed when the flush loop has terminated.
+		closed chan struct{}
 		// Accumulated flush error.
 		err     error
 		pending []*block
@@ -244,12 +244,10 @@ type LogWriter struct {
 // NewLogWriter returns a new LogWriter.
 func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 	c, _ := w.(io.Closer)
-	f, _ := w.(flusher)
 	s, _ := w.(syncer)
 	r := &LogWriter{
 		w: w,
 		c: c,
-		f: f,
 		s: s,
 		// NB: we truncate the 64-bit log number to 32-bits. This is ok because a)
 		// we are very unlikely to reach a file number of 4 billion and b) the log
@@ -263,6 +261,7 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 	}
 	r.block = <-r.free
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
+	r.flusher.closed = make(chan struct{})
 	go r.flushLoop()
 	return r
 }
@@ -270,22 +269,22 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 func (w *LogWriter) flushLoop() {
 	f := &w.flusher
 	f.Lock()
-	defer f.Unlock()
+	defer func() {
+		close(f.closed)
+		f.Unlock()
+	}()
 
 	for {
-		var data []byte
 		for {
-			if f.closed {
-				return
-			}
 			// Grab the portion of the current block that requires flushing. Note that
 			// the current block can be added to the pending blocks list after we release
 			// the flusher lock, but it won't be part of pending.
 			written := atomic.LoadInt32(&w.block.written)
-			data = w.block.buf[w.block.flushed:written]
-			w.block.flushed = written
-			if len(f.pending) > 0 || len(data) > 0 || !f.syncQ.empty() {
+			if len(f.pending) > 0 || written > w.block.flushed || !f.syncQ.empty() {
 				break
+			}
+			if f.close {
+				return
 			}
 			f.ready.Wait()
 			continue
@@ -294,6 +293,16 @@ func (w *LogWriter) flushLoop() {
 		pending := f.pending
 		f.pending = f.pending[len(f.pending):]
 		head, tail := f.syncQ.load()
+
+		// Grab the portion of the current block that requires flushing. Note that
+		// the current block can be added to the pending blocks list after we
+		// release the flusher lock, but it won't be part of pending. This has to
+		// be ordered after we get the list of sync waiters from syncQ in order to
+		// prevent a race where a waiter adds itself to syncQ, but this thread
+		// picks up the entry in syncQ and not the buffered data.
+		written := atomic.LoadInt32(&w.block.written)
+		data := w.block.buf[w.block.flushed:written]
+		w.block.flushed = written
 
 		f.Unlock()
 
@@ -374,18 +383,23 @@ func (w *LogWriter) queueBlock() {
 func (w *LogWriter) Close() error {
 	f := &w.flusher
 
-	// Force a sync of any unwritten data.
-	wg := &sync.WaitGroup{}
-	var err error
-	wg.Add(1)
-	f.syncQ.push(wg, &err)
-	f.ready.Signal()
-	wg.Wait()
-
+	// Signal the flush loop to close.
 	f.Lock()
-	f.closed = true
+	f.close = true
 	f.ready.Signal()
 	f.Unlock()
+
+	// Wait for the flush loop to close. The flush loop will not close until all
+	// pending data has been written or an error occurs.
+	<-f.closed
+
+	// Sync any flushed data to disk. NB: flushLoop will sync after flushing the
+	// last buffered data only if it was requested via syncQ, so we need to sync
+	// here to ensure that all the data is synced.
+	err := w.flusher.err
+	if err == nil && w.s != nil {
+		err = w.s.Sync()
+	}
 
 	if w.c != nil {
 		if err := w.c.Close(); err != nil {
