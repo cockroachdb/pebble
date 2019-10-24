@@ -9,11 +9,13 @@ matrix:
     - name: "go1.12.x-linux"
       go: 1.12.x
       os: linux
-      script: make generate test
+      script: |
+      - go generate ./...
+      - go test ./...
     - name: "go1.12.x-darwin"
       go: 1.12.x
       os: osx
-      script: make test
+      script: go test ./...
     - name: "go1.12.x-windows"
       go: 1.12.x
       os: windows
@@ -21,7 +23,7 @@ matrix:
     - name: "go1.12.x-linux-race"
       go: 1.12.x
       os: linux
-      script: make testrace
+      script: go test -race ./...
     - name: "go1.12.x-freebsd"
       go: 1.12.x
       os: linux
@@ -30,11 +32,11 @@ matrix:
     - name: "go1.13.x-linux"
       go: 1.13.x
       os: linux
-      script: make test
+      script: go test ./...
     - name: "go1.13.x-linux-race"
       go: 1.13.x
       os: linux
-      script: make testrace
+      script: go test ./... testrace
 
 notifications:
   email:
