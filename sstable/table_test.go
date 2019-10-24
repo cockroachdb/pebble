@@ -70,10 +70,22 @@ var (
 )
 
 func init() {
-	f, err := os.Open(filepath.FromSlash("testdata/h.txt"))
+	// Under bazel, tests start running at the root of the repository before the
+	// directory is changed to the package-specific directory by the time a Test*
+	// function is run. So if we're running under bazel we find "testdata/h.txt"
+	// in a different location.
+	var f *os.File
+	var err error
+	for _, path := range []string{"testdata/h.txt", "sstable/testdata/h.txt"} {
+		f, err = os.Open(filepath.FromSlash(path))
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		panic(err)
 	}
+
 	defer f.Close()
 	r := bufio.NewReader(f)
 
@@ -412,6 +424,11 @@ func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPoli
 		t.Error(err)
 		return
 	}
+}
+
+func TestFoo(t *testing.T) {
+	fmt.Printf("%s\n", strings.Join(os.Environ(), "\n"))
+	fmt.Printf("%s\n", strings.Join(os.Args, "\n"))
 }
 
 func TestReaderLevelDB(t *testing.T)            { testReader(t, "h.ldb", nil, nil) }

@@ -7,6 +7,7 @@ package lint
 import (
 	"bytes"
 	"go/build"
+	"os"
 	"os/exec"
 	"runtime"
 	"testing"
@@ -37,6 +38,9 @@ func ignoreGoMod() stream.Filter {
 func TestLint(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("lint checks skipped on Windows")
+	}
+	if os.Getenv("TEST_SRCDIR") != "" {
+		t.Skip("lint checks skipped under Bazel")
 	}
 
 	const root = "github.com/cockroachdb/pebble"
