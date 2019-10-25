@@ -12,5 +12,8 @@ type Merge = base.Merge
 // Merger exports the base.Merger type.
 type Merger = base.Merger
 
+// ValueMerger exports the base.ValueMerger type.
+type ValueMerger = base.ValueMerger
+
 // DefaultMerger exports the base.DefaultMerger variable.
 var DefaultMerger = base.DefaultMerger
