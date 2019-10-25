@@ -42,8 +42,6 @@ type Iterator struct {
 	key       []byte
 	keyBuf    []byte
 	value     []byte
-	valueBuf  []byte
-	valueBuf2 []byte
 	valid     bool
 	iterKey   *InternalKey
 	iterValue []byte
@@ -83,7 +81,15 @@ func (i *Iterator) findNextEntry() bool {
 			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
 				return false
 			}
-			return i.mergeNext(key)
+			var valueMerger ValueMerger
+			valueMerger, i.err = i.merge(i.key, i.iterValue)
+			if i.err == nil {
+				i.mergeNext(key, valueMerger)
+			}
+			if i.err == nil {
+				i.value, i.err = valueMerger.Finish()
+			}
+			return i.err == nil
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
@@ -116,13 +122,17 @@ func (i *Iterator) findPrevEntry() bool {
 	i.valid = false
 	i.pos = iterPosCur
 
+	var valueMerger ValueMerger
 	for i.iterKey != nil {
 		key := *i.iterKey
 		if i.valid {
 			if !i.equal(key.UserKey, i.key) {
 				// We've iterated to the previous user key.
 				i.pos = iterPosPrev
-				return true
+				if valueMerger != nil {
+					i.value, i.err = valueMerger.Finish()
+				}
+				return i.err == nil
 			}
 		}
 
@@ -130,6 +140,7 @@ func (i *Iterator) findPrevEntry() bool {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			i.value = nil
 			i.valid = false
+			valueMerger = nil
 			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
@@ -148,6 +159,7 @@ func (i *Iterator) findPrevEntry() bool {
 			i.value = i.iterValue
 			i.valid = true
 			i.iterKey, i.iterValue = i.iter.Prev()
+			valueMerger = nil
 			continue
 
 		case InternalKeyKindMerge:
@@ -157,18 +169,24 @@ func (i *Iterator) findPrevEntry() bool {
 				}
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
-				i.value = i.iterValue
+				valueMerger, i.err = i.merge(i.key, i.iterValue)
+				if i.err != nil {
+					return false
+				}
 				i.valid = true
+			} else if valueMerger == nil {
+				valueMerger, i.err = i.merge(i.key, i.value)
+				if i.err == nil {
+					i.err = valueMerger.MergeNewer(i.iterValue)
+				}
+				if i.err != nil {
+					return false
+				}
 			} else {
-				// The existing value is either stored in valueBuf2 or the underlying
-				// iterators value. We append the new value to valueBuf in order to
-				// merge(valueBuf, valueBuf2). Then we swap valueBuf and valueBuf2 in
-				// order to maintain the invariant that the existing value points to
-				// valueBuf2 (in preparation for handling the next merge value).
-				i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
-				i.valueBuf = i.merge(i.key, i.value, i.valueBuf, nil)
-				i.valueBuf, i.valueBuf2 = i.valueBuf2, i.valueBuf
-				i.value = i.valueBuf2
+				i.err = valueMerger.MergeNewer(i.iterValue)
+				if i.err != nil {
+					return false
+				}
 			}
 			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
@@ -181,7 +199,10 @@ func (i *Iterator) findPrevEntry() bool {
 
 	if i.valid {
 		i.pos = iterPosPrev
-		return true
+		if valueMerger != nil {
+			i.value, i.err = valueMerger.Finish()
+		}
+		return i.err == nil
 	}
 
 	return false
@@ -205,11 +226,10 @@ func (i *Iterator) prevUserKey() {
 	}
 }
 
-func (i *Iterator) mergeNext(key InternalKey) bool {
-	// Save the current key and value.
+func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
+	// Save the current key.
 	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
-	i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
-	i.key, i.value = i.keyBuf, i.valueBuf
+	i.key = i.keyBuf
 	i.valid = true
 
 	// Loop looking for older values for this key and merging them.
@@ -217,19 +237,19 @@ func (i *Iterator) mergeNext(key InternalKey) bool {
 		i.iterKey, i.iterValue = i.iter.Next()
 		if i.iterKey == nil {
 			i.pos = iterPosNext
-			return true
+			return
 		}
 		key = *i.iterKey
 		if !i.equal(i.key, key.UserKey) {
 			// We've advanced to the next key.
 			i.pos = iterPosNext
-			return true
+			return
 		}
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// We've hit a deletion tombstone. Return everything up to this
 			// point.
-			return true
+			return
 
 		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
@@ -238,19 +258,21 @@ func (i *Iterator) mergeNext(key InternalKey) bool {
 
 		case InternalKeyKindSet:
 			// We've hit a Set value. Merge with the existing value and return.
-			i.value = i.merge(i.key, i.iterValue, i.value, nil)
-			return true
+			i.err = valueMerger.MergeOlder(i.iterValue)
+			return
 
 		case InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			i.value = i.merge(i.key, i.iterValue, i.value, nil)
-			i.valueBuf = i.value[:0]
+			i.err = valueMerger.MergeOlder(i.iterValue)
+			if i.err != nil {
+				return
+			}
 			continue
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
-			return false
+			return
 		}
 	}
 }
