@@ -277,6 +277,16 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 }
 
 func (b *Batch) release() {
+	if b.db == nil {
+		// The batch was not created using newBatch or newIndexedBatch, or an error
+		// was encountered. We don't try to reuse batches that encountered an error
+		// because they might be stuck somewhere in the system and attempting to
+		// reuse such batches is a recipe for onerous debugging sessions. Instead,
+		// let the GC do its job.
+		return
+	}
+	b.db = nil
+
 	// NB: This is ugly, but necessary so that we can use atomic.StoreUint32 for
 	// the Batch.applied field. Without using an atomic to clear that field the
 	// Go race detector complains.
@@ -289,13 +299,6 @@ func (b *Batch) release() {
 	b.commit = sync.WaitGroup{}
 	b.commitErr = nil
 	atomic.StoreUint32(&b.applied, 0)
-
-	if b.db == nil {
-		// Batch not created using newBatch or newIndexedBatch, so don't put it
-		// back in the pool.
-		return
-	}
-	b.db = nil
 
 	if b.index == nil {
 		batchPool.Put(b)
@@ -759,6 +762,7 @@ func (b *Batch) init(cap int) {
 // where the end result is a Repr() call, not a Commit call or a Close call.
 // Commits and Closes take care of releasing resources when appropriate.
 func (b *Batch) Reset() {
+	b.count = 0
 	if b.storage.data != nil {
 		if cap(b.storage.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
@@ -771,7 +775,6 @@ func (b *Batch) Reset() {
 			b.storage.data = b.storage.data[:batchHeaderLen]
 			b.setSeqNum(0)
 		}
-		b.count = 0
 	}
 }
 

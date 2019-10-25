@@ -225,7 +225,7 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		}
 	}
 	if seqNum != startSeqNum+uint64(batch.Count()) {
-		panic(fmt.Sprintf("pebble: inconsistent batch count: %d vs %d",
+		panic(fmt.Errorf("pebble: inconsistent batch count: %d vs %d",
 			seqNum, startSeqNum+uint64(batch.Count())))
 	}
 	if tombstoneCount != 0 {
