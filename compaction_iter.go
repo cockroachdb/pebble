@@ -131,8 +131,6 @@ type compactionIter struct {
 	// determine when iteration has advanced to a new user key and thus a new
 	// snapshot stripe.
 	keyBuf []byte
-	// Temporary buffer used for aggregating merge operations.
-	valueBuf []byte
 	// Is the current entry valid?
 	valid     bool
 	iterKey   *InternalKey
@@ -267,7 +265,8 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// NB: Invalid keys occur when there is some error parsing the key. Pass
 			// them through unmodified.
 			i.saveKey()
-			i.saveValue()
+			i.value = make([]byte, len(i.iterValue))
+			copy(i.value, i.iterValue)
 			i.iterNext()
 			i.valid = true
 			return &i.key, i.value
@@ -344,9 +343,9 @@ func (i *compactionIter) nextInStripe() bool {
 }
 
 func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
-	// Save the current key and value.
+	valueMerger := i.merge(i.iterKey.UserKey, i.iterValue)
+	// Save the current key.
 	i.saveKey()
-	i.saveValue()
 	i.valid = true
 
 	// Loop looking for older values in the current snapshot stripe and merge
@@ -354,6 +353,7 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 	for {
 		if !i.nextInStripe() {
 			i.skip = false
+			i.value = valueMerger.Finish()
 			return &i.key, i.value
 		}
 		key := i.iterKey
@@ -361,41 +361,49 @@ func (i *compactionIter) mergeNext() (*InternalKey, []byte) {
 		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe.
-			i.valueBuf = i.value[:0]
 			i.skip = true
+			i.value = valueMerger.Finish()
 			return &i.key, i.value
 
 		case InternalKeyKindRangeDelete:
 			// We've hit a range deletion tombstone. Return everything up to this
 			// point and then skip entries until the next snapshot stripe.
 			i.skip = true
+			i.value = valueMerger.Finish()
 			return &i.key, i.value
 
 		case InternalKeyKindSet:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
+				i.value = valueMerger.Finish()
 				return &i.key, i.value
 			}
 
 			// We've hit a Set value. Merge with the existing value and return. We
 			// change the kind of the resulting key to a Set so that it shadows keys
 			// in lower levels. That is, MERGE+MERGE+SET -> SET.
-			i.value = i.merge(i.key.UserKey, i.iterValue, i.value, nil)
-			i.valueBuf = i.value[:0]
+			i.err = valueMerger.MergeOlder(i.iterValue)
+			if i.err != nil {
+				return nil, nil
+			}
 			i.key.SetKind(InternalKeyKindSet)
 			i.skip = true
+			i.value = valueMerger.Finish()
 			return &i.key, i.value
 
 		case InternalKeyKindMerge:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
+				i.value = valueMerger.Finish()
 				return &i.key, i.value
 			}
 
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			i.value = i.merge(i.key.UserKey, i.iterValue, i.value, nil)
-			i.valueBuf = i.value[:0]
+			i.err = valueMerger.MergeOlder(i.iterValue)
+			if i.err != nil {
+				return nil, nil
+			}
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
@@ -446,11 +454,6 @@ func (i *compactionIter) singleDeleteNext() bool {
 func (i *compactionIter) saveKey() {
 	i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 	i.key.UserKey = i.keyBuf
-}
-
-func (i *compactionIter) saveValue() {
-	i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
-	i.value = i.valueBuf
 }
 
 func (i *compactionIter) cloneKey(key InternalKey) InternalKey {
