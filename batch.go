@@ -47,6 +47,11 @@ type batchStorage struct {
 	//     - the varint-string user key,
 	//     - the varint-string value (if kind != delete).
 	// The sequence number and count are stored in little-endian order.
+	//
+	// The data field can be (but is not guaranteed to be) nil for new
+	// batches. Large batches will set the data field to nil when committed as
+	// the data has been moved to a flushableBatch and inserted into the queue of
+	// memtables.
 	data           []byte
 	cmp            Compare
 	abbreviatedKey AbbreviatedKey
@@ -277,9 +282,20 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 }
 
 func (b *Batch) release() {
-	// NB: This is ugly, but necessary so that we can use atomic.StoreUint32 for
-	// the Batch.applied field. Without using an atomic to clear that field the
-	// Go race detector complains.
+	if b.db == nil {
+		// The batch was not created using newBatch or newIndexedBatch, or an error
+		// was encountered. We don't try to reuse batches that encountered an error
+		// because they might be stuck somewhere in the system and attempting to
+		// reuse such batches is a recipe for onerous debugging sessions. Instead,
+		// let the GC do its job.
+		return
+	}
+	b.db = nil
+
+	// NB: This is ugly (it would be cleaner if we could just assign a Batch{}),
+	// but necessary so that we can use atomic.StoreUint32 for the Batch.applied
+	// field. Without using an atomic to clear that field the Go race detector
+	// complains.
 	b.Reset()
 	b.storage.cmp = nil
 	b.storage.abbreviatedKey = nil
@@ -289,13 +305,6 @@ func (b *Batch) release() {
 	b.commit = sync.WaitGroup{}
 	b.commitErr = nil
 	atomic.StoreUint32(&b.applied, 0)
-
-	if b.db == nil {
-		// Batch not created using newBatch or newIndexedBatch, so don't put it
-		// back in the pool.
-		return
-	}
-	b.db = nil
 
 	if b.index == nil {
 		batchPool.Put(b)
@@ -759,6 +768,7 @@ func (b *Batch) init(cap int) {
 // where the end result is a Repr() call, not a Commit call or a Close call.
 // Commits and Closes take care of releasing resources when appropriate.
 func (b *Batch) Reset() {
+	b.count = 0
 	if b.storage.data != nil {
 		if cap(b.storage.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
@@ -771,7 +781,6 @@ func (b *Batch) Reset() {
 			b.storage.data = b.storage.data[:batchHeaderLen]
 			b.setSeqNum(0)
 		}
-		b.count = 0
 	}
 }
 
