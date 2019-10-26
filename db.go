@@ -723,7 +723,6 @@ func (d *DB) Close() error {
 		panic("pebble: log-writer should be nil in read-only mode")
 	}
 	err = firstError(err, d.fileLock.Close())
-	d.commit.Close()
 
 	err = firstError(err, d.dataDir.Close())
 	if d.dataDir != d.walDir {

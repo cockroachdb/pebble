@@ -227,9 +227,6 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 	return p
 }
 
-func (p *commitPipeline) Close() {
-}
-
 // Commit the specified batch, writing it to the WAL, optionally syncing the
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
