@@ -9,8 +9,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/codahale/hdrhistogram"
 )
 
 type syncErrorFile struct {
@@ -186,5 +188,80 @@ func TestSyncRecord(t *testing.T) {
 		if v := atomic.LoadInt64(&f.syncPos); offset != v {
 			t.Fatalf("expected sync pos %d, but found %d", offset, v)
 		}
+	}
+}
+
+type syncTracker struct {
+	writePos int64
+	syncPos  int64
+	hist     *hdrhistogram.Histogram
+}
+
+func (f *syncTracker) Write(buf []byte) (int, error) {
+	n := len(buf)
+	atomic.AddInt64(&f.writePos, int64(n))
+	return n, nil
+}
+
+func (f *syncTracker) Sync() error {
+	writePos := atomic.LoadInt64(&f.writePos)
+	size := writePos - atomic.LoadInt64(&f.syncPos)
+	if size == 0 {
+		// Don't record "empty" syncs.
+		return nil
+	}
+	f.hist.RecordValue(size)
+	atomic.StoreInt64(&f.syncPos, writePos)
+	return nil
+}
+
+func TestMinSyncInterval(t *testing.T) {
+	const numWorkers = 10
+
+	// TODO(peter): this is flaky under stress.
+	run := func(interval time.Duration) int64 {
+		f := &syncTracker{
+			hist: hdrhistogram.New(0, 1000, 1),
+		}
+		w := NewLogWriter(f, 0)
+		w.SetMinSyncInterval(func() time.Duration {
+			return interval
+		})
+		data := []byte("hello")
+
+		doneCh := make(chan error, numWorkers)
+		var mu sync.Mutex
+		for i := 0; i < cap(doneCh); i++ {
+			go func() {
+				var syncErr error
+				for j := 0; j < 1000; j++ {
+					var syncWG sync.WaitGroup
+					syncWG.Add(1)
+					mu.Lock()
+					_, err := w.SyncRecord(data, &syncWG, &syncErr)
+					mu.Unlock()
+					if err != nil {
+						doneCh <- err
+						return
+					}
+					syncWG.Wait()
+				}
+				doneCh <- nil
+			}()
+		}
+
+		for i := 0; i < cap(doneCh); i++ {
+			if err := <-doneCh; err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		return f.hist.ValueAtQuantile(0.95)
+	}
+
+	base := run(0)
+	delayed := run(100 * time.Microsecond)
+	if expected := base * (numWorkers - 1); expected > delayed {
+		t.Fatalf("expected p95 sync groups of at least %d, but found %d", expected, delayed)
 	}
 }

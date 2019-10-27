@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/crc"
 )
@@ -201,6 +202,8 @@ func (c *flusherCond) Unlock() {
 	}
 }
 
+type durationFunc func() time.Duration
+
 // LogWriter writes records to an underlying io.Writer. In order to support WAL
 // file reuse, a LogWriter's records are tagged with the WAL's file
 // number. When reading a log file a record from a previous incarnation of the
@@ -235,9 +238,11 @@ type LogWriter struct {
 		// Closed when the flush loop has terminated.
 		closed chan struct{}
 		// Accumulated flush error.
-		err     error
-		pending []*block
-		syncQ   syncQueue
+		err error
+		// minSyncInterval is the minimum duration between syncs.
+		minSyncInterval durationFunc
+		pending         []*block
+		syncQ           syncQueue
 	}
 }
 
@@ -266,6 +271,15 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 	return r
 }
 
+// SetMinSyncInterval sets the closure to invoke for retrieving the minimum
+// sync duration between syncs.
+func (w *LogWriter) SetMinSyncInterval(minSyncInterval durationFunc) {
+	f := &w.flusher
+	f.Lock()
+	f.minSyncInterval = minSyncInterval
+	f.Unlock()
+}
+
 func (w *LogWriter) flushLoop() {
 	f := &w.flusher
 	f.Lock()
@@ -273,6 +287,8 @@ func (w *LogWriter) flushLoop() {
 		close(f.closed)
 		f.Unlock()
 	}()
+
+	var lastSync time.Time
 
 	for {
 		for {
@@ -290,26 +306,47 @@ func (w *LogWriter) flushLoop() {
 			continue
 		}
 
-		pending := f.pending
-		f.pending = f.pending[len(f.pending):]
-		head, tail := f.syncQ.load()
+		for {
+			pending := f.pending
+			head, tail := f.syncQ.load()
+			syncing := head != tail && w.s != nil
 
-		// Grab the portion of the current block that requires flushing. Note that
-		// the current block can be added to the pending blocks list after we
-		// release the flusher lock, but it won't be part of pending. This has to
-		// be ordered after we get the list of sync waiters from syncQ in order to
-		// prevent a race where a waiter adds itself to syncQ, but this thread
-		// picks up the entry in syncQ and not the buffered data.
-		written := atomic.LoadInt32(&w.block.written)
-		data := w.block.buf[w.block.flushed:written]
-		w.block.flushed = written
+			if syncing && f.minSyncInterval != nil {
+				// If a sync is required, make sure we've waited for the min sync
+				// interval.
+				min := f.minSyncInterval()
+				if delta := time.Since(lastSync); delta < min {
+					f.Unlock()
+					time.Sleep(min - delta)
+					f.Lock()
+					continue
+				}
+			}
 
-		f.Unlock()
+			// Grab the portion of the current block that requires flushing. Note that
+			// the current block can be added to the pending blocks list after we
+			// release the flusher lock, but it won't be part of pending. This has to
+			// be ordered after we get the list of sync waiters from syncQ in order to
+			// prevent a race where a waiter adds itself to syncQ, but this thread
+			// picks up the entry in syncQ and not the buffered data.
+			f.pending = f.pending[len(pending):]
+			written := atomic.LoadInt32(&w.block.written)
+			data := w.block.buf[w.block.flushed:written]
+			w.block.flushed = written
 
-		err := w.flushPending(data, pending, head, tail)
+			f.Unlock()
 
-		f.Lock()
-		f.err = err
+			err := w.flushPending(data, pending, head, tail)
+
+			if syncing {
+				lastSync = time.Now()
+			}
+
+			f.Lock()
+			f.err = err
+			break
+		}
+
 		if f.err != nil {
 			// TODO(peter): There might be new waiters that we should propagate f.err
 			// to. Because f.err is now set, we only have to perform a single extra
