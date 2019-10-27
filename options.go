@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -352,6 +353,18 @@ type Options struct {
 	// empty (the default), WALs will be stored in the same directory as sstables
 	// (i.e. the directory passed to pebble.Open).
 	WALDir string
+
+	// WALMinSyncInterval is the minimum duration between syncs of the WAL. If
+	// WAL syncs are requested faster than this interval, they will be
+	// artificially delayed. Introducing a small artificial delay (500us) between
+	// WAL syncs can allow more operations to arrive and reduce IO operations
+	// while having a minimal impact on throughput. This option is supplied as a
+	// closure in order to allow the value to be changed dynamically. The default
+	// value is 0.
+	//
+	// TODO(peter): rather than a closure, should there be another mechanism for
+	// changing options dynamically?
+	WALMinSyncInterval func() time.Duration
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
