@@ -20,6 +20,7 @@ sstable scan
 ../sstable/testdata/h.sst
 ----
 h.sst
+a-a#0,15
 a#0,1 [3937]
 aboard#0,1 [32]
 about#0,1 [32]
@@ -122,6 +123,134 @@ h.sst
 test formatter: you#0,1 [313130]
 test formatter: young#0,1 [36]
 test formatter: your#0,1 [3439]
+
+# Start and end scan keys lie within range tombstones.
+sstable scan
+--start=beards
+--end=carrying
+../sstable/testdata/h.sst
+----
+h.sst
+beard-bearers#0,15
+bearers#0,1 [31]
+bears#0,1 [31]
+beast#0,1 [32]
+beating#0,1 [31]
+beauty#0,1 [31]
+beaver#0,1 [31]
+beckons#0,1 [32]
+bed#0,1 [34]
+been#0,1 [34]
+beetles#0,1 [31]
+befitted#0,1 [31]
+before#0,1 [36]
+beg#0,1 [31]
+beguile#0,1 [31]
+behold#0,1 [31]
+behoves#0,1 [31]
+being#0,1 [34]
+belief#0,1 [31]
+believe#0,1 [36]
+bell#0,1 [31]
+bend#0,1 [32]
+beneath#0,1 [35]
+benefit#0,1 [31]
+bernardo#0,1 [3330]
+beseech#0,1 [32]
+besmirch#0,1 [31]
+best#0,1 [35]
+beteem#0,1 [31]
+bethought#0,1 [31]
+better#0,1 [32]
+between#0,1 [32]
+beware#0,1 [32]
+beyond#0,1 [31]
+bid#0,1 [32]
+bird#0,1 [32]
+birth#0,1 [33]
+bites#0,1 [31]
+bitter#0,1 [31]
+black#0,1 [31]
+blast#0,1 [31]
+blastments#0,1 [31]
+blasts#0,1 [31]
+blazes#0,1 [31]
+blazon#0,1 [31]
+blessing#0,1 [33]
+blood#0,1 [37]
+blossoms#0,1 [31]
+blows#0,1 [31]
+bodes#0,1 [31]
+body#0,1 [35]
+bonds#0,1 [31]
+bones#0,1 [31]
+book#0,1 [31]
+books#0,1 [31]
+born#0,1 [32]
+borrower#0,1 [31]
+borrowing#0,1 [31]
+bosom#0,1 [31]
+both#0,1 [33]
+bound#0,1 [32]
+bounteous#0,1 [31]
+bow#0,1 [31]
+boy#0,1 [32]
+brain#0,1 [32]
+bray#0,1 [31]
+brazen#0,1 [31]
+breach#0,1 [31]
+break#0,1 [33]
+breaking#0,1 [31]
+breath#0,1 [31]
+breathing#0,1 [31]
+brief#0,1 [31]
+bring#0,1 [31]
+brokers#0,1 [31]
+brother#0,1 [36]
+brow#0,1 [31]
+bruit#0,1 [31]
+bulk#0,1 [31]
+buried#0,1 [31]
+burns#0,1 [32]
+burnt#0,1 [31]
+burst#0,1 [32]
+business#0,1 [34]
+but#0,1 [3538]
+buttons#0,1 [31]
+buy#0,1 [31]
+by#0,1 [3331]
+call#0,1 [34]
+calumnious#0,1 [31]
+came#0,1 [32]
+can#0,1 [35]
+canker#0,1 [31]
+cannon#0,1 [32]
+cannot#0,1 [33]
+canon#0,1 [31]
+canonized#0,1 [31]
+canst#0,1 [32]
+cap#0,1 [31]
+carefully#0,1 [31]
+carriage-carve#0,15
+carriage#0,1 [31]
+
+# Start scan key lies on range tombstone end key.
+sstable scan
+--start=bearers
+--end=bears
+../sstable/testdata/h.sst
+----
+h.sst
+bearers#0,1 [31]
+
+# End scan key lies on range tombstone start key.
+sstable scan
+--start=bear
+--end=beard
+../sstable/testdata/h.sst
+----
+h.sst
+bear#0,1 [35]
 
 sstable scan
 testdata/out-of-order.sst

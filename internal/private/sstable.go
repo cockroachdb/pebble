@@ -8,6 +8,12 @@ package private
 // sstable.NewReader.
 var SSTableCacheOpts func(cacheID, fileNum uint64) interface{}
 
+// SSTableRawTombstonesOpt is a sstable.Reader option for disabling
+// fragmentation of the range tombstones returned by
+// sstable.Reader.NewRangeDelIter(). Used by debug tools to get a raw view of
+// the tombstones contained in an sstable.
+var SSTableRawTombstonesOpt interface{}
+
 // SSTableWriterDisableKeyOrderChecks is a hook for disabling the key ordering
 // invariant check performed by sstable.Writer. It is intended for internal use
 // only in the construction of invalid sstables for testing. See

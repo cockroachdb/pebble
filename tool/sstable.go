@@ -11,6 +11,8 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -85,7 +87,8 @@ properties are pretty-printed or displayed in a verbose/raw format.
 		Short: "print sstable records",
 		Long: `
 Print the records in the sstables. The sstables are scanned in command line
-order which means the records will be printed in that order.
+order which means the records will be printed in that order. Raw range
+tombstones are displayed interleaved with point records.
 `,
 		Args: cobra.MinimumNArgs(1),
 		Run:  s.runScan,
@@ -122,7 +125,8 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 		Comparer: s.opts.Comparer,
 		Filters:  s.opts.Filters,
 	}
-	return sstable.NewReader(f, o, s.comparers, s.mergers)
+	return sstable.NewReader(f, o, s.comparers, s.mergers,
+		private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
@@ -320,15 +324,64 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 
 			iter := r.NewIter(nil, s.end)
-			var lastKey base.InternalKey
-			for key, value := iter.SeekGE(s.start); key != nil; key, value = iter.Next() {
-				formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
-				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
-					fmt.Fprintf(stdout, "    WARNING: OUT OF ORDER KEYS!\n")
+			defer iter.Close()
+			key, value := iter.SeekGE(s.start)
+
+			// We configured sstable.Reader to return raw tombstones which requires a
+			// bit more work here to put them in a form that can be iterated in
+			// parallel with the point records.
+			rangeDelIter := func() base.InternalIterator {
+				iter := r.NewRangeDelIter()
+				if iter == nil {
+					return rangedel.NewIter(r.Compare, nil)
 				}
-				lastKey.Trailer = key.Trailer
-				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
+				defer iter.Close()
+
+				var tombstones []rangedel.Tombstone
+				for key, value := iter.First(); key != nil; key, value = iter.Next() {
+					t := rangedel.Tombstone{
+						Start: *key,
+						End:   value,
+					}
+					if s.end != nil && r.Compare(s.end, t.Start.UserKey) <= 0 {
+						// The range tombstone lies after the scan range.
+						continue
+					}
+					if r.Compare(s.start, t.End) >= 0 {
+						// The range tombstone lies before the scan range.
+						continue
+					}
+					tombstones = append(tombstones, t)
+				}
+
+				sort.Slice(tombstones, func(i, j int) bool {
+					return r.Compare(tombstones[i].Start.UserKey, tombstones[j].Start.UserKey) < 0
+				})
+				return rangedel.NewIter(r.Compare, tombstones)
+			}()
+
+			defer rangeDelIter.Close()
+			rangeDelKey, rangeDelValue := rangeDelIter.First()
+
+			var lastKey base.InternalKey
+			for key != nil || rangeDelKey != nil {
+				if key != nil &&
+					(rangeDelKey == nil ||
+						base.InternalCompare(r.Compare, *key, *rangeDelKey) < 0) {
+					formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
+					if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+						fmt.Fprintf(stdout, "    WARNING: OUT OF ORDER KEYS!\n")
+					}
+					lastKey.Trailer = key.Trailer
+					lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
+					key, value = iter.Next()
+					continue
+				}
+
+				formatKeyValue(stdout, s.fmtKey, s.fmtValue, rangeDelKey, rangeDelValue)
+				rangeDelKey, rangeDelValue = rangeDelIter.Next()
 			}
+
 			if err := iter.Close(); err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 			}
