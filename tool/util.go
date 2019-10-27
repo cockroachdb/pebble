@@ -51,10 +51,10 @@ func (k *key) Set(v string) error {
 }
 
 type formatter struct {
-	spec        string
-	fn          base.Formatter
-	setByUser   bool
-	comparer    string
+	spec      string
+	fn        base.Formatter
+	setByUser bool
+	comparer  string
 }
 
 func (f *formatter) String() string {
@@ -178,7 +178,7 @@ func formatKeyValue(
 ) {
 	if key.Kind() == base.InternalKeyKindRangeDelete {
 		if fmtKey.spec != "null" {
-			fmt.Fprintf(w, "%s-%s#%d,%d",
+			fmt.Fprintf(w, "%s-%s#%d,%s",
 				fmtKey.fn(key.UserKey), fmtKey.fn(value),
 				key.SeqNum(), key.Kind())
 		}
