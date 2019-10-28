@@ -37,7 +37,7 @@ type OpenOption interface {
 // depending on the underlying operating system.
 type FS interface {
 	// Create creates the named file for writing, truncating it if it already
-	// exists.
+	// exists. Do not use this for reusing a WAL file -- see ReuseWAL() below.
 	Create(name string) (File, error)
 
 	// Link creates newname as a hard link to the oldname file.
@@ -60,6 +60,10 @@ type FS interface {
 	// Rename renames a file. It overwrites the file at newname if one exists,
 	// the same as os.Rename.
 	Rename(oldname, newname string) error
+
+	// ReuseWAL attempts to reuse the WAL file with oldname by renaming it to newname and opening
+	// it for writing. The caller should plan to handle an error by creating newname.
+	ReuseWAL(oldname, newname string) (File, error)
 
 	// MkdirAll creates a directory and all necessary parents. The permission
 	// bits perm have the same semantics as in os.MkdirAll. If the directory
@@ -114,7 +118,7 @@ var Default FS = defaultFS{}
 type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
-	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
+	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|syscall.O_CLOEXEC, 0666)
 }
 
 func (defaultFS) Link(oldname, newname string) error {
@@ -142,6 +146,33 @@ func (defaultFS) RemoveAll(name string) error {
 
 func (defaultFS) Rename(oldname, newname string) error {
 	return os.Rename(oldname, newname)
+}
+
+// reuseWAL provides a helper implementation of ReuseWAL for FSs that are not encrypted. We
+// deliberately do the type assertion after the rename so that different FS implementations used
+// in testing (memFS, defaultFS) behave the same way.
+func reuseWAL(fs FS, oldname, newname string) (File, error) {
+	if err := fs.Rename(oldname, newname); err != nil {
+		return nil, err
+	}
+	cfs, ok := fs.(withoutTruncateCreator)
+	if ok {
+		return cfs.createWithoutTruncate(newname)
+	}
+	return fs.Create(newname)
+}
+
+type withoutTruncateCreator interface {
+	createWithoutTruncate(name string) (File, error)
+}
+var _ withoutTruncateCreator = defaultFS{}
+
+func (fs defaultFS) createWithoutTruncate(name string) (File, error) {
+	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
+}
+
+func (fs defaultFS) ReuseWAL(oldname, newname string) (File, error) {
+	return reuseWAL(fs, oldname, newname)
 }
 
 func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {

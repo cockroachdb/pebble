@@ -64,6 +64,16 @@ func (fs loggingFS) Link(oldname, newname string) error {
 	return err
 }
 
+func (fs loggingFS) ReuseWAL(oldname, newname string) (File, error) {
+	f, err := fs.FS.ReuseWAL(oldname, newname)
+	if err == nil {
+		f = loggingFile{f, fs.PathBase(newname), fs.w}
+	}
+	fmt.Fprintf(fs.w, "reuseWAL: %s -> %s [%v]\n",
+		fs.stripBase(oldname), fs.stripBase(newname), normalizeError(err))
+	return f, err
+}
+
 func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
 	err := fs.FS.MkdirAll(dir, perm)
 	fmt.Fprintf(fs.w, "mkdir: %s [%v]\n", fs.stripBase(dir), normalizeError(err))
@@ -166,6 +176,12 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 						return fmt.Sprintf("link-or-copy <oldname> <newname>")
 					}
 					_ = LinkOrCopy(fs, fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
+
+				case "reuseWAL":
+					if len(parts) != 3 {
+						return fmt.Sprintf("reuseWAL <oldname> <newname>")
+					}
+					_, _ = fs.ReuseWAL(fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
 
 				case "list":
 					if len(parts) != 2 {

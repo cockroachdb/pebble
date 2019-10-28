@@ -113,3 +113,10 @@ remove-all: e [<nil>]
 a
 b
 d
+
+define
+reuseWAL a b
+reuseWAL x y
+----
+reuseWAL: a -> b [<nil>]
+reuseWAL: x -> y [file does not exist]
