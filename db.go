@@ -1072,10 +1072,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			recycleLogNum := d.logRecycler.peek()
 			if recycleLogNum > 0 {
 				recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLogNum)
-				err = d.opts.FS.Rename(recycleLogName, newLogName)
+				newLogFile, _ = d.opts.FS.ReuseWAL(recycleLogName, newLogName)
 			}
 
-			if err == nil {
+			if newLogFile == nil {
 				newLogFile, err = d.opts.FS.Create(newLogName)
 			}
 

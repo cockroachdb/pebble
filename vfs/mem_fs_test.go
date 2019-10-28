@@ -64,6 +64,10 @@ func TestBasics(t *testing.T) {
 		"9d: rename /bar/baz /bar/caz",
 		"9e: open /bar/baz/z fails",
 		"9f: open /bar/caz/z",
+		// ReuseWAL
+		"10a: reuseWAL /bar/caz/z /bar/z",
+		"10b: open /bar/caz/z fails",
+		"10c: open /bar/z",
 	}
 	var f File
 	for _, tc := range testCases {
@@ -97,6 +101,8 @@ func TestBasics(t *testing.T) {
 			err = fs.Remove(s[1])
 		case "rename":
 			err = fs.Rename(s[1], s[2])
+		case "reuseWAL":
+			_, err = fs.ReuseWAL(s[1], s[2])
 		case "f.write":
 			_, err = f.Write([]byte(s[1]))
 		case "f.read":

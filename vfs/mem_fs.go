@@ -296,6 +296,10 @@ func (y *memFS) Rename(oldname, newname string) error {
 	})
 }
 
+func (y *memFS) ReuseWAL(oldname, newname string) (File, error) {
+	return reuseWAL(y, oldname, newname)
+}
+
 func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
 	return y.walk(dirname, func(dir *memNode, frag string, final bool) error {
 		if frag == "" {

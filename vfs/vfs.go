@@ -36,8 +36,11 @@ type OpenOption interface {
 // The names are filepath names: they may be / separated or \ separated,
 // depending on the underlying operating system.
 type FS interface {
-	// Create creates the named file for writing, truncating it if it already
-	// exists.
+	// Create creates the named file for writing. It may or may not truncate the file if it already
+	// exists. Do not use this for reusing a WAL file -- see ReuseWAL() below.
+	//
+	// TODO(sbhola): we are inconsistent about truncation. e.g. memFS does truncate. Should we fix
+	// to always truncate, but then we can't use the reuseWAL() helper.
 	Create(name string) (File, error)
 
 	// Link creates newname as a hard link to the oldname file.
@@ -60,6 +63,10 @@ type FS interface {
 	// Rename renames a file. It overwrites the file at newname if one exists,
 	// the same as os.Rename.
 	Rename(oldname, newname string) error
+
+	// ReuseWAL attempts to reuse the WAL file with oldname by renaming it to newname and opening
+	// it for writing. The caller should plan to handle an error by creating newname.
+	ReuseWAL(oldname, newname string) (File, error)
 
 	// MkdirAll creates a directory and all necessary parents. The permission
 	// bits perm have the same semantics as in os.MkdirAll. If the directory
@@ -142,6 +149,22 @@ func (defaultFS) RemoveAll(name string) error {
 
 func (defaultFS) Rename(oldname, newname string) error {
 	return os.Rename(oldname, newname)
+}
+
+// reuseWAL provides a helper implementation of ReuseWAL for FSs that are not encrypted.
+func reuseWAL(fs FS, oldname, newname string) (File, error) {
+	if err := fs.Rename(oldname, newname); err != nil {
+		return nil, err
+	}
+	f, err := fs.Create(newname)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+func (fs defaultFS) ReuseWAL(oldname, newname string) (File, error) {
+	return reuseWAL(fs, oldname, newname)
 }
 
 func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {
