@@ -259,7 +259,10 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		}
 		if r.n < blockSize && r.started {
 			if r.end != r.n {
-				return io.ErrUnexpectedEOF
+				// This can happen if the previous instance of the log ended with a partial block
+				// at the same blockNum as the new log but extended beyond the partial block of the
+				// new log.
+				return ErrInvalidChunk
 			}
 			return io.EOF
 		}

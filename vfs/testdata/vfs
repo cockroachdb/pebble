@@ -113,3 +113,10 @@ remove-all: e [<nil>]
 a
 b
 d
+
+define
+reuseForWrite a b
+reuseForWrite x y
+----
+reuseForWrite: a -> b [<nil>]
+reuseForWrite: x -> y [file does not exist]

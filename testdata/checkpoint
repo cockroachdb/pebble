@@ -45,8 +45,7 @@ sync: db/000004.log
 
 flush db
 ----
-rename: db/000002.log -> db/000006.log
-create: db/000006.log
+reuseForWrite: db/000002.log -> db/000006.log
 sync: db
 sync: db/000004.log
 close: db/000004.log
@@ -88,8 +87,7 @@ checkpoint checkpoint1: file already exists
 
 compact db
 ----
-rename: db/000004.log -> db/000008.log
-create: db/000008.log
+reuseForWrite: db/000004.log -> db/000008.log
 sync: db
 sync: db/000006.log
 close: db/000006.log
