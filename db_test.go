@@ -426,6 +426,13 @@ func TestLargeBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Allocate a bunch of batches to exhaust the batchPool. None of these
+	// batches should have a non-zero count.
+	for i := 0; i < 10; i++ {
+		b := d.NewBatch()
+		require.EqualValues(t, 0, b.Count())
+	}
+
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
 	}

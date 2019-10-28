@@ -338,9 +338,13 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 // It is safe to modify the contents of the arguments after Set returns.
 func (d *DB) Set(key, value []byte, opts *WriteOptions) error {
 	b := newBatch(d)
-	defer b.release()
 	_ = b.Set(key, value, opts)
-	return d.Apply(b, opts)
+	if err := d.Apply(b, opts); err != nil {
+		return err
+	}
+	// Only release the batch on success.
+	b.release()
+	return nil
 }
 
 // Delete deletes the value for the given key. Deletes are blind all will
@@ -349,9 +353,13 @@ func (d *DB) Set(key, value []byte, opts *WriteOptions) error {
 // It is safe to modify the contents of the arguments after Delete returns.
 func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 	b := newBatch(d)
-	defer b.release()
 	_ = b.Delete(key, opts)
-	return d.Apply(b, opts)
+	if err := d.Apply(b, opts); err != nil {
+		return err
+	}
+	// Only release the batch on success.
+	b.release()
+	return nil
 }
 
 // SingleDelete adds an action to the batch that single deletes the entry for key.
@@ -360,9 +368,13 @@ func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 // It is safe to modify the contents of the arguments after SingleDelete returns.
 func (d *DB) SingleDelete(key []byte, opts *WriteOptions) error {
 	b := newBatch(d)
-	defer b.release()
 	_ = b.SingleDelete(key, opts)
-	return d.Apply(b, opts)
+	if err := d.Apply(b, opts); err != nil {
+		return err
+	}
+	// Only release the batch on success.
+	b.release()
+	return nil
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -372,9 +384,13 @@ func (d *DB) SingleDelete(key []byte, opts *WriteOptions) error {
 // returns.
 func (d *DB) DeleteRange(start, end []byte, opts *WriteOptions) error {
 	b := newBatch(d)
-	defer b.release()
 	_ = b.DeleteRange(start, end, opts)
-	return d.Apply(b, opts)
+	if err := d.Apply(b, opts); err != nil {
+		return err
+	}
+	// Only release the batch on success.
+	b.release()
+	return nil
 }
 
 // Merge adds an action to the DB that merges the value at key with the new
@@ -384,9 +400,13 @@ func (d *DB) DeleteRange(start, end []byte, opts *WriteOptions) error {
 // It is safe to modify the contents of the arguments after Merge returns.
 func (d *DB) Merge(key, value []byte, opts *WriteOptions) error {
 	b := newBatch(d)
-	defer b.release()
 	_ = b.Merge(key, value, opts)
-	return d.Apply(b, opts)
+	if err := d.Apply(b, opts); err != nil {
+		return err
+	}
+	// Only release the batch on success.
+	b.release()
+	return nil
 }
 
 // LogData adds the specified to the batch. The data will be written to the
@@ -396,9 +416,13 @@ func (d *DB) Merge(key, value []byte, opts *WriteOptions) error {
 // It is safe to modify the contents of the argument after LogData returns.
 func (d *DB) LogData(data []byte, opts *WriteOptions) error {
 	b := newBatch(d)
-	defer b.release()
 	_ = b.LogData(data, opts)
-	return d.Apply(b, opts)
+	if err := d.Apply(b, opts); err != nil {
+		return err
+	}
+	// Only release the batch on success.
+	b.release()
+	return nil
 }
 
 // Apply the operations contained in the batch to the DB. If the batch is large
@@ -429,20 +453,22 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if int(batch.memTableSize) >= d.largeBatchThreshold {
 		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
 	}
-	err := d.commit.Commit(batch, sync)
-	if err == nil {
-		// If this is a large batch, we need to clear the batch contents as the
-		// flushable batch may still be present in the flushables queue.
-		//
-		// TODO(peter): Currently large batches are written to the WAL. We could
-		// skip the WAL write and instead wait for the large batch to be flushed to
-		// an sstable. For a 100 MB batch, this might actually be faster. For a 1
-		// GB batch this is almost certainly faster.
-		if batch.flushable != nil {
-			batch.storage.data = nil
-		}
+	if err := d.commit.Commit(batch, sync); err != nil {
+		// There isn't much we can do on an error here. The commit pipeline will be
+		// horked at this point.
+		d.opts.Logger.Fatalf("%v", err)
 	}
-	return err
+	// If this is a large batch, we need to clear the batch contents as the
+	// flushable batch may still be present in the flushables queue.
+	//
+	// TODO(peter): Currently large batches are written to the WAL. We could
+	// skip the WAL write and instead wait for the large batch to be flushed to
+	// an sstable. For a 100 MB batch, this might actually be faster. For a 1
+	// GB batch this is almost certainly faster.
+	if batch.flushable != nil {
+		batch.storage.data = nil
+	}
+	return nil
 }
 
 func (d *DB) commitApply(b *Batch, mem *memTable) error {
@@ -723,7 +749,6 @@ func (d *DB) Close() error {
 		panic("pebble: log-writer should be nil in read-only mode")
 	}
 	err = firstError(err, d.fileLock.Close())
-	d.commit.Close()
 
 	err = firstError(err, d.dataDir.Close())
 	if d.dataDir != d.walDir {

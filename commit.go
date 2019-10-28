@@ -227,9 +227,6 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 	return p
 }
 
-func (p *commitPipeline) Close() {
-}
-
 // Commit the specified batch, writing it to the WAL, optionally syncing the
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
@@ -243,18 +240,19 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
 	// WAL.
+	//
+	// NB: We set Batch.commitErr on error so that the batch won't be a candidate
+	// for reuse. See Batch.release().
 	mem, err := p.prepare(b, syncWAL)
 	if err != nil {
-		// TODO(peter): what to do on error? the pipeline will be horked at this
-		// point.
-		panic(err)
+		b.db = nil // prevent batch reuse on error
+		return err
 	}
 
 	// Apply the batch to the memtable.
 	if err := p.env.apply(b, mem); err != nil {
-		// TODO(peter): what to do on error? the pipeline will be horked at this
-		// point.
-		panic(err)
+		b.db = nil // prevent batch reuse on error
+		return err
 	}
 
 	// Publish the batch sequence number.
@@ -263,11 +261,9 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	<-p.sem
 
 	if b.commitErr != nil {
-		// TODO(peter): what to do on a log sync error? the pipeline will be horked
-		// at this point.
-		panic(b.commitErr)
+		b.db = nil // prevent batch reuse on error
 	}
-	return nil
+	return b.commitErr
 }
 
 // AllocateSeqNum allocates count sequence numbers, invokes the prepare
