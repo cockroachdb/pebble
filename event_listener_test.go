@@ -92,6 +92,15 @@ func (fs loggingFS) Rename(oldname, newname string) error {
 	return fs.FS.Rename(oldname, newname)
 }
 
+func (fs loggingFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
+	fmt.Fprintf(fs.w, "reuseForWrite: %s -> %s\n", oldname, newname)
+	f, err := fs.FS.ReuseForWrite(oldname, newname)
+	if err == nil {
+		f = loggingFile{f, newname, fs.w}
+	}
+	return f, err
+}
+
 func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
 	fmt.Fprintf(fs.w, "mkdir-all: %s %#o\n", dir, perm)
 	return fs.FS.MkdirAll(dir, perm)

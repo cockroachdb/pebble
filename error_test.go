@@ -104,6 +104,13 @@ func (fs *errorFS) Rename(oldname, newname string) error {
 	return fs.FS.Rename(oldname, newname)
 }
 
+func (fs *errorFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
+	if err := fs.maybeError(); err != nil {
+		return nil, err
+	}
+	return fs.FS.ReuseForWrite(oldname, newname)
+}
+
 func (fs *errorFS) MkdirAll(dir string, perm os.FileMode) error {
 	if err := fs.maybeError(); err != nil {
 		return err

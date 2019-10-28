@@ -61,6 +61,13 @@ type FS interface {
 	// the same as os.Rename.
 	Rename(oldname, newname string) error
 
+	// ReuseForWrite attempts to reuse the file with oldname by renaming it to newname and opening
+	// it for writing without truncation. It is acceptable for the implementation to choose not
+	// to reuse oldname, and simply create the file with newname -- in this case the implementation
+	// should delete oldname. If the caller calls this function with an oldname that does not exist,
+	// the implementation may return an error.
+	ReuseForWrite(oldname, newname string) (File, error)
+
 	// MkdirAll creates a directory and all necessary parents. The permission
 	// bits perm have the same semantics as in os.MkdirAll. If the directory
 	// already exists, MkdirAll does nothing and returns nil.
@@ -114,7 +121,7 @@ var Default FS = defaultFS{}
 type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
-	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
+	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|syscall.O_CLOEXEC, 0666)
 }
 
 func (defaultFS) Link(oldname, newname string) error {
@@ -142,6 +149,13 @@ func (defaultFS) RemoveAll(name string) error {
 
 func (defaultFS) Rename(oldname, newname string) error {
 	return os.Rename(oldname, newname)
+}
+
+func (fs defaultFS) ReuseForWrite(oldname, newname string) (File, error) {
+	if err := fs.Rename(oldname, newname); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(newname, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
 }
 
 func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {

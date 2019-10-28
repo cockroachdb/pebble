@@ -57,8 +57,7 @@ sync: db
 compact
 ----
 sync: wal/000005.log
-rename: wal/000002.log -> wal/000008.log
-create: wal/000008.log
+reuseForWrite: wal/000002.log -> wal/000008.log
 sync: wal
 sync: wal/000005.log
 close: wal/000005.log
@@ -104,8 +103,7 @@ disable-file-deletions
 flush
 ----
 sync: wal/000008.log
-rename: wal/000005.log -> wal/000013.log
-create: wal/000013.log
+reuseForWrite: wal/000005.log -> wal/000013.log
 sync: wal
 sync: wal/000008.log
 close: wal/000008.log

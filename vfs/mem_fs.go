@@ -291,9 +291,28 @@ func (y *memFS) Rename(oldname, newname string) error {
 				return errors.New("pebble/vfs: empty file name")
 			}
 			dir.children[frag] = n
+			n.name = frag
 		}
 		return nil
 	})
+}
+
+func (y *memFS) ReuseForWrite(oldname, newname string) (File, error) {
+	if err := y.Rename(oldname, newname); err != nil {
+		return nil, err
+	}
+	f, err := y.Open(newname)
+	if err != nil {
+		return nil, err
+	}
+	y.mu.Lock()
+	defer y.mu.Unlock()
+	mf := f.(*memFile)
+	mf.read = false
+	mf.write = true
+	mf.rpos = 0
+	mf.n.data = mf.n.data[:0]
+	return f, nil
 }
 
 func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {

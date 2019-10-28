@@ -43,8 +43,7 @@ sync: db/000004.log
 
 compact db
 ----
-rename: db/000002.log -> db/000006.log
-create: db/000006.log
+reuseForWrite: db/000002.log -> db/000006.log
 sync: db
 sync: db/000004.log
 close: db/000004.log
