@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -926,6 +927,27 @@ func TestRecycleLog(t *testing.T) {
 		if _, err := r.Next(); err != io.EOF && err != ErrZeroedChunk && err != ErrInvalidChunk {
 			t.Fatalf("%d: expected EOF, but found %v", i, err)
 		}
+	}
+}
+
+func TestRecycleLogWithPartialBlock(t *testing.T) {
+	backing := make([]byte, 16)
+	w := NewLogWriter(bytes.NewBuffer(backing[:0]), uint64(1))
+	// Will write a chunk with 11 byte header + 5 byte payload.
+	_, err := w.WriteRecord([]byte("aaaaa"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	w = NewLogWriter(bytes.NewBuffer(backing[:0]), uint64(2))
+	// Will write a chunk with 11 byte header + 1 byte payload.
+	_, err = w.WriteRecord([]byte("a"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	r := NewReader(bytes.NewReader(backing), uint64(2))
+	_, err = r.Next()
+	require.NoError(t, err)
+	// 4 bytes left, which are not enough for even the legacy header.
+	if _, err = r.Next(); err != ErrInvalidChunk && err != io.EOF {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

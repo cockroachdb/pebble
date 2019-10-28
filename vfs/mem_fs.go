@@ -291,9 +291,26 @@ func (y *memFS) Rename(oldname, newname string) error {
 				return errors.New("pebble/vfs: empty file name")
 			}
 			dir.children[frag] = n
+			n.name = frag
 		}
 		return nil
 	})
+}
+
+func (y *memFS) ReuseForWrite(oldname, newname string) (File, error) {
+	if err := y.Rename(oldname, newname); err != nil {
+		return nil, err
+	}
+	f, err := y.Open(newname)
+	if err != nil {
+		return nil, err
+	}
+	y.mu.Lock()
+	defer y.mu.Unlock()
+	mf := f.(*memFile)
+	mf.read = false
+	mf.write = true
+	return f, nil
 }
 
 func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
@@ -447,6 +464,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 type memFile struct {
 	n           *memNode
 	rpos        int
+	wpos        int
 	read, write bool
 }
 
@@ -490,7 +508,15 @@ func (f *memFile) Write(p []byte) (int, error) {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
 	}
 	f.n.modTime = time.Now()
-	f.n.data = append(f.n.data, p...)
+	if f.wpos + len(p) <= len(f.n.data) {
+		n := copy(f.n.data[f.wpos:f.wpos+len(p)], p)
+		if n != len(p) {
+			panic("stuff")
+		}
+	} else {
+		f.n.data = append(f.n.data[:f.wpos], p...)
+	}
+	f.wpos += len(p)
 	return len(p), nil
 }
 
