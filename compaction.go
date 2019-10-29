@@ -512,6 +512,10 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 		files := c.inputs[i]
 		for j := range files {
 			if f == &files[j] {
+				// Note that if this file is in a multi-file atomic compaction unit, this file
+				// may not be the first file in that unit. But the start of the range tombstone
+				// is constrained to this file's Smallest.UserKey, so the walking back should
+				// not be necessary -- see range_deletions.md for details.
 				lowerBound := f.Smallest.UserKey
 				for k := j; k > 0; k-- {
 					cur := &files[k]
@@ -1108,6 +1112,8 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		return nil
 	}
 
+	// finishOutput is called for an sstable with the first key of the next sstable, and for the
+	// last sstable with an empty key.
 	finishOutput := func(key InternalKey) error {
 		// NB: clone the key because the data can be held on to by the call to
 		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
@@ -1151,7 +1157,7 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 
 		// The handling of range boundaries is a bit complicated.
 		if n := len(ve.NewFiles); n > 1 {
-			// This is not the first output. Bound the smallest range key by the
+			// This is not the first output file. Bound the smallest range key by the
 			// previous tables largest key.
 			prevMeta := &ve.NewFiles[n-2].Meta
 			if writerMeta.SmallestRange.UserKey != nil &&
@@ -1174,6 +1180,14 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		}
 
 		if key.UserKey != nil && writerMeta.LargestRange.UserKey != nil {
+			// The current file is not the last output file and there is a range tombstone in it.
+			// If the tombstone extends into the next file, then truncate it for the purposes of
+			// computing meta.Largest. For example, say the next file's first key is c#7,1 and the
+			// current file's last key is c#10,1 and the current file has a range tombstone
+			// [b, d)#12,15. For purposes of the bounds we pretend that the range tombstone ends at
+			// c#inf where inf is the InternalKeyRangeDeleteSentinel. Note that this is just for
+			// purposes of bounds computation -- the current sstable will end up with a Largest key
+			// of c#7,1 so the range tombstone in the current file will be able to delete c#7.
 			if d.cmp(writerMeta.LargestRange.UserKey, key.UserKey) >= 0 {
 				writerMeta.LargestRange = key
 				writerMeta.LargestRange.Trailer = InternalKeyRangeDeleteSentinel
