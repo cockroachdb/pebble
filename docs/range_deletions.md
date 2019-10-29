@@ -290,7 +290,7 @@ write a range delete entry that follows the original restriction. But
 the narrowest we can write is `["f", ImmediateSuccessor("f"))#10`. This
 is an expansion of the act-within restriction with potentially
 unintended consequences. In this case the expansion happened in the suffix.
-For sst4, the range deletion `["f", "h")#10` must act-within `["f"#1, "g"#inf],
+For sst4, the range deletion `["f", "h")#10` must act-within `["f"#1, "g"#inf]`,
 and we can precisely represent the constraint on the suffix by writing
 `["f", "g")#10` but it does not precisely represent that this range delete
 should not apply to `"f"#9`...`"f"#2`.
