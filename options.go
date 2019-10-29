@@ -244,10 +244,17 @@ type Options struct {
 	// TODO(peter): untested
 	DisableWAL bool
 
-	// ErrorIfDBExists is whether it is an error if the database already exists.
+	// ErrorIfExists is whether it is an error if the database already exists.
 	//
 	// The default value is false.
-	ErrorIfDBExists bool
+	ErrorIfExists bool
+
+	// ErrorIfNotExists is whether it is an error if the database does not
+	// already exist.
+	//
+	// The default value is false which will cause a database to be created if it
+	// does not already exist.
+	ErrorIfNotExists bool
 
 	// EventListener provides hooks to listening to significant DB events such as
 	// flushes, compactions, and table deletion.

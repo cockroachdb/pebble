@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestErrorIfDBExists(t *testing.T) {
+func TestErrorIfExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
 		mem := vfs.NewMem()
 		d0, err := Open("", &Options{
@@ -36,8 +36,8 @@ func TestErrorIfDBExists(t *testing.T) {
 		}
 
 		d1, err := Open("", &Options{
-			FS:              mem,
-			ErrorIfDBExists: b,
+			FS:            mem,
+			ErrorIfExists: b,
 		})
 		if d1 != nil {
 			defer d1.Close()
@@ -46,6 +46,43 @@ func TestErrorIfDBExists(t *testing.T) {
 			t.Errorf("b=%v: d1 Open: err is %v, got (err != nil) is %v, want %v", b, err, got, b)
 			continue
 		}
+	}
+}
+
+func TestErrorIfNotExists(t *testing.T) {
+	mem := vfs.NewMem()
+	_, err := Open("", &Options{
+		FS:               mem,
+		ErrorIfNotExists: true,
+	})
+	if err == nil {
+		t.Fatalf("expected error, but found success")
+	} else if !strings.HasSuffix(err.Error(), os.ErrNotExist.Error()) {
+		t.Fatalf("expected not exists, but found %q", err)
+	}
+
+	// Create the DB and try again.
+	d, err := Open("", &Options{
+		FS:               mem,
+		ErrorIfNotExists: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The DB exists, so the setting of ErrorIfNotExists is a no-op.
+	d, err = Open("", &Options{
+		FS:               mem,
+		ErrorIfNotExists: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

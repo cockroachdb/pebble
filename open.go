@@ -121,14 +121,15 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.mu.nextJobID++
 
 	currentName := base.MakeFilename(opts.FS, dirname, fileTypeCurrent, 0)
-	if _, err := opts.FS.Stat(currentName); os.IsNotExist(err) && !d.opts.ReadOnly {
+	if _, err := opts.FS.Stat(currentName); os.IsNotExist(err) &&
+		!d.opts.ReadOnly && !d.opts.ErrorIfNotExists {
 		// Create the DB if it did not already exist.
 		if err := d.mu.versions.create(jobID, dirname, d.dataDir, opts, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("pebble: database %q: %v", dirname, err)
-	} else if opts.ErrorIfDBExists {
+	} else if opts.ErrorIfExists {
 		return nil, fmt.Errorf("pebble: database %q already exists", dirname)
 	} else {
 		// Load the version set.
