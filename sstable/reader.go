@@ -931,10 +931,23 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	}
 }
 
+// rawTombstonesOpt is a Reader open option for specifying that range
+// tombstones returned by Reader.NewRangeDelIter() should not be
+// fragmented. Used by debug tools to get a raw view of the tombstones
+// contained in an sstable.
+type rawTombstonesOpt struct{}
+
+func (rawTombstonesOpt) preApply() {}
+
+func (rawTombstonesOpt) readerApply(r *Reader) {
+	r.rawTombstones = true
+}
+
 func init() {
 	private.SSTableCacheOpts = func(cacheID, fileNum uint64) interface{} {
 		return &cacheOpts{cacheID, fileNum}
 	}
+	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
 }
 
 // Reader is a table reader.
@@ -942,6 +955,7 @@ type Reader struct {
 	file              vfs.File
 	cacheID           uint64
 	fileNum           uint64
+	rawTombstones     bool
 	err               error
 	index             weakCachedBlock
 	filter            weakCachedBlock
@@ -1247,7 +1261,9 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 		r.rangeDel.bh = bh
 	} else if bh, ok := meta[metaRangeDelName]; ok {
 		r.rangeDel.bh = bh
-		r.rangeDelTransform = r.transformRangeDelV1
+		if !r.rawTombstones {
+			r.rangeDelTransform = r.transformRangeDelV1
+		}
 	}
 
 	for name, fp := range r.opts.Filters {

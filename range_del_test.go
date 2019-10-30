@@ -175,8 +175,8 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  8:[a#2,15-b#72057594037927935,15]
-  9:[b#1,1-d#72057594037927935,15]
+  8:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  9:[b#1,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	// Compact again to move one of the tables to L2.
@@ -185,9 +185,9 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  8:[a#2,15-b#72057594037927935,15]
+  8:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  9:[b#1,1-d#72057594037927935,15]
+  9:[b#1,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	// Write "b" and "c" to a new table.
@@ -202,11 +202,11 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 0:
-  11:[b#3,1-c#4,1]
+  11:[b#3,SET-c#4,SET]
 1:
-  8:[a#2,15-b#72057594037927935,15]
+  8:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  9:[b#1,1-d#72057594037927935,15]
+  9:[b#1,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	// "b" is still visible at this point as it should be.
@@ -240,11 +240,11 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  12:[a#2,15-b#72057594037927935,15]
+  12:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 3:
-  17:[b#3,1-b#3,1]
-  18:[b#1,1-c#72057594037927935,15]
-  19:[c#4,1-d#72057594037927935,15]
+  17:[b#3,SET-b#3,SET]
+  18:[b#1,SET-c#72057594037927935,RANGEDEL]
+  19:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	// The L1 table still contains a tombstone from [a,d) which will improperly
@@ -318,8 +318,8 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	}
 	expectLSM(`
 6:
-  8:[a#2,15-b#1,1]
-  9:[b#0,15-d#72057594037927935,15]
+  8:[a#2,RANGEDEL-b#1,SET]
+  9:[b#0,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
@@ -331,9 +331,9 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	}
 	expectLSM(`
 6:
-  12:[a#2,15-b#1,1]
-  13:[b#0,15-c#72057594037927935,15]
-  14:[c#3,1-d#72057594037927935,15]
+  12:[a#2,RANGEDEL-b#1,SET]
+  13:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
+  14:[c#3,SET-d#72057594037927935,RANGEDEL]
 `)
 }
 
@@ -410,8 +410,8 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 3:
-  12:[a#2,15-b#1,1]
-  13:[b#0,15-d#72057594037927935,15]
+  12:[a#2,RANGEDEL-b#1,SET]
+  13:[b#0,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
@@ -423,9 +423,9 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 4:
-  20:[a#2,15-b#1,1]
-  21:[b#0,15-c#72057594037927935,15]
-  22:[c#3,1-d#72057594037927935,15]
+  20:[a#2,RANGEDEL-b#1,SET]
+  21:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
+  22:[c#3,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
@@ -433,9 +433,9 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 5:
-  23:[a#2,15-b#1,1]
-  24:[b#0,15-c#72057594037927935,15]
-  25:[c#3,1-d#72057594037927935,15]
+  23:[a#2,RANGEDEL-b#1,SET]
+  24:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
+  25:[c#3,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	if _, err := d.Get([]byte("b")); err != ErrNotFound {
@@ -447,10 +447,10 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 5:
-  25:[c#3,1-d#72057594037927935,15]
+  25:[c#3,SET-d#72057594037927935,RANGEDEL]
 6:
-  26:[a#2,15-b#1,1]
-  27:[b#0,15-c#72057594037927935,15]
+  26:[a#2,RANGEDEL-b#1,SET]
+  27:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
 `)
 
 	if v, err := d.Get([]byte("b")); err != ErrNotFound {

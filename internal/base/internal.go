@@ -309,5 +309,5 @@ type prettyInternalKey struct {
 }
 
 func (k prettyInternalKey) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s#%d,%d", k.formatter(k.UserKey), k.SeqNum(), k.Kind())
+	fmt.Fprintf(s, "%s#%d,%s", k.formatter(k.UserKey), k.SeqNum(), k.Kind())
 }

@@ -21,10 +21,10 @@ MANIFEST-000005
 44
   log-num:      4
   last-seq-num: 5
-  added:        L0 4:986[bar#5,0-foo#4,1]
+  added:        L0 4:986[bar#5,DEL-foo#4,SET]
 EOF
 --- L0 ---
-  4:986[bar#5,0-foo#4,1]
+  4:986[bar#5,DEL-foo#4,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -44,10 +44,10 @@ MANIFEST-000005
 44
   log-num:      4
   last-seq-num: 5
-  added:        L0 4:986[626172#5,0-666f6f#4,1]
+  added:        L0 4:986[626172#5,DEL-666f6f#4,SET]
 EOF
 --- L0 ---
-  4:986[626172#5,0-666f6f#4,1]
+  4:986[626172#5,DEL-666f6f#4,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -90,10 +90,10 @@ MANIFEST-000005
 44
   log-num:      4
   last-seq-num: 5
-  added:        L0 4:986[bar#5,0-foo#4,1]
+  added:        L0 4:986[bar#5,DEL-foo#4,SET]
 EOF
 --- L0 ---
-  4:986[bar#5,0-foo#4,1]
+  4:986[bar#5,DEL-foo#4,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -113,10 +113,10 @@ MANIFEST-000005
 44
   log-num:      4
   last-seq-num: 5
-  added:        L0 4:986[test formatter: bar#5,0-test formatter: foo#4,1]
+  added:        L0 4:986[test formatter: bar#5,DEL-test formatter: foo#4,SET]
 EOF
 --- L0 ---
-  4:986[test formatter: bar#5,0-test formatter: foo#4,1]
+  4:986[test formatter: bar#5,DEL-test formatter: foo#4,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -156,12 +156,12 @@ MANIFEST-invalid
   comparer:     leveldb.BytewiseComparator
   log-num:      2
   last-seq-num: 20
-  added:        L0 1:0[#0,0-#0,0]
+  added:        L0 1:0[#0,DEL-#0,DEL]
 65
   comparer:     leveldb.BytewiseComparator
   log-num:      3
   last-seq-num: 20
-  added:        L0 2:0[#0,0-#0,0]
+  added:        L0 2:0[#0,DEL-#0,DEL]
 EOF
 pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
 
@@ -171,7 +171,7 @@ manifest check
 MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
 Version state before failed Apply
 --- L0 ---
-  1:0[#0,0-#0,0]
+  1:0[#0,DEL-#0,DEL]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -179,4 +179,4 @@ Version state before failed Apply
 --- L5 ---
 --- L6 ---
 Version edit that failed
-  added: L0 2:0[#0,0-#0,0]
+  added: L0 2:0[#0,DEL-#0,DEL]

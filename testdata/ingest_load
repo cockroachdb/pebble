@@ -5,12 +5,12 @@ malformed input:
 load
 a.SET.1:
 ----
-pebble: external sstable has non-zero seqnum: a#1,1
+pebble: external sstable has non-zero seqnum: a#1,SET
 
 load
 a.INVALID.0:
 ----
-pebble: external sstable has corrupted key: a#0,255
+pebble: external sstable has corrupted key: a#0,INVALID
 
 load
 a.SET.0:
