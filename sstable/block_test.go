@@ -233,6 +233,49 @@ func TestBlockIterKeyStability(t *testing.T) {
 	require.EqualValues(t, expected, keys)
 }
 
+// Regression test for a bug in blockIter.Next where it was failing to handle
+// the case where it is switching from reverse to forward iteration. When that
+// switch occurs we need to populate blockIter.fullKey so that prefix
+// decompression works properly.
+func TestBlockIterReverseDirections(t *testing.T) {
+	w := &blockWriter{restartInterval: 4}
+	keys := [][]byte{
+		[]byte("apple0"),
+		[]byte("apple1"),
+		[]byte("apple2"),
+		[]byte("apple3"),
+		[]byte("banana"),
+	}
+	for i := range keys {
+		w.add(InternalKey{UserKey: keys[i]}, nil)
+	}
+	block := w.finish()
+
+	for targetPos := 0; targetPos < w.restartInterval; targetPos++ {
+		t.Run("", func(t *testing.T) {
+			i, err := newBlockIter(bytes.Compare, block)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			pos := 3
+			if key, _ := i.SeekLT([]byte("banana")); !bytes.Equal(keys[pos], key.UserKey) {
+				t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
+			}
+			for pos > targetPos {
+				pos--
+				if key, _ := i.Prev(); !bytes.Equal(keys[pos], key.UserKey) {
+					t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
+				}
+			}
+			pos++
+			if key, _ := i.Next(); !bytes.Equal(keys[pos], key.UserKey) {
+				t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
+			}
+		})
+	}
+}
+
 func BenchmarkBlockIterSeekGE(b *testing.B) {
 	const blockSize = 32 << 10
 

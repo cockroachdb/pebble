@@ -552,6 +552,20 @@ func (i *blockIter) Last() (*InternalKey, []byte) {
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *blockIter) Next() (*InternalKey, []byte) {
+	if n := len(i.cached) - 1; n >= 0 && i.cached[n].offset == i.offset {
+		// We're switching from reverse iteration to forward iteration. We need to
+		// populate i.fullKey with the current key we're positioned at so that
+		// readEntry() can use i.fullKey for key prefix decompression.
+		//
+		// TODO(peter): Rather than clearing the cache, we could instead use the
+		// cache until it is exhausted. This would likely be faster than falling
+		// through to the normal forward iteration code below.
+		e := &i.cached[n]
+		key := i.cachedBuf[e.keyStart:e.keyEnd]
+		i.fullKey = append(i.fullKey[:0], key...)
+		i.clearCache()
+	}
+
 	i.offset = i.nextOffset
 	if !i.Valid() {
 		return nil, nil
