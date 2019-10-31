@@ -150,10 +150,10 @@ func (q *syncQueue) pop(head, tail uint32, err error) error {
 	return nil
 }
 
-// flusherCond is a specialized condition variable that is safe to signal for
-// readiness without holding the associated mutex in some circumstances. In
-// particular, when waiter is added to syncQueue, this condition variable can
-// be signalled without holding flusher.Mutex.
+// flusherCond is a specialized condition variable that allows its condition to
+// change and readiness be signalled without holding its associated mutex. In
+// particular, when a waiter is added to syncQueue atomically, this condition
+// variable can be signalled without holding flusher.Mutex.
 type flusherCond struct {
 	mu   *sync.Mutex
 	q    *syncQueue
