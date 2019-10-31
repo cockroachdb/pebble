@@ -212,6 +212,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 			PreallocateSize: d.walPreallocateSize(),
 		})
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum)
+		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
 		d.mu.versions.metrics.WAL.Files++
 
 		// This logic is slightly different than RocksDB's. Specifically, RocksDB

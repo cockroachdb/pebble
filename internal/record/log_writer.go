@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/crc"
 )
@@ -69,6 +70,11 @@ type syncQueue struct {
 	// slots is a ring buffer of values stored in this queue. The size must be a
 	// power of 2. A slot is in use until the tail index has moved beyond it.
 	slots [SyncConcurrency]syncSlot
+
+	// blocked is an atomic boolean which indicates whether syncing is currently
+	// blocked or can proceed. It is used by the implementation of
+	// min-sync-interval to block syncing until the min interval has passed.
+	blocked uint32
 }
 
 const dequeueBits = 32
@@ -96,12 +102,24 @@ func (q *syncQueue) push(wg *sync.WaitGroup, err *error) {
 	atomic.AddUint64(&q.headTail, 1<<dequeueBits)
 }
 
+func (q *syncQueue) setBlocked() {
+	atomic.StoreUint32(&q.blocked, 1)
+}
+
+func (q *syncQueue) clearBlocked() {
+	atomic.StoreUint32(&q.blocked, 0)
+}
+
 func (q *syncQueue) empty() bool {
 	head, tail := q.load()
 	return head == tail
 }
 
 func (q *syncQueue) load() (head, tail uint32) {
+	if atomic.LoadUint32(&q.blocked) == 1 {
+		return 0, 0
+	}
+
 	ptrs := atomic.LoadUint64(&q.headTail)
 	head, tail = q.unpack(ptrs)
 	return head, tail
@@ -201,6 +219,17 @@ func (c *flusherCond) Unlock() {
 	}
 }
 
+type durationFunc func() time.Duration
+
+// syncTimer is an interface for timers, modeled on the closure callback mode
+// of time.Timer. See time.AfterFunc and LogWriter.afterFunc. syncTimer is used
+// by tests to mock out the timer functionality used to implement
+// min-sync-interval.
+type syncTimer interface {
+	Reset(time.Duration) bool
+	Stop() bool
+}
+
 // LogWriter writes records to an underlying io.Writer. In order to support WAL
 // file reuse, a LogWriter's records are tagged with the WAL's file
 // number. When reading a log file a record from a previous incarnation of the
@@ -235,10 +264,17 @@ type LogWriter struct {
 		// Closed when the flush loop has terminated.
 		closed chan struct{}
 		// Accumulated flush error.
-		err     error
-		pending []*block
-		syncQ   syncQueue
+		err error
+		// minSyncInterval is the minimum duration between syncs.
+		minSyncInterval durationFunc
+		pending         []*block
+		syncQ           syncQueue
 	}
+
+	// afterFunc is a hook to allow tests to mock out the timer functionality
+	// used for min-sync-interval. In normal operation this points to
+	// time.AfterFunc.
+	afterFunc func(d time.Duration, f func()) syncTimer
 }
 
 // NewLogWriter returns a new LogWriter.
@@ -255,6 +291,9 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 		// sufficient for that purpose.
 		logNum: uint32(logNum),
 		free:   make(chan *block, 4),
+		afterFunc: func(d time.Duration, f func()) syncTimer {
+			return time.AfterFunc(d, f)
+		},
 	}
 	for i := 0; i < cap(r.free); i++ {
 		r.free <- &block{}
@@ -266,13 +305,59 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 	return r
 }
 
+// SetMinSyncInterval sets the closure to invoke for retrieving the minimum
+// sync duration between syncs.
+func (w *LogWriter) SetMinSyncInterval(minSyncInterval durationFunc) {
+	f := &w.flusher
+	f.Lock()
+	f.minSyncInterval = minSyncInterval
+	f.Unlock()
+}
+
 func (w *LogWriter) flushLoop() {
 	f := &w.flusher
 	f.Lock()
+
+	var syncTimer syncTimer
 	defer func() {
+		if syncTimer != nil {
+			syncTimer.Stop()
+		}
 		close(f.closed)
 		f.Unlock()
 	}()
+
+	// The flush loop performs flushing of full and partial data blocks to the
+	// underlying writer (LogWriter.w), syncing of the writer, and notification
+	// to sync requests that they have completed.
+	//
+	// - flusher.ready is a condition variable that is signalled when there is
+	//   work to do. Full blocks are contained in flusher.pending. The current
+	//   partial block is in LogWriter.block. And sync operations are held in
+	//   flusher.syncQ.
+	//
+	// - The decision to sync is determined by whether there are any sync
+	//   requests present in flusher.syncQ and whether enough time has elapsed
+	//   since the last sync. If not enough time has elapsed since the last sync,
+	//   flusher.syncQ.blocked will be set to 1. If syncing is blocked,
+	//   syncQueue.empty() will return true and syncQueue.load() will return 0,0
+	//   (i.e. an empty list).
+	//
+	// - flusher.syncQ.blocked is cleared by a timer that is initialized when
+	//   blocked is set to 1. When blocked is 1, no syncing will take place, but
+	//   flushing will continue to be performed. The on/off toggle for syncing
+	//   does not need to be carefully synchronized with the rest of processing
+	//   -- all we need to ensure is that after any transition to blocked=1 there
+	//   is eventually a transition to blocked=0. syncTimer performs this
+	//   transition. Note that any change to min-sync-interval will not take
+	//   effect until the previous timer elapses.
+	//
+	// - Picking up the syncing work to perform requires coordination with
+	//   picking up the flushing work. Specifically, flushing work is queued
+	//   before syncing work. The guarantee of this code is that when a sync is
+	//   requested, any previously queued flush work will be synced. This
+	//   motivates reading the syncing work (f.syncQ.load()) before picking up
+	//   the flush work (atomic.LoadInt32(&w.block.written)).
 
 	for {
 		for {
@@ -291,7 +376,11 @@ func (w *LogWriter) flushLoop() {
 		}
 
 		pending := f.pending
-		f.pending = f.pending[len(f.pending):]
+		f.pending = f.pending[len(pending):]
+
+		// Grab the list of sync waiters. Note that syncQueue.load() will return
+		// 0,0 while we're waiting for the min-sync-interval to expire. This
+		// allows flushing to proceed even if we're not ready to sync.
 		head, tail := f.syncQ.load()
 
 		// Grab the portion of the current block that requires flushing. Note that
@@ -306,9 +395,26 @@ func (w *LogWriter) flushLoop() {
 
 		f.Unlock()
 
-		err := w.flushPending(data, pending, head, tail)
+		synced, err := w.flushPending(data, pending, head, tail)
 
 		f.Lock()
+
+		if synced && f.minSyncInterval != nil {
+			// A sync was performed. Make sure we've waited for the min sync
+			// interval before syncing again.
+			if min := f.minSyncInterval(); min > 0 {
+				f.syncQ.setBlocked()
+				if syncTimer == nil {
+					syncTimer = w.afterFunc(min, func() {
+						f.syncQ.clearBlocked()
+						f.ready.Signal()
+					})
+				} else {
+					syncTimer.Reset(min)
+				}
+			}
+		}
+
 		f.err = err
 		if f.err != nil {
 			// TODO(peter): There might be new waiters that we should propagate f.err
@@ -319,7 +425,9 @@ func (w *LogWriter) flushLoop() {
 	}
 }
 
-func (w *LogWriter) flushPending(data []byte, pending []*block, head, tail uint32) (err error) {
+func (w *LogWriter) flushPending(
+	data []byte, pending []*block, head, tail uint32,
+) (synced bool, err error) {
 	defer func() {
 		// Translate panics into errors. The errors will cause flushLoop to shut
 		// down, but allows us to do so in a controlled way and avoid swallowing
@@ -338,17 +446,19 @@ func (w *LogWriter) flushPending(data []byte, pending []*block, head, tail uint3
 	if err == nil && len(data) > 0 {
 		_, err = w.w.Write(data)
 	}
-	if head != tail {
+
+	synced = head != tail
+	if synced {
 		if err == nil && w.s != nil {
 			err = w.s.Sync()
 		}
 		f := &w.flusher
 		if popErr := f.syncQ.pop(head, tail, err); popErr != nil {
-			return popErr
+			return synced, popErr
 		}
 	}
 
-	return err
+	return synced, err
 }
 
 func (w *LogWriter) flushBlock(b *block) error {
@@ -491,7 +601,6 @@ func (w *LogWriter) emitFragment(n int, p []byte) []byte {
 		for i := b.written; i < blockSize; i++ {
 			b.buf[i] = 0
 		}
-		atomic.StoreInt32(&b.written, j)
 		w.queueBlock()
 	}
 	return p[r:]

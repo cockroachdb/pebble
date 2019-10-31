@@ -5,10 +5,12 @@
 package record
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -186,5 +188,101 @@ func TestSyncRecord(t *testing.T) {
 		if v := atomic.LoadInt64(&f.syncPos); offset != v {
 			t.Fatalf("expected sync pos %d, but found %d", offset, v)
 		}
+	}
+}
+
+type fakeTimer struct {
+	f func()
+}
+
+func (t *fakeTimer) Reset(d time.Duration) bool {
+	return false
+}
+
+func (t *fakeTimer) Stop() bool {
+	return false
+}
+
+func try(initialSleep, maxTotalSleep time.Duration, f func() error) error {
+	totalSleep := time.Duration(0)
+	for d := initialSleep; ; d *= 2 {
+		time.Sleep(d)
+		totalSleep += d
+		if err := f(); err == nil || totalSleep >= maxTotalSleep {
+			return err
+		}
+	}
+}
+
+func TestMinSyncInterval(t *testing.T) {
+	const minSyncInterval = 100 * time.Millisecond
+
+	f := &syncFile{}
+	w := NewLogWriter(f, 0)
+	w.SetMinSyncInterval(func() time.Duration {
+		return minSyncInterval
+	})
+
+	var timer fakeTimer
+	w.afterFunc = func(d time.Duration, f func()) syncTimer {
+		if d != minSyncInterval {
+			t.Fatalf("expected minSyncInterval %s, but found %s", minSyncInterval, d)
+		}
+		timer.f = f
+		timer.Reset(d)
+		return &timer
+	}
+
+	syncRecord := func(n int) *sync.WaitGroup {
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wg
+	}
+
+	// Sync one record which will cause the sync timer to kick in.
+	syncRecord(1).Wait()
+
+	startWritePos := atomic.LoadInt64(&f.writePos)
+	startSyncPos := atomic.LoadInt64(&f.syncPos)
+
+	// Write a bunch of large records. The sync position should not change
+	// because we haven't triggered the timer. But note that the writes should
+	// not block either even though syncing isn't being done.
+	var wg *sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg = syncRecord(10000)
+		if v := atomic.LoadInt64(&f.syncPos); startSyncPos != v {
+			t.Fatalf("expected syncPos %d, but found %d", startSyncPos, v)
+		}
+		// NB: we can't use syncQueue.load() here as that will return 0,0 while the
+		// syncQueue is blocked.
+		head, tail := w.flusher.syncQ.unpack(atomic.LoadUint64(&w.flusher.syncQ.headTail))
+		waiters := head - tail
+		if waiters != uint32(i+1) {
+			t.Fatalf("expected %d waiters, but found %d", i+1, waiters)
+		}
+	}
+
+	err := try(time.Millisecond, 5*time.Second, func() error {
+		v := atomic.LoadInt64(&f.writePos)
+		if v > startWritePos {
+			return nil
+		}
+		return fmt.Errorf("expected writePos > %d, but found %d", startWritePos, v)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fire the timer, and then wait for the last record to sync.
+	timer.f()
+	wg.Wait()
+
+	if w, s := atomic.LoadInt64(&f.writePos), atomic.LoadInt64(&f.syncPos); w != s {
+		t.Fatalf("expected syncPos %d, but found %d", s, w)
 	}
 }
