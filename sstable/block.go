@@ -116,7 +116,6 @@ type blockIter struct {
 	data         []byte
 	key, val     []byte
 	fullKey      []byte
-	keyBuf       [256]byte
 	ikey         InternalKey
 	cached       []blockEntry
 	cachedBuf    []byte
@@ -140,14 +139,18 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	i.globalSeqNum = globalSeqNum
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
-	if i.fullKey == nil {
-		i.fullKey = i.keyBuf[:0]
-	} else {
-		i.fullKey = i.fullKey[:0]
-	}
+	i.fullKey = i.fullKey[:0]
 	i.val = nil
 	i.clearCache()
 	return nil
+}
+
+func (i *blockIter) resetForReuse() blockIter {
+	return blockIter{
+		fullKey:   i.fullKey[:0],
+		cached:    i.cached[:0],
+		cachedBuf: i.cachedBuf[:0],
+	}
 }
 
 func (i *blockIter) setCacheHandle(h cache.Handle) {
