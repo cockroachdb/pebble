@@ -246,6 +246,15 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	return nil
 }
 
+func (vs *versionSet) close() error {
+	if vs.manifestFile != nil {
+		if err := vs.manifestFile.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // logAndApply logs the version edit to the manifest, applies the version edit
 // to the current version, and installs the new version. DB.mu must be held
 // when calling this method and will be released temporarily while performing
