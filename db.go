@@ -466,7 +466,7 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	// an sstable. For a 100 MB batch, this might actually be faster. For a 1
 	// GB batch this is almost certainly faster.
 	if batch.flushable != nil {
-		batch.storage.data = nil
+		batch.data = nil
 	}
 	return nil
 }

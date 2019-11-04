@@ -47,7 +47,7 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 }
 
 func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup, _ *error) (*memTable, error) {
-	n := int64(len(b.storage.data))
+	n := int64(len(b.data))
 	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
 	return nil, nil
@@ -194,7 +194,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 			return nil
 		},
 		write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
-			_, err := wal.SyncRecord(b.storage.data, syncWG, syncErr)
+			_, err := wal.SyncRecord(b.data, syncWG, syncErr)
 			return nil, err
 		},
 	}
@@ -265,7 +265,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						break
 					}
 
-					_, err := wal.SyncRecord(b.storage.data, syncWG, syncErr)
+					_, err := wal.SyncRecord(b.data, syncWG, syncErr)
 					return mem, err
 				},
 			}

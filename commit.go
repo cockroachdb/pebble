@@ -283,7 +283,7 @@ func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(se
 
 	// Give the batch a count of 1 so that the log and visible sequence number
 	// are incremented correctly.
-	b.storage.data = make([]byte, batchHeaderLen)
+	b.data = make([]byte, batchHeaderLen)
 	b.setCount(uint32(count))
 	b.commit.Add(1)
 
