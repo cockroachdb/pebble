@@ -55,6 +55,7 @@ package batchskl // import "github.com/cockroachdb/pebble/internal/batchskl"
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -82,8 +83,11 @@ type links struct {
 }
 
 type node struct {
-	// The offset of the key in storage. See Storage.Get.
-	key uint32
+	// The offset of the start of the record in the storage.
+	offset uint32
+	// The offset of the start and end of the key in storage.
+	keyStart uint32
+	keyEnd   uint32
 	// A fixed 8-byte abbreviation of the key, used to avoid retrieval of the key
 	// during seek operations. The key retrieval can be expensive purely due to
 	// cache misses while the abbreviatedKey stored here will be in the same
@@ -98,23 +102,6 @@ type node struct {
 	links [maxHeight]links
 }
 
-// Storage defines the storage interface for retrieval and comparison of keys.
-type Storage interface {
-	// Get returns the key stored at the specified offset.
-	Get(offset uint32) base.InternalKey
-
-	// AbbreviatedKey returns a fixed length prefix of the specified key such
-	// that AbbreviatedKey(a) < AbbreviatedKey(b) iff a < b and AbbreviatedKey(a)
-	// > AbbreviatedKey(b) iff a > b. If AbbreviatedKey(a) == AbbreviatedKey(b)
-	// an additional comparison is required to determine if the two keys are
-	// actually equal.
-	AbbreviatedKey(key []byte) uint64
-
-	// Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
-	// to', or 'greater than' the key stored at b.
-	Compare(a []byte, b uint32) int
-}
-
 // Skiplist is a fast, non-cocnurrent skiplist implementation that supports
 // forward and backward iteration. See arenaskl.Skiplist for a concurrent
 // skiplist. Keys and values are stored externally from the skiplist via the
@@ -122,12 +109,14 @@ type Storage interface {
 // expected to perform deletion via tombstones and needs to process those
 // tombstones appropriately during retrieval operations.
 type Skiplist struct {
-	storage Storage
-	nodes   []byte
-	head    uint32
-	tail    uint32
-	height  uint32 // Current height: 1 <= height <= maxHeight
-	rand    rand.PCGSource
+	storage        *[]byte
+	cmp            base.Compare
+	abbreviatedKey base.AbbreviatedKey
+	nodes          []byte
+	head           uint32
+	tail           uint32
+	height         uint32 // Current height: 1 <= height <= maxHeight
+	rand           rand.PCGSource
 }
 
 var (
@@ -148,44 +137,47 @@ func init() {
 }
 
 // NewSkiplist constructs and initializes a new, empty skiplist.
-func NewSkiplist(storage Storage, initBufSize int) *Skiplist {
-	if initBufSize < 256 {
-		initBufSize = 256
-	}
-	s := &Skiplist{
-		storage: storage,
-		nodes:   make([]byte, 0, initBufSize),
-		height:  1,
-	}
-	s.rand.Seed(uint64(time.Now().UnixNano()))
-
-	// Allocate head and tail nodes.
-	s.head = s.newNode(maxHeight, 0, 0)
-	s.tail = s.newNode(maxHeight, 0, 0)
-
-	// Link all head/tail levels together.
-	for i := uint32(0); i < maxHeight; i++ {
-		s.setNext(s.head, i, s.tail)
-		s.setPrev(s.tail, i, s.head)
-	}
-
+func NewSkiplist(
+	storage *[]byte, cmp base.Compare, abbreviatedKey base.AbbreviatedKey,
+) *Skiplist {
+	s := &Skiplist{}
+	s.Init(storage, cmp, abbreviatedKey)
 	return s
 }
 
-// Reset the skiplist to empty and re-initialize.
-func (s *Skiplist) Reset(storage Storage, initBufSize int) {
-	if initBufSize < 256 {
-		initBufSize = 256
-	}
+// Reset the fields in the skiplist for reuse.
+func (s *Skiplist) Reset() {
 	*s = Skiplist{
-		storage: storage,
-		nodes:   make([]byte, 0, initBufSize),
-		height:  1,
+		nodes:  s.nodes[:0],
+		height: 1,
+	}
+	const batchMaxRetainedSize = 1 << 20 // 1 MB
+	if cap(s.nodes) > batchMaxRetainedSize {
+		s.nodes = nil
+	}
+}
+
+// Init the skiplist to empty and re-initialize.
+func (s *Skiplist) Init(
+	storage *[]byte, cmp base.Compare, abbreviatedKey base.AbbreviatedKey,
+) {
+	*s = Skiplist{
+		storage:        storage,
+		cmp:            cmp,
+		abbreviatedKey: abbreviatedKey,
+		nodes:          s.nodes[:0],
+		height:         1,
+	}
+	s.rand.Seed(uint64(time.Now().UnixNano()))
+
+	const initBufSize = 256
+	if cap(s.nodes) < initBufSize {
+		s.nodes = make([]byte, 0, initBufSize)
 	}
 
 	// Allocate head and tail nodes.
-	s.head = s.newNode(maxHeight, 0, 0)
-	s.tail = s.newNode(maxHeight, 0, 0)
+	s.head = s.newNode(maxHeight, 0, 0, 0, 0)
+	s.tail = s.newNode(maxHeight, 0, 0, 0, 0)
 
 	// Link all head/tail levels together.
 	for i := uint32(0); i < maxHeight; i++ {
@@ -197,16 +189,27 @@ func (s *Skiplist) Reset(storage Storage, initBufSize int) {
 // Add adds a new key to the skiplist if it does not yet exist. If the record
 // already exists, then Add returns ErrRecordExists.
 func (s *Skiplist) Add(keyOffset uint32) error {
-	key := s.storage.Get(keyOffset)
-	abbreviatedKey := s.storage.AbbreviatedKey(key.UserKey)
+	data := (*s.storage)[keyOffset+1:]
+	v, n := binary.Uvarint(data)
+	if n <= 0 {
+		return fmt.Errorf("corrupted batch entry: %d", keyOffset)
+	}
+	data = data[n:]
+	if v > uint64(len(data)) {
+		return fmt.Errorf("corrupted batch entry: %d", keyOffset)
+	}
+	keyStart := 1 + keyOffset + uint32(n)
+	keyEnd := keyStart + uint32(v)
+	key := data[:v]
+	abbreviatedKey := s.abbreviatedKey(key)
 
 	var spl [maxHeight]splice
-	if s.findSplice(key.UserKey, abbreviatedKey, &spl) {
+	if s.findSplice(key, abbreviatedKey, &spl) {
 		return ErrExists
 	}
 
 	height := s.randomHeight()
-	nd := s.newNode(height, keyOffset, abbreviatedKey)
+	nd := s.newNode(height, keyOffset, keyStart, keyEnd, abbreviatedKey)
 	// Increase s.height as necessary.
 	for ; s.height < height; s.height++ {
 		spl[s.height].next = s.tail
@@ -238,18 +241,24 @@ func (s *Skiplist) NewIter(lower, upper []byte) Iterator {
 	return Iterator{list: s, lower: lower, upper: upper}
 }
 
-func (s *Skiplist) newNode(height, key uint32, abbreviatedKey uint64) uint32 {
+func (s *Skiplist) newNode(
+	height,
+	offset, keyStart, keyEnd uint32,
+	abbreviatedKey uint64,
+) uint32 {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
 
 	unusedSize := (maxHeight - int(height)) * linksSize
-	offset := s.alloc(uint32(maxNodeSize - unusedSize))
-	nd := s.node(offset)
+	nodeOffset := s.alloc(uint32(maxNodeSize - unusedSize))
+	nd := s.node(nodeOffset)
 
-	nd.key = key
+	nd.offset = offset
+	nd.keyStart = keyStart
+	nd.keyEnd = keyEnd
 	nd.abbreviatedKey = abbreviatedKey
-	return offset
+	return nodeOffset
 }
 
 func (s *Skiplist) alloc(size uint32) uint32 {
@@ -289,7 +298,7 @@ func (s *Skiplist) findSplice(
 	prev = s.head
 
 	for level := s.height - 1; ; level-- {
-		prev, next, found = s.findSpliceForLevel(key, abbreviatedKey, level, prev)
+		prev, next = s.findSpliceForLevel(key, abbreviatedKey, level, prev)
 		spl[level].init(prev, next)
 		if level == 0 {
 			break
@@ -301,30 +310,20 @@ func (s *Skiplist) findSplice(
 
 func (s *Skiplist) findSpliceForLevel(
 	key []byte, abbreviatedKey uint64, level, start uint32,
-) (prev, next uint32, found bool) {
+) (prev, next uint32) {
 	prev = start
+	next = s.getNext(prev, level)
 
-	for {
+	for next != s.tail {
 		// Assume prev.key < key.
-		next = s.getNext(prev, level)
-		if next == s.tail {
-			// Tail node, so done.
-			break
-		}
-
-		nextAbbreviatedKey := s.getAbbreviatedKey(next)
+		nextNode := s.node(next)
+		nextAbbreviatedKey := nextNode.abbreviatedKey
 		if abbreviatedKey < nextAbbreviatedKey {
 			// We are done for this level, since prev.key < key < next.key.
 			break
 		}
 		if abbreviatedKey == nextAbbreviatedKey {
-			cmp := s.storage.Compare(key, s.getKey(next))
-			if cmp == 0 {
-				// Equality case.
-				found = true
-				break
-			}
-			if cmp < 0 {
+			if s.cmp(key, (*s.storage)[nextNode.keyStart:nextNode.keyEnd]) <= 0 {
 				// We are done for this level, since prev.key < key < next.key.
 				break
 			}
@@ -332,17 +331,17 @@ func (s *Skiplist) findSpliceForLevel(
 
 		// Keep moving right on this level.
 		prev = next
+		next = nextNode.links[level].next
 	}
 
 	return
 }
 
-func (s *Skiplist) getKey(nd uint32) uint32 {
-	return s.node(nd).key
-}
-
-func (s *Skiplist) getAbbreviatedKey(nd uint32) uint64 {
-	return s.node(nd).abbreviatedKey
+func (s *Skiplist) getKey(nd uint32) base.InternalKey {
+	n := s.node(nd)
+	kind := base.InternalKeyKind((*s.storage)[n.offset])
+	key := (*s.storage)[n.keyStart:n.keyEnd]
+	return base.MakeInternalKey(key, uint64(n.offset)|base.InternalKeySeqNumBatch, kind)
 }
 
 func (s *Skiplist) getNext(nd, h uint32) uint32 {

@@ -57,34 +57,6 @@ type batchStorage struct {
 	abbreviatedKey AbbreviatedKey
 }
 
-// Get implements Storage.Get, as documented in the pebble/batchskl package.
-func (s *batchStorage) Get(offset uint32) InternalKey {
-	kind := InternalKeyKind(s.data[offset])
-	_, key, ok := batchDecodeStr(s.data[offset+1:])
-	if !ok {
-		panic(fmt.Sprintf("corrupted batch entry: %d", offset))
-	}
-	return base.MakeInternalKey(key, uint64(offset)|InternalKeySeqNumBatch, kind)
-}
-
-// AbbreviatedKey implements Storage.AbbreviatedKey, as documented in the
-// pebble/batchskl package.
-func (s *batchStorage) AbbreviatedKey(key []byte) uint64 {
-	return s.abbreviatedKey(key)
-}
-
-// Compare implements Storage.Compare, as documented in the pebble/batchskl
-// package.
-func (s *batchStorage) Compare(a []byte, b uint32) int {
-	// The key "a" is always the search key or the newer key being inserted. If
-	// it is equal to the existing key consider it smaller so that it sorts
-	// first.
-	if s.cmp(a, s.Get(b).UserKey) <= 0 {
-		return -1
-	}
-	return 1
-}
-
 // DeferredBatchOp represents a batch operation (eg. set, merge, delete) that is
 // being inserted into the batch. Indexing is not performed on the specified key
 // until Finish is called, hence the name deferred. This struct lets the caller
@@ -277,7 +249,7 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i.batch.storage.abbreviatedKey = comparer.AbbreviatedKey
 	i.batch.db = db
 	i.batch.index = &i.index
-	i.batch.index.Reset(&i.batch.storage, 0)
+	i.batch.index.Init(&i.batch.storage.data, i.batch.storage.cmp, i.batch.storage.abbreviatedKey)
 	return &i.batch
 }
 
@@ -309,7 +281,7 @@ func (b *Batch) release() {
 	if b.index == nil {
 		batchPool.Put(b)
 	} else {
-		*b.index = batchskl.Skiplist{}
+		b.index.Reset()
 		b.index, b.rangeDelIndex = nil, nil
 		indexedBatchPool.Put((*indexedBatch)(unsafe.Pointer(b)))
 	}
@@ -363,7 +335,8 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				var err error
 				if kind == InternalKeyKindRangeDelete {
 					if b.rangeDelIndex == nil {
-						b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
+						b.rangeDelIndex = batchskl.NewSkiplist(
+							&b.storage.data, b.storage.cmp, b.storage.abbreviatedKey)
 					}
 					err = b.rangeDelIndex.Add(uint32(offset))
 				} else {
@@ -620,7 +593,8 @@ func (b *Batch) DeleteRangeDeferred(startLen, endLen int) *DeferredBatchOp {
 		b.tombstones = nil
 		// Range deletions are rare, so we lazily allocate the index for them.
 		if b.rangeDelIndex == nil {
-			b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
+			b.rangeDelIndex = batchskl.NewSkiplist(
+				&b.storage.data, b.storage.cmp, b.storage.abbreviatedKey)
 		}
 		b.deferredOp.index = b.rangeDelIndex
 	}
