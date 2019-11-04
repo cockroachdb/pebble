@@ -201,5 +201,6 @@ close
 ----
 sync: wal/000013.log
 close: wal/000013.log
+close: db/MANIFEST-000017
 close: db
 close: wal

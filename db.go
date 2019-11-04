@@ -750,6 +750,10 @@ func (d *DB) Close() error {
 	}
 	err = firstError(err, d.fileLock.Close())
 
+	// Note that versionSet.close() only closes the MANIFEST. The versions list
+	// is still valid for the checks below.
+	err = firstError(err, d.mu.versions.close())
+
 	err = firstError(err, d.dataDir.Close())
 	if d.dataDir != d.walDir {
 		err = firstError(err, d.walDir.Close())
