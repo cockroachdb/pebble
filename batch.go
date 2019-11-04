@@ -36,55 +36,6 @@ var ErrNotIndexed = errors.New("pebble: batch not indexed")
 // ErrInvalidBatch indicates that a batch is invalid or otherwise corrupted.
 var ErrInvalidBatch = errors.New("pebble: invalid batch")
 
-type batchStorage struct {
-	// Data is the wire format of a batch's log entry:
-	//   - 8 bytes for a sequence number of the first batch element,
-	//     or zeroes if the batch has not yet been applied,
-	//   - 4 bytes for the count: the number of elements in the batch,
-	//     or "\xff\xff\xff\xff" if the batch is invalid,
-	//   - count elements, being:
-	//     - one byte for the kind
-	//     - the varint-string user key,
-	//     - the varint-string value (if kind != delete).
-	// The sequence number and count are stored in little-endian order.
-	//
-	// The data field can be (but is not guaranteed to be) nil for new
-	// batches. Large batches will set the data field to nil when committed as
-	// the data has been moved to a flushableBatch and inserted into the queue of
-	// memtables.
-	data           []byte
-	cmp            Compare
-	abbreviatedKey AbbreviatedKey
-}
-
-// Get implements Storage.Get, as documented in the pebble/batchskl package.
-func (s *batchStorage) Get(offset uint32) InternalKey {
-	kind := InternalKeyKind(s.data[offset])
-	_, key, ok := batchDecodeStr(s.data[offset+1:])
-	if !ok {
-		panic(fmt.Sprintf("corrupted batch entry: %d", offset))
-	}
-	return base.MakeInternalKey(key, uint64(offset)|InternalKeySeqNumBatch, kind)
-}
-
-// AbbreviatedKey implements Storage.AbbreviatedKey, as documented in the
-// pebble/batchskl package.
-func (s *batchStorage) AbbreviatedKey(key []byte) uint64 {
-	return s.abbreviatedKey(key)
-}
-
-// Compare implements Storage.Compare, as documented in the pebble/batchskl
-// package.
-func (s *batchStorage) Compare(a []byte, b uint32) int {
-	// The key "a" is always the search key or the newer key being inserted. If
-	// it is equal to the existing key consider it smaller so that it sorts
-	// first.
-	if s.cmp(a, s.Get(b).UserKey) <= 0 {
-		return -1
-	}
-	return 1
-}
-
 // DeferredBatchOp represents a batch operation (eg. set, merge, delete) that is
 // being inserted into the batch. Indexing is not performed on the specified key
 // until Finish is called, hence the name deferred. This struct lets the caller
@@ -211,7 +162,24 @@ func (d DeferredBatchOp) Finish() {
 // WAL, and thus stable. New record kinds may be added, but the existing ones
 // will not be modified.
 type Batch struct {
-	storage batchStorage
+	// Data is the wire format of a batch's log entry:
+	//   - 8 bytes for a sequence number of the first batch element,
+	//     or zeroes if the batch has not yet been applied,
+	//   - 4 bytes for the count: the number of elements in the batch,
+	//     or "\xff\xff\xff\xff" if the batch is invalid,
+	//   - count elements, being:
+	//     - one byte for the kind
+	//     - the varint-string user key,
+	//     - the varint-string value (if kind != delete).
+	// The sequence number and count are stored in little-endian order.
+	//
+	// The data field can be (but is not guaranteed to be) nil for new
+	// batches. Large batches will set the data field to nil when committed as
+	// the data has been moved to a flushableBatch and inserted into the queue of
+	// memtables.
+	data           []byte
+	cmp            Compare
+	abbreviatedKey AbbreviatedKey
 
 	memTableSize uint32
 
@@ -273,11 +241,11 @@ func newBatch(db *DB) *Batch {
 
 func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i := indexedBatchPool.Get().(*indexedBatch)
-	i.batch.storage.cmp = comparer.Compare
-	i.batch.storage.abbreviatedKey = comparer.AbbreviatedKey
+	i.batch.cmp = comparer.Compare
+	i.batch.abbreviatedKey = comparer.AbbreviatedKey
 	i.batch.db = db
 	i.batch.index = &i.index
-	i.batch.index.Reset(&i.batch.storage, 0)
+	i.batch.index.Init(&i.batch.data, i.batch.cmp, i.batch.abbreviatedKey)
 	return &i.batch
 }
 
@@ -297,8 +265,8 @@ func (b *Batch) release() {
 	// field. Without using an atomic to clear that field the Go race detector
 	// complains.
 	b.Reset()
-	b.storage.cmp = nil
-	b.storage.abbreviatedKey = nil
+	b.cmp = nil
+	b.abbreviatedKey = nil
 	b.memTableSize = 0
 
 	b.flushable = nil
@@ -309,7 +277,7 @@ func (b *Batch) release() {
 	if b.index == nil {
 		batchPool.Put(b)
 	} else {
-		*b.index = batchskl.Skiplist{}
+		b.index.Reset()
 		b.index, b.rangeDelIndex = nil, nil
 		indexedBatchPool.Put((*indexedBatch)(unsafe.Pointer(b)))
 	}
@@ -317,7 +285,7 @@ func (b *Batch) release() {
 
 func (b *Batch) refreshMemTableSize() {
 	b.memTableSize = 0
-	if len(b.storage.data) < batchHeaderLen {
+	if len(b.data) < batchHeaderLen {
 		return
 	}
 
@@ -334,27 +302,27 @@ func (b *Batch) refreshMemTableSize() {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
-	if len(batch.storage.data) == 0 {
+	if len(batch.data) == 0 {
 		return nil
 	}
-	if len(batch.storage.data) < batchHeaderLen {
+	if len(batch.data) < batchHeaderLen {
 		return errors.New("pebble: invalid batch")
 	}
 
-	offset := len(b.storage.data)
+	offset := len(b.data)
 	if offset == 0 {
 		b.init(offset)
 		offset = batchHeaderLen
 	}
-	b.storage.data = append(b.storage.data, batch.storage.data[batchHeaderLen:]...)
+	b.data = append(b.data, batch.data[batchHeaderLen:]...)
 
 	b.setCount(b.Count() + batch.Count())
 
 	if b.db != nil || b.index != nil {
 		// Only iterate over the new entries if we need to track memTableSize or in
 		// order to update the index.
-		for iter := BatchReader(b.storage.data[offset:]); len(iter) > 0; {
-			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.storage.data[0]))
+		for iter := BatchReader(b.data[offset:]); len(iter) > 0; {
+			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
 			kind, key, value, ok := iter.Next()
 			if !ok {
 				break
@@ -363,7 +331,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				var err error
 				if kind == InternalKeyKindRangeDelete {
 					if b.rangeDelIndex == nil {
-						b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
+						b.rangeDelIndex = batchskl.NewSkiplist(&b.data, b.cmp, b.abbreviatedKey)
 					}
 					err = b.rangeDelIndex.Add(uint32(offset))
 				} else {
@@ -393,16 +361,16 @@ func (b *Batch) Get(key []byte) (value []byte, err error) {
 }
 
 func (b *Batch) prepareDeferredKeyValueRecord(keyLen, valueLen int, kind InternalKeyKind) {
-	if len(b.storage.data) == 0 {
+	if len(b.data) == 0 {
 		b.init(keyLen + valueLen + 2*binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	b.count++
 	b.memTableSize += memTableEntrySize(keyLen, valueLen)
 
-	pos := len(b.storage.data)
+	pos := len(b.data)
 	b.deferredOp.offset = uint32(pos)
 	b.grow(1 + 2*maxVarintLen32 + keyLen + valueLen)
-	b.storage.data[pos] = byte(kind)
+	b.data[pos] = byte(kind)
 	pos++
 
 	{
@@ -411,15 +379,15 @@ func (b *Batch) prepareDeferredKeyValueRecord(keyLen, valueLen int, kind Interna
 		// versions show this to not be a performance win.
 		x := uint32(keyLen)
 		for x >= 0x80 {
-			b.storage.data[pos] = byte(x) | 0x80
+			b.data[pos] = byte(x) | 0x80
 			x >>= 7
 			pos++
 		}
-		b.storage.data[pos] = byte(x)
+		b.data[pos] = byte(x)
 		pos++
 	}
 
-	b.deferredOp.Key = b.storage.data[pos : pos+keyLen]
+	b.deferredOp.Key = b.data[pos : pos+keyLen]
 	pos += keyLen
 
 	{
@@ -428,30 +396,30 @@ func (b *Batch) prepareDeferredKeyValueRecord(keyLen, valueLen int, kind Interna
 		// versions show this to not be a performance win.
 		x := uint32(valueLen)
 		for x >= 0x80 {
-			b.storage.data[pos] = byte(x) | 0x80
+			b.data[pos] = byte(x) | 0x80
 			x >>= 7
 			pos++
 		}
-		b.storage.data[pos] = byte(x)
+		b.data[pos] = byte(x)
 		pos++
 	}
 
-	b.deferredOp.Value = b.storage.data[pos : pos+valueLen]
+	b.deferredOp.Value = b.data[pos : pos+valueLen]
 	// Shrink data since varints may be shorter than the upper bound.
-	b.storage.data = b.storage.data[:pos+valueLen]
+	b.data = b.data[:pos+valueLen]
 }
 
 func (b *Batch) prepareDeferredKeyRecord(keyLen int, kind InternalKeyKind) {
-	if len(b.storage.data) == 0 {
+	if len(b.data) == 0 {
 		b.init(keyLen + binary.MaxVarintLen64 + batchHeaderLen)
 	}
 	b.count++
 	b.memTableSize += memTableEntrySize(keyLen, 0)
 
-	pos := len(b.storage.data)
+	pos := len(b.data)
 	b.deferredOp.offset = uint32(pos)
 	b.grow(1 + maxVarintLen32 + keyLen)
-	b.storage.data[pos] = byte(kind)
+	b.data[pos] = byte(kind)
 	pos++
 
 	{
@@ -460,19 +428,19 @@ func (b *Batch) prepareDeferredKeyRecord(keyLen int, kind InternalKeyKind) {
 		// BenchmarkBatchSet.
 		x := uint32(keyLen)
 		for x >= 0x80 {
-			b.storage.data[pos] = byte(x) | 0x80
+			b.data[pos] = byte(x) | 0x80
 			x >>= 7
 			pos++
 		}
-		b.storage.data[pos] = byte(x)
+		b.data[pos] = byte(x)
 		pos++
 	}
 
-	b.deferredOp.Key = b.storage.data[pos : pos+keyLen]
+	b.deferredOp.Key = b.data[pos : pos+keyLen]
 	b.deferredOp.Value = nil
 
 	// Shrink data since varint may be shorter than the upper bound.
-	b.storage.data = b.storage.data[:pos+keyLen]
+	b.data = b.data[:pos+keyLen]
 }
 
 // Set adds an action to the batch that sets the key to map to the value.
@@ -620,7 +588,7 @@ func (b *Batch) DeleteRangeDeferred(startLen, endLen int) *DeferredBatchOp {
 		b.tombstones = nil
 		// Range deletions are rare, so we lazily allocate the index for them.
 		if b.rangeDelIndex == nil {
-			b.rangeDelIndex = batchskl.NewSkiplist(&b.storage, 0)
+			b.rangeDelIndex = batchskl.NewSkiplist(&b.data, b.cmp, b.abbreviatedKey)
 		}
 		b.deferredOp.index = b.rangeDelIndex
 	}
@@ -645,18 +613,18 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 
 // Empty returns true if the batch is empty, and false otherwise.
 func (b *Batch) Empty() bool {
-	return len(b.storage.data) <= batchHeaderLen
+	return len(b.data) <= batchHeaderLen
 }
 
 // Repr returns the underlying batch representation. It is not safe to modify
 // the contents. Reset() will not change the contents of the returned value,
 // though any other mutation operation may do so.
 func (b *Batch) Repr() []byte {
-	if len(b.storage.data) == 0 {
+	if len(b.data) == 0 {
 		b.init(batchHeaderLen)
 	}
 	binary.LittleEndian.PutUint32(b.countData(), b.Count())
-	return b.storage.data
+	return b.data
 }
 
 // SetRepr sets the underlying batch representation. The batch takes ownership
@@ -666,7 +634,7 @@ func (b *Batch) SetRepr(data []byte) error {
 	if len(data) < batchHeaderLen {
 		return fmt.Errorf("invalid batch")
 	}
-	b.storage.data = data
+	b.data = data
 	b.count = uint64(binary.LittleEndian.Uint32(b.countData()))
 	if b.db != nil {
 		// Only track memTableSize for batches that will be committed to the DB.
@@ -693,7 +661,7 @@ func (b *Batch) newInternalIter(o *IterOptions) internalIterator {
 		return newErrorIter(ErrNotIndexed)
 	}
 	return &batchIter{
-		cmp:   b.storage.cmp,
+		cmp:   b.cmp,
 		batch: b,
 		iter:  b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
 	}
@@ -712,13 +680,13 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 	// tombstone is added to the batch.
 	if b.tombstones == nil {
 		frag := &rangedel.Fragmenter{
-			Cmp: b.storage.cmp,
+			Cmp: b.cmp,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}
 		it := &batchIter{
-			cmp:   b.storage.cmp,
+			cmp:   b.cmp,
 			batch: b,
 			iter:  b.rangeDelIndex.NewIter(nil, nil),
 		}
@@ -732,7 +700,7 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 		frag.Finish()
 	}
 
-	return rangedel.NewIter(b.storage.cmp, b.tombstones)
+	return rangedel.NewIter(b.cmp, b.tombstones)
 }
 
 // Commit applies the batch to its parent writer.
@@ -757,10 +725,10 @@ func (b *Batch) init(cap int) {
 	for n < cap {
 		n *= 2
 	}
-	b.storage.data = rawalloc.New(batchHeaderLen, n)
+	b.data = rawalloc.New(batchHeaderLen, n)
 	b.setCount(0)
 	b.setSeqNum(0)
-	b.storage.data = b.storage.data[:batchHeaderLen]
+	b.data = b.data[:batchHeaderLen]
 }
 
 // Reset clears the underlying byte slice and effectively empties the batch for
@@ -769,16 +737,16 @@ func (b *Batch) init(cap int) {
 // Commits and Closes take care of releasing resources when appropriate.
 func (b *Batch) Reset() {
 	b.count = 0
-	if b.storage.data != nil {
-		if cap(b.storage.data) > batchMaxRetainedSize {
+	if b.data != nil {
+		if cap(b.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
 			// retention size, don't re-use it. Let it be GC-ed instead.
 			// This prevents the memory from an unusually large batch from
 			// being held on to indefinitely.
-			b.storage.data = nil
+			b.data = nil
 		} else {
 			// Otherwise, reset the buffer for re-use.
-			b.storage.data = b.storage.data[:batchHeaderLen]
+			b.data = b.data[:batchHeaderLen]
 			b.setSeqNum(0)
 		}
 	}
@@ -787,27 +755,27 @@ func (b *Batch) Reset() {
 // seqNumData returns the 8 byte little-endian sequence number. Zero means that
 // the batch has not yet been applied.
 func (b *Batch) seqNumData() []byte {
-	return b.storage.data[:8]
+	return b.data[:8]
 }
 
 // countData returns the 4 byte little-endian count data. "\xff\xff\xff\xff"
 // means that the batch is invalid.
 func (b *Batch) countData() []byte {
-	return b.storage.data[8:12]
+	return b.data[8:12]
 }
 
 func (b *Batch) grow(n int) {
-	newSize := len(b.storage.data) + n
-	if newSize > cap(b.storage.data) {
-		newCap := 2 * cap(b.storage.data)
+	newSize := len(b.data) + n
+	if newSize > cap(b.data) {
+		newCap := 2 * cap(b.data)
 		for newCap < newSize {
 			newCap *= 2
 		}
-		newData := rawalloc.New(len(b.storage.data), newCap)
-		copy(newData, b.storage.data)
-		b.storage.data = newData
+		newData := rawalloc.New(len(b.data), newCap)
+		copy(newData, b.data)
+		b.data = newData
 	}
-	b.storage.data = b.storage.data[:newSize]
+	b.data = b.data[:newSize]
 }
 
 func (b *Batch) setSeqNum(seqNum uint64) {
@@ -837,39 +805,33 @@ func (b *Batch) Count() uint32 {
 // Reader returns a BatchReader for the current batch contents. If the batch is
 // mutated, the new entries will not be visible to the reader.
 func (b *Batch) Reader() BatchReader {
-	return b.storage.data[batchHeaderLen:]
-}
-
-func batchDecode(data []byte, offset uint32) (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
-	p := data[offset:]
-	if len(p) == 0 {
-		return 0, nil, nil, false
-	}
-	kind, p = InternalKeyKind(p[0]), p[1:]
-	if kind > InternalKeyKindMax {
-		return 0, nil, nil, false
-	}
-	p, ukey, ok = batchDecodeStr(p)
-	if !ok {
-		return 0, nil, nil, false
-	}
-	switch kind {
-	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
-		_, value, ok = batchDecodeStr(p)
-		if !ok {
-			return 0, nil, nil, false
-		}
-	}
-	return kind, ukey, value, true
+	return b.data[batchHeaderLen:]
 }
 
 func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
-	v, n := binary.Uvarint(data)
-	if n <= 0 {
-		return nil, nil, false
+	var v uint32
+	var n int
+	src := (*[5]uint8)(unsafe.Pointer(&data[0]))
+	if a := (*src)[0]; a < 128 {
+		v = uint32(a)
+		n = 1
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		v = uint32(b)<<7 | uint32(a)
+		n = 2
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		v = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		n = 3
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		v = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		n = 4
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		v = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		n = 5
 	}
+
 	data = data[n:]
-	if v > uint64(len(data)) {
+	if v > uint32(len(data)) {
 		return nil, nil, false
 	}
 	return data[v:], data[:v], true
@@ -887,40 +849,25 @@ func MakeBatchReader(repr []byte) BatchReader {
 // Next returns the next entry in this batch. The final return value is false
 // if the batch is corrupt. The end of batch is reached when len(r)==0.
 func (r *BatchReader) Next() (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
-	p := *r
-	if len(p) == 0 {
+	if len(*r) == 0 {
 		return 0, nil, nil, false
 	}
-	kind, *r = InternalKeyKind(p[0]), p[1:]
+	kind = InternalKeyKind((*r)[0])
 	if kind > InternalKeyKindMax {
 		return 0, nil, nil, false
 	}
-	ukey, ok = r.nextStr()
+	*r, ukey, ok = batchDecodeStr((*r)[1:])
 	if !ok {
 		return 0, nil, nil, false
 	}
 	switch kind {
 	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
-		value, ok = r.nextStr()
+		*r, value, ok = batchDecodeStr(*r)
 		if !ok {
 			return 0, nil, nil, false
 		}
 	}
 	return kind, ukey, value, true
-}
-
-func (r *BatchReader) nextStr() (s []byte, ok bool) {
-	p := *r
-	u, numBytes := binary.Uvarint(p)
-	if numBytes <= 0 {
-		return nil, false
-	}
-	p = p[numBytes:]
-	if u > uint64(len(p)) {
-		return nil, false
-	}
-	s, *r = p[:u], p[u:]
-	return s, true
 }
 
 // Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
@@ -992,11 +939,23 @@ func (i *batchIter) Key() *InternalKey {
 }
 
 func (i *batchIter) Value() []byte {
-	_, _, value, ok := batchDecode(i.batch.storage.data, i.iter.KeyOffset())
-	if !ok {
+	offset, _, keyEnd := i.iter.KeyInfo()
+	data := i.batch.data
+	if len(data[offset:]) == 0 {
 		i.err = fmt.Errorf("corrupted batch")
+		return nil
 	}
-	return value
+
+	switch InternalKeyKind(data[offset]) {
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
+		_, value, ok := batchDecodeStr(data[keyEnd:])
+		if !ok {
+			return nil
+		}
+		return value
+	default:
+		return nil
+	}
 }
 
 func (i *batchIter) Valid() bool {
@@ -1066,7 +1025,7 @@ var _ flushable = (*flushableBatch)(nil)
 // of the batch data.
 func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
-		data:      batch.storage.data,
+		data:      batch.data,
 		cmp:       comparer.Compare,
 		offsets:   make([]flushableBatchEntry, 0, batch.Count()),
 		flushedCh: make(chan struct{}),

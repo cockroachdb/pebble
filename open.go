@@ -347,7 +347,7 @@ func (d *DB) replayWAL(
 			flushMem()
 			// Make a copy of the data slice since it is currently owned by buf and will
 			// be reused in the next iteration.
-			b.storage.data = append([]byte(nil), b.storage.data...)
+			b.data = append([]byte(nil), b.data...)
 			b.flushable = newFlushableBatch(&b, d.opts.Comparer)
 			if d.opts.ReadOnly {
 				d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
