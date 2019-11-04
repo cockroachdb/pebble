@@ -809,12 +809,29 @@ func (b *Batch) Reader() BatchReader {
 }
 
 func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
-	v, n := binary.Uvarint(data)
-	if n <= 0 {
-		return nil, nil, false
+	var v uint32
+	var n int
+	src := (*[5]uint8)(unsafe.Pointer(&data[0]))
+	if a := (*src)[0]; a < 128 {
+		v = uint32(a)
+		n = 1
+	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+		v = uint32(b)<<7 | uint32(a)
+		n = 2
+	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+		v = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		n = 3
+	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+		v = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		n = 4
+	} else {
+		d, e := d&0x7f, (*src)[4]
+		v = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		n = 5
 	}
+
 	data = data[n:]
-	if v > uint64(len(data)) {
+	if v > uint32(len(data)) {
 		return nil, nil, false
 	}
 	return data[v:], data[:v], true
@@ -832,40 +849,25 @@ func MakeBatchReader(repr []byte) BatchReader {
 // Next returns the next entry in this batch. The final return value is false
 // if the batch is corrupt. The end of batch is reached when len(r)==0.
 func (r *BatchReader) Next() (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
-	p := *r
-	if len(p) == 0 {
+	if len(*r) == 0 {
 		return 0, nil, nil, false
 	}
-	kind, *r = InternalKeyKind(p[0]), p[1:]
+	kind = InternalKeyKind((*r)[0])
 	if kind > InternalKeyKindMax {
 		return 0, nil, nil, false
 	}
-	ukey, ok = r.nextStr()
+	*r, ukey, ok = batchDecodeStr((*r)[1:])
 	if !ok {
 		return 0, nil, nil, false
 	}
 	switch kind {
 	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
-		value, ok = r.nextStr()
+		*r, value, ok = batchDecodeStr(*r)
 		if !ok {
 			return 0, nil, nil, false
 		}
 	}
 	return kind, ukey, value, true
-}
-
-func (r *BatchReader) nextStr() (s []byte, ok bool) {
-	p := *r
-	u, numBytes := binary.Uvarint(p)
-	if numBytes <= 0 {
-		return nil, false
-	}
-	p = p[numBytes:]
-	if u > uint64(len(p)) {
-		return nil, false
-	}
-	s, *r = p[:u], p[u:]
-	return s, true
 }
 
 // Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
