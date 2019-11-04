@@ -457,6 +457,21 @@ func BenchmarkReadWrite(b *testing.B) {
 	}
 }
 
+func BenchmarkOrderedWrite(b *testing.B) {
+	var buf [8]byte
+	d := &testStorage{
+		data: make([]byte, 0, b.N*10),
+	}
+	l := newTestSkiplist(d)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		binary.BigEndian.PutUint64(buf[:], uint64(i))
+		offset := d.addBytes(buf[:])
+		_ = l.Add(offset)
+	}
+}
+
 func BenchmarkIterNext(b *testing.B) {
 	var buf [8]byte
 	d := &testStorage{

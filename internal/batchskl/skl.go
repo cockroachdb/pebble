@@ -205,8 +205,24 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	key := data[:v]
 	abbreviatedKey := s.abbreviatedKey(key)
 
+	// spl holds the list of next and previous links for each level in the
+	// skiplist indicating where the new node will be inserted.
 	var spl [maxHeight]splice
-	s.findSplice(key, abbreviatedKey, &spl)
+
+	// Fast-path for in-order insertion of keys: compare the new key against the
+	// last key.
+	prev := s.getPrev(s.tail, 0)
+	if prevNode := s.node(prev); prev == s.head ||
+		abbreviatedKey > prevNode.abbreviatedKey ||
+		(abbreviatedKey == prevNode.abbreviatedKey &&
+			s.cmp(key, (*s.storage)[prevNode.keyStart:prevNode.keyEnd]) > 0) {
+		for level := uint32(0); level < s.height; level++ {
+			spl[level].prev = s.getPrev(s.tail, level)
+			spl[level].next = s.tail
+		}
+	} else {
+		s.findSplice(key, abbreviatedKey, &spl)
+	}
 
 	height := s.randomHeight()
 	// Increase s.height as necessary.
@@ -315,7 +331,7 @@ func (s *Skiplist) findSplice(
 			}
 			if abbreviatedKey == nextAbbreviatedKey {
 				if s.cmp(key, (*s.storage)[nextNode.keyStart:nextNode.keyEnd]) <= 0 {
-					// We are done for this level, since prev.key < key < next.key.
+					// We are done for this level, since prev.key < key <= next.key.
 					break
 				}
 			}
