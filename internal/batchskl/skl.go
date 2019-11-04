@@ -180,9 +180,11 @@ func (s *Skiplist) Init(
 	s.tail = s.newNode(maxHeight, 0, 0, 0, 0)
 
 	// Link all head/tail levels together.
+	headNode := s.node(s.head)
+	tailNode := s.node(s.tail)
 	for i := uint32(0); i < maxHeight; i++ {
-		s.setNext(s.head, i, s.tail)
-		s.setPrev(s.tail, i, s.head)
+		headNode.links[i].next = s.tail
+		tailNode.links[i].prev = s.head
 	}
 }
 
@@ -207,7 +209,6 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	s.findSplice(key, abbreviatedKey, &spl)
 
 	height := s.randomHeight()
-	nd := s.newNode(height, keyOffset, keyStart, keyEnd, abbreviatedKey)
 	// Increase s.height as necessary.
 	for ; s.height < height; s.height++ {
 		spl[s.height].next = s.tail
@@ -217,13 +218,15 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	// We always insert from the base level and up. After you add a node in base
 	// level, we cannot create a node in the level above because it would have
 	// discovered the node in the base level.
-	for i := uint32(0); i < height; i++ {
-		next := spl[i].next
-		prev := spl[i].prev
-		s.setNext(nd, i, next)
-		s.setPrev(nd, i, prev)
-		s.setNext(prev, i, nd)
-		s.setPrev(next, i, nd)
+	nd := s.newNode(height, keyOffset, keyStart, keyEnd, abbreviatedKey)
+	newNode := s.node(nd)
+	for level := uint32(0); level < height; level++ {
+		next := spl[level].next
+		prev := spl[level].prev
+		newNode.links[level].next = next
+		newNode.links[level].prev = prev
+		s.node(next).links[level].prev = nd
+		s.node(prev).links[level].next = nd
 	}
 
 	return nil
@@ -328,8 +331,6 @@ func (s *Skiplist) findSplice(
 			break
 		}
 	}
-
-	return
 }
 
 func (s *Skiplist) findSpliceForLevel(
@@ -374,14 +375,6 @@ func (s *Skiplist) getNext(nd, h uint32) uint32 {
 
 func (s *Skiplist) getPrev(nd, h uint32) uint32 {
 	return s.node(nd).links[h].prev
-}
-
-func (s *Skiplist) setNext(nd, h, next uint32) {
-	s.node(nd).links[h].next = next
-}
-
-func (s *Skiplist) setPrev(nd, h, prev uint32) {
-	s.node(nd).links[h].prev = prev
 }
 
 func (s *Skiplist) debug() string {
