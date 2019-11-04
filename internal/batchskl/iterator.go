@@ -157,9 +157,11 @@ func (it *Iterator) Key() *base.InternalKey {
 	return &it.key
 }
 
-// KeyOffset returns the key offset at the current position.
-func (it *Iterator) KeyOffset() uint32 {
-	return it.list.node(it.nd).offset
+// KeyInfo returns the offset of the start of the record, the start of the key,
+// and the end of the key.
+func (it *Iterator) KeyInfo() (offset, keyStart, keyEnd uint32) {
+	n := it.list.node(it.nd)
+	return n.offset, n.keyStart, n.keyEnd
 }
 
 // Head true iff the iterator is positioned at the sentinel head node.

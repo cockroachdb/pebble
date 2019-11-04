@@ -808,29 +808,6 @@ func (b *Batch) Reader() BatchReader {
 	return b.data[batchHeaderLen:]
 }
 
-func batchDecode(data []byte, offset uint32) (kind InternalKeyKind, ukey []byte, value []byte, ok bool) {
-	p := data[offset:]
-	if len(p) == 0 {
-		return 0, nil, nil, false
-	}
-	kind, p = InternalKeyKind(p[0]), p[1:]
-	if kind > InternalKeyKindMax {
-		return 0, nil, nil, false
-	}
-	p, ukey, ok = batchDecodeStr(p)
-	if !ok {
-		return 0, nil, nil, false
-	}
-	switch kind {
-	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
-		_, value, ok = batchDecodeStr(p)
-		if !ok {
-			return 0, nil, nil, false
-		}
-	}
-	return kind, ukey, value, true
-}
-
 func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 	v, n := binary.Uvarint(data)
 	if n <= 0 {
@@ -960,11 +937,23 @@ func (i *batchIter) Key() *InternalKey {
 }
 
 func (i *batchIter) Value() []byte {
-	_, _, value, ok := batchDecode(i.batch.data, i.iter.KeyOffset())
-	if !ok {
+	offset, _, keyEnd := i.iter.KeyInfo()
+	data := i.batch.data
+	if len(data[offset:]) == 0 {
 		i.err = fmt.Errorf("corrupted batch")
+		return nil
 	}
-	return value
+
+	switch InternalKeyKind(data[offset]) {
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
+		_, value, ok := batchDecodeStr(data[keyEnd:])
+		if !ok {
+			return nil
+		}
+		return value
+	default:
+		return nil
+	}
 }
 
 func (i *batchIter) Valid() bool {
