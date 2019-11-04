@@ -106,30 +106,37 @@ func makeKey(s string) []byte {
 }
 
 type testStorage struct {
-	keys [][]byte
+	data []byte
 }
 
 func (d *testStorage) add(key string) uint32 {
-	offset := uint32(len(d.keys))
-	d.keys = append(d.keys, []byte(key))
+	offset := uint32(len(d.data))
+	d.data = append(d.data, base.InternalKeyKindSet)
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], uint64(len(key)))
+	d.data = append(d.data, buf[:n]...)
+	d.data = append(d.data, key...)
 	return offset
 }
 
-func (d *testStorage) Get(offset uint32) base.InternalKey {
-	return base.InternalKey{UserKey: d.keys[offset]}
+func (d *testStorage) addBytes(key []byte) uint32 {
+	offset := uint32(len(d.data))
+	d.data = append(d.data, base.InternalKeyKindSet)
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], uint64(len(key)))
+	d.data = append(d.data, buf[:n]...)
+	d.data = append(d.data, key...)
+	return offset
 }
 
-func (d *testStorage) AbbreviatedKey(key []byte) uint64 {
-	return base.DefaultComparer.AbbreviatedKey(key)
-}
-
-func (d *testStorage) Compare(a []byte, b uint32) int {
-	return bytes.Compare(a, d.keys[b])
+func newTestSkiplist(storage *testStorage) *Skiplist {
+	return NewSkiplist(&storage.data, base.DefaultComparer.Compare,
+		base.DefaultComparer.AbbreviatedKey)
 }
 
 func TestEmpty(t *testing.T) {
 	key := makeKey("aaa")
-	l := NewSkiplist(&testStorage{}, 0)
+	l := newTestSkiplist(&testStorage{})
 	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
@@ -147,7 +154,7 @@ func TestEmpty(t *testing.T) {
 // TestBasic tests seeks and adds.
 func TestBasic(t *testing.T) {
 	d := &testStorage{}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 	it := iterAdapter{l.NewIter(nil, nil)}
 
 	// Try adding values.
@@ -173,7 +180,7 @@ func TestBasic(t *testing.T) {
 
 func TestSkiplistAdd(t *testing.T) {
 	d := &testStorage{}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 	it := iterAdapter{l.NewIter(nil, nil)}
 
 	// Add empty key.
@@ -203,16 +210,16 @@ func TestSkiplistAdd(t *testing.T) {
 	require.EqualValues(t, "00003", it.Key().UserKey)
 
 	// Try to add element that already exists.
-	require.Equal(t, ErrExists, l.Add(d.add("00002")))
-	require.Equal(t, 5, length(l))
-	require.Equal(t, 5, lengthRev(l))
+	require.Nil(t, l.Add(d.add("00002")))
+	require.Equal(t, 6, length(l))
+	require.Equal(t, 6, lengthRev(l))
 }
 
 // TestIteratorNext tests a basic iteration over all nodes from the beginning.
 func TestIteratorNext(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
@@ -237,7 +244,7 @@ func TestIteratorNext(t *testing.T) {
 func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
@@ -261,7 +268,7 @@ func TestIteratorPrev(t *testing.T) {
 func TestIteratorSeekGE(t *testing.T) {
 	const n = 1000
 	d := &testStorage{}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
@@ -303,7 +310,7 @@ func TestIteratorSeekGE(t *testing.T) {
 func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	d := &testStorage{}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 	it := iterAdapter{l.NewIter(nil, nil)}
 
 	require.False(t, it.Valid())
@@ -348,7 +355,7 @@ func TestIteratorSeekLT(t *testing.T) {
 // TODO(peter): test First and Last.
 func TestIteratorBounds(t *testing.T) {
 	d := &testStorage{}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 	for i := 1; i < 10; i++ {
 		err := l.Add(d.add(fmt.Sprintf("%05d", i)))
 		if err != nil {
@@ -427,22 +434,21 @@ func BenchmarkReadWrite(b *testing.B) {
 	for i := 0; i <= 10; i++ {
 		readFrac := float32(i) / 10.0
 		b.Run(fmt.Sprintf("frac_%d", i*10), func(b *testing.B) {
-			buf := make([]byte, b.N*8)
+			var buf [8]byte
 			d := &testStorage{
-				keys: make([][]byte, 0, b.N),
+				data: make([]byte, 0, b.N*10),
 			}
-			l := NewSkiplist(d, 0)
+			l := newTestSkiplist(d)
 			it := l.NewIter(nil, nil)
 			rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				key := randomKey(rng, buf[i*8:(i+1)*8])
+				key := randomKey(rng, buf[:])
 				if rng.Float32() < readFrac {
 					_ = it.SeekGE(key)
 				} else {
-					offset := uint32(len(d.keys))
-					d.keys = append(d.keys, key)
+					offset := d.addBytes(buf[:])
 					_ = l.Add(offset)
 				}
 			}
@@ -452,17 +458,16 @@ func BenchmarkReadWrite(b *testing.B) {
 }
 
 func BenchmarkIterNext(b *testing.B) {
-	buf := make([]byte, 64<<10)
+	var buf [8]byte
 	d := &testStorage{
-		keys: make([][]byte, 0, (64<<10)/8),
+		data: make([]byte, 0, 64<<10),
 	}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-	for i := 0; i < len(buf); i += 8 {
-		key := randomKey(rng, buf[i:i+8])
-		offset := uint32(len(d.keys))
-		d.keys = append(d.keys, key)
+	for len(d.data)+20 < cap(d.data) {
+		key := randomKey(rng, buf[:])
+		offset := d.addBytes(key)
 		_ = l.Add(offset)
 	}
 
@@ -477,17 +482,16 @@ func BenchmarkIterNext(b *testing.B) {
 }
 
 func BenchmarkIterPrev(b *testing.B) {
-	buf := make([]byte, 64<<10)
+	var buf [8]byte
 	d := &testStorage{
-		keys: make([][]byte, 0, (64<<10)/8),
+		data: make([]byte, 0, 64<<10),
 	}
-	l := NewSkiplist(d, 0)
+	l := newTestSkiplist(d)
 
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-	for i := 0; i < len(buf); i += 8 {
-		key := randomKey(rng, buf[i:i+8])
-		offset := uint32(len(d.keys))
-		d.keys = append(d.keys, key)
+	for len(d.data)+20 < cap(d.data) {
+		key := randomKey(rng, buf[:])
+		offset := d.addBytes(key)
 		_ = l.Add(offset)
 	}
 

@@ -53,16 +53,16 @@ func (it *Iterator) Close() error {
 // is up to the caller to ensure that key is greater than or equal to the lower
 // bound.
 func (it *Iterator) SeekGE(key []byte) *base.InternalKey {
-	_, it.nd, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
+	_, it.nd = it.seekForBaseSplice(key, it.list.abbreviatedKey(key))
 	if it.nd == it.list.tail {
 		return nil
 	}
-	keyOffset := it.list.getKey(it.nd)
-	if it.upper != nil && it.list.storage.Compare(it.upper, keyOffset) <= 0 {
+	nodeKey := it.list.getKey(it.nd)
+	if it.upper != nil && it.list.cmp(it.upper, nodeKey.UserKey) <= 0 {
 		it.nd = it.list.tail
 		return nil
 	}
-	it.key = it.list.storage.Get(keyOffset)
+	it.key = nodeKey
 	return &it.key
 }
 
@@ -71,16 +71,16 @@ func (it *Iterator) SeekGE(key []byte) *base.InternalKey {
 // otherwise. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
 func (it *Iterator) SeekLT(key []byte) *base.InternalKey {
-	it.nd, _, _ = it.seekForBaseSplice(key, it.list.storage.AbbreviatedKey(key))
+	it.nd, _ = it.seekForBaseSplice(key, it.list.abbreviatedKey(key))
 	if it.nd == it.list.head {
 		return nil
 	}
-	keyOffset := it.list.getKey(it.nd)
-	if it.lower != nil && it.list.storage.Compare(it.lower, it.list.getKey(it.nd)) > 0 {
+	nodeKey := it.list.getKey(it.nd)
+	if it.lower != nil && it.list.cmp(it.lower, nodeKey.UserKey) > 0 {
 		it.nd = it.list.head
 		return nil
 	}
-	it.key = it.list.storage.Get(keyOffset)
+	it.key = nodeKey
 	return &it.key
 }
 
@@ -93,12 +93,12 @@ func (it *Iterator) First() *base.InternalKey {
 	if it.nd == it.list.tail {
 		return nil
 	}
-	keyOffset := it.list.getKey(it.nd)
-	if it.upper != nil && it.list.storage.Compare(it.upper, keyOffset) <= 0 {
+	nodeKey := it.list.getKey(it.nd)
+	if it.upper != nil && it.list.cmp(it.upper, nodeKey.UserKey) <= 0 {
 		it.nd = it.list.tail
 		return nil
 	}
-	it.key = it.list.storage.Get(keyOffset)
+	it.key = nodeKey
 	return &it.key
 }
 
@@ -111,12 +111,12 @@ func (it *Iterator) Last() *base.InternalKey {
 	if it.nd == it.list.head {
 		return nil
 	}
-	keyOffset := it.list.getKey(it.nd)
-	if it.lower != nil && it.list.storage.Compare(it.lower, keyOffset) > 0 {
+	nodeKey := it.list.getKey(it.nd)
+	if it.lower != nil && it.list.cmp(it.lower, nodeKey.UserKey) > 0 {
 		it.nd = it.list.head
 		return nil
 	}
-	it.key = it.list.storage.Get(keyOffset)
+	it.key = nodeKey
 	return &it.key
 }
 
@@ -127,12 +127,12 @@ func (it *Iterator) Next() *base.InternalKey {
 	if it.nd == it.list.tail {
 		return nil
 	}
-	keyOffset := it.list.getKey(it.nd)
-	if it.upper != nil && it.list.storage.Compare(it.upper, keyOffset) <= 0 {
+	nodeKey := it.list.getKey(it.nd)
+	if it.upper != nil && it.list.cmp(it.upper, nodeKey.UserKey) <= 0 {
 		it.nd = it.list.tail
 		return nil
 	}
-	it.key = it.list.storage.Get(keyOffset)
+	it.key = nodeKey
 	return &it.key
 }
 
@@ -143,12 +143,12 @@ func (it *Iterator) Prev() *base.InternalKey {
 	if it.nd == it.list.head {
 		return nil
 	}
-	keyOffset := it.list.getKey(it.nd)
-	if it.lower != nil && it.list.storage.Compare(it.lower, keyOffset) > 0 {
+	nodeKey := it.list.getKey(it.nd)
+	if it.lower != nil && it.list.cmp(it.lower, nodeKey.UserKey) > 0 {
 		it.nd = it.list.head
 		return nil
 	}
-	it.key = it.list.storage.Get(keyOffset)
+	it.key = nodeKey
 	return &it.key
 }
 
@@ -159,7 +159,7 @@ func (it *Iterator) Key() *base.InternalKey {
 
 // KeyOffset returns the key offset at the current position.
 func (it *Iterator) KeyOffset() uint32 {
-	return it.list.getKey(it.nd)
+	return it.list.node(it.nd).offset
 }
 
 // Head true iff the iterator is positioned at the sentinel head node.
@@ -187,18 +187,10 @@ func (it *Iterator) SetBounds(lower, upper []byte) {
 
 func (it *Iterator) seekForBaseSplice(
 	key []byte, abbreviatedKey uint64,
-) (prev, next uint32, found bool) {
+) (prev, next uint32) {
 	prev = it.list.head
 	for level := it.list.height - 1; ; level-- {
-		prev, next, found = it.list.findSpliceForLevel(key, abbreviatedKey, level, prev)
-		if found {
-			if level != 0 {
-				// next is pointing at the target node, but we need to find previous on
-				// the bottom level.
-				prev = it.list.getPrev(next, 0)
-			}
-			break
-		}
+		prev, next = it.list.findSpliceForLevel(key, abbreviatedKey, level, prev)
 		if level == 0 {
 			break
 		}
