@@ -204,9 +204,7 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	abbreviatedKey := s.abbreviatedKey(key)
 
 	var spl [maxHeight]splice
-	if s.findSplice(key, abbreviatedKey, &spl) {
-		return ErrExists
-	}
+	s.findSplice(key, abbreviatedKey, &spl)
 
 	height := s.randomHeight()
 	nd := s.newNode(height, keyOffset, keyStart, keyEnd, abbreviatedKey)
@@ -293,13 +291,39 @@ func (s *Skiplist) randomHeight() uint32 {
 
 func (s *Skiplist) findSplice(
 	key []byte, abbreviatedKey uint64, spl *[maxHeight]splice,
-) (found bool) {
-	var prev, next uint32
-	prev = s.head
+) {
+	prev := s.head
 
 	for level := s.height - 1; ; level-- {
-		prev, next = s.findSpliceForLevel(key, abbreviatedKey, level, prev)
-		spl[level].init(prev, next)
+		// The code in this loop is the same as findSpliceForLevel(). For some
+		// reason, calling findSpliceForLevel() here is much much slower than the
+		// inlined code below. The excess time is also caught up in the final
+		// return statement which makes little sense. Revisit when in go1.14 or
+		// later if inlining improves.
+
+		next := s.getNext(prev, level)
+		for next != s.tail {
+			// Assume prev.key < key.
+			nextNode := s.node(next)
+			nextAbbreviatedKey := nextNode.abbreviatedKey
+			if abbreviatedKey < nextAbbreviatedKey {
+				// We are done for this level, since prev.key < key < next.key.
+				break
+			}
+			if abbreviatedKey == nextAbbreviatedKey {
+				if s.cmp(key, (*s.storage)[nextNode.keyStart:nextNode.keyEnd]) <= 0 {
+					// We are done for this level, since prev.key < key < next.key.
+					break
+				}
+			}
+
+			// Keep moving right on this level.
+			prev = next
+			next = nextNode.links[level].next
+		}
+
+		spl[level].prev = prev
+		spl[level].next = next
 		if level == 0 {
 			break
 		}
