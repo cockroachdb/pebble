@@ -146,8 +146,8 @@ type compactionIter struct {
 	// numbers define the snapshot stripes (see the Snapshots description
 	// above). The sequence numbers are in ascending order.
 	snapshots []uint64
-	// The range deletion tombstone fragmenter.
-	rangeDelFrag rangedel.Fragmenter
+	// Reference to the range deletion tombstone fragmenter owned by `compaction`.
+	rangeDelFrag *rangedel.Fragmenter
 	// The fragmented tombstones.
 	tombstones []rangedel.Tombstone
 	// Byte allocator for the tombstone keys.
@@ -162,6 +162,7 @@ func newCompactionIter(
 	merge Merge,
 	iter internalIterator,
 	snapshots []uint64,
+	rangeDelFrag *rangedel.Fragmenter,
 	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
@@ -171,6 +172,7 @@ func newCompactionIter(
 		merge:               merge,
 		iter:                iter,
 		snapshots:           snapshots,
+		rangeDelFrag:        rangeDelFrag,
 		allowZeroSeqNum:     allowZeroSeqNum,
 		elideTombstone:      elideTombstone,
 		elideRangeTombstone: elideRangeTombstone,
@@ -205,9 +207,17 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	for i.iterKey != nil {
 		i.key = *i.iterKey
 		if i.key.Kind() == InternalKeyKindRangeDelete {
-			// Range tombstones are always added to the fragmenter. They are
-			// processed into stripes after fragmentation.
-			i.rangeDelFrag.Add(i.cloneKey(i.key), i.iterValue)
+			// Return the range tombstone so the compaction can use it for
+			// file truncation and add it to the fragmenter. Subtly, we do not
+			// set `skip` to true here. That's because the next key might be
+			// a point key at the same seqnum, which should be considered newer
+			// than, and thus not covered by, the current range tombstone. Instead,
+			// we use `nextInStripe()` to position at the next key.
+			i.saveKey()
+			i.value = i.iterValue
+			i.nextInStripe()
+			i.valid = true
+			return &i.key, i.value
 		}
 		if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
 			i.saveKey()
@@ -268,10 +278,6 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			}
 			return nil, nil
 
-		case InternalKeyKindRangeDelete:
-			i.nextInStripe()
-			continue
-
 		case InternalKeyKindInvalid:
 			// NB: Invalid keys occur when there is some error parsing the key. Pass
 			// them through unmodified.
@@ -328,15 +334,11 @@ func (i *compactionIter) nextInStripe() bool {
 	}
 	switch key.Kind() {
 	case InternalKeyKindRangeDelete:
-		if key.Kind() == InternalKeyKindRangeDelete {
-			// Range tombstones are always added to the fragmenter. They are
-			// processed into stripes after fragmentation. Note that we only add
-			// range tombstones to the fragmenter when they have the same start key
-			// as i.key. Adding tombstones earlier can violate a rangedel.Fragmenter
-			// invariant and lead to too many tombstones being added to an sstable.
-			i.rangeDelFrag.Add(i.cloneKey(*key), i.iterValue)
-		}
-		return true
+		// Range tombstones need to be exposed by the compactionIter to the upper level
+		// `compaction` object, so return them as if they are not in the same snapshot
+		// stripe, even though they may be.
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
+		return false
 	case InternalKeyKindInvalid:
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
@@ -370,12 +372,6 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) {
 		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe.
-			i.skip = true
-			return
-
-		case InternalKeyKindRangeDelete:
-			// We've hit a range deletion tombstone. Return everything up to this
-			// point and then skip entries until the next snapshot stripe.
 			i.skip = true
 			return
 
@@ -443,10 +439,6 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 		case InternalKeyKindSingleDelete:
 			continue
-
-		case InternalKeyKindRangeDelete:
-			i.valid = false
-			return false
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())

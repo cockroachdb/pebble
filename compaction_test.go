@@ -789,7 +789,7 @@ func TestManualCompaction(t *testing.T) {
 			}
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().String()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
 
@@ -861,10 +861,18 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 				for i, key := range strings.Fields(d.Input) {
 					if i == 0 {
 						smallest = key
+						ikey := base.MakeInternalKey([]byte(smallest), 0, 0)
+						for c.nextLimitBefore(&ikey) != nil {
+							// Consume any limits before the very first key
+						}
 					}
-					if c.shouldStopBefore(base.MakeInternalKey([]byte(key), 0, 0)) {
+					ikey := base.MakeInternalKey([]byte(key), 0, 0)
+					if c.nextLimitBefore(&ikey) != nil {
 						fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
 						smallest = key
+					}
+					for c.nextLimitBefore(&ikey) != nil {
+						// Consume any additional limits before ikey
 					}
 					largest = key
 				}
