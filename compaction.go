@@ -97,7 +97,12 @@ type compaction struct {
 	// compacted. Used to determine output table boundaries.
 	grandparents    []fileMetadata
 	overlappedBytes uint64 // bytes of overlap with grandparent tables
-	seenKey         bool   // some output key has been seen
+
+	// TODO(ajkr): seenKey should be true if a range tombstone has been passed that
+	// is before all point keys. Currently it is false which means range tombstones
+	// at the compaction start are not accounted for when limiting an output file's
+	// overlap with the grandparent level.
+	seenKey bool // some output key has been seen
 
 	metrics map[int]*LevelMetrics
 }
@@ -374,8 +379,8 @@ func (c *compaction) trivialMove() bool {
 	return false
 }
 
-// shouldStopBefore returns true if the output to the current table should be
-// finished and a new table started before adding the specified key. This is
+// nextLimitBefore returns the next table limit before the provided key, or
+// nil if an output table does not need to be cut before that key. This is
 // done in order to prevent a table at level N from overlapping too much data
 // at level N+1. We want to avoid such large overlaps because they translate
 // into large compactions. The current heuristic stops output of a table if the
@@ -386,26 +391,28 @@ func (c *compaction) trivialMove() bool {
 // 2 sstables that need to be compacted together as an "atomic compaction
 // unit". This is unfortunate as it removes the benefit of stopping output to
 // an sstable in order to prevent a large compaction with the next level. Seems
-// better to adjust shouldStopBefore to not stop output in the middle of a
+// better to adjust nextLimitBefore to not stop output in the middle of a
 // user-key. Perhaps this isn't a problem if the compaction picking heuristics
 // always pick the right (older) sibling for compaction first.
-func (c *compaction) shouldStopBefore(key InternalKey) bool {
-	for len(c.grandparents) > 0 {
+func (c *compaction) nextLimitBefore(key *InternalKey) *InternalKey {
+	var limit *InternalKey
+	for len(c.grandparents) > 0 && c.overlappedBytes <= c.maxOverlapBytes {
 		g := &c.grandparents[0]
-		if base.InternalCompare(c.cmp, key, g.Largest) <= 0 {
+		if key != nil && base.InternalCompare(c.cmp, *key, g.Largest) <= 0 {
 			break
 		}
 		if c.seenKey {
 			c.overlappedBytes += g.Size
 		}
+		limit = &g.Largest
 		c.grandparents = c.grandparents[1:]
 	}
 	c.seenKey = true
-	if c.overlappedBytes > c.maxOverlapBytes {
+	if len(c.grandparents) > 0 && c.overlappedBytes > c.maxOverlapBytes {
 		c.overlappedBytes = 0
-		return true
+		return limit
 	}
-	return false
+	return nil
 }
 
 // allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
@@ -1226,9 +1233,15 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 			return nil, pendingOutputs, err
 		}
 
-		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
-		// shouldStopBefore decision.
-		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {
+		limit := c.nextLimitBefore(key)
+		for limit != nil {
+			if err := finishOutput(*limit); err != nil {
+				return nil, pendingOutputs, err
+			}
+			limit = c.nextLimitBefore(key)
+		}
+
+		if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
 			if err := finishOutput(*key); err != nil {
 				return nil, pendingOutputs, err
 			}
@@ -1245,6 +1258,13 @@ func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
 		}
 	}
 
+	limit := c.nextLimitBefore(nil)
+	for limit != nil {
+		if err := finishOutput(*limit); err != nil {
+			return nil, pendingOutputs, err
+		}
+		limit = c.nextLimitBefore(nil)
+	}
 	if err := finishOutput(InternalKey{}); err != nil {
 		return nil, pendingOutputs, err
 	}

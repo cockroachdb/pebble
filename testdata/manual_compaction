@@ -56,3 +56,157 @@ compact a-b
 1:
   6:[a-a]
   7:[b-b]
+
+# A range tombstone extends past the grandparent file boundary used to limit the
+# size of future compactions. Verify the range tombstone is split at that file
+# boundary.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.3:v
+L2
+  a.RANGEDEL.2:e
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+----
+1:
+  4:[a-a]
+2:
+  5:[a-e]
+3:
+  6:[a-b]
+  7:[c-d]
+
+compact a-e L1
+----
+2:
+  8:[a-b]
+  9:[b-e]
+3:
+  6:[a-b]
+  7:[c-d]
+
+# Same as above, except range tombstone covers multiple grandparent file boundaries.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.3:v
+L2
+  a.RANGEDEL.2:g
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+L3
+  e.SET.0:v
+  f.SET.1:v
+L3
+  f.SET.0:v
+  g.SET.0:v
+----
+1:
+  4:[a-a]
+2:
+  5:[a-g]
+3:
+  6:[a-b]
+  7:[c-d]
+  8:[e-f]
+  9:[f-g]
+
+compact a-e L1
+----
+2:
+  10:[a-b]
+  11:[b-d]
+  12:[d-f]
+  13:[f-g]
+3:
+  6:[a-b]
+  7:[c-d]
+  8:[e-f]
+  9:[f-g]
+
+# A range tombstone covers multiple grandparent file boundaries between point keys,
+# rather than after all point keys.
+#
+# TODO(ajkr): this test is broken for unknown reasons that appear to be a delete
+# range bug..
+#
+#define target-file-sizes=(1, 1, 1, 1)
+#L1
+#  a.SET.3:v
+#  h.SET.3:v
+#L2
+#  a.RANGEDEL.2:g
+#L3
+#  a.SET.0:v
+#  b.SET.0:v
+#L3
+#  c.SET.0:v
+#  d.SET.0:v
+#L3
+#  e.SET.0:v
+#  f.SET.1:v
+#----
+#1:
+#  4:[a-h]
+#2:
+#  5:[a-g]
+#3:
+#  6:[a-b]
+#  7:[c-d]
+#  8:[e-f]
+#
+#compact a-e L1
+#----
+#2:
+#  9:[a-b]
+#  10:[b-d]
+#  11:[d-h]
+#3:
+#  6:[a-b]
+#  7:[c-d]
+#  8:[e-f]
+
+# A range tombstone is the first and only item output by a compaction, and it
+# extends past the grandparent file boundary used to limit the size of future
+# compactions. Verify the range tombstone is split at that file boundary.
+#
+# TODO(ajkr): this test is broken due to `compaction.seenKey` unaware of range
+# tombstones.
+#
+#define target-file-sizes=(1, 1, 1, 1)
+#L1
+#  a.RANGEDEL.3:e
+#L2
+#  a.SET.2:v
+#L3
+#  a.SET.0:v
+#  b.SET.0:v
+#L3
+#  c.SET.0:v
+#  d.SET.0:v
+#----
+#1:
+#  4:[a-e]
+#2:
+#  5:[a-a]
+#3:
+#  6:[a-b]
+#  7:[c-d]
+#
+#compact a-e L1
+#----
+#2:
+#  8:[a-b]
+#  9:[b-e]
+#3:
+#  6:[a-b]
+#  7:[c-d]
