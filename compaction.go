@@ -93,11 +93,15 @@ type compaction struct {
 	smallest InternalKey
 	largest  InternalKey
 
+	// The range deletion tombstone fragmenter. Adds range tombstones as they are
+	// returned from `compactionIter` and fragments them for output to files.
+	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
+	rangeDelFrag rangedel.Fragmenter
+
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries.
 	grandparents    []fileMetadata
 	overlappedBytes uint64 // bytes of overlap with grandparent tables
-	seenKey         bool   // some output key has been seen
 
 	metrics map[int]*LevelMetrics
 }
@@ -367,8 +371,8 @@ func (c *compaction) trivialMove() bool {
 	return false
 }
 
-// shouldStopBefore returns true if the output to the current table should be
-// finished and a new table started before adding the specified key. This is
+// nextLimitBefore returns the next table limit before the provided key, or
+// nil if an output table does not need to be cut before that key. This is
 // done in order to prevent a table at level N from overlapping too much data
 // at level N+1. We want to avoid such large overlaps because they translate
 // into large compactions. The current heuristic stops output of a table if the
@@ -379,26 +383,24 @@ func (c *compaction) trivialMove() bool {
 // 2 sstables that need to be compacted together as an "atomic compaction
 // unit". This is unfortunate as it removes the benefit of stopping output to
 // an sstable in order to prevent a large compaction with the next level. Seems
-// better to adjust shouldStopBefore to not stop output in the middle of a
-// user-key. Perhaps this isn't a problem if the compaction picking heuristics
-// always pick the right (older) sibling for compaction first.
-func (c *compaction) shouldStopBefore(key InternalKey) bool {
-	for len(c.grandparents) > 0 {
+// better to adjust nextLimitBefore to not stop output in the middle of a
+// user-key.
+func (c *compaction) nextLimitBefore(key *InternalKey) *InternalKey {
+	var limit *InternalKey
+	for len(c.grandparents) > 0 && c.overlappedBytes <= c.maxOverlapBytes {
 		g := &c.grandparents[0]
-		if base.InternalCompare(c.cmp, key, g.Largest) <= 0 {
+		if key != nil && base.InternalCompare(c.cmp, *key, g.Largest) <= 0 {
 			break
 		}
-		if c.seenKey {
-			c.overlappedBytes += g.Size
-		}
+		c.overlappedBytes += g.Size
+		limit = &g.Largest
 		c.grandparents = c.grandparents[1:]
 	}
-	c.seenKey = true
-	if c.overlappedBytes > c.maxOverlapBytes {
+	if len(c.grandparents) > 0 && c.overlappedBytes > c.maxOverlapBytes {
 		c.overlappedBytes = 0
-		return true
+		return limit
 	}
-	return false
+	return nil
 }
 
 // allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
@@ -1085,7 +1087,7 @@ func (d *DB) runCompaction(
 		return nil, pendingOutputs, err
 	}
 	allowZeroSeqNum := c.allowZeroSeqNum(iiter)
-	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots,
+	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots, &c.rangeDelFrag,
 		allowZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
 	var (
@@ -1167,6 +1169,17 @@ func (d *DB) runCompaction(
 		key = key.Clone()
 		for _, v := range iter.Tombstones(key.UserKey) {
 			if tw == nil {
+				// If `tw == nil` here and we create a file, it will contain no point
+				// keys. There is a possibility the truncation point specified by `key`
+				// has the same user key as the largest key in the previous file. In
+				// that case there is no need to write out a file containing only range
+				// tombstones. Its range tombstones would not cover anything additional
+				// to what they cover by being in the prev/next file, which also overlap
+				// with `key.UserKey`.
+				n := len(ve.NewFiles)
+				if n > 0 && key.UserKey != nil && d.cmp(key.UserKey, ve.NewFiles[n-1].Meta.Largest.UserKey) == 0 {
+					return nil
+				}
 				if err := newOutput(); err != nil {
 					return err
 				}
@@ -1287,9 +1300,21 @@ func (d *DB) runCompaction(
 			return nil, pendingOutputs, err
 		}
 
-		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
-		// shouldStopBefore decision.
-		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {
+		for limit := c.nextLimitBefore(key); limit != nil; limit = c.nextLimitBefore(key) {
+			if err := finishOutput(*limit); err != nil {
+				return nil, pendingOutputs, err
+			}
+		}
+		if key.Kind() == InternalKeyKindRangeDelete {
+			// Range tombstones are handled specially. They are fragmented
+			// and written later during `finishOutput()`.  We add them
+			// to the `Fragmenter` now to make them visible to `compactionIter`
+			// so covered keys in the same snapshot stripe can be elided.
+			c.rangeDelFrag.Add(iter.cloneKey(*key), val)
+			continue
+		}
+
+		if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
 			if err := finishOutput(*key); err != nil {
 				return nil, pendingOutputs, err
 			}
@@ -1306,6 +1331,11 @@ func (d *DB) runCompaction(
 		}
 	}
 
+	for limit := c.nextLimitBefore(nil); limit != nil; limit = c.nextLimitBefore(nil) {
+		if err := finishOutput(*limit); err != nil {
+			return nil, pendingOutputs, err
+		}
+	}
 	if err := finishOutput(InternalKey{}); err != nil {
 		return nil, pendingOutputs, err
 	}
