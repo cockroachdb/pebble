@@ -125,6 +125,14 @@ type compactionIter struct {
 	merge Merge
 	iter  internalIterator
 	err   error
+	// `key.UserKey` is in one of two states:
+	// - Set to `i.iterKey.UserKey: this happens within `Next()` and is a
+	//   transient state before the code decides to save the key.
+	// - Set to `keyBuf`: caused by saving `i.iterKey.UserKey`. This is the
+	//   case on return from all public methods -- these methods return `key`.
+	//   Additionally, it is the internal state when the code is moving to the
+	//   next key so it can determine whether the user key has changed from
+	//   the previous key.
 	key   InternalKey
 	value []byte
 	// Temporary buffer used for storing the previous user key in order to
@@ -135,10 +143,18 @@ type compactionIter struct {
 	valid     bool
 	iterKey   *InternalKey
 	iterValue []byte
-	// Skip indicates whether the remaining entries in the current snapshot
-	// stripe should be skipped or processed. Skipped is true at the start of a
-	// stripe and set to false afterwards.
+	// skip indicates whether the remaining skippable entries in the current
+	// snapshot stripe should be skipped or processed. An example of a non-
+	// skippable entry is a range tombstone as we need to return it from the
+	// compactionIter, even if a key covering its start key has already been
+	// seen in the same stripe. skip has no effect when advanced is true.
 	skip bool
+	// advanced indicates whether we have already moved the iterator forward
+	// to the next candidate key before calling `Next()`. For example, this
+	// happens when processing merge operands, where we advance the iterator
+	// all the way into the next stripe or next user key to ensure we've seen
+	// all relevant operands.
+	advanced bool
 	// The index of the snapshot for the current key within the snapshots slice.
 	curSnapshotIdx    int
 	curSnapshotSeqNum uint64
@@ -146,8 +162,8 @@ type compactionIter struct {
 	// numbers define the snapshot stripes (see the Snapshots description
 	// above). The sequence numbers are in ascending order.
 	snapshots []uint64
-	// The range deletion tombstone fragmenter.
-	rangeDelFrag rangedel.Fragmenter
+	// Reference to the range deletion tombstone fragmenter owned by `compaction`.
+	rangeDelFrag *rangedel.Fragmenter
 	// The fragmented tombstones.
 	tombstones []rangedel.Tombstone
 	// Byte allocator for the tombstone keys.
@@ -162,6 +178,7 @@ func newCompactionIter(
 	merge Merge,
 	iter internalIterator,
 	snapshots []uint64,
+	rangeDelFrag *rangedel.Fragmenter,
 	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
@@ -171,6 +188,7 @@ func newCompactionIter(
 		merge:               merge,
 		iter:                iter,
 		snapshots:           snapshots,
+		rangeDelFrag:        rangeDelFrag,
 		allowZeroSeqNum:     allowZeroSeqNum,
 		elideTombstone:      elideTombstone,
 		elideRangeTombstone: elideRangeTombstone,
@@ -188,6 +206,7 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 	if i.iterKey != nil {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
 	}
+	i.advanced = true
 	return i.Next()
 }
 
@@ -196,32 +215,61 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if i.skip {
-		i.skip = false
-		i.skipStripe()
+	// Prior to this call to `Next()` we are in one of three situations with
+	// respect to `iterKey` and related state:
+	//
+	// - `!skip && advanced`: `iterKey` is already at the next key.
+	// - `!skip && !advanced`: We are at the key that has been returned. To move
+	//   forward we advance by one key, even if that lands us in the same
+	//   snapshot stripe.
+	// - `skip && !advanced`: We are at the key that has been returned. To move
+	//   forward we skip skippable entries in the stripe.
+	if !i.advanced {
+		if i.skip {
+			// Sets `i.skip=true` if we land on a non-skippable key in the
+			// same stripe.
+			i.skip = i.skipInStripe()
+		} else {
+			i.nextInStripe()
+		}
 	}
 
+	i.advanced = false
 	i.valid = false
 	for i.iterKey != nil {
 		i.key = *i.iterKey
+		// Non-skippable keys (currently just range tombstones) must always be
+		// returned. For such keys `i.skip` may be set, and advancing the iterator
+		// with consideration for `i.skip` only happens at the top of `Next()`.
 		if i.key.Kind() == InternalKeyKindRangeDelete {
-			// Range tombstones are always added to the fragmenter. They are
-			// processed into stripes after fragmentation.
-			i.rangeDelFrag.Add(i.cloneKey(i.key), i.iterValue)
+			// Return the range tombstone so the compaction can use it for
+			// file truncation and add it to the fragmenter. Subtly, we do not
+			// set `skip` to true here. That's because the next key might be
+			// a point key at the same seqnum, which should be considered newer
+			// than, and thus not covered by, the current range tombstone.
+			i.saveKey()
+			i.value = i.iterValue
+			i.valid = true
+			return &i.key, i.value
 		}
+
 		if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
 			i.saveKey()
-			i.skipStripe()
+			// Sets `i.skip=true` if we land on a non-skippable key in the
+			// same stripe.
+			i.skip = i.skipInStripe()
 			continue
 		}
 
 		switch i.key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
-			// skip to the next stripe (which will be the next user key).
+			// skip skippable keys in the same stripe.
 			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
 				i.saveKey()
-				i.skipStripe()
+				// Sets `i.skip=true` if we land on a non-skippable key in the
+				// same stripe.
+				i.skip = i.skipInStripe()
 				continue
 			}
 
@@ -268,20 +316,6 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			}
 			return nil, nil
 
-		case InternalKeyKindRangeDelete:
-			i.nextInStripe()
-			continue
-
-		case InternalKeyKindInvalid:
-			// NB: Invalid keys occur when there is some error parsing the key. Pass
-			// them through unmodified.
-			i.saveKey()
-			i.value = make([]byte, len(i.iterValue))
-			copy(i.value, i.iterValue)
-			i.iterNext()
-			i.valid = true
-			return &i.key, i.value
-
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.key.Kind())
 			return nil, nil
@@ -303,9 +337,15 @@ func snapshotIndex(seq uint64, snapshots []uint64) (int, uint64) {
 	return index, snapshots[index]
 }
 
-func (i *compactionIter) skipStripe() {
+// skipInStripe skips over skippable keys in the same stripe and user key. It returns
+// true if it landed on a non-skippable key in the same stripe for the same user key,
+// otherwise it returns false.
+func (i *compactionIter) skipInStripe() bool {
+	origSnapshotIdx, _ := snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
 	for i.nextInStripe() {
 	}
+	return origSnapshotIdx == i.curSnapshotIdx && i.iterKey != nil &&
+		i.cmp(i.key.UserKey, i.iterKey.UserKey) == 0
 }
 
 func (i *compactionIter) iterNext() bool {
@@ -328,15 +368,11 @@ func (i *compactionIter) nextInStripe() bool {
 	}
 	switch key.Kind() {
 	case InternalKeyKindRangeDelete:
-		if key.Kind() == InternalKeyKindRangeDelete {
-			// Range tombstones are always added to the fragmenter. They are
-			// processed into stripes after fragmentation. Note that we only add
-			// range tombstones to the fragmenter when they have the same start key
-			// as i.key. Adding tombstones earlier can violate a rangedel.Fragmenter
-			// invariant and lead to too many tombstones being added to an sstable.
-			i.rangeDelFrag.Add(i.cloneKey(*key), i.iterValue)
-		}
-		return true
+		// Range tombstones need to be exposed by the compactionIter to the upper level
+		// `compaction` object, so return them as if they are not in the same snapshot
+		// stripe, even though they may be.
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
+		return false
 	case InternalKeyKindInvalid:
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return false
@@ -362,7 +398,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) {
 	// them.
 	for {
 		if !i.nextInStripe() {
-			i.skip = false
+			i.advanced = true
 			return
 		}
 		key := i.iterKey
@@ -370,12 +406,6 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) {
 		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe.
-			i.skip = true
-			return
-
-		case InternalKeyKindRangeDelete:
-			// We've hit a range deletion tombstone. Return everything up to this
-			// point and then skip entries until the next snapshot stripe.
 			i.skip = true
 			return
 
@@ -424,7 +454,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 	// Loop until finds a key to be passed to the next level.
 	for {
 		if !i.nextInStripe() {
-			i.skip = false
+			i.advanced = true
 			return true
 		}
 
@@ -443,10 +473,6 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 		case InternalKeyKindSingleDelete:
 			continue
-
-		case InternalKeyKindRangeDelete:
-			i.valid = false
-			return false
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())

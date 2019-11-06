@@ -237,12 +237,8 @@ a.SET.1:c
 
 iter
 first
-next
-next
 ----
-a#2,255:b
-a#1,1:c
-.
+err=invalid internal key kind: 255
 
 define
 a.SET.2:b
@@ -252,11 +248,9 @@ a.INVALID.1:c
 iter
 first
 next
-next
 ----
 a#2,1:b
-a#1,255:c
-.
+err=invalid internal key kind: 255
 
 define
 a.MERGE.2:b
@@ -266,11 +260,9 @@ a.INVALID.1:c
 iter
 first
 next
-next
 ----
 a#2,2:b
-a#1,255:c
-.
+err=invalid internal key kind: 255
 
 define
 a.INVALID.2:c
@@ -279,12 +271,9 @@ a.RANGEDEL.1:d
 
 iter
 first
-next
 tombstones
 ----
-a#2,255:c
-.
-a-d#1
+err=invalid internal key kind: 255
 .
 
 define
@@ -315,9 +304,13 @@ c.SET.3:f
 iter
 first
 next
+next
+next
 tombstones
 ----
 a#2,1:b
+a#1,15:c
+b#4,15:d
 .
 a-b#1
 b-c#4
@@ -327,9 +320,13 @@ c-d#4
 iter snapshots=2
 first
 next
+next
+next
 tombstones
 ----
 a#2,1:b
+a#1,15:c
+b#4,15:d
 .
 a-b#1
 b-c#4
@@ -341,9 +338,13 @@ iter snapshots=3
 first
 next
 next
+next
+next
 tombstones
 ----
 a#2,1:b
+a#1,15:c
+b#4,15:d
 b#2,1:e
 .
 a-b#1
@@ -357,9 +358,13 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
 a#2,1:b
+a#1,15:c
+b#4,15:d
 b#2,1:e
 c#3,1:f
 .
@@ -382,8 +387,10 @@ first
 next
 next
 next
+next
 tombstones
 ----
+a#3,15:e
 b#4,1:b
 c#3,1:c
 e#1,1:e
@@ -404,8 +411,10 @@ first
 next
 next
 next
+next
 tombstones
 ----
+a#3,15:e
 b#4,2:b
 c#3,2:c
 e#1,2:e
@@ -430,10 +439,14 @@ iter
 first
 next
 next
+next
+next
 tombstones
 ----
+a#3,15:c
 b#5,2:de
 d#5,2:bc
+d#3,15:f
 .
 a-c#3
 d-f#3
@@ -447,8 +460,14 @@ c.RANGEDEL.1:f
 
 iter
 first
+next
+next
+next
 tombstones
 ----
+a#3,15:d
+b#2,15:e
+c#1,15:f
 .
 a-b#3
 b-c#3
@@ -459,8 +478,14 @@ e-f#1
 
 iter snapshots=2
 first
+next
+next
+next
 tombstones
 ----
+a#3,15:d
+b#2,15:e
+c#1,15:f
 .
 a-b#3
 b-c#3
@@ -473,8 +498,14 @@ e-f#1
 
 iter snapshots=3
 first
+next
+next
+next
 tombstones
 ----
+a#3,15:d
+b#2,15:e
+c#1,15:f
 .
 a-b#3
 b-c#3
@@ -487,8 +518,14 @@ e-f#1
 
 iter snapshots=(2,3)
 first
+next
+next
+next
 tombstones
 ----
+a#3,15:d
+b#2,15:e
+c#1,15:f
 .
 a-b#3
 b-c#3
@@ -509,10 +546,12 @@ f.SET.8:f
 
 iter snapshots=(9,10)
 first
+next
 tombstones f
 next
 tombstones
 ----
+a#10,15:k
 f#9,1:f
 a-k#10
 .
@@ -528,10 +567,12 @@ f.SET.8:f
 
 iter snapshots=(9,10)
 first
+next
 tombstones f
 next
 tombstones
 ----
+f#10,15:k
 f#9,1:f
 f-k#10
 .
@@ -549,10 +590,14 @@ d.SET.4:d
 iter
 first
 next
+next
+next
 tombstones c
 tombstones
 ----
 a#1,1:a
+b#2,15:d
+c#3,15:e
 d#4,1:d
 b-c#2
 c-d#3
@@ -564,10 +609,14 @@ d-e#3
 iter snapshots=3
 first
 next
+next
+next
 tombstones c
 tombstones
 ----
 a#1,1:a
+b#2,15:d
+c#3,15:e
 d#4,1:d
 b-c#2
 c-d#3
@@ -587,10 +636,12 @@ c.SET.4:d
 iter
 first
 next
+next
 tombstones c
 tombstones
 ----
 a#1,1:a
+b#2,15:d
 c#4,1:d
 b-d#2
 .
@@ -609,7 +660,9 @@ first
 next
 next
 next
+next
 ----
+a#2,15:d
 a#2,1:a
 b#2,1:b
 c#2,1:c
@@ -860,8 +913,12 @@ a.SET.1:val
 
 iter
 first
+next
+next
 tombstones
 ----
+a#3,7:
+a#2,15:c
 .
 a-c#2
 .
@@ -875,9 +932,13 @@ d.DEL.2:a
 
 iter
 first
+next
+next
 tombstones
 ----
+a#3,15:d
 d#2,0:a
+.
 a-d#3
 .
 
@@ -885,7 +946,9 @@ iter snapshots=3
 first
 next
 next
+next
 ----
+a#3,15:d
 a#2,0:a
 d#2,0:a
 .
@@ -894,7 +957,9 @@ iter snapshots=2
 first
 next
 next
+next
 ----
+a#3,15:d
 a#1,1:a
 d#2,0:a
 .
@@ -902,7 +967,9 @@ d#2,0:a
 iter snapshots=1
 first
 next
+next
 ----
+a#3,15:d
 d#2,0:a
 .
 
@@ -915,10 +982,12 @@ iter
 first
 tombstones a
 next
+next
 tombstones
 ----
 a#2,2:a
 .
+b#1,15:c
 .
 b-c#1
 .
