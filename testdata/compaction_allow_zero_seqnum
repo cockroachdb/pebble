@@ -33,3 +33,23 @@ allow-zero-seqnum
 L1:c-c
 ----
 true
+
+# Regression test for a bug where the allow-zero-seqnum check was not
+# actually working for flushes due to a failure to clone the
+# lower-bound key used for checking for overlap. This caused the
+# overlap check to use [b,b] in the test below, rather than [a,b].
+
+define
+mem
+  a.SET.2:2
+  b.SET.3:3
+L1
+  a.SET.0:0
+----
+1:
+  4:[a-a]
+
+allow-zero-seqnum
+flush
+----
+false
