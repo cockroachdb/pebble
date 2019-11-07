@@ -421,11 +421,23 @@ func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
 			// in how a new L0 table is merged into the existing set of L0 tables.
 			return false
 		}
-		lower, _ := iter.First()
-		upper, _ := iter.Last()
-		if lower == nil || upper == nil {
+
+		key, _ := iter.First()
+		if key == nil {
 			return false
 		}
+		// We need to clone the key because the call to iter.Last() below will
+		// invalidate it.
+		lower := key.Clone()
+
+		upper, _ := iter.Last()
+		if upper == nil {
+			return false
+		}
+
+		// Note that we don't check for overlap for range tombstones in the input
+		// because zeroing of seqnums is only done for point operations (SET and
+		// MERGE).
 		return c.elideRangeTombstone(lower.UserKey, upper.UserKey)
 	}
 
@@ -471,9 +483,11 @@ func (c *compaction) elideTombstone(key []byte) bool {
 				if c.cmp(key, f.Smallest.UserKey) >= 0 {
 					return false
 				}
-				// For levels below level 0, the files within a level are in
-				// increasing ikey order, so we can break early.
-				break
+				if level > 0 {
+					// For levels below level 0, the files within a level are in
+					// increasing ikey order, so we can break early.
+					break
+				}
 			}
 		}
 	}

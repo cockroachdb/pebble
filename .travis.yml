@@ -1,7 +1,7 @@
 language: go
 
 install:
-  - go get -t -v ./...
+  - go get -d -t -v ./...
   - go get -v golang.org/x/lint/golint
 
 matrix:
