@@ -1162,26 +1162,43 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					if len(parts) == 0 {
 						continue
 					}
+					c.flushing = nil
 					c.inputs[0] = nil
 					c.inputs[1] = nil
 					c.startLevel = -1
 
-					for _, p := range parts {
-						level, meta := parseMeta(p)
-						i := 0
-						switch {
-						case c.startLevel == -1:
-							c.startLevel = level
-						case c.startLevel+1 == level:
-							i = 1
-						case c.startLevel != level:
-							return fmt.Sprintf("invalid level %d: expected %d or %d",
-								level, c.startLevel, c.startLevel+1)
+					var iter internalIterator
+
+					switch {
+					case len(parts) == 1 && parts[0] == "flush":
+						c.outputLevel = 0
+						d.mu.Lock()
+						c.flushing = d.mu.mem.queue
+						d.mu.Unlock()
+
+						var err error
+						if iter, err = c.newInputIter(nil); err != nil {
+							return err.Error()
 						}
-						c.inputs[i] = append(c.inputs[i], meta)
+					default:
+						for _, p := range parts {
+							level, meta := parseMeta(p)
+							i := 0
+							switch {
+							case c.startLevel == -1:
+								c.startLevel = level
+							case c.startLevel+1 == level:
+								i = 1
+							case c.startLevel != level:
+								return fmt.Sprintf("invalid level %d: expected %d or %d",
+									level, c.startLevel, c.startLevel+1)
+							}
+							c.inputs[i] = append(c.inputs[i], meta)
+						}
+						c.outputLevel = c.startLevel + 1
 					}
-					c.outputLevel = c.startLevel + 1
-					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum(nil))
+
+					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum(iter))
 				}
 				return buf.String()
 
