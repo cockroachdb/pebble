@@ -134,7 +134,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 	var levels []levelInfo
 	// Indexed by fileNum
 	var readers []*sstable.Reader
-	var fileNum uint64 = 0
+	var fileNum uint64
 	newIters :=
 		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
 			r := readers[meta.FileNum]

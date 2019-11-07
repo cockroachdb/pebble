@@ -474,12 +474,21 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				// Another example, where the sstable bounds are [c#8, i#InternalRangeDelSentinel],
 				// and the tombstone is [b, i)#8. Seeking to i is correct since it is seeking up to
 				// the exclusive bound of the tombstone. We do not need to look at
-				// isLargestKeyRangeDelSentinel
+				// isLargestKeyRangeDelSentinel.
+				//
+				// Progress argument: Since this file is at a higher level than item.key we know
+				// that the iterator in this file must be positioned within its bounds and at a key
+				// X > item.key (otherwise it would be the min of the heap). It is not
+				// possible for X.UserKey == item.key.UserKey, since it is incompatible with
+				// X > item.key (a lower version cannot be in a higher sstable), so it must be that
+				// X.UserKey > item.key.UserKey. Which means l.largestUserKey > item.key.UserKey.
+				// We also know that l.tombstone.End > item.key.UserKey. So the min of these,
+				// seekKey, computed below, is > item.key.UserKey, so the call to seekGE() will
+				// make forward progress.
 				seekKey := l.tombstone.End
 				if l.largestUserKey != nil && m.heap.cmp(l.largestUserKey, seekKey) < 0 {
 					seekKey = l.largestUserKey
 				}
-
 				m.seekGE(seekKey, item.index)
 				return true
 			}
@@ -601,6 +610,13 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 				// We can seek up to the max of smallestUserKey and tombstone.Start.UserKey.
 				//
 				// Using example 1 above, we can seek to the larger of c and b, which is c.
+				//
+				// Progress argument: We know that the iterator in this file is positioned within
+				// its bounds and at a key X < item.key (otherwise it would be the max of the heap).
+				// So smallestUserKey <= item.key.UserKey and we already know that
+				// l.tombstone.Start.UserKey <= item.key.UserKey. So the seekKey computed below
+				// is <= item.key.UserKey, and since we do a seekLT() we will make backwards
+				// progress.
 				seekKey := l.tombstone.Start.UserKey
 				if l.smallestUserKey != nil && m.heap.cmp(l.smallestUserKey, seekKey) > 0 {
 					seekKey = l.smallestUserKey
@@ -682,6 +698,9 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 			tombstone := rangedel.SeekGE(m.heap.cmp, rangeDelIter, key, m.snapshot)
 			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) &&
 				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {
+				// NB: Based on the comment above l.largestUserKey >= key, and based on the
+				// containment condition tombstone.End > key, so the assignment to key results
+				// in a monotonically non-decreasing key across iterations of this loop.
 				if l.largestUserKey != nil &&
 					m.heap.cmp(l.largestUserKey, tombstone.End) < 0 {
 					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
@@ -741,6 +760,9 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 
 			tombstone := rangedel.SeekLE(m.heap.cmp, rangeDelIter, key, m.snapshot)
 			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
+				// NB: Based on the comment above l.smallestUserKey <= key, and based on the
+				// containment condition tombstone.Start.UserKey <= key, so the assignment to key
+				// results in a monotonically non-increasing key across iterations of this loop.
 				if l.smallestUserKey != nil &&
 					m.heap.cmp(l.smallestUserKey, tombstone.Start.UserKey) >= 0 {
 					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
