@@ -32,8 +32,7 @@ type levelIter struct {
 	cmp       Compare
 	index     int
 	// The key to return when iterating past an sstable boundary and that
-	// boundary is a range deletion tombstone. Note that if boundary != nil, then
-	// iter == nil, and if iter != nil, then boundary == nil.
+	// boundary is a range deletion tombstone.
 	boundary     *InternalKey
 	iter         internalIterator
 	newIters     tableNewIters
@@ -177,23 +176,19 @@ func (l *levelIter) loadFile(index, dir int) bool {
 	if l.index == index {
 		return l.iter != nil
 	}
+	// Close both iter and rangeDelIter. While mergingIter knows about
+	// rangeDelIter, it can't call Close() on it because it does not know when
+	// the levelIter will switch it.
 	if l.iter != nil {
 		l.err = l.iter.Close()
-		if l.err != nil {
-			return false
-		}
 		l.iter = nil
 	}
-	if l.rangeDelIter != nil {
-		// Close the rangeDelIter too since the mergingIter does not call close() on it (it can't
-		// because it does not know when the levelIter will switch it).
-		rdi := *l.rangeDelIter
-		if rdi != nil {
-			if l.err = rdi.Close(); l.err != nil {
-				return false
-			}
-		}
+	if l.rangeDelIter != nil && *l.rangeDelIter != nil {
+		l.err = firstError(l.err, (*l.rangeDelIter).Close())
 		*l.rangeDelIter = nil
+	}
+	if l.err != nil {
+		return false
 	}
 
 	for ; ; index += dir {
@@ -323,24 +318,9 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if l.iter == nil {
-		// One of the following cases:
-		// - Was positioned at boundary key and now stepping past it.
-		// - Positioned before the beginning.
-		// - None of the above: must have exhausted the iterator -- nothing to return.
-		if l.boundary != nil {
-			// levelIter is being stepped past the boundary key, so now we can load the next file.
-			if l.loadFile(l.index+1, 1) {
-				if key, val := l.iter.First(); key != nil {
-					return key, val
-				}
-				return l.skipEmptyFileForward()
-			}
-			return nil, nil
-		}
-		if l.index == -1 && l.loadFile(0, 1) {
-			// The iterator was positioned off the beginning of the level. Position
-			// at the first entry.
+	if l.boundary != nil {
+		// We're stepping past the boundary key, so now we can load the next file.
+		if l.loadFile(l.index+1, 1) {
 			if key, val := l.iter.First(); key != nil {
 				return key, val
 			}
@@ -349,6 +329,9 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	if l.iter == nil {
+		return nil, nil
+	}
 	if key, val := l.iter.Next(); key != nil {
 		return key, val
 	}
@@ -360,19 +343,9 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if l.iter == nil {
-		if l.boundary != nil {
-			if l.loadFile(l.index-1, -1) {
-				if key, val := l.iter.Last(); key != nil {
-					return key, val
-				}
-				return l.skipEmptyFileBackward()
-			}
-			return nil, nil
-		}
-		if n := len(l.files); l.index == n && l.loadFile(n-1, -1) {
-			// The iterator was positioned off the end of the level. Position at the
-			// last entry.
+	if l.boundary != nil {
+		// We're stepping past the boundary key, so now we can load the prev file.
+		if l.loadFile(l.index-1, -1) {
 			if key, val := l.iter.Last(); key != nil {
 				return key, val
 			}
@@ -381,6 +354,9 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
+	if l.iter == nil {
+		return nil, nil
+	}
 	if key, val := l.iter.Prev(); key != nil {
 		return key, val
 	}
@@ -400,26 +376,14 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 	// not have an exhausted iterator causes the code to return that key, else if the rangeDelIter
 	// contributes the largest key of the file, we do the behavior described above.
 	for ; key == nil; key, val = l.iter.First() {
-		if l.err = l.iter.Close(); l.err != nil {
-			return nil, nil
-		}
-		l.iter = nil
-
 		if l.rangeDelIter != nil {
-			// We're being used as part of an Iterator and we've reached the end of
+			// We're being used as part of a mergingIter and we've reached the end of
 			// the sstable. If the boundary is a range deletion tombstone, return
 			// that key.
 			if f := &l.files[l.index]; f.Largest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Largest
 				return l.boundary, nil
 			}
-			rdi := *l.rangeDelIter
-			if rdi != nil {
-				if l.err = rdi.Close(); l.err != nil {
-					return nil, nil
-				}
-			}
-			*l.rangeDelIter = nil
 		}
 
 		// Current file was exhausted. Move to the next file.
@@ -443,26 +407,14 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 	// not have an exhausted iterator causes the code to return that key, else if the rangeDelIter
 	// contributes the smallest key of the file, we do the behavior described above.
 	for ; key == nil; key, val = l.iter.Last() {
-		if l.err = l.iter.Close(); l.err != nil {
-			return nil, nil
-		}
-		l.iter = nil
-
 		if l.rangeDelIter != nil {
-			// We're being used as part of an Iterator and we've reached the end of
+			// We're being used as part of a mergingIter and we've reached the end of
 			// the sstable. If the boundary is a range deletion tombstone, return
 			// that key.
 			if f := &l.files[l.index]; f.Smallest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Smallest
 				return l.boundary, nil
 			}
-			rdi := *l.rangeDelIter
-			if rdi != nil {
-				if l.err = rdi.Close(); l.err != nil {
-					return nil, nil
-				}
-			}
-			*l.rangeDelIter = nil
 		}
 
 		// Current file was exhausted. Move to the previous file.
