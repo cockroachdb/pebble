@@ -143,3 +143,36 @@ prev
 c#2,1:c
 a#1,15:
 .
+
+# Regression test to check that Seek{GE,LT} work properly in certain
+# cases when then levelIter is positioned at a boundary key.
+
+clear
+----
+
+build
+d.SET.3:d
+c.RANGEDEL.2:e
+----
+0: c#2,15-e#72057594037927935,15
+
+iter
+seek-ge d
+next
+seek-ge d
+next
+seek-lt e
+prev
+seek-ge d
+prev
+seek-lt e
+----
+d#3,1:d
+e#72057594037927935,15:
+d#3,1:d
+e#72057594037927935,15:
+d#3,1:d
+c#2,15:
+d#3,1:d
+c#2,15:
+d#3,1:d
