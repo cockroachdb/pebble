@@ -697,7 +697,7 @@ func TestIterLeak(t *testing.T) {
 func TestMemTableReservation(t *testing.T) {
 	opts := &Options{
 		Cache:        cache.New(1 << 20 /* 1 MB */),
-		MemTableSize: 2 << 20, /* 2 MB */
+		MemTableSize: 1 << 20, /* 1 MB */
 		FS:           vfs.NewMem(),
 	}
 	opts.EnsureDefaults()
