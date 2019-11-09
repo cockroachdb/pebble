@@ -1182,6 +1182,10 @@ func (b *flushableBatch) flushed() chan struct{} {
 	return b.flushedCh
 }
 
+func (b *flushableBatch) manualFlush() bool {
+	return false
+}
+
 func (b *flushableBatch) readyForFlush() bool {
 	return true
 }

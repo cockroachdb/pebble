@@ -306,16 +306,20 @@ type Options struct {
 	// The default value is 1000.
 	MaxOpenFiles int
 
-	// The size of a MemTable. Note that more than one MemTable can be in
-	// existence since flushing a MemTable involves creating a new one and
+	// The size of a MemTable in steady state. The actual MemTable size starts at
+	// min(256KB, MemTableSize) and doubles for each subsequent MemTable up to
+	// MemTableSize. This reduces the memory pressure caused by MemTables for
+	// short lived (test) DB instances. Note that more than one MemTable can be
+	// in existence since flushing a MemTable involves creating a new one and
 	// writing the contents of the old one in the
-	// background. MemTableStopWritesThreshold places a hard limit on the number
-	// of MemTables allowed at once.
+	// background. MemTableStopWritesThreshold places a hard limit on the size of
+	// the queued MemTables.
 	MemTableSize int
 
-	// Hard limit on the number of MemTables. Writes are stopped when this number
-	// is reached. This value should be at least 2 or writes will stop whenever
-	// the MemTable is being flushed.
+	// Hard limit on the size of queued of MemTables. Writes are stopped when the
+	// sum of the queued memtable sizes exceeds
+	// MemTableStopWritesThreshold*MemTableSize. This value should be at least 2
+	// or writes will stop whenever a MemTable is being flushed.
 	MemTableStopWritesThreshold int
 
 	// Merger defines the associative merge operation to use for merging values

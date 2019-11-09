@@ -103,11 +103,8 @@ type compaction struct {
 }
 
 func newCompaction(
-	opts *Options,
-	cur *version,
-	startLevel,
-	baseLevel int,
-	bytesCompacted *uint64,
+	opts *Options, cur *version, startLevel,
+	baseLevel int, bytesCompacted *uint64,
 ) *compaction {
 	if startLevel > 0 && startLevel < baseLevel {
 		panic(fmt.Sprintf("invalid compaction: start level %d should be empty (base level %d)",
@@ -141,11 +138,7 @@ func newCompaction(
 }
 
 func newFlush(
-	opts *Options,
-	cur *version,
-	baseLevel int,
-	flushing []flushable,
-	bytesFlushed *uint64,
+	opts *Options, cur *version, baseLevel int, flushing []flushable, bytesFlushed *uint64,
 ) *compaction {
 	c := &compaction{
 		cmp:                 opts.Comparer.Compare,
@@ -581,9 +574,7 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 }
 
 // newInputIter returns an iterator over all the input tables in a compaction.
-func (c *compaction) newInputIter(
-	newIters tableNewIters,
-) (_ internalIterator, retErr error) {
+func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, retErr error) {
 	if len(c.flushing) != 0 {
 		if len(c.flushing) == 1 {
 			f := c.flushing[0]
@@ -750,7 +741,32 @@ func (d *DB) maybeScheduleFlush() {
 	if len(d.mu.mem.queue) <= 1 {
 		return
 	}
-	if !d.mu.mem.queue[0].readyForFlush() {
+
+	var n int
+	var size uint64
+	for ; n < len(d.mu.mem.queue)-1; n++ {
+		if !d.mu.mem.queue[n].readyForFlush() {
+			break
+		}
+		if d.mu.mem.queue[n].manualFlush() {
+			// A manual flush was requested. Pretend the memtable size is the
+			// configured size. See minFlushSize below.
+			size += uint64(d.opts.MemTableSize)
+		} else {
+			size += d.mu.mem.queue[n].totalBytes()
+		}
+	}
+	if n == 0 {
+		// None of the immutable memtables are ready for flushing.
+		return
+	}
+
+	// Only flush once the sum of the queued memtable sizes exceeds half the
+	// configured memtable size. This prevents flushing of memtables at startup
+	// while we're undergoing the ramp period on the memtable size. See
+	// DB.newMemTable().
+	minFlushSize := uint64(d.opts.MemTableSize) / 2
+	if size < minFlushSize {
 		return
 	}
 
@@ -1011,9 +1027,9 @@ func (d *DB) compact1() (err error) {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) runCompaction(jobID int, c *compaction, pacer pacer) (
-	ve *versionEdit, pendingOutputs []uint64, retErr error,
-) {
+func (d *DB) runCompaction(
+	jobID int, c *compaction, pacer pacer,
+) (ve *versionEdit, pendingOutputs []uint64, retErr error) {
 	// Check for a trivial move of one table from one level to the next. We avoid
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive

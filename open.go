@@ -58,6 +58,11 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.compactionLimiter = rate.NewLimiter(rate.Limit(d.opts.MinCompactionRate), d.opts.MinCompactionRate)
 	d.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
 	d.mu.nextJobID = 1
+	d.mu.mem.nextSize = opts.MemTableSize
+	const initialMemTableSize = 256 << 10 // 256 KB
+	if d.mu.mem.nextSize > initialMemTableSize {
+		d.mu.mem.nextSize = initialMemTableSize
+	}
 	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.mem.mutable = d.newMemTable()
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
@@ -258,11 +263,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int,
-	ve *versionEdit,
-	fs vfs.FS,
-	filename string,
-	logNum uint64,
+	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum uint64,
 ) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
