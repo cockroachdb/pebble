@@ -68,8 +68,10 @@ func (i *Iterator) findNextEntry() bool {
 			continue
 
 		case InternalKeyKindSet:
-			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
-				return false
+			if i.prefix != nil {
+				if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
+					return false
+				}
 			}
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
@@ -78,8 +80,10 @@ func (i *Iterator) findNextEntry() bool {
 			return true
 
 		case InternalKeyKindMerge:
-			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
-				return false
+			if i.prefix != nil {
+				if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
+					return false
+				}
 			}
 			var valueMerger ValueMerger
 			valueMerger, i.err = i.merge(i.key, i.iterValue)
@@ -151,8 +155,10 @@ func (i *Iterator) findPrevEntry() bool {
 			continue
 
 		case InternalKeyKindSet:
-			if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
-				return false
+			if i.prefix != nil {
+				if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
+					return false
+				}
 			}
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
@@ -164,8 +170,10 @@ func (i *Iterator) findPrevEntry() bool {
 
 		case InternalKeyKindMerge:
 			if !i.valid {
-				if i.prefix != nil && !bytes.HasPrefix(key.UserKey, i.prefix) {
-					return false
+				if i.prefix != nil {
+					if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
+						return false
+					}
 				}
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
@@ -316,11 +324,11 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	copy(i.prefix, key[:prefixLen])
 
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
-		if !bytes.HasPrefix(lowerBound, i.prefix) {
+		if n := i.split(lowerBound); !bytes.Equal(i.prefix, lowerBound[:n]) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of lower bound")
-		} else {
-			key = lowerBound
+			return false
 		}
+		key = lowerBound
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefix, key)
