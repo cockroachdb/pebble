@@ -308,27 +308,15 @@ b.SET.4:b
 iter seq=5
 seek-prefix-ge a
 next
-next
-next
 ----
 a:a
-aa:aa
-aaa:aaa
 .
 
 iter seq=5
 seek-prefix-ge a
 next
-next
-prev
-next
-next
 ----
 a:a
-aa:aa
-aaa:aaa
-aa:aa
-aaa:aaa
 .
 
 iter seq=5
@@ -343,12 +331,10 @@ seek-prefix-ge aa
 next
 prev
 next
-next
 ----
 aa:aa
-aaa:aaa
+.
 aa:aa
-aaa:aaa
 .
 
 iter seq=5
@@ -358,7 +344,7 @@ prev
 prev
 ----
 aa:aa
-aaa:aaa
+.
 aa:aa
 .
 
@@ -462,6 +448,18 @@ next
 aaa:aaa
 aaa:aaa
 b:b
+.
+
+
+define
+bb.DEL.2:
+bb.SET.1:1
+bb2.SET.3:2
+----
+
+iter seq=4
+seek-prefix-ge bb
+----
 .
 
 
@@ -684,7 +682,7 @@ next
 next
 ----
 a:bc
-aa:ab
+.
 .
 
 iter seq=2
@@ -693,7 +691,7 @@ next
 next
 ----
 a:b
-aa:a
+.
 .
 
 iter seq=4
@@ -703,9 +701,9 @@ prev
 next
 ----
 a:bcd
-aa:ab
+.
 a:bcd
-aa:ab
+.
 
 iter seq=2
 seek-prefix-ge a
@@ -714,9 +712,9 @@ prev
 next
 ----
 a:b
-aa:a
+.
 a:b
-aa:a
+.
 
 iter seq=3
 seek-prefix-ge aa
@@ -1054,46 +1052,8 @@ a:a
 
 iter seq=2 lower=aa
 seek-prefix-ge a
-next
-prev
-prev
-----
-aa:aa
-aaa:aaa
-aa:aa
-.
-
-iter seq=2 lower=b
-seek-prefix-ge a
 ----
 err=pebble: SeekPrefixGE supplied with key outside of lower bound
-
-iter seq=2 lower=aaa
-seek-prefix-ge a
-----
-aaa:aaa
-
-iter seq=2 lower=aa
-seek-prefix-ge a
-next
-next
-----
-aa:aa
-aaa:aaa
-.
-
-iter seq=2 lower=aa
-seek-prefix-ge a
-first
-next
-next
-next
-----
-aa:aa
-aa:aa
-aaa:aaa
-b:b
-.
 
 iter seq=2 lower=a upper=aa
 seek-prefix-ge a
@@ -1105,58 +1065,22 @@ a:a
 iter seq=2 lower=a upper=aaa
 seek-prefix-ge a
 next
-next
 ----
 a:a
-aa:aa
 .
 
 iter seq=2 lower=a upper=b
 seek-prefix-ge a
 next
-next
-next
 ----
 a:a
-aa:aa
-aaa:aaa
 .
 
 iter seq=2 lower=a upper=c
 seek-prefix-ge a
 next
-next
-next
 ----
 a:a
-aa:aa
-aaa:aaa
-.
-
-iter seq=2 lower=aa upper=aaa
-seek-prefix-ge a
-next
-----
-aa:aa
-.
-
-iter seq=2 lower=aa upper=b
-seek-prefix-ge a
-next
-next
-----
-aa:aa
-aaa:aaa
-.
-
-iter seq=2 lower=aa upper=aa
-seek-prefix-ge a
-----
-.
-
-iter seq=2 lower=aa upper=aa
-seek-prefix-ge a
-----
 .
 
 iter seq=2 lower=a upper=aaa
