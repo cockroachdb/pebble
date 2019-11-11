@@ -48,6 +48,7 @@ type flushable interface {
 	readerRef()
 	readerUnref()
 	flushed() chan struct{}
+	manualFlush() bool
 	readyForFlush() bool
 	logInfo() (logNum, size uint64)
 }
@@ -245,6 +246,12 @@ type DB struct {
 			// True when the memtable is actively been switched. Both mem.mutable and
 			// log.LogWriter are invalid while switching is true.
 			switching bool
+			// nextSize is the size of the next memtable. The memtable size starts at
+			// min(256KB,Options.MemTableSize) and doubles each time a new memtable
+			// is allocated up to Options.MemTableSize. This reduces the memory
+			// footprint of memtables when lots of DB instances are used concurrently
+			// in test environments.
+			nextSize int
 		}
 
 		compact struct {
@@ -996,7 +1003,14 @@ func (d *DB) walPreallocateSize() int {
 }
 
 func (d *DB) newMemTable() *memTable {
-	return newMemTable(d.opts, &d.memTableReserved)
+	size := d.mu.mem.nextSize
+	if d.mu.mem.nextSize < d.opts.MemTableSize {
+		d.mu.mem.nextSize *= 2
+		if d.mu.mem.nextSize > d.opts.MemTableSize {
+			d.mu.mem.nextSize = d.opts.MemTableSize
+		}
+	}
+	return newMemTable(d.opts, size, &d.memTableReserved)
 }
 
 // makeRoomForWrite ensures that the memtable has room to hold the contents of
@@ -1033,17 +1047,23 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			return nil
 		}
 		// force || err == ErrArenaFull, so we need to rotate the current memtable.
-		if len(d.mu.mem.queue) >= d.opts.MemTableStopWritesThreshold {
-			// We have filled up the current memtable, but the previous one is still
-			// being compacted, so we wait.
-			if !stalled {
-				stalled = true
-				d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
-					Reason: "memtable count limit reached",
-				})
+		{
+			var size uint64
+			for i := range d.mu.mem.queue {
+				size += d.mu.mem.queue[i].totalBytes()
 			}
-			d.mu.compact.cond.Wait()
-			continue
+			if size >= uint64(d.opts.MemTableStopWritesThreshold)*uint64(d.opts.MemTableSize) {
+				// We have filled up the current memtable, but already queued memtables
+				// are still flushing, so we wait.
+				if !stalled {
+					stalled = true
+					d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+						Reason: "memtable count limit reached",
+					})
+				}
+				d.mu.compact.cond.Wait()
+				continue
+			}
 		}
 		if len(d.mu.versions.currentVersion().Files[0]) >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
@@ -1140,6 +1160,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 		imm := d.mu.mem.mutable
 		imm.logSize = prevLogSize
+		imm.flushManual = b == nil
 
 		if b != nil && b.flushable != nil {
 			// The batch is too large to fit in the memtable so add it directly to

@@ -424,7 +424,9 @@ func TestOpenWALReplay(t *testing.T) {
 			}
 		}
 		require.Equal(t, 0, sstCount)
-		require.Equal(t, 1, logCount)
+		// The memtable size starts at 256KB and doubles up to 32MB so we expect 5
+		// logs (one for each doubling).
+		require.Equal(t, 7, logCount)
 
 		// Re-open the DB with a smaller memtable. Values for 1, 2 will fit in the first memtable;
 		// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
@@ -440,7 +442,7 @@ func TestOpenWALReplay(t *testing.T) {
 		}
 		if readOnly {
 			d.mu.Lock()
-			require.Len(t, d.mu.mem.queue, 5)
+			require.Equal(t, 10, len(d.mu.mem.queue))
 			require.NotNil(t, d.mu.mem.mutable)
 			d.mu.Unlock()
 		}

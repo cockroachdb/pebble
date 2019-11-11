@@ -71,15 +71,18 @@ type memTable struct {
 	// drops to zero.
 	writerRefs int32
 	flushedCh  chan struct{}
-	tombstones rangeTombstoneCache
-	logNum     uint64
-	logSize    uint64
+	// flushManual indicates whether a manual flush was forced on this memtable.
+	flushManual bool
+	tombstones  rangeTombstoneCache
+	logNum      uint64
+	logSize     uint64
 	// Closure to invoke to release memory accounting bytes.
 	releaseMemAccountingBytes func()
 }
 
-// newMemTable returns a new MemTable.
-func newMemTable(o *Options, memAccountingBytes *int64) *memTable {
+// newMemTable returns a new MemTable of the specified size. If size is zero,
+// Options.MemTableSize is used instead.
+func newMemTable(o *Options, size int, memAccountingBytes *int64) *memTable {
 	o = o.EnsureDefaults()
 	m := &memTable{
 		cmp:        o.Comparer.Compare,
@@ -89,8 +92,11 @@ func newMemTable(o *Options, memAccountingBytes *int64) *memTable {
 		flushedCh:  make(chan struct{}),
 	}
 
+	if size == 0 {
+		size = o.MemTableSize
+	}
+
 	if memAccountingBytes != nil {
-		size := o.MemTableSize
 		atomic.AddInt64(memAccountingBytes, int64(size))
 		releaseAccountingReservation := o.Cache.Reserve(size)
 		m.releaseMemAccountingBytes = func() {
@@ -99,7 +105,7 @@ func newMemTable(o *Options, memAccountingBytes *int64) *memTable {
 		}
 	}
 
-	arena := arenaskl.NewArena(uint32(o.MemTableSize), 0)
+	arena := arenaskl.NewArena(uint32(size), 0)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.emptySize = arena.Size()
@@ -146,6 +152,10 @@ func (m *memTable) writerUnref() bool {
 
 func (m *memTable) flushed() chan struct{} {
 	return m.flushedCh
+}
+
+func (m *memTable) manualFlush() bool {
+	return m.flushManual
 }
 
 func (m *memTable) readyForFlush() bool {
