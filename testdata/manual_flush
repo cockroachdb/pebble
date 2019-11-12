@@ -7,7 +7,7 @@ set b 2
 flush
 ----
 0:
-  5:[a#0,SET-b#0,SET]
+  5:[a#0,SET-b#1,SET]
 
 reset
 ----
@@ -70,4 +70,4 @@ set b 2
 async-flush
 ----
 0:
-  5:[a#0,SET-b#0,SET]
+  5:[a#0,SET-b#1,SET]
