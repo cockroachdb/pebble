@@ -1162,6 +1162,14 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		imm.logSize = prevLogSize
 		imm.flushManual = b == nil
 
+		// If we are manually flushing and we used less than half of the bytes in
+		// the memtable, don't increase the size for the next memtable. This
+		// reduces memtable memory pressure when an application is frequently
+		// manually flushing.
+		if imm.flushManual && uint64(imm.availBytes()) > imm.totalBytes()/2 {
+			d.mu.mem.nextSize = int(imm.totalBytes())
+		}
+
 		if b != nil && b.flushable != nil {
 			// The batch is too large to fit in the memtable so add it directly to
 			// the immutable queue. The flushable batch is associated with the same

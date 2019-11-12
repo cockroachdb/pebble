@@ -158,7 +158,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
   total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
   flush         3
 compact         1   1.6 K          (size == estimated-debt)
- memtbl         1   2.0 M
+ memtbl         1   256 K
  bcache         4   752 B    7.7%  (score == hit-rate)
  tcache         0     0 B    0.0%  (score == hit-rate)
  titers         0

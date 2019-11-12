@@ -19,6 +19,8 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+const initialMemTableSize = 256 << 10 // 256 KB
+
 // Open opens a LevelDB whose files live in the given directory.
 func Open(dirname string, opts *Options) (*DB, error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
@@ -59,7 +61,6 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.nextSize = opts.MemTableSize
-	const initialMemTableSize = 256 << 10 // 256 KB
 	if d.mu.mem.nextSize > initialMemTableSize {
 		d.mu.mem.nextSize = initialMemTableSize
 	}

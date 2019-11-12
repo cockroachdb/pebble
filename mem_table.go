@@ -190,15 +190,7 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 // that prepare is not thread-safe, while apply is. The caller must call
 // writerUnref() after the batch has been applied.
 func (m *memTable) prepare(batch *Batch) error {
-	a := m.skl.Arena()
-	if atomic.LoadInt32(&m.writerRefs) == 1 {
-		// If there are no other concurrent apply operations, we can update the
-		// reserved bytes setting to accurately reflect how many bytes of been
-		// allocated vs the over-estimation present in memTableEntrySize.
-		m.reserved = a.Size()
-	}
-
-	avail := a.Capacity() - m.reserved
+	avail := m.availBytes()
 	if batch.memTableSize > avail {
 		return arenaskl.ErrArenaFull
 	}
@@ -261,6 +253,17 @@ func (m *memTable) newRangeDelIter(*IterOptions) internalIterator {
 		return nil
 	}
 	return rangedel.NewIter(m.cmp, tombstones)
+}
+
+func (m *memTable) availBytes() uint32 {
+	a := m.skl.Arena()
+	if atomic.LoadInt32(&m.writerRefs) == 1 {
+		// If there are no other concurrent apply operations, we can update the
+		// reserved bytes setting to accurately reflect how many bytes of been
+		// allocated vs the over-estimation present in memTableEntrySize.
+		m.reserved = a.Size()
+	}
+	return a.Capacity() - m.reserved
 }
 
 func (m *memTable) inuseBytes() uint64 {
