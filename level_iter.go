@@ -30,10 +30,16 @@ type levelIter struct {
 	opts      *IterOptions
 	tableOpts IterOptions
 	cmp       Compare
-	index     int
+	// The current file wrt the iterator position.
+	index int
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone.
-	boundary     *InternalKey
+	boundary *InternalKey
+	// The iter for the current index. It is nil under any of the following conditions:
+	// - index < 0 or index > len(files)
+	// - err != nil
+	// - some other constraint, like the bounds in opts, caused the file at index to not
+	//   be relevant to the iteration.
 	iter         internalIterator
 	newIters     tableNewIters
 	rangeDelIter *internalIterator
@@ -174,7 +180,18 @@ func (l *levelIter) findFileLT(key []byte) int {
 func (l *levelIter) loadFile(index, dir int) bool {
 	l.boundary = nil
 	if l.index == index {
-		return l.iter != nil
+		if l.err != nil {
+			return false
+		}
+		if l.iter != nil {
+			// We don't bother comparing the file bounds with the iteration bounds when we have
+			// an already open iterator. It is possible that the iter may not be relevant given the
+			// current iteration bounds, but it knows those bounds, so it will enforce them.
+			return true
+		}
+		// We were already at index, but don't have an iterator, probably because the file was
+		// beyond the iteration bounds. It may still be, but it is also possible that the bounds
+		// have changed. We handle that below.
 	}
 	// Close both iter and rangeDelIter. While mergingIter knows about
 	// rangeDelIter, it can't call Close() on it because it does not know when
