@@ -407,31 +407,42 @@ func (c *compaction) shouldStopBefore(key InternalKey) bool {
 // lower level in the LSM.
 func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
 	if len(c.flushing) != 0 {
-		if len(c.version.Files[0]) > 0 {
-			// We can only allow zeroing of seqnum for L0 tables if no other L0 tables
-			// exist. Otherwise we may violate the invariant that L0 tables are ordered
-			// by increasing seqnum. This could be relaxed with a bit more intelligence
-			// in how a new L0 table is merged into the existing set of L0 tables.
-			return false
-		}
+		return false
 
-		key, _ := iter.First()
-		if key == nil {
-			return false
-		}
-		// We need to clone the key because the call to iter.Last() below will
-		// invalidate it.
-		lower := key.Clone()
+		// TODO(peter): we disable zeroing of seqnums during flushing to match
+		// RocksDB behavior and to avoid generating overlapping sstables during
+		// DB.replayWAL. When replaying WAL files at startup, we flush after each
+		// WAL is replayed building up a single version edit that is
+		// applied. Because we don't apply the version edit after each flush, this
+		// code doesn't know that L0 contains files and zeroing of seqnums should
+		// be disabled. That is fixable, but it seems safer to just match the
+		// RocksDB behavior for now.
 
-		upper, _ := iter.Last()
-		if upper == nil {
-			return false
-		}
+		// if len(c.version.Files[0]) > 0 {
+		// 	// We can only allow zeroing of seqnum for L0 tables if no other L0 tables
+		// 	// exist. Otherwise we may violate the invariant that L0 tables are ordered
+		// 	// by increasing seqnum. This could be relaxed with a bit more intelligence
+		// 	// in how a new L0 table is merged into the existing set of L0 tables.
+		// 	return false
+		// }
 
-		// Note that we don't check for overlap for range tombstones in the input
-		// because zeroing of seqnums is only done for point operations (SET and
-		// MERGE).
-		return c.elideRangeTombstone(lower.UserKey, upper.UserKey)
+		// key, _ := iter.First()
+		// if key == nil {
+		// 	return false
+		// }
+		// // We need to clone the key because the call to iter.Last() below will
+		// // invalidate it.
+		// lower := key.Clone()
+
+		// upper, _ := iter.Last()
+		// if upper == nil {
+		// 	return false
+		// }
+
+		// // Note that we don't check for overlap for range tombstones in the input
+		// // because zeroing of seqnums is only done for point operations (SET and
+		// // MERGE).
+		// return c.elideRangeTombstone(lower.UserKey, upper.UserKey)
 	}
 
 	var lower, upper []byte

@@ -53,3 +53,20 @@ allow-zero-seqnum
 flush
 ----
 false
+
+# We never allow zeroing of seqnums during flushing as doing so runs
+# afoul of the WAL replay logic which flushes after each WAL is
+# replayed, but doesn't construct a version edit in between each
+# flush. Both disallowing of seqnum zeroing during flushing, and the
+# WAL replay behavior match RocksDB's behavior.
+
+define
+mem
+  a.SET.2:2
+  b.SET.3:3
+----
+
+allow-zero-seqnum
+flush
+----
+false
