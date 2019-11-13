@@ -293,6 +293,7 @@ func TestWriteStallEvents(t *testing.T) {
 			d, err := Open("db", &Options{
 				EventListener:               listener,
 				FS:                          vfs.NewMem(),
+				MemTableSize:                initialMemTableSize,
 				MemTableStopWritesThreshold: 2,
 				L0CompactionThreshold:       2,
 				L0StopWritesThreshold:       2,
