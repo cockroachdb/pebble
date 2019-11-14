@@ -6,8 +6,10 @@ package tool
 
 import (
 	"fmt"
+	"io/ioutil"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
 )
@@ -34,9 +36,7 @@ type dbT struct {
 	end          key
 }
 
-func newDB(
-	opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers,
-) *dbT {
+func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
 	d := &dbT{
 		opts:      opts,
 		comparers: comparers,
@@ -100,7 +100,74 @@ by another process.
 	return d
 }
 
+func (d *dbT) loadOptions(dir string) error {
+	ls, err := d.opts.FS.List(dir)
+	if err != nil || len(ls) == 0 {
+		return nil
+	}
+
+	hooks := &pebble.ParseHooks{
+		NewComparer: func(name string) (*pebble.Comparer, error) {
+			if c := d.comparers[name]; c != nil {
+				return c, nil
+			}
+			return nil, fmt.Errorf("unknown comparer %q", name)
+		},
+		NewMerger: func(name string) (*pebble.Merger, error) {
+			if m := d.mergers[name]; m != nil {
+				return m, nil
+			}
+			return nil, fmt.Errorf("unknown merger %q", name)
+		},
+		SkipUnknown: func(name string) bool {
+			return true
+		},
+	}
+
+	var dbOpts pebble.Options
+	for _, filename := range ls {
+		ft, _, ok := base.ParseFilename(d.opts.FS, filename)
+		if !ok {
+			continue
+		}
+		switch ft {
+		case base.FileTypeOptions:
+			err := func() error {
+				f, err := d.opts.FS.Open(d.opts.FS.PathJoin(dir, filename))
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+
+				data, err := ioutil.ReadAll(f)
+				if err != nil {
+					return err
+				}
+
+				if err := dbOpts.Parse(string(data), hooks); err != nil {
+					return err
+				}
+				return nil
+			}()
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if dbOpts.Comparer != nil {
+		d.opts.Comparer = dbOpts.Comparer
+	}
+	if dbOpts.Merger != nil {
+		d.opts.Merger = dbOpts.Merger
+	}
+	return nil
+}
+
 func (d *dbT) openDB(dir string) (*pebble.DB, error) {
+	if err := d.loadOptions(dir); err != nil {
+		return nil, err
+	}
 	if d.comparerName != "" {
 		d.opts.Comparer = d.comparers[d.comparerName]
 		if d.opts.Comparer == nil {
@@ -144,6 +211,11 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
+	}
+
+	// Update the internal formatter if this comparator has one specified.
+	if d.opts.Comparer != nil {
+		d.fmtKey.setForComparer(d.opts.Comparer.Name, d.comparers)
 	}
 
 	start := timeNow()
