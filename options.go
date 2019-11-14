@@ -568,7 +568,22 @@ func parseOptions(s string, fn func(section, key, value string) error) error {
 
 		key := strings.TrimSpace(line[:pos])
 		value := strings.TrimSpace(line[pos+1:])
-		if err := fn(section, key, value); err != nil {
+
+		// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
+		// different section names and keys. The "CFOptions ..." paths are the
+		// RocksDB versions which we map to the Pebble paths.
+		mappedSection := section
+		if section == `CFOptions "default"` {
+			mappedSection = "Options"
+			switch key {
+			case "comparator":
+				key = "comparer"
+			case "merge_operator":
+				key = "merger"
+			}
+		}
+
+		if err := fn(mappedSection, key, value); err != nil {
 			return err
 		}
 	}
@@ -582,6 +597,7 @@ type ParseHooks struct {
 	NewComparer     func(name string) (*Comparer, error)
 	NewFilterPolicy func(name string) (FilterPolicy, error)
 	NewMerger       func(name string) (*Merger, error)
+	SkipUnknown     func(name string) bool
 }
 
 // Parse parses the options from the specified string. Note that certain
@@ -594,6 +610,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			switch key {
 			case "pebble_version":
 			default:
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
+					return nil
+				}
 				return fmt.Errorf("pebble: unknown option: %s.%s", section, key)
 			}
 			return nil
@@ -650,6 +669,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.MinFlushRate, err = strconv.Atoi(value)
 			case "merger":
 				switch value {
+				case "nullptr":
+					o.Merger = nil
 				case "pebble.concatenate":
 					o.Merger = DefaultMerger
 				default:
@@ -671,6 +692,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "wal_dir":
 				o.WALDir = value
 			default:
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
+					return nil
+				}
 				return fmt.Errorf("pebble: unknown option: %s.%s", section, key)
 			}
 			return err
@@ -680,6 +704,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			if n, err := fmt.Sscanf(section, `Level "%d"`, &index); err != nil {
 				return err
 			} else if n != 1 {
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section) {
+					return nil
+				}
 				return fmt.Errorf("pebble: unknown section: %q", section)
 			}
 
@@ -723,9 +750,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "target_file_size":
 				l.TargetFileSize, err = strconv.ParseInt(value, 10, 64)
 			default:
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
+					return nil
+				}
 				return fmt.Errorf("pebble: unknown option: %s.%s", section, key)
 			}
 			return err
+		}
+		if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section) {
+			return nil
 		}
 		return fmt.Errorf("pebble: unknown section: %q", section)
 	})
@@ -736,16 +769,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 // the same, or data will not be able to be properly read from the DB.
 func (o *Options) Check(s string) error {
 	return parseOptions(s, func(section, key, value string) error {
-		// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
-		// different section names and keys. The "CFOptions ..." paths below are
-		// the RocksDB versions.
 		switch section + "." + key {
-		case "Options.comparer", `CFOptions "default".comparator`:
+		case "Options.comparer":
 			if value != o.Comparer.Name {
 				return fmt.Errorf("pebble: comparer name from file %q != comparer name from options %q",
 					value, o.Comparer.Name)
 			}
-		case "Options.merger", `CFOptions "default".merge_operator`:
+		case "Options.merger":
 			// RocksDB allows the merge operator to be unspecified, in which case it
 			// shows up as "nullptr".
 			if value != "nullptr" && value != o.Merger.Name {
