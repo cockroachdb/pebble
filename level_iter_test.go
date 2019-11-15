@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -119,95 +120,184 @@ func TestLevelIter(t *testing.T) {
 	})
 }
 
-func TestLevelIterBoundaries(t *testing.T) {
-	cmp := DefaultComparer.Compare
-	mem := vfs.NewMem()
-	var readers []*sstable.Reader
-	var files []fileMetadata
+type levelIterTest struct {
+	cmp     base.Comparer
+	mem     vfs.FS
+	readers []*sstable.Reader
+	files   []fileMetadata
+}
 
-	newIters := func(
-		meta *fileMetadata, _ *IterOptions, _ *uint64,
-	) (internalIterator, internalIterator, error) {
-		return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+func newLevelIterTest() *levelIterTest {
+	lt := &levelIterTest{
+		cmp: *DefaultComparer,
+		mem: vfs.NewMem(),
+	}
+	lt.cmp.Split = func(a []byte) int { return len(a) }
+	return lt
+}
+
+func (lt *levelIterTest) newIters(
+	meta *fileMetadata, _ *IterOptions, _ *uint64,
+) (internalIterator, internalIterator, error) {
+	iter := lt.readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+	rangeDelIter := lt.readers[meta.FileNum].NewRangeDelIter()
+	return iter, rangeDelIter, nil
+}
+
+func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
+	lt.mem = vfs.NewMem()
+	lt.readers = nil
+	lt.files = nil
+	return ""
+}
+
+func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
+	fileNum := uint64(len(lt.readers))
+	name := fmt.Sprint(fileNum)
+	f0, err := lt.mem.Create(name)
+	if err != nil {
+		return err.Error()
 	}
 
+	fp := bloom.FilterPolicy(10)
+	w := sstable.NewWriter(f0, sstable.WriterOptions{
+		Comparer:     &lt.cmp,
+		FilterPolicy: fp,
+	})
+	var tombstones []rangedel.Tombstone
+	f := rangedel.Fragmenter{
+		Cmp: lt.cmp.Compare,
+		Emit: func(fragmented []rangedel.Tombstone) {
+			tombstones = append(tombstones, fragmented...)
+		},
+	}
+	for _, key := range strings.Split(d.Input, "\n") {
+		j := strings.Index(key, ":")
+		ikey := base.ParseInternalKey(key[:j])
+		value := []byte(key[j+1:])
+		switch ikey.Kind() {
+		case InternalKeyKindRangeDelete:
+			f.Add(ikey, value)
+		default:
+			if err := w.Add(ikey, value); err != nil {
+				return err.Error()
+			}
+		}
+	}
+	f.Finish()
+	for _, v := range tombstones {
+		if err := w.Add(v.Start, v.End); err != nil {
+			return err.Error()
+		}
+	}
+	if err := w.Close(); err != nil {
+		return err.Error()
+	}
+	meta, err := w.Metadata()
+	if err != nil {
+		return err.Error()
+	}
+
+	f1, err := lt.mem.Open(name)
+	if err != nil {
+		return err.Error()
+	}
+	r, err := sstable.NewReader(f1, sstable.ReaderOptions{
+		Filters: map[string]FilterPolicy{
+			fp.Name(): fp,
+		},
+	})
+	if err != nil {
+		return err.Error()
+	}
+	lt.readers = append(lt.readers, r)
+	lt.files = append(lt.files, fileMetadata{
+		FileNum:  fileNum,
+		Smallest: meta.Smallest(lt.cmp.Compare),
+		Largest:  meta.Largest(lt.cmp.Compare),
+	})
+
+	var buf bytes.Buffer
+	for _, f := range lt.files {
+		fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
+	}
+	return buf.String()
+}
+
+func TestLevelIterBoundaries(t *testing.T) {
+	lt := newLevelIterTest()
 	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
-			mem = vfs.NewMem()
-			readers = nil
-			files = nil
-			return ""
+			return lt.runClear(d)
 
 		case "build":
-			fileNum := uint64(len(readers))
-			name := fmt.Sprint(fileNum)
-			f0, err := mem.Create(name)
-			if err != nil {
-				return err.Error()
-			}
-
-			w := sstable.NewWriter(f0, sstable.WriterOptions{})
-			var tombstones []rangedel.Tombstone
-			f := rangedel.Fragmenter{
-				Cmp: cmp,
-				Emit: func(fragmented []rangedel.Tombstone) {
-					tombstones = append(tombstones, fragmented...)
-				},
-			}
-			for _, key := range strings.Split(d.Input, "\n") {
-				j := strings.Index(key, ":")
-				ikey := base.ParseInternalKey(key[:j])
-				value := []byte(key[j+1:])
-				switch ikey.Kind() {
-				case InternalKeyKindRangeDelete:
-					f.Add(ikey, value)
-				default:
-					if err := w.Add(ikey, value); err != nil {
-						return err.Error()
-					}
-				}
-			}
-			f.Finish()
-			for _, v := range tombstones {
-				if err := w.Add(v.Start, v.End); err != nil {
-					return err.Error()
-				}
-			}
-			if err := w.Close(); err != nil {
-				return err.Error()
-			}
-			meta, err := w.Metadata()
-			if err != nil {
-				return err.Error()
-			}
-
-			f1, err := mem.Open(name)
-			if err != nil {
-				return err.Error()
-			}
-			r, err := sstable.NewReader(f1, sstable.ReaderOptions{})
-			if err != nil {
-				return err.Error()
-			}
-			readers = append(readers, r)
-			files = append(files, fileMetadata{
-				FileNum:  fileNum,
-				Smallest: meta.Smallest(cmp),
-				Largest:  meta.Largest(cmp),
-			})
-
-			var buf bytes.Buffer
-			for _, f := range files {
-				fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
-			}
-			return buf.String()
+			return lt.runBuild(d)
 
 		case "iter":
-			iter := newLevelIter(nil, DefaultComparer.Compare, newIters, files, nil)
+			iter := newLevelIter(nil, DefaultComparer.Compare, lt.newIters, lt.files, nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
+			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}
+
+// levelIterTestIter allows a datadriven test to use runInternalIterCmd and
+// perform parallel operations on both both a levelIter and rangeDelIter.
+type levelIterTestIter struct {
+	*levelIter
+	rangeDelIter internalIterator
+}
+
+func (i *levelIterTestIter) rangeDelSeek(
+	key []byte, ikey *InternalKey, val []byte,
+) (*InternalKey, []byte) {
+	var tombstone rangedel.Tombstone
+	if i.rangeDelIter != nil {
+		tombstone = rangedel.SeekGE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
+	}
+	if ikey == nil {
+		return &InternalKey{
+			UserKey: []byte(fmt.Sprintf("./%s", tombstone)),
+		}, nil
+	}
+	return &InternalKey{
+		UserKey: []byte(fmt.Sprintf("%s/%s", ikey.UserKey, tombstone)),
+		Trailer: ikey.Trailer,
+	}, val
+}
+
+func (i *levelIterTestIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	ikey, val := i.levelIter.SeekGE(key)
+	return i.rangeDelSeek(key, ikey, val)
+}
+
+func (i *levelIterTestIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	ikey, val := i.levelIter.SeekPrefixGE(prefix, key)
+	return i.rangeDelSeek(key, ikey, val)
+}
+
+func TestLevelIterSeekPrefixGE(t *testing.T) {
+	lt := newLevelIterTest()
+	datadriven.RunTest(t, "testdata/level_iter_seek_prefix_ge", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "clear":
+			return lt.runClear(d)
+
+		case "build":
+			return lt.runBuild(d)
+
+		case "iter":
+			iter := &levelIterTestIter{
+				levelIter: newLevelIter(nil, DefaultComparer.Compare, lt.newIters, lt.files, nil),
+			}
+			defer iter.Close()
+			iter.initRangeDel(&iter.rangeDelIter)
 			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
 
 		default:
