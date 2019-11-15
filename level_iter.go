@@ -34,7 +34,8 @@ type levelIter struct {
 	index int
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone.
-	boundary *InternalKey
+	boundary          *InternalKey
+	syntheticBoundary InternalKey
 	// The iter for the current index. It is nil under any of the following conditions:
 	// - index < 0 or index > len(files)
 	// - err != nil
@@ -290,6 +291,19 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	}
 	if key, val := l.iter.SeekPrefixGE(prefix, key); key != nil {
 		return key, val
+	}
+	// When SeekPrefixGE returns nil, we have not necessarily reached the end of
+	// the sstable. All we know is that a key with prefix does not exist in the
+	// current sstable. We do know that the key lies within the bounds of the
+	// table as findFileGE found the table where key <= meta.Largest. If we have
+	// a range tombstone iterator, we need to return a synthetic boundary so that
+	// mergingIter can use the range tombstone iterator.
+	if l.rangeDelIter != nil {
+		f := &l.files[l.index]
+		l.syntheticBoundary = f.Largest
+		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+		l.boundary = &l.syntheticBoundary
+		return l.boundary, nil
 	}
 	return l.skipEmptyFileForward()
 }
