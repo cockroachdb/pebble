@@ -21,10 +21,6 @@ const (
 	iterCmdVerboseKey iterCmdOpt = iota
 )
 
-func checkValidPrefix(prefix, key []byte) bool {
-	return prefix == nil || bytes.HasPrefix(key, prefix)
-}
-
 func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 	var b bytes.Buffer
 	for _, line := range strings.Split(d.Input, "\n") {
@@ -160,7 +156,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
-		if key != nil && checkValidPrefix(prefix, key.UserKey) {
+		if key != nil {
 			if verboseKey {
 				fmt.Fprintf(&b, "%s:%s\n", key, value)
 			} else {

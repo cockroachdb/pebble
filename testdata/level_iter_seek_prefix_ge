@@ -1,0 +1,22 @@
+build
+a.RANGEDEL.10:c
+d.SET.9:e
+----
+0: a#10,15-d#9,1
+
+build
+f.SET.8:g
+h.SET.7:i
+----
+0: a#10,15-d#9,1
+1: f#8,1-h#7,1
+
+iter
+seek-ge a
+----
+d/a-c#10#9,1:e
+
+iter
+seek-prefix-ge a
+----
+d/a-c#10#9,15:

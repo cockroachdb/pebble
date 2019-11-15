@@ -116,7 +116,7 @@ seek-prefix-ge a
 next
 ----
 a:1
-.
+b:2
 
 iter
 seek-prefix-ge d
@@ -143,21 +143,21 @@ prev
 d:4
 dd:5
 d:4
-.
+c:3
 
 iter
 seek-prefix-ge d
 prev
 ----
 d:4
-.
+c:3
 
 iter
 seek-prefix-ge dd
 prev
 ----
 dd:5
-.
+d:4
 
 iter lower=a
 seek-ge a
@@ -402,14 +402,14 @@ seek-prefix-ge dd
 prev
 ----
 dd:5
-.
+d:4
 
 iter lower=c
 seek-prefix-ge dd
 prev
 ----
 dd:5
-.
+d:4
 
 iter lower=c
 seek-lt c

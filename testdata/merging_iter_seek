@@ -73,7 +73,7 @@ seek-prefix-ge a0
 next
 ----
 a0:0
-.
+a1:1
 
 iter
 seek-prefix-ge a0
@@ -189,14 +189,14 @@ next
 a:0
 aa:1
 aaa:2
-.
+b:3
 
 iter
 seek-prefix-ge aa
 prev
 ----
 aa:1
-.
+a:0
 
 iter
 seek-prefix-ge aa
@@ -207,7 +207,7 @@ prev
 aa:1
 aaa:2
 aa:1
-.
+a:0
 
 iter
 seek-prefix-ge aa
@@ -220,28 +220,28 @@ aa:1
 aaa:2
 aa:1
 aaa:2
-.
+b:3
 
 iter
 seek-prefix-ge aaa
 next
 ----
 aaa:2
-.
+b:3
 
 iter
 seek-prefix-ge aaa
 prev
 ----
 aaa:2
-.
+aa:1
 
 iter
 seek-prefix-ge b
 prev
 ----
 b:3
-.
+aaa:2
 
 iter
 seek-prefix-ge b
