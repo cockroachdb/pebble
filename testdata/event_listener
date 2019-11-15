@@ -142,7 +142,7 @@ rename: db/CURRENT.000017.dbtmp -> db/CURRENT
 sync: db
 [JOB 10] MANIFEST created 000017
 [JOB 10] MANIFEST deleted 000015
-[JOB 10] ingested to L0 (825 B)
+[JOB 10] ingested L0:000016 (825 B)
 
 metrics
 ----

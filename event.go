@@ -201,10 +201,13 @@ func (i TableIngestInfo) String() string {
 	}
 
 	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "[JOB %d] ingested", i.JobID)
 	for j := range i.Tables {
 		t := &i.Tables[j]
-		fmt.Fprintf(&buf, "[JOB %d] ingested to L%d (%s)\n", i.JobID,
-			t.Level, humanize.Uint64(t.Size))
+		if j > 0 {
+			fmt.Fprintf(&buf, ",")
+		}
+		fmt.Fprintf(&buf, " L%d:%06d (%s)", t.Level, t.FileNum, humanize.Uint64(t.Size))
 	}
 	return buf.String()
 }
