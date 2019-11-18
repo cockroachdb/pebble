@@ -4,13 +4,18 @@
 
 package base
 
-import (
-	"github.com/cockroachdb/pebble/vfs"
-)
+import "github.com/cockroachdb/pebble/vfs"
 
 // Cleaner cleans obsolete files.
 type Cleaner interface {
 	Clean(fs vfs.FS, fileType FileType, path string) error
+}
+
+// NeedsFileContents is implemented by a cleaner that needs the contents of the
+// files that it is being asked to clean.
+type NeedsFileContents interface {
+	// TODO: what is the right idiom that prevents function name clashes?
+	NoopNeedsFileContents()
 }
 
 // DeleteCleaner deletes file.
@@ -27,6 +32,8 @@ func (DeleteCleaner) String() string {
 
 // ArchiveCleaner archives file instead delete.
 type ArchiveCleaner struct{}
+
+var _ NeedsFileContents = ArchiveCleaner{}
 
 // Clean archives file.
 func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
@@ -48,4 +55,7 @@ func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
 
 func (ArchiveCleaner) String() string {
 	return "archive"
+}
+
+func (ArchiveCleaner) NoopNeedsFileContents() {
 }

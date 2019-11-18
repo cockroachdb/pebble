@@ -1478,6 +1478,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		{fileTypeManifest, obsoleteManifests},
 		{fileTypeOptions, obsoleteOptions},
 	}
+	_, noRecycle := d.opts.Cleaner.(base.NeedsFileContents)
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
@@ -1487,7 +1488,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		for _, fileNum := range f.obsolete {
 			switch f.fileType {
 			case fileTypeLog:
-				if d.logRecycler.add(fileNum) {
+				if !noRecycle && d.logRecycler.add(fileNum) {
 					continue
 				}
 			case fileTypeTable:
