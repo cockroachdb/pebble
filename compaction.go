@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"sort"
@@ -786,6 +787,11 @@ func (d *DB) maybeScheduleFlush() {
 }
 
 func (d *DB) flush() {
+	if d.opts.DebugCheck {
+		if err := d.CheckLevels(); err != nil {
+			log.Fatalf("CheckLevels failed with error: %s", err)
+		}
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if err := d.flush1(); err != nil {
@@ -941,6 +947,11 @@ func (d *DB) maybeScheduleCompaction() {
 
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact() {
+	if d.opts.DebugCheck {
+		if err := d.CheckLevels(); err != nil {
+			log.Fatalf("CheckLevels failed with error: %s", err)
+		}
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if err := d.compact1(); err != nil {

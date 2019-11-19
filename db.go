@@ -805,6 +805,11 @@ func (d *DB) Compact(
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
+	if d.opts.DebugCheck {
+		if err := d.CheckLevels(); err != nil {
+			return err
+		}
+	}
 
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
