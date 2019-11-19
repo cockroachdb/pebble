@@ -528,7 +528,11 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir); err != nil {
 		return nil, err
 	}
-	d.updateReadStateLocked()
+	var checker func() error
+	if d.opts.DebugCheck {
+		checker = func() error { return d.CheckLevels(nil) }
+	}
+	d.updateReadStateLocked(checker)
 	d.deleteObsoleteFiles(jobID)
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.

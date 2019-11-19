@@ -1258,7 +1258,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// that was not flushed).
 		d.mu.mem.mutable.logNum = newLogNum
 		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-		d.updateReadStateLocked()
+		d.updateReadStateLocked(nil)
 		if imm.writerUnref() {
 			d.maybeScheduleFlush()
 		}

@@ -238,6 +238,11 @@ type Options struct {
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
 
+	// Setting this to true causes DB.CheckLevels() to be called whenever a new version is being
+	// installed. DB.CheckLevels() iterates over all the data in the DB, so set this to true only
+	// in tests.
+	DebugCheck bool
+
 	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
 	// crash recovery, but can improve performance if crash recovery is not
 	// needed (e.g. when only temporary state is being stored in the database).

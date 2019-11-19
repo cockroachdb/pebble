@@ -899,7 +899,11 @@ func (d *DB) flush1() error {
 	if err == nil {
 		flushed = d.mu.mem.queue[:n]
 		d.mu.mem.queue = d.mu.mem.queue[n:]
-		d.updateReadStateLocked()
+		var checker func() error
+		if d.opts.DebugCheck {
+			checker = func() error { return d.CheckLevels(nil) }
+		}
+		d.updateReadStateLocked(checker)
 	}
 
 	d.deleteObsoleteFiles(jobID)
@@ -1032,7 +1036,11 @@ func (d *DB) compact1() (err error) {
 	// there are no references obsolete tables will be added to the obsolete
 	// table list.
 	if err == nil {
-		d.updateReadStateLocked()
+		var checker func() error
+		if d.opts.DebugCheck {
+			checker = func() error { return d.CheckLevels(nil) }
+		}
+		d.updateReadStateLocked(checker)
 	}
 	d.deleteObsoleteFiles(jobID)
 

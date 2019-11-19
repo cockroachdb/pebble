@@ -29,7 +29,7 @@ func BenchmarkReadState(b *testing.B) {
 				for pb.Next() {
 					if rng.Float32() < updateFrac {
 						d.mu.Lock()
-						d.updateReadStateLocked()
+						d.updateReadStateLocked(nil)
 						d.mu.Unlock()
 					} else {
 						s := d.loadReadState()

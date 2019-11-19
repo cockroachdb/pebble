@@ -1,0 +1,187 @@
+# Format for define command:
+# Levels are ordered from higher to lower, and each new level starts with an L
+# Each level is defined using an even number of lines where every pair of lines represents
+# a file. The files within a level are ordered from smaller to larger keys.
+# Each file is defined using: the first line specifies the smallest and largest internal
+# keys and the second line the point key-value pairs in the sstable in order. The rangedel
+# key-value pairs should also be in increasing order relative to the other rangedel pairs.
+# The largest file key can take the form of <userkey>.RANGEDEL.72057594037927935, which
+# represents the range deletion sentinel.
+#
+# Many of the correct case definitions are borrowed from merging_iter since it defines
+# some tricky configurations.
+
+# The untruncated range tombstone at the higher level does not overlap with the lower level once
+# we consider the file boundaries, which is why its lower sequence number is ok.
+define
+L
+a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:f
+L
+e.SET.10 g.SET.20
+e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:f
+----
+Level 1
+  file 0: [a#30,1-e#72057594037927935,15]
+Level 2
+  file 0: [e#10,1-g#20,1]
+
+check
+----
+
+# The untruncated range tombstone at the higher level does not overlap with the g point at the
+# lower level once we consider the file boundaries, which is why its lower sequence number is ok.
+define
+L
+a.SET.15 f.SET.16
+a.SET.15:15 c.SET.13:13 f.SET.16:16 a.RANGEDEL.12:h
+L
+e.SET.10 g.SET.15
+e.SET.10:10 g.SET.15:15
+----
+Level 1
+  file 0: [a#15,1-f#16,1]
+Level 2
+  file 0: [e#10,1-g#15,1]
+
+check
+----
+
+# The untruncated range tombstones in both levels do not overlap once we consider the file
+# boundaries (which are non-overlapping).
+define
+L
+c.SET.30 f.RANGEDEL.0
+c.SET.30:30 d.SET.27:27 a.RANGEDEL.8:f
+L
+a.SET.10 c.RANGEDEL.72057594037927935
+a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:f
+----
+Level 1
+  file 0: [c#30,1-f#0,15]
+Level 2
+  file 0: [a#10,1-c#72057594037927935,15]
+
+check
+----
+
+# The range tombstone in the higher level does not overlap with the b point in the lower level,
+# which has a higher sequence number, when we consider the file boundaries.
+define
+L
+c.SET.15 g.SET.16
+c.SET.15:15 f.SET.13:13 g.SET.16:16 a.RANGEDEL.12:h
+L
+b.SET.14 d.SET.10
+b.SET.14:14 d.SET.10:10
+----
+Level 1
+  file 0: [c#15,1-g#16,1]
+Level 2
+  file 0: [b#14,1-d#10,1]
+
+check
+----
+
+# The two files do not overlap despite the seeming overlap of the range tombstones.
+define
+L
+a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
+L
+e.SET.10 g.SET.20
+e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
+----
+Level 1
+  file 0: [a#30,1-e#72057594037927935,15]
+Level 2
+  file 0: [e#10,1-g#20,1]
+
+check
+----
+
+define
+L
+a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
+L
+a.SET.10 g.SET.20
+a.SET.10:10 c.SET.28:28 g.SET.20:20
+----
+Level 1
+  file 0: [a#30,1-e#72057594037927935,15]
+Level 2
+  file 0: [a#10,1-g#20,1]
+
+check
+----
+found InternalKey c#27,1 at level index 0 and InternalKey c#28,1 at level index 1
+
+# The sentinel key for the RANGEDEL should not violate g having a higher seq num at a
+# lower level.
+define
+L
+a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
+L
+g.SET.10 j.SET.20
+g.SET.10:10 j.SET.20:20
+----
+Level 1
+  file 0: [a#30,1-g#72057594037927935,15]
+Level 2
+  file 0: [g#10,1-j#20,1]
+
+check
+----
+
+define
+L
+a.SET.30 g.SET.8
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g g.SET.8:8
+L
+g.SET.10 j.SET.20
+g.SET.10:10 j.SET.20:20
+----
+Level 1
+  file 0: [a#30,1-g#8,1]
+Level 2
+  file 0: [g#10,1-j#20,1]
+
+check
+----
+found InternalKey g#8,1 at level index 0 and InternalKey g#10,1 at level index 1
+
+define
+L
+a.SET.30 g.SET.30
+a.SET.30:30 c.SET.8:8 g.SET.30:30
+L
+a.SET.10 j.SET.20
+a.SET.10:10 j.SET.20:20 b.RANGEDEL.10:g
+----
+Level 1
+  file 0: [a#30,1-g#30,1]
+Level 2
+  file 0: [a#10,1-j#20,1]
+
+check
+----
+tombstone b-g#10 at level index 1 deletes key c#8,1 at level index 0
+
+define
+L
+a.RANGEDEL.8 c.RANGEDEL.72057594037927935
+a.RANGEDEL.8:c
+L
+a.RANGEDEL.6 d.RANGEDEL.72057594037927935
+a.RANGEDEL.6:d b.RANGEDEL.10:c
+----
+Level 1
+  file 0: [a#8,15-c#72057594037927935,15]
+Level 2
+  file 0: [a#6,15-d#72057594037927935,15]
+
+check
+----
+encountered tombstone b-c#8 at level index 0 that has a lower seqnum than the same tombstone at level index 1
