@@ -191,12 +191,16 @@ func (d *dbT) openDB(dir string) (*pebble.DB, error) {
 }
 
 func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
-	// The check command is equivalent to scanning over all of the records, but
-	// not outputting anything.
-	d.fmtKey.Set("null")
-	d.fmtValue.Set("null")
-	d.start, d.end = nil, nil
-	d.runScan(cmd, args)
+	db, err := d.openDB(args[0])
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	var stats pebble.CheckLevelsStats
+	if err := db.CheckLevels(&stats); err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+	}
+	fmt.Fprintf(stdout, "checked %d points and %d tombstones\n", stats.NumPoints, stats.NumTombstones)
 }
 
 func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
