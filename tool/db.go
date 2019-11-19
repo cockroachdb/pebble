@@ -211,12 +211,17 @@ func (d *dbT) openDB(dir string) (*pebble.DB, error) {
 }
 
 func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
-	// The check command is equivalent to scanning over all of the records, but
-	// not outputting anything.
-	d.fmtKey.Set("null")
-	d.fmtValue.Set("null")
-	d.start, d.end = nil, nil
-	d.runScan(cmd, args)
+	db, err := d.openDB(args[0])
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	var stats pebble.CheckLevelsStats
+	if err := db.CheckLevels(&stats); err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+	}
+	fmt.Fprintf(stdout, "checked %d %s and %d %s\n",
+		stats.NumPoints, makePlural("point", stats.NumPoints), stats.NumTombstones, makePlural("tombstone", int64(stats.NumTombstones)))
 }
 
 func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
@@ -281,12 +286,8 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 
 	elapsed := timeNow().Sub(start)
 
-	plural := ""
-	if count != 1 {
-		plural = "s"
-	}
-	fmt.Fprintf(stdout, "scanned %d record%s in %0.1fs\n",
-		count, plural, elapsed.Seconds())
+	fmt.Fprintf(stdout, "scanned %d %s in %0.1fs\n",
+		count, makePlural("record", count), elapsed.Seconds())
 
 	if err := db.Close(); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
@@ -310,4 +311,11 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 		return
 	}
 	fmt.Fprintf(stdout, "%d\n", bytes)
+}
+
+func makePlural(singular string, count int64) string {
+	if count > 1 {
+		return fmt.Sprintf("%ss", singular)
+	}
+	return singular
 }

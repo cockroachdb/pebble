@@ -124,6 +124,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
+		DebugCheck: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -271,6 +272,7 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
+		DebugCheck: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -349,6 +351,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
+		DebugCheck: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -465,8 +468,9 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
 					mem := vfs.NewMem()
 					d, err := Open("", &Options{
-						Cache: NewCache(128 << 20), // 128 MB
-						FS:    mem,
+						Cache:      NewCache(128 << 20), // 128 MB
+						FS:         mem,
+						DebugCheck: true,
 					})
 					if err != nil {
 						b.Fatal(err)

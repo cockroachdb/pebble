@@ -40,6 +40,7 @@ func (t *test) init(h *history, dir string, opts *pebble.Options) error {
 	t.opts = opts.EnsureDefaults()
 	t.opts.Logger = h.Logger()
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
+	t.opts.DebugCheck = true
 
 	// If an error occurs and we were using an in-memory FS, attempt to clone to
 	// on-disk in order to allow post-mortem debugging. Note that always using

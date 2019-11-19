@@ -596,6 +596,7 @@ func TestCompaction(t *testing.T) {
 	d, err := Open("", &Options{
 		FS:           mem,
 		MemTableSize: memTableSize,
+		DebugCheck:   true,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -719,7 +720,8 @@ func TestManualCompaction(t *testing.T) {
 	}
 
 	d, err := Open("", &Options{
-		FS: mem,
+		FS:         mem,
+		DebugCheck: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1310,6 +1312,7 @@ func TestFlushInvariant(t *testing.T) {
 								runtime.Goexit() // ensure we don't try to reschedule the flush
 							},
 						},
+						DebugCheck: true,
 					})
 					if err != nil {
 						t.Fatal(err)

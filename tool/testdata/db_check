@@ -10,7 +10,7 @@ open non-existent: file does not exist
 db check
 ../testdata/db-stage-4
 ----
-scanned 2 records in 1.0s
+checked 6 points and 0 tombstone
 
 db check
 ../testdata/db-stage-4
@@ -36,4 +36,4 @@ db check
 ../testdata/db-stage-4
 --merger=test-merger
 ----
-scanned 2 records in 1.0s
+checked 6 points and 0 tombstone

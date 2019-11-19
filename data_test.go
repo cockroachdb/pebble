@@ -328,7 +328,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				if !d.mu.mem.mutable.empty() {
 					d.mu.mem.mutable = newMemTable(d.opts, 0 /* size */, nil /* reservation */)
 					d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-					d.updateReadStateLocked()
+					d.updateReadStateLocked(nil)
 				}
 				mem = d.mu.mem.mutable
 				fields = fields[1:]
@@ -366,7 +366,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if err := d.mu.versions.logAndApply(jobID, ve, nil, d.dataDir); err != nil {
 			return nil, err
 		}
-		d.updateReadStateLocked()
+		d.updateReadStateLocked(nil)
 		for i := range ve.NewFiles {
 			meta := &ve.NewFiles[i].Meta
 			delete(d.mu.compact.pendingOutputs, meta.FileNum)
