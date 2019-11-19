@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"log"
 	"sync/atomic"
 )
 
@@ -68,8 +69,9 @@ func (d *DB) loadReadState() *readState {
 }
 
 // updateReadStateLocked creates a new readState from the current version and
-// list of memtables. Requires DB.mu is held.
-func (d *DB) updateReadStateLocked() {
+// list of memtables. Requires DB.mu is held. If checker is not nil, it is called after installing
+// the new readState
+func (d *DB) updateReadStateLocked(checker func() error) {
 	s := &readState{
 		refcnt:    1,
 		current:   d.mu.versions.currentVersion(),
@@ -84,7 +86,11 @@ func (d *DB) updateReadStateLocked() {
 	old := d.readState.val
 	d.readState.val = s
 	d.readState.Unlock()
-
+	if checker != nil {
+		if err := checker(); err != nil {
+			log.Fatalf("checker failed with error: %s", err)
+		}
+	}
 	if old != nil {
 		old.unrefLocked()
 	}
