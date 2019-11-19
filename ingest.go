@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"sync/atomic"
 
@@ -195,7 +196,9 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	return firstErr
 }
 
-func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
+func ingestLink(
+	jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata,
+) error {
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
@@ -514,6 +517,11 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	}
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir); err != nil {
 		return nil, err
+	}
+	if d.opts.DebugCheck {
+		if err := d.CheckLevels(); err != nil {
+			log.Fatalf("CheckLevels failed with error: %s", err)
+		}
 	}
 	d.updateReadStateLocked()
 	d.deleteObsoleteFiles(jobID)

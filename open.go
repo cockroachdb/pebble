@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"sort"
 
@@ -230,6 +231,11 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 	}
 	d.updateReadStateLocked()
+	if d.opts.DebugCheck {
+		if err := d.CheckLevels(); err != nil {
+			log.Fatalf("CheckLevels failed with error: %s", err)
+		}
+	}
 
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.

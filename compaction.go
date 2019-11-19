@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"sort"
@@ -872,6 +873,11 @@ func (d *DB) flush1() error {
 		}
 
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
+		if d.opts.DebugCheck {
+			if err := d.CheckLevels(); err != nil {
+				log.Fatalf("CheckLevels failed with error: %s", err)
+			}
+		}
 		for _, fileNum := range pendingOutputs {
 			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 				panic("pebble: expected pending output not present")
@@ -998,6 +1004,11 @@ func (d *DB) compact1() (err error) {
 
 	if err == nil {
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
+		if d.opts.DebugCheck {
+			if err := d.CheckLevels(); err != nil {
+				log.Fatalf("CheckLevels failed with error: %s", err)
+			}
+		}
 		for _, fileNum := range pendingOutputs {
 			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
 				panic("pebble: expected pending output not present")

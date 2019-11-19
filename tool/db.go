@@ -265,6 +265,9 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	fmt.Fprintf(stdout, "scanned %d record%s in %0.1fs\n",
 		count, plural, elapsed.Seconds())
 
+	if err := db.CheckLevels(); err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+	}
 	if err := db.Close(); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 	}
