@@ -26,6 +26,15 @@ type tableNewIters func(
 // contains the smallest (or largest for reverse iteration) key in the merged
 // heap. Note that Iterator treat a range deletion tombstone as a no-op and
 // processes range deletions via mergingIter.
+//
+// SeekPrefixGE presents the need for a second type of pausing. If an sstable
+// iterator returns "not found" for a SeekPrefixGE operation, we don't want to
+// advance to the next sstable as the "not found" does not indicate that all of
+// the keys in the sstable are less than the search key. Advancing to the next
+// sstable would cause us to skip over range tombstones, violating
+// correctness. Instead, SeekPrefixGE creates a synthetic boundary key with the
+// kind InternalKeyKindRangeDeletion which will be used to pause the levelIter
+// at the sstable until the mergingIter is ready to advance past it.
 type levelIter struct {
 	opts      *IterOptions
 	tableOpts IterOptions
@@ -35,6 +44,10 @@ type levelIter struct {
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone.
 	boundary *InternalKey
+	// A synthetic boundary key to return when SeekPrefixGE finds an sstable
+	// which doesn't contain the search key, but which does contain range
+	// tombstones.
+	syntheticBoundary InternalKey
 	// The iter for the current index. It is nil under any of the following conditions:
 	// - index < 0 or index > len(files)
 	// - err != nil
@@ -290,6 +303,27 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	}
 	if key, val := l.iter.SeekPrefixGE(prefix, key); key != nil {
 		return key, val
+	}
+	// When SeekPrefixGE returns nil, we have not necessarily reached the end of
+	// the sstable. All we know is that a key with prefix does not exist in the
+	// current sstable. We do know that the key lies within the bounds of the
+	// table as findFileGE found the table where key <= meta.Largest. If we have
+	// a range tombstone iterator, we need to return a synthetic boundary so that
+	// mergingIter can use the range tombstone iterator. The synthetic boundary
+	// key is always a RANGEDEL. Note that mergingIter will pass through RANGEDEL
+	// records that are returned by the "point" iterator, and not process them as
+	// range tombstones. Iterator will in turn skip over RANGEDEL records.
+	//
+	// It is safe to set the boundary key kind to RANGEDEL because it was either
+	// already RANGEDEL, or it was another kind that sorts after RANGEDEL. If the
+	// largest key is `d#10.SET` we know that the next sstable won't contain
+	// `d#10.RANGEDEL` because that record would sort before `d#10.SET`.
+	if l.rangeDelIter != nil {
+		f := &l.files[l.index]
+		l.syntheticBoundary = f.Largest
+		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+		l.boundary = &l.syntheticBoundary
+		return l.boundary, nil
 	}
 	return l.skipEmptyFileForward()
 }
