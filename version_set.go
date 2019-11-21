@@ -255,26 +255,44 @@ func (vs *versionSet) close() error {
 	return nil
 }
 
-// logAndApply logs the version edit to the manifest, applies the version edit
-// to the current version, and installs the new version. DB.mu must be held
-// when calling this method and will be released temporarily while performing
-// file I/O.
-func (vs *versionSet) logAndApply(
-	jobID int,
-	ve *versionEdit,
-	metrics map[int]*LevelMetrics,
-	dir vfs.File,
-) error {
+// logLock locks the manifest for writing. The lock must be released by either
+// a call to logUnlock or logAndApply.
+//
+// DB.mu must be held when calling this method.
+func (vs *versionSet) logLock() {
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
 	for vs.writing {
 		vs.writerCond.Wait()
 	}
 	vs.writing = true
-	defer func() {
-		vs.writing = false
-		vs.writerCond.Signal()
-	}()
+}
+
+// logUnlock releases the lock for manifest writing.
+//
+// DB.mu must be held when calling this method.
+func (vs *versionSet) logUnlock() {
+	if !vs.writing {
+		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
+	}
+	vs.writing = false
+	vs.writerCond.Signal()
+}
+
+// logAndApply logs the version edit to the manifest, applies the version edit
+// to the current version, and installs the new version.
+//
+// DB.mu must be held when calling this method and will be released temporarily
+// while performing file I/O. Requires that the manifest is locked for writing
+// (see logLock). Will unconditionally release the manifest lock (via
+// logUnlock) even if an error occurs.
+func (vs *versionSet) logAndApply(
+	jobID int, ve *versionEdit, metrics map[int]*LevelMetrics, dir vfs.File,
+) error {
+	if !vs.writing {
+		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
+	}
+	defer vs.logUnlock()
 
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||

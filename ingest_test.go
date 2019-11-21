@@ -610,7 +610,7 @@ func TestIngest(t *testing.T) {
 
 		case "lsm":
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().String()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
 
@@ -658,6 +658,49 @@ func TestIngestCompact(t *testing.T) {
 			}
 		}
 		if err := d.Ingest([]string{"ext"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestConcurrentIngest(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an sstable with 2 keys. This is necessary to trigger the overlap
+	// bug because an sstable with a single key will not have overlap in internal
+	// key space and the sequence number assignment had already guaranteed
+	// correct ordering.
+	f, err := mem.Create("ext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	if err := w.Set([]byte("a"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Set([]byte("b"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ingest the same sstable multiple times concurrently.
+	errCh := make(chan error, 5)
+	for i := 0; i < cap(errCh); i++ {
+		go func() {
+			errCh <- d.Ingest([]string{"ext"})
+		}()
+	}
+	for i := 0; i < cap(errCh); i++ {
+		err := <-errCh
+		if err != nil {
 			t.Fatal(err)
 		}
 	}

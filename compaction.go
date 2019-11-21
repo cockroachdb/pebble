@@ -871,6 +871,7 @@ func (d *DB) flush1() error {
 			metrics.BytesIn += size
 		}
 
+		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
 		for _, fileNum := range pendingOutputs {
 			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
@@ -997,6 +998,7 @@ func (d *DB) compact1() (err error) {
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
 	if err == nil {
+		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
 		for _, fileNum := range pendingOutputs {
 			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
