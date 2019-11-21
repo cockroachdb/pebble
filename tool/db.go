@@ -21,6 +21,7 @@ type dbT struct {
 	Check *cobra.Command
 	LSM   *cobra.Command
 	Scan  *cobra.Command
+	Space *cobra.Command
 
 	// Configuration.
 	opts      *pebble.Options
@@ -79,24 +80,38 @@ by another process.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runScan,
 	}
+	d.Space = &cobra.Command{
+		Use:   "space <dir>",
+		Short: "print filesystem space used",
+		Long: `
+Print the approximate filesystem space usage for the inclusive-inclusive range
+specified by --start and --end. Requires that the specified database not be in
+use by another process.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runSpace,
+	}
 
-	d.Root.AddCommand(d.Check, d.LSM, d.Scan)
+	d.Root.AddCommand(d.Check, d.LSM, d.Scan, d.Space)
 
-	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan} {
+	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan, d.Space} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
 			&d.mergerName, "merger", "", "merger name (use default if empty)")
 	}
 
+	for _, cmd := range []*cobra.Command{d.Scan, d.Space} {
+		cmd.Flags().Var(
+			&d.start, "start", "start key for the range")
+		cmd.Flags().Var(
+			&d.end, "end", "end key for the range")
+	}
+
 	d.Scan.Flags().Var(
 		&d.fmtKey, "key", "key formatter")
 	d.Scan.Flags().Var(
 		&d.fmtValue, "value", "value formatter")
-	d.Scan.Flags().Var(
-		&d.start, "start", "start key for the scan")
-	d.Scan.Flags().Var(
-		&d.end, "end", "end key for the scan")
 	return d
 }
 
@@ -268,4 +283,23 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	if err := db.Close(); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 	}
+}
+
+func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
+	db, err := d.openDB(args[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+		}
+	}()
+	bytes, err := db.ApproximateSpaceUsage(d.start, d.end)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return
+	}
+	fmt.Fprintf(stdout, "approximate filesystem space used in bytes: %d\n", bytes)
 }

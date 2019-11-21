@@ -1361,6 +1361,110 @@ func (r *Reader) Layout() (*Layout, error) {
 	return l, nil
 }
 
+// ApproximateSpaceUsage returns the total size of data blocks overlapping the range
+// `[start, end]`. Even if a data block partially overlaps, or we cannot determine
+// overlap due to abbreviated index keys, the full data block size is included in
+// the approximation. This function does not account for any metablock space usage.
+// Assumes there is at least partial overlap, i.e., `[start, end]` falls neither
+// completely before nor completely after the file's range.
+func (r *Reader) ApproximateSpaceUsage(start, end []byte) (uint64, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+
+	index, err := r.readIndex()
+	if err != nil {
+		return 0, err
+	}
+
+	// Iterators over the bottom-level index blocks containing start and end.
+	// These may be different in case of partitioned index but will both point
+	// to the same blockIter over the single index in the unpartitioned case.
+	var startIdxIter, endIdxIter *blockIter
+	if r.Properties.IndexPartitions == 0 {
+		iter, err := newBlockIter(r.Compare, index)
+		if err != nil {
+			return 0, err
+		}
+		startIdxIter = iter
+		endIdxIter = iter
+	} else {
+		topIter, err := newBlockIter(r.Compare, index)
+		if err != nil {
+			return 0, err
+		}
+
+		key, val := topIter.SeekGE(start)
+		if key == nil {
+			// The range falls completely after this file, or an error occurred.
+			return 0, topIter.Error()
+		}
+		startIdxBH, n := decodeBlockHandle(val)
+		if n == 0 || n != len(val) {
+			return 0, errors.New("pebble/table: corrupt index entry")
+		}
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */)
+		if err != nil {
+			return 0, err
+		}
+		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get())
+		if err != nil {
+			return 0, err
+		}
+
+		key, val = topIter.SeekGE(end)
+		if key == nil {
+			if err := topIter.Error(); err != nil {
+				return 0, nil
+			}
+			// The range spans beyond this file. Include data blocks through the last.
+			key, val = topIter.Last()
+			if key == nil {
+				return 0, topIter.Error()
+			}
+		}
+		endIdxBH, n := decodeBlockHandle(val)
+		if n == 0 || n != len(val) {
+			return 0, errors.New("pebble/table: corrupt index entry")
+		}
+		endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */)
+		if err != nil {
+			return 0, err
+		}
+		endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get())
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	key, val := startIdxIter.SeekGE(start)
+	if key == nil {
+		// The range falls completely after this file, or an error occurred.
+		return 0, startIdxIter.Error()
+	}
+	startBH, n := decodeBlockHandle(val)
+	if n == 0 || n != len(val) {
+		return 0, errors.New("pebble/table: corrupt index entry")
+	}
+
+	key, val = endIdxIter.SeekGE(end)
+	if key == nil {
+		if err := endIdxIter.Error(); err != nil {
+			return 0, err
+		}
+		// The range spans beyond this file. Include data blocks through the last.
+		key, val = endIdxIter.Last()
+		if key == nil {
+			return 0, endIdxIter.Error()
+		}
+	}
+	endBH, n := decodeBlockHandle(val)
+	if n == 0 || n != len(val) {
+		return 0, errors.New("pebble/table: corrupt index entry")
+	}
+	return endBH.Offset + endBH.Length - startBH.Offset, nil
+}
+
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -986,6 +987,69 @@ func (d *DB) SSTables() [][]TableInfo {
 		destLevels[i] = destLevel
 	}
 	return destLevels
+}
+
+// ApproximateSpaceUsage returns the approximate filesystem space used in bytes for
+// storing the range `[start, end]`. The approximation is computed as follows:
+//
+// - For sstables fully contained in the range the whole file size is included.
+// - For sstables partially contained in the range the overlapping data block sizes
+//   are included. Even if a data block partially overlaps, or we cannot determine
+//   overlap due to abbreviated index keys, the full data block size is included in
+//   the approximation. Note that unlike fully contained sstables, none of the
+//   meta-block space is counted for partially overlapped files.
+// - There may also exist WAL entries for unflushed keys in this range. This
+//   approximation currently excludes space used for the range in the WAL.
+func (d *DB) ApproximateSpaceUsage(start, end []byte) (uint64, error) {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+	if d.opts.Comparer.Compare(start, end) > 0 {
+		return 0, errors.New("invalid key-range specified (start > end)")
+	}
+
+	// Grab and reference the current readState. This prevents the underlying
+	// files in the associated version from being deleted if there is a concurrent
+	// compaction.
+	readState := d.loadReadState()
+	defer readState.unref()
+
+	var totalSize uint64
+	for level, files := range readState.current.Files {
+		if level > 0 {
+			lower := sort.Search(len(files), func(i int) bool {
+				return d.opts.Comparer.Compare(files[i].Largest.UserKey, start) >= 0
+			})
+			upper := sort.Search(len(files), func(i int) bool {
+				return d.opts.Comparer.Compare(files[i].Smallest.UserKey, end) > 0
+			})
+			if lower >= upper {
+				// No overlap on this level.
+				continue
+			}
+			files = files[lower:upper]
+		}
+		for fileIdx, file := range files {
+			if level > 0 && fileIdx > 0 && fileIdx < len(files)-1 {
+				// The files to the left and the right at least partially overlap
+				// with `file`, which means `file` is fully contained within the
+				// range specified by `[start, end]`.
+				totalSize += file.Size
+			} else if d.opts.Comparer.Compare(start, file.Smallest.UserKey) <= 0 &&
+				d.opts.Comparer.Compare(file.Largest.UserKey, end) <= 0 {
+				// The range fully contains the file, so skip looking it up in
+				// table cache/looking at its indexes, and add the full file size.
+				totalSize += file.Size
+			} else {
+				size, err := d.tableCache.approximateSpaceUsage(&file, start, end)
+				if err != nil {
+					return 0, err
+				}
+				totalSize += size
+			}
+		}
+	}
+	return totalSize, nil
 }
 
 func (d *DB) walPreallocateSize() int {

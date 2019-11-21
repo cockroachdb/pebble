@@ -71,6 +71,10 @@ func (c *tableCache) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
+func (c *tableCache) approximateSpaceUsage(meta *fileMetadata, start, end []byte) (uint64, error) {
+	return c.getShard(meta.FileNum).approximateSpaceUsage(meta, start, end)
+}
+
 func (c *tableCache) iterCount() int64 {
 	var n int64
 	for i := range c.shards {
@@ -320,6 +324,20 @@ func (c *tableCacheShard) recordHitsLocked(hits []*tableCacheNode) {
 		n.next.prev = n
 		n.prev.next = n
 	}
+}
+
+func (c *tableCacheShard) approximateSpaceUsage(meta *fileMetadata, start, end []byte) (uint64, error) {
+	n := c.findNode(meta)
+	<-n.loaded
+	defer c.unrefNode(n)
+	if n.err != nil {
+		return 0, n.err
+	}
+	if c.opts.Comparer.Compare(end, meta.Smallest.UserKey) < 0 ||
+		c.opts.Comparer.Compare(meta.Largest.UserKey, start) < 0 {
+		return 0, nil
+	}
+	return n.reader.ApproximateSpaceUsage(start, end)
 }
 
 func (c *tableCacheShard) Close() error {
