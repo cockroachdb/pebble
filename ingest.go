@@ -195,7 +195,9 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	return firstErr
 }
 
-func ingestLink(jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata) error {
+func ingestLink(
+	jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata,
+) error {
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
@@ -274,7 +276,12 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fileMetadata) error {
 	for _, m := range meta {
 		m.Smallest = base.MakeInternalKey(m.Smallest.UserKey, seqNum, m.Smallest.Kind())
-		m.Largest = base.MakeInternalKey(m.Largest.UserKey, seqNum, m.Largest.Kind())
+		// Don't update the seqnum for the largest key if that key is a range
+		// deletion sentinel key as doing so unintentionally extends the bounds of
+		// the table.
+		if m.Largest.Trailer != InternalKeyRangeDeleteSentinel {
+			m.Largest = base.MakeInternalKey(m.Largest.UserKey, seqNum, m.Largest.Kind())
+		}
 		// Setting smallestSeqNum == largestSeqNum triggers the setting of
 		// Properties.GlobalSeqNum when an sstable is loaded.
 		m.SmallestSeqNum = seqNum
@@ -496,6 +503,12 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 		NewFiles: make([]newFileEntry, len(meta)),
 	}
 	metrics := make(map[int]*LevelMetrics)
+
+	// Lock the manifest for writing before we use the current version to
+	// determine the target level. This prevents two concurrent ingestion jobs
+	// from using the same version to determine the target level, and also
+	// provides serialization with concurrent compaction and flush jobs.
+	d.mu.versions.logLock()
 	current := d.mu.versions.currentVersion()
 	for i := range meta {
 		// Determine the lowest level in the LSM for which the sstable doesn't

@@ -362,6 +362,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	if len(ve.NewFiles) > 0 {
 		jobID := d.mu.nextJobID
 		d.mu.nextJobID++
+		d.mu.versions.logLock()
 		if err := d.mu.versions.logAndApply(jobID, ve, nil, d.dataDir); err != nil {
 			return nil, err
 		}
