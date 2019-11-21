@@ -988,6 +988,63 @@ func (d *DB) SSTables() [][]TableInfo {
 	return destLevels
 }
 
+// EstimateDiskUsage returns the estimated filesystem space used in bytes for
+// storing the range `[start, end]`. The estimation is computed as follows:
+//
+// - For sstables fully contained in the range the whole file size is included.
+// - For sstables partially contained in the range the overlapping data block sizes
+//   are included. Even if a data block partially overlaps, or we cannot determine
+//   overlap due to abbreviated index keys, the full data block size is included in
+//   the estimation. Note that unlike fully contained sstables, none of the
+//   meta-block space is counted for partially overlapped files.
+// - There may also exist WAL entries for unflushed keys in this range. This
+//   estimation currently excludes space used for the range in the WAL.
+func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+	if d.opts.Comparer.Compare(start, end) > 0 {
+		return 0, errors.New("invalid key-range specified (start > end)")
+	}
+
+	// Grab and reference the current readState. This prevents the underlying
+	// files in the associated version from being deleted if there is a concurrent
+	// compaction.
+	readState := d.loadReadState()
+	defer readState.unref()
+
+	var totalSize uint64
+	for level, files := range readState.current.Files {
+		if level > 0 {
+			// We can only use `Overlaps` to restrict `files` at L1+ since at L0 it
+			// expands the range iteratively until it has found a set of files that
+			// do not overlap any other L0 files outside that set.
+			files = readState.current.Overlaps(level, d.opts.Comparer.Compare, start, end)
+		}
+		for fileIdx, file := range files {
+			if level > 0 && fileIdx > 0 && fileIdx < len(files)-1 {
+				// The files to the left and the right at least partially overlap
+				// with `file`, which means `file` is fully contained within the
+				// range specified by `[start, end]`.
+				totalSize += file.Size
+			} else if d.opts.Comparer.Compare(start, file.Smallest.UserKey) <= 0 &&
+				d.opts.Comparer.Compare(file.Largest.UserKey, end) <= 0 {
+				// The range fully contains the file, so skip looking it up in
+				// table cache/looking at its indexes, and add the full file size.
+				totalSize += file.Size
+			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
+				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
+				size, err := d.tableCache.estimateDiskUsage(&file, start, end)
+				if err != nil {
+					return 0, err
+				}
+				totalSize += size
+			}
+		}
+	}
+	return totalSize, nil
+}
+
 func (d *DB) walPreallocateSize() int {
 	// Set the WAL preallocate size to 110% of the memtable size. Note that there
 	// is a bit of apples and oranges in units here as the memtabls size
