@@ -34,6 +34,7 @@ type dbT struct {
 	fmtValue     formatter
 	start        key
 	end          key
+	count        int64
 	verbose      bool
 }
 
@@ -99,6 +100,8 @@ by another process.
 		&d.start, "start", "start key for the scan")
 	d.Scan.Flags().Var(
 		&d.end, "end", "end key for the scan")
+	d.Scan.Flags().Int64Var(
+		&d.count, "count", 0, "key count for scan (0 is unlimited)")
 	return d
 }
 
@@ -252,6 +255,9 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		count++
+		if d.count > 0 && count >= d.count {
+			break
+		}
 	}
 
 	if err := iter.Close(); err != nil {

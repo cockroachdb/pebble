@@ -75,3 +75,12 @@ db scan
 --value=null
 ----
 scanned 2 records in 1.0s
+
+
+db scan
+../testdata/db-stage-4
+--key=null
+--value=null
+--count=1
+----
+scanned 1 record in 1.0s
