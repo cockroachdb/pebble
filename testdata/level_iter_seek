@@ -26,3 +26,9 @@ iter
 seek-prefix-ge a
 ----
 d/a-c#10#9,15:
+
+iter
+set-bounds upper=b
+seek-ge b
+----
+d/a-c#10#9,15:
