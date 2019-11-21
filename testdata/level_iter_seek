@@ -5,24 +5,37 @@
 #   <point-key>/<tombstone>#<point-seqnum,point-kind>
 
 build
-a.RANGEDEL.10:c
+a.SET.11:b
+b.RANGEDEL.10:c
 d.SET.9:e
 ----
-0: a#10,15-d#9,1
+0: a#11,1-d#9,1
 
 build
 f.SET.8:g
 h.SET.7:i
 ----
-0: a#10,15-d#9,1
+0: a#11,1-d#9,1
 1: f#8,1-h#7,1
 
 iter
-seek-ge a
+seek-ge b
 ----
-d/a-c#10#9,1:e
+d/b-c#10#9,1:e
 
 iter
-seek-prefix-ge a
+seek-prefix-ge b
 ----
-d/a-c#10#9,15:
+d/b-c#10#9,15:
+
+iter
+set-bounds upper=b
+seek-ge b
+----
+d/b-c#10#9,15:
+
+iter
+set-bounds lower=b
+seek-lt b
+----
+a/b-c#10#11,15:
