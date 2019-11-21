@@ -1,0 +1,38 @@
+sstable space
+----
+requires at least 1 arg(s), only received 0
+
+# first key in first data block
+
+sstable space --start=a --end=a
+../sstable/testdata/h.sst
+----
+h.sst: 1094
+
+# first data block through last key in first data block
+
+sstable space --start=a --end=beteem
+../sstable/testdata/h.sst
+----
+h.sst: 1094
+
+# last key in first data block through first key in second data block
+
+sstable space --start=beteem --end=bethought
+../sstable/testdata/h.sst
+----
+h.sst: 2156
+
+# last key in first data block through last key in last data block
+
+sstable space --start=beteem --end=youth
+../sstable/testdata/h.sst
+----
+h.sst: 13908
+
+# second last key in last data block through last key in last data block
+
+sstable space --start=yourself --end=youth
+../sstable/testdata/h.sst
+----
+h.sst: 156
