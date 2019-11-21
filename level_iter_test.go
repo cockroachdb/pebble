@@ -137,9 +137,9 @@ func newLevelIterTest() *levelIterTest {
 }
 
 func (lt *levelIterTest) newIters(
-	meta *fileMetadata, _ *IterOptions, _ *uint64,
+	meta *fileMetadata, opts *IterOptions, _ *uint64,
 ) (internalIterator, internalIterator, error) {
-	iter := lt.readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+	iter := lt.readers[meta.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
 	rangeDelIter := lt.readers[meta.FileNum].NewRangeDelIter()
 	return iter, rangeDelIter, nil
 }
@@ -282,9 +282,14 @@ func (i *levelIterTestIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []by
 	return i.rangeDelSeek(key, ikey, val)
 }
 
-func TestLevelIterSeekPrefixGE(t *testing.T) {
+func (i *levelIterTestIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	ikey, val := i.levelIter.SeekLT(key)
+	return i.rangeDelSeek(key, ikey, val)
+}
+
+func TestLevelIterSeek(t *testing.T) {
 	lt := newLevelIterTest()
-	datadriven.RunTest(t, "testdata/level_iter_seek_prefix_ge", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/level_iter_seek", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
 			return lt.runClear(d)
@@ -294,7 +299,7 @@ func TestLevelIterSeekPrefixGE(t *testing.T) {
 
 		case "iter":
 			iter := &levelIterTestIter{
-				levelIter: newLevelIter(nil, DefaultComparer.Compare, lt.newIters, lt.files, nil),
+				levelIter: newLevelIter(&IterOptions{}, DefaultComparer.Compare, lt.newIters, lt.files, nil),
 			}
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)

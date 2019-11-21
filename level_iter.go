@@ -13,6 +13,8 @@ type tableNewIters func(
 	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error)
 
+var sentinelUpperBound = make([]byte, 0)
+
 // levelIter provides a merged view of the sstables in a level.
 //
 // levelIter is used during compaction and as part of the Iterator
@@ -307,23 +309,12 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	// When SeekPrefixGE returns nil, we have not necessarily reached the end of
 	// the sstable. All we know is that a key with prefix does not exist in the
 	// current sstable. We do know that the key lies within the bounds of the
-	// table as findFileGE found the table where key <= meta.Largest. If we have
-	// a range tombstone iterator, we need to return a synthetic boundary so that
-	// mergingIter can use the range tombstone iterator. The synthetic boundary
-	// key is always a RANGEDEL. Note that mergingIter will pass through RANGEDEL
-	// records that are returned by the "point" iterator, and not process them as
-	// range tombstones. Iterator will in turn skip over RANGEDEL records.
-	//
-	// It is safe to set the boundary key kind to RANGEDEL because it was either
-	// already RANGEDEL, or it was another kind that sorts after RANGEDEL. If the
-	// largest key is `d#10.SET` we know that the next sstable won't contain
-	// `d#10.RANGEDEL` because that record would sort before `d#10.SET`.
-	if l.rangeDelIter != nil {
-		f := &l.files[l.index]
-		l.syntheticBoundary = f.Largest
-		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
-		l.boundary = &l.syntheticBoundary
-		return l.boundary, nil
+	// table as findFileGE found the table where key <= meta.Largest. We treat
+	// this case the same as SeekGE where an upper-bound resides within the
+	// sstable, and force this to occur by ensuring that tableOpts.UpperBound is
+	// non-nil.
+	if l.tableOpts.UpperBound == nil {
+		l.tableOpts.UpperBound = sentinelUpperBound
 	}
 	return l.skipEmptyFileForward()
 }
@@ -428,10 +419,25 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 	// contributes the largest key of the file, we do the behavior described above.
 	for ; key == nil; key, val = l.iter.First() {
 		if l.rangeDelIter != nil {
-			// We're being used as part of a mergingIter and we've reached the end of
-			// the sstable. If the boundary is a range deletion tombstone, return
-			// that key.
-			if f := &l.files[l.index]; f.Largest.Kind() == InternalKeyKindRangeDelete {
+			// We're being used as part of a mergingIter and we've exhausted the
+			// current sstable. If an upper bound is present and the upper bound lies
+			// within the current sstable, then we will have reached the upper bound
+			// rather than the end of the sstable. We need to return a synthetic
+			// boundary key so that mergingIter can use the range tombstone iterator
+			// until the other levels have reached this boundary.
+			//
+			// It is safe to set the boundary key kind to RANGEDEL because we're
+			// never going to look at subsequent sstables (we've reached the upper
+			// bound).
+			f := &l.files[l.index]
+			if l.tableOpts.UpperBound != nil {
+				l.syntheticBoundary = f.Largest
+				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+				l.boundary = &l.syntheticBoundary
+				return l.boundary, nil
+			}
+			// If the boundary is a range deletion tombstone, return that key.
+			if f.Largest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Largest
 				return l.boundary, nil
 			}
@@ -459,10 +465,25 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 	// contributes the smallest key of the file, we do the behavior described above.
 	for ; key == nil; key, val = l.iter.Last() {
 		if l.rangeDelIter != nil {
-			// We're being used as part of a mergingIter and we've reached the end of
-			// the sstable. If the boundary is a range deletion tombstone, return
-			// that key.
-			if f := &l.files[l.index]; f.Smallest.Kind() == InternalKeyKindRangeDelete {
+			// We're being used as part of a mergingIter and we've exhausted the
+			// current sstable. If a lower bound is present and the lower bound lies
+			// within the current sstable, then we will have reached the lower bound
+			// rather than the beginning of the sstable. We need to return a
+			// synthetic boundary key so that mergingIter can use the range tombstone
+			// iterator until the other levels have reached this boundary.
+			//
+			// It is safe to set the boundary key kind to RANGEDEL because we're
+			// never going to look at earlier sstables (we've reached the lower
+			// bound).
+			f := &l.files[l.index]
+			if l.tableOpts.LowerBound != nil && l.rangeDelIter != nil {
+				l.syntheticBoundary = f.Smallest
+				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+				l.boundary = &l.syntheticBoundary
+				return l.boundary, nil
+			}
+			// If the boundary is a range deletion tombstone, return that key.
+			if f.Smallest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Smallest
 				return l.boundary, nil
 			}
