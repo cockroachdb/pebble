@@ -23,6 +23,8 @@ import (
 	"github.com/golang/snappy"
 )
 
+var errCorruptIndexEntry = errors.New("pebble/table: corrupt index entry")
+
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
@@ -156,7 +158,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 	var n int
 	i.dataBH, n = decodeBlockHandle(v)
 	if n == 0 || n != len(v) {
-		i.err = errors.New("pebble/table: corrupt index entry")
+		i.err = errCorruptIndexEntry
 		return false
 	}
 	block, err := i.reader.readBlock(i.dataBH, nil /* transform */)
@@ -1328,7 +1330,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, n := decodeBlockHandle(value)
 			if n == 0 || n != len(value) {
-				return nil, errors.New("pebble/table: corrupt index entry")
+				return nil, errCorruptIndexEntry
 			}
 			l.Data = append(l.Data, dataBH)
 		}
@@ -1338,7 +1340,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, n := decodeBlockHandle(value)
 			if n == 0 || n != len(value) {
-				return nil, errors.New("pebble/table: corrupt index entry")
+				return nil, errCorruptIndexEntry
 			}
 			l.Index = append(l.Index, indexBH)
 
@@ -1350,7 +1352,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				dataBH, n := decodeBlockHandle(value)
 				if n == 0 || n != len(value) {
-					return nil, errors.New("pebble/table: corrupt index entry")
+					return nil, errCorruptIndexEntry
 				}
 				l.Data = append(l.Data, dataBH)
 			}
@@ -1359,6 +1361,113 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 
 	return l, nil
+}
+
+// EstimateDiskUsage returns the total size of data blocks overlapping the range
+// `[start, end]`. Even if a data block partially overlaps, or we cannot determine
+// overlap due to abbreviated index keys, the full data block size is included in
+// the estimation. This function does not account for any metablock space usage.
+// Assumes there is at least partial overlap, i.e., `[start, end]` falls neither
+// completely before nor completely after the file's range.
+//
+// TODO(ajkr): account for metablock space usage. Perhaps look at the fraction of
+// data blocks overlapped and add that same fraction of the metadata blocks to the
+// estimate.
+func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+
+	index, err := r.readIndex()
+	if err != nil {
+		return 0, err
+	}
+
+	// Iterators over the bottom-level index blocks containing start and end.
+	// These may be different in case of partitioned index but will both point
+	// to the same blockIter over the single index in the unpartitioned case.
+	var startIdxIter, endIdxIter *blockIter
+	if r.Properties.IndexPartitions == 0 {
+		iter, err := newBlockIter(r.Compare, index)
+		if err != nil {
+			return 0, err
+		}
+		startIdxIter = iter
+		endIdxIter = iter
+	} else {
+		topIter, err := newBlockIter(r.Compare, index)
+		if err != nil {
+			return 0, err
+		}
+
+		key, val := topIter.SeekGE(start)
+		if key == nil {
+			// The range falls completely after this file, or an error occurred.
+			return 0, topIter.Error()
+		}
+		startIdxBH, n := decodeBlockHandle(val)
+		if n == 0 || n != len(val) {
+			return 0, errCorruptIndexEntry
+		}
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */)
+		if err != nil {
+			return 0, err
+		}
+		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get())
+		if err != nil {
+			return 0, err
+		}
+
+		key, val = topIter.SeekGE(end)
+		if key == nil {
+			if err := topIter.Error(); err != nil {
+				return 0, err
+			}
+		} else {
+			endIdxBH, n := decodeBlockHandle(val)
+			if n == 0 || n != len(val) {
+				return 0, errCorruptIndexEntry
+			}
+			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */)
+			if err != nil {
+				return 0, err
+			}
+			endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get())
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+	// startIdxIter should not be nil at this point, while endIdxIter can be if the
+	// range spans past the end of the file.
+
+	key, val := startIdxIter.SeekGE(start)
+	if key == nil {
+		// The range falls completely after this file, or an error occurred.
+		return 0, startIdxIter.Error()
+	}
+	startBH, n := decodeBlockHandle(val)
+	if n == 0 || n != len(val) {
+		return 0, errCorruptIndexEntry
+	}
+
+	if endIdxIter == nil {
+		// The range spans beyond this file. Include data blocks through the last.
+		return r.Properties.DataSize - startBH.Offset, nil
+	}
+	key, val = endIdxIter.SeekGE(end)
+	if key == nil {
+		if err := endIdxIter.Error(); err != nil {
+			return 0, err
+		}
+		// The range spans beyond this file. Include data blocks through the last.
+		return r.Properties.DataSize - startBH.Offset, nil
+	}
+	endBH, n := decodeBlockHandle(val)
+	if n == 0 || n != len(val) {
+		return 0, errCorruptIndexEntry
+	}
+	return endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset, nil
 }
 
 // NewReader returns a new table reader for the file. Closing the reader will

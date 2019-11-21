@@ -26,6 +26,7 @@ type sstableT struct {
 	Layout     *cobra.Command
 	Properties *cobra.Command
 	Scan       *cobra.Command
+	Space      *cobra.Command
 
 	// Configuration and state.
 	opts      *pebble.Options
@@ -94,8 +95,18 @@ tombstones are displayed interleaved with point records.
 		Args: cobra.MinimumNArgs(1),
 		Run:  s.runScan,
 	}
+	s.Space = &cobra.Command{
+		Use:   "space <sstables>",
+		Short: "print filesystem space used",
+		Long: `
+Print the estimated space usage in the specified files for the
+inclusive-inclusive range specified by --start and --end.
+`,
+		Args: cobra.MinimumNArgs(1),
+		Run:  s.runSpace,
+	}
 
-	s.Root.AddCommand(s.Check, s.Layout, s.Properties, s.Scan)
+	s.Root.AddCommand(s.Check, s.Layout, s.Properties, s.Scan, s.Space)
 	s.Root.PersistentFlags().BoolVarP(&s.verbose, "verbose", "v", false, "verbose output")
 
 	s.Check.Flags().Var(
@@ -108,10 +119,12 @@ tombstones are displayed interleaved with point records.
 		&s.fmtKey, "key", "key formatter")
 	s.Scan.Flags().Var(
 		&s.fmtValue, "value", "value formatter")
-	s.Scan.Flags().Var(
-		&s.start, "start", "start key for the scan")
-	s.Scan.Flags().Var(
-		&s.end, "end", "end key for the scan")
+	for _, cmd := range []*cobra.Command{s.Scan, s.Space} {
+		cmd.Flags().Var(
+			&s.start, "start", "start key for the range")
+		cmd.Flags().Var(
+			&s.end, "end", "end key for the range")
+	}
 	s.Scan.Flags().Int64Var(
 		&s.count, "count", 0, "key count for scan (0 is unlimited)")
 
@@ -391,6 +404,31 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			if err := iter.Close(); err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 			}
+		}()
+	}
+}
+
+func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
+	for _, arg := range args {
+		func() {
+			f, err := s.opts.FS.Open(arg)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			r, err := s.newReader(f)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			defer r.Close()
+
+			bytes, err := r.EstimateDiskUsage(s.start, s.end)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			fmt.Fprintf(stdout, "%s: %d\n", arg, bytes)
 		}()
 	}
 }
