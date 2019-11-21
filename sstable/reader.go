@@ -1101,9 +1101,7 @@ func (r *Reader) readRangeDel() (block, error) {
 	return r.readWeakCachedBlock(&r.rangeDel, r.rangeDelTransform)
 }
 
-func (r *Reader) readWeakCachedBlock(
-	w *weakCachedBlock, transform blockTransform,
-) (block, error) {
+func (r *Reader) readWeakCachedBlock(w *weakCachedBlock, transform blockTransform) (block, error) {
 	// Fast-path for retrieving the block from a weak cache handle.
 	w.mu.RLock()
 	var b []byte
@@ -1131,9 +1129,7 @@ func (r *Reader) readWeakCachedBlock(
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(
-	bh BlockHandle, transform blockTransform,
-) (cache.Handle, error) {
+func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Handle, error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
 	}
@@ -1363,8 +1359,7 @@ func (r *Reader) Layout() (*Layout, error) {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(
-	f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.ensureDefaults()
 	r := &Reader{
 		file: f,
@@ -1450,10 +1445,7 @@ type Layout struct {
 // Describe returns a description of the layout. If the verbose parameter is
 // true, details of the structure of each block are returned as well.
 func (l *Layout) Describe(
-	w io.Writer,
-	verbose bool,
-	r *Reader,
-	fmtRecord func(key *base.InternalKey, value []byte),
+	w io.Writer, verbose bool, r *Reader, fmtRecord func(key *base.InternalKey, value []byte),
 ) {
 	type block struct {
 		BlockHandle

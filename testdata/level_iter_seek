@@ -1,0 +1,106 @@
+# Note that this test file uses a levelIterTestIter which combines a
+# point iterator and a range-del iterator, returning both results in a
+# single key:
+#
+#   <point-key>/<tombstone>#<point-seqnum,point-kind>
+
+# Verify that SeekGE, SeekLT, Next, and Prev all pause at table
+# boundaries in the presence of lower/upper bounds and range
+# tombstones. Verify that SeekPrefixGE pauses at a table boundary in
+# the presence of range tombstones.
+
+build
+a.SET.9:a
+b.SET.8:b
+----
+0: a#9,1-b#8,1
+
+build
+c.SET.7:c
+d.RANGEDEL.6:e
+f.SET.5:f
+----
+0: a#9,1-b#8,1
+1: c#7,1-f#5,1
+
+build
+g.SET.4:g
+h.SET.3:h
+----
+0: a#9,1-b#8,1
+1: c#7,1-f#5,1
+2: g#4,1-h#3,1
+
+iter
+seek-ge d
+----
+f/d-e#6#5,1:f
+
+iter
+set-bounds upper=d
+seek-ge d
+----
+f/d-e#6#5,15:
+
+iter
+set-bounds upper=d
+seek-ge c
+next
+----
+c/d-e#6#7,1:c
+f#5,15:
+
+iter
+seek-prefix-ge d
+----
+f/d-e#6#5,15:
+
+iter
+set-bounds lower=d
+seek-lt d
+----
+c/d-e#6#7,15:
+
+iter
+set-bounds lower=d
+seek-lt g
+prev
+----
+f/<empty>#5,1:f
+c#7,15:
+
+# Verify that First() in the presence of an upper-bound pauses at the
+# table containing the upper-bound.
+
+clear
+----
+
+build
+d.RANGEDEL.6:e
+f.SET.5:f
+----
+0: d#6,15-f#5,1
+
+iter
+set-bounds upper=f
+first
+----
+f#5,15:
+
+# Verify that Last() in the presence of a lower-bound pauses at the
+# table containing the lower-bound.
+
+clear
+----
+
+build
+c.SET.7:c
+d.RANGEDEL.6:e
+----
+0: c#7,1-e#72057594037927935,15
+
+iter
+set-bounds lower=c
+last
+----
+c#7,1:c
