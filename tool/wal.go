@@ -27,6 +27,7 @@ type walT struct {
 	fmtValue formatter
 
 	comparers sstable.Comparers
+	verbose   bool
 }
 
 func newWAL(opts *pebble.Options, comparers sstable.Comparers) *walT {
@@ -52,6 +53,7 @@ Print the contents of the WAL files.
 	}
 
 	w.Root.AddCommand(w.Dump)
+	w.Root.PersistentFlags().BoolVarP(&w.verbose, "verbose", "v", false, "verbose output")
 
 	w.Dump.Flags().Var(
 		&w.fmtKey, "key", "key formatter")

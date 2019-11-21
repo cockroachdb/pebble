@@ -95,11 +95,7 @@ tombstones are displayed interleaved with point records.
 	}
 
 	s.Root.AddCommand(s.Check, s.Layout, s.Properties, s.Scan)
-	for _, cmd := range []*cobra.Command{s.Layout, s.Properties} {
-		cmd.Flags().BoolVarP(
-			&s.verbose, "verbose", "v", false,
-			"verbose output")
-	}
+	s.Root.PersistentFlags().BoolVarP(&s.verbose, "verbose", "v", false, "verbose output")
 
 	s.Check.Flags().Var(
 		&s.fmtKey, "key", "key formatter")

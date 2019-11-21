@@ -34,6 +34,7 @@ type dbT struct {
 	fmtValue     formatter
 	start        key
 	end          key
+	verbose      bool
 }
 
 func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
@@ -81,6 +82,7 @@ by another process.
 	}
 
 	d.Root.AddCommand(d.Check, d.LSM, d.Scan)
+	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
 	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan} {
 		cmd.Flags().StringVar(

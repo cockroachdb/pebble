@@ -26,6 +26,7 @@ type manifestT struct {
 	opts      *pebble.Options
 	comparers sstable.Comparers
 	fmtKey    formatter
+	verbose   bool
 }
 
 func newManifest(opts *pebble.Options, comparers sstable.Comparers) *manifestT {
@@ -52,6 +53,7 @@ Print the contents of the MANIFEST files.
 	}
 
 	m.Root.AddCommand(m.Dump)
+	m.Root.PersistentFlags().BoolVarP(&m.verbose, "verbose", "v", false, "verbose output")
 
 	m.Dump.Flags().Var(
 		&m.fmtKey, "key", "key formatter")
