@@ -481,8 +481,12 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 	// Since keys are strictly increasing, if index > 0 then the restart point at
 	// index-1 will be the largest whose key is < the key sought.
+	targetOffset := i.restarts
 	if index > 0 {
 		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		if index < i.numRestarts {
+			targetOffset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index):]))
+		}
 	} else if index == 0 {
 		// If index == 0 then all keys in this block are larger than the key
 		// sought.
@@ -509,8 +513,9 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 			return &i.ikey, i.val
 		}
 
-		if i.nextOffset >= i.restarts {
-			// We've reached the end of the block. Return the current key.
+		if i.nextOffset >= targetOffset {
+			// We've reached the end of the current restart block. Return the current
+			// key.
 			break
 		}
 	}
