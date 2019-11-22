@@ -34,6 +34,8 @@ type dbT struct {
 	fmtValue     formatter
 	start        key
 	end          key
+	count        int64
+	verbose      bool
 }
 
 func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
@@ -81,6 +83,7 @@ by another process.
 	}
 
 	d.Root.AddCommand(d.Check, d.LSM, d.Scan)
+	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
 	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan} {
 		cmd.Flags().StringVar(
@@ -97,6 +100,8 @@ by another process.
 		&d.start, "start", "start key for the scan")
 	d.Scan.Flags().Var(
 		&d.end, "end", "end key for the scan")
+	d.Scan.Flags().Int64Var(
+		&d.count, "count", 0, "key count for scan (0 is unlimited)")
 	return d
 }
 
@@ -250,6 +255,9 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		count++
+		if d.count > 0 && count >= d.count {
+			break
+		}
 	}
 
 	if err := iter.Close(); err != nil {

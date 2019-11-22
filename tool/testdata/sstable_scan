@@ -252,6 +252,27 @@ sstable scan
 h.sst
 bear#0,SET [35]
 
+# Count that only includes point records.
+sstable scan
+--start=armed
+--count=3
+../sstable/testdata/h.sst
+----
+h.sst
+armed#0,SET [32]
+armour#0,SET [31]
+arms#0,SET [32]
+
+# Count that includes point records and range tombstones.
+sstable scan
+--start=beards
+--count=2
+../sstable/testdata/h.sst
+----
+h.sst
+beard-bearers#0,RANGEDEL
+bearers#0,SET [31]
+
 sstable scan
 testdata/out-of-order.sst
 ----

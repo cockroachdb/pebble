@@ -37,6 +37,7 @@ type sstableT struct {
 	fmtValue formatter
 	start    key
 	end      key
+	count    int64
 	verbose  bool
 }
 
@@ -95,11 +96,7 @@ tombstones are displayed interleaved with point records.
 	}
 
 	s.Root.AddCommand(s.Check, s.Layout, s.Properties, s.Scan)
-	for _, cmd := range []*cobra.Command{s.Layout, s.Properties} {
-		cmd.Flags().BoolVarP(
-			&s.verbose, "verbose", "v", false,
-			"verbose output")
-	}
+	s.Root.PersistentFlags().BoolVarP(&s.verbose, "verbose", "v", false, "verbose output")
 
 	s.Check.Flags().Var(
 		&s.fmtKey, "key", "key formatter")
@@ -115,6 +112,8 @@ tombstones are displayed interleaved with point records.
 		&s.start, "start", "start key for the scan")
 	s.Scan.Flags().Var(
 		&s.end, "end", "end key for the scan")
+	s.Scan.Flags().Int64Var(
+		&s.count, "count", 0, "key count for scan (0 is unlimited)")
 
 	return s
 }
@@ -362,6 +361,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 
 			defer rangeDelIter.Close()
 			rangeDelKey, rangeDelValue := rangeDelIter.First()
+			count := s.count
 
 			var lastKey base.InternalKey
 			for key != nil || rangeDelKey != nil {
@@ -375,11 +375,17 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					lastKey.Trailer = key.Trailer
 					lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 					key, value = iter.Next()
-					continue
+				} else {
+					formatKeyValue(stdout, s.fmtKey, s.fmtValue, rangeDelKey, rangeDelValue)
+					rangeDelKey, rangeDelValue = rangeDelIter.Next()
 				}
 
-				formatKeyValue(stdout, s.fmtKey, s.fmtValue, rangeDelKey, rangeDelValue)
-				rangeDelKey, rangeDelValue = rangeDelIter.Next()
+				if count > 0 {
+					count--
+					if count == 0 {
+						break
+					}
+				}
 			}
 
 			if err := iter.Close(); err != nil {
