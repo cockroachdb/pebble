@@ -114,13 +114,40 @@ type blockIter struct {
 	globalSeqNum uint64
 	ptr          unsafe.Pointer
 	data         []byte
-	key, val     []byte
-	fullKey      []byte
-	ikey         InternalKey
-	cached       []blockEntry
-	cachedBuf    []byte
-	cacheHandle  cache.Handle
-	err          error
+	// key contains the raw key the iterator is currently pointed at. This may
+	// point directly to data stored in the block (for a key which has no prefix
+	// compression), to fullKey (for a prefix compressed key), or to a slice of
+	// data stored in cachedBuf (during reverse iteration).
+	key []byte
+	// fullKey is a buffer used for key prefix decompression.
+	fullKey []byte
+	// val contains the value the iterator is currently pointed at. If non-nil,
+	// this points to a slice of the block data.
+	val []byte
+	// ikey contains the decoded InternalKey the iterator is currently pointed
+	// at. Note that the memory backing ikey.UserKey is either data stored
+	// directly in the block, fullKey, or cachedBuf. The key stability guarantee
+	// for blocks built with a restart interval of 1 is achieved by having
+	// ikey.UserKey always point to data stored directly in the block.
+	ikey InternalKey
+	// cached and cachedBuf are used during reverse iteration. They are needed
+	// because we can't perform prefix decoding in reverse, only in the forward
+	// direction. In order to iterate in reverse, we decode and cache the entries
+	// between two restart points.
+	//
+	// Note that cached[len(cached)-1] contains the entry the blockIter is
+	// currently pointed at. As usual, nextOffset will contain the offset of the
+	// next entry. During reverse iteration, nextOffset will be updated to point
+	// to offset, and we'll set the blockIter to point at the entry
+	// cached[len(cached)-2]. See Prev() for more details.
+	//
+	// TODO(peter): It is slightly strange that cached[len(cached)-1] contains
+	// the entry the blockIter is currently at. It would be more natural for that
+	// index to contain the previous entry.
+	cached      []blockEntry
+	cachedBuf   []byte
+	cacheHandle cache.Handle
+	err         error
 }
 
 func newBlockIter(cmp Compare, block block) (*blockIter, error) {
@@ -564,7 +591,7 @@ func (i *blockIter) Last() (*InternalKey, []byte) {
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *blockIter) Next() (*InternalKey, []byte) {
-	if n := len(i.cached); n > 0 {
+	if len(i.cached) > 0 {
 		// We're switching from reverse iteration to forward iteration. We need to
 		// populate i.fullKey with the current key we're positioned at so that
 		// readEntry() can use i.fullKey for key prefix decompression.
@@ -572,9 +599,7 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 		// TODO(peter): Rather than clearing the cache, we could instead use the
 		// cache until it is exhausted. This would likely be faster than falling
 		// through to the normal forward iteration code below.
-		e := &i.cached[n-1]
-		key := i.cachedBuf[e.keyStart:e.keyEnd]
-		i.fullKey = append(i.fullKey[:0], key...)
+		i.fullKey = append(i.fullKey[:0], i.key...)
 		i.clearCache()
 	}
 
@@ -605,11 +630,11 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 		e := &i.cached[n-1]
 		i.offset = e.offset
 		i.val = getBytes(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart)), int(e.valSize))
-		// Manually inlined version of i.decodeInternalKey(key).
-		key := i.cachedBuf[e.keyStart:e.keyEnd]
-		if n := len(key) - 8; n >= 0 {
-			i.ikey.Trailer = binary.LittleEndian.Uint64(key[n:])
-			i.ikey.UserKey = key[:n:n]
+		// Manually inlined version of i.decodeInternalKey(i.key).
+		i.key = i.cachedBuf[e.keyStart:e.keyEnd]
+		if n := len(i.key) - 8; n >= 0 {
+			i.ikey.Trailer = binary.LittleEndian.Uint64(i.key[n:])
+			i.ikey.UserKey = i.key[:n:n]
 			if i.globalSeqNum != 0 {
 				i.ikey.SetSeqNum(i.globalSeqNum)
 			}
