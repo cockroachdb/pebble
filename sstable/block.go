@@ -135,15 +135,11 @@ type blockIter struct {
 	// direction. In order to iterate in reverse, we decode and cache the entries
 	// between two restart points.
 	//
-	// Note that cached[len(cached)-1] contains the entry the blockIter is
-	// currently pointed at. As usual, nextOffset will contain the offset of the
-	// next entry. During reverse iteration, nextOffset will be updated to point
-	// to offset, and we'll set the blockIter to point at the entry
-	// cached[len(cached)-2]. See Prev() for more details.
-	//
-	// TODO(peter): It is slightly strange that cached[len(cached)-1] contains
-	// the entry the blockIter is currently at. It would be more natural for that
-	// index to contain the previous entry.
+	// Note that cached[len(cached)-1] contains the previous entry to the one the
+	// blockIter is currently pointed at. As usual, nextOffset will contain the
+	// offset of the next entry. During reverse iteration, nextOffset will be
+	// updated to point to offset, and we'll set the blockIter to point at the
+	// entry cached[len(cached)-1]. See Prev() for more details.
 	cached      []blockEntry
 	cachedBuf   []byte
 	cacheHandle cache.Handle
@@ -531,7 +527,6 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 		i.offset = i.nextOffset
 		i.readEntry()
 		i.decodeInternalKey(i.key)
-		i.cacheEntry()
 
 		if i.cmp(i.ikey.UserKey, ikey.UserKey) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
@@ -545,6 +540,8 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 			// key.
 			break
 		}
+
+		i.cacheEntry()
 	}
 
 	if !i.Valid() {
@@ -576,12 +573,11 @@ func (i *blockIter) Last() (*InternalKey, []byte) {
 
 	i.readEntry()
 	i.clearCache()
-	i.cacheEntry()
 
 	for i.nextOffset < i.restarts {
+		i.cacheEntry()
 		i.offset = i.nextOffset
 		i.readEntry()
-		i.cacheEntry()
 	}
 
 	i.decodeInternalKey(i.key)
@@ -591,7 +587,7 @@ func (i *blockIter) Last() (*InternalKey, []byte) {
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *blockIter) Next() (*InternalKey, []byte) {
-	if len(i.cached) > 0 {
+	if len(i.cachedBuf) > 0 {
 		// We're switching from reverse iteration to forward iteration. We need to
 		// populate i.fullKey with the current key we're positioned at so that
 		// readEntry() can use i.fullKey for key prefix decompression.
@@ -625,9 +621,9 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *blockIter) Prev() (*InternalKey, []byte) {
-	if n := len(i.cached) - 1; n > 0 {
+	if n := len(i.cached) - 1; n >= 0 {
 		i.nextOffset = i.offset
-		e := &i.cached[n-1]
+		e := &i.cached[n]
 		i.offset = e.offset
 		i.val = getBytes(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart)), int(e.valSize))
 		// Manually inlined version of i.decodeInternalKey(i.key).
@@ -682,12 +678,11 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 	}
 
 	i.readEntry()
-	i.cacheEntry()
 
 	for i.nextOffset < targetOffset {
+		i.cacheEntry()
 		i.offset = i.nextOffset
 		i.readEntry()
-		i.cacheEntry()
 	}
 
 	i.decodeInternalKey(i.key)

@@ -270,8 +270,8 @@ func TestBlockIterReverseDirections(t *testing.T) {
 		[]byte("apple0"),
 		[]byte("apple1"),
 		[]byte("apple2"),
-		[]byte("apple3"),
 		[]byte("banana"),
+		[]byte("carrot"),
 	}
 	for i := range keys {
 		w.add(InternalKey{UserKey: keys[i]}, nil)
@@ -286,7 +286,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 			}
 
 			pos := 3
-			if key, _ := i.SeekLT([]byte("banana")); !bytes.Equal(keys[pos], key.UserKey) {
+			if key, _ := i.SeekLT([]byte("carrot")); !bytes.Equal(keys[pos], key.UserKey) {
 				t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
 			}
 			for pos > targetPos {
