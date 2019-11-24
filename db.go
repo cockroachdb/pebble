@@ -214,6 +214,8 @@ type DB struct {
 
 	flushLimiter limiter
 
+	histogramHook HistogramHook
+
 	// TODO(peter): describe exactly what this mutex protects. So far: every
 	// field in the struct.
 	mu struct {
@@ -288,6 +290,13 @@ func (d *DB) Get(key []byte) ([]byte, error) {
 func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
+	}
+
+	if d.histogramHook != nil {
+		closeFunc := d.histogramHook(DbGet)
+		if closeFunc != nil {
+			defer closeFunc()
+		}
 	}
 
 	// Grab and reference the current readState. This prevents the underlying

@@ -272,6 +272,9 @@ type Options struct {
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
 
+	// HistogramHook is a hook for measuring histogram from externally.
+	HistogramHook HistogramHook
+
 	// The number of files necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
