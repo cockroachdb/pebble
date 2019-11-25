@@ -120,10 +120,28 @@ type blockEntry struct {
 // key stability guarantee is sufficient for range tombstones as they are
 // always encoded in a single block.
 type blockIter struct {
-	cmp          Compare
-	offset       int32
-	nextOffset   int32
-	restarts     int32
+	cmp Compare
+	// offset is the byte index that marks where the current key/value is
+	// encoded in the block.
+	offset int32
+	// nextOffset is the byte index where the next key/value is encoded in the
+	// block.
+	nextOffset int32
+	// A "restart point" in a block is a point where the full key is encoded,
+	// instead of just having a suffix of the key encoded. See readEntry() for
+	// how prefix compression of keys works. Keys in between two restart points
+	// only have a suffix encoded in the block. When restart interval is 1, no
+	// prefix compression of keys happens. This is the case with range tombstone
+	// blocks.
+	//
+	// All restart offsets are listed in increasing order in
+	// i.ptr[i.restarts:len(block)-4], while numRestarts is encoded in the last
+	// 4 bytes of the block as a uint32 (i.ptr[len(block)-4:]). i.restarts can
+	// therefore be seen as the point where data in the block ends, and a list
+	// of offsets of all restart points begins.
+	restarts int32
+	// Number of restart points in this block. Encoded at the end of the block
+	// as a uint32.
 	numRestarts  int32
 	globalSeqNum uint64
 	ptr          unsafe.Pointer
