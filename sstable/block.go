@@ -105,6 +105,20 @@ type blockEntry struct {
 }
 
 // blockIter is an iterator over a single block of data.
+//
+// A blockIter provides an additional guarantee around key stability when a
+// block has a restart interval of 1 (i.e. when there is no prefix
+// compression). Key stability refers to whether the InternalKey.UserKey bytes
+// returned by a positioning call will remain stable after a subsequent
+// positioning call. The normal case is that a positioning call will invalidate
+// any previously returned InternalKey.UserKey. If a block has a restart
+// interval of 1 (no prefix compression), blockIter guarantees that
+// InternalKey.UserKey will point to the key as stored in the block itself
+// which will remain valid until the blockIter is closed. The key stability
+// guarantee is used by the range tombstone code which knows that range
+// tombstones are always encoded with a restart interval of 1. This per-block
+// key stability guarantee is sufficient for range tombstones as they are
+// always encoded in a single block.
 type blockIter struct {
 	cmp          Compare
 	offset       int32
@@ -140,6 +154,10 @@ type blockIter struct {
 	// offset of the next entry. During reverse iteration, nextOffset will be
 	// updated to point to offset, and we'll set the blockIter to point at the
 	// entry cached[len(cached)-1]. See Prev() for more details.
+	//
+	// For a block encoded with a restart interval of 1, cached and cachedBuf
+	// will not be used as there are no prefix compressed entries between the
+	// restart points.
 	cached      []blockEntry
 	cachedBuf   []byte
 	cacheHandle cache.Handle
@@ -530,14 +548,19 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 		if i.cmp(i.ikey.UserKey, ikey.UserKey) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
-			// the previous key which was less than our search key.
+			// the previous key which was less than our search key. Note that his for
+			// loop will execute at least once with this if-block not being true, so
+			// the key we are backing up to is the last one this loop cached.
 			i.Prev()
 			return &i.ikey, i.val
 		}
 
 		if i.nextOffset >= targetOffset {
 			// We've reached the end of the current restart block. Return the current
-			// key.
+			// key. When the restart interval is 1, the first iteration of the for
+			// loop will bring us here. In that case ikey is backed by the block so
+			// we get the desired key stability guarantee for the lifetime of the
+			// blockIter.
 			break
 		}
 
@@ -590,7 +613,10 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 	if len(i.cachedBuf) > 0 {
 		// We're switching from reverse iteration to forward iteration. We need to
 		// populate i.fullKey with the current key we're positioned at so that
-		// readEntry() can use i.fullKey for key prefix decompression.
+		// readEntry() can use i.fullKey for key prefix decompression. Note that we
+		// don't know whether i.key is backed by i.cachedBuf or i.fullKey (if
+		// SeekLT was the previous call, i.key may be backed by i.fullKey), but
+		// copying into i.fullKey works for both cases.
 		//
 		// TODO(peter): Rather than clearing the cache, we could instead use the
 		// cache until it is exhausted. This would likely be faster than falling
