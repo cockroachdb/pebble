@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
@@ -221,16 +222,42 @@ func TestBlockIterKeyStability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Loop over the block entries, storing each key slice.
-	var keys [][]byte
-	for key, _ := i.First(); key != nil; key, _ = i.Next() {
-		keys = append(keys, key.UserKey)
+
+	// Check that the supplied slice resides within the bounds of the block.
+	check := func(v []byte) {
+		t.Helper()
+		begin := unsafe.Pointer(&v[0])
+		end := unsafe.Pointer(uintptr(begin) + uintptr(len(v)))
+		blockBegin := unsafe.Pointer(&block[0])
+		blockEnd := unsafe.Pointer(uintptr(blockBegin) + uintptr(len(block)))
+		if uintptr(begin) < uintptr(blockBegin) || uintptr(end) > uintptr(blockEnd) {
+			t.Fatalf("key %p-%p resides outside of block %p-%p", begin, end, blockBegin, blockEnd)
+		}
 	}
 
-	// Check that the slices match our expected values. Note that this is only
-	// guaranteed because of the usage of a restart-interval of 1 so that prefix
-	// compression was not performed.
-	require.EqualValues(t, expected, keys)
+	// Check that various means of iterating over the data match our expected
+	// values. Note that this is only guaranteed because of the usage of a
+	// restart-interval of 1 so that prefix compression was not performed.
+	for j := range expected {
+		keys := [][]byte{}
+		for key, _ := i.SeekGE(expected[j]); key != nil; key, _ = i.Next() {
+			check(key.UserKey)
+			keys = append(keys, key.UserKey)
+		}
+		require.EqualValues(t, expected[j:], keys)
+	}
+
+	for j := range expected {
+		keys := [][]byte{}
+		for key, _ := i.SeekLT(expected[j]); key != nil; key, _ = i.Prev() {
+			check(key.UserKey)
+			keys = append(keys, key.UserKey)
+		}
+		for i, j := 0, len(keys)-1; i < j; i, j = i+1, j-1 {
+			keys[i], keys[j] = keys[j], keys[i]
+		}
+		require.EqualValues(t, expected[:j], keys)
+	}
 }
 
 // Regression test for a bug in blockIter.Next where it was failing to handle
@@ -243,8 +270,8 @@ func TestBlockIterReverseDirections(t *testing.T) {
 		[]byte("apple0"),
 		[]byte("apple1"),
 		[]byte("apple2"),
-		[]byte("apple3"),
 		[]byte("banana"),
+		[]byte("carrot"),
 	}
 	for i := range keys {
 		w.add(InternalKey{UserKey: keys[i]}, nil)
@@ -259,7 +286,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 			}
 
 			pos := 3
-			if key, _ := i.SeekLT([]byte("banana")); !bytes.Equal(keys[pos], key.UserKey) {
+			if key, _ := i.SeekLT([]byte("carrot")); !bytes.Equal(keys[pos], key.UserKey) {
 				t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
 			}
 			for pos > targetPos {

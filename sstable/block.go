@@ -105,6 +105,20 @@ type blockEntry struct {
 }
 
 // blockIter is an iterator over a single block of data.
+//
+// A blockIter provides an additional guarantee around key stability when a
+// block has a restart interval of 1 (i.e. when there is no prefix
+// compression). Key stability refers to whether the InternalKey.UserKey bytes
+// returned by a positioning call will remain stable after a subsequent
+// positioning call. The normal case is that a positioning call will invalidate
+// any previously returned InternalKey.UserKey. If a block has a restart
+// interval of 1 (no prefix compression), blockIter guarantees that
+// InternalKey.UserKey will point to the key as stored in the block itself
+// which will remain valid until the blockIter is closed. The key stability
+// guarantee is used by the range tombstone code which knows that range
+// tombstones are always encoded with a restart interval of 1. This per-block
+// key stability guarantee is sufficient for range tombstones as they are
+// always encoded in a single block.
 type blockIter struct {
 	cmp          Compare
 	offset       int32
@@ -114,13 +128,40 @@ type blockIter struct {
 	globalSeqNum uint64
 	ptr          unsafe.Pointer
 	data         []byte
-	key, val     []byte
-	fullKey      []byte
-	ikey         InternalKey
-	cached       []blockEntry
-	cachedBuf    []byte
-	cacheHandle  cache.Handle
-	err          error
+	// key contains the raw key the iterator is currently pointed at. This may
+	// point directly to data stored in the block (for a key which has no prefix
+	// compression), to fullKey (for a prefix compressed key), or to a slice of
+	// data stored in cachedBuf (during reverse iteration).
+	key []byte
+	// fullKey is a buffer used for key prefix decompression.
+	fullKey []byte
+	// val contains the value the iterator is currently pointed at. If non-nil,
+	// this points to a slice of the block data.
+	val []byte
+	// ikey contains the decoded InternalKey the iterator is currently pointed
+	// at. Note that the memory backing ikey.UserKey is either data stored
+	// directly in the block, fullKey, or cachedBuf. The key stability guarantee
+	// for blocks built with a restart interval of 1 is achieved by having
+	// ikey.UserKey always point to data stored directly in the block.
+	ikey InternalKey
+	// cached and cachedBuf are used during reverse iteration. They are needed
+	// because we can't perform prefix decoding in reverse, only in the forward
+	// direction. In order to iterate in reverse, we decode and cache the entries
+	// between two restart points.
+	//
+	// Note that cached[len(cached)-1] contains the previous entry to the one the
+	// blockIter is currently pointed at. As usual, nextOffset will contain the
+	// offset of the next entry. During reverse iteration, nextOffset will be
+	// updated to point to offset, and we'll set the blockIter to point at the
+	// entry cached[len(cached)-1]. See Prev() for more details.
+	//
+	// For a block encoded with a restart interval of 1, cached and cachedBuf
+	// will not be used as there are no prefix compressed entries between the
+	// restart points.
+	cached      []blockEntry
+	cachedBuf   []byte
+	cacheHandle cache.Handle
+	err         error
 }
 
 func newBlockIter(cmp Compare, block block) (*blockIter, error) {
@@ -481,8 +522,12 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 	// Since keys are strictly increasing, if index > 0 then the restart point at
 	// index-1 will be the largest whose key is < the key sought.
+	targetOffset := i.restarts
 	if index > 0 {
 		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		if index < i.numRestarts {
+			targetOffset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index):]))
+		}
 	} else if index == 0 {
 		// If index == 0 then all keys in this block are larger than the key
 		// sought.
@@ -500,19 +545,26 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 		i.offset = i.nextOffset
 		i.readEntry()
 		i.decodeInternalKey(i.key)
-		i.cacheEntry()
 
 		if i.cmp(i.ikey.UserKey, ikey.UserKey) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
-			// the previous key which was less than our search key.
+			// the previous key which was less than our search key. Note that his for
+			// loop will execute at least once with this if-block not being true, so
+			// the key we are backing up to is the last one this loop cached.
 			i.Prev()
 			return &i.ikey, i.val
 		}
 
-		if i.nextOffset >= i.restarts {
-			// We've reached the end of the block. Return the current key.
+		if i.nextOffset >= targetOffset {
+			// We've reached the end of the current restart block. Return the current
+			// key. When the restart interval is 1, the first iteration of the for
+			// loop will bring us here. In that case ikey is backed by the block so
+			// we get the desired key stability guarantee for the lifetime of the
+			// blockIter.
 			break
 		}
+
+		i.cacheEntry()
 	}
 
 	if !i.Valid() {
@@ -544,12 +596,11 @@ func (i *blockIter) Last() (*InternalKey, []byte) {
 
 	i.readEntry()
 	i.clearCache()
-	i.cacheEntry()
 
 	for i.nextOffset < i.restarts {
+		i.cacheEntry()
 		i.offset = i.nextOffset
 		i.readEntry()
-		i.cacheEntry()
 	}
 
 	i.decodeInternalKey(i.key)
@@ -559,17 +610,18 @@ func (i *blockIter) Last() (*InternalKey, []byte) {
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *blockIter) Next() (*InternalKey, []byte) {
-	if n := len(i.cached); n > 0 {
+	if len(i.cachedBuf) > 0 {
 		// We're switching from reverse iteration to forward iteration. We need to
 		// populate i.fullKey with the current key we're positioned at so that
-		// readEntry() can use i.fullKey for key prefix decompression.
+		// readEntry() can use i.fullKey for key prefix decompression. Note that we
+		// don't know whether i.key is backed by i.cachedBuf or i.fullKey (if
+		// SeekLT was the previous call, i.key may be backed by i.fullKey), but
+		// copying into i.fullKey works for both cases.
 		//
 		// TODO(peter): Rather than clearing the cache, we could instead use the
 		// cache until it is exhausted. This would likely be faster than falling
 		// through to the normal forward iteration code below.
-		e := &i.cached[n-1]
-		key := i.cachedBuf[e.keyStart:e.keyEnd]
-		i.fullKey = append(i.fullKey[:0], key...)
+		i.fullKey = append(i.fullKey[:0], i.key...)
 		i.clearCache()
 	}
 
@@ -595,16 +647,16 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *blockIter) Prev() (*InternalKey, []byte) {
-	if n := len(i.cached) - 1; n > 0 {
+	if n := len(i.cached) - 1; n >= 0 {
 		i.nextOffset = i.offset
-		e := &i.cached[n-1]
+		e := &i.cached[n]
 		i.offset = e.offset
 		i.val = getBytes(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart)), int(e.valSize))
-		// Manually inlined version of i.decodeInternalKey(key).
-		key := i.cachedBuf[e.keyStart:e.keyEnd]
-		if n := len(key) - 8; n >= 0 {
-			i.ikey.Trailer = binary.LittleEndian.Uint64(key[n:])
-			i.ikey.UserKey = key[:n:n]
+		// Manually inlined version of i.decodeInternalKey(i.key).
+		i.key = i.cachedBuf[e.keyStart:e.keyEnd]
+		if n := len(i.key) - 8; n >= 0 {
+			i.ikey.Trailer = binary.LittleEndian.Uint64(i.key[n:])
+			i.ikey.UserKey = i.key[:n:n]
 			if i.globalSeqNum != 0 {
 				i.ikey.SetSeqNum(i.globalSeqNum)
 			}
@@ -652,12 +704,11 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 	}
 
 	i.readEntry()
-	i.cacheEntry()
 
 	for i.nextOffset < targetOffset {
+		i.cacheEntry()
 		i.offset = i.nextOffset
 		i.readEntry()
-		i.cacheEntry()
 	}
 
 	i.decodeInternalKey(i.key)
