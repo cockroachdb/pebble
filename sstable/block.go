@@ -105,6 +105,18 @@ type blockEntry struct {
 }
 
 // blockIter is an iterator over a single block of data.
+//
+// A blockIter provides an additional guarantee around key stability when a
+// block has a restart interval of 1 (i.e. when there is no prefix
+// compression). Key stability refers to whether the InternalKey.UserKey bytes
+// returned by a positioning call will remain stable after a subsequent
+// positioning call. The normal case is that a positioning call will invalidate
+// any previously returned InternalKey.UserKey. If a block has a restart
+// interval of 1 (no prefix compression), blockIter guarantees that
+// InternalKey.UserKey will point to the key as stored in the block itself
+// which will remain valid until the blockIter is closed. The key stability
+// guarantee is used by the range tombstone code which knows that range
+// tombstones are always encoded with a restart interval of 1.
 type blockIter struct {
 	cmp          Compare
 	offset       int32
@@ -140,6 +152,10 @@ type blockIter struct {
 	// offset of the next entry. During reverse iteration, nextOffset will be
 	// updated to point to offset, and we'll set the blockIter to point at the
 	// entry cached[len(cached)-1]. See Prev() for more details.
+	//
+	// For a block encoded with a restart interval of 1, cached and cachedBuf
+	// will not be used as there are no prefix compressed entries between the
+	// restart points.
 	cached      []blockEntry
 	cachedBuf   []byte
 	cacheHandle cache.Handle
