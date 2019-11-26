@@ -9,9 +9,22 @@ package base
 // user-key, a sequence number and a key kind. In forward iteration, key/value
 // pairs for identical user-keys are returned in descending sequence order. In
 // reverse iteration, key/value pairs for identical user-keys are returned in
-// ascending sequence order. Bounds, [lower, upper), can be set on iterators,
-// either using the SetBounds() function in the interface, or in implementation
-// specific ways.
+// ascending sequence order.
+//
+// Bounds, [lower, upper), can be set on iterators, either using the
+// SetBounds() function in the interface, or in implementation specific ways
+// during iterator creation. The forward positioning routines (SeekGE, First,
+// and Next) only check the upper bound. The reverse positioning routines
+// (SeekLT, Last, and Prev) only check the lower bound. It is up to the caller
+// to ensure that the forward positioning routines respect the lower bound and
+// the reverse positioning routines respect the upper bound. This imposition is
+// done in order to elevate that enforcement to the caller (generally
+// pebble.Iterator or pebble.mergingIter) rather than having it duplicated in
+// every InternalIterator implementation. InternalIterator implementations are
+// required to respect the iterator bounds, never returning records outside of
+// the bounds with one exception: an iterator may generate synthetic RANGEDEL
+// marker records. See levelIter.syntheticBoundary for the sole existing
+// example of this behavior. [TODO(peter): can we eliminate this exception?]
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
@@ -46,7 +59,12 @@ type InternalIterator interface {
 	// iteration is exhausted.
 	//
 	// Note that the iterator may return keys not matching the prefix. It is up
-	// to the user to check if the prefix matches.
+	// to the caller to check if the prefix matches.
+	//
+	// Calling SeekPrefixGE places the receiver into prefix iteration mode. Once
+	// in this mode, reverse iteration may not be supported and will return an
+	// error. Iterator.SeekPrefixGE has this same restriction on not supporting
+	// reverse iteration in prefix iteration mode.
 	SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
