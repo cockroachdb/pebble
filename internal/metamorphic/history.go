@@ -16,6 +16,7 @@ import (
 // history records the results of running a series of operations.
 type history struct {
 	log *log.Logger
+	seq int
 }
 
 func newHistory(writers ...io.Writer) *history {
@@ -26,7 +27,18 @@ func newHistory(writers ...io.Writer) *history {
 
 // Recordf records the results of a single operation.
 func (h *history) Recordf(format string, args ...interface{}) {
-	h.log.Printf(format, args...)
+	if strings.Contains(format, "\n") {
+		// We could remove this restriction but suffixing every line with "#<seq>".
+		panic(fmt.Sprintf("format string must not contain \\n: %q", format))
+	}
+
+	// We suffix every line with #<seq> in order to provide a marker to locate
+	// the line using the diff output. This is necessary because the diff of two
+	// histories is done after stripping comment lines (`// ...`) from the
+	// history output, which ruins the line number information in the diff
+	// output.
+	h.seq++
+	h.log.Print(fmt.Sprintf(format, args...) + fmt.Sprintf(" #%d", h.seq))
 }
 
 // Logger returns a pebble.Logger that will output to history.
