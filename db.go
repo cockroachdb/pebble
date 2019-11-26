@@ -611,6 +611,7 @@ func (d *DB) newIterInternal(
 	if o != nil {
 		dbi.opts = *o
 	}
+	dbi.opts.logger = d.opts.Logger
 
 	mlevels := buf.mlevels[:0]
 	if batchIter != nil {

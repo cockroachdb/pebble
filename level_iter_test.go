@@ -28,6 +28,8 @@ func TestLevelIter(t *testing.T) {
 		meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
 		f := *iters[meta.FileNum]
+		f.lower = opts.GetLowerBound()
+		f.upper = opts.GetUpperBound()
 		return &f, nil, nil
 	}
 
@@ -74,7 +76,9 @@ func TestLevelIter(t *testing.T) {
 
 			iter := newLevelIter(&opts, DefaultComparer.Compare, newIters, files, nil)
 			defer iter.Close()
-			return runInternalIterCmd(d, iter)
+			// Fake up the range deletion initialization.
+			iter.initRangeDel(new(internalIterator))
+			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
 
 		case "load":
 			// The "load" command allows testing the iterator options passed to load
