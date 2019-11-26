@@ -9,15 +9,59 @@ package base
 // user-key, a sequence number and a key kind. In forward iteration, key/value
 // pairs for identical user-keys are returned in descending sequence order. In
 // reverse iteration, key/value pairs for identical user-keys are returned in
-// ascending sequence order. Bounds, [lower, upper), can be set on iterators,
-// either using the SetBounds() function in the interface, or in implementation
-// specific ways.
+// ascending sequence order.
+//
+// InternalIterators provide 5 absolute positioning methods and 2 relative
+// positioning methods. The absolute positioning methods are:
+//
+// - SeekGE
+// - SeekPrefixGE
+// - SeekLT
+// - First
+// - Last
+//
+// The relative positioning methods are:
+//
+// - Next
+// - Prev
+//
+// The relative positioning methods can be used in conjunction with any of the
+// absolute positioning methods with one exception: SeekPrefixGE does not
+// support reverse iteration via Prev.
+//
+// InternalIterators can optionally implement a prefix iteration mode. This
+// mode is entered by calling SeekPrefixGE and exited by any other absolute
+// positioning method (SeekGE, SeekLT, First, Last). When in prefix iteration
+// mode, a call to Next will advance to the next key which has the same
+// "prefix" as the one supplied to SeekPrefixGE. Note that "prefix" in this
+// context is not a strict byte prefix, but defined by byte equality for the
+// result of the Comparer.Split method. An InternalIterator is not required to
+// support prefix iteration mode, and can implement SeekPrefixGE by forwarding
+// to SeekGE.
+//
+// Bounds, [lower, upper), can be set on iterators, either using the
+// SetBounds() function in the interface, or in implementation specific ways
+// during iterator creation. The forward positioning routines (SeekGE, First,
+// and Next) only check the upper bound. The reverse positioning routines
+// (SeekLT, Last, and Prev) only check the lower bound. It is up to the caller
+// to ensure that the forward positioning routines respect the lower bound and
+// the reverse positioning routines respect the upper bound (i.e. calling
+// SeekGE instead of First if there is a lower bound, and SeekLT instead of
+// Last if there is an upper bound). This imposition is done in order to
+// elevate that enforcement to the caller (generally pebble.Iterator or
+// pebble.mergingIter) rather than having it duplicated in every
+// InternalIterator implementation. InternalIterator implementations are
+// required to respect the iterator bounds, never returning records outside of
+// the bounds with one exception: an iterator may generate synthetic RANGEDEL
+// marker records. See levelIter.syntheticBoundary for the sole existing
+// example of this behavior. [TODO(peter): can we eliminate this exception?]
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
 //
-// An iterator is not necessarily goroutine-safe, but it is safe to use
-// multiple iterators concurrently, with each in a dedicated goroutine.
+// An iterator is not goroutine-safe, but it is safe to use multiple iterators
+// concurrently, either in separate goroutines or switching between the
+// iterators in a single goroutine.
 //
 // It is also safe to use an iterator concurrently with modifying its
 // underlying DB, if that DB permits modification. However, the resultant
@@ -46,7 +90,14 @@ type InternalIterator interface {
 	// iteration is exhausted.
 	//
 	// Note that the iterator may return keys not matching the prefix. It is up
-	// to the user to check if the prefix matches.
+	// to the caller to check if the prefix matches.
+	//
+	// Calling SeekPrefixGE places the receiver into prefix iteration mode. Once
+	// in this mode, reverse iteration may not be supported and will return an
+	// error. Note that pebble/Iterator.SeekPrefixGE has this same restriction on
+	// not supporting reverse iteration in prefix iteration mode until a
+	// different positioning routine (SeekGE, SeekLT, First or Last) switches the
+	// iterator out of prefix iteration.
 	SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
