@@ -5,8 +5,10 @@
 package metamorphic
 
 import (
+	"fmt"
 	"io"
 	"log"
+	"strings"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -39,16 +41,25 @@ type historyLogger struct {
 	log *log.Logger
 }
 
+func (h *historyLogger) format(prefix, format string, args ...interface{}) string {
+	var buf strings.Builder
+	orig := fmt.Sprintf(format, args...)
+	for _, line := range strings.Split(strings.TrimSpace(orig), "\n") {
+		buf.WriteString(prefix)
+		buf.WriteString(line)
+		buf.WriteString("\n")
+	}
+	return buf.String()
+}
+
 // Infof implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *historyLogger) Infof(format string, args ...interface{}) {
-	// TODO(peter): Prefix every line with "// INFO:".
-	h.log.Printf("// INFO: "+format, args...)
+	_ = h.log.Output(2, h.format("// INFO: ", format, args...))
 }
 
 // Fatalf implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *historyLogger) Fatalf(format string, args ...interface{}) {
-	// TODO(peter): Prefix every line with "// FATAL:".
-	h.log.Printf("// FATAL: "+format, args...)
+	_ = h.log.Output(2, h.format("// FATAL: ", format, args...))
 }
