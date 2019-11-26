@@ -1488,16 +1488,18 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			return f.obsolete[i] < f.obsolete[j]
 		})
 		for _, fileNum := range f.obsolete {
+			dir := d.dirname
 			switch f.fileType {
 			case fileTypeLog:
 				if !noRecycle && d.logRecycler.add(fileNum) {
 					continue
 				}
+				dir = d.walDirname
 			case fileTypeTable:
 				d.tableCache.evict(fileNum)
 			}
 
-			path := base.MakeFilename(d.opts.FS, d.dirname, f.fileType, fileNum)
+			path := base.MakeFilename(d.opts.FS, dir, f.fileType, fileNum)
 			d.deleteObsoleteFile(f.fileType, jobID, path, fileNum)
 		}
 	}
