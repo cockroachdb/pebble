@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -128,36 +127,34 @@ func TestMergingIterNextPrev(t *testing.T) {
 func TestMergingIterCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
-	type levelInfo struct {
-		files []fileMetadata
-	}
-	var levels []levelInfo
-	// Indexed by fileNum
+	var v version
+	// Indexed by fileNum.
 	var readers []*sstable.Reader
 	var fileNum uint64
 	newIters :=
 		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
 			r := readers[meta.FileNum]
-			return r.NewIter(nil, nil), r.NewRangeDelIter(), nil
+			return r.NewIter(opts.GetLowerBound(), opts.GetUpperBound()), r.NewRangeDelIter(), nil
 		}
 	datadriven.RunTest(t, "testdata/merging_iter", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			lines := strings.Split(d.Input, "\n")
-			levels = levels[:0]
+			v = version{}
+			var level int
 			for i := 0; i < len(lines); i++ {
 				line := lines[i]
 				line = strings.TrimSpace(line)
 				if line == "L" || line == "L0" {
 					// start next level
-					levels = append(levels, levelInfo{})
+					level++
 					continue
 				}
-				li := &levels[len(levels)-1]
+				files := &v.Files[level]
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
-				li.files = append(li.files, fileMetadata{
+				*files = append(*files, fileMetadata{
 					FileNum:  fileNum,
 					Smallest: smallestKey,
 					Largest:  largestKey,
@@ -213,28 +210,24 @@ func TestMergingIterCornerCases(t *testing.T) {
 				}
 				readers = append(readers, r)
 			}
-			// TODO(sbhola): clean this up by wrapping levels in a Version and using
-			// Version.DebugString().
-			var buf bytes.Buffer
-			for i, l := range levels {
-				fmt.Fprintf(&buf, "Level %d\n", i+1)
-				for j, f := range l.files {
-					fmt.Fprintf(&buf, "  file %d: [%s-%s]\n", j, f.Smallest.String(), f.Largest.String())
-				}
-			}
-			return buf.String()
+
+			return v.DebugString(DefaultComparer.Format)
 		case "iter":
-			var levelIters = make([]mergingIterLevel, len(levels))
-			for i, l := range levels {
+			levelIters := make([]mergingIterLevel, 0, len(v.Files))
+			for _, l := range v.Files {
+				if len(l) == 0 {
+					continue
+				}
 				li := &levelIter{}
-				li.init(nil, cmp, newIters, l.files, nil)
-				levelIters[i] = mergingIterLevel{iter: li}
+				li.init(nil, cmp, newIters, l, nil)
+				i := len(levelIters)
+				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
 				li.initSmallestLargestUserKey(
 					&levelIters[i].smallestUserKey, &levelIters[i].largestUserKey, &levelIters[i].isLargestUserKeyRangeDelSentinel)
 			}
 			miter := &mergingIter{}
-			miter.init(cmp, levelIters...)
+			miter.init(nil /* opts */, cmp, levelIters...)
 			defer miter.Close()
 			return runInternalIterCmd(d, miter, iterCmdVerboseKey)
 		default:

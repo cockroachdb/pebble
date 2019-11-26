@@ -20,6 +20,10 @@ func (h *mergingIterHeap) len() int {
 	return len(h.items)
 }
 
+func (h *mergingIterHeap) clear() {
+	h.items = h.items[:0]
+}
+
 func (h *mergingIterHeap) less(i, j int) bool {
 	ikey, jkey := h.items[i].key, h.items[j].key
 	if c := h.cmp(ikey.UserKey, jkey.UserKey); c != 0 {
