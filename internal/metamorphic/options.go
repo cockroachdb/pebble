@@ -104,21 +104,13 @@ func standardOptions() []*pebble.Options {
 `,
 		14: `
 [Level "0"]
-  compression=Snappy
+  index_block_size=1
 `,
 		15: `
 [Level "0"]
-  index_block_size=1
-`,
-		16: `
-[Level "0"]
-  index_block_size=1
-`,
-		17: `
-[Level "0"]
   target_file_size=1
 `,
-		18: `
+		16: `
 [Level "0"]
   filter_policy=none
 `,
