@@ -73,6 +73,9 @@ type IterOptions struct {
 	// iteration based on the user properties. Return true to scan the table and
 	// false to skip scanning.
 	TableFilter func(userProps map[string]string) bool
+
+	// Internal options.
+	logger Logger
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.
@@ -89,6 +92,13 @@ func (o *IterOptions) GetUpperBound() []byte {
 		return nil
 	}
 	return o.UpperBound
+}
+
+func (o *IterOptions) getLogger() Logger {
+	if o == nil || o.logger == nil {
+		return DefaultLogger
+	}
+	return o.logger
 }
 
 // WriteOptions hold the optional per-query parameters for Set and Delete

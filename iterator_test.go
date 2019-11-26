@@ -295,7 +295,6 @@ func testIterator(
 		if j != len(testKeyValuePairs) {
 			bad = true
 			t.Errorf("random splits: i=%d, j=%d: want j=%d", i, j, len(testKeyValuePairs))
-			fmt.Printf("splits: %v\n", splits)
 			return
 		}
 		if err := iter.Close(); err != nil {

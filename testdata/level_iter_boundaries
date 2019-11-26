@@ -176,3 +176,54 @@ c#2,15:
 d#3,1:d
 c#2,15:
 d#3,1:d
+
+# Regression test to check that Seek{GE,LT}, First, and Last properly
+# reset the iteration upper bound when levelIter had previously set it
+# to a sentinel value during SeekPrefixGE.
+
+clear
+----
+
+build
+b.SET.4:b
+d.SET.3:d
+----
+0: b#4,1-d#3,1
+
+iter
+seek-prefix-ge c
+seek-ge d
+next
+----
+d#3,15:
+d#3,1:d
+.
+
+iter
+seek-prefix-ge c
+seek-lt e
+next
+----
+d#3,15:
+d#3,1:d
+.
+
+iter
+seek-prefix-ge c
+first
+next
+next
+----
+d#3,15:
+b#4,1:b
+d#3,1:d
+.
+
+iter
+seek-prefix-ge c
+last
+next
+----
+d#3,15:
+d#3,1:d
+.
