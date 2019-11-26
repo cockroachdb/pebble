@@ -4,7 +4,10 @@
 
 package pebble
 
-import "sort"
+import (
+	"runtime/debug"
+	"sort"
+)
 
 // tableNewIters creates a new point and range-del iterator for the given file
 // number. If bytesIterated is specified, it is incremented as the given file is
@@ -38,7 +41,9 @@ var sentinelUpperBound = make([]byte, 0)
 // kind InternalKeyKindRangeDeletion which will be used to pause the levelIter
 // at the sstable until the mergingIter is ready to advance past it.
 type levelIter struct {
-	opts      *IterOptions
+	logger    Logger
+	lower     []byte
+	upper     []byte
 	tableOpts IterOptions
 	cmp       Compare
 	// The current file wrt the iterator position.
@@ -138,9 +143,11 @@ func (l *levelIter) init(
 	files []fileMetadata,
 	bytesIterated *uint64,
 ) {
-	l.opts = opts
-	if l.opts != nil {
-		l.tableOpts.TableFilter = l.opts.TableFilter
+	l.logger = opts.getLogger()
+	if opts != nil {
+		l.lower = opts.LowerBound
+		l.upper = opts.UpperBound
+		l.tableOpts.TableFilter = opts.TableFilter
 	}
 	l.cmp = cmp
 	l.index = -1
@@ -205,24 +212,58 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			// We don't bother comparing the file bounds with the iteration bounds when we have
 			// an already open iterator. It is possible that the iter may not be relevant given the
 			// current iteration bounds, but it knows those bounds, so it will enforce them.
+			//
+			// We have to reset l.tableOpts.{Lower,Upper}Bound here. A previous call
+			// to SeekPrefixGE() might have set the upper bound to
+			// sentinelUpperBound. Or a call to SetBounds() may have changed the
+			// iterator bounds.
+			//
+			// TODO(peter): There is overlap between the logic here and the logic in
+			// the loop below. Refactor this code to share that logic, and hopefully
+			// get rid of the "goto".
+			f := &l.files[l.index]
+			l.tableOpts.LowerBound = l.lower
+			if l.tableOpts.LowerBound != nil {
+				if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
+					index += dir
+					goto close
+				}
+				if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
+					// The lower bound is smaller than or equal to the smallest key in the
+					// table. Iteration within the table does not need to check the lower
+					// bound.
+					l.tableOpts.LowerBound = nil
+				}
+			}
+			l.tableOpts.UpperBound = l.upper
+			if l.tableOpts.UpperBound != nil {
+				if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
+					// The smallest key in the sstable is greater than or equal to the
+					// lower bound.
+					index += dir
+					goto close
+				}
+				if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
+					// The upper bound is greater than the largest key in the
+					// table. Iteration within the table does not need to check the upper
+					// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
+					l.tableOpts.UpperBound = nil
+				}
+			}
 			return true
 		}
 		// We were already at index, but don't have an iterator, probably because the file was
 		// beyond the iteration bounds. It may still be, but it is also possible that the bounds
 		// have changed. We handle that below.
 	}
+
+close:
+
 	// Close both iter and rangeDelIter. While mergingIter knows about
 	// rangeDelIter, it can't call Close() on it because it does not know when
-	// the levelIter will switch it.
-	if l.iter != nil {
-		l.err = l.iter.Close()
-		l.iter = nil
-	}
-	if l.rangeDelIter != nil && *l.rangeDelIter != nil {
-		l.err = firstError(l.err, (*l.rangeDelIter).Close())
-		*l.rangeDelIter = nil
-	}
-	if l.err != nil {
+	// the levelIter will switch it. Note that levelIter.Close() can be called
+	// multiple times.
+	if err := l.Close(); err != nil {
 		return false
 	}
 
@@ -233,7 +274,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		f := &l.files[l.index]
-		l.tableOpts.LowerBound = l.opts.GetLowerBound()
+		l.tableOpts.LowerBound = l.lower
 		if l.tableOpts.LowerBound != nil {
 			if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
 				// The largest key in the sstable is smaller than the lower bound.
@@ -249,7 +290,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 				l.tableOpts.LowerBound = nil
 			}
 		}
-		l.tableOpts.UpperBound = l.opts.GetUpperBound()
+		l.tableOpts.UpperBound = l.upper
 		if l.tableOpts.UpperBound != nil {
 			if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
 				// The smallest key in the sstable is greater than or equal to the
@@ -288,16 +329,43 @@ func (l *levelIter) loadFile(index, dir int) bool {
 	}
 }
 
+// In race builds we verify that the keys returned by levelIter lie within
+// [lower,upper).
+func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) {
+	// TODO(peter): Currently disabled as this fails due to mergingIter violating
+	// the invariant of calling levelIter.Seek* with target keys that fall
+	// outside of the bounds.
+	//
+	// Note that raceEnabled is a compile time constant, which means the block of
+	// code will be compiled out of non-race builds making this method eligible
+	// for inlining. Do not change this to use a variable.
+	if false && raceEnabled {
+		if key == nil {
+			return key, val
+		}
+		// We allow returning a boundary key that is outside of the lower/upper
+		// bounds as such keys are always range tombstones which will be skipped by
+		// the Iterator.
+		if l.lower != nil && key != l.smallestBoundary && l.cmp(key.UserKey, l.lower) < 0 {
+			l.logger.Fatalf("levelIter: lower bound violation: %s < %s\n%s", key, l.lower, debug.Stack())
+		}
+		if l.upper != nil && key != l.largestBoundary && l.cmp(key.UserKey, l.upper) > 0 {
+			l.logger.Fatalf("levelIter: upper bound violation: %s > %s\n%s", key, l.upper, debug.Stack())
+		}
+	}
+	return key, val
+}
+
 func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	if !l.loadFile(l.findFileGE(key), 1) {
 		return nil, nil
 	}
-	if key, val := l.iter.SeekGE(key); key != nil {
-		return key, val
+	if ikey, val := l.iter.SeekGE(key); ikey != nil {
+		return l.verify(ikey, val)
 	}
-	return l.skipEmptyFileForward()
+	return l.verify(l.skipEmptyFileForward())
 }
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
@@ -307,7 +375,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := l.iter.SeekPrefixGE(prefix, key); key != nil {
-		return key, val
+		return l.verify(key, val)
 	}
 	// When SeekPrefixGE returns nil, we have not necessarily reached the end of
 	// the sstable. All we know is that a key with prefix does not exist in the
@@ -319,7 +387,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	if l.tableOpts.UpperBound == nil {
 		l.tableOpts.UpperBound = sentinelUpperBound
 	}
-	return l.skipEmptyFileForward()
+	return l.verify(l.skipEmptyFileForward())
 }
 
 func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
@@ -329,9 +397,9 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := l.iter.SeekLT(key); key != nil {
-		return key, val
+		return l.verify(key, val)
 	}
-	return l.skipEmptyFileBackward()
+	return l.verify(l.skipEmptyFileBackward())
 }
 
 func (l *levelIter) First() (*InternalKey, []byte) {
@@ -341,9 +409,9 @@ func (l *levelIter) First() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := l.iter.First(); key != nil {
-		return key, val
+		return l.verify(key, val)
 	}
-	return l.skipEmptyFileForward()
+	return l.verify(l.skipEmptyFileForward())
 }
 
 func (l *levelIter) Last() (*InternalKey, []byte) {
@@ -353,9 +421,9 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := l.iter.Last(); key != nil {
-		return key, val
+		return l.verify(key, val)
 	}
-	return l.skipEmptyFileBackward()
+	return l.verify(l.skipEmptyFileBackward())
 }
 
 func (l *levelIter) Next() (*InternalKey, []byte) {
@@ -367,9 +435,9 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		// We're stepping past the boundary key, so now we can load the next file.
 		if l.loadFile(l.index+1, 1) {
 			if key, val := l.iter.First(); key != nil {
-				return key, val
+				return l.verify(key, val)
 			}
-			return l.skipEmptyFileForward()
+			return l.verify(l.skipEmptyFileForward())
 		}
 		return nil, nil
 	}
@@ -380,9 +448,9 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := l.iter.Next(); key != nil {
-		return key, val
+		return l.verify(key, val)
 	}
-	return l.skipEmptyFileForward()
+	return l.verify(l.skipEmptyFileForward())
 }
 
 func (l *levelIter) Prev() (*InternalKey, []byte) {
@@ -394,9 +462,9 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		// We're stepping past the boundary key, so now we can load the prev file.
 		if l.loadFile(l.index-1, -1) {
 			if key, val := l.iter.Last(); key != nil {
-				return key, val
+				return l.verify(key, val)
 			}
-			return l.skipEmptyFileBackward()
+			return l.verify(l.skipEmptyFileBackward())
 		}
 		return nil, nil
 	}
@@ -407,9 +475,9 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := l.iter.Prev(); key != nil {
-		return key, val
+		return l.verify(key, val)
 	}
-	return l.skipEmptyFileBackward()
+	return l.verify(l.skipEmptyFileBackward())
 }
 
 func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
@@ -493,7 +561,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			// never going to look at earlier sstables (we've reached the lower
 			// bound).
 			f := &l.files[l.index]
-			if l.tableOpts.LowerBound != nil && l.rangeDelIter != nil {
+			if l.tableOpts.LowerBound != nil {
 				l.syntheticBoundary = f.Smallest
 				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 				l.smallestBoundary = &l.syntheticBoundary
@@ -528,9 +596,7 @@ func (l *levelIter) Close() error {
 	}
 	if l.rangeDelIter != nil {
 		if t := *l.rangeDelIter; t != nil {
-			if err := t.Close(); err != nil && l.err == nil {
-				l.err = err
-			}
+			l.err = firstError(l.err, t.Close())
 		}
 		*l.rangeDelIter = nil
 	}
@@ -538,8 +604,9 @@ func (l *levelIter) Close() error {
 }
 
 func (l *levelIter) SetBounds(lower, upper []byte) {
-	l.opts.LowerBound = lower
-	l.opts.UpperBound = upper
+	l.lower = lower
+	l.upper = upper
+
 	if l.iter != nil {
 		l.iter.SetBounds(lower, upper)
 	}
