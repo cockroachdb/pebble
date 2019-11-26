@@ -6,47 +6,39 @@ package metamorphic
 
 import (
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
-// TODO(peter): Run the test repeatedly with different options. In between
-// each step, randomly flush or compact. Verify the histories of each test
-// are identical. Options to randomize:
-//
-//   LevelOptions
-//     BlockRestartInterval
-//     BlockSize
-//     BlockSizeThreshold
-//     Compression
-//     FilterType
-//     IndexBlockSize
-//     TargetFileSize
-//   Options
-//     Cache size
-//     DisableWAL
-//     L0CompactionThreshold
-//     L0StopWritesThreshold
-//     LBaseMaxBytes
-//     MaxManifestFileSize
-//     MaxOpenFiles
-//     MemTableSize
-//     MemTableStopWritesThreshold
-//
-// In addition to random options, there should be a list of specific option
-// configurations, such as 0 size cache, 1-byte TargetFileSize, 1-byte
-// L1MaxBytes, etc. These extrema configurations will help exercise edge
-// cases.
-
-func defaultOptions() *pebble.Options {
-	comparer := *pebble.DefaultComparer
-	comparer.Split = func(a []byte) int {
+var comparer = func() pebble.Comparer {
+	c := *pebble.DefaultComparer
+	c.Split = func(a []byte) int {
 		return len(a)
 	}
+	return c
+}()
+
+func parseOptions(opts *pebble.Options, data string) error {
+	hooks := &pebble.ParseHooks{
+		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
+			if name == "none" {
+				return nil, nil
+			}
+			return bloom.FilterPolicy(10), nil
+		},
+	}
+	return opts.Parse(data, hooks)
+}
+
+func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
 		Comparer: &comparer,
 		FS:       vfs.NewMem(),
+		Levels: []pebble.LevelOptions{{
+			FilterPolicy: bloom.FilterPolicy(10),
+		}},
 	}
 	opts.EnsureDefaults()
 	return opts
@@ -126,12 +118,16 @@ func standardOptions() []*pebble.Options {
 [Level "0"]
   target_file_size=1
 `,
+		18: `
+[Level "0"]
+  filter_policy=none
+`,
 	}
 
 	opts := make([]*pebble.Options, len(stdOpts))
 	for i := range opts {
 		opts[i] = defaultOptions()
-		if err := opts[i].Parse(stdOpts[i], nil); err != nil {
+		if err := parseOptions(opts[i], stdOpts[i]); err != nil {
 			panic(err)
 		}
 	}

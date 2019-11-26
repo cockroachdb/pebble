@@ -75,10 +75,12 @@ func testMetaRun(t *testing.T, runDir string) {
 		t.Fatal(err)
 	}
 	opts := &pebble.Options{}
-	if err := opts.Parse(string(optionsData), nil); err != nil {
+	if err := parseOptions(opts, string(optionsData)); err != nil {
 		t.Fatal(err)
 	}
 
+	// Always use our custom comparer which provides a Split method.
+	opts.Comparer = &comparer
 	// Use an archive cleaner to ease post-mortem debugging.
 	opts.Cleaner = base.ArchiveCleaner{}
 

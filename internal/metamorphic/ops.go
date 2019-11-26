@@ -393,7 +393,7 @@ func (o *iterSeekPrefixGEOp) run(t *test, h *history) {
 }
 
 func (o *iterSeekPrefixGEOp) String() string {
-	return fmt.Sprintf("%s.SetPrefixGE(%q)", o.iterID, o.key)
+	return fmt.Sprintf("%s.SeekPrefixGE(%q)", o.iterID, o.key)
 }
 
 // iterSeekLTOp models an Iterator.SeekLT operation.
