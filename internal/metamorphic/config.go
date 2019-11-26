@@ -57,7 +57,7 @@ var defaultConfig = config{
 		iterPrev:          100,
 		iterSeekGE:        100,
 		iterSeekLT:        100,
-		iterSeekPrefixGE:  0,
+		iterSeekPrefixGE:  100,
 		iterSetBounds:     10,
 		newBatch:          5,
 		newIndexedBatch:   5,
