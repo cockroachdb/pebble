@@ -2,6 +2,8 @@ open db
 ----
 mkdir-all: db 0755
 open-dir: db
+mkdir-all: wal 0755
+open-dir: wal
 lock: db/LOCK
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
@@ -10,8 +12,8 @@ sync: db/CURRENT.000001.dbtmp
 close: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
 sync: db
-create: db/000002.log
-sync: db
+create: wal/000002.log
+sync: wal
 sync: db/MANIFEST-000001
 create: db/OPTIONS-000003
 close: db/OPTIONS-000003
@@ -22,40 +24,40 @@ set a 1
 set b 2
 set c 3
 ----
-sync: db/000002.log
+sync: wal/000002.log
 
 flush db
 ----
-create: db/000004.log
-sync: db
-sync: db/000002.log
-close: db/000002.log
+create: wal/000004.log
+sync: wal
+sync: wal/000002.log
+close: wal/000002.log
 create: db/000005.sst
 sync: db/000005.sst
 close: db/000005.sst
 sync: db
 sync: db/MANIFEST-000001
-mkdir-all: db/archive 0755
-rename: db/000002.log -> db/archive/000002.log
+mkdir-all: wal/archive 0755
+rename: wal/000002.log -> wal/archive/000002.log
 
 batch db
 set d 4
 ----
-sync: db/000004.log
+sync: wal/000004.log
 
 compact db
 ----
-create: db/000006.log
-sync: db
-sync: db/000004.log
-close: db/000004.log
+create: wal/000006.log
+sync: wal
+sync: wal/000004.log
+close: wal/000004.log
 create: db/000007.sst
 sync: db/000007.sst
 close: db/000007.sst
 sync: db
 sync: db/MANIFEST-000001
-mkdir-all: db/archive 0755
-rename: db/000004.log -> db/archive/000004.log
+mkdir-all: wal/archive 0755
+rename: wal/000004.log -> wal/archive/000004.log
 create: db/000008.sst
 sync: db/000008.sst
 close: db/000008.sst
@@ -68,7 +70,6 @@ rename: db/000007.sst -> db/archive/000007.sst
 
 list db
 ----
-000006.log
 000008.sst
 CURRENT
 LOCK
@@ -76,9 +77,17 @@ MANIFEST-000001
 OPTIONS-000003
 archive
 
+list wal
+----
+000006.log
+archive
+
 list db/archive
+----
+000005.sst
+000007.sst
+
+list wal/archive
 ----
 000002.log
 000004.log
-000005.sst
-000007.sst

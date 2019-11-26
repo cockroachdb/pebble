@@ -55,29 +55,53 @@ func (t *test) init(h *history, dir string, opts *pebble.Options) error {
 			t.opts.Logger.Infof("unable to clone: %s: %v", dir, err)
 		}
 	}
-
-	// Exit early if there is a flush, compaction, or background error.
-	t.opts.EventListener.FlushEnd = func(info pebble.FlushInfo) {
-		t.opts.Logger.Infof("%s", info)
-		if info.Err != nil && !strings.Contains(info.Err.Error(), "pebble: empty table") {
-			maybeSaveData()
-			os.Exit(1)
+	maybeExit := func(err error) {
+		if err == nil {
+			return
 		}
-	}
-	t.opts.EventListener.CompactionEnd = func(info pebble.CompactionInfo) {
-		t.opts.Logger.Infof("%s", info)
-		if info.Err != nil {
-			maybeSaveData()
-			os.Exit(1)
-		}
-	}
-	t.opts.EventListener.BackgroundError = func(err error) {
-		t.opts.Logger.Infof("background error: %s", err)
 		maybeSaveData()
 		os.Exit(1)
 	}
-	// TODO(peter): Should we override the event listeners for all events that
-	// can generate errors?
+
+	// Exit early on any error from a background operation.
+	t.opts.EventListener.BackgroundError = func(err error) {
+		t.opts.Logger.Infof("background error: %s", err)
+		maybeExit(err)
+	}
+	t.opts.EventListener.CompactionEnd = func(info pebble.CompactionInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
+	t.opts.EventListener.FlushEnd = func(info pebble.FlushInfo) {
+		t.opts.Logger.Infof("%s", info)
+		if info.Err != nil && !strings.Contains(info.Err.Error(), "pebble: empty table") {
+			maybeExit(info.Err)
+		}
+	}
+	t.opts.EventListener.ManifestCreated = func(info pebble.ManifestCreateInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
+	t.opts.EventListener.ManifestDeleted = func(info pebble.ManifestDeleteInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
+	t.opts.EventListener.TableDeleted = func(info pebble.TableDeleteInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
+	t.opts.EventListener.TableIngested = func(info pebble.TableIngestInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
+	t.opts.EventListener.WALCreated = func(info pebble.WALCreateInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
+	t.opts.EventListener.WALDeleted = func(info pebble.WALDeleteInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
 
 	db, err := pebble.Open(dir, t.opts)
 	if err != nil {
