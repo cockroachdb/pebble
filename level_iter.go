@@ -493,6 +493,12 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			// bound).
 			f := &l.files[l.index]
 			if l.tableOpts.UpperBound != nil {
+				// TODO(peter): Rather than using f.Largest, can we use
+				// l.tableOpts.UpperBound and set the seqnum to 0? We know the upper
+				// bound resides within the table boundaries. Not clear if this is
+				// kosher with respect to the invariant that only one record for a
+				// given user key will have seqnum 0. See Iterator.nextUserKey for an
+				// optimization that requires this.
 				l.syntheticBoundary = f.Largest
 				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 				l.largestBoundary = &l.syntheticBoundary
@@ -544,6 +550,9 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			// bound).
 			f := &l.files[l.index]
 			if l.tableOpts.LowerBound != nil {
+				// TODO(peter): Rather than using f.Smallest, can we use
+				// l.tableOpts.LowerBound and set the seqnum to InternalKeySeqNumMax?
+				// We know the lower bound resides within the table boundaries.
 				l.syntheticBoundary = f.Smallest
 				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 				l.smallestBoundary = &l.syntheticBoundary

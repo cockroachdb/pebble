@@ -334,7 +334,7 @@ next
 ----
 aa:aa
 .
-aa:aa
+.
 .
 
 iter seq=5
@@ -345,7 +345,7 @@ prev
 ----
 aa:aa
 .
-aa:aa
+.
 .
 
 iter seq=5
@@ -615,7 +615,7 @@ next
 ----
 a:bcd
 .
-a:bcd
+.
 .
 
 iter seq=2
@@ -626,7 +626,7 @@ next
 ----
 a:b
 .
-a:b
+.
 .
 
 iter seq=3
@@ -637,7 +637,7 @@ next
 ----
 a:bc
 .
-a:bc
+.
 .
 
 iter seq=3
@@ -702,7 +702,7 @@ next
 ----
 a:bcd
 .
-a:bcd
+.
 .
 
 iter seq=2
@@ -713,7 +713,7 @@ next
 ----
 a:b
 .
-a:b
+.
 .
 
 iter seq=3
@@ -724,7 +724,7 @@ next
 ----
 aa:ab
 .
-aa:ab
+.
 .
 
 iter seq=4
