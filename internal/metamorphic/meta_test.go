@@ -251,7 +251,11 @@ func TestMeta(t *testing.T) {
 				t.Fatal(err)
 			}
 			if text != "" {
-				t.Fatalf("diff %s/{%s,%s}\n%s\n", metaDir, names[0], names[1], text)
+				// NB: We force an exit rather than using t.Fatal because the later
+				// will run another instance of the test if -count is specified, while
+				// we're happy to exit on the first failure.
+				fmt.Printf("diff %s/{%s,%s}\n%s\n", metaDir, names[0], names[i], text)
+				os.Exit(1)
 			}
 		}
 	}
