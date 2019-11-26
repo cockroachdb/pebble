@@ -48,7 +48,7 @@ type applyOp struct {
 func (o *applyOp) run(t *test, h *history) {
 	b := t.getBatch(o.batchID)
 	w := t.getWriter(o.writerID)
-	err := w.Apply(b, nil)
+	err := w.Apply(b, pebble.NoSync)
 	h.Recordf("%s // %v", o, err)
 	_ = b.Close()
 	t.clearObj(o.batchID)
@@ -82,7 +82,7 @@ type deleteOp struct {
 
 func (o *deleteOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Delete(o.key, nil)
+	err := w.Delete(o.key, pebble.NoSync)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -99,7 +99,7 @@ type deleteRangeOp struct {
 
 func (o *deleteRangeOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.DeleteRange(o.start, o.end, nil)
+	err := w.DeleteRange(o.start, o.end, pebble.NoSync)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -116,7 +116,7 @@ type mergeOp struct {
 
 func (o *mergeOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Merge(o.key, o.value, nil)
+	err := w.Merge(o.key, o.value, pebble.NoSync)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -133,7 +133,7 @@ type setOp struct {
 
 func (o *setOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Set(o.key, o.value, nil)
+	err := w.Set(o.key, o.value, pebble.NoSync)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -179,7 +179,7 @@ type batchCommitOp struct {
 func (o *batchCommitOp) run(t *test, h *history) {
 	b := t.getBatch(o.batchID)
 	t.clearObj(o.batchID)
-	err := b.Commit(nil)
+	err := b.Commit(pebble.NoSync)
 	h.Recordf("%s // %v", o, err)
 }
 

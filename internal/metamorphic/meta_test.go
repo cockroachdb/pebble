@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/pmezard/go-difflib/difflib"
 	"golang.org/x/exp/rand"
 )
 
@@ -40,11 +42,15 @@ import (
 // - Add support for Writer.LogData
 
 var (
-	dir    = flag.String("dir", "_meta", "")
-	disk   = flag.Bool("disk", false, "")
-	keep   = flag.Bool("keep", false, "")
-	ops    = randvar.NewFlag("uniform:5000-10000")
-	runDir = flag.String("run-dir", "", "")
+	// TODO(peter): Enable comparing of output by default. Currently disabled as
+	// comparing output shows differences between runs that appear to be due to
+	// bugs in Pebble.
+	compare = flag.Bool("compare", false, "")
+	dir     = flag.String("dir", "_meta", "")
+	disk    = flag.Bool("disk", false, "")
+	keep    = flag.Bool("keep", false, "")
+	ops     = randvar.NewFlag("uniform:5000-10000")
+	runDir  = flag.String("run-dir", "", "")
 )
 
 func init() {
@@ -167,12 +173,6 @@ func TestMeta(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		defer func() {
-			if !t.Failed() && !*keep {
-				_ = os.RemoveAll(runDir)
-			}
-		}()
-
 		optionsPath := filepath.Join(runDir, "OPTIONS")
 		if err := ioutil.WriteFile(optionsPath, []byte(opts.String()), 0644); err != nil {
 			t.Fatal(err)
@@ -186,8 +186,10 @@ func TestMeta(t *testing.T) {
 	}
 
 	// Perform runs with the standard options.
+	var names []string
 	for i, opts := range standardOptions() {
 		name := fmt.Sprintf("standard-%03d", i)
+		names = append(names, name)
 		t.Run(name, func(t *testing.T) {
 			runOptions(t, opts)
 		})
@@ -197,10 +199,51 @@ func TestMeta(t *testing.T) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	for i := 0; i < 20; i++ {
 		name := fmt.Sprintf("random-%03d", i)
+		names = append(names, name)
 		t.Run(name, func(t *testing.T) {
 			runOptions(t, randomOptions(rng))
 		})
 	}
 
-	// TODO(peter): Compare the output from the runs.
+	// Don't bother comparing output if we've already failed.
+	if t.Failed() {
+		return
+	}
+
+	if *compare {
+		// Read a history file, stripping out lines that begin with a comment.
+		readHistory := func(name string) []string {
+			historyPath := filepath.Join(metaDir, name, "history")
+			data, err := ioutil.ReadFile(historyPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := difflib.SplitLines(string(data))
+			newLines := make([]string, 0, len(lines))
+			for _, line := range lines {
+				if strings.HasPrefix(line, "// ") {
+					continue
+				}
+				newLines = append(newLines, line)
+			}
+			return newLines
+		}
+
+		base := readHistory(names[0])
+		for i := 1; i < len(names); i++ {
+			lines := readHistory(names[i])
+			diff := difflib.UnifiedDiff{
+				A:       base,
+				B:       lines,
+				Context: 5,
+			}
+			text, err := difflib.GetUnifiedDiffString(diff)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if text != "" {
+				t.Fatalf("diff %s/{%s,%s}\n%s\n", metaDir, names[0], names[1], text)
+			}
+		}
+	}
 }
