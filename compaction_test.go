@@ -789,7 +789,7 @@ func TestManualCompaction(t *testing.T) {
 			}
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().String()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
 
@@ -799,7 +799,7 @@ func TestManualCompaction(t *testing.T) {
 	})
 }
 
-func TestCompactionShouldStopBefore(t *testing.T) {
+func TestCompactionFindGrandparentLimit(t *testing.T) {
 	cmp := DefaultComparer.Compare
 	var grandparents []fileMetadata
 
@@ -814,7 +814,7 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 		}
 	}
 
-	datadriven.RunTest(t, "testdata/compaction_should_stop_before",
+	datadriven.RunTest(t, "testdata/compaction_find_grandparent_limit",
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":

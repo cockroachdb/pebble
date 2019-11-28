@@ -239,7 +239,6 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 	}
 
 	seqNum := key.SeqNum()
-	flush := true
 	for _, t := range f.pending {
 		if f.Cmp(key.UserKey, t.End) < 0 {
 			// NB: A range deletion tombstone does not delete a point operation at
@@ -247,20 +246,14 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 			if t.Start.Visible(snapshot) && t.Start.SeqNum() > seqNum {
 				return true
 			}
-			flush = false
 		}
 	}
-
-	if flush {
-		// All of the pending tombstones ended before the specified key which means
-		// we can flush them without causing fragmentation at key. This is an
-		// optimization to allow flushing the pending tombstones as early as
-		// possible so that we don't have to continually reconsider them in
-		// Deleted.
-		f.flush(f.pending, nil)
-		f.pending = f.pending[:0]
-	}
 	return false
+}
+
+// Empty returns true if all fragments added so far have finished flushing.
+func (f *Fragmenter) Empty() bool {
+	return f.finished || len(f.pending) == 0
 }
 
 // FlushTo flushes all of the fragments before key. Used during compaction to
