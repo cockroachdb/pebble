@@ -102,7 +102,6 @@ type compaction struct {
 	// compacted. Used to determine output table boundaries.
 	grandparents    []fileMetadata
 	overlappedBytes uint64 // bytes of overlap with grandparent tables
-	seenKey         bool   // some output key has been seen
 
 	metrics map[int]*LevelMetrics
 }
@@ -372,38 +371,35 @@ func (c *compaction) trivialMove() bool {
 	return false
 }
 
-// shouldStopBefore returns true if the output to the current table should be
-// finished and a new table started before adding the specified key. This is
-// done in order to prevent a table at level N from overlapping too much data
-// at level N+1. We want to avoid such large overlaps because they translate
-// into large compactions. The current heuristic stops output of a table if the
-// addition of another key would cause the table to overlap more than 10x the
-// target file size at level N. See maxGrandparentOverlapBytes.
+// findGrandparentLimit takes the start user key for a table and returns the
+// user key to which that table can extend without excessively overlapping
+// the grandparent level. If no limit is needed considering the grandparent
+// files, this function returns nil. This is done in order to prevent a table
+// at level N from overlapping too much data at level N+1. We want to avoid
+// such large overlaps because they translate into large compactions. The
+// current heuristic stops output of a table if the addition of another key
+// would cause the table to overlap more than 10x the target file size at
+// level N. See maxGrandparentOverlapBytes.
 //
 // TODO(peter): Stopping compaction output in the middle of a user-key creates
 // 2 sstables that need to be compacted together as an "atomic compaction
 // unit". This is unfortunate as it removes the benefit of stopping output to
 // an sstable in order to prevent a large compaction with the next level. Seems
-// better to adjust shouldStopBefore to not stop output in the middle of a
+// better to adjust findGrandparentLimit to not stop output in the middle of a
 // user-key. Perhaps this isn't a problem if the compaction picking heuristics
 // always pick the right (older) sibling for compaction first.
-func (c *compaction) shouldStopBefore(key InternalKey) bool {
-	for len(c.grandparents) > 0 {
-		g := &c.grandparents[0]
-		if base.InternalCompare(c.cmp, key, g.Largest) <= 0 {
-			break
+func (c *compaction) findGrandparentLimit(start []byte) []byte {
+	lower := sort.Search(len(c.grandparents), func(i int) bool {
+		return c.cmp(start, c.grandparents[i].Largest.UserKey) <= 0
+	})
+	var overlappedBytes uint64
+	for upper := lower; upper < len(c.grandparents); upper++ {
+		overlappedBytes += c.grandparents[upper].Size
+		if overlappedBytes > c.maxOverlapBytes {
+			return c.grandparents[upper].Largest.UserKey
 		}
-		if c.seenKey {
-			c.overlappedBytes += g.Size
-		}
-		c.grandparents = c.grandparents[1:]
 	}
-	c.seenKey = true
-	if c.overlappedBytes > c.maxOverlapBytes {
-		c.overlappedBytes = 0
-		return true
-	}
-	return false
+	return nil
 }
 
 // allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
@@ -1168,11 +1164,11 @@ func (d *DB) runCompaction(
 
 	// finishOutput is called for an sstable with the first key of the next sstable, and for the
 	// last sstable with an empty key.
-	finishOutput := func(key InternalKey) error {
+	finishOutput := func(key []byte) error {
 		// NB: clone the key because the data can be held on to by the call to
 		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
-		key = key.Clone()
-		for _, v := range iter.Tombstones(key.UserKey) {
+		key = append([]byte(nil), key...)
+		for _, v := range iter.Tombstones(key) {
 			if tw == nil {
 				if err := newOutput(); err != nil {
 					return err
@@ -1233,7 +1229,7 @@ func (d *DB) runCompaction(
 			}
 		}
 
-		if key.UserKey != nil && writerMeta.LargestRange.UserKey != nil {
+		if key != nil && writerMeta.LargestRange.UserKey != nil {
 			// The current file is not the last output file and there is a range tombstone in it.
 			// If the tombstone extends into the next file, then truncate it for the purposes of
 			// computing meta.Largest. For example, say the next file's first key is c#7,1 and the
@@ -1242,8 +1238,8 @@ func (d *DB) runCompaction(
 			// c#inf where inf is the InternalKeyRangeDeleteSentinel. Note that this is just for
 			// purposes of bounds computation -- the current sstable will end up with a Largest key
 			// of c#7,1 so the range tombstone in the current file will be able to delete c#7.
-			if d.cmp(writerMeta.LargestRange.UserKey, key.UserKey) >= 0 {
-				writerMeta.LargestRange = key
+			if d.cmp(writerMeta.LargestRange.UserKey, key) >= 0 {
+				writerMeta.LargestRange.UserKey = key
 				writerMeta.LargestRange.Trailer = InternalKeyRangeDeleteSentinel
 			}
 		}
@@ -1287,6 +1283,7 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
+	var grandparentLimit []byte
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
 		atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
 
@@ -1304,9 +1301,10 @@ func (d *DB) runCompaction(
 		}
 
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
-		// shouldStopBefore decision.
-		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize || c.shouldStopBefore(*key)) {
-			if err := finishOutput(*key); err != nil {
+		// findGrandparentLimit decision.
+		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize ||
+			(grandparentLimit != nil && c.cmp(grandparentLimit, key.UserKey) < 0)) {
+			if err := finishOutput(key.UserKey); err != nil {
 				return nil, pendingOutputs, err
 			}
 		}
@@ -1315,6 +1313,7 @@ func (d *DB) runCompaction(
 			if err := newOutput(); err != nil {
 				return nil, pendingOutputs, err
 			}
+			grandparentLimit = c.findGrandparentLimit(key.UserKey)
 		}
 
 		if err := tw.Add(*key, val); err != nil {
@@ -1322,7 +1321,7 @@ func (d *DB) runCompaction(
 		}
 	}
 
-	if err := finishOutput(InternalKey{}); err != nil {
+	if err := finishOutput(nil /* key */); err != nil {
 		return nil, pendingOutputs, err
 	}
 
