@@ -858,13 +858,16 @@ func TestCompactionShouldStopBefore(t *testing.T) {
 
 				var buf bytes.Buffer
 				var smallest, largest string
+				var grandparentLimit []byte
 				for i, key := range strings.Fields(d.Input) {
 					if i == 0 {
 						smallest = key
+						grandparentLimit = c.findGrandparentLimit([]byte(key))
 					}
-					if c.shouldStopBefore(base.MakeInternalKey([]byte(key), 0, 0)) {
+					if grandparentLimit != nil && c.cmp(grandparentLimit, []byte(key)) < 0 {
 						fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
 						smallest = key
+						grandparentLimit = c.findGrandparentLimit([]byte(key))
 					}
 					largest = key
 				}
