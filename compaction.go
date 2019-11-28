@@ -395,7 +395,10 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 	var overlappedBytes uint64
 	for upper := lower; upper < len(c.grandparents); upper++ {
 		overlappedBytes += c.grandparents[upper].Size
-		if overlappedBytes > c.maxOverlapBytes {
+		// To ensure forward progress we always return a larger user
+		// key than where we started. See comments above clients of
+		// this function for how this is used.
+		if overlappedBytes > c.maxOverlapBytes && c.cmp(start, c.grandparents[upper].Largest.UserKey) < 0 {
 			return c.grandparents[upper].Largest.UserKey
 		}
 	}
@@ -1283,46 +1286,91 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	var grandparentLimit []byte
-	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
-
-		if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
-			return nil, pendingOutputs, err
-		}
-
-		if key.Kind() == InternalKeyKindRangeDelete {
-			// Range tombstones are handled specially. They are fragmented
-			// and written later during `finishOutput()`.  We add them
-			// to the `Fragmenter` now to make them visible to `compactionIter`
-			// so covered keys in the same snapshot stripe can be elided.
-			c.rangeDelFrag.Add(iter.cloneKey(*key), val)
-			continue
-		}
-
-		// TODO(peter,rangedel): Need to incorporate the range tombstones in the
-		// findGrandparentLimit decision.
-		if tw != nil && (tw.EstimatedSize() >= c.maxOutputFileSize ||
-			(grandparentLimit != nil && c.cmp(grandparentLimit, key.UserKey) < 0)) {
-			if err := finishOutput(key.UserKey); err != nil {
-				return nil, pendingOutputs, err
-			}
-		}
-
-		if tw == nil {
-			if err := newOutput(); err != nil {
-				return nil, pendingOutputs, err
-			}
+	// Each outer loop iteration produces one output file. An iteration that
+	// produces a file containing point keys (and optionally range tombstones)
+	// guarantees that the input iterator advanced. An iteration that produces
+	// a file containing only range tombstones guarantees the limit passed to
+	// `finishOutput()` advanced to a strictly greater user key corresponding
+	// to a grandparent file largest key, or nil. Taken together, these
+	// progress guarantees ensure that eventually the input iterator will be
+	// exhausted and the range tombstone fragments will all be flushed.
+	for key, val := iter.First(); key != nil || !c.rangeDelFrag.Empty(); {
+		var grandparentLimit []byte
+		if c.rangeDelFrag.Empty() {
+			// In this case, `grandparentLimit` will be a larger user
+			// key than `key.UserKey`, or nil. In either case, the
+			// inner loop will execute at least once to process `key`,
+			// and the input iterator will be advanced.
 			grandparentLimit = c.findGrandparentLimit(key.UserKey)
+		} else {
+			// There is a range tombstone spanning from the last file
+			// into the current one. Therefore this file's smallest
+			// boundary will overlap the last file's largest boundary.
+			//
+			// In this case, `grandparentLimit` will be a larger user
+			// key than the previous file's largest key and correspond
+			// to a grandparent file's largest user key, or nil. Then,
+			// it is possible the inner loop executes zero times, and
+			// the output file contains only range tombstones. That
+			// is fine as long as the number of times we execute this
+			// case is bounded. Since `findGrandparentLimit()` returns
+			// a strictly larger user key each time and it corresponds
+			// to a grandparent file largest key, the number of times
+			// this case can execute is bounded by the number of
+			// grandparent files (plus one for the final time it
+			// returns nil).
+			//
+			// n > 0 since we cannot have seen range tombstones at the
+			// beginning of the first file.
+			n := len(ve.NewFiles)
+			grandparentLimit = c.findGrandparentLimit(ve.NewFiles[n-1].Meta.Largest.UserKey)
 		}
 
-		if err := tw.Add(*key, val); err != nil {
+		// Each inner loop iteration processes one key from the input iterator.
+		for ; key != nil && (grandparentLimit == nil || c.cmp(key.UserKey, grandparentLimit) <= 0); key, val = iter.Next() {
+			atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
+			if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
+				return nil, pendingOutputs, err
+			}
+			if key.Kind() == InternalKeyKindRangeDelete {
+				// Range tombstones are handled specially. They are fragmented
+				// and written later during `finishOutput()`.  We add them
+				// to the `Fragmenter` now to make them visible to `compactionIter`
+				// so covered keys in the same snapshot stripe can be elided.
+				c.rangeDelFrag.Add(iter.cloneKey(*key), val)
+				continue
+			}
+			if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
+				break
+			}
+			if tw == nil {
+				if err := newOutput(); err != nil {
+					return nil, pendingOutputs, err
+				}
+			}
+			if err := tw.Add(*key, val); err != nil {
+				return nil, pendingOutputs, err
+			}
+		}
+
+		// The file is truncated to the limit for preventing excessive grandparent
+		// overlap, or the next file's first key, whichever comes first.
+		var limit []byte
+		if key != nil && (grandparentLimit == nil || c.cmp(key.UserKey, grandparentLimit) <= 0) {
+			// Size limit reached.
+			limit = key.UserKey
+		} else {
+			// Ran out of keys or grandparent limit reached.
+			if grandparentLimit != nil {
+				// This may possibly flush everything.
+				limit = grandparentLimit
+			} else {
+				// No grandparentLimit. Flush everything.
+			}
+		}
+		if err := finishOutput(limit); err != nil {
 			return nil, pendingOutputs, err
 		}
-	}
-
-	if err := finishOutput(nil /* key */); err != nil {
-		return nil, pendingOutputs, err
 	}
 
 	for i := range c.inputs {

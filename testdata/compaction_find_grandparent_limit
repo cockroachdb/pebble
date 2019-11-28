@@ -35,8 +35,7 @@ a-f
 compact max-overlap=1
 b c d e f g h i j
 ----
-b-b
-c-d
+b-d
 e-f
 g-j
 
