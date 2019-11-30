@@ -2,7 +2,6 @@ init compaction
 bytesIterated: 0
 currentTotal: 10
 ----
-pebble: maybeThrottle supplied with invalid bytesIterated
 
 init compaction
 bytesIterated: 1
@@ -139,7 +138,6 @@ allow: 3
 init flush
 bytesIterated: 0
 ----
-pebble: maybeThrottle supplied with invalid bytesIterated
 
 init flush
 bytesIterated: 1
