@@ -93,6 +93,11 @@ type compaction struct {
 	smallest InternalKey
 	largest  InternalKey
 
+	// The range deletion tombstone fragmenter. Adds range tombstones as they are
+	// returned from `compactionIter` and fragments them for output to files.
+	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
+	rangeDelFrag rangedel.Fragmenter
+
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries.
 	grandparents    []fileMetadata
@@ -1087,7 +1092,7 @@ func (d *DB) runCompaction(
 		return nil, pendingOutputs, err
 	}
 	allowZeroSeqNum := c.allowZeroSeqNum(iiter)
-	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots,
+	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots, &c.rangeDelFrag,
 		allowZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
 	var (
@@ -1287,6 +1292,15 @@ func (d *DB) runCompaction(
 
 		if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
 			return nil, pendingOutputs, err
+		}
+
+		if key.Kind() == InternalKeyKindRangeDelete {
+			// Range tombstones are handled specially. They are fragmented
+			// and written later during `finishOutput()`.  We add them
+			// to the `Fragmenter` now to make them visible to `compactionIter`
+			// so covered keys in the same snapshot stripe can be elided.
+			c.rangeDelFrag.Add(iter.cloneKey(*key), val)
+			continue
 		}
 
 		// TODO(peter,rangedel): Need to incorporate the range tombstones in the

@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -116,7 +115,7 @@ func newCompactionPacer(env compactionPacerEnv) *compactionPacer {
 // is not applied.
 func (p *compactionPacer) maybeThrottle(bytesIterated uint64) error {
 	if bytesIterated == 0 {
-		return errors.New("pebble: maybeThrottle supplied with invalid bytesIterated")
+		return nil
 	}
 
 	// Recalculate total compaction debt and the slowdown threshold only once
@@ -199,7 +198,7 @@ func newFlushPacer(env flushPacerEnv) *flushPacer {
 // limiter is not applied.
 func (p *flushPacer) maybeThrottle(bytesIterated uint64) error {
 	if bytesIterated == 0 {
-		return errors.New("pebble: maybeThrottle supplied with invalid bytesIterated")
+		return nil
 	}
 
 	// Recalculate inuse memtable bytes only once every 1000 iterations or when
