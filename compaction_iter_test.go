@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 func TestSnapshotIndex(t *testing.T) {
@@ -53,11 +54,13 @@ func TestCompactionIter(t *testing.T) {
 	var elideTombstones bool
 
 	newIter := func() *compactionIter {
+		var rangeDelFrag rangedel.Fragmenter
 		return newCompactionIter(
 			DefaultComparer.Compare,
 			DefaultMerger.Merge,
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
+			&rangeDelFrag,
 			false, /* allowZeroSeqNum */
 			func([]byte) bool {
 				return elideTombstones
@@ -135,6 +138,9 @@ func TestCompactionIter(t *testing.T) {
 				}
 				if iter.Valid() {
 					fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+					if iter.Key().Kind() == InternalKeyKindRangeDelete {
+						iter.rangeDelFrag.Add(iter.cloneKey(iter.Key()), iter.Value())
+					}
 				} else if err := iter.Error(); err != nil {
 					fmt.Fprintf(&b, "err=%v\n", err)
 				} else {
