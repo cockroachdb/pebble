@@ -346,7 +346,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		return nil
 	}
 
-	bh, err := w.finishBlock(&w.block)
+	bh, err := w.finishBlock(&w.block, w.compression)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -384,7 +384,9 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	w.pendingBH = BlockHandle{}
 }
 
-func shouldFlush(key InternalKey, value []byte, block blockWriter, blockSize, sizeThreshold int) bool {
+func shouldFlush(
+	key InternalKey, value []byte, block blockWriter, blockSize, sizeThreshold int,
+) bool {
 	if size := block.estimatedSize(); size < blockSize {
 		// The block is currently smaller than the target size.
 		if size <= sizeThreshold {
@@ -408,16 +410,10 @@ func shouldFlush(key InternalKey, value []byte, block blockWriter, blockSize, si
 	return true
 }
 
-// finishBlock finishes the current block and returns its block handle, which is
-// its offset and length in the table.
-func (w *Writer) finishBlock(block *blockWriter) (BlockHandle, error) {
-	bh, err := w.writeRawBlock(block.finish(), w.compression)
-
-	// Calculate filters.
-	if w.filter != nil {
-		w.filter.finishBlock(w.meta.Size)
-	}
-
+// finishBlock finishes the specified block and returns its block handle, which
+// is its offset and length in the table.
+func (w *Writer) finishBlock(block *blockWriter, compression Compression) (BlockHandle, error) {
+	bh, err := w.writeRawBlock(block.finish(), compression)
 	// Reset the per-block state.
 	block.reset()
 	return bh, err
@@ -436,12 +432,12 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	// Add the final unfinished index.
 	w.finishIndexBlock()
 
-	for _, b := range w.indexPartitions {
+	for i := range w.indexPartitions {
+		b := &w.indexPartitions[i]
 		sep := base.DecodeInternalKey(b.curKey)
-		bh, _ := w.writeRawBlock(b.finish(), w.compression)
-
-		if w.filter != nil {
-			w.filter.finishBlock(w.meta.Size)
+		bh, err := w.writeRawBlock(b.finish(), w.compression)
+		if err != nil {
+			return BlockHandle{}, err
 		}
 
 		n := encodeBlockHandle(w.tmp[:], bh)
@@ -458,7 +454,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.estimatedSize())
 	w.props.IndexSize += w.props.TopLevelIndexSize + blockTrailerLen
 
-	return w.finishBlock(&w.topLevelIndexBlock)
+	return w.finishBlock(&w.topLevelIndexBlock, w.compression)
 }
 
 func (w *Writer) writeRawBlock(b []byte, compression Compression) (BlockHandle, error) {
@@ -525,7 +521,7 @@ func (w *Writer) Close() (err error) {
 	// aren't any data blocks at all.
 	w.flushPendingBH(InternalKey{})
 	if w.block.nEntries > 0 || w.indexBlock.nEntries == 0 {
-		bh, err := w.finishBlock(&w.block)
+		bh, err := w.finishBlock(&w.block, w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -573,7 +569,7 @@ func (w *Writer) Close() (err error) {
 		w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 		// Write the single level index block.
-		indexBH, err = w.finishBlock(&w.indexBlock)
+		indexBH, err = w.finishBlock(&w.indexBlock, w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -593,8 +589,7 @@ func (w *Writer) Close() (err error) {
 			// tombstone is exclusive.
 			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
 		}
-		b := w.rangeDelBlock.finish()
-		rangeDelBH, err = w.writeRawBlock(b, NoCompression)
+		rangeDelBH, err = w.finishBlock(&w.rangeDelBlock, NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -644,8 +639,10 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
-	// policy is nil.
-	metaindexBH, err := w.finishBlock(&metaindex.blockWriter)
+	// policy is nil. NoCompression is specified because a) RocksDB never
+	// compresses the meta-index block and b) RocksDB has some code paths which
+	// expect the meta-index block to not be compressed.
+	metaindexBH, err := w.finishBlock(&metaindex.blockWriter, NoCompression)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -708,11 +705,7 @@ type WriterOption interface {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(
-	f writeCloseSyncer,
-	o WriterOptions,
-	extraOpts ...WriterOption,
-) *Writer {
+func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
 	o = o.ensureDefaults()
 	w := &Writer{
 		syncer: f,
