@@ -1229,7 +1229,13 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	if err != nil {
 		return err
 	}
-	i, err := newRawBlockIter(bytes.Compare, b.Get())
+	data := b.Get()
+	if uint64(len(data)) != metaindexBH.Length {
+		return fmt.Errorf("pebble/table: unexpected metaindex block size: %d vs %d",
+			len(data), metaindexBH.Length)
+	}
+
+	i, err := newRawBlockIter(bytes.Compare, data)
 	b.Release()
 	if err != nil {
 		return err

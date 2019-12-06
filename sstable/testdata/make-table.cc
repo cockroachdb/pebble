@@ -81,7 +81,7 @@ class KeyCountPropertyCollectorFactory : public rocksdb::TablePropertiesCollecto
 };
 
 int write() {
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 11; ++i) {
     rocksdb::Options options;
     rocksdb::BlockBasedTableOptions table_options;
     const char* outfile;
@@ -119,13 +119,19 @@ int write() {
         break;
 
       case 4:
+        outfile = "h.table-bloom.sst";
+        table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+        table_options.whole_key_filtering = true;
+        break;
+
+      case 5:
         outfile = "h.table-bloom.no-compression.sst";
         options.compression = rocksdb::kNoCompression;
         table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
         table_options.whole_key_filtering = true;
         break;
 
-      case 5:
+      case 6:
         // TODO(peter): unused at this time
         //
         // outfile = "h.block-bloom.no-compression.prefix_extractor.sst";
@@ -136,7 +142,7 @@ int write() {
         // break;
         continue;
 
-      case 6:
+      case 7:
         // TODO(peter): unused at this time
         //
         // outfile = "h.table-bloom.no-compression.prefix_extractor.sst";
@@ -147,7 +153,7 @@ int write() {
         // break;
         continue;
 
-      case 7:
+      case 8:
         // TODO(peter): unused at this time
         //
         // outfile = "h.block-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst";
@@ -158,7 +164,7 @@ int write() {
         // break;
         continue;
 
-      case 8:
+      case 9:
         outfile = "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst";
         options.compression = rocksdb::kNoCompression;
         options.prefix_extractor.reset(new PrefixExtractor);
@@ -166,7 +172,7 @@ int write() {
         table_options.whole_key_filtering = false;
         break;
 
-      case 9:
+      case 10:
         outfile = "h.no-compression.two_level_index.sst";
         options.table_properties_collector_factories.emplace_back(
             new KeyCountPropertyCollectorFactory);
@@ -227,4 +233,5 @@ int write() {
 
 int main(int argc, char** argv) {
   return write();
+
 }
