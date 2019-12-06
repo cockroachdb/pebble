@@ -33,7 +33,6 @@ type BlockHandle struct {
 
 type filterWriter interface {
 	addKey(key []byte)
-	finishBlock(blockOffset uint64) error
 	finish() ([]byte, error)
 	metaName() string
 	policyName() string
@@ -78,11 +77,6 @@ func newTableFilterWriter(policy FilterPolicy) *tableFilterWriter {
 func (f *tableFilterWriter) addKey(key []byte) {
 	f.count++
 	f.writer.AddKey(key)
-}
-
-func (f *tableFilterWriter) finishBlock(blockOffset uint64) error {
-	// NB: table-level filters have nothing to do when a block is finished.
-	return nil
 }
 
 func (f *tableFilterWriter) finish() ([]byte, error) {

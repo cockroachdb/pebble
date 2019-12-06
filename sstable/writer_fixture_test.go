@@ -98,6 +98,9 @@ var fixtures = map[fixtureOpts]struct {
 			return &keyCountPropertyCollector{}
 		},
 	},
+	{compressed, fullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
+		"testdata/h.table-bloom.sst", nil, nil,
+	},
 	{uncompressed, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.no-compression.sst", nil,
 		func() TablePropertyCollector {
