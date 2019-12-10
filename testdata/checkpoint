@@ -29,8 +29,10 @@ flush db
 create: db/000004.log
 sync: db
 sync: db/000002.log
+sync: db/000002.log
 close: db/000002.log
 create: db/000005.sst
+sync: db/000005.sst
 sync: db/000005.sst
 close: db/000005.sst
 sync: db
@@ -48,8 +50,10 @@ flush db
 reuseForWrite: db/000002.log -> db/000006.log
 sync: db
 sync: db/000004.log
+sync: db/000004.log
 close: db/000004.log
 create: db/000007.sst
+sync: db/000007.sst
 sync: db/000007.sst
 close: db/000007.sst
 sync: db
@@ -68,14 +72,17 @@ open-dir: checkpoint1
 link: db/OPTIONS-000003 -> checkpoint1/OPTIONS-000003
 create: checkpoint1/MANIFEST-000001
 sync: checkpoint1/MANIFEST-000001
+sync: checkpoint1/MANIFEST-000001
 close: checkpoint1/MANIFEST-000001
 create: checkpoint1/CURRENT.000001.dbtmp
+sync: checkpoint1/CURRENT.000001.dbtmp
 sync: checkpoint1/CURRENT.000001.dbtmp
 close: checkpoint1/CURRENT.000001.dbtmp
 rename: checkpoint1/CURRENT.000001.dbtmp -> checkpoint1/CURRENT
 link: db/000005.sst -> checkpoint1/000005.sst
 link: db/000007.sst -> checkpoint1/000007.sst
 create: checkpoint1/000006.log
+sync: checkpoint1/000006.log
 sync: checkpoint1/000006.log
 close: checkpoint1/000006.log
 sync: checkpoint1
@@ -90,13 +97,16 @@ compact db
 reuseForWrite: db/000004.log -> db/000008.log
 sync: db
 sync: db/000006.log
+sync: db/000006.log
 close: db/000006.log
 create: db/000009.sst
+sync: db/000009.sst
 sync: db/000009.sst
 close: db/000009.sst
 sync: db
 sync: db/MANIFEST-000001
 create: db/000010.sst
+sync: db/000010.sst
 sync: db/000010.sst
 close: db/000010.sst
 sync: db

@@ -31,8 +31,10 @@ flush db
 create: wal/000004.log
 sync: wal
 sync: wal/000002.log
+sync: wal/000002.log
 close: wal/000002.log
 create: db/000005.sst
+sync: db/000005.sst
 sync: db/000005.sst
 close: db/000005.sst
 sync: db
@@ -50,8 +52,10 @@ compact db
 create: wal/000006.log
 sync: wal
 sync: wal/000004.log
+sync: wal/000004.log
 close: wal/000004.log
 create: db/000007.sst
+sync: db/000007.sst
 sync: db/000007.sst
 close: db/000007.sst
 sync: db
@@ -59,6 +63,7 @@ sync: db/MANIFEST-000001
 mkdir-all: wal/archive 0755
 rename: wal/000004.log -> wal/archive/000004.log
 create: db/000008.sst
+sync: db/000008.sst
 sync: db/000008.sst
 close: db/000008.sst
 sync: db

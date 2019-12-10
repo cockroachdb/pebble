@@ -52,6 +52,14 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	return s
 }
 
+// Close Syncs and Closes the wrapped file.
+func (f *syncingFile) Close() error {
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	return f.File.Close()
+}
+
 // NB: syncingFile.Write is unsafe for concurrent use!
 func (f *syncingFile) Write(p []byte) (n int, err error) {
 	_ = f.preallocate(atomic.LoadInt64(&f.atomic.offset) + int64(n))
