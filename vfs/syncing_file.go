@@ -4,9 +4,7 @@
 
 package vfs
 
-import (
-	"sync/atomic"
-)
+import "sync/atomic"
 
 // SyncingFileOptions holds the options for a syncingFile.
 type SyncingFileOptions struct {
@@ -21,7 +19,13 @@ type syncingFile struct {
 	bytesPerSync    int64
 	preallocateSize int64
 	atomic          struct {
-		offset     int64
+		// The offset at which dirty data has been written.
+		offset int64
+		// The offset at which data has been synced. Note that if SyncFileRange is
+		// being used, the periodic syncing of data during writing will only ever
+		// sync up to offset-1MB. This is done to avoid rewriting the tail of the
+		// file multiple times, but has the side effect of ensuring that Close will
+		// sync the file's metadata.
 		syncOffset int64
 	}
 	preallocatedBlocks int64
@@ -30,16 +34,18 @@ type syncingFile struct {
 
 // NewSyncingFile wraps a writable file and ensures that data is synced
 // periodically as it is written. The syncing does not provide persistency
-// guarantees, but is used to avoid latency spikes if the OS automatically
-// decides to write out a large chunk of dirty filesystem buffers. If
-// bytesPerSync is zero, the original file is returned as no syncing is
-// requested.
+// guarantees for these periodic syncs, but is used to avoid latency spikes if
+// the OS automatically decides to write out a large chunk of dirty filesystem
+// buffers. The underlying file is fully synced upon close.
 func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
 		File:            f,
 		bytesPerSync:    int64(opts.BytesPerSync),
 		preallocateSize: int64(opts.PreallocateSize),
 	}
+	// Ensure a file that is opened and then closed will be synced, even if no
+	// data has been written to it.
+	s.atomic.syncOffset = -1
 
 	type fd interface {
 		Fd() uintptr
@@ -137,4 +143,16 @@ func (f *syncingFile) maybeSync() error {
 		return f.Sync()
 	}
 	return f.syncTo(syncToOffset)
+}
+
+func (f *syncingFile) Close() error {
+	// Sync any data that has been written but not yet synced. Note that if
+	// SyncFileRange was used, atomic.syncOffset will be less than
+	// atomic.offset. See syncingFile.syncToRange.
+	if atomic.LoadInt64(&f.atomic.offset) > atomic.LoadInt64(&f.atomic.syncOffset) {
+		if err := f.Sync(); err != nil {
+			return err
+		}
+	}
+	return f.File.Close()
 }
