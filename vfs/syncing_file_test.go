@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -43,7 +44,7 @@ func TestSyncingFile(t *testing.T) {
 		n              int64
 		expectedSyncTo int64
 	}{
-		{mb, 0},
+		{mb, -1},
 		{mb, mb},
 		{4 << 10, mb},
 		{4 << 10, mb + 8<<10},
@@ -58,6 +59,80 @@ func TestSyncingFile(t *testing.T) {
 		if c.expectedSyncTo != syncTo {
 			t.Fatalf("%d: expected sync to %d, but found %d", i, c.expectedSyncTo, syncTo)
 		}
+	}
+}
+
+func TestSyncingFileClose(t *testing.T) {
+	testCases := []struct {
+		syncToEnabled bool
+		expected      string
+	}{
+		{true, `sync-to(1048576): test [<nil>]
+sync-to(2097152): test [<nil>]
+sync-to(3145728): test [<nil>]
+pre-close: test [offset=4194304 sync-offset=3145728]
+sync: test [<nil>]
+close: test [<nil>]
+`},
+		// When SyncFileRange is not being used, the last sync call ends up syncing
+		// all of the data causing syncingFile.Close to elide the sync.
+		{false, `sync: test [<nil>]
+sync: test [<nil>]
+pre-close: test [offset=4194304 sync-offset=4194304]
+close: test [<nil>]
+`},
+	}
+	for _, c := range testCases {
+		t.Run("", func(t *testing.T) {
+			tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			filename := tmpf.Name()
+			defer os.Remove(filename)
+
+			f, err := Default.Create(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			lf := loggingFile{f, "test", &buf}
+
+			s := NewSyncingFile(lf, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */}).(*syncingFile)
+			if c.syncToEnabled {
+				s.fd = 1
+				s.syncData = lf.Sync
+				s.syncTo = func(offset int64) error {
+					s.ratchetSyncOffset(offset)
+					fmt.Fprintf(lf.w, "sync-to(%d): %s [%v]\n", offset, lf.name, err)
+					return nil
+				}
+			} else {
+				s.fd = 0
+			}
+
+			write := func(n int64) {
+				t.Helper()
+				if _, err := s.Write(make([]byte, n)); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			const mb = 1 << 20
+			write(2 * mb)
+			write(mb)
+			write(mb)
+
+			fmt.Fprintf(lf.w, "pre-close: %s [offset=%d sync-offset=%d]\n",
+				lf.name, atomic.LoadInt64(&s.atomic.offset), atomic.LoadInt64(&s.atomic.syncOffset))
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			if s := buf.String(); c.expected != s {
+				t.Fatalf("expected\n%s\nbut found\n%s", c.expected, s)
+			}
+		})
 	}
 }
 

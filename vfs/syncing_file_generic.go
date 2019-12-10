@@ -10,10 +10,6 @@ func (f *syncingFile) init() {
 	f.syncTo = f.syncToGeneric
 }
 
-func (f *syncingFile) syncData() error {
-	return f.File.Sync()
-}
-
 func (f *syncingFile) syncToGeneric(_ int64) error {
 	return f.Sync()
 }
