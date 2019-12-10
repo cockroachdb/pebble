@@ -43,7 +43,7 @@ func TestSyncingFile(t *testing.T) {
 		n              int64
 		expectedSyncTo int64
 	}{
-		{mb, 0},
+		{mb, -1},
 		{mb, mb},
 		{4 << 10, mb},
 		{4 << 10, mb + 8<<10},

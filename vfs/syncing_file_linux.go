@@ -61,6 +61,8 @@ func (f *syncingFile) syncData() error {
 }
 
 func (f *syncingFile) syncToFdatasync(_ int64) error {
+	// We're using Fsync or Fdatasync which will sync all dirty data in the file,
+	// so ratchet syncOffset to the current write offset.
 	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
 	return f.syncData()
 }
@@ -72,6 +74,15 @@ func (f *syncingFile) syncToRange(offset int64) error {
 		// waitAfter = 0x4
 	)
 
-	f.ratchetSyncOffset(offset)
+	// We ratchet the sync offset up to offset-1. The minus one is subtle: it is
+	// used to account for SyncFileRange not syncing the file metadata. In
+	// syncingFile.Close, we will notice that `syncOffset < offset` and perform
+	// an additional Sync to ensure the file's metadata has been written.
+	f.ratchetSyncOffset(offset - 1)
+
+	// By specifying write|waitBefore for the flags, we're instructing
+	// SyncFileRange to a) wait for any outstanding data being written to finish,
+	// and b) to queue any other dirty data blocks in the range [0,offset] for
+	// writing. The actual writing of this data will occur asynchronously.
 	return syscall.SyncFileRange(int(f.fd), 0, offset, write|waitBefore)
 }
