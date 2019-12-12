@@ -6,10 +6,7 @@
 
 package vfs
 
-import (
-	"sync/atomic"
-	"syscall"
-)
+import "syscall"
 
 type syncFileRange func(fd int, off int64, n int64, flags int) (err error)
 
@@ -51,9 +48,10 @@ func (f *syncingFile) init() {
 	} else {
 		f.syncTo = f.syncToFdatasync
 	}
+	f.syncData = f.syncFdatasync
 }
 
-func (f *syncingFile) syncData() error {
+func (f *syncingFile) syncFdatasync() error {
 	if f.fd == 0 {
 		return f.File.Sync()
 	}
@@ -61,8 +59,7 @@ func (f *syncingFile) syncData() error {
 }
 
 func (f *syncingFile) syncToFdatasync(_ int64) error {
-	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
-	return f.syncData()
+	return f.Sync()
 }
 
 func (f *syncingFile) syncToRange(offset int64) error {
@@ -72,6 +69,18 @@ func (f *syncingFile) syncToRange(offset int64) error {
 		// waitAfter = 0x4
 	)
 
+	// Note that syncToRange is only called with an offset that is guaranteed to
+	// be less than atomic.offset (i.e. the write offset). This implies the
+	// syncingFile.Close will Sync the rest of the data, as well as the file's
+	// metadata.
 	f.ratchetSyncOffset(offset)
+
+	// By specifying write|waitBefore for the flags, we're instructing
+	// SyncFileRange to a) wait for any outstanding data being written to finish,
+	// and b) to queue any other dirty data blocks in the range [0,offset] for
+	// writing. The actual writing of this data will occur asynchronously. The
+	// use of `waitBefore` is to limit how much dirty data is allowed to
+	// accumulate. Linux sometimes behaves poorly when a large amount of dirty
+	// data accumulates, impacting other I/O operations.
 	return syscall.SyncFileRange(int(f.fd), 0, offset, write|waitBefore)
 }
