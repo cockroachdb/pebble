@@ -58,6 +58,10 @@ type versionSet struct {
 	obsoleteManifests []uint64
 	obsoleteOptions   []uint64
 
+	// Zombie tables which have been removed from the current version but are
+	// still referenced by an inuse iterator.
+	zombieTables map[uint64]uint64 // filenum -> size
+
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
 	minUnflushedLogNum uint64
@@ -94,6 +98,7 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
+	vs.zombieTables = make(map[uint64]uint64)
 	vs.nextFileNum = 1
 }
 
@@ -230,7 +235,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	newVersion, err := bve.Apply(nil, vs.cmp, opts.Comparer.Format)
+	newVersion, _, err := bve.Apply(nil, vs.cmp, opts.Comparer.Format)
 	if err != nil {
 		return err
 	}
@@ -322,6 +327,7 @@ func (vs *versionSet) logAndApply(
 	}
 
 	var picker *compactionPicker
+	var zombies map[uint64]uint64
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
@@ -330,7 +336,7 @@ func (vs *versionSet) logAndApply(
 		bve.Accumulate(ve)
 
 		var err error
-		newVersion, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.Format)
+		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.Format)
 		if err != nil {
 			return err
 		}
@@ -414,6 +420,9 @@ func (vs *versionSet) logAndApply(
 		l := &vs.metrics.Levels[i]
 		l.NumFiles = int64(len(newVersion.Files[i]))
 		l.Size = uint64(totalSize(newVersion.Files[i]))
+	}
+	for fileNum, size := range zombies {
+		vs.zombieTables[fileNum] = size
 	}
 	return nil
 }
@@ -518,5 +527,10 @@ func (vs *versionSet) addLiveFileNums(m map[uint64]struct{}) {
 }
 
 func (vs *versionSet) addObsoleteLocked(obsolete []uint64) {
+	for _, fileNum := range obsolete {
+		if _, ok := vs.zombieTables[fileNum]; !ok {
+			vs.opts.Logger.Fatalf("MANIFEST obsolete table %06d not marked as zombie", fileNum)
+		}
+	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
 }

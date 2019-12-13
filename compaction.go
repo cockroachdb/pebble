@@ -1502,14 +1502,25 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	}
 	if d.mu.cleaner.disabled > 0 {
 		// File deletions are currently disabled. When they are re-enabled a new
-		// job will be allocated to catch
+		// job will be created to catch up on file deletions.
 		return
 	}
 
+	var obsoleteTables []uint64
+	var obsoleteManifests []uint64
+	var obsoleteOptions []uint64
+
 	d.mu.cleaner.cleaning = true
 	defer func() {
+		for _, fileNum := range obsoleteTables {
+			delete(d.mu.versions.zombieTables, fileNum)
+		}
+		d.mu.versions.obsoleteTables = d.mu.versions.obsoleteTables[len(obsoleteTables):]
+		d.mu.versions.obsoleteManifests = d.mu.versions.obsoleteManifests[len(obsoleteManifests):]
+		d.mu.versions.obsoleteOptions = d.mu.versions.obsoleteOptions[len(obsoleteOptions):]
+
 		d.mu.cleaner.cleaning = false
-		d.mu.cleaner.cond.Signal()
+		d.mu.cleaner.cond.Broadcast()
 	}()
 
 	var obsoleteLogs []uint64
@@ -1526,14 +1537,9 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		}
 	}
 
-	obsoleteTables := d.mu.versions.obsoleteTables
-	d.mu.versions.obsoleteTables = nil
-
-	obsoleteManifests := d.mu.versions.obsoleteManifests
-	d.mu.versions.obsoleteManifests = nil
-
-	obsoleteOptions := d.mu.versions.obsoleteOptions
-	d.mu.versions.obsoleteOptions = nil
+	obsoleteTables = d.mu.versions.obsoleteTables
+	obsoleteManifests = d.mu.versions.obsoleteManifests
+	obsoleteOptions = d.mu.versions.obsoleteOptions
 
 	// Release d.mu while doing I/O
 	// Note the unusual order: Unlock and then Lock.

@@ -134,6 +134,19 @@ type Metrics struct {
 		Size uint64
 		// The count of memtables.
 		Count int64
+		// The number of bytes present in zombie memtables which are no longer
+		// referenced by the current DB state but are still in use by an iterator.
+		ZombieSize uint64
+		// The count of zombie memtables.
+		ZombieCount int64
+	}
+
+	Table struct {
+		// The number of bytes present in zombie tables which are no longer
+		// referenced by the current DB state but are still in use by an iterator.
+		ZombieSize uint64
+		// The count of zombie tables.
+		ZombieCount int64
 	}
 
 	TableCache CacheMetrics
@@ -194,6 +207,8 @@ func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 //     flush         3
 //   compact         1   1.6 K          (size == estimated-debt)
 //    memtbl         1   4.0 M
+//   zmemtbl         0     0 B
+//      ztbl         0     0 B
 //    bcache         4   752 B    7.7%  (score == hit-rate)
 //    tcache         0     0 B    0.0%  (score == hit-rate)
 //    titers         0
@@ -235,6 +250,12 @@ func (m *Metrics) String() string {
 	fmt.Fprintf(&buf, " memtbl %9d %7s\n",
 		m.MemTable.Count,
 		humanize.IEC.Uint64(m.MemTable.Size))
+	fmt.Fprintf(&buf, "zmemtbl %9d %7s\n",
+		m.MemTable.ZombieCount,
+		humanize.IEC.Uint64(m.MemTable.ZombieSize))
+	fmt.Fprintf(&buf, "   ztbl %9d %7s\n",
+		m.Table.ZombieCount,
+		humanize.IEC.Uint64(m.Table.ZombieSize))
 	formatCacheMetrics(&buf, &m.BlockCache, "bcache")
 	formatCacheMetrics(&buf, &m.TableCache, "tcache")
 	fmt.Fprintf(&buf, " titers %9d\n", m.TableIters)
