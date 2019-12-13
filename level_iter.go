@@ -43,9 +43,11 @@ type levelIter struct {
 	cmp       Compare
 	// The current file wrt the iterator position.
 	index int
-	// The key to return when iterating past an sstable boundary and that
-	// boundary is a range deletion tombstone.
-	boundary *InternalKey
+	// The keys to return when iterating past an sstable boundary and that
+	// boundary is a range deletion tombstone. The boundary could be smallest
+	// (i.e. arrived at with Prev), or largest (arrived at with Next).
+	smallestBoundary *InternalKey
+	largestBoundary  *InternalKey
 	// A synthetic boundary key to return when SeekPrefixGE finds an sstable
 	// which doesn't contain the search key, but which does contain range
 	// tombstones.
@@ -103,10 +105,10 @@ type levelIter struct {
 	// to delete g#10. This requires knowing that the largestUserKey is a range delete sentinel,
 	// which we set in a separate bool below.
 	//
-	// These fields differs from the `boundary` field in a few ways:
-	// - `boundary` is only populated when the iterator is positioned exactly on the sentinel key.
-	// - `boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
-	// - `boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
+	// These fields differs from the `*Boundary` fields in a few ways:
+	// - `*Boundary` is only populated when the iterator is positioned exactly on the sentinel key.
+	// - `*Boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
+	// - `*Boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
 	smallestUserKey, largestUserKey  *[]byte
 	isLargestUserKeyRangeDelSentinel *bool
 
@@ -193,7 +195,8 @@ func (l *levelIter) findFileLT(key []byte) int {
 }
 
 func (l *levelIter) loadFile(index, dir int) bool {
-	l.boundary = nil
+	l.smallestBoundary = nil
+	l.largestBoundary = nil
 	if l.index == index {
 		if l.err != nil {
 			return false
@@ -360,7 +363,7 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if l.boundary != nil {
+	if l.largestBoundary != nil {
 		// We're stepping past the boundary key, so now we can load the next file.
 		if l.loadFile(l.index+1, 1) {
 			if key, val := l.iter.First(); key != nil {
@@ -370,6 +373,8 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		}
 		return nil, nil
 	}
+	// Reset the smallest boundary since we're moving away from it.
+	l.smallestBoundary = nil
 
 	if l.iter == nil {
 		return nil, nil
@@ -385,7 +390,7 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if l.boundary != nil {
+	if l.smallestBoundary != nil {
 		// We're stepping past the boundary key, so now we can load the prev file.
 		if l.loadFile(l.index-1, -1) {
 			if key, val := l.iter.Last(); key != nil {
@@ -395,6 +400,8 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		}
 		return nil, nil
 	}
+	// Reset the largest boundary since we're moving away from it.
+	l.largestBoundary = nil
 
 	if l.iter == nil {
 		return nil, nil
@@ -438,13 +445,13 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			if l.tableOpts.UpperBound != nil {
 				l.syntheticBoundary = f.Largest
 				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
-				l.boundary = &l.syntheticBoundary
-				return l.boundary, nil
+				l.largestBoundary = &l.syntheticBoundary
+				return l.largestBoundary, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
 			if f.Largest.Kind() == InternalKeyKindRangeDelete {
-				l.boundary = &f.Largest
-				return l.boundary, nil
+				l.largestBoundary = &f.Largest
+				return l.largestBoundary, nil
 			}
 		}
 
@@ -466,7 +473,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 	// pretend the iterator is not exhausted to allow for the merging to finish
 	// consuming the l.rangeDelIter before levelIter switches the rangeDelIter
 	// from under it. This pretense is done by either generating a synthetic
-	// boundary key or returning the largest key of the file, depending on the
+	// boundary key or returning the smallest key of the file, depending on the
 	// exhaustion reason.
 
 	// Subsequent iterations will examine consecutive files such that the first
@@ -489,13 +496,13 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			if l.tableOpts.LowerBound != nil && l.rangeDelIter != nil {
 				l.syntheticBoundary = f.Smallest
 				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
-				l.boundary = &l.syntheticBoundary
-				return l.boundary, nil
+				l.smallestBoundary = &l.syntheticBoundary
+				return l.smallestBoundary, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
 			if f.Smallest.Kind() == InternalKeyKindRangeDelete {
-				l.boundary = &f.Smallest
-				return l.boundary, nil
+				l.smallestBoundary = &f.Smallest
+				return l.smallestBoundary, nil
 			}
 		}
 
