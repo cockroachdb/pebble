@@ -13,6 +13,16 @@ type tableNewIters func(
 	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error)
 
+// boundaryPos is an enum type to denote position of a boundary for pausing a
+// levelIter. See comment on levelIter for explanation of the pausing behaviour.
+type boundaryPos int
+
+const (
+	boundaryPosNone boundaryPos = 0
+	boundaryPosSmallest boundaryPos = -1
+	boundaryPosLargest boundaryPos = 1
+)
+
 var sentinelUpperBound = make([]byte, 0)
 
 // levelIter provides a merged view of the sstables in a level.
@@ -46,6 +56,9 @@ type levelIter struct {
 	// The key to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone.
 	boundary *InternalKey
+	// The position of the boundary above. Could be smallest (i.e. arrived at
+	// with Prev), largest (arrived at with Next), or none (boundary unset).
+	boundaryPos boundaryPos
 	// A synthetic boundary key to return when SeekPrefixGE finds an sstable
 	// which doesn't contain the search key, but which does contain range
 	// tombstones.
@@ -194,6 +207,7 @@ func (l *levelIter) findFileLT(key []byte) int {
 
 func (l *levelIter) loadFile(index, dir int) bool {
 	l.boundary = nil
+	l.boundaryPos = boundaryPosNone
 	if l.index == index {
 		if l.err != nil {
 			return false
@@ -360,7 +374,7 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if l.boundary != nil {
+	if l.boundary != nil && l.boundaryPos == boundaryPosLargest {
 		// We're stepping past the boundary key, so now we can load the next file.
 		if l.loadFile(l.index+1, 1) {
 			if key, val := l.iter.First(); key != nil {
@@ -370,6 +384,10 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		}
 		return nil, nil
 	}
+	// Reset the boundary since we're moving "away" from it; the boundary was
+	// at the lower bound.
+	l.boundary = nil
+	l.boundaryPos = boundaryPosNone
 
 	if l.iter == nil {
 		return nil, nil
@@ -385,7 +403,7 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if l.boundary != nil {
+	if l.boundary != nil && l.boundaryPos == boundaryPosSmallest {
 		// We're stepping past the boundary key, so now we can load the prev file.
 		if l.loadFile(l.index-1, -1) {
 			if key, val := l.iter.Last(); key != nil {
@@ -395,6 +413,10 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		}
 		return nil, nil
 	}
+	// Reset the boundary since we're moving "away" from it; the boundary was
+	// at the upper bound.
+	l.boundary = nil
+	l.boundaryPos = boundaryPosNone
 
 	if l.iter == nil {
 		return nil, nil
@@ -439,11 +461,13 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 				l.syntheticBoundary = f.Largest
 				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 				l.boundary = &l.syntheticBoundary
+				l.boundaryPos = boundaryPosLargest
 				return l.boundary, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
 			if f.Largest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Largest
+				l.boundaryPos = boundaryPosLargest
 				return l.boundary, nil
 			}
 		}
@@ -466,7 +490,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 	// pretend the iterator is not exhausted to allow for the merging to finish
 	// consuming the l.rangeDelIter before levelIter switches the rangeDelIter
 	// from under it. This pretense is done by either generating a synthetic
-	// boundary key or returning the largest key of the file, depending on the
+	// boundary key or returning the smallest key of the file, depending on the
 	// exhaustion reason.
 
 	// Subsequent iterations will examine consecutive files such that the first
@@ -490,11 +514,13 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 				l.syntheticBoundary = f.Smallest
 				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 				l.boundary = &l.syntheticBoundary
+				l.boundaryPos = boundaryPosSmallest
 				return l.boundary, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
 			if f.Smallest.Kind() == InternalKeyKindRangeDelete {
 				l.boundary = &f.Smallest
+				l.boundaryPos = boundaryPosSmallest
 				return l.boundary, nil
 			}
 		}

@@ -255,11 +255,15 @@ type levelIterTestIter struct {
 }
 
 func (i *levelIterTestIter) rangeDelSeek(
-	key []byte, ikey *InternalKey, val []byte,
+	key []byte, ikey *InternalKey, val []byte, dir int,
 ) (*InternalKey, []byte) {
 	var tombstone rangedel.Tombstone
 	if i.rangeDelIter != nil {
-		tombstone = rangedel.SeekGE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
+		if dir < 0 {
+			tombstone = rangedel.SeekLE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
+		} else {
+			tombstone = rangedel.SeekGE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
+		}
 	}
 	if ikey == nil {
 		return &InternalKey{
@@ -274,17 +278,17 @@ func (i *levelIterTestIter) rangeDelSeek(
 
 func (i *levelIterTestIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	ikey, val := i.levelIter.SeekGE(key)
-	return i.rangeDelSeek(key, ikey, val)
+	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
 func (i *levelIterTestIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	ikey, val := i.levelIter.SeekPrefixGE(prefix, key)
-	return i.rangeDelSeek(key, ikey, val)
+	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
 func (i *levelIterTestIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	ikey, val := i.levelIter.SeekLT(key)
-	return i.rangeDelSeek(key, ikey, val)
+	return i.rangeDelSeek(key, ikey, val, -1)
 }
 
 func TestLevelIterSeek(t *testing.T) {
