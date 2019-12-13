@@ -46,9 +46,15 @@ iter
 set-bounds upper=d
 seek-ge c
 next
+prev
+next
+next
 ----
 c/d-e#6#7,1:c
 f#5,15:
+c#7,1:c
+f#5,15:
+.
 
 iter
 seek-prefix-ge d
@@ -65,9 +71,15 @@ iter
 set-bounds lower=d
 seek-lt g
 prev
+next
+prev
+prev
 ----
 f/<empty>#5,1:f
 c#7,15:
+f#5,1:f
+c#7,15:
+.
 
 # Verify that First() in the presence of an upper-bound pauses at the
 # table containing the upper-bound.
