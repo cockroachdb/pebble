@@ -46,9 +46,15 @@ iter
 set-bounds upper=d
 seek-ge c
 next
+prev
+next
+next
 ----
 c/d-e#6#7,1:c
 f#5,15:
+c#7,1:c
+f#5,15:
+.
 
 iter
 seek-prefix-ge d
@@ -65,9 +71,15 @@ iter
 set-bounds lower=d
 seek-lt g
 prev
+next
+prev
+prev
 ----
-f/<empty>#5,1:f
+f/d-e#6#5,1:f
 c#7,15:
+f#5,1:f
+c#7,15:
+.
 
 # Verify that First() in the presence of an upper-bound pauses at the
 # table containing the upper-bound.
@@ -104,3 +116,45 @@ set-bounds lower=c
 last
 ----
 c#7,1:c
+
+# Verify that a seek to a file with range tombstones as boundaries pauses on
+# those boundaries.
+
+clear
+----
+
+build
+a.RANGEDEL.5:b
+c.SET.7:c
+d.RANGEDEL.6:e
+----
+0: a#5,15-e#72057594037927935,15
+
+build
+f.SET.8:f
+g.SET.9:g
+----
+0: a#5,15-e#72057594037927935,15
+1: f#8,1-g#9,1
+
+iter
+seek-ge d
+prev
+next
+next
+----
+e/d-e#6#72057594037927935,15:
+c#7,1:c
+e#72057594037927935,15:
+f#8,1:f
+
+iter
+seek-lt b
+next
+prev
+prev
+----
+a/a-b#5#5,15:
+c#7,1:c
+c#7,1:c
+a#5,15:
