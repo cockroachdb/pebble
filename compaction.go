@@ -6,10 +6,12 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
 	"os"
+	"runtime/pprof"
 	"sort"
 	"sync/atomic"
 	"unsafe"
@@ -24,6 +26,9 @@ import (
 
 var errEmptyTable = errors.New("pebble: empty table")
 var errFlushInvariant = errors.New("pebble: flush next log number is unset")
+
+var compactLabelCtx = pprof.WithLabels(context.Background(), pprof.Labels("pebble", "compact"))
+var flushLabelCtx = pprof.WithLabels(context.Background(), pprof.Labels("pebble", "flush"))
 
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
@@ -790,6 +795,8 @@ func (d *DB) maybeScheduleFlush() {
 }
 
 func (d *DB) flush() {
+	pprof.SetGoroutineLabels(flushLabelCtx)
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if err := d.flush1(); err != nil {
@@ -950,6 +957,8 @@ func (d *DB) maybeScheduleCompaction() {
 
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact() {
+	pprof.SetGoroutineLabels(compactLabelCtx)
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if err := d.compact1(); err != nil {

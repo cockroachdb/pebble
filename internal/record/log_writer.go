@@ -5,17 +5,21 @@
 package record
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"runtime/debug"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/crc"
 )
+
+var walLabelCtx = pprof.WithLabels(context.Background(), pprof.Labels("pebble", "wal-sync"))
 
 type block struct {
 	// buf[:written] has already been filled with fragments. Updated atomically.
@@ -315,6 +319,8 @@ func (w *LogWriter) SetMinSyncInterval(minSyncInterval durationFunc) {
 }
 
 func (w *LogWriter) flushLoop() {
+	pprof.SetGoroutineLabels(walLabelCtx)
+
 	f := &w.flusher
 	f.Lock()
 
