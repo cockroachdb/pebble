@@ -29,6 +29,7 @@ var errFlushInvariant = errors.New("pebble: flush next log number is unset")
 
 var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
+var gcLabels = pprof.Labels("pebble", "gc")
 
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
@@ -1511,12 +1512,17 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	}
 	if d.mu.cleaner.disabled > 0 {
 		// File deletions are currently disabled. When they are re-enabled a new
-		// job will be allocated to catch
+		// job will be created to catch up on file deletions.
 		return
 	}
 
+	var obsoleteTables []uint64
+
 	d.mu.cleaner.cleaning = true
 	defer func() {
+		for _, fileNum := range obsoleteTables {
+			delete(d.mu.versions.zombieTables, fileNum)
+		}
 		d.mu.cleaner.cleaning = false
 		d.mu.cleaner.cond.Signal()
 	}()
@@ -1535,7 +1541,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		}
 	}
 
-	obsoleteTables := d.mu.versions.obsoleteTables
+	obsoleteTables = d.mu.versions.obsoleteTables
 	d.mu.versions.obsoleteTables = nil
 
 	obsoleteManifests := d.mu.versions.obsoleteManifests
@@ -1581,6 +1587,29 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 			d.deleteObsoleteFile(f.fileType, jobID, path, fileNum)
 		}
 	}
+}
+
+func (d *DB) maybeScheduleObsoleteTableDeletion() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.mu.cleaner.disabled > 0 || d.mu.cleaner.cleaning {
+		return
+	}
+	if len(d.mu.versions.obsoleteTables) == 0 {
+		return
+	}
+
+	go func() {
+		pprof.Do(context.Background(), gcLabels, func(context.Context) {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+
+			jobID := d.mu.nextJobID
+			d.mu.nextJobID++
+			d.deleteObsoleteFiles(jobID)
+		})
+	}()
 }
 
 // deleteObsoleteFile deletes file that is no longer needed.

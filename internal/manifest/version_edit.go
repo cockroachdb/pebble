@@ -437,9 +437,28 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 // new version is consistent with respect to the internal key comparer icmp.
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
+//
+// If zombies is non-nil it is populated with the file numbers (and sizes) of
+// deleted files. These files are considered zombies because they are no longer
+// referenced by the returned Version, but cannot be deleted from disk as they
+// are still in use by the incoming Version.
 func (b *BulkVersionEdit) Apply(
 	curr *Version, cmp Compare, format base.Formatter,
-) (*Version, error) {
+) (_ *Version, zombies map[uint64]uint64, _ error) {
+	addZombie := func(fileNum, size uint64) {
+		if zombies == nil {
+			zombies = make(map[uint64]uint64)
+		}
+		zombies[fileNum] = size
+	}
+	// The remove zombie function is used to handle tables that are moved from
+	// one level to another during a version edit (i.e. a "move" compaction).
+	removeZombie := func(fileNum uint64) {
+		if zombies != nil {
+			delete(zombies, fileNum)
+		}
+	}
+
 	v := new(Version)
 	for level := range v.Files {
 		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
@@ -465,7 +484,7 @@ func (b *BulkVersionEdit) Apply(
 		deletedMap := b.Deleted[level]
 		n := len(currFiles) + len(addedFiles)
 		if n == 0 {
-			return nil, fmt.Errorf(
+			return nil, nil, fmt.Errorf(
 				"pebble: internal error: No current or added files but have deleted files: %d", len(deletedMap))
 		}
 		v.Files[level] = make([]FileMetadata, 0, n)
@@ -494,6 +513,7 @@ func (b *BulkVersionEdit) Apply(
 				for i := range ff {
 					f := &ff[i]
 					if deletedMap[f.FileNum] {
+						addZombie(f.FileNum, f.Size)
 						continue
 					}
 					if f.refs == nil {
@@ -505,7 +525,7 @@ func (b *BulkVersionEdit) Apply(
 			}
 			SortBySeqNum(v.Files[level])
 			if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
-				return nil, fmt.Errorf("pebble: internal error: %v", err)
+				return nil, nil, fmt.Errorf("pebble: internal error: %v", err)
 			}
 			continue
 		}
@@ -518,8 +538,10 @@ func (b *BulkVersionEdit) Apply(
 		for i := range addedFiles {
 			f := &addedFiles[i]
 			if deletedMap[f.FileNum] {
+				addZombie(f.FileNum, f.Size)
 				continue
 			}
+			removeZombie(f.FileNum)
 			if f.refs == nil {
 				f.refs = new(int32)
 			}
@@ -539,8 +561,10 @@ func (b *BulkVersionEdit) Apply(
 			for k := 0; k < j; k++ {
 				cf := &currFiles[k]
 				if deletedMap[cf.FileNum] {
+					addZombie(cf.FileNum, cf.Size)
 					continue
 				}
+				removeZombie(cf.FileNum)
 				atomic.AddInt32(cf.refs, 1)
 				v.Files[level] = append(v.Files[level], *cf)
 			}
@@ -557,7 +581,7 @@ func (b *BulkVersionEdit) Apply(
 				// addedFiles for internal consistency).
 				if base.InternalCompare(cmp, v.Files[level][numFiles-1].Largest, f.Smallest) >= 0 {
 					cf := &v.Files[level][numFiles-1]
-					return nil, fmt.Errorf(
+					return nil, nil, fmt.Errorf(
 						"pebble: internal error: L%d files %06d and %06d have overlapping ranges: %s-%s vs %s-%s",
 						level, cf.FileNum, f.FileNum, cf.Smallest.Pretty(format), cf.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
@@ -569,11 +593,13 @@ func (b *BulkVersionEdit) Apply(
 		for i := range currFiles {
 			f := &currFiles[i]
 			if deletedMap[f.FileNum] {
+				addZombie(f.FileNum, f.Size)
 				continue
 			}
+			removeZombie(f.FileNum)
 			atomic.AddInt32(f.refs, 1)
 			v.Files[level] = append(v.Files[level], *f)
 		}
 	}
-	return v, nil
+	return v, zombies, nil
 }

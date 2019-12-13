@@ -7,16 +7,17 @@ package manifest
 import (
 	"bytes"
 	"fmt"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"io"
 	"io/ioutil"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/kr/pretty"
 )
@@ -340,12 +341,21 @@ func TestVersionEditApply(t *testing.T) {
 				}
 				bve := BulkVersionEdit{}
 				bve.Accumulate(ve)
-				var newv *Version
-				newv, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter)
+				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter)
 				if err != nil {
 					return err.Error()
 				}
-				return newv.DebugString(base.DefaultFormatter)
+
+				zombieFileNums := make([]uint64, 0, len(zombies))
+				for fileNum := range zombies {
+					zombieFileNums = append(zombieFileNums, fileNum)
+				}
+				sort.Slice(zombieFileNums, func(i, j int) bool {
+					return zombieFileNums[i] < zombieFileNums[j]
+				})
+
+				return newv.DebugString(base.DefaultFormatter) +
+					fmt.Sprintf("zombies %d\n", zombieFileNums)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
