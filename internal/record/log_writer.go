@@ -5,17 +5,21 @@
 package record
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"runtime/debug"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/crc"
 )
+
+var walSyncLabels = pprof.Labels("pebble", "wal-sync")
 
 type block struct {
 	// buf[:written] has already been filled with fragments. Updated atomically.
@@ -301,7 +305,9 @@ func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
 	r.block = <-r.free
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
 	r.flusher.closed = make(chan struct{})
-	go r.flushLoop()
+	go func() {
+		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
+	}()
 	return r
 }
 
@@ -314,7 +320,7 @@ func (w *LogWriter) SetMinSyncInterval(minSyncInterval durationFunc) {
 	f.Unlock()
 }
 
-func (w *LogWriter) flushLoop() {
+func (w *LogWriter) flushLoop(context.Context) {
 	f := &w.flusher
 	f.Lock()
 

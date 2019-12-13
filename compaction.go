@@ -6,10 +6,12 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
 	"os"
+	"runtime/pprof"
 	"sort"
 	"sync/atomic"
 	"unsafe"
@@ -24,6 +26,9 @@ import (
 
 var errEmptyTable = errors.New("pebble: empty table")
 var errFlushInvariant = errors.New("pebble: flush next log number is unset")
+
+var compactLabels = pprof.Labels("pebble", "compact")
+var flushLabels = pprof.Labels("pebble", "flush")
 
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
@@ -790,20 +795,22 @@ func (d *DB) maybeScheduleFlush() {
 }
 
 func (d *DB) flush() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if err := d.flush1(); err != nil {
-		// TODO(peter): count consecutive flush errors and backoff.
-		d.opts.EventListener.BackgroundError(err)
-	}
-	d.mu.compact.flushing = false
-	// More flush work may have arrived while we were flushing, so schedule
-	// another flush if needed.
-	d.maybeScheduleFlush()
-	// The flush may have produced too many files in a level, so schedule a
-	// compaction if needed.
-	d.maybeScheduleCompaction()
-	d.mu.compact.cond.Broadcast()
+	pprof.Do(context.Background(), flushLabels, func(context.Context) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if err := d.flush1(); err != nil {
+			// TODO(peter): count consecutive flush errors and backoff.
+			d.opts.EventListener.BackgroundError(err)
+		}
+		d.mu.compact.flushing = false
+		// More flush work may have arrived while we were flushing, so schedule
+		// another flush if needed.
+		d.maybeScheduleFlush()
+		// The flush may have produced too many files in a level, so schedule a
+		// compaction if needed.
+		d.maybeScheduleCompaction()
+		d.mu.compact.cond.Broadcast()
+	})
 }
 
 // flush runs a compaction that copies the immutable memtables from memory to
@@ -950,17 +957,19 @@ func (d *DB) maybeScheduleCompaction() {
 
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if err := d.compact1(); err != nil {
-		// TODO(peter): count consecutive compaction errors and backoff.
-		d.opts.EventListener.BackgroundError(err)
-	}
-	d.mu.compact.compacting = false
-	// The previous compaction may have produced too many files in a
-	// level, so reschedule another compaction if needed.
-	d.maybeScheduleCompaction()
-	d.mu.compact.cond.Broadcast()
+	pprof.Do(context.Background(), compactLabels, func(context.Context) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if err := d.compact1(); err != nil {
+			// TODO(peter): count consecutive compaction errors and backoff.
+			d.opts.EventListener.BackgroundError(err)
+		}
+		d.mu.compact.compacting = false
+		// The previous compaction may have produced too many files in a
+		// level, so reschedule another compaction if needed.
+		d.maybeScheduleCompaction()
+		d.mu.compact.cond.Broadcast()
+	})
 }
 
 // compact1 runs one compaction.

@@ -6,10 +6,12 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -23,6 +25,8 @@ import (
 const defaultTableCacheHitBuffer = 64
 
 var emptyIter = &errorIter{err: nil}
+
+var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 
 type tableCache struct {
 	shards        []tableCacheShard
@@ -277,7 +281,11 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 			// Release the tail node.
 			c.releaseNode(c.mu.lru.prev)
 		}
-		go n.load(c)
+		go func() {
+			pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+				n.load(c)
+			})
+		}()
 	} else {
 		// Slow-path hit.
 		atomic.AddInt64(&c.hits, 1)
@@ -359,7 +367,11 @@ func (c *tableCacheShard) Close() error {
 	for n := c.mu.lru.next; n != &c.mu.lru; n = n.next {
 		if atomic.AddInt32(&n.refCount, -1) == 0 {
 			c.releasing.Add(1)
-			go n.release(c)
+			go func(n *tableCacheNode) {
+				pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+					n.release(c)
+				})
+			}(n)
 		}
 	}
 	c.mu.nodes = nil
