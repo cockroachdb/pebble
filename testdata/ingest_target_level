@@ -39,3 +39,23 @@ i-m
 0
 2
 6
+
+define
+5: a-a c-c
+6: a-a c-c
+----
+
+target
+b-b
+----
+6
+
+define
+5: a-a c-c
+6: a-a c-c compact:a-c
+----
+
+target
+b-b
+----
+5

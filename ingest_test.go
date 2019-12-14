@@ -419,6 +419,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 func TestIngestTargetLevel(t *testing.T) {
 	cmp := DefaultComparer.Compare
 	var vers *version
+	var compactions map[*compaction]struct{}
 
 	parseMeta := func(s string) fileMetadata {
 		parts := strings.Split(s, "-")
@@ -431,15 +432,25 @@ func TestIngestTargetLevel(t *testing.T) {
 		}
 	}
 
+	parseCompaction := func(outputLevel int, s string) *compaction {
+		m := parseMeta(s[len("compact:"):])
+		return &compaction{
+			outputLevel: outputLevel,
+			smallest:    m.Smallest,
+			largest:     m.Largest,
+		}
+	}
+
 	datadriven.RunTest(t, "testdata/ingest_target_level", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			vers = &version{}
+			compactions = make(map[*compaction]struct{})
 			if len(d.Input) == 0 {
 				return ""
 			}
 			for _, data := range strings.Split(d.Input, "\n") {
-				parts := strings.Split(data, ":")
+				parts := strings.SplitN(data, ":", 2)
 				if len(parts) != 2 {
 					return fmt.Sprintf("malformed test:\n%s", d.Input)
 				}
@@ -451,7 +462,11 @@ func TestIngestTargetLevel(t *testing.T) {
 					return fmt.Sprintf("level %d already filled", level)
 				}
 				for _, table := range strings.Fields(parts[1]) {
-					vers.Files[level] = append(vers.Files[level], parseMeta(table))
+					if strings.HasPrefix(table, "compact:") {
+						compactions[parseCompaction(level, table)] = struct{}{}
+					} else {
+						vers.Files[level] = append(vers.Files[level], parseMeta(table))
+					}
 				}
 
 				if level == 0 {
@@ -466,7 +481,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			var buf bytes.Buffer
 			for _, target := range strings.Split(d.Input, "\n") {
 				meta := parseMeta(target)
-				level := ingestTargetLevel(cmp, vers, &meta)
+				level := ingestTargetLevel(cmp, vers, compactions, &meta)
 				fmt.Fprintf(&buf, "%d\n", level)
 			}
 			return buf.String()
@@ -704,4 +719,103 @@ func TestConcurrentIngest(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func TestConcurrentIngestCompact(t *testing.T) {
+	mem := vfs.NewMem()
+	compactionReady := make(chan struct{})
+	compactionBegin := make(chan struct{})
+	d, err := Open("", &Options{
+		FS: mem,
+		EventListener: EventListener{
+			TableCreated: func(info TableCreateInfo) {
+				if info.Reason == "compacting" {
+					close(compactionReady)
+					<-compactionBegin
+				}
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ingest := func(keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		for _, k := range keys {
+			if err := w.Set([]byte(k), nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Ingest([]string{"ext"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	compact := func(start, end string) {
+		t.Helper()
+		if err := d.Compact([]byte(start), []byte(end)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	lsm := func() string {
+		d.mu.Lock()
+		s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+		d.mu.Unlock()
+		return s
+	}
+
+	expectLSM := func(expected string) {
+		t.Helper()
+		expected = strings.TrimSpace(expected)
+		actual := strings.TrimSpace(lsm())
+		if expected != actual {
+			t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
+		}
+	}
+
+	ingest("a")
+	ingest("a")
+	ingest("c")
+	ingest("c")
+
+	expectLSM(`
+5:
+  5:[a#2,SET-a#2,SET]
+  7:[c#4,SET-c#4,SET]
+6:
+  4:[a#1,SET-a#1,SET]
+  6:[c#3,SET-c#3,SET]
+`)
+
+	// At this point ingestion of an sstable containing only key "b" will be
+	// targetted at L6. Yet a concurrent compaction of sstables 5 and 7 will
+	// create a new sstable in L6 spanning ["a"-"c"]. So the ingestion must
+	// actually target L5.
+
+	go func() {
+		<-compactionReady
+
+		ingest("b")
+
+		close(compactionBegin)
+	}()
+
+	compact("a", "z")
+
+	expectLSM(`
+5:
+  9:[b#5,SET-b#5,SET]
+6:
+  8:[a#0,SET-c#0,SET]
+`)
 }

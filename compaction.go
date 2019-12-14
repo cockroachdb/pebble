@@ -837,6 +837,7 @@ func (d *DB) flush1() error {
 
 	c := newFlush(d.opts, d.mu.versions.currentVersion(),
 		d.mu.versions.picker.baseLevel, d.mu.mem.queue[:n], &d.bytesFlushed)
+	d.mu.compact.inProgress[c] = struct{}{}
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -889,6 +890,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
+	delete(d.mu.compact.inProgress, c)
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -983,6 +985,8 @@ func (d *DB) compact1() (err error) {
 		return nil
 	}
 
+	d.mu.compact.inProgress[c] = struct{}{}
+
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	info := CompactionInfo{
@@ -1028,6 +1032,8 @@ func (d *DB) compact1() (err error) {
 			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
 		}
 	}
+
+	delete(d.mu.compact.inProgress, c)
 	d.mu.versions.incrementCompactions()
 	d.opts.EventListener.CompactionEnd(info)
 

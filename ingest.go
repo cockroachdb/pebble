@@ -294,7 +294,9 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 	return nil
 }
 
-func ingestTargetLevel(cmp Compare, v *version, meta *fileMetadata) int {
+func ingestTargetLevel(
+	cmp Compare, v *version, compactions map[*compaction]struct{}, meta *fileMetadata,
+) int {
 	// Find the lowest level which does not have any files which overlap meta. We
 	// search from L0 to L6 looking for whether there are any files in the level
 	// which overlap meta. We want the "lowest" level (where lower means
@@ -309,6 +311,20 @@ func ingestTargetLevel(cmp Compare, v *version, meta *fileMetadata) int {
 	level := 1
 	for ; level < numLevels; level++ {
 		if len(v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
+			break
+		}
+		overlaps := false
+		for c := range compactions {
+			if level != c.outputLevel {
+				continue
+			}
+			if cmp(meta.Smallest.UserKey, c.largest.UserKey) <= 0 &&
+				cmp(meta.Largest.UserKey, c.smallest.UserKey) >= 0 {
+				overlaps = true
+				break
+			}
+		}
+		if overlaps {
 			break
 		}
 	}
@@ -515,7 +531,7 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 		// overlap any existing files in the level.
 		m := meta[i]
 		f := &ve.NewFiles[i]
-		f.Level = ingestTargetLevel(d.cmp, current, m)
+		f.Level = ingestTargetLevel(d.cmp, current, d.mu.compact.inProgress, m)
 		f.Meta = *m
 		levelMetrics := metrics[f.Level]
 		if levelMetrics == nil {

@@ -70,6 +70,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.mu.cleaner.cond.L = &d.mu.Mutex
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
+	d.mu.compact.inProgress = make(map[*compaction]struct{})
 	d.mu.snapshots.init()
 	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 
