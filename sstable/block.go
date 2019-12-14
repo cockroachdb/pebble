@@ -687,7 +687,7 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 	}
 
 	i.clearCache()
-	if i.offset == 0 {
+	if i.offset <= 0 {
 		i.offset = -1
 		i.nextOffset = 0
 		return nil, nil
