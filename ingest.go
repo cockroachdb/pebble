@@ -383,20 +383,9 @@ func (d *DB) Ingest(paths []string) error {
 	for i := range paths {
 		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}
-	for _, fileNum := range pendingOutputs {
-		d.mu.compact.pendingOutputs[fileNum] = struct{}{}
-	}
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	d.mu.Unlock()
-
-	defer func() {
-		d.mu.Lock()
-		for _, fileNum := range pendingOutputs {
-			delete(d.mu.compact.pendingOutputs, fileNum)
-		}
-		d.mu.Unlock()
-	}()
 
 	// Load the metadata for all of the files being ingested. This step detects
 	// and elides empty sstables.

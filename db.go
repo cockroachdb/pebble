@@ -258,12 +258,6 @@ type DB struct {
 			cond       sync.Cond
 			flushing   bool
 			compacting bool
-			// pendingOutputs is the set of sstables created by in-progress
-			// flushes/compactions.
-			//
-			// TODO(peter): This is likely unnecessary now that we're only scanning
-			// for obsolete files at open.
-			pendingOutputs map[uint64]struct{}
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
 			manual []*manualCompaction
