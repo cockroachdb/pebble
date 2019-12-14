@@ -95,8 +95,18 @@ prev
 
 iter
 seek-lt a
+prev
+next
 ----
-.
+..<a:1>
+
+iter
+seek-ge d
+next
+next
+prev
+----
+<d:4>..<d:4>
 
 iter
 seek-lt d
