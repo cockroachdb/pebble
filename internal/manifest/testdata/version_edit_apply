@@ -16,6 +16,7 @@ edit
 2:
   1:[a#1,SET-b#2,SET]
   4:[c#3,SET-d#4,SET]
+zombies []
 
 apply
  L0
@@ -67,6 +68,7 @@ edit
   4:[b#0,SET-d#0,SET]
   1:[a#1,SET-c#2,SET]
   2:[c#3,SET-d#4,SET]
+zombies []
 
 
 apply
@@ -79,6 +81,7 @@ edit
 0:
   1:[a#1,SET-c#2,SET]
   4:[b#3,SET-d#5,SET]
+zombies []
 
 apply
  L0
@@ -86,6 +89,7 @@ apply
 ----
 0:
   1:[a#1,SET-c#2,SET]
+zombies []
 
 apply
  L2
@@ -112,6 +116,7 @@ edit
   5:[h#3,SET-j#4,SET]
   10:[j#3,SET-m#2,SET]
   2:[n#5,SET-q#3,SET]
+zombies [1 4]
 
 apply
 edit
@@ -123,3 +128,35 @@ edit
 2:
   6:[a#10,SET-a#7,SET]
   10:[j#3,SET-m#2,SET]
+zombies []
+
+# Verify that the zombies map is populated correctly.
+
+apply
+ L0
+  1:a.SET.1-b.SET.2
+ L1
+  2:c.SET.3-d.SET.4
+edit
+ delete
+  L0
+   1
+  L1
+   2
+----
+zombies [1 2]
+
+# Deletion of a non-existent table does not result in an entry in the
+# zombies map.
+
+apply
+ L0
+  1:a.SET.1-b.SET.2
+edit
+ delete
+  L0
+   2
+----
+0:
+  1:[a#1,SET-b#2,SET]
+zombies []

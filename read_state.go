@@ -22,6 +22,7 @@ import (
 // than that without something like thread-local storage which isn't available
 // in Go.
 type readState struct {
+	db        *DB
 	refcnt    int32
 	current   *version
 	memtables []flushable
@@ -37,12 +38,17 @@ func (s *readState) ref() {
 // is NOT held as version.unref() will acquire it. See unrefLocked() if DB.mu
 // is held by the caller.
 func (s *readState) unref() {
-	if atomic.AddInt32(&s.refcnt, -1) == 0 {
-		s.current.Unref()
-		for _, mem := range s.memtables {
-			mem.readerUnref()
-		}
+	if atomic.AddInt32(&s.refcnt, -1) != 0 {
+		return
 	}
+	s.current.Unref()
+	for _, mem := range s.memtables {
+		mem.readerUnref()
+	}
+
+	// The last reference to the readState was released. Check to see if there
+	// are new obsolete tables to delete.
+	s.db.maybeScheduleObsoleteTableDeletion()
 }
 
 // unrefLocked removes a reference to the readState. If this was the last
@@ -50,12 +56,17 @@ func (s *readState) unref() {
 // released. Requires DB.mu is held as version.unrefLocked() requires it. See
 // unref() if DB.mu is NOT held by the caller.
 func (s *readState) unrefLocked() {
-	if atomic.AddInt32(&s.refcnt, -1) == 0 {
-		s.current.UnrefLocked()
-		for _, mem := range s.memtables {
-			mem.readerUnref()
-		}
+	if atomic.AddInt32(&s.refcnt, -1) != 0 {
+		return
 	}
+	s.current.UnrefLocked()
+	for _, mem := range s.memtables {
+		mem.readerUnref()
+	}
+
+	// NB: Unlike readState.unref(), we don't attempt to cleanup newly obsolete
+	// tables as unrefLocked() is only called during DB shutdown to release the
+	// current readState.
 }
 
 // loadReadState returns the current readState. The returned readState must be
@@ -73,6 +84,7 @@ func (d *DB) loadReadState() *readState {
 // the new readState
 func (d *DB) updateReadStateLocked(checker func() error) {
 	s := &readState{
+		db:        d,
 		refcnt:    1,
 		current:   d.mu.versions.currentVersion(),
 		memtables: d.mu.mem.queue,

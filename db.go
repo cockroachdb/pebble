@@ -199,6 +199,10 @@ type DB struct {
 
 	closed int32 // updated atomically
 
+	// The count and size of referenced memtables. This includes memtables
+	// present in DB.mu.mem.queue, as well as memtables that have been flushed
+	// but are still referenced by an inuse readState.
+	memTableCount    int64
 	memTableReserved int64 // number of bytes reserved in the cache for memtables
 
 	compactionLimiter limiter
@@ -933,6 +937,8 @@ func (d *DB) Metrics() *Metrics {
 		metrics.MemTable.Size += m.totalBytes()
 	}
 	metrics.MemTable.Count = int64(len(d.mu.mem.queue))
+	metrics.MemTable.ZombieCount = atomic.LoadInt64(&d.memTableCount) - metrics.MemTable.Count
+	metrics.MemTable.ZombieSize = uint64(atomic.LoadInt64(&d.memTableReserved)) - metrics.MemTable.Size
 	metrics.WAL.ObsoleteFiles = int64(recycledLogs)
 	metrics.WAL.Size = atomic.LoadUint64(&d.mu.log.size)
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
@@ -946,6 +952,10 @@ func (d *DB) Metrics() *Metrics {
 		for level := 1; level < numLevels; level++ {
 			metrics.Levels[level].Score = float64(metrics.Levels[level].Size) / float64(p.levelMaxBytes[level])
 		}
+	}
+	metrics.Table.ZombieCount = int64(len(d.mu.versions.zombieTables))
+	for _, size := range d.mu.versions.zombieTables {
+		metrics.Table.ZombieSize += size
 	}
 	d.mu.Unlock()
 
@@ -1067,7 +1077,17 @@ func (d *DB) newMemTable() *memTable {
 			d.mu.mem.nextSize = d.opts.MemTableSize
 		}
 	}
-	return newMemTable(d.opts, size, &d.memTableReserved)
+	return newMemTable(d.opts, size,
+		func(size int) func() {
+			atomic.AddInt64(&d.memTableCount, 1)
+			atomic.AddInt64(&d.memTableReserved, int64(size))
+			releaseAccountingReservation := d.opts.Cache.Reserve(size)
+			return func() {
+				atomic.AddInt64(&d.memTableCount, -1)
+				atomic.AddInt64(&d.memTableReserved, -int64(size))
+				releaseAccountingReservation()
+			}
+		})
 }
 
 // makeRoomForWrite ensures that the memtable has room to hold the contents of

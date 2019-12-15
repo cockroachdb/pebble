@@ -422,9 +422,7 @@ type CheckLevelsStats struct {
 func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	// Grab and reference the current readState.
 	readState := d.loadReadState()
-	defer func() {
-		readState.unref()
-	}()
+	defer readState.unref()
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
