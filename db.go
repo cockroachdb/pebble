@@ -259,11 +259,14 @@ type DB struct {
 		}
 
 		compact struct {
-			cond           sync.Cond
-			flushing       bool
-			compacting     bool
-			pendingOutputs map[uint64]struct{}
-			manual         []*manualCompaction
+			cond       sync.Cond
+			flushing   bool
+			compacting bool
+			// The list of manual compactions. The next manual compaction to perform
+			// is at the start of the list. New entries are added to the end.
+			manual []*manualCompaction
+			// inProgress is the set of in-progress flushes and compactions.
+			inProgress map[*compaction]struct{}
 		}
 
 		cleaner struct {
@@ -755,7 +758,11 @@ func (d *DB) Close() error {
 	for d.mu.compact.compacting || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}
-	err := d.tableCache.Close()
+	var err error
+	if n := len(d.mu.compact.inProgress); n > 0 {
+		err = fmt.Errorf("pebble: %d unexpected in-progress compactions", n)
+	}
+	err = firstError(err, d.tableCache.Close())
 	if !d.opts.ReadOnly {
 		err = firstError(err, d.mu.log.Close())
 	} else if d.mu.log.LogWriter != nil {

@@ -845,6 +845,7 @@ func (d *DB) flush1() error {
 
 	c := newFlush(d.opts, d.mu.versions.currentVersion(),
 		d.mu.versions.picker.baseLevel, d.mu.mem.queue[:n], &d.bytesFlushed)
+	d.mu.compact.inProgress[c] = struct{}{}
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -885,18 +886,13 @@ func (d *DB) flush1() error {
 
 		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
-		for _, fileNum := range pendingOutputs {
-			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
-				panic("pebble: expected pending output not present")
-			}
-			delete(d.mu.compact.pendingOutputs, fileNum)
-			if err != nil {
-				// TODO(peter): untested.
-				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileNum)
-			}
+		if err != nil {
+			// TODO(peter): untested.
+			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 		}
 	}
 
+	delete(d.mu.compact.inProgress, c)
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -993,6 +989,8 @@ func (d *DB) compact1() (err error) {
 		return nil
 	}
 
+	d.mu.compact.inProgress[c] = struct{}{}
+
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	info := CompactionInfo{
@@ -1018,15 +1016,9 @@ func (d *DB) compact1() (err error) {
 	if err == nil {
 		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
-		for _, fileNum := range pendingOutputs {
-			if _, ok := d.mu.compact.pendingOutputs[fileNum]; !ok {
-				panic("pebble: expected pending output not present")
-			}
-			delete(d.mu.compact.pendingOutputs, fileNum)
-			if err != nil {
-				// TODO(peter): untested.
-				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileNum)
-			}
+		if err != nil {
+			// TODO(peter): untested.
+			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 		}
 	}
 
@@ -1038,6 +1030,8 @@ func (d *DB) compact1() (err error) {
 			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
 		}
 	}
+
+	delete(d.mu.compact.inProgress, c)
 	d.mu.versions.incrementCompactions()
 	d.opts.EventListener.CompactionEnd(info)
 
@@ -1090,9 +1084,6 @@ func (d *DB) runCompaction(
 
 	defer func() {
 		if retErr != nil {
-			for _, fileNum := range pendingOutputs {
-				delete(d.mu.compact.pendingOutputs, fileNum)
-			}
 			pendingOutputs = nil
 		}
 	}()
@@ -1148,7 +1139,6 @@ func (d *DB) runCompaction(
 	newOutput := func() error {
 		d.mu.Lock()
 		fileNum := d.mu.versions.getNextFileNum()
-		d.mu.compact.pendingOutputs[fileNum] = struct{}{}
 		pendingOutputs = append(pendingOutputs, fileNum)
 		d.mu.Unlock()
 
@@ -1411,14 +1401,16 @@ func (d *DB) runCompaction(
 }
 
 // scanObsoleteFiles scans the filesystem for files that are no longer needed
-// and adds those to the internal lists of obsolete files. Note that he files
+// and adds those to the internal lists of obsolete files. Note that the files
 // are not actually deleted by this method. A subsequent call to
-// deleteObsoleteFiles must be performed.
+// deleteObsoleteFiles must be performed. Must be not be called concurrently
+// with compactions and flushes.
 func (d *DB) scanObsoleteFiles(list []string) {
-	liveFileNums := make(map[uint64]struct{}, len(d.mu.compact.pendingOutputs))
-	for fileNum := range d.mu.compact.pendingOutputs {
-		liveFileNums[fileNum] = struct{}{}
+	if d.mu.compact.compacting || d.mu.compact.flushing {
+		panic("pebble: cannot scan obsolete files concurrently with compaction/flushing")
 	}
+
+	liveFileNums := make(map[uint64]struct{})
 	d.mu.versions.addLiveFileNums(liveFileNums)
 	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum

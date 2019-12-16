@@ -367,10 +367,6 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			return nil, err
 		}
 		d.updateReadStateLocked(nil)
-		for i := range ve.NewFiles {
-			meta := &ve.NewFiles[i].Meta
-			delete(d.mu.compact.pendingOutputs, meta.FileNum)
-		}
 	}
 
 	return d, nil

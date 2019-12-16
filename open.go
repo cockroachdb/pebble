@@ -69,7 +69,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 	d.mu.cleaner.cond.L = &d.mu.Mutex
 	d.mu.compact.cond.L = &d.mu.Mutex
-	d.mu.compact.pendingOutputs = make(map[uint64]struct{})
+	d.mu.compact.inProgress = make(map[*compaction]struct{})
 	d.mu.snapshots.init()
 	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 
@@ -394,18 +394,11 @@ func (d *DB) replayWAL(
 	} else {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush, &d.bytesFlushed)
-		newVE, pendingOutputs, err := d.runCompaction(jobID, c, nilPacer)
+		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
 		if err != nil {
 			return 0, err
 		}
 		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
-		// Strictly speaking, it's too early to delete from d.pendingOutputs, but
-		// we are replaying the log file, which happens before Open returns, so
-		// there is no possibility of deleteObsoleteFiles being called concurrently
-		// here.
-		for _, fileNum := range pendingOutputs {
-			delete(d.mu.compact.pendingOutputs, fileNum)
-		}
 		for i := range toFlush {
 			toFlush[i].readerUnref()
 		}

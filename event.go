@@ -155,7 +155,8 @@ func (i ManifestDeleteInfo) String() string {
 // TableCreateInfo contains the info for a table creation event.
 type TableCreateInfo struct {
 	JobID int
-	// Reason is the reason for the table creation (flushing or compacting).
+	// Reason is the reason for the table creation: "compacting", "flushing", or
+	// "ingesting".
 	Reason  string
 	Path    string
 	FileNum uint64
