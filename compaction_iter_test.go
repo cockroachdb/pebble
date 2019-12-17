@@ -52,6 +52,7 @@ func TestCompactionIter(t *testing.T) {
 	var vals [][]byte
 	var snapshots []uint64
 	var elideTombstones bool
+	var allowZeroSeqnum bool
 
 	newIter := func() *compactionIter {
 		return newCompactionIter(
@@ -60,7 +61,7 @@ func TestCompactionIter(t *testing.T) {
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
 			&rangedel.Fragmenter{},
-			false, /* allowZeroSeqNum */
+			allowZeroSeqnum,
 			func([]byte) bool {
 				return elideTombstones
 			},
@@ -98,6 +99,12 @@ func TestCompactionIter(t *testing.T) {
 				case "elide-tombstones":
 					var err error
 					elideTombstones, err = strconv.ParseBool(arg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+				case "allow-zero-seqnum":
+					var err error
+					allowZeroSeqnum, err = strconv.ParseBool(arg.Vals[0])
 					if err != nil {
 						return err.Error()
 					}

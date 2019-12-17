@@ -991,3 +991,23 @@ b#1,15:c
 .
 b-c#1
 .
+
+define
+a.MERGE.2:v2
+a.RANGEDEL.1:b
+a.MERGE.1:v1
+----
+
+iter allow-zero-seqnum=true
+first
+next
+next
+next
+tombstones
+----
+a#2,2:v2
+a#1,15:b
+a#0,2:v1
+.
+a-b#1
+.
