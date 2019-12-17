@@ -151,6 +151,7 @@ func (m *simpleMergingIter) step() bool {
 		}
 	} else {
 		m.err = l.iter.Close()
+		l.iter = nil
 		m.heap.pop()
 	}
 	if m.err != nil || m.heap.len() == 0 {
@@ -438,7 +439,7 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	return checkLevelsInternal(checkConfig)
 }
 
-func checkLevelsInternal(c *checkConfig) error {
+func checkLevelsInternal(c *checkConfig) (err error) {
 	// Phase 1: Use a simpleMergingIter to step through all the points and ensure that
 	// points with the same user key at different levels are not inverted wrt sequence numbers
 	// and the same holds for tombstones that cover points. To do this, one needs to construct
@@ -446,6 +447,20 @@ func checkLevelsInternal(c *checkConfig) error {
 
 	// Add mem tables from newest to oldest.
 	mlevels := make([]simpleMergingIterLevel, 0)
+	defer func() {
+		for i := range mlevels {
+			l := &mlevels[i]
+			if l.iter != nil {
+				err = firstError(err, l.iter.Close())
+				l.iter = nil
+			}
+			if l.rangeDelIter != nil {
+				err = firstError(err, l.rangeDelIter.Close())
+				l.rangeDelIter = nil
+			}
+		}
+	}()
+
 	memtables := c.readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
@@ -478,22 +493,21 @@ func checkLevelsInternal(c *checkConfig) error {
 		}
 		mlevels = append(mlevels, simpleMergingIterLevel{})
 	}
-	finalMLevels := mlevels
-	mlevels = mlevels[start:]
+	mlevelAlloc := mlevels[start:]
 	for level := 1; level < len(current.Files); level++ {
 		if len(current.Files[level]) == 0 {
 			continue
 		}
 		li := &levelIter{}
 		li.init(nil, c.cmp, c.newIters, current.Files[level], nil)
-		li.initRangeDel(&mlevels[0].rangeDelIter)
-		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, nil, nil)
-		mlevels[0].iter = li
-		mlevels = mlevels[1:]
+		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
+		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
+		mlevelAlloc[0].iter = li
+		mlevelAlloc = mlevelAlloc[1:]
 	}
 
 	mergingIter := &simpleMergingIter{}
-	mergingIter.init(c.cmp, c.seqNum, finalMLevels...)
+	mergingIter.init(c.cmp, c.seqNum, mlevels...)
 	for cont := mergingIter.step(); cont; cont = mergingIter.step() {
 	}
 	if err := mergingIter.err; err != nil {
