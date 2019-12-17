@@ -606,6 +606,7 @@ func (d *DB) newIterInternal(
 	dbi.equal = d.equal
 	dbi.merge = d.merge
 	dbi.split = d.split
+	dbi.iter = &buf.merging
 	dbi.readState = readState
 	if o != nil {
 		dbi.opts = *o
@@ -641,6 +642,9 @@ func (d *DB) newIterInternal(
 		f := &current.Files[0][i]
 		iter, rangeDelIter, err := d.newIters(f, &dbi.opts, nil)
 		if err != nil {
+			// Ensure the mergingIter is initialized so Iterator.Close will properly
+			// close any sstable iterators that have been opened.
+			buf.merging.init(d.cmp, mlevels...)
 			dbi.err = err
 			return dbi
 		}
@@ -688,7 +692,6 @@ func (d *DB) newIterInternal(
 
 	buf.merging.init(d.cmp, finalMLevels...)
 	buf.merging.snapshot = seqNum
-	dbi.iter = &buf.merging
 	return dbi
 }
 
