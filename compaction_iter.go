@@ -296,24 +296,36 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			i.value = i.iterValue
 			i.valid = true
 			i.skip = true
-			i.maybeZeroSeqnum()
+			i.maybeZeroSeqnum(i.curSnapshotIdx)
 			return &i.key, i.value
 
 		case InternalKeyKindMerge:
-			// NB: it is important to call maybeZeroSeqnum before mergeNext as
-			// merging advances the iterator, adjusting curSnapshotIdx and thus
-			// invalidating the state that maybeZeroSeqnum uses to make its
-			// determination.
-			i.maybeZeroSeqnum()
+			// Record the snapshot index before mergeNext as merging
+			// advances the iterator, adjusting curSnapshotIdx.
+			origSnapshotIdx := i.curSnapshotIdx
 			var valueMerger ValueMerger
 			valueMerger, i.err = i.merge(i.iterKey.UserKey, i.iterValue)
+			var change int
 			if i.err == nil {
-				i.mergeNext(valueMerger)
+				change = i.mergeNext(valueMerger)
 			}
 			if i.err == nil {
 				i.value, i.err = valueMerger.Finish()
 			}
 			if i.err == nil {
+				// A non-skippable entry does not necessarily cover later merge
+				// operands, so we must not zero the current merge result's seqnum.
+				//
+				// For example, suppose the forthcoming two keys are a range
+				// tombstone, `[a, b)#3`, and a merge operand, `a#3`. The range
+				// tombstone will be seen first as a non-skippable key, preventing
+				// the current merge from including `a#3`. We must not zero the
+				// current merge result's seqnum since otherwise it could conflict
+				// with the later merge starting at `a#3`, whose seqnum may also be
+				// zeroed.
+				if change != sameStripeNonSkippable {
+					i.maybeZeroSeqnum(origSnapshotIdx)
+				}
 				return &i.key, i.value
 			}
 			return nil, nil
@@ -403,7 +415,7 @@ func (i *compactionIter) nextInStripe() int {
 	return newStripe
 }
 
-func (i *compactionIter) mergeNext(valueMerger ValueMerger) {
+func (i *compactionIter) mergeNext(valueMerger ValueMerger) int {
 	// Save the current key.
 	i.saveKey()
 	i.valid = true
@@ -411,9 +423,10 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) {
 	// Loop looking for older values in the current snapshot stripe and merge
 	// them.
 	for {
-		if change := i.nextInStripe(); change == sameStripeNonSkippable || change == newStripe {
+		var change int
+		if change = i.nextInStripe(); change == sameStripeNonSkippable || change == newStripe {
 			i.pos = iterPosNext
-			return
+			return change
 		}
 		key := i.iterKey
 		switch key.Kind() {
@@ -421,12 +434,12 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) {
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe.
 			i.skip = true
-			return
+			return change
 
 		case InternalKeyKindSet:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
-				return
+				return change
 			}
 
 			// We've hit a Set value. Merge with the existing value and return. We
@@ -434,28 +447,28 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) {
 			// in lower levels. That is, MERGE+MERGE+SET -> SET.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
-				return
+				return change
 			}
 			i.key.SetKind(InternalKeyKindSet)
 			i.skip = true
-			return
+			return change
 
 		case InternalKeyKindMerge:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				i.skip = true
-				return
+				return change
 			}
 
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
-				return
+				return change
 			}
 
 		default:
 			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
-			return
+			return change
 		}
 	}
 }
@@ -568,7 +581,7 @@ func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
 // so improves compression and enables an optimization during forward iteration
 // to skip some key comparisons. The seqnum for an entry can be zeroed if the
 // entry is on the bottom snapshot stripe and on the bottom level of the LSM.
-func (i *compactionIter) maybeZeroSeqnum() {
+func (i *compactionIter) maybeZeroSeqnum(snapshotIdx int) {
 	if !i.allowZeroSeqNum {
 		// TODO(peter): allowZeroSeqNum applies to the entire compaction. We could
 		// make the determination on a key by key basis, similar to what is done
@@ -576,7 +589,7 @@ func (i *compactionIter) maybeZeroSeqnum() {
 		// that isn't too expensive.
 		return
 	}
-	if i.curSnapshotIdx > 0 {
+	if snapshotIdx > 0 {
 		// This is not the last snapshot
 		return
 	}
