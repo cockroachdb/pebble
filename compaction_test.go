@@ -597,6 +597,7 @@ func TestCompaction(t *testing.T) {
 		FS:           mem,
 		MemTableSize: memTableSize,
 		DebugCheck:   true,
+		enablePacing: true,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)

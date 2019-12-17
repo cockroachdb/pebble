@@ -853,11 +853,16 @@ func (d *DB) flush1() error {
 		JobID: jobID,
 	})
 
-	flushPacer := newFlushPacer(flushPacerEnv{
-		limiter:      d.flushLimiter,
-		memTableSize: uint64(d.opts.MemTableSize),
-		getInfo:      d.getFlushPacerInfo,
-	})
+	flushPacer := (pacer)(nilPacer)
+	if d.opts.enablePacing {
+		// TODO(peter): Flush pacing is disabled until we figure out why it impacts
+		// throughput.
+		flushPacer = newFlushPacer(flushPacerEnv{
+			limiter:      d.flushLimiter,
+			memTableSize: uint64(d.opts.MemTableSize),
+			getInfo:      d.getFlushPacerInfo,
+		})
+	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
 
 	info := FlushInfo{
@@ -1006,11 +1011,17 @@ func (d *DB) compact1() (err error) {
 	}
 	d.opts.EventListener.CompactionBegin(info)
 
-	compactionPacer := newCompactionPacer(compactionPacerEnv{
-		limiter:      d.compactionLimiter,
-		memTableSize: uint64(d.opts.MemTableSize),
-		getInfo:      d.getCompactionPacerInfo,
-	})
+	compactionPacer := (pacer)(nilPacer)
+	if d.opts.enablePacing {
+		// TODO(peter): Compaction pacing is disabled until we figure out why it
+		// impacts throughput.
+		//
+		compactionPacer = newCompactionPacer(compactionPacerEnv{
+			limiter:      d.compactionLimiter,
+			memTableSize: uint64(d.opts.MemTableSize),
+			getInfo:      d.getCompactionPacerInfo,
+		})
+	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
 	if err == nil {

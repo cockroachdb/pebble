@@ -374,6 +374,11 @@ type Options struct {
 	// TODO(peter): rather than a closure, should there be another mechanism for
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
+
+	// TODO(peter): A private option to enable flush/compaction pacing. Only used
+	// by tests. Compaction/flush pacing is disabled until we fix the impact on
+	// throughput.
+	enablePacing bool
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
