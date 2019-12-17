@@ -29,10 +29,10 @@ type versionEdit = manifest.VersionEdit
 type versionList = manifest.VersionList
 
 // versionSet manages a collection of immutable versions, and manages the
-// creation of a new version from the most recent version. A new versions is
+// creation of a new version from the most recent version. A new version is
 // created from an existing version by applying a version edit which is just
 // like it sounds: a delta from the previous version. Version edits are logged
-// to the manifest file, which is replayed at startup.
+// to the MANIFEST file, which is replayed at startup.
 type versionSet struct {
 	// Immutable fields.
 	dirname string
