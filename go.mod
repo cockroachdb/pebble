@@ -14,3 +14,5 @@ require (
 	golang.org/x/exp v0.0.0-20190426190305-956cc1757749
 	golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa
 )
+
+go 1.13
