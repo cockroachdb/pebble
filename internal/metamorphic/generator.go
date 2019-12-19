@@ -138,9 +138,13 @@ func (g *generator) randKey(newKey float64) []byte {
 // TODO(peter): make the value size configurable. See valueSizeDist in
 // config.go.
 func (g *generator) randValue(min, max int) []byte {
-	const letters = "+.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	// NB: The actual random values are not particularly important. We only use
+	// lowercase letters because that makes visual determination of ordering
+	// easier, rather than having to remember the lexicographic ordering of
+	// uppercase vs lowercase, or letters vs numbers vs punctuation.
+	const letters = "abcdefghijklmnopqrstuvwxyz"
 	const lettersLen = uint64(len(letters))
-	const lettersCharsPerRand = 10 // floor(log(math.MaxUint64)/log(lettersLen))
+	const lettersCharsPerRand = 12 // floor(log(math.MaxUint64)/log(lettersLen))
 
 	n := min
 	if max > min {
