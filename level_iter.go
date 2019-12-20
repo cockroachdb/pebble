@@ -212,6 +212,17 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			// We don't bother comparing the file bounds with the iteration bounds when we have
 			// an already open iterator. It is possible that the iter may not be relevant given the
 			// current iteration bounds, but it knows those bounds, so it will enforce them.
+			//
+			// We have to reset l.tableOpts.UpperBound here in case it was set to
+			// sentinelUpperBound by a previous call to SeekPrefixGE().
+			f := &l.files[l.index]
+			l.tableOpts.UpperBound = l.upper
+			if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
+				// The upper bound is greater than the largest key in the
+				// table. Iteration within the table does not need to check the upper
+				// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
+				l.tableOpts.UpperBound = nil
+			}
 			return true
 		}
 		// We were already at index, but don't have an iterator, probably because the file was
