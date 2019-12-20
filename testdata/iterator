@@ -49,18 +49,18 @@ iter seq=2
 seek-prefix-ge a
 next
 prev
+next
 ----
 a:b
 .
-.
+err=pebble: unsupported reverse prefix iteration
+err=pebble: unsupported reverse prefix iteration
 
 iter seq=3
 seek-prefix-ge a
 next
-prev
 ----
 a:c
-.
 .
 
 
@@ -286,10 +286,8 @@ a:b
 iter seq=2
 seek-prefix-ge a
 next
-prev
 ----
 a:b
-.
 .
 
 iter seq=2
@@ -321,7 +319,12 @@ a:a
 
 iter seq=5
 seek-prefix-ge aa
-prev
+----
+aa:aa
+
+iter seq=5
+seek-prefix-ge aa
+next
 ----
 aa:aa
 .
@@ -329,22 +332,7 @@ aa:aa
 iter seq=5
 seek-prefix-ge aa
 next
-prev
-next
 ----
-aa:aa
-.
-aa:aa
-.
-
-iter seq=5
-seek-prefix-ge aa
-next
-prev
-prev
-----
-aa:aa
-.
 aa:aa
 .
 
@@ -357,10 +345,8 @@ aaa:aaa
 
 iter seq=5
 seek-prefix-ge aaa
-prev
 ----
 aaa:aaa
-.
 
 iter seq=5
 seek-prefix-ge b
@@ -610,33 +596,21 @@ a:b
 iter seq=4
 seek-prefix-ge a
 next
-prev
-next
 ----
-a:bcd
-.
 a:bcd
 .
 
 iter seq=2
 seek-prefix-ge a
 next
-prev
-next
 ----
-a:b
-.
 a:b
 .
 
 iter seq=3
 seek-prefix-ge a
 next
-prev
-next
 ----
-a:bc
-.
 a:bc
 .
 
@@ -652,10 +626,8 @@ seek-prefix-ge 1
 
 iter seq=3
 seek-prefix-ge a
-prev
 ----
 a:bc
-.
 
 
 # NB: RANGEDEL entries are ignored.
@@ -697,42 +669,28 @@ a:b
 iter seq=4
 seek-prefix-ge a
 next
-prev
-next
 ----
-a:bcd
-.
 a:bcd
 .
 
 iter seq=2
 seek-prefix-ge a
 next
-prev
-next
 ----
-a:b
-.
 a:b
 .
 
 iter seq=3
 seek-prefix-ge aa
 next
-prev
-next
 ----
-aa:ab
-.
 aa:ab
 .
 
 iter seq=4
 seek-prefix-ge aa
-prev
 ----
 aa:ab
-.
 
 define
 a.SET.1:a
@@ -1085,10 +1043,8 @@ a:a
 
 iter seq=2 lower=a upper=aaa
 seek-prefix-ge aa
-prev
 ----
 aa:aa
-.
 
 iter seq=2 lower=a upper=aaa
 seek-prefix-ge aa

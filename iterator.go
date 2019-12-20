@@ -18,6 +18,8 @@ const (
 	iterPosPrev iterPos = -1
 )
 
+var errReversePrefixIteration = fmt.Errorf("pebble: unsupported reverse prefix iteration")
+
 // Iterator iterates over a DB's key/value pairs in key order.
 //
 // An iterator must be closed after use, but it is not necessary to read an
@@ -96,7 +98,7 @@ func (i *Iterator) findNextEntry() bool {
 			return i.err == nil
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
+			i.err = fmt.Errorf("pebble: invalid internal key kind: %d", key.Kind())
 			return false
 		}
 	}
@@ -155,11 +157,6 @@ func (i *Iterator) findPrevEntry() bool {
 			continue
 
 		case InternalKeyKindSet:
-			if i.prefix != nil {
-				if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
-					return false
-				}
-			}
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iterValue
@@ -170,11 +167,6 @@ func (i *Iterator) findPrevEntry() bool {
 
 		case InternalKeyKindMerge:
 			if !i.valid {
-				if i.prefix != nil {
-					if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
-						return false
-					}
-				}
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
 				valueMerger, i.err = i.merge(i.key, i.iterValue)
@@ -200,7 +192,7 @@ func (i *Iterator) findPrevEntry() bool {
 			continue
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
+			i.err = fmt.Errorf("pebble: invalid internal key kind: %d", key.Kind())
 			return false
 		}
 	}
@@ -279,7 +271,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 			continue
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", key.Kind())
+			i.err = fmt.Errorf("pebble: invalid internal key kind: %d", key.Kind())
 			return
 		}
 	}
@@ -307,7 +299,8 @@ func (i *Iterator) SeekGE(key []byte) bool {
 // given key. Returns true if the iterator is pointing at a valid entry and
 // false otherwise. Note that a user-defined Split function must be supplied to
 // the Comparer. Also note that the iterator will not observe keys not matching
-// the prefix.
+// the prefix. Reverse iteration (Prev) is not supported when an iterator is in
+// prefix iteration mode.
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	if i.err != nil {
 		return false
@@ -420,6 +413,10 @@ func (i *Iterator) Next() bool {
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Prev() bool {
 	if i.err != nil {
+		return false
+	}
+	if i.prefix != nil {
+		i.err = errReversePrefixIteration
 		return false
 	}
 	switch i.pos {
