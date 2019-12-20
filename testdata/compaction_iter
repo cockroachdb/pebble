@@ -1011,3 +1011,43 @@ a#0,2:v1
 .
 a-b#1
 .
+
+# Verify that we transform merge+del -> set.
+
+define
+a.MERGE.5:5
+a.DEL.3:3
+a.MERGE.1:1
+----
+
+iter
+first
+next
+----
+a#0,1:5
+.
+
+iter elide-tombstones=true
+first
+next
+----
+a#0,1:5
+.
+
+iter snapshots=2
+first
+next
+next
+----
+a#5,1:5
+a#0,2:1
+.
+
+iter snapshots=2 elide-tombstones=true
+first
+next
+next
+----
+a#5,1:5
+a#0,2:1
+.

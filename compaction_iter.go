@@ -436,7 +436,10 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 		switch key.Kind() {
 		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
-			// then skip entries until the next snapshot stripe.
+			// then skip entries until the next snapshot stripe. We change the kind
+			// of the result key to a Set so that it shadows keys in lower
+			// levels. That is, MERGE+MERGE+DEL -> SET.
+			i.key.SetKind(InternalKeyKindSet)
 			i.skip = true
 			return sameStripeSkippable
 
