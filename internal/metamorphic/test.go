@@ -108,7 +108,7 @@ func (t *test) init(h *history, dir string, opts *pebble.Options) error {
 	if err != nil {
 		return err
 	}
-	h.Recordf("db.Open() // %v\n", err)
+	h.Recordf("db.Open() // %v", err)
 
 	t.tmpDir = t.opts.FS.PathJoin(dir, "tmp")
 	if err = t.opts.FS.MkdirAll(t.tmpDir, 0755); err != nil {
@@ -131,7 +131,7 @@ func (t *test) step(h *history) bool {
 func (t *test) finish(h *history) {
 	db := t.db
 	t.db = nil
-	h.Recordf("db.Close() // %v\n", db.Close())
+	h.Recordf("db.Close() // %v", db.Close())
 }
 
 func (t *test) setBatch(id objID, b *pebble.Batch) {
