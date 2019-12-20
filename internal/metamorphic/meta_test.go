@@ -48,9 +48,11 @@ var (
 	compare = flag.Bool("compare", false, "")
 	dir     = flag.String("dir", "_meta", "")
 	disk    = flag.Bool("disk", false, "")
-	keep    = flag.Bool("keep", false, "")
-	ops     = randvar.NewFlag("uniform:5000-10000")
-	runDir  = flag.String("run-dir", "", "")
+	failRE  = flag.String("fail", "",
+		"fail the test if the supplied regular expression matches the output")
+	keep   = flag.Bool("keep", false, "")
+	ops    = randvar.NewFlag("uniform:5000-10000")
+	runDir = flag.String("run-dir", "", "")
 )
 
 func init() {
@@ -110,13 +112,18 @@ func testMetaRun(t *testing.T, runDir string) {
 	if testing.Verbose() {
 		writers = append(writers, os.Stdout)
 	}
-	h := newHistory(writers...)
+	h := newHistory(*failRE, writers...)
 
 	m := newTest(ops)
 	if err := m.init(h, opts.FS.PathJoin(runDir, "data"), opts); err != nil {
 		t.Fatal(err)
 	}
 	for m.step(h) {
+		if h.Failed() {
+			fmt.Fprintf(os.Stderr, "failure regex %q matched\n", *failRE)
+			m.maybeSaveData()
+			os.Exit(1)
+		}
 	}
 	m.finish(h)
 }

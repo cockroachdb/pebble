@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
@@ -15,12 +16,17 @@ import (
 
 // history records the results of running a series of operations.
 type history struct {
-	log *log.Logger
-	seq int
+	failed bool
+	failRE *regexp.Regexp
+	log    *log.Logger
+	seq    int
 }
 
-func newHistory(writers ...io.Writer) *history {
+func newHistory(failRE string, writers ...io.Writer) *history {
 	h := &history{}
+	if len(failRE) > 0 {
+		h.failRE = regexp.MustCompile(failRE)
+	}
 	h.log = log.New(io.MultiWriter(writers...), "", 0)
 	return h
 }
@@ -38,7 +44,18 @@ func (h *history) Recordf(format string, args ...interface{}) {
 	// history output, which ruins the line number information in the diff
 	// output.
 	h.seq++
-	h.log.Print(fmt.Sprintf(format, args...) + fmt.Sprintf(" #%d", h.seq))
+	m := fmt.Sprintf(format, args...) + fmt.Sprintf(" #%d", h.seq)
+	h.log.Print(m)
+
+	if h.failRE != nil && h.failRE.MatchString(m) {
+		h.failed = true
+	}
+}
+
+// Failed returns true if the fail regular expression has matched the results
+// of an operation.
+func (h *history) Failed() bool {
+	return h.failed
 }
 
 // Logger returns a pebble.Logger that will output to history.
