@@ -39,11 +39,16 @@ type tableNewIters func(
 // kind InternalKeyKindRangeDeletion which will be used to pause the levelIter
 // at the sstable until the mergingIter is ready to advance past it.
 type levelIter struct {
-	logger    Logger
-	lower     []byte
-	upper     []byte
+	logger Logger
+	cmp    Compare
+	// The lower/upper bounds for iteration as specified at creation or the most
+	// recent call to SetBounds.
+	lower []byte
+	upper []byte
+	// The iterator options for the currently open table. If
+	// tableOpts.{Lower,Upper}Bound are nil, the corresponding iteration boundary
+	// does not lie within the table bounds.
 	tableOpts IterOptions
-	cmp       Compare
 	// The current file wrt the iterator position.
 	index int
 	// The keys to return when iterating past an sstable boundary and that
@@ -199,6 +204,40 @@ func (l *levelIter) findFileLT(key []byte) int {
 	return index - 1
 }
 
+// Init the iteration bounds for the current table. Returns -1 if the table
+// lies fully before the lower bound, +1 if the table lies fully after the
+// upper bound, and 0 if the table overlaps the the iteration bounds.
+func (l *levelIter) initTableBounds(f *fileMetadata) int {
+	l.tableOpts.LowerBound = l.lower
+	if l.tableOpts.LowerBound != nil {
+		if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
+			// The largest key in the sstable is smaller than the lower bound.
+			return -1
+		}
+		if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
+			// The lower bound is smaller or equal to the smallest key in the
+			// table. Iteration within the table does not need to check the lower
+			// bound.
+			l.tableOpts.LowerBound = nil
+		}
+	}
+	l.tableOpts.UpperBound = l.upper
+	if l.tableOpts.UpperBound != nil {
+		if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
+			// The smallest key in the sstable is greater than or equal to the upper
+			// bound.
+			return 1
+		}
+		if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
+			// The upper bound is greater than the largest key in the
+			// table. Iteration within the table does not need to check the upper
+			// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
+			l.tableOpts.UpperBound = nil
+		}
+	}
+	return 0
+}
+
 func (l *levelIter) loadFile(index, dir int) bool {
 	l.smallestBoundary = nil
 	l.largestBoundary = nil
@@ -232,38 +271,20 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 
 		f := &l.files[l.index]
-		l.tableOpts.LowerBound = l.lower
-		if l.tableOpts.LowerBound != nil {
-			if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
-				// The largest key in the sstable is smaller than the lower bound.
-				if dir < 0 {
-					return false
-				}
-				continue
+		switch l.initTableBounds(f) {
+		case -1:
+			// The largest key in the sstable is smaller than the lower bound.
+			if dir < 0 {
+				return false
 			}
-			if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
-				// The lower bound is smaller or equal to the smallest key in the
-				// table. Iteration within the table does not need to check the lower
-				// bound.
-				l.tableOpts.LowerBound = nil
+			continue
+		case +1:
+			// The smallest key in the sstable is greater than or equal to the upper
+			// bound.
+			if dir > 0 {
+				return false
 			}
-		}
-		l.tableOpts.UpperBound = l.upper
-		if l.tableOpts.UpperBound != nil {
-			if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
-				// The smallest key in the sstable is greater than or equal to the
-				// lower bound.
-				if dir > 0 {
-					return false
-				}
-				continue
-			}
-			if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
-				// The upper bound is greater than the largest key in the
-				// table. Iteration within the table does not need to check the upper
-				// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
-				l.tableOpts.UpperBound = nil
-			}
+			continue
 		}
 
 		var rangeDelIter internalIterator
@@ -575,36 +596,12 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 	// Update tableOpts.{Lower,Upper}Bound in case the new boundaries fall within
 	// the boundaries of the current table.
 	f := &l.files[l.index]
-	l.tableOpts.LowerBound = l.lower
-	if l.tableOpts.LowerBound != nil {
-		if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
-			// The largest key in the sstable is smaller than the lower bound. Note
-			// that levelIter.Close() can be called multiple times.
-			_ = l.Close()
-			return
-		}
-		if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
-			// The lower bound is smaller or equal to the smallest key in the
-			// table. Iteration within the table does not need to check the lower
-			// bound.
-			l.tableOpts.LowerBound = nil
-		}
-	}
-	l.tableOpts.UpperBound = l.upper
-	if l.tableOpts.UpperBound != nil {
-		if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
-			// The smallest key in the sstable is greater than or equal to the lower
-			// bound. Note that levelIter.Close() can be called multiple times.
-			_ = l.Close()
-			return
-		}
-		if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
-			// The upper bound is greater than the largest key in the
-			// table. Iteration within the table does not need to check the upper
-			// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
-			l.tableOpts.UpperBound = nil
-		}
+	if l.initTableBounds(f) != 0 {
+		// The table does not overlap the bounds. Close() will set levelIter.err if
+		// an error occurs.
+		_ = l.Close()
+		return
 	}
 
-	l.iter.SetBounds(lower, upper)
+	l.iter.SetBounds(l.tableOpts.LowerBound, l.tableOpts.UpperBound)
 }
