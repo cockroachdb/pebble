@@ -16,8 +16,6 @@ type tableNewIters func(
 	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error)
 
-var sentinelUpperBound = make([]byte, 0)
-
 // levelIter provides a merged view of the sstables in a level.
 //
 // levelIter is used during compaction and as part of the Iterator
@@ -212,52 +210,12 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			// We don't bother comparing the file bounds with the iteration bounds when we have
 			// an already open iterator. It is possible that the iter may not be relevant given the
 			// current iteration bounds, but it knows those bounds, so it will enforce them.
-			//
-			// We have to reset l.tableOpts.{Lower,Upper}Bound here. A previous call
-			// to SeekPrefixGE() might have set the upper bound to
-			// sentinelUpperBound. Or a call to SetBounds() may have changed the
-			// iterator bounds.
-			//
-			// TODO(peter): There is overlap between the logic here and the logic in
-			// the loop below. Refactor this code to share that logic, and hopefully
-			// get rid of the "goto".
-			f := &l.files[l.index]
-			l.tableOpts.LowerBound = l.lower
-			if l.tableOpts.LowerBound != nil {
-				if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
-					index += dir
-					goto close
-				}
-				if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
-					// The lower bound is smaller than or equal to the smallest key in the
-					// table. Iteration within the table does not need to check the lower
-					// bound.
-					l.tableOpts.LowerBound = nil
-				}
-			}
-			l.tableOpts.UpperBound = l.upper
-			if l.tableOpts.UpperBound != nil {
-				if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
-					// The smallest key in the sstable is greater than or equal to the
-					// lower bound.
-					index += dir
-					goto close
-				}
-				if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
-					// The upper bound is greater than the largest key in the
-					// table. Iteration within the table does not need to check the upper
-					// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
-					l.tableOpts.UpperBound = nil
-				}
-			}
 			return true
 		}
 		// We were already at index, but don't have an iterator, probably because the file was
 		// beyond the iteration bounds. It may still be, but it is also possible that the bounds
 		// have changed. We handle that below.
 	}
-
-close:
 
 	// Close both iter and rangeDelIter. While mergingIter knows about
 	// rangeDelIter, it can't call Close() on it because it does not know when
@@ -382,10 +340,13 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	// current sstable. We do know that the key lies within the bounds of the
 	// table as findFileGE found the table where key <= meta.Largest. We treat
 	// this case the same as SeekGE where an upper-bound resides within the
-	// sstable, and force this to occur by ensuring that tableOpts.UpperBound is
-	// non-nil.
-	if l.tableOpts.UpperBound == nil {
-		l.tableOpts.UpperBound = sentinelUpperBound
+	// sstable and generate a synthetic boundary key.
+	if l.rangeDelIter != nil {
+		f := &l.files[l.index]
+		l.syntheticBoundary = f.Largest
+		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+		l.largestBoundary = &l.syntheticBoundary
+		return l.verify(l.largestBoundary, nil)
 	}
 	return l.verify(l.skipEmptyFileForward())
 }
@@ -607,7 +568,43 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 	l.lower = lower
 	l.upper = upper
 
-	if l.iter != nil {
-		l.iter.SetBounds(lower, upper)
+	if l.iter == nil {
+		return
 	}
+
+	// Update tableOpts.{Lower,Upper}Bound in case the new boundaries fall within
+	// the boundaries of the current table.
+	f := &l.files[l.index]
+	l.tableOpts.LowerBound = l.lower
+	if l.tableOpts.LowerBound != nil {
+		if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
+			// The largest key in the sstable is smaller than the lower bound. Note
+			// that levelIter.Close() can be called multiple times.
+			_ = l.Close()
+			return
+		}
+		if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
+			// The lower bound is smaller or equal to the smallest key in the
+			// table. Iteration within the table does not need to check the lower
+			// bound.
+			l.tableOpts.LowerBound = nil
+		}
+	}
+	l.tableOpts.UpperBound = l.upper
+	if l.tableOpts.UpperBound != nil {
+		if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
+			// The smallest key in the sstable is greater than or equal to the lower
+			// bound. Note that levelIter.Close() can be called multiple times.
+			_ = l.Close()
+			return
+		}
+		if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
+			// The upper bound is greater than the largest key in the
+			// table. Iteration within the table does not need to check the upper
+			// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
+			l.tableOpts.UpperBound = nil
+		}
+	}
+
+	l.iter.SetBounds(lower, upper)
 }

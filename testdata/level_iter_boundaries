@@ -177,9 +177,12 @@ d#3,1:d
 c#2,15:
 d#3,1:d
 
-# Regression test to check that Seek{GE,LT}, First, and Last properly
-# reset the iteration upper bound when levelIter had previously set it
-# to a sentinel value during SeekPrefixGE.
+# Regression test to check that Seek{GE,LT}, First, and Last do not
+# have iteration bounds affected by SeekPrefixGE. Previously,
+# SeekPrefixGE adjusted the iteration upper bound which would leak
+# over to other positioning operations. While SeekPrefixGE no longer
+# has this behavior, it is good to check the iteration bounds handling
+# regardless.
 
 clear
 ----
