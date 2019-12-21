@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
 
@@ -461,6 +462,54 @@ func TestIteratorTableFilter(t *testing.T) {
 				seqNum: InternalKeySeqNumMax,
 			}
 			iter := snap.NewIter(iterOpts)
+			defer iter.Close()
+			return runIterCmd(td, iter)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+func TestIteratorNextPrev(t *testing.T) {
+	var mem vfs.FS
+	var d *DB
+
+	reset := func() {
+		mem = vfs.NewMem()
+		err := mem.MkdirAll("ext", 0755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err = Open("", &Options{
+			FS: mem,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	reset()
+
+	datadriven.RunTest(t, "testdata/iterator_next_prev", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
+
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "iter":
+			iter := d.NewIter(nil)
 			defer iter.Close()
 			return runIterCmd(td, iter)
 

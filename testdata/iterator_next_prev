@@ -1,0 +1,98 @@
+build ext1
+merge a 1
+set c 2
+----
+
+ingest ext1
+----
+6:
+  4:[a#1,MERGE-c#1,SET]
+
+build ext2
+del-range b c
+----
+
+ingest ext2
+----
+5:
+  5:[b#2,RANGEDEL-c#72057594037927935,RANGEDEL]
+6:
+  4:[a#1,MERGE-c#1,SET]
+
+# Regression test for a bug where range tombstones were not properly
+# ignored by Iterator.prevUserKey when switching from forward to
+# reverse iteration. In the forward direction, the Iterator sees the
+# keys:
+#
+#   a#1,MERGE
+#   c#1,SET
+#
+# Due to the synthetic boundary key generated for sstable 5, in the
+# reverse direction Iterator sees the keys:
+#
+#   c#1,SET
+#   b#2,RANGEDEL
+#   a#1,MERGE
+#
+# Normally the record b#2,RANGEDEL is skipped by Iterator during
+# iteration, but logic to do so was missing from Iterator.prevUserKey.
+# The result was that prev could return the same key that iterator was
+# currently pointed at.
+
+iter
+first
+prev
+----
+a:1
+.
+
+reset
+----
+
+build ext1
+set t 1
+merge z 2
+----
+
+ingest ext1
+----
+6:
+  4:[t#1,SET-z#1,MERGE]
+
+build ext2
+del-range x y
+----
+
+ingest ext2
+----
+5:
+  5:[x#2,RANGEDEL-y#72057594037927935,RANGEDEL]
+6:
+  4:[t#1,SET-z#1,MERGE]
+
+# Regression test for a bug where range tombstones were not properly
+# ignored by Iterator.nextUserKey when switching from reverse to
+# forward iteration. In the reverse direction, the Iterator sees the
+# keys:
+#
+#   z#1,MERGE
+#   t#1,SET
+#
+# Due to the synthetic boundary key generated for sstable 5, in the
+# forward direction Iterator sees the keys:
+#
+#   t#1,SET
+#   y#72057594037927935,RANGEDEL
+#   z#1,MERGE
+#
+# Normally the record y#72057594037927935,RANGEDEL is skipped by
+# Iterator during iteration, but logic to do so was missing from
+# Iterator.nextUserKey. The result was that next could return the same
+# key that iterator was currently pointed at.
+
+iter
+last
+next
+----
+z:2
+.
