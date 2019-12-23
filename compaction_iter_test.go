@@ -86,6 +86,7 @@ func TestCompactionIter(t *testing.T) {
 		case "iter":
 			snapshots = snapshots[:0]
 			elideTombstones = false
+			allowZeroSeqnum = false
 			for _, arg := range d.CmdArgs {
 				switch arg.Key {
 				case "snapshots":

@@ -1024,6 +1024,13 @@ iter
 first
 next
 ----
+a#5,1:5
+.
+
+iter allow-zero-seqnum=true
+first
+next
+----
 a#0,1:5
 .
 
@@ -1031,7 +1038,7 @@ iter elide-tombstones=true
 first
 next
 ----
-a#0,1:5
+a#5,1:5
 .
 
 iter snapshots=2
@@ -1040,7 +1047,7 @@ next
 next
 ----
 a#5,1:5
-a#0,2:1
+a#1,2:1
 .
 
 iter snapshots=2 elide-tombstones=true
@@ -1049,7 +1056,7 @@ next
 next
 ----
 a#5,1:5
-a#0,2:1
+a#1,2:1
 .
 
 # Verify that we transform merge+rangedel -> set. This isn't strictly
@@ -1068,6 +1075,15 @@ next
 next
 ----
 a#3,15:c
+b#5,1:5
+.
+
+iter allow-zero-seqnum=true
+first
+next
+next
+----
+a#3,15:c
 b#0,1:5
 .
 
@@ -1078,7 +1094,7 @@ next
 ----
 a#3,15:c
 b#5,1:5
-b#0,2:1
+b#1,2:1
 
 define
 a.RANGEDEL.3:c
@@ -1093,7 +1109,7 @@ next
 next
 ----
 a#3,15:c
-b#0,1:5
+b#5,1:5
 .
 
 iter snapshots=2
@@ -1103,4 +1119,4 @@ next
 ----
 a#3,15:c
 b#5,1:5
-b#0,2:1
+b#1,2:1
