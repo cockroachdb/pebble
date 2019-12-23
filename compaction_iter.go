@@ -436,19 +436,27 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 		switch key.Kind() {
 		case InternalKeyKindDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
-			// then skip entries until the next snapshot stripe.
+			// then skip entries until the next snapshot stripe. We change the kind
+			// of the result key to a Set so that it shadows keys in lower
+			// levels. That is, MERGE+DEL -> SET.
+			i.key.SetKind(InternalKeyKindSet)
 			i.skip = true
 			return sameStripeSkippable
 
 		case InternalKeyKindSet:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
+				// We change the kind of the result key to a Set so that it shadows
+				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
+				// strictly necessary, but provides consistency with the behavior of
+				// MERGE+DEL.
+				i.key.SetKind(InternalKeyKindSet)
 				i.skip = true
 				return sameStripeSkippable
 			}
 
 			// We've hit a Set value. Merge with the existing value and return. We
 			// change the kind of the resulting key to a Set so that it shadows keys
-			// in lower levels. That is, MERGE+MERGE+SET -> SET.
+			// in lower levels. That is, MERGE+SET -> SET.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
 				return sameStripeSkippable
@@ -459,6 +467,11 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 
 		case InternalKeyKindMerge:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
+				// We change the kind of the result key to a Set so that it shadows
+				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
+				// strictly necessary, but provides consistency with the behavior of
+				// MERGE+DEL.
+				i.key.SetKind(InternalKeyKindSet)
 				i.skip = true
 				return sameStripeSkippable
 			}
