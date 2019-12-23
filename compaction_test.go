@@ -714,22 +714,31 @@ func TestCompaction(t *testing.T) {
 }
 
 func TestManualCompaction(t *testing.T) {
-	mem := vfs.NewMem()
-	err := mem.MkdirAll("ext", 0755)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var mem vfs.FS
+	var d *DB
 
-	d, err := Open("", &Options{
-		FS:         mem,
-		DebugCheck: true,
-	})
-	if err != nil {
-		t.Fatal(err)
+	reset := func() {
+		mem = vfs.NewMem()
+		err := mem.MkdirAll("ext", 0755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err = Open("", &Options{
+			FS:         mem,
+			DebugCheck: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
+	reset()
 
 	datadriven.RunTest(t, "testdata/manual_compaction", func(td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
+
 		case "batch":
 			b := d.NewIndexedBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {
@@ -738,63 +747,40 @@ func TestManualCompaction(t *testing.T) {
 			b.Commit(nil)
 			return ""
 
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "compact":
+			if err := runCompactCmd(td, d); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
 		case "define":
 			var err error
 			if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
 				return err.Error()
 			}
+			mem = d.opts.FS
 
 			d.mu.Lock()
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
 
+		case "ingest":
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
 		case "iter":
 			iter := d.NewIter(nil)
 			defer iter.Close()
-			var b bytes.Buffer
-			for _, line := range strings.Split(td.Input, "\n") {
-				parts := strings.Fields(line)
-				if len(parts) == 0 {
-					continue
-				}
-				switch parts[0] {
-				case "seek-ge":
-					if len(parts) != 2 {
-						return fmt.Sprintf("seek-ge <key>\n")
-					}
-					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
-				case "seek-lt":
-					if len(parts) != 2 {
-						return fmt.Sprintf("seek-lt <key>\n")
-					}
-					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
-				case "next":
-					iter.Next()
-				case "prev":
-					iter.Prev()
-				default:
-					return fmt.Sprintf("unknown op: %s", parts[0])
-				}
-				if iter.Valid() {
-					fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
-				} else if err := iter.Error(); err != nil {
-					fmt.Fprintf(&b, "err=%v\n", err)
-				} else {
-					fmt.Fprintf(&b, ".\n")
-				}
-			}
-			return b.String()
-
-		case "compact":
-			if err := runCompactCmd(td, d); err != nil {
-				return err.Error()
-			}
-
-			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
-			d.mu.Unlock()
-			return s
+			return runIterCmd(td, iter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

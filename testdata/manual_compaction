@@ -242,3 +242,69 @@ compact a-c L1
   6:[b#2,SET-b#2,SET]
   7:[b#1,SET-b#1,SET]
   8:[b#0,SET-b#0,SET]
+
+# Regression test for a bug where compaction would stop process range
+# tombstones for an input level upon finding an sstable in the input
+# level with no range tombstones. In the scenario below, sstable 6
+# does not contain any range tombstones while sstable 7 does. Both are
+# compacted together with sstable 5.
+
+reset
+----
+
+batch
+set a 1
+set b 1
+set c 1
+set d 1
+set z 1
+----
+
+compact a-z
+----
+6:
+  5:[a#0,SET-z#4,SET]
+
+build ext1
+set a 2
+----
+
+build ext2
+set b 2
+del-range c z
+----
+
+ingest ext1 ext2
+----
+5:
+  6:[a#5,SET-a#5,SET]
+  7:[b#6,SET-z#72057594037927935,RANGEDEL]
+6:
+  5:[a#0,SET-z#4,SET]
+
+iter
+first
+next
+next
+next
+----
+a:2
+b:2
+c:1
+d:1
+
+compact a-z
+----
+6:
+  8:[a#0,SET-z#0,SET]
+
+iter
+first
+next
+next
+next
+----
+a:2
+b:2
+z:1
+.
