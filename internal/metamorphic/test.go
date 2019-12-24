@@ -20,14 +20,15 @@ type test struct {
 	ops []op
 	idx int
 	// The DB the test is run on.
-	dir    string
-	db     *pebble.DB
-	opts   *pebble.Options
-	tmpDir string
+	dir       string
+	db        *pebble.DB
+	opts      *pebble.Options
+	wrappedFS vfs.FS
+	tmpDir    string
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
 	batches   []*pebble.Batch
-	iters     []*pebble.Iterator
+	iters     []*retryableIter
 	snapshots []*pebble.Snapshot
 }
 
@@ -37,12 +38,13 @@ func newTest(ops []op) *test {
 	}
 }
 
-func (t *test) init(h *history, dir string, opts *pebble.Options) error {
+func (t *test) init(h *history, dir string, opts *pebble.Options, wrappedFS vfs.FS) error {
 	t.dir = dir
+	t.wrappedFS = wrappedFS
 	t.opts = opts.EnsureDefaults()
 	t.opts.Logger = h.Logger()
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
-	t.opts.DebugCheck = true
+	t.opts.DebugCheck = *errorRate == 0.0
 
 	// If an error occurs and we were using an in-memory FS, attempt to clone to
 	// on-disk in order to allow post-mortem debugging. Note that always using
@@ -50,7 +52,7 @@ func (t *test) init(h *history, dir string, opts *pebble.Options) error {
 	// difference between in-memory and on-disk which causes different code paths
 	// and timings to be exercised.
 	maybeExit := func(err error) {
-		if err == nil {
+		if err == nil || *errorRate > 0.0 {
 			return
 		}
 		t.maybeSaveData()
@@ -118,7 +120,7 @@ func (t *test) maybeSaveData() {
 		return
 	}
 	_ = os.RemoveAll(t.dir)
-	if _, err := vfs.Clone(t.opts.FS, vfs.Default, t.dir, t.dir); err != nil {
+	if _, err := vfs.Clone(t.wrappedFS, vfs.Default, t.dir, t.dir); err != nil {
 		t.opts.Logger.Infof("unable to clone: %s: %v", t.dir, err)
 	}
 }
@@ -145,7 +147,7 @@ func (t *test) setBatch(id objID, b *pebble.Batch) {
 	t.batches[id.slot()] = b
 }
 
-func (t *test) setIter(id objID, i *pebble.Iterator) {
+func (t *test) setIter(id objID, i *retryableIter) {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
@@ -184,14 +186,14 @@ func (t *test) getCloser(id objID) io.Closer {
 	case batchTag:
 		return t.batches[id.slot()]
 	case iterTag:
-		return t.iters[id.slot()]
+		return t.iters[id.slot()].iter
 	case snapTag:
 		return t.snapshots[id.slot()]
 	}
 	panic(fmt.Sprintf("cannot close ID: %s", id))
 }
 
-func (t *test) getIter(id objID) *pebble.Iterator {
+func (t *test) getIter(id objID) *retryableIter {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}

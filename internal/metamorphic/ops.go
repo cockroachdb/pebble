@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // op defines the interface for a single operation, such as creating a batch,
@@ -27,9 +28,18 @@ type initOp struct {
 	snapshotSlots uint32
 }
 
+// retryableIter holds an iterator and the state necessary to reset it
+// identically to how it was after the last successful operation. This
+// allows us to retry failed iterator operations by running them again
+// on a non-error iterator with the same pre-operation state.
+type retryableIter struct {
+	iter    *pebble.Iterator
+	lastKey []byte
+}
+
 func (o *initOp) run(t *test, h *history) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
-	t.iters = make([]*pebble.Iterator, o.iterSlots)
+	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]*pebble.Snapshot, o.snapshotSlots)
 	h.Recordf("%s", o)
 }
@@ -209,17 +219,23 @@ func (o *ingestOp) run(t *test, h *history) {
 		err = firstError(err, b.Close())
 	}
 
-	err = firstError(err, t.db.Ingest(paths))
+	for {
+		err2 := t.db.Ingest(paths)
+		if err2 == nil || !strings.HasSuffix(err2.Error(), vfs.ErrorFSMsg) {
+			err = firstError(err, err2)
+			break
+		}
+	}
 	for _, path := range paths {
-		err = firstError(err, t.opts.FS.Remove(path))
+		err = firstError(err, t.wrappedFS.Remove(path))
 	}
 
 	h.Recordf("%s // %v", o, err)
 }
 
 func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, error) {
-	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d", i))
-	f, err := t.opts.FS.Create(path)
+	path := t.wrappedFS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d", i))
+	f, err := t.wrappedFS.Create(path)
 	if err != nil {
 		return "", err
 	}
@@ -308,7 +324,14 @@ type getOp struct {
 
 func (o *getOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
-	val, err := r.Get(o.key)
+	var err error
+	var val []byte
+	for {
+		val, err = r.Get(o.key)
+		if err == nil || err == pebble.ErrNotFound || !strings.HasSuffix(err.Error(), vfs.ErrorFSMsg) {
+			break
+		}
+	}
 	h.Recordf("%s // [%q] %v", o, val, err)
 }
 
@@ -330,7 +353,7 @@ func (o *newIterOp) run(t *test, h *history) {
 		LowerBound: o.lower,
 		UpperBound: o.upper,
 	})
-	t.setIter(o.iterID, i)
+	t.setIter(o.iterID, &retryableIter{iter: i, lastKey: nil})
 	h.Recordf("%s", o)
 }
 
@@ -347,7 +370,7 @@ type iterSetBoundsOp struct {
 }
 
 func (o *iterSetBoundsOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
+	i := t.getIter(o.iterID).iter
 	i.SetBounds(o.lower, o.upper)
 	h.Recordf("%s // %v", o, i.Error())
 }
@@ -363,12 +386,20 @@ type iterSeekGEOp struct {
 }
 
 func (o *iterSeekGEOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
-	valid := i.SeekGE(o.key)
+	i := t.getIter(o.iterID).iter
+	var valid bool
+	for {
+		valid = i.SeekGE(o.key)
+		if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+			break
+		}
+	}
 	if valid {
 		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+		t.getIter(o.iterID).lastKey = append([]byte{}, i.Key()...)
 	} else {
 		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		t.getIter(o.iterID).lastKey = nil
 	}
 }
 
@@ -383,12 +414,20 @@ type iterSeekPrefixGEOp struct {
 }
 
 func (o *iterSeekPrefixGEOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
-	valid := i.SeekPrefixGE(o.key)
+	i := t.getIter(o.iterID).iter
+	var valid bool
+	for {
+		valid = i.SeekPrefixGE(o.key)
+		if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+			break
+		}
+	}
 	if valid {
 		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+		t.getIter(o.iterID).lastKey = append([]byte{}, i.Key()...)
 	} else {
 		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		t.getIter(o.iterID).lastKey = nil
 	}
 }
 
@@ -403,12 +442,20 @@ type iterSeekLTOp struct {
 }
 
 func (o *iterSeekLTOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
-	valid := i.SeekLT(o.key)
+	i := t.getIter(o.iterID).iter
+	var valid bool
+	for {
+		valid = i.SeekLT(o.key)
+		if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+			break
+		}
+	}
 	if valid {
 		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+		t.getIter(o.iterID).lastKey = append([]byte{}, i.Key()...)
 	} else {
 		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		t.getIter(o.iterID).lastKey = nil
 	}
 }
 
@@ -422,12 +469,20 @@ type iterFirstOp struct {
 }
 
 func (o *iterFirstOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
-	valid := i.First()
+	i := t.getIter(o.iterID).iter
+	var valid bool
+	for {
+		valid = i.First()
+		if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+			break
+		}
+	}
 	if valid {
 		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+		t.getIter(o.iterID).lastKey = append([]byte{}, i.Key()...)
 	} else {
 		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		t.getIter(o.iterID).lastKey = nil
 	}
 }
 
@@ -441,12 +496,20 @@ type iterLastOp struct {
 }
 
 func (o *iterLastOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
-	valid := i.Last()
+	i := t.getIter(o.iterID).iter
+	var valid bool
+	for {
+		valid = i.Last()
+		if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+			break
+		}
+	}
 	if valid {
 		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+		t.getIter(o.iterID).lastKey = append([]byte{}, i.Key()...)
 	} else {
 		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		t.getIter(o.iterID).lastKey = nil
 	}
 }
 
@@ -460,12 +523,29 @@ type iterNextOp struct {
 }
 
 func (o *iterNextOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
-	valid := i.Next()
+	i := t.getIter(o.iterID).iter
+	var valid bool
+	for {
+		valid = i.Next()
+		if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+			break
+		}
+		// Reaching here implies the iterator hit an injected error. Seeking back to
+		// the original key should reset the error state. Unfortunately that seek may
+		// also hit an injected error, so we need to nest retry loops.
+		for {
+			i.SeekGE(t.getIter(o.iterID).lastKey)
+			if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+				break
+			}
+		}
+	}
 	if valid {
 		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+		t.getIter(o.iterID).lastKey = append([]byte{}, i.Key()...)
 	} else {
 		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		t.getIter(o.iterID).lastKey = nil
 	}
 }
 
@@ -479,12 +559,29 @@ type iterPrevOp struct {
 }
 
 func (o *iterPrevOp) run(t *test, h *history) {
-	i := t.getIter(o.iterID)
-	valid := i.Prev()
+	i := t.getIter(o.iterID).iter
+	var valid bool
+	for {
+		valid = i.Prev()
+		if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+			break
+		}
+		// Reaching here implies the iterator hit an injected error. Seeking back to
+		// the original key should reset the error state. Unfortunately that seek may
+		// also hit an injected error, so we need to nest retry loops.
+		for {
+			i.SeekGE(t.getIter(o.iterID).lastKey)
+			if i.Error() == nil || !strings.HasSuffix(i.Error().Error(), vfs.ErrorFSMsg) {
+				break
+			}
+		}
+	}
 	if valid {
 		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+		t.getIter(o.iterID).lastKey = append([]byte{}, i.Key()...)
 	} else {
 		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		t.getIter(o.iterID).lastKey = nil
 	}
 }
 

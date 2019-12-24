@@ -313,7 +313,7 @@ func TestIngestLinkFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := &Options{FS: &errorFS{mem, 0}}
+	opts := &Options{FS: vfs.NewErrorFS(new(int32) /* index */, 0.0 /* prob */, vfs.ErrorFSWrite, mem)}
 	opts.EnsureDefaults()
 
 	meta := []*fileMetadata{{FileNum: 1}}

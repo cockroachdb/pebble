@@ -45,10 +45,11 @@ var (
 	// TODO(peter): Enable comparing of output by default. Currently disabled as
 	// comparing output shows differences between runs that appear to be due to
 	// bugs in Pebble.
-	compare = flag.Bool("compare", false, "")
-	dir     = flag.String("dir", "_meta", "")
-	disk    = flag.Bool("disk", false, "")
-	failRE  = flag.String("fail", "",
+	compare   = flag.Bool("compare", false, "")
+	dir       = flag.String("dir", "_meta", "")
+	disk      = flag.Bool("disk", false, "")
+	errorRate = flag.Float64("error-rate", 0.0, "")
+	failRE    = flag.String("fail", "",
 		"fail the test if the supplied regular expression matches the output")
 	keep   = flag.Bool("keep", false, "")
 	ops    = randvar.NewFlag("uniform:5000-10000")
@@ -88,15 +89,18 @@ func testMetaRun(t *testing.T, runDir string) {
 
 	// Set up the filesystem to use for the test. Note that by default we use an
 	// in-memory FS.
+	var wrappedFS vfs.FS
 	if *disk {
-		opts.FS = vfs.Default
+		wrappedFS = vfs.Default
 		if err := os.RemoveAll(opts.FS.PathJoin(runDir, "data")); err != nil {
 			t.Fatal(err)
 		}
 	} else {
 		opts.Cleaner = base.ArchiveCleaner{}
-		opts.FS = vfs.NewMem()
+		wrappedFS = vfs.NewMem()
 	}
+	opts.FS = vfs.NewErrorFS(nil /* index */, *errorRate, vfs.ErrorFSRead, wrappedFS)
+
 	if opts.WALDir != "" {
 		opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
 	}
@@ -115,7 +119,7 @@ func testMetaRun(t *testing.T, runDir string) {
 	h := newHistory(*failRE, writers...)
 
 	m := newTest(ops)
-	if err := m.init(h, opts.FS.PathJoin(runDir, "data"), opts); err != nil {
+	if err := m.init(h, opts.FS.PathJoin(runDir, "data"), opts, wrappedFS); err != nil {
 		t.Fatal(err)
 	}
 	for m.step(h) {
@@ -187,7 +191,9 @@ func TestMeta(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		cmd := exec.Command(os.Args[0], "-run-dir", runDir, "-test.run="+rootName+"$")
+		cmd := exec.Command(
+			os.Args[0], "-run-dir", runDir, "-error-rate", fmt.Sprintf("%f", *errorRate),
+			"-test.run="+rootName+"$")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%v\n%s\n\n%s", err, filepath.Join(runDir, "history"), out)
