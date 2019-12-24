@@ -36,13 +36,18 @@ func (f *tableCacheTestFile) Close() error {
 type tableCacheTestFS struct {
 	vfs.FS
 
-	mu          sync.Mutex
-	openCounts  map[string]int
-	closeCounts map[string]int
+	mu               sync.Mutex
+	openCounts       map[string]int
+	closeCounts      map[string]int
+	openErrorEnabled bool
 }
 
 func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	fs.mu.Lock()
+	if fs.openErrorEnabled {
+		fs.mu.Unlock()
+		return nil, fmt.Errorf("injected error")
+	}
 	if fs.openCounts != nil {
 		fs.openCounts[name]++
 	}
@@ -67,6 +72,12 @@ func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCache, f func(i, gotO
 		t.Error(err)
 		return
 	}
+}
+
+func (fs *tableCacheTestFS) setOpenError(enabled bool) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.openErrorEnabled = enabled
 }
 
 // validateOpenTables validates that no tables in the cache are open twice, and
@@ -329,4 +340,29 @@ func TestTableCacheIterLeak(t *testing.T) {
 	} else {
 		t.Log(err.Error())
 	}
+}
+
+func TestTableCacheRetryAfterFailure(t *testing.T) {
+	// Test a retry can succeed after a failure, i.e., errors are not cached.
+	c, fs, err := newTableCache()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.setOpenError(true /* enabled */)
+	if _, _, err := c.newIters(
+		&fileMetadata{FileNum: 0},
+		nil, /* iter options */
+		nil /* bytes iterated */); err == nil {
+		t.Fatalf("expected failure, but found success")
+	}
+	fs.setOpenError(false /* enabled */)
+	var iter internalIterator
+	if iter, _, err = c.newIters(
+		&fileMetadata{FileNum: 0},
+		nil, /* iter options */
+		nil /* bytes iterated */); err != nil {
+		t.Fatal(err)
+	}
+	iter.Close()
+	fs.validate(t, c, nil)
 }
