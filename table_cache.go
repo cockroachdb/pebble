@@ -256,7 +256,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	}
 
 	n := c.mu.nodes[meta.FileNum]
-	if n == nil {
+	missed := n == nil
+	if missed {
 		// Slow-path miss.
 		atomic.AddInt64(&c.misses, 1)
 		n = &tableCacheNode{
@@ -281,11 +282,6 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 			// Release the tail node.
 			c.releaseNode(c.mu.lru.prev)
 		}
-		go func() {
-			pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-				n.load(c)
-			})
-		}()
 	} else {
 		// Slow-path hit.
 		atomic.AddInt64(&c.hits, 1)
@@ -300,6 +296,16 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	n.prev.next = n
 	// The caller is responsible for decrementing the refCount.
 	atomic.AddInt32(&n.refCount, 1)
+	if missed {
+		// Note adding to the doubly-linked list must complete before we begin
+		// asynchronously loading a `tableCacheNode`. This is because the load's
+		// failure handling unlinks the node.
+		go func() {
+			pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+				n.load(c)
+			})
+		}()
+	}
 	return n
 }
 
@@ -398,19 +404,28 @@ type tableCacheNode struct {
 
 func (n *tableCacheNode) load(c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
-	f, err := c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum),
+	var f vfs.File
+	f, n.err = c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum),
 		vfs.RandomReadsOption)
-	if err != nil {
-		n.err = err
-		close(n.loaded)
-		return
+	if n.err == nil {
+		cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
+		n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
 	}
-	cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
-	n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
-	if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
-		n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
+	if n.err == nil {
+		if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
+			n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
+		}
 	}
 	close(n.loaded)
+	if n.err != nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		// Since loading happens outside the lock there is a chance that `releaseNode()`
+		// has already been called. In that case, `n.next` will be nil.
+		if n.next != nil {
+			c.releaseNode(n)
+		}
+	}
 }
 
 func (n *tableCacheNode) release(c *tableCacheShard) {
