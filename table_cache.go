@@ -255,6 +255,10 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 		c.hitsPool.Put(hits)
 	}
 
+	// `inserted` communicates to the async loader when this node is finished inserting
+	// to the shard. The loader may use this to know when it's safe to cleanup in case
+	// it encounters an error.
+	inserted := make(chan struct{})
 	n := c.mu.nodes[meta.FileNum]
 	if n == nil {
 		// Slow-path miss.
@@ -283,7 +287,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 		}
 		go func() {
 			pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-				n.load(c)
+				n.load(c, inserted)
 			})
 		}()
 	} else {
@@ -300,6 +304,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	n.prev.next = n
 	// The caller is responsible for decrementing the refCount.
 	atomic.AddInt32(&n.refCount, 1)
+	close(inserted)
 	return n
 }
 
@@ -396,21 +401,27 @@ type tableCacheNode struct {
 	refCount   int32
 }
 
-func (n *tableCacheNode) load(c *tableCacheShard) {
+func (n *tableCacheNode) load(c *tableCacheShard, inserted chan struct{}) {
 	// Try opening the fileTypeTable first.
-	f, err := c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum),
+	var f vfs.File
+	f, n.err = c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum),
 		vfs.RandomReadsOption)
-	if err != nil {
-		n.err = err
-		close(n.loaded)
-		return
+	if n.err == nil {
+		cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
+		n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
 	}
-	cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
-	n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
-	if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
-		n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
+	if n.err == nil {
+		if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
+			n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
+		}
 	}
 	close(n.loaded)
+	if n.err != nil {
+		<-inserted
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.releaseNode(n)
+	}
 }
 
 func (n *tableCacheNode) release(c *tableCacheShard) {
