@@ -176,3 +176,57 @@ c#2,15:
 d#3,1:d
 c#2,15:
 d#3,1:d
+
+# Regression test to check that Seek{GE,LT}, First, and Last do not
+# have iteration bounds affected by SeekPrefixGE. Previously,
+# SeekPrefixGE adjusted the iteration upper bound which would leak
+# over to other positioning operations. While SeekPrefixGE no longer
+# has this behavior, it is good to check the iteration bounds handling
+# regardless.
+
+clear
+----
+
+build
+b.SET.4:b
+d.SET.3:d
+----
+0: b#4,1-d#3,1
+
+iter
+seek-prefix-ge c
+seek-ge d
+next
+----
+d#3,15:
+d#3,1:d
+.
+
+iter
+seek-prefix-ge c
+seek-lt e
+next
+----
+d#3,15:
+d#3,1:d
+.
+
+iter
+seek-prefix-ge c
+first
+next
+next
+----
+d#3,15:
+b#4,1:b
+d#3,1:d
+.
+
+iter
+seek-prefix-ge c
+last
+next
+----
+d#3,15:
+d#3,1:d
+.
