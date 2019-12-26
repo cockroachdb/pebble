@@ -20,6 +20,7 @@ type test struct {
 	ops []op
 	idx int
 	// The DB the test is run on.
+	dir    string
 	db     *pebble.DB
 	opts   *pebble.Options
 	tmpDir string
@@ -37,6 +38,7 @@ func newTest(ops []op) *test {
 }
 
 func (t *test) init(h *history, dir string, opts *pebble.Options) error {
+	t.dir = dir
 	t.opts = opts.EnsureDefaults()
 	t.opts.Logger = h.Logger()
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
@@ -47,20 +49,11 @@ func (t *test) init(h *history, dir string, opts *pebble.Options) error {
 	// the on-disk FS isn't desirable because there is a large performance
 	// difference between in-memory and on-disk which causes different code paths
 	// and timings to be exercised.
-	maybeSaveData := func() {
-		if t.opts.FS == vfs.Default {
-			return
-		}
-		_ = os.RemoveAll(dir)
-		if _, err := vfs.Clone(t.opts.FS, vfs.Default, dir, dir); err != nil {
-			t.opts.Logger.Infof("unable to clone: %s: %v", dir, err)
-		}
-	}
 	maybeExit := func(err error) {
 		if err == nil {
 			return
 		}
-		maybeSaveData()
+		t.maybeSaveData()
 		os.Exit(1)
 	}
 
@@ -117,6 +110,17 @@ func (t *test) init(h *history, dir string, opts *pebble.Options) error {
 
 	t.db = db
 	return nil
+}
+
+// If an in-memory FS is being used, save the contents to disk.
+func (t *test) maybeSaveData() {
+	if t.opts.FS == vfs.Default {
+		return
+	}
+	_ = os.RemoveAll(t.dir)
+	if _, err := vfs.Clone(t.opts.FS, vfs.Default, t.dir, t.dir); err != nil {
+		t.opts.Logger.Infof("unable to clone: %s: %v", t.dir, err)
+	}
 }
 
 func (t *test) step(h *history) bool {
