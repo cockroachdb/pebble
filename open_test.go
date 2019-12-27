@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 func TestErrorIfExists(t *testing.T) {
@@ -449,4 +450,30 @@ func TestOpenWALReplay(t *testing.T) {
 		checkIter(d.NewIter(nil))
 		require.NoError(t, d.Close())
 	}
+}
+
+func TestOpenWALReplayMemtableGrowth(t *testing.T) {
+	mem := vfs.NewMem()
+	const memTableSize = 64 * 1024 * 1024
+	opts := &Options{
+		MemTableSize: memTableSize,
+		FS:           mem,
+	}
+	func() {
+		db, err := Open("", opts)
+		require.NoError(t, err)
+		defer db.Close()
+		wo := &WriteOptions{Sync: true}
+		b := db.NewBatch()
+		defer b.Close()
+		key := make([]byte, 8)
+		rand.Read(key)
+		val := make([]byte, 16*1024*1024)
+		rand.Read(val)
+		b.Set(key, val, wo)
+		require.NoError(t, db.Apply(b, wo))
+	}()
+	db, err := Open("", opts)
+	require.NoError(t, err)
+	db.Close()
 }

@@ -366,12 +366,14 @@ func (d *DB) replayWAL(
 			if err = mem.prepare(&b); err != nil && err != arenaskl.ErrArenaFull {
 				return 0, err
 			}
-			if err == arenaskl.ErrArenaFull {
+			// We loop since DB.newMemTable() slowly grows the size of allocated memtables, so the
+			// batch may not initially fit, but will eventually fit (since it is smaller than
+			// largeBatchThreshold).
+			for err == arenaskl.ErrArenaFull {
 				flushMem()
 				ensureMem()
-				// The arena cannot be full.
 				err = mem.prepare(&b)
-				if err != nil {
+				if err != nil && err != arenaskl.ErrArenaFull {
 					return 0, err
 				}
 			}
