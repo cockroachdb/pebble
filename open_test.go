@@ -450,3 +450,26 @@ func TestOpenWALReplay(t *testing.T) {
 		require.NoError(t, d.Close())
 	}
 }
+
+func TestOpenWALReplayMemtableGrowth(t *testing.T) {
+	mem := vfs.NewMem()
+	const memTableSize = 64 * 1024 * 1024
+	opts := &Options{
+		MemTableSize: memTableSize,
+		FS:           mem,
+	}
+	func() {
+		db, err := Open("", opts)
+		require.NoError(t, err)
+		defer db.Close()
+		b := db.NewBatch()
+		defer b.Close()
+		key := make([]byte, 8)
+		val := make([]byte, 16*1024*1024)
+		b.Set(key, val, nil)
+		require.NoError(t, db.Apply(b, Sync))
+	}()
+	db, err := Open("", opts)
+	require.NoError(t, err)
+	db.Close()
+}
