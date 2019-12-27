@@ -382,3 +382,65 @@ d#2,15:
 f#6,15:
 c#3,1:3
 c#9,1:9
+
+# Verify that the tombstone for the current level is updated correctly
+# when we advance the iterator on the level and step into a new
+# sstable. In the scenario below, the keys "c" and "d" should not show
+# up in the iteration output.
+
+define
+L
+a.SET.2 a.SET.2
+a.SET.2:2
+c.RANGEDEL.4 e.RANGEDEL.72057594037927935
+c.RANGEDEL.4:e
+f.SET.3 f.SET.3
+f.SET.3:3
+L
+a.SET.0 f.SET.0
+a.SET.0:1 b.SET.0:1 c.SET.0:1 d.SET.0:1 e.SET.0:1 f.SET.0:1
+----
+1:
+  15:[a#2,SET-a#2,SET]
+  16:[c#4,RANGEDEL-e#72057594037927935,RANGEDEL]
+  17:[f#3,SET-f#3,SET]
+2:
+  18:[a#0,SET-f#0,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+----
+a#2,1:2
+a#0,1:1
+b#0,1:1
+e#72057594037927935,15:
+e#0,1:1
+f#3,1:3
+f#0,1:1
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+----
+f#0,1:1
+f#3,1:3
+e#0,1:1
+c#4,15:
+b#0,1:1
+a#0,1:1
+a#2,1:2
+.
