@@ -686,7 +686,7 @@ func (d *DB) newIterInternal(
 		if err != nil {
 			// Ensure the mergingIter is initialized so Iterator.Close will properly
 			// close any sstable iterators that have been opened.
-			buf.merging.init(d.cmp, mlevels...)
+			buf.merging.init(&dbi.opts, d.cmp, mlevels...)
 			dbi.err = err
 			return dbi
 		}
@@ -732,7 +732,7 @@ func (d *DB) newIterInternal(
 		mlevels = mlevels[1:]
 	}
 
-	buf.merging.init(d.cmp, finalMLevels...)
+	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)
 	buf.merging.snapshot = seqNum
 	return dbi
 }

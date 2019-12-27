@@ -320,7 +320,7 @@ func TestIterator(t *testing.T) {
 		equal := DefaultComparer.Equal
 		split := func(a []byte) int { return len(a) }
 		// NB: Use a mergingIter to filter entries newer than seqNum.
-		iter := newMergingIter(cmp, &fakeIter{
+		iter := newMergingIter(nil /* logger */, cmp, &fakeIter{
 			lower: opts.GetLowerBound(),
 			upper: opts.GetUpperBound(),
 			keys:  keys,

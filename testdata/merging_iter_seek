@@ -80,7 +80,7 @@ seek-prefix-ge a0
 prev
 ----
 a0:0
-.
+err=pebble: unsupported reverse prefix iteration
 
 iter
 seek-prefix-ge a0
@@ -196,31 +196,25 @@ seek-prefix-ge aa
 prev
 ----
 aa:1
-a:0
+err=pebble: unsupported reverse prefix iteration
 
 iter
 seek-prefix-ge aa
 next
 prev
-prev
 ----
 aa:1
 aaa:2
-aa:1
-a:0
+err=pebble: unsupported reverse prefix iteration
 
 iter
 seek-prefix-ge aa
 next
 prev
-next
-next
 ----
 aa:1
 aaa:2
-aa:1
-aaa:2
-b:3
+err=pebble: unsupported reverse prefix iteration
 
 iter
 seek-prefix-ge aaa
@@ -234,14 +228,14 @@ seek-prefix-ge aaa
 prev
 ----
 aaa:2
-aa:1
+err=pebble: unsupported reverse prefix iteration
 
 iter
 seek-prefix-ge b
 prev
 ----
 b:3
-aaa:2
+err=pebble: unsupported reverse prefix iteration
 
 iter
 seek-prefix-ge b
