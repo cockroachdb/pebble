@@ -14,6 +14,7 @@ import (
 	"runtime/pprof"
 	"sort"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -1010,6 +1011,7 @@ func (d *DB) compact1() (err error) {
 		}
 	}
 	d.opts.EventListener.CompactionBegin(info)
+	startTime := time.Now().UTC()
 
 	compactionPacer := (pacer)(nilPacer)
 	if d.opts.enablePacing {
@@ -1024,6 +1026,7 @@ func (d *DB) compact1() (err error) {
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
+	info.duration = time.Now().UTC().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)

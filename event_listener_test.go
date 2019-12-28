@@ -178,7 +178,14 @@ func TestEventListener(t *testing.T) {
 			if err := d.Compact([]byte("a"), []byte("b")); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			lines := strings.Split(buf.String(), "\n")
+			for i, line := range lines {
+				strs := strings.Split(line, ", in")
+				if len(strs) == 2 {
+					lines[i] = strs[0]
+				}
+			}
+			return strings.Join(lines, "\n")
 
 		case "checkpoint":
 			buf.Reset()
