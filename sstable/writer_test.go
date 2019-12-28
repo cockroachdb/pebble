@@ -6,16 +6,11 @@ package sstable
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -28,87 +23,9 @@ func TestWriter(t *testing.T) {
 				_ = r.Close()
 				r = nil
 			}
-
-			mem := vfs.NewMem()
-			f0, err := mem.Create("test")
-			if err != nil {
-				return err.Error()
-			}
-
-			var writerOpts WriterOptions
-			for _, arg := range td.CmdArgs {
-				switch arg.Key {
-				case "leveldb":
-					if len(arg.Vals) != 0 {
-						return fmt.Sprintf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
-					}
-					writerOpts.TableFormat = TableFormatLevelDB
-				case "index-block-size":
-					if len(arg.Vals) != 1 {
-						return fmt.Sprintf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
-					}
-					var err error
-					writerOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				default:
-					return fmt.Sprintf("%s: unknown arg %s", td.Cmd, arg.Key)
-				}
-			}
-
-			w := NewWriter(f0, writerOpts)
-			var tombstones []rangedel.Tombstone
-			f := rangedel.Fragmenter{
-				Cmp: DefaultComparer.Compare,
-				Emit: func(fragmented []rangedel.Tombstone) {
-					tombstones = append(tombstones, fragmented...)
-				},
-			}
-			for _, data := range strings.Split(td.Input, "\n") {
-				j := strings.Index(data, ":")
-				key := base.ParseInternalKey(data[:j])
-				value := []byte(data[j+1:])
-				switch key.Kind() {
-				case InternalKeyKindRangeDelete:
-					var err error
-					func() {
-						defer func() {
-							if r := recover(); r != nil {
-								err = errors.New(fmt.Sprint(r))
-							}
-						}()
-						f.Add(key, value)
-					}()
-					if err != nil {
-						return err.Error()
-					}
-				default:
-					if err := w.Add(key, value); err != nil {
-						return err.Error()
-					}
-
-				}
-			}
-			f.Finish()
-			for _, v := range tombstones {
-				if err := w.Add(v.Start, v.End); err != nil {
-					return err.Error()
-				}
-			}
-			if err := w.Close(); err != nil {
-				return err.Error()
-			}
-			meta, err := w.Metadata()
-			if err != nil {
-				return err.Error()
-			}
-
-			f1, err := mem.Open("test")
-			if err != nil {
-				return err.Error()
-			}
-			r, err = NewReader(f1, ReaderOptions{})
+			var meta *WriterMetadata
+			var err error
+			meta, r, err = runBuildCmd(td)
 			if err != nil {
 				return err.Error()
 			}
@@ -122,43 +39,9 @@ func TestWriter(t *testing.T) {
 				_ = r.Close()
 				r = nil
 			}
-
-			mem := vfs.NewMem()
-			f0, err := mem.Create("test")
-			if err != nil {
-				return err.Error()
-			}
-
-			w := NewWriter(f0, WriterOptions{})
-			for i := range td.CmdArgs {
-				arg := &td.CmdArgs[i]
-				if arg.Key == "range-del-v1" {
-					w.rangeDelV1Format = true
-					break
-				}
-			}
-
-			for _, data := range strings.Split(td.Input, "\n") {
-				j := strings.Index(data, ":")
-				key := base.ParseInternalKey(data[:j])
-				value := []byte(data[j+1:])
-				if err := w.Add(key, value); err != nil {
-					return err.Error()
-				}
-			}
-			if err := w.Close(); err != nil {
-				return err.Error()
-			}
-			meta, err := w.Metadata()
-			if err != nil {
-				return err.Error()
-			}
-
-			f1, err := mem.Open("test")
-			if err != nil {
-				return err.Error()
-			}
-			r, err = NewReader(f1, ReaderOptions{})
+			var meta *WriterMetadata
+			var err error
+			meta, r, err = runBuildRawCmd(td)
 			if err != nil {
 				return err.Error()
 			}
