@@ -510,124 +510,38 @@ func TestIngest(t *testing.T) {
 
 	datadriven.RunTest(t, "testdata/ingest", func(td *datadriven.TestData) string {
 		switch td.Cmd {
-		case "build", "batch":
+		case "batch":
 			b := d.NewIndexedBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
+			if err := b.Commit(nil); err != nil {
+				return err.Error()
+			}
+			return ""
 
-			switch td.Cmd {
-			case "build":
-				if len(td.CmdArgs) != 1 {
-					return "build <path>: argument missing\n"
-				}
-				path := td.CmdArgs[0].String()
-
-				f, err := mem.Create(path)
-				if err != nil {
-					return err.Error()
-				}
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
-				iters := []internalIterator{
-					b.newInternalIter(nil),
-					b.newRangeDelIter(nil),
-				}
-				for _, iter := range iters {
-					if iter == nil {
-						continue
-					}
-					for key, val := iter.First(); key != nil; key, val = iter.Next() {
-						tmp := *key
-						tmp.SetSeqNum(0)
-						if err := w.Add(tmp, val); err != nil {
-							return err.Error()
-						}
-					}
-					if err := iter.Close(); err != nil {
-						return err.Error()
-					}
-				}
-				if err := w.Close(); err != nil {
-					return err.Error()
-				}
-
-			case "batch":
-				if err := b.Commit(nil); err != nil {
-					return err.Error()
-				}
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
 			}
 			return ""
 
 		case "ingest":
-			var paths []string
-			for _, arg := range td.CmdArgs {
-				paths = append(paths, arg.String())
-			}
-
-			if err := d.Ingest(paths); err != nil {
+			if err := runIngestCmd(td, d, mem); err != nil {
 				return err.Error()
-			}
-			for _, path := range paths {
-				if err := mem.Remove(path); err != nil {
-					return err.Error()
-				}
 			}
 			return ""
 
 		case "get":
-			var buf bytes.Buffer
-			for _, data := range strings.Split(td.Input, "\n") {
-				v, err := d.Get([]byte(data))
-				if err != nil {
-					fmt.Fprintf(&buf, "%s: %s\n", data, err)
-				} else {
-					fmt.Fprintf(&buf, "%s:%s\n", data, v)
-				}
-			}
-			return buf.String()
+			return runGetCmd(td, d)
 
 		case "iter":
 			iter := d.NewIter(nil)
 			defer iter.Close()
-			var b bytes.Buffer
-			for _, line := range strings.Split(td.Input, "\n") {
-				parts := strings.Fields(line)
-				if len(parts) == 0 {
-					continue
-				}
-				switch parts[0] {
-				case "seek-ge":
-					if len(parts) != 2 {
-						return fmt.Sprintf("seek-ge <key>\n")
-					}
-					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
-				case "seek-lt":
-					if len(parts) != 2 {
-						return fmt.Sprintf("seek-lt <key>\n")
-					}
-					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
-				case "next":
-					iter.Next()
-				case "prev":
-					iter.Prev()
-				default:
-					return fmt.Sprintf("unknown op: %s", parts[0])
-				}
-				if iter.Valid() {
-					fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
-				} else if err := iter.Error(); err != nil {
-					fmt.Fprintf(&b, "err=%v\n", err)
-				} else {
-					fmt.Fprintf(&b, ".\n")
-				}
-			}
-			return b.String()
+			return runIterCmd(td, iter)
 
 		case "lsm":
-			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
-			d.mu.Unlock()
-			return s
+			return runLSMCmd(td, d)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

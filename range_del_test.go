@@ -36,7 +36,7 @@ func TestRangeDel(t *testing.T) {
 			return s
 
 		case "compact":
-			if err := runCompactCommand(td, d); err != nil {
+			if err := runCompactCmd(td, d); err != nil {
 				return err.Error()
 			}
 			d.mu.Lock()
@@ -47,37 +47,7 @@ func TestRangeDel(t *testing.T) {
 			return s
 
 		case "get":
-			snap := Snapshot{
-				db:     d,
-				seqNum: InternalKeySeqNumMax,
-			}
-
-			for _, arg := range td.CmdArgs {
-				if len(arg.Vals) != 1 {
-					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
-				}
-				switch arg.Key {
-				case "seq":
-					var err error
-					snap.seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
-					if err != nil {
-						return err.Error()
-					}
-				default:
-					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
-				}
-			}
-
-			var buf bytes.Buffer
-			for _, data := range strings.Split(td.Input, "\n") {
-				v, err := snap.Get([]byte(data))
-				if err != nil {
-					fmt.Fprintf(&buf, "%s\n", err)
-				} else {
-					fmt.Fprintf(&buf, "%s\n", v)
-				}
-			}
-			return buf.String()
+			return runGetCmd(td, d)
 
 		case "iter":
 			snap := Snapshot{

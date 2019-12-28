@@ -787,7 +787,7 @@ func TestManualCompaction(t *testing.T) {
 			return b.String()
 
 		case "compact":
-			if err := runCompactCommand(td, d); err != nil {
+			if err := runCompactCmd(td, d); err != nil {
 				return err.Error()
 			}
 

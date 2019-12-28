@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -20,6 +21,40 @@ type iterCmdOpt int
 const (
 	iterCmdVerboseKey iterCmdOpt = iota
 )
+
+func runGetCmd(td *datadriven.TestData, d *DB) string {
+	snap := Snapshot{
+		db:     d,
+		seqNum: InternalKeySeqNumMax,
+	}
+
+	for _, arg := range td.CmdArgs {
+		if len(arg.Vals) != 1 {
+			return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
+		}
+		switch arg.Key {
+		case "seq":
+			var err error
+			snap.seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
+			if err != nil {
+				return err.Error()
+			}
+		default:
+			return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+		}
+	}
+
+	var buf bytes.Buffer
+	for _, data := range strings.Split(td.Input, "\n") {
+		v, err := snap.Get([]byte(data))
+		if err != nil {
+			fmt.Fprintf(&buf, "%s: %s\n", data, err)
+		} else {
+			fmt.Fprintf(&buf, "%s:%s\n", data, v)
+		}
+	}
+	return buf.String()
+}
 
 func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 	var b bytes.Buffer
@@ -212,7 +247,45 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 	return nil
 }
 
-func runCompactCommand(td *datadriven.TestData, d *DB) error {
+func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
+	b := d.NewIndexedBatch()
+	if err := runBatchDefineCmd(td, b); err != nil {
+		return err
+	}
+
+	if len(td.CmdArgs) != 1 {
+		return fmt.Errorf("build <path>: argument missing")
+	}
+	path := td.CmdArgs[0].String()
+
+	f, err := fs.Create(path)
+	if err != nil {
+		return err
+	}
+	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	iters := []internalIterator{
+		b.newInternalIter(nil),
+		b.newRangeDelIter(nil),
+	}
+	for _, iter := range iters {
+		if iter == nil {
+			continue
+		}
+		for key, val := iter.First(); key != nil; key, val = iter.Next() {
+			tmp := *key
+			tmp.SetSeqNum(0)
+			if err := w.Add(tmp, val); err != nil {
+				return err
+			}
+		}
+		if err := iter.Close(); err != nil {
+			return err
+		}
+	}
+	return w.Close()
+}
+
+func runCompactCmd(td *datadriven.TestData, d *DB) error {
 	if len(td.CmdArgs) > 2 {
 		return fmt.Errorf("%s expects at most two arguments", td.Cmd)
 	}
@@ -370,4 +443,28 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	}
 
 	return d, nil
+}
+
+func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
+	var paths []string
+	for _, arg := range td.CmdArgs {
+		paths = append(paths, arg.String())
+	}
+
+	if err := d.Ingest(paths); err != nil {
+		return err
+	}
+	for _, path := range paths {
+		if err := fs.Remove(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runLSMCmd(td *datadriven.TestData, d *DB) string {
+	d.mu.Lock()
+	s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+	d.mu.Unlock()
+	return s
 }

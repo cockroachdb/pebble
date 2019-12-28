@@ -21,54 +21,54 @@ a
 b
 c
 ----
-b
-b
-b
+a:b
+b:b
+c:b
 
 get seq=4
 a
 b
 c
 ----
-c
-bc
-c
+a:c
+b:bc
+c:c
 
 get seq=6
 a
 b
 c
 ----
-d
-bcd
-d
+a:d
+b:bcd
+c:d
 
 get seq=7
 a
 b
 c
 ----
-d
-pebble: not found
-d
+a:d
+b: pebble: not found
+c:d
 
 get seq=8
 a
 b
 c
 ----
-d
-e
-d
+a:d
+b:e
+c:d
 
 get seq=6
 a
 b
 c
 ----
-d
-bcd
-d
+a:d
+b:bcd
+c:d
 
 iter seq=6
 first
@@ -163,54 +163,54 @@ a
 b
 c
 ----
-b
-b
-b
+a:b
+b:b
+c:b
 
 get seq=4
 a
 b
 c
 ----
-c
-bc
-c
+a:c
+b:bc
+c:c
 
 get seq=6
 a
 b
 c
 ----
-d
-bcd
-d
+a:d
+b:bcd
+c:d
 
 get seq=7
 a
 b
 c
 ----
-d
-pebble: not found
-d
+a:d
+b: pebble: not found
+c:d
 
 get seq=8
 a
 b
 c
 ----
-d
-e
-d
+a:d
+b:e
+c:d
 
 get seq=6
 a
 b
 c
 ----
-d
-bcd
-d
+a:d
+b:bcd
+c:d
 
 iter seq=6
 first
@@ -313,10 +313,10 @@ b
 c
 d
 ----
-1
-1
-1
-1
+a:1
+b:1
+c:1
+d:1
 
 get seq=3
 a
@@ -324,10 +324,10 @@ b
 c
 d
 ----
-pebble: not found
-pebble: not found
-pebble: not found
-1
+a: pebble: not found
+b: pebble: not found
+c: pebble: not found
+d:1
 
 get seq=5
 a
@@ -335,10 +335,10 @@ b
 c
 d
 ----
-2
-pebble: not found
-pebble: not found
-2
+a:2
+b: pebble: not found
+c: pebble: not found
+d:2
 
 get seq=7
 a
@@ -346,10 +346,10 @@ b
 c
 d
 ----
-3
-3
-pebble: not found
-3
+a:3
+b:3
+c: pebble: not found
+d:3
 
 get seq=9
 a
@@ -357,10 +357,10 @@ b
 c
 d
 ----
-4
-4
-4
-4
+a:4
+b:4
+c:4
+d:4
 
 iter seq=2
 first
@@ -489,10 +489,10 @@ b
 c
 d
 ----
-1
-1
-1
-1
+a:1
+b:1
+c:1
+d:1
 
 get seq=3
 a
@@ -500,10 +500,10 @@ b
 c
 d
 ----
-pebble: not found
-pebble: not found
-pebble: not found
-1
+a: pebble: not found
+b: pebble: not found
+c: pebble: not found
+d:1
 
 get seq=5
 a
@@ -511,10 +511,10 @@ b
 c
 d
 ----
-2
-pebble: not found
-pebble: not found
-2
+a:2
+b: pebble: not found
+c: pebble: not found
+d:2
 
 get seq=7
 a
@@ -522,10 +522,10 @@ b
 c
 d
 ----
-3
-3
-pebble: not found
-3
+a:3
+b:3
+c: pebble: not found
+d:3
 
 get seq=9
 a
@@ -533,10 +533,10 @@ b
 c
 d
 ----
-4
-4
-4
-4
+a:4
+b:4
+c:4
+d:4
 
 iter seq=2
 first
@@ -648,22 +648,22 @@ mem: 1
 get seq=1
 a
 ----
-pebble: not found
+a: pebble: not found
 
 get seq=2
 a
 ----
-1
+a:1
 
 get seq=3
 a
 ----
-2
+a:2
 
 get seq=4
 a
 ----
-3
+a:3
 
 iter seq=2
 first
@@ -727,22 +727,22 @@ mem: 1
 get seq=1
 a
 ----
-pebble: not found
+a: pebble: not found
 
 get seq=2
 a
 ----
-1
+a:1
 
 get seq=3
 a
 ----
-12
+a:12
 
 get seq=4
 a
 ----
-123
+a:123
 
 iter seq=2
 first
@@ -812,27 +812,27 @@ mem: 1
 get seq=1
 a
 ----
-pebble: not found
+a: pebble: not found
 
 get seq=2
 a
 ----
-1
+a:1
 
 get seq=3
 a
 ----
-12
+a:12
 
 get seq=4
 a
 ----
-123
+a:123
 
 get seq=5
 a
 ----
-1234
+a:1234
 
 iter seq=2
 first
@@ -930,10 +930,10 @@ b
 c
 d
 ----
-1
-1
-1
-1
+a:1
+b:1
+c:1
+d:1
 
 get seq=3
 a
@@ -941,10 +941,10 @@ b
 c
 d
 ----
-pebble: not found
-pebble: not found
-pebble: not found
-2
+a: pebble: not found
+b: pebble: not found
+c: pebble: not found
+d:2
 
 get seq=4
 a
@@ -952,10 +952,10 @@ b
 c
 d
 ----
-3
-pebble: not found
-pebble: not found
-3
+a:3
+b: pebble: not found
+c: pebble: not found
+d:3
 
 get seq=5
 a
@@ -963,10 +963,10 @@ b
 c
 d
 ----
-4
-4
-pebble: not found
-4
+a:4
+b:4
+c: pebble: not found
+d:4
 
 iter seq=2
 first
@@ -1054,10 +1054,10 @@ b
 c
 d
 ----
-1
-1
-1
-1
+a:1
+b:1
+c:1
+d:1
 
 get seq=3
 a
@@ -1065,10 +1065,10 @@ b
 c
 d
 ----
-pebble: not found
-pebble: not found
-pebble: not found
-1
+a: pebble: not found
+b: pebble: not found
+c: pebble: not found
+d:1
 
 get seq=4
 a
@@ -1076,10 +1076,10 @@ b
 c
 d
 ----
-3
-3
-3
-3
+a:3
+b:3
+c:3
+d:3
 
 iter seq=2
 first
@@ -1145,7 +1145,7 @@ mem: 1
 get seq=3
 a
 ----
-pebble: not found
+a: pebble: not found
 
 # A range tombstone straddles two SSTs. One is compacted to a lower level. Its
 # keys that are newer than the range tombstone should not disappear.
@@ -1271,7 +1271,7 @@ compact d-e
 get seq=4
 c
 ----
-v
+c:v
 
 compact a-b L1
 ----
@@ -1284,7 +1284,7 @@ compact a-b L1
 get seq=4
 c
 ----
-v
+c:v
 
 # A slight variation on the scenario above where a range tombstone is
 # expanded past the boundaries of its "atomic compaction unit".
@@ -1334,7 +1334,7 @@ compact d-e
 get seq=4
 c
 ----
-v
+c:v
 
 compact f-f L0
 ----
@@ -1357,4 +1357,4 @@ compact a-f L1
 get seq=4
 c
 ----
-v
+c:v

@@ -65,7 +65,7 @@ func (i *Iterator) findNextEntry() bool {
 
 		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
-			// for more details.
+			// regarding table boundaries for more details.
 			i.iterKey, i.iterValue = i.iter.Next()
 			continue
 
@@ -117,7 +117,15 @@ func (i *Iterator) nextUserKey() {
 	}
 	for {
 		i.iterKey, i.iterValue = i.iter.Next()
-		if done || i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
+		if done || i.iterKey == nil {
+			break
+		}
+		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
+			// Range deletions are treated as no-ops. See the comments in levelIter
+			// regarding table boundaries for more details.
+			continue
+		}
+		if !i.equal(i.key, i.iterKey.UserKey) {
 			break
 		}
 		done = i.iterKey.SeqNum() == 0
@@ -131,6 +139,7 @@ func (i *Iterator) findPrevEntry() bool {
 	var valueMerger ValueMerger
 	for i.iterKey != nil {
 		key := *i.iterKey
+
 		if i.valid {
 			if !i.equal(key.UserKey, i.key) {
 				// We've iterated to the previous user key.
@@ -152,7 +161,7 @@ func (i *Iterator) findPrevEntry() bool {
 
 		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
-			// for more details.
+			// regarding table boundaries for more details.
 			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
@@ -220,7 +229,15 @@ func (i *Iterator) prevUserKey() {
 	}
 	for {
 		i.iterKey, i.iterValue = i.iter.Prev()
-		if i.iterKey == nil || !i.equal(i.key, i.iterKey.UserKey) {
+		if i.iterKey == nil {
+			break
+		}
+		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
+			// Range deletions are treated as no-ops. See the comments in levelIter
+			// regarding table boundaries for more details.
+			continue
+		}
+		if !i.equal(i.key, i.iterKey.UserKey) {
 			break
 		}
 	}
@@ -253,7 +270,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 
 		case InternalKeyKindRangeDelete:
 			// Range deletions are treated as no-ops. See the comments in levelIter
-			// for more details.
+			// regarding table boundaries for more details.
 			continue
 
 		case InternalKeyKindSet:
