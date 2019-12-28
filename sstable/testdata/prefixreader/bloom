@@ -1,5 +1,9 @@
 build
-a:1=A,aa:2=AA,aaa:3=AAA,aaaa:4=AAAA,b:5=B
+a.SET.1:A
+aa.SET.2:AA
+aaa.SET.3:AAA
+aaaa.SET.4:AAAA
+b.SET.5:B
 ----
 
 get
