@@ -1010,6 +1010,7 @@ func (d *DB) compact1() (err error) {
 		}
 	}
 	d.opts.EventListener.CompactionBegin(info)
+	startTime := d.timeNow()
 
 	compactionPacer := (pacer)(nilPacer)
 	if d.opts.enablePacing {
@@ -1024,6 +1025,7 @@ func (d *DB) compact1() (err error) {
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
+	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
