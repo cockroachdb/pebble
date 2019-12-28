@@ -193,3 +193,25 @@ A
 <err: pebble: not found>
 D
 C
+
+# Verify that clearing the bounds on an iterator also clears
+# previously set block{Lower,Upper}.
+
+iter
+seek-ge c
+seek-lt b
+set-bounds lower=b upper=c
+seek-ge c
+seek-lt b
+set-bounds lower= upper=
+seek-ge c
+seek-lt b
+----
+<c:3>
+<a:1>
+.
+.
+.
+.
+<c:3>
+<a:1>

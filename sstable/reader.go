@@ -116,10 +116,6 @@ func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
 }
 
 func (i *singleLevelIterator) initBounds() {
-	if i.lower == nil && i.upper == nil {
-		return
-	}
-
 	// Trim the iteration bounds for the current block. We don't have to check
 	// the bounds on each iteration if the block is entirely contained within the
 	// iteration bounds.
@@ -433,6 +429,8 @@ func (i *singleLevelIterator) Close() error {
 func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 	i.lower = lower
 	i.upper = upper
+	i.blockLower = nil
+	i.blockUpper = nil
 }
 
 // compactionIterator is similar to Iterator but it increments the number of

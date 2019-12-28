@@ -85,6 +85,11 @@ func (i *iterAdapter) Valid() bool {
 	return i.key != nil
 }
 
+func (i *iterAdapter) SetBounds(lower, upper []byte) {
+	i.Iterator.SetBounds(lower, upper)
+	i.key = nil
+}
+
 func TestReader(t *testing.T) {
 	writerOpts := map[string]WriterOptions{
 		// No bloom filters.

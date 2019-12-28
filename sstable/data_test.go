@@ -205,6 +205,30 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 			iter.Next()
 		case "prev":
 			iter.Prev()
+		case "set-bounds":
+			if len(parts) <= 1 || len(parts) > 3 {
+				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+			}
+			var lower []byte
+			var upper []byte
+			for _, part := range parts[1:] {
+				arg := strings.Split(strings.TrimSpace(part), "=")
+				switch arg[0] {
+				case "lower":
+					lower = []byte(arg[1])
+					if len(lower) == 0 {
+						lower = nil
+					}
+				case "upper":
+					upper = []byte(arg[1])
+					if len(upper) == 0 {
+						upper = nil
+					}
+				default:
+					return fmt.Sprintf("set-bounds: unknown arg: %s", arg)
+				}
+			}
+			iter.SetBounds(lower, upper)
 		}
 		if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
 			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
