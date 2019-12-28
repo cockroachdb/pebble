@@ -403,6 +403,19 @@ func TestBatchDeleteRange(t *testing.T) {
 			b = nil
 			return ""
 
+		case "apply":
+			if b == nil {
+				b = newIndexedBatch(nil, DefaultComparer)
+			}
+			t := newBatch(nil)
+			if err := runBatchDefineCmd(td, t); err != nil {
+				return err.Error()
+			}
+			if err := b.Apply(t, nil); err != nil {
+				return err.Error()
+			}
+			return ""
+
 		case "define":
 			if b == nil {
 				b = newIndexedBatch(nil, DefaultComparer)

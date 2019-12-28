@@ -269,6 +269,8 @@ func (b *Batch) release() {
 	b.abbreviatedKey = nil
 	b.memTableSize = 0
 
+	b.deferredOp = DeferredBatchOp{}
+	b.tombstones = nil
 	b.flushable = nil
 	b.commit = sync.WaitGroup{}
 	b.commitErr = nil
@@ -330,6 +332,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 			if b.index != nil {
 				var err error
 				if kind == InternalKeyKindRangeDelete {
+					b.tombstones = nil
 					if b.rangeDelIndex == nil {
 						b.rangeDelIndex = batchskl.NewSkiplist(&b.data, b.cmp, b.abbreviatedKey)
 					}
@@ -690,11 +693,13 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 			batch: b,
 			iter:  b.rangeDelIndex.NewIter(nil, nil),
 		}
-		for {
-			key, val := it.Next()
-			if key == nil {
-				break
-			}
+		// The memory management here is a bit subtle. The keys and values returned
+		// by the iterator are slices in Batch.data. Thus the fragmented tombstones
+		// are slices within Batch.data. If additional entries are added to the
+		// Batch, Batch.data may be reallocated. The references in the fragmented
+		// tombstones will remain valid, pointing into the old Batch.data. GC for
+		// the win.
+		for key, val := it.First(); key != nil; key, val = it.Next() {
 			frag.Add(*key, val)
 		}
 		frag.Finish()
