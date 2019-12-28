@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -55,8 +56,9 @@ type CompactionInfo struct {
 		Level  int
 		Tables []TableInfo
 	}
-	Done bool
-	Err  error
+	Duration time.Duration
+	Done     bool
+	Err      error
 }
 
 func (i CompactionInfo) String() string {
@@ -76,7 +78,8 @@ func (i CompactionInfo) String() string {
 			humanize.Uint64(tablesTotalSize(i.Input.Tables[1])))
 	}
 
-	return fmt.Sprintf("[JOB %d] compacted L%d [%s] (%s) + L%d [%s] (%s) -> L%d [%s] (%s)",
+	outputSize := tablesTotalSize(i.Output.Tables)
+	return fmt.Sprintf("[JOB %d] compacted L%d [%s] (%s) + L%d [%s] (%s) -> L%d [%s] (%s), in %.1fs, output rate %s/s",
 		i.JobID,
 		i.Input.Level,
 		formatFileNums(i.Input.Tables[0]),
@@ -86,7 +89,9 @@ func (i CompactionInfo) String() string {
 		humanize.Uint64(tablesTotalSize(i.Input.Tables[1])),
 		i.Output.Level,
 		formatFileNums(i.Output.Tables),
-		humanize.Uint64(tablesTotalSize(i.Output.Tables)))
+		humanize.Uint64(outputSize),
+		i.Duration.Seconds(),
+		humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds())))
 }
 
 // FlushInfo contains the info for a flush event.

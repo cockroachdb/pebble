@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -72,6 +73,8 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	d.mu.compact.inProgress = make(map[*compaction]struct{})
 	d.mu.snapshots.init()
 	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
+
+	d.timeNow = time.Now
 
 	d.mu.Lock()
 	defer d.mu.Unlock()

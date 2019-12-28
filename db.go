@@ -11,6 +11,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -319,6 +320,9 @@ type DB struct {
 		// The list of active snapshots.
 		snapshots snapshotList
 	}
+
+	// Normally equal to time.Now() but may be overridden in tests.
+	timeNow func() time.Time
 }
 
 var _ Reader = (*DB)(nil)
