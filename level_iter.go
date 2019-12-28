@@ -407,11 +407,12 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 }
 
 func (l *levelIter) Next() (*InternalKey, []byte) {
-	if l.err != nil {
+	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
 
-	if l.largestBoundary != nil {
+	switch {
+	case l.largestBoundary != nil:
 		// We're stepping past the boundary key, so now we can load the next file.
 		if l.loadFile(l.index+1, 1) {
 			if key, val := l.iter.First(); key != nil {
@@ -420,25 +421,36 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 			return l.verify(l.skipEmptyFileForward())
 		}
 		return nil, nil
-	}
-	// Reset the smallest boundary since we're moving away from it.
-	l.smallestBoundary = nil
 
-	if l.iter == nil {
-		return nil, nil
-	}
-	if key, val := l.iter.Next(); key != nil {
-		return l.verify(key, val)
+	case l.smallestBoundary != nil:
+		// We're at the smallest boundary, so we need to seek the child iterator to
+		// the first key.
+		l.smallestBoundary = nil
+		if l.tableOpts.LowerBound != nil {
+			if key, val := l.iter.SeekGE(l.tableOpts.LowerBound); key != nil {
+				return l.verify(key, val)
+			}
+		} else {
+			if key, val := l.iter.First(); key != nil {
+				return l.verify(key, val)
+			}
+		}
+
+	default:
+		if key, val := l.iter.Next(); key != nil {
+			return l.verify(key, val)
+		}
 	}
 	return l.verify(l.skipEmptyFileForward())
 }
 
 func (l *levelIter) Prev() (*InternalKey, []byte) {
-	if l.err != nil {
+	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
 
-	if l.smallestBoundary != nil {
+	switch {
+	case l.smallestBoundary != nil:
 		// We're stepping past the boundary key, so now we can load the prev file.
 		if l.loadFile(l.index-1, -1) {
 			if key, val := l.iter.Last(); key != nil {
@@ -447,15 +459,25 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 			return l.verify(l.skipEmptyFileBackward())
 		}
 		return nil, nil
-	}
-	// Reset the largest boundary since we're moving away from it.
-	l.largestBoundary = nil
 
-	if l.iter == nil {
-		return nil, nil
-	}
-	if key, val := l.iter.Prev(); key != nil {
-		return l.verify(key, val)
+	case l.largestBoundary != nil:
+		// We're at the largest boundary, so we need to seek the child iterator to
+		// the last key.
+		l.largestBoundary = nil
+		if l.tableOpts.UpperBound != nil {
+			if key, val := l.iter.SeekLT(l.tableOpts.UpperBound); key != nil {
+				return l.verify(key, val)
+			}
+		} else {
+			if key, val := l.iter.Last(); key != nil {
+				return l.verify(key, val)
+			}
+		}
+
+	default:
+		if key, val := l.iter.Prev(); key != nil {
+			return l.verify(key, val)
+		}
 	}
 	return l.verify(l.skipEmptyFileBackward())
 }
