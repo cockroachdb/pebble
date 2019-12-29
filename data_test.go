@@ -373,7 +373,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}
 
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			d.mu.versions.picker.baseLevel, []flushable{mem}, &d.bytesFlushed)
+			d.mu.versions.picker.getBaseLevel(), []flushable{mem}, &d.bytesFlushed)
 		c.disableRangeTombstoneElision = true
 		newVE, _, err := d.runCompaction(0, c, nilPacer)
 		if err != nil {
@@ -436,7 +436,9 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		jobID := d.mu.nextJobID
 		d.mu.nextJobID++
 		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, ve, nil, d.dataDir); err != nil {
+		if err := d.mu.versions.logAndApply(jobID, ve, nil, d.dataDir, func() []compactionInfo {
+			return nil
+		}); err != nil {
 			return nil, err
 		}
 		d.updateReadStateLocked(nil)

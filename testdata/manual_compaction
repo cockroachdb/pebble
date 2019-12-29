@@ -366,3 +366,65 @@ prev
 c:4
 a:3
 .
+
+define target-file-sizes=(1, 1, 1, 1)
+L0
+  b.SET.1:v
+L0
+  a.SET.2:v
+----
+0:
+  000004:[b-b]
+  000005:[a-a]
+
+add-ongoing-compaction startLevel=0 outputLevel=1
+----
+
+async-compact a-b L0
+----
+manual compaction blocked until ongoing finished
+1:
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
+
+compact a-b L1
+----
+2:
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+
+add-ongoing-compaction startLevel=0 outputLevel=1
+----
+
+async-compact a-b L2
+----
+manual compaction blocked until ongoing finished
+3:
+  000010:[a#0,SET-a#0,SET]
+  000011:[b#0,SET-b#0,SET]
+
+add-ongoing-compaction startLevel=0 outputLevel=1
+----
+
+set-concurrent-compactions num=2
+----
+
+async-compact a-b L3
+----
+manual compaction did not block for ongoing
+4:
+  000012:[a#0,SET-a#0,SET]
+  000013:[b#0,SET-b#0,SET]
+
+remove-ongoing-compaction
+----
+
+add-ongoing-compaction startLevel=5 outputLevel=6
+----
+
+async-compact a-b L4
+----
+manual compaction blocked until ongoing finished
+5:
+  000014:[a#0,SET-a#0,SET]
+  000015:[b#0,SET-b#0,SET]

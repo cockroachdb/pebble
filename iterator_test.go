@@ -427,7 +427,7 @@ func TestIteratorTableFilter(t *testing.T) {
 
 			d.mu.Lock()
 			// Disable the "dynamic base level" code for this test.
-			d.mu.versions.picker.baseLevel = 1
+			d.mu.versions.picker.forceBaseLevel1()
 			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s

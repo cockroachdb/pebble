@@ -1,28 +1,55 @@
-pick 1
+init 1
 ----
-0: 0.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+
+init 1
 6: 1
 ----
-0: 0.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+
+init 1
 6: 1000000
 ----
-0: 0.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+
+init 1
 5: 1
 6: 10
 ----
-5: 1.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+5: 1.0,
+
+init 1
 5: 2
 6: 10
 ----
-5: 2.0
+
+init_cp
+----
+
+queue
+----
+5: 2.0,
 
 # Smoothing multiplier is
 # `(size(Lbottom)/size(Lbase))^(Lbottom-Lbase) = (30/1)^(1/(6-4)) = 30^(1/2)`
@@ -31,53 +58,142 @@ pick 1
 # size(L5) = size(L4) * 30^(1/2) ~= 5
 # size(L6) = size(L5) * 30^(1/2) = 30
 
-pick 1
+init 1
 5: 2
 6: 30
 ----
-5: 0.4
 
-pick 1
+init_cp
+----
+
+queue
+----
+
+init 1
 4: 2
 5: 2
 6: 100
 ----
-4: 2.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+4: 2.0,
+
+init 1
 4: 1
 5: 2
 6: 100
 ----
-4: 1.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+4: 1.0,
+
+init 1
 4: 1
 5: 11
 6: 100
 ----
-5: 1.1
 
-pick 1
+init_cp
+----
+
+queue
+----
+5: 1.1,4: 1.0,
+
+init 1
 4: 2
 5: 11
 6: 100
 ----
-4: 2.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+4: 2.0,5: 1.1,
+
+init 1
 0: 4
 ----
-0: 1.0
 
-pick 1
+init_cp
+----
+
+queue
+----
+0: 1.0,
+
+init 1
 0: 5
 ----
-0: 1.2
 
-pick 1
+init_cp
+----
+
+queue
+----
+0: 1.2,
+
+init 1
 0: 5
 5: 2
 6: 10
 ----
-5: 2.0
+
+init_cp
+----
+
+queue
+----
+5: 2.0,0: 1.2,
+
+pick
+----
+startLevel: 5, outputLevel: 6
+
+pick
+----
+startLevel: 0, outputLevel: 5
+
+init_cp
+----
+
+pick
+----
+startLevel: 5, outputLevel: 6
+
+pick ongoing=(5,6)
+----
+no compaction
+
+init 1
+0: 5
+4: 2
+5: 3
+6: 10
+----
+
+init_cp
+----
+
+queue
+----
+4: 2.0,0: 1.2,5: 1.0,
+
+pick ongoing=(5,6)
+----
+startLevel: 0, outputLevel: 4
+
+pick
+----
+startLevel: 5, outputLevel: 6
+
