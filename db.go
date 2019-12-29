@@ -296,8 +296,8 @@ type DB struct {
 			cond sync.Cond
 			// True when a flush is in progress.
 			flushing bool
-			// True when a compaction is in progress.
-			compacting bool
+			// The number of ongoing compactions.
+			compactingCount int
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
 			manual []*manualCompaction
@@ -808,7 +808,7 @@ func (d *DB) Close() error {
 		panic(ErrClosed)
 	}
 	atomic.StoreInt32(&d.closed, 1)
-	for d.mu.compact.compacting || d.mu.compact.flushing {
+	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}
 	var err error
@@ -1009,8 +1009,9 @@ func (d *DB) Metrics() *Metrics {
 	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
 	metrics.Levels[0].Score = float64(metrics.Levels[0].NumFiles) / float64(d.opts.L0CompactionThreshold)
 	if p := d.mu.versions.picker; p != nil {
+		levelMaxBytes := p.getLevelMaxBytes()
 		for level := 1; level < numLevels; level++ {
-			metrics.Levels[level].Score = float64(metrics.Levels[level].Size) / float64(p.levelMaxBytes[level])
+			metrics.Levels[level].Score = float64(metrics.Levels[level].Size) / float64(levelMaxBytes[level])
 		}
 	}
 	metrics.Table.ZombieCount = int64(len(d.mu.versions.zombieTables))
@@ -1344,6 +1345,15 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 		force = false
 	}
+}
+
+func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []compactionInfo) {
+	for c := range d.mu.compact.inProgress {
+		if c.outputLevel > 0 && (finishing == nil || c != finishing) {
+			rv = append(rv, c)
+		}
+	}
+	return
 }
 
 // firstError returns the first non-nil error of err0 and err1, or nil if both

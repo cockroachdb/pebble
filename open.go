@@ -229,7 +229,9 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		// newLogNum. There should be no difference in using either value.
 		ve.MinUnflushedLogNum = newLogNum
 		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, &ve, nil, d.dataDir); err != nil {
+		if err := d.mu.versions.logAndApply(jobID, &ve, nil, d.dataDir, func() []compactionInfo {
+			return nil
+		}); err != nil {
 			return nil, err
 		}
 	}

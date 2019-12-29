@@ -65,7 +65,7 @@ type compaction struct {
 	startLevel int
 	// outputLevel is the level that files are being produced in. outputLevel is
 	// equal to startLevel+1 except when startLevel is 0 in which case it is
-	// equal to compactionPicker.baseLevel.
+	// equal to compactionPicker.baseLevel().
 	outputLevel int
 
 	// maxOutputFileSize is the maximum size of an individual table created
@@ -105,7 +105,8 @@ type compaction struct {
 	rangeDelFrag rangedel.Fragmenter
 
 	// grandparents are the tables in level+2 that overlap with the files being
-	// compacted. Used to determine output table boundaries.
+	// compacted. Used to determine output table boundaries. Do not assume that the actual files
+	// in the grandparent when this compaction finishes will be the same.
 	grandparents    []fileMetadata
 	overlappedBytes uint64 // bytes of overlap with grandparent tables
 
@@ -216,6 +217,13 @@ func newFlush(
 	}
 	return c
 }
+
+var _ compactionInfo = &compaction{}
+
+func (c *compaction) startLevelNum() int       { return c.startLevel }
+func (c *compaction) outputLevelNum() int      { return c.outputLevel }
+func (c *compaction) smallestKey() InternalKey { return c.smallest }
+func (c *compaction) largestKey() InternalKey  { return c.largest }
 
 // setupInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
@@ -733,7 +741,7 @@ func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
 	bytesFlushed := atomic.LoadUint64(&d.bytesFlushed)
 
 	d.mu.Lock()
-	estimatedMaxWAmp := d.mu.versions.picker.estimatedMaxWAmp
+	estimatedMaxWAmp := d.mu.versions.picker.getEstimatedMaxWAmp()
 	pacerInfo := compactionPacerInfo{
 		slowdownThreshold:   uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
 		totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
@@ -848,7 +856,7 @@ func (d *DB) flush1() error {
 	}
 
 	c := newFlush(d.opts, d.mu.versions.currentVersion(),
-		d.mu.versions.picker.baseLevel, d.mu.mem.queue[:n], &d.bytesFlushed)
+		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], &d.bytesFlushed)
 	d.mu.compact.inProgress[c] = struct{}{}
 
 	jobID := d.mu.nextJobID
@@ -894,7 +902,8 @@ func (d *DB) flush1() error {
 		}
 
 		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir,
+			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
 		if err != nil {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
@@ -942,35 +951,48 @@ func (d *DB) flush1() error {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if d.mu.compact.compacting || atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
+	if d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions || atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
 		return
 	}
-
-	if len(d.mu.compact.manual) > 0 {
-		d.mu.compact.compacting = true
-		go d.compact()
-		return
+	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+		manual := d.mu.compact.manual[0]
+		c, retryLater := d.mu.versions.picker.pickManual(d.opts, manual, &d.bytesCompacted, d.getInProgressCompactionInfoLocked(nil))
+		if c != nil {
+			d.mu.compact.manual = d.mu.compact.manual[1:]
+			d.mu.compact.inProgress[c] = struct{}{}
+			d.mu.compact.compactingCount++
+			go d.compact(c, manual.done)
+		} else if !retryLater {
+			// Noop
+			d.mu.compact.manual = d.mu.compact.manual[1:]
+			manual.done <- nil
+		} else {
+			// Inability to run head blocks later manual compactions.
+			break
+		}
 	}
 
-	if !d.mu.versions.picker.compactionNeeded() {
-		// There is no work to be done.
-		return
+	for d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+		c := d.mu.versions.picker.pickAuto(d.opts, &d.bytesCompacted, d.getInProgressCompactionInfoLocked(nil))
+		if c == nil {
+			break
+		}
+		d.mu.compact.compactingCount++
+		d.mu.compact.inProgress[c] = struct{}{}
+		go d.compact(c, nil)
 	}
-
-	d.mu.compact.compacting = true
-	go d.compact()
 }
 
 // compact runs one compaction and maybe schedules another call to compact.
-func (d *DB) compact() {
+func (d *DB) compact(c *compaction, errChannel chan error) {
 	pprof.Do(context.Background(), compactLabels, func(context.Context) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		if err := d.compact1(); err != nil {
+		if err := d.compact1(c, errChannel); err != nil {
 			// TODO(peter): count consecutive compaction errors and backoff.
 			d.opts.EventListener.BackgroundError(err)
 		}
-		d.mu.compact.compacting = false
+		d.mu.compact.compactingCount--
 		// The previous compaction may have produced too many files in a
 		// level, so reschedule another compaction if needed.
 		d.maybeScheduleCompaction()
@@ -982,23 +1004,12 @@ func (d *DB) compact() {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) compact1() (err error) {
-	var c *compaction
-	if len(d.mu.compact.manual) > 0 {
-		manual := d.mu.compact.manual[0]
-		d.mu.compact.manual = d.mu.compact.manual[1:]
-		c = d.mu.versions.picker.pickManual(d.opts, manual, &d.bytesCompacted)
+func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
+	if errChannel != nil {
 		defer func() {
-			manual.done <- err
+			errChannel <- err
 		}()
-	} else {
-		c = d.mu.versions.picker.pickAuto(d.opts, &d.bytesCompacted)
 	}
-	if c == nil {
-		return nil
-	}
-
-	d.mu.compact.inProgress[c] = struct{}{}
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -1032,7 +1043,9 @@ func (d *DB) compact1() (err error) {
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir)
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir, func() []compactionInfo {
+			return d.getInProgressCompactionInfoLocked(c)
+		})
 		if err != nil {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
@@ -1431,7 +1444,7 @@ func (d *DB) runCompaction(
 // deleteObsoleteFiles must be performed. Must be not be called concurrently
 // with compactions and flushes.
 func (d *DB) scanObsoleteFiles(list []string) {
-	if d.mu.compact.compacting || d.mu.compact.flushing {
+	if d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		panic("pebble: cannot scan obsolete files concurrently with compaction/flushing")
 	}
 
