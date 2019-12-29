@@ -185,14 +185,13 @@ func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.SeekGE(key)
-	if ikey == nil {
-		return nil, nil
+	if ikey, val := i.data.SeekGE(key); ikey != nil {
+		if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+			return nil, nil
+		}
+		return ikey, val
 	}
-	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
-		return nil, nil
-	}
-	return ikey, val
+	return i.skipForward()
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -220,14 +219,13 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.SeekGE(key)
-	if ikey == nil {
-		return nil, nil
+	if ikey, val := i.data.SeekGE(key); ikey != nil {
+		if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+			return nil, nil
+		}
+		return ikey, val
 	}
-	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
-		return nil, nil
-	}
-	return ikey, val
+	return i.skipForward()
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -244,33 +242,24 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.SeekLT(key)
-	if ikey == nil {
-		// The index contains separator keys which may lie between
-		// user-keys. Consider the user-keys:
-		//
-		//   complete
-		// ---- new block ---
-		//   complexion
-		//
-		// If these two keys end one block and start the next, the index key may
-		// be chosen as "compleu". The SeekGE in the index block will then point
-		// us to the block containing "complexion". If this happens, we want the
-		// last key from the previous data block.
-		if ikey, _ = i.index.Prev(); ikey == nil {
+	if ikey, val := i.data.SeekLT(key); ikey != nil {
+		if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
 			return nil, nil
 		}
-		if !i.loadBlock() {
-			return nil, nil
-		}
-		if ikey, val = i.data.Last(); ikey == nil {
-			return nil, nil
-		}
+		return ikey, val
 	}
-	if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
-		return nil, nil
-	}
-	return ikey, val
+	// The index contains separator keys which may lie between
+	// user-keys. Consider the user-keys:
+	//
+	//   complete
+	// ---- new block ---
+	//   complexion
+	//
+	// If these two keys end one block and start the next, the index key may
+	// be chosen as "compleu". The SeekGE in the index block will then point
+	// us to the block containing "complexion". If this happens, we want the
+	// last key from the previous data block.
+	return i.skipBackward()
 }
 
 // First implements internalIterator.First, as documented in the pebble
@@ -288,14 +277,13 @@ func (i *singleLevelIterator) First() (*InternalKey, []byte) {
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	ikey, val := i.data.First()
-	if ikey == nil {
-		return nil, nil
+	if ikey, val := i.data.First(); ikey != nil {
+		if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+			return nil, nil
+		}
+		return ikey, val
 	}
-	if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
-		return nil, nil
-	}
-	return ikey, val
+	return i.skipForward()
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -313,13 +301,13 @@ func (i *singleLevelIterator) Last() (*InternalKey, []byte) {
 	if !i.loadBlock() {
 		return nil, nil
 	}
-	if ikey, _ := i.data.Last(); ikey == nil {
-		return nil, nil
+	if ikey, val := i.data.Last(); ikey != nil {
+		if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
+			return nil, nil
+		}
+		return ikey, val
 	}
-	if i.blockLower != nil && i.cmp(i.data.ikey.UserKey, i.blockLower) < 0 {
-		return nil, nil
-	}
-	return &i.data.ikey, i.data.val
+	return i.skipBackward()
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
@@ -336,26 +324,7 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 		}
 		return key, val
 	}
-	for {
-		if i.data.err != nil {
-			i.err = i.data.err
-			break
-		}
-		if key, _ := i.index.Next(); key == nil {
-			break
-		}
-		if i.loadBlock() {
-			key, val := i.data.First()
-			if key == nil {
-				return nil, nil
-			}
-			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
-				return nil, nil
-			}
-			return key, val
-		}
-	}
-	return nil, nil
+	return i.skipForward()
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -370,6 +339,31 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 		}
 		return key, val
 	}
+	return i.skipBackward()
+}
+
+func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
+	for {
+		if i.data.err != nil {
+			i.err = i.data.err
+			break
+		}
+		if key, _ := i.index.Next(); key == nil {
+			break
+		}
+		if i.loadBlock() {
+			if key, val := i.data.First(); key != nil {
+				if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+					return nil, nil
+				}
+				return key, val
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 	for {
 		if i.data.err != nil {
 			i.err = i.data.err
@@ -454,28 +448,7 @@ func (i *compactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *compactionIterator) First() (*InternalKey, []byte) {
-	key, val := i.singleLevelIterator.First()
-	if key == nil {
-		// An empty sstable will still encode the block trailer and restart points, so bytes
-		// iterated must be incremented.
-
-		// We must use i.dataBH.Length instead of (4*(i.data.numRestarts+1)) to calculate the
-		// number of bytes for the restart points, since i.dataBH.Length accounts for
-		// compression. When uncompressed, i.dataBH.Length == (4*(i.data.numRestarts+1))
-		*i.bytesIterated += blockTrailerLen + i.dataBH.Length
-		return nil, nil
-	}
-	// If the sstable only has 1 entry, we are at the last entry in the block and we must
-	// increment bytes iterated by the size of the block trailer and restart points.
-	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		i.prevOffset = blockTrailerLen + i.dataBH.Length
-	} else {
-		// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
-		// i.data.nextOffset is the uncompressed size of the first record.
-		i.prevOffset = (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
-	}
-	*i.bytesIterated += i.prevOffset
-	return key, val
+	return i.skipForward(i.singleLevelIterator.First())
 }
 
 func (i *compactionIterator) Last() (*InternalKey, []byte) {
@@ -488,7 +461,14 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	key, val := i.data.Next()
+	return i.skipForward(i.data.Next())
+}
+
+func (i *compactionIterator) Prev() (*InternalKey, []byte) {
+	panic("pebble: Prev unimplemented")
+}
+
+func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*InternalKey, []byte) {
 	if key == nil {
 		for {
 			if i.data.err != nil {
@@ -496,14 +476,12 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 				return nil, nil
 			}
 			if key, _ := i.index.Next(); key == nil {
-				return nil, nil
+				break
 			}
 			if i.loadBlock() {
-				key, val = i.data.First()
-				if key == nil {
-					return nil, nil
+				if key, val = i.data.First(); key != nil {
+					break
 				}
-				break
 			}
 		}
 	}
@@ -521,10 +499,6 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
 	return key, val
-}
-
-func (i *compactionIterator) Prev() (*InternalKey, []byte) {
-	panic("pebble: Prev unimplemented")
 }
 
 type twoLevelIterator struct {
@@ -595,7 +569,10 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	return i.singleLevelIterator.SeekGE(key)
+	if ikey, val := i.singleLevelIterator.SeekGE(key); ikey != nil {
+		return ikey, val
+	}
+	return i.skipForward()
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -614,7 +591,10 @@ func (i *twoLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byt
 		return nil, nil
 	}
 
-	return i.singleLevelIterator.SeekPrefixGE(prefix, key)
+	if ikey, val := i.singleLevelIterator.SeekPrefixGE(prefix, key); ikey != nil {
+		return ikey, val
+	}
+	return i.skipForward()
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -641,20 +621,10 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	ikey, val := i.singleLevelIterator.SeekLT(key)
-	if ikey == nil {
-		if ikey, val = i.topLevelIndex.Prev(); ikey == nil {
-			return nil, nil
-		}
-		if !i.loadIndex() {
-			return nil, nil
-		}
-		if ikey, val = i.singleLevelIterator.Last(); ikey == nil {
-			return nil, nil
-		}
+	if ikey, val := i.singleLevelIterator.SeekLT(key); ikey != nil {
+		return ikey, val
 	}
-
-	return ikey, val
+	return i.skipBackward()
 }
 
 // First implements internalIterator.First, as documented in the pebble
@@ -674,7 +644,10 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	return i.singleLevelIterator.First()
+	if ikey, val := i.singleLevelIterator.First(); ikey != nil {
+		return ikey, val
+	}
+	return i.skipForward()
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -694,7 +667,10 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	return i.singleLevelIterator.Last()
+	if ikey, val := i.singleLevelIterator.Last(); ikey != nil {
+		return ikey, val
+	}
+	return i.skipBackward()
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
@@ -708,20 +684,7 @@ func (i *twoLevelIterator) Next() (*InternalKey, []byte) {
 	if key, val := i.singleLevelIterator.Next(); key != nil {
 		return key, val
 	}
-	for {
-		if i.index.err != nil {
-			i.err = i.index.err
-			break
-		}
-		if ikey, _ := i.topLevelIndex.Next(); ikey == nil {
-			return nil, nil
-		}
-		if !i.loadIndex() {
-			return nil, nil
-		}
-		return i.singleLevelIterator.First()
-	}
-	return nil, nil
+	return i.skipForward()
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -733,6 +696,29 @@ func (i *twoLevelIterator) Prev() (*InternalKey, []byte) {
 	if key, val := i.singleLevelIterator.Prev(); key != nil {
 		return key, val
 	}
+	return i.skipBackward()
+}
+
+func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
+	for {
+		if i.index.err != nil {
+			i.err = i.index.err
+			break
+		}
+		if ikey, _ := i.topLevelIndex.Next(); ikey == nil {
+			return nil, nil
+		}
+		if !i.loadIndex() {
+			return nil, nil
+		}
+		if ikey, val := i.singleLevelIterator.First(); ikey != nil {
+			return ikey, val
+		}
+	}
+	return nil, nil
+}
+
+func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 	for {
 		if i.index.err != nil {
 			i.err = i.index.err
@@ -744,7 +730,9 @@ func (i *twoLevelIterator) Prev() (*InternalKey, []byte) {
 		if !i.loadIndex() {
 			return nil, nil
 		}
-		return i.singleLevelIterator.Last()
+		if ikey, val := i.singleLevelIterator.Last(); ikey != nil {
+			return ikey, val
+		}
 	}
 	return nil, nil
 }
@@ -790,28 +778,7 @@ func (i *twoLevelCompactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *twoLevelCompactionIterator) First() (*InternalKey, []byte) {
-	key, val := i.twoLevelIterator.First()
-	if key == nil {
-		// An empty sstable will still encode the block trailer and restart points, so bytes
-		// iterated must be incremented.
-
-		// We must use i.dataBH.Length instead of (4*(i.data.numRestarts+1)) to calculate the
-		// number of bytes for the restart points, since i.dataBH.Length accounts for
-		// compression. When uncompressed, i.dataBH.Length == (4*(i.data.numRestarts+1))
-		*i.bytesIterated += blockTrailerLen + i.dataBH.Length
-		return nil, nil
-	}
-	// If the sstable only has 1 entry, we are at the last entry in the block and we must
-	// increment bytes iterated by the size of the block trailer and restart points.
-	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		i.prevOffset = blockTrailerLen + i.dataBH.Length
-	} else {
-		// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
-		// i.data.nextOffset is the uncompressed size of the first record.
-		i.prevOffset = (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
-	}
-	*i.bytesIterated += i.prevOffset
-	return key, val
+	return i.skipForward(i.twoLevelIterator.First())
 }
 
 func (i *twoLevelCompactionIterator) Last() (*InternalKey, []byte) {
@@ -824,7 +791,16 @@ func (i *twoLevelCompactionIterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	key, val := i.singleLevelIterator.Next()
+	return i.skipForward(i.singleLevelIterator.Next())
+}
+
+func (i *twoLevelCompactionIterator) Prev() (*InternalKey, []byte) {
+	panic("pebble: Prev unimplemented")
+}
+
+func (i *twoLevelCompactionIterator) skipForward(
+	key *InternalKey, val []byte,
+) (*InternalKey, []byte) {
 	if key == nil {
 		for {
 			if i.index.err != nil {
@@ -832,14 +808,12 @@ func (i *twoLevelCompactionIterator) Next() (*InternalKey, []byte) {
 				return nil, nil
 			}
 			if key, _ := i.topLevelIndex.Next(); key == nil {
-				return nil, nil
+				break
 			}
 			if i.loadIndex() {
-				key, val = i.singleLevelIterator.First()
-				if key == nil {
-					return nil, nil
+				if key, val = i.singleLevelIterator.First(); key != nil {
+					break
 				}
-				break
 			}
 		}
 	}
@@ -857,10 +831,6 @@ func (i *twoLevelCompactionIterator) Next() (*InternalKey, []byte) {
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
 	return key, val
-}
-
-func (i *twoLevelCompactionIterator) Prev() (*InternalKey, []byte) {
-	panic("pebble: Prev unimplemented")
 }
 
 type weakCachedBlock struct {
