@@ -23,6 +23,50 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+type compactionPickerForTesting struct {
+	score     float64
+	level     int
+	baseLevel int
+	vers      *manifest.Version
+}
+
+var _ compactionPicker = &compactionPickerForTesting{}
+
+func (p *compactionPickerForTesting) getBaseLevel() int {
+	return p.baseLevel
+}
+func (p *compactionPickerForTesting) getEstimatedMaxWAmp() float64 {
+	return 0
+}
+func (p *compactionPickerForTesting) getLevelMaxBytes() [numLevels]int64 {
+	return [numLevels]int64{}
+}
+func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
+	return 0
+}
+func (p *compactionPickerForTesting) forceBaseLevel1() {}
+func (p *compactionPickerForTesting) pickAuto(
+	opts *Options, bytesCompacted *uint64,
+) (c *compaction) {
+	if p.score < 1 {
+		return nil
+	}
+	outputLevel := p.level + 1
+	if p.level == 0 {
+		outputLevel = p.baseLevel
+	}
+	cInfo := compactionInfo{level: p.level, outputLevel: outputLevel}
+	return pickAutoHelper(opts, bytesCompacted, p.vers, &cInfo, p.baseLevel)
+}
+func (p *compactionPickerForTesting) pickManual(
+	opts *Options, manual *manualCompaction, bytesCompacted *uint64,
+) (c *compaction, err error) {
+	if p == nil {
+		return nil, nil
+	}
+	return pickManualHelper(opts, manual, bytesCompacted, p.vers, p.baseLevel), nil
+}
+
 func TestPickCompaction(t *testing.T) {
 	fileNums := func(f []fileMetadata) string {
 		ss := make([]string, 0, len(f))
@@ -37,7 +81,7 @@ func TestPickCompaction(t *testing.T) {
 	testCases := []struct {
 		desc    string
 		version version
-		picker  compactionPicker
+		picker  compactionPickerForTesting
 		want    string
 	}{
 		{
@@ -71,7 +115,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -99,7 +143,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -127,7 +171,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -155,7 +199,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -191,7 +235,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -253,7 +297,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -307,7 +351,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
 				baseLevel: 1,
@@ -361,7 +405,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
 				baseLevel: 1,
@@ -415,7 +459,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
 				baseLevel: 1,
@@ -432,8 +476,8 @@ func TestPickCompaction(t *testing.T) {
 		}
 		vs.versions.Init(nil)
 		vs.append(&tc.version)
+		tc.picker.vers = &tc.version
 		vs.picker = &tc.picker
-		vs.picker.vers = &tc.version
 
 		c, got := vs.picker.pickAuto(opts, new(uint64)), ""
 		if c != nil {

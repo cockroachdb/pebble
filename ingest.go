@@ -308,6 +308,7 @@ func ingestTargetLevel(
 		return 0
 	}
 
+	// TODO(sbhola): change to use compactionPicker.getBaseLevel()
 	level := 1
 	for ; level < numLevels; level++ {
 		if len(v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
@@ -530,7 +531,9 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 		levelMetrics.BytesIngested += m.Size
 		levelMetrics.TablesIngested++
 	}
-	if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir); err != nil {
+	if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir, func() []inProgressCompactionInfo {
+		return d.getInProgressCompactionInfoLocked(nil)
+	}); err != nil {
 		return nil, err
 	}
 	var checker func() error

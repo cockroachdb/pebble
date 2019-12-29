@@ -30,7 +30,7 @@ func TestRangeDel(t *testing.T) {
 
 			d.mu.Lock()
 			// Disable the "dynamic base level" code for this test.
-			d.mu.versions.picker.baseLevel = 1
+			d.mu.versions.picker.forceBaseLevel1()
 			s := fmt.Sprintf("mem: %d\n%s", len(d.mu.mem.queue), d.mu.versions.currentVersion())
 			d.mu.Unlock()
 			return s
@@ -41,7 +41,7 @@ func TestRangeDel(t *testing.T) {
 			}
 			d.mu.Lock()
 			// Disable the "dynamic base level" code for this test.
-			d.mu.versions.picker.baseLevel = 1
+			d.mu.versions.picker.forceBaseLevel1()
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s

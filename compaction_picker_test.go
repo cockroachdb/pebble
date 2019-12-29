@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/stretchr/testify/require"
 )
 
 func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
@@ -72,10 +73,11 @@ func TestCompactionPickerLevelMaxBytes(t *testing.T) {
 					return errMsg
 				}
 
-				p := newCompactionPicker(vers, opts)
+				p := newCompactionPicker(vers, opts, nil)
 				var buf bytes.Buffer
-				for level := p.baseLevel; level < numLevels; level++ {
-					fmt.Fprintf(&buf, "%d: %d\n", level, p.levelMaxBytes[level])
+				levelMaxBytes := p.getLevelMaxBytes()
+				for level := p.getBaseLevel(); level < numLevels; level++ {
+					fmt.Fprintf(&buf, "%d: %d\n", level, levelMaxBytes[level])
 				}
 				return buf.String()
 
@@ -95,9 +97,14 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					return errMsg
 				}
 
-				p := newCompactionPicker(vers, opts)
-				return fmt.Sprintf("%d: %.1f\n", p.level, p.score)
-
+				p := newCompactionPicker(vers, opts, nil)
+				pickerByScore, ok := p.(*compactionPickerByScore)
+				require.True(t, ok)
+				if len(pickerByScore.compactionQueue) > 0 {
+					c := pickerByScore.compactionQueue[0]
+					return fmt.Sprintf("%d: %.1f\n", c.level, c.score)
+				}
+				return "no compaction"
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
@@ -115,7 +122,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 				}
 				opts.MemTableSize = 1000
 
-				p := newCompactionPicker(vers, opts)
+				p := newCompactionPicker(vers, opts, nil)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:

@@ -1,16 +1,16 @@
 pick 1
 ----
-0: 0.0
+no compaction
 
 pick 1
 6: 1
 ----
-0: 0.0
+no compaction
 
 pick 1
 6: 1000000
 ----
-0: 0.0
+no compaction
 
 pick 1
 5: 1
@@ -35,7 +35,7 @@ pick 1
 5: 2
 6: 30
 ----
-5: 0.4
+no compaction
 
 pick 1
 4: 2
