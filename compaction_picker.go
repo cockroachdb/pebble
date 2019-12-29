@@ -6,14 +6,61 @@ package pebble
 
 import (
 	"math"
+	"sort"
 
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
-// compactionPicker holds the state and logic for picking a compaction. A
+type compactionPicker interface {
+	getBaseLevel() int
+	getEstimatedMaxWAmp() float64
+	getLevelMaxBytes() [numLevels]int64
+	estimatedCompactionDebt(l0ExtraSize uint64) uint64
+	pickAuto(opts *Options, bytesCompacted *uint64, inProgressCompactions []compactionInfo) (c *compaction)
+	pickManual(
+		opts *Options, manual *manualCompaction, bytesCompacted *uint64, inProgressCompactions []compactionInfo,
+	) (c *compaction, retryLater bool)
+
+	forceBaseLevel1()
+}
+
+// Information about in-progress compactions provided to the compaction picker. These are used to
+// constrain the new compactions that will be picked.
+type compactionInfo interface {
+	startLevelNum() int
+	outputLevelNum() int
+	smallestKey() InternalKey
+	largestKey() InternalKey
+}
+
+func newCompactionPicker(
+	v *version, opts *Options, inProgressCompactions []compactionInfo,
+) compactionPicker {
+	p := &compactionPickerByScore{
+		opts: opts,
+		vers: v,
+	}
+	p.initLevelMaxBytes(v, opts, inProgressCompactions)
+	p.initCompactionQueue(v, opts)
+	return p
+}
+
+// Information about a compaction that is queued inside the compaction picker.
+type pickedCompactionInfo struct {
+	// The score of the level to be compacted.
+	score float64
+	level int
+	// The level to compact to.
+	outputLevel int
+	// The file in level that will be compacted. Additional files may be picked by the
+	// compaction.
+	file int
+}
+
+// compactionPickerByScore holds the state and logic for picking a compaction. A
 // compaction picker is associated with a single version. A new compaction
 // picker is created and initialized every time a new version is installed.
-type compactionPicker struct {
+type compactionPickerByScore struct {
 	opts *Options
 	vers *version
 
@@ -32,34 +79,33 @@ type compactionPicker struct {
 	// level.
 	levelMaxBytes [numLevels]int64
 
-	// These fields are the level that should be compacted next and its
-	// compaction score. A score < 1 means that compaction is not strictly
-	// needed.
-	score float64
-	level int
-	file  int
+	// Compaction scores of each level.
+	scores [numLevels]float64
+
+	// A queue of compactions with scores >= 1.
+	compactionQueue []pickedCompactionInfo
 }
 
-func newCompactionPicker(v *version, opts *Options) *compactionPicker {
-	p := &compactionPicker{
-		opts: opts,
-		vers: v,
-	}
-	p.initLevelMaxBytes(v, opts)
-	p.initTarget(v, opts)
-	return p
-}
+var _ compactionPicker = &compactionPickerByScore{}
 
-func (p *compactionPicker) compactionNeeded() bool {
+func (p *compactionPickerByScore) getBaseLevel() int {
 	if p == nil {
-		return false
+		return 1
 	}
-	return p.score >= 1
+	return p.baseLevel
+}
+
+func (p *compactionPickerByScore) getEstimatedMaxWAmp() float64 {
+	return p.estimatedMaxWAmp
+}
+
+func (p *compactionPickerByScore) getLevelMaxBytes() [numLevels]int64 {
+	return p.levelMaxBytes
 }
 
 // estimatedCompactionDebt estimates the number of bytes which need to be
 // compacted before the LSM tree becomes stable.
-func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
+func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 	if p == nil {
 		return 0
 	}
@@ -103,7 +149,9 @@ func (p *compactionPicker) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 	return compactionDebt
 }
 
-func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
+func (p *compactionPickerByScore) initLevelMaxBytes(
+	v *version, opts *Options, inProgressCompactions []compactionInfo,
+) {
 	// Determine the first non-empty level and the maximum size of any level.
 	firstNonEmptyLevel := -1
 	var bottomLevelSize int64
@@ -116,6 +164,11 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 			bottomLevelSize = levelSize
 		}
 	}
+	for _, c := range inProgressCompactions {
+		if c.startLevelNum() == 0 && (firstNonEmptyLevel == -1 || c.outputLevelNum() < firstNonEmptyLevel) {
+			firstNonEmptyLevel = c.outputLevelNum()
+		}
+	}
 
 	// Initialize the max-bytes setting for each level to "infinity" which will
 	// disallow compaction for that level. We'll fill in the actual value below
@@ -126,8 +179,11 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 
 	if bottomLevelSize == 0 {
 		// No levels for L1 and up contain any data. Target L0 compactions for the
-		// last level.
+		// last level or to the level to which there is an ongoing L0 compaction.
 		p.baseLevel = numLevels - 1
+		if firstNonEmptyLevel >= 0 {
+			p.baseLevel = firstNonEmptyLevel
+		}
 		return
 	}
 
@@ -181,10 +237,20 @@ func (p *compactionPicker) initLevelMaxBytes(v *version, opts *Options) {
 	}
 }
 
-// initTarget initializes the compaction score and level. If the compaction
-// score indicates compaction is needed, a target table within the target level
-// is selected for compaction.
-func (p *compactionPicker) initTarget(v *version, opts *Options) {
+type sortCompactionsDecreasingScore struct {
+	level  []int
+	scores [numLevels]float64
+}
+
+func (s sortCompactionsDecreasingScore) Len() int { return len(s.level) }
+func (s sortCompactionsDecreasingScore) Less(i, j int) bool {
+	return s.scores[s.level[i]] > s.scores[s.level[j]]
+}
+func (s sortCompactionsDecreasingScore) Swap(i, j int) {
+	s.level[i], s.level[j] = s.level[j], s.level[i]
+}
+
+func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options) {
 	// We treat level-0 specially by bounding the number of files instead of
 	// number of bytes for two reasons:
 	//
@@ -195,18 +261,32 @@ func (p *compactionPicker) initTarget(v *version, opts *Options) {
 	// wish to avoid too many files when the individual file size is small
 	// (perhaps because of a small write-buffer setting, or very high
 	// compression ratios, or lots of overwrites/deletions).
-	p.score = float64(len(v.Files[0])) / float64(opts.L0CompactionThreshold)
-	p.level = 0
+	p.scores[0] = float64(len(v.Files[0])) / float64(opts.L0CompactionThreshold)
 
 	for level := 1; level < numLevels-1; level++ {
-		score := float64(totalSize(v.Files[level])) / float64(p.levelMaxBytes[level])
-		if p.score < score {
-			p.score = score
-			p.level = level
-		}
+		p.scores[level] = float64(totalSize(v.Files[level])) / float64(p.levelMaxBytes[level])
 	}
 
-	if p.score >= 1 {
+	var potentialCompactions []int
+	for level := 0; level < numLevels-1; level++ {
+		if p.scores[level] >= 1 {
+			potentialCompactions = append(potentialCompactions, level)
+		}
+	}
+	sort.Sort(sortCompactionsDecreasingScore{
+		level: potentialCompactions, scores: p.scores,
+	})
+	for i := 0; i < len(potentialCompactions); i++ {
+		level := potentialCompactions[i]
+		outputLevel := level + 1
+		if level == 0 {
+			outputLevel = p.baseLevel
+		}
+		p.compactionQueue = append(p.compactionQueue,
+			pickedCompactionInfo{score: p.scores[level], level: level, outputLevel: outputLevel})
+	}
+	// Select the file for each compaction in the compactionQueue.
+	for i := 0; i < len(p.compactionQueue); i++ {
 		// TODO(peter): Select the file within the level to compact. See the
 		// kMinOverlappingRatio heuristic in RocksDB which chooses the file with the
 		// minimum overlapping ratio with the next level. This minimizes write
@@ -230,27 +310,33 @@ func (p *compactionPicker) initTarget(v *version, opts *Options) {
 		// The current heuristic matches the RocksDB kOldestSmallestSeqFirst
 		// heuristic.
 		smallestSeqNum := uint64(math.MaxUint64)
-		files := v.Files[p.level]
-		for i := range files {
-			f := &files[i]
+		files := v.Files[p.compactionQueue[i].level]
+		for j := range files {
+			f := &files[j]
 			if smallestSeqNum > f.SmallestSeqNum {
 				smallestSeqNum = f.SmallestSeqNum
-				p.file = i
+				p.compactionQueue[i].file = j
 			}
 		}
-		return
 	}
 
-	// No levels exceeded their size threshold. Check for forced compactions.
+	// Check for forced compactions. These are lower priority than score based compactions.
 	for level := 0; level < numLevels-1; level++ {
-		files := v.Files[p.level]
+		outputLevel := level + 1
+		if level == 0 {
+			outputLevel = p.baseLevel
+		}
+		files := v.Files[level]
 		for i := range files {
 			f := &files[i]
 			if f.MarkedForCompaction {
-				p.score = 1.0
-				p.level = level
-				p.file = i
-				return
+				p.compactionQueue = append(p.compactionQueue, pickedCompactionInfo{
+					score:       p.scores[level],
+					level:       level,
+					outputLevel: outputLevel,
+					file:        i,
+				})
+				break
 			}
 		}
 	}
@@ -261,18 +347,29 @@ func (p *compactionPicker) initTarget(v *version, opts *Options) {
 }
 
 // pickAuto picks the best compaction, if any.
-func (p *compactionPicker) pickAuto(
-	opts *Options,
-	bytesCompacted *uint64,
+func (p *compactionPickerByScore) pickAuto(
+	opts *Options, bytesCompacted *uint64, inProgressCompactions []compactionInfo,
 ) (c *compaction) {
-	if !p.compactionNeeded() {
-		return nil
+	for len(p.compactionQueue) > 0 {
+		cInfo := &p.compactionQueue[0]
+		p.compactionQueue = p.compactionQueue[1:]
+		if conflictsWithInProgress(cInfo.level, cInfo.outputLevel, inProgressCompactions) {
+			continue
+		}
+		c = pickAutoHelper(opts, bytesCompacted, p.vers, cInfo, p.baseLevel)
+		return c
 	}
+	return nil
+}
 
-	vers := p.vers
-	c = newCompaction(opts, vers, p.level, p.baseLevel, bytesCompacted)
-	c.inputs[0] = vers.Files[c.startLevel][p.file : p.file+1]
-
+func pickAutoHelper(
+	opts *Options, bytesCompacted *uint64, vers *version, cInfo *pickedCompactionInfo, baseLevel int,
+) (c *compaction) {
+	c = newCompaction(opts, vers, cInfo.level, baseLevel, bytesCompacted)
+	if c.outputLevel != cInfo.outputLevel {
+		panic("pebble: compaction picked unexpected output level")
+	}
+	c.inputs[0] = vers.Files[c.startLevel][cInfo.file : cInfo.file+1]
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if c.startLevel == 0 {
 		cmp := opts.Comparer.Compare
@@ -287,23 +384,64 @@ func (p *compactionPicker) pickAuto(
 	return c
 }
 
-func (p *compactionPicker) pickManual(
+func (p *compactionPickerByScore) pickManual(
 	opts *Options,
 	manual *manualCompaction,
 	bytesCompacted *uint64,
-) (c *compaction) {
+	inProgressCompactions []compactionInfo,
+) (c *compaction, retryLater bool) {
 	if p == nil {
-		return nil
+		return nil, false
 	}
 
-	cur := p.vers
-	c = newCompaction(opts, cur, manual.level, p.baseLevel, bytesCompacted)
+	outputLevel := manual.level + 1
+	if manual.level == 0 {
+		outputLevel = p.baseLevel
+	}
+	if conflictsWithInProgress(manual.level, outputLevel, inProgressCompactions) {
+		return nil, true
+	}
+	c = pickManualHelper(opts, manual, bytesCompacted, p.vers, p.baseLevel)
+	if c == nil {
+		return nil, false
+	}
+	if c.outputLevel != outputLevel {
+		panic("pebble: compaction picked unexpected output level")
+	}
+	return c, false
+}
+
+func pickManualHelper(
+	opts *Options, manual *manualCompaction, bytesCompacted *uint64, vers *version, baseLevel int,
+) (c *compaction) {
+	c = newCompaction(opts, vers, manual.level, baseLevel, bytesCompacted)
 	manual.outputLevel = c.outputLevel
 	cmp := opts.Comparer.Compare
-	c.inputs[0] = cur.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
+	c.inputs[0] = vers.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
 	if len(c.inputs[0]) == 0 {
+		// Nothing to do
 		return nil
 	}
 	c.setupInputs()
 	return c
+}
+
+func (p *compactionPickerByScore) forceBaseLevel1() {
+	p.baseLevel = 1
+	for i := range p.compactionQueue {
+		if p.compactionQueue[i].level == 0 {
+			p.compactionQueue[i].outputLevel = 1
+		}
+	}
+}
+
+func conflictsWithInProgress(
+	level int, outputLevel int, inProgressCompactions []compactionInfo,
+) bool {
+	for _, c := range inProgressCompactions {
+		if level == c.startLevelNum() || outputLevel == c.startLevelNum() || level == c.outputLevelNum() {
+			return true
+		}
+	}
+	return false
 }
