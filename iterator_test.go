@@ -509,7 +509,28 @@ func TestIteratorNextPrev(t *testing.T) {
 			return runLSMCmd(td, d)
 
 		case "iter":
-			iter := d.NewIter(nil)
+			seqNum := InternalKeySeqNumMax
+			for _, arg := range td.CmdArgs {
+				if len(arg.Vals) != 1 {
+					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "seq":
+					var err error
+					seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+				}
+			}
+
+			snap := Snapshot{
+				db:     d,
+				seqNum: seqNum,
+			}
+			iter := snap.NewIter(nil)
 			defer iter.Close()
 			return runIterCmd(td, iter)
 

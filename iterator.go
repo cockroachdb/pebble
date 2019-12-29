@@ -417,6 +417,9 @@ func (i *Iterator) Next() bool {
 			} else {
 				i.iterKey, i.iterValue = i.iter.First()
 			}
+			for i.iterKey != nil && i.iterKey.Kind() == InternalKeyKindRangeDelete {
+				i.iterKey, i.iterValue = i.iter.Next()
+			}
 		} else {
 			i.nextUserKey()
 		}
@@ -452,6 +455,9 @@ func (i *Iterator) Prev() bool {
 				i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
 			} else {
 				i.iterKey, i.iterValue = i.iter.Last()
+			}
+			for i.iterKey != nil && i.iterKey.Kind() == InternalKeyKindRangeDelete {
+				i.iterKey, i.iterValue = i.iter.Prev()
 			}
 		} else {
 			i.prevUserKey()
