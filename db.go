@@ -362,6 +362,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	}
 
 	get := &buf.get
+	get.logger = d.opts.Logger
 	get.cmp = d.cmp
 	get.equal = d.equal
 	get.newIters = d.newIters
@@ -728,7 +729,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(&dbi.opts, d.cmp, d.newIters, current.Files[level], nil)
+		li.init(dbi.opts, d.cmp, d.newIters, current.Files[level], nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
 			&mlevels[0].isLargestUserKeyRangeDelSentinel)
@@ -738,6 +739,7 @@ func (d *DB) newIterInternal(
 
 	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)
 	buf.merging.snapshot = seqNum
+	buf.merging.elideRangeTombstones = true
 	return dbi
 }
 

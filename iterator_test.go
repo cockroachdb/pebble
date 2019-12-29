@@ -328,6 +328,7 @@ func TestIterator(t *testing.T) {
 			vals:  vals,
 		})
 		iter.snapshot = seqNum
+		iter.elideRangeTombstones = true
 		return &Iterator{
 			opts:  opts,
 			cmp:   cmp,

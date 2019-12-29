@@ -4,15 +4,14 @@
 
 package pebble
 
-import (
-	"github.com/cockroachdb/pebble/internal/rangedel"
-)
+import "github.com/cockroachdb/pebble/internal/rangedel"
 
 // getIter is an internal iterator used to perform gets. It iterates through
 // the values for a particular key, level by level. It is not a general purpose
 // internalIterator, but specialized for Get operations so that it loads data
 // lazily.
 type getIter struct {
+	logger       Logger
 	cmp          Compare
 	equal        Equal
 	newIters     tableNewIters
@@ -154,7 +153,8 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			continue
 		}
 
-		g.levelIter.init(nil, g.cmp, g.newIters, g.version.Files[g.level], nil)
+		iterOpts := IterOptions{logger: g.logger}
+		g.levelIter.init(iterOpts, g.cmp, g.newIters, g.version.Files[g.level], nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
