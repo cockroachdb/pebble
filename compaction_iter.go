@@ -125,14 +125,12 @@ type compactionIter struct {
 	merge Merge
 	iter  internalIterator
 	err   error
-	// `key.UserKey` is in one of two states:
-	// - Set to `i.iterKey.UserKey`: this happens within `Next()` and is a
-	//   transient state before the code decides to save the key.
-	// - Set to `keyBuf`: caused by saving `i.iterKey.UserKey`. This is the
-	//   case on return from all public methods -- these methods return `key`.
-	//   Additionally, it is the internal state when the code is moving to the
-	//   next key so it can determine whether the user key has changed from
-	//   the previous key.
+	// `key.UserKey` is set to `keyBuf` caused by saving `i.iterKey.UserKey`
+	// and `key.Trailer` is set to `i.iterKey.Trailer`. This is the
+	// case on return from all public methods -- these methods return `key`.
+	// Additionally, it is the internal state when the code is moving to the
+	// next key so it can determine whether the user key has changed from
+	// the previous key.
 	key   InternalKey
 	value []byte
 	// Temporary buffer used for storing the previous user key in order to
@@ -241,8 +239,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	i.pos = iterPosCur
 	i.valid = false
 	for i.iterKey != nil {
-		i.key = *i.iterKey
-		if i.key.Kind() == InternalKeyKindRangeDelete {
+		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
 			// Return the range tombstone so the compaction can use it for
 			// file truncation and add it to the fragmenter. We do not set `skip`
 			// to true before returning as there may be a forthcoming point key
@@ -259,23 +256,23 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return &i.key, i.value
 		}
 
-		if i.rangeDelFrag.Deleted(i.key, i.curSnapshotSeqNum) {
+		if i.rangeDelFrag.Deleted(*i.iterKey, i.curSnapshotSeqNum) {
 			i.saveKey()
 			i.skipInStripe()
 			continue
 		}
 
-		switch i.key.Kind() {
+		switch i.iterKey.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// If we're at the last snapshot stripe and the tombstone can be elided
 			// skip skippable keys in the same stripe.
-			if i.curSnapshotIdx == 0 && i.elideTombstone(i.key.UserKey) {
+			if i.curSnapshotIdx == 0 && i.elideTombstone(i.iterKey.UserKey) {
 				i.saveKey()
 				i.skipInStripe()
 				continue
 			}
 
-			switch i.key.Kind() {
+			switch i.iterKey.Kind() {
 			case InternalKeyKindDelete:
 				i.saveKey()
 				i.value = i.iterValue
@@ -332,7 +329,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return nil, nil
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", i.key.Kind())
+			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
 			return nil, nil
 		}
 	}
@@ -528,6 +525,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 func (i *compactionIter) saveKey() {
 	i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 	i.key.UserKey = i.keyBuf
+	i.key.Trailer = i.iterKey.Trailer
 }
 
 func (i *compactionIter) cloneKey(key InternalKey) InternalKey {
