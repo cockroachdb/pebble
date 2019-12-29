@@ -708,6 +708,21 @@ first
 .
 
 define
+a.SET.3:a
+b.SINGLEDEL.2:
+b.DEL.1:
+----
+
+iter
+first
+next
+next
+----
+a#3,1:a
+b#2,0:
+.
+
+define
 a.SINGLEDEL.2:
 a.DEL.1:
 ----
