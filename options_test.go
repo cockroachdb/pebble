@@ -58,6 +58,7 @@ func TestOptionsString(t *testing.T) {
   mem_table_stop_writes_threshold=2
   min_compaction_rate=4194304
   min_flush_rate=1048576
+  num_concurrent_compactions=1
   merger=pebble.concatenate
   table_property_collectors=[]
   wal_dir=

@@ -351,6 +351,9 @@ type Options struct {
 	// default is 1 MB/s.
 	MinFlushRate int
 
+	// NumConcurrentCompactions sets the maximum number of concurrent compactions. The default is 1.
+	NumConcurrentCompactions int
+
 	// ReadOnly indicates that the DB should be opened in read-only mode. Writes
 	// to the DB will return an error, background compactions are disabled, and
 	// the flush that normally occurs after replaying the WAL at startup is
@@ -462,6 +465,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.MinFlushRate == 0 {
 		o.MinFlushRate = 1 << 20 // 1 MB/s
 	}
+	if o.NumConcurrentCompactions <= 0 {
+		o.NumConcurrentCompactions = 1
+	}
 
 	o.initMaps()
 	return o
@@ -533,6 +539,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.MinCompactionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.MinFlushRate)
+	fmt.Fprintf(&buf, "  num_concurrent_compactions=%d\n", o.NumConcurrentCompactions)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {
@@ -687,6 +694,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.MinCompactionRate, err = strconv.Atoi(value)
 			case "min_flush_rate":
 				o.MinFlushRate, err = strconv.Atoi(value)
+			case "num_concurrent_compactions":
+				o.NumConcurrentCompactions, err = strconv.Atoi(value)
 			case "merger":
 				switch value {
 				case "nullptr":

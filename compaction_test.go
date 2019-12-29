@@ -23,6 +23,50 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+type compactionPickerForTesting struct {
+	score     float64
+	level     int
+	baseLevel int
+	vers      *manifest.Version
+}
+
+var _ compactionPicker = &compactionPickerForTesting{}
+
+func (p *compactionPickerForTesting) getBaseLevel() int {
+	return p.baseLevel
+}
+func (p *compactionPickerForTesting) getEstimatedMaxWAmp() float64 {
+	return 0
+}
+func (p *compactionPickerForTesting) getLevelMaxBytes() [numLevels]int64 {
+	return [numLevels]int64{}
+}
+func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
+	return 0
+}
+func (p *compactionPickerForTesting) forceBaseLevel1() {}
+func (p *compactionPickerForTesting) pickAuto(
+	opts *Options, bytesCompacted *uint64, _ []compactionInfo,
+) (c *compaction) {
+	if p.score < 1 {
+		return nil
+	}
+	outputLevel := p.level + 1
+	if p.level == 0 {
+		outputLevel = p.baseLevel
+	}
+	cInfo := pickedCompactionInfo{level: p.level, outputLevel: outputLevel}
+	return pickAutoHelper(opts, bytesCompacted, p.vers, &cInfo, p.baseLevel)
+}
+func (p *compactionPickerForTesting) pickManual(
+	opts *Options, manual *manualCompaction, bytesCompacted *uint64, _ []compactionInfo,
+) (c *compaction, retryLater bool) {
+	if p == nil {
+		return nil, false
+	}
+	return pickManualHelper(opts, manual, bytesCompacted, p.vers, p.baseLevel), false
+}
+
 func TestPickCompaction(t *testing.T) {
 	fileNums := func(f []fileMetadata) string {
 		ss := make([]string, 0, len(f))
@@ -37,7 +81,7 @@ func TestPickCompaction(t *testing.T) {
 	testCases := []struct {
 		desc    string
 		version version
-		picker  compactionPicker
+		picker  compactionPickerForTesting
 		want    string
 	}{
 		{
@@ -71,7 +115,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -99,7 +143,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -127,7 +171,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -155,7 +199,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -191,7 +235,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -253,7 +297,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
 				baseLevel: 1,
@@ -307,7 +351,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
 				baseLevel: 1,
@@ -361,7 +405,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
 				baseLevel: 1,
@@ -415,7 +459,7 @@ func TestPickCompaction(t *testing.T) {
 					},
 				},
 			},
-			picker: compactionPicker{
+			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
 				baseLevel: 1,
@@ -432,10 +476,10 @@ func TestPickCompaction(t *testing.T) {
 		}
 		vs.versions.Init(nil)
 		vs.append(&tc.version)
+		tc.picker.vers = &tc.version
 		vs.picker = &tc.picker
-		vs.picker.vers = &tc.version
 
-		c, got := vs.picker.pickAuto(opts, new(uint64)), ""
+		c, got := vs.picker.pickAuto(opts, new(uint64), nil), ""
 		if c != nil {
 			got0 := fileNums(c.inputs[0])
 			got1 := fileNums(c.inputs[1])
@@ -728,6 +772,8 @@ func TestManualCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var ongoingCompaction *compaction
+
 	datadriven.RunTest(t, "testdata/manual_compaction", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
@@ -795,6 +841,67 @@ func TestManualCompaction(t *testing.T) {
 			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
+
+		case "async-compact":
+			var s string
+			ch := make(chan error, 1)
+			go func() {
+				if err := runCompactCommand(td, d); err != nil {
+					ch <- err
+					close(ch)
+					return
+				}
+				d.mu.Lock()
+				s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				close(ch)
+				return
+			}()
+			time.Sleep(time.Second)
+			select {
+			case <-ch:
+				return "manual compaction did not block for ongoing\n" + s
+			default:
+			}
+			d.mu.Lock()
+			delete(d.mu.compact.inProgress, ongoingCompaction)
+			d.mu.compact.compactingCount--
+			ongoingCompaction = nil
+			d.maybeScheduleCompaction()
+			d.mu.Unlock()
+			select {
+			case err := <-ch:
+				if err != nil {
+					return err.Error()
+				}
+				return "manual compaction blocked until ongoing finished\n" + s
+			case <-time.After(2 * time.Second):
+				return "compaction not completed"
+			}
+
+		case "add-ongoing-compaction":
+			var startLevel int
+			var outputLevel int
+			td.ScanArgs(t, "startLevel", &startLevel)
+			td.ScanArgs(t, "outputLevel", &outputLevel)
+			ongoingCompaction = &compaction{startLevel: startLevel, outputLevel: outputLevel}
+			d.mu.Lock()
+			d.mu.compact.inProgress[ongoingCompaction] = struct{}{}
+			d.mu.compact.compactingCount++
+			d.mu.Unlock()
+			return ""
+
+		case "remove-ongoing-compaction":
+			d.mu.Lock()
+			delete(d.mu.compact.inProgress, ongoingCompaction)
+			d.mu.compact.compactingCount--
+			ongoingCompaction = nil
+			d.mu.Unlock()
+			return ""
+
+		case "set-concurrent-compactions":
+			td.ScanArgs(t, "num", &d.opts.NumConcurrentCompactions)
+			return ""
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
