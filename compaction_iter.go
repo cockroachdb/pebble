@@ -490,6 +490,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 func (i *compactionIter) singleDeleteNext() bool {
 	// Save the current key.
 	i.saveKey()
+	i.value = i.iterValue
 	i.valid = true
 
 	// Loop until finds a key to be passed to the next level.
