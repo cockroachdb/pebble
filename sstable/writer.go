@@ -342,7 +342,7 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, w.block, w.blockSize, w.blockSizeThreshold) {
+	if !shouldFlush(key, value, &w.block, w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
 
@@ -373,7 +373,7 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
 
 	if supportsTwoLevelIndex(w.tableFormat) &&
-		shouldFlush(sep, w.tmp[:n], w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
+		shouldFlush(sep, w.tmp[:n], &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
 		w.finishIndexBlock()
@@ -385,29 +385,33 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 }
 
 func shouldFlush(
-	key InternalKey, value []byte, block blockWriter, blockSize, sizeThreshold int,
+	key InternalKey, value []byte, block *blockWriter, blockSize, sizeThreshold int,
 ) bool {
-	if size := block.estimatedSize(); size < blockSize {
-		// The block is currently smaller than the target size.
-		if size <= sizeThreshold {
-			// The block is smaller than the threshold size at which we'll consider
-			// flushing it.
-			return false
-		}
-		newSize := size + key.Size() + len(value)
-		if block.nEntries%block.restartInterval == 0 {
-			newSize += 4
-		}
-		newSize += 4                              // varint for shared prefix length
-		newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-		newSize += uvarintLen(uint32(len(value))) // varint for value size
-		if newSize <= blockSize {
-			// The block plus the new entry is smaller than the target size.
-			return false
-		}
+	if block.nEntries == 0 {
+		return false
 	}
 
-	return true
+	size := block.estimatedSize()
+	if size >= blockSize {
+		return true
+	}
+
+	// The block is currently smaller than the target size.
+	if size <= sizeThreshold {
+		// The block is smaller than the threshold size at which we'll consider
+		// flushing it.
+		return false
+	}
+
+	newSize := size + key.Size() + len(value)
+	if block.nEntries%block.restartInterval == 0 {
+		newSize += 4
+	}
+	newSize += 4                              // varint for shared prefix length
+	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
+	newSize += uvarintLen(uint32(len(value))) // varint for value size
+	// Flush if the block plus the new entry is larger than the target size.
+	return newSize > blockSize
 }
 
 // finishBlock finishes the specified block and returns its block handle, which
