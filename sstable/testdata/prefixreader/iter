@@ -1,5 +1,8 @@
 build
-a:1=A,aa:2=AA,c:3=C,d:4=D
+a.SET.1:A
+aa.SET.2:AA
+c.SET.3:C
+d.SET.4:D
 ----
 
 iter

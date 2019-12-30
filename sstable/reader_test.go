@@ -12,7 +12,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +83,11 @@ func (i *iterAdapter) Value() []byte {
 
 func (i *iterAdapter) Valid() bool {
 	return i.key != nil
+}
+
+func (i *iterAdapter) SetBounds(lower, upper []byte) {
+	i.Iterator.SetBounds(lower, upper)
+	i.key = nil
 }
 
 func TestReader(t *testing.T) {
@@ -191,117 +195,23 @@ func TestInvalidReader(t *testing.T) {
 }
 
 func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader) {
-	makeIkeyValue := func(s string) (InternalKey, []byte) {
-		j := strings.Index(s, ":")
-		k := strings.Index(s, "=")
-		seqNum, err := strconv.Atoi(s[j+1 : k])
-		if err != nil {
-			panic(err)
-		}
-		return base.MakeInternalKey([]byte(s[:j]), uint64(seqNum), InternalKeyKindSet), []byte(s[k+1:])
-	}
-
-	mem := vfs.NewMem()
-
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "build":
 				if r != nil {
 					r.Close()
-					mem.Remove("sstable")
+					r = nil
 				}
-
-				f, err := mem.Create("sstable")
-				if err != nil {
-					return err.Error()
-				}
-				w := NewWriter(f, o)
-				for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
-					k, v := makeIkeyValue(e)
-					w.Add(k, v)
-				}
-				w.Close()
-
-				f, err = mem.Open("sstable")
-				if err != nil {
-					return err.Error()
-				}
-				r, err = NewReader(f, ReaderOptions{})
+				var err error
+				_, r, err = runBuildCmd(d)
 				if err != nil {
 					return err.Error()
 				}
 				return ""
 
 			case "iter":
-				for _, arg := range d.CmdArgs {
-					switch arg.Key {
-					case "globalSeqNum":
-						if len(arg.Vals) != 1 {
-							return fmt.Sprintf("%s: arg %s expects 1 value", d.Cmd, arg.Key)
-						}
-						v, err := strconv.Atoi(arg.Vals[0])
-						if err != nil {
-							return err.Error()
-						}
-						r.Properties.GlobalSeqNum = uint64(v)
-					default:
-						return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
-					}
-				}
-
-				iter := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
-				if err := iter.Error(); err != nil {
-					t.Fatal(err)
-				}
-
-				var b bytes.Buffer
-				var prefix []byte
-				for _, line := range strings.Split(d.Input, "\n") {
-					parts := strings.Fields(line)
-					if len(parts) == 0 {
-						continue
-					}
-					switch parts[0] {
-					case "seek-ge":
-						if len(parts) != 2 {
-							return fmt.Sprintf("seek-ge <key>\n")
-						}
-						prefix = nil
-						iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
-					case "seek-prefix-ge":
-						if len(parts) != 2 {
-							return fmt.Sprintf("seek-prefix-ge <key>\n")
-						}
-						prefix = []byte(strings.TrimSpace(parts[1]))
-						iter.SeekPrefixGE(prefix, prefix /* key */)
-					case "seek-lt":
-						if len(parts) != 2 {
-							return fmt.Sprintf("seek-lt <key>\n")
-						}
-						prefix = nil
-						iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
-					case "first":
-						prefix = nil
-						iter.First()
-					case "last":
-						prefix = nil
-						iter.Last()
-					case "next":
-						iter.Next()
-					case "prev":
-						iter.Prev()
-					}
-					if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
-						fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-					} else if err := iter.Error(); err != nil {
-						fmt.Fprintf(&b, "<err=%v>", err)
-					} else {
-						fmt.Fprintf(&b, ".")
-					}
-					b.WriteString("\n")
-				}
-				return b.String()
+				return runIterCmd(d, r)
 
 			case "get":
 				var b bytes.Buffer
@@ -475,10 +385,7 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 }
 
 func buildTestTable(
-	t *testing.T,
-	numEntries uint64,
-	blockSize, indexBlockSize int,
-	compression Compression,
+	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
 ) *Reader {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")

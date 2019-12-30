@@ -1,5 +1,8 @@
 build
-a:1=A,b:2=B,c:3=C,d:4=D
+a.SET.1:A
+b.SET.2:B
+c.SET.3:C
+d.SET.4:D
 ----
 
 iter
@@ -190,3 +193,25 @@ A
 <err: pebble: not found>
 D
 C
+
+# Verify that clearing the bounds on an iterator also clears
+# previously set block{Lower,Upper}.
+
+iter
+seek-ge c
+seek-lt b
+set-bounds lower=b upper=c
+seek-ge c
+seek-lt b
+set-bounds lower= upper=
+seek-ge c
+seek-lt b
+----
+<c:3>
+<a:1>
+.
+.
+.
+.
+<c:3>
+<a:1>
