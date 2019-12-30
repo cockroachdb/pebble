@@ -18,8 +18,8 @@ size
   raw-key         23938
   raw-value       1912
 records           1727
-  set             1693
-  delete          17
+  set             1710
+  delete          0
   range-delete    17
   merge           0
   global-seq-num  0
@@ -53,8 +53,8 @@ size
   raw-key         23938
   raw-value       1912
 records           1727
-  set             1693
-  delete          17
+  set             1710
+  delete          0
   range-delete    17
   merge           0
   global-seq-num  0
@@ -87,8 +87,8 @@ size
   raw-key         23938
   raw-value       1912
 records           1727
-  set             1693
-  delete          17
+  set             1710
+  delete          0
   range-delete    17
   merge           0
   global-seq-num  0
