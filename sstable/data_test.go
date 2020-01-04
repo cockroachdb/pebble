@@ -32,6 +32,15 @@ func runBuildCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 				return nil, nil, fmt.Errorf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
 			}
 			writerOpts.TableFormat = TableFormatLevelDB
+		case "block-size":
+			if len(arg.Vals) != 1 {
+				return nil, nil, fmt.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
+			}
+			var err error
+			writerOpts.BlockSize, err = strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return nil, nil, err
+			}
 		case "index-block-size":
 			if len(arg.Vals) != 1 {
 				return nil, nil, fmt.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
