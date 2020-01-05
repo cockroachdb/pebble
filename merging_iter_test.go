@@ -134,7 +134,11 @@ func TestMergingIterCornerCases(t *testing.T) {
 	newIters :=
 		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
 			r := readers[meta.FileNum]
-			return r.NewIter(opts.GetLowerBound(), opts.GetUpperBound()), r.NewRangeDelIter(), nil
+			rangeDelIter, err := r.NewRangeDelIter()
+			if err != nil {
+				return nil, nil, err
+			}
+			return r.NewIter(opts.GetLowerBound(), opts.GetUpperBound()), rangeDelIter, nil
 		}
 	datadriven.RunTest(t, "testdata/merging_iter", func(d *datadriven.TestData) string {
 		switch d.Cmd {

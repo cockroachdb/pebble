@@ -52,7 +52,11 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	newIters :=
 		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
 			r := readers[meta.FileNum]
-			return r.NewIter(nil, nil), r.NewRangeDelIter(), nil
+			rangeDelIter, err := r.NewRangeDelIter()
+			if err != nil {
+				return nil, nil, err
+			}
+			return r.NewIter(nil /* lower */, nil /* upper */), rangeDelIter, nil
 		}
 
 	datadriven.RunTest(t, "testdata/level_checker", func(d *datadriven.TestData) string {

@@ -262,6 +262,11 @@ func (m *mergingIter) initHeap() {
 				key:   *l.iterKey,
 				value: l.iterValue,
 			})
+		} else {
+			m.err = firstError(m.err, l.iter.Error())
+			if m.err != nil {
+				return
+			}
 		}
 	}
 	m.heap.init()
