@@ -27,8 +27,8 @@ type tableNewIters func(
 // tombstone, we materialize a fake entry to return from levelIter. This
 // prevents mergingIter from advancing past the sstable until the sstable
 // contains the smallest (or largest for reverse iteration) key in the merged
-// heap. Note that Iterator treat a range deletion tombstone as a no-op and
-// processes range deletions via mergingIter.
+// heap. Note that mergingIter treats a range deletion tombstone returned by
+// the point iterator as a no-op.
 //
 // SeekPrefixGE presents the need for a second type of pausing. If an sstable
 // iterator returns "not found" for a SeekPrefixGE operation, we don't want to
@@ -128,7 +128,7 @@ type levelIter struct {
 var _ internalIterator = (*levelIter)(nil)
 
 func newLevelIter(
-	opts *IterOptions,
+	opts IterOptions,
 	cmp Compare,
 	newIters tableNewIters,
 	files []fileMetadata,
@@ -140,18 +140,16 @@ func newLevelIter(
 }
 
 func (l *levelIter) init(
-	opts *IterOptions,
+	opts IterOptions,
 	cmp Compare,
 	newIters tableNewIters,
 	files []fileMetadata,
 	bytesIterated *uint64,
 ) {
 	l.logger = opts.getLogger()
-	if opts != nil {
-		l.lower = opts.LowerBound
-		l.upper = opts.UpperBound
-		l.tableOpts.TableFilter = opts.TableFilter
-	}
+	l.lower = opts.LowerBound
+	l.upper = opts.UpperBound
+	l.tableOpts.TableFilter = opts.TableFilter
 	l.cmp = cmp
 	l.index = -1
 	l.newIters = newIters

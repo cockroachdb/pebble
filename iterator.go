@@ -63,12 +63,6 @@ func (i *Iterator) findNextEntry() bool {
 			i.nextUserKey()
 			continue
 
-		case InternalKeyKindRangeDelete:
-			// Range deletions are treated as no-ops. See the comments in levelIter
-			// regarding table boundaries for more details.
-			i.iterKey, i.iterValue = i.iter.Next()
-			continue
-
 		case InternalKeyKindSet:
 			if i.prefix != nil {
 				if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
@@ -120,11 +114,6 @@ func (i *Iterator) nextUserKey() {
 		if done || i.iterKey == nil {
 			break
 		}
-		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
-			// Range deletions are treated as no-ops. See the comments in levelIter
-			// regarding table boundaries for more details.
-			continue
-		}
 		if !i.equal(i.key, i.iterKey.UserKey) {
 			break
 		}
@@ -156,12 +145,6 @@ func (i *Iterator) findPrevEntry() bool {
 			i.value = nil
 			i.valid = false
 			valueMerger = nil
-			i.iterKey, i.iterValue = i.iter.Prev()
-			continue
-
-		case InternalKeyKindRangeDelete:
-			// Range deletions are treated as no-ops. See the comments in levelIter
-			// regarding table boundaries for more details.
 			i.iterKey, i.iterValue = i.iter.Prev()
 			continue
 
@@ -232,11 +215,6 @@ func (i *Iterator) prevUserKey() {
 		if i.iterKey == nil {
 			break
 		}
-		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
-			// Range deletions are treated as no-ops. See the comments in levelIter
-			// regarding table boundaries for more details.
-			continue
-		}
 		if !i.equal(i.key, i.iterKey.UserKey) {
 			break
 		}
@@ -267,11 +245,6 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 			// We've hit a deletion tombstone. Return everything up to this
 			// point.
 			return
-
-		case InternalKeyKindRangeDelete:
-			// Range deletions are treated as no-ops. See the comments in levelIter
-			// regarding table boundaries for more details.
-			continue
 
 		case InternalKeyKindSet:
 			// We've hit a Set value. Merge with the existing value and return.
@@ -443,7 +416,7 @@ func (i *Iterator) Prev() bool {
 		// The underlying iterator is pointed to the next key (this can only happen
 		// when switching iteration directions). We set i.valid to false here to
 		// force the calls to prevUserKey to save the current key i.iter is
-		// pointing at in order to determine when the next user-key is reached.
+		// pointing at in order to determine when the prev user-key is reached.
 		i.valid = false
 		if i.iterKey == nil {
 			// We're positioned after the last key. Need to reposition to point to

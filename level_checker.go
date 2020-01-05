@@ -231,6 +231,7 @@ func iterateAndCheckTombstones(cmp Compare, tombstones []tombstoneWithLevel) err
 }
 
 type checkConfig struct {
+	logger    Logger
 	cmp       Compare
 	readState *readState
 	newIters  tableNewIters
@@ -430,7 +431,8 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	seqNum := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 
 	checkConfig := &checkConfig{
-		cmp:       DefaultComparer.Compare,
+		logger:    d.opts.Logger,
+		cmp:       d.cmp,
 		readState: readState,
 		newIters:  d.newIters,
 		seqNum:    seqNum,
@@ -498,8 +500,9 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		if len(current.Files[level]) == 0 {
 			continue
 		}
+		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(nil, c.cmp, c.newIters, current.Files[level], nil)
+		li.init(iterOpts, c.cmp, c.newIters, current.Files[level], nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
 		mlevelAlloc[0].iter = li

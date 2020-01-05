@@ -213,6 +213,11 @@ type mergingIter struct {
 	prefix   []byte
 	lower    []byte
 	upper    []byte
+
+	// Elide range tombstones from being returned during iteration. Set to true
+	// when mergingIter is a child of Iterator and the mergingIter is processing
+	// range tombstones.
+	elideRangeTombstones bool
 }
 
 // mergingIter implements the internalIterator interface.
@@ -534,7 +539,8 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 		if m.isNextEntryDeleted(item) {
 			continue
 		}
-		if item.key.Visible(m.snapshot) {
+		if item.key.Visible(m.snapshot) &&
+			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
 			return &item.key, item.value
 		}
 		m.nextEntry(item)
@@ -666,7 +672,8 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 		if m.isPrevEntryDeleted(item) {
 			continue
 		}
-		if item.key.Visible(m.snapshot) {
+		if item.key.Visible(m.snapshot) &&
+			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
 			return &item.key, item.value
 		}
 		m.prevEntry(item)
