@@ -181,10 +181,20 @@ func (c *tableCacheShard) newIters(
 		c.mu.Unlock()
 	}
 	iter.SetCloseHook(n.closeHook)
+	// Check for errors during iterator creation.
+	if iter.Error() != nil {
+		// `Close()` returns the same error as `Error()`.
+		return nil, nil, iter.Close()
+	}
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	if rangeDelIter := n.reader.NewRangeDelIter(); rangeDelIter != nil {
+	rangeDelIter, err := n.reader.NewRangeDelIter()
+	if err != nil {
+		iter.Close()
+		return nil, nil, err
+	}
+	if rangeDelIter != nil {
 		return iter, rangeDelIter, nil
 	}
 	// NB: Translate a nil range-del iterator into a nil interface.

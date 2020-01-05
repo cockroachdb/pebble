@@ -342,10 +342,13 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			// We configured sstable.Reader to return raw tombstones which requires a
 			// bit more work here to put them in a form that can be iterated in
 			// parallel with the point records.
-			rangeDelIter := func() base.InternalIterator {
-				iter := r.NewRangeDelIter()
+			rangeDelIter, err := func() (base.InternalIterator, error) {
+				iter, err := r.NewRangeDelIter()
+				if err != nil {
+					return nil, err
+				}
 				if iter == nil {
-					return rangedel.NewIter(r.Compare, nil)
+					return rangedel.NewIter(r.Compare, nil), nil
 				}
 				defer iter.Close()
 
@@ -369,8 +372,12 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				sort.Slice(tombstones, func(i, j int) bool {
 					return r.Compare(tombstones[i].Start.UserKey, tombstones[j].Start.UserKey) < 0
 				})
-				return rangedel.NewIter(r.Compare, tombstones)
+				return rangedel.NewIter(r.Compare, tombstones), nil
 			}()
+			if err != nil {
+				fmt.Fprintf(stdout, "%s\n", err)
+				return
+			}
 
 			defer rangeDelIter.Close()
 			rangeDelKey, rangeDelValue := rangeDelIter.First()
