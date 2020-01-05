@@ -92,7 +92,11 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 		}
 	}
 
-	if iter := r.NewRangeDelIter(); iter != nil {
+	iter, err := r.NewRangeDelIter()
+	if err != nil {
+		return nil, err
+	}
+	if iter != nil {
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
 			if err := ingestValidateKey(opts, key); err != nil {

@@ -469,9 +469,7 @@ func (i *Iterator) Close() error {
 		i.readState.unref()
 		i.readState = nil
 	}
-	if err := i.iter.Close(); err != nil && i.err != nil {
-		i.err = err
-	}
+	i.err = firstError(i.err, i.iter.Close())
 	err := i.err
 	if alloc := i.alloc; alloc != nil {
 		*i = Iterator{}

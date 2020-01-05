@@ -144,7 +144,10 @@ func (lt *levelIterTest) newIters(
 	meta *fileMetadata, opts *IterOptions, _ *uint64,
 ) (internalIterator, internalIterator, error) {
 	iter := lt.readers[meta.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
-	rangeDelIter := lt.readers[meta.FileNum].NewRangeDelIter()
+	rangeDelIter, err := lt.readers[meta.FileNum].NewRangeDelIter()
+	if err != nil {
+		return nil, nil, err
+	}
 	return iter, rangeDelIter, nil
 }
 

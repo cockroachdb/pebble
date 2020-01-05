@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -248,6 +249,92 @@ func TestErrors(t *testing.T) {
 	for _, expected := range expectedErrors {
 		if errorCounts[expected] == 0 {
 			t.Errorf("expected error %q did not occur", expected)
+		}
+	}
+}
+
+// TestRequireReadError injects FS errors into read operations at successively later
+// points until all operations can complete. It requires an operation fails any time
+// an error was injected. This differs from the TestErrors case above as that one
+// cannot require operations fail since it involves flush/compaction, which retry
+// internally and succeed following an injected error.
+func TestRequireReadError(t *testing.T) {
+	run := func(index int32) (err error) {
+		// Perform setup with error injection disabled as it involves writes/background ops.
+		fs := &errorFS{
+			FS:    vfs.NewMem(),
+			index: -1,
+		}
+		d, err := Open("", &Options{
+			FS:     fs,
+			Logger: panicLogger{},
+		})
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+
+		key1 := []byte("a1")
+		key2 := []byte("a2")
+		value := []byte("b")
+		if err := d.Set(key1, value, nil); err != nil {
+			t.Fatalf("%v", err)
+		}
+		if err := d.Set(key2, value, nil); err != nil {
+			t.Fatalf("%v", err)
+		}
+		if err := d.Flush(); err != nil {
+			t.Fatalf("%v", err)
+		}
+		if err := d.Compact(key1, key2); err != nil {
+			t.Fatalf("%v", err)
+		}
+		if err := d.DeleteRange(key1, key2, nil); err != nil {
+			t.Fatalf("%v", err)
+		}
+		if err := d.Set(key1, value, nil); err != nil {
+			t.Fatalf("%v", err)
+		}
+		if err := d.Flush(); err != nil {
+			t.Fatalf("%v", err)
+		}
+
+		// Now perform foreground ops with error injection enabled.
+		fs.index = index
+		iter := d.NewIter(nil)
+		numFound := 0
+		expectedKeys := [][]byte{key1, key2}
+		for valid := iter.First(); valid; valid = iter.Next() {
+			if !bytes.Equal(iter.Key(), expectedKeys[numFound]) {
+				t.Fatalf("expected key %v; found %v", expectedKeys[numFound], iter.Key())
+			}
+			if !bytes.Equal(iter.Value(), value) {
+				t.Fatalf("expected value %v; found %v", value, iter.Value())
+			}
+			numFound++
+		}
+		if err := iter.Close(); err != nil {
+			return err
+		}
+		if err := d.Close(); err != nil {
+			return err
+		}
+		// Reaching here implies all read operations succeeded. This
+		// should only happen when we reached a large enough index at
+		// which `errorFS` did not return any error.
+		if fs.index < 0 {
+			t.Errorf("FS error injected %d ops ago went unreported", -fs.index)
+		}
+		if numFound != 2 {
+			t.Fatalf("expected 2 values; found %d", numFound)
+		}
+		return nil
+	}
+
+	for i := int32(0); ; i++ {
+		err := run(i)
+		if err == nil {
+			t.Logf("no failures reported at index %d", i)
+			break
 		}
 	}
 }

@@ -715,6 +715,12 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 		} else {
 			l.iterKey, l.iterValue = l.iter.SeekGE(key)
 		}
+		if l.iterKey == nil {
+			m.err = l.iter.Error()
+			if m.err != nil {
+				return
+			}
+		}
 
 		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil {
 			// The level has a range-del iterator. Find the tombstone containing
@@ -788,6 +794,12 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 
 		l := &m.levels[level]
 		l.iterKey, l.iterValue = l.iter.SeekLT(key)
+		if l.iterKey == nil {
+			m.err = l.iter.Error()
+			if m.err != nil {
+				return
+			}
+		}
 
 		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil {
 			// The level has a range-del iterator. Find the tombstone containing
@@ -854,6 +866,12 @@ func (m *mergingIter) First() (*InternalKey, []byte) {
 	for i := range m.levels {
 		l := &m.levels[i]
 		l.iterKey, l.iterValue = l.iter.First()
+		if l.iterKey == nil {
+			m.err = l.iter.Error()
+			if m.err != nil {
+				return nil, nil
+			}
+		}
 	}
 	m.initMinHeap()
 	return m.findNextEntry()
@@ -867,6 +885,12 @@ func (m *mergingIter) Last() (*InternalKey, []byte) {
 	for i := range m.levels {
 		l := &m.levels[i]
 		l.iterKey, l.iterValue = l.iter.Last()
+		if l.iterKey == nil {
+			m.err = l.iter.Error()
+			if m.err != nil {
+				return nil, nil
+			}
+		}
 	}
 	m.initMaxHeap()
 	return m.findPrevEntry()
