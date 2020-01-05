@@ -1042,21 +1042,19 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) Iterator {
 // NewRangeDelIter returns an internal iterator for the contents of the
 // range-del block for the table. Returns nil if the table does not contain any
 // range deletions.
-func (r *Reader) NewRangeDelIter() base.InternalIterator {
+func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
 	if r.rangeDel.bh.Length == 0 {
-		return nil
+		return nil, nil
 	}
 	b, err := r.readRangeDel()
 	if err != nil {
-		// TODO(peter): propagate the error
-		panic(err)
+		return nil, err
 	}
 	i := &blockIter{}
 	if err := i.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
-		// TODO(peter): propagate the error
-		panic(err)
+		return nil, err
 	}
-	return i
+	return i, nil
 }
 
 func (r *Reader) readIndex() (block, error) {

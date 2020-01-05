@@ -61,7 +61,10 @@ func TestWriter(t *testing.T) {
 			return buf.String()
 
 		case "scan-range-del":
-			iter := r.NewRangeDelIter()
+			iter, err := r.NewRangeDelIter()
+			if err != nil {
+				return err.Error()
+			}
 			if iter == nil {
 				return ""
 			}
