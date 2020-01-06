@@ -75,6 +75,9 @@ type singleLevelIterator struct {
 	closeHook  func(i Iterator) error
 }
 
+// singleLevelIterator implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*singleLevelIterator)(nil)
+
 var singleLevelIterPool = sync.Pool{
 	New: func() interface{} {
 		return &singleLevelIterator{}
@@ -180,6 +183,10 @@ func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	}
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
+		// The target key is greater than any key in the sstable. Invalidate the
+		// block iterator so that a subsequent call to Prev() will return the last
+		// key in the table.
+		i.data.invalidate()
 		return nil, nil
 	}
 	if !i.loadBlock() {
@@ -435,6 +442,9 @@ type compactionIterator struct {
 	prevOffset    uint64
 }
 
+// compactionIterator implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*compactionIterator)(nil)
+
 func (i *compactionIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
@@ -505,6 +515,9 @@ type twoLevelIterator struct {
 	singleLevelIterator
 	topLevelIndex blockIter
 }
+
+// twoLevelIterator implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*twoLevelIterator)(nil)
 
 // loadIndex loads the index block at the current top level index position and
 // leaves i.index unpositioned. If unsuccessful, it gets i.err to any error
@@ -764,6 +777,9 @@ type twoLevelCompactionIterator struct {
 	bytesIterated *uint64
 	prevOffset    uint64
 }
+
+// twoLevelCompactionIterator implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*twoLevelCompactionIterator)(nil)
 
 func (i *twoLevelCompactionIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")

@@ -13,6 +13,9 @@ type Iter struct {
 	index      int
 }
 
+// Iter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*Iter)(nil)
+
 // NewIter returns a new iterator over a set of fragmented tombstones.
 func NewIter(cmp base.Compare, tombstones []Tombstone) *Iter {
 	return &Iter{

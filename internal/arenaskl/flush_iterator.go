@@ -17,9 +17,7 @@
 
 package arenaskl
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 // flushIterator is an iterator over the skiplist object. Use Skiplist.NewFlushIter
 // to construct an iterator. The current state of the iterator can be cloned by
@@ -28,6 +26,9 @@ type flushIterator struct {
 	Iterator
 	bytesIterated *uint64
 }
+
+// flushIterator implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*flushIterator)(nil)
 
 func (it *flushIterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")

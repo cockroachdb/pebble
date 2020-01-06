@@ -158,3 +158,47 @@ a/a-b#5#5,15:
 c#7,1:c
 a#5,15:
 .
+
+# Verify that prev when positioned at the largest boundary returns the
+# last key.
+
+clear
+----
+
+build
+a.SET.1:a
+b.SET.1:b
+d.RANGEDEL.2:e
+----
+0: a#1,1-e#72057594037927935,15
+
+iter
+seek-lt c
+seek-ge d
+prev
+----
+b/<empty>#1,1:b
+e/d-e#2#72057594037927935,15:
+b#1,1:b
+
+# Verify that next when positioned at the smallest boundary returns
+# the first key.
+
+clear
+----
+
+build
+a.RANGEDEL.1:b
+d.SET.2:d
+e.SET.2:e
+----
+0: a#1,15-e#2,1
+
+iter
+seek-ge d
+seek-lt d
+next
+----
+d/<empty>#2,1:d
+a/a-b#1#1,15:
+d#2,1:d

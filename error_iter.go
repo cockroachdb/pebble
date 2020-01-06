@@ -4,11 +4,14 @@
 
 package pebble
 
+import "github.com/cockroachdb/pebble/internal/base"
+
 type errorIter struct {
 	err error
 }
 
-var _ internalIterator = (*errorIter)(nil)
+// errorIter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*errorIter)(nil)
 
 func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}

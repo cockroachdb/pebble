@@ -7,6 +7,8 @@ package pebble
 import (
 	"runtime/debug"
 	"sort"
+
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
@@ -124,8 +126,8 @@ type levelIter struct {
 	bytesIterated *uint64
 }
 
-// levelIter implements the internalIterator interface.
-var _ internalIterator = (*levelIter)(nil)
+// levelIter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*levelIter)(nil)
 
 func newLevelIter(
 	opts IterOptions,
@@ -407,11 +409,12 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 }
 
 func (l *levelIter) Next() (*InternalKey, []byte) {
-	if l.err != nil {
+	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
 
-	if l.largestBoundary != nil {
+	switch {
+	case l.largestBoundary != nil:
 		// We're stepping past the boundary key, so now we can load the next file.
 		if l.loadFile(l.index+1, 1) {
 			if key, val := l.iter.First(); key != nil {
@@ -420,25 +423,24 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 			return l.verify(l.skipEmptyFileForward())
 		}
 		return nil, nil
-	}
-	// Reset the smallest boundary since we're moving away from it.
-	l.smallestBoundary = nil
 
-	if l.iter == nil {
-		return nil, nil
-	}
-	if key, val := l.iter.Next(); key != nil {
-		return l.verify(key, val)
+	default:
+		// Reset the smallest boundary since we're moving away from it.
+		l.smallestBoundary = nil
+		if key, val := l.iter.Next(); key != nil {
+			return l.verify(key, val)
+		}
 	}
 	return l.verify(l.skipEmptyFileForward())
 }
 
 func (l *levelIter) Prev() (*InternalKey, []byte) {
-	if l.err != nil {
+	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
 
-	if l.smallestBoundary != nil {
+	switch {
+	case l.smallestBoundary != nil:
 		// We're stepping past the boundary key, so now we can load the prev file.
 		if l.loadFile(l.index-1, -1) {
 			if key, val := l.iter.Last(); key != nil {
@@ -447,15 +449,13 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 			return l.verify(l.skipEmptyFileBackward())
 		}
 		return nil, nil
-	}
-	// Reset the largest boundary since we're moving away from it.
-	l.largestBoundary = nil
 
-	if l.iter == nil {
-		return nil, nil
-	}
-	if key, val := l.iter.Prev(); key != nil {
-		return l.verify(key, val)
+	default:
+		// Reset the largest boundary since we're moving away from it.
+		l.largestBoundary = nil
+		if key, val := l.iter.Prev(); key != nil {
+			return l.verify(key, val)
+		}
 	}
 	return l.verify(l.skipEmptyFileBackward())
 }

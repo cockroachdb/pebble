@@ -182,6 +182,9 @@ type blockIter struct {
 	err         error
 }
 
+// blockIter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*blockIter)(nil)
+
 func newBlockIter(cmp Compare, block block) (*blockIter, error) {
 	i := &blockIter{}
 	return i, i.init(cmp, block, 0)
@@ -202,6 +205,13 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	i.val = nil
 	i.clearCache()
 	return nil
+}
+
+func (i *blockIter) invalidate() {
+	i.clearCache()
+	i.offset = 0
+	i.nextOffset = 0
+	i.restarts = 0
 }
 
 func (i *blockIter) resetForReuse() blockIter {

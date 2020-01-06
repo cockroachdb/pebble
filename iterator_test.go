@@ -42,6 +42,9 @@ type fakeIter struct {
 	closeErr error
 }
 
+// fakeIter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*fakeIter)(nil)
+
 func fakeIkey(s string) InternalKey {
 	j := strings.Index(s, ":")
 	seqNum, err := strconv.Atoi(s[j+1:])
