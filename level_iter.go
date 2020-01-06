@@ -7,6 +7,8 @@ package pebble
 import (
 	"runtime/debug"
 	"sort"
+
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
@@ -124,8 +126,8 @@ type levelIter struct {
 	bytesIterated *uint64
 }
 
-// levelIter implements the internalIterator interface.
-var _ internalIterator = (*levelIter)(nil)
+// levelIter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*levelIter)(nil)
 
 func newLevelIter(
 	opts IterOptions,

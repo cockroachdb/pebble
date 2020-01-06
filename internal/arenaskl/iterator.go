@@ -45,6 +45,9 @@ type Iterator struct {
 	upper []byte
 }
 
+// Iterator implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*Iterator)(nil)
+
 var iterPool = sync.Pool{
 	New: func() interface{} {
 		return &Iterator{}

@@ -220,8 +220,8 @@ type mergingIter struct {
 	elideRangeTombstones bool
 }
 
-// mergingIter implements the internalIterator interface.
-var _ internalIterator = (*mergingIter)(nil)
+// mergingIter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*mergingIter)(nil)
 
 // newMergingIter returns an iterator that merges its input. Walking the
 // resultant iterator will return all key/value pairs of all input iterators

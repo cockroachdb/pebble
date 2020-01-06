@@ -4,7 +4,10 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/rangedel"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rangedel"
+)
 
 // getIter is an internal iterator used to perform gets. It iterates through
 // the values for a particular key, level by level. It is not a general purpose
@@ -31,8 +34,8 @@ type getIter struct {
 	err          error
 }
 
-// getIter implements the internalIterator interface.
-var _ internalIterator = (*getIter)(nil)
+// getIter implements the base.InternalIterator interface.
+var _ base.InternalIterator = (*getIter)(nil)
 
 func (g *getIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
