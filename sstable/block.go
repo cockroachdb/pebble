@@ -207,6 +207,13 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	return nil
 }
 
+func (i *blockIter) invalidate() {
+	i.clearCache()
+	i.offset = 0
+	i.nextOffset = 0
+	i.restarts = 0
+}
+
 func (i *blockIter) resetForReuse() blockIter {
 	return blockIter{
 		fullKey:   i.fullKey[:0],

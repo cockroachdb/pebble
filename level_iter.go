@@ -424,21 +424,9 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 		}
 		return nil, nil
 
-	case l.smallestBoundary != nil:
-		// We're at the smallest boundary, so we need to seek the child iterator to
-		// the first key.
-		l.smallestBoundary = nil
-		if l.tableOpts.LowerBound != nil {
-			if key, val := l.iter.SeekGE(l.tableOpts.LowerBound); key != nil {
-				return l.verify(key, val)
-			}
-		} else {
-			if key, val := l.iter.First(); key != nil {
-				return l.verify(key, val)
-			}
-		}
-
 	default:
+		// Reset the smallest boundary since we're moving away from it.
+		l.smallestBoundary = nil
 		if key, val := l.iter.Next(); key != nil {
 			return l.verify(key, val)
 		}
@@ -462,21 +450,9 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		}
 		return nil, nil
 
-	case l.largestBoundary != nil:
-		// We're at the largest boundary, so we need to seek the child iterator to
-		// the last key.
-		l.largestBoundary = nil
-		if l.tableOpts.UpperBound != nil {
-			if key, val := l.iter.SeekLT(l.tableOpts.UpperBound); key != nil {
-				return l.verify(key, val)
-			}
-		} else {
-			if key, val := l.iter.Last(); key != nil {
-				return l.verify(key, val)
-			}
-		}
-
 	default:
+		// Reset the largest boundary since we're moving away from it.
+		l.largestBoundary = nil
 		if key, val := l.iter.Prev(); key != nil {
 			return l.verify(key, val)
 		}

@@ -125,12 +125,22 @@ type InternalIterator interface {
 	// value if the iterator is pointing at a valid entry, and (nil, nil)
 	// otherwise. Note that Next only checks the upper bound. It is up to the
 	// caller to ensure that key is greater than or equal to the lower bound.
+	//
+	// It is valid to call Next when the iterator is positioned before the first
+	// key/value pair due to either a prior call to SeekLT or Prev which returned
+	// (nil, nil). It is undefined to call Next when the previous call to SeekGE
+	// or Next returned (nil, nil).
 	Next() (*InternalKey, []byte)
 
 	// Prev moves the iterator to the previous key/value pair. Returns the key
 	// and value if the iterator is pointing at a valid entry, and (nil, nil)
 	// otherwise. Note that Prev only checks the lower bound. It is up to the
 	// caller to ensure that key is less than the upper bound.
+	//
+	// It is valid to call Prev when the iterator is positioned after the last
+	// key/value pair due to either a prior call to SeekGE or Next which returned
+	// (nil, nil). It is undefined to call Next when the previous call to SeekLT
+	// or Prev returned (nil, nil).
 	Prev() (*InternalKey, []byte)
 
 	// Error returns any accumulated error.

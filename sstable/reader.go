@@ -183,6 +183,10 @@ func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	}
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
+		// The target key is greater than any key in the sstable. Invalidate the
+		// block iterator so that a subsequent call to Prev() will return the last
+		// key in the table.
+		i.data.invalidate()
 		return nil, nil
 	}
 	if !i.loadBlock() {

@@ -215,3 +215,27 @@ seek-lt b
 .
 <c:3>
 <a:1>
+
+# Verify that seeking past the end of the sstable leaves the iterator
+# in a state where prev returns the last key in the table.
+
+iter
+seek-lt d
+seek-ge f
+prev
+----
+<c:3>
+.
+<d:4>
+
+# Verify that seeking before the beginning of the sstable leaves the
+# iterator in a state where next returns the first key in the table.
+
+iter
+seek-ge b
+seek-lt a
+next
+----
+<b:2>
+.
+<a:1>
