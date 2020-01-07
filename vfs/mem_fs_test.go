@@ -193,7 +193,7 @@ func TestList(t *testing.T) {
 	}
 
 	{
-		got := fs.(*memFS).String()
+		got := fs.(*MemFS).String()
 		const want = `          /
        0    a
             bar/
