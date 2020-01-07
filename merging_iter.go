@@ -247,6 +247,7 @@ func newMergingIter(logger Logger, cmp Compare, iters ...internalIterator) *merg
 }
 
 func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIterLevel) {
+	m.err = nil
 	m.logger = opts.getLogger()
 	if opts != nil {
 		m.lower = opts.LowerBound

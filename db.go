@@ -647,13 +647,15 @@ func (d *DB) newIterInternal(
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
-	dbi.alloc = buf
-	dbi.cmp = d.cmp
-	dbi.equal = d.equal
-	dbi.merge = d.merge
-	dbi.split = d.split
-	dbi.iter = &buf.merging
-	dbi.readState = readState
+	*dbi = Iterator{
+		alloc:     buf,
+		cmp:       d.cmp,
+		equal:     d.equal,
+		iter:      &buf.merging,
+		merge:     d.merge,
+		split:     d.split,
+		readState: readState,
+	}
 	if o != nil {
 		dbi.opts = *o
 	}
