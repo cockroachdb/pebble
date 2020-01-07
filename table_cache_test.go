@@ -46,7 +46,7 @@ func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File,
 	fs.mu.Lock()
 	if fs.openErrorEnabled {
 		fs.mu.Unlock()
-		return nil, fmt.Errorf("injected error")
+		return nil, fmt.Errorf("injected error2")
 	}
 	if fs.openCounts != nil {
 		fs.openCounts[name]++

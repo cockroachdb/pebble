@@ -307,14 +307,15 @@ func TestIngestLink(t *testing.T) {
 func TestIngestLinkFallback(t *testing.T) {
 	// Verify that ingestLink succeeds if linking fails by falling back to
 	// copying.
-	mem := vfs.NewMem()
+	fs := newErrorFS(0)
+	mem := fs.FS
+	opts := &Options{FS: fs}
+	opts.EnsureDefaults()
+
 	src, err := mem.Create("source")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	opts := &Options{FS: &errorFS{mem, 0}}
-	opts.EnsureDefaults()
 
 	meta := []*fileMetadata{{FileNum: 1}}
 	if err := ingestLink(0, opts, "", []string{"source"}, meta); err != nil {
@@ -509,6 +510,7 @@ func TestIngest(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/ingest", func(td *datadriven.TestData) string {
+		t.Logf("FS: %p %p", mem, d.opts.FS)
 		switch td.Cmd {
 		case "batch":
 			b := d.NewIndexedBatch()

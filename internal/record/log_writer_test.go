@@ -135,7 +135,7 @@ func TestSyncError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	injectedErr := fmt.Errorf("injected error")
+	injectedErr := fmt.Errorf("injected error3")
 	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0)
 
 	var syncErr error
