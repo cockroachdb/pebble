@@ -29,6 +29,42 @@ func NewMem() FS {
 	}
 }
 
+// NewStrictMem returns a "strict" memory-backed FS implementation. The behaviour is strict wrt
+// needing a Sync() call on files or directories for the state changes to be finalized. Any
+// changes that are not finalized are visible to reads until memFS.ResetToSyncedState() is called,
+// at which point they are discarded and no longer visible. An even stricter interpretation would
+// prevent unfinalized state even being visible to reads but runs into complexities: we need the
+// caller to be able to have File objects for files (and directories) where the parent directory
+// has not yet been synced to finalize knowledge of the existence of this File, and also be able to
+// write to these File objects. Therefore such stricter semantics would be messy wrt some unfinalized
+// writes being visible and others not, so we don't attempt it.
+//
+// Expected usage:
+//  fs = NewStrictMem()
+//  strictFS = fs.(*memFS)
+//  db := Open(..., &Options{FS: fs})
+//  // Do and commit various operations.
+//  ...
+//  // Prevent any more changes to finalized state.
+//  strictFS.SetIgnoreSyncs()
+//  // This will finish any ongoing background flushes, compactions but none of these writes will
+//  // be finalized since syncs are being ignored.
+//  db.Close()
+//  // Discard unsynced state.
+//  strictFS.ResetToSyncedState()
+//  // Open the DB. This DB should have the same state as if the earlier strictFS operations and
+//  // DB.Close() were not called.
+//  db := Open(..., &Options{FS: fs})
+func NewStrictMem() FS {
+	return &memFS{
+		root: &memNode{
+			children: make(map[string]*memNode),
+			isDir:    true,
+		},
+		strict: true,
+	}
+}
+
 // NewMemFile returns a memory-backed File implementation. The memory-backed
 // file takes ownership of data.
 func NewMemFile(data []byte) File {
@@ -45,6 +81,9 @@ func NewMemFile(data []byte) File {
 type memFS struct {
 	mu   sync.Mutex
 	root *memNode
+
+	strict      bool
+	ignoreSyncs bool
 }
 
 var _ FS = &memFS{}
@@ -56,6 +95,37 @@ func (y *memFS) String() string {
 	s := new(bytes.Buffer)
 	y.root.dump(s, 0)
 	return s.String()
+}
+
+func (y *memFS) SetIgnoreSyncs(ignoreSyncs bool) {
+	y.mu.Lock()
+	if !y.strict {
+		// noop
+		return
+	}
+	y.ignoreSyncs = ignoreSyncs
+	y.mu.Unlock()
+}
+
+func (y *memFS) ResetToSyncedState() {
+	if !y.strict {
+		// noop
+		return
+	}
+	y.mu.Lock()
+	nodes := append([]*memNode(nil), y.root)
+	for len(nodes) > 0 {
+		n := nodes[len(nodes)-1]
+		nodes = nodes[:len(nodes)-1]
+		if n.isDir {
+			n.children = n.syncedChildren
+			for _, v := range n.children {
+				nodes = append(nodes, v)
+			}
+		} else {
+			n.data = n.syncedData
+		}
+	}
 }
 
 // walk walks the directory tree for the fullname, calling f at each step. If
@@ -133,6 +203,7 @@ func (y *memFS) Create(fullname string) (File, error) {
 			dir.children[frag] = n
 			ret = &memFile{
 				n:     n,
+				fs:    y,
 				write: true,
 			}
 		}
@@ -194,13 +265,15 @@ func (y *memFS) open(fullname string, allowEmptyName bool) (File, error) {
 					return errors.New("pebble/vfs: empty file name")
 				}
 				ret = &memFile{
-					n: dir,
+					n:  dir,
+					fs: y,
 				}
 				return nil
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &memFile{
 					n:    n,
+					fs:   y,
 					read: true,
 				}
 			}
@@ -405,6 +478,9 @@ type memNode struct {
 	modTime  time.Time
 	children map[string]*memNode
 	isDir    bool
+
+	syncedData     []byte
+	syncedChildren map[string]*memNode
 }
 
 func (f *memNode) IsDir() bool {
@@ -463,6 +539,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 // memFile is a reader or writer of a node's data, and implements File.
 type memFile struct {
 	n           *memNode
+	fs          *memFS // nil for a standalone memFile
 	rpos        int
 	wpos        int
 	read, write bool
@@ -508,7 +585,7 @@ func (f *memFile) Write(p []byte) (int, error) {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
 	}
 	f.n.modTime = time.Now()
-	if f.wpos + len(p) <= len(f.n.data) {
+	if f.wpos+len(p) <= len(f.n.data) {
 		n := copy(f.n.data[f.wpos:f.wpos+len(p)], p)
 		if n != len(p) {
 			panic("stuff")
@@ -525,5 +602,20 @@ func (f *memFile) Stat() (os.FileInfo, error) {
 }
 
 func (f *memFile) Sync() error {
+	if f.fs != nil && f.fs.strict {
+		f.fs.mu.Lock()
+		if f.fs.ignoreSyncs {
+			return nil
+		}
+		if f.n.isDir {
+			f.n.syncedChildren = make(map[string]*memNode)
+			for k, v := range f.n.children {
+				f.n.syncedChildren[k] = v
+			}
+		} else {
+			f.n.syncedData = append([]byte(nil), f.n.data...)
+		}
+		f.fs.mu.Unlock()
+	}
 	return nil
 }
