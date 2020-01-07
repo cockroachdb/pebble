@@ -14,6 +14,105 @@ import (
 	"testing"
 )
 
+func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
+	var f File
+	for _, tc := range testCases {
+		s := strings.Split(tc, " ")[1:]
+
+		saveF := s[0] == "f" && s[1] == "="
+		if saveF {
+			s = s[2:]
+		}
+
+		fails := s[len(s)-1] == "fails"
+		if fails {
+			s = s[:len(s)-1]
+		}
+
+		var (
+			fi  os.FileInfo
+			g   File
+			err error
+		)
+		switch s[0] {
+		case "create":
+			g, err = fs.Create(s[1])
+		case "link":
+			err = fs.Link(s[1], s[2])
+		case "open":
+			g, err = fs.Open(s[1])
+		case "openDir":
+			g, err = fs.OpenDir(s[1])
+		case "mkdirall":
+			err = fs.MkdirAll(s[1], 0755)
+		case "remove":
+			err = fs.Remove(s[1])
+		case "rename":
+			err = fs.Rename(s[1], s[2])
+		case "reuseForWrite":
+			g, err = fs.ReuseForWrite(s[1], s[2])
+		case "resetToSynced":
+			fs.ResetToSyncedState()
+		case "ignoreSyncs":
+			fs.SetIgnoreSyncs(true)
+		case "stopIgnoringSyncs":
+			fs.SetIgnoreSyncs(false)
+		case "f.write":
+			_, err = f.Write([]byte(s[1]))
+		case "f.sync":
+			err = f.Sync()
+		case "f.read":
+			n, _ := strconv.Atoi(s[1])
+			buf := make([]byte, n)
+			_, err = io.ReadFull(f, buf)
+			if err != nil {
+				break
+			}
+			if got, want := string(buf), s[3]; got != want {
+				t.Fatalf("%q: got %q, want %q", tc, got, want)
+			}
+		case "f.readat":
+			n, _ := strconv.Atoi(s[1])
+			off, _ := strconv.Atoi(s[2])
+			buf := make([]byte, n)
+			_, err = f.ReadAt(buf, int64(off))
+			if err != nil {
+				break
+			}
+			if got, want := string(buf), s[4]; got != want {
+				t.Fatalf("%q: got %q, want %q", tc, got, want)
+			}
+		case "f.close":
+			f, err = nil, f.Close()
+		case "f.stat.name":
+			fi, err = f.Stat()
+			if err != nil {
+				break
+			}
+			if got, want := fi.Name(), s[2]; got != want {
+				t.Fatalf("%q: got %q, want %q", tc, got, want)
+			}
+		default:
+			t.Fatalf("bad test case: %q", tc)
+		}
+
+		if saveF {
+			f, g = g, nil
+		} else if g != nil {
+			g.Close()
+		}
+
+		if fails {
+			if err == nil {
+				t.Fatalf("%q: got nil error, want non-nil", tc)
+			}
+		} else {
+			if err != nil {
+				t.Fatalf("%q: %v", tc, err)
+			}
+		}
+	}
+}
 func TestBasics(t *testing.T) {
 	fs := NewMem()
 	testCases := []string{
@@ -69,93 +168,7 @@ func TestBasics(t *testing.T) {
 		"10b: open /bar/caz/z fails",
 		"10c: open /bar/z",
 	}
-	var f File
-	for _, tc := range testCases {
-		s := strings.Split(tc, " ")[1:]
-
-		saveF := s[0] == "f" && s[1] == "="
-		if saveF {
-			s = s[2:]
-		}
-
-		fails := s[len(s)-1] == "fails"
-		if fails {
-			s = s[:len(s)-1]
-		}
-
-		var (
-			fi  os.FileInfo
-			g   File
-			err error
-		)
-		switch s[0] {
-		case "create":
-			g, err = fs.Create(s[1])
-		case "link":
-			err = fs.Link(s[1], s[2])
-		case "open":
-			g, err = fs.Open(s[1])
-		case "mkdirall":
-			err = fs.MkdirAll(s[1], 0755)
-		case "remove":
-			err = fs.Remove(s[1])
-		case "rename":
-			err = fs.Rename(s[1], s[2])
-		case "reuseForWrite":
-			_, err = fs.ReuseForWrite(s[1], s[2])
-		case "f.write":
-			_, err = f.Write([]byte(s[1]))
-		case "f.read":
-			n, _ := strconv.Atoi(s[1])
-			buf := make([]byte, n)
-			_, err = io.ReadFull(f, buf)
-			if err != nil {
-				break
-			}
-			if got, want := string(buf), s[3]; got != want {
-				t.Fatalf("%q: got %q, want %q", tc, got, want)
-			}
-		case "f.readat":
-			n, _ := strconv.Atoi(s[1])
-			off, _ := strconv.Atoi(s[2])
-			buf := make([]byte, n)
-			_, err = f.ReadAt(buf, int64(off))
-			if err != nil {
-				break
-			}
-			if got, want := string(buf), s[4]; got != want {
-				t.Fatalf("%q: got %q, want %q", tc, got, want)
-			}
-		case "f.close":
-			f, err = nil, f.Close()
-		case "f.stat.name":
-			fi, err = f.Stat()
-			if err != nil {
-				break
-			}
-			if got, want := fi.Name(), s[2]; got != want {
-				t.Fatalf("%q: got %q, want %q", tc, got, want)
-			}
-		default:
-			t.Fatalf("bad test case: %q", tc)
-		}
-
-		if saveF {
-			f, g = g, nil
-		} else if g != nil {
-			g.Close()
-		}
-
-		if fails {
-			if err == nil {
-				t.Fatalf("%q: got nil error, want non-nil", tc)
-			}
-		} else {
-			if err != nil {
-				t.Fatalf("%q: %v", tc, err)
-			}
-		}
-	}
+	runTestCases(t, testCases, fs)
 }
 
 func TestList(t *testing.T) {
@@ -193,7 +206,7 @@ func TestList(t *testing.T) {
 	}
 
 	{
-		got := fs.(*memFS).String()
+		got := fs.String()
 		const want = `          /
        0    a
             bar/
@@ -249,4 +262,114 @@ func TestMemFile(t *testing.T) {
 	if got := string(buf); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
+}
+
+func TestStrictFS(t *testing.T) {
+	fs := NewStrictMem()
+	testCases := []string{
+		// Created file disappears if directory is not synced.
+		"1a: create /foo",
+		"1b: open /foo",
+		"1c: resetToSynced",
+		"1d: open /foo fails",
+
+		// Create directory and a file in it and write and read from it.
+		"2a: mkdirall /bar",
+		"2b: f = create /bar/y",
+		"2c: f.stat.name == y",
+		// Write some data; read it back.
+		"2d: f.write abcde",
+		"2e: f.close",
+		"2f: f = open /bar/y",
+		"2g: f.read 5 == abcde",
+		"2h: f.close",
+		"2i: open /bar",
+
+		// Resetting causes both the directory and file to disappear.
+		"3a: resetToSynced",
+		"3b: openDir /bar fails",
+		"3c: open /bar/y fails",
+
+		// Create the directory and file again. Link the file to another file in the same dir,
+		// and to a file in the root dir. Sync the root dir. After reset, the created dir and the
+		// file in the root dir are the only ones visible.
+		"4a: mkdirall /bar",
+		"4b: create /bar/y",
+		"4c: f = openDir /",
+		"4d: f.sync",
+		"4e: f.close",
+		"4f: link /bar/y /bar/z",
+		"4g: link /bar/y /z",
+		"4h: f = openDir /",
+		"4i: f.sync",
+		"4j: f.close",
+		"4k: resetToSynced",
+		"4l: openDir /bar",
+		"4m: open /bar/y fails",
+		"4n: open /bar/z fails",
+		"4o: open /z",
+
+		// Create the file in the directory again and this time sync /bar directory. The file is
+		// preserved after reset.
+		"5a: create /bar/y",
+		"5b: f = openDir /bar",
+		"5c: f.sync",
+		"5d: f.close",
+		"5e: resetToSynced",
+		"5f: openDir /bar",
+		"5g: open /bar/y",
+
+		// Unsynced data in the file is lost on reset.
+		"5a: f = create /bar/y",
+		"5b: f.write a",
+		"5c: f.sync",
+		"5d: f.write b",
+		"5e: f.close",
+		"5f: f = openDir /bar",
+		"5g: f.sync",
+		"5h: f.close",
+		"5i: resetToSynced",
+		"5j: f = open /bar/y",
+		"5k: f.read 1 = a",
+		"5l: f.read 1 fails",
+		"5m: f.close",
+
+		// reuseForWrite works correctly in strict mode in that unsynced data does not overwrite
+		// previous contents when a reset happens.
+		"6a: f = create /z",
+		"6b: f.write abcdefgh",
+		"6c: f.sync",
+		"6d: f.close",
+		"6e: f = reuseForWrite /z /y",
+		"6f: f.write x",
+		"6g: f.sync",
+		"6h: f.write y", // will be lost
+		"6i: f.close",
+		"6j: f = openDir /",
+		"6k: f.sync",
+		"6l: f.close",
+		"6m: resetToSynced",
+		"6n: f = open /y",
+		"6o: f.read 8 = xbcdefgh",
+		"6p: f.close",
+
+		// Ignore syncs.
+		"7a: f = create /z",
+		"7b: f.write a",
+		"7c: f.sync",
+		"7d: ignoreSyncs",
+		"7e: f.write b",
+		"7f: f.sync",
+		"7g: f.close",
+		"7h: stopIgnoringSyncs",
+		"7e: f = openDir /",
+		"7f: f.sync",
+		"7g: f.close",
+		"7h: resetToSynced",
+		"7i: f = open /z",
+		"7j: f.read 1 = a",
+		"7k: f.read 1 fails",
+		"7l: f.close",
+	}
+	runTestCases(t, testCases, fs)
 }

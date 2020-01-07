@@ -20,8 +20,8 @@ import (
 const sep = "/"
 
 // NewMem returns a new memory-backed FS implementation.
-func NewMem() FS {
-	return &memFS{
+func NewMem() *MemFS {
+	return &MemFS{
 		root: &memNode{
 			children: make(map[string]*memNode),
 			isDir:    true,
@@ -29,33 +29,93 @@ func NewMem() FS {
 	}
 }
 
+// NewStrictMem returns a "strict" memory-backed FS implementation. The behaviour is strict wrt
+// needing a Sync() call on files or directories for the state changes to be finalized. Any
+// changes that are not finalized are visible to reads until MemFS.ResetToSyncedState() is called,
+// at which point they are discarded and no longer visible.
+//
+// Expected usage:
+//  strictFS := NewStrictMem()
+//  db := Open(..., &Options{FS: strictFS})
+//  // Do and commit various operations.
+//  ...
+//  // Prevent any more changes to finalized state.
+//  strictFS.SetIgnoreSyncs(true)
+//  // This will finish any ongoing background flushes, compactions but none of these writes will
+//  // be finalized since syncs are being ignored.
+//  db.Close()
+//  // Discard unsynced state.
+//  strictFS.ResetToSyncedState()
+//  // Allow changes to finalized state.
+//  strictFS.SetIgnoreSyncs(false)
+//  // Open the DB. This DB should have the same state as if the earlier strictFS operations and
+//  // db.Close() were not called.
+//  db := Open(..., &Options{FS: strictFS})
+func NewStrictMem() *MemFS {
+	return &MemFS{
+		root: &memNode{
+			children: make(map[string]*memNode),
+			isDir:    true,
+		},
+		strict: true,
+	}
+}
+
 // NewMemFile returns a memory-backed File implementation. The memory-backed
 // file takes ownership of data.
 func NewMemFile(data []byte) File {
+	n := &memNode{}
+	n.mu.data = data
+	n.mu.modTime = time.Now()
 	return &memFile{
-		n: &memNode{
-			data:    data,
-			modTime: time.Now(),
-		},
+		n:    n,
 		read: true,
 	}
 }
 
-// memFS implements FS.
-type memFS struct {
+// MemFS implements FS.
+type MemFS struct {
 	mu   sync.Mutex
 	root *memNode
+
+	strict      bool
+	ignoreSyncs bool
 }
 
-var _ FS = &memFS{}
+var _ FS = &MemFS{}
 
-func (y *memFS) String() string {
+// String dumps the contents of the MemFS.
+func (y *MemFS) String() string {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
 	s := new(bytes.Buffer)
 	y.root.dump(s, 0)
 	return s.String()
+}
+
+// SetIgnoreSyncs sets the MemFS.ignoreSyncs field. See the usage comment with NewStrictMem() for
+// details.
+func (y *MemFS) SetIgnoreSyncs(ignoreSyncs bool) {
+	y.mu.Lock()
+	if !y.strict {
+		// noop
+		return
+	}
+	y.ignoreSyncs = ignoreSyncs
+	y.mu.Unlock()
+}
+
+// ResetToSyncedState discards state in the FS that is not synced. See the usage comment with
+// NewStrictMem() for details.
+func (y *MemFS) ResetToSyncedState() {
+	if !y.strict {
+		// noop
+		return
+	}
+	y.mu.Lock()
+	y.root.resetToSyncedState()
+	y.mu.Unlock()
 }
 
 // walk walks the directory tree for the fullname, calling f at each step. If
@@ -74,7 +134,7 @@ func (y *memFS) String() string {
 //   - "/", "y", false
 //   - "/y/", "z", false
 //   - "/y/z/", "", true
-func (y *memFS) walk(fullname string, f func(dir *memNode, frag string, final bool) error) error {
+func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bool) error) error {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
@@ -122,7 +182,8 @@ func (y *memFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 	return nil
 }
 
-func (y *memFS) Create(fullname string) (File, error) {
+// Create implements FS.Create.
+func (y *MemFS) Create(fullname string) (File, error) {
 	var ret *memFile
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -133,6 +194,7 @@ func (y *memFS) Create(fullname string) (File, error) {
 			dir.children[frag] = n
 			ret = &memFile{
 				n:     n,
+				fs:    y,
 				write: true,
 			}
 		}
@@ -144,7 +206,8 @@ func (y *memFS) Create(fullname string) (File, error) {
 	return ret, nil
 }
 
-func (y *memFS) Link(oldname, newname string) error {
+// Link implements FS.Link.
+func (y *MemFS) Link(oldname, newname string) error {
 	var n *memNode
 	err := y.walk(oldname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -185,7 +248,7 @@ func (y *memFS) Link(oldname, newname string) error {
 	})
 }
 
-func (y *memFS) open(fullname string, allowEmptyName bool) (File, error) {
+func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 	var ret *memFile
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -194,13 +257,15 @@ func (y *memFS) open(fullname string, allowEmptyName bool) (File, error) {
 					return errors.New("pebble/vfs: empty file name")
 				}
 				ret = &memFile{
-					n: dir,
+					n:  dir,
+					fs: y,
 				}
 				return nil
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &memFile{
 					n:    n,
+					fs:   y,
 					read: true,
 				}
 			}
@@ -220,15 +285,18 @@ func (y *memFS) open(fullname string, allowEmptyName bool) (File, error) {
 	return ret, nil
 }
 
-func (y *memFS) Open(fullname string, opts ...OpenOption) (File, error) {
+// Open implements FS.Open.
+func (y *MemFS) Open(fullname string, opts ...OpenOption) (File, error) {
 	return y.open(fullname, false /* allowEmptyName */)
 }
 
-func (y *memFS) OpenDir(fullname string) (File, error) {
+// OpenDir implements FS.OpenDir.
+func (y *MemFS) OpenDir(fullname string) (File, error) {
 	return y.open(fullname, true /* allowEmptyName */)
 }
 
-func (y *memFS) Remove(fullname string) error {
+// Remove implements FS.Remove.
+func (y *MemFS) Remove(fullname string) error {
 	return y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
@@ -247,7 +315,8 @@ func (y *memFS) Remove(fullname string) error {
 	})
 }
 
-func (y *memFS) RemoveAll(fullname string) error {
+// RemoveAll implements FS.RemoveAll.
+func (y *MemFS) RemoveAll(fullname string) error {
 	return y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
@@ -263,7 +332,8 @@ func (y *memFS) RemoveAll(fullname string) error {
 	})
 }
 
-func (y *memFS) Rename(oldname, newname string) error {
+// Rename implements FS.Rename.
+func (y *MemFS) Rename(oldname, newname string) error {
 	var n *memNode
 	err := y.walk(oldname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -297,7 +367,8 @@ func (y *memFS) Rename(oldname, newname string) error {
 	})
 }
 
-func (y *memFS) ReuseForWrite(oldname, newname string) (File, error) {
+// ReuseForWrite implements FS.ReuseForWrite.
+func (y *MemFS) ReuseForWrite(oldname, newname string) (File, error) {
 	if err := y.Rename(oldname, newname); err != nil {
 		return nil, err
 	}
@@ -313,7 +384,8 @@ func (y *memFS) ReuseForWrite(oldname, newname string) (File, error) {
 	return f, nil
 }
 
-func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
+// MkdirAll implements FS.MkdirAll.
+func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 	return y.walk(dirname, func(dir *memNode, frag string, final bool) error {
 		if frag == "" {
 			if final {
@@ -341,14 +413,16 @@ func (y *memFS) MkdirAll(dirname string, perm os.FileMode) error {
 	})
 }
 
-func (y *memFS) Lock(fullname string) (io.Closer, error) {
+// Lock implements FS.Lock.
+func (y *MemFS) Lock(fullname string) (io.Closer, error) {
 	// FS.Lock excludes other processes, but other processes cannot see this
 	// process' memory. We translate Lock into Create so that have the normal
 	// detection of non-existent directory paths.
 	return y.Create(fullname)
 }
 
-func (y *memFS) List(dirname string) ([]string, error) {
+// List implements FS.List.
+func (y *MemFS) List(dirname string) ([]string, error) {
 	if !strings.HasSuffix(dirname, sep) {
 		dirname += sep
 	}
@@ -368,7 +442,8 @@ func (y *memFS) List(dirname string) ([]string, error) {
 	return ret, err
 }
 
-func (y *memFS) Stat(name string) (os.FileInfo, error) {
+// Stat implements FS.Stat.
+func (y *MemFS) Stat(name string) (os.FileInfo, error) {
 	f, err := y.Open(name)
 	if err != nil {
 		if pe, ok := err.(*os.PathError); ok {
@@ -380,31 +455,47 @@ func (y *memFS) Stat(name string) (os.FileInfo, error) {
 	return f.Stat()
 }
 
-func (*memFS) PathBase(p string) string {
-	// Note that memFS uses forward slashes for its separator, hence the use of
+// PathBase implements FS.PathBase.
+func (*MemFS) PathBase(p string) string {
+	// Note that MemFS uses forward slashes for its separator, hence the use of
 	// path.Base, not filepath.Base.
 	return path.Base(p)
 }
 
-func (*memFS) PathJoin(elem ...string) string {
-	// Note that memFS uses forward slashes for its separator, hence the use of
+// PathJoin implements FS.PathJoin.
+func (*MemFS) PathJoin(elem ...string) string {
+	// Note that MemFS uses forward slashes for its separator, hence the use of
 	// path.Join, not filepath.Join.
 	return path.Join(elem...)
 }
 
-func (*memFS) PathDir(p string) string {
-	// Note that memFS uses forward slashes for its separator, hence the use of
+// PathDir implements FS.PathDir.
+func (*MemFS) PathDir(p string) string {
+	// Note that MemFS uses forward slashes for its separator, hence the use of
 	// path.Dir, not filepath.Dir.
 	return path.Dir(p)
 }
 
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
-	name     string
-	data     []byte
-	modTime  time.Time
-	children map[string]*memNode
-	isDir    bool
+	name  string
+	isDir bool
+
+	// Mutable state.
+	// - For a file: data, syncedDate, modTime: A file is only being mutated by a single goroutine,
+	//   but there can be concurrent readers e.g. DB.Checkpoint() which can read WAL or MANIFEST
+	//   files that are being written to. Additionally Sync() calls can be concurrent with writing.
+	// - For a directory: children and syncedChildren. Concurrent writes are possible, and
+	//   these are protected using MemFS.mu.
+	mu struct {
+		sync.Mutex
+		data       []byte
+		syncedData []byte
+		modTime    time.Time
+	}
+
+	children       map[string]*memNode
+	syncedChildren map[string]*memNode
 }
 
 func (f *memNode) IsDir() bool {
@@ -412,7 +503,9 @@ func (f *memNode) IsDir() bool {
 }
 
 func (f *memNode) ModTime() time.Time {
-	return f.modTime
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.mu.modTime
 }
 
 func (f *memNode) Mode() os.FileMode {
@@ -427,7 +520,9 @@ func (f *memNode) Name() string {
 }
 
 func (f *memNode) Size() int64 {
-	return int64(len(f.data))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return int64(len(f.mu.data))
 }
 
 func (f *memNode) Sys() interface{} {
@@ -438,7 +533,9 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	if f.isDir {
 		w.WriteString("          ")
 	} else {
-		fmt.Fprintf(w, "%8d  ", len(f.data))
+		f.mu.Lock()
+		fmt.Fprintf(w, "%8d  ", len(f.mu.data))
+		f.mu.Unlock()
 	}
 	for i := 0; i < level; i++ {
 		w.WriteString("  ")
@@ -460,9 +557,26 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	}
 }
 
+func (f *memNode) resetToSyncedState() {
+	if f.isDir {
+		f.children = make(map[string]*memNode)
+		for k, v := range f.syncedChildren {
+			f.children[k] = v
+		}
+		for _, v := range f.children {
+			v.resetToSyncedState()
+		}
+	} else {
+		f.mu.Lock()
+		f.mu.data = append([]byte(nil), f.mu.syncedData...)
+		f.mu.Unlock()
+	}
+}
+
 // memFile is a reader or writer of a node's data, and implements File.
 type memFile struct {
 	n           *memNode
+	fs          *MemFS // nil for a standalone memFile
 	rpos        int
 	wpos        int
 	read, write bool
@@ -479,10 +593,12 @@ func (f *memFile) Read(p []byte) (int, error) {
 	if f.n.isDir {
 		return 0, errors.New("pebble/vfs: cannot read a directory")
 	}
-	if f.rpos >= len(f.n.data) {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	if f.rpos >= len(f.n.mu.data) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.data[f.rpos:])
+	n := copy(p, f.n.mu.data[f.rpos:])
 	f.rpos += n
 	return n, nil
 }
@@ -494,10 +610,12 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 	if f.n.isDir {
 		return 0, errors.New("pebble/vfs: cannot read a directory")
 	}
-	if off >= int64(len(f.n.data)) {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	if off >= int64(len(f.n.mu.data)) {
 		return 0, io.EOF
 	}
-	return copy(p, f.n.data[off:]), nil
+	return copy(p, f.n.mu.data[off:]), nil
 }
 
 func (f *memFile) Write(p []byte) (int, error) {
@@ -507,14 +625,16 @@ func (f *memFile) Write(p []byte) (int, error) {
 	if f.n.isDir {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
 	}
-	f.n.modTime = time.Now()
-	if f.wpos + len(p) <= len(f.n.data) {
-		n := copy(f.n.data[f.wpos:f.wpos+len(p)], p)
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	f.n.mu.modTime = time.Now()
+	if f.wpos+len(p) <= len(f.n.mu.data) {
+		n := copy(f.n.mu.data[f.wpos:f.wpos+len(p)], p)
 		if n != len(p) {
 			panic("stuff")
 		}
 	} else {
-		f.n.data = append(f.n.data[:f.wpos], p...)
+		f.n.mu.data = append(f.n.mu.data[:f.wpos], p...)
 	}
 	f.wpos += len(p)
 	return len(p), nil
@@ -525,5 +645,22 @@ func (f *memFile) Stat() (os.FileInfo, error) {
 }
 
 func (f *memFile) Sync() error {
+	if f.fs != nil && f.fs.strict {
+		f.fs.mu.Lock()
+		defer f.fs.mu.Unlock()
+		if f.fs.ignoreSyncs {
+			return nil
+		}
+		if f.n.isDir {
+			f.n.syncedChildren = make(map[string]*memNode)
+			for k, v := range f.n.children {
+				f.n.syncedChildren[k] = v
+			}
+		} else {
+			f.n.mu.Lock()
+			f.n.mu.syncedData = append([]byte(nil), f.n.mu.data...)
+			f.n.mu.Unlock()
+		}
+	}
 	return nil
 }
