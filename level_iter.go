@@ -148,6 +148,7 @@ func (l *levelIter) init(
 	files []fileMetadata,
 	bytesIterated *uint64,
 ) {
+	l.err = nil
 	l.logger = opts.getLogger()
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
