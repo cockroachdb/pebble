@@ -144,12 +144,11 @@ func (i *singleLevelIterator) initBounds() {
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
 func (i *singleLevelIterator) loadBlock() bool {
+	// Ensure the data block iterator is invalidated even if loading of the block
+	// fails.
+	i.data.invalidate()
 	if !i.index.Valid() {
 		i.err = i.index.err
-		// TODO(peter): Need to test that seeking to a key outside of the sstable
-		// invalidates the iterator.
-		i.data.offset = 0
-		i.data.restarts = 0
 		return false
 	}
 	// Load the next block.
@@ -211,16 +210,20 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 
 	// Check prefix bloom filter.
 	if i.reader.tableFilter != nil {
-		data, err := i.reader.readFilter()
-		if err != nil {
+		var data block
+		data, i.err = i.reader.readFilter()
+		if i.err != nil {
+			i.data.invalidate()
 			return nil, nil
 		}
 		if !i.reader.tableFilter.mayContain(data, prefix) {
+			i.data.invalidate()
 			return nil, nil
 		}
 	}
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
+		i.data.invalidate()
 		return nil, nil
 	}
 	if !i.loadBlock() {
@@ -279,6 +282,7 @@ func (i *singleLevelIterator) First() (*InternalKey, []byte) {
 	}
 
 	if ikey, _ := i.index.First(); ikey == nil {
+		i.data.invalidate()
 		return nil, nil
 	}
 	if !i.loadBlock() {
@@ -303,6 +307,7 @@ func (i *singleLevelIterator) Last() (*InternalKey, []byte) {
 	}
 
 	if ikey, _ := i.index.Last(); ikey == nil {
+		i.data.invalidate()
 		return nil, nil
 	}
 	if !i.loadBlock() {
@@ -391,6 +396,14 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 		}
 	}
 	return nil, nil
+}
+
+// Returns true if the data block iterator points to a valid entry. If a
+// positioning operation (e.g. SeekGE, SeekLT, Next, Prev, etc) returns (nil,
+// nil) and valid() is true, the iterator has reached either the upper or lower
+// bound.
+func (i *singleLevelIterator) valid() bool {
+	return i.data.Valid()
 }
 
 // Error implements internalIterator.Error, as documented in the pebble
@@ -718,6 +731,11 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 			i.err = i.index.err
 			break
 		}
+		if i.singleLevelIterator.valid() {
+			// The iterator is positioned at valid record in the current data block
+			// which implies the previous positioning call reached the upper bound.
+			return nil, nil
+		}
 		if ikey, _ := i.topLevelIndex.Next(); ikey == nil {
 			return nil, nil
 		}
@@ -736,6 +754,11 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 		if i.index.err != nil {
 			i.err = i.index.err
 			break
+		}
+		if i.singleLevelIterator.valid() {
+			// The iterator is positioned at valid record in the current data block
+			// which implies the previous positioning call reached the lower bound.
+			return nil, nil
 		}
 		if ikey, _ := i.topLevelIndex.Prev(); ikey == nil {
 			return nil, nil
