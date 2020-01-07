@@ -289,7 +289,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 
 		var rangeDelIter internalIterator
 		l.iter, rangeDelIter, l.err = l.newIters(f, &l.tableOpts, l.bytesIterated)
-		if l.err != nil || l.iter == nil {
+		if l.err != nil {
 			return false
 		}
 		if l.rangeDelIter != nil {

@@ -31,7 +31,12 @@ type mergingIterLevel struct {
 	smallestUserKey, largestUserKey  []byte
 	isLargestUserKeyRangeDelSentinel bool
 
-	// tombstone caches the tombstone rangeDelIter is currently pointed at.
+	// tombstone caches the tombstone rangeDelIter is currently pointed at. If
+	// tombstone.Empty() is true, there are no further tombstones within the
+	// current sstable in the current iterator direction. The cached tombstone is
+	// only valid for the levels in the range [0,heap[0].index]. This avoids
+	// positioning tombstones at lower levels which cannot possibly shadow the
+	// current key.
 	tombstone rangedel.Tombstone
 }
 
@@ -428,12 +433,18 @@ func (m *mergingIter) switchToMaxHeap() {
 
 // Steps to the next entry. item is the current top item in the heap.
 func (m *mergingIter) nextEntry(item *mergingIterItem) {
-	oldTopLevel := item.index
 	l := &m.levels[item.index]
+	oldTopLevel := item.index
+	oldRangeDelIter := l.rangeDelIter
 	if l.iterKey, l.iterValue = l.iter.Next(); l.iterKey != nil {
 		item.key, item.value = *l.iterKey, l.iterValue
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
+		}
+		if l.rangeDelIter != oldRangeDelIter {
+			// The rangeDelIter changed which indicates that the l.iter moved to the
+			// next sstable. We have to update the tombstone for oldTopLevel as well.
+			oldTopLevel--
 		}
 	} else {
 		m.err = l.iter.Error()
@@ -441,10 +452,10 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 			m.heap.pop()
 		}
 	}
-	// TODO(sbhola): this is unnecessary -- we are inconsistent wrt maintaining the position
-	// invariant of the range deletion iterators. We are maintaining it for nextEntry()
-	// but not in seek. And isNextEntryDeleted() ensures that if the tombstone is too small
-	// that we do rangedel.SeekGE().
+
+	// The cached tombstones are only valid for the levels
+	// [0,oldTopLevel]. Updated the cached tombstones for any levels in the range
+	// [oldTopLevel+1,heap[0].index].
 	m.initMinRangeDelIters(oldTopLevel)
 }
 
@@ -461,6 +472,8 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	for level := 0; level <= item.index; level++ {
 		l := &m.levels[level]
 		if l.rangeDelIter == nil || l.tombstone.Empty() {
+			// If l.tombstone.Empty() is true, there are no further tombstones in the
+			// current sstable in the current (forward) iteration direction.
 			continue
 		}
 		if m.heap.cmp(l.tombstone.End, item.key.UserKey) <= 0 {
@@ -555,12 +568,19 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 
 // Steps to the prev entry. item is the current top item in the heap.
 func (m *mergingIter) prevEntry(item *mergingIterItem) {
-	oldTopLevel := item.index
 	l := &m.levels[item.index]
+	oldTopLevel := item.index
+	oldRangeDelIter := l.rangeDelIter
 	if l.iterKey, l.iterValue = l.iter.Prev(); l.iterKey != nil {
 		item.key, item.value = *l.iterKey, l.iterValue
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
+		}
+		if l.rangeDelIter != oldRangeDelIter && l.rangeDelIter != nil {
+			// The rangeDelIter changed which indicates that the l.iter moved to the
+			// previous sstable. We have to update the tombstone for oldTopLevel as
+			// well.
+			oldTopLevel--
 		}
 	} else {
 		m.err = l.iter.Error()
@@ -568,10 +588,10 @@ func (m *mergingIter) prevEntry(item *mergingIterItem) {
 			m.heap.pop()
 		}
 	}
-	// TODO(sbhola): this is unnecessary -- we are inconsistent wrt maintaining the position
-	// invariant of the range deletion iterators. We are maintaining it for prevEntry()
-	// but not in seek. And isPrevEntryDeleted() ensures that if the tombstone is too large
-	// that we do rangedel.SeekLE().
+
+	// The cached tombstones are only valid for the levels
+	// [0,oldTopLevel]. Updated the cached tombstones for any levels in the range
+	// [oldTopLevel+1,heap[0].index].
 	m.initMaxRangeDelIters(oldTopLevel)
 }
 
@@ -588,6 +608,8 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 	for level := 0; level <= item.index; level++ {
 		l := &m.levels[level]
 		if l.rangeDelIter == nil || l.tombstone.Empty() {
+			// If l.tombstone.Empty() is true, there are no further tombstones in the
+			// current sstable in the current (reverse) iteration direction.
 			continue
 		}
 		if m.heap.cmp(item.key.UserKey, l.tombstone.Start.UserKey) < 0 {
@@ -956,7 +978,7 @@ func (m *mergingIter) DebugString() string {
 	sep := ""
 	for m.heap.len() > 0 {
 		item := m.heap.pop()
-		fmt.Fprintf(&buf, "%s%s:%d", sep, item.key.UserKey, item.key.SeqNum())
+		fmt.Fprintf(&buf, "%s%s", sep, item.key)
 		sep = " "
 	}
 	if m.dir == 1 {

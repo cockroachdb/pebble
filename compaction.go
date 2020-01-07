@@ -672,6 +672,9 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 				rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound, upperBound)
 			}
 		}
+		if rangeDelIter == nil {
+			rangeDelIter = emptyIter
+		}
 		return rangeDelIter, nil, err
 	}
 
