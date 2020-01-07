@@ -4,10 +4,7 @@
 
 package pebble
 
-import (
-	"log"
-	"sync/atomic"
-)
+import "sync/atomic"
 
 // readState encapsulates the state needed for reading (the current version and
 // list of memtables). Loading the readState is done without grabbing
@@ -100,7 +97,7 @@ func (d *DB) updateReadStateLocked(checker func() error) {
 	d.readState.Unlock()
 	if checker != nil {
 		if err := checker(); err != nil {
-			log.Fatalf("checker failed with error: %s", err)
+			d.opts.Logger.Fatalf("checker failed with error: %s", err)
 		}
 	}
 	if old != nil {
