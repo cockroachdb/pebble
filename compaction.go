@@ -1238,22 +1238,24 @@ func (d *DB) runCompaction(
 			// This is not the first output file. Bound the smallest range key by the
 			// previous tables largest key.
 			prevMeta := &ve.NewFiles[n-2].Meta
-			if writerMeta.SmallestRange.UserKey != nil &&
-				d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey) <= 0 {
-				// The range boundary user key is less than or equal to the previous
-				// table's largest key. We need the tables to be key-space partitioned,
-				// so force the boundary to a key that we know is larger than the
-				// previous key.
-				//
-				// We use seqnum zero since seqnums are in descending order, and our
-				// goal is to ensure this forged key does not overlap with the previous
-				// file. `InternalKeyKindRangeDelete` is actually the first key kind as
-				// key kinds are also in descending order. But, this is OK because
-				// choosing seqnum zero is already enough to prevent overlap (the
-				// previous file could not end with a key at seqnum zero if this file
-				// had a tombstone extending into it).
-				writerMeta.SmallestRange = base.MakeInternalKey(
-					prevMeta.Largest.UserKey, 0, InternalKeyKindRangeDelete)
+			if writerMeta.SmallestRange.UserKey != nil {
+				c := d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey)
+				if c < 0 || (c == 0 && prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel) {
+					// The range boundary user key is less than or equal to the previous
+					// table's largest key. We need the tables to be key-space partitioned,
+					// so force the boundary to a key that we know is larger than the
+					// previous key.
+					//
+					// We use seqnum zero since seqnums are in descending order, and our
+					// goal is to ensure this forged key does not overlap with the previous
+					// file. `InternalKeyKindRangeDelete` is actually the first key kind as
+					// key kinds are also in descending order. But, this is OK because
+					// choosing seqnum zero is already enough to prevent overlap (the
+					// previous file could not end with a key at seqnum zero if this file
+					// had a tombstone extending into it).
+					writerMeta.SmallestRange = base.MakeInternalKey(
+						prevMeta.Largest.UserKey, 0, InternalKeyKindRangeDelete)
+				}
 			}
 		}
 
