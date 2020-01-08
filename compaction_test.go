@@ -778,7 +778,14 @@ func TestManualCompaction(t *testing.T) {
 			return runLSMCmd(td, d)
 
 		case "iter":
-			iter := d.NewIter(nil)
+			// TODO(peter): runDBDefineCmd doesn't properly update the visible
+			// sequence number. So we have to use a snapshot with a very large
+			// sequence number, otherwise the DB appears empty.
+			snap := Snapshot{
+				db:     d,
+				seqNum: InternalKeySeqNumMax,
+			}
+			iter := snap.NewIter(nil)
 			defer iter.Close()
 			return runIterCmd(td, iter)
 

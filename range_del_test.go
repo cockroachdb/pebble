@@ -147,7 +147,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	expectLSM(`
 1:
   8:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
-  9:[b#1,SET-d#72057594037927935,RANGEDEL]
+  9:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	// Compact again to move one of the tables to L2.
@@ -158,7 +158,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 1:
   8:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  9:[b#1,SET-d#72057594037927935,RANGEDEL]
+  9:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	// Write "b" and "c" to a new table.
@@ -177,7 +177,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 1:
   8:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  9:[b#1,SET-d#72057594037927935,RANGEDEL]
+  9:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	// "b" is still visible at this point as it should be.
