@@ -7,7 +7,6 @@ package rangedel
 import (
 	"bytes"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -88,21 +87,7 @@ func TestSeek(t *testing.T) {
 					return err.Error()
 				}
 				tombstone := seek(cmp, iter, []byte(parts[0]), seq)
-				fmt.Fprintf(&buf, "%s",
-					strings.TrimSpace(formatTombstones([]Tombstone{tombstone})))
-				// Check that the returned tombstone and the tombstone the iterator is
-				// pointed at are identical.
-				var iTombstone Tombstone
-				if iter.Valid() {
-					iTombstone = Tombstone{
-						Start: *iter.Key(),
-						End:   iter.Value(),
-					}
-				}
-				if !reflect.DeepEqual(tombstone, iTombstone) {
-					fmt.Fprintf(&buf, " [%s]",
-						strings.TrimSpace(formatTombstones([]Tombstone{tombstone})))
-				}
+				fmt.Fprintf(&buf, "%s", strings.TrimSpace(formatTombstones([]Tombstone{tombstone})))
 				fmt.Fprintf(&buf, "\n")
 			}
 			return buf.String()
