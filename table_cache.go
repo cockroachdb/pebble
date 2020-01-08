@@ -205,20 +205,26 @@ func (c *tableCacheShard) newIters(
 //
 // c.mu must be held when calling this.
 func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
+	c.unlinkNode(n)
+	c.unrefNode(n)
+}
+
+// unlinkNode removes a node from the tableCacheShard, leaving the shard
+// reference in place.
+//
+// c.mu must be held when calling this.
+func (c *tableCacheShard) unlinkNode(n *tableCacheNode) {
 	delete(c.mu.nodes, n.meta.FileNum)
 	n.next.prev = n.prev
 	n.prev.next = n.next
 	n.prev = nil
 	n.next = nil
-	c.unrefNode(n)
 }
 
 // unrefNode decrements the reference count for the specified node, releasing
 // it if the reference count fell to 0. Note that the node has a reference if
 // it is present in tableCacheShard.mu.nodes, so a reference count of 0 means the
 // node has already been removed from that map.
-//
-// Returns true if the node was released and false otherwise.
 func (c *tableCacheShard) unrefNode(n *tableCacheNode) {
 	if atomic.AddInt32(&n.refCount, -1) == 0 {
 		c.releasing.Add(1)
@@ -321,10 +327,27 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 
 func (c *tableCacheShard) evict(fileNum uint64) {
 	c.mu.Lock()
-	if n := c.mu.nodes[fileNum]; n != nil {
-		c.releaseNode(n)
+
+	n := c.mu.nodes[fileNum]
+	release := false
+	if n != nil {
+		// NB: This is equivalent to tableCacheShard.releaseNode(), but we perform
+		// the tableCacheNode.release() call synchronously below to ensure the
+		// sstable file descriptor is closed before returning. Note that
+		// tableCacheShard.releasing needs to be incremented while holding
+		// tableCacheShard.mu in order to avoid a race with Close()
+		c.unlinkNode(n)
+		if atomic.AddInt32(&n.refCount, -1) == 0 {
+			c.releasing.Add(1)
+			release = true
+		}
 	}
+
 	c.mu.Unlock()
+
+	if release {
+		n.release(c)
+	}
 
 	c.opts.Cache.EvictFile(c.cacheID, fileNum)
 }

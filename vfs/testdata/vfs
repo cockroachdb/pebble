@@ -10,6 +10,7 @@ remove b
 ----
 link: a -> b [file does not exist]
 create: a [<nil>]
+close: a [<nil>]
 link: a -> b [<nil>]
 link: a -> b [file already exists]
 link: c -> d [file does not exist]
@@ -23,6 +24,7 @@ link a b
 link-or-copy a b
 ----
 create: a [<nil>]
+close: a [<nil>]
 link: a -> b [file already exists]
 link: a -> b [file already exists]
 
@@ -32,6 +34,7 @@ link a b
 link-or-copy a b
 ----
 create: a [<nil>]
+close: a [<nil>]
 link: a -> b [file does not exist]
 link: a -> b [file does not exist]
 
@@ -41,6 +44,7 @@ link a b
 link-or-copy a b
 ----
 create: a [<nil>]
+close: a [<nil>]
 link: a -> b [permission denied]
 link: a -> b [permission denied]
 
@@ -50,6 +54,7 @@ link a b
 link-or-copy a b
 ----
 create: a [<nil>]
+close: a [<nil>]
 link: a -> b [random]
 link: a -> b [random]
 open: a [<nil>]
@@ -66,8 +71,10 @@ create d/b/c
 ----
 mkdir: d [<nil>]
 create: d/a [<nil>]
+close: a [<nil>]
 mkdir: d/b [<nil>]
 create: d/b/c [<nil>]
+close: c [<nil>]
 
 define
 clone d e

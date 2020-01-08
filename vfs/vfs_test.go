@@ -163,7 +163,8 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 					if len(parts) != 2 {
 						return fmt.Sprintf("create <name>")
 					}
-					_, _ = fs.Create(fs.PathJoin(dir, parts[1]))
+					f, _ := fs.Create(fs.PathJoin(dir, parts[1]))
+					f.Close()
 
 				case "link":
 					if len(parts) != 3 {
