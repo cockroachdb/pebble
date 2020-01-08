@@ -95,7 +95,6 @@ func TestIngestLoadRand(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer f.Close()
 
 			keys := make([]InternalKey, 1+rng.Intn(100))
 			for i := range keys {

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"runtime"
 	"sort"
@@ -630,7 +631,6 @@ func TestCompaction(t *testing.T) {
 				if err != nil {
 					return "", "", fmt.Errorf("Open: %v", err)
 				}
-				defer f.Close()
 				r, err := sstable.NewReader(f, sstable.ReaderOptions{})
 				if err != nil {
 					return "", "", fmt.Errorf("NewReader: %v", err)
@@ -713,6 +713,14 @@ func TestCompaction(t *testing.T) {
 	}
 }
 
+type noLinkFS struct {
+	vfs.FS
+}
+
+func (fs noLinkFS) Link(oldname, newname string) error {
+	return os.ErrInvalid
+}
+
 func TestManualCompaction(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
@@ -724,7 +732,11 @@ func TestManualCompaction(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, err = Open("", &Options{
-			FS:         mem,
+			// NB: We need to disable hard links for this test as the combination of
+			// CheckLevels and the deletion of the files after ingestion is
+			// incompatible because CheckLevels causes the files to get loaded into
+			// the table cache and memFS prohibits removing open files.
+			FS:         noLinkFS{mem},
 			DebugCheck: true,
 		})
 		if err != nil {
