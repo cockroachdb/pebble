@@ -7,7 +7,6 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,7 +23,7 @@ func TestCheckLevelsBasics(t *testing.T) {
 	testCases := []string{"db-stage-1", "db-stage-2", "db-stage-3", "db-stage-4"}
 	for _, tc := range testCases {
 		t.Run(tc, func(t *testing.T) {
-			log.Printf("%s", t.Name())
+			t.Logf("%s", t.Name())
 			fs := vfs.NewMem()
 			_, err := vfs.Clone(vfs.Default, fs, filepath.Join("testdata", tc), tc)
 			if err != nil {
