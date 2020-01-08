@@ -286,3 +286,35 @@ z 2
 3:                   s------z
 2:             m-----s
 1:          j--m
+
+build
+1: a-c
+3: a-c
+5: a-c
+5: c-e
+----
+5: a-c
+3: a-c
+1: a-c
+5:   c-e
+
+# Regression test for a bug where seek-le was failing to find the most
+# recent version of a tombstone. The problematic case was "seek-le c
+# 4". The seeking code was finding the tombstone c-e#5, determining it
+# wasn't visible and then return the immediately preceding tombstone
+# a-c#1, instead of the correct tombstone a-c#3.
+
+seek-le
+c 1
+c 2
+c 3
+c 4
+c 5
+c 6
+----
+<empty>
+1: a-c
+1: a-c
+3: a-c
+3: a-c
+5:   c-e
