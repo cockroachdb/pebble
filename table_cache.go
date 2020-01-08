@@ -426,7 +426,6 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 			n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
 		}
 	}
-	close(n.loaded)
 	if n.err != nil {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -436,6 +435,7 @@ func (n *tableCacheNode) load(c *tableCacheShard) {
 			c.releaseNode(n)
 		}
 	}
+	close(n.loaded)
 }
 
 func (n *tableCacheNode) release(c *tableCacheShard) {
