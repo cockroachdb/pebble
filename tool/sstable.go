@@ -6,6 +6,7 @@ package tool
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"text/tabwriter"
 
@@ -38,6 +39,7 @@ type sstableT struct {
 	fmtValue formatter
 	start    key
 	end      key
+	filter   key
 	count    int64
 	verbose  bool
 }
@@ -125,6 +127,8 @@ inclusive-inclusive range specified by --start and --end.
 		cmd.Flags().Var(
 			&s.end, "end", "end key for the range")
 	}
+	s.Scan.Flags().Var(
+		&s.filter, "filter", "only output matching keys and range tombstones containing key")
 	s.Scan.Flags().Int64Var(
 		&s.count, "count", 0, "key count for scan (0 is unlimited)")
 
@@ -142,300 +146,348 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
-	for _, arg := range args {
-		func() {
-			f, err := s.opts.FS.Open(arg)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
+	s.foreachSstable(args, func(arg string) {
+		f, err := s.opts.FS.Open(arg)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
 
-			fmt.Fprintf(stdout, "%s\n", arg)
+		fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := s.newReader(f)
+		r, err := s.newReader(f)
 
-			if err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-				return
-			}
-			defer r.Close()
+		if err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+			return
+		}
+		defer r.Close()
 
-			// Update the internal formatter if this comparator has one specified.
-			s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+		// Update the internal formatter if this comparator has one specified.
+		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 
-			iter := r.NewIter(nil, nil)
-			var lastKey base.InternalKey
-			for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
-				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
-					fmt.Fprintf(stdout, "WARNING: OUT OF ORDER KEYS!\n")
-					if s.fmtKey.spec != "null" {
-						fmt.Fprintf(stdout, "    %s >= %s\n",
-							lastKey.Pretty(s.fmtKey.fn), key.Pretty(s.fmtKey.fn))
-					}
+		iter := r.NewIter(nil, nil)
+		var lastKey base.InternalKey
+		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+			if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+				fmt.Fprintf(stdout, "WARNING: OUT OF ORDER KEYS!\n")
+				if s.fmtKey.spec != "null" {
+					fmt.Fprintf(stdout, "    %s >= %s\n",
+						lastKey.Pretty(s.fmtKey.fn), key.Pretty(s.fmtKey.fn))
 				}
-				lastKey.Trailer = key.Trailer
-				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 			}
-			if err := iter.Close(); err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-			}
-		}()
-	}
+			lastKey.Trailer = key.Trailer
+			lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
+		}
+		if err := iter.Close(); err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+		}
+	})
 }
 
 func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
-	for _, arg := range args {
-		func() {
-			f, err := s.opts.FS.Open(arg)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
+	s.foreachSstable(args, func(arg string) {
+		f, err := s.opts.FS.Open(arg)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
 
-			fmt.Fprintf(stdout, "%s\n", arg)
+		fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := s.newReader(f)
-			defer r.Close()
+		r, err := s.newReader(f)
+		defer r.Close()
 
-			if err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-				return
-			}
+		if err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+			return
+		}
 
-			// Update the internal formatter if this comparator has one specified.
-			s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+		// Update the internal formatter if this comparator has one specified.
+		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 
-			l, err := r.Layout()
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
-			fmtRecord := func(key *base.InternalKey, value []byte) {
-				formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
-			}
-			if s.fmtKey.spec == "null" && s.fmtValue.spec == "null" {
-				fmtRecord = nil
-			}
-			l.Describe(stdout, s.verbose, r, fmtRecord)
-		}()
-	}
+		l, err := r.Layout()
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+		fmtRecord := func(key *base.InternalKey, value []byte) {
+			formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
+		}
+		if s.fmtKey.spec == "null" && s.fmtValue.spec == "null" {
+			fmtRecord = nil
+		}
+		l.Describe(stdout, s.verbose, r, fmtRecord)
+	})
 }
 
 func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
-	for _, arg := range args {
-		func() {
-			f, err := s.opts.FS.Open(arg)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
+	s.foreachSstable(args, func(arg string) {
+		f, err := s.opts.FS.Open(arg)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
 
-			fmt.Fprintf(stdout, "%s\n", arg)
+		fmt.Fprintf(stdout, "%s\n", arg)
 
-			r, err := s.newReader(f)
-			defer r.Close()
+		r, err := s.newReader(f)
+		defer r.Close()
 
-			if err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-				return
-			}
+		if err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+			return
+		}
 
-			if s.verbose {
-				fmt.Fprintf(stdout, "%s", r.Properties.String())
-				return
-			}
+		if s.verbose {
+			fmt.Fprintf(stdout, "%s", r.Properties.String())
+			return
+		}
 
-			stat, err := f.Stat()
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
+		stat, err := f.Stat()
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
 
-			formatNull := func(s string) string {
-				switch s {
-				case "", "nullptr":
-					return "-"
-				}
-				return s
+		formatNull := func(s string) string {
+			switch s {
+			case "", "nullptr":
+				return "-"
 			}
+			return s
+		}
 
-			tw := tabwriter.NewWriter(stdout, 2, 1, 2, ' ', 0)
-			fmt.Fprintf(tw, "version\t%d\n", r.Properties.Version)
-			fmt.Fprintf(tw, "size\t\n")
-			fmt.Fprintf(tw, "  file\t%d\n", stat.Size())
-			fmt.Fprintf(tw, "  data\t%d\n", r.Properties.DataSize)
-			fmt.Fprintf(tw, "    blocks\t%d\n", r.Properties.NumDataBlocks)
-			fmt.Fprintf(tw, "  index\t%d\n", r.Properties.IndexSize)
-			fmt.Fprintf(tw, "    blocks\t%d\n", 1+r.Properties.IndexPartitions)
-			fmt.Fprintf(tw, "    top-level\t%d\n", r.Properties.TopLevelIndexSize)
-			fmt.Fprintf(tw, "  filter\t%d\n", r.Properties.FilterSize)
-			fmt.Fprintf(tw, "  raw-key\t%d\n", r.Properties.RawKeySize)
-			fmt.Fprintf(tw, "  raw-value\t%d\n", r.Properties.RawValueSize)
-			fmt.Fprintf(tw, "records\t%d\n", r.Properties.NumEntries)
-			fmt.Fprintf(tw, "  set\t%d\n", r.Properties.NumEntries-
-				(r.Properties.NumDeletions+r.Properties.NumMergeOperands))
-			fmt.Fprintf(tw, "  delete\t%d\n", r.Properties.NumDeletions-r.Properties.NumRangeDeletions)
-			fmt.Fprintf(tw, "  range-delete\t%d\n", r.Properties.NumRangeDeletions)
-			fmt.Fprintf(tw, "  merge\t%d\n", r.Properties.NumMergeOperands)
-			fmt.Fprintf(tw, "  global-seq-num\t%d\n", r.Properties.GlobalSeqNum)
-			fmt.Fprintf(tw, "index\t\n")
-			fmt.Fprintf(tw, "  key\t")
-			if r.Properties.IndexKeyIsUserKey != 0 {
-				fmt.Fprintf(tw, "user key\n")
-			} else {
-				fmt.Fprintf(tw, "internal key\n")
-			}
-			fmt.Fprintf(tw, "  value\t")
-			if r.Properties.IndexValueIsDeltaEncoded != 0 {
-				fmt.Fprintf(tw, "delta encoded\n")
-			} else {
-				fmt.Fprintf(tw, "raw encoded\n")
-			}
-			fmt.Fprintf(tw, "comparer\t%s\n", r.Properties.ComparerName)
-			fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergerName))
-			fmt.Fprintf(tw, "filter\t%s\n", formatNull(r.Properties.FilterPolicyName))
-			fmt.Fprintf(tw, "  prefix\t%t\n", r.Properties.PrefixFiltering)
-			fmt.Fprintf(tw, "  whole-key\t%t\n", r.Properties.WholeKeyFiltering)
-			fmt.Fprintf(tw, "compression\t%s\n", r.Properties.CompressionName)
-			fmt.Fprintf(tw, "  options\t%s\n", r.Properties.CompressionOptions)
-			fmt.Fprintf(tw, "user properties\t\n")
-			fmt.Fprintf(tw, "  collectors\t%s\n", r.Properties.PropertyCollectorNames)
-			keys := make([]string, 0, len(r.Properties.UserProperties))
-			for key := range r.Properties.UserProperties {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
-				fmt.Fprintf(tw, "  %s\t%s\n", key, r.Properties.UserProperties[key])
-			}
-			tw.Flush()
-		}()
-	}
+		tw := tabwriter.NewWriter(stdout, 2, 1, 2, ' ', 0)
+		fmt.Fprintf(tw, "version\t%d\n", r.Properties.Version)
+		fmt.Fprintf(tw, "size\t\n")
+		fmt.Fprintf(tw, "  file\t%d\n", stat.Size())
+		fmt.Fprintf(tw, "  data\t%d\n", r.Properties.DataSize)
+		fmt.Fprintf(tw, "    blocks\t%d\n", r.Properties.NumDataBlocks)
+		fmt.Fprintf(tw, "  index\t%d\n", r.Properties.IndexSize)
+		fmt.Fprintf(tw, "    blocks\t%d\n", 1+r.Properties.IndexPartitions)
+		fmt.Fprintf(tw, "    top-level\t%d\n", r.Properties.TopLevelIndexSize)
+		fmt.Fprintf(tw, "  filter\t%d\n", r.Properties.FilterSize)
+		fmt.Fprintf(tw, "  raw-key\t%d\n", r.Properties.RawKeySize)
+		fmt.Fprintf(tw, "  raw-value\t%d\n", r.Properties.RawValueSize)
+		fmt.Fprintf(tw, "records\t%d\n", r.Properties.NumEntries)
+		fmt.Fprintf(tw, "  set\t%d\n", r.Properties.NumEntries-
+			(r.Properties.NumDeletions+r.Properties.NumMergeOperands))
+		fmt.Fprintf(tw, "  delete\t%d\n", r.Properties.NumDeletions-r.Properties.NumRangeDeletions)
+		fmt.Fprintf(tw, "  range-delete\t%d\n", r.Properties.NumRangeDeletions)
+		fmt.Fprintf(tw, "  merge\t%d\n", r.Properties.NumMergeOperands)
+		fmt.Fprintf(tw, "  global-seq-num\t%d\n", r.Properties.GlobalSeqNum)
+		fmt.Fprintf(tw, "index\t\n")
+		fmt.Fprintf(tw, "  key\t")
+		if r.Properties.IndexKeyIsUserKey != 0 {
+			fmt.Fprintf(tw, "user key\n")
+		} else {
+			fmt.Fprintf(tw, "internal key\n")
+		}
+		fmt.Fprintf(tw, "  value\t")
+		if r.Properties.IndexValueIsDeltaEncoded != 0 {
+			fmt.Fprintf(tw, "delta encoded\n")
+		} else {
+			fmt.Fprintf(tw, "raw encoded\n")
+		}
+		fmt.Fprintf(tw, "comparer\t%s\n", r.Properties.ComparerName)
+		fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergerName))
+		fmt.Fprintf(tw, "filter\t%s\n", formatNull(r.Properties.FilterPolicyName))
+		fmt.Fprintf(tw, "  prefix\t%t\n", r.Properties.PrefixFiltering)
+		fmt.Fprintf(tw, "  whole-key\t%t\n", r.Properties.WholeKeyFiltering)
+		fmt.Fprintf(tw, "compression\t%s\n", r.Properties.CompressionName)
+		fmt.Fprintf(tw, "  options\t%s\n", r.Properties.CompressionOptions)
+		fmt.Fprintf(tw, "user properties\t\n")
+		fmt.Fprintf(tw, "  collectors\t%s\n", r.Properties.PropertyCollectorNames)
+		keys := make([]string, 0, len(r.Properties.UserProperties))
+		for key := range r.Properties.UserProperties {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			fmt.Fprintf(tw, "  %s\t%s\n", key, r.Properties.UserProperties[key])
+		}
+		tw.Flush()
+	})
 }
 
 func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
-	for _, arg := range args {
-		func() {
-			f, err := s.opts.FS.Open(arg)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
+	s.foreachSstable(args, func(arg string) {
+		f, err := s.opts.FS.Open(arg)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
 
+		// In filter-mode, we prefix ever line that is output with the sstable
+		// filename.
+		var prefix string
+		if s.filter == nil {
 			fmt.Fprintf(stdout, "%s\n", arg)
+		} else {
+			prefix = fmt.Sprintf("%s: ", arg)
+		}
 
-			r, err := s.newReader(f)
-			defer r.Close()
+		r, err := s.newReader(f)
+		defer r.Close()
 
+		if err != nil {
+			fmt.Fprintf(stdout, "%s%s\n", prefix, err)
+			return
+		}
+
+		// Update the internal formatter if this comparator has one specified.
+		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+
+		iter := r.NewIter(nil, s.end)
+		defer iter.Close()
+		key, value := iter.SeekGE(s.start)
+
+		// We configured sstable.Reader to return raw tombstones which requires a
+		// bit more work here to put them in a form that can be iterated in
+		// parallel with the point records.
+		rangeDelIter, err := func() (base.InternalIterator, error) {
+			iter, err := r.NewRangeDelIter()
 			if err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-				return
+				return nil, err
 			}
-
-			// Update the internal formatter if this comparator has one specified.
-			s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
-
-			iter := r.NewIter(nil, s.end)
+			if iter == nil {
+				return rangedel.NewIter(r.Compare, nil), nil
+			}
 			defer iter.Close()
-			key, value := iter.SeekGE(s.start)
 
-			// We configured sstable.Reader to return raw tombstones which requires a
-			// bit more work here to put them in a form that can be iterated in
-			// parallel with the point records.
-			rangeDelIter, err := func() (base.InternalIterator, error) {
-				iter, err := r.NewRangeDelIter()
-				if err != nil {
-					return nil, err
+			var tombstones []rangedel.Tombstone
+			for key, value := iter.First(); key != nil; key, value = iter.Next() {
+				t := rangedel.Tombstone{
+					Start: *key,
+					End:   value,
 				}
-				if iter == nil {
-					return rangedel.NewIter(r.Compare, nil), nil
+				if s.end != nil && r.Compare(s.end, t.Start.UserKey) <= 0 {
+					// The range tombstone lies after the scan range.
+					continue
 				}
-				defer iter.Close()
-
-				var tombstones []rangedel.Tombstone
-				for key, value := iter.First(); key != nil; key, value = iter.Next() {
-					t := rangedel.Tombstone{
-						Start: *key,
-						End:   value,
-					}
-					if s.end != nil && r.Compare(s.end, t.Start.UserKey) <= 0 {
-						// The range tombstone lies after the scan range.
-						continue
-					}
-					if r.Compare(s.start, t.End) >= 0 {
-						// The range tombstone lies before the scan range.
-						continue
-					}
-					tombstones = append(tombstones, t)
+				if r.Compare(s.start, t.End) >= 0 {
+					// The range tombstone lies before the scan range.
+					continue
 				}
-
-				sort.Slice(tombstones, func(i, j int) bool {
-					return r.Compare(tombstones[i].Start.UserKey, tombstones[j].Start.UserKey) < 0
-				})
-				return rangedel.NewIter(r.Compare, tombstones), nil
-			}()
-			if err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-				return
+				tombstones = append(tombstones, t)
 			}
 
-			defer rangeDelIter.Close()
-			rangeDelKey, rangeDelValue := rangeDelIter.First()
-			count := s.count
-
-			var lastKey base.InternalKey
-			for key != nil || rangeDelKey != nil {
-				if key != nil &&
-					(rangeDelKey == nil ||
-						base.InternalCompare(r.Compare, *key, *rangeDelKey) < 0) {
-					formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
-					if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
-						fmt.Fprintf(stdout, "    WARNING: OUT OF ORDER KEYS!\n")
-					}
-					lastKey.Trailer = key.Trailer
-					lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
-					key, value = iter.Next()
-				} else {
-					formatKeyValue(stdout, s.fmtKey, s.fmtValue, rangeDelKey, rangeDelValue)
-					rangeDelKey, rangeDelValue = rangeDelIter.Next()
-				}
-
-				if count > 0 {
-					count--
-					if count == 0 {
-						break
-					}
-				}
-			}
-
-			if err := iter.Close(); err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-			}
+			sort.Slice(tombstones, func(i, j int) bool {
+				return r.Compare(tombstones[i].Start.UserKey, tombstones[j].Start.UserKey) < 0
+			})
+			return rangedel.NewIter(r.Compare, tombstones), nil
 		}()
-	}
+		if err != nil {
+			fmt.Fprintf(stdout, "%s%s\n", prefix, err)
+			return
+		}
+
+		defer rangeDelIter.Close()
+		rangeDelKey, rangeDelValue := rangeDelIter.First()
+		count := s.count
+
+		var lastKey base.InternalKey
+		for key != nil || rangeDelKey != nil {
+			if key != nil &&
+				(rangeDelKey == nil ||
+					base.InternalCompare(r.Compare, *key, *rangeDelKey) < 0) {
+				// TODO(peter): rather than doing an exact key match on the filter,
+				// perhaps this should be a prefix match. That would be more useful to
+				// CockroachDB.
+				if s.filter == nil || r.Compare(s.filter, key.UserKey) == 0 {
+					fmt.Fprint(stdout, prefix)
+					formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
+				}
+				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+					fmt.Fprintf(stdout, "%s    WARNING: OUT OF ORDER KEYS!\n", prefix)
+				}
+				lastKey.Trailer = key.Trailer
+				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
+				key, value = iter.Next()
+			} else {
+				if s.filter == nil ||
+					(r.Compare(s.filter, rangeDelKey.UserKey) >= 0 &&
+						r.Compare(s.filter, rangeDelValue) < 0) {
+					fmt.Fprint(stdout, prefix)
+					formatKeyValue(stdout, s.fmtKey, s.fmtValue, rangeDelKey, rangeDelValue)
+				}
+				rangeDelKey, rangeDelValue = rangeDelIter.Next()
+			}
+
+			if count > 0 {
+				count--
+				if count == 0 {
+					break
+				}
+			}
+		}
+
+		if err := iter.Close(); err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+		}
+	})
 }
 
 func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
-	for _, arg := range args {
-		func() {
-			f, err := s.opts.FS.Open(arg)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
-			r, err := s.newReader(f)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
-			defer r.Close()
+	s.foreachSstable(args, func(arg string) {
+		f, err := s.opts.FS.Open(arg)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+		r, err := s.newReader(f)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+		defer r.Close()
 
-			bytes, err := r.EstimateDiskUsage(s.start, s.end)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
+		bytes, err := r.EstimateDiskUsage(s.start, s.end)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+		fmt.Fprintf(stdout, "%s: %d\n", arg, bytes)
+	})
+}
+
+func (s *sstableT) foreachSstable(args []string, fn func(arg string)) {
+	// Loop over args, invoking fn for each file. Each directory is recursively
+	// listed and fn is invoked on any file with an .sst or .ldb suffix.
+	for _, arg := range args {
+		info, err := s.opts.FS.Stat(arg)
+		if err != nil || !info.IsDir() {
+			fn(arg)
+			continue
+		}
+		walk(s.opts.FS, arg, func(path string) {
+			switch filepath.Ext(path) {
+			case ".sst", ".ldb":
+				fn(path)
 			}
-			fmt.Fprintf(stdout, "%s: %d\n", arg, bytes)
-		}()
+		})
+	}
+}
+
+func walk(fs vfs.FS, dir string, fn func(path string)) {
+	paths, err := fs.List(dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", dir, err)
+		return
+	}
+	sort.Strings(paths)
+	for _, part := range paths {
+		path := fs.PathJoin(dir, part)
+		info, err := fs.Stat(path)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", path, err)
+			continue
+		}
+		if info.IsDir() {
+			walk(fs, path, fn)
+		} else {
+			fn(path)
+		}
 	}
 }

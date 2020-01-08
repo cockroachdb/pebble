@@ -281,3 +281,36 @@ a#0,SET []
 c#0,SET []
 b#0,SET []
     WARNING: OUT OF ORDER KEYS!
+
+sstable scan
+--filter=arms
+../sstable/testdata/h.sst
+----
+h.sst: arms#0,SET [32]
+
+sstable scan
+--filter=beard
+../sstable/testdata/
+----
+testdata/h.block-bloom.no-compression.sst: beard-bearers#0,RANGEDEL
+testdata/h.block-bloom.no-compression.sst: beard#0,SET [31]
+testdata/h.ldb: beard-bearers#0,RANGEDEL
+testdata/h.ldb: beard#0,SET [31]
+testdata/h.no-compression.sst: beard-bearers#0,RANGEDEL
+testdata/h.no-compression.sst: beard#0,SET [31]
+testdata/h.no-compression.two_level_index.sst: beard-bearers#0,RANGEDEL
+testdata/h.no-compression.two_level_index.sst: beard#0,SET [31]
+testdata/h.sst: beard-bearers#0,RANGEDEL
+testdata/h.sst: beard#0,SET [31]
+testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst: beard-bearers#0,RANGEDEL
+testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst: beard#0,SET [31]
+testdata/h.table-bloom.no-compression.sst: beard-bearers#0,RANGEDEL
+testdata/h.table-bloom.no-compression.sst: beard#0,SET [31]
+testdata/h.table-bloom.sst: beard-bearers#0,RANGEDEL
+testdata/h.table-bloom.sst: beard#0,SET [31]
+
+sstable scan
+--filter=beard
+--start=boar
+../sstable/testdata/h.sst
+----
