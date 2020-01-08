@@ -1240,7 +1240,13 @@ func (d *DB) runCompaction(
 			prevMeta := &ve.NewFiles[n-2].Meta
 			if writerMeta.SmallestRange.UserKey != nil {
 				c := d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey)
-				if c < 0 || (c == 0 && prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel) {
+				if c < 0 {
+					return fmt.Errorf(
+						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
+						writerMeta.SmallestRange.Pretty(d.opts.Comparer.Format),
+						prevMeta.Largest.Pretty(d.opts.Comparer.Format))
+				}
+				if c == 0 && prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel {
 					// The range boundary user key is less than or equal to the previous
 					// table's largest key. We need the tables to be key-space partitioned,
 					// so force the boundary to a key that we know is larger than the
