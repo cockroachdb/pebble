@@ -6,17 +6,12 @@ package rangedel
 
 import "github.com/cockroachdb/pebble/internal/base"
 
-// invalidate the specified iterator by moving it past the last entry.
-func invalidate(iter iterator) {
-	iter.Last()
-	iter.Next()
-}
-
 // SeekGE seeks to the newest tombstone that contains or is past the target
 // key. The snapshot parameter controls the visibility of tombstones (only
 // tombstones older than the snapshot sequence number are visible). The
 // iterator must contain fragmented tombstones: any overlapping tombstones must
-// have the same start and end key.
+// have the same start and end key. The position of the iterator is undefined
+// after calling SeekGE and may not be pointing at the returned tombstone.
 func SeekGE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
@@ -83,7 +78,8 @@ func SeekGE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombst
 // key. The snapshot parameter controls the visibility of tombstones (only
 // tombstones older than the snapshot sequence number are visible). The
 // iterator must contain fragmented tombstones: any overlapping tombstones must
-// have the same start and end key.
+// have the same start and end key. The position of the iterator is undefined
+// after calling SeekLE and may not be pointing at the returned tombstone.
 func SeekLE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
@@ -106,9 +102,6 @@ func SeekLE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombst
 		}
 		if cmp(key, iterKey.UserKey) < 0 {
 			// The search key lies before the first tombstone.
-			//
-			// TODO(peter): why is this call to iter.Prev() here?
-			iterKey, iterValue = iter.Prev()
 			return Tombstone{}
 		}
 		// Advance the iterator until we find a visible version or we hit the next
@@ -127,7 +120,6 @@ func SeekLE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombst
 			}
 			if cmp(key, iterKey.UserKey) < 0 {
 				// We've hit the next tombstone.
-				invalidate(iter)
 				return Tombstone{}
 			}
 		}
@@ -154,6 +146,8 @@ func SeekLE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombst
 				}
 				iterKey, iterValue = iter.Next()
 				if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
+					// There is no next tombstone, or the next tombstone is past our
+					// search key. Back up to the previous tombstone.
 					iterKey, iterValue = iter.Prev()
 					break
 				}
@@ -161,42 +155,39 @@ func SeekLE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombst
 		}
 	}
 
-	// We're now positioned at a tombstone that contains or is before the search
-	// key and we're positioned at either the oldest of the versions or a visible
-	// version. Walk backwards through the tombstones to find the newest one that
-	// is visible (i.e. has a sequence number less than the snapshot sequence
-	// number).
-	for savedKey := iterKey.UserKey; ; {
-		valid := iterKey.Visible(snapshot)
+	// We're not positioned at a tombstone that contains or is before the search
+	// key and we're positioned at either the oldest of the versions. Walk
+	// backward until we find a visible tombstone.
+	for !iterKey.Visible(snapshot) {
 		iterKey, iterValue = iter.Prev()
 		if iterKey == nil {
-			break
-		}
-		if valid {
-			if !iterKey.Visible(snapshot) {
-				break
-			}
-			if cmp(savedKey, iterKey.UserKey) != 0 {
-				break
-			}
+			// No visible tombstones before our search key.
+			return Tombstone{}
 		}
 	}
 
-	iterKey, iterValue = iter.Next()
-	start := iterKey
-	if cmp(key, start.UserKey) < 0 {
-		// The current tombstone is after our search key.
-		invalidate(iter)
-		return Tombstone{}
+	// We're not positioned at a tombstone that contains or is before the search
+	// key and is visible. Walk backwards until we find the latest version of
+	// this tombstone that is visible (i.e. has a sequence number less than the
+	// snapshot sequence number).
+	t := Tombstone{Start: *iterKey, End: iterValue} // current candidate to return
+	for {
+		iterKey, _ = iter.Prev()
+		if iterKey == nil {
+			// We stepped off the end of the iterator.
+			break
+		}
+		if !iterKey.Visible(snapshot) {
+			// The previous tombstone is not visible.
+			break
+		}
+		if cmp(t.Start.UserKey, iterKey.UserKey) != 0 {
+			// The previous tombstone is before our candidate tombstone.
+			break
+		}
+		// Update the candidate tombstone's seqnum. NB: The end key is guaranteed
+		// to be the same.
+		t.Start.Trailer = iterKey.Trailer
 	}
-	if !start.Visible(snapshot) {
-		// The current tombstone is not visible at our read sequence number.
-		invalidate(iter)
-		return Tombstone{}
-	}
-	// The tombstone is visible at our read sequence number.
-	return Tombstone{
-		Start: *start,
-		End:   iterValue,
-	}
+	return t
 }
