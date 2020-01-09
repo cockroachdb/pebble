@@ -212,6 +212,8 @@ func (i *blockIter) invalidate() {
 	i.offset = 0
 	i.nextOffset = 0
 	i.restarts = 0
+	i.numRestarts = 0
+	i.data = nil
 }
 
 func (i *blockIter) resetForReuse() blockIter {

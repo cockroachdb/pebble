@@ -377,7 +377,8 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 
 				expected := r.Properties.DataSize
 				if bytesIterated != expected {
-					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+					t.Fatalf("bytesIterated: got %d, want %d (blockSize=%d indexBlockSize=%d numEntries=%d)",
+						bytesIterated, expected, blockSize, indexBlockSize, numEntries)
 				}
 			}
 		}
