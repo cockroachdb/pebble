@@ -126,6 +126,10 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					empty = false
 					fmt.Fprintf(stdout, "  prev-log-num: %d\n", ve.ObsoletePrevLogNum)
 				}
+				if ve.NextFileNum != 0 {
+					empty = false
+					fmt.Fprintf(stdout, "  next-file-num: %d\n", ve.NextFileNum)
+				}
 				if ve.LastSeqNum != 0 {
 					empty = false
 					fmt.Fprintf(stdout, "  last-seq-num: %d\n", ve.LastSeqNum)
