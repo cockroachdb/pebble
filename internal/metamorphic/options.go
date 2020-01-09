@@ -20,7 +20,8 @@ var comparer = func() pebble.Comparer {
 	return c
 }()
 
-func parseOptions(opts *pebble.Options, data string) error {
+func parseOptions(opts *testOptions, data string) error {
+	var strictFS bool
 	hooks := &pebble.ParseHooks{
 		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
 			if name == "none" {
@@ -28,8 +29,17 @@ func parseOptions(opts *pebble.Options, data string) error {
 			}
 			return bloom.FilterPolicy(10), nil
 		},
+		SkipUnknown: func(name string) bool {
+			if name == "StrictFS" {
+				strictFS = true
+				return true
+			}
+			return false
+		},
 	}
-	return opts.Parse(data, hooks)
+	err := opts.opts.Parse(data, hooks)
+	opts.strictFS = strictFS
+	return err
 }
 
 func defaultOptions() *pebble.Options {
@@ -44,7 +54,12 @@ func defaultOptions() *pebble.Options {
 	return opts
 }
 
-func standardOptions() []*pebble.Options {
+type testOptions struct {
+	opts     *pebble.Options
+	strictFS bool
+}
+
+func standardOptions() []testOptions {
 	// The index labels are not strictly necessary, but they make it easier to
 	// find which options correspond to a failure.
 	stdOpts := []string{
@@ -114,20 +129,29 @@ func standardOptions() []*pebble.Options {
 [Level "0"]
   filter_policy=none
 `,
+		// 1GB
+		17: `
+[Options]
+  bytes_per_sync = 1073741824
+[StrictFS]
+  dummy=1
+`,
 	}
 
-	opts := make([]*pebble.Options, len(stdOpts))
+	opts := make([]testOptions, len(stdOpts))
 	for i := range opts {
-		opts[i] = defaultOptions()
-		if err := parseOptions(opts[i], stdOpts[i]); err != nil {
+		opts[i].opts = defaultOptions()
+		if err := parseOptions(&opts[i], stdOpts[i]); err != nil {
 			panic(err)
 		}
 	}
 	return opts
 }
 
-func randomOptions(rng *rand.Rand) *pebble.Options {
+func randomOptions(rng *rand.Rand) testOptions {
+	var testOpts testOptions
 	opts := defaultOptions()
+	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
 	opts.L0CompactionThreshold = 1 + rng.Intn(100) // 1 - 100
@@ -149,5 +173,7 @@ func randomOptions(rng *rand.Rand) *pebble.Options {
 	lopts.IndexBlockSize = 1 << uint(rng.Intn(24)) // 1 - 16MB
 	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
 	opts.Levels = []pebble.LevelOptions{lopts}
-	return opts
+	testOpts.opts = opts
+	testOpts.strictFS = rng.Intn(2) != 0
+	return testOpts
 }
