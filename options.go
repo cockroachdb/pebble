@@ -787,7 +787,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			}
 			return err
 		}
-		if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section) {
+		if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
 			return nil
 		}
 		return fmt.Errorf("pebble: unknown section: %q", section)

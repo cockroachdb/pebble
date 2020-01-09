@@ -31,11 +31,12 @@ type generator struct {
 	liveBatches objIDSlice
 	// liveIters contains the live iterators.
 	liveIters objIDSlice
-	// liveReaders contains the DB, and any live indexed batches and snapshots.
+	// liveReaders contains the DB, and any live indexed batches and snapshots. The DB is always
+	// at index 0.
 	liveReaders objIDSlice
 	// liveSnapshots contains the live snapshots.
 	liveSnapshots objIDSlice
-	// liveWriters contains the DB, and any live batches.
+	// liveWriters contains the DB, and any live batches. The DB is always at index 0.
 	liveWriters objIDSlice
 
 	// Maps used to find associated objects during generation. These maps are not
@@ -49,7 +50,7 @@ type generator struct {
 	// or snapshots maps.
 	iters map[objID]objIDSet
 	// readerID -> reader iters: used to keep track of the open iterators on a
-	// reader. The iter set value will also be inexed by either the batches or
+	// reader. The iter set value will also be indexed by either the batches or
 	// snapshots maps. This map is the union of batches and snapshots maps.
 	readers map[objID]objIDSet
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
@@ -79,6 +80,7 @@ func generate(count uint64, cfg config) []op {
 	generators := []func(){
 		batchAbort:        g.batchAbort,
 		batchCommit:       g.batchCommit,
+		dbRestart:         g.dbRestart,
 		iterClose:         g.iterClose,
 		iterFirst:         g.iterFirst,
 		iterLast:          g.iterLast,
@@ -109,14 +111,7 @@ func generate(count uint64, cfg config) []op {
 		generators[deck.Int()]()
 	}
 
-	// Close any live iterators and snapshots, so that we can close the DB
-	// cleanly.
-	for len(g.liveIters) > 0 {
-		g.iterClose()
-	}
-	for len(g.liveSnapshots) > 0 {
-		g.snapshotClose()
-	}
+	g.dbClose()
 	return g.ops
 }
 
@@ -234,6 +229,38 @@ func (g *generator) batchCommit() {
 	g.add(&batchCommitOp{
 		batchID: batchID,
 	})
+}
+
+func (g *generator) dbClose() {
+	// Close any live iterators and snapshots, so that we can close the DB
+	// cleanly.
+	for len(g.liveIters) > 0 {
+		g.iterClose()
+	}
+	for len(g.liveSnapshots) > 0 {
+		g.snapshotClose()
+	}
+	g.add(&closeOp{objID: makeObjID(dbTag, 0)})
+}
+
+func (g *generator) dbRestart() {
+	// Close any live iterators and snapshots, so that we can close the DB
+	// cleanly.
+	for len(g.liveIters) > 0 {
+		g.iterClose()
+	}
+	for len(g.liveSnapshots) > 0 {
+		g.snapshotClose()
+	}
+	// Close the batches.
+	for len(g.liveBatches) > 0 {
+		g.batchClose(g.liveBatches[0])
+	}
+	if len(g.liveReaders) != 1 || len(g.liveWriters) != 1 {
+		panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
+			len(g.liveReaders), len(g.liveWriters)))
+	}
+	g.add(&dbRestartOp{})
 }
 
 func (g *generator) newIter() {

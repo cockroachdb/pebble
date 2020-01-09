@@ -9,6 +9,8 @@ type opType int
 const (
 	batchAbort opType = iota
 	batchCommit
+	dbClose
+	dbRestart
 	iterClose
 	iterFirst
 	iterLast
@@ -47,9 +49,11 @@ type config struct {
 }
 
 var defaultConfig = config{
+	// dbClose is not in this list since it is deterministically generated once, at the end of the test.
 	ops: []int{
 		batchAbort:        5,
 		batchCommit:       5,
+		dbRestart:         2,
 		iterClose:         10,
 		iterFirst:         100,
 		iterLast:          100,
