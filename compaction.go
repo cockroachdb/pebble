@@ -1259,21 +1259,33 @@ func (d *DB) runCompaction(
 						writerMeta.SmallestRange.Pretty(d.opts.Comparer.Format),
 						prevMeta.Largest.Pretty(d.opts.Comparer.Format))
 				}
-				if c == 0 && prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel {
-					// The range boundary user key is less than or equal to the previous
-					// table's largest key. We need the tables to be key-space partitioned,
-					// so force the boundary to a key that we know is larger than the
-					// previous key.
-					//
-					// We use seqnum zero since seqnums are in descending order, and our
-					// goal is to ensure this forged key does not overlap with the previous
-					// file. `InternalKeyKindRangeDelete` is actually the first key kind as
-					// key kinds are also in descending order. But, this is OK because
-					// choosing seqnum zero is already enough to prevent overlap (the
-					// previous file could not end with a key at seqnum zero if this file
-					// had a tombstone extending into it).
-					writerMeta.SmallestRange = base.MakeInternalKey(
-						prevMeta.Largest.UserKey, 0, InternalKeyKindRangeDelete)
+				if c == 0 && prevMeta.Largest.SeqNum() <= writerMeta.SmallestRange.SeqNum() {
+					// The user key portion of the range boundary start key is equal to
+					// the previous table's largest key. We need the tables to be
+					// key-space partitioned, so force the boundary to a key that we know
+					// is larger than the previous table's largest key.
+					if prevMeta.Largest.SeqNum() == 0 {
+						// If the seqnum of the previous table's largest key is 0, we can't
+						// decrement it. We know this record cannot be a deletion tombstone
+						// as we would have dropped such a tombstone during
+						// compaction. Note that we only use this technique when the seqnum
+						// is 0 because a non-RANGEDEL boundary key doesn't cause the level
+						// iter to emit the boundary key. That is ok in this case because
+						// the key.RANGEDEL.0 does not cover the key key.{SET,MERGE}.0
+						// which is present in the previous sstable.
+						writerMeta.SmallestRange = base.MakeInternalKey(
+							writerMeta.SmallestRange.UserKey, prevMeta.Largest.SeqNum(), InternalKeyKindDelete)
+					} else {
+						// TODO(peter): Technically, this produces a small gap with the
+						// previous sstable. The largest key of the previous table may be
+						// b#5.SET. The smallest key of the new sstable may then become
+						// b#4.RANGEDEL even though the tombstone is [b,z)#6. If iteration
+						// ever precisely truncates sstable boundaries, the key b#4.SET at
+						// a lower level could slip through. Note that this can't ever
+						// actually happen, though, because the only way for two records to
+						// have the same seqnum is via ingestion.
+						writerMeta.SmallestRange.SetSeqNum(prevMeta.Largest.SeqNum() - 1)
+					}
 				}
 			}
 		}

@@ -367,6 +367,164 @@ c:4
 a:3
 .
 
+# This is a similar scenario to the one above, but we've arranged for
+# the compaction to produce an sstable (9) for which the smallest
+# range tombstone overlaps in key space with the largest key in the
+# previous sstable (8). This necessitates adjusting the seqnum of the
+# range tombstone. There was no actual iteration bug from earlier
+# behavior of setting the seqnum to 0, but now we set the seqnum to
+# prev.LargestKey.SeqNum-1.
+#
+# Note the target-file-size of 26 is specially tailored to get the
+# desired compaction output.
+
+define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
+L1
+  a.SET.4:4
+L1
+  b.SET.2:2
+  b.RANGEDEL.3:e
+L3
+  b.SET.1:1
+----
+1:
+  000004:[a-a]
+  000005:[b-e]
+3:
+  000006:[b-b]
+
+compact a-e L1
+----
+2:
+  000007:[a#4,SET-b#2,SET]
+  000008:[b#1,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[b#1,SET-b#1,SET]
+
+iter
+first
+next
+last
+prev
+----
+a:4
+.
+a:4
+.
+
+# Similar to the preceding scenario, except the range tombstone has
+# the same seqnum as the largest key in the preceding file.
+
+define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
+L1
+  a.SET.4:4
+L1
+  b.SET.3:3
+  b.RANGEDEL.3:e
+L3
+  b.SET.1:1
+----
+1:
+  000004:[a-a]
+  000005:[b-e]
+3:
+  000006:[b-b]
+
+compact a-e L1
+----
+2:
+  000007:[a#4,SET-b#3,SET]
+  000008:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[b#1,SET-b#1,SET]
+
+iter
+first
+next
+next
+last
+prev
+prev
+----
+a:4
+b:3
+.
+b:3
+a:4
+.
+
+# Similar to the preceding scenario, except the range tombstone has
+# a smaller seqnum than the largest key in the preceding file.
+
+define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
+L1
+  a.SET.4:4
+L1
+  b.SET.4:4
+  b.RANGEDEL.2:e
+L3
+  b.SET.1:1
+----
+1:
+  000004:[a-a]
+  000005:[b-e]
+3:
+  000006:[b-b]
+
+compact a-e L1
+----
+2:
+  000007:[a#4,SET-b#4,SET]
+  000008:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[b#1,SET-b#1,SET]
+
+iter
+first
+next
+next
+last
+prev
+prev
+----
+a:4
+b:4
+.
+b:4
+a:4
+.
+
+# Test a scenario where the last point key in an sstable has a seqnum
+# of 0, and the smallest range tombstone in the next sstable starts
+# with the same key. We have to tweak the kind of the boundary key in
+# sstable 8 to be a DEL rather than a RANGEDEL so that the two tables
+# are disjoint in the key space.
+
+define target-file-sizes=(1, 1, 26) snapshots=(2)
+L1
+  a.SET.3:3
+  b.RANGEDEL.3:e
+  b.SET.0:0
+L2
+  c.SET.0:0
+L3
+  a.RANGEDEL.2:b
+----
+1:
+  000004:[a-e]
+2:
+  000005:[c-c]
+3:
+  000006:[a-b]
+
+compact a-e L1
+----
+2:
+  000007:[a#3,SET-b#0,SET]
+  000008:[b#0,DEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+
 define target-file-sizes=(1, 1, 1, 1)
 L0
   b.SET.1:v
