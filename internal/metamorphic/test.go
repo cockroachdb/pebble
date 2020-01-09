@@ -20,10 +20,12 @@ type test struct {
 	ops []op
 	idx int
 	// The DB the test is run on.
-	dir    string
-	db     *pebble.DB
-	opts   *pebble.Options
-	tmpDir string
+	dir       string
+	db        *pebble.DB
+	opts      *pebble.Options
+	testOpts  *testOptions
+	writeOpts *pebble.WriteOptions
+	tmpDir    string
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
 	batches   []*pebble.Batch
@@ -37,9 +39,14 @@ func newTest(ops []op) *test {
 	}
 }
 
-func (t *test) init(h *history, dir string, opts *pebble.Options) error {
+func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	t.dir = dir
-	t.opts = opts.EnsureDefaults()
+	t.testOpts = testOpts
+	t.writeOpts = pebble.NoSync
+	if testOpts.strictFS {
+		t.writeOpts = pebble.Sync
+	}
+	t.opts = testOpts.opts.EnsureDefaults()
 	t.opts.Logger = h.Logger()
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.DebugCheck = true
@@ -107,9 +114,52 @@ func (t *test) init(h *history, dir string, opts *pebble.Options) error {
 	if err = t.opts.FS.MkdirAll(t.tmpDir, 0755); err != nil {
 		return err
 	}
+	if t.testOpts.strictFS {
+		// Sync the whole directory path for the tmpDir, since restartDB() is executed during
+		// the test. That would reset MemFS to the synced state, which would make an unsynced
+		// directory disappear in the middle of the test. It is the responsibility of the test
+		// (not Pebble) to ensure that it can write the ssts that it will subsequently ingest
+		// into Pebble.
+		for {
+			f, err := t.opts.FS.OpenDir(dir)
+			if err != nil {
+				return err
+			}
+			if err = f.Sync(); err != nil {
+				return err
+			}
+			if err = f.Close(); err != nil {
+				return err
+			}
+			if len(dir) == 1 {
+				break
+			}
+			dir = t.opts.FS.PathDir(dir)
+			// TODO(sbhola): PathDir returns ".", which OpenDir() complains about. Fix.
+			if len(dir) == 1 {
+				dir = "/"
+			}
+		}
+	}
 
 	t.db = db
 	return nil
+}
+
+func (t *test) restartDB() error {
+	if !t.testOpts.strictFS {
+		return nil
+	}
+	fs := t.opts.FS.(*vfs.MemFS)
+	fs.SetIgnoreSyncs(true)
+	if err := t.db.Close(); err != nil {
+		return err
+	}
+	fs.ResetToSyncedState()
+	fs.SetIgnoreSyncs(false)
+	var err error
+	t.db, err = pebble.Open(t.dir, t.opts)
+	return err
 }
 
 // If an in-memory FS is being used, save the contents to disk.
@@ -130,12 +180,6 @@ func (t *test) step(h *history) bool {
 	t.ops[t.idx].run(t, h)
 	t.idx++
 	return true
-}
-
-func (t *test) finish(h *history) {
-	db := t.db
-	t.db = nil
-	h.Recordf("db.Close() // %v", db.Close())
 }
 
 func (t *test) setBatch(id objID, b *pebble.Batch) {
@@ -162,7 +206,7 @@ func (t *test) setSnapshot(id objID, s *pebble.Snapshot) {
 func (t *test) clearObj(id objID) {
 	switch id.tag() {
 	case dbTag:
-		panic("cannot clear DB ID")
+		t.db = nil
 	case batchTag:
 		t.batches[id.slot()] = nil
 	case iterTag:
@@ -181,6 +225,8 @@ func (t *test) getBatch(id objID) *pebble.Batch {
 
 func (t *test) getCloser(id objID) io.Closer {
 	switch id.tag() {
+	case dbTag:
+		return t.db
 	case batchTag:
 		return t.batches[id.slot()]
 	case iterTag:

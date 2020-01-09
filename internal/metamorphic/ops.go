@@ -6,6 +6,7 @@ package metamorphic
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
@@ -48,7 +49,7 @@ type applyOp struct {
 func (o *applyOp) run(t *test, h *history) {
 	b := t.getBatch(o.batchID)
 	w := t.getWriter(o.writerID)
-	err := w.Apply(b, pebble.NoSync)
+	err := w.Apply(b, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 	_ = b.Close()
 	t.clearObj(o.batchID)
@@ -82,7 +83,7 @@ type deleteOp struct {
 
 func (o *deleteOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Delete(o.key, pebble.NoSync)
+	err := w.Delete(o.key, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -99,7 +100,7 @@ type deleteRangeOp struct {
 
 func (o *deleteRangeOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.DeleteRange(o.start, o.end, pebble.NoSync)
+	err := w.DeleteRange(o.start, o.end, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -116,7 +117,7 @@ type mergeOp struct {
 
 func (o *mergeOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Merge(o.key, o.value, pebble.NoSync)
+	err := w.Merge(o.key, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -133,7 +134,7 @@ type setOp struct {
 
 func (o *setOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Set(o.key, o.value, pebble.NoSync)
+	err := w.Set(o.key, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -179,7 +180,7 @@ type batchCommitOp struct {
 func (o *batchCommitOp) run(t *test, h *history) {
 	b := t.getBatch(o.batchID)
 	t.clearObj(o.batchID)
-	err := b.Commit(pebble.NoSync)
+	err := b.Commit(t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -502,6 +503,23 @@ func (o *newSnapshotOp) run(t *test, h *history) {
 
 func (o *newSnapshotOp) String() string {
 	return fmt.Sprintf("%s = db.NewSnapshot()", o.snapID)
+}
+
+type dbRestartOp struct {
+}
+
+func (o *dbRestartOp) run(t *test, h *history) {
+	if err := t.restartDB(); err != nil {
+		h.Recordf("%s // %v", o, err)
+		fmt.Fprintf(os.Stderr, "terminating since dbRestartOp returned err %s\n", err)
+		h.failed = true
+	} else {
+		h.Recordf("%s", o)
+	}
+}
+
+func (o *dbRestartOp) String() string {
+	return fmt.Sprintf("db.Restart()")
 }
 
 func formatOps(ops []op) string {
