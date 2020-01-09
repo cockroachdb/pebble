@@ -477,25 +477,3 @@ func (s *sstableT) foreachSstable(args []string, fn func(arg string)) {
 		})
 	}
 }
-
-func walk(fs vfs.FS, dir string, fn func(path string)) {
-	paths, err := fs.List(dir)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", dir, err)
-		return
-	}
-	sort.Strings(paths)
-	for _, part := range paths {
-		path := fs.PathJoin(dir, part)
-		info, err := fs.Stat(path)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s: %v\n", path, err)
-			continue
-		}
-		if info.IsDir() {
-			walk(fs, path, fn)
-		} else {
-			fn(path)
-		}
-	}
-}

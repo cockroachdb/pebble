@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 var stdout = io.Writer(os.Stdout)
@@ -192,4 +194,26 @@ func formatKeyValue(
 		}
 	}
 	w.Write([]byte{'\n'})
+}
+
+func walk(fs vfs.FS, dir string, fn func(path string)) {
+	paths, err := fs.List(dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", dir, err)
+		return
+	}
+	sort.Strings(paths)
+	for _, part := range paths {
+		path := fs.PathJoin(dir, part)
+		info, err := fs.Stat(path)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", path, err)
+			continue
+		}
+		if info.IsDir() {
+			walk(fs, path, fn)
+		} else {
+			fn(path)
+		}
+	}
 }
