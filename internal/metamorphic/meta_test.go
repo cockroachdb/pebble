@@ -77,7 +77,8 @@ func testMetaRun(t *testing.T, runDir string) {
 		t.Fatal(err)
 	}
 	opts := &pebble.Options{}
-	if err := parseOptions(opts, string(optionsData)); err != nil {
+	testOpts := testOptions{opts: opts}
+	if err := parseOptions(&testOpts, string(optionsData)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,14 +89,18 @@ func testMetaRun(t *testing.T, runDir string) {
 
 	// Set up the filesystem to use for the test. Note that by default we use an
 	// in-memory FS.
-	if *disk {
+	if *disk && !testOpts.strictFS {
 		opts.FS = vfs.Default
 		if err := os.RemoveAll(opts.FS.PathJoin(runDir, "data")); err != nil {
 			t.Fatal(err)
 		}
 	} else {
 		opts.Cleaner = base.ArchiveCleaner{}
-		opts.FS = vfs.NewMem()
+		if testOpts.strictFS {
+			opts.FS = vfs.NewStrictMem()
+		} else {
+			opts.FS = vfs.NewMem()
+		}
 	}
 	if opts.WALDir != "" {
 		opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
@@ -115,7 +120,7 @@ func testMetaRun(t *testing.T, runDir string) {
 	h := newHistory(*failRE, writers...)
 
 	m := newTest(ops)
-	if err := m.init(h, opts.FS.PathJoin(runDir, "data"), opts); err != nil {
+	if err := m.init(h, opts.FS.PathJoin(runDir, "data"), testOpts); err != nil {
 		t.Fatal(err)
 	}
 	for m.step(h) {
@@ -125,7 +130,6 @@ func testMetaRun(t *testing.T, runDir string) {
 			os.Exit(1)
 		}
 	}
-	m.finish(h)
 }
 
 // TestMeta generates a random set of operations to run, then runs the test
@@ -176,14 +180,18 @@ func TestMeta(t *testing.T) {
 	// Perform a particular test run with the specified options. The options are
 	// written to <run-dir>/OPTIONS and a child process is created to actually
 	// execute the test.
-	runOptions := func(t *testing.T, opts *pebble.Options) {
+	runOptions := func(t *testing.T, opts testOptions) {
 		runDir := filepath.Join(metaDir, path.Base(t.Name()))
 		if err := os.MkdirAll(runDir, 0755); err != nil {
 			t.Fatal(err)
 		}
 
 		optionsPath := filepath.Join(runDir, "OPTIONS")
-		if err := ioutil.WriteFile(optionsPath, []byte(opts.String()), 0644); err != nil {
+		str := opts.opts.String()
+		if opts.strictFS {
+			str = fmt.Sprintf("%s\n[StrictFS]\n  dummy=1\n", str)
+		}
+		if err := ioutil.WriteFile(optionsPath, []byte(str), 0644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -197,7 +205,11 @@ func TestMeta(t *testing.T) {
 	// Perform runs with the standard options.
 	var names []string
 	for i, opts := range standardOptions() {
-		name := fmt.Sprintf("standard-%03d", i)
+		var suffix string
+		if opts.strictFS {
+			suffix = "strictfs"
+		}
+		name := fmt.Sprintf("standard-%03d%s", i, suffix)
 		names = append(names, name)
 		t.Run(name, func(t *testing.T) {
 			runOptions(t, opts)

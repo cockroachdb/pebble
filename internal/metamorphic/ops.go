@@ -48,7 +48,11 @@ type applyOp struct {
 func (o *applyOp) run(t *test, h *history) {
 	b := t.getBatch(o.batchID)
 	w := t.getWriter(o.writerID)
-	err := w.Apply(b, pebble.NoSync)
+	wo := pebble.NoSync
+	if t.strictFS {
+		wo = pebble.Sync
+	}
+	err := w.Apply(b, wo)
 	h.Recordf("%s // %v", o, err)
 	_ = b.Close()
 	t.clearObj(o.batchID)
@@ -82,7 +86,11 @@ type deleteOp struct {
 
 func (o *deleteOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Delete(o.key, pebble.NoSync)
+	wo := pebble.NoSync
+	if t.strictFS {
+		wo = pebble.Sync
+	}
+	err := w.Delete(o.key, wo)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -99,7 +107,11 @@ type deleteRangeOp struct {
 
 func (o *deleteRangeOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.DeleteRange(o.start, o.end, pebble.NoSync)
+	wo := pebble.NoSync
+	if t.strictFS {
+		wo = pebble.Sync
+	}
+	err := w.DeleteRange(o.start, o.end, wo)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -116,7 +128,11 @@ type mergeOp struct {
 
 func (o *mergeOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Merge(o.key, o.value, pebble.NoSync)
+	wo := pebble.NoSync
+	if t.strictFS {
+		wo = pebble.Sync
+	}
+	err := w.Merge(o.key, o.value, wo)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -133,7 +149,11 @@ type setOp struct {
 
 func (o *setOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Set(o.key, o.value, pebble.NoSync)
+	wo := pebble.NoSync
+	if t.strictFS {
+		wo = pebble.Sync
+	}
+	err := w.Set(o.key, o.value, wo)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -179,7 +199,11 @@ type batchCommitOp struct {
 func (o *batchCommitOp) run(t *test, h *history) {
 	b := t.getBatch(o.batchID)
 	t.clearObj(o.batchID)
-	err := b.Commit(pebble.NoSync)
+	wo := pebble.NoSync
+	if t.strictFS {
+		wo = pebble.Sync
+	}
+	err := b.Commit(wo)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -505,6 +529,22 @@ func (o *newSnapshotOp) run(t *test, h *history) {
 
 func (o *newSnapshotOp) String() string {
 	return fmt.Sprintf("%s = db.NewSnapshot()", o.snapID)
+}
+
+type dbRestartOp struct {
+}
+
+func (o *dbRestartOp) run(t *test, h *history) {
+	if err := t.restartDB(); err != nil {
+		h.Recordf("%s // %v", o, err)
+		h.failed = true
+	} else {
+		h.Recordf("%s", o)
+	}
+}
+
+func (o *dbRestartOp) String() string {
+	return fmt.Sprintf("db.Restart()")
 }
 
 func formatOps(ops []op) string {
