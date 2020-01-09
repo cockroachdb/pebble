@@ -173,6 +173,24 @@ func (i *singleLevelIterator) loadBlock() bool {
 	return true
 }
 
+func (i *singleLevelIterator) recordOffset() uint64 {
+	offset := i.dataBH.Offset
+	if i.data.Valid() {
+		// - i.dataBH.Length/len(i.data.data) is the compression ratio. If
+		//   uncompressed, this is 1.
+		// - i.data.nextOffset is the uncompressed position of the current record
+		//   in the block.
+		// - i.dataBH.Offset is the offset of the block in the sstable before
+		//   decompression.
+		offset += (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
+	} else {
+		// Last entry in the block must increment bytes iterated by the size of the block trailer
+		// and restart points.
+		offset += i.dataBH.Length + blockTrailerLen
+	}
+	return offset
+}
+
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
@@ -361,6 +379,7 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
 			break
 		}
 		if key, _ := i.index.Next(); key == nil {
+			i.data.invalidate()
 			break
 		}
 		if i.loadBlock() {
@@ -382,6 +401,7 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 			break
 		}
 		if key, _ := i.index.Prev(); key == nil {
+			i.data.invalidate()
 			break
 		}
 		if i.loadBlock() {
@@ -509,16 +529,7 @@ func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*Interna
 		}
 	}
 
-	// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
-	// i.data.nextOffset is the uncompressed position of the current record in the block.
-	// i.dataBH.Offset is the offset of the block in the sstable before decompression.
-	recordOffset := (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
-	curOffset := i.dataBH.Offset + recordOffset
-	// Last entry in the block must increment bytes iterated by the size of the block trailer
-	// and restart points.
-	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		curOffset = i.dataBH.Offset + i.dataBH.Length + blockTrailerLen
-	}
+	curOffset := i.recordOffset()
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
 	return key, val
@@ -555,10 +566,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 	}
 	i.index.setCacheHandle(indexBlock)
 	i.err = i.index.init(i.cmp, indexBlock.Get(), i.reader.Properties.GlobalSeqNum)
-	if i.err != nil {
-		return false
-	}
-	return true
+	return i.err == nil
 }
 
 func (i *twoLevelIterator) Init(r *Reader, lower, upper []byte) error {
@@ -857,16 +865,7 @@ func (i *twoLevelCompactionIterator) skipForward(
 		}
 	}
 
-	// i.dataBH.Length/len(i.data.data) is the compression ratio. If uncompressed, this is 1.
-	// i.data.nextOffset is the uncompressed position of the current record in the block.
-	// i.dataBH.Offset is the offset of the block in the sstable before decompression.
-	recordOffset := (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
-	curOffset := i.dataBH.Offset + recordOffset
-	// Last entry in the block must increment bytes iterated by the size of the block trailer
-	// and restart points.
-	if i.data.nextOffset+(4*(i.data.numRestarts+1)) == int32(len(i.data.data)) {
-		curOffset = i.dataBH.Offset + i.dataBH.Length + blockTrailerLen
-	}
+	curOffset := i.recordOffset()
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
 	return key, val
