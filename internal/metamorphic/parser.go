@@ -47,6 +47,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.objID, nil, nil
 	case *batchCommitOp:
 		return &t.batchID, nil, nil
+	case *dbRestartOp:
+		return nil, nil, nil
 	case *deleteOp:
 		return &t.writerID, nil, []interface{}{&t.key}
 	case *deleteRangeOp:
@@ -91,7 +93,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 
 var methods = map[string]*methodInfo{
 	"Apply":           makeMethod(applyOp{}, dbTag, batchTag),
-	"Close":           makeMethod(closeOp{}, batchTag, iterTag, snapTag),
+	"Close":           makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
 	"Commit":          makeMethod(batchCommitOp{}, batchTag),
 	"Delete":          makeMethod(deleteOp{}, dbTag, batchTag),
 	"DeleteRange":     makeMethod(deleteRangeOp{}, dbTag, batchTag),
@@ -107,6 +109,7 @@ var methods = map[string]*methodInfo{
 	"NewSnapshot":     makeMethod(newSnapshotOp{}, dbTag),
 	"Next":            makeMethod(iterNextOp{}, iterTag),
 	"Prev":            makeMethod(iterPrevOp{}, iterTag),
+	"Restart":         makeMethod(dbRestartOp{}, dbTag),
 	"SeekGE":          makeMethod(iterSeekGEOp{}, iterTag),
 	"SeekLT":          makeMethod(iterSeekLTOp{}, iterTag),
 	"SeekPrefixGE":    makeMethod(iterSeekPrefixGEOp{}, iterTag),
