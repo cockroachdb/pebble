@@ -5,6 +5,7 @@
 package tool
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -128,7 +129,7 @@ inclusive-inclusive range specified by --start and --end.
 			&s.end, "end", "end key for the range")
 	}
 	s.Scan.Flags().Var(
-		&s.filter, "filter", "only output matching keys and range tombstones containing key")
+		&s.filter, "filter", "only output records with matching prefix or overlapping range tombstones")
 	s.Scan.Flags().Int64Var(
 		&s.count, "count", 0, "key count for scan (0 is unlimited)")
 
@@ -392,10 +393,12 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			if key != nil &&
 				(rangeDelKey == nil ||
 					base.InternalCompare(r.Compare, *key, *rangeDelKey) < 0) {
-				// TODO(peter): rather than doing an exact key match on the filter,
-				// perhaps this should be a prefix match. That would be more useful to
-				// CockroachDB.
-				if s.filter == nil || r.Compare(s.filter, key.UserKey) == 0 {
+				// The filter specifies a prefix of the key.
+				//
+				// TODO(peter): Is using prefix comparison like this kosher for all
+				// comparers? Probably not, but it is for common ones such as the
+				// Pebble default and CockroachDB's comparer.
+				if s.filter == nil || bytes.HasPrefix(key.UserKey, s.filter) {
 					fmt.Fprint(stdout, prefix)
 					formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
 				}
@@ -406,8 +409,13 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 				key, value = iter.Next()
 			} else {
+				// If a filter is specified, we want to output any range tombstone
+				// which overlaps the prefix. The comparison on the start key is
+				// somewhat complex. Consider the tombstone [aaa,ccc). We want to
+				// output this tombstone if filter is "aa", and if it "bbb".
 				if s.filter == nil ||
-					(r.Compare(s.filter, rangeDelKey.UserKey) >= 0 &&
+					((r.Compare(s.filter, rangeDelKey.UserKey) >= 0 ||
+						bytes.HasPrefix(rangeDelKey.UserKey, s.filter)) &&
 						r.Compare(s.filter, rangeDelValue) < 0) {
 					fmt.Fprint(stdout, prefix)
 					formatKeyValue(stdout, s.fmtKey, s.fmtValue, rangeDelKey, rangeDelValue)
