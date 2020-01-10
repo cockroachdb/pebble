@@ -60,7 +60,7 @@ type FileMetadata struct {
 }
 
 func (m FileMetadata) String() string {
-	return fmt.Sprintf("%d:%s-%s", m.FileNum, m.Smallest, m.Largest)
+	return fmt.Sprintf("%06d:%s-%s", m.FileNum, m.Smallest, m.Largest)
 }
 
 // TableInfo returns a subset of the FileMetadata state formatted as a
@@ -204,7 +204,7 @@ func (v *Version) Pretty(format base.Formatter) string {
 		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
 			f := &v.Files[level][j]
-			fmt.Fprintf(&buf, "  %d:[%s-%s]\n", f.FileNum,
+			fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 				format(f.Smallest.UserKey), format(f.Largest.UserKey))
 		}
 	}
@@ -222,7 +222,7 @@ func (v *Version) DebugString(format base.Formatter) string {
 		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
 			f := &v.Files[level][j]
-			fmt.Fprintf(&buf, "  %d:[%s-%s]\n", f.FileNum,
+			fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 				f.Smallest.Pretty(format), f.Largest.Pretty(format))
 		}
 	}
@@ -291,9 +291,7 @@ func (v *Version) Next() *Version {
 // and the computation is repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(
-	level int, cmp Compare, start, end []byte,
-) (ret []FileMetadata) {
+func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []FileMetadata) {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		selectedIndices := make([]bool, len(v.Files[level]))

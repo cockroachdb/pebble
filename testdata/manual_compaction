@@ -6,7 +6,7 @@ set b 2
 compact a-b
 ----
 6:
-  5:[a#0,SET-b#1,SET]
+  000005:[a#0,SET-b#1,SET]
 
 batch
 set c 3
@@ -16,8 +16,8 @@ set d 4
 compact c-d
 ----
 6:
-  5:[a#0,SET-b#1,SET]
-  7:[c#2,SET-d#3,SET]
+  000005:[a#0,SET-b#1,SET]
+  000007:[c#2,SET-d#3,SET]
 
 batch
 set b 5
@@ -27,7 +27,7 @@ set c 6
 compact a-d
 ----
 6:
-  10:[a#0,SET-d#0,SET]
+  000010:[a#0,SET-d#0,SET]
 
 # This also tests flushing a memtable that only contains range
 # deletions.
@@ -48,14 +48,14 @@ L0
   a.SET.2:v
 ----
 0:
-  4:[b-b]
-  5:[a-a]
+  000004:[b-b]
+  000005:[a-a]
 
 compact a-b
 ----
 1:
-  6:[a#0,SET-a#0,SET]
-  7:[b#0,SET-b#0,SET]
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
 
 # A range tombstone extends past the grandparent file boundary used to limit the
 # size of future compactions. Verify the range tombstone is split at that file
@@ -74,22 +74,22 @@ L3
   d.SET.0:v
 ----
 1:
-  4:[a-a]
+  000004:[a-a]
 2:
-  5:[a-e]
+  000005:[a-e]
 3:
-  6:[a-b]
-  7:[c-d]
+  000006:[a-b]
+  000007:[c-d]
 
 compact a-e L1
 ----
 2:
-  8:[a#3,SET-b#72057594037927935,RANGEDEL]
-  9:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
-  10:[d#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000008:[a#3,SET-b#72057594037927935,RANGEDEL]
+  000009:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000010:[d#2,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  6:[a#0,SET-b#0,SET]
-  7:[c#0,SET-d#0,SET]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
 
 # Same as above, except range tombstone covers multiple grandparent file boundaries.
 
@@ -112,27 +112,27 @@ L3
   g.SET.0:v
 ----
 1:
-  4:[a-a]
+  000004:[a-a]
 2:
-  5:[a-g]
+  000005:[a-g]
 3:
-  6:[a-b]
-  7:[c-d]
-  8:[e-f]
-  9:[f-g]
+  000006:[a-b]
+  000007:[c-d]
+  000008:[e-f]
+  000009:[f-g]
 
 compact a-e L1
 ----
 2:
-  10:[a#3,SET-b#72057594037927935,RANGEDEL]
-  11:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
-  12:[d#2,RANGEDEL-f#72057594037927935,RANGEDEL]
-  13:[f#2,RANGEDEL-g#72057594037927935,RANGEDEL]
+  000010:[a#3,SET-b#72057594037927935,RANGEDEL]
+  000011:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000012:[d#2,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000013:[f#2,RANGEDEL-g#72057594037927935,RANGEDEL]
 3:
-  6:[a#0,SET-b#0,SET]
-  7:[c#0,SET-d#0,SET]
-  8:[e#0,SET-f#1,SET]
-  9:[f#0,SET-g#0,SET]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+  000008:[e#0,SET-f#1,SET]
+  000009:[f#0,SET-g#0,SET]
 
 # A range tombstone covers multiple grandparent file boundaries between point keys,
 # rather than after all point keys.
@@ -154,25 +154,25 @@ L3
   f.SET.1:v
 ----
 1:
-  4:[a-h]
+  000004:[a-h]
 2:
-  5:[a-g]
+  000005:[a-g]
 3:
-  6:[a-b]
-  7:[c-d]
-  8:[e-f]
+  000006:[a-b]
+  000007:[c-d]
+  000008:[e-f]
 
 compact a-e L1
 ----
 2:
-  9:[a#3,SET-b#72057594037927935,RANGEDEL]
-  10:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
-  11:[d#2,RANGEDEL-f#72057594037927935,RANGEDEL]
-  12:[f#2,RANGEDEL-h#3,SET]
+  000009:[a#3,SET-b#72057594037927935,RANGEDEL]
+  000010:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000011:[d#2,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000012:[f#2,RANGEDEL-h#3,SET]
 3:
-  6:[a#0,SET-b#0,SET]
-  7:[c#0,SET-d#0,SET]
-  8:[e#0,SET-f#1,SET]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+  000008:[e#0,SET-f#1,SET]
 
 # A range tombstone is the first and only item output by a compaction, and it
 # extends past the grandparent file boundary used to limit the size of future
@@ -191,22 +191,22 @@ L3
   d.SET.0:v
 ----
 1:
-  4:[a-e]
+  000004:[a-e]
 2:
-  5:[a-a]
+  000005:[a-a]
 3:
-  6:[a-b]
-  7:[c-d]
+  000006:[a-b]
+  000007:[c-d]
 
 compact a-e L1
 ----
 2:
-  8:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
-  9:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
-  10:[d#3,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000010:[d#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  6:[a#0,SET-b#0,SET]
-  7:[c#0,SET-d#0,SET]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
 
 # Setup such that grandparent overlap limit is exceeded multiple times at the same user key ("b").
 # Ensures the compaction output files are non-overlapping.
@@ -225,23 +225,23 @@ L3
   b.SET.0:v
 ----
 1:
-  4:[a-c]
+  000004:[a-c]
 2:
-  5:[a-c]
+  000005:[a-c]
 3:
-  6:[b-b]
-  7:[b-b]
-  8:[b-b]
+  000006:[b-b]
+  000007:[b-b]
+  000008:[b-b]
 
 compact a-c L1
 ----
 2:
-  9:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
-  10:[b#3,RANGEDEL-c#2,SET]
+  000009:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000010:[b#3,RANGEDEL-c#2,SET]
 3:
-  6:[b#2,SET-b#2,SET]
-  7:[b#1,SET-b#1,SET]
-  8:[b#0,SET-b#0,SET]
+  000006:[b#2,SET-b#2,SET]
+  000007:[b#1,SET-b#1,SET]
+  000008:[b#0,SET-b#0,SET]
 
 # Regression test for a bug where compaction would stop process range
 # tombstones for an input level upon finding an sstable in the input
@@ -263,7 +263,7 @@ set z 1
 compact a-z
 ----
 6:
-  5:[a#0,SET-z#4,SET]
+  000005:[a#0,SET-z#4,SET]
 
 build ext1
 set a 2
@@ -277,10 +277,10 @@ del-range c z
 ingest ext1 ext2
 ----
 5:
-  6:[a#5,SET-a#5,SET]
-  7:[b#6,SET-z#72057594037927935,RANGEDEL]
+  000006:[a#5,SET-a#5,SET]
+  000007:[b#6,SET-z#72057594037927935,RANGEDEL]
 6:
-  5:[a#0,SET-z#4,SET]
+  000005:[a#0,SET-z#4,SET]
 
 iter
 first
@@ -296,7 +296,7 @@ z:1
 compact a-z
 ----
 6:
-  8:[a#0,SET-z#0,SET]
+  000008:[a#0,SET-z#0,SET]
 
 iter
 first
@@ -327,23 +327,23 @@ L3
   b.SET.1:1
 ----
 0:
-  4:[c-c]
+  000004:[c-c]
 1:
-  5:[a-a]
+  000005:[a-a]
 2:
-  6:[a-e]
+  000006:[a-e]
 3:
-  7:[b-b]
+  000007:[b-b]
 
 compact a-e L1
 ----
 0:
-  4:[c#4,SET-c#4,SET]
+  000004:[c#4,SET-c#4,SET]
 2:
-  8:[a#3,SET-b#72057594037927935,RANGEDEL]
-  9:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000008:[a#3,SET-b#72057594037927935,RANGEDEL]
+  000009:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  7:[b#1,SET-b#1,SET]
+  000007:[b#1,SET-b#1,SET]
 
 # We should only see a:3 and c:4 at this point.
 

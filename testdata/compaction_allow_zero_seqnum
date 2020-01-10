@@ -3,7 +3,7 @@ L2
   c.SET.2:2
 ----
 2:
-  4:[c-c]
+  000004:[c-c]
 
 allow-zero-seqnum
 L0:b-b
@@ -47,7 +47,7 @@ L1
   a.SET.0:0
 ----
 1:
-  4:[a-a]
+  000004:[a-a]
 
 allow-zero-seqnum
 flush

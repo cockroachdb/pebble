@@ -9,13 +9,13 @@ L3
   a.SET.1:1
 ----
 0:
-  4:[a#4,SET-a#4,SET]
+  000004:[a#4,SET-a#4,SET]
 1:
-  5:[a#3,SET-a#3,SET]
+  000005:[a#3,SET-a#3,SET]
 2:
-  6:[a#2,SET-a#2,SET]
+  000006:[a#2,SET-a#2,SET]
 3:
-  7:[a#1,SET-a#1,SET]
+  000007:[a#1,SET-a#1,SET]
 
 iter
 first
