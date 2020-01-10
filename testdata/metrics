@@ -8,7 +8,7 @@ iter-new a
 flush
 ----
 0:
-  5:[a#0,SET-a#0,SET]
+  000005:[a#0,SET-a#0,SET]
 
 # iter b references both a memtable and sstable 5.
 
@@ -44,8 +44,8 @@ set b 2
 flush
 ----
 0:
-  5:[a#0,SET-a#0,SET]
-  7:[b#1,SET-b#1,SET]
+  000005:[a#0,SET-a#0,SET]
+  000007:[b#1,SET-b#1,SET]
 
 # iter c references both a memtable and sstables 5 and 7.
 
@@ -55,7 +55,7 @@ iter-new c
 compact a-z
 ----
 6:
-  8:[a#0,SET-b#0,SET]
+  000008:[a#0,SET-b#0,SET]
 
 metrics
 ----

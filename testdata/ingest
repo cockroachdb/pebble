@@ -27,7 +27,7 @@ ingest ext0
 lsm
 ----
 6:
-  6:[a#1,SET-b#1,SET]
+  000006:[a#1,SET-b#1,SET]
 
 iter
 seek-ge a
@@ -56,9 +56,9 @@ ingest ext1
 lsm
 ----
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
+  000006:[a#1,SET-b#1,SET]
 
 iter
 seek-ge a
@@ -86,11 +86,11 @@ ingest ext2
 lsm
 ----
 4:
-  8:[a#3,SET-c#3,SET]
+  000008:[a#3,SET-c#3,SET]
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
+  000006:[a#1,SET-b#1,SET]
 
 iter
 seek-ge a
@@ -121,13 +121,13 @@ ingest ext3
 lsm
 ----
 3:
-  9:[b#4,MERGE-c#4,DEL]
+  000009:[b#4,MERGE-c#4,DEL]
 4:
-  8:[a#3,SET-c#3,SET]
+  000008:[a#3,SET-c#3,SET]
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
+  000006:[a#1,SET-b#1,SET]
 
 iter
 seek-ge a
@@ -158,14 +158,14 @@ ingest ext4
 lsm
 ----
 3:
-  9:[b#4,MERGE-c#4,DEL]
+  000009:[b#4,MERGE-c#4,DEL]
 4:
-  8:[a#3,SET-c#3,SET]
+  000008:[a#3,SET-c#3,SET]
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
-  10:[x#5,SET-y#5,SET]
+  000006:[a#1,SET-b#1,SET]
+  000010:[x#5,SET-y#5,SET]
 
 iter
 seek-lt y
@@ -198,17 +198,17 @@ ingest ext5
 lsm
 ----
 0:
-  13:[j#6,SET-k#7,SET]
-  11:[k#8,SET-k#8,SET]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
 3:
-  9:[b#4,MERGE-c#4,DEL]
+  000009:[b#4,MERGE-c#4,DEL]
 4:
-  8:[a#3,SET-c#3,SET]
+  000008:[a#3,SET-c#3,SET]
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
-  10:[x#5,SET-y#5,SET]
+  000006:[a#1,SET-b#1,SET]
+  000010:[x#5,SET-y#5,SET]
 
 iter
 seek-ge j
@@ -238,18 +238,18 @@ ingest ext6
 lsm
 ----
 0:
-  13:[j#6,SET-k#7,SET]
-  11:[k#8,SET-k#8,SET]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
 3:
-  9:[b#4,MERGE-c#4,DEL]
+  000009:[b#4,MERGE-c#4,DEL]
 4:
-  8:[a#3,SET-c#3,SET]
+  000008:[a#3,SET-c#3,SET]
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
-  14:[n#10,SET-n#10,SET]
-  10:[x#5,SET-y#5,SET]
+  000006:[a#1,SET-b#1,SET]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]
 
 get
 m
@@ -269,20 +269,20 @@ ingest ext7
 lsm
 ----
 0:
-  13:[j#6,SET-k#7,SET]
-  11:[k#8,SET-k#8,SET]
-  17:[m#9,SET-m#9,SET]
-  15:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
+  000017:[m#9,SET-m#9,SET]
+  000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
 3:
-  9:[b#4,MERGE-c#4,DEL]
+  000009:[b#4,MERGE-c#4,DEL]
 4:
-  8:[a#3,SET-c#3,SET]
+  000008:[a#3,SET-c#3,SET]
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
-  14:[n#10,SET-n#10,SET]
-  10:[x#5,SET-y#5,SET]
+  000006:[a#1,SET-b#1,SET]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]
 
 get
 a
@@ -353,20 +353,20 @@ y:40
 lsm
 ----
 0:
-  13:[j#6,SET-k#7,SET]
-  11:[k#8,SET-k#8,SET]
-  17:[m#9,SET-m#9,SET]
-  15:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
-  18:[j#12,RANGEDEL-m#12,SET]
-  19:[a#13,RANGEDEL-x#72057594037927935,RANGEDEL]
-  20:[y#14,SET-y#14,SET]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
+  000017:[m#9,SET-m#9,SET]
+  000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000018:[j#12,RANGEDEL-m#12,SET]
+  000019:[a#13,RANGEDEL-x#72057594037927935,RANGEDEL]
+  000020:[y#14,SET-y#14,SET]
 3:
-  9:[b#4,MERGE-c#4,DEL]
+  000009:[b#4,MERGE-c#4,DEL]
 4:
-  8:[a#3,SET-c#3,SET]
+  000008:[a#3,SET-c#3,SET]
 5:
-  7:[a#2,SET-b#2,DEL]
+  000007:[a#2,SET-b#2,DEL]
 6:
-  6:[a#1,SET-b#1,SET]
-  14:[n#10,SET-n#10,SET]
-  10:[x#5,SET-y#5,SET]
+  000006:[a#1,SET-b#1,SET]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]

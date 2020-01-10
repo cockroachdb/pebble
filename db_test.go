@@ -411,7 +411,7 @@ func TestLargeBatch(t *testing.T) {
 	}
 
 	// Verify this results in one L0 table being created.
-	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  5:[a-a]\n"))
+	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  000005:[a-a]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestLargeBatch(t *testing.T) {
 	}
 
 	// Verify this results in a second L0 table being created.
-	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  5:[a-a]\n  7:[b-b]\n"))
+	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  000005:[a-a]\n  000007:[b-b]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
