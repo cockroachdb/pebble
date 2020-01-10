@@ -126,6 +126,10 @@ func testMetaRun(t *testing.T, runDir string) {
 		}
 	}
 	m.finish(h)
+
+	if *keep && !*disk {
+		m.maybeSaveData()
+	}
 }
 
 // TestMeta generates a random set of operations to run, then runs the test
@@ -187,7 +191,11 @@ func TestMeta(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		cmd := exec.Command(os.Args[0], "-run-dir", runDir, "-test.run="+rootName+"$")
+		cmd := exec.Command(os.Args[0],
+			"-disk="+fmt.Sprint(*disk),
+			"-keep="+fmt.Sprint(*keep),
+			"-run-dir="+runDir,
+			"-test.run="+rootName+"$")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%v\n%s\n\n%s", err, filepath.Join(runDir, "history"), out)
