@@ -12,6 +12,7 @@ all:
 	@echo "  make testrace"
 	@echo "  make stress"
 	@echo "  make stressrace"
+	@echo "  make stressmeta"
 	@echo "  make mod-update"
 	@echo "  make clean"
 
@@ -26,6 +27,13 @@ testrace: test
 .PHONY: stress stressrace
 stressrace: GOFLAGS += -race
 stress stressrace:
+	GO111MODULE=off ${GO} test -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
+
+.PHONY: stressmeta
+stressmeta: PKG = ./internal/metamorphic
+stressmeta: STRESSFLAGS += -p 1
+stressmeta: TESTS = TestMeta$$
+stressmeta:
 	GO111MODULE=off ${GO} test -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
 
 .PHONY: generate
