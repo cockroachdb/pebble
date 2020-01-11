@@ -289,6 +289,22 @@ sstable scan
 h.sst: arms#0,SET [32]
 
 sstable scan
+--filter=bear
+../sstable/testdata/h.sst
+----
+h.sst: bear#0,SET [35]
+h.sst: beard-bearers#0,RANGEDEL
+h.sst: beard#0,SET [31]
+h.sst: bearers#0,SET [31]
+h.sst: bears#0,SET [31]
+
+sstable scan
+--filter=beards
+../sstable/testdata/h.sst
+----
+h.sst: beard-bearers#0,RANGEDEL
+
+sstable scan
 --filter=beard
 ../sstable/testdata/
 ----
