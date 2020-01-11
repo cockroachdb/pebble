@@ -465,12 +465,18 @@ func (i *Iterator) Error() error {
 // It is valid to call Close multiple times. Other methods should not be
 // called after the iterator has been closed.
 func (i *Iterator) Close() error {
+	// Close the child iterator before releasing the readState because when the
+	// readState is released sstables referenced by the readState may be deleted
+	// which will fail on Windows if the sstables are still open by the child
+	// iterator.
+	i.err = firstError(i.err, i.iter.Close())
+	err := i.err
+
 	if i.readState != nil {
 		i.readState.unref()
 		i.readState = nil
 	}
-	i.err = firstError(i.err, i.iter.Close())
-	err := i.err
+
 	if alloc := i.alloc; alloc != nil {
 		*i = Iterator{}
 		iterAllocPool.Put(alloc)

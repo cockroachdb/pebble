@@ -485,6 +485,17 @@ func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error)
 		return err
 	}
 
+	if vs.manifest != nil {
+		vs.manifest.Close()
+		vs.manifest = nil
+	}
+	if vs.manifestFile != nil {
+		if err := vs.manifestFile.Close(); err != nil {
+			return err
+		}
+		vs.manifestFile = nil
+	}
+
 	vs.manifest, manifest = manifest, nil
 	vs.manifestFile, manifestFile = manifestFile, nil
 	return nil

@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -365,4 +366,33 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	}
 	iter.Close()
 	fs.validate(t, c, nil)
+}
+
+func TestTableCacheEvictClose(t *testing.T) {
+	errs := make(chan error, 10)
+	db, err := Open("test",
+		&Options{
+			FS: vfs.NewMem(),
+			EventListener: EventListener{
+				TableDeleted: func(info TableDeleteInfo) {
+					errs <- info.Err
+				},
+			},
+		})
+	require.NoError(t, err)
+
+	start := []byte("a")
+	end := []byte("z")
+	require.NoError(t, db.Set(start, nil, nil))
+	require.NoError(t, db.Flush())
+	require.NoError(t, db.DeleteRange(start, end, nil))
+	require.NoError(t, db.Compact(start, end))
+	require.NoError(t, db.Close())
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }

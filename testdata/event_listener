@@ -17,6 +17,7 @@ create: wal/000002.log
 sync: wal
 [JOB 1] WAL created 000002
 create: db/MANIFEST-000003
+close: db/MANIFEST-000001
 sync: db/MANIFEST-000003
 create: db/CURRENT.000003.dbtmp
 sync: db/CURRENT.000003.dbtmp
@@ -44,6 +45,7 @@ sync: db/000006.sst
 close: db/000006.sst
 sync: db
 create: db/MANIFEST-000007
+close: db/MANIFEST-000003
 sync: db/MANIFEST-000007
 create: db/CURRENT.000007.dbtmp
 sync: db/CURRENT.000007.dbtmp
@@ -69,6 +71,7 @@ sync: db/000009.sst
 close: db/000009.sst
 sync: db
 create: db/MANIFEST-000010
+close: db/MANIFEST-000007
 sync: db/MANIFEST-000010
 create: db/CURRENT.000010.dbtmp
 sync: db/CURRENT.000010.dbtmp
@@ -85,6 +88,7 @@ sync: db/000011.sst
 close: db/000011.sst
 sync: db
 create: db/MANIFEST-000012
+close: db/MANIFEST-000010
 sync: db/MANIFEST-000012
 create: db/CURRENT.000012.dbtmp
 sync: db/CURRENT.000012.dbtmp
@@ -115,6 +119,7 @@ sync: db/000014.sst
 close: db/000014.sst
 sync: db
 create: db/MANIFEST-000015
+close: db/MANIFEST-000012
 sync: db/MANIFEST-000015
 create: db/CURRENT.000015.dbtmp
 sync: db/CURRENT.000015.dbtmp
@@ -134,6 +139,7 @@ link: ext/0 -> db/000016.sst
 [JOB 10] ingesting: sstable created 000016
 sync: db
 create: db/MANIFEST-000017
+close: db/MANIFEST-000015
 sync: db/MANIFEST-000017
 create: db/CURRENT.000017.dbtmp
 sync: db/CURRENT.000017.dbtmp

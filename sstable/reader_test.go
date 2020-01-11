@@ -393,7 +393,6 @@ func buildTestTable(
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f0.Close()
 
 	w := NewWriter(f0, WriterOptions{
 		BlockSize:      blockSize,

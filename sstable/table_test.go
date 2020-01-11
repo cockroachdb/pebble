@@ -345,7 +345,6 @@ func build(
 	if err != nil {
 		return nil, err
 	}
-	defer f0.Close()
 	tmpFileCount++
 
 	writerOpts := WriterOptions{
