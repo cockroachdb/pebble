@@ -4,7 +4,7 @@
 
 // +build !race
 
-package rangedel
+package invariants
 
-// raceEnabled is true if we were built with the race build tag.
-const raceEnabled = false
+// RaceEnabled is true if we were built with the "race" build tag.
+const RaceEnabled = false

@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
@@ -316,10 +317,10 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 	// the invariant of calling levelIter.Seek* with target keys that fall
 	// outside of the bounds.
 	//
-	// Note that raceEnabled is a compile time constant, which means the block of
-	// code will be compiled out of non-race builds making this method eligible
-	// for inlining. Do not change this to use a variable.
-	if false && raceEnabled {
+	// Note that invariants.Enabled is a compile time constant, which means the
+	// block of code will be compiled out of normal builds making this method
+	// eligible for inlining. Do not change this to use a variable.
+	if false && invariants.Enabled {
 		if key == nil {
 			return key, val
 		}

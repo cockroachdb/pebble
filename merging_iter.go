@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
@@ -733,7 +734,7 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 	// contained within a range tombstone at a higher level.
 
 	for ; level < len(m.levels); level++ {
-		if raceEnabled && m.lower != nil && m.heap.cmp(key, m.lower) < 0 {
+		if invariants.Enabled && m.lower != nil && m.heap.cmp(key, m.lower) < 0 {
 			m.logger.Fatalf("mergingIter: lower bound violation: %s < %s\n%s", key, m.lower, debug.Stack())
 		}
 
@@ -810,7 +811,7 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 	// target per level.
 	m.prefix = nil
 	for ; level < len(m.levels); level++ {
-		if raceEnabled && m.upper != nil && m.heap.cmp(key, m.upper) > 0 {
+		if invariants.Enabled && m.upper != nil && m.heap.cmp(key, m.upper) > 0 {
 			m.logger.Fatalf("mergingIter: upper bound violation: %s > %s\n%s", key, m.upper, debug.Stack())
 		}
 

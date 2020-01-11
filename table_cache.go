@@ -17,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -144,7 +145,7 @@ func (c *tableCacheShard) init(
 		},
 	}
 
-	if raceEnabled {
+	if invariants.RaceEnabled {
 		c.mu.iters = make(map[sstable.Iterator][]byte)
 	}
 }
@@ -177,7 +178,7 @@ func (c *tableCacheShard) newIters(
 		iter = n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
 	}
 	atomic.AddInt32(&c.iterCount, 1)
-	if raceEnabled {
+	if invariants.RaceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
 		c.mu.Unlock()
@@ -282,7 +283,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 			// Cache the closure invoked when an iterator is closed. This avoids an
 			// allocation on every call to newIters.
 			closeHook: func(i sstable.Iterator) error {
-				if raceEnabled {
+				if invariants.RaceEnabled {
 					c.mu.Lock()
 					delete(c.mu.iters, i)
 					c.mu.Unlock()
@@ -393,7 +394,7 @@ func (c *tableCacheShard) Close() error {
 	defer c.mu.Unlock()
 
 	if v := atomic.LoadInt32(&c.iterCount); v > 0 {
-		if !raceEnabled {
+		if !invariants.RaceEnabled {
 			return fmt.Errorf("leaked iterators: %d", v)
 		}
 		var buf bytes.Buffer

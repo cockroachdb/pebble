@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -82,7 +83,7 @@ func TestCommitPipeline(t *testing.T) {
 	p := newCommitPipeline(e.env())
 
 	n := 10000
-	if raceEnabled {
+	if invariants.RaceEnabled {
 		// Under race builds we have to limit the concurrency or we hit the
 		// following error:
 		//
