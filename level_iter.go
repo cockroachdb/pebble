@@ -125,6 +125,11 @@ type levelIter struct {
 
 	// bytesIterated keeps track of the number of bytes iterated during compaction.
 	bytesIterated *uint64
+
+	// Disable invariant checks even if they are otherwise enabled. Used by tests
+	// which construct "impossible" situations (e.g. seeking to a key before the
+	// lower bound).
+	disableInvariants bool
 }
 
 // levelIter implements the base.InternalIterator interface.
@@ -313,17 +318,10 @@ func (l *levelIter) loadFile(index, dir int) bool {
 // In race builds we verify that the keys returned by levelIter lie within
 // [lower,upper).
 func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) {
-	// TODO(peter): Currently disabled as this fails due to mergingIter violating
-	// the invariant of calling levelIter.Seek* with target keys that fall
-	// outside of the bounds.
-	//
 	// Note that invariants.Enabled is a compile time constant, which means the
 	// block of code will be compiled out of normal builds making this method
 	// eligible for inlining. Do not change this to use a variable.
-	if false && invariants.Enabled {
-		if key == nil {
-			return key, val
-		}
+	if invariants.Enabled && !l.disableInvariants && key != nil {
 		// We allow returning a boundary key that is outside of the lower/upper
 		// bounds as such keys are always range tombstones which will be skipped by
 		// the Iterator.
