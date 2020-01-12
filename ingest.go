@@ -313,8 +313,8 @@ func ingestTargetLevel(
 	}
 
 	// TODO(sbhola): change to use compactionPicker.getBaseLevel()
-	level := 1
-	for ; level < numLevels; level++ {
+	targetLevel := 0
+	for level := 1; level < numLevels; level++ {
 		if len(v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
 			break
 		}
@@ -332,8 +332,9 @@ func ingestTargetLevel(
 		if overlaps {
 			break
 		}
+		targetLevel = level
 	}
-	return level - 1
+	return targetLevel
 }
 
 // Ingest ingests a set of sstables into the DB. Ingestion of the files is
