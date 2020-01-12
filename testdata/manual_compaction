@@ -276,7 +276,7 @@ del-range c z
 
 ingest ext1 ext2
 ----
-5:
+0:
   000006:[a#5,SET-a#5,SET]
   000007:[b#6,SET-z#72057594037927935,RANGEDEL]
 6:

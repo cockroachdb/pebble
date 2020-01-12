@@ -299,7 +299,7 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 }
 
 func ingestTargetLevel(
-	cmp Compare, v *version, compactions map[*compaction]struct{}, meta *fileMetadata,
+	cmp Compare, v *version, baseLevel int, compactions map[*compaction]struct{}, meta *fileMetadata,
 ) int {
 	// Find the lowest level which does not have any files which overlap meta. We
 	// search from L0 to L6 looking for whether there are any files in the level
@@ -312,9 +312,8 @@ func ingestTargetLevel(
 		return 0
 	}
 
-	// TODO(sbhola): change to use compactionPicker.getBaseLevel()
-	level := 1
-	for ; level < numLevels; level++ {
+	targetLevel := 0
+	for level := baseLevel; level < numLevels; level++ {
 		if len(v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
 			break
 		}
@@ -332,8 +331,9 @@ func ingestTargetLevel(
 		if overlaps {
 			break
 		}
+		targetLevel = level
 	}
-	return level - 1
+	return targetLevel
 }
 
 // Ingest ingests a set of sstables into the DB. Ingestion of the files is
@@ -526,12 +526,13 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	// provides serialization with concurrent compaction and flush jobs.
 	d.mu.versions.logLock()
 	current := d.mu.versions.currentVersion()
+	baseLevel := d.mu.versions.picker.getBaseLevel()
 	for i := range meta {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		m := meta[i]
 		f := &ve.NewFiles[i]
-		f.Level = ingestTargetLevel(d.cmp, current, d.mu.compact.inProgress, m)
+		f.Level = ingestTargetLevel(d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
 		f.Meta = *m
 		levelMetrics := metrics[f.Level]
 		if levelMetrics == nil {
