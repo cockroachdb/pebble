@@ -68,7 +68,11 @@ var (
 // results, and either succeeds or fails the test.
 func RunTest(t *testing.T, path string, f func(d *TestData) string) {
 	t.Helper()
-	file, err := os.OpenFile(path, os.O_RDWR, 0644 /* irrelevant */)
+	flags := os.O_RDONLY
+	if *rewriteTestFiles {
+		flags = os.O_RDWR
+	}
+	file, err := os.OpenFile(path, flags, 0644 /* irrelevant */)
 	if err != nil {
 		t.Fatal(err)
 	}

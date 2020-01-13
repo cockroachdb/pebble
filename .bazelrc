@@ -1,0 +1,7 @@
+build --verbose_failures
+
+test --test_output=errors
+test --test_verbose_timeout_warnings
+test --print_relative_test_log_paths
+test:stress --run_under=stress
+test:stress --test_output=streamed
