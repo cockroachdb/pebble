@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 type tombstonesByStartKey struct {
@@ -188,7 +189,7 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 		// An empty tombstone, we can ignore it.
 		return
 	}
-	if raceEnabled {
+	if invariants.RaceEnabled {
 		f.checkInvariants(f.pending)
 		defer func() { f.checkInvariants(f.pending) }()
 	}
@@ -374,7 +375,7 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 // produce a tombstone [e,h)#9, but we don't need to output that tombstone to
 // the first sstable.
 func (f *Fragmenter) flush(buf []Tombstone, lastKey []byte) {
-	if raceEnabled {
+	if invariants.RaceEnabled {
 		f.checkInvariants(buf)
 	}
 

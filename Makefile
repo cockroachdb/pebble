@@ -2,6 +2,7 @@ GO := go
 GOFLAGS :=
 PKG := ./...
 STRESSFLAGS :=
+TAGS := invariants
 TESTS := .
 
 .PHONY: all
@@ -11,12 +12,13 @@ all:
 	@echo "  make testrace"
 	@echo "  make stress"
 	@echo "  make stressrace"
+	@echo "  make stressmeta"
 	@echo "  make mod-update"
 	@echo "  make clean"
 
 .PHONY: test
 test:
-	GO111MODULE=off ${GO} test ${GOFLAGS} -run ${TESTS} ${PKG}
+	GO111MODULE=off ${GO} test -tags '$(TAGS)' ${GOFLAGS} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
 testrace: GOFLAGS += -race
@@ -25,7 +27,14 @@ testrace: test
 .PHONY: stress stressrace
 stressrace: GOFLAGS += -race
 stress stressrace:
-	GO111MODULE=off ${GO} test -v ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run "${TESTS}" -timeout 0 ${PKG}
+	GO111MODULE=off ${GO} test -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
+
+.PHONY: stressmeta
+stressmeta: PKG = ./internal/metamorphic
+stressmeta: STRESSFLAGS += -p 1
+stressmeta: TESTS = TestMeta$$
+stressmeta:
+	GO111MODULE=off ${GO} test -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
 
 .PHONY: generate
 generate:

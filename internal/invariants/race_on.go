@@ -4,7 +4,7 @@
 
 // +build race
 
-package pebble
+package invariants
 
-// raceEnabled is true if we were built with the race build tag.
-const raceEnabled = true
+// RaceEnabled is true if we were built with the "race" build tag.
+const RaceEnabled = true
