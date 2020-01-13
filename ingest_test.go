@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -561,7 +562,10 @@ func TestIngestCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f, err := mem.Create("ext")
+	src := func(i int) string {
+		return fmt.Sprintf("ext%d", i)
+	}
+	f, err := mem.Create(src(0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,9 +578,17 @@ func TestIngestCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Make N copies of the sstable.
+	const count = 20
+	for i := 1; i < count; i++ {
+		if err := vfs.Copy(d.opts.FS, src(0), src(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// Ingest the same sstable multiple times. Compaction should take place as
 	// ingestion happens, preventing an indefinite write stall from occurring.
-	for i := 0; i < 20; i++ {
+	for i := 0; i < count; i++ {
 		if i == 10 {
 			// Half-way through the ingestions, set a key in the memtable to force
 			// overlap with the memtable which will require the memtable to be
@@ -585,7 +597,7 @@ func TestIngestCompact(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := d.Ingest([]string{"ext"}); err != nil {
+		if err := d.Ingest([]string{src(i)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -604,7 +616,10 @@ func TestConcurrentIngest(t *testing.T) {
 	// bug because an sstable with a single key will not have overlap in internal
 	// key space and the sequence number assignment had already guaranteed
 	// correct ordering.
-	f, err := mem.Create("ext")
+	src := func(i int) string {
+		return fmt.Sprintf("ext%d", i)
+	}
+	f, err := mem.Create(src(0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,12 +634,25 @@ func TestConcurrentIngest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Ingest the same sstable multiple times concurrently.
+	// Make N copies of the sstable.
 	errCh := make(chan error, 5)
+	for i := 1; i < cap(errCh); i++ {
+		if err := vfs.Copy(d.opts.FS, src(0), src(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Perform N ingestions concurrently.
 	for i := 0; i < cap(errCh); i++ {
-		go func() {
-			errCh <- d.Ingest([]string{"ext"})
-		}()
+		go func(i int) {
+			err := d.Ingest([]string{src(i)})
+			if err == nil {
+				if _, err = d.opts.FS.Stat(src(i)); os.IsNotExist(err) {
+					err = nil
+				}
+			}
+			errCh <- err
+		}(i)
 	}
 	for i := 0; i < cap(errCh); i++ {
 		err := <-errCh
