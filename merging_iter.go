@@ -760,8 +760,8 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 			// so we can have a sstable with bounds [c#8, i#InternalRangeDelSentinel], and the
 			// tombstone is [b, k)#8 and the seek key is i: levelIter.SeekGE(i) will move past
 			// this sstable since it realizes the largest key is a InternalRangeDelSentinel.
-			tombstone := rangedel.SeekGE(m.heap.cmp, rangeDelIter, key, m.snapshot)
-			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) &&
+			l.tombstone = rangedel.SeekGE(m.heap.cmp, rangeDelIter, key, m.snapshot)
+			if !l.tombstone.Empty() && l.tombstone.Contains(m.heap.cmp, key) &&
 				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {
 				// NB: Based on the comment above l.largestUserKey >= key, and based on the
 				// containment condition tombstone.End > key, so the assignment to key results
@@ -772,12 +772,12 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 				// than or equal to m.lower, the new key will continue to be greater
 				// than or equal to m.lower.
 				if l.largestUserKey != nil &&
-					m.heap.cmp(l.largestUserKey, tombstone.End) < 0 {
+					m.heap.cmp(l.largestUserKey, l.tombstone.End) < 0 {
 					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
 					// but that is harmless for this seek optimization.
 					key = l.largestUserKey
 				} else {
-					key = tombstone.End
+					key = l.tombstone.End
 				}
 			}
 		}
@@ -838,8 +838,8 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 				withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyRangeDelSentinel)
 			}
 
-			tombstone := rangedel.SeekLE(m.heap.cmp, rangeDelIter, key, m.snapshot)
-			if !tombstone.Empty() && tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
+			l.tombstone = rangedel.SeekLE(m.heap.cmp, rangeDelIter, key, m.snapshot)
+			if !l.tombstone.Empty() && l.tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
 				// NB: Based on the comment above l.smallestUserKey <= key, and based
 				// on the containment condition tombstone.Start.UserKey <= key, so the
 				// assignment to key results in a monotonically non-increasing key
@@ -850,12 +850,12 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 				// or equal to m.upper, the new key will continue to be less than or
 				// equal to m.upper.
 				if l.smallestUserKey != nil &&
-					m.heap.cmp(l.smallestUserKey, tombstone.Start.UserKey) >= 0 {
+					m.heap.cmp(l.smallestUserKey, l.tombstone.Start.UserKey) >= 0 {
 					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
 					// but that is harmless for this seek optimization.
 					key = l.smallestUserKey
 				} else {
-					key = tombstone.Start.UserKey
+					key = l.tombstone.Start.UserKey
 				}
 			}
 		}
