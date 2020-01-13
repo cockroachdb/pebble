@@ -210,9 +210,6 @@ func (o *ingestOp) run(t *test, h *history) {
 	}
 
 	err = firstError(err, t.db.Ingest(paths))
-	for _, path := range paths {
-		err = firstError(err, t.opts.FS.Remove(path))
-	}
 
 	h.Recordf("%s // %v", o, err)
 }

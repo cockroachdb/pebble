@@ -456,11 +456,6 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	if err := d.Ingest(paths); err != nil {
 		return err
 	}
-	for _, path := range paths {
-		if err := fs.Remove(path); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
