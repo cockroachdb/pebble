@@ -730,6 +730,9 @@ func (c *compaction) String() string {
 }
 
 type manualCompaction struct {
+	// Count of the retries either due to too many concurrent compactions, or a
+	// concurrent compaction to overlapping levels.
+	retries     int
 	level       int
 	outputLevel int
 	done        chan error
@@ -951,7 +954,14 @@ func (d *DB) flush1() error {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions || atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
+	if atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
+		return
+	}
+	if d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions {
+		if len(d.mu.compact.manual) > 0 {
+			// Inability to run head blocks later manual compactions.
+			d.mu.compact.manual[0].retries++
+		}
 		return
 	}
 	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
@@ -968,6 +978,7 @@ func (d *DB) maybeScheduleCompaction() {
 			manual.done <- nil
 		} else {
 			// Inability to run head blocks later manual compactions.
+			manual.retries++
 			break
 		}
 	}

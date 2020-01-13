@@ -866,35 +866,51 @@ func TestManualCompaction(t *testing.T) {
 				s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 				d.mu.Unlock()
 				close(ch)
-				return
 			}()
-			// TODO(sbhola): add a manualCompaction.retryCount and eliminate this sleep.
-			//
-			// If this 1s sleep is sometimes not long enough, this test will pass even if there is
-			// a bug that permitted the manual compaction to happen despite the ongoing compaction.
-			// So worst case is that in the presence of a bug we have a flaky test instead of an
-			// always failing test.
-			time.Sleep(time.Second)
-			select {
-			case <-ch:
-				return "manual compaction did not block for ongoing\n" + s
-			default:
+
+			manualDone := func() bool {
+				select {
+				case <-ch:
+					return true
+				default:
+					return false
+				}
 			}
+
+			err := try(100*time.Microsecond, 20*time.Second, func() error {
+				if manualDone() {
+					return nil
+				}
+
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				if len(d.mu.compact.manual) == 0 {
+					return fmt.Errorf("no manual compaction queued")
+				}
+				manual := d.mu.compact.manual[0]
+				if manual.retries == 0 {
+					return fmt.Errorf("manual compaction has not been retried")
+				}
+				return nil
+			})
+			if err != nil {
+				return err.Error()
+			}
+
+			if manualDone() {
+				return "manual compaction did not block for ongoing\n" + s
+			}
+
 			d.mu.Lock()
 			delete(d.mu.compact.inProgress, ongoingCompaction)
 			d.mu.compact.compactingCount--
 			ongoingCompaction = nil
 			d.maybeScheduleCompaction()
 			d.mu.Unlock()
-			select {
-			case err := <-ch:
-				if err != nil {
-					return err.Error()
-				}
-				return "manual compaction blocked until ongoing finished\n" + s
-			case <-time.After(2 * time.Second):
-				return "compaction not completed"
+			if err := <-ch; err != nil {
+				return err.Error()
 			}
+			return "manual compaction blocked until ongoing finished\n" + s
 
 		case "add-ongoing-compaction":
 			var startLevel int
