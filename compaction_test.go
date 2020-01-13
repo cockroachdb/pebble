@@ -500,18 +500,23 @@ func TestPickCompaction(t *testing.T) {
 }
 
 func TestElideTombstone(t *testing.T) {
+	type want struct {
+		key      string
+		expected bool
+	}
+
 	testCases := []struct {
 		desc    string
 		level   int
 		version version
-		wants   map[string]bool
+		wants   []want
 	}{
 		{
 			desc:    "empty",
 			level:   1,
 			version: version{},
-			wants: map[string]bool{
-				"x": true,
+			wants: []want{
+				{"x", true},
 			},
 		},
 		{
@@ -561,27 +566,27 @@ func TestElideTombstone(t *testing.T) {
 					},
 				},
 			},
-			wants: map[string]bool{
-				"b": true,
-				"c": true,
-				"d": true,
-				"e": true,
-				"f": false,
-				"g": false,
-				"h": false,
-				"l": false,
-				"m": false,
-				"n": true,
-				"q": true,
-				"r": true,
-				"s": true,
-				"t": false,
-				"u": true,
-				"v": true,
-				"w": false,
-				"x": false,
-				"y": true,
-				"z": true,
+			wants: []want{
+				{"b", true},
+				{"c", true},
+				{"d", true},
+				{"e", true},
+				{"f", false},
+				{"g", false},
+				{"h", false},
+				{"l", false},
+				{"m", false},
+				{"n", true},
+				{"q", true},
+				{"r", true},
+				{"s", true},
+				{"t", false},
+				{"u", true},
+				{"v", true},
+				{"w", false},
+				{"x", false},
+				{"y", true},
+				{"z", true},
 			},
 		},
 		{
@@ -609,14 +614,14 @@ func TestElideTombstone(t *testing.T) {
 					},
 				},
 			},
-			wants: map[string]bool{
-				"h": true,
-				"i": false,
-				"j": false,
-				"k": false,
-				"l": false,
-				"m": false,
-				"n": true,
+			wants: []want{
+				{"h", true},
+				{"i", false},
+				{"j", false},
+				{"k", false},
+				{"l", false},
+				{"m", false},
+				{"n", true},
 			},
 		},
 	}
@@ -627,10 +632,13 @@ func TestElideTombstone(t *testing.T) {
 			version:     &tc.version,
 			startLevel:  tc.level,
 			outputLevel: tc.level + 1,
+			smallest:    base.ParseInternalKey("a.SET.0"),
+			largest:     base.ParseInternalKey("z.SET.0"),
 		}
-		for ukey, want := range tc.wants {
-			if got := c.elideTombstone([]byte(ukey)); got != want {
-				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, ukey, got, want)
+		c.setupInuseKeyRanges()
+		for _, w := range tc.wants {
+			if got := c.elideTombstone([]byte(w.key)); got != w.expected {
+				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, w.key, got, w.expected)
 			}
 		}
 	}
@@ -1281,8 +1289,10 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			case "allow-zero-seqnum":
 				d.mu.Lock()
 				c := &compaction{
-					cmp:     d.cmp,
-					version: d.mu.versions.currentVersion(),
+					cmp:      d.cmp,
+					version:  d.mu.versions.currentVersion(),
+					smallest: base.ParseInternalKey("a.SET.0"),
+					largest:  base.ParseInternalKey("z.SET.0"),
 				}
 				d.mu.Unlock()
 
@@ -1328,6 +1338,8 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.outputLevel = c.startLevel + 1
 					}
 
+					c.inuseKeyRanges = nil
+					c.setupInuseKeyRanges()
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum(iter))
 				}
 				return buf.String()
