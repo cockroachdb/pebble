@@ -477,6 +477,15 @@ func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error)
 		}
 	}
 
+	// When creating a version snapshot for an existing DB, this snapshot VersionEdit will be
+	// immediately followed by another VersionEdit (being written in logAndApply()). That
+	// VersionEdit always contains a LastSeqNum, so we don't need to include that in the snapshot.
+	// But it does not necessarily include MinUnflushedLogNum, NextFileNum, so we initialize those
+	// using the corresponding fields in the versionSet (which came from the latest preceding
+	// VersionEdit that had those fields).
+	snapshot.MinUnflushedLogNum = vs.minUnflushedLogNum
+	snapshot.NextFileNum = vs.nextFileNum
+
 	w, err1 := manifest.Next()
 	if err1 != nil {
 		return err1
