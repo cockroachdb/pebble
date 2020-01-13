@@ -58,17 +58,19 @@ func (i *Iterator) findNextEntry() bool {
 
 	for i.iterKey != nil {
 		key := *i.iterKey
+
+		if i.prefix != nil {
+			if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
+				return false
+			}
+		}
+
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			i.nextUserKey()
 			continue
 
 		case InternalKeyKindSet:
-			if i.prefix != nil {
-				if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
-					return false
-				}
-			}
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iterValue
@@ -76,11 +78,6 @@ func (i *Iterator) findNextEntry() bool {
 			return true
 
 		case InternalKeyKindMerge:
-			if i.prefix != nil {
-				if n := i.split(key.UserKey); !bytes.Equal(i.prefix, key.UserKey[:n]) {
-					return false
-				}
-			}
 			var valueMerger ValueMerger
 			valueMerger, i.err = i.merge(i.key, i.iterValue)
 			if i.err == nil {
