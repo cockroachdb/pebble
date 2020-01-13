@@ -500,18 +500,23 @@ func TestPickCompaction(t *testing.T) {
 }
 
 func TestElideTombstone(t *testing.T) {
+	type want struct {
+		key      string
+		expected bool
+	}
+
 	testCases := []struct {
 		desc    string
 		level   int
 		version version
-		wants   map[string]bool
+		wants   []want
 	}{
 		{
 			desc:    "empty",
 			level:   1,
 			version: version{},
-			wants: map[string]bool{
-				"x": true,
+			wants: []want{
+				{"x", true},
 			},
 		},
 		{
@@ -561,27 +566,27 @@ func TestElideTombstone(t *testing.T) {
 					},
 				},
 			},
-			wants: map[string]bool{
-				"b": true,
-				"c": true,
-				"d": true,
-				"e": true,
-				"f": false,
-				"g": false,
-				"h": false,
-				"l": false,
-				"m": false,
-				"n": true,
-				"q": true,
-				"r": true,
-				"s": true,
-				"t": false,
-				"u": true,
-				"v": true,
-				"w": false,
-				"x": false,
-				"y": true,
-				"z": true,
+			wants: []want{
+				{"b", true},
+				{"c", true},
+				{"d", true},
+				{"e", true},
+				{"f", false},
+				{"g", false},
+				{"h", false},
+				{"l", false},
+				{"m", false},
+				{"n", true},
+				{"q", true},
+				{"r", true},
+				{"s", true},
+				{"t", false},
+				{"u", true},
+				{"v", true},
+				{"w", false},
+				{"x", false},
+				{"y", true},
+				{"z", true},
 			},
 		},
 		{
@@ -609,14 +614,14 @@ func TestElideTombstone(t *testing.T) {
 					},
 				},
 			},
-			wants: map[string]bool{
-				"h": true,
-				"i": false,
-				"j": false,
-				"k": false,
-				"l": false,
-				"m": false,
-				"n": true,
+			wants: []want{
+				{"h", true},
+				{"i", false},
+				{"j", false},
+				{"k", false},
+				{"l", false},
+				{"m", false},
+				{"n", true},
 			},
 		},
 	}
@@ -627,10 +632,13 @@ func TestElideTombstone(t *testing.T) {
 			version:     &tc.version,
 			startLevel:  tc.level,
 			outputLevel: tc.level + 1,
+			smallest:    base.ParseInternalKey("a.SET.0"),
+			largest:     base.ParseInternalKey("z.SET.0"),
 		}
-		for ukey, want := range tc.wants {
-			if got := c.elideTombstone([]byte(ukey)); got != want {
-				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, ukey, got, want)
+		c.setupInuseKeyRanges()
+		for _, w := range tc.wants {
+			if got := c.elideTombstone([]byte(w.key)); got != w.expected {
+				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, w.key, got, w.expected)
 			}
 		}
 	}
@@ -1260,6 +1268,90 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 		})
 }
 
+func TestCompactionInuseKeyRanges(t *testing.T) {
+	parseMeta := func(s string) fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		m := fileMetadata{
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		return m
+	}
+
+	var c *compaction
+	datadriven.RunTest(t, "testdata/compaction_inuse_key_ranges", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			c = &compaction{
+				cmp:     DefaultComparer.Compare,
+				format:  DefaultComparer.Format,
+				version: &version{},
+			}
+			var files *[]fileMetadata
+			fileNum := uint64(1)
+
+			for _, data := range strings.Split(td.Input, "\n") {
+				switch data {
+				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+					level, err := strconv.Atoi(data[1:])
+					if err != nil {
+						return err.Error()
+					}
+					files = &c.version.Files[level]
+
+				default:
+					meta := parseMeta(data)
+					meta.FileNum = fileNum
+					fileNum++
+					*files = append(*files, meta)
+				}
+			}
+			return c.version.DebugString(c.format)
+
+		case "inuse-key-ranges":
+			var buf bytes.Buffer
+			for _, line := range strings.Split(td.Input, "\n") {
+				parts := strings.Fields(line)
+				if len(parts) != 3 {
+					fmt.Fprintf(&buf, "expected <level> <smallest> <largest>: %q\n", line)
+					continue
+				}
+				level, err := strconv.Atoi(parts[0])
+				if err != nil {
+					fmt.Fprintf(&buf, "expected <level> <smallest> <largest>: %q: %v\n", line, err)
+					continue
+				}
+				c.outputLevel = level
+				c.smallest.UserKey = []byte(parts[1])
+				c.largest.UserKey = []byte(parts[2])
+
+				c.inuseKeyRanges = nil
+				c.setupInuseKeyRanges()
+				if len(c.inuseKeyRanges) == 0 {
+					fmt.Fprintf(&buf, ".\n")
+				} else {
+					for i, r := range c.inuseKeyRanges {
+						if i > 0 {
+							fmt.Fprintf(&buf, " ")
+						}
+						fmt.Fprintf(&buf, "%s-%s", r.start, r.end)
+					}
+					fmt.Fprintf(&buf, "\n")
+				}
+			}
+			return buf.String()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	var d *DB
 
@@ -1344,6 +1436,10 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.outputLevel = c.startLevel + 1
 					}
 
+					c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+
+					c.inuseKeyRanges = nil
+					c.setupInuseKeyRanges()
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum(iter))
 				}
 				return buf.String()
