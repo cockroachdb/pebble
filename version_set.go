@@ -114,7 +114,7 @@ func (vs *versionSet) create(
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextFileNum()
-	err := vs.createManifest(vs.dirname, vs.manifestFileNum)
+	err := vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
@@ -332,6 +332,10 @@ func (vs *versionSet) logAndApply(
 		newManifestFileNum = vs.getNextFileNum()
 	}
 
+	// Grab certain values before releasing vs.mu, in case createManifest() needs to be called.
+	minUnflushedLogNum := vs.minUnflushedLogNum
+	nextFileNum := vs.nextFileNum
+
 	var zombies map[uint64]uint64
 	if err := func() error {
 		vs.mu.Unlock()
@@ -347,7 +351,7 @@ func (vs *versionSet) logAndApply(
 		}
 
 		if newManifestFileNum != 0 {
-			if err := vs.createManifest(vs.dirname, newManifestFileNum); err != nil {
+			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
 					Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
@@ -442,7 +446,9 @@ func (vs *versionSet) incrementFlushes() {
 }
 
 // createManifest creates a manifest file that contains a snapshot of vs.
-func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error) {
+func (vs *versionSet) createManifest(
+	dirname string, fileNum uint64, minUnflushedLogNum uint64, nextFileNum uint64,
+) (err error) {
 	var (
 		filename     = base.MakeFilename(vs.fs, dirname, fileTypeManifest, fileNum)
 		manifestFile vfs.File
@@ -476,6 +482,15 @@ func (vs *versionSet) createManifest(dirname string, fileNum uint64) (err error)
 			})
 		}
 	}
+
+	// When creating a version snapshot for an existing DB, this snapshot VersionEdit will be
+	// immediately followed by another VersionEdit (being written in logAndApply()). That
+	// VersionEdit always contains a LastSeqNum, so we don't need to include that in the snapshot.
+	// But it does not necessarily include MinUnflushedLogNum, NextFileNum, so we initialize those
+	// using the corresponding fields in the versionSet (which came from the latest preceding
+	// VersionEdit that had those fields).
+	snapshot.MinUnflushedLogNum = minUnflushedLogNum
+	snapshot.NextFileNum = nextFileNum
 
 	w, err1 := manifest.Next()
 	if err1 != nil {
