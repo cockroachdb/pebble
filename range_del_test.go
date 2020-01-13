@@ -472,9 +472,6 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 					if err := d.Ingest([]string{"ext"}); err != nil {
 						b.Fatal(err)
 					}
-					if err := mem.Remove("ext"); err != nil {
-						b.Fatal(err)
-					}
 
 					// Create a range tombstone that deletes most (or all) of those entries.
 					from := makeKey(0)

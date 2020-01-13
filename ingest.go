@@ -341,7 +341,7 @@ func ingestTargetLevel(
 // of the mutations in the sstables. Ingestion may require the memtable to be
 // flushed. The ingested sstable files are moved into the DB and must reside on
 // the same filesystem as the DB. Sstables can be created for ingestion using
-// sstable.Writer.
+// sstable.Writer. On success, Ingest removes the input paths.
 //
 // Ingestion loads each sstable into the lowest level of the LSM which it
 // doesn't overlap (see ingestTargetLevel). If an sstable overlaps a memtable,
@@ -353,7 +353,7 @@ func ingestTargetLevel(
 //   1. Allocate file numbers for every sstable beign ingested.
 //   2. Load the metadata for all sstables being ingest.
 //   3. Sort the sstables by smallest key, verifying non overlap.
-//   4. Hard link the sstables into the DB directory.
+//   4. Hard link (or copy) the sstables into the DB directory.
 //   5. Allocate a sequence number to use for all of the entries in the
 //      sstables. This is the step where overlap with memtables is
 //      determined. If there is overlap, we remember the most recent memtable
@@ -481,6 +481,12 @@ func (d *DB) Ingest(paths []string) error {
 	if err != nil {
 		if err2 := ingestCleanup(d.opts.FS, d.dirname, meta); err2 != nil {
 			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
+		}
+	} else {
+		for _, path := range paths {
+			if err2 := d.opts.FS.Remove(path); err2 != nil {
+				d.opts.Logger.Infof("ingest failed to remove original file: %s", err2)
+			}
 		}
 	}
 

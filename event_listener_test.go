@@ -230,9 +230,6 @@ func TestEventListener(t *testing.T) {
 			if err := d.Ingest([]string{"ext/0"}); err != nil {
 				return err.Error()
 			}
-			if err := mem.Remove("ext/0"); err != nil {
-				return err.Error()
-			}
 			return buf.String()
 
 		case "metrics":
