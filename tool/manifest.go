@@ -120,23 +120,27 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				if ve.MinUnflushedLogNum != 0 {
 					empty = false
-					fmt.Fprintf(stdout, "  log-num:      %d\n", ve.MinUnflushedLogNum)
+					fmt.Fprintf(stdout, "  log-num:       %d\n", ve.MinUnflushedLogNum)
 				}
 				if ve.ObsoletePrevLogNum != 0 {
 					empty = false
-					fmt.Fprintf(stdout, "  prev-log-num: %d\n", ve.ObsoletePrevLogNum)
+					fmt.Fprintf(stdout, "  prev-log-num:  %d\n", ve.ObsoletePrevLogNum)
+				}
+				if ve.NextFileNum != 0 {
+					empty = false
+					fmt.Fprintf(stdout, "  next-file-num: %d\n", ve.NextFileNum)
 				}
 				if ve.LastSeqNum != 0 {
 					empty = false
-					fmt.Fprintf(stdout, "  last-seq-num: %d\n", ve.LastSeqNum)
+					fmt.Fprintf(stdout, "  last-seq-num:  %d\n", ve.LastSeqNum)
 				}
 				for df := range ve.DeletedFiles {
 					empty = false
-					fmt.Fprintf(stdout, "  deleted:      L%d %06d\n", df.Level, df.FileNum)
+					fmt.Fprintf(stdout, "  deleted:       L%d %06d\n", df.Level, df.FileNum)
 				}
 				for _, nf := range ve.NewFiles {
 					empty = false
-					fmt.Fprintf(stdout, "  added:        L%d %06d:%d",
+					fmt.Fprintf(stdout, "  added:         L%d %06d:%d",
 						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
 					formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
 					fmt.Fprintf(stdout, "\n")
