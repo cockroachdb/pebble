@@ -534,13 +534,13 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
+	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions)
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.MinCompactionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.MinFlushRate)
-	fmt.Fprintf(&buf, "  num_concurrent_compactions=%d\n", o.MaxConcurrentCompactions)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {
@@ -683,6 +683,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.L0StopWritesThreshold, err = strconv.Atoi(value)
 			case "lbase_max_bytes":
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
+			case "max_concurrent_compactions":
+				o.MaxConcurrentCompactions, err = strconv.Atoi(value)
 			case "max_manifest_file_size":
 				o.MaxManifestFileSize, err = strconv.ParseInt(value, 10, 64)
 			case "max_open_files":
@@ -695,8 +697,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.MinCompactionRate, err = strconv.Atoi(value)
 			case "min_flush_rate":
 				o.MinFlushRate, err = strconv.Atoi(value)
-			case "num_concurrent_compactions":
-				o.MaxConcurrentCompactions, err = strconv.Atoi(value)
 			case "merger":
 				switch value {
 				case "nullptr":

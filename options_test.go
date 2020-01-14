@@ -52,13 +52,13 @@ func TestOptionsString(t *testing.T) {
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
+  max_concurrent_compactions=1
   max_manifest_file_size=134217728
   max_open_files=1000
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
   min_compaction_rate=4194304
   min_flush_rate=1048576
-  num_concurrent_compactions=1
   merger=pebble.concatenate
   table_property_collectors=[]
   wal_dir=
