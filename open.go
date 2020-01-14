@@ -252,6 +252,7 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		if _, err := optionsFile.Write([]byte(opts.String())); err != nil {
 			return nil, err
 		}
+		optionsFile.Sync()
 		optionsFile.Close()
 		if err := d.dataDir.Sync(); err != nil {
 			return nil, err
