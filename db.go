@@ -307,7 +307,9 @@ type DB struct {
 
 		cleaner struct {
 			// Condition variable used to signal the completion of a file cleaning
-			// operation.
+			// operation or an increment to the value of disabled. File cleaning operations are
+			// serialized, and a caller trying to do a file cleaning operation may wait
+			// until the ongoing one is complete.
 			cond sync.Cond
 			// True when a file cleaning operation is in progress.
 			cleaning bool
@@ -856,6 +858,12 @@ func (d *DB) Close() error {
 			return fmt.Errorf("leaked memtable reservation: %d", reserved)
 		}
 	}
+
+	// No more cleaning can start. Wait for any async cleaning to complete.
+	for d.mu.cleaner.cleaning {
+		d.mu.cleaner.cond.Wait()
+	}
+
 	return err
 }
 

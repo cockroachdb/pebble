@@ -1546,30 +1546,51 @@ func (d *DB) enableFileDeletions() {
 	d.deleteObsoleteFiles(jobID)
 }
 
+// d.mu must be held when calling this.
+func (d *DB) acquireCleaningTurn(waitForOngoing bool) bool {
+	// Only allow a single delete obsolete files job to run at a time.
+	for d.mu.cleaner.cleaning && d.mu.cleaner.disabled == 0 && waitForOngoing {
+		d.mu.cleaner.cond.Wait()
+	}
+	if d.mu.cleaner.cleaning {
+		return false
+	}
+	if d.mu.cleaner.disabled > 0 {
+		// File deletions are currently disabled. When they are re-enabled a new
+		// job will be created to catch up on file deletions.
+		return false
+	}
+	d.mu.cleaner.cleaning = true
+	return true
+}
+
+// d.mu must be held when calling this.
+func (d *DB) releaseCleaningTurn() {
+	d.mu.cleaner.cleaning = false
+	d.mu.cleaner.cond.Signal()
+}
+
 // deleteObsoleteFiles deletes those files that are no longer needed.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) deleteObsoleteFiles(jobID int) {
-	// Only allow a single delete obsolete files job to run at a time.
-	for d.mu.cleaner.cleaning && d.mu.cleaner.disabled == 0 {
-		d.mu.cleaner.cond.Wait()
-	}
-	if d.mu.cleaner.disabled > 0 {
-		// File deletions are currently disabled. When they are re-enabled a new
-		// job will be created to catch up on file deletions.
+	if !d.acquireCleaningTurn(true) {
 		return
 	}
+	d.doDeleteObsoleteFiles(jobID)
+	d.releaseCleaningTurn()
+}
 
+// d.mu must be held when calling this, but the mutex may be dropped and
+// re-acquired during the course of this method.
+func (d *DB) doDeleteObsoleteFiles(jobID int) {
 	var obsoleteTables []uint64
 
-	d.mu.cleaner.cleaning = true
 	defer func() {
 		for _, fileNum := range obsoleteTables {
 			delete(d.mu.versions.zombieTables, fileNum)
 		}
-		d.mu.cleaner.cleaning = false
-		d.mu.cleaner.cond.Signal()
 	}()
 
 	var obsoleteLogs []uint64
@@ -1638,10 +1659,10 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.mu.cleaner.disabled > 0 || d.mu.cleaner.cleaning {
+	if len(d.mu.versions.obsoleteTables) == 0 {
 		return
 	}
-	if len(d.mu.versions.obsoleteTables) == 0 {
+	if !d.acquireCleaningTurn(false) {
 		return
 	}
 
@@ -1652,7 +1673,8 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 
 			jobID := d.mu.nextJobID
 			d.mu.nextJobID++
-			d.deleteObsoleteFiles(jobID)
+			d.doDeleteObsoleteFiles(jobID)
+			d.releaseCleaningTurn()
 		})
 	}()
 }
