@@ -26,6 +26,7 @@ rename: db/CURRENT.000003.dbtmp -> db/CURRENT
 sync: db
 [JOB 1] MANIFEST created 000003
 create: db/OPTIONS-000004
+sync: db/OPTIONS-000004
 close: db/OPTIONS-000004
 sync: db
 [JOB 1] MANIFEST deleted 000001
