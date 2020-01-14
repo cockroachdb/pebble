@@ -213,7 +213,26 @@ func ingestLink(
 
 	for i := range paths {
 		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
-		err := vfs.LinkOrCopy(fs, paths[i], target)
+		var err error
+		if _, ok := opts.FS.(*vfs.MemFS); ok && opts.DebugCheck {
+			// The combination of MemFS+Ingest+DebugCheck produces awkwardness around
+			// the subsequent deletion of files. The problem is that MemFS implements
+			// the Windows semantics of disallowing removal of an open file. This is
+			// desirable because it helps catch bugs where we violate the
+			// requirements of the Windows semantics. The normal practice for Ingest
+			// is for the caller to remove the source files after the ingest
+			// completes successfully. Unfortunately, Options.DebugCheck causes
+			// ingest to run DB.CheckLevels() before the ingest finishes, and
+			// DB.CheckLevels() populates the table cache with the newly ingested
+			// files.
+			//
+			// The combination of MemFS+Ingest+DebugCheck is primarily used in
+			// tests. As a workaround, disable hard linking this combination
+			// occurs. See https://github.com/cockroachdb/pebble/issues/495.
+			err = vfs.Copy(fs, paths[i], target)
+		} else {
+			err = vfs.LinkOrCopy(fs, paths[i], target)
+		}
 		if err != nil {
 			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
