@@ -14,6 +14,7 @@ create: db/000002.log
 sync: db
 sync: db/MANIFEST-000001
 create: db/OPTIONS-000003
+sync: db/OPTIONS-000003
 close: db/OPTIONS-000003
 sync: db
 
