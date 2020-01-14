@@ -25,6 +25,7 @@ func uvarintLen(v uint32) int {
 type blockWriter struct {
 	restartInterval int
 	nEntries        int
+	nextRestart     int
 	buf             []byte
 	restarts        []uint32
 	curKey          []byte
@@ -35,15 +36,57 @@ type blockWriter struct {
 
 func (w *blockWriter) store(keySize int, value []byte) {
 	shared := 0
-	if w.nEntries%w.restartInterval == 0 {
+	if w.nEntries == w.nextRestart {
+		w.nextRestart = w.nEntries + w.restartInterval
 		w.restarts = append(w.restarts, uint32(len(w.buf)))
 	} else {
-		shared = base.SharedPrefixLen(w.curKey, w.prevKey)
+		// TODO(peter): Manually inlined version of base.SharedPrefixLen()
+		n := len(w.curKey)
+		if n > len(w.prevKey) {
+			n = len(w.prevKey)
+		}
+		for shared < n && w.curKey[shared] == w.prevKey[shared] {
+			shared++
+		}
 	}
 
-	n := binary.PutUvarint(w.tmp[0:], uint64(shared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(keySize-shared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(len(value)))
+	// TODO(peter): Manually inlined version of binary.PutUvarint(). This is 15%
+	// faster on BenchmarkWriter on go1.13. Remove if go1.14 or future versions
+	// show this to not be a performance win.
+	n := 0
+	{
+		x := uint32(shared)
+		for x >= 0x80 {
+			w.tmp[n] = byte(x) | 0x80
+			x >>= 7
+			n++
+		}
+		w.tmp[n] = byte(x)
+		n++
+	}
+
+	{
+		x := uint32(keySize - shared)
+		for x >= 0x80 {
+			w.tmp[n] = byte(x) | 0x80
+			x >>= 7
+			n++
+		}
+		w.tmp[n] = byte(x)
+		n++
+	}
+
+	{
+		x := uint32(len(value))
+		for x >= 0x80 {
+			w.tmp[n] = byte(x) | 0x80
+			x >>= 7
+			n++
+		}
+		w.tmp[n] = byte(x)
+		n++
+	}
+
 	w.buf = append(w.buf, w.tmp[:n]...)
 	w.buf = append(w.buf, w.curKey[shared:]...)
 	w.buf = append(w.buf, value...)
@@ -88,6 +131,7 @@ func (w *blockWriter) finish() []byte {
 
 func (w *blockWriter) reset() {
 	w.nEntries = 0
+	w.nextRestart = 0
 	w.buf = w.buf[:0]
 	w.restarts = w.restarts[:0]
 }

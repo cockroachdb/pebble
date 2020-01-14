@@ -41,12 +41,6 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-func (m *WriterMetadata) updateLargestPoint(key InternalKey) {
-	// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer.
-	m.LargestPoint.UserKey = append(m.LargestPoint.UserKey[:0], key.UserKey...)
-	m.LargestPoint.Trailer = key.Trailer
-}
-
 // Smallest returns the smaller of SmallestPoint and SmallestRange.
 func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
 	if m.SmallestPoint.UserKey == nil {
@@ -133,18 +127,11 @@ type Writer struct {
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
 	rangeDelV1Format bool
-	// A table is a series of blocks and a block's index entry contains a
-	// separator key between one block and the next. Thus, a finished block
-	// cannot be written until the first key in the next block is seen.
-	// pendingBH is the blockHandle of a finished block that is waiting for
-	// the next call to Set. If the writer is not in this state, pendingBH
-	// is zero.
-	pendingBH      BlockHandle
-	block          blockWriter
-	indexBlock     blockWriter
-	rangeDelBlock  blockWriter
-	props          Properties
-	propCollectors []TablePropertyCollector
+	block            blockWriter
+	indexBlock       blockWriter
+	rangeDelBlock    blockWriter
+	props            Properties
+	propCollectors   []TablePropertyCollector
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -246,14 +233,17 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		}
 	}
 
-	w.meta.updateSeqNum(key.SeqNum())
-	w.meta.updateLargestPoint(key)
-
 	w.maybeAddToFilter(key.UserKey)
+	w.block.add(key, value)
 
+	w.meta.updateSeqNum(key.SeqNum())
 	if w.props.NumEntries == 0 {
 		w.meta.SmallestPoint = key.Clone()
 	}
+	// block.curKey contains the most recently added key to the block.
+	w.meta.LargestPoint.UserKey = w.block.curKey[:len(w.block.curKey)-8]
+	w.meta.LargestPoint.Trailer = key.Trailer
+
 	w.props.NumEntries++
 	switch key.Kind() {
 	case InternalKeyKindDelete:
@@ -263,7 +253,6 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
-	w.block.add(key, value)
 	return nil
 }
 
@@ -351,14 +340,13 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		w.err = err
 		return w.err
 	}
-	w.pendingBH = bh
-	w.flushPendingBH(key)
+	w.addIndexEntry(key, bh)
 	return nil
 }
 
-// flushPendingBH adds any pending block handle to the index entries.
-func (w *Writer) flushPendingBH(key InternalKey) {
-	if w.pendingBH.Length == 0 {
+// addIndexEntry adds an index entry for the specified key and block handle.
+func (w *Writer) addIndexEntry(key InternalKey, bh BlockHandle) {
+	if bh.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return
@@ -370,7 +358,7 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
+	n := encodeBlockHandle(w.tmp[:], bh)
 
 	if supportsTwoLevelIndex(w.tableFormat) &&
 		shouldFlush(sep, w.tmp[:n], &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
@@ -380,8 +368,6 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	}
 
 	w.indexBlock.add(sep, w.tmp[:n])
-
-	w.pendingBH = BlockHandle{}
 }
 
 func shouldFlush(
@@ -523,15 +509,13 @@ func (w *Writer) Close() (err error) {
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
-	w.flushPendingBH(InternalKey{})
 	if w.block.nEntries > 0 || w.indexBlock.nEntries == 0 {
 		bh, err := w.finishBlock(&w.block, w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
 		}
-		w.pendingBH = bh
-		w.flushPendingBH(InternalKey{})
+		w.addIndexEntry(InternalKey{}, bh)
 	}
 	w.props.DataSize = w.meta.Size
 

@@ -6,9 +6,11 @@ package sstable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
@@ -163,4 +165,43 @@ func TestWriterClearCache(t *testing.T) {
 		}
 	}
 	foreachBH(layout, check)
+}
+
+type discardFile struct{}
+
+func (f discardFile) Close() error {
+	return nil
+}
+
+func (f discardFile) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (f discardFile) Sync() error {
+	return nil
+}
+
+func BenchmarkWriter(b *testing.B) {
+	keys := make([][]byte, 1e6)
+	for i := range keys {
+		key := make([]byte, 8)
+		binary.BigEndian.PutUint64(key, uint64(i))
+		keys[i] = key
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w := NewWriter(discardFile{}, WriterOptions{
+			BlockRestartInterval: 16,
+			BlockSize:            32 << 10,
+			Compression:          SnappyCompression,
+			FilterPolicy:         bloom.FilterPolicy(10),
+		})
+
+		for i := range keys {
+			if err := w.Set(keys[i], keys[i]); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
 }

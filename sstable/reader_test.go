@@ -434,7 +434,6 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer f0.Close()
 
 	w := NewWriter(f0, WriterOptions{
 		BlockRestartInterval: restartInterval,
