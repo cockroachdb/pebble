@@ -1041,6 +1041,41 @@ func TestDBApplyBatchMismatch(t *testing.T) {
 	}
 }
 
+func TestCloseCleanerRace(t *testing.T) {
+	mem := vfs.NewMem()
+	for i := 0; i < 20; i++ {
+		db, err := Open("", &Options{FS: mem})
+		require.NoError(t, err)
+		require.NoError(t, db.Set([]byte("a"), []byte("something"), Sync))
+		require.NoError(t, db.Flush())
+		// Ref the sstables so cannot be deleted.
+		it := db.NewIter(nil)
+		require.NotNil(t, it)
+		require.NoError(t, db.DeleteRange([]byte("a"), []byte("b"), Sync))
+		require.NoError(t, db.Compact([]byte("a"), []byte("b")))
+		// Only the iterator is keeping the sstables alive.
+		files, err := mem.List("/")
+		var found bool
+		for _, f := range files {
+			if strings.HasSuffix(f, ".sst") {
+				found = true
+				break
+			}
+		}
+		require.True(t, found)
+		// Close the iterator and the db in succession so file cleaning races with DB.Close() --
+		// latter should wait for file cleaning to finish.
+		require.NoError(t, it.Close())
+		require.NoError(t, db.Close())
+		files, err = mem.List("/")
+		for _, f := range files {
+			if strings.HasSuffix(f, ".sst") {
+				t.Fatalf("found sst: %s", f)
+			}
+		}
+	}
+}
+
 func BenchmarkDelete(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	const keyCount = 10000
