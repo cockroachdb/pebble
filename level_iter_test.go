@@ -78,6 +78,7 @@ func TestLevelIter(t *testing.T) {
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
+			iter.disableInvariants = true
 			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
 
 		case "load":
