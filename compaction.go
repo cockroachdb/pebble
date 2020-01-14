@@ -52,6 +52,10 @@ func totalSize(f []fileMetadata) (size uint64) {
 	return size
 }
 
+type userKeyRange struct {
+	start, end []byte
+}
+
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
@@ -107,8 +111,14 @@ type compaction struct {
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
 	// in the grandparent when this compaction finishes will be the same.
-	grandparents    []fileMetadata
-	overlappedBytes uint64 // bytes of overlap with grandparent tables
+	grandparents []fileMetadata
+
+	// List of disjoint inuse key ranges the compaction overlaps with in
+	// grandparent and lower levels. See setupInuseKeyRanges() for the
+	// construction. Used by elideTombstone() and elideRangeTombstone() to
+	// determine if keys affected by a tombstone possibly exist at a lower level.
+	inuseKeyRanges      []userKeyRange
+	elideTombstoneIndex int
 
 	metrics map[int]*LevelMetrics
 }
@@ -165,6 +175,53 @@ func newFlush(
 		atomicBytesIterated: bytesFlushed,
 	}
 
+	smallestSet, largestSet := false, false
+	updatePointBounds := func(iter internalIterator) {
+		if key, _ := iter.First(); key != nil {
+			if !smallestSet ||
+				base.InternalCompare(c.cmp, c.smallest, *key) > 0 {
+				smallestSet = true
+				c.smallest = key.Clone()
+			}
+		}
+		if key, _ := iter.Last(); key != nil {
+			if !largestSet ||
+				base.InternalCompare(c.cmp, c.largest, *key) < 0 {
+				largestSet = true
+				c.largest = key.Clone()
+			}
+		}
+	}
+
+	updateRangeBounds := func(iter internalIterator) {
+		if key, _ := iter.First(); key != nil {
+			if !smallestSet ||
+				base.InternalCompare(c.cmp, c.smallest, *key) > 0 {
+				smallestSet = true
+				c.smallest = key.Clone()
+			}
+		}
+		if key, value := iter.Last(); key != nil {
+			tmp := base.InternalKey{
+				UserKey: value,
+				Trailer: key.Trailer,
+			}
+			if !largestSet ||
+				base.InternalCompare(c.cmp, c.largest, tmp) < 0 {
+				largestSet = true
+				c.largest = tmp.Clone()
+			}
+		}
+	}
+
+	for i := range flushing {
+		f := flushing[i]
+		updatePointBounds(f.newIter(nil))
+		if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
+			updateRangeBounds(rangeDelIter)
+		}
+	}
+
 	// TODO(peter): When we allow flushing to create multiple tables we'll want
 	// to choose sstable boundaries based on the grandparents. But for now we
 	// want to create a single table during flushing so this is all commented
@@ -173,48 +230,10 @@ func newFlush(
 		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
 		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
-
-		var smallest InternalKey
-		var largest InternalKey
-		smallestSet, largestSet := false, false
-
-		updatePointBounds := func(iter internalIterator) {
-			if key, _ := iter.First(); key != nil {
-				if !smallestSet ||
-					base.InternalCompare(c.cmp, smallest, *key) > 0 {
-					smallestSet = true
-					smallest = key.Clone()
-				}
-			}
-			if key, _ := iter.Last(); key != nil {
-				if !largestSet ||
-					base.InternalCompare(c.cmp, largest, *key) < 0 {
-					largestSet = true
-					largest = key.Clone()
-				}
-			}
-		}
-
-		updateRangeBounds := func(iter internalIterator) {
-			if key, _ := iter.First(); key != nil {
-				if !smallestSet ||
-					base.InternalCompare(c.cmp, smallest, *key) > 0 {
-					smallestSet = true
-					smallest = key.Clone()
-				}
-			}
-		}
-
-		for i := range flushing {
-			f := flushing[i]
-			updatePointBounds(f.newIter(nil))
-			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
-				updateRangeBounds(rangeDelIter)
-			}
-		}
-
-		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, smallest.UserKey, largest.UserKey)
+		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
+
+	c.setupInuseKeyRanges()
 	return c
 }
 
@@ -249,6 +268,8 @@ func (c *compaction) setupInputs() {
 	if c.outputLevel+1 < numLevels {
 		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
+
+	c.setupInuseKeyRanges()
 }
 
 // expandInputs expands the files in inputs in order to maintain the invariant
@@ -370,6 +391,51 @@ func (c *compaction) grow(sm, la InternalKey) bool {
 	return true
 }
 
+func (c *compaction) setupInuseKeyRanges() {
+	level := c.outputLevel + 1
+	if c.outputLevel == 0 {
+		// Level 0 can contain overlapping sstables so we need to check it for
+		// overlaps.
+		level = 0
+	}
+
+	// Gather up the raw list of key ranges from overlapping tables in lower
+	// levels.
+	var input []userKeyRange
+	for ; level < numLevels; level++ {
+		overlaps := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		for i := range overlaps {
+			m := &overlaps[i]
+			input = append(input, userKeyRange{m.Smallest.UserKey, m.Largest.UserKey})
+		}
+	}
+
+	if len(input) == 0 {
+		// Nothing more to do.
+		return
+	}
+
+	// Sort the raw list of key ranges by start key.
+	sort.Slice(input, func(i, j int) bool {
+		return c.cmp(input[i].start, input[j].start) < 0
+	})
+
+	// Take the first input as the first output. This key range is guaranteed to
+	// have the smallest start key (or share the smallest start key) with another
+	// range. Loop over the remaining input key ranges and either add a new
+	// output, or merge with the last output.
+	c.inuseKeyRanges = input[:1]
+	for _, v := range input[1:] {
+		last := &c.inuseKeyRanges[len(c.inuseKeyRanges)-1]
+		switch {
+		case c.cmp(last.end, v.start) < 0:
+			c.inuseKeyRanges = append(c.inuseKeyRanges, v)
+		case c.cmp(last.end, v.end) < 0:
+			last.end = v.end
+		}
+	}
+}
+
 func (c *compaction) trivialMove() bool {
 	if len(c.flushing) != 0 {
 		return false
@@ -425,8 +491,6 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 // lower level in the LSM.
 func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
 	if len(c.flushing) != 0 {
-		return false
-
 		// TODO(peter): we disable zeroing of seqnums during flushing to match
 		// RocksDB behavior and to avoid generating overlapping sstables during
 		// DB.replayWAL. When replaying WAL files at startup, we flush after each
@@ -435,82 +499,29 @@ func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
 		// code doesn't know that L0 contains files and zeroing of seqnums should
 		// be disabled. That is fixable, but it seems safer to just match the
 		// RocksDB behavior for now.
-
-		// if len(c.version.Files[0]) > 0 {
-		// 	// We can only allow zeroing of seqnum for L0 tables if no other L0 tables
-		// 	// exist. Otherwise we may violate the invariant that L0 tables are ordered
-		// 	// by increasing seqnum. This could be relaxed with a bit more intelligence
-		// 	// in how a new L0 table is merged into the existing set of L0 tables.
-		// 	return false
-		// }
-
-		// key, _ := iter.First()
-		// if key == nil {
-		// 	return false
-		// }
-		// // We need to clone the key because the call to iter.Last() below will
-		// // invalidate it.
-		// lower := key.Clone()
-
-		// upper, _ := iter.Last()
-		// if upper == nil {
-		// 	return false
-		// }
-
-		// // Note that we don't check for overlap for range tombstones in the input
-		// // because zeroing of seqnums is only done for point operations (SET and
-		// // MERGE).
-		// return c.elideRangeTombstone(lower.UserKey, upper.UserKey)
+		return false
 	}
 
-	var lower, upper []byte
-	for i := range c.inputs {
-		files := c.inputs[i]
-		for j := range files {
-			f := &files[j]
-			if lower == nil || c.cmp(lower, f.Smallest.UserKey) > 0 {
-				lower = f.Smallest.UserKey
-			}
-			if upper == nil || c.cmp(upper, f.Largest.UserKey) < 0 {
-				upper = f.Largest.UserKey
-			}
-		}
-	}
-	// [lower,upper] now cover the bounds of the compaction inputs. Check to see
-	// if those bounds overlap an sstable at a lower level.
-	return c.elideRangeTombstone(lower, upper)
+	return c.elideRangeTombstone(c.smallest.UserKey, c.largest.UserKey)
 }
 
 // elideTombstone returns true if it is ok to elide a tombstone for the
 // specified key. A return value of true guarantees that there are no key/value
-// pairs at c.level+2 or higher that possibly contain the specified user key.
+// pairs at c.level+2 or higher that possibly contain the specified user
+// key. The keys in multiple invocations to elideTombstone must be supplied in
+// order.
 func (c *compaction) elideTombstone(key []byte) bool {
 	if len(c.flushing) != 0 {
 		return false
 	}
 
-	level := c.outputLevel + 1
-	if c.outputLevel == 0 {
-		// Level 0 can contain overlapping sstables so we need to check it for
-		// overlaps.
-		level = 0
-	}
-
-	// TODO(peter): this can be faster if key is always increasing between
-	// successive elideTombstones calls and we can keep some state in between
-	// calls.
-	for ; level < numLevels; level++ {
-		for _, f := range c.version.Files[level] {
-			if c.cmp(key, f.Largest.UserKey) <= 0 {
-				if c.cmp(key, f.Smallest.UserKey) >= 0 {
-					return false
-				}
-				if level > 0 {
-					// For levels below level 0, the files within a level are in
-					// increasing ikey order, so we can break early.
-					break
-				}
+	for ; c.elideTombstoneIndex < len(c.inuseKeyRanges); c.elideTombstoneIndex++ {
+		r := &c.inuseKeyRanges[c.elideTombstoneIndex]
+		if c.cmp(key, r.end) <= 0 {
+			if c.cmp(key, r.start) >= 0 {
+				return false
 			}
+			break
 		}
 	}
 	return true
@@ -525,20 +536,13 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 		return false
 	}
 
-	level := c.outputLevel + 1
-	if c.outputLevel == 0 {
-		// Level 0 can contain overlapping sstables so we need to check it for
-		// overlaps.
-		level = 0
-	}
-
-	for ; level < numLevels; level++ {
-		overlaps := c.version.Overlaps(level, c.cmp, start, end)
-		if len(overlaps) > 0 {
-			return false
-		}
-	}
-	return true
+	lower := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
+		return c.cmp(c.inuseKeyRanges[i].end, start) >= 0
+	})
+	upper := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
+		return c.cmp(c.inuseKeyRanges[i].start, end) > 0
+	})
+	return lower >= upper
 }
 
 // atomicUnitBounds returns the bounds of the atomic compaction unit containing

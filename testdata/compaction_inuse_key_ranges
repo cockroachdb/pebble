@@ -1,0 +1,131 @@
+define
+L1
+  a.SET.1-b.SET.1
+  d.SET.1-e.SET.1
+  e.SET.1-f.SET.1
+----
+1:
+  000001:[a#1,SET-b#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[e#1,SET-f#1,SET]
+
+inuse-key-ranges
+0 a b
+0 c d
+0 g h
+1 a b
+----
+a-b
+d-e
+.
+.
+
+define
+L1
+  a.SET.1-b.SET.1
+L2
+  b.SET.1-c.SET.2
+----
+1:
+  000001:[a#1,SET-b#1,SET]
+2:
+  000002:[b#1,SET-c#2,SET]
+
+inuse-key-ranges
+0 a c
+----
+a-c
+
+define
+L1
+  a.SET.1-b.SET.1
+L2
+  c.SET.1-d.SET.2
+----
+1:
+  000001:[a#1,SET-b#1,SET]
+2:
+  000002:[c#1,SET-d#2,SET]
+
+inuse-key-ranges
+0 a c
+----
+a-b c-d
+
+define
+L1
+  b.SET.1-c.SET.1
+L2
+  a.SET.1-b.SET.2
+----
+1:
+  000001:[b#1,SET-c#1,SET]
+2:
+  000002:[a#1,SET-b#2,SET]
+
+inuse-key-ranges
+0 a c
+----
+a-c
+
+define
+L1
+  c.SET.1-d.SET.1
+L2
+  a.SET.1-b.SET.2
+----
+1:
+  000001:[c#1,SET-d#1,SET]
+2:
+  000002:[a#1,SET-b#2,SET]
+
+inuse-key-ranges
+0 a c
+----
+a-b c-d
+
+define
+L1
+  a.SET.1-b.SET.1
+  c.SET.1-d.SET.1
+  f.SET.1-g.SET.1
+  i.SET.1-j.SET.1
+----
+1:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[i#1,SET-j#1,SET]
+
+inuse-key-ranges
+0 a z
+0 a c
+0 g z
+----
+a-b c-d f-g i-j
+a-b c-d
+f-g i-j
+
+define
+L1
+  a.SET.1-b.SET.1
+  c.SET.1-d.SET.1
+  f.SET.1-g.SET.1
+  i.SET.1-j.SET.1
+L6
+  a.SET.0-i.SET.0
+  k.SET.0-z.SET.0
+----
+1:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[i#1,SET-j#1,SET]
+6:
+  000005:[a#0,SET-i#0,SET]
+  000006:[k#0,SET-z#0,SET]
+
+inuse-key-ranges
+0 a z
+----
+a-j k-z
