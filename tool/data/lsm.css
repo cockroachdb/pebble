@@ -1,0 +1,92 @@
+body {
+    margin: 0 0 0 0;
+}
+
+.counts {
+    font: 10px sans-serif;
+}
+
+.help {
+    font: 12px sans-serif;
+}
+
+.levels {
+    font: 12px sans-serif;
+}
+
+.reason {
+    font: 12px sans-serif;
+}
+
+.sizes {
+    font: 10px sans-serif;
+}
+
+.ticks {
+    font: 10px sans-serif;
+}
+
+.track,
+.track-inset,
+.track-overlay {
+    stroke-linecap: round;
+}
+
+.track {
+    stroke: #000;
+    stroke-opacity: 0.3;
+    stroke-width: 10px;
+}
+
+.track-inset {
+    stroke: #ddd;
+    stroke-width: 8px;
+}
+
+.track-overlay {
+    pointer-events: stroke;
+    stroke-width: 50px;
+    stroke: transparent;
+    cursor: crosshair;
+}
+
+.handle {
+    fill: #fff;
+    stroke: #000;
+    stroke-opacity: 0.5;
+    stroke-width: 1.25px;
+}
+
+#container {
+    height: 100vh;
+    width: 100%;
+}
+
+#header {
+    display: block;
+}
+
+#index {
+    position: relative;
+    margin: 11px 10px 10px 10px;
+    width: 50px;
+}
+
+#index-container {
+    float: left;
+    width: 76px;
+    height: 40px;
+}
+
+#slider {
+    background-color: #fff;
+    height: 40px;
+    width: calc(100% - 86px);
+}
+
+#vis {
+    display: block;
+    background-color: #fff;
+    height: calc(100% - 40px);
+    width: 100%;
+}
