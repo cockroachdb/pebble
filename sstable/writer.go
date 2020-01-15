@@ -216,11 +216,16 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
-	if !w.disableKeyOrderChecks &&
-		base.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
-		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
-			w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
-		return w.err
+	if !w.disableKeyOrderChecks {
+		// TODO(peter): Manually inlined version of base.InternalCompare(). This is
+		// 3.5% faster on BenchmarkWriter on go1.13. Remove if go1.14 or future
+		// versions show this to not be a performance win.
+		x := w.compare(w.meta.LargestPoint.UserKey, key.UserKey)
+		if x > 0 || (x == 0 && w.meta.LargestPoint.Trailer < key.Trailer) {
+			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+				w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
+			return w.err
+		}
 	}
 
 	if err := w.maybeFlush(key, value); err != nil {
