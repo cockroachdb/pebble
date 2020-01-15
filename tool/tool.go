@@ -31,6 +31,7 @@ type T struct {
 	Commands  []*cobra.Command
 	db        *dbT
 	find      *findT
+	lsm       *lsmT
 	manifest  *manifestT
 	sstable   *sstableT
 	wal       *walT
@@ -58,12 +59,14 @@ func New() *T {
 
 	t.db = newDB(&t.opts, t.comparers, t.mergers)
 	t.find = newFind(&t.opts, t.comparers)
+	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)
 	t.wal = newWAL(&t.opts, t.comparers)
 	t.Commands = []*cobra.Command{
 		t.db.Root,
 		t.find.Root,
+		t.lsm.Root,
 		t.manifest.Root,
 		t.sstable.Root,
 		t.wal.Root,

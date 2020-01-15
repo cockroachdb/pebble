@@ -116,8 +116,8 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 						fmt.Fprintf(stdout, " (unknown)")
 					}
 					fmt.Fprintf(stdout, "\n")
+					m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				}
-				m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				if ve.MinUnflushedLogNum != 0 {
 					empty = false
 					fmt.Fprintf(stdout, "  log-num:       %d\n", ve.MinUnflushedLogNum)
@@ -220,8 +220,8 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 						ok = false
 						break
 					}
+					m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				}
-				m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				empty = empty && ve.MinUnflushedLogNum == 0 && ve.ObsoletePrevLogNum == 0 &&
 					ve.LastSeqNum == 0 && len(ve.DeletedFiles) == 0 &&
 					len(ve.NewFiles) == 0
