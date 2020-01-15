@@ -335,7 +335,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		return nil
 	}
 
-	bh, err := w.finishBlock(&w.block, w.compression)
+	bh, err := w.writeBlock(w.block.finish(), w.compression)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -400,15 +400,6 @@ func shouldFlush(
 	return newSize > blockSize
 }
 
-// finishBlock finishes the specified block and returns its block handle, which
-// is its offset and length in the table.
-func (w *Writer) finishBlock(block *blockWriter, compression Compression) (BlockHandle, error) {
-	bh, err := w.writeRawBlock(block.finish(), compression)
-	// Reset the per-block state.
-	block.reset()
-	return bh, err
-}
-
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
 func (w *Writer) finishIndexBlock() {
@@ -424,17 +415,16 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 
 	for i := range w.indexPartitions {
 		b := &w.indexPartitions[i]
+		w.props.NumDataBlocks += uint64(b.nEntries)
 		sep := base.DecodeInternalKey(b.curKey)
-		bh, err := w.writeRawBlock(b.finish(), w.compression)
+		data := b.finish()
+		w.props.IndexSize += uint64(len(data))
+		bh, err := w.writeBlock(data, w.compression)
 		if err != nil {
 			return BlockHandle{}, err
 		}
-
 		n := encodeBlockHandle(w.tmp[:], bh)
 		w.topLevelIndexBlock.add(sep, w.tmp[:n])
-
-		w.props.IndexSize += uint64(len(b.buf))
-		w.props.NumDataBlocks += uint64(b.nEntries)
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size
@@ -444,10 +434,10 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.estimatedSize())
 	w.props.IndexSize += w.props.TopLevelIndexSize + blockTrailerLen
 
-	return w.finishBlock(&w.topLevelIndexBlock, w.compression)
+	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
 }
 
-func (w *Writer) writeRawBlock(b []byte, compression Compression) (BlockHandle, error) {
+func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
 	blockType := noCompressionBlockType
 	if compression == SnappyCompression {
 		// Compress the buffer, discarding the result if the improvement isn't at
@@ -510,7 +500,7 @@ func (w *Writer) Close() (err error) {
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
 	if w.block.nEntries > 0 || w.indexBlock.nEntries == 0 {
-		bh, err := w.finishBlock(&w.block, w.compression)
+		bh, err := w.writeBlock(w.block.finish(), w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -528,7 +518,7 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		bh, err := w.writeRawBlock(b, NoCompression)
+		bh, err := w.writeBlock(b, NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -557,7 +547,7 @@ func (w *Writer) Close() (err error) {
 		w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 		// Write the single level index block.
-		indexBH, err = w.finishBlock(&w.indexBlock, w.compression)
+		indexBH, err = w.writeBlock(w.indexBlock.finish(), w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -577,7 +567,7 @@ func (w *Writer) Close() (err error) {
 			// tombstone is exclusive.
 			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
 		}
-		rangeDelBH, err = w.finishBlock(&w.rangeDelBlock, NoCompression)
+		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -603,7 +593,7 @@ func (w *Writer) Close() (err error) {
 		raw.restartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		w.props.save(&raw)
-		bh, err := w.writeRawBlock(raw.finish(), NoCompression)
+		bh, err := w.writeBlock(raw.finish(), NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -630,7 +620,7 @@ func (w *Writer) Close() (err error) {
 	// policy is nil. NoCompression is specified because a) RocksDB never
 	// compresses the meta-index block and b) RocksDB has some code paths which
 	// expect the meta-index block to not be compressed.
-	metaindexBH, err := w.finishBlock(&metaindex.blockWriter, NoCompression)
+	metaindexBH, err := w.writeBlock(metaindex.blockWriter.finish(), NoCompression)
 	if err != nil {
 		w.err = err
 		return w.err

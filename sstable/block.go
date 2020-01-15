@@ -126,14 +126,14 @@ func (w *blockWriter) finish() []byte {
 	}
 	binary.LittleEndian.PutUint32(tmp4, uint32(len(w.restarts)))
 	w.buf = append(w.buf, tmp4...)
-	return w.buf
-}
+	result := w.buf
 
-func (w *blockWriter) reset() {
+	// Reset the block state.
 	w.nEntries = 0
 	w.nextRestart = 0
 	w.buf = w.buf[:0]
 	w.restarts = w.restarts[:0]
+	return result
 }
 
 func (w *blockWriter) estimatedSize() int {
