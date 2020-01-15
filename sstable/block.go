@@ -31,7 +31,7 @@ type blockWriter struct {
 	curKey          []byte
 	curValue        []byte
 	prevKey         []byte
-	tmp             [50]byte
+	tmp             [4]byte
 }
 
 func (w *blockWriter) store(keySize int, value []byte) {
@@ -50,47 +50,63 @@ func (w *blockWriter) store(keySize int, value []byte) {
 		}
 	}
 
-	// TODO(peter): Manually inlined version of binary.PutUvarint(). This is 15%
+	needed := 3*binary.MaxVarintLen32 + len(w.curKey[shared:]) + len(value)
+	n := len(w.buf)
+	if cap(w.buf) < n+needed {
+		newCap := 2 * cap(w.buf)
+		if newCap == 0 {
+			newCap = 1024
+		}
+		for newCap < n+needed {
+			newCap *= 2
+		}
+		newBuf := make([]byte, n, newCap)
+		copy(newBuf, w.buf)
+		w.buf = newBuf
+	}
+	w.buf = w.buf[:n+needed]
+
+	// TODO(peter): Manually inlined versions of binary.PutUvarint(). This is 15%
 	// faster on BenchmarkWriter on go1.13. Remove if go1.14 or future versions
 	// show this to not be a performance win.
-	n := 0
 	{
 		x := uint32(shared)
 		for x >= 0x80 {
-			w.tmp[n] = byte(x) | 0x80
+			w.buf[n] = byte(x) | 0x80
 			x >>= 7
 			n++
 		}
-		w.tmp[n] = byte(x)
+		w.buf[n] = byte(x)
 		n++
 	}
 
 	{
 		x := uint32(keySize - shared)
 		for x >= 0x80 {
-			w.tmp[n] = byte(x) | 0x80
+			w.buf[n] = byte(x) | 0x80
 			x >>= 7
 			n++
 		}
-		w.tmp[n] = byte(x)
+		w.buf[n] = byte(x)
 		n++
 	}
 
 	{
 		x := uint32(len(value))
 		for x >= 0x80 {
-			w.tmp[n] = byte(x) | 0x80
+			w.buf[n] = byte(x) | 0x80
 			x >>= 7
 			n++
 		}
-		w.tmp[n] = byte(x)
+		w.buf[n] = byte(x)
 		n++
 	}
 
-	w.buf = append(w.buf, w.tmp[:n]...)
-	w.buf = append(w.buf, w.curKey[shared:]...)
-	w.buf = append(w.buf, value...)
-	w.curValue = w.buf[len(w.buf)-len(value):]
+	n += copy(w.buf[n:], w.curKey[shared:])
+	n += copy(w.buf[n:], value)
+	w.buf = w.buf[:n]
+
+	w.curValue = w.buf[n-len(value):]
 
 	w.nEntries++
 }
