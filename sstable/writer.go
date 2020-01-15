@@ -41,12 +41,6 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-func (m *WriterMetadata) updateLargestPoint(key InternalKey) {
-	// Avoid the memory allocation in InternalKey.Clone() by reusing the buffer.
-	m.LargestPoint.UserKey = append(m.LargestPoint.UserKey[:0], key.UserKey...)
-	m.LargestPoint.Trailer = key.Trailer
-}
-
 // Smallest returns the smaller of SmallestPoint and SmallestRange.
 func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
 	if m.SmallestPoint.UserKey == nil {
@@ -133,18 +127,11 @@ type Writer struct {
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
 	rangeDelV1Format bool
-	// A table is a series of blocks and a block's index entry contains a
-	// separator key between one block and the next. Thus, a finished block
-	// cannot be written until the first key in the next block is seen.
-	// pendingBH is the blockHandle of a finished block that is waiting for
-	// the next call to Set. If the writer is not in this state, pendingBH
-	// is zero.
-	pendingBH      BlockHandle
-	block          blockWriter
-	indexBlock     blockWriter
-	rangeDelBlock  blockWriter
-	props          Properties
-	propCollectors []TablePropertyCollector
+	block            blockWriter
+	indexBlock       blockWriter
+	rangeDelBlock    blockWriter
+	props            Properties
+	propCollectors   []TablePropertyCollector
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -229,11 +216,16 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
-	if !w.disableKeyOrderChecks &&
-		base.InternalCompare(w.compare, w.meta.LargestPoint, key) >= 0 {
-		w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
-			w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
-		return w.err
+	if !w.disableKeyOrderChecks {
+		// TODO(peter): Manually inlined version of base.InternalCompare(). This is
+		// 3.5% faster on BenchmarkWriter on go1.13. Remove if go1.14 or future
+		// versions show this to not be a performance win.
+		x := w.compare(w.meta.LargestPoint.UserKey, key.UserKey)
+		if x > 0 || (x == 0 && w.meta.LargestPoint.Trailer < key.Trailer) {
+			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+				w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
+			return w.err
+		}
 	}
 
 	if err := w.maybeFlush(key, value); err != nil {
@@ -246,14 +238,17 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		}
 	}
 
-	w.meta.updateSeqNum(key.SeqNum())
-	w.meta.updateLargestPoint(key)
-
 	w.maybeAddToFilter(key.UserKey)
+	w.block.add(key, value)
 
+	w.meta.updateSeqNum(key.SeqNum())
 	if w.props.NumEntries == 0 {
 		w.meta.SmallestPoint = key.Clone()
 	}
+	// block.curKey contains the most recently added key to the block.
+	w.meta.LargestPoint.UserKey = w.block.curKey[:len(w.block.curKey)-8]
+	w.meta.LargestPoint.Trailer = key.Trailer
+
 	w.props.NumEntries++
 	switch key.Kind() {
 	case InternalKeyKindDelete:
@@ -263,7 +258,6 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	}
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
-	w.block.add(key, value)
 	return nil
 }
 
@@ -346,19 +340,18 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		return nil
 	}
 
-	bh, err := w.finishBlock(&w.block, w.compression)
+	bh, err := w.writeBlock(w.block.finish(), w.compression)
 	if err != nil {
 		w.err = err
 		return w.err
 	}
-	w.pendingBH = bh
-	w.flushPendingBH(key)
+	w.addIndexEntry(key, bh)
 	return nil
 }
 
-// flushPendingBH adds any pending block handle to the index entries.
-func (w *Writer) flushPendingBH(key InternalKey) {
-	if w.pendingBH.Length == 0 {
+// addIndexEntry adds an index entry for the specified key and block handle.
+func (w *Writer) addIndexEntry(key InternalKey, bh BlockHandle) {
+	if bh.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return
@@ -370,7 +363,7 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	n := encodeBlockHandle(w.tmp[:], w.pendingBH)
+	n := encodeBlockHandle(w.tmp[:], bh)
 
 	if supportsTwoLevelIndex(w.tableFormat) &&
 		shouldFlush(sep, w.tmp[:n], &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
@@ -380,8 +373,6 @@ func (w *Writer) flushPendingBH(key InternalKey) {
 	}
 
 	w.indexBlock.add(sep, w.tmp[:n])
-
-	w.pendingBH = BlockHandle{}
 }
 
 func shouldFlush(
@@ -414,15 +405,6 @@ func shouldFlush(
 	return newSize > blockSize
 }
 
-// finishBlock finishes the specified block and returns its block handle, which
-// is its offset and length in the table.
-func (w *Writer) finishBlock(block *blockWriter, compression Compression) (BlockHandle, error) {
-	bh, err := w.writeRawBlock(block.finish(), compression)
-	// Reset the per-block state.
-	block.reset()
-	return bh, err
-}
-
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
 func (w *Writer) finishIndexBlock() {
@@ -438,17 +420,16 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 
 	for i := range w.indexPartitions {
 		b := &w.indexPartitions[i]
+		w.props.NumDataBlocks += uint64(b.nEntries)
 		sep := base.DecodeInternalKey(b.curKey)
-		bh, err := w.writeRawBlock(b.finish(), w.compression)
+		data := b.finish()
+		w.props.IndexSize += uint64(len(data))
+		bh, err := w.writeBlock(data, w.compression)
 		if err != nil {
 			return BlockHandle{}, err
 		}
-
 		n := encodeBlockHandle(w.tmp[:], bh)
 		w.topLevelIndexBlock.add(sep, w.tmp[:n])
-
-		w.props.IndexSize += uint64(len(b.buf))
-		w.props.NumDataBlocks += uint64(b.nEntries)
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size
@@ -458,10 +439,10 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.estimatedSize())
 	w.props.IndexSize += w.props.TopLevelIndexSize + blockTrailerLen
 
-	return w.finishBlock(&w.topLevelIndexBlock, w.compression)
+	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
 }
 
-func (w *Writer) writeRawBlock(b []byte, compression Compression) (BlockHandle, error) {
+func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
 	blockType := noCompressionBlockType
 	if compression == SnappyCompression {
 		// Compress the buffer, discarding the result if the improvement isn't at
@@ -523,15 +504,13 @@ func (w *Writer) Close() (err error) {
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
-	w.flushPendingBH(InternalKey{})
 	if w.block.nEntries > 0 || w.indexBlock.nEntries == 0 {
-		bh, err := w.finishBlock(&w.block, w.compression)
+		bh, err := w.writeBlock(w.block.finish(), w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
 		}
-		w.pendingBH = bh
-		w.flushPendingBH(InternalKey{})
+		w.addIndexEntry(InternalKey{}, bh)
 	}
 	w.props.DataSize = w.meta.Size
 
@@ -544,7 +523,7 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		bh, err := w.writeRawBlock(b, NoCompression)
+		bh, err := w.writeBlock(b, NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -573,7 +552,7 @@ func (w *Writer) Close() (err error) {
 		w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 		// Write the single level index block.
-		indexBH, err = w.finishBlock(&w.indexBlock, w.compression)
+		indexBH, err = w.writeBlock(w.indexBlock.finish(), w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -593,7 +572,7 @@ func (w *Writer) Close() (err error) {
 			// tombstone is exclusive.
 			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
 		}
-		rangeDelBH, err = w.finishBlock(&w.rangeDelBlock, NoCompression)
+		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -619,7 +598,7 @@ func (w *Writer) Close() (err error) {
 		raw.restartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		w.props.save(&raw)
-		bh, err := w.writeRawBlock(raw.finish(), NoCompression)
+		bh, err := w.writeBlock(raw.finish(), NoCompression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -646,7 +625,7 @@ func (w *Writer) Close() (err error) {
 	// policy is nil. NoCompression is specified because a) RocksDB never
 	// compresses the meta-index block and b) RocksDB has some code paths which
 	// expect the meta-index block to not be compressed.
-	metaindexBH, err := w.finishBlock(&metaindex.blockWriter, NoCompression)
+	metaindexBH, err := w.writeBlock(metaindex.blockWriter.finish(), NoCompression)
 	if err != nil {
 		w.err = err
 		return w.err

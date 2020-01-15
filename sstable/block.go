@@ -25,29 +25,88 @@ func uvarintLen(v uint32) int {
 type blockWriter struct {
 	restartInterval int
 	nEntries        int
+	nextRestart     int
 	buf             []byte
 	restarts        []uint32
 	curKey          []byte
 	curValue        []byte
 	prevKey         []byte
-	tmp             [50]byte
+	tmp             [4]byte
 }
 
 func (w *blockWriter) store(keySize int, value []byte) {
 	shared := 0
-	if w.nEntries%w.restartInterval == 0 {
+	if w.nEntries == w.nextRestart {
+		w.nextRestart = w.nEntries + w.restartInterval
 		w.restarts = append(w.restarts, uint32(len(w.buf)))
 	} else {
-		shared = base.SharedPrefixLen(w.curKey, w.prevKey)
+		// TODO(peter): Manually inlined version of base.SharedPrefixLen()
+		n := len(w.curKey)
+		if n > len(w.prevKey) {
+			n = len(w.prevKey)
+		}
+		for shared < n && w.curKey[shared] == w.prevKey[shared] {
+			shared++
+		}
 	}
 
-	n := binary.PutUvarint(w.tmp[0:], uint64(shared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(keySize-shared))
-	n += binary.PutUvarint(w.tmp[n:], uint64(len(value)))
-	w.buf = append(w.buf, w.tmp[:n]...)
-	w.buf = append(w.buf, w.curKey[shared:]...)
-	w.buf = append(w.buf, value...)
-	w.curValue = w.buf[len(w.buf)-len(value):]
+	needed := 3*binary.MaxVarintLen32 + len(w.curKey[shared:]) + len(value)
+	n := len(w.buf)
+	if cap(w.buf) < n+needed {
+		newCap := 2 * cap(w.buf)
+		if newCap == 0 {
+			newCap = 1024
+		}
+		for newCap < n+needed {
+			newCap *= 2
+		}
+		newBuf := make([]byte, n, newCap)
+		copy(newBuf, w.buf)
+		w.buf = newBuf
+	}
+	w.buf = w.buf[:n+needed]
+
+	// TODO(peter): Manually inlined versions of binary.PutUvarint(). This is 15%
+	// faster on BenchmarkWriter on go1.13. Remove if go1.14 or future versions
+	// show this to not be a performance win.
+	{
+		x := uint32(shared)
+		for x >= 0x80 {
+			w.buf[n] = byte(x) | 0x80
+			x >>= 7
+			n++
+		}
+		w.buf[n] = byte(x)
+		n++
+	}
+
+	{
+		x := uint32(keySize - shared)
+		for x >= 0x80 {
+			w.buf[n] = byte(x) | 0x80
+			x >>= 7
+			n++
+		}
+		w.buf[n] = byte(x)
+		n++
+	}
+
+	{
+		x := uint32(len(value))
+		for x >= 0x80 {
+			w.buf[n] = byte(x) | 0x80
+			x >>= 7
+			n++
+		}
+		w.buf[n] = byte(x)
+		n++
+	}
+
+	n += copy(w.buf[n:], w.curKey[shared:])
+	n += copy(w.buf[n:], value)
+	w.buf = w.buf[:n]
+
+	w.curValue = w.buf[n-len(value):]
 
 	w.nEntries++
 }
@@ -83,13 +142,14 @@ func (w *blockWriter) finish() []byte {
 	}
 	binary.LittleEndian.PutUint32(tmp4, uint32(len(w.restarts)))
 	w.buf = append(w.buf, tmp4...)
-	return w.buf
-}
+	result := w.buf
 
-func (w *blockWriter) reset() {
+	// Reset the block state.
 	w.nEntries = 0
+	w.nextRestart = 0
 	w.buf = w.buf[:0]
 	w.restarts = w.restarts[:0]
+	return result
 }
 
 func (w *blockWriter) estimatedSize() int {
