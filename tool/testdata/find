@@ -1,0 +1,131 @@
+find
+----
+accepts 2 arg(s), received 0
+
+find
+non-existent
+key
+----
+stat non-existent: file does not exist
+
+find
+testdata/find-db
+aaa
+----
+000002.log
+    aaa#0,SET [31]
+000004.log
+    aaa#7,DEL []
+000005.sst [aaa#0,SET-ccc#4,MERGE]
+    (flushed to L0, moved to L6)
+    aaa#0,SET [31]
+000008.sst [aaa#0,SET-ccc#0,MERGE]
+    (compacted L0 [...] + L6 [000005])
+    aaa#0,SET [31]
+000010.sst [aaa#7,DEL-eee#72057594037927935,RANGEDEL]
+    (flushed to L0)
+    aaa#7,DEL []
+000011.sst [aaa#7,DEL-eee#72057594037927935,RANGEDEL]
+    (compacted L0 [000010] + L6 [000008 ...])
+    aaa#7,DEL []
+    aaa#0,SET [31]
+
+find
+testdata/find-db
+bbb
+--key=%x
+--value=[%s]
+----
+000002.log
+    626262#1,SET [2]
+000004.log
+    626262-656565#9,RANGEDEL
+000005.sst [616161#0,SET-636363#4,MERGE]
+    (flushed to L0, moved to L6)
+    626262#1,SET [2]
+000006.sst [626262#5,SET-636363#5,SET]
+    (ingested to L0)
+    626262#5,SET [22]
+000008.sst [616161#0,SET-636363#0,MERGE]
+    (compacted L0 [000006] + L6 [000005])
+    626262#5,SET [22]
+    626262#0,SET [2]
+000010.sst [616161#7,DEL-656565#72057594037927935,RANGEDEL]
+    (flushed to L0)
+    626262-656565#9,RANGEDEL
+000011.sst [616161#7,DEL-656565#72057594037927935,RANGEDEL]
+    (compacted L0 [000010] + L6 [000008 ...])
+    626262-656565#9,RANGEDEL
+    626262#5,SET [22]
+    626262#0,SET [2]
+
+find
+testdata/find-db
+hex:636363
+--value=null
+----
+000002.log
+    ccc#2,MERGE
+    ccc#3,MERGE
+    ccc#4,MERGE
+000004.log
+    ccc#8,SINGLEDEL
+    bbb-eee#9,RANGEDEL
+000005.sst [aaa#0,SET-ccc#4,MERGE]
+    (flushed to L0, moved to L6)
+    ccc#4,MERGE
+000006.sst [bbb#5,SET-ccc#5,SET]
+    (ingested to L0)
+    ccc#5,SET
+000008.sst [aaa#0,SET-ccc#0,MERGE]
+    (compacted L0 [000006] + L6 [000005])
+    ccc#5,SET
+    ccc#0,MERGE
+000010.sst [aaa#7,DEL-eee#72057594037927935,RANGEDEL]
+    (flushed to L0)
+    bbb-eee#9,RANGEDEL
+000011.sst [aaa#7,DEL-eee#72057594037927935,RANGEDEL]
+    (compacted L0 [000010] + L6 [000008 ...])
+    bbb-eee#9,RANGEDEL
+    ccc#5,SET
+    ccc#0,MERGE
+
+find
+testdata/find-db
+ddd
+-v
+----
+find-db
+    1 manifest
+    3 logs
+    6 sstables
+find-db/MANIFEST-000001
+    9 edits
+find-db/archive/000002.log: EOF [pebble/record: zeroed chunk] (may be due to WAL preallocation)
+find-db/archive/000004.log: EOF [pebble/record: zeroed chunk] (may be due to WAL preallocation)
+find-db/000009.log
+find-db/archive/000005.sst
+find-db/archive/000006.sst: global seqnum: 5
+find-db/archive/000007.sst: global seqnum: 6
+find-db/archive/000008.sst
+find-db/archive/000010.sst
+find-db/000011.sst
+000004.log
+    bbb-eee#9,RANGEDEL
+000007.sst [ddd#6,SET-ddd#6,SET]
+    (ingested to L6)
+    ddd#6,SET [3333]
+000010.sst [aaa#7,DEL-eee#72057594037927935,RANGEDEL]
+    (flushed to L0)
+    bbb-eee#9,RANGEDEL
+000011.sst [aaa#7,DEL-eee#72057594037927935,RANGEDEL]
+    (compacted L0 [000010] + L6 [000007 ...])
+    bbb-eee#9,RANGEDEL
+    ddd#6,SET [3333]
+
+find
+testdata/find-db
+eee
+----
+000004.log
+    bbb-eee#9,RANGEDEL
