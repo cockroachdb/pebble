@@ -17,7 +17,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -357,16 +356,24 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 
 			parseMeta := func(s string) *fileMetadata {
 				parts := strings.Split(s, "-")
+				meta := &fileMetadata{}
 				if len(parts) != 2 {
 					t.Fatalf("malformed table spec: %s", s)
 				}
-				if mem.cmp([]byte(parts[0]), []byte(parts[1])) > 0 {
-					parts[0], parts[1] = parts[1], parts[0]
+				if strings.Contains(parts[0], ".") {
+					if !strings.Contains(parts[1], ".") {
+						t.Fatalf("malformed table spec: %s", s)
+					}
+					meta.Smallest = base.ParseInternalKey(parts[0])
+					meta.Largest = base.ParseInternalKey(parts[1])
+				} else {
+					meta.Smallest = InternalKey{UserKey: []byte(parts[0])}
+					meta.Largest = InternalKey{UserKey: []byte(parts[1])}
 				}
-				return &fileMetadata{
-					Smallest: InternalKey{UserKey: []byte(parts[0])},
-					Largest:  InternalKey{UserKey: []byte(parts[1])},
+				if mem.cmp(meta.Smallest.UserKey, meta.Largest.UserKey) > 0 {
+					meta.Smallest, meta.Largest = meta.Largest, meta.Smallest
 				}
+				return meta
 			}
 
 			datadriven.RunTest(t, "testdata/ingest_memtable_overlaps", func(d *datadriven.TestData) string {
@@ -417,9 +424,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 }
 
 func TestIngestTargetLevel(t *testing.T) {
-	cmp := DefaultComparer.Compare
-	var vers *version
-	var compactions map[*compaction]struct{}
+	var d *DB
 
 	parseMeta := func(s string) fileMetadata {
 		parts := strings.Split(s, "-")
@@ -432,84 +437,80 @@ func TestIngestTargetLevel(t *testing.T) {
 		}
 	}
 
-	parseCompaction := func(outputLevel int, s string) *compaction {
-		m := parseMeta(s[len("compact:"):])
-		return &compaction{
-			outputLevel: outputLevel,
-			smallest:    m.Smallest,
-			largest:     m.Largest,
-		}
-	}
-
-	datadriven.RunTest(t, "testdata/ingest_target_level", func(d *datadriven.TestData) string {
-		switch d.Cmd {
+	datadriven.RunTest(t, "testdata/ingest_target_level", func(td *datadriven.TestData) string {
+		switch td.Cmd {
 		case "define":
-			vers = &version{}
-			compactions = make(map[*compaction]struct{})
-			if len(d.Input) == 0 {
-				return ""
+			var err error
+			if d, err = runDBDefineCmd(td, nil); err != nil {
+				return err.Error()
 			}
-			for _, data := range strings.Split(d.Input, "\n") {
-				parts := strings.SplitN(data, ":", 2)
-				if len(parts) != 2 {
-					return fmt.Sprintf("malformed test:\n%s", d.Input)
-				}
-				level, err := strconv.Atoi(parts[0])
-				if err != nil {
-					return err.Error()
-				}
-				if vers.Files[level] != nil {
-					return fmt.Sprintf("level %d already filled", level)
-				}
-				for _, table := range strings.Fields(parts[1]) {
-					if strings.HasPrefix(table, "compact:") {
-						compactions[parseCompaction(level, table)] = struct{}{}
-					} else {
-						vers.Files[level] = append(vers.Files[level], parseMeta(table))
-					}
-				}
 
-				if level == 0 {
-					manifest.SortBySeqNum(vers.Files[level])
-				} else {
-					manifest.SortBySmallest(vers.Files[level], cmp)
-				}
+			readState := d.loadReadState()
+			c := &checkConfig{
+				logger:    d.opts.Logger,
+				cmp:       d.cmp,
+				readState: readState,
+				newIters:  d.newIters,
+				// TODO: runDBDefineCmd doesn't properly update the visible
+				// sequence number. So we have to explicitly configure level checker with a very large
+				// sequence number, otherwise the DB appears empty.
+				seqNum: InternalKeySeqNumMax,
 			}
-			return ""
+			if err := checkLevelsInternal(c); err != nil {
+				return err.Error()
+			}
+			readState.unref()
+
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			d.mu.Unlock()
+			return s
 
 		case "target":
 			var buf bytes.Buffer
-			for _, target := range strings.Split(d.Input, "\n") {
+			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
-				level := ingestTargetLevel(cmp, vers, 1, compactions, &meta)
+				level, err := ingestTargetLevel(d.newIters, IterOptions{logger: d.opts.Logger}, d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, &meta)
+				if err != nil {
+					return err.Error()
+				}
 				fmt.Fprintf(&buf, "%d\n", level)
 			}
 			return buf.String()
 
 		default:
-			return fmt.Sprintf("unknown command: %s", d.Cmd)
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
 }
 
 func TestIngest(t *testing.T) {
-	mem := vfs.NewMem()
-	err := mem.MkdirAll("ext", 0755)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var mem vfs.FS
+	var d *DB
 
-	d, err := Open("", &Options{
-		FS:                    mem,
-		L0CompactionThreshold: 100,
-		L0StopWritesThreshold: 100,
-	})
-	if err != nil {
-		t.Fatal(err)
+	reset := func() {
+		mem = vfs.NewMem()
+		err := mem.MkdirAll("ext", 0755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err = Open("", &Options{
+			FS:                    mem,
+			L0CompactionThreshold: 100,
+			L0StopWritesThreshold: 100,
+			DebugCheck:            true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
+	reset()
 
 	datadriven.RunTest(t, "testdata/ingest", func(td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
 		case "batch":
 			b := d.NewIndexedBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {

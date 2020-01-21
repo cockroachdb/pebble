@@ -183,6 +183,8 @@ set j 9
 set k 10
 ----
 
+# Overlap with point keys in memtable, hence memtable will be flushed.
+
 build ext5
 set k 11
 ----
@@ -215,6 +217,8 @@ k
 ----
 j:9
 k:11
+
+# No data overlap in memtable, hence it will not be flushed.
 
 batch
 set m 12
@@ -313,28 +317,13 @@ k:11
 m:30
 
 build ext9
-del-range a x
+set a 40
+set f 40
+set g 40
 ----
 
-build ext10
-set y 40
+ingest ext9
 ----
-
-# Ingesting two files into L0 is allowed.
-
-ingest ext9 ext10
-----
-
-get
-j
-k
-m
-y
-----
-j: pebble: not found
-k: pebble: not found
-m: pebble: not found
-y:40
 
 lsm
 ----
@@ -347,9 +336,287 @@ lsm
   000017:[m#9,SET-m#9,SET]
   000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
   000018:[j#12,RANGEDEL-m#12,SET]
-  000019:[a#13,RANGEDEL-x#72057594037927935,RANGEDEL]
-  000020:[y#14,SET-y#14,SET]
+  000019:[a#13,SET-g#13,SET]
 6:
   000006:[a#1,SET-b#1,SET]
   000014:[n#10,SET-n#10,SET]
   000010:[x#5,SET-y#5,SET]
+
+# Overlap with sst boundary containing range del sentinel (fileNum 000015) is not considered an overlap since
+# range del's end key is exclusive. Hence ext9 gets ingested into L6.
+
+build ext10
+set z 40
+----
+
+# Although ext11 falls into sst boundaries of fileNum 000019, 000015, they don't actually contain any key within ext11's boundary.
+# Hence ext11 is allowed to go further down and get ingested into L6.
+
+build ext11
+set d 40
+----
+
+# Overlap with fileNum 000018 is not considered an overlap since ext12's end key is range del sentinel which is exclusive.
+
+build ext12
+del-range i j
+----
+
+# Ingesting multiple files into L0 is allowed.
+
+ingest ext10 ext11 ext12
+----
+
+get
+z
+d
+----
+z:40
+d:40
+
+lsm
+----
+0:
+  000007:[a#2,SET-b#2,DEL]
+  000008:[a#3,SET-c#3,SET]
+  000009:[b#4,MERGE-c#4,DEL]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
+  000017:[m#9,SET-m#9,SET]
+  000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000018:[j#12,RANGEDEL-m#12,SET]
+  000019:[a#13,SET-g#13,SET]
+6:
+  000006:[a#1,SET-b#1,SET]
+  000021:[d#14,SET-d#14,SET]
+  000022:[i#15,RANGEDEL-j#72057594037927935,RANGEDEL]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]
+  000020:[z#16,SET-z#16,SET]
+
+# No overlap between fileNum 000019 that contains point key f, since f is ingested file's range del sentinel.
+
+build ext13
+del-range e f
+----
+
+ingest ext13
+----
+
+lsm
+----
+0:
+  000007:[a#2,SET-b#2,DEL]
+  000008:[a#3,SET-c#3,SET]
+  000009:[b#4,MERGE-c#4,DEL]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
+  000017:[m#9,SET-m#9,SET]
+  000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000018:[j#12,RANGEDEL-m#12,SET]
+  000019:[a#13,SET-g#13,SET]
+6:
+  000006:[a#1,SET-b#1,SET]
+  000021:[d#14,SET-d#14,SET]
+  000023:[e#17,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000022:[i#15,RANGEDEL-j#72057594037927935,RANGEDEL]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]
+  000020:[z#16,SET-z#16,SET]
+
+# Overlap with range delete keys in memtable, hence memtable will be flushed.
+
+batch
+del-range a d
+----
+
+build ext14
+set b 1
+----
+
+ingest ext14
+----
+
+lsm
+----
+0:
+  000007:[a#2,SET-b#2,DEL]
+  000008:[a#3,SET-c#3,SET]
+  000009:[b#4,MERGE-c#4,DEL]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
+  000017:[m#9,SET-m#9,SET]
+  000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000018:[j#12,RANGEDEL-m#12,SET]
+  000019:[a#13,SET-g#13,SET]
+  000026:[a#18,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000024:[b#19,SET-b#19,SET]
+6:
+  000006:[a#1,SET-b#1,SET]
+  000021:[d#14,SET-d#14,SET]
+  000023:[e#17,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000022:[i#15,RANGEDEL-j#72057594037927935,RANGEDEL]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]
+  000020:[z#16,SET-z#16,SET]
+
+reset
+----
+
+# Tests to show that keys don't overlap with range delete sentinels.
+
+batch
+set b 1
+----
+
+build ext15
+del-range a b
+----
+
+ingest ext15
+----
+
+lsm
+----
+6:
+  000004:[a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
+
+reset
+----
+
+batch
+del-range b c
+----
+
+build ext16
+del-range a b
+----
+
+ingest ext16
+----
+
+lsm
+----
+6:
+  000004:[a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
+
+reset
+----
+
+# Tests for branch coverage of method overlapWithIterator,
+# when levelIter is used and it produces a range del sentinel boundary
+# because it finds no overlapping point key.
+
+# Case 1) levelIter produced boundary is less than ingested file's largest key.
+
+build ext17
+del-range a b
+----
+
+ingest ext17
+----
+
+build ext18
+set a 10
+set c 10
+----
+
+ingest ext18
+----
+
+lsm
+----
+0:
+  000005:[a#2,SET-c#2,SET]
+6:
+  000004:[a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
+
+reset
+----
+
+# Case 2) levelIter produced boundary is more than ingested file's largest key.
+
+build ext19
+del-range c d
+----
+
+ingest ext19
+----
+
+build ext20
+set a 10
+set b 10
+----
+
+ingest ext20
+----
+
+build ext21
+set c 10
+----
+
+ingest ext21
+----
+
+lsm
+----
+0:
+  000006:[c#3,SET-c#3,SET]
+6:
+  000005:[a#2,SET-b#2,SET]
+  000004:[c#1,RANGEDEL-d#72057594037927935,RANGEDEL]
+
+reset
+----
+
+# Case 3) levelIter produced boundary is equal to ingested file's largest key,
+# where the latter is not a range del sentinel.
+
+build ext22
+del-range a b
+----
+
+ingest ext22
+----
+
+build ext23
+set a 10
+set b 10
+----
+
+ingest ext23
+----
+
+lsm
+----
+0:
+  000005:[a#2,SET-b#2,SET]
+6:
+  000004:[a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
+
+reset
+----
+
+# Case 4) levelIter produced boundary is equal to ingested file's largest key,
+# where the latter is a range del sentinel.
+
+build ext24
+del-range a b
+----
+
+ingest ext24
+----
+
+build ext25
+del-range a b
+----
+
+ingest ext25
+----
+
+lsm
+----
+0:
+  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+6:
+  000004:[a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
