@@ -253,46 +253,19 @@ func ingestLink(
 }
 
 func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
-	{
-		// Check overlap with point operations.
-		iter := mem.newIter(nil)
-		defer iter.Close()
+	iter := mem.newIter(nil)
+	rangeDelIter := mem.newRangeDelIter(nil)
+	defer iter.Close()
 
-		for _, m := range meta {
-			key, _ := iter.SeekGE(m.Smallest.UserKey)
-			if key == nil {
-				continue
-			}
-			if cmp(key.UserKey, m.Largest.UserKey) <= 0 {
-				return true
-			}
-		}
+	if rangeDelIter != nil {
+		defer rangeDelIter.Close()
 	}
 
-	// Check overlap with range deletions.
-	if iter := mem.newRangeDelIter(nil); iter != nil {
-		defer iter.Close()
-		for _, m := range meta {
-			key, val := iter.SeekLT(m.Smallest.UserKey)
-			if key == nil {
-				key, val = iter.Next()
-			}
-			for ; key != nil; key, val = iter.Next() {
-				if cmp(key.UserKey, m.Largest.UserKey) > 0 {
-					// The start of the tombstone is after the largest key in the
-					// ingested table.
-					break
-				}
-				if cmp(val, m.Smallest.UserKey) > 0 {
-					// The end of the tombstone is greater than the smallest in the
-					// table. Note that the tombstone end key is exclusive, thus ">0"
-					// instead of ">=0".
-					return true
-				}
-			}
+	for _, m := range meta {
+		if overlapWithIterator(iter, &rangeDelIter, m, cmp) {
+			return true
 		}
 	}
-
 	return false
 }
 
@@ -317,9 +290,50 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 	return nil
 }
 
+func overlapWithIterator(iter internalIterator, rangeDelIter *internalIterator, meta *fileMetadata, cmp Compare) bool {
+
+	// Check overlap with point operations.
+	key, _ := iter.SeekGE(meta.Smallest.UserKey)
+	if key != nil {
+		c := cmp(key.UserKey, meta.Largest.UserKey)
+		if c < 0 || (c == 0 && meta.Largest.Trailer != InternalKeyRangeDeleteSentinel) {
+			return true
+		}
+	}
+
+	// Check overlap with range deletions.
+	if rangeDelIter == nil || *rangeDelIter == nil {
+		return false
+	}
+	rangeDelItr := *rangeDelIter
+	key, val := rangeDelItr.SeekLT(meta.Smallest.UserKey)
+	if key == nil {
+		key, val = rangeDelItr.Next()
+	}
+	for ; key != nil; key, val = rangeDelItr.Next() {
+		c := cmp(key.UserKey, meta.Largest.UserKey)
+		// We check sentinel because for example,
+		// ingested file boundary: a#2,RANGEDEL-b#72057594037927935,RANGEDEL
+		// fragmented tombstone from file: b, c
+		// do not overlap.
+		if c > 0 || (c == 0 && meta.Largest.Trailer == InternalKeyRangeDeleteSentinel) {
+			// The start of the tombstone is after the largest key in the
+			// ingested table.
+			return false
+		}
+		if cmp(val, meta.Smallest.UserKey) > 0 {
+			// The end of the tombstone is greater than the smallest in the
+			// table. Note that the tombstone end key is exclusive, thus ">0"
+			// instead of ">=0".
+			return true
+		}
+	}
+	return false
+}
+
 func ingestTargetLevel(
-	cmp Compare, v *version, baseLevel int, compactions map[*compaction]struct{}, meta *fileMetadata,
-) int {
+	newIters tableNewIters, iterOps IterOptions, cmp Compare, v *version, baseLevel int, compactions map[*compaction]struct{}, meta *fileMetadata,
+) (int, error) {
 	// Find the lowest level which does not have any files which overlap meta. We
 	// search from L0 to L6 looking for whether there are any files in the level
 	// which overlap meta. We want the "lowest" level (where lower means
@@ -327,15 +341,53 @@ func ingestTargetLevel(
 	// place meta at or below a level in which it has overlap because doing so
 	// could violate the invariant that for a given key the sequence numbers in
 	// higher levels will be larger than those in lower levels.
-	if len(v.Overlaps(0, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
-		return 0
+
+	// we can always ingest into level 0
+	targetLevel := 0
+
+	// do we overlap with keys in L0?
+	for i := 0; i < len(v.Files[0]); i++ {
+		meta0 := v.Files[0][i]
+		c1 := cmp(meta.Smallest.UserKey, meta0.Largest.UserKey)
+		c2 := cmp(meta.Largest.UserKey, meta0.Smallest.UserKey)
+		// sentinel trailers are exclusive
+		if c1 > 0 || (c1 == 0 && meta0.Largest.Trailer == base.InternalKeyRangeDeleteSentinel) ||
+			c2 < 0 || (c2 == 0 && meta.Largest.Trailer == base.InternalKeyRangeDeleteSentinel) {
+			continue
+		}
+
+		iter, rangeDelIter, err := newIters(&meta0, nil, nil)
+		if err != nil {
+			return 0, err
+		}
+		overlap := overlapWithIterator(iter, &rangeDelIter, meta, cmp)
+		iter.Close()
+		if rangeDelIter != nil {
+			rangeDelIter.Close()
+		}
+		if overlap {
+			return targetLevel, nil
+		}
 	}
 
-	targetLevel := 0
-	for level := baseLevel; level < numLevels; level++ {
-		if len(v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
-			break
+	level := baseLevel
+	for ; level < numLevels; level++ {
+		levelIter := newLevelIter(iterOps, cmp, newIters, v.Files[level], nil)
+		var rangeDelIter internalIterator
+		// pass in a non-nil pointer to rangeDelIter so that l.findFileGE sets it up for the target file
+		levelIter.initRangeDel(&rangeDelIter)
+		overlap := overlapWithIterator(levelIter, &rangeDelIter, meta, cmp)
+		levelIter.Close() // closes range del iter as well
+		if overlap {
+			return targetLevel, nil
 		}
+
+		// check boundary overlap
+		if len(v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)) != 0 {
+			continue
+		}
+
+		// check boundary overlap with any ongoing compactions
 		overlaps := false
 		for c := range compactions {
 			if level != c.outputLevel {
@@ -347,12 +399,11 @@ func ingestTargetLevel(
 				break
 			}
 		}
-		if overlaps {
-			break
+		if !overlaps {
+			targetLevel = level
 		}
-		targetLevel = level
 	}
-	return targetLevel
+	return targetLevel, nil
 }
 
 // Ingest ingests a set of sstables into the DB. Ingestion of the files is
@@ -546,12 +597,17 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	d.mu.versions.logLock()
 	current := d.mu.versions.currentVersion()
 	baseLevel := d.mu.versions.picker.getBaseLevel()
+	iterOps := IterOptions{logger: d.opts.Logger}
 	for i := range meta {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		m := meta[i]
 		f := &ve.NewFiles[i]
-		f.Level = ingestTargetLevel(d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
+		var err error
+		f.Level, err = ingestTargetLevel(d.newIters, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
+		if err != nil {
+			return nil, err
+		}
 		f.Meta = *m
 		levelMetrics := metrics[f.Level]
 		if levelMetrics == nil {

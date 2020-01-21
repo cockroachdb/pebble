@@ -313,28 +313,13 @@ k:11
 m:30
 
 build ext9
-del-range a x
+set a 40
+set f 40
+set g 40
 ----
 
-build ext10
-set y 40
+ingest ext9
 ----
-
-# Ingesting two files into L0 is allowed.
-
-ingest ext9 ext10
-----
-
-get
-j
-k
-m
-y
-----
-j: pebble: not found
-k: pebble: not found
-m: pebble: not found
-y:40
 
 lsm
 ----
@@ -347,9 +332,96 @@ lsm
   000017:[m#9,SET-m#9,SET]
   000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
   000018:[j#12,RANGEDEL-m#12,SET]
-  000019:[a#13,RANGEDEL-x#72057594037927935,RANGEDEL]
-  000020:[y#14,SET-y#14,SET]
+  000019:[a#13,SET-g#13,SET]
 6:
   000006:[a#1,SET-b#1,SET]
   000014:[n#10,SET-n#10,SET]
   000010:[x#5,SET-y#5,SET]
+
+# Overlap with sst boundary containing range del sentinel (fileNum 000015) is not considered an overlap since
+# range del's end key is exclusive. Hence ext9 gets ingested into L6.
+
+build ext10
+set z 40
+----
+
+# Although ext11 falls into sst boundaries of fileNum 000019, 000015, they don't actually contain any key within ext11's boundary.
+# Hence ext11 is allowed to go further down and get ingested into L6.
+
+build ext11
+set d 40
+----
+
+# Overlap with fileNum 000018 is not considered an overlap since ext12's end key is range del sentinel which is exclusive.
+
+build ext12
+del-range i j
+----
+
+# Ingesting multiple files into L0 is allowed.
+
+ingest ext10 ext11 ext12
+----
+
+get
+z
+d
+----
+z:40
+d:40
+
+lsm
+----
+0:
+  000007:[a#2,SET-b#2,DEL]
+  000008:[a#3,SET-c#3,SET]
+  000009:[b#4,MERGE-c#4,DEL]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
+  000017:[m#9,SET-m#9,SET]
+  000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000018:[j#12,RANGEDEL-m#12,SET]
+  000019:[a#13,SET-g#13,SET]
+6:
+  000006:[a#1,SET-b#1,SET]
+  000021:[d#14,SET-d#14,SET]
+  000022:[i#15,RANGEDEL-j#72057594037927935,RANGEDEL]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]
+  000020:[z#16,SET-z#16,SET]
+
+check
+----
+
+# No overlap between fileNum 000019 that contains point key f, since f is ingested file's range del sentinel.
+
+build ext13
+del-range e f
+----
+
+ingest ext13
+----
+
+lsm
+----
+0:
+  000007:[a#2,SET-b#2,DEL]
+  000008:[a#3,SET-c#3,SET]
+  000009:[b#4,MERGE-c#4,DEL]
+  000013:[j#6,SET-k#7,SET]
+  000011:[k#8,SET-k#8,SET]
+  000017:[m#9,SET-m#9,SET]
+  000015:[a#11,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000018:[j#12,RANGEDEL-m#12,SET]
+  000019:[a#13,SET-g#13,SET]
+6:
+  000006:[a#1,SET-b#1,SET]
+  000021:[d#14,SET-d#14,SET]
+  000023:[e#17,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000022:[i#15,RANGEDEL-j#72057594037927935,RANGEDEL]
+  000014:[n#10,SET-n#10,SET]
+  000010:[x#5,SET-y#5,SET]
+  000020:[z#16,SET-z#16,SET]
+
+check
+----
