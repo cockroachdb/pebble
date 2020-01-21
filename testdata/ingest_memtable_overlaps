@@ -5,8 +5,10 @@ set a 1
 overlaps
 a-b
 b-c
+aa-ab
 ----
 true
+false
 false
 
 define
@@ -118,3 +120,21 @@ e-d
 true
 false
 true
+
+define default
+set b 1
+----
+
+overlaps
+a.RANGEDEL.2-b.RANGEDEL.72057594037927935
+----
+false
+
+define default
+del-range b c
+----
+
+overlaps
+a.RANGEDEL.2-b.RANGEDEL.72057594037927935
+----
+false

@@ -315,12 +315,17 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 }
 
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
-	if td.Input == "" {
-		return nil, fmt.Errorf("empty test input")
-	}
-
 	opts = opts.EnsureDefaults()
 	opts.FS = vfs.NewMem()
+
+	if td.Input == "" {
+		// Empty LSM.
+		d, err := Open("", opts)
+		if err != nil {
+			return nil, err
+		}
+		return d, nil
+	}
 
 	var snapshots []uint64
 	for _, arg := range td.CmdArgs {
@@ -381,7 +386,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		c.disableRangeTombstoneElision = true
 		newVE, _, err := d.runCompaction(0, c, nilPacer)
 		if err != nil {
-			return nil
+			return err
 		}
 		for _, f := range newVE.NewFiles {
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{
@@ -391,6 +396,31 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}
 		level = -1
 		return nil
+	}
+
+	// Example, a-c.
+	parseMeta := func(s string) (*fileMetadata, error) {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("malformed table spec: %s", s)
+		}
+		return &fileMetadata{
+			Smallest: InternalKey{UserKey: []byte(parts[0])},
+			Largest:  InternalKey{UserKey: []byte(parts[1])},
+		}, nil
+	}
+
+	// Example, compact: a-c.
+	parseCompaction := func(outputLevel int, s string) (*compaction, error) {
+		m, err := parseMeta(s[len("compact:"):])
+		if err != nil {
+			return nil, err
+		}
+		return &compaction{
+			outputLevel: outputLevel,
+			smallest:    m.Smallest,
+			largest:     m.Largest,
+		}, nil
 	}
 
 	for _, line := range strings.Split(td.Input, "\n") {
@@ -426,6 +456,15 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 
 		for _, data := range fields {
 			i := strings.Index(data, ":")
+			// Define in-progress compactions.
+			if data[:i] == "compact" {
+				c, err := parseCompaction(level, data)
+				if err != nil {
+					return nil, err
+				}
+				d.mu.compact.inProgress[c] = struct{}{}
+				continue
+			}
 			key := base.ParseInternalKey(data[:i])
 			value := []byte(data[i+1:])
 			if err := mem.set(key, value); err != nil {
