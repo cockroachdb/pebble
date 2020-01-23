@@ -42,6 +42,21 @@ func TestBlockWriter(t *testing.T) {
 	}
 }
 
+func TestInvalidInternalKeyDecoding(t *testing.T) {
+	// Invalid keys since they don't have an 8 byte trailer.
+	testCases := []string{
+		"",
+		"\x01\x02\x03\x04\x05\x06\x07",
+		"foo",
+	}
+	for _, tc := range testCases {
+		i := blockIter{}
+		i.decodeInternalKey([]byte(tc))
+		require.Nil(t, i.ikey.UserKey)
+		require.Equal(t, uint64(InternalKeyKindInvalid), i.ikey.Trailer)
+	}
+}
+
 func TestBlockIter(t *testing.T) {
 	// k is a block that maps three keys "apple", "apricot", "banana" to empty strings.
 	k := block([]byte(

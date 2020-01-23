@@ -46,6 +46,11 @@ func TestInvalidInternalKey(t *testing.T) {
 		if k.Valid() {
 			t.Errorf("%q is a valid key, want invalid", tc)
 		}
+
+		// Invalid key kind because the key doesn't have an 8 byte trailer.
+		if k.Kind() == InternalKeyKindInvalid && k.UserKey != nil {
+			t.Errorf("expected nil UserKey after decoding encodedKey=%q", tc)
+		}
 	}
 }
 
@@ -57,6 +62,9 @@ func TestInternalKeyComparer(t *testing.T) {
 		"" + "\x00\xff\xff\xff\xff\xff\xff\xff",
 		"" + "\x01\x01\x00\x00\x00\x00\x00\x00",
 		"" + "\x00\x01\x00\x00\x00\x00\x00\x00",
+		// Invalid internal keys have no user key, but have trailer "\xff \x00 \x00 \x00 \x00 \x00 \x00 \x00"
+		// i.e. seqNum 0 and kind 255 (InternalKeyKindInvalid).
+		"",
 		"" + "\x01\x00\x00\x00\x00\x00\x00\x00",
 		"" + "\x00\x00\x00\x00\x00\x00\x00\x00",
 		"\x00" + "\x00\x00\x00\x00\x00\x00\x00\x00",
@@ -66,9 +74,6 @@ func TestInternalKeyComparer(t *testing.T) {
 		"blue\x00" + "\x01\x11\x00\x00\x00\x00\x00\x00",
 		"green" + "\xff\x11\x00\x00\x00\x00\x00\x00",
 		"green" + "\x01\x11\x00\x00\x00\x00\x00\x00",
-		// Invalid internal keys sort after valid ones for the same user key
-		// because the seqnum is zero.
-		"green",
 		"green" + "\x01\x00\x00\x00\x00\x00\x00\x00",
 		"red" + "\x01\xff\xff\xff\xff\xff\xff\xff",
 		"red" + "\x01\x72\x73\x74\x75\x76\x77\x78",
