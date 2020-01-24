@@ -169,6 +169,7 @@ func DecodeInternalKey(encodedKey []byte) InternalKey {
 		encodedKey = encodedKey[:n:n]
 	} else {
 		trailer = uint64(InternalKeyKindInvalid)
+		encodedKey = nil
 	}
 	return InternalKey{
 		UserKey: encodedKey,

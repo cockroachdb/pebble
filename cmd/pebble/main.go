@@ -20,7 +20,7 @@ var (
 	disableWAL      bool
 	duration        time.Duration
 	engineType      string
-	maxOpsPerSec    *rateFlag = newRateFlag("1000000")
+	maxOpsPerSec    = newRateFlag("1000000")
 	verbose         bool
 	waitCompactions bool
 	wipe            bool
