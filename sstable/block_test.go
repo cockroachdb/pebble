@@ -43,7 +43,7 @@ func TestBlockWriter(t *testing.T) {
 }
 
 func TestInvalidInternalKeyDecoding(t *testing.T) {
-	// invalid keys since they don't have an 8 byte trailer
+	// Invalid keys since they don't have an 8 byte trailer.
 	testCases := []string{
 		"",
 		"\x01\x02\x03\x04\x05\x06\x07",

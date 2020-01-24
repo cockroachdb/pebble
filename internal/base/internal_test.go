@@ -47,7 +47,7 @@ func TestInvalidInternalKey(t *testing.T) {
 			t.Errorf("%q is a valid key, want invalid", tc)
 		}
 
-		// invalid key kind because the key doesn't have an 8 byte trailer
+		// Invalid key kind because the key doesn't have an 8 byte trailer.
 		if k.Kind() == InternalKeyKindInvalid && k.UserKey != nil {
 			t.Errorf("expected nil UserKey after decoding encodedKey=%q", tc)
 		}
@@ -63,7 +63,7 @@ func TestInternalKeyComparer(t *testing.T) {
 		"" + "\x01\x01\x00\x00\x00\x00\x00\x00",
 		"" + "\x00\x01\x00\x00\x00\x00\x00\x00",
 		// Invalid internal keys have no user key, but have trailer "\xff \x00 \x00 \x00 \x00 \x00 \x00 \x00"
-		// i.e. seqNum 0 and kind 255 (InternalKeyKindInvalid)
+		// i.e. seqNum 0 and kind 255 (InternalKeyKindInvalid).
 		"",
 		"" + "\x01\x00\x00\x00\x00\x00\x00\x00",
 		"" + "\x00\x00\x00\x00\x00\x00\x00\x00",
