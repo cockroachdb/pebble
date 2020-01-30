@@ -244,6 +244,17 @@ func (c *compaction) outputLevelNum() int      { return c.outputLevel }
 func (c *compaction) smallestKey() InternalKey { return c.smallest }
 func (c *compaction) largestKey() InternalKey  { return c.largest }
 
+func (c *compaction) inputFiles(level int) []fileMetadata {
+	switch {
+	case level == c.startLevel:
+		return c.inputs[0]
+	case level == c.outputLevel:
+		return c.inputs[1]
+	default:
+		return nil
+	}
+}
+
 // setupInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupInputs() {
