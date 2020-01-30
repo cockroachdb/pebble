@@ -37,7 +37,7 @@ init_cp
 
 queue
 ----
-5: 1.0,
+L5->L6: 1.0
 
 init 1
 5: 2
@@ -49,7 +49,7 @@ init_cp
 
 queue
 ----
-5: 2.0,
+L5->L6: 2.0
 
 # Smoothing multiplier is
 # `(size(Lbottom)/size(Lbase))^(Lbottom-Lbase) = (30/1)^(1/(6-4)) = 30^(1/2)`
@@ -80,7 +80,7 @@ init_cp
 
 queue
 ----
-4: 2.0,
+L4->L5: 2.0
 
 init 1
 4: 1
@@ -93,7 +93,7 @@ init_cp
 
 queue
 ----
-4: 1.0,
+L4->L5: 1.0
 
 init 1
 4: 1
@@ -106,7 +106,8 @@ init_cp
 
 queue
 ----
-5: 1.1,4: 1.0,
+L5->L6: 1.1
+L4->L5: 1.0
 
 init 1
 4: 2
@@ -119,7 +120,8 @@ init_cp
 
 queue
 ----
-4: 2.0,5: 1.1,
+L4->L5: 2.0
+L5->L6: 1.1
 
 init 1
 0: 4
@@ -130,7 +132,7 @@ init_cp
 
 queue
 ----
-0: 1.0,
+L0->L6: 1.0
 
 init 1
 0: 5
@@ -141,7 +143,7 @@ init_cp
 
 queue
 ----
-0: 1.2,
+L0->L6: 1.2
 
 init 1
 0: 5
@@ -154,7 +156,8 @@ init_cp
 
 queue
 ----
-5: 2.0,0: 1.2,
+L5->L6: 2.0
+L0->L5: 1.2
 
 pick
 ----
@@ -187,7 +190,9 @@ init_cp
 
 queue
 ----
-4: 2.0,0: 1.2,5: 1.0,
+L4->L5: 2.0
+L0->L4: 1.2
+L5->L6: 1.0
 
 pick ongoing=(5,6)
 ----
@@ -202,8 +207,37 @@ init_cp
 
 queue
 ----
-4: 2.0,0: 1.2,5: 1.0,
+L4->L5: 2.0
+L0->L4: 1.2
+L5->L6: 1.0
 
 pick ongoing=(0,5)
 ----
 no compaction
+
+init 1
+0: 6
+6: 10
+----
+
+init_cp ongoing=(0,5)
+----
+
+queue
+----
+L0->L0: 1.5
+
+pick
+----
+startLevel: 0, outputLevel: 0
+
+init_cp ongoing=(0,5)
+----
+
+queue
+----
+L0->L0: 1.5
+
+pick ongoing=(0,5)
+----
+startLevel: 0, outputLevel: 0

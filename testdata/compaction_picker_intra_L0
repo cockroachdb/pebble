@@ -1,0 +1,144 @@
+# Not enough L0 files to perform an intra-L0 compaction (the minimum
+# is 4).
+
+define
+000001:a.SET.1-b.SET.1 1
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+----
+
+pick-intra-L0
+----
+<nil>
+
+# The basic intra-L0 scenario.
+
+define
+000001:a.SET.1-b.SET.1 1
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+000004:a.SET.4-b.SET.4 1
+----
+
+pick-intra-L0 earliest-unflushed=5
+----
+000001:a#1,1-b#1,1
+000002:a#2,1-b#2,1
+000003:a#3,1-b#3,1
+000004:a#4,1-b#4,1
+
+# We exclude files from the compaction which overlap in seqnum space
+# with the earliest unflushed seqnum.
+
+pick-intra-L0 earliest-unflushed=4
+----
+<nil>
+
+pick-intra-L0 earliest-unflushed=3
+----
+<nil>
+
+# We exclude files from the compaction which are already being
+# compacted.
+
+define
+000001:a.SET.1-b.SET.1 1 compacting
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+000004:a.SET.4-b.SET.4 1
+----
+
+pick-intra-L0
+----
+<nil>
+
+define
+000001:a.SET.1-b.SET.1 1
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+000004:a.SET.4-b.SET.4 1 compacting
+----
+
+pick-intra-L0
+----
+<nil>
+
+define
+000001:a.SET.1-b.SET.1 1 compacting
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+000004:a.SET.4-b.SET.4 1
+000005:a.SET.5-b.SET.5 1
+----
+
+pick-intra-L0
+----
+000002:a#2,1-b#2,1
+000003:a#3,1-b#3,1
+000004:a#4,1-b#4,1
+000005:a#5,1-b#5,1
+
+pick-intra-L0 earliest-unflushed=5
+----
+<nil>
+
+# Files are added to the intra-L0 compaction until the amount of
+# compaction work per file begins increasing. This setup is right on
+# the boundary of that condition.
+
+define
+000001:a.SET.1-b.SET.1 5
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+000004:a.SET.4-b.SET.4 1
+000005:a.SET.5-b.SET.5 1
+----
+
+pick-intra-L0
+----
+000001:a#1,1-b#1,1
+000002:a#2,1-b#2,1
+000003:a#3,1-b#3,1
+000004:a#4,1-b#4,1
+000005:a#5,1-b#5,1
+
+# Files are added to the intra-L0 compaction until the amount of
+# compaction work per file begins increasing. Similar to the setup
+# above, but we're on the other side of the boundary which will
+# exclude 000001 from the compaction.
+
+define
+000001:a.SET.1-b.SET.1 6
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+000004:a.SET.4-b.SET.4 1
+000005:a.SET.5-b.SET.5 1
+----
+
+pick-intra-L0
+----
+000002:a#2,1-b#2,1
+000003:a#3,1-b#3,1
+000004:a#4,1-b#4,1
+000005:a#5,1-b#5,1
+
+# The reverse of the above setup, where the large file is the newest
+# L0 table. The tables are considered from newest to oldest. Since the
+# amount of work per compaction is not increasing, all of the files
+# are included in the compaction.
+
+define
+000001:a.SET.1-b.SET.1 1
+000002:a.SET.2-b.SET.2 1
+000003:a.SET.3-b.SET.3 1
+000004:a.SET.4-b.SET.4 1
+000005:a.SET.5-b.SET.5 6
+----
+
+pick-intra-L0
+----
+000001:a#1,1-b#1,1
+000002:a#2,1-b#2,1
+000003:a#3,1-b#3,1
+000004:a#4,1-b#4,1
+000005:a#5,1-b#5,1
