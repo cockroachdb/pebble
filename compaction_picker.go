@@ -31,6 +31,10 @@ type compactionInfo interface {
 	outputLevelNum() int
 	smallestKey() InternalKey
 	largestKey() InternalKey
+	// TODO(peter): Needed to get the set of L0 files that are currently being
+	// compacted. Should we instead keep a map[uint64]bool of compacting files
+	// somewhere?
+	inputFiles(level int) []fileMetadata
 }
 
 func newCompactionPicker(
@@ -354,6 +358,22 @@ func (p *compactionPickerByScore) pickAuto(
 		cInfo := &p.compactionQueue[0]
 		p.compactionQueue = p.compactionQueue[1:]
 		if conflictsWithInProgress(cInfo.level, cInfo.outputLevel, inProgressCompactions) {
+			// If there is an in-progress L0->Lbase compaction, look for an L0->L0
+			// compaction.
+			//
+			// TODO(peter): it feels sort of strange to do this here rather
+			// initCompactionQueue, yet I didn't see how to structure the code to let
+			// this fit into that method. In particular, the L0->L0 compaction
+			// doesn't neatly fit into the pickAutoHelper logic. There isn't a single
+			// file that we're selecting, but a range of L0 files. And that range
+			// gets adjusted by the in-progress transactions, including manual
+			// compactions.
+			if cInfo.level == 0 && cInfo.outputLevel == p.baseLevel {
+				c = pickIntraL0(opts, bytesCompacted, p.vers, inProgressCompactions)
+				if c != nil {
+					return c
+				}
+			}
 			continue
 		}
 		c = pickAutoHelper(opts, bytesCompacted, p.vers, cInfo, p.baseLevel)
@@ -381,6 +401,80 @@ func pickAutoHelper(
 	}
 
 	c.setupInputs()
+	return c
+}
+
+func pickIntraL0(
+	opts *Options, bytesCompacted *uint64, vers *version, inProgressCompactions []compactionInfo,
+) (c *compaction) {
+	// The minimum count for an intra-L0 compaction. This matches the RocksDB
+	// heuristic.
+	const minIntraL0Count = 4
+
+	l0Files := vers.Files[0]
+	if n := len(l0Files); n < opts.L0CompactionThreshold+2 || n < minIntraL0Count {
+		// If L0 isn't accumulating many files beyond the regular trigger don't
+		// resort to L0->L0 compaction yet. This matches the RocksDB heuristic.
+		return nil
+	}
+
+	// Build up a set of all of the L0 files that are currently being compacted.
+	compacting := make(map[uint64]bool)
+	for _, c := range inProgressCompactions {
+		files := c.inputFiles(0)
+		for i := range files {
+			compacting[files[i].FileNum] = true
+		}
+	}
+
+	// TODO(peter): actually compute the earliest unflushed seqnum.
+	earliestUnflushedSeqNum := InternalKeySeqNumMax
+
+	end := len(l0Files)
+	for ; end >= 1; end-- {
+		m := &l0Files[end-1]
+		if compacting[m.FileNum] {
+			return nil
+		}
+		if m.LargestSeqNum <= earliestUnflushedSeqNum {
+			break
+		}
+	}
+	if end < minIntraL0Count {
+		return nil
+	}
+
+	compactTotalSize := l0Files[end-1].Size
+	compactSizePerFile := uint64(math.MaxUint64)
+
+	// The compaction will be in the range [begin,end). We add files to the
+	// compaction until the amount of compaction work per file begins increasing.
+	begin := end - 1
+	for ; begin >= 1; begin-- {
+		m := &l0Files[begin-1]
+		if compacting[m.FileNum] {
+			break
+		}
+		newCompactTotalSize := compactTotalSize + m.Size
+		newCompactSizePerFile := newCompactTotalSize / uint64(end-(begin-1))
+		if newCompactSizePerFile > compactSizePerFile {
+			break
+		}
+		compactTotalSize = newCompactTotalSize
+		compactSizePerFile = newCompactSizePerFile
+	}
+
+	if end-begin < minIntraL0Count {
+		return nil
+	}
+
+	c = newCompaction(opts, vers, 0, 0, bytesCompacted)
+	c.inputs[0] = l0Files[begin:end]
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+	c.setupInuseKeyRanges()
+	c.maxOutputFileSize = math.MaxUint64
+	c.maxOverlapBytes = math.MaxUint64
+	c.maxExpandedBytes = math.MaxUint64
 	return c
 }
 

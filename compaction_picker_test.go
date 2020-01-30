@@ -92,10 +92,11 @@ type compactionInfoTesting struct {
 	outputLevel int
 }
 
-func (c compactionInfoTesting) startLevelNum() int       { return c.startLevel }
-func (c compactionInfoTesting) outputLevelNum() int      { return c.outputLevel }
-func (c compactionInfoTesting) smallestKey() InternalKey { return InternalKey{} }
-func (c compactionInfoTesting) largestKey() InternalKey  { return InternalKey{} }
+func (c compactionInfoTesting) startLevelNum() int                  { return c.startLevel }
+func (c compactionInfoTesting) outputLevelNum() int                 { return c.outputLevel }
+func (c compactionInfoTesting) smallestKey() InternalKey            { return InternalKey{} }
+func (c compactionInfoTesting) largestKey() InternalKey             { return InternalKey{} }
+func (c compactionInfoTesting) inputFiles(level int) []fileMetadata { return nil }
 
 func TestCompactionPickerTargetLevel(t *testing.T) {
 	var vers *version
