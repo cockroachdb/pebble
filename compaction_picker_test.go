@@ -92,15 +92,37 @@ type compactionInfoTesting struct {
 	outputLevel int
 }
 
-func (c compactionInfoTesting) startLevelNum() int       { return c.startLevel }
-func (c compactionInfoTesting) outputLevelNum() int      { return c.outputLevel }
-func (c compactionInfoTesting) smallestKey() InternalKey { return InternalKey{} }
-func (c compactionInfoTesting) largestKey() InternalKey  { return InternalKey{} }
+func (c compactionInfoTesting) startLevelNum() int                  { return c.startLevel }
+func (c compactionInfoTesting) outputLevelNum() int                 { return c.outputLevel }
+func (c compactionInfoTesting) smallestKey() InternalKey            { return InternalKey{} }
+func (c compactionInfoTesting) largestKey() InternalKey             { return InternalKey{} }
+func (c compactionInfoTesting) inputFiles(level int) []fileMetadata { return nil }
 
 func TestCompactionPickerTargetLevel(t *testing.T) {
 	var vers *version
 	var opts *Options
 	var pickerByScore *compactionPickerByScore
+
+	parseInProgress := func(vals []string) ([]compactionInfo, error) {
+		var levels []int
+		for _, s := range vals {
+			l, err := strconv.ParseInt(s, 10, 8)
+			if err != nil {
+				return nil, err
+			}
+			levels = append(levels, int(l))
+		}
+		if len(levels)%2 != 0 {
+			return nil, fmt.Errorf("odd number of levels with ongoing compactions")
+		}
+		var inProgress []compactionInfo
+		for i := 0; i < len(levels); i += 2 {
+			inProgress = append(inProgress,
+				compactionInfoTesting{startLevel: levels[i], outputLevel: levels[i+1]})
+		}
+		return inProgress, nil
+	}
+
 	datadriven.RunTest(t, "testdata/compaction_picker_target_level",
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -112,7 +134,20 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				}
 				return ""
 			case "init_cp":
-				p := newCompactionPicker(vers, opts, nil)
+				var inProgress []compactionInfo
+				if len(d.CmdArgs) == 1 {
+					arg := d.CmdArgs[0]
+					if arg.Key != "ongoing" {
+						return "unknown arg: " + arg.Key
+					}
+					var err error
+					inProgress, err = parseInProgress(arg.Vals)
+					if err != nil {
+						return err.Error()
+					}
+				}
+
+				p := newCompactionPicker(vers, opts, inProgress)
 				var ok bool
 				pickerByScore, ok = p.(*compactionPickerByScore)
 				require.True(t, ok)
@@ -120,33 +155,27 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 			case "queue":
 				var b strings.Builder
 				for _, c := range pickerByScore.compactionQueue {
-					fmt.Fprintf(&b, "%d: %.1f,", c.level, c.score)
+					fmt.Fprintf(&b, "L%d->L%d: %.1f,", c.level, c.outputLevel, c.score)
 				}
 				return b.String()
 			case "pick":
-				var levels []int
+				var inProgress []compactionInfo
 				if len(d.CmdArgs) == 1 {
 					arg := d.CmdArgs[0]
 					if arg.Key != "ongoing" {
 						return "unknown arg: " + arg.Key
 					}
-					for _, s := range arg.Vals {
-						l, err := strconv.ParseInt(s, 10, 8)
-						if err != nil {
-							return err.Error()
-						}
-						levels = append(levels, int(l))
+					var err error
+					inProgress, err = parseInProgress(arg.Vals)
+					if err != nil {
+						return err.Error()
 					}
 				}
-				if len(levels)%2 != 0 {
-					return "odd number of levels with ongoing compactions"
-				}
-				var inProgress []compactionInfo
-				for i := 0; i < len(levels); i += 2 {
-					inProgress = append(inProgress,
-						compactionInfoTesting{startLevel: levels[i], outputLevel: levels[i+1]})
-				}
-				c := pickerByScore.pickAuto(opts, new(uint64), inProgress)
+
+				c := pickerByScore.pickAuto(compactionEnv{
+					bytesCompacted:        new(uint64),
+					inProgressCompactions: inProgress,
+				})
 				if c == nil {
 					return "no compaction"
 				}

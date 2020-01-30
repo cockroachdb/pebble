@@ -244,6 +244,17 @@ func (c *compaction) outputLevelNum() int      { return c.outputLevel }
 func (c *compaction) smallestKey() InternalKey { return c.smallest }
 func (c *compaction) largestKey() InternalKey  { return c.largest }
 
+func (c *compaction) inputFiles(level int) []fileMetadata {
+	switch {
+	case level == c.startLevel:
+		return c.inputs[0]
+	case level == c.outputLevel:
+		return c.inputs[1]
+	default:
+		return nil
+	}
+}
+
 // setupInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupInputs() {
@@ -726,7 +737,7 @@ func (c *compaction) String() string {
 		}
 		fmt.Fprintf(&buf, "%d:", level)
 		for _, f := range c.inputs[i] {
-			fmt.Fprintf(&buf, " %d:%s-%s", f.FileNum, f.Smallest, f.Largest)
+			fmt.Fprintf(&buf, " %06d:%s-%s", f.FileNum, f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -968,16 +979,21 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 
-	// Compacting picking needs a coherent view a Version. In particular, we need
+	// Compaction picking needs a coherent view a Version. In particular, we need
 	// to exlude concurrent ingestions from making a decision on which level to
 	// ingest into that conflicts with our compaction
 	// decision. versionSet.logLock provides the necessary mutual exclusion.
 	d.mu.versions.logLock()
 	defer d.mu.versions.logUnlock()
 
+	env := compactionEnv{
+		bytesCompacted:          &d.bytesCompacted,
+		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
+	}
 	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
 		manual := d.mu.compact.manual[0]
-		c, retryLater := d.mu.versions.picker.pickManual(d.opts, manual, &d.bytesCompacted, d.getInProgressCompactionInfoLocked(nil))
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		c, retryLater := d.mu.versions.picker.pickManual(env, manual)
 		if c != nil {
 			d.mu.compact.manual = d.mu.compact.manual[1:]
 			d.mu.compact.inProgress[c] = struct{}{}
@@ -995,7 +1011,8 @@ func (d *DB) maybeScheduleCompaction() {
 	}
 
 	for d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
-		c := d.mu.versions.picker.pickAuto(d.opts, &d.bytesCompacted, d.getInProgressCompactionInfoLocked(nil))
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		c := d.mu.versions.picker.pickAuto(env)
 		if c == nil {
 			break
 		}

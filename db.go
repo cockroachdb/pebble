@@ -1396,7 +1396,7 @@ func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {
 
 func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []compactionInfo) {
 	for c := range d.mu.compact.inProgress {
-		if c.outputLevel > 0 && (finishing == nil || c != finishing) {
+		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			rv = append(rv, c)
 		}
 	}
