@@ -237,13 +237,6 @@ func newFlush(
 	return c
 }
 
-var _ compactionInfo = &compaction{}
-
-func (c *compaction) startLevelNum() int       { return c.startLevel }
-func (c *compaction) outputLevelNum() int      { return c.outputLevel }
-func (c *compaction) smallestKey() InternalKey { return c.smallest }
-func (c *compaction) largestKey() InternalKey  { return c.largest }
-
 // setupInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupInputs() {
@@ -726,7 +719,7 @@ func (c *compaction) String() string {
 		}
 		fmt.Fprintf(&buf, "%d:", level)
 		for _, f := range c.inputs[i] {
-			fmt.Fprintf(&buf, " %d:%s-%s", f.FileNum, f.Smallest, f.Largest)
+			fmt.Fprintf(&buf, " %06d:%s-%s", f.FileNum, f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -742,6 +735,30 @@ type manualCompaction struct {
 	done        chan error
 	start       InternalKey
 	end         InternalKey
+}
+
+func (d *DB) addInProgressCompaction(c *compaction) {
+	d.mu.compact.inProgress[c] = struct{}{}
+	for _, files := range c.inputs {
+		for _, f := range files {
+			if f.Compacting {
+				d.opts.Logger.Fatalf("L%d->L%d: %06d already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+			}
+			f.Compacting = true
+		}
+	}
+}
+
+func (d *DB) removeInProgressCompaction(c *compaction) {
+	for _, files := range c.inputs {
+		for _, f := range files {
+			if !f.Compacting {
+				d.opts.Logger.Fatalf("L%d->L%d: %06d already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+			}
+			f.Compacting = false
+		}
+	}
+	delete(d.mu.compact.inProgress, c)
 }
 
 func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
@@ -864,7 +881,7 @@ func (d *DB) flush1() error {
 
 	c := newFlush(d.opts, d.mu.versions.currentVersion(),
 		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], &d.bytesFlushed)
-	d.mu.compact.inProgress[c] = struct{}{}
+	d.addInProgressCompaction(c)
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -916,7 +933,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
-	delete(d.mu.compact.inProgress, c)
+	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -968,20 +985,25 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 
-	// Compacting picking needs a coherent view a Version. In particular, we need
+	// Compaction picking needs a coherent view a Version. In particular, we need
 	// to exlude concurrent ingestions from making a decision on which level to
 	// ingest into that conflicts with our compaction
 	// decision. versionSet.logLock provides the necessary mutual exclusion.
 	d.mu.versions.logLock()
 	defer d.mu.versions.logUnlock()
 
+	env := compactionEnv{
+		bytesCompacted:          &d.bytesCompacted,
+		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
+	}
 	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
 		manual := d.mu.compact.manual[0]
-		c, retryLater := d.mu.versions.picker.pickManual(d.opts, manual, &d.bytesCompacted, d.getInProgressCompactionInfoLocked(nil))
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		c, retryLater := d.mu.versions.picker.pickManual(env, manual)
 		if c != nil {
 			d.mu.compact.manual = d.mu.compact.manual[1:]
-			d.mu.compact.inProgress[c] = struct{}{}
 			d.mu.compact.compactingCount++
+			d.addInProgressCompaction(c)
 			go d.compact(c, manual.done)
 		} else if !retryLater {
 			// Noop
@@ -995,12 +1017,13 @@ func (d *DB) maybeScheduleCompaction() {
 	}
 
 	for d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
-		c := d.mu.versions.picker.pickAuto(d.opts, &d.bytesCompacted, d.getInProgressCompactionInfoLocked(nil))
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		c := d.mu.versions.picker.pickAuto(env)
 		if c == nil {
 			break
 		}
 		d.mu.compact.compactingCount++
-		d.mu.compact.inProgress[c] = struct{}{}
+		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
 	}
 }
@@ -1082,7 +1105,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		}
 	}
 
-	delete(d.mu.compact.inProgress, c)
+	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions()
 	d.opts.EventListener.CompactionEnd(info)
 

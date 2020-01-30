@@ -55,6 +55,8 @@ type FileMetadata struct {
 	LargestSeqNum  uint64
 	// True if user asked us to compact this file.
 	MarkedForCompaction bool
+	// True if the file is actively being compacted. Protected by DB.mu.
+	Compacting bool
 }
 
 func (m FileMetadata) String() string {

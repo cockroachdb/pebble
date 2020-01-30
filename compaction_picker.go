@@ -11,26 +11,43 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
+// The minimum count for an intra-L0 compaction. This matches the RocksDB
+// heuristic.
+const minIntraL0Count = 4
+
+type compactionEnv struct {
+	bytesCompacted          *uint64
+	earliestUnflushedSeqNum uint64
+	inProgressCompactions   []compactionInfo
+}
+
 type compactionPicker interface {
 	getBaseLevel() int
 	getEstimatedMaxWAmp() float64
 	getLevelMaxBytes() [numLevels]int64
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
-	pickAuto(opts *Options, bytesCompacted *uint64, inProgressCompactions []compactionInfo) (c *compaction)
-	pickManual(
-		opts *Options, manual *manualCompaction, bytesCompacted *uint64, inProgressCompactions []compactionInfo,
-	) (c *compaction, retryLater bool)
+	pickAuto(env compactionEnv) (c *compaction)
+	pickManual(env compactionEnv, manual *manualCompaction) (c *compaction, retryLater bool)
 
 	forceBaseLevel1()
 }
 
 // Information about in-progress compactions provided to the compaction picker. These are used to
 // constrain the new compactions that will be picked.
-type compactionInfo interface {
-	startLevelNum() int
-	outputLevelNum() int
-	smallestKey() InternalKey
-	largestKey() InternalKey
+type compactionInfo struct {
+	startLevel  int
+	outputLevel int
+	inputs      [2][]*fileMetadata
+}
+
+func (i *compactionInfo) level(n int) []*fileMetadata {
+	switch {
+	case n == i.startLevel:
+		return i.inputs[0]
+	case n == i.outputLevel:
+		return i.inputs[1]
+	}
+	return nil
 }
 
 func newCompactionPicker(
@@ -41,7 +58,7 @@ func newCompactionPicker(
 		vers: v,
 	}
 	p.initLevelMaxBytes(v, opts, inProgressCompactions)
-	p.initCompactionQueue(v, opts)
+	p.initCompactionQueue(v, opts, inProgressCompactions)
 	return p
 }
 
@@ -165,8 +182,8 @@ func (p *compactionPickerByScore) initLevelMaxBytes(
 		}
 	}
 	for _, c := range inProgressCompactions {
-		if c.startLevelNum() == 0 && (firstNonEmptyLevel == -1 || c.outputLevelNum() < firstNonEmptyLevel) {
-			firstNonEmptyLevel = c.outputLevelNum()
+		if c.startLevel == 0 && (firstNonEmptyLevel == -1 || c.outputLevel < firstNonEmptyLevel) {
+			firstNonEmptyLevel = c.outputLevel
 		}
 	}
 
@@ -250,7 +267,9 @@ func (s sortCompactionsDecreasingScore) Swap(i, j int) {
 	s.level[i], s.level[j] = s.level[j], s.level[i]
 }
 
-func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options) {
+func (p *compactionPickerByScore) initCompactionQueue(
+	v *version, opts *Options, inProgressCompactions []compactionInfo,
+) {
 	// We treat level-0 specially by bounding the number of files instead of
 	// number of bytes for two reasons:
 	//
@@ -262,6 +281,48 @@ func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options)
 	// (perhaps because of a small write-buffer setting, or very high
 	// compression ratios, or lots of overwrites/deletions).
 	p.scores[0] = float64(len(v.Files[0])) / float64(opts.L0CompactionThreshold)
+
+	// Adjust L0 score for intra-L0 compactions.
+	// - If there is an in-progress intra-L0 compaction, we can't start another
+	//   intra-L0 or L0->Lbase compaction.
+	// - If there is an in-progress L0->Lbase compaction, score the intra-L0
+	//   compaction.
+	intraL0 := false
+	for _, c := range inProgressCompactions {
+		if c.startLevel == 0 {
+			p.scores[0] = 0
+			if c.outputLevel == 0 {
+				// If there is an in-progress L0->L0 compaction, we cannot start
+				// another one.
+				break
+			}
+			l0Count := len(v.Files[0])
+			if l0Count < opts.L0CompactionThreshold+2 {
+				// If L0 isn't accumulating many files beyond the regular L0 trigger,
+				// don't resort to an intra-L0 compaction yet. This matches the RocksDB
+				// heuristic.
+				break
+			}
+
+			files := c.level(0)
+			idleL0Count := l0Count - len(files)
+			if idleL0Count < minIntraL0Count {
+				// Not enough idle L0 files to perform an intra-L0 compaction. This
+				// matches the RocksDB heuristic. Note that if another file is flushed
+				// or ingested to L0, a new compaction picker will be created and we'll
+				// reexamine the intra-L0 score.
+				break
+			}
+
+			// We score the intra-L0 compaction the same as a regular L0
+			// compaction. This matches the RocksDB heuristic.
+			//
+			// TODO(peter): Perhaps we should use idleL0Count here instead.
+			p.scores[0] = float64(l0Count) / float64(opts.L0CompactionThreshold)
+			intraL0 = true
+			break
+		}
+	}
 
 	for level := 1; level < numLevels-1; level++ {
 		p.scores[level] = float64(totalSize(v.Files[level])) / float64(p.levelMaxBytes[level])
@@ -280,7 +341,11 @@ func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options)
 		level := potentialCompactions[i]
 		outputLevel := level + 1
 		if level == 0 {
-			outputLevel = p.baseLevel
+			if intraL0 {
+				outputLevel = 0
+			} else {
+				outputLevel = p.baseLevel
+			}
 		}
 		p.compactionQueue = append(p.compactionQueue,
 			pickedCompactionInfo{score: p.scores[level], level: level, outputLevel: outputLevel})
@@ -309,6 +374,10 @@ func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options)
 
 		// The current heuristic matches the RocksDB kOldestSmallestSeqFirst
 		// heuristic.
+		//
+		// TODO(peter): Should we move this code to pickAuto? We're looping over
+		// all of the files in the level, even if we never use this picked
+		// compaction.
 		smallestSeqNum := uint64(math.MaxUint64)
 		files := v.Files[p.compactionQueue[i].level]
 		for j := range files {
@@ -347,25 +416,29 @@ func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options)
 }
 
 // pickAuto picks the best compaction, if any.
-func (p *compactionPickerByScore) pickAuto(
-	opts *Options, bytesCompacted *uint64, inProgressCompactions []compactionInfo,
-) (c *compaction) {
+func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	for len(p.compactionQueue) > 0 {
 		cInfo := &p.compactionQueue[0]
 		p.compactionQueue = p.compactionQueue[1:]
-		if conflictsWithInProgress(cInfo.level, cInfo.outputLevel, inProgressCompactions) {
+		if conflictsWithInProgress(cInfo.level, cInfo.outputLevel, env.inProgressCompactions) {
 			continue
 		}
-		c = pickAutoHelper(opts, bytesCompacted, p.vers, cInfo, p.baseLevel)
-		return c
+		c = pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
+		if c != nil {
+			return c
+		}
 	}
 	return nil
 }
 
 func pickAutoHelper(
-	opts *Options, bytesCompacted *uint64, vers *version, cInfo *pickedCompactionInfo, baseLevel int,
+	env compactionEnv, opts *Options, vers *version, cInfo *pickedCompactionInfo, baseLevel int,
 ) (c *compaction) {
-	c = newCompaction(opts, vers, cInfo.level, baseLevel, bytesCompacted)
+	if cInfo.outputLevel == 0 {
+		return pickIntraL0(env, opts, vers)
+	}
+
+	c = newCompaction(opts, vers, cInfo.level, baseLevel, env.bytesCompacted)
 	if c.outputLevel != cInfo.outputLevel {
 		panic("pebble: compaction picked unexpected output level")
 	}
@@ -384,11 +457,99 @@ func pickAutoHelper(
 	return c
 }
 
+func pickIntraL0(env compactionEnv, opts *Options, vers *version) (c *compaction) {
+	l0Files := vers.Files[0]
+	end := len(l0Files)
+	for ; end >= 1; end-- {
+		m := l0Files[end-1]
+		if m.Compacting {
+			return nil
+		}
+		if m.LargestSeqNum < env.earliestUnflushedSeqNum {
+			break
+		}
+		// Don't compact an L0 file which contains a seqnum greater than the
+		// earliest unflushed seqnum (we continue the loop, rather than existing,
+		// see conditional above). This can happen when a file is ingested into L0
+		// yet doesn't overlap with the memtable. Consider the scenario:
+		//
+		//   ingest a#2 -> 000001:[a#2-a#2]
+		//   ingest a#3 -> 000002:[a#3-a#3]
+		//   ingest a#4 -> 000003:[a#4-a#4]
+		//   put a#5
+		//   ingest b#6 -> 000004:[b#6-b#6]
+		//   compact 000001,000002,000003,000004 -> 000005:[a#4-b#6]
+		//   flush -> 000006:[a#5-a#5]
+		//
+		// At this point, the LSM will look like:
+		//
+		//   L0
+		//     000006:[a#5-a#5]
+		//     000005:[a#4-b#6]
+		//
+		// Because 000006's largest sequence number is smaller than 000005's it
+		// is ordered before 000005. When performing reads, we’ll check 000005
+		// first which is wrong as 000006 contains the newest value of
+		// "a". Furthermore, the next L0->Lbase compaction can compact 000006
+		// without compacting 000005, further violating the level sequence number
+		// invariant.
+		//
+		// The solution to this problem is to exclude 000004 from the L0->L0
+		// compaction. Doing so, will result in an LSM like:
+		//
+		//   L0
+		//     000005:[a#4-a#4]
+		//     000006:[a#5-a#5]
+		//     000004:[b#6-b#6]
+		//
+		// And now everything is copacetic.
+		//
+		// See https://github.com/facebook/rocksdb/pull/5958.
+	}
+	if end < minIntraL0Count {
+		return nil
+	}
+
+	compactTotalSize := l0Files[end-1].Size
+	compactSizePerFile := uint64(math.MaxUint64)
+
+	// The compaction will be in the range [begin,end). We add files to the
+	// compaction until the amount of compaction work per file begins increasing.
+	begin := end - 1
+	for ; begin >= 1; begin-- {
+		m := l0Files[begin-1]
+		if m.Compacting {
+			break
+		}
+		newCompactTotalSize := compactTotalSize + m.Size
+		newCompactSizePerFile := newCompactTotalSize / uint64(end-(begin-1))
+		if newCompactSizePerFile > compactSizePerFile {
+			break
+		}
+		compactTotalSize = newCompactTotalSize
+		compactSizePerFile = newCompactSizePerFile
+	}
+
+	if end-begin < minIntraL0Count {
+		return nil
+	}
+
+	c = newCompaction(opts, vers, 0, 0, env.bytesCompacted)
+	c.inputs[0] = l0Files[begin:end]
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+	c.setupInuseKeyRanges()
+	// Output only a single sstable for intra-L0 compactions. There is no current
+	// benefit to outputting multiple tables, because other parts of the code
+	// (i.e. iterators and comapction) expect L0 sstables to overlap and will
+	// thus read all of the L0 sstables anyways, even if they are partitioned.
+	c.maxOutputFileSize = math.MaxUint64
+	c.maxOverlapBytes = math.MaxUint64
+	c.maxExpandedBytes = math.MaxUint64
+	return c
+}
+
 func (p *compactionPickerByScore) pickManual(
-	opts *Options,
-	manual *manualCompaction,
-	bytesCompacted *uint64,
-	inProgressCompactions []compactionInfo,
+	env compactionEnv, manual *manualCompaction,
 ) (c *compaction, retryLater bool) {
 	if p == nil {
 		return nil, false
@@ -398,10 +559,10 @@ func (p *compactionPickerByScore) pickManual(
 	if manual.level == 0 {
 		outputLevel = p.baseLevel
 	}
-	if conflictsWithInProgress(manual.level, outputLevel, inProgressCompactions) {
+	if conflictsWithInProgress(manual.level, outputLevel, env.inProgressCompactions) {
 		return nil, true
 	}
-	c = pickManualHelper(opts, manual, bytesCompacted, p.vers, p.baseLevel)
+	c = pickManualHelper(env, p.opts, manual, p.vers, p.baseLevel)
 	if c == nil {
 		return nil, false
 	}
@@ -412,9 +573,9 @@ func (p *compactionPickerByScore) pickManual(
 }
 
 func pickManualHelper(
-	opts *Options, manual *manualCompaction, bytesCompacted *uint64, vers *version, baseLevel int,
+	env compactionEnv, opts *Options, manual *manualCompaction, vers *version, baseLevel int,
 ) (c *compaction) {
-	c = newCompaction(opts, vers, manual.level, baseLevel, bytesCompacted)
+	c = newCompaction(opts, vers, manual.level, baseLevel, env.bytesCompacted)
 	manual.outputLevel = c.outputLevel
 	cmp := opts.Comparer.Compare
 	c.inputs[0] = vers.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
@@ -439,10 +600,18 @@ func conflictsWithInProgress(
 	level int, outputLevel int, inProgressCompactions []compactionInfo,
 ) bool {
 	for _, c := range inProgressCompactions {
-		if level == c.startLevelNum() ||
-			level == c.outputLevelNum() ||
-			outputLevel == c.startLevelNum() ||
-			outputLevel == c.outputLevelNum() {
+		// Intra-L0 compactions only conflict with other intra-L0 compactions.
+		if level == 0 && outputLevel == 0 {
+			if c.outputLevel == 0 {
+				return true
+			}
+			continue
+		}
+
+		if level == c.startLevel ||
+			level == c.outputLevel ||
+			outputLevel == c.startLevel ||
+			outputLevel == c.outputLevel {
 			return true
 		}
 	}
