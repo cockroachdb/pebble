@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
@@ -66,13 +67,10 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		d.mu.mem.nextSize = initialMemTableSize
 	}
 	d.mu.mem.cond.L = &d.mu.Mutex
-	d.mu.mem.mutable = d.newMemTable()
-	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 	d.mu.cleaner.cond.L = &d.mu.Mutex
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.inProgress = make(map[*compaction]struct{})
 	d.mu.snapshots.init()
-	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 
 	d.timeNow = time.Now
 
@@ -146,6 +144,10 @@ func Open(dirname string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 	}
+
+	d.mu.mem.mutable = d.newMemTable(atomic.LoadUint64(&d.mu.versions.logSeqNum))
+	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 
 	ls, err := opts.FS.List(d.walDirname)
 	if err != nil {
@@ -318,11 +320,11 @@ func (d *DB) replayWAL(
 		mem = nil
 	}
 	// Creates a new memtable if there is no current memtable.
-	ensureMem := func() {
+	ensureMem := func(seqNum uint64) {
 		if mem != nil {
 			return
 		}
-		mem = d.newMemTable()
+		mem = d.newMemTable(seqNum)
 		if d.opts.ReadOnly {
 			d.mu.mem.mutable = mem
 			d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
@@ -368,7 +370,7 @@ func (d *DB) replayWAL(
 				toFlush = append(toFlush, b.flushable)
 			}
 		} else {
-			ensureMem()
+			ensureMem(seqNum)
 			if err = mem.prepare(&b); err != nil && err != arenaskl.ErrArenaFull {
 				return 0, err
 			}
@@ -377,7 +379,7 @@ func (d *DB) replayWAL(
 			// largeBatchThreshold).
 			for err == arenaskl.ErrArenaFull {
 				flushMem()
-				ensureMem()
+				ensureMem(seqNum)
 				err = mem.prepare(&b)
 				if err != nil && err != arenaskl.ErrArenaFull {
 					return 0, err
@@ -397,7 +399,7 @@ func (d *DB) replayWAL(
 		// mutable one for the next WAL file, since in read-only mode, each WAL file is replayed
 		// into its own set of memtables. This is done so that the WAL metrics can be accurately
 		// provided.
-		ensureMem()
+		ensureMem(atomic.LoadUint64(&d.mu.versions.logSeqNum))
 		d.mu.versions.metrics.WAL.Files++
 	} else {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),

@@ -68,7 +68,7 @@ func ikey(s string) InternalKey {
 
 func TestMemTableBasic(t *testing.T) {
 	// Check the empty DB.
-	m := newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+	m := newMemTable(memTableOptions{})
 	if got, want := m.count(), 0; got != want {
 		t.Fatalf("0.count: got %v, want %v", got, want)
 	}
@@ -119,7 +119,7 @@ func TestMemTableBasic(t *testing.T) {
 }
 
 func TestMemTableCount(t *testing.T) {
-	m := newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+	m := newMemTable(memTableOptions{})
 	for i := 0; i < 200; i++ {
 		if j := m.count(); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
@@ -132,7 +132,7 @@ func TestMemTableCount(t *testing.T) {
 }
 
 func TestMemTableBytesIterated(t *testing.T) {
-	m := newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+	m := newMemTable(memTableOptions{})
 	for i := 0; i < 200; i++ {
 		bytesIterated := m.bytesIterated(t)
 		expected := m.inuseBytes()
@@ -147,7 +147,7 @@ func TestMemTableBytesIterated(t *testing.T) {
 }
 
 func TestMemTableEmpty(t *testing.T) {
-	m := newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+	m := newMemTable(memTableOptions{})
 	if !m.empty() {
 		t.Errorf("got !empty, want empty")
 	}
@@ -161,7 +161,7 @@ func TestMemTableEmpty(t *testing.T) {
 func TestMemTable1000Entries(t *testing.T) {
 	// Initialize the DB.
 	const N = 1000
-	m0 := newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+	m0 := newMemTable(memTableOptions{})
 	for i := 0; i < N; i++ {
 		k := ikey(strconv.Itoa(i))
 		v := []byte(strings.Repeat("x", i))
@@ -242,7 +242,7 @@ func TestMemTableIter(t *testing.T) {
 		datadriven.RunTest(t, testdata, func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
-				mem = newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+				mem = newMemTable(memTableOptions{})
 				for _, key := range strings.Split(d.Input, "\n") {
 					j := strings.Index(key, ":")
 					if err := mem.set(base.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
@@ -299,7 +299,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 				return err.Error()
 			}
 			if mem == nil {
-				mem = newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+				mem = newMemTable(memTableOptions{})
 			}
 			if err := mem.apply(b, seqNum); err != nil {
 				return err.Error()
@@ -339,7 +339,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	// tombstones, and then immediately retrieve them verifying that the
 	// tombstones they've added are all present.
 
-	m := newMemTable(&Options{MemTableSize: 64 << 20}, 0 /* size */, nil /* reservation */)
+	m := newMemTable(memTableOptions{Options: &Options{MemTableSize: 64 << 20}})
 
 	const workers = 10
 	var wg sync.WaitGroup
@@ -377,7 +377,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 }
 
 func buildMemTable(b *testing.B) (*memTable, [][]byte) {
-	m := newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+	m := newMemTable(memTableOptions{})
 	var keys [][]byte
 	var ikey InternalKey
 	for i := 0; ; i++ {

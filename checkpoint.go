@@ -126,7 +126,7 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	// will cause the WAL files to be reused which would invalidate the
 	// checkpoint.
 	for i := range memQueue {
-		logNum, _ := memQueue[i].logInfo()
+		logNum, _, _ := memQueue[i].logInfo()
 		if logNum == 0 {
 			continue
 		}
