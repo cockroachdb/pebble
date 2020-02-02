@@ -480,7 +480,7 @@ func TestGetIter(t *testing.T) {
 
 		v := version{}
 		for _, tt := range tc.tables {
-			d := newMemTable(nil /* opts */, 0 /* size */, nil /* reservation */)
+			d := newMemTable(memTableOptions{})
 			defer d.close()
 			m[tt.fileNum] = d
 

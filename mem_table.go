@@ -77,30 +77,46 @@ type memTable struct {
 	tombstones  rangeTombstoneCache
 	logNum      uint64
 	logSize     uint64
+	// The current logSeqNum at the time the memtable was created. This is
+	// guaranteed to be less than or equal to any seqnum stored in the memtable.
+	logSeqNum uint64
 	// Closure to invoke to release memory accounting.
 	releaseMemAccounting func()
 }
 
+// memTableOptions holds configuration used when creating a memTable. All of
+// the fields are optional and will be filled with defaults if not specified
+// which is used by tests.
+type memTableOptions struct {
+	*Options
+	size      int
+	logSeqNum uint64
+	// Callback to reserve space for the primary memory use of the memTable. The
+	// returned closure must be called to release the reservation.
+	memAccounting func(size int) func()
+}
+
 // newMemTable returns a new MemTable of the specified size. If size is zero,
 // Options.MemTableSize is used instead.
-func newMemTable(o *Options, size int, memAccounting func(size int) func()) *memTable {
-	o = o.EnsureDefaults()
+func newMemTable(opts memTableOptions) *memTable {
+	opts.Options = opts.Options.EnsureDefaults()
 	m := &memTable{
-		cmp:        o.Comparer.Compare,
-		equal:      o.Comparer.Equal,
+		cmp:        opts.Comparer.Compare,
+		equal:      opts.Comparer.Equal,
 		readerRefs: 1,
 		writerRefs: 1,
 		flushedCh:  make(chan struct{}),
+		logSeqNum:  opts.logSeqNum,
 	}
 
-	if size == 0 {
-		size = o.MemTableSize
+	if opts.size == 0 {
+		opts.size = opts.MemTableSize
 	}
-	if memAccounting != nil {
-		m.releaseMemAccounting = memAccounting(size)
+	if opts.memAccounting != nil {
+		m.releaseMemAccounting = opts.memAccounting(opts.size)
 	}
 
-	arena := arenaskl.NewArena(uint32(size), 0)
+	arena := arenaskl.NewArena(uint32(opts.size), 0)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.emptySize = arena.Size()
@@ -161,8 +177,8 @@ func (m *memTable) readyForFlush() bool {
 	return atomic.LoadInt32(&m.writerRefs) == 0
 }
 
-func (m *memTable) logInfo() (uint64, uint64) {
-	return m.logNum, m.logSize
+func (m *memTable) logInfo() (logNum, size, seqNum uint64) {
+	return m.logNum, m.logSize, m.logSeqNum
 }
 
 // Get gets the value for the given key. It returns ErrNotFound if the DB does
@@ -200,6 +216,11 @@ func (m *memTable) prepare(batch *Batch) error {
 }
 
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
+	if seqNum < m.logSeqNum {
+		return fmt.Errorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
+			seqNum, m.logSeqNum)
+	}
+
 	var ins arenaskl.Inserter
 	var tombstoneCount uint32
 	startSeqNum := seqNum

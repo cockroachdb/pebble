@@ -399,7 +399,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				}
 				// Add a memtable layer.
 				if !d.mu.mem.mutable.empty() {
-					d.mu.mem.mutable = newMemTable(d.opts, 0 /* size */, nil /* reservation */)
+					d.mu.mem.mutable = newMemTable(memTableOptions{Options: d.opts})
 					d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
 					d.updateReadStateLocked(nil)
 				}
@@ -414,7 +414,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					return nil, err
 				}
 				fields = fields[1:]
-				mem = newMemTable(d.opts, 0 /* size */, nil /* reservation */)
+				mem = newMemTable(memTableOptions{Options: d.opts})
 			}
 		}
 

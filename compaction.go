@@ -852,10 +852,10 @@ func (d *DB) flush1() error {
 
 	// Require that every memtable being flushed has a log number less than the
 	// new minimum unflushed log number.
-	minUnflushedLogNum, _ := d.mu.mem.queue[n].logInfo()
+	minUnflushedLogNum, _, _ := d.mu.mem.queue[n].logInfo()
 	if !d.opts.DisableWAL {
 		for i := 0; i < n; i++ {
-			logNum, _ := d.mu.mem.queue[i].logInfo()
+			logNum, _, _ := d.mu.mem.queue[i].logInfo()
 			if logNum >= minUnflushedLogNum {
 				return errFlushInvariant
 			}
@@ -904,7 +904,7 @@ func (d *DB) flush1() error {
 		ve.MinUnflushedLogNum = minUnflushedLogNum
 		metrics := c.metrics[0]
 		for i := 0; i < n; i++ {
-			_, size := d.mu.mem.queue[i].logInfo()
+			_, size, _ := d.mu.mem.queue[i].logInfo()
 			metrics.BytesIn += size
 		}
 

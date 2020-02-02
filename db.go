@@ -52,7 +52,13 @@ type flushable interface {
 	forcedFlush() bool
 	setForceFlush()
 	readyForFlush() bool
-	logInfo() (logNum, size uint64)
+	// Returns info about how the receiver relates to the log:
+	// - logNum corresponds to the WAL that contains the records present in the
+	//   receiver
+	// - logSize is the size in bytes of the associated WAL
+	// - seqNum is a sequence number that is less than or equal to the first
+	//   seqnum in the receiver
+	logInfo() (logNum, logSize, seqNum uint64)
 }
 
 // Reader is a readable key/value store.
@@ -376,6 +382,16 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	get.l0 = readState.current.Files[0]
 	get.version = readState.current
 
+	// Strip off memtables which cannot possibly contain the seqNum being read
+	// at.
+	for len(get.mem) > 0 {
+		n := len(get.mem)
+		if _, _, logSeqNum := get.mem[n-1].logInfo(); logSeqNum < seqNum {
+			break
+		}
+		get.mem = get.mem[:n-1]
+	}
+
 	i := &buf.dbi
 	i.cmp = d.cmp
 	i.equal = d.equal
@@ -672,12 +688,14 @@ func (d *DB) newIterInternal(
 		})
 	}
 
-	// TODO(peter): We only need to add memtables which contain sequence numbers
-	// older than seqNum. Unfortunately, memtables don't track their oldest
-	// sequence number currently.
 	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
+		// We only need to read from memtables which contain sequence numbers older
+		// than seqNum.
+		if _, _, logSeqNum := mem.logInfo(); logSeqNum >= seqNum {
+			continue
+		}
 		mlevels = append(mlevels, mergingIterLevel{
 			iter:         mem.newIter(&dbi.opts),
 			rangeDelIter: mem.newRangeDelIter(&dbi.opts),
@@ -1012,7 +1030,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.WAL.Size = atomic.LoadUint64(&d.mu.log.size)
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
-		_, size := d.mu.mem.queue[i].logInfo()
+		_, size, _ := d.mu.mem.queue[i].logInfo()
 		metrics.WAL.Size += size
 	}
 	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
@@ -1139,7 +1157,7 @@ func (d *DB) walPreallocateSize() int {
 	return size
 }
 
-func (d *DB) newMemTable() *memTable {
+func (d *DB) newMemTable(logSeqNum uint64) *memTable {
 	size := d.mu.mem.nextSize
 	if d.mu.mem.nextSize < d.opts.MemTableSize {
 		d.mu.mem.nextSize *= 2
@@ -1147,8 +1165,11 @@ func (d *DB) newMemTable() *memTable {
 			d.mu.mem.nextSize = d.opts.MemTableSize
 		}
 	}
-	return newMemTable(d.opts, size,
-		func(size int) func() {
+	return newMemTable(memTableOptions{
+		Options:   d.opts,
+		size:      size,
+		logSeqNum: logSeqNum,
+		memAccounting: func(size int) func() {
 			atomic.AddInt64(&d.memTableCount, 1)
 			atomic.AddInt64(&d.memTableReserved, int64(size))
 			releaseAccountingReservation := d.opts.Cache.Reserve(size)
@@ -1157,7 +1178,8 @@ func (d *DB) newMemTable() *memTable {
 				atomic.AddInt64(&d.memTableReserved, -int64(size))
 				releaseAccountingReservation()
 			}
-		})
+		},
+	})
 }
 
 // makeRoomForWrite ensures that the memtable has room to hold the contents of
@@ -1335,6 +1357,13 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
 		}
 
+		var logSeqNum uint64
+		if b != nil {
+			logSeqNum = b.SeqNum()
+		} else {
+			logSeqNum = atomic.LoadUint64(&d.mu.versions.logSeqNum)
+		}
+
 		// Create a new memtable, scheduling the previous one for flushing. We do
 		// this even if the previous memtable was empty because the DB.Flush
 		// mechanism is dependent on being able to wait for the empty memtable to
@@ -1342,7 +1371,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// also have to wait for all previous immutable tables to
 		// flush. Additionally, the memtable is tied to particular WAL file and we
 		// want to go through the flush path in order to recycle that WAL file.
-		d.mu.mem.mutable = d.newMemTable()
+		d.mu.mem.mutable = d.newMemTable(logSeqNum)
 		// NB: newLogNum corresponds to the WAL that contains mutations that are
 		// present in the new memtable. When immutable memtables are flushed to
 		// disk, a VersionEdit will be created telling the manifest the minimum
@@ -1356,6 +1385,17 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 		force = false
 	}
+}
+
+func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {
+	_, _, seqNum := d.mu.mem.mutable.logInfo()
+	for i := range d.mu.mem.queue {
+		_, _, logSeqNum := d.mu.mem.queue[i].logInfo()
+		if seqNum > logSeqNum {
+			seqNum = logSeqNum
+		}
+	}
+	return seqNum
 }
 
 func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []compactionInfo) {
