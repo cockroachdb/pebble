@@ -760,3 +760,103 @@ func TestConcurrentIngestCompact(t *testing.T) {
   000008:[a#0,SET-c#0,SET]
 `)
 }
+
+func TestIngestFlushQueuedMemTable(t *testing.T) {
+	// Verify that ingestion forces a flush of a queued memtable.
+
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add the key "a" to the memtable, then fill up the memtable with the key
+	// "b". The ingested sstable will only overlap with the queued memtable.
+	if err := d.Set([]byte("a"), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if err := d.Set([]byte("b"), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		d.mu.Lock()
+		done := len(d.mu.mem.queue) == 2
+		d.mu.Unlock()
+		if done {
+			break
+		}
+	}
+
+	ingest := func(keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		for _, k := range keys {
+			if err := w.Set([]byte(k), nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Ingest([]string{"ext"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ingest("a")
+}
+
+func TestIngestFlushQueuedLargeBatch(t *testing.T) {
+	// Verify that ingestion forces a flush of a queued large batch.
+
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The default large batch threshold is slightly less than 1/2 of the
+	// memtable size which makes triggering a problem with flushing queued large
+	// batches irritating. Manually adjust the threshold to 1/8 of the memtable
+	// size in order to more easily create a situation where a large batch is
+	// queued but not automatically flushed.
+	d.mu.Lock()
+	d.largeBatchThreshold = d.opts.MemTableSize / 8
+	d.mu.Unlock()
+
+	// Set a record with a large value. This will be transformed into a large
+	// batch and placed in the flushable queue.
+	if err := d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	ingest := func(keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		for _, k := range keys {
+			if err := w.Set([]byte(k), nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Ingest([]string{"ext"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ingest("a")
+}

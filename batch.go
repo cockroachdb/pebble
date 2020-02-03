@@ -1019,6 +1019,10 @@ type flushableBatch struct {
 
 	flushedCh chan struct{}
 
+	// flushForced indicates whether a flush was forced on this batch (either
+	// manual, or due to ingestion).
+	flushForced bool
+
 	logNum uint64
 }
 
@@ -1187,8 +1191,12 @@ func (b *flushableBatch) flushed() chan struct{} {
 	return b.flushedCh
 }
 
-func (b *flushableBatch) manualFlush() bool {
-	return false
+func (b *flushableBatch) forcedFlush() bool {
+	return b.flushForced
+}
+
+func (b *flushableBatch) setForceFlush() {
+	b.flushForced = true
 }
 
 func (b *flushableBatch) readyForFlush() bool {

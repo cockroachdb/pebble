@@ -788,9 +788,9 @@ func (d *DB) maybeScheduleFlush() {
 		if !d.mu.mem.queue[n].readyForFlush() {
 			break
 		}
-		if d.mu.mem.queue[n].manualFlush() {
-			// A manual flush was requested. Pretend the memtable size is the
-			// configured size. See minFlushSize below.
+		if d.mu.mem.queue[n].forcedFlush() {
+			// A flush was forced. Pretend the memtable size is the configured
+			// size. See minFlushSize below.
 			size += uint64(d.opts.MemTableSize)
 		} else {
 			size += d.mu.mem.queue[n].totalBytes()
