@@ -71,8 +71,9 @@ type memTable struct {
 	// drops to zero.
 	writerRefs int32
 	flushedCh  chan struct{}
-	// flushManual indicates whether a manual flush was forced on this memtable.
-	flushManual bool
+	// flushForced indicates whether a flush was forced on this memtable (either
+	// manual, or due to ingestion).
+	flushForced bool
 	tombstones  rangeTombstoneCache
 	logNum      uint64
 	logSize     uint64
@@ -148,8 +149,12 @@ func (m *memTable) flushed() chan struct{} {
 	return m.flushedCh
 }
 
-func (m *memTable) manualFlush() bool {
-	return m.flushManual
+func (m *memTable) forcedFlush() bool {
+	return m.flushForced
+}
+
+func (m *memTable) setForceFlush() {
+	m.flushForced = true
 }
 
 func (m *memTable) readyForFlush() bool {

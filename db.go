@@ -49,7 +49,8 @@ type flushable interface {
 	readerRef()
 	readerUnref()
 	flushed() chan struct{}
-	manualFlush() bool
+	forcedFlush() bool
+	setForceFlush()
 	readyForFlush() bool
 	logInfo() (logNum, size uint64)
 }
@@ -1306,13 +1307,15 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 		imm := d.mu.mem.mutable
 		imm.logSize = prevLogSize
-		imm.flushManual = b == nil
+		if b == nil {
+			imm.setForceFlush()
+		}
 
 		// If we are manually flushing and we used less than half of the bytes in
 		// the memtable, don't increase the size for the next memtable. This
 		// reduces memtable memory pressure when an application is frequently
 		// manually flushing.
-		if imm.flushManual && uint64(imm.availBytes()) > imm.totalBytes()/2 {
+		if (b == nil) && uint64(imm.availBytes()) > imm.totalBytes()/2 {
 			d.mu.mem.nextSize = int(imm.totalBytes())
 		}
 

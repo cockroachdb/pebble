@@ -456,6 +456,8 @@ func (d *DB) Ingest(paths []string) error {
 		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
 			mem = d.mu.mem.mutable
 			err = d.makeRoomForWrite(nil)
+			mem.setForceFlush()
+			d.maybeScheduleFlush()
 			return
 		}
 
@@ -466,6 +468,8 @@ func (d *DB) Ingest(paths []string) error {
 			m := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
 				mem = m
+				mem.setForceFlush()
+				d.maybeScheduleFlush()
 				return
 			}
 		}
@@ -484,7 +488,7 @@ func (d *DB) Ingest(paths []string) error {
 			return
 		}
 
-		// If we flushed the mutable memtable in prepare wait for the flush to
+		// If we overlapped with a memtable in prepare wait for the flush to
 		// finish.
 		if mem != nil {
 			<-mem.flushed()
