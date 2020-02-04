@@ -1046,7 +1046,6 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	if d.opts.enablePacing {
 		// TODO(peter): Compaction pacing is disabled until we figure out why it
 		// impacts throughput.
-		//
 		compactionPacer = newCompactionPacer(compactionPacerEnv{
 			limiter:      d.compactionLimiter,
 			memTableSize: uint64(d.opts.MemTableSize),
@@ -1274,21 +1273,39 @@ func (d *DB) runCompaction(
 						writerMeta.SmallestRange.Pretty(d.opts.Comparer.Format),
 						prevMeta.Largest.Pretty(d.opts.Comparer.Format))
 				}
-				if c == 0 && prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel {
-					// The range boundary user key is less than or equal to the previous
-					// table's largest key. We need the tables to be key-space partitioned,
-					// so force the boundary to a key that we know is larger than the
-					// previous key.
+				if c == 0 && prevMeta.Largest.SeqNum() <= writerMeta.SmallestRange.SeqNum() {
+					// The user key portion of the range boundary start key is equal to
+					// the previous table's largest key. We need the tables to be
+					// key-space partitioned, so force the boundary to a key that we know
+					// is larger than the previous table's largest key.
+					if prevMeta.Largest.SeqNum() == 0 {
+						// If the seqnum of the previous table's largest key is 0, we can't
+						// decrement it. This should never happen as we take care in the
+						// main compaction loop to avoid generating an sstable with a
+						// largest key containing a zero seqnum.
+						return fmt.Errorf(
+							"pebble: previous sstable largest key unexpectedly has 0 seqnum: %s",
+							prevMeta.Largest.Pretty(d.opts.Comparer.Format))
+					}
+					// TODO(peter): Technically, this produces a small gap with the
+					// previous sstable. The largest key of the previous table may be
+					// b#5.SET. The smallest key of the new sstable may then become
+					// b#4.RANGEDEL even though the tombstone is [b,z)#6. If iteration
+					// ever precisely truncates sstable boundaries, the key b#5.DEL at
+					// a lower level could slip through. Note that this can't ever
+					// actually happen, though, because the only way for two records to
+					// have the same seqnum is via ingestion. And even if it did happen
+					// revealing a deletion tombstone is not problematic. Slightly more
+					// worrisome is the combination of b#5.MERGE, b#5.SET and
+					// b#4.RANGEDEL, but we can't ever see b#5.MERGE and b#5.SET at
+					// different levels in the tree due to the ingestion argument and
+					// atomic compaction units.
 					//
-					// We use seqnum zero since seqnums are in descending order, and our
-					// goal is to ensure this forged key does not overlap with the previous
-					// file. `InternalKeyKindRangeDelete` is actually the first key kind as
-					// key kinds are also in descending order. But, this is OK because
-					// choosing seqnum zero is already enough to prevent overlap (the
-					// previous file could not end with a key at seqnum zero if this file
-					// had a tombstone extending into it).
-					writerMeta.SmallestRange = base.MakeInternalKey(
-						prevMeta.Largest.UserKey, 0, InternalKeyKindRangeDelete)
+					// TODO(sumeer): Incorporate the the comment in
+					// https://github.com/cockroachdb/pebble/pull/479#pullrequestreview-340600654
+					// into docs/range_deletions.md and reference the correctness
+					// argument here. Note that that comment might be slightly incorrect.
+					writerMeta.SmallestRange.SetSeqNum(prevMeta.Largest.SeqNum() - 1)
 				}
 			}
 		}
@@ -1356,52 +1373,85 @@ func (d *DB) runCompaction(
 	// progress guarantees ensure that eventually the input iterator will be
 	// exhausted and the range tombstone fragments will all be flushed.
 	for key, val := iter.First(); key != nil || !c.rangeDelFrag.Empty(); {
-		var grandparentLimit []byte
+		var limit []byte
 		if c.rangeDelFrag.Empty() {
-			// In this case, `grandparentLimit` will be a larger user
-			// key than `key.UserKey`, or nil. In either case, the
-			// inner loop will execute at least once to process `key`,
-			// and the input iterator will be advanced.
-			grandparentLimit = c.findGrandparentLimit(key.UserKey)
+			// In this case, `limit` will be a larger user key than `key.UserKey`, or
+			// nil. In either case, the inner loop will execute at least once to
+			// process `key`, and the input iterator will be advanced.
+			limit = c.findGrandparentLimit(key.UserKey)
 		} else {
-			// There is a range tombstone spanning from the last file
-			// into the current one. Therefore this file's smallest
-			// boundary will overlap the last file's largest boundary.
+			// There is a range tombstone spanning from the last file into the
+			// current one. Therefore this file's smallest boundary will overlap the
+			// last file's largest boundary.
 			//
-			// In this case, `grandparentLimit` will be a larger user
-			// key than the previous file's largest key and correspond
-			// to a grandparent file's largest user key, or nil. Then,
-			// it is possible the inner loop executes zero times, and
-			// the output file contains only range tombstones. That
-			// is fine as long as the number of times we execute this
-			// case is bounded. Since `findGrandparentLimit()` returns
-			// a strictly larger user key each time and it corresponds
-			// to a grandparent file largest key, the number of times
-			// this case can execute is bounded by the number of
-			// grandparent files (plus one for the final time it
-			// returns nil).
+			// In this case, `limit` will be a larger user key than the previous
+			// file's largest key and correspond to a grandparent file's largest user
+			// key, or nil. Then, it is possible the inner loop executes zero times,
+			// and the output file contains only range tombstones. That is fine as
+			// long as the number of times we execute this case is bounded. Since
+			// `findGrandparentLimit()` returns a strictly larger user key each time
+			// and it corresponds to a grandparent file largest key, the number of
+			// times this case can execute is bounded by the number of grandparent
+			// files (plus one for the final time it returns nil).
 			//
 			// n > 0 since we cannot have seen range tombstones at the
 			// beginning of the first file.
 			n := len(ve.NewFiles)
-			grandparentLimit = c.findGrandparentLimit(ve.NewFiles[n-1].Meta.Largest.UserKey)
+			limit = c.findGrandparentLimit(ve.NewFiles[n-1].Meta.Largest.UserKey)
 		}
 
 		// Each inner loop iteration processes one key from the input iterator.
-		for ; key != nil && (grandparentLimit == nil || c.cmp(key.UserKey, grandparentLimit) <= 0); key, val = iter.Next() {
+		passedGrandparentLimit := false
+		prevPointSeqNum := InternalKeySeqNumMax
+		for ; key != nil; key, val = iter.Next() {
+			// Break out of this loop and switch to a new sstable if we've reached
+			// the grandparent limit. There is a complication here: we can't create
+			// an sstable where the largest key has a seqnum of zero. This limitation
+			// exists because a range tombstone which extends into the next sstable
+			// will cause the smallest key for the next sstable to have the same user
+			// key, but we need the two tables to be disjoint in key space. Consider
+			// the scenario:
+			//
+			//    a#RANGEDEL-c,3 b#SET,0
+			//
+			// If b#SET,0 is the last key added to an sstable, the range tombstone
+			// [b-c)#3 will extend into the next sstable. The boundary generation
+			// code in finishOutput() will compute the smallest key for that sstable
+			// as b#RANGEDEL,3 which sorts before b#SET,0. Normally we just adjust
+			// the seqnum of this key, but that isn't possible for seqnum 0.
+			if passedGrandparentLimit || (limit != nil && c.cmp(key.UserKey, limit) > 0) {
+				if prevPointSeqNum != 0 || c.rangeDelFrag.Empty() {
+					if passedGrandparentLimit {
+						limit = key.UserKey
+					}
+					break
+				}
+				// If we can't cut the sstable at limit, we need to ensure that the
+				// limit is at least the last key added to the table. We can't actually
+				// use key.UserKey here because it will be invalidated by the next call
+				// to iter.Next(). Instead, we set a flag indicating that we've passed
+				// the grandparent limit and clear the limit. If we can stop output at
+				// a subsequent key, we'll use that key as the new limit.
+				passedGrandparentLimit = true
+				limit = nil
+			}
+
 			atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
 			if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
 				return nil, pendingOutputs, err
 			}
 			if key.Kind() == InternalKeyKindRangeDelete {
-				// Range tombstones are handled specially. They are fragmented
-				// and written later during `finishOutput()`.  We add them
-				// to the `Fragmenter` now to make them visible to `compactionIter`
-				// so covered keys in the same snapshot stripe can be elided.
+				// Range tombstones are handled specially. They are fragmented and
+				// written later during `finishOutput()`. We add them to the
+				// `Fragmenter` now to make them visible to `compactionIter` so covered
+				// keys in the same snapshot stripe can be elided.
 				c.rangeDelFrag.Add(iter.cloneKey(*key), val)
 				continue
 			}
 			if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
+				// Use the next key as the sstable boundary. Note that we already
+				// checked this key against the grandparent limit above.
+				limit = key.UserKey
 				break
 			}
 			if tw == nil {
@@ -1412,23 +1462,31 @@ func (d *DB) runCompaction(
 			if err := tw.Add(*key, val); err != nil {
 				return nil, pendingOutputs, err
 			}
+			prevPointSeqNum = key.SeqNum()
 		}
 
-		// The file is truncated to the limit for preventing excessive grandparent
-		// overlap, or the next file's first key, whichever comes first.
-		var limit []byte
-		if key != nil && (grandparentLimit == nil || c.cmp(key.UserKey, grandparentLimit) <= 0) {
-			// Size limit reached.
-			limit = key.UserKey
-		} else {
-			// Ran out of keys or grandparent limit reached.
-			if grandparentLimit != nil {
-				// This may possibly flush everything.
-				limit = grandparentLimit
-			} else {
-				// No grandparentLimit. Flush everything.
-			}
+		switch {
+		case key == nil && prevPointSeqNum == 0 && !c.rangeDelFrag.Empty():
+			// We ran out of keys and the last key added to the sstable has a zero
+			// seqnum and there are buffered range tombstones, so we're unable to use
+			// the grandparent limit for the sstable boundary. See the example in the
+			// in the loop above with range tombstones straddling sstables.
+			limit = nil
+		case key == nil /* && (prevPointSeqNum != 0 || c.rangeDelFrag.Empty()) */ :
+			// We ran out of keys. Because of the previous case, either rangeDelFrag
+			// is empty or the last record added to the sstable has a non-zero
+			// seqnum. If the rangeDelFragmenter is empty we have no concerns as
+			// there won't be another sstable generated by this compaction and the
+			// current limit is fine (it won't apply). Otherwise, if the last key
+			// added to the sstable had a non-zero seqnum we're also in the clear as
+			// we can decrement that seqnum to create a boundary key for the next
+			// sstable (if we end up generating a next sstable).
+		case key != nil:
+			// We either hit the size limit or the grandparent limit for the sstable.
+		default:
+			return nil, nil, fmt.Errorf("pebble: not reached")
 		}
+
 		if err := finishOutput(limit); err != nil {
 			return nil, pendingOutputs, err
 		}
