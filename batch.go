@@ -1203,8 +1203,8 @@ func (b *flushableBatch) readyForFlush() bool {
 	return true
 }
 
-func (b *flushableBatch) logInfo() (uint64, uint64) {
-	return b.logNum, 0 /* logSize */
+func (b *flushableBatch) logInfo() (logNum, size, seqNum uint64) {
+	return b.logNum, 0 /* logSize */, b.seqNum
 }
 
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
