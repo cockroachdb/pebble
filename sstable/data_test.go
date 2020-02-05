@@ -177,6 +177,7 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 	if err := iter.Error(); err != nil {
 		return err.Error()
 	}
+	defer iter.Close()
 
 	var b bytes.Buffer
 	var prefix []byte
