@@ -680,6 +680,7 @@ func TestIterLeak(t *testing.T) {
 							t.Fatal(err)
 						}
 					} else {
+						defer iter.Close()
 						if err := d.Close(); err == nil {
 							t.Fatalf("expected failure, but found success")
 						} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
@@ -705,7 +706,10 @@ func TestMemTableReservation(t *testing.T) {
 	// Add a block to the cache. Note that the memtable size is larger than the
 	// cache size, so opening the DB should cause this block to be evicted.
 	tmpID := opts.Cache.NewID()
-	opts.Cache.Set(tmpID, 0, 0, []byte("hello world"))
+	helloWorld := []byte("hello world")
+	value := opts.Cache.AllocManual(len(helloWorld))
+	copy(value.Buf(), helloWorld)
+	opts.Cache.Set(tmpID, 0, 0, value).Release()
 
 	d, err := Open("", opts)
 	if err != nil {
@@ -725,7 +729,7 @@ func TestMemTableReservation(t *testing.T) {
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
 	if h := opts.Cache.Get(tmpID, 0, 0); h.Get() != nil {
-		t.Fatalf("expected failure, but found success: %s", h.Get())
+		t.Fatalf("expected failure, but found success: %s", h.Get().Buf())
 	}
 
 	// Flush the memtable. The memtable reservation should be unchanged because a

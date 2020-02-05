@@ -7,12 +7,14 @@ package cache
 import (
 	"testing"
 	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/manual"
 )
 
 func TestAllocCache(t *testing.T) {
 	c := newAllocCache()
 	for i := 0; i < 64; i++ {
-		c.free(make([]byte, 1025))
+		c.free(manual.New(1025))
 		if c.size == 0 {
 			t.Fatalf("expected cache size to be non-zero")
 		}
@@ -34,7 +36,7 @@ func TestAllocCache(t *testing.T) {
 func TestAllocCacheEvict(t *testing.T) {
 	c := newAllocCache()
 	for i := 0; i < allocCacheCountLimit; i++ {
-		c.free(make([]byte, 1024))
+		c.free(manual.New(1024))
 	}
 
 	bufs := make([][]byte, allocCacheCountLimit)
@@ -61,7 +63,7 @@ func BenchmarkAllocCache(b *testing.B) {
 	// Populate the cache with buffers if one size class.
 	c := newAllocCache()
 	for i := 0; i < allocCacheCountLimit; i++ {
-		c.free(make([]byte, 1024))
+		c.free(manual.New(1024))
 	}
 
 	// Benchmark allocating buffers of a different size class.

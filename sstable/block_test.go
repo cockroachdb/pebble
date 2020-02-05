@@ -155,7 +155,7 @@ func TestBlockIter2(t *testing.T) {
 					return ""
 
 				case "iter":
-					iter, err := newBlockIter(bytes.Compare, block)
+					iter, err := newBlockIterWithBuf(bytes.Compare, block)
 					if err != nil {
 						return err.Error()
 					}
@@ -233,7 +233,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	}
 	block := w.finish()
 
-	i, err := newBlockIter(bytes.Compare, block)
+	i, err := newBlockIterWithBuf(bytes.Compare, block)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 
 	for targetPos := 0; targetPos < w.restartInterval; targetPos++ {
 		t.Run("", func(t *testing.T) {
-			i, err := newBlockIter(bytes.Compare, block)
+			i, err := newBlockIterWithBuf(bytes.Compare, block)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -337,7 +337,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIterWithBuf(bytes.Compare, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -379,7 +379,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIterWithBuf(bytes.Compare, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -425,7 +425,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIterWithBuf(bytes.Compare, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -457,7 +457,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIterWithBuf(bytes.Compare, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}

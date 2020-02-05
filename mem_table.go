@@ -116,6 +116,9 @@ func newMemTable(opts memTableOptions) *memTable {
 		m.releaseMemAccounting = opts.memAccounting(opts.size)
 	}
 
+	// TODO(peter): Manually manage the arena memory. There should be no
+	// difficulty in doing so as we already precisely track when a memtable goes
+	// "out of scope" for memory accounting.
 	arena := arenaskl.NewArena(uint32(opts.size), 0)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
