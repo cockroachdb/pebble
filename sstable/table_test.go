@@ -673,6 +673,9 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())
 		}
 	}
+	if err := i.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestMetaIndexEntriesSorted(t *testing.T) {
@@ -687,12 +690,12 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b, err := r.readBlock(r.metaIndexBH, nil /* transform */)
+	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, false /* weak */)
 	if err != nil {
 		t.Fatal(err)
 	}
 	i, err := newRawBlockIter(bytes.Compare, b.Get())
-	b.Release()
+	defer b.Release()
 	if err != nil {
 		t.Fatal(err)
 	}
