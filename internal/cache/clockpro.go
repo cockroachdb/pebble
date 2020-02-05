@@ -18,6 +18,7 @@
 package cache // import "github.com/cockroachdb/pebble/internal/cache"
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -53,31 +54,6 @@ type fileKey struct {
 type key struct {
 	fileKey
 	offset uint64
-}
-
-type value struct {
-	buf []byte
-	// The number of references on the value. When refs drops to 0, the buf
-	// associated with the value may be reused. This is a form of manual memory
-	// management. See Cache.Free.
-	refs int32
-}
-
-func newValue(b []byte) *value {
-	if b == nil {
-		return nil
-	}
-	// A value starts with 2 references. One for the cache, and one for the
-	// handle that will be returned.
-	return &value{buf: b, refs: 2}
-}
-
-func (v *value) acquire() {
-	atomic.AddInt32(&v.refs, 1)
-}
-
-func (v *value) release() bool {
-	return atomic.AddInt32(&v.refs, -1) == 0
 }
 
 type entry struct {
@@ -153,37 +129,25 @@ func (e *entry) unlinkFile() *entry {
 	return next
 }
 
-func (e *entry) setValue(v *value) {
+func (e *entry) setValue(v *Value) {
 	if old := e.getValue(); old != nil {
-		if old.release() {
-			allocFree(old.buf)
-		}
+		old.release()
 	}
 	atomic.StorePointer(&e.val, unsafe.Pointer(v))
 }
 
-func (e *entry) getValue() *value {
-	return (*value)(atomic.LoadPointer(&e.val))
-}
-
-func (e *entry) Get() []byte {
-	v := e.getValue()
-	if v == nil {
-		return nil
-	}
-	atomic.StoreInt32(&e.referenced, 1)
-	// Record a cache hit because the entry is being used as a WeakHandle and
-	// successfully avoided a more expensive shard.Get() operation.
-	atomic.AddInt64(&e.shard.hits, 1)
-	return v.buf
+func (e *entry) getValue() *Value {
+	return (*Value)(atomic.LoadPointer(&e.val))
 }
 
 // Handle provides a strong reference to an entry in the cache. The reference
 // does not pin the entry in the cache, but it does prevent the underlying byte
-// slice from being reused.
+// slice from being reused. When entry is non-nil, value is initialized to
+// entry.val. Over the lifetime of the handle (until Release is called),
+// entry.val may change, but value will remain unchanged.
 type Handle struct {
 	entry *entry
-	value *value
+	value *Value
 }
 
 // Get returns the value stored in handle.
@@ -199,9 +163,7 @@ func (h Handle) Get() []byte {
 // Release releases the reference to the cache entry.
 func (h Handle) Release() {
 	if h.value != nil {
-		if h.value.release() {
-			allocFree(h.value.buf)
-		}
+		h.value.release()
 	}
 }
 
@@ -211,26 +173,32 @@ func (h Handle) Release() {
 // the reference count on the value is incremented which will prevent the
 // associated buffer from ever being reused until it is GC'd by the Go
 // runtime. It is not necessary to call Handle.Release() after calling Weak().
-func (h Handle) Weak() WeakHandle {
-	if h.entry == nil {
-		return nil // return a nil interface, not (*entry)(nil)
+func (h Handle) Weak() *WeakHandle {
+	if h.value.manual() {
+		panic("pebble: cannot make manual Value into a WeakHandle")
 	}
-	// Add a reference to the value which will never be cleared. This is
-	// necessary because WeakHandle.Get() performs an atomic load of the value,
-	// but we need to ensure that nothing can concurrently be freeing the buffer
-	// for reuse. Rather than add additional locking to this code path, we add a
-	// reference here so that the underlying buffer can never be reused. And we
-	// rely on the Go runtime to eventually GC the buffer.
-	h.value.acquire()
-	return h.entry
+	return (*WeakHandle)(h.entry)
 }
 
 // WeakHandle provides a "weak" reference to an entry in the cache. A weak
 // reference allows the entry to be evicted, but also provides fast access
-type WeakHandle interface {
-	// Get retrieves the value associated with the weak handle, returning nil if
-	// no value is present.
-	Get() []byte
+type WeakHandle entry
+
+// Get retrieves the value associated with the weak handle, returning nil if no
+// value is present. The calls to Get must be balanced with the calls to
+// Release.
+func (h *WeakHandle) Get() []byte {
+	e := (*entry)(h)
+	v := e.getValue()
+	if v == nil {
+		return nil
+	}
+
+	atomic.StoreInt32(&e.referenced, 1)
+	// Record a cache hit because the entry is being used as a WeakHandle and
+	// successfully avoided a more expensive shard.Get() operation.
+	atomic.AddInt64(&e.shard.hits, 1)
+	return v.buf
 }
 
 type shard struct {
@@ -257,7 +225,7 @@ type shard struct {
 func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	c.mu.RLock()
 	e := c.blocks[key{fileKey{id, fileNum}, offset}]
-	var value *value
+	var value *Value
 	if e != nil {
 		value = e.getValue()
 		if value != nil {
@@ -276,54 +244,72 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	return Handle{value: value}
 }
 
-func (c *shard) Set(id, fileNum, offset uint64, value []byte) Handle {
+func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
+	if n := atomic.LoadInt32(&value.refs); n != 1 && n >= 0 {
+		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	k := key{fileKey{id, fileNum}, offset}
 	e := c.blocks[k]
-	v := newValue(value)
 
 	switch {
 	case e == nil:
 		// no cache entry? add it
-		e = &entry{ptype: etCold, key: k, size: int64(len(value)), shard: c}
+		e = &entry{ptype: etCold, key: k, size: int64(len(value.buf)), shard: c}
 		e.init()
-		e.setValue(v)
+		e.setValue(value)
 		if c.metaAdd(k, e) {
+			value.trace("add-cold")
+			value.acquire() // add reference for the cache
 			c.sizeCold += e.size
+		} else {
+			value.trace("skip-cold")
 		}
 
 	case e.getValue() != nil:
 		// cache entry was a hot or cold page
-		e.setValue(v)
+		value.acquire() // add reference for the cache
+		e.setValue(value)
 		atomic.StoreInt32(&e.referenced, 1)
-		delta := int64(len(value)) - e.size
-		e.size = int64(len(value))
+		delta := int64(len(value.buf)) - e.size
+		e.size = int64(len(value.buf))
 		if e.ptype == etHot {
+			value.trace("add-hot")
 			c.sizeHot += delta
 		} else {
+			value.trace("add-cold")
 			c.sizeCold += delta
 		}
 		c.evict()
 
 	default:
 		// cache entry was a test page
+		c.metaDel(e)
+		c.sizeTest -= e.size
+
 		c.coldSize += e.size
 		if c.coldSize > c.targetSize() {
 			c.coldSize = c.targetSize()
 		}
+
 		atomic.StoreInt32(&e.referenced, 0)
-		e.setValue(v)
+		e.setValue(value)
 		e.ptype = etHot
-		c.sizeTest -= e.size
-		c.metaDel(e)
 		if c.metaAdd(k, e) {
+			value.trace("add-hot")
+			value.acquire() // add reference for the cache
 			c.sizeHot += e.size
+		} else {
+			value.trace("skip-hot")
 		}
 	}
 
-	return Handle{entry: e, value: v}
+	// Values are initialized with a reference count of 1. That reference count
+	// is being transferred to the returned Handle.
+	return Handle{entry: e, value: value}
 }
 
 // Delete deletes the cached value for the specified file and offset.
@@ -415,6 +401,11 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 }
 
 func (c *shard) metaDel(e *entry) {
+	if value := e.getValue(); value != nil {
+		value.trace("metaDel")
+	}
+	e.setValue(nil)
+
 	delete(c.blocks, e.key)
 
 	if e == c.handHot {
@@ -543,7 +534,65 @@ type Metrics struct {
 	Misses int64
 }
 
-// Cache ...
+// Cache implements Pebble's sharded block cache. The Clock-PRO algorithm is
+// used for page replacement
+// (http://static.usenix.org/event/usenix05/tech/general/full_papers/jiang/jiang_html/html.html). In
+// order to provide better concurrency, 2 x NumCPUs shards are created, with
+// each shard being given 1/n of the target cache size. The Clock-PRO algorithm
+// is run independently on each shard.
+//
+// Blocks are keyed by an (id, fileNum, offset) triple. The ID is a namespace
+// for file numbers and allows a single Cache to be shared between multiple
+// Pebble instances. The fileNum and offset refer to an sstable file number and
+// the offset of the block within the file. Because sstables are immutable and
+// file numbers are never reused, (fileNum,offset) are unique for the lifetime
+// of a Pebble instance.
+//
+// In addition to maintaining a map from (fileNum,offset) to data, each shard
+// maintains a map of the cached blocks for a particular fileNum. This allows
+// efficient eviction of all of the blocks for a file which is used when an
+// sstable is deleted from disk.
+//
+// Strong vs Weak Handles
+//
+// When a block is retrieved from the cache, a Handle is returned. The Handle
+// maintains a reference to the associated value and will prevent the value
+// from being removed. The caller must call Handle.Release() when they are done
+// using the value (failure to do so will result in a memory leak). Until
+// Handle.Release() is called, the value is pinned in memory.
+//
+// A Handle can be transformed into a WeakHandle by a call to Handle.Weak(). A
+// WeakHandle does not pin the associated value in memory, and instead allows
+// the value to be evicted from the cache and reclaimed by the Go GC. The value
+// associated with a WeakHandle can be retrieved by WeakHandle.Get() which may
+// return nil if the value has been evicted from the cache. WeakHandle's are
+// useful for avoiding the overhad of a cache lookup. They are used for sstable
+// index, filter, and range-del blocks, which are frequently accessed, almost
+// always in the cache, but which we want to allow to be evicted under memory
+// pressure.
+//
+// Memory Management
+//
+// In order to reduce pressure on the Go GC, manual memory management is
+// performed for the majority of blocks in the cache. Manual memory management
+// is selected using Cache.AllocManual() to allocate a value, rather than
+// Cache.AllocAuto(). Note that manual values cannot be used for
+// WeakHandles. The general rule is to use AllocAuto when a WeakHandle will be
+// retrieved, and AllocManual in all other cases.
+//
+// Manual memory management is performed by calling into C.{malloc,free} to
+// allocate memory. Cache.Values are reference counted and the memory backing a
+// manual value is freed when the reference count drops to 0.
+//
+// Manual memory management brings the possibility of memory leaks. It is
+// imperative that every Handle returned by Cache.{Get,Set} is eventually
+// released. The "invariants" build tag enables a leak detection facility that
+// places a GC finalizer on cache.Value. When the cache.Value finalizer is run,
+// if the underlying buffer is still present a leak has occurred. The "tracing"
+// build tag enables tracing of cache.Value reference count manipulation and
+// eases finding where a leak has occurred. These two facilities are usually
+// used in combination by specifying `-tags invariants,tracing`. Note that
+// "tracing" produces a significant slowdown, while "invariants" does not.
 type Cache struct {
 	maxSize int64
 	idAlloc uint64
@@ -554,6 +603,17 @@ type Cache struct {
 // allocated on demand, not during initialization.
 func New(size int64) *Cache {
 	return newShards(size, 2*runtime.NumCPU())
+}
+
+func clearCache(obj interface{}) {
+	c := obj.(*Cache)
+	for i := range c.shards {
+		s := &c.shards[i]
+		s.mu.Lock()
+		s.maxSize = 0
+		s.evict()
+		s.mu.Unlock()
+	}
 }
 
 func newShards(size int64, shards int) *Cache {
@@ -570,6 +630,11 @@ func newShards(size int64, shards int) *Cache {
 			files:    make(map[fileKey]*entry),
 		}
 	}
+	// TODO(peter): This finalizer is used to clear the cache when the Cache
+	// itself is GC'd. Investigate making this explicit, and then changing the
+	// finalizer to only be installed when invariants.Enabled is true and to only
+	// check that all of the manual memory has been freed.
+	runtime.SetFinalizer(c, clearCache)
 	return c
 }
 
@@ -611,8 +676,8 @@ func (c *Cache) Get(id, fileNum, offset uint64) Handle {
 // Set sets the cache value for the specified file and offset, overwriting an
 // existing value if present. A Handle is returned which provides faster
 // retrieval of the cached value than Get (lock-free and avoidance of the map
-// lookup).
-func (c *Cache) Set(id, fileNum, offset uint64, value []byte) Handle {
+// lookup). The value must have been allocated by Cache.Alloc.
+func (c *Cache) Set(id, fileNum, offset uint64, value *Value) Handle {
 	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value)
 }
 
@@ -645,16 +710,29 @@ func (c *Cache) Size() int64 {
 	return size
 }
 
-// Alloc allocates a byte slice of the specified size, possibly reusing
-// previously allocated but unused memory.
-func (c *Cache) Alloc(n int) []byte {
-	return allocNew(n)
+// AllocManual allocates a byte slice of the specified size, possibly reusing
+// previously allocated but unused memory. The memory backing the value is
+// manually managed. The caller MUST either add the value to the cache (via
+// Cache.Set), or release the value (via Cache.Free). Failure to do so will
+// result in a memory leak.
+func (c *Cache) AllocManual(n int) *Value {
+	return newManualValue(n)
 }
 
-// Free frees the specified slice of memory. The buffer will possibly be
-// reused, making it invalid to use the buffer after calling Free.
-func (c *Cache) Free(b []byte) {
-	allocFree(b)
+// AllocAuto allocates an automatically managed value using buf as the internal
+// buffer.
+func (c *Cache) AllocAuto(buf []byte) *Value {
+	return newAutoValue(buf)
+}
+
+// Free frees the specified value. The buffer associated with the value will
+// possibly be reused, making it invalid to use the buffer after calling
+// Free. Do not call Free on a value that has been added to the cache.
+func (c *Cache) Free(v *Value) {
+	if n := atomic.LoadInt32(&v.refs); n > 1 {
+		panic(fmt.Sprintf("pebble: Value has been added to the cache: refs=%d", n))
+	}
+	v.release()
 }
 
 // Reserve N bytes in the cache. This effectively shrinks the size of the cache
