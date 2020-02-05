@@ -145,9 +145,12 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 	}
 
-	d.mu.mem.mutable = d.newMemTable(atomic.LoadUint64(&d.mu.versions.logSeqNum))
-	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
+	{
+		var entry *flushableEntry
+		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.logSeqNum)
+		d.mu.mem.queue = append(d.mu.mem.queue, entry)
+		d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
+	}
 
 	ls, err := opts.FS.List(d.walDirname)
 	if err != nil {
@@ -217,6 +220,9 @@ func Open(dirname string, opts *Options) (*DB, error) {
 			Path:    newLogName,
 			FileNum: newLogNum,
 		})
+		// This isn't strictly necessary as we don't use the log number for
+		// memtables being flushed, only for the next unflushed memtable.
+		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
 
 		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
 			BytesPerSync:    d.opts.BytesPerSync,
@@ -289,7 +295,8 @@ func (d *DB) replayWAL(
 		b               Batch
 		buf             bytes.Buffer
 		mem             *memTable
-		toFlush         []flushable
+		entry           *flushableEntry
+		toFlush         flushableList
 		rr              = record.NewReader(file, logNum)
 		offset          int64 // byte offset in rr
 		lastFlushOffset int64
@@ -299,6 +306,7 @@ func (d *DB) replayWAL(
 		// In read-only mode, we replay directly into the mutable memtable which will
 		// never be flushed.
 		mem = d.mu.mem.mutable
+		entry = d.mu.mem.queue[len(d.mu.mem.queue)-1]
 	}
 
 	// Flushes the current memtable, if not nil.
@@ -312,22 +320,22 @@ func (d *DB) replayWAL(
 		}
 		// Else, this was the initial memtable in the read-only case which must have
 		// been empty, but we need to flush it since we don't want to add to it later.
-		mem.logSize = logSize
 		lastFlushOffset = offset
+		entry.logSize = logSize
 		if !d.opts.ReadOnly {
-			toFlush = append(toFlush, mem)
+			toFlush = append(toFlush, entry)
 		}
-		mem = nil
+		mem, entry = nil, nil
 	}
 	// Creates a new memtable if there is no current memtable.
 	ensureMem := func(seqNum uint64) {
 		if mem != nil {
 			return
 		}
-		mem = d.newMemTable(seqNum)
+		mem, entry = d.newMemTable(logNum, seqNum)
 		if d.opts.ReadOnly {
 			d.mu.mem.mutable = mem
-			d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+			d.mu.mem.queue = append(d.mu.mem.queue, entry)
 		}
 	}
 	for {
@@ -364,10 +372,14 @@ func (d *DB) replayWAL(
 			// be reused in the next iteration.
 			b.data = append([]byte(nil), b.data...)
 			b.flushable = newFlushableBatch(&b, d.opts.Comparer)
+			entry := d.newFlushableEntry(b.flushable, logNum, b.SeqNum())
+			// Disable memory accounting by adding a reader ref that will never be
+			// removed.
+			entry.readerRefs++
 			if d.opts.ReadOnly {
-				d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
+				d.mu.mem.queue = append(d.mu.mem.queue, entry)
 			} else {
-				toFlush = append(toFlush, b.flushable)
+				toFlush = append(toFlush, entry)
 			}
 		} else {
 			ensureMem(seqNum)
