@@ -178,7 +178,7 @@ func (m *memTable) readyForFlush() bool {
 }
 
 func (m *memTable) logInfo() (logNum, size, seqNum uint64) {
-	return m.logNum, m.logSize, m.logSeqNum
+	return m.logNum, atomic.LoadUint64(&m.logSize), m.logSeqNum
 }
 
 // Get gets the value for the given key. It returns ErrNotFound if the DB does

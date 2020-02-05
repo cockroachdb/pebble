@@ -1328,7 +1328,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 
 		imm := d.mu.mem.mutable
-		imm.logSize = prevLogSize
+		// We atomically update logSize because it is read concurrently (yet not
+		// used) on the read path in DB.{get,newIter}Internal via a call to
+		// flushable.logInfo().
+		atomic.StoreUint64(&imm.logSize, prevLogSize)
 		if b == nil {
 			imm.setForceFlush()
 		}
