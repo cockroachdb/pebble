@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"runtime"
 	"sort"
 	"sync"
 	"unsafe"
@@ -17,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/vfs"
@@ -80,14 +83,46 @@ var _ base.InternalIterator = (*singleLevelIterator)(nil)
 
 var singleLevelIterPool = sync.Pool{
 	New: func() interface{} {
-		return &singleLevelIterator{}
+		i := &singleLevelIterator{}
+		if invariants.Enabled {
+			runtime.SetFinalizer(i, checkSingleLevelIterator)
+		}
+		return i
 	},
 }
 
 var twoLevelIterPool = sync.Pool{
 	New: func() interface{} {
-		return &twoLevelIterator{}
+		i := &twoLevelIterator{}
+		if invariants.Enabled {
+			runtime.SetFinalizer(i, checkTwoLevelIterator)
+		}
+		return i
 	},
+}
+
+func checkSingleLevelIterator(obj interface{}) {
+	i := obj.(*singleLevelIterator)
+	if p := i.data.cacheHandle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.cacheHandle is not nil: %p\n", p)
+		os.Exit(1)
+	}
+	if p := i.index.cacheHandle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.cacheHandle is not nil: %p\n", p)
+		os.Exit(1)
+	}
+}
+
+func checkTwoLevelIterator(obj interface{}) {
+	i := obj.(*twoLevelIterator)
+	if p := i.data.cacheHandle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.cacheHandle is not nil: %p\n", p)
+		os.Exit(1)
+	}
+	if p := i.index.cacheHandle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.cacheHandle is not nil: %p\n", p)
+		os.Exit(1)
+	}
 }
 
 // Init initializes a singleLevelIterator for reading from the table. It is
@@ -159,13 +194,12 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */)
+	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, false /* weak */)
 	if err != nil {
 		i.err = err
 		return false
 	}
-	i.data.setCacheHandle(block)
-	i.err = i.data.init(i.cmp, block.Get(), i.reader.Properties.GlobalSeqNum)
+	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		return false
 	}
@@ -441,18 +475,23 @@ func (i *singleLevelIterator) SetCloseHook(fn func(i Iterator) error) {
 	i.closeHook = fn
 }
 
+func firstError(err0, err1 error) error {
+	if err0 != nil {
+		return err0
+	}
+	return err1
+}
+
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Close() error {
+	var err error
 	if i.closeHook != nil {
-		if err := i.closeHook(i); err != nil {
-			return err
-		}
+		err = firstError(err, i.closeHook(i))
 	}
-	if err := i.data.Close(); err != nil {
-		return err
-	}
-	err := i.err
+	err = firstError(err, i.data.Close())
+	err = firstError(err, i.index.Close())
+	err = firstError(err, i.err)
 	*i = i.resetForReuse()
 	singleLevelIterPool.Put(i)
 	return err
@@ -559,13 +598,12 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = errors.New("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */)
+	indexBlock, err := i.reader.readBlock(h, nil /* transform */, false /* weak */)
 	if err != nil {
 		i.err = err
 		return false
 	}
-	i.index.setCacheHandle(indexBlock)
-	i.err = i.index.init(i.cmp, indexBlock.Get(), i.reader.Properties.GlobalSeqNum)
+	i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum)
 	return i.err == nil
 }
 
@@ -784,15 +822,13 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *twoLevelIterator) Close() error {
+	var err error
 	if i.closeHook != nil {
-		if err := i.closeHook(i); err != nil {
-			return err
-		}
+		err = firstError(err, i.closeHook(i))
 	}
-	if err := i.data.Close(); err != nil {
-		return err
-	}
-	err := i.err
+	err = firstError(err, i.data.Close())
+	err = firstError(err, i.index.Close())
+	err = firstError(err, i.err)
 	*i = twoLevelIterator{
 		singleLevelIterator: i.singleLevelIterator.resetForReuse(),
 		topLevelIndex:       i.topLevelIndex.resetForReuse(),
@@ -811,6 +847,10 @@ type twoLevelCompactionIterator struct {
 
 // twoLevelCompactionIterator implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*twoLevelCompactionIterator)(nil)
+
+func (i *twoLevelCompactionIterator) Close() error {
+	return i.twoLevelIterator.Close()
+}
 
 func (i *twoLevelCompactionIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
@@ -874,7 +914,7 @@ func (i *twoLevelCompactionIterator) skipForward(
 type weakCachedBlock struct {
 	bh     BlockHandle
 	mu     sync.RWMutex
-	handle cache.WeakHandle
+	handle *cache.WeakHandle
 }
 
 type blockTransform func([]byte) ([]byte, error)
@@ -1040,7 +1080,15 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		}
 		return nil, err
 	}
-	return value, i.Close()
+
+	// The value will be "freed" when the iterator is closed, so make a copy
+	// which will outlast the lifetime of the iterator.
+	newValue := make([]byte, len(value))
+	copy(newValue, value)
+	if err := i.Close(); err != nil {
+		return nil, err
+	}
+	return newValue, nil
 }
 
 // NewIter returns an iterator for the contents of the table.
@@ -1121,7 +1169,7 @@ func (r *Reader) readWeakCachedBlock(w *weakCachedBlock, transform blockTransfor
 
 	// Slow-path: read the index block from disk. This checks the cache again,
 	// but that is ok because somebody else might have inserted it for us.
-	h, err := r.readBlock(w.bh, transform)
+	h, err := r.readBlock(w.bh, transform, true /* weak */)
 	if err != nil {
 		return nil, err
 	}
@@ -1135,24 +1183,35 @@ func (r *Reader) readWeakCachedBlock(w *weakCachedBlock, transform blockTransfor
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Handle, error) {
+func (r *Reader) readBlock(
+	bh BlockHandle, transform blockTransform, weak bool,
+) (cache.Handle, error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
 	}
 
-	b := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
+	var v *cache.Value
+	if weak {
+		v = r.opts.Cache.AllocAuto(make([]byte, int(bh.Length+blockTrailerLen)))
+	} else {
+		v = r.opts.Cache.AllocManual(int(bh.Length + blockTrailerLen))
+	}
+	b := v.Buf()
 	if _, err := r.file.ReadAt(b, int64(bh.Offset)); err != nil {
+		r.opts.Cache.Free(v)
 		return cache.Handle{}, err
 	}
 
 	checksum0 := binary.LittleEndian.Uint32(b[bh.Length+1:])
 	checksum1 := crc.New(b[:bh.Length+1]).Value()
 	if checksum0 != checksum1 {
+		r.opts.Cache.Free(v)
 		return cache.Handle{}, errors.New("pebble/table: invalid table (checksum mismatch)")
 	}
 
 	typ := b[bh.Length]
 	b = b[:bh.Length]
+	v.Truncate(len(b))
 
 	switch typ {
 	case noCompressionBlockType:
@@ -1160,29 +1219,55 @@ func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Hand
 	case snappyCompressionBlockType:
 		decodedLen, err := snappy.DecodedLen(b)
 		if err != nil {
+			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		decoded := r.opts.Cache.Alloc(decodedLen)
-		decoded, err = snappy.Decode(decoded, b)
+		var decoded *cache.Value
+		if weak {
+			decoded = r.opts.Cache.AllocAuto(make([]byte, decodedLen))
+		} else {
+			decoded = r.opts.Cache.AllocManual(decodedLen)
+		}
+		decodedBuf := decoded.Buf()
+		result, err := snappy.Decode(decodedBuf, b)
+		r.opts.Cache.Free(v)
 		if err != nil {
+			r.opts.Cache.Free(decoded)
 			return cache.Handle{}, err
 		}
-		r.opts.Cache.Free(b)
-		b = decoded
+		if len(result) != 0 &&
+			(len(result) != len(decodedBuf) || &result[0] != &decodedBuf[0]) {
+			r.opts.Cache.Free(decoded)
+			return cache.Handle{}, fmt.Errorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
+				result, decodedBuf)
+		}
+		v, b = decoded, decodedBuf
 	default:
+		r.opts.Cache.Free(v)
 		return cache.Handle{}, fmt.Errorf("pebble/table: unknown block compression: %d", typ)
 	}
 
 	if transform != nil {
-		// Transforming blocks is rare, so we don't bother to use cache.Alloc.
+		// Transforming blocks is rare, so the extra copy of the transformed data
+		// is not problematic.
 		var err error
 		b, err = transform(b)
 		if err != nil {
+			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
+		var newV *cache.Value
+		if weak {
+			newV = r.opts.Cache.AllocAuto(b)
+		} else {
+			newV = r.opts.Cache.AllocManual(len(b))
+			copy(newV.Buf(), b)
+		}
+		r.opts.Cache.Free(v)
+		v = newV
 	}
 
-	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, b)
+	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
 	return h, nil
 }
 
@@ -1229,18 +1314,19 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, false /* weak */)
 	if err != nil {
 		return err
 	}
 	data := b.Get()
+	defer b.Release()
+
 	if uint64(len(data)) != metaindexBH.Length {
 		return fmt.Errorf("pebble/table: unexpected metaindex block size: %d vs %d",
 			len(data), metaindexBH.Length)
 	}
 
 	i, err := newRawBlockIter(bytes.Compare, data)
-	b.Release()
 	if err != nil {
 		return err
 	}
@@ -1258,13 +1344,12 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */)
+		b, err = r.readBlock(bh, nil /* transform */, false /* weak */)
 		if err != nil {
 			return err
 		}
-		data := b.Get()
 		r.propertiesBH = bh
-		err := r.Properties.load(data, bh.Offset)
+		err := r.Properties.load(b.Get(), bh.Offset)
 		b.Release()
 		if err != nil {
 			return err
@@ -1350,7 +1435,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */)
+			subIndex, err := r.readBlock(indexBH, nil /* transform */, false /* weak */)
 			if err != nil {
 				return nil, err
 			}
@@ -1415,7 +1500,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */)
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, false /* weak */)
 		if err != nil {
 			return 0, err
 		}
@@ -1434,7 +1519,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */)
+			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, false /* weak */)
 			if err != nil {
 				return 0, err
 			}
@@ -1616,7 +1701,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, false /* weak */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
