@@ -1016,14 +1016,6 @@ type flushableBatch struct {
 
 	// Fragmented range deletion tombstones.
 	tombstones []rangedel.Tombstone
-
-	flushedCh chan struct{}
-
-	// flushForced indicates whether a flush was forced on this batch (either
-	// manual, or due to ingestion).
-	flushForced bool
-
-	logNum uint64
 }
 
 var _ flushable = (*flushableBatch)(nil)
@@ -1034,10 +1026,9 @@ var _ flushable = (*flushableBatch)(nil)
 // of the batch data.
 func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
-		data:      batch.data,
-		cmp:       comparer.Compare,
-		offsets:   make([]flushableBatchEntry, 0, batch.Count()),
-		flushedCh: make(chan struct{}),
+		data:    batch.data,
+		cmp:     comparer.Compare,
+		offsets: make([]flushableBatchEntry, 0, batch.Count()),
 	}
 	if b.data != nil {
 		// Note that this sequence number is not correct when this batch has not
@@ -1180,31 +1171,8 @@ func (b *flushableBatch) totalBytes() uint64 {
 	return uint64(cap(b.data))
 }
 
-func (b *flushableBatch) readerRef() {
-	// TODO(peter): account for large batch memory in the cache.
-}
-
-func (b *flushableBatch) readerUnref() {
-}
-
-func (b *flushableBatch) flushed() chan struct{} {
-	return b.flushedCh
-}
-
-func (b *flushableBatch) forcedFlush() bool {
-	return b.flushForced
-}
-
-func (b *flushableBatch) setForceFlush() {
-	b.flushForced = true
-}
-
 func (b *flushableBatch) readyForFlush() bool {
 	return true
-}
-
-func (b *flushableBatch) logInfo() (logNum, size, seqNum uint64) {
-	return b.logNum, 0 /* logSize */, b.seqNum
 }
 
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the

@@ -720,7 +720,7 @@ func TestMemTableReservation(t *testing.T) {
 	}
 
 	checkReserved(int64(opts.MemTableSize))
-	if refs := atomic.LoadInt32(&d.mu.mem.mutable.readerRefs); refs != 2 {
+	if refs := atomic.LoadInt32(&d.mu.mem.queue[len(d.mu.mem.queue)-1].readerRefs); refs != 2 {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
@@ -760,7 +760,7 @@ func TestMemTableReservationLeak(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.mu.Lock()
-	d.mu.mem.mutable.readerRef()
+	d.mu.mem.queue[len(d.mu.mem.queue)-1].readerRef()
 	d.mu.Unlock()
 	if err := d.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")

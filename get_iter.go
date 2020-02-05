@@ -26,7 +26,7 @@ type getIter struct {
 	levelIter    levelIter
 	level        int
 	batch        *Batch
-	mem          []flushable
+	mem          flushableList
 	l0           []fileMetadata
 	version      *version
 	iterKey      *InternalKey

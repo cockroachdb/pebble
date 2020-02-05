@@ -1554,7 +1554,7 @@ func TestFlushInvariant(t *testing.T) {
 					case 1:
 						// Force the flushing memtable to have a log number equal to the new
 						// log's number.
-						d.mu.mem.mutable.logNum = d.mu.versions.nextFileNum
+						d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = d.mu.versions.nextFileNum
 					}
 					d.mu.Unlock()
 

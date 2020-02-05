@@ -372,8 +372,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			return nil
 		}
 
+		toFlush := flushableList{{
+			flushable: mem,
+			flushed:   make(chan struct{}),
+		}}
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			d.mu.versions.picker.getBaseLevel(), []flushable{mem}, &d.bytesFlushed)
+			d.mu.versions.picker.getBaseLevel(), toFlush, &d.bytesFlushed)
 		c.disableRangeTombstoneElision = true
 		newVE, _, err := d.runCompaction(0, c, nilPacer)
 		if err != nil {
@@ -400,7 +404,9 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				// Add a memtable layer.
 				if !d.mu.mem.mutable.empty() {
 					d.mu.mem.mutable = newMemTable(memTableOptions{Options: d.opts})
-					d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+					entry := d.newFlushableEntry(d.mu.mem.mutable, 0, 0)
+					entry.readerRefs++
+					d.mu.mem.queue = append(d.mu.mem.queue, entry)
 					d.updateReadStateLocked(nil)
 				}
 				mem = d.mu.mem.mutable
