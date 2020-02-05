@@ -37,11 +37,13 @@ func TestCache(t *testing.T) {
 		var hit bool
 		h := cache.Get(1, uint64(key), 0)
 		if v := h.Get(); v == nil {
-			cache.Set(1, uint64(key), 0, append([]byte(nil), fields[0][0]))
+			value := cache.Alloc(1)
+			value.Buf()[0] = fields[0][0]
+			cache.Set(1, uint64(key), 0, value)
 		} else {
 			hit = true
-			if !bytes.Equal(v, fields[0][:1]) {
-				t.Errorf("%d: cache returned bad data: got %s , want %s\n", line, v, fields[0][:1])
+			if !bytes.Equal(v.Buf(), fields[0][:1]) {
+				t.Errorf("%d: cache returned bad data: got %s , want %s\n", line, v.Buf(), fields[0][:1])
 			}
 		}
 		h.Release()
@@ -52,29 +54,36 @@ func TestCache(t *testing.T) {
 	}
 }
 
+func testValue(cache *Cache, s string, repeat int) *Value {
+	b := bytes.Repeat([]byte(s), repeat)
+	v := cache.Alloc(len(b))
+	copy(v.Buf(), b)
+	return v
+}
+
 func TestWeakHandle(t *testing.T) {
 	cache := newShards(5, 1)
-	cache.Set(1, 1, 0, bytes.Repeat([]byte("a"), 5))
-	h := cache.Set(1, 0, 0, bytes.Repeat([]byte("b"), 5))
-	if v := h.Get(); string(v) != "bbbbb" {
+	cache.Set(1, 1, 0, testValue(cache, "a", 5))
+	h := cache.Set(1, 0, 0, testValue(cache, "b", 5))
+	if v := h.Get(); string(v.Buf()) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
 	w := h.Weak()
 	h.Release()
-	if v := w.Get(); string(v) != "bbbbb" {
+	if v := w.Get(); string(v.Buf()) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
-	cache.Set(1, 2, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 2, 0, testValue(cache, "a", 5))
 	if v := w.Get(); v != nil {
-		t.Fatalf("expected nil, but found %s", v)
+		t.Fatalf("expected nil, but found %s", v.Buf())
 	}
 }
 
 func TestCacheDelete(t *testing.T) {
 	cache := newShards(100, 1)
-	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(1, 1, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(1, 2, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 0, 0, testValue(cache, "a", 5))
+	cache.Set(1, 1, 0, testValue(cache, "a", 5))
+	cache.Set(1, 2, 0, testValue(cache, "a", 5))
 	if expected, size := int64(15), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -97,11 +106,11 @@ func TestCacheDelete(t *testing.T) {
 
 func TestEvictFile(t *testing.T) {
 	cache := newShards(100, 1)
-	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(1, 1, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(1, 2, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(1, 2, 1, bytes.Repeat([]byte("a"), 5))
-	cache.Set(1, 2, 2, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 0, 0, testValue(cache, "a", 5))
+	cache.Set(1, 1, 0, testValue(cache, "a", 5))
+	cache.Set(1, 2, 0, testValue(cache, "a", 5))
+	cache.Set(1, 2, 1, testValue(cache, "a", 5))
+	cache.Set(1, 2, 2, testValue(cache, "a", 5))
 	if expected, size := int64(25), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -123,14 +132,14 @@ func TestEvictAll(t *testing.T) {
 	// Verify that it is okay to evict all of the data from a cache. Previously
 	// this would trigger a nil-pointer dereference.
 	cache := newShards(100, 1)
-	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 101))
-	cache.Set(1, 1, 0, bytes.Repeat([]byte("a"), 101))
+	cache.Set(1, 0, 0, testValue(cache, "a", 101))
+	cache.Set(1, 1, 0, testValue(cache, "a", 101))
 }
 
 func TestMultipleDBs(t *testing.T) {
 	cache := newShards(100, 1)
-	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 5))
-	cache.Set(2, 0, 0, bytes.Repeat([]byte("b"), 5))
+	cache.Set(1, 0, 0, testValue(cache, "a", 5))
+	cache.Set(2, 0, 0, testValue(cache, "b", 5))
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -140,35 +149,35 @@ func TestMultipleDBs(t *testing.T) {
 	}
 	h := cache.Get(1, 0, 0)
 	if v := h.Get(); v != nil {
-		t.Fatalf("expected not present, but found %s", v)
+		t.Fatalf("expected not present, but found %s", v.Buf())
 	}
 	h = cache.Get(2, 0, 0)
-	if v := h.Get(); string(v) != "bbbbb" {
-		t.Fatalf("expected bbbbb, but found %v", v)
+	if v := h.Get(); string(v.Buf()) != "bbbbb" {
+		t.Fatalf("expected bbbbb, but found %s", v.Buf())
 	}
 }
 
 func TestZeroSize(t *testing.T) {
 	cache := newShards(0, 1)
-	cache.Set(1, 0, 0, bytes.Repeat([]byte("a"), 5))
+	cache.Set(1, 0, 0, testValue(cache, "a", 5))
 }
 
 func TestReserve(t *testing.T) {
 	cache := newShards(4, 2)
-	cache.Set(1, 0, 0, []byte("a"))
-	cache.Set(2, 0, 0, []byte("a"))
+	cache.Set(1, 0, 0, testValue(cache, "a", 1))
+	cache.Set(2, 0, 0, testValue(cache, "a", 1))
 	require.EqualValues(t, 2, cache.Size())
 	r := cache.Reserve(1)
 	require.EqualValues(t, 0, cache.Size())
-	cache.Set(1, 0, 0, []byte("a"))
-	cache.Set(2, 0, 0, []byte("a"))
-	cache.Set(3, 0, 0, []byte("a"))
-	cache.Set(4, 0, 0, []byte("a"))
+	cache.Set(1, 0, 0, testValue(cache, "a", 1))
+	cache.Set(2, 0, 0, testValue(cache, "a", 1))
+	cache.Set(3, 0, 0, testValue(cache, "a", 1))
+	cache.Set(4, 0, 0, testValue(cache, "a", 1))
 	require.EqualValues(t, 2, cache.Size())
 	r()
 	require.EqualValues(t, 2, cache.Size())
-	cache.Set(1, 0, 0, []byte("a"))
-	cache.Set(2, 0, 0, []byte("a"))
+	cache.Set(1, 0, 0, testValue(cache, "a", 1))
+	cache.Set(2, 0, 0, testValue(cache, "a", 1))
 	require.EqualValues(t, 4, cache.Size())
 }
 

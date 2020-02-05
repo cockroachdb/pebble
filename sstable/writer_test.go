@@ -99,7 +99,12 @@ func TestWriterClearCache(t *testing.T) {
 	opts := ReaderOptions{Cache: cache.New(64 << 20)}
 	writerOpts := WriterOptions{Cache: opts.Cache}
 	cacheOpts := &cacheOpts{cacheID: 1, fileNum: 1}
-	invalidData := []byte("invalid data")
+	invalidData := func() *cache.Value {
+		invalid := []byte("invalid data")
+		v := opts.Cache.Alloc(len(invalid))
+		copy(v.Buf(), invalid)
+		return v
+	}
 
 	build := func(name string) {
 		f, err := mem.Create(name)
@@ -149,7 +154,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	// Poison the cache for each of the blocks.
 	poison := func(bh BlockHandle) {
-		opts.Cache.Set(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset, invalidData)
+		opts.Cache.Set(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset, invalidData())
 	}
 	foreachBH(layout, poison)
 
@@ -161,7 +166,7 @@ func TestWriterClearCache(t *testing.T) {
 	check := func(bh BlockHandle) {
 		h := opts.Cache.Get(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset)
 		if h.Get() != nil {
-			t.Fatalf("%d: expected cache to be cleared, but found %q", bh.Offset, invalidData)
+			t.Fatalf("%d: expected cache to be cleared, but found %q", bh.Offset, invalidData())
 		}
 	}
 	foreachBH(layout, check)

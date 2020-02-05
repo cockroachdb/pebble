@@ -691,7 +691,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i, err := newRawBlockIter(bytes.Compare, b.Get())
+	i, err := newRawBlockIter(bytes.Compare, b.Get().Buf())
 	b.Release()
 	if err != nil {
 		t.Fatal(err)

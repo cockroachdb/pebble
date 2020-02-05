@@ -120,6 +120,14 @@ type compaction struct {
 	inuseKeyRanges      []userKeyRange
 	elideTombstoneIndex int
 
+	// Slice of rangeDelIters opened during the compaction. Used to ensure that
+	// the iterators are not garbage collected during the lifetime of the
+	// compaction which would invalidate the tombstones that have been returned.
+	//
+	// TODO(peter): This is a bit hacky. Is there something better that can be
+	// done?
+	rangeDelIters []internalIterator
+
 	metrics map[int]*LevelMetrics
 }
 
@@ -672,6 +680,14 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			}
 		}
 		if rangeDelIter != nil {
+			// The tombstones returned by an sstable-backed rangeDelIter are only
+			// valid for the lifetime of the rangeDelIter object. As soon as that
+			// object is garbage collected the tombstones become invalid. Compaction
+			// expects the tombstones to remain valid for the lifetime of the
+			// compaction, so keep a reference to all of the rangeDelIters in the
+			// compaction.
+			c.rangeDelIters = append(c.rangeDelIters, rangeDelIter)
+
 			// Truncate the range tombstones returned by the iterator to the upper
 			// bound of the atomic compaction unit. Note that we need do this
 			// truncation at read time in order to handle RocksDB generated sstables

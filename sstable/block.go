@@ -7,6 +7,7 @@ package sstable
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -239,18 +240,38 @@ type blockIter struct {
 	cached      []blockEntry
 	cachedBuf   []byte
 	cacheHandle cache.Handle
+	cacheValue  *cache.Value
 	err         error
 }
 
 // blockIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*blockIter)(nil)
 
-func newBlockIter(cmp Compare, block block) (*blockIter, error) {
+func newBlockIter(cmp Compare, block *cache.Value) (*blockIter, error) {
 	i := &blockIter{}
 	return i, i.init(cmp, block, 0)
 }
 
-func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
+func newBlockIterWithBuf(cmp Compare, block block) (*blockIter, error) {
+	i := &blockIter{}
+	return i, i.initBuf(cmp, block, 0)
+}
+
+func (i *blockIter) init(cmp Compare, block *cache.Value, globalSeqNum uint64) error {
+	if err := i.initBuf(cmp, block.Buf(), globalSeqNum); err != nil {
+		return err
+	}
+	i.cacheValue = block
+	return nil
+}
+
+func (i *blockIter) initHandle(cmp Compare, block cache.Handle, globalSeqNum uint64) error {
+	i.cacheHandle.Release()
+	i.cacheHandle = block
+	return i.init(cmp, block.Get(), globalSeqNum)
+}
+
+func (i *blockIter) initBuf(cmp Compare, block block, globalSeqNum uint64) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return errors.New("pebble/table: invalid table (block has no restart points)")
@@ -282,11 +303,6 @@ func (i *blockIter) resetForReuse() blockIter {
 		cached:    i.cached[:0],
 		cachedBuf: i.cachedBuf[:0],
 	}
-}
-
-func (i *blockIter) setCacheHandle(h cache.Handle) {
-	i.cacheHandle.Release()
-	i.cacheHandle = h
 }
 
 func (i *blockIter) readEntry() {
@@ -361,6 +377,14 @@ func (i *blockIter) readEntry() {
 	}
 
 	unsharedKey := getBytes(ptr, int(unshared))
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("fullKey=%p unsharedKey=%p ptr=%p offset=%d shared=%d\n", i.fullKey, unsharedKey, i.ptr, i.offset, shared)
+			panic(r)
+		}
+	}()
+
 	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
 	if shared == 0 {
 		// Provide stability for the key across positioning calls if the key
@@ -832,6 +856,7 @@ func (i *blockIter) Error() error {
 // package.
 func (i *blockIter) Close() error {
 	i.cacheHandle.Release()
+	i.cacheValue = nil
 	i.val = nil
 	return i.err
 }

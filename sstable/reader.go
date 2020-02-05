@@ -100,7 +100,7 @@ func (i *singleLevelIterator) Init(r *Reader, lower, upper []byte) error {
 	i.err = r.err
 
 	if i.err == nil {
-		var index block
+		var index *cache.Value
 		index, i.err = r.readIndex()
 		if i.err != nil {
 			return i.err
@@ -164,8 +164,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = err
 		return false
 	}
-	i.data.setCacheHandle(block)
-	i.err = i.data.init(i.cmp, block.Get(), i.reader.Properties.GlobalSeqNum)
+	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		return false
 	}
@@ -228,13 +227,13 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 
 	// Check prefix bloom filter.
 	if i.reader.tableFilter != nil {
-		var data block
+		var data *cache.Value
 		data, i.err = i.reader.readFilter()
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, nil
 		}
-		if !i.reader.tableFilter.mayContain(data, prefix) {
+		if !i.reader.tableFilter.mayContain(data.Buf(), prefix) {
 			i.data.invalidate()
 			return nil, nil
 		}
@@ -564,8 +563,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = err
 		return false
 	}
-	i.index.setCacheHandle(indexBlock)
-	i.err = i.index.init(i.cmp, indexBlock.Get(), i.reader.Properties.GlobalSeqNum)
+	i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum)
 	return i.err == nil
 }
 
@@ -1025,7 +1023,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		} else {
 			lookupKey = key
 		}
-		if !r.tableFilter.mayContain(data, lookupKey) {
+		if !r.tableFilter.mayContain(data.Buf(), lookupKey) {
 			return nil, base.ErrNotFound
 		}
 	}
@@ -1095,28 +1093,30 @@ func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
 	return i, nil
 }
 
-func (r *Reader) readIndex() (block, error) {
+func (r *Reader) readIndex() (*cache.Value, error) {
 	return r.readWeakCachedBlock(&r.index, nil /* transform */)
 }
 
-func (r *Reader) readFilter() (block, error) {
+func (r *Reader) readFilter() (*cache.Value, error) {
 	return r.readWeakCachedBlock(&r.filter, nil /* transform */)
 }
 
-func (r *Reader) readRangeDel() (block, error) {
+func (r *Reader) readRangeDel() (*cache.Value, error) {
 	return r.readWeakCachedBlock(&r.rangeDel, r.rangeDelTransform)
 }
 
-func (r *Reader) readWeakCachedBlock(w *weakCachedBlock, transform blockTransform) (block, error) {
+func (r *Reader) readWeakCachedBlock(
+	w *weakCachedBlock, transform blockTransform,
+) (*cache.Value, error) {
 	// Fast-path for retrieving the block from a weak cache handle.
 	w.mu.RLock()
-	var b []byte
+	var v *cache.Value
 	if w.handle != nil {
-		b = w.handle.Get()
+		v = w.handle.Get()
 	}
 	w.mu.RUnlock()
-	if b != nil {
-		return b, nil
+	if v != nil {
+		return v, nil
 	}
 
 	// Slow-path: read the index block from disk. This checks the cache again,
@@ -1125,13 +1125,13 @@ func (r *Reader) readWeakCachedBlock(w *weakCachedBlock, transform blockTransfor
 	if err != nil {
 		return nil, err
 	}
-	b = h.Get()
+	v = h.Get()
 	if wh := h.Weak(); wh != nil {
 		w.mu.Lock()
 		w.handle = wh
 		w.mu.Unlock()
 	}
-	return b, err
+	return v, err
 }
 
 // readBlock reads and decompresses a block from disk into memory.
@@ -1140,7 +1140,8 @@ func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Hand
 		return h, nil
 	}
 
-	b := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
+	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
+	b := v.Buf()
 	if _, err := r.file.ReadAt(b, int64(bh.Offset)); err != nil {
 		return cache.Handle{}, err
 	}
@@ -1153,6 +1154,7 @@ func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Hand
 
 	typ := b[bh.Length]
 	b = b[:bh.Length]
+	v.Truncate(len(b))
 
 	switch typ {
 	case noCompressionBlockType:
@@ -1163,26 +1165,37 @@ func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Hand
 			return cache.Handle{}, err
 		}
 		decoded := r.opts.Cache.Alloc(decodedLen)
-		decoded, err = snappy.Decode(decoded, b)
+		decodedBuf := decoded.Buf()
+		result, err := snappy.Decode(decodedBuf, b)
 		if err != nil {
 			return cache.Handle{}, err
 		}
-		r.opts.Cache.Free(b)
-		b = decoded
+		if len(result) != 0 &&
+			(len(result) != len(decodedBuf) || &result[0] != &decodedBuf[0]) {
+			return cache.Handle{}, fmt.Errorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
+				result, decodedBuf)
+		}
+		r.opts.Cache.Free(v)
+		v, b = decoded, decoded.Buf()
 	default:
 		return cache.Handle{}, fmt.Errorf("pebble/table: unknown block compression: %d", typ)
 	}
 
 	if transform != nil {
-		// Transforming blocks is rare, so we don't bother to use cache.Alloc.
+		// Transforming blocks is rare, so the extra copy of the transformed data
+		// is not problematic.
 		var err error
 		b, err = transform(b)
 		if err != nil {
 			return cache.Handle{}, err
 		}
+		newV := r.opts.Cache.Alloc(len(b))
+		copy(newV.Buf(), b)
+		r.opts.Cache.Free(v)
+		v = newV
 	}
 
-	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, b)
+	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
 	return h, nil
 }
 
@@ -1192,7 +1205,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
+	if err := iter.initBuf(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	var tombstones []rangedel.Tombstone
@@ -1233,7 +1246,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	if err != nil {
 		return err
 	}
-	data := b.Get()
+	data := b.Get().Buf()
 	if uint64(len(data)) != metaindexBH.Length {
 		return fmt.Errorf("pebble/table: unexpected metaindex block size: %d vs %d",
 			len(data), metaindexBH.Length)
@@ -1262,7 +1275,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 		if err != nil {
 			return err
 		}
-		data := b.Get()
+		data := b.Get().Buf()
 		r.propertiesBH = bh
 		err := r.Properties.load(data, bh.Offset)
 		b.Release()
@@ -1696,7 +1709,7 @@ func (l *Layout) Describe(
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 		case "properties":
-			iter, _ := newRawBlockIter(r.Compare, h.Get())
+			iter, _ := newRawBlockIter(r.Compare, h.Get().Buf())
 			for valid := iter.First(); valid; valid = iter.Next() {
 				fmt.Fprintf(w, "%10d    %s (%d)",
 					b.Offset+uint64(iter.offset), iter.Key().UserKey, iter.nextOffset-iter.offset)
@@ -1704,7 +1717,7 @@ func (l *Layout) Describe(
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 		case "meta-index":
-			iter, _ := newRawBlockIter(r.Compare, h.Get())
+			iter, _ := newRawBlockIter(r.Compare, h.Get().Buf())
 			for valid := iter.First(); valid; valid = iter.Next() {
 				value := iter.Value()
 				bh, n := decodeBlockHandle(value)
