@@ -267,6 +267,12 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	return nil
 }
 
+func (i *blockIter) initHandle(cmp Compare, block cache.Handle, globalSeqNum uint64) error {
+	i.cacheHandle.Release()
+	i.cacheHandle = block
+	return i.init(cmp, block.Get(), globalSeqNum)
+}
+
 func (i *blockIter) invalidate() {
 	i.clearCache()
 	i.offset = 0
@@ -282,11 +288,6 @@ func (i *blockIter) resetForReuse() blockIter {
 		cached:    i.cached[:0],
 		cachedBuf: i.cachedBuf[:0],
 	}
-}
-
-func (i *blockIter) setCacheHandle(h cache.Handle) {
-	i.cacheHandle.Release()
-	i.cacheHandle = h
 }
 
 func (i *blockIter) readEntry() {
@@ -832,6 +833,7 @@ func (i *blockIter) Error() error {
 // package.
 func (i *blockIter) Close() error {
 	i.cacheHandle.Release()
+	i.cacheHandle = cache.Handle{}
 	i.val = nil
 	return i.err
 }

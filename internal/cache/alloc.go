@@ -5,9 +5,11 @@
 package cache
 
 import (
+	"runtime"
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/manual"
 	"golang.org/x/exp/rand"
 )
 
@@ -73,12 +75,20 @@ func newAllocCache() *allocCache {
 		bufs: make([][]byte, 0, allocCacheCountLimit),
 	}
 	c.rnd.Seed(uint64(time.Now().UnixNano()))
+	runtime.SetFinalizer(c, freeAllocCache)
 	return c
+}
+
+func freeAllocCache(obj interface{}) {
+	c := obj.(*allocCache)
+	for i := range c.bufs {
+		manual.Free(c.bufs[i])
+	}
 }
 
 func (c *allocCache) alloc(n int) []byte {
 	if n < allocCacheMinSize || n >= allocCacheMaxSize {
-		return make([]byte, n)
+		return manual.New(n)
 	}
 
 	class := sizeToClass(n)
@@ -92,12 +102,13 @@ func (c *allocCache) alloc(n int) []byte {
 		}
 	}
 
-	return make([]byte, n, classToSize(class))
+	return manual.New(classToSize(class))[:n]
 }
 
 func (c *allocCache) free(b []byte) {
 	n := cap(b)
 	if n < allocCacheMinSize || n >= allocCacheMaxSize {
+		manual.Free(b)
 		return
 	}
 	b = b[:n:n]
@@ -117,6 +128,7 @@ func (c *allocCache) free(b []byte) {
 		// are biased, but that is fine for the usage here.
 		j := (uint32(len(c.bufs)) * (uint32(c.rnd.Uint64()) & ((1 << 16) - 1))) >> 16
 		c.size -= cap(c.bufs[j])
+		manual.Free(c.bufs[j])
 		c.bufs[i], c.bufs[j] = nil, c.bufs[i]
 		c.bufs = c.bufs[:i]
 	}
