@@ -454,12 +454,11 @@ func (d *DB) Ingest(paths []string) error {
 		// is ordered from oldest to newest with the mutable memtable being the
 		// last element in the slice. We want to wait for the newest table that
 		// overlaps.
-		mutableIndex := len(d.mu.mem.queue) - 1
-		for i := mutableIndex; i >= 0; i-- {
+		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
 				mem = m
-				if i == mutableIndex {
+				if mem.flushable == d.mu.mem.mutable {
 					err = d.makeRoomForWrite(nil)
 				}
 				mem.flushForced = true
