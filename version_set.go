@@ -292,7 +292,8 @@ func (vs *versionSet) logUnlock() {
 // (see logLock). Will unconditionally release the manifest lock (via
 // logUnlock) even if an error occurs.
 //
-// inProgressCompactions is called while DB.mu is held, to get the list of in-progress compactions.
+// inProgressCompactions is called while DB.mu is held, to get the list of
+// in-progress compactions.
 func (vs *versionSet) logAndApply(
 	jobID int,
 	ve *versionEdit,
@@ -312,6 +313,7 @@ func (vs *versionSet) logAndApply(
 				ve.MinUnflushedLogNum))
 		}
 	}
+
 	// This is the next manifest filenum, but if the current file is too big we
 	// will write this ve to the next file which means what ve encodes is the
 	// current filenum and not the next one.
@@ -320,8 +322,16 @@ func (vs *versionSet) logAndApply(
 	ve.NextFileNum = vs.nextFileNum
 
 	// LastSeqNum is set to the current upper bound on the assigned sequence
-	// numbers.
+	// numbers. Note that this is exactly the behavior of RocksDB. LastSeqNum is
+	// used to initialize versionSet.logSeqNum and versionSet.visibleSeqNum on
+	// replay. It must be higher than any than any sequence number written to an
+	// sstable, including sequence numbers in ingested files. Note that
+	// LastSeqNum is not (and cannot be) the minumum unflushed sequence
+	// number. This is fallout from ingestion which allows a sequence number X to
+	// be assigned to an ingested sstable even though sequence number X-1 resides
+	// in an unflushed memtable.
 	ve.LastSeqNum = atomic.LoadUint64(&vs.logSeqNum)
+
 	currentVersion := vs.currentVersion()
 	var newVersion *version
 
@@ -332,7 +342,8 @@ func (vs *versionSet) logAndApply(
 		newManifestFileNum = vs.getNextFileNum()
 	}
 
-	// Grab certain values before releasing vs.mu, in case createManifest() needs to be called.
+	// Grab certain values before releasing vs.mu, in case createManifest() needs
+	// to be called.
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
@@ -447,7 +458,7 @@ func (vs *versionSet) incrementFlushes() {
 
 // createManifest creates a manifest file that contains a snapshot of vs.
 func (vs *versionSet) createManifest(
-	dirname string, fileNum uint64, minUnflushedLogNum uint64, nextFileNum uint64,
+	dirname string, fileNum, minUnflushedLogNum, nextFileNum uint64,
 ) (err error) {
 	var (
 		filename     = base.MakeFilename(vs.fs, dirname, fileTypeManifest, fileNum)

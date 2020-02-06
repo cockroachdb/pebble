@@ -384,11 +384,17 @@ func TestLargeBatch(t *testing.T) {
 		}
 		return info.Size()
 	}
+	memTableCreationSeqNum := func() uint64 {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.mem.mutable.logSeqNum
+	}
 
 	startLogNum := logNum()
 	startLogStartSize := fileSize(startLogNum)
+	startSeqNum := atomic.LoadUint64(&d.mu.versions.logSeqNum)
 
-	// Write two keys with values that are larger than the memtable size.
+	// Write a key with a value larger than the memtable size.
 	if err := d.Set([]byte("a"), bytes.Repeat([]byte("a"), 512), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -408,6 +414,9 @@ func TestLargeBatch(t *testing.T) {
 	endLogSize := fileSize(endLogNum)
 	if endLogSize != 0 {
 		t.Fatalf("expected %06d.log to be empty, but found %d", endLogNum, endLogSize)
+	}
+	if creationSeqNum := memTableCreationSeqNum(); creationSeqNum <= startSeqNum {
+		t.Fatalf("expected memTable.logSeqNum=%d > largeBatch.seqNum=%d", creationSeqNum, startSeqNum)
 	}
 
 	// Verify this results in one L0 table being created.

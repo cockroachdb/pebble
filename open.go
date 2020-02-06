@@ -33,16 +33,17 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	}
 
 	d := &DB{
-		cacheID:        opts.Cache.NewID(),
-		dirname:        dirname,
-		walDirname:     opts.WALDir,
-		opts:           opts,
-		cmp:            opts.Comparer.Compare,
-		equal:          opts.Comparer.Equal,
-		merge:          opts.Merger.Merge,
-		split:          opts.Comparer.Split,
-		abbreviatedKey: opts.Comparer.AbbreviatedKey,
-		logRecycler:    logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
+		cacheID:             opts.Cache.NewID(),
+		dirname:             dirname,
+		walDirname:          opts.WALDir,
+		opts:                opts,
+		cmp:                 opts.Comparer.Compare,
+		equal:               opts.Comparer.Equal,
+		merge:               opts.Merger.Merge,
+		split:               opts.Comparer.Split,
+		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
+		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
+		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 	}
 	if d.equal == nil {
 		d.equal = bytes.Equal
@@ -145,11 +146,13 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 	}
 
-	{
+	// In read-only mode, we replay directly into the mutable memtable but never
+	// flush it. We need to delay creation of the memtable until we know the
+	// sequence number of the first batch that will be inserted.
+	if !d.opts.ReadOnly {
 		var entry *flushableEntry
 		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.logSeqNum)
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
-		d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
 	}
 
 	ls, err := opts.FS.List(d.walDirname)
@@ -306,7 +309,9 @@ func (d *DB) replayWAL(
 		// In read-only mode, we replay directly into the mutable memtable which will
 		// never be flushed.
 		mem = d.mu.mem.mutable
-		entry = d.mu.mem.queue[len(d.mu.mem.queue)-1]
+		if mem != nil {
+			entry = d.mu.mem.queue[len(d.mu.mem.queue)-1]
+		}
 	}
 
 	// Flushes the current memtable, if not nil.

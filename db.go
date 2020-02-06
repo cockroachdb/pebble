@@ -1352,6 +1352,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		var logSeqNum uint64
 		if b != nil {
 			logSeqNum = b.SeqNum()
+			if b.flushable != nil {
+				logSeqNum += uint64(b.Count())
+			}
 		} else {
 			logSeqNum = atomic.LoadUint64(&d.mu.versions.logSeqNum)
 		}
