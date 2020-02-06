@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -25,7 +26,7 @@ func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 var memTableEmptySize = func() uint32 {
 	var pointSkl arenaskl.Skiplist
 	var rangeDelSkl arenaskl.Skiplist
-	arena := arenaskl.NewArena(16 << 10 /* 16 KB */)
+	arena := arenaskl.NewArena(make([]byte, 16<<10 /* 16 KB */))
 	pointSkl.Reset(arena, bytes.Compare)
 	rangeDelSkl.Reset(arena, bytes.Compare)
 	return arena.Size()
@@ -38,14 +39,14 @@ var memTableEmptySize = func() uint32 {
 //
 // A memTable is implemented on top of a lock-free arena-backed skiplist. An
 // arena is a fixed size contiguous chunk of memory (see
-// Options.MemTableSize). A memTable's memory consumtion is thus fixed at
-// the time of creation (with the exception of the cached fragmented range
+// Options.MemTableSize). A memTable's memory consumption is thus fixed at the
+// time of creation (with the exception of the cached fragmented range
 // tombstones). The arena-backed skiplist provides both forward and reverse
 // links which makes forward and reverse iteration the same speed.
 //
 // A batch is "applied" to a memTable in a two step process: prepare(batch) ->
 // apply(batch). memTable.prepare() is not thread-safe and must be called with
-// external sychronization. Preparation reserves space in the memTable for the
+// external synchronization. Preparation reserves space in the memTable for the
 // batch. Note that we pessimistically compute how much space a batch will
 // consume in the memTable (see memTableEntrySize and
 // Batch.memTableSize). Preparation is an O(1) operation. Applying a batch to
@@ -59,6 +60,7 @@ var memTableEmptySize = func() uint32 {
 type memTable struct {
 	cmp         Compare
 	equal       Equal
+	arenaBuf    []byte
 	skl         arenaskl.Skiplist
 	rangeDelSkl arenaskl.Skiplist
 	// reserved tracks the amount of space used by the memtable, both by actual
@@ -83,8 +85,17 @@ type memTable struct {
 // which is used by tests.
 type memTableOptions struct {
 	*Options
+	arenaBuf  []byte
 	size      int
 	logSeqNum uint64
+}
+
+func checkMemTable(obj interface{}) {
+	m := obj.(*memTable)
+	if m.arenaBuf != nil {
+		fmt.Fprintf(os.Stderr, "%p: memTable buffer was not freed\n", m.arenaBuf)
+		os.Exit(1)
+	}
 }
 
 // newMemTable returns a new MemTable of the specified size. If size is zero,
@@ -98,11 +109,16 @@ func newMemTable(opts memTableOptions) *memTable {
 	m := &memTable{
 		cmp:        opts.Comparer.Compare,
 		equal:      opts.Comparer.Equal,
+		arenaBuf:   opts.arenaBuf,
 		writerRefs: 1,
 		logSeqNum:  opts.logSeqNum,
 	}
 
-	arena := arenaskl.NewArena(uint32(opts.size))
+	if m.arenaBuf == nil {
+		m.arenaBuf = make([]byte, opts.size)
+	}
+
+	arena := arenaskl.NewArena(m.arenaBuf)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	return m

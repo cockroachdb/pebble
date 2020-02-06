@@ -22,8 +22,6 @@ import (
 	"math"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/cockroachdb/pebble/internal/rawalloc"
 )
 
 // Arena is lock-free.
@@ -42,13 +40,14 @@ var (
 	ErrArenaFull = errors.New("allocation failed because arena is full")
 )
 
-// NewArena allocates a new arena of the specified size and returns it.
-func NewArena(size uint32) *Arena {
+// NewArena allocates a new arena using the specified buffer as the backing
+// store.
+func NewArena(buf []byte) *Arena {
 	// Don't store data at position 0 in order to reserve offset=0 as a kind
 	// of nil pointer.
 	return &Arena{
 		n:   1,
-		buf: rawalloc.New(int(size), int(size)),
+		buf: buf,
 	}
 }
 

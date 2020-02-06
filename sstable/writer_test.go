@@ -14,10 +14,17 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriter(t *testing.T) {
 	var r *Reader
+	defer func() {
+		if r != nil {
+			require.NoError(t, r.Close())
+		}
+	}()
+
 	datadriven.RunTest(t, "testdata/writer", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
@@ -97,6 +104,8 @@ func TestWriterClearCache(t *testing.T) {
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
 	opts := ReaderOptions{Cache: cache.New(64 << 20)}
+	defer opts.Cache.Unref()
+
 	writerOpts := WriterOptions{Cache: opts.Cache}
 	cacheOpts := &cacheOpts{cacheID: 1, fileNum: 1}
 	invalidData := func() *cache.Value {
@@ -170,6 +179,8 @@ func TestWriterClearCache(t *testing.T) {
 		}
 	}
 	foreachBH(layout, check)
+
+	require.NoError(t, r.Close())
 }
 
 type discardFile struct{}

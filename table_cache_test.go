@@ -332,10 +332,11 @@ func TestTableCacheIterLeak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := c.newIters(
+	iter, _, err := c.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
-		nil /* bytes iterated */); err != nil {
+		nil /* bytes iterated */)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Close(); err == nil {
@@ -344,6 +345,9 @@ func TestTableCacheIterLeak(t *testing.T) {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
 	} else {
 		t.Log(err.Error())
+	}
+	if err := iter.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
