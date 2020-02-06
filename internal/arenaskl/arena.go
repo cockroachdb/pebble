@@ -43,7 +43,7 @@ var (
 )
 
 // NewArena allocates a new arena of the specified size and returns it.
-func NewArena(size, extValueThreshold uint32) *Arena {
+func NewArena(size uint32) *Arena {
 	// Don't store data at position 0 in order to reserve offset=0 as a kind
 	// of nil pointer.
 	return &Arena{

@@ -116,7 +116,7 @@ func newMemTable(opts memTableOptions) *memTable {
 		m.releaseMemAccounting = opts.memAccounting(opts.size)
 	}
 
-	arena := arenaskl.NewArena(uint32(opts.size), 0)
+	arena := arenaskl.NewArena(uint32(opts.size))
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.emptySize = arena.Size()
