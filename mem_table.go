@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -47,6 +48,7 @@ func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 type memTable struct {
 	cmp         Compare
 	equal       Equal
+	arenaBuf    []byte
 	skl         arenaskl.Skiplist
 	rangeDelSkl arenaskl.Skiplist
 	// emptySize is the amount of allocated space in the arena when the memtable
@@ -74,8 +76,17 @@ type memTable struct {
 // which is used by tests.
 type memTableOptions struct {
 	*Options
+	arenaBuf  []byte
 	size      int
 	logSeqNum uint64
+}
+
+func checkMemTable(obj interface{}) {
+	m := obj.(*memTable)
+	if m.arenaBuf != nil {
+		fmt.Fprintf(os.Stderr, "%p: memTable buffer was not freed\n", m.arenaBuf)
+		os.Exit(1)
+	}
 }
 
 // newMemTable returns a new MemTable of the specified size. If size is zero,
@@ -89,11 +100,16 @@ func newMemTable(opts memTableOptions) *memTable {
 	m := &memTable{
 		cmp:        opts.Comparer.Compare,
 		equal:      opts.Comparer.Equal,
+		arenaBuf:   opts.arenaBuf,
 		writerRefs: 1,
 		logSeqNum:  opts.logSeqNum,
 	}
 
-	arena := arenaskl.NewArena(uint32(opts.size))
+	if m.arenaBuf == nil {
+		m.arenaBuf = make([]byte, opts.size)
+	}
+
+	arena := arenaskl.NewArena(m.arenaBuf)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.emptySize = arena.Size()
