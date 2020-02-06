@@ -10,12 +10,15 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"sort"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -23,8 +26,16 @@ import (
 
 const initialMemTableSize = 256 << 10 // 256 KB
 
-// Open opens a LevelDB whose files live in the given directory.
-func Open(dirname string, opts *Options) (*DB, error) {
+func checkDB(obj interface{}) {
+	d := obj.(*DB)
+	if atomic.LoadInt32(&d.closed) == 0 {
+		fmt.Fprintf(os.Stderr, "%p: unreferenced DB not closed\n", d)
+		os.Exit(1)
+	}
+}
+
+// Open opens a DB whose files live in the given directory.
+func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
 	opts = opts.EnsureDefaults()
@@ -44,6 +55,25 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		abbreviatedKey: opts.Comparer.AbbreviatedKey,
 		logRecycler:    logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 	}
+
+	defer func() {
+		// If an error or panic occurs during open, attempt to release the manually
+		// allocated memory resources. Note that rather than look for an error, we
+		// look for the return of a nil DB pointer.
+		if r := recover(); db == nil {
+			for _, mem := range d.mu.mem.queue {
+				switch t := mem.flushable.(type) {
+				case *memTable:
+					manual.Free(t.arenaBuf)
+					t.arenaBuf = nil
+				}
+			}
+			if r != nil {
+				panic(r)
+			}
+		}
+	}()
+
 	if d.equal == nil {
 		d.equal = bytes.Equal
 	}
@@ -273,6 +303,10 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	}
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
+
+	if invariants.Enabled {
+		runtime.SetFinalizer(d, checkDB)
+	}
 
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil
