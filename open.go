@@ -33,16 +33,17 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	}
 
 	d := &DB{
-		cacheID:        opts.Cache.NewID(),
-		dirname:        dirname,
-		walDirname:     opts.WALDir,
-		opts:           opts,
-		cmp:            opts.Comparer.Compare,
-		equal:          opts.Comparer.Equal,
-		merge:          opts.Merger.Merge,
-		split:          opts.Comparer.Split,
-		abbreviatedKey: opts.Comparer.AbbreviatedKey,
-		logRecycler:    logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
+		cacheID:             opts.Cache.NewID(),
+		dirname:             dirname,
+		walDirname:          opts.WALDir,
+		opts:                opts,
+		cmp:                 opts.Comparer.Compare,
+		equal:               opts.Comparer.Equal,
+		merge:               opts.Merger.Merge,
+		split:               opts.Comparer.Split,
+		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
+		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
+		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 	}
 	if d.equal == nil {
 		d.equal = bytes.Equal
@@ -145,9 +146,13 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		}
 	}
 
-	d.mu.mem.mutable = d.newMemTable(atomic.LoadUint64(&d.mu.versions.logSeqNum))
-	d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
-	d.largeBatchThreshold = (d.opts.MemTableSize - int(d.mu.mem.mutable.emptySize)) / 2
+	// In read-only mode, we replay directly into the mutable memtable but never
+	// flush it. We need to delay creation of the memtable until we know the
+	// sequence number of the first batch that will be inserted.
+	if !d.opts.ReadOnly {
+		d.mu.mem.mutable = d.newMemTable(d.mu.versions.logSeqNum)
+		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+	}
 
 	ls, err := opts.FS.List(d.walDirname)
 	if err != nil {
