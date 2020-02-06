@@ -9,12 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -1148,19 +1151,24 @@ func (d *DB) newMemTable(logNum, logSeqNum uint64) (*memTable, *flushableEntry) 
 	atomic.AddInt64(&d.memTableCount, 1)
 	atomic.AddInt64(&d.memTableReserved, int64(size))
 	releaseAccountingReservation := d.opts.Cache.Reserve(size)
-	releaseMemAccounting := func() {
+
+	mem := newMemTable(memTableOptions{
+		Options:   d.opts,
+		arenaBuf:  manual.New(int(size)),
+		logSeqNum: logSeqNum,
+	})
+	if invariants.Enabled {
+		runtime.SetFinalizer(mem, checkMemTable)
+	}
+
+	entry := d.newFlushableEntry(mem, logNum, logSeqNum)
+	entry.releaseMemAccounting = func() {
+		manual.Free(mem.arenaBuf)
+		mem.arenaBuf = nil
 		atomic.AddInt64(&d.memTableCount, -1)
 		atomic.AddInt64(&d.memTableReserved, -int64(size))
 		releaseAccountingReservation()
 	}
-
-	mem := newMemTable(memTableOptions{
-		Options:   d.opts,
-		size:      size,
-		logSeqNum: logSeqNum,
-	})
-	entry := d.newFlushableEntry(mem, logNum, logSeqNum)
-	entry.releaseMemAccounting = releaseMemAccounting
 	return mem, entry
 }
 
