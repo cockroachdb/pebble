@@ -22,7 +22,7 @@ type readState struct {
 	db        *DB
 	refcnt    int32
 	current   *version
-	memtables []flushable
+	memtables flushableList
 }
 
 // ref adds a reference to the readState.

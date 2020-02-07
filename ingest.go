@@ -443,32 +443,25 @@ func (d *DB) Ingest(paths []string) error {
 		return err
 	}
 
-	var mem flushable
+	var mem *flushableEntry
 	prepare := func() {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		// If the mutable memtable contains keys which overlap any of the sstables
-		// then flush the memtable. Note that apply will wait for the flushing to
-		// finish.
-		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
-			mem = d.mu.mem.mutable
-			err = d.makeRoomForWrite(nil)
-			mem.setForceFlush()
-			d.maybeScheduleFlush()
-			return
-		}
-
-		// Check to see if any files overlap with any of the immutable
-		// memtables. The queue is ordered from oldest to newest. We want to wait
-		// for the newest table that overlaps.
+		// Check to see if any files overlap with any of the memtables. The queue
+		// is ordered from oldest to newest with the mutable memtable being the
+		// last element in the slice. We want to wait for the newest table that
+		// overlaps.
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
 				mem = m
-				mem.setForceFlush()
+				if mem.flushable == d.mu.mem.mutable {
+					err = d.makeRoomForWrite(nil)
+				}
+				mem.flushForced = true
 				d.maybeScheduleFlush()
 				return
 			}
@@ -491,7 +484,7 @@ func (d *DB) Ingest(paths []string) error {
 		// If we overlapped with a memtable in prepare wait for the flush to
 		// finish.
 		if mem != nil {
-			<-mem.flushed()
+			<-mem.flushed
 		}
 
 		// Assign the sstables to the correct level in the LSM and apply the

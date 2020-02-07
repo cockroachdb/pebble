@@ -40,27 +40,6 @@ var (
 	ErrReadOnly = errors.New("pebble: read-only")
 )
 
-type flushable interface {
-	newIter(o *IterOptions) internalIterator
-	newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator
-	newRangeDelIter(o *IterOptions) internalIterator
-	inuseBytes() uint64
-	totalBytes() uint64
-	readerRef()
-	readerUnref()
-	flushed() chan struct{}
-	forcedFlush() bool
-	setForceFlush()
-	readyForFlush() bool
-	// Returns info about how the receiver relates to the log:
-	// - logNum corresponds to the WAL that contains the records present in the
-	//   receiver
-	// - logSize is the size in bytes of the associated WAL
-	// - seqNum is a sequence number that is less than or equal to the first
-	//   seqnum in the receiver
-	logInfo() (logNum, logSize, seqNum uint64)
-}
-
 // Reader is a readable key/value store.
 //
 // It is safe to call Get and NewIter from concurrent goroutines.
@@ -284,7 +263,7 @@ type DB struct {
 			// added to the end of the slice and removed from the beginning. Once an
 			// index is set it is never modified making a fixed slice immutable and
 			// safe for concurrent reads.
-			queue []flushable
+			queue flushableList
 			// True when the memtable is actively been switched. Both mem.mutable and
 			// log.LogWriter are invalid while switching is true.
 			switching bool
@@ -386,7 +365,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	// at.
 	for len(get.mem) > 0 {
 		n := len(get.mem)
-		if _, _, logSeqNum := get.mem[n-1].logInfo(); logSeqNum < seqNum {
+		if logSeqNum := get.mem[n-1].logSeqNum; logSeqNum < seqNum {
 			break
 		}
 		get.mem = get.mem[:n-1]
@@ -693,7 +672,7 @@ func (d *DB) newIterInternal(
 		mem := memtables[i]
 		// We only need to read from memtables which contain sequence numbers older
 		// than seqNum.
-		if _, _, logSeqNum := mem.logInfo(); logSeqNum >= seqNum {
+		if logSeqNum := mem.logSeqNum; logSeqNum >= seqNum {
 			continue
 		}
 		mlevels = append(mlevels, mergingIterLevel{
@@ -912,29 +891,27 @@ func (d *DB) Compact(
 
 	// Determine if any memtable overlaps with the compaction range. We wait for
 	// any such overlap to flush (initiating a flush if necessary).
-	mem, err := func() (flushable, error) {
-		if ingestMemtableOverlaps(d.cmp, d.mu.mem.mutable, meta) {
-			mem := d.mu.mem.mutable
-
-			// We have to hold both commitPipeline.mu and DB.mu when calling
-			// makeRoomForWrite(). Lock order requirements elsewhere force us to
-			// unlock DB.mu in order to grab commitPipeline.mu first.
-			d.mu.Unlock()
-			d.commit.mu.Lock()
-			d.mu.Lock()
-			defer d.commit.mu.Unlock()
-			if mem == d.mu.mem.mutable {
-				// Only flush if the active memtable is unchanged.
-				return mem, d.makeRoomForWrite(nil)
-			}
-			return mem, nil
-		}
-		// Check to see if any files overlap with any of the immutable
-		// memtables. The queue is ordered from oldest to newest. We want to wait
-		// for the newest table that overlaps.
+	mem, err := func() (*flushableEntry, error) {
+		// Check to see if any files overlap with any of the memtables. The queue
+		// is ordered from oldest to newest with the mutable memtable being the
+		// last element in the slice. We want to wait for the newest table that
+		// overlaps.
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			mem := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, mem, meta) {
+				if mem.flushable == d.mu.mem.mutable {
+					// We have to hold both commitPipeline.mu and DB.mu when calling
+					// makeRoomForWrite(). Lock order requirements elsewhere force us to
+					// unlock DB.mu in order to grab commitPipeline.mu first.
+					d.mu.Unlock()
+					d.commit.mu.Lock()
+					d.mu.Lock()
+					defer d.commit.mu.Unlock()
+					if mem.flushable == d.mu.mem.mutable {
+						// Only flush if the active memtable is unchanged.
+						return mem, d.makeRoomForWrite(nil)
+					}
+				}
 				return mem, nil
 			}
 		}
@@ -947,7 +924,7 @@ func (d *DB) Compact(
 		return err
 	}
 	if mem != nil {
-		<-mem.flushed()
+		<-mem.flushed
 	}
 
 	for level := 0; level < maxLevelWithFiles; {
@@ -1002,14 +979,14 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 
 	d.commit.mu.Lock()
 	d.mu.Lock()
-	mem := d.mu.mem.mutable
+	flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
 	err := d.makeRoomForWrite(nil)
 	d.mu.Unlock()
 	d.commit.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	return mem.flushed(), nil
+	return flushed, nil
 }
 
 // Metrics returns metrics about the database.
@@ -1030,8 +1007,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.WAL.Size = atomic.LoadUint64(&d.mu.log.size)
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
-		_, size, _ := d.mu.mem.queue[i].logInfo()
-		metrics.WAL.Size += size
+		metrics.WAL.Size += d.mu.mem.queue[i].logSize
 	}
 	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
 	metrics.Levels[0].Score = float64(metrics.Levels[0].NumFiles) / float64(d.opts.L0CompactionThreshold)
@@ -1157,7 +1133,7 @@ func (d *DB) walPreallocateSize() int {
 	return size
 }
 
-func (d *DB) newMemTable(logSeqNum uint64) *memTable {
+func (d *DB) newMemTable(logNum, logSeqNum uint64) (*memTable, *flushableEntry) {
 	size := d.mu.mem.nextSize
 	if d.mu.mem.nextSize < d.opts.MemTableSize {
 		d.mu.mem.nextSize *= 2
@@ -1165,21 +1141,34 @@ func (d *DB) newMemTable(logSeqNum uint64) *memTable {
 			d.mu.mem.nextSize = d.opts.MemTableSize
 		}
 	}
-	return newMemTable(memTableOptions{
+
+	atomic.AddInt64(&d.memTableCount, 1)
+	atomic.AddInt64(&d.memTableReserved, int64(size))
+	releaseAccountingReservation := d.opts.Cache.Reserve(size)
+	releaseMemAccounting := func() {
+		atomic.AddInt64(&d.memTableCount, -1)
+		atomic.AddInt64(&d.memTableReserved, -int64(size))
+		releaseAccountingReservation()
+	}
+
+	mem := newMemTable(memTableOptions{
 		Options:   d.opts,
 		size:      size,
 		logSeqNum: logSeqNum,
-		memAccounting: func(size int) func() {
-			atomic.AddInt64(&d.memTableCount, 1)
-			atomic.AddInt64(&d.memTableReserved, int64(size))
-			releaseAccountingReservation := d.opts.Cache.Reserve(size)
-			return func() {
-				atomic.AddInt64(&d.memTableCount, -1)
-				atomic.AddInt64(&d.memTableReserved, -int64(size))
-				releaseAccountingReservation()
-			}
-		},
 	})
+	entry := d.newFlushableEntry(mem, logNum, logSeqNum)
+	entry.releaseMemAccounting = releaseMemAccounting
+	return mem, entry
+}
+
+func (d *DB) newFlushableEntry(f flushable, logNum, logSeqNum uint64) *flushableEntry {
+	return &flushableEntry{
+		flushable:  f,
+		flushed:    make(chan struct{}),
+		logNum:     logNum,
+		logSeqNum:  logSeqNum,
+		readerRefs: 1,
+	}
 }
 
 // makeRoomForWrite ensures that the memtable has room to hold the contents of
@@ -1327,21 +1316,17 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
 		}
 
-		imm := d.mu.mem.mutable
-		// We atomically update logSize because it is read concurrently (yet not
-		// used) on the read path in DB.{get,newIter}Internal via a call to
-		// flushable.logInfo().
-		atomic.StoreUint64(&imm.logSize, prevLogSize)
-		if b == nil {
-			imm.setForceFlush()
-		}
+		immMem := d.mu.mem.mutable
+		imm := d.mu.mem.queue[len(d.mu.mem.queue)-1]
+		imm.logSize = prevLogSize
+		imm.flushForced = imm.flushForced || (b == nil)
 
 		// If we are manually flushing and we used less than half of the bytes in
 		// the memtable, don't increase the size for the next memtable. This
 		// reduces memtable memory pressure when an application is frequently
 		// manually flushing.
-		if (b == nil) && uint64(imm.availBytes()) > imm.totalBytes()/2 {
-			d.mu.mem.nextSize = int(imm.totalBytes())
+		if (b == nil) && uint64(immMem.availBytes()) > immMem.totalBytes()/2 {
+			d.mu.mem.nextSize = int(immMem.totalBytes())
 		}
 
 		if b != nil && b.flushable != nil {
@@ -1356,8 +1341,12 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// See DB.commitWrite for the special handling of log writes for large
 			// batches. In particular, the large batch has already written to
 			// imm.logNum.
-			b.flushable.logNum, imm.logNum = imm.logNum, 0
-			d.mu.mem.queue = append(d.mu.mem.queue, b.flushable)
+			entry := d.newFlushableEntry(b.flushable, imm.logNum, b.SeqNum())
+			// The large batch is by definition large. Reserve space from the cache
+			// for it until it is flushed.
+			entry.releaseMemAccounting = d.opts.Cache.Reserve(int(b.flushable.totalBytes()))
+			d.mu.mem.queue = append(d.mu.mem.queue, entry)
+			imm.logNum = 0
 		}
 
 		var logSeqNum uint64
@@ -1374,16 +1363,17 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// also have to wait for all previous immutable tables to
 		// flush. Additionally, the memtable is tied to particular WAL file and we
 		// want to go through the flush path in order to recycle that WAL file.
-		d.mu.mem.mutable = d.newMemTable(logSeqNum)
+		//
 		// NB: newLogNum corresponds to the WAL that contains mutations that are
 		// present in the new memtable. When immutable memtables are flushed to
 		// disk, a VersionEdit will be created telling the manifest the minimum
 		// unflushed log number (which will be the next one in d.mu.mem.mutable
 		// that was not flushed).
-		d.mu.mem.mutable.logNum = newLogNum
-		d.mu.mem.queue = append(d.mu.mem.queue, d.mu.mem.mutable)
+		var entry *flushableEntry
+		d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)
+		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 		d.updateReadStateLocked(nil)
-		if imm.writerUnref() {
+		if immMem.writerUnref() {
 			d.maybeScheduleFlush()
 		}
 		force = false
@@ -1391,9 +1381,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 }
 
 func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {
-	_, _, seqNum := d.mu.mem.mutable.logInfo()
+	seqNum := InternalKeySeqNumMax
 	for i := range d.mu.mem.queue {
-		_, _, logSeqNum := d.mu.mem.queue[i].logInfo()
+		logSeqNum := d.mu.mem.queue[i].logSeqNum
 		if seqNum > logSeqNum {
 			seqNum = logSeqNum
 		}
