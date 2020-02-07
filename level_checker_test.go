@@ -6,7 +6,9 @@ package pebble
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"github.com/cockroachdb/pebble/internal/private"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,6 +43,29 @@ func TestCheckLevelsBasics(t *testing.T) {
 	}
 }
 
+type failMerger struct {
+	lastBuf []byte
+}
+
+func (f *failMerger) MergeNewer(value []byte) error {
+	return nil
+}
+
+func (f *failMerger) MergeOlder(value []byte) error {
+	if string(value) == "fail-merge" {
+		return errors.New("merge failed")
+	}
+	f.lastBuf = append(f.lastBuf[:0], value...)
+	return nil
+}
+
+func (f *failMerger) Finish() ([]byte, error) {
+	if string(f.lastBuf) == "fail-finish" {
+		return nil, errors.New("finish failed")
+	}
+	return nil, nil
+}
+
 func TestCheckLevelsCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
@@ -57,6 +82,16 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			}
 			return r.NewIter(nil /* lower */, nil /* upper */), rangeDelIter, nil
 		}
+
+	failMerger := &Merger{
+		Merge: func(key, value []byte) (ValueMerger, error) {
+			res := &failMerger{}
+			res.lastBuf = append(res.lastBuf[:0], value...)
+			return res, nil
+		},
+
+		Name: "fail-merger",
+	}
 
 	datadriven.RunTest(t, "testdata/level_checker", func(d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -90,7 +125,18 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
+				writeUnfragmented := false
 				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				for _, arg := range d.CmdArgs {
+					switch arg.Key {
+					case "disable-key-order-checks":
+						private.SSTableWriterDisableKeyOrderChecks(w)
+					case "write-unfragmented":
+						writeUnfragmented = true
+					default:
+						return fmt.Sprintf("unknown arg: %s", arg.Key)
+					}
+				}
 				var tombstones []rangedel.Tombstone
 				frag := rangedel.Fragmenter{
 					Cmp: cmp,
@@ -103,13 +149,19 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					j := strings.Index(kv, ":")
 					ikey := base.ParseInternalKey(kv[:j])
 					value := []byte(kv[j+1:])
+					var err error
 					switch ikey.Kind() {
 					case InternalKeyKindRangeDelete:
+						if writeUnfragmented {
+							err = w.Add(ikey, value)
+							break
+						}
 						frag.Add(ikey, value)
 					default:
-						if err := w.Add(ikey, value); err != nil {
-							return err.Error()
-						}
+						err = w.Add(ikey, value)
+					}
+					if err != nil {
+						return err.Error()
 					}
 				}
 				frag.Finish()
@@ -142,6 +194,21 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			}
 			return buf.String()
 		case "check":
+			merge := DefaultMerger.Merge
+			for _, arg := range d.CmdArgs {
+				switch arg.Key {
+				case "merger":
+					if len(arg.Vals) != 1 {
+						return fmt.Sprintf("expected one arg value, got %d", len(arg.Vals))
+					}
+					if arg.Vals[0] != failMerger.Name {
+						return "unsupported merger"
+					}
+					merge = failMerger.Merge
+				default:
+					return fmt.Sprintf("unknown arg: %s", arg.Key)
+				}
+			}
 			version := &version{}
 			for i := range levels {
 				// Start from level 1 in this test.
@@ -153,6 +220,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				readState: readState,
 				newIters:  newIters,
 				seqNum:    InternalKeySeqNumMax,
+				merge:     merge,
 			}
 			if err := checkLevelsInternal(c); err != nil {
 				return err.Error()
