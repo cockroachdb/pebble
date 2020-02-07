@@ -5,6 +5,7 @@
 package rangedel // import "github.com/cockroachdb/pebble/internal/rangedel"
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -16,6 +17,25 @@ import (
 type Tombstone struct {
 	Start base.InternalKey
 	End   []byte
+}
+
+// Overlaps returns 0 if this tombstone overlaps the other, -1 if there's no
+// overlap and this tombstone comes before the other, 1 if no overlap and this
+// tombstone comes after other.
+func (t Tombstone) Overlaps(cmp base.Compare, other Tombstone) int {
+	if cmp(t.Start.UserKey, other.Start.UserKey) == 0 && bytes.Equal(t.End, other.End) {
+		if other.Start.SeqNum() < t.Start.SeqNum() {
+			return -1
+		}
+		return 1
+	}
+	if cmp(t.End, other.Start.UserKey) <= 0 {
+		return -1
+	}
+	if cmp(other.End, t.Start.UserKey) <= 0 {
+		return 1
+	}
+	return 0
 }
 
 // Empty returns true if the tombstone does not cover any keys.
