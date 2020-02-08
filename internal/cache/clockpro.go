@@ -19,7 +19,9 @@ package cache // import "github.com/cockroachdb/pebble/internal/cache"
 
 import (
 	"fmt"
+	"os"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 
@@ -35,6 +37,17 @@ type fileKey struct {
 type key struct {
 	fileKey
 	offset uint64
+}
+
+// file returns the "file key" for the receiver. This is the key used for the
+// shard.files map.
+func (k key) file() key {
+	k.offset = 0
+	return k
+}
+
+func (k key) String() string {
+	return fmt.Sprintf("%d/%d/%d", k.id, k.fileNum, k.offset)
 }
 
 // Handle provides a strong reference to an entry in the cache. The reference
@@ -107,8 +120,17 @@ type shard struct {
 	reservedSize int64
 	maxSize      int64
 	coldTarget   int64
-	blocks       map[key]*entry     // fileNum+offset -> block
-	files        map[fileKey]*entry // fileNum -> list of blocks
+	blocks       robinHoodMap // fileNum+offset -> block
+	files        robinHoodMap // fileNum -> list of blocks
+
+	// The blocks and files maps store values in manually managed memory that is
+	// invisible to the Go GC. This is fine for Value and entry objects that are
+	// stored in manually managed memory. Auto Values and the associated auto
+	// entries need to have a reference that the Go GC is aware of to prevent
+	// them from being reclaimed. The entries map provides this reference. When
+	// the "invariants" build tag is set, all Value and entry objects are Go
+	// allocated and the entries map will contain a reference to every entry.
+	entries map[*entry]struct{}
 
 	handHot  *entry
 	handCold *entry
@@ -121,7 +143,7 @@ type shard struct {
 
 func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	c.mu.RLock()
-	e := c.blocks[key{fileKey{id, fileNum}, offset}]
+	e := c.blocks.Get(key{fileKey{id, fileNum}, offset})
 	var value *Value
 	if e != nil {
 		value = e.getValue()
@@ -156,7 +178,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 	defer c.mu.Unlock()
 
 	k := key{fileKey{id, fileNum}, offset}
-	e := c.blocks[k]
+	e := c.blocks.Get(k)
 	if e != nil && e.manual != value.manual() {
 		panic(fmt.Sprintf("pebble: inconsistent caching of manual Value: entry=%t vs value=%t",
 			e.manual, value.manual()))
@@ -230,7 +252,7 @@ func (c *shard) Delete(id, fileNum, offset uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	e := c.blocks[key{fileKey{id, fileNum}, offset}]
+	e := c.blocks.Get(key{fileKey{id, fileNum}, offset})
 	if e == nil {
 		return
 	}
@@ -242,7 +264,8 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	blocks := c.files[fileKey{id, fileNum}]
+	fkey := key{fileKey{id, fileNum}, 0}
+	blocks := c.files.Get(fkey)
 	if blocks == nil {
 		return
 	}
@@ -290,7 +313,12 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 		return false
 	}
 
-	c.blocks[key] = e
+	c.blocks.Put(key, e)
+	if !e.managed {
+		// Go allocated entries need to be referenced from Go memory. The entries
+		// map provides that reference.
+		c.entries[e] = struct{}{}
+	}
 
 	if c.handHot == nil {
 		// first element
@@ -305,8 +333,9 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 		c.handCold = c.handCold.prev()
 	}
 
-	if fileBlocks := c.files[key.fileKey]; fileBlocks == nil {
-		c.files[key.fileKey] = e
+	fkey := key.file()
+	if fileBlocks := c.files.Get(fkey); fileBlocks == nil {
+		c.files.Put(fkey, e)
 	} else {
 		fileBlocks.linkFile(e)
 	}
@@ -322,7 +351,12 @@ func (c *shard) metaDel(e *entry) {
 	}
 	e.setValue(nil)
 
-	delete(c.blocks, e.key)
+	c.blocks.Delete(e.key)
+	if !e.managed {
+		// Go allocated entries need to be referenced from Go memory. The entries
+		// map provides that reference.
+		delete(c.entries, e)
+	}
 
 	if e == c.handHot {
 		c.handHot = c.handHot.prev()
@@ -341,10 +375,11 @@ func (c *shard) metaDel(e *entry) {
 		c.handTest = nil
 	}
 
+	fkey := e.key.file()
 	if next := e.unlinkFile(); e == next {
-		delete(c.files, e.key.fileKey)
+		c.files.Delete(fkey)
 	} else {
-		c.files[e.key.fileKey] = next
+		c.files.Put(fkey, next)
 	}
 
 	c.metaCheck(e)
@@ -353,21 +388,28 @@ func (c *shard) metaDel(e *entry) {
 // Check that the specified entry is not referenced by the cache.
 func (c *shard) metaCheck(e *entry) {
 	if invariants.Enabled {
-		for _, t := range c.blocks {
-			if e == t {
-				panic("not reached")
-			}
+		if _, ok := c.entries[e]; ok {
+			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in entries map\n%s",
+				e, e.key, debug.Stack())
+			os.Exit(1)
 		}
-		for _, t := range c.files {
-			if e == t {
-				panic("not reached")
-			}
+		if c.blocks.findByValue(e) != nil {
+			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in blocks map\n%s\n%s",
+				e, e.key, &c.blocks, debug.Stack())
+			os.Exit(1)
+		}
+		if c.files.findByValue(e) != nil {
+			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in files map\n%s\n%s",
+				e, e.key, &c.files, debug.Stack())
+			os.Exit(1)
 		}
 		// NB: c.hand{Hot,Cold,Test} are pointers into a single linked list. We
 		// only have to traverse one of them to check all of them.
 		for t := c.handHot.next(); t != c.handHot; t = t.next() {
 			if e == t {
-				panic("not reached")
+				fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in blocks list\n%s",
+					e, e.key, debug.Stack())
+				os.Exit(1)
 			}
 		}
 	}
@@ -552,6 +594,8 @@ func clearCache(obj interface{}) {
 		s.mu.Lock()
 		s.maxSize = 0
 		s.evict()
+		s.blocks.free()
+		s.files.free()
 		s.mu.Unlock()
 	}
 }
@@ -566,9 +610,10 @@ func newShards(size int64, shards int) *Cache {
 		c.shards[i] = shard{
 			maxSize:    size / int64(len(c.shards)),
 			coldTarget: size / int64(len(c.shards)),
-			blocks:     make(map[key]*entry),
-			files:      make(map[fileKey]*entry),
+			entries:    make(map[*entry]struct{}),
 		}
+		c.shards[i].blocks.init(16)
+		c.shards[i].files.init(16)
 	}
 	// TODO(peter): This finalizer is used to clear the cache when the Cache
 	// itself is GC'd. Investigate making this explicit, and then changing the
@@ -702,7 +747,7 @@ func (c *Cache) Metrics() Metrics {
 	for i := range c.shards {
 		s := &c.shards[i]
 		s.mu.RLock()
-		m.Count += int64(len(s.blocks))
+		m.Count += int64(s.blocks.Count())
 		m.Size += s.sizeHot + s.sizeCold
 		s.mu.RUnlock()
 		m.Hits += atomic.LoadInt64(&s.hits)

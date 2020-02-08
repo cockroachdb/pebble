@@ -60,9 +60,13 @@ type entry struct {
 	}
 	size  int64
 	ptype entryType
-	// Is the memory for the entry manually managed? A manually managed entry can
-	// only store manually managed values (Value.manual() is true).
+	// Can the entry hold a manual Value? Only a manually managed entry can store
+	// manually managed values (Value.manual() is true).
 	manual bool
+	// Was the entry allocated using the Go allocator or the manual
+	// allocator. This can differ from the setting of the manual field due when
+	// the "invariants" build tag is set.
+	managed bool
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
 	referenced int32
@@ -79,11 +83,12 @@ func newEntry(s *shard, key key, size int64, manual bool) *entry {
 		e = &entry{}
 	}
 	*e = entry{
-		key:    key,
-		size:   size,
-		ptype:  etCold,
-		manual: manual,
-		shard:  s,
+		key:     key,
+		size:    size,
+		ptype:   etCold,
+		manual:  manual,
+		managed: e.managed,
+		shard:   s,
 	}
 	e.blockLink.next = e
 	e.blockLink.prev = e
