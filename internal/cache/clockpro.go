@@ -22,28 +22,9 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
-	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
-
-type entryType int8
-
-const (
-	etTest entryType = iota
-	etCold
-	etHot
-)
-
-func (p entryType) String() string {
-	switch p {
-	case etTest:
-		return "test"
-	case etCold:
-		return "cold"
-	case etHot:
-		return "hot"
-	}
-	return "unknown"
-}
 
 type fileKey struct {
 	// id is the namespace for fileNums.
@@ -54,90 +35,6 @@ type fileKey struct {
 type key struct {
 	fileKey
 	offset uint64
-}
-
-type entry struct {
-	key       key
-	val       unsafe.Pointer
-	blockLink struct {
-		next *entry
-		prev *entry
-	}
-	fileLink struct {
-		next *entry
-		prev *entry
-	}
-	size  int64
-	ptype entryType
-	// referenced is atomically set to indicate that this entry has been accessed
-	// since the last time one of the clock hands swept it.
-	referenced int32
-	shard      *shard
-}
-
-func (e *entry) init() *entry {
-	e.blockLink.next = e
-	e.blockLink.prev = e
-	e.fileLink.next = e
-	e.fileLink.prev = e
-	return e
-}
-
-func (e *entry) next() *entry {
-	if e == nil {
-		return nil
-	}
-	return e.blockLink.next
-}
-
-func (e *entry) prev() *entry {
-	if e == nil {
-		return nil
-	}
-	return e.blockLink.prev
-}
-
-func (e *entry) link(s *entry) {
-	s.blockLink.prev = e.blockLink.prev
-	s.blockLink.prev.blockLink.next = s
-	s.blockLink.next = e
-	s.blockLink.next.blockLink.prev = s
-}
-
-func (e *entry) unlink() *entry {
-	next := e.blockLink.next
-	e.blockLink.prev.blockLink.next = e.blockLink.next
-	e.blockLink.next.blockLink.prev = e.blockLink.prev
-	e.blockLink.prev = e
-	e.blockLink.next = e
-	return next
-}
-
-func (e *entry) linkFile(s *entry) {
-	s.fileLink.prev = e.fileLink.prev
-	s.fileLink.prev.fileLink.next = s
-	s.fileLink.next = e
-	s.fileLink.next.fileLink.prev = s
-}
-
-func (e *entry) unlinkFile() *entry {
-	next := e.fileLink.next
-	e.fileLink.prev.fileLink.next = e.fileLink.next
-	e.fileLink.next.fileLink.prev = e.fileLink.prev
-	e.fileLink.prev = e
-	e.fileLink.next = e
-	return next
-}
-
-func (e *entry) setValue(v *Value) {
-	if old := e.getValue(); old != nil {
-		old.release()
-	}
-	atomic.StorePointer(&e.val, unsafe.Pointer(v))
-}
-
-func (e *entry) getValue() *Value {
-	return (*Value)(atomic.LoadPointer(&e.val))
 }
 
 // Handle provides a strong reference to an entry in the cache. The reference
@@ -209,7 +106,7 @@ type shard struct {
 
 	reservedSize int64
 	maxSize      int64
-	coldSize     int64
+	coldTarget   int64
 	blocks       map[key]*entry     // fileNum+offset -> block
 	files        map[fileKey]*entry // fileNum -> list of blocks
 
@@ -238,10 +135,16 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	c.mu.RUnlock()
 	if value == nil {
 		atomic.AddInt64(&c.misses, 1)
-	} else {
-		atomic.AddInt64(&c.hits, 1)
+		return Handle{}
 	}
-	return Handle{value: value}
+	atomic.AddInt64(&c.hits, 1)
+
+	// Enforce the restriction that manually managed values cannot be converted
+	// to weak handles.
+	if e.manual {
+		e = nil
+	}
+	return Handle{entry: e, value: value}
 }
 
 func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
@@ -254,12 +157,15 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 
 	k := key{fileKey{id, fileNum}, offset}
 	e := c.blocks[k]
+	if e != nil && e.manual != value.manual() {
+		panic(fmt.Sprintf("pebble: inconsistent caching of manual Value: entry=%t vs value=%t",
+			e.manual, value.manual()))
+	}
 
 	switch {
 	case e == nil:
 		// no cache entry? add it
-		e = &entry{ptype: etCold, key: k, size: int64(len(value.buf)), shard: c}
-		e.init()
+		e = newEntry(c, k, int64(len(value.buf)), value.manual())
 		e.setValue(value)
 		if c.metaAdd(k, e) {
 			value.trace("add-cold")
@@ -267,6 +173,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 			c.sizeCold += e.size
 		} else {
 			value.trace("skip-cold")
+			e.free()
 		}
 
 	case e.getValue() != nil:
@@ -287,12 +194,12 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 
 	default:
 		// cache entry was a test page
-		c.metaDel(e)
 		c.sizeTest -= e.size
+		c.metaDel(e)
 
-		c.coldSize += e.size
-		if c.coldSize > c.targetSize() {
-			c.coldSize = c.targetSize()
+		c.coldTarget += e.size
+		if c.coldTarget > c.targetSize() {
+			c.coldTarget = c.targetSize()
 		}
 
 		atomic.StoreInt32(&e.referenced, 0)
@@ -304,9 +211,15 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 			c.sizeHot += e.size
 		} else {
 			value.trace("skip-hot")
+			e.free()
 		}
 	}
 
+	// Enforce the restriction that manually managed values cannot be converted
+	// to weak handles.
+	if e.manual {
+		e = nil
+	}
 	// Values are initialized with a reference count of 1. That reference count
 	// is being transferred to the returned Handle.
 	return Handle{entry: e, value: value}
@@ -400,6 +313,9 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 	return true
 }
 
+// Remove the entry from the cache. This removes the entry from the blocks map,
+// the files map, and ensures that hand{Hot,Cold,Test} are not pointing at the
+// entry.
 func (c *shard) metaDel(e *entry) {
 	if value := e.getValue(); value != nil {
 		value.trace("metaDel")
@@ -430,6 +346,31 @@ func (c *shard) metaDel(e *entry) {
 	} else {
 		c.files[e.key.fileKey] = next
 	}
+
+	c.metaCheck(e)
+}
+
+// Check that the specified entry is not referenced by the cache.
+func (c *shard) metaCheck(e *entry) {
+	if invariants.Enabled {
+		for _, t := range c.blocks {
+			if e == t {
+				panic("not reached")
+			}
+		}
+		for _, t := range c.files {
+			if e == t {
+				panic("not reached")
+			}
+		}
+		// NB: c.hand{Hot,Cold,Test} are pointers into a single linked list. We
+		// only have to traverse one of them to check all of them.
+		for t := c.handHot.next(); t != c.handHot; t = t.next() {
+			if e == t {
+				panic("not reached")
+			}
+		}
+	}
 }
 
 func (c *shard) metaEvict(e *entry) {
@@ -442,6 +383,7 @@ func (c *shard) metaEvict(e *entry) {
 		c.sizeTest -= e.size
 	}
 	c.metaDel(e)
+	e.free()
 }
 
 func (c *shard) evict() {
@@ -471,7 +413,7 @@ func (c *shard) runHandCold() {
 
 	c.handCold = c.handCold.next()
 
-	for c.targetSize()-c.coldSize <= c.sizeHot && c.handHot != nil {
+	for c.targetSize()-c.coldTarget <= c.sizeHot && c.handHot != nil {
 		c.runHandHot()
 	}
 }
@@ -508,15 +450,13 @@ func (c *shard) runHandTest() {
 
 	e := c.handTest
 	if e.ptype == etTest {
-		prev := c.handTest.prev()
-		c.metaDel(c.handTest)
-		c.handTest = prev
-
 		c.sizeTest -= e.size
-		c.coldSize -= e.size
-		if c.coldSize < 0 {
-			c.coldSize = 0
+		c.coldTarget -= e.size
+		if c.coldTarget < 0 {
+			c.coldTarget = 0
 		}
+		c.metaDel(e)
+		e.free()
 	}
 
 	c.handTest = c.handTest.next()
@@ -624,10 +564,10 @@ func newShards(size int64, shards int) *Cache {
 	}
 	for i := range c.shards {
 		c.shards[i] = shard{
-			maxSize:  size / int64(len(c.shards)),
-			coldSize: size / int64(len(c.shards)),
-			blocks:   make(map[key]*entry),
-			files:    make(map[fileKey]*entry),
+			maxSize:    size / int64(len(c.shards)),
+			coldTarget: size / int64(len(c.shards)),
+			blocks:     make(map[key]*entry),
+			files:      make(map[fileKey]*entry),
 		}
 	}
 	// TODO(peter): This finalizer is used to clear the cache when the Cache
