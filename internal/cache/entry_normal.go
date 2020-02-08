@@ -28,6 +28,7 @@ func entryAllocNew() *entry {
 	a := entryAllocPool.Get().(*entryAllocCache)
 	e := a.alloc()
 	entryAllocPool.Put(a)
+	e.managed = true
 	return e
 }
 
