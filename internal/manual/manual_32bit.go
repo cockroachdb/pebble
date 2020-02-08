@@ -7,6 +7,6 @@
 package manual
 
 const (
-	// maxArrayLen is a safe maximum length for slices on this architecture.
-	maxArrayLen = 1<<31 - 1
+	// MaxArrayLen is a safe maximum length for slices on this architecture.
+	MaxArrayLen = 1<<31 - 1
 )

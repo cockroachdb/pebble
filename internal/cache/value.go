@@ -52,9 +52,6 @@ func (v *Value) release() {
 	n := atomic.AddInt32(&v.refs, -1)
 	v.trace("release")
 	if n == 0 {
-		allocFree(v.buf)
-		// Setting Value.buf to nil is needed for correctness of the leak checking
-		// that is performed when the "invariants" build tag is enabled.
-		v.buf = nil
+		v.free()
 	}
 }
