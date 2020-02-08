@@ -38,3 +38,11 @@ func newManualValue(n int) *Value {
 	runtime.SetFinalizer(v, checkValue)
 	return v
 }
+
+func (v *Value) free() {
+	allocFree(v.buf)
+	// Setting Value.buf to nil is needed for correctness of the leak checking
+	// that is performed when the "invariants" or "tracing" build tags are
+	// enabled.
+	v.buf = nil
+}

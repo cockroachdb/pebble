@@ -2,15 +2,16 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// +build invariants,!tracing
+// +build !tracing
 
 package cache
 
 // Value holds a reference counted immutable value.
 //
-// This is the definition of Value that is used when the "invariants" build tag
-// is specified and the "tracing" build tag is not specified. If the "tracing"
-// build tag is specified, the Value definition comes from value_tracing.go.
+// This is the definition of Value that is used in normal builds and when the
+// "invariants" build tag is specified and the "tracing" build tag is not
+// specified. If the "tracing" build tag is specified, the Value definition
+// comes from value_tracing.go.
 type Value struct {
 	buf []byte
 	// The number of references on the value. When refs drops to 0, the buf
@@ -28,3 +29,6 @@ func (v *Value) trace(msg string) {
 func (v *Value) traces() string {
 	return ""
 }
+
+// Silence unused warning.
+var _ = (*Value).traces

@@ -33,7 +33,7 @@ func New(n int) []byte {
 	//   to Go.
 	ptr := C.calloc(C.size_t(n), 1)
 	// Interpret the C pointer as a pointer to a Go array, then slice.
-	return (*[maxArrayLen]byte)(unsafe.Pointer(ptr))[:n:n]
+	return (*[MaxArrayLen]byte)(unsafe.Pointer(ptr))[:n:n]
 }
 
 // Free frees the specified slice.
