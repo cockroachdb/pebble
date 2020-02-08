@@ -6,6 +6,12 @@
 
 package cache
 
+import (
+	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/manual"
+)
+
 // Value holds a reference counted immutable value.
 //
 // This is the definition of Value that is used in normal builds.
@@ -20,12 +26,29 @@ type Value struct {
 	refs int32
 }
 
+const valueSize = int(unsafe.Sizeof(Value{}))
+
 func newManualValue(n int) *Value {
 	if n == 0 {
 		return nil
 	}
-	b := allocNew(n)
-	return &Value{buf: b, refs: 1}
+	// When we're not performing leak detection, the lifetime of the returned
+	// Value is exactly the lifetime of the backing buffer and we can manually
+	// allocate both.
+	b := allocNew(valueSize + n)
+	v := (*Value)(unsafe.Pointer(&b[0]))
+	v.buf = b[valueSize:]
+	v.refs = 1
+	return v
+}
+
+func (v *Value) free() {
+	// When we're not performing leak detection, the Value and buffer were
+	// allocated contiguously.
+	n := valueSize + cap(v.buf)
+	buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(v))[:n:n]
+	v.buf = nil
+	allocFree(buf)
 }
 
 func (v *Value) trace(msg string) {
