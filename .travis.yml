@@ -1,5 +1,9 @@
 language: go
 
+branches:
+  only:
+  - master
+
 install:
   - go get -d -t -v ./...
   - go get -v golang.org/x/lint/golint
