@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,17 @@ import (
 func memTableEntrySize(keyBytes, valueBytes int) uint32 {
 	return arenaskl.MaxNodeSize(uint32(keyBytes)+8, uint32(valueBytes))
 }
+
+// memTableEmptySize is the amount of allocated space in the arena when the
+// memtable is empty.
+var memTableEmptySize = func() uint32 {
+	var pointSkl arenaskl.Skiplist
+	var rangeDelSkl arenaskl.Skiplist
+	arena := arenaskl.NewArena(16 << 10 /* 16 KB */)
+	pointSkl.Reset(arena, bytes.Compare)
+	rangeDelSkl.Reset(arena, bytes.Compare)
+	return arena.Size()
+}()
 
 // A memTable implements an in-memory layer of the LSM. A memTable is mutable,
 // but append-only. Records are added, but never removed. Deletion is supported
@@ -49,9 +61,6 @@ type memTable struct {
 	equal       Equal
 	skl         arenaskl.Skiplist
 	rangeDelSkl arenaskl.Skiplist
-	// emptySize is the amount of allocated space in the arena when the memtable
-	// is empty.
-	emptySize uint32
 	// reserved tracks the amount of space used by the memtable, both by actual
 	// data stored in the memtable as well as inflight batch commit
 	// operations. This value is incremented pessimistically by prepare() in
@@ -96,7 +105,6 @@ func newMemTable(opts memTableOptions) *memTable {
 	arena := arenaskl.NewArena(uint32(opts.size))
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
-	m.emptySize = arena.Size()
 	return m
 }
 
@@ -228,7 +236,7 @@ func (m *memTable) availBytes() uint32 {
 }
 
 func (m *memTable) inuseBytes() uint64 {
-	return uint64(m.skl.Size() - m.emptySize)
+	return uint64(m.skl.Size() - memTableEmptySize)
 }
 
 func (m *memTable) totalBytes() uint64 {
@@ -241,7 +249,7 @@ func (m *memTable) close() error {
 
 // empty returns whether the MemTable has no key/value pairs.
 func (m *memTable) empty() bool {
-	return m.skl.Size() == m.emptySize
+	return m.skl.Size() == memTableEmptySize
 }
 
 // A rangeTombstoneFrags holds a set of fragmented range tombstones generated

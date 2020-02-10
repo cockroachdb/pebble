@@ -375,8 +375,6 @@ func TestOpenReadOnly(t *testing.T) {
 }
 
 func TestOpenWALReplay(t *testing.T) {
-	mem := vfs.NewMem()
-
 	largeValue := []byte(strings.Repeat("a", 100<<10))
 	hugeValue := []byte(strings.Repeat("b", 10<<20))
 	checkIter := func(iter *Iterator) {
@@ -392,62 +390,127 @@ func TestOpenWALReplay(t *testing.T) {
 			t.Fatalf("%s\n%s", strings.Join(diff, "\n"), keys)
 		}
 	}
-	for _, readOnly := range []bool{false, true} {
-		t.Logf("read-only: %t", readOnly)
-		// Create a new DB and populate it with some data.
-		dir := fmt.Sprint(readOnly)
-		d, err := Open(dir, &Options{
-			FS:           mem,
-			MemTableSize: 32 << 20,
-		})
-		require.NoError(t, err)
-		// All these values will fit in a single memtable, so on closing the db there
-		// will be no sst and all the data is in a single WAL.
-		require.NoError(t, d.Set([]byte("1"), largeValue, nil))
-		require.NoError(t, d.Set([]byte("2"), largeValue, nil))
-		require.NoError(t, d.Set([]byte("3"), largeValue, nil))
-		require.NoError(t, d.Set([]byte("4"), hugeValue, nil))
-		require.NoError(t, d.Set([]byte("5"), largeValue, nil))
-		checkIter(d.NewIter(nil))
-		require.NoError(t, d.Close())
-		files, err := mem.List(dir)
-		require.NoError(t, err)
-		sort.Strings(files)
-		logCount, sstCount := 0, 0
-		for _, fname := range files {
-			t.Log(fname)
-			if strings.HasSuffix(fname, ".sst") {
-				sstCount++
-			}
-			if strings.HasSuffix(fname, ".log") {
-				logCount++
-			}
-		}
-		require.Equal(t, 0, sstCount)
-		// The memtable size starts at 256KB and doubles up to 32MB so we expect 5
-		// logs (one for each doubling).
-		require.Equal(t, 7, logCount)
 
-		// Re-open the DB with a smaller memtable. Values for 1, 2 will fit in the first memtable;
-		// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
-		// which will cause the previous memtable to be flushed; value for 5 will go in the next
-		// memtable
-		d, err = Open(dir, &Options{
-			FS:           mem,
-			MemTableSize: 300 << 10,
-			ReadOnly:     readOnly,
+	for _, readOnly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("read-only=%t", readOnly), func(t *testing.T) {
+			// Create a new DB and populate it with some data.
+			const dir = ""
+			mem := vfs.NewMem()
+			d, err := Open(dir, &Options{
+				FS:           mem,
+				MemTableSize: 32 << 20,
+			})
+			require.NoError(t, err)
+			// All these values will fit in a single memtable, so on closing the db there
+			// will be no sst and all the data is in a single WAL.
+			require.NoError(t, d.Set([]byte("1"), largeValue, nil))
+			require.NoError(t, d.Set([]byte("2"), largeValue, nil))
+			require.NoError(t, d.Set([]byte("3"), largeValue, nil))
+			require.NoError(t, d.Set([]byte("4"), hugeValue, nil))
+			require.NoError(t, d.Set([]byte("5"), largeValue, nil))
+			checkIter(d.NewIter(nil))
+			require.NoError(t, d.Close())
+			files, err := mem.List(dir)
+			require.NoError(t, err)
+			sort.Strings(files)
+			logCount, sstCount := 0, 0
+			for _, fname := range files {
+				if strings.HasSuffix(fname, ".sst") {
+					sstCount++
+				}
+				if strings.HasSuffix(fname, ".log") {
+					logCount++
+				}
+			}
+			require.Equal(t, 0, sstCount)
+			// The memtable size starts at 256KB and doubles up to 32MB so we expect 5
+			// logs (one for each doubling).
+			require.Equal(t, 7, logCount)
+
+			// Re-open the DB with a smaller memtable. Values for 1, 2 will fit in the first memtable;
+			// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
+			// which will cause the previous memtable to be flushed; value for 5 will go in the next
+			// memtable
+			d, err = Open(dir, &Options{
+				FS:           mem,
+				MemTableSize: 300 << 10,
+				ReadOnly:     readOnly,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if readOnly {
+				d.mu.Lock()
+				require.Equal(t, 10, len(d.mu.mem.queue))
+				require.NotNil(t, d.mu.mem.mutable)
+				d.mu.Unlock()
+			}
+			checkIter(d.NewIter(nil))
+			require.NoError(t, d.Close())
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if readOnly {
-			d.mu.Lock()
-			require.Equal(t, 10, len(d.mu.mem.queue))
-			require.NotNil(t, d.mu.mem.mutable)
-			d.mu.Unlock()
-		}
-		checkIter(d.NewIter(nil))
-		require.NoError(t, d.Close())
+	}
+}
+
+// Similar to TestOpenWALReplay, except we test replay behavior after a
+// memtable has been flushed. We test all 3 reasons for flushing: forced, size,
+// and large-batch.
+func TestOpenWALReplay2(t *testing.T) {
+	for _, readOnly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("read-only=%t", readOnly), func(t *testing.T) {
+			for _, reason := range []string{"forced", "size", "large-batch"} {
+				t.Run(reason, func(t *testing.T) {
+					mem := vfs.NewMem()
+					d, err := Open("", &Options{
+						FS:           mem,
+						MemTableSize: 256 << 10,
+					})
+					require.NoError(t, err)
+
+					switch reason {
+					case "forced":
+						require.NoError(t, d.Set([]byte("1"), nil, nil))
+						require.NoError(t, d.Flush())
+						require.NoError(t, d.Set([]byte("2"), nil, nil))
+					case "size":
+						largeValue := []byte(strings.Repeat("a", 100<<10))
+						require.NoError(t, d.Set([]byte("1"), largeValue, nil))
+						require.NoError(t, d.Set([]byte("2"), largeValue, nil))
+						require.NoError(t, d.Set([]byte("3"), largeValue, nil))
+					case "large-batch":
+						largeValue := []byte(strings.Repeat("a", d.largeBatchThreshold))
+						require.NoError(t, d.Set([]byte("1"), nil, nil))
+						require.NoError(t, d.Set([]byte("2"), largeValue, nil))
+						require.NoError(t, d.Set([]byte("3"), nil, nil))
+					}
+					require.NoError(t, d.Close())
+
+					files, err := mem.List("")
+					require.NoError(t, err)
+					sort.Strings(files)
+					sstCount := 0
+					for _, fname := range files {
+						if strings.HasSuffix(fname, ".sst") {
+							sstCount++
+						}
+					}
+					require.Equal(t, 1, sstCount)
+
+					// Re-open the DB with a smaller memtable. Values for 1, 2 will fit in the first memtable;
+					// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
+					// which will cause the previous memtable to be flushed; value for 5 will go in the next
+					// memtable
+					d, err = Open("", &Options{
+						FS:           mem,
+						MemTableSize: 300 << 10,
+						ReadOnly:     readOnly,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					require.NoError(t, d.Close())
+				})
+			}
+		})
 	}
 }
 
