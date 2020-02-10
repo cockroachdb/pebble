@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -705,8 +704,11 @@ func TestIterLeak(t *testing.T) {
 }
 
 func TestMemTableReservation(t *testing.T) {
+	cache := NewCache(128 << 10 /* 128 KB */)
+	defer cache.Unref()
+
 	opts := &Options{
-		Cache:        cache.New(128 << 10 /* 128 KB */),
+		Cache:        cache,
 		MemTableSize: initialMemTableSize,
 		FS:           vfs.NewMem(),
 	}
@@ -786,6 +788,8 @@ func TestMemTableReservationLeak(t *testing.T) {
 
 func TestCacheEvict(t *testing.T) {
 	cache := NewCache(10 << 20)
+	defer cache.Unref()
+
 	d, err := Open("", &Options{
 		Cache: cache,
 		FS:    vfs.NewMem(),

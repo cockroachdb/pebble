@@ -14,6 +14,8 @@ import (
 func TestRobinHoodMap(t *testing.T) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	rhMap := newRobinHoodMap(0)
+	defer rhMap.free()
+
 	goMap := make(map[key]*entry)
 
 	randomKey := func() key {

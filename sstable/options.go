@@ -109,6 +109,7 @@ type ReaderOptions struct {
 func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	if o.Cache == nil {
 		o.Cache = cache.New(0)
+		o.Cache.AutoReclaim()
 	}
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer

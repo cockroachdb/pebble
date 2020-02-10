@@ -278,6 +278,17 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 	}
 }
 
+func (c *shard) Free() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for c.handHot != nil {
+		c.metaEvict(c.handHot)
+	}
+	c.blocks.free()
+	c.files.free()
+}
+
 func (c *shard) Reserve(n int) {
 	c.mu.Lock()
 	c.reservedSize += int64(n)
@@ -576,35 +587,33 @@ type Metrics struct {
 // used in combination by specifying `-tags invariants,tracing`. Note that
 // "tracing" produces a significant slowdown, while "invariants" does not.
 type Cache struct {
+	refs    int64
 	maxSize int64
 	idAlloc uint64
 	shards  []shard
+	stack   []byte
 }
 
 // New creates a new cache of the specified size. Memory for the cache is
-// allocated on demand, not during initialization.
+// allocated on demand, not during initialization. The cache is created with a
+// reference count of 1. Each DB it is associated with adds a reference, so the
+// creator of the cache should usually release their reference after the DB is
+// created.
+//
+//   c := cache.New(...)
+//   d, err := pebble.Open(pebble.Options{Cache: c})
+//   c.Unref()
 func New(size int64) *Cache {
 	return newShards(size, 2*runtime.NumCPU())
 }
 
-func clearCache(obj interface{}) {
-	c := obj.(*Cache)
-	for i := range c.shards {
-		s := &c.shards[i]
-		s.mu.Lock()
-		s.maxSize = 0
-		s.evict()
-		s.blocks.free()
-		s.files.free()
-		s.mu.Unlock()
-	}
-}
-
 func newShards(size int64, shards int) *Cache {
 	c := &Cache{
+		refs:    1,
 		maxSize: size,
 		idAlloc: 1,
 		shards:  make([]shard, shards),
+		stack:   debug.Stack(),
 	}
 	for i := range c.shards {
 		c.shards[i] = shard{
@@ -615,11 +624,13 @@ func newShards(size int64, shards int) *Cache {
 		c.shards[i].blocks.init(16)
 		c.shards[i].files.init(16)
 	}
-	// TODO(peter): This finalizer is used to clear the cache when the Cache
-	// itself is GC'd. Investigate making this explicit, and then changing the
-	// finalizer to only be installed when invariants.Enabled is true and to only
-	// check that all of the manual memory has been freed.
-	runtime.SetFinalizer(c, clearCache)
+	runtime.SetFinalizer(c, func(obj interface{}) {
+		c := obj.(*Cache)
+		if v := atomic.LoadInt64(&c.refs); v != 0 {
+			fmt.Fprintf(os.Stderr, "pebble: cache has non-zero reference count: %d\n%s", v, c.stack)
+			os.Exit(1)
+		}
+	})
 	return c
 }
 
@@ -650,6 +661,42 @@ func (c *Cache) getShard(id, fileNum, offset uint64) *shard {
 	}
 
 	return &c.shards[h%uint64(len(c.shards))]
+}
+
+// AutoReclaim marks the cache for automatic reclamation. In auto reclamation,
+// the cache reference count is ignored and the memory for the cache is
+// reclaimed when the GC determines it is no longer reachable. This is intended
+// for use by internal Pebble tests only.
+func (c *Cache) AutoReclaim() {
+	atomic.AddInt64(&c.refs, 1<<30)
+	runtime.SetFinalizer(c, nil)
+	runtime.SetFinalizer(c, func(obj interface{}) {
+		c := obj.(*Cache)
+		for i := range c.shards {
+			c.shards[i].Free()
+		}
+	})
+}
+
+// Ref adds a reference to the cache. The cache only remains valid as long a
+// reference is maintained to it.
+func (c *Cache) Ref() {
+	switch v := atomic.AddInt64(&c.refs, 1); {
+	case v <= 1:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	}
+}
+
+// Unref releases a reference on the cache.
+func (c *Cache) Unref() {
+	switch v := atomic.AddInt64(&c.refs, -1); {
+	case v < 0:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	case v == 0:
+		for i := range c.shards {
+			c.shards[i].Free()
+		}
+	}
 }
 
 // Get retrieves the cache value for the specified file and offset, returning

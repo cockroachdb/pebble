@@ -406,6 +406,7 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Cache == nil {
 		o.Cache = cache.New(8 << 20) // 8 MB
+		o.Cache.AutoReclaim()
 	}
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}

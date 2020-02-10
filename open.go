@@ -10,12 +10,14 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"sort"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -27,6 +29,8 @@ const initialMemTableSize = 256 << 10 // 256 KB
 func Open(dirname string, opts *Options) (*DB, error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
+	refCache := opts.Cache != nil
+
 	opts = opts.EnsureDefaults()
 	if err := opts.Validate(); err != nil {
 		return nil, err
@@ -276,6 +280,14 @@ func Open(dirname string, opts *Options) (*DB, error) {
 	}
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
+
+	if refCache {
+		d.opts.Cache.Ref()
+	}
+
+	if invariants.Enabled {
+		runtime.SetFinalizer(d, checkDB)
+	}
 
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil

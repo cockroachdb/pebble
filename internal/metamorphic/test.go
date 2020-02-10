@@ -51,6 +51,8 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.DebugCheck = true
 
+	defer t.opts.Cache.Unref()
+
 	// If an error occurs and we were using an in-memory FS, attempt to clone to
 	// on-disk in order to allow post-mortem debugging. Note that always using
 	// the on-disk FS isn't desirable because there is a large performance
@@ -150,6 +152,7 @@ func (t *test) restartDB() error {
 	if !t.testOpts.strictFS {
 		return nil
 	}
+	t.opts.Cache.Ref()
 	fs := t.opts.FS.(*vfs.MemFS)
 	fs.SetIgnoreSyncs(true)
 	if err := t.db.Close(); err != nil {
@@ -159,6 +162,7 @@ func (t *test) restartDB() error {
 	fs.SetIgnoreSyncs(false)
 	var err error
 	t.db, err = pebble.Open(t.dir, t.opts)
+	t.opts.Cache.Unref()
 	return err
 }
 

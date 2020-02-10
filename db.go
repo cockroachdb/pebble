@@ -862,6 +862,7 @@ func (d *DB) Close() error {
 		d.mu.cleaner.cond.Wait()
 	}
 
+	d.opts.Cache.Unref()
 	return err
 }
 

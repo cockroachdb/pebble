@@ -42,9 +42,12 @@ type T struct {
 
 // New creates a new introspection tool.
 func New() *T {
+	cache := pebble.NewCache(128 << 20 /* 128 MB */)
+	cache.AutoReclaim()
+
 	t := &T{
 		opts: pebble.Options{
-			Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
+			Cache:    cache,
 			Filters:  make(map[string]FilterPolicy),
 			FS:       vfs.Default,
 			ReadOnly: true,

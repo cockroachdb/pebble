@@ -157,6 +157,9 @@ func standardOptions() []*testOptions {
 		if err := parseOptions(opts[i], stdOpts[i]); err != nil {
 			panic(err)
 		}
+		if opts[i].opts.Cache != nil {
+			opts[i].opts.Cache.AutoReclaim()
+		}
 	}
 	return opts
 }

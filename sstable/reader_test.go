@@ -435,8 +435,10 @@ func buildTestTable(
 	if err != nil {
 		t.Fatal(err)
 	}
+	c := cache.New(128 << 20)
+	c.AutoReclaim()
 	r, err := NewReader(f1, ReaderOptions{
-		Cache: cache.New(128 << 20),
+		Cache: c,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -476,8 +478,10 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
+	c := cache.New(128 << 20)
+	c.AutoReclaim()
 	r, err := NewReader(f1, ReaderOptions{
-		Cache: cache.New(128 << 20),
+		Cache: c,
 	})
 	if err != nil {
 		b.Fatal(err)
