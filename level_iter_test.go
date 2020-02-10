@@ -154,6 +154,9 @@ func (lt *levelIterTest) newIters(
 
 func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
 	lt.mem = vfs.NewMem()
+	for _, r := range lt.readers {
+		r.Close()
+	}
 	lt.readers = nil
 	lt.files = nil
 	return ""
@@ -234,6 +237,8 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 
 func TestLevelIterBoundaries(t *testing.T) {
 	lt := newLevelIterTest()
+	defer lt.runClear(nil)
+
 	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
@@ -301,6 +306,8 @@ func (i *levelIterTestIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 func TestLevelIterSeek(t *testing.T) {
 	lt := newLevelIterTest()
+	defer lt.runClear(nil)
+
 	datadriven.RunTest(t, "testdata/level_iter_seek", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
@@ -362,6 +369,8 @@ func buildLevelIterTables(
 	}
 
 	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
+	defer opts.Cache.Unref()
+
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))

@@ -79,11 +79,11 @@ func TestPropertiesLoad(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
 		r, err := NewReader(f, ReaderOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer r.Close()
 
 		if diff := pretty.Diff(expected, r.Properties); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))

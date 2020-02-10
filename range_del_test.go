@@ -15,14 +15,26 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRangeDel(t *testing.T) {
 	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
 
 	datadriven.RunTest(t, "testdata/range_del", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+
 			var err error
 			if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
 				return err.Error()
@@ -437,8 +449,11 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 			for _, deleted := range []int{entries, entries - 1} {
 				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
 					mem := vfs.NewMem()
+					cache := NewCache(128 << 20) // 128 MB
+					defer cache.Unref()
+
 					d, err := Open("", &Options{
-						Cache:      NewCache(128 << 20), // 128 MB
+						Cache:      cache,
 						FS:         mem,
 						DebugCheck: true,
 					})

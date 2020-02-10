@@ -187,6 +187,10 @@ func TestMeta(t *testing.T) {
 	// written to <run-dir>/OPTIONS and a child process is created to actually
 	// execute the test.
 	runOptions := func(t *testing.T, opts *testOptions) {
+		if opts.opts.Cache != nil {
+			defer opts.opts.Cache.Unref()
+		}
+
 		runDir := filepath.Join(metaDir, path.Base(t.Name()))
 		if err := os.MkdirAll(runDir, 0755); err != nil {
 			t.Fatal(err)

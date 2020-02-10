@@ -5,6 +5,8 @@
 package tool
 
 import (
+	"runtime"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -42,9 +44,11 @@ type T struct {
 
 // New creates a new introspection tool.
 func New() *T {
+	cache := pebble.NewCache(128 << 20 /* 128 MB */)
+
 	t := &T{
 		opts: pebble.Options{
-			Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
+			Cache:    cache,
 			Filters:  make(map[string]FilterPolicy),
 			FS:       vfs.Default,
 			ReadOnly: true,
@@ -71,6 +75,10 @@ func New() *T {
 		t.sstable.Root,
 		t.wal.Root,
 	}
+
+	runtime.SetFinalizer(t, func(obj interface{}) {
+		cache.Unref()
+	})
 	return t
 }
 

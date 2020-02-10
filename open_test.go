@@ -173,6 +173,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 							startFromEmpty, length, err)
 						continue
 					}
+					got = append([]byte(nil), got...)
 				}
 				err = d1.Close()
 				if err != nil {

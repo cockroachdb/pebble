@@ -44,9 +44,23 @@ func TestSnapshot(t *testing.T) {
 	var d *DB
 	var snapshots map[string]*Snapshot
 
+	close := func() {
+		for _, s := range snapshots {
+			require.NoError(t, s.Close())
+		}
+		snapshots = nil
+		if d != nil {
+			require.NoError(t, d.Close())
+			d = nil
+		}
+	}
+	defer close()
+
 	datadriven.RunTest(t, "testdata/snapshot", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
+			close()
+
 			var err error
 			d, err = Open("", &Options{
 				FS: vfs.NewMem(),
@@ -190,4 +204,6 @@ func TestSnapshotClosed(t *testing.T) {
 	require.EqualValues(t, ErrClosed, catch(func() { _ = snap.Close() }))
 	require.EqualValues(t, ErrClosed, catch(func() { _, _ = snap.Get(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { snap.NewIter(nil) }))
+
+	require.NoError(t, d.Close())
 }

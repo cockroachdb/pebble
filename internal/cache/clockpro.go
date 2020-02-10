@@ -22,6 +22,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -218,6 +219,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 		// cache entry was a test page
 		c.sizeTest -= e.size
 		c.metaDel(e)
+		c.metaCheck(e)
 
 		c.coldTarget += e.size
 		if c.coldTarget > c.targetSize() {
@@ -276,6 +278,20 @@ func (c *shard) EvictFile(id, fileNum uint64) {
 			break
 		}
 	}
+}
+
+func (c *shard) Free() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// NB: we use metaDel rather than metaEvict in order to avoid the expensive
+	// metaCheck call when the "invariants" build tag is specified.
+	for c.handHot != nil {
+		c.metaDel(c.handHot)
+	}
+
+	c.blocks.free()
+	c.files.free()
 }
 
 func (c *shard) Reserve(n int) {
@@ -381,8 +397,6 @@ func (c *shard) metaDel(e *entry) {
 	} else {
 		c.files.Put(fkey, next)
 	}
-
-	c.metaCheck(e)
 }
 
 // Check that the specified entry is not referenced by the cache.
@@ -425,6 +439,7 @@ func (c *shard) metaEvict(e *entry) {
 		c.sizeTest -= e.size
 	}
 	c.metaDel(e)
+	c.metaCheck(e)
 	e.free()
 }
 
@@ -498,6 +513,7 @@ func (c *shard) runHandTest() {
 			c.coldTarget = 0
 		}
 		c.metaDel(e)
+		c.metaCheck(e)
 		e.free()
 	}
 
@@ -576,36 +592,39 @@ type Metrics struct {
 // used in combination by specifying `-tags invariants,tracing`. Note that
 // "tracing" produces a significant slowdown, while "invariants" does not.
 type Cache struct {
+	refs    int64
 	maxSize int64
 	idAlloc uint64
 	shards  []shard
+
+	// Traces recorded by Cache.trace. Used for debugging.
+	tr struct {
+		sync.Mutex
+		msgs []string
+	}
 }
 
 // New creates a new cache of the specified size. Memory for the cache is
-// allocated on demand, not during initialization.
+// allocated on demand, not during initialization. The cache is created with a
+// reference count of 1. Each DB it is associated with adds a reference, so the
+// creator of the cache should usually release their reference after the DB is
+// created.
+//
+//   c := cache.New(...)
+//   d, err := pebble.Open(pebble.Options{Cache: c})
+//   c.Unref()
 func New(size int64) *Cache {
 	return newShards(size, 2*runtime.NumCPU())
 }
 
-func clearCache(obj interface{}) {
-	c := obj.(*Cache)
-	for i := range c.shards {
-		s := &c.shards[i]
-		s.mu.Lock()
-		s.maxSize = 0
-		s.evict()
-		s.blocks.free()
-		s.files.free()
-		s.mu.Unlock()
-	}
-}
-
 func newShards(size int64, shards int) *Cache {
 	c := &Cache{
+		refs:    1,
 		maxSize: size,
 		idAlloc: 1,
 		shards:  make([]shard, shards),
 	}
+	c.trace("alloc", c.refs)
 	for i := range c.shards {
 		c.shards[i] = shard{
 			maxSize:    size / int64(len(c.shards)),
@@ -615,12 +634,26 @@ func newShards(size int64, shards int) *Cache {
 		c.shards[i].blocks.init(16)
 		c.shards[i].files.init(16)
 	}
-	// TODO(peter): This finalizer is used to clear the cache when the Cache
-	// itself is GC'd. Investigate making this explicit, and then changing the
-	// finalizer to only be installed when invariants.Enabled is true and to only
-	// check that all of the manual memory has been freed.
-	runtime.SetFinalizer(c, clearCache)
+	runtime.SetFinalizer(c, func(obj interface{}) {
+		c := obj.(*Cache)
+		if v := atomic.LoadInt64(&c.refs); v != 0 {
+			c.tr.Lock()
+			fmt.Fprintf(os.Stderr, "pebble: cache (%p) has non-zero reference count: %d\n%s",
+				c, v, strings.Join(c.tr.msgs, "\n"))
+			c.tr.Unlock()
+			os.Exit(1)
+		}
+	})
 	return c
+}
+
+func (c *Cache) trace(msg string, refs int64) {
+	if invariants.Enabled {
+		s := fmt.Sprintf("%s: refs=%d\n%s", msg, refs, debug.Stack())
+		c.tr.Lock()
+		c.tr.msgs = append(c.tr.msgs, s)
+		c.tr.Unlock()
+	}
 }
 
 func (c *Cache) getShard(id, fileNum, offset uint64) *shard {
@@ -650,6 +683,30 @@ func (c *Cache) getShard(id, fileNum, offset uint64) *shard {
 	}
 
 	return &c.shards[h%uint64(len(c.shards))]
+}
+
+// Ref adds a reference to the cache. The cache only remains valid as long a
+// reference is maintained to it.
+func (c *Cache) Ref() {
+	v := atomic.AddInt64(&c.refs, 1)
+	if v <= 1 {
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	}
+	c.trace("ref", v)
+}
+
+// Unref releases a reference on the cache.
+func (c *Cache) Unref() {
+	v := atomic.AddInt64(&c.refs, -1)
+	c.trace("unref", v)
+	switch {
+	case v < 0:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	case v == 0:
+		for i := range c.shards {
+			c.shards[i].Free()
+		}
+	}
 }
 
 // Get retrieves the cache value for the specified file and offset, returning

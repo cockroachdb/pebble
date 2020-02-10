@@ -128,8 +128,15 @@ func TestMergingIterCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
 	var v version
+
 	// Indexed by fileNum.
 	var readers []*sstable.Reader
+	defer func() {
+		for _, r := range readers {
+			r.Close()
+		}
+	}()
+
 	var fileNum uint64
 	newIters :=
 		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
@@ -140,6 +147,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			}
 			return r.NewIter(opts.GetLowerBound(), opts.GetUpperBound()), rangeDelIter, nil
 		}
+
 	datadriven.RunTest(t, "testdata/merging_iter", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
@@ -290,6 +298,8 @@ func buildMergingIterTables(
 	}
 
 	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
+	defer opts.Cache.Unref()
+
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))

@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -426,6 +427,13 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 
 func TestIngestTargetLevel(t *testing.T) {
 	var d *DB
+	defer func() {
+		if d != nil {
+			// Ignore errors because this test defines fake in-progress transactions
+			// that prohibit clean shutdown.
+			_ = d.Close()
+		}
+	}()
 
 	parseMeta := func(s string) fileMetadata {
 		parts := strings.Split(s, "-")
@@ -441,6 +449,12 @@ func TestIngestTargetLevel(t *testing.T) {
 	datadriven.RunTest(t, "testdata/ingest_target_level", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
+			if d != nil {
+				// Ignore errors because this test defines fake in-progress
+				// transactions that prohibit clean shutdown.
+				_ = d.Close()
+			}
+
 			var err error
 			if d, err = runDBDefineCmd(td, nil); err != nil {
 				return err.Error()
@@ -471,7 +485,8 @@ func TestIngestTargetLevel(t *testing.T) {
 			var buf bytes.Buffer
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
-				level, err := ingestTargetLevel(d.newIters, IterOptions{logger: d.opts.Logger}, d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, &meta)
+				level, err := ingestTargetLevel(d.newIters, IterOptions{logger: d.opts.Logger},
+					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, &meta)
 				if err != nil {
 					return err.Error()
 				}
@@ -488,8 +503,15 @@ func TestIngestTargetLevel(t *testing.T) {
 func TestIngest(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
 
 	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
 		mem = vfs.NewMem()
 		err := mem.MkdirAll("ext", 0755)
 		if err != nil {
@@ -603,6 +625,8 @@ func TestIngestCompact(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	require.NoError(t, d.Close())
 }
 
 func TestConcurrentIngest(t *testing.T) {
@@ -662,6 +686,8 @@ func TestConcurrentIngest(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	require.NoError(t, d.Close())
 }
 
 func TestConcurrentIngestCompact(t *testing.T) {
@@ -786,6 +812,8 @@ func TestConcurrentIngestCompact(t *testing.T) {
 				// if there is insufficient synchronization between ingestion and
 				// compaction.
 			}
+
+			require.NoError(t, d.Close())
 		})
 	}
 }
@@ -839,6 +867,8 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 	}
 
 	ingest("a")
+
+	require.NoError(t, d.Close())
 }
 
 func TestIngestFlushQueuedLargeBatch(t *testing.T) {
@@ -888,4 +918,6 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 	}
 
 	ingest("a")
+
+	require.NoError(t, d.Close())
 }

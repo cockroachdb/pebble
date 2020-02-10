@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type panicLogger struct{}
@@ -335,34 +336,23 @@ func TestRequireReadError(t *testing.T) {
 			FS:     fs,
 			Logger: panicLogger{},
 		})
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
+		require.NoError(t, err)
+		defer func() {
+			if d != nil {
+				require.NoError(t, d.Close())
+			}
+		}()
 
 		key1 := []byte("a1")
 		key2 := []byte("a2")
 		value := []byte("b")
-		if err := d.Set(key1, value, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Set(key2, value, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Flush(); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Compact(key1, key2); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.DeleteRange(key1, key2, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Set(key1, value, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Flush(); err != nil {
-			t.Fatalf("%v", err)
-		}
+		require.NoError(t, d.Set(key1, value, nil))
+		require.NoError(t, d.Set(key2, value, nil))
+		require.NoError(t, d.Flush())
+		require.NoError(t, d.Compact(key1, key2))
+		require.NoError(t, d.DeleteRange(key1, key2, nil))
+		require.NoError(t, d.Set(key1, value, nil))
+		require.NoError(t, d.Flush())
 		expectLSM(`
 0:
   000007:[a1#3,SET-a2#72057594037927935,RANGEDEL]
@@ -390,6 +380,7 @@ func TestRequireReadError(t *testing.T) {
 		if err := d.Close(); err != nil {
 			return err
 		}
+		d = nil
 		// Reaching here implies all read operations succeeded. This
 		// should only happen when we reached a large enough index at
 		// which `errorFS` did not return any error.
@@ -428,31 +419,22 @@ func TestCorruptReadError(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
+		defer func() {
+			if d != nil {
+				require.NoError(t, d.Close())
+			}
+		}()
 
 		key1 := []byte("a1")
 		key2 := []byte("a2")
 		value := []byte("b")
-		if err := d.Set(key1, value, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Set(key2, value, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Flush(); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Compact(key1, key2); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.DeleteRange(key1, key2, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Set(key1, value, nil); err != nil {
-			t.Fatalf("%v", err)
-		}
-		if err := d.Flush(); err != nil {
-			t.Fatalf("%v", err)
-		}
+		require.NoError(t, d.Set(key1, value, nil))
+		require.NoError(t, d.Set(key2, value, nil))
+		require.NoError(t, d.Flush())
+		require.NoError(t, d.Compact(key1, key2))
+		require.NoError(t, d.DeleteRange(key1, key2, nil))
+		require.NoError(t, d.Set(key1, value, nil))
+		require.NoError(t, d.Flush())
 		expectLSM(`
 0:
   000007:[a1#3,SET-a2#72057594037927935,RANGEDEL]
@@ -480,6 +462,7 @@ func TestCorruptReadError(t *testing.T) {
 		if err := d.Close(); err != nil {
 			return err
 		}
+		d = nil
 		// Reaching here implies all read operations succeeded. This
 		// should only happen when we reached a large enough index at
 		// which `corruptFS` did not inject any corruption.

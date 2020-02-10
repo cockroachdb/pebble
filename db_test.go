@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -705,8 +704,11 @@ func TestIterLeak(t *testing.T) {
 }
 
 func TestMemTableReservation(t *testing.T) {
+	cache := NewCache(128 << 10 /* 128 KB */)
+	defer cache.Unref()
+
 	opts := &Options{
-		Cache:        cache.New(128 << 10 /* 128 KB */),
+		Cache:        cache,
 		MemTableSize: initialMemTableSize,
 		FS:           vfs.NewMem(),
 	}
@@ -786,6 +788,8 @@ func TestMemTableReservationLeak(t *testing.T) {
 
 func TestCacheEvict(t *testing.T) {
 	cache := NewCache(10 << 20)
+	defer cache.Unref()
+
 	d, err := Open("", &Options{
 		Cache: cache,
 		FS:    vfs.NewMem(),
@@ -1026,6 +1030,8 @@ func TestDBApplyBatchNilDB(t *testing.T) {
 	if b1.memTableSize != b2.memTableSize {
 		t.Fatalf("expected memTableSize %d, but found %d", b1.memTableSize, b2.memTableSize)
 	}
+
+	require.NoError(t, d.Close())
 }
 
 func TestDBApplyBatchMismatch(t *testing.T) {
@@ -1052,6 +1058,9 @@ func TestDBApplyBatchMismatch(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "pebble: batch db mismatch:") {
 		t.Fatalf("expected error, but found %v", err)
 	}
+
+	require.NoError(t, srcDB.Close())
+	require.NoError(t, applyDB.Close())
 }
 
 func TestCloseCleanerRace(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -410,10 +411,21 @@ func (c *minSeqNumPropertyCollector) Name() string {
 
 func TestIteratorTableFilter(t *testing.T) {
 	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
 
 	datadriven.RunTest(t, "testdata/iterator_table_filter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+
 			opts := &Options{}
 			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
 				func() TablePropertyCollector {
@@ -478,8 +490,15 @@ func TestIteratorTableFilter(t *testing.T) {
 func TestIteratorNextPrev(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
 
 	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
 		mem = vfs.NewMem()
 		err := mem.MkdirAll("ext", 0755)
 		if err != nil {

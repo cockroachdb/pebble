@@ -48,4 +48,5 @@ func TestVersionSetCheckpoint(t *testing.T) {
 	}
 	checkValue("a", "b")
 	checkValue("c", "d")
+	require.NoError(t, d.Close())
 }

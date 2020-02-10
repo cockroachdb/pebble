@@ -18,6 +18,10 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+const (
+	cacheDefaultSize = 8 << 20 // 8 MB
+)
+
 // Compression exports the base.Compression type.
 type Compression = sstable.Compression
 
@@ -404,9 +408,6 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.BytesPerSync <= 0 {
 		o.BytesPerSync = 512 << 10 // 512 KB
 	}
-	if o.Cache == nil {
-		o.Cache = cache.New(8 << 20) // 8 MB
-	}
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}
 	}
@@ -522,12 +523,17 @@ func filterPolicyName(p FilterPolicy) string {
 func (o *Options) String() string {
 	var buf bytes.Buffer
 
+	cacheSize := int64(cacheDefaultSize)
+	if o.Cache != nil {
+		cacheSize = o.Cache.MaxSize()
+	}
+
 	fmt.Fprintf(&buf, "[Version]\n")
 	fmt.Fprintf(&buf, "  pebble_version=0.1\n")
 	fmt.Fprintf(&buf, "\n")
 	fmt.Fprintf(&buf, "[Options]\n")
 	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
-	fmt.Fprintf(&buf, "  cache_size=%d\n", o.Cache.MaxSize())
+	fmt.Fprintf(&buf, "  cache_size=%d\n", cacheSize)
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)

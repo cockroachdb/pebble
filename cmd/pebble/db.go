@@ -47,8 +47,10 @@ type pebbleDB struct {
 }
 
 func newPebbleDB(dir string) DB {
+	cache := pebble.NewCache(cacheSize)
+	defer cache.Unref()
 	opts := &pebble.Options{
-		Cache:                       pebble.NewCache(cacheSize),
+		Cache:                       cache,
 		Comparer:                    mvccComparer,
 		DisableWAL:                  disableWAL,
 		MemTableSize:                64 << 20,

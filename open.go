@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -24,12 +25,18 @@ import (
 const initialMemTableSize = 256 << 10 // 256 KB
 
 // Open opens a LevelDB whose files live in the given directory.
-func Open(dirname string, opts *Options) (*DB, error) {
+func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
 	opts = opts.EnsureDefaults()
 	if err := opts.Validate(); err != nil {
 		return nil, err
+	}
+
+	if opts.Cache == nil {
+		opts.Cache = cache.New(cacheDefaultSize)
+	} else {
+		opts.Cache.Ref()
 	}
 
 	d := &DB{
@@ -45,6 +52,16 @@ func Open(dirname string, opts *Options) (*DB, error) {
 		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 	}
+	defer func() {
+		if db == nil {
+			// We're failing to return the DB for some reason. Release our references
+			// to the Cache. Note that both the DB, and tableCache have a reference
+			// and we need to release both.
+			opts.Cache.Unref()
+			opts.Cache.Unref()
+		}
+	}()
+
 	if d.equal == nil {
 		d.equal = bytes.Equal
 	}

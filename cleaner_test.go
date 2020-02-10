@@ -12,10 +12,17 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestArchiveCleaner(t *testing.T) {
 	dbs := make(map[string]*DB)
+	defer func() {
+		for _, db := range dbs {
+			require.NoError(t, db.Close())
+		}
+	}()
+
 	var buf syncedBuffer
 	mem := vfs.NewMem()
 	opts := &Options{

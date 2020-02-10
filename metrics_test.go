@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetricsFormat(t *testing.T) {
@@ -88,10 +89,17 @@ func TestMetrics(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
 	iters := make(map[string]*Iterator)
+	defer func() {
+		for _, i := range iters {
+			require.NoError(t, i.Close())
+		}
+	}()
 
 	datadriven.RunTest(t, "testdata/metrics", func(td *datadriven.TestData) string {
 		switch td.Cmd {

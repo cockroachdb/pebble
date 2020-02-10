@@ -22,6 +22,8 @@ func TestCache(t *testing.T) {
 	}
 
 	cache := newShards(200, 1)
+	defer cache.Unref()
+
 	scanner := bufio.NewScanner(f)
 	line := 1
 
@@ -67,6 +69,8 @@ func testAutoValue(cache *Cache, s string, repeat int) *Value {
 
 func TestWeakHandle(t *testing.T) {
 	cache := newShards(5, 1)
+	defer cache.Unref()
+
 	cache.Set(1, 1, 0, testAutoValue(cache, "a", 5)).Release()
 	h := cache.Set(1, 0, 0, testAutoValue(cache, "b", 5))
 	if v := h.Get(); string(v) != "bbbbb" {
@@ -85,6 +89,8 @@ func TestWeakHandle(t *testing.T) {
 
 func TestCacheDelete(t *testing.T) {
 	cache := newShards(100, 1)
+	defer cache.Unref()
+
 	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
 	cache.Set(1, 1, 0, testManualValue(cache, "a", 5)).Release()
 	cache.Set(1, 2, 0, testManualValue(cache, "a", 5)).Release()
@@ -114,6 +120,8 @@ func TestCacheDelete(t *testing.T) {
 
 func TestEvictFile(t *testing.T) {
 	cache := newShards(100, 1)
+	defer cache.Unref()
+
 	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
 	cache.Set(1, 1, 0, testManualValue(cache, "a", 5)).Release()
 	cache.Set(1, 2, 0, testManualValue(cache, "a", 5)).Release()
@@ -140,12 +148,16 @@ func TestEvictAll(t *testing.T) {
 	// Verify that it is okay to evict all of the data from a cache. Previously
 	// this would trigger a nil-pointer dereference.
 	cache := newShards(100, 1)
+	defer cache.Unref()
+
 	cache.Set(1, 0, 0, testManualValue(cache, "a", 101)).Release()
 	cache.Set(1, 1, 0, testManualValue(cache, "a", 101)).Release()
 }
 
 func TestMultipleDBs(t *testing.T) {
 	cache := newShards(100, 1)
+	defer cache.Unref()
+
 	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
 	cache.Set(2, 0, 0, testManualValue(cache, "b", 5)).Release()
 	if expected, size := int64(10), cache.Size(); expected != size {
@@ -162,16 +174,22 @@ func TestMultipleDBs(t *testing.T) {
 	h = cache.Get(2, 0, 0)
 	if v := h.Get(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %s", v)
+	} else {
+		h.Release()
 	}
 }
 
 func TestZeroSize(t *testing.T) {
 	cache := newShards(0, 1)
+	defer cache.Unref()
+
 	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
 }
 
 func TestReserve(t *testing.T) {
 	cache := newShards(4, 2)
+	defer cache.Unref()
+
 	cache.Set(1, 0, 0, testManualValue(cache, "a", 1)).Release()
 	cache.Set(2, 0, 0, testManualValue(cache, "a", 1)).Release()
 	require.EqualValues(t, 2, cache.Size())
@@ -191,6 +209,8 @@ func TestReserve(t *testing.T) {
 
 func TestReserveDoubleRelease(t *testing.T) {
 	cache := newShards(100, 1)
+	defer cache.Unref()
+
 	r := cache.Reserve(10)
 	r()
 
