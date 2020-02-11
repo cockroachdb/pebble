@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -664,73 +665,75 @@ func TestConcurrentIngest(t *testing.T) {
 }
 
 func TestConcurrentIngestCompact(t *testing.T) {
-	mem := vfs.NewMem()
-	compactionReady := make(chan struct{})
-	compactionBegin := make(chan struct{})
-	d, err := Open("", &Options{
-		FS: mem,
-		EventListener: EventListener{
-			TableCreated: func(info TableCreateInfo) {
-				if info.Reason == "compacting" {
-					close(compactionReady)
-					<-compactionBegin
-				}
-			},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ingest := func(keys ...string) {
-		t.Helper()
-		f, err := mem.Create("ext")
-		if err != nil {
-			t.Fatal(err)
-		}
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
-		for _, k := range keys {
-			if err := w.Set([]byte(k), nil); err != nil {
+	for i := 0; i < 2; i++ {
+		t.Run("", func(t *testing.T) {
+			mem := vfs.NewMem()
+			compactionReady := make(chan struct{})
+			compactionBegin := make(chan struct{})
+			d, err := Open("", &Options{
+				FS: mem,
+				EventListener: EventListener{
+					TableCreated: func(info TableCreateInfo) {
+						if info.Reason == "compacting" {
+							close(compactionReady)
+							<-compactionBegin
+						}
+					},
+				},
+			})
+			if err != nil {
 				t.Fatal(err)
 			}
-		}
-		if err := w.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := d.Ingest([]string{"ext"}); err != nil {
-			t.Fatal(err)
-		}
-	}
 
-	compact := func(start, end string) {
-		t.Helper()
-		if err := d.Compact([]byte(start), []byte(end)); err != nil {
-			t.Fatal(err)
-		}
-	}
+			ingest := func(keys ...string) {
+				t.Helper()
+				f, err := mem.Create("ext")
+				if err != nil {
+					t.Fatal(err)
+				}
+				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				for _, k := range keys {
+					if err := w.Set([]byte(k), nil); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := w.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := d.Ingest([]string{"ext"}); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	lsm := func() string {
-		d.mu.Lock()
-		s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
-		d.mu.Unlock()
-		return s
-	}
+			compact := func(start, end string) {
+				t.Helper()
+				if err := d.Compact([]byte(start), []byte(end)); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	expectLSM := func(expected string) {
-		t.Helper()
-		expected = strings.TrimSpace(expected)
-		actual := strings.TrimSpace(lsm())
-		if expected != actual {
-			t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
-		}
-	}
+			lsm := func() string {
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+			}
 
-	ingest("a")
-	ingest("a")
-	ingest("c")
-	ingest("c")
+			expectLSM := func(expected string) {
+				t.Helper()
+				expected = strings.TrimSpace(expected)
+				actual := strings.TrimSpace(lsm())
+				if expected != actual {
+					t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
+				}
+			}
 
-	expectLSM(`
+			ingest("a")
+			ingest("a")
+			ingest("c")
+			ingest("c")
+
+			expectLSM(`
 0:
   000005:[a#2,SET-a#2,SET]
   000007:[c#4,SET-c#4,SET]
@@ -739,27 +742,52 @@ func TestConcurrentIngestCompact(t *testing.T) {
   000006:[c#3,SET-c#3,SET]
 `)
 
-	// At this point ingestion of an sstable containing only key "b" will be
-	// targetted at L6. Yet a concurrent compaction of sstables 5 and 7 will
-	// create a new sstable in L6 spanning ["a"-"c"]. So the ingestion must
-	// actually target L5.
+			// At this point ingestion of an sstable containing only key "b" will be
+			// targetted at L6. Yet a concurrent compaction of sstables 5 and 7 will
+			// create a new sstable in L6 spanning ["a"-"c"]. So the ingestion must
+			// actually target L5.
 
-	go func() {
-		<-compactionReady
+			switch i {
+			case 0:
+				// Compact, then ingest.
+				go func() {
+					<-compactionReady
 
-		ingest("b")
+					ingest("b")
 
-		close(compactionBegin)
-	}()
+					close(compactionBegin)
+				}()
 
-	compact("a", "z")
+				compact("a", "z")
 
-	expectLSM(`
+				expectLSM(`
 0:
   000009:[b#5,SET-b#5,SET]
 6:
   000008:[a#0,SET-c#0,SET]
 `)
+
+			case 1:
+				// Ingest, then compact
+				var wg sync.WaitGroup
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					close(compactionBegin)
+					compact("a", "z")
+				}()
+
+				ingest("b")
+				wg.Wait()
+
+				// Because we're performing the ingestion and compaction concurrently,
+				// we can't guarantee any particular LSM structure at this point. The
+				// test will fail with an assertion error due to overlapping sstables
+				// if there is insufficient synchronization between ingestion and
+				// compaction.
+			}
+		})
+	}
 }
 
 func TestIngestFlushQueuedMemTable(t *testing.T) {
