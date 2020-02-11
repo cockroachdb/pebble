@@ -967,6 +967,14 @@ func (d *DB) maybeScheduleCompaction() {
 		}
 		return
 	}
+
+	// Compacting picking needs a coherent view a Version. In particular, we need
+	// to exlude concurrent ingestions from making a decision on which level to
+	// ingest into that conflicts with our compaction
+	// decision. versionSet.logLock provides the necessary mutual exclusion.
+	d.mu.versions.logLock()
+	defer d.mu.versions.logUnlock()
+
 	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
 		manual := d.mu.compact.manual[0]
 		c, retryLater := d.mu.versions.picker.pickManual(d.opts, manual, &d.bytesCompacted, d.getInProgressCompactionInfoLocked(nil))
