@@ -753,7 +753,9 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	w.props.CompressionName = o.Compression.String()
 	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
-	w.props.Version = 2 // TODO(peter): what is this?
+
+	// TODO(bilal): don't set this property value for sstables written by the DB.
+	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
 
 	if len(o.TablePropertyCollectors) > 0 {
 		w.propCollectors = make([]TablePropertyCollector, len(o.TablePropertyCollectors))

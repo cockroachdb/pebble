@@ -260,7 +260,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		}
 
 		tw := tabwriter.NewWriter(stdout, 2, 1, 2, ' ', 0)
-		fmt.Fprintf(tw, "version\t%d\n", r.Properties.Version)
+		fmt.Fprintf(tw, "version\t%d\n", r.Properties.FormatVersion)
 		fmt.Fprintf(tw, "size\t\n")
 		fmt.Fprintf(tw, "  file\t%d\n", stat.Size())
 		fmt.Fprintf(tw, "  data\t%d\n", r.Properties.DataSize)
