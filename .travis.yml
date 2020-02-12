@@ -17,7 +17,11 @@ matrix:
     - name: "go1.13.x-linux-race"
       go: 1.13.x
       os: linux
-      script: make testrace
+      script: make testrace TAGS=
+    - name: "go1.13.x-linux-no-invariants"
+      go: 1.13.x
+      os: linux
+      script: make test TAGS=
     - name: "go1.13.x-darwin"
       go: 1.13.x
       os: osx
@@ -26,11 +30,6 @@ matrix:
       go: 1.13.x
       os: windows
       script: go test ./...
-    - name: "go1.13.x-freebsd"
-      go: 1.13.x
-      os: linux
-      # NB: "env: GOOS=freebsd" does not have the desired effect.
-      script: GOOS=freebsd go build -v ./...
 
 notifications:
   email:

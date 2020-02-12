@@ -5,9 +5,11 @@
 package cache
 
 import (
+	"runtime"
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/manual"
 	"golang.org/x/exp/rand"
 )
 
@@ -30,8 +32,17 @@ var allocPool = sync.Pool{
 	},
 }
 
-// allocNew allocates a slice of size n. The use of sync.Pool provides a
-// per-cpu cache of allocCache structures to allocate from.
+// allocNew allocates a non-garbage collected slice of size n. Every call to
+// allocNew() MUST be paired with a call to allocFree(). Failure to do so will
+// result in a memory leak. The use of sync.Pool provides a per-cpu cache of
+// allocCache structures to allocate from.
+//
+// TODO(peter): Is the allocCache still necessary for performance? Before the
+// introduction of manual memory management, the allocCache dramatically
+// reduced GC pressure by reducing allocation bandwidth. It no longer serves
+// this purpose because manual.{New,Free} don't produce any GC pressure. Will
+// need to run benchmark workloads to see if this can be removed which would
+// allow the removal of the one required use of runtime.SetFinalizer.
 func allocNew(n int) []byte {
 	a := allocPool.Get().(*allocCache)
 	b := a.alloc(n)
@@ -73,12 +84,20 @@ func newAllocCache() *allocCache {
 		bufs: make([][]byte, 0, allocCacheCountLimit),
 	}
 	c.rnd.Seed(uint64(time.Now().UnixNano()))
+	runtime.SetFinalizer(c, freeAllocCache)
 	return c
+}
+
+func freeAllocCache(obj interface{}) {
+	c := obj.(*allocCache)
+	for i := range c.bufs {
+		manual.Free(c.bufs[i])
+	}
 }
 
 func (c *allocCache) alloc(n int) []byte {
 	if n < allocCacheMinSize || n >= allocCacheMaxSize {
-		return make([]byte, n)
+		return manual.New(n)
 	}
 
 	class := sizeToClass(n)
@@ -92,12 +111,13 @@ func (c *allocCache) alloc(n int) []byte {
 		}
 	}
 
-	return make([]byte, n, classToSize(class))
+	return manual.New(classToSize(class))[:n]
 }
 
 func (c *allocCache) free(b []byte) {
 	n := cap(b)
 	if n < allocCacheMinSize || n >= allocCacheMaxSize {
+		manual.Free(b)
 		return
 	}
 	b = b[:n:n]
@@ -117,6 +137,7 @@ func (c *allocCache) free(b []byte) {
 		// are biased, but that is fine for the usage here.
 		j := (uint32(len(c.bufs)) * (uint32(c.rnd.Uint64()) & ((1 << 16) - 1))) >> 16
 		c.size -= cap(c.bufs[j])
+		manual.Free(c.bufs[j])
 		c.bufs[i], c.bufs[j] = nil, c.bufs[i]
 		c.bufs = c.bufs[:i]
 	}

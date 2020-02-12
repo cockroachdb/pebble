@@ -343,6 +343,7 @@ func TestBytesIteratedCompressed(t *testing.T) {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, SnappyCompression)
 				var bytesIterated, prevIterated uint64
 				citer := r.NewCompactionIter(&bytesIterated)
+
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
 					if bytesIterated < prevIterated {
 						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
@@ -354,6 +355,13 @@ func TestBytesIteratedCompressed(t *testing.T) {
 				// There is some inaccuracy due to compression estimation.
 				if bytesIterated < expected*99/100 || bytesIterated > expected*101/100 {
 					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+				}
+
+				if err := citer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.Close(); err != nil {
+					t.Fatal(err)
 				}
 			}
 		}
@@ -368,6 +376,7 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, NoCompression)
 				var bytesIterated, prevIterated uint64
 				citer := r.NewCompactionIter(&bytesIterated)
+
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
 					if bytesIterated < prevIterated {
 						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
@@ -379,6 +388,13 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 				if bytesIterated != expected {
 					t.Fatalf("bytesIterated: got %d, want %d (blockSize=%d indexBlockSize=%d numEntries=%d)",
 						bytesIterated, expected, blockSize, indexBlockSize, numEntries)
+				}
+
+				if err := citer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.Close(); err != nil {
+					t.Fatal(err)
 				}
 			}
 		}
@@ -483,6 +499,8 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					it.SeekGE(keys[rng.Intn(len(keys))])
 				}
+
+				it.Close()
 			})
 	}
 }
@@ -501,6 +519,8 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					it.SeekLT(keys[rng.Intn(len(keys))])
 				}
+
+				it.Close()
 			})
 	}
 }
@@ -527,6 +547,8 @@ func BenchmarkTableIterNext(b *testing.B) {
 				if testing.Verbose() {
 					fmt.Fprint(ioutil.Discard, sum)
 				}
+
+				it.Close()
 			})
 	}
 }
@@ -553,6 +575,8 @@ func BenchmarkTableIterPrev(b *testing.B) {
 				if testing.Verbose() {
 					fmt.Fprint(ioutil.Discard, sum)
 				}
+
+				it.Close()
 			})
 	}
 }
