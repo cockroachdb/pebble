@@ -964,6 +964,7 @@ type cacheOpts struct {
 }
 
 // Marker function to indicate the option should be applied before reading the
+// sstable properties and, in the write path, before writing the default
 // sstable properties.
 func (c *cacheOpts) preApply() {}
 

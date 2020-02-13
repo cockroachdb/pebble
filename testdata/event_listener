@@ -54,7 +54,7 @@ close: db/CURRENT.000007.dbtmp
 rename: db/CURRENT.000007.dbtmp -> db/CURRENT
 sync: db
 [JOB 3] MANIFEST created 000007
-[JOB 3] flushed to L0 [000006] (825 B)
+[JOB 3] flushed to L0 [000006] (770 B)
 [JOB 3] MANIFEST deleted 000003
 
 compact
@@ -80,9 +80,9 @@ close: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
 [JOB 5] MANIFEST created 000010
-[JOB 5] flushed to L0 [000009] (825 B)
+[JOB 5] flushed to L0 [000009] (770 B)
 [JOB 5] MANIFEST deleted 000007
-[JOB 6] compacting L0 [000006 000009] (1.6 K) + L6 [] (0 B)
+[JOB 6] compacting L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
 [JOB 6] compacting: sstable created 000011
 sync: db/000011.sst
@@ -97,7 +97,7 @@ close: db/CURRENT.000012.dbtmp
 rename: db/CURRENT.000012.dbtmp -> db/CURRENT
 sync: db
 [JOB 6] MANIFEST created 000012
-[JOB 6] compacted L0 [000006 000009] (1.6 K) + L6 [] (0 B) -> L6 [000011] (825 B), in 1.0s, output rate 825 B/s
+[JOB 6] compacted L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
 [JOB 6] sstable deleted 000006
 [JOB 6] sstable deleted 000009
 [JOB 6] MANIFEST deleted 000010
@@ -128,7 +128,7 @@ close: db/CURRENT.000015.dbtmp
 rename: db/CURRENT.000015.dbtmp -> db/CURRENT
 sync: db
 [JOB 8] MANIFEST created 000015
-[JOB 8] flushed to L0 [000014] (825 B)
+[JOB 8] flushed to L0 [000014] (770 B)
 
 enable-file-deletions
 ----
@@ -155,20 +155,20 @@ metrics
 ----
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
     WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -     2.2
-      0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.4 K       3     0 B    30.6
+      0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.3 K       3     0 B    28.5
       1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
       2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
-  total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
+      6         1   770 B    0.00   1.5 K     0 B       0     0 B       0   770 B       1   1.5 K     0.5
+  total         3   2.3 K       -   933 B   825 B       1     0 B       0   3.9 K       4   1.5 K     4.3
   flush         3
 compact         1   1.6 K          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
- bcache         8   1.5 K    5.9%  (score == hit-rate)
+ bcache         8   1.4 K    5.9%  (score == hit-rate)
  tcache         1   672 B    0.0%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)

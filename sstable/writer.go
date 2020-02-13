@@ -686,6 +686,18 @@ type WriterOption interface {
 	writerApply(*Writer)
 }
 
+// InternalOptions is a WriterOption that sets properties for sstables being
+// created by the db itself (i.e. through flushes and compactions), as opposed
+// to those meant for ingestion.
+type InternalOptions struct {}
+var _ WriterOption = &InternalOptions{}
+
+func (i InternalOptions) writerApply(w *Writer) {
+	// Set the external sst version to 0. This is what RocksDB expects for
+	// db-internal sstables; otherwise, it could apply a global sequence number.
+	w.props.ExternalFormatVersion = 0
+}
+
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
@@ -725,6 +737,9 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		return w
 	}
 
+	// Note that WriterOptions are applied in two places; the ones with a
+	// preApply() method are applied here, and the rest are applied after
+	// default properties are set.
 	type preApply interface{ preApply() }
 	for _, opt := range extraOpts {
 		if _, ok := opt.(preApply); ok {
@@ -753,8 +768,6 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	w.props.CompressionName = o.Compression.String()
 	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
-
-	// TODO(bilal): don't set this property value for sstables written by the DB.
 	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
 
 	if len(o.TablePropertyCollectors) > 0 {
@@ -770,6 +783,13 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		}
 		buf.WriteString("]")
 		w.props.PropertyCollectorNames = buf.String()
+	}
+
+	// Apply the remaining WriterOptions that do not have a preApply() method.
+	for _, opt := range extraOpts {
+		if _, ok := opt.(preApply); !ok {
+			opt.writerApply(w)
+		}
 	}
 
 	// If f does not have a Flush method, do our own buffering.
