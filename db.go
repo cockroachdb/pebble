@@ -808,6 +808,9 @@ func (d *DB) Close() error {
 		panic(ErrClosed)
 	}
 	atomic.StoreInt32(&d.closed, 1)
+
+	defer d.opts.Cache.Unref()
+
 	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}

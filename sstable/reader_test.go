@@ -228,6 +228,11 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+
+		if r != nil {
+			r.Close()
+			r = nil
+		}
 	})
 }
 
@@ -435,8 +440,10 @@ func buildTestTable(
 	if err != nil {
 		t.Fatal(err)
 	}
+	c := cache.New(128 << 20)
+	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
-		Cache: cache.New(128 << 20),
+		Cache: c,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -476,8 +483,10 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	if err != nil {
 		b.Fatal(err)
 	}
+	c := cache.New(128 << 20)
+	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
-		Cache: cache.New(128 << 20),
+		Cache: c,
 	})
 	if err != nil {
 		b.Fatal(err)

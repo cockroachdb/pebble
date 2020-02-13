@@ -190,6 +190,9 @@ func TestOptionsParse(t *testing.T) {
 			if str != parsedStr {
 				t.Fatalf("expected\n%s\nbut found\n%s", str, parsedStr)
 			}
+			if parsedOptions.Cache != nil {
+				parsedOptions.Cache.Unref()
+			}
 		})
 	}
 }

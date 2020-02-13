@@ -13,15 +13,6 @@ import (
 	"sync/atomic"
 )
 
-func checkValue(obj interface{}) {
-	v := obj.(*Value)
-	if v.buf != nil {
-		fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
-			v.buf, atomic.LoadInt32(&v.refs), v.traces())
-		os.Exit(1)
-	}
-}
-
 // newManualValue creates a Value with a manually managed buffer of size n.
 //
 // This definition of newManualValue is used when either the "invariants" or
@@ -35,7 +26,14 @@ func newManualValue(n int) *Value {
 	b := allocNew(n)
 	v := &Value{buf: b, refs: 1}
 	v.trace("alloc")
-	runtime.SetFinalizer(v, checkValue)
+	runtime.SetFinalizer(v, func(obj interface{}) {
+		v := obj.(*Value)
+		if v.buf != nil {
+			fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
+				v, atomic.LoadInt32(&v.refs), v.traces())
+			os.Exit(1)
+		}
+	})
 	return v
 }
 

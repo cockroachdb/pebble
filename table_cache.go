@@ -30,6 +30,7 @@ var emptyIter = &errorIter{err: nil}
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 
 type tableCache struct {
+	cache         *Cache
 	shards        []tableCacheShard
 	filterMetrics FilterMetrics
 }
@@ -37,6 +38,9 @@ type tableCache struct {
 func (c *tableCache) init(
 	cacheID uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
 ) {
+	c.cache = opts.Cache
+	c.cache.Ref()
+
 	c.shards = make([]tableCacheShard, runtime.NumCPU())
 	for i := range c.shards {
 		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards), hitBuffer)
@@ -91,13 +95,12 @@ func (c *tableCache) iterCount() int64 {
 }
 
 func (c *tableCache) Close() error {
+	var err error
 	for i := range c.shards {
-		err := c.shards[i].Close()
-		if err != nil {
-			return err
-		}
+		err = firstError(err, c.shards[i].Close())
 	}
-	return nil
+	c.cache.Unref()
+	return err
 }
 
 type tableCacheShard struct {
@@ -169,6 +172,7 @@ func (c *tableCacheShard) newIters(
 		!opts.TableFilter(n.reader.Properties.UserProperties) {
 		// Return the empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
+		c.unrefNode(n)
 		return emptyIter, nil, nil
 	}
 	var iter sstable.Iterator
@@ -187,6 +191,7 @@ func (c *tableCacheShard) newIters(
 	// Check for errors during iterator creation.
 	if iter.Error() != nil {
 		// `Close()` returns the same error as `Error()`.
+		c.unrefNode(n)
 		return nil, nil, iter.Close()
 	}
 
@@ -195,6 +200,7 @@ func (c *tableCacheShard) newIters(
 	rangeDelIter, err := n.reader.NewRangeDelIter()
 	if err != nil {
 		iter.Close()
+		c.unrefNode(n)
 		return nil, nil, err
 	}
 	if rangeDelIter != nil {
@@ -393,16 +399,20 @@ func (c *tableCacheShard) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Check for leaked iterators. Note that we'll still perform cleanup below in
+	// the case that there are leaked iterators.
+	var err error
 	if v := atomic.LoadInt32(&c.iterCount); v > 0 {
 		if !invariants.RaceEnabled {
-			return fmt.Errorf("leaked iterators: %d", v)
+			err = fmt.Errorf("leaked iterators: %d", v)
+		} else {
+			var buf bytes.Buffer
+			fmt.Fprintf(&buf, "leaked iterators: %d\n", v)
+			for _, stack := range c.mu.iters {
+				fmt.Fprintf(&buf, "%s\n", stack)
+			}
+			err = errors.New(buf.String())
 		}
-		var buf bytes.Buffer
-		fmt.Fprintf(&buf, "leaked iterators: %d\n", v)
-		for _, stack := range c.mu.iters {
-			fmt.Fprintf(&buf, "%s\n", stack)
-		}
-		return errors.New(buf.String())
 	}
 
 	for n := c.mu.lru.next; n != &c.mu.lru; n = n.next {
@@ -420,7 +430,7 @@ func (c *tableCacheShard) Close() error {
 	c.mu.lru.prev = nil
 
 	c.releasing.Wait()
-	return nil
+	return err
 }
 
 type tableCacheNode struct {

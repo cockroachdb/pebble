@@ -45,8 +45,15 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
 	var levels [][]fileMetadata
+
 	// Indexed by fileNum
 	var readers []*sstable.Reader
+	defer func() {
+		for _, r := range readers {
+			r.Close()
+		}
+	}()
+
 	var fileNum uint64
 	newIters :=
 		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {

@@ -492,9 +492,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 			c.Name(): c,
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	const n = 10000
 	// key is a buffer that will be re-used for n Get calls, each with a
@@ -528,6 +526,8 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	if got := float64(100*c.falsePositives) / n; got < 0.2 || 5 < got {
 		t.Errorf("false positive rate: got %v%%, want approximately 1%%", got)
 	}
+
+	require.NoError(t, r.Close())
 }
 
 type countingFilterPolicy struct {
@@ -659,10 +659,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err := NewReader(f, ReaderOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
+	require.NoError(t, err)
 
 	const globalSeqNum = 42
 	r.Properties.GlobalSeqNum = globalSeqNum
@@ -673,9 +670,8 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())
 		}
 	}
-	if err := i.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, i.Close())
+	require.NoError(t, r.Close())
 }
 
 func TestMetaIndexEntriesSorted(t *testing.T) {
@@ -686,9 +682,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	}
 
 	r, err := NewReader(f, ReaderOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, false /* weak */)
 	if err != nil {
@@ -708,9 +702,8 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		t.Fatalf("metaindex block out of order: %v", keys)
 	}
 
-	if err := i.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, i.Close())
+	require.NoError(t, r.Close())
 }
 
 func TestFooterRoundTrip(t *testing.T) {

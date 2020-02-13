@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type compactionPickerForTesting struct {
@@ -773,8 +773,15 @@ func TestCompaction(t *testing.T) {
 func TestManualCompaction(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
 
 	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
 		mem = vfs.NewMem()
 		err := mem.MkdirAll("ext", 0755)
 		if err != nil {
@@ -819,6 +826,12 @@ func TestManualCompaction(t *testing.T) {
 			return runLSMCmd(td, d)
 
 		case "define":
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+
 			var err error
 			if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
 				return err.Error()
@@ -1341,6 +1354,11 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 
 func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
 
 	metaRE := regexp.MustCompile(`^L([0-9]+):([^-]+)-(.+)$`)
 	parseMeta := func(s string) (level int, meta fileMetadata) {
@@ -1363,6 +1381,12 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 		func(td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
+				if d != nil {
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+				}
+
 				var err error
 				if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
 					return err.Error()
@@ -1525,15 +1549,17 @@ func TestFlushInvariant(t *testing.T) {
 		t.Run(fmt.Sprintf("disableWAL=%t", disableWAL), func(t *testing.T) {
 			for i := 0; i < 2; i++ {
 				t.Run("", func(t *testing.T) {
-					errCh := make(chan error)
+					errCh := make(chan error, 1)
 					defer close(errCh)
 					d, err := Open("", &Options{
 						DisableWAL: disableWAL,
 						FS:         vfs.NewMem(),
 						EventListener: EventListener{
 							BackgroundError: func(err error) {
-								errCh <- err
-								runtime.Goexit() // ensure we don't try to reschedule the flush
+								select {
+								case errCh <- err:
+								default:
+								}
 							},
 						},
 						DebugCheck: true,
@@ -1574,6 +1600,8 @@ func TestFlushInvariant(t *testing.T) {
 							t.Fatalf("expected error but found success")
 						}
 					}
+
+					require.NoError(t, d.Close())
 				})
 			}
 		})

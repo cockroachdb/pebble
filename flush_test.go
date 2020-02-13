@@ -12,15 +12,17 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestManualFlush(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
 
 	datadriven.RunTest(t, "testdata/manual_flush", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -69,6 +71,9 @@ func TestManualFlush(t *testing.T) {
 			return s
 
 		case "reset":
+			if err := d.Close(); err != nil {
+				return err.Error()
+			}
 			d, err = Open("", &Options{
 				FS: vfs.NewMem(),
 			})

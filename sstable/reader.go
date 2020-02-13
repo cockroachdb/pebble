@@ -1028,6 +1028,8 @@ type Reader struct {
 
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
+	r.opts.Cache.Unref()
+
 	if r.err != nil {
 		if r.file != nil {
 			r.file.Close()
@@ -1569,6 +1571,12 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 		file: f,
 		opts: o,
 	}
+	if r.opts.Cache == nil {
+		r.opts.Cache = cache.New(0)
+	} else {
+		r.opts.Cache.Ref()
+	}
+
 	if f == nil {
 		r.err = errors.New("pebble/table: nil file")
 		return nil, r.Close()

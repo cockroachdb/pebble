@@ -162,8 +162,12 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	fs.closeCounts = map[string]int{}
 	fs.mu.Unlock()
 
-	opts := &Options{}
+	opts := &Options{
+		Cache: NewCache(8 << 20), // 8 MB
+	}
 	opts.EnsureDefaults()
+	defer opts.Cache.Unref()
+
 	c := &tableCache{}
 	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
 	return c, fs, nil
