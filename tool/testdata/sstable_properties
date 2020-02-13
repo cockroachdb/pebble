@@ -142,3 +142,38 @@ rocksdb.raw.value.size: 1912
 rocksdb.top-level.index.size: 70
 rocksdb.block.based.table.whole.key.filtering: false
 test.key-count: 1727
+
+# Test for properties in SSTs made by the db itself. Should not contain
+# rocksdb.external_sst_file.* . See
+# https://github.com/cockroachdb/pebble/issues/532
+sstable properties
+-v
+testdata/find-db/000011.sst
+----
+000011.sst
+rocksdb.column.family.id: -
+rocksdb.comparator: leveldb.BytewiseComparator
+rocksdb.compression: Snappy
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.creation.time: 0
+rocksdb.data.size: 90
+rocksdb.filter.size: 0
+rocksdb.fixed.key.length: 0
+rocksdb.format.version: 0
+rocksdb.index.key.is.user.key: 0
+rocksdb.index.size: 27
+rocksdb.block.based.table.index.type: 0
+rocksdb.index.value.is.delta.encoded: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.num.data.blocks: 1
+rocksdb.deleted.keys: 2
+rocksdb.num.entries: 8
+rocksdb.merge.operands: 1
+rocksdb.num.range-deletions: 1
+rocksdb.oldest.key.time: 0
+rocksdb.prefix.extractor.name: nullptr
+rocksdb.block.based.table.prefix.filtering: false
+rocksdb.property.collectors: []
+rocksdb.raw.key.size: 88
+rocksdb.raw.value.size: 13
+rocksdb.block.based.table.whole.key.filtering: false
