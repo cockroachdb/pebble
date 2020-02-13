@@ -68,6 +68,10 @@ type Properties struct {
 	CreationTime uint64 `prop:"rocksdb.creation.time"`
 	// The total size of all data blocks.
 	DataSize uint64 `prop:"rocksdb.data.size"`
+	// The external sstable version format. Version 2 is the one RocksDB has been
+	// using since 5.13. RocksDB only uses the global sequence number for an
+	// sstable if this property has been set.
+	ExternalFormatVersion uint32 `prop:"rocksdb.external_sst_file.version"`
 	// Actual SST file creation time. 0 means unknown.
 	FileCreationTime uint64 `prop:"rocksdb.file.creation.time"`
 	// The name of the filter policy used in this table. Empty if no filter
@@ -77,7 +81,7 @@ type Properties struct {
 	FilterSize uint64 `prop:"rocksdb.filter.size"`
 	// If 0, key is variable length. Otherwise number of bytes for each key.
 	FixedKeyLen uint64 `prop:"rocksdb.fixed.key.length"`
-	// format version, reserved for backward compatibility.
+	// Format version, reserved for backward compatibility.
 	FormatVersion uint64 `prop:"rocksdb.format.version"`
 	// The global sequence number to use for all entries in the table. Present if
 	// the table was created externally and ingested whole.
@@ -125,8 +129,6 @@ type Properties struct {
 	// ValueOffsets map from property name to byte offset of the property value
 	// within the file. Only set if the properties have been loaded from a file.
 	ValueOffsets map[string]uint64
-	// The version. TODO(peter): add a more detailed description.
-	Version uint32 `prop:"rocksdb.external_sst_file.version"`
 	// If filtering is enabled, was the filter created on the whole key.
 	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
 }
@@ -141,8 +143,16 @@ func (p *Properties) String() string {
 		if tag == "" {
 			continue
 		}
-		fmt.Fprintf(&buf, "%s: ", tag)
+
 		f := v.Field(i)
+		if f.IsZero() {
+			// Skip printing of zero values which were not loaded from disk.
+			if _, ok := p.ValueOffsets[tag]; !ok {
+				continue
+			}
+		}
+
+		fmt.Fprintf(&buf, "%s: ", tag)
 		switch ft.Type.Kind() {
 		case reflect.Bool:
 			fmt.Fprintf(&buf, "%t\n", f.Bool())
@@ -264,6 +274,10 @@ func (p *Properties) save(w *rawBlockWriter) {
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.CreationTime), p.CreationTime)
 	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
+	if p.ExternalFormatVersion != 0 {
+		p.saveUint32(m, unsafe.Offsetof(p.ExternalFormatVersion), p.ExternalFormatVersion)
+		p.saveUint64(m, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
+	}
 	if p.FileCreationTime > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.FileCreationTime), p.FileCreationTime)
 	}
@@ -273,7 +287,6 @@ func (p *Properties) save(w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.FilterSize), p.FilterSize)
 	p.saveUvarint(m, unsafe.Offsetof(p.FixedKeyLen), p.FixedKeyLen)
 	p.saveUvarint(m, unsafe.Offsetof(p.FormatVersion), p.FormatVersion)
-	p.saveUint64(m, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexKeyIsUserKey), p.IndexKeyIsUserKey)
 	if p.IndexPartitions != 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.IndexPartitions), p.IndexPartitions)
@@ -300,7 +313,6 @@ func (p *Properties) save(w *rawBlockWriter) {
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.RawKeySize), p.RawKeySize)
 	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
-	p.saveUint32(m, unsafe.Offsetof(p.Version), p.Version)
 	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
 
 	keys := make([]string, 0, len(m))

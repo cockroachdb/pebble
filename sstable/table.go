@@ -135,6 +135,8 @@ const (
 	rocksDBMagicOffset   = rocksDBFooterLen - len(rocksDBMagic)
 	rocksDBVersionOffset = rocksDBMagicOffset - 4
 
+	rocksDBExternalFormatVersion = 2
+
 	minFooterLen = levelDBFooterLen
 	maxFooterLen = rocksDBFooterLen
 
