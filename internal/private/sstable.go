@@ -19,3 +19,8 @@ var SSTableRawTombstonesOpt interface{}
 // only in the construction of invalid sstables for testing. See
 // tool/make_test_sstables.go.
 var SSTableWriterDisableKeyOrderChecks func(interface{})
+
+// SSTableInternalTableOpt is an sstable.Writer option that sets properties for
+// sstables being created by the db itself (i.e. through flushes and
+// compactions), as opposed to those meant for ingestion.
+var SSTableInternalTableOpt interface{}

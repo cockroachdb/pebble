@@ -1213,7 +1213,8 @@ func (d *DB) runCompaction(
 		})
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
-		tw = sstable.NewWriter(file, writerOpts, cacheOpts)
+		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
+		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt)
 
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel,
