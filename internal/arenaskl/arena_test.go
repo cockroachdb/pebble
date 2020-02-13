@@ -24,10 +24,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newArena(n uint32) *Arena {
+	return NewArena(make([]byte, n))
+}
+
 // TestArenaSizeOverflow tests that large allocations do not cause Arena's
 // internal size accounting to overflow and produce incorrect results.
 func TestArenaSizeOverflow(t *testing.T) {
-	a := NewArena(math.MaxUint32)
+	a := newArena(math.MaxUint32)
 
 	// Allocating under the limit throws no error.
 	offset, _, err := a.alloc(math.MaxUint16, 0)
