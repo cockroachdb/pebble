@@ -145,7 +145,8 @@ func (p *Properties) String() string {
 		}
 
 		f := v.Field(i)
-		if f.IsZero() {
+		// TODO(peter): Use f.IsZero() when we can rely on go1.13.
+		if zero := reflect.Zero(f.Type()); zero.Interface() == f.Interface() {
 			// Skip printing of zero values which were not loaded from disk.
 			if _, ok := p.ValueOffsets[tag]; !ok {
 				continue
