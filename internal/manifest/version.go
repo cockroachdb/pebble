@@ -471,7 +471,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		// of 0 in RocksDB. We handle this case for compatibility with RocksDB.
 
 		// The largest sequence number of a flushed file. Increasing.
-		var largestFlushedSeqNum uint64
+		// var largestFlushedSeqNum uint64
 
 		// The largest sequence number of any file. Increasing.
 		var largestSeqNum uint64
@@ -509,23 +509,26 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				// Ingested file.
 				uncheckedIngestedSeqNums = append(uncheckedIngestedSeqNums, f.LargestSeqNum)
 			} else {
-				// Flushed file.
-				// Two flushed files cannot overlap.
-				if largestFlushedSeqNum > 0 && f.SmallestSeqNum <= largestFlushedSeqNum {
-					return fmt.Errorf("L0 flushed file %06d overlaps with the largest seqnum of a "+
-						"preceding flushed file: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum,
-						largestFlushedSeqNum)
-				}
-				largestFlushedSeqNum = f.LargestSeqNum
-				// Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
-				// We do not need to check that they are not coincident with f.LargestSeqNum because we
-				// have already confirmed that LargestSeqNums were increasing.
-				for _, seq := range uncheckedIngestedSeqNums {
-					if seq == f.SmallestSeqNum {
-						return fmt.Errorf("L0 flushed file %06d has an ingested file coincident with "+
-							"smallest seqnum: %d-%d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum)
-					}
-				}
+				// TODO(peter): with user-defined table partitioning, a flush can
+				// create 2 sstables with overlaps in the seqnum space.
+
+				// // Flushed file.
+				// // Two flushed files cannot overlap.
+				// if largestFlushedSeqNum > 0 && f.SmallestSeqNum <= largestFlushedSeqNum {
+				// 	return fmt.Errorf("L0 flushed file %06d overlaps with the largest seqnum of a "+
+				// 		"preceding flushed file: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum,
+				// 		largestFlushedSeqNum)
+				// }
+				// largestFlushedSeqNum = f.LargestSeqNum
+				// // Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
+				// // We do not need to check that they are not coincident with f.LargestSeqNum because we
+				// // have already confirmed that LargestSeqNums were increasing.
+				// for _, seq := range uncheckedIngestedSeqNums {
+				// 	if seq == f.SmallestSeqNum {
+				// 		return fmt.Errorf("L0 flushed file %06d has an ingested file coincident with "+
+				// 			"smallest seqnum: %d-%d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum)
+				// 	}
+				// }
 				uncheckedIngestedSeqNums = uncheckedIngestedSeqNums[:0]
 			}
 		}
