@@ -22,7 +22,7 @@ import (
 
 func TestLevelIter(t *testing.T) {
 	var iters []*fakeIter
-	var files []fileMetadata
+	var files []*fileMetadata
 
 	newIters := func(
 		meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
@@ -48,7 +48,7 @@ func TestLevelIter(t *testing.T) {
 				}
 				iters = append(iters, f)
 
-				meta := fileMetadata{
+				meta := &fileMetadata{
 					FileNum: uint64(len(files)),
 				}
 				meta.Smallest = f.keys[0]
@@ -129,7 +129,7 @@ type levelIterTest struct {
 	cmp     base.Comparer
 	mem     vfs.FS
 	readers []*sstable.Reader
-	files   []fileMetadata
+	files   []*fileMetadata
 }
 
 func newLevelIterTest() *levelIterTest {
@@ -222,7 +222,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	lt.readers = append(lt.readers, r)
-	lt.files = append(lt.files, fileMetadata{
+	lt.files = append(lt.files, &fileMetadata{
 		FileNum:  fileNum,
 		Smallest: meta.Smallest(lt.cmp.Compare),
 		Largest:  meta.Largest(lt.cmp.Compare),
@@ -332,7 +332,7 @@ func TestLevelIterSeek(t *testing.T) {
 
 func buildLevelIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*sstable.Reader, []fileMetadata, [][]byte) {
+) ([]*sstable.Reader, []*fileMetadata, [][]byte) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
@@ -383,10 +383,11 @@ func buildLevelIterTables(
 		}
 	}
 
-	meta := make([]fileMetadata, len(readers))
+	meta := make([]*fileMetadata, len(readers))
 	for i := range readers {
 		iter := readers[i].NewIter(nil /* lower */, nil /* upper */)
 		key, _ := iter.First()
+		meta[i] = &fileMetadata{}
 		meta[i].FileNum = uint64(i)
 		meta[i].Smallest = *key
 		key, _ = iter.Last()

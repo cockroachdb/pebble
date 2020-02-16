@@ -48,12 +48,12 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 			}
 			if level == 0 {
 				for i := uint64(0); i < size; i++ {
-					vers.Files[level] = append(vers.Files[level], fileMetadata{
+					vers.Files[level] = append(vers.Files[level], &fileMetadata{
 						Size: 1,
 					})
 				}
 			} else {
-				vers.Files[level] = append(vers.Files[level], fileMetadata{
+				vers.Files[level] = append(vers.Files[level], &fileMetadata{
 					Size: size,
 				})
 			}

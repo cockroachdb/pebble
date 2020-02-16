@@ -233,7 +233,7 @@ func (f *findT) readManifests() {
 						f.editRefs[nf.Meta.FileNum] = append(refs, i)
 					}
 					if _, ok := f.tableMeta[nf.Meta.FileNum]; !ok {
-						f.tableMeta[nf.Meta.FileNum] = &nf.Meta
+						f.tableMeta[nf.Meta.FileNum] = nf.Meta
 					}
 				}
 			}
