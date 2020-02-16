@@ -71,7 +71,7 @@ type levelIter struct {
 	iter         internalIterator
 	newIters     tableNewIters
 	rangeDelIter *internalIterator
-	files        []fileMetadata
+	files        []*fileMetadata
 	err          error
 
 	// Pointer into this level's entry in `mergingIterLevel::smallestUserKey,largestUserKey`.
@@ -139,7 +139,7 @@ func newLevelIter(
 	opts IterOptions,
 	cmp Compare,
 	newIters tableNewIters,
-	files []fileMetadata,
+	files []*fileMetadata,
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
@@ -151,7 +151,7 @@ func (l *levelIter) init(
 	opts IterOptions,
 	cmp Compare,
 	newIters tableNewIters,
-	files []fileMetadata,
+	files []*fileMetadata,
 	bytesIterated *uint64,
 ) {
 	l.err = nil
@@ -277,7 +277,7 @@ func (l *levelIter) loadFile(index, dir int) bool {
 			return false
 		}
 
-		f := &l.files[l.index]
+		f := l.files[l.index]
 		switch l.initTableBounds(f) {
 		case -1:
 			// The largest key in the sstable is smaller than the lower bound.
@@ -363,7 +363,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	// this case the same as SeekGE where an upper-bound resides within the
 	// sstable and generate a synthetic boundary key.
 	if l.rangeDelIter != nil {
-		f := &l.files[l.index]
+		f := l.files[l.index]
 		l.syntheticBoundary = f.Largest
 		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 		l.largestBoundary = &l.syntheticBoundary
@@ -489,7 +489,7 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			// It is safe to set the boundary key kind to RANGEDEL because we're
 			// never going to look at subsequent sstables (we've reached the upper
 			// bound).
-			f := &l.files[l.index]
+			f := l.files[l.index]
 			if l.tableOpts.UpperBound != nil {
 				// TODO(peter): Rather than using f.Largest, can we use
 				// l.tableOpts.UpperBound and set the seqnum to 0? We know the upper
@@ -546,7 +546,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			// It is safe to set the boundary key kind to RANGEDEL because we're
 			// never going to look at earlier sstables (we've reached the lower
 			// bound).
-			f := &l.files[l.index]
+			f := l.files[l.index]
 			if l.tableOpts.LowerBound != nil {
 				// TODO(peter): Rather than using f.Smallest, can we use
 				// l.tableOpts.LowerBound and set the seqnum to InternalKeySeqNumMax?
@@ -602,7 +602,7 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 
 	// Update tableOpts.{Lower,Upper}Bound in case the new boundaries fall within
 	// the boundaries of the current table.
-	f := &l.files[l.index]
+	f := l.files[l.index]
 	if l.initTableBounds(f) != 0 {
 		// The table does not overlap the bounds. Close() will set levelIter.err if
 		// an error occurs.

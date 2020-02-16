@@ -290,7 +290,9 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 	return nil
 }
 
-func overlapWithIterator(iter internalIterator, rangeDelIter *internalIterator, meta *fileMetadata, cmp Compare) bool {
+func overlapWithIterator(
+	iter internalIterator, rangeDelIter *internalIterator, meta *fileMetadata, cmp Compare,
+) bool {
 	// Check overlap with point operations.
 	//
 	// When using levelIter, it seeks to the SST whose boundaries
@@ -345,7 +347,13 @@ func overlapWithIterator(iter internalIterator, rangeDelIter *internalIterator, 
 }
 
 func ingestTargetLevel(
-	newIters tableNewIters, iterOps IterOptions, cmp Compare, v *version, baseLevel int, compactions map[*compaction]struct{}, meta *fileMetadata,
+	newIters tableNewIters,
+	iterOps IterOptions,
+	cmp Compare,
+	v *version,
+	baseLevel int,
+	compactions map[*compaction]struct{},
+	meta *fileMetadata,
 ) (int, error) {
 	// Find the lowest level which does not have any files which overlap meta.
 	// We search from L0 to L6 looking for whether there are any files in the level
@@ -371,7 +379,7 @@ func ingestTargetLevel(
 			continue
 		}
 
-		iter, rangeDelIter, err := newIters(&meta0, nil, nil)
+		iter, rangeDelIter, err := newIters(meta0, nil, nil)
 		if err != nil {
 			return 0, err
 		}
@@ -626,7 +634,7 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 		if err != nil {
 			return nil, err
 		}
-		f.Meta = *m
+		f.Meta = m
 		levelMetrics := metrics[f.Level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
