@@ -42,9 +42,10 @@ func TestVersionSetCheckpoint(t *testing.T) {
 	d, err = Open("", opts)
 	require.NoError(t, err)
 	checkValue := func(k string, expected string) {
-		v, err := d.Get([]byte(k))
+		v, closer, err := d.Get([]byte(k))
 		require.NoError(t, err)
 		require.Equal(t, expected, string(v))
+		closer.Close()
 	}
 	checkValue("a", "b")
 	checkValue("c", "d")

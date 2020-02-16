@@ -611,8 +611,8 @@ type Cache struct {
 // created.
 //
 //   c := cache.New(...)
+//   defer c.Unref()
 //   d, err := pebble.Open(pebble.Options{Cache: c})
-//   c.Unref()
 func New(size int64) *Cache {
 	return newShards(size, 2*runtime.NumCPU())
 }

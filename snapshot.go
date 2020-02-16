@@ -4,6 +4,8 @@
 
 package pebble
 
+import "io"
+
 // Snapshot provides a read-only point-in-time view of the DB state.
 type Snapshot struct {
 	// The db the snapshot was created from.
@@ -19,12 +21,14 @@ type Snapshot struct {
 
 var _ Reader = (*Snapshot)(nil)
 
-// Get gets the value for the given key. It returns ErrNotFound if the DB does
-// not contain the key.
+// Get gets the value for the given key. It returns ErrNotFound if the Snapshot
+// does not contain the key.
 //
 // The caller should not modify the contents of the returned slice, but it is
-// safe to modify the contents of the argument after Get returns.
-func (s *Snapshot) Get(key []byte) ([]byte, error) {
+// safe to modify the contents of the argument after Get returns. The returned
+// slice will remain valid until the returned Closer is closed. On success, the
+// caller MUST call closer.Close() or a memory leak will occur.
+func (s *Snapshot) Get(key []byte) ([]byte, io.Closer, error) {
 	if s.db == nil {
 		panic(ErrClosed)
 	}

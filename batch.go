@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"sync"
@@ -351,14 +352,16 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 	return nil
 }
 
-// Get gets the value for the given key. It returns ErrNotFound if the DB
+// Get gets the value for the given key. It returns ErrNotFound if the Batch
 // does not contain the key.
 //
-// The caller should not modify the contents of the returned slice, but
-// it is safe to modify the contents of the argument after Get returns.
-func (b *Batch) Get(key []byte) (value []byte, err error) {
+// The caller should not modify the contents of the returned slice, but it is
+// safe to modify the contents of the argument after Get returns. The returned
+// slice will remain valid until the returned Closer is closed. On success, the
+// caller MUST call closer.Close() or a memory leak will occur.
+func (b *Batch) Get(key []byte) ([]byte, io.Closer, error) {
 	if b.index == nil {
-		return nil, ErrNotIndexed
+		return nil, nil, ErrNotIndexed
 	}
 	return b.db.getInternal(key, b, nil /* snapshot */)
 }
