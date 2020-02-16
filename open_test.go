@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -167,13 +168,15 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 					continue
 				}
 				if length >= 0 {
-					got, err = d1.Get([]byte("key"))
+					var closer io.Closer
+					got, closer, err = d1.Get([]byte("key"))
 					if err != nil {
 						t.Errorf("sfe=%t, length=%d: Get: %v",
 							startFromEmpty, length, err)
 						continue
 					}
 					got = append([]byte(nil), got...)
+					closer.Close()
 				}
 				err = d1.Close()
 				if err != nil {
@@ -336,7 +339,13 @@ func TestOpenReadOnly(t *testing.T) {
 		require.EqualValues(t, ErrReadOnly, d.Set(nil, nil, nil))
 
 		// Verify we can still read in read-only mode.
-		require.NoError(t, func() error { _, err := d.Get([]byte("test")); return err }())
+		require.NoError(t, func() error {
+			_, closer, err := d.Get([]byte("test"))
+			if closer != nil {
+				closer.Close()
+			}
+			return err
+		}())
 
 		checkIter := func(iter *Iterator) {
 			t.Helper()

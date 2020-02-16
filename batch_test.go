@@ -315,10 +315,11 @@ func TestBatchGet(t *testing.T) {
 					if len(td.CmdArgs) != 1 {
 						return fmt.Sprintf("%s expects 1 argument", td.Cmd)
 					}
-					v, err := b.Get([]byte(td.CmdArgs[0].String()))
+					v, closer, err := b.Get([]byte(td.CmdArgs[0].String()))
 					if err != nil {
 						return err.Error()
 					}
+					defer closer.Close()
 					return string(v)
 
 				default:

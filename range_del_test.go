@@ -193,8 +193,10 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 `)
 
 	// "b" is still visible at this point as it should be.
-	if _, err := d.Get([]byte("b")); err != nil {
+	if _, closer, err := d.Get([]byte("b")); err != nil {
 		t.Fatalf("expected success, but found %v", err)
+	} else {
+		closer.Close()
 	}
 
 	keys := func() string {
@@ -232,8 +234,10 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 
 	// The L1 table still contains a tombstone from [a,d) which will improperly
 	// delete the newer version of "b" in L2.
-	if _, err := d.Get([]byte("b")); err != nil {
+	if _, closer, err := d.Get([]byte("b")); err != nil {
 		t.Errorf("expected success, but found %v", err)
+	} else {
+		closer.Close()
 	}
 
 	if expected, actual := `b c`, keys(); expected != actual {
@@ -383,7 +387,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	snap3 := d.NewSnapshot()
 	defer snap3.Close()
 
-	if _, err := d.Get([]byte("b")); err != ErrNotFound {
+	if _, _, err := d.Get([]byte("b")); err != ErrNotFound {
 		t.Fatalf("expected not found, but found %v", err)
 	}
 
@@ -423,7 +427,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
   000025:[c#3,SET-d#72057594037927935,RANGEDEL]
 `)
 
-	if _, err := d.Get([]byte("b")); err != ErrNotFound {
+	if _, _, err := d.Get([]byte("b")); err != ErrNotFound {
 		t.Fatalf("expected not found, but found %v", err)
 	}
 
@@ -438,7 +442,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
   000027:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
 `)
 
-	if v, err := d.Get([]byte("b")); err != ErrNotFound {
+	if v, _, err := d.Get([]byte("b")); err != ErrNotFound {
 		t.Fatalf("expected not found, but found %v [%s]", err, v)
 	}
 }

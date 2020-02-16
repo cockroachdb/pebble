@@ -135,12 +135,15 @@ func TestBasicReads(t *testing.T) {
 				t.Fatalf("%s: Open failed: %v", tc.dirname, err)
 			}
 			for key, want := range tc.wantMap {
-				got, err := d.Get([]byte(key))
+				got, closer, err := d.Get([]byte(key))
 				if err != nil && err != ErrNotFound {
 					t.Fatalf("%s: Get(%q) failed: %v", tc.dirname, key, err)
 				}
 				if string(got) != string(want) {
 					t.Fatalf("%s: Get(%q): got %q, want %q", tc.dirname, key, got, want)
+				}
+				if closer != nil {
+					closer.Close()
 				}
 			}
 			err = d.Close()
@@ -267,7 +270,7 @@ func TestBasicWrites(t *testing.T) {
 
 		fail := false
 		for _, name := range names {
-			g, err := d.Get([]byte(name))
+			g, closer, err := d.Get([]byte(name))
 			if err != nil && err != ErrNotFound {
 				t.Errorf("#%d %s: Get(%q): %v", i, tc, name, err)
 				fail = true
@@ -278,6 +281,9 @@ func TestBasicWrites(t *testing.T) {
 				t.Errorf("#%d %s: Get(%q): got %q, %t, want %q, %t",
 					i, tc, name, got, gOK, want, wOK)
 				fail = true
+			}
+			if closer != nil {
+				closer.Close()
 			}
 		}
 		if fail {
@@ -328,12 +334,13 @@ func TestRandomWrites(t *testing.T) {
 		}
 		for k := range keys {
 			got := -1
-			if v, err := d.Get(keys[k]); err != nil {
+			if v, closer, err := d.Get(keys[k]); err != nil {
 				if err != ErrNotFound {
 					t.Fatalf("Get: %v", err)
 				}
 			} else {
 				got = len(v)
+				closer.Close()
 			}
 			if got != wants[k] {
 				t.Errorf("i=%d, k=%d: got %d, want %d", i, k, got, wants[k])
@@ -446,6 +453,23 @@ func TestLargeBatch(t *testing.T) {
 	}
 }
 
+func TestGetNoCache(t *testing.T) {
+	cache := NewCache(0)
+	defer cache.Unref()
+
+	d, err := Open("", &Options{
+		Cache: cache,
+		FS:    vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, d.Set([]byte("a"), []byte("aa"), nil))
+	require.NoError(t, d.Flush())
+	verifyGet(t, d, []byte("a"), []byte("aa"))
+
+	require.NoError(t, d.Close())
+}
+
 func TestGetMerge(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
@@ -456,13 +480,14 @@ func TestGetMerge(t *testing.T) {
 
 	key := []byte("a")
 	verify := func(expected string) {
-		val, err := d.Get(key)
+		val, closer, err := d.Get(key)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if expected != string(val) {
 			t.Fatalf("expected %s, but got %s", expected, val)
 		}
+		closer.Close()
 	}
 
 	const val = "1"
@@ -644,17 +669,17 @@ func TestUnremovableSingleDelete(t *testing.T) {
 	d.Set(key, valSecond, nil)
 	d.Flush()
 
-	verifyGetSnapshot(t, ss, key, valFirst)
+	verifyGet(t, ss, key, valFirst)
 	verifyGet(t, d, key, valSecond)
 
 	d.SingleDelete(key, nil)
 
-	verifyGetSnapshot(t, ss, key, valFirst)
+	verifyGet(t, ss, key, valFirst)
 	verifyGetNotFound(t, d, key)
 
 	d.Flush()
 
-	verifyGetSnapshot(t, ss, key, valFirst)
+	verifyGet(t, ss, key, valFirst)
 	verifyGetNotFound(t, d, key)
 }
 
@@ -957,7 +982,7 @@ func TestDBClosed(t *testing.T) {
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Flush() }))
 	require.EqualValues(t, ErrClosed, catch(func() { _, _ = d.AsyncFlush() }))
 
-	require.EqualValues(t, ErrClosed, catch(func() { _, _ = d.Get(nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _, _, _ = d.Get(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Delete(nil, nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.DeleteRange(nil, nil, nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Ingest(nil) }))
@@ -1153,31 +1178,20 @@ func BenchmarkDelete(b *testing.B) {
 	})
 }
 
-func verifyGet(t *testing.T, d *DB, key, expected []byte) {
-	val, err := d.Get(key)
+func verifyGet(t *testing.T, r Reader, key, expected []byte) {
+	val, closer, err := r.Get(key)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if !bytes.Equal(expected, val) {
 		t.Fatalf("expected %s, but got %s", expected, val)
 	}
+	closer.Close()
 }
 
-func verifyGetNotFound(t *testing.T, d *DB, key []byte) {
-	val, err := d.Get(key)
+func verifyGetNotFound(t *testing.T, r Reader, key []byte) {
+	val, _, err := r.Get(key)
 	if err != base.ErrNotFound {
 		t.Fatalf("expected nil, but got %s", val)
-	}
-}
-
-func verifyGetSnapshot(t *testing.T, ss *Snapshot, key, expected []byte) {
-	val, err := ss.Get(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(expected, val) {
-		t.Fatalf("expected %s, but got %s", expected, val)
 	}
 }
