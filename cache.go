@@ -10,7 +10,14 @@ import "github.com/cockroachdb/pebble/internal/cache"
 type Cache = cache.Cache
 
 // NewCache creates a new cache of the specified size. Memory for the cache is
-// allocated on demand, not during initialization.
+// allocated on demand, not during initialization. The cache is created with a
+// reference count of 1. Each DB it is associated with adds a reference, so the
+// creator of the cache should usually release their reference after the DB is
+// created.
+//
+//   c := pebble.NewCache(...)
+//   defer c.Unref()
+//   d, err := pebble.Open(pebble.Options{Cache: c})
 func NewCache(size int64) *cache.Cache {
 	return cache.New(size)
 }

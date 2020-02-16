@@ -446,6 +446,23 @@ func TestLargeBatch(t *testing.T) {
 	}
 }
 
+func TestGetNoCache(t *testing.T) {
+	cache := NewCache(0)
+	defer cache.Unref()
+
+	d, err := Open("", &Options{
+		Cache: cache,
+		FS:    vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, d.Set([]byte("a"), []byte("aa"), nil))
+	require.NoError(t, d.Flush())
+	verifyGet(t, d, []byte("a"), []byte("aa"))
+
+	require.NoError(t, d.Close())
+}
+
 func TestGetMerge(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),

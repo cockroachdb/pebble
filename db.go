@@ -390,7 +390,11 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 		}
 		return nil, ErrNotFound
 	}
-	return i.Value(), nil
+
+	// The value will be "freed" when the iterator is closed, so make a copy
+	// which will outlast the lifetime of the iterator.
+	value := append([]byte(nil), i.Value()...)
+	return value, nil
 }
 
 // Set sets the value for the given key. It overwrites any previous value
