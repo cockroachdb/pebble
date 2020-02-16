@@ -44,7 +44,7 @@ func TestCheckLevelsBasics(t *testing.T) {
 func TestCheckLevelsCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
-	var levels [][]fileMetadata
+	var levels [][]*fileMetadata
 
 	// Indexed by fileNum
 	var readers []*sstable.Reader
@@ -82,7 +82,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
-				*li = append(*li, fileMetadata{
+				*li = append(*li, &fileMetadata{
 					FileNum:  fileNum,
 					Smallest: smallestKey,
 					Largest:  largestKey,

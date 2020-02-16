@@ -67,7 +67,7 @@ type DeletedFileEntry struct {
 // level.
 type NewFileEntry struct {
 	Level int
-	Meta  FileMetadata
+	Meta  *FileMetadata
 }
 
 // VersionEdit holds the state for an edit to a Version along with other
@@ -247,7 +247,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
-				Meta: FileMetadata{
+				Meta: &FileMetadata{
 					FileNum:             fileNum,
 					Size:                size,
 					Smallest:            base.DecodeInternalKey(smallest),
@@ -405,7 +405,7 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // BulkVersionEdit summarizes the files added and deleted from a set of version
 // edits.
 type BulkVersionEdit struct {
-	Added   [NumLevels][]FileMetadata
+	Added   [NumLevels][]*FileMetadata
 	Deleted [NumLevels]map[uint64]bool // map[uint64]bool is a set of fileNums
 }
 
@@ -470,13 +470,13 @@ func (b *BulkVersionEdit) Apply(
 			v.Files[level] = files
 			// We still have to bump the ref count for all files.
 			for i := range files {
-				atomic.AddInt32(files[i].refs, 1)
+				atomic.AddInt32(&files[i].refs, 1)
 			}
 			continue
 		}
 
 		// Some edits on this level.
-		var currFiles []FileMetadata
+		var currFiles []*FileMetadata
 		if curr != nil {
 			currFiles = curr.Files[level]
 		}
@@ -487,7 +487,7 @@ func (b *BulkVersionEdit) Apply(
 			return nil, nil, fmt.Errorf(
 				"pebble: internal error: No current or added files but have deleted files: %d", len(deletedMap))
 		}
-		v.Files[level] = make([]FileMetadata, 0, n)
+		v.Files[level] = make([]*FileMetadata, 0, n)
 		// We have 2 lists of files, currFiles and addedFiles either of which (but not both) can
 		// be empty.
 		// - currFiles is internally consistent, since it comes from curr.
@@ -509,18 +509,15 @@ func (b *BulkVersionEdit) Apply(
 			//   of the 2 slices, we observe that the number of L0 files is small so we can afford
 			//   to repeat the full check on the combined slices (and CheckOrdering only does
 			//   sequence num comparisons and not expensive key comparisons).
-			for _, ff := range [2][]FileMetadata{currFiles, addedFiles} {
+			for _, ff := range [2][]*FileMetadata{currFiles, addedFiles} {
 				for i := range ff {
-					f := &ff[i]
+					f := ff[i]
 					if deletedMap[f.FileNum] {
 						addZombie(f.FileNum, f.Size)
 						continue
 					}
-					if f.refs == nil {
-						f.refs = new(int32)
-					}
-					atomic.AddInt32(f.refs, 1)
-					v.Files[level] = append(v.Files[level], *f)
+					atomic.AddInt32(&f.refs, 1)
+					v.Files[level] = append(v.Files[level], f)
 				}
 			}
 			SortBySeqNum(v.Files[level])
@@ -536,16 +533,13 @@ func (b *BulkVersionEdit) Apply(
 		//   want to avoid comparing the addedFiles with each file in currFile.
 		SortBySmallest(addedFiles, cmp)
 		for i := range addedFiles {
-			f := &addedFiles[i]
+			f := addedFiles[i]
 			if deletedMap[f.FileNum] {
 				addZombie(f.FileNum, f.Size)
 				continue
 			}
 			removeZombie(f.FileNum)
-			if f.refs == nil {
-				f.refs = new(int32)
-			}
-			atomic.AddInt32(f.refs, 1)
+			atomic.AddInt32(&f.refs, 1)
 			// We need to add f. Find the first file in currFiles such that its smallest key
 			// is > f.Largest. This file (if it is kept) will be the immediate successor of f.
 			// The files in currFiles before this file (if they are kept) will precede f.
@@ -559,14 +553,14 @@ func (b *BulkVersionEdit) Apply(
 			})
 			// Add the preceding files from currFiles.
 			for k := 0; k < j; k++ {
-				cf := &currFiles[k]
+				cf := currFiles[k]
 				if deletedMap[cf.FileNum] {
 					addZombie(cf.FileNum, cf.Size)
 					continue
 				}
 				removeZombie(cf.FileNum)
-				atomic.AddInt32(cf.refs, 1)
-				v.Files[level] = append(v.Files[level], *cf)
+				atomic.AddInt32(&cf.refs, 1)
+				v.Files[level] = append(v.Files[level], cf)
 			}
 			currFiles = currFiles[j:]
 			numFiles := len(v.Files[level])
@@ -580,25 +574,25 @@ func (b *BulkVersionEdit) Apply(
 				// which we need to check against f for consistency (since we have not checked
 				// addedFiles for internal consistency).
 				if base.InternalCompare(cmp, v.Files[level][numFiles-1].Largest, f.Smallest) >= 0 {
-					cf := &v.Files[level][numFiles-1]
+					cf := v.Files[level][numFiles-1]
 					return nil, nil, fmt.Errorf(
 						"pebble: internal error: L%d files %06d and %06d have overlapping ranges: %s-%s vs %s-%s",
 						level, cf.FileNum, f.FileNum, cf.Smallest.Pretty(format), cf.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 			}
-			v.Files[level] = append(v.Files[level], *f)
+			v.Files[level] = append(v.Files[level], f)
 		}
 		// Add any remaining files in currFiles that are after all the added files.
 		for i := range currFiles {
-			f := &currFiles[i]
+			f := currFiles[i]
 			if deletedMap[f.FileNum] {
 				addZombie(f.FileNum, f.Size)
 				continue
 			}
 			removeZombie(f.FileNum)
-			atomic.AddInt32(f.refs, 1)
-			v.Files[level] = append(v.Files[level], *f)
+			atomic.AddInt32(&f.refs, 1)
+			v.Files[level] = append(v.Files[level], f)
 		}
 	}
 	return v, zombies, nil
