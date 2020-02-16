@@ -166,7 +166,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
-				*files = append(*files, fileMetadata{
+				*files = append(*files, &fileMetadata{
 					FileNum:  fileNum,
 					Smallest: smallestKey,
 					Largest:  largestKey,

@@ -61,10 +61,10 @@ func TestIkeyRange(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		var f []FileMetadata
+		var f []*FileMetadata
 		if tc.input != "" {
 			for _, s := range strings.Split(tc.input, " ") {
-				f = append(f, FileMetadata{
+				f = append(f, &FileMetadata{
 					Smallest: ikey(s[0:1]),
 					Largest:  ikey(s[2:3]),
 				})
@@ -86,80 +86,80 @@ func TestIkeyRange(t *testing.T) {
 }
 
 func TestOverlaps(t *testing.T) {
-	m00 := FileMetadata{
+	m00 := &FileMetadata{
 		FileNum:  700,
 		Size:     1,
 		Smallest: base.ParseInternalKey("b.SET.7008"),
 		Largest:  base.ParseInternalKey("e.SET.7009"),
 	}
-	m01 := FileMetadata{
+	m01 := &FileMetadata{
 		FileNum:  701,
 		Size:     1,
 		Smallest: base.ParseInternalKey("c.SET.7018"),
 		Largest:  base.ParseInternalKey("f.SET.7019"),
 	}
-	m02 := FileMetadata{
+	m02 := &FileMetadata{
 		FileNum:  702,
 		Size:     1,
 		Smallest: base.ParseInternalKey("f.SET.7028"),
 		Largest:  base.ParseInternalKey("g.SET.7029"),
 	}
-	m03 := FileMetadata{
+	m03 := &FileMetadata{
 		FileNum:  703,
 		Size:     1,
 		Smallest: base.ParseInternalKey("x.SET.7038"),
 		Largest:  base.ParseInternalKey("y.SET.7039"),
 	}
-	m04 := FileMetadata{
+	m04 := &FileMetadata{
 		FileNum:  704,
 		Size:     1,
 		Smallest: base.ParseInternalKey("n.SET.7048"),
 		Largest:  base.ParseInternalKey("p.SET.7049"),
 	}
-	m05 := FileMetadata{
+	m05 := &FileMetadata{
 		FileNum:  705,
 		Size:     1,
 		Smallest: base.ParseInternalKey("p.SET.7058"),
 		Largest:  base.ParseInternalKey("p.SET.7059"),
 	}
-	m06 := FileMetadata{
+	m06 := &FileMetadata{
 		FileNum:  706,
 		Size:     1,
 		Smallest: base.ParseInternalKey("p.SET.7068"),
 		Largest:  base.ParseInternalKey("u.SET.7069"),
 	}
-	m07 := FileMetadata{
+	m07 := &FileMetadata{
 		FileNum:  707,
 		Size:     1,
 		Smallest: base.ParseInternalKey("r.SET.7078"),
 		Largest:  base.ParseInternalKey("s.SET.7079"),
 	}
 
-	m10 := FileMetadata{
+	m10 := &FileMetadata{
 		FileNum:  710,
 		Size:     1,
 		Smallest: base.ParseInternalKey("d.SET.7108"),
 		Largest:  base.ParseInternalKey("g.SET.7109"),
 	}
-	m11 := FileMetadata{
+	m11 := &FileMetadata{
 		FileNum:  711,
 		Size:     1,
 		Smallest: base.ParseInternalKey("g.SET.7118"),
 		Largest:  base.ParseInternalKey("j.SET.7119"),
 	}
-	m12 := FileMetadata{
+	m12 := &FileMetadata{
 		FileNum:  712,
 		Size:     1,
 		Smallest: base.ParseInternalKey("n.SET.7128"),
 		Largest:  base.ParseInternalKey("p.SET.7129"),
 	}
-	m13 := FileMetadata{
+	m13 := &FileMetadata{
 		FileNum:  713,
 		Size:     1,
 		Smallest: base.ParseInternalKey("p.SET.7138"),
 		Largest:  base.ParseInternalKey("p.SET.7139"),
 	}
-	m14 := FileMetadata{
+	m14 := &FileMetadata{
 		FileNum:  714,
 		Size:     1,
 		Smallest: base.ParseInternalKey("p.SET.7148"),
@@ -167,7 +167,7 @@ func TestOverlaps(t *testing.T) {
 	}
 
 	v := Version{
-		Files: [NumLevels][]FileMetadata{
+		Files: [NumLevels][]*FileMetadata{
 			0: {m00, m01, m02, m03, m04, m05, m06, m07},
 			1: {m10, m11, m12, m13, m14},
 		},
@@ -293,7 +293,7 @@ func TestCheckOrdering(t *testing.T) {
 				// avoid repeating it, and make it the inverse of
 				// Version.DebugString().
 				v := Version{}
-				var files *[]FileMetadata
+				var files *[]*FileMetadata
 				fileNum := uint64(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
@@ -309,7 +309,7 @@ func TestCheckOrdering(t *testing.T) {
 						meta := parseMeta(data)
 						meta.FileNum = fileNum
 						fileNum++
-						*files = append(*files, meta)
+						*files = append(*files, &meta)
 					}
 				}
 

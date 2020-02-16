@@ -484,7 +484,7 @@ func TestGetIter(t *testing.T) {
 			defer d.close()
 			m[tt.fileNum] = d
 
-			meta := fileMetadata{
+			meta := &fileMetadata{
 				FileNum: tt.fileNum,
 			}
 			for i, datum := range tt.data {

@@ -74,7 +74,7 @@ func (p *compactionPickerForTesting) pickManual(
 }
 
 func TestPickCompaction(t *testing.T) {
-	fileNums := func(f []fileMetadata) string {
+	fileNums := func(f []*fileMetadata) string {
 		ss := make([]string, 0, len(f))
 		for _, meta := range f {
 			ss = append(ss, strconv.Itoa(int(meta.FileNum)))
@@ -93,8 +93,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "no compaction",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					0: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
 						{
 							FileNum:  100,
 							Size:     1,
@@ -110,8 +110,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					0: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
 						{
 							FileNum:  100,
 							Size:     1,
@@ -132,8 +132,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files (0 overlaps)",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					0: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
 						{
 							FileNum:  100,
 							Size:     1,
@@ -160,8 +160,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ikey overlap",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					0: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
 						{
 							FileNum:  100,
 							Size:     1,
@@ -188,8 +188,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ukey overlap",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					0: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
 						{
 							FileNum:  100,
 							Size:     1,
@@ -216,8 +216,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (0 overlaps)",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					0: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
 						{
 							FileNum:  100,
 							Size:     1,
@@ -225,7 +225,7 @@ func TestPickCompaction(t *testing.T) {
 							Largest:  base.ParseInternalKey("i.SET.102"),
 						},
 					},
-					1: []fileMetadata{
+					1: []*fileMetadata{
 						{
 							FileNum:  200,
 							Size:     1,
@@ -252,8 +252,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (1 overlap), 4 L2 files (3 overlaps)",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					0: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
 						{
 							FileNum:  100,
 							Size:     1,
@@ -261,7 +261,7 @@ func TestPickCompaction(t *testing.T) {
 							Largest:  base.ParseInternalKey("t.SET.102"),
 						},
 					},
-					1: []fileMetadata{
+					1: []*fileMetadata{
 						{
 							FileNum:  200,
 							Size:     1,
@@ -275,7 +275,7 @@ func TestPickCompaction(t *testing.T) {
 							Largest:  base.ParseInternalKey("j.SET.212"),
 						},
 					},
-					2: []fileMetadata{
+					2: []*fileMetadata{
 						{
 							FileNum:  300,
 							Size:     1,
@@ -314,8 +314,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can grow",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					1: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					1: []*fileMetadata{
 						{
 							FileNum:  200,
 							Size:     1,
@@ -341,7 +341,7 @@ func TestPickCompaction(t *testing.T) {
 							Largest:  base.ParseInternalKey("l2.SET.232"),
 						},
 					},
-					2: []fileMetadata{
+					2: []*fileMetadata{
 						{
 							FileNum:  300,
 							Size:     1,
@@ -368,8 +368,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (range)",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					1: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					1: []*fileMetadata{
 						{
 							FileNum:  200,
 							Size:     1,
@@ -395,7 +395,7 @@ func TestPickCompaction(t *testing.T) {
 							Largest:  base.ParseInternalKey("l2.SET.232"),
 						},
 					},
-					2: []fileMetadata{
+					2: []*fileMetadata{
 						{
 							FileNum:  300,
 							Size:     1,
@@ -422,8 +422,8 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (size)",
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					1: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					1: []*fileMetadata{
 						{
 							FileNum:  200,
 							Size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
@@ -449,7 +449,7 @@ func TestPickCompaction(t *testing.T) {
 							Largest:  base.ParseInternalKey("l2.SET.232"),
 						},
 					},
-					2: []fileMetadata{
+					2: []*fileMetadata{
 						{
 							FileNum:  300,
 							Size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
@@ -522,8 +522,8 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "non-empty",
 			level: 1,
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					1: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					1: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("c.SET.801"),
 							Largest:  base.ParseInternalKey("g.SET.800"),
@@ -533,7 +533,7 @@ func TestElideTombstone(t *testing.T) {
 							Largest:  base.ParseInternalKey("y.SET.700"),
 						},
 					},
-					2: []fileMetadata{
+					2: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("d.SET.601"),
 							Largest:  base.ParseInternalKey("h.SET.600"),
@@ -543,7 +543,7 @@ func TestElideTombstone(t *testing.T) {
 							Largest:  base.ParseInternalKey("t.SET.500"),
 						},
 					},
-					3: []fileMetadata{
+					3: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("f.SET.401"),
 							Largest:  base.ParseInternalKey("g.SET.400"),
@@ -553,7 +553,7 @@ func TestElideTombstone(t *testing.T) {
 							Largest:  base.ParseInternalKey("x.SET.300"),
 						},
 					},
-					4: []fileMetadata{
+					4: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("f.SET.201"),
 							Largest:  base.ParseInternalKey("m.SET.200"),
@@ -592,8 +592,8 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "repeated ukey",
 			level: 1,
 			version: version{
-				Files: [numLevels][]fileMetadata{
-					6: []fileMetadata{
+				Files: [numLevels][]*fileMetadata{
+					6: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("i.SET.401"),
 							Largest:  base.ParseInternalKey("i.SET.400"),
@@ -952,14 +952,14 @@ func TestManualCompaction(t *testing.T) {
 
 func TestCompactionFindGrandparentLimit(t *testing.T) {
 	cmp := DefaultComparer.Compare
-	var grandparents []fileMetadata
+	var grandparents []*fileMetadata
 
-	parseMeta := func(s string) fileMetadata {
+	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		return fileMetadata{
+		return &fileMetadata{
 			Smallest: InternalKey{UserKey: []byte(parts[0])},
 			Largest:  InternalKey{UserKey: []byte(parts[1])},
 		}
@@ -1059,12 +1059,12 @@ func TestCompactionOutputLevel(t *testing.T) {
 }
 
 func TestCompactionSetupInputs(t *testing.T) {
-	parseMeta := func(s string) fileMetadata {
+	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := fileMetadata{
+		m := &fileMetadata{
 			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		}
@@ -1089,7 +1089,7 @@ func TestCompactionSetupInputs(t *testing.T) {
 					outputLevel:      -1,
 					maxExpandedBytes: 1 << 30,
 				}
-				var files *[]fileMetadata
+				var files *[]*fileMetadata
 				fileNum := uint64(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
@@ -1156,14 +1156,14 @@ func TestCompactionSetupInputs(t *testing.T) {
 
 func TestCompactionExpandInputs(t *testing.T) {
 	cmp := DefaultComparer.Compare
-	var files []fileMetadata
+	var files []*fileMetadata
 
-	parseMeta := func(s string) fileMetadata {
+	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		return fileMetadata{
+		return &fileMetadata{
 			Smallest: base.ParseInternalKey(parts[0]),
 			Largest:  base.ParseInternalKey(parts[1]),
 		}
@@ -1204,7 +1204,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 
 				var buf bytes.Buffer
 				for i := range inputs {
-					f := &inputs[i]
+					f := inputs[i]
 					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
 				}
 				return buf.String()
@@ -1217,14 +1217,14 @@ func TestCompactionExpandInputs(t *testing.T) {
 
 func TestCompactionAtomicUnitBounds(t *testing.T) {
 	cmp := DefaultComparer.Compare
-	var files []fileMetadata
+	var files []*fileMetadata
 
-	parseMeta := func(s string) fileMetadata {
+	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		return fileMetadata{
+		return &fileMetadata{
 			Smallest: base.ParseInternalKey(parts[0]),
 			Largest:  base.ParseInternalKey(parts[1]),
 		}
@@ -1259,7 +1259,7 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 					return err.Error()
 				}
 
-				lower, upper := c.atomicUnitBounds(&files[index])
+				lower, upper := c.atomicUnitBounds(files[index])
 				return fmt.Sprintf("%s-%s\n", lower, upper)
 
 			default:
@@ -1269,12 +1269,12 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 }
 
 func TestCompactionInuseKeyRanges(t *testing.T) {
-	parseMeta := func(s string) fileMetadata {
+	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := fileMetadata{
+		m := &fileMetadata{
 			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		}
@@ -1292,7 +1292,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 				format:  DefaultComparer.Format,
 				version: &version{},
 			}
-			var files *[]fileMetadata
+			var files *[]*fileMetadata
 			fileNum := uint64(1)
 
 			for _, data := range strings.Split(td.Input, "\n") {
@@ -1361,7 +1361,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	}()
 
 	metaRE := regexp.MustCompile(`^L([0-9]+):([^-]+)-(.+)$`)
-	parseMeta := func(s string) (level int, meta fileMetadata) {
+	parseMeta := func(s string) (level int, meta *fileMetadata) {
 		match := metaRE.FindStringSubmatch(s)
 		if match == nil {
 			t.Fatalf("malformed table spec: %s", s)
@@ -1370,7 +1370,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 		if err != nil {
 			t.Fatalf("malformed table spec: %s: %s", s, err)
 		}
-		meta = fileMetadata{
+		meta = &fileMetadata{
 			Smallest: InternalKey{UserKey: []byte(match[2])},
 			Largest:  InternalKey{UserKey: []byte(match[3])},
 		}
@@ -1462,12 +1462,12 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 }
 
 func TestCompactionCheckOrdering(t *testing.T) {
-	parseMeta := func(s string) fileMetadata {
+	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := fileMetadata{
+		m := &fileMetadata{
 			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		}
@@ -1487,7 +1487,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					startLevel:  -1,
 					outputLevel: -1,
 				}
-				var files *[]fileMetadata
+				var files *[]*fileMetadata
 				fileNum := uint64(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {

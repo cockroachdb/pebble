@@ -312,7 +312,7 @@ func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options)
 		smallestSeqNum := uint64(math.MaxUint64)
 		files := v.Files[p.compactionQueue[i].level]
 		for j := range files {
-			f := &files[j]
+			f := files[j]
 			if smallestSeqNum > f.SmallestSeqNum {
 				smallestSeqNum = f.SmallestSeqNum
 				p.compactionQueue[i].file = j
@@ -328,7 +328,7 @@ func (p *compactionPickerByScore) initCompactionQueue(v *version, opts *Options)
 		}
 		files := v.Files[level]
 		for i := range files {
-			f := &files[i]
+			f := files[i]
 			if f.MarkedForCompaction {
 				p.compactionQueue = append(p.compactionQueue, pickedCompactionInfo{
 					score:       p.scores[level],

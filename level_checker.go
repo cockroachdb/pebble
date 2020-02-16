@@ -258,7 +258,7 @@ func checkRangeTombstones(c *checkConfig) error {
 
 	current := c.readState.current
 	for i := len(current.Files[0]) - 1; i >= 0; i-- {
-		f := &current.Files[0][i]
+		f := current.Files[0][i]
 		iterToClose, iter, err := c.newIters(f, nil, nil)
 		if err != nil {
 			return err
@@ -280,7 +280,7 @@ func checkRangeTombstones(c *checkConfig) error {
 		files := &current.Files[i]
 		for j := 0; j < len(*files); j++ {
 			lower, upper := getAtomicUnitBounds(c.cmp, *files, j)
-			iterToClose, iter, err := c.newIters(&(*files)[j], nil, nil)
+			iterToClose, iter, err := c.newIters((*files)[j], nil, nil)
 			if err != nil {
 				return err
 			}
@@ -307,12 +307,12 @@ func checkRangeTombstones(c *checkConfig) error {
 }
 
 // TODO(sbhola): mostly copied from compaction.go: refactor and reuse?
-func getAtomicUnitBounds(cmp Compare, files []fileMetadata, index int) (lower, upper []byte) {
+func getAtomicUnitBounds(cmp Compare, files []*fileMetadata, index int) (lower, upper []byte) {
 	lower = files[index].Smallest.UserKey
 	upper = files[index].Largest.UserKey
 	for i := index; i > 0; i-- {
-		cur := &files[i]
-		prev := &files[i-1]
+		cur := files[i]
+		prev := files[i-1]
 		if cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
 			break
 		}
@@ -322,8 +322,8 @@ func getAtomicUnitBounds(cmp Compare, files []fileMetadata, index int) (lower, u
 		lower = prev.Smallest.UserKey
 	}
 	for i := index + 1; i < len(files); i++ {
-		cur := &files[i-1]
-		next := &files[i]
+		cur := files[i-1]
+		next := files[i]
 		if cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
 			break
 		}
@@ -475,7 +475,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	// Add L0 files from newest to oldest.
 	current := c.readState.current
 	for i := len(current.Files[0]) - 1; i >= 0; i-- {
-		f := &current.Files[0][i]
+		f := current.Files[0][i]
 		iter, rangeDelIter, err := c.newIters(f, nil, nil)
 		if err != nil {
 			return err
