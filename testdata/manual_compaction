@@ -48,8 +48,8 @@ L0
   a.SET.2:v
 ----
 0:
-  000004:[b-b]
   000005:[a-a]
+  000004:[b-b]
 
 compact a-b
 ----
@@ -598,8 +598,8 @@ L0
   a.SET.2:v
 ----
 0:
-  000004:[b-b]
   000005:[a-a]
+  000004:[b-b]
 
 add-ongoing-compaction startLevel=0 outputLevel=1
 ----

@@ -450,15 +450,15 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 	}
 }
 
-// Apply applies the delta b to the current version to produce a new version. The
-// new version is consistent with respect to the internal key comparer icmp.
+// Apply applies the delta b to the current version to produce a new
+// version. The new version is consistent with respect to the comparer cmp.
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
 //
-// If zombies is non-nil it is populated with the file numbers (and sizes) of
-// deleted files. These files are considered zombies because they are no longer
-// referenced by the returned Version, but cannot be deleted from disk as they
-// are still in use by the incoming Version.
+// On success, a map of zombie files containing the file numbers and sizes of
+// deleted files is returned. These files are considered zombies because they
+// are no longer referenced by the returned Version, but cannot be deleted from
+// disk as they are still in use by the incoming Version.
 func (b *BulkVersionEdit) Apply(
 	curr *Version, cmp Compare, format base.Formatter,
 ) (_ *Version, zombies map[uint64]uint64, _ error) {
@@ -485,6 +485,9 @@ func (b *BulkVersionEdit) Apply(
 			}
 			files := curr.Files[level]
 			v.Files[level] = files
+			if level == 0 {
+				v.L0Sublevels = curr.L0Sublevels
+			}
 			// We still have to bump the ref count for all files.
 			for i := range files {
 				atomic.AddInt32(&files[i].refs, 1)
@@ -538,6 +541,7 @@ func (b *BulkVersionEdit) Apply(
 				}
 			}
 			SortBySeqNum(v.Files[level])
+			v.InitL0Sublevels(cmp)
 			if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
 				return nil, nil, fmt.Errorf("pebble: internal error: %v", err)
 			}

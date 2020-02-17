@@ -30,6 +30,11 @@ func formatCacheMetrics(buf *bytes.Buffer, m *CacheMetrics, name string) {
 // LevelMetrics holds per-level metrics such as the number of files and total
 // size of the files, and compaction related metrics.
 type LevelMetrics struct {
+	// The number of sublevels within the level. The sublevel count corresponds
+	// to the read amplification for the level. An empty level will have a
+	// sublevel count of 0, implying no read amplification. Currently, only L0
+	// will have a sublevel count other than 0 or 1.
+	Sublevels int32
 	// The total number of files in the level.
 	NumFiles int64
 	// The total size in bytes of the files in the level.
@@ -87,7 +92,7 @@ func (m *LevelMetrics) WriteAmp() float64 {
 // format generates a string of the receiver's metrics, formatting it into the
 // supplied buffer.
 func (m *LevelMetrics) format(buf *bytes.Buffer, score string) {
-	fmt.Fprintf(buf, "%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7.1f\n",
+	fmt.Fprintf(buf, "%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f\n",
 		m.NumFiles,
 		humanize.IEC.Uint64(m.Size),
 		score,
@@ -99,6 +104,7 @@ func (m *LevelMetrics) format(buf *bytes.Buffer, score string) {
 		humanize.IEC.Uint64(m.BytesWritten),
 		humanize.SI.Uint64(m.TablesFlushed+m.TablesCompacted),
 		humanize.IEC.Uint64(m.BytesRead),
+		m.Sublevels,
 		m.WriteAmp())
 }
 
@@ -176,7 +182,7 @@ func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 	if m.WAL.BytesIn > 0 {
 		writeAmp = float64(m.WAL.BytesWritten) / float64(m.WAL.BytesIn)
 	}
-	fmt.Fprintf(buf, "    WAL %9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7.1f\n",
+	fmt.Fprintf(buf, "    WAL %9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7.1f\n",
 		m.WAL.Files,
 		humanize.Uint64(m.WAL.Size),
 		notApplicable,
@@ -186,6 +192,7 @@ func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 		notApplicable,
 		notApplicable,
 		humanize.Uint64(m.WAL.BytesWritten),
+		notApplicable,
 		notApplicable,
 		notApplicable,
 		writeAmp)
@@ -223,13 +230,14 @@ func (m *Metrics) String() string {
 	var buf bytes.Buffer
 	var total LevelMetrics
 	fmt.Fprintf(&buf, "__level_____count____size___score______in__ingest(sz_cnt)"+
-		"____move(sz_cnt)___write(sz_cnt)____read___w-amp\n")
+		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp\n")
 	m.formatWAL(&buf)
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
 		fmt.Fprintf(&buf, "%7d ", level)
 		l.format(&buf, fmt.Sprintf("%0.2f", l.Score))
 		total.Add(l)
+		total.Sublevels += l.Sublevels
 		total.NumFiles += l.NumFiles
 		total.Size += l.Size
 	}
