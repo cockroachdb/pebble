@@ -175,6 +175,12 @@ const NumLevels = 7
 type Version struct {
 	refs int32
 
+	// TODO(peter): The level 0 sstables organized in a series of sublevels such
+	// that L0Sublevels[n] is older than L0Sublevels[n+1]. The tables in each
+	// sublevel are sorted by their internal key range and any two tables at the
+	// same sublevel do not overlap.
+	// L0Sublevels []*FileMetadata
+
 	Files [NumLevels][]*FileMetadata
 
 	// The callback to invoke when the last reference to a version is
