@@ -31,9 +31,10 @@ set a 3
 # A second (overlapping) L0 table will have non-zero seqnums.
 flush
 ----
+0.1:
+  000007:[a#4,SET-a#4,SET]
 0:
   000005:[a#2,DEL-b#3,DEL]
-  000007:[a#4,SET-a#4,SET]
 
 batch
 set c 4
@@ -42,9 +43,10 @@ set c 4
 # A third (non-overlapping) L0 table will have non-zero seqnums.
 flush
 ----
+0.1:
+  000007:[a#4,SET-a#4,SET]
 0:
   000005:[a#2,DEL-b#3,DEL]
-  000007:[a#4,SET-a#4,SET]
   000009:[c#5,SET-c#5,SET]
 
 reset

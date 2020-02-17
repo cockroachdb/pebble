@@ -17,24 +17,24 @@ iter-new b
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-    WAL         1    28 B       -    17 B       -       -       -       -    56 B       -       -     3.3
-      0         1   771 B    0.25    28 B     0 B       0     0 B       0   771 B       1     0 B    27.5
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      6         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-  total         1   771 B       -    56 B     0 B       0     0 B       0   827 B       1     0 B    14.8
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    28 B       -    17 B       -       -       -       -    56 B       -       -       -     3.3
+      0         1   771 B    0.25    28 B     0 B       0     0 B       0   771 B       1     0 B       1    27.5
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+  total         1   771 B       -    56 B     0 B       0     0 B       0   827 B       1     0 B       1    14.8
   flush         1
 compact         0   771 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         0     0 B
- bcache         3   677 B    0.0%  (score == hit-rate)
- tcache         1   672 B    0.0%  (score == hit-rate)
- titers         1
+ bcache         0     0 B    0.0%  (score == hit-rate)
+ tcache         0     0 B    0.0%  (score == hit-rate)
+ titers         0
  filter         -       -    0.0%  (score == utility)
 
 batch
@@ -59,24 +59,24 @@ compact a-z
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B    27.5
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K    28.6
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
+      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B       0    27.5
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         2   512 K
    ztbl         2   1.5 K
- bcache         8   1.4 K   27.3%  (score == hit-rate)
- tcache         2   1.3 K   60.0%  (score == hit-rate)
- titers         3
+ bcache         8   1.4 K    0.0%  (score == hit-rate)
+ tcache         2   1.3 K    0.0%  (score == hit-rate)
+ titers         0
  filter         -       -    0.0%  (score == utility)
 
 # Closing iter a will release one of the zombie memtables.
@@ -86,24 +86,24 @@ iter-close a
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B    27.5
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K    28.6
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
+      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B       0    27.5
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         2   1.5 K
- bcache         8   1.4 K   27.3%  (score == hit-rate)
- tcache         2   1.3 K   60.0%  (score == hit-rate)
- titers         3
+ bcache         8   1.4 K    0.0%  (score == hit-rate)
+ tcache         2   1.3 K    0.0%  (score == hit-rate)
+ titers         0
  filter         -       -    0.0%  (score == utility)
 
 # Closing iter c will release one of the zombie sstables. The other
@@ -114,24 +114,24 @@ iter-close c
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B    27.5
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K    28.6
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
+      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B       0    27.5
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         1   771 B
- bcache         4   698 B   27.3%  (score == hit-rate)
- tcache         1   672 B   60.0%  (score == hit-rate)
- titers         1
+ bcache         4   698 B    0.0%  (score == hit-rate)
+ tcache         1   672 B    0.0%  (score == hit-rate)
+ titers         0
  filter         -       -    0.0%  (score == utility)
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
@@ -141,22 +141,22 @@ iter-close b
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B    27.5
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K    28.6
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
+      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.5 K       2     0 B       0    27.5
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
- bcache         0     0 B   27.3%  (score == hit-rate)
- tcache         0     0 B   60.0%  (score == hit-rate)
+ bcache         0     0 B    0.0%  (score == hit-rate)
+ tcache         0     0 B    0.0%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)

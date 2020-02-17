@@ -18,8 +18,8 @@ L0
 ----
 L0 files 000001 and 000002 are not properly ordered: 3-4 vs 1-2
 0:
-  000001:[c#3,SET-d#4,SET]
   000002:[a#1,SET-b#2,SET]
+  000001:[c#3,SET-d#4,SET]
 
 check-ordering
 L0
@@ -28,8 +28,8 @@ L0
 ----
 L0 flushed file 000002 overlaps with the largest seqnum of a preceding flushed file: 1-5 vs 4
 0:
-  000001:[c#3,SET-d#4,SET]
   000002:[a#1,SET-b#5,SET]
+  000001:[c#3,SET-d#4,SET]
 
 check-ordering
 L0
@@ -37,9 +37,10 @@ L0
   a.SET.1-b.SET.2
 ----
 L0 files 000001 and 000002 are not properly ordered: 3-3 vs 1-2
+0.1:
+  000002:[a#1,SET-b#2,SET]
 0:
   000001:[a#3,SET-d#3,SET]
-  000002:[a#1,SET-b#2,SET]
 
 check-ordering
 L0
@@ -47,9 +48,10 @@ L0
   a.SET.3-b.SET.3
 ----
 L0 files 000001 and 000002 are not properly ordered: 2-4 vs 3-3
+0.1:
+  000002:[a#3,SET-b#3,SET]
 0:
   000001:[a#2,SET-d#4,SET]
-  000002:[a#3,SET-b#3,SET]
 
 check-ordering
 L0
@@ -57,9 +59,10 @@ L0
   a.SET.3-b.SET.3
 ----
 L0 file 000002 does not have strictly increasing largest seqnum: 3-3 vs 3
+0.1:
+  000002:[a#3,SET-b#3,SET]
 0:
   000001:[a#3,SET-d#3,SET]
-  000002:[a#3,SET-b#3,SET]
 
 check-ordering
 L0
@@ -67,9 +70,10 @@ L0
   a.SET.3-d.SET.5
 ----
 L0 flushed file 000002 has an ingested file coincident with smallest seqnum: 3-5
+0.1:
+  000002:[a#3,SET-d#5,SET]
 0:
   000001:[a#3,SET-d#3,SET]
-  000002:[a#3,SET-d#5,SET]
 
 check-ordering
 L0
@@ -84,9 +88,10 @@ L0
   a.SET.5-d.SET.5
 ----
 L0 file 000002 does not have strictly increasing largest seqnum: 5-5 vs 5
+0.1:
+  000002:[a#5,SET-d#5,SET]
 0:
   000001:[a#3,SET-d#5,SET]
-  000002:[a#5,SET-d#5,SET]
 
 check-ordering
 L0
@@ -95,10 +100,12 @@ L0
   a.SET.4-d.SET.6
 ----
 L0 flushed file 000003 has an ingested file coincident with smallest seqnum: 4-6
+0.2:
+  000003:[a#4,SET-d#6,SET]
+0.1:
+  000002:[a#5,SET-d#5,SET]
 0:
   000001:[a#4,SET-d#4,SET]
-  000002:[a#5,SET-d#5,SET]
-  000003:[a#4,SET-d#6,SET]
 
 check-ordering
 L0

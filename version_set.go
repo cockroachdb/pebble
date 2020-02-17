@@ -444,7 +444,12 @@ func (vs *versionSet) logAndApply(
 		l := &vs.metrics.Levels[i]
 		l.NumFiles = int64(len(newVersion.Files[i]))
 		l.Size = uint64(totalSize(newVersion.Files[i]))
+		l.Sublevels = 0
+		if l.NumFiles > 0 {
+			l.Sublevels = 1
+		}
 	}
+	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels))
 	return nil
 }
 

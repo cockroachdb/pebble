@@ -1575,6 +1575,12 @@ func (d *DB) runCompaction(
 			return nil, nil, fmt.Errorf("pebble: not reached")
 		}
 
+		// TODO(peter): Only split L0 sstables at atomic compaction unit
+		// boundaries. This constraint is necessary because L0 sstables are formed
+		// into L0 sublevels based purely on their bounds. If L0 sstables to be
+		// split on non-atomic-unit boundaries, we could end up forming them into
+		// levels incorrectly. Is this true given that we use UserKeys and not
+		// internal keys for the L0 sublevel construction?
 		if err := finishOutput(limit); err != nil {
 			return nil, pendingOutputs, err
 		}
