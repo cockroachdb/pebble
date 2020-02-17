@@ -522,12 +522,19 @@ func (g *generator) writerIngest() {
 		return
 	}
 
-	// TODO(peter): randomly choose N batches to ingest.
-	batchID := g.liveBatches.rand(g.rng)
-	g.batchClose(batchID)
+	// Ingest between 1 and 3 batches.
+	batchIDs := make([]objID, 0, 1+g.rng.Intn(3))
+	for i := 0; i < cap(batchIDs); i++ {
+		batchID := g.liveBatches.rand(g.rng)
+		g.batchClose(batchID)
+		batchIDs = append(batchIDs, batchID)
+		if len(g.liveBatches) == 0 {
+			break
+		}
+	}
 
 	g.add(&ingestOp{
-		batchIDs: []objID{batchID},
+		batchIDs: batchIDs,
 	})
 }
 
