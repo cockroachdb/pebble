@@ -64,10 +64,12 @@ edit
   L0
    4:b.SET.0-d.SET.0
 ----
+0.2:
+  000002:[c#3,SET-d#4,SET]
+0.1:
+  000001:[a#1,SET-c#2,SET]
 0:
   000004:[b#0,SET-d#0,SET]
-  000001:[a#1,SET-c#2,SET]
-  000002:[c#3,SET-d#4,SET]
 zombies []
 
 
@@ -78,9 +80,10 @@ edit
    1:a.SET.1-c.SET.2
    4:b.SET.3-d.SET.5
 ----
+0.1:
+  000004:[b#3,SET-d#5,SET]
 0:
   000001:[a#1,SET-c#2,SET]
-  000004:[b#3,SET-d#5,SET]
 zombies []
 
 apply

@@ -126,6 +126,9 @@ type Metrics struct {
 
 	Filter FilterMetrics
 
+	// TODO(peter): Figure out how to model the L0 sublevels here. Do we return
+	// info for each sublevel? Or perhaps we add `LevelMetrics.ReadAmplification`
+	// which would be 1 for every non-empty/non-L0 level.
 	Levels [numLevels]LevelMetrics
 
 	MemTable struct {

@@ -338,6 +338,11 @@ func TestVersionEditApply(t *testing.T) {
 						}
 					}
 				}
+
+				if v != nil {
+					v.initL0Sublevels(base.DefaultComparer.Compare)
+				}
+
 				bve := BulkVersionEdit{}
 				bve.Accumulate(ve)
 				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter)

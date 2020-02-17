@@ -361,6 +361,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	get.key = key
 	get.batch = b
 	get.mem = readState.memtables
+	// TODO(peter): Use L0Sublevels instead of Files[0].
 	get.l0 = readState.current.Files[0]
 	get.version = readState.current
 
@@ -690,6 +691,7 @@ func (d *DB) newIterInternal(
 	// L0=>L0 compactions since such compactions output a single file. Therefore, we do not
 	// need to wrap level 0 files individually in level iterators.
 	current := readState.current
+	// TODO(peter): Use L0Sublevels instead of Files[0].
 	for i := len(current.Files[0]) - 1; i >= 0; i-- {
 		f := current.Files[0][i]
 		iter, rangeDelIter, err := d.newIters(f, &dbi.opts, nil)
