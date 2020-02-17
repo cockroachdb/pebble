@@ -35,6 +35,9 @@ func parseOptions(opts *testOptions, data string) error {
 			case "TestOptions.strictfs":
 				opts.strictFS = true
 				return true
+			case "TestOptions.ingest_using_apply":
+				opts.ingestUsingApply = true
+				return true
 			default:
 				return false
 			}
@@ -46,11 +49,14 @@ func parseOptions(opts *testOptions, data string) error {
 
 func optionsToString(opts *testOptions) string {
 	str := opts.opts.String()
+	if opts.strictFS || opts.ingestUsingApply {
+		str += "\n[TestOptions]\n"
+	}
 	if opts.strictFS {
-		str += `
-[TestOptions]
-  strictfs=true
-`
+		str += "  strictfs=true\n"
+	}
+	if opts.ingestUsingApply {
+		str += "  ingest_using_apply=true\n"
 	}
 	return str
 }
@@ -70,6 +76,8 @@ func defaultOptions() *pebble.Options {
 type testOptions struct {
 	opts     *pebble.Options
 	strictFS bool
+	// Use Batch.Apply rather than DB.Ingest.
+	ingestUsingApply bool
 }
 
 func standardOptions() []*testOptions {
@@ -149,6 +157,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
   strictfs=true
 `,
+		18: `
+[TestOptions]
+  ingest_using_apply=true
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
@@ -192,5 +204,6 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	if testOpts.strictFS {
 		opts.DisableWAL = false
 	}
+	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	return testOpts
 }
