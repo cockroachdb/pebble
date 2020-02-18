@@ -194,6 +194,20 @@ type ingestOp struct {
 }
 
 func (o *ingestOp) run(t *test, h *history) {
+	// We can only use apply as an alternative for ingestion if we are ingesting
+	// a single batch. If we are ingesting multiple batches, the batches may
+	// overlap which would cause ingestion to fail but apply would succeed.
+	if t.testOpts.ingestUsingApply && len(o.batchIDs) == 1 {
+		id := o.batchIDs[0]
+		b := t.getBatch(id)
+		w := t.getWriter(makeObjID(dbTag, 0))
+		err := w.Apply(b, t.writeOpts)
+		_ = b.Close()
+		t.clearObj(id)
+		h.Recordf("%s // %v", o, err)
+		return
+	}
+
 	var paths []string
 	var err error
 	for i, id := range o.batchIDs {

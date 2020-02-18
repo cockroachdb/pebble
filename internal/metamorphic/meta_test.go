@@ -27,16 +27,10 @@ import (
 
 // TODO(peter):
 //
-// Verify the metamorphic test catchs various bugs:
-// - Instability of keys returned from range-del-iters and used by truncate
-// - Lack of support for lower/upper bound in flushableBatchIter
-//
 // Miscellaneous:
 // - Add support for different comparers. In particular, allow reverse
 //   comparers and a comparer which supports Comparer.Split (by splitting off
 //   a variable length suffix).
-// - Ingest and Apply can be randomly swapped leading to testing of
-//   interesting cases.
 // - DeleteRange can be used to replace Delete, stressing the DeleteRange
 //   implementation.
 // - Add support for Writer.LogData
