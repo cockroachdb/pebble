@@ -196,3 +196,14 @@ startLevel: 0, outputLevel: 4
 pick
 ----
 startLevel: 5, outputLevel: 6
+
+init_cp
+----
+
+queue
+----
+4: 2.0,0: 1.2,5: 1.0,
+
+pick ongoing=(0,5)
+----
+no compaction
