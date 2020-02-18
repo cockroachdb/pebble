@@ -165,8 +165,6 @@ type Reader struct {
 	// n is the number of bytes of buf that are valid. Once reading has started,
 	// only the final block can have n < blockSize.
 	n int
-	// started is whether Next has been called at all.
-	started bool
 	// recovering is true when recovering from corruption.
 	recovering bool
 	// last is whether the current chunk is the last chunk of the record.
@@ -225,8 +223,14 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 
 				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
 				if logNum != r.logNum {
-					// Treat a record from a previous instance of the log as EOF.
-					return io.EOF
+					if wantFirst {
+						// If we're looking for the first chunk of a record, we can treat a
+						// previous instance of the log as EOF.
+						return io.EOF
+					}
+					// Otherwise, treat this chunk as invalid in order to prevent reading
+					// of a partial record.
+					return ErrInvalidChunk
 				}
 
 				chunkType -= (recyclableFullChunkType - 1)
@@ -257,11 +261,11 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			r.recovering = false
 			return nil
 		}
-		if r.n < blockSize && r.started {
-			if r.end != r.n {
-				// This can happen if the previous instance of the log ended with a partial block
-				// at the same blockNum as the new log but extended beyond the partial block of the
-				// new log.
+		if r.n < blockSize && r.blockNum >= 0 {
+			if !wantFirst || r.end != r.n {
+				// This can happen if the previous instance of the log ended with a
+				// partial block at the same blockNum as the new log but extended
+				// beyond the partial block of the new log.
 				return ErrInvalidChunk
 			}
 			return io.EOF
@@ -288,7 +292,6 @@ func (r *Reader) Next() (io.Reader, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	r.started = true
 	return singleReader{r, r.seq}, nil
 }
 
@@ -355,7 +358,7 @@ func (r *Reader) seekRecord(offset int64) error {
 
 	// Clear the state of the internal reader.
 	r.begin, r.end, r.n = 0, 0, 0
-	r.started, r.recovering, r.last = false, false, false
+	r.blockNum, r.recovering, r.last = -1, false, false
 	if r.err = r.nextChunk(false); r.err != nil {
 		return r.err
 	}

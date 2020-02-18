@@ -38,10 +38,7 @@ type recordWriter interface {
 }
 
 func testGeneratorWriter(
-	t *testing.T,
-	reset func(),
-	gen func() (string, bool),
-	newWriter func(io.Writer) recordWriter,
+	t *testing.T, reset func(), gen func() (string, bool), newWriter func(io.Writer) recordWriter,
 ) {
 	buf := new(bytes.Buffer)
 
@@ -873,6 +870,19 @@ func TestSize(t *testing.T) {
 	}
 }
 
+type limitedWriter struct {
+	io.Writer
+	limit int
+}
+
+func (w *limitedWriter) Write(p []byte) (n int, err error) {
+	w.limit--
+	if w.limit < 0 {
+		return len(p), nil
+	}
+	return w.Writer.Write(p)
+}
+
 func TestRecycleLog(t *testing.T) {
 	const min = 16
 	const max = 4096
@@ -897,7 +907,13 @@ func TestRecycleLog(t *testing.T) {
 	// with random data.
 	backing := make([]byte, 1<<20)
 	for i := 1; i <= 100; i++ {
-		w := NewLogWriter(bytes.NewBuffer(backing[:0]), uint64(i))
+		blocks := rnd.Intn(100)
+		limitedBuf := &limitedWriter{
+			Writer: bytes.NewBuffer(backing[:0]),
+			limit:  blocks,
+		}
+
+		w := NewLogWriter(limitedBuf, uint64(i))
 		sizes := make([]int, 10+rnd.Intn(100))
 		for j := range sizes {
 			data := randBlock()
@@ -914,10 +930,18 @@ func TestRecycleLog(t *testing.T) {
 		for j := range sizes {
 			rr, err := r.Next()
 			if err != nil {
+				// If we limited output then an EOF, zeroed, or invalid chunk is expected.
+				if limitedBuf.limit < 0 && (err == io.EOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
+					break
+				}
 				t.Fatalf("%d/%d: %v", i, j, err)
 			}
 			x, err := ioutil.ReadAll(rr)
 			if err != nil {
+				// If we limited output then an EOF, zeroed, or invalid chunk is expected.
+				if limitedBuf.limit < 0 && (err == io.EOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
+					break
+				}
 				t.Fatalf("%d/%d: %v", i, j, err)
 			}
 			if sizes[j] != len(x) {
@@ -949,6 +973,38 @@ func TestRecycleLogWithPartialBlock(t *testing.T) {
 	if _, err = r.Next(); err != ErrInvalidChunk && err != io.EOF {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func TestRecycleLogWithPartialRecord(t *testing.T) {
+	const recordSize = (blockSize * 3) / 2
+
+	// Write a record that is larger than the log block size.
+	backing1 := make([]byte, 2*blockSize)
+	w := NewLogWriter(bytes.NewBuffer(backing1[:0]), uint64(1))
+	_, err := w.WriteRecord(bytes.Repeat([]byte("a"), recordSize))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	// Write another record to a new incarnation of the WAL that is larger than
+	// the block size.
+	backing2 := make([]byte, 2*blockSize)
+	w = NewLogWriter(bytes.NewBuffer(backing2[:0]), uint64(2))
+	_, err = w.WriteRecord(bytes.Repeat([]byte("b"), recordSize))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	// Copy the second block from the first WAL to the second block of the second
+	// WAL. This produces a scenario where it appears we crashed after writing
+	// the first block of the second WAL, but before writing the second block.
+	copy(backing2[blockSize:], backing1[blockSize:])
+
+	// Verify that we can't read a partial record from the second WAL.
+	r := NewReader(bytes.NewReader(backing2), uint64(2))
+	rr, err := r.Next()
+	require.NoError(t, err)
+
+	_, err = ioutil.ReadAll(rr)
+	require.Equal(t, err, ErrInvalidChunk)
 }
 
 func BenchmarkRecordWrite(b *testing.B) {
