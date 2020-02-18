@@ -439,7 +439,10 @@ func conflictsWithInProgress(
 	level int, outputLevel int, inProgressCompactions []compactionInfo,
 ) bool {
 	for _, c := range inProgressCompactions {
-		if level == c.startLevelNum() || outputLevel == c.startLevelNum() || level == c.outputLevelNum() {
+		if level == c.startLevelNum() ||
+			level == c.outputLevelNum() ||
+			outputLevel == c.startLevelNum() ||
+			outputLevel == c.outputLevelNum() {
 			return true
 		}
 	}
