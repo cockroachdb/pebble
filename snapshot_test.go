@@ -202,7 +202,7 @@ func TestSnapshotClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	require.EqualValues(t, ErrClosed, catch(func() { _ = snap.Close() }))
-	require.EqualValues(t, ErrClosed, catch(func() { _, _ = snap.Get(nil) }))
+	require.EqualValues(t, ErrClosed, catch(func() { _, _, _ = snap.Get(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { snap.NewIter(nil) }))
 
 	require.NoError(t, d.Close())

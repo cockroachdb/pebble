@@ -320,8 +320,11 @@ type getOp struct {
 
 func (o *getOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
-	val, err := r.Get(o.key)
+	val, closer, err := r.Get(o.key)
 	h.Recordf("%s // [%q] %v", o, val, err)
+	if closer != nil {
+		closer.Close()
+	}
 }
 
 func (o *getOp) String() string {

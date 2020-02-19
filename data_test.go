@@ -46,11 +46,12 @@ func runGetCmd(td *datadriven.TestData, d *DB) string {
 
 	var buf bytes.Buffer
 	for _, data := range strings.Split(td.Input, "\n") {
-		v, err := snap.Get([]byte(data))
+		v, closer, err := snap.Get([]byte(data))
 		if err != nil {
 			fmt.Fprintf(&buf, "%s: %s\n", data, err)
 		} else {
 			fmt.Fprintf(&buf, "%s:%s\n", data, v)
+			closer.Close()
 		}
 	}
 	return buf.String()

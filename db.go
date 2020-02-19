@@ -50,9 +50,11 @@ type Reader interface {
 	// Get gets the value for the given key. It returns ErrNotFound if the DB
 	// does not contain the key.
 	//
-	// The caller should not modify the contents of the returned slice, but
-	// it is safe to modify the contents of the argument after Get returns.
-	Get(key []byte) (value []byte, err error)
+	// The caller should not modify the contents of the returned slice, but it is
+	// safe to modify the contents of the argument after Get returns. The
+	// returned slice will remain valid until the returned Closer is closed. On
+	// success, the caller MUST call closer.Close() or a memory leak will occur.
+	Get(key []byte) (value []byte, closer io.Closer, err error)
 
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to SeekGE,
@@ -323,12 +325,14 @@ var _ Writer = (*DB)(nil)
 // not contain the key.
 //
 // The caller should not modify the contents of the returned slice, but it is
-// safe to modify the contents of the argument after Get returns.
-func (d *DB) Get(key []byte) ([]byte, error) {
+// safe to modify the contents of the argument after Get returns. The returned
+// slice will remain valid until the returned Closer is closed. On success, the
+// caller MUST call closer.Close() or a memory leak will occur.
+func (d *DB) Get(key []byte) ([]byte, io.Closer, error) {
 	return d.getInternal(key, nil /* batch */, nil /* snapshot */)
 }
 
-func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
+func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, error) {
 	if atomic.LoadInt32(&d.closed) != 0 {
 		panic(ErrClosed)
 	}
@@ -382,15 +386,14 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, error) {
 	i.iter = get
 	i.readState = readState
 
-	defer i.Close()
 	if !i.First() {
-		err := i.Error()
+		err := i.Close()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return nil, ErrNotFound
+		return nil, nil, ErrNotFound
 	}
-	return i.Value(), nil
+	return i.Value(), i, nil
 }
 
 // Set sets the value for the given key. It overwrites any previous value
