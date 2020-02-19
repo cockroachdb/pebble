@@ -45,7 +45,7 @@ func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 }
 
 // totalSize returns the total size of all the files in f.
-func totalSize(f []fileMetadata) (size uint64) {
+func totalSize(f []*fileMetadata) (size uint64) {
 	for _, x := range f {
 		size += x.Size
 	}
@@ -98,7 +98,7 @@ type compaction struct {
 	// is applied.
 	atomicBytesIterated *uint64
 	// inputs are the tables to be compacted.
-	inputs [2][]fileMetadata
+	inputs [2][]*fileMetadata
 	// The boundaries of the input data.
 	smallest InternalKey
 	largest  InternalKey
@@ -111,7 +111,7 @@ type compaction struct {
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
 	// in the grandparent when this compaction finishes will be the same.
-	grandparents []fileMetadata
+	grandparents []*fileMetadata
 
 	// List of disjoint inuse key ranges the compaction overlaps with in
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
@@ -304,7 +304,7 @@ func (c *compaction) setupInputs() {
 // tombstones will be truncated at "b" (the largest key in its atomic
 // compaction unit). In the scenario here, that could result in b#1 becoming
 // visible when it should be deleted.
-func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetadata {
+func (c *compaction) expandInputs(level int, inputs []*fileMetadata) []*fileMetadata {
 	if level == 0 {
 		// We already called version.Overlaps for L0 and that call guarantees that
 		// we get a "clean cut".
@@ -329,8 +329,8 @@ func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetada
 	end := start + len(inputs)
 
 	for ; start > 0; start-- {
-		cur := &files[start]
-		prev := &files[start-1]
+		cur := files[start]
+		prev := files[start-1]
 		if c.cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
 			break
 		}
@@ -347,8 +347,8 @@ func (c *compaction) expandInputs(level int, inputs []fileMetadata) []fileMetada
 	}
 
 	for ; end < len(files); end++ {
-		cur := &files[end-1]
-		next := &files[end]
+		cur := files[end-1]
+		next := files[end]
 		if c.cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
 			break
 		}
@@ -405,7 +405,7 @@ func (c *compaction) setupInuseKeyRanges() {
 	for ; level < numLevels; level++ {
 		overlaps := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 		for i := range overlaps {
-			m := &overlaps[i]
+			m := overlaps[i]
 			input = append(input, userKeyRange{m.Smallest.UserKey, m.Largest.UserKey})
 		}
 	}
@@ -551,7 +551,7 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 	for i := range c.inputs {
 		files := c.inputs[i]
 		for j := range files {
-			if f == &files[j] {
+			if f == files[j] {
 				// Note that if this file is in a multi-file atomic compaction unit, this file
 				// may not be the first file in that unit. An example in Pebble would be a
 				// preceding file with Largest c#12,1 and this file with Smallest c#9,1 and
@@ -564,8 +564,8 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 				// compatibility.
 				lowerBound := f.Smallest.UserKey
 				for k := j; k > 0; k-- {
-					cur := &files[k]
-					prev := &files[k-1]
+					cur := files[k]
+					prev := files[k-1]
 					if c.cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
 						break
 					}
@@ -582,8 +582,8 @@ func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 
 				upperBound := f.Largest.UserKey
 				for k := j + 1; k < len(files); k++ {
-					cur := &files[k-1]
-					next := &files[k]
+					cur := files[k-1]
+					next := files[k]
 					if c.cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
 						break
 					}
@@ -696,7 +696,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[0], &c.bytesIterated))
 	} else {
 		for i := range c.inputs[0] {
-			f := &c.inputs[0][i]
+			f := c.inputs[0][i]
 			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 			if err != nil {
 				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.FileNum, err)
@@ -1042,7 +1042,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info.Output.Level = c.outputLevel
 	for i := range c.inputs {
 		for j := range c.inputs[i] {
-			m := &c.inputs[i][j]
+			m := c.inputs[i][j]
 			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo())
 		}
 	}
@@ -1115,7 +1115,7 @@ func (d *DB) runCompaction(
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
 	if c.trivialMove() {
-		meta := &c.inputs[0][0]
+		meta := c.inputs[0][0]
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel: &LevelMetrics{
 				BytesMoved:  meta.Size,
@@ -1127,7 +1127,7 @@ func (d *DB) runCompaction(
 				deletedFileEntry{Level: c.startLevel, FileNum: meta.FileNum}: true,
 			},
 			NewFiles: []newFileEntry{
-				{Level: c.outputLevel, Meta: *meta},
+				{Level: c.outputLevel, Meta: meta},
 			},
 		}
 		return ve, nil, nil
@@ -1218,7 +1218,7 @@ func (d *DB) runCompaction(
 
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel,
-			Meta: fileMetadata{
+			Meta: &fileMetadata{
 				FileNum: fileNum,
 			},
 		})
@@ -1256,7 +1256,7 @@ func (d *DB) runCompaction(
 			return err
 		}
 		tw = nil
-		meta := &ve.NewFiles[len(ve.NewFiles)-1].Meta
+		meta := ve.NewFiles[len(ve.NewFiles)-1].Meta
 		meta.Size = writerMeta.Size
 		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
@@ -1272,7 +1272,7 @@ func (d *DB) runCompaction(
 		if n := len(ve.NewFiles); n > 1 {
 			// This is not the first output file. Bound the smallest range key by the
 			// previous tables largest key.
-			prevMeta := &ve.NewFiles[n-2].Meta
+			prevMeta := ve.NewFiles[n-2].Meta
 			if writerMeta.SmallestRange.UserKey != nil {
 				c := d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey)
 				if c < 0 {

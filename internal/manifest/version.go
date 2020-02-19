@@ -38,15 +38,13 @@ type TableInfo struct {
 
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {
-	// reference count for the file: incremented when a file is added to a
+	// Reference count for the file: incremented when a file is added to a
 	// version and decremented when the version is unreferenced. The file is
-	// obsolete when the reference count falls to zero. This is a pointer because
-	// fileMetadata is copied by value from version to version, but we want the
-	// reference count to be shared.
-	refs *int32
+	// obsolete when the reference count falls to zero.
+	refs int32
 	// FileNum is the file number.
 	FileNum uint64
-	// Size is the Size of the file, in bytes.
+	// Size is the size of the file, in bytes.
 	Size uint64
 	// Smallest and Largest are the inclusive bounds for the internal keys
 	// stored in the table.
@@ -55,7 +53,7 @@ type FileMetadata struct {
 	// Smallest and largest sequence numbers in the table.
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
-	// true if client asked us nicely to compact this file.
+	// True if user asked us to compact this file.
 	MarkedForCompaction bool
 }
 
@@ -97,9 +95,9 @@ func (m *FileMetadata) lessSmallestKey(b *FileMetadata, cmp Compare) bool {
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
 // all the fileMetadata in f0 and f1.
-func KeyRange(ucmp Compare, f0, f1 []FileMetadata) (smallest, largest InternalKey) {
+func KeyRange(ucmp Compare, f0, f1 []*FileMetadata) (smallest, largest InternalKey) {
 	first := true
-	for _, f := range [2][]FileMetadata{f0, f1} {
+	for _, f := range [2][]*FileMetadata{f0, f1} {
 		for _, meta := range f {
 			if first {
 				first = false
@@ -117,33 +115,33 @@ func KeyRange(ucmp Compare, f0, f1 []FileMetadata) (smallest, largest InternalKe
 	return smallest, largest
 }
 
-type bySeqNum []FileMetadata
+type bySeqNum []*FileMetadata
 
 func (b bySeqNum) Len() int { return len(b) }
 func (b bySeqNum) Less(i, j int) bool {
-	return b[i].lessSeqNum(&b[j])
+	return b[i].lessSeqNum(b[j])
 }
 func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
 // SortBySeqNum sorts the specified files by increasing sequence number.
-func SortBySeqNum(files []FileMetadata) {
+func SortBySeqNum(files []*FileMetadata) {
 	sort.Sort(bySeqNum(files))
 }
 
 type bySmallest struct {
-	files []FileMetadata
+	files []*FileMetadata
 	cmp   Compare
 }
 
 func (b bySmallest) Len() int { return len(b.files) }
 func (b bySmallest) Less(i, j int) bool {
-	return b.files[i].lessSmallestKey(&b.files[j], b.cmp)
+	return b.files[i].lessSmallestKey(b.files[j], b.cmp)
 }
 func (b bySmallest) Swap(i, j int) { b.files[i], b.files[j] = b.files[j], b.files[i] }
 
 // SortBySmallest sorts the specified files by smallest key using the supplied
 // comparison function to order user keys.
-func SortBySmallest(files []FileMetadata, cmp Compare) {
+func SortBySmallest(files []*FileMetadata, cmp Compare) {
 	sort.Sort(bySmallest{files, cmp})
 }
 
@@ -177,7 +175,7 @@ const NumLevels = 7
 type Version struct {
 	refs int32
 
-	Files [NumLevels][]FileMetadata
+	Files [NumLevels][]*FileMetadata
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
@@ -203,7 +201,7 @@ func (v *Version) Pretty(format base.Formatter) string {
 		}
 		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
-			f := &v.Files[level][j]
+			f := v.Files[level][j]
 			fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 				format(f.Smallest.UserKey), format(f.Largest.UserKey))
 		}
@@ -221,7 +219,7 @@ func (v *Version) DebugString(format base.Formatter) string {
 		}
 		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
-			f := &v.Files[level][j]
+			f := v.Files[level][j]
 			fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 				f.Smallest.Pretty(format), f.Largest.Pretty(format))
 		}
@@ -269,8 +267,8 @@ func (v *Version) unrefFiles() []uint64 {
 	var obsolete []uint64
 	for _, files := range v.Files {
 		for i := range files {
-			f := &files[i]
-			if atomic.AddInt32(f.refs, -1) == 0 {
+			f := files[i]
+			if atomic.AddInt32(&f.refs, -1) == 0 {
 				obsolete = append(obsolete, f.FileNum)
 			}
 		}
@@ -291,7 +289,7 @@ func (v *Version) Next() *Version {
 // and the computation is repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []FileMetadata) {
+func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*FileMetadata) {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		selectedIndices := make([]bool, len(v.Files[level]))
@@ -302,7 +300,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []Fil
 				if selected {
 					continue
 				}
-				meta := &v.Files[level][i]
+				meta := v.Files[level][i]
 				smallest := meta.Smallest.UserKey
 				largest := meta.Largest.UserKey
 				if cmp(largest, start) < 0 {
@@ -333,7 +331,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []Fil
 			}
 
 			if !restart {
-				ret = make([]FileMetadata, 0, numSelected)
+				ret = make([]*FileMetadata, 0, numSelected)
 				for i, selected := range selectedIndices {
 					if selected {
 						ret = append(ret, v.Files[level][i])
@@ -434,7 +432,7 @@ func (l *VersionList) Remove(v *Version) {
 // CheckOrdering checks that the files are consistent with respect to
 // seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
-func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMetadata) error {
+func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileMetadata) error {
 	if level == 0 {
 		// We have 2 kinds of files:
 		// - Files with exactly one sequence number: these could be either ingested files
@@ -477,11 +475,11 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMe
 		// They are checked when largestFlushedSeqNum advances past them.
 		var uncheckedIngestedSeqNums []uint64
 
-		for i := 0; i < len(files); i++ {
-			f := &files[i]
+		for i := range files {
+			f := files[i]
 			if i > 0 {
 				// Validate that the sorting is sane.
-				prev := &files[i-1]
+				prev := files[i-1]
 				if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
 					// Multiple files satisfying case 2 mentioned above.
 				} else if !prev.lessSeqNum(f) {
@@ -526,14 +524,14 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []FileMe
 			}
 		}
 	} else {
-		for i := 0; i < len(files); i++ {
-			f := &files[i]
+		for i := range files {
+			f := files[i]
 			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
 				return fmt.Errorf("L%d file %06d has inconsistent bounds: %s vs %s",
 					level, f.FileNum, f.Smallest.Pretty(format), f.Largest.Pretty(format))
 			}
 			if i > 0 {
-				prev := &files[i-1]
+				prev := files[i-1]
 				if !prev.lessSmallestKey(f, cmp) {
 					return fmt.Errorf("L%d files %06d and %06d are not properly ordered: %s-%s vs %s-%s",
 						level, prev.FileNum, f.FileNum,

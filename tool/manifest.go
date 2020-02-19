@@ -162,7 +162,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				for level := range v.Files {
 					fmt.Fprintf(stdout, "--- L%d ---\n", level)
 					for j := range v.Files[level] {
-						f := &v.Files[level][j]
+						f := v.Files[level][j]
 						fmt.Fprintf(stdout, "  %06d:%d", f.FileNum, f.Size)
 						formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
 						fmt.Fprintf(stdout, "\n")
@@ -238,7 +238,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					for level := range v.Files {
 						fmt.Fprintf(stdout, "--- L%d ---\n", level)
 						for j := range v.Files[level] {
-							f := &v.Files[level][j]
+							f := v.Files[level][j]
 							fmt.Fprintf(stdout, "  %06d:%d", f.FileNum, f.Size)
 							formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
 							fmt.Fprintf(stdout, "\n")

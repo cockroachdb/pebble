@@ -61,7 +61,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			NewFiles: []NewFileEntry{
 				{
 					Level: 5,
-					Meta: FileMetadata{
+					Meta: &FileMetadata{
 						FileNum:  805,
 						Size:     8050,
 						Smallest: base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
@@ -70,7 +70,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 				},
 				{
 					Level: 6,
-					Meta: FileMetadata{
+					Meta: &FileMetadata{
 						FileNum:             806,
 						Size:                8060,
 						Smallest:            base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
@@ -131,7 +131,7 @@ func TestVersionEditDecode(t *testing.T) {
 					NewFiles: []NewFileEntry{
 						{
 							Level: 0,
-							Meta: FileMetadata{
+							Meta: &FileMetadata{
 								FileNum:        4,
 								Size:           986,
 								Smallest:       base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
@@ -317,14 +317,13 @@ func TestVersionEditApply(t *testing.T) {
 								return err.Error()
 							}
 							if isVersion {
-								meta.refs = new(int32)
 								if v == nil {
 									v = new(Version)
 								}
-								v.Files[level] = append(v.Files[level], *meta)
+								v.Files[level] = append(v.Files[level], meta)
 							} else {
 								ve.NewFiles =
-									append(ve.NewFiles, NewFileEntry{Level: level, Meta: *meta})
+									append(ve.NewFiles, NewFileEntry{Level: level, Meta: meta})
 							}
 						} else {
 							fileNum, err := strconv.Atoi(data)
