@@ -1407,8 +1407,12 @@ func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {
 
 func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []compactionInfo) {
 	for c := range d.mu.compact.inProgress {
-		if c.outputLevel > 0 && (finishing == nil || c != finishing) {
-			rv = append(rv, c)
+		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
+			rv = append(rv, compactionInfo{
+				startLevel:  c.startLevel,
+				outputLevel: c.outputLevel,
+				inputs:      c.inputs,
+			})
 		}
 	}
 	return

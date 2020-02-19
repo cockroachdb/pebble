@@ -346,7 +346,7 @@ func (c *tableCacheShard) evict(fileNum uint64) {
 		// tableCacheShard.mu in order to avoid a race with Close()
 		c.unlinkNode(n)
 		if v := atomic.AddInt32(&n.refCount, -1); v != 0 {
-			c.logger.Fatalf("table refcount is not zero: %d", v)
+			c.logger.Fatalf("sstable %06d: refcount is not zero: %d", fileNum, v)
 		}
 		c.releasing.Add(1)
 	}

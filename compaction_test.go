@@ -27,6 +27,7 @@ type compactionPickerForTesting struct {
 	score     float64
 	level     int
 	baseLevel int
+	opts      *Options
 	vers      *manifest.Version
 }
 
@@ -50,9 +51,7 @@ func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64)
 
 func (p *compactionPickerForTesting) forceBaseLevel1() {}
 
-func (p *compactionPickerForTesting) pickAuto(
-	opts *Options, bytesCompacted *uint64, _ []compactionInfo,
-) (c *compaction) {
+func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (c *compaction) {
 	if p.score < 1 {
 		return nil
 	}
@@ -61,16 +60,16 @@ func (p *compactionPickerForTesting) pickAuto(
 		outputLevel = p.baseLevel
 	}
 	cInfo := pickedCompactionInfo{level: p.level, outputLevel: outputLevel}
-	return pickAutoHelper(opts, bytesCompacted, p.vers, &cInfo, p.baseLevel)
+	return pickAutoHelper(env, p.opts, p.vers, &cInfo, p.baseLevel)
 }
 
 func (p *compactionPickerForTesting) pickManual(
-	opts *Options, manual *manualCompaction, bytesCompacted *uint64, _ []compactionInfo,
+	env compactionEnv, manual *manualCompaction,
 ) (c *compaction, retryLater bool) {
 	if p == nil {
 		return nil, false
 	}
-	return pickManualHelper(opts, manual, bytesCompacted, p.vers, p.baseLevel), false
+	return pickManualHelper(env, p.opts, manual, p.vers, p.baseLevel), false
 }
 
 func TestPickCompaction(t *testing.T) {
@@ -482,10 +481,11 @@ func TestPickCompaction(t *testing.T) {
 		}
 		vs.versions.Init(nil)
 		vs.append(&tc.version)
+		tc.picker.opts = opts
 		tc.picker.vers = &tc.version
 		vs.picker = &tc.picker
 
-		c, got := vs.picker.pickAuto(opts, new(uint64), nil), ""
+		c, got := vs.picker.pickAuto(compactionEnv{bytesCompacted: new(uint64)}), ""
 		if c != nil {
 			got0 := fileNums(c.inputs[0])
 			got1 := fileNums(c.inputs[1])
