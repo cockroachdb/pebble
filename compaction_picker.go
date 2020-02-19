@@ -37,17 +37,6 @@ type compactionPicker interface {
 type compactionInfo struct {
 	startLevel  int
 	outputLevel int
-	inputs      [2][]*fileMetadata
-}
-
-func (i *compactionInfo) level(n int) []*fileMetadata {
-	switch {
-	case n == i.startLevel:
-		return i.inputs[0]
-	case n == i.outputLevel:
-		return i.inputs[1]
-	}
-	return nil
 }
 
 func newCompactionPicker(
@@ -182,6 +171,9 @@ func (p *compactionPickerByScore) initLevelMaxBytes(
 		}
 	}
 	for _, c := range inProgressCompactions {
+		if c.outputLevel == 0 {
+			continue
+		}
 		if c.startLevel == 0 && (firstNonEmptyLevel == -1 || c.outputLevel < firstNonEmptyLevel) {
 			firstNonEmptyLevel = c.outputLevel
 		}
@@ -282,47 +274,51 @@ func (p *compactionPickerByScore) initCompactionQueue(
 	// compression ratios, or lots of overwrites/deletions).
 	p.scores[0] = float64(len(v.Files[0])) / float64(opts.L0CompactionThreshold)
 
-	// Adjust L0 score for intra-L0 compactions.
-	// - If there is an in-progress intra-L0 compaction, we can't start another
-	//   intra-L0 or L0->Lbase compaction.
-	// - If there is an in-progress L0->Lbase compaction, score the intra-L0
-	//   compaction.
-	intraL0 := false
-	for _, c := range inProgressCompactions {
-		if c.startLevel == 0 {
-			p.scores[0] = 0
-			if c.outputLevel == 0 {
-				// If there is an in-progress L0->L0 compaction, we cannot start
-				// another one.
+	intraL0 := func() bool {
+		// Only start an intra-L0 compaction if there is an existing L0->Lbase
+		// compaction.
+		var l0Compaction bool
+		for i := range inProgressCompactions {
+			if inProgressCompactions[i].startLevel == 0 &&
+				inProgressCompactions[i].outputLevel != 0 {
+				l0Compaction = true
 				break
 			}
-			l0Count := len(v.Files[0])
-			if l0Count < opts.L0CompactionThreshold+2 {
-				// If L0 isn't accumulating many files beyond the regular L0 trigger,
-				// don't resort to an intra-L0 compaction yet. This matches the RocksDB
-				// heuristic.
-				break
-			}
-
-			files := c.level(0)
-			idleL0Count := l0Count - len(files)
-			if idleL0Count < minIntraL0Count {
-				// Not enough idle L0 files to perform an intra-L0 compaction. This
-				// matches the RocksDB heuristic. Note that if another file is flushed
-				// or ingested to L0, a new compaction picker will be created and we'll
-				// reexamine the intra-L0 score.
-				break
-			}
-
-			// We score the intra-L0 compaction the same as a regular L0
-			// compaction. This matches the RocksDB heuristic.
-			//
-			// TODO(peter): Perhaps we should use idleL0Count here instead.
-			p.scores[0] = float64(l0Count) / float64(opts.L0CompactionThreshold)
-			intraL0 = true
-			break
 		}
-	}
+		if !l0Compaction {
+			return false
+		}
+
+		l0Files := v.Files[0]
+		if len(l0Files) < opts.L0CompactionThreshold+2 {
+			// If L0 isn't accumulating many files beyond the regular L0 trigger,
+			// don't resort to an intra-L0 compaction yet. This matches the RocksDB
+			// heuristic.
+			return false
+		}
+		var end = len(l0Files)
+		for ; end >= 1; end-- {
+			if l0Files[end-1].Compacting {
+				break
+			}
+		}
+
+		idleL0Count := len(l0Files) - end
+		if idleL0Count < minIntraL0Count {
+			// Not enough idle L0 files to perform an intra-L0 compaction. This
+			// matches the RocksDB heuristic. Note that if another file is flushed
+			// or ingested to L0, a new compaction picker will be created and we'll
+			// reexamine the intra-L0 score.
+			return false
+		}
+
+		// We score the intra-L0 compaction the same as a regular L0
+		// compaction. This matches the RocksDB heuristic.
+		//
+		// TODO(peter): Perhaps we should use idleL0Count here instead.
+		p.scores[0] = float64(len(l0Files)) / float64(opts.L0CompactionThreshold)
+		return true
+	}()
 
 	for level := 1; level < numLevels-1; level++ {
 		p.scores[level] = float64(totalSize(v.Files[level])) / float64(p.levelMaxBytes[level])
@@ -417,8 +413,16 @@ func (p *compactionPickerByScore) initCompactionQueue(
 
 // pickAuto picks the best compaction, if any.
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
+	const highPriorityThreshold = 1.5
+
 	for len(p.compactionQueue) > 0 {
 		cInfo := &p.compactionQueue[0]
+		if len(env.inProgressCompactions) > 0 && cInfo.score < highPriorityThreshold {
+			// Don't start a low priority compaction if there is already a compaction
+			// running.
+			return nil
+		}
+
 		p.compactionQueue = p.compactionQueue[1:]
 		if conflictsWithInProgress(cInfo.level, cInfo.outputLevel, env.inProgressCompactions) {
 			continue

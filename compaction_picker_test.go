@@ -144,7 +144,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				var ok bool
 				pickerByScore, ok = p.(*compactionPickerByScore)
 				require.True(t, ok)
-				return ""
+				return fmt.Sprintf("base: %d", pickerByScore.baseLevel)
 			case "queue":
 				var b strings.Builder
 				for _, c := range pickerByScore.compactionQueue {
@@ -173,7 +173,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				if c == nil {
 					return "no compaction"
 				}
-				return fmt.Sprintf("startLevel: %d, outputLevel: %d", c.startLevel, c.outputLevel)
+				return fmt.Sprintf("L%d->L%d", c.startLevel, c.outputLevel)
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
