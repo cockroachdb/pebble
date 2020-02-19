@@ -3,6 +3,7 @@ init 1
 
 init_cp
 ----
+base: 6
 
 queue
 ----
@@ -13,6 +14,7 @@ init 1
 
 init_cp
 ----
+base: 6
 
 queue
 ----
@@ -23,6 +25,7 @@ init 1
 
 init_cp
 ----
+base: 1
 
 queue
 ----
@@ -34,6 +37,7 @@ init 1
 
 init_cp
 ----
+base: 5
 
 queue
 ----
@@ -46,6 +50,7 @@ init 1
 
 init_cp
 ----
+base: 5
 
 queue
 ----
@@ -65,6 +70,7 @@ init 1
 
 init_cp
 ----
+base: 4
 
 queue
 ----
@@ -77,6 +83,7 @@ init 1
 
 init_cp
 ----
+base: 4
 
 queue
 ----
@@ -90,6 +97,7 @@ init 1
 
 init_cp
 ----
+base: 4
 
 queue
 ----
@@ -103,6 +111,7 @@ init 1
 
 init_cp
 ----
+base: 4
 
 queue
 ----
@@ -117,6 +126,7 @@ init 1
 
 init_cp
 ----
+base: 4
 
 queue
 ----
@@ -129,6 +139,7 @@ init 1
 
 init_cp
 ----
+base: 6
 
 queue
 ----
@@ -140,6 +151,7 @@ init 1
 
 init_cp
 ----
+base: 6
 
 queue
 ----
@@ -153,6 +165,7 @@ init 1
 
 init_cp
 ----
+base: 5
 
 queue
 ----
@@ -161,83 +174,144 @@ L0->L5: 1.2
 
 pick
 ----
-startLevel: 5, outputLevel: 6
+L5->L6
 
 pick
 ----
-startLevel: 0, outputLevel: 5
+L0->L5
 
 init_cp
 ----
+base: 5
 
 pick
 ----
-startLevel: 5, outputLevel: 6
+L5->L6
 
 pick ongoing=(5,6)
 ----
 no compaction
 
 init 1
-0: 5
-4: 2
-5: 3
+0: 10
+4: 10
+5: 6
 6: 10
 ----
 
 init_cp
 ----
+base: 4
 
 queue
 ----
-L4->L5: 2.0
-L0->L4: 1.2
-L5->L6: 1.0
+L4->L5: 10.0
+L0->L4: 2.5
+L5->L6: 2.0
 
 pick ongoing=(5,6)
 ----
-startLevel: 0, outputLevel: 4
+L0->L4
 
 pick
 ----
-startLevel: 5, outputLevel: 6
+L5->L6
 
 init_cp
 ----
+base: 4
 
 queue
 ----
-L4->L5: 2.0
-L0->L4: 1.2
-L5->L6: 1.0
+L4->L5: 10.0
+L0->L4: 2.5
+L5->L6: 2.0
 
 pick ongoing=(0,5)
 ----
 no compaction
+
+init 1
+0: 10
+6: 10
+----
+
+init_cp ongoing=(0,5)
+----
+base: 5
+
+queue
+----
+L0->L0: 2.5
+
+pick
+----
+L0->L0
+
+init_cp ongoing=(0,5)
+----
+base: 5
+
+queue
+----
+L0->L0: 2.5
+
+pick ongoing=(0,5)
+----
+L0->L0
+
+# An intra-L0 compaction is only queued if there is an in-progress
+# L0->Lbase compaction.
+
+init_cp
+----
+base: 5
+
+queue
+----
+L0->L5: 2.5
+
+init_cp ongoing=(0,0)
+----
+base: 5
+
+queue
+----
+L0->L5: 2.5
+
+# Queue another intra-L0 compaction even if there is one already in
+# progress.
+
+init_cp ongoing=(0,0,0,5)
+----
+base: 5
+
+queue
+----
+L0->L0: 2.5
+
+# We'll only pick a concurrent compaction if it is "high" priority
+# (i.e. has a score >= 1.5).
 
 init 1
 0: 6
+5: 1
 6: 10
 ----
 
 init_cp ongoing=(0,5)
 ----
+base: 5
 
 queue
 ----
 L0->L0: 1.5
+L5->L6: 1.0
 
-pick
+pick ongoing=(5,6)
 ----
-startLevel: 0, outputLevel: 0
+L0->L0
 
-init_cp ongoing=(0,5)
+pick ongoing=(5,6)
 ----
-
-queue
-----
-L0->L0: 1.5
-
-pick ongoing=(0,5)
-----
-startLevel: 0, outputLevel: 0
+no compaction
