@@ -147,8 +147,22 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				return fmt.Sprintf("base: %d", pickerByScore.baseLevel)
 			case "queue":
 				var b strings.Builder
-				for _, c := range pickerByScore.compactionQueue {
+				var inProgress []compactionInfo
+				for {
+					c, ok := pickerByScore.pickFile(inProgress)
+					if !ok {
+						break
+					}
 					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", c.level, c.outputLevel, c.score)
+					inProgress = append(inProgress, compactionInfo{
+						startLevel:  c.level,
+						outputLevel: c.outputLevel,
+					})
+					if c.outputLevel == 0 {
+						// Once we pick one L0->L0 compaction, we'll keep on doing so
+						// because the test isn't marking files as Compacting.
+						break
+					}
 				}
 				return b.String()
 			case "pick":

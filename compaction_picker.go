@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"math"
-	"sort"
 
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
@@ -37,6 +36,7 @@ type compactionPicker interface {
 type compactionInfo struct {
 	startLevel  int
 	outputLevel int
+	inputs      [2][]*fileMetadata
 }
 
 func newCompactionPicker(
@@ -46,8 +46,7 @@ func newCompactionPicker(
 		opts: opts,
 		vers: v,
 	}
-	p.initLevelMaxBytes(v, opts, inProgressCompactions)
-	p.initCompactionQueue(v, opts, inProgressCompactions)
+	p.initLevelMaxBytes(inProgressCompactions)
 	return p
 }
 
@@ -84,12 +83,6 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
-
-	// Compaction scores of each level.
-	scores [numLevels]float64
-
-	// A queue of compactions with scores >= 1.
-	compactionQueue []pickedCompactionInfo
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -155,14 +148,12 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 	return compactionDebt
 }
 
-func (p *compactionPickerByScore) initLevelMaxBytes(
-	v *version, opts *Options, inProgressCompactions []compactionInfo,
-) {
+func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []compactionInfo) {
 	// Determine the first non-empty level and the maximum size of any level.
 	firstNonEmptyLevel := -1
 	var bottomLevelSize int64
 	for level := 1; level < numLevels; level++ {
-		levelSize := int64(totalSize(v.Files[level]))
+		levelSize := int64(totalSize(p.vers.Files[level]))
 		if levelSize > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
@@ -198,7 +189,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(
 
 	levelMultiplier := 10.0
 
-	baseBytesMax := opts.LBaseMaxBytes
+	baseBytesMax := p.opts.LBaseMaxBytes
 	baseBytesMin := int64(float64(baseBytesMax) / levelMultiplier)
 
 	curLevelSize := bottomLevelSize
@@ -246,22 +237,9 @@ func (p *compactionPickerByScore) initLevelMaxBytes(
 	}
 }
 
-type sortCompactionsDecreasingScore struct {
-	level  []int
-	scores [numLevels]float64
-}
-
-func (s sortCompactionsDecreasingScore) Len() int { return len(s.level) }
-func (s sortCompactionsDecreasingScore) Less(i, j int) bool {
-	return s.scores[s.level[i]] > s.scores[s.level[j]]
-}
-func (s sortCompactionsDecreasingScore) Swap(i, j int) {
-	s.level[i], s.level[j] = s.level[j], s.level[i]
-}
-
-func (p *compactionPickerByScore) initCompactionQueue(
-	v *version, opts *Options, inProgressCompactions []compactionInfo,
-) {
+func (p *compactionPickerByScore) pickFile(
+	inProgressCompactions []compactionInfo,
+) (pickedCompactionInfo, bool) {
 	// We treat level-0 specially by bounding the number of files instead of
 	// number of bytes for two reasons:
 	//
@@ -272,7 +250,7 @@ func (p *compactionPickerByScore) initCompactionQueue(
 	// wish to avoid too many files when the individual file size is small
 	// (perhaps because of a small write-buffer setting, or very high
 	// compression ratios, or lots of overwrites/deletions).
-	p.scores[0] = float64(len(v.Files[0])) / float64(opts.L0CompactionThreshold)
+	l0Score := float64(len(p.vers.Files[0])) / float64(p.opts.L0CompactionThreshold)
 
 	intraL0 := func() bool {
 		// Only start an intra-L0 compaction if there is an existing L0->Lbase
@@ -289,8 +267,8 @@ func (p *compactionPickerByScore) initCompactionQueue(
 			return false
 		}
 
-		l0Files := v.Files[0]
-		if len(l0Files) < opts.L0CompactionThreshold+2 {
+		l0Files := p.vers.Files[0]
+		if len(l0Files) < p.opts.L0CompactionThreshold+2 {
 			// If L0 isn't accumulating many files beyond the regular L0 trigger,
 			// don't resort to an intra-L0 compaction yet. This matches the RocksDB
 			// heuristic.
@@ -312,131 +290,164 @@ func (p *compactionPickerByScore) initCompactionQueue(
 			return false
 		}
 
-		// We score the intra-L0 compaction the same as a regular L0
-		// compaction. This matches the RocksDB heuristic.
-		//
-		// TODO(peter): Perhaps we should use idleL0Count here instead.
-		p.scores[0] = float64(len(l0Files)) / float64(opts.L0CompactionThreshold)
+		// Score the intra-L0 compaction using the number of files that are
+		// possibly in the compaction.
+		l0Score = float64(idleL0Count) / float64(p.opts.L0CompactionThreshold)
 		return true
 	}()
 
+	// TODO(peter): Rather than using conflictsWithInProgress, we should be
+	// attempting to find a seed file on each level and then populating the
+	// compaction inputs. We'll likely want a structure where we sort the levels
+	// based on score, then walk from higest score to lowest score attempting to
+	// construct a valid compaction. This is a bit of a mixture of the current
+	// pickFile and pickAuto. conflictsWithInProgress would then be replaced with
+	// inputAlreadyCompacting.
+
+	bestLevel := -1
+	bestScore := 0.0
+	if l0Score >= 1 &&
+		(intraL0 || !conflictsWithInProgress(0, p.baseLevel, inProgressCompactions)) {
+		bestLevel = 0
+		bestScore = l0Score
+	}
+
+	// Compute a size adjustment for each level based on the in-progress
+	// compactions. We subtract the size of the start level inputs from the start
+	// level, and add the size of the start level inputs to the output
+	// level. This is slightly different from RocksDB's behavior, which simply
+	// elides compacting files from the level size calculation.
+	var sizeAdjust [numLevels]int64
+	for i := range inProgressCompactions {
+		c := &inProgressCompactions[i]
+		size := int64(totalSize(c.inputs[0]))
+		sizeAdjust[c.startLevel] -= size
+		sizeAdjust[c.outputLevel] += size
+	}
+
 	for level := 1; level < numLevels-1; level++ {
-		p.scores[level] = float64(totalSize(v.Files[level])) / float64(p.levelMaxBytes[level])
-	}
-
-	var potentialCompactions []int
-	for level := 0; level < numLevels-1; level++ {
-		if p.scores[level] >= 1 {
-			potentialCompactions = append(potentialCompactions, level)
+		if conflictsWithInProgress(level, level+1, inProgressCompactions) {
+			continue
 		}
-	}
-	sort.Sort(sortCompactionsDecreasingScore{
-		level: potentialCompactions, scores: p.scores,
-	})
-	for i := 0; i < len(potentialCompactions); i++ {
-		level := potentialCompactions[i]
-		outputLevel := level + 1
-		if level == 0 {
-			if intraL0 {
-				outputLevel = 0
-			} else {
-				outputLevel = p.baseLevel
-			}
-		}
-		p.compactionQueue = append(p.compactionQueue,
-			pickedCompactionInfo{score: p.scores[level], level: level, outputLevel: outputLevel})
-	}
-	// Select the file for each compaction in the compactionQueue.
-	for i := 0; i < len(p.compactionQueue); i++ {
-		// TODO(peter): Select the file within the level to compact. See the
-		// kMinOverlappingRatio heuristic in RocksDB which chooses the file with the
-		// minimum overlapping ratio with the next level. This minimizes write
-		// amplification. We also want to computed a "compensated size" which adjusts
-		// the size of a table based on the number of deletions it contains.
-		//
-		// We want to minimize write amplification, but also ensure that deletes
-		// are propagated to the bottom level in a timely fashion so as to reclaim
-		// disk space. A table's smallest sequence number provides a measure of its
-		// age. The ratio of overlapping-bytes / table-size gives an indication of
-		// write amplification (a smaller ratio is preferrable).
-		//
-		// Simulate various workloads:
-		// - Uniform random write
-		// - Uniform random write+delete
-		// - Skewed random write
-		// - Skewed random write+delete
-		// - Sequential write
-		// - Sequential write+delete (queue)
 
-		// The current heuristic matches the RocksDB kOldestSmallestSeqFirst
-		// heuristic.
-		//
-		// TODO(peter): Should we move this code to pickAuto? We're looping over
-		// all of the files in the level, even if we never use this picked
-		// compaction.
-		smallestSeqNum := uint64(math.MaxUint64)
-		files := v.Files[p.compactionQueue[i].level]
-		for j := range files {
-			f := files[j]
-			if smallestSeqNum > f.SmallestSeqNum {
-				smallestSeqNum = f.SmallestSeqNum
-				p.compactionQueue[i].file = j
-			}
+		size := int64(totalSize(p.vers.Files[level])) + sizeAdjust[level]
+		score := float64(size) / float64(p.levelMaxBytes[level])
+		if score < 1 {
+			continue
+		}
+		if bestScore < score {
+			bestScore = score
+			bestLevel = level
 		}
 	}
 
-	// Check for forced compactions. These are lower priority than score based compactions.
-	for level := 0; level < numLevels-1; level++ {
-		outputLevel := level + 1
-		if level == 0 {
-			outputLevel = p.baseLevel
+	// Check for forced compactions. These are lower priority than score based
+	// compactions. Note that this loop only runs if we haven't already found a
+	// level to compaction.
+	//
+	// TODO(peter): MarkedForCompaction is almost never set, making this
+	// extremely wasteful in the common case. Could we maintain a
+	// MarkedForCompaction map from fileNum to level?
+	for level := 0; bestLevel == -1 && level < numLevels-1; level++ {
+		if conflictsWithInProgress(level, level+1, inProgressCompactions) {
+			continue
 		}
-		files := v.Files[level]
-		for i := range files {
-			f := files[i]
+
+		for _, f := range p.vers.Files[level] {
 			if f.MarkedForCompaction {
-				p.compactionQueue = append(p.compactionQueue, pickedCompactionInfo{
-					score:       p.scores[level],
-					level:       level,
-					outputLevel: outputLevel,
-					file:        i,
-				})
+				size := int64(totalSize(p.vers.Files[level])) + sizeAdjust[level]
+				bestScore = float64(size) / float64(p.levelMaxBytes[level])
+				bestLevel = level
 				break
 			}
 		}
 	}
 
-	// TODO(peter): When a snapshot is released, we may need to compact tables at
-	// the bottom level in order to free up entries that were pinned by the
-	// snapshot.
+	if bestLevel == -1 {
+		// TODO(peter): When a snapshot is released, we may need to compact tables at
+		// the bottom level in order to free up entries that were pinned by the
+		// snapshot.
+		return pickedCompactionInfo{}, false
+	}
+
+	outputLevel := bestLevel + 1
+	if bestLevel == 0 {
+		if intraL0 {
+			outputLevel = 0
+		} else {
+			outputLevel = p.baseLevel
+		}
+	}
+
+	// TODO(peter): Select the file within the level to compact. See the
+	// kMinOverlappingRatio heuristic in RocksDB which chooses the file with the
+	// minimum overlapping ratio with the next level. This minimizes write
+	// amplification. We also want to computed a "compensated size" which adjusts
+	// the size of a table based on the number of deletions it contains.
+	//
+	// We want to minimize write amplification, but also ensure that deletes
+	// are propagated to the bottom level in a timely fashion so as to reclaim
+	// disk space. A table's smallest sequence number provides a measure of its
+	// age. The ratio of overlapping-bytes / table-size gives an indication of
+	// write amplification (a smaller ratio is preferrable).
+	//
+	// Simulate various workloads:
+	// - Uniform random write
+	// - Uniform random write+delete
+	// - Skewed random write
+	// - Skewed random write+delete
+	// - Sequential write
+	// - Sequential write+delete (queue)
+
+	// The current heuristic matches the RocksDB kOldestSmallestSeqFirst
+	// heuristic.
+	smallestSeqNum := uint64(math.MaxUint64)
+	var file int
+	for i, f := range p.vers.Files[bestLevel] {
+		if f.Compacting {
+			continue
+		}
+		if smallestSeqNum > f.SmallestSeqNum {
+			smallestSeqNum = f.SmallestSeqNum
+			file = i
+		}
+	}
+	return pickedCompactionInfo{
+		score:       bestScore,
+		level:       bestLevel,
+		outputLevel: outputLevel,
+		file:        file,
+	}, true
 }
 
 // pickAuto picks the best compaction, if any.
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	const highPriorityThreshold = 1.5
 
-	for len(p.compactionQueue) > 0 {
-		cInfo := &p.compactionQueue[0]
-		if len(env.inProgressCompactions) > 0 && cInfo.score < highPriorityThreshold {
-			// Don't start a low priority compaction if there is already a compaction
-			// running.
-			return nil
-		}
-
-		p.compactionQueue = p.compactionQueue[1:]
-		if conflictsWithInProgress(cInfo.level, cInfo.outputLevel, env.inProgressCompactions) {
-			continue
-		}
-		c = pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
-		if c != nil {
-			return c
-		}
+	cInfo, ok := p.pickFile(env.inProgressCompactions)
+	if !ok {
+		return nil
 	}
-	return nil
+	if len(env.inProgressCompactions) > 0 && cInfo.score < highPriorityThreshold {
+		// Don't start a low priority compaction if there is already a compaction
+		// running.
+		return nil
+	}
+
+	c = pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
+	if c == nil {
+		return nil
+	}
+	// Fail-safe to protect against compacting the same sstable concurrently.
+	if inputAlreadyCompacting(c) {
+		return nil
+	}
+	c.score = cInfo.score
+	return c
 }
 
 func pickAutoHelper(
-	env compactionEnv, opts *Options, vers *version, cInfo *pickedCompactionInfo, baseLevel int,
+	env compactionEnv, opts *Options, vers *version, cInfo pickedCompactionInfo, baseLevel int,
 ) (c *compaction) {
 	if cInfo.outputLevel == 0 {
 		return pickIntraL0(env, opts, vers)
@@ -573,6 +584,12 @@ func (p *compactionPickerByScore) pickManual(
 	if c.outputLevel != outputLevel {
 		panic("pebble: compaction picked unexpected output level")
 	}
+	// Fail-safe to protect against compacting the same sstable concurrently.
+	//
+	// TODO(peter): Do we still need the conflictsWithInProgress check above?
+	if inputAlreadyCompacting(c) {
+		return nil, true
+	}
 	return c, false
 }
 
@@ -593,25 +610,23 @@ func pickManualHelper(
 
 func (p *compactionPickerByScore) forceBaseLevel1() {
 	p.baseLevel = 1
-	for i := range p.compactionQueue {
-		if p.compactionQueue[i].level == 0 {
-			p.compactionQueue[i].outputLevel = 1
+}
+
+func inputAlreadyCompacting(c *compaction) bool {
+	for _, inputs := range c.inputs {
+		for _, f := range inputs {
+			if f.Compacting {
+				return true
+			}
 		}
 	}
+	return false
 }
 
 func conflictsWithInProgress(
 	level int, outputLevel int, inProgressCompactions []compactionInfo,
 ) bool {
 	for _, c := range inProgressCompactions {
-		// Intra-L0 compactions only conflict with other intra-L0 compactions.
-		if level == 0 && outputLevel == 0 {
-			if c.outputLevel == 0 {
-				return true
-			}
-			continue
-		}
-
 		if level == c.startLevel ||
 			level == c.outputLevel ||
 			outputLevel == c.startLevel ||
