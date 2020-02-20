@@ -40,37 +40,6 @@ func TestPropertiesLoad(t *testing.T) {
 			"test.key-count": "1727",
 		},
 		WholeKeyFiltering: false,
-		ValueOffsets: map[string]uint64{
-			"rocksdb.block.based.table.index.type":          14625,
-			"rocksdb.block.based.table.prefix.filtering":    14674,
-			"rocksdb.block.based.table.whole.key.filtering": 14697,
-			"rocksdb.column.family.id":                      14699,
-			"rocksdb.comparator":                            14717,
-			"rocksdb.compression":                           14755,
-			"rocksdb.compression_options":                   14779,
-			"rocksdb.creation.time":                         14879,
-			"rocksdb.data.size":                             14891,
-			"rocksdb.deleted.keys":                          14908,
-			"rocksdb.external_sst_file.global_seqno":        14941,
-			"rocksdb.external_sst_file.version":             14977,
-			"rocksdb.filter.size":                           14977,
-			"rocksdb.fixed.key.length":                      14997,
-			"rocksdb.format.version":                        15013,
-			"rocksdb.index.key.is.user.key":                 15037,
-			"rocksdb.index.size":                            15051,
-			"rocksdb.index.value.is.delta.encoded":          15078,
-			"rocksdb.merge.operands":                        15090,
-			"rocksdb.merge.operator":                        15108,
-			"rocksdb.num.data.blocks":                       15122,
-			"rocksdb.num.entries":                           15137,
-			"rocksdb.num.range-deletions":                   15157,
-			"rocksdb.oldest.key.time":                       15172,
-			"rocksdb.prefix.extractor.name":                 15197,
-			"rocksdb.property.collectors":                   15226,
-			"rocksdb.raw.key.size":                          15266,
-			"rocksdb.raw.value.size":                        15286,
-			"test.key-count":                                15293,
-		},
 	}
 
 	{
@@ -85,6 +54,7 @@ func TestPropertiesLoad(t *testing.T) {
 		}
 		defer r.Close()
 
+		r.Properties.Loaded = nil
 		if diff := pretty.Diff(expected, r.Properties); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}
@@ -140,7 +110,7 @@ func TestPropertiesSave(t *testing.T) {
 		if err := props.load(w.finish(), 0); err != nil {
 			t.Fatal(err)
 		}
-		props.ValueOffsets = nil
+		props.Loaded = nil
 		if diff := pretty.Diff(*expected, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}
