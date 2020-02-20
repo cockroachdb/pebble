@@ -17,6 +17,9 @@ import (
 const propertiesBlockRestartInterval = math.MaxInt32
 
 var propTagMap = make(map[string]reflect.StructField)
+var propBoolTrue = []byte{'1'}
+var propBoolFalse = []byte{'0'}
+var propGlobalSeqnumName = []byte("rocksdb.external_sst_file.global_seqno")
 
 var columnFamilyIDField = func() reflect.StructField {
 	f, ok := reflect.TypeOf(Properties{}).FieldByName("ColumnFamilyID")
@@ -126,11 +129,14 @@ type Properties struct {
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
 	UserProperties map[string]string
-	// ValueOffsets map from property name to byte offset of the property value
-	// within the file. Only set if the properties have been loaded from a file.
-	ValueOffsets map[string]uint64
 	// If filtering is enabled, was the filter created on the whole key.
 	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
+
+	// Loaded set indicating which fields have been loaded from disk. Indexed by
+	// the field's byte offset within the struct
+	// (reflect.StructField.Offset). Only set if the properties have been loaded
+	// from a file. Only exported for testing purposes.
+	Loaded map[uintptr]struct{}
 }
 
 func (p *Properties) String() string {
@@ -148,7 +154,7 @@ func (p *Properties) String() string {
 		// TODO(peter): Use f.IsZero() when we can rely on go1.13.
 		if zero := reflect.Zero(f.Type()); zero.Interface() == f.Interface() {
 			// Skip printing of zero values which were not loaded from disk.
-			if _, ok := p.ValueOffsets[tag]; !ok {
+			if _, ok := p.Loaded[ft.Offset]; !ok {
 				continue
 			}
 		}
@@ -188,21 +194,21 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 	if err != nil {
 		return err
 	}
-	p.ValueOffsets = make(map[string]uint64)
+	p.Loaded = make(map[uintptr]struct{})
 	v := reflect.ValueOf(p).Elem()
 	for valid := i.First(); valid; valid = i.Next() {
 		tag := i.Key().UserKey
-		p.ValueOffsets[string(tag)] = blockOffset + i.valueOffset()
 		if f, ok := propTagMap[string(tag)]; ok {
+			p.Loaded[f.Offset] = struct{}{}
 			field := v.FieldByIndex(f.Index)
 			switch f.Type.Kind() {
 			case reflect.Bool:
-				field.SetBool(string(i.Value()) == "1")
+				field.SetBool(bytes.Equal(i.Value(), propBoolTrue))
 			case reflect.Uint32:
 				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
 			case reflect.Uint64:
 				var n uint64
-				if string(tag) == "rocksdb.external_sst_file.global_seqno" {
+				if bytes.Equal(tag, propGlobalSeqnumName) {
 					n = binary.LittleEndian.Uint64(i.Value())
 				} else {
 					n, _ = binary.Uvarint(i.Value())
@@ -226,9 +232,9 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 func (p *Properties) saveBool(m map[string][]byte, offset uintptr, value bool) {
 	tag := propOffsetTagMap[offset]
 	if value {
-		m[tag] = []byte{'1'}
+		m[tag] = propBoolTrue
 	} else {
-		m[tag] = []byte{'0'}
+		m[tag] = propBoolFalse
 	}
 }
 

@@ -283,9 +283,6 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 		m.SmallestSeqNum = seqNum
 		m.LargestSeqNum = seqNum
 		seqNum++
-
-		// TODO(peter): Update the global sequence number property. This is only
-		// necessary for compatibility with RocksDB.
 	}
 	return nil
 }
