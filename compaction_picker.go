@@ -301,6 +301,13 @@ func (p *compactionPickerByScore) initScores(inProgressCompactions []compactionI
 }
 
 func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compactionInfo) {
+	// TODO(peter): The current scoring logic precludes concurrent L0->Lbase
+	// compactions in most cases because if there is an in-progress L0->Lbase
+	// compaction we'll instead preferentially score an intra-L0 compaction. One
+	// possible way out is to score both by increasing the size of the "scores"
+	// array by one and adding entries for both L0->Lbase and intra-L0
+	// compactions.
+
 	// We treat level-0 specially by bounding the number of files instead of
 	// number of bytes for two reasons:
 	//
@@ -311,7 +318,16 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 	// wish to avoid too many files when the individual file size is small
 	// (perhaps because of a small write-buffer setting, or very high
 	// compression ratios, or lots of overwrites/deletions).
-	p.scores[0].score = float64(len(p.vers.Files[0])) / float64(p.opts.L0CompactionThreshold)
+
+	// Score an L0->Lbase compaction by counting the number of idle
+	// (non-compacting) files in L0.
+	var idleL0Count int
+	for _, f := range p.vers.Files[0] {
+		if !f.Compacting {
+			idleL0Count++
+		}
+	}
+	p.scores[0].score = float64(idleL0Count) / float64(p.opts.L0CompactionThreshold)
 
 	// Only start an intra-L0 compaction if there is an existing L0->Lbase
 	// compaction.
@@ -341,8 +357,8 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 		}
 	}
 
-	idleL0Count := len(l0Files) - end
-	if idleL0Count < minIntraL0Count {
+	intraL0Count := len(l0Files) - end
+	if intraL0Count < minIntraL0Count {
 		// Not enough idle L0 files to perform an intra-L0 compaction. This
 		// matches the RocksDB heuristic. Note that if another file is flushed
 		// or ingested to L0, a new compaction picker will be created and we'll
@@ -352,7 +368,7 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 
 	// Score the intra-L0 compaction using the number of files that are
 	// possibly in the compaction.
-	p.scores[0].score = float64(idleL0Count) / float64(p.opts.L0CompactionThreshold)
+	p.scores[0].score = float64(intraL0Count) / float64(p.opts.L0CompactionThreshold)
 	p.scores[0].outputLevel = 0
 }
 
@@ -412,6 +428,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	p.initSizeAdjust(env.inProgressCompactions)
 	p.initScores(env.inProgressCompactions)
 
+	// Check for a score-based compaction. "scores" has been sorted in order of
+	// decreasing score. For each level with a score >= 1, we attempt to find a
+	// compaction anchored at at that level.
 	for i := range p.scores {
 		info := &p.scores[i]
 		if len(env.inProgressCompactions) > 0 && info.score < highPriorityThreshold {
@@ -421,13 +440,6 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 		}
 		if info.score < 1 {
 			break
-		}
-
-		// TODO(peter): The conflictsWithInProgress call should no longer be
-		// necessary, but tests currently expect it.
-		if info.outputLevel != 0 &&
-			conflictsWithInProgress(info.level, info.outputLevel, env.inProgressCompactions) {
-			continue
 		}
 
 		info.file = p.pickFile(info.level)
@@ -451,12 +463,6 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	// extremely wasteful in the common case. Could we maintain a
 	// MarkedForCompaction map from fileNum to level?
 	for level := 0; level < numLevels-1; level++ {
-		// TODO(peter): The conflictsWithInProgress call should no longer be
-		// necessary, but tests currently expect it.
-		if conflictsWithInProgress(level, level+1, env.inProgressCompactions) {
-			continue
-		}
-
 		for file, f := range p.vers.Files[level] {
 			if !f.MarkedForCompaction {
 				continue
@@ -614,7 +620,7 @@ func (p *compactionPickerByScore) pickManual(
 		outputLevel = p.baseLevel
 	}
 	// TODO(peter): The conflictsWithInProgress call should no longer be
-	// necessary, but tests currently expect it.
+	// necessary, but TestManualCompaction currently expects it.
 	if conflictsWithInProgress(manual.level, outputLevel, env.inProgressCompactions) {
 		return nil, true
 	}
