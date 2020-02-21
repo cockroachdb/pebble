@@ -149,19 +149,34 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				var b strings.Builder
 				var inProgress []compactionInfo
 				for {
-					c, ok := pickerByScore.pickFile(inProgress)
-					if !ok {
+					env := compactionEnv{
+						earliestUnflushedSeqNum: InternalKeySeqNumMax,
+						inProgressCompactions:   inProgress,
+					}
+					c := pickerByScore.pickAuto(env)
+					if c == nil {
 						break
 					}
-					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", c.level, c.outputLevel, c.score)
+					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", c.startLevel, c.outputLevel, c.score)
 					inProgress = append(inProgress, compactionInfo{
-						startLevel:  c.level,
+						startLevel:  c.startLevel,
 						outputLevel: c.outputLevel,
 					})
 					if c.outputLevel == 0 {
 						// Once we pick one L0->L0 compaction, we'll keep on doing so
 						// because the test isn't marking files as Compacting.
 						break
+					}
+					for _, files := range c.inputs {
+						for _, f := range files {
+							f.Compacting = true
+						}
+					}
+				}
+
+				for _, files := range vers.Files {
+					for _, f := range files {
+						f.Compacting = false
 					}
 				}
 				return b.String()
