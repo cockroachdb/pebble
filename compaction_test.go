@@ -60,7 +60,7 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (c *compaction)
 		outputLevel = p.baseLevel
 	}
 	cInfo := pickedCompactionInfo{level: p.level, outputLevel: outputLevel}
-	return pickAutoHelper(env, p.opts, p.vers, &cInfo, p.baseLevel)
+	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
 
 func (p *compactionPickerForTesting) pickManual(

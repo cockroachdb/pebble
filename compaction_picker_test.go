@@ -48,16 +48,26 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 			if err != nil {
 				return nil, nil, err.Error()
 			}
-			if level == 0 {
-				for i := uint64(0); i < size; i++ {
-					vers.Files[level] = append(vers.Files[level], &fileMetadata{
-						Size: 1,
-					})
-				}
-			} else {
+			for i := uint64(1); i <= size; i++ {
+				key := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
 				vers.Files[level] = append(vers.Files[level], &fileMetadata{
-					Size: size,
+					Smallest:       key,
+					Largest:        key,
+					SmallestSeqNum: key.SeqNum(),
+					LargestSeqNum:  key.SeqNum(),
+					Size:           1,
 				})
+				if size >= 100 {
+					// If the requested size of the level is very large only add a single
+					// file in order to avoid massive blow-up in the number of files in
+					// the Version.
+					//
+					// TODO(peter): There is tension between the testing in
+					// TestCompactionPickerLevelMaxBytes and
+					// TestCompactionPickerTargetLevel. Clean this up somehow.
+					vers.Files[level][len(vers.Files[level])-1].Size = size
+					break
+				}
 			}
 		}
 	}
@@ -116,6 +126,14 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		return inProgress, nil
 	}
 
+	resetCompacting := func() {
+		for _, files := range vers.Files {
+			for _, f := range files {
+				f.Compacting = false
+			}
+		}
+	}
+
 	datadriven.RunTest(t, "testdata/compaction_picker_target_level",
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -127,6 +145,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				}
 				return ""
 			case "init_cp":
+				resetCompacting()
+
 				var inProgress []compactionInfo
 				if len(d.CmdArgs) == 1 {
 					arg := d.CmdArgs[0]
@@ -144,14 +164,42 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				var ok bool
 				pickerByScore, ok = p.(*compactionPickerByScore)
 				require.True(t, ok)
-				return ""
+				return fmt.Sprintf("base: %d", pickerByScore.baseLevel)
 			case "queue":
 				var b strings.Builder
-				for _, c := range pickerByScore.compactionQueue {
-					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", c.level, c.outputLevel, c.score)
+				var inProgress []compactionInfo
+				for {
+					env := compactionEnv{
+						earliestUnflushedSeqNum: InternalKeySeqNumMax,
+						inProgressCompactions:   inProgress,
+					}
+					c := pickerByScore.pickAuto(env)
+					if c == nil {
+						break
+					}
+					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", c.startLevel, c.outputLevel, c.score)
+					inProgress = append(inProgress, compactionInfo{
+						startLevel:  c.startLevel,
+						outputLevel: c.outputLevel,
+						inputs:      c.inputs,
+					})
+					if c.outputLevel == 0 {
+						// Once we pick one L0->L0 compaction, we'll keep on doing so
+						// because the test isn't marking files as Compacting.
+						break
+					}
+					for _, files := range c.inputs {
+						for _, f := range files {
+							f.Compacting = true
+						}
+					}
 				}
+
+				resetCompacting()
 				return b.String()
 			case "pick":
+				resetCompacting()
+
 				var inProgress []compactionInfo
 				if len(d.CmdArgs) == 1 {
 					arg := d.CmdArgs[0]
@@ -165,15 +213,44 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
+				// Mark files as compacting for each in-progress compaction.
+				for i := range inProgress {
+					c := &inProgress[i]
+					for j, f := range vers.Files[c.startLevel] {
+						if !f.Compacting {
+							f.Compacting = true
+							c.inputs[0] = vers.Files[c.startLevel][j : j+1]
+							break
+						}
+					}
+
+					switch {
+					case c.startLevel == 0 && c.outputLevel != 0:
+						// L0->Lbase: mark all of Lbase as compacting.
+						c.inputs[1] = vers.Files[c.outputLevel]
+						for _, f := range c.inputs[1] {
+							f.Compacting = true
+						}
+					case c.startLevel != c.outputLevel:
+						// Ln->Ln+1: mark 1 file in Ln+1 as compacting.
+						for j, f := range vers.Files[c.outputLevel] {
+							if !f.Compacting {
+								f.Compacting = true
+								c.inputs[1] = vers.Files[c.outputLevel][j : j+1]
+								break
+							}
+						}
+					}
+				}
+
 				c := pickerByScore.pickAuto(compactionEnv{
-					bytesCompacted:          new(uint64),
-					inProgressCompactions:   inProgress,
 					earliestUnflushedSeqNum: InternalKeySeqNumMax,
+					inProgressCompactions:   inProgress,
 				})
 				if c == nil {
 					return "no compaction"
 				}
-				return fmt.Sprintf("startLevel: %d, outputLevel: %d", c.startLevel, c.outputLevel)
+				return fmt.Sprintf("L%d->L%d: %0.1f", c.startLevel, c.outputLevel, c.score)
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
