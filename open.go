@@ -324,6 +324,64 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	return d, nil
 }
 
+// GetVersion returns the engine version string from the latest options
+// file present in dir. Used to check what Pebble or RocksDB version was last
+// used to write to the database stored in this directory. An empty string is
+// returned if no valid OPTIONS file with a version key was found.
+func GetVersion(dir string, fs vfs.FS) (string, error) {
+	ls, err := fs.List(dir)
+	if err != nil {
+		return "", err
+	}
+	var version string
+	lastOptionsSeen := uint64(0)
+	for _, filename := range ls {
+		ft, fn, ok := base.ParseFilename(fs, filename)
+		if !ok {
+			continue
+		}
+		switch ft {
+		case fileTypeOptions:
+			// If this file has a higher number than the last options file
+			// processed, reset version. This is because rocksdb often
+			// writes multiple options files without deleting previous ones.
+			// Otherwise, skip parsing this options file.
+			if fn > lastOptionsSeen {
+				version = ""
+				lastOptionsSeen = fn
+			} else {
+				continue
+			}
+			f, err := fs.Open(fs.PathJoin(dir, filename))
+			if err != nil {
+				return "", err
+			}
+			data, err := ioutil.ReadAll(f)
+			f.Close()
+
+			if err != nil {
+				return "", err
+			}
+			err = parseOptions(string(data), func(section, key, value string) error {
+				switch {
+				case section == "Version":
+					switch key {
+					case "pebble_version":
+						version = value
+					case "rocksdb_version":
+						version = fmt.Sprintf("rocksdb v%s", value)
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+	return version, nil
+}
+
 // replayWAL replays the edits in the specified log file.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
