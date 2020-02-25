@@ -64,6 +64,10 @@ func (it *Iterator) Close() error {
 	return nil
 }
 
+func (it *Iterator) String() string {
+	return ""
+}
+
 // Error returns any accumulated error.
 func (it *Iterator) Error() error {
 	return nil

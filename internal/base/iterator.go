@@ -4,6 +4,8 @@
 
 package base
 
+import "fmt"
+
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
 // user-key, a sequence number and a key kind. In forward iteration, key/value
@@ -156,4 +158,6 @@ type InternalIterator interface {
 	// result of Next and Prev will be undefined until the iterator has been
 	// repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
 	SetBounds(lower, upper []byte)
+
+	fmt.Stringer
 }
