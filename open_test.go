@@ -546,3 +546,34 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 	require.NoError(t, err)
 	db.Close()
 }
+
+func TestGetVersion(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{
+		FS:           mem,
+	}
+
+	// Case 1: Pebble created file.
+	db, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	version, err := GetVersion("", mem)
+	require.NoError(t, err)
+	require.Equal(t, "0.1", version)
+
+	// Case 2: Manually created OPTIONS file with a higher number.
+	f, _ := mem.Create("OPTIONS-123456")
+	f.Write([]byte("[Version]\n  pebble_version=0.2\n"))
+	f.Close()
+	version, err = GetVersion("", mem)
+	require.NoError(t, err)
+	require.Equal(t, "0.2", version)
+
+	// Case 3: Manually created OPTIONS file with a RocksDB number.
+	f, _ = mem.Create("OPTIONS-123457")
+	f.Write([]byte("[Version]\n  rocksdb_version=6.2.1\n"))
+	f.Close()
+	version, err = GetVersion("", mem)
+	require.NoError(t, err)
+	require.Equal(t, "rocksdb v6.2.1", version)
+}
