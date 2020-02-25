@@ -293,6 +293,10 @@ func (i *levelIterTestIter) rangeDelSeek(
 	}, val
 }
 
+func (i *levelIterTestIter) String() string {
+	return "level-iter-test"
+}
+
 func (i *levelIterTestIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	ikey, val := i.levelIter.SeekGE(key)
 	return i.rangeDelSeek(key, ikey, val, 1)

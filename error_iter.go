@@ -4,7 +4,9 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 type errorIter struct {
 	err error
@@ -63,6 +65,10 @@ func (c *errorIter) Error() error {
 
 func (c *errorIter) Close() error {
 	return c.err
+}
+
+func (c *errorIter) String() string {
+	return "error"
 }
 
 func (c *errorIter) SetBounds(lower, upper []byte) {}

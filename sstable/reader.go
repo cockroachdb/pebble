@@ -497,6 +497,10 @@ func (i *singleLevelIterator) Close() error {
 	return err
 }
 
+func (i *singleLevelIterator) String() string {
+	return fmt.Sprintf("%06d", i.reader.fileNum)
+}
+
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package.
 func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
@@ -516,6 +520,10 @@ type compactionIterator struct {
 
 // compactionIterator implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*compactionIterator)(nil)
+
+func (i *compactionIterator) String() string {
+	return fmt.Sprintf("%06d", i.reader.fileNum)
+}
 
 func (i *compactionIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
@@ -623,6 +631,10 @@ func (i *twoLevelIterator) Init(r *Reader, lower, upper []byte) error {
 		i.err = i.topLevelIndex.init(i.cmp, topLevelIndex, r.Properties.GlobalSeqNum)
 	}
 	return i.err
+}
+
+func (i *twoLevelIterator) String() string {
+	return fmt.Sprintf("%06d", i.reader.fileNum)
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
@@ -883,6 +895,10 @@ func (i *twoLevelCompactionIterator) Next() (*InternalKey, []byte) {
 
 func (i *twoLevelCompactionIterator) Prev() (*InternalKey, []byte) {
 	panic("pebble: Prev unimplemented")
+}
+
+func (i *twoLevelCompactionIterator) String() string {
+	return fmt.Sprintf("%06d", i.reader.fileNum)
 }
 
 func (i *twoLevelCompactionIterator) skipForward(

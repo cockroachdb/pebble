@@ -5,6 +5,8 @@
 package pebble
 
 import (
+	"fmt"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 )
@@ -36,6 +38,10 @@ type getIter struct {
 
 // getIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*getIter)(nil)
+
+func (g *getIter) String() string {
+	return fmt.Sprintf("len(l0)=%d, len(mem)=%d, level=%d", len(g.l0), len(g.mem), g.level)
+}
 
 func (g *getIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")

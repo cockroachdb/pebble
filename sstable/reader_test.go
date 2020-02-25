@@ -45,6 +45,10 @@ func (i *iterAdapter) update(key *InternalKey, val []byte) bool {
 	return i.key != nil
 }
 
+func (i *iterAdapter) String() string {
+	return "iter-adapter"
+}
+
 func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.update(i.Iterator.SeekGE(key))
 }

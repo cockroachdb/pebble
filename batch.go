@@ -890,6 +890,10 @@ type batchIter struct {
 // batchIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*batchIter)(nil)
 
+func (i *batchIter) String() string {
+	return "batch"
+}
+
 func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	ikey := i.iter.SeekGE(key)
 	if ikey == nil {
@@ -1204,6 +1208,10 @@ type flushableBatchIter struct {
 // flushableBatchIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*flushableBatchIter)(nil)
 
+func (i *flushableBatchIter) String() string {
+	return "flushable-batch"
+}
+
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
@@ -1373,6 +1381,10 @@ type flushFlushableBatchIter struct {
 
 // flushFlushableBatchIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*flushFlushableBatchIter)(nil)
+
+func (i *flushFlushableBatchIter) String() string {
+	return "flushable-batch"
+}
 
 func (i *flushFlushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
