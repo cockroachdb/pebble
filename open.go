@@ -324,6 +324,57 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	return d, nil
 }
 
+// IsPebbleDir returns whether the specified directory was last written to by
+// pebble. Checks the 'pebble_version' field in the newest options file.
+func IsPebbleDir(dir string, fs vfs.FS) (bool, error) {
+	ls, err := fs.List(dir)
+	if err != nil {
+		return false, err
+	}
+	writtenByPebble := false
+	lastOptionsSeen := uint64(0)
+	for _, filename := range ls {
+		ft, fn, ok := base.ParseFilename(fs, filename)
+		if !ok {
+			continue
+		}
+		switch ft {
+		case fileTypeOptions:
+			// If this file has a higher number than the last options file
+			// processed, reset writtenByPebble. This is because rocksdb often
+			// writes multiple options files without deleting previous ones.
+			if fn > lastOptionsSeen {
+				writtenByPebble = false
+				lastOptionsSeen = fn
+			}
+			f, err := fs.Open(fs.PathJoin(dir, filename))
+			if err != nil {
+				return false, err
+			}
+			defer f.Close()
+
+			data, err := ioutil.ReadAll(f)
+			if err != nil {
+				return false, err
+			}
+			err = parseOptions(string(data), func(section, key, value string) error {
+				switch {
+				case section == "Version":
+					switch key {
+					case "pebble_version":
+						writtenByPebble = true
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return false, err
+			}
+		}
+	}
+	return writtenByPebble, nil
+}
+
 // replayWAL replays the edits in the specified log file.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and

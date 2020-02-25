@@ -546,3 +546,18 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 	require.NoError(t, err)
 	db.Close()
 }
+
+func TestIsPebbleDirReturnsTrue(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{
+		FS:           mem,
+	}
+	func() {
+		db, err := Open("", opts)
+		require.NoError(t, err)
+		defer db.Close()
+	}()
+	isPebble, err := IsPebbleDir("", mem)
+	require.NoError(t, err)
+	require.True(t, isPebble)
+}
