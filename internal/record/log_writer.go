@@ -375,6 +375,12 @@ func (w *LogWriter) flushLoop(context.Context) {
 				break
 			}
 			if f.close {
+				// If the writer is closed, pretend the sync timer fired immediately so
+				// that we can process any queued sync requests.
+				f.syncQ.clearBlocked()
+				if !f.syncQ.empty() {
+					break
+				}
 				return
 			}
 			f.ready.Wait()

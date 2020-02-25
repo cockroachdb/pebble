@@ -286,3 +286,44 @@ func TestMinSyncInterval(t *testing.T) {
 		t.Fatalf("expected syncPos %d, but found %d", s, w)
 	}
 }
+
+func TestMinSyncIntervalClose(t *testing.T) {
+	const minSyncInterval = 100 * time.Millisecond
+
+	f := &syncFile{}
+	w := NewLogWriter(f, 0)
+	w.SetMinSyncInterval(func() time.Duration {
+		return minSyncInterval
+	})
+
+	var timer fakeTimer
+	w.afterFunc = func(d time.Duration, f func()) syncTimer {
+		if d != minSyncInterval {
+			t.Fatalf("expected minSyncInterval %s, but found %s", minSyncInterval, d)
+		}
+		timer.f = f
+		timer.Reset(d)
+		return &timer
+	}
+
+	syncRecord := func(n int) *sync.WaitGroup {
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wg
+	}
+
+	// Sync one record which will cause the sync timer to kick in.
+	syncRecord(1).Wait()
+
+	// Syncing another record will not complete until the timer is fired OR the
+	// writer is closed.
+	wg := syncRecord(1)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+}
