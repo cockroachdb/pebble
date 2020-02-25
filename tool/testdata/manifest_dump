@@ -187,3 +187,59 @@ Version state before failed Apply
 --- L6 ---
 Version edit that failed
   added: L0 000002:0[#0,DEL-#0,DEL]
+
+manifest dump
+./testdata/find-db/MANIFEST-000001
+----
+MANIFEST-000001
+0
+  comparer:     leveldb.BytewiseComparator
+  next-file-num: 2
+39
+  log-num:       2
+  next-file-num: 3
+50
+  log-num:       4
+  next-file-num: 6
+  last-seq-num:  5
+  added:         L0 000005:797[aaa#0,SET-ccc#4,MERGE] (2020-02-26T00:47:32Z)
+102
+  next-file-num: 6
+  last-seq-num:  5
+  deleted:       L0 000005
+  added:         L6 000005:797[aaa#0,SET-ccc#4,MERGE] (2020-02-26T00:47:32Z)
+155
+  next-file-num: 7
+  last-seq-num:  6
+  added:         L0 000006:838[bbb#5,SET-ccc#5,SET] (2020-02-26T00:47:32Z)
+205
+  next-file-num: 8
+  last-seq-num:  7
+  added:         L6 000007:829[ddd#6,SET-ddd#6,SET] (2020-02-26T00:47:32Z)
+255
+  next-file-num: 9
+  last-seq-num:  7
+  deleted:       L0 000006
+  deleted:       L6 000005
+  added:         L6 000008:812[aaa#0,SET-ccc#0,MERGE] (2020-02-26T00:47:32Z)
+311
+  log-num:       9
+  next-file-num: 11
+  last-seq-num:  10
+  added:         L0 000010:855[aaa#7,DEL-eee#72057594037927935,RANGEDEL] (2020-02-26T00:47:32Z)
+363
+  next-file-num: 12
+  last-seq-num:  10
+  deleted:       L0 000010
+  deleted:       L6 000007
+  deleted:       L6 000008
+  added:         L6 000011:919[aaa#7,DEL-eee#72057594037927935,RANGEDEL] (2020-02-26T00:47:32Z)
+EOF
+--- L0 ---
+--- L1 ---
+--- L2 ---
+--- L3 ---
+--- L4 ---
+--- L5 ---
+--- L6 ---
+  000011:919[aaa#7,DEL-eee#72057594037927935,RANGEDEL]

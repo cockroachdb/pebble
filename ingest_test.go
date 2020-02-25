@@ -140,6 +140,9 @@ func TestIngestLoadRand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, m := range meta {
+		m.CreationTime = 0
+	}
 	if diff := pretty.Diff(expected, meta); diff != nil {
 		t.Fatalf("%s", strings.Join(diff, "\n"))
 	}

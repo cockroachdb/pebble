@@ -46,6 +46,10 @@ type FileMetadata struct {
 	FileNum uint64
 	// Size is the size of the file, in bytes.
 	Size uint64
+	// File creation time in seconds since the epoch (1970-01-01 00:00:00
+	// UTC). For ingested sstables, this corresponds to the time the file was
+	// ingested.
+	CreationTime int64
 	// Smallest and Largest are the inclusive bounds for the internal keys
 	// stored in the table.
 	Smallest InternalKey

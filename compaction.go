@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -1270,7 +1271,8 @@ func (d *DB) runCompaction(
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel,
 			Meta: &fileMetadata{
-				FileNum: fileNum,
+				FileNum:      fileNum,
+				CreationTime: time.Now().Unix(),
 			},
 		})
 		return nil
