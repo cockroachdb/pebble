@@ -546,3 +546,58 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 	require.NoError(t, err)
 	db.Close()
 }
+
+func TestGetVersion(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{
+		FS:           mem,
+	}
+
+	// Case 1: No options file.
+	version, err := GetVersion("", mem)
+	require.NoError(t, err)
+	require.Empty(t, version)
+
+	// Case 2: Pebble created file.
+	db, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	version, err = GetVersion("", mem)
+	require.NoError(t, err)
+	require.Equal(t, "0.1", version)
+
+	// Case 3: Manually created OPTIONS file with a higher number.
+	highestOptionsNum := uint64(0)
+	ls, err := mem.List("")
+	require.NoError(t, err)
+	for _, filename := range ls {
+		ft, fn, ok := base.ParseFilename(mem, filename)
+		if !ok {
+			continue
+		}
+		switch ft {
+		case fileTypeOptions:
+			if fn > highestOptionsNum {
+				highestOptionsNum = fn
+			}
+		}
+	}
+	f, _ := mem.Create(fmt.Sprintf("OPTIONS-%d", highestOptionsNum+1))
+	_, err = f.Write([]byte("[Version]\n  pebble_version=0.2\n"))
+	require.NoError(t, err)
+	err = f.Close()
+	require.NoError(t, err)
+	version, err = GetVersion("", mem)
+	require.NoError(t, err)
+	require.Equal(t, "0.2", version)
+
+	// Case 4: Manually created OPTIONS file with a RocksDB number.
+	f, _ = mem.Create(fmt.Sprintf("OPTIONS-%d", highestOptionsNum+2))
+	_, err = f.Write([]byte("[Version]\n  rocksdb_version=6.2.1\n"))
+	require.NoError(t, err)
+	err = f.Close()
+	require.NoError(t, err)
+	version, err = GetVersion("", mem)
+	require.NoError(t, err)
+	require.Equal(t, "rocksdb v6.2.1", version)
+}
