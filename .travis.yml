@@ -35,6 +35,10 @@ matrix:
       os: linux
       # NB: "env: GOOS=freebsd" does not have the desired effect.
       script: GOOS=freebsd go build -v ./...
+    - name: "go1.14.x-linux"
+      go: 1.14.x
+      os: linux
+      script: make test
 
 notifications:
   email:
