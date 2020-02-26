@@ -12,14 +12,16 @@ import (
 	"reflect"
 	"sort"
 	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/intern"
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32
+const propGlobalSeqnumName = "rocksdb.external_sst_file.global_seqno"
 
 var propTagMap = make(map[string]reflect.StructField)
 var propBoolTrue = []byte{'1'}
 var propBoolFalse = []byte{'0'}
-var propGlobalSeqnumName = []byte("rocksdb.external_sst_file.global_seqno")
 
 var columnFamilyIDField = func() reflect.StructField {
 	f, ok := reflect.TypeOf(Properties{}).FieldByName("ColumnFamilyID")
@@ -197,8 +199,8 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 	p.Loaded = make(map[uintptr]struct{})
 	v := reflect.ValueOf(p).Elem()
 	for valid := i.First(); valid; valid = i.Next() {
-		tag := i.Key().UserKey
-		if f, ok := propTagMap[string(tag)]; ok {
+		tag := intern.Bytes(i.Key().UserKey)
+		if f, ok := propTagMap[tag]; ok {
 			p.Loaded[f.Offset] = struct{}{}
 			field := v.FieldByIndex(f.Index)
 			switch f.Type.Kind() {
@@ -208,14 +210,14 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
 			case reflect.Uint64:
 				var n uint64
-				if bytes.Equal(tag, propGlobalSeqnumName) {
+				if tag == propGlobalSeqnumName {
 					n = binary.LittleEndian.Uint64(i.Value())
 				} else {
 					n, _ = binary.Uvarint(i.Value())
 				}
 				field.SetUint(n)
 			case reflect.String:
-				field.SetString(string(i.Value()))
+				field.SetString(intern.Bytes(i.Value()))
 			default:
 				panic("not reached")
 			}
@@ -224,7 +226,7 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 		if p.UserProperties == nil {
 			p.UserProperties = make(map[string]string)
 		}
-		p.UserProperties[string(tag)] = string(i.Value())
+		p.UserProperties[tag] = string(i.Value())
 	}
 	return nil
 }
