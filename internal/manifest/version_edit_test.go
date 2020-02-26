@@ -31,8 +31,8 @@ func checkRoundTrip(e0 VersionEdit) error {
 	if err := e1.Decode(buf); err != nil {
 		return fmt.Errorf("decode: %v", err)
 	}
-	if !reflect.DeepEqual(e1, e0) {
-		return fmt.Errorf("\n\tgot  %#v\n\twant %#v", e1, e0)
+	if diff := pretty.Diff(e0, e1); diff != nil {
+		return fmt.Errorf("%s", strings.Join(diff, "\n"))
 	}
 	return nil
 }
@@ -62,10 +62,11 @@ func TestVersionEditRoundTrip(t *testing.T) {
 				{
 					Level: 5,
 					Meta: &FileMetadata{
-						FileNum:  805,
-						Size:     8050,
-						Smallest: base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
-						Largest:  base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						FileNum:      805,
+						Size:         8050,
+						CreationTime: 805030,
+						Smallest:     base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
+						Largest:      base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 					},
 				},
 				{
@@ -73,6 +74,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					Meta: &FileMetadata{
 						FileNum:             806,
 						Size:                8060,
+						CreationTime:        806040,
 						Smallest:            base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
 						Largest:             base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 						SmallestSeqNum:      3,

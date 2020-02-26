@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -63,6 +64,7 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 	meta := &fileMetadata{}
 	meta.FileNum = fileNum
 	meta.Size = uint64(stat.Size())
+	meta.CreationTime = time.Now().Unix()
 	meta.Smallest = InternalKey{}
 	meta.Largest = InternalKey{}
 	smallestSet, largestSet := false, false

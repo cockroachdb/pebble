@@ -52,6 +52,7 @@ const (
 	// The custom tags sub-format used by tagNewFile4.
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
+	customTagCreationTime      = 6
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
 )
@@ -215,6 +216,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			var markedForCompaction bool
+			var creationTime uint64
 			if tag == tagNewFile4 {
 				for {
 					customTag, err := d.readUvarint()
@@ -235,6 +237,13 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 						markedForCompaction = (field[0] == 1)
 
+					case customTagCreationTime:
+						var n int
+						creationTime, n = binary.Uvarint(field)
+						if n != len(field) {
+							return fmt.Errorf("new-file4: invalid file creation time")
+						}
+
 					case customTagPathID:
 						return fmt.Errorf("new-file4: path-id field not supported")
 
@@ -250,6 +259,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				Meta: &FileMetadata{
 					FileNum:             fileNum,
 					Size:                size,
+					CreationTime:        int64(creationTime),
 					Smallest:            base.DecodeInternalKey(smallest),
 					Largest:             base.DecodeInternalKey(largest),
 					SmallestSeqNum:      smallestSeqNum,
@@ -278,6 +288,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 // Encode encodes an edit to the specified writer.
 func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
+
 	if v.ComparerName != "" {
 		e.writeUvarint(tagComparator)
 		e.writeString(v.ComparerName)
@@ -308,7 +319,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, x := range v.NewFiles {
 		var customFields bool
-		if x.Meta.MarkedForCompaction {
+		if x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 {
 			customFields = true
 			e.writeUvarint(tagNewFile4)
 		} else {
@@ -322,6 +333,12 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(x.Meta.SmallestSeqNum)
 		e.writeUvarint(x.Meta.LargestSeqNum)
 		if customFields {
+			if x.Meta.CreationTime != 0 {
+				e.writeUvarint(customTagCreationTime)
+				var buf [binary.MaxVarintLen64]byte
+				n := binary.PutUvarint(buf[:], uint64(x.Meta.CreationTime))
+				e.writeBytes(buf[:n])
+			}
 			if x.Meta.MarkedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})

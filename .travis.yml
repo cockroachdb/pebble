@@ -13,7 +13,7 @@ matrix:
     - name: "go1.13.x-linux"
       go: 1.13.x
       os: linux
-      script: make generate test
+      script: make test generate
     - name: "go1.13.x-linux-race"
       go: 1.13.x
       os: linux

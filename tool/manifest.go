@@ -7,6 +7,8 @@ package tool
 import (
 	"fmt"
 	"io"
+	"sort"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -134,8 +136,18 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					empty = false
 					fmt.Fprintf(stdout, "  last-seq-num:  %d\n", ve.LastSeqNum)
 				}
+				entries := make([]manifest.DeletedFileEntry, 0, len(ve.DeletedFiles))
 				for df := range ve.DeletedFiles {
 					empty = false
+					entries = append(entries, df)
+				}
+				sort.Slice(entries, func(i, j int) bool {
+					if entries[i].Level != entries[j].Level {
+						return entries[i].Level < entries[j].Level
+					}
+					return entries[i].FileNum < entries[j].FileNum
+				})
+				for _, df := range entries {
 					fmt.Fprintf(stdout, "  deleted:       L%d %06d\n", df.Level, df.FileNum)
 				}
 				for _, nf := range ve.NewFiles {
@@ -143,6 +155,10 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "  added:         L%d %06d:%d",
 						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
 					formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
+					if nf.Meta.CreationTime != 0 {
+						fmt.Fprintf(stdout, " (%s)",
+							time.Unix(nf.Meta.CreationTime, 0).UTC().Format(time.RFC3339))
+					}
 					fmt.Fprintf(stdout, "\n")
 				}
 				if empty {
