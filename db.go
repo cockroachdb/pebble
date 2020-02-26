@@ -908,6 +908,7 @@ func (d *DB) Compact(
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			mem := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, mem, meta) {
+				var err error
 				if mem.flushable == d.mu.mem.mutable {
 					// We have to hold both commitPipeline.mu and DB.mu when calling
 					// makeRoomForWrite(). Lock order requirements elsewhere force us to
@@ -918,10 +919,12 @@ func (d *DB) Compact(
 					defer d.commit.mu.Unlock()
 					if mem.flushable == d.mu.mem.mutable {
 						// Only flush if the active memtable is unchanged.
-						return mem, d.makeRoomForWrite(nil)
+						err = d.makeRoomForWrite(nil)
 					}
 				}
-				return mem, nil
+				mem.flushForced = true
+				d.maybeScheduleFlush()
+				return mem, err
 			}
 		}
 		return nil, nil

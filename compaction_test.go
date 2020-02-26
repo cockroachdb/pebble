@@ -1607,3 +1607,66 @@ func TestFlushInvariant(t *testing.T) {
 		})
 	}
 }
+
+func TestCompactFlushQueuedMemTable(t *testing.T) {
+	// Verify that manual compaction forces a flush of a queued memtable.
+
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add the key "a" to the memtable, then fill up the memtable with the key
+	// "b". The compaction will only overlap with the queued memtable, not the
+	// mutable memtable.
+	if err := d.Set([]byte("a"), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if err := d.Set([]byte("b"), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		d.mu.Lock()
+		done := len(d.mu.mem.queue) == 2
+		d.mu.Unlock()
+		if done {
+			break
+		}
+	}
+
+	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
+	require.NoError(t, d.Close())
+}
+
+func TestCompactFlushQueuedLargeBatch(t *testing.T) {
+	// Verify that compaction forces a flush of a queued large batch.
+
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The default large batch threshold is slightly less than 1/2 of the
+	// memtable size which makes triggering a problem with flushing queued large
+	// batches irritating. Manually adjust the threshold to 1/8 of the memtable
+	// size in order to more easily create a situation where a large batch is
+	// queued but not automatically flushed.
+	d.mu.Lock()
+	d.largeBatchThreshold = d.opts.MemTableSize / 8
+	d.mu.Unlock()
+
+	// Set a record with a large value. This will be transformed into a large
+	// batch and placed in the flushable queue.
+	if err := d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
+	require.NoError(t, d.Close())
+}
