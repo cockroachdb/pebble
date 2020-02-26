@@ -689,7 +689,7 @@ type WriterOption interface {
 // internalTableOpt is a WriterOption that sets properties for sstables being
 // created by the db itself (i.e. through flushes and compactions), as opposed
 // to those meant for ingestion.
-type internalTableOpt struct {}
+type internalTableOpt struct{}
 
 func (i internalTableOpt) writerApply(w *Writer) {
 	// Set the external sst version to 0. This is what RocksDB expects for

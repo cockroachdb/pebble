@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"runtime/pprof"
@@ -52,6 +53,17 @@ func totalSize(f []*fileMetadata) (size uint64) {
 		size += x.Size
 	}
 	return size
+}
+
+// noCloseIter wraps around an internal iterator, intercepting and eliding
+// calls to Close. It is used during compaction to ensure that rangeDelIters
+// are not closed prematurely.
+type noCloseIter struct {
+	base.InternalIterator
+}
+
+func (i noCloseIter) Close() error {
+	return nil
 }
 
 type userKeyRange struct {
@@ -111,6 +123,11 @@ type compaction struct {
 	// returned from `compactionIter` and fragments them for output to files.
 	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
 	rangeDelFrag rangedel.Fragmenter
+
+	// A list of objects to close when the compaction finishes. Used by input
+	// iteration to keep rangeDelIters open for the lifetime of the compaction,
+	// and only close them when the compaction finishes.
+	closers []io.Closer
 
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
@@ -669,6 +686,13 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			}
 		}
 		if rangeDelIter != nil {
+			// Ensure that rangeDelIter is not closed until the compaction is
+			// finished. This is necessary because range tombstone processing
+			// requires the range tombstones to be held in memory for up to the
+			// lifetime of the compaction.
+			c.closers = append(c.closers, rangeDelIter)
+			rangeDelIter = noCloseIter{rangeDelIter}
+
 			// Truncate the range tombstones returned by the iterator to the upper
 			// bound of the atomic compaction unit. Note that we need do this
 			// truncation at read time in order to handle RocksDB generated sstables
@@ -1221,6 +1245,9 @@ func (d *DB) runCompaction(
 			for _, filename := range filenames {
 				d.opts.FS.Remove(filename)
 			}
+		}
+		for _, closer := range c.closers {
+			retErr = firstError(retErr, closer.Close())
 		}
 	}()
 

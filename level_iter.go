@@ -307,6 +307,8 @@ func (l *levelIter) loadFile(index, dir int) bool {
 		}
 		if l.rangeDelIter != nil {
 			*l.rangeDelIter = rangeDelIter
+		} else if rangeDelIter != nil {
+			rangeDelIter.Close()
 		}
 		if l.smallestUserKey != nil {
 			*l.smallestUserKey = f.Smallest.UserKey

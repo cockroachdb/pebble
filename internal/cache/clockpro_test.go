@@ -39,7 +39,7 @@ func TestCache(t *testing.T) {
 		var hit bool
 		h := cache.Get(1, uint64(key), 0)
 		if v := h.Get(); v == nil {
-			value := cache.AllocManual(1)
+			value := cache.Alloc(1, false /* weak */)
 			value.Buf()[0] = fields[0][0]
 			cache.Set(1, uint64(key), 0, value).Release()
 		} else {
@@ -56,44 +56,55 @@ func TestCache(t *testing.T) {
 	}
 }
 
-func testManualValue(cache *Cache, s string, repeat int) *Value {
+func testValue(cache *Cache, s string, repeat int) *Value {
 	b := bytes.Repeat([]byte(s), repeat)
-	v := cache.AllocManual(len(b))
+	v := cache.Alloc(len(b), false /* weak */)
 	copy(v.Buf(), b)
 	return v
 }
 
-func testAutoValue(cache *Cache, s string, repeat int) *Value {
-	return cache.AllocAuto(bytes.Repeat([]byte(s), repeat))
+func testWeakValue(cache *Cache, s string, repeat int) *Value {
+	b := bytes.Repeat([]byte(s), repeat)
+	v := cache.Alloc(len(b), true /* weak */)
+	copy(v.Buf(), b)
+	return v
 }
 
 func TestWeakHandle(t *testing.T) {
 	cache := newShards(5, 1)
 	defer cache.Unref()
 
-	cache.Set(1, 1, 0, testAutoValue(cache, "a", 5)).Release()
-	h := cache.Set(1, 0, 0, testAutoValue(cache, "b", 5))
+	cache.Set(1, 1, 0, testWeakValue(cache, "a", 5)).Release()
+	h := cache.Set(1, 0, 0, testWeakValue(cache, "b", 5))
 	if v := h.Get(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
 	w := h.Weak()
 	h.Release()
-	if v := w.Get(); string(v) != "bbbbb" {
+	h = w.Strong()
+	if v := h.Get(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
-	cache.Set(1, 2, 0, testManualValue(cache, "a", 5)).Release()
-	if v := w.Get(); v != nil {
+	if h.Weak() != nil {
+		t.Fatalf("unexpectedly convert strong handle back to weak handle")
+	}
+	h.Release()
+	cache.Set(1, 2, 0, testValue(cache, "a", 5)).Release()
+	h = w.Strong()
+	if v := h.Get(); v != nil {
 		t.Fatalf("expected nil, but found %s", v)
 	}
+	h.Release()
+	w.Release()
 }
 
 func TestCacheDelete(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
-	cache.Set(1, 1, 0, testManualValue(cache, "a", 5)).Release()
-	cache.Set(1, 2, 0, testManualValue(cache, "a", 5)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 5)).Release()
+	cache.Set(1, 1, 0, testValue(cache, "a", 5)).Release()
+	cache.Set(1, 2, 0, testValue(cache, "a", 5)).Release()
 	if expected, size := int64(15), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -122,11 +133,11 @@ func TestEvictFile(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
-	cache.Set(1, 1, 0, testManualValue(cache, "a", 5)).Release()
-	cache.Set(1, 2, 0, testManualValue(cache, "a", 5)).Release()
-	cache.Set(1, 2, 1, testManualValue(cache, "a", 5)).Release()
-	cache.Set(1, 2, 2, testManualValue(cache, "a", 5)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 5)).Release()
+	cache.Set(1, 1, 0, testValue(cache, "a", 5)).Release()
+	cache.Set(1, 2, 0, testValue(cache, "a", 5)).Release()
+	cache.Set(1, 2, 1, testValue(cache, "a", 5)).Release()
+	cache.Set(1, 2, 2, testValue(cache, "a", 5)).Release()
 	if expected, size := int64(25), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -150,16 +161,16 @@ func TestEvictAll(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 101)).Release()
-	cache.Set(1, 1, 0, testManualValue(cache, "a", 101)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 101)).Release()
+	cache.Set(1, 1, 0, testValue(cache, "a", 101)).Release()
 }
 
 func TestMultipleDBs(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
-	cache.Set(2, 0, 0, testManualValue(cache, "b", 5)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 5)).Release()
+	cache.Set(2, 0, 0, testValue(cache, "b", 5)).Release()
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -183,27 +194,27 @@ func TestZeroSize(t *testing.T) {
 	cache := newShards(0, 1)
 	defer cache.Unref()
 
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 5)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 5)).Release()
 }
 
 func TestReserve(t *testing.T) {
 	cache := newShards(4, 2)
 	defer cache.Unref()
 
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 1)).Release()
-	cache.Set(2, 0, 0, testManualValue(cache, "a", 1)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 1)).Release()
+	cache.Set(2, 0, 0, testValue(cache, "a", 1)).Release()
 	require.EqualValues(t, 2, cache.Size())
 	r := cache.Reserve(1)
 	require.EqualValues(t, 0, cache.Size())
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 1)).Release()
-	cache.Set(2, 0, 0, testManualValue(cache, "a", 1)).Release()
-	cache.Set(3, 0, 0, testManualValue(cache, "a", 1)).Release()
-	cache.Set(4, 0, 0, testManualValue(cache, "a", 1)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 1)).Release()
+	cache.Set(2, 0, 0, testValue(cache, "a", 1)).Release()
+	cache.Set(3, 0, 0, testValue(cache, "a", 1)).Release()
+	cache.Set(4, 0, 0, testValue(cache, "a", 1)).Release()
 	require.EqualValues(t, 2, cache.Size())
 	r()
 	require.EqualValues(t, 2, cache.Size())
-	cache.Set(1, 0, 0, testManualValue(cache, "a", 1)).Release()
-	cache.Set(2, 0, 0, testManualValue(cache, "a", 1)).Release()
+	cache.Set(1, 0, 0, testValue(cache, "a", 1)).Release()
+	cache.Set(2, 0, 0, testValue(cache, "a", 1)).Release()
 	require.EqualValues(t, 4, cache.Size())
 }
 

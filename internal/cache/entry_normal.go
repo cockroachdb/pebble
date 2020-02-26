@@ -15,7 +15,9 @@ import (
 )
 
 const (
+	entrySize            = int(unsafe.Sizeof(entry{}))
 	entryAllocCacheLimit = 128
+	entriesGoAllocated   = false
 )
 
 var entryAllocPool = sync.Pool{
@@ -28,7 +30,6 @@ func entryAllocNew() *entry {
 	a := entryAllocPool.Get().(*entryAllocCache)
 	e := a.alloc()
 	entryAllocPool.Put(a)
-	e.managed = true
 	return e
 }
 
