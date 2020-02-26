@@ -135,13 +135,13 @@ func (i *singleLevelIterator) Init(r *Reader, lower, upper []byte) error {
 	i.err = r.err
 
 	if i.err == nil {
-		var index block
-		index, i.err = r.readIndex()
+		var indexH cache.Handle
+		indexH, i.err = r.readIndex()
 		if i.err != nil {
 			return i.err
 		}
 		i.cmp = r.Compare
-		i.err = i.index.init(i.cmp, index, r.Properties.GlobalSeqNum)
+		i.err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
 	}
 	return i.err
 }
@@ -262,13 +262,15 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 
 	// Check prefix bloom filter.
 	if i.reader.tableFilter != nil {
-		var data block
-		data, i.err = i.reader.readFilter()
+		var dataH cache.Handle
+		dataH, i.err = i.reader.readFilter()
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, nil
 		}
-		if !i.reader.tableFilter.mayContain(data, prefix) {
+		mayContain := i.reader.tableFilter.mayContain(dataH.Get(), prefix)
+		dataH.Release()
+		if !mayContain {
 			i.data.invalidate()
 			return nil, nil
 		}
@@ -622,13 +624,13 @@ func (i *twoLevelIterator) Init(r *Reader, lower, upper []byte) error {
 	i.err = r.err
 
 	if i.err == nil {
-		topLevelIndex, err := r.readIndex()
+		topLevelIndexH, err := r.readIndex()
 		if i.err != nil {
 			i.err = err
 			return i.err
 		}
 		i.cmp = r.Compare
-		i.err = i.topLevelIndex.init(i.cmp, topLevelIndex, r.Properties.GlobalSeqNum)
+		i.err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
 	}
 	return i.err
 }
@@ -840,6 +842,7 @@ func (i *twoLevelIterator) Close() error {
 	}
 	err = firstError(err, i.data.Close())
 	err = firstError(err, i.index.Close())
+	err = firstError(err, i.topLevelIndex.Close())
 	err = firstError(err, i.err)
 	*i = twoLevelIterator{
 		singleLevelIterator: i.singleLevelIterator.resetForReuse(),
@@ -931,6 +934,32 @@ type weakCachedBlock struct {
 	bh     BlockHandle
 	mu     sync.RWMutex
 	handle *cache.WeakHandle
+}
+
+func (w *weakCachedBlock) get() cache.Handle {
+	var h cache.Handle
+	w.mu.RLock()
+	if w.handle != nil {
+		h = w.handle.Strong()
+	}
+	w.mu.RUnlock()
+	return h
+}
+
+func (w *weakCachedBlock) update(h *cache.WeakHandle) {
+	w.mu.Lock()
+	if w.handle != nil {
+		w.handle.Release()
+	}
+	w.handle = h
+	w.mu.Unlock()
+}
+
+func (w *weakCachedBlock) release() {
+	if w.handle != nil {
+		w.handle.Release()
+		w.handle = nil
+	}
 }
 
 type blockTransform func([]byte) ([]byte, error)
@@ -1045,6 +1074,9 @@ type Reader struct {
 
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
+	r.index.release()
+	r.filter.release()
+	r.rangeDel.release()
 	r.opts.Cache.Unref()
 
 	if r.err != nil {
@@ -1074,7 +1106,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		data, err := r.readFilter()
+		dataH, err := r.readFilter()
 		if err != nil {
 			return nil, err
 		}
@@ -1084,7 +1116,9 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		} else {
 			lookupKey = key
 		}
-		if !r.tableFilter.mayContain(data, lookupKey) {
+		mayContain := r.tableFilter.mayContain(dataH.Get(), lookupKey)
+		dataH.Release()
+		if !mayContain {
 			return nil, base.ErrNotFound
 		}
 	}
@@ -1151,54 +1185,48 @@ func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
 	if r.rangeDel.bh.Length == 0 {
 		return nil, nil
 	}
-	b, err := r.readRangeDel()
+	h, err := r.readRangeDel()
 	if err != nil {
 		return nil, err
 	}
 	i := &blockIter{}
-	if err := i.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
+	if err := i.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	return i, nil
 }
 
-func (r *Reader) readIndex() (block, error) {
+func (r *Reader) readIndex() (cache.Handle, error) {
 	return r.readWeakCachedBlock(&r.index, nil /* transform */)
 }
 
-func (r *Reader) readFilter() (block, error) {
+func (r *Reader) readFilter() (cache.Handle, error) {
 	return r.readWeakCachedBlock(&r.filter, nil /* transform */)
 }
 
-func (r *Reader) readRangeDel() (block, error) {
+func (r *Reader) readRangeDel() (cache.Handle, error) {
 	return r.readWeakCachedBlock(&r.rangeDel, r.rangeDelTransform)
 }
 
-func (r *Reader) readWeakCachedBlock(w *weakCachedBlock, transform blockTransform) (block, error) {
+func (r *Reader) readWeakCachedBlock(
+	w *weakCachedBlock, transform blockTransform,
+) (cache.Handle, error) {
 	// Fast-path for retrieving the block from a weak cache handle.
-	w.mu.RLock()
-	var b []byte
-	if w.handle != nil {
-		b = w.handle.Get()
-	}
-	w.mu.RUnlock()
-	if b != nil {
-		return b, nil
+	h := w.get()
+	if h.Get() != nil {
+		return h, nil
 	}
 
 	// Slow-path: read the index block from disk. This checks the cache again,
 	// but that is ok because somebody else might have inserted it for us.
 	h, err := r.readBlock(w.bh, transform, true /* weak */)
 	if err != nil {
-		return nil, err
+		return cache.Handle{}, err
 	}
-	b = h.Get()
 	if wh := h.Weak(); wh != nil {
-		w.mu.Lock()
-		w.handle = wh
-		w.mu.Unlock()
+		w.update(wh)
 	}
-	return b, err
+	return h, err
 }
 
 // readBlock reads and decompresses a block from disk into memory.
@@ -1209,12 +1237,7 @@ func (r *Reader) readBlock(
 		return h, nil
 	}
 
-	var v *cache.Value
-	if weak {
-		v = r.opts.Cache.AllocAuto(make([]byte, int(bh.Length+blockTrailerLen)))
-	} else {
-		v = r.opts.Cache.AllocManual(int(bh.Length + blockTrailerLen))
-	}
+	v := r.opts.Cache.Alloc(int(bh.Length+blockTrailerLen), weak)
 	b := v.Buf()
 	if _, err := r.file.ReadAt(b, int64(bh.Offset)); err != nil {
 		r.opts.Cache.Free(v)
@@ -1241,12 +1264,7 @@ func (r *Reader) readBlock(
 			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		var decoded *cache.Value
-		if weak {
-			decoded = r.opts.Cache.AllocAuto(make([]byte, decodedLen))
-		} else {
-			decoded = r.opts.Cache.AllocManual(decodedLen)
-		}
+		decoded := r.opts.Cache.Alloc(decodedLen, weak)
 		decodedBuf := decoded.Buf()
 		result, err := snappy.Decode(decodedBuf, b)
 		r.opts.Cache.Free(v)
@@ -1275,13 +1293,8 @@ func (r *Reader) readBlock(
 			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		var newV *cache.Value
-		if weak {
-			newV = r.opts.Cache.AllocAuto(b)
-		} else {
-			newV = r.opts.Cache.AllocManual(len(b))
-			copy(newV.Buf(), b)
-		}
+		newV := r.opts.Cache.Alloc(len(b), weak)
+		copy(newV.Buf(), b)
 		r.opts.Cache.Free(v)
 		v = newV
 	}
@@ -1429,14 +1442,15 @@ func (r *Reader) Layout() (*Layout, error) {
 		Footer:     r.footerBH,
 	}
 
-	index, err := r.readIndex()
+	indexH, err := r.readIndex()
 	if err != nil {
 		return nil, err
 	}
+	defer indexH.Release()
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.index.bh)
-		iter, _ := newBlockIter(r.Compare, index)
+		iter, _ := newBlockIter(r.Compare, indexH.Get())
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, n := decodeBlockHandle(value)
 			if n == 0 || n != len(value) {
@@ -1446,7 +1460,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	} else {
 		l.TopIndex = r.index.bh
-		topIter, _ := newBlockIter(r.Compare, index)
+		topIter, _ := newBlockIter(r.Compare, indexH.Get())
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, n := decodeBlockHandle(value)
 			if n == 0 || n != len(value) {
@@ -1488,24 +1502,25 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		return 0, r.err
 	}
 
-	index, err := r.readIndex()
+	indexH, err := r.readIndex()
 	if err != nil {
 		return 0, err
 	}
+	defer indexH.Release()
 
 	// Iterators over the bottom-level index blocks containing start and end.
 	// These may be different in case of partitioned index but will both point
 	// to the same blockIter over the single index in the unpartitioned case.
 	var startIdxIter, endIdxIter *blockIter
 	if r.Properties.IndexPartitions == 0 {
-		iter, err := newBlockIter(r.Compare, index)
+		iter, err := newBlockIter(r.Compare, indexH.Get())
 		if err != nil {
 			return 0, err
 		}
 		startIdxIter = iter
 		endIdxIter = iter
 	} else {
-		topIter, err := newBlockIter(r.Compare, index)
+		topIter, err := newBlockIter(r.Compare, indexH.Get())
 		if err != nil {
 			return 0, err
 		}

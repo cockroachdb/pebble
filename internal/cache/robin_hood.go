@@ -32,9 +32,9 @@ func robinHoodHash(k key, shift uint32) uint32 {
 
 type robinHoodEntry struct {
 	key key
-	// Note that value may point to a Go allocated object, even though the memory
-	// for the entry itself is manually managed. This is technically a volation
-	// of the Cgo pointer rules:
+	// Note that value may point to a Go allocated object (if the "invariants"
+	// build tag was specified), even though the memory for the entry itself is
+	// manually managed. This is technically a volation of the Cgo pointer rules:
 	//
 	//   https://golang.org/cmd/cgo/#hdr-Passing_pointers
 	//
