@@ -59,7 +59,7 @@ the same key have the same sequence number).
   |   .       > .        > .        > yy
   |   .      >  .       >  .       >  .
   |   .     >   .      >   .      >   .
-n |   V    >    xx    >    x.    >    V
+n |   V    >    xx    >    .     >    V
   |   .   >     x.   >     x.   >     . 
   |   .  >      x.  >      x.  >      .
   |   . >       x. >       x. >       .
