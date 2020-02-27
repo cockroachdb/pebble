@@ -456,11 +456,11 @@ of read operations in the presence of range tombstones.
 
 A range tombstone is composed of a start key, end key, and sequence
 number. Any key that falls within the range is considered deleted if
-the key's sequence number is less than to the range tombstone's
-sequence number. RocksDB stores range tombstones segregated from
-point operations in a special range deletion block within each
-sstable. Conceptually, the range tombstones stored within an sstable
-are truncated to the boundaries of the sstable, though there are
+the key's sequence number is less than the range tombstone's sequence
+number. RocksDB stores range tombstones segregated from point
+operations in a special range deletion block within each sstable.
+Conceptually, the range tombstones stored within an sstable are
+truncated to the boundaries of the sstable, though there are
 complexities that cause this to not actually be physically true.
 
 In RocksDB, the main structure implementing range tombstone processing
