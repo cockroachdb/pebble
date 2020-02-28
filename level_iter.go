@@ -52,6 +52,8 @@ type levelIter struct {
 	// tableOpts.{Lower,Upper}Bound are nil, the corresponding iteration boundary
 	// does not lie within the table bounds.
 	tableOpts IterOptions
+	// The LSM level this levelIter is initialized for.
+	level int
 	// The current file wrt the iterator position.
 	index int
 	// The keys to return when iterating past an sstable boundary and that
@@ -140,10 +142,11 @@ func newLevelIter(
 	cmp Compare,
 	newIters tableNewIters,
 	files []*fileMetadata,
+	level int,
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, newIters, files, bytesIterated)
+	l.init(opts, cmp, newIters, files, level, bytesIterated)
 	return l
 }
 
@@ -152,9 +155,11 @@ func (l *levelIter) init(
 	cmp Compare,
 	newIters tableNewIters,
 	files []*fileMetadata,
+	level int,
 	bytesIterated *uint64,
 ) {
 	l.err = nil
+	l.level = level
 	l.logger = opts.getLogger()
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound

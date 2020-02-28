@@ -157,7 +157,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		}
 
 		iterOpts := IterOptions{logger: g.logger}
-		g.levelIter.init(iterOpts, g.cmp, g.newIters, g.version.Files[g.level], nil)
+		g.levelIter.init(iterOpts, g.cmp, g.newIters, g.version.Files[g.level], g.level, nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter

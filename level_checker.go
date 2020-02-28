@@ -502,7 +502,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		}
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, current.Files[level], nil)
+		li.init(iterOpts, c.cmp, c.newIters, current.Files[level], level, nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
 		mlevelAlloc[0].iter = li

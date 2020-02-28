@@ -737,7 +737,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(dbi.opts, d.cmp, d.newIters, current.Files[level], nil)
+		li.init(dbi.opts, d.cmp, d.newIters, current.Files[level], level, nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
 			&mlevels[0].isLargestUserKeyRangeDelSentinel)

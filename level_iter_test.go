@@ -20,6 +20,10 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+const (
+	level = 1
+)
+
 func TestLevelIter(t *testing.T) {
 	var iters []*fakeIter
 	var files []*fileMetadata
@@ -74,7 +78,7 @@ func TestLevelIter(t *testing.T) {
 				}
 			}
 
-			iter := newLevelIter(opts, DefaultComparer.Compare, newIters, files, nil)
+			iter := newLevelIter(opts, DefaultComparer.Compare, newIters, files, level, nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
@@ -114,7 +118,7 @@ func TestLevelIter(t *testing.T) {
 				return newIters(meta, opts, nil)
 			}
 
-			iter := newLevelIter(opts, DefaultComparer.Compare, newIters2, files, nil)
+			iter := newLevelIter(opts, DefaultComparer.Compare, newIters2, files, level, nil)
 			iter.SeekGE([]byte(key))
 			lower, upper := tableOpts.GetLowerBound(), tableOpts.GetUpperBound()
 			return fmt.Sprintf("[%s,%s]\n", lower, upper)
@@ -248,7 +252,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			return lt.runBuild(d)
 
 		case "iter":
-			iter := newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters, lt.files, nil)
+			iter := newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters, lt.files, level, nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
@@ -318,7 +322,7 @@ func TestLevelIterSeek(t *testing.T) {
 
 		case "iter":
 			iter := &levelIterTestIter{
-				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters, lt.files, nil),
+				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters, lt.files, level, nil),
 			}
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
@@ -411,7 +415,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							) (internalIterator, internalIterator, error) {
 								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
-							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, nil)
+							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, level, nil)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
@@ -439,7 +443,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							) (internalIterator, internalIterator, error) {
 								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
-							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, nil)
+							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, level, nil)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -470,7 +474,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							) (internalIterator, internalIterator, error) {
 								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
 							}
-							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, nil)
+							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, level, nil)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
