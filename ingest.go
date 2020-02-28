@@ -394,7 +394,7 @@ func ingestTargetLevel(
 
 	level := baseLevel
 	for ; level < numLevels; level++ {
-		levelIter := newLevelIter(iterOps, cmp, newIters, v.Files[level], nil)
+		levelIter := newLevelIter(iterOps, cmp, newIters, v.Files[level], level, nil)
 		var rangeDelIter internalIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)

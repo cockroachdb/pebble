@@ -68,6 +68,10 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 	}
 }
 
+func (f *fakeIter) String() string {
+	return "fake"
+}
+
 func (f *fakeIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {

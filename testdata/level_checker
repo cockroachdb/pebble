@@ -115,7 +115,7 @@ Level 2
 
 check
 ----
-found InternalKey c#27,1 at level index 0 and InternalKey c#28,1 at level index 1
+found InternalKey c#27,SET in L1: fileNum=000010 and InternalKey c#28,SET in L2: fileNum=000011
 
 # The sentinel key for the RANGEDEL should not violate g having a higher seq num at a
 # lower level.
@@ -150,7 +150,7 @@ Level 2
 
 check
 ----
-found InternalKey g#8,1 at level index 0 and InternalKey g#10,1 at level index 1
+found InternalKey g#8,SET in L1: fileNum=000014 and InternalKey g#10,SET in L2: fileNum=000015
 
 define
 L
@@ -167,7 +167,7 @@ Level 2
 
 check
 ----
-tombstone b-g#10 at level index 1 deletes key c#8,1 at level index 0
+tombstone b-g#10 in L2: fileNum=000017 deletes key c#8,SET in L1: fileNum=000016
 
 define
 L
@@ -184,4 +184,175 @@ Level 2
 
 check
 ----
-encountered tombstone b-c#8 at level index 0 that has a lower seqnum than the same tombstone at level index 1
+encountered tombstone b-c#8 in L1: fileNum=000018 that has a lower seqnum than the same tombstone in L2: fileNum=000019
+
+# Check incorrect ordering of point keys in an sstable.
+define disable-key-order-checks
+L
+a.SET.3 e.SET.4
+e.SET.4:e a.SET.3:a
+L
+d.SET.1 f.SET.2
+d.SET.1:d f.SET.2:f
+----
+Level 1
+  file 0: [a#3,1-e#4,1]
+Level 2
+  file 0: [d#1,1-f#2,1]
+
+check
+----
+out of order keys e#4,SET >= a#3,SET in L1: fileNum=000020
+
+# Check successive sstables on a level are ordered.
+define disable-key-order-checks
+L
+a.SET.1 b.SET.2
+a.SET.1:a b.SET.2:b
+b.SET.3 c.SET.4
+b.SET.3:b c.SET.4:c
+----
+Level 1
+  file 0: [a#1,1-b#2,1]
+  file 1: [b#3,1-c#4,1]
+
+check
+----
+out of order keys b#2,SET >= b#3,SET in L1: fileNum=000023
+
+# Check range delete keys are fragmented and ordered in an sstable having
+# rangeDelV2 formatted range delete blocks.
+
+# Case 1: Fragmented but not ordered.
+define write-unfragmented disable-key-order-checks
+L
+a.RANGEDEL.1 g.RANGEDEL.72057594037927935
+d.RANGEDEL.2:e d.RANGEDEL.1:e f.RANGEDEL.3:g a.RANGEDEL.4:b
+----
+Level 1
+  file 0: [a#1,15-g#72057594037927935,15]
+
+check
+----
+unordered or unfragmented range delete tombstones f-g#3, a-b#4 in L1: fileNum=000024
+
+# Case 2: Ordered but not fragmented.
+define write-unfragmented disable-key-order-checks
+L
+a.RANGEDEL.1 d.RANGEDEL.72057594037927935
+a.RANGEDEL.1:d b.RANGEDEL.2:c
+----
+Level 1
+  file 0: [a#1,15-d#72057594037927935,15]
+
+check
+----
+unordered or unfragmented range delete tombstones a-d#1, b-c#2 in L1: fileNum=000025
+
+# Case 3: Verify check is done before truncation.
+define write-unfragmented disable-key-order-checks
+L
+a.RANGEDEL.1 b.RANGEDEL.72057594037927935
+a.RANGEDEL.1:z d.RANGEDEL.2:e
+----
+Level 1
+  file 0: [a#1,15-b#72057594037927935,15]
+
+check
+----
+unordered or unfragmented range delete tombstones a-z#1, d-e#2 in L1: fileNum=000026
+
+# Merge record processing.
+
+# Case 1: Latest versions of a key are MERGE records and processing one of
+# them fails.
+define
+L
+a.MERGE.10 a.MERGE.9
+a.MERGE.10:10 a.MERGE.9:fail-merge
+----
+Level 1
+  file 0: [a#10,2-a#9,2]
+
+check merger=fail-merger
+----
+merge processing error on key a#9,MERGE in L1: fileNum=000027: merge failed
+
+# Case 2: Last checked key is a MERGE record.
+define
+L
+a.MERGE.10 a.MERGE.9
+a.MERGE.10:10 a.MERGE.9:fail-finish
+----
+Level 1
+  file 0: [a#10,2-a#9,2]
+
+check merger=fail-merger
+----
+merge processing error on key a#9,MERGE in L1: fileNum=000028: finish failed
+
+# Case 3: MERGE records succeeded by newer versions of a key are also
+# processed.
+define
+L
+a.MERGE.10 a.SINGLEDEL.3
+a.MERGE.10:10 a.MERGE.9:9 a.SET.8:8 a.MERGE.7:7 a.MERGE.6:6 a.DEL.5: a.MERGE.4:fail-finish a.SINGLEDEL.3:
+----
+Level 1
+  file 0: [a#10,2-a#3,7]
+
+check merger=fail-merger
+----
+merge processing error on key a#3,SINGLEDEL in L1: fileNum=000029: finish failed
+
+# Case 4: Finish processing on key change.
+define
+L
+a.MERGE.10 b.SET.11
+a.MERGE.10:10 a.MERGE.9:fail-finish b.SET.11:11
+----
+Level 1
+  file 0: [a#10,2-b#11,1]
+
+check merger=fail-merger
+----
+merge processing error on key b#11,SET in L1: fileNum=000030: finish failed
+
+# Case 5: SET finishes MERGE record processing.
+define
+L
+a.MERGE.10 a.SET.9
+a.MERGE.10:10 a.SET.9:fail-finish
+----
+Level 1
+  file 0: [a#10,2-a#9,1]
+
+check merger=fail-merger
+----
+merge processing error on key a#9,SET in L1: fileNum=000031: finish failed
+
+# Case 6: DEL finishes MERGE record processing.
+define
+L
+a.MERGE.10 a.DEL.9
+a.MERGE.10:fail-finish a.DEL.9:
+----
+Level 1
+  file 0: [a#10,2-a#9,0]
+
+check merger=fail-merger
+----
+merge processing error on key a#9,DEL in L1: fileNum=000032: finish failed
+
+# Case 7: SINGLEDEL finishes MERGE record processing.
+define
+L
+a.MERGE.10 a.SINGLEDEL.9
+a.MERGE.10:fail-finish a.SINGLEDEL.9:fail-finish
+----
+Level 1
+  file 0: [a#10,2-a#9,7]
+
+check merger=fail-merger
+----
+merge processing error on key a#9,SINGLEDEL in L1: fileNum=000033: finish failed

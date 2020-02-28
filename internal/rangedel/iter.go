@@ -4,7 +4,9 @@
 
 package rangedel
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 // Iter is an iterator over a set of fragmented tombstones.
 type Iter struct {
@@ -177,4 +179,8 @@ func (i *Iter) Close() error {
 func (i *Iter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are only used for point records.
 	panic("pebble: SetBounds unimplemented")
+}
+
+func (i *Iter) String() string {
+	return "range-del"
 }

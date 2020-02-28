@@ -226,12 +226,12 @@ func TestMergingIterCornerCases(t *testing.T) {
 			return v.DebugString(DefaultComparer.Format)
 		case "iter":
 			levelIters := make([]mergingIterLevel, 0, len(v.Files))
-			for _, l := range v.Files {
+			for i, l := range v.Files {
 				if len(l) == 0 {
 					continue
 				}
 				li := &levelIter{}
-				li.init(IterOptions{}, cmp, newIters, l, nil)
+				li.init(IterOptions{}, cmp, newIters, l, i, nil)
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)

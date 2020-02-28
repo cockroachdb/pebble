@@ -787,6 +787,10 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 	m.initMinHeap()
 }
 
+func (m *mergingIter) String() string {
+	return "merging"
+}
+
 // SeekGE implements base.InternalIterator.SeekGE. Note that SeekGE only checks
 // the upper bound. It is up to the caller to ensure that key is greater than
 // or equal to the lower bound.

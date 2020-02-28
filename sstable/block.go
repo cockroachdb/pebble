@@ -250,6 +250,10 @@ func newBlockIter(cmp Compare, block block) (*blockIter, error) {
 	return i, i.init(cmp, block, 0)
 }
 
+func (i *blockIter) String() string {
+	return "block"
+}
+
 func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {

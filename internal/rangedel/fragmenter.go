@@ -65,8 +65,8 @@ func Sort(cmp base.Compare, tombstones []Tombstone) {
 type Fragmenter struct {
 	Cmp base.Compare
 	// Emit is called to emit a chunk of tombstone fragments. Every tombstone
-	// within the chunk has the same start and end key, and differ only by
-	// sequence number.
+	// within the chunk has the same start and end key and are in decreasing
+	// order of their sequence numbers.
 	Emit func([]Tombstone)
 	// pending contains the list of pending range tombstone fragments that have
 	// not been flushed to the block writer. Note that the tombstones have not
