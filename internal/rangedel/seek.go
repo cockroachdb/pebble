@@ -12,7 +12,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // iterator must contain fragmented tombstones: any overlapping tombstones must
 // have the same start and end key. The position of the iterator is undefined
 // after calling SeekGE and may not be pointing at the returned tombstone.
-func SeekGE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
+func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//
@@ -80,7 +80,7 @@ func SeekGE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombst
 // iterator must contain fragmented tombstones: any overlapping tombstones must
 // have the same start and end key. The position of the iterator is undefined
 // after calling SeekLE and may not be pointing at the returned tombstone.
-func SeekLE(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
+func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//

@@ -15,7 +15,7 @@ import (
 
 func TestTruncate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
-	var iter iterator
+	var iter base.InternalIterator
 
 	datadriven.RunTest(t, "testdata/truncate", func(d *datadriven.TestData) string {
 		switch d.Cmd {
