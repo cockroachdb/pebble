@@ -103,7 +103,7 @@ func TestFragmenter(t *testing.T) {
 		return m[1], seq
 	}
 
-	var iter iterator
+	var iter base.InternalIterator
 
 	// Returns true if the specified <key,seq> pair is deleted at the specified
 	// read sequence number. Get ignores tombstones newer than the read sequence

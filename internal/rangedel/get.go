@@ -6,35 +6,13 @@ package rangedel
 
 import "github.com/cockroachdb/pebble/internal/base"
 
-// iterator is a subset of the pebble.internalIterator interface needed for
-// range deletion iteration.
-type iterator interface {
-	// SeekLT moves the iterator to the last key/value pair whose key is less
-	// than the given key.
-	SeekLT(key []byte) (*base.InternalKey, []byte)
-
-	// First moves the iterator the the first key/value pair.
-	First() (*base.InternalKey, []byte)
-
-	// Last moves the iterator the the last key/value pair.
-	Last() (*base.InternalKey, []byte)
-
-	// Next moves the iterator to the next key/value pair.
-	// It returns whether the iterator is exhausted.
-	Next() (*base.InternalKey, []byte)
-
-	// Prev moves the iterator to the previous key/value pair.
-	// It returns whether the iterator is exhausted.
-	Prev() (*base.InternalKey, []byte)
-}
-
 // Get returns the newest tombstone that contains the target key. If no
 // tombstone contains the target key, an empty tombstone is returned. The
 // snapshot parameter controls the visibility of tombstones (only tombstones
 // older than the snapshot sequence number are visible). The iterator must
 // contain fragmented tombstones: any overlapping tombstones must have the same
 // start and end key.
-func Get(cmp base.Compare, iter iterator, key []byte, snapshot uint64) Tombstone {
+func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Tombstone {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//
