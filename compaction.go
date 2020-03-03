@@ -382,6 +382,9 @@ func (c *compaction) expandInputs(level int, inputs []*fileMetadata) []*fileMeta
 // grow grows the number of inputs at c.level without changing the number of
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
+//
+// TODO(sbhola): since this is optional, it should not grow to include files
+// that are part of ongoing compactions.
 func (c *compaction) grow(sm, la InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
