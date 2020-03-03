@@ -14,7 +14,7 @@ import (
 
 const valueSize = int(unsafe.Sizeof(Value{}))
 
-func newValue(n int, weak bool) *Value {
+func newValue(n int) *Value {
 	if n == 0 {
 		return nil
 	}
@@ -29,7 +29,7 @@ func newValue(n int, weak bool) *Value {
 	b := allocNew(valueSize + n)
 	v := (*Value)(unsafe.Pointer(&b[0]))
 	v.buf = b[valueSize:]
-	v.ref.init(1, weak)
+	v.ref.init(1)
 	return v
 }
 

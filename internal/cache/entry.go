@@ -66,12 +66,12 @@ type entry struct {
 	// since the last time one of the clock hands swept it.
 	referenced int32
 	shard      *shard
-	// Reference count for the value. The entry is freed when the reference count
+	// Reference count for the entry. The entry is freed when the reference count
 	// drops to zero.
 	ref refcnt
 }
 
-func newEntry(s *shard, key key, size int64, weak bool) *entry {
+func newEntry(s *shard, key key, size int64) *entry {
 	e := entryAllocNew()
 	*e = entry{
 		key:   key,
@@ -83,12 +83,8 @@ func newEntry(s *shard, key key, size int64, weak bool) *entry {
 	e.blockLink.prev = e
 	e.fileLink.next = e
 	e.fileLink.prev = e
-	e.ref.init(1, weak)
+	e.ref.init(1)
 	return e
-}
-
-func (e *entry) weak() bool {
-	return e.ref.weak()
 }
 
 func (e *entry) acquire() {
@@ -163,6 +159,8 @@ func (e *entry) setValue(v *Value) {
 }
 
 func (e *entry) peekValue() *Value {
+	// NB: the locking is technically needed here, because we only call setValue
+	// with the shard's lock held.
 	e.val.RLock()
 	v := e.val.v
 	e.val.RUnlock()

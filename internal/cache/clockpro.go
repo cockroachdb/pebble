@@ -57,7 +57,6 @@ func (k key) String() string {
 // entry.val. Over the lifetime of the handle (until Release is called),
 // entry.val may change, but value will remain unchanged.
 type Handle struct {
-	// entry is only non-nil for Handles that can be converted to WeakHandles.
 	entry *entry
 	value *Value
 }
@@ -89,9 +88,6 @@ func (h Handle) Release() {
 // Handle.Release() after calling Weak() (i.e. the receiver - a strong handle -
 // still maintains a reference to the value).
 func (h Handle) Weak() *WeakHandle {
-	if !h.value.weak() {
-		panic("pebble: cannot make non-weak Value into a WeakHandle")
-	}
 	if h.entry == nil {
 		return nil
 	}
@@ -163,13 +159,7 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 		value = e.acquireValue()
 		if value != nil {
 			atomic.StoreInt32(&e.referenced, 1)
-			// Enforce the restriction that non-weak values cannot be converted to
-			// weak handles.
-			if e.weak() {
-				e.acquire()
-			} else {
-				e = nil
-			}
+			e.acquire()
 		} else {
 			e = nil
 		}
@@ -193,16 +183,11 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 
 	k := key{fileKey{id, fileNum}, offset}
 	e := c.blocks.Get(k)
-	weak := value.weak()
-	if e != nil && e.weak() != weak {
-		panic(fmt.Sprintf("pebble: inconsistent caching of weak Value: entry=%t vs value=%t",
-			e.weak(), weak))
-	}
 
 	switch {
 	case e == nil:
 		// no cache entry? add it
-		e = newEntry(c, k, int64(len(value.buf)), weak)
+		e = newEntry(c, k, int64(len(value.buf)))
 		e.setValue(value)
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-cold")
@@ -253,13 +238,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 	}
 
 	if e != nil {
-		// Enforce the restriction that non-weak values cannot be converted to weak
-		// handles.
-		if weak {
-			e.acquire()
-		} else {
-			e = nil
-		}
+		e.acquire()
 	}
 	// Values are initialized with a reference count of 1. That reference count
 	// is being transferred to the returned Handle.
@@ -773,10 +752,9 @@ func (c *Cache) Size() int64 {
 // previously allocated but unused memory. The memory backing the value is
 // manually managed. The caller MUST either add the value to the cache (via
 // Cache.Set), or release the value (via Cache.Free). Failure to do so will
-// result in a memory leak. The weak parameter indicates whether the value can
-// be used in a WeakHandle. Only a weak value can be used in a WeakHandle.
-func (c *Cache) Alloc(n int, weak bool) *Value {
-	return newValue(n, weak)
+// result in a memory leak.
+func (c *Cache) Alloc(n int) *Value {
+	return newValue(n)
 }
 
 // Free frees the specified value. The buffer associated with the value will

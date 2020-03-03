@@ -41,7 +41,7 @@ func TestCache(t *testing.T) {
 		var hit bool
 		h := cache.Get(1, uint64(key), 0)
 		if v := h.Get(); v == nil {
-			value := cache.Alloc(1, false /* weak */)
+			value := cache.Alloc(1)
 			value.Buf()[0] = fields[0][0]
 			cache.Set(1, uint64(key), 0, value).Release()
 		} else {
@@ -60,14 +60,7 @@ func TestCache(t *testing.T) {
 
 func testValue(cache *Cache, s string, repeat int) *Value {
 	b := bytes.Repeat([]byte(s), repeat)
-	v := cache.Alloc(len(b), false /* weak */)
-	copy(v.Buf(), b)
-	return v
-}
-
-func testWeakValue(cache *Cache, s string, repeat int) *Value {
-	b := bytes.Repeat([]byte(s), repeat)
-	v := cache.Alloc(len(b), true /* weak */)
+	v := cache.Alloc(len(b))
 	copy(v.Buf(), b)
 	return v
 }
@@ -76,8 +69,8 @@ func TestWeakHandle(t *testing.T) {
 	cache := newShards(5, 1)
 	defer cache.Unref()
 
-	cache.Set(1, 1, 0, testWeakValue(cache, "a", 5)).Release()
-	h := cache.Set(1, 0, 0, testWeakValue(cache, "b", 5))
+	cache.Set(1, 1, 0, testValue(cache, "a", 5)).Release()
+	h := cache.Set(1, 0, 0, testValue(cache, "b", 5))
 	if v := h.Get(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %v", v)
 	}
@@ -245,33 +238,24 @@ func TestReserveDoubleRelease(t *testing.T) {
 func BenchmarkCacheGet(b *testing.B) {
 	const size = 100000
 
-	for _, kind := range []string{"strong", "weak"} {
-		b.Run(kind, func(b *testing.B) {
-			cache := newShards(size, 1)
-			defer cache.Unref()
+	cache := newShards(size, 1)
+	defer cache.Unref()
 
-			for i := 0; i < size; i++ {
-				var v *Value
-				if kind == "strong" {
-					v = testValue(cache, "a", 1)
-				} else {
-					v = testWeakValue(cache, "a", 1)
-				}
-				cache.Set(1, 0, uint64(i), v).Release()
-			}
-
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-
-				for pb.Next() {
-					h := cache.Get(1, 0, uint64(rng.Intn(size)))
-					if h.Get() == nil {
-						b.Fatal("failed to lookup value")
-					}
-					h.Release()
-				}
-			})
-		})
+	for i := 0; i < size; i++ {
+		v := testValue(cache, "a", 1)
+		cache.Set(1, 0, uint64(i), v).Release()
 	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+
+		for pb.Next() {
+			h := cache.Get(1, 0, uint64(rng.Intn(size)))
+			if h.Get() == nil {
+				b.Fatal("failed to lookup value")
+			}
+			h.Release()
+		}
+	})
 }

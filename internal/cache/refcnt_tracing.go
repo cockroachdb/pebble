@@ -23,20 +23,13 @@ type refcnt struct {
 	msgs []string
 }
 
-func (v *refcnt) init(val int32, weak bool) {
+func (v *refcnt) init(val int32) {
 	v.val = val
-	if weak {
-		v.val |= refcntWeakBit
-	}
 	v.trace("init")
 }
 
-func (v *refcnt) weak() bool {
-	return (atomic.LoadInt32(&v.val) & refcntWeakBit) != 0
-}
-
 func (v *refcnt) refs() int32 {
-	return atomic.LoadInt32(&v.val) & refcntRefsMask
+	return atomic.LoadInt32(&v.val)
 }
 
 func (v *refcnt) acquire() {
@@ -47,11 +40,11 @@ func (v *refcnt) acquire() {
 func (v *refcnt) release() bool {
 	n := atomic.AddInt32(&v.val, -1)
 	v.trace("release")
-	return (n & refcntRefsMask) == 0
+	return n == 0
 }
 
 func (v *refcnt) trace(msg string) {
-	s := fmt.Sprintf("%s: refs=%d weak=%t\n%s", msg, v.refs(), v.weak(), debug.Stack())
+	s := fmt.Sprintf("%s: refs=%d\n%s", msg, v.refs(), debug.Stack())
 	v.Lock()
 	v.msgs = append(v.msgs, s)
 	v.Unlock()

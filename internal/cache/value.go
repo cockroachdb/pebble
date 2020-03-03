@@ -31,10 +31,6 @@ func (v *Value) Truncate(n int) {
 	v.buf = v.buf[:n]
 }
 
-func (v *Value) weak() bool {
-	return v.ref.weak()
-}
-
 func (v *Value) refs() int32 {
 	return v.ref.refs()
 }
