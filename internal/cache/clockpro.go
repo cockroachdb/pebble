@@ -76,18 +76,22 @@ func (h Handle) Release() {
 	if h.value != nil {
 		h.value.release()
 	}
+	if h.entry != nil {
+		h.entry.release()
+	}
 }
 
 // Weak converts the (strong) handle into a WeakHandle. A WeakHandle allows the
-// underlying data to be evicted and GC'd, while allowing WeakHandle.Get() to
-// be used to quickly determine if the data is still cached or not. Note that
-// the reference count on the value is incremented which will prevent the
-// associated buffer from ever being reused until it is GC'd by the Go
-// runtime. It is not necessary to call Handle.Release() after calling Weak().
+// underlying data to be evicted and GC'd, while allowing WeakHandle.Strong()
+// to quickly convert the handle back to a strong handle in order to retrieve
+// the cached data (if it has not been evicted). It is still necessary to call
+// Handle.Release() after calling Weak() (i.e. the receiver - a strong handle -
+// still maintains a reference to the value).
 func (h Handle) Weak() *WeakHandle {
-	if h.value.manual() {
-		panic("pebble: cannot make manual Value into a WeakHandle")
+	if h.entry == nil {
+		return nil
 	}
+	h.entry.acquire()
 	return (*WeakHandle)(h.entry)
 }
 
@@ -95,21 +99,28 @@ func (h Handle) Weak() *WeakHandle {
 // reference allows the entry to be evicted, but also provides fast access
 type WeakHandle entry
 
-// Get retrieves the value associated with the weak handle, returning nil if no
-// value is present. The calls to Get must be balanced with the calls to
-// Release.
-func (h *WeakHandle) Get() []byte {
+// Strong converts the weak handle into a strong handle, allowing the value to
+// be retrieved. The returned Handle must be released.
+func (h *WeakHandle) Strong() Handle {
 	e := (*entry)(h)
-	v := e.getValue()
+	v := e.acquireValue()
 	if v == nil {
-		return nil
+		return Handle{}
 	}
-
 	atomic.StoreInt32(&e.referenced, 1)
 	// Record a cache hit because the entry is being used as a WeakHandle and
 	// successfully avoided a more expensive shard.Get() operation.
 	atomic.AddInt64(&e.shard.hits, 1)
-	return v.buf
+	// NB: The returned strong handle cannot be converted back to a weak handle
+	// again. We could allow this, but it adds an entry.acquire() call to this
+	// path.
+	return Handle{value: v}
+}
+
+// Release releases the reference to the cache entry.
+func (h *WeakHandle) Release() {
+	e := (*entry)(h)
+	e.release()
 }
 
 type shard struct {
@@ -126,11 +137,9 @@ type shard struct {
 
 	// The blocks and files maps store values in manually managed memory that is
 	// invisible to the Go GC. This is fine for Value and entry objects that are
-	// stored in manually managed memory. Auto Values and the associated auto
-	// entries need to have a reference that the Go GC is aware of to prevent
-	// them from being reclaimed. The entries map provides this reference. When
-	// the "invariants" build tag is set, all Value and entry objects are Go
-	// allocated and the entries map will contain a reference to every entry.
+	// stored in manually managed memory, but when the "invariants" build tag is
+	// set, all Value and entry objects are Go allocated and the entries map will
+	// contain a reference to every entry.
 	entries map[*entry]struct{}
 
 	handHot  *entry
@@ -147,10 +156,10 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	e := c.blocks.Get(key{fileKey{id, fileNum}, offset})
 	var value *Value
 	if e != nil {
-		value = e.getValue()
+		value = e.acquireValue()
 		if value != nil {
-			value.acquire()
 			atomic.StoreInt32(&e.referenced, 1)
+			e.acquire()
 		} else {
 			e = nil
 		}
@@ -161,17 +170,11 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 		return Handle{}
 	}
 	atomic.AddInt64(&c.hits, 1)
-
-	// Enforce the restriction that manually managed values cannot be converted
-	// to weak handles.
-	if e.manual {
-		e = nil
-	}
 	return Handle{entry: e, value: value}
 }
 
 func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
-	if n := atomic.LoadInt32(&value.refs); n != 1 && n >= 0 {
+	if n := value.refs(); n != 1 {
 		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
 	}
 
@@ -180,37 +183,32 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 
 	k := key{fileKey{id, fileNum}, offset}
 	e := c.blocks.Get(k)
-	if e != nil && e.manual != value.manual() {
-		panic(fmt.Sprintf("pebble: inconsistent caching of manual Value: entry=%t vs value=%t",
-			e.manual, value.manual()))
-	}
 
 	switch {
 	case e == nil:
 		// no cache entry? add it
-		e = newEntry(c, k, int64(len(value.buf)), value.manual())
+		e = newEntry(c, k, int64(len(value.buf)))
 		e.setValue(value)
 		if c.metaAdd(k, e) {
-			value.trace("add-cold")
-			value.acquire() // add reference for the cache
+			value.ref.trace("add-cold")
 			c.sizeCold += e.size
 		} else {
-			value.trace("skip-cold")
-			e.free()
+			value.ref.trace("skip-cold")
+			e.release()
+			e = nil
 		}
 
-	case e.getValue() != nil:
+	case e.peekValue() != nil:
 		// cache entry was a hot or cold page
-		value.acquire() // add reference for the cache
 		e.setValue(value)
 		atomic.StoreInt32(&e.referenced, 1)
 		delta := int64(len(value.buf)) - e.size
 		e.size = int64(len(value.buf))
 		if e.ptype == etHot {
-			value.trace("add-hot")
+			value.ref.trace("add-hot")
 			c.sizeHot += delta
 		} else {
-			value.trace("add-cold")
+			value.ref.trace("add-cold")
 			c.sizeCold += delta
 		}
 		c.evict()
@@ -230,19 +228,17 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 		e.setValue(value)
 		e.ptype = etHot
 		if c.metaAdd(k, e) {
-			value.trace("add-hot")
-			value.acquire() // add reference for the cache
+			value.ref.trace("add-hot")
 			c.sizeHot += e.size
 		} else {
-			value.trace("skip-hot")
-			e.free()
+			value.ref.trace("skip-hot")
+			e.release()
+			e = nil
 		}
 	}
 
-	// Enforce the restriction that manually managed values cannot be converted
-	// to weak handles.
-	if e.manual {
-		e = nil
+	if e != nil {
+		e.acquire()
 	}
 	// Values are initialized with a reference count of 1. That reference count
 	// is being transferred to the returned Handle.
@@ -287,7 +283,9 @@ func (c *shard) Free() {
 	// NB: we use metaDel rather than metaEvict in order to avoid the expensive
 	// metaCheck call when the "invariants" build tag is specified.
 	for c.handHot != nil {
+		e := c.handHot
 		c.metaDel(c.handHot)
+		e.release()
 	}
 
 	c.blocks.free()
@@ -330,7 +328,7 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 	}
 
 	c.blocks.Put(key, e)
-	if !e.managed {
+	if entriesGoAllocated {
 		// Go allocated entries need to be referenced from Go memory. The entries
 		// map provides that reference.
 		c.entries[e] = struct{}{}
@@ -362,13 +360,13 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 // the files map, and ensures that hand{Hot,Cold,Test} are not pointing at the
 // entry.
 func (c *shard) metaDel(e *entry) {
-	if value := e.getValue(); value != nil {
-		value.trace("metaDel")
+	if value := e.peekValue(); value != nil {
+		value.ref.trace("metaDel")
 	}
 	e.setValue(nil)
 
 	c.blocks.Delete(e.key)
-	if !e.managed {
+	if entriesGoAllocated {
 		// Go allocated entries need to be referenced from Go memory. The entries
 		// map provides that reference.
 		delete(c.entries, e)
@@ -440,7 +438,7 @@ func (c *shard) metaEvict(e *entry) {
 	}
 	c.metaDel(e)
 	c.metaCheck(e)
-	e.free()
+	e.release()
 }
 
 func (c *shard) evict() {
@@ -514,7 +512,7 @@ func (c *shard) runHandTest() {
 		}
 		c.metaDel(e)
 		c.metaCheck(e)
-		e.free()
+		e.release()
 	}
 
 	c.handTest = c.handTest.next()
@@ -561,26 +559,22 @@ type Metrics struct {
 //
 // A Handle can be transformed into a WeakHandle by a call to Handle.Weak(). A
 // WeakHandle does not pin the associated value in memory, and instead allows
-// the value to be evicted from the cache and reclaimed by the Go GC. The value
-// associated with a WeakHandle can be retrieved by WeakHandle.Get() which may
-// return nil if the value has been evicted from the cache. WeakHandle's are
-// useful for avoiding the overhad of a cache lookup. They are used for sstable
-// index, filter, and range-del blocks, which are frequently accessed, almost
-// always in the cache, but which we want to allow to be evicted under memory
-// pressure.
+// the value to be evicted from the cache and reclaimed by the Go GC. In order
+// to retrieve the value from a WeakHandle, the handle can be transformed back
+// into a strong handle by calling WeakHandle.Strong(). The returned strong
+// handle may be empty if the value has been evicted from the
+// cache. WeakHandle's are useful for avoiding the overhad of a cache
+// lookup. They are used for sstable index, filter, and range-del blocks, which
+// are frequently accessed, almost always in the cache, but which we want to
+// allow to be evicted under memory pressure.
 //
 // Memory Management
 //
 // In order to reduce pressure on the Go GC, manual memory management is
-// performed for the majority of blocks in the cache. Manual memory management
-// is selected using Cache.AllocManual() to allocate a value, rather than
-// Cache.AllocAuto(). Note that manual values cannot be used for
-// WeakHandles. The general rule is to use AllocAuto when a WeakHandle will be
-// retrieved, and AllocManual in all other cases.
-//
-// Manual memory management is performed by calling into C.{malloc,free} to
-// allocate memory. Cache.Values are reference counted and the memory backing a
-// manual value is freed when the reference count drops to 0.
+// performed for the data stored in the cache. Manual memory management is
+// performed by calling into C.{malloc,free} to allocate memory. Cache.Values
+// are reference counted and the memory backing a manual value is freed when
+// the reference count drops to 0.
 //
 // Manual memory management brings the possibility of memory leaks. It is
 // imperative that every Handle returned by Cache.{Get,Set} is eventually
@@ -629,7 +623,9 @@ func newShards(size int64, shards int) *Cache {
 		c.shards[i] = shard{
 			maxSize:    size / int64(len(c.shards)),
 			coldTarget: size / int64(len(c.shards)),
-			entries:    make(map[*entry]struct{}),
+		}
+		if entriesGoAllocated {
+			c.shards[i].entries = make(map[*entry]struct{})
 		}
 		c.shards[i].blocks.init(16)
 		c.shards[i].files.init(16)
@@ -752,26 +748,20 @@ func (c *Cache) Size() int64 {
 	return size
 }
 
-// AllocManual allocates a byte slice of the specified size, possibly reusing
+// Alloc allocates a byte slice of the specified size, possibly reusing
 // previously allocated but unused memory. The memory backing the value is
 // manually managed. The caller MUST either add the value to the cache (via
 // Cache.Set), or release the value (via Cache.Free). Failure to do so will
 // result in a memory leak.
-func (c *Cache) AllocManual(n int) *Value {
-	return newManualValue(n)
-}
-
-// AllocAuto allocates an automatically managed value using buf as the internal
-// buffer.
-func (c *Cache) AllocAuto(buf []byte) *Value {
-	return newAutoValue(buf)
+func (c *Cache) Alloc(n int) *Value {
+	return newValue(n)
 }
 
 // Free frees the specified value. The buffer associated with the value will
 // possibly be reused, making it invalid to use the buffer after calling
 // Free. Do not call Free on a value that has been added to the cache.
 func (c *Cache) Free(v *Value) {
-	if n := atomic.LoadInt32(&v.refs); n > 1 {
+	if n := v.refs(); n > 1 {
 		panic(fmt.Sprintf("pebble: Value has been added to the cache: refs=%d", n))
 	}
 	v.release()

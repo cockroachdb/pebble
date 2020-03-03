@@ -69,8 +69,13 @@ type simpleMergingIter struct {
 	format    base.Formatter
 }
 
-func (m *simpleMergingIter) init(merge Merge, cmp Compare, snapshot uint64,
-	format base.Formatter, levels ...simpleMergingIterLevel) {
+func (m *simpleMergingIter) init(
+	merge Merge,
+	cmp Compare,
+	snapshot uint64,
+	format base.Formatter,
+	levels ...simpleMergingIterLevel,
+) {
 	m.levels = levels
 	m.format = format
 	m.merge = merge
@@ -289,7 +294,9 @@ func (v *tombstonesByStartKeyAndSeqnum) Swap(i, j int) {
 	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
 }
 
-func iterateAndCheckTombstones(cmp Compare, format base.Formatter, tombstones []tombstoneWithLevel) error {
+func iterateAndCheckTombstones(
+	cmp Compare, format base.Formatter, tombstones []tombstoneWithLevel,
+) error {
 	sortBuf := tombstonesByStartKeyAndSeqnum{
 		cmp: cmp,
 		buf: tombstones,
@@ -443,10 +450,20 @@ func levelOrMemtable(lsmLevel int, fileNum uint64) string {
 }
 
 func addTombstonesFromIter(
-	iter base.InternalIterator, level int, lsmLevel int, fileNum uint64, tombstones []tombstoneWithLevel, seqNum uint64,
-	cmp Compare, format base.Formatter,
+	iter base.InternalIterator,
+	level int,
+	lsmLevel int,
+	fileNum uint64,
+	tombstones []tombstoneWithLevel,
+	seqNum uint64,
+	cmp Compare,
+	format base.Formatter,
 	truncate func(tombstone rangedel.Tombstone) rangedel.Tombstone,
-) ([]tombstoneWithLevel, error) {
+) (_ []tombstoneWithLevel, err error) {
+	defer func() {
+		err = firstError(err, iter.Close())
+	}()
+
 	var prevTombstone rangedel.Tombstone
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		if !key.Visible(seqNum) {
@@ -481,9 +498,6 @@ func addTombstonesFromIter(
 				fileNum:   fileNum,
 			})
 		}
-	}
-	if err := iter.Close(); err != nil {
-		return nil, err
 	}
 	return tombstones, nil
 }
@@ -587,7 +601,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	// how one constructs a mergingIter.
 
 	// Add mem tables from newest to oldest.
-	mlevels := make([]simpleMergingIterLevel, 0)
+	var mlevels []simpleMergingIterLevel
 	defer func() {
 		for i := range mlevels {
 			l := &mlevels[i]

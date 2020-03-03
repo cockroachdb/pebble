@@ -10,27 +10,26 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"sync/atomic"
 )
 
-// newManualValue creates a Value with a manually managed buffer of size n.
+// newValue creates a Value with a manually managed buffer of size n.
 //
-// This definition of newManualValue is used when either the "invariants" or
+// This definition of newValue is used when either the "invariants" or
 // "tracing" build tags are specified. It hooks up a finalizer to the returned
 // Value that checks for memory leaks when the GC determines the Value is no
 // longer reachable.
-func newManualValue(n int) *Value {
+func newValue(n int) *Value {
 	if n == 0 {
 		return nil
 	}
 	b := allocNew(n)
-	v := &Value{buf: b, refs: 1}
-	v.trace("alloc")
+	v := &Value{buf: b}
+	v.ref.init(1)
 	runtime.SetFinalizer(v, func(obj interface{}) {
 		v := obj.(*Value)
 		if v.buf != nil {
 			fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
-				v, atomic.LoadInt32(&v.refs), v.traces())
+				v, v.refs(), v.ref.traces())
 			os.Exit(1)
 		}
 	})

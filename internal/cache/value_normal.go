@@ -14,17 +14,22 @@ import (
 
 const valueSize = int(unsafe.Sizeof(Value{}))
 
-func newManualValue(n int) *Value {
+func newValue(n int) *Value {
 	if n == 0 {
 		return nil
 	}
 	// When we're not performing leak detection, the lifetime of the returned
 	// Value is exactly the lifetime of the backing buffer and we can manually
 	// allocate both.
+	//
+	// TODO(peter): It may be better to separate the allocation of the value and
+	// the buffer in order to reduce internal fragmentation in malloc. If the
+	// buffer is right at a power of 2, adding valueSize might push the
+	// allocation over into the next larger size.
 	b := allocNew(valueSize + n)
 	v := (*Value)(unsafe.Pointer(&b[0]))
 	v.buf = b[valueSize:]
-	v.refs = 1
+	v.ref.init(1)
 	return v
 }
 

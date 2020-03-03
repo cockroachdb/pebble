@@ -743,7 +743,7 @@ func TestMemTableReservation(t *testing.T) {
 	// cache size, so opening the DB should cause this block to be evicted.
 	tmpID := opts.Cache.NewID()
 	helloWorld := []byte("hello world")
-	value := opts.Cache.AllocManual(len(helloWorld))
+	value := opts.Cache.Alloc(len(helloWorld))
 	copy(value.Buf(), helloWorld)
 	opts.Cache.Set(tmpID, 0, 0, value).Release()
 

@@ -4,16 +4,12 @@
 
 package cache
 
-import "sync/atomic"
-
-func newAutoValue(b []byte) *Value {
-	if b == nil {
-		return nil
-	}
-	// A value starts with an invalid reference count. When the value is added to
-	// the cache, the reference count will be set to 2: one reference for the
-	// cache, and another for the returned Handle.
-	return &Value{buf: b, refs: -(1 << 30)}
+// Value holds a reference counted immutable value.
+type Value struct {
+	buf []byte
+	// Reference count for the value. The value is freed when the reference count
+	// drops to zero.
+	ref refcnt
 }
 
 // Buf returns the buffer associated with the value. The contents of the buffer
@@ -35,23 +31,16 @@ func (v *Value) Truncate(n int) {
 	v.buf = v.buf[:n]
 }
 
-func (v *Value) auto() bool {
-	return atomic.LoadInt32(&v.refs) < 0
-}
-
-func (v *Value) manual() bool {
-	return !v.auto()
+func (v *Value) refs() int32 {
+	return v.ref.refs()
 }
 
 func (v *Value) acquire() {
-	atomic.AddInt32(&v.refs, 1)
-	v.trace("acquire")
+	v.ref.acquire()
 }
 
 func (v *Value) release() {
-	n := atomic.AddInt32(&v.refs, -1)
-	v.trace("release")
-	if n == 0 {
+	if v.ref.release() {
 		v.free()
 	}
 }

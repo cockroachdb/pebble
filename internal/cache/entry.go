@@ -4,10 +4,7 @@
 
 package cache
 
-import (
-	"sync/atomic"
-	"unsafe"
-)
+import "sync"
 
 type entryType int8
 
@@ -29,8 +26,8 @@ func (p entryType) String() string {
 	return "unknown"
 }
 
-// entry holds the metadata for a cache entry. If the value stored in an entry
-// is manually managed, the entry will also use manual memory management.
+// entry holds the metadata for a cache entry. The memory for an entry is
+// allocated from manually managed memory.
 //
 // Using manual memory management for entries is technically a volation of the
 // Cgo pointer rules:
@@ -40,16 +37,21 @@ func (p entryType) String() string {
 // Specifically, Go pointers should not be stored in C allocated memory. The
 // reason for this rule is that the Go GC will not look at C allocated memory
 // to find pointers to Go objects. If the only reference to a Go object is
-// stored in C allocated memory, the object will be reclaimed. The blockLink,
-// fileLink, and shard fields of the entry struct may all point to Go objects,
-// thus the violation. What makes this "safe" is that the Cache guarantees that
-// there are other pointers to the entry and shard which will keep them
-// alive. In particular, every Go allocated entry in the cache is referenced by
-// the shard.entries map. And every shard is referenced by the Cache.shards
-// map.
+// stored in C allocated memory, the object will be reclaimed. The shard field
+// of the entry struct points to a Go allocated object, thus the
+// violation. What makes this "safe" is that the Cache guarantees that there
+// are other pointers to the shard which will keep it alive.
 type entry struct {
-	key       key
-	val       unsafe.Pointer
+	key key
+	val struct {
+		// RWMutex provides mutual exclusion for the value pointer. It allows
+		// retrieving the Value and incrementing its reference count in one atomic
+		// operation.
+		sync.RWMutex
+		// The value associated with the entry. The entry holds a reference on the
+		// value which is maintained by entry.setValue().
+		v *Value
+	}
 	blockLink struct {
 		next *entry
 		prev *entry
@@ -60,45 +62,38 @@ type entry struct {
 	}
 	size  int64
 	ptype entryType
-	// Can the entry hold a manual Value? Only a manually managed entry can store
-	// manually managed values (Value.manual() is true).
-	manual bool
-	// Was the entry allocated using the Go allocator or the manual
-	// allocator. This can differ from the setting of the manual field due when
-	// the "invariants" build tag is set.
-	managed bool
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
 	referenced int32
 	shard      *shard
+	// Reference count for the entry. The entry is freed when the reference count
+	// drops to zero.
+	ref refcnt
 }
 
-const entrySize = int(unsafe.Sizeof(entry{}))
-
-func newEntry(s *shard, key key, size int64, manual bool) *entry {
-	var e *entry
-	if manual {
-		e = entryAllocNew()
-	} else {
-		e = &entry{}
-	}
+func newEntry(s *shard, key key, size int64) *entry {
+	e := entryAllocNew()
 	*e = entry{
-		key:     key,
-		size:    size,
-		ptype:   etCold,
-		manual:  manual,
-		managed: e.managed,
-		shard:   s,
+		key:   key,
+		size:  size,
+		ptype: etCold,
+		shard: s,
 	}
 	e.blockLink.next = e
 	e.blockLink.prev = e
 	e.fileLink.next = e
 	e.fileLink.prev = e
+	e.ref.init(1)
 	return e
 }
 
-func (e *entry) free() {
-	if e.manual {
+func (e *entry) acquire() {
+	e.ref.acquire()
+}
+
+func (e *entry) release() {
+	if e.ref.release() {
+		e.setValue(nil)
 		*e = entry{}
 		entryAllocFree(e)
 	}
@@ -151,12 +146,33 @@ func (e *entry) unlinkFile() *entry {
 }
 
 func (e *entry) setValue(v *Value) {
-	if old := e.getValue(); old != nil {
+	if v != nil {
+		v.acquire()
+	}
+	e.val.Lock()
+	old := e.val.v
+	e.val.v = v
+	e.val.Unlock()
+	if old != nil {
 		old.release()
 	}
-	atomic.StorePointer(&e.val, unsafe.Pointer(v))
 }
 
-func (e *entry) getValue() *Value {
-	return (*Value)(atomic.LoadPointer(&e.val))
+func (e *entry) peekValue() *Value {
+	// NB: the locking is technically needed here, because we only call setValue
+	// with the shard's lock held.
+	e.val.RLock()
+	v := e.val.v
+	e.val.RUnlock()
+	return v
+}
+
+func (e *entry) acquireValue() *Value {
+	e.val.RLock()
+	v := e.val.v
+	if v != nil {
+		v.acquire()
+	}
+	e.val.RUnlock()
+	return v
 }
