@@ -18,18 +18,18 @@ import (
 // "tracing" build tags are specified. It hooks up a finalizer to the returned
 // Value that checks for memory leaks when the GC determines the Value is no
 // longer reachable.
-func newValue(n int, weak bool) *Value {
+func newValue(n int) *Value {
 	if n == 0 {
 		return nil
 	}
 	b := allocNew(n)
 	v := &Value{buf: b}
-	v.ref.init(1, weak)
+	v.ref.init(1)
 	runtime.SetFinalizer(v, func(obj interface{}) {
 		v := obj.(*Value)
 		if v.buf != nil {
-			fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d weak=%t\n%s",
-				v, v.refs(), v.weak(), v.ref.traces())
+			fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
+				v, v.refs(), v.ref.traces())
 			os.Exit(1)
 		}
 	})

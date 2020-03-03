@@ -71,7 +71,7 @@ type entry struct {
 	ref refcnt
 }
 
-func newEntry(s *shard, key key, size int64, weak bool) *entry {
+func newEntry(s *shard, key key, size int64) *entry {
 	e := entryAllocNew()
 	*e = entry{
 		key:   key,
@@ -83,12 +83,8 @@ func newEntry(s *shard, key key, size int64, weak bool) *entry {
 	e.blockLink.prev = e
 	e.fileLink.next = e
 	e.fileLink.prev = e
-	e.ref.init(1, weak)
+	e.ref.init(1)
 	return e
-}
-
-func (e *entry) weak() bool {
-	return e.ref.weak()
 }
 
 func (e *entry) acquire() {

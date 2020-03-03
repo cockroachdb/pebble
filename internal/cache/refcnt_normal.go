@@ -13,24 +13,13 @@ import "sync/atomic"
 // enabled version.
 type refcnt int32
 
-// initialize the reference count to the specified value, optional setting the
-// "weak" bit. The "weak" bit is used by entry and Value to indicate that a
-// Handle can be converted to a WeakHandle. It is stored in the reference count
-// for convenience, but is otherwise unrelated to the lifetime management that
-// the reference count provides.
-func (v *refcnt) init(val int32, weak bool) {
+// initialize the reference count to the specified value.
+func (v *refcnt) init(val int32) {
 	*v = refcnt(val)
-	if weak {
-		*v |= refcnt(refcntWeakBit)
-	}
-}
-
-func (v *refcnt) weak() bool {
-	return (atomic.LoadInt32((*int32)(v)) & refcntWeakBit) != 0
 }
 
 func (v *refcnt) refs() int32 {
-	return atomic.LoadInt32((*int32)(v)) & refcntRefsMask
+	return atomic.LoadInt32((*int32)(v))
 }
 
 func (v *refcnt) acquire() {
@@ -38,7 +27,7 @@ func (v *refcnt) acquire() {
 }
 
 func (v *refcnt) release() bool {
-	return (atomic.AddInt32((*int32)(v), -1) & refcntRefsMask) == 0
+	return atomic.AddInt32((*int32)(v), -1) == 0
 }
 
 func (v *refcnt) trace(msg string) {

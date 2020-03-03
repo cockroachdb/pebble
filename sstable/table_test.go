@@ -684,12 +684,13 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	r, err := NewReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, false /* weak */)
+	b, err := r.readBlock(r.metaIndexBH, nil /* transform */)
 	if err != nil {
 		t.Fatal(err)
 	}
-	i, err := newRawBlockIter(bytes.Compare, b.Get())
 	defer b.Release()
+
+	i, err := newRawBlockIter(bytes.Compare, b.Get())
 	if err != nil {
 		t.Fatal(err)
 	}

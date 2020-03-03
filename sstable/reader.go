@@ -194,7 +194,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, false /* weak */)
+	block, err := i.reader.readBlock(i.dataBH, nil /* transform */)
 	if err != nil {
 		i.err = err
 		return false
@@ -608,7 +608,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = errors.New("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */, false /* weak */)
+	indexBlock, err := i.reader.readBlock(h, nil /* transform */)
 	if err != nil {
 		i.err = err
 		return false
@@ -1219,7 +1219,7 @@ func (r *Reader) readWeakCachedBlock(
 
 	// Slow-path: read the index block from disk. This checks the cache again,
 	// but that is ok because somebody else might have inserted it for us.
-	h, err := r.readBlock(w.bh, transform, true /* weak */)
+	h, err := r.readBlock(w.bh, transform)
 	if err != nil {
 		return cache.Handle{}, err
 	}
@@ -1230,14 +1230,12 @@ func (r *Reader) readWeakCachedBlock(
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(
-	bh BlockHandle, transform blockTransform, weak bool,
-) (cache.Handle, error) {
+func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Handle, error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
 	}
 
-	v := r.opts.Cache.Alloc(int(bh.Length+blockTrailerLen), weak)
+	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
 	b := v.Buf()
 	if _, err := r.file.ReadAt(b, int64(bh.Offset)); err != nil {
 		r.opts.Cache.Free(v)
@@ -1264,7 +1262,7 @@ func (r *Reader) readBlock(
 			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		decoded := r.opts.Cache.Alloc(decodedLen, weak)
+		decoded := r.opts.Cache.Alloc(decodedLen)
 		decodedBuf := decoded.Buf()
 		result, err := snappy.Decode(decodedBuf, b)
 		r.opts.Cache.Free(v)
@@ -1293,7 +1291,7 @@ func (r *Reader) readBlock(
 			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		newV := r.opts.Cache.Alloc(len(b), weak)
+		newV := r.opts.Cache.Alloc(len(b))
 		copy(newV.Buf(), b)
 		r.opts.Cache.Free(v)
 		v = newV
@@ -1346,7 +1344,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */, false /* weak */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */)
 	if err != nil {
 		return err
 	}
@@ -1376,7 +1374,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */, false /* weak */)
+		b, err = r.readBlock(bh, nil /* transform */)
 		if err != nil {
 			return err
 		}
@@ -1468,7 +1466,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */, false /* weak */)
+			subIndex, err := r.readBlock(indexBH, nil /* transform */)
 			if err != nil {
 				return nil, err
 			}
@@ -1534,7 +1532,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, false /* weak */)
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */)
 		if err != nil {
 			return 0, err
 		}
@@ -1553,7 +1551,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, false /* weak */)
+			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */)
 			if err != nil {
 				return 0, err
 			}
@@ -1741,7 +1739,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, false /* weak */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
