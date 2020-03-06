@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -229,11 +230,7 @@ func (v *Version) Pretty(format base.Formatter) string {
 
 		if level == 0 {
 			for sublevel := len(v.L0Sublevels) - 1; sublevel >= 0; sublevel-- {
-				if sublevel == 0 {
-					fmt.Fprintf(&buf, "0:\n")
-				} else {
-					fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-				}
+				fmt.Fprintf(&buf, "0.%d: file count: %d\n", sublevel, len(v.L0Sublevels[sublevel]))
 				for _, f := range v.L0Sublevels[sublevel] {
 					fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 						format(f.Smallest.UserKey), format(f.Largest.UserKey))
@@ -241,12 +238,13 @@ func (v *Version) Pretty(format base.Formatter) string {
 			}
 			continue
 		}
-
-		fmt.Fprintf(&buf, "%d:\n", level)
-		for _, f := range v.Files[level] {
-			fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
-				format(f.Smallest.UserKey), format(f.Largest.UserKey))
-		}
+		/*
+			fmt.Fprintf(&buf, "%d:\n", level)
+			for _, f := range v.Files[level] {
+				fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
+					format(f.Smallest.UserKey), format(f.Largest.UserKey))
+			}
+		*/
 	}
 	return buf.String()
 }
@@ -592,6 +590,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				continue
 			}
 			if i > 0 && largestSeqNum >= f.LargestSeqNum {
+				debug.PrintStack()
 				return fmt.Errorf("L0 file %06d does not have strictly increasing "+
 					"largest seqnum: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, largestSeqNum)
 			}
