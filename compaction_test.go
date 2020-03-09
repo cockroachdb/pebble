@@ -643,6 +643,147 @@ func TestElideTombstone(t *testing.T) {
 	}
 }
 
+func TestElideRangeTombstone(t *testing.T) {
+	type want struct {
+		key      string
+		endKey   string
+		expected bool
+	}
+
+	testCases := []struct {
+		desc     string
+		level    int
+		version  version
+		wants    []want
+		flushing flushableList
+	}{
+		{
+			desc:    "empty",
+			level:   1,
+			version: version{},
+			wants: []want{
+				{"x", "y", true},
+			},
+		},
+		{
+			desc:  "non-empty",
+			level: 1,
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					1: []*fileMetadata{
+						{
+							Smallest: base.ParseInternalKey("c.SET.801"),
+							Largest:  base.ParseInternalKey("g.SET.800"),
+						},
+						{
+							Smallest: base.ParseInternalKey("x.SET.701"),
+							Largest:  base.ParseInternalKey("y.SET.700"),
+						},
+					},
+					2: []*fileMetadata{
+						{
+							Smallest: base.ParseInternalKey("d.SET.601"),
+							Largest:  base.ParseInternalKey("h.SET.600"),
+						},
+						{
+							Smallest: base.ParseInternalKey("r.SET.501"),
+							Largest:  base.ParseInternalKey("t.SET.500"),
+						},
+					},
+					3: []*fileMetadata{
+						{
+							Smallest: base.ParseInternalKey("f.SET.401"),
+							Largest:  base.ParseInternalKey("g.SET.400"),
+						},
+						{
+							Smallest: base.ParseInternalKey("w.SET.301"),
+							Largest:  base.ParseInternalKey("x.SET.300"),
+						},
+					},
+					4: []*fileMetadata{
+						{
+							Smallest: base.ParseInternalKey("f.SET.201"),
+							Largest:  base.ParseInternalKey("m.SET.200"),
+						},
+						{
+							Smallest: base.ParseInternalKey("t.SET.101"),
+							Largest:  base.ParseInternalKey("t.SET.100"),
+						},
+					},
+				},
+			},
+			wants: []want{
+				{"b", "c", true},
+				{"c", "d", true},
+				{"d", "e", true},
+				{"e", "f", false},
+				{"f", "g", false},
+				{"g", "h", false},
+				{"h", "i", false},
+				{"l", "m", false},
+				{"m", "n", false},
+				{"n", "o", true},
+				{"q", "r", true},
+				{"r", "s", true},
+				{"s", "t", false},
+				{"t", "u", false},
+				{"u", "v", true},
+				{"v", "w", false},
+				{"w", "x", false},
+				{"x", "y", false},
+				{"y", "z", true},
+			},
+		},
+		{
+			desc:    "flushing",
+			level:   -1,
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							Smallest: base.ParseInternalKey("h.SET.901"),
+							Largest:  base.ParseInternalKey("j.SET.900"),
+						},
+					},
+					1: []*fileMetadata{
+						{
+							Smallest: base.ParseInternalKey("c.SET.801"),
+							Largest:  base.ParseInternalKey("g.SET.800"),
+						},
+						{
+							Smallest: base.ParseInternalKey("x.SET.701"),
+							Largest:  base.ParseInternalKey("y.SET.700"),
+						},
+					},
+				},
+			},
+			wants: []want{
+				{"m", "n", false},
+			},
+			// Pretend one memtable is being flushed
+			flushing: flushableList{nil},
+		},
+	}
+
+	for _, tc := range testCases {
+		c := compaction{
+			cmp:         DefaultComparer.Compare,
+			version:     &tc.version,
+			startLevel:  tc.level,
+			outputLevel: tc.level + 1,
+			smallest:    base.ParseInternalKey("a.SET.0"),
+			largest:     base.ParseInternalKey("z.SET.0"),
+			flushing:    tc.flushing,
+		}
+		c.setupInuseKeyRanges()
+		for _, w := range tc.wants {
+			if got := c.elideRangeTombstone([]byte(w.key), []byte(w.endKey)); got != w.expected {
+				t.Errorf("%s: keys=%q-%q: got %v, want %v", tc.desc, w.key, w.endKey, got, w.expected)
+			}
+		}
+	}
+}
+
 func TestCompaction(t *testing.T) {
 	const memTableSize = 10000
 	// Tuned so that 2 values can reside in the memtable before a flush, but a

@@ -546,7 +546,7 @@ func (c *compaction) elideTombstone(key []byte) bool {
 // pairs at c.outputLevel+1 or higher that possibly overlap the specified
 // tombstone.
 func (c *compaction) elideRangeTombstone(start, end []byte) bool {
-	if c.disableRangeTombstoneElision {
+	if c.disableRangeTombstoneElision || len(c.flushing) != 0 {
 		return false
 	}
 
