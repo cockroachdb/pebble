@@ -58,6 +58,8 @@ del-range a c
 
 flush
 ----
+0:
+  000005:[a#2,RANGEDEL-c#72057594037927935,RANGEDEL]
 
 reset
 ----
