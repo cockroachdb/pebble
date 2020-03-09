@@ -504,18 +504,6 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 // looking for an sstable which overlaps the bounds of the compaction at a
 // lower level in the LSM.
 func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
-	if len(c.flushing) != 0 {
-		// TODO(peter): we disable zeroing of seqnums during flushing to match
-		// RocksDB behavior and to avoid generating overlapping sstables during
-		// DB.replayWAL. When replaying WAL files at startup, we flush after each
-		// WAL is replayed building up a single version edit that is
-		// applied. Because we don't apply the version edit after each flush, this
-		// code doesn't know that L0 contains files and zeroing of seqnums should
-		// be disabled. That is fixable, but it seems safer to just match the
-		// RocksDB behavior for now.
-		return false
-	}
-
 	return c.elideRangeTombstone(c.smallest.UserKey, c.largest.UserKey)
 }
 
@@ -546,7 +534,24 @@ func (c *compaction) elideTombstone(key []byte) bool {
 // pairs at c.outputLevel+1 or higher that possibly overlap the specified
 // tombstone.
 func (c *compaction) elideRangeTombstone(start, end []byte) bool {
-	if c.disableRangeTombstoneElision {
+	// Disable range tombstone elision if the testing knob for that is enabled,
+	// or if we are flushing memtables. The latter requirement is due to
+	// inuseKeyRanges not accounting for key ranges in other memtables that are
+	// being flushed in the same compaction. It's possible for a range tombstone
+	// in one memtable to overlap keys in a preceding memtable in c.flushing.
+	//
+	// This function is also used in allowZeroSeqNum, so disabling elision of
+	// range tombstones also disables zeroing of SeqNums.
+	//
+	// TODO(peter): we disable zeroing of seqnums during flushing to match
+	// RocksDB behavior and to avoid generating overlapping sstables during
+	// DB.replayWAL. When replaying WAL files at startup, we flush after each
+	// WAL is replayed building up a single version edit that is
+	// applied. Because we don't apply the version edit after each flush, this
+	// code doesn't know that L0 contains files and zeroing of seqnums should
+	// be disabled. That is fixable, but it seems safer to just match the
+	// RocksDB behavior for now.
+	if c.disableRangeTombstoneElision || len(c.flushing) != 0 {
 		return false
 	}
 
