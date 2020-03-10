@@ -255,7 +255,7 @@ func TestEventListener(t *testing.T) {
 	})
 }
 
-func TestWriteStallEvents(t *testing.T) {
+func XTestWriteStallEvents(t *testing.T) {
 	const flushCount = 10
 	const writeStallEnd = "write stall ending"
 

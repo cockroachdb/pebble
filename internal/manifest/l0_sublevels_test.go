@@ -14,7 +14,7 @@ import (
 
 /*
 
-l0SubLevels:
+L0SubLevels:
 file count: 609, sublevels: 11, intervals: 1218, flush keys: 379
 0.10: file count: 2, bytes: 3775993, width (mean, max): 3, 4, interval range: [436, 442]
 0.9: file count: 54, bytes: 151465577, width (mean, max): 3, 7, interval range: [3, 444]
@@ -170,7 +170,7 @@ func readManifest(filename string) (*Version, error) {
 		}
 		var bve BulkVersionEdit
 		bve.Accumulate(&ve)
-		if v, _, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter); err != nil {
+		if v, _, err = bve.Apply(v, base.DefaultComparer.Compare, DefaultLogger, base.DefaultFormatter); err != nil {
 			return nil, err
 		}
 	}
@@ -182,26 +182,17 @@ func TestL0SubLevels_LargeImportL0(t *testing.T) {
 	v, err := readManifest("testdata/MANIFEST_import")
 	require.NoError(t, err)
 
-	subLevels := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, 5<<20)
-	fmt.Printf("l0SubLevels:\n%s\n\n", subLevels)
+	subLevels := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, 5<<20)
+	fmt.Printf("L0SubLevels:\n%s\n\n", subLevels)
 
 	for i := 0; ; i++ {
-		c := subLevels.PickBaseCompaction(2)
+		c := subLevels.PickBaseCompaction(2, nil)
 		if c == nil {
 			break
 		}
-		minInterval := math.MaxInt32
-		maxInterval := 0
-		for _, f := range c.files {
-			if f.minIntervalIndex < minInterval {
-				minInterval = f.minIntervalIndex
-			}
-			if f.maxIntervalIndex > maxInterval {
-				maxInterval = f.maxIntervalIndex
-			}
-		}
 		fmt.Printf("%d: base compaction: filecount: %d, bytes: %d, interval: [%d, %d], seed depth: %d\n",
-			i, len(c.files), c.fileBytes, minInterval, maxInterval, c.seedIntervalStackDepthReduction)
+			i, len(c.Files), c.fileBytes, c.minIntervalIndex, c.maxIntervalIndex, c.seedIntervalStackDepthReduction)
+		subLevels.UpdateStateForStartedCompaction(c, true)
 	}
 
 	for i := 0; ; i++ {
@@ -209,18 +200,9 @@ func TestL0SubLevels_LargeImportL0(t *testing.T) {
 		if c == nil {
 			break
 		}
-		minInterval := math.MaxInt32
-		maxInterval := 0
-		for _, f := range c.files {
-			if f.minIntervalIndex < minInterval {
-				minInterval = f.minIntervalIndex
-			}
-			if f.maxIntervalIndex > maxInterval {
-				maxInterval = f.maxIntervalIndex
-			}
-		}
 		fmt.Printf("%d: intra-L0 compaction: filecount: %d, bytes: %d, interval: [%d, %d], seed depth: %d\n",
-			i, len(c.files), c.fileBytes, minInterval, maxInterval, c.seedIntervalStackDepthReduction)
+			i, len(c.Files), c.fileBytes, c.minIntervalIndex, c.maxIntervalIndex, c.seedIntervalStackDepthReduction)
+		subLevels.UpdateStateForStartedCompaction(c, false)
 	}
 }
 
@@ -231,7 +213,7 @@ func BenchmarkL0SubLevelsInit(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, 5<<20)
+		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, 5<<20)
 		if sl == nil {
 			panic("bug")
 		}
@@ -245,11 +227,11 @@ func BenchmarkL0SubLevelsInitAndPick(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, 5<<20)
+		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, 5<<20)
 		if sl == nil {
 			panic("bug")
 		}
-		c := sl.PickBaseCompaction(2)
+		c := sl.PickBaseCompaction(2, nil)
 		if c == nil {
 			panic("bug")
 		}

@@ -460,7 +460,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 // are no longer referenced by the returned Version, but cannot be deleted from
 // disk as they are still in use by the incoming Version.
 func (b *BulkVersionEdit) Apply(
-	curr *Version, cmp Compare, format base.Formatter,
+	curr *Version, cmp Compare, logger Logger, format base.Formatter,
 ) (_ *Version, zombies map[uint64]uint64, _ error) {
 	addZombie := func(fileNum, size uint64) {
 		if zombies == nil {
@@ -487,6 +487,7 @@ func (b *BulkVersionEdit) Apply(
 			v.Files[level] = files
 			if level == 0 {
 				v.L0Sublevels = curr.L0Sublevels
+				v.L0SubLevels = NewL0SubLevels(v.Files[0], cmp, logger, 40<<20)
 			}
 			// We still have to bump the ref count for all files.
 			for i := range files {
@@ -541,12 +542,10 @@ func (b *BulkVersionEdit) Apply(
 				}
 			}
 			SortBySeqNum(v.Files[level])
-			v.InitL0Sublevels(cmp)
-			/*
-				if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
-					return nil, nil, fmt.Errorf("pebble: internal error: %v", err)
-				}
-			*/
+			v.InitL0Sublevels(cmp, logger)
+			if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
+				return nil, nil, fmt.Errorf("pebble: internal error: %v", err)
+			}
 			continue
 		}
 

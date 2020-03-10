@@ -3,7 +3,9 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"math"
+	"os"
 	"sort"
 	"strings"
 
@@ -89,11 +91,6 @@ type fileMeta struct {
 	index int
 	meta  *FileMetadata
 
-	// TODO(sbhola): move these two fields to FileMetadata. The code
-	// below is incomplete in that it doesn't initialize these fields.
-	isBaseCompacting    bool
-	isIntraL0Compacting bool
-
 	// Const after initialization.
 	subLevel int
 	// Interval is inclusive on both sides.
@@ -132,9 +129,9 @@ type fileInterval struct {
 	// such a compaction it may have a file that extends into that interval
 	// and prevents compaction. To reduce the number of failed candidate
 	// intervals, the following bit encodes whether any interval in
-	// [filesMinIntervalIndex, filesMaxIntervalIndex] has isBaseCompacting set
+	// [internalFilesMinIntervalIndex, internalFilesMaxIntervalIndex] has isBaseCompacting set
 	// to true. Note that this is a pessimistic filter: the file that widened
-	// [filesMinIntervalIndex, filesMaxIntervalIndex] may be at a high
+	// [internalFilesMinIntervalIndex, internalFilesMaxIntervalIndex] may be at a high
 	// sub-level and may not need to be included in the compaction.
 	intervalRangeIsBaseCompacting bool
 
@@ -161,8 +158,30 @@ type fileInterval struct {
 	fileBytes uint64 // interpolated
 }
 
-type l0SubLevels struct {
-	cmp Compare
+// Same as pebble.Logger, to break cycle.
+type Logger interface {
+	Infof(format string, args ...interface{})
+	Fatalf(format string, args ...interface{})
+}
+type defaultLogger struct{}
+
+// DefaultLogger logs to the Go stdlib logs.
+var DefaultLogger defaultLogger
+
+// Infof implements the Logger.Infof interface.
+func (defaultLogger) Infof(format string, args ...interface{}) {
+	_ = log.Output(2, fmt.Sprintf(format, args...))
+}
+
+// Fatalf implements the Logger.Fatalf interface.
+func (defaultLogger) Fatalf(format string, args ...interface{}) {
+	_ = log.Output(2, fmt.Sprintf(format, args...))
+	os.Exit(1)
+}
+
+type L0SubLevels struct {
+	cmp    Compare
+	logger Logger
 
 	// Oldest to youngest.
 	filesByAge []*fileMeta
@@ -176,6 +195,9 @@ type l0SubLevels struct {
 
 	// Keys to break flushes at.
 	flushSplitUserKeys [][]byte
+
+	// for debugging
+	CompactingFilesAtCreation []*FileMetadata
 }
 
 func insertIntoSubLevel(files []*fileMeta, f *fileMeta) []*fileMeta {
@@ -192,14 +214,14 @@ func insertIntoSubLevel(files []*fileMeta, f *fileMeta) []*fileMeta {
 	return files
 }
 
-func NewL0SubLevels(files []*FileMetadata, cmp Compare, flushSplitMaxBytes uint64) *l0SubLevels {
-	s := &l0SubLevels{cmp: cmp}
+func NewL0SubLevels(
+	files []*FileMetadata, cmp Compare, logger Logger, flushSplitMaxBytes uint64,
+) *L0SubLevels {
+	s := &L0SubLevels{cmp: cmp, logger: logger}
 	s.filesByAge = make([]*fileMeta, len(files))
 	keys := make([]intervalKey, 0, 2*len(files))
 	for i := range files {
 		s.filesByAge[i] = &fileMeta{index: i, meta: files[i]}
-		// TODO: incorrect hack
-		// s.filesByAge[i].isBaseCompacting = files[i].Compacting
 		keys = append(keys, intervalKey{key: files[i].Smallest})
 		keys = append(keys, intervalKey{key: files[i].Largest, isLargest: true})
 	}
@@ -221,17 +243,24 @@ func NewL0SubLevels(files []*FileMetadata, cmp Compare, flushSplitMaxBytes uint6
 			return intervalKeyCompare(cmp, intervalKey{key: f.meta.Smallest}, keys[index]) <= 0
 		})
 		if f.minIntervalIndex == len(keys) {
-			panic("bug")
+			s.logger.Fatalf("bug")
 		}
 		f.maxIntervalIndex = sort.Search(len(keys), func(index int) bool {
 			return intervalKeyCompare(
 				cmp, intervalKey{key: f.meta.Largest, isLargest: true}, keys[index]) <= 0
 		})
 		if f.maxIntervalIndex == len(keys) {
-			panic("bug")
+			s.logger.Fatalf("bug")
 		}
+		f.maxIntervalIndex--
 		interpolatedBytes := f.meta.Size / uint64(f.maxIntervalIndex-f.minIntervalIndex+1)
 		subLevel := 0
+		if f.meta.Compacting {
+			if !f.meta.IsBaseCompacting && !f.meta.IsIntraL0Compacting {
+				s.logger.Fatalf("file %d is compacting but not marked as base or intra-l0", f.meta.FileNum)
+			}
+			s.CompactingFilesAtCreation = append(s.CompactingFilesAtCreation, f.meta)
+		}
 		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 			interval := &s.orderedIntervals[i]
 			if len(interval.subLevelAndFileList) > 0 &&
@@ -239,15 +268,18 @@ func NewL0SubLevels(files []*FileMetadata, cmp Compare, flushSplitMaxBytes uint6
 				subLevel = interval.subLevelAndFileList[len(interval.subLevelAndFileList)-1].subLevel + 1
 			}
 			s.orderedIntervals[i].fileCount++
-			if f.isBaseCompacting {
+			if f.meta.IsBaseCompacting {
 				interval.isBaseCompacting = true
 				interval.compactingFileCount++
 				interval.topOfStackNonCompactingFileCount = 0
 				intervalRangeIsBaseCompacting[i] = true
-			} else if f.isIntraL0Compacting {
+			} else if f.meta.IsIntraL0Compacting {
 				interval.compactingFileCount++
 				interval.topOfStackNonCompactingFileCount = 0
 			} else {
+				if f.meta.Compacting {
+					s.logger.Fatalf("Compacting, but not intra-L0 or base: %d", f.meta.FileNum)
+				}
 				interval.topOfStackNonCompactingFileCount++
 			}
 			interval.fileBytes += interpolatedBytes
@@ -265,7 +297,7 @@ func NewL0SubLevels(files []*FileMetadata, cmp Compare, flushSplitMaxBytes uint6
 		}
 		f.subLevel = subLevel
 		if subLevel > len(s.subLevels) {
-			panic("bug")
+			s.logger.Fatalf("bug")
 		}
 		if subLevel == len(s.subLevels) {
 			s.subLevels = append(s.subLevels, []*fileMeta{f})
@@ -294,13 +326,15 @@ func NewL0SubLevels(files []*FileMetadata, cmp Compare, flushSplitMaxBytes uint6
 		}
 		cumulativeBytes += s.orderedIntervals[i].fileBytes
 	}
+	// fmt.Printf("Sublevels: %s\n", s)
 	return s
 }
 
-func (s *l0SubLevels) String() string {
+func (s *L0SubLevels) String() string {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "file count: %d, sublevels: %d, intervals: %d, flush keys: %d\n",
 		len(s.filesByAge), len(s.subLevels), len(s.orderedIntervals), len(s.flushSplitUserKeys))
+	numCompactingFiles := 0
 	for i := len(s.subLevels) - 1; i >= 0; i-- {
 		maxIntervals := 0
 		sumIntervals := 0
@@ -312,16 +346,45 @@ func (s *l0SubLevels) String() string {
 			}
 			sumIntervals += intervals
 			totalBytes += f.meta.Size
+			if f.meta.Compacting || f.meta.IsBaseCompacting || f.meta.IsIntraL0Compacting {
+				numCompactingFiles++
+			}
+			if len(s.filesByAge) > 50 && intervals*3 > len(s.orderedIntervals) {
+				fmt.Fprintf(&buf, "wide file: %d, [%d, %d]\n", f.meta.FileNum, f.minIntervalIndex, f.maxIntervalIndex)
+			}
 		}
 		fmt.Fprintf(&buf, "0.%d: file count: %d, bytes: %d, width (mean, max): %d, %d, interval range: [%d, %d]\n",
 			i, len(s.subLevels[i]), totalBytes, sumIntervals/len(s.subLevels[i]), maxIntervals, s.subLevels[i][0].minIntervalIndex,
 			s.subLevels[i][len(s.subLevels[i])-1].maxIntervalIndex)
 	}
+	lastCompactingIntervalStart := -1
+	fmt.Fprintf(&buf, "compacting file count: %d, base compacting intervals: ", numCompactingFiles)
+	i := 0
+	for ; i < len(s.orderedIntervals); i++ {
+		interval := &s.orderedIntervals[i]
+		if interval.fileCount == 0 {
+			continue
+		}
+		if !interval.isBaseCompacting {
+			if lastCompactingIntervalStart != -1 {
+				fmt.Fprintf(&buf, "[%d, %d], ", lastCompactingIntervalStart, i-1)
+			}
+			lastCompactingIntervalStart = -1
+		} else {
+			if lastCompactingIntervalStart == -1 {
+				lastCompactingIntervalStart = i
+			}
+		}
+	}
+	if lastCompactingIntervalStart != -1 {
+		fmt.Fprintf(&buf, "[%d, %d], ", lastCompactingIntervalStart, i-1)
+	}
+	fmt.Fprintln(&buf, "")
 	return buf.String()
 }
 
 // For stats etc.
-func (s *l0SubLevels) ReadAmplification() int {
+func (s *L0SubLevels) ReadAmplification() int {
 	amp := 0
 	for i := range s.orderedIntervals {
 		interval := &s.orderedIntervals[i]
@@ -337,14 +400,14 @@ func (s *l0SubLevels) ReadAmplification() int {
 // last key to include in the prev sstable). These are user keys so that
 // range tombstones can be properly truncated (untruncated range tombstones
 // are not permitted for L0 files).
-func (s *l0SubLevels) FlushSplitKeys() [][]byte {
+func (s *L0SubLevels) FlushSplitKeys() [][]byte {
 	return s.flushSplitUserKeys
 }
 
 // Used by compaction picker to decide compaction score for L0. There is no scoring for
 // intra-L0 compaction -- they only run if L0 score is high but unable to pick an
 // L0 => Lbase compaction.
-func (s *l0SubLevels) maxDepthAfterOngoingCompactions() int {
+func (s *L0SubLevels) MaxDepthAfterOngoingCompactions() int {
 	depth := 0
 	for i := range s.orderedIntervals {
 		interval := &s.orderedIntervals[i]
@@ -357,7 +420,7 @@ func (s *l0SubLevels) maxDepthAfterOngoingCompactions() int {
 }
 
 // Only for temporary debugging in the absence of proper tests.
-func (s *l0SubLevels) checkCompaction(c *level0CompactionFiles, isBase bool) {
+func (s *L0SubLevels) checkCompaction(c *Level0CompactionFiles, isBase bool) {
 	includedFiles := make([]bool, len(s.filesByAge))
 	fileIntervalsByLevel := make([]struct {
 		min int
@@ -383,7 +446,7 @@ func (s *l0SubLevels) checkCompaction(c *level0CompactionFiles, isBase bool) {
 			return level == len(s.subLevels)
 		}
 	}
-	for _, f := range c.files {
+	for _, f := range c.Files {
 		if f.minIntervalIndex < fileIntervalsByLevel[f.subLevel].min {
 			fileIntervalsByLevel[f.subLevel].min = f.minIntervalIndex
 		}
@@ -420,10 +483,14 @@ func (s *l0SubLevels) checkCompaction(c *level0CompactionFiles, isBase bool) {
 			if f.minIntervalIndex > max {
 				break
 			}
+			if c.isIntraL0 && f.meta.LargestSeqNum >= c.earliestUnflushedSeqNum {
+				continue
+			}
 			if !includedFiles[f.index] {
-				str := fmt.Sprintf("bug: level %d, sl index %d, f.index %d, min %d, max %d, f.min %d, f.max %d",
-					level, index, f.index, min, max, f.minIntervalIndex, f.maxIntervalIndex)
-				panic(str)
+				str := fmt.Sprintf("bug %t: level %d, sl index %d, f.index %d, min %d, max %d, f.min %d, f.max %d, filenum: %d, isCompacting: %t\n%s",
+					c.isIntraL0, level, index, f.index, min, max, f.minIntervalIndex, f.maxIntervalIndex, f.meta.FileNum, f.meta.Compacting, s)
+
+				s.logger.Fatalf(str)
 			}
 		}
 		// fmt.Printf("checked level: %d, [%d, %d], files [%d, %d)\n", level, min, max,
@@ -431,18 +498,42 @@ func (s *l0SubLevels) checkCompaction(c *level0CompactionFiles, isBase bool) {
 	}
 }
 
-func (s *l0SubLevels) updateStateForStartedCompaction(c *level0CompactionFiles, isBase bool) {
-	s.checkCompaction(c, isBase)
-	compactingInterval := make(map[int]struct{})
-	for _, f := range c.files {
-		if isBase {
-			f.isBaseCompacting = true
-		} else {
-			f.isIntraL0Compacting = true
+func (s *L0SubLevels) UpdateStateForManualCompaction(files []*FileMetadata) {
+	i := 0
+	j := 0
+	c := Level0CompactionFiles{
+		Files:         make([]*fileMeta, 0, len(files)),
+		FilesIncluded: make([]bool, len(s.filesByAge)),
+	}
+	for ; i < len(files) && j < len(s.filesByAge); j++ {
+		f1 := files[i]
+		f2 := s.filesByAge[j].meta
+		if f1 == f2 {
+			c.FilesIncluded[j] = true
+			c.Files = append(c.Files, s.filesByAge[j])
+			i++
 		}
+	}
+	if i != len(files) {
+		s.logger.Fatalf("bug")
+	}
+	s.UpdateStateForStartedCompaction(&c, true)
+}
+
+func (s *L0SubLevels) UpdateStateForStartedCompaction(c *Level0CompactionFiles, isBase bool) {
+	s.checkCompaction(c, isBase)
+	for _, f := range c.Files {
+		if f.meta.Compacting {
+			s.logger.Fatalf("L9: %06d already being compacted", f.meta.FileNum)
+		}
+		if isBase {
+			f.meta.IsBaseCompacting = true
+		} else {
+			f.meta.IsIntraL0Compacting = true
+		}
+		f.meta.Compacting = true
 		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 			interval := &s.orderedIntervals[i]
-			compactingInterval[i] = struct{}{}
 			if isBase {
 				interval.isBaseCompacting = true
 			}
@@ -450,35 +541,49 @@ func (s *l0SubLevels) updateStateForStartedCompaction(c *level0CompactionFiles, 
 		}
 	}
 	if isBase {
-		for i, _ := range compactingInterval {
+		for i := c.minIntervalIndex; i <= c.maxIntervalIndex; i++ {
 			interval := &s.orderedIntervals[i]
 			for j := interval.filesMinIntervalIndex; j <= interval.filesMaxIntervalIndex; j++ {
 				s.orderedIntervals[j].intervalRangeIsBaseCompacting = true
 			}
+			// If there is no intra-L0 for this interval, the compacting files
+			// may have encroached on the topOfStackNonCompactingFileCount.
+			if interval.compactingFileCount+interval.topOfStackNonCompactingFileCount > interval.fileCount {
+				interval.topOfStackNonCompactingFileCount = interval.fileCount - interval.compactingFileCount
+			}
 		}
 	} else {
-		for i, _ := range compactingInterval {
+		for i := c.minIntervalIndex; i <= c.maxIntervalIndex; i++ {
 			interval := &s.orderedIntervals[i]
 			interval.topOfStackNonCompactingFileCount = 0
 			for j := len(interval.subLevelAndFileList) - 1; j >= 0; j-- {
 				fileIndex := interval.subLevelAndFileList[j].fileIndex
-				if s.filesByAge[fileIndex].isIntraL0Compacting {
+				if s.filesByAge[fileIndex].meta.IsIntraL0Compacting {
 					break
 				}
 				interval.topOfStackNonCompactingFileCount++
 			}
 		}
 	}
+	s.logger.Infof("started L0 compaction (is-base: %t). Sublevels:\n%s\n", isBase, s)
 }
 
-type level0CompactionFiles struct {
-	files                           []*fileMeta
+type Level0CompactionFiles struct {
+	Files                           []*fileMeta
+	FilesIncluded                   []bool
 	seedIntervalStackDepthReduction int
+	seedIntervalExtremeLevel        int
 	fileBytes                       uint64
+	minIntervalIndex                int
+	maxIntervalIndex                int
+
+	// Only for intra-L0 compaction
+	isIntraL0               bool
+	earliestUnflushedSeqNum uint64
 
 	// For internal use.
-	filesMinIntervalIndex int
-	filesMaxIntervalIndex int
+	internalFilesMinIntervalIndex int
+	internalFilesMaxIntervalIndex int
 }
 
 // Helper to order intervals being considered for compaction.
@@ -549,7 +654,9 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 // we can probably generalize the code below for more code sharing between
 // the two kinds of compactions.
 
-func (s *l0SubLevels) PickBaseCompaction(minCompactionDepth int) *level0CompactionFiles {
+func (s *L0SubLevels) PickBaseCompaction(
+	minCompactionDepth int, baseFiles []*FileMetadata,
+) *Level0CompactionFiles {
 	// We consider intervals in a greedy manner in the following order:
 	// - pool1: Contains intervals that are unlikely to be blocked due
 	//   to ongoing L0 => Lbase compactions. These are the ones with
@@ -581,6 +688,7 @@ func (s *l0SubLevels) PickBaseCompaction(minCompactionDepth int) *level0Compacti
 	// are likely to choose the same seed file. Again this is just
 	// to reduce wasted work.
 	consideredIntervals := make([]bool, len(s.orderedIntervals))
+	countFailedDueToOngoingBase := 0
 	for _, pool := range [2][]intervalAndScore{pool1, pool2} {
 		for _, interval := range pool {
 			if consideredIntervals[interval.interval.index] {
@@ -598,14 +706,48 @@ func (s *l0SubLevels) PickBaseCompaction(minCompactionDepth int) *level0Compacti
 				// viable for compaction.
 				consideredIntervals[i] = true
 			}
-			if f.isBaseCompacting {
-				panic("")
+			if f.meta.IsBaseCompacting {
+				s.logger.Fatalf("")
 			}
-			if f.isIntraL0Compacting {
+			if f.meta.IsIntraL0Compacting {
 				continue
 			}
 			c := s.baseCompactionUsingSeed(f, interval.interval.index, minCompactionDepth)
 			if c != nil {
+				firstBaseIndex := sort.Search(len(baseFiles), func(i int) bool {
+					// An interval starting at ImmediateSuccessor(key) can never be the
+					// first interval of a compaction since no file can start at that
+					// interval.
+					return base.InternalCompare(
+						s.cmp, baseFiles[i].Largest, s.orderedIntervals[c.minIntervalIndex].startKey.key) >= 0
+				})
+				// Exclusive
+				lastBaseIndex := sort.Search(len(baseFiles), func(i int) bool {
+					cmp := base.InternalCompare(
+						s.cmp, baseFiles[i].Smallest, s.orderedIntervals[c.maxIntervalIndex+1].startKey.key)
+					// Compaction is ending at exclusive bound of c.maxIntervalIndex+1
+					if cmp > 0 || (cmp == 0 && !s.orderedIntervals[c.maxIntervalIndex+1].startKey.isLargest) {
+						return true
+					}
+					return false
+				})
+				baseCompacting := false
+				for j := firstBaseIndex; j < lastBaseIndex; j++ {
+					if baseFiles[j].Compacting {
+						baseCompacting = true
+						break
+					}
+				}
+				if baseCompacting {
+					countFailedDueToOngoingBase++
+					continue
+				}
+				var buf strings.Builder
+				for _, slf := range interval.interval.subLevelAndFileList {
+					fmt.Fprintf(&buf, "%d, ", slf.subLevel)
+				}
+				s.logger.Infof("Seed interval for base compaction: %d, sublevels: %s, ongoing-base: %d",
+					interval.interval.index, buf.String(), countFailedDueToOngoingBase)
 				return c
 			}
 		}
@@ -613,14 +755,17 @@ func (s *l0SubLevels) PickBaseCompaction(minCompactionDepth int) *level0Compacti
 	return nil
 }
 
-func (s *l0SubLevels) baseCompactionUsingSeed(
+func (s *L0SubLevels) baseCompactionUsingSeed(
 	f *fileMeta, intervalIndex int, minCompactionDepth int,
-) *level0CompactionFiles {
-	cFiles := &level0CompactionFiles{
-		files:                           []*fileMeta{f},
-		filesMinIntervalIndex:           f.minIntervalIndex,
-		filesMaxIntervalIndex:           f.maxIntervalIndex,
+) *Level0CompactionFiles {
+	cFiles := &Level0CompactionFiles{
+		Files:                           []*fileMeta{f},
 		seedIntervalStackDepthReduction: 1,
+		seedIntervalExtremeLevel:        f.subLevel,
+		minIntervalIndex:                f.minIntervalIndex,
+		maxIntervalIndex:                f.maxIntervalIndex,
+		internalFilesMinIntervalIndex:   f.minIntervalIndex,
+		internalFilesMaxIntervalIndex:   f.maxIntervalIndex,
 		fileBytes:                       f.meta.Size,
 	}
 	sl := f.subLevel
@@ -660,7 +805,7 @@ func (s *l0SubLevels) baseCompactionUsingSeed(
 	// successful candidate. Currently the code keeps adding until it can't
 	// add more, but we could optionally stop based on
 	// levelOCompactionFiles.fileBytes being too large.
-	lastCandidate := &level0CompactionFiles{}
+	lastCandidate := &Level0CompactionFiles{}
 	*lastCandidate = *cFiles
 	slfList := s.orderedIntervals[intervalIndex].subLevelAndFileList
 	slIndex := 1
@@ -669,12 +814,19 @@ func (s *l0SubLevels) baseCompactionUsingSeed(
 		f2 := s.filesByAge[slfList[slIndex].fileIndex]
 		fileIncluded[f2.index] = true
 		cFiles.seedIntervalStackDepthReduction++
+		cFiles.seedIntervalExtremeLevel = sl
 		cFiles.fileBytes += f2.meta.Size
-		cFiles.files = append(cFiles.files, f2)
+		cFiles.Files = append(cFiles.Files, f2)
 		// Reset the min and max to that of this file. See the triangular
 		// shape comment above on why this is correct.
-		cFiles.filesMinIntervalIndex = f2.minIntervalIndex
-		cFiles.filesMaxIntervalIndex = f2.maxIntervalIndex
+		cFiles.internalFilesMinIntervalIndex = f2.minIntervalIndex
+		cFiles.internalFilesMaxIntervalIndex = f2.maxIntervalIndex
+		if f2.minIntervalIndex < cFiles.minIntervalIndex {
+			cFiles.minIntervalIndex = f2.minIntervalIndex
+		}
+		if f2.maxIntervalIndex > cFiles.maxIntervalIndex {
+			cFiles.maxIntervalIndex = f2.maxIntervalIndex
+		}
 		done := false
 		for currLevel := sl - 1; currLevel >= 0; currLevel-- {
 			if !s.extendFiles(currLevel, math.MaxUint64, cFiles, fileIncluded) {
@@ -686,52 +838,65 @@ func (s *l0SubLevels) baseCompactionUsingSeed(
 		if done {
 			break
 		}
-		if cFiles.seedIntervalStackDepthReduction >= minCompactionDepth &&
-			cFiles.fileBytes > 100<<20 {
+		if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth &&
+			cFiles.fileBytes > 100<<20 && (float64(cFiles.fileBytes)/float64(lastCandidate.fileBytes) > 1.5) {
 			break
 		}
 		*lastCandidate = *cFiles
 	}
 	if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth {
-		s.updateStateForStartedCompaction(lastCandidate, true)
+		// s.updateStateForStartedCompaction(lastCandidate, true)
+		for i := range fileIncluded {
+			fileIncluded[i] = false
+		}
+		for _, f := range lastCandidate.Files {
+			fileIncluded[f.index] = true
+		}
+		lastCandidate.FilesIncluded = fileIncluded
 		return lastCandidate
 	}
 	return nil
 }
 
-func (s *l0SubLevels) extendFiles(
-	sl int, earliestUnflushdSeqNum uint64, cFiles *level0CompactionFiles, fileIncluded []bool,
+func (s *L0SubLevels) extendFiles(
+	sl int, earliestUnflushdSeqNum uint64, cFiles *Level0CompactionFiles, fileIncluded []bool,
 ) bool {
 	index := sort.Search(len(s.subLevels[sl]), func(i int) bool {
-		return s.subLevels[sl][i].maxIntervalIndex >= cFiles.filesMinIntervalIndex
+		return s.subLevels[sl][i].maxIntervalIndex >= cFiles.internalFilesMinIntervalIndex
 	})
 	for ; index < len(s.subLevels[sl]); index++ {
 		f := s.subLevels[sl][index]
-		if f.minIntervalIndex > cFiles.filesMaxIntervalIndex {
+		if f.minIntervalIndex > cFiles.internalFilesMaxIntervalIndex {
 			break
 		}
 		if fileIncluded[f.index] || f.meta.LargestSeqNum >= earliestUnflushdSeqNum {
 			continue
 		}
-		if f.isBaseCompacting || f.isIntraL0Compacting {
+		if f.meta.IsBaseCompacting || f.meta.IsIntraL0Compacting {
 			return false
 		}
 		fileIncluded[f.index] = true
-		cFiles.files = append(cFiles.files, f)
+		cFiles.Files = append(cFiles.Files, f)
 		cFiles.fileBytes += f.meta.Size
-		if f.minIntervalIndex < cFiles.filesMinIntervalIndex {
-			cFiles.filesMinIntervalIndex = f.minIntervalIndex
+		if f.minIntervalIndex < cFiles.internalFilesMinIntervalIndex {
+			cFiles.internalFilesMinIntervalIndex = f.minIntervalIndex
 		}
-		if f.maxIntervalIndex > cFiles.filesMaxIntervalIndex {
-			cFiles.filesMaxIntervalIndex = f.maxIntervalIndex
+		if f.maxIntervalIndex > cFiles.internalFilesMaxIntervalIndex {
+			cFiles.internalFilesMaxIntervalIndex = f.maxIntervalIndex
+		}
+		if f.minIntervalIndex < cFiles.minIntervalIndex {
+			cFiles.minIntervalIndex = f.minIntervalIndex
+		}
+		if f.maxIntervalIndex > cFiles.maxIntervalIndex {
+			cFiles.maxIntervalIndex = f.maxIntervalIndex
 		}
 	}
 	return true
 }
 
-func (s *l0SubLevels) PickIntraL0Compaction(
+func (s *L0SubLevels) PickIntraL0Compaction(
 	earliestUnflushedSeqNum uint64, minCompactionDepth int,
-) *level0CompactionFiles {
+) *Level0CompactionFiles {
 	var pool []intervalAndScore
 	for i := range s.orderedIntervals {
 		interval := &s.orderedIntervals[i]
@@ -760,6 +925,9 @@ func (s *l0SubLevels) PickIntraL0Compaction(
 		for ; slIndex >= 0; slIndex-- {
 			slf := interval.interval.subLevelAndFileList[slIndex]
 			f = s.filesByAge[slf.fileIndex]
+			if f.meta.Compacting {
+				s.logger.Fatalf("file %d being considered for intra-L0 should not be compacting %d", f.meta.FileNum)
+			}
 			for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 				consideredIntervals[i] = true
 			}
@@ -777,34 +945,45 @@ func (s *l0SubLevels) PickIntraL0Compaction(
 			// Can't use this interval.
 			continue
 		}
-		if f.isBaseCompacting || f.isIntraL0Compacting {
+		if f.meta.IsBaseCompacting || f.meta.IsIntraL0Compacting {
 			// Since adjustedNonCompactingFileCount > 0 this file must not
 			// be compacting.
-			panic("bug")
+			s.logger.Fatalf("file %d being considered for intra-L0 should not be compacting %d", f.meta.FileNum)
 		}
 		// We have a seed file.
 		c := s.intraL0CompactionUsingSeed(
 			f, interval.interval.index, earliestUnflushedSeqNum, minCompactionDepth)
 		if c != nil {
+			var buf strings.Builder
+			for _, slf := range interval.interval.subLevelAndFileList {
+				fmt.Fprintf(&buf, "%d, ", slf.subLevel)
+			}
+			s.logger.Infof("Seed interval for intra-L0 compaction: %d, sublevels: %s",
+				interval.interval.index, buf.String())
 			return c
 		}
 	}
 	return nil
 }
 
-func (s *l0SubLevels) intraL0CompactionUsingSeed(
+func (s *L0SubLevels) intraL0CompactionUsingSeed(
 	f *fileMeta, intervalIndex int, earliestUnflushedSeqNum uint64, minCompactionDepth int,
-) *level0CompactionFiles {
+) *Level0CompactionFiles {
 	// We know that all the files that overlap with intervalIndex have
 	// LargestSeqNum < earliestUnflushedSeqNum, but for other intervals
 	// we need to exclude files >= earliestUnflushedSeqNum
 
-	cFiles := &level0CompactionFiles{
-		files:                           []*fileMeta{f},
-		filesMinIntervalIndex:           f.minIntervalIndex,
-		filesMaxIntervalIndex:           f.maxIntervalIndex,
+	cFiles := &Level0CompactionFiles{
+		Files:                           []*fileMeta{f},
 		seedIntervalStackDepthReduction: 1,
+		seedIntervalExtremeLevel:        f.subLevel,
+		minIntervalIndex:                f.minIntervalIndex,
+		maxIntervalIndex:                f.maxIntervalIndex,
+		internalFilesMinIntervalIndex:   f.minIntervalIndex,
+		internalFilesMaxIntervalIndex:   f.maxIntervalIndex,
 		fileBytes:                       f.meta.Size,
+		isIntraL0:                       true,
+		earliestUnflushedSeqNum:         earliestUnflushedSeqNum,
 	}
 	sl := f.subLevel
 	fileIncluded := make([]bool, len(s.filesByAge))
@@ -842,7 +1021,7 @@ func (s *l0SubLevels) intraL0CompactionUsingSeed(
 	// successful candidate. Currently the code keeps adding until it can't
 	// add more, but we could optionally stop based on
 	// levelOCompactionFiles.fileBytes being too large.
-	lastCandidate := &level0CompactionFiles{}
+	lastCandidate := &Level0CompactionFiles{}
 	*lastCandidate = *cFiles
 	slfList := s.orderedIntervals[intervalIndex].subLevelAndFileList
 	slIndex := len(slfList) - 1
@@ -856,14 +1035,24 @@ func (s *l0SubLevels) intraL0CompactionUsingSeed(
 	for ; slIndex >= 0; slIndex-- {
 		sl := slfList[slIndex].subLevel
 		f2 := s.filesByAge[slfList[slIndex].fileIndex]
+		if f2.meta.IsBaseCompacting || f2.meta.IsIntraL0Compacting {
+			break
+		}
 		fileIncluded[f2.index] = true
 		cFiles.seedIntervalStackDepthReduction++
+		cFiles.seedIntervalExtremeLevel = sl
 		cFiles.fileBytes += f2.meta.Size
-		cFiles.files = append(cFiles.files, f2)
+		cFiles.Files = append(cFiles.Files, f2)
 		// Reset the min and max to that of this file. See the triangular
 		// shape comment above on why this is correct.
-		cFiles.filesMinIntervalIndex = f2.minIntervalIndex
-		cFiles.filesMaxIntervalIndex = f2.maxIntervalIndex
+		cFiles.internalFilesMinIntervalIndex = f2.minIntervalIndex
+		cFiles.internalFilesMaxIntervalIndex = f2.maxIntervalIndex
+		if f2.minIntervalIndex < cFiles.minIntervalIndex {
+			cFiles.minIntervalIndex = f2.minIntervalIndex
+		}
+		if f2.maxIntervalIndex > cFiles.maxIntervalIndex {
+			cFiles.maxIntervalIndex = f2.maxIntervalIndex
+		}
 		done := false
 		for currLevel := sl + 1; currLevel < len(s.subLevels); currLevel++ {
 			if !s.extendFiles(currLevel, earliestUnflushedSeqNum, cFiles, fileIncluded) {
@@ -882,8 +1071,199 @@ func (s *l0SubLevels) intraL0CompactionUsingSeed(
 		*lastCandidate = *cFiles
 	}
 	if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth {
-		s.updateStateForStartedCompaction(lastCandidate, false)
+		// s.updateStateForStartedCompaction(lastCandidate, false)
+		for i := range fileIncluded {
+			fileIncluded[i] = false
+		}
+		for _, f := range lastCandidate.Files {
+			fileIncluded[f.index] = true
+		}
+		lastCandidate.FilesIncluded = fileIncluded
+		s.logger.Infof("ExtendL0ForIntraL0Compaction: [%d, %d]\n",
+			lastCandidate.minIntervalIndex, lastCandidate.maxIntervalIndex)
+		s.extendCandidateToRectangle(
+			lastCandidate.minIntervalIndex, lastCandidate.maxIntervalIndex, lastCandidate, false)
 		return lastCandidate
 	}
 	return nil
+}
+
+func (s *L0SubLevels) ExtendL0ForBaseCompactionTo(
+	smallest []byte, largest []byte, candidate *Level0CompactionFiles,
+) bool {
+	firstIntervalIndex := sort.Search(len(s.orderedIntervals), func(i int) bool {
+		return s.cmp(smallest, s.orderedIntervals[i].startKey.key.UserKey) <= 0
+	})
+	// Even if smallest is equal to the start UserKey, the previous interval may
+	// have keys equal to this UserKey
+	if firstIntervalIndex > 0 && s.orderedIntervals[firstIntervalIndex-1].fileCount > 0 {
+		firstIntervalIndex--
+	}
+	lastIntervalIndex := sort.Search(len(s.orderedIntervals), func(i int) bool {
+		return s.cmp(largest, s.orderedIntervals[i].startKey.key.UserKey) < 0
+	})
+	if lastIntervalIndex > 0 {
+		lastIntervalIndex--
+	}
+	s.logger.Infof("ExtendL0ForBaseCompaction: [%d, %d], original: [%d, %d]\n",
+		firstIntervalIndex, lastIntervalIndex, candidate.minIntervalIndex, candidate.maxIntervalIndex)
+	return s.extendCandidateToRectangle(firstIntervalIndex, lastIntervalIndex, candidate, true)
+}
+
+// Best-effort attempt to make the compaction include more files in the rectangle
+// defined by [minIntervalIndex, maxIntervalIndex] on the X axis and bounded on
+// one side of the Y axis by candidate.seeIntervalExtremeLevel (the other side is 0
+// for L0 => Lbase compactions and len(s.subLevels)-1 for intra-L0 compactions).
+// REQUIRES: minIntervalIndex <= candidate.minIntervalIndex
+//           maxIntervalIndex >= candidate.maxIntervalIndex
+func (s *L0SubLevels) extendCandidateToRectangle(
+	minIntervalIndex int, maxIntervalIndex int, candidate *Level0CompactionFiles, isBase bool,
+) bool {
+	var bottomLevel int
+	var increment int
+	var limitReached func(int) bool
+	if isBase {
+		bottomLevel = 0
+		increment = +1
+		limitReached = func(sl int) bool {
+			return sl > candidate.seedIntervalExtremeLevel
+		}
+	} else {
+		bottomLevel = len(s.subLevels) - 1
+		increment = -1
+		limitReached = func(sl int) bool {
+			return sl < candidate.seedIntervalExtremeLevel
+		}
+	}
+	// Stats for files.
+	addedCount := 0
+	extendingOutCount := 0
+	compactingCount := 0
+	// Iterate from the oldest sub-level for L0 => Lbase and youngest
+	// sub-level for intra-L0. The idea here is that anything that can't
+	// be included from that level constrains what can be included from
+	// the next level. This change in constraint is directly incorporated
+	// into minIntervalIndex, maxIntervalIndex.
+	for sl := bottomLevel; !limitReached(sl); sl += increment {
+		files := s.subLevels[sl]
+		// Find the first file that overlaps with minIntervalIndex.
+		index := sort.Search(len(files), func(i int) bool {
+			return minIntervalIndex <= files[i].maxIntervalIndex
+		})
+		// Track the files that are fully within the current constraint
+		// of [minIntervalIndex, maxIntervalIndex].
+		firstIndex := -1
+		lastIndex := -1
+		for ; index < len(files); index++ {
+			f := files[index]
+			if f.minIntervalIndex > maxIntervalIndex {
+				break
+			}
+			include := true
+			// Extends out on the left so can't be included. This narrows
+			// what we can included in the next level.
+			if f.minIntervalIndex < minIntervalIndex {
+				include = false
+				extendingOutCount++
+				minIntervalIndex = f.maxIntervalIndex + 1
+			}
+			// Extends out on the right so can't be included.
+			if f.maxIntervalIndex > maxIntervalIndex {
+				if include {
+					extendingOutCount++
+				}
+				include = false
+				maxIntervalIndex = f.minIntervalIndex - 1
+			}
+			if !include {
+				continue
+			}
+			if firstIndex == -1 {
+				firstIndex = index
+			}
+			lastIndex = index
+		}
+		if minIntervalIndex > maxIntervalIndex {
+			// We excluded files that prevent continuation.
+			break
+		}
+		if firstIndex < 0 {
+			// No files to add in this sub-level.
+			continue
+		}
+		// We have the files in [firstIndex, lastIndex] as potential for
+		// inclusion. Some of these may already have been picked. Some
+		// of them may be already compacting. The latter is tricky since
+		// we have to decide whether to contract minIntervalIndex or
+		// maxIntervalIndex when we encounter an already compacting file.
+		// We pick the longest sequence between firstIndex
+		// and lastIndex of non-compacting files -- this is represented by
+		// [candidateNonCompactingFirst, candidateNonCompactingLast].
+		nonCompactingFirst := -1
+		candidateNonCompactingFirst := -1
+		candidateNonCompactingLast := -1
+		for index = firstIndex; index <= lastIndex; index++ {
+			f := files[index]
+			if f.meta.Compacting {
+				compactingCount++
+				if nonCompactingFirst != -1 {
+					last := index - 1
+					if candidateNonCompactingFirst == -1 ||
+						(last-nonCompactingFirst) > (candidateNonCompactingLast-candidateNonCompactingFirst) {
+						candidateNonCompactingFirst = nonCompactingFirst
+						candidateNonCompactingLast = last
+					}
+				}
+				nonCompactingFirst = -1
+				continue
+			}
+			if nonCompactingFirst == -1 {
+				nonCompactingFirst = index
+			}
+		}
+		if nonCompactingFirst != -1 {
+			last := index - 1
+			if candidateNonCompactingFirst == -1 ||
+				(last-nonCompactingFirst) > (candidateNonCompactingLast-candidateNonCompactingFirst) {
+				candidateNonCompactingFirst = nonCompactingFirst
+				candidateNonCompactingLast = last
+			}
+		}
+		if candidateNonCompactingFirst == -1 {
+			// All files are compacting. There will be gaps that we could exploit
+			// to continue, but don't bother.
+			break
+		}
+		// May need to shrink [minIntervalIndex, maxIntervalIndex] for the next level.
+		if candidateNonCompactingFirst > firstIndex {
+			minIntervalIndex = files[candidateNonCompactingFirst-1].maxIntervalIndex + 1
+		}
+		if candidateNonCompactingLast < lastIndex {
+			maxIntervalIndex = files[candidateNonCompactingLast+1].minIntervalIndex - 1
+		}
+		for index := candidateNonCompactingFirst; index <= candidateNonCompactingLast; index++ {
+			f := files[index]
+			if f.meta.Compacting {
+				s.logger.Fatalf("bug")
+			}
+			if candidate.isIntraL0 && f.meta.LargestSeqNum >= candidate.earliestUnflushedSeqNum {
+				continue
+			}
+			if !candidate.FilesIncluded[f.index] {
+				candidate.FilesIncluded[f.index] = true
+				addedCount++
+				candidate.Files = append(candidate.Files, f)
+				candidate.fileBytes += f.meta.Size
+				if f.minIntervalIndex < candidate.minIntervalIndex {
+					candidate.minIntervalIndex = f.minIntervalIndex
+				}
+				if f.maxIntervalIndex > candidate.maxIntervalIndex {
+					candidate.maxIntervalIndex = f.maxIntervalIndex
+				}
+			}
+		}
+	}
+	s.logger.Infof("adjustCandidateToRectangle: added: %d, compacting: %d, extending-out: %d\n",
+		addedCount, compactingCount, extendingOutCount)
+	return addedCount > 0
 }

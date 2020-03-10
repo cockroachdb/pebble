@@ -735,8 +735,8 @@ func TestElideRangeTombstone(t *testing.T) {
 			},
 		},
 		{
-			desc:    "flushing",
-			level:   -1,
+			desc:  "flushing",
+			level: -1,
 			version: version{
 				Files: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
@@ -850,18 +850,18 @@ func TestCompaction(t *testing.T) {
 		{"+B", "B", "Aa."},
 		{"+b", "Bb", "Aa."},
 		// The next level-0 table overwrites the B key.
-		{"+C", "C", "Aa.Bb."},
-		{"+B", "BC", "Aa.Bb."},
+		{"+c", "c", "Aa.Bb."},
+		{"+B", "Bc", "Aa.Bb."},
 		// The next level-0 table deletes the a key.
-		{"+D", "D", "Aa.BC.Bb."},
-		{"-a", "Da", "Aa.BC.Bb."},
-		{"+d", "Dad", "Aa.BC.Bb."},
+		{"+D", "D", "Aa.Bb.Bc."},
+		{"-a", "Da", "Aa.Bb.Bc."},
+		{"+d", "Dad", "Aa.Bb.Bc."},
 		// The next addition creates the fourth level-0 table, and l0CompactionTrigger == 4,
 		// so this triggers a non-trivial compaction into one level-1 table. Note that the
 		// keys in this one larger table are interleaved from the four smaller ones.
-		{"+E", "E", "ABCDbd."},
-		{"+e", "Ee", "ABCDbd."},
-		{"+F", "F", "ABCDbd.Ee."},
+		{"+E", "E", "ABDbcd."},
+		{"+e", "Ee", "ABDbcd."},
+		{"+F", "F", "ABDbcd.Ee."},
 	}
 	for _, tc := range testCases {
 		if key := tc.key[1:]; tc.key[0] == '+' {

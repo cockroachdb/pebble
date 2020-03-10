@@ -615,7 +615,7 @@ type iterAlloc struct {
 	dbi     Iterator
 	merging mergingIter
 	mlevels [3 + numLevels]mergingIterLevel
-	levels  [numLevels]levelIter
+	levels  [3 + numLevels]levelIter
 }
 
 var iterAllocPool = sync.Pool{
@@ -692,8 +692,10 @@ func (d *DB) newIterInternal(
 	// reference to elements in mlevels.
 	start := len(mlevels)
 	current := readState.current
-	for range current.L0Sublevels {
-		mlevels = append(mlevels, mergingIterLevel{})
+	for sl := 0; sl < len(current.L0Sublevels); sl++ {
+		if len(current.L0Sublevels[sl]) > 0 {
+			mlevels = append(mlevels, mergingIterLevel{})
+		}
 	}
 	for level := 1; level < len(current.Files); level++ {
 		if len(current.Files[level]) == 0 {
@@ -706,7 +708,11 @@ func (d *DB) newIterInternal(
 
 	// Add level iterators for the L0 sublevels.
 	levels := buf.levels[:]
-	for _, files := range current.L0Sublevels {
+	for i := len(current.L0Sublevels) - 1; i >= 0; i-- {
+		files := current.L0Sublevels[i]
+		if len(files) == 0 {
+			continue
+		}
 		var li *levelIter
 		if len(levels) > 0 {
 			li = &levels[0]
@@ -1240,7 +1246,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				continue
 			}
 		}
-		if len(d.mu.versions.currentVersion().Files[0]) >= d.opts.L0StopWritesThreshold {
+		vers := d.mu.versions.currentVersion()
+		if (vers.L0SubLevels == nil && len(vers.Files[0]) >= d.opts.L0StopWritesThreshold) ||
+			(vers.L0SubLevels != nil && vers.L0SubLevels.ReadAmplification() > d.opts.L0StopWritesThreshold) {
 			// There are too many level-0 files, so we wait.
 			if !stalled {
 				stalled = true

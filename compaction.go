@@ -261,7 +261,7 @@ func newFlush(
 // setupInputs fills in the rest of the compaction inputs, regardless of
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupInputs() {
-	// Expand the initial inputs to a clean cut.
+	// Expand the initial inputs to a clean cut. Does nothing for L0.
 	c.inputs[0] = c.expandInputs(c.startLevel, c.inputs[0])
 	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
 
@@ -283,6 +283,37 @@ func (c *compaction) setupInputs() {
 		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
 
+	c.setupInuseKeyRanges()
+}
+
+func (c *compaction) setupInputsForAutoL0ToBase(
+	s *manifest.L0SubLevels, lcf *manifest.Level0CompactionFiles,
+) {
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+
+	// Determine the sstables in the output level which overlap with the input
+	// sstables, and then expand those tables to a clean cut.
+	c.inputs[1] = c.version.Overlaps(c.outputLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+	c.inputs[1] = c.expandInputs(c.outputLevel, c.inputs[1])
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+
+	// Grow the sstables in c.startLevel as long as it doesn't affect the number
+	// of sstables included from c.outputLevel.
+	if s.ExtendL0ForBaseCompactionTo(c.smallest.UserKey, c.largest.UserKey, lcf) {
+		c.inputs[0] = c.inputs[0][:0]
+		for j := range lcf.FilesIncluded {
+			if lcf.FilesIncluded[j] {
+				c.inputs[0] = append(c.inputs[0], c.version.Files[0][j])
+			}
+		}
+		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+	}
+
+	// Compute the set of outputLevel+1 files that overlap this compaction (these
+	// are the grandparent sstables).
+	if c.outputLevel+1 < numLevels {
+		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+	}
 	c.setupInuseKeyRanges()
 }
 
@@ -382,9 +413,6 @@ func (c *compaction) expandInputs(level int, inputs []*fileMetadata) []*fileMeta
 // grow grows the number of inputs at c.level without changing the number of
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
-//
-// TODO(sbhola): since this is optional, it should not grow to include files
-// that are part of ongoing compactions.
 func (c *compaction) grow(sm, la InternalKey) bool {
 	if len(c.inputs[1]) == 0 {
 		return false
@@ -777,10 +805,19 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	for _, files := range c.inputs {
 		for _, f := range files {
-			if f.Compacting {
-				d.opts.Logger.Fatalf("L%d->L%d: %06d already being compacted", c.startLevel, c.outputLevel, f.FileNum)
-			}
+			/*
+				if f.Compacting {
+					d.opts.Logger.Fatalf("L%d->L%d: %06d already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+				}
+			*/
 			f.Compacting = true
+			if c.startLevel == 0 {
+				if c.outputLevel == 0 {
+					f.IsIntraL0Compacting = true
+				} else {
+					f.IsBaseCompacting = true
+				}
+			}
 		}
 	}
 
@@ -814,9 +851,11 @@ func (d *DB) removeInProgressCompaction(c *compaction) {
 	for _, files := range c.inputs {
 		for _, f := range files {
 			if !f.Compacting {
-				d.opts.Logger.Fatalf("L%d->L%d: %06d already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %06d not being compacted", c.startLevel, c.outputLevel, f.FileNum)
 			}
 			f.Compacting = false
+			f.IsBaseCompacting = false
+			f.IsIntraL0Compacting = false
 		}
 	}
 	delete(d.mu.compact.inProgress, c)
@@ -986,6 +1025,7 @@ func (d *DB) flush1() error {
 		}
 
 		d.mu.versions.logLock()
+		d.removeInProgressCompaction(c)
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir,
 			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
 		if err != nil {
@@ -994,7 +1034,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
-	d.removeInProgressCompaction(c)
+	// d.removeInProgressCompaction(c)
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -1148,6 +1188,11 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
+		// TODO: this call to removeInProgressCompaction() ensures that the
+		// L0Sublevels initialized in logAndApply does not think some files
+		// are compacting that are done compacting. We will need to figure
+		// out a more permanent solution later.
+		d.removeInProgressCompaction(c)
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir, func() []compactionInfo {
 			return d.getInProgressCompactionInfoLocked(c)
 		})
@@ -1166,7 +1211,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		}
 	}
 
-	d.removeInProgressCompaction(c)
+	// d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions()
 	d.opts.EventListener.CompactionEnd(info)
 

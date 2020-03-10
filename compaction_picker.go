@@ -5,8 +5,10 @@
 package pebble
 
 import (
+	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
@@ -282,7 +284,7 @@ func (p *compactionPickerByScore) initSizeAdjust(inProgressCompactions []compact
 	}
 }
 
-func (p *compactionPickerByScore) initScores(inProgressCompactions []compactionInfo) {
+func (p *compactionPickerByScore) initScores(inProgressCompactions []compactionInfo) float64 {
 	for i := range p.scores {
 		p.scores[i].level = i
 		p.scores[i].outputLevel = i + 1
@@ -291,6 +293,7 @@ func (p *compactionPickerByScore) initScores(inProgressCompactions []compactionI
 
 	p.scores[0].outputLevel = p.baseLevel
 	p.initL0Score(inProgressCompactions)
+	rv := p.scores[0].score
 
 	for level := 1; level < numLevels-1; level++ {
 		size := int64(totalSize(p.vers.Files[level])) + p.sizeAdjust[level]
@@ -298,9 +301,18 @@ func (p *compactionPickerByScore) initScores(inProgressCompactions []compactionI
 	}
 
 	sort.Sort(sortCompactionLevelsDecreasingScore(p.scores[:]))
+	return rv
 }
 
 func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compactionInfo) {
+	if p.vers.L0SubLevels != nil {
+		// fmt.Printf("depth: %d, threshold: %d\n", p.vers.L0SubLevels.MaxDepthAfterOngoingCompactions(),
+		//	p.opts.L0CompactionThreshold)
+		p.scores[0].score =
+			float64(p.vers.L0SubLevels.MaxDepthAfterOngoingCompactions()) / float64(p.opts.L0CompactionThreshold)
+		return
+	}
+
 	// TODO(peter): The current scoring logic precludes concurrent L0->Lbase
 	// compactions in most cases because if there is an in-progress L0->Lbase
 	// compaction we'll instead preferentially score an intra-L0 compaction. One
@@ -423,10 +435,25 @@ func (p *compactionPickerByScore) pickFile(level int) int {
 // If a score-based compaction cannot be found, pickAuto falls back to looking
 // for a forced compaction (identified by FileMetadata.MarkedForCompaction).
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
+	// fmt.Printf("pickAuto\n")
+	countBaseCompactions := 0
+	countIntraL0Compactions := 0
+	for i := range env.inProgressCompactions {
+		if env.inProgressCompactions[i].startLevel == 0 {
+			if env.inProgressCompactions[i].outputLevel == 0 {
+				countIntraL0Compactions++
+			} else {
+				countBaseCompactions++
+			}
+		}
+	}
 	const highPriorityThreshold = 1.5
 
 	p.initSizeAdjust(env.inProgressCompactions)
-	p.initScores(env.inProgressCompactions)
+	l0Score := p.initScores(env.inProgressCompactions)
+	p.opts.Logger.Infof("pickAuto: in-progress: %d, max: %d, L0 compactions: base: %d, intra-L0: %d, score: %f",
+		len(env.inProgressCompactions), p.opts.MaxConcurrentCompactions, countBaseCompactions,
+		countIntraL0Compactions, l0Score)
 
 	// Check for a score-based compaction. "scores" has been sorted in order of
 	// decreasing score. For each level with a score >= 1, we attempt to find a
@@ -442,6 +469,75 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			break
 		}
 
+		if info.level == 0 && p.vers.L0SubLevels != nil {
+			lcf := p.vers.L0SubLevels.PickBaseCompaction(
+				p.opts.L0CompactionThreshold, p.vers.Files[p.baseLevel])
+			if lcf != nil {
+				c = newCompaction(p.opts, p.vers, 0, p.baseLevel, env.bytesCompacted)
+				if c.outputLevel != p.baseLevel {
+					panic("pebble: compaction picked unexpected output level")
+				}
+				c.inputs[0] = make([]*manifest.FileMetadata, 0, len(lcf.Files))
+				for j := range lcf.FilesIncluded {
+					if lcf.FilesIncluded[j] {
+						c.inputs[0] = append(c.inputs[0], p.vers.Files[0][j])
+					}
+				}
+				if len(c.inputs[0]) == 0 {
+					panic("pebble: empty compaction")
+				}
+				c.setupInputsForAutoL0ToBase(p.vers.L0SubLevels, lcf)
+				if len(c.inputs[0]) == 0 {
+					panic("pebble: empty compaction")
+				}
+				// Fail-safe to protect against compacting the same sstable concurrently.
+				if inputAlreadyCompacting(c) {
+					// PickBaseCompaction should have already prevented this except for
+					// atomic compaction groups.
+					p.opts.Logger.Infof("pickAuto: failed to pick L0=>Lbase due to Lbase")
+					continue
+				}
+				c.score = info.score
+				p.vers.L0SubLevels.UpdateStateForStartedCompaction(lcf, true)
+				return c
+			}
+			p.opts.Logger.Infof("pickAuto: failed to pick L0=>Lbase due to L0, %d",
+				len(p.vers.L0SubLevels.CompactingFilesAtCreation))
+			if len(p.vers.L0SubLevels.CompactingFilesAtCreation) > 0 {
+				var buf strings.Builder
+				for i, f := range p.vers.L0SubLevels.CompactingFilesAtCreation {
+					if i == 5 {
+						break
+					}
+					fmt.Fprintf(&buf, "%d, ", f.FileNum)
+				}
+				p.opts.Logger.Infof("compacting files: %s", buf.String())
+			}
+			lcf = p.vers.L0SubLevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count)
+			if lcf != nil {
+				// TODO: derive from pickIntraL0 instead of pickAutoHelper. Specifically, cannot
+				// call setupInputs().
+				c = newCompaction(p.opts, p.vers, 0, 0, env.bytesCompacted)
+				c.inputs[0] = make([]*manifest.FileMetadata, 0, len(lcf.Files))
+				for j := range lcf.FilesIncluded {
+					if lcf.FilesIncluded[j] {
+						c.inputs[0] = append(c.inputs[0], p.vers.Files[0][j])
+					}
+				}
+				if len(c.inputs[0]) == 0 {
+					panic("pebble: empty compaction")
+				}
+				c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+				c.setupInuseKeyRanges()
+				// Output only a single sstable for intra-L0 compactions.
+				c.maxOutputFileSize = math.MaxUint64
+				c.maxOverlapBytes = math.MaxUint64
+				c.maxExpandedBytes = math.MaxUint64
+				p.vers.L0SubLevels.UpdateStateForStartedCompaction(lcf, false)
+				return c
+			}
+			continue
+		}
 		info.file = p.pickFile(info.level)
 		if info.file == -1 {
 			continue
@@ -634,6 +730,9 @@ func (p *compactionPickerByScore) pickManual(
 	// Fail-safe to protect against compacting the same sstable concurrently.
 	if inputAlreadyCompacting(c) {
 		return nil, true
+	}
+	if manual.level == 0 && p.vers.L0SubLevels != nil {
+		p.vers.L0SubLevels.UpdateStateForManualCompaction(c.inputs[0])
 	}
 	return c, false
 }
