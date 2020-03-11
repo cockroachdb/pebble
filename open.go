@@ -105,6 +105,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.inProgress = make(map[*compaction]struct{})
 	d.mu.snapshots.init()
+	// logSeqNum is the next sequence number that will be assigned. Start
+	// assigning sequence numbers from 1 to match rocksdb.
+	d.mu.versions.logSeqNum = 1
 
 	d.timeNow = time.Now
 

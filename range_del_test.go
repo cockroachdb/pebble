@@ -158,8 +158,8 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  000008:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
-  000009:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	// Compact again to move one of the tables to L2.
@@ -168,9 +168,9 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  000008:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  000009:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	// Write "b" and "c" to a new table.
@@ -185,11 +185,11 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 0:
-  000011:[b#3,SET-c#4,SET]
+  000011:[b#4,SET-c#5,SET]
 1:
-  000008:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  000009:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	// "b" is still visible at this point as it should be.
@@ -225,11 +225,11 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 	expectLSM(`
 1:
-  000012:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000012:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 3:
-  000017:[b#3,SET-b#3,SET]
-  000018:[b#2,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000019:[c#4,SET-d#72057594037927935,RANGEDEL]
+  000017:[b#4,SET-b#4,SET]
+  000018:[b#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000019:[c#5,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	// The L1 table still contains a tombstone from [a,d) which will improperly
@@ -306,8 +306,8 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	}
 	expectLSM(`
 6:
-  000008:[a#2,RANGEDEL-b#1,SET]
-  000009:[b#0,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000008:[a#3,RANGEDEL-b#2,SET]
+  000009:[b#1,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
@@ -319,9 +319,9 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	}
 	expectLSM(`
 6:
-  000012:[a#2,RANGEDEL-b#1,SET]
-  000013:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000014:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000012:[a#3,RANGEDEL-b#2,SET]
+  000013:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000014:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 }
 
@@ -399,8 +399,8 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 3:
-  000012:[a#2,RANGEDEL-b#1,SET]
-  000013:[b#0,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000012:[a#3,RANGEDEL-b#2,SET]
+  000013:[b#1,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
@@ -412,9 +412,9 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 4:
-  000020:[a#2,RANGEDEL-b#1,SET]
-  000021:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000022:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000020:[a#3,RANGEDEL-b#2,SET]
+  000021:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000022:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
@@ -422,9 +422,9 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 5:
-  000023:[a#2,RANGEDEL-b#1,SET]
-  000024:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000025:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000023:[a#3,RANGEDEL-b#2,SET]
+  000024:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000025:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	if _, _, err := d.Get([]byte("b")); err != ErrNotFound {
@@ -436,10 +436,10 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 5:
-  000025:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000025:[c#4,SET-d#72057594037927935,RANGEDEL]
 6:
-  000026:[a#2,RANGEDEL-b#1,SET]
-  000027:[b#0,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000026:[a#3,RANGEDEL-b#2,SET]
+  000027:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
 `)
 
 	if v, _, err := d.Get([]byte("b")); err != ErrNotFound {
