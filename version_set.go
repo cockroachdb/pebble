@@ -225,7 +225,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// this behaviour mimics that in RocksDB; the first sequence number
 			// assigned is one greater than the one present in the manifest
 			// (assuming no WALs contain higher sequence numbers than the
-			// manifest's LastSequence). Increment LastSeqNum by 1 to get the
+			// manifest's LastSeqNum). Increment LastSeqNum by 1 to get the
 			// next sequence number that will be assigned.
 			vs.logSeqNum = ve.LastSeqNum + 1
 		}
@@ -339,9 +339,12 @@ func (vs *versionSet) logAndApply(
 	// in an unflushed memtable. logSeqNum is the _next_ sequence number that
 	// will be assigned, so subtract that by 1 to get the upper bound on the
 	// last assigned sequence number.
-	ve.LastSeqNum = atomic.LoadUint64(&vs.logSeqNum) - 1
-	if ve.LastSeqNum < 0 {
-		ve.LastSeqNum = 0
+	logSeqNum := atomic.LoadUint64(&vs.logSeqNum)
+	ve.LastSeqNum = logSeqNum - 1
+	if logSeqNum == 0 {
+		// logSeqNum is initialized to 1 in Open() if there are no previous WAL
+		// or manifest records, so this case should never happen.
+		vs.opts.Logger.Fatalf("logSeqNum must be a positive integer: %d", logSeqNum)
 	}
 
 	currentVersion := vs.currentVersion()
