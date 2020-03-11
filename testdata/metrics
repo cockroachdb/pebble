@@ -8,7 +8,7 @@ iter-new a
 flush
 ----
 0:
-  000005:[a#0,SET-a#0,SET]
+  000005:[a#1,SET-a#1,SET]
 
 # iter b references both a memtable and sstable 5.
 
@@ -44,8 +44,8 @@ set b 2
 flush
 ----
 0:
-  000005:[a#0,SET-a#0,SET]
-  000007:[b#1,SET-b#1,SET]
+  000005:[a#1,SET-a#1,SET]
+  000007:[b#2,SET-b#2,SET]
 
 # iter c references both a memtable and sstables 5 and 7.
 

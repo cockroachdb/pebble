@@ -355,9 +355,9 @@ func TestRequireReadError(t *testing.T) {
 		require.NoError(t, d.Flush())
 		expectLSM(`
 0:
-  000007:[a1#3,SET-a2#72057594037927935,RANGEDEL]
+  000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
-  000005:[a1#0,SET-a2#1,SET]
+  000005:[a1#1,SET-a2#2,SET]
 `, d, t)
 
 		// Now perform foreground ops with error injection enabled.
@@ -437,9 +437,9 @@ func TestCorruptReadError(t *testing.T) {
 		require.NoError(t, d.Flush())
 		expectLSM(`
 0:
-  000007:[a1#3,SET-a2#72057594037927935,RANGEDEL]
+  000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
-  000005:[a1#0,SET-a2#1,SET]
+  000005:[a1#1,SET-a2#2,SET]
 `, d, t)
 
 		// Now perform foreground ops with corruption injection enabled.

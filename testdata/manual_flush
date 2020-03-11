@@ -7,7 +7,7 @@ set b 2
 flush
 ----
 0:
-  000005:[a#0,SET-b#1,SET]
+  000005:[a#1,SET-b#2,SET]
 
 reset
 ----
@@ -22,7 +22,7 @@ del b
 flush
 ----
 0:
-  000005:[a#2,DEL-b#3,DEL]
+  000005:[a#3,DEL-b#4,DEL]
 
 batch
 set a 3
@@ -32,8 +32,8 @@ set a 3
 flush
 ----
 0:
-  000005:[a#2,DEL-b#3,DEL]
-  000007:[a#4,SET-a#4,SET]
+  000005:[a#3,DEL-b#4,DEL]
+  000007:[a#5,SET-a#5,SET]
 
 batch
 set c 4
@@ -43,9 +43,9 @@ set c 4
 flush
 ----
 0:
-  000005:[a#2,DEL-b#3,DEL]
-  000007:[a#4,SET-a#4,SET]
-  000009:[c#5,SET-c#5,SET]
+  000005:[a#3,DEL-b#4,DEL]
+  000007:[a#5,SET-a#5,SET]
+  000009:[c#6,SET-c#6,SET]
 
 reset
 ----
@@ -59,7 +59,7 @@ del-range a c
 flush
 ----
 0:
-  000005:[a#2,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000005:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
 
 reset
 ----
@@ -72,4 +72,4 @@ set b 2
 async-flush
 ----
 0:
-  000005:[a#0,SET-b#1,SET]
+  000005:[a#1,SET-b#2,SET]
