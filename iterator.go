@@ -282,12 +282,35 @@ func (i *Iterator) SeekGE(key []byte) bool {
 }
 
 // SeekPrefixGE moves the iterator to the first key/value pair whose key is
-// greater than or equal to the given key and shares a common prefix with the
-// given key. Returns true if the iterator is pointing at a valid entry and
-// false otherwise. Note that a user-defined Split function must be supplied to
-// the Comparer. Also note that the iterator will not observe keys not matching
-// the prefix. Reverse iteration (Prev) is not supported when an iterator is in
-// prefix iteration mode.
+// greater than or equal to the given key and which has the same "prefix" as
+// the given key. The prefix for a key is determined by the user-defined
+// Comparer.Split function. The iterator will not observe keys not matching the
+// "prefix" of the search key. Calling SeekPrefixGE puts the iterator in prefix
+// iteration mode. The iterator remains in prefix iteration until a subsequent
+// call to another absolute positioning method (SeekGE, SeekLT, First,
+// Last). Reverse iteration (Prev) is not supported when an iterator is in
+// prefix iteration mode. Returns true if the iterator is pointing at a valid
+// entry and false otherwise.
+//
+// The semantics of SeekPrefixGE are slightly unusual and designed for
+// iteration to be able to take advantage of bloom filters that have been
+// created on the "prefix". If you're not using bloom filters, there is no
+// reason to use SeekPrefixGE.
+//
+// An example Split function may separate a timestamp suffix from the prefix of
+// the key.
+//
+//   Split(<key>@<timestamp>) -> <key>
+//
+// Consider the keys "a@1", "a@2", "aa@3", "aa@4". The prefixes for these keys
+// are "a", and "aa". Note that despite "a" and "aa" sharing a prefix by the
+// usual definition, those prefixes differ by the definition of the Split
+// function. To see how this works, consider the following set of calls on this
+// data set:
+//
+//   SeekPrefixGE("a@0") -> "a@1"
+//   Next()              -> "a@2"
+//   Next()              -> EOF
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	if i.err != nil {
 		return false
