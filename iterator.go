@@ -44,6 +44,7 @@ type Iterator struct {
 	key       []byte
 	keyBuf    []byte
 	value     []byte
+	valueBuf  []byte
 	valid     bool
 	iterKey   *InternalKey
 	iterValue []byte
@@ -148,7 +149,12 @@ func (i *Iterator) findPrevEntry() bool {
 		case InternalKeyKindSet:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
-			i.value = i.iterValue
+			// iterValue is owned by i.iter and could change after the Prev()
+			// call, so use valueBuf instead. Note that valueBuf is only used
+			// in this one instance; everywhere else (eg. in findNextEntry),
+			// we just point i.value to the unsafe i.iter-owned value buffer.
+			i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
+			i.value = i.valueBuf
 			i.valid = true
 			i.iterKey, i.iterValue = i.iter.Prev()
 			valueMerger = nil
