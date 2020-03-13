@@ -148,7 +148,10 @@ func (i *Iterator) findPrevEntry() bool {
 		case InternalKeyKindSet:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
-			i.value = i.iterValue
+			// iterValue is owned by i.iter and could change after the Prev()
+			// call.
+			i.value = make([]byte, len(i.iterValue))
+			copy(i.value, i.iterValue)
 			i.valid = true
 			i.iterKey, i.iterValue = i.iter.Prev()
 			valueMerger = nil
