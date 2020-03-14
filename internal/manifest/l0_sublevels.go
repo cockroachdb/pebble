@@ -847,8 +847,14 @@ func (s *L0SubLevels) baseCompactionUsingSeed(
 		if done {
 			break
 		}
+		// Observed some compactions using > 1GB from L0. Very long running compactions
+		// are not good, though sometimes unavoidable. There is a tradeoff here in
+		// that adding more depth is more efficient in reducing stack depth, but
+		// long running compactions reduce flexibility in what can run concurrently
+		// in L0 and even Lbase => Lbase+1.
 		if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth &&
-			cFiles.fileBytes > 100<<20 && (float64(cFiles.fileBytes)/float64(lastCandidate.fileBytes) > 1.5) {
+			cFiles.fileBytes > 100<<20 &&
+			(float64(cFiles.fileBytes)/float64(lastCandidate.fileBytes) > 1.5 || cFiles.fileBytes > 500<<20) {
 			break
 		}
 		*lastCandidate = *cFiles
@@ -1074,7 +1080,8 @@ func (s *L0SubLevels) intraL0CompactionUsingSeed(
 			break
 		}
 		if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth &&
-			cFiles.fileBytes > 100<<20 && (float64(cFiles.fileBytes)/float64(lastCandidate.fileBytes) > 1.5) {
+			cFiles.fileBytes > 100<<20 &&
+			(float64(cFiles.fileBytes)/float64(lastCandidate.fileBytes) > 1.5 || cFiles.fileBytes > 500<<20) {
 			break
 		}
 		*lastCandidate = *cFiles
