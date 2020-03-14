@@ -328,6 +328,35 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	}
 }
 
+func (f *Fragmenter) FlushToNoStraddling(key []byte) {
+	if f.finished {
+		panic("pebble: tombstone fragmenter already finished")
+	}
+	if f.flushedKey != nil {
+		switch c := f.Cmp(key, f.flushedKey); {
+		case c < 0:
+			panic(fmt.Sprintf("pebble: start key (%s) < flushed key (%s)",
+				key, f.flushedKey))
+		}
+	}
+	if invariants.RaceEnabled {
+		f.checkInvariants(f.pending)
+		defer func() { f.checkInvariants(f.pending) }()
+	}
+	if len(f.pending) > 0 {
+		// Since all of the pending tombstones have the same start key, we only need
+		// to compare against the first one.
+		switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
+		case c > 0:
+			panic(fmt.Sprintf("pebble: keys must be added in order: %s > %s",
+				f.pending[0].Start, key))
+		case c == 0:
+			return
+		}
+		f.truncateAndFlush(key)
+	}
+}
+
 // Flushes all pending tombstones up to key (exclusive).
 func (f *Fragmenter) truncateAndFlush(key []byte) {
 	f.flushedKey = append(f.flushedKey[:0], key...)

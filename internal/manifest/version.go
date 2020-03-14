@@ -604,28 +604,30 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 					"largest seqnum: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, largestSeqNum)
 			}
 			largestSeqNum = f.LargestSeqNum
-			if f.SmallestSeqNum == f.LargestSeqNum {
-				// Ingested file.
-				uncheckedIngestedSeqNums = append(uncheckedIngestedSeqNums, f.LargestSeqNum)
-			} else {
-				// Flushed file.
-				// Two flushed files cannot overlap.
-				if largestFlushedSeqNum > 0 && f.SmallestSeqNum <= largestFlushedSeqNum {
-					return fmt.Errorf("L0 flushed file %06d overlaps with the largest seqnum of a "+
-						"preceding flushed file: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum,
-						largestFlushedSeqNum)
-				}
-				largestFlushedSeqNum = f.LargestSeqNum
-				// Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
-				// We do not need to check that they are not coincident with f.LargestSeqNum because we
-				// have already confirmed that LargestSeqNums were increasing.
-				for _, seq := range uncheckedIngestedSeqNums {
-					if seq == f.SmallestSeqNum {
-						return fmt.Errorf("L0 flushed file %06d has an ingested file coincident with "+
-							"smallest seqnum: %d-%d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum)
+			if false {
+				if f.SmallestSeqNum == f.LargestSeqNum {
+					// Ingested file.
+					uncheckedIngestedSeqNums = append(uncheckedIngestedSeqNums, f.LargestSeqNum)
+				} else {
+					// Flushed file.
+					// Two flushed files cannot overlap.
+					if largestFlushedSeqNum > 0 && f.SmallestSeqNum <= largestFlushedSeqNum {
+						return fmt.Errorf("L0 flushed file %06d overlaps with the largest seqnum of a "+
+							"preceding flushed file: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum,
+							largestFlushedSeqNum)
 					}
+					largestFlushedSeqNum = f.LargestSeqNum
+					// Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
+					// We do not need to check that they are not coincident with f.LargestSeqNum because we
+					// have already confirmed that LargestSeqNums were increasing.
+					for _, seq := range uncheckedIngestedSeqNums {
+						if seq == f.SmallestSeqNum {
+							return fmt.Errorf("L0 flushed file %06d has an ingested file coincident with "+
+								"smallest seqnum: %d-%d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum)
+						}
+					}
+					uncheckedIngestedSeqNums = uncheckedIngestedSeqNums[:0]
 				}
-				uncheckedIngestedSeqNums = uncheckedIngestedSeqNums[:0]
 			}
 		}
 	} else {

@@ -689,11 +689,13 @@ func (s *L0SubLevels) PickBaseCompaction(
 	// to reduce wasted work.
 	consideredIntervals := make([]bool, len(s.orderedIntervals))
 	countFailedDueToOngoingBase := 0
+	countConsidered := 0
 	for _, pool := range [2][]intervalAndScore{pool1, pool2} {
 		for _, interval := range pool {
 			if consideredIntervals[interval.interval.index] {
 				continue
 			}
+			countConsidered++
 			// Pick the seed file for the interval as the file
 			// in the lowest sub-level.
 			slf := interval.interval.subLevelAndFileList[0]
@@ -752,6 +754,8 @@ func (s *L0SubLevels) PickBaseCompaction(
 			}
 		}
 	}
+	s.logger.Infof("not found base compaction: considered: %d ongoing-base: %d",
+		countConsidered, countFailedDueToOngoingBase)
 	return nil
 }
 
@@ -1064,8 +1068,8 @@ func (s *L0SubLevels) intraL0CompactionUsingSeed(
 		if done {
 			break
 		}
-		if cFiles.seedIntervalStackDepthReduction >= minCompactionDepth &&
-			cFiles.fileBytes > 100<<20 {
+		if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth &&
+			cFiles.fileBytes > 100<<20 && (float64(cFiles.fileBytes)/float64(lastCandidate.fileBytes) > 1.5) {
 			break
 		}
 		*lastCandidate = *cFiles
@@ -1200,33 +1204,43 @@ func (s *L0SubLevels) extendCandidateToRectangle(
 		// and lastIndex of non-compacting files -- this is represented by
 		// [candidateNonCompactingFirst, candidateNonCompactingLast].
 		nonCompactingFirst := -1
+		currentRunHasAlreadyPickedFiles := false
 		candidateNonCompactingFirst := -1
 		candidateNonCompactingLast := -1
+		candidateHasAlreadyPickedFiles := false
 		for index = firstIndex; index <= lastIndex; index++ {
 			f := files[index]
 			if f.meta.Compacting {
 				compactingCount++
 				if nonCompactingFirst != -1 {
 					last := index - 1
-					if candidateNonCompactingFirst == -1 ||
-						(last-nonCompactingFirst) > (candidateNonCompactingLast-candidateNonCompactingFirst) {
+					if !candidateHasAlreadyPickedFiles && (candidateNonCompactingFirst == -1 ||
+						currentRunHasAlreadyPickedFiles ||
+						(last-nonCompactingFirst) > (candidateNonCompactingLast-candidateNonCompactingFirst)) {
 						candidateNonCompactingFirst = nonCompactingFirst
 						candidateNonCompactingLast = last
+						candidateHasAlreadyPickedFiles = currentRunHasAlreadyPickedFiles
 					}
 				}
 				nonCompactingFirst = -1
+				currentRunHasAlreadyPickedFiles = false
 				continue
 			}
 			if nonCompactingFirst == -1 {
 				nonCompactingFirst = index
 			}
+			if candidate.FilesIncluded[f.index] {
+				currentRunHasAlreadyPickedFiles = true
+			}
 		}
 		if nonCompactingFirst != -1 {
 			last := index - 1
-			if candidateNonCompactingFirst == -1 ||
-				(last-nonCompactingFirst) > (candidateNonCompactingLast-candidateNonCompactingFirst) {
+			if !candidateHasAlreadyPickedFiles && (candidateNonCompactingFirst == -1 ||
+				currentRunHasAlreadyPickedFiles ||
+				(last-nonCompactingFirst) > (candidateNonCompactingLast-candidateNonCompactingFirst)) {
 				candidateNonCompactingFirst = nonCompactingFirst
 				candidateNonCompactingLast = last
+				candidateHasAlreadyPickedFiles = currentRunHasAlreadyPickedFiles
 			}
 		}
 		if candidateNonCompactingFirst == -1 {
@@ -1252,6 +1266,8 @@ func (s *L0SubLevels) extendCandidateToRectangle(
 			if !candidate.FilesIncluded[f.index] {
 				candidate.FilesIncluded[f.index] = true
 				addedCount++
+				s.logger.Infof("added file to rectange: filenum: %d, sl: %d\n",
+					f.meta.FileNum, f.subLevel)
 				candidate.Files = append(candidate.Files, f)
 				candidate.fileBytes += f.meta.Size
 				if f.minIntervalIndex < candidate.minIntervalIndex {
