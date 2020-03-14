@@ -342,7 +342,7 @@ func TestVersionEditApply(t *testing.T) {
 				}
 
 				if v != nil {
-					v.InitL0Sublevels(base.DefaultComparer.Compare, DefaultLogger)
+					v.InitL0Sublevels(base.DefaultComparer.Compare, DefaultLogger, base.DefaultFormatter)
 				}
 
 				bve := BulkVersionEdit{}

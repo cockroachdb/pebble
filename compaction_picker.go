@@ -451,9 +451,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 
 	p.initSizeAdjust(env.inProgressCompactions)
 	l0Score := p.initScores(env.inProgressCompactions)
-	p.opts.Logger.Infof("pickAuto: in-progress: %d, max: %d, L0 compactions: base: %d, intra-L0: %d, score: %f",
+	p.opts.Logger.Infof("pickAuto: in-progress: %d, max: %d, L0 compactions: base: %d, intra-L0: %d, l0score: %f, highest-score,level: %f, %d",
 		len(env.inProgressCompactions), p.opts.MaxConcurrentCompactions, countBaseCompactions,
-		countIntraL0Compactions, l0Score)
+		countIntraL0Compactions, l0Score, p.scores[0].score, p.scores[0].level)
 
 	// Check for a score-based compaction. "scores" has been sorted in order of
 	// decreasing score. For each level with a score >= 1, we attempt to find a

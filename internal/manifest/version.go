@@ -344,7 +344,7 @@ func (v *Version) Next() *Version {
 }
 
 // InitL0Sublevels TODO(peter): document
-func (v *Version) InitL0Sublevels(cmp Compare, logger Logger) {
+func (v *Version) InitL0Sublevels(cmp Compare, logger Logger, formatter base.Formatter) {
 	// TODO: remove the redundate L0Sublevels.
 	// TODO(peter): This is a naive, but correct algorithm. Can we make it
 	// smarter?
@@ -377,7 +377,7 @@ func (v *Version) InitL0Sublevels(cmp Compare, logger Logger) {
 		}
 	}
 	// 40MB is not experimentally validated.
-	v.L0SubLevels = NewL0SubLevels(v.Files[0], cmp, logger, 40<<20)
+	v.L0SubLevels = NewL0SubLevels(v.Files[0], cmp, logger, formatter, 10<<20)
 }
 
 // Overlaps returns all elements of v.files[level] whose user key range

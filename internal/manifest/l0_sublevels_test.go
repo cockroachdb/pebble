@@ -182,7 +182,7 @@ func TestL0SubLevels_LargeImportL0(t *testing.T) {
 	v, err := readManifest("testdata/MANIFEST_import")
 	require.NoError(t, err)
 
-	subLevels := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, 5<<20)
+	subLevels := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, base.DefaultFormatter, 5<<20)
 	fmt.Printf("L0SubLevels:\n%s\n\n", subLevels)
 
 	for i := 0; ; i++ {
@@ -213,7 +213,7 @@ func BenchmarkL0SubLevelsInit(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, 5<<20)
+		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, base.DefaultFormatter, 5<<20)
 		if sl == nil {
 			panic("bug")
 		}
@@ -227,7 +227,7 @@ func BenchmarkL0SubLevelsInitAndPick(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, 5<<20)
+		sl := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, DefaultLogger, base.DefaultFormatter, 5<<20)
 		if sl == nil {
 			panic("bug")
 		}

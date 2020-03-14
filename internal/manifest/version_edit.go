@@ -487,7 +487,7 @@ func (b *BulkVersionEdit) Apply(
 			v.Files[level] = files
 			if level == 0 {
 				v.L0Sublevels = curr.L0Sublevels
-				v.L0SubLevels = NewL0SubLevels(v.Files[0], cmp, logger, 40<<20)
+				v.L0SubLevels = NewL0SubLevels(v.Files[0], cmp, logger, format, 10<<20)
 			}
 			// We still have to bump the ref count for all files.
 			for i := range files {
@@ -542,7 +542,7 @@ func (b *BulkVersionEdit) Apply(
 				}
 			}
 			SortBySeqNum(v.Files[level])
-			v.InitL0Sublevels(cmp, logger)
+			v.InitL0Sublevels(cmp, logger, format)
 			if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
 				return nil, nil, fmt.Errorf("pebble: internal error: %v", err)
 			}

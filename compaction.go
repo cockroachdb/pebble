@@ -305,7 +305,7 @@ func (c *compaction) setupInputsForAutoL0ToBase(
 
 	// Grow the sstables in c.startLevel as long as it doesn't affect the number
 	// of sstables included from c.outputLevel.
-	if s.ExtendL0ForBaseCompactionTo(c.smallest.UserKey, c.largest.UserKey, lcf) {
+	if s.ExtendL0ForBaseCompactionTo(c.smallest, c.largest, lcf) {
 		c.inputs[0] = c.inputs[0][:0]
 		for j := range lcf.FilesIncluded {
 			if lcf.FilesIncluded[j] {

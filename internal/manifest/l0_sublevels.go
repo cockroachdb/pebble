@@ -182,6 +182,7 @@ func (defaultLogger) Fatalf(format string, args ...interface{}) {
 type L0SubLevels struct {
 	cmp    Compare
 	logger Logger
+	format base.Formatter
 
 	// Oldest to youngest.
 	filesByAge []*fileMeta
@@ -215,9 +216,13 @@ func insertIntoSubLevel(files []*fileMeta, f *fileMeta) []*fileMeta {
 }
 
 func NewL0SubLevels(
-	files []*FileMetadata, cmp Compare, logger Logger, flushSplitMaxBytes uint64,
+	files []*FileMetadata,
+	cmp Compare,
+	logger Logger,
+	formatter base.Formatter,
+	flushSplitMaxBytes uint64,
 ) *L0SubLevels {
-	s := &L0SubLevels{cmp: cmp, logger: logger}
+	s := &L0SubLevels{cmp: cmp, logger: logger, format: formatter}
 	s.filesByAge = make([]*fileMeta, len(files))
 	keys := make([]intervalKey, 0, 2*len(files))
 	for i := range files {
@@ -1093,21 +1098,29 @@ func (s *L0SubLevels) intraL0CompactionUsingSeed(
 }
 
 func (s *L0SubLevels) ExtendL0ForBaseCompactionTo(
-	smallest []byte, largest []byte, candidate *Level0CompactionFiles,
+	smallest InternalKey, largest InternalKey, candidate *Level0CompactionFiles,
 ) bool {
 	firstIntervalIndex := sort.Search(len(s.orderedIntervals), func(i int) bool {
-		return s.cmp(smallest, s.orderedIntervals[i].startKey.key.UserKey) <= 0
+		// Need to start at >= smallest since if we widen too much we may miss
+		// an Lbase file that overlaps with an L0 file that will get picked in
+		// this widening, which would be bad. This interval will not start with
+		// an immediate successor key.
+		return base.InternalCompare(s.cmp, smallest, s.orderedIntervals[i].startKey.key) <= 0
 	})
-	// Even if smallest is equal to the start UserKey, the previous interval may
-	// have keys equal to this UserKey
-	if firstIntervalIndex > 0 && s.orderedIntervals[firstIntervalIndex-1].fileCount > 0 {
-		firstIntervalIndex--
-	}
+	// First interval that starts at or beyond the largest. This interval will not
+	// start with an immediate successor key.
 	lastIntervalIndex := sort.Search(len(s.orderedIntervals), func(i int) bool {
-		return s.cmp(largest, s.orderedIntervals[i].startKey.key.UserKey) < 0
+		return base.InternalCompare(s.cmp, largest, s.orderedIntervals[i].startKey.key) <= 0
 	})
-	if lastIntervalIndex > 0 {
-		lastIntervalIndex--
+	lastIntervalIndex--
+	// This interval may also have keys > largest since it may end > largest.
+	lastIntervalIndex--
+
+	if firstIntervalIndex > candidate.minIntervalIndex {
+		firstIntervalIndex = candidate.minIntervalIndex
+	}
+	if lastIntervalIndex < candidate.maxIntervalIndex {
+		lastIntervalIndex = candidate.maxIntervalIndex
 	}
 	s.logger.Infof("ExtendL0ForBaseCompaction: [%d, %d], original: [%d, %d]\n",
 		firstIntervalIndex, lastIntervalIndex, candidate.minIntervalIndex, candidate.maxIntervalIndex)
@@ -1266,8 +1279,9 @@ func (s *L0SubLevels) extendCandidateToRectangle(
 			if !candidate.FilesIncluded[f.index] {
 				candidate.FilesIncluded[f.index] = true
 				addedCount++
-				s.logger.Infof("added file to rectange: filenum: %d, sl: %d\n",
-					f.meta.FileNum, f.subLevel)
+				s.logger.Infof("added file to rectange: filenum: %d, sl: %d, interval: [%d, %d], [%s, %s]\n",
+					f.meta.FileNum, f.subLevel, f.minIntervalIndex, f.maxIntervalIndex,
+					f.meta.Smallest.Pretty(s.format), f.meta.Largest.Pretty(s.format))
 				candidate.Files = append(candidate.Files, f)
 				candidate.fileBytes += f.meta.Size
 				if f.minIntervalIndex < candidate.minIntervalIndex {

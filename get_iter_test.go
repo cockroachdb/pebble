@@ -519,7 +519,7 @@ func TestGetIter(t *testing.T) {
 			v.Files[tt.level] = append(v.Files[tt.level], meta)
 		}
 
-		v.InitL0Sublevels(cmp, DefaultLogger)
+		v.InitL0Sublevels(cmp, DefaultLogger, base.DefaultFormatter)
 		err := v.CheckOrdering(cmp, base.DefaultFormatter)
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
