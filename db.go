@@ -1273,6 +1273,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			} else {
 				newLogFile, err = d.opts.FS.Create(newLogName)
 			}
+			// TODO(270): kMemtable. Failing to create new WAL file for any errno reason
+			// leads to setting the bg error.
+			// RocksDB:
+			// https://github.com/facebook/rocksdb/blob/master/db/db_impl/db_impl_write.cc#L1657
 
 			if err == nil {
 				// TODO(peter): RocksDB delays sync of the parent directory until the
@@ -1282,6 +1286,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 			if err == nil {
 				prevLogSize = uint64(d.mu.log.Size())
+				// TODO(270): kMemtable. Failing to flush the current WAL's in
+				// memory buffer or a failing sync sets the bg error.
+				// RocksDB:
+				// https://github.com/facebook/rocksdb/blob/master/db/db_impl/db_impl_write.cc#L1684
 				err = d.mu.log.Close()
 				if err != nil {
 					newLogFile.Close()
@@ -1318,6 +1326,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			//
 			// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
 			// close the previous log it is possible we lost a write.
+
+			// TODO(270): kMemtable. Return the error and set the DB's bg
+			// error.
+			// RocksDB:
+			// https://github.com/facebook/rocksdb/blob/master/db/db_impl/db_impl_write.cc#L1719
 			panic(err)
 		}
 

@@ -193,6 +193,10 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	for r := batch.Reader(); ; seqNum++ {
 		kind, ukey, value, ok := r.Next()
 		if !ok {
+			// TODO(270): kMemtable. Batch record decoding failure. Since we stop our
+			// memtable inserts in between the state of WAL and memtable diverges.
+			// RocksDB:
+			// https://github.com/facebook/rocksdb/blob/master/db/write_batch.cc#L424
 			break
 		}
 		var err error
@@ -208,10 +212,17 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		default:
 			err = ins.Add(&m.skl, ikey, value)
 		}
+		// TODO(270): kMemtable. This error will cause state of WAL and memtable to
+		// diverge.
+		// RocksDB:
+		// https://github.com/facebook/rocksdb/blob/master/db/write_batch.cc#L579
 		if err != nil {
 			return err
 		}
 	}
+	// TODO(270): kMemtable. Don't panic, propagate error up.
+	// RocksDB:
+	// https://github.com/facebook/rocksdb/blob/master/db/write_batch.cc#L717
 	if seqNum != startSeqNum+uint64(batch.Count()) {
 		panic(errors.Errorf("pebble: inconsistent batch count: %d vs %d",
 			errors.Safe(seqNum), errors.Safe(startSeqNum+uint64(batch.Count()))))
