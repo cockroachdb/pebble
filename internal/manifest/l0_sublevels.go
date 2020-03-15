@@ -196,7 +196,9 @@ type L0SubLevels struct {
 	orderedIntervals []fileInterval
 
 	// Keys to break flushes at.
-	flushSplitUserKeys [][]byte
+	flushSplitUserKeys      [][]byte
+	flushSplitFraction      []float64
+	flushSplitIntervalIndex []int
 
 	// for debugging
 	CompactingFilesAtCreation []*FileMetadata
@@ -329,6 +331,9 @@ func NewL0SubLevels(
 		if cumulativeBytes > flushSplitMaxBytes && (len(s.flushSplitUserKeys) == 0 ||
 			!bytes.Equal(interval.startKey.key.UserKey, s.flushSplitUserKeys[len(s.flushSplitUserKeys)-1])) {
 			s.flushSplitUserKeys = append(s.flushSplitUserKeys, interval.startKey.key.UserKey)
+			fractionOfTotal := float64(cumulativeBytes) / float64(s.fileBytes)
+			s.flushSplitFraction = append(s.flushSplitFraction, fractionOfTotal)
+			s.flushSplitIntervalIndex = append(s.flushSplitIntervalIndex, i-1)
 			cumulativeBytes = 0
 		}
 		cumulativeBytes += s.orderedIntervals[i].fileBytes
@@ -339,8 +344,12 @@ func NewL0SubLevels(
 
 func (s *L0SubLevels) String() string {
 	var buf strings.Builder
-	fmt.Fprintf(&buf, "file count: %d, sublevels: %d, intervals: %d, flush keys: %d\n",
+	fmt.Fprintf(&buf, "file count: %d, sublevels: %d, intervals: %d, flush keys: %d\nsplit:",
 		len(s.filesByAge), len(s.subLevels), len(s.orderedIntervals), len(s.flushSplitUserKeys))
+	for i := range s.flushSplitUserKeys {
+		fmt.Fprintf(&buf, "(%d,%d):%.2f,", i, s.flushSplitIntervalIndex[i], s.flushSplitFraction[i])
+	}
+	fmt.Fprintln(&buf, "")
 	numCompactingFiles := 0
 	for i := len(s.subLevels) - 1; i >= 0; i-- {
 		maxIntervals := 0

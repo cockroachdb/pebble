@@ -1522,6 +1522,7 @@ func (d *DB) runCompaction(
 			})
 			index++
 			if index < len(c.l0Limits) {
+				d.opts.Logger.Infof("flush limit is index: %d", index)
 				return c.l0Limits[index]
 			}
 			return nil
