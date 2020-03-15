@@ -499,7 +499,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	}
 	// If L0 has high score consider intra-L0. This number is a rough guess
 	// based on looking at one TPCC import experiment.
-	considerIntraL0 := l0Score > 15
+	considerIntraL0 := l0Score > 50
 
 	p.opts.Logger.Infof(
 		"pickAuto: in-progress: %d, max: %d, L0 compactions: base: %d, intra-L0: %d, l0score: %f, highest-score,level: %f, %d, lengths: %d, %d, %d",

@@ -184,6 +184,7 @@ type L0SubLevels struct {
 	logger Logger
 	format base.Formatter
 
+	fileBytes uint64
 	// Oldest to youngest.
 	filesByAge []*fileMeta
 
@@ -259,6 +260,7 @@ func NewL0SubLevels(
 		}
 		f.maxIntervalIndex--
 		interpolatedBytes := f.meta.Size / uint64(f.maxIntervalIndex-f.minIntervalIndex+1)
+		s.fileBytes += f.meta.Size
 		subLevel := 0
 		if f.meta.Compacting {
 			if !f.meta.IsBaseCompacting && !f.meta.IsIntraL0Compacting {
@@ -355,7 +357,13 @@ func (s *L0SubLevels) String() string {
 				numCompactingFiles++
 			}
 			if len(s.filesByAge) > 50 && intervals*3 > len(s.orderedIntervals) {
-				fmt.Fprintf(&buf, "wide file: %d, [%d, %d]\n", f.meta.FileNum, f.minIntervalIndex, f.maxIntervalIndex)
+				var intervalsBytes uint64
+				for k := f.minIntervalIndex; k <= f.maxIntervalIndex; k++ {
+					intervalsBytes += s.orderedIntervals[k].fileBytes
+				}
+				fmt.Fprintf(&buf, "wide file: %d, [%d, %d], byte fraction: %f\n",
+					f.meta.FileNum, f.minIntervalIndex, f.maxIntervalIndex,
+					float64(intervalsBytes)/float64(s.fileBytes))
 			}
 		}
 		fmt.Fprintf(&buf, "0.%d: file count: %d, bytes: %d, width (mean, max): %d, %d, interval range: [%d, %d]\n",
@@ -492,10 +500,22 @@ func (s *L0SubLevels) checkCompaction(c *Level0CompactionFiles, isBase bool) {
 				continue
 			}
 			if !includedFiles[f.index] {
-				str := fmt.Sprintf("bug %t: level %d, sl index %d, f.index %d, min %d, max %d, f.min %d, f.max %d, filenum: %d, isCompacting: %t\n%s",
-					c.isIntraL0, level, index, f.index, min, max, f.minIntervalIndex, f.maxIntervalIndex, f.meta.FileNum, f.meta.Compacting, s)
-
-				s.logger.Fatalf(str)
+				var buf strings.Builder
+				fmt.Fprintf(&buf, "bug %t, seed interval: %d: level %d, sl index %d, f.index %d, min %d, max %d, pre-min %d, pre-max %d, f.min %d, f.max %d, filenum: %d, isCompacting: %t\n%s\n",
+					c.isIntraL0, c.seedInterval, level, index, f.index, min, max, c.preExtensionMinInterval, c.preExtensionMaxInterval,
+					f.minIntervalIndex, f.maxIntervalIndex,
+					f.meta.FileNum, f.meta.Compacting, s)
+				fmt.Fprintf(&buf, "files included:\n")
+				for _, f := range c.Files {
+					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
+						f.meta.FileNum, f.subLevel, f.index, f.minIntervalIndex, f.maxIntervalIndex)
+				}
+				fmt.Fprintf(&buf, "files added:\n")
+				for _, f := range c.filesAdded {
+					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
+						f.meta.FileNum, f.subLevel, f.index, f.minIntervalIndex, f.maxIntervalIndex)
+				}
+				s.logger.Fatalf(buf.String())
 			}
 		}
 		// fmt.Printf("checked level: %d, [%d, %d], files [%d, %d)\n", level, min, max,
@@ -578,6 +598,7 @@ type Level0CompactionFiles struct {
 	FilesIncluded                   []bool
 	seedIntervalStackDepthReduction int
 	seedIntervalExtremeLevel        int
+	seedInterval                    int
 	fileBytes                       uint64
 	minIntervalIndex                int
 	maxIntervalIndex                int
@@ -589,6 +610,9 @@ type Level0CompactionFiles struct {
 	// For internal use.
 	internalFilesMinIntervalIndex int
 	internalFilesMaxIntervalIndex int
+	preExtensionMinInterval       int
+	preExtensionMaxInterval       int
+	filesAdded                    []*fileMeta
 }
 
 // Helper to order intervals being considered for compaction.
@@ -769,6 +793,7 @@ func (s *L0SubLevels) baseCompactionUsingSeed(
 ) *Level0CompactionFiles {
 	cFiles := &Level0CompactionFiles{
 		Files:                           []*fileMeta{f},
+		seedInterval:                    intervalIndex,
 		seedIntervalStackDepthReduction: 1,
 		seedIntervalExtremeLevel:        f.subLevel,
 		minIntervalIndex:                f.minIntervalIndex,
@@ -990,6 +1015,7 @@ func (s *L0SubLevels) intraL0CompactionUsingSeed(
 
 	cFiles := &Level0CompactionFiles{
 		Files:                           []*fileMeta{f},
+		seedInterval:                    intervalIndex,
 		seedIntervalStackDepthReduction: 1,
 		seedIntervalExtremeLevel:        f.subLevel,
 		minIntervalIndex:                f.minIntervalIndex,
@@ -1143,6 +1169,8 @@ func (s *L0SubLevels) ExtendL0ForBaseCompactionTo(
 func (s *L0SubLevels) extendCandidateToRectangle(
 	minIntervalIndex int, maxIntervalIndex int, candidate *Level0CompactionFiles, isBase bool,
 ) bool {
+	candidate.preExtensionMinInterval = candidate.minIntervalIndex
+	candidate.preExtensionMaxInterval = candidate.maxIntervalIndex
 	var bottomLevel int
 	var increment int
 	var limitReached func(int) bool
@@ -1290,6 +1318,7 @@ func (s *L0SubLevels) extendCandidateToRectangle(
 					f.meta.FileNum, f.subLevel, f.minIntervalIndex, f.maxIntervalIndex,
 					f.meta.Smallest.Pretty(s.format), f.meta.Largest.Pretty(s.format))
 				candidate.Files = append(candidate.Files, f)
+				candidate.filesAdded = append(candidate.filesAdded, f)
 				candidate.fileBytes += f.meta.Size
 				if f.minIntervalIndex < candidate.minIntervalIndex {
 					candidate.minIntervalIndex = f.minIntervalIndex
