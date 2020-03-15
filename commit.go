@@ -249,6 +249,15 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 		return err
 	}
 
+	// TODO(270): kMemtable. WAL has been written to and therefore if write to
+	// memtable fails their states would diverge.
+	// RocksDB code:
+	// https://github.com/facebook/rocksdb/blob/master/db/db_impl/db_impl_write.cc#L189 (follower)
+	// https://github.com/facebook/rocksdb/blob/master/db/db_impl/db_impl_write.cc#L444. (leader)
+	//
+	// Check comment over
+	// https://github.com/facebook/rocksdb/blob/master/db/db_impl/db_impl_write.cc#L826.
+
 	// Apply the batch to the memtable.
 	if err := p.env.apply(b, mem); err != nil {
 		b.db = nil // prevent batch reuse on error
