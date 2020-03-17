@@ -173,7 +173,8 @@ func TestMeta(t *testing.T) {
 	// read by the child processes when performing a test run.
 	ops := generate(ops.Uint64(), defaultConfig)
 	opsPath := filepath.Join(metaDir, "ops")
-	if err := ioutil.WriteFile(opsPath, []byte(formatOps(ops)), 0644); err != nil {
+	formattedOps := formatOps(ops)
+	if err := ioutil.WriteFile(opsPath, []byte(formattedOps), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,8 +192,8 @@ func TestMeta(t *testing.T) {
 		}
 
 		optionsPath := filepath.Join(runDir, "OPTIONS")
-		str := optionsToString(opts)
-		if err := ioutil.WriteFile(optionsPath, []byte(str), 0644); err != nil {
+		optionsStr := optionsToString(opts)
+		if err := ioutil.WriteFile(optionsPath, []byte(optionsStr), 0644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -203,7 +204,11 @@ func TestMeta(t *testing.T) {
 			"-test.run="+rootName+"$")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf("%v\n%s\n\n%s", err, filepath.Join(runDir, "history"), out)
+			t.Fatalf(`err: %v,
+history: %s,
+out: %s
+ops: %s
+str: %s`, err, filepath.Join(runDir, "history"), out, formattedOps, optionsStr)
 		}
 	}
 
