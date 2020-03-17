@@ -75,6 +75,16 @@ func testMetaRun(t *testing.T, runDir string) {
 	if err := parseOptions(testOpts, string(optionsData)); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf(`ops: %s,
+options: %s`,
+				string(opsData),
+				string(optionsData),
+			)
+			panic(r)
+		}
+	}()
 
 	// Always use our custom comparer which provides a Split method.
 	opts.Comparer = &comparer
