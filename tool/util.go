@@ -168,6 +168,10 @@ func formatKey(w io.Writer, fmtKey formatter, key *base.InternalKey) bool {
 	return true
 }
 
+func formatSeqNumRange(w io.Writer, start, end uint64) {
+	fmt.Fprintf(w, "<#%d-#%d>", start, end)
+}
+
 func formatKeyRange(w io.Writer, fmtKey formatter, start, end *base.InternalKey) {
 	if fmtKey.spec == "null" {
 		return

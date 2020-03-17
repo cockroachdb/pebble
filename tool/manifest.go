@@ -154,6 +154,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					empty = false
 					fmt.Fprintf(stdout, "  added:         L%d %06d:%d",
 						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
+					formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
 					formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
 					if nf.Meta.CreationTime != 0 {
 						fmt.Fprintf(stdout, " (%s)",
@@ -180,6 +181,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					for j := range v.Files[level] {
 						f := v.Files[level][j]
 						fmt.Fprintf(stdout, "  %06d:%d", f.FileNum, f.Size)
+						formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 						formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
 						fmt.Fprintf(stdout, "\n")
 					}
@@ -256,6 +258,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 						for j := range v.Files[level] {
 							f := v.Files[level][j]
 							fmt.Fprintf(stdout, "  %06d:%d", f.FileNum, f.Size)
+							formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 							formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
 							fmt.Fprintf(stdout, "\n")
 						}
@@ -267,6 +270,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					for _, nf := range ve.NewFiles {
 						fmt.Fprintf(stdout, "  added: L%d %06d:%d",
 							nf.Level, nf.Meta.FileNum, nf.Meta.Size)
+						formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
 						formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
 						fmt.Fprintf(stdout, "\n")
 					}
