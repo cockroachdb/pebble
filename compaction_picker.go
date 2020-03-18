@@ -618,6 +618,10 @@ func (p *compactionPickerByScore) pickManual(
 	outputLevel := manual.level + 1
 	if manual.level == 0 {
 		outputLevel = p.baseLevel
+	} else if manual.level < p.baseLevel {
+		// This compaction is out of date; an automatic compaction has come in
+		// and incremented the base level. Don't retry.
+		return nil, false
 	}
 	// TODO(peter): The conflictsWithInProgress call should no longer be
 	// necessary, but TestManualCompaction currently expects it.
