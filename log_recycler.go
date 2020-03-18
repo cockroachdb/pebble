@@ -10,8 +10,17 @@ import (
 )
 
 type logRecycler struct {
+	// The maximum number of log files to maintain for recycling.
 	limit int
-	mu    struct {
+
+	// The minimum log number that is allowed to be recycled. Log numbers smaller
+	// than this will be subject to immediate deletion. This is used to prevent
+	// recycling a log written by a previous instance of the DB which may not
+	// have had log recycling enabled. If that previous instance of the DB was
+	// RocksDB, the old non-recyclable log record headers will be present.
+	minRecycleLogNum uint64
+
+	mu struct {
 		sync.Mutex
 		logNums   []uint64
 		maxLogNum uint64
@@ -22,6 +31,10 @@ type logRecycler struct {
 // the log file should not be deleted (i.e. the log is being recycled), and
 // false otherwise.
 func (r *logRecycler) add(logNum uint64) bool {
+	if logNum < r.minRecycleLogNum {
+		return false
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
