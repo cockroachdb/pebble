@@ -214,7 +214,7 @@ func TestMeta(t *testing.T) {
 ===== OPS =====
 %s
 ===== OPTIONS =====
-%s`, err, filepath.Join(runDir, "history"), out, formattedOps, optionsStr)
+%s`, err, readHistory(filepath.Join(runDir, "history")), out, formattedOps, optionsStr)
 		}
 	}
 
@@ -283,4 +283,13 @@ func TestMeta(t *testing.T) {
 			}
 		}
 	}
+}
+
+func readHistory(path string) string {
+	history, err := ioutil.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("err: %v", err)
+	}
+
+	return string(history)
 }
