@@ -618,6 +618,14 @@ func (p *compactionPickerByScore) pickManual(
 	outputLevel := manual.level + 1
 	if manual.level == 0 {
 		outputLevel = p.baseLevel
+	} else if manual.level < p.baseLevel {
+		// The start level for a compaction must be >= Lbase. A manual
+		// compaction could have been created adhering to that condition, and
+		// then an automatic compaction came in and compacted all of the
+		// sstables in Lbase to Lbase+1 which caused Lbase to change. Simply
+		// ignore this manual compaction as there is nothing to do (manual.level
+		// points to an empty level).
+		return nil, false
 	}
 	// TODO(peter): The conflictsWithInProgress call should no longer be
 	// necessary, but TestManualCompaction currently expects it.

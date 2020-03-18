@@ -315,3 +315,48 @@ L5->L6: 2.0
 pick ongoing=(5,6,5,6,5,6)
 ----
 no compaction
+
+# Verify that successive manual compactions interleaved with an automatic
+# compaction does not trigger an error.
+
+init 5
+0: 7
+5: 10
+6: 5
+----
+
+init_cp
+----
+base: 5
+
+queue
+----
+L5->L6: 2.0
+L5->L6: 1.8
+L5->L6: 1.6
+
+pick_manual level=0 start=0 end=12
+----
+L0->L5, retryLater = false
+
+pick
+----
+L5->L6: 2.0
+
+# Assume the above two compactions (one manual L0 -> L5 and one automatic
+# L5 -> L6) have run, and Lbase = L6 now, but the manual compaction code is
+# still going to try running a manual compaction from L5 -> L6 since L5 was the
+# output of the last manual compaction. No compaction should be picked.
+
+init 5
+0: 7
+6: 5
+----
+
+init_cp
+----
+base: 6
+
+pick_manual level=5 start=0 end=12
+----
+nil, retryLater = false

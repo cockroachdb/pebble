@@ -251,6 +251,47 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					return "no compaction"
 				}
 				return fmt.Sprintf("L%d->L%d: %0.1f", c.startLevel, c.outputLevel, c.score)
+			case "pick_manual":
+				startLevel := 0
+				start := ""
+				end := ""
+
+				if len(d.CmdArgs) > 0 {
+					for _, arg := range d.CmdArgs {
+						switch arg.Key {
+						case "level":
+							startLevel64, err := strconv.ParseInt(arg.Vals[0], 10, 64)
+							if err != nil {
+								return err.Error()
+							}
+							startLevel = int(startLevel64)
+						case "start":
+							start = arg.Vals[0]
+						case "end":
+							end = arg.Vals[0]
+						default:
+							return "unknown arg: " + arg.Key
+						}
+					}
+				}
+
+				iStart := base.MakeInternalKey([]byte(start), InternalKeySeqNumMax, InternalKeyKindMax)
+				iEnd := base.MakeInternalKey([]byte(end), 0, 0)
+				manual := &manualCompaction{
+					done:        make(chan error, 1),
+					level:       startLevel,
+					start:       iStart,
+					end:         iEnd,
+				}
+
+				c, retryLater := pickerByScore.pickManual(compactionEnv{
+					earliestUnflushedSeqNum: InternalKeySeqNumMax,
+				}, manual)
+				if c == nil {
+					return fmt.Sprintf("nil, retryLater = %v", retryLater)
+				}
+
+				return fmt.Sprintf("L%d->L%d, retryLater = %v", c.startLevel, c.outputLevel, retryLater)
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
