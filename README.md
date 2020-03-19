@@ -83,10 +83,10 @@ document all the incompatibilities. The list below contains known
 incompatibilities.
 
 * Pebble's use of WAL recycling is only compatible with RocksDB's
-  `kPointInTimeRecovery` WAL recovery mode. The
-  `kTolerateCorruptedTailRecords` and `kAbsoluteConsistency` modes
-  will result in RocksDB being unable to open a Pebble generated
-  WAL. See [#566](https://github.com/cockroachdb/pebble/issues/566).
+  `kTolerateCorruptedTailRecords` WAL recovery mode. Older versions of
+  RocksDB would automatically map incompatible WAL recovery modes to
+  `kTolerateCorruptedTailRecords`. New versions of RocksDB will
+  disable WAL recycling.
 * Column families. Pebble does not support column families, nor does
   it attempt to detect their usage when opening a DB that may contain
   them.

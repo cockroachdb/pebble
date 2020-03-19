@@ -219,6 +219,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			if fn >= d.mu.versions.minUnflushedLogNum {
 				logFiles = append(logFiles, fileNumAndName{fn, filename})
 			}
+			if d.logRecycler.minRecycleLogNum <= fn {
+				d.logRecycler.minRecycleLogNum = fn + 1
+			}
 		case fileTypeOptions:
 			if err := checkOptions(opts, opts.FS.PathJoin(dirname, filename)); err != nil {
 				return nil, err

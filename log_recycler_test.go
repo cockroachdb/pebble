@@ -24,53 +24,58 @@ func (r *logRecycler) maxLogNum() uint64 {
 }
 
 func TestLogRecycler(t *testing.T) {
-	r := logRecycler{limit: 3}
+	r := logRecycler{limit: 3, minRecycleLogNum: 4}
+
+	// Logs below the min-recycle number are not recycled.
+	require.False(t, r.add(1))
+	require.False(t, r.add(2))
+	require.False(t, r.add(3))
 
 	// Logs are recycled up to the limit.
-	require.True(t, r.add(1))
-	require.EqualValues(t, []uint64{1}, r.logNums())
-	require.EqualValues(t, 1, r.maxLogNum())
-	require.EqualValues(t, 1, r.peek())
-	require.True(t, r.add(2))
-	require.EqualValues(t, []uint64{1, 2}, r.logNums())
-	require.EqualValues(t, 2, r.maxLogNum())
-	require.True(t, r.add(3))
-	require.EqualValues(t, []uint64{1, 2, 3}, r.logNums())
-	require.EqualValues(t, 3, r.maxLogNum())
+	require.True(t, r.add(4))
+	require.EqualValues(t, []uint64{4}, r.logNums())
+	require.EqualValues(t, 4, r.maxLogNum())
+	require.EqualValues(t, 4, r.peek())
+	require.True(t, r.add(5))
+	require.EqualValues(t, []uint64{4, 5}, r.logNums())
+	require.EqualValues(t, 5, r.maxLogNum())
+	require.True(t, r.add(6))
+	require.EqualValues(t, []uint64{4, 5, 6}, r.logNums())
+	require.EqualValues(t, 6, r.maxLogNum())
 
 	// Trying to add a file past the limit fails.
-	require.False(t, r.add(4))
-	require.EqualValues(t, []uint64{1, 2, 3}, r.logNums())
-	require.EqualValues(t, 4, r.maxLogNum())
+	require.False(t, r.add(7))
+	require.EqualValues(t, []uint64{4, 5, 6}, r.logNums())
+	require.EqualValues(t, 7, r.maxLogNum())
 
 	// Trying to add a previously recycled file returns success, but the internal
 	// state is unchanged.
-	require.True(t, r.add(1))
-	require.EqualValues(t, []uint64{1, 2, 3}, r.logNums())
-	require.EqualValues(t, 4, r.maxLogNum())
+	require.True(t, r.add(4))
+	require.EqualValues(t, []uint64{4, 5, 6}, r.logNums())
+	require.EqualValues(t, 7, r.maxLogNum())
 
 	// An error is returned if we try to pop an element other than the first.
-	require.Regexp(t, `invalid 2 vs \[1 2 3\]`, r.pop(2))
+	require.Regexp(t, `invalid 5 vs \[4 5 6\]`, r.pop(5))
 
-	require.NoError(t, r.pop(1))
-	require.EqualValues(t, []uint64{2, 3}, r.logNums())
+	require.NoError(t, r.pop(4))
+	require.EqualValues(t, []uint64{5, 6}, r.logNums())
 
-	// Log number 4 was already considered, so it won't be recycled.
-	require.True(t, r.add(4))
-	require.EqualValues(t, []uint64{2, 3}, r.logNums())
+	// Log number 7 was already considered, so it won't be recycled.
+	require.True(t, r.add(7))
+	require.EqualValues(t, []uint64{5, 6}, r.logNums())
 
-	require.True(t, r.add(5))
-	require.EqualValues(t, []uint64{2, 3, 5}, r.logNums())
-	require.EqualValues(t, 5, r.maxLogNum())
+	require.True(t, r.add(8))
+	require.EqualValues(t, []uint64{5, 6, 8}, r.logNums())
+	require.EqualValues(t, 8, r.maxLogNum())
 
-	require.NoError(t, r.pop(2))
-	require.EqualValues(t, []uint64{3, 5}, r.logNums())
-	require.NoError(t, r.pop(3))
-	require.EqualValues(t, []uint64{5}, r.logNums())
 	require.NoError(t, r.pop(5))
+	require.EqualValues(t, []uint64{6, 8}, r.logNums())
+	require.NoError(t, r.pop(6))
+	require.EqualValues(t, []uint64{8}, r.logNums())
+	require.NoError(t, r.pop(8))
 	require.EqualValues(t, []uint64(nil), r.logNums())
 
-	require.Regexp(t, `empty`, r.pop(6))
+	require.Regexp(t, `empty`, r.pop(9))
 }
 
 func TestRecycleLogs(t *testing.T) {
@@ -127,6 +132,9 @@ func TestRecycleLogs(t *testing.T) {
 	}
 	if n := d.logRecycler.count(); n != int(metrics.WAL.ObsoleteFiles) {
 		t.Fatalf("expected %d obsolete WAL files, but found %d", n, metrics.WAL.ObsoleteFiles)
+	}
+	if recycled := d.logRecycler.logNums(); len(recycled) != 0 {
+		t.Fatalf("expected no recycled WAL files after recovery, but found %d", recycled)
 	}
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
