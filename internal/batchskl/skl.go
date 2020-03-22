@@ -59,11 +59,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"golang.org/x/exp/rand"
+	"github.com/zhiqiangxu/util"
 )
 
 const (
@@ -116,7 +115,6 @@ type Skiplist struct {
 	head           uint32
 	tail           uint32
 	height         uint32 // Current height: 1 <= height <= maxHeight
-	rand           rand.PCGSource
 }
 
 var (
@@ -168,7 +166,6 @@ func (s *Skiplist) Init(
 		nodes:          s.nodes[:0],
 		height:         1,
 	}
-	s.rand.Seed(uint64(time.Now().UnixNano()))
 
 	const initBufSize = 256
 	if cap(s.nodes) < initBufSize {
@@ -300,7 +297,7 @@ func (s *Skiplist) node(offset uint32) *node {
 }
 
 func (s *Skiplist) randomHeight() uint32 {
-	rnd := uint32(s.rand.Uint64())
+	rnd := util.FastRand()
 	h := uint32(1)
 	for h < maxHeight && rnd <= probabilities[h] {
 		h++
