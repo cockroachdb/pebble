@@ -34,7 +34,7 @@ func (s *splice) init(prev, next *node) {
 	s.next = next
 }
 
-// Iterator is an iterator over the skiplist object. Use Skiplist.NewIterator
+// Iterator is an iterator over the skiplist object. Use Skiplist.NewIter
 // to construct an iterator. The current state of the iterator can be cloned by
 // simply value copying the struct. All iterator methods are thread-safe.
 type Iterator struct {

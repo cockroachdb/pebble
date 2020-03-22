@@ -26,7 +26,7 @@ type splice struct {
 	next uint32
 }
 
-// Iterator is an iterator over the skiplist object. Use Skiplist.NewIterator
+// Iterator is an iterator over the skiplist object. Use Skiplist.NewIter
 // to construct an iterator. The current state of the iterator can be cloned
 // by simply value copying the struct.
 type Iterator struct {
