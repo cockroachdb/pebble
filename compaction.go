@@ -1050,6 +1050,12 @@ func (d *DB) maybeScheduleCompaction() {
 	d.mu.versions.logLock()
 	defer d.mu.versions.logUnlock()
 
+	// Check for the closed flag again, in case the DB was closed while we were
+	// waiting for logLock().
+	if atomic.LoadInt32(&d.closed) != 0 {
+		return
+	}
+
 	env := compactionEnv{
 		bytesCompacted:          &d.bytesCompacted,
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
