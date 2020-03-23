@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -1033,6 +1034,34 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDBConcurrentCompactClose(t *testing.T) {
+	// Test closing while a compaction is ongoing. This ensures compaction code
+	// detects the close and finishes cleanly.
+	mem := vfs.NewMem()
+	for i := 0; i < 100; i++ {
+		d, err := Open("", &Options{
+			FS:                       mem,
+			MaxConcurrentCompactions: 2,
+		})
+		require.NoError(t, err)
+
+		// Ingest a series of files containing a single key each. As the outer
+		// loop progresses, these ingestions will build up compaction debt
+		// causing compactions to be running concurrently with the close below.
+		for j := 0; j < 10; j++ {
+			path := fmt.Sprintf("ext%d", j)
+			f, err := mem.Create(path)
+			require.NoError(t, err)
+			w := sstable.NewWriter(f, sstable.WriterOptions{})
+			require.NoError(t, w.Set([]byte(fmt.Sprint(j)), nil))
+			require.NoError(t, w.Close())
+			require.NoError(t, d.Ingest([]string{path}))
+		}
+
+		require.NoError(t, d.Close())
 	}
 }
 

@@ -270,7 +270,8 @@ func (vs *versionSet) close() error {
 // logLock locks the manifest for writing. The lock must be released by either
 // a call to logUnlock or logAndApply.
 //
-// DB.mu must be held when calling this method.
+// DB.mu must be held when calling this method, but the mutex may be dropped and
+// re-acquired during the course of this method.
 func (vs *versionSet) logLock() {
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
