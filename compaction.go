@@ -1043,9 +1043,9 @@ func (d *DB) maybeScheduleCompaction() {
 		return
 	}
 
-	// Compaction picking needs a coherent view a Version. In particular, we need
-	// to exlude concurrent ingestions from making a decision on which level to
-	// ingest into that conflicts with our compaction
+	// Compaction picking needs a coherent view of a Version. In particular, we
+	// need to exlude concurrent ingestions from making a decision on which level
+	// to ingest into that conflicts with our compaction
 	// decision. versionSet.logLock provides the necessary mutual exclusion.
 	d.mu.versions.logLock()
 	defer d.mu.versions.logUnlock()
