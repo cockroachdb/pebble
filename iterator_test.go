@@ -207,6 +207,87 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 	f.upper = upper
 }
 
+// invalidatingIter tests unsafe key/value slice reuse by modifying the last
+// returned key/value to all 1s.
+type invalidatingIter struct {
+	iter internalIterator
+	lastKey *InternalKey
+	lastValue []byte
+}
+
+func newInvalidatingIter(iter internalIterator) *invalidatingIter {
+	return &invalidatingIter{iter: iter}
+}
+
+func (i *invalidatingIter) update(key *InternalKey, value []byte) (*InternalKey, []byte) {
+	if i.lastKey != nil {
+		for j := range i.lastKey.UserKey {
+			i.lastKey.UserKey[j] = 0xff
+		}
+		i.lastKey.Trailer = 0
+	}
+	for j := range i.lastValue {
+		i.lastValue[j] = 0xff
+	}
+
+	if key == nil {
+		i.lastKey = nil
+		i.lastValue = nil
+		return nil, nil
+	}
+
+	i.lastKey = &InternalKey{}
+	*i.lastKey = key.Clone()
+	i.lastValue = make([]byte, len(value))
+	copy(i.lastValue, value)
+	return i.lastKey, i.lastValue
+}
+
+func (i *invalidatingIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	return i.update(i.iter.SeekGE(key))
+}
+
+func (i *invalidatingIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	return i.update(i.iter.SeekPrefixGE(prefix, key))
+}
+
+func (i *invalidatingIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	return i.update(i.iter.SeekLT(key))
+}
+
+func (i *invalidatingIter) First() (*InternalKey, []byte) {
+	return i.update(i.iter.First())
+}
+
+func (i *invalidatingIter) Last() (*InternalKey, []byte) {
+	return i.update(i.iter.Last())
+}
+
+func (i *invalidatingIter) Next() (*InternalKey, []byte) {
+	return i.update(i.iter.Next())
+}
+
+func (i *invalidatingIter) Prev() (*InternalKey, []byte) {
+	return i.update(i.iter.Prev())
+}
+
+func (i *invalidatingIter) Error() error {
+	return i.iter.Error()
+}
+
+func (i *invalidatingIter) Close() error {
+	return i.iter.Close()
+}
+
+func (i *invalidatingIter) SetBounds(lower, upper []byte) {
+	i.iter.SetBounds(lower, upper)
+}
+
+func (i *invalidatingIter) String() string {
+	return i.iter.String()
+}
+
+
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
@@ -260,7 +341,7 @@ func testIterator(
 	}
 	for _, tc := range testCases {
 		var b bytes.Buffer
-		iter := newFunc(tc.iters...)
+		iter := newInvalidatingIter(newFunc(tc.iters...))
 		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
 			fmt.Fprintf(&b, "<%s:%d>", key.UserKey, key.SeqNum())
 		}
@@ -284,7 +365,7 @@ func testIterator(
 		for i, split := range splits {
 			iters[i] = newFakeIterator(nil, split...)
 		}
-		iter := newInternalIterAdapter(newFunc(iters...))
+		iter := newInternalIterAdapter(newInvalidatingIter(newFunc(iters...)))
 		iter.First()
 
 		j := 0
@@ -343,7 +424,7 @@ func TestIterator(t *testing.T) {
 			equal: equal,
 			split: split,
 			merge: DefaultMerger.Merge,
-			iter:  iter,
+			iter:  newInvalidatingIter(iter),
 		}
 	}
 
