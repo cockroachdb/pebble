@@ -49,9 +49,14 @@ type LevelMetrics struct {
 	// The number of bytes read for compactions at the level. This includes bytes
 	// read from other levels (BytesIn), as well as bytes read for the level.
 	BytesRead uint64
-	// The number of bytes written during flushes and compactions. The sibling
-	// metrics for tables are TablesCompacted and TablesFlushed.
-	BytesWritten uint64
+	// The number of bytes written during compactions. The sibling
+	// metric for tables is TablesCompacted. This metric may be summed
+	// with BytesFlushed to compute the total bytes written for the level.
+	BytesCompacted uint64
+	// The number of bytes written during flushes. The sibling
+	// metrics for tables is TablesFlushed. This metric is always
+	// zero for all levels other than L0.
+	BytesFlushed uint64
 	// The number of sstables compacted to this level.
 	TablesCompacted uint64
 	// The number of sstables flushed to this level.
@@ -68,7 +73,8 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.BytesIngested += u.BytesIngested
 	m.BytesMoved += u.BytesMoved
 	m.BytesRead += u.BytesRead
-	m.BytesWritten += u.BytesWritten
+	m.BytesCompacted += u.BytesCompacted
+	m.BytesFlushed += u.BytesFlushed
 	m.TablesCompacted += u.TablesCompacted
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested
@@ -76,12 +82,12 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 }
 
 // WriteAmp computes the write amplification for compactions at this
-// level. Computed as BytesWritten / BytesIn.
+// level. Computed as (BytesFlushed + BytesCompacted) / BytesIn.
 func (m *LevelMetrics) WriteAmp() float64 {
 	if m.BytesIn == 0 {
 		return 0
 	}
-	return float64(m.BytesWritten) / float64(m.BytesIn)
+	return float64(m.BytesFlushed+m.BytesCompacted) / float64(m.BytesIn)
 }
 
 // format generates a string of the receiver's metrics, formatting it into the
@@ -96,7 +102,7 @@ func (m *LevelMetrics) format(buf *bytes.Buffer, score string) {
 		humanize.SI.Uint64(m.TablesIngested),
 		humanize.IEC.Uint64(m.BytesMoved),
 		humanize.SI.Uint64(m.TablesMoved),
-		humanize.IEC.Uint64(m.BytesWritten),
+		humanize.IEC.Uint64(m.BytesFlushed+m.BytesCompacted),
 		humanize.SI.Uint64(m.TablesFlushed+m.TablesCompacted),
 		humanize.IEC.Uint64(m.BytesRead),
 		m.WriteAmp())
@@ -235,10 +241,10 @@ func (m *Metrics) String() string {
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested
 	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
-	// Add the total bytes-in to the total bytes-written. This is to account for
+	// Add the total bytes-in to the total bytes-flushed. This is to account for
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
-	total.BytesWritten += total.BytesIn
+	total.BytesFlushed += total.BytesIn
 	fmt.Fprintf(&buf, "  total ")
 	total.format(&buf, "-")
 
