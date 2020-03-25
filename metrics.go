@@ -52,6 +52,9 @@ type LevelMetrics struct {
 	// The number of bytes written during flushes and compactions. The sibling
 	// metrics for tables are TablesCompacted and TablesFlushed.
 	BytesWritten uint64
+	// The number of bytes written during flushes exclusively. The sibling
+	// metrics for tables is TablesFlushed.
+	BytesFlushed uint64
 	// The number of sstables compacted to this level.
 	TablesCompacted uint64
 	// The number of sstables flushed to this level.
@@ -69,6 +72,7 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.BytesMoved += u.BytesMoved
 	m.BytesRead += u.BytesRead
 	m.BytesWritten += u.BytesWritten
+	m.BytesFlushed += u.BytesFlushed
 	m.TablesCompacted += u.TablesCompacted
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested

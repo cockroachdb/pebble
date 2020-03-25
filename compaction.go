@@ -1351,6 +1351,7 @@ func (d *DB) runCompaction(
 			metrics.TablesCompacted++
 		} else {
 			metrics.TablesFlushed++
+			metrics.BytesFlushed += meta.Size
 		}
 
 		// The handling of range boundaries is a bit complicated.
