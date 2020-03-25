@@ -1352,11 +1352,12 @@ func (d *DB) runCompaction(
 		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
 
-		metrics.BytesWritten += meta.Size
 		if c.flushing == nil {
 			metrics.TablesCompacted++
+			metrics.BytesCompacted += meta.Size
 		} else {
 			metrics.TablesFlushed++
+			metrics.BytesFlushed += meta.Size
 		}
 
 		// The handling of range boundaries is a bit complicated.

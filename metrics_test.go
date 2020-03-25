@@ -52,24 +52,25 @@ func TestMetricsFormat(t *testing.T) {
 		l.BytesIngested = base + 4
 		l.BytesMoved = base + 6
 		l.BytesRead = base + 7
-		l.BytesWritten = base + 8
-		l.TablesCompacted = base + 9
-		l.TablesFlushed = base + 10
-		l.TablesIngested = base + 11
-		l.TablesMoved = base + 12
+		l.BytesCompacted = base + 8
+		l.BytesFlushed = base + 9
+		l.TablesCompacted = base + 10
+		l.TablesFlushed = base + 11
+		l.TablesIngested = base + 12
+		l.TablesMoved = base + 13
 	}
 
 	const expected = `
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
     WAL        21    23 B       -    24 B       -       -       -       -    25 B       -       -     1.0
-      0       101   102 B  103.00   104 B   104 B     111   106 B     112   108 B     219   107 B     1.0
-      1       201   202 B  203.00   204 B   204 B     211   206 B     212   208 B     419   207 B     1.0
-      2       301   302 B  303.00   304 B   304 B     311   306 B     312   308 B     619   307 B     1.0
-      3       401   402 B  403.00   404 B   404 B     411   406 B     412   408 B     819   407 B     1.0
-      4       501   502 B  503.00   504 B   504 B     511   506 B     512   508 B   1.0 K   507 B     1.0
-      5       601   602 B  603.00   604 B   604 B     611   606 B     612   608 B   1.2 K   607 B     1.0
-      6       701   702 B  703.00   704 B   704 B     711   706 B     712   708 B   1.4 K   707 B     1.0
-  total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   5.6 K   5.7 K   2.8 K     2.0
+      0       101   102 B  103.00   104 B   104 B     112   106 B     113   217 B     221   107 B     2.1
+      1       201   202 B  203.00   204 B   204 B     212   206 B     213   417 B     421   207 B     2.0
+      2       301   302 B  303.00   304 B   304 B     312   306 B     313   617 B     621   307 B     2.0
+      3       401   402 B  403.00   404 B   404 B     412   406 B     413   817 B     821   407 B     2.0
+      4       501   502 B  503.00   504 B   504 B     512   506 B     513  1017 B   1.0 K   507 B     2.0
+      5       601   602 B  603.00   604 B   604 B     612   606 B     613   1.2 K   1.2 K   607 B     2.0
+      6       701   702 B  703.00   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B     2.0
+  total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K     3.0
   flush         7
 compact         5     6 B          (size == estimated-debt)
  memtbl        11    10 B
