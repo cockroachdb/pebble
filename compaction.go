@@ -1536,34 +1536,21 @@ func (d *DB) runCompaction(
 				// TODO: this is fixable
 				d.opts.Logger.Infof("next flush file does not respect L0 limits")
 			}
-			var lastKey InternalKey
-			breakSoon := false
+			// var lastKey InternalKey
+			// breakSoon := false
 			// printedOnce := false
 			for ; key != nil; key, val = iter.Next() {
-				if breakSoon {
-					if c.cmp(key.UserKey, lastKey.UserKey) > 0 {
-						c.rangeDelFrag.FlushToNoStraddling(key.UserKey)
-						break
+				if limit != nil && c.cmp(key.UserKey, limit) > 0 {
+					// The previous key added to this sst must be less than key.UserKey.
+
+					// The following is pessimistic. But this is fixable
+					// by generating ssts that have only tombstones. Similar
+					// issue as the TODO above.
+					c.rangeDelFrag.FlushToNoStraddling(key.UserKey)
+					if !c.rangeDelFrag.Empty() {
+						d.opts.Logger.Infof("tombstone spans to next flush file")
 					}
-					/*
-						if c.rangeDelFrag.Empty() {
-							if c.cmp(key.UserKey, lastKey.UserKey) > 0 {
-								break
-							}
-						} else if !printedOnce {
-							if tw != nil {
-								n := len(ve.NewFiles)
-								d.opts.Logger.Infof("ignoring L0 limits since fragmenter is not empty for flushing file: %d",
-									ve.NewFiles[n-1].Meta.FileNum)
-								printedOnce = true
-							}
-						}
-					*/
-				} else {
-					if limit != nil && c.cmp(key.UserKey, limit) > 0 {
-						breakSoon = true
-						lastKey = iter.cloneKey(*key)
-					}
+					break
 				}
 				atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
 				if key.Kind() == InternalKeyKindRangeDelete {
