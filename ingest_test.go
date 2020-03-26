@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -317,7 +318,7 @@ func TestIngestLinkFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := &Options{FS: &errorFS{mem, 0}}
+	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(0))}
 	opts.EnsureDefaults()
 
 	meta := []*fileMetadata{{FileNum: 1}}
