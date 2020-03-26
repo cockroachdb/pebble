@@ -7,13 +7,12 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -25,168 +24,6 @@ func (l panicLogger) Infof(format string, args ...interface{}) {
 
 func (l panicLogger) Fatalf(format string, args ...interface{}) {
 	panic(fmt.Errorf("fatal: "+format, args...))
-}
-
-type errorFS struct {
-	vfs.FS
-	index int32
-}
-
-func newErrorFS(index int32) *errorFS {
-	return &errorFS{
-		FS:    vfs.NewMem(),
-		index: index,
-	}
-}
-
-func (fs *errorFS) maybeError() error {
-	if atomic.AddInt32(&fs.index, -1) == -1 {
-		return fmt.Errorf("injected error")
-	}
-	return nil
-}
-
-func (fs *errorFS) Create(name string) (vfs.File, error) {
-	if err := fs.maybeError(); err != nil {
-		return nil, err
-	}
-	f, err := fs.FS.Create(name)
-	if err != nil {
-		return nil, err
-	}
-	return errorFile{f, fs}, nil
-}
-
-func (fs *errorFS) Link(oldname, newname string) error {
-	if err := fs.maybeError(); err != nil {
-		return err
-	}
-	return fs.FS.Link(oldname, newname)
-}
-
-func (fs *errorFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
-	if err := fs.maybeError(); err != nil {
-		return nil, err
-	}
-	f, err := fs.FS.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	ef := errorFile{f, fs}
-	for _, opt := range opts {
-		opt.Apply(ef)
-	}
-	return ef, nil
-}
-
-func (fs *errorFS) OpenDir(name string) (vfs.File, error) {
-	if err := fs.maybeError(); err != nil {
-		return nil, err
-	}
-	f, err := fs.FS.OpenDir(name)
-	if err != nil {
-		return nil, err
-	}
-	return errorFile{f, fs}, nil
-}
-
-func (fs *errorFS) Remove(name string) error {
-	if _, err := fs.FS.Stat(name); os.IsNotExist(err) {
-		return nil
-	}
-
-	if err := fs.maybeError(); err != nil {
-		return err
-	}
-	return fs.FS.Remove(name)
-}
-
-func (fs *errorFS) Rename(oldname, newname string) error {
-	if err := fs.maybeError(); err != nil {
-		return err
-	}
-	return fs.FS.Rename(oldname, newname)
-}
-
-func (fs *errorFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	if err := fs.maybeError(); err != nil {
-		return nil, err
-	}
-	return fs.FS.ReuseForWrite(oldname, newname)
-}
-
-func (fs *errorFS) MkdirAll(dir string, perm os.FileMode) error {
-	if err := fs.maybeError(); err != nil {
-		return err
-	}
-	return fs.FS.MkdirAll(dir, perm)
-}
-
-func (fs *errorFS) Lock(name string) (io.Closer, error) {
-	if err := fs.maybeError(); err != nil {
-		return nil, err
-	}
-	return fs.FS.Lock(name)
-}
-
-func (fs *errorFS) List(dir string) ([]string, error) {
-	if err := fs.maybeError(); err != nil {
-		return nil, err
-	}
-	return fs.FS.List(dir)
-}
-
-func (fs *errorFS) Stat(name string) (os.FileInfo, error) {
-	if err := fs.maybeError(); err != nil {
-		return nil, err
-	}
-	return fs.FS.Stat(name)
-}
-
-type errorFile struct {
-	file vfs.File
-	fs   *errorFS
-}
-
-func (f errorFile) Close() error {
-	// We don't inject errors during close as those calls should never fail in
-	// practice.
-	return f.file.Close()
-}
-
-func (f errorFile) Read(p []byte) (int, error) {
-	if err := f.fs.maybeError(); err != nil {
-		return 0, err
-	}
-	return f.file.Read(p)
-}
-
-func (f errorFile) ReadAt(p []byte, off int64) (int, error) {
-	if err := f.fs.maybeError(); err != nil {
-		return 0, err
-	}
-	return f.file.ReadAt(p, off)
-}
-
-func (f errorFile) Write(p []byte) (int, error) {
-	if err := f.fs.maybeError(); err != nil {
-		return 0, err
-	}
-	return f.file.Write(p)
-}
-
-func (f errorFile) Stat() (os.FileInfo, error) {
-	if err := f.fs.maybeError(); err != nil {
-		return nil, err
-	}
-	return f.file.Stat()
-}
-
-func (f errorFile) Sync() error {
-	if err := f.fs.maybeError(); err != nil {
-		return err
-	}
-	return f.file.Sync()
 }
 
 // corruptFS injects a corruption in the `index`th byte read.
@@ -256,7 +93,7 @@ func expectLSM(expected string, d *DB, t *testing.T) {
 // TestErrors repeatedly runs a short sequence of operations, injecting FS
 // errors at different points, until success is achieved.
 func TestErrors(t *testing.T) {
-	run := func(fs *errorFS) (err error) {
+	run := func(fs *errorfs.FS) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				if e, ok := r.(error); ok {
@@ -298,7 +135,7 @@ func TestErrors(t *testing.T) {
 
 	errorCounts := make(map[string]int)
 	for i := int32(0); ; i++ {
-		fs := newErrorFS(i)
+		fs := errorfs.Wrap(vfs.NewMem(), errorfs.OnIndex(i))
 		err := run(fs)
 		if err == nil {
 			t.Logf("success %d\n", i)
@@ -328,10 +165,8 @@ func TestErrors(t *testing.T) {
 func TestRequireReadError(t *testing.T) {
 	run := func(index int32) (err error) {
 		// Perform setup with error injection disabled as it involves writes/background ops.
-		fs := &errorFS{
-			FS:    vfs.NewMem(),
-			index: -1,
-		}
+		inj := errorfs.OnIndex(-1)
+		fs := errorfs.Wrap(vfs.NewMem(), inj)
 		d, err := Open("", &Options{
 			FS:     fs,
 			Logger: panicLogger{},
@@ -361,7 +196,7 @@ func TestRequireReadError(t *testing.T) {
 `, d, t)
 
 		// Now perform foreground ops with error injection enabled.
-		atomic.StoreInt32(&fs.index, index)
+		inj.SetIndex(index)
 		iter := d.NewIter(nil)
 		numFound := 0
 		expectedKeys := [][]byte{key1, key2}
@@ -383,9 +218,9 @@ func TestRequireReadError(t *testing.T) {
 		d = nil
 		// Reaching here implies all read operations succeeded. This
 		// should only happen when we reached a large enough index at
-		// which `errorFS` did not return any error.
-		if fs.index < 0 {
-			t.Errorf("FS error injected %d ops ago went unreported", -fs.index)
+		// which `errorfs.FS` did not return any error.
+		if i := inj.Index(); i < 0 {
+			t.Errorf("FS error injected %d ops ago went unreported", -i)
 		}
 		if numFound != 2 {
 			t.Fatalf("expected 2 values; found %d", numFound)
