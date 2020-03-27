@@ -234,10 +234,14 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	// function and could have only updated it to some other non-zero value,
 	// so it cannot be 0 here.
 	if vs.minUnflushedLogNum == 0 {
-		if vs.nextFileNum == 2 {
-			// We have a freshly created DB.
+		if vs.nextFileNum >= 2 {
+			// We either have a freshly created DB, or a DB created by RocksDB
+			// that has not had a single flushed SSTable yet. This is because
+			// RocksDB bumps up nextFileNum in this case without bumping up
+			// minUnflushedLogNum, even if WALs with non-zero file numbers are
+			// present in the directory.
 		} else {
-			return fmt.Errorf("pebble: incomplete manifest file %q for DB %q", b, dirname)
+			return fmt.Errorf("pebble: malformed manifest file %q for DB %q", b, dirname)
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
