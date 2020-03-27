@@ -199,7 +199,7 @@ func readFooter(f vfs.File) (footer, error) {
 	var footer footer
 	stat, err := f.Stat()
 	if err != nil {
-		return footer, fmt.Errorf("pebble/table: invalid table (could not stat file): %v", err)
+		return footer, fmt.Errorf("pebble/table: invalid table (could not stat file): %w", err)
 	}
 	if stat.Size() < minFooterLen {
 		return footer, errors.New("pebble/table: invalid table (file size is too small)")
@@ -212,7 +212,7 @@ func readFooter(f vfs.File) (footer, error) {
 	}
 	n, err := f.ReadAt(buf, off)
 	if err != nil && err != io.EOF {
-		return footer, fmt.Errorf("pebble/table: invalid table (could not read footer): %v", err)
+		return footer, fmt.Errorf("pebble/table: invalid table (could not read footer): %w", err)
 	}
 	buf = buf[:n]
 

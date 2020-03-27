@@ -539,7 +539,7 @@ func (b *BulkVersionEdit) Apply(
 			}
 			SortBySeqNum(v.Files[level])
 			if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
-				return nil, nil, fmt.Errorf("pebble: internal error: %v", err)
+				return nil, nil, fmt.Errorf("pebble: internal error: %w", err)
 			}
 			continue
 		}
