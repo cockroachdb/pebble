@@ -805,8 +805,7 @@ func (d *DB) NewSnapshot() *Snapshot {
 // Close closes the DB.
 //
 // It is not safe to close a DB until all outstanding iterators are closed.
-// It is valid to call Close multiple times. Other methods should not be
-// called after the DB has been closed.
+// It is not valid to call any of a DB's methods after the DB has been closed.
 func (d *DB) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
