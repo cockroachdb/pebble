@@ -446,7 +446,7 @@ func (w *LogWriter) flushPending(
 		// the stack that created the panic if panic'ing itself hits a panic
 		// (e.g. unlock of unlocked mutex).
 		if r := recover(); r != nil {
-			err = fmt.Errorf("%v\n%s", err, debug.Stack())
+			err = fmt.Errorf("%w\n%s", err, debug.Stack())
 		}
 	}()
 

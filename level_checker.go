@@ -175,7 +175,7 @@ func (m *simpleMergingIter) step() bool {
 			m.valueMerger, m.err = m.merge(item.key.UserKey, item.value)
 		}
 		if m.err != nil {
-			m.err = fmt.Errorf("merge processing error on key %s in %s: %v",
+			m.err = fmt.Errorf("merge processing error on key %s in %s: %w",
 				item.key.Pretty(m.format), l.iter, m.err)
 			return false
 		}
@@ -238,7 +238,7 @@ func (m *simpleMergingIter) step() bool {
 		if m.valueMerger != nil {
 			_, m.err = m.valueMerger.Finish()
 			if m.err != nil {
-				m.err = fmt.Errorf("merge processing error on key %s in %s: %v",
+				m.err = fmt.Errorf("merge processing error on key %s in %s: %w",
 					item.key.Pretty(m.format), lastRecordMsg, m.err)
 			}
 			m.valueMerger = nil

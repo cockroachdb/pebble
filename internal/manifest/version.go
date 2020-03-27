@@ -370,7 +370,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 func (v *Version) CheckOrdering(cmp Compare, format base.Formatter) error {
 	for level, files := range v.Files {
 		if err := CheckOrdering(cmp, format, level, files); err != nil {
-			return fmt.Errorf("%s\n%s", err, v.DebugString(format))
+			return fmt.Errorf("%w\n%s", err, v.DebugString(format))
 		}
 	}
 	return nil

@@ -725,7 +725,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			f := c.inputs[0][i]
 			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 			if err != nil {
-				return nil, fmt.Errorf("pebble: could not open table %d: %v", f.FileNum, err)
+				return nil, fmt.Errorf("pebble: could not open table %d: %w", f.FileNum, err)
 			}
 			iters = append(iters, iter)
 			if rangeDelIter != nil {

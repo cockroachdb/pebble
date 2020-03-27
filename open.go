@@ -172,7 +172,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, err
 		}
 	} else if err != nil {
-		return nil, fmt.Errorf("pebble: database %q: %v", dirname, err)
+		return nil, fmt.Errorf("pebble: database %q: %w", dirname, err)
 	} else if opts.ErrorIfExists {
 		return nil, fmt.Errorf("pebble: database %q already exists", dirname)
 	} else {
