@@ -601,3 +601,34 @@ func TestGetVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "rocksdb v6.2.1", version)
 }
+
+func TestRocksDBNoFlushManifest(t *testing.T) {
+	mem := vfs.NewMem()
+	// Have the comparer and merger names match what's in the testdata
+	// directory.
+	comparer := *DefaultComparer
+	merger := *DefaultMerger
+	comparer.Name = "cockroach_comparator"
+	merger.Name = "cockroach_merge_operator"
+	opts := &Options{
+		FS:       mem,
+		Comparer: &comparer,
+		Merger:   &merger,
+	}
+
+	// rocksdb-ingest-only is a RocksDB-generated db directory that has not had
+	// a single flush yet, only ingestion operations. The manifest contains
+	// a next-log-num but no log-num entry. Ensure that pebble can read these
+	// directories without an issue.
+	_, err := vfs.Clone(vfs.Default, mem, "testdata/rocksdb-ingest-only", "testdata")
+	require.NoError(t, err)
+
+	db, err := Open("testdata", opts)
+	require.NoError(t, err)
+	defer db.Close()
+
+	val, closer, err := db.Get([]byte("ajulxeiombjiyw\x00\x00\x00\x00\x00\x00\x00\x01\x12\x09"))
+	require.NoError(t, err)
+	require.NotEmpty(t, val)
+	require.NoError(t, closer.Close())
+}
