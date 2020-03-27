@@ -170,12 +170,12 @@ MANIFEST-invalid
   last-seq-num:  20
   added:         L0 000002:0<#1-#4>[#0,DEL-#0,DEL]
 EOF
-pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
+pebble: internal error: L0 files 000002 and 000001 have overlapping key and seqnum ranges: #0,DEL-#0,DEL vs #0,DEL-#0,DEL, and 1-4 vs 2-5
 
 manifest check
 ./testdata/MANIFEST-invalid
 ----
-MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
+MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 files 000002 and 000001 have overlapping key and seqnum ranges: #0,DEL-#0,DEL vs #0,DEL-#0,DEL, and 1-4 vs 2-5
 Version state before failed Apply
 --- L0 ---
   000001:0<#2-#5>[#0,DEL-#0,DEL]

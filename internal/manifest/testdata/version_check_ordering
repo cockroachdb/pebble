@@ -21,15 +21,98 @@ L0 files 000001 and 000002 are not properly ordered: 3-4 vs 1-2
   000001:[c#3,SET-d#4,SET]
   000002:[a#1,SET-b#2,SET]
 
+# Seqnum overlaps are allowed in L0 as long as no key ranges overlap.
 check-ordering
 L0
   c.SET.3-d.SET.4
   a.SET.1-b.SET.5
 ----
-L0 flushed file 000002 overlaps with the largest seqnum of a preceding flushed file: 1-5 vs 4
+OK
+
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+  e.SET.2-f.SET.7
+  g.SET.6-h.SET.12
+  i.SET.8-j.SET.13
+  b.SET.15-d.SET.15
+  a.SET.14-j.SET.17
+  k.SET.16-n.SET.19
+----
+OK
+
+# Add some ingested SSTables around the 14-19 seqnum cases.
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+  e.SET.2-f.SET.7
+  g.SET.6-h.SET.12
+  i.SET.8-j.SET.13
+  b.SET.15-d.SET.15
+  a.SET.14-j.SET.17
+  m.SET.18-n.SET.18
+  k.SET.16-n.SET.19
+  m.SET.20-n.SET.20
+----
+OK
+
+# Set the 16-19 SeqNum SSTable to have an overlapping key range with the 14-17
+# SSTable's key range.
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+  e.SET.2-f.SET.7
+  g.SET.6-h.SET.12
+  i.SET.8-j.SET.13
+  b.SET.15-d.SET.15
+  a.SET.14-j.SET.17
+  m.SET.18-n.SET.18
+  h.SET.16-n.SET.19
+  m.SET.20-n.SET.20
+----
+L0 files 000007 and 000009 have overlapping key and seqnum ranges: a#14,SET-j#17,SET vs h#16,SET-n#19,SET, and 14-17 vs 16-19
 0:
   000001:[c#3,SET-d#4,SET]
   000002:[a#1,SET-b#5,SET]
+  000003:[e#2,SET-f#7,SET]
+  000004:[g#6,SET-h#12,SET]
+  000005:[i#8,SET-j#13,SET]
+  000006:[b#15,SET-d#15,SET]
+  000007:[a#14,SET-j#17,SET]
+  000008:[m#18,SET-n#18,SET]
+  000009:[h#16,SET-n#19,SET]
+  000010:[m#20,SET-n#20,SET]
+
+# Ensure that coincident sequence numbers are still detected at the bounds of
+# seqnum overlap ranges.
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+  e.SET.2-f.SET.7
+  g.SET.6-h.SET.12
+  i.SET.8-j.SET.13
+  b.SET.15-d.SET.15
+  a.SET.15-j.SET.17
+  m.SET.18-n.SET.18
+  k.SET.16-n.SET.19
+  m.SET.20-n.SET.20
+----
+L0 flushed file 000007 has an ingested file coincident with smallest seqnum: 15-17
+0:
+  000001:[c#3,SET-d#4,SET]
+  000002:[a#1,SET-b#5,SET]
+  000003:[e#2,SET-f#7,SET]
+  000004:[g#6,SET-h#12,SET]
+  000005:[i#8,SET-j#13,SET]
+  000006:[b#15,SET-d#15,SET]
+  000007:[a#15,SET-j#17,SET]
+  000008:[m#18,SET-n#18,SET]
+  000009:[k#16,SET-n#19,SET]
+  000010:[m#20,SET-n#20,SET]
 
 check-ordering
 L0

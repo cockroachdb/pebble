@@ -18,12 +18,13 @@ L0
 ----
 fatal: L0 files 000001 and 000002 are not properly ordered: 3-4 vs 1-2
 
+# Seqnum overlaps are allowed in L0 as long as no key ranges overlap.
 check-ordering
 L0
   c.SET.3-d.SET.4
   a.SET.1-b.SET.5
 ----
-fatal: L0 flushed file 000002 overlaps with the largest seqnum of a preceding flushed file: 1-5 vs 4
+OK
 
 check-ordering
 L0

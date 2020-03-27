@@ -53,7 +53,7 @@ edit
   L0
    4:b.SET.3-d.SET.5
 ----
-pebble: internal error: L0 flushed file 000004 overlaps with the largest seqnum of a preceding flushed file: 3-5 vs 4
+pebble: internal error: L0 files 000004 and 000002 have overlapping key and seqnum ranges: b#3,SET-d#5,SET vs c#3,SET-d#4,SET, and 3-5 vs 3-4
 
 apply
  L0

@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -447,7 +448,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		//   file (except for the 0 sequence number case below).
 		// - Files with multiple sequence numbers: these are necessarily flushed files.
 		//
-		// Two cases of overlapping sequence numbers:
+		// Three cases of overlapping sequence numbers:
 		// Case 1:
 		// An ingested file contained in the sequence numbers of the flushed file -- it must be
 		// fully contained (not coincident with either end of the flushed file) since the memtable
@@ -469,9 +470,30 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		// in the file key intervals. This file is placed in L0 since it overlaps in the file
 		// key intervals but since it has no overlapping data, it is assigned a sequence number
 		// of 0 in RocksDB. We handle this case for compatibility with RocksDB.
+		//
+		// Case 3:
+		// A sequence of flushed files that overlap in sequence numbers with one another,
+		// but do not overlap in key ranges. All of these files correspond to one
+		// partitioned flush; resulting in partitioned SSTables with no overlapping
+		// keys but overlapping sequence numbers. The term "overlap range" is used
+		// to refer to these sets of SSTables.
+		//
+		// Partitioned flushes are currently not implemented in Pebble, but this case
+		// is handled here for compatibility with future versions of pebble.
 
 		// The largest sequence number of a flushed file. Increasing.
 		var largestFlushedSeqNum uint64
+
+		// An "overlap range" is a range of files that overlap in sequence
+		// numbers with one another. These files are not allowed to overlap
+		// in key ranges.
+		//
+		// Stores the smallest observed sequence number in the current overlap
+		// range so far.
+		var smallestOverlapRangeFlushedSeqNum uint64 = math.MaxUint64
+
+		// Start index of the current overlap range.
+		var overlapRangeStartIdx = len(files)
 
 		// The largest sequence number of any file. Increasing.
 		var largestSeqNum uint64
@@ -480,6 +502,57 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		// flushed files.
 		// They are checked when largestFlushedSeqNum advances past them.
 		var uncheckedIngestedSeqNums []uint64
+
+		// Helper function to expand a seqnum overlap range that's already fixed
+		// on the largest sequence number. This function iterates backward
+		// along files starting from overlapRangeStartIdx-1, and returns the
+		// slice.
+		expandOverlapRange := func(largestIdx int) []*FileMetadata {
+			// Grow the overlap range by iterating backward.
+			for j := overlapRangeStartIdx-1; j >= 0; j-- {
+				f := files[j]
+				if f.SmallestSeqNum == f.LargestSeqNum {
+					// Ingested file.
+					continue
+				}
+				if f.LargestSeqNum >= smallestOverlapRangeFlushedSeqNum {
+					overlapRangeStartIdx = j
+					if f.SmallestSeqNum < smallestOverlapRangeFlushedSeqNum {
+						smallestOverlapRangeFlushedSeqNum = f.SmallestSeqNum
+					}
+				} else {
+					// End of the overlap range.
+					break
+				}
+			}
+			return files[overlapRangeStartIdx:largestIdx+1]
+		}
+
+		// Helper function to check for key overlap inside a sequence number
+		// overlap range. This function modifies overlapRange, so ensure a
+		// safe-to-modify slice is passed in.
+		checkOverlapRangeForKeyOverlap := func(overlapRange []*FileMetadata) error {
+			SortBySmallest(overlapRange, cmp)
+
+			var prev *FileMetadata
+			for j := range overlapRange {
+				f := overlapRange[j]
+				// Skip over ingested files.
+				if f.SmallestSeqNum == f.LargestSeqNum {
+					continue
+				}
+				if prev != nil && base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
+					return fmt.Errorf("L0 files %06d and %06d have overlapping key and seqnum ranges: %s-%s vs %s-%s, and %d-%d vs %d-%d",
+						prev.FileNum, f.FileNum,
+						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
+						f.Smallest.Pretty(format), f.Largest.Pretty(format),
+						prev.SmallestSeqNum, prev.LargestSeqNum,
+						f.SmallestSeqNum, f.LargestSeqNum)
+				}
+				prev = f
+			}
+			return nil
+		}
 
 		for i := range files {
 			f := files[i]
@@ -510,11 +583,36 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				uncheckedIngestedSeqNums = append(uncheckedIngestedSeqNums, f.LargestSeqNum)
 			} else {
 				// Flushed file.
-				// Two flushed files cannot overlap.
+				// Two flushed files cannot overlap in both sequence numbers and
+				// key ranges. We build "overlap ranges" of files that overlap
+				// in sequence numbers (and could be parts of one split flush),
+				// then check if there are any key range overlaps within that
+				// file range.
 				if largestFlushedSeqNum > 0 && f.SmallestSeqNum <= largestFlushedSeqNum {
-					return fmt.Errorf("L0 flushed file %06d overlaps with the largest seqnum of a "+
-						"preceding flushed file: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum,
-						largestFlushedSeqNum)
+					// Add this file to the overlap range.
+					if overlapRangeStartIdx == len(files) {
+						overlapRangeStartIdx = i
+					}
+					if f.SmallestSeqNum < smallestOverlapRangeFlushedSeqNum {
+						smallestOverlapRangeFlushedSeqNum = f.SmallestSeqNum
+					}
+				} else {
+					if overlapRangeStartIdx < len(files) {
+						// We're at the end of a seqnum overlap range, with
+						// files[x:i-1] having the last overlap range. Find the
+						// range and check for any key range overlaps in set of
+						// files.
+						overlapRange := expandOverlapRange(i-1)
+						overlapRangeCopy := make([]*FileMetadata, len(overlapRange))
+						copy(overlapRangeCopy, overlapRange)
+
+						if err := checkOverlapRangeForKeyOverlap(overlapRangeCopy); err != nil {
+							return err
+						}
+					}
+					// Reset the overlap range.
+					overlapRangeStartIdx = len(files)
+					smallestOverlapRangeFlushedSeqNum = math.MaxUint64
 				}
 				largestFlushedSeqNum = f.LargestSeqNum
 				// Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
@@ -527,6 +625,18 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 					}
 				}
 				uncheckedIngestedSeqNums = uncheckedIngestedSeqNums[:0]
+			}
+		}
+
+		// If we ended with an unfinished seqnum overlap range, grow that and
+		// check for key range overlaps.
+		if overlapRangeStartIdx < len(files) {
+			overlapRange := expandOverlapRange(len(files)-1)
+			overlapRangeCopy := make([]*FileMetadata, len(overlapRange))
+			copy(overlapRangeCopy, overlapRange)
+
+			if err := checkOverlapRangeForKeyOverlap(overlapRangeCopy); err != nil {
+				return err
 			}
 		}
 	} else {
