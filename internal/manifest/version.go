@@ -447,7 +447,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		//   file (except for the 0 sequence number case below).
 		// - Files with multiple sequence numbers: these are necessarily flushed files.
 		//
-		// Two cases of overlapping sequence numbers:
+		// Three cases of overlapping sequence numbers:
 		// Case 1:
 		// An ingested file contained in the sequence numbers of the flushed file -- it must be
 		// fully contained (not coincident with either end of the flushed file) since the memtable
@@ -469,9 +469,17 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		// in the file key intervals. This file is placed in L0 since it overlaps in the file
 		// key intervals but since it has no overlapping data, it is assigned a sequence number
 		// of 0 in RocksDB. We handle this case for compatibility with RocksDB.
-
-		// The largest sequence number of a flushed file. Increasing.
-		var largestFlushedSeqNum uint64
+		//
+		// Case 3:
+		// A sequence of flushed files that overlap in sequence numbers with one another,
+		// but do not overlap in keys inside the sstables. These files correspond to
+		// partitioned flushes or the results of intra-L0 compactions of partitioned
+		// flushes.
+		//
+		// Since these types of SSTables violate most other sequence number
+		// overlap invariants, and handling this case is important for compatibility
+		// with future versions of pebble, this method relaxes most L0 invariant
+		// checks except for those concerning ingested SSTables.
 
 		// The largest sequence number of any file. Increasing.
 		var largestSeqNum uint64
@@ -489,7 +497,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
 					// Multiple files satisfying case 2 mentioned above.
 				} else if !prev.lessSeqNum(f) {
-					return fmt.Errorf("L0 files %06d and %06d are not properly ordered: %d-%d vs %d-%d",
+					return fmt.Errorf("L0 files %06d and %06d are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
 						prev.FileNum, f.FileNum,
 						prev.SmallestSeqNum, prev.LargestSeqNum,
 						f.SmallestSeqNum, f.LargestSeqNum)
@@ -502,7 +510,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 			}
 			if i > 0 && largestSeqNum >= f.LargestSeqNum {
 				return fmt.Errorf("L0 file %06d does not have strictly increasing "+
-					"largest seqnum: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, largestSeqNum)
+					"largest seqnum: <#%d-#%d> vs <?-#%d>", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, largestSeqNum)
 			}
 			largestSeqNum = f.LargestSeqNum
 			if f.SmallestSeqNum == f.LargestSeqNum {
@@ -510,20 +518,13 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				uncheckedIngestedSeqNums = append(uncheckedIngestedSeqNums, f.LargestSeqNum)
 			} else {
 				// Flushed file.
-				// Two flushed files cannot overlap.
-				if largestFlushedSeqNum > 0 && f.SmallestSeqNum <= largestFlushedSeqNum {
-					return fmt.Errorf("L0 flushed file %06d overlaps with the largest seqnum of a "+
-						"preceding flushed file: %d-%d vs %d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum,
-						largestFlushedSeqNum)
-				}
-				largestFlushedSeqNum = f.LargestSeqNum
 				// Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
 				// We do not need to check that they are not coincident with f.LargestSeqNum because we
 				// have already confirmed that LargestSeqNums were increasing.
 				for _, seq := range uncheckedIngestedSeqNums {
 					if seq == f.SmallestSeqNum {
-						return fmt.Errorf("L0 flushed file %06d has an ingested file coincident with "+
-							"smallest seqnum: %d-%d", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum)
+						return fmt.Errorf("L0 flushed file %06d has smallest sequence number coincident with an ingested file "+
+							": <#%d-#%d> vs <#%d-#%d>", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, seq, seq)
 					}
 				}
 				uncheckedIngestedSeqNums = uncheckedIngestedSeqNums[:0]
@@ -539,13 +540,13 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 			if i > 0 {
 				prev := files[i-1]
 				if !prev.lessSmallestKey(f, cmp) {
-					return fmt.Errorf("L%d files %06d and %06d are not properly ordered: %s-%s vs %s-%s",
+					return fmt.Errorf("L%d files %06d and %06d are not properly ordered: [%s-%s] vs [%s-%s]",
 						level, prev.FileNum, f.FileNum,
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
-					return fmt.Errorf("L%d files %06d and %06d have overlapping ranges: %s-%s vs %s-%s",
+					return fmt.Errorf("L%d files %06d and %06d have overlapping ranges: [%s-%s] vs [%s-%s]",
 						level, prev.FileNum, f.FileNum,
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))

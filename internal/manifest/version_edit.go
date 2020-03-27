@@ -593,7 +593,7 @@ func (b *BulkVersionEdit) Apply(
 				if base.InternalCompare(cmp, v.Files[level][numFiles-1].Largest, f.Smallest) >= 0 {
 					cf := v.Files[level][numFiles-1]
 					return nil, nil, fmt.Errorf(
-						"pebble: internal error: L%d files %06d and %06d have overlapping ranges: %s-%s vs %s-%s",
+						"pebble: internal error: L%d files %06d and %06d have overlapping ranges: [%s-%s] vs [%s-%s]",
 						level, cf.FileNum, f.FileNum, cf.Smallest.Pretty(format), cf.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}

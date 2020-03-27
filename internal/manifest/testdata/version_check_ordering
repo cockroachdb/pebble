@@ -16,7 +16,7 @@ L0
   c.SET.3-d.SET.4
   a.SET.1-b.SET.2
 ----
-L0 files 000001 and 000002 are not properly ordered: 3-4 vs 1-2
+L0 files 000001 and 000002 are not properly ordered: <#3-#4> vs <#1-#2>
 0:
   000001:[c#3,SET-d#4,SET]
   000002:[a#1,SET-b#2,SET]
@@ -25,18 +25,65 @@ check-ordering
 L0
   c.SET.3-d.SET.4
   a.SET.1-b.SET.5
+  e.SET.2-f.SET.7
+  g.SET.6-h.SET.12
+  i.SET.8-j.SET.13
+  b.SET.15-d.SET.15
+  a.SET.14-j.SET.17
+  k.SET.16-n.SET.19
 ----
-L0 flushed file 000002 overlaps with the largest seqnum of a preceding flushed file: 1-5 vs 4
+OK
+
+# Add some ingested SSTables around the 14-19 seqnum cases.
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+  e.SET.2-f.SET.7
+  g.SET.6-h.SET.12
+  i.SET.8-j.SET.13
+  b.SET.15-d.SET.15
+  a.SET.14-j.SET.17
+  m.SET.18-n.SET.18
+  k.SET.16-n.SET.19
+  m.SET.20-n.SET.20
+----
+OK
+
+# Ensure that coincident sequence numbers are detected around sstables with
+# overlapping sequence numbers.
+check-ordering
+L0
+  c.SET.3-d.SET.4
+  a.SET.1-b.SET.5
+  e.SET.2-f.SET.7
+  g.SET.6-h.SET.12
+  i.SET.8-j.SET.13
+  b.SET.15-d.SET.15
+  a.SET.15-j.SET.17
+  m.SET.18-n.SET.18
+  k.SET.16-n.SET.19
+  m.SET.20-n.SET.20
+----
+L0 flushed file 000007 has smallest sequence number coincident with an ingested file : <#15-#17> vs <#15-#15>
 0:
   000001:[c#3,SET-d#4,SET]
   000002:[a#1,SET-b#5,SET]
+  000003:[e#2,SET-f#7,SET]
+  000004:[g#6,SET-h#12,SET]
+  000005:[i#8,SET-j#13,SET]
+  000006:[b#15,SET-d#15,SET]
+  000007:[a#15,SET-j#17,SET]
+  000008:[m#18,SET-n#18,SET]
+  000009:[k#16,SET-n#19,SET]
+  000010:[m#20,SET-n#20,SET]
 
 check-ordering
 L0
   a.SET.3-d.SET.3
   a.SET.1-b.SET.2
 ----
-L0 files 000001 and 000002 are not properly ordered: 3-3 vs 1-2
+L0 files 000001 and 000002 are not properly ordered: <#3-#3> vs <#1-#2>
 0:
   000001:[a#3,SET-d#3,SET]
   000002:[a#1,SET-b#2,SET]
@@ -46,7 +93,7 @@ L0
   a.SET.2-d.SET.4
   a.SET.3-b.SET.3
 ----
-L0 files 000001 and 000002 are not properly ordered: 2-4 vs 3-3
+L0 files 000001 and 000002 are not properly ordered: <#2-#4> vs <#3-#3>
 0:
   000001:[a#2,SET-d#4,SET]
   000002:[a#3,SET-b#3,SET]
@@ -56,7 +103,7 @@ L0
   a.SET.3-d.SET.3
   a.SET.3-b.SET.3
 ----
-L0 file 000002 does not have strictly increasing largest seqnum: 3-3 vs 3
+L0 file 000002 does not have strictly increasing largest seqnum: <#3-#3> vs <?-#3>
 0:
   000001:[a#3,SET-d#3,SET]
   000002:[a#3,SET-b#3,SET]
@@ -66,7 +113,7 @@ L0
   a.SET.3-d.SET.3
   a.SET.3-d.SET.5
 ----
-L0 flushed file 000002 has an ingested file coincident with smallest seqnum: 3-5
+L0 flushed file 000002 has smallest sequence number coincident with an ingested file : <#3-#5> vs <#3-#3>
 0:
   000001:[a#3,SET-d#3,SET]
   000002:[a#3,SET-d#5,SET]
@@ -83,7 +130,7 @@ L0
   a.SET.3-d.SET.5
   a.SET.5-d.SET.5
 ----
-L0 file 000002 does not have strictly increasing largest seqnum: 5-5 vs 5
+L0 file 000002 does not have strictly increasing largest seqnum: <#5-#5> vs <?-#5>
 0:
   000001:[a#3,SET-d#5,SET]
   000002:[a#5,SET-d#5,SET]
@@ -94,7 +141,7 @@ L0
   a.SET.5-d.SET.5
   a.SET.4-d.SET.6
 ----
-L0 flushed file 000003 has an ingested file coincident with smallest seqnum: 4-6
+L0 flushed file 000003 has smallest sequence number coincident with an ingested file : <#4-#6> vs <#4-#4>
 0:
   000001:[a#4,SET-d#4,SET]
   000002:[a#5,SET-d#5,SET]
@@ -151,7 +198,7 @@ L1
   a.SET.1-b.SET.2
   b.SET.2-d.SET.4
 ----
-L1 files 000001 and 000002 have overlapping ranges: a#1,SET-b#2,SET vs b#2,SET-d#4,SET
+L1 files 000001 and 000002 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#2,SET-d#4,SET]
 1:
   000001:[a#1,SET-b#2,SET]
   000002:[b#2,SET-d#4,SET]
@@ -161,7 +208,7 @@ L1
   a.SET.1-c.SET.2
   b.SET.3-d.SET.4
 ----
-L1 files 000001 and 000002 have overlapping ranges: a#1,SET-c#2,SET vs b#3,SET-d#4,SET
+L1 files 000001 and 000002 have overlapping ranges: [a#1,SET-c#2,SET] vs [b#3,SET-d#4,SET]
 1:
   000001:[a#1,SET-c#2,SET]
   000002:[b#3,SET-d#4,SET]
@@ -181,7 +228,7 @@ L2
   b.SET.3-d.SET.4
   c.SET.5-e.SET.6
 ----
-L2 files 000002 and 000003 have overlapping ranges: b#3,SET-d#4,SET vs c#5,SET-e#6,SET
+L2 files 000002 and 000003 have overlapping ranges: [b#3,SET-d#4,SET] vs [c#5,SET-e#6,SET]
 1:
   000001:[a#1,SET-c#2,SET]
 2:
