@@ -42,7 +42,7 @@ edit
    1:a.SET.1-c.SET.2
    4:b.SET.3-d.SET.4
 ----
-pebble: internal error: L2 files 000001 and 000004 have overlapping ranges: a#1,SET-c#2,SET vs b#3,SET-d#4,SET
+pebble: internal error: L2 files 000001 and 000004 have overlapping ranges: [a#1,SET-c#2,SET] vs [b#3,SET-d#4,SET]
 
 apply
  L0
@@ -53,7 +53,11 @@ edit
   L0
    4:b.SET.3-d.SET.5
 ----
-pebble: internal error: L0 flushed file 000004 overlaps with the largest seqnum of a preceding flushed file: 3-5 vs 4
+0:
+  000001:[a#1,SET-c#2,SET]
+  000002:[c#3,SET-d#4,SET]
+  000004:[b#3,SET-d#5,SET]
+zombies []
 
 apply
  L0

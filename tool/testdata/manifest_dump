@@ -162,31 +162,31 @@ MANIFEST-invalid
   log-num:       2
   next-file-num: 5
   last-seq-num:  20
-  added:         L0 000001:0<#2-#5>[#0,DEL-#0,DEL]
+  added:         L6 000001:0<#2-#5>[#0,DEL-#0,DEL]
 65
   comparer:     leveldb.BytewiseComparator
   log-num:       3
   next-file-num: 5
   last-seq-num:  20
-  added:         L0 000002:0<#1-#4>[#0,DEL-#0,DEL]
+  added:         L6 000002:0<#1-#4>[#0,DEL-#0,DEL]
 EOF
-pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
+pebble: internal error: L6 files 000001 and 000002 have overlapping ranges: [#0,DEL-#0,DEL] vs [#0,DEL-#0,DEL]
 
 manifest check
 ./testdata/MANIFEST-invalid
 ----
-MANIFEST-invalid: offset: 65 err: pebble: internal error: L0 flushed file 000001 overlaps with the largest seqnum of a preceding flushed file: 2-5 vs 4
+MANIFEST-invalid: offset: 65 err: pebble: internal error: L6 files 000001 and 000002 have overlapping ranges: [#0,DEL-#0,DEL] vs [#0,DEL-#0,DEL]
 Version state before failed Apply
 --- L0 ---
-  000001:0<#2-#5>[#0,DEL-#0,DEL]
 --- L1 ---
 --- L2 ---
 --- L3 ---
 --- L4 ---
 --- L5 ---
 --- L6 ---
+  000001:0<#2-#5>[#0,DEL-#0,DEL]
 Version edit that failed
-  added: L0 000002:0<#1-#4>[#0,DEL-#0,DEL]
+  added: L6 000002:0<#1-#4>[#0,DEL-#0,DEL]
 
 manifest dump
 ./testdata/find-db/MANIFEST-000001
