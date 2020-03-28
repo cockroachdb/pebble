@@ -161,11 +161,10 @@ func standardOptions() []*testOptions {
 [Options]
   max_concurrent_compactions=2
 `,
-		// TODO(peter): fix compare failures
-		// 		19: `
-		// [TestOptions]
-		//   ingest_using_apply=true
-		// `,
+		19: `
+[TestOptions]
+  ingest_using_apply=true
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
@@ -210,7 +209,6 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	if testOpts.strictFS {
 		opts.DisableWAL = false
 	}
-	// TODO(peter): fix compare failures
-	// testOpts.ingestUsingApply = rng.Intn(2) != 0
+	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	return testOpts
 }

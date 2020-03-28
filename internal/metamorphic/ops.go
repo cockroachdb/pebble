@@ -200,9 +200,13 @@ func (o *ingestOp) run(t *test, h *history) {
 	if t.testOpts.ingestUsingApply && len(o.batchIDs) == 1 {
 		id := o.batchIDs[0]
 		b := t.getBatch(id)
-		w := t.getWriter(makeObjID(dbTag, 0))
-		err := w.Apply(b, t.writeOpts)
+		c, err := o.collapseBatch(t, b)
+		if err == nil {
+			w := t.getWriter(makeObjID(dbTag, 0))
+			err = w.Apply(c, t.writeOpts)
+		}
 		_ = b.Close()
+		_ = c.Close()
 		t.clearObj(id)
 		h.Recordf("%s // %v", o, err)
 		return
@@ -297,6 +301,88 @@ func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, e
 		return "", err
 	}
 	return path, nil
+}
+
+// collapseBatch collapses the mutations in a batch to be equivalent to an
+// sstable ingesting those mutations. Duplicate updates to a key are collapsed
+// so that only the latest update is performed. All range deletions are
+// performed first in the batch to match the semantics of ingestion where a
+// range deletion does not delete a point record contained in the sstable.
+func (o *ingestOp) collapseBatch(t *test, b *pebble.Batch) (*pebble.Batch, error) {
+	iter, rangeDelIter := private.BatchSort(b)
+	defer func() {
+		if iter != nil {
+			iter.Close()
+		}
+		if rangeDelIter != nil {
+			rangeDelIter.Close()
+		}
+	}()
+
+	equal := t.opts.Comparer.Equal
+	collapsed := t.db.NewBatch()
+
+	if rangeDelIter != nil {
+		// NB: The range tombstones have already been fragmented by the Batch.
+		var lastUserKey []byte
+		var lastValue []byte
+		for key, value := rangeDelIter.First(); key != nil; key, value = rangeDelIter.Next() {
+			// Ignore duplicate tombstones.
+			if equal(lastUserKey, key.UserKey) && equal(lastValue, value) {
+				continue
+			}
+			// NB: We don't have to copy the key or value since we're reading from a
+			// batch which doesn't do prefix compression.
+			lastUserKey = key.UserKey
+			lastValue = value
+
+			if err := collapsed.DeleteRange(key.UserKey, value, nil); err != nil {
+				return nil, err
+			}
+		}
+		if err := rangeDelIter.Close(); err != nil {
+			return nil, err
+		}
+		rangeDelIter = nil
+	}
+
+	if iter != nil {
+		var lastUserKey []byte
+		for key, value := iter.First(); key != nil; key, value = iter.Next() {
+			// Ignore duplicate keys.
+			if equal(lastUserKey, key.UserKey) {
+				continue
+			}
+			// NB: We don't have to copy the key or value since we're reading from a
+			// batch which doesn't do prefix compression.
+			lastUserKey = key.UserKey
+
+			var err error
+			switch key.Kind() {
+			case pebble.InternalKeyKindDelete:
+				err = collapsed.Delete(key.UserKey, nil)
+			case pebble.InternalKeyKindSingleDelete:
+				err = collapsed.SingleDelete(key.UserKey, nil)
+			case pebble.InternalKeyKindSet:
+				err = collapsed.Set(key.UserKey, value, nil)
+			case pebble.InternalKeyKindMerge:
+				err = collapsed.Merge(key.UserKey, value, nil)
+			case pebble.InternalKeyKindLogData:
+				err = collapsed.LogData(key.UserKey, nil)
+			default:
+				err = fmt.Errorf("unknown batch record kind: %d", key.Kind())
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		if err := iter.Close(); err != nil {
+			return nil, err
+		}
+		iter = nil
+	}
+
+	return collapsed, nil
 }
 
 func (o *ingestOp) String() string {
