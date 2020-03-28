@@ -37,17 +37,17 @@ import (
 // - Add support for Writer.LogData
 
 var (
-	// TODO(peter): Enable comparing of output by default. Currently disabled as
-	// comparing output shows differences between runs that appear to be due to
-	// bugs in Pebble.
-	compare = flag.Bool("compare", false, "")
-	dir     = flag.String("dir", "_meta", "")
-	disk    = flag.Bool("disk", false, "")
-	failRE  = flag.String("fail", "",
+	dir = flag.String("dir", "_meta",
+		"the directory storing test state")
+	disk = flag.Bool("disk", false,
+		"whether to use an in-mem DB or on-disk (in-mem is significantly faster)")
+	failRE = flag.String("fail", "",
 		"fail the test if the supplied regular expression matches the output")
-	keep   = flag.Bool("keep", false, "")
+	keep = flag.Bool("keep", false,
+		"keep the DB directory even on successful runs")
 	ops    = randvar.NewFlag("uniform:5000-10000")
-	runDir = flag.String("run-dir", "", "")
+	runDir = flag.String("run-dir", "",
+		"the specific configuration to (re-)run (used for post-mortem debugging)")
 )
 
 func init() {
@@ -222,40 +222,38 @@ func TestMeta(t *testing.T) {
 		return
 	}
 
-	if *compare {
-		// Read a history file, stripping out lines that begin with a comment.
-		readHistory := func(name string) []string {
-			historyPath := filepath.Join(metaDir, name, "history")
-			data, err := ioutil.ReadFile(historyPath)
-			require.NoError(t, err)
-			lines := difflib.SplitLines(string(data))
-			newLines := make([]string, 0, len(lines))
-			for _, line := range lines {
-				if strings.HasPrefix(line, "// ") {
-					continue
-				}
-				newLines = append(newLines, line)
+	// Read a history file, stripping out lines that begin with a comment.
+	readHistory := func(name string) []string {
+		historyPath := filepath.Join(metaDir, name, "history")
+		data, err := ioutil.ReadFile(historyPath)
+		require.NoError(t, err)
+		lines := difflib.SplitLines(string(data))
+		newLines := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if strings.HasPrefix(line, "// ") {
+				continue
 			}
-			return newLines
+			newLines = append(newLines, line)
 		}
+		return newLines
+	}
 
-		base := readHistory(names[0])
-		for i := 1; i < len(names); i++ {
-			lines := readHistory(names[i])
-			diff := difflib.UnifiedDiff{
-				A:       base,
-				B:       lines,
-				Context: 5,
-			}
-			text, err := difflib.GetUnifiedDiffString(diff)
-			require.NoError(t, err)
-			if text != "" {
-				// NB: We force an exit rather than using t.Fatal because the later
-				// will run another instance of the test if -count is specified, while
-				// we're happy to exit on the first failure.
-				fmt.Printf("diff %s/{%s,%s}\n%s\n", metaDir, names[0], names[i], text)
-				os.Exit(1)
-			}
+	base := readHistory(names[0])
+	for i := 1; i < len(names); i++ {
+		lines := readHistory(names[i])
+		diff := difflib.UnifiedDiff{
+			A:       base,
+			B:       lines,
+			Context: 5,
+		}
+		text, err := difflib.GetUnifiedDiffString(diff)
+		require.NoError(t, err)
+		if text != "" {
+			// NB: We force an exit rather than using t.Fatal because the latter
+			// will run another instance of the test if -count is specified, while
+			// we're happy to exit on the first failure.
+			fmt.Printf("diff %s/{%s,%s}\n%s\n", metaDir, names[0], names[i], text)
+			os.Exit(1)
 		}
 	}
 }
