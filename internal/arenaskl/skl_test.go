@@ -633,10 +633,7 @@ func TestIteratorSeekLT(t *testing.T) {
 func TestIteratorBounds(t *testing.T) {
 	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
 	for i := 1; i < 10; i++ {
-		err := l.Add(makeIntKey(i), makeValue(i))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, l.Add(makeIntKey(i), makeValue(i)))
 	}
 
 	key := func(i int) []byte {

@@ -17,13 +17,13 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 func runTests(t *testing.T, path string) {
 	paths, err := filepath.Glob(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	root := filepath.Dir(path)
 	for {
 		next := filepath.Dir(root)
@@ -42,9 +42,8 @@ func runTests(t *testing.T, path string) {
 
 	for _, path := range paths {
 		name, err := filepath.Rel(root, path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		t.Run(name, func(t *testing.T) {
 			datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
 				args := []string{d.Cmd}

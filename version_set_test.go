@@ -54,8 +54,7 @@ func TestVersionSetCheckpoint(t *testing.T) {
 	require.NoError(t, d.Close())
 }
 
-
-func TestVersionSetSeqNums(t *testing.T)  {
+func TestVersionSetSeqNums(t *testing.T) {
 	mem := vfs.NewMem()
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
@@ -70,6 +69,7 @@ func TestVersionSetSeqNums(t *testing.T)  {
 	writeAndIngest(t, mem, d, base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), []byte("d"), "c")
 	require.NoError(t, d.Close())
 	d, err = Open("", opts)
+	require.NoError(t, err)
 	defer d.Close()
 
 	// Check that the manifest has the correct LastSeqNum, equalling the highest
@@ -103,5 +103,5 @@ func TestVersionSetSeqNums(t *testing.T)  {
 	// 2 ingestions happened, so LastSeqNum should equal 2.
 	require.Equal(t, uint64(2), lastSeqNum)
 	// logSeqNum is always one greater than the last assigned sequence number.
-	require.Equal(t, d.mu.versions.logSeqNum, lastSeqNum + 1)
+	require.Equal(t, d.mu.versions.logSeqNum, lastSeqNum+1)
 }

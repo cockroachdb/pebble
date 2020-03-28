@@ -183,9 +183,7 @@ func TestOptionsParse(t *testing.T) {
 			str := opts.String()
 
 			var parsedOptions Options
-			if err := parsedOptions.Parse(str, hooks); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, parsedOptions.Parse(str, hooks))
 			parsedStr := parsedOptions.String()
 			if str != parsedStr {
 				t.Fatalf("expected\n%s\nbut found\n%s", str, parsedStr)
@@ -228,9 +226,7 @@ func TestOptionsValidate(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			var opts Options
 			opts.EnsureDefaults()
-			if err := opts.Parse(c.options, nil); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, opts.Parse(c.options, nil))
 			err := opts.Validate()
 			if c.expected == "" {
 				if err != nil {

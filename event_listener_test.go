@@ -133,10 +133,7 @@ func TestEventListener(t *testing.T) {
 	var d *DB
 	var buf syncedBuffer
 	mem := vfs.NewMem()
-	err := mem.MkdirAll("ext", 0755)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, mem.MkdirAll("ext", 0755))
 
 	datadriven.RunTest(t, "testdata/event_listener", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -301,19 +298,15 @@ func TestWriteStallEvents(t *testing.T) {
 				L0CompactionThreshold:       2,
 				L0StopWritesThreshold:       2,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer d.Close()
 
 			for i := 0; i < flushCount; i++ {
-				if err := d.Set([]byte("a"), nil, NoSync); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, d.Set([]byte("a"), nil, NoSync))
+
 				ch, err := d.AsyncFlush()
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+
 				// If we're delaying the flush (because we're testing for memtable
 				// write stalls), we can't wait for the flush to finish as doing so
 				// would deadlock. If we're not delaying the flush (because we're

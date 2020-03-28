@@ -183,9 +183,7 @@ func TestSnapshotClosed(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	catch := func(f func()) (err error) {
 		defer func() {
@@ -198,9 +196,7 @@ func TestSnapshotClosed(t *testing.T) {
 	}
 
 	snap := d.NewSnapshot()
-	if err := snap.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, snap.Close())
 	require.EqualValues(t, ErrClosed, catch(func() { _ = snap.Close() }))
 	require.EqualValues(t, ErrClosed, catch(func() { _, _, _ = snap.Get(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { snap.NewIter(nil) }))

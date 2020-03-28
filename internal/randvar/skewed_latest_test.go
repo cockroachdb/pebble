@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"sort"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func dumpSamples(x []int) {
@@ -52,9 +54,7 @@ func dumpSamples(x []int) {
 
 func TestSkewedLatest(t *testing.T) {
 	z, err := NewSkewedLatest(nil, 0, 99, 0.99)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	x := make([]int, 10000)
 	for i := range x {

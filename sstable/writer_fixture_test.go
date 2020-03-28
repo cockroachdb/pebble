@@ -24,6 +24,7 @@ import (
 
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -174,9 +175,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 func TestFixtureOutput(t *testing.T) {
 	for opt := range fixtures {
 		t.Run(opt.String(), func(t *testing.T) {
-			if err := runTestFixtureOutput(opt); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, runTestFixtureOutput(opt))
 		})
 	}
 }

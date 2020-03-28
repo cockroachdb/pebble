@@ -117,17 +117,11 @@ func TestWriterClearCache(t *testing.T) {
 
 	build := func(name string) {
 		f, err := mem.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		w := NewWriter(f, writerOpts, cacheOpts)
-		if err := w.Set([]byte("hello"), []byte("world")); err != nil {
-			t.Fatal(err)
-		}
-		if err := w.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, w.Set([]byte("hello"), []byte("world")))
+		require.NoError(t, w.Close())
 	}
 
 	// Build the sstable a first time so that we can determine the locations of
@@ -135,17 +129,13 @@ func TestWriterClearCache(t *testing.T) {
 	build("test")
 
 	f, err := mem.Open("test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	r, err := NewReader(f, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	layout, err := r.Layout()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	foreachBH := func(layout *Layout, f func(bh BlockHandle)) {
 		for _, bh := range layout.Data {

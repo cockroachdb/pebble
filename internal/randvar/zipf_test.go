@@ -18,6 +18,8 @@ package randvar
 import (
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestZeta(t *testing.T) {
@@ -74,18 +76,15 @@ func TestZeta(t *testing.T) {
 func TestZetaIncMax(t *testing.T) {
 	// Construct a zipf generator covering the range [0,10] incrementally.
 	z0, err := NewZipf(nil, 0, 0, 0.99)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	for i := 0; i < 10; i++ {
 		z0.IncMax(1)
 	}
 
 	// Contruct a zipf generator covering the range [0,10] via the constructor.
 	z10, err := NewZipf(nil, 0, 10, 0.99)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	z0.mu.Lock()
 	defer z0.mu.Unlock()
@@ -110,17 +109,13 @@ func TestNewZipf(t *testing.T) {
 
 	for _, gen := range gens {
 		_, err := NewZipf(nil, gen.min, gen.max, gen.theta)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 }
 
 func TestZipf(t *testing.T) {
 	z, err := NewZipf(nil, 0, 99, 0.99)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	x := make([]int, 10000)
 	for i := range x {

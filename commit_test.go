@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -173,9 +174,8 @@ func TestCommitPipelineWALClose(t *testing.T) {
 
 	mem := vfs.NewMem()
 	f, err := mem.Create("test-wal")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	// syncDelayFile will block on the done channel befor returning from Sync
 	// call.
 	sf := &syncDelayFile{
@@ -224,14 +224,9 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	close(sf.done)
 
 	// Close the WAL. A "queue is full" panic means that something is broken.
-	if err := wal.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, wal.Close())
 	for i := 0; i < cap(errCh); i++ {
-		err := <-errCh
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, <-errCh)
 	}
 }
 

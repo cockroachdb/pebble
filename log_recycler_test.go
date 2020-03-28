@@ -83,9 +83,7 @@ func TestRecycleLogs(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: mem,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	logNum := func() uint64 {
 		d.mu.Lock()
@@ -103,29 +101,21 @@ func TestRecycleLogs(t *testing.T) {
 	require.EqualValues(t, []uint64(nil), d.logRecycler.logNums())
 	curLog := logNum()
 
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
 
 	require.EqualValues(t, []uint64{curLog}, d.logRecycler.logNums())
 	curLog = logNum()
 
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
 
 	require.EqualValues(t, []uint64{curLog}, d.logRecycler.logNums())
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 
 	d, err = Open("", &Options{
 		FS: mem,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	metrics := d.Metrics()
 	if n := logCount(); n != int(metrics.WAL.Files) {
 		t.Fatalf("expected %d WAL files, but found %d", n, metrics.WAL.Files)
@@ -136,7 +126,5 @@ func TestRecycleLogs(t *testing.T) {
 	if recycled := d.logRecycler.logNums(); len(recycled) != 0 {
 		t.Fatalf("expected no recycled WAL files after recovery, but found %d", recycled)
 	}
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }

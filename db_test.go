@@ -59,9 +59,7 @@ func TestTry(t *testing.T) {
 			return nil
 		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	attemptsMu.Lock()
 	a := attempts
@@ -159,9 +157,7 @@ func TestBasicWrites(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	names := []string{
 		"Alatar",
@@ -292,9 +288,7 @@ func TestBasicWrites(t *testing.T) {
 		}
 	}
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestRandomWrites(t *testing.T) {
@@ -302,9 +296,7 @@ func TestRandomWrites(t *testing.T) {
 		FS:           vfs.NewMem(),
 		MemTableSize: 8 * 1024,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	keys := [64][]byte{}
 	wants := [64]int{}
@@ -349,9 +341,7 @@ func TestRandomWrites(t *testing.T) {
 		}
 	}
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestLargeBatch(t *testing.T) {
@@ -360,9 +350,7 @@ func TestLargeBatch(t *testing.T) {
 		MemTableSize:                1400,
 		MemTableStopWritesThreshold: 100,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	verifyLSM := func(expected string) func() error {
 		return func() error {
@@ -386,9 +374,7 @@ func TestLargeBatch(t *testing.T) {
 	}
 	fileSize := func(fileNum uint64) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilename(d.opts.FS, "", fileTypeLog, fileNum))
-		if err != nil {
-			t.Fatal()
-		}
+		require.NoError(t, err)
 		return info.Size()
 	}
 	memTableCreationSeqNum := func() uint64 {
@@ -402,9 +388,7 @@ func TestLargeBatch(t *testing.T) {
 	startSeqNum := atomic.LoadUint64(&d.mu.versions.logSeqNum)
 
 	// Write a key with a value larger than the memtable size.
-	if err := d.Set([]byte("a"), bytes.Repeat([]byte("a"), 512), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("a"), 512), nil))
 
 	// Verify that the large batch was written to the WAL that existed before it
 	// was committed. We verify that WAL rotation occurred, where the large batch
@@ -427,20 +411,14 @@ func TestLargeBatch(t *testing.T) {
 	}
 
 	// Verify this results in one L0 table being created.
-	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  000005:[a-a]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
+		verifyLSM("0:\n  000005:[a-a]\n")))
 
-	if err := d.Set([]byte("b"), bytes.Repeat([]byte("b"), 512), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("b"), 512), nil))
 
 	// Verify this results in a second L0 table being created.
-	err = try(100*time.Microsecond, 20*time.Second, verifyLSM("0:\n  000005:[a-a]\n  000007:[b-b]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
+		verifyLSM("0:\n  000005:[a-a]\n  000007:[b-b]\n")))
 
 	// Allocate a bunch of batches to exhaust the batchPool. None of these
 	// batches should have a non-zero count.
@@ -449,9 +427,7 @@ func TestLargeBatch(t *testing.T) {
 		require.EqualValues(t, 0, b.Count())
 	}
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestGetNoCache(t *testing.T) {
@@ -475,16 +451,13 @@ func TestGetMerge(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	key := []byte("a")
 	verify := func(expected string) {
 		val, closer, err := d.Get(key)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		if expected != string(val) {
 			t.Fatalf("expected %s, but got %s", expected, val)
 		}
@@ -493,21 +466,16 @@ func TestGetMerge(t *testing.T) {
 
 	const val = "1"
 	for i := 1; i <= 3; i++ {
-		if err := d.Merge(key, []byte(val), nil); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Merge(key, []byte(val), nil))
+
 		expected := strings.Repeat(val, i)
 		verify(expected)
 
-		if err := d.Flush(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Flush())
 		verify(expected)
 	}
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestMergeOrderSameAfterFlush(t *testing.T) {
@@ -516,9 +484,7 @@ func TestMergeOrderSameAfterFlush(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	key := []byte("a")
 	verify := func(expected string) {
@@ -535,48 +501,31 @@ func TestMergeOrderSameAfterFlush(t *testing.T) {
 		if expected != string(iter.Value()) {
 			t.Fatalf("expected %s, but got %s", expected, string(iter.Value()))
 		}
-		if err := iter.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, iter.Close())
 	}
 
-	if err := d.Merge(key, []byte("0"), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Merge(key, []byte("1"), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Merge(key, []byte("0"), nil))
+	require.NoError(t, d.Merge(key, []byte("1"), nil))
 
 	verify("01")
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
 	verify("01")
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestLogData(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	defer func() {
-		if err := d.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Close())
 	}()
 
-	if err := d.LogData([]byte("foo"), Sync); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.LogData([]byte("bar"), Sync); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.LogData([]byte("foo"), Sync))
+	require.NoError(t, d.LogData([]byte("bar"), Sync))
 	// TODO(itsbilal): Confirm that we wrote some bytes to the WAL.
 	// For now, LogData proceeding ahead without a panic is good enough.
 }
@@ -585,28 +534,24 @@ func TestSingleDeleteGet(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() {
-		if err := d.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Close())
 	}()
 
 	key := []byte("key")
 	val := []byte("val")
 
-	d.Set(key, val, nil)
+	require.NoError(t, d.Set(key, val, nil))
 	verifyGet(t, d, key, val)
 
 	key2 := []byte("key2")
 	val2 := []byte("val2")
 
-	d.Set(key2, val2, nil)
+	require.NoError(t, d.Set(key2, val2, nil))
 	verifyGet(t, d, key2, val2)
 
-	d.SingleDelete(key2, nil)
+	require.NoError(t, d.SingleDelete(key2, nil))
 	verifyGetNotFound(t, d, key2)
 }
 
@@ -614,13 +559,9 @@ func TestSingleDeleteFlush(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() {
-		if err := d.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Close())
 	}()
 
 	key := []byte("key")
@@ -629,19 +570,19 @@ func TestSingleDeleteFlush(t *testing.T) {
 	key2 := []byte("key2")
 	val2 := []byte("val2")
 
-	d.Set(key, valFirst, nil)
-	d.Set(key2, val2, nil)
-	d.Flush()
+	require.NoError(t, d.Set(key, valFirst, nil))
+	require.NoError(t, d.Set(key2, val2, nil))
+	require.NoError(t, d.Flush())
 
-	d.SingleDelete(key, nil)
-	d.Set(key, valSecond, nil)
-	d.Delete(key2, nil)
-	d.Set(key2, val2, nil)
-	d.Flush()
+	require.NoError(t, d.SingleDelete(key, nil))
+	require.NoError(t, d.Set(key, valSecond, nil))
+	require.NoError(t, d.Delete(key2, nil))
+	require.NoError(t, d.Set(key2, val2, nil))
+	require.NoError(t, d.Flush())
 
-	d.SingleDelete(key, nil)
-	d.Delete(key2, nil)
-	d.Flush()
+	require.NoError(t, d.SingleDelete(key, nil))
+	require.NoError(t, d.Delete(key2, nil))
+	require.NoError(t, d.Flush())
 
 	verifyGetNotFound(t, d, key)
 	verifyGetNotFound(t, d, key2)
@@ -651,34 +592,30 @@ func TestUnremovableSingleDelete(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() {
-		if err := d.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Close())
 	}()
 
 	key := []byte("key")
 	valFirst := []byte("valFirst")
 	valSecond := []byte("valSecond")
 
-	d.Set(key, valFirst, nil)
+	require.NoError(t, d.Set(key, valFirst, nil))
 	ss := d.NewSnapshot()
-	d.SingleDelete(key, nil)
-	d.Set(key, valSecond, nil)
-	d.Flush()
+	require.NoError(t, d.SingleDelete(key, nil))
+	require.NoError(t, d.Set(key, valSecond, nil))
+	require.NoError(t, d.Flush())
 
 	verifyGet(t, ss, key, valFirst)
 	verifyGet(t, d, key, valSecond)
 
-	d.SingleDelete(key, nil)
+	require.NoError(t, d.SingleDelete(key, nil))
 
 	verifyGet(t, ss, key, valFirst)
 	verifyGetNotFound(t, d, key)
 
-	d.Flush()
+	require.NoError(t, d.Flush())
 
 	verifyGet(t, ss, key, valFirst)
 	verifyGetNotFound(t, d, key)
@@ -692,27 +629,17 @@ func TestIterLeak(t *testing.T) {
 					d, err := Open("", &Options{
 						FS: vfs.NewMem(),
 					})
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
 
-					if err := d.Set([]byte("a"), []byte("a"), nil); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, d.Set([]byte("a"), []byte("a"), nil))
 					if flush {
-						if err := d.Flush(); err != nil {
-							t.Fatal(err)
-						}
+						require.NoError(t, d.Flush())
 					}
 					iter := d.NewIter(nil)
 					iter.First()
 					if !leak {
-						if err := iter.Close(); err != nil {
-							t.Fatal(err)
-						}
-						if err := d.Close(); err != nil {
-							t.Fatal(err)
-						}
+						require.NoError(t, iter.Close())
+						require.NoError(t, d.Close())
 					} else {
 						defer iter.Close()
 						if err := d.Close(); err == nil {
@@ -749,9 +676,7 @@ func TestMemTableReservation(t *testing.T) {
 	opts.Cache.Set(tmpID, 0, 0, value).Release()
 
 	d, err := Open("", opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	checkReserved := func(expected int64) {
 		t.Helper()
@@ -771,9 +696,7 @@ func TestMemTableReservation(t *testing.T) {
 
 	// Flush the memtable. The memtable reservation should be unchanged because a
 	// new memtable will be allocated.
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
 	checkReserved(int64(opts.MemTableSize))
 
 	// Flush in the presence of an active iterator. The iterator will hold a
@@ -781,25 +704,18 @@ func TestMemTableReservation(t *testing.T) {
 	// memtable. While the iterator is open, there will be the memory for 2
 	// memtables reserved.
 	iter := d.NewIter(nil)
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
 	checkReserved(2 * int64(opts.MemTableSize))
-	if err := iter.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, iter.Close())
 	checkReserved(int64(opts.MemTableSize))
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestMemTableReservationLeak(t *testing.T) {
 	d, err := Open("", &Options{FS: vfs.NewMem()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	d.mu.Lock()
 	d.mu.mem.queue[len(d.mu.mem.queue)-1].readerRef()
 	d.mu.Unlock()
@@ -820,64 +736,46 @@ func TestCacheEvict(t *testing.T) {
 		Cache: cache,
 		FS:    vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("%04d", i))
-		if err := d.Set(key, key, nil); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Set(key, key, nil))
 	}
 
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
 	iter := d.NewIter(nil)
 	for iter.First(); iter.Valid(); iter.Next() {
 	}
-	if err := iter.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, iter.Close())
+
 	if size := cache.Size(); size == 0 {
 		t.Fatalf("expected non-zero cache size")
 	}
 
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("%04d", i))
-		if err := d.Delete(key, nil); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Delete(key, nil))
 	}
 
-	if err := d.Compact([]byte("0"), []byte("1")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("0"), []byte("1")))
 
 	if size := cache.Size(); size != 0 {
 		t.Fatalf("expected empty cache, but found %d", size)
 	}
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestFlushEmpty(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	// Flushing an empty memtable should not fail.
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Close())
 }
 
 func TestRollManifest(t *testing.T) {
@@ -886,9 +784,7 @@ func TestRollManifest(t *testing.T) {
 		L0CompactionThreshold: 10,
 		FS:                    vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	manifestFileNumber := func() uint64 {
 		d.mu.Lock()
@@ -898,30 +794,23 @@ func TestRollManifest(t *testing.T) {
 
 	current := func() string {
 		f, err := d.opts.FS.Open(base.MakeFilename(d.opts.FS, d.dirname, fileTypeCurrent, 0))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer f.Close()
+
 		stat, err := f.Stat()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		n := stat.Size()
 		b := make([]byte, n)
-		if _, err = f.ReadAt(b, 0); err != nil {
-			t.Fatal(err)
-		}
+		_, err = f.ReadAt(b, 0)
+		require.NoError(t, err)
 		return string(b)
 	}
 
 	lastManifestNum := manifestFileNumber()
 	for i := 0; i < 5; i++ {
-		if err := d.Set([]byte("a"), nil, nil); err != nil {
-			t.Fatal(err)
-		}
-		if err := d.Flush(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Set([]byte("a"), nil, nil))
+		require.NoError(t, d.Flush())
 		num := manifestFileNumber()
 		if lastManifestNum == num {
 			t.Fatalf("manifest failed to roll: %d == %d", lastManifestNum, num)
@@ -935,9 +824,8 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	files, err := d.opts.FS.List("")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	var manifests []string
 	for _, filename := range files {
 		fileType, _, ok := base.ParseFilename(d.opts.FS, filename)
@@ -951,21 +839,15 @@ func TestRollManifest(t *testing.T) {
 	expected := []string{fmt.Sprintf("MANIFEST-%06d", lastManifestNum)}
 	require.EqualValues(t, expected, manifests)
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestDBClosed(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
 
 	catch := func(f func()) (err error) {
 		defer func() {
@@ -1003,9 +885,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Concurrently commit, compact, and flush in order to stress the locking around
 	// those operations.
@@ -1025,16 +905,12 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 			case 2:
 				_, err = d.AsyncFlush()
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		}(i)
 	}
 	wg.Wait()
 
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Close())
 }
 
 func TestDBConcurrentCompactClose(t *testing.T) {
@@ -1067,9 +943,8 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 
 func TestDBApplyBatchNilDB(t *testing.T) {
 	d, err := Open("", &Options{FS: vfs.NewMem()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	b1 := &Batch{}
 	b1.Set([]byte("test"), nil, nil)
 
@@ -1078,9 +953,7 @@ func TestDBApplyBatchNilDB(t *testing.T) {
 	if b2.memTableSize != 0 {
 		t.Fatalf("expected memTableSize to not be set")
 	}
-	if err := d.Apply(b2, nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Apply(b2, nil))
 	if b1.memTableSize != b2.memTableSize {
 		t.Fatalf("expected memTableSize %d, but found %d", b1.memTableSize, b2.memTableSize)
 	}
@@ -1090,13 +963,10 @@ func TestDBApplyBatchNilDB(t *testing.T) {
 
 func TestDBApplyBatchMismatch(t *testing.T) {
 	srcDB, err := Open("", &Options{FS: vfs.NewMem()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	applyDB, err := Open("", &Options{FS: vfs.NewMem()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	err = func() (err error) {
 		defer func() {
@@ -1131,6 +1001,7 @@ func TestCloseCleanerRace(t *testing.T) {
 		require.NoError(t, db.Compact([]byte("a"), []byte("b")))
 		// Only the iterator is keeping the sstables alive.
 		files, err := mem.List("/")
+		require.NoError(t, err)
 		var found bool
 		for _, f := range files {
 			if strings.HasSuffix(f, ".sst") {
@@ -1144,6 +1015,7 @@ func TestCloseCleanerRace(t *testing.T) {
 		require.NoError(t, it.Close())
 		require.NoError(t, db.Close())
 		files, err = mem.List("/")
+		require.NoError(t, err)
 		for _, f := range files {
 			if strings.HasSuffix(f, ".sst") {
 				t.Fatalf("found sst: %s", f)
@@ -1178,11 +1050,11 @@ func BenchmarkDelete(b *testing.B) {
 
 		b.StartTimer()
 		for _, key := range keys {
-			d.Set(key, val, nil)
+			_ = d.Set(key, val, nil)
 			if useSingleDelete {
-				d.SingleDelete(key, nil)
+				_ = d.SingleDelete(key, nil)
 			} else {
-				d.Delete(key, nil)
+				_ = d.Delete(key, nil)
 			}
 		}
 		// Manually flush as it is flushing/compaction where SingleDelete
@@ -1209,9 +1081,7 @@ func BenchmarkDelete(b *testing.B) {
 
 func verifyGet(t *testing.T, r Reader, key, expected []byte) {
 	val, closer, err := r.Get(key)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !bytes.Equal(expected, val) {
 		t.Fatalf("expected %s, but got %s", expected, val)
 	}

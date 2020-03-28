@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 var lockFilename = flag.String("lockfile", "", "File to lock. A non-empty value implies a child process.")
@@ -33,15 +34,12 @@ func TestLock(t *testing.T) {
 		filename = *lockFilename
 	} else {
 		f, err := ioutil.TempFile("", "golang-pebble-db-testlock-")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		filename = f.Name()
 		// NB: On Windows, locking will fail if the file is already open by the
 		// current process, so we close the lockfile here.
-		if err := f.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, f.Close())
 		defer os.Remove(filename)
 	}
 

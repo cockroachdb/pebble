@@ -481,9 +481,8 @@ func TestReaderBloomUsed(t *testing.T) {
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	f, err := os.Open(filepath.FromSlash("testdata/h.table-bloom.no-compression.sst"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
@@ -575,15 +574,10 @@ func TestWriterRoundTrip(t *testing.T) {
 				t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
 					f, err := build(DefaultCompression, fp, TableFilter,
 						nil, nil, blockSize, indexBlockSize)
-					if err != nil {
-						t.Fatal(err)
-					}
-					// Check that we can read a freshly made table.
+					require.NoError(t, err)
 
-					err = check(f, nil, nil)
-					if err != nil {
-						t.Fatal(err)
-					}
+					// Check that we can read a freshly made table.
+					require.NoError(t, check(f, nil, nil))
 				})
 			}
 		}
@@ -655,9 +649,8 @@ func TestFinalBlockIsWritten(t *testing.T) {
 
 func TestReaderGlobalSeqNum(t *testing.T) {
 	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	r, err := NewReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
@@ -677,23 +670,17 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 func TestMetaIndexEntriesSorted(t *testing.T) {
 	f, err := build(DefaultCompression, nil, /* filter policy */
 		TableFilter, nil, nil, 4096, 4096)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	r, err := NewReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
 	b, err := r.readBlock(r.metaIndexBH, nil /* transform */)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer b.Release()
 
 	i, err := newRawBlockIter(bytes.Compare, b.Get())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var keys []string
 	for valid := i.First(); valid; valid = i.Next() {
@@ -726,33 +713,25 @@ func TestFooterRoundTrip(t *testing.T) {
 						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 							mem := vfs.NewMem()
 							f, err := mem.Create("test")
-							if err != nil {
-								t.Fatal(err)
-							}
-							if _, err := f.Write(buf[:offset]); err != nil {
-								t.Fatal(err)
-							}
+							require.NoError(t, err)
+
+							_, err = f.Write(buf[:offset])
+							require.NoError(t, err)
+
 							encoded := footer.encode(buf[100:])
-							if _, err := f.Write(encoded); err != nil {
-								t.Fatal(err)
-							}
-							if err := f.Close(); err != nil {
-								t.Fatal(err)
-							}
+							_, err = f.Write(encoded)
+							require.NoError(t, err)
+							require.NoError(t, f.Close())
+
 							footer.footerBH.Offset = uint64(offset)
 							footer.footerBH.Length = uint64(len(encoded))
 
 							f, err = mem.Open("test")
-							if err != nil {
-								t.Fatal(err)
-							}
+							require.NoError(t, err)
+
 							result, err := readFooter(f)
-							if err != nil {
-								t.Fatal(err)
-							}
-							if err := f.Close(); err != nil {
-								t.Fatal(err)
-							}
+							require.NoError(t, err)
+							require.NoError(t, f.Close())
 
 							if diff := pretty.Diff(footer, result); diff != nil {
 								t.Fatalf("expected %+v, but found %+v\n%s",
@@ -791,20 +770,15 @@ func TestReadFooter(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
 			f, err := mem.Create("test")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := f.Write([]byte(c.encoded)); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.Close(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
+			_, err = f.Write([]byte(c.encoded))
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
 
 			f, err = mem.Open("test")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			if _, err := readFooter(f); err == nil {
 				t.Fatalf("expected %q, but found success", c.expected)
 			} else if !strings.Contains(err.Error(), c.expected) {
@@ -831,9 +805,7 @@ func (errorPropCollector) Name() string {
 func TestTablePropertyCollectorErrors(t *testing.T) {
 	mem := vfs.NewMem()
 	f, err := mem.Create("foo")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var opts WriterOptions
 	opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,

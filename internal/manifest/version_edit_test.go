@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/kr/pretty"
+	"github.com/stretchr/testify/require"
 )
 
 func checkRoundTrip(e0 VersionEdit) error {
@@ -214,9 +215,7 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := c.edit.Encode(&buf); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, c.edit.Encode(&buf))
 			if result := buf.String(); c.encoded != result {
 				t.Fatalf("expected %x, but found %x", c.encoded, result)
 			}
@@ -228,32 +227,24 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 
 				// Decode ComparerName.
 				tag, err := d.readUvarint()
-				if err != nil {
-					t.Fatal()
-				}
+				require.NoError(t, err)
 				if tag != tagComparator {
 					t.Fatalf("expected %d, but found %d", tagComparator, tag)
 				}
 				s, err := d.readBytes()
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				if c.edit.ComparerName != string(s) {
 					t.Fatalf("expected %q, but found %q", c.edit.ComparerName, s)
 				}
 
 				// Decode LastSeqNum.
 				tag, err = d.readUvarint()
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				if tag != tagLastSequence {
 					t.Fatalf("expected %d, but found %d", tagLastSequence, tag)
 				}
 				val, err := d.readUvarint()
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				if c.edit.LastSeqNum != val {
 					t.Fatalf("expected %d, but found %d", c.edit.LastSeqNum, val)
 				}
