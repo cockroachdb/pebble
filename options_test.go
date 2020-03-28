@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"fmt"
-	"regexp"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -229,18 +228,10 @@ func TestOptionsValidate(t *testing.T) {
 			require.NoError(t, opts.Parse(c.options, nil))
 			err := opts.Validate()
 			if c.expected == "" {
-				if err != nil {
-					t.Fatalf("expected success, but found %v", err)
-				}
+				require.NoError(t, err)
 			} else {
-				if err == nil {
-					t.Fatalf("expected %q, but found success\n%s", c.expected, opts.String())
-				}
-				if ok, merr := regexp.MatchString(c.expected, err.Error()); merr != nil {
-					t.Fatal(merr)
-				} else if !ok {
-					t.Fatalf("expected %q, but found %v", c.expected, err)
-				}
+				require.Error(t, err)
+				require.Regexp(t, c.expected, err.Error())
 			}
 		})
 	}
