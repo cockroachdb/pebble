@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
@@ -155,7 +156,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(base.MakeFilename(vs.fs, dirname, fileTypeCurrent, 0))
 	if err != nil {
-		return fmt.Errorf("pebble: could not open CURRENT file for DB %q: %w", dirname, err)
+		return errors.Wrapf(err, "pebble: could not open CURRENT file for DB %q", dirname)
 	}
 	defer current.Close()
 	stat, err := current.Stat()
@@ -164,10 +165,10 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	}
 	n := stat.Size()
 	if n == 0 {
-		return fmt.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
+		return errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
 	}
 	if n > 4096 {
-		return fmt.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
+		return errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
 	}
 	b := make([]byte, n)
 	_, err = current.ReadAt(b, 0)
@@ -175,20 +176,21 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		return err
 	}
 	if b[n-1] != '\n' {
-		return fmt.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
+		return errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
 	}
 	b = bytes.TrimSpace(b)
 
 	var ok bool
 	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
-		return fmt.Errorf("pebble: MANIFEST name %q is malformed", b)
+		return errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
 	}
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
 	manifest, err := vs.fs.Open(vs.fs.PathJoin(dirname, string(b)))
 	if err != nil {
-		return fmt.Errorf("pebble: could not open manifest file %q for DB %q: %w", b, dirname, err)
+		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
+			errors.Safe(b), dirname)
 	}
 	defer manifest.Close()
 	rr := record.NewReader(manifest, 0 /* logNum */)
@@ -207,9 +209,9 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		}
 		if ve.ComparerName != "" {
 			if ve.ComparerName != vs.cmpName {
-				return fmt.Errorf("pebble: manifest file %q for DB %q: "+
+				return errors.Errorf("pebble: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from Options %q",
-					b, dirname, ve.ComparerName, vs.cmpName)
+					errors.Safe(b), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
 			}
 		}
 		bve.Accumulate(&ve)
@@ -241,7 +243,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// minUnflushedLogNum, even if WALs with non-zero file numbers are
 			// present in the directory.
 		} else {
-			return fmt.Errorf("pebble: malformed manifest file %q for DB %q", b, dirname)
+			return errors.Errorf("pebble: malformed manifest file %q for DB %q",
+				errors.Safe(b), dirname)
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)

@@ -5,11 +5,11 @@
 package errorfs
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -34,7 +34,7 @@ func (ii *InjectIndex) SetIndex(v int32) { atomic.StoreInt32(&ii.index, v) }
 // MaybeError implements the Injector interface.
 func (ii *InjectIndex) MaybeError() error {
 	if atomic.AddInt32(&ii.index, -1) == -1 {
-		return fmt.Errorf("injected error")
+		return errors.New("injected error")
 	}
 	return nil
 }

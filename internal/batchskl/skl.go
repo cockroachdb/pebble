@@ -190,11 +190,11 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	data := (*s.storage)[keyOffset+1:]
 	v, n := binary.Uvarint(data)
 	if n <= 0 {
-		return fmt.Errorf("corrupted batch entry: %d", keyOffset)
+		return errors.Errorf("corrupted batch entry: %d", errors.Safe(keyOffset))
 	}
 	data = data[n:]
 	if v > uint64(len(data)) {
-		return fmt.Errorf("corrupted batch entry: %d", keyOffset)
+		return errors.Errorf("corrupted batch entry: %d", errors.Safe(keyOffset))
 	}
 	keyStart := 1 + keyOffset + uint32(n)
 	keyEnd := keyStart + uint32(v)

@@ -7,13 +7,13 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/binary"
-	"fmt"
 	"hash"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"golang.org/x/exp/rand"
@@ -46,7 +46,7 @@ func (f *rateFlag) Type() string {
 func (f *rateFlag) Set(spec string) error {
 	parts := strings.Split(spec, "/")
 	if len(parts) == 0 || len(parts) > 2 {
-		return fmt.Errorf("invalid ratevar spec: %s", spec)
+		return errors.Errorf("invalid ratevar spec: %s", errors.Safe(spec))
 	}
 	if err := f.Flag.Set(parts[0]); err != nil {
 		return err

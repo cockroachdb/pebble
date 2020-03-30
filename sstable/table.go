@@ -62,7 +62,6 @@ package sstable // import "github.com/cockroachdb/pebble/sstable"
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 
 	"github.com/cockroachdb/errors"
@@ -199,7 +198,7 @@ func readFooter(f vfs.File) (footer, error) {
 	var footer footer
 	stat, err := f.Stat()
 	if err != nil {
-		return footer, fmt.Errorf("pebble/table: invalid table (could not stat file): %w", err)
+		return footer, errors.Wrap(err, "pebble/table: invalid table (could not stat file)")
 	}
 	if stat.Size() < minFooterLen {
 		return footer, errors.New("pebble/table: invalid table (file size is too small)")
@@ -212,14 +211,14 @@ func readFooter(f vfs.File) (footer, error) {
 	}
 	n, err := f.ReadAt(buf, off)
 	if err != nil && err != io.EOF {
-		return footer, fmt.Errorf("pebble/table: invalid table (could not read footer): %w", err)
+		return footer, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
 	}
 	buf = buf[:n]
 
 	switch string(buf[len(buf)-len(rocksDBMagic):]) {
 	case levelDBMagic:
 		if len(buf) < levelDBFooterLen {
-			return footer, fmt.Errorf("pebble/table: invalid table (footer too short): %d", len(buf))
+			return footer, errors.Errorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
 		}
 		footer.footerBH.Offset = uint64(off+int64(len(buf))) - levelDBFooterLen
 		buf = buf[len(buf)-levelDBFooterLen:]
@@ -229,19 +228,19 @@ func readFooter(f vfs.File) (footer, error) {
 
 	case rocksDBMagic:
 		if len(buf) < rocksDBFooterLen {
-			return footer, fmt.Errorf("pebble/table: invalid table (footer too short): %d", len(buf))
+			return footer, errors.Errorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
 		}
 		footer.footerBH.Offset = uint64(off+int64(len(buf))) - rocksDBFooterLen
 		buf = buf[len(buf)-rocksDBFooterLen:]
 		footer.footerBH.Length = uint64(len(buf))
 		version := binary.LittleEndian.Uint32(buf[rocksDBVersionOffset:rocksDBMagicOffset])
 		if version != rocksDBFormatVersion2 {
-			return footer, fmt.Errorf("pebble/table: unsupported format version %d", version)
+			return footer, errors.Errorf("pebble/table: unsupported format version %d", errors.Safe(version))
 		}
 		footer.format = TableFormatRocksDBv2
 		footer.checksum = uint8(buf[0])
 		if footer.checksum != checksumCRC32c {
-			return footer, fmt.Errorf("pebble/table: unsupported checksum type %d", footer.checksum)
+			return footer, errors.Errorf("pebble/table: unsupported checksum type %d", errors.Safe(footer.checksum))
 		}
 		buf = buf[1:]
 

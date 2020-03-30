@@ -5,9 +5,10 @@
 package ackseq
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cockroachdb/errors"
 )
 
 const (
@@ -51,9 +52,9 @@ func (s *S) Ack(seqNum uint64) (int, error) {
 	s.mu.Lock()
 	if s.getLocked(seqNum) {
 		defer s.mu.Unlock()
-		return 0, fmt.Errorf(
+		return 0, errors.Errorf(
 			"pending acks exceeds window size: %d has been acked, but %d has not",
-			seqNum, s.mu.base)
+			errors.Safe(seqNum), errors.Safe(s.mu.base))
 	}
 
 	var count int

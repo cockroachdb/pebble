@@ -361,7 +361,7 @@ func TestLargeBatch(t *testing.T) {
 				if testing.Verbose() {
 					fmt.Println(strings.TrimSpace(s))
 				}
-				return fmt.Errorf("expected %s, but found %s", expected, s)
+				return errors.Errorf("expected %s, but found %s", expected, s)
 			}
 			return nil
 		}
@@ -971,7 +971,7 @@ func TestDBApplyBatchMismatch(t *testing.T) {
 	err = func() (err error) {
 		defer func() {
 			if v := recover(); v != nil {
-				err = fmt.Errorf("%v", v)
+				err = errors.Errorf("%v", v)
 			}
 		}()
 

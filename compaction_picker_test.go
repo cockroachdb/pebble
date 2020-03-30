@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -114,7 +115,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 			levels = append(levels, int(l))
 		}
 		if len(levels)%2 != 0 {
-			return nil, fmt.Errorf("odd number of levels with ongoing compactions")
+			return nil, errors.New("odd number of levels with ongoing compactions")
 		}
 		var inProgress []compactionInfo
 		for i := 0; i < len(levels); i += 2 {

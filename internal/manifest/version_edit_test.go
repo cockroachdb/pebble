@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/record"
@@ -27,13 +28,13 @@ func checkRoundTrip(e0 VersionEdit) error {
 	var e1 VersionEdit
 	buf := new(bytes.Buffer)
 	if err := e0.Encode(buf); err != nil {
-		return fmt.Errorf("encode: %v", err)
+		return errors.Wrap(err, "encode")
 	}
 	if err := e1.Decode(buf); err != nil {
-		return fmt.Errorf("decode: %v", err)
+		return errors.Wrap(err, "decode")
 	}
 	if diff := pretty.Diff(e0, e1); diff != nil {
-		return fmt.Errorf("%s", strings.Join(diff, "\n"))
+		return errors.Errorf("%s", strings.Join(diff, "\n"))
 	}
 	return nil
 }

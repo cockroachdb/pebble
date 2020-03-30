@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
@@ -57,7 +58,7 @@ func TestManualFlush(t *testing.T) {
 				d.mu.Lock()
 				defer d.mu.Unlock()
 				if cur == d.mu.versions.currentVersion() {
-					return fmt.Errorf("flush has not occurred")
+					return errors.New("flush has not occurred")
 				}
 				return nil
 			})

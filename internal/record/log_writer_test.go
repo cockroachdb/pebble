@@ -6,12 +6,12 @@ package record
 
 import (
 	"bytes"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -135,7 +135,7 @@ func TestSyncError(t *testing.T) {
 	f, err := mem.Create("log")
 	require.NoError(t, err)
 
-	injectedErr := fmt.Errorf("injected error")
+	injectedErr := errors.New("injected error")
 	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0)
 
 	var syncErr error
@@ -265,7 +265,7 @@ func TestMinSyncInterval(t *testing.T) {
 		if v > startWritePos {
 			return nil
 		}
-		return fmt.Errorf("expected writePos > %d, but found %d", startWritePos, v)
+		return errors.Errorf("expected writePos > %d, but found %d", startWritePos, v)
 	})
 	require.NoError(t, err)
 
