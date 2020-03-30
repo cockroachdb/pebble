@@ -500,7 +500,7 @@ func TestIngest(t *testing.T) {
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
-			DebugCheck:            true,
+			DebugCheck:            DebugCheckLevels,
 		})
 		require.NoError(t, err)
 	}

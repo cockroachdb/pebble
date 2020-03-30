@@ -795,7 +795,7 @@ func TestCompaction(t *testing.T) {
 	d, err := Open("", &Options{
 		FS:           mem,
 		MemTableSize: memTableSize,
-		DebugCheck:   true,
+		DebugCheck:   DebugCheckLevels,
 		enablePacing: true,
 	})
 	if err != nil {
@@ -929,7 +929,7 @@ func TestManualCompaction(t *testing.T) {
 		var err error
 		d, err = Open("", &Options{
 			FS:         mem,
-			DebugCheck: true,
+			DebugCheck: DebugCheckLevels,
 		})
 		require.NoError(t, err)
 	}
@@ -1700,7 +1700,7 @@ func TestFlushInvariant(t *testing.T) {
 								}
 							},
 						},
-						DebugCheck: true,
+						DebugCheck: DebugCheckLevels,
 					})
 					require.NoError(t, err)
 

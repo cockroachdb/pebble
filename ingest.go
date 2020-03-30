@@ -216,7 +216,7 @@ func ingestLink(
 	for i := range paths {
 		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
 		var err error
-		if _, ok := opts.FS.(*vfs.MemFS); ok && opts.DebugCheck {
+		if _, ok := opts.FS.(*vfs.MemFS); ok && opts.DebugCheck != nil {
 			// The combination of MemFS+Ingest+DebugCheck produces awkwardness around
 			// the subsequent deletion of files. The problem is that MemFS implements
 			// the Windows semantics of disallowing removal of an open file. This is
@@ -647,11 +647,7 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	}); err != nil {
 		return nil, err
 	}
-	var checker func() error
-	if d.opts.DebugCheck {
-		checker = func() error { return d.CheckLevels(nil) }
-	}
-	d.updateReadStateLocked(checker)
+	d.updateReadStateLocked(d.opts.DebugCheck)
 	d.deleteObsoleteFiles(jobID)
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
