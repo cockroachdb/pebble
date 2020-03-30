@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -182,7 +183,7 @@ func (m *memTable) prepare(batch *Batch) error {
 
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	if seqNum < m.logSeqNum {
-		return fmt.Errorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
+		return errors.Errorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
 			seqNum, m.logSeqNum)
 	}
 
@@ -212,7 +213,7 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		}
 	}
 	if seqNum != startSeqNum+uint64(batch.Count()) {
-		panic(fmt.Errorf("pebble: inconsistent batch count: %d vs %d",
+		panic(errors.Errorf("pebble: inconsistent batch count: %d vs %d",
 			seqNum, startSeqNum+uint64(batch.Count())))
 	}
 	if tombstoneCount != 0 {

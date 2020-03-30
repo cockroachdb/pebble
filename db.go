@@ -822,7 +822,7 @@ func (d *DB) Close() error {
 	}
 	var err error
 	if n := len(d.mu.compact.inProgress); n > 0 {
-		err = fmt.Errorf("pebble: %d unexpected in-progress compactions", n)
+		err = errors.Errorf("pebble: %d unexpected in-progress compactions", errors.Safe(n))
 	}
 	err = firstError(err, d.tableCache.Close())
 	if !d.opts.ReadOnly {
@@ -849,12 +849,12 @@ func (d *DB) Close() error {
 			refs := v.Refs()
 			if v == current {
 				if refs != 1 {
-					return fmt.Errorf("leaked iterators: current\n%s", v)
+					return errors.Errorf("leaked iterators: current\n%s", v)
 				}
 				break
 			}
 			if refs != 0 {
-				return fmt.Errorf("leaked iterators:\n%s", v)
+				return errors.Errorf("leaked iterators:\n%s", v)
 			}
 		}
 
@@ -862,7 +862,7 @@ func (d *DB) Close() error {
 			mem.readerUnref()
 		}
 		if reserved := atomic.LoadInt64(&d.memTableReserved); reserved != 0 {
-			return fmt.Errorf("leaked memtable reservation: %d", reserved)
+			return errors.Errorf("leaked memtable reservation: %d", errors.Safe(reserved))
 		}
 	}
 

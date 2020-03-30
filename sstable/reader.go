@@ -1273,13 +1273,13 @@ func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Hand
 		if len(result) != 0 &&
 			(len(result) != len(decodedBuf) || &result[0] != &decodedBuf[0]) {
 			r.opts.Cache.Free(decoded)
-			return cache.Handle{}, fmt.Errorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
+			return cache.Handle{}, errors.Errorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
 				result, decodedBuf)
 		}
 		v, b = decoded, decodedBuf
 	default:
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, fmt.Errorf("pebble/table: unknown block compression: %d", typ)
+		return cache.Handle{}, errors.Errorf("pebble/table: unknown block compression: %d", typ)
 	}
 
 	if transform != nil {
@@ -1352,7 +1352,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	defer b.Release()
 
 	if uint64(len(data)) != metaindexBH.Length {
-		return fmt.Errorf("pebble/table: unexpected metaindex block size: %d vs %d",
+		return errors.Errorf("pebble/table: unexpected metaindex block size: %d vs %d",
 			len(data), metaindexBH.Length)
 	}
 
@@ -1411,7 +1411,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 				case TableFilter:
 					r.tableFilter = newTableFilterReader(fp)
 				default:
-					return fmt.Errorf("unknown filter type: %v", t.ftype)
+					return errors.Errorf("unknown filter type: %v", t.ftype)
 				}
 
 				done = true
@@ -1657,12 +1657,12 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 	}
 
 	if r.Compare == nil {
-		r.err = fmt.Errorf("pebble/table: %d: unknown comparer %s",
+		r.err = errors.Errorf("pebble/table: %d: unknown comparer %s",
 			r.fileNum, r.Properties.ComparerName)
 	}
 	if !r.mergerOK {
 		if name := r.Properties.MergerName; name != "" && name != "nullptr" {
-			r.err = fmt.Errorf("pebble/table: %d: unknown merger %s",
+			r.err = errors.Errorf("pebble/table: %d: unknown merger %s",
 				r.fileNum, r.Properties.MergerName)
 		}
 	}

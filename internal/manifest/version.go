@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -370,7 +371,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 func (v *Version) CheckOrdering(cmp Compare, format base.Formatter) error {
 	for level, files := range v.Files {
 		if err := CheckOrdering(cmp, format, level, files); err != nil {
-			return fmt.Errorf("%w\n%s", err, v.DebugString(format))
+			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
 	return nil
@@ -497,7 +498,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
 					// Multiple files satisfying case 2 mentioned above.
 				} else if !prev.lessSeqNum(f) {
-					return fmt.Errorf("L0 files %06d and %06d are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
+					return errors.Errorf("L0 files %06d and %06d are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
 						prev.FileNum, f.FileNum,
 						prev.SmallestSeqNum, prev.LargestSeqNum,
 						f.SmallestSeqNum, f.LargestSeqNum)
@@ -509,7 +510,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				continue
 			}
 			if i > 0 && largestSeqNum >= f.LargestSeqNum {
-				return fmt.Errorf("L0 file %06d does not have strictly increasing "+
+				return errors.Errorf("L0 file %06d does not have strictly increasing "+
 					"largest seqnum: <#%d-#%d> vs <?-#%d>", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, largestSeqNum)
 			}
 			largestSeqNum = f.LargestSeqNum
@@ -523,7 +524,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				// have already confirmed that LargestSeqNums were increasing.
 				for _, seq := range uncheckedIngestedSeqNums {
 					if seq == f.SmallestSeqNum {
-						return fmt.Errorf("L0 flushed file %06d has smallest sequence number coincident with an ingested file "+
+						return errors.Errorf("L0 flushed file %06d has smallest sequence number coincident with an ingested file "+
 							": <#%d-#%d> vs <#%d-#%d>", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, seq, seq)
 					}
 				}
@@ -534,19 +535,19 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		for i := range files {
 			f := files[i]
 			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
-				return fmt.Errorf("L%d file %06d has inconsistent bounds: %s vs %s",
+				return errors.Errorf("L%d file %06d has inconsistent bounds: %s vs %s",
 					level, f.FileNum, f.Smallest.Pretty(format), f.Largest.Pretty(format))
 			}
 			if i > 0 {
 				prev := files[i-1]
 				if !prev.lessSmallestKey(f, cmp) {
-					return fmt.Errorf("L%d files %06d and %06d are not properly ordered: [%s-%s] vs [%s-%s]",
+					return errors.Errorf("L%d files %06d and %06d are not properly ordered: [%s-%s] vs [%s-%s]",
 						level, prev.FileNum, f.FileNum,
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
-					return fmt.Errorf("L%d files %06d and %06d have overlapping ranges: [%s-%s] vs [%s-%s]",
+					return errors.Errorf("L%d files %06d and %06d have overlapping ranges: [%s-%s] vs [%s-%s]",
 						level, prev.FileNum, f.FileNum,
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))

@@ -5,9 +5,9 @@
 package pebble
 
 import (
-	"fmt"
 	"sort"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 )
@@ -329,7 +329,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return nil, nil
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+			i.err = errors.Errorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
 			return nil, nil
 		}
 	}
@@ -481,7 +481,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			}
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+			i.err = errors.Errorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
 			return sameStripeSkippable
 		}
 	}
@@ -517,7 +517,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 			continue
 
 		default:
-			i.err = fmt.Errorf("invalid internal key kind: %d", i.iterKey.Kind())
+			i.err = errors.Errorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
 			return false
 		}
 	}
