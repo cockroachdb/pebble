@@ -10,7 +10,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -29,7 +31,7 @@ type test struct {
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
 	batches   []*pebble.Batch
-	iters     []*pebble.Iterator
+	iters     []*retryableIter
 	snapshots []*pebble.Snapshot
 }
 
@@ -49,7 +51,13 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	t.opts = testOpts.opts.EnsureDefaults()
 	t.opts.Logger = h.Logger()
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
-	t.opts.DebugCheck = pebble.DebugCheckLevels
+	t.opts.DebugCheck = func(db *pebble.DB) error {
+		// Wrap the ordinary DebugCheckLevels with retrying
+		// of injected errors.
+		return withRetries(func() error {
+			return pebble.DebugCheckLevels(db)
+		})
+	}
 
 	defer t.opts.Cache.Unref()
 
@@ -59,7 +67,7 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	// difference between in-memory and on-disk which causes different code paths
 	// and timings to be exercised.
 	maybeExit := func(err error) {
-		if err == nil {
+		if err == nil || errors.Is(err, errorfs.ErrInjected) {
 			return
 		}
 		t.maybeSaveData()
@@ -106,7 +114,12 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 		maybeExit(info.Err)
 	}
 
-	db, err := pebble.Open(dir, t.opts)
+	var db *pebble.DB
+	var err error
+	err = withRetries(func() error {
+		db, err = pebble.Open(dir, t.opts)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -153,26 +166,29 @@ func (t *test) restartDB() error {
 		return nil
 	}
 	t.opts.Cache.Ref()
-	fs := t.opts.FS.(*vfs.MemFS)
+	fs := vfs.Root(t.opts.FS).(*vfs.MemFS)
 	fs.SetIgnoreSyncs(true)
 	if err := t.db.Close(); err != nil {
 		return err
 	}
 	fs.ResetToSyncedState()
 	fs.SetIgnoreSyncs(false)
-	var err error
-	t.db, err = pebble.Open(t.dir, t.opts)
+	err := withRetries(func() (err error) {
+		t.db, err = pebble.Open(t.dir, t.opts)
+		return err
+	})
 	t.opts.Cache.Unref()
 	return err
 }
 
 // If an in-memory FS is being used, save the contents to disk.
 func (t *test) maybeSaveData() {
-	if t.opts.FS == vfs.Default {
+	rootFS := vfs.Root(t.opts.FS)
+	if rootFS == vfs.Default {
 		return
 	}
 	_ = os.RemoveAll(t.dir)
-	if _, err := vfs.Clone(t.opts.FS, vfs.Default, t.dir, t.dir); err != nil {
+	if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
 		t.opts.Logger.Infof("unable to clone: %s: %v", t.dir, err)
 	}
 }
@@ -197,7 +213,7 @@ func (t *test) setIter(id objID, i *pebble.Iterator) {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
-	t.iters[id.slot()] = i
+	t.iters[id.slot()] = &retryableIter{iter: i, lastKey: nil}
 }
 
 func (t *test) setSnapshot(id objID, s *pebble.Snapshot) {
@@ -241,7 +257,7 @@ func (t *test) getCloser(id objID) io.Closer {
 	panic(fmt.Sprintf("cannot close ID: %s", id))
 }
 
-func (t *test) getIter(id objID) *pebble.Iterator {
+func (t *test) getIter(id objID) *retryableIter {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
