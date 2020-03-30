@@ -6,13 +6,16 @@ package metamorphic
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // op defines the interface for a single operation, such as creating a batch,
@@ -31,7 +34,7 @@ type initOp struct {
 
 func (o *initOp) run(t *test, h *history) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
-	t.iters = make([]*pebble.Iterator, o.iterSlots)
+	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]*pebble.Snapshot, o.snapshotSlots)
 	h.Recordf("%s", o)
 }
@@ -229,14 +232,17 @@ func (o *ingestOp) run(t *test, h *history) {
 		err = firstError(err, b.Close())
 	}
 
-	err = firstError(err, t.db.Ingest(paths))
+	err = firstError(err, withRetries(func() error {
+		return t.db.Ingest(paths)
+	}))
 
 	h.Recordf("%s // %v", o, err)
 }
 
 func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, error) {
-	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d", i))
-	f, err := t.opts.FS.Create(path)
+	rootFS := vfs.Root(t.opts.FS)
+	path := rootFS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d", i))
+	f, err := rootFS.Create(path)
 	if err != nil {
 		return "", err
 	}
@@ -407,7 +413,12 @@ type getOp struct {
 
 func (o *getOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
-	val, closer, err := r.Get(o.key)
+	var val []byte
+	var closer io.Closer
+	err := withRetries(func() (err error) {
+		val, closer, err = r.Get(o.key)
+		return err
+	})
 	h.Recordf("%s // [%q] %v", o, val, err)
 	if closer != nil {
 		closer.Close()
@@ -428,12 +439,20 @@ type newIterOp struct {
 
 func (o *newIterOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
-	i := r.NewIter(&pebble.IterOptions{
-		LowerBound: o.lower,
-		UpperBound: o.upper,
-	})
+	var i *pebble.Iterator
+	for {
+		i = r.NewIter(&pebble.IterOptions{
+			LowerBound: o.lower,
+			UpperBound: o.upper,
+		})
+		if err := i.Error(); !errors.Is(err, errorfs.ErrInjected) {
+			break
+		}
+		// close this iter and retry NewIter
+		_ = i.Close()
+	}
 	t.setIter(o.iterID, i)
-	h.Recordf("%s", o)
+	h.Recordf("%s // %v", o, i.Error())
 }
 
 func (o *newIterOp) String() string {
