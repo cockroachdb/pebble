@@ -23,6 +23,7 @@ const (
 	FileTypeManifest
 	FileTypeCurrent
 	FileTypeOptions
+	FileTypeTemp
 )
 
 // MakeFilename builds a filename from components.
@@ -40,6 +41,8 @@ func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum uint64) 
 		return fs.PathJoin(dirname, "CURRENT")
 	case FileTypeOptions:
 		return fs.PathJoin(dirname, fmt.Sprintf("OPTIONS-%06d", fileNum))
+	case FileTypeTemp:
+		return fs.PathJoin(dirname, fmt.Sprintf("CURRENT.%06d.dbtmp", fileNum))
 	}
 	panic("unreachable")
 }
@@ -64,6 +67,13 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum uint6
 			break
 		}
 		return FileTypeOptions, u, true
+	case strings.HasPrefix(filename, "CURRENT.") && strings.HasSuffix(filename, ".dbtmp"):
+		s := strings.TrimSuffix(filename[len("CURRENT."):], ".dbtmp")
+		u, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			break
+		}
+		return FileTypeTemp, u, true
 	default:
 		i := strings.IndexByte(filename, '.')
 		if i < 0 {

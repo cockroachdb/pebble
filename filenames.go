@@ -20,11 +20,12 @@ const (
 	fileTypeManifest = base.FileTypeManifest
 	fileTypeCurrent  = base.FileTypeCurrent
 	fileTypeOptions  = base.FileTypeOptions
+	fileTypeTemp     = base.FileTypeTemp
 )
 
 func setCurrentFile(dirname string, fs vfs.FS, fileNum uint64) error {
 	newFilename := base.MakeFilename(fs, dirname, fileTypeCurrent, fileNum)
-	oldFilename := fmt.Sprintf("%s.%06d.dbtmp", newFilename, fileNum)
+	oldFilename := base.MakeFilename(fs, dirname, fileTypeTemp, fileNum)
 	fs.Remove(oldFilename)
 	f, err := fs.Create(oldFilename)
 	if err != nil {
