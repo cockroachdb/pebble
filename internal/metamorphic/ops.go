@@ -30,7 +30,7 @@ type initOp struct {
 
 func (o *initOp) run(t *test, h *history) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
-	t.iters = make([]*pebble.Iterator, o.iterSlots)
+	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]*pebble.Snapshot, o.snapshotSlots)
 	h.Recordf("%s", o)
 }

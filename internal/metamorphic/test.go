@@ -29,7 +29,7 @@ type test struct {
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
 	batches   []*pebble.Batch
-	iters     []*pebble.Iterator
+	iters     []*retryableIter
 	snapshots []*pebble.Snapshot
 }
 
@@ -197,7 +197,7 @@ func (t *test) setIter(id objID, i *pebble.Iterator) {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
-	t.iters[id.slot()] = i
+	t.iters[id.slot()] = &retryableIter{iter: i, lastKey: nil}
 }
 
 func (t *test) setSnapshot(id objID, s *pebble.Snapshot) {
@@ -241,7 +241,7 @@ func (t *test) getCloser(id objID) io.Closer {
 	panic(fmt.Sprintf("cannot close ID: %s", id))
 }
 
-func (t *test) getIter(id objID) *pebble.Iterator {
+func (t *test) getIter(id objID) *retryableIter {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
