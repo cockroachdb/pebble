@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -172,9 +173,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, err
 		}
 	} else if err != nil {
-		return nil, fmt.Errorf("pebble: database %q: %w", dirname, err)
+		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
 	} else if opts.ErrorIfExists {
-		return nil, fmt.Errorf("pebble: database %q already exists", dirname)
+		return nil, errors.Errorf("pebble: database %q already exists", dirname)
 	} else {
 		// Load the version set.
 		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
@@ -473,7 +474,8 @@ func (d *DB) replayWAL(
 		}
 
 		if buf.Len() < batchHeaderLen {
-			return 0, fmt.Errorf("pebble: corrupt log file %q", filename)
+			return 0, errors.Errorf("pebble: corrupt log file %q (num %s)",
+				filename, errors.Safe(logNum))
 		}
 
 		// Specify Batch.db so that Batch.SetRepr will compute Batch.memTableSize

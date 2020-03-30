@@ -5,9 +5,9 @@
 package pebble
 
 import (
-	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -143,19 +143,19 @@ func TestOptionsParse(t *testing.T) {
 			if name == (testCleaner{}).String() {
 				return testCleaner{}, nil
 			}
-			return nil, fmt.Errorf("unknown cleaner: %q", name)
+			return nil, errors.Errorf("unknown cleaner: %q", name)
 		},
 		NewComparer: func(name string) (*Comparer, error) {
 			if name == testComparer.Name {
 				return &testComparer, nil
 			}
-			return nil, fmt.Errorf("unknown comparer: %q", name)
+			return nil, errors.Errorf("unknown comparer: %q", name)
 		},
 		NewMerger: func(name string) (*Merger, error) {
 			if name == testMerger.Name {
 				return &testMerger, nil
 			}
-			return nil, fmt.Errorf("unknown merger: %q", name)
+			return nil, errors.Errorf("unknown merger: %q", name)
 		},
 	}
 

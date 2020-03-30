@@ -6,11 +6,11 @@ package pebble
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
@@ -23,7 +23,7 @@ func (l panicLogger) Infof(format string, args ...interface{}) {
 }
 
 func (l panicLogger) Fatalf(format string, args ...interface{}) {
-	panic(fmt.Errorf("fatal: "+format, args...))
+	panic(errors.Errorf("fatal: "+format, args...))
 }
 
 // corruptFS injects a corruption in the `index`th byte read.
@@ -99,7 +99,7 @@ func TestErrors(t *testing.T) {
 				if e, ok := r.(error); ok {
 					err = e
 				} else {
-					err = fmt.Errorf("%v", r)
+					t.Fatal(r)
 				}
 			}
 		}()

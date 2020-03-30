@@ -7,9 +7,7 @@ package record
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
-	"runtime/debug"
 	"runtime/pprof"
 	"sync"
 	"sync/atomic"
@@ -140,7 +138,7 @@ func (q *syncQueue) pop(head, tail uint32, err error) error {
 		slot := &q.slots[tail&uint32(len(q.slots)-1)]
 		wg := slot.wg
 		if wg == nil {
-			return fmt.Errorf("nil waiter at %d", tail&uint32(len(q.slots)-1))
+			return errors.Errorf("nil waiter at %d", errors.Safe(tail&uint32(len(q.slots)-1)))
 		}
 		*slot.err = err
 		slot.wg = nil
@@ -447,7 +445,7 @@ func (w *LogWriter) flushPending(
 		// the stack that created the panic if panic'ing itself hits a panic
 		// (e.g. unlock of unlocked mutex).
 		if r := recover(); r != nil {
-			err = fmt.Errorf("%w\n%s", err, debug.Stack())
+			err = errors.Newf("%v", r)
 		}
 	}()
 

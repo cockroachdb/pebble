@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -827,11 +828,11 @@ func TestCompaction(t *testing.T) {
 			for _, meta := range files {
 				f, err := mem.Open(base.MakeFilename(mem, "", fileTypeTable, meta.FileNum))
 				if err != nil {
-					return "", "", fmt.Errorf("Open: %v", err)
+					return "", "", errors.WithStack(err)
 				}
 				r, err := sstable.NewReader(f, sstable.ReaderOptions{})
 				if err != nil {
-					return "", "", fmt.Errorf("NewReader: %v", err)
+					return "", "", errors.WithStack(err)
 				}
 				defer r.Close()
 				ss = append(ss, get1(r.NewIter(nil /* lower */, nil /* upper */))+".")
@@ -887,10 +888,10 @@ func TestCompaction(t *testing.T) {
 			}
 
 			if gotMem != tc.wantMem {
-				return fmt.Errorf("mem: got %q, want %q", gotMem, tc.wantMem)
+				return errors.Errorf("mem: got %q, want %q", gotMem, tc.wantMem)
 			}
 			if gotDisk != tc.wantDisk {
-				return fmt.Errorf("ldb: got %q, want %q", gotDisk, tc.wantDisk)
+				return errors.Errorf("ldb: got %q, want %q", gotDisk, tc.wantDisk)
 			}
 			return nil
 		})
@@ -1031,11 +1032,11 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				defer d.mu.Unlock()
 				if len(d.mu.compact.manual) == 0 {
-					return fmt.Errorf("no manual compaction queued")
+					return errors.New("no manual compaction queued")
 				}
 				manual := d.mu.compact.manual[0]
 				if manual.retries == 0 {
-					return fmt.Errorf("manual compaction has not been retried")
+					return errors.New("manual compaction has not been retried")
 				}
 				return nil
 			})

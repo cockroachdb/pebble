@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/cockroachdb/errors"
 )
@@ -19,7 +18,7 @@ const (
 	iterPosPrev iterPos = -1
 )
 
-var errReversePrefixIteration = fmt.Errorf("pebble: unsupported reverse prefix iteration")
+var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
 
 // Iterator iterates over a DB's key/value pairs in key order.
 //
@@ -91,7 +90,7 @@ func (i *Iterator) findNextEntry() bool {
 			return i.err == nil
 
 		default:
-			i.err = fmt.Errorf("pebble: invalid internal key kind: %d", key.Kind())
+			i.err = errors.Errorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
 			return false
 		}
 	}
@@ -188,7 +187,7 @@ func (i *Iterator) findPrevEntry() bool {
 			continue
 
 		default:
-			i.err = fmt.Errorf("pebble: invalid internal key kind: %d", key.Kind())
+			i.err = errors.Errorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
 			return false
 		}
 	}
@@ -265,7 +264,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 			continue
 
 		default:
-			i.err = fmt.Errorf("pebble: invalid internal key kind: %d", key.Kind())
+			i.err = errors.Errorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
 			return
 		}
 	}

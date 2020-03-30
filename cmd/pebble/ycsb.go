@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/ackseq"
 	"github.com/cockroachdb/pebble/internal/randvar"
@@ -155,7 +156,7 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 	for _, p := range strings.Split(w, ",") {
 		parts := strings.Split(p, "=")
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("malformed weights: %s", w)
+			return nil, errors.Errorf("malformed weights: %s", errors.Safe(w))
 		}
 		weight, err := strconv.Atoi(parts[1])
 		if err != nil {
@@ -180,7 +181,7 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 		sum += w
 	}
 	if sum == 0 {
-		return nil, fmt.Errorf("zero weight specified: %s", w)
+		return nil, errors.Errorf("zero weight specified: %s", errors.Safe(w))
 	}
 
 	weights := make(ycsbWeights, 4)
@@ -200,13 +201,13 @@ func ycsbParseKeyDist(d string) (randvar.Dynamic, error) {
 	case "zipf":
 		return randvar.NewZipf(nil, 1, totalKeys, 0.99)
 	default:
-		return nil, fmt.Errorf("unknown distribution: %s", d)
+		return nil, errors.Errorf("unknown distribution: %s", errors.Safe(d))
 	}
 }
 
 func runYcsb(cmd *cobra.Command, args []string) error {
 	if wipe && ycsbConfig.prepopulatedKeys > 0 {
-		return fmt.Errorf("--wipe and --prepopulated-keys both specified which is nonsensical")
+		return errors.New("--wipe and --prepopulated-keys both specified which is nonsensical")
 	}
 
 	weights, err := ycsbParseWorkload(ycsbConfig.workload)
