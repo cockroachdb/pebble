@@ -6,15 +6,15 @@ package pebble
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"github.com/cockroachdb/pebble/internal/private"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"

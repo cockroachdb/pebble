@@ -6,10 +6,10 @@ package pebble
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"runtime/debug"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rangedel"

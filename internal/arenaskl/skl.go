@@ -45,7 +45,6 @@ package arenaskl // import "github.com/cockroachdb/pebble/internal/arenaskl"
 
 import (
 	"encoding/binary"
-	"errors"
 	"math"
 	"runtime"
 	"sync"
@@ -53,6 +52,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"golang.org/x/exp/rand"
 )

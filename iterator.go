@@ -6,8 +6,9 @@ package pebble
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
+
+	"github.com/cockroachdb/errors"
 )
 
 type iterPos int8

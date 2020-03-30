@@ -6,7 +6,6 @@ package vfs // import "github.com/cockroachdb/pebble/vfs"
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cockroachdb/errors"
 )
 
 const sep = "/"
