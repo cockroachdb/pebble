@@ -79,7 +79,7 @@ func (d *DB) loadReadState() *readState {
 // updateReadStateLocked creates a new readState from the current version and
 // list of memtables. Requires DB.mu is held. If checker is not nil, it is called after installing
 // the new readState
-func (d *DB) updateReadStateLocked(checker func() error) {
+func (d *DB) updateReadStateLocked(checker func(*DB) error) {
 	s := &readState{
 		db:        d,
 		refcnt:    1,
@@ -96,7 +96,7 @@ func (d *DB) updateReadStateLocked(checker func() error) {
 	d.readState.val = s
 	d.readState.Unlock()
 	if checker != nil {
-		if err := checker(); err != nil {
+		if err := checker(d); err != nil {
 			d.opts.Logger.Fatalf("checker failed with error: %s", err)
 		}
 	}

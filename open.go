@@ -285,11 +285,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, err
 		}
 	}
-	var checker func() error
-	if d.opts.DebugCheck {
-		checker = func() error { return d.CheckLevels(nil) }
-	}
-	d.updateReadStateLocked(checker)
+	d.updateReadStateLocked(d.opts.DebugCheck)
 
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.

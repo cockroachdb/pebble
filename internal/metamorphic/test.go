@@ -49,7 +49,7 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	t.opts = testOpts.opts.EnsureDefaults()
 	t.opts.Logger = h.Logger()
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
-	t.opts.DebugCheck = true
+	t.opts.DebugCheck = pebble.DebugCheckLevels
 
 	defer t.opts.Cache.Unref()
 

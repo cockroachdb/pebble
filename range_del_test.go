@@ -106,7 +106,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
-		DebugCheck: true,
+		DebugCheck: DebugCheckLevels,
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -237,7 +237,7 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
-		DebugCheck: true,
+		DebugCheck: DebugCheckLevels,
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -299,7 +299,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
-		DebugCheck: true,
+		DebugCheck: DebugCheckLevels,
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -401,7 +401,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 					d, err := Open("", &Options{
 						Cache:      cache,
 						FS:         mem,
-						DebugCheck: true,
+						DebugCheck: DebugCheckLevels,
 					})
 					if err != nil {
 						b.Fatal(err)

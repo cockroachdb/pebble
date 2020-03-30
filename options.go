@@ -252,10 +252,10 @@ type Options struct {
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
 
-	// Setting this to true causes DB.CheckLevels() to be called whenever a new version is being
-	// installed. DB.CheckLevels() iterates over all the data in the DB, so set this to true only
-	// in tests.
-	DebugCheck bool
+	// DebugCheck is invoked, if non-nil, whenever a new version is being
+	// installed. Typically, this is set to pebble.DebugCheckLevels in tests
+	// or tools only, to check invariants over all the data in the database.
+	DebugCheck func(*DB) error
 
 	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
 	// crash recovery, but can improve performance if crash recovery is not
@@ -397,6 +397,13 @@ type Options struct {
 	// by tests. Compaction/flush pacing is disabled until we fix the impact on
 	// throughput.
 	enablePacing bool
+}
+
+// DebugCheckLevels calls CheckLevels on the provided database.
+// It may be set in the DebugCheck field of Options to check
+// level invariants whenever a new version is installed.
+func DebugCheckLevels(db *DB) error {
+	return db.CheckLevels(nil)
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
