@@ -20,10 +20,10 @@
 package randvar
 
 import (
-	"fmt"
 	"math"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/exp/rand"
 )
 
@@ -66,10 +66,10 @@ func NewDefaultZipf(rng *rand.Rand) (*Zipf, error) {
 // an error if the parameters are outside the accepted range.
 func NewZipf(rng *rand.Rand, min, max uint64, theta float64) (*Zipf, error) {
 	if min > max {
-		return nil, fmt.Errorf("min %d > max %d", min, max)
+		return nil, errors.Errorf("min %d > max %d", errors.Safe(min), errors.Safe(max))
 	}
 	if theta < 0.0 || theta == 1.0 {
-		return nil, fmt.Errorf("0 < theta, and theta != 1")
+		return nil, errors.New("0 < theta, and theta != 1")
 	}
 
 	z := &Zipf{

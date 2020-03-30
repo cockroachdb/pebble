@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/sstable"
@@ -220,26 +221,26 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 		switch parts[0] {
 		case "set":
 			if len(parts) != 3 {
-				return fmt.Errorf("%s expects 2 arguments", parts[0])
+				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
 			err = b.Set([]byte(parts[1]), []byte(parts[2]), nil)
 		case "del":
 			if len(parts) != 2 {
-				return fmt.Errorf("%s expects 1 argument", parts[0])
+				return errors.Errorf("%s expects 1 argument", parts[0])
 			}
 			err = b.Delete([]byte(parts[1]), nil)
 		case "del-range":
 			if len(parts) != 3 {
-				return fmt.Errorf("%s expects 2 arguments", parts[0])
+				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
 			err = b.DeleteRange([]byte(parts[1]), []byte(parts[2]), nil)
 		case "merge":
 			if len(parts) != 3 {
-				return fmt.Errorf("%s expects 2 arguments", parts[0])
+				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
 			err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
 		default:
-			return fmt.Errorf("unknown op: %s", parts[0])
+			return errors.Errorf("unknown op: %s", parts[0])
 		}
 		if err != nil {
 			return err
@@ -255,7 +256,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 
 	if len(td.CmdArgs) != 1 {
-		return fmt.Errorf("build <path>: argument missing")
+		return errors.New("build <path>: argument missing")
 	}
 	path := td.CmdArgs[0].String()
 
@@ -288,18 +289,18 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 
 func runCompactCmd(td *datadriven.TestData, d *DB) error {
 	if len(td.CmdArgs) > 2 {
-		return fmt.Errorf("%s expects at most two arguments", td.Cmd)
+		return errors.Errorf("%s expects at most two arguments", td.Cmd)
 	}
 	parts := strings.Split(td.CmdArgs[0].Key, "-")
 	if len(parts) != 2 {
-		return fmt.Errorf("expected <begin>-<end>: %s", td.Input)
+		return errors.Errorf("expected <begin>-<end>: %s", td.Input)
 	}
 	if len(td.CmdArgs) == 2 {
 		levelString := td.CmdArgs[1].String()
 		iStart := base.MakeInternalKey([]byte(parts[0]), InternalKeySeqNumMax, InternalKeyKindMax)
 		iEnd := base.MakeInternalKey([]byte(parts[1]), 0, 0)
 		if levelString[0] != 'L' {
-			return fmt.Errorf("expected L<n>: %s", levelString)
+			return errors.Errorf("expected L<n>: %s", levelString)
 		}
 		level, err := strconv.Atoi(levelString[1:])
 		if err != nil {
@@ -349,11 +350,11 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				}
 				snapshots[i] = seqNum
 				if i > 0 && snapshots[i] < snapshots[i-1] {
-					return nil, fmt.Errorf("Snapshots must be in ascending order")
+					return nil, errors.New("Snapshots must be in ascending order")
 				}
 			}
 		default:
-			return nil, fmt.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
+			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
 	}
 	d, err := Open("", opts)
@@ -403,7 +404,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	parseMeta := func(s string) (*fileMetadata, error) {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("malformed table spec: %s", s)
+			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
 		return &fileMetadata{
 			Smallest: InternalKey{UserKey: []byte(parts[0])},

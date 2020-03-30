@@ -725,7 +725,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			f := c.inputs[0][i]
 			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 			if err != nil {
-				return nil, fmt.Errorf("pebble: could not open table %d: %w", f.FileNum, err)
+				return nil, errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
 			}
 			iters = append(iters, iter)
 			if rangeDelIter != nil {
@@ -1360,7 +1360,7 @@ func (d *DB) runCompaction(
 			if writerMeta.SmallestRange.UserKey != nil {
 				c := d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey)
 				if c < 0 {
-					return fmt.Errorf(
+					return errors.Errorf(
 						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
 						writerMeta.SmallestRange.Pretty(d.opts.Comparer.Format),
 						prevMeta.Largest.Pretty(d.opts.Comparer.Format))
@@ -1375,7 +1375,7 @@ func (d *DB) runCompaction(
 						// decrement it. This should never happen as we take care in the
 						// main compaction loop to avoid generating an sstable with a
 						// largest key containing a zero seqnum.
-						return fmt.Errorf(
+						return errors.Errorf(
 							"pebble: previous sstable largest key unexpectedly has 0 seqnum: %s",
 							prevMeta.Largest.Pretty(d.opts.Comparer.Format))
 					}
@@ -1430,7 +1430,7 @@ func (d *DB) runCompaction(
 			case v >= 0:
 				// Nothing to do.
 			case v < 0:
-				return fmt.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
+				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
 					meta.Smallest.Pretty(d.opts.Comparer.Format),
 					c.smallest.Pretty(d.opts.Comparer.Format))
 			}
@@ -1448,7 +1448,7 @@ func (d *DB) runCompaction(
 				}
 				fallthrough
 			case v > 0:
-				return fmt.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
+				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
 					meta.Largest.Pretty(d.opts.Comparer.Format),
 					c.largest.Pretty(d.opts.Comparer.Format))
 			}
@@ -1576,7 +1576,7 @@ func (d *DB) runCompaction(
 		case key != nil:
 			// We either hit the size limit or the grandparent limit for the sstable.
 		default:
-			return nil, nil, fmt.Errorf("pebble: not reached")
+			return nil, nil, errors.New("pebble: not reached")
 		}
 
 		if err := finishOutput(limit); err != nil {

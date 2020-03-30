@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 )
@@ -133,7 +134,7 @@ func (m *simpleMergingIter) step() bool {
 			// order so the lastLevel must not be lower.
 			if m.lastLevel > item.index {
 				lastLevel := m.levels[m.lastLevel]
-				m.err = fmt.Errorf("found InternalKey %s in %s and InternalKey %s in %s",
+				m.err = errors.Errorf("found InternalKey %s in %s and InternalKey %s in %s",
 					item.key.Pretty(m.format), l.iter, m.lastKey.Pretty(m.format),
 					lastLevel.iter)
 				return false
@@ -165,7 +166,7 @@ func (m *simpleMergingIter) step() bool {
 			case InternalKeyKindMerge:
 				m.err = m.valueMerger.MergeOlder(item.value)
 			default:
-				m.err = fmt.Errorf("pebble: invalid internal key kind %s in %s",
+				m.err = errors.Errorf("pebble: invalid internal key kind %s in %s",
 					item.key.Pretty(m.format),
 					l.iter)
 				return false
@@ -175,8 +176,8 @@ func (m *simpleMergingIter) step() bool {
 			m.valueMerger, m.err = m.merge(item.key.UserKey, item.value)
 		}
 		if m.err != nil {
-			m.err = fmt.Errorf("merge processing error on key %s in %s: %w",
-				item.key.Pretty(m.format), l.iter, m.err)
+			m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
+				item.key.Pretty(m.format), l.iter)
 			return false
 		}
 		// Is this point covered by a tombstone at a lower level? Note that all these
@@ -193,7 +194,7 @@ func (m *simpleMergingIter) step() bool {
 			if (lvl.smallestUserKey == nil || m.heap.cmp(lvl.smallestUserKey, item.key.UserKey) <= 0) &&
 				lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
 				if lvl.tombstone.Deletes(item.key.SeqNum()) {
-					m.err = fmt.Errorf("tombstone %s in %s deletes key %s in %s",
+					m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
 						lvl.tombstone.Pretty(m.format), lvl.iter, item.key.Pretty(m.format),
 						l.iter)
 					return false
@@ -215,7 +216,7 @@ func (m *simpleMergingIter) step() bool {
 		// next sstable in the level, in which case item.key is previous sstable's
 		// last point key.
 		if base.InternalCompare(m.heap.cmp, item.key, *l.iterKey) >= 0 {
-			m.err = fmt.Errorf("out of order keys %s >= %s in %s",
+			m.err = errors.Errorf("out of order keys %s >= %s in %s",
 				item.key.Pretty(m.format), l.iterKey.Pretty(m.format), l.iter)
 			return false
 		}
@@ -238,8 +239,8 @@ func (m *simpleMergingIter) step() bool {
 		if m.valueMerger != nil {
 			_, m.err = m.valueMerger.Finish()
 			if m.err != nil {
-				m.err = fmt.Errorf("merge processing error on key %s in %s: %w",
-					item.key.Pretty(m.format), lastRecordMsg, m.err)
+				m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
+					item.key.Pretty(m.format), lastRecordMsg)
 			}
 			m.valueMerger = nil
 		}
@@ -309,7 +310,7 @@ func iterateAndCheckTombstones(
 	lastTombstone := tombstoneWithLevel{}
 	for _, t := range tombstones {
 		if cmp(lastTombstone.Start.UserKey, t.Start.UserKey) == 0 && lastTombstone.level > t.level {
-			return fmt.Errorf("encountered tombstone %s in %s"+
+			return errors.Errorf("encountered tombstone %s in %s"+
 				" that has a lower seqnum than the same tombstone in %s",
 				t.Tombstone.Pretty(format), levelOrMemtable(t.lsmLevel, t.fileNum),
 				levelOrMemtable(lastTombstone.lsmLevel, lastTombstone.fileNum))
@@ -476,7 +477,7 @@ func addTombstonesFromIter(
 		// be ordered and fragmented on disk. But we anyways check for memtables,
 		// rangeDelV1 as well.
 		if prevTombstone.Overlaps(cmp, t) != -1 {
-			return nil, fmt.Errorf("unordered or unfragmented range delete tombstones %s, %s in %s",
+			return nil, errors.Errorf("unordered or unfragmented range delete tombstones %s, %s in %s",
 				prevTombstone.Pretty(format), t.Pretty(format), levelOrMemtable(lsmLevel, fileNum))
 		}
 		// No need to copy key.UserKey bytes since blockIter gives key stability for

@@ -5,8 +5,9 @@
 package pebble
 
 import (
-	"fmt"
 	"sync"
+
+	"github.com/cockroachdb/errors"
 )
 
 type logRecycler struct {
@@ -82,10 +83,10 @@ func (r *logRecycler) pop(logNum FileNum) error {
 	defer r.mu.Unlock()
 
 	if len(r.mu.logNums) == 0 {
-		return fmt.Errorf("pebble: log recycler empty")
+		return errors.New("pebble: log recycler empty")
 	}
 	if r.mu.logNums[0] != logNum {
-		return fmt.Errorf("pebble: log recycler invalid %d vs %d", logNum, r.mu.logNums)
+		return errors.Errorf("pebble: log recycler invalid %d vs %d", errors.Safe(logNum), errors.Safe(r.mu.logNums))
 	}
 	r.mu.logNums = r.mu.logNums[1:]
 	return nil

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -92,7 +93,7 @@ func (f *formatter) Set(spec string) error {
 			return nil
 		}
 		if strings.Count(spec, "%") != 1 {
-			return fmt.Errorf("unknown formatter: %q", spec)
+			return errors.Errorf("unknown formatter: %q", errors.Safe(spec))
 		}
 		f.fn = func(v []byte) fmt.Formatter {
 			return fmtFormatter{f.spec, v}

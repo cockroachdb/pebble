@@ -7,10 +7,11 @@ package rate // import "github.com/cockroachdb/pebble/internal/rate"
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/cockroachdb/errors"
 )
 
 // Limit defines the maximum frequency of some events.
@@ -220,7 +221,7 @@ func (lim *Limiter) Wait(ctx context.Context) (err error) {
 // canceled, or the expected wait time exceeds the Context's Deadline.
 func (lim *Limiter) WaitN(ctx context.Context, n int) (err error) {
 	if n > lim.burst && lim.limit != Inf {
-		return fmt.Errorf("rate: Wait(n=%d) exceeds limiter's burst %d", n, lim.burst)
+		return errors.Errorf("rate: Wait(n=%d) exceeds limiter's burst %d", errors.Safe(n), errors.Safe(lim.burst))
 	}
 	// Check if ctx is already cancelled
 	select {
@@ -237,7 +238,7 @@ func (lim *Limiter) WaitN(ctx context.Context, n int) (err error) {
 	// Reserve
 	r := lim.reserveN(now, n, waitLimit)
 	if !r.ok {
-		return fmt.Errorf("rate: Wait(n=%d) would exceed context deadline", n)
+		return errors.Errorf("rate: Wait(n=%d) would exceed context deadline", errors.Safe(n))
 	}
 	// Wait
 	d := r.DelayFrom(now)
@@ -333,7 +334,9 @@ func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duratio
 
 // advance calculates and returns an updated state for lim resulting from the passage of time.
 // lim is not changed.
-func (lim *Limiter) advance(now time.Time) (newNow time.Time, newLast time.Time, newTokens float64) {
+func (lim *Limiter) advance(
+	now time.Time,
+) (newNow time.Time, newLast time.Time, newTokens float64) {
 	last := lim.last
 	if now.Before(last) {
 		last = now

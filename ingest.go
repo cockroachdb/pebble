@@ -5,11 +5,11 @@
 package pebble
 
 import (
-	"fmt"
 	"sort"
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
@@ -33,11 +33,11 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 
 func ingestValidateKey(opts *Options, key *InternalKey) error {
 	if key.Kind() == InternalKeyKindInvalid {
-		return fmt.Errorf("pebble: external sstable has corrupted key: %s",
+		return errors.Errorf("pebble: external sstable has corrupted key: %s",
 			key.Pretty(opts.Comparer.Format))
 	}
 	if key.SeqNum() != 0 {
-		return fmt.Errorf("pebble: external sstable has non-zero seqnum: %s",
+		return errors.Errorf("pebble: external sstable has non-zero seqnum: %s",
 			key.Pretty(opts.Comparer.Format))
 	}
 	return nil
@@ -184,7 +184,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) erro
 
 	for i := 1; i < len(meta); i++ {
 		if sstableKeyCompare(cmp, meta[i-1].Largest, meta[i].Smallest) >= 0 {
-			return fmt.Errorf("pebble: external sstables have overlapping ranges")
+			return errors.New("pebble: external sstables have overlapping ranges")
 		}
 	}
 	return nil

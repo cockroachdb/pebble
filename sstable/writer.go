@@ -222,7 +222,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		// versions show this to not be a performance win.
 		x := w.compare(w.meta.LargestPoint.UserKey, key.UserKey)
 		if x > 0 || (x == 0 && w.meta.LargestPoint.Trailer < key.Trailer) {
-			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
 				w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
 			return w.err
 		}
@@ -268,26 +268,26 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		prevKey := base.DecodeInternalKey(w.rangeDelBlock.curKey)
 		switch c := w.compare(prevKey.UserKey, key.UserKey); {
 		case c > 0:
-			w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
 				prevKey.Pretty(w.formatter), key.Pretty(w.formatter))
 			return w.err
 		case c == 0:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
-				w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
 					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatter),
 					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatter))
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
-				w.err = fmt.Errorf("pebble: keys must be added in order: %s, %s",
+				w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
 					prevKey.Pretty(w.formatter), key.Pretty(w.formatter))
 				return w.err
 			}
 		default:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
-				w.err = fmt.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
 					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatter),
 					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatter))
 				return w.err

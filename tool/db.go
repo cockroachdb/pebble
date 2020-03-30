@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
@@ -134,13 +135,13 @@ func (d *dbT) loadOptions(dir string) error {
 			if c := d.comparers[name]; c != nil {
 				return c, nil
 			}
-			return nil, fmt.Errorf("unknown comparer %q", name)
+			return nil, errors.Errorf("unknown comparer %q", errors.Safe(name))
 		},
 		NewMerger: func(name string) (*pebble.Merger, error) {
 			if m := d.mergers[name]; m != nil {
 				return m, nil
 			}
-			return nil, fmt.Errorf("unknown merger %q", name)
+			return nil, errors.Errorf("unknown merger %q", errors.Safe(name))
 		},
 		SkipUnknown: func(name string) bool {
 			return true
@@ -198,13 +199,13 @@ func (d *dbT) openDB(dir string) (*pebble.DB, error) {
 	if d.comparerName != "" {
 		d.opts.Comparer = d.comparers[d.comparerName]
 		if d.opts.Comparer == nil {
-			return nil, fmt.Errorf("unknown comparer %q", d.comparerName)
+			return nil, errors.Errorf("unknown comparer %q", errors.Safe(d.comparerName))
 		}
 	}
 	if d.mergerName != "" {
 		d.opts.Merger = d.mergers[d.mergerName]
 		if d.opts.Merger == nil {
-			return nil, fmt.Errorf("unknown merger %q", d.mergerName)
+			return nil, errors.Errorf("unknown merger %q", errors.Safe(d.mergerName))
 		}
 	}
 	return pebble.Open(dir, d.opts)

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -47,7 +48,7 @@ func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File,
 	fs.mu.Lock()
 	if fs.openErrorEnabled {
 		fs.mu.Unlock()
-		return nil, fmt.Errorf("injected error")
+		return nil, errors.New("injected error")
 	}
 	if fs.openCounts != nil {
 		fs.openCounts[name]++
@@ -55,7 +56,7 @@ func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File,
 	fs.mu.Unlock()
 	f, err := fs.FS.Open(name, opts...)
 	if len(opts) < 1 || opts[0] != vfs.RandomReadsOption {
-		return nil, fmt.Errorf("sstable file %s not opened with random reads option", name)
+		return nil, errors.Errorf("sstable file %s not opened with random reads option", name)
 	}
 	if err != nil {
 		return nil, err
@@ -97,7 +98,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 				numStillOpen++
 			}
 			if gotC != gotO && gotC != gotO-1 {
-				return fmt.Errorf("i=%d: table closed too many or too few times: opened %d times, closed %d times",
+				return errors.Errorf("i=%d: table closed too many or too few times: opened %d times, closed %d times",
 					i, gotO, gotC)
 			}
 			if f != nil {
@@ -107,7 +108,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 			}
 		}
 		if numStillOpen > tableCacheTestCacheSize {
-			return fmt.Errorf("numStillOpen is %d, want <= %d", numStillOpen, tableCacheTestCacheSize)
+			return errors.Errorf("numStillOpen is %d, want <= %d", numStillOpen, tableCacheTestCacheSize)
 		}
 		return nil
 	})
@@ -124,7 +125,7 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 			filename := base.MakeFilename(fs, "", fileTypeTable, FileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
-				return fmt.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
+				return errors.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
 			}
 		}
 		return nil
@@ -145,15 +146,15 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	for i := 0; i < tableCacheTestNumTables; i++ {
 		f, err := fs.Create(base.MakeFilename(fs, "", fileTypeTable, FileNum(i)))
 		if err != nil {
-			return nil, nil, fmt.Errorf("fs.Create: %v", err)
+			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
 		tw := sstable.NewWriter(f, sstable.WriterOptions{})
 		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
-			return nil, nil, fmt.Errorf("tw.Set: %v", err)
+			return nil, nil, errors.Wrap(err, "tw.Set")
 		}
 		if err := tw.Close(); err != nil {
-			return nil, nil, fmt.Errorf("tw.Close: %v", err)
+			return nil, nil, errors.Wrap(err, "tw.Close")
 		}
 	}
 
@@ -192,7 +193,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				nil, /* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
-				errc <- fmt.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
+				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
 			}
 			key, value := iter.SeekGE([]byte("k"))
@@ -200,19 +201,19 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}
 			if key == nil {
-				errc <- fmt.Errorf("i=%d, fileNum=%d: valid.0: got false, want true", i, fileNum)
+				errc <- errors.Errorf("i=%d, fileNum=%d: valid.0: got false, want true", i, fileNum)
 				return
 			}
 			if got := len(value); got != fileNum {
-				errc <- fmt.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, fileNum, got, fileNum)
+				errc <- errors.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, fileNum, got, fileNum)
 				return
 			}
 			if key, _ := iter.Next(); key != nil {
-				errc <- fmt.Errorf("i=%d, fileNum=%d: next.1: got true, want false", i, fileNum)
+				errc <- errors.Errorf("i=%d, fileNum=%d: next.1: got true, want false", i, fileNum)
 				return
 			}
 			if err := iter.Close(); err != nil {
-				errc <- fmt.Errorf("i=%d, fileNum=%d: close: %v", i, fileNum, err)
+				errc <- errors.Wrapf(err, "close error i=%d, fileNum=%dv", i, fileNum)
 				return
 			}
 			errc <- nil
@@ -259,10 +260,10 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 	fs.validate(t, c, func(i, gotO, gotC int) error {
 		if i == pinned0 || i == pinned1 {
 			if gotO != 1 || gotC != 0 {
-				return fmt.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
+				return errors.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
 			}
 		} else if gotO == 1 {
-			return fmt.Errorf("i=%d: table only opened once", i)
+			return errors.Errorf("i=%d: table only opened once", i)
 		}
 		return nil
 	})

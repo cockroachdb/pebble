@@ -6,11 +6,11 @@ package randvar
 
 import (
 	"encoding/binary"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/exp/rand"
 )
 
@@ -45,7 +45,7 @@ func (f *Flag) Type() string {
 func (f *Flag) Set(spec string) error {
 	m := randVarRE.FindStringSubmatch(spec)
 	if m == nil {
-		return fmt.Errorf("invalid random var spec: %s", spec)
+		return errors.Errorf("invalid random var spec: %s", errors.Safe(spec))
 	}
 
 	min, err := strconv.Atoi(m[2])
@@ -75,7 +75,7 @@ func (f *Flag) Set(spec string) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("unknown random var distribution: %s", m[1])
+		return errors.Errorf("unknown random var distribution: %s", errors.Safe(m[1]))
 	}
 	f.spec = spec
 	return nil
@@ -112,7 +112,7 @@ func (f *BytesFlag) Type() string {
 func (f *BytesFlag) Set(spec string) error {
 	parts := strings.Split(spec, "/")
 	if len(parts) == 0 || len(parts) > 2 {
-		return fmt.Errorf("invalid randbytes spec: %s", spec)
+		return errors.Errorf("invalid randbytes spec: %s", errors.Safe(spec))
 	}
 	if err := f.sizeFlag.Set(parts[0]); err != nil {
 		return err
