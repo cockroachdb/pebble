@@ -111,6 +111,9 @@ type compactionPickerByScore struct {
 	// intra-L0 compaction if there is in-progress L0->Lbase compaction.
 	scores [numLevels]pickedCompactionInfo
 
+	// The ratio of the bytes in level to the previous higher level. For Lbase,
+	// this will be the ratio of bytes(Lbase)/bytes(L0).
+	// See the comment in pickAuto().
 	currentByteRatios [numLevels]float64
 }
 
@@ -224,6 +227,9 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		}
 		return
 	}
+	// To handle the case where the LSM is not in the right shape (see the
+	// comment in PickAuto()) -- we don't want to pick an Lbase that is too
+	// low based on just looking at the bytes in the bottom level.
 	if float64(bottomLevelSize) < 0.8*float64(dbSize) {
 		bottomLevelSize = int64(0.8 * float64(dbSize))
 	}
@@ -320,6 +326,20 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 	if p.vers.L0SubLevels != nil {
 		// fmt.Printf("depth: %d, threshold: %d\n", p.vers.L0SubLevels.MaxDepthAfterOngoingCompactions(),
 		//	p.opts.L0CompactionThreshold)
+
+		// Note that there is an inconsistency between what we do here and how
+		// CockroachDB backpressure is implemented. The latter is simply using
+		// the sublevel count as a measure of read amplification. In contrast,
+		// the L0SubLevels uses the maximum number of files across all intervals
+		// which can be lower than the number of sublevels. For a Get that is
+		// using iterator bounds, the interval depth is a more precise measure of
+		// read amplification since levelIter will not open a file in a sublevel
+		// that has no file overlapping with key k if the iterator upper bound
+		// is set to k. I used the sublevel count for the CockroachDB backpressure
+		// simply because it was already plumbed through and the backpressure
+		// setting for the experiment are set very high anyway (so not trying to
+		// exercise precise control) -- but we should consider changing to the
+		// more accurate number here.
 		p.scores[0].score =
 			float64(p.vers.L0SubLevels.MaxDepthAfterOngoingCompactions()) / float64(p.opts.L0CompactionThreshold)
 		return
@@ -471,6 +491,48 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			}
 		}
 	}
+	// The following logic tries to accommodate situations where the bytes
+	// are being added at such a high rate that it is not viable to maintain
+	// a proper LSM shape even with concurrent compactions out of each level
+	// (including L0). That is, there is simply not enough compaction
+	// bandwidth available.
+	// - currentByteRatios allows us to decide the harm being caused by
+	//   a level having more bytes than the target. Say L3 has 10GB and
+	//   the target is 1GB, it is harmful if L2 has say 100MB, since it
+	//   implies a write amplification of 100 when bytes are compacted from
+	//   L2 to L3. However if L2 is also behind and has say 5GB, the write
+	//   amplification for the compaction is fine. In that case the score of
+	//   10 for L3 is not doing harm and that compaction can be delayed.
+	//
+	// - The write amplification is an average number. In reality, it depends
+	//   on the key byte distribution for a level. So there is a score
+	//   beyond which even a low currentByteRatios is not sufficient to delay
+	//   compaction -- see the comment in the if-condition below.
+	//
+	// - We segment compactions into 3 priority levels:
+	//   - if the score is > 4 the compaction is either highest or high priority
+	//     - The highest priority is based on a very high score or if the
+	//       currentByteRatios is getting high.
+	//     - The rest are high priority: Within high priority we prefer higher
+	//       levels first. This is justified as follows:
+	//       - We want to get bytes out of L0 which is the highest level
+	//       - There could be deletes sitting in higher levels that are better
+	//         to apply first.
+	//       This is generalized as restoring the LSM to health one level at
+	//       a time, starting from the highest level. In practice, if a
+	//       compaction can't be picked from a higher level, we'll pick one
+	//       from a lower level.
+	//   - The remaining are low priority.
+	//
+	//   We typically observed both L0 and Lbase being categorized into high
+	//   priority (this was the large TPCC import with a compaction concurrency of 3).
+	//   If L0=>Lbase was frequently able to run 3 concurrent compactions,
+	//   eventually Lbase would fall behind enough to become highest priority
+	//   and use up some of the compaction slots.
+
+	// This is a different notion of priority than the one described above. It is
+	// a subdivision within the low priority compactions to reduce compaction
+	// concurrency -- see the code below.
 	const highPriorityThreshold = 1.5
 
 	p.initSizeAdjust(env.inProgressCompactions)
@@ -498,7 +560,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 		}
 	}
 	// If L0 has high score consider intra-L0. This number is a rough guess
-	// based on looking at one TPCC import experiment.
+	// based on looking at one early TPCC import experiment. Other improvements
+	// subsequent to that kept the L0 score < 20, so one could possibly reduce
+	// this threshold.
 	considerIntraL0 := l0Score > 50
 
 	p.opts.Logger.Infof(
@@ -519,10 +583,15 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 				return nil
 			}
 			if info.score < 1 {
+				// Only happens when in the lowPriority list.
 				break
 			}
 
 			if info.level == 0 && p.vers.L0SubLevels != nil {
+				// It is important to pass information about Lbase files to L0SubLevels
+				// so it can pick a compaction that does not conflict with an Lbase => Lbase+1
+				// compaction. Without this, we observed reduced concurrency of L0=>Lbase
+				// compactions, and increasing read amplification in L0.
 				lcf := p.vers.L0SubLevels.PickBaseCompaction(
 					p.opts.L0CompactionThreshold, p.vers.Files[p.baseLevel])
 				if lcf != nil {
@@ -586,6 +655,10 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 						c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
 						c.setupInuseKeyRanges()
 						// Output only a single sstable for intra-L0 compactions.
+						// Now that we have the ability to split flushes, we could conceivably
+						// split the output of intra-L0 compactions too. This may be unnecessary
+						// complexity -- the inputs to intra-L0 should be narrow in the key space
+						// (unlike flushes), so writing a single sstable should be ok.
 						c.maxOutputFileSize = math.MaxUint64
 						c.maxOverlapBytes = math.MaxUint64
 						c.maxExpandedBytes = math.MaxUint64
