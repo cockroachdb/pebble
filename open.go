@@ -226,6 +226,15 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			if err := checkOptions(opts, opts.FS.PathJoin(dirname, filename)); err != nil {
 				return nil, err
 			}
+		case fileTypeTemp:
+			if !d.opts.ReadOnly {
+				// A temp file is leftover if a process exits in the middle of
+				// updating the CURRENT file. Remove it.
+				err := opts.FS.Remove(opts.FS.PathJoin(dirname, filename))
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	sort.Slice(logFiles, func(i, j int) bool {
