@@ -85,9 +85,7 @@ func TestBlockIter(t *testing.T) {
 	}
 	for _, tc := range testcases {
 		i, err := newRawBlockIter(bytes.Compare, k)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		i.SeekGE([]byte(tc.key))
 		for j, keyWant := range []string{"apple", "apricot", "banana"}[tc.index:] {
 			if !i.Valid() {
@@ -108,9 +106,7 @@ func TestBlockIter(t *testing.T) {
 
 	{
 		i, err := newRawBlockIter(bytes.Compare, k)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		i.Last()
 		for j, keyWant := range []string{"banana", "apricot", "apple"} {
 			if !i.Valid() {
@@ -234,9 +230,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	block := w.finish()
 
 	i, err := newBlockIter(bytes.Compare, block)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Check that the supplied slice resides within the bounds of the block.
 	check := func(v []byte) {
@@ -296,9 +290,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 	for targetPos := 0; targetPos < w.restartInterval; targetPos++ {
 		t.Run("", func(t *testing.T) {
 			i, err := newBlockIter(bytes.Compare, block)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			pos := 3
 			if key, _ := i.SeekLT([]byte("carrot")); !bytes.Equal(keys[pos], key.UserKey) {

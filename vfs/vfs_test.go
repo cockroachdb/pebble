@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/stretchr/testify/require"
 )
 
 func normalizeError(err error) error {
@@ -229,9 +230,7 @@ func TestVFS(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Run("disk", func(t *testing.T) {
 			dir, err := ioutil.TempDir("", "test-vfs")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer func() {
 				_ = os.RemoveAll(dir)
 			}()

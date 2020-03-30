@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -126,9 +127,7 @@ func TestMemTableCount(t *testing.T) {
 		}
 		m.set(InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
-	if err := m.close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, m.close())
 }
 
 func TestMemTableBytesIterated(t *testing.T) {
@@ -141,9 +140,7 @@ func TestMemTableBytesIterated(t *testing.T) {
 		}
 		m.set(InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
-	if err := m.close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, m.close())
 }
 
 func TestMemTableEmpty(t *testing.T) {
@@ -177,9 +174,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		j := r.Intn(N)
 		k := []byte(strconv.Itoa(j))
 		v, err := m0.get(k)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if len(v) != cap(v) {
 			t.Fatalf("get: j=%d, got len(v)=%d, cap(v)=%d", j, len(v), cap(v))
 		}
@@ -354,9 +349,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 				b := newBatch(nil)
 				b.DeleteRange(start, end, nil)
 				n := atomic.AddUint64(&seqNum, 1) - 1
-				if err := m.apply(b, n); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, m.apply(b, n))
 				b.release()
 
 				var count int

@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/pmezard/go-difflib/difflib"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -56,25 +57,19 @@ func init() {
 func testMetaRun(t *testing.T, runDir string) {
 	opsPath := filepath.Join(filepath.Dir(filepath.Clean(runDir)), "ops")
 	opsData, err := ioutil.ReadFile(opsPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	ops, err := parse(opsData)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_ = ops
 
 	optionsPath := filepath.Join(runDir, "OPTIONS")
 	optionsData, err := ioutil.ReadFile(optionsPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	opts := &pebble.Options{}
 	testOpts := &testOptions{opts: opts}
-	if err := parseOptions(testOpts, string(optionsData)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, parseOptions(testOpts, string(optionsData)))
 
 	// Always use our custom comparer which provides a Split method.
 	opts.Comparer = &comparer
@@ -85,9 +80,7 @@ func testMetaRun(t *testing.T, runDir string) {
 	// in-memory FS.
 	if *disk && !testOpts.strictFS {
 		opts.FS = vfs.Default
-		if err := os.RemoveAll(opts.FS.PathJoin(runDir, "data")); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.RemoveAll(opts.FS.PathJoin(runDir, "data")))
 	} else {
 		opts.Cleaner = base.ArchiveCleaner{}
 		if testOpts.strictFS {
@@ -102,9 +95,7 @@ func testMetaRun(t *testing.T, runDir string) {
 
 	historyPath := filepath.Join(runDir, "history")
 	historyFile, err := os.Create(historyPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer historyFile.Close()
 
 	writers := []io.Writer{historyFile}
@@ -114,9 +105,7 @@ func testMetaRun(t *testing.T, runDir string) {
 	h := newHistory(*failRE, writers...)
 
 	m := newTest(ops)
-	if err := m.init(h, opts.FS.PathJoin(runDir, "data"), testOpts); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, m.init(h, opts.FS.PathJoin(runDir, "data"), testOpts))
 	for m.step(h) {
 		if h.Failed() {
 			if len(*failRE) > 0 {
@@ -157,12 +146,8 @@ func TestMeta(t *testing.T) {
 
 	// Cleanup any previous state.
 	metaDir := filepath.Join(*dir, time.Now().Format("060102-150405.000"))
-	if err := os.RemoveAll(metaDir); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(metaDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.RemoveAll(metaDir))
+	require.NoError(t, os.MkdirAll(metaDir, 0755))
 	defer func() {
 		if !t.Failed() && !*keep {
 			_ = os.RemoveAll(metaDir)
@@ -174,9 +159,7 @@ func TestMeta(t *testing.T) {
 	ops := generate(ops.Uint64(), defaultConfig)
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)
-	if err := ioutil.WriteFile(opsPath, []byte(formattedOps), 0644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ioutil.WriteFile(opsPath, []byte(formattedOps), 0644))
 
 	// Perform a particular test run with the specified options. The options are
 	// written to <run-dir>/OPTIONS and a child process is created to actually
@@ -187,15 +170,11 @@ func TestMeta(t *testing.T) {
 		}
 
 		runDir := filepath.Join(metaDir, path.Base(t.Name()))
-		if err := os.MkdirAll(runDir, 0755); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.MkdirAll(runDir, 0755))
 
 		optionsPath := filepath.Join(runDir, "OPTIONS")
 		optionsStr := optionsToString(opts)
-		if err := ioutil.WriteFile(optionsPath, []byte(optionsStr), 0644); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, ioutil.WriteFile(optionsPath, []byte(optionsStr), 0644))
 
 		cmd := exec.Command(os.Args[0],
 			"-disk="+fmt.Sprint(*disk),
@@ -248,9 +227,7 @@ func TestMeta(t *testing.T) {
 		readHistory := func(name string) []string {
 			historyPath := filepath.Join(metaDir, name, "history")
 			data, err := ioutil.ReadFile(historyPath)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			lines := difflib.SplitLines(string(data))
 			newLines := make([]string, 0, len(lines))
 			for _, line := range lines {
@@ -271,9 +248,7 @@ func TestMeta(t *testing.T) {
 				Context: 5,
 			}
 			text, err := difflib.GetUnifiedDiffString(diff)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if text != "" {
 				// NB: We force an exit rather than using t.Fatal because the later
 				// will run another instance of the test if -count is specified, while

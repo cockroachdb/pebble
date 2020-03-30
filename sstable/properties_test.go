@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kr/pretty"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPropertiesLoad(t *testing.T) {
@@ -45,13 +46,10 @@ func TestPropertiesLoad(t *testing.T) {
 	{
 		// Check that we can read properties from a table.
 		f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		r, err := NewReader(f, ReaderOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer r.Close()
 
 		r.Properties.Loaded = nil
@@ -107,9 +105,7 @@ func TestPropertiesSave(t *testing.T) {
 		w.restartInterval = propertiesBlockRestartInterval
 		expected.save(&w)
 		var props Properties
-		if err := props.load(w.finish(), 0); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, props.load(w.finish(), 0))
 		props.Loaded = nil
 		if diff := pretty.Diff(*expected, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))

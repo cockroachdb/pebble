@@ -108,9 +108,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		},
 		DebugCheck: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer d.Close()
 
 	d.mu.Lock()
@@ -132,30 +130,21 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		}
 	}
 
-	if err := d.Set([]byte("a"), bytes.Repeat([]byte("b"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("b"), 100), nil))
 	snap1 := d.NewSnapshot()
 	defer snap1.Close()
 	// Flush so that each version of "a" ends up in its own L0 table. If we
 	// allowed both versions in the same L0 table, compaction could trivially
 	// move the single L0 table to L1.
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil))
+
 	snap2 := d.NewSnapshot()
 	defer snap2.Close()
-	if err := d.DeleteRange([]byte("a"), []byte("d"), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
 
 	// Compact to produce the L1 tables.
-	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("c"), []byte("c")))
 	expectLSM(`
 1:
   000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
@@ -163,9 +152,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 `)
 
 	// Compact again to move one of the tables to L2.
-	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("c"), []byte("c")))
 	expectLSM(`
 1:
   000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
@@ -174,15 +161,9 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 `)
 
 	// Write "b" and "c" to a new table.
-	if err := d.Set([]byte("b"), []byte("d"), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Set([]byte("c"), []byte("e"), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("b"), []byte("d"), nil))
+	require.NoError(t, d.Set([]byte("c"), []byte("e"), nil))
+	require.NoError(t, d.Flush())
 	expectLSM(`
 0:
   000011:[b#4,SET-c#5,SET]
@@ -220,9 +201,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	// containing "c" will be compacted again with the L2 table creating two
 	// tables in L2. Lastly, the L2 table containing "c" will be compacted
 	// creating the L3 table.
-	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("c"), []byte("c")))
 	expectLSM(`
 1:
   000012:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
@@ -260,9 +239,7 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 		},
 		DebugCheck: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer d.Close()
 
 	lsm := func() string {
@@ -280,43 +257,28 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 		}
 	}
 
-	if err := d.Set([]byte("b"), bytes.Repeat([]byte("b"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("b"), 100), nil))
 	snap1 := d.NewSnapshot()
 	defer snap1.Close()
 	// Flush so that each version of "b" ends up in its own L0 table. If we
 	// allowed both versions in the same L0 table, compaction could trivially
 	// move the single L0 table to L1.
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil))
 	snap2 := d.NewSnapshot()
 	defer snap2.Close()
-	if err := d.DeleteRange([]byte("a"), []byte("d"), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
 
 	// Compact to produce the L1 tables.
-	if err := d.Compact([]byte("b"), []byte("b")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("b"), []byte("b")))
 	expectLSM(`
 6:
   000008:[a#3,RANGEDEL-b#2,SET]
   000009:[b#1,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
-	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
+	require.NoError(t, d.Compact([]byte("c"), []byte("c")))
 	expectLSM(`
 6:
   000012:[a#3,RANGEDEL-b#2,SET]
@@ -339,9 +301,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		},
 		DebugCheck: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer d.Close()
 
 	d.mu.Lock()
@@ -363,27 +323,19 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		}
 	}
 
-	if err := d.Set([]byte("b"), bytes.Repeat([]byte("b"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("b"), 100), nil))
 	snap1 := d.NewSnapshot()
 	defer snap1.Close()
 
 	// Flush so that each version of "b" ends up in its own L0 table. If we
 	// allowed both versions in the same L0 table, compaction could trivially
 	// move the single L0 table to L1.
-	if err := d.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil))
 	snap2 := d.NewSnapshot()
 	defer snap2.Close()
 
-	if err := d.DeleteRange([]byte("a"), []byte("d"), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
 	snap3 := d.NewSnapshot()
 	defer snap3.Close()
 
@@ -393,9 +345,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 
 	// Compact a few times to move the tables down to L3.
 	for i := 0; i < 3; i++ {
-		if err := d.Compact([]byte("b"), []byte("b")); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Compact([]byte("b"), []byte("b")))
 	}
 	expectLSM(`
 3:
@@ -403,13 +353,9 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
   000013:[b#1,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
-	if err := d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
 
-	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("c"), []byte("c")))
 	expectLSM(`
 4:
   000020:[a#3,RANGEDEL-b#2,SET]
@@ -417,9 +363,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
   000022:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 
-	if err := d.Compact([]byte("c"), []byte("c")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("c"), []byte("c")))
 	expectLSM(`
 5:
   000023:[a#3,RANGEDEL-b#2,SET]
@@ -431,9 +375,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		t.Fatalf("expected not found, but found %v", err)
 	}
 
-	if err := d.Compact([]byte("a"), []byte("a")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
 	expectLSM(`
 5:
   000025:[c#4,SET-d#72057594037927935,RANGEDEL]

@@ -12,11 +12,10 @@ import (
 	"testing"
 
 	"github.com/ghemawat/stream"
+	"github.com/stretchr/testify/require"
 )
 
-func dirCmd(
-	t *testing.T, dir string, name string, args ...string,
-) stream.Filter {
+func dirCmd(t *testing.T, dir string, name string, args ...string) stream.Filter {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -25,7 +24,7 @@ func dirCmd(
 	case *exec.ExitError:
 		// Non-zero exit is expected.
 	default:
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	return stream.ReadLines(bytes.NewReader(out))
 }
@@ -42,9 +41,7 @@ func TestLint(t *testing.T) {
 	const root = "github.com/cockroachdb/pebble"
 
 	pkg, err := build.Import(root, "../..", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var pkgs []string
 	if err := stream.ForEach(
@@ -54,7 +51,7 @@ func TestLint(t *testing.T) {
 		), func(s string) {
 			pkgs = append(pkgs, s)
 		}); err != nil {
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 
 	t.Run("TestGolint", func(t *testing.T) {

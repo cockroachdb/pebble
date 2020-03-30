@@ -67,24 +67,16 @@ func TestErrorIfNotExists(t *testing.T) {
 		FS:               mem,
 		ErrorIfNotExists: false,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
 
 	// The DB exists, so the setting of ErrorIfNotExists is a no-op.
 	d, err = Open("", &Options{
 		FS:               mem,
 		ErrorIfNotExists: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
 }
 
 func TestNewDBFilenames(t *testing.T) {
@@ -220,9 +212,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 			case "disk":
 				var err error
 				dir, err = ioutil.TempDir("", "open-close")
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				defer func() {
 					_ = os.RemoveAll(dir)
 				}()
@@ -241,12 +231,8 @@ func TestOpenOptionsCheck(t *testing.T) {
 	opts := &Options{FS: mem}
 
 	d, err := Open("", opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
 
 	opts = &Options{
 		Comparer: &Comparer{Name: "foo"},
@@ -322,9 +308,7 @@ func TestOpenReadOnly(t *testing.T) {
 			FS:       mem,
 			ReadOnly: true,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Verify various write operations fail in read-only mode.
 		require.EqualValues(t, ErrReadOnly, d.Compact(nil, nil))
@@ -446,9 +430,8 @@ func TestOpenWALReplay(t *testing.T) {
 				MemTableSize: 300 << 10,
 				ReadOnly:     readOnly,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			if readOnly {
 				d.mu.Lock()
 				require.Equal(t, 10, len(d.mu.mem.queue))
@@ -514,9 +497,7 @@ func TestOpenWALReplay2(t *testing.T) {
 						MemTableSize: 300 << 10,
 						ReadOnly:     readOnly,
 					})
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
 					require.NoError(t, d.Close())
 				})
 			}
@@ -550,7 +531,7 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 func TestGetVersion(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
-		FS:           mem,
+		FS: mem,
 	}
 
 	// Case 1: No options file.

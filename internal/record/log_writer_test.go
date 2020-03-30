@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type syncErrorFile struct {
@@ -132,18 +133,16 @@ func TestFlusherCond(t *testing.T) {
 func TestSyncError(t *testing.T) {
 	mem := vfs.NewMem()
 	f, err := mem.Create("log")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	injectedErr := fmt.Errorf("injected error")
 	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0)
 
 	var syncErr error
 	var syncWG sync.WaitGroup
 	syncWG.Add(1)
-	if _, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr); err != nil {
-		t.Fatal(err)
-	}
+	_, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+	require.NoError(t, err)
 	syncWG.Wait()
 	if injectedErr != syncErr {
 		t.Fatalf("unexpected %v but found %v", injectedErr, syncErr)
@@ -175,13 +174,9 @@ func TestSyncRecord(t *testing.T) {
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
 		offset, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		syncWG.Wait()
-		if syncErr != nil {
-			t.Fatal(syncErr)
-		}
+		require.NoError(t, syncErr)
 		if v := atomic.LoadInt64(&f.writePos); offset != v {
 			t.Fatalf("expected write pos %d, but found %d", offset, v)
 		}
@@ -237,9 +232,7 @@ func TestMinSyncInterval(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return wg
 	}
 
@@ -274,9 +267,7 @@ func TestMinSyncInterval(t *testing.T) {
 		}
 		return fmt.Errorf("expected writePos > %d, but found %d", startWritePos, v)
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Fire the timer, and then wait for the last record to sync.
 	timer.f()
@@ -310,9 +301,7 @@ func TestMinSyncIntervalClose(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return wg
 	}
 
@@ -322,8 +311,6 @@ func TestMinSyncIntervalClose(t *testing.T) {
 	// Syncing another record will not complete until the timer is fired OR the
 	// writer is closed.
 	wg := syncRecord(1)
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Close())
 	wg.Wait()
 }

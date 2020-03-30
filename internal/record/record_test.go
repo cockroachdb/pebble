@@ -178,9 +178,7 @@ func TestFlush(t *testing.T) {
 	}
 	// Flush the record.Writer buffer, which should yield 17 bytes.
 	// 17 = 2*7 + 1 + 2, which is two headers and 1 + 2 payload bytes.
-	if err := w.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Flush())
 	if got, want := buf.Len(), 17; got != want {
 		t.Fatalf("buffer length #1: got %d want %d", got, want)
 	}
@@ -193,9 +191,7 @@ func TestFlush(t *testing.T) {
 	}
 	// Flushing should get us up to 10024 bytes written.
 	// 10024 = 17 + 7 + 10000.
-	if err := w.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Flush())
 	if got, want := buf.Len(), 10024; got != want {
 		t.Fatalf("buffer length #3: got %d want %d", got, want)
 	}
@@ -210,9 +206,7 @@ func TestFlush(t *testing.T) {
 	// Flushing should get us up to 50038 bytes written.
 	// 50038 = 10024 + 2*7 + 40000. There are two headers because
 	// the one record was split into two chunks.
-	if err := w.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Flush())
 	if got, want := buf.Len(), 50038; got != want {
 		t.Fatalf("buffer length #5: got %d want %d", got, want)
 	}
@@ -265,25 +259,21 @@ func TestStaleReader(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	w := NewWriter(buf)
-	if _, err := w.WriteRecord([]byte("0")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.WriteRecord([]byte("11")); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatalf("Close: %v\n", err)
-	}
+	_, err := w.WriteRecord([]byte("0"))
+	require.NoError(t, err)
+
+	_, err = w.WriteRecord([]byte("11"))
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
 
 	r := NewReader(buf, 0 /* logNum */)
 	r0, err := r.Next()
-	if err != nil {
-		t.Fatalf("reader.Next: %v", err)
-	}
+	require.NoError(t, err)
+
 	r1, err := r.Next()
-	if err != nil {
-		t.Fatalf("reader.Next: %v", err)
-	}
+	require.NoError(t, err)
+
 	p := make([]byte, 1)
 	if _, err := r0.Read(p); err == nil || !strings.Contains(err.Error(), "stale") {
 		t.Fatalf("stale read #0: unexpected error: %v", err)
@@ -788,17 +778,14 @@ func TestNoLastRecordOffset(t *testing.T) {
 		t.Fatalf("Expected ErrNoLastRecord, got: %v", err)
 	}
 
-	if err := w.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Flush())
 
 	if _, err := w.LastRecordOffset(); err != ErrNoLastRecord {
 		t.Fatalf("LastRecordOffset: got: %v, want ErrNoLastRecord", err)
 	}
 
-	if _, err := w.WriteRecord([]byte("testrecord")); err != nil {
-		t.Fatal(err)
-	}
+	_, err := w.WriteRecord([]byte("testrecord"))
+	require.NoError(t, err)
 
 	if off, err := w.LastRecordOffset(); err != nil {
 		t.Fatalf("LastRecordOffset: %v", err)
@@ -812,25 +799,20 @@ func TestInvalidLogNum(t *testing.T) {
 	w := NewLogWriter(&buf, 1)
 	for i := 0; i < 10; i++ {
 		s := fmt.Sprintf("%04d\n", i)
-		if _, err := w.WriteRecord([]byte(s)); err != nil {
-			t.Fatal(err)
-		}
+		_, err := w.WriteRecord([]byte(s))
+		require.NoError(t, err)
 	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Close())
 
 	{
 		r := NewReader(bytes.NewReader(buf.Bytes()), 1)
 		for i := 0; i < 10; i++ {
 			rr, err := r.Next()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			x, err := ioutil.ReadAll(rr)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			s := fmt.Sprintf("%04d\n", i)
 			if s != string(x) {
 				t.Fatalf("expected %s, but found %s", s, x)
@@ -855,19 +837,14 @@ func TestSize(t *testing.T) {
 	w := NewWriter(&buf)
 	for i := 0; i < 100; i++ {
 		n := rand.Intn(len(zeroes))
-		if _, err := w.WriteRecord(zeroes[:n]); err != nil {
-			t.Fatal(err)
-		}
-		if err := w.Flush(); err != nil {
-			t.Fatal(err)
-		}
+		_, err := w.WriteRecord(zeroes[:n])
+		require.NoError(t, err)
+		require.NoError(t, w.Flush())
 		if buf.Len() != int(w.Size()) {
 			t.Fatalf("expected %d, but found %d", buf.Len(), w.Size())
 		}
 	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Close())
 }
 
 type limitedWriter struct {

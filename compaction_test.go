@@ -735,8 +735,8 @@ func TestElideRangeTombstone(t *testing.T) {
 			},
 		},
 		{
-			desc:    "flushing",
-			level:   -1,
+			desc:  "flushing",
+			level: -1,
 			version: version{
 				Files: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
@@ -924,17 +924,14 @@ func TestManualCompaction(t *testing.T) {
 		}
 
 		mem = vfs.NewMem()
-		err := mem.MkdirAll("ext", 0755)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+
+		var err error
 		d, err = Open("", &Options{
 			FS:         mem,
 			DebugCheck: true,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 	reset()
 
@@ -951,7 +948,7 @@ func TestManualCompaction(t *testing.T) {
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
-			b.Commit(nil)
+			require.NoError(t, b.Commit(nil))
 			return ""
 
 		case "build":
@@ -1705,12 +1702,9 @@ func TestFlushInvariant(t *testing.T) {
 						},
 						DebugCheck: true,
 					})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := d.Set([]byte("hello"), nil, NoSync); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
+
+					require.NoError(t, d.Set([]byte("hello"), nil, NoSync))
 
 					// Contort the DB into a state where it does something invalid.
 					d.mu.Lock()
@@ -1726,9 +1720,8 @@ func TestFlushInvariant(t *testing.T) {
 					d.mu.Unlock()
 
 					flushCh, err := d.AsyncFlush()
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
+
 					select {
 					case err := <-errCh:
 						if disableWAL {
@@ -1756,20 +1749,14 @@ func TestCompactFlushQueuedMemTable(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: mem,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Add the key "a" to the memtable, then fill up the memtable with the key
 	// "b". The compaction will only overlap with the queued memtable, not the
 	// mutable memtable.
-	if err := d.Set([]byte("a"), nil, nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
 	for {
-		if err := d.Set([]byte("b"), nil, nil); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Set([]byte("b"), nil, nil))
 		d.mu.Lock()
 		done := len(d.mu.mem.queue) == 2
 		d.mu.Unlock()
@@ -1789,9 +1776,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: mem,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// The default large batch threshold is slightly less than 1/2 of the
 	// memtable size which makes triggering a problem with flushing queued large
@@ -1804,9 +1789,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 
 	// Set a record with a large value. This will be transformed into a large
 	// batch and placed in the flushable queue.
-	if err := d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil))
 
 	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
 	require.NoError(t, d.Close())

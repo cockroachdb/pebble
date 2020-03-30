@@ -357,10 +357,7 @@ func TestIteratorBounds(t *testing.T) {
 	d := &testStorage{}
 	l := newTestSkiplist(d)
 	for i := 1; i < 10; i++ {
-		err := l.Add(d.add(fmt.Sprintf("%05d", i)))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, l.Add(d.add(fmt.Sprintf("%05d", i))))
 	}
 
 	it := iterAdapter{l.NewIter(makeKey("00003"), makeKey("00007"))}

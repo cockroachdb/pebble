@@ -176,9 +176,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 	const N = 2000
 	c, fs, err := newTableCache()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	rngMu := sync.Mutex{}
 	rng := rand.New(rand.NewSource(1))
@@ -220,16 +218,12 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			errc <- nil
 		}(i)
 		if !concurrent {
-			if err := <-errc; err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, <-errc)
 		}
 	}
 	if concurrent {
 		for i := 0; i < N; i++ {
-			if err := <-errc; err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, <-errc)
 		}
 	}
 	fs.validate(t, c, nil)
@@ -245,9 +239,7 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 		pinned1 = 11
 	)
 	c, fs, err := newTableCache()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
@@ -282,9 +274,7 @@ func TestTableCacheEvictions(t *testing.T) {
 		lo, hi = 10, 20
 	)
 	c, fs, err := newTableCache()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
@@ -329,16 +319,14 @@ func TestTableCacheEvictions(t *testing.T) {
 
 func TestTableCacheIterLeak(t *testing.T) {
 	c, _, err := newTableCache()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	iter, _, err := c.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
 		nil /* bytes iterated */)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	if err := c.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
@@ -346,17 +334,14 @@ func TestTableCacheIterLeak(t *testing.T) {
 	} else {
 		t.Log(err.Error())
 	}
-	if err := iter.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, iter.Close())
 }
 
 func TestTableCacheRetryAfterFailure(t *testing.T) {
 	// Test a retry can succeed after a failure, i.e., errors are not cached.
 	c, fs, err := newTableCache()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	fs.setOpenError(true /* enabled */)
 	if _, _, err := c.newIters(
 		&fileMetadata{FileNum: 0},
@@ -366,13 +351,12 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	}
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
-	if iter, _, err = c.newIters(
+	iter, _, err = c.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
-		nil /* bytes iterated */); err != nil {
-		t.Fatal(err)
-	}
-	iter.Close()
+		nil /* bytes iterated */)
+	require.NoError(t, err)
+	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)
 }
 
@@ -399,8 +383,6 @@ func TestTableCacheEvictClose(t *testing.T) {
 	close(errs)
 
 	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 }

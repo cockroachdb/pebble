@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/stretchr/testify/require"
 )
 
 var tombstoneRe = regexp.MustCompile(`(\d+):\s*(\w+)-*(\w+)`)
@@ -24,9 +25,7 @@ func parseTombstone(t *testing.T, s string) Tombstone {
 		t.Fatalf("expected 4 components, but found %d: %s", len(m), s)
 	}
 	seqNum, err := strconv.Atoi(m[1])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return Tombstone{
 		Start: base.MakeInternalKey([]byte(m[2]), uint64(seqNum), base.InternalKeyKindRangeDelete),
 		End:   []byte(m[3]),
@@ -97,9 +96,7 @@ func TestFragmenter(t *testing.T) {
 			t.Fatalf("expected 3 components, but found %d", len(m))
 		}
 		seq, err := strconv.Atoi(m[2])
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return m[1], seq
 	}
 
@@ -137,9 +134,7 @@ func TestFragmenter(t *testing.T) {
 				return fmt.Sprintf("expected timestamp argument, but found %s", d.CmdArgs[0])
 			}
 			readSeq, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			var results []string
 			for _, p := range strings.Split(d.Input, " ") {

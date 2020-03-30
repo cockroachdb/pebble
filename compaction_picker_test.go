@@ -278,10 +278,10 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				iStart := base.MakeInternalKey([]byte(start), InternalKeySeqNumMax, InternalKeyKindMax)
 				iEnd := base.MakeInternalKey([]byte(end), 0, 0)
 				manual := &manualCompaction{
-					done:        make(chan error, 1),
-					level:       startLevel,
-					start:       iStart,
-					end:         iEnd,
+					done:  make(chan error, 1),
+					level: startLevel,
+					start: iStart,
+					end:   iEnd,
 				}
 
 				c, retryLater := pickerByScore.pickManual(compactionEnv{
@@ -331,9 +331,7 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 		m := &fileMetadata{}
 		var err error
 		m.FileNum, err = strconv.ParseUint(s[:index], 10, 64)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		fields := strings.Fields(s[index+1:])
 		if len(fields) != 2 && len(fields) != 3 {
@@ -353,9 +351,7 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 		}
 
 		m.Size, err = strconv.ParseUint(fields[1], 10, 64)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		if len(fields) == 3 {
 			if fields[2] != "compacting" {

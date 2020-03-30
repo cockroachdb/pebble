@@ -210,8 +210,8 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 // invalidatingIter tests unsafe key/value slice reuse by modifying the last
 // returned key/value to all 1s.
 type invalidatingIter struct {
-	iter internalIterator
-	lastKey *InternalKey
+	iter      internalIterator
+	lastKey   *InternalKey
 	lastValue []byte
 }
 
@@ -286,7 +286,6 @@ func (i *invalidatingIter) SetBounds(lower, upper []byte) {
 func (i *invalidatingIter) String() string {
 	return i.iter.String()
 }
-
 
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
@@ -585,16 +584,12 @@ func TestIteratorNextPrev(t *testing.T) {
 		}
 
 		mem = vfs.NewMem()
-		err := mem.MkdirAll("ext", 0755)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+		var err error
 		d, err = Open("", &Options{
 			FS: mem,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 	reset()
 

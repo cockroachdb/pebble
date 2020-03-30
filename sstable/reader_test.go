@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -163,14 +164,10 @@ func TestHamletReader(t *testing.T) {
 
 	for _, prebuiltSST := range prebuiltSSTs {
 		f, err := os.Open(filepath.FromSlash(prebuiltSST))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		r, err := NewReader(f, ReaderOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		t.Run(
 			fmt.Sprintf("sst=%s", prebuiltSST),
@@ -261,16 +258,11 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 
 	mem := vfs.NewMem()
 	f0, err := mem.Create(testTable)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	w := NewWriter(f0, writerOpts)
-	if err := w.Set([]byte("test"), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Set([]byte("test"), nil))
+	require.NoError(t, w.Close())
 
 	testCases := []struct {
 		comparers []*base.Comparer
@@ -312,9 +304,8 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
 			f1, err := mem.Open(testTable)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			comparers := make(Comparers)
 			for _, comparer := range c.comparers {
 				comparers[comparer.Name] = comparer
@@ -366,12 +357,8 @@ func TestBytesIteratedCompressed(t *testing.T) {
 					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
 				}
 
-				if err := citer.Close(); err != nil {
-					t.Fatal(err)
-				}
-				if err := r.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, citer.Close())
+				require.NoError(t, r.Close())
 			}
 		}
 	}
@@ -399,12 +386,8 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 						bytesIterated, expected, blockSize, indexBlockSize, numEntries)
 				}
 
-				if err := citer.Close(); err != nil {
-					t.Fatal(err)
-				}
-				if err := r.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, citer.Close())
+				require.NoError(t, r.Close())
 			}
 		}
 	}
@@ -415,9 +398,7 @@ func buildTestTable(
 ) *Reader {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{
 		BlockSize:      blockSize,
@@ -435,23 +416,18 @@ func buildTestTable(
 		w.Add(ikey, value)
 	}
 
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Close())
 
 	// Re-open that filename for reading.
 	f1, err := mem.Open("test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	c := cache.New(128 << 20)
 	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
 		Cache: c,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return r
 }
 

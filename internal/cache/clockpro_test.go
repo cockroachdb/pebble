@@ -19,9 +19,7 @@ import (
 func TestCache(t *testing.T) {
 	// Test data was generated from the python code
 	f, err := os.Open("testdata/cache")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	cache := newShards(200, 1)
 	defer cache.Unref()
@@ -33,9 +31,8 @@ func TestCache(t *testing.T) {
 		fields := bytes.Fields(scanner.Bytes())
 
 		key, err := strconv.Atoi(string(fields[0]))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool

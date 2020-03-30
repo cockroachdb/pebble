@@ -95,9 +95,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 		func() {
 			f, err := mem.Create(paths[i])
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			keys := make([]InternalKey, 1+rng.Intn(100))
 			for i := range keys {
@@ -121,14 +119,11 @@ func TestIngestLoadRand(t *testing.T) {
 				}
 				w.Add(keys[i], nil)
 			}
-			if err := w.Close(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, w.Close())
 
 			meta, err := w.Metadata()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			expected[i].Size = meta.Size
 		}()
 	}
@@ -138,9 +133,8 @@ func TestIngestLoadRand(t *testing.T) {
 		FS:       mem,
 	}
 	meta, _, err := ingestLoad(opts, paths, 0, pending)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	for _, m := range meta {
 		m.CreationTime = 0
 	}
@@ -152,10 +146,8 @@ func TestIngestLoadRand(t *testing.T) {
 func TestIngestLoadInvalid(t *testing.T) {
 	mem := vfs.NewMem()
 	f, err := mem.Create("invalid")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
 
 	opts := &Options{
 		Comparer: DefaultComparer,
@@ -230,9 +222,7 @@ func TestIngestLink(t *testing.T) {
 			mem := vfs.NewMem()
 			opts := &Options{FS: mem}
 			opts.EnsureDefaults()
-			if err := mem.MkdirAll(dir, 0755); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, mem.MkdirAll(dir, 0755))
 
 			paths := make([]string, 10)
 			meta := make([]*fileMetadata, len(paths))
@@ -242,14 +232,12 @@ func TestIngestLink(t *testing.T) {
 				meta[j] = &fileMetadata{}
 				meta[j].FileNum = uint64(j)
 				f, err := mem.Create(paths[j])
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
-				if _, err := f.Write(contents[j]); err != nil {
-					t.Fatal(err)
-				}
-				f.Close()
+				_, err = f.Write(contents[j])
+				require.NoError(t, err)
+				require.NoError(t, f.Close())
 			}
 
 			if i < count {
@@ -261,14 +249,13 @@ func TestIngestLink(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
 				}
-			} else if err != nil {
-				t.Fatal(err)
+			} else {
+				require.NoError(t, err)
 			}
 
 			files, err := mem.List(dir)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			sort.Strings(files)
 
 			if i < count {
@@ -292,14 +279,11 @@ func TestIngestLink(t *testing.T) {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
 					f, err := mem.Open(mem.PathJoin(dir, files[j]))
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
+
 					data, err := ioutil.ReadAll(f)
-					if err != nil {
-						t.Fatal(err)
-					}
-					f.Close()
+					require.NoError(t, err)
+					require.NoError(t, f.Close())
 					if !bytes.Equal(contents[j], data) {
 						t.Fatalf("expected %s, but found %s", contents[j], data)
 					}
@@ -314,30 +298,22 @@ func TestIngestLinkFallback(t *testing.T) {
 	// copying.
 	mem := vfs.NewMem()
 	src, err := mem.Create("source")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(0))}
 	opts.EnsureDefaults()
 
 	meta := []*fileMetadata{{FileNum: 1}}
-	if err := ingestLink(0, opts, "", []string{"source"}, meta); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ingestLink(0, opts, "", []string{"source"}, meta))
 
 	dest, err := mem.Open("000001.sst")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// We should be able to write bytes to src, and not have them show up in
 	// dest.
 	_, _ = src.Write([]byte("test"))
 	data, err := ioutil.ReadAll(dest)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if len(data) != 0 {
 		t.Fatalf("expected copy, but files appear to be hard linked: [%s] unexpectedly found", data)
 	}
@@ -517,19 +493,16 @@ func TestIngest(t *testing.T) {
 		}
 
 		mem = vfs.NewMem()
-		err := mem.MkdirAll("ext", 0755)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+
+		var err error
 		d, err = Open("", &Options{
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            true,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 	reset()
 
@@ -586,32 +559,23 @@ func TestIngestCompact(t *testing.T) {
 		L0CompactionThreshold: 1,
 		L0StopWritesThreshold: 1,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	src := func(i int) string {
 		return fmt.Sprintf("ext%d", i)
 	}
 	f, err := mem.Create(src(0))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	w := sstable.NewWriter(f, sstable.WriterOptions{})
 	key := []byte("a")
-	if err := w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil))
+	require.NoError(t, w.Close())
 
 	// Make N copies of the sstable.
 	const count = 20
 	for i := 1; i < count; i++ {
-		if err := vfs.Copy(d.opts.FS, src(0), src(i)); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, vfs.Copy(d.opts.FS, src(0), src(i)))
 	}
 
 	// Ingest the same sstable multiple times. Compaction should take place as
@@ -621,13 +585,9 @@ func TestIngestCompact(t *testing.T) {
 			// Half-way through the ingestions, set a key in the memtable to force
 			// overlap with the memtable which will require the memtable to be
 			// flushed.
-			if err := d.Set(key, nil, nil); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, d.Set(key, nil, nil))
 		}
-		if err := d.Ingest([]string{src(i)}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Ingest([]string{src(i)}))
 	}
 
 	require.NoError(t, d.Close())
@@ -638,9 +598,7 @@ func TestConcurrentIngest(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: mem,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Create an sstable with 2 keys. This is necessary to trigger the overlap
 	// bug because an sstable with a single key will not have overlap in internal
@@ -650,26 +608,17 @@ func TestConcurrentIngest(t *testing.T) {
 		return fmt.Sprintf("ext%d", i)
 	}
 	f, err := mem.Create(src(0))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	w := sstable.NewWriter(f, sstable.WriterOptions{})
-	if err := w.Set([]byte("a"), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Set([]byte("b"), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.Set([]byte("a"), nil))
+	require.NoError(t, w.Set([]byte("b"), nil))
+	require.NoError(t, w.Close())
 
 	// Make N copies of the sstable.
 	errCh := make(chan error, 5)
 	for i := 1; i < cap(errCh); i++ {
-		if err := vfs.Copy(d.opts.FS, src(0), src(i)); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, vfs.Copy(d.opts.FS, src(0), src(i)))
 	}
 
 	// Perform N ingestions concurrently.
@@ -685,10 +634,7 @@ func TestConcurrentIngest(t *testing.T) {
 		}(i)
 	}
 	for i := 0; i < cap(errCh); i++ {
-		err := <-errCh
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, <-errCh)
 	}
 
 	require.NoError(t, d.Close())
@@ -711,35 +657,24 @@ func TestConcurrentIngestCompact(t *testing.T) {
 					},
 				},
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			ingest := func(keys ...string) {
 				t.Helper()
 				f, err := mem.Create("ext")
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+
 				w := sstable.NewWriter(f, sstable.WriterOptions{})
 				for _, k := range keys {
-					if err := w.Set([]byte(k), nil); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, w.Set([]byte(k), nil))
 				}
-				if err := w.Close(); err != nil {
-					t.Fatal(err)
-				}
-				if err := d.Ingest([]string{"ext"}); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, w.Close())
+				require.NoError(t, d.Ingest([]string{"ext"}))
 			}
 
 			compact := func(start, end string) {
 				t.Helper()
-				if err := d.Compact([]byte(start), []byte(end)); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, d.Compact([]byte(start), []byte(end)))
 			}
 
 			lsm := func() string {
@@ -829,19 +764,13 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: mem,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Add the key "a" to the memtable, then fill up the memtable with the key
 	// "b". The ingested sstable will only overlap with the queued memtable.
-	if err := d.Set([]byte("a"), nil, nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
 	for {
-		if err := d.Set([]byte("b"), nil, nil); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.Set([]byte("b"), nil, nil))
 		d.mu.Lock()
 		done := len(d.mu.mem.queue) == 2
 		d.mu.Unlock()
@@ -853,21 +782,14 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 	ingest := func(keys ...string) {
 		t.Helper()
 		f, err := mem.Create("ext")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		for _, k := range keys {
-			if err := w.Set([]byte(k), nil); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, w.Set([]byte(k), nil))
 		}
-		if err := w.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := d.Ingest([]string{"ext"}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
 	}
 
 	ingest("a")
@@ -882,9 +804,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: mem,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// The default large batch threshold is slightly less than 1/2 of the
 	// memtable size which makes triggering a problem with flushing queued large
@@ -897,28 +817,19 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 
 	// Set a record with a large value. This will be transformed into a large
 	// batch and placed in the flushable queue.
-	if err := d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil))
 
 	ingest := func(keys ...string) {
 		t.Helper()
 		f, err := mem.Create("ext")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		for _, k := range keys {
-			if err := w.Set([]byte(k), nil); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, w.Set([]byte(k), nil))
 		}
-		if err := w.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := d.Ingest([]string{"ext"}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
 	}
 
 	ingest("a")

@@ -11,22 +11,22 @@ import (
 	"os"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSyncingFile(t *testing.T) {
 	const mb = 1 << 20
 
 	tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	filename := tmpf.Name()
 	defer os.Remove(filename)
 
 	f, err := Default.Create(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	s := NewSyncingFile(f, SyncingFileOptions{})
 	if s == f {
 		t.Fatalf("failed to wrap: %p != %p", f, s)
@@ -52,9 +52,9 @@ func TestSyncingFile(t *testing.T) {
 		{16 << 10, mb + 32<<10},
 	}
 	for i, c := range testCases {
-		if _, err := s.Write(make([]byte, c.n)); err != nil {
-			t.Fatal(err)
-		}
+		_, err := s.Write(make([]byte, c.n))
+		require.NoError(t, err)
+
 		syncTo := atomic.LoadInt64(&s.(*syncingFile).atomic.syncOffset)
 		if c.expectedSyncTo != syncTo {
 			t.Fatalf("%d: expected sync to %d, but found %d", i, c.expectedSyncTo, syncTo)
@@ -85,16 +85,14 @@ close: test [<nil>]
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
 			tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			filename := tmpf.Name()
 			defer os.Remove(filename)
 
 			f, err := Default.Create(filename)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+
 			var buf bytes.Buffer
 			lf := loggingFile{f, "test", &buf}
 
@@ -113,9 +111,8 @@ close: test [<nil>]
 
 			write := func(n int64) {
 				t.Helper()
-				if _, err := s.Write(make([]byte, n)); err != nil {
-					t.Fatal(err)
-				}
+				_, err := s.Write(make([]byte, n))
+				require.NoError(t, err)
 			}
 
 			const mb = 1 << 20
@@ -125,9 +122,7 @@ close: test [<nil>]
 
 			fmt.Fprintf(lf.w, "pre-close: %s [offset=%d sync-offset=%d]\n",
 				lf.name, atomic.LoadInt64(&s.atomic.offset), atomic.LoadInt64(&s.atomic.syncOffset))
-			if err := s.Close(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, s.Close())
 
 			if s := buf.String(); c.expected != s {
 				t.Fatalf("expected\n%s\nbut found\n%s", c.expected, s)
