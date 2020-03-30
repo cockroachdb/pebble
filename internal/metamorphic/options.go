@@ -158,6 +158,10 @@ func standardOptions() []*testOptions {
   strictfs=true
 `,
 		18: `
+[Options]
+  max_concurrent_compactions=2
+`,
+		19: `
 [TestOptions]
   ingest_using_apply=true
 `,
@@ -185,6 +189,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
 	}
 	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30))       // 1B - 1GB
+	opts.MaxConcurrentCompactions = rng.Intn(4)        // 0-3
 	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30)) // 1B  - 1GB
 	opts.MemTableSize = 1 << (10 + uint(rng.Intn(17))) // 1KB - 256MB
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
