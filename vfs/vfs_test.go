@@ -6,7 +6,6 @@ package vfs
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 )

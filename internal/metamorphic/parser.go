@@ -5,13 +5,14 @@
 package metamorphic
 
 import (
-	"errors"
 	"fmt"
 	"go/scanner"
 	"go/token"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 )
 
 type methodInfo struct {
@@ -143,7 +144,7 @@ func (p *parser) parse() (_ []op, err error) {
 			if err, ok = r.(error); ok {
 				return
 			}
-			err = errors.New(fmt.Sprint(r))
+			err = errors.Errorf("%v", r)
 		}
 	}()
 
