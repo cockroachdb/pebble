@@ -18,10 +18,11 @@
 package arenaskl
 
 import (
-	"errors"
 	"math"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/cockroachdb/errors"
 )
 
 // Arena is lock-free.

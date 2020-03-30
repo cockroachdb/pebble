@@ -105,9 +105,9 @@ package record // import "github.com/cockroachdb/pebble/internal/record"
 
 import (
 	"encoding/binary"
-	"errors"
 	"io"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 )

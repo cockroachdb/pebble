@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"

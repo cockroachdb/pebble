@@ -7,7 +7,6 @@ package pebble
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -16,6 +15,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -404,14 +404,13 @@ func (c *tableCacheShard) Close() error {
 	var err error
 	if v := atomic.LoadInt32(&c.iterCount); v > 0 {
 		if !invariants.RaceEnabled {
-			err = fmt.Errorf("leaked iterators: %d", v)
+			err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
 		} else {
 			var buf bytes.Buffer
-			fmt.Fprintf(&buf, "leaked iterators: %d\n", v)
 			for _, stack := range c.mu.iters {
 				fmt.Fprintf(&buf, "%s\n", stack)
 			}
-			err = errors.New(buf.String())
+			err = errors.Errorf("leaked iterators: %d\n%s", errors.Safe(v), buf.String())
 		}
 	}
 
