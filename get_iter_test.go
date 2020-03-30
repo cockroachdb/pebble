@@ -5,10 +5,10 @@
 package pebble
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 

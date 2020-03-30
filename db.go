@@ -6,7 +6,6 @@
 package pebble // import "github.com/cockroachdb/pebble"
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -14,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"

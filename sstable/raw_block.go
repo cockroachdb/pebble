@@ -6,9 +6,10 @@ package sstable
 
 import (
 	"encoding/binary"
-	"errors"
 	"sort"
 	"unsafe"
+
+	"github.com/cockroachdb/errors"
 )
 
 type rawBlockWriter struct {

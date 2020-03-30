@@ -6,11 +6,11 @@ package sstable
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -73,7 +73,7 @@ func runBuildCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						err = errors.New(fmt.Sprint(r))
+						err = errors.Errorf("%v", r)
 					}
 				}()
 				f.Add(key, value)

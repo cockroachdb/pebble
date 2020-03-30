@@ -62,10 +62,10 @@ package sstable // import "github.com/cockroachdb/pebble/sstable"
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/vfs"
 )
 

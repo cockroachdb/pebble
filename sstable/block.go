@@ -6,9 +6,9 @@ package sstable
 
 import (
 	"encoding/binary"
-	"errors"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 )

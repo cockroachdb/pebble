@@ -7,7 +7,6 @@ package record
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -38,7 +38,10 @@ type recordWriter interface {
 }
 
 func testGeneratorWriter(
-	t *testing.T, reset func(), gen func() (string, bool), newWriter func(io.Writer) recordWriter,
+	t *testing.T,
+	reset func(),
+	gen func() (string, bool),
+	newWriter func(io.Writer) recordWriter,
 ) {
 	buf := new(bytes.Buffer)
 
