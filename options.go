@@ -55,6 +55,14 @@ const (
 	TableFormatLevelDB   = sstable.TableFormatLevelDB
 )
 
+// TablePartitioner provides a hook for partitioning sstables at the boundary
+// between two keys during flushing and compaction. The partitioner is provided
+// the last key added to the sstable and the current key being considered for
+// addition. A return value of true will cause output to the current sstable to
+// be completed and a new sstable to be created to hold curKey and subsequent
+// keys.
+type TablePartitioner func(lastKey, curKey []byte) bool
+
 // TablePropertyCollector exports the base.TablePropertyCollector type.
 type TablePropertyCollector = sstable.TablePropertyCollector
 
@@ -370,6 +378,10 @@ type Options struct {
 	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
 	// by a wider range of tools and libraries.
 	TableFormat TableFormat
+
+	// TablePartitioner is a hook to allow user control of required partitions
+	// between sstables.
+	TablePartitioner TablePartitioner
 
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built

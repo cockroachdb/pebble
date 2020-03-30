@@ -678,6 +678,13 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 	return &w.meta, nil
 }
 
+// LastUserKey returns the last point user key added to the table, or nil if no
+// point record has been added to the table.
+func (w *Writer) LastUserKey() []byte {
+	prevKey := base.DecodeInternalKey(w.block.curKey)
+	return prevKey.UserKey
+}
+
 // WriterOption provide an interface to do work on Writer while it is being
 // opened.
 type WriterOption interface {

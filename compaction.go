@@ -1536,6 +1536,22 @@ func (d *DB) runCompaction(
 				limit = nil
 			}
 
+			if tw != nil {
+				if d.opts.TablePartitioner != nil {
+					lastUserKey := tw.LastUserKey()
+					if d.opts.TablePartitioner(lastUserKey, key.UserKey) {
+						limit = key.UserKey
+						break
+					}
+				}
+				if tw.EstimatedSize() >= c.maxOutputFileSize {
+					// Use the next key as the sstable boundary. Note that we already
+					// checked this key against the grandparent limit above.
+					limit = key.UserKey
+					break
+				}
+			}
+
 			atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
 			if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
 				return nil, pendingOutputs, err
@@ -1547,12 +1563,6 @@ func (d *DB) runCompaction(
 				// keys in the same snapshot stripe can be elided.
 				c.rangeDelFrag.Add(iter.cloneKey(*key), val)
 				continue
-			}
-			if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
-				// Use the next key as the sstable boundary. Note that we already
-				// checked this key against the grandparent limit above.
-				limit = key.UserKey
-				break
 			}
 			if tw == nil {
 				if err := newOutput(); err != nil {
