@@ -35,7 +35,7 @@ type flushableEntry struct {
 	flushForced bool
 	// logNum corresponds to the WAL that contains the records present in the
 	// receiver.
-	logNum uint64
+	logNum FileNum
 	// logSize is the size in bytes of the associated WAL. Protected by DB.mu.
 	logSize uint64
 	// The current logSeqNum at the time the memtable was created. This is

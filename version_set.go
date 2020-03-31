@@ -53,22 +53,22 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []uint64)
-	obsoleteTables    []uint64
-	obsoleteManifests []uint64
-	obsoleteOptions   []uint64
+	obsoleteFn        func(obsolete []FileNum)
+	obsoleteTables    []FileNum
+	obsoleteManifests []FileNum
+	obsoleteOptions   []FileNum
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
-	zombieTables map[uint64]uint64 // filenum -> size
+	zombieTables map[FileNum]uint64 // filenum -> size
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
-	minUnflushedLogNum uint64
+	minUnflushedLogNum FileNum
 
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
-	nextFileNum uint64
+	nextFileNum FileNum
 
 	// The upper bound on sequence numbers that have been assigned so far.
 	// A suffix of these sequence numbers may not have been written to a
@@ -78,7 +78,7 @@ type versionSet struct {
 	visibleSeqNum uint64 // visible seqNum (<= logSeqNum)
 
 	// The current manifest file number.
-	manifestFileNum uint64
+	manifestFileNum FileNum
 
 	manifestFile vfs.File
 	manifest     *record.Writer
@@ -98,7 +98,7 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
-	vs.zombieTables = make(map[uint64]uint64)
+	vs.zombieTables = make(map[FileNum]uint64)
 	vs.nextFileNum = 1
 }
 
@@ -357,7 +357,7 @@ func (vs *versionSet) logAndApply(
 
 	// Generate a new manifest if we don't currently have one, or the current one
 	// is too large.
-	var newManifestFileNum uint64
+	var newManifestFileNum FileNum
 	if vs.manifest == nil || vs.manifest.Size() >= vs.opts.MaxManifestFileSize {
 		newManifestFileNum = vs.getNextFileNum()
 	}
@@ -367,7 +367,7 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
-	var zombies map[uint64]uint64
+	var zombies map[FileNum]uint64
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
@@ -478,7 +478,7 @@ func (vs *versionSet) incrementFlushes() {
 
 // createManifest creates a manifest file that contains a snapshot of vs.
 func (vs *versionSet) createManifest(
-	dirname string, fileNum, minUnflushedLogNum, nextFileNum uint64,
+	dirname string, fileNum, minUnflushedLogNum, nextFileNum FileNum,
 ) (err error) {
 	var (
 		filename     = base.MakeFilename(vs.fs, dirname, fileTypeManifest, fileNum)
@@ -547,13 +547,13 @@ func (vs *versionSet) createManifest(
 	return nil
 }
 
-func (vs *versionSet) markFileNumUsed(fileNum uint64) {
+func (vs *versionSet) markFileNumUsed(fileNum FileNum) {
 	if vs.nextFileNum <= fileNum {
 		vs.nextFileNum = fileNum + 1
 	}
 }
 
-func (vs *versionSet) getNextFileNum() uint64 {
+func (vs *versionSet) getNextFileNum() FileNum {
 	x := vs.nextFileNum
 	vs.nextFileNum++
 	return x
@@ -575,7 +575,7 @@ func (vs *versionSet) currentVersion() *version {
 	return vs.versions.Back()
 }
 
-func (vs *versionSet) addLiveFileNums(m map[uint64]struct{}) {
+func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	current := vs.currentVersion()
 	for v := vs.versions.Front(); true; v = v.Next() {
 		for _, ff := range v.Files {
@@ -589,13 +589,13 @@ func (vs *versionSet) addLiveFileNums(m map[uint64]struct{}) {
 	}
 }
 
-func (vs *versionSet) addObsoleteLocked(obsolete []uint64) {
+func (vs *versionSet) addObsoleteLocked(obsolete []FileNum) {
 	for _, fileNum := range obsolete {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
 		if _, ok := vs.zombieTables[fileNum]; !ok {
-			vs.opts.Logger.Fatalf("MANIFEST obsolete table %06d not marked as zombie", fileNum)
+			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fileNum)
 		}
 	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"golang.org/x/exp/rand"
 )
 
@@ -44,7 +45,7 @@ func TestRobinHoodMap(t *testing.T) {
 			// 40% insert.
 			var k key
 			k.id = rng.Uint64()
-			k.fileNum = rng.Uint64()
+			k.fileNum = base.FileNum(rng.Uint64())
 			k.offset = rng.Uint64()
 			e := &entry{}
 			goMap[k] = e
@@ -92,7 +93,7 @@ func BenchmarkGoMapInsert(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	for i := range keys {
-		keys[i].fileNum = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.FileNum(rng.Intn(1 << 20))
 		keys[i].offset = uint64(rng.Intn(1 << 20))
 	}
 	b.ResetTimer()
@@ -113,7 +114,7 @@ func BenchmarkRobinHoodInsert(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	for i := range keys {
-		keys[i].fileNum = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.FileNum(rng.Intn(1 << 20))
 		keys[i].offset = uint64(rng.Intn(1 << 20))
 	}
 	e := &entry{}
@@ -139,7 +140,7 @@ func BenchmarkGoMapLookupHit(b *testing.B) {
 	m := make(map[key]*entry, len(keys))
 	e := &entry{}
 	for i := range keys {
-		keys[i].fileNum = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.FileNum(rng.Intn(1 << 20))
 		keys[i].offset = uint64(rng.Intn(1 << 20))
 		m[keys[i]] = e
 	}
@@ -164,7 +165,7 @@ func BenchmarkRobinHoodLookupHit(b *testing.B) {
 	m := newRobinHoodMap(len(keys))
 	e := &entry{}
 	for i := range keys {
-		keys[i].fileNum = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.FileNum(rng.Intn(1 << 20))
 		keys[i].offset = uint64(rng.Intn(1 << 20))
 		m.Put(keys[i], e)
 	}
@@ -191,7 +192,7 @@ func BenchmarkGoMapLookupMiss(b *testing.B) {
 	e := &entry{}
 	for i := range keys {
 		keys[i].id = 1
-		keys[i].fileNum = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.FileNum(rng.Intn(1 << 20))
 		keys[i].offset = uint64(rng.Intn(1 << 20))
 		m[keys[i]] = e
 		keys[i].id = 2
@@ -218,7 +219,7 @@ func BenchmarkRobinHoodLookupMiss(b *testing.B) {
 	e := &entry{}
 	for i := range keys {
 		keys[i].id = 1
-		keys[i].fileNum = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.FileNum(rng.Intn(1 << 20))
 		keys[i].offset = uint64(rng.Intn(1 << 20))
 		m.Put(keys[i], e)
 		keys[i].id = 2

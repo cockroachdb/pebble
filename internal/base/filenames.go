@@ -12,6 +12,12 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// FileNum is an internal DB indentifier for a file.
+type FileNum uint64
+
+// String returns a string representation of the file number.
+func (fn FileNum) String() string { return fmt.Sprintf("%06d", fn) }
+
 // FileType enumerates the types of files found in a DB.
 type FileType int
 
@@ -27,28 +33,28 @@ const (
 )
 
 // MakeFilename builds a filename from components.
-func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum uint64) string {
+func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum) string {
 	switch fileType {
 	case FileTypeLog:
-		return fs.PathJoin(dirname, fmt.Sprintf("%06d.log", fileNum))
+		return fs.PathJoin(dirname, fmt.Sprintf("%s.log", fileNum))
 	case FileTypeLock:
 		return fs.PathJoin(dirname, "LOCK")
 	case FileTypeTable:
-		return fs.PathJoin(dirname, fmt.Sprintf("%06d.sst", fileNum))
+		return fs.PathJoin(dirname, fmt.Sprintf("%s.sst", fileNum))
 	case FileTypeManifest:
-		return fs.PathJoin(dirname, fmt.Sprintf("MANIFEST-%06d", fileNum))
+		return fs.PathJoin(dirname, fmt.Sprintf("MANIFEST-%s", fileNum))
 	case FileTypeCurrent:
 		return fs.PathJoin(dirname, "CURRENT")
 	case FileTypeOptions:
-		return fs.PathJoin(dirname, fmt.Sprintf("OPTIONS-%06d", fileNum))
+		return fs.PathJoin(dirname, fmt.Sprintf("OPTIONS-%s", fileNum))
 	case FileTypeTemp:
-		return fs.PathJoin(dirname, fmt.Sprintf("CURRENT.%06d.dbtmp", fileNum))
+		return fs.PathJoin(dirname, fmt.Sprintf("CURRENT.%s.dbtmp", fileNum))
 	}
 	panic("unreachable")
 }
 
 // ParseFilename parses the components from a filename.
-func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum uint64, ok bool) {
+func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum FileNum, ok bool) {
 	filename = fs.PathBase(filename)
 	switch {
 	case filename == "CURRENT":
@@ -56,39 +62,47 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum uint6
 	case filename == "LOCK":
 		return FileTypeLock, 0, true
 	case strings.HasPrefix(filename, "MANIFEST-"):
-		u, err := strconv.ParseUint(filename[len("MANIFEST-"):], 10, 64)
-		if err != nil {
+		fileNum, ok = parseFileNum(filename[len("MANIFEST-"):])
+		if !ok {
 			break
 		}
-		return FileTypeManifest, u, true
+		return FileTypeManifest, fileNum, true
 	case strings.HasPrefix(filename, "OPTIONS-"):
-		u, err := strconv.ParseUint(filename[len("OPTIONS-"):], 10, 64)
-		if err != nil {
+		fileNum, ok = parseFileNum(filename[len("OPTIONS-"):])
+		if !ok {
 			break
 		}
-		return FileTypeOptions, u, true
+		return FileTypeOptions, fileNum, ok
 	case strings.HasPrefix(filename, "CURRENT.") && strings.HasSuffix(filename, ".dbtmp"):
 		s := strings.TrimSuffix(filename[len("CURRENT."):], ".dbtmp")
-		u, err := strconv.ParseUint(s, 10, 64)
-		if err != nil {
+		fileNum, ok = parseFileNum(s)
+		if !ok {
 			break
 		}
-		return FileTypeTemp, u, true
+		return FileTypeTemp, fileNum, ok
 	default:
 		i := strings.IndexByte(filename, '.')
 		if i < 0 {
 			break
 		}
-		u, err := strconv.ParseUint(filename[:i], 10, 64)
-		if err != nil {
+		fileNum, ok = parseFileNum(filename[:i])
+		if !ok {
 			break
 		}
 		switch filename[i+1:] {
 		case "sst":
-			return FileTypeTable, u, true
+			return FileTypeTable, fileNum, true
 		case "log":
-			return FileTypeLog, u, true
+			return FileTypeLog, fileNum, true
 		}
 	}
-	return 0, 0, false
+	return 0, fileNum, false
+}
+
+func parseFileNum(s string) (fileNum FileNum, ok bool) {
+	u, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return fileNum, false
+	}
+	return FileNum(u), true
 }

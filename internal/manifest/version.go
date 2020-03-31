@@ -23,7 +23,7 @@ type InternalKey = base.InternalKey
 // TableInfo contains the common information for table related events.
 type TableInfo struct {
 	// FileNum is the internal DB identifier for the table.
-	FileNum uint64
+	FileNum base.FileNum
 	// Size is the size of the file in bytes.
 	Size uint64
 	// Smallest is the smallest internal key in the table.
@@ -43,7 +43,7 @@ type FileMetadata struct {
 	// obsolete when the reference count falls to zero.
 	refs int32
 	// FileNum is the file number.
-	FileNum uint64
+	FileNum base.FileNum
 	// Size is the size of the file, in bytes.
 	Size uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
@@ -64,7 +64,7 @@ type FileMetadata struct {
 }
 
 func (m FileMetadata) String() string {
-	return fmt.Sprintf("%06d:%s-%s", m.FileNum, m.Smallest, m.Largest)
+	return fmt.Sprintf("%s:%s-%s", m.FileNum, m.Smallest, m.Largest)
 }
 
 // TableInfo returns a subset of the FileMetadata state formatted as a
@@ -185,7 +185,7 @@ type Version struct {
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
-	Deleted func(obsolete []uint64)
+	Deleted func(obsolete []base.FileNum)
 
 	// The list the version is linked into.
 	list *VersionList
@@ -208,7 +208,7 @@ func (v *Version) Pretty(format base.Formatter) string {
 		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
 			f := v.Files[level][j]
-			fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
+			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				format(f.Smallest.UserKey), format(f.Largest.UserKey))
 		}
 	}
@@ -226,7 +226,7 @@ func (v *Version) DebugString(format base.Formatter) string {
 		fmt.Fprintf(&buf, "%d:\n", level)
 		for j := range v.Files[level] {
 			f := v.Files[level][j]
-			fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
+			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				f.Smallest.Pretty(format), f.Largest.Pretty(format))
 		}
 	}
@@ -269,8 +269,8 @@ func (v *Version) UnrefLocked() {
 	}
 }
 
-func (v *Version) unrefFiles() []uint64 {
-	var obsolete []uint64
+func (v *Version) unrefFiles() []base.FileNum {
+	var obsolete []base.FileNum
 	for _, files := range v.Files {
 		for i := range files {
 			f := files[i]
@@ -497,7 +497,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
 					// Multiple files satisfying case 2 mentioned above.
 				} else if !prev.lessSeqNum(f) {
-					return fmt.Errorf("L0 files %06d and %06d are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
+					return fmt.Errorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
 						prev.FileNum, f.FileNum,
 						prev.SmallestSeqNum, prev.LargestSeqNum,
 						f.SmallestSeqNum, f.LargestSeqNum)
@@ -509,7 +509,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				continue
 			}
 			if i > 0 && largestSeqNum >= f.LargestSeqNum {
-				return fmt.Errorf("L0 file %06d does not have strictly increasing "+
+				return fmt.Errorf("L0 file %s does not have strictly increasing "+
 					"largest seqnum: <#%d-#%d> vs <?-#%d>", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, largestSeqNum)
 			}
 			largestSeqNum = f.LargestSeqNum
@@ -523,7 +523,7 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 				// have already confirmed that LargestSeqNums were increasing.
 				for _, seq := range uncheckedIngestedSeqNums {
 					if seq == f.SmallestSeqNum {
-						return fmt.Errorf("L0 flushed file %06d has smallest sequence number coincident with an ingested file "+
+						return fmt.Errorf("L0 flushed file %s has smallest sequence number coincident with an ingested file "+
 							": <#%d-#%d> vs <#%d-#%d>", f.FileNum, f.SmallestSeqNum, f.LargestSeqNum, seq, seq)
 					}
 				}
@@ -534,19 +534,19 @@ func CheckOrdering(cmp Compare, format base.Formatter, level int, files []*FileM
 		for i := range files {
 			f := files[i]
 			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
-				return fmt.Errorf("L%d file %06d has inconsistent bounds: %s vs %s",
+				return fmt.Errorf("L%d file %s has inconsistent bounds: %s vs %s",
 					level, f.FileNum, f.Smallest.Pretty(format), f.Largest.Pretty(format))
 			}
 			if i > 0 {
 				prev := files[i-1]
 				if !prev.lessSmallestKey(f, cmp) {
-					return fmt.Errorf("L%d files %06d and %06d are not properly ordered: [%s-%s] vs [%s-%s]",
+					return fmt.Errorf("L%d files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
 						level, prev.FileNum, f.FileNum,
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
-					return fmt.Errorf("L%d files %06d and %06d have overlapping ranges: [%s-%s] vs [%s-%s]",
+					return fmt.Errorf("L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						level, prev.FileNum, f.FileNum,
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))

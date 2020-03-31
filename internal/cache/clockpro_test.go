@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -36,11 +37,11 @@ func TestCache(t *testing.T) {
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		h := cache.Get(1, uint64(key), 0)
+		h := cache.Get(1, base.FileNum(key), 0)
 		if v := h.Get(); v == nil {
 			value := cache.Alloc(1)
 			value.Buf()[0] = fields[0][0]
-			cache.Set(1, uint64(key), 0, value).Release()
+			cache.Set(1, base.FileNum(key), 0, value).Release()
 		} else {
 			hit = true
 			if !bytes.Equal(v, fields[0][:1]) {

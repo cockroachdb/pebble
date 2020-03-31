@@ -261,7 +261,7 @@ func TestOverlaps(t *testing.T) {
 func TestVersionUnref(t *testing.T) {
 	list := &VersionList{}
 	list.Init(&sync.Mutex{})
-	v := &Version{Deleted: func([]uint64) {}}
+	v := &Version{Deleted: func([]base.FileNum) {}}
 	v.Ref()
 	list.PushBack(v)
 	v.Unref()
@@ -294,7 +294,7 @@ func TestCheckOrdering(t *testing.T) {
 				// Version.DebugString().
 				v := Version{}
 				var files *[]*FileMetadata
-				fileNum := uint64(1)
+				fileNum := base.FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					switch data {

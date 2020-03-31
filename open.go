@@ -205,7 +205,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	// Replay any newer log files than the ones named in the manifest.
 	type fileNumAndName struct {
-		num  uint64
+		num  FileNum
 		name string
 	}
 	var logFiles []fileNumAndName
@@ -345,7 +345,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 		return "", err
 	}
 	var version string
-	lastOptionsSeen := uint64(0)
+	lastOptionsSeen := FileNum(0)
 	for _, filename := range ls {
 		ft, fn, ok := base.ParseFilename(fs, filename)
 		if !ok {
@@ -398,7 +398,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum uint64,
+	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum FileNum,
 ) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {

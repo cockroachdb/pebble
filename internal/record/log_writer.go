@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 )
 
@@ -282,7 +283,7 @@ type LogWriter struct {
 }
 
 // NewLogWriter returns a new LogWriter.
-func NewLogWriter(w io.Writer, logNum uint64) *LogWriter {
+func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 	c, _ := w.(io.Closer)
 	s, _ := w.(syncer)
 	r := &LogWriter{

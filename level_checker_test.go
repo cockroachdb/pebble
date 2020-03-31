@@ -8,13 +8,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/cockroachdb/pebble/internal/private"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -79,7 +79,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 		}
 	}()
 
-	var fileNum uint64
+	var fileNum FileNum
 	newIters :=
 		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
 			r := readers[meta.FileNum]

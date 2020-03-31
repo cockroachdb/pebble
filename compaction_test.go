@@ -1228,7 +1228,7 @@ func TestCompactionSetupInputs(t *testing.T) {
 					maxExpandedBytes: 1 << 30,
 				}
 				var files *[]*fileMetadata
-				fileNum := uint64(1)
+				fileNum := FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					switch data {
@@ -1317,7 +1317,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 				}
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
-					meta.FileNum = uint64(len(files))
+					meta.FileNum = FileNum(len(files))
 					files = append(files, meta)
 				}
 				manifest.SortBySmallest(files, cmp)
@@ -1378,7 +1378,7 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 				}
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
-					meta.FileNum = uint64(len(files))
+					meta.FileNum = FileNum(len(files))
 					files = append(files, meta)
 				}
 				manifest.SortBySmallest(files, cmp)
@@ -1431,7 +1431,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 				version: &version{},
 			}
 			var files *[]*fileMetadata
-			fileNum := uint64(1)
+			fileNum := FileNum(1)
 
 			for _, data := range strings.Split(td.Input, "\n") {
 				switch data {
@@ -1626,7 +1626,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					outputLevel: -1,
 				}
 				var files *[]*fileMetadata
-				fileNum := uint64(1)
+				fileNum := FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					switch data {

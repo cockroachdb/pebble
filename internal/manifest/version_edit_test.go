@@ -270,7 +270,7 @@ func TestVersionEditApply(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
-		m.FileNum = uint64(fileNum)
+		m.FileNum = base.FileNum(fileNum)
 		return &m, nil
 	}
 
@@ -323,7 +323,7 @@ func TestVersionEditApply(t *testing.T) {
 							if err != nil {
 								return err.Error()
 							}
-							dfe := DeletedFileEntry{Level: level, FileNum: uint64(fileNum)}
+							dfe := DeletedFileEntry{Level: level, FileNum: base.FileNum(fileNum)}
 							if ve.DeletedFiles == nil {
 								ve.DeletedFiles = make(map[DeletedFileEntry]bool)
 							}
@@ -338,7 +338,7 @@ func TestVersionEditApply(t *testing.T) {
 					return err.Error()
 				}
 
-				zombieFileNums := make([]uint64, 0, len(zombies))
+				zombieFileNums := make([]base.FileNum, 0, len(zombies))
 				for fileNum := range zombies {
 					zombieFileNums = append(zombieFileNums, fileNum)
 				}

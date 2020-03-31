@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -38,7 +39,10 @@ type recordWriter interface {
 }
 
 func testGeneratorWriter(
-	t *testing.T, reset func(), gen func() (string, bool), newWriter func(io.Writer) recordWriter,
+	t *testing.T,
+	reset func(),
+	gen func() (string, bool),
+	newWriter func(io.Writer) recordWriter,
 ) {
 	buf := new(bytes.Buffer)
 
@@ -890,7 +894,7 @@ func TestRecycleLog(t *testing.T) {
 			limit:  blocks,
 		}
 
-		w := NewLogWriter(limitedBuf, uint64(i))
+		w := NewLogWriter(limitedBuf, base.FileNum(i))
 		sizes := make([]int, 10+rnd.Intn(100))
 		for j := range sizes {
 			data := randBlock()
@@ -903,7 +907,7 @@ func TestRecycleLog(t *testing.T) {
 			t.Fatalf("%d: %v", i, err)
 		}
 
-		r := NewReader(bytes.NewReader(backing), uint64(i))
+		r := NewReader(bytes.NewReader(backing), base.FileNum(i))
 		for j := range sizes {
 			rr, err := r.Next()
 			if err != nil {
@@ -933,17 +937,17 @@ func TestRecycleLog(t *testing.T) {
 
 func TestRecycleLogWithPartialBlock(t *testing.T) {
 	backing := make([]byte, 16)
-	w := NewLogWriter(bytes.NewBuffer(backing[:0]), uint64(1))
+	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(1))
 	// Will write a chunk with 11 byte header + 5 byte payload.
 	_, err := w.WriteRecord([]byte("aaaaa"))
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
-	w = NewLogWriter(bytes.NewBuffer(backing[:0]), uint64(2))
+	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(2))
 	// Will write a chunk with 11 byte header + 1 byte payload.
 	_, err = w.WriteRecord([]byte("a"))
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
-	r := NewReader(bytes.NewReader(backing), uint64(2))
+	r := NewReader(bytes.NewReader(backing), base.FileNum(2))
 	_, err = r.Next()
 	require.NoError(t, err)
 	// 4 bytes left, which are not enough for even the legacy header.
@@ -957,7 +961,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 
 	// Write a record that is larger than the log block size.
 	backing1 := make([]byte, 2*blockSize)
-	w := NewLogWriter(bytes.NewBuffer(backing1[:0]), uint64(1))
+	w := NewLogWriter(bytes.NewBuffer(backing1[:0]), base.FileNum(1))
 	_, err := w.WriteRecord(bytes.Repeat([]byte("a"), recordSize))
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
@@ -965,7 +969,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	// Write another record to a new incarnation of the WAL that is larger than
 	// the block size.
 	backing2 := make([]byte, 2*blockSize)
-	w = NewLogWriter(bytes.NewBuffer(backing2[:0]), uint64(2))
+	w = NewLogWriter(bytes.NewBuffer(backing2[:0]), base.FileNum(2))
 	_, err = w.WriteRecord(bytes.Repeat([]byte("b"), recordSize))
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
@@ -976,7 +980,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	copy(backing2[blockSize:], backing1[blockSize:])
 
 	// Verify that we can't read a partial record from the second WAL.
-	r := NewReader(bytes.NewReader(backing2), uint64(2))
+	r := NewReader(bytes.NewReader(backing2), base.FileNum(2))
 	rr, err := r.Next()
 	require.NoError(t, err)
 

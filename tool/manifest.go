@@ -148,11 +148,11 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					return entries[i].FileNum < entries[j].FileNum
 				})
 				for _, df := range entries {
-					fmt.Fprintf(stdout, "  deleted:       L%d %06d\n", df.Level, df.FileNum)
+					fmt.Fprintf(stdout, "  deleted:       L%d %s\n", df.Level, df.FileNum)
 				}
 				for _, nf := range ve.NewFiles {
 					empty = false
-					fmt.Fprintf(stdout, "  added:         L%d %06d:%d",
+					fmt.Fprintf(stdout, "  added:         L%d %s:%d",
 						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
 					formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
 					formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
@@ -180,7 +180,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "--- L%d ---\n", level)
 					for j := range v.Files[level] {
 						f := v.Files[level][j]
-						fmt.Fprintf(stdout, "  %06d:%d", f.FileNum, f.Size)
+						fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 						formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 						formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
 						fmt.Fprintf(stdout, "\n")
@@ -257,7 +257,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 						fmt.Fprintf(stdout, "--- L%d ---\n", level)
 						for j := range v.Files[level] {
 							f := v.Files[level][j]
-							fmt.Fprintf(stdout, "  %06d:%d", f.FileNum, f.Size)
+							fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 							formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 							formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
 							fmt.Fprintf(stdout, "\n")
@@ -265,10 +265,10 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					}
 					fmt.Fprintf(stdout, "Version edit that failed\n")
 					for df := range ve.DeletedFiles {
-						fmt.Fprintf(stdout, "  deleted: L%d %06d\n", df.Level, df.FileNum)
+						fmt.Fprintf(stdout, "  deleted: L%d %s\n", df.Level, df.FileNum)
 					}
 					for _, nf := range ve.NewFiles {
-						fmt.Fprintf(stdout, "  added: L%d %06d:%d",
+						fmt.Fprintf(stdout, "  added: L%d %s:%d",
 							nf.Level, nf.Meta.FileNum, nf.Meta.Size)
 						formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
 						formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)

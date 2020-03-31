@@ -171,7 +171,7 @@ type DB struct {
 	// inserted into a memtable.
 	largeBatchThreshold int
 	// The current OPTIONS file number.
-	optionsFileNum uint64
+	optionsFileNum FileNum
 
 	fileLock io.Closer
 	dataDir  vfs.File
@@ -244,7 +244,7 @@ type DB struct {
 			// flushed logs will be a prefix, the unflushed logs a suffix. The
 			// delimeter between flushed and unflushed logs is
 			// versionSet.minUnflushedLogNum.
-			queue []uint64
+			queue []FileNum
 			// The size of the current log file (i.e. queue[len(queue)-1].
 			size uint64
 			// The number of input bytes to the log. This is the raw size of the
@@ -1145,7 +1145,7 @@ func (d *DB) walPreallocateSize() int {
 	return size
 }
 
-func (d *DB) newMemTable(logNum, logSeqNum uint64) (*memTable, *flushableEntry) {
+func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushableEntry) {
 	size := d.mu.mem.nextSize
 	if d.mu.mem.nextSize < d.opts.MemTableSize {
 		d.mu.mem.nextSize *= 2
@@ -1178,7 +1178,7 @@ func (d *DB) newMemTable(logNum, logSeqNum uint64) (*memTable, *flushableEntry) 
 	return mem, entry
 }
 
-func (d *DB) newFlushableEntry(f flushable, logNum, logSeqNum uint64) *flushableEntry {
+func (d *DB) newFlushableEntry(f flushable, logNum FileNum, logSeqNum uint64) *flushableEntry {
 	return &flushableEntry{
 		flushable:  f,
 		flushed:    make(chan struct{}),
@@ -1252,7 +1252,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			continue
 		}
 
-		var newLogNum uint64
+		var newLogNum FileNum
 		var newLogFile vfs.File
 		var prevLogSize uint64
 		var err error

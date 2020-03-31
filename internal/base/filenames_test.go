@@ -61,9 +61,9 @@ func TestFilenameRoundTrip(t *testing.T) {
 	}
 	fs := vfs.NewMem()
 	for fileType, numbered := range testCases {
-		fileNums := []uint64{0}
+		fileNums := []FileNum{0}
 		if numbered {
-			fileNums = []uint64{0, 1, 2, 3, 10, 42, 99, 1001}
+			fileNums = []FileNum{0, 1, 2, 3, 10, 42, 99, 1001}
 		}
 		for _, fileNum := range fileNums {
 			filename := MakeFilename(fs, "foo", fileType, fileNum)
