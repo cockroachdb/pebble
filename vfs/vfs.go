@@ -263,3 +263,19 @@ func LinkOrCopy(fs FS, oldname, newname string) error {
 	}
 	return Copy(fs, oldname, newname)
 }
+
+// Root returns the base FS implementation, unwrapping all nested
+// FSs that expose an Unwrap method.
+func Root(fs FS) FS {
+	for {
+		inner, ok := fs.(interface {
+			FS
+			Unwrap() FS
+		})
+		if !ok {
+			break
+		}
+		fs = inner.Unwrap()
+	}
+	return fs
+}
