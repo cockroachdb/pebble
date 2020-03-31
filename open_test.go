@@ -548,7 +548,7 @@ func TestGetVersion(t *testing.T) {
 	require.Equal(t, "0.1", version)
 
 	// Case 3: Manually created OPTIONS file with a higher number.
-	highestOptionsNum := uint64(0)
+	highestOptionsNum := FileNum(0)
 	ls, err := mem.List("")
 	require.NoError(t, err)
 	for _, filename := range ls {

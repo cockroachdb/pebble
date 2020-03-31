@@ -272,7 +272,7 @@ type tombstoneWithLevel struct {
 	level int
 	// The level in LSM. A -1 means it's a memtable.
 	lsmLevel int
-	fileNum  uint64
+	fileNum  FileNum
 }
 
 // For sorting tombstoneWithLevels in increasing order of start UserKey and
@@ -442,18 +442,18 @@ func getAtomicUnitBounds(cmp Compare, files []*fileMetadata, index int) (lower, 
 	return
 }
 
-func levelOrMemtable(lsmLevel int, fileNum uint64) string {
+func levelOrMemtable(lsmLevel int, fileNum FileNum) string {
 	if lsmLevel == -1 {
 		return "memtable"
 	}
-	return fmt.Sprintf("L%d: fileNum=%06d", lsmLevel, fileNum)
+	return fmt.Sprintf("L%d: fileNum=%s", lsmLevel, fileNum)
 }
 
 func addTombstonesFromIter(
 	iter base.InternalIterator,
 	level int,
 	lsmLevel int,
-	fileNum uint64,
+	fileNum FileNum,
 	tombstones []tombstoneWithLevel,
 	seqNum uint64,
 	cmp Compare,

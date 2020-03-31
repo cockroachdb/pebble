@@ -61,7 +61,7 @@ const (
 // itself might still be referenced by another level.
 type DeletedFileEntry struct {
 	Level   int
-	FileNum uint64
+	FileNum base.FileNum
 }
 
 // NewFileEntry holds the state for a new file or one moved from a different
@@ -84,7 +84,7 @@ type VersionEdit struct {
 	// mutations that have not been flushed to an sstable.
 	//
 	// This is an optional field, and 0 represents it is not set.
-	MinUnflushedLogNum uint64
+	MinUnflushedLogNum base.FileNum
 
 	// ObsoletePrevLogNum is a historic artifact from LevelDB that is not used by
 	// Pebble, RocksDB, or even LevelDB. Its use in LevelDB was deprecated in
@@ -94,7 +94,7 @@ type VersionEdit struct {
 
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
-	NextFileNum uint64
+	NextFileNum base.FileNum
 
 	// LastSeqNum is an upper bound on the sequence numbers that have been
 	// assigned in flushed WALs. Unflushed WALs (that will be replayed during
@@ -132,14 +132,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			v.ComparerName = string(s)
 
 		case tagLogNumber:
-			n, err := d.readUvarint()
+			n, err := d.readFileNum()
 			if err != nil {
 				return err
 			}
 			v.MinUnflushedLogNum = n
 
 		case tagNextFileNumber:
-			n, err := d.readUvarint()
+			n, err := d.readFileNum()
 			if err != nil {
 				return err
 			}
@@ -166,7 +166,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			fileNum, err := d.readUvarint()
+			fileNum, err := d.readFileNum()
 			if err != nil {
 				return err
 			}
@@ -180,7 +180,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			fileNum, err := d.readUvarint()
+			fileNum, err := d.readFileNum()
 			if err != nil {
 				return err
 			}
@@ -295,7 +295,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	if v.MinUnflushedLogNum != 0 {
 		e.writeUvarint(tagLogNumber)
-		e.writeUvarint(v.MinUnflushedLogNum)
+		e.writeUvarint(uint64(v.MinUnflushedLogNum))
 	}
 	if v.ObsoletePrevLogNum != 0 {
 		e.writeUvarint(tagPrevLogNumber)
@@ -303,7 +303,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	if v.NextFileNum != 0 {
 		e.writeUvarint(tagNextFileNumber)
-		e.writeUvarint(v.NextFileNum)
+		e.writeUvarint(uint64(v.NextFileNum))
 	}
 	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
 	// even though its value is zero. We detect this by encoding LastSeqNum when
@@ -315,7 +315,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	for x := range v.DeletedFiles {
 		e.writeUvarint(tagDeletedFile)
 		e.writeUvarint(uint64(x.Level))
-		e.writeUvarint(x.FileNum)
+		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
 		var customFields bool
@@ -326,7 +326,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			e.writeUvarint(tagNewFile2)
 		}
 		e.writeUvarint(uint64(x.Level))
-		e.writeUvarint(x.Meta.FileNum)
+		e.writeUvarint(uint64(x.Meta.FileNum))
 		e.writeUvarint(x.Meta.Size)
 		e.writeKey(x.Meta.Smallest)
 		e.writeKey(x.Meta.Largest)
@@ -381,6 +381,14 @@ func (d versionEditDecoder) readLevel() (int, error) {
 	return int(u), nil
 }
 
+func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
+	u, err := d.readUvarint()
+	if err != nil {
+		return 0, err
+	}
+	return base.FileNum(u), nil
+}
+
 func (d versionEditDecoder) readUvarint() (uint64, error) {
 	u, err := binary.ReadUvarint(d)
 	if err != nil {
@@ -423,7 +431,7 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // edits.
 type BulkVersionEdit struct {
 	Added   [NumLevels][]*FileMetadata
-	Deleted [NumLevels]map[uint64]bool // map[uint64]bool is a set of fileNums
+	Deleted [NumLevels]map[base.FileNum]bool
 }
 
 // Accumulate adds the file addition and deletions in the specified version
@@ -432,7 +440,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 	for df := range ve.DeletedFiles {
 		dmap := b.Deleted[df.Level]
 		if dmap == nil {
-			dmap = make(map[uint64]bool)
+			dmap = make(map[base.FileNum]bool)
 			b.Deleted[df.Level] = dmap
 		}
 		dmap[df.FileNum] = true
@@ -461,16 +469,16 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 // are still in use by the incoming Version.
 func (b *BulkVersionEdit) Apply(
 	curr *Version, cmp Compare, format base.Formatter,
-) (_ *Version, zombies map[uint64]uint64, _ error) {
-	addZombie := func(fileNum, size uint64) {
+) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
+	addZombie := func(fileNum base.FileNum, size uint64) {
 		if zombies == nil {
-			zombies = make(map[uint64]uint64)
+			zombies = make(map[base.FileNum]uint64)
 		}
 		zombies[fileNum] = size
 	}
 	// The remove zombie function is used to handle tables that are moved from
 	// one level to another during a version edit (i.e. a "move" compaction).
-	removeZombie := func(fileNum uint64) {
+	removeZombie := func(fileNum base.FileNum) {
 		if zombies != nil {
 			delete(zombies, fileNum)
 		}
@@ -593,7 +601,7 @@ func (b *BulkVersionEdit) Apply(
 				if base.InternalCompare(cmp, v.Files[level][numFiles-1].Largest, f.Smallest) >= 0 {
 					cf := v.Files[level][numFiles-1]
 					return nil, nil, fmt.Errorf(
-						"pebble: internal error: L%d files %06d and %06d have overlapping ranges: [%s-%s] vs [%s-%s]",
+						"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						level, cf.FileNum, f.FileNum, cf.Smallest.Pretty(format), cf.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}

@@ -329,9 +329,9 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		m := &fileMetadata{}
-		var err error
-		m.FileNum, err = strconv.ParseUint(s[:index], 10, 64)
+		fn, err := strconv.ParseUint(s[:index], 10, 64)
 		require.NoError(t, err)
+		m.FileNum = FileNum(fn)
 
 		fields := strings.Fields(s[index+1:])
 		if len(fields) != 2 && len(fields) != 3 {

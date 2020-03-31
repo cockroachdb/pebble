@@ -53,7 +53,7 @@ func TestLevelIter(t *testing.T) {
 				iters = append(iters, f)
 
 				meta := &fileMetadata{
-					FileNum: uint64(len(files)),
+					FileNum: FileNum(len(files)),
 				}
 				meta.Smallest = f.keys[0]
 				meta.Largest = f.keys[len(f.keys)-1]
@@ -167,7 +167,7 @@ func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
 }
 
 func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
-	fileNum := uint64(len(lt.readers))
+	fileNum := FileNum(len(lt.readers))
 	name := fmt.Sprint(fileNum)
 	f0, err := lt.mem.Create(name)
 	if err != nil {
@@ -396,7 +396,7 @@ func buildLevelIterTables(
 		iter := readers[i].NewIter(nil /* lower */, nil /* upper */)
 		key, _ := iter.First()
 		meta[i] = &fileMetadata{}
-		meta[i].FileNum = uint64(i)
+		meta[i].FileNum = FileNum(i)
 		meta[i].Smallest = *key
 		key, _ = iter.Last()
 		meta[i].Largest = *key

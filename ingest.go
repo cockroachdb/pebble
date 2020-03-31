@@ -43,7 +43,9 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 	return nil
 }
 
-func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMetadata, error) {
+func ingestLoad1(
+	opts *Options, path string, cacheID uint64, fileNum FileNum,
+) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
 		return nil, err
@@ -130,7 +132,7 @@ func ingestLoad1(opts *Options, path string, cacheID, fileNum uint64) (*fileMeta
 }
 
 func ingestLoad(
-	opts *Options, paths []string, cacheID uint64, pending []uint64,
+	opts *Options, paths []string, cacheID uint64, pending []FileNum,
 ) ([]*fileMetadata, []string, error) {
 	meta := make([]*fileMetadata, 0, len(paths))
 	newPaths := make([]string, 0, len(paths))
@@ -482,7 +484,7 @@ func (d *DB) Ingest(paths []string) error {
 	// ordering. The sorting of L0 tables by sequence number avoids relying on
 	// that (busted) invariant.
 	d.mu.Lock()
-	pendingOutputs := make([]uint64, len(paths))
+	pendingOutputs := make([]FileNum, len(paths))
 	for i := range paths {
 		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}

@@ -23,7 +23,7 @@ import (
 type findRef struct {
 	key     base.InternalKey
 	value   []byte
-	fileNum uint64
+	fileNum base.FileNum
 }
 
 // findT implements the find tool.
@@ -41,21 +41,21 @@ type findT struct {
 	verbose      bool
 
 	// Map from file num to path on disk.
-	files map[uint64]string
+	files map[base.FileNum]string
 	// Map from file num to version edit index which references the file num.
-	editRefs map[uint64][]int
+	editRefs map[base.FileNum][]int
 	// List of version edits.
 	edits []manifest.VersionEdit
 	// Sorted list of WAL file nums.
-	logs []uint64
+	logs []base.FileNum
 	// Sorted list of manifest file nums.
-	manifests []uint64
+	manifests []base.FileNum
 	// Sorted list of table file nums.
-	tables []uint64
+	tables []base.FileNum
 	// Set of tables that contains references to the search key.
-	tableRefs map[uint64]bool
+	tableRefs map[base.FileNum]bool
 	// Map from file num to table metadata.
-	tableMeta map[uint64]*manifest.FileMetadata
+	tableMeta map[base.FileNum]*manifest.FileMetadata
 }
 
 func newFind(opts *pebble.Options, comparers sstable.Comparers) *findT {
@@ -110,7 +110,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 	f.fmtKey.setForComparer(f.opts.Comparer.Name, f.comparers)
 
 	refs := f.search(key)
-	var lastFileNum uint64
+	var lastFileNum base.FileNum
 	for i := range refs {
 		r := &refs[i]
 		if lastFileNum != r.fileNum {
@@ -132,12 +132,12 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 
 // Find all of the manifests, logs, and tables in the specified directory.
 func (f *findT) findFiles(dir string) error {
-	f.files = make(map[uint64]string)
-	f.editRefs = make(map[uint64][]int)
+	f.files = make(map[base.FileNum]string)
+	f.editRefs = make(map[base.FileNum][]int)
 	f.logs = nil
 	f.manifests = nil
 	f.tables = nil
-	f.tableMeta = make(map[uint64]*manifest.FileMetadata)
+	f.tableMeta = make(map[base.FileNum]*manifest.FileMetadata)
 
 	if _, err := f.opts.FS.Stat(dir); err != nil {
 		return err
@@ -365,7 +365,7 @@ func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
 
 // Search the tables for references to the specified key.
 func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
-	f.tableRefs = make(map[uint64]bool)
+	f.tableRefs = make(map[base.FileNum]bool)
 	for _, fileNum := range f.tables {
 		_ = func() (err error) {
 			path := f.files[fileNum]
@@ -488,7 +488,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 // for the first edit which created the table, and then analyze the edit to
 // determine if it was a compaction, flush, or ingestion. Returns an empty
 // string if the provenance of a table cannot be determined.
-func (f *findT) tableProvenance(fileNum uint64) string {
+func (f *findT) tableProvenance(fileNum base.FileNum) string {
 	editRefs := f.editRefs[fileNum]
 	for len(editRefs) > 0 {
 		ve := f.edits[editRefs[0]]
@@ -508,7 +508,7 @@ func (f *findT) tableProvenance(fileNum uint64) string {
 				// ellipsis to indicate when there were other inputs that have
 				// been elided.
 				var sourceLevels []int
-				levels := make(map[int][]uint64)
+				levels := make(map[int][]base.FileNum)
 				for df := range ve.DeletedFiles {
 					files := levels[df.Level]
 					if len(files) == 0 {
@@ -535,7 +535,7 @@ func (f *findT) tableProvenance(fileNum uint64) string {
 					elided := false
 					for _, fileNum := range files {
 						if f.tableRefs[fileNum] {
-							fmt.Fprintf(&buf, "%s%06d", sep, fileNum)
+							fmt.Fprintf(&buf, "%s%s", sep, fileNum)
 							sep = " "
 						} else {
 							elided = true

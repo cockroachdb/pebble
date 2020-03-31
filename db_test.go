@@ -367,12 +367,12 @@ func TestLargeBatch(t *testing.T) {
 		}
 	}
 
-	logNum := func() uint64 {
+	logNum := func() FileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.mu.log.queue[len(d.mu.log.queue)-1]
 	}
-	fileSize := func(fileNum uint64) int64 {
+	fileSize := func(fileNum FileNum) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilename(d.opts.FS, "", fileTypeLog, fileNum))
 		require.NoError(t, err)
 		return info.Size()
@@ -399,12 +399,12 @@ func TestLargeBatch(t *testing.T) {
 	}
 	startLogEndSize := fileSize(startLogNum)
 	if startLogEndSize == startLogStartSize {
-		t.Fatalf("expected large batch to be written to %06d.log, but file size unchanged at %d",
+		t.Fatalf("expected large batch to be written to %s.log, but file size unchanged at %d",
 			startLogNum, startLogEndSize)
 	}
 	endLogSize := fileSize(endLogNum)
 	if endLogSize != 0 {
-		t.Fatalf("expected %06d.log to be empty, but found %d", endLogNum, endLogSize)
+		t.Fatalf("expected %s.log to be empty, but found %d", endLogNum, endLogSize)
 	}
 	if creationSeqNum := memTableCreationSeqNum(); creationSeqNum <= startSeqNum {
 		t.Fatalf("expected memTable.logSeqNum=%d > largeBatch.seqNum=%d", creationSeqNum, startSeqNum)
@@ -786,7 +786,7 @@ func TestRollManifest(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	manifestFileNumber := func() uint64 {
+	manifestFileNumber := func() FileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.mu.versions.manifestFileNum
@@ -817,7 +817,7 @@ func TestRollManifest(t *testing.T) {
 		}
 		lastManifestNum = num
 
-		expectedCurrent := fmt.Sprintf("MANIFEST-%06d\n", lastManifestNum)
+		expectedCurrent := fmt.Sprintf("MANIFEST-%s\n", lastManifestNum)
 		if v := current(); expectedCurrent != v {
 			t.Fatalf("expected %s, but found %s", expectedCurrent, v)
 		}
@@ -836,7 +836,7 @@ func TestRollManifest(t *testing.T) {
 			manifests = append(manifests, filename)
 		}
 	}
-	expected := []string{fmt.Sprintf("MANIFEST-%06d", lastManifestNum)}
+	expected := []string{fmt.Sprintf("MANIFEST-%s", lastManifestNum)}
 	require.EqualValues(t, expected, manifests)
 
 	require.NoError(t, d.Close())

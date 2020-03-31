@@ -25,7 +25,7 @@ func robinHoodHash(k key, shift uint32) uint32 {
 	const m = 11400714819323198485
 	h := hashSeed
 	h ^= k.id * m
-	h ^= k.fileNum * m
+	h ^= uint64(k.fileNum) * m
 	h ^= k.offset * m
 	return uint32(h >> shift)
 }

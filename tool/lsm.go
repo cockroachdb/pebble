@@ -33,9 +33,9 @@ type lsmVersionEdit struct {
 	// Reason for the edit: flushed, ingested, compacted, added.
 	Reason string
 	// Map from level to files added to the level.
-	Added map[int][]uint64 `json:",omitempty"`
+	Added map[int][]base.FileNum `json:",omitempty"`
 	// Map from level to files deleted from the level.
-	Deleted map[int][]uint64 `json:",omitempty"`
+	Deleted map[int][]base.FileNum `json:",omitempty"`
 }
 
 type lsmKey struct {
@@ -46,9 +46,9 @@ type lsmKey struct {
 
 type lsmState struct {
 	Manifest string
-	Edits    []lsmVersionEdit           `json:",omitempty"`
-	Files    map[uint64]lsmFileMetadata `json:",omitempty"`
-	Keys     []lsmKey                   `json:",omitempty"`
+	Edits    []lsmVersionEdit                 `json:",omitempty"`
+	Files    map[base.FileNum]lsmFileMetadata `json:",omitempty"`
+	Keys     []lsmKey                         `json:",omitempty"`
 }
 
 type lsmT struct {
@@ -200,15 +200,15 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 
 func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 	l.state.Edits = nil
-	l.state.Files = make(map[uint64]lsmFileMetadata)
+	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
 	for _, ve := range edits {
 		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
 			continue
 		}
 		edit := lsmVersionEdit{
 			Reason:  l.reason(ve),
-			Added:   make(map[int][]uint64),
-			Deleted: make(map[int][]uint64),
+			Added:   make(map[int][]base.FileNum),
+			Deleted: make(map[int][]base.FileNum),
 		}
 		for df := range ve.DeletedFiles {
 			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)

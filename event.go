@@ -31,7 +31,7 @@ func formatFileNums(tables []TableInfo) string {
 		if i > 0 {
 			buf.WriteString(" ")
 		}
-		fmt.Fprintf(&buf, "%06d", tables[i].FileNum)
+		buf.WriteString(tables[i].FileNum.String())
 	}
 	return buf.String()
 }
@@ -128,7 +128,7 @@ type ManifestCreateInfo struct {
 	JobID int
 	Path  string
 	// The file number of the new Manifest.
-	FileNum uint64
+	FileNum FileNum
 	Err     error
 }
 
@@ -136,8 +136,7 @@ func (i ManifestCreateInfo) String() string {
 	if i.Err != nil {
 		return fmt.Sprintf("[JOB %d] MANIFEST create error: %s", i.JobID, i.Err)
 	}
-
-	return fmt.Sprintf("[JOB %d] MANIFEST created %06d", i.JobID, i.FileNum)
+	return fmt.Sprintf("[JOB %d] MANIFEST created %s", i.JobID, i.FileNum)
 }
 
 // ManifestDeleteInfo contains the info for a Manifest deletion event.
@@ -145,7 +144,7 @@ type ManifestDeleteInfo struct {
 	// JobID is the ID of the job the caused the Manifest to be deleted.
 	JobID   int
 	Path    string
-	FileNum uint64
+	FileNum FileNum
 	Err     error
 }
 
@@ -153,8 +152,7 @@ func (i ManifestDeleteInfo) String() string {
 	if i.Err != nil {
 		return fmt.Sprintf("[JOB %d] MANIFEST delete error: %s", i.JobID, i.Err)
 	}
-
-	return fmt.Sprintf("[JOB %d] MANIFEST deleted %06d", i.JobID, i.FileNum)
+	return fmt.Sprintf("[JOB %d] MANIFEST deleted %s", i.JobID, i.FileNum)
 }
 
 // TableCreateInfo contains the info for a table creation event.
@@ -164,27 +162,27 @@ type TableCreateInfo struct {
 	// "ingesting".
 	Reason  string
 	Path    string
-	FileNum uint64
+	FileNum FileNum
 }
 
 func (i TableCreateInfo) String() string {
-	return fmt.Sprintf("[JOB %d] %s: sstable created %06d", i.JobID, i.Reason, i.FileNum)
+	return fmt.Sprintf("[JOB %d] %s: sstable created %s", i.JobID, i.Reason, i.FileNum)
 }
 
 // TableDeleteInfo contains the info for a table deletion event.
 type TableDeleteInfo struct {
 	JobID   int
 	Path    string
-	FileNum uint64
+	FileNum FileNum
 	Err     error
 }
 
 func (i TableDeleteInfo) String() string {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] sstable delete error %06d: %s",
+		return fmt.Sprintf("[JOB %d] sstable delete error %s: %s",
 			i.JobID, i.FileNum, i.Err)
 	}
-	return fmt.Sprintf("[JOB %d] sstable deleted %06d", i.JobID, i.FileNum)
+	return fmt.Sprintf("[JOB %d] sstable deleted %s", i.JobID, i.FileNum)
 }
 
 // TableIngestInfo contains the info for a table ingestion event.
@@ -213,7 +211,7 @@ func (i TableIngestInfo) String() string {
 		if j > 0 {
 			fmt.Fprintf(&buf, ",")
 		}
-		fmt.Fprintf(&buf, " L%d:%06d (%s)", t.Level, t.FileNum, humanize.Uint64(t.Size))
+		fmt.Fprintf(&buf, " L%d:%s (%s)", t.Level, t.FileNum, humanize.Uint64(t.Size))
 	}
 	return buf.String()
 }
@@ -224,10 +222,10 @@ type WALCreateInfo struct {
 	JobID int
 	Path  string
 	// The file number of the new WAL.
-	FileNum uint64
+	FileNum FileNum
 	// The file number of a previous WAL which was recycled to create this
 	// one. Zero if recycling did not take place.
-	RecycledFileNum uint64
+	RecycledFileNum FileNum
 	Err             error
 }
 
@@ -237,10 +235,10 @@ func (i WALCreateInfo) String() string {
 	}
 
 	if i.RecycledFileNum == 0 {
-		return fmt.Sprintf("[JOB %d] WAL created %06d", i.JobID, i.FileNum)
+		return fmt.Sprintf("[JOB %d] WAL created %s", i.JobID, i.FileNum)
 	}
 
-	return fmt.Sprintf("[JOB %d] WAL created %06d (recycled %06d)",
+	return fmt.Sprintf("[JOB %d] WAL created %s (recycled %s)",
 		i.JobID, i.FileNum, i.RecycledFileNum)
 }
 
@@ -249,7 +247,7 @@ type WALDeleteInfo struct {
 	// JobID is the ID of the job the caused the WAL to be deleted.
 	JobID   int
 	Path    string
-	FileNum uint64
+	FileNum FileNum
 	Err     error
 }
 
@@ -257,8 +255,7 @@ func (i WALDeleteInfo) String() string {
 	if i.Err != nil {
 		return fmt.Sprintf("[JOB %d] WAL delete error: %s", i.JobID, i.Err)
 	}
-
-	return fmt.Sprintf("[JOB %d] WAL deleted %06d", i.JobID, i.FileNum)
+	return fmt.Sprintf("[JOB %d] WAL deleted %s", i.JobID, i.FileNum)
 }
 
 // WriteStallBeginInfo contains the info for a write stall begin event.

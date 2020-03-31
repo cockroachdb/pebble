@@ -108,6 +108,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 )
 
@@ -178,7 +179,7 @@ type Reader struct {
 // NewReader returns a new reader. If the file contains records encoded using
 // the recyclable record format, then the log number in those records must
 // match the specifed logNum.
-func NewReader(r io.Reader, logNum uint64) *Reader {
+func NewReader(r io.Reader, logNum base.FileNum) *Reader {
 	return &Reader{
 		r:        r,
 		logNum:   uint32(logNum),

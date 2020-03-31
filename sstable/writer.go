@@ -89,7 +89,7 @@ type Writer struct {
 	// the cache, providing a defense in depth against bugs which cause cache
 	// collisions.
 	cacheID uint64
-	fileNum uint64
+	fileNum base.FileNum
 	// The following fields are copied from Options.
 	blockSize               int
 	blockSizeThreshold      int

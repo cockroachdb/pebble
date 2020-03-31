@@ -500,7 +500,7 @@ func (i *singleLevelIterator) Close() error {
 }
 
 func (i *singleLevelIterator) String() string {
-	return fmt.Sprintf("%06d", i.reader.fileNum)
+	return i.reader.fileNum.String()
 }
 
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
@@ -524,7 +524,7 @@ type compactionIterator struct {
 var _ base.InternalIterator = (*compactionIterator)(nil)
 
 func (i *compactionIterator) String() string {
-	return fmt.Sprintf("%06d", i.reader.fileNum)
+	return i.reader.fileNum.String()
 }
 
 func (i *compactionIterator) SeekGE(key []byte) (*InternalKey, []byte) {
@@ -636,7 +636,7 @@ func (i *twoLevelIterator) Init(r *Reader, lower, upper []byte) error {
 }
 
 func (i *twoLevelIterator) String() string {
-	return fmt.Sprintf("%06d", i.reader.fileNum)
+	return i.reader.fileNum.String()
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
@@ -901,7 +901,7 @@ func (i *twoLevelCompactionIterator) Prev() (*InternalKey, []byte) {
 }
 
 func (i *twoLevelCompactionIterator) String() string {
-	return fmt.Sprintf("%06d", i.reader.fileNum)
+	return i.reader.fileNum.String()
 }
 
 func (i *twoLevelCompactionIterator) skipForward(
@@ -1005,7 +1005,7 @@ func (m Mergers) readerApply(r *Reader) {
 // number. If not specified, a unique cache ID will be used.
 type cacheOpts struct {
 	cacheID uint64
-	fileNum uint64
+	fileNum base.FileNum
 }
 
 // Marker function to indicate the option should be applied before reading the
@@ -1044,7 +1044,7 @@ func (rawTombstonesOpt) readerApply(r *Reader) {
 }
 
 func init() {
-	private.SSTableCacheOpts = func(cacheID, fileNum uint64) interface{} {
+	private.SSTableCacheOpts = func(cacheID uint64, fileNum base.FileNum) interface{} {
 		return &cacheOpts{cacheID, fileNum}
 	}
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
@@ -1054,7 +1054,7 @@ func init() {
 type Reader struct {
 	file              vfs.File
 	cacheID           uint64
-	fileNum           uint64
+	fileNum           base.FileNum
 	rawTombstones     bool
 	err               error
 	index             weakCachedBlock

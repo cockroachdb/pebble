@@ -48,8 +48,8 @@ func (c *tableCache) init(
 	}
 }
 
-func (c *tableCache) getShard(fileNum uint64) *tableCacheShard {
-	return &c.shards[fileNum%uint64(len(c.shards))]
+func (c *tableCache) getShard(fileNum FileNum) *tableCacheShard {
+	return &c.shards[uint64(fileNum)%uint64(len(c.shards))]
 }
 
 func (c *tableCache) newIters(
@@ -58,7 +58,7 @@ func (c *tableCache) newIters(
 	return c.getShard(meta.FileNum).newIters(meta, opts, bytesIterated)
 }
 
-func (c *tableCache) evict(fileNum uint64) {
+func (c *tableCache) evict(fileNum FileNum) {
 	c.getShard(fileNum).evict(fileNum)
 }
 
@@ -113,7 +113,7 @@ type tableCacheShard struct {
 
 	mu struct {
 		sync.RWMutex
-		nodes map[uint64]*tableCacheNode
+		nodes map[FileNum]*tableCacheNode
 		// The iters map is only created and populated in race builds.
 		iters map[sstable.Iterator][]byte
 		lru   tableCacheNode
@@ -136,7 +136,7 @@ func (c *tableCacheShard) init(
 	c.fs = fs
 	c.opts = opts.MakeReaderOptions()
 	c.size = size
-	c.mu.nodes = make(map[uint64]*tableCacheNode)
+	c.mu.nodes = make(map[FileNum]*tableCacheNode)
 	c.mu.lru.next = &c.mu.lru
 	c.mu.lru.prev = &c.mu.lru
 	c.hitsPool = &sync.Pool{
@@ -334,7 +334,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
 	return n
 }
 
-func (c *tableCacheShard) evict(fileNum uint64) {
+func (c *tableCacheShard) evict(fileNum FileNum) {
 	c.mu.Lock()
 
 	n := c.mu.nodes[fileNum]
@@ -346,7 +346,7 @@ func (c *tableCacheShard) evict(fileNum uint64) {
 		// tableCacheShard.mu in order to avoid a race with Close()
 		c.unlinkNode(n)
 		if v := atomic.AddInt32(&n.refCount, -1); v != 0 {
-			c.logger.Fatalf("sstable %06d: refcount is not zero: %d", fileNum, v)
+			c.logger.Fatalf("sstable %s: refcount is not zero: %d", fileNum, v)
 		}
 		c.releasing.Add(1)
 	}

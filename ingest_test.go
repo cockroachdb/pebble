@@ -54,7 +54,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}
-			meta, _, err := ingestLoad(opts, []string{"ext"}, 0, []uint64{1})
+			meta, _, err := ingestLoad(opts, []string{"ext"}, 0, []FileNum{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -84,11 +84,11 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	paths := make([]string, 1+rng.Intn(10))
-	pending := make([]uint64, len(paths))
+	pending := make([]FileNum, len(paths))
 	expected := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
-		pending[i] = uint64(rng.Int63())
+		pending[i] = FileNum(rng.Int63())
 		expected[i] = &fileMetadata{
 			FileNum: pending[i],
 		}
@@ -153,7 +153,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	if _, _, err := ingestLoad(opts, []string{"invalid"}, 0, []uint64{1}); err == nil {
+	if _, _, err := ingestLoad(opts, []string{"invalid"}, 0, []FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -230,7 +230,7 @@ func TestIngestLink(t *testing.T) {
 			for j := range paths {
 				paths[j] = fmt.Sprintf("external%d", j)
 				meta[j] = &fileMetadata{}
-				meta[j].FileNum = uint64(j)
+				meta[j].FileNum = FileNum(j)
 				f, err := mem.Create(paths[j])
 				require.NoError(t, err)
 
@@ -275,7 +275,7 @@ func TestIngestLink(t *testing.T) {
 					if fileTypeTable != ftype {
 						t.Fatalf("expected table, but found %d", ftype)
 					}
-					if uint64(j) != fileNum {
+					if FileNum(j) != fileNum {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
 					f, err := mem.Open(mem.PathJoin(dir, files[j]))

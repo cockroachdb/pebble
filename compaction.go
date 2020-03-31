@@ -752,7 +752,7 @@ func (c *compaction) String() string {
 		}
 		fmt.Fprintf(&buf, "%d:", level)
 		for _, f := range c.inputs[i] {
-			fmt.Fprintf(&buf, " %06d:%s-%s", f.FileNum, f.Smallest, f.Largest)
+			fmt.Fprintf(&buf, " %s:%s-%s", f.FileNum, f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -775,7 +775,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	for _, files := range c.inputs {
 		for _, f := range files {
 			if f.Compacting {
-				d.opts.Logger.Fatalf("L%d->L%d: %06d already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel, c.outputLevel, f.FileNum)
 			}
 			f.Compacting = true
 		}
@@ -811,7 +811,7 @@ func (d *DB) removeInProgressCompaction(c *compaction) {
 	for _, files := range c.inputs {
 		for _, f := range files {
 			if !f.Compacting {
-				d.opts.Logger.Fatalf("L%d->L%d: %06d already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel, c.outputLevel, f.FileNum)
 			}
 			f.Compacting = false
 		}
@@ -1188,7 +1188,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction, pacer pacer,
-) (ve *versionEdit, pendingOutputs []uint64, retErr error) {
+) (ve *versionEdit, pendingOutputs []FileNum, retErr error) {
 	// Check for a trivial move of one table from one level to the next. We avoid
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive
@@ -1613,15 +1613,15 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		panic("pebble: cannot scan obsolete files concurrently with compaction/flushing")
 	}
 
-	liveFileNums := make(map[uint64]struct{})
+	liveFileNums := make(map[FileNum]struct{})
 	d.mu.versions.addLiveFileNums(liveFileNums)
 	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum
 
-	var obsoleteLogs []uint64
-	var obsoleteTables []uint64
-	var obsoleteManifests []uint64
-	var obsoleteOptions []uint64
+	var obsoleteLogs []FileNum
+	var obsoleteTables []FileNum
+	var obsoleteManifests []FileNum
+	var obsoleteOptions []FileNum
 
 	for _, filename := range list {
 		fileType, fileNum, ok := base.ParseFilename(d.opts.FS, filename)
@@ -1735,7 +1735,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) doDeleteObsoleteFiles(jobID int) {
-	var obsoleteTables []uint64
+	var obsoleteTables []FileNum
 
 	defer func() {
 		for _, fileNum := range obsoleteTables {
@@ -1743,7 +1743,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		}
 	}()
 
-	var obsoleteLogs []uint64
+	var obsoleteLogs []FileNum
 	for i := range d.mu.log.queue {
 		// NB: d.mu.versions.minUnflushedLogNum is the log number of the earliest
 		// log that has not had its contents flushed to an sstable. We can recycle
@@ -1773,7 +1773,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 
 	files := [4]struct {
 		fileType fileType
-		obsolete []uint64
+		obsolete []FileNum
 	}{
 		{fileTypeLog, obsoleteLogs},
 		{fileTypeTable, obsoleteTables},
@@ -1830,7 +1830,7 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 }
 
 // deleteObsoleteFile deletes file that is no longer needed.
-func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileNum uint64) {
+func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileNum FileNum) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
 	err := d.opts.Cleaner.Clean(d.opts.FS, fileType, path)
@@ -1863,7 +1863,7 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 	}
 }
 
-func merge(a, b []uint64) []uint64 {
+func merge(a, b []FileNum) []FileNum {
 	if len(b) == 0 {
 		return a
 	}

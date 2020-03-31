@@ -26,13 +26,14 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 type fileKey struct {
 	// id is the namespace for fileNums.
 	id      uint64
-	fileNum uint64
+	fileNum base.FileNum
 }
 
 type key struct {
@@ -151,7 +152,7 @@ type shard struct {
 	sizeTest int64
 }
 
-func (c *shard) Get(id, fileNum, offset uint64) Handle {
+func (c *shard) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
 	c.mu.RLock()
 	e := c.blocks.Get(key{fileKey{id, fileNum}, offset})
 	var value *Value
@@ -173,7 +174,7 @@ func (c *shard) Get(id, fileNum, offset uint64) Handle {
 	return Handle{entry: e, value: value}
 }
 
-func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
+func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value) Handle {
 	if n := value.refs(); n != 1 {
 		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
 	}
@@ -246,7 +247,7 @@ func (c *shard) Set(id, fileNum, offset uint64, value *Value) Handle {
 }
 
 // Delete deletes the cached value for the specified file and offset.
-func (c *shard) Delete(id, fileNum, offset uint64) {
+func (c *shard) Delete(id uint64, fileNum base.FileNum, offset uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -258,7 +259,7 @@ func (c *shard) Delete(id, fileNum, offset uint64) {
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *shard) EvictFile(id, fileNum uint64) {
+func (c *shard) EvictFile(id uint64, fileNum base.FileNum) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -652,7 +653,7 @@ func (c *Cache) trace(msg string, refs int64) {
 	}
 }
 
-func (c *Cache) getShard(id, fileNum, offset uint64) *shard {
+func (c *Cache) getShard(id uint64, fileNum base.FileNum, offset uint64) *shard {
 	if id == 0 {
 		panic("pebble: 0 cache ID is invalid")
 	}
@@ -707,7 +708,7 @@ func (c *Cache) Unref() {
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Cache) Get(id, fileNum, offset uint64) Handle {
+func (c *Cache) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
 	return c.getShard(id, fileNum, offset).Get(id, fileNum, offset)
 }
 
@@ -715,17 +716,17 @@ func (c *Cache) Get(id, fileNum, offset uint64) Handle {
 // existing value if present. A Handle is returned which provides faster
 // retrieval of the cached value than Get (lock-free and avoidance of the map
 // lookup). The value must have been allocated by Cache.Alloc.
-func (c *Cache) Set(id, fileNum, offset uint64, value *Value) Handle {
+func (c *Cache) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value) Handle {
 	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value)
 }
 
 // Delete deletes the cached value for the specified file and offset.
-func (c *Cache) Delete(id, fileNum, offset uint64) {
+func (c *Cache) Delete(id uint64, fileNum base.FileNum, offset uint64) {
 	c.getShard(id, fileNum, offset).Delete(id, fileNum, offset)
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *Cache) EvictFile(id, fileNum uint64) {
+func (c *Cache) EvictFile(id uint64, fileNum base.FileNum) {
 	if id == 0 {
 		panic("pebble: 0 cache ID is invalid")
 	}

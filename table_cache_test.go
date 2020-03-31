@@ -91,7 +91,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 
 		numStillOpen := 0
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilename(fs, "", fileTypeTable, uint64(i))
+			filename := base.MakeFilename(fs, "", fileTypeTable, FileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -121,7 +121,7 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 		defer fs.mu.Unlock()
 
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilename(fs, "", fileTypeTable, uint64(i))
+			filename := base.MakeFilename(fs, "", fileTypeTable, FileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
 				return fmt.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
@@ -143,7 +143,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 		FS: vfs.NewMem(),
 	}
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		f, err := fs.Create(base.MakeFilename(fs, "", fileTypeTable, uint64(i)))
+		f, err := fs.Create(base.MakeFilename(fs, "", fileTypeTable, FileNum(i)))
 		if err != nil {
 			return nil, nil, fmt.Errorf("fs.Create: %v", err)
 		}
@@ -188,7 +188,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
 			iter, _, err := c.newIters(
-				&fileMetadata{FileNum: uint64(fileNum)},
+				&fileMetadata{FileNum: FileNum(fileNum)},
 				nil, /* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
@@ -244,7 +244,7 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			iter, _, err := c.newIters(
-				&fileMetadata{FileNum: uint64(j)},
+				&fileMetadata{FileNum: FileNum(j)},
 				nil, /* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
@@ -280,7 +280,7 @@ func TestTableCacheEvictions(t *testing.T) {
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
 		iter, _, err := c.newIters(
-			&fileMetadata{FileNum: uint64(j)},
+			&fileMetadata{FileNum: FileNum(j)},
 			nil, /* iter options */
 			nil /* bytes iterated */)
 		if err != nil {
@@ -290,7 +290,7 @@ func TestTableCacheEvictions(t *testing.T) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c.evict(uint64(lo + rng.Intn(hi-lo)))
+		c.evict(FileNum(lo + rng.Intn(hi-lo)))
 	}
 
 	sumEvicted, nEvicted := 0, 0
