@@ -10,29 +10,28 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 )
 
-// withRetries executes fn, retrying it whenever an
-// errorfs.ErrInjected error is returned.
-// It returns the first nil or non-errorfs.ErrInjected
-// error returned by fn.
+// withRetries executes fn, retrying it whenever an errorfs.ErrInjected error
+// is returned.  It returns the first nil or non-errorfs.ErrInjected error
+// returned by fn.
 func withRetries(fn func() error) error {
-	err := fn()
-	for err != nil && errors.Is(err, errorfs.ErrInjected) {
-		err = fn()
+	for {
+		if err := fn(); !errors.Is(err, errorfs.ErrInjected) {
+			return err
+		}
 	}
-	return err
 }
 
-// retryableIter holds an iterator and the state necessary to reset it
-// to its state after the last successful operation. This
-// allows us to retry failed iterator operations by running them again
-// on a non-error iterator with the same pre-operation state.
+// retryableIter holds an iterator and the state necessary to reset it to its
+// state after the last successful operation. This allows us to retry failed
+// iterator operations by running them again on a non-error iterator with the
+// same pre-operation state.
 type retryableIter struct {
 	iter    *pebble.Iterator
 	lastKey []byte
 }
 
 func (i *retryableIter) needRetry() bool {
-	return i.iter.Error() != nil && errors.Is(i.iter.Error(), errorfs.ErrInjected)
+	return errors.Is(i.iter.Error(), errorfs.ErrInjected)
 }
 
 func (i *retryableIter) withRetry(fn func()) {

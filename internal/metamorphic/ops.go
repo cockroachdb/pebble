@@ -6,6 +6,7 @@ package metamorphic
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -201,7 +202,12 @@ func (o *ingestOp) run(t *test, h *history) {
 	if t.testOpts.ingestUsingApply && len(o.batchIDs) == 1 {
 		id := o.batchIDs[0]
 		b := t.getBatch(id)
-		c, err := o.collapseBatch(t, b)
+		var c *pebble.Batch
+		var err error
+		err = withRetries(func() error {
+			c, err = o.collapseBatch(t, b)
+			return err
+		})
 		if err == nil {
 			w := t.getWriter(makeObjID(dbTag, 0))
 			err = w.Apply(c, t.writeOpts)
@@ -218,7 +224,12 @@ func (o *ingestOp) run(t *test, h *history) {
 	for i, id := range o.batchIDs {
 		b := t.getBatch(id)
 		t.clearObj(id)
-		path, err2 := o.build(t, h, b, i)
+		var path string
+		var err2 error
+		err2 = withRetries(func() error {
+			path, err2 = o.build(t, h, b, i)
+			return err2
+		})
 		if err2 != nil {
 			h.Recordf("Build(%s) // %v", id, err2)
 		}
@@ -229,7 +240,9 @@ func (o *ingestOp) run(t *test, h *history) {
 		err = firstError(err, b.Close())
 	}
 
-	err = firstError(err, t.db.Ingest(paths))
+	err = firstError(err, withRetries(func() error {
+		return t.db.Ingest(paths)
+	}))
 
 	h.Recordf("%s // %v", o, err)
 }
@@ -407,7 +420,13 @@ type getOp struct {
 
 func (o *getOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
-	val, closer, err := r.Get(o.key)
+	var val []byte
+	var closer io.Closer
+	var err error
+	err = withRetries(func() error {
+		val, closer, err = r.Get(o.key)
+		return err
+	})
 	h.Recordf("%s // [%q] %v", o, val, err)
 	if closer != nil {
 		closer.Close()

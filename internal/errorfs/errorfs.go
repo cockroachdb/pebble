@@ -100,6 +100,12 @@ func Wrap(fs vfs.FS, inj Injector) *FS {
 	}
 }
 
+// Unwrap returns the FS implementation underlying fs.
+// See pebble/vfs.Root.
+func (fs *FS) Unwrap() vfs.FS {
+	return fs.fs
+}
+
 // Create implements FS.Create.
 func (fs *FS) Create(name string) (vfs.File, error) {
 	if err := fs.inj.MaybeError(OpWrite); err != nil {

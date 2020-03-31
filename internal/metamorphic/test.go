@@ -49,7 +49,13 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	t.opts = testOpts.opts.EnsureDefaults()
 	t.opts.Logger = h.Logger()
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
-	t.opts.DebugCheck = pebble.DebugCheckLevels
+	t.opts.DebugCheck = func(db *pebble.DB) error {
+		// Wrap the ordinary DebugCheckLevels with retrying
+		// of injected errors.
+		return withRetries(func() error {
+			return pebble.DebugCheckLevels(db)
+		})
+	}
 
 	defer t.opts.Cache.Unref()
 
@@ -106,7 +112,12 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 		maybeExit(info.Err)
 	}
 
-	db, err := pebble.Open(dir, t.opts)
+	var db *pebble.DB
+	var err error
+	err = withRetries(func() error {
+		db, err = pebble.Open(dir, t.opts)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -153,26 +164,29 @@ func (t *test) restartDB() error {
 		return nil
 	}
 	t.opts.Cache.Ref()
-	fs := t.opts.FS.(*vfs.MemFS)
+	fs := vfs.Root(t.opts.FS).(*vfs.MemFS)
 	fs.SetIgnoreSyncs(true)
 	if err := t.db.Close(); err != nil {
 		return err
 	}
 	fs.ResetToSyncedState()
 	fs.SetIgnoreSyncs(false)
-	var err error
-	t.db, err = pebble.Open(t.dir, t.opts)
+	err := withRetries(func() (err error) {
+		t.db, err = pebble.Open(t.dir, t.opts)
+		return err
+	})
 	t.opts.Cache.Unref()
 	return err
 }
 
 // If an in-memory FS is being used, save the contents to disk.
 func (t *test) maybeSaveData() {
-	if t.opts.FS == vfs.Default {
+	rootFS := vfs.Root(t.opts.FS)
+	if rootFS == vfs.Default {
 		return
 	}
 	_ = os.RemoveAll(t.dir)
-	if _, err := vfs.Clone(t.opts.FS, vfs.Default, t.dir, t.dir); err != nil {
+	if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
 		t.opts.Logger.Infof("unable to clone: %s: %v", t.dir, err)
 	}
 }
