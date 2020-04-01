@@ -39,10 +39,7 @@ type recordWriter interface {
 }
 
 func testGeneratorWriter(
-	t *testing.T,
-	reset func(),
-	gen func() (string, bool),
-	newWriter func(io.Writer) recordWriter,
+	t *testing.T, reset func(), gen func() (string, bool), newWriter func(io.Writer) recordWriter,
 ) {
 	buf := new(bytes.Buffer)
 
@@ -572,11 +569,11 @@ func verifyLastBlockRecover(recs *testRecords) error {
 			r.recover()
 		case len(recs.records):
 			if err != io.EOF {
-				return fmt.Errorf("Expected io.EOF, got %v", err)
+				return errors.Errorf("Expected io.EOF, got %v", err)
 			}
 		default:
 			if err != nil {
-				return fmt.Errorf("Next: %v", err)
+				return errors.Errorf("Next: %v", err)
 			}
 		}
 	}

@@ -29,12 +29,12 @@ func runBuildCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 		switch arg.Key {
 		case "leveldb":
 			if len(arg.Vals) != 0 {
-				return nil, nil, fmt.Errorf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
+				return nil, nil, errors.Errorf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
 			}
 			writerOpts.TableFormat = TableFormatLevelDB
 		case "block-size":
 			if len(arg.Vals) != 1 {
-				return nil, nil, fmt.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
+				return nil, nil, errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
 			}
 			var err error
 			writerOpts.BlockSize, err = strconv.Atoi(arg.Vals[0])
@@ -43,7 +43,7 @@ func runBuildCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 			}
 		case "index-block-size":
 			if len(arg.Vals) != 1 {
-				return nil, nil, fmt.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
+				return nil, nil, errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
 			}
 			var err error
 			writerOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
@@ -51,7 +51,7 @@ func runBuildCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 				return nil, nil, err
 			}
 		default:
-			return nil, nil, fmt.Errorf("%s: unknown arg %s", td.Cmd, arg.Key)
+			return nil, nil, errors.Errorf("%s: unknown arg %s", td.Cmd, arg.Key)
 		}
 	}
 

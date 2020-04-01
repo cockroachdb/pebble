@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
@@ -135,24 +136,24 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		words = append(words, k)
 		// Check using Get.
 		if v1, err := r.get([]byte(k)); string(v1) != string(v) || err != nil {
-			return fmt.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
+			return errors.Errorf("Get %q: got (%q, %v), want (%q, %v)", k, v1, err, v, error(nil))
 		} else if len(v1) != cap(v1) {
-			return fmt.Errorf("Get %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
+			return errors.Errorf("Get %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
 
 		// Check using SeekGE.
 		i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 		if !i.SeekGE([]byte(k)) || string(i.Key().UserKey) != k {
-			return fmt.Errorf("Find %q: key was not in the table", k)
+			return errors.Errorf("Find %q: key was not in the table", k)
 		}
 		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
-			return fmt.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
+			return errors.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
 		}
 		if string(i.Value()) != v {
-			return fmt.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
+			return errors.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
 		}
 		if v1 := i.Value(); len(v1) != cap(v1) {
-			return fmt.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
+			return errors.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
 
 		// Check using SeekLT.
@@ -162,16 +163,16 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			i.Next()
 		}
 		if string(i.Key().UserKey) != k {
-			return fmt.Errorf("Find %q: key was not in the table", k)
+			return errors.Errorf("Find %q: key was not in the table", k)
 		}
 		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
-			return fmt.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
+			return errors.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
 		}
 		if string(i.Value()) != v {
-			return fmt.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
+			return errors.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
 		}
 		if v1 := i.Value(); len(v1) != cap(v1) {
-			return fmt.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
+			return errors.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
 		}
 
 		if err := i.Close(); err != nil {
@@ -183,13 +184,13 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 	for _, s := range nonsenseWords {
 		// Check using Get.
 		if _, err := r.get([]byte(s)); err != base.ErrNotFound {
-			return fmt.Errorf("Get %q: got %v, want ErrNotFound", s, err)
+			return errors.Errorf("Get %q: got %v, want ErrNotFound", s, err)
 		}
 
 		// Check using Find.
 		i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
 		if i.SeekGE([]byte(s)) && s == string(i.Key().UserKey) {
-			return fmt.Errorf("Find %q: unexpectedly found key in the table", s)
+			return errors.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
 		if err := i.Close(); err != nil {
 			return err
@@ -218,7 +219,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			n++
 		}
 		if n != ct.count {
-			return fmt.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
+			return errors.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
 		}
 		n = 0
 		for valid := i.Last(); valid; valid = i.Prev() {
@@ -228,7 +229,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			n++
 		}
 		if n != ct.count {
-			return fmt.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
+			return errors.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
 		}
 		if err := i.Close(); err != nil {
 			return err
@@ -272,7 +273,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 				n++
 			}
 			if expected := upperIdx; expected != n {
-				return fmt.Errorf("expected %d, but found %d", expected, n)
+				return errors.Errorf("expected %d, but found %d", expected, n)
 			}
 		}
 
@@ -284,7 +285,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 				n++
 			}
 			if expected := len(words) - lowerIdx; expected != n {
-				return fmt.Errorf("expected %d, but found %d", expected, n)
+				return errors.Errorf("expected %d, but found %d", expected, n)
 			}
 		}
 
@@ -294,7 +295,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 				n++
 			}
 			if expected := upperIdx - lowerIdx; expected != n {
-				return fmt.Errorf("expected %d, but found %d", expected, n)
+				return errors.Errorf("expected %d, but found %d", expected, n)
 			}
 		}
 
@@ -304,7 +305,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 				n++
 			}
 			if expected := upperIdx - lowerIdx; expected != n {
-				return fmt.Errorf("expected %d, but found %d", expected, n)
+				return errors.Errorf("expected %d, but found %d", expected, n)
 			}
 		}
 
@@ -791,11 +792,11 @@ func TestReadFooter(t *testing.T) {
 type errorPropCollector struct{}
 
 func (errorPropCollector) Add(key InternalKey, _ []byte) error {
-	return fmt.Errorf("add %s failed", key)
+	return errors.Errorf("add %s failed", key)
 }
 
 func (errorPropCollector) Finish(_ map[string]string) error {
-	return fmt.Errorf("finish failed")
+	return errors.Errorf("finish failed")
 }
 
 func (errorPropCollector) Name() string {

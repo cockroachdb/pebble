@@ -8,9 +8,12 @@ import (
 	"bytes"
 	"go/build"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -80,6 +83,84 @@ func TestLint(t *testing.T) {
 			), func(s string) {
 				t.Errorf("\n%s", s)
 			}); err != nil {
+			t.Error(err)
+		}
+	})
+
+	t.Run("TestFmtErrorf", func(t *testing.T) {
+		t.Parallel()
+
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "git", "grep", "fmt\\.Errorf("),
+				stream.GrepNot(`^vendor/`), // ignore vendor
+			), func(s string) {
+				t.Errorf("\n%s <- please use \"errors.Errorf\" instead", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
+	t.Run("TestForbiddenImports", func(t *testing.T) {
+		t.Parallel()
+
+		// Forbidden-import-pkg -> permitted-replacement-pkg
+		forbiddenImports := map[string]string{
+			"errors":     "github.com/cockroachdb/errors",
+			"pkg/errors": "github.com/cockroachdb/errors",
+		}
+
+		// grepBuf creates a grep string that matches any forbidden import pkgs.
+		var grepBuf bytes.Buffer
+		grepBuf.WriteByte('(')
+		for forbiddenPkg := range forbiddenImports {
+			grepBuf.WriteByte('|')
+			grepBuf.WriteString(regexp.QuoteMeta(forbiddenPkg))
+		}
+		grepBuf.WriteString(")$")
+
+		filter := stream.FilterFunc(func(arg stream.Arg) error {
+			for _, path := range pkgs {
+				buildContext := build.Default
+				buildContext.UseAllFiles = true
+				importPkg, err := buildContext.Import(path, pkg.Dir, 0)
+				if _, ok := err.(*build.MultiplePackageError); ok {
+					buildContext.UseAllFiles = false
+					importPkg, err = buildContext.Import(path, pkg.Dir, 0)
+				}
+
+				switch err.(type) {
+				case nil:
+					for _, s := range importPkg.Imports {
+						arg.Out <- importPkg.ImportPath + ": " + s
+					}
+					for _, s := range importPkg.TestImports {
+						arg.Out <- importPkg.ImportPath + ": " + s
+					}
+					for _, s := range importPkg.XTestImports {
+						arg.Out <- importPkg.ImportPath + ": " + s
+					}
+				case *build.NoGoError:
+				default:
+					return errors.Wrapf(err, "error loading package %s", path)
+				}
+			}
+			return nil
+		})
+		if err := stream.ForEach(stream.Sequence(
+			filter,
+			stream.Sort(),
+			stream.Uniq(),
+			stream.Grep(grepBuf.String()),
+		), func(s string) {
+			pkgStr := strings.Split(s, ": ")
+			importedPkg := pkgStr[1]
+
+			// Test that a disallowed package is not imported.
+			if replPkg, ok := forbiddenImports[importedPkg]; ok {
+				t.Errorf("\n%s <- please use %q instead of %q", s, replPkg, importedPkg)
+			}
+		}); err != nil {
 			t.Error(err)
 		}
 	})
