@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
@@ -370,7 +371,7 @@ func (o *ingestOp) collapseBatch(t *test, b *pebble.Batch) (*pebble.Batch, error
 			case pebble.InternalKeyKindLogData:
 				err = collapsed.LogData(key.UserKey, nil)
 			default:
-				err = fmt.Errorf("unknown batch record kind: %d", key.Kind())
+				err = errors.Errorf("unknown batch record kind: %d", key.Kind())
 			}
 			if err != nil {
 				return nil, err

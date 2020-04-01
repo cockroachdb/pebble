@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
@@ -126,7 +127,7 @@ var fixtures = map[fixtureOpts]struct {
 func runTestFixtureOutput(opts fixtureOpts) error {
 	fixture, ok := fixtures[opts]
 	if !ok {
-		return fmt.Errorf("fixture missing: %+v", opts)
+		return errors.Errorf("fixture missing: %+v", opts)
 	}
 
 	compression := NoCompression
@@ -166,7 +167,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		for ; i < len(got) && i < len(want) && got[i] == want[i]; i++ {
 		}
 		ioutil.WriteFile("fail.txt", got, 0644)
-		return fmt.Errorf("built table %s does not match pre-made table. From byte %d onwards,\ngot:\n% x\nwant:\n% x",
+		return errors.Errorf("built table %s does not match pre-made table. From byte %d onwards,\ngot:\n% x\nwant:\n% x",
 			fixture.filename, i, got[i:], want[i:])
 	}
 	return nil
