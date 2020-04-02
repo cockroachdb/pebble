@@ -183,7 +183,6 @@ func (i *singleLevelIterator) loadBlock() bool {
 	// fails.
 	i.data.invalidate()
 	if !i.index.Valid() {
-		i.err = i.index.err
 		return false
 	}
 	// Load the next block.
@@ -410,10 +409,6 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 
 func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
 	for {
-		if i.data.err != nil {
-			i.err = i.data.err
-			break
-		}
 		if key, _ := i.index.Next(); key == nil {
 			i.data.invalidate()
 			break
@@ -432,10 +427,6 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
 
 func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 	for {
-		if i.data.err != nil {
-			i.err = i.data.err
-			break
-		}
 		if key, _ := i.index.Prev(); key == nil {
 			i.data.invalidate()
 			break
@@ -563,10 +554,6 @@ func (i *compactionIterator) Prev() (*InternalKey, []byte) {
 func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*InternalKey, []byte) {
 	if key == nil {
 		for {
-			if i.data.err != nil {
-				i.err = i.data.err
-				return nil, nil
-			}
 			if key, _ := i.index.Next(); key == nil {
 				break
 			}
@@ -598,7 +585,6 @@ var _ base.InternalIterator = (*twoLevelIterator)(nil)
 // This is used for two level indexes.
 func (i *twoLevelIterator) loadIndex() bool {
 	if !i.topLevelIndex.Valid() {
-		i.err = i.topLevelIndex.err
 		i.index.offset = 0
 		i.index.restarts = 0
 		return false
@@ -787,10 +773,6 @@ func (i *twoLevelIterator) Prev() (*InternalKey, []byte) {
 
 func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 	for {
-		if i.index.err != nil {
-			i.err = i.index.err
-			break
-		}
 		if i.singleLevelIterator.valid() {
 			// The iterator is positioned at valid record in the current data block
 			// which implies the previous positioning call reached the upper bound.
@@ -806,15 +788,10 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 			return ikey, val
 		}
 	}
-	return nil, nil
 }
 
 func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 	for {
-		if i.index.err != nil {
-			i.err = i.index.err
-			break
-		}
 		if i.singleLevelIterator.valid() {
 			// The iterator is positioned at valid record in the current data block
 			// which implies the previous positioning call reached the lower bound.
@@ -830,7 +807,6 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 			return ikey, val
 		}
 	}
-	return nil, nil
 }
 
 // Close implements internalIterator.Close, as documented in the pebble
@@ -909,10 +885,6 @@ func (i *twoLevelCompactionIterator) skipForward(
 ) (*InternalKey, []byte) {
 	if key == nil {
 		for {
-			if i.index.err != nil {
-				i.err = i.index.err
-				return nil, nil
-			}
 			if key, _ := i.topLevelIndex.Next(); key == nil {
 				break
 			}
