@@ -239,7 +239,6 @@ type blockIter struct {
 	cached      []blockEntry
 	cachedBuf   []byte
 	cacheHandle cache.Handle
-	err         error
 }
 
 // blockIter implements the base.InternalIterator interface.
@@ -830,7 +829,7 @@ func (i *blockIter) Valid() bool {
 // Error implements internalIterator.Error, as documented in the pebble
 // package.
 func (i *blockIter) Error() error {
-	return i.err
+	return nil // infallible
 }
 
 // Close implements internalIterator.Close, as documented in the pebble
@@ -839,7 +838,7 @@ func (i *blockIter) Close() error {
 	i.cacheHandle.Release()
 	i.cacheHandle = cache.Handle{}
 	i.val = nil
-	return i.err
+	return nil
 }
 
 func (i *blockIter) SetBounds(lower, upper []byte) {
