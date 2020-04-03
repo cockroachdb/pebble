@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -145,7 +146,11 @@ func TestMergingIterCornerCases(t *testing.T) {
 			if err != nil {
 				return nil, nil, err
 			}
-			return r.NewIter(opts.GetLowerBound(), opts.GetUpperBound()), rangeDelIter, nil
+			iter, err := r.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+			if err != nil {
+				return nil, nil, err
+			}
+			return iter, rangeDelIter, nil
 		}
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(d *datadriven.TestData) string {
@@ -326,7 +331,9 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							readers, keys := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
-								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								var err error
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -353,7 +360,9 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
-								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								var err error
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
 
@@ -383,7 +392,9 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
-								iters[i] = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								var err error
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
 

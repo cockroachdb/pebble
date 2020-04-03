@@ -835,7 +835,11 @@ func TestCompaction(t *testing.T) {
 					return "", "", errors.WithStack(err)
 				}
 				defer r.Close()
-				ss = append(ss, get1(r.NewIter(nil /* lower */, nil /* upper */))+".")
+				iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+				if err != nil {
+					return "", "", errors.WithStack(err)
+				}
+				ss = append(ss, get1(iter)+".")
 			}
 		}
 		sort.Strings(ss)

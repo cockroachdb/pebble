@@ -142,7 +142,11 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using SeekGE.
-		i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		if err != nil {
+			return err
+		}
+		i := newIterAdapter(iter)
 		if !i.SeekGE([]byte(k)) || string(i.Key().UserKey) != k {
 			return errors.Errorf("Find %q: key was not in the table", k)
 		}
@@ -188,7 +192,11 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using Find.
-		i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		if err != nil {
+			return err
+		}
+		i := newIterAdapter(iter)
 		if i.SeekGE([]byte(s)) && s == string(i.Key().UserKey) {
 			return errors.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
@@ -214,7 +222,11 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		n, i := 0, newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		if err != nil {
+			return err
+		}
+		n, i := 0, newIterAdapter(iter)
 		for valid := i.SeekGE([]byte(ct.start)); valid; valid = i.Next() {
 			n++
 		}
@@ -263,7 +275,11 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			upper = []byte(words[upperIdx])
 		}
 
-		i := newIterAdapter(r.NewIter(lower, upper))
+		iter, err := r.NewIter(lower, upper)
+		if err != nil {
+			return err
+		}
+		i := newIterAdapter(iter)
 
 		{
 			// NB: the semantics of First are that it starts iteration from the
@@ -625,7 +641,9 @@ func TestFinalBlockIsWritten(t *testing.T) {
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
-					i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
+					iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+					require.NoError(t, err)
+					i := newIterAdapter(iter)
 					for valid := i.First(); valid; valid = i.Next() {
 						got++
 					}
@@ -658,7 +676,9 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	const globalSeqNum = 42
 	r.Properties.GlobalSeqNum = globalSeqNum
 
-	i := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
+	iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+	require.NoError(t, err)
+	i := newIterAdapter(iter)
 	for valid := i.First(); valid; valid = i.Next() {
 		if globalSeqNum != i.Key().SeqNum() {
 			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())

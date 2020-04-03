@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -148,7 +149,10 @@ func newLevelIterTest() *levelIterTest {
 func (lt *levelIterTest) newIters(
 	meta *fileMetadata, opts *IterOptions, _ *uint64,
 ) (internalIterator, internalIterator, error) {
-	iter := lt.readers[meta.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
+	iter, err := lt.readers[meta.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
+	if err != nil {
+		return nil, nil, err
+	}
 	rangeDelIter, err := lt.readers[meta.FileNum].NewRangeDelIter()
 	if err != nil {
 		return nil, nil, err
@@ -393,7 +397,8 @@ func buildLevelIterTables(
 
 	meta := make([]*fileMetadata, len(readers))
 	for i := range readers {
-		iter := readers[i].NewIter(nil /* lower */, nil /* upper */)
+		iter, err := readers[i].NewIter(nil /* lower */, nil /* upper */)
+		require.NoError(b, err)
 		key, _ := iter.First()
 		meta[i] = &fileMetadata{}
 		meta[i].FileNum = FileNum(i)
@@ -417,7 +422,8 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+								iter, err := readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+								return iter, nil, err
 							}
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, level, nil)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -445,7 +451,8 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+								iter, err := readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+								return iter, nil, err
 							}
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, level, nil)
 
@@ -476,7 +483,8 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							newIters := func(
 								meta *fileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								return readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */), nil, nil
+								iter, err := readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+								return iter, nil, err
 							}
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, newIters, files, level, nil)
 

@@ -73,7 +73,10 @@ func ingestLoad1(
 	empty := true
 
 	{
-		iter := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		if err != nil {
+			return nil, err
+		}
 		defer iter.Close()
 		if key, _ := iter.First(); key != nil {
 			if err := ingestValidateKey(opts, key); err != nil {
