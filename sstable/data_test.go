@@ -172,11 +172,11 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 			return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
 	}
-
-	iter := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
-	if err := iter.Error(); err != nil {
+	origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+	if err != nil {
 		return err.Error()
 	}
+	iter := newIterAdapter(origIter)
 	defer iter.Close()
 
 	var b bytes.Buffer

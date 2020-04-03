@@ -175,24 +175,26 @@ func (c *tableCacheShard) newIters(
 		c.unrefNode(n)
 		return emptyIter, nil, nil
 	}
+
 	var iter sstable.Iterator
+	var err error
 	if bytesIterated != nil {
-		iter = n.reader.NewCompactionIter(bytesIterated)
+		iter, err = n.reader.NewCompactionIter(bytesIterated)
 	} else {
-		iter = n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+		iter, err = n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
 	}
+	if err != nil {
+		c.unrefNode(n)
+		return nil, nil, err
+	}
+	// NB: n.closeHook takes responsibility for calling unrefNode(n) here.
+	iter.SetCloseHook(n.closeHook)
+
 	atomic.AddInt32(&c.iterCount, 1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
 		c.mu.Unlock()
-	}
-	iter.SetCloseHook(n.closeHook)
-	// Check for errors during iterator creation.
-	if iter.Error() != nil {
-		// `Close()` returns the same error as `Error()`.
-		c.unrefNode(n)
-		return nil, nil, iter.Close()
 	}
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
@@ -200,7 +202,6 @@ func (c *tableCacheShard) newIters(
 	rangeDelIter, err := n.reader.NewRangeDelIter()
 	if err != nil {
 		iter.Close()
-		c.unrefNode(n)
 		return nil, nil, err
 	}
 	if rangeDelIter != nil {

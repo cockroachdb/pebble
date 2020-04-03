@@ -87,7 +87,11 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			if err != nil {
 				return nil, nil, err
 			}
-			return r.NewIter(nil /* lower */, nil /* upper */), rangeDelIter, nil
+			iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			if err != nil {
+				return nil, nil, err
+			}
+			return iter, rangeDelIter, nil
 		}
 
 	failMerger := &Merger{

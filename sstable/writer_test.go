@@ -60,7 +60,11 @@ func TestWriter(t *testing.T) {
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "scan":
-			iter := newIterAdapter(r.NewIter(nil /* lower */, nil /* upper */))
+			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			if err != nil {
+				return err.Error()
+			}
+			iter := newIterAdapter(origIter)
 			defer iter.Close()
 
 			var buf bytes.Buffer

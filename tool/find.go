@@ -407,7 +407,10 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				r.Properties.GlobalSeqNum = m.LargestSeqNum
 			}
 
-			iter := r.NewIter(nil, nil)
+			iter, err := r.NewIter(nil, nil)
+			if err != nil {
+				return err
+			}
 			defer iter.Close()
 			key, value := iter.SeekGE(searchKey)
 

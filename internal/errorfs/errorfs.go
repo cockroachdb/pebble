@@ -13,6 +13,9 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// ErrInjected is an error artifically injected for testing fs error paths.
+var ErrInjected = errors.New("injected error")
+
 // OnIndex constructs an injector that returns an error on
 // the (n+1)-th invocation of its MaybeError function. It
 // may be passed to Wrap to inject an error into an FS.
@@ -34,7 +37,7 @@ func (ii *InjectIndex) SetIndex(v int32) { atomic.StoreInt32(&ii.index, v) }
 // MaybeError implements the Injector interface.
 func (ii *InjectIndex) MaybeError() error {
 	if atomic.AddInt32(&ii.index, -1) == -1 {
-		return errors.New("injected error")
+		return ErrInjected
 	}
 	return nil
 }
@@ -63,6 +66,14 @@ func Wrap(fs vfs.FS, inj Injector) *FS {
 	}
 }
 
+// WrapFile wraps an existing vfs.File, returning a new vfs.File that shadows
+// operations to the provided vfs.File. It uses the provided Injector for
+// deciding when to inject errors. If an error is injected, the file
+// propagates the error instead of shadowing the operation.
+func WrapFile(f vfs.File, inj Injector) vfs.File {
+	return errorFile{file: f, inj: inj}
+}
+
 // Create implements FS.Create.
 func (fs *FS) Create(name string) (vfs.File, error) {
 	if err := fs.inj.MaybeError(); err != nil {
@@ -72,7 +83,7 @@ func (fs *FS) Create(name string) (vfs.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return errorFile{f, fs}, nil
+	return errorFile{f, fs.inj}, nil
 }
 
 // Link implements FS.Link.
@@ -92,7 +103,7 @@ func (fs *FS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	ef := errorFile{f, fs}
+	ef := errorFile{f, fs.inj}
 	for _, opt := range opts {
 		opt.Apply(ef)
 	}
@@ -108,7 +119,7 @@ func (fs *FS) OpenDir(name string) (vfs.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return errorFile{f, fs}, nil
+	return errorFile{f, fs.inj}, nil
 }
 
 // PathBase implements FS.PathBase.
@@ -196,7 +207,7 @@ func (fs *FS) Stat(name string) (os.FileInfo, error) {
 
 type errorFile struct {
 	file vfs.File
-	fs   *FS
+	inj  Injector
 }
 
 func (f errorFile) Close() error {
@@ -206,35 +217,35 @@ func (f errorFile) Close() error {
 }
 
 func (f errorFile) Read(p []byte) (int, error) {
-	if err := f.fs.inj.MaybeError(); err != nil {
+	if err := f.inj.MaybeError(); err != nil {
 		return 0, err
 	}
 	return f.file.Read(p)
 }
 
 func (f errorFile) ReadAt(p []byte, off int64) (int, error) {
-	if err := f.fs.inj.MaybeError(); err != nil {
+	if err := f.inj.MaybeError(); err != nil {
 		return 0, err
 	}
 	return f.file.ReadAt(p, off)
 }
 
 func (f errorFile) Write(p []byte) (int, error) {
-	if err := f.fs.inj.MaybeError(); err != nil {
+	if err := f.inj.MaybeError(); err != nil {
 		return 0, err
 	}
 	return f.file.Write(p)
 }
 
 func (f errorFile) Stat() (os.FileInfo, error) {
-	if err := f.fs.inj.MaybeError(); err != nil {
+	if err := f.inj.MaybeError(); err != nil {
 		return nil, err
 	}
 	return f.file.Stat()
 }
 
 func (f errorFile) Sync() error {
-	if err := f.fs.inj.MaybeError(); err != nil {
+	if err := f.inj.MaybeError(); err != nil {
 		return err
 	}
 	return f.file.Sync()

@@ -16,10 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -173,6 +175,54 @@ func TestHamletReader(t *testing.T) {
 			fmt.Sprintf("sst=%s", prebuiltSST),
 			func(t *testing.T) { runTestReader(t, WriterOptions{}, "testdata/hamletreader", r) },
 		)
+	}
+}
+
+func TestInjectedErrors(t *testing.T) {
+	prebuiltSSTs := []string{
+		"testdata/h.ldb",
+		"testdata/h.sst",
+		"testdata/h.no-compression.sst",
+		"testdata/h.no-compression.two_level_index.sst",
+		"testdata/h.block-bloom.no-compression.sst",
+		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
+		"testdata/h.table-bloom.no-compression.sst",
+	}
+
+	for _, prebuiltSST := range prebuiltSSTs {
+		run := func(i int) (reterr error) {
+			f, err := os.Open(filepath.FromSlash(prebuiltSST))
+			require.NoError(t, err)
+			r, err := NewReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
+			if err != nil {
+				return firstError(err, f.Close())
+			}
+			defer func() { reterr = firstError(reterr, r.Close()) }()
+			iter, err := r.NewIter(nil, nil)
+			if err != nil {
+				return err
+			}
+			defer func() { reterr = firstError(reterr, iter.Close()) }()
+			for k, v := iter.First(); k != nil && v != nil; k, v = iter.Next() {
+			}
+			if err = iter.Error(); err != nil {
+				return err
+			}
+			return nil
+		}
+		for i := 0; ; i++ {
+			err := run(i)
+			if errors.Is(err, errorfs.ErrInjected) {
+				t.Logf("%q, index %d: %s", prebuiltSST, i, err)
+				continue
+			}
+			if err != nil {
+				t.Errorf("%q, index %d: non-injected error: %+v", prebuiltSST, i, err)
+				break
+			}
+			t.Logf("%q: no error at index %d", prebuiltSST, i)
+			break
+		}
 	}
 }
 
@@ -342,7 +392,8 @@ func TestBytesIteratedCompressed(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, SnappyCompression)
 				var bytesIterated, prevIterated uint64
-				citer := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated)
+				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
 					if bytesIterated < prevIterated {
@@ -371,7 +422,8 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, NoCompression)
 				var bytesIterated, prevIterated uint64
-				citer := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated)
+				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
 					if bytesIterated < prevIterated {
@@ -481,7 +533,8 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
@@ -501,7 +554,8 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
@@ -521,7 +575,8 @@ func BenchmarkTableIterNext(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				require.NoError(b, err)
 
 				b.ResetTimer()
 				var sum int64
@@ -549,7 +604,8 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		b.Run(fmt.Sprintf("restart=%d", restartInterval),
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
-				it := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				require.NoError(b, err)
 
 				b.ResetTimer()
 				var sum int64

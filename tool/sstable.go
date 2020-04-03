@@ -167,7 +167,11 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter := r.NewIter(nil, nil)
+		iter, err := r.NewIter(nil, nil)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
 		var lastKey base.InternalKey
 		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
 			if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
@@ -340,7 +344,11 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter := r.NewIter(nil, s.end)
+		iter, err := r.NewIter(nil, s.end)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
+			return
+		}
 		defer iter.Close()
 		key, value := iter.SeekGE(s.start)
 

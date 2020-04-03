@@ -54,7 +54,6 @@ type block []byte
 type Iterator interface {
 	base.InternalIterator
 
-	Init(r *Reader, lower, upper []byte) error
 	SetCloseHook(fn func(i Iterator) error)
 }
 
@@ -125,25 +124,29 @@ func checkTwoLevelIterator(obj interface{}) {
 	}
 }
 
-// Init initializes a singleLevelIterator for reading from the table. It is
+// init initializes a singleLevelIterator for reading from the table. It is
 // synonmous with Reader.NewIter, but allows for reusing of the iterator
 // between different Readers.
-func (i *singleLevelIterator) Init(r *Reader, lower, upper []byte) error {
+func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
+	if r.err != nil {
+		return r.err
+	}
+	indexH, err := r.readIndex()
+	if err != nil {
+		return err
+	}
+
 	i.lower = lower
 	i.upper = upper
 	i.reader = r
-	i.err = r.err
-
-	if i.err == nil {
-		var indexH cache.Handle
-		indexH, i.err = r.readIndex()
-		if i.err != nil {
-			return i.err
-		}
-		i.cmp = r.Compare
-		i.err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
+	i.cmp = r.Compare
+	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
+	if err != nil {
+		// blockIter.Close releases indexH and always returns a nil error
+		_ = i.index.Close()
+		return err
 	}
-	return i.err
+	return nil
 }
 
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
@@ -603,22 +606,26 @@ func (i *twoLevelIterator) loadIndex() bool {
 	return i.err == nil
 }
 
-func (i *twoLevelIterator) Init(r *Reader, lower, upper []byte) error {
+func (i *twoLevelIterator) init(r *Reader, lower, upper []byte) error {
+	if r.err != nil {
+		return r.err
+	}
+	topLevelIndexH, err := r.readIndex()
+	if err != nil {
+		return err
+	}
+
 	i.lower = lower
 	i.upper = upper
 	i.reader = r
-	i.err = r.err
-
-	if i.err == nil {
-		topLevelIndexH, err := r.readIndex()
-		if i.err != nil {
-			i.err = err
-			return i.err
-		}
-		i.cmp = r.Compare
-		i.err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
+	i.cmp = r.Compare
+	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
+	if err != nil {
+		// blockIter.Close releases topLevelIndexH and always returns a nil error
+		_ = i.topLevelIndex.Close()
+		return err
 	}
-	return i.err
+	return nil
 }
 
 func (i *twoLevelIterator) String() string {
@@ -1095,7 +1102,10 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		}
 	}
 
-	i := r.NewIter(nil /* lower */, nil /* upper */)
+	i, err := r.NewIter(nil /* lower */, nil /* upper */)
+	if err != nil {
+		return nil, err
+	}
 	ikey, value := i.SeekGE(key)
 
 	if ikey == nil || r.Compare(key, ikey.UserKey) != 0 {
@@ -1116,38 +1126,53 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	return newValue, nil
 }
 
-// NewIter returns an iterator for the contents of the table.
-func (r *Reader) NewIter(lower, upper []byte) Iterator {
+// NewIter returns an iterator for the contents of the table. If an error
+// occurs, NewIter cleans up after itself and returns a nil iterator.
+func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
-	var i Iterator
 	if r.Properties.IndexType == twoLevelIndex {
-		i = twoLevelIterPool.Get().(*twoLevelIterator)
-	} else {
-		i = singleLevelIterPool.Get().(*singleLevelIterator)
+		i := twoLevelIterPool.Get().(*twoLevelIterator)
+		err := i.init(r, lower, upper)
+		if err != nil {
+			return nil, err
+		}
+		return i, nil
 	}
-	_ = i.Init(r, lower, upper)
-	return i
+
+	i := singleLevelIterPool.Get().(*singleLevelIterator)
+	err := i.init(r, lower, upper)
+	if err != nil {
+		return nil, err
+	}
+	return i, nil
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
-// the number of bytes iterated.
-func (r *Reader) NewCompactionIter(bytesIterated *uint64) Iterator {
+// the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
+// after itself and returns a nil iterator.
+func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		_ = i.Init(r, nil /* lower */, nil /* upper */)
+		err := i.init(r, nil /* lower */, nil /* upper */)
+		if err != nil {
+			return nil, err
+		}
 		return &twoLevelCompactionIterator{
 			twoLevelIterator: i,
 			bytesIterated:    bytesIterated,
-		}
+		}, nil
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	_ = i.Init(r, nil /* lower */, nil /* upper */)
+	err := i.init(r, nil /* lower */, nil /* upper */)
+	if err != nil {
+		return nil, err
+	}
 	return &compactionIterator{
 		singleLevelIterator: i,
 		bytesIterated:       bytesIterated,
-	}
+	}, nil
 }
 
 // NewRangeDelIter returns an internal iterator for the contents of the
