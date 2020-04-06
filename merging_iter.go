@@ -248,7 +248,7 @@ func newMergingIter(logger Logger, cmp Compare, iters ...internalIterator) *merg
 }
 
 func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIterLevel) {
-	m.err = nil
+	m.err = nil // clear cached iteration error
 	m.logger = opts.getLogger()
 	if opts != nil {
 		m.lower = opts.LowerBound
@@ -795,6 +795,7 @@ func (m *mergingIter) String() string {
 // the upper bound. It is up to the caller to ensure that key is greater than
 // or equal to the lower bound.
 func (m *mergingIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	m.err = nil // clear cached iteration error
 	m.prefix = nil
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
@@ -804,6 +805,7 @@ func (m *mergingIter) SeekGE(key []byte) (*InternalKey, []byte) {
 // SeekPrefixGE only checks the upper bound. It is up to the caller to ensure
 // that key is greater than or equal to the lower bound.
 func (m *mergingIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	m.err = nil // clear cached iteration error
 	m.prefix = prefix
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
@@ -873,6 +875,7 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 // the lower bound. It is up to the caller to ensure that key is less than the
 // upper bound.
 func (m *mergingIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	m.err = nil // clear cached iteration error
 	m.prefix = nil
 	m.seekLT(key, 0 /* start level */)
 	return m.findPrevEntry()
@@ -882,6 +885,7 @@ func (m *mergingIter) SeekLT(key []byte) (*InternalKey, []byte) {
 // the upper bound. It is up to the caller to ensure that key is greater than
 // or equal to the lower bound (e.g. via a call to SeekGE(lower)).
 func (m *mergingIter) First() (*InternalKey, []byte) {
+	m.err = nil // clear cached iteration error
 	m.prefix = nil
 	m.heap.items = m.heap.items[:0]
 	for i := range m.levels {
@@ -896,6 +900,7 @@ func (m *mergingIter) First() (*InternalKey, []byte) {
 // lower bound. It is up to the caller to ensure that key is less than the
 // upper bound (e.g. via a call to SeekLT(upper))
 func (m *mergingIter) Last() (*InternalKey, []byte) {
+	m.err = nil // clear cached iteration error
 	m.prefix = nil
 	for i := range m.levels {
 		l := &m.levels[i]

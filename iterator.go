@@ -32,6 +32,13 @@ var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix i
 // underlying DB, if that DB permits modification. However, the resultant
 // key/value pairs are not guaranteed to be a consistent snapshot of that DB
 // at a particular point in time.
+//
+// If an iterator encounters an error during any operation, it is stored by
+// the Iterator and surfaced through the Error method. All absolute
+// positioning methods (eg, SeekLT, SeekGT, First, Last, etc) reset any
+// accumulated error before positioning. All relative positioning methods (eg,
+// Next, Prev) return without advancing if the iterator has an accumulated
+// error.
 type Iterator struct {
 	opts      IterOptions
 	cmp       Compare
@@ -274,10 +281,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 // than or equal to the given key. Returns true if the iterator is pointing at
 // a valid entry and false otherwise.
 func (i *Iterator) SeekGE(key []byte) bool {
-	if i.err != nil {
-		return false
-	}
-
+	i.err = nil // clear cached iteration error
 	i.prefix = nil
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
@@ -318,9 +322,7 @@ func (i *Iterator) SeekGE(key []byte) bool {
 //   Next()              -> "a@2"
 //   Next()              -> EOF
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
-	if i.err != nil {
-		return false
-	}
+	i.err = nil // clear cached iteration error
 
 	if i.split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
@@ -348,10 +350,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 // the given key. Returns true if the iterator is pointing at a valid entry and
 // false otherwise.
 func (i *Iterator) SeekLT(key []byte) bool {
-	if i.err != nil {
-		return false
-	}
-
+	i.err = nil // clear cached iteration error
 	i.prefix = nil
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) >= 0 {
 		key = upperBound
@@ -364,10 +363,7 @@ func (i *Iterator) SeekLT(key []byte) bool {
 // First moves the iterator the the first key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) First() bool {
-	if i.err != nil {
-		return false
-	}
-
+	i.err = nil // clear cached iteration error
 	i.prefix = nil
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
@@ -380,10 +376,7 @@ func (i *Iterator) First() bool {
 // Last moves the iterator the the last key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Last() bool {
-	if i.err != nil {
-		return false
-	}
-
+	i.err = nil // clear cached iteration error
 	i.prefix = nil
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
@@ -483,7 +476,11 @@ func (i *Iterator) Valid() bool {
 
 // Error returns any accumulated error.
 func (i *Iterator) Error() error {
-	return firstError(i.err, i.iter.Error())
+	err := i.err
+	if i.iter != nil {
+		err = firstError(i.err, i.iter.Error())
+	}
+	return err
 }
 
 // Close closes the iterator and returns any accumulated error. Exhausting
@@ -495,7 +492,9 @@ func (i *Iterator) Close() error {
 	// readState is released sstables referenced by the readState may be deleted
 	// which will fail on Windows if the sstables are still open by the child
 	// iterator.
-	i.err = firstError(i.err, i.iter.Close())
+	if i.iter != nil {
+		i.err = firstError(i.err, i.iter.Close())
+	}
 	err := i.err
 
 	if i.readState != nil {

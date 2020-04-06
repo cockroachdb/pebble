@@ -895,6 +895,7 @@ func (i *batchIter) String() string {
 }
 
 func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekGE(key)
 	if ikey == nil {
 		return nil, nil
@@ -903,10 +904,12 @@ func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *batchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	return i.SeekGE(key)
 }
 
 func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekLT(key)
 	if ikey == nil {
 		return nil, nil
@@ -915,6 +918,7 @@ func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *batchIter) First() (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	ikey := i.iter.First()
 	if ikey == nil {
 		return nil, nil
@@ -923,6 +927,7 @@ func (i *batchIter) First() (*InternalKey, []byte) {
 }
 
 func (i *batchIter) Last() (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	ikey := i.iter.Last()
 	if ikey == nil {
 		return nil, nil
@@ -1215,6 +1220,7 @@ func (i *flushableBatchIter) String() string {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
@@ -1239,6 +1245,7 @@ func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []b
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
 func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
@@ -1258,6 +1265,7 @@ func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 // First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *flushableBatchIter) First() (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	if len(i.offsets) == 0 {
 		return nil, nil
 	}
@@ -1273,6 +1281,7 @@ func (i *flushableBatchIter) First() (*InternalKey, []byte) {
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
 func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	if len(i.offsets) == 0 {
 		return nil, nil
 	}
@@ -1399,6 +1408,7 @@ func (i *flushFlushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *flushFlushableBatchIter) First() (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	key, val := i.flushableBatchIter.First()
 	if key == nil {
 		return nil, nil

@@ -198,6 +198,9 @@ func TestRequireReadError(t *testing.T) {
 		// Now perform foreground ops with error injection enabled.
 		inj.SetIndex(index)
 		iter := d.NewIter(nil)
+		if err := iter.Error(); err != nil {
+			return err
+		}
 		numFound := 0
 		expectedKeys := [][]byte{key1, key2}
 		for valid := iter.First(); valid; valid = iter.Next() {
@@ -280,6 +283,10 @@ func TestCorruptReadError(t *testing.T) {
 		// Now perform foreground ops with corruption injection enabled.
 		atomic.StoreInt32(&fs.index, index)
 		iter := d.NewIter(nil)
+		if err := iter.Error(); err != nil {
+			return err
+		}
+
 		numFound := 0
 		expectedKeys := [][]byte{key1, key2}
 		for valid := iter.First(); valid; valid = iter.Next() {
