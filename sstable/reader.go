@@ -231,9 +231,7 @@ func (i *singleLevelIterator) recordOffset() uint64 {
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
 func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		// The target key is greater than any key in the sstable. Invalidate the
@@ -258,9 +256,7 @@ func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	// Check prefix bloom filter.
 	if i.reader.tableFilter != nil {
@@ -298,9 +294,7 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
 func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		i.index.Last()
@@ -333,9 +327,7 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *singleLevelIterator) First() (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.index.First(); ikey == nil {
 		i.data.invalidate()
@@ -358,9 +350,7 @@ func (i *singleLevelIterator) First() (*InternalKey, []byte) {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *singleLevelIterator) Last() (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.index.Last(); ikey == nil {
 		i.data.invalidate()
@@ -534,6 +524,7 @@ func (i *compactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *compactionIterator) First() (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	return i.skipForward(i.singleLevelIterator.First())
 }
 
@@ -636,9 +627,7 @@ func (i *twoLevelIterator) String() string {
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		return nil, nil
@@ -658,9 +647,7 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		return nil, nil
@@ -680,9 +667,7 @@ func (i *twoLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byt
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
 func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
@@ -711,9 +696,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *twoLevelIterator) First() (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.First(); ikey == nil {
 		return nil, nil
@@ -734,9 +717,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
-	if i.err != nil {
-		return nil, nil
-	}
+	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
 		return nil, nil
@@ -863,6 +844,7 @@ func (i *twoLevelCompactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *twoLevelCompactionIterator) First() (*InternalKey, []byte) {
+	i.err = nil // clear cached iteration error
 	return i.skipForward(i.twoLevelIterator.First())
 }
 

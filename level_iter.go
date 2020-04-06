@@ -344,6 +344,8 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 }
 
 func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	l.err = nil // clear cached iteration error
+
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	if !l.loadFile(l.findFileGE(key), 1) {
@@ -356,6 +358,8 @@ func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 }
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+	l.err = nil // clear cached iteration error
+
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	if !l.loadFile(l.findFileGE(key), 1) {
@@ -381,6 +385,8 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 }
 
 func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	l.err = nil // clear cached iteration error
+
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
 	if !l.loadFile(l.findFileLT(key), -1) {
@@ -393,6 +399,8 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (l *levelIter) First() (*InternalKey, []byte) {
+	l.err = nil // clear cached iteration error
+
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
 	if !l.loadFile(0, 1) {
@@ -405,6 +413,8 @@ func (l *levelIter) First() (*InternalKey, []byte) {
 }
 
 func (l *levelIter) Last() (*InternalKey, []byte) {
+	l.err = nil // clear cached iteration error
+
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
 	if !l.loadFile(len(l.files)-1, -1) {
