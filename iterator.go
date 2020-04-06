@@ -488,8 +488,8 @@ func (i *Iterator) Error() error {
 
 // Close closes the iterator and returns any accumulated error. Exhausting
 // all the key/value pairs in a table is not considered to be an error.
-// It is valid to call Close multiple times. Other methods should not be
-// called after the iterator has been closed.
+// It is not valid to call any method, including Close, after the iterator
+// has been closed.
 func (i *Iterator) Close() error {
 	// Close the child iterator before releasing the readState because when the
 	// readState is released sstables referenced by the readState may be deleted
