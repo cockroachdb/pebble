@@ -69,6 +69,11 @@ import "fmt"
 // underlying DB, if that DB permits modification. However, the resultant
 // key/value pairs are not guaranteed to be a consistent snapshot of that DB
 // at a particular point in time.
+//
+// InternalIterators accumulate errors encountered during operation, exposing
+// them through the Error method. All of the absolute positioning methods
+// reset any accumulated error before positioning. Relative positioning
+// methods return without advancing if the iterator has accumulated an error.
 type InternalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key. Returns the key and value if the iterator
