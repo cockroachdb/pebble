@@ -62,6 +62,18 @@ type FileMetadata struct {
 	MarkedForCompaction bool
 	// True if the file is actively being compacted. Protected by DB.mu.
 	Compacting bool
+	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
+	// pick L0 compactions.
+	//
+	// IsIntraL0Compacting is set to True if this file is part of an intra-L0
+	// compaction. When it's true, Compacting must also be true. If Compacting
+	// is true and IsIntraL0Compacting is false for an L0 file, the file must
+	// be part of a compaction to Lbase.
+	IsIntraL0Compacting bool
+	subLevel            int
+	l0Index             int
+	minIntervalIndex    int
+	maxIntervalIndex    int
 }
 
 func (m FileMetadata) String() string {
