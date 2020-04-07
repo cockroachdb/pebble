@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
@@ -548,6 +549,69 @@ func TestIngest(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestIngestError(t *testing.T) {
+	for i := int32(0); ; i++ {
+		mem := vfs.NewMem()
+
+		f0, err := mem.Create("ext0")
+		require.NoError(t, err)
+		w := sstable.NewWriter(f0, sstable.WriterOptions{})
+		require.NoError(t, w.Set([]byte("d"), nil))
+		require.NoError(t, w.Close())
+		f1, err := mem.Create("ext1")
+		require.NoError(t, err)
+		w = sstable.NewWriter(f1, sstable.WriterOptions{})
+		require.NoError(t, w.Set([]byte("d"), nil))
+		require.NoError(t, w.Close())
+
+		inj := errorfs.OnIndex(-1)
+		d, err := Open("", &Options{
+			FS:     errorfs.Wrap(mem, inj),
+			Logger: panicLogger{},
+		})
+		require.NoError(t, err)
+		// Force the creation of an L0 sstable that overlaps with the tables
+		// we'll attempt to ingest. This ensures that we exercise filesystem
+		// codepaths when determining the ingest target level.
+		require.NoError(t, d.Set([]byte("a"), nil, nil))
+		require.NoError(t, d.Set([]byte("d"), nil, nil))
+		require.NoError(t, d.Flush())
+
+		t.Run(fmt.Sprintf("index-%d", i), func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					if e, ok := r.(error); ok && errors.Is(e, errorfs.ErrInjected) {
+						return
+					}
+					// d.opts.Logger.Fatalf won't propagate ErrInjected
+					// itself, but should contain the error message.
+					if strings.HasSuffix(fmt.Sprint(r), errorfs.ErrInjected.Error()) {
+						return
+					}
+					t.Fatal(r)
+				}
+			}()
+
+			inj.SetIndex(i)
+			err1 := d.Ingest([]string{"ext0"})
+			err2 := d.Ingest([]string{"ext1"})
+			err := firstError(err1, err2)
+			if err != nil && !errors.Is(err, errorfs.ErrInjected) {
+				t.Fatal(err)
+			}
+		})
+
+		// d.Close may error if we failed to flush the manifest.
+		_ = d.Close()
+
+		// If the injector's index is non-negative, the i-th filesystem
+		// operation was never executed.
+		if inj.Index() >= 0 {
+			break
+		}
+	}
 }
 
 func TestIngestCompact(t *testing.T) {

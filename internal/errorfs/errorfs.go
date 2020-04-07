@@ -37,7 +37,7 @@ func (ii *InjectIndex) SetIndex(v int32) { atomic.StoreInt32(&ii.index, v) }
 // MaybeError implements the Injector interface.
 func (ii *InjectIndex) MaybeError() error {
 	if atomic.AddInt32(&ii.index, -1) == -1 {
-		return ErrInjected
+		return errors.WithStack(ErrInjected)
 	}
 	return nil
 }
