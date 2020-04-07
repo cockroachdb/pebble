@@ -523,8 +523,10 @@ func (w *LogWriter) Close() error {
 	}
 
 	if w.c != nil {
-		if err := w.c.Close(); err != nil {
-			return err
+		cerr := w.c.Close()
+		w.c = nil
+		if cerr != nil {
+			return cerr
 		}
 	}
 	w.err = errors.New("pebble/record: closed LogWriter")
