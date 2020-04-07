@@ -893,7 +893,21 @@ func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		if err := d.flush1(); err != nil {
+
+		err := func() (ferr error) {
+			defer func() {
+				if r := recover(); r != nil {
+					if e, ok := r.(error); ok {
+						ferr = e
+					} else {
+						panic(r)
+					}
+				}
+			}()
+
+			return d.flush1()
+		}()
+		if err != nil {
 			// TODO(peter): count consecutive flush errors and backoff.
 			d.opts.EventListener.BackgroundError(err)
 		}

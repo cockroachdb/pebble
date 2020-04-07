@@ -86,6 +86,9 @@ func ingestLoad1(
 			meta.Smallest = key.Clone()
 			smallestSet = true
 		}
+		if err := iter.Error(); err != nil {
+			return nil, err
+		}
 		if key, _ := iter.Last(); key != nil {
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
@@ -114,6 +117,9 @@ func ingestLoad1(
 				base.InternalCompare(opts.Comparer.Compare, meta.Smallest, *key) > 0 {
 				meta.Smallest = key.Clone()
 			}
+		}
+		if err := iter.Error(); err != nil {
+			return nil, err
 		}
 		if key, val := iter.Last(); key != nil {
 			if err := ingestValidateKey(opts, key); err != nil {

@@ -6,11 +6,9 @@ package pebble
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
@@ -552,69 +551,52 @@ func TestIngest(t *testing.T) {
 	})
 }
 
-type injectStack struct {
-	mu      sync.Mutex
-	enabled bool
-	search  []byte
-}
-
-func (is *injectStack) enable(v bool) {
-	is.mu.Lock()
-	defer is.mu.Unlock()
-	is.enabled = v
-}
-
-func (is *injectStack) MaybeError() error {
-	is.mu.Lock()
-	defer is.mu.Unlock()
-	if is.enabled && bytes.Contains(debug.Stack(), is.search) {
-		return errorfs.ErrInjected
-	}
-	return nil
-}
-
 func TestIngestError(t *testing.T) {
-	mem := vfs.NewMem()
-	require.NoError(t, mem.MkdirAll("ext", 0755))
+	for i := int32(0); ; i++ {
+		mem := vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
 
-	// Set up an sstable to ingest.
-	f, err := mem.Create("ext/ext0")
-	require.NoError(t, err)
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
-	require.NoError(t, w.Add(base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), nil))
-	require.NoError(t, w.Add(base.MakeInternalKey([]byte("d"), 0, InternalKeyKindSet), nil))
-	require.NoError(t, w.Close())
+		f, err := mem.Create("ext/ext0")
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		require.NoError(t, w.Add(base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), nil))
+		require.NoError(t, w.Add(base.MakeInternalKey([]byte("d"), 0, InternalKeyKindSet), nil))
+		require.NoError(t, w.Close())
 
-	// inject a filesystem error within ingestTargetLevel.
-	inj := &injectStack{search: []byte("ingestTargetLevel"), enabled: true}
-	d, err := Open("", &Options{FS: errorfs.Wrap(mem, inj)})
-	require.NoError(t, err)
-	require.NoError(t, d.Set([]byte("a"), nil, nil))
-	require.NoError(t, d.Set([]byte("d"), nil, nil))
-	require.NoError(t, d.Flush())
+		inj := errorfs.OnIndex(-1)
+		d, err := Open("", &Options{
+			FS:     errorfs.Wrap(mem, inj),
+			Logger: panicLogger{},
+		})
+		require.NoError(t, err)
+		require.NoError(t, d.Set([]byte("a"), nil, nil))
+		require.NoError(t, d.Set([]byte("d"), nil, nil))
+		require.NoError(t, d.Flush())
 
-	// Ingest should fail, surfacing the injected error.
-	err = d.Ingest([]string{"ext/ext0"})
-	if !errors.Is(err, errorfs.ErrInjected) {
-		t.Fatalf("d.Ingest(..) = %v, want %v", err, errorfs.ErrInjected)
-	}
+		t.Run(fmt.Sprintf("index-%d", i), func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					if e, ok := r.(error); !ok || !errors.Is(e, errorfs.ErrInjected) {
+						t.Fatal(r)
+					}
+				}
+			}()
 
-	// Injest should succeed once injection is disabled.
-	inj.enable(false)
-	err = d.Ingest([]string{"ext/ext0"})
-	require.NoError(t, err)
+			inj.SetIndex(i)
+			ierr := d.Ingest([]string{"ext/ext0"})
+			ferr := d.Flush()
+			err := firstError(ierr, ferr)
+			if err != nil && !errors.Is(err, errorfs.ErrInjected) {
+				t.Fatal(err)
+			}
+		})
+		require.NoError(t, d.Close())
 
-	iter := d.NewIter(nil)
-	require.NoError(t, err)
-	var keys []string
-	for iter.First(); iter.Valid(); iter.Next() {
-		keys = append(keys, string(iter.Key()))
-	}
-	require.NoError(t, iter.Close())
-	require.NoError(t, d.Close())
-	if diff := pretty.Diff(keys, []string{"a", "c", "d"}); diff != nil {
-		t.Logf("keys = %#v\n", keys)
-		t.Error(diff)
+		// If the injector's index is non-negative, the i-th filesystem
+		// operation was never executed.
+		if inj.Index() >= 0 {
+			break
+		}
 	}
 }
 
