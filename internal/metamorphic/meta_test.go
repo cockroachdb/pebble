@@ -43,6 +43,8 @@ var (
 		"whether to use an in-mem DB or on-disk (in-mem is significantly faster)")
 	failRE = flag.String("fail", "",
 		"fail the test if the supplied regular expression matches the output")
+	traceFile = flag.String("trace-file", "",
+		"write an execution trace to `<run-dir>/file`")
 	keep = flag.Bool("keep", false,
 		"keep the DB directory even on successful runs")
 	ops    = randvar.NewFlag("uniform:5000-10000")
@@ -176,11 +178,17 @@ func TestMeta(t *testing.T) {
 		optionsStr := optionsToString(opts)
 		require.NoError(t, ioutil.WriteFile(optionsPath, []byte(optionsStr), 0644))
 
-		cmd := exec.Command(os.Args[0],
-			"-disk="+fmt.Sprint(*disk),
-			"-keep="+fmt.Sprint(*keep),
-			"-run-dir="+runDir,
-			"-test.run="+rootName+"$")
+		args := []string{
+			"-disk=" + fmt.Sprint(*disk),
+			"-keep=" + fmt.Sprint(*keep),
+			"-run-dir=" + runDir,
+			"-test.run=" + rootName + "$",
+		}
+		if *traceFile != "" {
+			args = append(args, "-test.trace="+filepath.Join(runDir, *traceFile))
+		}
+
+		cmd := exec.Command(os.Args[0], args...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf(`
