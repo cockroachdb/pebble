@@ -1,0 +1,176 @@
+define
+L0
+  0001:a.SET.2-b.SET.3
+  0002:c.SET.3-d.SET.5
+  0003:e.SET.5-f.SET.7
+  0005:f.SET.6-h.SET.9
+  0006:f.SET.4-g.SET.5
+  0009:f.SET.10-i.SET.10
+  0010:f.SET.11-g.SET.11
+L6
+  0007:a.SET.0-f.SET.0
+  0008:g.SET.0-z.SET.0
+----
+file count: 7, sublevels: 4, intervals: 14, flush keys: 5
+split:b,d,f,g,h,
+0.3: file count: 1, bytes: 256, width (mean, max): 5, 5, interval range: [5, 9]
+0.2: file count: 1, bytes: 256, width (mean, max): 7, 7, interval range: [6, 12]
+0.1: file count: 1, bytes: 256, width (mean, max): 4, 4, interval range: [8, 11]
+0.0: file count: 4, bytes: 1024, width (mean, max): 1, 3, interval range: [0, 10]
+compacting file count: 0, base compacting intervals: 
+Sublevel 0: 000001:a#2,1-b#3,1, 000002:c#3,1-d#5,1, 000003:e#5,1-f#7,1, 000006:f#4,1-g#5,1
+Sublevel 1: 000005:f#6,1-h#9,1
+Sublevel 2: 000009:f#10,1-i#10,1
+Sublevel 3: 000010:f#11,1-g#11,1
+
+max-depth-after-ongoing-compactions
+----
+4
+
+# Extend one of the SSTables (0009) to the right, and place an SSTable "under"
+# the extension (0011).
+
+define
+L0
+  0005:f.SET.6-h.SET.9
+  0006:f.SET.4-g.SET.5
+  0009:f.SET.10-p.SET.10
+  0010:f.SET.11-g.SET.11
+  0011:n.SET.8-p.SET.10
+L6
+  0007:a.SET.0-f.SET.0
+  0008:g.SET.0-z.SET.0
+----
+file count: 5, sublevels: 4, intervals: 9, flush keys: 4
+split:f,g,h,p,
+0.3: file count: 1, bytes: 256, width (mean, max): 4, 4, interval range: [0, 3]
+0.2: file count: 1, bytes: 256, width (mean, max): 7, 7, interval range: [1, 7]
+0.1: file count: 1, bytes: 256, width (mean, max): 4, 4, interval range: [2, 5]
+0.0: file count: 2, bytes: 512, width (mean, max): 1, 2, interval range: [3, 7]
+compacting file count: 0, base compacting intervals: 
+Sublevel 0: 000006:f#4,1-g#5,1, 000011:n#8,1-p#10,1
+Sublevel 1: 000005:f#6,1-h#9,1
+Sublevel 2: 000009:f#10,1-p#10,1
+Sublevel 3: 000010:f#11,1-g#11,1
+
+# Assume a base compaction from the above files is chosen. This should reduce
+# max-depth-after-ongoing-compactions.
+
+define
+L0
+  0005:f.SET.6-h.SET.9 base_compacting
+  0006:f.SET.4-g.SET.5 base_compacting
+  0009:f.SET.12-p.SET.12
+  0010:f.SET.11-g.SET.11 base_compacting
+  0011:n.SET.8-p.SET.10 base_compacting
+L6
+  0007:a.SET.0-f.SET.0
+  0008:g.SET.0-z.SET.0
+----
+file count: 5, sublevels: 4, intervals: 10, flush keys: 4
+split:f,g,h,p,
+0.3: file count: 1, bytes: 256, width (mean, max): 8, 8, interval range: [0, 7]
+0.2: file count: 1, bytes: 256, width (mean, max): 3, 3, interval range: [1, 3]
+0.1: file count: 1, bytes: 256, width (mean, max): 4, 4, interval range: [2, 5]
+0.0: file count: 2, bytes: 512, width (mean, max): 2, 2, interval range: [3, 8]
+compacting file count: 4, base compacting intervals: [1, 5], [7, 9], 
+Sublevel 0: 000006:f#4,1-g#5,1, 000011:n#8,1-p#10,1
+Sublevel 1: 000005:f#6,1-h#9,1
+Sublevel 2: 000010:f#11,1-g#11,1
+Sublevel 3: 000009:f#12,1-p#12,1
+
+max-depth-after-ongoing-compactions
+----
+1
+
+read-amp
+----
+4
+
+define flush_split_max_bytes=32
+L0
+  0001:a.SET.2-e.SET.5 size=64
+  0002:c.SET.6-g.SET.8 size=16
+  0003:f.SET.9-j.SET.11 size=16
+L6
+  0007:a.SET.0-f.SET.0
+  0008:g.SET.0-z.SET.0
+----
+file count: 3, sublevels: 3, intervals: 6, flush keys: 1
+split:e,
+0.2: file count: 1, bytes: 16, width (mean, max): 2, 2, interval range: [3, 4]
+0.1: file count: 1, bytes: 16, width (mean, max): 3, 3, interval range: [1, 3]
+0.0: file count: 1, bytes: 64, width (mean, max): 2, 2, interval range: [0, 1]
+compacting file count: 0, base compacting intervals: 
+Sublevel 0: 000001:a#2,1-e#5,1
+Sublevel 1: 000002:c#6,1-g#8,1
+Sublevel 2: 000003:f#9,1-j#11,1
+
+# Check that read amplification is the sublevel height of the tallest key
+# interval, not the overall count of sublevels.
+
+read-amp
+----
+2
+
+# The comparison of a cumulative count of interpolated bytes and
+# flushSplitMaxBytes is a <, so even though the cumulative count equals 32 after
+# a-c, we do not emit a flush split key until the end of the next interval, c-e.
+
+flush-split-keys
+----
+flush user split keys: e
+
+# Reduce flush_split_max_bytes by 1, and there should also be a split key at c.
+
+define flush_split_max_bytes=31
+L0
+  0001:a.SET.2-e.SET.5 size=64
+  0002:c.SET.6-g.SET.8 size=16
+  0003:f.SET.9-j.SET.11 size=16
+L6
+  0007:a.SET.0-f.SET.0
+  0008:g.SET.0-z.SET.0
+----
+file count: 3, sublevels: 3, intervals: 6, flush keys: 2
+split:c,e,
+0.2: file count: 1, bytes: 16, width (mean, max): 2, 2, interval range: [3, 4]
+0.1: file count: 1, bytes: 16, width (mean, max): 3, 3, interval range: [1, 3]
+0.0: file count: 1, bytes: 64, width (mean, max): 2, 2, interval range: [0, 1]
+compacting file count: 0, base compacting intervals: 
+Sublevel 0: 000001:a#2,1-e#5,1
+Sublevel 1: 000002:c#6,1-g#8,1
+Sublevel 2: 000003:f#9,1-j#11,1
+
+flush-split-keys
+----
+flush user split keys: c, e
+
+# Reduce flush_split_max_bytes by 1, and there should also be a split key at c.
+
+define flush_split_max_bytes=31
+L0
+  0001:a.SET.2-e.SET.5 size=64
+  0002:c.SET.6-g.SET.8 size=16
+  0003:f.SET.9-j.SET.11 size=16
+L6
+  0007:a.SET.0-f.SET.0
+  0008:g.SET.0-z.SET.0
+----
+file count: 3, sublevels: 3, intervals: 6, flush keys: 2
+split:c,e,
+0.2: file count: 1, bytes: 16, width (mean, max): 2, 2, interval range: [3, 4]
+0.1: file count: 1, bytes: 16, width (mean, max): 3, 3, interval range: [1, 3]
+0.0: file count: 1, bytes: 64, width (mean, max): 2, 2, interval range: [0, 1]
+compacting file count: 0, base compacting intervals: 
+Sublevel 0: 000001:a#2,1-e#5,1
+Sublevel 1: 000002:c#6,1-g#8,1
+Sublevel 2: 000003:f#9,1-j#11,1
+
+flush-split-keys
+----
+flush user split keys: c, e
+
+max-depth-after-ongoing-compactions
+----
+2
