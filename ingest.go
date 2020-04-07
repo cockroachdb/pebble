@@ -624,6 +624,8 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	// determine the target level. This prevents two concurrent ingestion jobs
 	// from using the same version to determine the target level, and also
 	// provides serialization with concurrent compaction and flush jobs.
+	// logAndApply unconditionally releases the manifest lock, but any earlier
+	// returns must unlock the manifest.
 	d.mu.versions.logLock()
 	current := d.mu.versions.currentVersion()
 	baseLevel := d.mu.versions.picker.getBaseLevel()
@@ -636,6 +638,7 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 		var err error
 		f.Level, err = ingestTargetLevel(d.newIters, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
 		if err != nil {
+			d.mu.versions.logUnlock()
 			return nil, err
 		}
 		f.Meta = m
