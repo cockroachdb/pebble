@@ -1515,6 +1515,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
+		defer startIdxBlock.Release()
 		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get())
 		if err != nil {
 			return 0, err
@@ -1534,6 +1535,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if err != nil {
 				return 0, err
 			}
+			defer endIdxBlock.Release()
 			endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get())
 			if err != nil {
 				return 0, err
