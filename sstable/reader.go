@@ -1494,6 +1494,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
+		defer iter.Close()
 		startIdxIter = iter
 		endIdxIter = iter
 	} else {
@@ -1501,6 +1502,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
+		defer topIter.Close()
 
 		key, val := topIter.SeekGE(start)
 		if key == nil {
@@ -1515,10 +1517,12 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
+		defer startIdxBlock.Release()
 		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get())
 		if err != nil {
 			return 0, err
 		}
+		defer startIdxIter.Close()
 
 		key, val = topIter.SeekGE(end)
 		if key == nil {
@@ -1534,10 +1538,12 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if err != nil {
 				return 0, err
 			}
+			defer endIdxBlock.Release()
 			endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get())
 			if err != nil {
 				return 0, err
 			}
+			defer endIdxIter.Close()
 		}
 	}
 	// startIdxIter should not be nil at this point, while endIdxIter can be if the
