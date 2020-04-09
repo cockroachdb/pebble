@@ -198,6 +198,12 @@ func TestInjectedErrors(t *testing.T) {
 				return firstError(err, f.Close())
 			}
 			defer func() { reterr = firstError(reterr, r.Close()) }()
+
+			_, err = r.EstimateDiskUsage([]byte("borrower"), []byte("lender"))
+			if err != nil {
+				return err
+			}
+
 			iter, err := r.NewIter(nil, nil)
 			if err != nil {
 				return err
