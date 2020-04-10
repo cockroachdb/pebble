@@ -18,17 +18,10 @@ package vfs
 
 import (
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 func preallocExtend(fd uintptr, offset, length int64) error {
-	err := syscall.Fallocate(int(fd), 0 /* mode */, offset, length)
-	if err != nil {
-		errno, ok := err.(syscall.Errno)
-		// not supported; fallback
-		// fallocate EINTRs frequently in some environments; fallback
-		if ok && (errno == syscall.ENOTSUP || errno == syscall.EINTR) {
-			return syscall.Ftruncate(int(fd), offset+length)
-		}
-	}
-	return err
+	return syscall.Fallocate(int(fd), unix.FALLOC_FL_KEEP_SIZE, offset, length)
 }
