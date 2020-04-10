@@ -273,6 +273,9 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		}
 		n, err := io.ReadFull(r.r, r.buf[:])
 		if err != nil && err != io.ErrUnexpectedEOF {
+			if err == io.EOF && !wantFirst {
+				return io.ErrUnexpectedEOF
+			}
 			return err
 		}
 		r.begin, r.end, r.n = 0, 0, n

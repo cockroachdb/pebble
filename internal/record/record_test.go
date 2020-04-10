@@ -732,7 +732,7 @@ func TestSeekRecord(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Seek past the end of a file didn't cause an error")
 	}
-	if err != io.EOF {
+	if err != io.ErrUnexpectedEOF {
 		t.Fatalf("Seeking past EOF raised unexpected error: %v", err)
 	}
 	r.recover() // Verify recovery works.
@@ -930,6 +930,21 @@ func TestRecycleLog(t *testing.T) {
 			t.Fatalf("%d: expected EOF, but found %v", i, err)
 		}
 	}
+}
+
+func TestTruncatedLog(t *testing.T) {
+	backing := make([]byte, 2*blockSize)
+	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(1))
+	// Write a record that spans 2 blocks.
+	_, err := w.WriteRecord(bytes.Repeat([]byte("s"), blockSize+100))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	// Create a reader only for the first block.
+	r := NewReader(bytes.NewReader(backing[:blockSize]), base.FileNum(1))
+	rr, err := r.Next()
+	require.NoError(t, err)
+	_, err = ioutil.ReadAll(rr)
+	require.EqualValues(t, err, io.ErrUnexpectedEOF)
 }
 
 func TestRecycleLogWithPartialBlock(t *testing.T) {
