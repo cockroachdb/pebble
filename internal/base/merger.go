@@ -28,10 +28,16 @@ type Merge func(key, value []byte) (ValueMerger, error)
 type ValueMerger interface {
 	// MergeNewer adds an operand that is newer than all existing operands.
 	// The caller retains ownership of value.
+	//
+	// If an error is returned the merge is aborted and no other methods will
+	// be called.
 	MergeNewer(value []byte) error
 
 	// MergeOlder adds an operand that is older than all existing operands.
 	// The caller retains ownership of value.
+	//
+	// If an error is returned the merge is aborted and no other methods will
+	// be called.
 	MergeOlder(value []byte) error
 
 	// Finish does any final processing of the added operands and returns a
