@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"io"
 	"sort"
 	"sync/atomic"
 
@@ -148,19 +149,31 @@ func (m *simpleMergingIter) step() bool {
 		}
 		// Ongoing series of MERGE records ends with a MERGE record.
 		if keyChanged && m.valueMerger != nil {
-			_, m.err = m.valueMerger.Finish()
+			var closer io.Closer
+			_, closer, m.err = m.valueMerger.Finish()
+			if m.err == nil && closer != nil {
+				m.err = closer.Close()
+			}
 			m.valueMerger = nil
 		}
 		if m.valueMerger != nil {
 			// Ongoing series of MERGE records.
 			switch item.key.Kind() {
 			case InternalKeyKindSingleDelete, InternalKeyKindDelete:
-				_, m.err = m.valueMerger.Finish()
+				var closer io.Closer
+				_, closer, m.err = m.valueMerger.Finish()
+				if m.err == nil && closer != nil {
+					m.err = closer.Close()
+				}
 				m.valueMerger = nil
 			case InternalKeyKindSet:
 				m.err = m.valueMerger.MergeOlder(item.value)
 				if m.err == nil {
-					_, m.err = m.valueMerger.Finish()
+					var closer io.Closer
+					_, closer, m.err = m.valueMerger.Finish()
+					if m.err == nil && closer != nil {
+						m.err = closer.Close()
+					}
 				}
 				m.valueMerger = nil
 			case InternalKeyKindMerge:
@@ -237,7 +250,11 @@ func (m *simpleMergingIter) step() bool {
 	if m.heap.len() == 0 {
 		// Last record was a MERGE record.
 		if m.valueMerger != nil {
-			_, m.err = m.valueMerger.Finish()
+			var closer io.Closer
+			_, closer, m.err = m.valueMerger.Finish()
+			if m.err == nil && closer != nil {
+				m.err = closer.Close()
+			}
 			if m.err != nil {
 				m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
 					item.key.Pretty(m.format), lastRecordMsg)

@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,7 +45,8 @@ func TestCheckLevelsBasics(t *testing.T) {
 }
 
 type failMerger struct {
-	lastBuf []byte
+	lastBuf    []byte
+	closeCount int
 }
 
 func (f *failMerger) MergeNewer(value []byte) error {
@@ -53,17 +55,26 @@ func (f *failMerger) MergeNewer(value []byte) error {
 
 func (f *failMerger) MergeOlder(value []byte) error {
 	if string(value) == "fail-merge" {
+		f.lastBuf = nil
 		return errors.New("merge failed")
 	}
 	f.lastBuf = append(f.lastBuf[:0], value...)
 	return nil
 }
 
-func (f *failMerger) Finish() ([]byte, error) {
+func (f *failMerger) Finish() ([]byte, io.Closer, error) {
 	if string(f.lastBuf) == "fail-finish" {
-		return nil, errors.New("finish failed")
+		f.lastBuf = nil
+		return nil, nil, errors.New("finish failed")
 	}
-	return nil, nil
+	f.closeCount++
+	return nil, f, nil
+}
+
+func (f *failMerger) Close() error {
+	f.closeCount--
+	f.lastBuf = nil
+	return nil
 }
 
 func TestCheckLevelsCornerCases(t *testing.T) {
@@ -94,11 +105,13 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			return iter, rangeDelIter, nil
 		}
 
+	fm := &failMerger{}
+	defer require.Equal(t, 0, fm.closeCount)
+
 	failMerger := &Merger{
 		Merge: func(key, value []byte) (ValueMerger, error) {
-			res := &failMerger{}
-			res.lastBuf = append(res.lastBuf[:0], value...)
-			return res, nil
+			fm.lastBuf = append(fm.lastBuf[:0], value...)
+			return fm, nil
 		},
 
 		Name: "fail-merger",

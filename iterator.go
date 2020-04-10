@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"io"
 
 	"github.com/cockroachdb/errors"
 )
@@ -40,29 +41,36 @@ var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix i
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
-	opts      IterOptions
-	cmp       Compare
-	equal     Equal
-	merge     Merge
-	split     Split
-	iter      internalIterator
-	readState *readState
-	err       error
-	key       []byte
-	keyBuf    []byte
-	value     []byte
-	valueBuf  []byte
-	valid     bool
-	iterKey   *InternalKey
-	iterValue []byte
-	pos       iterPos
-	alloc     *iterAlloc
-	prefix    []byte
+	opts        IterOptions
+	cmp         Compare
+	equal       Equal
+	merge       Merge
+	split       Split
+	iter        internalIterator
+	readState   *readState
+	err         error
+	key         []byte
+	keyBuf      []byte
+	value       []byte
+	valueBuf    []byte
+	valueCloser io.Closer
+	valid       bool
+	iterKey     *InternalKey
+	iterValue   []byte
+	pos         iterPos
+	alloc       *iterAlloc
+	prefix      []byte
 }
 
 func (i *Iterator) findNextEntry() bool {
 	i.valid = false
 	i.pos = iterPosCur
+
+	// close closer for current value if available
+	if i.valueCloser != nil {
+		_ = i.valueCloser.Close()
+		i.valueCloser = nil
+	}
 
 	for i.iterKey != nil {
 		key := *i.iterKey
@@ -92,7 +100,7 @@ func (i *Iterator) findNextEntry() bool {
 				i.mergeNext(key, valueMerger)
 			}
 			if i.err == nil {
-				i.value, i.err = valueMerger.Finish()
+				i.value, i.valueCloser, i.err = valueMerger.Finish()
 			}
 			return i.err == nil
 
@@ -130,6 +138,12 @@ func (i *Iterator) findPrevEntry() bool {
 	i.valid = false
 	i.pos = iterPosCur
 
+	// close closer for current value if available
+	if i.valueCloser != nil {
+		_ = i.valueCloser.Close()
+		i.valueCloser = nil
+	}
+
 	var valueMerger ValueMerger
 	for i.iterKey != nil {
 		key := *i.iterKey
@@ -139,7 +153,7 @@ func (i *Iterator) findPrevEntry() bool {
 				// We've iterated to the previous user key.
 				i.pos = iterPosPrev
 				if valueMerger != nil {
-					i.value, i.err = valueMerger.Finish()
+					i.value, i.valueCloser, i.err = valueMerger.Finish()
 				}
 				return i.err == nil
 			}
@@ -202,7 +216,7 @@ func (i *Iterator) findPrevEntry() bool {
 	if i.valid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
-			i.value, i.err = valueMerger.Finish()
+			i.value, i.valueCloser, i.err = valueMerger.Finish()
 		}
 		return i.err == nil
 	}
@@ -500,6 +514,12 @@ func (i *Iterator) Close() error {
 	if i.readState != nil {
 		i.readState.unref()
 		i.readState = nil
+	}
+
+	// close leftover closer if available
+	if i.valueCloser != nil {
+		_ = i.valueCloser.Close()
+		i.valueCloser = nil
 	}
 
 	if alloc := i.alloc; alloc != nil {

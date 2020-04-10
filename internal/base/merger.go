@@ -4,6 +4,8 @@
 
 package base
 
+import "io"
+
 // Merge creates a ValueMerger for the specified key initialized with the value
 // of one merge operand.
 type Merge func(key, value []byte) (ValueMerger, error)
@@ -37,7 +39,9 @@ type ValueMerger interface {
 	//
 	// Finish must be the last function called on the ValueMerger. The caller
 	// must not call any other ValueMerger functions after calling Finish.
-	Finish() ([]byte, error)
+	//
+	// The returned closer is called once the returned slice is not used further.
+	Finish() ([]byte, io.Closer, error)
 }
 
 // Merger defines an associative merge operation. The merge operation merges
@@ -80,8 +84,8 @@ func (a *AppendValueMerger) MergeOlder(value []byte) error {
 }
 
 // Finish returns the buffer that was constructed on-demand in `Merge{OlderNewer}()` calls.
-func (a *AppendValueMerger) Finish() ([]byte, error) {
-	return a.buf, nil
+func (a *AppendValueMerger) Finish() ([]byte, io.Closer, error) {
+	return a.buf, nil, nil
 }
 
 // DefaultMerger is the default implementation of the Merger interface. It

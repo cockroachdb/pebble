@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -512,6 +513,60 @@ func TestMergeOrderSameAfterFlush(t *testing.T) {
 	verify("01")
 
 	require.NoError(t, d.Close())
+}
+
+type closableMerger struct {
+	lastBuf []byte
+	closed  bool
+}
+
+func (m *closableMerger) MergeNewer(value []byte) error {
+	m.lastBuf = append(m.lastBuf[:0], value...)
+	return nil
+}
+
+func (m *closableMerger) MergeOlder(value []byte) error {
+	m.lastBuf = append(m.lastBuf[:0], value...)
+	return nil
+}
+
+func (m *closableMerger) Finish() ([]byte, io.Closer, error) {
+	return m.lastBuf, m, nil
+}
+
+func (m *closableMerger) Close() error {
+	m.closed = true
+	return nil
+}
+
+func TestMergerClosing(t *testing.T) {
+	m := &closableMerger{}
+
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+		Merger: &Merger{
+			Merge: func(key, value []byte) (base.ValueMerger, error) {
+				return m, m.MergeNewer(value)
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	err = d.Merge([]byte("a"), []byte("b"), nil)
+	require.NoError(t, err)
+	require.False(t, m.closed)
+
+	val, closer, err := d.Get([]byte("a"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("b"), val)
+	require.NotNil(t, closer)
+	require.False(t, m.closed)
+	_ = closer.Close()
+	require.True(t, m.closed)
 }
 
 func TestLogData(t *testing.T) {
