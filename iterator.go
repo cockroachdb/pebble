@@ -66,10 +66,13 @@ func (i *Iterator) findNextEntry() bool {
 	i.valid = false
 	i.pos = iterPosCur
 
-	// close closer for current value if available
+	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
-		_ = i.valueCloser.Close()
+		i.err = i.valueCloser.Close()
 		i.valueCloser = nil
+		if i.err != nil {
+			return false
+		}
 	}
 
 	for i.iterKey != nil {
@@ -138,10 +141,13 @@ func (i *Iterator) findPrevEntry() bool {
 	i.valid = false
 	i.pos = iterPosCur
 
-	// close closer for current value if available
+	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
-		_ = i.valueCloser.Close()
+		i.err = i.valueCloser.Close()
 		i.valueCloser = nil
+		if i.err != nil {
+			return false
+		}
 	}
 
 	var valueMerger ValueMerger
@@ -516,10 +522,13 @@ func (i *Iterator) Close() error {
 		i.readState = nil
 	}
 
-	// close leftover closer if available
+	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
-		_ = i.valueCloser.Close()
+		closerErr := i.valueCloser.Close()
 		i.valueCloser = nil
+		if err == nil {
+			err = closerErr
+		}
 	}
 
 	if alloc := i.alloc; alloc != nil {

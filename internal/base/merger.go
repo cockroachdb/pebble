@@ -29,14 +29,14 @@ type ValueMerger interface {
 	// MergeNewer adds an operand that is newer than all existing operands.
 	// The caller retains ownership of value.
 	//
-	// If an error is returned the merge is aborted and no other methods will
+	// If an error is returned the merge is aborted and no other methods must
 	// be called.
 	MergeNewer(value []byte) error
 
 	// MergeOlder adds an operand that is older than all existing operands.
 	// The caller retains ownership of value.
 	//
-	// If an error is returned the merge is aborted and no other methods will
+	// If an error is returned the merge is aborted and no other methods must
 	// be called.
 	MergeOlder(value []byte) error
 
@@ -46,7 +46,8 @@ type ValueMerger interface {
 	// Finish must be the last function called on the ValueMerger. The caller
 	// must not call any other ValueMerger functions after calling Finish.
 	//
-	// The returned closer is called once the returned slice is not used further.
+	// If a Closer is returned, the returned slice will remain valid until it is
+	// closed and the caller MUST call closer.Close() or a memory leak will occur.
 	Finish() ([]byte, io.Closer, error)
 }
 

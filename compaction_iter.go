@@ -221,7 +221,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	// close closer for current value if available
+	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
 		i.err = i.valueCloser.Close()
 		i.valueCloser = nil
@@ -567,7 +567,7 @@ func (i *compactionIter) Close() error {
 		i.err = err
 	}
 
-	// close leftover closer
+	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
 		closerErr := i.valueCloser.Close()
 		if i.err == nil {
