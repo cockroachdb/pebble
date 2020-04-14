@@ -86,6 +86,23 @@ func (c *tableCache) estimateDiskUsage(meta *fileMetadata, start, end []byte) (u
 	return c.getShard(meta.FileNum).estimateDiskUsage(meta, start, end)
 }
 
+func (c *tableCache) loadMetadataStats(f *fileMetadata, stats *fileStats) error {
+	s := c.getShard(f.FileNum)
+	n := s.findNode(f)
+	defer s.unrefNode(n)
+	<-n.loaded
+	if n.err != nil {
+		return n.err
+	}
+	*stats = fileStats{
+		Entries:       n.reader.Properties.NumEntries,
+		Deletions:     n.reader.Properties.NumDeletions,
+		RawKeyBytes:   n.reader.Properties.RawKeySize,
+		RawValueBytes: n.reader.Properties.RawValueSize,
+	}
+	return nil
+}
+
 func (c *tableCache) iterCount() int64 {
 	var n int64
 	for i := range c.shards {

@@ -74,9 +74,9 @@ compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         2   512 K
    ztbl         2   1.5 K
- bcache         8   1.4 K   33.3%  (score == hit-rate)
- tcache         2   1.3 K   50.0%  (score == hit-rate)
- titers         2
+ bcache        10   2.0 K   23.1%  (score == hit-rate)
+ tcache         3   2.0 K   62.5%  (score == hit-rate)
+ titers         3
  filter         -       -    0.0%  (score == utility)
 
 # Closing iter a will release one of the zombie memtables.
@@ -101,9 +101,9 @@ compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         2   1.5 K
- bcache         8   1.4 K   33.3%  (score == hit-rate)
- tcache         2   1.3 K   50.0%  (score == hit-rate)
- titers         2
+ bcache        10   2.0 K   23.1%  (score == hit-rate)
+ tcache         3   2.0 K   62.5%  (score == hit-rate)
+ titers         3
  filter         -       -    0.0%  (score == utility)
 
 # Closing iter c will release one of the zombie sstables. The other
@@ -129,8 +129,8 @@ compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         1   771 B
- bcache         4   698 B   33.3%  (score == hit-rate)
- tcache         1   672 B   50.0%  (score == hit-rate)
+ bcache         6   1.3 K   23.1%  (score == hit-rate)
+ tcache         2   1.3 K   62.5%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 
@@ -156,7 +156,7 @@ compact         1     0 B          (size == estimated-debt)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
- bcache         0     0 B   33.3%  (score == hit-rate)
- tcache         0     0 B   50.0%  (score == hit-rate)
+ bcache         2   655 B   23.1%  (score == hit-rate)
+ tcache         1   672 B   62.5%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)

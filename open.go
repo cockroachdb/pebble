@@ -169,7 +169,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if _, err := opts.FS.Stat(currentName); os.IsNotExist(err) &&
 		!d.opts.ReadOnly && !d.opts.ErrorIfNotExists {
 		// Create the DB if it did not already exist.
-		if err := d.mu.versions.create(jobID, dirname, d.dataDir, opts, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.create(jobID, dirname, d.dataDir, opts, &d.mu.Mutex, d.tableCache.loadMetadataStats); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
@@ -178,7 +178,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		return nil, errors.Errorf("pebble: database %q already exists", dirname)
 	} else {
 		// Load the version set.
-		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex, d.tableCache.loadMetadataStats); err != nil {
 			return nil, err
 		}
 	}

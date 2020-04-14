@@ -387,3 +387,23 @@ func TestTableCacheEvictClose(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestTableCacheLoadMetadataStats(t *testing.T) {
+	c, _, err := newTableCache()
+	require.NoError(t, err)
+	for i := 0; i < tableCacheTestNumTables; i++ {
+		f := &fileMetadata{FileNum: FileNum(i)}
+		var stats fileStats
+		err := c.loadMetadataStats(f, &stats)
+		require.NoError(t, err)
+		if stats.entries != 1 {
+			t.Errorf("stats.entries = %d, want 1", stats.entries)
+		}
+		if stats.rawKeyBytes == 0 {
+			t.Errorf("stats.rawKeyBytes is zero, want nonzero: %+v", stats)
+		}
+		if stats.rawValueBytes != uint64(i) {
+			t.Errorf("stats.rawKeyBytes = %d, want %d", stats.rawValueBytes, i)
+		}
+	}
+}

@@ -37,6 +37,14 @@ type TableInfo struct {
 	LargestSeqNum uint64
 }
 
+// TableStats contains table statistics from the table properties.
+type TableStats struct {
+	Entries       uint64
+	Deletions     uint64
+	RawKeyBytes   uint64
+	RawValueBytes uint64
+}
+
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {
 	// Reference count for the file: incremented when a file is added to a
@@ -74,6 +82,14 @@ type FileMetadata struct {
 	l0Index             int
 	minIntervalIndex    int
 	maxIntervalIndex    int
+
+	compensatedSize uint64
+
+	stats struct {
+		sync.Mutex
+		TableStats
+		loaded bool
+	}
 }
 
 func (m FileMetadata) String() string {
@@ -91,6 +107,48 @@ func (m *FileMetadata) TableInfo() TableInfo {
 		SmallestSeqNum: m.SmallestSeqNum,
 		LargestSeqNum:  m.LargestSeqNum,
 	}
+}
+
+// CompensatedSize returns the file's size, possibly inflated by an estimate
+// of the space that may be freed through compacting its point deletions.
+// The second return value indicates whether the size is compensated.
+func (m *FileMetadata) CompensatedSize() (uint64, bool) {
+	v := atomic.LoadUint64(&m.compensatedSize)
+	if v == 0 {
+		return m.Size, false
+	}
+	return v, true
+}
+
+// SetCompensatedSize records the compensated size of the file.
+func (m *FileMetadata) SetCompensatedSize(v uint64) {
+	atomic.StoreUint64(&m.compensatedSize, v)
+}
+
+// MaybeStats returns the table's property statistics, if they've been loaded.
+func (m *FileMetadata) MaybeStats() *TableStats {
+	m.stats.Lock()
+	defer m.stats.Unlock()
+	if !m.stats.loaded {
+		return nil
+	}
+	return &m.stats.TableStats
+}
+
+// Stats returns the table's property statistics, loading them if necessary.
+func (m *FileMetadata) Stats(loadFunc func(*FileMetadata, *TableStats) error) (*TableStats, error) {
+	m.stats.Lock()
+	defer m.stats.Unlock()
+
+	if m.stats.loaded {
+		return &m.stats.TableStats, nil
+	}
+	err := loadFunc(m, &m.stats.TableStats)
+	if err != nil {
+		return nil, err
+	}
+	m.stats.loaded = true
+	return &m.stats.TableStats, nil
 }
 
 func (m *FileMetadata) lessSeqNum(b *FileMetadata) bool {
@@ -511,7 +569,7 @@ const InvalidSublevel = -1
 
 // levelInfo stores the level (and for L0, sublevel) for a set of files. Used
 // in CheckOrdering.
-type levelInfo struct{
+type levelInfo struct {
 	level, sublevel int
 }
 
