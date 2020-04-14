@@ -1574,6 +1574,84 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	return endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset, nil
 }
 
+// SampleKeys reads the index blocks and returns a sample of keys with
+// approximately bytesPerSample bytes per sample.
+func (r *Reader) SampleKeys(bytesPerSample int64) ([][]byte, []int64, error) {
+	if r.err != nil {
+		return nil, nil, r.err
+	}
+	indexH, err := r.readIndex()
+	if err != nil {
+		return nil, nil, err
+	}
+	cacheHandles := []cache.Handle{indexH}
+	defer func() {
+		for i := range cacheHandles {
+			cacheHandles[i].Release()
+		}
+	}()
+	topIter, err := newBlockIter(r.Compare, indexH.Get())
+	if err != nil {
+		return nil, nil, err
+	}
+	var idxIters []*blockIter
+	if r.Properties.IndexPartitions == 0 {
+		idxIters = append(idxIters, topIter)
+	} else {
+		for key, val := topIter.First(); key != nil; key, val = topIter.Next() {
+			idxBH, n := decodeBlockHandle(val)
+			if n == 0 || n != len(val) {
+				return nil, nil, errCorruptIndexEntry
+			}
+			idxBlock, err := r.readBlock(idxBH, nil /* transform */)
+			if err != nil {
+				return nil, nil, err
+			}
+			cacheHandles = append(cacheHandles, idxBlock)
+			idxIter, err := newBlockIter(r.Compare, idxBlock.Get())
+			if err != nil {
+				return nil, nil, err
+			}
+			idxIters = append(idxIters, idxIter)
+		}
+		if topIter.Error() != nil {
+			return nil, nil, topIter.Error()
+		}
+	}
+	// Since bytesPerSample is expected to be small, we simply pick the
+	// last key whenever accumulated bytes goes over the limit. If we
+	// need to run with higher bytesPerSample, we can change this to
+	// do a weighted sample of one of the k keys.
+	bytesSinceSample := int64(0)
+	var keySamples [][]byte
+	var byteSamples []int64
+	var lastKey []byte
+	for _, iter := range idxIters {
+		for key, val := iter.First(); key != nil; key, val = iter.Next() {
+			dataBH, n := decodeBlockHandle(val)
+			if n == 0 || n != len(val) {
+				return nil, nil, errCorruptIndexEntry
+			}
+			bytesSinceSample += int64(dataBH.Length)
+			if bytesSinceSample > bytesPerSample {
+				keySamples = append(keySamples, append([]byte(nil), key.UserKey...))
+				byteSamples = append(byteSamples, bytesSinceSample)
+				bytesSinceSample = 0
+			} else {
+				lastKey = append(lastKey[:0], key.UserKey...)
+			}
+		}
+		if iter.Error() != nil {
+			return nil, nil, iter.Error()
+		}
+	}
+	if bytesSinceSample > 0 {
+		keySamples = append(keySamples, lastKey)
+		byteSamples = append(byteSamples, bytesSinceSample)
+	}
+	return keySamples, byteSamples, nil
+}
+
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
