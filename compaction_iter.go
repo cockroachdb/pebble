@@ -569,10 +569,7 @@ func (i *compactionIter) Close() error {
 
 	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
-		closerErr := i.valueCloser.Close()
-		if i.err == nil {
-			i.err = closerErr
-		}
+		i.err = firstError(i.err, i.valueCloser.Close())
 		i.valueCloser = nil
 	}
 

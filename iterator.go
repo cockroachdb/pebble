@@ -524,11 +524,8 @@ func (i *Iterator) Close() error {
 
 	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
-		closerErr := i.valueCloser.Close()
+		err = firstError(err, i.valueCloser.Close())
 		i.valueCloser = nil
-		if err == nil {
-			err = closerErr
-		}
 	}
 
 	if alloc := i.alloc; alloc != nil {
