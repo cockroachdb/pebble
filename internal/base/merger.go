@@ -13,7 +13,9 @@ type Merge func(key, value []byte) (ValueMerger, error)
 // ValueMerger receives merge operands one by one. The operand received is either
 // newer or older than all operands received so far as indicated by the function
 // names, `MergeNewer()` and `MergeOlder()`. Once all operands have been received,
-// the client will invoke `Finish()` to obtain the final result.
+// the client will invoke `Finish()` to obtain the final result. The order of
+// a merge is usually not changed after the first call to `MergeNewer()` or
+// `MergeOlder()`, i.e. the same method is used to submit all operands.
 //
 // The implementation may choose to merge values into the result immediately upon
 // receiving each operand, or buffer operands until Finish() is called. For example,
