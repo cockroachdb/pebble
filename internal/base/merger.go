@@ -47,7 +47,7 @@ type ValueMerger interface {
 	// must not call any other ValueMerger functions after calling Finish.
 	//
 	// If a Closer is returned, the returned slice will remain valid until it is
-	// closed and the caller MUST call closer.Close() or a memory leak will occur.
+	// closed. The caller must arrange for the closer to be eventually closed.
 	Finish() ([]byte, io.Closer, error)
 }
 
