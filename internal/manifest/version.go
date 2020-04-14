@@ -62,6 +62,8 @@ type FileMetadata struct {
 	MarkedForCompaction bool
 	// True if the file is actively being compacted. Protected by DB.mu.
 	Compacting bool
+
+	compensatedSize uint64
 }
 
 func (m FileMetadata) String() string {
@@ -79,6 +81,22 @@ func (m *FileMetadata) TableInfo() TableInfo {
 		SmallestSeqNum: m.SmallestSeqNum,
 		LargestSeqNum:  m.LargestSeqNum,
 	}
+}
+
+// CompensatedSize returns the file's size, possibly inflated by an estimate
+// of the space that may be freed through compacting its point deletions.
+// The second return value indicates whether the size is compensated.
+func (m *FileMetadata) CompensatedSize() (uint64, bool) {
+	v := atomic.LoadUint64(&m.compensatedSize)
+	if v == 0 {
+		return m.Size, false
+	}
+	return v, true
+}
+
+// SetCompensatedSize records the compensated size of the file.
+func (m *FileMetadata) SetCompensatedSize(v uint64) {
+	atomic.StoreUint64(&m.compensatedSize, v)
 }
 
 func (m *FileMetadata) lessSeqNum(b *FileMetadata) bool {

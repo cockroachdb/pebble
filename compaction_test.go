@@ -479,6 +479,9 @@ func TestPickCompaction(t *testing.T) {
 			opts:    opts,
 			cmp:     DefaultComparer.Compare,
 			cmpName: DefaultComparer.Name,
+			fileStats: fileStatsSampler{
+				loadStats: func(*fileMetadata, *fileStats) error { return nil },
+			},
 		}
 		vs.versions.Init(nil)
 		vs.append(&tc.version)

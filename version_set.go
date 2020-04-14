@@ -50,6 +50,9 @@ type versionSet struct {
 	versions versionList
 	picker   compactionPicker
 
+	// fileStats maintains a set of stats across a sampling of files.
+	fileStats fileStatsSampler
+
 	metrics Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
@@ -88,7 +91,12 @@ type versionSet struct {
 	writerCond sync.Cond
 }
 
-func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
+func (vs *versionSet) init(
+	dirname string,
+	opts *Options,
+	mu *sync.Mutex,
+	loadStats func(*fileMetadata, *fileStats) error,
+) {
 	vs.dirname = dirname
 	vs.mu = mu
 	vs.writerCond.L = mu
@@ -98,6 +106,7 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	vs.cmpName = opts.Comparer.Name
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
+	vs.fileStats.init(loadStats, opts.EventListener)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[FileNum]uint64)
 	vs.nextFileNum = 1
@@ -105,9 +114,14 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 
 // create creates a version set for a fresh DB.
 func (vs *versionSet) create(
-	jobID int, dirname string, dir vfs.File, opts *Options, mu *sync.Mutex,
+	jobID int,
+	dirname string,
+	dir vfs.File,
+	opts *Options,
+	mu *sync.Mutex,
+	loadStats func(*fileMetadata, *fileStats) error,
 ) error {
-	vs.init(dirname, opts, mu)
+	vs.init(dirname, opts, mu, loadStats)
 	newVersion := &version{}
 	vs.append(newVersion)
 	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
@@ -150,8 +164,13 @@ func (vs *versionSet) create(
 }
 
 // load loads the version set from the manifest file.
-func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
-	vs.init(dirname, opts, mu)
+func (vs *versionSet) load(
+	dirname string,
+	opts *Options,
+	mu *sync.Mutex,
+	loadStats func(*fileMetadata, *fileStats) error,
+) error {
+	vs.init(dirname, opts, mu, loadStats)
 
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(base.MakeFilename(vs.fs, dirname, fileTypeCurrent, 0))
@@ -256,6 +275,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	vs.append(newVersion)
 
 	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
+
+	vs.fileStats.sample(newVersion.Files)
 
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
@@ -432,6 +453,9 @@ func (vs *versionSet) logAndApply(
 				FileNum: newManifestFileNum,
 			})
 		}
+
+		vs.fileStats.sample(newVersion.Files)
+
 		return nil
 	}(); err != nil {
 		return err
