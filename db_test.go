@@ -530,7 +530,7 @@ func (m *closableMerger) MergeOlder(value []byte) error {
 	return nil
 }
 
-func (m *closableMerger) Finish() ([]byte, io.Closer, error) {
+func (m *closableMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 	return m.lastBuf, m, nil
 }
 
