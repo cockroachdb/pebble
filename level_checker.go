@@ -150,7 +150,7 @@ func (m *simpleMergingIter) step() bool {
 		// Ongoing series of MERGE records ends with a MERGE record.
 		if keyChanged && m.valueMerger != nil {
 			var closer io.Closer
-			_, closer, m.err = m.valueMerger.Finish()
+			_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
 			if m.err == nil && closer != nil {
 				m.err = closer.Close()
 			}
@@ -161,7 +161,7 @@ func (m *simpleMergingIter) step() bool {
 			switch item.key.Kind() {
 			case InternalKeyKindSingleDelete, InternalKeyKindDelete:
 				var closer io.Closer
-				_, closer, m.err = m.valueMerger.Finish()
+				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
 				if m.err == nil && closer != nil {
 					m.err = closer.Close()
 				}
@@ -170,7 +170,7 @@ func (m *simpleMergingIter) step() bool {
 				m.err = m.valueMerger.MergeOlder(item.value)
 				if m.err == nil {
 					var closer io.Closer
-					_, closer, m.err = m.valueMerger.Finish()
+					_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
 					if m.err == nil && closer != nil {
 						m.err = closer.Close()
 					}
@@ -251,7 +251,7 @@ func (m *simpleMergingIter) step() bool {
 		// Last record was a MERGE record.
 		if m.valueMerger != nil {
 			var closer io.Closer
-			_, closer, m.err = m.valueMerger.Finish()
+			_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
 			if m.err == nil && closer != nil {
 				m.err = closer.Close()
 			}

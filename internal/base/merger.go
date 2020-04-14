@@ -48,9 +48,13 @@ type ValueMerger interface {
 	// Finish must be the last function called on the ValueMerger. The caller
 	// must not call any other ValueMerger functions after calling Finish.
 	//
+	// If `includesBase` is set to true, the oldest merge operand has been added
+	// before calling `Finish`. While this will always be the case during normal
+	// iteration, only a subset of operands may be available during compaction.
+	//
 	// If a Closer is returned, the returned slice will remain valid until it is
 	// closed. The caller must arrange for the closer to be eventually closed.
-	Finish() ([]byte, io.Closer, error)
+	Finish(includesBase bool) ([]byte, io.Closer, error)
 }
 
 // Merger defines an associative merge operation. The merge operation merges
@@ -93,7 +97,7 @@ func (a *AppendValueMerger) MergeOlder(value []byte) error {
 }
 
 // Finish returns the buffer that was constructed on-demand in `Merge{OlderNewer}()` calls.
-func (a *AppendValueMerger) Finish() ([]byte, io.Closer, error) {
+func (a *AppendValueMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 	return a.buf, nil, nil
 }
 

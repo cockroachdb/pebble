@@ -62,7 +62,7 @@ func (f *failMerger) MergeOlder(value []byte) error {
 	return nil
 }
 
-func (f *failMerger) Finish() ([]byte, io.Closer, error) {
+func (f *failMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 	if string(f.lastBuf) == "fail-finish" {
 		f.lastBuf = nil
 		return nil, nil, errors.New("finish failed")

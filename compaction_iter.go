@@ -318,7 +318,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				change = i.mergeNext(valueMerger)
 			}
 			if i.err == nil {
-				i.value, i.valueCloser, i.err = valueMerger.Finish()
+				i.value, i.valueCloser, i.err = valueMerger.Finish(change != newStripe)
 			}
 			if i.err == nil {
 				// A non-skippable entry does not necessarily cover later merge

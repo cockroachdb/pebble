@@ -103,7 +103,7 @@ func (i *Iterator) findNextEntry() bool {
 				i.mergeNext(key, valueMerger)
 			}
 			if i.err == nil {
-				i.value, i.valueCloser, i.err = valueMerger.Finish()
+				i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 			}
 			return i.err == nil
 
@@ -159,7 +159,7 @@ func (i *Iterator) findPrevEntry() bool {
 				// We've iterated to the previous user key.
 				i.pos = iterPosPrev
 				if valueMerger != nil {
-					i.value, i.valueCloser, i.err = valueMerger.Finish()
+					i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 				}
 				return i.err == nil
 			}
@@ -222,7 +222,7 @@ func (i *Iterator) findPrevEntry() bool {
 	if i.valid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
-			i.value, i.valueCloser, i.err = valueMerger.Finish()
+			i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 		}
 		return i.err == nil
 	}
