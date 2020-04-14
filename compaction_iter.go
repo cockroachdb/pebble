@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"io"
 	"sort"
 
 	"github.com/cockroachdb/errors"
@@ -131,8 +132,9 @@ type compactionIter struct {
 	// Additionally, it is the internal state when the code is moving to the
 	// next key so it can determine whether the user key has changed from
 	// the previous key.
-	key   InternalKey
-	value []byte
+	key         InternalKey
+	value       []byte
+	valueCloser io.Closer
 	// Temporary buffer used for storing the previous user key in order to
 	// determine when iteration has advanced to a new user key and thus a new
 	// snapshot stripe.
@@ -217,6 +219,15 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 func (i *compactionIter) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
+	}
+
+	// Close the closer for the current value if one was open.
+	if i.valueCloser != nil {
+		i.err = i.valueCloser.Close()
+		i.valueCloser = nil
+		if i.err != nil {
+			return nil, nil
+		}
 	}
 
 	// Prior to this call to `Next()` we are in one of three situations with
@@ -307,7 +318,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				change = i.mergeNext(valueMerger)
 			}
 			if i.err == nil {
-				i.value, i.err = valueMerger.Finish()
+				i.value, i.valueCloser, i.err = valueMerger.Finish()
 			}
 			if i.err == nil {
 				// A non-skippable entry does not necessarily cover later merge
@@ -555,6 +566,13 @@ func (i *compactionIter) Close() error {
 	if i.err == nil {
 		i.err = err
 	}
+
+	// Close the closer for the current value if one was open.
+	if i.valueCloser != nil {
+		i.err = firstError(i.err, i.valueCloser.Close())
+		i.valueCloser = nil
+	}
+
 	return i.err
 }
 

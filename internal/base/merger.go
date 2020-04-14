@@ -4,6 +4,8 @@
 
 package base
 
+import "io"
+
 // Merge creates a ValueMerger for the specified key initialized with the value
 // of one merge operand.
 type Merge func(key, value []byte) (ValueMerger, error)
@@ -11,7 +13,9 @@ type Merge func(key, value []byte) (ValueMerger, error)
 // ValueMerger receives merge operands one by one. The operand received is either
 // newer or older than all operands received so far as indicated by the function
 // names, `MergeNewer()` and `MergeOlder()`. Once all operands have been received,
-// the client will invoke `Finish()` to obtain the final result.
+// the client will invoke `Finish()` to obtain the final result. The order of
+// a merge is not changed after the first call to `MergeNewer()` or
+// `MergeOlder()`, i.e. the same method is used to submit all operands.
 //
 // The implementation may choose to merge values into the result immediately upon
 // receiving each operand, or buffer operands until Finish() is called. For example,
@@ -26,10 +30,16 @@ type Merge func(key, value []byte) (ValueMerger, error)
 type ValueMerger interface {
 	// MergeNewer adds an operand that is newer than all existing operands.
 	// The caller retains ownership of value.
+	//
+	// If an error is returned the merge is aborted and no other methods must
+	// be called.
 	MergeNewer(value []byte) error
 
 	// MergeOlder adds an operand that is older than all existing operands.
 	// The caller retains ownership of value.
+	//
+	// If an error is returned the merge is aborted and no other methods must
+	// be called.
 	MergeOlder(value []byte) error
 
 	// Finish does any final processing of the added operands and returns a
@@ -37,7 +47,10 @@ type ValueMerger interface {
 	//
 	// Finish must be the last function called on the ValueMerger. The caller
 	// must not call any other ValueMerger functions after calling Finish.
-	Finish() ([]byte, error)
+	//
+	// If a Closer is returned, the returned slice will remain valid until it is
+	// closed. The caller must arrange for the closer to be eventually closed.
+	Finish() ([]byte, io.Closer, error)
 }
 
 // Merger defines an associative merge operation. The merge operation merges
@@ -80,8 +93,8 @@ func (a *AppendValueMerger) MergeOlder(value []byte) error {
 }
 
 // Finish returns the buffer that was constructed on-demand in `Merge{OlderNewer}()` calls.
-func (a *AppendValueMerger) Finish() ([]byte, error) {
-	return a.buf, nil
+func (a *AppendValueMerger) Finish() ([]byte, io.Closer, error) {
+	return a.buf, nil, nil
 }
 
 // DefaultMerger is the default implementation of the Merger interface. It
