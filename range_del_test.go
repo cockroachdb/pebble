@@ -165,7 +165,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	require.NoError(t, d.Set([]byte("c"), []byte("e"), nil))
 	require.NoError(t, d.Flush())
 	expectLSM(`
-0:
+0.0:
   000011:[b#4,SET-c#5,SET]
 1:
   000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
