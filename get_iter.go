@@ -29,7 +29,7 @@ type getIter struct {
 	level        int
 	batch        *Batch
 	mem          flushableList
-	l0           []*fileMetadata
+	l0           [][]*fileMetadata
 	version      *version
 	iterKey      *InternalKey
 	iterValue    []byte
@@ -139,15 +139,12 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level == 0 {
 			// Create iterators from L0 from newest to oldest.
 			if n := len(g.l0); n > 0 {
-				l := g.l0[n-1]
-				g.iter, g.rangeDelIter, g.err = g.newIters(
-					l,
-					nil, /* iter options */
-					nil /* bytes iterated */)
-				if g.err != nil {
-					return nil, nil
-				}
+				files := g.l0[n-1]
 				g.l0 = g.l0[:n-1]
+				iterOpts := IterOptions{logger: g.logger}
+				g.levelIter.init(iterOpts, g.cmp, g.newIters, files, 0, nil)
+				g.levelIter.initRangeDel(&g.rangeDelIter)
+				g.iter = &g.levelIter
 				g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
 				continue
 			}

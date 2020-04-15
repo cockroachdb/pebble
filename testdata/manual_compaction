@@ -47,9 +47,9 @@ L0
 L0
   a.SET.2:v
 ----
-0:
-  000004:[b-b]
+0.0:
   000005:[a-a]
+  000004:[b-b]
 
 compact a-b
 ----
@@ -276,7 +276,7 @@ del-range c z
 
 ingest ext1 ext2
 ----
-0:
+0.0:
   000006:[a#6,SET-a#6,SET]
   000007:[b#7,SET-z#72057594037927935,RANGEDEL]
 6:
@@ -326,7 +326,7 @@ L2
 L3
   b.SET.1:1
 ----
-0:
+0.0:
   000004:[c-c]
 1:
   000005:[a-a]
@@ -337,7 +337,7 @@ L3
 
 compact a-e L1
 ----
-0:
+0.0:
   000004:[c#4,SET-c#4,SET]
 2:
   000008:[a#3,SET-b#72057594037927935,RANGEDEL]
@@ -597,9 +597,9 @@ L0
 L0
   a.SET.2:v
 ----
-0:
-  000004:[b-b]
+0.0:
   000005:[a-a]
+  000004:[b-b]
 
 add-ongoing-compaction startLevel=0 outputLevel=1
 ----

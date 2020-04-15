@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -365,7 +366,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	get.key = key
 	get.batch = b
 	get.mem = readState.memtables
-	get.l0 = readState.current.Files[0]
+	get.l0 = readState.current.L0SubLevels.Files
 	get.version = readState.current
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
@@ -615,7 +616,7 @@ type iterAlloc struct {
 	dbi     Iterator
 	merging mergingIter
 	mlevels [3 + numLevels]mergingIterLevel
-	levels  [numLevels]levelIter
+	levels  [3 + numLevels]levelIter
 }
 
 var iterAllocPool = sync.Pool{
@@ -687,34 +688,16 @@ func (d *DB) newIterInternal(
 		})
 	}
 
-	// The level 0 files need to be added from newest to oldest.
-	//
-	// Note that level 0 files do not contain untruncated tombstones, even in the presence of
-	// L0=>L0 compactions since such compactions output a single file. Therefore, we do not
-	// need to wrap level 0 files individually in level iterators.
-	current := readState.current
-	for i := len(current.Files[0]) - 1; i >= 0; i-- {
-		f := current.Files[0][i]
-		iter, rangeDelIter, err := d.newIters(f, &dbi.opts, nil)
-		if err != nil {
-			// Ensure the mergingIter is initialized so Iterator.Close will properly
-			// close any sstable iterators that have been opened.
-			buf.merging.init(&dbi.opts, d.cmp, mlevels...)
-			_ = dbi.Close()
-			// Return a new alloced Iterator structure, because dbi.Close will
-			// return dbi to a sync.Pool.
-			return &Iterator{err: err}
-		}
-		mlevels = append(mlevels, mergingIterLevel{
-			iter:         iter,
-			rangeDelIter: rangeDelIter,
-		})
-	}
-
 	// Determine the final size for mlevels so that we can avoid any more
 	// reallocations. This is important because each levelIter will hold a
 	// reference to elements in mlevels.
 	start := len(mlevels)
+	current := readState.current
+	for sl := 0; sl < len(current.L0SubLevels.Files); sl++ {
+		if len(current.L0SubLevels.Files[sl]) > 0 {
+			mlevels = append(mlevels, mergingIterLevel{})
+		}
+	}
 	for level := 1; level < len(current.Files); level++ {
 		if len(current.Files[level]) == 0 {
 			continue
@@ -724,13 +707,11 @@ func (d *DB) newIterInternal(
 	finalMLevels := mlevels
 	mlevels = mlevels[start:]
 
-	// Add level iterators for the remaining files.
 	levels := buf.levels[:]
-	for level := 1; level < len(current.Files); level++ {
-		if len(current.Files[level]) == 0 {
-			continue
+	addLevelIterForFiles := func(files []*manifest.FileMetadata, level int) {
+		if len(files) == 0 {
+			return
 		}
-
 		var li *levelIter
 		if len(levels) > 0 {
 			li = &levels[0]
@@ -739,12 +720,23 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(dbi.opts, d.cmp, d.newIters, current.Files[level], level, nil)
+		li.init(dbi.opts, d.cmp, d.newIters, files, level, nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
 			&mlevels[0].isLargestUserKeyRangeDelSentinel)
 		mlevels[0].iter = li
 		mlevels = mlevels[1:]
+	}
+
+	// Add level iterators for the L0 sublevels, iterating from newest to
+	// oldest.
+	for i := len(current.L0SubLevels.Files) - 1; i >= 0; i-- {
+		addLevelIterForFiles(current.L0SubLevels.Files[i], 0)
+	}
+
+	// Add level iterators for the non-empty non-L0 levels.
+	for level := 1; level < len(current.Files); level++ {
+		addLevelIterForFiles(current.Files[level], level)
 	}
 
 	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)

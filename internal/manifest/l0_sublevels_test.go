@@ -96,6 +96,7 @@ func TestL0SubLevels(t *testing.T) {
 	var level int
 	var err error
 	var fileMetas [NumLevels][]*FileMetadata
+	var explicitSublevels [][]*FileMetadata
 	var sublevels *L0SubLevels
 	baseLevel := NumLevels - 1
 
@@ -103,14 +104,26 @@ func TestL0SubLevels(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			fileMetas = [NumLevels][]*FileMetadata{}
+			explicitSublevels = [][]*FileMetadata{}
 			baseLevel = NumLevels - 1
+			sublevel := -1
+			sublevels = nil
 			for _, data := range strings.Split(td.Input, "\n") {
 				data = strings.TrimSpace(data)
-				switch data {
+				switch data[:2] {
 				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-					level, err = strconv.Atoi(data[1:])
+					level, err = strconv.Atoi(data[1:2])
 					if err != nil {
 						return err.Error()
+					}
+					if level == 0 && len(data) > 3 {
+						// Sublevel was specified.
+						sublevel, err = strconv.Atoi(data[3:])
+						if err != nil {
+							return err.Error()
+						}
+					} else {
+						sublevel = -1
 					}
 				default:
 					meta, err := parseMeta(data)
@@ -121,10 +134,17 @@ func TestL0SubLevels(t *testing.T) {
 						baseLevel = level
 					}
 					fileMetas[level] = append(fileMetas[level], meta)
+					if sublevel != -1 {
+						for len(explicitSublevels) <= sublevel {
+							explicitSublevels = append(explicitSublevels, []*FileMetadata{})
+						}
+						explicitSublevels[sublevel] = append(explicitSublevels[sublevel], meta)
+					}
 				}
 			}
 
 			flushSplitMaxBytes := 64
+			initialize := true
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
 				case "flush_split_max_bytes":
@@ -132,17 +152,32 @@ func TestL0SubLevels(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+				case "no_initialize":
+					// This case is for use with explicitly-specified sublevels
+					// only.
+					initialize = false
 				}
 			}
 			for i := 0; i < NumLevels; i++ {
 				SortBySeqNum(fileMetas[i])
 			}
 
-			sublevels, err = NewL0SubLevels(
-				fileMetas[0],
-				base.DefaultComparer.Compare,
-				base.DefaultFormatter,
-				uint64(flushSplitMaxBytes))
+			if initialize {
+				sublevels, err = NewL0SubLevels(
+					fileMetas[0],
+					base.DefaultComparer.Compare,
+					base.DefaultFormatter,
+					uint64(flushSplitMaxBytes))
+			} else {
+				// This case is for use with explicitly-specified sublevels
+				// only.
+				sublevels = &L0SubLevels{
+					Files:      explicitSublevels,
+					cmp:        base.DefaultComparer.Compare,
+					formatKey:  base.DefaultFormatter,
+					filesByAge: fileMetas[0],
+				}
+			}
 
 			if err != nil {
 				t.Fatal(err)
@@ -166,6 +201,13 @@ func TestL0SubLevels(t *testing.T) {
 			return builder.String()
 		case "max-depth-after-ongoing-compactions":
 			return strconv.Itoa(sublevels.MaxDepthAfterOngoingCompactions())
+		case "l0-check-ordering":
+			for sublevel, files := range sublevels.Files {
+				if err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter, 0, sublevel, files); err != nil {
+					return err.Error()
+				}
+			}
+			return "OK"
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})

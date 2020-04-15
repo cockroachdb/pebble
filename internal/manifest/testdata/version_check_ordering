@@ -17,9 +17,9 @@ L0
   a.SET.1-b.SET.2
 ----
 L0 files 000001 and 000002 are not properly ordered: <#3-#4> vs <#1-#2>
-0:
-  000001:[c#3,SET-d#4,SET]
+0.0:
   000002:[a#1,SET-b#2,SET]
+  000001:[c#3,SET-d#4,SET]
 
 check-ordering
 L0
@@ -66,17 +66,19 @@ L0
   m.SET.20-n.SET.20
 ----
 L0 flushed file 000007 has smallest sequence number coincident with an ingested file : <#15-#17> vs <#15-#15>
-0:
-  000001:[c#3,SET-d#4,SET]
+0.2:
+  000007:[a#15,SET-j#17,SET]
+  000010:[m#20,SET-n#20,SET]
+0.1:
+  000006:[b#15,SET-d#15,SET]
+  000009:[k#16,SET-n#19,SET]
+0.0:
   000002:[a#1,SET-b#5,SET]
+  000001:[c#3,SET-d#4,SET]
   000003:[e#2,SET-f#7,SET]
   000004:[g#6,SET-h#12,SET]
   000005:[i#8,SET-j#13,SET]
-  000006:[b#15,SET-d#15,SET]
-  000007:[a#15,SET-j#17,SET]
   000008:[m#18,SET-n#18,SET]
-  000009:[k#16,SET-n#19,SET]
-  000010:[m#20,SET-n#20,SET]
 
 check-ordering
 L0
@@ -84,9 +86,10 @@ L0
   a.SET.1-b.SET.2
 ----
 L0 files 000001 and 000002 are not properly ordered: <#3-#3> vs <#1-#2>
-0:
-  000001:[a#3,SET-d#3,SET]
+0.1:
   000002:[a#1,SET-b#2,SET]
+0.0:
+  000001:[a#3,SET-d#3,SET]
 
 check-ordering
 L0
@@ -94,9 +97,10 @@ L0
   a.SET.3-b.SET.3
 ----
 L0 files 000001 and 000002 are not properly ordered: <#2-#4> vs <#3-#3>
-0:
-  000001:[a#2,SET-d#4,SET]
+0.1:
   000002:[a#3,SET-b#3,SET]
+0.0:
+  000001:[a#2,SET-d#4,SET]
 
 check-ordering
 L0
@@ -104,9 +108,10 @@ L0
   a.SET.3-b.SET.3
 ----
 L0 file 000002 does not have strictly increasing largest seqnum: <#3-#3> vs <?-#3>
-0:
-  000001:[a#3,SET-d#3,SET]
+0.1:
   000002:[a#3,SET-b#3,SET]
+0.0:
+  000001:[a#3,SET-d#3,SET]
 
 check-ordering
 L0
@@ -114,9 +119,10 @@ L0
   a.SET.3-d.SET.5
 ----
 L0 flushed file 000002 has smallest sequence number coincident with an ingested file : <#3-#5> vs <#3-#3>
-0:
-  000001:[a#3,SET-d#3,SET]
+0.1:
   000002:[a#3,SET-d#5,SET]
+0.0:
+  000001:[a#3,SET-d#3,SET]
 
 check-ordering
 L0
@@ -131,9 +137,10 @@ L0
   a.SET.5-d.SET.5
 ----
 L0 file 000002 does not have strictly increasing largest seqnum: <#5-#5> vs <?-#5>
-0:
-  000001:[a#3,SET-d#5,SET]
+0.1:
   000002:[a#5,SET-d#5,SET]
+0.0:
+  000001:[a#3,SET-d#5,SET]
 
 check-ordering
 L0
@@ -142,10 +149,12 @@ L0
   a.SET.4-d.SET.6
 ----
 L0 flushed file 000003 has smallest sequence number coincident with an ingested file : <#4-#6> vs <#4-#4>
-0:
-  000001:[a#4,SET-d#4,SET]
-  000002:[a#5,SET-d#5,SET]
+0.2:
   000003:[a#4,SET-d#6,SET]
+0.1:
+  000002:[a#5,SET-d#5,SET]
+0.0:
+  000001:[a#4,SET-d#4,SET]
 
 check-ordering
 L0
