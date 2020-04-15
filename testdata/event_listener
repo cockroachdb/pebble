@@ -153,16 +153,16 @@ sync: db
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-    WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -     2.2
-      0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.3 K       3     0 B    28.5
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-      6         1   770 B    0.00   1.5 K     0 B       0     0 B       0   770 B       1   1.5 K     0.5
-  total         3   2.3 K       -   933 B   825 B       1     0 B       0   3.9 K       4   1.5 K     4.3
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -       -     2.2
+      0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.3 K       3     0 B       2    28.5
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   770 B    0.00   1.5 K     0 B       0     0 B       0   770 B       1   1.5 K       1     0.5
+  total         3   2.3 K       -   933 B   825 B       1     0 B       0   3.9 K       4   1.5 K       3     4.3
   flush         3
 compact         1   1.6 K          (size == estimated-debt)
  memtbl         1   256 K

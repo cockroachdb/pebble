@@ -189,7 +189,7 @@ func TestRequireReadError(t *testing.T) {
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
 		expectLSM(`
-0:
+0.0:
   000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
   000005:[a1#1,SET-a2#2,SET]
@@ -274,7 +274,7 @@ func TestCorruptReadError(t *testing.T) {
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
 		expectLSM(`
-0:
+0.0:
   000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
   000005:[a1#1,SET-a2#2,SET]

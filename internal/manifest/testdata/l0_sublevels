@@ -14,6 +14,48 @@ flush split keys(3): [b, e, j]
 	000003:e#5,1-j#7,1
 compacting file count: 0, base compacting intervals: 
 
+define no_initialize
+L0.2
+  0009:a.SET.10-b.SET.10
+L0.1
+  0003:e.SET.5-j.SET.7
+L0.0
+  0007:b.SET.6-j.SET.8
+----
+file count: 3, sublevels: 3, intervals: 0
+flush split keys(0): []
+0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000009:a#10,1-b#10,1
+0.1: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000003:e#5,1-j#7,1
+0.0: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000007:b#6,1-j#8,1
+compacting file count: 0, base compacting intervals: 
+
+l0-check-ordering
+----
+OK
+
+define no_initialize
+L0.1
+  0009:a.SET.10-b.SET.10
+L0.0
+  0007:b.SET.6-j.SET.8
+  0003:e.SET.5-j.SET.7
+----
+file count: 3, sublevels: 2, intervals: 0
+flush split keys(0): []
+0.1: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000009:a#10,1-b#10,1
+0.0: file count: 2, bytes: 512, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000007:b#6,1-j#8,1
+	000003:e#5,1-j#7,1
+compacting file count: 0, base compacting intervals: 
+
+l0-check-ordering
+----
+L0.0 files 000007 and 000003 have overlapping ranges: [b#6,SET-j#8,SET] vs [e#5,SET-j#7,SET]
+
 define
 L0
   0001:a.SET.2-b.SET.3

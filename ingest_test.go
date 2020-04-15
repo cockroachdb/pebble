@@ -763,7 +763,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 			ingest("c")
 
 			expectLSM(`
-0:
+0.0:
   000005:[a#2,SET-a#2,SET]
   000007:[c#4,SET-c#4,SET]
 6:
@@ -790,7 +790,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 				compact("a", "z")
 
 				expectLSM(`
-0:
+0.0:
   000009:[b#5,SET-b#5,SET]
 6:
   000008:[a#0,SET-c#0,SET]
