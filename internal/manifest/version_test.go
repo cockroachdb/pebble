@@ -315,6 +315,9 @@ func TestCheckOrdering(t *testing.T) {
 
 				cmp := base.DefaultComparer.Compare
 				result := "OK"
+				if err := v.InitL0Sublevels(cmp, base.DefaultFormatter); err != nil {
+					return fmt.Sprint(err)
+				}
 				err := v.CheckOrdering(cmp, base.DefaultFormatter)
 				if err != nil {
 					result = fmt.Sprint(err)

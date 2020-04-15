@@ -458,15 +458,15 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 	}
 }
 
-// Apply applies the delta b to the current version to produce a new version. The
-// new version is consistent with respect to the internal key comparer icmp.
+// Apply applies the delta b to the current version to produce a new
+// version. The new version is consistent with respect to the comparer cmp.
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
 //
-// If zombies is non-nil it is populated with the file numbers (and sizes) of
-// deleted files. These files are considered zombies because they are no longer
-// referenced by the returned Version, but cannot be deleted from disk as they
-// are still in use by the incoming Version.
+// On success, a map of zombie files containing the file numbers and sizes of
+// deleted files is returned. These files are considered zombies because they
+// are no longer referenced by the returned Version, but cannot be deleted from
+// disk as they are still in use by the incoming Version.
 func (b *BulkVersionEdit) Apply(
 	curr *Version, cmp Compare, formatKey base.FormatKey,
 ) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
@@ -488,6 +488,16 @@ func (b *BulkVersionEdit) Apply(
 	for level := range v.Files {
 		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
 			// There are no edits on this level.
+			if level == 0 {
+				// Initialize L0SubLevels.
+				if curr == nil || curr.L0SubLevels == nil {
+					if err := v.InitL0Sublevels(cmp, formatKey); err != nil {
+						return nil, nil, errors.Wrap(err, "pebble: internal error")
+					}
+				} else {
+					v.L0SubLevels = curr.L0SubLevels
+				}
+			}
 			if curr == nil {
 				continue
 			}
@@ -547,7 +557,10 @@ func (b *BulkVersionEdit) Apply(
 				}
 			}
 			SortBySeqNum(v.Files[level])
-			if err := CheckOrdering(cmp, formatKey, 0, v.Files[level]); err != nil {
+			if err := v.InitL0Sublevels(cmp, formatKey); err != nil {
+				return nil, nil, errors.Wrap(err, "pebble: internal error")
+			}
+			if err := CheckOrdering(cmp, formatKey, 0, InvalidSublevel, v.Files[level]); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
