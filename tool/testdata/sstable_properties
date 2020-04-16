@@ -8,15 +8,15 @@ sstable properties
 h.sst
 version           0
 size              
-  file            15432
-  data            13913
+  file            15 K
+  data            14 K
     blocks        14
-  index           325
+  index           325 B
     blocks        1
-    top-level     0
-  filter          0
-  raw-key         23938
-  raw-value       1912
+    top-level     0 B
+  filter          0 B
+  raw-key         23 K
+  raw-value       1.9 K
 records           1727
   set             1710
   delete          0
@@ -43,15 +43,15 @@ sstable properties
 h.ldb
 version           0
 size              
-  file            15381
-  data            13913
+  file            15 K
+  data            14 K
     blocks        14
-  index           325
+  index           325 B
     blocks        1
-    top-level     0
-  filter          0
-  raw-key         23938
-  raw-value       1912
+    top-level     0 B
+  filter          0 B
+  raw-key         23 K
+  raw-value       1.9 K
 records           1727
   set             1710
   delete          0
@@ -77,15 +77,15 @@ sstable properties
 h.no-compression.two_level_index.sst
 version           0
 size              
-  file            28539
-  data            26799
+  file            28 K
+  data            26 K
     blocks        14
-  index           408
+  index           408 B
     blocks        4
-    top-level     70
-  filter          0
-  raw-key         23938
-  raw-value       1912
+    top-level     70 B
+  filter          0 B
+  raw-key         23 K
+  raw-value       1.9 K
 records           1727
   set             1710
   delete          0
