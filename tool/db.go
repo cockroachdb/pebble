@@ -6,23 +6,28 @@ package tool
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
+	"text/tabwriter"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
 // dbT implements db-level tools, including both configuration state and the
 // commands themselves.
 type dbT struct {
-	Root  *cobra.Command
-	Check *cobra.Command
-	LSM   *cobra.Command
-	Scan  *cobra.Command
-	Space *cobra.Command
+	Root     *cobra.Command
+	Check    *cobra.Command
+	LSM      *cobra.Command
+	Scan     *cobra.Command
+	Space    *cobra.Command
+	AggProps *cobra.Command
 
 	// Configuration.
 	opts      *pebble.Options
@@ -94,11 +99,21 @@ use by another process.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runSpace,
 	}
+	d.AggProps = &cobra.Command{
+		Use:   "aggprops <dir>",
+		Short: "print aggregated sstable properties",
+		Long: `
+Print SSTable properties, aggregated per level of the LSM. Requires that the
+specified database not be in use by aother process.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runAggProps,
+	}
 
-	d.Root.AddCommand(d.Check, d.LSM, d.Scan, d.Space)
+	d.Root.AddCommand(d.Check, d.LSM, d.Scan, d.Space, d.AggProps)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
-	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan, d.Space} {
+	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan, d.Space, d.AggProps} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
@@ -312,6 +327,120 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 		return
 	}
 	fmt.Fprintf(stdout, "%d\n", bytes)
+}
+
+func (d *dbT) runAggProps(cmd *cobra.Command, args []string) {
+	// TODO(jackson): This command only opens the database to read the current
+	// manifest and get a list of sstables per level. Maybe that can be pulled
+	// out into internal/manifest so that we can read the manifest
+	// optimistically without acquiring the directory lock.
+	db, err := d.openDB(args[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+		}
+	}()
+
+	tw := tabwriter.NewWriter(stdout, 2, 1, 2, ' ', 0)
+	var totalAgg aggregatedProps
+	for i, l := range db.SSTables() {
+		fmt.Fprintf(tw, "Level %d\t\n", i)
+		var levelAgg aggregatedProps
+		for _, t := range l {
+			err := addProps(args[0], t.FileNum, &levelAgg)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s.sst: %s\n", t.FileNum, err)
+				return
+			}
+		}
+		levelAgg.write(tw)
+		totalAgg.update(levelAgg)
+	}
+	fmt.Fprintln(tw, "Total\t")
+	totalAgg.write(tw)
+	if err := tw.Flush(); err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+	}
+}
+
+type aggregatedProps struct {
+	DataSize          uint64
+	FilterSize        uint64
+	IndexSize         uint64
+	NumDataBlocks     uint64
+	NumDeletions      uint64
+	NumEntries        uint64
+	NumMergeOperands  uint64
+	NumRangeDeletions uint64
+	OldestKeyTime     uint64
+	RawKeySize        uint64
+	RawValueSize      uint64
+	TopLevelIndexSize uint64
+}
+
+func (p *aggregatedProps) write(w io.Writer) {
+	fmt.Fprintf(w, " DataSize\t%s\n", humanize.Uint64(p.DataSize))
+	fmt.Fprintf(w, " FilterSize\t%s\n", humanize.Uint64(p.FilterSize))
+	fmt.Fprintf(w, " IndexSize\t%s\n", humanize.Uint64(p.IndexSize))
+	fmt.Fprintf(w, " NumDataBlocks\t%d\n", p.NumDataBlocks)
+	fmt.Fprintf(w, " NumDeletions\t%d\n", p.NumDeletions)
+	fmt.Fprintf(w, " NumEntries\t%d\n", p.NumEntries)
+	fmt.Fprintf(w, " NumMergeOperands\t%d\n", p.NumMergeOperands)
+	fmt.Fprintf(w, " NumRangeDeletions\t%d\n", p.NumRangeDeletions)
+	fmt.Fprintf(w, " OldestKeyTime\t%d\n", p.OldestKeyTime)
+	fmt.Fprintf(w, " RawKeySize\t%s\n", humanize.Uint64(p.RawKeySize))
+	fmt.Fprintf(w, " RawValueSize\t%s\n", humanize.Uint64(p.RawValueSize))
+	fmt.Fprintf(w, " TopLevelIndexSize\t%s\n", humanize.Uint64(p.TopLevelIndexSize))
+}
+
+func (p *aggregatedProps) update(o aggregatedProps) {
+	p.DataSize += o.DataSize
+	p.FilterSize += o.FilterSize
+	p.IndexSize += o.IndexSize
+	p.NumDataBlocks += o.NumDataBlocks
+	p.NumDeletions += o.NumDeletions
+	p.NumEntries += o.NumEntries
+	p.NumMergeOperands += o.NumMergeOperands
+	p.NumRangeDeletions += o.NumRangeDeletions
+	if o.OldestKeyTime != 0 && o.OldestKeyTime < p.OldestKeyTime {
+		p.OldestKeyTime = o.OldestKeyTime
+	}
+	p.RawKeySize += o.RawKeySize
+	p.RawValueSize += o.RawValueSize
+	p.TopLevelIndexSize += o.TopLevelIndexSize
+}
+
+func addProps(dir string, fileNum pebble.FileNum, props *aggregatedProps) error {
+	fs := vfs.Default
+	path := base.MakeFilename(fs, dir, base.FileTypeTable, fileNum)
+	f, err := fs.Open(path)
+	if err != nil {
+		return err
+	}
+	r, err := sstable.NewReader(f, sstable.ReaderOptions{})
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	props.update(aggregatedProps{
+		DataSize:          r.Properties.DataSize,
+		FilterSize:        r.Properties.FilterSize,
+		IndexSize:         r.Properties.IndexSize,
+		NumDataBlocks:     r.Properties.NumDataBlocks,
+		NumDeletions:      r.Properties.NumDeletions,
+		NumEntries:        r.Properties.NumEntries,
+		NumMergeOperands:  r.Properties.NumMergeOperands,
+		NumRangeDeletions: r.Properties.NumRangeDeletions,
+		OldestKeyTime:     r.Properties.OldestKeyTime,
+		RawKeySize:        r.Properties.RawKeySize,
+		RawValueSize:      r.Properties.RawValueSize,
+		TopLevelIndexSize: r.Properties.TopLevelIndexSize,
+	})
+	return r.Close()
 }
 
 func makePlural(singular string, count int64) string {
