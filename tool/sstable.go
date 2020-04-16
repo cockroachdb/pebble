@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
@@ -264,15 +265,15 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		tw := tabwriter.NewWriter(stdout, 2, 1, 2, ' ', 0)
 		fmt.Fprintf(tw, "version\t%d\n", r.Properties.FormatVersion)
 		fmt.Fprintf(tw, "size\t\n")
-		fmt.Fprintf(tw, "  file\t%d\n", stat.Size())
-		fmt.Fprintf(tw, "  data\t%d\n", r.Properties.DataSize)
+		fmt.Fprintf(tw, "  file\t%s\n", humanize.Int64(stat.Size()))
+		fmt.Fprintf(tw, "  data\t%s\n", humanize.Uint64(r.Properties.DataSize))
 		fmt.Fprintf(tw, "    blocks\t%d\n", r.Properties.NumDataBlocks)
-		fmt.Fprintf(tw, "  index\t%d\n", r.Properties.IndexSize)
+		fmt.Fprintf(tw, "  index\t%s\n", humanize.Uint64(r.Properties.IndexSize))
 		fmt.Fprintf(tw, "    blocks\t%d\n", 1+r.Properties.IndexPartitions)
-		fmt.Fprintf(tw, "    top-level\t%d\n", r.Properties.TopLevelIndexSize)
-		fmt.Fprintf(tw, "  filter\t%d\n", r.Properties.FilterSize)
-		fmt.Fprintf(tw, "  raw-key\t%d\n", r.Properties.RawKeySize)
-		fmt.Fprintf(tw, "  raw-value\t%d\n", r.Properties.RawValueSize)
+		fmt.Fprintf(tw, "    top-level\t%s\n", humanize.Uint64(r.Properties.TopLevelIndexSize))
+		fmt.Fprintf(tw, "  filter\t%s\n", humanize.Uint64(r.Properties.FilterSize))
+		fmt.Fprintf(tw, "  raw-key\t%s\n", humanize.Uint64(r.Properties.RawKeySize))
+		fmt.Fprintf(tw, "  raw-value\t%s\n", humanize.Uint64(r.Properties.RawValueSize))
 		fmt.Fprintf(tw, "records\t%d\n", r.Properties.NumEntries)
 		fmt.Fprintf(tw, "  set\t%d\n", r.Properties.NumEntries-
 			(r.Properties.NumDeletions+r.Properties.NumMergeOperands))

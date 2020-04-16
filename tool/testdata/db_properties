@@ -1,0 +1,31 @@
+db properties
+----
+accepts 1 arg(s), received 0
+
+db properties
+non-existent
+----
+open non-existent/CURRENT: file does not exist
+
+db properties
+../testdata/db-stage-4
+----
+                  L0      L1     L2     L3     L4     L5     L6     TOTAL
+count             1       0      0      0      0      0      0      1
+seq num                                                             
+  smallest        3       0      0      0      0      0      0      3
+  largest         5       0      0      0      0      0      0      5
+size                                                                
+  data            62 B    0 B    0 B    0 B    0 B    0 B    0 B    62 B
+    blocks        1       0      0      0      0      0      0      1
+  index           27 B    0 B    0 B    0 B    0 B    0 B    0 B    27 B
+    blocks        1       0      0      0      0      0      0      1
+    top-level     0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  filter          0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  raw-key         33 B    0 B    0 B    0 B    0 B    0 B    0 B    33 B
+  raw-value       9 B     0 B    0 B    0 B    0 B    0 B    0 B    9 B
+records                                                             
+  set             2       0      0      0      0      0      0      2
+  delete          1       0      0      0      0      0      0      1
+  range-delete    0       0      0      0      0      0      0      0
+  merge           0       0      0      0      0      0      0      0
