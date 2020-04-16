@@ -22,6 +22,7 @@ var comparer = func() pebble.Comparer {
 
 func parseOptions(opts *testOptions, data string) error {
 	hooks := &pebble.ParseHooks{
+		NewCache: pebble.NewCache,
 		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
 			if name == "none" {
 				return nil, nil

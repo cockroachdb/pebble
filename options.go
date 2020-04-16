@@ -634,6 +634,7 @@ func parseOptions(s string, fn func(section, key, value string) error) error {
 // ParseHooks contains callbacks to create options fields which can have
 // user-defined implementations.
 type ParseHooks struct {
+	NewCache        func(size int64) *Cache
 	NewCleaner      func(name string) (Cleaner, error)
 	NewComparer     func(name string) (*Comparer, error)
 	NewFilterPolicy func(name string) (FilterPolicy, error)
@@ -666,8 +667,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.BytesPerSync, err = strconv.Atoi(value)
 			case "cache_size":
 				n, err := strconv.ParseInt(value, 10, 64)
-				if err == nil {
-					o.Cache = cache.New(n)
+				if err == nil && hooks.NewCache != nil {
+					if o.Cache != nil {
+						o.Cache.Unref()
+					}
+					o.Cache = hooks.NewCache(n)
 				}
 			case "cleaner":
 				switch value {

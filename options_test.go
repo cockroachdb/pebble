@@ -137,8 +137,13 @@ func TestOptionsParse(t *testing.T) {
 	testComparer.Name = "test-comparer"
 	testMerger := *DefaultMerger
 	testMerger.Name = "test-merger"
+	var newCacheSize int64
 
 	hooks := &ParseHooks{
+		NewCache: func(size int64) *Cache {
+			newCacheSize = size
+			return nil
+		},
 		NewCleaner: func(name string) (Cleaner, error) {
 			if name == (testCleaner{}).String() {
 				return testCleaner{}, nil
@@ -181,15 +186,15 @@ func TestOptionsParse(t *testing.T) {
 			opts.EnsureDefaults()
 			str := opts.String()
 
+			newCacheSize = 0
 			var parsedOptions Options
 			require.NoError(t, parsedOptions.Parse(str, hooks))
 			parsedStr := parsedOptions.String()
 			if str != parsedStr {
 				t.Fatalf("expected\n%s\nbut found\n%s", str, parsedStr)
 			}
-			if parsedOptions.Cache != nil {
-				parsedOptions.Cache.Unref()
-			}
+			require.Nil(t, parsedOptions.Cache)
+			require.NotEqual(t, newCacheSize, 0)
 		})
 	}
 }
