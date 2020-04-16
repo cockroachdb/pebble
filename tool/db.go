@@ -5,24 +5,33 @@
 package tool
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"text/tabwriter"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
 // dbT implements db-level tools, including both configuration state and the
 // commands themselves.
 type dbT struct {
-	Root  *cobra.Command
-	Check *cobra.Command
-	LSM   *cobra.Command
-	Scan  *cobra.Command
-	Space *cobra.Command
+	Root       *cobra.Command
+	Check      *cobra.Command
+	LSM        *cobra.Command
+	Scan       *cobra.Command
+	Space      *cobra.Command
+	Properties *cobra.Command
 
 	// Configuration.
 	opts      *pebble.Options
@@ -94,11 +103,20 @@ use by another process.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runSpace,
 	}
+	d.Properties = &cobra.Command{
+		Use:   "properties <dir>",
+		Short: "print aggregated sstable properties",
+		Long: `
+Print SSTable properties, aggregated per level of the LSM.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runProperties,
+	}
 
-	d.Root.AddCommand(d.Check, d.LSM, d.Scan, d.Space)
+	d.Root.AddCommand(d.Check, d.LSM, d.Scan, d.Space, d.Properties)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
-	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan, d.Space} {
+	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Scan, d.Space, d.Properties} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
@@ -312,6 +330,188 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 		return
 	}
 	fmt.Fprintf(stdout, "%d\n", bytes)
+}
+
+func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
+	dirname := args[0]
+	err := func() error {
+		// Read CURRENT to identify the current manifest.
+		currentBytes, err := ioutil.ReadFile(base.MakeFilename(vfs.Default, dirname, base.FileTypeCurrent, 0))
+		if err != nil {
+			return errors.Wrapf(err, "pebble: could not open CURRENT file for DB %q", dirname)
+		}
+		manifestFilename := string(bytes.TrimSpace(currentBytes))
+
+		// Replay the manifest to get the current version.
+		f, err := vfs.Default.Open(vfs.Default.PathJoin(dirname, manifestFilename))
+		if err != nil {
+			return errors.Wrapf(err, "pebble: could not open MANIFEST file %q", manifestFilename)
+		}
+		defer f.Close()
+
+		cmp := base.DefaultComparer
+		var bve manifest.BulkVersionEdit
+		var fmtKey formatter
+		fmtKey.mustSet("quoted")
+		rr := record.NewReader(f, 0 /* logNum */)
+		for {
+			r, err := rr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return errors.Wrapf(err, "pebble: reading manifest %q", manifestFilename)
+			}
+			var ve manifest.VersionEdit
+			err = ve.Decode(r)
+			if err != nil {
+				return err
+			}
+			bve.Accumulate(&ve)
+			if ve.ComparerName != "" {
+				cmp = d.comparers[ve.ComparerName]
+				fmtKey.setForComparer(ve.ComparerName, d.comparers)
+			}
+		}
+		v, _, err := bve.Apply(nil /* version */, cmp.Compare, fmtKey.fn)
+		if err != nil {
+			return err
+		}
+
+		// Load and aggregate sstable properties.
+		tw := tabwriter.NewWriter(stdout, 2, 1, 2, ' ', 0)
+		var totalAgg aggregatedProps
+		for i, l := range v.Files {
+			fmt.Fprintf(tw, "level %d\t\n", i)
+			var levelAgg aggregatedProps
+			for _, t := range l {
+				err := addProps(dirname, t, &levelAgg)
+				if err != nil {
+					return err
+				}
+			}
+			levelAgg.write(tw)
+			totalAgg.update(levelAgg)
+		}
+		fmt.Fprintln(tw, "total\t")
+		totalAgg.write(tw)
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+		return nil
+	}()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+	}
+}
+
+type aggregatedProps struct {
+	EarliestCreationTime int64
+	LatestCreationTime   int64
+	SmallestSeqNum       uint64
+	LargestSeqNum        uint64
+	DataSize             uint64
+	FilterSize           uint64
+	IndexSize            uint64
+	NumDataBlocks        uint64
+	NumDeletions         uint64
+	NumEntries           uint64
+	NumMergeOperands     uint64
+	NumRangeDeletions    uint64
+	OldestKeyTime        uint64
+	RawKeySize           uint64
+	RawValueSize         uint64
+	TopLevelIndexSize    uint64
+}
+
+func formatTime(unixSec int64) string {
+	if unixSec == 0 {
+		return "n/a"
+	}
+	return time.Unix(unixSec, 0).Format(time.RFC3339)
+}
+
+func (p *aggregatedProps) write(w io.Writer) {
+	fmt.Fprintf(w, " earliest creation time\t%s\n",
+		formatTime(p.EarliestCreationTime))
+	fmt.Fprintf(w, " latest creation time\t%s\n",
+		formatTime(p.LatestCreationTime))
+	fmt.Fprintf(w, " smallest seqnum\t%d\n", p.SmallestSeqNum)
+	fmt.Fprintf(w, " largest seqnum\t%d\n", p.LargestSeqNum)
+	fmt.Fprintf(w, " data size\t%s\n", humanize.Uint64(p.DataSize))
+	fmt.Fprintf(w, " filter size\t%s\n", humanize.Uint64(p.FilterSize))
+	fmt.Fprintf(w, " index size\t%s\n", humanize.Uint64(p.IndexSize))
+	fmt.Fprintf(w, " data blocks\t%d\n", p.NumDataBlocks)
+	fmt.Fprintf(w, " deletions\t%d\n", p.NumDeletions)
+	fmt.Fprintf(w, " entries\t%d\n", p.NumEntries)
+	fmt.Fprintf(w, " merge operands\t%d\n", p.NumMergeOperands)
+	fmt.Fprintf(w, " range deletions\t%d\n", p.NumRangeDeletions)
+	fmt.Fprintf(w, " oldest key time\t%d\n", p.OldestKeyTime)
+	fmt.Fprintf(w, " raw key size\t%s\n", humanize.Uint64(p.RawKeySize))
+	fmt.Fprintf(w, " raw value size\t%s\n", humanize.Uint64(p.RawValueSize))
+	fmt.Fprintf(w, " top level index size\t%s\n", humanize.Uint64(p.TopLevelIndexSize))
+}
+
+func (p *aggregatedProps) update(o aggregatedProps) {
+	if p.EarliestCreationTime == 0 || o.EarliestCreationTime > p.EarliestCreationTime {
+		p.EarliestCreationTime = o.EarliestCreationTime
+	}
+	if o.LatestCreationTime > p.LatestCreationTime {
+		p.LatestCreationTime = o.LatestCreationTime
+	}
+	if p.SmallestSeqNum == 0 || o.SmallestSeqNum < p.SmallestSeqNum {
+		p.SmallestSeqNum = o.SmallestSeqNum
+	}
+	if o.LargestSeqNum > p.LargestSeqNum {
+		p.LargestSeqNum = o.LargestSeqNum
+	}
+	p.DataSize += o.DataSize
+	p.FilterSize += o.FilterSize
+	p.IndexSize += o.IndexSize
+	p.NumDataBlocks += o.NumDataBlocks
+	p.NumDeletions += o.NumDeletions
+	p.NumEntries += o.NumEntries
+	p.NumMergeOperands += o.NumMergeOperands
+	p.NumRangeDeletions += o.NumRangeDeletions
+	if o.OldestKeyTime != 0 && o.OldestKeyTime < p.OldestKeyTime {
+		p.OldestKeyTime = o.OldestKeyTime
+	}
+	p.RawKeySize += o.RawKeySize
+	p.RawValueSize += o.RawValueSize
+	p.TopLevelIndexSize += o.TopLevelIndexSize
+}
+
+func addProps(dir string, m *manifest.FileMetadata, props *aggregatedProps) error {
+	fs := vfs.Default
+	path := base.MakeFilename(fs, dir, base.FileTypeTable, m.FileNum)
+	f, err := fs.Open(path)
+	if err != nil {
+		return err
+	}
+	r, err := sstable.NewReader(f, sstable.ReaderOptions{})
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	props.update(aggregatedProps{
+		EarliestCreationTime: m.CreationTime,
+		LatestCreationTime:   m.CreationTime,
+		SmallestSeqNum:       m.SmallestSeqNum,
+		LargestSeqNum:        m.LargestSeqNum,
+		DataSize:             r.Properties.DataSize,
+		FilterSize:           r.Properties.FilterSize,
+		IndexSize:            r.Properties.IndexSize,
+		NumDataBlocks:        r.Properties.NumDataBlocks,
+		NumDeletions:         r.Properties.NumDeletions,
+		NumEntries:           r.Properties.NumEntries,
+		NumMergeOperands:     r.Properties.NumMergeOperands,
+		NumRangeDeletions:    r.Properties.NumRangeDeletions,
+		OldestKeyTime:        r.Properties.OldestKeyTime,
+		RawKeySize:           r.Properties.RawKeySize,
+		RawValueSize:         r.Properties.RawValueSize,
+		TopLevelIndexSize:    r.Properties.TopLevelIndexSize,
+	})
+	return r.Close()
 }
 
 func makePlural(singular string, count int64) string {
