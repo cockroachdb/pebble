@@ -177,3 +177,9 @@ rocksdb.property.collectors: []
 rocksdb.raw.key.size: 88
 rocksdb.raw.value.size: 13
 rocksdb.block.based.table.whole.key.filtering: false
+
+sstable properties
+testdata/bad-magic.sst
+----
+bad-magic.sst
+pebble/table: invalid table (bad magic number)
