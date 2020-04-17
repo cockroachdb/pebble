@@ -117,15 +117,28 @@ func hash(b []byte) uint32 {
 		h *= m
 		h ^= h >> 16
 	}
+
+	// The code below first casts each byte to a signed 8-bit integer. This is
+	// necessary to match RocksDB's behavior. Note that the `byte` type in Go is
+	// unsigned. What is the difference between casting a signed 8-bit value vs
+	// unsigned 8-bit value into an unsigned 32-bit value?
+	// Sign-extension. Consider the value 250 which has the bit pattern 11111010:
+	//
+	//   uint32(250)        = 00000000000000000000000011111010
+	//   uint32(int8(250))  = 11111111111111111111111111111010
+	//
+	// Note that the original LevelDB code did not explicitly cast to a signed
+	// 8-bit value which left the behavior dependent on whether C characters were
+	// signed or unsigned which is a compiler flag for gcc (-funsigned-char).
 	switch len(b) {
 	case 3:
-		h += uint32(b[2]) << 16
+		h += uint32(int8(b[2])) << 16
 		fallthrough
 	case 2:
-		h += uint32(b[1]) << 8
+		h += uint32(int8(b[1])) << 8
 		fallthrough
 	case 1:
-		h += uint32(b[0])
+		h += uint32(int8(b[0]))
 		h *= m
 		h ^= h >> 24
 	}
