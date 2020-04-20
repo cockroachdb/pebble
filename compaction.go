@@ -73,10 +73,10 @@ type userKeyRange struct {
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
-	cmp     Compare
-	format  base.Formatter
-	logger  Logger
-	version *version
+	cmp       Compare
+	formatKey base.FormatKey
+	logger    Logger
+	version   *version
 
 	score float64
 
@@ -167,7 +167,7 @@ func newCompaction(
 
 	return &compaction{
 		cmp:                 opts.Comparer.Compare,
-		format:              opts.Comparer.Format,
+		formatKey:           opts.Comparer.FormatKey,
 		logger:              opts.Logger,
 		version:             cur,
 		startLevel:          startLevel,
@@ -184,7 +184,7 @@ func newFlush(
 ) *compaction {
 	c := &compaction{
 		cmp:                 opts.Comparer.Compare,
-		format:              opts.Comparer.Format,
+		formatKey:           opts.Comparer.FormatKey,
 		logger:              opts.Logger,
 		version:             cur,
 		startLevel:          -1,
@@ -650,10 +650,10 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	// Check that the LSM ordering invariants are ok in order to prevent
 	// generating corrupted sstables due to a violation of those invariants.
-	if err := manifest.CheckOrdering(c.cmp, c.format, c.startLevel, c.inputs[0]); err != nil {
+	if err := manifest.CheckOrdering(c.cmp, c.formatKey, c.startLevel, c.inputs[0]); err != nil {
 		c.logger.Fatalf("%s", err)
 	}
-	if err := manifest.CheckOrdering(c.cmp, c.format, c.outputLevel, c.inputs[1]); err != nil {
+	if err := manifest.CheckOrdering(c.cmp, c.formatKey, c.outputLevel, c.inputs[1]); err != nil {
 		c.logger.Fatalf("%s", err)
 	}
 
@@ -1362,8 +1362,8 @@ func (d *DB) runCompaction(
 				if c < 0 {
 					return errors.Errorf(
 						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
-						writerMeta.SmallestRange.Pretty(d.opts.Comparer.Format),
-						prevMeta.Largest.Pretty(d.opts.Comparer.Format))
+						writerMeta.SmallestRange.Pretty(d.opts.Comparer.FormatKey),
+						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))
 				}
 				if c == 0 && prevMeta.Largest.SeqNum() <= writerMeta.SmallestRange.SeqNum() {
 					// The user key portion of the range boundary start key is equal to
@@ -1377,7 +1377,7 @@ func (d *DB) runCompaction(
 						// largest key containing a zero seqnum.
 						return errors.Errorf(
 							"pebble: previous sstable largest key unexpectedly has 0 seqnum: %s",
-							prevMeta.Largest.Pretty(d.opts.Comparer.Format))
+							prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))
 					}
 					// TODO(peter): Technically, this produces a small gap with the
 					// previous sstable. The largest key of the previous table may be
@@ -1431,8 +1431,8 @@ func (d *DB) runCompaction(
 				// Nothing to do.
 			case v < 0:
 				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
-					meta.Smallest.Pretty(d.opts.Comparer.Format),
-					c.smallest.Pretty(d.opts.Comparer.Format))
+					meta.Smallest.Pretty(d.opts.Comparer.FormatKey),
+					c.smallest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
 		if c.largest.UserKey != nil {
@@ -1449,8 +1449,8 @@ func (d *DB) runCompaction(
 				fallthrough
 			case v > 0:
 				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
-					meta.Largest.Pretty(d.opts.Comparer.Format),
-					c.largest.Pretty(d.opts.Comparer.Format))
+					meta.Largest.Pretty(d.opts.Comparer.FormatKey),
+					c.largest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
 		return nil

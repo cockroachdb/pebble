@@ -35,8 +35,8 @@ type Equal func(a, b []byte) bool
 // of the user key prefix in the order that gives the correct ordering.
 type AbbreviatedKey func(key []byte) uint64
 
-// Formatter returns a formatter for the user key.
-type Formatter func(key []byte) fmt.Formatter
+// FormatKey returns a formatter for the user key.
+type FormatKey func(key []byte) fmt.Formatter
 
 // Separator is used to construct SSTable index blocks. A trivial implementation
 // is `return a`, but appending fewer bytes leads to smaller SSTables.
@@ -88,7 +88,7 @@ type Comparer struct {
 	Compare        Compare
 	Equal          Equal
 	AbbreviatedKey AbbreviatedKey
-	Format         Formatter
+	FormatKey      FormatKey
 	Separator      Separator
 	Split          Split
 	Successor      Successor
@@ -125,7 +125,7 @@ var DefaultComparer = &Comparer{
 		return v << uint(8*(8-len(key)))
 	},
 
-	Format: DefaultFormatter,
+	FormatKey: DefaultFormatter,
 
 	Separator: func(dst, a, b []byte) []byte {
 		i, n := SharedPrefixLen(a, b), len(dst)

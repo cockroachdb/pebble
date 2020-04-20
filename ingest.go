@@ -34,11 +34,11 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 func ingestValidateKey(opts *Options, key *InternalKey) error {
 	if key.Kind() == InternalKeyKindInvalid {
 		return errors.Errorf("pebble: external sstable has corrupted key: %s",
-			key.Pretty(opts.Comparer.Format))
+			key.Pretty(opts.Comparer.FormatKey))
 	}
 	if key.SeqNum() != 0 {
 		return errors.Errorf("pebble: external sstable has non-zero seqnum: %s",
-			key.Pretty(opts.Comparer.Format))
+			key.Pretty(opts.Comparer.FormatKey))
 	}
 	return nil
 }

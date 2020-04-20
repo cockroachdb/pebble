@@ -55,7 +55,7 @@ func (k *key) Set(v string) error {
 
 type formatter struct {
 	spec      string
-	fn        base.Formatter
+	fn        base.FormatKey
 	setByUser bool
 	comparer  string
 }
@@ -124,8 +124,8 @@ func (f *formatter) setForComparer(comparerName string, comparers sstable.Compar
 		return
 	}
 
-	if cmp := comparers[comparerName]; cmp != nil && cmp.Format != nil {
-		f.fn = cmp.Format
+	if cmp := comparers[comparerName]; cmp != nil && cmp.FormatKey != nil {
+		f.fn = cmp.FormatKey
 	}
 }
 

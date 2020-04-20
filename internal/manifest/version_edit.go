@@ -468,7 +468,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 // referenced by the returned Version, but cannot be deleted from disk as they
 // are still in use by the incoming Version.
 func (b *BulkVersionEdit) Apply(
-	curr *Version, cmp Compare, format base.Formatter,
+	curr *Version, cmp Compare, formatKey base.FormatKey,
 ) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
 	addZombie := func(fileNum base.FileNum, size uint64) {
 		if zombies == nil {
@@ -547,7 +547,7 @@ func (b *BulkVersionEdit) Apply(
 				}
 			}
 			SortBySeqNum(v.Files[level])
-			if err := CheckOrdering(cmp, format, 0, v.Files[level]); err != nil {
+			if err := CheckOrdering(cmp, formatKey, 0, v.Files[level]); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
@@ -604,8 +604,8 @@ func (b *BulkVersionEdit) Apply(
 					return nil, nil, errors.Errorf(
 						"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(cf.FileNum), errors.Safe(f.FileNum),
-						cf.Smallest.Pretty(format), cf.Largest.Pretty(format),
-						f.Smallest.Pretty(format), f.Largest.Pretty(format))
+						cf.Smallest.Pretty(formatKey), cf.Largest.Pretty(formatKey),
+						f.Smallest.Pretty(formatKey), f.Largest.Pretty(formatKey))
 				}
 			}
 			v.Files[level] = append(v.Files[level], f)

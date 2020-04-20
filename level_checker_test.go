@@ -81,7 +81,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
 	var levels [][]*fileMetadata
-	format := DefaultComparer.Format
+	formatKey := DefaultComparer.FormatKey
 	// Indexed by fileNum
 	var readers []*sstable.Reader
 	defer func() {
@@ -246,7 +246,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				newIters:  newIters,
 				seqNum:    InternalKeySeqNumMax,
 				merge:     merge,
-				format:    format,
+				formatKey: formatKey,
 			}
 			if err := checkLevelsInternal(c); err != nil {
 				return err.Error()

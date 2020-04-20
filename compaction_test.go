@@ -1226,7 +1226,7 @@ func TestCompactionSetupInputs(t *testing.T) {
 
 				c := &compaction{
 					cmp:              DefaultComparer.Compare,
-					format:           DefaultComparer.Format,
+					formatKey:        DefaultComparer.FormatKey,
 					version:          &version{},
 					startLevel:       -1,
 					outputLevel:      -1,
@@ -1431,9 +1431,9 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			c = &compaction{
-				cmp:     DefaultComparer.Compare,
-				format:  DefaultComparer.Format,
-				version: &version{},
+				cmp:       DefaultComparer.Compare,
+				formatKey: DefaultComparer.FormatKey,
+				version:   &version{},
 			}
 			var files *[]*fileMetadata
 			fileNum := FileNum(1)
@@ -1454,7 +1454,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 					*files = append(*files, meta)
 				}
 			}
-			return c.version.DebugString(c.format)
+			return c.version.DebugString(c.formatKey)
 
 		case "inuse-key-ranges":
 			var buf bytes.Buffer
@@ -1625,7 +1625,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 			case "check-ordering":
 				c := &compaction{
 					cmp:         DefaultComparer.Compare,
-					format:      DefaultComparer.Format,
+					formatKey:   DefaultComparer.FormatKey,
 					logger:      panicLogger{},
 					startLevel:  -1,
 					outputLevel: -1,

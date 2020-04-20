@@ -90,7 +90,7 @@ func runTests(t *testing.T, path string) {
 					var c Comparer
 					c = *base.DefaultComparer
 					c.Name = "test-comparer"
-					c.Format = func(key []byte) fmt.Formatter {
+					c.FormatKey = func(key []byte) fmt.Formatter {
 						return fmtFormatter{
 							fmt: "test formatter: %s",
 							v:   key,
