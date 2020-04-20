@@ -41,8 +41,8 @@ type dbT struct {
 	// Flags.
 	comparerName string
 	mergerName   string
-	fmtKey       formatter
-	fmtValue     formatter
+	fmtKey       keyFormatter
+	fmtValue     valueFormatter
 	start        key
 	end          key
 	count        int64
@@ -267,6 +267,7 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	// Update the internal formatter if this comparator has one specified.
 	if d.opts.Comparer != nil {
 		d.fmtKey.setForComparer(d.opts.Comparer.Name, d.comparers)
+		d.fmtValue.setForComparer(d.opts.Comparer.Name, d.comparers)
 	}
 
 	start := timeNow()
@@ -288,7 +289,7 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 				if needDelimiter {
 					stdout.Write([]byte{' '})
 				}
-				fmt.Fprintf(stdout, "%s", d.fmtValue.fn(iter.Value()))
+				fmt.Fprintf(stdout, "%s", d.fmtValue.fn(iter.Key(), iter.Value()))
 			}
 			stdout.Write([]byte{'\n'})
 		}
@@ -374,6 +375,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			if ve.ComparerName != "" {
 				cmp = d.comparers[ve.ComparerName]
 				d.fmtKey.setForComparer(ve.ComparerName, d.comparers)
+				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
 			}
 		}
 		v, _, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn)

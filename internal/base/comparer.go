@@ -38,6 +38,11 @@ type AbbreviatedKey func(key []byte) uint64
 // FormatKey returns a formatter for the user key.
 type FormatKey func(key []byte) fmt.Formatter
 
+// FormatValue returns a formatter for the user value. The key is also
+// specified for the value formatter in order to support value formatting that
+// is dependent on the key.
+type FormatValue func(key, value []byte) fmt.Formatter
+
 // Separator is used to construct SSTable index blocks. A trivial implementation
 // is `return a`, but appending fewer bytes leads to smaller SSTables.
 //
@@ -89,6 +94,7 @@ type Comparer struct {
 	Equal          Equal
 	AbbreviatedKey AbbreviatedKey
 	FormatKey      FormatKey
+	FormatValue    FormatValue
 	Separator      Separator
 	Split          Split
 	Successor      Successor

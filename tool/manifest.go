@@ -27,7 +27,7 @@ type manifestT struct {
 
 	opts      *pebble.Options
 	comparers sstable.Comparers
-	fmtKey    formatter
+	fmtKey    keyFormatter
 	verbose   bool
 }
 

@@ -87,8 +87,7 @@ func runTests(t *testing.T, path string) {
 				// Register a test comparer and merger so that we can check the
 				// behavior of tools when the comparer and merger do not match.
 				tool.RegisterComparer(func() *Comparer {
-					var c Comparer
-					c = *base.DefaultComparer
+					c := *base.DefaultComparer
 					c.Name = "test-comparer"
 					c.FormatKey = func(key []byte) fmt.Formatter {
 						return fmtFormatter{
@@ -96,11 +95,16 @@ func runTests(t *testing.T, path string) {
 							v:   key,
 						}
 					}
+					c.FormatValue = func(_, value []byte) fmt.Formatter {
+						return fmtFormatter{
+							fmt: "test value formatter: %s",
+							v:   value,
+						}
+					}
 					return &c
 				}())
 				tool.RegisterMerger(func() *Merger {
-					var m Merger
-					m = *base.DefaultMerger
+					m := *base.DefaultMerger
 					m.Name = "test-merger"
 					return &m
 				}())

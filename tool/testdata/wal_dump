@@ -47,13 +47,13 @@ EOF
 wal dump
 ../testdata/db-stage-4/000006.log
 --key=pretty
---value=%x
+--value=pretty:test-comparer
 ----
 000006.log
 0(22) seq=6 count=1
-    SET(foo,66697665)
+    SET(foo,test value formatter: five)
 29(22) seq=7 count=1
-    SET(quux,736978)
+    SET(quux,test value formatter: six)
 58(17) seq=8 count=1
     DEL(baz)
 EOF

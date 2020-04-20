@@ -102,27 +102,27 @@ your#0,SET [3439]
 
 sstable scan
 --key=pretty
---value=[%x]
+--value=pretty
 --start=hex:796f75
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
 h.sst
-you#0,SET [313130]
-young#0,SET [36]
-your#0,SET [3439]
+you#0,SET 110
+young#0,SET 6
+your#0,SET 49
 
 sstable scan
 --key=pretty:test-comparer
---value=[%x]
+--value=pretty:test-comparer
 --start=hex:796f75
 --end=raw:yourself
 ../sstable/testdata/h.sst
 ----
 h.sst
-test formatter: you#0,SET [313130]
-test formatter: young#0,SET [36]
-test formatter: your#0,SET [3439]
+test formatter: you#0,SET test value formatter: 110
+test formatter: young#0,SET test value formatter: 6
+test formatter: your#0,SET test value formatter: 49
 
 # Start and end scan keys lie within range tombstones.
 sstable scan

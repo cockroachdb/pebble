@@ -36,8 +36,8 @@ type findT struct {
 
 	// Flags.
 	comparerName string
-	fmtKey       formatter
-	fmtValue     formatter
+	fmtKey       keyFormatter
+	fmtValue     valueFormatter
 	verbose      bool
 
 	// Map from file num to path on disk.
@@ -108,6 +108,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 		return
 	}
 	f.fmtKey.setForComparer(f.opts.Comparer.Name, f.comparers)
+	f.fmtValue.setForComparer(f.opts.Comparer.Name, f.comparers)
 
 	refs := f.search(key)
 	var lastFileNum base.FileNum

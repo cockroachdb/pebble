@@ -34,30 +34,30 @@ find
 testdata/find-db
 bbb
 --key=%x
---value=[%s]
+--value=pretty:test-comparer
 ----
 000002.log
-    626262#1,SET [2]
+    626262#1,SET test value formatter: 2
 000004.log
     626262-656565#9,RANGEDEL
 000005.sst [616161#0,SET-636363#4,MERGE]
     (flushed to L0, moved to L6)
-    626262#1,SET [2]
+    626262#1,SET test value formatter: 2
 000006.sst [626262#5,SET-636363#5,SET]
     (ingested to L0)
-    626262#5,SET [22]
+    626262#5,SET test value formatter: 22
 000008.sst [616161#0,SET-636363#0,MERGE]
     (compacted L0 [000006] + L6 [000005])
-    626262#5,SET [22]
-    626262#0,SET [2]
+    626262#5,SET test value formatter: 22
+    626262#0,SET test value formatter: 2
 000010.sst [616161#7,DEL-656565#72057594037927935,RANGEDEL]
     (flushed to L0)
     626262-656565#9,RANGEDEL
 000011.sst [616161#7,DEL-656565#72057594037927935,RANGEDEL]
     (compacted L0 [000010] + L6 [000008 ...])
     626262-656565#9,RANGEDEL
-    626262#5,SET [22]
-    626262#0,SET [2]
+    626262#5,SET test value formatter: 22
+    626262#0,SET test value formatter: 2
 
 find
 testdata/find-db
