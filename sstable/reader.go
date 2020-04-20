@@ -945,7 +945,7 @@ func (c Comparers) readerApply(r *Reader) {
 	}
 	if comparer, ok := c[r.Properties.ComparerName]; ok {
 		r.Compare = comparer.Compare
-		r.split = comparer.Split
+		r.Split = comparer.Split
 	}
 }
 
@@ -1027,7 +1027,7 @@ type Reader struct {
 	footerBH          BlockHandle
 	opts              ReaderOptions
 	Compare           Compare
-	split             Split
+	Split             Split
 	mergerOK          bool
 	tableFilter       *tableFilterReader
 	Properties        Properties
@@ -1072,8 +1072,8 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 			return nil, err
 		}
 		var lookupKey []byte
-		if r.split != nil {
-			lookupKey = key[:r.split(key)]
+		if r.Split != nil {
+			lookupKey = key[:r.Split(key)]
 		} else {
 			lookupKey = key
 		}
@@ -1622,7 +1622,7 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Compare = o.Comparer.Compare
-		r.split = o.Comparer.Split
+		r.Split = o.Comparer.Split
 	}
 
 	if o.MergerName == r.Properties.MergerName {
