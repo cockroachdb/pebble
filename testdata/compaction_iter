@@ -142,8 +142,8 @@ first
 next
 next
 ----
-a#3,1:bcd
-b#2,2:ab
+a#3,1:bcd-IB
+b#2,2:ab-EB
 .
 
 iter snapshots=3
@@ -152,9 +152,9 @@ next
 next
 next
 ----
-a#3,2:d
-a#2,1:bc
-b#2,2:ab
+a#3,2:d-EB
+a#2,1:bc-IB
+b#2,2:ab-EB
 .
 
 define
@@ -261,7 +261,7 @@ iter
 first
 next
 ----
-a#2,2:b
+a#2,2:b-IB
 err=invalid internal key kind: 255
 
 define
@@ -288,9 +288,9 @@ next
 next
 next
 ----
-a#2,2:b
-a#1,2:c
-a#0,2:d
+a#2,2:b-EB
+a#1,2:c-EB
+a#0,2:d-EB
 .
 
 define
@@ -415,9 +415,9 @@ next
 tombstones
 ----
 a#3,15:e
-b#4,2:b
-c#3,2:c
-e#1,2:e
+b#4,2:b-EB
+c#3,2:c-EB
+e#1,2:e-EB
 .
 a-e#3
 .
@@ -444,8 +444,8 @@ next
 tombstones
 ----
 a#3,15:c
-b#5,1:de
-d#5,2:bc
+b#5,1:de-IB
+d#5,2:bc-IB
 d#3,15:f
 .
 a-c#3
@@ -888,7 +888,7 @@ iter
 first
 next
 ----
-a#2,1:ab
+a#2,1:ab-IB
 .
 
 iter snapshots=2
@@ -896,7 +896,7 @@ first
 next
 next
 ----
-a#2,2:b
+a#2,2:b-EB
 a#1,1:a
 .
 
@@ -904,7 +904,7 @@ iter snapshots=3
 first
 next
 ----
-a#2,1:ab
+a#2,1:ab-IB
 .
 
 iter snapshots=(2,3,4)
@@ -916,7 +916,7 @@ next
 ----
 a#4,7:
 a#3,1:c
-a#2,2:b
+a#2,2:b-EB
 a#1,1:a
 .
 
@@ -1000,7 +1000,7 @@ next
 next
 tombstones
 ----
-a#2,2:a
+a#2,2:a-EB
 .
 b#1,15:c
 .
@@ -1020,9 +1020,9 @@ next
 next
 tombstones
 ----
-a#2,2:v2
+a#2,2:v2-IB
 a#1,15:b
-a#0,2:v1
+a#0,2:v1-EB
 .
 a-b#1
 .
@@ -1039,21 +1039,21 @@ iter
 first
 next
 ----
-a#5,1:5
+a#5,1:5-IB
 .
 
 iter allow-zero-seqnum=true
 first
 next
 ----
-a#0,1:5
+a#0,1:5-IB
 .
 
 iter elide-tombstones=true
 first
 next
 ----
-a#5,1:5
+a#5,1:5-IB
 .
 
 iter snapshots=2
@@ -1061,8 +1061,8 @@ first
 next
 next
 ----
-a#5,1:5
-a#1,2:1
+a#5,1:5-IB
+a#1,2:1-EB
 .
 
 iter snapshots=2 elide-tombstones=true
@@ -1070,8 +1070,8 @@ first
 next
 next
 ----
-a#5,1:5
-a#1,2:1
+a#5,1:5-IB
+a#1,2:1-EB
 .
 
 # Verify that we transform merge+rangedel -> set. This isn't strictly
@@ -1090,7 +1090,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
+b#5,1:5-IB
 .
 
 iter allow-zero-seqnum=true
@@ -1099,7 +1099,7 @@ next
 next
 ----
 a#3,15:c
-b#0,1:5
+b#0,1:5-IB
 .
 
 iter snapshots=2
@@ -1108,8 +1108,8 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
-b#1,2:1
+b#5,1:5-IB
+b#1,2:1-EB
 
 define
 a.RANGEDEL.3:c
@@ -1124,7 +1124,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
+b#5,1:5-IB
 .
 
 iter snapshots=2
@@ -1133,5 +1133,5 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
-b#1,2:1
+b#5,1:5-IB
+b#1,2:1-EB

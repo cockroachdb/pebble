@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,6 +48,33 @@ func TestSnapshotIndex(t *testing.T) {
 	}
 }
 
+type debugMerger struct {
+	buf []byte
+}
+
+func (m *debugMerger) MergeNewer(value []byte) error {
+	m.buf = append(m.buf, value...)
+	return nil
+}
+
+func (m *debugMerger) MergeOlder(value []byte) error {
+	buf := make([]byte, len(m.buf)+len(value))
+	copy(buf, value)
+	copy(buf[len(value):], m.buf)
+	m.buf = buf
+	return nil
+}
+
+func (m *debugMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	if includesBase {
+		m.buf = append(m.buf, []byte("-IB")...)
+	} else {
+		m.buf = append(m.buf, []byte("-EB")...)
+	}
+
+	return m.buf, nil, nil
+}
+
 func TestCompactionIter(t *testing.T) {
 	var keys []InternalKey
 	var vals [][]byte
@@ -57,7 +85,11 @@ func TestCompactionIter(t *testing.T) {
 	newIter := func() *compactionIter {
 		return newCompactionIter(
 			DefaultComparer.Compare,
-			DefaultMerger.Merge,
+			func(key, value []byte) (base.ValueMerger, error) {
+				m := &debugMerger{}
+				m.buf = append(m.buf, value...)
+				return m, nil
+			},
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
 			&rangedel.Fragmenter{},
