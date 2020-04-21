@@ -53,43 +53,43 @@ func (k *key) Set(v string) error {
 	return nil
 }
 
-type formatter struct {
+type keyFormatter struct {
 	spec      string
-	fn        base.Formatter
+	fn        base.FormatKey
 	setByUser bool
 	comparer  string
 }
 
-func (f *formatter) String() string {
+func (f *keyFormatter) String() string {
 	return f.spec
 }
 
-func (f *formatter) Type() string {
-	return "formatter"
+func (f *keyFormatter) Type() string {
+	return "keyFormatter"
 }
 
-func (f *formatter) Set(spec string) error {
+func (f *keyFormatter) Set(spec string) error {
 	f.spec = spec
 	f.setByUser = true
 	switch spec {
 	case "null":
-		f.fn = formatNull
+		f.fn = formatKeyNull
 	case "quoted":
-		f.fn = formatQuoted
+		f.fn = formatKeyQuoted
 	case "pretty":
-		// Using "pretty" defaults to base.FormatBytes (just like formatQuoted),
+		// Using "pretty" defaults to base.FormatBytes (just like formatKeyQuoted),
 		// except with the ability of having the comparer-provided formatter
-		// overwrite f.fn if there is one specified. We determine whether to
-		// do that overwrite through setByUser.
-		f.fn = formatQuoted
+		// overwrite f.fn if there is one specified. We determine whether to do
+		// that overwrite through setByUser.
+		f.fn = formatKeyQuoted
 		f.setByUser = false
 	case "size":
-		f.fn = formatSize
+		f.fn = formatKeySize
 	default:
 		if strings.HasPrefix(spec, "pretty:") {
 			// Usage: pretty:<comparer-name>
 			f.comparer = spec[7:]
-			f.fn = formatQuoted
+			f.fn = formatKeyQuoted
 			return nil
 		}
 		if strings.Count(spec, "%") != 1 {
@@ -102,7 +102,7 @@ func (f *formatter) Set(spec string) error {
 	return nil
 }
 
-func (f *formatter) mustSet(spec string) {
+func (f *keyFormatter) mustSet(spec string) {
 	if err := f.Set(spec); err != nil {
 		panic(err)
 	}
@@ -110,7 +110,7 @@ func (f *formatter) mustSet(spec string) {
 }
 
 // Sets the appropriate formatter function for this comparer.
-func (f *formatter) setForComparer(comparerName string, comparers sstable.Comparers) {
+func (f *keyFormatter) setForComparer(comparerName string, comparers sstable.Comparers) {
 	if f.setByUser && len(f.comparer) == 0 {
 		// User specified a different formatter, no-op.
 		return
@@ -124,8 +124,84 @@ func (f *formatter) setForComparer(comparerName string, comparers sstable.Compar
 		return
 	}
 
-	if cmp := comparers[comparerName]; cmp != nil && cmp.Format != nil {
-		f.fn = cmp.Format
+	if cmp := comparers[comparerName]; cmp != nil && cmp.FormatKey != nil {
+		f.fn = cmp.FormatKey
+	}
+}
+
+type valueFormatter struct {
+	spec      string
+	fn        base.FormatValue
+	setByUser bool
+	comparer  string
+}
+
+func (f *valueFormatter) String() string {
+	return f.spec
+}
+
+func (f *valueFormatter) Type() string {
+	return "valueFormatter"
+}
+
+func (f *valueFormatter) Set(spec string) error {
+	f.spec = spec
+	f.setByUser = true
+	switch spec {
+	case "null":
+		f.fn = formatValueNull
+	case "quoted":
+		f.fn = formatValueQuoted
+	case "pretty":
+		// Using "pretty" defaults to base.FormatBytes (just like
+		// formatValueQuoted), except with the ability of having the
+		// comparer-provided formatter overwrite f.fn if there is one specified. We
+		// determine whether to do that overwrite through setByUser.
+		f.fn = formatValueQuoted
+		f.setByUser = false
+	case "size":
+		f.fn = formatValueSize
+	default:
+		if strings.HasPrefix(spec, "pretty:") {
+			// Usage: pretty:<comparer-name>
+			f.comparer = spec[7:]
+			f.fn = formatValueQuoted
+			return nil
+		}
+		if strings.Count(spec, "%") != 1 {
+			return errors.Errorf("unknown formatter: %q", errors.Safe(spec))
+		}
+		f.fn = func(k, v []byte) fmt.Formatter {
+			return fmtFormatter{f.spec, v}
+		}
+	}
+	return nil
+}
+
+func (f *valueFormatter) mustSet(spec string) {
+	if err := f.Set(spec); err != nil {
+		panic(err)
+	}
+	f.setByUser = false
+}
+
+// Sets the appropriate formatter function for this comparer.
+func (f *valueFormatter) setForComparer(comparerName string, comparers sstable.Comparers) {
+	if f.setByUser && len(f.comparer) == 0 {
+		// User specified a different formatter, no-op.
+		return
+	}
+
+	if len(f.comparer) > 0 {
+		// User specified a comparer to reference for formatting, which takes
+		// precedence.
+		comparerName = f.comparer
+	} else if len(comparerName) == 0 {
+		return
+	}
+
+	if cmp := comparers[comparerName]; cmp != nil && cmp.FormatValue != nil {
+		f.fn = cmp.FormatValue
 	}
 }
 
@@ -143,11 +219,19 @@ type nullFormatter struct{}
 func (nullFormatter) Format(s fmt.State, c rune) {
 }
 
-func formatNull(v []byte) fmt.Formatter {
+func formatKeyNull(v []byte) fmt.Formatter {
 	return nullFormatter{}
 }
 
-func formatQuoted(v []byte) fmt.Formatter {
+func formatValueNull(k, v []byte) fmt.Formatter {
+	return nullFormatter{}
+}
+
+func formatKeyQuoted(v []byte) fmt.Formatter {
+	return base.FormatBytes(v)
+}
+
+func formatValueQuoted(k, v []byte) fmt.Formatter {
 	return base.FormatBytes(v)
 }
 
@@ -157,11 +241,15 @@ func (v sizeFormatter) Format(s fmt.State, c rune) {
 	fmt.Fprintf(s, "<%d>", len(v))
 }
 
-func formatSize(v []byte) fmt.Formatter {
+func formatKeySize(v []byte) fmt.Formatter {
 	return sizeFormatter(v)
 }
 
-func formatKey(w io.Writer, fmtKey formatter, key *base.InternalKey) bool {
+func formatValueSize(k, v []byte) fmt.Formatter {
+	return sizeFormatter(v)
+}
+
+func formatKey(w io.Writer, fmtKey keyFormatter, key *base.InternalKey) bool {
 	if fmtKey.spec == "null" {
 		return false
 	}
@@ -173,7 +261,7 @@ func formatSeqNumRange(w io.Writer, start, end uint64) {
 	fmt.Fprintf(w, "<#%d-#%d>", start, end)
 }
 
-func formatKeyRange(w io.Writer, fmtKey formatter, start, end *base.InternalKey) {
+func formatKeyRange(w io.Writer, fmtKey keyFormatter, start, end *base.InternalKey) {
 	if fmtKey.spec == "null" {
 		return
 	}
@@ -181,7 +269,7 @@ func formatKeyRange(w io.Writer, fmtKey formatter, start, end *base.InternalKey)
 }
 
 func formatKeyValue(
-	w io.Writer, fmtKey formatter, fmtValue formatter, key *base.InternalKey, value []byte,
+	w io.Writer, fmtKey keyFormatter, fmtValue valueFormatter, key *base.InternalKey, value []byte,
 ) {
 	if key.Kind() == base.InternalKeyKindRangeDelete {
 		if fmtKey.spec != "null" {
@@ -195,7 +283,7 @@ func formatKeyValue(
 			if needDelimiter {
 				w.Write([]byte{' '})
 			}
-			fmt.Fprintf(w, "%s", fmtValue.fn(value))
+			fmt.Fprintf(w, "%s", fmtValue.fn(key.UserKey, value))
 		}
 	}
 	w.Write([]byte{'\n'})

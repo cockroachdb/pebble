@@ -300,15 +300,15 @@ func (k InternalKey) String() string {
 }
 
 // Pretty returns a formatter for the key.
-func (k InternalKey) Pretty(f Formatter) fmt.Formatter {
+func (k InternalKey) Pretty(f FormatKey) fmt.Formatter {
 	return prettyInternalKey{k, f}
 }
 
 type prettyInternalKey struct {
 	InternalKey
-	formatter Formatter
+	formatKey FormatKey
 }
 
 func (k prettyInternalKey) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s#%d,%s", k.formatter(k.UserKey), k.SeqNum(), k.Kind())
+	fmt.Fprintf(s, "%s#%d,%s", k.formatKey(k.UserKey), k.SeqNum(), k.Kind())
 }

@@ -249,7 +249,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	newVersion, _, err := bve.Apply(nil, vs.cmp, opts.Comparer.Format)
+	newVersion, _, err := bve.Apply(nil, vs.cmp, opts.Comparer.FormatKey)
 	if err != nil {
 		return err
 	}
@@ -379,7 +379,7 @@ func (vs *versionSet) logAndApply(
 		bve.Accumulate(ve)
 
 		var err error
-		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.Format)
+		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey)
 		if err != nil {
 			return err
 		}

@@ -23,8 +23,8 @@ type walT struct {
 	Dump *cobra.Command
 
 	opts     *pebble.Options
-	fmtKey   formatter
-	fmtValue formatter
+	fmtKey   keyFormatter
+	fmtValue valueFormatter
 
 	comparers sstable.Comparers
 	verbose   bool
@@ -64,6 +64,8 @@ Print the contents of the WAL files.
 
 func (w *walT) runDump(cmd *cobra.Command, args []string) {
 	w.fmtKey.setForComparer("", w.comparers)
+	w.fmtValue.setForComparer("", w.comparers)
+
 	for _, arg := range args {
 		func() {
 			// Parse the filename in order to extract the file number. This is
@@ -127,11 +129,11 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					case base.InternalKeyKindDelete:
 						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindSet:
-						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtValue.fn(value))
+						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtValue.fn(ukey, value))
 					case base.InternalKeyKindMerge:
-						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtValue.fn(value))
+						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtValue.fn(ukey, value))
 					case base.InternalKeyKindLogData:
-						fmt.Fprintf(stdout, "%s", w.fmtValue.fn(value))
+						fmt.Fprintf(stdout, "<%d>", len(value))
 					case base.InternalKeyKindSingleDelete:
 						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindRangeDelete:

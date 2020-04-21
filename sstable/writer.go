@@ -97,7 +97,7 @@ type Writer struct {
 	indexBlockSizeThreshold int
 	compare                 Compare
 	split                   Split
-	formatter               base.Formatter
+	formatKey               base.FormatKey
 	compression             Compression
 	separator               Separator
 	successor               Successor
@@ -223,7 +223,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		x := w.compare(w.meta.LargestPoint.UserKey, key.UserKey)
 		if x > 0 || (x == 0 && w.meta.LargestPoint.Trailer < key.Trailer) {
 			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
-				w.meta.LargestPoint.Pretty(w.formatter), key.Pretty(w.formatter))
+				w.meta.LargestPoint.Pretty(w.formatKey), key.Pretty(w.formatKey))
 			return w.err
 		}
 	}
@@ -269,27 +269,27 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		switch c := w.compare(prevKey.UserKey, key.UserKey); {
 		case c > 0:
 			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
-				prevKey.Pretty(w.formatter), key.Pretty(w.formatter))
+				prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
 			return w.err
 		case c == 0:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatter),
-					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatter))
+					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
+					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
 				w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
-					prevKey.Pretty(w.formatter), key.Pretty(w.formatter))
+					prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
 				return w.err
 			}
 		default:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatter),
-					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatter))
+					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
+					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
 				return w.err
 			}
 		}
@@ -712,7 +712,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		indexBlockSizeThreshold: (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
 		compare:                 o.Comparer.Compare,
 		split:                   o.Comparer.Split,
-		formatter:               o.Comparer.Format,
+		formatKey:               o.Comparer.FormatKey,
 		compression:             o.Compression,
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,

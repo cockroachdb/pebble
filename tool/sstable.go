@@ -37,8 +37,8 @@ type sstableT struct {
 	mergers   sstable.Mergers
 
 	// Flags.
-	fmtKey   formatter
-	fmtValue formatter
+	fmtKey   keyFormatter
+	fmtValue valueFormatter
 	start    key
 	end      key
 	filter   key
@@ -167,6 +167,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
 		iter, err := r.NewIter(nil, nil)
 		if err != nil {
@@ -241,6 +242,7 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
 		l, err := r.Layout()
 		if err != nil {
@@ -372,6 +374,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
 		iter, err := r.NewIter(nil, s.end)
 		if err != nil {

@@ -228,7 +228,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				readers = append(readers, r)
 			}
 
-			return v.DebugString(DefaultComparer.Format)
+			return v.DebugString(DefaultComparer.FormatKey)
 		case "iter":
 			levelIters := make([]mergingIterLevel, 0, len(v.Files))
 			for i, l := range v.Files {

@@ -58,7 +58,7 @@ type lsmT struct {
 	opts      *pebble.Options
 	comparers sstable.Comparers
 
-	fmtKey formatter
+	fmtKey keyFormatter
 	embed  bool
 	pretty bool
 
