@@ -171,8 +171,8 @@ type L0SubLevels struct {
 	// that sublevel in increasing key order.
 	Files [][]*FileMetadata
 
-	cmp    Compare
-	format base.Formatter
+	cmp       Compare
+	formatKey base.FormatKey
 
 	fileBytes uint64
 	// Contains all files in one slice, ordered from oldest to youngest.
@@ -207,10 +207,10 @@ func insertIntoSubLevel(files []*FileMetadata, f *FileMetadata) []*FileMetadata 
 func NewL0SubLevels(
 	files []*FileMetadata,
 	cmp Compare,
-	formatter base.Formatter,
+	formatKey base.FormatKey,
 	flushSplitMaxBytes uint64,
 ) (*L0SubLevels, error) {
-	s := &L0SubLevels{cmp: cmp, format: formatter}
+	s := &L0SubLevels{cmp: cmp, formatKey: formatKey}
 	s.filesByAge = files
 	keys := make([]intervalKey, 0, 2*len(files))
 	for i := range s.filesByAge {
@@ -336,7 +336,7 @@ func (s *L0SubLevels) describe(verbose bool) string {
 	fmt.Fprintf(&buf, "file count: %d, sublevels: %d, intervals: %d\nflush split keys(%d): [",
 		len(s.filesByAge), len(s.Files), len(s.orderedIntervals), len(s.flushSplitUserKeys))
 	for i := range s.flushSplitUserKeys {
-		fmt.Fprintf(&buf, "%s", s.format(s.flushSplitUserKeys[i]))
+		fmt.Fprintf(&buf, "%s", s.formatKey(s.flushSplitUserKeys[i]))
 		if i < len(s.flushSplitUserKeys) - 1 {
 			fmt.Fprintf(&buf, ", ")
 		}
