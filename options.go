@@ -55,8 +55,11 @@ const (
 	TableFormatLevelDB   = sstable.TableFormatLevelDB
 )
 
-// TablePropertyCollector exports the base.TablePropertyCollector type.
+// TablePropertyCollector exports the sstable.TablePropertyCollector type.
 type TablePropertyCollector = sstable.TablePropertyCollector
+
+// NeedCompacter exports the sstable.NeedCompacter type.
+type NeedCompacter = sstable.NeedCompacter
 
 // IterOptions hold the optional per-query parameters for NewIter.
 //
