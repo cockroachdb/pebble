@@ -1343,6 +1343,7 @@ func (d *DB) runCompaction(
 		meta.Size = writerMeta.Size
 		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
+		meta.MarkedForCompaction = writerMeta.MarkedForCompaction
 
 		if c.flushing == nil {
 			metrics.TablesCompacted++
