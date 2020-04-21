@@ -80,6 +80,15 @@ type TablePropertyCollector interface {
 	Name() string
 }
 
+// NeedCompacter is an optional interface that may be implemented by a
+// TablePropertyCollector to force an sstable compaction.
+type NeedCompacter interface {
+	// NeedCompact is called when all the entries have been added to the
+	// sstable but before Finish. If NeedCompact returns true, the resulting
+	// table will be marked for compaction.
+	NeedCompact() bool
+}
+
 // ReaderOptions holds the parameters needed for reading an sstable.
 type ReaderOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
