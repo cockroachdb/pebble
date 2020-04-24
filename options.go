@@ -289,6 +289,10 @@ type Options struct {
 	// map during normal usage of a DB.
 	Filters map[string]FilterPolicy
 
+	// FlushSplitBytes denotes the number of bytes to aim to have in each
+	// flush split interval.
+	FlushSplitBytes uint64
+
 	// FS provides the interface for persistent file storage.
 	//
 	// The default value uses the underlying operating system's file system.
@@ -423,6 +427,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer
+	}
+	if o.FlushSplitBytes == 0 {
+		o.FlushSplitBytes = 10 << 20 // 10 MB
 	}
 	if o.FS == nil {
 		o.FS = vfs.Default

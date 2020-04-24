@@ -864,9 +864,9 @@ func TestCompaction(t *testing.T) {
 		// The next addition creates the fourth level-0 table, and l0CompactionTrigger == 4,
 		// so this triggers a non-trivial compaction into one level-1 table. Note that the
 		// keys in this one larger table are interleaved from the four smaller ones.
-		{"+E", "E", "ABCDbd."},
-		{"+e", "Ee", "ABCDbd."},
-		{"+F", "F", "ABCDbd.Ee."},
+		{"+E", "E", "Aa.BC.Bb.Dad."},
+		{"+e", "Ee", "Aa.BC.Bb.Dad."},
+		{"+F", "F", "ABCDEbde."},
 	}
 	for _, tc := range testCases {
 		if key := tc.key[1:]; tc.key[0] == '+' {

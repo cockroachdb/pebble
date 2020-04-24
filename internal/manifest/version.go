@@ -349,11 +349,11 @@ func (v *Version) Next() *Version {
 }
 
 // InitL0Sublevels initializes the L0SubLevels
-func (v *Version) InitL0Sublevels(cmp Compare, formatKey base.FormatKey) error {
+func (v *Version) InitL0Sublevels(cmp Compare, formatKey base.FormatKey, flushSplitBytes uint64) error {
 	// TODO(bilal): Experiment with flushSplitMaxBytes to pick a good value, and
 	// make it configurable.
 	var err error
-	v.L0SubLevels, err = NewL0SubLevels(v.Files[0], cmp, formatKey, 10<<20)
+	v.L0SubLevels, err = NewL0SubLevels(v.Files[0], cmp, formatKey, flushSplitBytes)
 	return err
 }
 
