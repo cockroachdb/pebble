@@ -205,10 +205,7 @@ func insertIntoSubLevel(files []*FileMetadata, f *FileMetadata) []*FileMetadata 
 // exceeded in the range of intervals since the last flush split key, a flush
 // split key is added.
 func NewL0SubLevels(
-	files []*FileMetadata,
-	cmp Compare,
-	formatKey base.FormatKey,
-	flushSplitMaxBytes uint64,
+	files []*FileMetadata, cmp Compare, formatKey base.FormatKey, flushSplitMaxBytes uint64,
 ) (*L0SubLevels, error) {
 	s := &L0SubLevels{cmp: cmp, formatKey: formatKey}
 	s.filesByAge = files
@@ -231,7 +228,6 @@ func NewL0SubLevels(
 	}
 	// Initialize minIntervalIndex and maxIntervalIndex for each file, and use that
 	// to update intervals.
-	intervalRangeIsBaseCompacting := make([]bool, len(keys))
 	for fileIndex, f := range s.filesByAge {
 		// Set f.minIntervalIndex and f.maxIntervalIndex.
 		f.minIntervalIndex = sort.Search(len(keys), func(index int) bool {
@@ -271,7 +267,6 @@ func NewL0SubLevels(
 					// If f.Compacting && !f.IsIntraL0Compacting, this file is
 					// being compacted to Lbase.
 					interval.isBaseCompacting = true
-					intervalRangeIsBaseCompacting[i] = true
 				}
 			} else if f.IsIntraL0Compacting {
 				return nil, errors.Errorf("file %s not marked as compacting but marked as intra-L0 compacting", f.FileNum)
@@ -337,7 +332,7 @@ func (s *L0SubLevels) describe(verbose bool) string {
 		len(s.filesByAge), len(s.Files), len(s.orderedIntervals), len(s.flushSplitUserKeys))
 	for i := range s.flushSplitUserKeys {
 		fmt.Fprintf(&buf, "%s", s.formatKey(s.flushSplitUserKeys[i]))
-		if i < len(s.flushSplitUserKeys) - 1 {
+		if i < len(s.flushSplitUserKeys)-1 {
 			fmt.Fprintf(&buf, ", ")
 		}
 	}
