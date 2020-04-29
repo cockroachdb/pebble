@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -390,7 +389,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		for _, l := range v.Files {
 			var level props
 			for _, t := range l {
-				err := addProps(dirname, d.opts.FS, t, &level)
+				err := d.addProps(dirname, t, &level)
 				if err != nil {
 					return err
 				}
@@ -506,13 +505,13 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
-func addProps(dir string, fs vfs.FS, m *manifest.FileMetadata, p *props) error {
-	path := base.MakeFilename(fs, dir, base.FileTypeTable, m.FileNum)
-	f, err := fs.Open(path)
+func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
+	path := base.MakeFilename(d.opts.FS, dir, base.FileTypeTable, m.FileNum)
+	f, err := d.opts.FS.Open(path)
 	if err != nil {
 		return err
 	}
-	r, err := sstable.NewReader(f, sstable.ReaderOptions{})
+	r, err := sstable.NewReader(f, sstable.ReaderOptions{}, d.mergers, d.comparers)
 	if err != nil {
 		_ = f.Close()
 		return err
