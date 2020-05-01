@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/datadriven"
@@ -201,5 +203,82 @@ func TestSnapshotClosed(t *testing.T) {
 	require.EqualValues(t, ErrClosed, catch(func() { _, _, _ = snap.Get(nil) }))
 	require.EqualValues(t, ErrClosed, catch(func() { snap.NewIter(nil) }))
 
+	require.NoError(t, d.Close())
+}
+
+func TestSnapshotRangeDeletionStress(t *testing.T) {
+	const runs = 200
+	const middleKey = runs * runs
+
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	mkkey := func(k int) []byte {
+		return []byte(fmt.Sprintf("%08d", k))
+	}
+	v := []byte("hello world")
+
+	snapshots := make([]*Snapshot, 0, runs)
+	for r := 0; r < runs; r++ {
+		// We use a keyspace that is 2*runs*runs wide. In other words there are
+		// 2*runs sections of the keyspace, each with runs elements. On every
+		// run, we write to the r-th element of each section of the keyspace.
+		for i := 0; i < 2*runs; i++ {
+			err := d.Set(mkkey(runs*i+r), v, nil)
+			require.NoError(t, err)
+		}
+
+		// Now we delete some of the keyspace through a DeleteRange. We delete from
+		// the middle of the keyspace outwards. The keyspace is made of 2*runs
+		// sections, and we delete an additional two of these sections per run.
+		err := d.DeleteRange(mkkey(middleKey-runs*r), mkkey(middleKey+runs*r), nil)
+		require.NoError(t, err)
+
+		snapshots = append(snapshots, d.NewSnapshot())
+	}
+
+	// Check that all the snapshots contain the expected number of keys.
+	// Iterating over so many keys is slow, so do it in parallel.
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.NumCPU())
+	for r := range snapshots {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(r int) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+
+			// Count the keys at this snapshot.
+			iter := snapshots[r].NewIter(nil)
+			var keysFound int
+			for iter.First(); iter.Valid(); iter.Next() {
+				keysFound++
+			}
+			err := firstError(iter.Error(), iter.Close())
+			if err != nil {
+				t.Error(err)
+				return
+			}
+
+			// At the time that this snapshot was taken, (r+1)*2*runs unique keys
+			// were Set (one in each of the 2*runs sections per run).  But this
+			// run also deleted the 2*r middlemost sections.  When this snapshot
+			// was taken, a Set to each of those sections had been made (r+1)
+			// times, so 2*r*(r+1) previously-set keys are now deleted.
+
+			keysExpected := (r+1)*2*runs - 2*r*(r+1)
+			if keysFound != keysExpected {
+				t.Errorf("%d: found %d keys, want %d", r, keysFound, keysExpected)
+			}
+			if err := snapshots[r].Close(); err != nil {
+				t.Error(err)
+			}
+		}(r)
+	}
+	wg.Wait()
 	require.NoError(t, d.Close())
 }
