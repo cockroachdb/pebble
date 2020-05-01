@@ -5,6 +5,7 @@
 package tool
 
 import (
+	"github.com/cockroachdb/errors"
 	"runtime"
 
 	"github.com/cockroachdb/pebble"
@@ -100,4 +101,14 @@ func (t *T) RegisterMerger(m *Merger) {
 // setFS sets the filesystem implementation to use by the introspection tools.
 func (t *T) setFS(fs vfs.FS) {
 	t.opts.FS = fs
+}
+
+// GetCommand returns command implementation for the command named 'cmd'.
+func (t *T) GetCommand(cmd string) (*cobra.Command, error) {
+	for _, c := range t.Commands {
+		if c.Name() == cmd {
+			return c, nil
+		}
+	}
+	return nil, errors.New("no such command")
 }
