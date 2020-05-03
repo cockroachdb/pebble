@@ -193,6 +193,7 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-cold")
 			c.sizeCold += e.size
+			e.acquire()
 		} else {
 			value.ref.trace("skip-cold")
 			e.release()
@@ -212,6 +213,9 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 			value.ref.trace("add-cold")
 			c.sizeCold += delta
 		}
+		// NB: the call to shard.evict() may evict "e", so we have to acquire a
+		// reference to it first.
+		e.acquire()
 		c.evict()
 
 	default:
@@ -231,6 +235,7 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-hot")
 			c.sizeHot += e.size
+			e.acquire()
 		} else {
 			value.ref.trace("skip-hot")
 			e.release()
@@ -238,9 +243,6 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		}
 	}
 
-	if e != nil {
-		e.acquire()
-	}
 	// Values are initialized with a reference count of 1. That reference count
 	// is being transferred to the returned Handle.
 	return Handle{entry: e, value: value}
