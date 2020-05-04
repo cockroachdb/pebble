@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -231,6 +233,24 @@ func TestReserveDoubleRelease(t *testing.T) {
 	if expected != result {
 		t.Fatalf("expected %q, but found %q", expected, result)
 	}
+}
+
+func TestCacheStressSetExisting(t *testing.T) {
+	cache := newShards(1, 1)
+	defer cache.Unref()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 10000; j++ {
+				cache.Set(1, 0, uint64(i), testValue(cache, "a", 1)).Release()
+				runtime.Gosched()
+			}
+		}(i)
+	}
+	wg.Wait()
 }
 
 func BenchmarkCacheGet(b *testing.B) {
