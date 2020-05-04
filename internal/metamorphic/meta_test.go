@@ -215,9 +215,11 @@ func TestMeta(t *testing.T) {
 
 	// Perform runs with the standard options.
 	var names []string
+	options := map[string]*testOptions{}
 	for i, opts := range standardOptions() {
 		name := fmt.Sprintf("standard-%03d", i)
 		names = append(names, name)
+		options[name] = opts
 		t.Run(name, func(t *testing.T) {
 			runOptions(t, opts)
 		})
@@ -228,8 +230,10 @@ func TestMeta(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		name := fmt.Sprintf("random-%03d", i)
 		names = append(names, name)
+		opts := randomOptions(rng)
+		options[name] = opts
 		t.Run(name, func(t *testing.T) {
-			runOptions(t, randomOptions(rng))
+			runOptions(t, opts)
 		})
 	}
 
@@ -268,7 +272,20 @@ func TestMeta(t *testing.T) {
 			// NB: We force an exit rather than using t.Fatal because the latter
 			// will run another instance of the test if -count is specified, while
 			// we're happy to exit on the first failure.
-			fmt.Printf("diff %s/{%s,%s}\n%s\n", metaDir, names[0], names[i], text)
+			optionsStrA := optionsToString(options[names[0]])
+			optionsStrB := optionsToString(options[names[i]])
+
+			fmt.Printf(`
+===== DIFF =====
+%s/{%s,%s}
+%s
+===== OPTIONS %s =====
+%s
+===== OPTIONS %s =====
+%s
+===== OPS =====
+%s
+`, metaDir, names[0], names[i], text, names[0], optionsStrA, names[1], optionsStrB, formattedOps)
 			os.Exit(1)
 		}
 	}
