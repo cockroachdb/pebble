@@ -97,39 +97,40 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
 	}
 	l.buildKeys(edits)
 	l.buildEdits(edits)
+	w := l.Root.OutOrStdout()
 
-	fmt.Fprintf(stdout, `<!DOCTYPE html>
+	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 `)
 	if l.embed {
-		fmt.Fprintf(stdout, "<style>%s</style>\n", lsmDataCSS)
+		fmt.Fprintf(w, "<style>%s</style>\n", lsmDataCSS)
 	} else {
-		fmt.Fprintf(stdout, "<link rel=\"stylesheet\" href=\"data/lsm.css\">\n")
+		fmt.Fprintf(w, "<link rel=\"stylesheet\" href=\"data/lsm.css\">\n")
 	}
-	fmt.Fprintf(stdout, "</head>\n<body>\n")
+	fmt.Fprintf(w, "</head>\n<body>\n")
 	if l.embed {
-		fmt.Fprintf(stdout, "<script src=\"https://d3js.org/d3.v5.min.js\"></script>\n")
+		fmt.Fprintf(w, "<script src=\"https://d3js.org/d3.v5.min.js\"></script>\n")
 	} else {
-		fmt.Fprintf(stdout, "<script src=\"data/d3.v5.min.js\"></script>\n")
+		fmt.Fprintf(w, "<script src=\"data/d3.v5.min.js\"></script>\n")
 	}
-	fmt.Fprintf(stdout, "<script type=\"text/javascript\">\n")
-	fmt.Fprintf(stdout, "data = %s\n", l.formatJSON(l.state))
-	fmt.Fprintf(stdout, "</script>\n")
+	fmt.Fprintf(w, "<script type=\"text/javascript\">\n")
+	fmt.Fprintf(w, "data = %s\n", l.formatJSON(l.state))
+	fmt.Fprintf(w, "</script>\n")
 	if l.embed {
-		fmt.Fprintf(stdout, "<script type=\"text/javascript\">%s</script>\n", lsmDataJS)
+		fmt.Fprintf(w, "<script type=\"text/javascript\">%s</script>\n", lsmDataJS)
 	} else {
-		fmt.Fprintf(stdout, "<script src=\"data/lsm.js\"></script>\n")
+		fmt.Fprintf(w, "<script src=\"data/lsm.js\"></script>\n")
 	}
-	fmt.Fprintf(stdout, "</body>\n</html>\n")
+	fmt.Fprintf(w, "</body>\n</html>\n")
 }
 
 func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 	f, err := l.opts.FS.Open(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s\n", err)
+		fmt.Fprintf(l.Root.OutOrStderr(), "%s\n", err)
 		return nil
 	}
 	defer f.Close()
@@ -137,12 +138,13 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 	l.state.Manifest = path
 
 	var edits []*manifest.VersionEdit
+	w := l.Root.OutOrStdout()
 	rr := record.NewReader(f, 0 /* logNum */)
 	for i := 0; ; i++ {
 		r, err := rr.Next()
 		if err != nil {
 			if err != io.EOF {
-				fmt.Fprintf(stdout, "%s\n", err)
+				fmt.Fprintf(w, "%s\n", err)
 			}
 			break
 		}
@@ -150,7 +152,7 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 		ve := &manifest.VersionEdit{}
 		err = ve.Decode(r)
 		if err != nil {
-			fmt.Fprintf(stdout, "%s\n", err)
+			fmt.Fprintf(w, "%s\n", err)
 			break
 		}
 		edits = append(edits, ve)
@@ -158,7 +160,7 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 		if ve.ComparerName != "" {
 			l.cmp = l.comparers[ve.ComparerName]
 			if l.cmp == nil {
-				fmt.Fprintf(stdout, "%d: unknown comparer %q\n", i, ve.ComparerName)
+				fmt.Fprintf(w, "%d: unknown comparer %q\n", i, ve.ComparerName)
 				return nil
 			}
 			l.fmtKey.setForComparer(ve.ComparerName, l.comparers)
