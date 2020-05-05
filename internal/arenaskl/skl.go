@@ -363,7 +363,7 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 	listHeight := s.Height()
 	var level int
 
-	prev, next := s.head, (*node)(nil)
+	prev := s.head
 	if ins.height < listHeight {
 		// Our cached height is less than the list height, which means there were
 		// inserts that increased the height of the list. Recompute the splice from
@@ -390,12 +390,13 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 				break
 			}
 			// The splice brackets the key!
-			prev, next = spl.prev, spl.next
+			prev = spl.prev
 			break
 		}
 	}
 
 	for level = level - 1; level >= 0; level-- {
+		var next *node
 		prev, next, found = s.findSpliceForLevel(key, level, prev)
 		if next == nil {
 			next = s.tail
@@ -421,7 +422,7 @@ func (s *Skiplist) findSpliceForLevel(
 
 		offset, size := next.keyOffset, next.keySize
 		nextKey := s.arena.buf[offset : offset+size]
-		n := size - 8
+		n := int32(size) - 8
 		cmp := s.cmp(key.UserKey, nextKey[:n])
 		if cmp < 0 {
 			// We are done for this level, since prev.key < key < next.key.
@@ -455,7 +456,7 @@ func (s *Skiplist) findSpliceForLevel(
 
 func (s *Skiplist) keyIsAfterNode(nd *node, key base.InternalKey) bool {
 	ndKey := s.arena.buf[nd.keyOffset : nd.keyOffset+nd.keySize]
-	n := nd.keySize - 8
+	n := int32(nd.keySize) - 8
 	cmp := s.cmp(ndKey[:n], key.UserKey)
 	if cmp < 0 {
 		return true
