@@ -35,10 +35,15 @@ func main() {
 		Use:   "bench",
 		Short: "benchmarks",
 	}
+	compactCmd.AddCommand(
+		compactNewCmd,
+		compactRunCmd,
+	)
 	benchCmd.AddCommand(
 		scanCmd,
 		syncCmd,
 		ycsbCmd,
+		compactCmd,
 	)
 
 	rootCmd := &cobra.Command{
@@ -59,9 +64,15 @@ func main() {
 	}())
 	rootCmd.AddCommand(t.Commands...)
 
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{compactNewCmd, compactRunCmd, scanCmd, syncCmd, ycsbCmd} {
+		cmd.Flags().BoolVarP(
+			&verbose, "verbose", "v", false, "enable verbose event logging")
+	}
+	for _, cmd := range []*cobra.Command{compactRunCmd, scanCmd, syncCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(
 			&cacheSize, "cache", 1<<30, "cache size")
+	}
+	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
 		cmd.Flags().IntVarP(
 			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
 		cmd.Flags().BoolVar(
@@ -72,8 +83,6 @@ func main() {
 			&engineType, "engine", "e", "pebble", "engine type (pebble, badger, boltdb, rocksdb)")
 		cmd.Flags().VarP(
 			maxOpsPerSec, "rate", "m", "max ops per second [{zipf,uniform}:]min[-max][/period (sec)]")
-		cmd.Flags().BoolVarP(
-			&verbose, "verbose", "v", false, "enable verbose event logging")
 		cmd.Flags().BoolVar(
 			&waitCompactions, "wait-compactions", false,
 			"wait for background compactions to complete after load stops")
