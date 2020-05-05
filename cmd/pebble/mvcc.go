@@ -17,6 +17,10 @@ import (
 var mvccComparer = &pebble.Comparer{
 	Compare: mvccCompare,
 
+	Equal: func(a, b []byte) bool {
+		return mvccCompare(a, b) == 0
+	},
+
 	AbbreviatedKey: func(k []byte) uint64 {
 		key, _, ok := mvccSplitKey(k)
 		if !ok {
@@ -134,4 +138,14 @@ func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 		nbytes += int64(len(it.Key()) + len(it.Value()))
 	}
 	return count, nbytes
+}
+
+var fauxMVCCMerger = &pebble.Merger{
+	Name: "cockroach_merge_operator",
+	Merge: func(key, value []byte) (pebble.ValueMerger, error) {
+		// This merger is used by the compact benchmark and use the
+		// pebble default value merger to concatenate values.
+		// It shouldn't materially affect the benchmarks.
+		return pebble.DefaultMerger.Merge(key, value)
+	},
 }
