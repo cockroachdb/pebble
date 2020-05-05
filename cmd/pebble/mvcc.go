@@ -135,3 +135,12 @@ func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 	}
 	return count, nbytes
 }
+
+var fauxMVCCMerger = &pebble.Merger{
+	Name: "cockroach_merge_operator",
+	Merge: func(key, value []byte) (pebble.ValueMerger, error) {
+		// Use the pebble default value merger to concatenate values.
+		// It shouldn't materially affect the test.
+		return pebble.DefaultMerger.Merge(key, value)
+	},
+}
