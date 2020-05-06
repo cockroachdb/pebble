@@ -8,6 +8,12 @@ package manual
 import "C"
 import "unsafe"
 
+// The go:linkname directives provides backdoor access to private functions in
+// the runtime. Below we're accessing the throw function.
+
+//go:linkname throw runtime.throw
+func throw(s string)
+
 // TODO(peter): Rather than relying an C malloc/free, we could fork the Go
 // runtime page allocator and allocate large chunks of memory using mmap or
 // similar.
@@ -32,6 +38,12 @@ func New(n int) []byte {
 	//   store pointer values in it. Zero out the memory in C before passing it
 	//   to Go.
 	ptr := C.calloc(C.size_t(n), 1)
+	if ptr == nil {
+		// NB: throw is like panic, except it guarantees the process will be
+		// terminated. The call below is exactly what the Go runtime invokes when
+		// it cannot allocate memory.
+		throw("out of memory")
+	}
 	// Interpret the C pointer as a pointer to a Go array, then slice.
 	return (*[MaxArrayLen]byte)(unsafe.Pointer(ptr))[:n:n]
 }
