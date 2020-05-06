@@ -77,6 +77,31 @@ Check the contents of the MANIFEST files.
 	return m
 }
 
+func (m *manifestT) printLevels(v *manifest.Version) {
+	for level := range v.Files {
+		if level == 0 && v.L0SubLevels != nil && len(v.Files[level]) > 0 {
+			for sublevel := len(v.L0SubLevels.Files)-1; sublevel >= 0; sublevel-- {
+				fmt.Fprintf(stdout, "--- L0.%d ---\n", sublevel)
+				for _, f := range v.L0SubLevels.Files[sublevel] {
+					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
+					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
+					formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
+					fmt.Fprintf(stdout, "\n")
+				}
+			}
+			continue
+		}
+		fmt.Fprintf(stdout, "--- L%d ---\n", level)
+		for j := range v.Files[level] {
+			f := v.Files[level][j]
+			fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
+			formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
+			formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
+			fmt.Fprintf(stdout, "\n")
+		}
+	}
+}
+
 func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		func() {
@@ -176,16 +201,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
 				}
-				for level := range v.Files {
-					fmt.Fprintf(stdout, "--- L%d ---\n", level)
-					for j := range v.Files[level] {
-						f := v.Files[level][j]
-						fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
-						formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
-						formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
-						fmt.Fprintf(stdout, "\n")
-					}
-				}
+				m.printLevels(v)
 			}
 		}()
 	}
@@ -253,16 +269,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)
 					fmt.Fprintf(stdout, "Version state before failed Apply\n")
-					for level := range v.Files {
-						fmt.Fprintf(stdout, "--- L%d ---\n", level)
-						for j := range v.Files[level] {
-							f := v.Files[level][j]
-							fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
-							formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
-							formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
-							fmt.Fprintf(stdout, "\n")
-						}
-					}
+					m.printLevels(v)
 					fmt.Fprintf(stdout, "Version edit that failed\n")
 					for df := range ve.DeletedFiles {
 						fmt.Fprintf(stdout, "  deleted: L%d %s\n", df.Level, df.FileNum)
