@@ -578,6 +578,9 @@ var _ base.InternalIterator = (*twoLevelIterator)(nil)
 // encountered, which may be nil if we have simply exhausted the entire table.
 // This is used for two level indexes.
 func (i *twoLevelIterator) loadIndex() bool {
+	// Ensure the data block iterator is invalidated even if loading of the
+	// index fails.
+	i.data.invalidate()
 	if !i.topLevelIndex.Valid() {
 		i.index.offset = 0
 		i.index.restarts = 0
@@ -767,6 +770,8 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 			return nil, nil
 		}
 		if ikey, _ := i.topLevelIndex.Next(); ikey == nil {
+			i.data.invalidate()
+			i.index.invalidate()
 			return nil, nil
 		}
 		if !i.loadIndex() {
@@ -786,6 +791,8 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 			return nil, nil
 		}
 		if ikey, _ := i.topLevelIndex.Prev(); ikey == nil {
+			i.data.invalidate()
+			i.index.invalidate()
 			return nil, nil
 		}
 		if !i.loadIndex() {
