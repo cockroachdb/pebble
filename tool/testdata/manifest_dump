@@ -25,6 +25,7 @@ MANIFEST-000005
   added:         L0 000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
 EOF
 --- L0 ---
+-- L0.0 --
   000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
 --- L1 ---
 --- L2 ---
@@ -49,6 +50,7 @@ MANIFEST-000005
   added:         L0 000004:986<#3-#5>[626172#5,DEL-666f6f#4,SET]
 EOF
 --- L0 ---
+-- L0.0 --
   000004:986<#3-#5>[626172#5,DEL-666f6f#4,SET]
 --- L1 ---
 --- L2 ---
@@ -73,6 +75,7 @@ MANIFEST-000005
   added:         L0 000004:986<#3-#5>
 EOF
 --- L0 ---
+-- L0.0 --
   000004:986<#3-#5>
 --- L1 ---
 --- L2 ---
@@ -97,6 +100,7 @@ MANIFEST-000005
   added:         L0 000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
 EOF
 --- L0 ---
+-- L0.0 --
   000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
 --- L1 ---
 --- L2 ---
@@ -121,6 +125,7 @@ MANIFEST-000005
   added:         L0 000004:986<#3-#5>[test formatter: bar#5,DEL-test formatter: foo#4,SET]
 EOF
 --- L0 ---
+-- L0.0 --
   000004:986<#3-#5>[test formatter: bar#5,DEL-test formatter: foo#4,SET]
 --- L1 ---
 --- L2 ---
