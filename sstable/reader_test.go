@@ -261,7 +261,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader) {
 					r = nil
 				}
 				var err error
-				_, r, err = runBuildCmd(d)
+				_, r, err = runBuildCmd(d, o)
 				if err != nil {
 					return err.Error()
 				}
