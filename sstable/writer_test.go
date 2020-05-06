@@ -34,7 +34,7 @@ func TestWriter(t *testing.T) {
 			}
 			var meta *WriterMetadata
 			var err error
-			meta, r, err = runBuildCmd(td)
+			meta, r, err = runBuildCmd(td, WriterOptions{})
 			if err != nil {
 				return err.Error()
 			}
