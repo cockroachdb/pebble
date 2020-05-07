@@ -1,0 +1,92 @@
+build
+000001:10
+000002:20
+000003:30
+----
+open test/000001.sst: file does not exist
+
+check-consistency
+----
+OK
+
+check-consistency
+L0
+  000005:10
+----
+L0: 000005: stat test/000005.sst: file does not exist
+
+check-consistency
+L0
+  000001:10
+----
+L0: 000001: stat test/000001.sst: file does not exist
+
+check-consistency
+L0
+  000001:11
+----
+L0: 000001: stat test/000001.sst: file does not exist
+
+check-consistency redact
+L0
+  000001:11
+----
+<*errors.errorString>
+wrapper: <*safedetails.withSafeDetails>
+(more details:)
+L%d: %s: %v
+-- arg 1: 0
+-- arg 2: 000001
+-- arg 3: *errors.errorString: file does not exist
+wrapper: *os.PathError: stat
+
+check-consistency
+L0
+  000001:10
+L1
+  000002:20
+L2
+  000003:30
+----
+L0: 000001: stat test/000001.sst: file does not exist
+L1: 000002: stat test/000002.sst: file does not exist
+L2: 000003: stat test/000003.sst: file does not exist
+
+check-consistency
+L0
+  000001:11
+L1
+  000002:22
+L2
+  000003:33
+----
+L0: 000001: stat test/000001.sst: file does not exist
+L1: 000002: stat test/000002.sst: file does not exist
+L2: 000003: stat test/000003.sst: file does not exist
+
+check-consistency redact
+L0
+  000001:11
+L1
+  000002:22
+L2
+  000004:30
+----
+<*errors.errorString>
+wrapper: <*safedetails.withSafeDetails>
+(more details:)
+L%d: %s: %v
+L%d: %s: %v
+L%d: %s: %v
+-- arg 1: 0
+-- arg 2: 000001
+-- arg 3: *errors.errorString: file does not exist
+wrapper: *os.PathError: stat
+-- arg 4: 1
+-- arg 5: 000002
+-- arg 6: *errors.errorString: file does not exist
+wrapper: *os.PathError: stat
+-- arg 7: 2
+-- arg 8: 000004
+-- arg 9: *errors.errorString: file does not exist
+wrapper: *os.PathError: stat

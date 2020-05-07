@@ -11,8 +11,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 func ikey(s string) InternalKey {
@@ -323,6 +325,109 @@ func TestCheckOrdering(t *testing.T) {
 					result = fmt.Sprint(err)
 				}
 				return result
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
+
+func TestCheckConsistency(t *testing.T) {
+	const dir = "./test"
+	mem := vfs.NewMem()
+	mem.MkdirAll(dir, 0755)
+
+	parseMeta := func(s string) (*FileMetadata, error) {
+		if len(s) == 0 {
+			return nil, nil
+		}
+		parts := strings.Split(s, ":")
+		if len(parts) != 2 {
+			return nil, errors.Errorf("malformed table spec: %q", s)
+		}
+		fileNum, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil {
+			return nil, err
+		}
+		size, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			return nil, err
+		}
+		return &FileMetadata{
+			FileNum: base.FileNum(fileNum),
+			Size:    uint64(size),
+		}, nil
+	}
+
+	datadriven.RunTest(t, "testdata/version_check_consistency",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "check-consistency":
+				v := Version{}
+				var files *[]*FileMetadata
+
+				for _, data := range strings.Split(d.Input, "\n") {
+					switch data {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err := strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+						files = &v.Files[level]
+
+					default:
+						m, err := parseMeta(data)
+						if err != nil {
+							return err.Error()
+						}
+						if m != nil {
+							*files = append(*files, m)
+						}
+					}
+				}
+
+				redact := false
+				for _, arg := range d.CmdArgs {
+					switch v := arg.String(); v {
+					case "redact":
+						redact = true
+					default:
+						return fmt.Sprintf("unknown argument: %q", v)
+					}
+				}
+
+				err := v.CheckConsistency(dir, mem)
+				if err != nil {
+					if redact {
+						redacted := errors.Redact(err)
+						// Strip out the stack which has paths and lines that differ from
+						// machine to machine and Go version to Go version.
+						i := strings.Index(redacted, "wrapper: <*withstack.withStack>")
+						return redacted[:i]
+					}
+					return err.Error()
+				}
+				return "OK"
+
+			case "build":
+				for _, data := range strings.Split(d.Input, "\n") {
+					m, err := parseMeta(data)
+					if err != nil {
+						return err.Error()
+					}
+					path := base.MakeFilename(mem, dir, base.FileTypeTable, m.FileNum)
+					_ = mem.Remove(path)
+					f, err := mem.Create(path)
+					if err != nil {
+						return err.Error()
+					}
+					_, err = f.Write(make([]byte, m.Size))
+					if err != nil {
+						return err.Error()
+					}
+					f.Close()
+				}
+				return ""
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
