@@ -43,9 +43,9 @@ type CompactionInfo struct {
 	// Reason is the reason for the compaction.
 	Reason string
 	// Input contains the input tables for the compaction. A compaction is
-	// performed from Input.Level to Input.Level+1. Input.Tables[0] contains the
+	// performed from Input.Level to Output.Level. Input.Tables[0] contains the
 	// inputs from Input.Level and Input.Tables[1] contains the inputs from
-	// Input.Level+1.
+	// Output.Level.
 	Input struct {
 		Level  int
 		Tables [2][]TableInfo
