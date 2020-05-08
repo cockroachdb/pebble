@@ -294,11 +294,11 @@ type Options struct {
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
 
-	// The number of files necessary to trigger an L0 compaction.
+	// The number of overlapping L0 files necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
-	// Hard limit on the number of L0 files. Writes are stopped when this
-	// threshold is reached.
+	// Hard limit on the number of overlapping L0 files. Writes are stopped when
+	// this threshold is reached.
 	L0StopWritesThreshold int
 
 	// The maximum number of bytes for LBase. The base level is the level which
