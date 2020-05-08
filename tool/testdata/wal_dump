@@ -7,6 +7,24 @@ wal dump
 ----
 000003.log
 0(21) seq=1 count=1
+    SET(test formatter: foo,test value formatter: one)
+28(21) seq=2 count=1
+    SET(test formatter: bar,test value formatter: two)
+56(23) seq=3 count=1
+    SET(test formatter: baz,test value formatter: three)
+86(22) seq=4 count=1
+    SET(test formatter: foo,test value formatter: four)
+115(17) seq=5 count=1
+    DEL(test formatter: bar)
+EOF
+
+wal dump
+../testdata/db-stage-2/000003.log
+--key=pretty:leveldb.BytewiseComparator
+--value=size
+----
+000003.log
+0(21) seq=1 count=1
     SET(foo,<3>)
 28(21) seq=2 count=1
     SET(bar,<3>)
@@ -19,6 +37,8 @@ wal dump
 EOF
 
 wal dump
+--key=pretty:leveldb.BytewiseComparator
+--value=size
 ../testdata/db-stage-4/000006.log
 ----
 000006.log
@@ -46,7 +66,7 @@ EOF
 
 wal dump
 ../testdata/db-stage-4/000006.log
---key=pretty
+--key=pretty:leveldb.BytewiseComparator
 --value=pretty:test-comparer
 ----
 000006.log
@@ -74,6 +94,7 @@ EOF
 
 wal dump
 ../testdata/db-stage-4/000006.log
+--key=pretty:leveldb.BytewiseComparator
 --value=quoted
 ----
 000006.log

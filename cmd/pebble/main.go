@@ -52,16 +52,14 @@ func main() {
 	}
 	rootCmd.AddCommand(benchCmd)
 
-	t := tool.New()
-	t.RegisterComparer(mvccComparer)
-	t.RegisterMerger(func() *base.Merger {
+	t := tool.New(tool.Comparers(mvccComparer), tool.Mergers(func() *base.Merger {
 		// TODO(peter): This isn't the actual cockroach_merge_operator, but a
 		// placeholder so we can examine cockroach generated sstables.
 		var m base.Merger
 		m = *base.DefaultMerger
 		m.Name = "cockroach_merge_operator"
 		return &m
-	}())
+	}()))
 	rootCmd.AddCommand(t.Commands...)
 
 	for _, cmd := range []*cobra.Command{compactNewCmd, compactRunCmd, scanCmd, syncCmd, ycsbCmd} {

@@ -82,11 +82,9 @@ func runTests(t *testing.T, path string) {
 					timeNow = time.Now
 				}()
 
-				tool := New()
-				tool.setFS(fs)
 				// Register a test comparer and merger so that we can check the
 				// behavior of tools when the comparer and merger do not match.
-				tool.RegisterComparer(func() *Comparer {
+				comparer := func() *Comparer {
 					c := *base.DefaultComparer
 					c.Name = "test-comparer"
 					c.FormatKey = func(key []byte) fmt.Formatter {
@@ -102,12 +100,15 @@ func runTests(t *testing.T, path string) {
 						}
 					}
 					return &c
-				}())
-				tool.RegisterMerger(func() *Merger {
+				}()
+				merger := func() *Merger {
 					m := *base.DefaultMerger
 					m.Name = "test-merger"
 					return &m
-				}())
+				}()
+
+				tool := New(DefaultComparer(comparer), Mergers(merger))
+				tool.setFS(fs)
 
 				c := &cobra.Command{}
 				c.AddCommand(tool.Commands...)
