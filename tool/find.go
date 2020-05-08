@@ -58,7 +58,7 @@ type findT struct {
 	tableMeta map[base.FileNum]*manifest.FileMetadata
 }
 
-func newFind(opts *pebble.Options, comparers sstable.Comparers) *findT {
+func newFind(opts *pebble.Options, comparers sstable.Comparers, defaultComparer string) *findT {
 	f := &findT{
 		opts:      opts,
 		comparers: comparers,
@@ -81,7 +81,7 @@ provenance of the sstables (flushed, ingested, compacted).
 	f.Root.Flags().BoolVarP(
 		&f.verbose, "verbose", "v", false, "verbose output")
 	f.Root.Flags().StringVar(
-		&f.comparerName, "comparer", "", "comparer name (use default if empty)")
+		&f.comparerName, "comparer", defaultComparer, "comparer name")
 	f.Root.Flags().Var(
 		&f.fmtKey, "key", "key formatter")
 	f.Root.Flags().Var(
