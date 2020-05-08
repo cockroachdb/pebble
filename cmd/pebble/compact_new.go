@@ -160,6 +160,13 @@ func loadManifest(path string, metas map[base.FileNum]*manifest.FileMetadata) ([
 
 	var log []logItem
 	rr := record.NewReader(f, 0 /* logNum */)
+
+	// A manifest's first record contains all the active files when the
+	// manifest was created. We only care about edits to the version.
+	if _, err = rr.Next(); err != nil {
+		return nil, err
+	}
+
 	for {
 		r, err := rr.Next()
 		if err == io.EOF {
