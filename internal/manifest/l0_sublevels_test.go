@@ -305,6 +305,7 @@ func TestL0SubLevels(t *testing.T) {
 					base.DefaultComparer.Compare,
 					base.DefaultFormatter,
 					uint64(flushSplitMaxBytes))
+				sublevels.InitCompactingFileInfo()
 			} else {
 				// This case is for use with explicitly-specified sublevels
 				// only.

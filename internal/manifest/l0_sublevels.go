@@ -283,16 +283,6 @@ func NewL0SubLevels(
 				subLevel = s.filesByAge[interval.files[len(interval.files)-1]].subLevel + 1
 			}
 			s.orderedIntervals[i].fileCount++
-			if f.Compacting {
-				interval.compactingFileCount++
-				if !f.IsIntraL0Compacting {
-					// If f.Compacting && !f.IsIntraL0Compacting, this file is
-					// being compacted to Lbase.
-					interval.isBaseCompacting = true
-				}
-			} else if f.IsIntraL0Compacting {
-				return nil, errors.Errorf("file %s not marked as compacting but marked as intra-L0 compacting", f.FileNum)
-			}
 			interval.estimatedBytes += interpolatedBytes
 			if f.minIntervalIndex < interval.filesMinIntervalIndex {
 				interval.filesMinIntervalIndex = f.minIntervalIndex
@@ -338,6 +328,27 @@ func NewL0SubLevels(
 		cumulativeBytes += s.orderedIntervals[i].estimatedBytes
 	}
 	return s, nil
+}
+
+// InitCompactingFileInfo initializes internal flags relating to compacting
+// files. Must be called after sublevel initialization.
+//
+// Requires DB.mu to be held.
+func (s *L0SubLevels) InitCompactingFileInfo() {
+	for _, f := range s.filesByAge {
+		if !f.Compacting {
+			continue
+		}
+		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
+			interval := &s.orderedIntervals[i]
+			interval.compactingFileCount++
+			if !f.IsIntraL0Compacting {
+				// If f.Compacting && !f.IsIntraL0Compacting, this file is
+				// being compacted to Lbase.
+				interval.isBaseCompacting = true
+			}
+		}
+	}
 }
 
 // String produces a string containing useful debug information. Useful in test
