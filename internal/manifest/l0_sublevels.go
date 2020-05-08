@@ -227,6 +227,11 @@ func insertIntoSubLevel(files []*FileMetadata, f *FileMetadata) []*FileMetadata 
 // SortBySeqNum). During interval iteration, when flushSplitMaxBytes bytes are
 // exceeded in the range of intervals since the last flush split key, a flush
 // split key is added.
+//
+// This method can be called without DB.mu being held, so any DB.mu protected
+// fields in FileMetadata cannot be accessed here, such as Compacting and
+// IsIntraL0Compacting. Those fields are accessed in InitCompactingFileInfo
+// instead.
 func NewL0SubLevels(
 	files []*FileMetadata, cmp Compare, formatKey base.FormatKey, flushSplitMaxBytes uint64,
 ) (*L0SubLevels, error) {
@@ -283,16 +288,6 @@ func NewL0SubLevels(
 				subLevel = s.filesByAge[interval.files[len(interval.files)-1]].subLevel + 1
 			}
 			s.orderedIntervals[i].fileCount++
-			if f.Compacting {
-				interval.compactingFileCount++
-				if !f.IsIntraL0Compacting {
-					// If f.Compacting && !f.IsIntraL0Compacting, this file is
-					// being compacted to Lbase.
-					interval.isBaseCompacting = true
-				}
-			} else if f.IsIntraL0Compacting {
-				return nil, errors.Errorf("file %s not marked as compacting but marked as intra-L0 compacting", f.FileNum)
-			}
 			interval.estimatedBytes += interpolatedBytes
 			if f.minIntervalIndex < interval.filesMinIntervalIndex {
 				interval.filesMinIntervalIndex = f.minIntervalIndex
@@ -315,9 +310,46 @@ func NewL0SubLevels(
 			s.Files[subLevel] = insertIntoSubLevel(s.Files[subLevel], f)
 		}
 	}
-	min := 0
 	var cumulativeBytes uint64
 	for i := 0; i < len(s.orderedIntervals); i++ {
+		interval := &s.orderedIntervals[i]
+		if flushSplitMaxBytes > 0 && cumulativeBytes > flushSplitMaxBytes &&
+			(len(s.flushSplitUserKeys) == 0 ||
+			!bytes.Equal(interval.startKey.key, s.flushSplitUserKeys[len(s.flushSplitUserKeys)-1])) {
+			s.flushSplitUserKeys = append(s.flushSplitUserKeys, interval.startKey.key)
+			cumulativeBytes = 0
+		}
+		cumulativeBytes += s.orderedIntervals[i].estimatedBytes
+	}
+	return s, nil
+}
+
+// InitCompactingFileInfo initializes internal flags relating to compacting
+// files. Must be called after sublevel initialization.
+//
+// Requires DB.mu to be held.
+func (s *L0SubLevels) InitCompactingFileInfo() {
+	for i := range s.orderedIntervals {
+		s.orderedIntervals[i].compactingFileCount = 0
+		s.orderedIntervals[i].isBaseCompacting = false
+		s.orderedIntervals[i].intervalRangeIsBaseCompacting = false
+	}
+	for _, f := range s.filesByAge {
+		if !f.Compacting {
+			continue
+		}
+		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
+			interval := &s.orderedIntervals[i]
+			interval.compactingFileCount++
+			if !f.IsIntraL0Compacting {
+				// If f.Compacting && !f.IsIntraL0Compacting, this file is
+				// being compacted to Lbase.
+				interval.isBaseCompacting = true
+			}
+		}
+	}
+	min := 0
+	for i := range s.orderedIntervals {
 		interval := &s.orderedIntervals[i]
 		if interval.isBaseCompacting {
 			minIndex := interval.filesMinIntervalIndex
@@ -329,15 +361,7 @@ func NewL0SubLevels(
 				s.orderedIntervals[j].intervalRangeIsBaseCompacting = true
 			}
 		}
-		if flushSplitMaxBytes > 0 && cumulativeBytes > flushSplitMaxBytes &&
-			(len(s.flushSplitUserKeys) == 0 ||
-			!bytes.Equal(interval.startKey.key, s.flushSplitUserKeys[len(s.flushSplitUserKeys)-1])) {
-			s.flushSplitUserKeys = append(s.flushSplitUserKeys, interval.startKey.key)
-			cumulativeBytes = 0
-		}
-		cumulativeBytes += s.orderedIntervals[i].estimatedBytes
 	}
-	return s, nil
 }
 
 // String produces a string containing useful debug information. Useful in test

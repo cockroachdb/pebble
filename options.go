@@ -283,6 +283,21 @@ type Options struct {
 	// flushes, compactions, and table deletion.
 	EventListener EventListener
 
+	// Experimental contains experimental options which are off by default.
+	// These options are temporary and will eventually either be deleted, moved
+	// out of the experimental group, or made the non-adjustable default. These
+	// options may change at any time, so do not rely on them.
+	Experimental struct {
+		// L0SublevelCompactions enables the use of L0 sublevel-based compaction
+		// picking logic. Defaults to false for now. This logic will become
+		// a non-configurable default once it's better tuned.
+		//
+		// When true, this option also changes the interpretation of
+		// L0CompactionThreshold and L0StopWritesThreshold to refer to L0
+		// read amplification as opposed to the count of L0 files.
+		L0SublevelCompactions bool
+	}
+
 	// Filters is a map from filter policy name to filter policy. It is used for
 	// debugging tools which may be used on multiple databases configured with
 	// different filter policies. It is not necessary to populate this filters

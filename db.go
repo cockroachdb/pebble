@@ -1241,7 +1241,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				continue
 			}
 		}
-		if len(d.mu.versions.currentVersion().Files[0]) >= d.opts.L0StopWritesThreshold {
+		l0FileCount := len(d.mu.versions.currentVersion().Files[0])
+		if d.opts.Experimental.L0SublevelCompactions {
+			l0FileCount = d.mu.versions.currentVersion().L0SubLevels.ReadAmplification()
+		}
+		if l0FileCount >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
 			if !stalled {
 				stalled = true
