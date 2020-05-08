@@ -26,17 +26,19 @@ type walT struct {
 	fmtKey   keyFormatter
 	fmtValue valueFormatter
 
-	comparers sstable.Comparers
-	verbose   bool
+	defaultComparer string
+	comparers       sstable.Comparers
+	verbose         bool
 }
 
-func newWAL(opts *pebble.Options, comparers sstable.Comparers) *walT {
+func newWAL(opts *pebble.Options, comparers sstable.Comparers, defaultComparer string) *walT {
 	w := &walT{
 		opts: opts,
 	}
 	w.fmtKey.mustSet("quoted")
 	w.fmtValue.mustSet("size")
 	w.comparers = comparers
+	w.defaultComparer = defaultComparer
 
 	w.Root = &cobra.Command{
 		Use:   "wal",
@@ -63,8 +65,8 @@ Print the contents of the WAL files.
 }
 
 func (w *walT) runDump(cmd *cobra.Command, args []string) {
-	w.fmtKey.setForComparer("", w.comparers)
-	w.fmtValue.setForComparer("", w.comparers)
+	w.fmtKey.setForComparer(w.defaultComparer, w.comparers)
+	w.fmtValue.setForComparer(w.defaultComparer, w.comparers)
 
 	for _, arg := range args {
 		func() {
