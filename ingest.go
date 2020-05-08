@@ -766,7 +766,7 @@ func flushExternalTable(untypedDB interface{}) (func(string, *manifest.FileMetad
 			NewFiles: []newFileEntry{newFileEntry{Level: 0, Meta: m}},
 		}
 		metrics := map[int]*LevelMetrics{
-			0: &LevelMetrics{BytesFlushed: m.Size, TablesFlushed: 1},
+			0: &LevelMetrics{BytesIngested: m.Size, TablesIngested: 1},
 		}
 		if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir, func() []compactionInfo {
 			return d.getInProgressCompactionInfoLocked(nil)

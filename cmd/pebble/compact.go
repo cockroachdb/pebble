@@ -5,20 +5,18 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/spf13/cobra"
 )
 
@@ -43,45 +41,6 @@ func init() {
 		"pacing", 1.1, "pacing factor (relative to workload's L0 size)")
 }
 
-// loadHistory loads and parses a history csv constructed by the
-// create-workload command.
-func loadHistory(workloadDir string) ([]logItem, error) {
-	f, err := os.Open(filepath.Join(workloadDir, "history"))
-	if err != nil {
-		return nil, errors.Wrap(err, filepath.Join(workloadDir, "history"))
-	}
-	defer f.Close()
-	r := csv.NewReader(f)
-	var log []logItem
-	for rec, err := r.Read(); err == nil; rec, err = r.Read() {
-		level, err := strconv.ParseInt(rec[0], 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		fileNum, err := strconv.ParseInt(rec[1], 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		addRm := rec[2] == "add"
-		fileSize, err := strconv.ParseUint(rec[3], 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		var newData bool
-		if _, err := fmt.Sscanf(rec[4], "%t", &newData); err != nil {
-			return nil, err
-		}
-		log = append(log, logItem{
-			level:   int(level),
-			num:     pebble.FileNum(fileNum),
-			add:     addRm,
-			size:    fileSize,
-			newData: newData,
-		})
-	}
-	return log, nil
-}
-
 const numLevels = 7
 
 type levelSizes [numLevels]int64
@@ -100,42 +59,64 @@ func (ls levelSizes) sum() int64 {
 	return total
 }
 
-type dbUpdate struct {
+type compactionEvent struct {
 	levelSizes
-	compaction bool
-	jobID      int
+	jobID int
 }
 
-// levelSizeEventListener returns a Pebble event listener and a channel.
-// It allows the main test loop to track the # of active compactions, the
-// progress of requested ingestions and the size of each level of the LSM.
-func levelSizeEventListener() (pebble.EventListener, <-chan dbUpdate) {
-	ch := make(chan dbUpdate)
+type compactionTracker struct {
+	mu         sync.Mutex
+	levelSizes levelSizes
+	activeJobs map[int]bool
+	waiter     chan struct{}
+}
+
+func (t *compactionTracker) state() (levelSizes, int, chan struct{}) {
+	ch := make(chan struct{})
+	t.mu.Lock()
+	sizes := t.levelSizes
+	count := len(t.activeJobs)
+	t.waiter = ch
+	t.mu.Unlock()
+	return sizes, count, ch
+}
+
+func (t *compactionTracker) apply(e compactionEvent) {
+	t.mu.Lock()
+	t.levelSizes.add(e.levelSizes)
+	if t.activeJobs[e.jobID] {
+		delete(t.activeJobs, e.jobID)
+	} else {
+		t.activeJobs[e.jobID] = true
+	}
+	if t.waiter != nil {
+		close(t.waiter)
+		t.waiter = nil
+	}
+	t.mu.Unlock()
+}
+
+// eventListener returns a Pebble event listener that listens for compaction
+// events and appends them to the queue.
+func (t *compactionTracker) eventListener() pebble.EventListener {
 	return pebble.EventListener{
 		CompactionBegin: func(info pebble.CompactionInfo) {
-			ch <- dbUpdate{jobID: info.JobID, compaction: true}
+			t.apply(compactionEvent{jobID: info.JobID})
 		},
 		CompactionEnd: func(info pebble.CompactionInfo) {
-			u := dbUpdate{jobID: info.JobID, compaction: true}
+			e := compactionEvent{jobID: info.JobID}
 			for _, tbl := range info.Input.Tables[0] {
-				u.levelSizes[info.Input.Level] -= int64(tbl.Size)
+				e.levelSizes[info.Input.Level] -= int64(tbl.Size)
 			}
 			for _, tbl := range info.Input.Tables[1] {
-				u.levelSizes[info.Output.Level] -= int64(tbl.Size)
+				e.levelSizes[info.Output.Level] -= int64(tbl.Size)
 			}
 			for _, tbl := range info.Output.Tables {
-				u.levelSizes[info.Output.Level] += int64(tbl.Size)
+				e.levelSizes[info.Output.Level] += int64(tbl.Size)
 			}
-			ch <- u
+			t.apply(e)
 		},
-		TableIngested: func(info pebble.TableIngestInfo) {
-			u := dbUpdate{jobID: info.JobID}
-			for _, tbl := range info.Tables {
-				u.levelSizes[tbl.Level] += int64(tbl.Size)
-			}
-			ch <- u
-		},
-	}, ch
+	}
 }
 
 func open(dir string, listener pebble.EventListener) (*pebble.DB, error) {
@@ -168,44 +149,9 @@ func open(dir string, listener pebble.EventListener) (*pebble.DB, error) {
 	return d, err
 }
 
-// hardLinkWorkload makes a hardlink of every .sst file from src inside dst. It also
-// makes a hardlink of the './history' file that describes the history of the
-// sstables. Pebble will remove ingested sstables from their original path.
-// Making a hardlink of all the sstables ensures that we can run the same
-// workload multiple times.
-func hardLinkWorkload(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, relPath)
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, os.ModePerm)
-		}
-		if filepath.Base(path) == "history" || filepath.Ext(path) == ".sst" {
-			return os.Link(path, dstPath)
-		}
-		return nil
-	})
-}
-
 func runIngest(cmd *cobra.Command, args []string) error {
-	// Make hard links of all the files in the workload so ingestion doesn't
-	// delete our original copy of a workload.
-	workloadDir, err := ioutil.TempDir(args[0], "pebble-bench-workload")
-	if err != nil {
-		return err
-	}
-	defer removeAll(workloadDir)
-	if err := hardLinkWorkload(args[0], workloadDir); err != nil {
-		return err
-	}
-
-	hist, err := loadHistory(workloadDir)
+	workloadDir := args[0]
+	_, hist, err := replayManifests(workloadDir)
 	if err != nil {
 		return err
 	}
@@ -213,12 +159,15 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	var workloadTableCount int
 	for _, li := range hist {
 		if li.newData {
-			workloadSize += int64(li.size)
+			workloadSize += int64(li.meta.Size)
 			workloadTableCount++
 		}
 	}
 	verbosef("Workload contains %s across %d sstables to ingest.\n",
 		humanize.Int64(workloadSize), workloadTableCount)
+	if workloadTableCount == 0 {
+		return errors.New("empty workload")
+	}
 
 	dir, err := ioutil.TempDir(args[0], "pebble-bench-data")
 	if err != nil {
@@ -227,30 +176,31 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	defer removeAll(dir)
 	verbosef("Opening database in %q.\n", dir)
 
-	listener, updatesCh := levelSizeEventListener()
-	d, err := open(dir, listener)
+	compactions := compactionTracker{activeJobs: map[int]bool{}}
+	d, err := open(dir, compactions.eventListener())
 	if err != nil {
 		return err
 	}
 	defer d.Close()
 
+	// Use a private hook to flush sstables directly into L0.
+	flush, closer, err := private.FlushExternalTable(d)
+	if err != nil {
+		return err
+	}
+
 	start := time.Now()
 
 	var sizeSum int64
 	var ref levelSizes
-	var curr levelSizes
-	var ingestedCount int
-	var pendingSize int64
-	var atomicCompletedIngestCalls int32
-	var wg sync.WaitGroup
-	activeCompactions := map[int]bool{}
+	var flushedCount int
 	for _, li := range hist {
 		// Maintain ref as the shape of the LSM during the original run.
 		// We use the size of L0 to establish pacing.
 		if li.add {
-			ref[li.level] += int64(li.size)
+			ref[li.level] += int64(li.meta.Size)
 		} else {
-			ref[li.level] -= int64(li.size)
+			ref[li.level] -= int64(li.meta.Size)
 		}
 		if !li.newData {
 			// Ignore manifest changes due to compactions.
@@ -259,59 +209,55 @@ func runIngest(cmd *cobra.Command, args []string) error {
 
 		// We try to keep the current db's L0 size similar to the reference
 		// db's L0 at the same point in its execution. If we've exceeded it,
-		// we wait for compactions to catch up. This isn't perfect because our
-		// rewritten tables have different file sizes and different heuristics
-		// may choose not to compact L0 at all at the same size, so we also
-		// proceed after five seconds if there are no active compactions.
-		for skip := false; !skip && pendingSize+curr[0] > int64(compactRunConfig.pacing*float64(ref[0])); {
-			verbosef("Pending size %s + L0 size %s > %.2f × reference L0 size %s; pausing to let compaction catch up.\n",
-				humanize.Int64(pendingSize), humanize.Int64(curr[0]), compactRunConfig.pacing, humanize.Int64(ref[0]))
+		// we wait for compactions to catch up. This isn't perfect because
+		// different heuristics may choose not to compact L0 at all at the
+		// same size, so we also proceed after five seconds if there are no
+		// active compactions.
+		compactions.mu.Lock()
+		compactions.levelSizes[0] += int64(li.meta.Size)
+		sizeSum += compactions.levelSizes.sum()
+		compactions.mu.Unlock()
+		for skip := false; !skip; {
+			var waiterCh chan struct{}
+			var activeCompactions int
+			curr, activeCompactions, waiterCh := compactions.state()
+			if curr[0] <= int64(compactRunConfig.pacing*float64(ref[0])) {
+				break
+			}
+
+			verbosef("L0 size %s > %.2f × reference L0 size %s; pausing to let compaction catch up.\n",
+				humanize.Int64(curr[0]), compactRunConfig.pacing, humanize.Int64(ref[0]))
 			select {
-			case u := <-updatesCh:
-				curr.add(u.levelSizes)
-				if u.compaction {
-					if activeCompactions[u.jobID] {
-						delete(activeCompactions, u.jobID)
-					} else {
-						activeCompactions[u.jobID] = true
-					}
-				} else {
-					pendingSize -= u.levelSizes.sum()
-				}
+			case <-waiterCh:
+				// a compaction event was processed, continue to check the
+				// size of level zero.
+				continue
 			case <-time.After(5 * time.Second):
-				skip = len(activeCompactions) == 0
+				skip = activeCompactions == 0
 				if skip {
 					verbosef("No compaction in 5 seconds. Proceeding anyways.\n")
 				}
 			}
 		}
 
-		name := fmt.Sprintf("%s.sst", li.num)
-		ingestedCount++
-		verbosef("Triggering ingest %d/%d ingest %s (%s)\n",
-			ingestedCount, workloadTableCount, name, humanize.Int64(int64(li.size)))
+		name := fmt.Sprintf("%s.sst", li.meta.FileNum)
+		flushedCount++
+		verbosef("Triggering flush %d/%d %s (%s)\n",
+			flushedCount, workloadTableCount, name, humanize.Int64(int64(li.meta.Size)))
 
-		sizeSum += curr.sum()
-		pendingSize += int64(li.size)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer atomic.AddInt32(&atomicCompletedIngestCalls, 1)
-			// TODO(jackson): Ingest will ingest into the lowest level it can,
-			// but we want to simulate flushes into L0. We can use a private
-			// ingest method to force these ingests into L0.
-			err := d.Ingest([]string{filepath.Join(workloadDir, name)})
-			if err != nil {
-				log.Fatal(err)
-			}
-		}()
+		err := flush(filepath.Join(workloadDir, name), li.meta)
+		if err != nil {
+			_ = closer.Close()
+			return err
+		}
 	}
-	// We no longer care about events surfaced from the event listener, but we
-	// need to read from the channel to not block any pebble goroutines.
-	go discardUpdates(updatesCh)
-	verbosef("Initiated all %d tables. There are %d call(s) to ingest pending.\n",
-		ingestedCount, ingestedCount-int(atomic.LoadInt32(&atomicCompletedIngestCalls)))
-	wg.Wait()
+
+	verbosef("Flushed all %d tables.\n", flushedCount)
+
+	// Signal that we're done flushing tables.
+	if err := closer.Close(); err != nil {
+		return err
+	}
 
 	m := d.Metrics()
 	if backgroundCompactions(m) {
@@ -354,7 +300,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	}
 	afterSize := totalSize(d.Metrics())
 	fmt.Printf("Test took: %0.2fm\n", time.Now().Sub(start).Minutes())
-	fmt.Printf("Average database size: %s\n", humanize.Int64(sizeSum/int64(ingestedCount)))
+	fmt.Printf("Average database size: %s\n", humanize.Int64(sizeSum/int64(flushedCount)))
 	fmt.Printf("Read amplification: %d\n", ramp)
 	fmt.Printf("Total write amplification: %.2f\n", totalWriteAmp(m))
 	fmt.Printf("Space amplification: %.2f\n", float64(beforeSize)/float64(afterSize))
@@ -393,11 +339,6 @@ func backgroundCompactions(m *pebble.Metrics) bool {
 		}
 	}
 	return false
-}
-
-func discardUpdates(ch <-chan dbUpdate) {
-	for range ch {
-	}
 }
 
 func verbosef(fmtstr string, args ...interface{}) {
