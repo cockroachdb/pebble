@@ -7,6 +7,8 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -415,4 +417,146 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+}
+
+func TestCompactionPickerL0(t *testing.T) {
+	fileNums := func(f []*fileMetadata) string {
+		ss := make([]string, 0, len(f))
+		for _, meta := range f {
+			ss = append(ss, strconv.Itoa(int(meta.FileNum)))
+		}
+		sort.Strings(ss)
+		return strings.Join(ss, ",")
+	}
+
+	parseMeta := func(s string) (*fileMetadata, error) {
+		parts := strings.Split(s, ":")
+		fileNum, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return nil, err
+		}
+		fields := strings.Fields(parts[1])
+		parts = strings.Split(fields[0], "-")
+		if len(parts) != 2 {
+			return nil, errors.Errorf("malformed table spec: %s", s)
+		}
+		m := &fileMetadata{
+			FileNum:  base.FileNum(fileNum),
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+
+		for _, field := range fields[1:] {
+			switch field {
+			case "intra_l0_compacting":
+				m.IsIntraL0Compacting = true
+				m.Compacting = true
+			case "base_compacting":
+				fallthrough
+			case "compacting":
+				m.Compacting = true
+			}
+		}
+		return m, nil
+	}
+
+	opts := (*Options)(nil).EnsureDefaults()
+	opts.Experimental.L0SublevelCompactions = true
+	opts.L0CompactionThreshold = 2
+
+	var picker *compactionPickerByScore
+
+	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			fileMetas := [manifest.NumLevels][]*manifest.FileMetadata{}
+			baseLevel := manifest.NumLevels - 1
+			level := 0
+			var err error
+			for _, data := range strings.Split(td.Input, "\n") {
+				data = strings.TrimSpace(data)
+				switch data {
+				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+					level, err = strconv.Atoi(data[1:])
+					if err != nil {
+						return err.Error()
+					}
+				default:
+					meta, err := parseMeta(data)
+					if err != nil {
+						return err.Error()
+					}
+					if level != 0 && level < baseLevel {
+						baseLevel = level
+					}
+					fileMetas[level] = append(fileMetas[level], meta)
+				}
+			}
+
+			version := &version{
+				Files:       fileMetas,
+			}
+			if err := version.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter); err != nil {
+				t.Fatal(err)
+			}
+
+			vs := &versionSet{
+				opts:    opts,
+				cmp:     DefaultComparer.Compare,
+				cmpName: DefaultComparer.Name,
+			}
+			vs.versions.Init(nil)
+			vs.append(version)
+			picker = &compactionPickerByScore{
+				opts:      opts,
+				vers:      version,
+				baseLevel: baseLevel,
+			}
+			vs.picker = picker
+			inProgressCompactions := []compactionInfo{}
+			for level, files := range version.Files {
+				for _, f := range files {
+					if f.Compacting {
+						c := compactionInfo{
+							startLevel:  level,
+							outputLevel: level+1,
+							inputs:      [2][]*fileMetadata{{f}},
+						}
+						if f.IsIntraL0Compacting {
+							c.outputLevel = c.startLevel
+						}
+						inProgressCompactions = append(inProgressCompactions, c)
+					}
+				}
+			}
+			picker.initLevelMaxBytes(inProgressCompactions)
+			picker.initScores(inProgressCompactions)
+
+			return version.DebugString(base.DefaultFormatter)
+		case "pick-auto":
+			c := picker.pickAuto(compactionEnv{
+				bytesCompacted:          new(uint64),
+				earliestUnflushedSeqNum: math.MaxUint64,
+			})
+			got := ""
+			if c != nil {
+				got0 := fileNums(c.inputs[0])
+				got1 := fileNums(c.inputs[1])
+				got2 := fileNums(c.grandparents)
+				got = got0
+				if len(got1) > 0 || len(got2) > 0 {
+					got += " " + got1
+					if len(got2) > 0 {
+						got += " " + got2
+					}
+				}
+			} else {
+				return "nil"
+			}
+			return got
+		}
+		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
+	})
 }
