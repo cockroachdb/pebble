@@ -499,6 +499,328 @@ func TestPickCompaction(t *testing.T) {
 	}
 }
 
+func TestPickL0Compaction(t *testing.T) {
+	fileNums := func(f []*fileMetadata) string {
+		ss := make([]string, 0, len(f))
+		for _, meta := range f {
+			ss = append(ss, strconv.Itoa(int(meta.FileNum)))
+		}
+		sort.Strings(ss)
+		return strings.Join(ss, ",")
+	}
+
+	opts := (*Options)(nil).EnsureDefaults()
+	opts.Experimental.L0SublevelCompactions = true
+	opts.L0CompactionThreshold = 2
+	testCases := []struct {
+		desc    string
+		version version
+		want    string
+	}{
+		{
+			desc: "no compaction",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("j.SET.102"),
+						},
+					},
+				},
+			},
+			want: "",
+		},
+
+		{
+			desc: "1 L0 file",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("j.SET.102"),
+						},
+					},
+					1: []*fileMetadata {
+						{
+							FileNum: 200,
+							Size:    1,
+							Smallest: base.ParseInternalKey("f.SET.51"),
+							Largest:  base.ParseInternalKey("l.SET.52"),
+						},
+					},
+				},
+			},
+			want: "",
+		},
+
+		{
+			desc: "2 L0 files (0 overlaps)",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("j.SET.102"),
+						},
+						{
+							FileNum:  110,
+							Size:     1,
+							Smallest: base.ParseInternalKey("k.SET.111"),
+							Largest:  base.ParseInternalKey("l.SET.112"),
+						},
+					},
+					1: []*fileMetadata {
+						{
+							FileNum: 200,
+							Size:    1,
+							Smallest: base.ParseInternalKey("f.SET.51"),
+							Largest:  base.ParseInternalKey("l.SET.52"),
+						},
+					},
+				},
+			},
+			want: "",
+		},
+
+		{
+			desc: "2 L0 files, with ikey overlap",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("p.SET.102"),
+						},
+						{
+							FileNum:  110,
+							Size:     1,
+							Smallest: base.ParseInternalKey("j.SET.111"),
+							Largest:  base.ParseInternalKey("q.SET.112"),
+						},
+					},
+					1: []*fileMetadata {
+						{
+							FileNum: 200,
+							Size:    1,
+							Smallest: base.ParseInternalKey("f.SET.51"),
+							Largest:  base.ParseInternalKey("s.SET.52"),
+						},
+					},
+				},
+			},
+			want: "100,110 200 ",
+		},
+
+		{
+			desc: "2 L0 files, with ukey overlap",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("i.SET.102"),
+						},
+						{
+							FileNum:  110,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.111"),
+							Largest:  base.ParseInternalKey("i.SET.112"),
+						},
+					},
+					1: []*fileMetadata {
+						{
+							FileNum: 200,
+							Size:    1,
+							Smallest: base.ParseInternalKey("f.SET.51"),
+							Largest:  base.ParseInternalKey("l.SET.52"),
+						},
+					},
+				},
+			},
+			want: "100,110 200 ",
+		},
+
+		{
+			desc: "3 L0 files (1 overlap)",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("p.SET.102"),
+						},
+						{
+							FileNum:  110,
+							Size:     1,
+							Smallest: base.ParseInternalKey("j.SET.111"),
+							Largest:  base.ParseInternalKey("q.SET.112"),
+						},
+						{
+							FileNum:  120,
+							Size:     1,
+							Smallest: base.ParseInternalKey("r.SET.111"),
+							Largest:  base.ParseInternalKey("s.SET.112"),
+						},
+					},
+					1: []*fileMetadata {
+						{
+							FileNum: 200,
+							Size:    1,
+							Smallest: base.ParseInternalKey("f.SET.51"),
+							Largest:  base.ParseInternalKey("s.SET.52"),
+						},
+					},
+				},
+			},
+			want: "100,110,120 200 ",
+		},
+
+		{
+			desc: "3 L0 files (1 overlap, 1 compacting)",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("p.SET.102"),
+						},
+						{
+							FileNum:  110,
+							Size:     1,
+							Smallest: base.ParseInternalKey("j.SET.111"),
+							Largest:  base.ParseInternalKey("q.SET.112"),
+						},
+						{
+							FileNum:             120,
+							Size:                1,
+							Smallest:            base.ParseInternalKey("r.SET.111"),
+							Largest:             base.ParseInternalKey("s.SET.112"),
+							Compacting:          true,
+							IsIntraL0Compacting: true,
+						},
+					},
+					1: []*fileMetadata {
+						{
+							FileNum: 200,
+							Size:    1,
+							Smallest: base.ParseInternalKey("f.SET.51"),
+							Largest:  base.ParseInternalKey("s.SET.52"),
+						},
+					},
+				},
+			},
+			want: "100,110 200 ",
+		},
+
+		{
+			desc: "3 L0 files (1 overlap), Lbase compacting",
+			version: version{
+				Files: [numLevels][]*fileMetadata{
+					0: []*fileMetadata{
+						{
+							FileNum:  100,
+							Size:     1,
+							Smallest: base.ParseInternalKey("i.SET.101"),
+							Largest:  base.ParseInternalKey("p.SET.102"),
+						},
+						{
+							FileNum:  110,
+							Size:     1,
+							Smallest: base.ParseInternalKey("j.SET.111"),
+							Largest:  base.ParseInternalKey("q.SET.112"),
+						},
+						{
+							FileNum:             120,
+							Size:                1,
+							Smallest:            base.ParseInternalKey("r.SET.111"),
+							Largest:             base.ParseInternalKey("s.SET.112"),
+						},
+					},
+					1: []*fileMetadata {
+						{
+							FileNum:    200,
+							Size:       1,
+							Smallest:   base.ParseInternalKey("f.SET.51"),
+							Largest:    base.ParseInternalKey("s.SET.52"),
+							Compacting: true,
+						},
+					},
+				},
+			},
+			want: "100,110  ",
+		},
+	}
+
+	for _, tc := range testCases {
+		vs := &versionSet{
+			opts:    opts,
+			cmp:     DefaultComparer.Compare,
+			cmpName: DefaultComparer.Name,
+		}
+		vs.versions.Init(nil)
+		vs.append(&tc.version)
+		if err := tc.version.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter); err != nil {
+			t.Fatal(err)
+		}
+		picker := &compactionPickerByScore{
+			opts:      opts,
+			vers:      &tc.version,
+			baseLevel: 1,
+		}
+		vs.picker = picker
+		inProgressCompactions := []compactionInfo{}
+		for level, files := range tc.version.Files {
+			for _, f := range files {
+				if f.Compacting {
+					c := compactionInfo{
+						startLevel:  level,
+						outputLevel: level+1,
+						inputs:      [2][]*fileMetadata{{f}},
+					}
+					if f.IsIntraL0Compacting {
+						c.outputLevel = c.startLevel
+					}
+					inProgressCompactions = append(inProgressCompactions, c)
+				}
+			}
+		}
+		picker.initLevelMaxBytes(inProgressCompactions)
+		picker.initScores(inProgressCompactions)
+
+		c := vs.picker.pickAuto(compactionEnv{
+			bytesCompacted:          new(uint64),
+			earliestUnflushedSeqNum: math.MaxUint64,
+		})
+		got := ""
+		if c != nil {
+			got0 := fileNums(c.inputs[0])
+			got1 := fileNums(c.inputs[1])
+			got2 := fileNums(c.grandparents)
+			got = got0 + " " + got1 + " " + got2
+		}
+		if got != tc.want {
+			t.Fatalf("%s:\ngot  %q\nwant %q", tc.desc, got, tc.want)
+		}
+	}
+}
+
+
 func TestElideTombstone(t *testing.T) {
 	type want struct {
 		key      string
@@ -862,8 +1184,8 @@ func TestCompaction(t *testing.T) {
 		{"-a", "Da", "Aa.BC.Bb."},
 		{"+d", "Dad", "Aa.BC.Bb."},
 		// The next addition creates the fourth level-0 table, and l0CompactionTrigger == 4,
-		// so this triggers a non-trivial compaction into one level-1 table. Note that the
-		// keys in this one larger table are interleaved from the four smaller ones.
+		// so this triggers a non-trivial compaction into one level-1 table. Note
+		// that the keys in this one larger table are interleaved from the four smaller ones.
 		{"+E", "E", "ABCDbd."},
 		{"+e", "Ee", "ABCDbd."},
 		{"+F", "F", "ABCDbd.Ee."},

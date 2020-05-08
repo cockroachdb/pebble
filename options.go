@@ -283,6 +283,17 @@ type Options struct {
 	// flushes, compactions, and table deletion.
 	EventListener EventListener
 
+	// Experimental contains experimental options which are off by default.
+	// These options are temporary and will eventually either be deleted, moved
+	// out of the experimental group, or made the non-adjustable default. These
+	// options may change at any time, so do not rely on them.
+	Experimental struct {
+		// L0SublevelCompactions enables the use of L0 sublevel-based compaction
+		// picking logic. Defaults to false for now. This logic will become
+		// a non-configurable default once it's better tuned.
+		L0SublevelCompactions bool
+	}
+
 	// Filters is a map from filter policy name to filter policy. It is used for
 	// debugging tools which may be used on multiple databases configured with
 	// different filter policies. It is not necessary to populate this filters
@@ -294,11 +305,14 @@ type Options struct {
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
 
-	// The number of files necessary to trigger an L0 compaction.
+	// The number of L0 files necessary to trigger an L0 compaction. Or, if
+	// L0SublevelCompactions = true, the number of overlapping L0 files
+	// necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
 	// Hard limit on the number of L0 files. Writes are stopped when this
-	// threshold is reached.
+	// threshold is reached. If L0SublevelCompactions = true, this sets
+	// the number of overlapping L0 files before writes are stopped.
 	L0StopWritesThreshold int
 
 	// The maximum number of bytes for LBase. The base level is the level which
