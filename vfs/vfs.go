@@ -112,6 +112,8 @@ type FS interface {
 
 	// PathDir returns all but the last element of path, typically the path's directory.
 	PathDir(path string) string
+
+	GetFreeSpace(path string) (uint64, error)
 }
 
 // Default is a FS implementation backed by the underlying operating system's
@@ -120,14 +122,17 @@ var Default FS = defaultFS{}
 
 type defaultFS struct{}
 
+// If there is an error, it will be of type *PathError.
 func (defaultFS) Create(name string) (File, error) {
 	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|syscall.O_CLOEXEC, 0666)
 }
 
+// If there is an error, it will be of type *LinkError.
 func (defaultFS) Link(oldname, newname string) error {
 	return os.Link(oldname, newname)
 }
 
+// If there is an error, it will be of type *PathError.
 func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
 	if err != nil {
@@ -139,18 +144,22 @@ func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	return file, nil
 }
 
+// If there is an error, it will be of type *PathError.
 func (defaultFS) Remove(name string) error {
 	return os.Remove(name)
 }
 
+// If there is an error, it will be of type *PathError.
 func (defaultFS) RemoveAll(name string) error {
 	return os.RemoveAll(name)
 }
 
+// If there is an error, it will be of type *LinkError.
 func (defaultFS) Rename(oldname, newname string) error {
 	return os.Rename(oldname, newname)
 }
 
+// If there is an error, it will either be of type *LinkError or *PathError.
 func (fs defaultFS) ReuseForWrite(oldname, newname string) (File, error) {
 	if err := fs.Rename(oldname, newname); err != nil {
 		return nil, err
@@ -158,6 +167,7 @@ func (fs defaultFS) ReuseForWrite(oldname, newname string) (File, error) {
 	return os.OpenFile(newname, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
 }
 
+// If there is an error, it will be of type *PathError.
 func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {
 	return os.MkdirAll(dir, perm)
 }
@@ -168,9 +178,13 @@ func (defaultFS) List(dir string) ([]string, error) {
 		return nil, err
 	}
 	defer f.Close()
+	// TODO: This returns os.SyscallError. Unlike Path/LinkError returned by other
+	// IO related calls done in os package. Wrap it here explicitly and handle it
+	// in errorHandler.
 	return f.Readdirnames(-1)
 }
 
+// If there is an error, it will be of type *PathError.
 func (defaultFS) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)
 }

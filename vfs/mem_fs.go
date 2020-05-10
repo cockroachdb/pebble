@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 )
 
 const sep = "/"
@@ -484,6 +485,10 @@ func (*MemFS) PathDir(p string) string {
 	// Note that MemFS uses forward slashes for its separator, hence the use of
 	// path.Dir, not filepath.Dir.
 	return path.Dir(p)
+}
+
+func (*MemFS) GetFreeSpace(string) (uint64, error) {
+	return 0, errors2.ErrNotSupported
 }
 
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
