@@ -162,6 +162,13 @@ func (fs *FS) OpenDir(name string) (vfs.File, error) {
 	return &errorFile{f, fs.inj}, nil
 }
 
+func (fs *FS) GetFreeSpace(path string) (uint64, error) {
+	if err := fs.inj.MaybeError(OpRead); err != nil {
+		return 0, err
+	}
+	return fs.fs.GetFreeSpace(path)
+}
+
 // PathBase implements FS.PathBase.
 func (fs *FS) PathBase(p string) string {
 	return fs.fs.PathBase(p)
