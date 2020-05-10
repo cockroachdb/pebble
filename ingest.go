@@ -5,12 +5,14 @@
 package pebble
 
 import (
+	"io"
 	"sort"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -667,4 +669,141 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
 	return ve, nil
+}
+
+// flushExternalTable is installed as the private.FlushExternalTable hook.
+// It's used by pebble bench compact to run compaction benchmarks ingesting
+// tables directly into L0 without assigning a global sequence number for the
+// table. Instead, the ingested tables sequence numbers are taken as is.
+//
+// If the returned flush table function errors, the caller is still
+// responsible for closing the closer.
+func flushExternalTable(untypedDB interface{}) (func(string, *manifest.FileMetadata) error, io.Closer, error) {
+	d := untypedDB.(*DB)
+	if atomic.LoadInt32(&d.closed) != 0 {
+		panic(ErrClosed)
+	}
+	if d.opts.ReadOnly {
+		return nil, nil, ErrReadOnly
+	}
+
+	// Prevent any intervening commits. External tables have their own
+	// sequence numbers and our ability to flush them is dependent on exact
+	// sequence number values. In practice cmd/pebble has its own
+	// syncronization to avoid performing any operations that would assign
+	// sequence numbers outside of this code path, but locking the commit
+	// pipeline codifies that expectation.
+	d.commit.mu.Lock()
+
+	// TODO(jackson): The commit queue might be nonempty. Dequeue and publish
+	// everything pending first?
+
+	// If there's anything in the memtable, flush it.
+	d.mu.Lock()
+	flushed, err := d.asyncFlushLocked()
+	d.mu.Unlock()
+	if err != nil {
+		d.commit.mu.Unlock()
+		return nil, nil, err
+	}
+	<-flushed
+
+	flushExternalSingle := func(path string, originalMeta *fileMetadata) error {
+		d.mu.Lock()
+		fileNum := d.mu.versions.getNextFileNum()
+		jobID := d.mu.nextJobID
+		d.mu.nextJobID++
+		d.mu.Unlock()
+
+		m := &fileMetadata{
+			FileNum:        fileNum,
+			Size:           originalMeta.Size,
+			CreationTime:   time.Now().Unix(),
+			Smallest:       originalMeta.Smallest,
+			Largest:        originalMeta.Largest,
+			SmallestSeqNum: originalMeta.SmallestSeqNum,
+			LargestSeqNum:  originalMeta.LargestSeqNum,
+		}
+
+		// Hard link the sstable into the DB directory.
+		if err := ingestLink(jobID, d.opts, d.dirname, []string{path}, []*fileMetadata{m}); err != nil {
+			return err
+		}
+		if err := d.dataDir.Sync(); err != nil {
+			return err
+		}
+
+		// Verify that the log sequence number hasn't exceeded the minimum
+		// sequence number of the file. Note that our lock on the
+		// commitPipeline.mu prevents intervening updates to the sequence
+		// number.
+		nextSeqNum := atomic.LoadUint64(d.commit.env.logSeqNum)
+		if nextSeqNum > m.SmallestSeqNum {
+			if err := ingestCleanup(d.opts.FS, d.dirname, []*fileMetadata{m}); err != nil {
+				d.opts.Logger.Infof("ingest cleanup failed: %v", err)
+			}
+			return errors.Errorf("flush external %s: commit seqnum %d > file's smallest seqnum %d",
+				m.FileNum, nextSeqNum, m.SmallestSeqNum)
+		}
+
+		// Assign sequence numbers from its current value through to the
+		// external file's largest sequence number.
+		count := m.LargestSeqNum - nextSeqNum + 1
+
+		b := newBatch(nil)
+		defer b.release()
+		b.data = make([]byte, batchHeaderLen)
+		b.setCount(uint32(count))
+		b.commit.Add(1)
+		d.commit.pending.enqueue(b)
+		seqNum := atomic.AddUint64(d.commit.env.logSeqNum, uint64(count)) - uint64(count)
+		b.setSeqNum(seqNum)
+
+		// Apply the version edit.
+		d.mu.Lock()
+		d.mu.versions.logLock()
+		ve := &versionEdit{
+			NewFiles: []newFileEntry{newFileEntry{Level: 0, Meta: m}},
+		}
+		metrics := map[int]*LevelMetrics{
+			0: &LevelMetrics{BytesFlushed: m.Size, TablesFlushed: 1},
+		}
+		if err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir, func() []compactionInfo {
+			return d.getInProgressCompactionInfoLocked(nil)
+		}); err != nil {
+			// NB: logAndApply will release d.mu.versions.logLock
+			// unconditionally.
+			d.mu.Unlock()
+			if err2 := ingestCleanup(d.opts.FS, d.dirname, []*fileMetadata{m}); err2 != nil {
+				d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
+			}
+			return err
+		}
+		d.updateReadStateLocked(d.opts.DebugCheck)
+		d.deleteObsoleteFiles(jobID)
+		d.maybeScheduleCompaction()
+		d.mu.Unlock()
+
+		// Publish the sequence number.
+		d.commit.publish(b)
+
+		return nil
+	}
+
+	closer := closerFunc(func() error {
+		d.commit.mu.Unlock()
+		return nil
+	})
+
+	return flushExternalSingle, closer, nil
+}
+
+type closerFunc func() error
+
+func (f closerFunc) Close() error {
+	return f()
+}
+
+func init() {
+	private.FlushExternalTable = flushExternalTable
 }

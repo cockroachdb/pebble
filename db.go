@@ -987,6 +987,10 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 	defer d.commit.mu.Unlock()
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	return d.asyncFlushLocked()
+}
+
+func (d *DB) asyncFlushLocked() (<-chan struct{}, error) {
 	flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
 	err := d.makeRoomForWrite(nil)
 	if err != nil {
