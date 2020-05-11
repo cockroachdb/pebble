@@ -59,6 +59,7 @@ func TestOptionsString(t *testing.T) {
   min_compaction_rate=4194304
   min_flush_rate=1048576
   merger=pebble.concatenate
+  paranoid_checks=true
   table_property_collectors=[]
   wal_dir=
 
