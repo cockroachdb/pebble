@@ -219,6 +219,8 @@ type DB struct {
 
 	flushLimiter limiter
 
+	errorHandler errorHandler
+
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
 	// particular, the current version, log.*, mem.*, and snapshot list need to
