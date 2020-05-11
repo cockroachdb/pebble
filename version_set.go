@@ -317,6 +317,7 @@ func (vs *versionSet) logAndApply(
 	inProgressCompactions func() []compactionInfo,
 ) error {
 	if !vs.writing {
+		// Continue to panic. Programmer error.
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
 	defer vs.logUnlock()
@@ -324,6 +325,10 @@ func (vs *versionSet) logAndApply(
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
 			vs.nextFileNum <= ve.MinUnflushedLogNum {
+			// Corruption? What does this mean?
+			// nextFileNum is the oracle generator for the fileNum.
+			// It can never be lesser. ve.minUnflushed will be the WAL number
+			// for the current mutable memtable.
 			panic(fmt.Sprintf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
 				ve.MinUnflushedLogNum))
 		}

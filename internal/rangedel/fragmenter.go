@@ -282,6 +282,8 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	if f.flushedKey != nil {
 		switch c := f.Cmp(key, f.flushedKey); {
 		case c < 0:
+			// Why do we panic at certain places for the same kind of constraint check
+			// whereas send back error at other places?
 			panic(fmt.Sprintf("pebble: flush-to key (%s) < flushed key (%s)",
 				key, f.flushedKey))
 		}

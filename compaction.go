@@ -19,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -773,8 +774,12 @@ type manualCompaction struct {
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	for _, files := range c.inputs {
+		// c.inputs is not set for flush.
 		for _, f := range files {
 			if f.Compacting {
+				// Could happen due to in-appropriate locking? d.mu isn't properly acquired.
+				// Continue to panic.
+				// Compaction::MarkFilesBeingCompacted uses assert.
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel, c.outputLevel, f.FileNum)
 			}
 			f.Compacting = true
@@ -932,7 +937,8 @@ func (d *DB) flush1() error {
 		for i := 0; i < n; i++ {
 			logNum := d.mu.mem.queue[i].logNum
 			if logNum >= minUnflushedLogNum {
-				return errFlushInvariant
+
+				return errors2.InvariantError{errFlushInvariant}
 			}
 		}
 	}
@@ -991,7 +997,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
-	d.removeInProgressCompaction(c)
+	d.removeInProgressCompaction(c) // nothing to do for flushes.
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -1150,6 +1156,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir, func() []compactionInfo {
 			return d.getInProgressCompactionInfoLocked(c)
 		})
+		// kCompaction (trivial move case)
 		if err != nil {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
@@ -1227,6 +1234,7 @@ func (d *DB) runCompaction(
 
 	iiter, err := c.newInputIter(d.newIters)
 	if err != nil {
+		// No error for flush.
 		return nil, pendingOutputs, err
 	}
 	allowZeroSeqNum := c.allowZeroSeqNum(iiter)
@@ -1238,6 +1246,13 @@ func (d *DB) runCompaction(
 		tw        *sstable.Writer
 	)
 	defer func() {
+		// TODO(270): kFlush.
+		// Compaction iteration errors.
+		// iter.Add, iter.Close, tw.Sync, tw.Close
+		// What's the severity of those errors?
+		// And
+		// RocksDB:
+		// https://github.com/facebook/rocksdb/blob/master/db/builder.cc#L187
 		if iter != nil {
 			retErr = firstError(retErr, iter.Close())
 		}
@@ -1245,6 +1260,7 @@ func (d *DB) runCompaction(
 			retErr = firstError(retErr, tw.Close())
 		}
 		if retErr != nil {
+			// Nice, so we self remove any ssts we created.
 			for _, filename := range filenames {
 				d.opts.FS.Remove(filename)
 			}
@@ -1276,7 +1292,7 @@ func (d *DB) runCompaction(
 		d.mu.Unlock()
 
 		filename := base.MakeFilename(d.opts.FS, d.dirname, fileTypeTable, fileNum)
-		file, err := d.opts.FS.Create(filename)
+		file, err := d.opts.FS.Create(filename) // PathError.
 		if err != nil {
 			return err
 		}
@@ -1316,11 +1332,16 @@ func (d *DB) runCompaction(
 		key = append([]byte(nil), key...)
 		for _, v := range iter.Tombstones(key) {
 			if tw == nil {
+				// What would this mean? Probably that in the inner loop
+				// an sst was never created since we never got any point keys.
+				// So this is the first time we're needing to create it.
 				if err := newOutput(); err != nil {
 					return err
 				}
 			}
 			if err := tw.Add(v.Start, v.End); err != nil {
+				// Prop collector, out of order invariants.
+				// No flush so no IOError.
 				return err
 			}
 		}
@@ -1329,12 +1350,22 @@ func (d *DB) runCompaction(
 			return nil
 		}
 
+		// Flush any in memory buffers we have inside
+		// the SST blocks. For all data, range delete, index blocks.
 		if err := tw.Close(); err != nil {
 			tw = nil
 			return err
 		}
 		writerMeta, err := tw.Metadata()
 		if err != nil {
+			// Again metadata is tracked separately in RocksDB. The BuildTable code
+			// just keeps updating it.
+			// What would be appropriate here?
+			// What do we do about our own progamming errors in general?
+			// I remember at some place we raise an error upon a condition
+			// which could only happen if we don't have the
+			// db.mu lock acquired.
+			// "logic errors".
 			tw = nil
 			return err
 		}
@@ -1361,10 +1392,11 @@ func (d *DB) runCompaction(
 			if writerMeta.SmallestRange.UserKey != nil {
 				c := d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey)
 				if c < 0 {
-					return errors.Errorf(
+					// What makes sure this invariant stays?
+					return errors2.InvariantError{Err: errors.Errorf(
 						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
 						writerMeta.SmallestRange.Pretty(d.opts.Comparer.FormatKey),
-						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))
+						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))}
 				}
 				if c == 0 && prevMeta.Largest.SeqNum() <= writerMeta.SmallestRange.SeqNum() {
 					// The user key portion of the range boundary start key is equal to
@@ -1431,9 +1463,9 @@ func (d *DB) runCompaction(
 			case v >= 0:
 				// Nothing to do.
 			case v < 0:
-				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
+				return errors2.InvariantError{Err: errors.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
 					meta.Smallest.Pretty(d.opts.Comparer.FormatKey),
-					c.smallest.Pretty(d.opts.Comparer.FormatKey))
+					c.smallest.Pretty(d.opts.Comparer.FormatKey))}
 			}
 		}
 		if c.largest.UserKey != nil {
@@ -1549,14 +1581,20 @@ func (d *DB) runCompaction(
 			}
 			if tw == nil {
 				if err := newOutput(); err != nil {
+					// PathError due to file creation.
+					// Categorized as IOError.
 					return nil, pendingOutputs, err
 				}
 			}
 			if err := tw.Add(*key, val); err != nil {
+				// PathError or error from user's hook of TablePropertyCollector.
+				// But the latter is other error.
+				// We should make a note of this that we differ here from
+				// RocksDB's behaviour.
 				return nil, pendingOutputs, err
 			}
 			prevPointSeqNum = key.SeqNum()
-		}
+		} // Inner loop ends.
 
 		switch {
 		case key == nil && prevPointSeqNum == 0 && !c.rangeDelFrag.Empty():
@@ -1584,6 +1622,10 @@ func (d *DB) runCompaction(
 			return nil, pendingOutputs, err
 		}
 	}
+	// Why don't we check iter.err here?
+	// We could quit the loop right away?
+	// on the very first iter.First()?
+	//
 
 	for i := range c.inputs {
 		level := c.startLevel

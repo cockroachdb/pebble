@@ -183,6 +183,7 @@ func (m *memTable) prepare(batch *Batch) error {
 
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	if seqNum < m.logSeqNum {
+		// Mark as invariant error.
 		return errors.Errorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
 			errors.Safe(seqNum), errors.Safe(m.logSeqNum))
 	}
