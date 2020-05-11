@@ -900,7 +900,7 @@ func (d *DB) flush() {
 		defer d.mu.Unlock()
 		if err := d.flush1(); err != nil {
 			// TODO(peter): count consecutive flush errors and backoff.
-			d.opts.EventListener.BackgroundError(err)
+			d.errorHandler.setBGError(err, BgFlush)
 		}
 		d.mu.compact.flushing = false
 		// More flush work may have arrived while we were flushing, so schedule
