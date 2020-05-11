@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -183,8 +184,8 @@ func (m *memTable) prepare(batch *Batch) error {
 
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	if seqNum < m.logSeqNum {
-		return errors.Errorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
-			errors.Safe(seqNum), errors.Safe(m.logSeqNum))
+		return errors2.InvariantError{Err: errors.Errorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
+			errors.Safe(seqNum), errors.Safe(m.logSeqNum))}
 	}
 
 	var ins arenaskl.Inserter

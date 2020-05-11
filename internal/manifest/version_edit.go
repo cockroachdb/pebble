@@ -14,13 +14,16 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // TODO(peter): describe the MANIFEST file format, independently of the C++
 // project.
 
-var errCorruptManifest = errors.New("pebble: corrupt manifest")
+var errCorruptManifest = errors2.InvariantError{
+	Err: errors.New("pebble: corrupt manifest"),
+}
 
 type byteReader interface {
 	io.ByteReader
@@ -436,7 +439,7 @@ type BulkVersionEdit struct {
 
 // Accumulate adds the file addition and deletions in the specified version
 // edit to the bulk edit's internal state.
-func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
+func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	for df := range ve.DeletedFiles {
 		dmap := b.Deleted[df.Level]
 		if dmap == nil {
@@ -451,11 +454,14 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) {
 		// VersionEdit at the same level (though files can move across levels).
 		if dmap := b.Deleted[nf.Level]; dmap != nil {
 			if _, ok := dmap[nf.Meta.FileNum]; ok {
-				panic(fmt.Sprintf("file deleted %d before it was inserted\n", nf.Meta.FileNum))
+				return errors2.InvariantError{
+					Err: fmt.Errorf("file deleted %d before it was inserted\n", nf.Meta.FileNum),
+				}
 			}
 		}
 		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
 	}
+	return nil
 }
 
 // Apply applies the delta b to the current version to produce a new
@@ -519,9 +525,9 @@ func (b *BulkVersionEdit) Apply(
 		deletedMap := b.Deleted[level]
 		n := len(currFiles) + len(addedFiles)
 		if n == 0 {
-			return nil, nil, errors.Errorf(
+			return nil, nil, errors2.InvariantError{Err: errors.Errorf(
 				"pebble: internal error: No current or added files but have deleted files: %d",
-				errors.Safe(len(deletedMap)))
+				errors.Safe(len(deletedMap)))}
 		}
 		v.Levels[level] = make([]*FileMetadata, 0, n)
 		// We have 2 lists of files, currFiles and addedFiles either of which (but not both) can
@@ -614,11 +620,13 @@ func (b *BulkVersionEdit) Apply(
 				// addedFiles for internal consistency).
 				if base.InternalCompare(cmp, v.Levels[level][numFiles-1].Largest, f.Smallest) >= 0 {
 					cf := v.Levels[level][numFiles-1]
-					return nil, nil, errors.Errorf(
+					return nil, nil, errors2.InvariantError{
+						Err:errors.Errorf(
 						"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(cf.FileNum), errors.Safe(f.FileNum),
 						cf.Smallest.Pretty(formatKey), cf.Largest.Pretty(formatKey),
-						f.Smallest.Pretty(formatKey), f.Largest.Pretty(formatKey))
+						f.Smallest.Pretty(formatKey), f.Largest.Pretty(formatKey)),
+					}
 				}
 			}
 			v.Levels[level] = append(v.Levels[level], f)

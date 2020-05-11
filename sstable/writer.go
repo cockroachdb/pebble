@@ -13,6 +13,7 @@ import (
 	"math"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
@@ -224,14 +225,14 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		// versions show this to not be a performance win.
 		x := w.compare(w.meta.LargestPoint.UserKey, key.UserKey)
 		if x > 0 || (x == 0 && w.meta.LargestPoint.Trailer < key.Trailer) {
-			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
-				w.meta.LargestPoint.Pretty(w.formatKey), key.Pretty(w.formatKey))
+			w.err = errors2.InvariantError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
+				w.meta.LargestPoint.Pretty(w.formatKey), key.Pretty(w.formatKey))}
 			return w.err
 		}
 	}
 
 	if err := w.maybeFlush(key, value); err != nil {
-		return err
+		return err // PathError.
 	}
 
 	for i := range w.propCollectors {
@@ -264,34 +265,38 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addTombstone(key InternalKey, value []byte) error {
+	// RocksDB uses assert i.e. panics.
+	// BlockBasedTableBuilder.Add.
 	if !w.disableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
 		prevKey := base.DecodeInternalKey(w.rangeDelBlock.curKey)
 		switch c := w.compare(prevKey.UserKey, key.UserKey); {
 		case c > 0:
-			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
-				prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+			// Invariant errors here would arise from our own out of order compactionIter
+			// produced keys?
+			w.err = errors2.InvariantError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
+				prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))}
 			return w.err
 		case c == 0:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
-				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				w.err = errors2.InvariantError{Err: errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
 					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
+					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))}
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
-				w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
-					prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+				w.err = errors2.InvariantError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
+					prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))}
 				return w.err
 			}
 		default:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
-				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				w.err = errors2.InvariantError{Err: errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
 					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
+					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))}
 				return w.err
 			}
 		}
@@ -322,6 +327,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 	w.props.NumRangeDeletions++
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
+	// No flush for range del block. Also it is a completely separate data block.
 	w.rangeDelBlock.add(key, value)
 	return nil
 }
@@ -344,7 +350,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 
 	bh, err := w.writeBlock(w.block.finish(), w.compression)
 	if err != nil {
-		w.err = err
+		w.err = err // PathError.
 		return w.err
 	}
 	w.addIndexEntry(key, bh)
@@ -475,12 +481,12 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	// Write the bytes to the file.
 	n, err := w.writer.Write(b)
 	if err != nil {
-		return BlockHandle{}, err
+		return BlockHandle{}, err // PathError.
 	}
 	w.meta.Size += uint64(n)
 	n, err = w.writer.Write(w.tmp[:blockTrailerLen])
 	if err != nil {
-		return BlockHandle{}, err
+		return BlockHandle{}, err // PathError.
 	}
 	w.meta.Size += uint64(n)
 
@@ -521,6 +527,8 @@ func (w *Writer) Close() (err error) {
 	metaindex.restartInterval = 1
 	if w.filter != nil {
 		b, err := w.filter.finish()
+		// RocksDB's filter policy.CreateFilter returns no errors.
+		// We allow it to. So the severity will be default Fatal.
 		if err != nil {
 			w.err = err
 			return w.err
@@ -659,6 +667,9 @@ func (w *Writer) Close() (err error) {
 	// Flush the buffer.
 	if w.bufWriter != nil {
 		if err := w.bufWriter.Flush(); err != nil {
+			// Flush of in memory buffers.
+			// Again resulting in write calls.
+			// PathError.
 			w.err = err
 			return err
 		}
@@ -684,7 +695,7 @@ func (w *Writer) EstimatedSize() uint64 {
 // after the sstable has been finished.
 func (w *Writer) Metadata() (*WriterMetadata, error) {
 	if w.syncer != nil {
-		return nil, errors.New("pebble: writer is not closed")
+		return nil, errors2.InvariantError{Err: errors.New("pebble: writer is not closed")}
 	}
 	return &w.meta, nil
 }
@@ -692,7 +703,7 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 // WriterOption provide an interface to do work on Writer while it is being
 // opened.
 type WriterOption interface {
-	// writerAPply is called on the writer during opening in order to set
+	// writerApply is called on the writer during opening in order to set
 	// internal parameters.
 	writerApply(*Writer)
 }

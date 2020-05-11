@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
@@ -1461,9 +1462,9 @@ func (r *Reader) readBlock(
 	checksum1 := crc.New(b[:bh.Length+1]).Value()
 	if checksum0 != checksum1 {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, errors.Newf(
+		return cache.Handle{}, errors2.InvariantError{Err:errors.Newf(
 			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
-			errors.Safe(r.fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))
+			errors.Safe(r.fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))}
 	}
 
 	typ := b[bh.Length]
@@ -1477,7 +1478,7 @@ func (r *Reader) readBlock(
 		decodedLen, err := snappy.DecodedLen(b)
 		if err != nil {
 			r.opts.Cache.Free(v)
-			return cache.Handle{}, err
+			return cache.Handle{}, errors2.InvariantError{Err: err}
 		}
 		decoded := r.opts.Cache.Alloc(decodedLen)
 		decodedBuf := decoded.Buf()
@@ -1485,18 +1486,22 @@ func (r *Reader) readBlock(
 		r.opts.Cache.Free(v)
 		if err != nil {
 			r.opts.Cache.Free(decoded)
-			return cache.Handle{}, err
+			return cache.Handle{}, errors2.InvariantError{Err: err}
 		}
 		if len(result) != 0 &&
 			(len(result) != len(decodedBuf) || &result[0] != &decodedBuf[0]) {
 			r.opts.Cache.Free(decoded)
-			return cache.Handle{}, errors.Errorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
-				errors.Safe(result), errors.Safe(decodedBuf))
+			return cache.Handle{}, errors2.InvariantError{
+				Err: errors.Errorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
+					errors.Safe(result), errors.Safe(decodedBuf)),
+			}
 		}
 		v, b = decoded, decodedBuf
 	default:
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, errors.Errorf("pebble/table: unknown block compression: %d", errors.Safe(typ))
+		return cache.Handle{}, errors2.InvariantError{
+			Err: errors.Errorf("pebble/table: unknown block compression: %d", errors.Safe(typ)),
+		}
 	}
 
 	if transform != nil {

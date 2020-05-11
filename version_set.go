@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
@@ -150,6 +151,8 @@ func (vs *versionSet) create(
 }
 
 // load loads the version set from the manifest file.
+// NB: Although invariant errors here don't need to be marked because load is not called during
+// writes (user, flush, compaction), it is ok to tag them.
 func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
 	vs.init(dirname, opts, mu)
 
@@ -165,10 +168,14 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	}
 	n := stat.Size()
 	if n == 0 {
-		return errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
+		return errors2.InvariantError{
+			Err: errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname),
+		}
 	}
 	if n > 4096 {
-		return errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
+		return errors2.InvariantError{
+			Err: errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname),
+		}
 	}
 	b := make([]byte, n)
 	_, err = current.ReadAt(b, 0)
@@ -176,13 +183,17 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		return err
 	}
 	if b[n-1] != '\n' {
-		return errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
+		return errors2.InvariantError{
+			Err: errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname),
+		}
 	}
 	b = bytes.TrimSpace(b)
 
 	var ok bool
 	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
-		return errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
+		return errors2.InvariantError{
+			Err: errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b)),
+		}
 	}
 
 	// Read the versionEdits in the manifest file.
@@ -193,7 +204,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			errors.Safe(b), dirname)
 	}
 	defer manifest.Close()
-	rr := record.NewReader(manifest, 0 /* logNum */)
+	rr := record.NewReader(manifest, 0 /* logNum */) // TODO: checkout errors inside
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -215,12 +226,16 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		}
 		if ve.ComparerName != "" {
 			if ve.ComparerName != vs.cmpName {
-				return errors.Errorf("pebble: manifest file %q for DB %q: "+
-					"comparer name from file %q != comparer name from Options %q",
-					errors.Safe(b), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
+				return errors2.InvariantError{
+					Err: errors.Errorf("pebble: manifest file %q for DB %q: "+
+						"comparer name from file %q != comparer name from Options %q",
+						errors.Safe(b), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName)),
+				}
 			}
 		}
-		bve.Accumulate(&ve)
+		if err := bve.Accumulate(&ve); err != nil {
+			return err
+		}
 		if ve.MinUnflushedLogNum != 0 {
 			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 		}
@@ -249,8 +264,10 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// minUnflushedLogNum, even if WALs with non-zero file numbers are
 			// present in the directory.
 		} else {
-			return errors.Errorf("pebble: malformed manifest file %q for DB %q",
-				errors.Safe(b), dirname)
+			return errors2.InvariantError{
+				Err: errors.Errorf("pebble: malformed manifest file %q for DB %q",
+					errors.Safe(b), dirname),
+			}
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
@@ -324,6 +341,7 @@ func (vs *versionSet) logAndApply(
 	inProgressCompactions func() []compactionInfo,
 ) error {
 	if !vs.writing {
+		// Continue to panic. Programmer error.
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
 	defer vs.logUnlock()
@@ -331,8 +349,14 @@ func (vs *versionSet) logAndApply(
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
 			vs.nextFileNum <= ve.MinUnflushedLogNum {
-			panic(fmt.Sprintf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
-				ve.MinUnflushedLogNum))
+			// Corruption? What does this mean?
+			// nextFileNum is the oracle generator for the fileNum.
+			// It can never be lesser. ve.minUnflushed will be the WAL number
+			// for the current mutable memtable.
+			return errors2.InvariantError{
+				Err: fmt.Errorf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
+					ve.MinUnflushedLogNum),
+			}
 		}
 	}
 
@@ -359,7 +383,9 @@ func (vs *versionSet) logAndApply(
 	if logSeqNum == 0 {
 		// logSeqNum is initialized to 1 in Open() if there are no previous WAL
 		// or manifest records, so this case should never happen.
-		vs.opts.Logger.Fatalf("logSeqNum must be a positive integer: %d", logSeqNum)
+		return errors2.InvariantError{
+			Err: fmt.Errorf("pebble: logSeqNum must be a positive integer: %d", logSeqNum),
+		}
 	}
 
 	currentVersion := vs.currentVersion()
@@ -383,7 +409,9 @@ func (vs *versionSet) logAndApply(
 		defer vs.mu.Lock()
 
 		var bve bulkVersionEdit
-		bve.Accumulate(ve)
+		if err := bve.Accumulate(ve); err != nil {
+			return err
+		}
 
 		var err error
 		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.Experimental.FlushSplitBytes)
@@ -407,31 +435,37 @@ func (vs *versionSet) logAndApply(
 		if err != nil {
 			return err
 		}
-		// NB: Any error from this point on is considered fatal as we don't now if
+
+		// NB: Any error from this point on is considered fatal as we don't know if
 		// the MANIFEST write occurred or not. Trying to determine that is
 		// fraught. Instead we rely on the standard recovery mechanism run when a
 		// database is open. In particular, that mechanism generates a new MANIFEST
 		// and ensures it is synced.
 		if err := ve.Encode(w); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST write failed: %v", err)
-			return err
+			return errors2.InvariantError{
+				Err: fmt.Errorf("MANIFEST write failed: %v", err),
+			}
 		}
 		if err := vs.manifest.Flush(); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
-			return err
+			return errors2.InvariantError{
+				Err: fmt.Errorf("MANIFEST flush failed: %v", err),
+			}
 		}
 		if err := vs.manifestFile.Sync(); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST sync failed: %v", err)
-			return err
+			return errors2.InvariantError{
+				Err: fmt.Errorf("MANIFEST sync failed: %v", err),
+			}
 		}
 		if newManifestFileNum != 0 {
 			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNum); err != nil {
-				vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
-				return err
+				return errors2.InvariantError{
+					Err: fmt.Errorf("MANIFEST set current failed: %v", err),
+				}
 			}
 			if err := dir.Sync(); err != nil {
-				vs.opts.Logger.Fatalf("MANIFEST dirsync failed: %v", err)
-				return err
+				return errors2.InvariantError{
+					Err: fmt.Errorf("MANIFEST dirsync failed: %v", err),
+				}
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 				JobID:   jobID,

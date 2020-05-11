@@ -185,7 +185,7 @@ type Reader struct {
 
 // NewReader returns a new reader. If the file contains records encoded using
 // the recyclable record format, then the log number in those records must
-// match the specifed logNum.
+// match the specified logNum.
 func NewReader(r io.Reader, logNum base.FileNum) *Reader {
 	return &Reader{
 		r:        r,
