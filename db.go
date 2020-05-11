@@ -217,6 +217,8 @@ type DB struct {
 
 	flushLimiter limiter
 
+	errorHandler errorHandler
+
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
 	// particular, the current version, log.*, mem.*, and snapshot list need to
@@ -810,6 +812,9 @@ func (d *DB) Close() error {
 	atomic.StoreInt32(&d.closed, 1)
 
 	defer d.opts.Cache.Unref()
+
+	d.errorHandler.cancelErrorRecovery()
+	// TODO: wait until recoveryInProgress is false.
 
 	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()

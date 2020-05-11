@@ -192,3 +192,11 @@ func (s *SstFileManager) onDeleteFile(path string) {
 func (s *SstFileManager) enoughRoomForCompaction() {
 
 }
+
+func (s *SstFileManager) startErrorRecovery(*errorHandler, error) {
+}
+
+// TODO: When will it return false/true?
+func (s *SstFileManager) cancelErrorRecovery(handler *errorHandler) bool {
+	return false
+}
