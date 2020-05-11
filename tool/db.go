@@ -372,7 +372,9 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			if err != nil {
 				return err
 			}
-			bve.Accumulate(&ve)
+			if err := bve.Accumulate(&ve); err != nil {
+				return err
+			}
 			if ve.ComparerName != "" {
 				cmp = d.comparers[ve.ComparerName]
 				d.fmtKey.setForComparer(ve.ComparerName, d.comparers)

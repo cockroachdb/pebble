@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -33,12 +34,12 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 
 func ingestValidateKey(opts *Options, key *InternalKey) error {
 	if key.Kind() == InternalKeyKindInvalid {
-		return errors.Errorf("pebble: external sstable has corrupted key: %s",
-			key.Pretty(opts.Comparer.FormatKey))
+		return errors2.CorruptionError{Err: errors.Errorf("pebble: external sstable has corrupted key: %s",
+			key.Pretty(opts.Comparer.FormatKey))}
 	}
 	if key.SeqNum() != 0 {
-		return errors.Errorf("pebble: external sstable has non-zero seqnum: %s",
-			key.Pretty(opts.Comparer.FormatKey))
+		return errors2.CorruptionError{Err: errors.Errorf("pebble: external sstable has non-zero seqnum: %s",
+			key.Pretty(opts.Comparer.FormatKey))}
 	}
 	return nil
 }

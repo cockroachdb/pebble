@@ -65,6 +65,7 @@ import (
 	"io"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -201,7 +202,9 @@ func readFooter(f vfs.File) (footer, error) {
 		return footer, errors.Wrap(err, "pebble/table: invalid table (could not stat file)")
 	}
 	if stat.Size() < minFooterLen {
-		return footer, errors.New("pebble/table: invalid table (file size is too small)")
+		return footer, errors2.CorruptionError{
+			Err: errors.New("pebble/table: invalid table (file size is too small)"),
+		}
 	}
 
 	buf := make([]byte, maxFooterLen)
@@ -218,7 +221,9 @@ func readFooter(f vfs.File) (footer, error) {
 	switch string(buf[len(buf)-len(rocksDBMagic):]) {
 	case levelDBMagic:
 		if len(buf) < levelDBFooterLen {
-			return footer, errors.Errorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
+			return footer, errors2.CorruptionError{
+				Err: errors.Errorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf))),
+			}
 		}
 		footer.footerBH.Offset = uint64(off+int64(len(buf))) - levelDBFooterLen
 		buf = buf[len(buf)-levelDBFooterLen:]
@@ -228,37 +233,41 @@ func readFooter(f vfs.File) (footer, error) {
 
 	case rocksDBMagic:
 		if len(buf) < rocksDBFooterLen {
-			return footer, errors.Errorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
+			return footer, errors2.CorruptionError{
+				Err: errors.Errorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf))),
+			}
 		}
 		footer.footerBH.Offset = uint64(off+int64(len(buf))) - rocksDBFooterLen
 		buf = buf[len(buf)-rocksDBFooterLen:]
 		footer.footerBH.Length = uint64(len(buf))
 		version := binary.LittleEndian.Uint32(buf[rocksDBVersionOffset:rocksDBMagicOffset])
 		if version != rocksDBFormatVersion2 {
-			return footer, errors.Errorf("pebble/table: unsupported format version %d", errors.Safe(version))
+			return footer, errors2.CorruptionError{Err: errors.Errorf("pebble/table: unsupported format version %d", errors.Safe(version))}
 		}
 		footer.format = TableFormatRocksDBv2
 		footer.checksum = uint8(buf[0])
 		if footer.checksum != checksumCRC32c {
-			return footer, errors.Errorf("pebble/table: unsupported checksum type %d", errors.Safe(footer.checksum))
+			return footer, errors2.CorruptionError{Err: errors.Errorf("pebble/table: unsupported checksum type %d", errors.Safe(footer.checksum))}
 		}
 		buf = buf[1:]
 
 	default:
-		return footer, errors.New("pebble/table: invalid table (bad magic number)")
+		return footer, errors2.CorruptionError{
+			Err: errors.New("pebble/table: invalid table (bad magic number)"),
+		}
 	}
 
 	{
 		var n int
 		footer.metaindexBH, n = decodeBlockHandle(buf)
 		if n == 0 {
-			return footer, errors.New("pebble/table: invalid table (bad metaindex block handle)")
+			return footer, errors2.CorruptionError{Err: errors.New("pebble/table: invalid table (bad metaindex block handle)")}
 		}
 		buf = buf[n:]
 
 		footer.indexBH, n = decodeBlockHandle(buf)
 		if n == 0 {
-			return footer, errors.New("pebble/table: invalid table (bad index block handle)")
+			return footer, errors2.CorruptionError{Err: errors.New("pebble/table: invalid table (bad index block handle)")}
 		}
 	}
 
