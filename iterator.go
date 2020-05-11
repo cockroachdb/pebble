@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type iterPos int8
@@ -117,7 +118,7 @@ func (i *Iterator) findNextEntry() bool {
 			return i.err == nil
 
 		default:
-			i.err = errors.Errorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
+			i.err = base.CorruptionErrorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
 			return false
 		}
 	}
@@ -223,7 +224,7 @@ func (i *Iterator) findPrevEntry() bool {
 			continue
 
 		default:
-			i.err = errors.Errorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
+			i.err = base.CorruptionErrorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
 			return false
 		}
 	}
@@ -300,7 +301,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 			continue
 
 		default:
-			i.err = errors.Errorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
+			i.err = base.CorruptionErrorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
 			return
 		}
 	}

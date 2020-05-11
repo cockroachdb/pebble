@@ -1777,24 +1777,16 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					c.outputLevel.level = 0
 				}
 
-				// Note that we configure a panicLogger to be used when a fatal error
-				// is logged. If a panic occurs, we catch the value and transform it
-				// back into a string stored in result.
+				newIters := func(
+					_ manifest.LevelFile, _ *IterOptions, _ *uint64,
+				) (internalIterator, internalIterator, error) {
+					return &errorIter{}, nil, nil
+				}
 				result := "OK"
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							result = fmt.Sprint(r)
-						}
-					}()
-
-					newIters := func(
-						_ manifest.LevelFile, _ *IterOptions, _ *uint64,
-					) (internalIterator, internalIterator, error) {
-						return &errorIter{}, nil, nil
-					}
-					_, _ = c.newInputIter(newIters)
-				}()
+				_, err := c.newInputIter(newIters)
+				if err != nil {
+					result = fmt.Sprint(err)
+				}
 				return result
 
 			default:
@@ -1847,7 +1839,7 @@ func TestFlushInvariant(t *testing.T) {
 					case err := <-errCh:
 						if disableWAL {
 							t.Fatalf("expected success, but found %v", err)
-						} else if errFlushInvariant != err {
+						} else if !errors.Is(err, errFlushInvariant) {
 							t.Fatalf("expected %q, but found %v", errFlushInvariant, err)
 						}
 					case <-flushCh:

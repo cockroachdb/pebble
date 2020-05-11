@@ -131,7 +131,10 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s\n", err)
 					break
 				}
-				bve.Accumulate(&ve)
+				if err := bve.Accumulate(&ve); err != nil {
+					fmt.Fprintf(stdout, "%s\n", err)
+					break
+				}
 
 				empty := true
 				fmt.Fprintf(stdout, "%d\n", offset)
@@ -242,7 +245,11 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					break
 				}
 				var bve manifest.BulkVersionEdit
-				bve.Accumulate(&ve)
+				if err := bve.Accumulate(&ve); err != nil {
+					fmt.Fprintf(stderr, "%s\n", err)
+					ok = false
+					return
+				}
 
 				empty := true
 				if ve.ComparerName != "" {
