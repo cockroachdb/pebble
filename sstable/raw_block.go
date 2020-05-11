@@ -9,7 +9,7 @@ import (
 	"sort"
 	"unsafe"
 
-	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type rawBlockWriter struct {
@@ -57,7 +57,7 @@ func newRawBlockIter(cmp Compare, block block) (*rawBlockIter, error) {
 func (i *rawBlockIter) init(cmp Compare, block block) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
-		return errors.New("pebble/table: invalid table (block has no restart points)")
+		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
 	i.cmp = cmp
 	i.restarts = int32(len(block)) - 4*(1+numRestarts)

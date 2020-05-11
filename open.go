@@ -502,7 +502,7 @@ func (d *DB) replayWAL(
 		}
 
 		if buf.Len() < batchHeaderLen {
-			return 0, errors.Errorf("pebble: corrupt log file %q (num %s)",
+			return 0, base.CorruptionErrorf("pebble: corrupt log file %q (num %s)",
 				filename, errors.Safe(logNum))
 		}
 

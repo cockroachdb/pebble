@@ -101,12 +101,12 @@ func (m *FileMetadata) String() string {
 // error if inconsistent.
 func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	if base.InternalCompare(cmp, m.Smallest, m.Largest) > 0 {
-		return errors.Errorf("file %s has inconsistent bounds: %s vs %s",
+		return base.CorruptionErrorf("file %s has inconsistent bounds: %s vs %s",
 			errors.Safe(m.FileNum), m.Smallest.Pretty(formatKey),
 			m.Largest.Pretty(formatKey))
 	}
 	if m.SmallestSeqNum > m.LargestSeqNum {
-		return errors.Errorf("file %s has inconsistent seqnum bounds: %d vs %d",
+		return base.CorruptionErrorf("file %s has inconsistent seqnum bounds: %d vs %d",
 			errors.Safe(m.FileNum), m.SmallestSeqNum, m.LargestSeqNum)
 	}
 	return nil
@@ -505,13 +505,13 @@ func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 	for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
 		iter := NewLevelSlice(v.L0Sublevels.Levels[sublevel]).Iter()
 		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), iter); err != nil {
-			return errors.Errorf("%s\n%s", err, v.DebugString(format))
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
 
 	for level, lm := range v.Levels {
 		if err := CheckOrdering(cmp, format, Level(level), lm.Iter()); err != nil {
-			return errors.Errorf("%s\n%s", err, v.DebugString(format))
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
 	return nil
@@ -669,7 +669,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelI
 			if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
 				// Multiple files satisfying case 2 mentioned above.
 			} else if !prev.lessSeqNum(f) {
-				return errors.Errorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
+				return base.CorruptionErrorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
 					errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
 					errors.Safe(prev.SmallestSeqNum), errors.Safe(prev.LargestSeqNum),
 					errors.Safe(f.SmallestSeqNum), errors.Safe(f.LargestSeqNum))
@@ -683,13 +683,13 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelI
 			}
 			if prev != nil {
 				if !prev.lessSmallestKey(f, cmp) {
-					return errors.Errorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
+					return base.CorruptionErrorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
-					return errors.Errorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
+					return base.CorruptionErrorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
