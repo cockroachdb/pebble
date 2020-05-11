@@ -294,6 +294,15 @@ type Options struct {
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
 
+	// Used to track SST files.
+	// Features:
+	//  - Set a maximum allowed space limit for SST files that when reached
+	//    the DB won't do any further flushes or compactions and will set the
+	//    background error.
+	//  - Can be shared between multiple DBs.
+	// Default: nil.
+	SFM *SstFileManager
+
 	// The number of files necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 

@@ -1027,6 +1027,22 @@ func (d *DB) flush1() error {
 		flushed[i].readerUnref()
 		close(flushed[i].flushed)
 	}
+
+	// QUES: For flush we do this check after the new version is installed in manifest.
+	// But for compaction we do it while a compacted file is closed. Why this difference in behaviour?
+	// Because flush is more essential else recovery would have to be done from unsorted WAL
+	// which is time taking?
+	if sfm := d.opts.SFM; sfm != nil && err == nil {
+		for _, fileNum := range pendingOutputs {
+			filename := base.MakeFilename(d.opts.FS, d.dirname, fileTypeTable, fileNum)
+			sfm.onAddFile(filename, false)
+		}
+
+		if sfm.IsMaxAllowedSpaceReached() {
+			err = ErrSpaceLimit
+		}
+	}
+
 	return err
 }
 
@@ -1484,6 +1500,21 @@ func (d *DB) runCompaction(
 				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
 					meta.Largest.Pretty(d.opts.Comparer.FormatKey),
 					c.largest.Pretty(d.opts.Comparer.FormatKey))
+			}
+		}
+
+		// https://github.com/facebook/rocksdb/blob/f0e8731b72c254da2843d64d27dc7c419bef4bd0/db/compaction/compaction_job.cc#L1403
+		sfm := d.opts.SFM
+		if sfm != nil && c.flushing == nil {
+			filename := base.MakeFilename(d.opts.FS, d.dirname, fileTypeTable, meta.FileNum)
+			// QUES: For flush we check after whole operation. Even after version edit is applied
+			// to manifest.
+			// For compaction we check it right away? Why difference in behaviour?
+			// TODO: Why compaction=false here?
+			sfm.onAddFile(filename, false)
+			if sfm.IsMaxAllowedSpaceReached() {
+				// TODO: Mark bg error here or somewhere up the stack.
+				return ErrSpaceLimit
 			}
 		}
 		return nil
