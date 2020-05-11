@@ -236,6 +236,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 					return nil, err
 				}
 			}
+		case fileTypeTable:
+			if d.opts.SFM != nil {
+				d.opts.SFM.onAddFile(filename, false)
+			}
 		}
 	}
 	sort.Slice(logFiles, func(i, j int) bool {
