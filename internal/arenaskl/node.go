@@ -87,11 +87,11 @@ func newNode(
 func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *node, err error) {
 	// Compute the amount of the tower that will never be used, since the height
 	// is less than maxHeight.
-	unusedSize := (maxHeight - int(height)) * linksSize
-	nodeSize := uint32(maxNodeSize - unusedSize)
+	unusedSize := uint32((maxHeight - int(height)) * linksSize)
+	nodeSize := uint32(maxNodeSize) - unusedSize
 	valueIndex := int32(valueSize)
 
-	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, align4)
+	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, align4, unusedSize)
 	if err != nil {
 		return
 	}

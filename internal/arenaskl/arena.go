@@ -67,7 +67,7 @@ func (a *Arena) Capacity() uint32 {
 	return uint32(len(a.buf))
 }
 
-func (a *Arena) alloc(size, align uint32) (uint32, uint32, error) {
+func (a *Arena) alloc(size, align, overflow uint32) (uint32, uint32, error) {
 	// Verify that the arena isn't already full.
 	origSize := atomic.LoadUint64(&a.n)
 	if int(origSize) > len(a.buf) {
@@ -78,7 +78,7 @@ func (a *Arena) alloc(size, align uint32) (uint32, uint32, error) {
 	padded := uint32(size) + align
 
 	newSize := atomic.AddUint64(&a.n, uint64(padded))
-	if int(newSize) > len(a.buf) {
+	if int(newSize)+int(overflow) > len(a.buf) {
 		return 0, 0, ErrArenaFull
 	}
 
