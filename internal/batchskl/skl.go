@@ -272,20 +272,24 @@ func (s *Skiplist) newNode(height,
 }
 
 func (s *Skiplist) alloc(size uint32) uint32 {
-	offset := uint32(len(s.nodes))
-	newSize := offset + size
-	if cap(s.nodes) < int(newSize) {
-		allocSize := uint32(cap(s.nodes) * 2)
-		if allocSize < newSize {
-			allocSize = newSize
+	offset := len(s.nodes)
+
+	// We only have a need for memory up to offset + size, but we never want
+	// to allocate a node whose tail points into unallocated memory.
+	minAllocSize := offset + maxNodeSize
+	if cap(s.nodes) < minAllocSize {
+		allocSize := cap(s.nodes) * 2
+		if allocSize < minAllocSize {
+			allocSize = minAllocSize
 		}
 		tmp := make([]byte, len(s.nodes), allocSize)
 		copy(tmp, s.nodes)
 		s.nodes = tmp
 	}
 
+	newSize := uint32(offset) + size
 	s.nodes = s.nodes[:newSize]
-	return offset
+	return uint32(offset)
 }
 
 func (s *Skiplist) node(offset uint32) *node {
