@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // Compare exports the base.Compare type.
@@ -446,6 +447,36 @@ func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 	return nil
 }
 
+// CheckConsistency checks that all of the files listed in the version exist
+// and their on-disk sizes match the sizes listed in the version.
+func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
+	var buf bytes.Buffer
+	var args []interface{}
+
+	for level, files := range v.Files {
+		for _, f := range files {
+			path := base.MakeFilename(fs, dirname, base.FileTypeTable, f.FileNum)
+			info, err := fs.Stat(path)
+			if err != nil {
+				buf.WriteString("L%d: %s: %v\n")
+				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), err)
+				continue
+			}
+			if info.Size() != int64(f.Size) {
+				buf.WriteString("L%d: %s: file size mismatch (%s): %d (disk) != %d (MANIFEST)\n")
+				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), path,
+					errors.Safe(info.Size()), errors.Safe(f.Size))
+				continue
+			}
+		}
+	}
+
+	if buf.Len() == 0 {
+		return nil
+	}
+	return errors.Errorf(buf.String(), args...)
+}
+
 // VersionList holds a list of versions. The versions are ordered from oldest
 // to newest.
 type VersionList struct {
@@ -511,7 +542,7 @@ const InvalidSublevel = -1
 
 // levelInfo stores the level (and for L0, sublevel) for a set of files. Used
 // in CheckOrdering.
-type levelInfo struct{
+type levelInfo struct {
 	level, sublevel int
 }
 
@@ -525,7 +556,9 @@ func (l levelInfo) String() string {
 // CheckOrdering checks that the files are consistent with respect to
 // seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
-func CheckOrdering(cmp Compare, format base.FormatKey, level int, sublevel int, files []*FileMetadata) error {
+func CheckOrdering(
+	cmp Compare, format base.FormatKey, level int, sublevel int, files []*FileMetadata,
+) error {
 	// The invariants to check for L0 sublevels are the same as the ones to
 	// check for all other levels. However, if L0 is not organized into
 	// sublevels, or if all L0 files are being passed in, we do the legacy L0

@@ -181,6 +181,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
+		if err := d.mu.versions.currentVersion().CheckConsistency(dirname, opts.FS); err != nil {
+			return nil, err
+		}
 	}
 
 	// In read-only mode, we replay directly into the mutable memtable but never
