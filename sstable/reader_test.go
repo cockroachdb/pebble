@@ -548,7 +548,9 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 					it.SeekGE(keys[rng.Intn(len(keys))])
 				}
 
+				b.StopTimer()
 				it.Close()
+				r.Close()
 			})
 	}
 }
@@ -569,7 +571,9 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 					it.SeekLT(keys[rng.Intn(len(keys))])
 				}
 
+				b.StopTimer()
 				it.Close()
+				r.Close()
 			})
 	}
 }
@@ -598,7 +602,9 @@ func BenchmarkTableIterNext(b *testing.B) {
 					fmt.Fprint(ioutil.Discard, sum)
 				}
 
+				b.StopTimer()
 				it.Close()
+				r.Close()
 			})
 	}
 }
@@ -627,7 +633,9 @@ func BenchmarkTableIterPrev(b *testing.B) {
 					fmt.Fprint(ioutil.Discard, sum)
 				}
 
+				b.StopTimer()
 				it.Close()
+				r.Close()
 			})
 	}
 }
