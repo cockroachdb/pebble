@@ -318,6 +318,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !d.opts.ReadOnly {
 		d.scanObsoleteFiles(ls)
 		d.deleteObsoleteFiles(jobID)
+	} else {
+		// All the log files are obsolete.
+		d.mu.versions.metrics.WAL.Files = int64(len(logFiles))
 	}
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
@@ -525,14 +528,7 @@ func (d *DB) replayWAL(
 	}
 	flushMem()
 	// mem is nil here.
-	if d.opts.ReadOnly {
-		// We need to restore the invariant that the last memtable in d.mu.mem.queue is the
-		// mutable one for the next WAL file, since in read-only mode, each WAL file is replayed
-		// into its own set of memtables. This is done so that the WAL metrics can be accurately
-		// provided.
-		ensureMem(atomic.LoadUint64(&d.mu.versions.logSeqNum))
-		d.mu.versions.metrics.WAL.Files++
-	} else {
+	if !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush, &d.bytesFlushed)
 		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
