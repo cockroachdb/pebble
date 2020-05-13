@@ -433,8 +433,9 @@ func TestOpenWALReplay(t *testing.T) {
 			require.NoError(t, err)
 
 			if readOnly {
+				m := d.Metrics()
+				require.Equal(t, int64(logCount), m.WAL.Files)
 				d.mu.Lock()
-				require.Equal(t, 10, len(d.mu.mem.queue))
 				require.NotNil(t, d.mu.mem.mutable)
 				d.mu.Unlock()
 			}
@@ -503,6 +504,74 @@ func TestOpenWALReplay2(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOpenWALReplayReadOnlySeqNums tests opening a database:
+// * in read-only mode
+// * with multiple unflushed log files that must replayed
+// * a MANIFEST that sets the last sequence number to a number greater than
+//   the unflushed log files
+// See cockroachdb/cockroach#48660.
+func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
+	const root = ""
+	mem := vfs.NewMem()
+
+	copyFiles := func(srcDir, dstDir string) {
+		files, err := mem.List(srcDir)
+		require.NoError(t, err)
+		for _, f := range files {
+			require.NoError(t, vfs.Copy(mem, mem.PathJoin(srcDir, f), mem.PathJoin(dstDir, f)))
+		}
+	}
+
+	// Create a new database under `/original` with a couple sstables.
+	dir := mem.PathJoin(root, "original")
+	d, err := Open(dir, &Options{FS: mem})
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
+	require.NoError(t, d.Flush())
+
+	// Prevent flushes so that multiple unflushed log files build up.
+	d.mu.Lock()
+	d.mu.compact.flushing = true
+	d.mu.Unlock()
+
+	require.NoError(t, d.Set([]byte("b"), nil, nil))
+	d.AsyncFlush()
+	require.NoError(t, d.Set([]byte("c"), nil, nil))
+	d.AsyncFlush()
+	require.NoError(t, d.Set([]byte("e"), nil, nil))
+
+	// Manually compact some of the key space so that the latest `logSeqNum` is
+	// written to the MANIFEST. This produces a MANIFEST where the `logSeqNum`
+	// is greater than the sequence numbers contained in the
+	// `minUnflushedLogNum` log file
+	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
+
+	// While the MANIFEST is still in this state, copy all the files in the
+	// database to a new directory.
+	replayDir := mem.PathJoin(root, "replay")
+	require.NoError(t, mem.MkdirAll(replayDir, os.ModePerm))
+	copyFiles(dir, replayDir)
+
+	d.mu.Lock()
+	d.mu.compact.flushing = false
+	d.mu.Unlock()
+	require.NoError(t, d.Close())
+
+	// Open the copy of the database in read-only mode. Since we copied all
+	// the files before the flushes were allowed to complete, there should be
+	// multiple unflushed log files that need to replay. Since the manual
+	// compaction completed, the `logSeqNum` read from the manifest should be
+	// greater than the unflushed log files' sequence numbers.
+	d, err = Open(replayDir, &Options{
+		FS:       mem,
+		ReadOnly: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
 }
 
 func TestOpenWALReplayMemtableGrowth(t *testing.T) {

@@ -11,7 +11,7 @@ db lsm
 ../testdata/db-stage-4
 ----
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1    82 B       -     0 B       -       -       -       -    82 B       -       -       -     0.0
+    WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
       0         1   986 B    0.25     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
@@ -19,10 +19,10 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  total         1   986 B       -    82 B     0 B       0     0 B       0    82 B       0     0 B       0     1.0
+  total         1   986 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   flush         0
 compact         0   986 B          (size == estimated-debt)
- memtbl         2   768 K
+ memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B    0.0%  (score == hit-rate)
