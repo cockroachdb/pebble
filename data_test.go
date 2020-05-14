@@ -489,9 +489,46 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			return nil, err
 		}
 		d.updateReadStateLocked(nil)
+		d.updateTableStatsLocked(ve.NewFiles)
 	}
 
 	return d, nil
+}
+
+func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
+	u, err := strconv.ParseUint(strings.TrimSpace(td.Input), 10, 64)
+	if err != nil {
+		return err.Error()
+	}
+	fileNum := base.FileNum(u)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	v := d.mu.versions.currentVersion()
+	for _, files := range v.Files {
+		for _, f := range files {
+			if f.FileNum != fileNum {
+				continue
+			}
+
+			if !f.Stats.Valid {
+				d.waitTableStats()
+			}
+
+			var b bytes.Buffer
+			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", f.Stats.RangeDeletionsBytesEstimate)
+			return b.String()
+		}
+	}
+	return "(not found)"
+}
+
+// waitTableStats waits until all new files' statistics have been loaded. It's
+// used in tests. The d.mu mutex must be locked while calling this method.
+func (d *DB) waitTableStats() {
+	for d.mu.tableStats.loading || len(d.mu.tableStats.pending) > 0 {
+		d.mu.tableStats.cond.Wait()
+	}
 }
 
 func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {

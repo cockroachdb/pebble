@@ -1089,6 +1089,9 @@ func TestManualCompaction(t *testing.T) {
 			td.ScanArgs(t, "num", &d.opts.MaxConcurrentCompactions)
 			return ""
 
+		case "wait-pending-table-stats":
+			return runTableStatsCmd(td, d)
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}

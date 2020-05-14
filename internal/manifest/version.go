@@ -38,6 +38,20 @@ type TableInfo struct {
 	LargestSeqNum uint64
 }
 
+// TableStats contains statistics on a table used for compaction heuristics.
+type TableStats struct {
+	// Valid true if stats have been loaded for the table. The rest of the
+	// structure is populated only if true.
+	Valid bool
+	// Estimate of the total disk space that may be reclaimed by compacting
+	// this table's range deletions to the bottom of the LSM. This estimate is
+	// at data-block granularity and is not updated if compactions beneath the
+	// table reduce the amount of reclaimable disk space. It also does not
+	// account for overlapping data in L0 and ignores L0 sublevels, but the
+	// error that introduces is expected to be small.
+	RangeDeletionsBytesEstimate uint64
+}
+
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {
 	// Reference count for the file: incremented when a file is added to a
@@ -63,6 +77,8 @@ type FileMetadata struct {
 	MarkedForCompaction bool
 	// True if the file is actively being compacted. Protected by DB.mu.
 	Compacting bool
+	// Stats describe table statistics. Protected by DB.mu.
+	Stats TableStats
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions.
 	//
@@ -356,6 +372,24 @@ func (v *Version) InitL0Sublevels(
 	var err error
 	v.L0Sublevels, err = NewL0Sublevels(v.Files[0], cmp, formatKey, flushSplitBytes)
 	return err
+}
+
+// Contains returns a boolean indicating whether the provided file exists in
+// the version at the given level. If level is non-zero then Contains binary
+// searches among the files. If level is zero, Contains scans the entire
+// level.
+func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
+	files := v.Files[level]
+	if level > 0 {
+		files = v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey)
+	}
+
+	for _, f := range files {
+		if f == m {
+			return true
+		}
+	}
+	return false
 }
 
 // Overlaps returns all elements of v.files[level] whose user key range
