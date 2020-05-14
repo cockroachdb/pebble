@@ -1087,6 +1087,9 @@ func TestManualCompaction(t *testing.T) {
 			td.ScanArgs(t, "num", &d.opts.MaxConcurrentCompactions)
 			return ""
 
+		case "wait-pending-table-stats":
+			return runTableStatsCmd(td, d)
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
@@ -1248,7 +1251,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				}
 
 				vers = &version{
-					Files:       fileMetas,
+					Files: fileMetas,
 				}
 				if err := vers.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter, flushSplitBytes); err != nil {
 					t.Fatal(err)
@@ -1266,11 +1269,11 @@ func TestCompactionFindL0Limit(t *testing.T) {
 
 			case "flush":
 				c := &compaction{
-					cmp:          cmp,
-					version:      vers,
-					l0Limits:     vers.L0Sublevels.FlushSplitKeys(),
-					startLevel:   -1,
-					outputLevel:  0,
+					cmp:         cmp,
+					version:     vers,
+					l0Limits:    vers.L0Sublevels.FlushSplitKeys(),
+					startLevel:  -1,
+					outputLevel: 0,
 				}
 
 				var buf bytes.Buffer

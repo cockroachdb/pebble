@@ -45,6 +45,11 @@ b
 a:1
 b:2
 
+wait-pending-table-stats
+000006
+----
+range-deletions-bytes-estimate: 0
+
 build ext1
 set a 3
 del b
@@ -306,6 +311,11 @@ m:12
 n:13
 x: pebble: not found
 y: pebble: not found
+
+wait-pending-table-stats
+000015
+----
+range-deletions-bytes-estimate: 1666
 
 # A set operation takes precedence over a range deletion at the same
 # sequence number as can occur during ingestion.
