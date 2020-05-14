@@ -336,6 +336,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		// All the log files are obsolete.
 		d.mu.versions.metrics.WAL.Files = int64(len(logFiles))
 	}
+	d.mu.tableStats.cond.L = &d.mu.Mutex
+	if !d.opts.ReadOnly && !d.opts.private.disableTableStats {
+		d.maybeCollectTableStats()
+	}
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 

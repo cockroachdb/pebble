@@ -30,6 +30,7 @@ type WriterMetadata struct {
 	LargestRange        InternalKey
 	SmallestSeqNum      uint64
 	LargestSeqNum       uint64
+	Properties          Properties
 	MarkedForCompaction bool
 }
 
@@ -653,6 +654,7 @@ func (w *Writer) Close() (err error) {
 		return w.err
 	}
 	w.meta.Size += uint64(n)
+	w.meta.Properties = w.props
 
 	// Flush the buffer.
 	if w.bufWriter != nil {

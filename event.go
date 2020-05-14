@@ -216,6 +216,17 @@ func (i TableIngestInfo) String() string {
 	return buf.String()
 }
 
+// TableStatsInfo contains the info for a table stats loaded event.
+type TableStatsInfo struct {
+	// JobID is the ID of the job that finished loading the initial tables'
+	// stats.
+	JobID int
+}
+
+func (i TableStatsInfo) String() string {
+	return fmt.Sprintf("[JOB %d] all initial table stats loaded", i.JobID)
+}
+
 // WALCreateInfo contains info about a WAL creation event.
 type WALCreateInfo struct {
 	// JobID is the ID of the job the caused the WAL to be created.
@@ -309,6 +320,10 @@ type EventListener struct {
 	// ingested via a call to DB.Ingest().
 	TableIngested func(TableIngestInfo)
 
+	// TableStatsLoaded is invoked at most once, when the table stats
+	// collector has loaded statistics for all tables that existed at Open.
+	TableStatsLoaded func(TableStatsInfo)
+
 	// WALCreated is invoked after a WAL has been created.
 	WALCreated func(WALCreateInfo)
 
@@ -358,6 +373,9 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	}
 	if l.TableIngested == nil {
 		l.TableIngested = func(info TableIngestInfo) {}
+	}
+	if l.TableStatsLoaded == nil {
+		l.TableStatsLoaded = func(info TableStatsInfo) {}
 	}
 	if l.WALCreated == nil {
 		l.WALCreated = func(info WALCreateInfo) {}
@@ -409,6 +427,9 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 			logger.Infof("%s", info)
 		},
 		TableIngested: func(info TableIngestInfo) {
+			logger.Infof("%s", info)
+		},
+		TableStatsLoaded: func(info TableStatsInfo) {
 			logger.Infof("%s", info)
 		},
 		WALCreated: func(info WALCreateInfo) {

@@ -260,6 +260,147 @@ func TestOverlaps(t *testing.T) {
 	}
 }
 
+func TestContains(t *testing.T) {
+	m00 := &FileMetadata{
+		FileNum:  700,
+		Size:     1,
+		Smallest: base.ParseInternalKey("b.SET.7008"),
+		Largest:  base.ParseInternalKey("e.SET.7009"),
+	}
+	m01 := &FileMetadata{
+		FileNum:  701,
+		Size:     1,
+		Smallest: base.ParseInternalKey("c.SET.7018"),
+		Largest:  base.ParseInternalKey("f.SET.7019"),
+	}
+	m02 := &FileMetadata{
+		FileNum:  702,
+		Size:     1,
+		Smallest: base.ParseInternalKey("f.SET.7028"),
+		Largest:  base.ParseInternalKey("g.SET.7029"),
+	}
+	m03 := &FileMetadata{
+		FileNum:  703,
+		Size:     1,
+		Smallest: base.ParseInternalKey("x.SET.7038"),
+		Largest:  base.ParseInternalKey("y.SET.7039"),
+	}
+	m04 := &FileMetadata{
+		FileNum:  704,
+		Size:     1,
+		Smallest: base.ParseInternalKey("n.SET.7048"),
+		Largest:  base.ParseInternalKey("p.SET.7049"),
+	}
+	m05 := &FileMetadata{
+		FileNum:  705,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7058"),
+		Largest:  base.ParseInternalKey("p.SET.7059"),
+	}
+	m06 := &FileMetadata{
+		FileNum:  706,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7068"),
+		Largest:  base.ParseInternalKey("u.SET.7069"),
+	}
+	m07 := &FileMetadata{
+		FileNum:  707,
+		Size:     1,
+		Smallest: base.ParseInternalKey("r.SET.7078"),
+		Largest:  base.ParseInternalKey("s.SET.7079"),
+	}
+
+	m10 := &FileMetadata{
+		FileNum:  710,
+		Size:     1,
+		Smallest: base.ParseInternalKey("d.SET.7108"),
+		Largest:  base.ParseInternalKey("g.SET.7109"),
+	}
+	m11 := &FileMetadata{
+		FileNum:  711,
+		Size:     1,
+		Smallest: base.ParseInternalKey("g.SET.7118"),
+		Largest:  base.ParseInternalKey("j.SET.7119"),
+	}
+	m12 := &FileMetadata{
+		FileNum:  712,
+		Size:     1,
+		Smallest: base.ParseInternalKey("n.SET.7128"),
+		Largest:  base.ParseInternalKey("p.SET.7129"),
+	}
+	m13 := &FileMetadata{
+		FileNum:  713,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7138"),
+		Largest:  base.ParseInternalKey("p.SET.7139"),
+	}
+	m14 := &FileMetadata{
+		FileNum:  714,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7148"),
+		Largest:  base.ParseInternalKey("u.SET.7149"),
+	}
+
+	v := Version{
+		Files: [NumLevels][]*FileMetadata{
+			0: {m00, m01, m02, m03, m04, m05, m06, m07},
+			1: {m10, m11, m12, m13, m14},
+		},
+	}
+
+	testCases := []struct {
+		level int
+		file  *FileMetadata
+		want  bool
+	}{
+		// Level 0: m00=b-e, m01=c-f, m02=f-g, m03=x-y, m04=n-p, m05=p-p, m06=p-u, m07=r-s.
+		// Note that:
+		//   - the slice isn't sorted (e.g. m02=f-g, m03=x-y, m04=n-p),
+		//   - m00 and m01 overlap (not just touch),
+		//   - m06 contains m07,
+		//   - m00, m01 and m02 transitively overlap/touch each other, and
+		//   - m04, m05, m06 and m07 transitively overlap/touch each other.
+		{0, m00, true},
+		{0, m01, true},
+		{0, m02, true},
+		{0, m03, true},
+		{0, m04, true},
+		{0, m05, true},
+		{0, m06, true},
+		{0, m07, true},
+		{0, m10, false},
+		{0, m11, false},
+		{0, m12, false},
+		{0, m13, false},
+		{0, m14, false},
+		{1, m00, false},
+		{1, m01, false},
+		{1, m02, false},
+		{1, m03, false},
+		{1, m04, false},
+		{1, m05, false},
+		{1, m06, false},
+		{1, m07, false},
+		{1, m10, true},
+		{1, m11, true},
+		{1, m12, true},
+		{1, m13, true},
+		{1, m14, true},
+
+		// Level 2: empty.
+		{2, m00, false},
+		{2, m14, false},
+	}
+
+	cmp := base.DefaultComparer.Compare
+	for _, tc := range testCases {
+		got := v.Contains(tc.level, cmp, tc.file)
+		if got != tc.want {
+			t.Errorf("level=%d, file=%s\ngot %t\nwant %t", tc.level, tc.file, got, tc.want)
+		}
+	}
+}
+
 func TestVersionUnref(t *testing.T) {
 	list := &VersionList{}
 	list.Init(&sync.Mutex{})
@@ -317,7 +458,7 @@ func TestCheckOrdering(t *testing.T) {
 
 				cmp := base.DefaultComparer.Compare
 				result := "OK"
-				if err := v.InitL0Sublevels(cmp, base.DefaultFormatter, 10 << 20); err != nil {
+				if err := v.InitL0Sublevels(cmp, base.DefaultFormatter, 10<<20); err != nil {
 					return fmt.Sprint(err)
 				}
 				err := v.CheckOrdering(cmp, base.DefaultFormatter)

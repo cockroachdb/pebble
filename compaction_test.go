@@ -795,12 +795,13 @@ func TestCompaction(t *testing.T) {
 	const valueSize = 3500
 
 	mem := vfs.NewMem()
-	d, err := Open("", &Options{
+	opts := &Options{
 		FS:           mem,
 		MemTableSize: memTableSize,
 		DebugCheck:   DebugCheckLevels,
-		enablePacing: true,
-	})
+	}
+	opts.private.enablePacing = true
+	d, err := Open("", opts)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -1088,6 +1089,9 @@ func TestManualCompaction(t *testing.T) {
 		case "set-concurrent-compactions":
 			td.ScanArgs(t, "num", &d.opts.MaxConcurrentCompactions)
 			return ""
+
+		case "wait-pending-table-stats":
+			return runTableStatsCmd(td, d)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

@@ -139,13 +139,19 @@ func TestEventListener(t *testing.T) {
 		switch td.Cmd {
 		case "open":
 			buf.Reset()
-			var err error
-			d, err = Open("db", &Options{
+			opts := &Options{
 				FS:                  loggingFS{mem, &buf},
 				EventListener:       MakeLoggingEventListener(&buf),
 				MaxManifestFileSize: 1,
 				WALDir:              "wal",
-			})
+			}
+			// The table stats collector runs asynchronously and its
+			// timing is less predictable. It increments nextJobID, which
+			// can make these tests flaky. The TableStatsLoaded event is
+			// tested separately in TestTableStats.
+			opts.private.disableTableStats = true
+			var err error
+			d, err = Open("db", opts)
 			if err != nil {
 				return err.Error()
 			}
@@ -230,6 +236,12 @@ func TestEventListener(t *testing.T) {
 			return buf.String()
 
 		case "metrics":
+			// The asynchronous loading of table stats can change metrics, so
+			// wait for all the tables' stats to be loaded.
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+
 			return d.Metrics().String()
 
 		case "sstables":
