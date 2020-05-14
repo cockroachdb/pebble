@@ -436,7 +436,11 @@ func (y *ycsb) scan(db DB, rng *rand.Rand, reverse bool) {
 	if err := db.Scan(key, int64(count), reverse); err != nil {
 		log.Fatal(err)
 	}
-	atomic.AddUint64(&y.numKeys[ycsbScan], count)
+	if reverse {
+		atomic.AddUint64(&y.numKeys[ycsbReverseScan], count)
+	} else {
+		atomic.AddUint64(&y.numKeys[ycsbScan], count)
+	}
 }
 
 func (y *ycsb) update(db DB, rng *rand.Rand) {
