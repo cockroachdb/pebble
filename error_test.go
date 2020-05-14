@@ -168,10 +168,12 @@ func TestRequireReadError(t *testing.T) {
 		inj := errorfs.OnIndex(-1)
 		fs := errorfs.Wrap(vfs.NewMem(), inj)
 		d, err := Open("", &Options{
-			FS:     fs,
-			Logger: panicLogger{},
+			FS:                fs,
+			Logger:            panicLogger{},
+			disableTableStats: true,
 		})
 		require.NoError(t, err)
+
 		defer func() {
 			if d != nil {
 				require.NoError(t, d.Close())
@@ -251,8 +253,9 @@ func TestCorruptReadError(t *testing.T) {
 			index: -1,
 		}
 		d, err := Open("", &Options{
-			FS:     fs,
-			Logger: panicLogger{},
+			FS:                fs,
+			Logger:            panicLogger{},
+			disableTableStats: true,
 		})
 		if err != nil {
 			t.Fatalf("%v", err)
