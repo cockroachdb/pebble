@@ -44,7 +44,8 @@ type batch interface {
 // Adapters for Pebble. Since the interfaces above are based on Pebble's
 // interfaces, it can simply forward calls for everything.
 type pebbleDB struct {
-	d *pebble.DB
+	d       *pebble.DB
+	ballast []byte
 }
 
 func newPebbleDB(dir string) DB {
@@ -95,7 +96,10 @@ func newPebbleDB(dir string) DB {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return pebbleDB{p}
+	return pebbleDB{
+		d:       p,
+		ballast: make([]byte, 1<<30),
+	}
 }
 
 func (p pebbleDB) Flush() error {

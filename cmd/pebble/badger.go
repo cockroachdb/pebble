@@ -11,7 +11,7 @@ import (
 	"log"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v2"
 )
 
 // Adapters for Badger.
@@ -49,8 +49,8 @@ func (b badgerDB) Scan(key []byte, count int64, reverse bool) error {
 	panic("badgerDB.Scan: unimplemented")
 }
 
-func (b badgerDB) Metrics() *pebble.VersionMetrics {
-	return &pebble.VersionMetrics{}
+func (b badgerDB) Metrics() *pebble.Metrics {
+	return &pebble.Metrics{}
 }
 
 func (b badgerDB) Flush() error {

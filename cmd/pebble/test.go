@@ -232,6 +232,8 @@ func runTest(dir string, t test) {
 		db = newBoltDB(dir)
 	case "pebble":
 		db = newPebbleDB(dir)
+	case "crdb-pebble":
+		db = newCRDBPebbleDB(dir)
 	case "rocksdb":
 		db = newRocksDB(dir)
 	}

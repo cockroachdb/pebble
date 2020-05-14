@@ -7,30 +7,28 @@
 package main
 
 import (
+	"context"
 	"log"
 	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
-	"github.com/cockroachdb/cockroach/pkg/storage/engine"
+	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/pebble"
 )
 
 // Adapters for rocksDB
 type rocksDB struct {
-	d       *engine.RocksDB
+	d       *storage.RocksDB
 	ballast []byte
 }
 
 func newRocksDB(dir string) DB {
 	// TODO: match Pebble / Rocks options
-	r, err := engine.NewRocksDB(
-		engine.RocksDBConfig{
-			Dir: dir,
-		},
-		engine.NewRocksDBCache(cacheSize),
-	)
+	cfg := storage.RocksDBConfig{}
+	cfg.Dir = dir
+	r, err := storage.NewRocksDB(cfg, storage.NewRocksDBCache(cacheSize))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -41,13 +39,13 @@ func newRocksDB(dir string) DB {
 }
 
 type rocksDBIterator struct {
-	iter       engine.Iterator
+	iter       storage.Iterator
 	lowerBound []byte
 	upperBound []byte
 }
 
 type rocksDBBatch struct {
-	batch engine.Batch
+	batch storage.Batch
 }
 
 func (i rocksDBIterator) SeekGE(key []byte) bool {
@@ -56,7 +54,7 @@ func (i rocksDBIterator) SeekGE(key []byte) bool {
 	if !ok {
 		panic("mvccSplitKey failed")
 	}
-	i.iter.Seek(engine.MVCCKey{
+	i.iter.SeekGE(storage.MVCCKey{
 		Key: userKey,
 	})
 	return i.Valid()
@@ -92,7 +90,7 @@ func (i rocksDBIterator) Last() bool {
 	if !ok {
 		panic("mvccSplitKey failed")
 	}
-	i.iter.SeekReverse(engine.MVCCKey{
+	i.iter.SeekLT(storage.MVCCKey{
 		Key: userKey,
 	})
 	return i.Valid()
@@ -120,7 +118,7 @@ func (b rocksDBBatch) Set(key, value []byte, _ *pebble.WriteOptions) error {
 		panic("mvccSplitKey failed")
 	}
 	ts := hlc.Timestamp{WallTime: 1}
-	return b.batch.Put(engine.MVCCKey{Key: userKey, Timestamp: ts}, value)
+	return b.batch.Put(storage.MVCCKey{Key: userKey, Timestamp: ts}, value)
 }
 
 func (b rocksDBBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
@@ -136,7 +134,7 @@ func (r rocksDB) Flush() error {
 }
 
 func (r rocksDB) NewIter(opts *pebble.IterOptions) iterator {
-	ropts := engine.IterOptions{}
+	ropts := storage.IterOptions{}
 	if opts != nil {
 		ropts.LowerBound = opts.LowerBound
 		ropts.UpperBound = opts.UpperBound
@@ -162,37 +160,31 @@ func (r rocksDB) Scan(key []byte, count int64, reverse bool) error {
 		panic("mvccSplitKey failed")
 	}
 	endKey := roachpb.KeyMax
-	ropts := engine.IterOptions{
-		LowerBound: key,
-	}
 	if reverse {
 		endKey = beginKey
 		beginKey = roachpb.KeyMin
-		ropts.UpperBound = key
-		ropts.LowerBound = nil
 	}
 
-	iter := r.d.NewIterator(ropts)
-	defer iter.Close()
 	// We hard code a timestamp with walltime=1 in the data, so we just have to
 	// use a larger timestamp here (walltime=10).
 	ts := hlc.Timestamp{WallTime: 10}
-	_, numKVs, _, intents, err := iter.MVCCScan(
-		beginKey, endKey, count, ts, engine.MVCCScanOptions{Reverse: reverse},
+	res, err := storage.MVCCScanToBytes(
+		context.Background(), r.d, beginKey, endKey, ts,
+		storage.MVCCScanOptions{Reverse: reverse, MaxKeys: count},
 	)
-	if numKVs > count {
+	if res.NumKeys > count {
 		panic("MVCCScan returned too many keys")
 	}
-	if len(intents) > 0 {
+	if len(res.Intents) > 0 {
 		panic("MVCCScan found intents")
 	}
 	return err
 }
 
-func (r rocksDB) Metrics() *pebble.VersionMetrics {
+func (r rocksDB) Metrics() *pebble.Metrics {
 	stats := r.d.GetCompactionStats()
 	var inLevelsSection bool
-	var vMetrics pebble.VersionMetrics
+	var vMetrics pebble.Metrics
 	for _, line := range strings.Split(stats, "\n") {
 		if strings.HasPrefix(line, "-----") {
 			continue
@@ -247,8 +239,201 @@ func (r rocksDB) Metrics() *pebble.VersionMetrics {
 			bytesReadGB, _ := strconv.ParseFloat(fields[5], 64)
 			vMetrics.Levels[level].BytesRead = uint64(1024.0 * 1024.0 * 1024.0 * bytesReadGB)
 			bytesWrittenGB, _ := strconv.ParseFloat(fields[8], 64)
-			vMetrics.Levels[level].BytesWritten = uint64(1024.0 * 1024.0 * 1024.0 * bytesWrittenGB)
+			vMetrics.Levels[level].BytesCompacted = uint64(1024.0 * 1024.0 * 1024.0 * bytesWrittenGB)
 		}
 	}
 	return &vMetrics
+}
+
+type crdbPebbleDB struct {
+	d       *storage.Pebble
+	ballast []byte
+}
+
+func newCRDBPebbleDB(dir string) DB {
+	cfg := storage.PebbleConfig{}
+	cfg.Dir = dir
+	// TODO(peter): We can't create a pebble.Cache here because cfg.Opts.Cache is
+	// the vendored type and we can't import that vendored directory here. The
+	// following diff can be applied to github.com/cockroachdb/cockroach/pkg/storage/pebble.go:
+	//
+	// --- a/pkg/storage/pebble.go
+	// +++ b/pkg/storage/pebble.go
+	// @@ -377,6 +377,7 @@ func (l pebbleLogger) Fatalf(format string, args ...interface{}) {
+	//  type PebbleConfig struct {
+	//         // StorageConfig contains storage configs for all storage engines.
+	//         base.StorageConfig
+	// +       CacheSize int64
+	//         // Pebble specific options.
+	//         Opts *pebble.Options
+	//  }
+	// @@ -461,6 +462,11 @@ func ResolveEncryptedEnvOptions(
+
+	//  // NewPebble creates a new Pebble instance, at the specified path.
+	//  func NewPebble(ctx context.Context, cfg PebbleConfig) (*Pebble, error) {
+	// +       if cfg.Opts.Cache == nil {
+	// +               cfg.Opts.Cache = pebble.NewCache(cfg.CacheSize)
+	// +               defer cfg.Opts.Cache.Unref()
+	// +       }
+	// +
+	//
+	// With the above diff applied, we can uncomment the line below:
+	//
+	// cfg.CacheSize = cacheSize
+	cfg.Opts = storage.DefaultPebbleOptions()
+	r, err := storage.NewPebble(context.Background(), cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return crdbPebbleDB{
+		d:       r,
+		ballast: make([]byte, 1<<30),
+	}
+}
+
+type crdbPebbleDBIterator struct {
+	iter       storage.Iterator
+	lowerBound []byte
+	upperBound []byte
+}
+
+type crdbPebbleDBBatch struct {
+	batch storage.Batch
+}
+
+func (i crdbPebbleDBIterator) SeekGE(key []byte) bool {
+	// TODO: unnecessary overhead here. Change the interface.
+	userKey, _, ok := mvccSplitKey(key)
+	if !ok {
+		panic("mvccSplitKey failed")
+	}
+	i.iter.SeekGE(storage.MVCCKey{
+		Key: userKey,
+	})
+	return i.Valid()
+}
+
+func (i crdbPebbleDBIterator) Valid() bool {
+	valid, _ := i.iter.Valid()
+	return valid
+}
+
+func (i crdbPebbleDBIterator) Key() []byte {
+	key := i.iter.Key()
+	return []byte(key.Key)
+}
+
+func (i crdbPebbleDBIterator) Value() []byte {
+	return i.iter.Value()
+}
+
+func (i crdbPebbleDBIterator) First() bool {
+	return i.SeekGE(i.lowerBound)
+}
+
+func (i crdbPebbleDBIterator) Next() bool {
+	i.iter.Next()
+	valid, _ := i.iter.Valid()
+	return valid
+}
+
+func (i crdbPebbleDBIterator) Last() bool {
+	// TODO: unnecessary overhead here. Change the interface.
+	userKey, _, ok := mvccSplitKey(i.upperBound)
+	if !ok {
+		panic("mvccSplitKey failed")
+	}
+	i.iter.SeekLT(storage.MVCCKey{
+		Key: userKey,
+	})
+	return i.Valid()
+}
+
+func (i crdbPebbleDBIterator) Prev() bool {
+	i.iter.Prev()
+	valid, _ := i.iter.Valid()
+	return valid
+}
+
+func (i crdbPebbleDBIterator) Close() error {
+	i.iter.Close()
+	return nil
+}
+
+func (b crdbPebbleDBBatch) Commit(opts *pebble.WriteOptions) error {
+	return b.batch.Commit(opts.Sync)
+}
+
+func (b crdbPebbleDBBatch) Set(key, value []byte, _ *pebble.WriteOptions) error {
+	// TODO: unnecessary overhead here. Change the interface.
+	userKey, _, ok := mvccSplitKey(key)
+	if !ok {
+		panic("mvccSplitKey failed")
+	}
+	ts := hlc.Timestamp{WallTime: 1}
+	return b.batch.Put(storage.MVCCKey{Key: userKey, Timestamp: ts}, value)
+}
+
+func (b crdbPebbleDBBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
+	return b.batch.LogData(data)
+}
+
+func (b crdbPebbleDBBatch) Repr() []byte {
+	return b.batch.Repr()
+}
+
+func (r crdbPebbleDB) Flush() error {
+	return r.d.Flush()
+}
+
+func (r crdbPebbleDB) NewIter(opts *pebble.IterOptions) iterator {
+	ropts := storage.IterOptions{}
+	if opts != nil {
+		ropts.LowerBound = opts.LowerBound
+		ropts.UpperBound = opts.UpperBound
+	} else {
+		ropts.UpperBound = roachpb.KeyMax
+	}
+	iter := r.d.NewIterator(ropts)
+	return crdbPebbleDBIterator{
+		iter:       iter,
+		lowerBound: ropts.LowerBound,
+		upperBound: ropts.UpperBound,
+	}
+}
+
+func (r crdbPebbleDB) NewBatch() batch {
+	return crdbPebbleDBBatch{r.d.NewBatch()}
+}
+
+func (r crdbPebbleDB) Scan(key []byte, count int64, reverse bool) error {
+	// TODO: unnecessary overhead here. Change the interface.
+	beginKey, _, ok := mvccSplitKey(key)
+	if !ok {
+		panic("mvccSplitKey failed")
+	}
+	endKey := roachpb.KeyMax
+	if reverse {
+		endKey = beginKey
+		beginKey = roachpb.KeyMin
+	}
+
+	// We hard code a timestamp with walltime=1 in the data, so we just have to
+	// use a larger timestamp here (walltime=10).
+	ts := hlc.Timestamp{WallTime: 10}
+	res, err := storage.MVCCScanToBytes(
+		context.Background(), r.d, beginKey, endKey, ts,
+		storage.MVCCScanOptions{Reverse: reverse, MaxKeys: count},
+	)
+	if res.NumKeys > count {
+		panic("MVCCScan returned too many keys")
+	}
+	if len(res.Intents) > 0 {
+		panic("MVCCScan found intents")
+	}
+	return err
+}
+
+func (r crdbPebbleDB) Metrics() *pebble.Metrics {
+	return &pebble.Metrics{}
 }

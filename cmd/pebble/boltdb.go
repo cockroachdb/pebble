@@ -10,8 +10,8 @@ import (
 	"bytes"
 	"log"
 
+	"github.com/boltdb/bolt"
 	"github.com/cockroachdb/pebble"
-	"github.com/ngaut/bolt"
 )
 
 // Adapters for BoltDB
@@ -63,8 +63,8 @@ func (b boltDB) Scan(key []byte, count int64, reverse bool) error {
 	panic("boltDB.Scan: unimplemented")
 }
 
-func (b boltDB) Metrics() *pebble.VersionMetrics {
-	return &pebble.VersionMetrics{}
+func (b boltDB) Metrics() *pebble.Metrics {
+	return &pebble.Metrics{}
 }
 
 func (b boltDB) Flush() error {
