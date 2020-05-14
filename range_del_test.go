@@ -25,6 +25,8 @@ func TestRangeDel(t *testing.T) {
 			require.NoError(t, d.Close())
 		}
 	}()
+	opts := &Options{}
+	opts.private.disableAutomaticCompactions = true
 
 	datadriven.RunTest(t, "testdata/range_del", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -36,7 +38,7 @@ func TestRangeDel(t *testing.T) {
 			}
 
 			var err error
-			if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
+			if d, err = runDBDefineCmd(td, opts); err != nil {
 				return err.Error()
 			}
 
@@ -46,6 +48,9 @@ func TestRangeDel(t *testing.T) {
 			s := fmt.Sprintf("mem: %d\n%s", len(d.mu.mem.queue), d.mu.versions.currentVersion())
 			d.mu.Unlock()
 			return s
+
+		case "wait-pending-table-stats":
+			return runTableStatsCmd(td, d)
 
 		case "compact":
 			if err := runCompactCmd(td, d); err != nil {

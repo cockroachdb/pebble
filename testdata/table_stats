@@ -1,0 +1,112 @@
+batch
+set a 1
+set b 2
+----
+
+flush
+----
+0.0:
+  000005:[a#1,SET-b#2,SET]
+
+wait-pending-table-stats
+000005
+----
+range-deletions-bytes-estimate: 0
+
+compact a-c
+----
+6:
+  000005:[a-b]
+
+batch
+del-range a c
+----
+
+flush
+----
+0.0:
+  000007:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+6:
+  000005:[a#1,SET-b#2,SET]
+
+wait-pending-table-stats
+000007
+----
+range-deletions-bytes-estimate: 784
+
+reopen
+----
+
+# After re-opening the database, the table stats collector should eventually
+# load 000007's stats.
+
+wait-loaded-initial
+----
+[JOB 2] all initial table stats loaded
+
+wait-pending-table-stats
+000007
+----
+range-deletions-bytes-estimate: 784
+
+compact a-c
+----
+
+# Test a file that is moved by a compaction before its table stats are
+# collected. The stats collector should silently skip the first pending file,
+# but the second entry from the move compaction should cause the file's stats
+# to be loaded.
+
+disable
+----
+
+batch
+set a 1
+set b 2
+----
+
+flush
+----
+0.0:
+  000012:[a#4,SET-b#5,SET]
+
+compact a-c
+----
+6:
+  000012:[a-b]
+
+enable
+----
+
+wait-pending-table-stats
+000012
+----
+range-deletions-bytes-estimate: 0
+
+# Test a file that is deleted by a compaction before its table stats are
+# collected. The stats collector should just silently skip the pending file.
+
+disable
+----
+
+batch
+del-range a c
+----
+
+flush
+----
+0.0:
+  000014:[a#6,RANGEDEL-c#72057594037927935,RANGEDEL]
+6:
+  000012:[a#4,SET-b#5,SET]
+
+compact a-c
+----
+
+enable
+----
+
+wait-pending-table-stats
+000014
+----
+(not found)

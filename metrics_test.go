@@ -176,6 +176,12 @@ func TestMetrics(t *testing.T) {
 			return ""
 
 		case "metrics":
+			// The asynchronous loading of table stats can change metrics, so
+			// wait for all the tables' stats to be loaded.
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+
 			return d.Metrics().String()
 
 		default:

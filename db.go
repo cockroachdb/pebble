@@ -314,6 +314,24 @@ type DB struct {
 
 		// The list of active snapshots.
 		snapshots snapshotList
+
+		tableStats struct {
+			// Condition variable used to signal the completion of a
+			// job to collect table stats.
+			cond sync.Cond
+			// True when a stat collection operation is in progress.
+			loading bool
+			// True if stat collection has loaded statistics for all tables
+			// other than those listed explcitly in pending. This flag starts
+			// as false when a database is opened and flips to true once stat
+			// collection has caught up.
+			loadedInitial bool
+			// A slice of files for which stats have not been computed.
+			// Compactions, ingests, flushes append files to be processed. An
+			// active stat collection goroutine clears the list and processes
+			// them.
+			pending []manifest.NewFileEntry
+		}
 	}
 
 	// Normally equal to time.Now() but may be overridden in tests.
@@ -817,6 +835,10 @@ func (d *DB) Close() error {
 	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}
+	for d.mu.tableStats.loading {
+		d.mu.tableStats.cond.Wait()
+	}
+
 	var err error
 	if n := len(d.mu.compact.inProgress); n > 0 {
 		err = errors.Errorf("pebble: %d unexpected in-progress compactions", errors.Safe(n))
@@ -867,7 +889,12 @@ func (d *DB) Close() error {
 	for d.mu.cleaner.cleaning {
 		d.mu.cleaner.cond.Wait()
 	}
-
+	// There may still be obsolete tables if an existing async cleaning job
+	// prevented a new cleaning job when a readState was unrefed. If needed,
+	// synchronously delete obsolete files.
+	if len(d.mu.versions.obsoleteTables) > 0 {
+		d.deleteObsoleteFiles(d.mu.nextJobID)
+	}
 	return err
 }
 

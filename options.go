@@ -426,10 +426,19 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
-	// TODO(peter): A private option to enable flush/compaction pacing. Only used
-	// by tests. Compaction/flush pacing is disabled until we fix the impact on
-	// throughput.
-	enablePacing bool
+	// private options are only used by internal tests.
+	private struct {
+		// TODO(peter): A private option to enable flush/compaction pacing. Only used
+		// by tests. Compaction/flush pacing is disabled until we fix the impact on
+		// throughput.
+		enablePacing bool
+
+		// A private option to disable stats collection.
+		disableTableStats bool
+
+		// A private option disable automatic compactions.
+		disableAutomaticCompactions bool
+	}
 }
 
 // DebugCheckLevels calls CheckLevels on the provided database.

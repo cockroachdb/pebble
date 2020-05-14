@@ -167,11 +167,14 @@ func TestRequireReadError(t *testing.T) {
 		// Perform setup with error injection disabled as it involves writes/background ops.
 		inj := errorfs.OnIndex(-1)
 		fs := errorfs.Wrap(vfs.NewMem(), inj)
-		d, err := Open("", &Options{
+		opts := &Options{
 			FS:     fs,
 			Logger: panicLogger{},
-		})
+		}
+		opts.private.disableTableStats = true
+		d, err := Open("", opts)
 		require.NoError(t, err)
+
 		defer func() {
 			if d != nil {
 				require.NoError(t, d.Close())
@@ -250,10 +253,12 @@ func TestCorruptReadError(t *testing.T) {
 			FS:    vfs.NewMem(),
 			index: -1,
 		}
-		d, err := Open("", &Options{
+		opts := &Options{
 			FS:     fs,
 			Logger: panicLogger{},
-		})
+		}
+		opts.private.disableTableStats = true
+		d, err := Open("", opts)
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
