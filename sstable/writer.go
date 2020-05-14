@@ -30,7 +30,13 @@ type WriterMetadata struct {
 	LargestRange        InternalKey
 	SmallestSeqNum      uint64
 	LargestSeqNum       uint64
+	Statistics          Statistics
 	MarkedForCompaction bool
+}
+
+// Statistics holds statistics about a finished sstable.
+type Statistics struct {
+	RangeDeletions uint64
 }
 
 func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
@@ -653,6 +659,7 @@ func (w *Writer) Close() (err error) {
 		return w.err
 	}
 	w.meta.Size += uint64(n)
+	w.meta.Statistics.RangeDeletions = w.props.NumRangeDeletions
 
 	// Flush the buffer.
 	if w.bufWriter != nil {

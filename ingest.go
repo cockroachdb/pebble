@@ -69,6 +69,21 @@ func ingestLoad1(
 	meta.CreationTime = time.Now().Unix()
 	meta.Smallest = InternalKey{}
 	meta.Largest = InternalKey{}
+
+	// Avoid loading into into the table cache for collecting stats if we
+	// don't need to. If there are no range deletions, we have all the
+	// information to compute the stats here.
+	//
+	// This is helpful in tests for avoiding awkwardness around deletion of
+	// ingested files from MemFS. MemFS implements the Windows semantics of
+	// disallowing removal of an open file. Under MemFS, if we don't populate
+	// meta.Stats here, the file will be loaded into the table cache for
+	// calculating stats before we can remove the original link.
+	if r.Properties.NumRangeDeletions == 0 {
+		meta.Stats.Valid = true
+		meta.Stats.RangeDeletionsBytesEstimate = 0
+	}
+
 	smallestSet, largestSet := false, false
 	empty := true
 

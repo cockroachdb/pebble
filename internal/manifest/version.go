@@ -38,6 +38,18 @@ type TableInfo struct {
 	LargestSeqNum uint64
 }
 
+// TableStats contains statistics on a table used for compaction heuristics.
+type TableStats struct {
+	// Valid true if stats have been loaded for the table. The rest of the
+	// structure is populated only if true.
+	Valid bool
+	// Estimate of the total disk space that may be reclaimed by compacting
+	// this table's range deletions to the bottom of the LSM. This estimate is
+	// at data-block granularity and is not updated if compactions beneath the
+	// table reduce the amount of reclaimable disk space.
+	RangeDeletionsBytesEstimate uint64
+}
+
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {
 	// Reference count for the file: incremented when a file is added to a
@@ -63,6 +75,8 @@ type FileMetadata struct {
 	MarkedForCompaction bool
 	// True if the file is actively being compacted. Protected by DB.mu.
 	Compacting bool
+	// Stats describe table statistics. Protected by DB.mu.
+	Stats TableStats
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions.
 	//

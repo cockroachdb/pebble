@@ -318,6 +318,12 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}
 
+	d.mu.tableStats.cond.L = &d.mu.Mutex
+	if !d.opts.ReadOnly && !d.opts.disableTableStats {
+		d.mu.versions.newVersionHook = d.updateTableStats
+		d.maybeLoadMissingTableStats()
+	}
+
 	if !d.opts.ReadOnly {
 		d.scanObsoleteFiles(ls)
 		d.deleteObsoleteFiles(jobID)

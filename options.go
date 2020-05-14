@@ -415,6 +415,9 @@ type Options struct {
 	// by tests. Compaction/flush pacing is disabled until we fix the impact on
 	// throughput.
 	enablePacing bool
+
+	// A private option to disable stats collection. Only used by tests.
+	disableTableStats bool
 }
 
 // DebugCheckLevels calls CheckLevels on the provided database.

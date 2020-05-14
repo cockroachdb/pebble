@@ -314,6 +314,20 @@ type DB struct {
 
 		// The list of active snapshots.
 		snapshots snapshotList
+
+		tableStats struct {
+			// Condition variable used to signal the completion of a
+			// job to collect table stats.
+			cond sync.Cond
+			// True when a stat collection operation is in progress.
+			loading bool
+			// A flag indicating the current version might have tables for
+			// which table statistics have not yet been loaded. The flag may
+			// be set to false while a stat collection operation is running.
+			// All the current versions files' statistics have been loaded if
+			// the unloaded flag is false and no operation is in progress.
+			unloaded bool
+		}
 	}
 
 	// Normally equal to time.Now() but may be overridden in tests.
@@ -814,6 +828,9 @@ func (d *DB) Close() error {
 
 	defer d.opts.Cache.Unref()
 
+	for d.mu.tableStats.loading {
+		d.mu.tableStats.cond.Wait()
+	}
 	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}

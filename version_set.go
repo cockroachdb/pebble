@@ -45,6 +45,7 @@ type versionSet struct {
 	// Dynamic base level allows the dynamic base level computation to be
 	// disabled. Used by tests which want to create specific LSM structures.
 	dynamicBaseLevel bool
+	newVersionHook   func([numLevels][]*fileMetadata)
 
 	// Mutable fields.
 	versions versionList
@@ -96,6 +97,7 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	vs.fs = opts.FS
 	vs.cmp = opts.Comparer.Compare
 	vs.cmpName = opts.Comparer.Name
+	vs.newVersionHook = func([numLevels][]*fileMetadata) {}
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
@@ -371,12 +373,12 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
+	var bve bulkVersionEdit
 	var zombies map[FileNum]uint64
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
 
-		var bve bulkVersionEdit
 		bve.Accumulate(ve)
 
 		var err error
@@ -448,6 +450,8 @@ func (vs *versionSet) logAndApply(
 	for fileNum, size := range zombies {
 		vs.zombieTables[fileNum] = size
 	}
+
+	vs.newVersionHook(bve.Added)
 
 	// Install the new version.
 	vs.append(newVersion)
