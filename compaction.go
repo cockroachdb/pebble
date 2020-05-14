@@ -1051,8 +1051,8 @@ func (d *DB) flush1() error {
 		flushed = d.mu.mem.queue[:n]
 		d.mu.mem.queue = d.mu.mem.queue[n:]
 		d.updateReadStateLocked(d.opts.DebugCheck)
+		d.updateTableStatsLocked(ve.NewFiles)
 	}
-
 	d.deleteObsoleteFiles(jobID)
 
 	// Mark all the memtables we flushed as flushed. Note that we do this last so
@@ -1223,6 +1223,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// table list.
 	if err == nil {
 		d.updateReadStateLocked(d.opts.DebugCheck)
+		d.updateTableStatsLocked(ve.NewFiles)
 	}
 	d.deleteObsoleteFiles(jobID)
 
@@ -1392,6 +1393,14 @@ func (d *DB) runCompaction(
 		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
 		meta.MarkedForCompaction = writerMeta.MarkedForCompaction
+		// If the file didn't contain any range deletions, we can fill its
+		// table stats now, avoiding unnecessarily loading the table later.
+		if writerMeta.Properties.NumRangeDeletions == 0 {
+			meta.Stats = manifest.TableStats{
+				Valid:                       true,
+				RangeDeletionsBytesEstimate: 0,
+			}
+		}
 
 		if c.flushing == nil {
 			metrics.TablesCompacted++

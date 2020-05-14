@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -92,6 +93,9 @@ func TestIngestLoadRand(t *testing.T) {
 		pending[i] = FileNum(rng.Int63())
 		expected[i] = &fileMetadata{
 			FileNum: pending[i],
+			Stats: manifest.TableStats{
+				Valid: true,
+			},
 		}
 
 		func() {

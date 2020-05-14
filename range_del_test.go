@@ -47,6 +47,9 @@ func TestRangeDel(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "table-stats":
+			return runTableStatsCmd(td, d)
+
 		case "compact":
 			if err := runCompactCmd(td, d); err != nil {
 				return err.Error()
