@@ -257,7 +257,11 @@ func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIter
 	m.snapshot = InternalKeySeqNumMax
 	m.levels = levels
 	m.heap.cmp = cmp
-	m.heap.items = make([]mergingIterItem, 0, len(levels))
+	if cap(m.heap.items) < len(levels) {
+		m.heap.items = make([]mergingIterItem, 0, len(levels))
+	} else {
+		m.heap.items = m.heap.items[:0]
+	}
 }
 
 func (m *mergingIter) initHeap() {
@@ -970,7 +974,7 @@ func (m *mergingIter) Close() error {
 		}
 	}
 	m.levels = nil
-	m.heap.items = nil
+	m.heap.items = m.heap.items[:0]
 	return m.err
 }
 

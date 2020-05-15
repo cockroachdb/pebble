@@ -529,6 +529,14 @@ func (i *Iterator) Close() error {
 	}
 
 	if alloc := i.alloc; alloc != nil {
+		// Avoid caching the key buf if it is overly large. The constant is fairly
+		// arbitrary.
+		const maxKeyBufCacheSize = 4 << 10 // 4 KB
+		if cap(i.keyBuf) >= maxKeyBufCacheSize {
+			alloc.keyBuf = nil
+		} else {
+			alloc.keyBuf = i.keyBuf
+		}
 		*i = Iterator{}
 		iterAllocPool.Put(alloc)
 	}
