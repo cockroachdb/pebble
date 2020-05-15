@@ -614,6 +614,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 
 type iterAlloc struct {
 	dbi     Iterator
+	keyBuf  []byte
 	merging mergingIter
 	mlevels [3 + numLevels]mergingIterLevel
 	levels  [3 + numLevels]levelIter
@@ -660,6 +661,7 @@ func (d *DB) newIterInternal(
 		merge:     d.merge,
 		split:     d.split,
 		readState: readState,
+		keyBuf:    buf.keyBuf,
 	}
 	if o != nil {
 		dbi.opts = *o
