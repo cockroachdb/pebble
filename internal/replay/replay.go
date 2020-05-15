@@ -6,10 +6,27 @@
 package replay
 
 import (
+	"sort"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 )
+
+// Table describes a sstable from the reference database whose writes are
+// being replayed.
+type Table struct {
+	Path         string
+	FileMetadata *manifest.FileMetadata
+}
+
+type bySeqNum []Table
+
+func (s bySeqNum) Len() int      { return len(s) }
+func (s bySeqNum) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s bySeqNum) Less(i, j int) bool {
+	return s[i].FileMetadata.SmallestSeqNum < s[j].FileMetadata.SmallestSeqNum
+}
 
 // Open opens a database for replaying flushed and ingested tables. It's
 // intended for use by the `pebble bench compact` command.
@@ -29,20 +46,43 @@ type DB struct {
 }
 
 // Ingest ingests a set of sstables into the DB.
-func (d *DB) Ingest(paths []string) error {
+func (d *DB) Ingest(tables []Table) error {
 	if d.done {
 		panic("replay already finished")
+	}
+	if len(tables) == 0 {
+		return nil
+	}
+
+	// Sort the tables by their assigned sequence numbers so that we pass them
+	// to Ingest in the same order and ultimately assign sequence numbers in
+	// the same order.
+	sort.Sort(bySeqNum(tables))
+
+	// The replay database's current allocated sequence number might be less
+	// than it was at the time of this ingest in the reference database
+	// because only overlapping memtables are flushed before an ingest.
+	// We need the ingested files to adopt the same sequence numbers as they
+	// originally did to ensure the sequence number invariants still hold.
+	// To accomodate this, we bump the sequence number up to just below the
+	// sequence number these files' were originally ingested at.
+	smallest := tables[0].FileMetadata.SmallestSeqNum
+	private.RatchetSeqNum(d.d, smallest)
+
+	paths := make([]string, len(tables))
+	for i, tbl := range tables {
+		paths[i] = tbl.Path
 	}
 	return d.d.Ingest(paths)
 }
 
-// FlushExternal simulates a flush of the sstable at path, linking it directly
+// FlushExternal simulates a flush of the table, linking it directly
 // into level zero.
-func (d *DB) FlushExternal(path string, meta *manifest.FileMetadata) error {
+func (d *DB) FlushExternal(tbl Table) error {
 	if d.done {
 		panic("replay already finished")
 	}
-	return private.FlushExternalTable(d.d, path, meta)
+	return private.FlushExternalTable(d.d, tbl.Path, tbl.FileMetadata)
 }
 
 // Metrics returns the underlying DB's Metrics.

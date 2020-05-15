@@ -263,21 +263,24 @@ func runReplay(cmd *cobra.Command, args []string) error {
 				replayedCount++
 				verbosef("Flushing table %d/%d %s (%s, seqnums %d-%d)\n", replayedCount, workloadTableCount,
 					name, humanize.Int64(int64(f.meta.Size)), f.meta.SmallestSeqNum, f.meta.LargestSeqNum)
-				if err := rd.FlushExternal(tablePath, f.meta); err != nil {
+				if err := rd.FlushExternal(replay.Table{Path: tablePath, FileMetadata: f.meta}); err != nil {
 					return err
 				}
 			}
 		} else {
-			var paths []string
+			var tables []replay.Table
 			for _, f := range li.added {
 				name := fmt.Sprintf("%s.sst", f.meta.FileNum)
 				tablePath := filepath.Join(workloadDir, name)
 				replayedCount++
 				verbosef("Ingesting %d tables: table %d/%d %s (%s)\n", len(li.added), replayedCount,
 					workloadTableCount, name, humanize.Int64(int64(f.meta.Size)))
-				paths = append(paths, tablePath)
+				tables = append(tables, replay.Table{
+					Path:         tablePath,
+					FileMetadata: f.meta,
+				})
 			}
-			if err := rd.Ingest(paths); err != nil {
+			if err := rd.Ingest(tables); err != nil {
 				return err
 			}
 		}
