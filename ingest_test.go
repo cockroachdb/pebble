@@ -900,3 +900,84 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 
 	require.NoError(t, d.Close())
 }
+
+func TestIngestMemtablePendingOverlap(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	require.NoError(t, err)
+
+	d.mu.Lock()
+	// Use a custom commit pipeline apply function to give us control over
+	// timing of events.
+	assignedBatch := make(chan struct{})
+	applyBatch := make(chan struct{})
+	originalApply := d.commit.env.apply
+	d.commit.env.apply = func(b *Batch, mem *memTable) error {
+		assignedBatch <- struct{}{}
+		applyBatch <- struct{}{}
+		return originalApply(b, mem)
+	}
+	d.mu.Unlock()
+
+	ingest := func(keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		for _, k := range keys {
+			require.NoError(t, w.Set([]byte(k), nil))
+		}
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// First, Set('c') begins. This call will:
+	//
+	// * enqueue the batch to the pending queue.
+	// * allocate a sequence number `x`.
+	// * write the batch to the WAL.
+	//
+	// and then block until we read from the `applyBatch` channel down below.
+	go func() {
+		err := d.Set([]byte("c"), nil, nil)
+		if err != nil {
+			t.Error(err)
+		}
+		wg.Done()
+	}()
+
+	// When the above Set('c') is ready to apply, it sends on the
+	// `assignedBatch` channel. Once that happens, we start Ingest('a', 'c').
+	// The Ingest('a', 'c') allocates sequence number `x + 1`.
+	go func() {
+		// Wait until the Set has grabbed a sequence number before ingesting.
+		<-assignedBatch
+		ingest("a", "c")
+		wg.Done()
+	}()
+
+	// The Set('c')#1 and Ingest('a', 'c')#2 are both pending. To maintain
+	// sequence number invariants, the Set needs to be applied and flushed
+	// before the Ingest determines its target level.
+	//
+	// Sleep a bit to ensure that the Ingest has time to call into
+	// AllocateSeqNum. Once it allocates its sequence number, it should see
+	// that there are unpublished sequence numbers below it and spin until the
+	// Set's sequence number is published. After sleeping, read from
+	// `applyBatch` to actually allow the Set to apply and publish its
+	// sequence number.
+	time.Sleep(100 * time.Millisecond)
+	<-applyBatch
+
+	// Wait for both calls to complete.
+	wg.Wait()
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.CheckLevels(nil))
+	require.NoError(t, d.Close())
+}

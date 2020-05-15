@@ -299,15 +299,27 @@ func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(se
 	// Assign the batch a sequence number. Note that we use atomic operations
 	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
 	// mutual exclusion for other goroutines writing to logSeqNum.
-	seqNum := atomic.AddUint64(p.env.logSeqNum, uint64(count)) - uint64(count)
+	logSeqNum := atomic.AddUint64(p.env.logSeqNum, uint64(count)) - uint64(count)
+	seqNum := logSeqNum
 	if seqNum == 0 {
 		// We can't use the value 0 for the global seqnum during ingestion, because
 		// 0 indicates no global seqnum. So allocate one more seqnum.
 		atomic.AddUint64(p.env.logSeqNum, 1)
 		seqNum++
-		b.setCount(1 + uint32(count))
 	}
 	b.setSeqNum(seqNum)
+
+	// Wait for any outstanding writes to the memtable to complete. This is
+	// necessary for ingestion so that the check for memtable overlap can see any
+	// writes that were sequenced before the ingestion. The spin loop is
+	// unfortunate, but obviates the need for additional synchronization.
+	for {
+		visibleSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)
+		if visibleSeqNum == logSeqNum {
+			break
+		}
+		runtime.Gosched()
+	}
 
 	// Invoke the prepare callback. Note the lack of error reporting. Even if the
 	// callback internally fails, the sequence number needs to be published in
