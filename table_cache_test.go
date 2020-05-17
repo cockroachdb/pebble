@@ -5,10 +5,14 @@
 package pebble
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -133,9 +137,8 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 }
 
 const (
-	tableCacheTestNumTables     = 300
-	tableCacheTestCacheSize     = 100
-	tableCacheTestHitBufferSize = 64
+	tableCacheTestNumTables = 300
+	tableCacheTestCacheSize = 100
 )
 
 func newTableCache() (*tableCache, *tableCacheTestFS, error) {
@@ -170,7 +173,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	defer opts.Cache.Unref()
 
 	c := &tableCache{}
-	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
+	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize)
 	return c, fs, nil
 }
 
@@ -262,8 +265,6 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 			if gotO != 1 || gotC != 0 {
 				return errors.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
 			}
-		} else if gotO == 1 {
-			return errors.Errorf("i=%d: table only opened once", i)
 		}
 		return nil
 	})
@@ -385,5 +386,63 @@ func TestTableCacheEvictClose(t *testing.T) {
 
 	for err := range errs {
 		require.NoError(t, err)
+	}
+}
+
+func TestTableCacheClockPro(t *testing.T) {
+	// Test data was generated from the python code. See also
+	// internal/cache/clockpro_test.go:TestCache.
+	f, err := os.Open("internal/cache/testdata/cache")
+	require.NoError(t, err)
+
+	mem := vfs.NewMem()
+	makeTable := func(fileNum FileNum) {
+		require.NoError(t, err)
+		f, err := mem.Create(base.MakeFilename(mem, "", fileTypeTable, fileNum))
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		require.NoError(t, w.Set([]byte("a"), nil))
+		require.NoError(t, w.Close())
+	}
+
+	opts := &Options{
+		Cache: NewCache(8 << 20), // 8 MB
+	}
+	opts.EnsureDefaults()
+	defer opts.Cache.Unref()
+
+	cache := &tableCacheShard{
+		filterMetrics: &FilterMetrics{},
+	}
+	// NB: The table cache size of 200 is required for the expected test values.
+	cache.init(0, "", mem, opts, 200)
+
+	scanner := bufio.NewScanner(f)
+	tables := make(map[int]bool)
+	line := 1
+
+	for scanner.Scan() {
+		fields := bytes.Fields(scanner.Bytes())
+
+		key, err := strconv.Atoi(string(fields[0]))
+		require.NoError(t, err)
+
+		// Ensure that underlying sstables exist on disk, creating each table the
+		// first time it is seen.
+		if !tables[key] {
+			makeTable(FileNum(key))
+			tables[key] = true
+		}
+
+		oldHits := atomic.LoadInt64(&cache.hits)
+		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)})
+		cache.unrefValue(v)
+
+		hit := atomic.LoadInt64(&cache.hits) != oldHits
+		wantHit := fields[1][0] == 'h'
+		if hit != wantHit {
+			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
+		}
+		line++
 	}
 }
