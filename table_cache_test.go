@@ -133,9 +133,8 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 }
 
 const (
-	tableCacheTestNumTables     = 300
-	tableCacheTestCacheSize     = 100
-	tableCacheTestHitBufferSize = 64
+	tableCacheTestNumTables = 300
+	tableCacheTestCacheSize = 100
 )
 
 func newTableCache() (*tableCache, *tableCacheTestFS, error) {
@@ -170,7 +169,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	defer opts.Cache.Unref()
 
 	c := &tableCache{}
-	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize, tableCacheTestHitBufferSize)
+	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize)
 	return c, fs, nil
 }
 
@@ -262,8 +261,6 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 			if gotO != 1 || gotC != 0 {
 				return errors.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
 			}
-		} else if gotO == 1 {
-			return errors.Errorf("i=%d: table only opened once", i)
 		}
 		return nil
 	})

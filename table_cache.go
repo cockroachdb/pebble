@@ -1,4 +1,4 @@
-// Copyright 2013 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// Copyright 2020 The LevelDB-Go and Pebble Authors. All rights reserved. Use
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
@@ -23,8 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-const defaultTableCacheHitBuffer = 64
-
 var emptyIter = &errorIter{err: nil}
 
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
@@ -35,15 +33,13 @@ type tableCache struct {
 	filterMetrics FilterMetrics
 }
 
-func (c *tableCache) init(
-	cacheID uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
-) {
+func (c *tableCache) init(cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int) {
 	c.cache = opts.Cache
 	c.cache.Ref()
 
 	c.shards = make([]tableCacheShard, runtime.NumCPU())
 	for i := range c.shards {
-		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards), hitBuffer)
+		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards))
 		c.shards[i].filterMetrics = &c.filterMetrics
 	}
 }
@@ -116,37 +112,34 @@ type tableCacheShard struct {
 		nodes map[FileNum]*tableCacheNode
 		// The iters map is only created and populated in race builds.
 		iters map[sstable.Iterator][]byte
-		lru   tableCacheNode
+
+		handHot  *tableCacheNode
+		handCold *tableCacheNode
+		handTest *tableCacheNode
+
+		coldTarget int
+		sizeHot    int
+		sizeCold   int
+		sizeTest   int
 	}
 
 	hits          int64
 	misses        int64
 	iterCount     int32
 	releasing     sync.WaitGroup
-	hitsPool      *sync.Pool
 	filterMetrics *FilterMetrics
 }
 
-func (c *tableCacheShard) init(
-	cacheID uint64, dirname string, fs vfs.FS, opts *Options, size, hitBuffer int,
-) {
+func (c *tableCacheShard) init(cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int) {
 	c.logger = opts.Logger
 	c.cacheID = cacheID
 	c.dirname = dirname
 	c.fs = fs
 	c.opts = opts.MakeReaderOptions()
 	c.size = size
+
 	c.mu.nodes = make(map[FileNum]*tableCacheNode)
-	c.mu.lru.next = &c.mu.lru
-	c.mu.lru.prev = &c.mu.lru
-	c.hitsPool = &sync.Pool{
-		New: func() interface{} {
-			return &tableCacheHits{
-				hits:  make([]*tableCacheNode, 0, hitBuffer),
-				shard: c,
-			}
-		},
-	}
+	c.mu.coldTarget = size
 
 	if invariants.RaceEnabled {
 		c.mu.iters = make(map[sstable.Iterator][]byte)
@@ -156,39 +149,39 @@ func (c *tableCacheShard) init(
 func (c *tableCacheShard) newIters(
 	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error) {
-	// Calling findNode gives us the responsibility of decrementing n's
+	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	n := c.findNode(meta)
-	<-n.loaded
-	if n.err != nil {
-		c.unrefNode(n)
-		return nil, nil, n.err
+	v := c.findNode(meta)
+	<-v.loaded
+	if v.err != nil {
+		c.unrefValue(v)
+		return nil, nil, v.err
 	}
 
 	if opts != nil &&
 		opts.TableFilter != nil &&
-		!opts.TableFilter(n.reader.Properties.UserProperties) {
+		!opts.TableFilter(v.reader.Properties.UserProperties) {
 		// Return the empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
-		c.unrefNode(n)
+		c.unrefValue(v)
 		return emptyIter, nil, nil
 	}
 
 	var iter sstable.Iterator
 	var err error
 	if bytesIterated != nil {
-		iter, err = n.reader.NewCompactionIter(bytesIterated)
+		iter, err = v.reader.NewCompactionIter(bytesIterated)
 	} else {
-		iter, err = n.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+		iter, err = v.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
 	}
 	if err != nil {
-		c.unrefNode(n)
+		c.unrefValue(v)
 		return nil, nil, err
 	}
-	// NB: n.closeHook takes responsibility for calling unrefNode(n) here.
-	iter.SetCloseHook(n.closeHook)
+	// NB: v.closeHook takes responsibility for calling unrefValue(v) here.
+	iter.SetCloseHook(v.closeHook)
 
 	atomic.AddInt32(&c.iterCount, 1)
 	if invariants.RaceEnabled {
@@ -199,9 +192,9 @@ func (c *tableCacheShard) newIters(
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := n.reader.NewRangeDelIter()
+	rangeDelIter, err := v.reader.NewRangeDelIter()
 	if err != nil {
-		iter.Close()
+		_ = iter.Close()
 		return nil, nil, err
 	}
 	if rangeDelIter != nil {
@@ -216,7 +209,7 @@ func (c *tableCacheShard) newIters(
 // c.mu must be held when calling this.
 func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 	c.unlinkNode(n)
-	c.unrefNode(n)
+	c.clearNode(n)
 }
 
 // unlinkNode removes a node from the tableCacheShard, leaving the shard
@@ -225,120 +218,244 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 // c.mu must be held when calling this.
 func (c *tableCacheShard) unlinkNode(n *tableCacheNode) {
 	delete(c.mu.nodes, n.meta.FileNum)
-	n.next.prev = n.prev
-	n.prev.next = n.next
-	n.prev = nil
-	n.next = nil
+
+	switch n.ptype {
+	case tableCacheNodeHot:
+		c.mu.sizeHot--
+	case tableCacheNodeCold:
+		c.mu.sizeCold--
+	case tableCacheNodeTest:
+		c.mu.sizeTest--
+	}
+
+	if n == c.mu.handHot {
+		c.mu.handHot = c.mu.handHot.prev()
+	}
+	if n == c.mu.handCold {
+		c.mu.handCold = c.mu.handCold.prev()
+	}
+	if n == c.mu.handTest {
+		c.mu.handTest = c.mu.handTest.prev()
+	}
+
+	if n.unlink() == n {
+		// This was the last entry in the cache.
+		c.mu.handHot = nil
+		c.mu.handCold = nil
+		c.mu.handTest = nil
+	}
+
+	n.links.prev = nil
+	n.links.next = nil
 }
 
-// unrefNode decrements the reference count for the specified node, releasing
-// it if the reference count fell to 0. Note that the node has a reference if
-// it is present in tableCacheShard.mu.nodes, so a reference count of 0 means the
-// node has already been removed from that map.
-func (c *tableCacheShard) unrefNode(n *tableCacheNode) {
-	if atomic.AddInt32(&n.refCount, -1) == 0 {
+func (c *tableCacheShard) clearNode(n *tableCacheNode) {
+	if v := n.value; v != nil {
+		n.value = nil
+		c.unrefValue(v)
+	}
+}
+
+// unrefValue decrements the reference count for the specified value, releasing
+// it if the reference count fell to 0. Note that the value has a reference if
+// it is present in tableCacheShard.mu.nodes, so a reference count of 0 means
+// the node has already been removed from that map.
+func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
+	if atomic.AddInt32(&v.refCount, -1) == 0 {
 		c.releasing.Add(1)
-		go n.release(c)
+		go v.release(c)
 	}
 }
 
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheNode {
+func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	// Fast-path for a hit in the cache. We grab the lock in shared mode, and use
 	// a batching mechanism to perform updates to the LRU list.
 	c.mu.RLock()
-	if n := c.mu.nodes[meta.FileNum]; n != nil {
+	if n := c.mu.nodes[meta.FileNum]; n != nil && n.value != nil {
 		// Fast-path hit.
-
+		//
 		// The caller is responsible for decrementing the refCount.
-		atomic.AddInt32(&n.refCount, 1)
+		v := n.value
+		atomic.AddInt32(&v.refCount, 1)
 		c.mu.RUnlock()
+		atomic.StoreInt32(&n.referenced, 1)
 		atomic.AddInt64(&c.hits, 1)
-
-		// Record a hit for the node. This has to be done with tableCacheShard.mu
-		// unlocked as it might result in a call to
-		// tableCacheShard.recordHits. Note that the sync.Pool acts as a
-		// thread-local cache of the accesses. This is lossy (a GC can result in
-		// the sync.Pool be cleared), but that is ok as we don't need perfect
-		// accuracy for the LRU list.
-		hits := c.hitsPool.Get().(*tableCacheHits)
-		hits.recordHit(n)
-		c.hitsPool.Put(hits)
-		return n
+		return v
 	}
 	c.mu.RUnlock()
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	{
-		// Flush the thread-local hits buffer as we already have the shard locked
-		// exclusively.
-		hits := c.hitsPool.Get().(*tableCacheHits)
-		hits.flushLocked()
-		c.hitsPool.Put(hits)
+	n := c.mu.nodes[meta.FileNum]
+	switch {
+	case n == nil:
+		// Slow-path miss of a non-existent node.
+		n = &tableCacheNode{
+			meta:  meta,
+			ptype: tableCacheNodeCold,
+		}
+		c.addNode(n)
+		c.mu.sizeCold++
+
+	case n.value != nil:
+		// Slow-path hit of a hot or cold node.
+		//
+		// The caller is responsible for decrementing the refCount.
+		atomic.AddInt32(&n.value.refCount, 1)
+		atomic.StoreInt32(&n.referenced, 1)
+		atomic.AddInt64(&c.hits, 1)
+		return n.value
+
+	default:
+		// Slow-path miss of a test node.
+		c.unlinkNode(n)
+		c.mu.coldTarget++
+		if c.mu.coldTarget > c.size {
+			c.mu.coldTarget = c.size
+		}
+
+		atomic.StoreInt32(&n.referenced, 0)
+		n.ptype = tableCacheNodeHot
+		c.addNode(n)
+		c.mu.sizeHot++
 	}
 
-	n := c.mu.nodes[meta.FileNum]
-	missed := n == nil
-	if missed {
-		// Slow-path miss.
-		atomic.AddInt64(&c.misses, 1)
-		n = &tableCacheNode{
-			// Cache the closure invoked when an iterator is closed. This avoids an
-			// allocation on every call to newIters.
-			closeHook: func(i sstable.Iterator) error {
-				if invariants.RaceEnabled {
-					c.mu.Lock()
-					delete(c.mu.iters, i)
-					c.mu.Unlock()
-				}
-				c.unrefNode(n)
-				atomic.AddInt32(&c.iterCount, -1)
-				return nil
-			},
-			meta:     meta,
-			refCount: 1,
-			loaded:   make(chan struct{}),
+	atomic.AddInt64(&c.misses, 1)
+
+	v := &tableCacheValue{
+		loaded:   make(chan struct{}),
+		refCount: 2,
+	}
+	// Cache the closure invoked when an iterator is closed. This avoids an
+	// allocation on every call to newIters.
+	v.closeHook = func(i sstable.Iterator) error {
+		if invariants.RaceEnabled {
+			c.mu.Lock()
+			delete(c.mu.iters, i)
+			c.mu.Unlock()
 		}
-		c.mu.nodes[meta.FileNum] = n
-		if len(c.mu.nodes) > c.size {
-			// Release the tail node.
-			c.releaseNode(c.mu.lru.prev)
-		}
+		c.unrefValue(v)
+		atomic.AddInt32(&c.iterCount, -1)
+		return nil
+	}
+	n.value = v
+
+	// Note adding to the doubly-linked list must complete before we begin
+	// asynchronously loading a `tableCacheNode`. This is because the load's
+	// failure handling unlinks the node.
+	go func() {
+		pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+			v.load(meta, c)
+		})
+	}()
+
+	return v
+}
+
+func (c *tableCacheShard) addNode(n *tableCacheNode) {
+	c.evictNodes()
+	c.mu.nodes[n.meta.FileNum] = n
+
+	n.links.next = n
+	n.links.prev = n
+	if c.mu.handHot == nil {
+		// First element.
+		c.mu.handHot = n
+		c.mu.handCold = n
+		c.mu.handTest = n
 	} else {
-		// Slow-path hit.
-		atomic.AddInt64(&c.hits, 1)
-		// Remove n from the doubly-linked list.
-		n.next.prev = n.prev
-		n.prev.next = n.next
+		c.mu.handHot.link(n)
 	}
-	// Insert n at the front of the doubly-linked list.
-	n.next = c.mu.lru.next
-	n.prev = &c.mu.lru
-	n.next.prev = n
-	n.prev.next = n
-	// The caller is responsible for decrementing the refCount.
-	atomic.AddInt32(&n.refCount, 1)
-	if missed {
-		// Note adding to the doubly-linked list must complete before we begin
-		// asynchronously loading a `tableCacheNode`. This is because the load's
-		// failure handling unlinks the node.
-		go func() {
-			pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-				n.load(c)
-			})
-		}()
+
+	if c.mu.handCold == c.mu.handHot {
+		c.mu.handCold = c.mu.handCold.prev()
 	}
-	return n
+}
+
+func (c *tableCacheShard) evictNodes() {
+	for c.size <= c.mu.sizeHot+c.mu.sizeCold && c.mu.handCold != nil {
+		c.runHandCold()
+	}
+}
+
+func (c *tableCacheShard) runHandCold() {
+	n := c.mu.handCold
+	if n.ptype == tableCacheNodeCold {
+		if atomic.LoadInt32(&n.referenced) == 1 {
+			atomic.StoreInt32(&n.referenced, 0)
+			n.ptype = tableCacheNodeHot
+			c.mu.sizeCold--
+			c.mu.sizeHot++
+		} else {
+			c.clearNode(n)
+			n.ptype = tableCacheNodeTest
+			c.mu.sizeCold--
+			c.mu.sizeTest++
+			for c.size < c.mu.sizeTest && c.mu.handTest != nil {
+				c.runHandTest()
+			}
+		}
+	}
+
+	c.mu.handCold = c.mu.handCold.next()
+
+	for c.size-c.mu.coldTarget <= c.mu.sizeHot && c.mu.handHot != nil {
+		c.runHandHot()
+	}
+}
+
+func (c *tableCacheShard) runHandHot() {
+	if c.mu.handHot == c.mu.handTest && c.mu.handTest != nil {
+		c.runHandTest()
+		if c.mu.handHot == nil {
+			return
+		}
+	}
+
+	n := c.mu.handHot
+	if n.ptype == tableCacheNodeHot {
+		if atomic.LoadInt32(&n.referenced) == 1 {
+			atomic.StoreInt32(&n.referenced, 0)
+		} else {
+			n.ptype = tableCacheNodeCold
+			c.mu.sizeHot--
+			c.mu.sizeCold++
+		}
+	}
+
+	c.mu.handHot = c.mu.handHot.next()
+}
+
+func (c *tableCacheShard) runHandTest() {
+	if c.mu.sizeCold > 0 && c.mu.handTest == c.mu.handCold && c.mu.handCold != nil {
+		c.runHandCold()
+		if c.mu.handTest == nil {
+			return
+		}
+	}
+
+	n := c.mu.handTest
+	if n.ptype == tableCacheNodeTest {
+		c.mu.coldTarget--
+		if c.mu.coldTarget < 0 {
+			c.mu.coldTarget = 0
+		}
+		c.unlinkNode(n)
+		c.clearNode(n)
+	}
+
+	c.mu.handTest = c.mu.handTest.next()
 }
 
 func (c *tableCacheShard) evict(fileNum FileNum) {
 	c.mu.Lock()
 
 	n := c.mu.nodes[fileNum]
+	var v *tableCacheValue
 	if n != nil {
 		// NB: This is equivalent to tableCacheShard.releaseNode(), but we perform
 		// the tableCacheNode.release() call synchronously below to ensure the
@@ -346,54 +463,34 @@ func (c *tableCacheShard) evict(fileNum FileNum) {
 		// tableCacheShard.releasing needs to be incremented while holding
 		// tableCacheShard.mu in order to avoid a race with Close()
 		c.unlinkNode(n)
-		if v := atomic.AddInt32(&n.refCount, -1); v != 0 {
-			c.logger.Fatalf("sstable %s: refcount is not zero: %d", fileNum, v)
+		v = n.value
+		if v != nil {
+			if t := atomic.AddInt32(&v.refCount, -1); t != 0 {
+				c.logger.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
+			}
+			c.releasing.Add(1)
 		}
-		c.releasing.Add(1)
 	}
 
 	c.mu.Unlock()
 
-	if n != nil {
-		n.release(c)
+	if v != nil {
+		v.release(c)
 	}
 
 	c.opts.Cache.EvictFile(c.cacheID, fileNum)
 }
 
-func (c *tableCacheShard) recordHits(hits []*tableCacheNode) {
-	c.mu.Lock()
-	c.recordHitsLocked(hits)
-	c.mu.Unlock()
-}
-
-func (c *tableCacheShard) recordHitsLocked(hits []*tableCacheNode) {
-	for _, n := range hits {
-		if n.next == nil || n.prev == nil {
-			// The node is no longer on the LRU list.
-			continue
-		}
-		// Remove n from the doubly-linked list.
-		n.next.prev = n.prev
-		n.prev.next = n.next
-		// Insert n at the front of the doubly-linked list.
-		n.next = c.mu.lru.next
-		n.prev = &c.mu.lru
-		n.next.prev = n
-		n.prev.next = n
-	}
-}
-
 // Assumes there is at least partial overlap, i.e., `[start, end]` falls neither
 // completely before nor completely after the file's range.
 func (c *tableCacheShard) estimateDiskUsage(meta *fileMetadata, start, end []byte) (uint64, error) {
-	n := c.findNode(meta)
-	<-n.loaded
-	defer c.unrefNode(n)
-	if n.err != nil {
-		return 0, n.err
+	v := c.findNode(meta)
+	<-v.loaded
+	defer c.unrefValue(v)
+	if v.err != nil {
+		return 0, v.err
 	}
-	return n.reader.EstimateDiskUsage(start, end)
+	return v.reader.EstimateDiskUsage(start, end)
 }
 
 func (c *tableCacheShard) Close() error {
@@ -415,90 +512,136 @@ func (c *tableCacheShard) Close() error {
 		}
 	}
 
-	for n := c.mu.lru.next; n != &c.mu.lru; n = n.next {
-		if atomic.AddInt32(&n.refCount, -1) == 0 {
-			c.releasing.Add(1)
-			go func(n *tableCacheNode) {
-				pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-					n.release(c)
-				})
-			}(n)
+	for c.mu.handHot != nil {
+		n := c.mu.handHot
+		if n.value != nil {
+			if atomic.AddInt32(&n.value.refCount, -1) == 0 {
+				c.releasing.Add(1)
+				go func(v *tableCacheValue) {
+					pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+						v.release(c)
+					})
+				}(n.value)
+			}
 		}
+		c.unlinkNode(n)
 	}
 	c.mu.nodes = nil
-	c.mu.lru.next = nil
-	c.mu.lru.prev = nil
+	c.mu.handHot = nil
+	c.mu.handCold = nil
+	c.mu.handTest = nil
 
 	c.releasing.Wait()
 	return err
 }
 
-type tableCacheNode struct {
+type tableCacheValue struct {
 	closeHook func(i sstable.Iterator) error
-
-	meta   *fileMetadata
-	reader *sstable.Reader
-	err    error
-	loaded chan struct{}
-
-	// The remaining fields are protected by the tableCache mutex.
-
-	next, prev *tableCacheNode
-	refCount   int32
+	reader    *sstable.Reader
+	err       error
+	loaded    chan struct{}
+	// Reference count for the value. The reader is closed when the reference
+	// count drops to zero.
+	refCount int32
 }
 
-func (n *tableCacheNode) load(c *tableCacheShard) {
+func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	f, n.err = c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum),
+	f, v.err = c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, meta.FileNum),
 		vfs.RandomReadsOption)
-	if n.err == nil {
-		cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
-		n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
+	if v.err == nil {
+		cacheOpts := private.SSTableCacheOpts(c.cacheID, meta.FileNum).(sstable.ReaderOption)
+		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
 	}
-	if n.err == nil {
-		if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
-			n.reader.Properties.GlobalSeqNum = n.meta.LargestSeqNum
+	if v.err == nil {
+		if meta.SmallestSeqNum == meta.LargestSeqNum {
+			v.reader.Properties.GlobalSeqNum = meta.LargestSeqNum
 		}
 	}
-	if n.err != nil {
+	if v.err != nil {
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		// Since loading happens outside the lock there is a chance that `releaseNode()`
-		// has already been called. In that case, `n.next` will be nil.
-		if n.next != nil {
+		// Lookup the node in the cache again as it might have already been
+		// removed.
+		n := c.mu.nodes[meta.FileNum]
+		if n != nil && n.value == v {
 			c.releaseNode(n)
 		}
 	}
-	close(n.loaded)
+	close(v.loaded)
 }
 
-func (n *tableCacheNode) release(c *tableCacheShard) {
-	<-n.loaded
+func (v *tableCacheValue) release(c *tableCacheShard) {
+	<-v.loaded
 	// Nothing to be done about an error at this point. Close the reader if it is
 	// open.
-	if n.reader != nil {
-		_ = n.reader.Close()
+	if v.reader != nil {
+		_ = v.reader.Close()
 	}
 	c.releasing.Done()
 }
 
-// tableCacheHits batches a set of node accesses in order to amortize exclusive
-// lock acquisition.
-type tableCacheHits struct {
-	hits  []*tableCacheNode
-	shard *tableCacheShard
-}
+type tableCacheNodeType int8
 
-func (f *tableCacheHits) recordHit(n *tableCacheNode) {
-	f.hits = append(f.hits, n)
-	if len(f.hits) == cap(f.hits) {
-		f.shard.recordHits(f.hits)
-		f.hits = f.hits[:0]
+const (
+	tableCacheNodeTest tableCacheNodeType = iota
+	tableCacheNodeCold
+	tableCacheNodeHot
+)
+
+func (p tableCacheNodeType) String() string {
+	switch p {
+	case tableCacheNodeTest:
+		return "test"
+	case tableCacheNodeCold:
+		return "cold"
+	case tableCacheNodeHot:
+		return "hot"
 	}
+	return "unknown"
 }
 
-func (f *tableCacheHits) flushLocked() {
-	f.shard.recordHitsLocked(f.hits)
-	f.hits = f.hits[:0]
+type tableCacheNode struct {
+	meta  *fileMetadata
+	value *tableCacheValue
+
+	links struct {
+		next *tableCacheNode
+		prev *tableCacheNode
+	}
+	ptype tableCacheNodeType
+	// referenced is atomically set to indicate that this entry has been accessed
+	// since the last time one of the clock hands swept it.
+	referenced int32
+}
+
+func (n *tableCacheNode) next() *tableCacheNode {
+	if n == nil {
+		return nil
+	}
+	return n.links.next
+}
+
+func (n *tableCacheNode) prev() *tableCacheNode {
+	if n == nil {
+		return nil
+	}
+	return n.links.prev
+}
+
+func (n *tableCacheNode) link(s *tableCacheNode) {
+	s.links.prev = n.links.prev
+	s.links.prev.links.next = s
+	s.links.next = n
+	s.links.next.links.prev = s
+}
+
+func (n *tableCacheNode) unlink() *tableCacheNode {
+	next := n.links.next
+	n.links.prev.links.next = n.links.next
+	n.links.next.links.prev = n.links.prev
+	n.links.prev = n
+	n.links.next = n
+	return next
 }
