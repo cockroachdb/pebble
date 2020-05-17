@@ -4,10 +4,12 @@
 
 package randvar
 
+import "golang.org/x/exp/rand"
+
 // Static models a random variable that pulls from a distribution with static
 // bounds
 type Static interface {
-	Uint64() uint64
+	Uint64(rng *rand.Rand) uint64
 }
 
 // Dynamic models a random variable that pulls from a distribution with an

@@ -26,8 +26,7 @@ import (
 type Uniform struct {
 	min uint64
 	mu  struct {
-		sync.Mutex
-		rng *rand.Rand
+		sync.RWMutex
 		max uint64
 	}
 }
@@ -35,9 +34,8 @@ type Uniform struct {
 // NewUniform constructs a new Uniform generator with the given
 // parameters. Returns an error if the parameters are outside the accepted
 // range.
-func NewUniform(rng *rand.Rand, min, max uint64) *Uniform {
+func NewUniform(min, max uint64) *Uniform {
 	g := &Uniform{min: min}
-	g.mu.rng = ensureRand(rng)
 	g.mu.max = max
 	return g
 }
@@ -51,9 +49,9 @@ func (g *Uniform) IncMax(delta int) {
 
 // Uint64 returns a random Uint64 between min and max, drawn from a uniform
 // distribution.
-func (g *Uniform) Uint64() uint64 {
-	g.mu.Lock()
-	result := g.mu.rng.Uint64n(g.mu.max-g.min+1) + g.min
-	g.mu.Unlock()
+func (g *Uniform) Uint64(rng *rand.Rand) uint64 {
+	g.mu.RLock()
+	result := rng.Uint64n(g.mu.max-g.min+1) + g.min
+	g.mu.RUnlock()
 	return result
 }

@@ -75,7 +75,7 @@ func TestZeta(t *testing.T) {
 
 func TestZetaIncMax(t *testing.T) {
 	// Construct a zipf generator covering the range [0,10] incrementally.
-	z0, err := NewZipf(nil, 0, 0, 0.99)
+	z0, err := NewZipf(0, 0, 0.99)
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
@@ -83,7 +83,7 @@ func TestZetaIncMax(t *testing.T) {
 	}
 
 	// Contruct a zipf generator covering the range [0,10] via the constructor.
-	z10, err := NewZipf(nil, 0, 10, 0.99)
+	z10, err := NewZipf(0, 10, 0.99)
 	require.NoError(t, err)
 
 	z0.mu.Lock()
@@ -108,18 +108,19 @@ func TestNewZipf(t *testing.T) {
 	}
 
 	for _, gen := range gens {
-		_, err := NewZipf(nil, gen.min, gen.max, gen.theta)
+		_, err := NewZipf(gen.min, gen.max, gen.theta)
 		require.NoError(t, err)
 	}
 }
 
 func TestZipf(t *testing.T) {
-	z, err := NewZipf(nil, 0, 99, 0.99)
+	rng := NewRand()
+	z, err := NewZipf(0, 99, 0.99)
 	require.NoError(t, err)
 
 	x := make([]int, 10000)
 	for i := range x {
-		x[i] = int(z.Uint64())
+		x[i] = int(z.Uint64(rng))
 	}
 
 	if testing.Verbose() {

@@ -75,7 +75,7 @@ func runSync(cmd *cobra.Command, args []string) {
 						start := time.Now()
 						b := d.NewBatch()
 						var n uint64
-						count := int(batchDist.Uint64())
+						count := int(batchDist.Uint64(rand))
 						for j := 0; j < count; j++ {
 							block = syncConfig.values.Bytes(rand, block)
 

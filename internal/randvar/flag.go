@@ -62,15 +62,15 @@ func (f *Flag) Set(spec string) error {
 
 	switch strings.ToLower(m[1]) {
 	case "", "uniform":
-		f.Static = NewUniform(nil, uint64(min), uint64(max))
+		f.Static = NewUniform(uint64(min), uint64(max))
 	case "latest":
-		f.Static, err = NewSkewedLatest(nil, uint64(min), uint64(max), 0.99)
+		f.Static, err = NewSkewedLatest(uint64(min), uint64(max), 0.99)
 		if err != nil {
 			return err
 		}
 	case "zipf":
 		var err error
-		f.Static, err = NewZipf(nil, uint64(min), uint64(max), 0.99)
+		f.Static, err = NewZipf(uint64(min), uint64(max), 0.99)
 		if err != nil {
 			return err
 		}
@@ -132,7 +132,7 @@ func (f *BytesFlag) Set(spec string) error {
 // Bytes returns random bytes. The length of the random bytes comes from the
 // internal sizeFlag.
 func (f *BytesFlag) Bytes(r *rand.Rand, buf []byte) []byte {
-	size := int(f.sizeFlag.Uint64())
+	size := int(f.sizeFlag.Uint64(r))
 	uniqueSize := int(float64(size) / f.targetCompression)
 	if uniqueSize < 1 {
 		uniqueSize = 1

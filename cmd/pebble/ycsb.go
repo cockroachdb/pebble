@@ -202,11 +202,11 @@ func ycsbParseKeyDist(d string) (randvar.Dynamic, error) {
 	totalKeys := uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys)
 	switch strings.ToLower(d) {
 	case "latest":
-		return randvar.NewDefaultSkewedLatest(nil)
+		return randvar.NewDefaultSkewedLatest()
 	case "uniform":
-		return randvar.NewUniform(nil, 1, totalKeys), nil
+		return randvar.NewUniform(1, totalKeys), nil
 	case "zipf":
-		return randvar.NewZipf(nil, 1, totalKeys, 0.99)
+		return randvar.NewZipf(1, totalKeys, 0.99)
 	default:
 		return nil, errors.Errorf("unknown distribution: %s", errors.Safe(d))
 	}
@@ -419,7 +419,7 @@ func (y *ycsb) makeKey(keyNum uint64, buf *ycsbBuf) []byte {
 func (y *ycsb) nextReadKey(buf *ycsbBuf) []byte {
 	// NB: the range of values returned by keyDist is tied to the range returned
 	// by keyNum.Base. See how these are both incremented by ycsb.insert().
-	keyNum := y.keyDist.Uint64()
+	keyNum := y.keyDist.Uint64(buf.rng)
 	return y.makeKey(keyNum, buf)
 }
 
@@ -429,7 +429,7 @@ func (y *ycsb) randBytes(buf *ycsbBuf) []byte {
 }
 
 func (y *ycsb) insert(db DB, buf *ycsbBuf) {
-	count := y.batchDist.Uint64()
+	count := y.batchDist.Uint64(buf.rng)
 	keyNums := make([]uint64, count)
 
 	b := db.NewBatch()
@@ -468,7 +468,7 @@ func (y *ycsb) read(db DB, buf *ycsbBuf) {
 }
 
 func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
-	count := y.scanDist.Uint64()
+	count := y.scanDist.Uint64(buf.rng)
 	key := y.nextReadKey(buf)
 	if err := db.Scan(key, int64(count), reverse); err != nil {
 		log.Fatal(err)
@@ -481,7 +481,7 @@ func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
 }
 
 func (y *ycsb) update(db DB, buf *ycsbBuf) {
-	count := int(y.batchDist.Uint64())
+	count := int(y.batchDist.Uint64(buf.rng))
 	b := db.NewBatch()
 	for i := 0; i < count; i++ {
 		_ = b.Set(y.nextReadKey(buf), y.randBytes(buf), nil)

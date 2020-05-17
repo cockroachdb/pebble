@@ -102,7 +102,7 @@ func runScan(cmd *cobra.Command, args []string) {
 					for {
 						wait(limiter)
 
-						rows := int(rowDist.Uint64())
+						rows := int(rowDist.Uint64(rng))
 						startIdx := rng.Int31n(int32(len(keys) - rows))
 						startKey := encodeUint32Ascending(startKeyBuf[:4], uint32(startIdx))
 						endKey := encodeUint32Ascending(endKeyBuf[:4], uint32(startIdx+int32(rows)))

@@ -166,7 +166,7 @@ func TestMeta(t *testing.T) {
 
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
-	ops := generate(ops.Uint64(), defaultConfig)
+	ops := generate(ops.Uint64(randvar.NewRand()), defaultConfig)
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)
 	require.NoError(t, ioutil.WriteFile(opsPath, []byte(formattedOps), 0644))

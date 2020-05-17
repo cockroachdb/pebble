@@ -74,12 +74,16 @@ func (f *rateFlag) Set(spec string) error {
 }
 
 func (f *rateFlag) newRateLimiter() *rate.Limiter {
-	limiter := rate.NewLimiter(rate.Limit(f.Uint64()), 1)
+	if f.spec == "" {
+		return nil
+	}
+	rng := randvar.NewRand()
+	limiter := rate.NewLimiter(rate.Limit(f.Uint64(rng)), 1)
 	if f.fluctuateDuration != 0 {
 		go func(limiter *rate.Limiter) {
 			ticker := time.NewTicker(f.fluctuateDuration)
 			for range ticker.C {
-				limiter.SetLimit(rate.Limit(f.Uint64()))
+				limiter.SetLimit(rate.Limit(f.Uint64(rng)))
 			}
 		}(limiter)
 	}

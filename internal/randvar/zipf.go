@@ -49,8 +49,7 @@ type Zipf struct {
 	halfPowTheta float64
 	// Mutable state.
 	mu struct {
-		sync.Mutex
-		rng   *rand.Rand
+		sync.RWMutex
 		max   uint64
 		eta   float64
 		zetaN float64
@@ -58,13 +57,13 @@ type Zipf struct {
 }
 
 // NewDefaultZipf constructs a new Zipf generator with the default parameters.
-func NewDefaultZipf(rng *rand.Rand) (*Zipf, error) {
-	return NewZipf(rng, 1, defaultMax, defaultTheta)
+func NewDefaultZipf() (*Zipf, error) {
+	return NewZipf(1, defaultMax, defaultTheta)
 }
 
 // NewZipf constructs a new Zipf generator with the given parameters.  Returns
 // an error if the parameters are outside the accepted range.
-func NewZipf(rng *rand.Rand, min, max uint64, theta float64) (*Zipf, error) {
+func NewZipf(min, max uint64, theta float64) (*Zipf, error) {
 	if min > max {
 		return nil, errors.Errorf("min %d > max %d", errors.Safe(min), errors.Safe(max))
 	}
@@ -76,7 +75,6 @@ func NewZipf(rng *rand.Rand, min, max uint64, theta float64) (*Zipf, error) {
 		min:   min,
 		theta: theta,
 	}
-	z.mu.rng = ensureRand(rng)
 	z.mu.max = max
 
 	// Compute hidden parameters.
@@ -124,9 +122,9 @@ func (z *Zipf) IncMax(delta int) {
 
 // Uint64 draws a new value between min and max, with probabilities according
 // to the Zipf distribution.
-func (z *Zipf) Uint64() uint64 {
-	z.mu.Lock()
-	u := z.mu.rng.Float64()
+func (z *Zipf) Uint64(rng *rand.Rand) uint64 {
+	u := rng.Float64()
+	z.mu.RLock()
 	uz := u * z.mu.zetaN
 	var result uint64
 	if uz < 1.0 {
@@ -137,6 +135,6 @@ func (z *Zipf) Uint64() uint64 {
 		spread := float64(z.mu.max + 1 - z.min)
 		result = z.min + uint64(spread*math.Pow(z.mu.eta*u-z.mu.eta+1.0, z.alpha))
 	}
-	z.mu.Unlock()
+	z.mu.RUnlock()
 	return result
 }
