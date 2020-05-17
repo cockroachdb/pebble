@@ -20,7 +20,7 @@ type badgerDB struct {
 }
 
 func newBadgerDB(dir string) DB {
-	db, err := badger.Open(badger.DefaultOptions(dir))
+	db, err := badger.Open(badger.DefaultOptions(dir).WithMaxCacheSize(cacheSize))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -136,8 +136,4 @@ func (b badgerBatch) Set(key, value []byte, _ *pebble.WriteOptions) error {
 
 func (b badgerBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
 	panic("badgerBatch.logData: unimplemented")
-}
-
-func (b badgerBatch) Repr() []byte {
-	return nil
 }

@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -69,14 +68,16 @@ func runSync(cmd *cobra.Command, args []string) {
 					rand := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 					var raw []byte
 					var buf []byte
+					var block []byte
 					for {
-						limiter.Wait(context.Background())
+						wait(limiter)
+
 						start := time.Now()
 						b := d.NewBatch()
 						var n uint64
 						count := int(batchDist.Uint64())
 						for j := 0; j < count; j++ {
-							block := syncConfig.values.Bytes(rand)
+							block = syncConfig.values.Bytes(rand, block)
 
 							if syncConfig.walOnly {
 								if err := b.LogData(block, nil); err != nil {

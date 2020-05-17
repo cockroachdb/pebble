@@ -44,6 +44,15 @@ func (f *rateFlag) Type() string {
 
 // Set implements the Flag.Value interface.
 func (f *rateFlag) Set(spec string) error {
+	if spec == "" {
+		if err := f.Flag.Set("0"); err != nil {
+			return err
+		}
+		f.fluctuateDuration = time.Duration(0)
+		f.spec = spec
+		return nil
+	}
+
 	parts := strings.Split(spec, "/")
 	if len(parts) == 0 || len(parts) > 2 {
 		return errors.Errorf("invalid ratevar spec: %s", errors.Safe(spec))
@@ -75,6 +84,18 @@ func (f *rateFlag) newRateLimiter() *rate.Limiter {
 		}(limiter)
 	}
 	return limiter
+}
+
+func wait(l *rate.Limiter) {
+	if l == nil {
+		return
+	}
+
+	now := time.Now()
+	r := l.ReserveN(now, 1)
+	if d := r.DelayFrom(now); d > 0 {
+		time.Sleep(d)
+	}
 }
 
 type sequence struct {

@@ -131,13 +131,16 @@ func (f *BytesFlag) Set(spec string) error {
 
 // Bytes returns random bytes. The length of the random bytes comes from the
 // internal sizeFlag.
-func (f *BytesFlag) Bytes(r *rand.Rand) []byte {
+func (f *BytesFlag) Bytes(r *rand.Rand, buf []byte) []byte {
 	size := int(f.sizeFlag.Uint64())
 	uniqueSize := int(float64(size) / f.targetCompression)
 	if uniqueSize < 1 {
 		uniqueSize = 1
 	}
-	data := make([]byte, size)
+	if cap(buf) < size {
+		buf = make([]byte, size)
+	}
+	data := buf[:size]
 	offset := 0
 	for offset+8 <= uniqueSize {
 		binary.LittleEndian.PutUint64(data[offset:], r.Uint64())

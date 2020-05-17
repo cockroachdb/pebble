@@ -160,7 +160,3 @@ func (b boltDBBatch) Set(key, value []byte, _ *pebble.WriteOptions) error {
 func (b boltDBBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
 	panic("boltDBBatch.logData: unimplemented")
 }
-
-func (b boltDBBatch) Repr() []byte {
-	return nil
-}

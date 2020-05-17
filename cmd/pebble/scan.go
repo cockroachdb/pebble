@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"math"
@@ -71,9 +70,10 @@ func runScan(cmd *cobra.Command, args []string) {
 
 			for i := 0; i < count; {
 				b := d.NewBatch()
+				var value []byte
 				for end := i + batch; i < end; i++ {
 					keys[i] = mvccEncode(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
-					value := scanConfig.values.Bytes(rng)
+					value = scanConfig.values.Bytes(rng, value)
 					if err := b.Set(keys[i], value, nil); err != nil {
 						log.Fatal(err)
 					}
@@ -100,7 +100,8 @@ func runScan(cmd *cobra.Command, args []string) {
 					minTS := encodeUint64Ascending(nil, math.MaxUint64)
 
 					for {
-						limiter.Wait(context.Background())
+						wait(limiter)
+
 						rows := int(rowDist.Uint64())
 						startIdx := rng.Int31n(int32(len(keys) - rows))
 						startKey := encodeUint32Ascending(startKeyBuf[:4], uint32(startIdx))

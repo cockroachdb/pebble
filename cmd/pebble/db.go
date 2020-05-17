@@ -38,7 +38,6 @@ type batch interface {
 	Commit(opts *pebble.WriteOptions) error
 	Set(key, value []byte, opts *pebble.WriteOptions) error
 	LogData(data []byte, opts *pebble.WriteOptions) error
-	Repr() []byte
 }
 
 // Adapters for Pebble. Since the interfaces above are based on Pebble's
@@ -60,6 +59,7 @@ func newPebbleDB(dir string) DB {
 		LBaseMaxBytes:               64 << 20, // 64 MB
 		Levels:                      make([]pebble.LevelOptions, 7),
 		MaxConcurrentCompactions:    3,
+		MaxOpenFiles:                16384,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
 		Merger: &pebble.Merger{

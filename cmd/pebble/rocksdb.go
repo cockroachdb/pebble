@@ -125,10 +125,6 @@ func (b rocksDBBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
 	return b.batch.LogData(data)
 }
 
-func (b rocksDBBatch) Repr() []byte {
-	return b.batch.Repr()
-}
-
 func (r rocksDB) Flush() error {
 	return r.d.Flush()
 }
@@ -376,10 +372,6 @@ func (b crdbPebbleDBBatch) Set(key, value []byte, _ *pebble.WriteOptions) error 
 
 func (b crdbPebbleDBBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
 	return b.batch.LogData(data)
-}
-
-func (b crdbPebbleDBBatch) Repr() []byte {
-	return b.batch.Repr()
 }
 
 func (r crdbPebbleDB) Flush() error {
