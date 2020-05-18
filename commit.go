@@ -418,17 +418,17 @@ func (p *commitPipeline) publish(b *Batch) {
 	}
 }
 
-// ratchetSeqNum allocates all sequence numbers less than but excluding
-// `nextSeqNum`, returning the lowest sequence number it allocates and the
-// number of sequence numbers allocated. If the next sequence number is
-// already greater than or equal to nextSeqNum, ratchetSeqNum returns 0 for
-// both values.
-func (p *commitPipeline) ratchetSeqNum(nextSeqNum uint64) (seqNum uint64, count uint64) {
+// ratchetSeqNum allocates and marks visible all sequence numbers less than
+// but excluding `nextSeqNum`.
+func (p *commitPipeline) ratchetSeqNum(nextSeqNum uint64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	logSeqNum := atomic.LoadUint64(p.env.logSeqNum)
 	if logSeqNum >= nextSeqNum {
-		return 0, 0
+		return
 	}
-	count = nextSeqNum - logSeqNum
-	seqNum = atomic.AddUint64(p.env.logSeqNum, uint64(count)) - uint64(count)
-	return seqNum, count
+	count := nextSeqNum - logSeqNum
+	_ = atomic.AddUint64(p.env.logSeqNum, uint64(count)) - uint64(count)
+	atomic.StoreUint64(p.env.visibleSeqNum, nextSeqNum)
 }
