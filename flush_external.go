@@ -48,24 +48,14 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 		return err
 	}
 
-	d.commit.mu.Lock()
-	defer d.commit.mu.Unlock()
-
 	// Assign sequence numbers from its current value through to the
 	// external file's largest sequence number. It's possible that the current
 	// sequence number has already exceeded m.LargestSeqNum if there were many
 	// nonoverlapping ingestions, so skip if this doesn't bump the sequence
 	// number.
-	var b *Batch
-	if seqNum, count := d.commit.ratchetSeqNum(m.LargestSeqNum + 1); count > 0 {
-		b = newBatch(nil)
-		defer b.release()
-		b.data = make([]byte, batchHeaderLen)
-		b.setCount(uint32(count))
-		b.commit.Add(1)
-		d.commit.pending.enqueue(b)
-		b.setSeqNum(seqNum)
-	}
+	d.commit.ratchetSeqNum(m.LargestSeqNum + 1)
+	d.commit.mu.Lock()
+	defer d.commit.mu.Unlock()
 
 	// Apply the version edit.
 	d.mu.Lock()
@@ -91,28 +81,19 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 	d.deleteObsoleteFiles(jobID)
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
-
-	// There may not be a batch if this sequence number was already allocated
-	// by an ingest. This is ok for replay purposes.
-	if b != nil {
-		d.commit.publish(b)
-	}
-
 	return nil
 }
 
-// ratchetSeqNum is a hook for allocating sequence numbers up to a specific
-// absolute value. Its first parameter is a *pebble.DB and its second is the
-// new next sequence number. RatchetSeqNum does nothing if the next sequence
-// is already greater than or equal to nextSeqNum.
+// ratchetSeqNum is a hook for allocating and publishing sequence numbers up
+// to a specific absolute value. Its first parameter is a *pebble.DB and its
+// second is the new next sequence number. RatchetSeqNum does nothing if the
+// next sequence is already greater than or equal to nextSeqNum.
 //
 // This function is used by the internal/replay package to ensure replayed
 // operations receive the same absolute sequence number.
 func ratchetSeqNum(untypedDB interface{}, nextSeqNum uint64) {
 	d := untypedDB.(*DB)
-	d.commit.mu.Lock()
-	defer d.commit.mu.Unlock()
-	_, _ = d.commit.ratchetSeqNum(nextSeqNum)
+	d.commit.ratchetSeqNum(nextSeqNum)
 }
 
 func init() {

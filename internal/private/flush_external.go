@@ -23,10 +23,10 @@ import (
 // calling this private hook directly.
 var FlushExternalTable func(interface{}, string, *manifest.FileMetadata) error
 
-// RatchetSeqNum is a hook for allocating sequence numbers up to a specific
-// absolute value. Its first parameter is a *pebble.DB and its second is the
-// new next sequence number. RatchetSeqNum does nothing if the next sequence
-// is already greater than or equal to nextSeqNum.
+// RatchetSeqNum is a hook for allocating and publishing sequence numbers up
+// to a specific absolute value. Its first parameter is a *pebble.DB and its
+// second is the new next sequence number. RatchetSeqNum does nothing if the
+// next sequence is already greater than or equal to nextSeqNum.
 //
 // This function is used by the internal/replay package to ensure replayed
 // operations receive the same absolute sequence number.
