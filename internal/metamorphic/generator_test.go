@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,7 +121,7 @@ func TestGenerator(t *testing.T) {
 }
 
 func TestGeneratorRandom(t *testing.T) {
-	ops := generate(ops.Uint64(), defaultConfig)
+	ops := generate(ops.Uint64(randvar.NewRand()), defaultConfig)
 	if testing.Verbose() {
 		t.Logf("\n%s", formatOps(ops))
 	}

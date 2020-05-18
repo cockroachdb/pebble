@@ -8,6 +8,7 @@ import (
 	"log"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 )
 
@@ -37,13 +38,13 @@ type batch interface {
 	Commit(opts *pebble.WriteOptions) error
 	Set(key, value []byte, opts *pebble.WriteOptions) error
 	LogData(data []byte, opts *pebble.WriteOptions) error
-	Repr() []byte
 }
 
 // Adapters for Pebble. Since the interfaces above are based on Pebble's
 // interfaces, it can simply forward calls for everything.
 type pebbleDB struct {
-	d *pebble.DB
+	d       *pebble.DB
+	ballast []byte
 }
 
 func newPebbleDB(dir string) DB {
@@ -53,21 +54,34 @@ func newPebbleDB(dir string) DB {
 		Cache:                       cache,
 		Comparer:                    mvccComparer,
 		DisableWAL:                  disableWAL,
+		L0CompactionThreshold:       2,
+		L0StopWritesThreshold:       1000,
+		LBaseMaxBytes:               64 << 20, // 64 MB
+		Levels:                      make([]pebble.LevelOptions, 7),
+		MaxConcurrentCompactions:    3,
+		MaxOpenFiles:                16384,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
-		MaxConcurrentCompactions:    2,
-		MinCompactionRate:           4 << 20, // 4 MB/s
-		MinFlushRate:                1 << 20, // 1 MB/s
-		L0CompactionThreshold:       2,
-		L0StopWritesThreshold:       400,
-		LBaseMaxBytes:               64 << 20, // 64 MB
-		Levels: []pebble.LevelOptions{{
-			BlockSize: 32 << 10,
-		}},
 		Merger: &pebble.Merger{
 			Name: "cockroach_merge_operator",
 		},
+		MinCompactionRate: 4 << 20, // 4 MB/s
+		MinFlushRate:      4 << 20, // 4 MB/s
 	}
+
+	for i := 0; i < len(opts.Levels); i++ {
+		l := &opts.Levels[i]
+		l.BlockSize = 32 << 10       // 32 KB
+		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.FilterPolicy = bloom.FilterPolicy(10)
+		l.FilterType = pebble.TableFilter
+		if i > 0 {
+			l.TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
+		}
+		l.EnsureDefaults()
+	}
+	opts.Levels[6].FilterPolicy = nil
+
 	opts.EnsureDefaults()
 
 	if verbose {
@@ -82,7 +96,10 @@ func newPebbleDB(dir string) DB {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return pebbleDB{p}
+	return pebbleDB{
+		d:       p,
+		ballast: make([]byte, 1<<30),
+	}
 }
 
 func (p pebbleDB) Flush() error {

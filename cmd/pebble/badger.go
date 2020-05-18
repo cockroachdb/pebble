@@ -11,7 +11,7 @@ import (
 	"log"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v2"
 )
 
 // Adapters for Badger.
@@ -20,7 +20,7 @@ type badgerDB struct {
 }
 
 func newBadgerDB(dir string) DB {
-	db, err := badger.Open(badger.DefaultOptions(dir))
+	db, err := badger.Open(badger.DefaultOptions(dir).WithMaxCacheSize(cacheSize))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,8 +49,8 @@ func (b badgerDB) Scan(key []byte, count int64, reverse bool) error {
 	panic("badgerDB.Scan: unimplemented")
 }
 
-func (b badgerDB) Metrics() *pebble.VersionMetrics {
-	return &pebble.VersionMetrics{}
+func (b badgerDB) Metrics() *pebble.Metrics {
+	return &pebble.Metrics{}
 }
 
 func (b badgerDB) Flush() error {
@@ -136,8 +136,4 @@ func (b badgerBatch) Set(key, value []byte, _ *pebble.WriteOptions) error {
 
 func (b badgerBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
 	panic("badgerBatch.logData: unimplemented")
-}
-
-func (b badgerBatch) Repr() []byte {
-	return nil
 }

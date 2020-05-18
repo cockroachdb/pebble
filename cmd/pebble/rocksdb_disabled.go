@@ -12,3 +12,8 @@ func newRocksDB(dir string) DB {
 	log.Fatalf("pebble not compiled with RocksDB support: recompile with \"-tags rocksdb\"\n")
 	return nil
 }
+
+func newCRDBPebbleDB(dir string) DB {
+	log.Fatalf("pebble not compiled with CRDB support: recompile with \"-tags rocksdb\"\n")
+	return nil
+}

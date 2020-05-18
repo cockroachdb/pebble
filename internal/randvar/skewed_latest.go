@@ -26,7 +26,7 @@ import (
 // distribution.
 type SkewedLatest struct {
 	mu struct {
-		sync.Mutex
+		sync.RWMutex
 		max  uint64
 		zipf *Zipf
 	}
@@ -34,17 +34,17 @@ type SkewedLatest struct {
 
 // NewDefaultSkewedLatest constructs a new SkewedLatest generator with the
 // default parameters.
-func NewDefaultSkewedLatest(rng *rand.Rand) (*SkewedLatest, error) {
-	return NewSkewedLatest(rng, 1, defaultMax, defaultTheta)
+func NewDefaultSkewedLatest() (*SkewedLatest, error) {
+	return NewSkewedLatest(1, defaultMax, defaultTheta)
 }
 
 // NewSkewedLatest constructs a new SkewedLatest generator with the given
 // parameters. It returns an error if the parameters are outside the accepted
 // range.
-func NewSkewedLatest(rng *rand.Rand, min, max uint64, theta float64) (*SkewedLatest, error) {
+func NewSkewedLatest(min, max uint64, theta float64) (*SkewedLatest, error) {
 	z := &SkewedLatest{}
 	z.mu.max = max
-	zipf, err := NewZipf(rng, 0, max-min, theta)
+	zipf, err := NewZipf(0, max-min, theta)
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +62,9 @@ func (z *SkewedLatest) IncMax(delta int) {
 
 // Uint64 returns a random Uint64 between min and max, where keys near max are
 // most likely to be drawn.
-func (z *SkewedLatest) Uint64() uint64 {
-	z.mu.Lock()
-	result := z.mu.max - z.mu.zipf.Uint64()
-	z.mu.Unlock()
+func (z *SkewedLatest) Uint64(rng *rand.Rand) uint64 {
+	z.mu.RLock()
+	result := z.mu.max - z.mu.zipf.Uint64(rng)
+	z.mu.RUnlock()
 	return result
 }

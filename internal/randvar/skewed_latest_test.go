@@ -53,12 +53,13 @@ func dumpSamples(x []int) {
 }
 
 func TestSkewedLatest(t *testing.T) {
-	z, err := NewSkewedLatest(nil, 0, 99, 0.99)
+	rng := NewRand()
+	z, err := NewSkewedLatest(0, 99, 0.99)
 	require.NoError(t, err)
 
 	x := make([]int, 10000)
 	for i := range x {
-		x[i] = int(z.Uint64())
+		x[i] = int(z.Uint64(rng))
 	}
 
 	if testing.Verbose() {

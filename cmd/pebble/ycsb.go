@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -31,6 +30,14 @@ const (
 	ycsbUpdate
 	ycsbNumOps
 )
+
+var ycsbOpsMap = map[string]int{
+	"insert": ycsbInsert,
+	"read":   ycsbRead,
+	"rscan":  ycsbReverseScan,
+	"scan":   ycsbScan,
+	"update": ycsbUpdate,
+}
 
 var ycsbConfig struct {
 	batch            *randvar.Flag
@@ -195,11 +202,11 @@ func ycsbParseKeyDist(d string) (randvar.Dynamic, error) {
 	totalKeys := uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys)
 	switch strings.ToLower(d) {
 	case "latest":
-		return randvar.NewDefaultSkewedLatest(nil)
+		return randvar.NewDefaultSkewedLatest()
 	case "uniform":
-		return randvar.NewUniform(nil, 1, totalKeys), nil
+		return randvar.NewUniform(1, totalKeys), nil
 	case "zipf":
-		return randvar.NewZipf(nil, 1, totalKeys, 0.99)
+		return randvar.NewZipf(1, totalKeys, 0.99)
 	default:
 		return nil, errors.Errorf("unknown distribution: %s", errors.Safe(d))
 	}
@@ -236,8 +243,15 @@ func runYcsb(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+type ycsbBuf struct {
+	rng      *rand.Rand
+	keyBuf   []byte
+	valueBuf []byte
+}
+
 type ycsb struct {
 	writeOpts   *pebble.WriteOptions
+	weights     ycsbWeights
 	reg         *histogramRegistry
 	ops         *randvar.Weighted
 	keyDist     randvar.Dynamic
@@ -248,8 +262,6 @@ type ycsb struct {
 	numOps      uint64
 	numKeys     [ycsbNumOps]uint64
 	prevNumKeys [ycsbNumOps]uint64
-	opsMap      map[string]int
-	latency     [ycsbNumOps]*namedHistogram
 	limiter     *rate.Limiter
 }
 
@@ -261,6 +273,7 @@ func newYcsb(
 ) *ycsb {
 	y := &ycsb{
 		reg:       newHistogramRegistry(),
+		weights:   weights,
 		ops:       randvar.NewWeighted(nil, weights...),
 		keyDist:   keyDist,
 		batchDist: batchDist,
@@ -271,44 +284,51 @@ func newYcsb(
 	if disableWAL {
 		y.writeOpts = pebble.NoSync
 	}
-
-	y.opsMap = make(map[string]int)
-	maybeRegister := func(op int, name string) *namedHistogram {
-		w := weights.get(op)
-		if w == 0 {
-			return nil
-		}
-		wstr := fmt.Sprint(int(100 * w))
-		fill := strings.Repeat("_", 3-len(wstr))
-		if fill == "" {
-			fill = "_"
-		}
-		fullName := fmt.Sprintf("%s%s%s", name, fill, wstr)
-		y.opsMap[fullName] = op
-		return y.reg.Register(fullName)
-	}
-
-	y.latency[ycsbInsert] = maybeRegister(ycsbInsert, "insert")
-	y.latency[ycsbRead] = maybeRegister(ycsbRead, "read")
-	y.latency[ycsbScan] = maybeRegister(ycsbScan, "scan")
-	y.latency[ycsbReverseScan] = maybeRegister(ycsbReverseScan, "rscan")
-	y.latency[ycsbUpdate] = maybeRegister(ycsbUpdate, "update")
 	return y
+}
+
+func (y *ycsb) maybeRegister(op int, name string) *namedHistogram {
+	w := y.weights.get(op)
+	if w == 0 {
+		return nil
+	}
+	wstr := fmt.Sprint(int(100 * w))
+	fill := strings.Repeat("_", 3-len(wstr))
+	if fill == "" {
+		fill = "_"
+	}
+	fullName := fmt.Sprintf("%s%s%s", name, fill, wstr)
+	return y.reg.Register(fullName)
 }
 
 func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 	if ycsbConfig.initialKeys > 0 {
-		rng := randvar.NewRand()
+		buf := &ycsbBuf{rng: randvar.NewRand()}
 
 		b := db.NewBatch()
+		size := 0
+		start := time.Now()
+		last := start
 		for i := 1; i <= ycsbConfig.initialKeys; i++ {
-			if len(b.Repr()) >= 1<<20 {
+			if now := time.Now(); now.Sub(last) >= time.Second {
+				fmt.Printf("%5s inserted %d keys (%0.1f%%)\n",
+					time.Duration(now.Sub(start).Seconds()+0.5)*time.Second,
+					i-1, 100*float64(i-1)/float64(ycsbConfig.initialKeys))
+				last = now
+			}
+			if size >= 1<<20 {
 				if err := b.Commit(y.writeOpts); err != nil {
 					log.Fatal(err)
 				}
 				b = db.NewBatch()
+				size = 0
 			}
-			_ = b.Set(y.makeKey(uint64(i+ycsbConfig.prepopulatedKeys)), y.randBytes(rng), nil)
+			key := y.makeKey(uint64(i+ycsbConfig.prepopulatedKeys), buf)
+			value := y.randBytes(buf)
+			if err := b.Set(key, value, nil); err != nil {
+				log.Fatal(err)
+			}
+			size += len(key) + len(value)
 		}
 		if err := b.Commit(y.writeOpts); err != nil {
 			log.Fatal(err)
@@ -330,28 +350,35 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	rng := randvar.NewRand()
+	var latency [ycsbNumOps]*namedHistogram
+	for name, op := range ycsbOpsMap {
+		latency[op] = y.maybeRegister(op, name)
+	}
+
+	buf := &ycsbBuf{rng: randvar.NewRand()}
+
 	for {
-		y.limiter.Wait(context.Background())
+		wait(y.limiter)
+
 		start := time.Now()
 
 		op := y.ops.Int()
 		switch op {
 		case ycsbInsert:
-			y.insert(db, rng)
+			y.insert(db, buf)
 		case ycsbRead:
-			y.read(db, rng)
+			y.read(db, buf)
 		case ycsbScan:
-			y.scan(db, rng, false /* reverse */)
+			y.scan(db, buf, false /* reverse */)
 		case ycsbReverseScan:
-			y.scan(db, rng, true /* reverse */)
+			y.scan(db, buf, true /* reverse */)
 		case ycsbUpdate:
-			y.update(db, rng)
+			y.update(db, buf)
 		default:
 			panic("not reached")
 		}
 
-		y.latency[op].Record(time.Since(start))
+		latency[op].Record(time.Since(start))
 		if ycsbConfig.numOps > 0 &&
 			atomic.AddUint64(&y.numOps, 1) >= ycsbConfig.numOps {
 			break
@@ -373,36 +400,42 @@ func (y *ycsb) hashKey(key uint64) uint64 {
 	return h
 }
 
-func (y *ycsb) makeKey(keyNum uint64) []byte {
-	key := make([]byte, 4, 24+10)
+func (y *ycsb) makeKey(keyNum uint64, buf *ycsbBuf) []byte {
+	const size = 24 + 10
+	if cap(buf.keyBuf) < size {
+		buf.keyBuf = make([]byte, size)
+	}
+	key := buf.keyBuf[:4]
 	copy(key, "user")
 	key = strconv.AppendUint(key, y.hashKey(keyNum), 10)
 	// Use the MVCC encoding for keys. This appends a timestamp with
 	// walltime=1. That knowledge is utilized by rocksDB.Scan.
 	key = append(key, '\x00', '\x00', '\x00', '\x00', '\x00',
 		'\x00', '\x00', '\x00', '\x01', '\x09')
+	buf.keyBuf = key
 	return key
 }
 
-func (y *ycsb) nextReadKey() []byte {
+func (y *ycsb) nextReadKey(buf *ycsbBuf) []byte {
 	// NB: the range of values returned by keyDist is tied to the range returned
 	// by keyNum.Base. See how these are both incremented by ycsb.insert().
-	keyNum := y.keyDist.Uint64()
-	return y.makeKey(keyNum)
+	keyNum := y.keyDist.Uint64(buf.rng)
+	return y.makeKey(keyNum, buf)
 }
 
-func (y *ycsb) randBytes(rng *rand.Rand) []byte {
-	return y.valueDist.Bytes(rng)
+func (y *ycsb) randBytes(buf *ycsbBuf) []byte {
+	buf.valueBuf = y.valueDist.Bytes(buf.rng, buf.valueBuf)
+	return buf.valueBuf
 }
 
-func (y *ycsb) insert(db DB, rng *rand.Rand) {
-	count := y.batchDist.Uint64()
+func (y *ycsb) insert(db DB, buf *ycsbBuf) {
+	count := y.batchDist.Uint64(buf.rng)
 	keyNums := make([]uint64, count)
 
 	b := db.NewBatch()
 	for i := range keyNums {
 		keyNums[i] = y.keyNum.Next()
-		_ = b.Set(y.makeKey(keyNums[i]), y.randBytes(rng), nil)
+		_ = b.Set(y.makeKey(keyNums[i], buf), y.randBytes(buf), nil)
 	}
 	if err := b.Commit(y.writeOpts); err != nil {
 		log.Fatal(err)
@@ -420,30 +453,38 @@ func (y *ycsb) insert(db DB, rng *rand.Rand) {
 	}
 }
 
-func (y *ycsb) read(db DB, rng *rand.Rand) {
-	key := y.nextReadKey()
+func (y *ycsb) read(db DB, buf *ycsbBuf) {
+	key := y.nextReadKey(buf)
 	iter := db.NewIter(nil)
 	iter.SeekGE(key)
+	if iter.Valid() {
+		_ = iter.Key()
+		_ = iter.Value()
+	}
 	if err := iter.Close(); err != nil {
 		log.Fatal(err)
 	}
 	atomic.AddUint64(&y.numKeys[ycsbRead], 1)
 }
 
-func (y *ycsb) scan(db DB, rng *rand.Rand, reverse bool) {
-	count := y.scanDist.Uint64()
-	key := y.nextReadKey()
+func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
+	count := y.scanDist.Uint64(buf.rng)
+	key := y.nextReadKey(buf)
 	if err := db.Scan(key, int64(count), reverse); err != nil {
 		log.Fatal(err)
 	}
-	atomic.AddUint64(&y.numKeys[ycsbScan], count)
+	if reverse {
+		atomic.AddUint64(&y.numKeys[ycsbReverseScan], count)
+	} else {
+		atomic.AddUint64(&y.numKeys[ycsbScan], count)
+	}
 }
 
-func (y *ycsb) update(db DB, rng *rand.Rand) {
-	count := int(y.batchDist.Uint64())
+func (y *ycsb) update(db DB, buf *ycsbBuf) {
+	count := int(y.batchDist.Uint64(buf.rng))
 	b := db.NewBatch()
 	for i := 0; i < count; i++ {
-		_ = b.Set(y.nextReadKey(), y.randBytes(rng), nil)
+		_ = b.Set(y.nextReadKey(buf), y.randBytes(buf), nil)
 	}
 	if err := b.Commit(y.writeOpts); err != nil {
 		log.Fatal(err)
@@ -456,7 +497,7 @@ func (y *ycsb) tick(elapsed time.Duration, i int) {
 		fmt.Println("____optype__elapsed____ops/sec___keys/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	}
 	y.reg.Tick(func(tick histogramTick) {
-		op := y.opsMap[tick.Name]
+		op := ycsbOpsMap[tick.Name]
 		numKeys := atomic.LoadUint64(&y.numKeys[op])
 		h := tick.Hist
 
@@ -478,7 +519,7 @@ func (y *ycsb) tick(elapsed time.Duration, i int) {
 func (y *ycsb) done(elapsed time.Duration) {
 	fmt.Println("\n____optype__elapsed_____ops(total)___ops/sec(cum)__keys/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	y.reg.Tick(func(tick histogramTick) {
-		op := y.opsMap[tick.Name]
+		op := ycsbOpsMap[tick.Name]
 		numKeys := atomic.LoadUint64(&y.numKeys[op])
 		h := tick.Cumulative
 

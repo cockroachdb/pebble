@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/pprof"
 	"sort"
 	"sync"
@@ -25,19 +26,57 @@ const (
 )
 
 func startCPUProfile() func() {
-	f, err := os.Create("cpu.prof")
-	if err != nil {
-		log.Fatal(err)
-	}
-	// runtime.SetBlockProfileRate(1)
-	// runtime.SetMutexProfileFraction(1)
+	runtime.SetMutexProfileFraction(1000)
 
-	if err := pprof.StartCPUProfile(f); err != nil {
-		log.Fatal(err)
-	}
+	doneCh := make(chan struct{})
+	var doneWG sync.WaitGroup
+	doneWG.Add(1)
+
+	go func() {
+		defer doneWG.Done()
+
+		start := time.Now()
+		t := time.NewTicker(10 * time.Second)
+		defer t.Stop()
+
+		var currentProfile *os.File
+		defer func() {
+			if currentProfile != nil {
+				pprof.StopCPUProfile()
+				currentProfile.Close()
+			}
+		}()
+
+		for {
+			if currentProfile != nil {
+				pprof.StopCPUProfile()
+				currentProfile.Close()
+				currentProfile = nil
+			}
+			path := fmt.Sprintf("cpu.%04d.prof", int(time.Since(start).Seconds()+0.5))
+			f, err := os.Create(path)
+			if err != nil {
+				log.Fatalf("unable to create cpu profile: %s", err)
+				return
+			}
+			if err := pprof.StartCPUProfile(f); err != nil {
+				log.Fatalf("unable to start cpu profile: %v", err)
+				f.Close()
+				return
+			}
+			currentProfile = f
+
+			select {
+			case <-doneCh:
+				return
+			case <-t.C:
+			}
+		}
+	}()
+
 	return func() {
-		pprof.StopCPUProfile()
-		f.Close()
+		close(doneCh)
+		doneWG.Wait()
 
 		if p := pprof.Lookup("heap"); p != nil {
 			f, err := os.Create("heap.prof")
@@ -50,27 +89,16 @@ func startCPUProfile() func() {
 			f.Close()
 		}
 
-		// if p := pprof.Lookup("mutex"); p != nil {
-		// 	f, err := os.Create("mutex.prof")
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// 	if err := p.WriteTo(f, 0); err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// 	f.Close()
-		// }
-
-		// if p := pprof.Lookup("block"); p != nil {
-		// 	f, err := os.Create("block.prof")
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// 	if err := p.WriteTo(f, 0); err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// 	f.Close()
-		// }
+		if p := pprof.Lookup("mutex"); p != nil {
+			f, err := os.Create("mutex.prof")
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err := p.WriteTo(f, 0); err != nil {
+				log.Fatal(err)
+			}
+			f.Close()
+		}
 	}
 }
 
@@ -232,6 +260,8 @@ func runTest(dir string, t test) {
 		db = newBoltDB(dir)
 	case "pebble":
 		db = newPebbleDB(dir)
+	case "crdb-pebble":
+		db = newCRDBPebbleDB(dir)
 	case "rocksdb":
 		db = newRocksDB(dir)
 	}
