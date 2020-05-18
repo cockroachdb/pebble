@@ -31,14 +31,6 @@ const (
 	ycsbNumOps
 )
 
-var ycsbOpsMap = map[string]int{
-	"insert": ycsbInsert,
-	"read":   ycsbRead,
-	"rscan":  ycsbReverseScan,
-	"scan":   ycsbScan,
-	"update": ycsbUpdate,
-}
-
 var ycsbConfig struct {
 	batch            *randvar.Flag
 	keys             string
@@ -263,6 +255,7 @@ type ycsb struct {
 	numKeys     [ycsbNumOps]uint64
 	prevNumKeys [ycsbNumOps]uint64
 	limiter     *rate.Limiter
+	opsMap      map[string]int
 }
 
 func newYcsb(
@@ -279,26 +272,34 @@ func newYcsb(
 		batchDist: batchDist,
 		scanDist:  scanDist,
 		valueDist: valueDist,
+		opsMap:    make(map[string]int),
 	}
 	y.writeOpts = pebble.Sync
 	if disableWAL {
 		y.writeOpts = pebble.NoSync
 	}
-	return y
-}
 
-func (y *ycsb) maybeRegister(op int, name string) *namedHistogram {
-	w := y.weights.get(op)
-	if w == 0 {
-		return nil
+	ops := map[string]int{
+		"insert": ycsbInsert,
+		"read":   ycsbRead,
+		"rscan":  ycsbReverseScan,
+		"scan":   ycsbScan,
+		"update": ycsbUpdate,
 	}
-	wstr := fmt.Sprint(int(100 * w))
-	fill := strings.Repeat("_", 3-len(wstr))
-	if fill == "" {
-		fill = "_"
+	for name, op := range ops {
+		w := y.weights.get(op)
+		if w == 0 {
+			continue
+		}
+		wstr := fmt.Sprint(int(100 * w))
+		fill := strings.Repeat("_", 3-len(wstr))
+		if fill == "" {
+			fill = "_"
+		}
+		fullName := fmt.Sprintf("%s%s%s", name, fill, wstr)
+		y.opsMap[fullName] = op
 	}
-	fullName := fmt.Sprintf("%s%s%s", name, fill, wstr)
-	return y.reg.Register(fullName)
+	return y
 }
 
 func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
@@ -351,8 +352,8 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var latency [ycsbNumOps]*namedHistogram
-	for name, op := range ycsbOpsMap {
-		latency[op] = y.maybeRegister(op, name)
+	for name, op := range y.opsMap {
+		latency[op] = y.reg.Register(name)
 	}
 
 	buf := &ycsbBuf{rng: randvar.NewRand()}
@@ -497,7 +498,7 @@ func (y *ycsb) tick(elapsed time.Duration, i int) {
 		fmt.Println("____optype__elapsed____ops/sec___keys/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	}
 	y.reg.Tick(func(tick histogramTick) {
-		op := ycsbOpsMap[tick.Name]
+		op := y.opsMap[tick.Name]
 		numKeys := atomic.LoadUint64(&y.numKeys[op])
 		h := tick.Hist
 
@@ -519,7 +520,7 @@ func (y *ycsb) tick(elapsed time.Duration, i int) {
 func (y *ycsb) done(elapsed time.Duration) {
 	fmt.Println("\n____optype__elapsed_____ops(total)___ops/sec(cum)__keys/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	y.reg.Tick(func(tick histogramTick) {
-		op := ycsbOpsMap[tick.Name]
+		op := y.opsMap[tick.Name]
 		numKeys := atomic.LoadUint64(&y.numKeys[op])
 		h := tick.Cumulative
 
