@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -1116,7 +1117,11 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				totalSize += file.Size
 			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
 				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
-				size, err := d.tableCache.estimateDiskUsage(file, start, end)
+				var size uint64
+				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
+					size, err = r.EstimateDiskUsage(start, end)
+					return err
+				})
 				if err != nil {
 					return 0, err
 				}
