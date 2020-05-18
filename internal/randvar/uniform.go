@@ -16,7 +16,7 @@
 package randvar
 
 import (
-	"sync"
+	"sync/atomic"
 
 	"golang.org/x/exp/rand"
 )
@@ -25,33 +25,24 @@ import (
 // distribution.
 type Uniform struct {
 	min uint64
-	mu  struct {
-		sync.RWMutex
-		max uint64
-	}
+	max uint64
 }
 
 // NewUniform constructs a new Uniform generator with the given
 // parameters. Returns an error if the parameters are outside the accepted
 // range.
 func NewUniform(min, max uint64) *Uniform {
-	g := &Uniform{min: min}
-	g.mu.max = max
-	return g
+	return &Uniform{min: min, max: max}
 }
 
 // IncMax increments max.
 func (g *Uniform) IncMax(delta int) {
-	g.mu.Lock()
-	g.mu.max += uint64(delta)
-	g.mu.Unlock()
+	atomic.AddUint64(&g.max, uint64(delta))
 }
 
 // Uint64 returns a random Uint64 between min and max, drawn from a uniform
 // distribution.
 func (g *Uniform) Uint64(rng *rand.Rand) uint64 {
-	g.mu.RLock()
-	result := rng.Uint64n(g.mu.max-g.min+1) + g.min
-	g.mu.RUnlock()
-	return result
+	max := atomic.LoadUint64(&g.max)
+	return rng.Uint64n(max-g.min+1) + g.min
 }
