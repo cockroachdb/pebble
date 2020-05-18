@@ -751,8 +751,6 @@ and writes are served as quickly as possible.
   calls
 * Previous pointers in the memtable and indexed batch skiplists
 * Elision of per-key lower/upper bound checks in long range scans
-* Weak cache references remove the need to pin index and filter blocks
-  in memory
 * Improved `Iterator` API
   + `SeekPrefixGE` for prefix iteration
   + `SetBounds` for adjusting the bounds on an existing `Iterator`

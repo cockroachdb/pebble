@@ -4,8 +4,6 @@
 
 package cache
 
-import "sync"
-
 type entryType int8
 
 const (
@@ -43,15 +41,9 @@ func (p entryType) String() string {
 // are other pointers to the shard which will keep it alive.
 type entry struct {
 	key key
-	val struct {
-		// RWMutex provides mutual exclusion for the value pointer. It allows
-		// retrieving the Value and incrementing its reference count in one atomic
-		// operation.
-		sync.RWMutex
-		// The value associated with the entry. The entry holds a reference on the
-		// value which is maintained by entry.setValue().
-		v *Value
-	}
+	// The value associated with the entry. The entry holds a reference on the
+	// value which is maintained by entry.setValue().
+	val       *Value
 	blockLink struct {
 		next *entry
 		prev *entry
@@ -87,16 +79,10 @@ func newEntry(s *shard, key key, size int64) *entry {
 	return e
 }
 
-func (e *entry) acquire() {
-	e.ref.acquire()
-}
-
-func (e *entry) release() {
-	if e.ref.release() {
-		e.setValue(nil)
-		*e = entry{}
-		entryAllocFree(e)
-	}
+func (e *entry) free() {
+	e.setValue(nil)
+	*e = entry{}
+	entryAllocFree(e)
 }
 
 func (e *entry) next() *entry {
@@ -149,30 +135,21 @@ func (e *entry) setValue(v *Value) {
 	if v != nil {
 		v.acquire()
 	}
-	e.val.Lock()
-	old := e.val.v
-	e.val.v = v
-	e.val.Unlock()
+	old := e.val
+	e.val = v
 	if old != nil {
 		old.release()
 	}
 }
 
 func (e *entry) peekValue() *Value {
-	// NB: the locking is technically needed here, because we only call setValue
-	// with the shard's lock held.
-	e.val.RLock()
-	v := e.val.v
-	e.val.RUnlock()
-	return v
+	return e.val
 }
 
 func (e *entry) acquireValue() *Value {
-	e.val.RLock()
-	v := e.val.v
+	v := e.val
 	if v != nil {
 		v.acquire()
 	}
-	e.val.RUnlock()
 	return v
 }

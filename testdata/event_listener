@@ -169,7 +169,7 @@ compact         1   1.6 K          (size == estimated-debt)
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         8   1.4 K    5.9%  (score == hit-rate)
- tcache         1   672 B    0.0%  (score == hit-rate)
+ tcache         1   576 B    0.0%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)
 

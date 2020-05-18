@@ -65,34 +65,6 @@ func testValue(cache *Cache, s string, repeat int) *Value {
 	return v
 }
 
-func TestWeakHandle(t *testing.T) {
-	cache := newShards(5, 1)
-	defer cache.Unref()
-
-	cache.Set(1, 1, 0, testValue(cache, "a", 5)).Release()
-	h := cache.Set(1, 0, 0, testValue(cache, "b", 5))
-	if v := h.Get(); string(v) != "bbbbb" {
-		t.Fatalf("expected bbbbb, but found %v", v)
-	}
-	w := h.Weak()
-	h.Release()
-	h = w.Strong()
-	if v := h.Get(); string(v) != "bbbbb" {
-		t.Fatalf("expected bbbbb, but found %v", v)
-	}
-	if h.Weak() != nil {
-		t.Fatalf("unexpectedly convert strong handle back to weak handle")
-	}
-	h.Release()
-	cache.Set(1, 2, 0, testValue(cache, "a", 5)).Release()
-	h = w.Strong()
-	if v := h.Get(); v != nil {
-		t.Fatalf("expected nil, but found %s", v)
-	}
-	h.Release()
-	w.Release()
-}
-
 func TestCacheDelete(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
