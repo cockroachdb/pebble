@@ -151,7 +151,7 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 	if weights := ycsbWorkloads[w]; weights != nil {
 		return weights, nil
 	}
-	iWeights := make([]int, 4)
+	iWeights := make([]int, ycsbNumOps)
 	for _, p := range strings.Split(w, ",") {
 		parts := strings.Split(p, "=")
 		if len(parts) != 2 {
@@ -183,7 +183,7 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 		return nil, errors.Errorf("zero weight specified: %s", errors.Safe(w))
 	}
 
-	weights := make(ycsbWeights, 4)
+	weights := make(ycsbWeights, ycsbNumOps)
 	for i := range weights {
 		weights[i] = float64(iWeights[i]) / float64(sum)
 	}
