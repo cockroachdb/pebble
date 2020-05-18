@@ -101,10 +101,10 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 	return nil
 }
 
-// ratchetSeqNum is a hook for allocating sequence numbers up to a specific
-// absolute value. Its first parameter is a *pebble.DB and its second is the
-// new next sequence number. RatchetSeqNum does nothing if the next sequence
-// is already greater than or equal to nextSeqNum.
+// ratchetSeqNum is a hook for allocating and publishing sequence numbers up
+// to a specific absolute value. Its first parameter is a *pebble.DB and its
+// second is the new next sequence number. RatchetSeqNum does nothing if the
+// next sequence is already greater than or equal to nextSeqNum.
 //
 // This function is used by the internal/replay package to ensure replayed
 // operations receive the same absolute sequence number.
@@ -112,7 +112,10 @@ func ratchetSeqNum(untypedDB interface{}, nextSeqNum uint64) {
 	d := untypedDB.(*DB)
 	d.commit.mu.Lock()
 	defer d.commit.mu.Unlock()
-	_, _ = d.commit.ratchetSeqNum(nextSeqNum)
+	_, count := d.commit.ratchetSeqNum(nextSeqNum)
+	if count > 0 {
+		atomic.StoreUint64(&d.mu.versions.visibleSeqNum, nextSeqNum)
+	}
 }
 
 func init() {
