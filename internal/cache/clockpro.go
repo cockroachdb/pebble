@@ -193,10 +193,20 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 
 // Delete deletes the cached value for the specified file and offset.
 func (c *shard) Delete(id uint64, fileNum base.FileNum, offset uint64) {
+	// The common case is there is nothing to delete, so do a quick check with
+	// shared lock.
+	k := key{fileKey{id, fileNum}, offset}
+	c.mu.RLock()
+	exists := c.blocks.Get(k) != nil
+	c.mu.RUnlock()
+	if !exists {
+		return
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	e := c.blocks.Get(key{fileKey{id, fileNum}, offset})
+	e := c.blocks.Get(k)
 	if e == nil {
 		return
 	}
