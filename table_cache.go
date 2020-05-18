@@ -76,10 +76,15 @@ func (c *tableCache) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
-// Assumes there is at least partial overlap, i.e., `[start, end]` falls neither
-// completely before nor completely after the file's range.
-func (c *tableCache) estimateDiskUsage(meta *fileMetadata, start, end []byte) (uint64, error) {
-	return c.getShard(meta.FileNum).estimateDiskUsage(meta, start, end)
+func (c *tableCache) withReader(meta *fileMetadata, fn func(*sstable.Reader) error) error {
+	s := c.getShard(meta.FileNum)
+	v := s.findNode(meta)
+	defer s.unrefValue(v)
+	<-v.loaded
+	if v.err != nil {
+		return v.err
+	}
+	return fn(v.reader)
 }
 
 func (c *tableCache) iterCount() int64 {
@@ -479,18 +484,6 @@ func (c *tableCacheShard) evict(fileNum FileNum) {
 	}
 
 	c.opts.Cache.EvictFile(c.cacheID, fileNum)
-}
-
-// Assumes there is at least partial overlap, i.e., `[start, end]` falls neither
-// completely before nor completely after the file's range.
-func (c *tableCacheShard) estimateDiskUsage(meta *fileMetadata, start, end []byte) (uint64, error) {
-	v := c.findNode(meta)
-	<-v.loaded
-	defer c.unrefValue(v)
-	if v.err != nil {
-		return 0, v.err
-	}
-	return v.reader.EstimateDiskUsage(start, end)
 }
 
 func (c *tableCacheShard) Close() error {
