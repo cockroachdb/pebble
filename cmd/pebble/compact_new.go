@@ -58,14 +58,14 @@ func runCompactNew(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		for _, f := range logItem.added {
+		for _, f := range logItem.ve.NewFiles {
 			// First look in the archive, because that's likely where it is.
-			srcPath := base.MakeFilename(vfs.Default, archiveDir, base.FileTypeTable, f.meta.FileNum)
-			dstPath := base.MakeFilename(vfs.Default, workloadDst, base.FileTypeTable, f.meta.FileNum)
+			srcPath := base.MakeFilename(vfs.Default, archiveDir, base.FileTypeTable, f.Meta.FileNum)
+			dstPath := base.MakeFilename(vfs.Default, workloadDst, base.FileTypeTable, f.Meta.FileNum)
 			err := vfs.LinkOrCopy(vfs.Default, srcPath, dstPath)
 			if os.IsNotExist(err) {
 				// Maybe it's still in the data directory.
-				srcPath = base.MakeFilename(vfs.Default, src, base.FileTypeTable, f.meta.FileNum)
+				srcPath = base.MakeFilename(vfs.Default, src, base.FileTypeTable, f.Meta.FileNum)
 				err = vfs.LinkOrCopy(vfs.Default, srcPath, dstPath)
 			}
 			if err != nil {
@@ -86,19 +86,7 @@ func runCompactNew(cmd *cobra.Command, args []string) error {
 type logItem struct {
 	compaction bool
 	flush      bool
-	added      []fileEntry
-	removed    []fileEntry
-}
-
-func (li logItem) levelSizesDelta() levelSizes {
-	var sizes levelSizes
-	for _, f := range li.added {
-		sizes[f.level] += int64(f.meta.Size)
-	}
-	for _, f := range li.removed {
-		sizes[f.level] -= int64(f.meta.Size)
-	}
-	return sizes
+	ve         manifest.VersionEdit
 }
 
 type fileEntry struct {
@@ -195,14 +183,11 @@ func loadManifest(path string, metas map[base.FileNum]*manifest.FileMetadata) ([
 			// Only non-compaction added files will be replayed.
 			compaction: len(ve.DeletedFiles) != 0,
 			flush:      false,
+			ve:         ve,
 		}
 		for _, nf := range ve.NewFiles {
 			metas[nf.Meta.FileNum] = nf.Meta
-			li.added = append(li.added, fileEntry{level: nf.Level, meta: nf.Meta})
 			li.flush = !li.compaction && (li.flush || nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum)
-		}
-		for df := range ve.DeletedFiles {
-			li.removed = append(li.removed, fileEntry{df.Level, metas[df.FileNum]})
 		}
 		log = append(log, li)
 	}
