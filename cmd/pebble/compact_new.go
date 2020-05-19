@@ -90,17 +90,6 @@ type logItem struct {
 	removed    []fileEntry
 }
 
-func (li logItem) levelSizesDelta() levelSizes {
-	var sizes levelSizes
-	for _, f := range li.added {
-		sizes[f.level] += int64(f.meta.Size)
-	}
-	for _, f := range li.removed {
-		sizes[f.level] -= int64(f.meta.Size)
-	}
-	return sizes
-}
-
 type fileEntry struct {
 	level int
 	meta  *manifest.FileMetadata

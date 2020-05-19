@@ -22,10 +22,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var compactRunConfig struct {
-	pacing float64
-}
-
 var compactCmd = &cobra.Command{
 	Use:   "compact",
 	Short: "compaction benchmarks",
@@ -38,33 +34,7 @@ var compactRunCmd = &cobra.Command{
 	RunE:  runReplay,
 }
 
-func init() {
-	compactRunCmd.Flags().Float64Var(&compactRunConfig.pacing,
-		"pacing", 1.1, "pacing factor (relative to workload's L0 size)")
-}
-
 const numLevels = 7
-
-type levelSizes [numLevels]int64
-
-func (ls *levelSizes) add(o levelSizes) {
-	for i, sz := range o {
-		ls[i] += sz
-	}
-}
-
-func (ls levelSizes) sum() int64 {
-	var total int64
-	for _, v := range ls {
-		total += v
-	}
-	return total
-}
-
-type compactionEvent struct {
-	levelSizes
-	jobID int
-}
 
 type compactionTracker struct {
 	mu         sync.Mutex
@@ -209,44 +179,57 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	m := rd.Metrics()
 	start := time.Now()
 
-	var ref levelSizes
+	var refReadAmplification int32
 	var replayedCount int
 	var sizeSum, sizeCount uint64
 	for _, li := range hist {
-		// Maintain ref as the shape of the LSM during the original run.
-		// We use the size of L0 to establish pacing.
-		ref.add(li.levelSizesDelta())
+		// Maintain refReadAmplification as the reference database's L0 read
+		// amplification. We use it for establishing pacing.
+		for _, fe := range li.added {
+			if fe.level == 0 {
+				refReadAmplification++
+			}
+		}
+		for _, fe := range li.removed {
+			if fe.level == 0 {
+				refReadAmplification--
+			}
+		}
 
 		// Ignore manifest changes due to compactions.
 		if li.compaction {
 			continue
 		}
 
-		// We try to keep the current db's L0 size similar to the reference
-		// db's L0 at the same point in its execution. If we've exceeded it,
-		// we wait for compactions to catch up. This isn't perfect because
-		// different heuristics may choose not to compact L0 at all at the
-		// same size, so we also proceed after five seconds if there are no
-		// active compactions.
+		// We keep the current database's L0 read amplification equal to the
+		// reference database's L0 read amplification at the same point in its
+		// execution. If we've exceeded it, wait for compactions to catch up.
+		var skipCh <-chan time.Time = nil
 		for skip := false; !skip; {
 			activeCompactions, waiterCh := compactions.countActive()
 			m = rd.Metrics()
-			if m.Levels[0].Size <= uint64(compactRunConfig.pacing*float64(ref[0])) {
+			if m.Levels[0].Sublevels <= refReadAmplification {
 				break
 			}
 
-			verbosef("L0 size %s > %.2f × reference L0 size %s; pausing to let compaction catch up.\n",
-				humanize.Uint64(m.Levels[0].Size), compactRunConfig.pacing, humanize.Int64(ref[0]))
+			verbosef("L0 read amplification %d > reference L0 read amplification %d; pausing to let compaction catch up.\n",
+				m.Levels[0].Sublevels, refReadAmplification)
+
+			// If the current database's read amplification has exceeded the
+			// reference by 1 and there are no active compactions, allow it to
+			// proceed after 10 milliseconds, as long as no compaction starts.
+			if activeCompactions == 0 && (m.Levels[0].Sublevels-refReadAmplification) == 1 {
+				skipCh = time.After(10 * time.Millisecond)
+			}
 			select {
 			case <-waiterCh:
 				// A compaction event was processed, continue to check the
-				// size of level zero.
+				// read amplfication.
+				skipCh = nil
 				continue
-			case <-time.After(5 * time.Second):
-				skip = activeCompactions == 0
-				if skip {
-					verbosef("No compaction in 5 seconds. Proceeding anyways.\n")
-				}
+			case <-skipCh:
+				skip = true
+				verbosef("No compaction in 10 milliseconds. Proceeding anyways.\n")
 			}
 		}
 
