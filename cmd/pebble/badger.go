@@ -126,6 +126,10 @@ type badgerBatch struct {
 	txn *badger.Txn
 }
 
+func (b badgerBatch) Close() error {
+	return nil
+}
+
 func (b badgerBatch) Commit(opts *pebble.WriteOptions) error {
 	return b.txn.Commit()
 }
