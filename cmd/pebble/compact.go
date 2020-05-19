@@ -288,20 +288,34 @@ func runReplay(cmd *cobra.Command, args []string) error {
 
 	verbosef("Replayed all %d tables.\n", replayedCount)
 	d := rd.Done()
+
 	m = d.Metrics()
-	if backgroundCompactions(m) {
-		fmt.Println(m)
-		fmt.Println("Waiting for background compactions to complete.")
-		for range time.Tick(time.Second) {
-			m = d.Metrics()
-			if !backgroundCompactions(m) {
-				break
-			}
+	fmt.Println(m)
+	fmt.Println("Waiting for background compactions to complete.")
+
+	for quiesced := false; !quiesced; {
+		activeCompactions, waiterCh := compactions.countActive()
+		if activeCompactions > 0 {
+			<-waiterCh
+			continue
+		}
+
+		// There are no active compactions, but one might be initiated by
+		// the completion of a previous one. Wait a second, and break out
+		// only if no new compactions are initiated.
+		select {
+		case <-time.After(time.Second):
+			quiesced = true
+			break
+		case <-waiterCh:
+			continue
 		}
 	}
 
-	fmt.Println(m)
 	fmt.Println("Background compactions finished.")
+	m = d.Metrics()
+	fmt.Println(m)
+
 	// Calculate read amplification before compacting everything.
 	var ramp int32
 	for _, l := range m.Levels {
@@ -356,18 +370,6 @@ func totalSize(m *pebble.Metrics) uint64 {
 		sz += lm.Size
 	}
 	return sz
-}
-
-func backgroundCompactions(m *pebble.Metrics) bool {
-	// The last level never gets selected as an input level for compaction,
-	// only as an output level, so ignore it for the purposes of determining if
-	// background compactions are still needed.
-	for i := range m.Levels[:len(m.Levels)-1] {
-		if m.Levels[i].Score > 1 {
-			return true
-		}
-	}
-	return false
 }
 
 func verbosef(fmtstr string, args ...interface{}) {
