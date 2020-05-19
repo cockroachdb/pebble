@@ -258,6 +258,19 @@ func (lim *Limiter) WaitN(ctx context.Context, n int) (err error) {
 	}
 }
 
+// Delay is shorthand for DelayN(time.Now(), 1).
+func (lim *Limiter) Delay() time.Duration {
+	return lim.DelayN(time.Now(), 1)
+}
+
+// DelayN returns the delay to wait to permit n events to happen. Zero duration
+// means act immediately. InfDuration means the limiter cannot grant the tokens
+// requested within the maximum wait time.
+func (lim *Limiter) DelayN(now time.Time, n int) time.Duration {
+	r := lim.reserveN(now, n, InfDuration)
+	return r.DelayFrom(now)
+}
+
 // SetLimit is shorthand for SetLimitAt(time.Now(), newLimit).
 func (lim *Limiter) SetLimit(newLimit Limit) {
 	lim.SetLimitAt(time.Now(), newLimit)

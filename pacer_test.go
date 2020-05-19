@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,9 +21,9 @@ type mockCountLimiter struct {
 	burst      int
 }
 
-func (m *mockCountLimiter) WaitN(ctx context.Context, n int) error {
+func (m *mockCountLimiter) DelayN(now time.Time, n int) time.Duration {
 	m.waitCount += n
-	return nil
+	return 0
 }
 
 func (m *mockCountLimiter) AllowN(now time.Time, n int) bool {
@@ -41,9 +40,9 @@ type mockPrintLimiter struct {
 	burst int
 }
 
-func (m *mockPrintLimiter) WaitN(ctx context.Context, n int) error {
+func (m *mockPrintLimiter) DelayN(now time.Time, n int) time.Duration {
 	fmt.Fprintf(&m.buf, "wait: %d\n", n)
-	return nil
+	return 0
 }
 
 func (m *mockPrintLimiter) AllowN(now time.Time, n int) bool {
