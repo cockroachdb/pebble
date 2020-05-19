@@ -35,6 +35,7 @@ type iterator interface {
 }
 
 type batch interface {
+	Close() error
 	Commit(opts *pebble.WriteOptions) error
 	Set(key, value []byte, opts *pebble.WriteOptions) error
 	LogData(data []byte, opts *pebble.WriteOptions) error

@@ -149,6 +149,10 @@ type boltDBBatch struct {
 	bucket *bolt.Bucket
 }
 
+func (b boltDBBatch) Close() error {
+	return nil
+}
+
 func (b boltDBBatch) Commit(opts *pebble.WriteOptions) error {
 	return b.tx.Commit()
 }

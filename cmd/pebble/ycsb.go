@@ -334,6 +334,7 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 		if err := b.Commit(y.writeOpts); err != nil {
 			log.Fatal(err)
 		}
+		_ = b.Close()
 		fmt.Printf("inserted keys [%d-%d)\n",
 			1+ycsbConfig.prepopulatedKeys,
 			1+ycsbConfig.prepopulatedKeys+ycsbConfig.initialKeys)
@@ -441,6 +442,7 @@ func (y *ycsb) insert(db DB, buf *ycsbBuf) {
 	if err := b.Commit(y.writeOpts); err != nil {
 		log.Fatal(err)
 	}
+	_ = b.Close()
 	atomic.AddUint64(&y.numKeys[ycsbInsert], uint64(len(keyNums)))
 
 	for i := range keyNums {
@@ -490,6 +492,7 @@ func (y *ycsb) update(db DB, buf *ycsbBuf) {
 	if err := b.Commit(y.writeOpts); err != nil {
 		log.Fatal(err)
 	}
+	_ = b.Close()
 	atomic.AddUint64(&y.numKeys[ycsbUpdate], uint64(count))
 }
 

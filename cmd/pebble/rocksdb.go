@@ -107,6 +107,11 @@ func (i rocksDBIterator) Close() error {
 	return nil
 }
 
+func (b rocksDBBatch) Close() error {
+	b.batch.Close()
+	return nil
+}
+
 func (b rocksDBBatch) Commit(opts *pebble.WriteOptions) error {
 	return b.batch.Commit(opts.Sync)
 }
@@ -353,6 +358,11 @@ func (i crdbPebbleDBIterator) Prev() bool {
 
 func (i crdbPebbleDBIterator) Close() error {
 	i.iter.Close()
+	return nil
+}
+
+func (b crdbPebbleDBBatch) Close() error {
+	b.batch.Close()
 	return nil
 }
 
