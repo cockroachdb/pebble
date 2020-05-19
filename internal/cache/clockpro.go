@@ -52,13 +52,10 @@ func (k key) String() string {
 	return fmt.Sprintf("%d/%d/%d", k.id, k.fileNum, k.offset)
 }
 
-// Handle provides a strong reference to an entry in the cache. The reference
-// does not pin the entry in the cache, but it does prevent the underlying byte
-// slice from being reused. When entry is non-nil, value is initialized to
-// entry.val. Over the lifetime of the handle (until Release is called),
-// entry.val may change, but value will remain unchanged.
+// Handle provides a strong reference to a value in the cache. The reference
+// does not pin the value in the cache, but it does prevent the underlying byte
+// slice from being reused.
 type Handle struct {
-	entry *entry
 	value *Value
 }
 
@@ -77,51 +74,6 @@ func (h Handle) Release() {
 	if h.value != nil {
 		h.value.release()
 	}
-	if h.entry != nil {
-		h.entry.release()
-	}
-}
-
-// Weak converts the (strong) handle into a WeakHandle. A WeakHandle allows the
-// underlying data to be evicted and GC'd, while allowing WeakHandle.Strong()
-// to quickly convert the handle back to a strong handle in order to retrieve
-// the cached data (if it has not been evicted). It is still necessary to call
-// Handle.Release() after calling Weak() (i.e. the receiver - a strong handle -
-// still maintains a reference to the value).
-func (h Handle) Weak() *WeakHandle {
-	if h.entry == nil {
-		return nil
-	}
-	h.entry.acquire()
-	return (*WeakHandle)(h.entry)
-}
-
-// WeakHandle provides a "weak" reference to an entry in the cache. A weak
-// reference allows the entry to be evicted, but also provides fast access
-type WeakHandle entry
-
-// Strong converts the weak handle into a strong handle, allowing the value to
-// be retrieved. The returned Handle must be released.
-func (h *WeakHandle) Strong() Handle {
-	e := (*entry)(h)
-	v := e.acquireValue()
-	if v == nil {
-		return Handle{}
-	}
-	atomic.StoreInt32(&e.referenced, 1)
-	// Record a cache hit because the entry is being used as a WeakHandle and
-	// successfully avoided a more expensive shard.Get() operation.
-	atomic.AddInt64(&e.shard.hits, 1)
-	// NB: The returned strong handle cannot be converted back to a weak handle
-	// again. We could allow this, but it adds an entry.acquire() call to this
-	// path.
-	return Handle{value: v}
-}
-
-// Release releases the reference to the cache entry.
-func (h *WeakHandle) Release() {
-	e := (*entry)(h)
-	e.release()
 }
 
 type shard struct {
@@ -154,15 +106,11 @@ type shard struct {
 
 func (c *shard) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
 	c.mu.RLock()
-	e := c.blocks.Get(key{fileKey{id, fileNum}, offset})
 	var value *Value
-	if e != nil {
+	if e := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
 		value = e.acquireValue()
 		if value != nil {
 			atomic.StoreInt32(&e.referenced, 1)
-			e.acquire()
-		} else {
-			e = nil
 		}
 	}
 	c.mu.RUnlock()
@@ -171,7 +119,7 @@ func (c *shard) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
 		return Handle{}
 	}
 	atomic.AddInt64(&c.hits, 1)
-	return Handle{entry: e, value: value}
+	return Handle{value: value}
 }
 
 func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value) Handle {
@@ -193,10 +141,9 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-cold")
 			c.sizeCold += e.size
-			e.acquire()
 		} else {
 			value.ref.trace("skip-cold")
-			e.release()
+			e.free()
 			e = nil
 		}
 
@@ -213,9 +160,6 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 			value.ref.trace("add-cold")
 			c.sizeCold += delta
 		}
-		// NB: the call to shard.evict() may evict "e", so we have to acquire a
-		// reference to it first.
-		e.acquire()
 		c.evict()
 
 	default:
@@ -235,25 +179,34 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-hot")
 			c.sizeHot += e.size
-			e.acquire()
 		} else {
 			value.ref.trace("skip-hot")
-			e.release()
+			e.free()
 			e = nil
 		}
 	}
 
 	// Values are initialized with a reference count of 1. That reference count
 	// is being transferred to the returned Handle.
-	return Handle{entry: e, value: value}
+	return Handle{value: value}
 }
 
 // Delete deletes the cached value for the specified file and offset.
 func (c *shard) Delete(id uint64, fileNum base.FileNum, offset uint64) {
+	// The common case is there is nothing to delete, so do a quick check with
+	// shared lock.
+	k := key{fileKey{id, fileNum}, offset}
+	c.mu.RLock()
+	exists := c.blocks.Get(k) != nil
+	c.mu.RUnlock()
+	if !exists {
+		return
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	e := c.blocks.Get(key{fileKey{id, fileNum}, offset})
+	e := c.blocks.Get(k)
 	if e == nil {
 		return
 	}
@@ -288,7 +241,7 @@ func (c *shard) Free() {
 	for c.handHot != nil {
 		e := c.handHot
 		c.metaDel(c.handHot)
-		e.release()
+		e.free()
 	}
 
 	c.blocks.free()
@@ -441,7 +394,7 @@ func (c *shard) metaEvict(e *entry) {
 	}
 	c.metaDel(e)
 	c.metaCheck(e)
-	e.release()
+	e.free()
 }
 
 func (c *shard) evict() {
@@ -515,7 +468,7 @@ func (c *shard) runHandTest() {
 		}
 		c.metaDel(e)
 		c.metaCheck(e)
-		e.release()
+		e.free()
 	}
 
 	c.handTest = c.handTest.next()
@@ -551,25 +504,6 @@ type Metrics struct {
 // maintains a map of the cached blocks for a particular fileNum. This allows
 // efficient eviction of all of the blocks for a file which is used when an
 // sstable is deleted from disk.
-//
-// Strong vs Weak Handles
-//
-// When a block is retrieved from the cache, a Handle is returned. The Handle
-// maintains a reference to the associated value and will prevent the value
-// from being removed. The caller must call Handle.Release() when they are done
-// using the value (failure to do so will result in a memory leak). Until
-// Handle.Release() is called, the value is pinned in memory.
-//
-// A Handle can be transformed into a WeakHandle by a call to Handle.Weak(). A
-// WeakHandle does not pin the associated value in memory, and instead allows
-// the value to be evicted from the cache and reclaimed by the Go GC. In order
-// to retrieve the value from a WeakHandle, the handle can be transformed back
-// into a strong handle by calling WeakHandle.Strong(). The returned strong
-// handle may be empty if the value has been evicted from the
-// cache. WeakHandle's are useful for avoiding the overhad of a cache
-// lookup. They are used for sstable index, filter, and range-del blocks, which
-// are frequently accessed, almost always in the cache, but which we want to
-// allow to be evicted under memory pressure.
 //
 // Memory Management
 //

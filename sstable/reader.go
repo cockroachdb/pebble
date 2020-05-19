@@ -898,38 +898,6 @@ func (i *twoLevelCompactionIterator) skipForward(
 	return key, val
 }
 
-type weakCachedBlock struct {
-	bh     BlockHandle
-	mu     sync.RWMutex
-	handle *cache.WeakHandle
-}
-
-func (w *weakCachedBlock) get() cache.Handle {
-	var h cache.Handle
-	w.mu.RLock()
-	if w.handle != nil {
-		h = w.handle.Strong()
-	}
-	w.mu.RUnlock()
-	return h
-}
-
-func (w *weakCachedBlock) update(h *cache.WeakHandle) {
-	w.mu.Lock()
-	if w.handle != nil {
-		w.handle.Release()
-	}
-	w.handle = h
-	w.mu.Unlock()
-}
-
-func (w *weakCachedBlock) release() {
-	if w.handle != nil {
-		w.handle.Release()
-		w.handle = nil
-	}
-}
-
 type blockTransform func([]byte) ([]byte, error)
 
 // ReaderOption provide an interface to do work on Reader while it is being
@@ -1025,9 +993,9 @@ type Reader struct {
 	fileNum           base.FileNum
 	rawTombstones     bool
 	err               error
-	index             weakCachedBlock
-	filter            weakCachedBlock
-	rangeDel          weakCachedBlock
+	indexBH           BlockHandle
+	filterBH          BlockHandle
+	rangeDelBH        BlockHandle
 	rangeDelTransform blockTransform
 	propertiesBH      BlockHandle
 	metaIndexBH       BlockHandle
@@ -1042,9 +1010,6 @@ type Reader struct {
 
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
-	r.index.release()
-	r.filter.release()
-	r.rangeDel.release()
 	r.opts.Cache.Unref()
 
 	if r.err != nil {
@@ -1168,7 +1133,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 // range-del block for the table. Returns nil if the table does not contain any
 // range deletions.
 func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
-	if r.rangeDel.bh.Length == 0 {
+	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
 	h, err := r.readRangeDel()
@@ -1183,36 +1148,15 @@ func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readWeakCachedBlock(&r.index, nil /* transform */)
+	return r.readBlock(r.indexBH, nil /* transform */)
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
-	return r.readWeakCachedBlock(&r.filter, nil /* transform */)
+	return r.readBlock(r.filterBH, nil /* transform */)
 }
 
 func (r *Reader) readRangeDel() (cache.Handle, error) {
-	return r.readWeakCachedBlock(&r.rangeDel, r.rangeDelTransform)
-}
-
-func (r *Reader) readWeakCachedBlock(
-	w *weakCachedBlock, transform blockTransform,
-) (cache.Handle, error) {
-	// Fast-path for retrieving the block from a weak cache handle.
-	h := w.get()
-	if h.Get() != nil {
-		return h, nil
-	}
-
-	// Slow-path: read the index block from disk. This checks the cache again,
-	// but that is ok because somebody else might have inserted it for us.
-	h, err := r.readBlock(w.bh, transform)
-	if err != nil {
-		return cache.Handle{}, err
-	}
-	if wh := h.Weak(); wh != nil {
-		w.update(wh)
-	}
-	return h, err
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform)
 }
 
 // readBlock reads and decompresses a block from disk into memory.
@@ -1373,9 +1317,9 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaRangeDelV2Name]; ok {
-		r.rangeDel.bh = bh
+		r.rangeDelBH = bh
 	} else if bh, ok := meta[metaRangeDelName]; ok {
-		r.rangeDel.bh = bh
+		r.rangeDelBH = bh
 		if !r.rawTombstones {
 			r.rangeDelTransform = r.transformRangeDelV1
 		}
@@ -1391,7 +1335,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 		var done bool
 		for _, t := range types {
 			if bh, ok := meta[t.prefix+name]; ok {
-				r.filter.bh = bh
+				r.filterBH = bh
 
 				switch t.ftype {
 				case TableFilter:
@@ -1419,8 +1363,8 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	l := &Layout{
 		Data:       make([]BlockHandle, 0, r.Properties.NumDataBlocks),
-		Filter:     r.filter.bh,
-		RangeDel:   r.rangeDel.bh,
+		Filter:     r.filterBH,
+		RangeDel:   r.rangeDelBH,
 		Properties: r.propertiesBH,
 		MetaIndex:  r.metaIndexBH,
 		Footer:     r.footerBH,
@@ -1433,7 +1377,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	defer indexH.Release()
 
 	if r.Properties.IndexPartitions == 0 {
-		l.Index = append(l.Index, r.index.bh)
+		l.Index = append(l.Index, r.indexBH)
 		iter, _ := newBlockIter(r.Compare, indexH.Get())
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, n := decodeBlockHandle(value)
@@ -1443,7 +1387,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			l.Data = append(l.Data, dataBH)
 		}
 	} else {
-		l.TopIndex = r.index.bh
+		l.TopIndex = r.indexBH
 		topIter, _ := newBlockIter(r.Compare, indexH.Get())
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, n := decodeBlockHandle(value)
@@ -1623,7 +1567,7 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 		r.err = err
 		return nil, r.Close()
 	}
-	r.index.bh = footer.indexBH
+	r.indexBH = footer.indexBH
 	r.metaIndexBH = footer.metaindexBH
 	r.footerBH = footer.footerBH
 
