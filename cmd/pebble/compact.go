@@ -17,14 +17,11 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/replay"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
-
-var compactRunConfig struct {
-	pacing float64
-}
 
 var compactCmd = &cobra.Command{
 	Use:   "compact",
@@ -38,33 +35,7 @@ var compactRunCmd = &cobra.Command{
 	RunE:  runReplay,
 }
 
-func init() {
-	compactRunCmd.Flags().Float64Var(&compactRunConfig.pacing,
-		"pacing", 1.1, "pacing factor (relative to workload's L0 size)")
-}
-
 const numLevels = 7
-
-type levelSizes [numLevels]int64
-
-func (ls *levelSizes) add(o levelSizes) {
-	for i, sz := range o {
-		ls[i] += sz
-	}
-}
-
-func (ls levelSizes) sum() int64 {
-	var total int64
-	for _, v := range ls {
-		total += v
-	}
-	return total
-}
-
-type compactionEvent struct {
-	levelSizes
-	jobID int
-}
 
 type compactionTracker struct {
 	mu         sync.Mutex
@@ -180,8 +151,8 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	var workloadTableCount int
 	for _, li := range hist {
 		if !li.compaction {
-			for _, f := range li.added {
-				workloadSize += int64(f.meta.Size)
+			for _, f := range li.ve.NewFiles {
+				workloadSize += int64(f.Meta.Size)
 				workloadTableCount++
 			}
 		}
@@ -209,44 +180,55 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	m := rd.Metrics()
 	start := time.Now()
 
-	var ref levelSizes
 	var replayedCount int
 	var sizeSum, sizeCount uint64
+	var ref *manifest.Version
 	for _, li := range hist {
-		// Maintain ref as the shape of the LSM during the original run.
-		// We use the size of L0 to establish pacing.
-		ref.add(li.levelSizesDelta())
+		// Maintain ref as the reference database's version for calculating
+		// read amplification.
+		var bve manifest.BulkVersionEdit
+		bve.Accumulate(&li.ve)
+		ref, _, err = bve.Apply(ref, mvccCompare, nil)
+		if err != nil {
+			return err
+		}
 
 		// Ignore manifest changes due to compactions.
 		if li.compaction {
 			continue
 		}
 
-		// We try to keep the current db's L0 size similar to the reference
-		// db's L0 at the same point in its execution. If we've exceeded it,
-		// we wait for compactions to catch up. This isn't perfect because
-		// different heuristics may choose not to compact L0 at all at the
-		// same size, so we also proceed after five seconds if there are no
-		// active compactions.
+		// We keep the current database's L0 read amplification equal to the
+		// reference database's L0 read amplification at the same point in its
+		// execution. If we've exceeded it, wait for compactions to catch up.
+		var skipCh <-chan time.Time = nil
 		for skip := false; !skip; {
+			refReadAmplification := ref.L0SubLevels.ReadAmplification()
+
 			activeCompactions, waiterCh := compactions.countActive()
 			m = rd.Metrics()
-			if m.Levels[0].Size <= uint64(compactRunConfig.pacing*float64(ref[0])) {
+			if int(m.Levels[0].Sublevels) <= refReadAmplification {
 				break
 			}
 
-			verbosef("L0 size %s > %.2f × reference L0 size %s; pausing to let compaction catch up.\n",
-				humanize.Uint64(m.Levels[0].Size), compactRunConfig.pacing, humanize.Int64(ref[0]))
+			verbosef("L0 read amplification %d > reference L0 read amplification %d; pausing to let compaction catch up.\n",
+				m.Levels[0].Sublevels, refReadAmplification)
+
+			// If the current database's read amplification has exceeded the
+			// reference by 1 and there are no active compactions, allow it to
+			// proceed after 10 milliseconds, as long as no compaction starts.
+			if activeCompactions == 0 && (int(m.Levels[0].Sublevels)-refReadAmplification) == 1 {
+				skipCh = time.After(10 * time.Millisecond)
+			}
 			select {
 			case <-waiterCh:
 				// A compaction event was processed, continue to check the
-				// size of level zero.
+				// read amplfication.
+				skipCh = nil
 				continue
-			case <-time.After(5 * time.Second):
-				skip = activeCompactions == 0
-				if skip {
-					verbosef("No compaction in 5 seconds. Proceeding anyways.\n")
-				}
+			case <-skipCh:
+				skip = true
+				verbosef("No compaction in 10 milliseconds. Proceeding anyways.\n")
 			}
 		}
 
@@ -257,27 +239,27 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		}
 
 		if li.flush {
-			for _, f := range li.added {
-				name := fmt.Sprintf("%s.sst", f.meta.FileNum)
+			for _, f := range li.ve.NewFiles {
+				name := fmt.Sprintf("%s.sst", f.Meta.FileNum)
 				tablePath := filepath.Join(workloadDir, name)
 				replayedCount++
 				verbosef("Flushing table %d/%d %s (%s, seqnums %d-%d)\n", replayedCount, workloadTableCount,
-					name, humanize.Int64(int64(f.meta.Size)), f.meta.SmallestSeqNum, f.meta.LargestSeqNum)
-				if err := rd.FlushExternal(replay.Table{Path: tablePath, FileMetadata: f.meta}); err != nil {
+					name, humanize.Int64(int64(f.Meta.Size)), f.Meta.SmallestSeqNum, f.Meta.LargestSeqNum)
+				if err := rd.FlushExternal(replay.Table{Path: tablePath, FileMetadata: f.Meta}); err != nil {
 					return err
 				}
 			}
 		} else {
 			var tables []replay.Table
-			for _, f := range li.added {
-				name := fmt.Sprintf("%s.sst", f.meta.FileNum)
+			for _, f := range li.ve.NewFiles {
+				name := fmt.Sprintf("%s.sst", f.Meta.FileNum)
 				tablePath := filepath.Join(workloadDir, name)
 				replayedCount++
-				verbosef("Ingesting %d tables: table %d/%d %s (%s)\n", len(li.added), replayedCount,
-					workloadTableCount, name, humanize.Int64(int64(f.meta.Size)))
+				verbosef("Ingesting %d tables: table %d/%d %s (%s)\n", len(li.ve.NewFiles), replayedCount,
+					workloadTableCount, name, humanize.Int64(int64(f.Meta.Size)))
 				tables = append(tables, replay.Table{
 					Path:         tablePath,
-					FileMetadata: f.meta,
+					FileMetadata: f.Meta,
 				})
 			}
 			if err := rd.Ingest(tables); err != nil {
