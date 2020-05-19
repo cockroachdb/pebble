@@ -95,9 +95,8 @@ func wait(l *rate.Limiter) {
 		return
 	}
 
-	now := time.Now()
-	r := l.ReserveN(now, 1)
-	if d := r.DelayFrom(now); d > 0 {
+	d := l.DelayN(time.Now(), 1)
+	if d > 0 && d != rate.InfDuration {
 		time.Sleep(d)
 	}
 }

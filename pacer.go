@@ -5,14 +5,16 @@
 package pebble
 
 import (
-	"context"
 	"time"
+
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/rate"
 )
 
 var nilPacer = &noopPacer{}
 
 type limiter interface {
-	WaitN(ctx context.Context, n int) (err error)
+	DelayN(now time.Time, n int) time.Duration
 	AllowN(now time.Time, n int) bool
 	Burst() int
 }
@@ -41,16 +43,18 @@ func (p *internalPacer) limit(amount, currentLevel uint64) error {
 	if currentLevel <= p.slowdownThreshold {
 		burst := p.limiter.Burst()
 		for amount > uint64(burst) {
-			err := p.limiter.WaitN(context.Background(), burst)
-			if err != nil {
-				return err
+			d := p.limiter.DelayN(time.Now(), burst)
+			if d == rate.InfDuration {
+				return errors.Errorf("pacing failed")
 			}
+			time.Sleep(d)
 			amount -= uint64(burst)
 		}
-		err := p.limiter.WaitN(context.Background(), int(amount))
-		if err != nil {
-			return err
+		d := p.limiter.DelayN(time.Now(), int(amount))
+		if d == rate.InfDuration {
+			return errors.Errorf("pacing failed")
 		}
+		time.Sleep(d)
 	} else {
 		burst := p.limiter.Burst()
 		for amount > uint64(burst) {
