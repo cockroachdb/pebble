@@ -242,20 +242,22 @@ type ycsbBuf struct {
 }
 
 type ycsb struct {
-	writeOpts   *pebble.WriteOptions
-	weights     ycsbWeights
-	reg         *histogramRegistry
-	ops         *randvar.Weighted
-	keyDist     randvar.Dynamic
-	batchDist   randvar.Static
-	scanDist    randvar.Static
-	valueDist   *randvar.BytesFlag
-	keyNum      *ackseq.S
-	numOps      uint64
-	numKeys     [ycsbNumOps]uint64
-	prevNumKeys [ycsbNumOps]uint64
-	limiter     *rate.Limiter
-	opsMap      map[string]int
+	writeOpts    *pebble.WriteOptions
+	weights      ycsbWeights
+	reg          *histogramRegistry
+	ops          *randvar.Weighted
+	keyDist      randvar.Dynamic
+	batchDist    randvar.Static
+	scanDist     randvar.Static
+	valueDist    *randvar.BytesFlag
+	keyNum       *ackseq.S
+	numOps       uint64
+	numKeys      [ycsbNumOps]uint64
+	prevNumKeys  [ycsbNumOps]uint64
+	readAmpCount uint64
+	readAmpSum   uint64
+	limiter      *rate.Limiter
+	opsMap       map[string]int
 }
 
 func newYcsb(
@@ -462,6 +464,15 @@ func (y *ycsb) read(db DB, buf *ycsbBuf) {
 		_ = iter.Key()
 		_ = iter.Value()
 	}
+
+	type readAmper interface {
+		ReadAmplification() int
+	}
+	if r, ok := iter.(readAmper); ok {
+		atomic.AddUint64(&y.readAmpCount, 1)
+		atomic.AddUint64(&y.readAmpSum, uint64(r.ReadAmplification()))
+	}
+
 	if err := iter.Close(); err != nil {
 		log.Fatal(err)
 	}
@@ -534,5 +545,9 @@ func (y *ycsb) done(elapsed time.Duration) {
 			time.Duration(h.ValueAtQuantile(99)).Seconds()*1000,
 			time.Duration(h.ValueAtQuantile(100)).Seconds()*1000)
 	})
+	if c := atomic.LoadUint64(&y.readAmpCount); c > 0 {
+		s := atomic.LoadUint64(&y.readAmpSum)
+		fmt.Printf("\n%10s %7.1f\n", "read_amp", float64(s)/float64(c))
+	}
 	fmt.Println()
 }

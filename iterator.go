@@ -557,3 +557,14 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.opts.UpperBound = upper
 	i.iter.SetBounds(lower, upper)
 }
+
+// ReadAmplification returns the read amplification experienced by this
+// iterator. This is the sum of the memtables, the L0 sublevels and the Ln
+// levels. Higher read amplification generally results in slower reads, though
+// allowing higher read amplification can also result in faster writes.
+func (i *Iterator) ReadAmplification() int {
+	if m, ok := i.iter.(*mergingIter); ok {
+		return len(m.levels)
+	}
+	return 1
+}
