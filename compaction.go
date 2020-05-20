@@ -134,6 +134,10 @@ type compaction struct {
 	// in the grandparent when this compaction finishes will be the same.
 	grandparents []*fileMetadata
 
+	// Boundaries at which flushes to L0 should be split. Determined by
+	// L0SubLevels. If nil, flushes aren't split.
+	l0Limits [][]byte
+
 	// List of disjoint inuse key ranges the compaction overlaps with in
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
@@ -199,6 +203,9 @@ func newFlush(
 		flushing:            flushing,
 		atomicBytesIterated: bytesFlushed,
 	}
+	if cur.L0SubLevels != nil {
+		c.l0Limits = cur.L0SubLevels.FlushSplitKeys()
+	}
 
 	smallestSet, largestSet := false, false
 	updatePointBounds := func(iter internalIterator) {
@@ -247,16 +254,10 @@ func newFlush(
 		}
 	}
 
-	// TODO(peter): When we allow flushing to create multiple tables we'll want
-	// to choose sstable boundaries based on the grandparents. But for now we
-	// want to create a single table during flushing so this is all commented
-	// out.
-	if false {
-		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
-		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
-		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
-		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
-	}
+	c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
+	c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
+	c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
+	c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 
 	c.setupInuseKeyRanges()
 	return c
@@ -514,6 +515,24 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 		}
 	}
 	return nil
+}
+
+// findL0Limit takes the start key for a table and return the user key to which
+// that table can be extended without excessively overlapping the grandparent
+// level, or hitting the next l0Limit, whichever happens sooner. For non-flushes
+// this function passes through to findGrandparentLimit.
+func (c *compaction) findL0Limit(start []byte) []byte {
+	if c.startLevel > -1 || c.outputLevel != 0 || len(c.l0Limits) == 0 {
+		return c.findGrandparentLimit(start)
+	}
+	index := sort.Search(len(c.l0Limits), func(i int) bool {
+		return c.cmp(c.l0Limits[i], start) > 0
+	})
+	grandparentLimit := c.findGrandparentLimit(start)
+	if index < len(c.l0Limits) && (grandparentLimit == nil || c.cmp(c.l0Limits[index], grandparentLimit) < 0) {
+		return c.l0Limits[index]
+	}
+	return grandparentLimit
 }
 
 // allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
@@ -1507,13 +1526,18 @@ func (d *DB) runCompaction(
 	// to a grandparent file largest key, or nil. Taken together, these
 	// progress guarantees ensure that eventually the input iterator will be
 	// exhausted and the range tombstone fragments will all be flushed.
+	splittingFlush := c.startLevel < 0 && c.outputLevel == 0
 	for key, val := iter.First(); key != nil || !c.rangeDelFrag.Empty(); {
 		var limit []byte
 		if c.rangeDelFrag.Empty() {
 			// In this case, `limit` will be a larger user key than `key.UserKey`, or
 			// nil. In either case, the inner loop will execute at least once to
 			// process `key`, and the input iterator will be advanced.
-			limit = c.findGrandparentLimit(key.UserKey)
+			if splittingFlush {
+				limit = c.findL0Limit(key.UserKey)
+			} else {
+				limit = c.findGrandparentLimit(key.UserKey)
+			}
 		} else {
 			// There is a range tombstone spanning from the last file into the
 			// current one. Therefore this file's smallest boundary will overlap the
@@ -1532,7 +1556,11 @@ func (d *DB) runCompaction(
 			// n > 0 since we cannot have seen range tombstones at the
 			// beginning of the first file.
 			n := len(ve.NewFiles)
-			limit = c.findGrandparentLimit(ve.NewFiles[n-1].Meta.Largest.UserKey)
+			if splittingFlush {
+				limit = c.findL0Limit(ve.NewFiles[n-1].Meta.Largest.UserKey)
+			} else {
+				limit = c.findGrandparentLimit(ve.NewFiles[n-1].Meta.Largest.UserKey)
+			}
 		}
 
 		// Each inner loop iteration processes one key from the input iterator.
@@ -1555,9 +1583,19 @@ func (d *DB) runCompaction(
 			// as b#RANGEDEL,3 which sorts before b#SET,0. Normally we just adjust
 			// the seqnum of this key, but that isn't possible for seqnum 0.
 			if passedGrandparentLimit || (limit != nil && c.cmp(key.UserKey, limit) > 0) {
-				if prevPointSeqNum != 0 || c.rangeDelFrag.Empty() {
-					if passedGrandparentLimit {
+				// The flush split exception exists because, when flushing
+				// to L0, we are able to guarantee that the end key of
+				// tombstones will also be truncated (through the
+				// FlushToNoStraddling call), and no user keys will
+				// be split between sstables.
+				if prevPointSeqNum != 0 || c.rangeDelFrag.Empty() || splittingFlush {
+					if passedGrandparentLimit || splittingFlush {
 						limit = key.UserKey
+					}
+					if splittingFlush {
+						// Flush all tombstones up until key.UserKey, and
+						// truncate them at that key.
+						c.rangeDelFrag.FlushToNoStraddling(key.UserKey)
 					}
 					break
 				}
@@ -1587,7 +1625,11 @@ func (d *DB) runCompaction(
 				// Use the next key as the sstable boundary. Note that we already
 				// checked this key against the grandparent limit above.
 				limit = key.UserKey
-				break
+				// We do not split user keys when splitting flushes. In that
+				// case, finish writing other internal keys of this user key.
+				if !splittingFlush {
+					break
+				}
 			}
 			if tw == nil {
 				if err := newOutput(); err != nil {
@@ -1604,7 +1646,7 @@ func (d *DB) runCompaction(
 		case key == nil && prevPointSeqNum == 0 && !c.rangeDelFrag.Empty():
 			// We ran out of keys and the last key added to the sstable has a zero
 			// seqnum and there are buffered range tombstones, so we're unable to use
-			// the grandparent limit for the sstable boundary. See the example in the
+			// the grandparent/flush limit for the sstable boundary. See the example in the
 			// in the loop above with range tombstones straddling sstables.
 			limit = nil
 		case key == nil /* && (prevPointSeqNum != 0 || c.rangeDelFrag.Empty()) */ :
@@ -1616,8 +1658,15 @@ func (d *DB) runCompaction(
 			// added to the sstable had a non-zero seqnum we're also in the clear as
 			// we can decrement that seqnum to create a boundary key for the next
 			// sstable (if we end up generating a next sstable).
+			if splittingFlush && limit != nil && !c.rangeDelFrag.Empty() {
+				// We're generating sstables with just range tombstones at the
+				// end of the flush with no non-tombstone keys remaining.
+				// Split range tombstones at table limits to ensure no range
+				// tombstones overlap across sstables in the same flush.
+				c.rangeDelFrag.FlushToNoStraddling(limit)
+			}
 		case key != nil:
-			// We either hit the size limit or the grandparent limit for the sstable.
+			// We either hit the size, grandparent, or L0 limit for the sstable.
 		default:
 			return nil, nil, errors.New("pebble: not reached")
 		}

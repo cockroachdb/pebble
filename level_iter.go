@@ -55,6 +55,7 @@ type levelIter struct {
 	tableOpts IterOptions
 	// The LSM level this levelIter is initialized for.
 	level int
+	sublevel int
 	// The current file wrt the iterator position.
 	index int
 	// The keys to return when iterating past an sstable boundary and that
@@ -633,7 +634,11 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 
 func (l *levelIter) String() string {
 	if l.index >= 0 && l.index < len(l.files) {
-		return fmt.Sprintf("L%d: fileNum=%s", l.level, l.iter.String())
+		levelStr := fmt.Sprintf("L%d", l.level)
+		if l.level == 0 {
+			levelStr += fmt.Sprintf(".%d", l.sublevel)
+		}
+		return fmt.Sprintf("%s: fileNum=%s", levelStr, l.iter.String())
 	}
 	return fmt.Sprintf("L%d: fileNum=<nil>", l.level)
 }

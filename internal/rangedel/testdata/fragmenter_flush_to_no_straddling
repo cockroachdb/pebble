@@ -1,0 +1,112 @@
+build
+2: a--c
+1:  b--d
+flush-to-no-straddling c
+----
+2: ab
+2:  bc
+1:  bc
+1:   cd
+
+build
+flush-to-no-straddling c
+1:  b--d
+----
+1:  b-d
+
+build
+flush-to-no-straddling c
+flush-to-no-straddling b
+----
+
+# Call out of orderout of order
+
+build
+3: a--d
+2:    d--g
+flush-to-no-straddling c
+----
+pebble: start key (c) < flushed key (d)
+
+build
+3: a--d
+flush-to-no-straddling a
+----
+3: a--d
+
+build
+3: a--d
+2:    d--g
+flush-to-no-straddling d
+----
+3: a--d
+2:    d--g
+
+build
+2: a----f
+flush-to-no-straddling c
+----
+2: a-c
+2:   c--f
+
+build
+2: a----f
+flush-to-no-straddling f
+----
+2: a----f
+
+build
+2: a----f
+flush-to-no-straddling g
+----
+2: a----f
+
+build
+3: a-c
+1: a-----g
+flush-to-no-straddling d
+----
+3: a-c
+1: a-c
+1:   cd
+1:    d--g
+
+build
+2: a---e
+1: a------h
+flush-to-no-straddling c
+----
+2: a-c
+1: a-c
+2:   c-e
+1:   c-e
+1:     e--h
+
+build
+3: a-c
+2: a---e
+1: a-----g
+flush-to-no-straddling d
+3:    d----i
+----
+3: a-c
+2: a-c
+1: a-c
+2:   cd
+1:   cd
+3:    de
+2:    de
+1:    de
+3:     e-g
+1:     e-g
+3:       g-i
+
+build
+3: a-c
+2: a-----g
+flush-to-no-straddling e
+----
+3: a-c
+2: a-c
+2:   c-e
+2:     e-g
