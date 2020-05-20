@@ -555,17 +555,18 @@ L3
   a.RANGEDEL.2:b
 ----
 1:
-  000004:[a-e]
+  000004:[a-c]
+  000005:[c-e]
 3:
-  000005:[a-b]
+  000006:[a-b]
 
 compact a-f L1
 ----
 2:
-  000006:[a#3,SET-d#72057594037927935,RANGEDEL]
-  000007:[d#3,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000007:[a#3,SET-d#72057594037927935,RANGEDEL]
+  000008:[d#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000006:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 
 # Test a scenario where we the last point key in an sstable has a
 # seqnum of 0, but there is another range tombstone later in the

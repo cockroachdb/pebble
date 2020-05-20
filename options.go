@@ -288,6 +288,12 @@ type Options struct {
 	// out of the experimental group, or made the non-adjustable default. These
 	// options may change at any time, so do not rely on them.
 	Experimental struct {
+		// FlushSplitBytes denotes the number of bytes to aim to have in each
+		// flush split interval. If set to 0, flushes are not split.
+		//
+		// TODO(bilal): Experiment with this option to pick a good value.
+		FlushSplitBytes int64
+
 		// L0SublevelCompactions enables the use of L0 sublevel-based compaction
 		// picking logic. Defaults to false for now. This logic will become
 		// a non-configurable default once it's better tuned.
@@ -562,6 +568,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
+	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.Experimental.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
@@ -713,6 +720,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
+			case "flush_split_bytes":
+				o.Experimental.FlushSplitBytes, err = strconv.ParseInt(value, 10, 64)
 			case "l0_compaction_threshold":
 				o.L0CompactionThreshold, err = strconv.Atoi(value)
 			case "l0_stop_writes_threshold":

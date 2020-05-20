@@ -1174,6 +1174,129 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 		})
 }
 
+func TestCompactionFindL0Limit(t *testing.T) {
+	cmp := DefaultComparer.Compare
+
+	fileNumCounter := 1
+	parseMeta := func(s string) (*fileMetadata, error) {
+		fields := strings.Fields(s)
+		parts := strings.Split(fields[0], "-")
+		if len(parts) != 2 {
+			return nil, errors.Errorf("malformed table spec: %s", s)
+		}
+		m := &fileMetadata{
+			FileNum:  base.FileNum(fileNumCounter),
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		fileNumCounter++
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+
+		for _, field := range fields[1:] {
+			parts := strings.Split(field, "=")
+			switch parts[0] {
+			case "size":
+				size, err := strconv.ParseUint(parts[1], 10, 64)
+				if err != nil {
+					t.Fatal(err)
+				}
+				m.Size = size
+			}
+		}
+		return m, nil
+	}
+
+	var vers *version
+	flushSplitBytes := int64(0)
+
+	datadriven.RunTest(t, "testdata/compaction_find_l0_limit",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "define":
+				fileMetas := [manifest.NumLevels][]*manifest.FileMetadata{}
+				baseLevel := manifest.NumLevels - 1
+				level := 0
+				var err error
+				for _, arg := range d.CmdArgs {
+					switch arg.Key {
+					case "flush_split_bytes":
+						flushSplitBytes, err = strconv.ParseInt(arg.Vals[0], 10, 64)
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				for _, data := range strings.Split(d.Input, "\n") {
+					data = strings.TrimSpace(data)
+					switch data {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err = strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+					default:
+						meta, err := parseMeta(data)
+						if err != nil {
+							return err.Error()
+						}
+						if level != 0 && level < baseLevel {
+							baseLevel = level
+						}
+						fileMetas[level] = append(fileMetas[level], meta)
+					}
+				}
+
+				vers = &version{
+					Files:       fileMetas,
+				}
+				if err := vers.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter, flushSplitBytes); err != nil {
+					t.Fatal(err)
+				}
+				flushSplitKeys := vers.L0SubLevels.FlushSplitKeys()
+
+				var buf strings.Builder
+				buf.WriteString(vers.DebugString(base.DefaultFormatter))
+				buf.WriteString("flush split keys:\n")
+				for _, key := range flushSplitKeys {
+					fmt.Fprintf(&buf, "\t%s\n", base.DefaultFormatter(key))
+				}
+
+				return buf.String()
+
+			case "flush":
+				c := &compaction{
+					cmp:          cmp,
+					version:      vers,
+					l0Limits:     vers.L0SubLevels.FlushSplitKeys(),
+					startLevel:   -1,
+					outputLevel:  0,
+				}
+
+				var buf bytes.Buffer
+				var smallest, largest string
+				var l0Limit []byte
+				for i, key := range strings.Fields(d.Input) {
+					if i == 0 {
+						smallest = key
+						l0Limit = c.findL0Limit([]byte(key))
+					}
+					if l0Limit != nil && c.cmp(l0Limit, []byte(key)) < 0 {
+						fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
+						smallest = key
+						l0Limit = c.findL0Limit([]byte(key))
+					}
+					largest = key
+				}
+				fmt.Fprintf(&buf, "%s-%s\n", smallest, largest)
+				return buf.String()
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
+
 func TestCompactionOutputLevel(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
 	version := &version{}
