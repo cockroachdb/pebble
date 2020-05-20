@@ -335,14 +335,14 @@ func TestVersionEditApply(t *testing.T) {
 
 				if v != nil {
 					SortBySeqNum(v.Files[0])
-					if err := v.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter); err != nil {
+					if err := v.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter, 10 << 20); err != nil {
 						return err.Error()
 					}
 				}
 
 				bve := BulkVersionEdit{}
 				bve.Accumulate(ve)
-				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter)
+				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10 << 20)
 				if err != nil {
 					return err.Error()
 				}

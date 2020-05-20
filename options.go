@@ -304,6 +304,10 @@ type Options struct {
 	// map during normal usage of a DB.
 	Filters map[string]FilterPolicy
 
+	// FlushSplitBytes denotes the number of bytes to aim to have in each
+	// flush split interval. If set to 0, flushes are not split.
+	FlushSplitBytes int64
+
 	// FS provides the interface for persistent file storage.
 	//
 	// The default value uses the underlying operating system's file system.
@@ -562,6 +566,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
+	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
@@ -713,6 +718,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
+			case "flush_split_bytes":
+				o.FlushSplitBytes, err = strconv.ParseInt(value, 10, 64)
 			case "l0_compaction_threshold":
 				o.L0CompactionThreshold, err = strconv.Atoi(value)
 			case "l0_stop_writes_threshold":

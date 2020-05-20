@@ -48,6 +48,7 @@ func TestOptionsString(t *testing.T) {
   cleaner=delete
   comparer=leveldb.BytewiseComparator
   disable_wal=false
+  flush_split_bytes=0
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864

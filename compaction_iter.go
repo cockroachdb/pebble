@@ -576,11 +576,18 @@ func (i *compactionIter) Close() error {
 	return i.err
 }
 
-func (i *compactionIter) Tombstones(key []byte) []rangedel.Tombstone {
+func (i *compactionIter) Tombstones(key []byte, exclude bool) []rangedel.Tombstone {
 	if key == nil {
 		i.rangeDelFrag.Finish()
 	} else {
-		i.rangeDelFrag.FlushTo(key)
+		if exclude {
+			// The specified end key is exclusive; no versions of the specified
+			// user key (including range tombstones covering that key) should
+			// be flushed yet.
+			i.rangeDelFrag.TruncateAndFlushTo(key)
+		} else {
+			i.rangeDelFrag.FlushTo(key)
+		}
 	}
 	tombstones := i.tombstones
 	i.tombstones = nil
