@@ -735,8 +735,8 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	iterOpts := IterOptions{logger: c.logger}
 	if c.startLevel != 0 {
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[0], c.startLevel, &c.bytesIterated))
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[0], c.startLevel, &c.bytesIterated))
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[0], c.startLevel, invalidSublevel, &c.bytesIterated))
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[0], c.startLevel, invalidSublevel, &c.bytesIterated))
 	} else {
 		for i := range c.inputs[0] {
 			f := c.inputs[0][i]
@@ -751,8 +751,8 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		}
 	}
 
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[1], c.outputLevel, &c.bytesIterated))
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[1], c.outputLevel, &c.bytesIterated))
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[1], c.outputLevel, invalidSublevel, &c.bytesIterated))
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[1], c.outputLevel, invalidSublevel, &c.bytesIterated))
 	return newMergingIter(c.logger, c.cmp, iters...), nil
 }
 

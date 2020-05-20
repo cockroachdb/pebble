@@ -55,6 +55,7 @@ type levelIter struct {
 	tableOpts IterOptions
 	// The LSM level this levelIter is initialized for.
 	level int
+	sublevel int
 	// The current file wrt the iterator position.
 	index int
 	// The keys to return when iterating past an sstable boundary and that
@@ -138,16 +139,20 @@ type levelIter struct {
 // levelIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*levelIter)(nil)
 
+// invalidSublevel denotes an invalid or non-applicable sublevel.
+const invalidSublevel = -1
+
 func newLevelIter(
 	opts IterOptions,
 	cmp Compare,
 	newIters tableNewIters,
 	files []*fileMetadata,
 	level int,
+	sublevel int,
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, newIters, files, level, bytesIterated)
+	l.init(opts, cmp, newIters, files, level, sublevel, bytesIterated)
 	return l
 }
 
@@ -157,10 +162,12 @@ func (l *levelIter) init(
 	newIters tableNewIters,
 	files []*fileMetadata,
 	level int,
+	sublevel int,
 	bytesIterated *uint64,
 ) {
 	l.err = nil
 	l.level = level
+	l.sublevel = sublevel
 	l.logger = opts.getLogger()
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
@@ -632,8 +639,12 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 }
 
 func (l *levelIter) String() string {
-	if l.index >= 0 && l.index < len(l.files) {
-		return fmt.Sprintf("L%d: fileNum=%s", l.level, l.iter.String())
+	levelStr := fmt.Sprintf("L%d", l.level)
+	if l.level == 0 && l.sublevel >= 0 {
+		levelStr += fmt.Sprintf(".%d", l.sublevel)
 	}
-	return fmt.Sprintf("L%d: fileNum=<nil>", l.level)
+	if l.index >= 0 && l.index < len(l.files) {
+		return fmt.Sprintf("%s: fileNum=%s", levelStr, l.iter.String())
+	}
+	return fmt.Sprintf("%s: fileNum=<nil>", levelStr)
 }
