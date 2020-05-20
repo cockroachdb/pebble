@@ -417,8 +417,8 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "broken invariants 2: non-increasing level 0 sequence numbers",
-			badOrdering: true,
+			description: "broken invariants 2: matching level 0 sequence numbers, considered acceptable",
+			badOrdering: false,
 			tables: []testTable{
 				{
 					level:   0,
