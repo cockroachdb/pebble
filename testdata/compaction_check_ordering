@@ -45,7 +45,7 @@ L0
   a.SET.3-d.SET.3
   a.SET.3-b.SET.3
 ----
-fatal: L0 file 000002 does not have strictly increasing largest seqnum: <#3-#3> vs <?-#3>
+OK
 
 check-ordering
 L1
