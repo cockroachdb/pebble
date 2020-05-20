@@ -328,7 +328,73 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	}
 }
 
+// TruncateAndFlushTo is similar to FlushTo, except it also truncates range
+// tombstones to the specified end key by calling truncateAndFlush. Only called
+// in compactions where we can guarantee that all versions of UserKeys < key
+// have been written, or in other words, where we can ensure we don't split
+// a user key across two sstables. Going back to the scenario from above:
+//
+//    a---------k#10
+//         f#8
+//         f#7
+//
+// Let's say the next user key after f is g. Calling TruncateAndFlushTo(g) will
+// flush this range tombstone:
+//
+//    a-------g#10
+//         f#8
+//         f#7
+//
+// And leave this one in f.pending:
+//
+//            g----k#10
+//
+// WARNING: The fragmenter could hold on to the specified end key. Ensure it's
+// a safe byte slice that could outlast the current sstable output, and one
+// that will never be modified.
+func (f *Fragmenter) TruncateAndFlushTo(key []byte) {
+	if f.finished {
+		panic("pebble: tombstone fragmenter already finished")
+	}
+	if f.flushedKey != nil {
+		switch c := f.Cmp(key, f.flushedKey); {
+		case c < 0:
+			panic(fmt.Sprintf("pebble: start key (%s) < flushed key (%s)",
+				key, f.flushedKey))
+		}
+	}
+	if invariants.RaceEnabled {
+		f.checkInvariants(f.pending)
+		defer func() { f.checkInvariants(f.pending) }()
+	}
+	if len(f.pending) > 0 {
+		// Since all of the pending tombstones have the same start key, we only need
+		// to compare against the first one.
+		switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
+		case c > 0:
+			panic(fmt.Sprintf("pebble: keys must be added in order: %s > %s",
+				f.pending[0].Start, key))
+		case c == 0:
+			return
+		}
+	}
+	f.truncateAndFlush(key)
+}
+
+// Start returns the start key of the first tombstone in the pending buffer,
+// or nil if there are no pending tombstones. The start key of all pending
+// tombstones is the same as that of the first one.
+func (f *Fragmenter) Start() []byte {
+	if len(f.pending) > 0 {
+		return f.pending[0].Start.UserKey
+	}
+	return nil
+}
+
 // Flushes all pending tombstones up to key (exclusive).
+//
+// WARNING: The specified key is stored without making a copy, so all callers
+// must ensure it is safe.
 func (f *Fragmenter) truncateAndFlush(key []byte) {
 	f.flushedKey = append(f.flushedKey[:0], key...)
 	done := f.doneBuf[:0]

@@ -48,6 +48,13 @@ func buildTombstones(t *testing.T, cmp base.Compare, s string) []Tombstone {
 			}
 			f.FlushTo([]byte(parts[1]))
 			continue
+		} else if strings.HasPrefix(line, "truncate-and-flush-to ") {
+			parts := strings.Split(line, " ")
+			if len(parts) != 2 {
+				t.Fatalf("expected 2 components, but found %d: %s", len(parts), line)
+			}
+			f.TruncateAndFlushTo([]byte(parts[1]))
+			continue
 		}
 
 		t := parseTombstone(t, line)
@@ -192,6 +199,29 @@ func TestFragmenterFlushTo(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 
 	datadriven.RunTest(t, "testdata/fragmenter_flush_to", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "build":
+			return func() (result string) {
+				defer func() {
+					if r := recover(); r != nil {
+						result = fmt.Sprint(r)
+					}
+				}()
+
+				tombstones := buildTombstones(t, cmp, d.Input)
+				return formatTombstones(tombstones)
+			}()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}
+
+func TestFragmenterTruncateAndFlushTo(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+
+	datadriven.RunTest(t, "testdata/fragmenter_truncate_and_flush_to", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			return func() (result string) {

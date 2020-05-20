@@ -496,7 +496,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			version := &version{
 				Files: fileMetas,
 			}
-			if err := version.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter); err != nil {
+			if err := version.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter, 0); err != nil {
 				t.Fatal(err)
 			}
 
