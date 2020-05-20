@@ -350,11 +350,11 @@ func (v *Version) Next() *Version {
 }
 
 // InitL0Sublevels initializes the L0SubLevels
-func (v *Version) InitL0Sublevels(cmp Compare, formatKey base.FormatKey) error {
+func (v *Version) InitL0Sublevels(cmp Compare, formatKey base.FormatKey, flushSplitBytes int64) error {
 	// TODO(bilal): Experiment with flushSplitMaxBytes to pick a good value, and
 	// make it configurable.
 	var err error
-	v.L0SubLevels, err = NewL0SubLevels(v.Files[0], cmp, formatKey, 10<<20)
+	v.L0SubLevels, err = NewL0SubLevels(v.Files[0], cmp, formatKey, flushSplitBytes)
 	return err
 }
 
@@ -567,8 +567,8 @@ func CheckOrdering(
 		// We have 2 kinds of files:
 		// - Files with exactly one sequence number: these could be either ingested files
 		//   or flushed files. We cannot tell the difference between them based on FileMetadata,
-		//   so our consistency checking here uses the weaker checks assuming it is an ingested
-		//   file (except for the 0 sequence number case below).
+		//   so our consistency checking here uses the weaker checks assuming it is a narrow
+		//   flushed file.
 		// - Files with multiple sequence numbers: these are necessarily flushed files.
 		//
 		// Three cases of overlapping sequence numbers:
@@ -603,15 +603,7 @@ func CheckOrdering(
 		// Since these types of SSTables violate most other sequence number
 		// overlap invariants, and handling this case is important for compatibility
 		// with future versions of pebble, this method relaxes most L0 invariant
-		// checks except for those concerning ingested SSTables.
-
-		// The largest sequence number of any file. Increasing.
-		var largestSeqNum uint64
-
-		// The ingested file sequence numbers that have not yet been checked to be compatible with
-		// flushed files.
-		// They are checked when largestFlushedSeqNum advances past them.
-		var uncheckedIngestedSeqNums []uint64
+		// checks.
 
 		for i := range files {
 			f := files[i]
@@ -626,36 +618,6 @@ func CheckOrdering(
 						errors.Safe(prev.SmallestSeqNum), errors.Safe(prev.LargestSeqNum),
 						errors.Safe(f.SmallestSeqNum), errors.Safe(f.LargestSeqNum))
 				}
-			}
-			if f.LargestSeqNum == 0 && f.LargestSeqNum == f.SmallestSeqNum {
-				// We don't add these to uncheckedIngestedSeqNums since there could be flushed
-				// files of the form [0, N] where N > 0.
-				continue
-			}
-			if i > 0 && largestSeqNum >= f.LargestSeqNum {
-				return errors.Errorf("L0 file %s does not have strictly increasing "+
-					"largest seqnum: <#%d-#%d> vs <?-#%d>",
-					errors.Safe(f.FileNum), errors.Safe(f.SmallestSeqNum),
-					errors.Safe(f.LargestSeqNum), errors.Safe(largestSeqNum))
-			}
-			largestSeqNum = f.LargestSeqNum
-			if f.SmallestSeqNum == f.LargestSeqNum {
-				// Ingested file.
-				uncheckedIngestedSeqNums = append(uncheckedIngestedSeqNums, f.LargestSeqNum)
-			} else {
-				// Flushed file.
-				// Check that unchecked ingested sequence numbers are not coincident with f.SmallestSeqNum.
-				// We do not need to check that they are not coincident with f.LargestSeqNum because we
-				// have already confirmed that LargestSeqNums were increasing.
-				for _, seq := range uncheckedIngestedSeqNums {
-					if seq == f.SmallestSeqNum {
-						return errors.Errorf("L0 flushed file %s has smallest sequence number coincident with an ingested file "+
-							": <#%d-#%d> vs <#%d-#%d>",
-							errors.Safe(f.FileNum), errors.Safe(f.SmallestSeqNum),
-							errors.Safe(f.LargestSeqNum), errors.Safe(seq), errors.Safe(seq))
-					}
-				}
-				uncheckedIngestedSeqNums = uncheckedIngestedSeqNums[:0]
 			}
 		}
 	} else {
