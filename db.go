@@ -367,7 +367,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	get.key = key
 	get.batch = b
 	get.mem = readState.memtables
-	get.l0 = readState.current.L0SubLevels.Files
+	get.l0 = readState.current.L0Sublevels.Files
 	get.version = readState.current
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
@@ -696,8 +696,8 @@ func (d *DB) newIterInternal(
 	// reference to elements in mlevels.
 	start := len(mlevels)
 	current := readState.current
-	for sl := 0; sl < len(current.L0SubLevels.Files); sl++ {
-		if len(current.L0SubLevels.Files[sl]) > 0 {
+	for sl := 0; sl < len(current.L0Sublevels.Files); sl++ {
+		if len(current.L0Sublevels.Files[sl]) > 0 {
 			mlevels = append(mlevels, mergingIterLevel{})
 		}
 	}
@@ -733,8 +733,8 @@ func (d *DB) newIterInternal(
 
 	// Add level iterators for the L0 sublevels, iterating from newest to
 	// oldest.
-	for i := len(current.L0SubLevels.Files) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0SubLevels.Files[i], manifest.L0Sublevel(i))
+	for i := len(current.L0Sublevels.Files) - 1; i >= 0; i-- {
+		addLevelIterForFiles(current.L0Sublevels.Files[i], manifest.L0Sublevel(i))
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
@@ -1242,7 +1242,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 		l0FileCount := len(d.mu.versions.currentVersion().Files[0])
 		if d.opts.Experimental.L0SublevelCompactions {
-			l0FileCount = d.mu.versions.currentVersion().L0SubLevels.ReadAmplification()
+			l0FileCount = d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
 		}
 		if l0FileCount >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
