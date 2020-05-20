@@ -239,6 +239,7 @@ type ycsbBuf struct {
 	rng      *rand.Rand
 	keyBuf   []byte
 	valueBuf []byte
+	keyNums  []uint64
 }
 
 type ycsb struct {
@@ -432,7 +433,10 @@ func (y *ycsb) randBytes(buf *ycsbBuf) []byte {
 
 func (y *ycsb) insert(db DB, buf *ycsbBuf) {
 	count := y.batchDist.Uint64(buf.rng)
-	keyNums := make([]uint64, count)
+	if cap(buf.keyNums) < int(count) {
+		buf.keyNums = make([]uint64, count)
+	}
+	keyNums := buf.keyNums[:count]
 
 	b := db.NewBatch()
 	for i := range keyNums {
