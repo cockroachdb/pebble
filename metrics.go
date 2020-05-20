@@ -241,7 +241,11 @@ func (m *Metrics) String() string {
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
 		fmt.Fprintf(&buf, "%7d ", level)
-		l.format(&buf, fmt.Sprintf("%0.2f", l.Score))
+		score := "-"
+		if level < numLevels-1 {
+			score = fmt.Sprintf("%0.2f", l.Score)
+		}
+		l.format(&buf, score)
 		total.Add(l)
 		total.Sublevels += l.Sublevels
 		total.NumFiles += l.NumFiles

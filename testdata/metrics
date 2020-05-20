@@ -25,7 +25,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         1   771 B       -    56 B     0 B       0     0 B       0   827 B       1     0 B       1    14.8
   flush         1
 compact         0     0 B          (size == estimated-debt)
@@ -67,7 +67,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
@@ -94,7 +94,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
@@ -122,7 +122,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
@@ -149,7 +149,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B    0.00   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
+      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B          (size == estimated-debt)
