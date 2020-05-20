@@ -304,6 +304,7 @@ func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 	r.block = <-r.free
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
 	r.flusher.closed = make(chan struct{})
+	r.flusher.pending = make([]*block, 0, cap(r.free))
 	go func() {
 		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
 	}()
@@ -364,6 +365,11 @@ func (w *LogWriter) flushLoop(context.Context) {
 	//   motivates reading the syncing work (f.syncQ.load()) before picking up
 	//   the flush work (atomic.LoadInt32(&w.block.written)).
 
+	// The list of full blocks that need to be written. This is copied from
+	// f.pending on every loop iteration, though the number of elements is small
+	// (usually 1, max 4).
+	pending := make([]*block, 0, cap(f.pending))
+
 	for {
 		for {
 			// Grab the portion of the current block that requires flushing. Note that
@@ -386,8 +392,9 @@ func (w *LogWriter) flushLoop(context.Context) {
 			continue
 		}
 
-		pending := f.pending
-		f.pending = f.pending[len(pending):]
+		pending = pending[:len(f.pending)]
+		copy(pending, f.pending)
+		f.pending = f.pending[:0]
 
 		// Grab the list of sync waiters. Note that syncQueue.load() will return
 		// 0,0 while we're waiting for the min-sync-interval to expire. This
