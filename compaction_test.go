@@ -908,11 +908,11 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("db Close: %v", err)
 	}
 
-	if !(mockLimiter.allowCount > 0) {
-		t.Errorf("limiter allow: got %d, want >%d", mockLimiter.allowCount, 0)
+	if mockLimiter.allowCount != 0 {
+		t.Errorf("limiter allow: got %d, want %d", mockLimiter.allowCount, 0)
 	}
-	if mockLimiter.waitCount != 0 {
-		t.Errorf("limiter wait: got %d, want %d", mockLimiter.waitCount, 0)
+	if mockLimiter.waitCount == 0 {
+		t.Errorf("limiter wait: got %d, want >%d", mockLimiter.waitCount, 0)
 	}
 }
 
