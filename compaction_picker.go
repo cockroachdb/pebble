@@ -136,40 +136,33 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 		return 0
 	}
 
-	// We assume that all the bytes in L0 need to be compacted to L1. This is unlike
-	// the RocksDB logic that figures out whether L0 needs compaction.
-	compactionDebt := totalSize(p.vers.Files[0]) + l0ExtraSize
-	bytesAddedToNextLevel := compactionDebt
+	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
+	// unlike the RocksDB logic that figures out whether L0 needs compaction.
+	bytesAddedToNextLevel := l0ExtraSize + totalSize(p.vers.Files[0])
+	nextLevelSize := totalSize(p.vers.Files[p.baseLevel])
 
-	levelSize := totalSize(p.vers.Files[p.baseLevel])
-	// estimatedL0CompactionSize is the estimated size of the L0 component in the
-	// current or next L0->LBase compaction. This is needed to estimate the number
-	// of L0->LBase compactions which will need to occur for the LSM tree to
-	// become stable.
-	estimatedL0CompactionSize := uint64(p.opts.L0CompactionThreshold * p.opts.MemTableSize)
-	// The ratio bytesAddedToNextLevel(L0 Size)/estimatedL0CompactionSize is the
-	// estimated number of L0->LBase compactions which will need to occur for the
-	// LSM tree to become stable. Let this ratio be N.
-	//
-	// We assume that each of these N compactions will overlap with all the current bytes
-	// in LBase, so we multiply N * totalSize(LBase) to count the contribution of LBase inputs
-	// to these compactions. Note that each compaction is adding bytes to LBase that will take
-	// part in future compactions, but we have already counted those.
-	compactionDebt += (levelSize * bytesAddedToNextLevel) / estimatedL0CompactionSize
+	var compactionDebt uint64
+	if bytesAddedToNextLevel > 0 && nextLevelSize > 0 {
+		// We only incur compaction debt if both L0 and Lbase contain data. If L0
+		// is empty, no compaction is necessary. If Lbase is empty, a move-based
+		// compaction from L0 would occur.
+		compactionDebt += bytesAddedToNextLevel + nextLevelSize
+	}
 
-	var nextLevelSize uint64
 	for level := p.baseLevel; level < numLevels-1; level++ {
-		levelSize += bytesAddedToNextLevel
-		bytesAddedToNextLevel = 0
+		levelSize := nextLevelSize + bytesAddedToNextLevel
 		nextLevelSize = totalSize(p.vers.Files[level+1])
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
-			levelRatio := float64(nextLevelSize) / float64(levelSize)
-			// The current level contributes bytesAddedToNextLevel to compactions.
-			// The next level contributes levelRatio * bytesAddedToNextLevel.
-			compactionDebt += uint64(float64(bytesAddedToNextLevel) * (levelRatio + 1))
+			if nextLevelSize > 0 {
+				// We only incur compaction debt if the next level contains data. If the
+				// next level is empty, a move-based compaction would be used.
+				levelRatio := float64(nextLevelSize) / float64(levelSize)
+				// The current level contributes bytesAddedToNextLevel to compactions.
+				// The next level contributes levelRatio * bytesAddedToNextLevel.
+				compactionDebt += uint64(float64(bytesAddedToNextLevel) * (levelRatio + 1))
+			}
 		}
-		levelSize = nextLevelSize
 	}
 
 	return compactionDebt
