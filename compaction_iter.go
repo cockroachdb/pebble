@@ -576,10 +576,21 @@ func (i *compactionIter) Close() error {
 	return i.err
 }
 
-func (i *compactionIter) Tombstones(key []byte) []rangedel.Tombstone {
-	if key == nil {
+// Tombstones returns a list of pending range tombstones in the fragmenter
+// up to the specified key, or all pending range tombstones if key = nil.
+// exclude specifies if the specified key is exclusive or inclusive.
+// When exclude = true, all returned range tombstones are truncated to the
+// specified key.
+func (i *compactionIter) Tombstones(key []byte, exclude bool) []rangedel.Tombstone {
+	switch {
+	case key == nil:
 		i.rangeDelFrag.Finish()
-	} else {
+	case exclude:
+		// The specified end key is exclusive; no versions of the specified
+		// user key (including range tombstones covering that key) should
+		// be flushed yet.
+		i.rangeDelFrag.TruncateAndFlushTo(key)
+	default:
 		i.rangeDelFrag.FlushTo(key)
 	}
 	tombstones := i.tombstones

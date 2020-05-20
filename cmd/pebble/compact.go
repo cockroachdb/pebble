@@ -242,7 +242,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		// read amplification.
 		var bve manifest.BulkVersionEdit
 		bve.Accumulate(&li.ve)
-		ref, _, err = bve.Apply(ref, mvccCompare, nil)
+		ref, _, err = bve.Apply(ref, mvccCompare, nil, 0)
 		if err != nil {
 			return err
 		}

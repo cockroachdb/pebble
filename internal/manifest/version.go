@@ -350,11 +350,9 @@ func (v *Version) Next() *Version {
 }
 
 // InitL0Sublevels initializes the L0SubLevels
-func (v *Version) InitL0Sublevels(cmp Compare, formatKey base.FormatKey) error {
-	// TODO(bilal): Experiment with flushSplitMaxBytes to pick a good value, and
-	// make it configurable.
+func (v *Version) InitL0Sublevels(cmp Compare, formatKey base.FormatKey, flushSplitBytes int64) error {
 	var err error
-	v.L0SubLevels, err = NewL0SubLevels(v.Files[0], cmp, formatKey, 10<<20)
+	v.L0SubLevels, err = NewL0SubLevels(v.Files[0], cmp, formatKey, flushSplitBytes)
 	return err
 }
 
@@ -550,8 +548,8 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files []*Fil
 		//   or flushed files. We cannot tell the difference between them based on FileMetadata,
 		//   so our consistency checking here uses the weaker checks assuming it is a narrow
 		//   flushed file. We cannot error on ingested files having sequence numbers coincident
-		//   with flushed files, as the seemingly ingested file could just be a flushed file
-		//   with just one key in it, which is a truncated range tombstone sharing sequence numbers
+		//   with flushed files as the seemingly ingested file could just be a flushed file
+		//   with just one key in it which is a truncated range tombstone sharing sequence numbers
 		//   with other files in the same flush.
 		// - Files with multiple sequence numbers: these are necessarily flushed files.
 		//

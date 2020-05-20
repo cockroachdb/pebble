@@ -233,7 +233,7 @@ func insertIntoSubLevel(files []*FileMetadata, f *FileMetadata) []*FileMetadata 
 // IsIntraL0Compacting. Those fields are accessed in InitCompactingFileInfo
 // instead.
 func NewL0SubLevels(
-	files []*FileMetadata, cmp Compare, formatKey base.FormatKey, flushSplitMaxBytes uint64,
+	files []*FileMetadata, cmp Compare, formatKey base.FormatKey, flushSplitMaxBytes int64,
 ) (*L0SubLevels, error) {
 	s := &L0SubLevels{cmp: cmp, formatKey: formatKey}
 	s.filesByAge = files
@@ -313,7 +313,7 @@ func NewL0SubLevels(
 	var cumulativeBytes uint64
 	for i := 0; i < len(s.orderedIntervals); i++ {
 		interval := &s.orderedIntervals[i]
-		if flushSplitMaxBytes > 0 && cumulativeBytes > flushSplitMaxBytes &&
+		if flushSplitMaxBytes > 0 && cumulativeBytes > uint64(flushSplitMaxBytes) &&
 			(len(s.flushSplitUserKeys) == 0 ||
 			!bytes.Equal(interval.startKey.key, s.flushSplitUserKeys[len(s.flushSplitUserKeys)-1])) {
 			s.flushSplitUserKeys = append(s.flushSplitUserKeys, interval.startKey.key)

@@ -42,7 +42,7 @@ func readManifest(filename string) (*Version, error) {
 		}
 		var bve BulkVersionEdit
 		bve.Accumulate(&ve)
-		if v, _, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter); err != nil {
+		if v, _, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10 << 20); err != nil {
 			return nil, err
 		}
 	}
@@ -306,7 +306,7 @@ func TestL0SubLevels(t *testing.T) {
 					fileMetas[0],
 					base.DefaultComparer.Compare,
 					base.DefaultFormatter,
-					uint64(flushSplitMaxBytes))
+					int64(flushSplitMaxBytes))
 				sublevels.InitCompactingFileInfo()
 			} else {
 				// This case is for use with explicitly-specified sublevels
