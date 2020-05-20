@@ -328,7 +328,8 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Average database size: %s\n", humanize.Uint64(sizeSum/sizeCount))
 	fmt.Printf("Read amplification: %d\n", ramp)
 	fmt.Printf("Total write amplification: %.2f\n", totalWriteAmp(m))
-	fmt.Printf("Space amplification: %.2f\n", float64(beforeSize)/float64(afterSize))
+	fmt.Printf("Space amplification: %.2f (%s, %s)\n", float64(beforeSize)/float64(afterSize),
+		humanize.Int64(int64(beforeSize)), humanize.Int64(int64(afterSize)))
 	return nil
 }
 
