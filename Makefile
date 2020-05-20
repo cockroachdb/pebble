@@ -46,6 +46,7 @@ generate:
 mod-update:
 	mkdir -p cmd/pebble/_bak
 	mv cmd/pebble/{badger,boltdb,rocksdb}.go cmd/pebble/_bak
+	GO111MODULE=on ${GO} get -u
 	GO111MODULE=on ${GO} mod vendor
 	mv cmd/pebble/_bak/* cmd/pebble && rmdir cmd/pebble/_bak
 
