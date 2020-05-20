@@ -142,7 +142,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 				files := g.l0[n-1]
 				g.l0 = g.l0[:n-1]
 				iterOpts := IterOptions{logger: g.logger}
-				g.levelIter.init(iterOpts, g.cmp, g.newIters, files, 0, nil)
+				g.levelIter.init(iterOpts, g.cmp, g.newIters, files, 0, n, nil)
 				g.levelIter.initRangeDel(&g.rangeDelIter)
 				g.iter = &g.levelIter
 				g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
@@ -160,7 +160,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		}
 
 		iterOpts := IterOptions{logger: g.logger}
-		g.levelIter.init(iterOpts, g.cmp, g.newIters, g.version.Files[g.level], g.level, nil)
+		g.levelIter.init(iterOpts, g.cmp, g.newIters, g.version.Files[g.level], g.level, invalidSublevel,nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter

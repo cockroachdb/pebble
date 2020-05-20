@@ -236,7 +236,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 					continue
 				}
 				li := &levelIter{}
-				li.init(IterOptions{}, cmp, newIters, l, i, nil)
+				li.init(IterOptions{}, cmp, newIters, l, i, invalidSublevel, nil)
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
