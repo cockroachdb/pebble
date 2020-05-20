@@ -67,7 +67,7 @@ L0
 ----
 OK
 
-# Ensure that sstables passed in a non-sorted order aree detected.
+# Ensure that sstables passed in a non-sorted order are detected.
 check-ordering
 L0
   a.SET.3-d.SET.3

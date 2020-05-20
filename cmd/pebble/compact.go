@@ -255,7 +255,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		// We keep the current database's L0 read amplification equal to the
 		// reference database's L0 read amplification at the same point in its
 		// execution. If we've exceeded it, wait for compactions to catch up.
-		var skipCh <-chan time.Time = nil
+		var skipCh <-chan time.Time
 		for skip := false; !skip; {
 			refReadAmplification := ref.L0SubLevels.ReadAmplification()
 
