@@ -5,8 +5,6 @@
 package tool
 
 import (
-	"runtime"
-
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -87,11 +85,8 @@ func Filters(filters ...FilterPolicy) Option {
 
 // New creates a new introspection tool.
 func New(opts ...Option) *T {
-	cache := pebble.NewCache(128 << 20 /* 128 MB */)
-
 	t := &T{
 		opts: pebble.Options{
-			Cache:    cache,
 			Filters:  make(map[string]FilterPolicy),
 			FS:       vfs.Default,
 			ReadOnly: true,
@@ -124,10 +119,6 @@ func New(opts ...Option) *T {
 		t.sstable.Root,
 		t.wal.Root,
 	}
-
-	runtime.SetFinalizer(t, func(obj interface{}) {
-		cache.Unref()
-	})
 	return t
 }
 
