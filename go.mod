@@ -10,6 +10,7 @@ require (
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
+	github.com/google/btree v1.0.0
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/pretty v0.1.0
 	github.com/pkg/errors v0.9.1 // indirect
