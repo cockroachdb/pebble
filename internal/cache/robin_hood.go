@@ -134,13 +134,15 @@ func maxDistForSize(size uint32) uint32 {
 func newRobinHoodMap(initialCapacity int) *robinHoodMap {
 	m := &robinHoodMap{}
 	m.init(initialCapacity)
-	runtime.SetFinalizer(m, func(obj interface{}) {
-		m := obj.(*robinHoodMap)
-		if m.entries.ptr != nil {
-			fmt.Fprintf(os.Stderr, "%p: robin-hood map not freed\n", m)
-			os.Exit(1)
-		}
-	})
+	if invariants.Enabled {
+		runtime.SetFinalizer(m, func(obj interface{}) {
+			m := obj.(*robinHoodMap)
+			if m.entries.ptr != nil {
+				fmt.Fprintf(os.Stderr, "%p: robin-hood map not freed\n", m)
+				os.Exit(1)
+			}
+		})
+	}
 	return m
 }
 
