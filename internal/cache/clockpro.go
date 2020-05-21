@@ -567,16 +567,18 @@ func newShards(size int64, shards int) *Cache {
 		c.shards[i].blocks.init(16)
 		c.shards[i].files.init(16)
 	}
-	runtime.SetFinalizer(c, func(obj interface{}) {
-		c := obj.(*Cache)
-		if v := atomic.LoadInt64(&c.refs); v != 0 {
-			c.tr.Lock()
-			fmt.Fprintf(os.Stderr, "pebble: cache (%p) has non-zero reference count: %d\n%s",
-				c, v, strings.Join(c.tr.msgs, "\n"))
-			c.tr.Unlock()
-			os.Exit(1)
-		}
-	})
+	if !invariants.RaceEnabled {
+		runtime.SetFinalizer(c, func(obj interface{}) {
+			c := obj.(*Cache)
+			if v := atomic.LoadInt64(&c.refs); v != 0 {
+				c.tr.Lock()
+				fmt.Fprintf(os.Stderr, "pebble: cache (%p) has non-zero reference count: %d\n%s",
+					c, v, strings.Join(c.tr.msgs, "\n"))
+				c.tr.Unlock()
+				os.Exit(1)
+			}
+		})
+	}
 	return c
 }
 
