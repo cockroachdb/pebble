@@ -4,7 +4,11 @@
 
 package rand
 
-import "math/bits"
+import (
+	"encoding/binary"
+	"io"
+	"math/bits"
+)
 
 // PCGSource is an implementation of a 64-bit permuted congruential
 // generator as defined in
@@ -52,4 +56,36 @@ func (pcg *PCGSource) Uint64() uint64 {
 	pcg.add()
 	// XOR high and low 64 bits together and rotate right by high 6 bits of state.
 	return bits.RotateLeft64(pcg.high^pcg.low, -int(pcg.high>>58))
+}
+
+func (pcg *PCGSource) add() {
+	var carry uint64
+	pcg.low, carry = bits.Add64(pcg.low, incLow, 0)
+	pcg.high, _ = bits.Add64(pcg.high, incHigh, carry)
+}
+
+func (pcg *PCGSource) multiply() {
+	hi, lo := bits.Mul64(pcg.low, mulLow)
+	hi += pcg.high * mulLow
+	hi += pcg.low * mulHigh
+	pcg.low = lo
+	pcg.high = hi
+}
+
+// MarshalBinary returns the binary representation of the current state of the generator.
+func (pcg *PCGSource) MarshalBinary() ([]byte, error) {
+	var buf [16]byte
+	binary.BigEndian.PutUint64(buf[:8], pcg.high)
+	binary.BigEndian.PutUint64(buf[8:], pcg.low)
+	return buf[:], nil
+}
+
+// UnmarshalBinary sets the state of the generator to the state represented in data.
+func (pcg *PCGSource) UnmarshalBinary(data []byte) error {
+	if len(data) < 16 {
+		return io.ErrUnexpectedEOF
+	}
+	pcg.low = binary.BigEndian.Uint64(data[8:])
+	pcg.high = binary.BigEndian.Uint64(data[:8])
+	return nil
 }
