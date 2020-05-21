@@ -26,7 +26,7 @@ func newValue(n int) *Value {
 	// the buffer in order to reduce internal fragmentation in malloc. If the
 	// buffer is right at a power of 2, adding valueSize might push the
 	// allocation over into the next larger size.
-	b := allocNew(valueSize + n)
+	b := manual.New(valueSize + n)
 	v := (*Value)(unsafe.Pointer(&b[0]))
 	v.buf = b[valueSize:]
 	v.ref.init(1)
@@ -39,5 +39,5 @@ func (v *Value) free() {
 	n := valueSize + cap(v.buf)
 	buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(v))[:n:n]
 	v.buf = nil
-	allocFree(buf)
+	manual.Free(buf)
 }

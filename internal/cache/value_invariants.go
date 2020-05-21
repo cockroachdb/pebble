@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+
+	"github.com/cockroachdb/pebble/internal/manual"
 )
 
 // newValue creates a Value with a manually managed buffer of size n.
@@ -22,7 +24,7 @@ func newValue(n int) *Value {
 	if n == 0 {
 		return nil
 	}
-	b := allocNew(n)
+	b := manual.New(n)
 	v := &Value{buf: b}
 	v.ref.init(1)
 	runtime.SetFinalizer(v, func(obj interface{}) {
@@ -42,7 +44,7 @@ func (v *Value) free() {
 	// for i := range v.buf {
 	// 	v.buf[i] = 0xff
 	// }
-	allocFree(v.buf)
+	manual.Free(v.buf)
 	// Setting Value.buf to nil is needed for correctness of the leak checking
 	// that is performed when the "invariants" or "tracing" build tags are
 	// enabled.
