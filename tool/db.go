@@ -225,7 +225,16 @@ func (d *dbT) openDB(dir string) (*pebble.DB, error) {
 			return nil, errors.Errorf("unknown merger %q", errors.Safe(d.mergerName))
 		}
 	}
-	return pebble.Open(dir, d.opts)
+	opts := *d.opts
+	opts.Cache = pebble.NewCache(128 << 20 /* 128 MB */)
+	defer opts.Cache.Unref()
+	return pebble.Open(dir, &opts)
+}
+
+func (d *dbT) closeDB(db *pebble.DB) {
+	if err := db.Close(); err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+	}
 }
 
 func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
@@ -234,6 +243,8 @@ func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
+	defer d.closeDB(db)
+
 	var stats pebble.CheckLevelsStats
 	if err := db.CheckLevels(&stats); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
@@ -248,12 +259,9 @@ func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
+	defer d.closeDB(db)
 
 	fmt.Fprintf(stdout, "%s", db.Metrics())
-
-	if err := db.Close(); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
-	}
 }
 
 func (d *dbT) runScan(cmd *cobra.Command, args []string) {
@@ -262,6 +270,7 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
+	defer d.closeDB(db)
 
 	// Update the internal formatter if this comparator has one specified.
 	if d.opts.Comparer != nil {
@@ -307,10 +316,6 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 
 	fmt.Fprintf(stdout, "scanned %d %s in %0.1fs\n",
 		count, makePlural("record", count), elapsed.Seconds())
-
-	if err := db.Close(); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
-	}
 }
 
 func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
@@ -319,11 +324,8 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			fmt.Fprintf(stdout, "%s\n", err)
-		}
-	}()
+	defer d.closeDB(db)
+
 	bytes, err := db.EstimateDiskUsage(d.start, d.end)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)

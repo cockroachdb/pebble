@@ -366,6 +366,9 @@ func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
 
 // Search the tables for references to the specified key.
 func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
+	cache := pebble.NewCache(128 << 20 /* 128 MB */)
+	defer cache.Unref()
+
 	f.tableRefs = make(map[base.FileNum]bool)
 	for _, fileNum := range f.tables {
 		_ = func() (err error) {
@@ -375,7 +378,6 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
 			}
-			defer tf.Close()
 
 			m := f.tableMeta[fileNum]
 			if f.verbose {
@@ -397,13 +399,15 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 			}()
 
 			opts := sstable.ReaderOptions{
-				Cache:    f.opts.Cache,
+				Cache:    cache,
 				Comparer: f.opts.Comparer,
 			}
 			r, err := sstable.NewReader(tf, opts, private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
 				return err
 			}
+			defer r.Close()
+
 			if m != nil && m.SmallestSeqNum == m.LargestSeqNum {
 				r.Properties.GlobalSeqNum = m.LargestSeqNum
 			}
@@ -470,8 +474,8 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 					key, value = iter.Next()
 				} else {
 					refs = append(refs, findRef{
-						key:     *rangeDelKey,
-						value:   rangeDelValue,
+						key:     rangeDelKey.Clone(),
+						value:   append([]byte(nil), rangeDelValue...),
 						fileNum: fileNum,
 					})
 					rangeDelKey, rangeDelValue = rangeDelIter.Next()
