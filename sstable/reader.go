@@ -633,6 +633,8 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
+		i.data.invalidate()
+		i.index.invalidate()
 		return nil, nil
 	}
 
@@ -653,6 +655,8 @@ func (i *twoLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byt
 	i.err = nil // clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
+		i.data.invalidate()
+		i.index.invalidate()
 		return nil, nil
 	}
 
@@ -674,6 +678,8 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
+			i.data.invalidate()
+			i.index.invalidate()
 			return nil, nil
 		}
 

@@ -119,6 +119,7 @@ func TestReader(t *testing.T) {
 	}
 
 	blockSizes := map[string]int{
+		"1bytes":   1,
 		"5bytes":   5,
 		"10bytes":  10,
 		"25bytes":  25,
@@ -253,6 +254,13 @@ func TestInvalidReader(t *testing.T) {
 
 func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader) {
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
+		defer func(){
+			if r != nil {
+				r.Close()
+				r = nil
+			}
+		}()
+
 		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "build":
@@ -285,11 +293,6 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
-
-		if r != nil {
-			r.Close()
-			r = nil
-		}
 	})
 }
 
