@@ -1,5 +1,3 @@
-# USE WITH CAUTION: Pebble is a work-in-progress.
-
 # Pebble [![Build Status](https://travis-ci.org/cockroachdb/pebble.svg?branch=master)](https://travis-ci.org/cockroachdb/pebble)
 
 Pebble is a LevelDB/RocksDB inspired key-value store focused on
@@ -46,9 +44,9 @@ Pebble:
 * Transactions
 * Universal compaction style
 
-Pebble may silently corrupt data or behave incorrectly if used with a
-RocksDB database that uses a feature Pebble doesn't support. Caveat
-emptor!
+***WARNING***: Pebble may silently corrupt data or behave incorrectly if
+used with a RocksDB database that uses a feature Pebble doesn't
+support. Caveat emptor!
 
 ## Advantages
 
@@ -60,9 +58,6 @@ Pebble offers several improvements over RocksDB:
 * Seamless merged iteration of indexed batches. The mutations in the
   batch conceptually occupy another memtable level.
 * Smaller, more approachable code base.
-* Pacing of flushes vs compactions: Pebble smooths latency spikes
-  caused by flushes and compactions by only flushing/compacting as
-  fast as necessary to keep up with user writes.
 
 See the [Pebble vs RocksDB: Implementation
 Differences](docs/rocksdb.md) doc for more details on implementation
