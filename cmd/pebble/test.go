@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -28,6 +29,33 @@ const (
 func startCPUProfile() func() {
 	runtime.SetMutexProfileFraction(1000)
 
+	done := startRecording("cpu.%04d.prof", pprof.StartCPUProfile, pprof.StopCPUProfile)
+	return func() {
+		done()
+		if p := pprof.Lookup("heap"); p != nil {
+			f, err := os.Create("heap.prof")
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err := p.WriteTo(f, 0); err != nil {
+				log.Fatal(err)
+			}
+			f.Close()
+		}
+		if p := pprof.Lookup("mutex"); p != nil {
+			f, err := os.Create("mutex.prof")
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err := p.WriteTo(f, 0); err != nil {
+				log.Fatal(err)
+			}
+			f.Close()
+		}
+	}
+}
+
+func startRecording(fmtStr string, startFunc func(io.Writer) error, stopFunc func()) func() {
 	doneCh := make(chan struct{})
 	var doneWG sync.WaitGroup
 	doneWG.Add(1)
@@ -39,32 +67,32 @@ func startCPUProfile() func() {
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 
-		var currentProfile *os.File
+		var current *os.File
 		defer func() {
-			if currentProfile != nil {
-				pprof.StopCPUProfile()
-				currentProfile.Close()
+			if current != nil {
+				stopFunc()
+				current.Close()
 			}
 		}()
 
 		for {
-			if currentProfile != nil {
-				pprof.StopCPUProfile()
-				currentProfile.Close()
-				currentProfile = nil
+			if current != nil {
+				stopFunc()
+				current.Close()
+				current = nil
 			}
-			path := fmt.Sprintf("cpu.%04d.prof", int(time.Since(start).Seconds()+0.5))
+			path := fmt.Sprintf(fmtStr, int(time.Since(start).Seconds()+0.5))
 			f, err := os.Create(path)
 			if err != nil {
 				log.Fatalf("unable to create cpu profile: %s", err)
 				return
 			}
-			if err := pprof.StartCPUProfile(f); err != nil {
+			if err := startFunc(f); err != nil {
 				log.Fatalf("unable to start cpu profile: %v", err)
 				f.Close()
 				return
 			}
-			currentProfile = f
+			current = f
 
 			select {
 			case <-doneCh:
@@ -77,28 +105,6 @@ func startCPUProfile() func() {
 	return func() {
 		close(doneCh)
 		doneWG.Wait()
-
-		if p := pprof.Lookup("heap"); p != nil {
-			f, err := os.Create("heap.prof")
-			if err != nil {
-				log.Fatal(err)
-			}
-			if err := p.WriteTo(f, 0); err != nil {
-				log.Fatal(err)
-			}
-			f.Close()
-		}
-
-		if p := pprof.Lookup("mutex"); p != nil {
-			f, err := os.Create("mutex.prof")
-			if err != nil {
-				log.Fatal(err)
-			}
-			if err := p.WriteTo(f, 0); err != nil {
-				log.Fatal(err)
-			}
-			f.Close()
-		}
 	}
 }
 
