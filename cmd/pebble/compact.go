@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/trace"
 	"sync"
 	"time"
 
@@ -28,11 +29,23 @@ var compactCmd = &cobra.Command{
 	Short: "compaction benchmarks",
 }
 
+var compactRunConfig struct {
+	trace   bool
+	profile bool
+}
+
 var compactRunCmd = &cobra.Command{
 	Use:   "run <workload dir>",
 	Short: "run a compaction benchmark through ingesting sstables",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runReplay,
+}
+
+func init() {
+	compactRunCmd.Flags().BoolVar(&compactRunConfig.trace,
+		"trace", false, "collect traces throughout the benchmark run")
+	compactRunCmd.Flags().BoolVar(&compactRunConfig.profile,
+		"profile", false, "collect pprof profiles throughout the benchmark run")
 }
 
 const numLevels = 7
@@ -179,6 +192,15 @@ func runReplay(cmd *cobra.Command, args []string) error {
 
 	m := rd.Metrics()
 	start := time.Now()
+
+	if compactRunConfig.profile {
+		stopProf := startCPUProfile()
+		defer stopProf()
+	}
+	if compactRunConfig.trace {
+		stopTrace := startRecording("trace.%04d.out", trace.Start, trace.Stop)
+		defer stopTrace()
+	}
 
 	var replayedCount int
 	var sizeSum, sizeCount uint64
