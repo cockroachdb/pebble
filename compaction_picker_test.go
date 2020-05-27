@@ -78,7 +78,7 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 	return vers, opts, ""
 }
 
-func TestCompactionPickerLevelMaxBytes(t *testing.T) {
+func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_level_max_bytes",
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -88,11 +88,11 @@ func TestCompactionPickerLevelMaxBytes(t *testing.T) {
 					return errMsg
 				}
 
-				p := newCompactionPicker(vers, opts, nil)
+				p, ok := newCompactionPicker(vers, opts, nil).(*compactionPickerByScore)
+				require.True(t, ok)
 				var buf bytes.Buffer
-				levelMaxBytes := p.getLevelMaxBytes()
 				for level := p.getBaseLevel(); level < numLevels; level++ {
-					fmt.Fprintf(&buf, "%d: %d\n", level, levelMaxBytes[level])
+					fmt.Fprintf(&buf, "%d: %d\n", level, p.levelMaxBytes[level])
 				}
 				return buf.String()
 
@@ -494,7 +494,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 
 			version := &version{
-				Files:       fileMetas,
+				Files: fileMetas,
 			}
 			if err := version.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter); err != nil {
 				t.Fatal(err)
@@ -519,7 +519,7 @@ func TestCompactionPickerL0(t *testing.T) {
 					if f.Compacting {
 						c := compactionInfo{
 							startLevel:  level,
-							outputLevel: level+1,
+							outputLevel: level + 1,
 							inputs:      [2][]*fileMetadata{{f}},
 						}
 						if f.IsIntraL0Compacting {
@@ -530,8 +530,6 @@ func TestCompactionPickerL0(t *testing.T) {
 				}
 			}
 			picker.initLevelMaxBytes(inProgressCompactions)
-			picker.initScores(inProgressCompactions)
-
 			return version.DebugString(base.DefaultFormatter)
 		case "pick-auto":
 			for _, arg := range td.CmdArgs {

@@ -22,9 +22,9 @@ type compactionEnv struct {
 }
 
 type compactionPicker interface {
+	getScores([]compactionInfo) [numLevels]float64
 	getBaseLevel() int
 	getEstimatedMaxWAmp() float64
-	getLevelMaxBytes() [numLevels]int64
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
 	pickAuto(env compactionEnv) (c *compaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *compaction, retryLater bool)
@@ -100,19 +100,17 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
-
-	// State that is updated on every call to pickAuto.
-
-	// Per-level byte size adjustment based on in-progress compactions.
-	sizeAdjust [numLevels]int64
-
-	// Per-level compaction scores. The score for L0 is the score for an
-	// L0->Lbase compaction if there is not one in-progress, or the score for an
-	// intra-L0 compaction if there is in-progress L0->Lbase compaction.
-	scores [numLevels]pickedCompactionInfo
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
+
+func (p *compactionPickerByScore) getScores(inProgress []compactionInfo) [numLevels]float64 {
+	var scores [numLevels]float64
+	for _, info := range p.calculateScores(inProgress) {
+		scores[info.level] = info.score
+	}
+	return scores
+}
 
 func (p *compactionPickerByScore) getBaseLevel() int {
 	if p == nil {
@@ -123,10 +121,6 @@ func (p *compactionPickerByScore) getBaseLevel() int {
 
 func (p *compactionPickerByScore) getEstimatedMaxWAmp() float64 {
 	return p.estimatedMaxWAmp
-}
-
-func (p *compactionPickerByScore) getLevelMaxBytes() [numLevels]int64 {
-	return p.levelMaxBytes
 }
 
 // estimatedCompactionDebt estimates the number of bytes which need to be
@@ -257,50 +251,50 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	}
 }
 
-func (p *compactionPickerByScore) initSizeAdjust(inProgressCompactions []compactionInfo) {
-	for i := range p.sizeAdjust {
-		p.sizeAdjust[i] = 0
-	}
-
+func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]int64 {
 	// Compute a size adjustment for each level based on the in-progress
 	// compactions. We subtract the size of the start level inputs from the start
 	// level, and add the size of the start level inputs to the output
 	// level. This is slightly different from RocksDB's behavior, which simply
 	// elides compacting files from the level size calculation.
+	var sizeAdjust [numLevels]int64
 	for i := range inProgressCompactions {
 		c := &inProgressCompactions[i]
 		size := int64(totalSize(c.inputs[0]))
-		p.sizeAdjust[c.startLevel] -= size
-		p.sizeAdjust[c.outputLevel] += size
+		sizeAdjust[c.startLevel] -= size
+		sizeAdjust[c.outputLevel] += size
 	}
+	return sizeAdjust
 }
 
-func (p *compactionPickerByScore) initScores(inProgressCompactions []compactionInfo) {
-	for i := range p.scores {
-		p.scores[i].level = i
-		p.scores[i].outputLevel = i + 1
-		p.scores[i].score = 0
+func (p *compactionPickerByScore) calculateScores(inProgressCompactions []compactionInfo) [numLevels]pickedCompactionInfo {
+	var scores [numLevels]pickedCompactionInfo
+	for i := range scores {
+		scores[i].level = i
+		scores[i].outputLevel = i + 1
 	}
+	scores[0] = p.calculateL0Score(inProgressCompactions)
 
-	p.scores[0].outputLevel = p.baseLevel
-	p.initL0Score(inProgressCompactions)
-
+	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels-1; level++ {
-		size := int64(totalSize(p.vers.Files[level])) + p.sizeAdjust[level]
-		p.scores[level].score = float64(size) / float64(p.levelMaxBytes[level])
+		size := int64(totalSize(p.vers.Files[level])) + sizeAdjust[level]
+		scores[level].score = float64(size) / float64(p.levelMaxBytes[level])
 	}
-
-	sort.Sort(sortCompactionLevelsDecreasingScore(p.scores[:]))
+	sort.Sort(sortCompactionLevelsDecreasingScore(scores[:]))
+	return scores
 }
 
-func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compactionInfo) {
+func (p *compactionPickerByScore) calculateL0Score(inProgressCompactions []compactionInfo) pickedCompactionInfo {
+	var info pickedCompactionInfo
+	info.outputLevel = p.baseLevel
+
 	if p.opts.Experimental.L0SublevelCompactions {
 		// If L0SubLevels are present, we use the sublevel count as opposed to
 		// the L0 file count to score this level. The base vs intra-L0
 		// compaction determination happens in pickAuto, not here.
-		p.scores[0].score =
-			float64(p.vers.L0SubLevels.MaxDepthAfterOngoingCompactions()) / float64(p.opts.L0CompactionThreshold)
-		return
+		info.score = float64(p.vers.L0SubLevels.MaxDepthAfterOngoingCompactions()) /
+			float64(p.opts.L0CompactionThreshold)
+		return info
 	}
 	// TODO(peter): The current scoring logic precludes concurrent L0->Lbase
 	// compactions in most cases because if there is an in-progress L0->Lbase
@@ -328,7 +322,7 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 			idleL0Count++
 		}
 	}
-	p.scores[0].score = float64(idleL0Count) / float64(p.opts.L0CompactionThreshold)
+	info.score = float64(idleL0Count) / float64(p.opts.L0CompactionThreshold)
 
 	// Only start an intra-L0 compaction if there is an existing L0->Lbase
 	// compaction.
@@ -341,7 +335,7 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 		}
 	}
 	if !l0Compaction {
-		return
+		return info
 	}
 
 	l0Files := p.vers.Files[0]
@@ -349,7 +343,7 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 		// If L0 isn't accumulating many files beyond the regular L0 trigger,
 		// don't resort to an intra-L0 compaction yet. This matches the RocksDB
 		// heuristic.
-		return
+		return info
 	}
 	var end = len(l0Files)
 	for ; end >= 1; end-- {
@@ -364,13 +358,14 @@ func (p *compactionPickerByScore) initL0Score(inProgressCompactions []compaction
 		// matches the RocksDB heuristic. Note that if another file is flushed
 		// or ingested to L0, a new compaction picker will be created and we'll
 		// reexamine the intra-L0 score.
-		return
+		return info
 	}
 
 	// Score the intra-L0 compaction using the number of files that are
 	// possibly in the compaction.
-	p.scores[0].score = float64(intraL0Count) / float64(p.opts.L0CompactionThreshold)
-	p.scores[0].outputLevel = 0
+	info.score = float64(intraL0Count) / float64(p.opts.L0CompactionThreshold)
+	info.outputLevel = 0
+	return info
 }
 
 func (p *compactionPickerByScore) pickFile(level int) int {
@@ -426,14 +421,13 @@ func (p *compactionPickerByScore) pickFile(level int) int {
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	const highPriorityThreshold = 1.5
 
-	p.initSizeAdjust(env.inProgressCompactions)
-	p.initScores(env.inProgressCompactions)
+	scores := p.calculateScores(env.inProgressCompactions)
 
 	// Check for a score-based compaction. "scores" has been sorted in order of
 	// decreasing score. For each level with a score >= 1, we attempt to find a
 	// compaction anchored at at that level.
-	for i := range p.scores {
-		info := &p.scores[i]
+	for i := range scores {
+		info := &scores[i]
 		if len(env.inProgressCompactions) > 0 && info.score < highPriorityThreshold {
 			// Don't start a low priority compaction if there is already a compaction
 			// running.
@@ -479,11 +473,11 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			if !f.MarkedForCompaction {
 				continue
 			}
-			for i := range p.scores {
-				if p.scores[i].level != level {
+			for i := range scores {
+				if scores[i].level != level {
 					continue
 				}
-				info := &p.scores[i]
+				info := &scores[i]
 				info.file = file
 				c := pickAutoHelper(env, p.opts, p.vers, *info, p.baseLevel)
 				// Fail-safe to protect against compacting the same sstable concurrently.
