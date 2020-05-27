@@ -181,6 +181,17 @@ type Metrics struct {
 	}
 }
 
+// ReadAmp returns the current read amplification of the database.
+// It's computed as the number of sublevels in L0 + the number of non-empty
+// levels below L0.
+func (m *Metrics) ReadAmp() int {
+	var ramp int32
+	for _, l := range m.Levels {
+		ramp += l.Sublevels
+	}
+	return int(ramp)
+}
+
 const notApplicable = "-"
 
 func (m *Metrics) formatWAL(buf *bytes.Buffer) {
