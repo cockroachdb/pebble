@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/replay"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/codahale/hdrhistogram"
 	"github.com/spf13/cobra"
 )
 
@@ -144,6 +145,35 @@ func hardLinkWorkload(src, dst string) error {
 	return nil
 }
 
+func startSamplingRAmp(d *replay.DB) func() *hdrhistogram.Histogram {
+	ticker := time.NewTicker(5 * time.Second)
+	done := make(chan struct{})
+	hist := hdrhistogram.New(0, 100, 2)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer ticker.Stop()
+		defer wg.Done()
+
+		for {
+			select {
+			case <-ticker.C:
+				ramp := d.Metrics().ReadAmp()
+				if err := hist.RecordValue(int64(ramp)); err != nil {
+					panic(err)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() *hdrhistogram.Histogram {
+		close(done)
+		wg.Wait()
+		return hist
+	}
+}
+
 func runReplay(cmd *cobra.Command, args []string) error {
 	// Make hard links of all the files in the workload so ingestion doesn't
 	// delete our original copy of a workload.
@@ -201,6 +231,8 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		stopTrace := startRecording("trace.%04d.out", trace.Start, trace.Stop)
 		defer stopTrace()
 	}
+
+	stopSamplingRAmp := startSamplingRAmp(rd)
 
 	var replayedCount int
 	var sizeSum, sizeCount uint64
@@ -290,6 +322,8 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	rampHist := stopSamplingRAmp()
+
 	verbosef("Replayed all %d tables.\n", replayedCount)
 	d := rd.Done()
 
@@ -320,12 +354,6 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	m = d.Metrics()
 	fmt.Println(m)
 
-	// Calculate read amplification before compacting everything.
-	var ramp int32
-	for _, l := range m.Levels {
-		ramp += l.Sublevels
-	}
-
 	fmt.Println("Manually compacting entire key space to calculate space amplification.")
 	beforeSize := totalSize(m)
 	iter := d.NewIter(nil)
@@ -346,12 +374,20 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	afterSize := totalSize(d.Metrics())
-	fmt.Printf("Test took: %0.2fm\n", time.Now().Sub(start).Minutes())
-	fmt.Printf("Average database size: %s\n", humanize.Uint64(sizeSum/sizeCount))
-	fmt.Printf("Read amplification: %d\n", ramp)
-	fmt.Printf("Total write amplification: %.2f\n", totalWriteAmp(m))
-	fmt.Printf("Space amplification: %.2f (%s, %s)\n", float64(beforeSize)/float64(afterSize),
-		humanize.Int64(int64(beforeSize)), humanize.Int64(int64(afterSize)))
+	fmt.Println()
+	fmt.Printf("__elapsed__compacts__w-amp__r-amp(_p50__p95__p99__max_)__space(_____amp__stable___final__average__)\n")
+	fmt.Printf("  %6.2fm  %8d  %5.2f         %3d  %3d  %3d  %3d         %9.2f  %6s  %6s  %7s\n",
+		time.Now().Sub(start).Minutes(),
+		m.Compact.Count,
+		totalWriteAmp(m),
+		rampHist.ValueAtQuantile(50),
+		rampHist.ValueAtQuantile(95),
+		rampHist.ValueAtQuantile(99),
+		rampHist.ValueAtQuantile(100),
+		float64(beforeSize)/float64(afterSize),
+		humanize.Int64(int64(beforeSize)),
+		humanize.Int64(int64(afterSize)),
+		humanize.Uint64(sizeSum/sizeCount))
 	return nil
 }
 
