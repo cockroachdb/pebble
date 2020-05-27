@@ -22,9 +22,9 @@ type compactionEnv struct {
 }
 
 type compactionPicker interface {
+	getScores() [numLevels]float64
 	getBaseLevel() int
 	getEstimatedMaxWAmp() float64
-	getLevelMaxBytes() [numLevels]int64
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
 	pickAuto(env compactionEnv) (c *compaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *compaction, retryLater bool)
@@ -114,6 +114,19 @@ type compactionPickerByScore struct {
 
 var _ compactionPicker = &compactionPickerByScore{}
 
+func (p *compactionPickerByScore) getScores() [numLevels]float64 {
+	if p.scores == [numLevels]pickedCompactionInfo{} {
+		p.initSizeAdjust(nil)
+		p.initScores(nil)
+	}
+
+	var scores [numLevels]float64
+	for i, info := range p.scores {
+		scores[i] = info.score
+	}
+	return scores
+}
+
 func (p *compactionPickerByScore) getBaseLevel() int {
 	if p == nil {
 		return 1
@@ -123,10 +136,6 @@ func (p *compactionPickerByScore) getBaseLevel() int {
 
 func (p *compactionPickerByScore) getEstimatedMaxWAmp() float64 {
 	return p.estimatedMaxWAmp
-}
-
-func (p *compactionPickerByScore) getLevelMaxBytes() [numLevels]int64 {
-	return p.levelMaxBytes
 }
 
 // estimatedCompactionDebt estimates the number of bytes which need to be
