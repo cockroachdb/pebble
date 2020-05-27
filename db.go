@@ -1019,11 +1019,10 @@ func (d *DB) Metrics() *Metrics {
 		metrics.WAL.Size += d.mu.mem.queue[i].logSize
 	}
 	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
-	metrics.Levels[0].Score = float64(metrics.Levels[0].NumFiles) / float64(d.opts.L0CompactionThreshold)
 	if p := d.mu.versions.picker; p != nil {
-		levelMaxBytes := p.getLevelMaxBytes()
-		for level := 1; level < numLevels; level++ {
-			metrics.Levels[level].Score = float64(metrics.Levels[level].Size) / float64(levelMaxBytes[level])
+		compactions := d.getInProgressCompactionInfoLocked(nil)
+		for level, score := range p.getScores(compactions) {
+			metrics.Levels[level].Score = score
 		}
 	}
 	metrics.Table.ZombieCount = int64(len(d.mu.versions.zombieTables))

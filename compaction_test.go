@@ -34,16 +34,16 @@ type compactionPickerForTesting struct {
 
 var _ compactionPicker = &compactionPickerForTesting{}
 
+func (p *compactionPickerForTesting) getScores([]compactionInfo) [numLevels]float64 {
+	return [numLevels]float64{}
+}
+
 func (p *compactionPickerForTesting) getBaseLevel() int {
 	return p.baseLevel
 }
 
 func (p *compactionPickerForTesting) getEstimatedMaxWAmp() float64 {
 	return 0
-}
-
-func (p *compactionPickerForTesting) getLevelMaxBytes() [numLevels]int64 {
-	return [numLevels]int64{}
 }
 
 func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
