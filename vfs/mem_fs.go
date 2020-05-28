@@ -334,7 +334,7 @@ func (y *MemFS) RemoveAll(fullname string) error {
 			}
 			_, ok := dir.children[frag]
 			if !ok {
-				return os.ErrNotExist
+				return nil
 			}
 			delete(dir.children, frag)
 		}
