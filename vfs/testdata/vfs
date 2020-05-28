@@ -109,6 +109,7 @@ define
 list /
 remove e
 remove-all e
+remove-all e
 list /
 ----
 a
@@ -116,6 +117,7 @@ b
 d
 e
 remove: e [file already exists]
+remove-all: e [<nil>]
 remove-all: e [<nil>]
 a
 b
