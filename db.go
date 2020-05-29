@@ -711,7 +711,7 @@ func (d *DB) newIterInternal(
 	mlevels = mlevels[start:]
 
 	levels := buf.levels[:]
-	addLevelIterForFiles := func(files []*manifest.FileMetadata, level int, sublevel int) {
+	addLevelIterForFiles := func(files []*manifest.FileMetadata, level manifest.Level) {
 		if len(files) == 0 {
 			return
 		}
@@ -723,7 +723,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(dbi.opts, d.cmp, d.newIters, files, level, sublevel, nil)
+		li.init(dbi.opts, d.cmp, d.newIters, files, level, nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
 			&mlevels[0].isLargestUserKeyRangeDelSentinel)
@@ -734,12 +734,12 @@ func (d *DB) newIterInternal(
 	// Add level iterators for the L0 sublevels, iterating from newest to
 	// oldest.
 	for i := len(current.L0SubLevels.Files) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0SubLevels.Files[i], 0, i)
+		addLevelIterForFiles(current.L0SubLevels.Files[i], manifest.L0Sublevel(i))
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
 	for level := 1; level < len(current.Files); level++ {
-		addLevelIterForFiles(current.Files[level], level, invalidSublevel)
+		addLevelIterForFiles(current.Files[level], manifest.Level(level))
 	}
 
 	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)

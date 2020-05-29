@@ -434,13 +434,13 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 // overlapping internal key ranges (for level non-0 files).
 func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 	for sublevel := len(v.L0SubLevels.Files) - 1; sublevel >= 0; sublevel-- {
-		if err := CheckOrdering(cmp, format, 0, sublevel, v.L0SubLevels.Files[sublevel]); err != nil {
+		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), v.L0SubLevels.Files[sublevel]); err != nil {
 			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
 
 	for level, files := range v.Files {
-		if err := CheckOrdering(cmp, format, level, InvalidSublevel, files); err != nil {
+		if err := CheckOrdering(cmp, format, Level(level), files); err != nil {
 			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
@@ -536,34 +536,15 @@ func (l *VersionList) Remove(v *Version) {
 	v.list = nil // avoid memory leaks
 }
 
-// InvalidSublevel denotes an invalid or non-applicable sublevel. For use with
-// CheckOrdering.
-const InvalidSublevel = -1
-
-// levelInfo stores the level (and for L0, sublevel) for a set of files. Used
-// in CheckOrdering.
-type levelInfo struct {
-	level, sublevel int
-}
-
-func (l levelInfo) String() string {
-	if l.level == 0 && l.sublevel != InvalidSublevel {
-		return fmt.Sprintf("L0.%d", l.sublevel)
-	}
-	return fmt.Sprintf("L%d", l.level)
-}
-
 // CheckOrdering checks that the files are consistent with respect to
 // seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
-func CheckOrdering(
-	cmp Compare, format base.FormatKey, level int, sublevel int, files []*FileMetadata,
-) error {
+func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files []*FileMetadata) error {
 	// The invariants to check for L0 sublevels are the same as the ones to
 	// check for all other levels. However, if L0 is not organized into
 	// sublevels, or if all L0 files are being passed in, we do the legacy L0
 	// checks, defined in the detailed comment below.
-	if level == 0 && sublevel == InvalidSublevel {
+	if level == Level(0) {
 		// We have 2 kinds of files:
 		// - Files with exactly one sequence number: these could be either ingested files
 		//   or flushed files. We cannot tell the difference between them based on FileMetadata,
@@ -624,28 +605,24 @@ func CheckOrdering(
 			}
 		}
 	} else {
-		levelInfo := levelInfo{
-			level:    level,
-			sublevel: sublevel,
-		}
 		for i := range files {
 			f := files[i]
 			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
 				return errors.Errorf("%s file %s has inconsistent bounds: %s vs %s",
-					errors.Safe(levelInfo), errors.Safe(f.FileNum),
+					errors.Safe(level), errors.Safe(f.FileNum),
 					f.Smallest.Pretty(format), f.Largest.Pretty(format))
 			}
 			if i > 0 {
 				prev := files[i-1]
 				if !prev.lessSmallestKey(f, cmp) {
 					return errors.Errorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
-						errors.Safe(levelInfo), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
 					return errors.Errorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
-						errors.Safe(levelInfo), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
 						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}

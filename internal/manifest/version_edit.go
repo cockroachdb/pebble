@@ -560,7 +560,7 @@ func (b *BulkVersionEdit) Apply(
 			if err := v.InitL0Sublevels(cmp, formatKey); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
-			if err := CheckOrdering(cmp, formatKey, 0, InvalidSublevel, v.Files[level]); err != nil {
+			if err := CheckOrdering(cmp, formatKey, Level(0), v.Files[level]); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue

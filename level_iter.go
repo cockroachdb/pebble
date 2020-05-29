@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
@@ -54,8 +55,7 @@ type levelIter struct {
 	// does not lie within the table bounds.
 	tableOpts IterOptions
 	// The LSM level this levelIter is initialized for.
-	level int
-	sublevel int
+	level manifest.Level
 	// The current file wrt the iterator position.
 	index int
 	// The keys to return when iterating past an sstable boundary and that
@@ -139,20 +139,16 @@ type levelIter struct {
 // levelIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*levelIter)(nil)
 
-// invalidSublevel denotes an invalid or non-applicable sublevel.
-const invalidSublevel = -1
-
 func newLevelIter(
 	opts IterOptions,
 	cmp Compare,
 	newIters tableNewIters,
 	files []*fileMetadata,
-	level int,
-	sublevel int,
+	level manifest.Level,
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, newIters, files, level, sublevel, bytesIterated)
+	l.init(opts, cmp, newIters, files, level, bytesIterated)
 	return l
 }
 
@@ -161,13 +157,11 @@ func (l *levelIter) init(
 	cmp Compare,
 	newIters tableNewIters,
 	files []*fileMetadata,
-	level int,
-	sublevel int,
+	level manifest.Level,
 	bytesIterated *uint64,
 ) {
 	l.err = nil
 	l.level = level
-	l.sublevel = sublevel
 	l.logger = opts.getLogger()
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
@@ -639,12 +633,8 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 }
 
 func (l *levelIter) String() string {
-	levelStr := fmt.Sprintf("L%d", l.level)
-	if l.level == 0 && l.sublevel >= 0 {
-		levelStr += fmt.Sprintf(".%d", l.sublevel)
-	}
 	if l.index >= 0 && l.index < len(l.files) {
-		return fmt.Sprintf("%s: fileNum=%s", levelStr, l.iter.String())
+		return fmt.Sprintf("%s: fileNum=%s", l.level, l.iter.String())
 	}
-	return fmt.Sprintf("%s: fileNum=<nil>", levelStr)
+	return fmt.Sprintf("%s: fileNum=<nil>", l.level)
 }

@@ -667,10 +667,12 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	// Check that the LSM ordering invariants are ok in order to prevent
 	// generating corrupted sstables due to a violation of those invariants.
-	if err := manifest.CheckOrdering(c.cmp, c.formatKey, c.startLevel, manifest.InvalidSublevel, c.inputs[0]); err != nil {
-		c.logger.Fatalf("%s", err)
+	if c.startLevel >= 0 {
+		if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel), c.inputs[0]); err != nil {
+			c.logger.Fatalf("%s", err)
+		}
 	}
-	if err := manifest.CheckOrdering(c.cmp, c.formatKey, c.outputLevel, manifest.InvalidSublevel, c.inputs[1]); err != nil {
+	if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel), c.inputs[1]); err != nil {
 		c.logger.Fatalf("%s", err)
 	}
 
@@ -735,8 +737,10 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	iterOpts := IterOptions{logger: c.logger}
 	if c.startLevel != 0 {
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[0], c.startLevel, invalidSublevel, &c.bytesIterated))
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[0], c.startLevel, invalidSublevel, &c.bytesIterated))
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[0],
+			manifest.Level(c.startLevel), &c.bytesIterated))
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[0],
+			manifest.Level(c.startLevel), &c.bytesIterated))
 	} else {
 		for i := range c.inputs[0] {
 			f := c.inputs[0][i]
@@ -751,8 +755,10 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		}
 	}
 
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[1], c.outputLevel, invalidSublevel, &c.bytesIterated))
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[1], c.outputLevel, invalidSublevel, &c.bytesIterated))
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[1],
+		manifest.Level(c.outputLevel), &c.bytesIterated))
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[1],
+		manifest.Level(c.outputLevel), &c.bytesIterated))
 	return newMergingIter(c.logger, c.cmp, iters...), nil
 }
 
