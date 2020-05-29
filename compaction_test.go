@@ -1661,6 +1661,10 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					}
 				}
 
+				if c.outputLevel == -1 {
+					c.outputLevel = 0
+				}
+
 				// Note that we configure a panicLogger to be used when a fatal error
 				// is logged. If a panic occurs, we catch the value and transform it
 				// back into a string stored in result.

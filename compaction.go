@@ -667,10 +667,12 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	// Check that the LSM ordering invariants are ok in order to prevent
 	// generating corrupted sstables due to a violation of those invariants.
-	if err := manifest.CheckOrdering(c.cmp, c.formatKey, c.startLevel, manifest.InvalidSublevel, c.inputs[0]); err != nil {
-		c.logger.Fatalf("%s", err)
+	if c.startLevel >= 0 {
+		if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel), c.inputs[0]); err != nil {
+			c.logger.Fatalf("%s", err)
+		}
 	}
-	if err := manifest.CheckOrdering(c.cmp, c.formatKey, c.outputLevel, manifest.InvalidSublevel, c.inputs[1]); err != nil {
+	if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel), c.inputs[1]); err != nil {
 		c.logger.Fatalf("%s", err)
 	}
 
