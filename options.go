@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -865,6 +866,10 @@ func (o *Options) Validate() error {
 	if o.L0StopWritesThreshold < o.L0CompactionThreshold {
 		fmt.Fprintf(&buf, "L0StopWritesThreshold (%d) must be >= L0CompactionThreshold (%d)\n",
 			o.L0StopWritesThreshold, o.L0CompactionThreshold)
+	}
+	if o.MemTableSize >= maxMemTableSize {
+		fmt.Fprintf(&buf, "MemTableSize (%s) must be < %s\n",
+			humanize.Uint64(uint64(o.MemTableSize)), humanize.Uint64(maxMemTableSize))
 	}
 	if o.MemTableStopWritesThreshold < 2 {
 		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",

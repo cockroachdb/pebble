@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rawalloc"
@@ -36,6 +37,9 @@ var ErrNotIndexed = errors.New("pebble: batch not indexed")
 
 // ErrInvalidBatch indicates that a batch is invalid or otherwise corrupted.
 var ErrInvalidBatch = errors.New("pebble: invalid batch")
+
+// ErrBatchTooLarge indicates that a batch is invalid or otherwise corrupted.
+var ErrBatchTooLarge = errors.Newf("pebble: batch too large: >= %s", humanize.Uint64(maxBatchSize))
 
 // DeferredBatchOp represents a batch operation (eg. set, merge, delete) that is
 // being inserted into the batch. Indexing is not performed on the specified key
@@ -774,6 +778,9 @@ func (b *Batch) countData() []byte {
 
 func (b *Batch) grow(n int) {
 	newSize := len(b.data) + n
+	if newSize >= maxBatchSize {
+		panic(ErrBatchTooLarge)
+	}
 	if newSize > cap(b.data) {
 		newCap := 2 * cap(b.data)
 		for newCap < newSize {

@@ -26,7 +26,17 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-const initialMemTableSize = 256 << 10 // 256 KB
+const (
+	initialMemTableSize = 256 << 10 // 256 KB
+
+	// The max batch size is limited by the uint32 offsets stored in
+	// internal/batchskl.node, DeferredBatchOp, and flushableBatchEntry.
+	maxBatchSize = 4 << 30 // 4 GB
+
+	// The max memtable size is limited by the uint32 offsets stored in
+	// internal/arenaskl.node, DeferredBatchOp, and flushableBatchEntry.
+	maxMemTableSize = 4 << 30 // 4 GB
+)
 
 // Open opens a DB whose files live in the given directory.
 func Open(dirname string, opts *Options) (db *DB, _ error) {
