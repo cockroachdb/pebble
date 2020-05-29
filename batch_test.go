@@ -455,6 +455,20 @@ func TestBatchDeleteRange(t *testing.T) {
 	})
 }
 
+func TestBatchTooLarge(t *testing.T) {
+	var b Batch
+	var result interface{}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				result = r
+			}
+		}()
+		b.grow(maxBatchSize)
+	}()
+	require.EqualValues(t, ErrBatchTooLarge, result)
+}
+
 func TestFlushableBatchIter(t *testing.T) {
 	var b *flushableBatch
 	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {

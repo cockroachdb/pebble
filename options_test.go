@@ -214,6 +214,12 @@ func TestOptionsValidate(t *testing.T) {
 		},
 		{`
 [Options]
+  mem_table_size=4294967296
+`,
+			`MemTableSize \(4\.0 G\) must be < 4\.0 G`,
+		},
+		{`
+[Options]
   mem_table_stop_writes_threshold=1
 `,
 			`MemTableStopWritesThreshold .* must be >= 2`,
