@@ -327,7 +327,7 @@ func (y *MemFS) Remove(fullname string) error {
 
 // RemoveAll implements FS.RemoveAll.
 func (y *MemFS) RemoveAll(fullname string) error {
-	return y.walk(fullname, func(dir *memNode, frag string, final bool) error {
+	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
@@ -340,6 +340,12 @@ func (y *MemFS) RemoveAll(fullname string) error {
 		}
 		return nil
 	})
+	// Match os.RemoveAll which returns a nil error even if the parent
+	// directories don't exist.
+	if os.IsNotExist(err) {
+		err = nil
+	}
+	return err
 }
 
 // Rename implements FS.Rename.

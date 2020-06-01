@@ -110,6 +110,7 @@ list /
 remove e
 remove-all e
 remove-all e
+remove-all e/a/b/c
 list /
 ----
 a
@@ -119,6 +120,7 @@ e
 remove: e [file already exists]
 remove-all: e [<nil>]
 remove-all: e [<nil>]
+remove-all: e/a/b/c [<nil>]
 a
 b
 d
