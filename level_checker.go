@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
@@ -666,7 +667,8 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		}
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, current.L0SubLevels.Files[sublevel], 0, sublevel, nil)
+		li.init(iterOpts, c.cmp, c.newIters, current.L0SubLevels.Files[sublevel],
+			manifest.L0Sublevel(sublevel), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
 		mlevelAlloc[0].iter = li
@@ -678,7 +680,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		}
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, current.Files[level], level, invalidSublevel, nil)
+		li.init(iterOpts, c.cmp, c.newIters, current.Files[level], manifest.Level(level), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
 		mlevelAlloc[0].iter = li

@@ -98,7 +98,9 @@ func TestL0SubLevels_LargeImportL0(t *testing.T) {
 	}
 }
 
-func visualizeSublevels(s *L0SubLevels, compactionFiles bitSet, otherLevels [][]*FileMetadata) string {
+func visualizeSublevels(
+	s *L0SubLevels, compactionFiles bitSet, otherLevels [][]*FileMetadata,
+) string {
 	var buf strings.Builder
 	if compactionFiles == nil {
 		compactionFiles = newBitSet(len(s.filesByAge))
@@ -137,7 +139,7 @@ func visualizeSublevels(s *L0SubLevels, compactionFiles bitSet, otherLevels [][]
 				buf.WriteByte(f.Largest.UserKey[0])
 				if compactionFiles[f.l0Index] {
 					buf.WriteByte('+')
-				} else if j < len(files) - 1 {
+				} else if j < len(files)-1 {
 					buf.WriteByte(' ')
 				}
 				lastChar++
@@ -154,7 +156,7 @@ func visualizeSublevels(s *L0SubLevels, compactionFiles bitSet, otherLevels [][]
 			}
 			buf.WriteByte(middleChar)
 			buf.WriteByte(f.Largest.UserKey[0])
-			if j < len(files) - 1 {
+			if j < len(files)-1 {
 				buf.WriteByte(' ')
 			}
 			lastChar++
@@ -381,7 +383,7 @@ func TestL0SubLevels(t *testing.T) {
 			builder.WriteString(fmt.Sprintf("compaction picked with stack depth reduction %d\n", lcf.seedIntervalStackDepthReduction))
 			for i, file := range lcf.Files {
 				builder.WriteString(file.FileNum.String())
-				if i < len(lcf.Files) - 1 {
+				if i < len(lcf.Files)-1 {
 					builder.WriteByte(',')
 				}
 			}
@@ -399,7 +401,7 @@ func TestL0SubLevels(t *testing.T) {
 			flushSplitKeys := sublevels.FlushSplitKeys()
 			for i, key := range flushSplitKeys {
 				builder.Write(key)
-				if i < len(flushSplitKeys) - 1 {
+				if i < len(flushSplitKeys)-1 {
 					builder.WriteString(", ")
 				}
 			}
@@ -408,7 +410,8 @@ func TestL0SubLevels(t *testing.T) {
 			return strconv.Itoa(sublevels.MaxDepthAfterOngoingCompactions())
 		case "l0-check-ordering":
 			for sublevel, files := range sublevels.Files {
-				if err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter, 0, sublevel, files); err != nil {
+				if err := CheckOrdering(base.DefaultComparer.Compare,
+					base.DefaultFormatter, L0Sublevel(sublevel), files); err != nil {
 					return err.Error()
 				}
 			}
