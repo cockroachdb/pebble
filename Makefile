@@ -18,7 +18,7 @@ all:
 
 .PHONY: test
 test:
-	GO111MODULE=off ${GO} test -tags '$(TAGS)' ${GOFLAGS} -run ${TESTS} ${PKG}
+	GO111MODULE=off ${GO} test -v -tags '$(TAGS)' ${GOFLAGS} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
 testrace: GOFLAGS += -race
