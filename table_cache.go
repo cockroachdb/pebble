@@ -80,7 +80,6 @@ func (c *tableCache) withReader(meta *fileMetadata, fn func(*sstable.Reader) err
 	s := c.getShard(meta.FileNum)
 	v := s.findNode(meta)
 	defer s.unrefValue(v)
-	<-v.loaded
 	if v.err != nil {
 		return v.err
 	}
@@ -170,7 +169,6 @@ func (c *tableCacheShard) newIters(
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
 	v := c.findNode(meta)
-	<-v.loaded
 	if v.err != nil {
 		c.unrefValue(v)
 		return nil, nil, v.err
@@ -299,12 +297,12 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		c.mu.RUnlock()
 		atomic.StoreInt32(&n.referenced, 1)
 		atomic.AddInt64(&c.hits, 1)
+		<-v.loaded
 		return v
 	}
 	c.mu.RUnlock()
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	n := c.mu.nodes[meta.FileNum]
 	switch {
@@ -321,10 +319,13 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		// Slow-path hit of a hot or cold node.
 		//
 		// The caller is responsible for decrementing the refCount.
-		atomic.AddInt32(&n.value.refCount, 1)
+		v := n.value
+		atomic.AddInt32(&v.refCount, 1)
 		atomic.StoreInt32(&n.referenced, 1)
 		atomic.AddInt64(&c.hits, 1)
-		return n.value
+		c.mu.Unlock()
+		<-v.loaded
+		return v
 
 	default:
 		// Slow-path miss of a test node.
@@ -360,15 +361,13 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	}
 	n.value = v
 
-	// Note adding to the doubly-linked list must complete before we begin
-	// asynchronously loading a `tableCacheNode`. This is because the load's
-	// failure handling unlinks the node.
-	go func() {
-		pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-			v.load(meta, c)
-		})
-	}()
+	c.mu.Unlock()
 
+	// Note adding to the cache lists must complete before we begin loading the
+	// table as a failure during load will result in the node being unlinked.
+	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+		v.load(meta, c)
+	})
 	return v
 }
 
