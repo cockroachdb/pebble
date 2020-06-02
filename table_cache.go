@@ -132,6 +132,7 @@ type tableCacheShard struct {
 	misses        int64
 	iterCount     int32
 	releasing     sync.WaitGroup
+	releasingCh   chan *tableCacheValue
 	filterMetrics *FilterMetrics
 }
 
@@ -145,10 +146,20 @@ func (c *tableCacheShard) init(cacheID uint64, dirname string, fs vfs.FS, opts *
 
 	c.mu.nodes = make(map[FileNum]*tableCacheNode)
 	c.mu.coldTarget = size
+	c.releasingCh = make(chan *tableCacheValue, 100)
+	go c.releaseLoop()
 
 	if invariants.RaceEnabled {
 		c.mu.iters = make(map[sstable.Iterator][]byte)
 	}
+}
+
+func (c *tableCacheShard) releaseLoop() {
+	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+		for v := range c.releasingCh {
+			v.release(c)
+		}
+	})
 }
 
 func (c *tableCacheShard) newIters(
@@ -268,7 +279,7 @@ func (c *tableCacheShard) clearNode(n *tableCacheNode) {
 func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 	if atomic.AddInt32(&v.refCount, -1) == 0 {
 		c.releasing.Add(1)
-		go v.release(c)
+		c.releasingCh <- v
 	}
 }
 
@@ -510,11 +521,7 @@ func (c *tableCacheShard) Close() error {
 		if n.value != nil {
 			if atomic.AddInt32(&n.value.refCount, -1) == 0 {
 				c.releasing.Add(1)
-				go func(v *tableCacheValue) {
-					pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-						v.release(c)
-					})
-				}(n.value)
+				c.releasingCh <- n.value
 			}
 		}
 		c.unlinkNode(n)
@@ -524,6 +531,15 @@ func (c *tableCacheShard) Close() error {
 	c.mu.handCold = nil
 	c.mu.handTest = nil
 
+	// Only shutdown the releasing goroutine if there were no leaked
+	// iterators. If there were leaked iterators, we leave the goroutine running
+	// and the releasingCh open so that a subsequent iterator close can
+	// complete. This behavior is used by iterator leak tests. Leaking the
+	// goroutine for these tests is less bad not closing the iterator which
+	// triggers other warnings about block cache handles not being released.
+	if err == nil {
+		close(c.releasingCh)
+	}
 	c.releasing.Wait()
 	return err
 }
