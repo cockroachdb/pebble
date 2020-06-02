@@ -80,7 +80,6 @@ func (c *tableCache) withReader(meta *fileMetadata, fn func(*sstable.Reader) err
 	s := c.getShard(meta.FileNum)
 	v := s.findNode(meta)
 	defer s.unrefValue(v)
-	<-v.loaded
 	if v.err != nil {
 		return v.err
 	}
@@ -132,6 +131,7 @@ type tableCacheShard struct {
 	misses        int64
 	iterCount     int32
 	releasing     sync.WaitGroup
+	releasingCh   chan *tableCacheValue
 	filterMetrics *FilterMetrics
 }
 
@@ -145,10 +145,20 @@ func (c *tableCacheShard) init(cacheID uint64, dirname string, fs vfs.FS, opts *
 
 	c.mu.nodes = make(map[FileNum]*tableCacheNode)
 	c.mu.coldTarget = size
+	c.releasingCh = make(chan *tableCacheValue, 100)
+	go c.releaseLoop()
 
 	if invariants.RaceEnabled {
 		c.mu.iters = make(map[sstable.Iterator][]byte)
 	}
+}
+
+func (c *tableCacheShard) releaseLoop() {
+	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+		for v := range c.releasingCh {
+			v.release(c)
+		}
+	})
 }
 
 func (c *tableCacheShard) newIters(
@@ -159,7 +169,6 @@ func (c *tableCacheShard) newIters(
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
 	v := c.findNode(meta)
-	<-v.loaded
 	if v.err != nil {
 		c.unrefValue(v)
 		return nil, nil, v.err
@@ -268,7 +277,7 @@ func (c *tableCacheShard) clearNode(n *tableCacheNode) {
 func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 	if atomic.AddInt32(&v.refCount, -1) == 0 {
 		c.releasing.Add(1)
-		go v.release(c)
+		c.releasingCh <- v
 	}
 }
 
@@ -288,12 +297,12 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		c.mu.RUnlock()
 		atomic.StoreInt32(&n.referenced, 1)
 		atomic.AddInt64(&c.hits, 1)
+		<-v.loaded
 		return v
 	}
 	c.mu.RUnlock()
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	n := c.mu.nodes[meta.FileNum]
 	switch {
@@ -310,10 +319,13 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		// Slow-path hit of a hot or cold node.
 		//
 		// The caller is responsible for decrementing the refCount.
-		atomic.AddInt32(&n.value.refCount, 1)
+		v := n.value
+		atomic.AddInt32(&v.refCount, 1)
 		atomic.StoreInt32(&n.referenced, 1)
 		atomic.AddInt64(&c.hits, 1)
-		return n.value
+		c.mu.Unlock()
+		<-v.loaded
+		return v
 
 	default:
 		// Slow-path miss of a test node.
@@ -349,15 +361,13 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	}
 	n.value = v
 
-	// Note adding to the doubly-linked list must complete before we begin
-	// asynchronously loading a `tableCacheNode`. This is because the load's
-	// failure handling unlinks the node.
-	go func() {
-		pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-			v.load(meta, c)
-		})
-	}()
+	c.mu.Unlock()
 
+	// Note adding to the cache lists must complete before we begin loading the
+	// table as a failure during load will result in the node being unlinked.
+	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+		v.load(meta, c)
+	})
 	return v
 }
 
@@ -510,11 +520,7 @@ func (c *tableCacheShard) Close() error {
 		if n.value != nil {
 			if atomic.AddInt32(&n.value.refCount, -1) == 0 {
 				c.releasing.Add(1)
-				go func(v *tableCacheValue) {
-					pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-						v.release(c)
-					})
-				}(n.value)
+				c.releasingCh <- n.value
 			}
 		}
 		c.unlinkNode(n)
@@ -524,6 +530,15 @@ func (c *tableCacheShard) Close() error {
 	c.mu.handCold = nil
 	c.mu.handTest = nil
 
+	// Only shutdown the releasing goroutine if there were no leaked
+	// iterators. If there were leaked iterators, we leave the goroutine running
+	// and the releasingCh open so that a subsequent iterator close can
+	// complete. This behavior is used by iterator leak tests. Leaking the
+	// goroutine for these tests is less bad not closing the iterator which
+	// triggers other warnings about block cache handles not being released.
+	if err == nil {
+		close(c.releasingCh)
+	}
 	c.releasing.Wait()
 	return err
 }
