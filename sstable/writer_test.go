@@ -8,9 +8,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
@@ -213,5 +216,71 @@ func BenchmarkWriter(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
+	}
+}
+
+func BenchmarkWriterSyncFile(b *testing.B) {
+	const targetSize = 16 << 20
+
+	var vsizes []int64
+	if testing.Verbose() {
+		vsizes = []int64{64, 512, 1 << 10, 2 << 10, 4 << 10, 8 << 10, 16 << 10, 32 << 10, 64 << 10}
+	} else {
+		vsizes = []int64{64}
+	}
+
+	run := func(b *testing.B, vsize int64, newFile func(string) *Writer) {
+		tmpf, err := ioutil.TempFile("", "pebble-sstable-*.sst")
+		if err != nil {
+			b.Fatal(err)
+		}
+		filename := tmpf.Name()
+		_ = tmpf.Close()
+		defer os.Remove(filename)
+
+		var w *Writer
+		val := make([]byte, vsize)
+
+		var userKey [8]byte
+		key := base.MakeInternalKey(userKey[:], 1, base.InternalKeyKindSet)
+
+		b.SetBytes(vsize)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if w == nil {
+				b.StopTimer()
+				w = newFile(filename)
+				b.StartTimer()
+			}
+			binary.BigEndian.PutUint64(userKey[:], uint64(i))
+			if err := w.Add(key, val); err != nil {
+				b.Fatal(err)
+			}
+			if w.EstimatedSize() >= targetSize {
+				_ = w.Close()
+				w = nil
+			}
+		}
+		b.StopTimer()
+	}
+
+	for _, vsize := range vsizes {
+		b.Run(fmt.Sprintf("vsize=%d", vsize), func(b *testing.B) {
+			run(b, vsize, func(filename string) *Writer {
+				_ = os.Remove(filename)
+				t, err := os.Create(filename)
+				if err != nil {
+					b.Fatal(err)
+				}
+				f := vfs.NewSyncingFile(t, vfs.SyncingFileOptions{BytesPerSync: 512 << 10})
+				w := NewWriter(f, WriterOptions{
+					BlockRestartInterval: 16,
+					BlockSize:            32 << 10,
+					Compression:          SnappyCompression,
+					FilterPolicy:         bloom.FilterPolicy(10),
+				})
+				return w
+			})
+		})
 	}
 }
