@@ -293,7 +293,7 @@ func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 		// number is used as a validation check and using only the low 32-bits is
 		// sufficient for that purpose.
 		logNum: uint32(logNum),
-		free:   make(chan *block, 4),
+		free:   make(chan *block, 16),
 		afterFunc: func(d time.Duration, f func()) syncTimer {
 			return time.AfterFunc(d, f)
 		},
@@ -367,7 +367,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 
 	// The list of full blocks that need to be written. This is copied from
 	// f.pending on every loop iteration, though the number of elements is small
-	// (usually 1, max 4).
+	// (usually 1, max 16).
 	pending := make([]*block, 0, cap(f.pending))
 
 	for {

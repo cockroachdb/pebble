@@ -1001,7 +1001,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 }
 
 func BenchmarkRecordWrite(b *testing.B) {
-	for _, size := range []int{8, 16, 32, 64, 128} {
+	for _, size := range []int{8, 16, 32, 64, 256, 1028, 4096, 65_536} {
 		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
 			w := NewLogWriter(ioutil.Discard, 0 /* logNum */)
 			defer w.Close()
