@@ -804,7 +804,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	if _, ok := f.(flusher); ok {
 		w.writer = f
 	} else {
-		w.bufWriter = bufio.NewWriter(f)
+		w.bufWriter = bufio.NewWriterSize(f, 512<<10 /* 512 KB */)
 		w.writer = w.bufWriter
 	}
 	return w
