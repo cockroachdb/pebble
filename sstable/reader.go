@@ -28,6 +28,13 @@ import (
 
 var errCorruptIndexEntry = errors.New("pebble/table: corrupt index entry")
 
+const (
+	// Constants for dynamic readahead of data blocks.
+	minFileReadsForReadahead = 2
+	initialReadaheadSize     = 16 << 10 /* 8KB */
+	maxReadaheadSize         = 512 << 10 /* 256KB */
+)
+
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
@@ -72,6 +79,7 @@ type singleLevelIterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
+	dataRS     readaheadState
 	dataBH     BlockHandle
 	err        error
 	closeHook  func(i Iterator) error
@@ -146,6 +154,7 @@ func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
 		_ = i.index.Close()
 		return err
 	}
+	i.dataRS.size = initialReadaheadSize
 	return nil
 }
 
@@ -196,7 +205,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */)
+	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
 	if err != nil {
 		i.err = err
 		return false
@@ -591,7 +600,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = errors.New("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */)
+	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
 		i.err = err
 		return false
@@ -906,6 +915,134 @@ func (i *twoLevelCompactionIterator) skipForward(
 
 type blockTransform func([]byte) ([]byte, error)
 
+// readaheadState contains state variables related to readahead. Updated on
+// file reads.
+type readaheadState struct {
+	// Number of sequential reads for this block type so far.
+	numReads uint64
+	// Size issued to the next call to Prefetch. Starts at or above
+	// initialReadaheadSize and grows exponentially unitl maxReadaheadSize.
+	size uint64
+	// The byte offset up to which the OS has been asked to read ahead / cached.
+	// When reading ahead, reads up to this limit should not incur an IO
+	// operation. Reads after this limit can benefit from a new call to
+	// Prefetch.
+	limit uint64
+}
+
+// maybeReadahead updates state and determines whether to issue a readahead /
+// prefetch call for a block read at offset for blockLength bytes.
+// Returns a size value (greater than 0) that should be prefetched if readahead
+// would be beneficial.
+func (rs *readaheadState) maybeReadahead(offset, blockLength uint64) uint64 {
+	currentReadEnd := offset + blockLength + blockTrailerLen
+	if rs.numReads >= minFileReadsForReadahead {
+		// The minimum threshold of sequential reads to justify reading ahead
+		// has been reached.
+		// There are two intervals: the interval being read:
+		// [offset, currentReadEnd]
+		// as well as the interval where a read would benefit from read ahead:
+		// [rs.limit, rs.limit + rs.size]
+		// We increase the latter interval to
+		// [rs.limit, rs.limit + maxReadaheadSize] to account for cases where
+		// readahead may not be beneficial with a small readahead size, but over
+		// time the readahead size would increase exponentially to make it
+		// beneficial.
+		if currentReadEnd >= rs.limit && offset <= rs.limit + maxReadaheadSize {
+			// This is the case where we do a read in the interval ahead of
+			// the last readahead range. In the diagrams below, ++++ is the last
+			// readahead range, ==== is the range represented by
+			// [rs.limit, rs.limit + maxReadaheadSize], and ---- is the range
+			// being read.
+			//
+			//                rs.limit               rs.limit + maxReadaheadSize
+			//         ++++++++++|==========================|
+			//
+			//              |-------------|
+			//            offset       currentReadEnd
+			//
+			for rs.size < blockLength && rs.size < maxReadaheadSize {
+				// If rs.size is lower than blockLength, increase it until
+				// it delivers some benefit beyond just reading the current
+				// block.
+				rs.size *= 2
+			}
+			if rs.size > maxReadaheadSize {
+				rs.size = maxReadaheadSize
+			}
+			rs.limit = offset + rs.size
+			oldSize := rs.size
+			// Increase rs.size for the next read.
+			rs.size *= 2
+			if rs.size > maxReadaheadSize {
+				rs.size = maxReadaheadSize
+			}
+			return oldSize
+		} else if ((rs.limit > maxReadaheadSize) && currentReadEnd < (rs.limit - maxReadaheadSize)) || offset > (rs.limit + maxReadaheadSize) {
+			// The above conditional has rs.limit > maxReadaheadSize to confirm that
+			// rs.limit - maxReadaheadSize would not underflow.
+			// We read too far away from rs.limit to benefit from readahead in
+			// any scenario. Reset all variables.
+			// The case where we read too far ahead:
+			//
+			// (rs.limit - maxReadaheadSize)  (rs.limit)   (rs.limit + maxReadaheadSize)
+			//                    |+++++++++++++|=============|
+			//
+			//                                                  |-------------|
+			//                                             offset       currentReadEnd
+			//
+			// Or too far behind:
+			//
+			// (rs.limit - maxReadaheadSize)  (rs.limit)   (rs.limit + maxReadaheadSize)
+			//                    |+++++++++++++|=============|
+			//
+			//    |-------------|
+			// offset       currentReadEnd
+			//
+			rs.numReads = 1
+			rs.limit = currentReadEnd
+			rs.size = initialReadaheadSize
+		}
+		// Reads in the range [rs.limit - maxReadaheadSize, rs.limit] end up
+		// here. This is a read that is potentially benefitting from a past
+		// readahead, but there's no reason to issue a readahead call at the
+		// moment.
+		//
+		// (rs.limit - maxReadaheadSize)  (rs.limit)   (rs.limit + maxReadaheadSize)
+		//                    |+++++++++++++|=============|
+		//
+		//                        |-------|
+		//                     offset    currentReadEnd
+		//
+	} else if currentReadEnd >= rs.limit && offset <= rs.limit + maxReadaheadSize {
+		// Blocks are being read sequentially and would benefit from readahead
+		// down the line.
+		//
+		//    (last read start)  (rs.limit)   (rs.limit + maxReadaheadSize)
+		//                  |+++++++|=============|
+		//
+		//                            |-------|
+		//                        offset    currentReadEnd
+		//
+		rs.numReads++
+		rs.limit = currentReadEnd
+	} else {
+		// We read too far ahead of the last read, or before it. Reset all
+		// variables.
+		//
+		//    (last read start)  (rs.limit)   (rs.limit + maxReadaheadSize)
+		//                  |+++++++|=============|
+		//
+		//                                          |-------|
+		//                                      offset    currentReadEnd
+		//
+		rs.numReads = 1
+		rs.limit = currentReadEnd
+		rs.size = initialReadaheadSize
+	}
+	return 0
+}
+
 // ReaderOption provide an interface to do work on Reader while it is being
 // opened.
 type ReaderOption interface {
@@ -1154,21 +1291,27 @@ func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */)
+	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */)
+	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
 }
 
 func (r *Reader) readRangeDel() (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform)
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Handle, error) {
+func (r *Reader) readBlock(bh BlockHandle, transform blockTransform, raState *readaheadState) (cache.Handle, error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
+	}
+
+	if raState != nil {
+		if readaheadSize := raState.maybeReadahead(bh.Offset, bh.Length); readaheadSize > 0 {
+			_ = vfs.Prefetch(r.file, bh.Offset, readaheadSize)
+		}
 	}
 
 	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
@@ -1280,7 +1423,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
 		return err
 	}
@@ -1310,7 +1453,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */)
+		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			return err
 		}
@@ -1402,7 +1545,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */)
+			subIndex, err := r.readBlock(indexBH, nil /* transform */, nil /* readaheadState */)
 			if err != nil {
 				return nil, err
 			}
@@ -1468,7 +1611,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */)
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			return 0, err
 		}
@@ -1488,7 +1631,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */)
+			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* readaheadState */)
 			if err != nil {
 				return 0, err
 			}
@@ -1677,7 +1820,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
