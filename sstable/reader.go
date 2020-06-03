@@ -28,6 +28,13 @@ import (
 
 var errCorruptIndexEntry = errors.New("pebble/table: corrupt index entry")
 
+const (
+	// Constants for dynamic readahead of data blocks.
+	minFileReadsForReadahead = 2
+	initialReadaheadSize     = 8 << 10 /* 8KB */
+	maxReadaheadSize         = 256 << 10 /* 256KB */
+)
+
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
@@ -72,6 +79,7 @@ type singleLevelIterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
+	dataRS     readaheadState
 	dataBH     BlockHandle
 	err        error
 	closeHook  func(i Iterator) error
@@ -146,6 +154,7 @@ func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
 		_ = i.index.Close()
 		return err
 	}
+	i.dataRS.size = initialReadaheadSize
 	return nil
 }
 
@@ -196,7 +205,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */)
+	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
 	if err != nil {
 		i.err = err
 		return false
@@ -591,7 +600,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = errors.New("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */)
+	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
 		i.err = err
 		return false
@@ -906,6 +915,55 @@ func (i *twoLevelCompactionIterator) skipForward(
 
 type blockTransform func([]byte) ([]byte, error)
 
+// readaheadState contains state variables related to readahead. Updated on
+// file reads for this type of block (eg. index, filter, data, rangedel).
+type readaheadState struct {
+	numReads       uint64
+	size, prevSize uint64
+	limit          uint64
+}
+
+// maybeReadahead updates state and determines whether to issue a readahead /
+// prefetch call for a block read at offset for blockLength bytes.
+// Returns a size value (greater than 0) that should be prefetched if readahead
+// would be beneficial.
+func (rs *readaheadState) maybeReadahead(offset uint64, blockLength uint64) uint64 {
+	currentReadEnd := offset + blockLength + blockTrailerLen
+	if rs.numReads >= minFileReadsForReadahead {
+		if rs.prevSize == 0 || currentReadEnd >= rs.limit && offset <= rs.limit + rs.size {
+			rs.limit = offset + rs.size
+			rs.prevSize = rs.size
+			rs.size *= 2
+			if rs.size > maxReadaheadSize {
+				rs.size = maxReadaheadSize
+			}
+			return rs.prevSize
+		} else if ((rs.limit > rs.prevSize) && currentReadEnd < (rs.limit - rs.prevSize)) || offset > rs.limit {
+			// The above conditional has rs.limit > rs.prevSize to confirm that
+			// rs.limit - rs.prevSize would not underflow.
+			// We read too far ahead of rs.limit, or before the last-readahead
+			// block. Reset all variables.
+			rs.numReads = 1
+			rs.limit = offset
+			rs.size = initialReadaheadSize
+			rs.prevSize = 0
+		}
+	} else if offset >= rs.limit && currentReadEnd <= rs.limit + rs.size {
+		// Blocks of this type (eg. data, index) are being read
+		// sequentially and would benefit from readahead down the line.
+		rs.numReads++
+		rs.limit = offset
+	} else {
+		// We read too far ahead of rs.limit, or before it. Reset all
+		// variables.
+		rs.numReads = 1
+		rs.limit = offset
+		rs.size = initialReadaheadSize
+		rs.prevSize = 0
+	}
+	return 0
+}
+
 // ReaderOption provide an interface to do work on Reader while it is being
 // opened.
 type ReaderOption interface {
@@ -1154,21 +1212,27 @@ func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */)
+	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */)
+	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
 }
 
 func (r *Reader) readRangeDel() (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform)
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Handle, error) {
+func (r *Reader) readBlock(bh BlockHandle, transform blockTransform, raState *readaheadState) (cache.Handle, error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
+	}
+
+	if raState != nil {
+		if readaheadSize := raState.maybeReadahead(bh.Offset, bh.Length); readaheadSize > 0 {
+			_ = vfs.Prefetch(r.file, bh.Offset, readaheadSize)
+		}
 	}
 
 	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
@@ -1280,7 +1344,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
 		return err
 	}
@@ -1310,7 +1374,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */)
+		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			return err
 		}
@@ -1402,7 +1466,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */)
+			subIndex, err := r.readBlock(indexBH, nil /* transform */, nil /* readaheadState */)
 			if err != nil {
 				return nil, err
 			}
@@ -1468,7 +1532,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */)
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			return 0, err
 		}
@@ -1488,7 +1552,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */)
+			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* readaheadState */)
 			if err != nil {
 				return 0, err
 			}
@@ -1677,7 +1741,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

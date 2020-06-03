@@ -1,0 +1,101 @@
+reset
+----
+
+read
+2048, 16
+----
+no readahead, numReads = 1
+
+read
+2096, 16
+----
+no readahead, numReads = 2
+
+read
+2112, 16
+----
+readahead, bytes = 8192
+
+read
+8000, 16
+----
+no readahead, numReads = 2
+
+read
+8016, 16
+----
+no readahead, numReads = 2
+
+# The new limit is 2112 + 8192 = 10304.
+# Since the next read will end at 10297 + 1 + 5 (blockTrailerLen) = 10303
+# it doesn't yet trigger a readahead.
+
+read
+10297, 1
+----
+no readahead, numReads = 2
+
+read
+10297, 2
+----
+readahead, bytes = 16384
+
+read
+16192, 16
+----
+no readahead, numReads = 2
+
+read
+16193, 16
+----
+no readahead, numReads = 2
+
+read
+26681, 16
+----
+readahead, bytes = 32768
+
+# The next read is too far ahead to benefit from readahead
+# (i.e. 124986 > 26681 + 32768 (old size) + 2*32768 (new size) )
+
+read
+124986, 16
+----
+no readahead, numReads = 1
+
+read
+7980, 16
+----
+no readahead, numReads = 1
+
+read
+0, 16
+----
+no readahead, numReads = 1
+
+read
+7780, 16
+----
+no readahead, numReads = 2
+
+# Note that sizes should start from initial (8kb) again.
+
+read
+7680, 16
+----
+readahead, bytes = 8192
+
+read
+7700, 16
+----
+no readahead, numReads = 2
+
+read
+7720, 16
+----
+no readahead, numReads = 2
+
+read
+7720, 16
+----
+no readahead, numReads = 2
