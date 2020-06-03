@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -452,6 +453,41 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestMaybeReadahead(t *testing.T) {
+	var rs readaheadState
+	datadriven.RunTest(t, "testdata/readahead", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "reset":
+			rs.size = initialReadaheadSize
+			rs.limit = 0
+			rs.numReads = 0
+			return ""
+
+		case "read":
+			args := strings.Split(d.Input, ",")
+			if len(args) != 2 {
+				return "expected 2 args: offset, size"
+			}
+
+			offset, err := strconv.ParseInt(strings.TrimSpace(args[0]), 10, 64)
+			require.NoError(t, err)
+			size, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
+			require.NoError(t, err)
+			raSize := rs.maybeReadahead(offset, size)
+
+			var buf strings.Builder
+			fmt.Fprintf(&buf, "readahead:  %d\n", raSize)
+			fmt.Fprintf(&buf, "numReads:   %d\n", rs.numReads)
+			fmt.Fprintf(&buf, "size:       %d\n", rs.size)
+			fmt.Fprintf(&buf, "prevSize:   %d\n", rs.prevSize)
+			fmt.Fprintf(&buf, "limit:      %d", rs.limit)
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
 }
 
 func buildTestTable(
