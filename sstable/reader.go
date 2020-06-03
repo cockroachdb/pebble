@@ -28,6 +28,13 @@ import (
 
 var errCorruptIndexEntry = errors.New("pebble/table: corrupt index entry")
 
+const (
+	// Constants for dynamic readahead of data blocks.
+	minFileReadsForReadahead = 2
+	initialReadaheadSize     = 8 << 10 /* 8KB */
+	maxReadaheadSize         = 256 << 10 /* 256KB */
+)
+
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
@@ -72,6 +79,7 @@ type singleLevelIterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
+	dataAttrs  blockAttrs
 	dataBH     BlockHandle
 	err        error
 	closeHook  func(i Iterator) error
@@ -146,6 +154,7 @@ func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
 		_ = i.index.Close()
 		return err
 	}
+	i.dataAttrs.readaheadSize = initialReadaheadSize
 	return nil
 }
 
@@ -196,7 +205,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */)
+	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataAttrs)
 	if err != nil {
 		i.err = err
 		return false
@@ -591,7 +600,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = errors.New("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */)
+	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* attrs */)
 	if err != nil {
 		i.err = err
 		return false
@@ -906,6 +915,15 @@ func (i *twoLevelCompactionIterator) skipForward(
 
 type blockTransform func([]byte) ([]byte, error)
 
+// blockAttrs contains state variables that is updated upon block access,
+// and retained between accesses for that type of block (index, data, filter,
+// etc).
+type blockAttrs struct {
+	numReads       uint64
+	readaheadSize  uint64
+	readaheadLimit uint64
+}
+
 // ReaderOption provide an interface to do work on Reader while it is being
 // opened.
 type ReaderOption interface {
@@ -1154,21 +1172,42 @@ func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */)
+	return r.readBlock(r.indexBH, nil /* transform */, nil /* attrs */)
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */)
+	return r.readBlock(r.filterBH, nil /* transform */, nil /* attrs */)
 }
 
 func (r *Reader) readRangeDel() (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform)
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* attrs */)
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(bh BlockHandle, transform blockTransform) (cache.Handle, error) {
+func (r *Reader) readBlock(bh BlockHandle, transform blockTransform, attrs *blockAttrs) (cache.Handle, error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		return h, nil
+	}
+
+	if attrs != nil {
+		attrs.numReads++
+		// If this type of block has been read multiple times in this file so
+		// far, signal the OS to asynchronously read ahead multiple blocks.
+		if attrs.numReads > minFileReadsForReadahead {
+			if pf, ok := r.file.(vfs.Prefetch); ok && bh.Offset + bh.Length + blockTrailerLen > attrs.readaheadLimit {
+				// Prefetching causes test runs with the race detector to often
+				// run out of memory, so disable it if the race detector is
+				// running.
+				if !invariants.RaceEnabled {
+					_ = pf.Prefetch(bh.Offset, attrs.readaheadSize)
+				}
+				attrs.readaheadLimit = bh.Offset + attrs.readaheadSize
+				attrs.readaheadSize *= 2
+				if attrs.readaheadSize > maxReadaheadSize {
+					attrs.readaheadSize = maxReadaheadSize
+				}
+			}
+		}
 	}
 
 	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
@@ -1280,7 +1319,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* attrs */)
 	if err != nil {
 		return err
 	}
@@ -1310,7 +1349,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */)
+		b, err = r.readBlock(bh, nil /* transform */, nil /* attrs */)
 		if err != nil {
 			return err
 		}
@@ -1402,7 +1441,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */)
+			subIndex, err := r.readBlock(indexBH, nil /* transform */, nil /* attrs */)
 			if err != nil {
 				return nil, err
 			}
@@ -1468,7 +1507,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */)
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* attrs */)
 		if err != nil {
 			return 0, err
 		}
@@ -1488,7 +1527,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */)
+			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* attrs */)
 			if err != nil {
 				return 0, err
 			}
@@ -1536,7 +1575,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.ensureDefaults()
 	r := &Reader{
-		file: f,
+		file: vfs.NewPrefetchFile(f),
 		opts: o,
 	}
 	if r.opts.Cache == nil {
@@ -1677,7 +1716,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* attrs */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
