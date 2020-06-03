@@ -696,7 +696,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	r, err := NewReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	b, err := r.readBlock(r.metaIndexBH, nil /* transform */)
+	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */)
 	require.NoError(t, err)
 	defer b.Release()
 
