@@ -73,9 +73,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		// look for the return of a nil DB pointer.
 		if r := recover(); db == nil {
 			// Release our references to the Cache. Note that both the DB, and
-			// tableCache have a reference and we need to release both.
+			// tableCache have a reference. The tableCache.Close will release
+			// the tableCache's reference.
 			opts.Cache.Unref()
-			opts.Cache.Unref()
+			_ = d.tableCache.Close()
 			for _, mem := range d.mu.mem.queue {
 				switch t := mem.flushable.(type) {
 				case *memTable:
