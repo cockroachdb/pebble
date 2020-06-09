@@ -11,13 +11,17 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
 )
 
 const (
 	entrySize            = int(unsafe.Sizeof(entry{}))
 	entryAllocCacheLimit = 128
-	entriesGoAllocated   = false
+	// Avoid using runtime.SetFinalizer in race builds as finalizers tickle a bug
+	// in the Go race detector in go1.15 and earlier versions. This requires that
+	// entries are Go allocated rather than manually allocated.
+	entriesGoAllocated = invariants.RaceEnabled
 )
 
 var entryAllocPool = sync.Pool{
@@ -45,7 +49,9 @@ type entryAllocCache struct {
 
 func newEntryAllocCache() *entryAllocCache {
 	c := &entryAllocCache{}
-	runtime.SetFinalizer(c, freeEntryAllocCache)
+	if !entriesGoAllocated {
+		runtime.SetFinalizer(c, freeEntryAllocCache)
+	}
 	return c
 }
 
@@ -60,6 +66,9 @@ func freeEntryAllocCache(obj interface{}) {
 func (c *entryAllocCache) alloc() *entry {
 	n := len(c.entries)
 	if n == 0 {
+		if entriesGoAllocated {
+			return &entry{}
+		}
 		b := manual.New(entrySize)
 		return (*entry)(unsafe.Pointer(&b[0]))
 	}
@@ -69,8 +78,10 @@ func (c *entryAllocCache) alloc() *entry {
 }
 
 func (c *entryAllocCache) dealloc(e *entry) {
-	buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(e))[:entrySize:entrySize]
-	manual.Free(buf)
+	if !entriesGoAllocated {
+		buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(e))[:entrySize:entrySize]
+		manual.Free(buf)
+	}
 }
 
 func (c *entryAllocCache) free(e *entry) {
