@@ -253,7 +253,12 @@ type LogWriter struct {
 	err error
 	// block is the current block being written. Protected by flusher.Mutex.
 	block *block
-	free  chan *block
+	free  struct {
+		sync.Mutex
+		cond      sync.Cond
+		blocks    []*block
+		allocated int
+	}
 
 	flusher struct {
 		sync.Mutex
@@ -293,18 +298,17 @@ func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 		// number is used as a validation check and using only the low 32-bits is
 		// sufficient for that purpose.
 		logNum: uint32(logNum),
-		free:   make(chan *block, 16),
 		afterFunc: func(d time.Duration, f func()) syncTimer {
 			return time.AfterFunc(d, f)
 		},
 	}
-	for i := 0; i < cap(r.free); i++ {
-		r.free <- &block{}
-	}
-	r.block = <-r.free
+	r.free.cond.L = &r.free.Mutex
+	r.free.blocks = make([]*block, 0, 16)
+	r.free.allocated = 1
+	r.block = &block{}
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
 	r.flusher.closed = make(chan struct{})
-	r.flusher.pending = make([]*block, 0, cap(r.free))
+	r.flusher.pending = make([]*block, 0, cap(r.free.blocks))
 	go func() {
 		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
 	}()
@@ -485,7 +489,10 @@ func (w *LogWriter) flushBlock(b *block) error {
 	}
 	b.written = 0
 	b.flushed = 0
-	w.free <- b
+	w.free.Lock()
+	w.free.blocks = append(w.free.blocks, b)
+	w.free.cond.Signal()
+	w.free.Unlock()
 	return nil
 }
 
@@ -494,7 +501,20 @@ func (w *LogWriter) flushBlock(b *block) error {
 func (w *LogWriter) queueBlock() {
 	// Allocate a new block, blocking until one is available. We do this first
 	// because w.block is protected by w.flusher.Mutex.
-	nextBlock := <-w.free
+	w.free.Lock()
+	if len(w.free.blocks) == 0 {
+		if w.free.allocated < cap(w.free.blocks) {
+			w.free.allocated++
+			w.free.blocks = append(w.free.blocks, &block{})
+		} else {
+			for len(w.free.blocks) == 0 {
+				w.free.cond.Wait()
+			}
+		}
+	}
+	nextBlock := w.free.blocks[len(w.free.blocks)-1]
+	w.free.blocks = w.free.blocks[:len(w.free.blocks)-1]
+	w.free.Unlock()
 
 	f := &w.flusher
 	f.Lock()
