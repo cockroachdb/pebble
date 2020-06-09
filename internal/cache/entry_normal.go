@@ -11,6 +11,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
 )
 
@@ -26,7 +27,24 @@ var entryAllocPool = sync.Pool{
 	},
 }
 
+func entryManualAlloc() *entry {
+	b := manual.New(entrySize)
+	return (*entry)(unsafe.Pointer(&b[0]))
+}
+
+func entryManualFree(e *entry) {
+	buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(e))[:entrySize:entrySize]
+	manual.Free(buf)
+}
+
 func entryAllocNew() *entry {
+	if invariants.RaceEnabled {
+		// We don't use the entry alloc cache in race builds because doing so
+		// requires the use of runtime.SetFinalizer which triggers a bug in the
+		// go1.15 and earlier race detector.
+		return entryManualAlloc()
+	}
+
 	a := entryAllocPool.Get().(*entryAllocCache)
 	e := a.alloc()
 	entryAllocPool.Put(a)
@@ -34,6 +52,11 @@ func entryAllocNew() *entry {
 }
 
 func entryAllocFree(e *entry) {
+	if invariants.RaceEnabled {
+		entryManualFree(e)
+		return
+	}
+
 	a := entryAllocPool.Get().(*entryAllocCache)
 	a.free(e)
 	entryAllocPool.Put(a)
@@ -52,7 +75,7 @@ func newEntryAllocCache() *entryAllocCache {
 func freeEntryAllocCache(obj interface{}) {
 	c := obj.(*entryAllocCache)
 	for i, e := range c.entries {
-		c.dealloc(e)
+		entryManualFree(e)
 		c.entries[i] = nil
 	}
 }
@@ -60,22 +83,16 @@ func freeEntryAllocCache(obj interface{}) {
 func (c *entryAllocCache) alloc() *entry {
 	n := len(c.entries)
 	if n == 0 {
-		b := manual.New(entrySize)
-		return (*entry)(unsafe.Pointer(&b[0]))
+		return entryManualAlloc()
 	}
 	e := c.entries[n-1]
 	c.entries = c.entries[:n-1]
 	return e
 }
 
-func (c *entryAllocCache) dealloc(e *entry) {
-	buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(e))[:entrySize:entrySize]
-	manual.Free(buf)
-}
-
 func (c *entryAllocCache) free(e *entry) {
 	if len(c.entries) == entryAllocCacheLimit {
-		c.dealloc(e)
+		entryManualFree(e)
 		return
 	}
 	c.entries = append(c.entries, e)
