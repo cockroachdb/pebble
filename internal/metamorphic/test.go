@@ -49,7 +49,7 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 		t.writeOpts = pebble.Sync
 	}
 	t.opts = testOpts.opts.EnsureDefaults()
-	t.opts.Logger = h.Logger()
+	t.opts.Logger = h
 	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.DebugCheck = func(db *pebble.DB) error {
 		// Wrap the ordinary DebugCheckLevels with retrying
@@ -71,6 +71,7 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 			return
 		}
 		t.maybeSaveData()
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 

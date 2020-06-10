@@ -7,7 +7,6 @@ package metamorphic
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -634,8 +633,7 @@ type dbRestartOp struct {
 func (o *dbRestartOp) run(t *test, h *history) {
 	if err := t.restartDB(); err != nil {
 		h.Recordf("%s // %v", o, err)
-		fmt.Fprintf(os.Stderr, "terminating since dbRestartOp returned err %s\n", err)
-		h.failed = true
+		h.err.Store(errors.Wrap(err, "dbRestartOp"))
 	} else {
 		h.Recordf("%s", o)
 	}
