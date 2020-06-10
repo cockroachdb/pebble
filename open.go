@@ -487,7 +487,7 @@ func (d *DB) replayWAL(
 			if err == io.EOF || err == record.ErrZeroedChunk || err == record.ErrInvalidChunk {
 				break
 			}
-			return 0, err
+			return 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}
 
 		if buf.Len() < batchHeaderLen {
