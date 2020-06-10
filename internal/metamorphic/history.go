@@ -10,13 +10,17 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"sync/atomic"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/errors"
 )
 
 // history records the results of running a series of operations.
+//
+// history also implements the pebble.Logger interface, outputting to a stdlib
+// logger, prefixing the log messages with "//"-style comments.
 type history struct {
-	failed bool
+	err    atomic.Value
 	failRE *regexp.Regexp
 	log    *log.Logger
 	seq    int
@@ -48,29 +52,21 @@ func (h *history) Recordf(format string, args ...interface{}) {
 	h.log.Print(m)
 
 	if h.failRE != nil && h.failRE.MatchString(m) {
-		h.failed = true
+		err := errors.Errorf("failure regexp %q matched output: %s", h.failRE, m)
+		h.err.Store(err)
 	}
 }
 
-// Failed returns true if the fail regular expression has matched the results
-// of an operation.
-func (h *history) Failed() bool {
-	return h.failed
+// Error returns an error if the test has failed from log output, either a
+// failure regexp match or a call to Fatalf.
+func (h *history) Error() error {
+	if v := h.err.Load(); v != nil {
+		return v.(error)
+	}
+	return nil
 }
 
-// Logger returns a pebble.Logger that will output to history.
-func (h *history) Logger() pebble.Logger {
-	return &historyLogger{log: h.log}
-}
-
-// historyLogger is an implementation of the pebble.Logger interface which
-// outputs to a stdlib logger, prefixing the log messages with "//"-style
-// comments.
-type historyLogger struct {
-	log *log.Logger
-}
-
-func (h *historyLogger) format(prefix, format string, args ...interface{}) string {
+func (h *history) format(prefix, format string, args ...interface{}) string {
 	var buf strings.Builder
 	orig := fmt.Sprintf(format, args...)
 	for _, line := range strings.Split(strings.TrimSpace(orig), "\n") {
@@ -83,12 +79,13 @@ func (h *historyLogger) format(prefix, format string, args ...interface{}) strin
 
 // Infof implements the pebble.Logger interface. Note that the output is
 // commented.
-func (h *historyLogger) Infof(format string, args ...interface{}) {
+func (h *history) Infof(format string, args ...interface{}) {
 	_ = h.log.Output(2, h.format("// INFO: ", format, args...))
 }
 
 // Fatalf implements the pebble.Logger interface. Note that the output is
 // commented.
-func (h *historyLogger) Fatalf(format string, args ...interface{}) {
+func (h *history) Fatalf(format string, args ...interface{}) {
 	_ = h.log.Output(2, h.format("// FATAL: ", format, args...))
+	h.err.Store(errors.Errorf(format, args...))
 }
