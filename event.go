@@ -385,40 +385,40 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 			logger.Infof("background error: %s", err)
 		},
 		CompactionBegin: func(info CompactionInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		CompactionEnd: func(info CompactionInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		FlushBegin: func(info FlushInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		FlushEnd: func(info FlushInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		ManifestCreated: func(info ManifestCreateInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		ManifestDeleted: func(info ManifestDeleteInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		TableCreated: func(info TableCreateInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		TableDeleted: func(info TableDeleteInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		TableIngested: func(info TableIngestInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		WALCreated: func(info WALCreateInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		WALDeleted: func(info WALDeleteInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		WriteStallBegin: func(info WriteStallBeginInfo) {
-			logger.Infof("%s", info.String())
+			logger.Infof("%s", info)
 		},
 		WriteStallEnd: func() {
 			logger.Infof("write stall ending")
