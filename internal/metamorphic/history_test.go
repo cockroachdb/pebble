@@ -14,9 +14,8 @@ import (
 func TestHistoryLogger(t *testing.T) {
 	var buf bytes.Buffer
 	h := newHistory("", &buf)
-	l := h.Logger()
-	l.Infof("hello\nworld\n")
-	l.Fatalf("hello\n\nworld")
+	h.Infof("hello\nworld\n")
+	h.Fatalf("hello\n\nworld")
 
 	expected := `// INFO: hello
 // INFO: world
@@ -33,7 +32,7 @@ func TestHistoryFail(t *testing.T) {
 	var buf bytes.Buffer
 	h := newHistory("foo", &buf)
 	h.Recordf("bar")
-	require.False(t, h.Failed())
+	require.NoError(t, h.Error())
 	h.Recordf("foo bar")
-	require.True(t, h.Failed())
+	require.EqualError(t, h.Error(), `failure regexp "foo" matched output: foo bar #2`)
 }

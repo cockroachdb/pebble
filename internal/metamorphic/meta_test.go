@@ -117,10 +117,8 @@ func testMetaRun(t *testing.T, runDir string) {
 	m := newTest(ops)
 	require.NoError(t, m.init(h, opts.FS.PathJoin(runDir, "data"), testOpts))
 	for m.step(h) {
-		if h.Failed() {
-			if len(*failRE) > 0 {
-				fmt.Fprintf(os.Stderr, "failure regex %q matched\n", *failRE)
-			}
+		if err := h.Error(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			m.maybeSaveData()
 			os.Exit(1)
 		}
