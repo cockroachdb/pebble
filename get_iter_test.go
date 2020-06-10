@@ -542,7 +542,7 @@ func TestGetIter(t *testing.T) {
 			get.equal = equal
 			get.newIters = newIter
 			get.key = ikey.UserKey
-			get.l0 = v.L0SubLevels.Files
+			get.l0 = v.L0Sublevels.Files
 			get.version = v
 			get.snapshot = ikey.SeqNum() + 1
 

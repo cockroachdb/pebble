@@ -1253,7 +1253,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				if err := vers.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter, flushSplitBytes); err != nil {
 					t.Fatal(err)
 				}
-				flushSplitKeys := vers.L0SubLevels.FlushSplitKeys()
+				flushSplitKeys := vers.L0Sublevels.FlushSplitKeys()
 
 				var buf strings.Builder
 				buf.WriteString(vers.DebugString(base.DefaultFormatter))
@@ -1268,7 +1268,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				c := &compaction{
 					cmp:          cmp,
 					version:      vers,
-					l0Limits:     vers.L0SubLevels.FlushSplitKeys(),
+					l0Limits:     vers.L0Sublevels.FlushSplitKeys(),
 					startLevel:   -1,
 					outputLevel:  0,
 				}

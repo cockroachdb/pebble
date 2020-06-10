@@ -257,7 +257,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		// execution. If we've exceeded it, wait for compactions to catch up.
 		var skipCh <-chan time.Time
 		for skip := false; !skip; {
-			refReadAmplification := ref.L0SubLevels.ReadAmplification()
+			refReadAmplification := ref.L0Sublevels.ReadAmplification()
 
 			activeCompactions, waiterCh := compactions.countActive()
 			m = rd.Metrics()

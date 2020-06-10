@@ -50,18 +50,18 @@ func readManifest(filename string) (*Version, error) {
 	return v, nil
 }
 
-func TestL0SubLevels_LargeImportL0(t *testing.T) {
+func TestL0Sublevels_LargeImportL0(t *testing.T) {
 	// TODO(bilal): Fix this test.
 	t.Skip()
 	v, err := readManifest("testdata/MANIFEST_import")
 	require.NoError(t, err)
 
-	subLevels, err := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+	sublevels, err := NewL0Sublevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 	require.NoError(t, err)
-	fmt.Printf("L0SubLevels:\n%s\n\n", subLevels)
+	fmt.Printf("L0Sublevels:\n%s\n\n", sublevels)
 
 	for i := 0; ; i++ {
-		c, err := subLevels.PickBaseCompaction(2, nil)
+		c, err := sublevels.PickBaseCompaction(2, nil)
 		require.NoError(t, err)
 		if c == nil {
 			break
@@ -75,11 +75,11 @@ func TestL0SubLevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, subLevels.UpdateStateForStartedCompaction([][]*FileMetadata{files}, true))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction([][]*FileMetadata{files}, true))
 	}
 
 	for i := 0; ; i++ {
-		c, err := subLevels.PickIntraL0Compaction(math.MaxUint64, 2)
+		c, err := sublevels.PickIntraL0Compaction(math.MaxUint64, 2)
 		require.NoError(t, err)
 		if c == nil {
 			break
@@ -94,12 +94,12 @@ func TestL0SubLevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, subLevels.UpdateStateForStartedCompaction([][]*FileMetadata{files}, false))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction([][]*FileMetadata{files}, false))
 	}
 }
 
 func visualizeSublevels(
-	s *L0SubLevels, compactionFiles bitSet, otherLevels [][]*FileMetadata,
+	s *L0Sublevels, compactionFiles bitSet, otherLevels [][]*FileMetadata,
 ) string {
 	var buf strings.Builder
 	if compactionFiles == nil {
@@ -184,7 +184,7 @@ func visualizeSublevels(
 	return buf.String()
 }
 
-func TestL0SubLevels(t *testing.T) {
+func TestL0Sublevels(t *testing.T) {
 	parseMeta := func(s string) (*FileMetadata, error) {
 		parts := strings.Split(s, ":")
 		if len(parts) != 2 {
@@ -234,7 +234,7 @@ func TestL0SubLevels(t *testing.T) {
 	var err error
 	var fileMetas [NumLevels][]*FileMetadata
 	var explicitSublevels [][]*FileMetadata
-	var sublevels *L0SubLevels
+	var sublevels *L0Sublevels
 	baseLevel := NumLevels - 1
 
 	datadriven.RunTest(t, "testdata/l0_sublevels", func(td *datadriven.TestData) string {
@@ -302,7 +302,7 @@ func TestL0SubLevels(t *testing.T) {
 			}
 
 			if initialize {
-				sublevels, err = NewL0SubLevels(
+				sublevels, err = NewL0Sublevels(
 					fileMetas[0],
 					base.DefaultComparer.Compare,
 					base.DefaultFormatter,
@@ -311,7 +311,7 @@ func TestL0SubLevels(t *testing.T) {
 			} else {
 				// This case is for use with explicitly-specified sublevels
 				// only.
-				sublevels = &L0SubLevels{
+				sublevels = &L0Sublevels{
 					Files:      explicitSublevels,
 					cmp:        base.DefaultComparer.Compare,
 					formatKey:  base.DefaultFormatter,
@@ -454,32 +454,32 @@ func TestL0SubLevels(t *testing.T) {
 	})
 }
 
-func BenchmarkL0SubLevelsInit(b *testing.B) {
+func BenchmarkL0SublevelsInit(b *testing.B) {
 	v, err := readManifest("testdata/MANIFEST_import")
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+		sl, err := NewL0Sublevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
-			b.Fatal("expected non-nil L0SubLevels to be generated")
+			b.Fatal("expected non-nil L0Sublevels to be generated")
 		}
 	}
 }
 
-func BenchmarkL0SubLevelsInitAndPick(b *testing.B) {
+func BenchmarkL0SublevelsInitAndPick(b *testing.B) {
 	v, err := readManifest("testdata/MANIFEST_import")
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0SubLevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+		sl, err := NewL0Sublevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
-			b.Fatal("expected non-nil L0SubLevels to be generated")
+			b.Fatal("expected non-nil L0Sublevels to be generated")
 		}
 		c, err := sl.PickBaseCompaction(2, nil)
 		require.NoError(b, err)

@@ -401,11 +401,11 @@ func checkRangeTombstones(c *checkConfig) error {
 		return nil
 	}
 	// Now the levels with untruncated tombsones.
-	for i := len(current.L0SubLevels.Files) - 1; i >= 0; i-- {
-		if len(current.L0SubLevels.Files[i]) == 0 {
+	for i := len(current.L0Sublevels.Files) - 1; i >= 0; i-- {
+		if len(current.L0Sublevels.Files[i]) == 0 {
 			continue
 		}
-		if err := addTombstonesFromLevel(&current.L0SubLevels.Files[i], 0); err != nil {
+		if err := addTombstonesFromLevel(&current.L0Sublevels.Files[i], 0); err != nil {
 			return err
 		}
 		level++
@@ -647,8 +647,8 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	// Determine the final size for mlevels so that there are no more
 	// reallocations. levelIter will hold a pointer to elements in mlevels.
 	start := len(mlevels)
-	for sublevel := len(current.L0SubLevels.Files) - 1; sublevel >= 0; sublevel-- {
-		if len(current.L0SubLevels.Files[sublevel]) == 0 {
+	for sublevel := len(current.L0Sublevels.Files) - 1; sublevel >= 0; sublevel-- {
+		if len(current.L0Sublevels.Files[sublevel]) == 0 {
 			continue
 		}
 		mlevels = append(mlevels, simpleMergingIterLevel{})
@@ -661,13 +661,13 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	}
 	mlevelAlloc := mlevels[start:]
 	// Add L0 files by sublevel.
-	for sublevel := len(current.L0SubLevels.Files) - 1; sublevel >= 0; sublevel-- {
-		if len(current.L0SubLevels.Files[sublevel]) == 0 {
+	for sublevel := len(current.L0Sublevels.Files) - 1; sublevel >= 0; sublevel-- {
+		if len(current.L0Sublevels.Files[sublevel]) == 0 {
 			continue
 		}
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, current.L0SubLevels.Files[sublevel],
+		li.init(iterOpts, c.cmp, c.newIters, current.L0Sublevels.Files[sublevel],
 			manifest.L0Sublevel(sublevel), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)

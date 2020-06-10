@@ -253,7 +253,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	if err != nil {
 		return err
 	}
-	newVersion.L0SubLevels.InitCompactingFileInfo()
+	newVersion.L0Sublevels.InitCompactingFileInfo()
 	vs.append(newVersion)
 
 	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
@@ -439,8 +439,8 @@ func (vs *versionSet) logAndApply(
 	}
 
 	// Now that DB.mu is held again, initialize compacting file info in
-	// L0SubLevels.
-	newVersion.L0SubLevels.InitCompactingFileInfo()
+	// L0Sublevels.
+	newVersion.L0Sublevels.InitCompactingFileInfo()
 
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
@@ -477,7 +477,7 @@ func (vs *versionSet) logAndApply(
 			l.Sublevels = 1
 		}
 	}
-	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SubLevels.Files))
+	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Files))
 	return nil
 }
 

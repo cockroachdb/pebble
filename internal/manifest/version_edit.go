@@ -489,13 +489,13 @@ func (b *BulkVersionEdit) Apply(
 		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
 			// There are no edits on this level.
 			if level == 0 {
-				// Initialize L0SubLevels.
-				if curr == nil || curr.L0SubLevels == nil {
+				// Initialize L0Sublevels.
+				if curr == nil || curr.L0Sublevels == nil {
 					if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
 						return nil, nil, errors.Wrap(err, "pebble: internal error")
 					}
 				} else {
-					v.L0SubLevels = curr.L0SubLevels
+					v.L0Sublevels = curr.L0Sublevels
 				}
 			}
 			if curr == nil {
