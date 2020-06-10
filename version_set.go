@@ -200,7 +200,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			break
 		}
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "pebble: error when loading manifest file %q",
+				errors.Safe(b))
 		}
 		var ve versionEdit
 		err = ve.Decode(r)
