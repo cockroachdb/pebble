@@ -392,6 +392,13 @@ func (x singleReader) Read(p []byte) (int, error) {
 			return 0, io.EOF
 		}
 		if r.err = r.nextChunk(false); r.err != nil {
+			if r.err == io.ErrUnexpectedEOF {
+				// We were reading a multi-chunk record where the next chunk
+				// does not exist in the file. As callers expect an
+				// ErrInvalidChunk to be returned when there are invalid
+				// chunks, return that error instead.
+				r.err = ErrInvalidChunk
+			}
 			return 0, r.err
 		}
 	}
