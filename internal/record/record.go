@@ -149,6 +149,13 @@ var (
 	ErrInvalidChunk = errors.New("pebble/record: invalid chunk")
 )
 
+// IsInvalidRecord returns true if the error matches one of the error types
+// returned for invalid records. These are treated in a way similar to io.EOF
+// in recovery code.
+func IsInvalidRecord(err error) bool {
+	return err == ErrZeroedChunk || err == ErrInvalidChunk || err == io.ErrUnexpectedEOF
+}
+
 // Reader reads records from an underlying io.Reader.
 type Reader struct {
 	// r is the underlying reader.
