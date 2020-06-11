@@ -334,10 +334,10 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 		// bounds as such keys are always range tombstones which will be skipped by
 		// the Iterator.
 		if l.lower != nil && key != l.smallestBoundary && l.cmp(key.UserKey, l.lower) < 0 {
-			l.logger.Fatalf("levelIter: lower bound violation: %s < %s\n%s", key, l.lower, debug.Stack())
+			l.logger.Fatalf("levelIter %s: lower bound violation: %s < %s\n%s", l.level, key, l.lower, debug.Stack())
 		}
 		if l.upper != nil && key != l.largestBoundary && l.cmp(key.UserKey, l.upper) > 0 {
-			l.logger.Fatalf("levelIter: upper bound violation: %s > %s\n%s", key, l.upper, debug.Stack())
+			l.logger.Fatalf("levelIter %s: upper bound violation: %s > %s\n%s", l.level, key, l.upper, debug.Stack())
 		}
 	}
 	return key, val
