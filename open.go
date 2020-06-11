@@ -470,7 +470,7 @@ func (d *DB) replayWAL(
 			// preallocation and WAL recycling. We need to distinguish these errors
 			// from EOF in order to recognize that the record was truncated, but want
 			// to otherwise treat them like EOF.
-			if err == io.EOF || err == record.ErrZeroedChunk || err == record.ErrInvalidChunk {
+			if err == io.EOF || record.IsInvalidRecord(err) {
 				break
 			}
 			return 0, err

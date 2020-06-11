@@ -196,7 +196,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	rr := record.NewReader(manifest, 0 /* logNum */)
 	for {
 		r, err := rr.Next()
-		if err == io.EOF {
+		if err == io.EOF || record.IsInvalidRecord(err) {
 			break
 		}
 		if err != nil {
@@ -205,6 +205,11 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		var ve versionEdit
 		err = ve.Decode(r)
 		if err != nil {
+			// Break instead of returning an error if the record is corrupted
+			// or invalid.
+			if err == io.EOF || record.IsInvalidRecord(err) {
+				break
+			}
 			return err
 		}
 		if ve.ComparerName != "" {
