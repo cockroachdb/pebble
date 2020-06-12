@@ -13,6 +13,15 @@ import (
 
 func TestTableStats(t *testing.T) {
 	fs := vfs.NewMem()
+	var loadedInfo *TableStatsInfo
+	opts := &Options{
+		FS: fs,
+		EventListener: EventListener{
+			TableStatsLoaded: func(info TableStatsInfo) {
+				loadedInfo = &info
+			},
+		},
+	}
 	d, err := Open("", &Options{FS: fs})
 	require.NoError(t, err)
 	defer func() {
@@ -39,8 +48,9 @@ func TestTableStats(t *testing.T) {
 		case "reopen":
 			require.NoError(t, d.Close())
 			// Open using existing file system.
-			d, err = Open("", &Options{FS: fs})
+			d, err = Open("", opts)
 			require.NoError(t, err)
+			loadedInfo = nil
 			return ""
 
 		case "batch":
@@ -70,7 +80,7 @@ func TestTableStats(t *testing.T) {
 				d.mu.tableStats.cond.Wait()
 			}
 			d.mu.Unlock()
-			return ""
+			return loadedInfo.String()
 
 		case "compact":
 			if err := runCompactCmd(td, d); err != nil {

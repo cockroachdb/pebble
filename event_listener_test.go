@@ -145,6 +145,11 @@ func TestEventListener(t *testing.T) {
 				EventListener:       MakeLoggingEventListener(&buf),
 				MaxManifestFileSize: 1,
 				WALDir:              "wal",
+				// The table stats collector runs asynchronously and its
+				// timing is less predictable. It increments nextJobID, which
+				// can make these tests flaky. The TableStatsLoaded event is
+				// tested separately in TestTableStats.
+				disableTableStats: true,
 			})
 			if err != nil {
 				return err.Error()
