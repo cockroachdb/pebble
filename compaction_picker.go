@@ -620,7 +620,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 	// compaction.
 	lcf, err = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, opts.L0CompactionThreshold)
 	if err != nil {
-		opts.Logger.Infof("error when picking base compaction: %s", err)
+		opts.Logger.Infof("error when picking intra-L0 compaction: %s", err)
 		return
 	}
 	if lcf != nil {
