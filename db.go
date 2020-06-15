@@ -292,6 +292,9 @@ type DB struct {
 			flushing bool
 			// The number of ongoing compactions.
 			compactingCount int
+			// The list of deletion hints, suggesting ranges for delete-only
+			// compactions.
+			deletionHints []deleteCompactionHint
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
 			manual []*manualCompaction
@@ -1453,10 +1456,14 @@ func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {
 func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []compactionInfo) {
 	for c := range d.mu.compact.inProgress {
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
-			rv = append(rv, compactionInfo{
+			info := compactionInfo{
 				inputs:      c.inputs,
-				outputLevel: c.outputLevel.level,
-			})
+				outputLevel: -1,
+			}
+			if c.outputLevel != nil {
+				info.outputLevel = c.outputLevel.level
+			}
+			rv = append(rv, info)
 		}
 	}
 	return

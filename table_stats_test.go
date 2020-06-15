@@ -27,7 +27,9 @@ func TestTableStats(t *testing.T) {
 			},
 		},
 	}
-	d, err := Open("", &Options{FS: fs})
+	opts.private.disableAutomaticCompactions = true
+
+	d, err := Open("", opts)
 	require.NoError(t, err)
 	defer func() {
 		if d != nil {
@@ -128,6 +130,7 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 	testCases := []struct {
 		fragmented []rangedel.Tombstone
 		want       [][2]string
+		wantSeq    [][2]uint64
 	}{
 		{
 			fragmented: []rangedel.Tombstone{
@@ -136,7 +139,8 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 				mktomb("l", "m", 2),
 				mktomb("v", "z", 2),
 			},
-			want: [][2]string{{"a", "c"}, {"e", "g"}, {"l", "m"}, {"v", "z"}},
+			want:    [][2]string{{"a", "c"}, {"e", "g"}, {"l", "m"}, {"v", "z"}},
+			wantSeq: [][2]uint64{{2, 2}, {2, 2}, {2, 2}, {2, 2}},
 		},
 		{
 			fragmented: []rangedel.Tombstone{
@@ -145,7 +149,8 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 				mktomb("c", "f", 2),
 				mktomb("f", "m", 5),
 			},
-			want: [][2]string{{"a", "m"}},
+			want:    [][2]string{{"a", "m"}},
+			wantSeq: [][2]uint64{{2, 5}},
 		},
 		{
 			fragmented: []rangedel.Tombstone{
@@ -155,7 +160,8 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 				mktomb("a", "b", 2),
 				mktomb("g", "k", 4),
 			},
-			want: [][2]string{{"a", "b"}, {"g", "k"}},
+			want:    [][2]string{{"a", "b"}, {"g", "k"}},
+			wantSeq: [][2]uint64{{2, 10}, {4, 4}},
 		},
 		{
 			fragmented: []rangedel.Tombstone{
@@ -167,18 +173,23 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 				mktomb("c", "d", 6),
 				mktomb("d", "e", 6),
 			},
-			want: [][2]string{{"a", "e"}},
+			want:    [][2]string{{"a", "e"}},
+			wantSeq: [][2]uint64{{6, 10}},
 		},
 	}
 
 	for _, tc := range testCases {
 		iter := rangedel.NewIter(DefaultComparer.Compare, tc.fragmented)
 		var got [][2]string
-		err := foreachDefragmentedTombstone(iter, DefaultComparer.Compare, func(start, end []byte) error {
-			got = append(got, [2]string{string(start), string(end)})
-			return nil
-		})
+		var gotSeq [][2]uint64
+		err := foreachDefragmentedTombstone(iter, DefaultComparer.Compare,
+			func(start, end []byte, smallest, largest uint64) error {
+				got = append(got, [2]string{string(start), string(end)})
+				gotSeq = append(gotSeq, [2]uint64{smallest, largest})
+				return nil
+			})
 		require.NoError(t, err)
 		require.Equal(t, tc.want, got)
+		require.Equal(t, tc.wantSeq, gotSeq)
 	}
 }

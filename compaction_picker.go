@@ -158,7 +158,7 @@ func newPickedCompactionFromL0(lcf *manifest.L0CompactionFiles, opts *Options, v
 func (pc *pickedCompaction) setupInputs() {
 	// Expand the initial inputs to a clean cut.
 	pc.startLevel.files = pc.expandInputs(pc.startLevel.level, pc.startLevel.files)
-	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, nil)
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files)
 
 	// Determine the sstables in the output level which overlap with the input
 	// sstables, and then expand those tables to a clean cut. No need to do
@@ -245,7 +245,7 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 	if totalSize(grow0)+totalSize(pc.outputLevel.files) >= pc.maxExpandedBytes {
 		return false
 	}
-	sm1, la1 := manifest.KeyRange(pc.cmp, grow0, nil)
+	sm1, la1 := manifest.KeyRange(pc.cmp, grow0)
 	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey, la1.UserKey).Collect()
 	grow1 = pc.expandInputs(pc.outputLevel.level, grow1)
 	if len(grow1) != len(pc.outputLevel.files) {
@@ -504,7 +504,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		}
 	}
 	for _, c := range inProgressCompactions {
-		if c.outputLevel == 0 {
+		if c.outputLevel == 0 || c.outputLevel == -1 {
 			continue
 		}
 		if c.inputs[0].level == 0 && (firstNonEmptyLevel == -1 || c.outputLevel < firstNonEmptyLevel) {
@@ -588,7 +588,9 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]int6
 
 			if input.level != c.outputLevel {
 				sizeAdjust[input.level] -= compensated
-				sizeAdjust[c.outputLevel] += real
+				if c.outputLevel != -1 {
+					sizeAdjust[c.outputLevel] += real
+				}
 			}
 		}
 	}
@@ -662,7 +664,7 @@ func (p *compactionPickerByScore) calculateL0Score(
 		// If L0Sublevels are present, we use the sublevel count as opposed to
 		// the L0 file count to score this level. The base vs intra-L0
 		// compaction determination happens in pickAuto, not here.
-		info.score = float64(2 * p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
+		info.score = float64(2*p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
 			float64(p.opts.L0CompactionThreshold)
 		return info
 	}
@@ -979,7 +981,7 @@ func pickAutoHelper(
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if pc.startLevel.level == 0 {
 		cmp := opts.Comparer.Compare
-		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files, nil)
+		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files)
 		pc.startLevel.files = vers.Overlaps(0, cmp, smallest.UserKey, largest.UserKey).Collect()
 		if len(pc.startLevel.files) == 0 {
 			panic("pebble: empty compaction")
@@ -1033,7 +1035,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 			// A single-file intra-L0 compaction is unproductive.
 			return nil
 		}
-		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, nil)
+		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files)
 		// Output only a single sstable for intra-L0 compactions.
 		// Now that we have the ability to split flushes, we could conceivably
 		// split the output of intra-L0 compactions too. This may be unnecessary
@@ -1125,7 +1127,7 @@ func pickIntraL0(env compactionEnv, opts *Options, vers *version) (pc *pickedCom
 
 	pc = newPickedCompaction(opts, vers, 0, 0)
 	pc.startLevel.files = l0Files[begin:end]
-	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, nil)
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files)
 	// Output only a single sstable for intra-L0 compactions. There is no current
 	// benefit to outputting multiple tables, because other parts of the code
 	// (i.e. iterators and comapction) expect L0 sstables to overlap and will
