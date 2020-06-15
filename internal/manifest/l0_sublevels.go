@@ -1125,11 +1125,9 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 			return nil, errors.New("no seed file found in sublevel intervals")
 		}
 		if f.Compacting {
-			// We chose a compaction seed file that should not be
-			// compacting. Usually means the score is not accurately
-			// accounting for files already compacting, or internal state is
-			// inconsistent.
-			return nil, errors.Errorf("file %d chosen as seed file for compaction should not be compacting", f.FileNum)
+			// This file could be in a concurrent intra-L0 or base compaction.
+			// Try another interval.
+			continue
 		}
 
 		// We have a seed file. Build a compaction off of that seed.

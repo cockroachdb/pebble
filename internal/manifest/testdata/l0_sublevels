@@ -1,3 +1,4 @@
+
 define
 L0
   000009:a.SET.10-b.SET.10
@@ -887,3 +888,48 @@ flush user split keys: c, e
 max-depth-after-ongoing-compactions
 ----
 2
+
+# Ensure that the compaction picker doesn't error out when all seed files are
+# compacting.
+
+define
+L0
+  000004:h.SET.2-j.SET.4    base_compacting
+  000005:f.SET.6-h.SET.9
+  000006:f.SET.4-g.SET.5    base_compacting
+  000007:k.SET.2-l.SET.4    base_compacting
+  000009:f.SET.12-p.SET.12  intra_l0_compacting
+  000010:f.SET.11-g.SET.11
+  000011:n.SET.8-p.SET.10   base_compacting
+L6
+  000012:a.SET.0-f.SET.0
+  000008:g.SET.0-s.SET.0
+----
+file count: 7, sublevels: 4, intervals: 9
+flush split keys(5): [g, h, j, l, p]
+0.3: file count: 1, bytes: 256, width (mean, max): 8.0, 8, interval range: [0, 7]
+	000009:f#12,1-p#12,1
+0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000010:f#11,1-g#11,1
+0.1: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [0, 2]
+	000005:f#6,1-h#9,1
+0.0: file count: 4, bytes: 1024, width (mean, max): 1.2, 2, interval range: [0, 7]
+	000006:f#4,1-g#5,1
+	000004:h#2,1-j#4,1
+	000007:k#2,1-l#4,1
+	000011:n#8,1-p#10,1
+compacting file count: 5, base compacting intervals: [0, 0], [2, 3], [5, 5], [7, 8]
+L0.3:                 f^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^p
+L0.2:                 f---g
+L0.1:                 f------h
+L0.0:                 fvvvg hvvvvvvj kvvvl    nvvvvvvp
+L6:    a---------------f g------------------------------------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+pick-base-compaction min_depth=2
+----
+no compaction picked
+
+pick-intra-l0-compaction min_depth=2
+----
+no compaction picked
