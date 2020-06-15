@@ -210,15 +210,16 @@ type mergingIterLevel struct {
 // scenarios and have each step display the current state (i.e. the current
 // heap and range-del iterator positioning).
 type mergingIter struct {
-	logger   Logger
-	dir      int
-	snapshot uint64
-	levels   []mergingIterLevel
-	heap     mergingIterHeap
-	err      error
-	prefix   []byte
-	lower    []byte
-	upper    []byte
+	logger       Logger
+	dir          int
+	snapshot     uint64
+	levels       []mergingIterLevel
+	hasDelLevels []int
+	heap         mergingIterHeap
+	err          error
+	prefix       []byte
+	lower        []byte
+	upper        []byte
 
 	// Elide range tombstones from being returned during iteration. Set to true
 	// when mergingIter is a child of Iterator and the mergingIter is processing
@@ -256,6 +257,13 @@ func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIter
 	}
 	m.snapshot = InternalKeySeqNumMax
 	m.levels = levels
+	hasDelLevels := make([]int, 0, len(levels))
+	for i, l := range levels {
+		if l.rangeDelIter != nil && !l.tombstone.Empty() {
+			hasDelLevels = append(hasDelLevels, i)
+		}
+	}
+	m.hasDelLevels = hasDelLevels
 	m.heap.cmp = cmp
 	if cap(m.heap.items) < len(levels) {
 		m.heap.items = make([]mergingIterItem, 0, len(levels))
@@ -475,8 +483,8 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	// deletion at the current level (level == item.index). If we find such a
 	// range deletion we need to check whether it is newer than the current
 	// entry.
-	for level := 0; level <= item.index; level++ {
-		l := &m.levels[level]
+	for i := 0; i < len(m.hasDelLevels) && m.hasDelLevels[i] <= item.index; i++ {
+		l := &m.levels[i]
 		if l.rangeDelIter == nil || l.tombstone.Empty() {
 			// If l.tombstone.Empty() is true, there are no further tombstones in the
 			// current sstable in the current (forward) iteration direction.
@@ -517,7 +525,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 		// For a tombstone at the same level as the key, the file bounds are trivially satisfied.
 		if (l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, item.key.UserKey) <= 0) &&
 			l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
-			if level < item.index {
+			if m.hasDelLevels[i] < item.index {
 				// We could also do m.seekGE(..., level + 1). The levels from
 				// [level + 1, item.index) are already after item.key so seeking them may be
 				// wasteful.
