@@ -259,7 +259,7 @@ func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIter
 	m.levels = levels
 	hasDelLevels := make([]int, 0, len(levels))
 	for i, l := range levels {
-		if l.rangeDelIter != nil && !l.tombstone.Empty() {
+		if l.rangeDelIter != nil || mayHaveDeletion(l.iter) {
 			hasDelLevels = append(hasDelLevels, i)
 		}
 	}
@@ -270,6 +270,17 @@ func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIter
 	} else {
 		m.heap.items = m.heap.items[:0]
 	}
+}
+
+// check if iterator contains deleted key
+func mayHaveDeletion(iter internalIterator) bool {
+	if i, ok := iter.(*mergingIter); ok {
+		return len(i.hasDelLevels) > 0
+	} else if _, ok := iter.(*levelIter); ok {
+		// TODO: how to determine a levelIter contains deleted keys
+		return true
+	}
+	return false
 }
 
 func (m *mergingIter) initHeap() {
@@ -484,7 +495,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	// range deletion we need to check whether it is newer than the current
 	// entry.
 	for i := 0; i < len(m.hasDelLevels) && m.hasDelLevels[i] <= item.index; i++ {
-		l := &m.levels[i]
+		l := &m.levels[m.hasDelLevels[i]]
 		if l.rangeDelIter == nil || l.tombstone.Empty() {
 			// If l.tombstone.Empty() is true, there are no further tombstones in the
 			// current sstable in the current (forward) iteration direction.
