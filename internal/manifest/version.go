@@ -131,10 +131,10 @@ func (m *FileMetadata) lessSmallestKey(b *FileMetadata, cmp Compare) bool {
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
 // all the fileMetadata in f0 and f1.
-func KeyRange(ucmp Compare, f0, f1 []*FileMetadata) (smallest, largest InternalKey) {
+func KeyRange(ucmp Compare, fileSlices ...[]*FileMetadata) (smallest, largest InternalKey) {
 	first := true
-	for _, f := range [2][]*FileMetadata{f0, f1} {
-		for _, meta := range f {
+	for _, files := range fileSlices {
+		for _, meta := range files {
 			if first {
 				first = false
 				smallest, largest = meta.Smallest, meta.Largest

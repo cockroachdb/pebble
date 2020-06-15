@@ -499,14 +499,18 @@ func TestIngest(t *testing.T) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
-
-		var err error
-		d, err = Open("", &Options{
+		opts := &Options{
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
-		})
+		}
+		// Disable automatic compactions because otherwise we'll race with
+		// delete-only compactions triggered by ingesting range tombstones.
+		opts.private.disableAutomaticCompactions = true
+
+		var err error
+		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
 	reset()

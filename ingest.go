@@ -445,7 +445,7 @@ func ingestTargetLevel(
 		// negative (else we'd have returned earlier).
 		overlaps := false
 		for c := range compactions {
-			if level != c.outputLevel.level {
+			if c.outputLevel == nil || level != c.outputLevel.level {
 				continue
 			}
 			if cmp(meta.Smallest.UserKey, c.largest.UserKey) <= 0 &&

@@ -1,0 +1,171 @@
+# The first few cases are adapted from this ASCII example. The y-axis is
+# sequence numbers and the x-axis is the user key space. LSM levels are
+# omitted from the visualization.
+#
+# 250
+#
+#       |-b...230:h-|
+# _____________________________________________________ snapshot #210
+# 200               |--h.RANGEDEL.200:r--|
+#
+# _____________________________________________________ snapshot #180
+#
+# 150                     +--------+
+#           +---------+   | 000003 |
+#           | 000002  |   |        |
+#           +_________+   |        |
+# 100_____________________|________|___________________ snapshot #100
+#                         +--------+
+# _____________________________________________________ snapshot #70
+#                             +---------------+
+#  50                         | 000001        |
+#                             |               |
+#                             +---------------+
+# ______________________________________________________________
+#     a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+define snapshots=(70, 100, 180, 210)
+L0
+b.RANGEDEL.230:h h.RANGEDEL.200:r
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+0.0:
+  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+2:
+  000005:[d#110,SET-i#140,SET]
+3:
+  000006:[k#90,SET-o#150,SET]
+4:
+  000007:[m#30,SET-u#60,SET]
+
+# Test a hint that is blocked by open snapshots. No compaction should occur
+# and the hint should not be removed.
+
+set-hints
+L0.000004 b-r 90 200-230
+----
+L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
+
+maybe-compact
+----
+Deletion hints:
+  L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
+Compactions:
+  (none)
+
+# Adopt the same LSM but without snapshots 100, 180 and 210.
+
+define snapshots=(70)
+L0
+b.RANGEDEL.230:h h.RANGEDEL.200:r
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+0.0:
+  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+2:
+  000005:[d#110,SET-i#140,SET]
+3:
+  000006:[k#90,SET-o#150,SET]
+4:
+  000007:[m#30,SET-u#60,SET]
+
+set-hints
+L0.000004 b-r 90 200-230
+----
+L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  [JOB 100] compacted L2 [000005] (784 B) + L3 [000006] (784 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+
+# Verify that compaction correctly handles the presence of multiple
+# overlapping hints which might delete a file multiple times. All of the
+# resolvable hints should be removed.
+
+define snapshots=(70)
+L0
+a.RANGEDEL.300:k
+L1
+b.RANGEDEL.230:h h.RANGEDEL.200:r
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+0.0:
+  000004:[a#300,RANGEDEL-k#72057594037927935,RANGEDEL]
+1:
+  000005:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+2:
+  000006:[d#110,SET-i#140,SET]
+3:
+  000007:[k#90,SET-o#150,SET]
+4:
+  000008:[m#30,SET-u#60,SET]
+
+set-hints
+L0.000004 a-k 110 300-300
+L1.000005 b-r 90 200-230
+----
+L0.000004 a-k seqnums(tombstone=300-300, file-smallest=110)
+L1.000005 b-r seqnums(tombstone=200-230, file-smallest=90)
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  [JOB 100] compacted L2 [000006] (784 B) + L3 [000007] (784 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+
+# Test a range tombstone that is already compacted into L6.
+
+define snapshots=(70)
+L0
+m.SET.300:m b.RANGEDEL.230:h h.RANGEDEL.200:r
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+0.0:
+  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+2:
+  000005:[d#110,SET-i#140,SET]
+3:
+  000006:[k#90,SET-o#150,SET]
+4:
+  000007:[m#30,SET-u#60,SET]
+
+set-hints
+L0.000004 b-r 90 200-230
+----
+L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
+
+compact a-z
+----
+5:
+  000008:[b#230,RANGEDEL-u#0,SET]
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  (none)
