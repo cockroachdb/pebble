@@ -276,9 +276,9 @@ func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIter
 func mayHaveDeletion(iter internalIterator) bool {
 	if i, ok := iter.(*mergingIter); ok {
 		return len(i.hasDelLevels) > 0
-	} else if _, ok := iter.(*levelIter); ok {
-		// TODO: how to determine a levelIter contains deleted keys
-		return true
+	} else if i, ok := iter.(*levelIter); ok {
+		// TODO: not sure if this is right
+		return i.rangeDelIter != nil
 	}
 	return false
 }
