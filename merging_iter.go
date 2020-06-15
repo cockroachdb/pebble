@@ -366,7 +366,29 @@ func (m *mergingIter) switchToMinHeap() {
 		if l == cur {
 			continue
 		}
-		if l.iterKey == nil || l.iterKey.Kind() == base.InternalKeyKindRangeDelete {
+
+		// If the iterator is exhausted, we need to reposition it within the
+		// search bounds. If the current key is a range tombstone, the
+		// iterator might still be exhausted but at a sstable boundary
+		// sentinel. It would be okay to reposition an interator like this
+		// only through successive Next calls, except that it would violate
+		// the levelIter's invariants by causing it to return a key beyond the
+		// lower bound.
+		//
+		//           bounds = [ f, _ )
+		// L0: [ a                       k         y ]
+		// L1:   [ b ]          [ f*                   z ]
+		// L2:    [  c  (d) ] [ e      g     m ]
+		// L3:             [                    x ]
+		//
+		// * - current key   [] - table bounds () - heap item
+		//
+		// In the above diagram, the L2 iterator is positioned at a
+		// sstable boundary (d) outside the lower bound (f). If we called Next
+		// on the L2 iterator, it would return e, violating its lower bound.
+		// Instead, we seek it to >= f and Next from there.
+
+		if l.iterKey == nil || (l.iterKey.Kind() == base.InternalKeyKindRangeDelete && m.heap.cmp(l.iterKey.UserKey, m.lower) < 0) {
 			if m.lower != nil {
 				l.iterKey, l.iterValue = l.iter.SeekGE(m.lower)
 			} else {
@@ -415,7 +437,29 @@ func (m *mergingIter) switchToMaxHeap() {
 		if l == cur {
 			continue
 		}
-		if l.iterKey == nil || l.iterKey.Kind() == base.InternalKeyKindRangeDelete {
+
+		// If the iterator is exhausted, we need to reposition it within the
+		// search bounds. If the current key is a range tombstone, the
+		// iterator might still be exhausted but at a sstable boundary
+		// sentinel. It would be okay to reposition an interator like this
+		// only through successive Prev calls, except that it would violate
+		// the levelIter's invariants by causing it to return a key beyond the
+		// upper bound.
+		//
+		//           bounds = [ _, g )
+		// L0: [ a                          k       y ]
+		// L1:   [ b ]          [ f*                   z ]
+		// L2:    [  c   d  ]        h [(i)    m ]
+		// L3:             [  e                  x ]
+		//
+		// * - current key   [] - table bounds () - heap item
+		//
+		// In the above diagram, the L2 iterator is positioned at a
+		// sstable boundary (i) outside the upper bound (g). If we called Prev
+		// on the L2 iterator, it would return h, violating its upper bound.
+		// Instead, we seek it to < g, and Prev from there.
+
+		if l.iterKey == nil || (l.iterKey.Kind() == base.InternalKeyKindRangeDelete && m.heap.cmp(l.iterKey.UserKey, m.upper) >= 0) {
 			if m.upper != nil {
 				l.iterKey, l.iterValue = l.iter.SeekLT(m.upper)
 			} else {
