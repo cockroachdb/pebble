@@ -1,0 +1,185 @@
+# The first few cases are adapted from this ASCII example. The y-axis is
+# sequence numbers and the x-axis is the user key space. LSM levels are
+# omitted from the visualization.
+#
+# 250
+#
+#       |-b...230:h-|
+# _____________________________________________________ snapshot #210
+# 200               |--h.RANGEDEL.200:r--|
+#
+# _____________________________________________________ snapshot #180
+#
+# 150                     +--------+
+#           +---------+   | 000003 |
+#           | 000002  |   |        |
+#           +_________+   |        |
+# 100_____________________|________|___________________ snapshot #100
+#                         +--------+
+# _____________________________________________________ snapshot #70
+#                             +---------------+
+#  50                         | 000001        |
+#                             |               |
+#                             +---------------+
+# ______________________________________________________________
+#     a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+define snapshots=(70, 100, 180, 210)
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+2:
+  000004:[d#110,SET-i#140,SET]
+3:
+  000005:[k#90,SET-o#150,SET]
+4:
+  000006:[m#30,SET-u#60,SET]
+
+# Test a hint that is blocked by open snapshots. No compaction should occur
+# and the hint should not be removed.
+
+set-hints
+L1 b-r 90 200-230
+----
+L1 b-r 90 200-230
+
+maybe-compact
+----
+Deletion hints:
+  L1 b-r 90 200-230
+Compactions:
+  (none)
+
+# A hint that is not blocked by open snapshots but no longer deletes any files
+# still existent in the current version should not trigger a compaction, but
+# should be removed.
+
+set-hints
+L1 a-z 185 190-190
+----
+L1 a-z 185 190-190
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  (none)
+
+# Adopt the same LSM but without snapshots 100, 180 and 210.
+
+define snapshots=(70)
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+2:
+  000004:[d#110,SET-i#140,SET]
+3:
+  000005:[k#90,SET-o#150,SET]
+4:
+  000006:[m#30,SET-u#60,SET]
+
+# Verify that a hint's level bound prevents a compaction. The hint should
+# still be removed.
+
+set-hints
+L4 b-r 90 200-230
+----
+L4 b-r 90 200-230
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  (none)
+
+# The same hint with a more relaxed level bound should drop 000004 and 000005
+# but leave 000006 untouched.
+
+set-hints
+L1 b-r 90 200-230
+----
+L1 b-r 90 200-230
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  [JOB 100] compacted L2 [000004] (784 B) + L3 [000005] (784 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+
+# Verify that compaction correctly handles the presence of multiple
+# overlapping hints which might delete a file multiple times. All of the
+# resolvable hints should be removed.
+
+define snapshots=(70)
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+2:
+  000004:[d#110,SET-i#140,SET]
+3:
+  000005:[k#90,SET-o#150,SET]
+4:
+  000006:[m#30,SET-u#60,SET]
+
+set-hints
+L0 a-k 110 300-300
+L1 b-r 90 200-230
+L0 b-r 90 200-230
+----
+L0 a-k 110 300-300
+L1 b-r 90 200-230
+L0 b-r 90 200-230
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  [JOB 100] compacted L2 [000004] (784 B) + L3 [000005] (784 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+
+# Verify that a hint does not delete a file (000004) that contains keys more
+# recent than the oldest tombstone contained by the hint. This is possible if
+# an open snapshots prevents a hint from being resolved and in the meantime
+# ordinary compactions modify the LSM.
+
+define snapshots=(70)
+L2
+d.SET.110:d i.SET.210:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+----
+2:
+  000004:[d#110,SET-i#210,SET]
+3:
+  000005:[k#90,SET-o#150,SET]
+4:
+  000006:[m#30,SET-u#60,SET]
+
+set-hints
+L1 b-r 90 200-230
+----
+L1 b-r 90 200-230
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  [JOB 100] compacted L3 [000005] (784 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s

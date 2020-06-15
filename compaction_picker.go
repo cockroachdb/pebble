@@ -213,7 +213,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		}
 	}
 	for _, c := range inProgressCompactions {
-		if c.outputLevel == 0 {
+		if c.outputLevel == 0 || c.outputLevel == -1 {
 			continue
 		}
 		if c.inputs[0].level == 0 && (firstNonEmptyLevel == -1 || c.outputLevel < firstNonEmptyLevel) {
@@ -297,7 +297,9 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]int6
 
 			if input.level != c.outputLevel {
 				sizeAdjust[input.level] -= compensated
-				sizeAdjust[c.outputLevel] += real
+				if c.outputLevel != -1 {
+					sizeAdjust[c.outputLevel] += real
+				}
 			}
 		}
 	}
