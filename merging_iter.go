@@ -366,7 +366,7 @@ func (m *mergingIter) switchToMinHeap() {
 		if l == cur {
 			continue
 		}
-		if l.iterKey == nil || l.iterKey.Kind() == base.InternalKeyKindRangeDelete {
+		if l.iterKey == nil || (l.iterKey.Kind() == base.InternalKeyKindRangeDelete && m.heap.cmp(l.iterKey.UserKey, m.lower) < 0) {
 			if m.lower != nil {
 				l.iterKey, l.iterValue = l.iter.SeekGE(m.lower)
 			} else {
@@ -415,7 +415,7 @@ func (m *mergingIter) switchToMaxHeap() {
 		if l == cur {
 			continue
 		}
-		if l.iterKey == nil || l.iterKey.Kind() == base.InternalKeyKindRangeDelete {
+		if l.iterKey == nil || (l.iterKey.Kind() == base.InternalKeyKindRangeDelete && m.heap.cmp(l.iterKey.UserKey, m.upper) >= 0) {
 			if m.upper != nil {
 				l.iterKey, l.iterValue = l.iter.SeekLT(m.upper)
 			} else {
