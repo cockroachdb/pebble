@@ -163,7 +163,31 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 }
 
 func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []compactionInfo) {
-	// Determine the first non-empty level and the maximum size of any level.
+	// The levelMaxBytes calculations here differ from RocksDB in two ways:
+	//
+	// 1. The use of bottomLevelSize vs maxLevelSize. RocksDB uses the size of
+	//    the maximum level in L1-L6, rather than the size of the bottommost
+	//    non-empty level. In practice this seems to have little impact.
+	//
+	// 2. Not adjusting the size of base level based on L0. RocksDB computes
+	//    baseBytesMax as the maximum of the configured LBaseMaxBytes and the
+	//    size of L0. This is problematic because baseBytesMax is used to compute
+	//    the max size of lower levels. A very large baseBytesMax will result in
+	//    an overly large value for the size of lower levels which will caused
+	//    those levels not to be compacted even when they should be
+	//    compacted. This often results in "inverted" LSM shapes where Ln is
+	//    larger than Ln+1.
+	//
+	// TODO(peter): An alternative to the current calculation of bottomLevelSize
+	// is to compute the total number of bytes in the LSM and then compute
+	// bottomLevelSize as 90% of that value (presuming a level multiplier of
+	// 10). This computation has the advantage of being stable: it changes at the
+	// rate that data is inserted into the DB, independently of
+	// compactions. Unfortunately, it performed worse experimentally and often
+	// resulted in "inverted" LSM shapes where L5 was significantly larger than
+	// L6. The reason for this inversion was not clear.
+
+	// Determine the first non-empty level and the bottom level size.
 	firstNonEmptyLevel := -1
 	var bottomLevelSize int64
 	for level := 1; level < numLevels; level++ {
@@ -212,9 +236,9 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	}
 
 	if curLevelSize <= baseBytesMin {
-		// If we make target size of last level to be bottomLevelSize, target size of
-		// the first non-empty level would be smaller than baseBytesMin. We set it
-		// be baseBytesMin.
+		// If we make target size of last level to be bottomLevelSize, target size
+		// of the first non-empty level would be smaller than baseBytesMin. We set
+		// it be baseBytesMin.
 		p.baseLevel = firstNonEmptyLevel
 	} else {
 		// Compute base level (where L0 data is compacted to).
@@ -423,7 +447,35 @@ func (p *compactionPickerByScore) pickFile(level int) int {
 // If a score-based compaction cannot be found, pickAuto falls back to looking
 // for a forced compaction (identified by FileMetadata.MarkedForCompaction).
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
-	const highPriorityThreshold = 1.5
+	// highPriorityThreshold controls compaction concurrency. If there is already
+	// a compaction in progress, highPriorityThreshold is set to the minimum
+	// score needed for a concurrent compaction to be initiated. Since all level
+	// scores are >= 0, a positive value will cause compactions to be
+	// disabled. We set highPriorityThreshold to a value only when a there is at
+	// least one in-progress compaction. Concurrent compactions are useful for
+	// ensuring that compaction doesn't fall far behind, but concurrent
+	// compactions can have an adverse affect on write throughput.
+	//
+	// There are a variety of possibilities for choosing highPriorityThreshold:
+	// - A fixed value: 1.5.
+	// - A value linear in the number of in-progress compactions: 2, 3, 4.
+	// - A value exponential in the number of in-progress compactions: 2, 4, 8.
+	//
+	// A fixed value tends to allow too much compaction concurrency. There was
+	// only a minor difference between the linear and exponential values, making
+	// the choice of exponential below somewhat arbitrary.
+	//
+	// For comparison, RocksDB alternates between only allowing a single
+	// compaction at a time to allowing the configured maximum number of
+	// concurrent compactions depending on whether compaction-debt has gotten too
+	// large or the number of L0 sstables has reached 2x the L0 compaction
+	// threshold. In testing, it is usually the latter condition that triggers
+	// concurrent compactions in RocksDB.
+	var highPriorityThreshold float64
+	if len(env.inProgressCompactions) > 0 {
+		// Exponential high priority threshold: 2, 4, 8, ...
+		highPriorityThreshold = float64(int(1) << len(env.inProgressCompactions))
+	}
 
 	scores := p.calculateScores(env.inProgressCompactions)
 
@@ -432,7 +484,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	// compaction anchored at at that level.
 	for i := range scores {
 		info := &scores[i]
-		if len(env.inProgressCompactions) > 0 && info.score < highPriorityThreshold {
+		if info.score < highPriorityThreshold {
 			// Don't start a low priority compaction if there is already a compaction
 			// running.
 			return nil
