@@ -932,15 +932,17 @@ func TestManualCompaction(t *testing.T) {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
-
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 
-		var err error
-		d, err = Open("", &Options{
+		opts := &Options{
 			FS:         mem,
 			DebugCheck: DebugCheckLevels,
-		})
+		}
+		opts.private.disableAutomaticCompactions = true
+
+		var err error
+		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
 	reset()
@@ -980,11 +982,17 @@ func TestManualCompaction(t *testing.T) {
 				}
 			}
 
+			mem = vfs.NewMem()
+			opts := &Options{
+				FS:         mem,
+				DebugCheck: DebugCheckLevels,
+			}
+			opts.private.disableAutomaticCompactions = true
+
 			var err error
-			if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
+			if d, err = runDBDefineCmd(td, opts); err != nil {
 				return err.Error()
 			}
-			mem = d.opts.FS
 
 			d.mu.Lock()
 			s := d.mu.versions.currentVersion().String()
@@ -1387,6 +1395,127 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
+
+func TestCompactionDeleteOnlyHints(t *testing.T) {
+	parseUint64 := func(s string) uint64 {
+		v, err := strconv.ParseUint(s, 10, 64)
+		require.NoError(t, err)
+		return v
+	}
+	var d *DB
+	var compactInfo *CompactionInfo // protected by d.mu
+
+	datadriven.RunTest(t, "testdata/compaction_delete_only_hints",
+		func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				if d != nil {
+					compactInfo = nil
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+				}
+				opts := &Options{
+					FS:         vfs.NewMem(),
+					DebugCheck: DebugCheckLevels,
+					EventListener: EventListener{
+						CompactionEnd: func(info CompactionInfo) {
+							compactInfo = &info
+						},
+					},
+				}
+				opts.private.disableTableStats = true
+				var err error
+				d, err = runDBDefineCmd(td, opts)
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				t := time.Now()
+				d.timeNow = func() time.Time {
+					t = t.Add(time.Second)
+					return t
+				}
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			case "set-hints":
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				d.mu.compact.deletionHints = d.mu.compact.deletionHints[:0]
+				var buf bytes.Buffer
+				for _, data := range strings.Split(td.Input, "\n") {
+					parts := strings.FieldsFunc(strings.TrimSpace(data),
+						func(r rune) bool { return r == '-' || r == ' ' || r == '.' })
+
+					start, end := []byte(parts[2]), []byte(parts[3])
+
+					var tombstoneFile *fileMetadata
+					tombstoneLevel := int(parseUint64(parts[0][1:]))
+					// Find the file in the current version.
+					v := d.mu.versions.currentVersion()
+					for _, m := range v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start, end) {
+						if m.FileNum.String() == parts[1] {
+							tombstoneFile = m
+						}
+					}
+					h := deleteCompactionHint{
+						start:                   []byte(parts[2]),
+						end:                     []byte(parts[3]),
+						fileSmallestSeqNum:      parseUint64(parts[4]),
+						tombstoneLevel:          tombstoneLevel,
+						tombstoneFile:           tombstoneFile,
+						tombstoneSmallestSeqNum: parseUint64(parts[5]),
+						tombstoneLargestSeqNum:  parseUint64(parts[6]),
+					}
+					d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, h)
+					fmt.Fprintln(&buf, h.String())
+				}
+				return buf.String()
+
+			case "maybe-compact":
+				d.mu.Lock()
+				d.maybeScheduleCompaction()
+				for d.mu.compact.compactingCount > 0 {
+					d.mu.compact.cond.Wait()
+				}
+
+				var buf bytes.Buffer
+				fmt.Fprintf(&buf, "Deletion hints:\n")
+				for _, h := range d.mu.compact.deletionHints {
+					fmt.Fprintf(&buf, "  %s\n", h.String())
+				}
+				if len(d.mu.compact.deletionHints) == 0 {
+					fmt.Fprintf(&buf, "  (none)\n")
+				}
+				fmt.Fprintf(&buf, "Compactions:\n")
+				s := "(none)"
+				if compactInfo != nil {
+					// JobID's aren't deterministic, especially w/ table stats
+					// enabled. Use a fixed job ID for data-driven test output.
+					compactInfo.JobID = 100
+					s = compactInfo.String()
+				}
+				fmt.Fprintf(&buf, "  %s", s)
+				d.mu.Unlock()
+				return buf.String()
+
+			case "compact":
+				if err := runCompactCmd(td, d); err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				compactInfo = nil
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
 }

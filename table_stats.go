@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"math"
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -98,12 +99,13 @@ func (d *DB) collectTableStats() {
 	// Grab a read state to scan for tables.
 	rs := d.loadReadState()
 	var collected []collectedStats
+	var hints []deleteCompactionHint
 	if len(pending) > 0 {
-		collected = d.loadNewFileStats(rs, pending)
+		collected, hints = d.loadNewFileStats(rs, pending)
 	} else {
 		var moreRemain bool
 		var buf [maxTableStatsPerScan]collectedStats
-		collected, moreRemain = d.scanReadStateTableStats(rs, buf[:0])
+		collected, hints, moreRemain = d.scanReadStateTableStats(rs, buf[:0])
 		loadedInitial = !moreRemain
 	}
 	rs.unref()
@@ -126,6 +128,7 @@ func (d *DB) collectTableStats() {
 	}
 	d.mu.tableStats.cond.Broadcast()
 	d.maybeCollectTableStats()
+	d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, hints...)
 	if maybeCompact {
 		d.maybeScheduleCompaction()
 	}
@@ -136,7 +139,8 @@ type collectedStats struct {
 	manifest.TableStats
 }
 
-func (d *DB) loadNewFileStats(rs *readState, pending []manifest.NewFileEntry) []collectedStats {
+func (d *DB) loadNewFileStats(rs *readState, pending []manifest.NewFileEntry) ([]collectedStats, []deleteCompactionHint) {
+	var hints []deleteCompactionHint
 	collected := make([]collectedStats, 0, len(pending))
 	for _, nf := range pending {
 		// A file's stats might have been populated by an earlier call to
@@ -156,7 +160,7 @@ func (d *DB) loadNewFileStats(rs *readState, pending []manifest.NewFileEntry) []
 			continue
 		}
 
-		stats, err := d.loadTableStats(rs.current, nf.Level, nf.Meta)
+		stats, newHints, err := d.loadTableStats(rs.current, nf.Level, nf.Meta)
 		if err != nil {
 			d.opts.EventListener.BackgroundError(err)
 			continue
@@ -168,17 +172,17 @@ func (d *DB) loadNewFileStats(rs *readState, pending []manifest.NewFileEntry) []
 			fileMetadata: nf.Meta,
 			TableStats:   stats,
 		})
+		hints = append(hints, newHints...)
 	}
-	return collected
+	return collected, hints
 }
 
 // scanReadStateTableStats is run by an active stat collection job when there
 // are no pending new files, but there might be files that existed at Open for
 // which we haven't loaded table stats.
-func (d *DB) scanReadStateTableStats(
-	rs *readState, fill []collectedStats,
-) ([]collectedStats, bool) {
+func (d *DB) scanReadStateTableStats(rs *readState, fill []collectedStats) ([]collectedStats, []deleteCompactionHint, bool) {
 	moreRemain := false
+	var hints []deleteCompactionHint
 	for l, ff := range rs.current.Levels {
 		for _, f := range ff {
 			// NB: We're not holding d.mu which protects f.Stats, but only the
@@ -197,10 +201,10 @@ func (d *DB) scanReadStateTableStats(
 			// work to do.
 			if len(fill) == cap(fill) {
 				moreRemain = true
-				return fill, moreRemain
+				return fill, hints, moreRemain
 			}
 
-			stats, err := d.loadTableStats(rs.current, l, f)
+			stats, newHints, err := d.loadTableStats(rs.current, l, f)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true
@@ -211,15 +215,17 @@ func (d *DB) scanReadStateTableStats(
 				fileMetadata: f,
 				TableStats:   stats,
 			})
+			hints = append(hints, newHints...)
 		}
 	}
-	return fill, moreRemain
+	return fill, hints, moreRemain
 }
 
 func (d *DB) loadTableStats(
 	v *version, level int, meta *fileMetadata,
-) (manifest.TableStats, error) {
+) (manifest.TableStats, []deleteCompactionHint, error) {
 	var totalRangeDeletionEstimate uint64
+	var compactionHints []deleteCompactionHint
 	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
 		if r.Properties.NumRangeDeletions == 0 {
 			return nil
@@ -238,28 +244,48 @@ func (d *DB) loadTableStats(
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
 		rangeDelIter = rangedel.Truncate(d.cmp, rangeDelIter, meta.Smallest.UserKey, meta.Largest.UserKey)
-		err = foreachDefragmentedTombstone(rangeDelIter, d.cmp, func(startUserKey, endUserKey []byte) error {
-			estimate, err := d.estimateSizeBeneath(v, level, meta, startUserKey, endUserKey)
-			if err != nil {
-				return err
-			}
-			totalRangeDeletionEstimate += estimate
-			return nil
-		})
+		err = foreachDefragmentedTombstone(rangeDelIter, d.cmp,
+			func(startUserKey, endUserKey []byte, smallestSeqNum, largestSeqNum uint64) error {
+				estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, startUserKey, endUserKey)
+				if err != nil {
+					return err
+				}
+				totalRangeDeletionEstimate += estimate
+
+				// If any files were completely contained with the range,
+				// hintSeqNum is the smallest sequence number contained in any
+				// such file.
+				if hintSeqNum == math.MaxUint64 {
+					return nil
+				}
+				hint := deleteCompactionHint{
+					start:                   make([]byte, len(startUserKey)),
+					end:                     make([]byte, len(endUserKey)),
+					tombstoneFile:           meta,
+					tombstoneLevel:          level,
+					tombstoneLargestSeqNum:  largestSeqNum,
+					tombstoneSmallestSeqNum: smallestSeqNum,
+					fileSmallestSeqNum:      hintSeqNum,
+				}
+				copy(hint.start, startUserKey)
+				copy(hint.end, endUserKey)
+				compactionHints = append(compactionHints, hint)
+				return nil
+			})
 		return err
 	})
 	var stats manifest.TableStats
 	if err != nil {
-		return stats, err
+		return stats, nil, err
 	}
 	stats.Valid = true
 	stats.RangeDeletionsBytesEstimate = totalRangeDeletionEstimate
-	return stats, nil
+	return stats, compactionHints, nil
 }
 
 func (d *DB) estimateSizeBeneath(
 	v *version, level int, meta *fileMetadata, start, end []byte,
-) (uint64, error) {
+) (estimate uint64, hintSeqNum uint64, err error) {
 	// Find all files in lower levels that overlap with the deleted range.
 	//
 	// An overlapping file might be completely contained by the range
@@ -268,16 +294,18 @@ func (d *DB) estimateSizeBeneath(
 	//
 	// Otherwise, estimating the range for the file requires
 	// additional I/O to read the file's index blocks.
-	var estimate uint64
+	hintSeqNum = math.MaxUint64
 	for l := level + 1; l < numLevels; l++ {
 		iter := v.Overlaps(l, d.cmp, start, end)
-
 		for file := iter.First(); file != nil; file = iter.Next() {
 			if d.cmp(start, file.Smallest.UserKey) <= 0 &&
 				d.cmp(file.Largest.UserKey, end) <= 0 {
 				// The range fully contains the file, so skip looking it up in
 				// table cache/looking at its indexes and add the full file size.
 				estimate += file.Size
+				if hintSeqNum > file.SmallestSeqNum {
+					hintSeqNum = file.SmallestSeqNum
+				}
 			} else if d.cmp(file.Smallest.UserKey, end) <= 0 && d.cmp(start, file.Largest.UserKey) <= 0 {
 				var size uint64
 				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
@@ -285,27 +313,35 @@ func (d *DB) estimateSizeBeneath(
 					return err
 				})
 				if err != nil {
-					return 0, err
+					return 0, hintSeqNum, err
 				}
 				estimate += size
 			}
 		}
 	}
-	return estimate, nil
+	return estimate, hintSeqNum, nil
 }
 
 func foreachDefragmentedTombstone(
-	rangeDelIter base.InternalIterator, cmp base.Compare, fn func([]byte, []byte) error,
+	rangeDelIter base.InternalIterator, cmp base.Compare, fn func([]byte, []byte, uint64, uint64) error,
 ) error {
 	var startUserKey, endUserKey []byte
+	var smallestSeqNum, largestSeqNum uint64
 	var initialized bool
 	for start, end := rangeDelIter.First(); start != nil; start, end = rangeDelIter.Next() {
+
 		// Range tombstones are fragmented such that any two tombstones
 		// that share the same start key also share the same end key.
 		// Multiple tombstones may exist at different sequence numbers.
 		// If this tombstone starts or ends at the same point, it's a fragment
 		// of the previous one.
 		if cmp(startUserKey, start.UserKey) == 0 || cmp(endUserKey, end) == 0 {
+			if smallestSeqNum > start.SeqNum() {
+				smallestSeqNum = start.SeqNum()
+			}
+			if largestSeqNum < start.SeqNum() {
+				largestSeqNum = start.SeqNum()
+			}
 			continue
 		}
 
@@ -313,6 +349,12 @@ func foreachDefragmentedTombstone(
 		// tombstone ended, merge it and continue.
 		if cmp(endUserKey, start.UserKey) == 0 {
 			endUserKey = append(endUserKey[:0], end...)
+			if smallestSeqNum > start.SeqNum() {
+				smallestSeqNum = start.SeqNum()
+			}
+			if largestSeqNum < start.SeqNum() {
+				largestSeqNum = start.SeqNum()
+			}
 			continue
 		}
 
@@ -321,18 +363,20 @@ func foreachDefragmentedTombstone(
 		if !initialized {
 			startUserKey = append(startUserKey[:0], start.UserKey...)
 			endUserKey = append(endUserKey[:0], end...)
+			smallestSeqNum, largestSeqNum = start.SeqNum(), start.SeqNum()
 			initialized = true
 			continue
 		}
 
-		if err := fn(startUserKey, endUserKey); err != nil {
+		if err := fn(startUserKey, endUserKey, smallestSeqNum, largestSeqNum); err != nil {
 			return err
 		}
 		startUserKey = append(startUserKey[:0], start.UserKey...)
 		endUserKey = append(endUserKey[:0], end...)
+		smallestSeqNum, largestSeqNum = start.SeqNum(), start.SeqNum()
 	}
 	if initialized {
-		if err := fn(startUserKey, endUserKey); err != nil {
+		if err := fn(startUserKey, endUserKey, smallestSeqNum, largestSeqNum); err != nil {
 			return err
 		}
 	}

@@ -74,9 +74,19 @@ type compactionLevel struct {
 	files []*fileMetadata
 }
 
+type compactionKind string
+
+const (
+	compactionKindDefault    compactionKind = "default"
+	compactionKindFlush                     = "flush"
+	compactionKindMove                      = "move"
+	compactionKindDeleteOnly                = "delete-only"
+)
+
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
+	kind      compactionKind
 	cmp       Compare
 	formatKey base.FormatKey
 	logger    Logger
@@ -153,10 +163,40 @@ type compaction struct {
 	metrics map[int]*LevelMetrics
 }
 
+func (c *compaction) makeInfo(jobID int) CompactionInfo {
+	info := CompactionInfo{
+		JobID: jobID,
+		Input: make([]LevelInfo, 0, len(c.inputs)),
+	}
+	for _, cl := range c.inputs {
+		inputInfo := LevelInfo{Level: cl.level, Tables: make([]TableInfo, 0, len(cl.files))}
+		for _, m := range cl.files {
+			inputInfo.Tables = append(inputInfo.Tables, m.TableInfo())
+		}
+		info.Input = append(info.Input, inputInfo)
+	}
+	if c.outputLevel != nil {
+		info.Output.Level = c.outputLevel.level
+		// If there are no inputs from the output level (eg, a move
+		// compaction), add an empty LevelInfo to info.Input.
+		if len(c.inputs) > 0 && c.inputs[len(c.inputs)-1].level != c.outputLevel.level {
+			info.Input = append(info.Input, LevelInfo{Level: c.outputLevel.level})
+		}
+	} else {
+		// For a delete-only compaction, set the output level to L6. The
+		// output level is not meaningful here, but complicating the
+		// info.Output interface with a pointer doesn't seem worth the
+		// semantic distinction.
+		info.Output.Level = numLevels - 1
+	}
+	return info
+}
+
 func newCompaction(
 	pc *pickedCompaction, opts *Options, bytesCompacted *uint64,
 ) *compaction {
 	c := &compaction{
+		kind:                compactionKindDefault,
 		cmp:                 pc.cmp,
 		formatKey:           opts.Comparer.FormatKey,
 		score:               pc.score,
@@ -179,6 +219,36 @@ func newCompaction(
 		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
 	c.setupInuseKeyRanges()
+
+	// Check if this compaction can be converted into a trivial move from one
+	// level to the next. We avoid such a move if there is lots of overlapping
+	// grandparent data. Otherwise, the move could create a parent file that
+	// will require a very expensive merge later on.
+	if len(c.startLevel.files) == 1 && len(c.outputLevel.files) == 0 &&
+		c.grandparents.SizeSum() <= c.maxOverlapBytes {
+		c.kind = compactionKindMove
+	}
+	return c
+}
+
+func newDeleteOnlyCompaction(
+	opts *Options, cur *version, inputs []compactionLevel,
+) *compaction {
+	c := &compaction{
+		kind:      compactionKindDeleteOnly,
+		cmp:       opts.Comparer.Compare,
+		formatKey: opts.Comparer.FormatKey,
+		logger:    opts.Logger,
+		version:   cur,
+		inputs:    inputs,
+	}
+
+	// Set c.smallest, c.largest.
+	levelFiles := make([][]*fileMetadata, 0, len(inputs))
+	for _, in := range inputs {
+		levelFiles = append(levelFiles, in.files)
+	}
+	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, levelFiles...)
 	return c
 }
 
@@ -186,6 +256,7 @@ func newFlush(
 	opts *Options, cur *version, baseLevel int, flushing flushableList, bytesFlushed *uint64,
 ) *compaction {
 	c := &compaction{
+		kind:                compactionKindFlush,
 		cmp:                 opts.Comparer.Compare,
 		formatKey:           opts.Comparer.FormatKey,
 		logger:              opts.Logger,
@@ -303,21 +374,6 @@ func (c *compaction) setupInuseKeyRanges() {
 			last.end = v.end
 		}
 	}
-}
-
-func (c *compaction) trivialMove() bool {
-	if len(c.flushing) != 0 {
-		return false
-	}
-	// Check for a trivial move of one table from one level to the next. We avoid
-	// such a move if there is lots of overlapping grandparent data. Otherwise,
-	// the move could create a parent file that will require a very expensive
-	// merge later on.
-	if len(c.startLevel.files) == 1 && len(c.outputLevel.files) == 0 &&
-		c.grandparents.SizeSum() <= c.maxOverlapBytes {
-		return true
-	}
-	return false
 }
 
 // findGrandparentLimit takes the start user key for a table and returns the
@@ -656,7 +712,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
 			f.Compacting = true
-			if c.startLevel.level == 0 {
+			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
 				if c.outputLevel.level == 0 {
 					f.IsIntraL0Compacting = true
 					isIntraL0 = true
@@ -1009,6 +1065,25 @@ func (d *DB) maybeScheduleCompaction() {
 		bytesCompacted:          &d.bytesCompacted,
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
 	}
+
+	// Check for delete-only compactions first, because they're expected to be
+	// cheap and reduce future compaction work.
+	if len(d.mu.compact.deletionHints) > 0 &&
+		d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions &&
+		!d.opts.private.disableAutomaticCompactions {
+		v := d.mu.versions.currentVersion()
+		snapshots := d.mu.snapshots.toSlice()
+		inputs, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots)
+		d.mu.compact.deletionHints = unresolvedHints
+
+		if len(inputs) > 0 {
+			c := newDeleteOnlyCompaction(d.opts, v, inputs)
+			d.mu.compact.compactingCount++
+			d.addInProgressCompaction(c)
+			go d.compact(c, nil)
+		}
+	}
+
 	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
 		manual := d.mu.compact.manual[0]
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
@@ -1043,6 +1118,149 @@ func (d *DB) maybeScheduleCompaction() {
 	}
 }
 
+// A deleteCompactionHint records a user key and sequence number span that has been
+// deleted by a range tombstone. A hint is recorded if at least one sstable
+// falls completely within both the user key and sequence number spans.
+// Once the tombstones and the observed completely-contained sstables fall
+// into the same snapshot stripe, a delete-only compaction may delete any
+// sstables within the range.
+type deleteCompactionHint struct {
+	start []byte
+	end   []byte
+	// The level of the file containing the range tombstone(s) when the hint
+	// was created. Only lower levels need to be searched for files that may
+	// be deleted.
+	tombstoneLevel int
+	// The file containing the range tombstone(s) that created the hint.
+	tombstoneFile *fileMetadata
+	// The smallest and largest sequence numbers of the abutting tombstones
+	// merged to form this hint. All of a tables' keys must be less than the
+	// tombstone smallest sequence number to be deleted. All of a tables'
+	// sequence numbers must fall into the same snapshot stripe as the
+	// tombstone largest sequence number to be deleted.
+	tombstoneLargestSeqNum  uint64
+	tombstoneSmallestSeqNum uint64
+	// The smallest sequence number of a sstable that was found to be covered
+	// by this hint. The hint cannot be resolved until this sequence number is
+	// in the same snapshot stripe as the largest tombstone sequence number.
+	fileSmallestSeqNum uint64
+}
+
+func (h deleteCompactionHint) String() string {
+	return fmt.Sprintf("L%d.%s %s-%s seqnums(tombstone=%d-%d, file-smallest=%d)",
+		h.tombstoneLevel, h.tombstoneFile.FileNum, h.start, h.end,
+		h.tombstoneSmallestSeqNum, h.tombstoneLargestSeqNum, h.fileSmallestSeqNum)
+}
+
+func (h *deleteCompactionHint) canDelete(cmp Compare, m *fileMetadata, snapshots []uint64) bool {
+	// The file can only be deleted if all of its keys are older than the
+	// earliest tombstone aggregated into the hint.
+	if m.LargestSeqNum >= h.tombstoneSmallestSeqNum || m.SmallestSeqNum < h.fileSmallestSeqNum {
+		return false
+	}
+
+	// The file's oldest key must  be in the same snapshot stripe as the
+	// newest tombstone. NB: We already checked the hint's sequence numbers,
+	// but this file's oldest sequence number might be lower than the hint's
+	// smallest sequence number despite the file falling within the key range
+	// if this file was constructed after the hint by a compaction.
+	ti, _ := snapshotIndex(h.tombstoneLargestSeqNum, snapshots)
+	fi, _ := snapshotIndex(m.SmallestSeqNum, snapshots)
+	if ti != fi {
+		return false
+	}
+
+	// The file's keys must be completely contianed within the hint range.
+	return cmp(h.start, m.Smallest.UserKey) <= 0 && cmp(m.Largest.UserKey, h.end) < 0
+}
+
+func checkDeleteCompactionHints(cmp Compare, v *version, hints []deleteCompactionHint, snapshots []uint64) ([]compactionLevel, []deleteCompactionHint) {
+	var files map[*fileMetadata]bool
+	var byLevel [numLevels][]*fileMetadata
+
+	unresolvedHints := hints[:0]
+	for _, h := range hints {
+		// The largest tombstone sequence number and the smallest file
+		// sequence number must be in the same snapshot stripe for the hint to
+		// be resolvable. The below graphic models a compaction hint covering
+		// the keyspace [b, r). The hint completely contains two files, 000002
+		// and 000003. The file 000003 contains the lowest covered sequence
+		// number at #90. The tombstone b.RANGEDEL.230:h has the highest
+		// tombstone sequence number incorporated into the hint. The hint may
+		// be resolved only once the snapshots at #100, #180 and #210 are all
+		// closed. File 000001 is not included within the hint because it
+		// extends beyond the range tombstones in user key space.
+		//
+		// 250
+		//
+		//       |-b...230:h-|
+		// _____________________________________________________ snapshot #210
+		// 200               |--h.RANGEDEL.200:r--|
+		//
+		// _____________________________________________________ snapshot #180
+		//
+		// 150                     +--------+
+		//           +---------+   | 000003 |
+		//           | 000002  |   |        |
+		//           +_________+   |        |
+		// 100_____________________|________|___________________ snapshot #100
+		//                         +--------+
+		// _____________________________________________________ snapshot #70
+		//                             +---------------+
+		//  50                         | 000001        |
+		//                             |               |
+		//                             +---------------+
+		// ______________________________________________________________
+		//     a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+		ti, _ := snapshotIndex(h.tombstoneLargestSeqNum, snapshots)
+		fi, _ := snapshotIndex(h.fileSmallestSeqNum, snapshots)
+		if ti != fi {
+			// Cannot resolve yet.
+			unresolvedHints = append(unresolvedHints, h)
+			continue
+		}
+		// The hint h will be resolved and dropped, regardless of whether
+		// there's any tables that may be deleted.
+
+		// If the file containing the tombstone has already been compacted,
+		// it's possible that its keys and keys with higher sequence numbers
+		// have already been compacted into L6 with zeroed sequence numbers,
+		// so we cannot use this hint.
+		if !v.Contains(h.tombstoneLevel, cmp, h.tombstoneFile) {
+			continue
+		}
+		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
+			overlaps := v.Overlaps(l, cmp, h.start, h.end)
+			for m := overlaps.First(); m != nil; m = overlaps.Next() {
+				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
+					continue
+				}
+
+				if files == nil {
+					// Construct files lazily, assuming most calls will not
+					// produce delete-only compactions.
+					files = make(map[*fileMetadata]bool)
+				}
+				files[m] = true
+				byLevel[l] = append(byLevel[l], m)
+			}
+		}
+	}
+
+	var compactLevels []compactionLevel
+	for l, files := range byLevel {
+		if len(files) == 0 {
+			continue
+		}
+		compactLevels = append(compactLevels, compactionLevel{
+			level: l,
+			files: files,
+		})
+	}
+	return compactLevels, unresolvedHints
+}
+
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact(c *compaction, errChannel chan error) {
 	pprof.Do(context.Background(), compactLabels, func(context.Context) {
@@ -1073,20 +1291,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	info := CompactionInfo{
-		JobID: jobID,
-		Input: []LevelInfo{
-			{Level: c.startLevel.level},
-			{Level: c.outputLevel.level},
-		},
-		Output: LevelInfo{Level: c.outputLevel.level},
-	}
-	for i, cl := range c.inputs {
-		for _, m := range cl.files {
-			info.Input[i].Tables = append(info.Input[i].Tables, m.TableInfo())
-		}
-	}
-
+	info := c.makeInfo(jobID)
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
 
@@ -1148,11 +1353,30 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 func (d *DB) runCompaction(
 	jobID int, c *compaction, pacer pacer,
 ) (ve *versionEdit, pendingOutputs []FileNum, retErr error) {
+	// Check for a delete-only compaction. This can occur when wide range
+	// tombstones completely contain sstables.
+	if c.kind == compactionKindDeleteOnly {
+		c.metrics = make(map[int]*LevelMetrics, len(c.inputs))
+		ve := &versionEdit{
+			DeletedFiles: map[deletedFileEntry]bool{},
+		}
+		for _, cl := range c.inputs {
+			c.metrics[cl.level] = &LevelMetrics{}
+			for _, f := range cl.files {
+				ve.DeletedFiles[deletedFileEntry{
+					Level:   cl.level,
+					FileNum: f.FileNum,
+				}] = true
+			}
+		}
+		return ve, nil, nil
+	}
+
 	// Check for a trivial move of one table from one level to the next. We avoid
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
-	if c.trivialMove() {
+	if c.kind == compactionKindMove {
 		meta := c.startLevel.files[0]
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel.level: &LevelMetrics{
