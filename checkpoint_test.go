@@ -5,11 +5,14 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -133,4 +136,82 @@ func TestCheckpoint(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestCheckpointCompaction(t *testing.T) {
+	fs := vfs.NewMem()
+	d, err := Open("", &Options{FS: fs})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer cancel()
+		defer wg.Done()
+		for i := 0; ctx.Err() == nil; i++ {
+			if err := d.Set([]byte(fmt.Sprintf("key%06d", i)), nil, nil); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	go func() {
+		defer cancel()
+		defer wg.Done()
+		for ctx.Err() == nil {
+			if err := d.Compact([]byte("key"), []byte("key999999")); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	check := make(chan string, 100)
+	go func() {
+		defer cancel()
+		defer close(check)
+		defer wg.Done()
+		for i := 0; ctx.Err() == nil && i < 200; i++ {
+			dir := fmt.Sprintf("checkpoint%6d", i)
+			if err := d.Checkpoint(dir); err != nil {
+				t.Error(err)
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case check <- dir:
+			}
+		}
+	}()
+	go func() {
+		opts := &Options{FS: fs}
+		defer cancel()
+		defer wg.Done()
+		for dir := range check {
+			d2, err := Open(dir, opts)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			// Check the checkpoint has all the sstables that the manifest
+			// claims it has.
+			for _, tables := range d2.SSTables() {
+				for _, tbl := range tables {
+					if _, err := fs.Stat(base.MakeFilename(fs, dir, base.FileTypeTable, tbl.FileNum)); err != nil {
+						t.Error(err)
+						return
+					}
+				}
+			}
+			if err := d2.Close(); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	<-ctx.Done()
+	wg.Wait()
+	require.NoError(t, d.Close())
 }
