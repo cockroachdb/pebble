@@ -794,11 +794,11 @@ func (d *DB) NewSnapshot() *Snapshot {
 		panic(ErrClosed)
 	}
 
+	d.mu.Lock()
 	s := &Snapshot{
 		db:     d,
 		seqNum: atomic.LoadUint64(&d.mu.versions.visibleSeqNum),
 	}
-	d.mu.Lock()
 	d.mu.snapshots.pushBack(s)
 	d.mu.Unlock()
 	return s
