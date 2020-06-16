@@ -42,6 +42,11 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	// large, or roll the manifest if the MANIFEST size is too large. Should we
 	// do this too?
 
+	// Lock the manifest before getting the current version. We need the
+	// length of the manifest that we read to match the current version that
+	// we read, otherwise we might copy a versionEdit not reflected in the
+	// sstables we copy/link.
+	d.mu.versions.logLock()
 	// Get the unflushed log files, the current version, and the current manifest
 	// file number.
 	memQueue := d.mu.mem.queue
@@ -50,7 +55,9 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
 
-	// Release DB.mu so we don't block other operations on the database.
+	// Release the manifest and DB.mu so we don't block other operations on
+	// the database.
+	d.mu.versions.logUnlock()
 	d.mu.Unlock()
 
 	// Wrap the normal filesystem with one which wraps newly created files with
