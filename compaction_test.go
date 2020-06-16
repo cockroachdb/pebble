@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1797,5 +1799,53 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil))
 
 	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
+	require.NoError(t, d.Close())
+}
+
+// Regression test for #747. Test a problematic series of "cleaner" operations
+// that could previously lead to DB.disableFileDeletions blocking forever even
+// though no cleaning was in progress.
+func TestCleanerCond(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		d.mu.Lock()
+		require.True(t, d.acquireCleaningTurn(true))
+		d.mu.Unlock()
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			d.mu.Lock()
+			if d.acquireCleaningTurn(true) {
+				d.releaseCleaningTurn()
+			}
+			d.mu.Unlock()
+		}()
+
+		runtime.Gosched()
+
+		go func() {
+			defer wg.Done()
+			d.mu.Lock()
+			d.disableFileDeletions()
+			d.enableFileDeletions()
+			d.mu.Unlock()
+		}()
+
+		runtime.Gosched()
+
+		d.mu.Lock()
+		d.releaseCleaningTurn()
+		d.mu.Unlock()
+
+		wg.Wait()
+	}
+
 	require.NoError(t, d.Close())
 }

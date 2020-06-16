@@ -1676,7 +1676,7 @@ func (d *DB) disableFileDeletions() {
 	for d.mu.cleaner.cleaning {
 		d.mu.cleaner.cond.Wait()
 	}
-	d.mu.cleaner.cond.Signal()
+	d.mu.cleaner.cond.Broadcast()
 }
 
 // enableFileDeletions enables previously disabled file deletions. Note that if
@@ -1718,7 +1718,7 @@ func (d *DB) acquireCleaningTurn(waitForOngoing bool) bool {
 // d.mu must be held when calling this.
 func (d *DB) releaseCleaningTurn() {
 	d.mu.cleaner.cleaning = false
-	d.mu.cleaner.cond.Signal()
+	d.mu.cleaner.cond.Broadcast()
 }
 
 // deleteObsoleteFiles deletes those files that are no longer needed.
