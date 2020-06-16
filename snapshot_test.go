@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
@@ -279,6 +280,63 @@ func TestSnapshotRangeDeletionStress(t *testing.T) {
 			}
 		}(r)
 	}
+	wg.Wait()
+	require.NoError(t, d.Close())
+}
+
+func TestNewSnapshotRace(t *testing.T) {
+	const runs = 10
+	d, err := Open("", &Options{FS: vfs.NewMem()})
+	require.NoError(t, err)
+
+	v := []byte(`foo`)
+	ch := make(chan string)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		for k := range ch {
+			if err := d.Set([]byte(k), v, nil); err != nil {
+				t.Error(err)
+				return
+			}
+			if err := d.Flush(); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	for i := 0; i < runs; i++ {
+		// This main test goroutine sets `k` before creating a new snapshot.
+		// The key `k` should always be set within the snapshot.
+		k := fmt.Sprintf("key%06d", i)
+		require.NoError(t, d.Set([]byte(k), v, nil))
+
+		// Lock d.mu in another goroutine so that our call to NewSnapshot
+		// will need to contend for d.mu.
+		wg.Add(1)
+		locked := make(chan struct{})
+		go func() {
+			defer wg.Done()
+			d.mu.Lock()
+			close(locked)
+			time.Sleep(20 * time.Millisecond)
+			d.mu.Unlock()
+		}()
+		<-locked
+
+		// Tell the other goroutine to overwrite `k` with a later sequence
+		// number. It's indeterminate which key we'll read, but we should
+		// always read one of them.
+		ch <- k
+		s := d.NewSnapshot()
+		_, c, err := s.Get([]byte(k))
+		require.NoError(t, err)
+		require.NoError(t, c.Close())
+		require.NoError(t, s.Close())
+	}
+	close(ch)
 	wg.Wait()
 	require.NoError(t, d.Close())
 }
