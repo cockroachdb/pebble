@@ -243,20 +243,18 @@ type ycsbBuf struct {
 }
 
 type ycsb struct {
-	writeOpts   *pebble.WriteOptions
-	weights     ycsbWeights
-	reg         *histogramRegistry
-	ops         *randvar.Weighted
-	keyDist     randvar.Dynamic
-	batchDist   randvar.Static
-	scanDist    randvar.Static
-	valueDist   *randvar.BytesFlag
-	keyNum      *ackseq.S
-	numOps      uint64
-	numKeys     [ycsbNumOps]uint64
-	prevNumKeys [ycsbNumOps]uint64
-	limiter     *rate.Limiter
-	opsMap      map[string]int
+	writeOpts *pebble.WriteOptions
+	weights   ycsbWeights
+	reg       *histogramRegistry
+	ops       *randvar.Weighted
+	keyDist   randvar.Dynamic
+	batchDist randvar.Static
+	scanDist  randvar.Static
+	valueDist *randvar.BytesFlag
+	keyNum    *ackseq.S
+	numOps    uint64
+	limiter   *rate.Limiter
+	opsMap    map[string]int
 }
 
 func newYcsb(
@@ -447,7 +445,6 @@ func (y *ycsb) insert(db DB, buf *ycsbBuf) {
 		log.Fatal(err)
 	}
 	_ = b.Close()
-	atomic.AddUint64(&y.numKeys[ycsbInsert], uint64(len(keyNums)))
 
 	for i := range keyNums {
 		delta, err := y.keyNum.Ack(keyNums[i])
@@ -471,7 +468,6 @@ func (y *ycsb) read(db DB, buf *ycsbBuf) {
 	if err := iter.Close(); err != nil {
 		log.Fatal(err)
 	}
-	atomic.AddUint64(&y.numKeys[ycsbRead], 1)
 }
 
 func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
@@ -479,11 +475,6 @@ func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
 	key := y.nextReadKey(buf)
 	if err := db.Scan(key, int64(count), reverse); err != nil {
 		log.Fatal(err)
-	}
-	if reverse {
-		atomic.AddUint64(&y.numKeys[ycsbReverseScan], count)
-	} else {
-		atomic.AddUint64(&y.numKeys[ycsbScan], count)
 	}
 }
 
@@ -497,44 +488,36 @@ func (y *ycsb) update(db DB, buf *ycsbBuf) {
 		log.Fatal(err)
 	}
 	_ = b.Close()
-	atomic.AddUint64(&y.numKeys[ycsbUpdate], uint64(count))
 }
 
 func (y *ycsb) tick(elapsed time.Duration, i int) {
 	if i%20 == 0 {
-		fmt.Println("____optype__elapsed____ops/sec___keys/sec__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+		fmt.Println("____optype__elapsed__ops/sec(inst)___ops/sec(cum)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	}
 	y.reg.Tick(func(tick histogramTick) {
-		op := y.opsMap[tick.Name]
-		numKeys := atomic.LoadUint64(&y.numKeys[op])
 		h := tick.Hist
 
-		fmt.Printf("%10s %8s %10.1f %10.1f %8.1f %8.1f %8.1f %8.1f\n",
+		fmt.Printf("%10s %8s %14.1f %14.1f %8.1f %8.1f %8.1f %8.1f\n",
 			tick.Name,
 			time.Duration(elapsed.Seconds()+0.5)*time.Second,
 			float64(h.TotalCount())/tick.Elapsed.Seconds(),
-			float64(numKeys-y.prevNumKeys[op])/tick.Elapsed.Seconds(),
+			float64(tick.Cumulative.TotalCount())/elapsed.Seconds(),
 			time.Duration(h.ValueAtQuantile(50)).Seconds()*1000,
 			time.Duration(h.ValueAtQuantile(95)).Seconds()*1000,
 			time.Duration(h.ValueAtQuantile(99)).Seconds()*1000,
 			time.Duration(h.ValueAtQuantile(100)).Seconds()*1000,
 		)
-
-		y.prevNumKeys[op] = numKeys
 	})
 }
 
 func (y *ycsb) done(elapsed time.Duration) {
-	fmt.Println("\n____optype__elapsed_____ops(total)___ops/sec(cum)__keys/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+	fmt.Println("\n____optype__elapsed_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
 	y.reg.Tick(func(tick histogramTick) {
-		op := y.opsMap[tick.Name]
-		numKeys := atomic.LoadUint64(&y.numKeys[op])
 		h := tick.Cumulative
 
-		fmt.Printf("%10s %7.1fs %14d %14.1f %14.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
+		fmt.Printf("%10s %7.1fs %14d %14.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
 			tick.Name, elapsed.Seconds(), h.TotalCount(),
 			float64(h.TotalCount())/elapsed.Seconds(),
-			float64(numKeys)/elapsed.Seconds(),
 			time.Duration(h.Mean()).Seconds()*1000,
 			time.Duration(h.ValueAtQuantile(50)).Seconds()*1000,
 			time.Duration(h.ValueAtQuantile(95)).Seconds()*1000,
