@@ -36,6 +36,8 @@ type lsmVersionEdit struct {
 	Added map[int][]base.FileNum `json:",omitempty"`
 	// Map from level to files deleted from the level.
 	Deleted map[int][]base.FileNum `json:",omitempty"`
+	// L0 sublevel structure for all files at this point.
+	Sublevels map[base.FileNum]int `json:",omitempty"`
 }
 
 type lsmKey struct {
@@ -164,6 +166,8 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 				return nil
 			}
 			l.fmtKey.setForComparer(ve.ComparerName, l.comparers)
+		} else if l.cmp == nil {
+			l.cmp = base.DefaultComparer
 		}
 	}
 	return edits
@@ -203,6 +207,7 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 	l.state.Edits = nil
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
+	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
 	for _, ve := range edits {
 		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
 			continue
@@ -214,6 +219,12 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 		}
 		for df := range ve.DeletedFiles {
 			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
+			for i, f := range currentFiles[df.Level] {
+				if f.FileNum == df.FileNum {
+					copy(currentFiles[df.Level][i:], currentFiles[df.Level][i+1:])
+					currentFiles[df.Level] = currentFiles[df.Level][:len(currentFiles[df.Level])-1]
+				}
+			}
 		}
 		for i := range ve.NewFiles {
 			nf := &ve.NewFiles[i]
@@ -227,6 +238,17 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 				}
 			}
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)
+			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
+		}
+		sublevels, err := manifest.NewL0Sublevels(currentFiles[0], l.cmp.Compare, l.fmtKey.fn, 0)
+		if err != nil {
+			panic(err)
+		}
+		edit.Sublevels = make(map[base.FileNum]int)
+		for sublevel, files := range sublevels.Levels {
+			for _, f := range files {
+				edit.Sublevels[f.FileNum] = sublevel
+			}
 		}
 		l.state.Edits = append(l.state.Edits, edit)
 	}

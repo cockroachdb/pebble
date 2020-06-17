@@ -78,10 +78,17 @@ body {
     height: 40px;
 }
 
+#checkbox-container {
+    float: right;
+    width: 170px;
+    height: 40px;
+    padding-top: 10px;
+}
+
 #slider {
     background-color: #fff;
     height: 40px;
-    width: calc(100% - 86px);
+    width: calc(100% - 256px);
 }
 
 #vis {
