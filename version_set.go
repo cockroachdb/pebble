@@ -483,7 +483,7 @@ func (vs *versionSet) logAndApply(
 			l.Sublevels = 1
 		}
 	}
-	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Files))
+	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Levels))
 	return nil
 }
 
