@@ -47,14 +47,12 @@ import (
 	"encoding/binary"
 	"math"
 	"runtime"
-	"sync"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"golang.org/x/exp/rand"
+	"github.com/cockroachdb/pebble/internal/fastrand"
 )
 
 const (
@@ -83,11 +81,6 @@ type Skiplist struct {
 	head   *node
 	tail   *node
 	height uint32 // Current height. 1 <= height <= maxHeight. CAS.
-
-	rand struct {
-		sync.Mutex
-		src rand.PCGSource
-	}
 
 	// If set to true by tests, then extra delays are added to make it easier to
 	// detect unusual race conditions.
@@ -158,7 +151,6 @@ func (s *Skiplist) Reset(arena *Arena, cmp base.Compare) {
 		tail:   tail,
 		height: 1,
 	}
-	s.rand.src.Seed(uint64(time.Now().UnixNano()))
 }
 
 // Height returns the height of the highest tower within any of the nodes that
@@ -347,9 +339,7 @@ func (s *Skiplist) newNode(
 }
 
 func (s *Skiplist) randomHeight() uint32 {
-	s.rand.Lock()
-	rnd := uint32(s.rand.src.Uint64())
-	s.rand.Unlock()
+	rnd := fastrand.Uint32()
 
 	h := uint32(1)
 	for h < maxHeight && rnd <= probabilities[h] {
