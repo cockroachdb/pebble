@@ -219,7 +219,7 @@ type Version struct {
 	// in Files[0] are in L0Sublevels.Files.
 	L0Sublevels *L0Sublevels
 
-	Files [NumLevels][]*FileMetadata
+	Levels [NumLevels][]*FileMetadata
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
@@ -240,7 +240,7 @@ func (v *Version) String() string {
 func (v *Version) Pretty(format base.FormatKey) string {
 	var buf bytes.Buffer
 	for level := 0; level < NumLevels; level++ {
-		if len(v.Files[level]) == 0 {
+		if len(v.Levels[level]) == 0 {
 			continue
 		}
 
@@ -256,8 +256,8 @@ func (v *Version) Pretty(format base.FormatKey) string {
 		}
 
 		fmt.Fprintf(&buf, "%d:\n", level)
-		for j := range v.Files[level] {
-			f := v.Files[level][j]
+		for j := range v.Levels[level] {
+			f := v.Levels[level][j]
 			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				format(f.Smallest.UserKey), format(f.Largest.UserKey))
 		}
@@ -270,7 +270,7 @@ func (v *Version) Pretty(format base.FormatKey) string {
 func (v *Version) DebugString(format base.FormatKey) string {
 	var buf bytes.Buffer
 	for level := 0; level < NumLevels; level++ {
-		if len(v.Files[level]) == 0 {
+		if len(v.Levels[level]) == 0 {
 			continue
 		}
 
@@ -286,8 +286,8 @@ func (v *Version) DebugString(format base.FormatKey) string {
 		}
 
 		fmt.Fprintf(&buf, "%d:\n", level)
-		for j := range v.Files[level] {
-			f := v.Files[level][j]
+		for j := range v.Levels[level] {
+			f := v.Levels[level][j]
 			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				f.Smallest.Pretty(format), f.Largest.Pretty(format))
 		}
@@ -333,7 +333,7 @@ func (v *Version) UnrefLocked() {
 
 func (v *Version) unrefFiles() []base.FileNum {
 	var obsolete []base.FileNum
-	for _, files := range v.Files {
+	for _, files := range v.Levels {
 		for i := range files {
 			f := files[i]
 			if atomic.AddInt32(&f.refs, -1) == 0 {
@@ -354,7 +354,7 @@ func (v *Version) InitL0Sublevels(
 	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64,
 ) error {
 	var err error
-	v.L0Sublevels, err = NewL0Sublevels(v.Files[0], cmp, formatKey, flushSplitBytes)
+	v.L0Sublevels, err = NewL0Sublevels(v.Levels[0], cmp, formatKey, flushSplitBytes)
 	return err
 }
 
@@ -369,7 +369,7 @@ func (v *Version) InitL0Sublevels(
 func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*FileMetadata) {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
-		selectedIndices := make([]bool, len(v.Files[level]))
+		selectedIndices := make([]bool, len(v.Levels[level]))
 		numSelected := 0
 		for {
 			restart := false
@@ -377,7 +377,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 				if selected {
 					continue
 				}
-				meta := v.Files[level][i]
+				meta := v.Levels[level][i]
 				smallest := meta.Smallest.UserKey
 				largest := meta.Largest.UserKey
 				if cmp(largest, start) < 0 {
@@ -411,7 +411,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 				ret = make([]*FileMetadata, 0, numSelected)
 				for i, selected := range selectedIndices {
 					if selected {
-						ret = append(ret, v.Files[level][i])
+						ret = append(ret, v.Levels[level][i])
 					}
 				}
 				break
@@ -421,7 +421,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 		return
 	}
 
-	files := v.Files[level]
+	files := v.Levels[level]
 	lower, upper := overlaps(files, cmp, start, end)
 	if lower >= upper {
 		return nil
@@ -439,7 +439,7 @@ func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 		}
 	}
 
-	for level, files := range v.Files {
+	for level, files := range v.Levels {
 		if err := CheckOrdering(cmp, format, Level(level), files); err != nil {
 			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}
@@ -453,7 +453,7 @@ func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
 	var buf bytes.Buffer
 	var args []interface{}
 
-	for level, files := range v.Files {
+	for level, files := range v.Levels {
 		for _, f := range files {
 			path := base.MakeFilename(fs, dirname, base.FileTypeTable, f.FileNum)
 			info, err := fs.Stat(path)

@@ -155,14 +155,14 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level >= numLevels {
 			return nil, nil
 		}
-		if len(g.version.Files[g.level]) == 0 {
+		if len(g.version.Levels[g.level]) == 0 {
 			g.level++
 			continue
 		}
 
 		iterOpts := IterOptions{logger: g.logger}
 		g.levelIter.init(iterOpts, g.cmp, g.newIters,
-			g.version.Files[g.level], manifest.Level(g.level), nil)
+			g.version.Levels[g.level], manifest.Level(g.level), nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter

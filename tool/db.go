@@ -388,7 +388,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		tw := tabwriter.NewWriter(stdout, 2, 1, 4, ' ', 0)
 		var total props
 		var all []props
-		for _, l := range v.Files {
+		for _, l := range v.Levels {
 			var level props
 			for _, t := range l {
 				err := d.addProps(dirname, t, &level)
