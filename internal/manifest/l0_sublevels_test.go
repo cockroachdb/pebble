@@ -42,11 +42,11 @@ func readManifest(filename string) (*Version, error) {
 		}
 		var bve BulkVersionEdit
 		bve.Accumulate(&ve)
-		if v, _, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10 << 20); err != nil {
+		if v, _, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20); err != nil {
 			return nil, err
 		}
 	}
-	fmt.Printf("L0 filecount: %d\n", len(v.Files[0]))
+	fmt.Printf("L0 filecount: %d\n", len(v.Levels[0]))
 	return v, nil
 }
 
@@ -56,7 +56,7 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 	v, err := readManifest("testdata/MANIFEST_import")
 	require.NoError(t, err)
 
-	sublevels, err := NewL0Sublevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+	sublevels, err := NewL0Sublevels(v.Levels[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 	require.NoError(t, err)
 	fmt.Printf("L0Sublevels:\n%s\n\n", sublevels)
 
@@ -163,8 +163,8 @@ func visualizeSublevels(
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
-	for i := len(s.Files) - 1; i >= 0; i-- {
-		printLevel(s.Files[i], fmt.Sprintf("0.%d", i), true)
+	for i := len(s.Levels) - 1; i >= 0; i-- {
+		printLevel(s.Levels[i], fmt.Sprintf("0.%d", i), true)
 	}
 	for i := range otherLevels {
 		if len(otherLevels[i]) == 0 {
@@ -312,7 +312,7 @@ func TestL0Sublevels(t *testing.T) {
 				// This case is for use with explicitly-specified sublevels
 				// only.
 				sublevels = &L0Sublevels{
-					Files:      explicitSublevels,
+					Levels:     explicitSublevels,
 					cmp:        base.DefaultComparer.Compare,
 					formatKey:  base.DefaultFormatter,
 					filesByAge: fileMetas[0],
@@ -409,7 +409,7 @@ func TestL0Sublevels(t *testing.T) {
 		case "max-depth-after-ongoing-compactions":
 			return strconv.Itoa(sublevels.MaxDepthAfterOngoingCompactions())
 		case "l0-check-ordering":
-			for sublevel, files := range sublevels.Files {
+			for sublevel, files := range sublevels.Levels {
 				if err := CheckOrdering(base.DefaultComparer.Compare,
 					base.DefaultFormatter, L0Sublevel(sublevel), files); err != nil {
 					return err.Error()
@@ -461,7 +461,7 @@ func BenchmarkL0SublevelsInit(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+		sl, err := NewL0Sublevels(v.Levels[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
 			b.Fatal("expected non-nil L0Sublevels to be generated")
@@ -476,7 +476,7 @@ func BenchmarkL0SublevelsInitAndPick(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(v.Files[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+		sl, err := NewL0Sublevels(v.Levels[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
 			b.Fatal("expected non-nil L0Sublevels to be generated")

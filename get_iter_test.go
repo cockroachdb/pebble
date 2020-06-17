@@ -516,10 +516,10 @@ func TestGetIter(t *testing.T) {
 				}
 			}
 
-			v.Files[tt.level] = append(v.Files[tt.level], meta)
+			v.Levels[tt.level] = append(v.Levels[tt.level], meta)
 		}
 
-		if err := v.InitL0Sublevels(cmp, base.DefaultFormatter, 10 << 20); err != nil {
+		if err := v.InitL0Sublevels(cmp, base.DefaultFormatter, 10<<20); err != nil {
 			t.Fatalf("desc=%q: internal error: %s", desc, err.Error())
 		}
 		err := v.CheckOrdering(cmp, base.DefaultFormatter)
@@ -542,7 +542,7 @@ func TestGetIter(t *testing.T) {
 			get.equal = equal
 			get.newIters = newIter
 			get.key = ikey.UserKey
-			get.l0 = v.L0Sublevels.Files
+			get.l0 = v.L0Sublevels.Levels
 			get.version = v
 			get.snapshot = ikey.SeqNum() + 1
 

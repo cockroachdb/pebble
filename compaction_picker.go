@@ -151,8 +151,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
 	// unlike the RocksDB logic that figures out whether L0 needs compaction.
-	bytesAddedToNextLevel := l0ExtraSize + totalSize(p.vers.Files[0])
-	nextLevelSize := totalSize(p.vers.Files[p.baseLevel])
+	bytesAddedToNextLevel := l0ExtraSize + totalSize(p.vers.Levels[0])
+	nextLevelSize := totalSize(p.vers.Levels[p.baseLevel])
 
 	var compactionDebt uint64
 	if bytesAddedToNextLevel > 0 && nextLevelSize > 0 {
@@ -164,7 +164,7 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	for level := p.baseLevel; level < numLevels-1; level++ {
 		levelSize := nextLevelSize + bytesAddedToNextLevel
-		nextLevelSize = totalSize(p.vers.Files[level+1])
+		nextLevelSize = totalSize(p.vers.Levels[level+1])
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			if nextLevelSize > 0 {
@@ -210,7 +210,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	firstNonEmptyLevel := -1
 	var bottomLevelSize int64
 	for level := 1; level < numLevels; level++ {
-		levelSize := int64(totalSize(p.vers.Files[level]))
+		levelSize := int64(totalSize(p.vers.Levels[level]))
 		if levelSize > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
@@ -327,7 +327,7 @@ func (p *compactionPickerByScore) calculateScores(
 		// Use the "compensated" file size when scoring. The file size is
 		// compensated by artifically inflating it to account for other
 		// priorities like reclaiming disk space beneath range tombstones.
-		levelSize := int64(totalCompensatedSize(p.vers.Files[level])) + sizeAdjust[level]
+		levelSize := int64(totalCompensatedSize(p.vers.Levels[level])) + sizeAdjust[level]
 		scores[level].score = float64(levelSize) / float64(p.levelMaxBytes[level])
 	}
 	sort.Sort(sortCompactionLevelsDecreasingScore(scores[:]))
@@ -369,7 +369,7 @@ func (p *compactionPickerByScore) calculateL0Score(
 	// Score an L0->Lbase compaction by counting the number of idle
 	// (non-compacting) files in L0.
 	var idleL0Count int
-	for _, f := range p.vers.Files[0] {
+	for _, f := range p.vers.Levels[0] {
 		if !f.Compacting {
 			idleL0Count++
 		}
@@ -390,7 +390,7 @@ func (p *compactionPickerByScore) calculateL0Score(
 		return info
 	}
 
-	l0Files := p.vers.Files[0]
+	l0Files := p.vers.Levels[0]
 	if len(l0Files) < p.opts.L0CompactionThreshold+2 {
 		// If L0 isn't accumulating many files beyond the regular L0 trigger,
 		// don't resort to an intra-L0 compaction yet. This matches the RocksDB
@@ -444,12 +444,12 @@ func (p *compactionPickerByScore) pickFile(level, outputLevel int) int {
 	// an in-progress compaction.
 
 	cmp := p.opts.Comparer.Compare
-	outputLevelFiles := p.vers.Files[outputLevel]
+	outputLevelFiles := p.vers.Levels[outputLevel]
 
 	file := -1
 	smallestRatio := uint64(math.MaxUint64)
 
-	for i, f := range p.vers.Files[level] {
+	for i, f := range p.vers.Levels[level] {
 		var overlappingBytes uint64
 
 		// Trim any output-level files smaller than f.
@@ -575,7 +575,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 	// extremely wasteful in the common case. Could we maintain a
 	// MarkedForCompaction map from fileNum to level?
 	for level := 0; level < numLevels-1; level++ {
-		for file, f := range p.vers.Files[level] {
+		for file, f := range p.vers.Levels[level] {
 			if !f.MarkedForCompaction {
 				continue
 			}
@@ -614,7 +614,7 @@ func pickAutoHelper(
 	if c.outputLevel != cInfo.outputLevel {
 		panic("pebble: compaction picked unexpected output level")
 	}
-	c.inputs[0] = vers.Files[c.startLevel][cInfo.file : cInfo.file+1]
+	c.inputs[0] = vers.Levels[c.startLevel][cInfo.file : cInfo.file+1]
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if c.startLevel == 0 {
 		cmp := opts.Comparer.Compare
@@ -637,7 +637,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 	// compaction. Without this, we observed reduced concurrency of L0=>Lbase
 	// compactions, and increasing read amplification in L0.
 	lcf, err := vers.L0Sublevels.PickBaseCompaction(
-		opts.L0CompactionThreshold, vers.Files[baseLevel])
+		opts.L0CompactionThreshold, vers.Levels[baseLevel])
 	if err != nil {
 		opts.Logger.Infof("error when picking base compaction: %s", err)
 		return
@@ -647,7 +647,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 		// pickAutoHelper. This is because L0Sublevels has already added
 		// any overlapping L0 SSTables that need to be added, and
 		// because compactions built by L0SSTables do not necessarily
-		// pick contiguous sequences of files in p.vers.Files[0].
+		// pick contiguous sequences of files in p.vers.Levels[0].
 		c = newCompaction(opts, vers, 0, baseLevel, env.bytesCompacted)
 		c.lcf = lcf
 		if c.outputLevel != baseLevel {
@@ -656,7 +656,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 		c.inputs[0] = make([]*manifest.FileMetadata, 0, len(lcf.Files))
 		for j := range lcf.FilesIncluded {
 			if lcf.FilesIncluded[j] {
-				c.inputs[0] = append(c.inputs[0], vers.Files[0][j])
+				c.inputs[0] = append(c.inputs[0], vers.Levels[0][j])
 			}
 		}
 		c.setupInputs()
@@ -679,7 +679,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 		c.inputs[0] = make([]*manifest.FileMetadata, 0, len(lcf.Files))
 		for j := range lcf.FilesIncluded {
 			if lcf.FilesIncluded[j] {
-				c.inputs[0] = append(c.inputs[0], vers.Files[0][j])
+				c.inputs[0] = append(c.inputs[0], vers.Levels[0][j])
 			}
 		}
 		if len(c.inputs[0]) == 0 {
@@ -700,7 +700,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 }
 
 func pickIntraL0(env compactionEnv, opts *Options, vers *version) (c *compaction) {
-	l0Files := vers.Files[0]
+	l0Files := vers.Levels[0]
 	end := len(l0Files)
 	for ; end >= 1; end-- {
 		m := l0Files[end-1]

@@ -485,7 +485,7 @@ func (b *BulkVersionEdit) Apply(
 	}
 
 	v := new(Version)
-	for level := range v.Files {
+	for level := range v.Levels {
 		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
 			// There are no edits on this level.
 			if level == 0 {
@@ -501,8 +501,8 @@ func (b *BulkVersionEdit) Apply(
 			if curr == nil {
 				continue
 			}
-			files := curr.Files[level]
-			v.Files[level] = files
+			files := curr.Levels[level]
+			v.Levels[level] = files
 			// We still have to bump the ref count for all files.
 			for i := range files {
 				atomic.AddInt32(&files[i].refs, 1)
@@ -513,7 +513,7 @@ func (b *BulkVersionEdit) Apply(
 		// Some edits on this level.
 		var currFiles []*FileMetadata
 		if curr != nil {
-			currFiles = curr.Files[level]
+			currFiles = curr.Levels[level]
 		}
 		addedFiles := b.Added[level]
 		deletedMap := b.Deleted[level]
@@ -523,7 +523,7 @@ func (b *BulkVersionEdit) Apply(
 				"pebble: internal error: No current or added files but have deleted files: %d",
 				errors.Safe(len(deletedMap)))
 		}
-		v.Files[level] = make([]*FileMetadata, 0, n)
+		v.Levels[level] = make([]*FileMetadata, 0, n)
 		// We have 2 lists of files, currFiles and addedFiles either of which (but not both) can
 		// be empty.
 		// - currFiles is internally consistent, since it comes from curr.
@@ -553,14 +553,14 @@ func (b *BulkVersionEdit) Apply(
 						continue
 					}
 					atomic.AddInt32(&f.refs, 1)
-					v.Files[level] = append(v.Files[level], f)
+					v.Levels[level] = append(v.Levels[level], f)
 				}
 			}
-			SortBySeqNum(v.Files[level])
+			SortBySeqNum(v.Levels[level])
 			if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
-			if err := CheckOrdering(cmp, formatKey, Level(0), v.Files[level]); err != nil {
+			if err := CheckOrdering(cmp, formatKey, Level(0), v.Levels[level]); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
@@ -599,10 +599,10 @@ func (b *BulkVersionEdit) Apply(
 				}
 				removeZombie(cf.FileNum)
 				atomic.AddInt32(&cf.refs, 1)
-				v.Files[level] = append(v.Files[level], cf)
+				v.Levels[level] = append(v.Levels[level], cf)
 			}
 			currFiles = currFiles[j:]
-			numFiles := len(v.Files[level])
+			numFiles := len(v.Levels[level])
 			if numFiles > 0 {
 				// We expect k to typically be large, and we can avoid doing consistency
 				// checks of the files within that set of k, since they are already mutually
@@ -612,8 +612,8 @@ func (b *BulkVersionEdit) Apply(
 				// its predecessor either came from currFiles or addedFiles, and both are ones
 				// which we need to check against f for consistency (since we have not checked
 				// addedFiles for internal consistency).
-				if base.InternalCompare(cmp, v.Files[level][numFiles-1].Largest, f.Smallest) >= 0 {
-					cf := v.Files[level][numFiles-1]
+				if base.InternalCompare(cmp, v.Levels[level][numFiles-1].Largest, f.Smallest) >= 0 {
+					cf := v.Levels[level][numFiles-1]
 					return nil, nil, errors.Errorf(
 						"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(cf.FileNum), errors.Safe(f.FileNum),
@@ -621,7 +621,7 @@ func (b *BulkVersionEdit) Apply(
 						f.Smallest.Pretty(formatKey), f.Largest.Pretty(formatKey))
 				}
 			}
-			v.Files[level] = append(v.Files[level], f)
+			v.Levels[level] = append(v.Levels[level], f)
 		}
 		// Add any remaining files in currFiles that are after all the added files.
 		for i := range currFiles {
@@ -632,7 +632,7 @@ func (b *BulkVersionEdit) Apply(
 			}
 			removeZombie(f.FileNum)
 			atomic.AddInt32(&f.refs, 1)
-			v.Files[level] = append(v.Files[level], f)
+			v.Levels[level] = append(v.Levels[level], f)
 		}
 	}
 	return v, zombies, nil

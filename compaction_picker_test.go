@@ -44,7 +44,7 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 			if err != nil {
 				return nil, nil, err.Error()
 			}
-			if vers.Files[level] != nil {
+			if vers.Levels[level] != nil {
 				return nil, nil, fmt.Sprintf("level %d already filled", level)
 			}
 			size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
@@ -53,7 +53,7 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 			}
 			for i := uint64(1); i <= size; i++ {
 				key := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
-				vers.Files[level] = append(vers.Files[level], &fileMetadata{
+				vers.Levels[level] = append(vers.Levels[level], &fileMetadata{
 					Smallest:       key,
 					Largest:        key,
 					SmallestSeqNum: key.SeqNum(),
@@ -68,7 +68,7 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 					// TODO(peter): There is tension between the testing in
 					// TestCompactionPickerLevelMaxBytes and
 					// TestCompactionPickerTargetLevel. Clean this up somehow.
-					vers.Files[level][len(vers.Files[level])-1].Size = size
+					vers.Levels[level][len(vers.Levels[level])-1].Size = size
 					break
 				}
 			}
@@ -130,7 +130,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 	}
 
 	resetCompacting := func() {
-		for _, files := range vers.Files {
+		for _, files := range vers.Levels {
 			for _, f := range files {
 				f.Compacting = false
 			}
@@ -219,10 +219,10 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// Mark files as compacting for each in-progress compaction.
 				for i := range inProgress {
 					c := &inProgress[i]
-					for j, f := range vers.Files[c.startLevel] {
+					for j, f := range vers.Levels[c.startLevel] {
 						if !f.Compacting {
 							f.Compacting = true
-							c.inputs[0] = vers.Files[c.startLevel][j : j+1]
+							c.inputs[0] = vers.Levels[c.startLevel][j : j+1]
 							break
 						}
 					}
@@ -230,16 +230,16 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					switch {
 					case c.startLevel == 0 && c.outputLevel != 0:
 						// L0->Lbase: mark all of Lbase as compacting.
-						c.inputs[1] = vers.Files[c.outputLevel]
+						c.inputs[1] = vers.Levels[c.outputLevel]
 						for _, f := range c.inputs[1] {
 							f.Compacting = true
 						}
 					case c.startLevel != c.outputLevel:
 						// Ln->Ln+1: mark 1 file in Ln+1 as compacting.
-						for j, f := range vers.Files[c.outputLevel] {
+						for j, f := range vers.Levels[c.outputLevel] {
 							if !f.Compacting {
 								f.Compacting = true
-								c.inputs[1] = vers.Files[c.outputLevel][j : j+1]
+								c.inputs[1] = vers.Levels[c.outputLevel][j : j+1]
 								break
 							}
 						}
@@ -399,7 +399,7 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 				}
 
 				c := pickIntraL0(env, opts, &version{
-					Files: [7][]*fileMetadata{
+					Levels: [7][]*fileMetadata{
 						0: files,
 					},
 				})
@@ -494,7 +494,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 
 			version := &version{
-				Files: fileMetas,
+				Levels: fileMetas,
 			}
 			if err := version.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter, 0); err != nil {
 				t.Fatal(err)
@@ -514,7 +514,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 			vs.picker = picker
 			inProgressCompactions := []compactionInfo{}
-			for level, files := range version.Files {
+			for level, files := range version.Levels {
 				for _, f := range files {
 					if f.Compacting {
 						c := compactionInfo{

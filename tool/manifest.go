@@ -78,11 +78,11 @@ Check the contents of the MANIFEST files.
 }
 
 func (m *manifestT) printLevels(v *manifest.Version) {
-	for level := range v.Files {
-		if level == 0 && v.L0Sublevels != nil && len(v.Files[level]) > 0 {
-			for sublevel := len(v.L0Sublevels.Files)-1; sublevel >= 0; sublevel-- {
+	for level := range v.Levels {
+		if level == 0 && v.L0Sublevels != nil && len(v.Levels[level]) > 0 {
+			for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(stdout, "--- L0.%d ---\n", sublevel)
-				for _, f := range v.L0Sublevels.Files[sublevel] {
+				for _, f := range v.L0Sublevels.Levels[sublevel] {
 					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 					formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
@@ -92,8 +92,8 @@ func (m *manifestT) printLevels(v *manifest.Version) {
 			continue
 		}
 		fmt.Fprintf(stdout, "--- L%d ---\n", level)
-		for j := range v.Files[level] {
-			f := v.Files[level][j]
+		for j := range v.Levels[level] {
+			f := v.Levels[level][j]
 			fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 			formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 			formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)

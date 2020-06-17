@@ -505,7 +505,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	v := d.mu.versions.currentVersion()
-	for _, files := range v.Files {
+	for _, files := range v.Levels {
 		for _, f := range files {
 			if f.FileNum != fileNum {
 				continue

@@ -266,8 +266,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = int64(len(newVersion.Files[i]))
-		l.Size = uint64(totalSize(newVersion.Files[i]))
+		l.NumFiles = int64(len(newVersion.Levels[i]))
+		l.Size = uint64(totalSize(newVersion.Levels[i]))
 	}
 	return nil
 }
@@ -476,14 +476,14 @@ func (vs *versionSet) logAndApply(
 	}
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = int64(len(newVersion.Files[i]))
-		l.Size = uint64(totalSize(newVersion.Files[i]))
+		l.NumFiles = int64(len(newVersion.Levels[i]))
+		l.Size = uint64(totalSize(newVersion.Levels[i]))
 		l.Sublevels = 0
 		if l.NumFiles > 0 {
 			l.Sublevels = 1
 		}
 	}
-	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Files))
+	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Levels))
 	return nil
 }
 
@@ -524,7 +524,7 @@ func (vs *versionSet) createManifest(
 	snapshot := versionEdit{
 		ComparerName: vs.cmpName,
 	}
-	for level, fileMetadata := range vs.currentVersion().Files {
+	for level, fileMetadata := range vs.currentVersion().Levels {
 		for _, meta := range fileMetadata {
 			snapshot.NewFiles = append(snapshot.NewFiles, newFileEntry{
 				Level: level,
@@ -597,7 +597,7 @@ func (vs *versionSet) currentVersion() *version {
 func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	current := vs.currentVersion()
 	for v := vs.versions.Front(); true; v = v.Next() {
-		for _, ff := range v.Files {
+		for _, ff := range v.Levels {
 			for _, f := range ff {
 				m[f.FileNum] = struct{}{}
 			}

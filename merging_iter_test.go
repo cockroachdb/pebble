@@ -168,7 +168,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 					level++
 					continue
 				}
-				files := &v.Files[level]
+				files := &v.Levels[level]
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
@@ -231,8 +231,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 
 			return v.DebugString(DefaultComparer.FormatKey)
 		case "iter":
-			levelIters := make([]mergingIterLevel, 0, len(v.Files))
-			for i, l := range v.Files {
+			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
+			for i, l := range v.Levels {
 				if len(l) == 0 {
 					continue
 				}

@@ -288,7 +288,7 @@ func (c *compaction) setupInputs() {
 			c.inputs[0] = c.inputs[0][:0]
 			for j := range c.lcf.FilesIncluded {
 				if c.lcf.FilesIncluded[j] {
-					c.inputs[0] = append(c.inputs[0], c.version.Files[0][j])
+					c.inputs[0] = append(c.inputs[0], c.version.Levels[0][j])
 				}
 			}
 			c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
@@ -348,7 +348,7 @@ func (c *compaction) expandInputs(level int, inputs []*fileMetadata) []*fileMeta
 		// Nothing to expand.
 		return inputs
 	}
-	files := c.version.Files[level]
+	files := c.version.Levels[level]
 	// Pointer arithmetic to figure out the index if inputs[0] with
 	// files[0]. This requires that the inputs slice is a sub-slice of
 	// files. This is true for non-L0 files returned from version.overlaps.
