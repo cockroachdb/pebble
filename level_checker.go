@@ -410,11 +410,11 @@ func checkRangeTombstones(c *checkConfig) error {
 		}
 		level++
 	}
-	for i := 1; i < len(current.Files); i++ {
-		if len(current.Files[i]) == 0 {
+	for i := 1; i < len(current.Levels); i++ {
+		if len(current.Levels[i]) == 0 {
 			continue
 		}
-		files := &current.Files[i]
+		files := &current.Levels[i]
 		if err := addTombstonesFromLevel(files, i); err != nil {
 			return err
 		}
@@ -653,8 +653,8 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		}
 		mlevels = append(mlevels, simpleMergingIterLevel{})
 	}
-	for level := 1; level < len(current.Files); level++ {
-		if len(current.Files[level]) == 0 {
+	for level := 1; level < len(current.Levels); level++ {
+		if len(current.Levels[level]) == 0 {
 			continue
 		}
 		mlevels = append(mlevels, simpleMergingIterLevel{})
@@ -674,13 +674,13 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
 	}
-	for level := 1; level < len(current.Files); level++ {
-		if len(current.Files[level]) == 0 {
+	for level := 1; level < len(current.Levels); level++ {
+		if len(current.Levels[level]) == 0 {
 			continue
 		}
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, current.Files[level], manifest.Level(level), nil)
+		li.init(iterOpts, c.cmp, c.newIters, current.Levels[level], manifest.Level(level), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
 		mlevelAlloc[0].iter = li

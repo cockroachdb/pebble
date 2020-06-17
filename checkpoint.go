@@ -118,8 +118,8 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	}
 
 	// Link or copy the sstables.
-	for l := range current.Files {
-		level := current.Files[l]
+	for l := range current.Levels {
+		level := current.Levels[l]
 		for i := range level {
 			srcPath := base.MakeFilename(fs, d.dirname, fileTypeTable, level[i].FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))

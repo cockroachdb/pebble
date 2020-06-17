@@ -174,9 +174,11 @@ func (d *DB) loadNewFileStats(rs *readState, pending []manifest.NewFileEntry) []
 // scanReadStateTableStats is run by an active stat collection job when there
 // are no pending new files, but there might be files that existed at Open for
 // which we haven't loaded table stats.
-func (d *DB) scanReadStateTableStats(rs *readState, fill []collectedStats) ([]collectedStats, bool) {
+func (d *DB) scanReadStateTableStats(
+	rs *readState, fill []collectedStats,
+) ([]collectedStats, bool) {
 	moreRemain := false
-	for l, ff := range rs.current.Files {
+	for l, ff := range rs.current.Levels {
 		for _, f := range ff {
 			// NB: We're not holding d.mu which protects f.Stats, but only the
 			// active stats collection job updates f.Stats for active files,
@@ -213,7 +215,9 @@ func (d *DB) scanReadStateTableStats(rs *readState, fill []collectedStats) ([]co
 	return fill, moreRemain
 }
 
-func (d *DB) loadTableStats(v *version, level int, meta *fileMetadata) (manifest.TableStats, error) {
+func (d *DB) loadTableStats(
+	v *version, level int, meta *fileMetadata,
+) (manifest.TableStats, error) {
 	var totalRangeDeletionEstimate uint64
 	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
 		if r.Properties.NumRangeDeletions == 0 {
@@ -249,7 +253,9 @@ func (d *DB) loadTableStats(v *version, level int, meta *fileMetadata) (manifest
 	return stats, nil
 }
 
-func (d *DB) estimateSizeBeneath(v *version, level int, meta *fileMetadata, start, end []byte) (uint64, error) {
+func (d *DB) estimateSizeBeneath(
+	v *version, level int, meta *fileMetadata, start, end []byte,
+) (uint64, error) {
 	// Find all files in lower levels that overlap with the deleted range.
 	//
 	// An overlapping file might be completely contained by the range
@@ -289,7 +295,9 @@ func (d *DB) estimateSizeBeneath(v *version, level int, meta *fileMetadata, star
 	return estimate, nil
 }
 
-func foreachDefragmentedTombstone(rangeDelIter base.InternalIterator, cmp base.Compare, fn func([]byte, []byte) error) error {
+func foreachDefragmentedTombstone(
+	rangeDelIter base.InternalIterator, cmp base.Compare, fn func([]byte, []byte) error,
+) error {
 	var startUserKey, endUserKey []byte
 	var initialized bool
 	for start, end := rangeDelIter.First(); start != nil; start, end = rangeDelIter.Next() {

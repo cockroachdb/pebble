@@ -95,7 +95,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "no compaction",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							FileNum:  100,
@@ -112,7 +112,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							FileNum:  100,
@@ -134,7 +134,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files (0 overlaps)",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							FileNum:  100,
@@ -162,7 +162,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ikey overlap",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							FileNum:  100,
@@ -190,7 +190,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ukey overlap",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							FileNum:  100,
@@ -218,7 +218,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (0 overlaps)",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							FileNum:  100,
@@ -254,7 +254,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (1 overlap), 4 L2 files (3 overlaps)",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							FileNum:  100,
@@ -316,7 +316,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can grow",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					1: []*fileMetadata{
 						{
 							FileNum:  200,
@@ -370,7 +370,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (range)",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					1: []*fileMetadata{
 						{
 							FileNum:  200,
@@ -424,7 +424,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (size)",
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					1: []*fileMetadata{
 						{
 							FileNum:  200,
@@ -525,7 +525,7 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "non-empty",
 			level: 1,
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					1: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("c.SET.801"),
@@ -595,7 +595,7 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "repeated ukey",
 			level: 1,
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					6: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("i.SET.401"),
@@ -672,7 +672,7 @@ func TestElideRangeTombstone(t *testing.T) {
 			desc:  "non-empty",
 			level: 1,
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					1: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("c.SET.801"),
@@ -741,7 +741,7 @@ func TestElideRangeTombstone(t *testing.T) {
 			desc:  "flushing",
 			level: -1,
 			version: version{
-				Files: [numLevels][]*fileMetadata{
+				Levels: [numLevels][]*fileMetadata{
 					0: []*fileMetadata{
 						{
 							Smallest: base.ParseInternalKey("h.SET.901"),
@@ -827,7 +827,7 @@ func TestCompaction(t *testing.T) {
 		}
 		ss := []string(nil)
 		v := d.mu.versions.currentVersion()
-		for _, files := range v.Files {
+		for _, files := range v.Levels {
 			for _, meta := range files {
 				f, err := mem.Open(base.MakeFilename(mem, "", fileTypeTable, meta.FileNum))
 				if err != nil {
@@ -1254,7 +1254,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				}
 
 				vers = &version{
-					Files: fileMetas,
+					Levels: fileMetas,
 				}
 				if err := vers.InitL0Sublevels(DefaultComparer.Compare, base.DefaultFormatter, flushSplitBytes); err != nil {
 					t.Fatal(err)
@@ -1373,13 +1373,13 @@ func TestCompactionSetupInputs(t *testing.T) {
 						}
 						if c.startLevel == -1 {
 							c.startLevel = level
-							files = &c.version.Files[level]
+							files = &c.version.Levels[level]
 						} else if c.outputLevel == -1 {
 							if c.startLevel >= level {
 								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel, level)
 							}
 							c.outputLevel = level
-							files = &c.version.Files[level]
+							files = &c.version.Levels[level]
 						} else {
 							return fmt.Sprintf("outputLevel already set\n")
 						}
@@ -1463,7 +1463,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 					version:    &version{},
 					startLevel: 1,
 				}
-				c.version.Files[c.startLevel] = files
+				c.version.Levels[c.startLevel] = files
 				if len(d.CmdArgs) != 1 {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
@@ -1574,7 +1574,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-					files = &c.version.Files[level]
+					files = &c.version.Levels[level]
 
 				default:
 					meta := parseMeta(data)

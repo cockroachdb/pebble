@@ -719,8 +719,8 @@ func (d *DB) newIterInternal(
 			mlevels = append(mlevels, mergingIterLevel{})
 		}
 	}
-	for level := 1; level < len(current.Files); level++ {
-		if len(current.Files[level]) == 0 {
+	for level := 1; level < len(current.Levels); level++ {
+		if len(current.Levels[level]) == 0 {
 			continue
 		}
 		mlevels = append(mlevels, mergingIterLevel{})
@@ -756,8 +756,8 @@ func (d *DB) newIterInternal(
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
-	for level := 1; level < len(current.Files); level++ {
-		addLevelIterForFiles(current.Files[level], manifest.Level(level))
+	for level := 1; level < len(current.Levels); level++ {
+		addLevelIterForFiles(current.Levels[level], manifest.Level(level))
 	}
 
 	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)
@@ -1077,7 +1077,7 @@ func (d *DB) SSTables() [][]TableInfo {
 	// database. It might be worthwhile to unify TableInfo and FileMetadata and
 	// then we could simply return current.Files. Note that RocksDB is doing
 	// something similar to the current code, so perhaps it isn't too bad.
-	srcLevels := readState.current.Files
+	srcLevels := readState.current.Levels
 	var totalTables int
 	for i := range srcLevels {
 		totalTables += len(srcLevels[i])
@@ -1123,7 +1123,7 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	defer readState.unref()
 
 	var totalSize uint64
-	for level, files := range readState.current.Files {
+	for level, files := range readState.current.Levels {
 		if level > 0 {
 			// We can only use `Overlaps` to restrict `files` at L1+ since at L0 it
 			// expands the range iteratively until it has found a set of files that
@@ -1267,7 +1267,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				continue
 			}
 		}
-		l0FileCount := len(d.mu.versions.currentVersion().Files[0])
+		l0FileCount := len(d.mu.versions.currentVersion().Levels[0])
 		if d.opts.Experimental.L0SublevelCompactions {
 			l0FileCount = d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
 		}

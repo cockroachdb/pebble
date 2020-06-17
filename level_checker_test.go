@@ -237,7 +237,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			version := &version{}
 			for i := range levels {
 				// Start from level 1 in this test.
-				version.Files[i+1] = levels[i]
+				version.Levels[i+1] = levels[i]
 			}
 			version.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter, 0)
 			readState := &readState{current: version}
