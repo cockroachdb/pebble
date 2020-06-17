@@ -261,9 +261,9 @@ func (v *Version) Pretty(format base.FormatKey) string {
 		}
 
 		if level == 0 {
-			for sublevel := len(v.L0Sublevels.Files) - 1; sublevel >= 0; sublevel-- {
+			for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-				for _, f := range v.L0Sublevels.Files[sublevel] {
+				for _, f := range v.L0Sublevels.Levels[sublevel] {
 					fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 						format(f.Smallest.UserKey), format(f.Largest.UserKey))
 				}
@@ -291,9 +291,9 @@ func (v *Version) DebugString(format base.FormatKey) string {
 		}
 
 		if level == 0 {
-			for sublevel := len(v.L0Sublevels.Files) - 1; sublevel >= 0; sublevel-- {
+			for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-				for _, f := range v.L0Sublevels.Files[sublevel] {
+				for _, f := range v.L0Sublevels.Levels[sublevel] {
 					fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
@@ -467,8 +467,8 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
 func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
-	for sublevel := len(v.L0Sublevels.Files) - 1; sublevel >= 0; sublevel-- {
-		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), v.L0Sublevels.Files[sublevel]); err != nil {
+	for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
+		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), v.L0Sublevels.Levels[sublevel]); err != nil {
 			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}
 	}

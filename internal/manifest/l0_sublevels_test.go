@@ -163,8 +163,8 @@ func visualizeSublevels(
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
-	for i := len(s.Files) - 1; i >= 0; i-- {
-		printLevel(s.Files[i], fmt.Sprintf("0.%d", i), true)
+	for i := len(s.Levels) - 1; i >= 0; i-- {
+		printLevel(s.Levels[i], fmt.Sprintf("0.%d", i), true)
 	}
 	for i := range otherLevels {
 		if len(otherLevels[i]) == 0 {
@@ -312,7 +312,7 @@ func TestL0Sublevels(t *testing.T) {
 				// This case is for use with explicitly-specified sublevels
 				// only.
 				sublevels = &L0Sublevels{
-					Files:      explicitSublevels,
+					Levels:     explicitSublevels,
 					cmp:        base.DefaultComparer.Compare,
 					formatKey:  base.DefaultFormatter,
 					filesByAge: fileMetas[0],
@@ -409,7 +409,7 @@ func TestL0Sublevels(t *testing.T) {
 		case "max-depth-after-ongoing-compactions":
 			return strconv.Itoa(sublevels.MaxDepthAfterOngoingCompactions())
 		case "l0-check-ordering":
-			for sublevel, files := range sublevels.Files {
+			for sublevel, files := range sublevels.Levels {
 				if err := CheckOrdering(base.DefaultComparer.Compare,
 					base.DefaultFormatter, L0Sublevel(sublevel), files); err != nil {
 					return err.Error()
