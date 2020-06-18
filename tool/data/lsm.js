@@ -141,6 +141,7 @@ let version = {
             levelHeights[0] = sublevelHeight;
         }
         levelOffsets = generateLevelOffsets();
+        vis.style("height", levelOffsets[6] + 100);
     },
 
     onCheckboxChange: function(value) {
