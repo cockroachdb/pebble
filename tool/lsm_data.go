@@ -65,6 +65,7 @@ body {
 #container {
     height: 100vh;
     width: 100%;
+    overflow-y: scroll;
 }
 
 #header {
@@ -248,6 +249,7 @@ let version = {
             levelHeights[0] = sublevelHeight;
         }
         levelOffsets = generateLevelOffsets();
+        vis.style("height", levelOffsets[6] + 100);
     },
 
     onCheckboxChange: function(value) {
