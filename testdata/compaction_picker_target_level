@@ -54,7 +54,7 @@ base: 5
 
 queue
 ----
-L5->L6: 2.0
+L5->L6: 2.2
 
 # Smoothing multiplier is
 # `(size(Lbottom)/size(Lbase))^(Lbottom-Lbase) = (30/1)^(1/(6-4)) = 30^(1/2)`
@@ -87,7 +87,8 @@ base: 4
 
 queue
 ----
-L4->L5: 2.0
+L4->L5: 10.0
+L4->L5: 3.3
 
 init 1
 4: 1
@@ -101,7 +102,7 @@ base: 4
 
 queue
 ----
-L4->L5: 1.0
+L4->L5: 5.0
 
 init 1
 4: 1
@@ -129,7 +130,7 @@ base: 4
 
 queue
 ----
-L4->L5: 2.0
+L4->L5: 1.8
 
 init 1
 0: 4
@@ -141,7 +142,7 @@ base: 6
 
 queue
 ----
-L0->L6: 1.0
+L0->L6: 100.0
 
 init 1
 0: 5
@@ -153,7 +154,8 @@ base: 6
 
 queue
 ----
-L0->L6: 1.2
+L0->L6: 125.0
+L0->L6: 100.0
 
 init 1
 0: 5
@@ -167,11 +169,11 @@ base: 5
 
 queue
 ----
-L5->L6: 2.0
+L5->L6: 3.2
 
 pick
 ----
-L5->L6: 2.0
+L5->L6: 3.2
 
 pick ongoing=(5,6)
 ----
@@ -191,16 +193,16 @@ base: 4
 queue
 ----
 L4->L5: 10.0
-L4->L5: 9.0
-L4->L5: 8.0
+L4->L5: 7.7
+L4->L5: 6.0
 
 pick ongoing=(5,6)
 ----
-L0->L4: 2.5
+no compaction
 
 pick ongoing=(0,4)
 ----
-L0->L0: 2.2
+L5->L6: 3.3
 
 pick ongoing=(0,0,0,4)
 ----
@@ -212,7 +214,7 @@ base: 4
 
 pick ongoing=(0,5)
 ----
-L0->L0: 2.2
+no compaction
 
 init 1
 0: 20
@@ -221,18 +223,18 @@ init 1
 
 init_cp ongoing=(0,5)
 ----
-base: 5
+base: 4
 
 queue
 ----
-L0->L5: 5.0
+L0->L4: 500.0
 L0->L0: 4.8
 
 pick
 ----
-L0->L5: 5.0
+L0->L4: 500.0
 
-pick ongoing=(0,5)
+pick ongoing=(0,4)
 ----
 L0->L0: 4.8
 
@@ -241,12 +243,12 @@ L0->L0: 4.8
 
 pick ongoing=(0,0)
 ----
-L0->L5: 4.8
+L0->L4: 475.0
 
 # Pick another intra-L0 compaction even if there is one already in
 # progress.
 
-pick ongoing=(0,0,0,5)
+pick ongoing=(0,0,0,4)
 ----
 L0->L0: 4.5
 
@@ -259,22 +261,22 @@ init 1
 6: 10
 ----
 
-init_cp ongoing=(0,5)
+init_cp ongoing=(0,4)
 ----
-base: 5
+base: 4
 
 queue
 ----
-L0->L5: 4.2
+L0->L4: 425.0
 L0->L0: 4.0
 
-pick ongoing=(0,5,5,6)
+pick ongoing=(0,4,4,5)
 ----
 L0->L0: 4.0
 
-pick ongoing=(5,6)
+pick ongoing=(4,5)
 ----
-no compaction
+L0->L4: 425.0
 
 # Verify we can start concurrent Ln->Ln+1 compactions given sufficient
 # priority.
@@ -290,16 +292,16 @@ base: 5
 
 queue
 ----
-L5->L6: 4.0
-L5->L6: 3.0
+L5->L6: 5.2
+L5->L6: 3.5
 
 pick
 ----
-L5->L6: 4.0
+L5->L6: 5.2
 
 pick ongoing=(5,6)
 ----
-L5->L6: 3.0
+L5->L6: 3.5
 
 pick ongoing=(5,6,5,6)
 ----
@@ -324,7 +326,9 @@ base: 5
 
 queue
 ----
-L5->L6: 2.0
+L5->L6: 8.0
+L5->L6: 6.0
+L5->L6: 4.6
 
 pick_manual level=0 start=0 end=12
 ----
@@ -332,7 +336,7 @@ L0->L5, retryLater = false
 
 pick
 ----
-L5->L6: 2.0
+L5->L6: 8.0
 
 # Assume the above two compactions (one manual L0 -> L5 and one automatic
 # L5 -> L6) have run, and Lbase = L6 now, but the manual compaction code is
@@ -346,7 +350,7 @@ init 5
 
 init_cp
 ----
-base: 6
+base: 5
 
 pick_manual level=5 start=0 end=12
 ----
