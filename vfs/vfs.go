@@ -251,7 +251,7 @@ func LinkOrCopy(fs FS, oldname, newname string) error {
 	if err == nil {
 		return nil
 	}
-	// Whitelist a handful of errors which we know won't be fixed by copying the
+	// Permit a handful of errors which we know won't be fixed by copying the
 	// file. Note that we don't check for the specifics of the error code as it
 	// isn't easy to do so in a portable manner. On Unix we'd have to check for
 	// LinkError.Err == syscall.EXDEV. On Windows we'd have to check for

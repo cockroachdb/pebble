@@ -25,9 +25,9 @@ func isSyncRangeSupported(fd uintptr) bool {
 		return false
 	}
 
-	// Whitelist which filesystems we allow using sync_file_range with as some
-	// filesystems treat that syscall as a noop (notably ZFS). A whitelist is
-	// used instead of a blacklist in order to have a more graceful failure mode
+	// Allowlist which filesystems we allow using sync_file_range with as some
+	// filesystems treat that syscall as a noop (notably ZFS). A allowlist is
+	// used instead of a denylist in order to have a more graceful failure mode
 	// in case a filesystem we haven't tested is encountered. Currently only
 	// ext2/3/4 are known to work properly.
 	const extMagic = 0xef53
