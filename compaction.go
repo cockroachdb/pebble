@@ -958,6 +958,53 @@ func (d *DB) maybeScheduleFlush() {
 	go d.flush()
 }
 
+func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
+	var mem *flushableEntry
+	for _, m := range d.mu.mem.queue {
+		if m.flushable == tbl {
+			mem = m
+			break
+		}
+	}
+	if mem == nil || mem.flushForced || mem.delayedFlushForced {
+		return
+	}
+	mem.delayedFlushForced = true
+	go func() {
+		timer := time.NewTimer(d.opts.Experimental.DeleteRangeFlushDelay)
+		defer timer.Stop()
+
+		select {
+		case <-d.closedCh:
+			return
+		case <-mem.flushed:
+			return
+		case <-timer.C:
+			d.commit.mu.Lock()
+			defer d.commit.mu.Unlock()
+			d.mu.Lock()
+			defer d.mu.Unlock()
+
+			// NB: The timer may fire concurrently with a call to Close.  If a
+			// Close call beat us to acquiring d.mu, d.closed is 1, and it's
+			// too late to flush anything. Otherwise, the Close call will
+			// block on locking d.mu until we've finished scheduling the flush
+			// and set `d.mu.compact.flushing` to true. Close will wait for
+			// the current flush to complete.
+			if atomic.LoadInt32(&d.closed) != 0 {
+				return
+			}
+
+			if d.mu.mem.mutable == tbl {
+				d.makeRoomForWrite(nil)
+			} else {
+				mem.flushForced = true
+				d.maybeScheduleFlush()
+			}
+		}
+	}()
+}
+
 func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
 		d.mu.Lock()
