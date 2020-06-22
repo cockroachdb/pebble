@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
@@ -96,6 +97,19 @@ func TestRangeDel(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestDeleteRangeFlushDelay(t *testing.T) {
+	opts := &Options{FS: vfs.NewMem()}
+	opts.Experimental.DeleteRangeFlushDelay = 10 * time.Millisecond
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	d.mu.Lock()
+	flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
+	d.mu.Unlock()
+	require.NoError(t, d.DeleteRange([]byte("a"), []byte("z"), nil))
+	<-flushed
+	require.NoError(t, d.Close())
 }
 
 // Verify that range tombstones at higher levels do not unintentionally delete

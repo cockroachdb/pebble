@@ -196,6 +196,10 @@ type Batch struct {
 	// data whenever Repr() is called.
 	count uint64
 
+	// The count of range deletions in the batch. Updated every time a range
+	// deletion is added.
+	countRangeDels uint64
+
 	// A deferredOp struct, stored in the Batch so that a pointer can be returned
 	// from the *Deferred() methods rather than a value.
 	deferredOp DeferredBatchOp
@@ -594,6 +598,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *WriteOptions) error {
 // with the end key.
 func (b *Batch) DeleteRangeDeferred(startLen, endLen int) *DeferredBatchOp {
 	b.prepareDeferredKeyValueRecord(startLen, endLen, InternalKeyKindRangeDelete)
+	b.countRangeDels++
 	if b.index != nil {
 		b.tombstones = nil
 		// Range deletions are rare, so we lazily allocate the index for them.
@@ -749,6 +754,7 @@ func (b *Batch) init(cap int) {
 // Commits and Closes take care of releasing resources when appropriate.
 func (b *Batch) Reset() {
 	b.count = 0
+	b.countRangeDels = 0
 	if b.data != nil {
 		if cap(b.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum

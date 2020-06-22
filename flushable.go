@@ -33,6 +33,9 @@ type flushableEntry struct {
 	// flushForced indicates whether a flush was forced on this memtable (either
 	// manual, or due to ingestion). Protected by DB.mu.
 	flushForced bool
+	// delayedFlushForced indicates whether a timer has been set to force a flush
+	// on this memtable at some point in the future. Protected by DB.mu
+	delayedFlushForced bool
 	// logNum corresponds to the WAL that contains the records present in the
 	// receiver.
 	logNum FileNum
