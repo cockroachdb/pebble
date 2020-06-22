@@ -197,7 +197,8 @@ type DB struct {
 	// updates.
 	logRecycler logRecycler
 
-	closed int32 // updated atomically
+	closed   int32 // updated atomically
+	closedCh chan struct{}
 
 	// The count and size of referenced memtables. This includes memtables
 	// present in DB.mu.mem.queue, as well as memtables that have been flushed
@@ -542,6 +543,16 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 		// horked at this point.
 		d.opts.Logger.Fatalf("%v", err)
 	}
+
+	// If the batch contains range tombstones and the database is configured
+	// to flush range deletions, schedule a delayed flush so that disk space
+	// may be reclaimed without additional writes or an explicit flush.
+	if batch.countRangeDels > 0 && d.opts.Experimental.RangeDeletionFlushDelay > 0 {
+		d.mu.Lock()
+		d.maybeScheduleDelayedFlush()
+		d.mu.Unlock()
+	}
+
 	// If this is a large batch, we need to clear the batch contents as the
 	// flushable batch may still be present in the flushables queue.
 	//
@@ -829,6 +840,7 @@ func (d *DB) Close() error {
 		panic(ErrClosed)
 	}
 	atomic.StoreInt32(&d.closed, 1)
+	close(d.closedCh)
 
 	defer d.opts.Cache.Unref()
 

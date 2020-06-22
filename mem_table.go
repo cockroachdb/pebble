@@ -313,6 +313,10 @@ type rangeTombstoneCache struct {
 	frags unsafe.Pointer
 }
 
+func (c *rangeTombstoneCache) getCount() uint32 {
+	return atomic.LoadUint32(&c.count)
+}
+
 // Invalidate the current set of cached tombstones, indicating the number of
 // tombstones that were added.
 func (c *rangeTombstoneCache) invalidate(count uint32) {

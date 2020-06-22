@@ -65,6 +65,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
 		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
+		closedCh:            make(chan struct{}),
 	}
 
 	defer func() {

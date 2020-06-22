@@ -311,6 +311,12 @@ type Options struct {
 		// L0CompactionThreshold and L0StopWritesThreshold to refer to L0
 		// read amplification as opposed to the count of L0 files.
 		L0SublevelCompactions bool
+
+		// RangeDeletionFlushDelay configures how long the database should
+		// wait before forcing a flush of a memtable that contains a range
+		// deletion. Disk space cannot be reclaimed until the range deletion
+		// is flushed. No automatic flush occurs if zero.
+		RangeDeletionFlushDelay time.Duration
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for

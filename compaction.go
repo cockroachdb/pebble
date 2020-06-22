@@ -958,6 +958,41 @@ func (d *DB) maybeScheduleFlush() {
 	go d.flush()
 }
 
+func (d *DB) maybeScheduleDelayedFlush() {
+	mem := d.mu.mem.queue[len(d.mu.mem.queue)-1]
+	if mem.delayedFlushForced {
+		return
+	}
+	if d.mu.mem.mutable.tombstones.getCount() == 0 {
+		return
+	}
+
+	mem.delayedFlushForced = true
+	timer := time.NewTimer(d.opts.Experimental.RangeDeletionFlushDelay)
+	go func() {
+		defer timer.Stop()
+
+		select {
+		case <-d.closedCh:
+			return
+		case <-mem.flushed:
+			return
+		case <-timer.C:
+			d.commit.mu.Lock()
+			defer d.commit.mu.Unlock()
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			if atomic.LoadInt32(&d.closed) != 0 {
+				return
+			}
+			err := d.makeRoomForWrite(nil)
+			if err != nil {
+				d.opts.EventListener.BackgroundError(err)
+			}
+		}
+	}()
+}
+
 func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
 		d.mu.Lock()
