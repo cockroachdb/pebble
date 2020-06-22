@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -51,6 +52,7 @@ func TestOptionsString(t *testing.T) {
   flush_split_bytes=0
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
+  l0_sublevel_compactions=false
   lbase_max_bytes=67108864
   max_concurrent_compactions=1
   max_manifest_file_size=134217728
@@ -60,6 +62,7 @@ func TestOptionsString(t *testing.T) {
   min_compaction_rate=4194304
   min_flush_rate=1048576
   merger=pebble.concatenate
+  range_deletions_flush_delay=0s
   table_property_collectors=[]
   wal_dir=
 
@@ -184,6 +187,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Levels[0].BlockSize = 1024
 			opts.Levels[1].BlockSize = 2048
 			opts.Levels[2].BlockSize = 4096
+			opts.Experimental.RangeDeletionFlushDelay = 10 * time.Second
 			opts.EnsureDefaults()
 			str := opts.String()
 
