@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -18,17 +17,13 @@ import (
 
 func TestTableStats(t *testing.T) {
 	fs := vfs.NewMem()
-	var loadedInfo struct {
-		sync.Mutex
-		*TableStatsInfo
-	}
+	// loadedInfo is protected by d.mu.
+	var loadedInfo *TableStatsInfo
 	opts := &Options{
 		FS: fs,
 		EventListener: EventListener{
 			TableStatsLoaded: func(info TableStatsInfo) {
-				loadedInfo.Lock()
-				loadedInfo.TableStatsInfo = &info
-				loadedInfo.Unlock()
+				loadedInfo = &info
 			},
 		},
 	}
@@ -57,12 +52,11 @@ func TestTableStats(t *testing.T) {
 
 		case "reopen":
 			require.NoError(t, d.Close())
+			loadedInfo = nil
+
 			// Open using existing file system.
 			d, err = Open("", opts)
 			require.NoError(t, err)
-			loadedInfo.Lock()
-			loadedInfo.TableStatsInfo = nil
-			loadedInfo.Unlock()
 			return ""
 
 		case "batch":
@@ -91,8 +85,9 @@ func TestTableStats(t *testing.T) {
 			for d.mu.tableStats.loading || !d.mu.tableStats.loadedInitial {
 				d.mu.tableStats.cond.Wait()
 			}
+			s := loadedInfo.String()
 			d.mu.Unlock()
-			return loadedInfo.String()
+			return s
 
 		case "compact":
 			if err := runCompactCmd(td, d); err != nil {
