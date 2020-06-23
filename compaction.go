@@ -1014,7 +1014,9 @@ func (d *DB) flush1() error {
 	d.mu.nextJobID++
 	d.opts.EventListener.FlushBegin(FlushInfo{
 		JobID: jobID,
+		Input: n,
 	})
+	startTime := d.timeNow()
 
 	flushPacer := (pacer)(nilPacer)
 	if d.opts.private.enablePacing {
@@ -1029,9 +1031,11 @@ func (d *DB) flush1() error {
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
 
 	info := FlushInfo{
-		JobID: jobID,
-		Done:  true,
-		Err:   err,
+		JobID:    jobID,
+		Input:    n,
+		Duration: d.timeNow().Sub(startTime),
+		Done:     true,
+		Err:      err,
 	}
 	if err == nil {
 		for i := range ve.NewFiles {

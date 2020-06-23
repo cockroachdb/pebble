@@ -155,6 +155,11 @@ func TestEventListener(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			t := time.Now()
+			d.timeNow = func() time.Time {
+				t = t.Add(time.Second)
+				return t
+			}
 			return buf.String()
 
 		case "close":
@@ -178,11 +183,6 @@ func TestEventListener(t *testing.T) {
 			buf.Reset()
 			if err := d.Set([]byte("a"), nil, nil); err != nil {
 				return err.Error()
-			}
-			t := time.Now()
-			d.timeNow = func() time.Time {
-				t = t.Add(time.Second)
-				return t
 			}
 			if err := d.Compact([]byte("a"), []byte("b")); err != nil {
 				return err.Error()
