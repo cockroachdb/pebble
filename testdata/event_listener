@@ -39,7 +39,7 @@ sync: wal
 sync: wal/000002.log
 close: wal/000002.log
 [JOB 2] WAL created 000005
-[JOB 3] flushing to L0
+[JOB 3] flushing 1 memtable to L0
 create: db/000006.sst
 [JOB 3] flushing: sstable created 000006
 sync: db/000006.sst
@@ -54,7 +54,7 @@ close: db/CURRENT.000007.dbtmp
 rename: db/CURRENT.000007.dbtmp -> db/CURRENT
 sync: db
 [JOB 3] MANIFEST created 000007
-[JOB 3] flushed to L0 [000006] (770 B)
+[JOB 3] flushed 1 memtable to L0 [000006] (770 B), in 1.0s, output rate 770 B/s
 [JOB 3] MANIFEST deleted 000003
 
 compact
@@ -65,7 +65,7 @@ sync: wal
 sync: wal/000005.log
 close: wal/000005.log
 [JOB 4] WAL created 000008 (recycled 000002)
-[JOB 5] flushing to L0
+[JOB 5] flushing 1 memtable to L0
 create: db/000009.sst
 [JOB 5] flushing: sstable created 000009
 sync: db/000009.sst
@@ -80,7 +80,7 @@ close: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
 [JOB 5] MANIFEST created 000010
-[JOB 5] flushed to L0 [000009] (770 B)
+[JOB 5] flushed 1 memtable to L0 [000009] (770 B), in 1.0s, output rate 770 B/s
 [JOB 5] MANIFEST deleted 000007
 [JOB 6] compacting L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
@@ -113,7 +113,7 @@ sync: wal
 sync: wal/000008.log
 close: wal/000008.log
 [JOB 7] WAL created 000013 (recycled 000005)
-[JOB 8] flushing to L0
+[JOB 8] flushing 1 memtable to L0
 create: db/000014.sst
 [JOB 8] flushing: sstable created 000014
 sync: db/000014.sst
@@ -128,7 +128,7 @@ close: db/CURRENT.000015.dbtmp
 rename: db/CURRENT.000015.dbtmp -> db/CURRENT
 sync: db
 [JOB 8] MANIFEST created 000015
-[JOB 8] flushed to L0 [000014] (770 B)
+[JOB 8] flushed 1 memtable to L0 [000014] (770 B), in 1.0s, output rate 770 B/s
 
 enable-file-deletions
 ----
