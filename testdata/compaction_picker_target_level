@@ -88,7 +88,6 @@ base: 4
 queue
 ----
 L4->L5: 10.0
-L4->L5: 3.3
 
 init 1
 4: 1
@@ -155,7 +154,6 @@ base: 6
 queue
 ----
 L0->L6: 125.0
-L0->L6: 100.0
 
 init 1
 0: 5
@@ -194,7 +192,6 @@ queue
 ----
 L4->L5: 10.0
 L4->L5: 7.7
-L4->L5: 6.0
 
 pick ongoing=(5,6)
 ----
@@ -256,7 +253,7 @@ L0->L0: 4.5
 # (i.e. has a score >= highPriorityThreshold).
 
 init 1
-0: 17
+0: 20
 5: 1
 6: 10
 ----
@@ -267,16 +264,16 @@ base: 4
 
 queue
 ----
-L0->L4: 425.0
-L0->L0: 4.0
+L0->L4: 500.0
+L0->L0: 4.8
 
 pick ongoing=(0,4,4,5)
 ----
-L0->L0: 4.0
+L0->L0: 4.8
 
 pick ongoing=(4,5)
 ----
-L0->L4: 425.0
+L0->L4: 500.0
 
 # Verify we can start concurrent Ln->Ln+1 compactions given sufficient
 # priority.
@@ -293,7 +290,6 @@ base: 5
 queue
 ----
 L5->L6: 5.2
-L5->L6: 3.5
 
 pick
 ----
@@ -301,21 +297,13 @@ L5->L6: 5.2
 
 pick ongoing=(5,6)
 ----
-L5->L6: 3.5
-
-pick ongoing=(5,6,5,6)
-----
-no compaction
-
-pick ongoing=(5,6,5,6,5,6)
-----
 no compaction
 
 # Verify that successive manual compactions interleaved with an automatic
 # compaction does not trigger an error.
 
 init 5
-0: 7
+0: 10
 5: 10
 6: 5
 ----
@@ -326,9 +314,8 @@ base: 5
 
 queue
 ----
-L5->L6: 8.0
-L5->L6: 6.0
-L5->L6: 4.6
+L5->L6: 9.2
+L5->L6: 6.9
 
 pick_manual level=0 start=0 end=12
 ----
@@ -336,7 +323,7 @@ L0->L5, retryLater = false
 
 pick
 ----
-L5->L6: 8.0
+L5->L6: 9.2
 
 # Assume the above two compactions (one manual L0 -> L5 and one automatic
 # L5 -> L6) have run, and Lbase = L6 now, but the manual compaction code is
