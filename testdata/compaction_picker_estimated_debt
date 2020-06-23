@@ -51,7 +51,7 @@ init 1
 5: 10
 6: 10
 ----
-48
+39
 
 init 1
 0: 10
@@ -77,7 +77,7 @@ init 1
 5: 101
 6: 1000
 ----
-10
+21
 
 init 1000
 6: 10000
@@ -94,7 +94,7 @@ init 1000
 5: 2000
 6: 10000
 ----
-6000
+0
 
 # Regression test case which was previously computing an overly large
 # estimated debt due to faulty handling of L0.
@@ -105,4 +105,4 @@ init 64
 5: 480
 6: 2457
 ----
-2574
+2414
