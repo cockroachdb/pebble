@@ -284,7 +284,7 @@ func (c *compaction) setupInputs() {
 		// Call the L0-specific compaction extension method. Similar logic as
 		// c.grow. Additional L0 files are optionally added to the compaction at
 		// this step.
-		if c.version.L0Sublevels.ExtendL0ForBaseCompactionTo(c.smallest.UserKey, c.largest.UserKey, c.lcf) {
+		if c.version.L0Sublevels.ExtendL0ForBaseCompactionTo(c.smallest, c.largest, c.lcf) {
 			c.inputs[0] = c.inputs[0][:0]
 			for j := range c.lcf.FilesIncluded {
 				if c.lcf.FilesIncluded[j] {

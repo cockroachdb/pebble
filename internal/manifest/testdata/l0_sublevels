@@ -933,3 +933,98 @@ no compaction picked
 pick-intra-l0-compaction min_depth=2
 ----
 no compaction picked
+
+# Ensure that base files with largest key set to the rangedel sentinel key are
+# treated as not containing the largest user key. If L0 files containing that
+# user key get added to that compaction, it could trigger a
+# "files have overlapping ranges" error in Lbase as one of the outputs of the
+# compaction would overlap with an Lbase file not in the compaction.
+# Compare the output of the next two calls to PickBaseCompaction below; as the
+# base file's end key is changed to the range deletion sentinel, L0 files
+# overlapping with it are no longer chosen for compaction.
+
+define
+L0
+  000004:h.SET.2-j.SET.4
+  000005:f.SET.6-h.SET.9
+  000006:f.SET.4-g.SET.5
+  000007:k.SET.2-l.SET.4
+  000009:n.SET.12-o.SET.12
+  000010:f.SET.11-g.SET.11
+  000011:n.SET.8-o.SET.10
+L6
+  000001:a.SET.0-o.SET.0
+  000008:p.SET.0-s.SET.0
+----
+file count: 7, sublevels: 3, intervals: 9
+flush split keys(5): [g, h, j, l, o]
+0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000010:f#11,1-g#11,1
+0.1: file count: 2, bytes: 512, width (mean, max): 2.0, 3, interval range: [0, 7]
+	000005:f#6,1-h#9,1
+	000009:n#12,1-o#12,1
+0.0: file count: 4, bytes: 1024, width (mean, max): 1.2, 2, interval range: [0, 7]
+	000006:f#4,1-g#5,1
+	000004:h#2,1-j#4,1
+	000007:k#2,1-l#4,1
+	000011:n#8,1-o#10,1
+compacting file count: 0, base compacting intervals: none
+L0.2:                 f---g
+L0.1:                 f------h                n---o
+L0.0:                 f---g h------j k---l    n---o
+L6:    a------------------------------------------o p---------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+pick-base-compaction min_depth=2
+----
+compaction picked with stack depth reduction 3
+000006,000005,000004,000010,000007,000011,000009
+seed interval: f-g
+L0.2:                 f+++g
+L0.1:                 f++++++h                n+++o
+L0.0:                 f+++g h++++++j k+++l    n+++o
+L6:    a------------------------------------------o p---------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+define
+L0
+  000004:h.SET.2-j.SET.4
+  000005:f.SET.6-h.SET.9
+  000006:f.SET.4-g.SET.5
+  000007:k.SET.2-l.SET.4
+  000009:n.SET.12-o.SET.12
+  000010:f.SET.11-g.SET.11
+  000011:n.SET.8-o.SET.10
+L6
+  000001:a.SET.0-o.RANGEDEL.72057594037927935
+  000008:p.SET.0-s.SET.0
+----
+file count: 7, sublevels: 3, intervals: 9
+flush split keys(5): [g, h, j, l, o]
+0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000010:f#11,1-g#11,1
+0.1: file count: 2, bytes: 512, width (mean, max): 2.0, 3, interval range: [0, 7]
+	000005:f#6,1-h#9,1
+	000009:n#12,1-o#12,1
+0.0: file count: 4, bytes: 1024, width (mean, max): 1.2, 2, interval range: [0, 7]
+	000006:f#4,1-g#5,1
+	000004:h#2,1-j#4,1
+	000007:k#2,1-l#4,1
+	000011:n#8,1-o#10,1
+compacting file count: 0, base compacting intervals: none
+L0.2:                 f---g
+L0.1:                 f------h                n---o
+L0.0:                 f---g h------j k---l    n---o
+L6:    a------------------------------------------o p---------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+pick-base-compaction min_depth=2
+----
+compaction picked with stack depth reduction 3
+000006,000005,000004,000010,000007
+seed interval: f-g
+L0.2:                 f+++g
+L0.1:                 f++++++h                n---o
+L0.0:                 f+++g h++++++j k+++l    n---o
+L6:    a------------------------------------------o p---------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss

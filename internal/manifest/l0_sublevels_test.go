@@ -366,8 +366,8 @@ func TestL0Sublevels(t *testing.T) {
 					})
 					lastFile--
 					sublevels.ExtendL0ForBaseCompactionTo(
-						baseFiles[firstFile].Smallest.UserKey,
-						baseFiles[lastFile].Largest.UserKey,
+						baseFiles[firstFile].Smallest,
+						baseFiles[lastFile].Largest,
 						lcf)
 				}
 			} else {
