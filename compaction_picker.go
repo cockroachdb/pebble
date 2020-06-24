@@ -748,6 +748,9 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 		}
 		if len(c.inputs[0]) == 0 {
 			opts.Logger.Fatalf("empty compaction chosen")
+		} else if len(c.inputs[0]) == 1 {
+			// A single-file intra-L0 compaction is unproductive.
+			return nil
 		}
 		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
 		c.setupInuseKeyRanges()
