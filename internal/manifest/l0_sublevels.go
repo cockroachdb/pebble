@@ -1237,21 +1237,29 @@ func (s *L0Sublevels) intraL0CompactionUsingSeed(
 // L0CompactionFiles to cover all L0 files in the specified key interval,
 // by calling extendCandidateToRectangle.
 func (s *L0Sublevels) ExtendL0ForBaseCompactionTo(
-	smallest []byte, largest []byte, candidate *L0CompactionFiles,
+	smallest, largest InternalKey, candidate *L0CompactionFiles,
 ) bool {
 	firstIntervalIndex := sort.Search(len(s.orderedIntervals), func(i int) bool {
 		// Need to start at >= smallest since if we widen too much we may miss
 		// an Lbase file that overlaps with an L0 file that will get picked in
 		// this widening, which would be bad. This interval will not start with
 		// an immediate successor key.
-		return s.cmp(smallest, s.orderedIntervals[i].startKey.key) <= 0
+		return s.cmp(smallest.UserKey, s.orderedIntervals[i].startKey.key) <= 0
 	})
 	// First interval that starts at or beyond the largest. This interval will not
 	// start with an immediate successor key.
-	lastIntervalIndex := sort.Search(len(s.orderedIntervals), func(i int) bool {
-		return s.cmp(largest, s.orderedIntervals[i].startKey.key) < 0
-	})
-	// Right now, lastIntervalIndex has a start that's higher than largest.
+	var lastIntervalIndex int
+	if largest.Trailer == base.InternalKeyRangeDeleteSentinel {
+		// largest.UserKey is excluded. Do not expand L0 to include it.
+		lastIntervalIndex = sort.Search(len(s.orderedIntervals), func(i int) bool {
+			return s.cmp(largest.UserKey, s.orderedIntervals[i].startKey.key) <= 0
+		})
+	} else {
+		lastIntervalIndex = sort.Search(len(s.orderedIntervals), func(i int) bool {
+			return s.cmp(largest.UserKey, s.orderedIntervals[i].startKey.key) < 0
+		})
+	}
+	// Right now, lastIntervalIndex has a startKey that extends beyond largest.
 	// The previous interval, by definition, has an end key higher than largest.
 	// Iterate back twice to get the last interval that's completely within
 	// [smallest, largest]. Except in the case where we went past the end of the
