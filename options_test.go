@@ -51,6 +51,7 @@ func TestOptionsString(t *testing.T) {
   delete_range_flush_delay=0s
   disable_wal=false
   flush_split_bytes=0
+  l0_compaction_concurrency=10
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   l0_sublevel_compactions=false
@@ -210,6 +211,12 @@ func TestOptionsValidate(t *testing.T) {
 		expected string
 	}{
 		{``, ``},
+		{`
+[Options]
+  l0_compaction_concurrency=0
+`,
+			`L0CompactionConcurrency \(0\) must be >= 1`,
+		},
 		{`
 [Options]
   l0_compaction_threshold=2

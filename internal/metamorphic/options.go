@@ -185,6 +185,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
 	opts.Experimental.FlushSplitBytes = 1 << rng.Intn(20)       // 1B - 1MB
+	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4) // 1-4
 	opts.Experimental.L0SublevelCompactions = rng.Intn(2) == 0
 	opts.L0CompactionThreshold = 1 + rng.Intn(100) // 1 - 100
 	opts.L0StopWritesThreshold = 1 + rng.Intn(100) // 1 - 100

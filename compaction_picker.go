@@ -519,40 +519,20 @@ func (p *compactionPickerByScore) pickFile(level, outputLevel int) int {
 // If a score-based compaction cannot be found, pickAuto falls back to looking
 // for a forced compaction (identified by FileMetadata.MarkedForCompaction).
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
-	// highPriorityThreshold controls compaction concurrency. If there is already
-	// a compaction in progress, highPriorityThreshold is set to the minimum
-	// score needed for a concurrent compaction to be initiated. Since all level
-	// scores are >= 0, a positive value will cause compactions to be
-	// disabled. We set highPriorityThreshold to a value only when a there is at
-	// least one in-progress compaction. Concurrent compactions are useful for
-	// ensuring that compaction doesn't fall far behind, but concurrent
-	// compactions can have an adverse affect on write throughput.
-	//
-	// There are a variety of possibilities for choosing highPriorityThreshold:
-	// - A fixed value: 1.5.
-	// - A value linear in the number of in-progress compactions: 2, 3, 4.
-	// - A value exponential in the number of in-progress compactions: 2, 4, 8.
-	//
-	// A fixed value tends to allow too much compaction concurrency. There was
-	// only a minor difference between the linear and exponential values, making
-	// the choice of exponential below somewhat arbitrary.
-	//
-	// For comparison, RocksDB alternates between only allowing a single
-	// compaction at a time to allowing the configured maximum number of
-	// concurrent compactions depending on whether compaction-debt has gotten too
-	// large or the number of L0 sstables has reached 2x the L0 compaction
-	// threshold. In testing, it is usually the latter condition that triggers
-	// concurrent compactions in RocksDB.
-	//
-	// TODO(peter): Using the score in this fashion is problematic because the
-	// score tends to decrease as the size of levels increases. In a nearly empty
-	// DB, each flush can cause the level scores to vary dramatically. But as the
-	// size of the DB increases, each flush is proportionally smaller. We need a
-	// signal which is independent of the DB size.
-	var highPriorityThreshold float64
-	if len(env.inProgressCompactions) > 0 {
-		// Exponential high priority threshold: 2, 4, 8, ...
-		highPriorityThreshold = float64(int(1) << len(env.inProgressCompactions))
+	// Compaction concurrency is controlled by L0 read-amp. We allow one
+	// additional compaction per L0CompactionConcurrency sublevels. Compaction
+	// concurrency is tied to L0 sublevels as that signal is independent of the
+	// database size.
+	if n := len(env.inProgressCompactions); n > 0 {
+		var l0ReadAmp int
+		if p.opts.Experimental.L0SublevelCompactions {
+			l0ReadAmp = p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
+		} else {
+			l0ReadAmp = len(p.vers.Levels[0])
+		}
+		if l0ReadAmp < n*p.opts.Experimental.L0CompactionConcurrency {
+			return nil
+		}
 	}
 
 	scores := p.calculateScores(env.inProgressCompactions)
@@ -603,21 +583,15 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			}
 			fmt.Fprintf(&buf, "\n")
 		}
-		p.opts.Logger.Infof("pickAuto(%.1f): L%d->L%d\n%s",
-			highPriorityThreshold, c.startLevel, c.outputLevel, buf.String())
+		p.opts.Logger.Infof("pickAuto: L%d->L%d\n%s",
+			c.startLevel, c.outputLevel, buf.String())
 	}
-	_ = logCompaction
 
 	// Check for a score-based compaction. "scores" has been sorted in order of
 	// decreasing score. For each level with a score >= 1, we attempt to find a
 	// compaction anchored at at that level.
 	for i := range scores {
 		info := &scores[i]
-		if info.score < highPriorityThreshold {
-			// Don't start a low priority compaction if there is already a compaction
-			// running.
-			return nil
-		}
 		if info.score < 1 {
 			break
 		}
@@ -632,7 +606,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			if c != nil && !inputAlreadyCompacting(c) {
 				c.score = info.score
 				// TODO(peter): remove
-				// logCompaction(c)
+				if false {
+					logCompaction(c)
+				}
 				return c
 			}
 			continue
@@ -648,7 +624,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 		if c != nil && !inputAlreadyCompacting(c) {
 			c.score = info.score
 			// TODO(peter): remove
-			// logCompaction(c)
+			if false {
+				logCompaction(c)
+			}
 			return c
 		}
 	}
