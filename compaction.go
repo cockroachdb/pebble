@@ -1241,13 +1241,12 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info := CompactionInfo{
 		JobID: jobID,
 	}
-	info.Input.Level = c.startLevel
 	info.Output.Level = c.outputLevel
-	for i := range c.inputs {
-		for j := range c.inputs[i] {
-			m := c.inputs[i][j]
-			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo())
-		}
+	for _, m := range c.inputs[0] {
+		info.Input[c.startLevel] = append(info.Input[c.startLevel], m.TableInfo())
+	}
+	for _, m := range c.inputs[1] {
+		info.Input[c.outputLevel] = append(info.Input[c.outputLevel], m.TableInfo())
 	}
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
