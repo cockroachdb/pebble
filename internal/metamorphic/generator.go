@@ -80,6 +80,9 @@ func generate(count uint64, cfg config) []op {
 	generators := []func(){
 		batchAbort:        g.batchAbort,
 		batchCommit:       g.batchCommit,
+		dbCheckpoint:      g.dbCheckpoint,
+		dbCompact:         g.dbCompact,
+		dbFlush:           g.dbFlush,
 		dbRestart:         g.dbRestart,
 		iterClose:         g.iterClose,
 		iterFirst:         g.iterFirst,
@@ -241,6 +244,27 @@ func (g *generator) dbClose() {
 		g.snapshotClose()
 	}
 	g.add(&closeOp{objID: makeObjID(dbTag, 0)})
+}
+
+func (g *generator) dbCheckpoint() {
+	g.add(&checkpointOp{})
+}
+
+func (g *generator) dbCompact() {
+	// Generate new key(s) with a 1% probability.
+	start := g.randKey(0.01)
+	end := g.randKey(0.01)
+	if bytes.Compare(start, end) > 0 {
+		start, end = end, start
+	}
+	g.add(&compactOp{
+		start: start,
+		end:   end,
+	})
+}
+
+func (g *generator) dbFlush() {
+	g.add(&flushOp{})
 }
 
 func (g *generator) dbRestart() {

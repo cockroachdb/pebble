@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -62,6 +63,24 @@ func (o *applyOp) String() string {
 	return fmt.Sprintf("%s.Apply(%s)", o.writerID, o.batchID)
 }
 
+// checkpointOp models a DB.Checkpoint operation.
+type checkpointOp struct{}
+
+func (o *checkpointOp) run(t *test, h *history) {
+	err := withRetries(func() error {
+		return t.db.Checkpoint(o.dir(t.dir, t.idx))
+	})
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *checkpointOp) dir(dataDir string, idx int) string {
+	return filepath.Join(dataDir, "checkpoints", fmt.Sprintf("op-%06d", idx))
+}
+
+func (o *checkpointOp) String() string {
+	return "db.Checkpoint()"
+}
+
 // closeOp models a {Batch,Iterator,Snapshot}.Close operation.
 type closeOp struct {
 	objID objID
@@ -76,6 +95,23 @@ func (o *closeOp) run(t *test, h *history) {
 
 func (o *closeOp) String() string {
 	return fmt.Sprintf("%s.Close()", o.objID)
+}
+
+// compactOp models a DB.Compact operation.
+type compactOp struct {
+	start []byte
+	end   []byte
+}
+
+func (o *compactOp) run(t *test, h *history) {
+	err := withRetries(func() error {
+		return t.db.Compact(o.start, o.end)
+	})
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *compactOp) String() string {
+	return fmt.Sprintf("db.Compact(%q, %q)", o.start, o.end)
 }
 
 // deleteOp models a Write.Delete operation.
@@ -109,6 +145,19 @@ func (o *deleteRangeOp) run(t *test, h *history) {
 
 func (o *deleteRangeOp) String() string {
 	return fmt.Sprintf("%s.DeleteRange(%q, %q)", o.writerID, o.start, o.end)
+}
+
+// flushOp models a DB.Flush operation.
+type flushOp struct {
+}
+
+func (o *flushOp) run(t *test, h *history) {
+	err := t.db.Flush()
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *flushOp) String() string {
+	return fmt.Sprintf("db.Flush()")
 }
 
 // mergeOp models a Write.Merge operation.

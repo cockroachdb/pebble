@@ -44,8 +44,12 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	switch t := op.(type) {
 	case *applyOp:
 		return &t.writerID, nil, []interface{}{&t.batchID}
+	case *checkpointOp:
+		return nil, nil, nil
 	case *closeOp:
 		return &t.objID, nil, nil
+	case *compactOp:
+		return nil, nil, []interface{}{&t.start, &t.end}
 	case *batchCommitOp:
 		return &t.batchID, nil, nil
 	case *dbRestartOp:
@@ -56,6 +60,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.start, &t.end}
 	case *iterFirstOp:
 		return &t.iterID, nil, nil
+	case *flushOp:
+		return nil, nil, nil
 	case *getOp:
 		return &t.readerID, nil, []interface{}{&t.key}
 	case *ingestOp:
@@ -94,11 +100,14 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 
 var methods = map[string]*methodInfo{
 	"Apply":           makeMethod(applyOp{}, dbTag, batchTag),
+	"Checkpoint":      makeMethod(checkpointOp{}, dbTag),
 	"Close":           makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
 	"Commit":          makeMethod(batchCommitOp{}, batchTag),
+	"Compact":         makeMethod(compactOp{}, dbTag),
 	"Delete":          makeMethod(deleteOp{}, dbTag, batchTag),
 	"DeleteRange":     makeMethod(deleteRangeOp{}, dbTag, batchTag),
 	"First":           makeMethod(iterFirstOp{}, iterTag),
+	"Flush":           makeMethod(flushOp{}, dbTag),
 	"Get":             makeMethod(getOp{}, dbTag, batchTag, snapTag),
 	"Ingest":          makeMethod(ingestOp{}, dbTag),
 	"Init":            makeMethod(initOp{}, dbTag),

@@ -9,7 +9,10 @@ type opType int
 const (
 	batchAbort opType = iota
 	batchCommit
+	dbCheckpoint
 	dbClose
+	dbCompact
+	dbFlush
 	dbRestart
 	iterClose
 	iterFirst
@@ -53,6 +56,9 @@ var defaultConfig = config{
 	ops: []int{
 		batchAbort:        5,
 		batchCommit:       5,
+		dbCheckpoint:      1,
+		dbCompact:         1,
+		dbFlush:           2,
 		dbRestart:         2,
 		iterClose:         10,
 		iterFirst:         100,
