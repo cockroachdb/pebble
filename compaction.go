@@ -1315,6 +1315,11 @@ func (d *DB) runCompaction(
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
 	if c.trivialMove() {
+		if c.startLevel == c.outputLevel {
+			// Do nothing. A move within the same level triggers
+			// assertions elsewhere.
+			return &versionEdit{}, nil, nil
+		}
 		meta := c.inputs[0][0]
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel: &LevelMetrics{
