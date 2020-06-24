@@ -1240,15 +1240,19 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.mu.nextJobID++
 	info := CompactionInfo{
 		JobID: jobID,
+		Input: []LevelInfo{
+			{Level: c.startLevel},
+			{Level: c.outputLevel},
+		},
+		Output: LevelInfo{Level: c.outputLevel},
 	}
-	info.Input.Level = c.startLevel
-	info.Output.Level = c.outputLevel
 	for i := range c.inputs {
 		for j := range c.inputs[i] {
 			m := c.inputs[i][j]
-			info.Input.Tables[i] = append(info.Input.Tables[i], m.TableInfo())
+			info.Input[i].Tables = append(info.Input[i].Tables, m.TableInfo())
 		}
 	}
+
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
 
