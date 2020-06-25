@@ -1458,9 +1458,8 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 	for c := range d.mu.compact.inProgress {
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			rv = append(rv, compactionInfo{
-				startLevel:  c.startLevel,
-				outputLevel: c.outputLevel,
 				inputs:      c.inputs,
+				outputLevel: c.outputLevel.level,
 			})
 		}
 	}
