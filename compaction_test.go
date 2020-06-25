@@ -490,8 +490,8 @@ func TestPickCompaction(t *testing.T) {
 
 		c, got := vs.picker.pickAuto(compactionEnv{bytesCompacted: new(uint64)}), ""
 		if c != nil {
-			got0 := fileNums(c.inputs[0])
-			got1 := fileNums(c.inputs[1])
+			got0 := fileNums(c.startLevel.files)
+			got1 := fileNums(c.outputLevel.files)
 			got2 := fileNums(c.grandparents)
 			got = got0 + " " + got1 + " " + got2
 		}
@@ -630,13 +630,13 @@ func TestElideTombstone(t *testing.T) {
 
 	for _, tc := range testCases {
 		c := compaction{
-			cmp:         DefaultComparer.Compare,
-			version:     &tc.version,
-			startLevel:  tc.level,
-			outputLevel: tc.level + 1,
-			smallest:    base.ParseInternalKey("a.SET.0"),
-			largest:     base.ParseInternalKey("z.SET.0"),
+			cmp:      DefaultComparer.Compare,
+			version:  &tc.version,
+			inputs:   []compactionLevel{{level: tc.level}, {level: tc.level + 1}},
+			smallest: base.ParseInternalKey("a.SET.0"),
+			largest:  base.ParseInternalKey("z.SET.0"),
 		}
+		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 		c.setupInuseKeyRanges()
 		for _, w := range tc.wants {
 			if got := c.elideTombstone([]byte(w.key)); got != w.expected {
@@ -770,14 +770,14 @@ func TestElideRangeTombstone(t *testing.T) {
 
 	for _, tc := range testCases {
 		c := compaction{
-			cmp:         DefaultComparer.Compare,
-			version:     &tc.version,
-			startLevel:  tc.level,
-			outputLevel: tc.level + 1,
-			smallest:    base.ParseInternalKey("a.SET.0"),
-			largest:     base.ParseInternalKey("z.SET.0"),
-			flushing:    tc.flushing,
+			cmp:      DefaultComparer.Compare,
+			version:  &tc.version,
+			inputs:   []compactionLevel{{level: tc.level}, {level: tc.level + 1}},
+			smallest: base.ParseInternalKey("a.SET.0"),
+			largest:  base.ParseInternalKey("z.SET.0"),
+			flushing: tc.flushing,
 		}
+		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 		c.setupInuseKeyRanges()
 		for _, w := range tc.wants {
 			if got := c.elideRangeTombstone([]byte(w.key), []byte(w.endKey)); got != w.expected {
@@ -1071,7 +1071,11 @@ func TestManualCompaction(t *testing.T) {
 			var outputLevel int
 			td.ScanArgs(t, "startLevel", &startLevel)
 			td.ScanArgs(t, "outputLevel", &outputLevel)
-			ongoingCompaction = &compaction{startLevel: startLevel, outputLevel: outputLevel}
+			ongoingCompaction = &compaction{
+				inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
+			}
+			ongoingCompaction.startLevel = &ongoingCompaction.inputs[0]
+			ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
 			d.mu.Lock()
 			d.mu.compact.inProgress[ongoingCompaction] = struct{}{}
 			d.mu.compact.compactingCount++
@@ -1272,12 +1276,12 @@ func TestCompactionFindL0Limit(t *testing.T) {
 
 			case "flush":
 				c := &compaction{
-					cmp:         cmp,
-					version:     vers,
-					l0Limits:    vers.L0Sublevels.FlushSplitKeys(),
-					startLevel:  -1,
-					outputLevel: 0,
+					cmp:      cmp,
+					version:  vers,
+					l0Limits: vers.L0Sublevels.FlushSplitKeys(),
+					inputs:   []compactionLevel{{level: -1}, {level: 0}},
 				}
+				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 
 				var buf bytes.Buffer
 				var smallest, largest string
@@ -1322,7 +1326,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "base", &base)
 				c := newCompaction(opts, version, start, base, new(uint64))
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
-					c.outputLevel, c.maxOutputFileSize)
+					c.outputLevel.level, c.maxOutputFileSize)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -1357,10 +1361,10 @@ func TestCompactionSetupInputs(t *testing.T) {
 					cmp:              DefaultComparer.Compare,
 					formatKey:        DefaultComparer.FormatKey,
 					version:          &version{},
-					startLevel:       -1,
-					outputLevel:      -1,
+					inputs:           []compactionLevel{{level: -1}, {level: -1}},
 					maxExpandedBytes: 1 << 30,
 				}
+				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				var files *[]*fileMetadata
 				fileNum := FileNum(1)
 
@@ -1371,14 +1375,14 @@ func TestCompactionSetupInputs(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						if c.startLevel == -1 {
-							c.startLevel = level
+						if c.startLevel.level == -1 {
+							c.startLevel.level = level
 							files = &c.version.Levels[level]
-						} else if c.outputLevel == -1 {
-							if c.startLevel >= level {
-								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel, level)
+						} else if c.outputLevel.level == -1 {
+							if c.startLevel.level >= level {
+								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel.level, level)
 							}
-							c.outputLevel = level
+							c.outputLevel.level = level
 							files = &c.version.Levels[level]
 						} else {
 							return fmt.Sprintf("outputLevel already set\n")
@@ -1392,28 +1396,22 @@ func TestCompactionSetupInputs(t *testing.T) {
 					}
 				}
 
-				if c.outputLevel == -1 {
-					c.outputLevel = c.startLevel + 1
+				if c.outputLevel.level == -1 {
+					c.outputLevel.level = c.startLevel.level + 1
 				}
-				c.inputs[0] = c.version.Overlaps(c.startLevel, c.cmp,
+				c.startLevel.files = c.version.Overlaps(c.startLevel.level, c.cmp,
 					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String()))
 
 				c.setupInputs()
 
 				var buf bytes.Buffer
-				for i := range c.inputs {
-					files := c.inputs[i]
+				for _, cl := range c.inputs {
+					files := cl.files
 					if len(files) == 0 {
 						continue
 					}
 
-					switch i {
-					case 0:
-						fmt.Fprintf(&buf, "L%d\n", c.startLevel)
-					case 1:
-						fmt.Fprintf(&buf, "L%d\n", c.outputLevel)
-					}
-
+					fmt.Fprintf(&buf, "L%d\n", cl.level)
 					for j := range files {
 						fmt.Fprintf(&buf, "  %s\n", files[j])
 					}
@@ -1459,11 +1457,12 @@ func TestCompactionExpandInputs(t *testing.T) {
 
 			case "expand-inputs":
 				c := &compaction{
-					cmp:        cmp,
-					version:    &version{},
-					startLevel: 1,
+					cmp:     cmp,
+					version: &version{},
+					inputs:  []compactionLevel{{level: 1}},
 				}
-				c.version.Levels[c.startLevel] = files
+				c.startLevel = &c.inputs[0]
+				c.version.Levels[c.startLevel.level] = files
 				if len(d.CmdArgs) != 1 {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
@@ -1472,7 +1471,7 @@ func TestCompactionExpandInputs(t *testing.T) {
 					return err.Error()
 				}
 
-				inputs := c.expandInputs(c.startLevel, files[index:index+1])
+				inputs := c.expandInputs(c.startLevel.level, files[index:index+1])
 
 				var buf bytes.Buffer
 				for i := range inputs {
@@ -1520,9 +1519,10 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 
 			case "atomic-unit-bounds":
 				c := &compaction{
-					cmp: cmp,
+					cmp:    cmp,
+					inputs: []compactionLevel{{files: files}, {}},
 				}
-				c.inputs[0] = files
+				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				if len(d.CmdArgs) != 1 {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
 				}
@@ -1563,7 +1563,9 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 				cmp:       DefaultComparer.Compare,
 				formatKey: DefaultComparer.FormatKey,
 				version:   &version{},
+				inputs:    []compactionLevel{{}, {}},
 			}
+			c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 			var files *[]*fileMetadata
 			fileNum := FileNum(1)
 
@@ -1598,7 +1600,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 					fmt.Fprintf(&buf, "expected <level> <smallest> <largest>: %q: %v\n", line, err)
 					continue
 				}
-				c.outputLevel = level
+				c.outputLevel.level = level
 				c.smallest.UserKey = []byte(parts[1])
 				c.largest.UserKey = []byte(parts[2])
 
@@ -1674,7 +1676,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 				c := &compaction{
 					cmp:     d.cmp,
 					version: d.mu.versions.currentVersion(),
+					inputs:  []compactionLevel{{}, {}},
 				}
+				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				d.mu.Unlock()
 
 				var buf bytes.Buffer
@@ -1684,15 +1688,15 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						continue
 					}
 					c.flushing = nil
-					c.inputs[0] = nil
-					c.inputs[1] = nil
-					c.startLevel = -1
+					c.startLevel.files = nil
+					c.outputLevel.files = nil
+					c.startLevel.level = -1
 
 					var iter internalIterator
 
 					switch {
 					case len(parts) == 1 && parts[0] == "flush":
-						c.outputLevel = 0
+						c.outputLevel.level = 0
 						d.mu.Lock()
 						c.flushing = d.mu.mem.queue
 						d.mu.Unlock()
@@ -1704,22 +1708,22 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					default:
 						for _, p := range parts {
 							level, meta := parseMeta(p)
-							i := 0
+							cl := c.startLevel
 							switch {
-							case c.startLevel == -1:
-								c.startLevel = level
-							case c.startLevel+1 == level:
-								i = 1
-							case c.startLevel != level:
+							case c.startLevel.level == -1:
+								c.startLevel.level = level
+							case c.startLevel.level+1 == level:
+								cl = c.outputLevel
+							case c.startLevel.level != level:
 								return fmt.Sprintf("invalid level %d: expected %d or %d",
-									level, c.startLevel, c.startLevel+1)
+									level, c.startLevel.level, c.startLevel.level+1)
 							}
-							c.inputs[i] = append(c.inputs[i], meta)
+							cl.files = append(cl.files, meta)
 						}
-						c.outputLevel = c.startLevel + 1
+						c.outputLevel.level = c.startLevel.level + 1
 					}
 
-					c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+					c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, c.outputLevel.files)
 
 					c.inuseKeyRanges = nil
 					c.setupInuseKeyRanges()
@@ -1753,12 +1757,12 @@ func TestCompactionCheckOrdering(t *testing.T) {
 			switch d.Cmd {
 			case "check-ordering":
 				c := &compaction{
-					cmp:         DefaultComparer.Compare,
-					formatKey:   DefaultComparer.FormatKey,
-					logger:      panicLogger{},
-					startLevel:  -1,
-					outputLevel: -1,
+					cmp:       DefaultComparer.Compare,
+					formatKey: DefaultComparer.FormatKey,
+					logger:    panicLogger{},
+					inputs:    []compactionLevel{{level: -1}, {level: -1}},
 				}
+				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				var files *[]*fileMetadata
 				fileNum := FileNum(1)
 
@@ -1769,15 +1773,15 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						if c.startLevel == -1 {
-							c.startLevel = level
-							files = &c.inputs[0]
-						} else if c.outputLevel == -1 {
-							if c.startLevel >= level {
-								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel, level)
+						if c.startLevel.level == -1 {
+							c.startLevel.level = level
+							files = &c.startLevel.files
+						} else if c.outputLevel.level == -1 {
+							if c.startLevel.level >= level {
+								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel.level, level)
 							}
-							c.outputLevel = level
-							files = &c.inputs[1]
+							c.outputLevel.level = level
+							files = &c.outputLevel.files
 						} else {
 							return fmt.Sprintf("outputLevel already set\n")
 						}
@@ -1790,8 +1794,8 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					}
 				}
 
-				if c.outputLevel == -1 {
-					c.outputLevel = 0
+				if c.outputLevel.level == -1 {
+					c.outputLevel.level = 0
 				}
 
 				// Note that we configure a panicLogger to be used when a fatal error

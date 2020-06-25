@@ -39,9 +39,8 @@ type compactionPicker interface {
 // Information about in-progress compactions provided to the compaction picker. These are used to
 // constrain the new compactions that will be picked.
 type compactionInfo struct {
-	startLevel  int
+	inputs      []compactionLevel
 	outputLevel int
-	inputs      [2][]*fileMetadata
 }
 
 type sortCompactionLevelsDecreasingScore []pickedCompactionInfo
@@ -217,7 +216,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		if c.outputLevel == 0 {
 			continue
 		}
-		if c.startLevel == 0 && (firstNonEmptyLevel == -1 || c.outputLevel < firstNonEmptyLevel) {
+		if c.inputs[0].level == 0 && (firstNonEmptyLevel == -1 || c.outputLevel < firstNonEmptyLevel) {
 			firstNonEmptyLevel = c.outputLevel
 		}
 	}
@@ -291,10 +290,16 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]int6
 	var sizeAdjust [numLevels]int64
 	for i := range inProgressCompactions {
 		c := &inProgressCompactions[i]
-		compensated := int64(totalCompensatedSize(c.inputs[0]))
-		real := int64(totalSize(c.inputs[0]))
-		sizeAdjust[c.startLevel] -= compensated
-		sizeAdjust[c.outputLevel] += real
+
+		for _, input := range c.inputs {
+			real := int64(totalSize(input.files))
+			compensated := int64(totalCompensatedSize(input.files))
+
+			if input.level != c.outputLevel {
+				sizeAdjust[input.level] -= compensated
+				sizeAdjust[c.outputLevel] += real
+			}
+		}
 	}
 	return sizeAdjust
 }
@@ -402,7 +407,7 @@ func (p *compactionPickerByScore) calculateL0Score(
 	// compaction.
 	var l0Compaction bool
 	for i := range inProgressCompactions {
-		if inProgressCompactions[i].startLevel == 0 &&
+		if inProgressCompactions[i].inputs[0].level == 0 &&
 			inProgressCompactions[i].outputLevel != 0 {
 			l0Compaction = true
 			break
@@ -555,7 +560,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			}
 
 			marker := " "
-			if c.startLevel == info.level {
+			if c.startLevel.level == info.level {
 				marker = "*"
 			}
 			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %8s  %8s",
@@ -567,7 +572,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			count := 0
 			for i := range env.inProgressCompactions {
 				c := &env.inProgressCompactions[i]
-				if c.startLevel != info.level {
+				if c.inputs[0].level != info.level {
 					continue
 				}
 				count++
@@ -576,7 +581,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 				} else {
 					fmt.Fprintf(&buf, " ")
 				}
-				fmt.Fprintf(&buf, "L%d->L%d", c.startLevel, c.outputLevel)
+				fmt.Fprintf(&buf, "L%d->L%d", c.inputs[0].level, c.outputLevel)
 			}
 			if count > 0 {
 				fmt.Fprintf(&buf, "]")
@@ -584,7 +589,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (c *compaction) {
 			fmt.Fprintf(&buf, "\n")
 		}
 		p.opts.Logger.Infof("pickAuto: L%d->L%d\n%s",
-			c.startLevel, c.outputLevel, buf.String())
+			c.startLevel.level, c.outputLevel.level, buf.String())
 	}
 
 	// Check for a score-based compaction. "scores" has been sorted in order of
@@ -675,16 +680,16 @@ func pickAutoHelper(
 	}
 
 	c = newCompaction(opts, vers, cInfo.level, baseLevel, env.bytesCompacted)
-	if c.outputLevel != cInfo.outputLevel {
+	if c.outputLevel.level != cInfo.outputLevel {
 		panic("pebble: compaction picked unexpected output level")
 	}
-	c.inputs[0] = vers.Levels[c.startLevel][cInfo.file : cInfo.file+1]
+	c.startLevel.files = vers.Levels[c.startLevel.level][cInfo.file : cInfo.file+1]
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
-	if c.startLevel == 0 {
+	if c.startLevel.level == 0 {
 		cmp := opts.Comparer.Compare
-		smallest, largest := manifest.KeyRange(cmp, c.inputs[0], nil)
-		c.inputs[0] = vers.Overlaps(0, cmp, smallest.UserKey, largest.UserKey)
-		if len(c.inputs[0]) == 0 {
+		smallest, largest := manifest.KeyRange(cmp, c.startLevel.files, nil)
+		c.startLevel.files = vers.Overlaps(0, cmp, smallest.UserKey, largest.UserKey)
+		if len(c.startLevel.files) == 0 {
 			panic("pebble: empty compaction")
 		}
 	}
@@ -714,17 +719,17 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 		// pick contiguous sequences of files in p.vers.Levels[0].
 		c = newCompaction(opts, vers, 0, baseLevel, env.bytesCompacted)
 		c.lcf = lcf
-		if c.outputLevel != baseLevel {
-			opts.Logger.Fatalf("compaction picked unexpected output level: %d != %d", c.outputLevel, baseLevel)
+		if c.outputLevel.level != baseLevel {
+			opts.Logger.Fatalf("compaction picked unexpected output level: %d != %d", c.outputLevel.level, baseLevel)
 		}
-		c.inputs[0] = make([]*manifest.FileMetadata, 0, len(lcf.Files))
+		c.startLevel.files = make([]*manifest.FileMetadata, 0, len(lcf.Files))
 		for j := range lcf.FilesIncluded {
 			if lcf.FilesIncluded[j] {
-				c.inputs[0] = append(c.inputs[0], vers.Levels[0][j])
+				c.startLevel.files = append(c.startLevel.files, vers.Levels[0][j])
 			}
 		}
 		c.setupInputs()
-		if len(c.inputs[0]) == 0 {
+		if len(c.startLevel.files) == 0 {
 			opts.Logger.Fatalf("empty compaction chosen")
 		}
 		return c
@@ -740,19 +745,19 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (c *
 	if lcf != nil {
 		c = newCompaction(opts, vers, 0, 0, env.bytesCompacted)
 		c.lcf = lcf
-		c.inputs[0] = make([]*manifest.FileMetadata, 0, len(lcf.Files))
+		c.startLevel.files = make([]*manifest.FileMetadata, 0, len(lcf.Files))
 		for j := range lcf.FilesIncluded {
 			if lcf.FilesIncluded[j] {
-				c.inputs[0] = append(c.inputs[0], vers.Levels[0][j])
+				c.startLevel.files = append(c.startLevel.files, vers.Levels[0][j])
 			}
 		}
-		if len(c.inputs[0]) == 0 {
+		if len(c.startLevel.files) == 0 {
 			opts.Logger.Fatalf("empty compaction chosen")
-		} else if len(c.inputs[0]) == 1 {
+		} else if len(c.startLevel.files) == 1 {
 			// A single-file intra-L0 compaction is unproductive.
 			return nil
 		}
-		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, nil)
 		c.setupInuseKeyRanges()
 		// Output only a single sstable for intra-L0 compactions.
 		// Now that we have the ability to split flushes, we could conceivably
@@ -844,8 +849,8 @@ func pickIntraL0(env compactionEnv, opts *Options, vers *version) (c *compaction
 	}
 
 	c = newCompaction(opts, vers, 0, 0, env.bytesCompacted)
-	c.inputs[0] = l0Files[begin:end]
-	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+	c.startLevel.files = l0Files[begin:end]
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, nil)
 	c.setupInuseKeyRanges()
 	// Output only a single sstable for intra-L0 compactions. There is no current
 	// benefit to outputting multiple tables, because other parts of the code
@@ -885,7 +890,7 @@ func (p *compactionPickerByScore) pickManual(
 	if c == nil {
 		return nil, false
 	}
-	if c.outputLevel != outputLevel {
+	if c.outputLevel.level != outputLevel {
 		panic("pebble: compaction picked unexpected output level")
 	}
 	// Fail-safe to protect against compacting the same sstable concurrently.
@@ -899,10 +904,10 @@ func pickManualHelper(
 	env compactionEnv, opts *Options, manual *manualCompaction, vers *version, baseLevel int,
 ) (c *compaction) {
 	c = newCompaction(opts, vers, manual.level, baseLevel, env.bytesCompacted)
-	manual.outputLevel = c.outputLevel
+	manual.outputLevel = c.outputLevel.level
 	cmp := opts.Comparer.Compare
-	c.inputs[0] = vers.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
-	if len(c.inputs[0]) == 0 {
+	c.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
+	if len(c.startLevel.files) == 0 {
 		// Nothing to do
 		return nil
 	}
@@ -915,8 +920,8 @@ func (p *compactionPickerByScore) forceBaseLevel1() {
 }
 
 func inputAlreadyCompacting(c *compaction) bool {
-	for _, inputs := range c.inputs {
-		for _, f := range inputs {
+	for _, cl := range c.inputs {
+		for _, f := range cl.files {
 			if f.Compacting {
 				return true
 			}
@@ -929,10 +934,12 @@ func conflictsWithInProgress(
 	level int, outputLevel int, inProgressCompactions []compactionInfo,
 ) bool {
 	for _, c := range inProgressCompactions {
-		if level == c.startLevel ||
-			level == c.outputLevel ||
-			outputLevel == c.startLevel ||
-			outputLevel == c.outputLevel {
+		for _, in := range c.inputs {
+			if in.level == level || in.level == outputLevel {
+				return true
+			}
+		}
+		if c.outputLevel == level || c.outputLevel == outputLevel {
 			return true
 		}
 	}

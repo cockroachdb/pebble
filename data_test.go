@@ -418,11 +418,13 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &compaction{
-			outputLevel: outputLevel,
-			smallest:    m.Smallest,
-			largest:     m.Largest,
-		}, nil
+		c := &compaction{
+			inputs:   []compactionLevel{{}, {level: outputLevel}},
+			smallest: m.Smallest,
+			largest:  m.Largest,
+		}
+		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
+		return c, nil
 	}
 
 	for _, line := range strings.Split(td.Input, "\n") {

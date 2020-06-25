@@ -70,6 +70,11 @@ type userKeyRange struct {
 	start, end []byte
 }
 
+type compactionLevel struct {
+	level int
+	files []*fileMetadata
+}
+
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
@@ -82,11 +87,13 @@ type compaction struct {
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
-	startLevel int
+	startLevel *compactionLevel
 	// outputLevel is the level that files are being produced in. outputLevel is
 	// equal to startLevel+1 except when startLevel is 0 in which case it is
 	// equal to compactionPicker.baseLevel().
-	outputLevel int
+	outputLevel *compactionLevel
+
+	inputs []compactionLevel
 
 	// maxOutputFileSize is the maximum size of an individual table created
 	// during compaction.
@@ -113,8 +120,7 @@ type compaction struct {
 	// compaction routine to know how many bytes have been flushed before the flush
 	// is applied.
 	atomicBytesIterated *uint64
-	// inputs are the tables to be compacted.
-	inputs [2][]*fileMetadata
+
 	// The boundaries of the input data.
 	smallest InternalKey
 	largest  InternalKey
@@ -173,18 +179,20 @@ func newCompaction(
 	// bytes, we want to adjust the range to [1,numLevels].
 	adjustedOutputLevel := 1 + outputLevel - baseLevel
 
-	return &compaction{
+	c := &compaction{
 		cmp:                 opts.Comparer.Compare,
 		formatKey:           opts.Comparer.FormatKey,
 		logger:              opts.Logger,
 		version:             cur,
-		startLevel:          startLevel,
-		outputLevel:         outputLevel,
+		inputs:              []compactionLevel{{level: startLevel}, {level: outputLevel}},
 		maxOutputFileSize:   uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
 		maxOverlapBytes:     maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
 		maxExpandedBytes:    expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
 		atomicBytesIterated: bytesCompacted,
 	}
+	c.startLevel = &c.inputs[0]
+	c.outputLevel = &c.inputs[1]
+	return c
 }
 
 func newFlush(
@@ -195,14 +203,15 @@ func newFlush(
 		formatKey:           opts.Comparer.FormatKey,
 		logger:              opts.Logger,
 		version:             cur,
-		startLevel:          -1,
-		outputLevel:         0,
+		inputs:              []compactionLevel{{level: -1}, {level: 0}},
 		maxOutputFileSize:   math.MaxUint64,
 		maxOverlapBytes:     math.MaxUint64,
 		maxExpandedBytes:    math.MaxUint64,
 		flushing:            flushing,
 		atomicBytesIterated: bytesFlushed,
 	}
+	c.startLevel = &c.inputs[0]
+	c.outputLevel = &c.inputs[1]
 	if cur.L0Sublevels != nil {
 		c.l0Limits = cur.L0Sublevels.FlushSplitKeys()
 	}
@@ -269,38 +278,38 @@ func newFlush(
 // whether the compaction was automatically scheduled or user initiated.
 func (c *compaction) setupInputs() {
 	// Expand the initial inputs to a clean cut.
-	c.inputs[0] = c.expandInputs(c.startLevel, c.inputs[0])
-	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], nil)
+	c.startLevel.files = c.expandInputs(c.startLevel.level, c.startLevel.files)
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, nil)
 
 	// Determine the sstables in the output level which overlap with the input
 	// sstables, and then expand those tables to a clean cut.
-	c.inputs[1] = c.version.Overlaps(c.outputLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
-	c.inputs[1] = c.expandInputs(c.outputLevel, c.inputs[1])
-	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+	c.outputLevel.files = c.version.Overlaps(c.outputLevel.level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+	c.outputLevel.files = c.expandInputs(c.outputLevel.level, c.outputLevel.files)
+	c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, c.outputLevel.files)
 
-	// Grow the sstables in c.startLevel as long as it doesn't affect the number
-	// of sstables included from c.outputLevel.
-	if c.lcf != nil && c.startLevel == 0 && c.outputLevel != 0 {
+	// Grow the sstables in c.startLevel.level as long as it doesn't affect the number
+	// of sstables included from c.outputLevel.level.
+	if c.lcf != nil && c.startLevel.level == 0 && c.outputLevel.level != 0 {
 		// Call the L0-specific compaction extension method. Similar logic as
 		// c.grow. Additional L0 files are optionally added to the compaction at
 		// this step.
 		if c.version.L0Sublevels.ExtendL0ForBaseCompactionTo(c.smallest, c.largest, c.lcf) {
-			c.inputs[0] = c.inputs[0][:0]
+			c.startLevel.files = c.startLevel.files[:0]
 			for j := range c.lcf.FilesIncluded {
 				if c.lcf.FilesIncluded[j] {
-					c.inputs[0] = append(c.inputs[0], c.version.Levels[0][j])
+					c.startLevel.files = append(c.startLevel.files, c.version.Levels[0][j])
 				}
 			}
-			c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+			c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, c.outputLevel.files)
 		}
 	} else if c.grow(c.smallest, c.largest) {
-		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.inputs[0], c.inputs[1])
+		c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, c.outputLevel.files)
 	}
 
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
-	if c.outputLevel+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+	if c.outputLevel.level+1 < numLevels {
+		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
 
 	c.setupInuseKeyRanges()
@@ -403,31 +412,31 @@ func (c *compaction) expandInputs(level int, inputs []*fileMetadata) []*fileMeta
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
 func (c *compaction) grow(sm, la InternalKey) bool {
-	if len(c.inputs[1]) == 0 {
+	if len(c.outputLevel.files) == 0 {
 		return false
 	}
-	grow0 := c.version.Overlaps(c.startLevel, c.cmp, sm.UserKey, la.UserKey)
-	grow0 = c.expandInputs(c.startLevel, grow0)
-	if len(grow0) <= len(c.inputs[0]) {
+	grow0 := c.version.Overlaps(c.startLevel.level, c.cmp, sm.UserKey, la.UserKey)
+	grow0 = c.expandInputs(c.startLevel.level, grow0)
+	if len(grow0) <= len(c.startLevel.files) {
 		return false
 	}
-	if totalSize(grow0)+totalSize(c.inputs[1]) >= c.maxExpandedBytes {
+	if totalSize(grow0)+totalSize(c.outputLevel.files) >= c.maxExpandedBytes {
 		return false
 	}
 	sm1, la1 := manifest.KeyRange(c.cmp, grow0, nil)
-	grow1 := c.version.Overlaps(c.outputLevel, c.cmp, sm1.UserKey, la1.UserKey)
-	grow1 = c.expandInputs(c.outputLevel, grow1)
-	if len(grow1) != len(c.inputs[1]) {
+	grow1 := c.version.Overlaps(c.outputLevel.level, c.cmp, sm1.UserKey, la1.UserKey)
+	grow1 = c.expandInputs(c.outputLevel.level, grow1)
+	if len(grow1) != len(c.outputLevel.files) {
 		return false
 	}
-	c.inputs[0] = grow0
-	c.inputs[1] = grow1
+	c.startLevel.files = grow0
+	c.outputLevel.files = grow1
 	return true
 }
 
 func (c *compaction) setupInuseKeyRanges() {
-	level := c.outputLevel + 1
-	if c.outputLevel == 0 {
+	level := c.outputLevel.level + 1
+	if c.outputLevel.level == 0 {
 		// Level 0 can contain overlapping sstables so we need to check it for
 		// overlaps.
 		level = 0
@@ -478,7 +487,7 @@ func (c *compaction) trivialMove() bool {
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
-	if len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0 &&
+	if len(c.startLevel.files) == 1 && len(c.outputLevel.files) == 0 &&
 		totalSize(c.grandparents) <= c.maxOverlapBytes {
 		return true
 	}
@@ -525,7 +534,7 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 // this function passes through to findGrandparentLimit.
 func (c *compaction) findL0Limit(start []byte) []byte {
 	grandparentLimit := c.findGrandparentLimit(start)
-	if c.startLevel > -1 || c.outputLevel != 0 || len(c.l0Limits) == 0 {
+	if c.startLevel.level > -1 || c.outputLevel.level != 0 || len(c.l0Limits) == 0 {
 		return grandparentLimit
 	}
 	index := sort.Search(len(c.l0Limits), func(i int) bool {
@@ -569,7 +578,7 @@ func (c *compaction) elideTombstone(key []byte) bool {
 
 // elideRangeTombstone returns true if it is ok to elide the specified range
 // tombstone. A return value of true guarantees that there are no key/value
-// pairs at c.outputLevel+1 or higher that possibly overlap the specified
+// pairs at c.outputLevel.level+1 or higher that possibly overlap the specified
 // tombstone.
 func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	// Disable range tombstone elision if the testing knob for that is enabled,
@@ -606,7 +615,7 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 // the specified sstable (identified by a pointer to its fileMetadata).
 func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
 	for i := range c.inputs {
-		files := c.inputs[i]
+		files := c.inputs[i].files
 		for j := range files {
 			if f == files[j] {
 				// Note that if this file is in a multi-file atomic compaction unit, this file
@@ -688,16 +697,16 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	// Check that the LSM ordering invariants are ok in order to prevent
 	// generating corrupted sstables due to a violation of those invariants.
-	if c.startLevel >= 0 {
-		if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel), c.inputs[0]); err != nil {
+	if c.startLevel.level >= 0 {
+		if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel.level), c.startLevel.files); err != nil {
 			c.logger.Fatalf("%s", err)
 		}
 	}
-	if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel), c.inputs[1]); err != nil {
+	if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel.level), c.outputLevel.files); err != nil {
 		c.logger.Fatalf("%s", err)
 	}
 
-	iters := make([]internalIterator, 0, 2*len(c.inputs[0])+1)
+	iters := make([]internalIterator, 0, 2*len(c.startLevel.files)+1)
 	defer func() {
 		if retErr != nil {
 			for _, iter := range iters {
@@ -757,14 +766,14 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	}
 
 	iterOpts := IterOptions{logger: c.logger}
-	if c.startLevel != 0 {
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[0],
-			manifest.Level(c.startLevel), &c.bytesIterated))
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[0],
-			manifest.Level(c.startLevel), &c.bytesIterated))
+	if c.startLevel.level != 0 {
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.startLevel.files,
+			manifest.Level(c.startLevel.level), &c.bytesIterated))
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.startLevel.files,
+			manifest.Level(c.startLevel.level), &c.bytesIterated))
 	} else {
-		for i := range c.inputs[0] {
-			f := c.inputs[0][i]
+		for i := range c.startLevel.files {
+			f := c.startLevel.files[i]
 			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 			if err != nil {
 				return nil, errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
@@ -776,10 +785,10 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		}
 	}
 
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.inputs[1],
-		manifest.Level(c.outputLevel), &c.bytesIterated))
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.inputs[1],
-		manifest.Level(c.outputLevel), &c.bytesIterated))
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.outputLevel.files,
+		manifest.Level(c.outputLevel.level), &c.bytesIterated))
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.outputLevel.files,
+		manifest.Level(c.outputLevel.level), &c.bytesIterated))
 	return newMergingIter(c.logger, c.cmp, iters...), nil
 }
 
@@ -790,12 +799,12 @@ func (c *compaction) String() string {
 
 	var buf bytes.Buffer
 	for i := range c.inputs {
-		level := c.startLevel
+		level := c.startLevel.level
 		if i == 1 {
-			level = c.outputLevel
+			level = c.outputLevel.level
 		}
 		fmt.Fprintf(&buf, "%d:", level)
-		for _, f := range c.inputs[i] {
+		for _, f := range c.inputs[i].files {
 			fmt.Fprintf(&buf, " %s:%s-%s", f.FileNum, f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
@@ -817,14 +826,14 @@ type manualCompaction struct {
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
-	for _, files := range c.inputs {
-		for _, f := range files {
+	for _, cl := range c.inputs {
+		for _, f := range cl.files {
 			if f.Compacting {
-				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
 			f.Compacting = true
-			if c.startLevel == 0 {
-				if c.outputLevel == 0 {
+			if c.startLevel.level == 0 {
+				if c.outputLevel.level == 0 {
 					f.IsIntraL0Compacting = true
 					isIntraL0 = true
 				} else {
@@ -835,9 +844,9 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	}
 
 	if (isIntraL0 || isBase) && c.version.L0Sublevels != nil {
-		l0Inputs := [][]*fileMetadata{c.inputs[0]}
+		l0Inputs := [][]*fileMetadata{c.startLevel.files}
 		if isIntraL0 {
-			l0Inputs = c.inputs[:]
+			l0Inputs = append(l0Inputs, c.outputLevel.files)
 		}
 		if err := c.version.L0Sublevels.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
 			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
@@ -852,10 +861,10 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 		strs := make([]string, 0, len(d.mu.compact.inProgress))
 		for c := range d.mu.compact.inProgress {
 			var s string
-			if c.startLevel == -1 {
-				s = fmt.Sprintf("mem->L%d", c.outputLevel)
+			if c.startLevel.level == -1 {
+				s = fmt.Sprintf("mem->L%d", c.outputLevel.level)
 			} else {
-				s = fmt.Sprintf("L%d->L%d:%.1f", c.startLevel, c.outputLevel, c.score)
+				s = fmt.Sprintf("L%d->L%d:%.1f", c.startLevel.level, c.outputLevel.level, c.score)
 			}
 			strs = append(strs, s)
 		}
@@ -875,10 +884,10 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 // DB.mu must be held when calling this method. All writes to the manifest
 // for this compaction should have completed by this point.
 func (d *DB) removeInProgressCompaction(c *compaction) {
-	for _, files := range c.inputs {
-		for _, f := range files {
+	for _, cl := range c.inputs {
+		for _, f := range cl.files {
 			if !f.Compacting {
-				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel, c.outputLevel, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
 			f.Compacting = false
 			f.IsIntraL0Compacting = false
@@ -1241,14 +1250,13 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info := CompactionInfo{
 		JobID: jobID,
 		Input: []LevelInfo{
-			{Level: c.startLevel},
-			{Level: c.outputLevel},
+			{Level: c.startLevel.level},
+			{Level: c.outputLevel.level},
 		},
-		Output: LevelInfo{Level: c.outputLevel},
+		Output: LevelInfo{Level: c.outputLevel.level},
 	}
-	for i := range c.inputs {
-		for j := range c.inputs[i] {
-			m := c.inputs[i][j]
+	for i, cl := range c.inputs {
+		for _, m := range cl.files {
 			info.Input[i].Tables = append(info.Input[i].Tables, m.TableInfo())
 		}
 	}
@@ -1319,19 +1327,19 @@ func (d *DB) runCompaction(
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
 	if c.trivialMove() {
-		meta := c.inputs[0][0]
+		meta := c.startLevel.files[0]
 		c.metrics = map[int]*LevelMetrics{
-			c.outputLevel: &LevelMetrics{
+			c.outputLevel.level: &LevelMetrics{
 				BytesMoved:  meta.Size,
 				TablesMoved: 1,
 			},
 		}
 		ve := &versionEdit{
 			DeletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{Level: c.startLevel, FileNum: meta.FileNum}: true,
+				deletedFileEntry{Level: c.startLevel.level, FileNum: meta.FileNum}: true,
 			},
 			NewFiles: []newFileEntry{
-				{Level: c.outputLevel, Meta: meta},
+				{Level: c.outputLevel.level, Meta: meta},
 			},
 		}
 		return ve, nil, nil
@@ -1384,15 +1392,15 @@ func (d *DB) runCompaction(
 	}
 
 	metrics := &LevelMetrics{
-		BytesIn:   totalSize(c.inputs[0]),
-		BytesRead: totalSize(c.inputs[1]),
+		BytesIn:   totalSize(c.startLevel.files),
+		BytesRead: totalSize(c.outputLevel.files),
 	}
 	metrics.BytesRead += metrics.BytesIn
 	c.metrics = map[int]*LevelMetrics{
-		c.outputLevel: metrics,
+		c.outputLevel.level: metrics,
 	}
 
-	writerOpts := d.opts.MakeWriterOptions(c.outputLevel)
+	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level)
 
 	newOutput := func() error {
 		d.mu.Lock()
@@ -1424,7 +1432,7 @@ func (d *DB) runCompaction(
 		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt)
 
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
-			Level: c.outputLevel,
+			Level: c.outputLevel.level,
 			Meta: &fileMetadata{
 				FileNum:      fileNum,
 				CreationTime: time.Now().Unix(),
@@ -1433,7 +1441,7 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	splittingFlush := c.startLevel < 0 && c.outputLevel == 0 && d.opts.Experimental.FlushSplitBytes > 0
+	splittingFlush := c.startLevel.level < 0 && c.outputLevel.level == 0 && d.opts.Experimental.FlushSplitBytes > 0
 
 	// finishOutput is called for an sstable with the first key of the next sstable, and for the
 	// last sstable with an empty key.
@@ -1797,14 +1805,10 @@ func (d *DB) runCompaction(
 		}
 	}
 
-	for i := range c.inputs {
-		level := c.startLevel
-		if i == 1 {
-			level = c.outputLevel
-		}
-		for _, f := range c.inputs[i] {
+	for _, cl := range c.inputs {
+		for _, f := range cl.files {
 			ve.DeletedFiles[deletedFileEntry{
-				Level:   level,
+				Level:   cl.level,
 				FileNum: f.FileNum,
 			}] = true
 		}
