@@ -419,7 +419,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			return nil, err
 		}
 		return &compaction{
-			outputLevel: outputLevel,
+			outputLevel: compactionLevel{level: outputLevel},
 			smallest:    m.Smallest,
 			largest:     m.Largest,
 		}, nil

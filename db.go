@@ -1460,7 +1460,6 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 			rv = append(rv, compactionInfo{
 				startLevel:  c.startLevel,
 				outputLevel: c.outputLevel,
-				inputs:      c.inputs,
 			})
 		}
 	}
