@@ -832,21 +832,21 @@ func (b *Batch) Reader() BatchReader {
 func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 	var v uint32
 	var n int
-	src := (*[5]uint8)(unsafe.Pointer(&data[0]))
-	if a := (*src)[0]; a < 128 {
+	ptr := unsafe.Pointer(&data[0])
+	if a := *((*uint8)(ptr)); a < 128 {
 		v = uint32(a)
 		n = 1
-	} else if a, b := a&0x7f, (*src)[1]; b < 128 {
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
 		v = uint32(b)<<7 | uint32(a)
 		n = 2
-	} else if b, c := b&0x7f, (*src)[2]; c < 128 {
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
 		v = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		n = 3
-	} else if c, d := c&0x7f, (*src)[3]; d < 128 {
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
 		v = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		n = 4
 	} else {
-		d, e := d&0x7f, (*src)[4]
+		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
 		v = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		n = 5
 	}
