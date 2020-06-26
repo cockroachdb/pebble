@@ -416,6 +416,9 @@ func TestL0Sublevels(t *testing.T) {
 					builder.WriteString(", ")
 				}
 			}
+			if len(flushSplitKeys) == 0 {
+				builder.WriteString("none")
+			}
 			return builder.String()
 		case "max-depth-after-ongoing-compactions":
 			return strconv.Itoa(sublevels.MaxDepthAfterOngoingCompactions())
