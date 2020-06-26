@@ -40,8 +40,8 @@ func expandedCompactionByteSizeLimit(opts *Options, level int) uint64 {
 	return uint64(25 * opts.Level(level).TargetFileSize)
 }
 
-// maxGrandparentOverlapBytes is the maximum bytes of overlap with level+2
-// before we stop building a single file in a level to level+1 compaction.
+// maxGrandparentOverlapBytes is the maximum bytes of overlap with level+1
+// before we stop building a single file in a level-1 to level compaction.
 func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }

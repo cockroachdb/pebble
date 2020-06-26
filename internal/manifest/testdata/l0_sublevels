@@ -6,7 +6,7 @@ L0
   000003:e.SET.5-j.SET.7
 ----
 file count: 3, sublevels: 3, intervals: 5
-flush split keys(3): [b, e, j]
+flush split keys(2): [b, j]
 0.2: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [0, 1]
 	000009:a#10,1-b#10,1
 0.1: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [1, 3]
@@ -82,7 +82,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 5, intervals: 10
-flush split keys(5): [b, d, f, g, h]
+flush split keys(3): [d, f, g]
 0.4: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [5, 6]
 	000010:f#11,1-g#11,1
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [5, 8]
@@ -140,7 +140,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 5, intervals: 10
-flush split keys(5): [b, d, f, g, h]
+flush split keys(3): [d, f, g]
 0.4: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [5, 6]
 	000010:f#11,1-g#11,1
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [5, 8]
@@ -185,7 +185,7 @@ OK
 describe
 ----
 file count: 7, sublevels: 5, intervals: 10
-flush split keys(5): [b, d, f, g, h]
+flush split keys(3): [d, f, g]
 0.4: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [5, 6]
 	000010:f#11,1-g#11,1
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [5, 8]
@@ -226,7 +226,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 5, sublevels: 4, intervals: 5
-flush split keys(3): [g, h, p]
+flush split keys(2): [g, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
 	000010:f#11,1-g#11,1
 0.2: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [0, 3]
@@ -271,7 +271,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 5, sublevels: 4, intervals: 5
-flush split keys(3): [g, h, p]
+flush split keys(2): [g, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
 	000010:f#11,1-g#11,1
 0.2: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [0, 3]
@@ -320,7 +320,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 5, sublevels: 4, intervals: 5
-flush split keys(3): [g, h, p]
+flush split keys(2): [g, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [0, 3]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -381,7 +381,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 5, sublevels: 4, intervals: 5
-flush split keys(3): [g, h, p]
+flush split keys(2): [g, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [0, 3]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -426,7 +426,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 5, sublevels: 4, intervals: 5
-flush split keys(3): [g, h, p]
+flush split keys(2): [g, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [0, 3]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -483,7 +483,7 @@ L6
   000008:g.SET.0-s.SET.0 compacting
 ----
 file count: 5, sublevels: 4, intervals: 5
-flush split keys(3): [g, h, p]
+flush split keys(2): [g, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [0, 3]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -578,7 +578,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 5, sublevels: 4, intervals: 5
-flush split keys(3): [g, h, p]
+flush split keys(2): [g, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [0, 3]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 104859600, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -642,7 +642,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 4, intervals: 9
-flush split keys(5): [g, h, j, l, p]
+flush split keys(4): [g, h, l, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 8.0, 8, interval range: [0, 7]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -705,7 +705,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 4, intervals: 9
-flush split keys(5): [g, h, j, l, p]
+flush split keys(4): [g, h, l, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 8.0, 8, interval range: [0, 7]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -754,7 +754,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 4, intervals: 9
-flush split keys(5): [g, h, j, l, p]
+flush split keys(4): [g, h, l, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 8.0, 8, interval range: [0, 7]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -796,7 +796,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 3, sublevels: 3, intervals: 6
-flush split keys(1): [e]
+flush split keys(0): []
 0.2: file count: 1, bytes: 16, width (mean, max): 2.0, 2, interval range: [3, 4]
 	000003:f#9,1-j#11,1
 0.1: file count: 1, bytes: 16, width (mean, max): 3.0, 3, interval range: [1, 3]
@@ -823,7 +823,7 @@ read-amp
 
 flush-split-keys
 ----
-flush user split keys: e
+flush user split keys: none
 
 # Reduce flush_split_max_bytes by 1, and there should also be a split key at c.
 
@@ -837,7 +837,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 3, sublevels: 3, intervals: 6
-flush split keys(2): [c, e]
+flush split keys(1): [j]
 0.2: file count: 1, bytes: 16, width (mean, max): 2.0, 2, interval range: [3, 4]
 	000003:f#9,1-j#11,1
 0.1: file count: 1, bytes: 16, width (mean, max): 3.0, 3, interval range: [1, 3]
@@ -853,41 +853,69 @@ L6:    a---------------f g------------------------------------s
 
 flush-split-keys
 ----
-flush user split keys: c, e
-
-# Reduce flush_split_max_bytes by 1, and there should also be a split key at c.
-
-define flush_split_max_bytes=31
-L0
-  000001:a.SET.2-e.SET.5 size=64
-  000002:c.SET.6-g.SET.8 size=16
-  000003:f.SET.9-j.SET.11 size=16
-L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
-----
-file count: 3, sublevels: 3, intervals: 6
-flush split keys(2): [c, e]
-0.2: file count: 1, bytes: 16, width (mean, max): 2.0, 2, interval range: [3, 4]
-	000003:f#9,1-j#11,1
-0.1: file count: 1, bytes: 16, width (mean, max): 3.0, 3, interval range: [1, 3]
-	000002:c#6,1-g#8,1
-0.0: file count: 1, bytes: 64, width (mean, max): 2.0, 2, interval range: [0, 1]
-	000001:a#2,1-e#5,1
-compacting file count: 0, base compacting intervals: none
-L0.2:                 f------------j
-L0.1:        c------------g
-L0.0:  a------------e
-L6:    a---------------f g------------------------------------s
-       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
-
-flush-split-keys
-----
-flush user split keys: c, e
+flush user split keys: j
 
 max-depth-after-ongoing-compactions
 ----
 2
+
+define flush_split_max_bytes=64
+L0
+  000001:a.SET.2-d.SET.5 size=64
+  000002:e.SET.6-g.SET.8 size=64
+  000003:h.SET.9-j.SET.11 size=16
+L6
+  000007:a.SET.0-f.SET.0
+  000008:g.SET.0-s.SET.0
+----
+file count: 3, sublevels: 1, intervals: 6
+flush split keys(1): [g]
+0.0: file count: 3, bytes: 144, width (mean, max): 1.0, 1, interval range: [0, 4]
+	000001:a#2,1-d#5,1
+	000002:e#6,1-g#8,1
+	000003:h#9,1-j#11,1
+compacting file count: 0, base compacting intervals: none
+L0.0:  a---------d e------g h------j
+L6:    a---------------f g------------------------------------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+flush-split-keys
+----
+flush user split keys: g
+
+# The calculation for flush split bytes multiplies the specified max bytes
+# parameter with the number of sublevels. In the case below, that should mean
+# a flush split key would not be emitted at d despite the estimated bytes tally
+# exceeding 64 bytes. Instead, it would be emitted when 64 * 2 = 128 bytes have
+# been exceeded.
+
+define flush_split_max_bytes=64
+L0
+  000001:a.SET.2-d.SET.5 size=64
+  000004:d.SET.12-e.SET.12 size=64
+  000002:e.SET.6-g.SET.8 size=64
+  000003:h.SET.9-j.SET.11 size=16
+L6
+  000007:a.SET.0-f.SET.0
+  000008:g.SET.0-s.SET.0
+----
+file count: 4, sublevels: 2, intervals: 8
+flush split keys(1): [e]
+0.1: file count: 1, bytes: 64, width (mean, max): 3.0, 3, interval range: [1, 3]
+	000004:d#12,1-e#12,1
+0.0: file count: 3, bytes: 144, width (mean, max): 1.7, 2, interval range: [0, 6]
+	000001:a#2,1-d#5,1
+	000002:e#6,1-g#8,1
+	000003:h#9,1-j#11,1
+compacting file count: 0, base compacting intervals: none
+L0.1:           d---e
+L0.0:  a---------d e------g h------j
+L6:    a---------------f g------------------------------------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+flush-split-keys
+----
+flush user split keys: e
 
 # Ensure that the compaction picker doesn't error out when all seed files are
 # compacting.
@@ -906,7 +934,7 @@ L6
   000008:g.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 4, intervals: 9
-flush split keys(5): [g, h, j, l, p]
+flush split keys(4): [g, h, l, p]
 0.3: file count: 1, bytes: 256, width (mean, max): 8.0, 8, interval range: [0, 7]
 	000009:f#12,1-p#12,1
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
@@ -957,7 +985,7 @@ L6
   000008:p.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 3, intervals: 9
-flush split keys(5): [g, h, j, l, o]
+flush split keys(4): [g, h, l, o]
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
 	000010:f#11,1-g#11,1
 0.1: file count: 2, bytes: 512, width (mean, max): 2.0, 3, interval range: [0, 7]
@@ -1000,7 +1028,7 @@ L6
   000008:p.SET.0-s.SET.0
 ----
 file count: 7, sublevels: 3, intervals: 9
-flush split keys(5): [g, h, j, l, o]
+flush split keys(4): [g, h, l, o]
 0.2: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
 	000010:f#11,1-g#11,1
 0.1: file count: 2, bytes: 512, width (mean, max): 2.0, 3, interval range: [0, 7]
