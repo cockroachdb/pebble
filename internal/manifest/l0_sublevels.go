@@ -15,12 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
-// TODO(bilal):
-//  - Integrate compaction picking logic with the rest of pebble.
-//  - Refactor away slicing and indexing for simplicity and stronger correctness
-//    guarantees, especially in extendCandidateToRectangle and
-//    Pick{Base,IntraL0}Compactions.
-
 // Intervals are of the form [start, end) with no gap between intervals. Each
 // file overlaps perfectly with a sequence of intervals. This perfect overlap
 // occurs because the union of file boundary keys is used to pick intervals.
@@ -153,6 +147,10 @@ type fileInterval struct {
 	// intervals, we assume an equal distribution of bytes across all those
 	// intervals.
 	estimatedBytes uint64
+
+	// Total size of files ending in this interval (i.e. have maxIntervalIndex
+	// == this interval). Used in calculation of flush split points.
+	endingFileBytes uint64
 }
 
 // Helper type for any cases requiring a bool slice.
@@ -278,6 +276,7 @@ func NewL0Sublevels(
 		// bounds to get a better estimate for each interval.
 		interpolatedBytes := f.Size / uint64(f.maxIntervalIndex-f.minIntervalIndex+1)
 		s.fileBytes += f.Size
+		s.orderedIntervals[f.maxIntervalIndex].endingFileBytes += f.Size
 		subLevel := 0
 		// Update state in every fileInterval for this file.
 		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
@@ -309,16 +308,8 @@ func NewL0Sublevels(
 			s.Levels[subLevel] = insertIntoSubLevel(s.Levels[subLevel], f)
 		}
 	}
-	var cumulativeBytes uint64
-	for i := 0; i < len(s.orderedIntervals); i++ {
-		interval := &s.orderedIntervals[i]
-		if flushSplitMaxBytes > 0 && cumulativeBytes > uint64(flushSplitMaxBytes) &&
-			(len(s.flushSplitUserKeys) == 0 ||
-				!bytes.Equal(interval.startKey.key, s.flushSplitUserKeys[len(s.flushSplitUserKeys)-1])) {
-			s.flushSplitUserKeys = append(s.flushSplitUserKeys, interval.startKey.key)
-			cumulativeBytes = 0
-		}
-		cumulativeBytes += s.orderedIntervals[i].estimatedBytes
+	if flushSplitMaxBytes > 0 {
+		s.initFlushSplitKeys(flushSplitMaxBytes)
 	}
 	return s, nil
 }
@@ -359,6 +350,52 @@ func (s *L0Sublevels) InitCompactingFileInfo() {
 				min = j
 				s.orderedIntervals[j].intervalRangeIsBaseCompacting = true
 			}
+		}
+	}
+}
+
+// Initializes flush split keys. Called only if flushSplitMaxBytes > 0.
+func (s *L0Sublevels) initFlushSplitKeys(flushSplitMaxBytes int64) {
+	// The loop below iterates from intervals, left to right (i.e. smallest to
+	// largest keys).
+	//
+	// cumulativeBytes is an estimate of bytes in all running files so far (i.e.
+	// files that have not ended). A file's size is subtracted from it if
+	// the current interval is past its maxIntervalIndex. This lets us account for
+	// natural file ends in the flush split calculation; cumulativeBytes should
+	// fall to 0 as the number of bytes split goes up.
+	var cumulativeBytes int64
+	// nextSplitThreshold is the threshold that cumulativeBytes needs to exceed
+	// before a key is emitted as a flush split point. Increases and decreases
+	// in increments of flushSplitMaxBytes.
+	nextSplitThreshold := flushSplitMaxBytes
+	for i := 0; i < len(s.orderedIntervals); i++ {
+		interval := &s.orderedIntervals[i]
+		if cumulativeBytes > nextSplitThreshold &&
+			(len(s.flushSplitUserKeys) == 0 ||
+				!bytes.Equal(interval.startKey.key, s.flushSplitUserKeys[len(s.flushSplitUserKeys)-1])) {
+			s.flushSplitUserKeys = append(s.flushSplitUserKeys, interval.startKey.key)
+			nextSplitThreshold += flushSplitMaxBytes
+		}
+		cumulativeBytes += int64(s.orderedIntervals[i].estimatedBytes)
+		if i > 0 {
+			// Subtract away the size of files that ended in the previous
+			// interval. We do this in a lagging way to prevent the case where
+			// we
+			cumulativeBytes -= int64(s.orderedIntervals[i-1].endingFileBytes)
+		}
+		if cumulativeBytes < 0 {
+			// This occasionally happens because estimatedBytes is a result of
+			// an integer division; a file's contribution to all its intervals
+			// does not always sum up to its size.
+			cumulativeBytes = 0
+		}
+		// If cumulativeBytes has fallen too low, reduce nextSplitThreshold
+		// to a value that's at least 1 flushSplitMaxBytes greater than
+		// cumulativeBytes.
+		if nextSplitThreshold > 2*flushSplitMaxBytes &&
+			cumulativeBytes < nextSplitThreshold - (2*flushSplitMaxBytes) {
+			nextSplitThreshold = flushSplitMaxBytes * (1 + (cumulativeBytes / flushSplitMaxBytes))
 		}
 	}
 }

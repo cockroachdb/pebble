@@ -11,13 +11,11 @@ L0
   000003:[p#14,SET-s#16,SET]
   000004:[t#17,SET-w#19,SET]
 flush split keys:
-	s
 
 flush
 a c f l o s u x
 ----
-a-s
-u-x
+a-x
 
 define flush_split_bytes=2
 L0
@@ -32,15 +30,11 @@ L0
   000007:[p#14,SET-s#16,SET]
   000008:[t#17,SET-w#19,SET]
 flush split keys:
-	o
-	w
 
 flush
 a c f l o s u x
 ----
-a-o
-s-u
-x-x
+a-x
 
 define flush_split_bytes=1
 L0
@@ -56,17 +50,12 @@ L0
   000012:[t#17,SET-w#19,SET]
 flush split keys:
 	k
-	o
-	s
-	w
 
 flush
 a c f l o s u x
 ----
 a-f
-l-o
-s-u
-x-x
+l-x
 
 define flush_split_bytes=0
 L0

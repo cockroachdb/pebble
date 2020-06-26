@@ -264,9 +264,9 @@ func newFlush(
 	}
 
 	if opts.Experimental.FlushSplitBytes > 0 {
-		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
-		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
-		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
+		c.maxOutputFileSize = uint64(opts.Level(baseLevel).TargetFileSize)
+		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, baseLevel)
+		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, baseLevel)
 		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 	}
 
