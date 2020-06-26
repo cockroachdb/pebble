@@ -104,11 +104,51 @@ func TestDeleteRangeFlushDelay(t *testing.T) {
 	opts.Experimental.DeleteRangeFlushDelay = 10 * time.Millisecond
 	d, err := Open("", opts)
 	require.NoError(t, err)
-	d.mu.Lock()
-	flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
-	d.mu.Unlock()
-	require.NoError(t, d.DeleteRange([]byte("a"), []byte("z"), nil))
-	<-flushed
+
+	// Ensure that all the various means of deleting a range trigger the flush
+	// delay.
+	cases := []func(){
+		func() {
+			require.NoError(t, d.DeleteRange([]byte("a"), []byte("z"), nil))
+		},
+		func() {
+			b := d.NewBatch()
+			require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
+			require.NoError(t, b.Commit(nil))
+		},
+		func() {
+			b := d.NewBatch()
+			op := b.DeleteRangeDeferred(1, 1)
+			op.Key[0] = 'a'
+			op.Value[0] = 'z'
+			op.Finish()
+			require.NoError(t, b.Commit(nil))
+		},
+		func() {
+			b := d.NewBatch()
+			b2 := d.NewBatch()
+			require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
+			require.NoError(t, b2.SetRepr(b.Repr()))
+			require.NoError(t, b2.Commit(nil))
+			require.NoError(t, b.Close())
+		},
+		func() {
+			b := d.NewBatch()
+			b2 := d.NewBatch()
+			require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
+			require.NoError(t, b2.Apply(b, nil))
+			require.NoError(t, b2.Commit(nil))
+			require.NoError(t, b.Close())
+		},
+	}
+
+	for _, f := range cases {
+		d.mu.Lock()
+		flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
+		d.mu.Unlock()
+		f()
+		<-flushed
+	}
 	require.NoError(t, d.Close())
 }
 
