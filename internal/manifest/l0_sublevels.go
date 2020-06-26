@@ -15,12 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
-// TODO(bilal):
-//  - Integrate compaction picking logic with the rest of pebble.
-//  - Refactor away slicing and indexing for simplicity and stronger correctness
-//    guarantees, especially in extendCandidateToRectangle and
-//    Pick{Base,IntraL0}Compactions.
-
 // Intervals are of the form [start, end) with no gap between intervals. Each
 // file overlaps perfectly with a sequence of intervals. This perfect overlap
 // occurs because the union of file boundary keys is used to pick intervals.
@@ -317,6 +311,9 @@ func NewL0Sublevels(
 		}
 	}
 	var cumulativeBytes uint64
+	// Multiply flushSplitMaxBytes by the number of sublevels. This prevents
+	// excessive flush splitting when the number of sublevels increases.
+	flushSplitMaxBytes *= int64(len(s.Levels))
 	for i := 0; i < len(s.orderedIntervals); i++ {
 		interval := &s.orderedIntervals[i]
 		if flushSplitMaxBytes > 0 && cumulativeBytes > uint64(flushSplitMaxBytes) &&
