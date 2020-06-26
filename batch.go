@@ -300,12 +300,16 @@ func (b *Batch) refreshMemTableSize() {
 		return
 	}
 
+	b.countRangeDels = 0
 	for r := b.Reader(); ; {
-		_, key, value, ok := r.Next()
+		kind, key, value, ok := r.Next()
 		if !ok {
 			break
 		}
 		b.memTableSize += memTableEntrySize(len(key), len(value))
+		if kind == InternalKeyKindRangeDelete {
+			b.countRangeDels++
+		}
 	}
 }
 
@@ -337,6 +341,9 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 			kind, key, value, ok := iter.Next()
 			if !ok {
 				break
+			}
+			if kind == InternalKeyKindRangeDelete {
+				b.countRangeDels++
 			}
 			if b.index != nil {
 				var err error
