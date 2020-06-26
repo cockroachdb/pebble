@@ -70,10 +70,6 @@ func newPebbleDB(dir string) DB {
 		MinFlushRate:      4 << 20, // 4 MB/s
 	}
 	opts.Experimental.L0SublevelCompactions = true
-	// This value for FlushSplitBytes was arrived through some experimentation
-	// with TPCC import performance. More experimentation might be needed to
-	// optimize this for other workloads.
-	opts.Experimental.FlushSplitBytes = 10 << 20 // 10 MB
 
 	for i := 0; i < len(opts.Levels); i++ {
 		l := &opts.Levels[i]
@@ -87,6 +83,7 @@ func newPebbleDB(dir string) DB {
 		l.EnsureDefaults()
 	}
 	opts.Levels[6].FilterPolicy = nil
+	opts.Experimental.FlushSplitBytes = opts.Levels[0].TargetFileSize
 
 	opts.EnsureDefaults()
 

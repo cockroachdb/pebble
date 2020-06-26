@@ -289,16 +289,16 @@ type Options struct {
 	// out of the experimental group, or made the non-adjustable default. These
 	// options may change at any time, so do not rely on them.
 	Experimental struct {
-		// FlushSplitBytes denotes the target number of bytes in each
-		// flush split interval (i.e. range between two flush split keys) in
-		// L0 sstables. When set to zero, only a single sstable is generated
+		// FlushSplitBytes denotes the target number of bytes per sublevel in
+		// each flush split interval (i.e. range between two flush split keys)
+		// in L0 sstables. When set to zero, only a single sstable is generated
 		// by each flush. When set to a non-zero value, flushes are split at
 		// points to meet L0's TargetFileSize, any grandparent-related overlap
-		// options, and at boundary keys of L0 flush split intervals (each of
-		// which are targeted to contain around FlushSplitBytes bytes across
-		// all L0 sstables). Splitting sstables during flush allows increased
-		// compaction flexibility and concurrency when those tables are
-		// compacted to lower levels.
+		// options, and at boundary keys of L0 flush split intervals (which are
+		// targeted to contain around FlushSplitBytes bytes in each sublevel
+		// between pairs of boundary keys). Splitting sstables during flush
+		// allows increased compaction flexibility and concurrency when those
+		// tables are compacted to lower levels.
 		//
 		// TODO(bilal): Experiment with this option to pick a good value.
 		FlushSplitBytes int64
