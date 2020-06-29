@@ -16,25 +16,25 @@ all:
 	@echo "  make mod-update"
 	@echo "  make clean"
 
+override testflags :=
 .PHONY: test
 test:
-	${GO} test -mod=vendor -tags '$(TAGS)' ${GOFLAGS} -run ${TESTS} ${PKG}
+	${GO} test -mod=vendor -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
-testrace: GOFLAGS += -race
+testrace: testflags += -race
 testrace: test
 
 .PHONY: stress stressrace
-stressrace: GOFLAGS += -race
-stress stressrace:
-	${GO} test -mod=vendor -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
+stressrace: testflags += -race
+stress stressrace: testflags += -exec 'stress ${STRESSFLAGS}' -timeout 0
+stress stressrace: test
 
 .PHONY: stressmeta
-stressmeta: PKG = ./internal/metamorphic
-stressmeta: STRESSFLAGS += -p 1
-stressmeta: TESTS = TestMeta$$
-stressmeta:
-	${GO} test -mod=vendor -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
+stressmeta: override PKG = ./internal/metamorphic
+stressmeta: override STRESSFLAGS += -p 1
+stressmeta: override TESTS = TestMeta$$
+stressmeta: stress
 
 .PHONY: generate
 generate:
