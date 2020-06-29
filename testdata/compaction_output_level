@@ -41,7 +41,7 @@ max-output-file-size=4194304
 
 compact start=1 base=2
 ----
-invalid compaction: start level 1 should be empty (base level 2)
+invalid compaction: start level 1 should not be empty (base level 2)
 
 compact start=2 base=2
 ----
@@ -76,11 +76,11 @@ max-output-file-size=4194304
 
 compact start=1 base=3
 ----
-invalid compaction: start level 1 should be empty (base level 3)
+invalid compaction: start level 1 should not be empty (base level 3)
 
 compact start=2 base=3
 ----
-invalid compaction: start level 2 should be empty (base level 3)
+invalid compaction: start level 2 should not be empty (base level 3)
 
 compact start=3 base=3
 ----
@@ -110,15 +110,15 @@ max-output-file-size=4194304
 
 compact start=1 base=4
 ----
-invalid compaction: start level 1 should be empty (base level 4)
+invalid compaction: start level 1 should not be empty (base level 4)
 
 compact start=2 base=4
 ----
-invalid compaction: start level 2 should be empty (base level 4)
+invalid compaction: start level 2 should not be empty (base level 4)
 
 compact start=3 base=4
 ----
-invalid compaction: start level 3 should be empty (base level 4)
+invalid compaction: start level 3 should not be empty (base level 4)
 
 compact start=4 base=4
 ----
@@ -143,19 +143,19 @@ max-output-file-size=4194304
 
 compact start=1 base=5
 ----
-invalid compaction: start level 1 should be empty (base level 5)
+invalid compaction: start level 1 should not be empty (base level 5)
 
 compact start=2 base=5
 ----
-invalid compaction: start level 2 should be empty (base level 5)
+invalid compaction: start level 2 should not be empty (base level 5)
 
 compact start=3 base=5
 ----
-invalid compaction: start level 3 should be empty (base level 5)
+invalid compaction: start level 3 should not be empty (base level 5)
 
 compact start=4 base=5
 ----
-invalid compaction: start level 4 should be empty (base level 5)
+invalid compaction: start level 4 should not be empty (base level 5)
 
 compact start=5 base=5
 ----
@@ -175,23 +175,23 @@ max-output-file-size=4194304
 
 compact start=1 base=6
 ----
-invalid compaction: start level 1 should be empty (base level 6)
+invalid compaction: start level 1 should not be empty (base level 6)
 
 compact start=2 base=6
 ----
-invalid compaction: start level 2 should be empty (base level 6)
+invalid compaction: start level 2 should not be empty (base level 6)
 
 compact start=3 base=6
 ----
-invalid compaction: start level 3 should be empty (base level 6)
+invalid compaction: start level 3 should not be empty (base level 6)
 
 compact start=4 base=6
 ----
-invalid compaction: start level 4 should be empty (base level 6)
+invalid compaction: start level 4 should not be empty (base level 6)
 
 compact start=5 base=6
 ----
-invalid compaction: start level 5 should be empty (base level 6)
+invalid compaction: start level 5 should not be empty (base level 6)
 
 compact start=6 base=6
 ----
