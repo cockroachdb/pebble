@@ -7,11 +7,13 @@
 package vfs
 
 import (
-	"errors"
+	"github.com/cockroachdb/errors"
 
 	"golang.org/x/sys/unix"
 )
 
+// IsNoSpaceError returns true if the given error indicates that the disk is
+// out of space.
 func IsNoSpaceError(err error) bool {
 	return errors.Is(err, unix.ENOSPC)
 }

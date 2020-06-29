@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"sort"
 	"sync/atomic"
@@ -455,7 +454,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if dmap := b.Deleted[nf.Level]; dmap != nil {
 			if _, ok := dmap[nf.Meta.FileNum]; ok {
 				return errors2.InvariantError{
-					Err: fmt.Errorf("file deleted %d before it was inserted\n", nf.Meta.FileNum),
+					Err: errors.Errorf("file deleted %d before it was inserted\n", nf.Meta.FileNum),
 				}
 			}
 		}
@@ -621,11 +620,11 @@ func (b *BulkVersionEdit) Apply(
 				if base.InternalCompare(cmp, v.Levels[level][numFiles-1].Largest, f.Smallest) >= 0 {
 					cf := v.Levels[level][numFiles-1]
 					return nil, nil, errors2.InvariantError{
-						Err:errors.Errorf(
-						"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
-						errors.Safe(level), errors.Safe(cf.FileNum), errors.Safe(f.FileNum),
-						cf.Smallest.Pretty(formatKey), cf.Largest.Pretty(formatKey),
-						f.Smallest.Pretty(formatKey), f.Largest.Pretty(formatKey)),
+						Err: errors.Errorf(
+							"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
+							errors.Safe(level), errors.Safe(cf.FileNum), errors.Safe(f.FileNum),
+							cf.Smallest.Pretty(formatKey), cf.Largest.Pretty(formatKey),
+							f.Smallest.Pretty(formatKey), f.Largest.Pretty(formatKey)),
 					}
 				}
 			}

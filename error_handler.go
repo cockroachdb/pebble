@@ -5,49 +5,62 @@
 package pebble
 
 import (
-	"errors"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// Reasons to mark the background error for.
+// BackgroundErrorReason are the possible background operations during which
+// if an error occurs, subject to its severity, the DB is placed in read only
+// mode.
 type BackgroundErrorReason uint8
 
 const (
+	// BgFlush is for errors occurring during background flushes.
 	BgFlush BackgroundErrorReason = iota
+	// BgCompaction is for errors occurring during background compactions.
 	BgCompaction
-	// Write/Sync to WAL.
+	// BgWrite is for errors occurring while writing to WAL.
 	BgWrite
-	// Write to memtable.
+	// BgMemtable is for errors occurring while writing to memtable.
 	BgMemtable
 )
 
+// Severity of an error helps decide whether to place the DB in read only mode
+// and the operation effort needed for recovery.
 type Severity uint8
 
 const (
+	// SeverityNoError does not set the background error at all.
 	SeverityNoError Severity = 0
-	// Not placed in read only mode. Auto recovery possible.
+	// SeveritySoftError does not place the DB in read only mode and auto recovery
+	// is possible for some of the errors.
 	SeveritySoftError = 1
-	// Placed in read only mode, but can recover without needing to close/re-open DB.
+	// SeverityHardError places the DB in read only mode and recovery is possible
+	// without needing to close then reopen the DB.
 	SeverityHardError = 2
-	// Placed in read only mode, but can recover by closing the DB and reopening it.
+	// SeverityFatalError places the DB in read only mode and recovery requires
+	// closing then reopening the DB.
 	SeverityFatalError = 3
-	// Placed in read only mode, could mean data is corrupted.
+	// SeverityUnrecoverableError places the DB in read only mode and could mean
+	// data loss, recovery from which is not possible.
 	SeverityUnrecoverableError = 4
 )
 
-// TODO: Improve doc.
-// *BackgroundError implements error. We provide the actual error as well as
-// the severity for users to judge whether they want to reset or not. They can
-// reset the error by setting Err to nil.
+// BackgroundError captures the error occurred along with its severity and the
+// operation during which it occurred. An instance of this is passed to the
+// user in the EventListener.BackgroundError to allow overriding the
+// background error.
 type BackgroundError struct {
+	// TODO: unexport err, severity?
 	Err      error
 	Severity Severity
 	op       BackgroundErrorReason
 }
 
+// Reason returns the operation during which the error occurred.
 func (b *BackgroundError) Reason() BackgroundErrorReason {
 	return b.op
 }
@@ -59,10 +72,7 @@ func (b *BackgroundError) Error() string {
 	return ""
 }
 
-// TODO: better doc.
-// Override the background error by resetting the error,
-// severity to nil. Callable by user from the
-// event listener callback.
+// Reset overrides the error by setting the Err, Severity to nil.
 func (b *BackgroundError) Reset() {
 	b.Severity = SeverityNoError
 	b.Err = nil

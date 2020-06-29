@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -354,7 +353,7 @@ func (vs *versionSet) logAndApply(
 			// It can never be lesser. ve.minUnflushed will be the WAL number
 			// for the current mutable memtable.
 			return errors2.InvariantError{
-				Err: fmt.Errorf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
+				Err: errors.Errorf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
 					ve.MinUnflushedLogNum),
 			}
 		}
@@ -384,7 +383,7 @@ func (vs *versionSet) logAndApply(
 		// logSeqNum is initialized to 1 in Open() if there are no previous WAL
 		// or manifest records, so this case should never happen.
 		return errors2.InvariantError{
-			Err: fmt.Errorf("pebble: logSeqNum must be a positive integer: %d", logSeqNum),
+			Err: errors.Errorf("pebble: logSeqNum must be a positive integer: %d", logSeqNum),
 		}
 	}
 
@@ -443,28 +442,28 @@ func (vs *versionSet) logAndApply(
 		// and ensures it is synced.
 		if err := ve.Encode(w); err != nil {
 			return errors2.InvariantError{
-				Err: fmt.Errorf("MANIFEST write failed: %v", err),
+				Err: errors.Errorf("MANIFEST write failed: %v", err),
 			}
 		}
 		if err := vs.manifest.Flush(); err != nil {
 			return errors2.InvariantError{
-				Err: fmt.Errorf("MANIFEST flush failed: %v", err),
+				Err: errors.Errorf("MANIFEST flush failed: %v", err),
 			}
 		}
 		if err := vs.manifestFile.Sync(); err != nil {
 			return errors2.InvariantError{
-				Err: fmt.Errorf("MANIFEST sync failed: %v", err),
+				Err: errors.Errorf("MANIFEST sync failed: %v", err),
 			}
 		}
 		if newManifestFileNum != 0 {
 			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNum); err != nil {
 				return errors2.InvariantError{
-					Err: fmt.Errorf("MANIFEST set current failed: %v", err),
+					Err: errors.Errorf("MANIFEST set current failed: %v", err),
 				}
 			}
 			if err := dir.Sync(); err != nil {
 				return errors2.InvariantError{
-					Err: fmt.Errorf("MANIFEST dirsync failed: %v", err),
+					Err: errors.Errorf("MANIFEST dirsync failed: %v", err),
 				}
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{

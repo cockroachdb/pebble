@@ -367,16 +367,16 @@ func (i WriteStallBeginInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 // block continued DB work. For a similar reason it is advisable to not perform
 // any synchronous calls back into the DB.
 type EventListener struct {
-	// BackgroundError is invoked whenever an error occurs during a background
-	// operation such as flush or compaction (or memtable/write path). It is
-	// called before setting the background error. The error passed in the
-	// callback is of type *BackgroundError which contains the background error
-	// occurred, its severity and the operation during which it occurred. The
-	// error inside can be set to nil which prevents the database from entering read-only
+	// BackgroundError is invoked if an error occurs during a background
+	// operation such as flush, compaction or during memtable/WAL write. This invocation
+	// happens before setting the DB's background error. The error parameter
+	// passed is of type *BackgroundError which contains the error
+	// occurred, its severity and the operation during which it occurred. Setting
+	// BackgroundError.Err to nil prevents the database from entering read-only
 	// mode.
 	//
 	// We do not provide any guarantee when failed flushes/compactions will
-	// be rescheduled if the user suppresses an error (???)
+	// be rescheduled if the user suppresses an error.
 	BackgroundError func(error)
 
 	// CompactionBegin is invoked after the inputs to a compaction have been

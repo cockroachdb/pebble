@@ -113,6 +113,7 @@ type FS interface {
 	// PathDir returns all but the last element of path, typically the path's directory.
 	PathDir(path string) string
 
+	// GetFreeSpace returns the amount of free disk space.
 	GetFreeSpace(path string) (uint64, error)
 }
 

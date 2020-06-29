@@ -162,6 +162,7 @@ func (fs *FS) OpenDir(name string) (vfs.File, error) {
 	return &errorFile{f, fs.inj}, nil
 }
 
+// GetFreeSpace implements FS.GetFreeSpace.
 func (fs *FS) GetFreeSpace(path string) (uint64, error) {
 	if err := fs.inj.MaybeError(OpRead); err != nil {
 		return 0, err
