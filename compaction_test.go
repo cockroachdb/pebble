@@ -54,7 +54,7 @@ func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64)
 
 func (p *compactionPickerForTesting) forceBaseLevel1() {}
 
-func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (c *compaction) {
+func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedCompaction) {
 	if p.score < 1 {
 		return nil
 	}
@@ -62,17 +62,17 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (c *compaction)
 	if p.level == 0 {
 		outputLevel = p.baseLevel
 	}
-	cInfo := pickedCompactionInfo{level: p.level, outputLevel: outputLevel}
+	cInfo := candidateLevelInfo{level: p.level, outputLevel: outputLevel}
 	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
 
 func (p *compactionPickerForTesting) pickManual(
 	env compactionEnv, manual *manualCompaction,
-) (c *compaction, retryLater bool) {
+) (pc *pickedCompaction, retryLater bool) {
 	if p == nil {
 		return nil, false
 	}
-	return pickManualHelper(env, p.opts, manual, p.vers, p.baseLevel), false
+	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel), false
 }
 
 func TestPickCompaction(t *testing.T) {
@@ -487,9 +487,11 @@ func TestPickCompaction(t *testing.T) {
 		tc.picker.opts = opts
 		tc.picker.vers = &tc.version
 		vs.picker = &tc.picker
+		env := compactionEnv{bytesCompacted: new(uint64)}
 
-		c, got := vs.picker.pickAuto(compactionEnv{bytesCompacted: new(uint64)}), ""
-		if c != nil {
+		pc, got := vs.picker.pickAuto(env), ""
+		if pc != nil {
+			c := newCompaction(pc, opts, env.bytesCompacted)
 			got0 := fileNums(c.startLevel.files)
 			got1 := fileNums(c.outputLevel.files)
 			got2 := fileNums(c.grandparents)
@@ -1324,161 +1326,10 @@ func TestCompactionOutputLevel(t *testing.T) {
 				var start, base int
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
-				c := newCompaction(opts, version, start, base, new(uint64))
+				pc := newPickedCompaction(opts, version, start, base)
+				c := newCompaction(pc, opts, new(uint64))
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
-
-			default:
-				return fmt.Sprintf("unknown command: %s", d.Cmd)
-			}
-		})
-}
-
-func TestCompactionSetupInputs(t *testing.T) {
-	parseMeta := func(s string) *fileMetadata {
-		parts := strings.Split(s, "-")
-		if len(parts) != 2 {
-			t.Fatalf("malformed table spec: %s", s)
-		}
-		m := &fileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
-		return m
-	}
-
-	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
-		func(d *datadriven.TestData) string {
-			switch d.Cmd {
-			case "setup-inputs":
-				if len(d.CmdArgs) != 2 {
-					return fmt.Sprintf("setup-inputs <start> <end>")
-				}
-
-				c := &compaction{
-					cmp:              DefaultComparer.Compare,
-					formatKey:        DefaultComparer.FormatKey,
-					version:          &version{},
-					inputs:           []compactionLevel{{level: -1}, {level: -1}},
-					maxExpandedBytes: 1 << 30,
-				}
-				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-				var files *[]*fileMetadata
-				fileNum := FileNum(1)
-
-				for _, data := range strings.Split(d.Input, "\n") {
-					switch data {
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-						level, err := strconv.Atoi(data[1:])
-						if err != nil {
-							return err.Error()
-						}
-						if c.startLevel.level == -1 {
-							c.startLevel.level = level
-							files = &c.version.Levels[level]
-						} else if c.outputLevel.level == -1 {
-							if c.startLevel.level >= level {
-								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel.level, level)
-							}
-							c.outputLevel.level = level
-							files = &c.version.Levels[level]
-						} else {
-							return fmt.Sprintf("outputLevel already set\n")
-						}
-
-					default:
-						meta := parseMeta(data)
-						meta.FileNum = fileNum
-						fileNum++
-						*files = append(*files, meta)
-					}
-				}
-
-				if c.outputLevel.level == -1 {
-					c.outputLevel.level = c.startLevel.level + 1
-				}
-				c.startLevel.files = c.version.Overlaps(c.startLevel.level, c.cmp,
-					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String()))
-
-				c.setupInputs()
-
-				var buf bytes.Buffer
-				for _, cl := range c.inputs {
-					files := cl.files
-					if len(files) == 0 {
-						continue
-					}
-
-					fmt.Fprintf(&buf, "L%d\n", cl.level)
-					for j := range files {
-						fmt.Fprintf(&buf, "  %s\n", files[j])
-					}
-				}
-				return buf.String()
-
-			default:
-				return fmt.Sprintf("unknown command: %s", d.Cmd)
-			}
-		})
-}
-
-func TestCompactionExpandInputs(t *testing.T) {
-	cmp := DefaultComparer.Compare
-	var files []*fileMetadata
-
-	parseMeta := func(s string) *fileMetadata {
-		parts := strings.Split(s, "-")
-		if len(parts) != 2 {
-			t.Fatalf("malformed table spec: %s", s)
-		}
-		return &fileMetadata{
-			Smallest: base.ParseInternalKey(parts[0]),
-			Largest:  base.ParseInternalKey(parts[1]),
-		}
-	}
-
-	datadriven.RunTest(t, "testdata/compaction_expand_inputs",
-		func(d *datadriven.TestData) string {
-			switch d.Cmd {
-			case "define":
-				files = nil
-				if len(d.Input) == 0 {
-					return ""
-				}
-				for _, data := range strings.Split(d.Input, "\n") {
-					meta := parseMeta(data)
-					meta.FileNum = FileNum(len(files))
-					files = append(files, meta)
-				}
-				manifest.SortBySmallest(files, cmp)
-				return ""
-
-			case "expand-inputs":
-				c := &compaction{
-					cmp:     cmp,
-					version: &version{},
-					inputs:  []compactionLevel{{level: 1}},
-				}
-				c.startLevel = &c.inputs[0]
-				c.version.Levels[c.startLevel.level] = files
-				if len(d.CmdArgs) != 1 {
-					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
-				}
-				index, err := strconv.ParseInt(d.CmdArgs[0].String(), 10, 64)
-				if err != nil {
-					return err.Error()
-				}
-
-				inputs := c.expandInputs(c.startLevel.level, files[index:index+1])
-
-				var buf bytes.Buffer
-				for i := range inputs {
-					f := inputs[i]
-					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
-				}
-				return buf.String()
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
