@@ -243,18 +243,21 @@ type ycsbBuf struct {
 }
 
 type ycsb struct {
-	writeOpts *pebble.WriteOptions
-	weights   ycsbWeights
-	reg       *histogramRegistry
-	ops       *randvar.Weighted
-	keyDist   randvar.Dynamic
-	batchDist randvar.Static
-	scanDist  randvar.Static
-	valueDist *randvar.BytesFlag
-	keyNum    *ackseq.S
-	numOps    uint64
-	limiter   *rate.Limiter
-	opsMap    map[string]int
+	db           DB
+	writeOpts    *pebble.WriteOptions
+	weights      ycsbWeights
+	reg          *histogramRegistry
+	ops          *randvar.Weighted
+	keyDist      randvar.Dynamic
+	batchDist    randvar.Static
+	scanDist     randvar.Static
+	valueDist    *randvar.BytesFlag
+	readAmpCount uint64
+	readAmpSum   uint64
+	keyNum       *ackseq.S
+	numOps       uint64
+	limiter      *rate.Limiter
+	opsMap       map[string]int
 }
 
 func newYcsb(
@@ -302,6 +305,8 @@ func newYcsb(
 }
 
 func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
+	y.db = db
+
 	if ycsbConfig.initialKeys > 0 {
 		buf := &ycsbBuf{rng: randvar.NewRand()}
 
@@ -465,6 +470,15 @@ func (y *ycsb) read(db DB, buf *ycsbBuf) {
 		_ = iter.Key()
 		_ = iter.Value()
 	}
+
+	type metrics interface {
+		Metrics() pebble.IteratorMetrics
+	}
+	if m, ok := iter.(metrics); ok {
+		atomic.AddUint64(&y.readAmpCount, 1)
+		atomic.AddUint64(&y.readAmpSum, uint64(m.Metrics().ReadAmp))
+	}
+
 	if err := iter.Close(); err != nil {
 		log.Fatal(err)
 	}
@@ -476,6 +490,8 @@ func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
 	if err := db.Scan(key, int64(count), reverse); err != nil {
 		log.Fatal(err)
 	}
+
+	// TODO(peter): Measure read-amp for scan operations.
 }
 
 func (y *ycsb) update(db DB, buf *ycsbBuf) {
@@ -512,8 +528,16 @@ func (y *ycsb) tick(elapsed time.Duration, i int) {
 
 func (y *ycsb) done(elapsed time.Duration) {
 	fmt.Println("\n____optype__elapsed_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)")
+
+	resultTick := histogramTick{}
 	y.reg.Tick(func(tick histogramTick) {
 		h := tick.Cumulative
+		if resultTick.Cumulative == nil {
+			resultTick.Now = tick.Now
+			resultTick.Cumulative = h
+		} else {
+			resultTick.Cumulative.Merge(h)
+		}
 
 		fmt.Printf("%10s %7.1fs %14d %14.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
 			tick.Name, elapsed.Seconds(), h.TotalCount(),
@@ -525,4 +549,25 @@ func (y *ycsb) done(elapsed time.Duration) {
 			time.Duration(h.ValueAtQuantile(100)).Seconds()*1000)
 	})
 	fmt.Println()
+
+	resultHist := resultTick.Cumulative
+	m := y.db.Metrics()
+	total := m.Total()
+
+	readAmpCount := atomic.LoadUint64(&y.readAmpCount)
+	readAmpSum := atomic.LoadUint64(&y.readAmpSum)
+	if readAmpCount == 0 {
+		readAmpSum = 0
+		readAmpCount = 1
+	}
+
+	fmt.Printf("Benchmarkycsb/%s/values=%s %d  %0.1f ops/sec  %d read  %d write  %.2f r-amp  %0.2f w-amp\n\n",
+		ycsbConfig.workload, ycsbConfig.values,
+		resultHist.TotalCount(),
+		float64(resultHist.TotalCount())/elapsed.Seconds(),
+		total.BytesRead,
+		total.BytesFlushed+total.BytesCompacted,
+		float64(readAmpSum)/float64(readAmpCount),
+		total.WriteAmp(),
+	)
 }
