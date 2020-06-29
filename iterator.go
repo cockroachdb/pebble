@@ -21,6 +21,15 @@ const (
 
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
 
+// IteratorMetrics holds per-iterator metrics.
+type IteratorMetrics struct {
+	// The read amplification experienced by this iterator. This is the sum of
+	// the memtables, the L0 sublevels and the non-empty Ln levels. Higher read
+	// amplification generally results in slower reads, though allowing higher
+	// read amplification can also result in faster writes.
+	ReadAmp int
+}
+
 // Iterator iterates over a DB's key/value pairs in key order.
 //
 // An iterator must be closed after use, but it is not necessary to read an
@@ -556,4 +565,15 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.opts.LowerBound = lower
 	i.opts.UpperBound = upper
 	i.iter.SetBounds(lower, upper)
+}
+
+// Metrics returns per-iterator metrics.
+func (i *Iterator) Metrics() IteratorMetrics {
+	m := IteratorMetrics{
+		ReadAmp: 1,
+	}
+	if mi, ok := i.iter.(*mergingIter); ok {
+		m.ReadAmp = len(mi.levels)
+	}
+	return m
 }

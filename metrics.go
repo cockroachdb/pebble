@@ -192,6 +192,25 @@ func (m *Metrics) ReadAmp() int {
 	return int(ramp)
 }
 
+// Total returns the sum of the per-level metrics and WAL metrics.
+func (m *Metrics) Total() LevelMetrics {
+	var total LevelMetrics
+	for level := 0; level < numLevels; level++ {
+		l := &m.Levels[level]
+		total.Add(l)
+		total.Sublevels += l.Sublevels
+		total.NumFiles += l.NumFiles
+		total.Size += l.Size
+	}
+	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
+	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
+	// Add the total bytes-in to the total bytes-flushed. This is to account for
+	// the bytes written to the log and bytes written externally and then
+	// ingested.
+	total.BytesFlushed += total.BytesIn
+	return total
+}
+
 const notApplicable = "-"
 
 func (m *Metrics) formatWAL(buf *bytes.Buffer) {
@@ -262,7 +281,7 @@ func (m *Metrics) String() string {
 		total.NumFiles += l.NumFiles
 		total.Size += l.Size
 	}
-	// Compute total bytes-in as the bytes written to the WAL + bytes ingested
+	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
 	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
 	// Add the total bytes-in to the total bytes-flushed. This is to account for
 	// the bytes written to the log and bytes written externally and then
