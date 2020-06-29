@@ -1,6 +1,6 @@
 GO := go
-GOFLAGS :=
 PKG := ./...
+GOFLAGS :=
 STRESSFLAGS :=
 TAGS := invariants
 TESTS := .
@@ -16,29 +16,29 @@ all:
 	@echo "  make mod-update"
 	@echo "  make clean"
 
+override testflags :=
 .PHONY: test
 test:
-	GO111MODULE=off ${GO} test -tags '$(TAGS)' ${GOFLAGS} -run ${TESTS} ${PKG}
+	${GO} test -mod=vendor -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
-testrace: GOFLAGS += -race
+testrace: testflags += -race
 testrace: test
 
 .PHONY: stress stressrace
-stressrace: GOFLAGS += -race
-stress stressrace:
-	GO111MODULE=off ${GO} test -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
+stressrace: testflags += -race
+stress stressrace: testflags += -exec 'stress ${STRESSFLAGS}' -timeout 0
+stress stressrace: test
 
 .PHONY: stressmeta
-stressmeta: PKG = ./internal/metamorphic
-stressmeta: STRESSFLAGS += -p 1
-stressmeta: TESTS = TestMeta$$
-stressmeta:
-	GO111MODULE=off ${GO} test -v -tags '$(TAGS)' ${GOFLAGS} -exec 'stress ${STRESSFLAGS}' -run '${TESTS}' -timeout 0 ${PKG}
+stressmeta: override PKG = ./internal/metamorphic
+stressmeta: override STRESSFLAGS += -p 1
+stressmeta: override TESTS = TestMeta$$
+stressmeta: stress
 
 .PHONY: generate
 generate:
-	GO111MODULE=off ${GO} generate ${PKG}
+	${GO} generate -mod=vendor ${PKG}
 
 # The cmd/pebble/{badger,boltdb,rocksdb}.go files causes various
 # cockroach dependencies to be pulled in which is undesirable. Hack
@@ -46,8 +46,9 @@ generate:
 mod-update:
 	mkdir -p cmd/pebble/_bak
 	mv cmd/pebble/{badger,boltdb,rocksdb}.go cmd/pebble/_bak
-	GO111MODULE=on ${GO} get -u
-	GO111MODULE=on ${GO} mod vendor
+	${GO} get -u
+	${GO} mod tidy
+	${GO} mod vendor
 	mv cmd/pebble/_bak/* cmd/pebble && rmdir cmd/pebble/_bak
 
 .PHONY: clean
