@@ -1845,6 +1845,13 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		if !ok {
 			continue
 		}
+
+		// Don't reuse any obsolete file numbers to avoid modifying an
+		// ingested sstable's original external file.
+		if fileNum >= d.mu.versions.nextFileNum {
+			d.mu.versions.nextFileNum = fileNum + 1
+		}
+
 		switch fileType {
 		case fileTypeLog:
 			if fileNum >= minUnflushedLogNum {
