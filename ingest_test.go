@@ -981,3 +981,101 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 	require.NoError(t, d.CheckLevels(nil))
 	require.NoError(t, d.Close())
 }
+
+type ingestCrashFS struct {
+	vfs.FS
+}
+
+func (fs ingestCrashFS) Link(oldname, newname string) error {
+	if err := fs.FS.Link(oldname, newname); err != nil {
+		return err
+	}
+	panic(errorfs.ErrInjected)
+}
+
+type noRemoveFS struct {
+	vfs.FS
+}
+
+func (fs noRemoveFS) Remove(string) error {
+	return errorfs.ErrInjected
+}
+
+func TestIngestFileNumReuseCrash(t *testing.T) {
+	const count = 10
+	// Use an on-disk filesystem, because Ingest with a MemFS will copy, not
+	// link the ingested file.
+	dir, err := ioutil.TempDir("", "ingest-filenum-reuse")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+	fs := vfs.Default
+
+	readFile := func(s string) []byte {
+		f, err := fs.Open(fs.PathJoin(dir, s))
+		require.NoError(t, err)
+		b, err := ioutil.ReadAll(f)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		return b
+	}
+
+	// Create sstables to ingest.
+	var files []string
+	var fileBytes [][]byte
+	for i := 0; i < count; i++ {
+		name := fmt.Sprintf("ext%d", i)
+		f, err := fs.Create(fs.PathJoin(dir, name))
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		require.NoError(t, w.Set([]byte(fmt.Sprintf("foo%d", i)), nil))
+		require.NoError(t, w.Close())
+		files = append(files, name)
+		fileBytes = append(fileBytes, readFile(name))
+	}
+
+	// Open a database with a filesystem that will successfully link the
+	// ingested files but then panic. This is an approximation of what a crash
+	// after linking but before updating the manifest would look like.
+	d, err := Open(dir, &Options{
+		FS: ingestCrashFS{FS: fs},
+	})
+	// A flush here ensures the file num bumps from creating OPTIONS files,
+	// etc get recorded in the manifest. We want the nextFileNum after the
+	// restart to be the same as one of our ingested sstables.
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("boop"), nil, nil))
+	require.NoError(t, d.Flush())
+	for _, f := range files {
+		func() {
+			defer func() { err = recover().(error) }()
+			err = d.Ingest([]string{fs.PathJoin(dir, f)})
+		}()
+		if err == nil || !errors.Is(err, errorfs.ErrInjected) {
+			t.Fatalf("expected injected error, got %v", err)
+		}
+	}
+	// Leave something in the WAL so that Open will flush while replaying the
+	// WAL.
+	require.NoError(t, d.Set([]byte("wal"), nil, nil))
+	require.NoError(t, d.Close())
+
+	// There are now two links to each external file: the original extX link
+	// and a numbered sstable link. The sstable files are still not a part of
+	// the manifest and so they may be overwritten. Open will detect the
+	// obsolete number sstables and try to remove them. The FS here is wrapped
+	// to induce errors on Remove calls. Even if we're unsuccessful in
+	// removing the obsolete files, the external files should not be
+	// overwritten.
+	d, err = Open(dir, &Options{FS: noRemoveFS{FS: fs}})
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("bar"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Close())
+
+	// None of the external files should change despite modifying the linked
+	// versions.
+	for i, f := range files {
+		afterBytes := readFile(f)
+		require.Equal(t, fileBytes[i], afterBytes)
+	}
+}
