@@ -118,22 +118,22 @@ func (vs *versionSet) create(
 	err := vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
+			return errors.WithMessage(err, "MANIFEST flush failed")
 		}
 	}
 	if err == nil {
 		if err = vs.manifestFile.Sync(); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST sync failed: %v", err)
+			return errors.WithMessage(err, "MANIFEST sync failed")
 		}
 	}
 	if err == nil {
 		if err = setCurrentFile(vs.dirname, vs.fs, vs.manifestFileNum); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
+			return errors.WithMessage(err, "MANIFEST set current failed")
 		}
 	}
 	if err == nil {
 		if err = dir.Sync(); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST dirsync failed: %v", err)
+			return errors.WithMessage(err, "MANIFEST dirsync failed")
 		}
 	}
 
@@ -150,8 +150,6 @@ func (vs *versionSet) create(
 }
 
 // load loads the version set from the manifest file.
-// NB: Although invariant errors here don't need to be marked because load is not called during
-// writes (user, flush, compaction), it is ok to tag them.
 func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
 	vs.init(dirname, opts, mu)
 
@@ -167,14 +165,10 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	}
 	n := stat.Size()
 	if n == 0 {
-		return errors2.InvariantError{
-			Err: errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname),
-		}
+		return errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
 	}
 	if n > 4096 {
-		return errors2.InvariantError{
-			Err: errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname),
-		}
+		return errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
 	}
 	b := make([]byte, n)
 	_, err = current.ReadAt(b, 0)
@@ -182,17 +176,13 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		return err
 	}
 	if b[n-1] != '\n' {
-		return errors2.InvariantError{
-			Err: errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname),
-		}
+		return errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
 	}
 	b = bytes.TrimSpace(b)
 
 	var ok bool
 	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
-		return errors2.InvariantError{
-			Err: errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b)),
-		}
+		return errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
 	}
 
 	// Read the versionEdits in the manifest file.
@@ -225,11 +215,9 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		}
 		if ve.ComparerName != "" {
 			if ve.ComparerName != vs.cmpName {
-				return errors2.InvariantError{
-					Err: errors.Errorf("pebble: manifest file %q for DB %q: "+
-						"comparer name from file %q != comparer name from Options %q",
-						errors.Safe(b), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName)),
-				}
+				return errors.Errorf("pebble: manifest file %q for DB %q: "+
+					"comparer name from file %q != comparer name from Options %q",
+					errors.Safe(b), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
 			}
 		}
 		if err := bve.Accumulate(&ve); err != nil {
@@ -263,10 +251,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// minUnflushedLogNum, even if WALs with non-zero file numbers are
 			// present in the directory.
 		} else {
-			return errors2.InvariantError{
-				Err: errors.Errorf("pebble: malformed manifest file %q for DB %q",
-					errors.Safe(b), dirname),
-			}
+			return errors.Errorf("pebble: malformed manifest file %q for DB %q",
+				errors.Safe(b), dirname)
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
@@ -442,29 +428,21 @@ func (vs *versionSet) logAndApply(
 		// and ensures it is synced.
 		if err := ve.Encode(w); err != nil {
 			return errors2.InvariantError{
-				Err: errors.Errorf("MANIFEST write failed: %v", err),
+				Err: errors.WithMessage(err, "MANIFEST write failed"),
 			}
 		}
 		if err := vs.manifest.Flush(); err != nil {
-			return errors2.InvariantError{
-				Err: errors.Errorf("MANIFEST flush failed: %v", err),
-			}
+			return errors.WithMessage(err, "MANIFEST flush failed")
 		}
 		if err := vs.manifestFile.Sync(); err != nil {
-			return errors2.InvariantError{
-				Err: errors.Errorf("MANIFEST sync failed: %v", err),
-			}
+			return errors.WithMessage(err, "MANIFEST sync failed")
 		}
 		if newManifestFileNum != 0 {
 			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNum); err != nil {
-				return errors2.InvariantError{
-					Err: errors.Errorf("MANIFEST set current failed: %v", err),
-				}
+				return errors.WithMessage(err, "MANIFEST set current failed")
 			}
 			if err := dir.Sync(); err != nil {
-				return errors2.InvariantError{
-					Err: errors.Errorf("MANIFEST dirsync failed: %v", err),
-				}
+				return errors.WithMessage(err, "MANIFEST dirsync failed")
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 				JobID:   jobID,

@@ -65,6 +65,11 @@ func (b *BackgroundError) Reason() BackgroundErrorReason {
 	return b.op
 }
 
+// Unwrap returns the error that occurred during the background operation.
+func (b *BackgroundError) Unwrap() error {
+	return b.Err
+}
+
 func (b *BackgroundError) Error() string {
 	if b.Err != nil {
 		return b.Err.Error()

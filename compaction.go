@@ -518,13 +518,13 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		err := manifest.CheckOrdering(c.cmp, c.formatKey,
 			manifest.Level(c.startLevel.level), c.startLevel.files.Iter())
 		if err != nil {
-			return nil, errors2.InvariantError{Err:err}
+			return nil, err
 		}
 	}
 	err := manifest.CheckOrdering(c.cmp, c.formatKey,
 		manifest.Level(c.outputLevel.level), c.outputLevel.files.Iter())
 	if err != nil {
-		return nil, errors2.InvariantError{Err:err}
+		return nil, err
 	}
 
 	iters := make([]internalIterator, 0, 2*c.startLevel.files.Len()+1)

@@ -145,10 +145,10 @@ func TestErrors(t *testing.T) {
 	}
 
 	expectedErrors := []string{
-		"fatal: MANIFEST flush failed: injected error",
-		"fatal: MANIFEST sync failed: injected error",
-		"fatal: MANIFEST set current failed: injected error",
-		"fatal: MANIFEST dirsync failed: injected error",
+		"MANIFEST flush failed: injected error",
+		"MANIFEST sync failed: injected error",
+		"MANIFEST set current failed: injected error",
+		"MANIFEST dirsync failed: injected error",
 	}
 	for _, expected := range expectedErrors {
 		if errorCounts[expected] == 0 {

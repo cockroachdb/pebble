@@ -1,6 +1,7 @@
 package errors
 
-// InvariantError wraps errors due to internal constraint violations.
+// InvariantError wraps errors due to internal constraint violations
+// that lead to placing the DB in read only mode.
 type InvariantError struct {
 	Err error
 }

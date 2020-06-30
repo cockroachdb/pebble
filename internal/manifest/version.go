@@ -489,13 +489,17 @@ func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 	for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
 		iter := NewLevelSlice(v.L0Sublevels.Levels[sublevel]).Iter()
 		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), iter); err != nil {
-			return errors.Wrapf(err, "%s\n", v.DebugString(format))
+			return errors2.InvariantError{
+				Err: errors.Errorf("%s\n%s", err, v.DebugString(format)),
+			}
 		}
 	}
 
 	for level, lm := range v.Levels {
 		if err := CheckOrdering(cmp, format, Level(level), lm.Iter()); err != nil {
-			return errors.Wrapf(err, "%s\n", v.DebugString(format))
+			return errors2.InvariantError{
+				Err: errors.Errorf("%s\n%s", err, v.DebugString(format)),
+			}
 		}
 	}
 	return nil
@@ -664,26 +668,26 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelI
 		for f := files.First(); f != nil; f, prev = files.Next(), f {
 			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
 				return errors2.InvariantError{
-					Err:errors.Errorf("%s file %s has inconsistent bounds: %s vs %s",
-					errors.Safe(level), errors.Safe(f.FileNum),
-					f.Smallest.Pretty(format), f.Largest.Pretty(format)),
+					Err: errors.Errorf("%s file %s has inconsistent bounds: %s vs %s",
+						errors.Safe(level), errors.Safe(f.FileNum),
+						f.Smallest.Pretty(format), f.Largest.Pretty(format)),
 				}
 			}
 			if prev != nil {
 				if !prev.lessSmallestKey(f, cmp) {
 					return errors2.InvariantError{
-						Err:errors.Errorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
-						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
-						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
-						f.Smallest.Pretty(format), f.Largest.Pretty(format)),
+						Err: errors.Errorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
+							errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+							prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
+							f.Smallest.Pretty(format), f.Largest.Pretty(format)),
 					}
 				}
 				if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
 					return errors2.InvariantError{
-						Err:errors.Errorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
-						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
-						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
-						f.Smallest.Pretty(format), f.Largest.Pretty(format)),
+						Err: errors.Errorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
+							errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+							prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
+							f.Smallest.Pretty(format), f.Largest.Pretty(format)),
 					}
 				}
 			}
