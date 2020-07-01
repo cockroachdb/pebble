@@ -50,6 +50,19 @@ func TestTableStats(t *testing.T) {
 			d.mu.Unlock()
 			return ""
 
+		case "define":
+			require.NoError(t, d.Close())
+			loadedInfo = nil
+
+			d, err = runDBDefineCmd(td, opts)
+			if err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
 		case "reopen":
 			require.NoError(t, d.Close())
 			loadedInfo = nil

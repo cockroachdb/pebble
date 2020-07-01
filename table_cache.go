@@ -206,7 +206,7 @@ func (c *tableCacheShard) newIters(
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := v.reader.NewRangeDelIter()
+	rangeDelIter, err := v.reader.NewRawRangeDelIter()
 	if err != nil {
 		_ = iter.Close()
 		return nil, nil, err

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -229,11 +230,14 @@ func (d *DB) loadTableStats(
 		// Also, merging abutting tombstones reduces the number of calls to
 		// estimateSizeBeneath which is costly, and improves the accuracy of
 		// our overall estimate.
-		rangeDelIter, err := r.NewRangeDelIter()
+		rangeDelIter, err := r.NewRawRangeDelIter()
 		if err != nil {
 			return err
 		}
 		defer rangeDelIter.Close()
+		// Truncate tombstones to the containing file's bounds if necessary.
+		// See docs/range_deletions.md for why this is necessary.
+		rangeDelIter = rangedel.Truncate(d.cmp, rangeDelIter, meta.Smallest.UserKey, meta.Largest.UserKey)
 		err = foreachDefragmentedTombstone(rangeDelIter, d.cmp, func(startUserKey, endUserKey []byte) error {
 			estimate, err := d.estimateSizeBeneath(v, level, meta, startUserKey, endUserKey)
 			if err != nil {

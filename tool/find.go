@@ -423,7 +423,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 			// bit more work here to put them in a form that can be iterated in
 			// parallel with the point records.
 			rangeDelIter, err := func() (base.InternalIterator, error) {
-				iter, err := r.NewRangeDelIter()
+				iter, err := r.NewRawRangeDelIter()
 				if err != nil {
 					return nil, err
 				}
