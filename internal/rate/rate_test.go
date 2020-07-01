@@ -168,10 +168,6 @@ func TestLongRunningQPS(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
-	switch runtime.GOOS {
-	case "openbsd", "windows":
-		t.Skip("low resolution time.Sleep invalidates test (golang.org/issue/14183)")
-	}
 
 	// The test runs for a few seconds executing many requests and then checks
 	// that overall number of requests is reasonable.
@@ -183,26 +179,18 @@ func TestLongRunningQPS(t *testing.T) {
 
 	lim := NewLimiter(limit, burst)
 
-	var wg sync.WaitGroup
-	f := func() {
-		if ok := lim.Allow(); ok {
+	// We simulate time advancing below to remove any timing related dependency
+	// that can cause the test to flake.
+	start := time.Now()
+	elapsed := 5 * time.Second
+	increment := 2 * time.Millisecond
+	count := int(elapsed / increment)
+
+	for i := 0; i <= count; i++ {
+		if ok := lim.AllowN(start.Add(time.Duration(i)*2*time.Millisecond), 1); ok {
 			atomic.AddInt32(&numOK, 1)
 		}
-		wg.Done()
 	}
-
-	start := time.Now()
-	end := start.Add(5 * time.Second)
-	for time.Now().Before(end) {
-		wg.Add(1)
-		go f()
-
-		// This will still offer ~500 requests per second, but won't consume
-		// outrageous amount of CPU.
-		time.Sleep(2 * time.Millisecond)
-	}
-	wg.Wait()
-	elapsed := time.Since(start)
 	ideal := burst + (limit * float64(elapsed) / float64(time.Second))
 
 	// We should never get more requests than allowed.
