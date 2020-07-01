@@ -1315,10 +1315,10 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 	}, nil
 }
 
-// NewRangeDelIter returns an internal iterator for the contents of the
-// range-del block for the table. Returns nil if the table does not contain any
-// range deletions.
-func (r *Reader) NewRangeDelIter() (base.InternalIterator, error) {
+// NewRawRangeDelIter returns an internal iterator for the contents of the
+// range-del block for the table. Returns nil if the table does not contain
+// any range deletions.
+func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}

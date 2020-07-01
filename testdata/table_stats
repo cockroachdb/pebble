@@ -110,3 +110,59 @@ wait-pending-table-stats
 000014
 ----
 (not found)
+
+# Test range tombstones that need to be truncated to file bounds. The
+# grandparent limit and small target file size ensures that our manual
+# compaction of L4->L5 will split the range tombstone across several files.
+
+define target-file-sizes=(100, 1)
+L4
+  a.RANGEDEL.8:f
+L5
+  b.SET.7:v
+L6
+  a.SET.1:v
+L6
+  b.SET.2:v
+L6
+  c.SET.3:v
+L6
+  d.SET.4:v
+L6
+  e.SET.5:v
+----
+4:
+  000004:[a-f]
+5:
+  000005:[b-b]
+6:
+  000006:[a-a]
+  000007:[b-b]
+  000008:[c-c]
+  000009:[d-d]
+  000010:[e-e]
+
+compact a-b L4
+----
+5:
+  000011:[a-b]
+  000012:[b-c]
+  000013:[c-d]
+  000014:[d-e]
+  000015:[e-f]
+6:
+  000006:[a-a]
+  000007:[b-b]
+  000008:[c-c]
+  000009:[d-d]
+  000010:[e-e]
+
+wait-pending-table-stats
+000011
+----
+range-deletions-bytes-estimate: 1542
+
+wait-pending-table-stats
+000012
+----
+range-deletions-bytes-estimate: 1542

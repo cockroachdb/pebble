@@ -118,7 +118,7 @@ func ingestLoad1(
 		}
 	}
 
-	iter, err := r.NewRangeDelIter()
+	iter, err := r.NewRawRangeDelIter()
 	if err != nil {
 		return nil, err
 	}

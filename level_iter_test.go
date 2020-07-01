@@ -156,7 +156,7 @@ func (lt *levelIterTest) newIters(
 	if err != nil {
 		return nil, nil, err
 	}
-	rangeDelIter, err := lt.readers[meta.FileNum].NewRangeDelIter()
+	rangeDelIter, err := lt.readers[meta.FileNum].NewRawRangeDelIter()
 	if err != nil {
 		return nil, nil, err
 	}
