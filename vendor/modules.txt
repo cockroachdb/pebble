@@ -22,6 +22,8 @@ github.com/cockroachdb/errors/withstack
 github.com/cockroachdb/logtags
 # github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd
 github.com/codahale/hdrhistogram
+# github.com/cockroachdb/redact v0.0.0-20200622112456-cd282804bbd3
+github.com/cockroachdb/redact
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/getsentry/raven-go v0.2.0
