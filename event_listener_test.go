@@ -15,10 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
 )
 
@@ -342,4 +344,32 @@ func TestWriteStallEvents(t *testing.T) {
 			}
 		})
 	}
+}
+
+type redactLogger struct {
+	logger Logger
+}
+
+// Infof implements the Logger.Infof interface.
+func (l redactLogger) Infof(format string, args ...interface{}) {
+	l.logger.Infof("%s", redact.Sprintf(format, args...).Redact())
+}
+
+// Fatalf implements the Logger.Fatalf interface.
+func (l redactLogger) Fatalf(format string, args ...interface{}) {
+	l.logger.Fatalf("%s", redact.Sprintf(format, args...).Redact())
+}
+
+func TestEventListenerRedact(t *testing.T) {
+	// The vast majority of event listener fields logged are safe and do not
+	// need to be redacted. Verify that the rare, unsafe error does appear in
+	// the log redacted.
+	var log syncedBuffer
+	l := MakeLoggingEventListener(redactLogger{logger: &log})
+	l.WALDeleted(WALDeleteInfo{
+		JobID:   5,
+		FileNum: FileNum(20),
+		Err:     errors.Errorf("unredacted error: %s", "unredacted string"),
+	})
+	require.Equal(t, "[JOB 5] WAL delete error: ‹×›\n", log.String())
 }
