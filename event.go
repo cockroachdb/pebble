@@ -5,14 +5,12 @@
 package pebble
 
 import (
-	"bytes"
-	"fmt"
-	"io"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/redact"
 )
 
 // TableInfo exports the manifest.TableInfo type.
@@ -44,10 +42,12 @@ type LevelInfo struct {
 }
 
 func (i LevelInfo) String() string {
-	return fmt.Sprintf("L%d [%s] (%s)",
-		i.Level,
-		formatFileNums(i.Tables),
-		humanize.Uint64(tablesTotalSize(i.Tables)))
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i LevelInfo) safeFormat(w redact.SafePrinter) {
+	w.Printf("L%d [%s] (%s)", redact.Safe(i.Level), redact.Safe(formatFileNums(i.Tables)),
+		redact.Safe(humanize.Uint64(tablesTotalSize(i.Tables))))
 }
 
 // CompactionInfo contains the info for a compaction event.
@@ -67,29 +67,39 @@ type CompactionInfo struct {
 }
 
 func (i CompactionInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i CompactionInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] compaction to L%d error: %s",
-			i.JobID, i.Output.Level, i.Err)
+		w.Printf("[JOB %d] compaction to L%d error: %s",
+			redact.Safe(i.JobID), redact.Safe(i.Output.Level), i.Err)
+		return
 	}
-	var inputLevelsBuf bytes.Buffer
-	for j, levelInfo := range i.Input {
-		if j > 0 {
-			io.WriteString(&inputLevelsBuf, " + ")
-		}
-		io.WriteString(&inputLevelsBuf, levelInfo.String())
-	}
+
 	if !i.Done {
-		return fmt.Sprintf("[JOB %d] compacting %s", i.JobID, inputLevelsBuf.String())
+		w.Printf("[JOB %d] compacting ", redact.Safe(i.JobID))
+		i.safeFormatInputs(w)
+		return
 	}
 	outputSize := tablesTotalSize(i.Output.Tables)
-	return fmt.Sprintf("[JOB %d] compacted %s -> L%d [%s] (%s), in %.1fs, output rate %s/s",
-		i.JobID,
-		inputLevelsBuf.String(),
-		i.Output.Level,
-		formatFileNums(i.Output.Tables),
-		humanize.Uint64(outputSize),
-		i.Duration.Seconds(),
-		humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds())))
+	w.Printf("[JOB %d] compacted ", redact.Safe(i.JobID))
+	i.safeFormatInputs(w)
+	w.Printf(" -> L%d [%s] (%s), in %.1fs, output rate %s/s",
+		redact.Safe(i.Output.Level),
+		redact.Safe(formatFileNums(i.Output.Tables)),
+		redact.Safe(humanize.Uint64(outputSize)),
+		redact.Safe(i.Duration.Seconds()),
+		redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+}
+
+func (i CompactionInfo) safeFormatInputs(w redact.SafePrinter) {
+	for j, levelInfo := range i.Input {
+		if j > 0 {
+			w.Printf(" + ")
+		}
+		levelInfo.safeFormat(w)
+	}
 }
 
 // FlushInfo contains the info for a flush event.
@@ -109,25 +119,33 @@ type FlushInfo struct {
 }
 
 func (i FlushInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i FlushInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] flush error: %s", i.JobID, i.Err)
+		w.Printf("[JOB %d] flush error: %s", redact.Safe(i.JobID), i.Err)
+		return
 	}
 
-	plural := "s"
+	plural := redact.SafeString("s")
 	if i.Input == 1 {
 		plural = ""
 	}
 	if !i.Done {
-		return fmt.Sprintf("[JOB %d] flushing %d memtable%s to L0", i.JobID, i.Input, plural)
+		w.Printf("[JOB %d] flushing %d memtable", redact.Safe(i.JobID), redact.Safe(i.Input))
+		w.SafeString(plural)
+		w.Printf(" to L0")
+		return
 	}
 
 	outputSize := tablesTotalSize(i.Output)
-	return fmt.Sprintf("[JOB %d] flushed %d memtable%s to L0 [%s] (%s), in %.1fs, output rate %s/s",
-		i.JobID, i.Input, plural,
-		formatFileNums(i.Output),
-		humanize.Uint64(outputSize),
-		i.Duration.Seconds(),
-		humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds())))
+	w.Printf("[JOB %d] flushed %d memtable%s to L0 [%s] (%s), in %.1fs, output rate %s/s",
+		redact.Safe(i.JobID), redact.Safe(i.Input), plural,
+		redact.Safe(formatFileNums(i.Output)),
+		redact.Safe(humanize.Uint64(outputSize)),
+		redact.Safe(i.Duration.Seconds()),
+		redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
 }
 
 // ManifestCreateInfo contains info about a manifest creation event.
@@ -141,10 +159,15 @@ type ManifestCreateInfo struct {
 }
 
 func (i ManifestCreateInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i ManifestCreateInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] MANIFEST create error: %s", i.JobID, i.Err)
+		w.Printf("[JOB %d] MANIFEST create error: %s", redact.Safe(i.JobID), i.Err)
+		return
 	}
-	return fmt.Sprintf("[JOB %d] MANIFEST created %s", i.JobID, i.FileNum)
+	w.Printf("[JOB %d] MANIFEST created %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
 }
 
 // ManifestDeleteInfo contains the info for a Manifest deletion event.
@@ -157,10 +180,15 @@ type ManifestDeleteInfo struct {
 }
 
 func (i ManifestDeleteInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i ManifestDeleteInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] MANIFEST delete error: %s", i.JobID, i.Err)
+		w.Printf("[JOB %d] MANIFEST delete error: %s", redact.Safe(i.JobID), i.Err)
+		return
 	}
-	return fmt.Sprintf("[JOB %d] MANIFEST deleted %s", i.JobID, i.FileNum)
+	w.Printf("[JOB %d] MANIFEST deleted %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
 }
 
 // TableCreateInfo contains the info for a table creation event.
@@ -174,7 +202,12 @@ type TableCreateInfo struct {
 }
 
 func (i TableCreateInfo) String() string {
-	return fmt.Sprintf("[JOB %d] %s: sstable created %s", i.JobID, i.Reason, i.FileNum)
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i TableCreateInfo) safeFormat(w redact.SafePrinter) {
+	w.Printf("[JOB %d] %s: sstable created %s",
+		redact.Safe(i.JobID), redact.Safe(i.Reason), redact.Safe(i.FileNum))
 }
 
 // TableDeleteInfo contains the info for a table deletion event.
@@ -186,11 +219,16 @@ type TableDeleteInfo struct {
 }
 
 func (i TableDeleteInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i TableDeleteInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] sstable delete error %s: %s",
-			i.JobID, i.FileNum, i.Err)
+		w.Printf("[JOB %d] sstable delete error %s: %s",
+			redact.Safe(i.JobID), redact.Safe(i.FileNum), i.Err)
+		return
 	}
-	return fmt.Sprintf("[JOB %d] sstable deleted %s", i.JobID, i.FileNum)
+	w.Printf("[JOB %d] sstable deleted %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
 }
 
 // TableIngestInfo contains the info for a table ingestion event.
@@ -208,20 +246,24 @@ type TableIngestInfo struct {
 }
 
 func (i TableIngestInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i TableIngestInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] ingest error: %s", i.JobID, i.Err)
+		w.Printf("[JOB %d] ingest error: %s", redact.Safe(i.JobID), i.Err)
+		return
 	}
 
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "[JOB %d] ingested", i.JobID)
+	w.Printf("[JOB %d] ingested", redact.Safe(i.JobID))
 	for j := range i.Tables {
 		t := &i.Tables[j]
 		if j > 0 {
-			fmt.Fprintf(&buf, ",")
+			w.Printf(",")
 		}
-		fmt.Fprintf(&buf, " L%d:%s (%s)", t.Level, t.FileNum, humanize.Uint64(t.Size))
+		w.Printf(" L%d:%s (%s)", redact.Safe(t.Level), redact.Safe(t.FileNum),
+			redact.Safe(humanize.Uint64(t.Size)))
 	}
-	return buf.String()
 }
 
 // TableStatsInfo contains the info for a table stats loaded event.
@@ -232,7 +274,11 @@ type TableStatsInfo struct {
 }
 
 func (i TableStatsInfo) String() string {
-	return fmt.Sprintf("[JOB %d] all initial table stats loaded", i.JobID)
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i TableStatsInfo) safeFormat(w redact.SafePrinter) {
+	w.Printf("[JOB %d] all initial table stats loaded", redact.Safe(i.JobID))
 }
 
 // WALCreateInfo contains info about a WAL creation event.
@@ -249,16 +295,22 @@ type WALCreateInfo struct {
 }
 
 func (i WALCreateInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i WALCreateInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] WAL create error: %s", i.JobID, i.Err)
+		w.Printf("[JOB %d] WAL create error: %s", redact.Safe(i.JobID), i.Err)
+		return
 	}
 
 	if i.RecycledFileNum == 0 {
-		return fmt.Sprintf("[JOB %d] WAL created %s", i.JobID, i.FileNum)
+		w.Printf("[JOB %d] WAL created %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
+		return
 	}
 
-	return fmt.Sprintf("[JOB %d] WAL created %s (recycled %s)",
-		i.JobID, i.FileNum, i.RecycledFileNum)
+	w.Printf("[JOB %d] WAL created %s (recycled %s)",
+		redact.Safe(i.JobID), redact.Safe(i.FileNum), redact.Safe(i.RecycledFileNum))
 }
 
 // WALDeleteInfo contains the info for a WAL deletion event.
@@ -271,10 +323,15 @@ type WALDeleteInfo struct {
 }
 
 func (i WALDeleteInfo) String() string {
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i WALDeleteInfo) safeFormat(w redact.SafePrinter) {
 	if i.Err != nil {
-		return fmt.Sprintf("[JOB %d] WAL delete error: %s", i.JobID, i.Err)
+		w.Printf("[JOB %d] WAL delete error: %s", redact.Safe(i.JobID), i.Err)
+		return
 	}
-	return fmt.Sprintf("[JOB %d] WAL deleted %s", i.JobID, i.FileNum)
+	w.Printf("[JOB %d] WAL deleted %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
 }
 
 // WriteStallBeginInfo contains the info for a write stall begin event.
@@ -283,7 +340,11 @@ type WriteStallBeginInfo struct {
 }
 
 func (i WriteStallBeginInfo) String() string {
-	return fmt.Sprintf("write stall beginning: %s", i.Reason)
+	return string(redact.Sprintfn(i.safeFormat))
+}
+
+func (i WriteStallBeginInfo) safeFormat(w redact.SafePrinter) {
+	w.Printf("write stall beginning: %s", redact.Safe(i.Reason))
 }
 
 // EventListener contains a set of functions that will be invoked when various
@@ -399,6 +460,26 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	}
 }
 
+type safeFormatterInternal interface {
+	safeFormat(redact.SafePrinter)
+}
+
+// safeFormatter implements redact.SafeFormatter, bridging the gap between the
+// redact.SafeFormatter and safeFormatterInternal interfaces. This allows
+// Pebble's exported types to implement SafeFormatter without leaking the
+// SafeFormat method as part of the public interface.
+type safeFormatter struct {
+	formatter safeFormatterInternal
+}
+
+func (f safeFormatter) SafeFormat(sp redact.SafePrinter, _ rune) {
+	f.formatter.safeFormat(sp)
+}
+
+func (f safeFormatter) String() string {
+	return string(redact.Sprintfn(f.formatter.safeFormat))
+}
+
 // MakeLoggingEventListener creates an EventListener that logs all events to the
 // specified logger.
 func MakeLoggingEventListener(logger Logger) EventListener {
@@ -411,43 +492,43 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 			logger.Infof("background error: %s", err)
 		},
 		CompactionBegin: func(info CompactionInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		CompactionEnd: func(info CompactionInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		FlushBegin: func(info FlushInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		FlushEnd: func(info FlushInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		ManifestCreated: func(info ManifestCreateInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		ManifestDeleted: func(info ManifestDeleteInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		TableCreated: func(info TableCreateInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		TableDeleted: func(info TableDeleteInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		TableIngested: func(info TableIngestInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		TableStatsLoaded: func(info TableStatsInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		WALCreated: func(info WALCreateInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		WALDeleted: func(info WALDeleteInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		WriteStallBegin: func(info WriteStallBeginInfo) {
-			logger.Infof("%s", info)
+			logger.Infof("%s", safeFormatter{info})
 		},
 		WriteStallEnd: func() {
 			logger.Infof("write stall ending")

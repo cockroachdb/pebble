@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/sstable"
@@ -342,4 +343,18 @@ func TestWriteStallEvents(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEventListenerRedact(t *testing.T) {
+	// The vast majority of event listener fields logged are safe and do not
+	// need to be redacted. Verify that the rare, unsafe error does appear in
+	// the log redacted.
+	var log syncedBuffer
+	l := MakeLoggingEventListener(&log)
+	l.WALDeleted(WALDeleteInfo{
+		JobID:   5,
+		FileNum: FileNum(20),
+		Err:     errors.Errorf("unredacted error: %s", "unredacted string"),
+	})
+	require.Equal(t, "[JOB 5] WAL delete error: ‹unredacted error: unredacted string›\n", log.String())
 }
