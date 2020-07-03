@@ -546,6 +546,7 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if err := d.commit.Commit(batch, sync); err != nil {
 		// There isn't much we can do on an error here. The commit pipeline will be
 		// horked at this point.
+		// return err? place in read only mode?
 		d.opts.Logger.Fatalf("%v", err)
 	}
 	// If this is a large batch, we need to clear the batch contents as the
@@ -1374,7 +1375,8 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			//
 			// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
 			// close the previous log it is possible we lost a write.
-			panic(err)
+			d.errorHandler.setBGError(err, BgMemtable)
+			return d.errorHandler.getBGError()
 		}
 
 		if !d.opts.DisableWAL {
