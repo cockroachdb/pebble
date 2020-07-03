@@ -1028,3 +1028,24 @@ L0.1:                 f++++++h                n---o
 L0.0:                 f+++g h++++++j k+++l    n---o
 L6:    a------------------------------------------o p---------s
        aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+# Ensure that two L0 sstables where one ends at a rangedel sentinel key and
+# the other starts at the same user key occupy the same sublevel.
+
+define
+L0
+  000004:a.SET.2-d.RANGEDEL.72057594037927935
+  000005:d.SET.3-g.SET.5
+L6
+  000001:a.SET.0-o.SET.0
+  000008:p.SET.0-s.SET.0
+----
+file count: 2, sublevels: 1, intervals: 3
+flush split keys(2): [d, g]
+0.0: file count: 2, bytes: 512, width (mean, max): 1.0, 1, interval range: [0, 1]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+compacting file count: 0, base compacting intervals: none
+L0.0:  a--------d---------g
+L6:    a------------------------------------------o p---------s
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss

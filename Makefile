@@ -27,7 +27,7 @@ testrace: test
 
 .PHONY: stress stressrace
 stressrace: testflags += -race
-stress stressrace: testflags += -exec 'stress ${STRESSFLAGS}' -timeout 0
+stress stressrace: testflags += -exec 'stress ${STRESSFLAGS}' -timeout 0 -test.v
 stress stressrace: test
 
 .PHONY: stressmeta
