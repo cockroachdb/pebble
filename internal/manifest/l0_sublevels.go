@@ -32,6 +32,10 @@ import (
 // - intervalKey{k, false} < intervalKey{k, true}
 // - k1 < k2 -> intervalKey{k1, _} < intervalKey{k2, _}.
 //
+// Note that the file's largest key is exclusive if the internal key
+// has a trailer matching the rangedel sentinel key. In this case, we set
+// isLargest to false for end interval computation.
+//
 // For example, consider three files with bounds [a,e], [b,g], and [e,j]. The
 // interval keys produced would be intervalKey{a, false}, intervalKey{b, false},
 // intervalKey{e, false}, intervalKey{e, true}, intervalKey{g, true} and
@@ -237,10 +241,13 @@ func NewL0Sublevels(
 	s := &L0Sublevels{cmp: cmp, formatKey: formatKey}
 	s.filesByAge = files
 	keys := make([]intervalKey, 0, 2*len(files))
-	for i := range s.filesByAge {
-		files[i].l0Index = i
-		keys = append(keys, intervalKey{key: files[i].Smallest.UserKey})
-		keys = append(keys, intervalKey{key: files[i].Largest.UserKey, isLargest: true})
+	for i, f := range s.filesByAge {
+		f.l0Index = i
+		keys = append(keys, intervalKey{key: f.Smallest.UserKey})
+		keys = append(keys, intervalKey{
+			key: f.Largest.UserKey,
+			isLargest: f.Largest.Trailer != base.InternalKeyRangeDeleteSentinel,
+		})
 	}
 	keys = sortAndDedup(keys, cmp)
 	// All interval indices reference s.orderedIntervals.
@@ -265,7 +272,7 @@ func NewL0Sublevels(
 		}
 		f.maxIntervalIndex = sort.Search(len(keys), func(index int) bool {
 			return intervalKeyCompare(
-				cmp, intervalKey{key: f.Largest.UserKey, isLargest: true}, keys[index]) <= 0
+				cmp, intervalKey{key: f.Largest.UserKey, isLargest: f.Largest.Trailer != base.InternalKeyRangeDeleteSentinel}, keys[index]) <= 0
 		})
 		if f.maxIntervalIndex == len(keys) {
 			return nil, errors.Errorf("expected sstable bound to be in interval keys: %s", f.Largest.UserKey)
