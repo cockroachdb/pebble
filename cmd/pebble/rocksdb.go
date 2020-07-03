@@ -154,7 +154,7 @@ func (r rocksDB) NewBatch() batch {
 	return rocksDBBatch{r.d.NewBatch()}
 }
 
-func (r rocksDB) Scan(key []byte, count int64, reverse bool) error {
+func (r rocksDB) Scan(iter iterator, key []byte, count int64, reverse bool) error {
 	// TODO: unnecessary overhead here. Change the interface.
 	beginKey, _, ok := mvccSplitKey(key)
 	if !ok {

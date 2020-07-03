@@ -45,7 +45,7 @@ func (b badgerDB) NewBatch() batch {
 	return &badgerBatch{txn}
 }
 
-func (b badgerDB) Scan(key []byte, count int64, reverse bool) error {
+func (b badgerDB) Scan(iter iterator, key []byte, count int64, reverse bool) error {
 	panic("badgerDB.Scan: unimplemented")
 }
 
