@@ -487,11 +487,22 @@ func (y *ycsb) read(db DB, buf *ycsbBuf) {
 func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
 	count := y.scanDist.Uint64(buf.rng)
 	key := y.nextReadKey(buf)
-	if err := db.Scan(key, int64(count), reverse); err != nil {
+	iter := db.NewIter(nil)
+	if err := db.Scan(iter, key, int64(count), reverse); err != nil {
 		log.Fatal(err)
 	}
 
-	// TODO(peter): Measure read-amp for scan operations.
+	type metrics interface {
+		Metrics() pebble.IteratorMetrics
+	}
+	if m, ok := iter.(metrics); ok {
+		atomic.AddUint64(&y.readAmpCount, 1)
+		atomic.AddUint64(&y.readAmpSum, uint64(m.Metrics().ReadAmp))
+	}
+
+	if err := iter.Close(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (y *ycsb) update(db DB, buf *ycsbBuf) {

@@ -17,12 +17,13 @@ import (
 type DB interface {
 	NewIter(*pebble.IterOptions) iterator
 	NewBatch() batch
-	Scan(key []byte, count int64, reverse bool) error
+	Scan(iter iterator, key []byte, count int64, reverse bool) error
 	Metrics() *pebble.Metrics
 	Flush() error
 }
 
 type iterator interface {
+	SeekLT(key []byte) bool
 	SeekGE(key []byte) bool
 	Valid() bool
 	Key() []byte
@@ -117,9 +118,8 @@ func (p pebbleDB) NewBatch() batch {
 	return p.d.NewBatch()
 }
 
-func (p pebbleDB) Scan(key []byte, count int64, reverse bool) error {
+func (p pebbleDB) Scan(iter iterator, key []byte, count int64, reverse bool) error {
 	var data bytealloc.A
-	iter := p.d.NewIter(nil)
 	if reverse {
 		for i, valid := 0, iter.SeekLT(key); valid; valid = iter.Prev() {
 			data, _ = data.Copy(iter.Key())
@@ -139,7 +139,7 @@ func (p pebbleDB) Scan(key []byte, count int64, reverse bool) error {
 			}
 		}
 	}
-	return iter.Close()
+	return nil
 }
 
 func (p pebbleDB) Metrics() *pebble.Metrics {

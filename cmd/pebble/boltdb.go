@@ -59,7 +59,7 @@ func (b boltDB) NewBatch() batch {
 	return boltDBBatch{tx: tx, bucket: bucket}
 }
 
-func (b boltDB) Scan(key []byte, count int64, reverse bool) error {
+func (b boltDB) Scan(iter iterator, key []byte, count int64, reverse bool) error {
 	panic("boltDB.Scan: unimplemented")
 }
 
