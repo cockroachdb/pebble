@@ -546,8 +546,7 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if err := d.commit.Commit(batch, sync); err != nil {
 		// There isn't much we can do on an error here. The commit pipeline will be
 		// horked at this point.
-		// return err? place in read only mode?
-		d.opts.Logger.Fatalf("%v", err)
+		return err
 	}
 	// If this is a large batch, we need to clear the batch contents as the
 	// flushable batch may still be present in the flushables queue.
@@ -569,6 +568,12 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	}
 	err := mem.apply(b, b.SeqNum())
 	if err != nil {
+		d.mu.Lock()
+		// An err here indicates that the state implied by the
+		// WAL has diverged from the in-memory state.  This could be
+		// because of a corrupt batch.
+		d.errorHandler.setBGError(err, BgMemtable)
+		d.mu.Unlock()
 		return err
 	}
 
@@ -608,7 +613,10 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 			var err error
 			size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
 			if err != nil {
-				panic(err)
+				d.mu.Lock()
+				d.errorHandler.setBGError(err, BgWrite)
+				d.mu.Unlock()
+				return nil, err
 			}
 		}
 	}
@@ -616,6 +624,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	d.mu.Lock()
 
 	// Switch out the memtable if there was not enough room to store the batch.
+	// this could've caused kMemtable to set.
 	err := d.makeRoomForWrite(b)
 
 	if err == nil && !d.opts.DisableWAL {
@@ -640,7 +649,10 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	if b.flushable == nil {
 		size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
 		if err != nil {
-			panic(err)
+			d.mu.Lock()
+			d.errorHandler.setBGError(err, BgWrite)
+			d.mu.Unlock()
+			return nil, err
 		}
 	}
 
@@ -1375,6 +1387,9 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			//
 			// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
 			// close the previous log it is possible we lost a write.
+			//
+			// BgMemtable is always an error of fatal severity and is
+			// independent of db option paranoid checks.
 			d.errorHandler.setBGError(err, BgMemtable)
 			return d.errorHandler.getBGError()
 		}
