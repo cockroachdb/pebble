@@ -261,6 +261,10 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	<-p.sem
 
 	if b.commitErr != nil {
+		b.db.mu.Lock()
+		// WAL sync error.
+		b.db.errorHandler.setBGError(b.commitErr, BgWrite)
+		b.db.mu.Unlock()
 		b.db = nil // prevent batch reuse on error
 	}
 	return b.commitErr

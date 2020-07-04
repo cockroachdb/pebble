@@ -149,6 +149,10 @@ func (h *errorHandler) getSeverity(err error, op BackgroundErrorReason) Severity
 	var linkErr *os.LinkError
 	isIOErr = isIOErr || errors.As(err, &linkErr)
 	if isIOErr {
+		// TODO: kWrite i.e. WAL write failures should be fatal always?
+		// independent of paranoid checks? because we don't know what's the
+		// state of wal now. can bytes be partially written to it?
+		// note: this diverges from rocksDB's behaviour.
 		if !paranoidChecks {
 			return SeverityNoError
 		}
