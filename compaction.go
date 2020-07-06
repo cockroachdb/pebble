@@ -160,6 +160,12 @@ type compaction struct {
 	inuseKeyRanges      []userKeyRange
 	elideTombstoneIndex int
 
+	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
+	// snapshots requiring them to be kept. This determination is made by
+	// looking for an sstable which overlaps the bounds of the compaction at a
+	// lower level in the LSM during runCompaction.
+	allowedZeroSeqNum bool
+
 	metrics map[int]*LevelMetrics
 }
 
@@ -467,8 +473,8 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	// being flushed in the same compaction. It's possible for a range tombstone
 	// in one memtable to overlap keys in a preceding memtable in c.flushing.
 	//
-	// This function is also used in allowZeroSeqNum, so disabling elision of
-	// range tombstones also disables zeroing of SeqNums.
+	// This function is also used in setting allowZeroSeqNum, so disabling
+	// elision of range tombstones also disables zeroing of SeqNums.
 	//
 	// TODO(peter): we disable zeroing of seqnums during flushing to match
 	// RocksDB behavior and to avoid generating overlapping sstables during
@@ -1000,6 +1006,7 @@ func (d *DB) flush1() error {
 		}
 	}
 
+	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
@@ -1143,6 +1150,9 @@ type deleteCompactionHint struct {
 	// The smallest sequence number of a sstable that was found to be covered
 	// by this hint. The hint cannot be resolved until this sequence number is
 	// in the same snapshot stripe as the largest tombstone sequence number.
+	// This is set when a hint is created, so the LSM may look different and
+	// notably no longer contian the sstable that contained the key at this
+	// sequence number.
 	fileSmallestSeqNum uint64
 }
 
@@ -1174,22 +1184,79 @@ func (h *deleteCompactionHint) canDelete(cmp Compare, m *fileMetadata, snapshots
 	return cmp(h.start, m.Smallest.UserKey) <= 0 && cmp(m.Largest.UserKey, h.end) < 0
 }
 
-func checkDeleteCompactionHints(cmp Compare, v *version, hints []deleteCompactionHint, snapshots []uint64) ([]compactionLevel, []deleteCompactionHint) {
+func (d *DB) maybeUpdateDeleteCompactionHints(c *compaction) {
+	// Compactions that zero sequence numbers can interfere with compaction
+	// deletion hints. Deletion hints apply to tables containing keys older
+	// than a threshold. If a key more recent than the threshold is zeroed in
+	// a compaction, a delete-only compaction may mistake it as meeting the
+	// threshold and drop a table containing live data.
+	//
+	// To avoid this scenario, compactions that zero sequence numbers remove
+	// any conflicting deletion hints. A deletion hint is conflicting if both
+	// of the following conditions apply:
+	// * its key space overlaps with the compaction
+	// * at least one of its inputs contains a key as recent as one of the
+	//   hint's tombstones.
+	//
+	if !c.allowedZeroSeqNum {
+		return
+	}
+
+	updatedHints := d.mu.compact.deletionHints[:0]
+	for _, h := range d.mu.compact.deletionHints {
+		// If the compaction's key space is disjoint from the hint's key
+		// space, the zeroing of sequence numbers won't affect the hint. Keep
+		// the hint.
+		keysDisjoint := d.cmp(h.end, c.smallest.UserKey) < 0 || d.cmp(h.start, c.largest.UserKey) > 0
+		if keysDisjoint {
+			updatedHints = append(updatedHints, h)
+			continue
+		}
+
+		// All of the compaction's inputs must be older than the hint's
+		// tombstones.
+		inputsOlder := true
+		for _, in := range c.inputs {
+			for _, f := range in.files {
+				inputsOlder = inputsOlder && f.LargestSeqNum < h.tombstoneSmallestSeqNum
+			}
+		}
+		if inputsOlder {
+			updatedHints = append(updatedHints, h)
+			continue
+		}
+
+		// Drop h, because the compaction c may have zeroed sequence numbers
+		// of keys more recent than some of h's tombstones.
+	}
+	d.mu.compact.deletionHints = updatedHints
+}
+
+func checkDeleteCompactionHints(
+	cmp Compare, v *version, hints []deleteCompactionHint, snapshots []uint64,
+) ([]compactionLevel, []deleteCompactionHint) {
 	var files map[*fileMetadata]bool
 	var byLevel [numLevels][]*fileMetadata
 
 	unresolvedHints := hints[:0]
 	for _, h := range hints {
-		// The largest tombstone sequence number and the smallest file
-		// sequence number must be in the same snapshot stripe for the hint to
-		// be resolvable. The below graphic models a compaction hint covering
-		// the keyspace [b, r). The hint completely contains two files, 000002
-		// and 000003. The file 000003 contains the lowest covered sequence
-		// number at #90. The tombstone b.RANGEDEL.230:h has the highest
-		// tombstone sequence number incorporated into the hint. The hint may
-		// be resolved only once the snapshots at #100, #180 and #210 are all
-		// closed. File 000001 is not included within the hint because it
-		// extends beyond the range tombstones in user key space.
+		// Check each compaction hint to see if it's resolvable. Resolvable
+		// hints are removed and trigger a delete-only compaction if any files
+		// in the current LSM still meet their criteria. Unresolvable hints
+		// are saved and don't trigger a delete-only compaction.
+		//
+		// When a compaction hint is created, the sequence numbers of the
+		// range tombstones and the covered file with the oldest key are
+		// recorded. The largest tombstone sequence number and the smallest
+		// file sequence number must be in the same snapshot stripe for the
+		// hint to be resolved. The below graphic models a compaction hint
+		// covering the keyspace [b, r). The hint completely contains two
+		// files, 000002 and 000003. The file 000003 contains the lowest
+		// covered sequence number at #90. The tombstone b.RANGEDEL.230:h has
+		// the highest tombstone sequence number incorporated into the hint.
+		// The hint may be resolved only once the snapshots at #100, #180 and
+		// #210 are all closed. File 000001 is not included within the hint
+		// because it extends beyond the range tombstones in user key space.
 		//
 		// 250
 		//
@@ -1220,16 +1287,9 @@ func checkDeleteCompactionHints(cmp Compare, v *version, hints []deleteCompactio
 			unresolvedHints = append(unresolvedHints, h)
 			continue
 		}
-		// The hint h will be resolved and dropped, regardless of whether
-		// there's any tables that may be deleted.
 
-		// If the file containing the tombstone has already been compacted,
-		// it's possible that its keys and keys with higher sequence numbers
-		// have already been compacted into L6 with zeroed sequence numbers,
-		// so we cannot use this hint.
-		if !v.Contains(h.tombstoneLevel, cmp, h.tombstoneFile) {
-			continue
-		}
+		// The hint h will be resolved and dropped, regardless of whether
+		// there are any tables that can be deleted.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
 			overlaps := v.Overlaps(l, cmp, h.start, h.end)
 			for m := overlaps.First(); m != nil; m = overlaps.Next() {
@@ -1328,6 +1388,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		}
 	}
 
+	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions()
 	d.opts.EventListener.CompactionEnd(info)
@@ -1412,9 +1473,9 @@ func (d *DB) runCompaction(
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
-	allowZeroSeqNum := c.allowZeroSeqNum(iiter)
+	c.allowedZeroSeqNum = c.allowZeroSeqNum(iiter)
 	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots, &c.rangeDelFrag,
-		allowZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
+		c.allowedZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
 	var (
 		filenames []string
@@ -1637,7 +1698,7 @@ func (d *DB) runCompaction(
 				if meta.Largest.Trailer >= c.largest.Trailer {
 					break
 				}
-				if allowZeroSeqNum && meta.Largest.SeqNum() == 0 {
+				if c.allowedZeroSeqNum && meta.Largest.SeqNum() == 0 {
 					break
 				}
 				fallthrough
