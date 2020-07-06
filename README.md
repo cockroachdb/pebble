@@ -1,4 +1,5 @@
 # Pebble [![Build Status](https://travis-ci.org/cockroachdb/pebble.svg?branch=master)](https://travis-ci.org/cockroachdb/pebble)
+#### [Nightly benchmarks](https://cockroachdb.github.io/pebble/)
 
 Pebble is a LevelDB/RocksDB inspired key-value store focused on
 performance and internal usage by CockroachDB. Pebble inherits the
