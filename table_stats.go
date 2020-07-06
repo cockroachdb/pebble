@@ -128,7 +128,27 @@ func (d *DB) collectTableStats() {
 	}
 	d.mu.tableStats.cond.Broadcast()
 	d.maybeCollectTableStats()
-	d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, hints...)
+	if len(hints) > 0 {
+		// Verify that all of the hint tombstones' files still exist in the
+		// current version. Otherwise, the tombstone itself may have been
+		// compacted into L6 and more recent keys may have had their sequence
+		// numbers zeroed.
+		//
+		// Note that it's possible that the tombstone file is being compacted
+		// presently. In that case, the file will be present in v. When the
+		// compaction finishes compacting the tombstone file, it will detect
+		// and clear the hint.
+		//
+		// See DB.maybeUpdateDeleteCompactionHints.
+		v := d.mu.versions.currentVersion()
+		keepHints := hints[:0]
+		for _, h := range hints {
+			if v.Contains(h.tombstoneLevel, d.cmp, h.tombstoneFile) {
+				keepHints = append(keepHints, h)
+			}
+		}
+		d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, keepHints...)
+	}
 	if maybeCompact {
 		d.maybeScheduleCompaction()
 	}
