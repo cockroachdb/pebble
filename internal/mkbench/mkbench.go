@@ -91,6 +91,8 @@ func (l *loader) loadCooked(path string) {
 		log.Fatal(err)
 	}
 
+	data = bytes.TrimSpace(data)
+
 	prefix := []byte("data = ")
 	if !bytes.HasPrefix(data, prefix) {
 		log.Fatalf("missing '%s' prefix", prefix)
@@ -129,7 +131,7 @@ func (l *loader) loadCooked(path string) {
 
 func (l *loader) loadRaw(dir string) {
 	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if !info.Mode().IsRegular() {
+		if info == nil || !info.Mode().IsRegular() {
 			return nil
 		}
 
