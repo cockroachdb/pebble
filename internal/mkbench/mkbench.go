@@ -31,8 +31,10 @@ import (
 	"bufio"
 	"bytes"
 	"compress/bzip2"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
@@ -148,8 +150,19 @@ func (l *loader) loadRaw(dir string) {
 		}
 		defer f.Close()
 
-		z := bzip2.NewReader(f)
-		s := bufio.NewScanner(z)
+		r := io.Reader(f)
+		if strings.HasSuffix(path, ".bz2") {
+			r = bzip2.NewReader(f)
+		} else if strings.HasSuffix(path, ".gz") {
+			var err error
+			r, err = gzip.NewReader(f)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%+v\n", err)
+				return nil // stumble forward on error
+			}
+		}
+
+		s := bufio.NewScanner(r)
 		for s.Scan() {
 			line := s.Text()
 			if !strings.HasPrefix(line, "Benchmark") {
