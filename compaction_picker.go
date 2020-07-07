@@ -174,15 +174,56 @@ func (pc *pickedCompaction) setupInputs() {
 	if pc.lcf != nil && pc.startLevel.level == 0 && pc.outputLevel.level != 0 {
 		// Call the L0-specific compaction extension method. Similar logic as
 		// pc.grow. Additional L0 files are optionally added to the compaction at
-		// this step.
-		if pc.version.L0Sublevels.ExtendL0ForBaseCompactionTo(pc.smallest, pc.largest, pc.lcf) {
-			pc.startLevel.files = pc.startLevel.files[:0]
+		// this step. Note that the bounds passed in are not the bounds of the
+		// compaction, but rather the smallest and largest internal keys that
+		// the compaction cannot include from L0 without pulling in more Lbase
+		// files. Consider this example:
+		//
+		// L0:        c-d e+f g-h
+		// Lbase: a-b     e+f     i-j
+		//        a b c d e f g h i j
+		//
+		// The e-f files have already been chosen in the compaction. As pulling
+		// in more LBase files is undesirable, the logic below will pass in
+		// smallest = b and largest = i to ExtendL0ForBaseCompactionTo, which
+		// will expand the compaction to include c-d and g-h from L0. The
+		// bounds passed in are exclusive; the compaction cannot be expanded
+		// to include files that "touch" it.
+		smallestBaseKey := base.InvalidInternalKey
+		largestBaseKey := base.InvalidInternalKey
+		baseFiles := pc.version.Levels[pc.outputLevel.level]
+		if len(baseFiles) != 0 {
+			// smallestBaseFileIdx is the index of the smallest
+			// (by key ordering) base file already in the compaction.
+			smallestBaseFileIdx := sort.Search(len(baseFiles), func(i int) bool {
+				return base.InternalCompare(pc.cmp, baseFiles[i].Largest, pc.smallest) >= 0
+			})
+			if smallestBaseFileIdx > 0 {
+				smallestBaseKey = baseFiles[smallestBaseFileIdx-1].Largest
+			}
+			// largestBaseFileIdx is the index that's one higher than the
+			// largest base file included in the compaction.
+			largestBaseFileIdx := sort.Search(len(baseFiles), func(i int) bool {
+				return base.InternalCompare(pc.cmp, baseFiles[i].Smallest, pc.largest) > 0
+			})
+			if largestBaseFileIdx < len(baseFiles) {
+				largestBaseKey = baseFiles[largestBaseFileIdx].Smallest
+			}
+		}
+		oldLcf := *pc.lcf
+		if pc.version.L0Sublevels.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
+			newStartLevelFiles := make([]*fileMetadata, 0, len(pc.startLevel.files))
 			for j := range pc.lcf.FilesIncluded {
 				if pc.lcf.FilesIncluded[j] {
-					pc.startLevel.files = append(pc.startLevel.files, pc.version.Levels[0][j])
+					newStartLevelFiles = append(newStartLevelFiles, pc.version.Levels[0][j])
 				}
 			}
-			pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, pc.outputLevel.files)
+			if totalSize(newStartLevelFiles)+totalSize(pc.outputLevel.files) < pc.maxExpandedBytes {
+				pc.startLevel.files = newStartLevelFiles
+				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, pc.outputLevel.files)
+			} else {
+				*pc.lcf = oldLcf
+			}
 		}
 	} else if pc.grow(pc.smallest, pc.largest) {
 		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, pc.outputLevel.files)
@@ -621,7 +662,8 @@ func (p *compactionPickerByScore) calculateL0Score(
 		// If L0Sublevels are present, we use the sublevel count as opposed to
 		// the L0 file count to score this level. The base vs intra-L0
 		// compaction determination happens in pickAuto, not here.
-		info.score = float64(2 * p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions())
+		info.score = float64(2 * p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
+			float64(p.opts.L0CompactionThreshold)
 		return info
 	}
 
@@ -955,8 +997,10 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	// so it can pick a compaction that does not conflict with an Lbase => Lbase+1
 	// compaction. Without this, we observed reduced concurrency of L0=>Lbase
 	// compactions, and increasing read amplification in L0.
-	lcf, err := vers.L0Sublevels.PickBaseCompaction(
-		opts.L0CompactionThreshold, vers.Levels[baseLevel])
+	//
+	// TODO(bilal) Remove the minCompactionDepth parameter once fixing it at 1
+	// has been shown to not cause a performance regression.
+	lcf, err := vers.L0Sublevels.PickBaseCompaction(1, vers.Levels[baseLevel])
 	if err != nil {
 		opts.Logger.Infof("error when picking base compaction: %s", err)
 		return
@@ -971,7 +1015,9 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	}
 
 	// Couldn't choose a base compaction. Try choosing an intra-L0
-	// compaction.
+	// compaction. Note that we pass in L0CompactionThreshold here as opposed to
+	// 1, since choosing a single sublevel intra-L0 compaction is
+	// counterproductive.
 	lcf, err = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, opts.L0CompactionThreshold)
 	if err != nil {
 		opts.Logger.Infof("error when picking intra-L0 compaction: %s", err)

@@ -365,9 +365,9 @@ func TestL0Sublevels(t *testing.T) {
 				lcf, err = sublevels.PickBaseCompaction(minCompactionDepth, fileMetas[baseLevel])
 				if err == nil && lcf != nil {
 					// Try to extend the base compaction into a more rectangular
-					// shape, using the smallest/largest keys of overlapping
-					// base files. This mimics the logic the compactor is
-					// expected to implement.
+					// shape, using the smallest/largest keys of the files before
+					// and after overlapping base files. This mimics the logic
+					// the compactor is expected to implement.
 					baseFiles := fileMetas[baseLevel]
 					firstFile := sort.Search(len(baseFiles), func(i int) bool {
 						return sublevels.cmp(baseFiles[i].Largest.UserKey, sublevels.orderedIntervals[lcf.minIntervalIndex].startKey.key) >= 0
@@ -375,10 +375,17 @@ func TestL0Sublevels(t *testing.T) {
 					lastFile := sort.Search(len(baseFiles), func(i int) bool {
 						return sublevels.cmp(baseFiles[i].Smallest.UserKey, sublevels.orderedIntervals[lcf.maxIntervalIndex+1].startKey.key) >= 0
 					})
-					lastFile--
+					startKey := base.InvalidInternalKey
+					endKey := base.InvalidInternalKey
+					if firstFile > 0 {
+						startKey = baseFiles[firstFile-1].Largest
+					}
+					if lastFile < len(baseFiles) {
+						endKey = baseFiles[lastFile].Smallest
+					}
 					sublevels.ExtendL0ForBaseCompactionTo(
-						baseFiles[firstFile].Smallest,
-						baseFiles[lastFile].Largest,
+						startKey,
+						endKey,
 						lcf)
 				}
 			} else {
