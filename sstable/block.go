@@ -257,7 +257,7 @@ func (i *blockIter) String() string {
 func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
-		return errors2.InvariantError{
+		return errors2.CorruptionError{
 			Err: errors.New("pebble/table: invalid table (block has no restart points)"),
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -504,8 +505,8 @@ func (d *DB) replayWAL(
 		}
 
 		if buf.Len() < batchHeaderLen {
-			return 0, errors.Errorf("pebble: corrupt log file %q (num %s)",
-				filename, errors.Safe(logNum))
+			return 0, errors2.CorruptionError{Err: errors.Errorf("pebble: corrupt log file %q (num %s)",
+				filename, errors.Safe(logNum))}
 		}
 
 		// Specify Batch.db so that Batch.SetRepr will compute Batch.memTableSize

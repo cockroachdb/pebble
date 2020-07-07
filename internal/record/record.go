@@ -108,6 +108,7 @@ import (
 	"io"
 
 	"github.com/cockroachdb/errors"
+	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 )
@@ -141,12 +142,12 @@ var (
 
 	// ErrZeroedChunk is returned if a chunk is encountered that is zeroed. This
 	// usually occurs due to log file preallocation.
-	ErrZeroedChunk = errors.New("pebble/record: zeroed chunk")
+	ErrZeroedChunk = errors2.CorruptionError{Err: errors.New("pebble/record: zeroed chunk")}
 
 	// ErrInvalidChunk is returned if a chunk is encountered with an invalid
 	// header, length, or checksum. This usually occurs when a log is recycled,
 	// but can also occur due to corruption.
-	ErrInvalidChunk = errors.New("pebble/record: invalid chunk")
+	ErrInvalidChunk = errors2.CorruptionError{Err: errors.New("pebble/record: invalid chunk")}
 )
 
 // IsInvalidRecord returns true if the error matches one of the error types

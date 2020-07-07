@@ -133,9 +133,8 @@ func (h *errorHandler) getSeverity(err error, op BackgroundErrorReason) Severity
 		}
 	}
 
-	// Invariants not obeyed.
-	var invariantErr *errors2.InvariantError
-	if errors.As(err, &invariantErr) {
+	var corruptionError *errors2.CorruptionError
+	if errors.As(err, &corruptionError) {
 		if !paranoidChecks {
 			return SeverityNoError
 		}

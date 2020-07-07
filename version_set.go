@@ -176,13 +176,13 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		return err
 	}
 	if b[n-1] != '\n' {
-		return errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
+		return errors2.CorruptionError{Err: errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)}
 	}
 	b = bytes.TrimSpace(b)
 
 	var ok bool
 	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
-		return errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
+		return errors2.CorruptionError{Err: errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))}
 	}
 
 	// Read the versionEdits in the manifest file.
@@ -193,7 +193,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			errors.Safe(b), dirname)
 	}
 	defer manifest.Close()
-	rr := record.NewReader(manifest, 0 /* logNum */) // TODO: checkout errors inside
+	rr := record.NewReader(manifest, 0 /* logNum */)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -251,8 +251,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// minUnflushedLogNum, even if WALs with non-zero file numbers are
 			// present in the directory.
 		} else {
-			return errors.Errorf("pebble: malformed manifest file %q for DB %q",
-				errors.Safe(b), dirname)
+			return errors2.CorruptionError{Err: errors.Errorf("pebble: malformed manifest file %q for DB %q",
+				errors.Safe(b), dirname)}
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
@@ -326,7 +326,6 @@ func (vs *versionSet) logAndApply(
 	inProgressCompactions func() []compactionInfo,
 ) error {
 	if !vs.writing {
-		// Continue to panic. Programmer error.
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
 	defer vs.logUnlock()
@@ -334,14 +333,8 @@ func (vs *versionSet) logAndApply(
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
 			vs.nextFileNum <= ve.MinUnflushedLogNum {
-			// Corruption? What does this mean?
-			// nextFileNum is the oracle generator for the fileNum.
-			// It can never be lesser. ve.minUnflushed will be the WAL number
-			// for the current mutable memtable.
-			return errors2.InvariantError{
-				Err: errors.Errorf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
-					ve.MinUnflushedLogNum),
-			}
+			return errors.Errorf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
+				ve.MinUnflushedLogNum)
 		}
 	}
 
@@ -368,9 +361,8 @@ func (vs *versionSet) logAndApply(
 	if logSeqNum == 0 {
 		// logSeqNum is initialized to 1 in Open() if there are no previous WAL
 		// or manifest records, so this case should never happen.
-		return errors2.InvariantError{
-			Err: errors.Errorf("pebble: logSeqNum must be a positive integer: %d", logSeqNum),
-		}
+		return errors.Errorf("pebble: logSeqNum must be a positive integer: %d", logSeqNum)
+
 	}
 
 	currentVersion := vs.currentVersion()
@@ -427,9 +419,7 @@ func (vs *versionSet) logAndApply(
 		// database is open. In particular, that mechanism generates a new MANIFEST
 		// and ensures it is synced.
 		if err := ve.Encode(w); err != nil {
-			return errors2.InvariantError{
-				Err: errors.WithMessage(err, "MANIFEST write failed"),
-			}
+			return errors.WithMessage(err, "MANIFEST write failed")
 		}
 		if err := vs.manifest.Flush(); err != nil {
 			return errors.WithMessage(err, "MANIFEST flush failed")

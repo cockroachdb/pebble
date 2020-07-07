@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	errors2 "github.com/cockroachdb/pebble/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -704,9 +703,6 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			if f.Compacting {
-				// Could happen due to in-appropriate locking? d.mu isn't properly acquired.
-				// Continue to panic.
-				// Compaction::MarkFilesBeingCompacted uses assert.
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
 			f.Compacting = true
@@ -941,7 +937,7 @@ func (d *DB) flush1() error {
 		for i := 0; i < n; i++ {
 			logNum := d.mu.mem.queue[i].logNum
 			if logNum >= minUnflushedLogNum {
-				return errors2.InvariantError{Err: errFlushInvariant}
+				return errFlushInvariant
 			}
 		}
 	}
@@ -1484,7 +1480,6 @@ func (d *DB) runCompaction(
 
 	iiter, err := c.newInputIter(d.newIters)
 	if err != nil {
-		// No error for flush.
 		return nil, pendingOutputs, err
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum(iiter)
@@ -1496,13 +1491,6 @@ func (d *DB) runCompaction(
 		tw        *sstable.Writer
 	)
 	defer func() {
-		// TODO(270): kFlush.
-		// Compaction iteration errors.
-		// iter.Add, iter.Close, tw.Sync, tw.Close
-		// What's the severity of those errors?
-		// And
-		// RocksDB:
-		// https://github.com/facebook/rocksdb/blob/master/db/builder.cc#L187
 		if iter != nil {
 			retErr = firstError(retErr, iter.Close())
 		}
@@ -1510,7 +1498,6 @@ func (d *DB) runCompaction(
 			retErr = firstError(retErr, tw.Close())
 		}
 		if retErr != nil {
-			// Nice, so we self remove any ssts we created.
 			for _, filename := range filenames {
 				d.opts.FS.Remove(filename)
 			}
@@ -1676,11 +1663,10 @@ func (d *DB) runCompaction(
 			if writerMeta.SmallestRange.UserKey != nil {
 				c := d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey)
 				if c < 0 {
-					// What makes sure this invariant stays?
-					return errors2.InvariantError{Err: errors.Errorf(
+					return errors.Errorf(
 						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
 						writerMeta.SmallestRange.Pretty(d.opts.Comparer.FormatKey),
-						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))}
+						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))
 				}
 				if c == 0 && prevMeta.Largest.SeqNum() <= writerMeta.SmallestRange.SeqNum() {
 					// The user key portion of the range boundary start key is equal to
@@ -1747,9 +1733,9 @@ func (d *DB) runCompaction(
 			case v >= 0:
 				// Nothing to do.
 			case v < 0:
-				return errors2.InvariantError{Err: errors.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
+				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
 					meta.Smallest.Pretty(d.opts.Comparer.FormatKey),
-					c.smallest.Pretty(d.opts.Comparer.FormatKey))}
+					c.smallest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
 		if c.largest.UserKey != nil {

@@ -20,7 +20,7 @@ import (
 // TODO(peter): describe the MANIFEST file format, independently of the C++
 // project.
 
-var errCorruptManifest = errors2.InvariantError{
+var errCorruptManifest = errors2.CorruptionError{
 	Err: errors.New("pebble: corrupt manifest"),
 }
 
@@ -235,7 +235,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					switch customTag {
 					case customTagNeedsCompaction:
 						if len(field) != 1 {
-							return errors.New("new-file4: need-compaction field wrong size")
+							return errors2.CorruptionError{Err: errors.New("new-file4: need-compaction field wrong size")}
 						}
 						markedForCompaction = (field[0] == 1)
 
@@ -243,15 +243,15 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						var n int
 						creationTime, n = binary.Uvarint(field)
 						if n != len(field) {
-							return errors.New("new-file4: invalid file creation time")
+							return errors2.CorruptionError{Err: errors.New("new-file4: invalid file creation time")}
 						}
 
 					case customTagPathID:
-						return errors.New("new-file4: path-id field not supported")
+						return errors2.CorruptionError{Err: errors.New("new-file4: path-id field not supported")}
 
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
-							return errors.Errorf("new-file4: custom field not supported: %d", customTag)
+							return errors2.CorruptionError{Err: errors.Errorf("new-file4: custom field not supported: %d", customTag)}
 						}
 					}
 				}
@@ -278,7 +278,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			v.ObsoletePrevLogNum = n
 
 		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
-			return errors.New("column families are not supported")
+			return errors2.CorruptionError{Err: errors.New("column families are not supported")}
 
 		default:
 			return errCorruptManifest
@@ -453,7 +453,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		// VersionEdit at the same level (though files can move across levels).
 		if dmap := b.Deleted[nf.Level]; dmap != nil {
 			if _, ok := dmap[nf.Meta.FileNum]; ok {
-				return errors2.InvariantError{
+				return errors2.CorruptionError{
 					Err: errors.Errorf("file deleted %d before it was inserted\n", nf.Meta.FileNum),
 				}
 			}
@@ -524,7 +524,7 @@ func (b *BulkVersionEdit) Apply(
 		deletedMap := b.Deleted[level]
 		n := len(currFiles) + len(addedFiles)
 		if n == 0 {
-			return nil, nil, errors2.InvariantError{Err: errors.Errorf(
+			return nil, nil, errors2.CorruptionError{Err: errors.Errorf(
 				"pebble: internal error: No current or added files but have deleted files: %d",
 				errors.Safe(len(deletedMap)))}
 		}
@@ -619,7 +619,7 @@ func (b *BulkVersionEdit) Apply(
 				// addedFiles for internal consistency).
 				if base.InternalCompare(cmp, v.Levels[level][numFiles-1].Largest, f.Smallest) >= 0 {
 					cf := v.Levels[level][numFiles-1]
-					return nil, nil, errors2.InvariantError{
+					return nil, nil, errors2.CorruptionError{
 						Err: errors.Errorf(
 							"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 							errors.Safe(level), errors.Safe(cf.FileNum), errors.Safe(f.FileNum),

@@ -225,7 +225,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		// versions show this to not be a performance win.
 		x := w.compare(w.meta.LargestPoint.UserKey, key.UserKey)
 		if x > 0 || (x == 0 && w.meta.LargestPoint.Trailer < key.Trailer) {
-			w.err = errors2.InvariantError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
+			w.err = errors2.CorruptionError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
 				w.meta.LargestPoint.Pretty(w.formatKey), key.Pretty(w.formatKey))}
 			return w.err
 		}
@@ -275,26 +275,26 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		case c > 0:
 			// Invariant errors here would arise from our own out of order compactionIter
 			// produced keys?
-			w.err = errors2.InvariantError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
+			w.err = errors2.CorruptionError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
 				prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))}
 			return w.err
 		case c == 0:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
-				w.err = errors2.InvariantError{Err: errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				w.err = errors2.CorruptionError{Err: errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
 					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
 					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))}
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
-				w.err = errors2.InvariantError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
+				w.err = errors2.CorruptionError{Err: errors.Errorf("pebble: keys must be added in order: %s, %s",
 					prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))}
 				return w.err
 			}
 		default:
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
-				w.err = errors2.InvariantError{Err: errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+				w.err = errors2.CorruptionError{Err: errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
 					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
 					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))}
 				return w.err
@@ -695,7 +695,7 @@ func (w *Writer) EstimatedSize() uint64 {
 // after the sstable has been finished.
 func (w *Writer) Metadata() (*WriterMetadata, error) {
 	if w.syncer != nil {
-		return nil, errors2.InvariantError{Err: errors.New("pebble: writer is not closed")}
+		return nil, errors.New("pebble: writer is not closed")
 	}
 	return &w.meta, nil
 }

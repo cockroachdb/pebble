@@ -184,7 +184,7 @@ func (m *memTable) prepare(batch *Batch) error {
 
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	if seqNum < m.logSeqNum {
-		return errors2.InvariantError{
+		return errors2.CorruptionError{
 			Err: errors.Errorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
 				errors.Safe(seqNum), errors.Safe(m.logSeqNum)),
 		}
@@ -216,7 +216,7 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		}
 	}
 	if seqNum != startSeqNum+uint64(batch.Count()) {
-		return errors2.InvariantError{
+		return errors2.CorruptionError{
 			Err: errors.Errorf("pebble: inconsistent batch count: %d vs %d",
 				errors.Safe(seqNum), errors.Safe(startSeqNum+uint64(batch.Count()))),
 		}

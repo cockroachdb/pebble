@@ -27,7 +27,7 @@ import (
 	"github.com/golang/snappy"
 )
 
-var errCorruptIndexEntry = errors.New("pebble/table: corrupt index entry")
+var errCorruptIndexEntry = errors2.CorruptionError{Err: errors.New("pebble/table: corrupt index entry")}
 
 const (
 	// Constants for dynamic readahead of data blocks. Note that the size values
@@ -618,7 +618,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 	}
 	h, n := decodeBlockHandle(i.topLevelIndex.Value())
 	if n == 0 || n != len(i.topLevelIndex.Value()) {
-		i.err = errors.New("pebble/table: corrupt top level index entry")
+		i.err = errors2.CorruptionError{Err: errors.New("pebble/table: corrupt top level index entry")}
 		return false
 	}
 	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
@@ -1462,7 +1462,7 @@ func (r *Reader) readBlock(
 	checksum1 := crc.New(b[:bh.Length+1]).Value()
 	if checksum0 != checksum1 {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, errors2.InvariantError{Err:errors.Newf(
+		return cache.Handle{}, errors2.CorruptionError{Err: errors.Newf(
 			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
 			errors.Safe(r.fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))}
 	}
@@ -1478,7 +1478,7 @@ func (r *Reader) readBlock(
 		decodedLen, err := snappy.DecodedLen(b)
 		if err != nil {
 			r.opts.Cache.Free(v)
-			return cache.Handle{}, errors2.InvariantError{Err: err}
+			return cache.Handle{}, errors2.CorruptionError{Err: err}
 		}
 		decoded := r.opts.Cache.Alloc(decodedLen)
 		decodedBuf := decoded.Buf()
@@ -1486,12 +1486,12 @@ func (r *Reader) readBlock(
 		r.opts.Cache.Free(v)
 		if err != nil {
 			r.opts.Cache.Free(decoded)
-			return cache.Handle{}, errors2.InvariantError{Err: err}
+			return cache.Handle{}, errors2.CorruptionError{Err: err}
 		}
 		if len(result) != 0 &&
 			(len(result) != len(decodedBuf) || &result[0] != &decodedBuf[0]) {
 			r.opts.Cache.Free(decoded)
-			return cache.Handle{}, errors2.InvariantError{
+			return cache.Handle{}, errors2.CorruptionError{
 				Err: errors.Errorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
 					errors.Safe(result), errors.Safe(decodedBuf)),
 			}
@@ -1499,7 +1499,7 @@ func (r *Reader) readBlock(
 		v, b = decoded, decodedBuf
 	default:
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, errors2.InvariantError{
+		return cache.Handle{}, errors2.CorruptionError{
 			Err: errors.Errorf("pebble/table: unknown block compression: %d", errors.Safe(typ)),
 		}
 	}
@@ -1574,8 +1574,8 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	defer b.Release()
 
 	if uint64(len(data)) != metaindexBH.Length {
-		return errors.Errorf("pebble/table: unexpected metaindex block size: %d vs %d",
-			errors.Safe(len(data)), errors.Safe(metaindexBH.Length))
+		return errors2.CorruptionError{Err: errors.Errorf("pebble/table: unexpected metaindex block size: %d vs %d",
+			errors.Safe(len(data)), errors.Safe(metaindexBH.Length))}
 	}
 
 	i, err := newRawBlockIter(bytes.Compare, data)
@@ -1587,7 +1587,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	for valid := i.First(); valid; valid = i.Next() {
 		bh, n := decodeBlockHandle(i.Value())
 		if n == 0 {
-			return errors.New("pebble/table: invalid table (bad filter block handle)")
+			return errors2.CorruptionError{Err: errors.New("pebble/table: invalid table (bad filter block handle)")}
 		}
 		meta[string(i.Key().UserKey)] = bh
 	}
@@ -1633,7 +1633,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 				case TableFilter:
 					r.tableFilter = newTableFilterReader(fp)
 				default:
-					return errors.Errorf("unknown filter type: %v", errors.Safe(t.ftype))
+					return errors2.CorruptionError{Err: errors.Errorf("unknown filter type: %v", errors.Safe(t.ftype))}
 				}
 
 				done = true
@@ -1886,8 +1886,8 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 	}
 	if !r.mergerOK {
 		if name := r.Properties.MergerName; name != "" && name != "nullptr" {
-			r.err = errors.Errorf("pebble/table: %d: unknown merger %s",
-				errors.Safe(r.fileNum), errors.Safe(r.Properties.MergerName))
+			r.err = errors2.CorruptionError{Err: errors.Errorf("pebble/table: %d: unknown merger %s",
+				errors.Safe(r.fileNum), errors.Safe(r.Properties.MergerName))}
 		}
 	}
 	if r.err != nil {
