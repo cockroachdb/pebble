@@ -172,6 +172,31 @@ func (pc *pickedCompaction) setupInputs() {
 	// Grow the sstables in pc.startLevel.level as long as it doesn't affect the number
 	// of sstables included from pc.outputLevel.level.
 	if pc.lcf != nil && pc.startLevel.level == 0 && pc.outputLevel.level != 0 {
+		// Optionally grow this compaction by calling grow, which picks up
+		// all files in L0 that overlap with one another and/or with the
+		// specified user key range. ExtendL0ForBaseCompaction calls a more
+		// selective compaction growing logic; see the comment above
+		// extendCandidateToRectangle to see how that works.
+		oldStartLevelFiles := pc.startLevel.files
+		oldOutputLevelfiles := pc.outputLevel.files
+		if pc.grow(pc.smallest, pc.largest) {
+			compacting := false
+			for _, f := range pc.startLevel.files {
+				if f.Compacting {
+					compacting = true
+					break
+				}
+			}
+			if compacting {
+				// Restore the previous set of files.
+				pc.startLevel.files = oldStartLevelFiles
+				pc.outputLevel.files = oldOutputLevelfiles
+			} else {
+				pc.lcf.AddFiles(pc.startLevel.files)
+				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, pc.outputLevel.files)
+			}
+		}
+
 		// Call the L0-specific compaction extension method. Similar logic as
 		// pc.grow. Additional L0 files are optionally added to the compaction at
 		// this step.
@@ -193,7 +218,14 @@ func (pc *pickedCompaction) setupInputs() {
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
 func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
-	if len(pc.outputLevel.files) == 0 {
+	// When sublevel compactions are enabled and this is a base compaction
+	// (i.e. pc.lcf != nil && startLevel == outputLevel), we want to continue
+	// with this method even if the output level is empty. This helps in cases
+	// where we are base compacting into a new empty level and want to use the
+	// more optimistic expansion logic of version.Overlaps as opposed to the
+	// more pessimistic one in ExtendL0ForBaseCompactionTo.
+	if len(pc.outputLevel.files) == 0 &&
+		(pc.lcf == nil || pc.startLevel.level == pc.outputLevel.level) {
 		return false
 	}
 	grow0 := pc.version.Overlaps(pc.startLevel.level, pc.cmp, sm.UserKey, la.UserKey)
@@ -621,7 +653,8 @@ func (p *compactionPickerByScore) calculateL0Score(
 		// If L0Sublevels are present, we use the sublevel count as opposed to
 		// the L0 file count to score this level. The base vs intra-L0
 		// compaction determination happens in pickAuto, not here.
-		info.score = float64(2 * p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions())
+		info.score = float64(2 * p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
+			float64(p.opts.L0CompactionThreshold)
 		return info
 	}
 
@@ -955,8 +988,10 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	// so it can pick a compaction that does not conflict with an Lbase => Lbase+1
 	// compaction. Without this, we observed reduced concurrency of L0=>Lbase
 	// compactions, and increasing read amplification in L0.
-	lcf, err := vers.L0Sublevels.PickBaseCompaction(
-		opts.L0CompactionThreshold, vers.Levels[baseLevel])
+	//
+	// TODO(bilal) Remove the minCompactionDepth parameter once fixing it at 1
+	// has been shown to not cause a performance regression.
+	lcf, err := vers.L0Sublevels.PickBaseCompaction(1, vers.Levels[baseLevel])
 	if err != nil {
 		opts.Logger.Infof("error when picking base compaction: %s", err)
 		return
@@ -971,7 +1006,9 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	}
 
 	// Couldn't choose a base compaction. Try choosing an intra-L0
-	// compaction.
+	// compaction. Note that we pass in L0CompactionThreshold here as opposed to
+	// 1, since choosing a very small intra-L0 compaction is less productive
+	// than doing nothing.
 	lcf, err = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, opts.L0CompactionThreshold)
 	if err != nil {
 		opts.Logger.Infof("error when picking intra-L0 compaction: %s", err)

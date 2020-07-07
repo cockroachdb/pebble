@@ -670,7 +670,7 @@ type L0CompactionFiles struct {
 	filesAdded              []*FileMetadata
 }
 
-// Adds the specified file to the LCF.
+// addFile adds the specified file to the LCF.
 func (l *L0CompactionFiles) addFile(f *FileMetadata) {
 	if l.FilesIncluded[f.l0Index] {
 		return
@@ -684,6 +684,13 @@ func (l *L0CompactionFiles) addFile(f *FileMetadata) {
 	}
 	if f.maxIntervalIndex > l.maxIntervalIndex {
 		l.maxIntervalIndex = f.maxIntervalIndex
+	}
+}
+
+// AddFiles adds the specified files to the LCF.
+func (l *L0CompactionFiles) AddFiles(files []*FileMetadata) {
+	for _, f := range files {
+		l.addFile(f)
 	}
 }
 
