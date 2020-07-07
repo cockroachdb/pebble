@@ -130,8 +130,16 @@ func (l *loader) loadCooked(path string) {
 }
 
 func (l *loader) loadRaw(dir string) {
-	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if info == nil || !info.Mode().IsRegular() {
+	var walkFn filepath.WalkFunc
+	walkFn = func(path string, info os.FileInfo, err error) error {
+		if info == nil {
+			return nil
+		}
+		if !info.Mode().IsRegular() && !info.Mode().IsDir() {
+			info, err = os.Stat(path)
+			if err == nil && info.Mode().IsDir() {
+				_ = filepath.Walk(path+string(os.PathSeparator), walkFn)
+			}
 			return nil
 		}
 
@@ -187,7 +195,9 @@ func (l *loader) loadRaw(dir string) {
 			l.addRun(name, day, r)
 		}
 		return nil
-	})
+	}
+
+	_ = filepath.Walk(dir, walkFn)
 }
 
 func (l *loader) cook(path string) {
