@@ -6,7 +6,6 @@ const formatTime = d3.timeFormat("%b %d");
 const dateBisector = d3.bisector(d => d.date).left;
 
 let minDate;
-let maxDate;
 let max = {
     date: new Date(),
     opsSec: 0,
@@ -73,6 +72,48 @@ function equalDay(d1, d2) {
         d1.getMonth() == d2.getMonth() &&
         d1.getDate() == d2.getDate()
     );
+}
+
+function computeSegments(data) {
+    return data.reduce(function(segments, d) {
+        if (segments.length == 0) {
+            segments.push([d]);
+            return segments;
+        }
+
+        const lastSegment = segments[segments.length - 1];
+        const lastDatum = lastSegment[lastSegment.length - 1];
+        const days = Math.round(
+            (d.date.getTime() - lastDatum.date.getTime()) /
+                (24 * 60 * 60 * 1000)
+        );
+        if (days == 1) {
+            lastSegment.push(d);
+        } else {
+            segments.push([d]);
+        }
+        return segments;
+    }, []);
+}
+
+function computeGaps(segments) {
+    let gaps = [];
+    for (let i = 1; i < segments.length; ++i) {
+        const last = segments[i - 1];
+        const cur = segments[i];
+        gaps.push([last[last.length - 1], cur[0]]);
+    }
+
+    // If the last day is not equal to the current day, add a gap that
+    // spans to the current day.
+    const last = segments[segments.length - 1];
+    const lastDay = last[last.length - 1];
+    if (!equalDay(lastDay.date, max.date)) {
+        const maxDay = Object.assign({}, lastDay);
+        maxDay.date = max.date;
+        gaps.push([lastDay, maxDay]);
+    }
+    return gaps;
 }
 
 function renderChart(chart) {
@@ -190,18 +231,34 @@ function renderChart(chart) {
         .attr("y1", 0)
         .attr("y2", height);
 
+    // Divide the data into contiguous days so that we can avoid
+    // interpolating days where there is missing data.
+    const segments = computeSegments(vals);
+    const gaps = computeGaps(segments);
+
     const line1 = d3
         .line()
         .x(d => x(d.date))
         .y(d => y1(d.opsSec));
     const path = view
         .selectAll(".line1")
-        .data([vals])
+        .data(segments)
         .enter()
         .append("path")
         .attr("class", "line1")
         .attr("d", line1)
         .style("stroke", d => z(0));
+
+    view
+        .selectAll(".line1-gaps")
+        .data(gaps)
+        .enter()
+        .append("path")
+        .attr("class", "line1-gaps")
+        .attr("d", line1)
+        .attr("opacity", 0.8)
+        .style("stroke", d => z(0))
+        .style("stroke-dasharray", "1 2");
 
     let line2;
     if (detail) {
@@ -224,20 +281,32 @@ function renderChart(chart) {
             .y(d => y2(detail(d)));
         const path = view
             .selectAll(".line2")
-            .data([vals])
+            .data(segments)
             .enter()
             .append("path")
             .attr("class", "line2")
             .attr("d", line2)
             .style("stroke", d => z(1));
+        view
+            .selectAll(".line2-gaps")
+            .data(gaps)
+            .enter()
+            .append("path")
+            .attr("class", "line2-gaps")
+            .attr("d", line2)
+            .attr("opacity", 0.8)
+            .style("stroke", d => z(1))
+            .style("stroke-dasharray", "1 2");
     }
 
     const updateZoom = function(t) {
         x.domain(t.rescaleX(x2).domain());
         g.select(".axis--x").call(xAxis);
-        g.select(".line1").attr("d", line1);
+        g.selectAll(".line1").attr("d", line1);
+        g.selectAll(".line1-gaps").attr("d", line1);
         if (detail) {
-            g.select(".line2").attr("d", line2);
+            g.selectAll(".line2").attr("d", line2);
+            g.selectAll(".line2-gaps").attr("d", line2);
         }
         g
             .selectAll("path.annotation")
@@ -282,8 +351,9 @@ function renderChart(chart) {
             const mouse = d3.mouse(this);
             if (mouse && mouse[0]) {
                 const mousex = mouse[0] - margin.left;
+                const date = x.invert(mousex);
                 d3.selectAll(".chart").each(function() {
-                    this.updateMouse(mousex);
+                    this.updateMouse(mousex, date);
                 });
             }
         });
@@ -291,7 +361,7 @@ function renderChart(chart) {
     svg.call(zoom);
     svg.call(zoom.transform, d3.zoomTransform(svg.node()));
 
-    const lineHover = view
+    const lineHover = g
         .append("line")
         .attr("class", "hover")
         .style("fill", "none")
@@ -306,14 +376,14 @@ function renderChart(chart) {
         .attr("alignment-baseline", "hanging")
         .attr("transform", "translate(0, 0)");
 
-    const opsHover = view
+    const opsHover = g
         .append("text")
         .attr("class", "hover")
         .attr("fill", "#f22")
         .attr("text-anchor", "middle")
         .attr("transform", "translate(0, 0)");
 
-    const marker = view
+    const marker = g
         .append("circle")
         .attr("class", "hover")
         .attr("r", 3)
@@ -336,12 +406,10 @@ function renderChart(chart) {
             .attr("x2", mousex)
             .attr("y1", noData ? height : pathGetY(path.node(), mousex))
             .attr("y2", height);
-        marker
-            .attr(
-                "transform",
-                "translate(" + x(v.date) + "," + y1(v.opsSec) + ")"
-            )
-            .style("opacity", noData ? 0 : 1);
+        marker.attr(
+            "transform",
+            "translate(" + x(v.date) + "," + y1(v.opsSec) + ")"
+        );
         dateHover
             .attr("transform", "translate(" + mousex + "," + (height + 8) + ")")
             .text(xFormat(date));
@@ -350,7 +418,6 @@ function renderChart(chart) {
                 "transform",
                 "translate(" + x(v.date) + "," + (y1(v.opsSec) - 7) + ")"
             )
-            .style("opacity", noData ? 0 : 1)
             .text(v.opsSec.toFixed(0));
     };
 
