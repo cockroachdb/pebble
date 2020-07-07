@@ -1049,11 +1049,11 @@ L6:    a------------------------------------------o p---------s
 pick-base-compaction min_depth=2
 ----
 compaction picked with stack depth reduction 3
-000006,000005,000004,000010,000007
+000006,000005,000004,000010,000007,000011,000009
 seed interval: f-g
 L0.2:                 f+++g
-L0.1:                 f++++++h                n---o
-L0.0:                 f+++g h++++++j k+++l    n---o
+L0.1:                 f++++++h                n+++o
+L0.0:                 f+++g h++++++j k+++l    n+++o
 L6:    a------------------------------------------o p---------s
        aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
 

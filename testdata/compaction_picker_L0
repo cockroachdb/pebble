@@ -32,6 +32,12 @@ L6: 000200
 
 pick-auto l0_compaction_threshold=2
 ----
+L0 -> L6
+L0: 000100
+L6: 000200
+
+pick-auto l0_compaction_threshold=3
+----
 nil
 
 # 2 L0 files, no overlaps.
@@ -56,6 +62,12 @@ L0: 000100,000110
 L6: 000200
 
 pick-auto l0_compaction_threshold=2
+----
+L0 -> L6
+L0: 000100,000110
+L6: 000200
+
+pick-auto l0_compaction_threshold=3
 ----
 nil
 
@@ -148,6 +160,18 @@ L0: 000100,000110,000120
 L6: 000200
 
 pick-auto l0_compaction_threshold=3
+----
+L0 -> L6
+L0: 000100,000110,000120
+L6: 000200
+
+pick-auto l0_compaction_threshold=4
+----
+L0 -> L6
+L0: 000100,000110,000120
+L6: 000200
+
+pick-auto l0_compaction_threshold=6
 ----
 nil
 
