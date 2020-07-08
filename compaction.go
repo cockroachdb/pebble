@@ -1647,6 +1647,9 @@ func (d *DB) runCompaction(
 					c.largest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
+		if err := meta.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -1772,6 +1775,16 @@ func (d *DB) runCompaction(
 				// `Fragmenter` now to make them visible to `compactionIter` so covered
 				// keys in the same snapshot stripe can be elided.
 				c.rangeDelFrag.Add(iter.cloneKey(*key), val)
+
+				// If we add a RANGEDEL that begins at the current limit and
+				// it's the only key in the resulting table, the table will
+				// have inclusive and exclusive bounds on the same user key.
+				// Reset the grandparent limit in this case.
+				if tw == nil && len(iter.tombstones) == 0 && limit != nil &&
+					c.cmp(limit, c.rangeDelFrag.Start()) == 0 {
+					limit = c.findGrandparentLimit(key.UserKey)
+				}
+
 				continue
 			}
 			if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
