@@ -208,6 +208,42 @@ compact a-e L1
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
 
+# An elided range tombstone is the first item encountered by a compaction,
+# and the grandparent limit set by it extends to the next item, also a range
+# tombstone. The first item should be elided, and the second item should
+# reset the grandparent limit.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.RANGEDEL.4:d
+L1
+  grandparent.RANGEDEL.2:z
+  h.SET.3:v
+L2
+  grandparent.SET.1:v
+L3
+  grandparent.SET.0:v
+L3
+  m.SET.0:v
+----
+1:
+  000004:[a-d]
+  000005:[grandparent-z]
+2:
+  000006:[grandparent-grandparent]
+3:
+  000007:[grandparent-grandparent]
+  000008:[m-m]
+
+compact a-h L1
+----
+2:
+  000009:[grandparent#2,RANGEDEL-m#72057594037927935,RANGEDEL]
+  000010:[m#2,RANGEDEL-z#72057594037927935,RANGEDEL]
+3:
+  000007:[grandparent#0,SET-grandparent#0,SET]
+  000008:[m#0,SET-m#0,SET]
+
 # Setup such that grandparent overlap limit is exceeded multiple times at the same user key ("b").
 # Ensures the compaction output files are non-overlapping.
 
