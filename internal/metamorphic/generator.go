@@ -7,7 +7,6 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
-	"time"
 
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"golang.org/x/exp/rand"
@@ -58,9 +57,9 @@ type generator struct {
 	snapshots map[objID]objIDSet
 }
 
-func newGenerator() *generator {
+func newGenerator(rng *rand.Rand) *generator {
 	g := &generator{
-		rng:         rand.New(rand.NewSource(uint64(time.Now().UnixNano()))),
+		rng:         rng,
 		init:        &initOp{},
 		liveReaders: objIDSlice{makeObjID(dbTag, 0)},
 		liveWriters: objIDSlice{makeObjID(dbTag, 0)},
@@ -74,8 +73,8 @@ func newGenerator() *generator {
 	return g
 }
 
-func generate(count uint64, cfg config) []op {
-	g := newGenerator()
+func generate(rng *rand.Rand, count uint64, cfg config) []op {
+	g := newGenerator(rng)
 
 	generators := []func(){
 		batchAbort:        g.batchAbort,
@@ -203,7 +202,7 @@ func (g *generator) batchClose(batchID objID) {
 		delete(g.readers, batchID)
 	}
 	g.liveWriters.remove(batchID)
-	for id := range iters {
+	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
 		g.add(&closeOp{objID: id})
@@ -477,7 +476,7 @@ func (g *generator) snapshotClose() {
 	g.liveReaders.remove(snapID)
 	delete(g.readers, snapID)
 
-	for id := range iters {
+	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
 		g.add(&closeOp{objID: id})

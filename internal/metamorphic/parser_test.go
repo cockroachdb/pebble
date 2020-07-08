@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/kr/pretty"
 )
 
@@ -29,7 +30,7 @@ func TestParser(t *testing.T) {
 }
 
 func TestParserRandom(t *testing.T) {
-	ops := generate(10000, defaultConfig)
+	ops := generate(randvar.NewRand(), 10000, defaultConfig)
 	src := formatOps(ops)
 
 	parsedOps, err := parse([]byte(src))
