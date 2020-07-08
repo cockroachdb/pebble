@@ -147,8 +147,9 @@ function renderChart(chart) {
         .attr("width", width)
         .attr("height", margin.top + height + 10);
 
-    svg
+    const title = svg
         .append("text")
+        .attr("class", "chart-title")
         .attr("x", margin.left + width / 2)
         .attr("y", 15)
         .style("text-anchor", "middle")
@@ -213,7 +214,7 @@ function renderChart(chart) {
         .attr("fill", "#2b2")
         .attr(
             "transform",
-            d => "translate(" + (x(d) + "," + (height + 5) + ")")
+            d => "translate(" + (x(d.date) + "," + (height + 5) + ")")
         );
 
     view
@@ -226,8 +227,8 @@ function renderChart(chart) {
         .attr("stroke", "#2b2")
         .attr("stroke-width", "1px")
         .attr("stroke-dasharray", "1 2")
-        .attr("x1", d => x(d))
-        .attr("x2", d => x(d))
+        .attr("x1", d => x(d.date))
+        .attr("x2", d => x(d.date))
         .attr("y1", 0)
         .attr("y2", height);
 
@@ -240,7 +241,7 @@ function renderChart(chart) {
         .line()
         .x(d => x(d.date))
         .y(d => y1(d.opsSec));
-    const path = view
+    const path1 = view
         .selectAll(".line1")
         .data(segments)
         .enter()
@@ -260,9 +261,11 @@ function renderChart(chart) {
         .style("stroke", d => z(0))
         .style("stroke-dasharray", "1 2");
 
+    let y2 = d3.scaleLinear().range([height, 0]);
     let line2;
+    let path2;
     if (detail) {
-        const y2 = d3.scaleLinear().range([height, 0]);
+        y2 = d3.scaleLinear().range([height, 0]);
         y2.domain([0, detail(max)]);
         g
             .append("g")
@@ -279,7 +282,7 @@ function renderChart(chart) {
             .line()
             .x(d => x(d.date))
             .y(d => y2(detail(d)));
-        const path = view
+        path2 = view
             .selectAll(".line2")
             .data(segments)
             .enter()
@@ -312,14 +315,25 @@ function renderChart(chart) {
             .selectAll("path.annotation")
             .attr(
                 "transform",
-                d => "translate(" + (x(d) + "," + (height + 5) + ")")
+                d => "translate(" + (x(d.date) + "," + (height + 5) + ")")
             );
         g
             .selectAll("line.annotation")
-            .attr("x1", d => x(d))
-            .attr("x2", d => x(d));
+            .attr("x1", d => x(d.date))
+            .attr("x2", d => x(d.date));
     };
     svg.node().updateZoom = updateZoom;
+
+    const hoverSeries = function(mouse) {
+        if (!detail) {
+            return 1;
+        }
+        const mousex = mouse[0];
+        const mousey = mouse[1] - margin.top;
+        const path1Y = pathGetY(path1.node(), mousex);
+        const path2Y = pathGetY(path2.node(), mousex);
+        return Math.abs(mousey - path1Y) < Math.abs(mousey - path2Y) ? 1 : 2;
+    };
 
     // This is a bit funky: initDate() initializes the date range to
     // [today-90,today]. We then allow zooming out by 4x which will
@@ -350,10 +364,10 @@ function renderChart(chart) {
 
             const mouse = d3.mouse(this);
             if (mouse && mouse[0]) {
-                const mousex = mouse[0] - margin.left;
-                const date = x.invert(mousex);
+                const date = x.invert(mouse[0]);
+                const hover = hoverSeries(mouse);
                 d3.selectAll(".chart").each(function() {
-                    this.updateMouse(mousex, date);
+                    this.updateMouse(mouse, date, hover);
                 });
             }
         });
@@ -391,7 +405,9 @@ function renderChart(chart) {
         .style("stroke", "#f22")
         .style("fill", "#f22");
 
-    svg.node().updateMouse = function(mousex, date) {
+    svg.node().updateMouse = function(mouse, date, hover) {
+        const mousex = mouse[0];
+        const mousey = mouse[1];
         const i = dateBisector(vals, date, 1);
         const v =
             i == vals.length
@@ -401,24 +417,41 @@ function renderChart(chart) {
                     : vals[i];
         const noData = mousex < x(vals[0].date);
 
+        let lineY = height;
+        if (!noData) {
+            if (hover == 1) {
+                lineY = pathGetY(path1.node(), mousex);
+            } else {
+                lineY = pathGetY(path2.node(), mousex);
+            }
+        }
+
+        let val, valY, valFormat;
+        if (hover == 1) {
+            val = v.opsSec;
+            valY = y1(val);
+            valFormat = d3.format(",.0f");
+        } else {
+            val = detail(v);
+            valY = y2(val);
+            valFormat = detailFormat;
+        }
+
         lineHover
             .attr("x1", mousex)
             .attr("x2", mousex)
-            .attr("y1", noData ? height : pathGetY(path.node(), mousex))
+            .attr("y1", lineY)
             .attr("y2", height);
-        marker.attr(
-            "transform",
-            "translate(" + x(v.date) + "," + y1(v.opsSec) + ")"
-        );
+        marker.attr("transform", "translate(" + x(v.date) + "," + valY + ")");
         dateHover
             .attr("transform", "translate(" + mousex + "," + (height + 8) + ")")
             .text(xFormat(date));
         opsHover
             .attr(
                 "transform",
-                "translate(" + x(v.date) + "," + (y1(v.opsSec) - 7) + ")"
+                "translate(" + x(v.date) + "," + (valY - 7) + ")"
             )
-            .text(v.opsSec.toFixed(0));
+            .text(valFormat(val));
     };
 
     const rect = svg
@@ -431,20 +464,26 @@ function renderChart(chart) {
         .attr("height", height + margin.top + margin.bottom)
         .attr("transform", "translate(" + margin.left + "," + 0 + ")")
         .on("mousemove", function() {
-            const mousex = d3.mouse(this)[0];
-            const date = x.invert(mousex);
+            const mouse = d3.mouse(this);
+            const date = x.invert(mouse[0]);
+            const hover = hoverSeries(mouse);
 
-            // TODO(peter):
-            // - Allow hovering over the annotation to highlight the
-            //   annotation in the list.
-            // for (let i in annotations) {
-            //     if (equalDay(annotations[i], date)) {
-            //         console.log("annotation", formatTime(date));
-            //     }
-            // }
+            let resetTitle = true;
+            for (let i in annotations) {
+                if (Math.abs(mouse[0] - x(annotations[i].date)) <= 5) {
+                    title
+                        .style("font-size", "9pt")
+                        .text(annotations[i].message);
+                    resetTitle = false;
+                    break;
+                }
+            }
+            if (resetTitle) {
+                title.style("font-size", "8pt").text(chartKey);
+            }
 
             d3.selectAll(".chart").each(function() {
-                this.updateMouse(mousex, date);
+                this.updateMouse(mouse, date, hover);
             });
         })
         .on("mouseover", function() {
@@ -498,19 +537,10 @@ function initDateRange() {
 }
 
 function initAnnotations() {
-    // TODO(peter):
-    // - Allow hovering over the annotation to highlight the
-    //   annotation on the charts.
-    // - Allow click to show/hide an annotation on the charts.
     d3.selectAll(".annotation").each(function() {
         const annotation = d3.select(this);
         const date = parseTime(annotation.attr("data-date"));
-        annotation
-            .append("span")
-            .attr("class", "date")
-            .lower()
-            .text(formatTime(date) + ": ");
-        annotations.push(date);
+        annotations.push({ date: date, message: annotation.text() });
     });
 }
 
@@ -582,10 +612,20 @@ window.onload = function init() {
     initAnnotations();
     initQueryParams();
     render();
+
+    let lastUpdate;
+    for (key in data) {
+        const max = d3.max(data[key], d => d.date);
+        if (!lastUpdate || lastUpdate < max) {
+            lastUpdate = max;
+        }
+    }
+    d3
+        .selectAll(".updated")
+        .text("Last updated: " + d3.timeFormat("%b %e, %Y")(lastUpdate));
 };
 
 window.onpopstate = function() {
-    console.log("onpopstate");
     initQueryParams();
     render();
 };
