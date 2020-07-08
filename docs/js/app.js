@@ -147,8 +147,9 @@ function renderChart(chart) {
         .attr("width", width)
         .attr("height", margin.top + height + 10);
 
-    svg
+    const title = svg
         .append("text")
+        .attr("class", "chart-title")
         .attr("x", margin.left + width / 2)
         .attr("y", 15)
         .style("text-anchor", "middle")
@@ -213,7 +214,7 @@ function renderChart(chart) {
         .attr("fill", "#2b2")
         .attr(
             "transform",
-            d => "translate(" + (x(d) + "," + (height + 5) + ")")
+            d => "translate(" + (x(d.date) + "," + (height + 5) + ")")
         );
 
     view
@@ -226,8 +227,8 @@ function renderChart(chart) {
         .attr("stroke", "#2b2")
         .attr("stroke-width", "1px")
         .attr("stroke-dasharray", "1 2")
-        .attr("x1", d => x(d))
-        .attr("x2", d => x(d))
+        .attr("x1", d => x(d.date))
+        .attr("x2", d => x(d.date))
         .attr("y1", 0)
         .attr("y2", height);
 
@@ -314,12 +315,12 @@ function renderChart(chart) {
             .selectAll("path.annotation")
             .attr(
                 "transform",
-                d => "translate(" + (x(d) + "," + (height + 5) + ")")
+                d => "translate(" + (x(d.date) + "," + (height + 5) + ")")
             );
         g
             .selectAll("line.annotation")
-            .attr("x1", d => x(d))
-            .attr("x2", d => x(d));
+            .attr("x1", d => x(d.date))
+            .attr("x2", d => x(d.date));
     };
     svg.node().updateZoom = updateZoom;
 
@@ -467,14 +468,19 @@ function renderChart(chart) {
             const date = x.invert(mouse[0]);
             const hover = hoverSeries(mouse);
 
-            // TODO(peter):
-            // - Allow hovering over the annotation to highlight the
-            //   annotation in the list.
-            // for (let i in annotations) {
-            //     if (equalDay(annotations[i], date)) {
-            //         console.log("annotation", formatTime(date));
-            //     }
-            // }
+            let resetTitle = true;
+            for (let i in annotations) {
+                if (Math.abs(mouse[0] - x(annotations[i].date)) <= 5) {
+                    title
+                        .style("font-size", "9pt")
+                        .text(annotations[i].message);
+                    resetTitle = false;
+                    break;
+                }
+            }
+            if (resetTitle) {
+                title.style("font-size", "8pt").text(chartKey);
+            }
 
             d3.selectAll(".chart").each(function() {
                 this.updateMouse(mouse, date, hover);
@@ -531,19 +537,10 @@ function initDateRange() {
 }
 
 function initAnnotations() {
-    // TODO(peter):
-    // - Allow hovering over the annotation to highlight the
-    //   annotation on the charts.
-    // - Allow click to show/hide an annotation on the charts.
     d3.selectAll(".annotation").each(function() {
         const annotation = d3.select(this);
         const date = parseTime(annotation.attr("data-date"));
-        annotation
-            .append("span")
-            .attr("class", "date")
-            .lower()
-            .text(formatTime(date) + ": ");
-        annotations.push(date);
+        annotations.push({ date: date, message: annotation.text() });
     });
 }
 

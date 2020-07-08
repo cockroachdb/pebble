@@ -44,16 +44,8 @@ body {
     font-size: 9pt;
 }
 
-.annotation {
-    font-size: 9pt;
-}
-
-.annotation > .date {
-    width: 60px;
-    display: inline-block;
-    font-weight: bold;
-    text-align: right;
-    padding-right: 5px;
+div.annotation {
+    display: none;
 }
 
 .code {
