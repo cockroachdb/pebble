@@ -261,7 +261,6 @@ func newFlush(
 	return c
 }
 
-
 func (c *compaction) setupInuseKeyRanges() {
 	level := c.outputLevel.level + 1
 	if c.outputLevel.level == 0 {
@@ -1427,6 +1426,12 @@ func (d *DB) runCompaction(
 					c.largest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
+		// Verify that the sstable bounds are consistent with each other.
+		if base.InternalCompare(d.cmp, meta.Smallest, meta.Largest) > 0 {
+			return errors.Errorf("compaction created file %s with inconsistent bounds: %s vs %s",
+				errors.Safe(meta.FileNum), meta.Smallest.Pretty(c.formatKey),
+				meta.Largest.Pretty(c.formatKey))
+		}
 		return nil
 	}
 
@@ -1552,6 +1557,13 @@ func (d *DB) runCompaction(
 				// `Fragmenter` now to make them visible to `compactionIter` so covered
 				// keys in the same snapshot stripe can be elided.
 				c.rangeDelFrag.Add(iter.cloneKey(*key), val)
+
+				// If the previous limit was set by a tombstone that was just
+				// elided, reset the limit.
+				if tw == nil && len(iter.tombstones) == 0 &&
+					(limit != nil && c.cmp(c.rangeDelFrag.Start(), key.UserKey) == 0) {
+					limit = c.findGrandparentLimit(key.UserKey)
+				}
 				continue
 			}
 			if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
