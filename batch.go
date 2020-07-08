@@ -755,10 +755,11 @@ func (b *Batch) init(cap int) {
 	b.data = b.data[:batchHeaderLen]
 }
 
-// Reset clears the underlying byte slice and effectively empties the batch for
-// reuse. Used in cases where Batch is only being used to build a batch, and
-// where the end result is a Repr() call, not a Commit call or a Close call.
-// Commits and Closes take care of releasing resources when appropriate.
+// Reset resets the batch for reuse. The underlying byte slice (that is
+// returned by Repr()) is not modified. It is only necessary to call this
+// method if a batch is explicitly being reused. Close automatically takes are
+// of releasing resources when appropriate for batches that are internally
+// being reused.
 func (b *Batch) Reset() {
 	b.count = 0
 	b.countRangeDels = 0
