@@ -328,6 +328,16 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	}
 }
 
+// Start returns the start key of the first tombstone in the pending buffer,
+// or nil if there are no pending tombstones. The start key of all pending
+// tombstones is the same as that of the first one.
+func (f *Fragmenter) Start() []byte {
+	if len(f.pending) > 0 {
+		return f.pending[0].Start.UserKey
+	}
+	return nil
+}
+
 // Flushes all pending tombstones up to key (exclusive).
 func (f *Fragmenter) truncateAndFlush(key []byte) {
 	f.flushedKey = append(f.flushedKey[:0], key...)
