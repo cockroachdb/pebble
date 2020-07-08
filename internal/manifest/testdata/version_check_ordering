@@ -144,7 +144,7 @@ check-ordering
 L1
   b.SET.1-a.SET.2
 ----
-L1 file 000001 has inconsistent bounds: b#1,SET vs a#2,SET
+L1 : file 000001 has inconsistent bounds: b#1,SET vs a#2,SET
 1:
   000001:[b#1,SET-a#2,SET]
 
@@ -160,7 +160,7 @@ L1
   a.SET.1-b.SET.2
   d.SET.3-c.SET.4
 ----
-L1 file 000002 has inconsistent bounds: d#3,SET vs c#4,SET
+L1 : file 000002 has inconsistent bounds: d#3,SET vs c#4,SET
 1:
   000001:[a#1,SET-b#2,SET]
   000002:[d#3,SET-c#4,SET]

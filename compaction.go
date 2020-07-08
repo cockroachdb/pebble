@@ -1549,6 +1549,26 @@ func (d *DB) runCompaction(
 	// finishOutput is called for an sstable with the first key of the next sstable, and for the
 	// last sstable with an empty key.
 	finishOutput := func(key []byte) error {
+		// If we haven't output any point records to the sstable (tw == nil)
+		// then the sstable will only contain range tombstones. The smallest
+		// key in the sstable will be the start key of the first range
+		// tombstone added. We need to ensure that this start key is distinct
+		// from the limit (key) passed to finishOutput, otherwise we would
+		// generate an sstable where the largest key is smaller than the
+		// smallest key due to how the largest key boundary is set below.
+		// TODO: It is unfortunate that we have to do this check here rather
+		// than when we decide to finish the sstable in the runCompaction
+		// loop. A better structure currently eludes us.
+		if tw == nil {
+			startKey := c.rangeDelFrag.Start()
+			if len(iter.tombstones) > 0 {
+				startKey = iter.tombstones[0].Start.UserKey
+			}
+			if d.cmp(startKey, key) == 0 {
+				return nil
+			}
+		}
+
 		// NB: clone the key because the data can be held on to by the call to
 		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
 		key = append([]byte(nil), key...)
@@ -1724,6 +1744,9 @@ func (d *DB) runCompaction(
 					c.largest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
+		if err := meta.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -1763,7 +1786,7 @@ func (d *DB) runCompaction(
 					limit = c.findL0Limit(startKey)
 				}
 			}
-		} else if c.rangeDelFrag.Empty() {
+		} else if c.rangeDelFrag.Empty() || len(ve.NewFiles) == 0 {
 			// In this case, `limit` will be a larger user key than `key.UserKey`, or
 			// nil. In either case, the inner loop will execute at least once to
 			// process `key`, and the input iterator will be advanced.
