@@ -6,13 +6,17 @@ package metamorphic
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 func TestGenerator(t *testing.T) {
-	g := newGenerator()
+	rng := randvar.NewRand()
+	g := newGenerator(rng)
 
 	g.newBatch()
 	g.newBatch()
@@ -57,7 +61,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator()
+	g = newGenerator(rng)
 
 	g.newSnapshot()
 	g.newSnapshot()
@@ -90,7 +94,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator()
+	g = newGenerator(rng)
 
 	g.newIndexedBatch()
 	g.newIndexedBatch()
@@ -121,8 +125,29 @@ func TestGenerator(t *testing.T) {
 }
 
 func TestGeneratorRandom(t *testing.T) {
-	ops := generate(ops.Uint64(randvar.NewRand()), defaultConfig)
+	seed := uint64(time.Now().UnixNano())
+	generateFromSeed := func() string {
+		rng := rand.New(rand.NewSource(seed))
+		count := ops.Uint64(rng)
+		return formatOps(generate(rng, count, defaultConfig))
+	}
+
+	// Ensure that generate doesn't use any other source of randomness other
+	// than rng.
+	referenceOps := generateFromSeed()
+	for i := 0; i < 10; i++ {
+		regeneratedOps := generateFromSeed()
+		diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+			A:       difflib.SplitLines(referenceOps),
+			B:       difflib.SplitLines(regeneratedOps),
+			Context: 1,
+		})
+		require.NoError(t, err)
+		if len(diff) > 0 {
+			t.Fatalf("Diff:\n%s", diff)
+		}
+	}
 	if testing.Verbose() {
-		t.Logf("\n%s", formatOps(ops))
+		t.Logf("\nOps:\n%s", referenceOps)
 	}
 }
