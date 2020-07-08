@@ -40,6 +40,10 @@ body {
     font-weight: bold;
 }
 
+.updated {
+    font-size: 9pt;
+}
+
 .annotation {
     font-size: 9pt;
 }

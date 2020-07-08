@@ -582,6 +582,18 @@ window.onload = function init() {
     initAnnotations();
     initQueryParams();
     render();
+
+    let lastUpdate;
+    for (key in data) {
+        const max = d3.max(data[key], d => d.date);
+        console.log(key, max, data[key]);
+        if (!lastUpdate || lastUpdate < max) {
+            lastUpdate = max;
+        }
+    }
+    d3
+        .selectAll(".updated")
+        .text("Last updated: " + d3.timeFormat("%b %e, %Y")(lastUpdate));
 };
 
 window.onpopstate = function() {
