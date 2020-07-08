@@ -93,8 +93,23 @@ type FileMetadata struct {
 	maxIntervalIndex    int
 }
 
-func (m FileMetadata) String() string {
+func (m *FileMetadata) String() string {
 	return fmt.Sprintf("%s:%s-%s", m.FileNum, m.Smallest, m.Largest)
+}
+
+// Validate validates the metadata for consistency with itself, returning an
+// error if inconsistent.
+func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
+	if base.InternalCompare(cmp, m.Smallest, m.Largest) > 0 {
+		return errors.Errorf("file %s has inconsistent bounds: %s vs %s",
+			errors.Safe(m.FileNum), m.Smallest.Pretty(formatKey),
+			m.Largest.Pretty(formatKey))
+	}
+	if m.SmallestSeqNum > m.LargestSeqNum {
+		return errors.Errorf("file %s has inconsistent seqnum bounds: %d vs %d",
+			errors.Safe(m.FileNum), m.SmallestSeqNum, m.LargestSeqNum)
+	}
+	return nil
 }
 
 // TableInfo returns a subset of the FileMetadata state formatted as a
@@ -643,10 +658,8 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelI
 	} else {
 		var prev *FileMetadata
 		for f := files.First(); f != nil; f, prev = files.Next(), f {
-			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
-				return errors.Errorf("%s file %s has inconsistent bounds: %s vs %s",
-					errors.Safe(level), errors.Safe(f.FileNum),
-					f.Smallest.Pretty(format), f.Largest.Pretty(format))
+			if err := f.Validate(cmp, format); err != nil {
+				return errors.Wrapf(err, "%s ", level)
 			}
 			if prev != nil {
 				if !prev.lessSmallestKey(f, cmp) {

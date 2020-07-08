@@ -57,7 +57,7 @@ check-ordering
 L1
   b.SET.1-a.SET.2
 ----
-fatal: L1 file 000001 has inconsistent bounds: b#1,SET vs a#2,SET
+fatal: L1 : file 000001 has inconsistent bounds: b#1,SET vs a#2,SET
 
 check-ordering
 L1
@@ -71,7 +71,7 @@ L1
   a.SET.1-b.SET.2
   d.SET.3-c.SET.4
 ----
-fatal: L1 file 000002 has inconsistent bounds: d#3,SET vs c#4,SET
+fatal: L1 : file 000002 has inconsistent bounds: d#3,SET vs c#4,SET
 
 check-ordering
 L1
