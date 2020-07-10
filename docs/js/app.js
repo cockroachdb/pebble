@@ -363,7 +363,8 @@ function renderChart(chart) {
             });
 
             const mouse = d3.mouse(this);
-            if (mouse && mouse[0]) {
+            if (mouse) {
+                mouse[0] -= margin.left; // adjust for rect.mouse position
                 const date = x.invert(mouse[0]);
                 const hover = hoverSeries(mouse);
                 d3.selectAll(".chart").each(function() {
