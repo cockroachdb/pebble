@@ -8,6 +8,19 @@ body {
     border-top: 1px solid #eee;
 }
 
+.columns {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+}
+
 .center {
     margin: auto;
     width: 90%;
@@ -15,24 +28,15 @@ body {
     max-width: 1200px;
 }
 
-.left {
-    float: left;
-}
-
-.right {
-    float: right;
-}
-
 .section {
-    padding-top: 10px;
-    padding-bottom: 10px;
+    flex: 100%;
+    margin-top: 10px;
     overflow: auto;
 }
 
 .title {
     font-size: 24pt;
     font-weight: bold;
-    padding-top: 10px;
 }
 
 .subtitle {
@@ -42,6 +46,7 @@ body {
 
 .updated {
     font-size: 9pt;
+    text-align: right;
 }
 
 div.annotation {
@@ -76,7 +81,7 @@ path.line2 {
 }
 
 svg.chart {
-    width: 50%;
+    flex: 50%;
     height: 200px;
 }
 
@@ -84,4 +89,15 @@ text.hover {
     font-size: 8pt;
     font-weight: bold;
     filter: url(#textBackground);
+}
+
+@media only screen and (max-width: 900px) {
+    .columns {
+        flex-direction: column;
+    }
+
+    svg.chart {
+        width: 100%;
+        flex: auto;
+    }
 }
