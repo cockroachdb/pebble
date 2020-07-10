@@ -7,14 +7,12 @@
     <title>Pebble Benchmarks</title>
   </head>
   <body>
-    <div class="center">
+    <div class="center rows">
       <div class="section">
-        <span class="title">Pebble Benchmarks</span>
-        <span class="right">
-          </br>
-          <span class="updated"></span>
-        </span>
-        <br/>
+        <div class="columns">
+          <div class="title">Pebble Benchmarks</div>
+          <div class="updated">Last updated</div>
+        </div>
         <br/>
         <div class="overview">
           Benchmarks are run nightly using <a class="code"
@@ -32,47 +30,64 @@
         <div class="annotation" data-date="20200604">Increased
         LogWriter free blocks 4-&gt;16</div>
       </div>
-      <div class="section">
-        <span class="subtitle">YCSB A</span>
-        <span>(50% reads, 50% updates, zipf key distribution)</span>
-        <div class="right">
-          <b>Detail:</b>
-          <a id="readBytes" class="toggle">Bytes Read</a> |
-          <a id="writeBytes" class="toggle">Bytes Written</a> |
-          <a id="readAmp" class="toggle">Read Amp</a> |
-          <a id="writeAmp" class="toggle">Write Amp</a>
+      <div class="section rows">
+        <div class="columns">
+          <div>
+            <span class="subtitle">YCSB A</span>
+            <span>(50% reads, 50% updates, zipf key distribution)</span>
+          </div>
+          <div>
+            <b>Detail:</b>
+            <a id="readBytes" class="toggle">Bytes Read</a> |
+            <a id="writeBytes" class="toggle">Bytes Written</a> |
+            <a id="readAmp" class="toggle">Read Amp</a> |
+            <a id="writeAmp" class="toggle">Write Amp</a>
+          </div>
         </div>
-        <br/>
-        <svg class="chart left" data-key="ycsb/A/values=64"></svg>
-        <svg class="chart right" data-key="ycsb/A/values=1024"></svg>
+        <div class="columns">
+          <svg class="chart" data-key="ycsb/A/values=64"></svg>
+          <svg class="chart" data-key="ycsb/A/values=1024"></svg>
+        </div>
       </div>
-      <div class="section">
-        <span class="subtitle">YCSB B</span>
-        <span>(95 reads, 5% updates, zipf key distribution)</span>
-        <br/>
-        <svg class="chart left" data-key="ycsb/B/values=64"></svg>
-        <svg class="chart right" data-key="ycsb/B/values=1024"></svg>
+      <div class="section rows">
+        <div>
+          <span class="subtitle">YCSB B</span>
+          <span>(95 reads, 5% updates, zipf key distribution)</span>
+        </div>
+        <div class="columns">
+          <svg class="chart left" data-key="ycsb/B/values=64"></svg>
+          <svg class="chart right" data-key="ycsb/B/values=1024"></svg>
+        </div>
       </div>
-      <div class="section">      
-        <span class="subtitle">YCSB C</span>
-        <span>(100% reads, zipf key distribution)</span>
-        <br/>
-        <svg class="chart left" data-key="ycsb/C/values=64"></svg>
-        <svg class="chart right" data-key="ycsb/C/values=1024"></svg>
+      <div class="section rows">
+        <div>
+          <span class="subtitle">YCSB C</span>
+          <span>(100% reads, zipf key distribution)</span>
+        </div>
+        <div class="columns">
+          <svg class="chart left" data-key="ycsb/C/values=64"></svg>
+          <svg class="chart right" data-key="ycsb/C/values=1024"></svg>
+        </div>
       </div>
-      <div class="section">
-        <span class="subtitle">YCSB D</span>
-        <span>(95% reads, 5% updates, uniform key distribution)</span>
-        <br/>
-        <svg class="chart left" data-key="ycsb/D/values=64"></svg>
-        <svg class="chart right" data-key="ycsb/D/values=1024"></svg>
+      <div class="section rows">
+        <div>
+          <span class="subtitle">YCSB D</span>
+          <span>(95% reads, 5% updates, uniform key distribution)</span>
+        </div>
+        <div class="columns">
+          <svg class="chart left" data-key="ycsb/D/values=64"></svg>
+          <svg class="chart right" data-key="ycsb/D/values=1024"></svg>
+        </div>
       </div>
-      <div class="section">
-        <span class="subtitle">YCSB E</span>
-        <span>(95% scans, 5% updates, zipf key distribution)</span>
-        <br/>
-        <svg class="chart left" data-key="ycsb/E/values=64"></svg>
-        <svg class="chart right" data-key="ycsb/E/values=1024"></svg>
+      <div class="section rows">
+        <div>
+          <span class="subtitle">YCSB E</span>
+          <span>(95% scans, 5% updates, zipf key distribution)</span>
+        </div>
+        <div class="columns">
+          <svg class="chart left" data-key="ycsb/E/values=64"></svg>
+          <svg class="chart right" data-key="ycsb/E/values=1024"></svg>
+        </div>
       </div>
     </div>
     <script src="js/d3.v5.min.js"></script>
