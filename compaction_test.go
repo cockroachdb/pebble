@@ -494,7 +494,7 @@ func TestPickCompaction(t *testing.T) {
 			c := newCompaction(pc, opts, env.bytesCompacted)
 			got0 := fileNums(c.startLevel.files)
 			got1 := fileNums(c.outputLevel.files)
-			got2 := fileNums(c.grandparents)
+			got2 := fileNums(c.grandparents.Collect())
 			got = got0 + " " + got1 + " " + got2
 		}
 		if got != tc.want {
@@ -1148,7 +1148,7 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 			case "compact":
 				c := &compaction{
 					cmp:          cmp,
-					grandparents: grandparents,
+					grandparents: manifest.SliceLevelIterator(grandparents),
 				}
 				if len(d.CmdArgs) != 1 {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
