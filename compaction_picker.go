@@ -122,12 +122,12 @@ func newPickedCompaction(
 	adjustedOutputLevel := 1 + outputLevel - baseLevel
 
 	pc := &pickedCompaction{
-		cmp:                 opts.Comparer.Compare,
-		version:             cur,
-		inputs:              []compactionLevel{{level: startLevel}, {level: outputLevel}},
-		maxOutputFileSize:   uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
-		maxOverlapBytes:     maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
-		maxExpandedBytes:    expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
+		cmp:               opts.Comparer.Compare,
+		version:           cur,
+		inputs:            []compactionLevel{{level: startLevel}, {level: outputLevel}},
+		maxOutputFileSize: uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
+		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
+		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
 	}
 	pc.startLevel = &pc.inputs[0]
 	pc.outputLevel = &pc.inputs[1]
@@ -164,7 +164,7 @@ func (pc *pickedCompaction) setupInputs() {
 	// sstables, and then expand those tables to a clean cut. No need to do
 	// this for intra-L0 compactions; outputLevel.files is left empty for those.
 	if pc.startLevel.level != pc.outputLevel.level {
-		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey)
+		pc.outputLevel.files = pc.version.OverlapsSlice(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey)
 		pc.outputLevel.files = pc.expandInputs(pc.outputLevel.level, pc.outputLevel.files)
 		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, pc.outputLevel.files)
 	}
@@ -196,16 +196,16 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 	if len(pc.outputLevel.files) == 0 {
 		return false
 	}
-	grow0 := pc.version.Overlaps(pc.startLevel.level, pc.cmp, sm.UserKey, la.UserKey)
+	grow0 := pc.version.OverlapsSlice(pc.startLevel.level, pc.cmp, sm.UserKey, la.UserKey)
 	grow0 = pc.expandInputs(pc.startLevel.level, grow0)
 	if len(grow0) <= len(pc.startLevel.files) {
 		return false
 	}
-	if totalSize(grow0)+totalSize(pc.outputLevel.files) >= pc.maxExpandedBytes {
+	if totalSizeSlice(grow0)+totalSizeSlice(pc.outputLevel.files) >= pc.maxExpandedBytes {
 		return false
 	}
 	sm1, la1 := manifest.KeyRange(pc.cmp, grow0, nil)
-	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey, la1.UserKey)
+	grow1 := pc.version.OverlapsSlice(pc.outputLevel.level, pc.cmp, sm1.UserKey, la1.UserKey)
 	grow1 = pc.expandInputs(pc.outputLevel.level, grow1)
 	if len(grow1) != len(pc.outputLevel.files) {
 		return false
@@ -401,8 +401,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
 	// unlike the RocksDB logic that figures out whether L0 needs compaction.
-	bytesAddedToNextLevel := l0ExtraSize + totalSize(p.vers.Levels[0])
-	nextLevelSize := totalSize(p.vers.Levels[p.baseLevel])
+	bytesAddedToNextLevel := l0ExtraSize + totalSizeSlice(p.vers.Levels[0])
+	nextLevelSize := totalSizeSlice(p.vers.Levels[p.baseLevel])
 
 	var compactionDebt uint64
 	if bytesAddedToNextLevel > 0 && nextLevelSize > 0 {
@@ -414,7 +414,7 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	for level := p.baseLevel; level < numLevels-1; level++ {
 		levelSize := nextLevelSize + bytesAddedToNextLevel
-		nextLevelSize = totalSize(p.vers.Levels[level+1])
+		nextLevelSize = totalSizeSlice(p.vers.Levels[level+1])
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			if nextLevelSize > 0 {
@@ -454,7 +454,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	firstNonEmptyLevel := -1
 	var dbSize int64
 	for level := 1; level < numLevels; level++ {
-		levelSize := int64(totalSize(p.vers.Levels[level]))
+		levelSize := int64(totalSizeSlice(p.vers.Levels[level]))
 		if levelSize > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
@@ -489,7 +489,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	}
 
 	const levelMultiplier = 10
-	dbSize += int64(totalSize(p.vers.Levels[0]))
+	dbSize += int64(totalSizeSlice(p.vers.Levels[0]))
 	bottomLevelSize := dbSize - dbSize/levelMultiplier
 
 	curLevelSize := bottomLevelSize
@@ -542,7 +542,7 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]int6
 		c := &inProgressCompactions[i]
 
 		for _, input := range c.inputs {
-			real := int64(totalSize(input.files))
+			real := int64(totalSizeSlice(input.files))
 			compensated := int64(totalCompensatedSize(input.files))
 
 			if input.level != c.outputLevel {
@@ -938,7 +938,7 @@ func pickAutoHelper(
 	if pc.startLevel.level == 0 {
 		cmp := opts.Comparer.Compare
 		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files, nil)
-		pc.startLevel.files = vers.Overlaps(0, cmp, smallest.UserKey, largest.UserKey)
+		pc.startLevel.files = vers.OverlapsSlice(0, cmp, smallest.UserKey, largest.UserKey)
 		if len(pc.startLevel.files) == 0 {
 			panic("pebble: empty compaction")
 		}
@@ -1134,7 +1134,7 @@ func pickManualHelper(
 	pc = newPickedCompaction(opts, vers, manual.level, baseLevel)
 	manual.outputLevel = pc.outputLevel.level
 	cmp := opts.Comparer.Compare
-	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
+	pc.startLevel.files = vers.OverlapsSlice(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
 	if len(pc.startLevel.files) == 0 {
 		// Nothing to do
 		return nil

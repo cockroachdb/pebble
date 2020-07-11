@@ -46,10 +46,18 @@ func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }
 
-// totalSize returns the total size of all the files in f.
-func totalSize(f []*fileMetadata) (size uint64) {
+// totalSizeSlice returns the total size of all the files in f.
+func totalSizeSlice(f []*fileMetadata) (size uint64) {
 	for _, x := range f {
 		size += x.Size
+	}
+	return size
+}
+
+// totalSize returns the total size of all the files in iter.
+func totalSize(iter manifest.FileIterator) (size uint64) {
+	for f := iter.First(); f != nil; f = iter.Next() {
+		size += f.Size
 	}
 	return size
 }
@@ -137,7 +145,7 @@ type compaction struct {
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
 	// in the grandparent when this compaction finishes will be the same.
-	grandparents []*fileMetadata
+	grandparents manifest.FileIterator
 
 	// Boundaries at which flushes to L0 should be split. Determined by
 	// L0Sublevels. If nil, flushes aren't split.
@@ -261,7 +269,6 @@ func newFlush(
 	return c
 }
 
-
 func (c *compaction) setupInuseKeyRanges() {
 	level := c.outputLevel.level + 1
 	if c.outputLevel.level == 0 {
@@ -274,9 +281,8 @@ func (c *compaction) setupInuseKeyRanges() {
 	// levels.
 	var input []userKeyRange
 	for ; level < numLevels; level++ {
-		overlaps := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
-		for i := range overlaps {
-			m := overlaps[i]
+		iter := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		for m := iter.First(); m != nil; m = iter.Next() {
 			input = append(input, userKeyRange{m.Smallest.UserKey, m.Largest.UserKey})
 		}
 	}
@@ -340,17 +346,15 @@ func (c *compaction) trivialMove() bool {
 // user-key. Perhaps this isn't a problem if the compaction picking heuristics
 // always pick the right (older) sibling for compaction first.
 func (c *compaction) findGrandparentLimit(start []byte) []byte {
-	lower := sort.Search(len(c.grandparents), func(i int) bool {
-		return c.cmp(start, c.grandparents[i].Largest.UserKey) <= 0
-	})
+	iter := c.grandparents
 	var overlappedBytes uint64
-	for upper := lower; upper < len(c.grandparents); upper++ {
-		overlappedBytes += c.grandparents[upper].Size
+	for f := iter.SeekGE(c.cmp, start); f != nil; f = iter.Next() {
+		overlappedBytes += f.Size
 		// To ensure forward progress we always return a larger user
 		// key than where we started. See comments above clients of
 		// this function for how this is used.
-		if overlappedBytes > c.maxOverlapBytes && c.cmp(start, c.grandparents[upper].Largest.UserKey) < 0 {
-			return c.grandparents[upper].Largest.UserKey
+		if overlappedBytes > c.maxOverlapBytes && c.cmp(start, f.Largest.UserKey) < 0 {
+			return f.Largest.UserKey
 		}
 	}
 	return nil
@@ -1222,8 +1226,8 @@ func (d *DB) runCompaction(
 	}
 
 	metrics := &LevelMetrics{
-		BytesIn:   totalSize(c.startLevel.files),
-		BytesRead: totalSize(c.outputLevel.files),
+		BytesIn:   totalSizeSlice(c.startLevel.files),
+		BytesRead: totalSizeSlice(c.outputLevel.files),
 	}
 	metrics.BytesRead += metrics.BytesIn
 	c.metrics = map[int]*LevelMetrics{
