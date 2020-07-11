@@ -561,8 +561,8 @@ func TestCompactionPickerL0(t *testing.T) {
 				if len(pc.outputLevel.files) > 0 {
 					fmt.Fprintf(&result, "L%d: %s\n", pc.outputLevel.level, fileNums(pc.outputLevel.files))
 				}
-				if len(c.grandparents) > 0 {
-					fmt.Fprintf(&result, "grandparents: %s\n", fileNums(c.grandparents))
+				if !c.grandparents.Empty() {
+					fmt.Fprintf(&result, "grandparents: %s\n", fileNums(c.grandparents.Collect()))
 				}
 			} else {
 				return "nil"
@@ -638,7 +638,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 					pc.outputLevel.level = pc.startLevel.level + 1
 				}
 				pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
-					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String()))
+					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String())).Collect()
 
 				pc.setupInputs()
 

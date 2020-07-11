@@ -379,12 +379,11 @@ func (v *Version) InitL0Sublevels(
 // searches among the files. If level is zero, Contains scans the entire
 // level.
 func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
-	files := v.Levels[level]
+	iter := LevelIterator{files: v.Levels[level]}
 	if level > 0 {
-		files = v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey)
+		iter = v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey)
 	}
-
-	for _, f := range files {
+	for f := iter.First(); f != nil; f = iter.Next() {
 		if f == m {
 			return true
 		}
@@ -400,11 +399,12 @@ func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 // and the computation is repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*FileMetadata) {
+func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelIterator {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		selectedIndices := make([]bool, len(v.Levels[level]))
 		numSelected := 0
+		var iter LevelIterator
 		for {
 			restart := false
 			for i, selected := range selectedIndices {
@@ -442,25 +442,25 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) (ret []*Fi
 			}
 
 			if !restart {
-				ret = make([]*FileMetadata, 0, numSelected)
+				iter.files = make([]*FileMetadata, 0, numSelected)
 				for i, selected := range selectedIndices {
 					if selected {
-						ret = append(ret, v.Levels[level][i])
+						iter.files = append(iter.files, v.Levels[level][i])
 					}
 				}
 				break
 			}
 			// Continue looping to retry the files that were not selected.
 		}
-		return
+		return iter
 	}
 
-	files := v.Levels[level]
-	lower, upper := overlaps(files, cmp, start, end)
-	if lower >= upper {
-		return nil
+	var iter LevelIterator
+	lower, upper := overlaps(v.Levels[level], cmp, start, end)
+	if lower < upper {
+		iter.files = v.Levels[level][lower:upper]
 	}
-	return files[lower:upper]
+	return iter
 }
 
 // CheckOrdering checks that the files are consistent with respect to

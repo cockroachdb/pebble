@@ -122,12 +122,12 @@ func newPickedCompaction(
 	adjustedOutputLevel := 1 + outputLevel - baseLevel
 
 	pc := &pickedCompaction{
-		cmp:                 opts.Comparer.Compare,
-		version:             cur,
-		inputs:              []compactionLevel{{level: startLevel}, {level: outputLevel}},
-		maxOutputFileSize:   uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
-		maxOverlapBytes:     maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
-		maxExpandedBytes:    expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
+		cmp:               opts.Comparer.Compare,
+		version:           cur,
+		inputs:            []compactionLevel{{level: startLevel}, {level: outputLevel}},
+		maxOutputFileSize: uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
+		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
+		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
 	}
 	pc.startLevel = &pc.inputs[0]
 	pc.outputLevel = &pc.inputs[1]
@@ -164,7 +164,7 @@ func (pc *pickedCompaction) setupInputs() {
 	// sstables, and then expand those tables to a clean cut. No need to do
 	// this for intra-L0 compactions; outputLevel.files is left empty for those.
 	if pc.startLevel.level != pc.outputLevel.level {
-		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey)
+		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey).Collect()
 		pc.outputLevel.files = pc.expandInputs(pc.outputLevel.level, pc.outputLevel.files)
 		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files, pc.outputLevel.files)
 	}
@@ -237,7 +237,7 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 	if len(pc.outputLevel.files) == 0 {
 		return false
 	}
-	grow0 := pc.version.Overlaps(pc.startLevel.level, pc.cmp, sm.UserKey, la.UserKey)
+	grow0 := pc.version.Overlaps(pc.startLevel.level, pc.cmp, sm.UserKey, la.UserKey).Collect()
 	grow0 = pc.expandInputs(pc.startLevel.level, grow0)
 	if len(grow0) <= len(pc.startLevel.files) {
 		return false
@@ -246,7 +246,7 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 		return false
 	}
 	sm1, la1 := manifest.KeyRange(pc.cmp, grow0, nil)
-	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey, la1.UserKey)
+	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey, la1.UserKey).Collect()
 	grow1 = pc.expandInputs(pc.outputLevel.level, grow1)
 	if len(grow1) != len(pc.outputLevel.files) {
 		return false
@@ -980,7 +980,7 @@ func pickAutoHelper(
 	if pc.startLevel.level == 0 {
 		cmp := opts.Comparer.Compare
 		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files, nil)
-		pc.startLevel.files = vers.Overlaps(0, cmp, smallest.UserKey, largest.UserKey)
+		pc.startLevel.files = vers.Overlaps(0, cmp, smallest.UserKey, largest.UserKey).Collect()
 		if len(pc.startLevel.files) == 0 {
 			panic("pebble: empty compaction")
 		}
@@ -1180,7 +1180,7 @@ func pickManualHelper(
 	pc = newPickedCompaction(opts, vers, manual.level, baseLevel)
 	manual.outputLevel = pc.outputLevel.level
 	cmp := opts.Comparer.Compare
-	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey)
+	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start.UserKey, manual.end.UserKey).Collect()
 	if len(pc.startLevel.files) == 0 {
 		// Nothing to do
 		return nil

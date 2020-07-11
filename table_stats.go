@@ -270,15 +270,10 @@ func (d *DB) estimateSizeBeneath(
 	// additional I/O to read the file's index blocks.
 	var estimate uint64
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, d.cmp, start, end)
+		iter := v.Overlaps(l, d.cmp, start, end)
 
-		for i, file := range overlaps {
-			if i > 0 && i < len(overlaps)-1 {
-				// The files to the left and the right at least
-				// partially overlap with the range tombstone, which
-				// means `file` is fully contained within the range.
-				estimate += file.Size
-			} else if d.cmp(start, file.Smallest.UserKey) <= 0 &&
+		for file := iter.First(); file != nil; file = iter.Next() {
+			if d.cmp(start, file.Smallest.UserKey) <= 0 &&
 				d.cmp(file.Largest.UserKey, end) <= 0 {
 				// The range fully contains the file, so skip looking it up in
 				// table cache/looking at its indexes and add the full file size.
