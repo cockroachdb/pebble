@@ -458,6 +458,7 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 func TestMaybeReadahead(t *testing.T) {
 	var rs readaheadState
 	datadriven.RunTest(t, "testdata/readahead", func(d *datadriven.TestData) string {
+		cacheHit := false
 		switch d.Cmd {
 		case "reset":
 			rs.size = initialReadaheadSize
@@ -465,6 +466,9 @@ func TestMaybeReadahead(t *testing.T) {
 			rs.numReads = 0
 			return ""
 
+		case "cache-read":
+			cacheHit = true
+			fallthrough
 		case "read":
 			args := strings.Split(d.Input, ",")
 			if len(args) != 2 {
@@ -475,7 +479,12 @@ func TestMaybeReadahead(t *testing.T) {
 			require.NoError(t, err)
 			size, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
 			require.NoError(t, err)
-			raSize := rs.maybeReadahead(offset, size)
+			var raSize int64
+			if cacheHit {
+				rs.recordCacheHit(offset, size)
+			} else {
+				raSize = rs.maybeReadahead(offset, size)
+			}
 
 			var buf strings.Builder
 			fmt.Fprintf(&buf, "readahead:  %d\n", raSize)

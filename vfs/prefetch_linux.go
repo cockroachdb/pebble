@@ -6,7 +6,11 @@
 
 package vfs
 
-import "syscall"
+import (
+	"syscall"
+
+	"golang.org/x/sys/unix"
+)
 
 // Prefetch signals the OS (on supported platforms) to fetch the next size
 // bytes in file after offset into cache. Any subsequent reads in that range
@@ -18,6 +22,19 @@ func Prefetch(file File, offset uint64, size uint64) error {
 	if f, ok := file.(fd); ok {
 		_, _, err := syscall.Syscall(syscall.SYS_READAHEAD, uintptr(f.Fd()), uintptr(offset), uintptr(size))
 		return err
+	}
+	return nil
+}
+
+// AdviseSequential signals the OS (on supported platforms) to do readahead at
+// the OS level, as any reads beyond offset are likely to be in a sequential
+// access pattern.
+func AdviseSequential(file File, offset uint64) error {
+	type fd interface {
+		Fd() uintptr
+	}
+	if f, ok := file.(fd); ok {
+		return unix.Fadvise(int(f.Fd()), int64(offset), 0, unix.FADV_SEQUENTIAL)
 	}
 	return nil
 }
