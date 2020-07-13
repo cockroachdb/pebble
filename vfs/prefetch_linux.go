@@ -6,7 +6,9 @@
 
 package vfs
 
-import "syscall"
+import (
+	"syscall"
+)
 
 // Prefetch signals the OS (on supported platforms) to fetch the next size
 // bytes in file after offset into cache. Any subsequent reads in that range
