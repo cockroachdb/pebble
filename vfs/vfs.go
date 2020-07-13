@@ -191,13 +191,33 @@ type randomReadsOption struct{}
 
 // RandomReadsOption is an OpenOption that optimizes opened file handle for
 // random reads, by calling  fadvise() with POSIX_FADV_RANDOM on Linux systems
-// to disable readahead. Only works when specified to defaultFS.
+// to disable readahead.
 var RandomReadsOption OpenOption = &randomReadsOption{}
 
 // Apply implements the OpenOption interface.
 func (randomReadsOption) Apply(f File) {
-	if osFile, ok := f.(*os.File); ok {
-		_ = fadviseRandom(osFile.Fd())
+	type fd interface {
+		Fd() uintptr
+	}
+	if fdFile, ok := f.(fd); ok {
+		_ = fadviseRandom(fdFile.Fd())
+	}
+}
+
+type sequentialReadsOption struct{}
+
+// SequentialReadsOption is an OpenOption that optimizes opened file handle for
+// sequential reads, by calling fadvise() with POSIX_FADV_SEQUENTIAL on Linux
+// systems to enable readahead.
+var SequentialReadsOption OpenOption = &sequentialReadsOption{}
+
+// Apply implements the OpenOption interface.
+func (sequentialReadsOption) Apply(f File) {
+	type fd interface {
+		Fd() uintptr
+	}
+	if fdFile, ok := f.(fd); ok {
+		_ = fadviseSequential(fdFile.Fd())
 	}
 }
 
