@@ -450,11 +450,12 @@ type tableCacheNode struct {
 func (n *tableCacheNode) load(c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	f, n.err = c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum),
-		vfs.RandomReadsOption)
+	filename := base.MakeFilename(c.fs, c.dirname, fileTypeTable, n.meta.FileNum)
+	f, n.err = c.fs.Open(filename, vfs.RandomReadsOption)
 	if n.err == nil {
 		cacheOpts := private.SSTableCacheOpts(c.cacheID, n.meta.FileNum).(sstable.ReaderOption)
-		n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
+		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: filename}
+		n.reader, n.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics, reopenOpt)
 	}
 	if n.err == nil {
 		if n.meta.SmallestSeqNum == n.meta.LargestSeqNum {
