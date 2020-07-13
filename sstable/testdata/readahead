@@ -178,26 +178,48 @@ read
 ----
 readahead:  262144
 numReads:   8
-size:       524288
+size:       262144
 prevSize:   262144
 limit:      466632
 
-# The readahead size should not increase beyond the max (512kb)
+# The readahead size should not increase beyond the max (256kb)
 
 read
 466632, 16
 ----
-readahead:  524288
+readahead:  262144
 numReads:   9
-size:       524288
-prevSize:   524288
-limit:      990920
+size:       262144
+prevSize:   262144
+limit:      728776
+
+# A cache read pushes the limit further ahead without issuing a readahead.
+
+cache-read
+728770, 16
+----
+readahead:  0
+numReads:   9
+size:       262144
+prevSize:   262144
+limit:      728786
 
 read
-1515208,16
+728780, 16
 ----
-readahead:  524288
+readahead:  262144
 numReads:   10
-size:       524288
-prevSize:   524288
-limit:      2039496
+size:       262144
+prevSize:   262144
+limit:      990924
+
+# An out-of-order cache read still resets readahead state.
+
+cache-read
+1200, 16
+----
+readahead:  0
+numReads:   1
+size:       65536
+prevSize:   0
+limit:      1216

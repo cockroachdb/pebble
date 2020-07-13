@@ -13,3 +13,11 @@ func Prefetch(file File, offset uint64, size uint64) error {
 	// No-op.
 	return nil
 }
+
+// AdviseSequential signals the OS (on supported platforms) to do readahead at
+// the OS level, as any reads beyond offset are likely to be in a sequential
+// access pattern.
+func AdviseSequential(file File, offset uint64) error {
+	// No-op.
+	return nil
+}
