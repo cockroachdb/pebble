@@ -556,11 +556,12 @@ type tableCacheValue struct {
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	f, v.err = c.fs.Open(base.MakeFilename(c.fs, c.dirname, fileTypeTable, meta.FileNum),
-		vfs.RandomReadsOption)
+	filename := base.MakeFilename(c.fs, c.dirname, fileTypeTable, meta.FileNum)
+	f, v.err = c.fs.Open(filename, vfs.RandomReadsOption)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(c.cacheID, meta.FileNum).(sstable.ReaderOption)
-		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics)
+		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: filename}
+		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics, reopenOpt)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
