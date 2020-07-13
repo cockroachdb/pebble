@@ -73,13 +73,13 @@ func TestIkeyRange(t *testing.T) {
 			}
 		}
 
-		smallest0, largest0 := KeyRange(base.DefaultComparer.Compare, f, nil)
+		smallest0, largest0 := KeyRange(base.DefaultComparer.Compare, SliceLevelIterator(f))
 		got0 := string(smallest0.UserKey) + "-" + string(largest0.UserKey)
 		if got0 != tc.want {
 			t.Errorf("first []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got0, tc.want)
 		}
 
-		smallest1, largest1 := KeyRange(base.DefaultComparer.Compare, nil, f)
+		smallest1, largest1 := KeyRange(base.DefaultComparer.Compare, SliceLevelIterator(f))
 		got1 := string(smallest1.UserKey) + "-" + string(largest1.UserKey)
 		if got1 != tc.want {
 			t.Errorf("second []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got1, tc.want)

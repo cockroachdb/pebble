@@ -1457,8 +1457,14 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 	for c := range d.mu.compact.inProgress {
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
-				inputs:      c.inputs,
+				inputs:      make([]compactionInput, 0, len(c.inputs)),
 				outputLevel: -1,
+			}
+			for _, in := range c.inputs {
+				info.inputs = append(info.inputs, compactionInput{
+					level: in.level,
+					files: manifest.SliceLevelIterator(in.files),
+				})
 			}
 			if c.outputLevel != nil {
 				info.outputLevel = c.outputLevel.level

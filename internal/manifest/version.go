@@ -130,20 +130,20 @@ func (m *FileMetadata) lessSmallestKey(b *FileMetadata, cmp Compare) bool {
 }
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
-// all the fileMetadata in f0 and f1.
-func KeyRange(ucmp Compare, fileSlices ...[]*FileMetadata) (smallest, largest InternalKey) {
+// all the FileMetadata in iters.
+func KeyRange(ucmp Compare, iters ...LevelIterator) (smallest, largest InternalKey) {
 	first := true
-	for _, files := range fileSlices {
-		for _, meta := range files {
+	for _, iter := range iters {
+		for meta := iter.First(); meta != nil; meta = iter.Next() {
 			if first {
 				first = false
 				smallest, largest = meta.Smallest, meta.Largest
 				continue
 			}
-			if base.InternalCompare(ucmp, meta.Smallest, smallest) < 0 {
+			if base.InternalCompare(ucmp, smallest, meta.Smallest) >= 0 {
 				smallest = meta.Smallest
 			}
-			if base.InternalCompare(ucmp, meta.Largest, largest) > 0 {
+			if base.InternalCompare(ucmp, largest, meta.Largest) <= 0 {
 				largest = meta.Largest
 			}
 		}
@@ -445,6 +445,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelItera
 						iter.files = append(iter.files, v.Levels[level][i])
 					}
 				}
+				iter.end = len(iter.files)
 				break
 			}
 			// Continue looping to retry the files that were not selected.
@@ -455,7 +456,10 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelItera
 	var iter LevelIterator
 	lower, upper := overlaps(v.Levels[level], cmp, start, end)
 	if lower < upper {
-		iter.files = v.Levels[level][lower:upper]
+		iter.files = v.Levels[level]
+		iter.start = lower
+		iter.cur = lower
+		iter.end = upper
 	}
 	return iter
 }

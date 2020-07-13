@@ -62,7 +62,11 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	if p.level == 0 {
 		outputLevel = p.baseLevel
 	}
-	cInfo := candidateLevelInfo{level: p.level, outputLevel: outputLevel}
+	cInfo := candidateLevelInfo{
+		level:       p.level,
+		outputLevel: outputLevel,
+		file:        p.vers.Levels[p.level].Iter().Take(),
+	}
 	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
 
@@ -1704,7 +1708,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.outputLevel.level = c.startLevel.level + 1
 					}
 
-					c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, c.outputLevel.files)
+					c.smallest, c.largest = manifest.KeyRange(c.cmp,
+						manifest.SliceLevelIterator(c.startLevel.files),
+						manifest.SliceLevelIterator(c.outputLevel.files))
 
 					c.inuseKeyRanges = nil
 					c.setupInuseKeyRanges()

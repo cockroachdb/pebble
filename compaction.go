@@ -210,12 +210,18 @@ func newCompaction(
 		largest:             pc.largest,
 		logger:              opts.Logger,
 		version:             pc.version,
-		inputs:              pc.inputs,
 		maxOutputFileSize:   pc.maxOutputFileSize,
 		maxOverlapBytes:     pc.maxOverlapBytes,
 		maxExpandedBytes:    pc.maxOverlapBytes,
 		atomicBytesIterated: bytesCompacted,
 	}
+	for _, in := range pc.inputs {
+		c.inputs = append(c.inputs, compactionLevel{
+			level: in.level,
+			files: in.files.Collect(),
+		})
+	}
+
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
 
@@ -250,11 +256,11 @@ func newDeleteOnlyCompaction(
 	}
 
 	// Set c.smallest, c.largest.
-	levelFiles := make([][]*fileMetadata, 0, len(inputs))
+	files := make([]manifest.LevelIterator, 0, len(inputs))
 	for _, in := range inputs {
-		levelFiles = append(levelFiles, in.files)
+		files = append(files, manifest.SliceLevelIterator(in.files))
 	}
-	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, levelFiles...)
+	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, files...)
 	return c
 }
 
