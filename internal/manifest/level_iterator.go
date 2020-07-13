@@ -6,6 +6,16 @@ package manifest
 
 import "sort"
 
+// LevelMetadata contains metadata for all of the files within
+// a level of the LSM.
+// TODO(jackson): Convert to an opaque struct.
+type LevelMetadata []*FileMetadata
+
+// Iter constructs a LevelIterator over the entire level.
+func (lm LevelMetadata) Iter() LevelIterator {
+	return LevelIterator{files: lm}
+}
+
 // SliceLevelIterator constructs a LevelIterator over the provided slice.  This
 // function is expected to be a temporary adapter between interfaces.
 // TODO(jackson): Revisit once the conversion of Version.Files to a btree is

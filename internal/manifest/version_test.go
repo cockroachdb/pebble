@@ -169,7 +169,7 @@ func TestOverlaps(t *testing.T) {
 	}
 
 	v := Version{
-		Levels: [NumLevels][]*FileMetadata{
+		Levels: [NumLevels]LevelMetadata{
 			0: {m00, m01, m02, m03, m04, m05, m06, m07},
 			1: {m10, m11, m12, m13, m14},
 		},
@@ -342,7 +342,7 @@ func TestContains(t *testing.T) {
 	}
 
 	v := Version{
-		Levels: [NumLevels][]*FileMetadata{
+		Levels: [NumLevels]LevelMetadata{
 			0: {m00, m01, m02, m03, m04, m05, m06, m07},
 			1: {m10, m11, m12, m13, m14},
 		},
@@ -436,7 +436,7 @@ func TestCheckOrdering(t *testing.T) {
 				// avoid repeating it, and make it the inverse of
 				// Version.DebugString().
 				v := Version{}
-				var files *[]*FileMetadata
+				var files *LevelMetadata
 				fileNum := base.FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
@@ -505,7 +505,7 @@ func TestCheckConsistency(t *testing.T) {
 			switch d.Cmd {
 			case "check-consistency":
 				v := Version{}
-				var files *[]*FileMetadata
+				var files *LevelMetadata
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					switch data {

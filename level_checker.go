@@ -368,10 +368,10 @@ func checkRangeTombstones(c *checkConfig) error {
 	}
 
 	current := c.readState.current
-	addTombstonesFromLevel := func(files *[]*fileMetadata, lsmLevel int) error {
-		for j := 0; j < len(*files); j++ {
-			lower, upper := getAtomicUnitBounds(c.cmp, *files, j)
-			f := (*files)[j]
+	addTombstonesFromLevel := func(files []*fileMetadata, lsmLevel int) error {
+		for j := 0; j < len(files); j++ {
+			lower, upper := getAtomicUnitBounds(c.cmp, files, j)
+			f := files[j]
 			iterToClose, iter, err := c.newIters(f, nil, nil)
 			if err != nil {
 				return err
@@ -405,7 +405,7 @@ func checkRangeTombstones(c *checkConfig) error {
 		if len(current.L0Sublevels.Levels[i]) == 0 {
 			continue
 		}
-		if err := addTombstonesFromLevel(&current.L0Sublevels.Levels[i], 0); err != nil {
+		if err := addTombstonesFromLevel(current.L0Sublevels.Levels[i], 0); err != nil {
 			return err
 		}
 		level++
@@ -414,7 +414,7 @@ func checkRangeTombstones(c *checkConfig) error {
 		if len(current.Levels[i]) == 0 {
 			continue
 		}
-		files := &current.Levels[i]
+		files := current.Levels[i]
 		if err := addTombstonesFromLevel(files, i); err != nil {
 			return err
 		}

@@ -584,11 +584,15 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	// Check that the LSM ordering invariants are ok in order to prevent
 	// generating corrupted sstables due to a violation of those invariants.
 	if c.startLevel.level >= 0 {
-		if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel.level), c.startLevel.files); err != nil {
+		err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel.level),
+			manifest.SliceLevelIterator(c.startLevel.files))
+		if err != nil {
 			c.logger.Fatalf("%s", err)
 		}
 	}
-	if err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel.level), c.outputLevel.files); err != nil {
+	err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel.level),
+		manifest.SliceLevelIterator(c.outputLevel.files))
+	if err != nil {
 		c.logger.Fatalf("%s", err)
 	}
 

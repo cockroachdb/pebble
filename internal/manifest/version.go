@@ -235,7 +235,7 @@ type Version struct {
 	// in Files[0] are in L0Sublevels.Levels.
 	L0Sublevels *L0Sublevels
 
-	Levels [NumLevels][]*FileMetadata
+	Levels [NumLevels]LevelMetadata
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
@@ -255,25 +255,22 @@ func (v *Version) String() string {
 // Pretty returns a string representation of the version.
 func (v *Version) Pretty(format base.FormatKey) string {
 	var buf bytes.Buffer
-	for level := 0; level < NumLevels; level++ {
-		if len(v.Levels[level]) == 0 {
-			continue
-		}
-
-		if level == 0 {
-			for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
-				fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-				for _, f := range v.L0Sublevels.Levels[sublevel] {
-					fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
-						format(f.Smallest.UserKey), format(f.Largest.UserKey))
-				}
+	if v.L0Sublevels != nil {
+		for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
+			fmt.Fprintf(&buf, "0.%d:\n", sublevel)
+			for _, f := range v.L0Sublevels.Levels[sublevel] {
+				fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
+					format(f.Smallest.UserKey), format(f.Largest.UserKey))
 			}
+		}
+	}
+	for level := 1; level < NumLevels; level++ {
+		iter := v.Levels[level].Iter()
+		if iter.Empty() {
 			continue
 		}
-
 		fmt.Fprintf(&buf, "%d:\n", level)
-		for j := range v.Levels[level] {
-			f := v.Levels[level][j]
+		for f := iter.First(); f != nil; f = iter.Next() {
 			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				format(f.Smallest.UserKey), format(f.Largest.UserKey))
 		}
@@ -285,25 +282,23 @@ func (v *Version) Pretty(format base.FormatKey) string {
 // sequence number and kind information for the sstable boundaries.
 func (v *Version) DebugString(format base.FormatKey) string {
 	var buf bytes.Buffer
-	for level := 0; level < NumLevels; level++ {
-		if len(v.Levels[level]) == 0 {
-			continue
-		}
 
-		if level == 0 {
-			for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
-				fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-				for _, f := range v.L0Sublevels.Levels[sublevel] {
-					fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
-						f.Smallest.Pretty(format), f.Largest.Pretty(format))
-				}
+	if v.L0Sublevels != nil {
+		for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
+			fmt.Fprintf(&buf, "0.%d:\n", sublevel)
+			for _, f := range v.L0Sublevels.Levels[sublevel] {
+				fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
+					f.Smallest.Pretty(format), f.Largest.Pretty(format))
 			}
+		}
+	}
+	for level := 1; level < NumLevels; level++ {
+		iter := v.Levels[level].Iter()
+		if iter.Empty() {
 			continue
 		}
-
 		fmt.Fprintf(&buf, "%d:\n", level)
-		for j := range v.Levels[level] {
-			f := v.Levels[level][j]
+		for f := iter.First(); f != nil; f = iter.Next() {
 			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				f.Smallest.Pretty(format), f.Largest.Pretty(format))
 		}
@@ -348,10 +343,12 @@ func (v *Version) UnrefLocked() {
 }
 
 func (v *Version) unrefFiles() []base.FileNum {
+	// TODO(jackson): Move responsibility of ref-ing of individual files into
+	// the LevelMetadata type.
 	var obsolete []base.FileNum
 	for _, files := range v.Levels {
-		for i := range files {
-			f := files[i]
+		iter := files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			if atomic.AddInt32(&f.refs, -1) == 0 {
 				obsolete = append(obsolete, f.FileNum)
 			}
@@ -379,7 +376,7 @@ func (v *Version) InitL0Sublevels(
 // searches among the files. If level is zero, Contains scans the entire
 // level.
 func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
-	iter := LevelIterator{files: v.Levels[level]}
+	iter := v.Levels[level].Iter()
 	if level > 0 {
 		iter = v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey)
 	}
@@ -468,13 +465,14 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelItera
 // overlapping internal key ranges (for level non-0 files).
 func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 	for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
-		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), v.L0Sublevels.Levels[sublevel]); err != nil {
+		iter := SliceLevelIterator(v.L0Sublevels.Levels[sublevel])
+		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), iter); err != nil {
 			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
 
-	for level, files := range v.Levels {
-		if err := CheckOrdering(cmp, format, Level(level), files); err != nil {
+	for level, lm := range v.Levels {
+		if err := CheckOrdering(cmp, format, Level(level), lm.Iter()); err != nil {
 			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}
 	}
@@ -488,7 +486,8 @@ func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
 	var args []interface{}
 
 	for level, files := range v.Levels {
-		for _, f := range files {
+		iter := files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			path := base.MakeFilename(fs, dirname, base.FileTypeTable, f.FileNum)
 			info, err := fs.Stat(path)
 			if err != nil {
@@ -573,7 +572,7 @@ func (l *VersionList) Remove(v *Version) {
 // CheckOrdering checks that the files are consistent with respect to
 // seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
-func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files []*FileMetadata) error {
+func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelIterator) error {
 	// The invariants to check for L0 sublevels are the same as the ones to
 	// check for all other levels. However, if L0 is not organized into
 	// sublevels, or if all L0 files are being passed in, we do the legacy L0
@@ -623,31 +622,30 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files []*Fil
 		// with future versions of pebble, this method relaxes most L0 invariant
 		// checks.
 
-		for i := range files {
-			f := files[i]
-			if i > 0 {
-				// Validate that the sorting is sane.
-				prev := files[i-1]
-				if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
-					// Multiple files satisfying case 2 mentioned above.
-				} else if !prev.lessSeqNum(f) {
-					return errors.Errorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
-						errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
-						errors.Safe(prev.SmallestSeqNum), errors.Safe(prev.LargestSeqNum),
-						errors.Safe(f.SmallestSeqNum), errors.Safe(f.LargestSeqNum))
-				}
+		var prev *FileMetadata
+		for f := files.First(); f != nil; f, prev = files.Next(), f {
+			if prev == nil {
+				continue
+			}
+			// Validate that the sorting is sane.
+			if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
+				// Multiple files satisfying case 2 mentioned above.
+			} else if !prev.lessSeqNum(f) {
+				return errors.Errorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
+					errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+					errors.Safe(prev.SmallestSeqNum), errors.Safe(prev.LargestSeqNum),
+					errors.Safe(f.SmallestSeqNum), errors.Safe(f.LargestSeqNum))
 			}
 		}
 	} else {
-		for i := range files {
-			f := files[i]
+		var prev *FileMetadata
+		for f := files.First(); f != nil; f, prev = files.Next(), f {
 			if base.InternalCompare(cmp, f.Smallest, f.Largest) > 0 {
 				return errors.Errorf("%s file %s has inconsistent bounds: %s vs %s",
 					errors.Safe(level), errors.Safe(f.FileNum),
 					f.Smallest.Pretty(format), f.Largest.Pretty(format))
 			}
-			if i > 0 {
-				prev := files[i-1]
+			if prev != nil {
 				if !prev.lessSmallestKey(f, cmp) {
 					return errors.Errorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
