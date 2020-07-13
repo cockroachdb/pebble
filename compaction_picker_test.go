@@ -403,7 +403,7 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 				}
 
 				c := pickIntraL0(env, opts, &version{
-					Levels: [7][]*fileMetadata{
+					Levels: [7]manifest.LevelMetadata{
 						0: files,
 					},
 				})
@@ -473,7 +473,7 @@ func TestCompactionPickerL0(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			fileMetas := [manifest.NumLevels][]*manifest.FileMetadata{}
+			fileMetas := [manifest.NumLevels]manifest.LevelMetadata{}
 			baseLevel := manifest.NumLevels - 1
 			level := 0
 			var err error
@@ -603,7 +603,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 					maxExpandedBytes: 1 << 30,
 				}
 				pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
-				var files *[]*fileMetadata
+				var currentLevel int
 				fileNum := FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
@@ -615,13 +615,13 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 						}
 						if pc.startLevel.level == -1 {
 							pc.startLevel.level = level
-							files = &pc.version.Levels[level]
+							currentLevel = level
 						} else if pc.outputLevel.level == -1 {
 							if pc.startLevel.level >= level {
 								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", pc.startLevel.level, level)
 							}
 							pc.outputLevel.level = level
-							files = &pc.version.Levels[level]
+							currentLevel = level
 						} else {
 							return fmt.Sprintf("outputLevel already set\n")
 						}
@@ -630,7 +630,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 						meta := parseMeta(data)
 						meta.FileNum = fileNum
 						fileNum++
-						*files = append(*files, meta)
+						pc.version.Levels[currentLevel] = append(pc.version.Levels[currentLevel], meta)
 					}
 				}
 
