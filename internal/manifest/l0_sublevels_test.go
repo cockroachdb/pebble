@@ -432,7 +432,7 @@ func TestL0Sublevels(t *testing.T) {
 		case "l0-check-ordering":
 			for sublevel, files := range sublevels.Levels {
 				err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter,
-					L0Sublevel(sublevel), SliceLevelIterator(files))
+					L0Sublevel(sublevel), NewLevelSlice(files).Iter())
 				if err != nil {
 					return err.Error()
 				}

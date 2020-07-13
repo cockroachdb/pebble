@@ -147,7 +147,7 @@ type compaction struct {
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
 	// in the grandparent when this compaction finishes will be the same.
-	grandparents manifest.LevelIterator
+	grandparents manifest.LevelSlice
 
 	// Boundaries at which flushes to L0 should be split. Determined by
 	// L0Sublevels. If nil, flushes aren't split.
@@ -210,19 +210,26 @@ func newCompaction(
 		largest:             pc.largest,
 		logger:              opts.Logger,
 		version:             pc.version,
-		inputs:              pc.inputs,
 		maxOutputFileSize:   pc.maxOutputFileSize,
 		maxOverlapBytes:     pc.maxOverlapBytes,
 		maxExpandedBytes:    pc.maxOverlapBytes,
 		atomicBytesIterated: bytesCompacted,
 	}
+	for _, in := range pc.inputs {
+		c.inputs = append(c.inputs, compactionLevel{
+			level: in.level,
+			files: in.files.Collect(),
+		})
+	}
+
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
 
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
 	if c.outputLevel.level+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.cmp,
+			c.smallest.UserKey, c.largest.UserKey)
 	}
 	c.setupInuseKeyRanges()
 
@@ -250,11 +257,11 @@ func newDeleteOnlyCompaction(
 	}
 
 	// Set c.smallest, c.largest.
-	levelFiles := make([][]*fileMetadata, 0, len(inputs))
+	files := make([]manifest.LevelIterator, 0, len(inputs))
 	for _, in := range inputs {
-		levelFiles = append(levelFiles, in.files)
+		files = append(files, manifest.NewLevelSlice(in.files).Iter())
 	}
-	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, levelFiles...)
+	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, files...)
 	return c
 }
 
@@ -331,7 +338,8 @@ func newFlush(
 		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
 		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
-		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		c.grandparents = c.version.Overlaps(baseLevel, c.cmp,
+			c.smallest.UserKey, c.largest.UserKey)
 	}
 
 	c.setupInuseKeyRanges()
@@ -350,7 +358,7 @@ func (c *compaction) setupInuseKeyRanges() {
 	// levels.
 	var input []userKeyRange
 	for ; level < numLevels; level++ {
-		iter := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		iter := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey).Iter()
 		for m := iter.First(); m != nil; m = iter.Next() {
 			input = append(input, userKeyRange{m.Smallest.UserKey, m.Largest.UserKey})
 		}
@@ -400,7 +408,7 @@ func (c *compaction) setupInuseKeyRanges() {
 // user-key. Perhaps this isn't a problem if the compaction picking heuristics
 // always pick the right (older) sibling for compaction first.
 func (c *compaction) findGrandparentLimit(start []byte) []byte {
-	iter := c.grandparents
+	iter := c.grandparents.Iter()
 	var overlappedBytes uint64
 	for f := iter.SeekGE(c.cmp, start); f != nil; f = iter.Next() {
 		overlappedBytes += f.Size
@@ -585,13 +593,13 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	// generating corrupted sstables due to a violation of those invariants.
 	if c.startLevel.level >= 0 {
 		err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel.level),
-			manifest.SliceLevelIterator(c.startLevel.files))
+			manifest.NewLevelSlice(c.startLevel.files).Iter())
 		if err != nil {
 			c.logger.Fatalf("%s", err)
 		}
 	}
 	err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel.level),
-		manifest.SliceLevelIterator(c.outputLevel.files))
+		manifest.NewLevelSlice(c.outputLevel.files).Iter())
 	if err != nil {
 		c.logger.Fatalf("%s", err)
 	}
@@ -1295,7 +1303,7 @@ func checkDeleteCompactionHints(
 		// The hint h will be resolved and dropped, regardless of whether
 		// there are any tables that can be deleted.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			overlaps := v.Overlaps(l, cmp, h.start, h.end)
+			overlaps := v.Overlaps(l, cmp, h.start, h.end).Iter()
 			for m := overlaps.First(); m != nil; m = overlaps.Next() {
 				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
 					continue

@@ -317,7 +317,7 @@ func (d *DB) estimateSizeBeneath(
 	// additional I/O to read the file's index blocks.
 	hintSeqNum = math.MaxUint64
 	for l := level + 1; l < numLevels; l++ {
-		iter := v.Overlaps(l, d.cmp, start, end)
+		iter := v.Overlaps(l, d.cmp, start, end).Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
 			if d.cmp(start, file.Smallest.UserKey) <= 0 &&
 				d.cmp(file.Largest.UserKey, end) <= 0 {

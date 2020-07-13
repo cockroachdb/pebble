@@ -62,7 +62,11 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	if p.level == 0 {
 		outputLevel = p.baseLevel
 	}
-	cInfo := candidateLevelInfo{level: p.level, outputLevel: outputLevel}
+	cInfo := candidateLevelInfo{
+		level:       p.level,
+		outputLevel: outputLevel,
+		file:        p.vers.Levels[p.level].Iter().Take(),
+	}
 	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
 
@@ -1156,7 +1160,7 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 			case "compact":
 				c := &compaction{
 					cmp:          cmp,
-					grandparents: manifest.SliceLevelIterator(grandparents),
+					grandparents: manifest.NewLevelSlice(grandparents),
 				}
 				if len(d.CmdArgs) != 1 {
 					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
@@ -1458,7 +1462,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					tombstoneLevel := int(parseUint64(parts[0][1:]))
 					// Find the file in the current version.
 					v := d.mu.versions.currentVersion()
-					overlaps := v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start, end)
+					overlaps := v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start, end).Iter()
 					for m := overlaps.First(); m != nil; m = overlaps.Next() {
 						if m.FileNum.String() == parts[1] {
 							tombstoneFile = m
@@ -1704,7 +1708,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.outputLevel.level = c.startLevel.level + 1
 					}
 
-					c.smallest, c.largest = manifest.KeyRange(c.cmp, c.startLevel.files, c.outputLevel.files)
+					c.smallest, c.largest = manifest.KeyRange(c.cmp,
+						manifest.NewLevelSlice(c.startLevel.files).Iter(),
+						manifest.NewLevelSlice(c.outputLevel.files).Iter())
 
 					c.inuseKeyRanges = nil
 					c.setupInuseKeyRanges()

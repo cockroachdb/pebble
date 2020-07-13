@@ -122,7 +122,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		var inProgress []compactionInfo
 		for i := 0; i < len(levels); i += 2 {
 			inProgress = append(inProgress, compactionInfo{
-				inputs: []compactionLevel{
+				inputs: []compactionInput{
 					{level: levels[i]},
 					{level: levels[i+1]},
 				},
@@ -194,9 +194,9 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						break
 					}
 					for _, cl := range pc.inputs {
-						for _, f := range cl.files {
+						cl.files.Each(func(f *fileMetadata) {
 							f.Compacting = true
-						}
+						})
 					}
 				}
 
@@ -221,10 +221,11 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// Mark files as compacting for each in-progress compaction.
 				for i := range inProgress {
 					c := &inProgress[i]
-					for j, f := range vers.Levels[c.inputs[0].level] {
+					iter := vers.Levels[c.inputs[0].level].Iter()
+					for f := iter.First(); f != nil; f = iter.Next() {
 						if !f.Compacting {
 							f.Compacting = true
-							c.inputs[0].files = vers.Levels[c.inputs[0].level][j : j+1]
+							c.inputs[0].files = iter.Take()
 							break
 						}
 					}
@@ -232,18 +233,19 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					switch {
 					case c.inputs[0].level == 0 && c.outputLevel != 0:
 						// L0->Lbase: mark all of Lbase as compacting.
-						c.inputs[1].files = vers.Levels[c.outputLevel]
+						c.inputs[1].files = vers.Levels[c.outputLevel].Slice()
 						for _, in := range c.inputs {
-							for _, f := range in.files {
+							in.files.Each(func(f *fileMetadata) {
 								f.Compacting = true
-							}
+							})
 						}
 					case c.inputs[0].level != c.outputLevel:
 						// Ln->Ln+1: mark 1 file in Ln+1 as compacting.
-						for j, f := range vers.Levels[c.outputLevel] {
+						iter := vers.Levels[c.outputLevel].Iter()
+						for f := iter.First(); f != nil; f = iter.Next() {
 							if !f.Compacting {
 								f.Compacting = true
-								c.inputs[1].files = vers.Levels[c.outputLevel][j : j+1]
+								c.inputs[1].files = iter.Take()
 								break
 							}
 						}
@@ -412,9 +414,9 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 				}
 
 				var buf bytes.Buffer
-				for _, f := range c.startLevel.files {
+				c.startLevel.files.Each(func(f *fileMetadata) {
 					fmt.Fprintf(&buf, "%s\n", f)
-				}
+				})
 				return buf.String()
 
 			default:
@@ -424,11 +426,11 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 }
 
 func TestCompactionPickerL0(t *testing.T) {
-	fileNums := func(f []*fileMetadata) string {
-		ss := make([]string, 0, len(f))
-		for _, meta := range f {
-			ss = append(ss, meta.FileNum.String())
-		}
+	fileNums := func(files manifest.LevelSlice) string {
+		var ss []string
+		files.Each(func(f *fileMetadata) {
+			ss = append(ss, f.FileNum.String())
+		})
 		sort.Strings(ss)
 		return strings.Join(ss, ",")
 	}
@@ -522,9 +524,9 @@ func TestCompactionPickerL0(t *testing.T) {
 				for _, f := range files {
 					if f.Compacting {
 						c := compactionInfo{
-							inputs: []compactionLevel{
+							inputs: []compactionInput{
 								{level: level},
-								{level: level + 1, files: []*fileMetadata{f}},
+								{level: level + 1, files: manifest.NewLevelSlice([]*fileMetadata{f})},
 							},
 							outputLevel: level + 1,
 						}
@@ -558,11 +560,11 @@ func TestCompactionPickerL0(t *testing.T) {
 				c := newCompaction(pc, opts, new(uint64))
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
-				if len(pc.outputLevel.files) > 0 {
+				if !pc.outputLevel.files.Empty() {
 					fmt.Fprintf(&result, "L%d: %s\n", pc.outputLevel.level, fileNums(pc.outputLevel.files))
 				}
 				if !c.grandparents.Empty() {
-					fmt.Fprintf(&result, "grandparents: %s\n", fileNums(c.grandparents.Collect()))
+					fmt.Fprintf(&result, "grandparents: %s\n", fileNums(c.grandparents))
 				}
 			} else {
 				return "nil"
@@ -599,7 +601,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				pc := &pickedCompaction{
 					cmp:              DefaultComparer.Compare,
 					version:          &version{},
-					inputs:           []compactionLevel{{level: -1}, {level: -1}},
+					inputs:           []compactionInput{{level: -1}, {level: -1}},
 					maxExpandedBytes: 1 << 30,
 				}
 				pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
@@ -638,21 +640,20 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 					pc.outputLevel.level = pc.startLevel.level + 1
 				}
 				pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
-					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String())).Collect()
+					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String()))
 
 				pc.setupInputs()
 
 				var buf bytes.Buffer
 				for _, cl := range pc.inputs {
-					files := cl.files
-					if len(files) == 0 {
+					if cl.files.Empty() {
 						continue
 					}
 
 					fmt.Fprintf(&buf, "L%d\n", cl.level)
-					for j := range files {
-						fmt.Fprintf(&buf, "  %s\n", files[j])
-					}
+					cl.files.Each(func(f *fileMetadata) {
+						fmt.Fprintf(&buf, "  %s\n", f)
+					})
 				}
 				return buf.String()
 
@@ -697,7 +698,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				pc := &pickedCompaction{
 					cmp:     cmp,
 					version: &version{},
-					inputs:  []compactionLevel{{level: 1}},
+					inputs:  []compactionInput{{level: 1}},
 				}
 				pc.startLevel = &pc.inputs[0]
 				pc.version.Levels[pc.startLevel.level] = files
@@ -709,13 +710,19 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					return err.Error()
 				}
 
-				inputs := pc.expandInputs(pc.startLevel.level, files[index:index+1])
+				// Advance the iterator to position `index`.
+				iter := pc.version.Levels[pc.startLevel.level].Iter()
+				_ = iter.First()
+				for i := int64(0); i < index; i++ {
+					_ = iter.Next()
+				}
+
+				inputs := expandInputs(cmp, iter.Take())
 
 				var buf bytes.Buffer
-				for i := range inputs {
-					f := inputs[i]
+				inputs.Each(func(f *fileMetadata) {
 					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
-				}
+				})
 				return buf.String()
 
 			default:

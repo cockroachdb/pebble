@@ -130,20 +130,20 @@ func (m *FileMetadata) lessSmallestKey(b *FileMetadata, cmp Compare) bool {
 }
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
-// all the fileMetadata in f0 and f1.
-func KeyRange(ucmp Compare, fileSlices ...[]*FileMetadata) (smallest, largest InternalKey) {
+// all the FileMetadata in iters.
+func KeyRange(ucmp Compare, iters ...LevelIterator) (smallest, largest InternalKey) {
 	first := true
-	for _, files := range fileSlices {
-		for _, meta := range files {
+	for _, iter := range iters {
+		for meta := iter.First(); meta != nil; meta = iter.Next() {
 			if first {
 				first = false
 				smallest, largest = meta.Smallest, meta.Largest
 				continue
 			}
-			if base.InternalCompare(ucmp, meta.Smallest, smallest) < 0 {
+			if base.InternalCompare(ucmp, smallest, meta.Smallest) >= 0 {
 				smallest = meta.Smallest
 			}
-			if base.InternalCompare(ucmp, meta.Largest, largest) > 0 {
+			if base.InternalCompare(ucmp, largest, meta.Largest) <= 0 {
 				largest = meta.Largest
 			}
 		}
@@ -376,9 +376,9 @@ func (v *Version) InitL0Sublevels(
 // searches among the files. If level is zero, Contains scans the entire
 // level.
 func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
-	iter := v.Levels[level].Iter()
+	iter := v.Levels[level].Slice().Iter()
 	if level > 0 {
-		iter = v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey)
+		iter = v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey).Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
 		if f == m {
@@ -396,12 +396,12 @@ func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 // and the computation is repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelIterator {
+func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelSlice {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		selectedIndices := make([]bool, len(v.Levels[level]))
 		numSelected := 0
-		var iter LevelIterator
+		var slice LevelSlice
 		for {
 			restart := false
 			for i, selected := range selectedIndices {
@@ -439,25 +439,28 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelItera
 			}
 
 			if !restart {
-				iter.files = make([]*FileMetadata, 0, numSelected)
+				slice.files = make([]*FileMetadata, 0, numSelected)
 				for i, selected := range selectedIndices {
 					if selected {
-						iter.files = append(iter.files, v.Levels[level][i])
+						slice.files = append(slice.files, v.Levels[level][i])
 					}
 				}
+				slice.end = len(slice.files)
 				break
 			}
 			// Continue looping to retry the files that were not selected.
 		}
-		return iter
+		return slice
 	}
 
-	var iter LevelIterator
+	var slice LevelSlice
 	lower, upper := overlaps(v.Levels[level], cmp, start, end)
 	if lower < upper {
-		iter.files = v.Levels[level][lower:upper]
+		slice.files = v.Levels[level]
+		slice.start = lower
+		slice.end = upper
 	}
-	return iter
+	return slice
 }
 
 // CheckOrdering checks that the files are consistent with respect to
@@ -465,7 +468,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelItera
 // overlapping internal key ranges (for level non-0 files).
 func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 	for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
-		iter := SliceLevelIterator(v.L0Sublevels.Levels[sublevel])
+		iter := NewLevelSlice(v.L0Sublevels.Levels[sublevel]).Iter()
 		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), iter); err != nil {
 			return errors.Errorf("%s\n%s", err, v.DebugString(format))
 		}

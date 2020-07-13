@@ -1144,7 +1144,7 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			// We can only use `Overlaps` to restrict `files` at L1+ since at L0 it
 			// expands the range iteratively until it has found a set of files that
 			// do not overlap any other L0 files outside that set.
-			iter = readState.current.Overlaps(level, d.opts.Comparer.Compare, start, end)
+			iter = readState.current.Overlaps(level, d.opts.Comparer.Compare, start, end).Iter()
 		}
 		for file := iter.First(); file != nil; file = iter.Next() {
 			if d.opts.Comparer.Compare(start, file.Smallest.UserKey) <= 0 &&
@@ -1457,8 +1457,14 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 	for c := range d.mu.compact.inProgress {
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
-				inputs:      c.inputs,
+				inputs:      make([]compactionInput, 0, len(c.inputs)),
 				outputLevel: -1,
+			}
+			for _, in := range c.inputs {
+				info.inputs = append(info.inputs, compactionInput{
+					level: in.level,
+					files: manifest.NewLevelSlice(in.files),
+				})
 			}
 			if c.outputLevel != nil {
 				info.outputLevel = c.outputLevel.level
