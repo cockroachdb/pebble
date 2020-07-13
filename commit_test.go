@@ -34,6 +34,7 @@ type testCommitEnv struct {
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
+		opts:          &Options{},
 		logSeqNum:     &e.logSeqNum,
 		visibleSeqNum: &e.visibleSeqNum,
 		apply:         e.apply,
@@ -187,6 +188,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	wal := record.NewLogWriter(sf, 0 /* logNum */)
 	var walDone sync.WaitGroup
 	testEnv := commitEnv{
+		opts:          &Options{},
 		logSeqNum:     new(uint64),
 		visibleSeqNum: new(uint64),
 		apply: func(b *Batch, mem *memTable) error {

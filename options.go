@@ -440,6 +440,13 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
+	// StrictSync indicates that the DB should only make incoming records
+	// visible once they are fully written and synchronized onto the underlying
+	// disk. If not set (the default), incoming records are made visible as soon
+	// as they are applied into the MemTable. This makes writes more performant
+	// at the risk of losing some visible records after a DB restart, e.g. crash.
+	StrictSync bool
+
 	// private options are only used by internal tests.
 	private struct {
 		// TODO(peter): A private option to enable flush/compaction pacing. Only used

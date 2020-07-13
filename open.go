@@ -101,6 +101,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
+		opts:          d.opts,
 		logSeqNum:     &d.mu.versions.logSeqNum,
 		visibleSeqNum: &d.mu.versions.visibleSeqNum,
 		apply:         d.commitApply,

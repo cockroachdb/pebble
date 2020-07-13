@@ -119,6 +119,7 @@ func (q *commitQueue) dequeue() *Batch {
 // with. This allows fine-grained testing of commitPipeline behavior without
 // construction of an entire DB.
 type commitEnv struct {
+	opts *Options
 	// The next sequence number to give to a batch. Protected by
 	// commitPipeline.mu.
 	logSeqNum *uint64
@@ -391,30 +392,40 @@ func (p *commitPipeline) publish(b *Batch) {
 			// Wait for another goroutine to publish us. We might also be waiting for
 			// the WAL sync to finish.
 			b.commit.Wait()
+			if p.env.opts.StrictSync {
+				// b has been written, synced and applied. safe to make it visible.
+				p.makeVisible(b)
+			}
 			break
 		}
 		if atomic.LoadUint32(&t.applied) != 1 {
 			panic("not reached")
 		}
-
-		// We're responsible for publishing the sequence number for batch t, but
-		// another concurrent goroutine might sneak in and publish the sequence
-		// number for a subsequent batch. That's ok as all we're guaranteeing is
-		// that the sequence number ratchets up.
-		for {
-			curSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)
-			newSeqNum := t.SeqNum() + uint64(t.Count())
-			if newSeqNum <= curSeqNum {
-				// t's sequence number has already been published.
-				break
-			}
-			if atomic.CompareAndSwapUint64(p.env.visibleSeqNum, curSeqNum, newSeqNum) {
-				// We successfully published t's sequence number.
-				break
-			}
+		if !p.env.opts.StrictSync {
+			// t has been applied, but there is no guarantee that it has been written
+			// and synced. make it visible when StrictSync is not set (the default).
+			p.makeVisible(t)
 		}
-
 		t.commit.Done()
+	}
+}
+
+func (p *commitPipeline) makeVisible(b *Batch) {
+	// We're responsible for publishing the sequence number for batch b, but
+	// another concurrent goroutine might sneak in and publish the sequence
+	// number for a subsequent batch. That's ok as all we're guaranteeing is
+	// that the sequence number ratchets up.
+	for {
+		curSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)
+		newSeqNum := b.SeqNum() + uint64(b.Count())
+		if newSeqNum <= curSeqNum {
+			// b's sequence number has already been published.
+			break
+		}
+		if atomic.CompareAndSwapUint64(p.env.visibleSeqNum, curSeqNum, newSeqNum) {
+			// We successfully published b's sequence number.
+			break
+		}
 	}
 }
 
