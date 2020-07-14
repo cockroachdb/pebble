@@ -42,18 +42,13 @@ type LevelInfo struct {
 }
 
 func (i LevelInfo) String() string {
-	return string(redact.Sprintfn(i.safeFormat))
+	return redact.StringWithoutMarkers(i)
 }
 
-func (i LevelInfo) safeFormat(w redact.SafePrinter) {
+// SafeFormat implements redact.SafeFormatter.
+func (i LevelInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("L%d [%s] (%s)", redact.Safe(i.Level), redact.Safe(formatFileNums(i.Tables)),
 		redact.Safe(humanize.Uint64(tablesTotalSize(i.Tables))))
-}
-
-func redactSprint(s redact.SafeFormatter) string {
-	return string(redact.Sprintfn(func(w redact.SafePrinter) {
-		s.SafeFormat(w, 's')
-	}))
 }
 
 // CompactionInfo contains the info for a compaction event.
@@ -73,7 +68,7 @@ type CompactionInfo struct {
 }
 
 func (i CompactionInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -86,12 +81,12 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 
 	if !i.Done {
 		w.Printf("[JOB %d] compacting ", redact.Safe(i.JobID))
-		i.safeFormatInputs(w)
+		w.Print(levelInfos(i.Input))
 		return
 	}
 	outputSize := tablesTotalSize(i.Output.Tables)
 	w.Printf("[JOB %d] compacted ", redact.Safe(i.JobID))
-	i.safeFormatInputs(w)
+	w.Print(levelInfos(i.Input))
 	w.Printf(" -> L%d [%s] (%s), in %.1fs, output rate %s/s",
 		redact.Safe(i.Output.Level),
 		redact.Safe(formatFileNums(i.Output.Tables)),
@@ -100,12 +95,14 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
 }
 
-func (i CompactionInfo) safeFormatInputs(w redact.SafePrinter) {
-	for j, levelInfo := range i.Input {
+type levelInfos []LevelInfo
+
+func (i levelInfos) SafeFormat(w redact.SafePrinter, _ rune) {
+	for j, levelInfo := range i {
 		if j > 0 {
 			w.Printf(" + ")
 		}
-		levelInfo.safeFormat(w)
+		w.Print(levelInfo)
 	}
 }
 
@@ -126,7 +123,7 @@ type FlushInfo struct {
 }
 
 func (i FlushInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -167,7 +164,7 @@ type ManifestCreateInfo struct {
 }
 
 func (i ManifestCreateInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -189,7 +186,7 @@ type ManifestDeleteInfo struct {
 }
 
 func (i ManifestDeleteInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -212,7 +209,7 @@ type TableCreateInfo struct {
 }
 
 func (i TableCreateInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -230,7 +227,7 @@ type TableDeleteInfo struct {
 }
 
 func (i TableDeleteInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -258,7 +255,7 @@ type TableIngestInfo struct {
 }
 
 func (i TableIngestInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -287,7 +284,7 @@ type TableStatsInfo struct {
 }
 
 func (i TableStatsInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -309,7 +306,7 @@ type WALCreateInfo struct {
 }
 
 func (i WALCreateInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -338,7 +335,7 @@ type WALDeleteInfo struct {
 }
 
 func (i WALDeleteInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -356,7 +353,7 @@ type WriteStallBeginInfo struct {
 }
 
 func (i WriteStallBeginInfo) String() string {
-	return redactSprint(i)
+	return redact.StringWithoutMarkers(i)
 }
 
 // SafeFormat implements redact.SafeFormatter.
