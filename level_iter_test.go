@@ -28,12 +28,12 @@ const (
 
 func TestLevelIter(t *testing.T) {
 	var iters []*fakeIter
-	var files []*fileMetadata
+	var files manifest.LevelSlice
 
 	newIters := func(
-		meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
+		file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
-		f := *iters[meta.FileNum]
+		f := *iters[file.FileNum]
 		f.lower = opts.GetLowerBound()
 		f.upper = opts.GetUpperBound()
 		return &f, nil, nil
@@ -43,8 +43,7 @@ func TestLevelIter(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			iters = nil
-			files = nil
-
+			var metas []*fileMetadata
 			for _, line := range strings.Split(d.Input, "\n") {
 				f := &fakeIter{}
 				for _, key := range strings.Fields(line) {
@@ -55,12 +54,13 @@ func TestLevelIter(t *testing.T) {
 				iters = append(iters, f)
 
 				meta := &fileMetadata{
-					FileNum: FileNum(len(files)),
+					FileNum: FileNum(len(metas)),
 				}
 				meta.Smallest = f.keys[0]
 				meta.Largest = f.keys[len(f.keys)-1]
-				files = append(files, meta)
+				metas = append(metas, meta)
 			}
+			files = manifest.NewLevelSlice(metas)
 
 			return ""
 
@@ -81,7 +81,7 @@ func TestLevelIter(t *testing.T) {
 			}
 
 			iter := newLevelIter(opts, DefaultComparer.Compare,
-				newIters, files, manifest.Level(level), nil)
+				newIters, files.Iter(), manifest.Level(level), nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
@@ -115,14 +115,14 @@ func TestLevelIter(t *testing.T) {
 
 			var tableOpts *IterOptions
 			newIters2 := func(
-				meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
+				file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
 			) (internalIterator, internalIterator, error) {
 				tableOpts = opts
-				return newIters(meta, opts, nil)
+				return newIters(file, opts, nil)
 			}
 
 			iter := newLevelIter(opts, DefaultComparer.Compare,
-				newIters2, files, manifest.Level(level), nil)
+				newIters2, files.Iter(), manifest.Level(level), nil)
 			iter.SeekGE([]byte(key))
 			lower, upper := tableOpts.GetLowerBound(), tableOpts.GetUpperBound()
 			return fmt.Sprintf("[%s,%s]\n", lower, upper)
@@ -137,7 +137,7 @@ type levelIterTest struct {
 	cmp     base.Comparer
 	mem     vfs.FS
 	readers []*sstable.Reader
-	files   []*fileMetadata
+	metas   manifest.LevelMetadata
 }
 
 func newLevelIterTest() *levelIterTest {
@@ -150,13 +150,13 @@ func newLevelIterTest() *levelIterTest {
 }
 
 func (lt *levelIterTest) newIters(
-	meta *fileMetadata, opts *IterOptions, _ *uint64,
+	file manifest.LevelFile, opts *IterOptions, _ *uint64,
 ) (internalIterator, internalIterator, error) {
-	iter, err := lt.readers[meta.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
+	iter, err := lt.readers[file.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
 	if err != nil {
 		return nil, nil, err
 	}
-	rangeDelIter, err := lt.readers[meta.FileNum].NewRawRangeDelIter()
+	rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -169,7 +169,7 @@ func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
 		r.Close()
 	}
 	lt.readers = nil
-	lt.files = nil
+	lt.metas = manifest.LevelMetadata{}
 	return ""
 }
 
@@ -233,16 +233,16 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	lt.readers = append(lt.readers, r)
-	lt.files = append(lt.files, &fileMetadata{
+	lt.metas = manifest.LevelMetadata(append(lt.metas.Slice().Collect(), &fileMetadata{
 		FileNum:  fileNum,
 		Smallest: meta.Smallest(lt.cmp.Compare),
 		Largest:  meta.Largest(lt.cmp.Compare),
-	})
+	}))
 
 	var buf bytes.Buffer
-	for _, f := range lt.files {
+	lt.metas.Slice().Each(func(f *fileMetadata) {
 		fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
-	}
+	})
 	return buf.String()
 }
 
@@ -260,7 +260,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 
 		case "iter":
 			iter := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-				lt.newIters, lt.files, manifest.Level(level), nil)
+				lt.newIters, lt.metas.Iter(), manifest.Level(level), nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
@@ -335,7 +335,7 @@ func TestLevelIterSeek(t *testing.T) {
 		case "iter":
 			iter := &levelIterTestIter{
 				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare,
-					lt.newIters, lt.files, manifest.Level(level), nil),
+					lt.newIters, lt.metas.Iter(), manifest.Level(level), nil),
 			}
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
@@ -349,7 +349,7 @@ func TestLevelIterSeek(t *testing.T) {
 
 func buildLevelIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*sstable.Reader, []*fileMetadata, [][]byte) {
+) ([]*sstable.Reader, manifest.LevelMetadata, [][]byte) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
@@ -411,7 +411,7 @@ func buildLevelIterTables(
 		key, _ = iter.Last()
 		meta[i].Largest = *key
 	}
-	return readers, meta, keys
+	return readers, manifest.LevelMetadata(meta), keys
 }
 
 func BenchmarkLevelIterSeekGE(b *testing.B) {
@@ -423,15 +423,15 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 				for _, count := range []int{5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, files, keys := buildLevelIterTables(b, blockSize, restartInterval, count)
+							readers, metas, keys := buildLevelIterTables(b, blockSize, restartInterval, count)
 							newIters := func(
-								meta *fileMetadata, _ *IterOptions, _ *uint64,
+								file manifest.LevelFile, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								iter, err := readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-								newIters, files, manifest.Level(level), nil)
+								newIters, metas.Iter(), manifest.Level(level), nil)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
@@ -453,15 +453,15 @@ func BenchmarkLevelIterNext(b *testing.B) {
 				for _, count := range []int{5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
+							readers, metas, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
 							newIters := func(
-								meta *fileMetadata, _ *IterOptions, _ *uint64,
+								file manifest.LevelFile, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								iter, err := readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-								newIters, files, manifest.Level(level), nil)
+								newIters, metas.Iter(), manifest.Level(level), nil)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -486,15 +486,15 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 				for _, count := range []int{5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, files, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
+							readers, metas, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
 							newIters := func(
-								meta *fileMetadata, _ *IterOptions, _ *uint64,
+								file manifest.LevelFile, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
-								iter, err := readers[meta.FileNum].NewIter(nil /* lower */, nil /* upper */)
+								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-								newIters, files, manifest.Level(level), nil)
+								newIters, metas.Iter(), manifest.Level(level), nil)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {

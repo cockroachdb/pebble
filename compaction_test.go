@@ -80,11 +80,11 @@ func (p *compactionPickerForTesting) pickManual(
 }
 
 func TestPickCompaction(t *testing.T) {
-	fileNums := func(f []*fileMetadata) string {
-		ss := make([]string, 0, len(f))
-		for _, meta := range f {
+	fileNums := func(files manifest.LevelSlice) string {
+		var ss []string
+		files.Each(func(meta *fileMetadata) {
 			ss = append(ss, strconv.Itoa(int(meta.FileNum)))
-		}
+		})
 		sort.Strings(ss)
 		return strings.Join(ss, ",")
 	}
@@ -498,7 +498,7 @@ func TestPickCompaction(t *testing.T) {
 			c := newCompaction(pc, opts, env.bytesCompacted)
 			got0 := fileNums(c.startLevel.files)
 			got1 := fileNums(c.outputLevel.files)
-			got2 := fileNums(c.grandparents.Collect())
+			got2 := fileNums(c.grandparents)
 			got = got0 + " " + got1 + " " + got2
 		}
 		if got != tc.want {
@@ -1351,7 +1351,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 
 func TestCompactionAtomicUnitBounds(t *testing.T) {
 	cmp := DefaultComparer.Compare
-	var files []*fileMetadata
+	var files manifest.LevelSlice
 
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
@@ -1368,16 +1368,18 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
-				files = nil
+				files = manifest.LevelSlice{}
 				if len(d.Input) == 0 {
 					return ""
 				}
+				var ff []*fileMetadata
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
-					meta.FileNum = FileNum(len(files))
-					files = append(files, meta)
+					meta.FileNum = FileNum(len(ff))
+					ff = append(ff, meta)
 				}
-				manifest.SortBySmallest(files, cmp)
+				manifest.SortBySmallest(ff, cmp)
+				files = manifest.NewLevelSlice(ff)
 				return ""
 
 			case "atomic-unit-bounds":
@@ -1393,9 +1395,15 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-
-				lower, upper := c.atomicUnitBounds(files[index])
-				return fmt.Sprintf("%s-%s\n", lower, upper)
+				iter := files.Iter()
+				// Advance iter to `index`.
+				_ = iter.First()
+				for i := int64(0); i < index; i++ {
+					_ = iter.Next()
+				}
+				atomicUnit := expandToAtomicUnit(c.cmp, iter.Take().Slice())
+				lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
+				return fmt.Sprintf("%s-%s\n", lower.UserKey, upper.UserKey)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -1673,8 +1681,8 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						continue
 					}
 					c.flushing = nil
-					c.startLevel.files = nil
-					c.outputLevel.files = nil
+					c.startLevel.files = manifest.LevelSlice{}
+					c.outputLevel.files = manifest.LevelSlice{}
 					c.startLevel.level = -1
 
 					var iter internalIterator
@@ -1703,14 +1711,14 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 								return fmt.Sprintf("invalid level %d: expected %d or %d",
 									level, c.startLevel.level, c.startLevel.level+1)
 							}
-							cl.files = append(cl.files, meta)
+							cl.files = manifest.NewLevelSlice(append(cl.files.Collect(), meta))
 						}
 						c.outputLevel.level = c.startLevel.level + 1
 					}
 
 					c.smallest, c.largest = manifest.KeyRange(c.cmp,
-						manifest.NewLevelSlice(c.startLevel.files).Iter(),
-						manifest.NewLevelSlice(c.outputLevel.files).Iter())
+						c.startLevel.files.Iter(),
+						c.outputLevel.files.Iter())
 
 					c.inuseKeyRanges = nil
 					c.setupInuseKeyRanges()
@@ -1750,7 +1758,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					inputs:    []compactionLevel{{level: -1}, {level: -1}},
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-				var files *[]*fileMetadata
+				var slice *manifest.LevelSlice
 				fileNum := FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
@@ -1762,13 +1770,13 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						}
 						if c.startLevel.level == -1 {
 							c.startLevel.level = level
-							files = &c.startLevel.files
+							slice = &c.startLevel.files
 						} else if c.outputLevel.level == -1 {
 							if c.startLevel.level >= level {
 								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel.level, level)
 							}
 							c.outputLevel.level = level
-							files = &c.outputLevel.files
+							slice = &c.outputLevel.files
 						} else {
 							return fmt.Sprintf("outputLevel already set\n")
 						}
@@ -1777,7 +1785,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						meta := parseMeta(data)
 						meta.FileNum = fileNum
 						fileNum++
-						*files = append(*files, meta)
+						*slice = manifest.NewLevelSlice(append(slice.Collect(), meta))
 					}
 				}
 
@@ -1797,7 +1805,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					}()
 
 					newIters := func(
-						_ *fileMetadata, _ *IterOptions, _ *uint64,
+						_ manifest.LevelFile, _ *IterOptions, _ *uint64,
 					) (internalIterator, internalIterator, error) {
 						return &errorIter{}, nil, nil
 					}

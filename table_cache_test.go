@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -192,7 +193,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
 			iter, _, err := c.newIters(
-				&fileMetadata{FileNum: FileNum(fileNum)},
+				manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: FileNum(fileNum)}},
 				nil, /* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
@@ -248,7 +249,7 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			iter, _, err := c.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
+				manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: FileNum(j)}},
 				nil, /* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
@@ -282,7 +283,7 @@ func TestTableCacheEvictions(t *testing.T) {
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
 		iter, _, err := c.newIters(
-			&fileMetadata{FileNum: FileNum(j)},
+			manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: FileNum(j)}},
 			nil, /* iter options */
 			nil /* bytes iterated */)
 		if err != nil {
@@ -324,7 +325,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 	require.NoError(t, err)
 
 	iter, _, err := c.newIters(
-		&fileMetadata{FileNum: 0},
+		manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: 0}},
 		nil, /* iter options */
 		nil /* bytes iterated */)
 	require.NoError(t, err)
@@ -346,7 +347,7 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 
 	fs.setOpenError(true /* enabled */)
 	if _, _, err := c.newIters(
-		&fileMetadata{FileNum: 0},
+		manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: 0}},
 		nil, /* iter options */
 		nil /* bytes iterated */); err == nil {
 		t.Fatalf("expected failure, but found success")
@@ -354,7 +355,7 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
 	iter, _, err = c.newIters(
-		&fileMetadata{FileNum: 0},
+		manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: 0}},
 		nil, /* iter options */
 		nil /* bytes iterated */)
 	require.NoError(t, err)

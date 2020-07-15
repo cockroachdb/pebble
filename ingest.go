@@ -397,15 +397,15 @@ func ingestTargetLevel(
 	targetLevel := 0
 
 	// Do we overlap with keys in L0?
-	for i := 0; i < len(v.Levels[0]); i++ {
-		meta0 := v.Levels[0][i]
+	iter := v.Levels[0].Iter()
+	for meta0 := iter.First(); meta0 != nil; meta0 = iter.Next() {
 		c1 := sstableKeyCompare(cmp, meta.Smallest, meta0.Largest)
 		c2 := sstableKeyCompare(cmp, meta.Largest, meta0.Smallest)
 		if c1 > 0 || c2 < 0 {
 			continue
 		}
 
-		iter, rangeDelIter, err := newIters(meta0, nil, nil)
+		iter, rangeDelIter, err := newIters(iter.Take(), nil, nil)
 		if err != nil {
 			return 0, err
 		}
@@ -421,7 +421,7 @@ func ingestTargetLevel(
 
 	level := baseLevel
 	for ; level < numLevels; level++ {
-		levelIter := newLevelIter(iterOps, cmp, newIters, v.Levels[level], manifest.Level(level), nil)
+		levelIter := newLevelIter(iterOps, cmp, newIters, v.Levels[level].Iter(), manifest.Level(level), nil)
 		var rangeDelIter internalIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 func TestGetIter(t *testing.T) {
@@ -469,9 +470,9 @@ func TestGetIter(t *testing.T) {
 		// m is a map from file numbers to DBs.
 		m := map[FileNum]*memTable{}
 		newIter := func(
-			meta *fileMetadata, _ *IterOptions, _ *uint64,
+			file manifest.LevelFile, _ *IterOptions, _ *uint64,
 		) (internalIterator, internalIterator, error) {
-			d, ok := m[meta.FileNum]
+			d, ok := m[file.FileNum]
 			if !ok {
 				return nil, nil, errors.New("no such file")
 			}

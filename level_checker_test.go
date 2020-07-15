@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
@@ -92,8 +93,8 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 
 	var fileNum FileNum
 	newIters :=
-		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
-			r := readers[meta.FileNum]
+		func(file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
+			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
 				return nil, nil, err

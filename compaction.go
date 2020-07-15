@@ -71,7 +71,7 @@ type userKeyRange struct {
 
 type compactionLevel struct {
 	level int
-	files []*fileMetadata
+	files manifest.LevelSlice
 }
 
 type compactionKind string
@@ -175,8 +175,9 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 		Input: make([]LevelInfo, 0, len(c.inputs)),
 	}
 	for _, cl := range c.inputs {
-		inputInfo := LevelInfo{Level: cl.level, Tables: make([]TableInfo, 0, len(cl.files))}
-		for _, m := range cl.files {
+		inputInfo := LevelInfo{Level: cl.level, Tables: nil}
+		iter := cl.files.Iter()
+		for m := iter.First(); m != nil; m = iter.Next() {
 			inputInfo.Tables = append(inputInfo.Tables, m.TableInfo())
 		}
 		info.Input = append(info.Input, inputInfo)
@@ -206,6 +207,7 @@ func newCompaction(
 		cmp:                 pc.cmp,
 		formatKey:           opts.Comparer.FormatKey,
 		score:               pc.score,
+		inputs:              pc.inputs,
 		smallest:            pc.smallest,
 		largest:             pc.largest,
 		logger:              opts.Logger,
@@ -215,13 +217,6 @@ func newCompaction(
 		maxExpandedBytes:    pc.maxOverlapBytes,
 		atomicBytesIterated: bytesCompacted,
 	}
-	for _, in := range pc.inputs {
-		c.inputs = append(c.inputs, compactionLevel{
-			level: in.level,
-			files: in.files.Collect(),
-		})
-	}
-
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
 
@@ -237,7 +232,7 @@ func newCompaction(
 	// level to the next. We avoid such a move if there is lots of overlapping
 	// grandparent data. Otherwise, the move could create a parent file that
 	// will require a very expensive merge later on.
-	if len(c.startLevel.files) == 1 && len(c.outputLevel.files) == 0 &&
+	if c.outputLevel.files.Empty() && c.startLevel.files.Len() == 1 &&
 		c.grandparents.SizeSum() <= c.maxOverlapBytes {
 		c.kind = compactionKindMove
 	}
@@ -259,7 +254,7 @@ func newDeleteOnlyCompaction(
 	// Set c.smallest, c.largest.
 	files := make([]manifest.LevelIterator, 0, len(inputs))
 	for _, in := range inputs {
-		files = append(files, manifest.NewLevelSlice(in.files).Iter())
+		files = append(files, in.files.Iter())
 	}
 	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, files...)
 	return c
@@ -505,65 +500,89 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	return lower >= upper
 }
 
-// atomicUnitBounds returns the bounds of the atomic compaction unit containing
-// the specified sstable (identified by a pointer to its fileMetadata).
-func (c *compaction) atomicUnitBounds(f *fileMetadata) (lower, upper []byte) {
-	for i := range c.inputs {
-		files := c.inputs[i].files
-		for j := range files {
-			if f == files[j] {
-				// Note that if this file is in a multi-file atomic compaction unit, this file
-				// may not be the first file in that unit. An example in Pebble would be a
-				// preceding file with Largest c#12,1 and this file with Smallest c#9,1 and
-				// containing a range tombstone [c, g)#11,15. The start of the range tombstone
-				// is already truncated to this file's Smallest.UserKey, due to the code in
-				// rangedel.Fragmenter.FlushTo(), so this walking back should not be necessary
-				// (also see range_deletions.md for more details).
-				//
-				// We do this walking back to be extra cautious, in case it helps with RocksDB
-				// compatibility.
-				lowerBound := f.Smallest.UserKey
-				for k := j; k > 0; k-- {
-					cur := files[k]
-					prev := files[k-1]
-					if c.cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
-						break
-					}
-					if prev.Largest.Trailer == InternalKeyRangeDeleteSentinel {
-						// The range deletion sentinel key is set for the largest key in a
-						// table when a range deletion tombstone straddles a table. It
-						// isn't necessary to include the prev table in the atomic
-						// compaction unit as prev.largest.UserKey does not actually exist
-						// in the prev table.
-						break
-					}
-					lowerBound = prev.Smallest.UserKey
-				}
-
-				upperBound := f.Largest.UserKey
-				for k := j + 1; k < len(files); k++ {
-					cur := files[k-1]
-					next := files[k]
-					if c.cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
-						break
-					}
-					if cur.Largest.Trailer == InternalKeyRangeDeleteSentinel {
-						// The range deletion sentinel key is set for the largest key in a
-						// table when a range deletion tombstone straddles a table. It
-						// isn't necessary to include the next table in the atomic
-						// compaction unit as cur.largest.UserKey does not actually exist
-						// in the current table.
-						break
-					}
-					// cur.largest.UserKey == next.largest.UserKey, so next is part of
-					// the atomic compaction unit.
-					upperBound = next.Largest.UserKey
-				}
-				return lowerBound, upperBound
-			}
-		}
+// expandToAtomicUnit expands the provided level slice within its level both
+// forwards and backwards to its "atomic compaction unit" boundaries, if
+// necessary.
+//
+// While picking compaction inputs, this is required to maintain the invariant
+// that the versions of keys at level+1 are older than the versions of keys at
+// level. Tables are added to the right of the current slice tables such that
+// the rightmost table has a "clean cut". A clean cut is either a change in
+// user keys, or when the largest key in the left sstable is a range tombstone
+// sentinel key (InternalKeyRangeDeleteSentinel).
+//
+// In addition to maintaining the seqnum invariant, expandToAtomicUnit is used
+// to provide clean boundaries for range tombstone truncation during
+// compaction. In order to achieve these clean boundaries, expandToAtomicUnit
+// needs to find a "clean cut" on the left edge of the compaction as well.
+// This is necessary in order for "atomic compaction units" to always be
+// compacted as a unit. Failure to do this leads to a subtle bug with
+// truncation of range tombstones to atomic compaction unit boundaries.
+// Consider the scenario:
+//
+//   L3:
+//     12:[a#2,15-b#1,1]
+//     13:[b#0,15-d#72057594037927935,15]
+//
+// These sstables contain a range tombstone [a-d)#2 which spans the two
+// sstables. The two sstables need to always be kept together. Compacting
+// sstable 13 independently of sstable 12 would result in:
+//
+//   L3:
+//     12:[a#2,15-b#1,1]
+//   L4:
+//     14:[b#0,15-d#72057594037927935,15]
+//
+// This state is still ok, but when sstable 12 is next compacted, its range
+// tombstones will be truncated at "b" (the largest key in its atomic
+// compaction unit). In the scenario here, that could result in b#1 becoming
+// visible when it should be deleted.
+func expandToAtomicUnit(cmp Compare, inputs manifest.LevelSlice) manifest.LevelSlice {
+	// NB: Inputs for L0 can't be expanded and *version.Overlaps guarantees
+	// that we get a 'clean cut.' For L0, Overlaps will return a slice without
+	// access to the rest of the L0 files, so it's OK to try to reslice.
+	if inputs.Empty() {
+		// Nothing to expand.
+		return inputs
 	}
-	return nil, nil
+
+	return inputs.Reslice(func(start, end *manifest.LevelIterator) {
+		iter := start.Clone()
+		iter.Prev()
+		for cur, prev := start.Current(), iter.Current(); prev != nil; cur, prev = start.Prev(), iter.Prev() {
+			if cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
+				break
+			}
+			if prev.Largest.Trailer == InternalKeyRangeDeleteSentinel {
+				// The range deletion sentinel key is set for the largest key in a
+				// table when a range deletion tombstone straddles a table. It
+				// isn't necessary to include the prev table in the atomic
+				// compaction unit as prev.largest.UserKey does not actually exist
+				// in the prev table.
+				break
+			}
+			// prev.Largest.UserKey == cur.Smallest.UserKey, so we need to
+			// include prev in the compaction.
+		}
+
+		iter = end.Clone()
+		iter.Next()
+		for cur, next := end.Current(), iter.Current(); next != nil; cur, next = end.Next(), iter.Next() {
+			if cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
+				break
+			}
+			if cur.Largest.Trailer == InternalKeyRangeDeleteSentinel {
+				// The range deletion sentinel key is set for the largest key
+				// in a table when a range deletion tombstone straddles a
+				// table. It isn't necessary to include the next table in the
+				// compaction as PeekPrev().Largest.UserKey does not actually
+				// exist in the table.
+				break
+			}
+			// cur.Largest.UserKey == next.Smallest.UserKey, so we need to
+			// include next in the compaction.
+		}
+	})
 }
 
 // newInputIter returns an iterator over all the input tables in a compaction.
@@ -592,19 +611,19 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	// Check that the LSM ordering invariants are ok in order to prevent
 	// generating corrupted sstables due to a violation of those invariants.
 	if c.startLevel.level >= 0 {
-		err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.startLevel.level),
-			manifest.NewLevelSlice(c.startLevel.files).Iter())
+		err := manifest.CheckOrdering(c.cmp, c.formatKey,
+			manifest.Level(c.startLevel.level), c.startLevel.files.Iter())
 		if err != nil {
 			c.logger.Fatalf("%s", err)
 		}
 	}
-	err := manifest.CheckOrdering(c.cmp, c.formatKey, manifest.Level(c.outputLevel.level),
-		manifest.NewLevelSlice(c.outputLevel.files).Iter())
+	err := manifest.CheckOrdering(c.cmp, c.formatKey,
+		manifest.Level(c.outputLevel.level), c.outputLevel.files.Iter())
 	if err != nil {
 		c.logger.Fatalf("%s", err)
 	}
 
-	iters := make([]internalIterator, 0, 2*len(c.startLevel.files)+1)
+	iters := make([]internalIterator, 0, 2*c.startLevel.files.Len()+1)
 	defer func() {
 		if retErr != nil {
 			for _, iter := range iters {
@@ -623,7 +642,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	// one which iterates over the range deletions. These two iterators are
 	// combined with a mergingIter.
 	newRangeDelIter := func(
-		f *fileMetadata, _ *IterOptions, bytesIterated *uint64,
+		f manifest.LevelFile, _ *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
 		iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
 		if err == nil {
@@ -652,10 +671,9 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			// boundaries at write time. Because we're doing the truncation at read
 			// time, we follow RocksDB's lead and do not truncate tombstones to
 			// atomic unit boundaries at compaction time.
-			lowerBound, upperBound := c.atomicUnitBounds(f)
-			if lowerBound != nil || upperBound != nil {
-				rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound, upperBound)
-			}
+			atomicUnit := expandToAtomicUnit(c.cmp, f.Slice())
+			lowerBound, upperBound := manifest.KeyRange(c.cmp, atomicUnit.Iter())
+			rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey)
 		}
 		if rangeDelIter == nil {
 			rangeDelIter = emptyIter
@@ -665,14 +683,14 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	iterOpts := IterOptions{logger: c.logger}
 	if c.startLevel.level != 0 {
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.startLevel.files,
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.startLevel.files.Iter(),
 			manifest.Level(c.startLevel.level), &c.bytesIterated))
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.startLevel.files,
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.startLevel.files.Iter(),
 			manifest.Level(c.startLevel.level), &c.bytesIterated))
 	} else {
-		for i := range c.startLevel.files {
-			f := c.startLevel.files[i]
-			iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
+		iter := c.startLevel.files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			iter, rangeDelIter, err := newIters(iter.Take(), nil /* iter options */, &c.bytesIterated)
 			if err != nil {
 				return nil, errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
 			}
@@ -683,9 +701,9 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		}
 	}
 
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.outputLevel.files,
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.outputLevel.files.Iter(),
 		manifest.Level(c.outputLevel.level), &c.bytesIterated))
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.outputLevel.files,
+	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.outputLevel.files.Iter(),
 		manifest.Level(c.outputLevel.level), &c.bytesIterated))
 	return newMergingIter(c.logger, c.cmp, iters...), nil
 }
@@ -702,7 +720,8 @@ func (c *compaction) String() string {
 			level = c.outputLevel.level
 		}
 		fmt.Fprintf(&buf, "%d:", level)
-		for _, f := range c.inputs[i].files {
+		iter := c.inputs[i].files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			fmt.Fprintf(&buf, " %s:%s-%s", f.FileNum, f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
@@ -725,7 +744,8 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
 	for _, cl := range c.inputs {
-		for _, f := range cl.files {
+		iter := cl.files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			if f.Compacting {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
@@ -742,9 +762,9 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	}
 
 	if (isIntraL0 || isBase) && c.version.L0Sublevels != nil {
-		l0Inputs := [][]*fileMetadata{c.startLevel.files}
+		l0Inputs := [][]*fileMetadata{c.startLevel.files.Collect()}
 		if isIntraL0 {
-			l0Inputs = append(l0Inputs, c.outputLevel.files)
+			l0Inputs = append(l0Inputs, c.outputLevel.files.Collect())
 		}
 		if err := c.version.L0Sublevels.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
 			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
@@ -783,7 +803,8 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 // for this compaction should have completed by this point.
 func (d *DB) removeInProgressCompaction(c *compaction) {
 	for _, cl := range c.inputs {
-		for _, f := range cl.files {
+		iter := cl.files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			if !f.Compacting {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
@@ -1229,7 +1250,8 @@ func (d *DB) maybeUpdateDeleteCompactionHints(c *compaction) {
 		// tombstones.
 		inputsOlder := true
 		for _, in := range c.inputs {
-			for _, f := range in.files {
+			iter := in.files.Iter()
+			for f := iter.First(); f != nil; f = iter.Next() {
 				inputsOlder = inputsOlder && f.LargestSeqNum < h.tombstoneSmallestSeqNum
 			}
 		}
@@ -1327,7 +1349,7 @@ func checkDeleteCompactionHints(
 		}
 		compactLevels = append(compactLevels, compactionLevel{
 			level: l,
-			files: files,
+			files: manifest.NewLevelSlice(files),
 		})
 	}
 	return compactLevels, unresolvedHints
@@ -1435,7 +1457,8 @@ func (d *DB) runCompaction(
 		}
 		for _, cl := range c.inputs {
 			c.metrics[cl.level] = &LevelMetrics{}
-			for _, f := range cl.files {
+			iter := cl.files.Iter()
+			for f := iter.First(); f != nil; f = iter.Next() {
 				ve.DeletedFiles[deletedFileEntry{
 					Level:   cl.level,
 					FileNum: f.FileNum,
@@ -1450,7 +1473,8 @@ func (d *DB) runCompaction(
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
 	if c.kind == compactionKindMove {
-		meta := c.startLevel.files[0]
+		iter := c.startLevel.files.Iter()
+		meta := iter.First()
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel.level: &LevelMetrics{
 				BytesMoved:  meta.Size,
@@ -1515,8 +1539,8 @@ func (d *DB) runCompaction(
 	}
 
 	metrics := &LevelMetrics{
-		BytesIn:   totalSize(c.startLevel.files),
-		BytesRead: totalSize(c.outputLevel.files),
+		BytesIn:   c.startLevel.files.SizeSum(),
+		BytesRead: c.outputLevel.files.SizeSum(),
 	}
 	metrics.BytesRead += metrics.BytesIn
 	c.metrics = map[int]*LevelMetrics{
@@ -1929,7 +1953,8 @@ func (d *DB) runCompaction(
 	}
 
 	for _, cl := range c.inputs {
-		for _, f := range cl.files {
+		iter := cl.files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			ve.DeletedFiles[deletedFileEntry{
 				Level:   cl.level,
 				FileNum: f.FileNum,

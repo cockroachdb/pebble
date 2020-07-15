@@ -368,11 +368,12 @@ func checkRangeTombstones(c *checkConfig) error {
 	}
 
 	current := c.readState.current
-	addTombstonesFromLevel := func(files []*fileMetadata, lsmLevel int) error {
-		for j := 0; j < len(files); j++ {
-			lower, upper := getAtomicUnitBounds(c.cmp, files, j)
-			f := files[j]
-			iterToClose, iter, err := c.newIters(f, nil, nil)
+	addTombstonesFromLevel := func(files manifest.LevelIterator, lsmLevel int) error {
+		for f := files.First(); f != nil; f = files.Next() {
+			lf := files.Take()
+			atomicUnit := expandToAtomicUnit(c.cmp, lf.Slice())
+			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
+			iterToClose, iter, err := c.newIters(lf, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -382,11 +383,11 @@ func checkRangeTombstones(c *checkConfig) error {
 			}
 			truncate := func(t rangedel.Tombstone) rangedel.Tombstone {
 				// Same checks as in rangedel.Truncate.
-				if c.cmp(t.Start.UserKey, lower) < 0 {
-					t.Start.UserKey = lower
+				if c.cmp(t.Start.UserKey, lower.UserKey) < 0 {
+					t.Start.UserKey = lower.UserKey
 				}
-				if c.cmp(t.End, upper) > 0 {
-					t.End = upper
+				if c.cmp(t.End, upper.UserKey) > 0 {
+					t.End = upper.UserKey
 				}
 				if c.cmp(t.Start.UserKey, t.End) >= 0 {
 					t.Start.SetKind(InternalKeyKindInvalid)
@@ -405,7 +406,8 @@ func checkRangeTombstones(c *checkConfig) error {
 		if len(current.L0Sublevels.Levels[i]) == 0 {
 			continue
 		}
-		if err := addTombstonesFromLevel(current.L0Sublevels.Levels[i], 0); err != nil {
+		err := addTombstonesFromLevel(manifest.NewLevelSlice(current.L0Sublevels.Levels[i]).Iter(), 0)
+		if err != nil {
 			return err
 		}
 		level++
@@ -414,8 +416,7 @@ func checkRangeTombstones(c *checkConfig) error {
 		if len(current.Levels[i]) == 0 {
 			continue
 		}
-		files := current.Levels[i]
-		if err := addTombstonesFromLevel(files, i); err != nil {
+		if err := addTombstonesFromLevel(current.Levels[i].Iter(), i); err != nil {
 			return err
 		}
 		level++
@@ -429,35 +430,6 @@ func checkRangeTombstones(c *checkConfig) error {
 	userKeys = collectAllUserKeys(c.cmp, tombstones)
 	tombstones = fragmentUsingUserKeys(c.cmp, tombstones, userKeys)
 	return iterateAndCheckTombstones(c.cmp, c.formatKey, tombstones)
-}
-
-// TODO(sbhola): mostly copied from compaction.go: refactor and reuse?
-func getAtomicUnitBounds(cmp Compare, files []*fileMetadata, index int) (lower, upper []byte) {
-	lower = files[index].Smallest.UserKey
-	upper = files[index].Largest.UserKey
-	for i := index; i > 0; i-- {
-		cur := files[i]
-		prev := files[i-1]
-		if cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
-			break
-		}
-		if prev.Largest.Trailer == InternalKeyRangeDeleteSentinel {
-			break
-		}
-		lower = prev.Smallest.UserKey
-	}
-	for i := index + 1; i < len(files); i++ {
-		cur := files[i-1]
-		next := files[i]
-		if cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
-			break
-		}
-		if cur.Largest.Trailer == InternalKeyRangeDeleteSentinel {
-			break
-		}
-		upper = next.Largest.UserKey
-	}
-	return
 }
 
 func levelOrMemtable(lsmLevel int, fileNum FileNum) string {
@@ -665,9 +637,10 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		if len(current.L0Sublevels.Levels[sublevel]) == 0 {
 			continue
 		}
+		manifestIter := manifest.NewLevelSlice(current.L0Sublevels.Levels[sublevel]).Iter()
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, current.L0Sublevels.Levels[sublevel],
+		li.init(iterOpts, c.cmp, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
@@ -675,12 +648,13 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		mlevelAlloc = mlevelAlloc[1:]
 	}
 	for level := 1; level < len(current.Levels); level++ {
-		if len(current.Levels[level]) == 0 {
+		manifestIter := current.Levels[level].Iter()
+		if manifestIter.Empty() {
 			continue
 		}
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, current.Levels[level], manifest.Level(level), nil)
+		li.init(iterOpts, c.cmp, c.newIters, manifestIter, manifest.Level(level), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
 		mlevelAlloc[0].iter = li

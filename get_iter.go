@@ -140,7 +140,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level == 0 {
 			// Create iterators from L0 from newest to oldest.
 			if n := len(g.l0); n > 0 {
-				files := g.l0[n-1]
+				files := manifest.NewLevelSlice(g.l0[n-1]).Iter()
 				g.l0 = g.l0[:n-1]
 				iterOpts := IterOptions{logger: g.logger}
 				g.levelIter.init(iterOpts, g.cmp, g.newIters, files, manifest.L0Sublevel(n), nil)
@@ -155,14 +155,15 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level >= numLevels {
 			return nil, nil
 		}
-		if g.version.Levels[g.level].Iter().Empty() {
+		metadataIter := g.version.Levels[g.level].Iter()
+		if metadataIter.Empty() {
 			g.level++
 			continue
 		}
 
 		iterOpts := IterOptions{logger: g.logger}
 		g.levelIter.init(iterOpts, g.cmp, g.newIters,
-			g.version.Levels[g.level], manifest.Level(g.level), nil)
+			metadataIter, manifest.Level(g.level), nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter

@@ -21,6 +21,18 @@ func (lm LevelMetadata) Slice() LevelSlice {
 	return LevelSlice{files: lm, end: len(lm)}
 }
 
+// LevelFile holds a file's metadata along with its position
+// within a level of the LSM.
+type LevelFile struct {
+	*FileMetadata
+	slice LevelSlice
+}
+
+// Slice constructs a LevelSlice containing only this file.
+func (lf LevelFile) Slice() LevelSlice {
+	return lf.slice
+}
+
 // NewLevelSlice constructs a LevelSlice over the provided files. This
 // function is expected to be a temporary adapter between interfaces.
 // TODO(jackson): Revisit once the conversion of Version.Files to a btree is
@@ -191,13 +203,35 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	return i.files[i.cur]
 }
 
-// Take constructs a new LevelSlice containing only the file at the iterator's
-// current position. If the iterator is not currently positioned over a file,
-// the returned iterator is empty.
-func (i LevelIterator) Take() LevelSlice {
-	return LevelSlice{
-		files: i.files,
-		start: i.cur,
-		end:   i.cur + 1,
+// SeekLT seeks to the last file in the iterator's file set with a smallest
+// user key less than the provided user key. The iterator must have been
+// constructed from L1+, because it requries the underlying files to be sorted
+// by user keys and non-overlapping.
+func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
+	files := i.files[i.start:i.end]
+	i.cur = i.start + sort.Search(len(files), func(j int) bool {
+		return cmp(files[j].Smallest.UserKey, userKey) >= 0
+	})
+	if i.cur < i.start {
+		return nil
+	}
+	return i.Prev()
+}
+
+// Take constructs a LevelFile containing the file at the iterator's current
+// position. Take panics if the iterator is not currently positioned over a
+// file.
+func (i LevelIterator) Take() LevelFile {
+	m := i.Current()
+	if m == nil {
+		panic("Take called on invalid LevelIterator")
+	}
+	return LevelFile{
+		FileMetadata: m,
+		slice: LevelSlice{
+			files: i.files,
+			start: i.cur,
+			end:   i.cur + 1,
+		},
 	}
 }
