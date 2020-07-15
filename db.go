@@ -743,8 +743,8 @@ func (d *DB) newIterInternal(
 	mlevels = mlevels[start:]
 
 	levels := buf.levels[:]
-	addLevelIterForFiles := func(files []*manifest.FileMetadata, level manifest.Level) {
-		if len(files) == 0 {
+	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
+		if files.Empty() {
 			return
 		}
 		var li *levelIter
@@ -766,12 +766,13 @@ func (d *DB) newIterInternal(
 	// Add level iterators for the L0 sublevels, iterating from newest to
 	// oldest.
 	for i := len(current.L0Sublevels.Levels) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0Sublevels.Levels[i], manifest.L0Sublevel(i))
+		iter := manifest.NewLevelSlice(current.L0Sublevels.Levels[i]).Iter()
+		addLevelIterForFiles(iter, manifest.L0Sublevel(i))
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
 	for level := 1; level < len(current.Levels); level++ {
-		addLevelIterForFiles(current.Levels[level], manifest.Level(level))
+		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 
 	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)
@@ -1457,14 +1458,8 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 	for c := range d.mu.compact.inProgress {
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
-				inputs:      make([]compactionInput, 0, len(c.inputs)),
+				inputs:      c.inputs,
 				outputLevel: -1,
-			}
-			for _, in := range c.inputs {
-				info.inputs = append(info.inputs, compactionInput{
-					level: in.level,
-					files: manifest.NewLevelSlice(in.files),
-				})
 			}
 			if c.outputLevel != nil {
 				info.outputLevel = c.outputLevel.level

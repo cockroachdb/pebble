@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -49,9 +50,9 @@ func (c *tableCache) getShard(fileNum FileNum) *tableCacheShard {
 }
 
 func (c *tableCache) newIters(
-	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
+	file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error) {
-	return c.getShard(meta.FileNum).newIters(meta, opts, bytesIterated)
+	return c.getShard(file.FileNum).newIters(file, opts, bytesIterated)
 }
 
 func (c *tableCache) evict(fileNum FileNum) {
@@ -162,13 +163,13 @@ func (c *tableCacheShard) releaseLoop() {
 }
 
 func (c *tableCacheShard) newIters(
-	meta *fileMetadata, opts *IterOptions, bytesIterated *uint64,
+	file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(meta)
+	v := c.findNode(file.FileMetadata)
 	if v.err != nil {
 		c.unrefValue(v)
 		return nil, nil, v.err

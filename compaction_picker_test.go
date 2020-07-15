@@ -122,7 +122,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		var inProgress []compactionInfo
 		for i := 0; i < len(levels); i += 2 {
 			inProgress = append(inProgress, compactionInfo{
-				inputs: []compactionInput{
+				inputs: []compactionLevel{
 					{level: levels[i]},
 					{level: levels[i+1]},
 				},
@@ -225,7 +225,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					for f := iter.First(); f != nil; f = iter.Next() {
 						if !f.Compacting {
 							f.Compacting = true
-							c.inputs[0].files = iter.Take()
+							c.inputs[0].files = iter.Take().Slice()
 							break
 						}
 					}
@@ -245,7 +245,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						for f := iter.First(); f != nil; f = iter.Next() {
 							if !f.Compacting {
 								f.Compacting = true
-								c.inputs[1].files = iter.Take()
+								c.inputs[1].files = iter.Take().Slice()
 								break
 							}
 						}
@@ -524,7 +524,7 @@ func TestCompactionPickerL0(t *testing.T) {
 				for _, f := range files {
 					if f.Compacting {
 						c := compactionInfo{
-							inputs: []compactionInput{
+							inputs: []compactionLevel{
 								{level: level},
 								{level: level + 1, files: manifest.NewLevelSlice([]*fileMetadata{f})},
 							},
@@ -601,7 +601,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				pc := &pickedCompaction{
 					cmp:              DefaultComparer.Compare,
 					version:          &version{},
-					inputs:           []compactionInput{{level: -1}, {level: -1}},
+					inputs:           []compactionLevel{{level: -1}, {level: -1}},
 					maxExpandedBytes: 1 << 30,
 				}
 				pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
@@ -698,7 +698,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				pc := &pickedCompaction{
 					cmp:     cmp,
 					version: &version{},
-					inputs:  []compactionInput{{level: 1}},
+					inputs:  []compactionLevel{{level: 1}},
 				}
 				pc.startLevel = &pc.inputs[0]
 				pc.version.Levels[pc.startLevel.level] = files
@@ -717,7 +717,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					_ = iter.Next()
 				}
 
-				inputs := expandInputs(cmp, iter.Take())
+				inputs := expandToAtomicUnit(cmp, iter.Take().Slice())
 
 				var buf bytes.Buffer
 				inputs.Each(func(f *fileMetadata) {
