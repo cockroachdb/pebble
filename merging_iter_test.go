@@ -141,8 +141,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 
 	var fileNum base.FileNum
 	newIters :=
-		func(meta *fileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
-			r := readers[meta.FileNum]
+		func(file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
+			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
 				return nil, nil, err
@@ -233,11 +233,12 @@ func TestMergingIterCornerCases(t *testing.T) {
 		case "iter":
 			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
 			for i, l := range v.Levels {
-				if len(l) == 0 {
+				slice := l.Slice()
+				if slice.Empty() {
 					continue
 				}
 				li := &levelIter{}
-				li.init(IterOptions{}, cmp, newIters, l, manifest.Level(i), nil)
+				li.init(IterOptions{}, cmp, newIters, slice.Iter(), manifest.Level(i), nil)
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
