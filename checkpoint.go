@@ -119,9 +119,9 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 
 	// Link or copy the sstables.
 	for l := range current.Levels {
-		level := current.Levels[l]
-		for i := range level {
-			srcPath := base.MakeFilename(fs, d.dirname, fileTypeTable, level[i].FileNum)
+		iter := current.Levels[l].Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			srcPath := base.MakeFilename(fs, d.dirname, fileTypeTable, f.FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			if err := vfs.LinkOrCopy(fs, srcPath, destPath); err != nil {
 				return err

@@ -389,8 +389,9 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		var total props
 		var all []props
 		for _, l := range v.Levels {
+			iter := l.Iter()
 			var level props
-			for _, t := range l {
+			for t := iter.First(); t != nil; t = iter.Next() {
 				err := d.addProps(dirname, t, &level)
 				if err != nil {
 					return err

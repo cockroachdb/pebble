@@ -507,8 +507,9 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	v := d.mu.versions.currentVersion()
-	for _, files := range v.Levels {
-		for _, f := range files {
+	for _, levelMetadata := range v.Levels {
+		iter := levelMetadata.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			if f.FileNum != fileNum {
 				continue
 			}
