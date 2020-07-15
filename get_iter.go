@@ -155,7 +155,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level >= numLevels {
 			return nil, nil
 		}
-		if len(g.version.Levels[g.level]) == 0 {
+		if g.version.Levels[g.level].Iter().Empty() {
 			g.level++
 			continue
 		}
