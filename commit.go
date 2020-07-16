@@ -119,7 +119,7 @@ func (q *commitQueue) dequeue() *Batch {
 // with. This allows fine-grained testing of commitPipeline behavior without
 // construction of an entire DB.
 type commitEnv struct {
-	opts *Options
+	strictSync bool
 	// The next sequence number to give to a batch. Protected by
 	// commitPipeline.mu.
 	logSeqNum *uint64
@@ -129,12 +129,12 @@ type commitEnv struct {
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
-	// Write the batch to the WAL. If wg != nil, the data will be persisted
-	// asynchronously and done will be called on wg upon completion. If wg != nil
-	// and err != nil, a failure to persist the WAL will populate *err. Returns
-	// the memtable the batch should be applied to. Serial execution enforced by
-	// commitPipeline.mu.
-	write func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error)
+	// Write the batch to the WAL. syncWAL indicates whether the data will be
+	// synchronized. If wg != nil, the data will be persisted asynchronously and
+	// done will be called on wg upon completion. If wg != nil and err != nil, a
+	// failure to persist the WAL will populate *err. Returns the memtable the
+	// batch should be applied to. Serial execution enforced by commitPipeline.mu.
+	write func(b *Batch, syncWAL bool, wg *sync.WaitGroup, err *error) (*memTable, error)
 }
 
 // A commitPipeline manages the stages of committing a set of mutations
@@ -344,14 +344,14 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 		return nil, ErrInvalidBatch
 	}
 	count := 1
-	if syncWAL {
+	if syncWAL || p.env.strictSync {
 		count++
 	}
 	b.commit.Add(count)
 
 	var syncWG *sync.WaitGroup
 	var syncErr *error
-	if syncWAL {
+	if syncWAL || p.env.strictSync {
 		syncWG, syncErr = &b.commit, &b.commitErr
 	}
 
@@ -368,7 +368,7 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
 
 	// Write the data to the WAL.
-	mem, err := p.env.write(b, syncWG, syncErr)
+	mem, err := p.env.write(b, syncWAL, syncWG, syncErr)
 
 	p.mu.Unlock()
 
@@ -392,7 +392,7 @@ func (p *commitPipeline) publish(b *Batch) {
 			// Wait for another goroutine to publish us. We might also be waiting for
 			// the WAL sync to finish.
 			b.commit.Wait()
-			if p.env.opts.StrictSync {
+			if p.env.strictSync {
 				// b has been written, synced and applied. safe to make it visible.
 				p.makeVisible(b)
 			}
@@ -401,9 +401,9 @@ func (p *commitPipeline) publish(b *Batch) {
 		if atomic.LoadUint32(&t.applied) != 1 {
 			panic("not reached")
 		}
-		if !p.env.opts.StrictSync {
+		if !p.env.strictSync {
 			// t has been applied, but there is no guarantee that it has been written
-			// and synced. make it visible when StrictSync is not set (the default).
+			// and synced. Make it visible when StrictSync is not set (the default).
 			p.makeVisible(t)
 		}
 		t.commit.Done()

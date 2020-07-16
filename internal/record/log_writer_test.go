@@ -38,7 +38,7 @@ func TestSyncQueue(t *testing.T) {
 				return
 			}
 			head, tail := q.load()
-			q.pop(head, tail, nil)
+			q.pop(head, tail, nil, nil)
 		}
 	}()
 
@@ -54,7 +54,7 @@ func TestSyncQueue(t *testing.T) {
 				// syncQueue is a single-producer, single-consumer queue. We need to
 				// provide mutual exclusion on the producer side.
 				commitMu.Lock()
-				q.push(wg, new(error))
+				q.push(true, wg, new(error))
 				commitMu.Unlock()
 				wg.Wait()
 			}
@@ -94,7 +94,7 @@ func TestFlusherCond(t *testing.T) {
 			}
 
 			head, tail := q.load()
-			q.pop(head, tail, nil)
+			q.pop(head, tail, nil, nil)
 		}
 	}()
 
@@ -114,7 +114,7 @@ func TestFlusherCond(t *testing.T) {
 				// syncQueue is a single-producer, single-consumer queue. We need to
 				// provide mutual exclusion on the producer side.
 				commitMu.Lock()
-				q.push(wg, new(error))
+				q.push(true, wg, new(error))
 				commitMu.Unlock()
 				c.Signal()
 				wg.Wait()
@@ -141,7 +141,7 @@ func TestSyncError(t *testing.T) {
 	var syncErr error
 	var syncWG sync.WaitGroup
 	syncWG.Add(1)
-	_, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+	_, err = w.SyncRecord([]byte("hello"), true, &syncWG, &syncErr)
 	require.NoError(t, err)
 	syncWG.Wait()
 	if injectedErr != syncErr {
@@ -173,7 +173,7 @@ func TestSyncRecord(t *testing.T) {
 	for i := 0; i < 100000; i++ {
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
-		offset, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		offset, err := w.SyncRecord([]byte("hello"), true, &syncWG, &syncErr)
 		require.NoError(t, err)
 		syncWG.Wait()
 		require.NoError(t, syncErr)
@@ -231,7 +231,7 @@ func TestMinSyncInterval(t *testing.T) {
 	syncRecord := func(n int) *sync.WaitGroup {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), true, wg, new(error))
 		require.NoError(t, err)
 		return wg
 	}
@@ -300,7 +300,7 @@ func TestMinSyncIntervalClose(t *testing.T) {
 	syncRecord := func(n int) *sync.WaitGroup {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), true, wg, new(error))
 		require.NoError(t, err)
 		return wg
 	}

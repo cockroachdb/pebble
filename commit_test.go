@@ -34,7 +34,6 @@ type testCommitEnv struct {
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		opts:          &Options{},
 		logSeqNum:     &e.logSeqNum,
 		visibleSeqNum: &e.visibleSeqNum,
 		apply:         e.apply,
@@ -49,7 +48,9 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup, _ *error) (*memTable, error) {
+func (e *testCommitEnv) write(b *Batch,
+	_ bool, _ *sync.WaitGroup, _ *error,
+) (*memTable, error) {
 	n := int64(len(b.data))
 	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
@@ -188,7 +189,6 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	wal := record.NewLogWriter(sf, 0 /* logNum */)
 	var walDone sync.WaitGroup
 	testEnv := commitEnv{
-		opts:          &Options{},
 		logSeqNum:     new(uint64),
 		visibleSeqNum: new(uint64),
 		apply: func(b *Batch, mem *memTable) error {
@@ -196,8 +196,8 @@ func TestCommitPipelineWALClose(t *testing.T) {
 			walDone.Done()
 			return nil
 		},
-		write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
-			_, err := wal.SyncRecord(b.data, syncWG, syncErr)
+		write: func(b *Batch, syncWAL bool, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+			_, err := wal.SyncRecord(b.data, syncWAL, syncWG, syncErr)
 			return nil, err
 		},
 	}
@@ -250,7 +250,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					mem.writerUnref()
 					return nil
 				},
-				write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+				write: func(b *Batch, syncWAL bool, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
 					for {
 						err := mem.prepare(b)
 						if err == arenaskl.ErrArenaFull {
@@ -263,7 +263,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 						break
 					}
 
-					_, err := wal.SyncRecord(b.data, syncWG, syncErr)
+					_, err := wal.SyncRecord(b.data, syncWAL, syncWG, syncErr)
 					return mem, err
 				},
 			}
