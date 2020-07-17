@@ -198,9 +198,7 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	return info
 }
 
-func newCompaction(
-	pc *pickedCompaction, opts *Options, bytesCompacted *uint64,
-) *compaction {
+func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) *compaction {
 	c := &compaction{
 		kind:                compactionKindDefault,
 		cmp:                 pc.cmp,
@@ -244,9 +242,7 @@ func newCompaction(
 	return c
 }
 
-func newDeleteOnlyCompaction(
-	opts *Options, cur *version, inputs []compactionLevel,
-) *compaction {
+func newDeleteOnlyCompaction(opts *Options, cur *version, inputs []compactionLevel) *compaction {
 	c := &compaction{
 		kind:      compactionKindDeleteOnly,
 		cmp:       opts.Comparer.Compare,
@@ -826,7 +822,7 @@ func (d *DB) getFlushPacerInfo() flushPacerInfo {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleFlush() {
-	if d.mu.compact.flushing || atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
+	if d.mu.compact.flushing || d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
 	if len(d.mu.mem.queue) <= 1 {
@@ -898,7 +894,7 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
 			// block on locking d.mu until we've finished scheduling the flush
 			// and set `d.mu.compact.flushing` to true. Close will wait for
 			// the current flush to complete.
-			if atomic.LoadInt32(&d.closed) != 0 {
+			if d.closed.Load() != nil {
 				return
 			}
 
@@ -1056,7 +1052,7 @@ func (d *DB) flush1() error {
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleCompaction() {
-	if atomic.LoadInt32(&d.closed) != 0 || d.opts.ReadOnly {
+	if d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
 	if d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions {
@@ -1076,7 +1072,7 @@ func (d *DB) maybeScheduleCompaction() {
 
 	// Check for the closed flag again, in case the DB was closed while we were
 	// waiting for logLock().
-	if atomic.LoadInt32(&d.closed) != 0 {
+	if d.closed.Load() != nil {
 		return
 	}
 

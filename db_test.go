@@ -914,26 +914,26 @@ func TestDBClosed(t *testing.T) {
 		return nil
 	}
 
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Close() }))
+	require.True(t, errors.Is(catch(func() { _ = d.Close() }), ErrClosed))
 
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Compact(nil, nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Flush() }))
-	require.EqualValues(t, ErrClosed, catch(func() { _, _ = d.AsyncFlush() }))
+	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Flush() }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _, _ = d.AsyncFlush() }), ErrClosed))
 
-	require.EqualValues(t, ErrClosed, catch(func() { _, _, _ = d.Get(nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Delete(nil, nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.DeleteRange(nil, nil, nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Ingest(nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.LogData(nil, nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Merge(nil, nil, nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Set(nil, nil, nil) }))
+	require.True(t, errors.Is(catch(func() { _, _, _ = d.Get(nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Delete(nil, nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.DeleteRange(nil, nil, nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Ingest(nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.LogData(nil, nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Merge(nil, nil, nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Set(nil, nil, nil) }), ErrClosed))
 
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.NewSnapshot() }))
+	require.True(t, errors.Is(catch(func() { _ = d.NewSnapshot() }), ErrClosed))
 
 	b := d.NewIndexedBatch()
-	require.EqualValues(t, ErrClosed, catch(func() { _ = b.Commit(nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = d.Apply(b, nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { _ = b.NewIter(nil) }))
+	require.True(t, errors.Is(catch(func() { _ = b.Commit(nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Apply(b, nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = b.NewIter(nil) }), ErrClosed))
 }
 
 func TestDBConcurrentCommitCompactFlush(t *testing.T) {
