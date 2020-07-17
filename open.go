@@ -12,7 +12,6 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -354,7 +353,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if invariants.Enabled {
 		runtime.SetFinalizer(d, func(obj interface{}) {
 			d := obj.(*DB)
-			if atomic.LoadInt32(&d.closed) == 0 {
+			if err := d.closed.Load(); err == nil {
 				fmt.Fprintf(os.Stderr, "%p: unreferenced DB not closed\n", d)
 				os.Exit(1)
 			}

@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"math"
-	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -68,7 +67,7 @@ func (d *DB) updateTableStatsLocked(newFiles []manifest.NewFileEntry) {
 
 func (d *DB) shouldCollectTableStats() bool {
 	ok := !d.mu.tableStats.loading
-	ok = ok && atomic.LoadInt32(&d.closed) == 0
+	ok = ok && d.closed.Load() == nil
 	ok = ok && !d.opts.private.disableTableStats
 	ok = ok && (len(d.mu.tableStats.pending) > 0 || !d.mu.tableStats.loadedInitial)
 	return ok
@@ -159,7 +158,9 @@ type collectedStats struct {
 	manifest.TableStats
 }
 
-func (d *DB) loadNewFileStats(rs *readState, pending []manifest.NewFileEntry) ([]collectedStats, []deleteCompactionHint) {
+func (d *DB) loadNewFileStats(
+	rs *readState, pending []manifest.NewFileEntry,
+) ([]collectedStats, []deleteCompactionHint) {
 	var hints []deleteCompactionHint
 	collected := make([]collectedStats, 0, len(pending))
 	for _, nf := range pending {
@@ -200,7 +201,9 @@ func (d *DB) loadNewFileStats(rs *readState, pending []manifest.NewFileEntry) ([
 // scanReadStateTableStats is run by an active stat collection job when there
 // are no pending new files, but there might be files that existed at Open for
 // which we haven't loaded table stats.
-func (d *DB) scanReadStateTableStats(rs *readState, fill []collectedStats) ([]collectedStats, []deleteCompactionHint, bool) {
+func (d *DB) scanReadStateTableStats(
+	rs *readState, fill []collectedStats,
+) ([]collectedStats, []deleteCompactionHint, bool) {
 	moreRemain := false
 	var hints []deleteCompactionHint
 	for l, levelMetadata := range rs.current.Levels {
@@ -344,7 +347,9 @@ func (d *DB) estimateSizeBeneath(
 }
 
 func foreachDefragmentedTombstone(
-	rangeDelIter base.InternalIterator, cmp base.Compare, fn func([]byte, []byte, uint64, uint64) error,
+	rangeDelIter base.InternalIterator,
+	cmp base.Compare,
+	fn func([]byte, []byte, uint64, uint64) error,
 ) error {
 	var startUserKey, endUserKey []byte
 	var smallestSeqNum, largestSeqNum uint64
