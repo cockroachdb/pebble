@@ -46,14 +46,6 @@ func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }
 
-// totalSize returns the total size of all the files in f.
-func totalSize(f []*fileMetadata) (size uint64) {
-	for _, x := range f {
-		size += x.Size
-	}
-	return size
-}
-
 // noCloseIter wraps around an internal iterator, intercepting and eliding
 // calls to Close. It is used during compaction to ensure that rangeDelIters
 // are not closed prematurely.
