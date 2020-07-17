@@ -255,6 +255,7 @@ type LogWriter struct {
 	block *block
 	free  struct {
 		sync.Mutex
+		// Condition variable used to signal a block is freed.
 		cond      sync.Cond
 		blocks    []*block
 		allocated int
@@ -439,9 +440,11 @@ func (w *LogWriter) flushLoop(context.Context) {
 
 		f.err = err
 		if f.err != nil {
-			// TODO(peter): There might be new waiters that we should propagate f.err
-			// to. Because f.err is now set, we only have to perform a single extra
-			// clearing of those waiters as no new ones can arrive via SyncRecord().
+			f.syncQ.clearBlocked()
+			for !f.syncQ.empty() {
+				head, tail := f.syncQ.load()
+				f.syncQ.pop(head, tail, err)
+			}
 			return
 		}
 	}
@@ -528,6 +531,7 @@ func (w *LogWriter) queueBlock() {
 }
 
 // Close flushes and syncs any unwritten data and closes the writer.
+// Where required, external synchronisation is provided by commitPipeline.mu.
 func (w *LogWriter) Close() error {
 	f := &w.flusher
 
@@ -562,6 +566,7 @@ func (w *LogWriter) Close() error {
 
 // WriteRecord writes a complete record. Returns the offset just past the end
 // of the record.
+// External synchronisation provided by commitPipeline.mu.
 func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 	return w.SyncRecord(p, nil, nil)
 }
@@ -570,6 +575,7 @@ func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 // asynchronously persisted to the underlying writer and done will be called on
 // the wait group upon completion. Returns the offset just past the end of the
 // record.
+// External synchronisation provided by commitPipeline.mu.
 func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64, error) {
 	if w.err != nil {
 		return -1, w.err
@@ -590,8 +596,16 @@ func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64,
 		// any record written to the LogWriter to this point will be flushed to the
 		// OS and synced to disk.
 		f := &w.flusher
-		f.syncQ.push(wg, err)
-		f.ready.Signal()
+		// If flushLoop had an error, stop accepting sync requests.
+		f.Lock()
+		if f.err != nil {
+			*err = f.err
+			wg.Done()
+		} else {
+			f.syncQ.push(wg, err)
+			f.ready.Signal()
+		}
+		f.Unlock()
 	}
 
 	offset := w.blockNum*blockSize + int64(w.block.written)
@@ -603,6 +617,7 @@ func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64,
 }
 
 // Size returns the current size of the file.
+// External synchronisation provided by commitPipeline.mu.
 func (w *LogWriter) Size() int64 {
 	return w.blockNum*blockSize + int64(w.block.written)
 }

@@ -66,6 +66,27 @@ func TestSyncQueue(t *testing.T) {
 	flusherWG.Wait()
 }
 
+func TestSyncErrorPropagation(t *testing.T) {
+	mem := vfs.NewMem()
+	f, err := mem.Create("log")
+	require.NoError(t, err)
+
+	injectedErr := errors.New("injected error")
+	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0)
+
+	var syncErr error
+	for i := 0; i < 100; i++ {
+		var syncWG sync.WaitGroup
+		syncWG.Add(1)
+		// This doesn't return error because err from flusher to logWriter is only
+		// propagated upon reaching the block size.
+		_, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		require.NoError(t, err)
+		syncWG.Wait()
+		require.Equal(t, injectedErr, syncErr)
+	}
+}
+
 func TestFlusherCond(t *testing.T) {
 	var mu sync.Mutex
 	var q syncQueue
