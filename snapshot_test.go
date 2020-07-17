@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -200,9 +201,9 @@ func TestSnapshotClosed(t *testing.T) {
 
 	snap := d.NewSnapshot()
 	require.NoError(t, snap.Close())
-	require.EqualValues(t, ErrClosed, catch(func() { _ = snap.Close() }))
-	require.EqualValues(t, ErrClosed, catch(func() { _, _, _ = snap.Get(nil) }))
-	require.EqualValues(t, ErrClosed, catch(func() { snap.NewIter(nil) }))
+	require.True(t, errors.Is(catch(func() { _ = snap.Close() }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _, _, _ = snap.Get(nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { snap.NewIter(nil) }), ErrClosed))
 
 	require.NoError(t, d.Close())
 }

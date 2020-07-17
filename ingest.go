@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"sort"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -496,8 +495,8 @@ func ingestTargetLevel(
 // https://github.com/cockroachdb/pebble/issues/25 for an idea for how to fix
 // this hiccup.
 func (d *DB) Ingest(paths []string) error {
-	if atomic.LoadInt32(&d.closed) != 0 {
-		panic(ErrClosed)
+	if err := d.closed.Load(); err != nil {
+		panic(err)
 	}
 	if d.opts.ReadOnly {
 		return ErrReadOnly
