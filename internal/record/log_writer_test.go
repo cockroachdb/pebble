@@ -138,15 +138,22 @@ func TestSyncError(t *testing.T) {
 	injectedErr := errors.New("injected error")
 	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0)
 
-	var syncErr error
-	var syncWG sync.WaitGroup
-	syncWG.Add(1)
-	_, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
-	require.NoError(t, err)
-	syncWG.Wait()
-	if injectedErr != syncErr {
-		t.Fatalf("unexpected %v but found %v", injectedErr, syncErr)
+	syncRecord := func() {
+		var syncErr error
+		var syncWG sync.WaitGroup
+		syncWG.Add(1)
+		_, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		require.NoError(t, err)
+		syncWG.Wait()
+		if injectedErr != syncErr {
+			t.Fatalf("unexpected %v but found %v", injectedErr, syncErr)
+		}
 	}
+	// First waiter receives error.
+	syncRecord()
+	// All subsequent waiters also receive the error.
+	syncRecord()
+	syncRecord()
 }
 
 type syncFile struct {
