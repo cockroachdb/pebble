@@ -219,7 +219,7 @@ func (pc *pickedCompaction) setupInputs() {
 					newStartLevelFiles = append(newStartLevelFiles, pc.version.Levels[0][j])
 				}
 			}
-			if totalSize(newStartLevelFiles)+pc.outputLevel.files.SizeSum() < pc.maxExpandedBytes {
+			if manifest.NewLevelSlice(newStartLevelFiles).SizeSum()+pc.outputLevel.files.SizeSum() < pc.maxExpandedBytes {
 				pc.startLevel.files = manifest.NewLevelSlice(newStartLevelFiles)
 				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 					pc.startLevel.files.Iter(), pc.outputLevel.files.Iter())
@@ -438,8 +438,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
 	// unlike the RocksDB logic that figures out whether L0 needs compaction.
-	bytesAddedToNextLevel := l0ExtraSize + totalSize(p.vers.Levels[0])
-	nextLevelSize := totalSize(p.vers.Levels[p.baseLevel])
+	bytesAddedToNextLevel := l0ExtraSize + p.vers.Levels[0].Slice().SizeSum()
+	nextLevelSize := p.vers.Levels[p.baseLevel].Slice().SizeSum()
 
 	var compactionDebt uint64
 	if bytesAddedToNextLevel > 0 && nextLevelSize > 0 {
@@ -451,7 +451,7 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	for level := p.baseLevel; level < numLevels-1; level++ {
 		levelSize := nextLevelSize + bytesAddedToNextLevel
-		nextLevelSize = totalSize(p.vers.Levels[level+1])
+		nextLevelSize = p.vers.Levels[level+1].Slice().SizeSum()
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			if nextLevelSize > 0 {
@@ -491,7 +491,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	firstNonEmptyLevel := -1
 	var dbSize int64
 	for level := 1; level < numLevels; level++ {
-		levelSize := int64(totalSize(p.vers.Levels[level]))
+		levelSize := int64(p.vers.Levels[level].Slice().SizeSum())
 		if levelSize > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
@@ -526,7 +526,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	}
 
 	const levelMultiplier = 10
-	dbSize += int64(totalSize(p.vers.Levels[0]))
+	dbSize += int64(p.vers.Levels[0].Slice().SizeSum())
 	bottomLevelSize := dbSize - dbSize/levelMultiplier
 
 	curLevelSize := bottomLevelSize
