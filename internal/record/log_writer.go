@@ -135,11 +135,12 @@ func (q *syncQueue) pop(head, tail uint32, s syncer, err error) error {
 		// Queue is empty.
 		return nil
 	}
+	// Synchronize the WAL if any one of the involved slots has the sync flag set.
 	for tt := tail; err == nil && s != nil && tt != head; tt++ {
 		if q.slots[tt&uint32(len(q.slots)-1)].sync {
 			err = s.Sync()
+			break
 		}
-		break
 	}
 	for ; tail != head; tail++ {
 		slot := &q.slots[tail&uint32(len(q.slots)-1)]

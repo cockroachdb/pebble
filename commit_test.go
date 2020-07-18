@@ -232,6 +232,117 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	}
 }
 
+type strictSyncFile struct {
+	vfs.File
+	written    int64
+	syncCalled chan struct{}
+	blocked    chan struct{}
+}
+
+func (f *strictSyncFile) Write(data []byte) (int, error) {
+	atomic.AddInt64(&f.written, int64(len(data)))
+	return len(data), nil
+}
+
+func (f *strictSyncFile) Sync() error {
+	f.syncCalled <- struct{}{}
+	<-f.blocked
+	return nil
+}
+
+func TestCommitPipelineStrictSync(t *testing.T) {
+	tt := func(count int) {
+		mem := vfs.NewMem()
+		f, err := mem.Create("test-wal")
+		require.NoError(t, err)
+
+		sf := &strictSyncFile{
+			File:    f,
+			blocked: make(chan struct{}),
+			// cap 1+1 is required, make the cap to be count+1 to check whether there
+			// is unexpected call to Sync(), +1 is for the extra Sync() call in
+			// LogWriter.Close()
+			syncCalled: make(chan struct{}, count+1),
+		}
+
+		wal := record.NewLogWriter(sf, 0 /* logNum */)
+		defer wal.Close()
+		var walDone sync.WaitGroup
+		ready := make(chan struct{}, count)
+		testEnv := commitEnv{
+			strictSync:    true,
+			logSeqNum:     new(uint64),
+			visibleSeqNum: new(uint64),
+			apply: func(b *Batch, mem *memTable) error {
+				walDone.Done()
+				select {
+				case ready <- struct{}{}:
+				default:
+					t.Fatalf("failed to write to blocked ch")
+				}
+				return nil
+			},
+			write: func(b *Batch, syncWAL bool, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+				_, err := wal.SyncRecord(b.data, syncWAL, syncWG, syncErr)
+				return nil, err
+			},
+		}
+		p := newCommitPipeline(testEnv)
+		// issue a commit to cause flushPending to be blocked on Sync()
+		walDone.Add(1)
+		b := &Batch{}
+		go func() {
+			wo := &WriteOptions{Sync: true}
+			if err := b.Set([]byte("foo"), []byte("bar"), wo); err != nil {
+				require.NoError(t, err)
+			}
+			require.NoError(t, p.Commit(b, wo.Sync))
+		}()
+		walDone.Wait()
+		<-sf.syncCalled
+		// flushPending is now blocked on Sync()
+		// issue more commits so they all get queued
+		errCh := make(chan error, count)
+		walDone.Add(count)
+		for i := 0; i < count; i++ {
+			// queue all count Commits one by one to make sure the last one always has
+			// write Sync = false when count > 1
+			<-ready
+			go func(i int) {
+				// test write Sync = false when i == count - 1 && count > 1
+				wo := &WriteOptions{Sync: i == 0 || i != count-1}
+				b := &Batch{}
+				if err := b.Set([]byte("foo"), []byte("bar"), wo); err != nil {
+					errCh <- err
+					return
+				}
+				errCh <- p.Commit(b, wo.Sync)
+			}(i)
+		}
+		// resume Sync() and start processing all count queued commits
+		walDone.Wait()
+		close(sf.blocked)
+		// busy loop to wait for the seq num to be published
+		for atomic.LoadUint64(testEnv.visibleSeqNum) != uint64(count+1) {
+		}
+		// check expected Sync() and Write() are all invoked before makeVisible()
+		require.Equal(t, 1, len(sf.syncCalled))
+		// record.recyclableHeaderSize is 11
+		size := 11 + len(b.data)
+		require.Equal(t, int64((count+1)*size), atomic.LoadInt64(&sf.written))
+		for len(errCh) > 0 {
+			require.NoError(t, <-errCh)
+		}
+	}
+	for i := 0; i < 100; i++ {
+		// record.SyncConcurrency - 2 is because of the first commit used to block
+		// on Sync()
+		for _, count := range []int{1, 2, 6, record.SyncConcurrency - 2} {
+			tt(count)
+		}
+	}
+}
+
 func BenchmarkCommitPipeline(b *testing.B) {
 	for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
