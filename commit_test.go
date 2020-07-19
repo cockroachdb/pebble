@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -324,6 +325,7 @@ func TestCommitPipelineStrictSync(t *testing.T) {
 		close(sf.blocked)
 		// busy loop to wait for the seq num to be published
 		for atomic.LoadUint64(testEnv.visibleSeqNum) != uint64(count+1) {
+			runtime.Gosched()
 		}
 		// check expected Sync() and Write() are all invoked before makeVisible()
 		require.Equal(t, 1, len(sf.syncCalled))
