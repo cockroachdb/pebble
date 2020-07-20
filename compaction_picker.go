@@ -146,9 +146,10 @@ func newPickedCompactionFromL0(lcf *manifest.L0CompactionFiles, opts *Options, v
 	// because compactions built by L0SSTables do not necessarily
 	// pick contiguous sequences of files in pc.version.Levels[0].
 	files := make([]*manifest.FileMetadata, 0, len(lcf.Files))
-	for j := range lcf.FilesIncluded {
+	iter := vers.Levels[0].Iter()
+	for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
 		if lcf.FilesIncluded[j] {
-			files = append(files, vers.Levels[0][j])
+			files = append(files, f)
 		}
 	}
 	pc.startLevel.files = manifest.NewLevelSlice(files)
@@ -214,12 +215,15 @@ func (pc *pickedCompaction) setupInputs() {
 		oldLcf := *pc.lcf
 		if pc.version.L0Sublevels.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
 			var newStartLevelFiles []*fileMetadata
-			for j := range pc.lcf.FilesIncluded {
+			iter := pc.version.Levels[0].Iter()
+			var sizeSum uint64
+			for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
 				if pc.lcf.FilesIncluded[j] {
-					newStartLevelFiles = append(newStartLevelFiles, pc.version.Levels[0][j])
+					newStartLevelFiles = append(newStartLevelFiles, f)
+					sizeSum += f.Size
 				}
 			}
-			if manifest.NewLevelSlice(newStartLevelFiles).SizeSum()+pc.outputLevel.files.SizeSum() < pc.maxExpandedBytes {
+			if sizeSum+pc.outputLevel.files.SizeSum() < pc.maxExpandedBytes {
 				pc.startLevel.files = manifest.NewLevelSlice(newStartLevelFiles)
 				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 					pc.startLevel.files.Iter(), pc.outputLevel.files.Iter())
@@ -685,11 +689,16 @@ func (p *compactionPickerByScore) calculateL0Score(
 
 	// Score an L0->Lbase compaction by counting the number of idle
 	// (non-compacting) files in L0.
-	var idleL0Count int
-	for _, f := range p.vers.Levels[0] {
-		if !f.Compacting {
+	var idleL0Count, totalL0Count, intraL0Count int
+	iter := p.vers.Levels[0].Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.Compacting {
+			intraL0Count = 0
+		} else {
 			idleL0Count++
+			intraL0Count++
 		}
+		totalL0Count++
 	}
 	info.score = float64(idleL0Count) / float64(p.opts.L0CompactionThreshold)
 
@@ -707,21 +716,12 @@ func (p *compactionPickerByScore) calculateL0Score(
 		return info
 	}
 
-	l0Files := p.vers.Levels[0]
-	if len(l0Files) < p.opts.L0CompactionThreshold+2 {
+	if totalL0Count < p.opts.L0CompactionThreshold+2 {
 		// If L0 isn't accumulating many files beyond the regular L0 trigger,
 		// don't resort to an intra-L0 compaction yet. This matches the RocksDB
 		// heuristic.
 		return info
 	}
-	var end = len(l0Files)
-	for ; end >= 1; end-- {
-		if l0Files[end-1].Compacting {
-			break
-		}
-	}
-
-	intraL0Count := len(l0Files) - end
 	if intraL0Count < minIntraL0Count {
 		// Not enough idle L0 files to perform an intra-L0 compaction. This
 		// matches the RocksDB heuristic. Note that if another file is flushed
@@ -1047,10 +1047,10 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 }
 
 func pickIntraL0(env compactionEnv, opts *Options, vers *version) (pc *pickedCompaction) {
-	l0Files := vers.Levels[0]
-	end := len(l0Files)
-	for ; end >= 1; end-- {
-		m := l0Files[end-1]
+	l0Files := vers.Levels[0].Slice()
+	end := l0Files.Iter()
+	remaining := l0Files.Len()
+	for m := end.Last(); m != nil; m = end.Prev() {
 		if m.Compacting {
 			return nil
 		}
@@ -1058,7 +1058,7 @@ func pickIntraL0(env compactionEnv, opts *Options, vers *version) (pc *pickedCom
 			break
 		}
 		// Don't compact an L0 file which contains a seqnum greater than the
-		// earliest unflushed seqnum (we continue the loop, rather than existing,
+		// earliest unflushed seqnum (we continue the loop, rather than exiting,
 		// see conditional above). This can happen when a file is ingested into L0
 		// yet doesn't overlap with the memtable. Consider the scenario:
 		//
@@ -1094,38 +1094,47 @@ func pickIntraL0(env compactionEnv, opts *Options, vers *version) (pc *pickedCom
 		// And now everything is copacetic.
 		//
 		// See https://github.com/facebook/rocksdb/pull/5958.
+		remaining--
 	}
-	if end < minIntraL0Count {
+	if remaining < minIntraL0Count {
 		return nil
 	}
 
-	compactTotalSize := l0Files[end-1].Size
+	compactTotalSize := end.Current().Size
+	compactTotalCount := 1
 	compactSizePerFile := uint64(math.MaxUint64)
 
-	// The compaction will be in the range [begin,end). We add files to the
-	// compaction until the amount of compaction work per file begins increasing.
-	begin := end - 1
-	for ; begin >= 1; begin-- {
-		m := l0Files[begin-1]
-		if m.Compacting {
-			break
-		}
-		newCompactTotalSize := compactTotalSize + m.Size
-		newCompactSizePerFile := newCompactTotalSize / uint64(end-(begin-1))
-		if newCompactSizePerFile > compactSizePerFile {
-			break
-		}
-		compactTotalSize = newCompactTotalSize
-		compactSizePerFile = newCompactSizePerFile
-	}
+	// The compaction will be a subslice of l0Files ending with the file
+	// currently positioned beneath end. We add files to the compaction from
+	// the left until the amount of compaction work per file begins
+	// increasing.
+	compactFiles := end.Take().Slice().Reslice(func(start, end *manifest.LevelIterator) {
+		for m := start.Prev(); m != nil; m = start.Prev() {
+			if m.Compacting {
+				break
+			}
 
-	if end-begin < minIntraL0Count {
+			newCompactTotalSize := compactTotalSize + m.Size
+			newCompactSizePerFile := newCompactTotalSize / uint64(compactTotalCount+1)
+			if newCompactSizePerFile > compactSizePerFile {
+				break
+			}
+			compactTotalCount++
+			compactTotalSize = newCompactTotalSize
+			compactSizePerFile = newCompactSizePerFile
+		}
+		// We advanced the iterator one too far, either beyond the beginning
+		// of the level's files or to a file that triggered an early break.
+		// Move the start back over the last file that was okay.
+		start.Next()
+	})
+	if compactTotalCount < minIntraL0Count {
 		return nil
 	}
 
 	pc = newPickedCompaction(opts, vers, 0, 0)
-	pc.startLevel.files = manifest.NewLevelSlice(l0Files[begin:end])
-	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
+	pc.startLevel.files = compactFiles
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, compactFiles.Iter())
 	// Output only a single sstable for intra-L0 compactions. There is no current
 	// benefit to outputting multiple tables, because other parts of the code
 	// (i.e. iterators and comapction) expect L0 sstables to overlap and will
