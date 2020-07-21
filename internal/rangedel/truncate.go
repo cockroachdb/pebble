@@ -8,12 +8,20 @@ import "github.com/cockroachdb/pebble/internal/base"
 
 // Truncate creates a new iterator where every tombstone in the supplied
 // iterator is truncated to be contained within the range [lower, upper).
-func Truncate(cmp base.Compare, iter base.InternalIterator, lower, upper []byte) *Iter {
+// If start and end are specified, filter out any range tombstones that
+// are completely outside those bounds.
+func Truncate(cmp base.Compare, iter base.InternalIterator, lower, upper []byte, start, end *base.InternalKey) *Iter {
 	var tombstones []Tombstone
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		t := Tombstone{
 			Start: *key,
 			End:   value,
+		}
+		if start != nil && cmp(t.End, start.UserKey) <= 0 {
+			continue
+		}
+		if end != nil && base.InternalCompare(cmp, t.Start, *end) > 0 {
+			continue
 		}
 		if cmp(t.Start.UserKey, lower) < 0 {
 			t.Start.UserKey = lower
