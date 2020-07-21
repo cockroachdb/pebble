@@ -479,7 +479,7 @@ func TestGetIter(t *testing.T) {
 			return d.newIter(nil), nil, nil
 		}
 
-		v := version{}
+		var files [numLevels][]*fileMetadata
 		for _, tt := range tc.tables {
 			d := newMemTable(memTableOptions{})
 			defer d.close()
@@ -517,12 +517,9 @@ func TestGetIter(t *testing.T) {
 				}
 			}
 
-			v.Levels[tt.level] = append(v.Levels[tt.level], meta)
+			files[tt.level] = append(files[tt.level], meta)
 		}
-
-		if err := v.InitL0Sublevels(cmp, base.DefaultFormatter, 10<<20); err != nil {
-			t.Fatalf("desc=%q: internal error: %s", desc, err.Error())
-		}
+		v := manifest.NewVersion(cmp, base.DefaultFormatter, 10<<20, files)
 		err := v.CheckOrdering(cmp, base.DefaultFormatter)
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
@@ -567,7 +564,7 @@ func TestGetIter(t *testing.T) {
 		for _, query := range tc.queries {
 			s := strings.Split(query, " ")
 			ikey := base.ParseInternalKey(s[0])
-			value, err := get(&v, ikey)
+			value, err := get(v, ikey)
 			got, want := "", s[1]
 			if err != nil {
 				if err != ErrNotFound {
