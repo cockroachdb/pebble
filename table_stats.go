@@ -267,7 +267,8 @@ func (d *DB) loadTableStats(
 		defer rangeDelIter.Close()
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
-		rangeDelIter = rangedel.Truncate(d.cmp, rangeDelIter, meta.Smallest.UserKey, meta.Largest.UserKey)
+		rangeDelIter = rangedel.Truncate(
+			d.cmp, rangeDelIter, meta.Smallest.UserKey, meta.Largest.UserKey, nil, nil)
 		err = foreachDefragmentedTombstone(rangeDelIter, d.cmp,
 			func(startUserKey, endUserKey []byte, smallestSeqNum, largestSeqNum uint64) error {
 				estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, startUserKey, endUserKey)
