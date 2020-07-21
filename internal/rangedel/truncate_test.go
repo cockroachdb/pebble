@@ -28,17 +28,23 @@ func TestTruncate(t *testing.T) {
 			if len(d.Input) > 0 {
 				t.Fatalf("unexpected input: %s", d.Input)
 			}
-			if len(d.CmdArgs) != 1 {
-				t.Fatalf("expected 1 argument: %s", d.CmdArgs)
+			if len(d.CmdArgs) < 1 || len(d.CmdArgs) > 2 {
+				t.Fatalf("expected 1 or 2 arguments: %s", d.CmdArgs)
 			}
 			parts := strings.Split(d.CmdArgs[0].String(), "-")
+			var endKey *base.InternalKey
+			var parsedKey base.InternalKey
+			if len(d.CmdArgs) > 1 && d.CmdArgs[1].Key == "endKey" {
+				parsedKey = base.ParseInternalKey(d.CmdArgs[1].Vals[0])
+				endKey = &parsedKey
+			}
 			if len(parts) != 2 {
 				t.Fatalf("malformed arg: %s", d.CmdArgs[0])
 			}
 			lower := []byte(parts[0])
 			upper := []byte(parts[1])
 
-			truncated := Truncate(cmp, iter, lower, upper)
+			truncated := Truncate(cmp, iter, lower, upper, endKey)
 			return formatTombstones(truncated.tombstones)
 
 		default:

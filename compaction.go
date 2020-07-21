@@ -576,7 +576,8 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			// atomic unit boundaries at compaction time.
 			atomicUnit := expandToAtomicUnit(c.cmp, f.Slice())
 			lowerBound, upperBound := manifest.KeyRange(c.cmp, atomicUnit.Iter())
-			rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey)
+			rangeDelIter = rangedel.Truncate(
+				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey, &f.Largest)
 		}
 		if rangeDelIter == nil {
 			rangeDelIter = emptyIter

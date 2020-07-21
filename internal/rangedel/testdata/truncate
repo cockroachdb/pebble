@@ -24,6 +24,13 @@ truncate a-e
 1:  b-d
 2:    de
 
+# The second range tombstone should be elided, as it starts after the
+# specified file end key.
+
+truncate a-e endKey=(d.SET.3)
+----
+1:  b-d
+
 truncate a-f
 ----
 1:  b-d
