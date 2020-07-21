@@ -413,9 +413,6 @@ func checkRangeTombstones(c *checkConfig) error {
 		level++
 	}
 	for i := 1; i < len(current.Levels); i++ {
-		if len(current.Levels[i]) == 0 {
-			continue
-		}
 		if err := addTombstonesFromLevel(current.Levels[i].Iter(), i); err != nil {
 			return err
 		}
@@ -626,7 +623,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		mlevels = append(mlevels, simpleMergingIterLevel{})
 	}
 	for level := 1; level < len(current.Levels); level++ {
-		if len(current.Levels[level]) == 0 {
+		if current.Levels[level].Slice().Empty() {
 			continue
 		}
 		mlevels = append(mlevels, simpleMergingIterLevel{})

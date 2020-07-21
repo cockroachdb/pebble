@@ -137,7 +137,7 @@ type levelIterTest struct {
 	cmp     base.Comparer
 	mem     vfs.FS
 	readers []*sstable.Reader
-	metas   manifest.LevelMetadata
+	metas   []*fileMetadata
 }
 
 func newLevelIterTest() *levelIterTest {
@@ -169,7 +169,7 @@ func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
 		r.Close()
 	}
 	lt.readers = nil
-	lt.metas = manifest.LevelMetadata{}
+	lt.metas = nil
 	return ""
 }
 
@@ -233,16 +233,16 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	lt.readers = append(lt.readers, r)
-	lt.metas = manifest.LevelMetadata(append(lt.metas.Slice().Collect(), &fileMetadata{
+	lt.metas = append(lt.metas, &fileMetadata{
 		FileNum:  fileNum,
 		Smallest: meta.Smallest(lt.cmp.Compare),
 		Largest:  meta.Largest(lt.cmp.Compare),
-	}))
+	})
 
 	var buf bytes.Buffer
-	lt.metas.Slice().Each(func(f *fileMetadata) {
+	for _, f := range lt.metas {
 		fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
-	})
+	}
 	return buf.String()
 }
 
@@ -260,7 +260,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 
 		case "iter":
 			iter := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-				lt.newIters, lt.metas.Iter(), manifest.Level(level), nil)
+				lt.newIters, manifest.NewLevelSlice(lt.metas).Iter(), manifest.Level(level), nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
@@ -335,7 +335,7 @@ func TestLevelIterSeek(t *testing.T) {
 		case "iter":
 			iter := &levelIterTestIter{
 				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare,
-					lt.newIters, lt.metas.Iter(), manifest.Level(level), nil),
+					lt.newIters, manifest.NewLevelSlice(lt.metas).Iter(), manifest.Level(level), nil),
 			}
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
@@ -349,7 +349,7 @@ func TestLevelIterSeek(t *testing.T) {
 
 func buildLevelIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*sstable.Reader, manifest.LevelMetadata, [][]byte) {
+) ([]*sstable.Reader, manifest.LevelSlice, [][]byte) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
@@ -411,7 +411,7 @@ func buildLevelIterTables(
 		key, _ = iter.Last()
 		meta[i].Largest = *key
 	}
-	return readers, manifest.LevelMetadata(meta), keys
+	return readers, manifest.NewLevelSlice(meta), keys
 }
 
 func BenchmarkLevelIterSeekGE(b *testing.B) {
