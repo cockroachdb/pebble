@@ -129,7 +129,8 @@ func TestMergingIterNextPrev(t *testing.T) {
 func TestMergingIterCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
-	var v version
+	opts := (*Options)(nil).EnsureDefaults()
+	var v *version
 
 	// Indexed by fileNum.
 	var readers []*sstable.Reader
@@ -158,7 +159,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			lines := strings.Split(d.Input, "\n")
-			v = version{}
+
+			var files [numLevels][]*fileMetadata
 			var level int
 			for i := 0; i < len(lines); i++ {
 				line := lines[i]
@@ -168,11 +170,10 @@ func TestMergingIterCornerCases(t *testing.T) {
 					level++
 					continue
 				}
-				files := &v.Levels[level]
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
-				*files = append(*files, &fileMetadata{
+				files[level] = append(files[level], &fileMetadata{
 					FileNum:  fileNum,
 					Smallest: smallestKey,
 					Largest:  largestKey,
@@ -229,6 +230,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				readers = append(readers, r)
 			}
 
+			v = newVersion(opts, files)
 			return v.DebugString(DefaultComparer.FormatKey)
 		case "iter":
 			levelIters := make([]mergingIterLevel, 0, len(v.Levels))

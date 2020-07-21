@@ -235,12 +235,17 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return fmt.Sprintf("unknown arg: %s", arg.Key)
 				}
 			}
-			version := &version{}
+
+			var files [numLevels][]*fileMetadata
 			for i := range levels {
 				// Start from level 1 in this test.
-				version.Levels[i+1] = levels[i]
+				files[i+1] = levels[i]
 			}
-			version.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter, 0)
+			version := manifest.NewVersion(
+				base.DefaultComparer.Compare,
+				base.DefaultFormatter,
+				0,
+				files)
 			readState := &readState{current: version}
 			c := &checkConfig{
 				cmp:       cmp,

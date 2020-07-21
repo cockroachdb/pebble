@@ -196,6 +196,24 @@ func overlaps(files []*FileMetadata, cmp Compare, start, end []byte) (lower, upp
 // NumLevels is the number of levels a Version contains.
 const NumLevels = 7
 
+// NewVersion constructs a new Version with the provided files. It assumes
+// the provided files are already well-ordered. It's intended for testing.
+func NewVersion(
+	cmp Compare,
+	formatKey base.FormatKey,
+	flushSplitBytes int64,
+	files [NumLevels][]*FileMetadata,
+) *Version {
+	var v Version
+	for i := range files {
+		v.Levels[i] = files[i]
+	}
+	if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+		panic(err)
+	}
+	return &v
+}
+
 // Version is a collection of file metadata for on-disk tables at various
 // levels. In-memory DBs are written to level-0 tables, and compactions
 // migrate data from level N to level N+1. The tables map internal keys (which

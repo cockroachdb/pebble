@@ -1096,19 +1096,22 @@ func (d *DB) SSTables() [][]TableInfo {
 	srcLevels := readState.current.Levels
 	var totalTables int
 	for i := range srcLevels {
-		totalTables += len(srcLevels[i])
+		// TODO(jackson): Use metrics on the LevelMetadata once available
+		// rather than Slice().Len().
+		totalTables += srcLevels[i].Slice().Len()
 	}
 
 	destTables := make([]TableInfo, totalTables)
 	destLevels := make([][]TableInfo, len(srcLevels))
 	for i := range destLevels {
-		srcLevel := srcLevels[i]
-		destLevel := destTables[:len(srcLevel):len(srcLevel)]
-		destTables = destTables[len(srcLevel):]
-		for j := range destLevel {
-			destLevel[j] = srcLevel[j].TableInfo()
+		iter := srcLevels[i].Iter()
+		j := 0
+		for m := iter.First(); m != nil; m = iter.Next() {
+			destTables[j] = m.TableInfo()
+			j++
 		}
-		destLevels[i] = destLevel
+		destLevels[i] = destTables[:j]
+		destTables = destTables[j:]
 	}
 	return destLevels
 }
@@ -1279,9 +1282,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				continue
 			}
 		}
-		l0ReadAmp := len(d.mu.versions.currentVersion().Levels[0])
+		var l0ReadAmp int
 		if d.opts.Experimental.L0SublevelCompactions {
 			l0ReadAmp = d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
+		} else {
+			l0ReadAmp = d.mu.versions.currentVersion().Levels[0].Slice().Len()
 		}
 		if l0ReadAmp >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.

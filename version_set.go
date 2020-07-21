@@ -524,8 +524,9 @@ func (vs *versionSet) createManifest(
 	snapshot := versionEdit{
 		ComparerName: vs.cmpName,
 	}
-	for level, fileMetadata := range vs.currentVersion().Levels {
-		for _, meta := range fileMetadata {
+	for level, levelMetadata := range vs.currentVersion().Levels {
+		iter := levelMetadata.Iter()
+		for meta := iter.First(); meta != nil; meta = iter.Next() {
 			snapshot.NewFiles = append(snapshot.NewFiles, newFileEntry{
 				Level: level,
 				Meta:  meta,
@@ -597,8 +598,9 @@ func (vs *versionSet) currentVersion() *version {
 func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	current := vs.currentVersion()
 	for v := vs.versions.Front(); true; v = v.Next() {
-		for _, ff := range v.Levels {
-			for _, f := range ff {
+		for _, lm := range v.Levels {
+			iter := lm.Iter()
+			for f := iter.First(); f != nil; f = iter.Next() {
 				m[f.FileNum] = struct{}{}
 			}
 		}
