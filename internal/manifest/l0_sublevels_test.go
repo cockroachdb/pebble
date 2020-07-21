@@ -61,7 +61,7 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 	fmt.Printf("L0Sublevels:\n%s\n\n", sublevels)
 
 	for i := 0; ; i++ {
-		c, err := sublevels.PickBaseCompaction(2, nil)
+		c, err := sublevels.PickBaseCompaction(2, LevelSlice{})
 		require.NoError(t, err)
 		if c == nil {
 			break
@@ -362,7 +362,7 @@ func TestL0Sublevels(t *testing.T) {
 
 			var lcf *L0CompactionFiles
 			if pickBaseCompaction {
-				lcf, err = sublevels.PickBaseCompaction(minCompactionDepth, fileMetas[baseLevel])
+				lcf, err = sublevels.PickBaseCompaction(minCompactionDepth, NewLevelSlice(fileMetas[baseLevel]))
 				if err == nil && lcf != nil {
 					// Try to extend the base compaction into a more rectangular
 					// shape, using the smallest/largest keys of the files before
@@ -503,7 +503,7 @@ func BenchmarkL0SublevelsInitAndPick(b *testing.B) {
 		if sl == nil {
 			b.Fatal("expected non-nil L0Sublevels to be generated")
 		}
-		c, err := sl.PickBaseCompaction(2, nil)
+		c, err := sl.PickBaseCompaction(2, LevelSlice{})
 		require.NoError(b, err)
 		if c == nil {
 			b.Fatal("expected non-nil compaction to be generated")

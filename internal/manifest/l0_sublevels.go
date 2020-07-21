@@ -239,7 +239,7 @@ func NewL0Sublevels(
 		f.l0Index = i
 		keys = append(keys, intervalKey{key: f.Smallest.UserKey})
 		keys = append(keys, intervalKey{
-			key: f.Largest.UserKey,
+			key:       f.Largest.UserKey,
 			isLargest: f.Largest.Trailer != base.InternalKeyRangeDeleteSentinel,
 		})
 	}
@@ -840,7 +840,7 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 // files that can be selected for compaction. Returns nil if no compaction is
 // possible.
 func (s *L0Sublevels) PickBaseCompaction(
-	minCompactionDepth int, baseFiles []*FileMetadata,
+	minCompactionDepth int, baseFiles LevelSlice,
 ) (*L0CompactionFiles, error) {
 	// For LBase compactions, we consider intervals in a greedy manner in the
 	// following order:
@@ -913,27 +913,20 @@ func (s *L0Sublevels) PickBaseCompaction(
 			// Check if the chosen compaction overlaps with any files
 			// in Lbase that have Compacting = true. If that's the case,
 			// this compaction cannot be chosen.
-			firstBaseIndex := sort.Search(len(baseFiles), func(i int) bool {
-				// An interval starting at ImmediateSuccessor(key) can never be the
-				// first interval of a compaction since no file can start at that
-				// interval.
-				return s.cmp(baseFiles[i].Largest.UserKey, s.orderedIntervals[c.minIntervalIndex].startKey.key) >= 0
-			})
-			// Exclusive
-			lastBaseIndex := sort.Search(len(baseFiles), func(i int) bool {
-				cmp := s.cmp(baseFiles[i].Smallest.UserKey, s.orderedIntervals[c.maxIntervalIndex+1].startKey.key)
+			baseIter := baseFiles.Iter()
+			// An interval starting at ImmediateSuccessor(key) can never be the
+			// first interval of a compaction since no file can start at that
+			// interval.
+			m := baseIter.SeekGE(s.cmp, s.orderedIntervals[c.minIntervalIndex].startKey.key)
+
+			var baseCompacting bool
+			for ; m != nil && !baseCompacting; m = baseIter.Next() {
+				cmp := s.cmp(m.Smallest.UserKey, s.orderedIntervals[c.maxIntervalIndex+1].startKey.key)
 				// Compaction is ending at exclusive bound of c.maxIntervalIndex+1
 				if cmp > 0 || (cmp == 0 && !s.orderedIntervals[c.maxIntervalIndex+1].startKey.isLargest) {
-					return true
-				}
-				return false
-			})
-			baseCompacting := false
-			for j := firstBaseIndex; j < lastBaseIndex; j++ {
-				if baseFiles[j].Compacting {
-					baseCompacting = true
 					break
 				}
+				baseCompacting = baseCompacting || m.Compacting
 			}
 			if baseCompacting {
 				continue
