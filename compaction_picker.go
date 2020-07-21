@@ -996,7 +996,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	//
 	// TODO(bilal) Remove the minCompactionDepth parameter once fixing it at 1
 	// has been shown to not cause a performance regression.
-	lcf, err := vers.L0Sublevels.PickBaseCompaction(1, vers.Levels[baseLevel])
+	lcf, err := vers.L0Sublevels.PickBaseCompaction(1, vers.Levels[baseLevel].Slice())
 	if err != nil {
 		opts.Logger.Infof("error when picking base compaction: %s", err)
 		return
