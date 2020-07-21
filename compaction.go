@@ -576,7 +576,14 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			// atomic unit boundaries at compaction time.
 			atomicUnit := expandToAtomicUnit(c.cmp, f.Slice())
 			lowerBound, upperBound := manifest.KeyRange(c.cmp, atomicUnit.Iter())
-			rangeDelIter = rangedel.Truncate(c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey)
+			// Range deletion tombstones are often written to sstables
+			// untruncated on the end key side. However, they are still only
+			// valid within a given file's bounds. The logic for writing range
+			// tombstones to an output file sometimes has an incomplete view
+			// of range tombstones outside the file's internal key bounds. Skip
+			// any range tombstones completely outside file bounds.
+			rangeDelIter = rangedel.Truncate(
+				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey, &f.Smallest, &f.Largest)
 		}
 		if rangeDelIter == nil {
 			rangeDelIter = emptyIter
@@ -585,11 +592,57 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	}
 
 	iterOpts := IterOptions{logger: c.logger}
+	addItersForLevel := func(iters []internalIterator, level *compactionLevel) ([]internalIterator, error) {
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, level.files.Iter(),
+			manifest.Level(level.level), &c.bytesIterated))
+		// Add the range deletion iterator for each file as an independent level
+		// in mergingIter, as opposed to making a levelIter out of those. This
+		// is safer as levelIter expects all keys coming from underlying
+		// iterators to be in order. Due to compaction / tombstone writing
+		// logic in finishOutput(), it is possible for range tombstones to not
+		// be strictly ordered across all files in one level.
+		//
+		// Consider this example from the metamorphic tests (also repeated in
+		// finishOutput()), consisting of three L3 files with their bounds
+		// specified in square brackets next to the file name:
+		//
+		// ./000240.sst   [tmgc#391,MERGE-tmgc#391,MERGE]
+		// tmgc#391,MERGE [786e627a]
+		// tmgc-udkatvs#331,RANGEDEL
+		//
+		// ./000241.sst   [tmgc#384,MERGE-tmgc#384,MERGE]
+		// tmgc#384,MERGE [666c7070]
+		// tmgc-tvsalezade#383,RANGEDEL
+		// tmgc-tvsalezade#331,RANGEDEL
+		//
+		// ./000242.sst   [tmgc#383,RANGEDEL-tvsalezade#72057594037927935,RANGEDEL]
+		// tmgc-tvsalezade#383,RANGEDEL
+		// tmgc#375,SET [72646c78766965616c72776865676e79]
+		// tmgc-tvsalezade#356,RANGEDEL
+		//
+		// Here, the range tombstone in 000240.sst falls "after" one in
+		// 000241.sst, despite 000240.sst being ordered "before" 000241.sst for
+		// levelIter's purposes. While each file is still consistent before its
+		// bounds, it's safer to have all rangedel iterators be visible to
+		// mergingIter.
+		iter := level.files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			rangeDelIter, _, err := newRangeDelIter(iter.Take(), nil, &c.bytesIterated)
+			if err != nil {
+				return nil, errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
+			}
+			if rangeDelIter != emptyIter {
+				iters = append(iters, rangeDelIter)
+			}
+		}
+		return iters, nil
+	}
+
 	if c.startLevel.level != 0 {
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.startLevel.files.Iter(),
-			manifest.Level(c.startLevel.level), &c.bytesIterated))
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.startLevel.files.Iter(),
-			manifest.Level(c.startLevel.level), &c.bytesIterated))
+		iters, err = addItersForLevel(iters, c.startLevel)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		iter := c.startLevel.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
@@ -604,10 +657,10 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		}
 	}
 
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, c.outputLevel.files.Iter(),
-		manifest.Level(c.outputLevel.level), &c.bytesIterated))
-	iters = append(iters, newLevelIter(iterOpts, c.cmp, newRangeDelIter, c.outputLevel.files.Iter(),
-		manifest.Level(c.outputLevel.level), &c.bytesIterated))
+	iters, err = addItersForLevel(iters, c.outputLevel)
+	if err != nil {
+		return nil, err
+	}
 	return newMergingIter(c.logger, c.cmp, iters...), nil
 }
 
@@ -1505,6 +1558,30 @@ func (d *DB) runCompaction(
 					return err
 				}
 			}
+			// The tombstone being added could be completely outside the
+			// eventual bounds of the sstable. Consider this example (bounds
+			// in square brackets next to table filename):
+			//
+			// ./000240.sst   [tmgc#391,MERGE-tmgc#391,MERGE]
+			// tmgc#391,MERGE [786e627a]
+			// tmgc-udkatvs#331,RANGEDEL
+			//
+			// ./000241.sst   [tmgc#384,MERGE-tmgc#384,MERGE]
+			// tmgc#384,MERGE [666c7070]
+			// tmgc-tvsalezade#383,RANGEDEL
+			// tmgc-tvsalezade#331,RANGEDEL
+			//
+			// ./000242.sst   [tmgc#383,RANGEDEL-tvsalezade#72057594037927935,RANGEDEL]
+			// tmgc-tvsalezade#383,RANGEDEL
+			// tmgc#375,SET [72646c78766965616c72776865676e79]
+			// tmgc-tvsalezade#356,RANGEDEL
+			//
+			// Note that both of the top two SSTables have range tombstones
+			// that start after the file's end keys. Since the file bound
+			// computation happens well after all range tombstones have been
+			// added to the writer, eliding out-of-file range tombstones based
+			// on sequence number at this stage is difficult, and necessitates
+			// read-time logic to ignore range tombstones outside file bounds.
 			if err := tw.Add(v.Start, v.End); err != nil {
 				return err
 			}
