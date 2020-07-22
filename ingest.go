@@ -502,6 +502,21 @@ func (d *DB) Ingest(paths []string) error {
 		return ErrReadOnly
 	}
 
+	// Open and sync all files. Usually, we expect all callers to have synced
+	// files before calling Ingest, but do it again just in case.
+	for _, path := range paths {
+		f, err := d.opts.FS.Open(path)
+		if err != nil {
+			return err
+		}
+		if err := f.Sync(); err != nil {
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+	}
+
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
 	// the file number ordering to be out of alignment with sequence number
