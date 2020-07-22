@@ -467,6 +467,14 @@ func ingestTargetLevel(
 // the same filesystem as the DB. Sstables can be created for ingestion using
 // sstable.Writer. On success, Ingest removes the input paths.
 //
+// All sstables *must* be Sync()'d by the caller after all bytes are written
+// and before its file handle is closed; failure to do so could violate
+// durability or lead to corrupted on-disk state. This method cannot, in a
+// platform-and-FS-agnostic way, ensure that all sstables in the input are
+// properly synced to disk. Opening new file handles and Sync()-ing them
+// does not always guarantee durability; see the discussion here on that:
+// https://github.com/cockroachdb/pebble/pull/835#issuecomment-663075379
+//
 // Ingestion loads each sstable into the lowest level of the LSM which it
 // doesn't overlap (see ingestTargetLevel). If an sstable overlaps a memtable,
 // ingestion forces the memtable to flush, and then waits for the flush to
