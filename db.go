@@ -586,7 +586,13 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+func (d *DB) commitWrite(b *Batch,
+	syncWAL bool, syncWG *sync.WaitGroup, syncErr *error,
+) (*memTable, error) {
+	if syncWAL && syncWG == nil {
+		panic("syncWG is nil")
+	}
+
 	var size int64
 	repr := b.Repr()
 
@@ -603,7 +609,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		b.flushable.setSeqNum(b.SeqNum())
 		if !d.opts.DisableWAL {
 			var err error
-			size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+			size, err = d.mu.log.SyncRecord(repr, syncWAL, syncWG, syncErr)
 			if err != nil {
 				panic(err)
 			}
@@ -635,7 +641,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	}
 
 	if b.flushable == nil {
-		size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+		size, err = d.mu.log.SyncRecord(repr, syncWAL, syncWG, syncErr)
 		if err != nil {
 			panic(err)
 		}
