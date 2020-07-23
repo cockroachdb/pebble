@@ -1,0 +1,149 @@
+# Test an L6 file that contains range tombstones, but whose keys are not in
+# the last snapshot stripe. The tombstones wouldn't be elided, so no
+# compaction is pursued.
+define snapshots=(70, 100, 180, 210)
+L6
+b.RANGEDEL.230:h h.RANGEDEL.200:r
+----
+6:
+  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 2
+num-deletions: 2
+range-deletions-bytes-estimate: 0
+
+maybe-compact
+----
+(none)
+
+# Test the same scenario, but the file is in the last stripe. Since the file
+# only contains deletes, no new sstable is written.
+define snapshots=(270, 300, 380, 410)
+L6
+b.RANGEDEL.230:h h.RANGEDEL.200:r
+----
+6:
+  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 2
+num-deletions: 2
+range-deletions-bytes-estimate: 0
+
+maybe-compact
+----
+[JOB 100] compacted L6 [000004] (853 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+
+# Test a table that straddles a snapshot. It should not be compacted.
+define snapshots=(50)
+L6
+a.SET.55:a b.RANGEDEL.5:h
+----
+6:
+  000004:[a#55,SET-h#72057594037927935,RANGEDEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 2
+num-deletions: 1
+range-deletions-bytes-estimate: 26
+
+maybe-compact
+----
+(none)
+
+# Test a table with a point deletion and a non-deletion entry. The table
+# should be compacted, and a new table with the point tombstone should be
+# written.
+define
+L6
+a.SET.55:a b.DEL.5:
+----
+6:
+  000004:[a#55,SET-b#5,DEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 2
+num-deletions: 1
+range-deletions-bytes-estimate: 0
+
+maybe-compact
+----
+[JOB 100] compacted L6 [000004] (783 B) + L6 [] (0 B) -> L6 [000005] (771 B), in 1.0s, output rate 771 B/s
+
+version
+----
+6:
+  000005:[a#0,SET-a#0,SET]
+
+# Checking for a compaction again should not trigger a compaction, because
+# 000005 does not contain deletions.
+
+maybe-compact
+----
+(none)
+
+maybe-compact
+----
+(none)
+
+# Test a table that contains both deletions and non-deletions, but whose
+# deletions remove the non-deletions. The compaction should not create a new
+# table, but shouldn't happen until the snapshots are removed.
+define snapshots=(59, 103)
+L6
+a.DEL.60: a.SET.55:a b.SET.100:b c.SET.101:c d.SET.102:d b.RANGEDEL.103:z
+----
+6:
+  000004:[a#60,DEL-z#72057594037927935,RANGEDEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 6
+num-deletions: 2
+range-deletions-bytes-estimate: 76
+
+maybe-compact
+----
+(none)
+
+close-snapshot
+59
+----
+(none)
+
+close-snapshot
+103
+----
+[JOB 100] compacted L6 [000004] (901 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+
+# Test a table that contains both deletions and non-deletions, but whose
+# non-deletions well outnumber its deletions. The table should not be
+# compacted because it falls beneath the threshold.
+define snapshots=(15)
+L6
+a.DEL.20: a.SET.1:a b.SET.2:b c.SET.3:c d.SET.4:d e.SET.5:e f.SET.6:f g.SET.7:g h.SET.8:h i.SET.9:i j.SET.10:j
+----
+6:
+  000004:[a#20,DEL-j#10,SET]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 11
+num-deletions: 1
+range-deletions-bytes-estimate: 0
+
+close-snapshot
+15
+----
+(none)

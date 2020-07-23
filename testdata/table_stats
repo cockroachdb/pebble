@@ -11,6 +11,8 @@ flush
 wait-pending-table-stats
 000005
 ----
+num-entries: 2
+num-deletions: 0
 range-deletions-bytes-estimate: 0
 
 compact a-c
@@ -32,6 +34,8 @@ flush
 wait-pending-table-stats
 000007
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 784
 
 reopen
@@ -47,6 +51,8 @@ wait-loaded-initial
 wait-pending-table-stats
 000007
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 784
 
 compact a-c
@@ -81,6 +87,8 @@ enable
 wait-pending-table-stats
 000012
 ----
+num-entries: 2
+num-deletions: 0
 range-deletions-bytes-estimate: 0
 
 # Test a file that is deleted by a compaction before its table stats are
@@ -160,9 +168,13 @@ compact a-b L4
 wait-pending-table-stats
 000011
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 1542
 
 wait-pending-table-stats
 000012
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 1542

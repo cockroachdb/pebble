@@ -248,9 +248,11 @@ func (d *DB) scanReadStateTableStats(
 func (d *DB) loadTableStats(
 	v *version, level int, meta *fileMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
-	var totalRangeDeletionEstimate uint64
+	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
 	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
+		stats.NumEntries = r.Properties.NumEntries
+		stats.NumDeletions = r.Properties.NumDeletions
 		if r.Properties.NumRangeDeletions == 0 {
 			return nil
 		}
@@ -271,11 +273,25 @@ func (d *DB) loadTableStats(
 			d.cmp, rangeDelIter, meta.Smallest.UserKey, meta.Largest.UserKey, nil, nil)
 		err = foreachDefragmentedTombstone(rangeDelIter, d.cmp,
 			func(startUserKey, endUserKey []byte, smallestSeqNum, largestSeqNum uint64) error {
+				// If the file is in the last level of the LSM, there is no
+				// data beneath it. The fact that there is still a range
+				// tombstone in a bottomost file suggests that an open
+				// snapshot kept the tombstone around. Estimate disk usage
+				// within the file itself.
+				if level == numLevels-1 {
+					size, err := r.EstimateDiskUsage(startUserKey, endUserKey)
+					if err != nil {
+						return err
+					}
+					stats.RangeDeletionsBytesEstimate += size
+					return nil
+				}
+
 				estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, startUserKey, endUserKey)
 				if err != nil {
 					return err
 				}
-				totalRangeDeletionEstimate += estimate
+				stats.RangeDeletionsBytesEstimate += estimate
 
 				// If any files were completely contained with the range,
 				// hintSeqNum is the smallest sequence number contained in any
@@ -299,12 +315,10 @@ func (d *DB) loadTableStats(
 			})
 		return err
 	})
-	var stats manifest.TableStats
 	if err != nil {
 		return stats, nil, err
 	}
 	stats.Valid = true
-	stats.RangeDeletionsBytesEstimate = totalRangeDeletionEstimate
 	return stats, compactionHints, nil
 }
 
@@ -412,4 +426,21 @@ func foreachDefragmentedTombstone(
 		return err
 	}
 	return rangeDelIter.Close()
+}
+
+func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
+	// If a table has range deletions, we can't calculate the
+	// RangeDeletionsBytesEstimate statistic and can't populate table stats
+	// from just the properties. The table stats collector goroutine will
+	// populate the stats.
+	if props.NumRangeDeletions != 0 {
+		return false
+	}
+	meta.Stats = manifest.TableStats{
+		Valid:                       true,
+		NumEntries:                  props.NumEntries,
+		NumDeletions:                props.NumDeletions,
+		RangeDeletionsBytesEstimate: 0,
+	}
+	return true
 }
