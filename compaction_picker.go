@@ -22,6 +22,7 @@ const minIntraL0Count = 4
 type compactionEnv struct {
 	bytesCompacted          *uint64
 	earliestUnflushedSeqNum uint64
+	earliestSnapshotSeqNum  uint64
 	inProgressCompactions   []compactionInfo
 }
 
@@ -954,9 +955,31 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		}
 	}
 
-	// TODO(peter): When a snapshot is released, we may need to compact tables at
-	// the bottom level in order to free up entries that were pinned by the
-	// snapshot.
+	// Check for L6 files with tombstones that may be elided. These files may
+	// exist if a snapshot prevented the elision of a tombstone or because of
+	// a move compaction. These are also low-priority compactions because they
+	// don't help us keep up with writes, just reclaim disk space.
+	iter := p.vers.Levels[numLevels-1].Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if !f.Stats.Valid || f.Stats.NumDeletions == 0 {
+			continue
+		}
+		if f.Compacting {
+			continue
+		}
+		if f.LargestSeqNum >= env.earliestSnapshotSeqNum {
+			continue
+		}
+		pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1)
+		pc.startLevel.files = expandToAtomicUnit(p.opts.Comparer.Compare, iter.Take().Slice())
+		pc.score = scores[numLevels-1].score
+		// Fail-safe to protect against compacting the same sstable
+		// concurrently.
+		if !inputAlreadyCompacting(pc) {
+			return pc
+		}
+	}
+
 	return nil
 }
 

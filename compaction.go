@@ -69,10 +69,11 @@ type compactionLevel struct {
 type compactionKind string
 
 const (
-	compactionKindDefault    compactionKind = "default"
-	compactionKindFlush                     = "flush"
-	compactionKindMove                      = "move"
-	compactionKindDeleteOnly                = "delete-only"
+	compactionKindDefault     compactionKind = "default"
+	compactionKindFlush                      = "flush"
+	compactionKindMove                       = "move"
+	compactionKindDeleteOnly                 = "delete-only"
+	compactionKindElisionOnly                = "elision-only"
 )
 
 // compaction is a table compaction from one level to the next, starting from a
@@ -218,12 +219,16 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	}
 	c.setupInuseKeyRanges()
 
-	// Check if this compaction can be converted into a trivial move from one
-	// level to the next. We avoid such a move if there is lots of overlapping
-	// grandparent data. Otherwise, the move could create a parent file that
-	// will require a very expensive merge later on.
-	if c.outputLevel.files.Empty() && c.startLevel.files.Len() == 1 &&
+	if c.startLevel.level == numLevels-1 {
+		// This compaction is an L6->L6 elision-only compaction to rewrite
+		// a sstable without unnecessary tombstones.
+		c.kind = compactionKindElisionOnly
+	} else if c.outputLevel.files.Empty() && c.startLevel.files.Len() == 1 &&
 		c.grandparents.SizeSum() <= c.maxOverlapBytes {
+		// This compaction can be converted into a trivial move from one level
+		// to the next. We avoid such a move if there is lots of overlapping
+		// grandparent data. Otherwise, the move could create a parent file
+		// that will require a very expensive merge later on.
 		c.kind = compactionKindMove
 	}
 	return c
@@ -1059,6 +1064,7 @@ func (d *DB) maybeScheduleCompaction() {
 
 	env := compactionEnv{
 		bytesCompacted:          &d.bytesCompacted,
+		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
 	}
 
@@ -1608,12 +1614,7 @@ func (d *DB) runCompaction(
 		meta.MarkedForCompaction = writerMeta.MarkedForCompaction
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
-		if writerMeta.Properties.NumRangeDeletions == 0 {
-			meta.Stats = manifest.TableStats{
-				Valid:                       true,
-				RangeDeletionsBytesEstimate: 0,
-			}
-		}
+		maybeSetStatsFromProperties(meta, &writerMeta.Properties)
 
 		if c.flushing == nil {
 			metrics.TablesCompacted++

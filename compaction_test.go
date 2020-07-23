@@ -1514,6 +1514,77 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		})
 }
 
+func TestCompactionTombstoneElisionOnly(t *testing.T) {
+	var d *DB
+	var compactInfo *CompactionInfo // protected by d.mu
+
+	datadriven.RunTest(t, "testdata/compaction_tombstone_elision_only",
+		func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				if d != nil {
+					compactInfo = nil
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+				}
+				opts := &Options{
+					FS:         vfs.NewMem(),
+					DebugCheck: DebugCheckLevels,
+					EventListener: EventListener{
+						CompactionEnd: func(info CompactionInfo) {
+							compactInfo = &info
+						},
+					},
+				}
+				var err error
+				d, err = runDBDefineCmd(td, opts)
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				t := time.Now()
+				d.timeNow = func() time.Time {
+					t = t.Add(time.Second)
+					return t
+				}
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			case "maybe-compact":
+				d.mu.Lock()
+				d.maybeScheduleCompaction()
+				for d.mu.compact.compactingCount > 0 {
+					d.mu.compact.cond.Wait()
+				}
+
+				s := "(none)"
+				if compactInfo != nil {
+					// JobID's aren't deterministic, especially w/ table stats
+					// enabled. Use a fixed job ID for data-driven test output.
+					compactInfo.JobID = 100
+					s = compactInfo.String()
+					compactInfo = nil
+				}
+				d.mu.Unlock()
+				return s
+
+			case "wait-pending-table-stats":
+				return runTableStatsCmd(td, d)
+
+			case "version":
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
+
 func TestCompactionInuseKeyRanges(t *testing.T) {
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")

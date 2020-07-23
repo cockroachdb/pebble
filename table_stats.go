@@ -248,9 +248,10 @@ func (d *DB) scanReadStateTableStats(
 func (d *DB) loadTableStats(
 	v *version, level int, meta *fileMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
-	var totalRangeDeletionEstimate uint64
+	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
 	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
+		stats.NumDeletions = r.Properties.NumDeletions
 		if r.Properties.NumRangeDeletions == 0 {
 			return nil
 		}
@@ -275,7 +276,7 @@ func (d *DB) loadTableStats(
 				if err != nil {
 					return err
 				}
-				totalRangeDeletionEstimate += estimate
+				stats.RangeDeletionsBytesEstimate += estimate
 
 				// If any files were completely contained with the range,
 				// hintSeqNum is the smallest sequence number contained in any
@@ -299,12 +300,10 @@ func (d *DB) loadTableStats(
 			})
 		return err
 	})
-	var stats manifest.TableStats
 	if err != nil {
 		return stats, nil, err
 	}
 	stats.Valid = true
-	stats.RangeDeletionsBytesEstimate = totalRangeDeletionEstimate
 	return stats, compactionHints, nil
 }
 
@@ -412,4 +411,20 @@ func foreachDefragmentedTombstone(
 		return err
 	}
 	return rangeDelIter.Close()
+}
+
+func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
+	// If a table has range deletions, we can't calculate the
+	// RangeDeletionsBytesEstimate statistic and can't populate table stats
+	// from just the properties. The table stats collector goroutine will
+	// populate the stats.
+	if props.NumRangeDeletions != 0 {
+		return false
+	}
+	meta.Stats = manifest.TableStats{
+		Valid:                       true,
+		NumDeletions:                props.NumDeletions,
+		RangeDeletionsBytesEstimate: 0,
+	}
+	return true
 }

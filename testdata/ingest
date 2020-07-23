@@ -48,6 +48,7 @@ b:2
 wait-pending-table-stats
 000006
 ----
+num-deletions: 0
 range-deletions-bytes-estimate: 0
 
 build ext1
@@ -315,6 +316,7 @@ y: pebble: not found
 wait-pending-table-stats
 000015
 ----
+num-deletions: 2
 range-deletions-bytes-estimate: 1666
 
 # A set operation takes precedence over a range deletion at the same

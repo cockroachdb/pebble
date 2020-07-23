@@ -84,6 +84,7 @@ L3
 wait-pending-table-stats
 000005
 ----
+num-deletions: 1
 range-deletions-bytes-estimate: 1552
 
 compact a-e L1
@@ -99,6 +100,7 @@ compact a-e L1
 wait-pending-table-stats
 000008
 ----
+num-deletions: 1
 range-deletions-bytes-estimate: 776
 
 # Same as above, except range tombstone covers multiple grandparent file boundaries.

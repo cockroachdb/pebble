@@ -4,7 +4,10 @@
 
 package pebble
 
-import "io"
+import (
+	"io"
+	"math"
+)
 
 // Snapshot provides a read-only point-in-time view of the DB state.
 type Snapshot struct {
@@ -71,6 +74,14 @@ func (l *snapshotList) init() {
 
 func (l *snapshotList) empty() bool {
 	return l.root.next == &l.root
+}
+
+func (l *snapshotList) earliest() uint64 {
+	var v uint64 = math.MaxUint64
+	if !l.empty() {
+		v = l.root.next.seqNum
+	}
+	return v
 }
 
 func (l *snapshotList) toSlice() []uint64 {

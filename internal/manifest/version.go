@@ -43,6 +43,8 @@ type TableStats struct {
 	// Valid true if stats have been loaded for the table. The rest of the
 	// structure is populated only if true.
 	Valid bool
+	// The number of deletion entries in this table.
+	NumDeletions uint64
 	// Estimate of the total disk space that may be reclaimed by compacting
 	// this table's range deletions to the bottom of the LSM. This estimate is
 	// at data-block granularity and is not updated if compactions beneath the
