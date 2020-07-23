@@ -232,6 +232,8 @@ type DB struct {
 	mu struct {
 		sync.Mutex
 
+		errorHandler errorHandler
+
 		// The ID of the next job. Job IDs are passed to event listener
 		// notifications and act as a mechanism for tying together the events and
 		// log messages for a single job such as a flush, compaction, or file

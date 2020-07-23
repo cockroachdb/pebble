@@ -33,7 +33,7 @@ type FilterWriter interface {
 	// AddKey adds a key to the current filter block.
 	AddKey(key []byte)
 
-	// Finish appends to dst an encoded filter tha holds the current set of
+	// Finish appends to dst an encoded filter that holds the current set of
 	// keys. The writer state is reset after the call to Finish allowing the
 	// writer to be reused for the creation of additional filters.
 	Finish(dst []byte) []byte
