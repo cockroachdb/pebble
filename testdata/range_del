@@ -1387,21 +1387,29 @@ mem: 1
 wait-pending-table-stats
 000007
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
 000006
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 836
 
 wait-pending-table-stats
 000004
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 1672
 
 wait-pending-table-stats
 000005
 ----
+num-entries: 2
+num-deletions: 2
 range-deletions-bytes-estimate: 1672
 
 
@@ -1438,21 +1446,29 @@ mem: 1
 wait-pending-table-stats
 000007
 ----
+num-entries: 4
+num-deletions: 0
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
 000006
 ----
+num-entries: 2
+num-deletions: 1
 range-deletions-bytes-estimate: 787
 
 wait-pending-table-stats
 000005
 ----
+num-entries: 3
+num-deletions: 1
 range-deletions-bytes-estimate: 68
 
 wait-pending-table-stats
 000004
 ----
+num-entries: 4
+num-deletions: 1
 range-deletions-bytes-estimate: 100
 
 # Multiple Range deletions in a table.
@@ -1485,14 +1501,20 @@ mem: 1
 wait-pending-table-stats
 000005
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 782
 
 wait-pending-table-stats
 000006
 ----
+num-entries: 1
+num-deletions: 1
 range-deletions-bytes-estimate: 771
 
 wait-pending-table-stats
 000004
 ----
+num-entries: 2
+num-deletions: 2
 range-deletions-bytes-estimate: 1553

@@ -585,10 +585,12 @@ func TestIteratorNextPrev(t *testing.T) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
+		opts := &Options{FS: mem}
+		// Automatic compactions may compact away tombstones from L6, making
+		// some testcases non-deterministic.
+		opts.private.disableAutomaticCompactions = true
 		var err error
-		d, err = Open("", &Options{
-			FS: mem,
-		})
+		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
 	reset()
