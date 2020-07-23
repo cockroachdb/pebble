@@ -599,11 +599,12 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 // compaction must be involving L0 SSTables. It's assumed that the Compacting
 // and IsIntraL0Compacting fields are already set on all FileMetadatas passed
 // in.
-func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs [][]*FileMetadata, isBase bool) error {
+func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBase bool) error {
 	minIntervalIndex := -1
 	maxIntervalIndex := 0
 	for i := range inputs {
-		for _, f := range inputs[i] {
+		iter := inputs[i].Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
 			for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 				interval := &s.orderedIntervals[i]
 				interval.compactingFileCount++

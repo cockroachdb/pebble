@@ -314,7 +314,7 @@ func TestVersionEditApply(t *testing.T) {
 								if v == nil {
 									v = new(Version)
 								}
-								v.Levels[level] = append(v.Levels[level], meta)
+								v.Levels[level].files = append(v.Levels[level].files, meta)
 							} else {
 								ve.NewFiles =
 									append(ve.NewFiles, NewFileEntry{Level: level, Meta: meta})
@@ -334,7 +334,7 @@ func TestVersionEditApply(t *testing.T) {
 				}
 
 				if v != nil {
-					SortBySeqNum(v.Levels[0])
+					SortBySeqNum(v.Levels[0].files)
 					if err := v.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20); err != nil {
 						return err.Error()
 					}

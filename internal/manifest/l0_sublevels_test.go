@@ -46,7 +46,7 @@ func readManifest(filename string) (*Version, error) {
 			return nil, err
 		}
 	}
-	fmt.Printf("L0 filecount: %d\n", len(v.Levels[0]))
+	fmt.Printf("L0 filecount: %d\n", v.Levels[0].Slice().Len())
 	return v, nil
 }
 
@@ -56,7 +56,8 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 	v, err := readManifest("testdata/MANIFEST_import")
 	require.NoError(t, err)
 
-	sublevels, err := NewL0Sublevels(v.Levels[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+	sublevels, err := NewL0Sublevels(v.Levels[0].Slice().Collect(),
+		base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 	require.NoError(t, err)
 	fmt.Printf("L0Sublevels:\n%s\n\n", sublevels)
 
@@ -75,7 +76,7 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction([][]*FileMetadata{files}, true))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, true))
 	}
 
 	for i := 0; ; i++ {
@@ -94,7 +95,7 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction([][]*FileMetadata{files}, false))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, false))
 	}
 }
 
@@ -462,7 +463,7 @@ func TestL0Sublevels(t *testing.T) {
 					}
 				}
 			}
-			if err := sublevels.UpdateStateForStartedCompaction([][]*FileMetadata{files}, true); err != nil {
+			if err := sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, true); err != nil {
 				return err.Error()
 			}
 			return "OK"
@@ -483,7 +484,8 @@ func BenchmarkL0SublevelsInit(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(v.Levels[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+		sl, err := NewL0Sublevels(v.Levels[0].Slice().Collect(),
+			base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
 			b.Fatal("expected non-nil L0Sublevels to be generated")
@@ -498,7 +500,8 @@ func BenchmarkL0SublevelsInitAndPick(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(v.Levels[0], base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
+		sl, err := NewL0Sublevels(v.Levels[0].Slice().Collect(),
+			base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
 			b.Fatal("expected non-nil L0Sublevels to be generated")

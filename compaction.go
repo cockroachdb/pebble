@@ -718,9 +718,9 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	}
 
 	if (isIntraL0 || isBase) && c.version.L0Sublevels != nil {
-		l0Inputs := [][]*fileMetadata{c.startLevel.files.Collect()}
+		l0Inputs := []manifest.LevelSlice{c.startLevel.files}
 		if isIntraL0 {
-			l0Inputs = append(l0Inputs, c.outputLevel.files.Collect())
+			l0Inputs = append(l0Inputs, c.outputLevel.files)
 		}
 		if err := c.version.L0Sublevels.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
 			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
