@@ -8,17 +8,18 @@ import "sort"
 
 // LevelMetadata contains metadata for all of the files within
 // a level of the LSM.
-// TODO(jackson): Convert to an opaque struct.
-type LevelMetadata []*FileMetadata
+type LevelMetadata struct {
+	files []*FileMetadata
+}
 
 // Iter constructs a LevelIterator over the entire level.
 func (lm LevelMetadata) Iter() LevelIterator {
-	return LevelIterator{files: lm, end: len(lm)}
+	return LevelIterator{files: lm.files, end: len(lm.files)}
 }
 
 // Slice constructs a slice containing the entire level.
 func (lm LevelMetadata) Slice() LevelSlice {
-	return LevelSlice{files: lm, end: len(lm)}
+	return LevelSlice{files: lm.files, end: len(lm.files)}
 }
 
 // LevelFile holds a file's metadata along with its position

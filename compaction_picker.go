@@ -193,25 +193,28 @@ func (pc *pickedCompaction) setupInputs() {
 		// to include files that "touch" it.
 		smallestBaseKey := base.InvalidInternalKey
 		largestBaseKey := base.InvalidInternalKey
-		baseFiles := pc.version.Levels[pc.outputLevel.level]
-		if len(baseFiles) != 0 {
-			// smallestBaseFileIdx is the index of the smallest
-			// (by key ordering) base file already in the compaction.
-			smallestBaseFileIdx := sort.Search(len(baseFiles), func(i int) bool {
-				return base.InternalCompare(pc.cmp, baseFiles[i].Largest, pc.smallest) >= 0
-			})
-			if smallestBaseFileIdx > 0 {
-				smallestBaseKey = baseFiles[smallestBaseFileIdx-1].Largest
+		{
+			baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
+			sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey)
+			if sm != nil {
+				// NB: In a case like the following example, SeekLT(b) would
+				// return 000005 which is okay as it does not actually contain the
+				// user key `b`.
+				//
+				// L6:
+				// 000005: [a#5,SET-b#RANGEDELSENTINEL]
+				// 000006: [b#4,SET-c#5,SET]
+				smallestBaseKey = sm.Largest
 			}
-			// largestBaseFileIdx is the index that's one higher than the
-			// largest base file included in the compaction.
-			largestBaseFileIdx := sort.Search(len(baseFiles), func(i int) bool {
-				return base.InternalCompare(pc.cmp, baseFiles[i].Smallest, pc.largest) > 0
-			})
-			if largestBaseFileIdx < len(baseFiles) {
-				largestBaseKey = baseFiles[largestBaseFileIdx].Smallest
+			la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey)
+			for la != nil && pc.cmp(la.Largest.UserKey, pc.largest.UserKey) == 0 {
+				la = baseIter.Next()
+			}
+			if la != nil {
+				largestBaseKey = la.Smallest
 			}
 		}
+
 		oldLcf := *pc.lcf
 		if pc.version.L0Sublevels.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
 			var newStartLevelFiles []*fileMetadata
@@ -826,7 +829,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		if p.opts.Experimental.L0SublevelCompactions {
 			l0ReadAmp = p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
 		} else {
-			l0ReadAmp = len(p.vers.Levels[0])
+			l0ReadAmp = p.vers.Levels[0].Slice().Len()
 		}
 		if l0ReadAmp < n*p.opts.Experimental.L0CompactionConcurrency {
 			return nil
