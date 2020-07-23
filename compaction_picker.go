@@ -22,6 +22,7 @@ const minIntraL0Count = 4
 type compactionEnv struct {
 	bytesCompacted          *uint64
 	earliestUnflushedSeqNum uint64
+	earliestSnapshotSeqNum  uint64
 	inProgressCompactions   []compactionInfo
 }
 
@@ -32,6 +33,7 @@ type compactionPicker interface {
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
+	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
 
 	forceBaseLevel1()
 }
@@ -413,6 +415,14 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
+
+	// Information for facilitating L6->L6 elision-only compactions. If
+	// elisionThreshold is non-nil, it's the lowest LargestSeqNum of a file
+	// that meets the conditions for an elision-only compaction. It may be
+	// math.MaxUint64 if it's known that no file within L6 meets the
+	// conditions for an elision-only compaction.
+	elisionThreshold *uint64
+	elisionCandidate *manifest.LevelFile
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -933,6 +943,14 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		}
 	}
 
+	// Check for L6 files with tombstones that may be elided. These files may
+	// exist if a snapshot prevented the elision of a tombstone or because of
+	// a move compaction. These are low-priority compactions because they
+	// don't help us keep up with writes, just reclaim disk space.
+	if pc := p.pickElisionOnlyCompaction(env); pc != nil {
+		return pc
+	}
+
 	// Check for forced compactions. These are lower priority than score-based
 	// compactions. Note that this loop only runs if we haven't already found a
 	// score-based compaction.
@@ -956,10 +974,69 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			}
 		}
 	}
+	return nil
+}
 
-	// TODO(peter): When a snapshot is released, we may need to compact tables at
-	// the bottom level in order to free up entries that were pinned by the
-	// snapshot.
+// pickElisionOnlyCompaction looks for compactions of sstables in the
+// bottommost level containing obsolete records that may now be dropped.
+func (p *compactionPickerByScore) pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction) {
+	if p.elisionThreshold == nil || (p.elisionCandidate != nil && p.elisionCandidate.Compacting) {
+		var lowestCandidateSeqNum uint64 = math.MaxUint64
+		var lowestCandidate manifest.LevelFile
+		iter := p.vers.Levels[numLevels-1].Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			if f.Compacting {
+				continue
+			}
+			if f.LargestSeqNum >= lowestCandidateSeqNum {
+				continue
+			}
+			if !f.Stats.Valid {
+				continue
+			}
+			// Bottommost files are large and not worthwhile to compact just
+			// to remove a few tombstones. Consider a file ineligible if its
+			// own range deletions delete less than 10% of its data and its
+			// deletion tombstones make up less than 10% of its entries.
+			//
+			// TODO(jackson): This does not account for duplicate user keys
+			// which may be collapsed. Ideally, we would have 'obsolete keys'
+			// statistics that would include tombstones, the keys that are
+			// dropped by tombstones and duplicated user keys. See #847.
+			if f.Stats.RangeDeletionsBytesEstimate*10 < f.Size &&
+				f.Stats.NumDeletions*10 < f.Stats.NumEntries {
+				continue
+			}
+			lowestCandidate = iter.Take()
+			lowestCandidateSeqNum = f.LargestSeqNum
+		}
+		p.elisionThreshold = &lowestCandidateSeqNum
+		if lowestCandidate.FileMetadata == nil {
+			p.elisionCandidate = nil
+		} else {
+			p.elisionCandidate = &lowestCandidate
+		}
+	}
+
+	// We've already scanned L6 and know that we can perform an L6
+	// elision-only compaction only if the sequence number
+	// `elisionThreshold` is in the last snapshot stripe.
+	if *p.elisionThreshold >= env.earliestSnapshotSeqNum {
+		return nil
+	}
+
+	// Construct a picked compaction of the elision candidate's atomic
+	// compaction unit.
+	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1)
+	pc.startLevel.files = expandToAtomicUnit(p.opts.Comparer.Compare, p.elisionCandidate.Slice())
+
+	p.elisionThreshold = nil
+	p.elisionCandidate = nil
+
+	// Fail-safe to protect against compacting the same sstable concurrently.
+	if !inputAlreadyCompacting(pc) {
+		return pc
+	}
 	return nil
 }
 

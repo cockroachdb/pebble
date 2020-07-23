@@ -78,6 +78,10 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
 
+func (p *compactionPickerForTesting) pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction) {
+	return nil
+}
+
 func (p *compactionPickerForTesting) pickManual(
 	env compactionEnv, manual *manualCompaction,
 ) (pc *pickedCompaction, retryLater bool) {
@@ -1504,6 +1508,108 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				}
 				d.mu.Lock()
 				compactInfo = nil
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
+
+func TestCompactionTombstoneElisionOnly(t *testing.T) {
+	var d *DB
+	var compactInfo *CompactionInfo // protected by d.mu
+
+	compactionString := func() string {
+		for d.mu.compact.compactingCount > 0 {
+			d.mu.compact.cond.Wait()
+		}
+
+		s := "(none)"
+		if compactInfo != nil {
+			// JobID's aren't deterministic, especially w/ table stats
+			// enabled. Use a fixed job ID for data-driven test output.
+			compactInfo.JobID = 100
+			s = compactInfo.String()
+			compactInfo = nil
+		}
+		return s
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_tombstone_elision_only",
+		func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				if d != nil {
+					compactInfo = nil
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+				}
+				opts := &Options{
+					FS:         vfs.NewMem(),
+					DebugCheck: DebugCheckLevels,
+					EventListener: EventListener{
+						CompactionEnd: func(info CompactionInfo) {
+							compactInfo = &info
+						},
+					},
+				}
+				var err error
+				d, err = runDBDefineCmd(td, opts)
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				t := time.Now()
+				d.timeNow = func() time.Time {
+					t = t.Add(time.Second)
+					return t
+				}
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			case "maybe-compact":
+				d.mu.Lock()
+				d.maybeScheduleCompaction()
+				s := compactionString()
+				d.mu.Unlock()
+				return s
+
+			case "wait-pending-table-stats":
+				return runTableStatsCmd(td, d)
+
+			case "close-snapshot":
+				seqNum, err := strconv.ParseUint(strings.TrimSpace(td.Input), 0, 64)
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				var s *Snapshot
+				l := &d.mu.snapshots
+				for i := l.root.next; i != &l.root; i = i.next {
+					if i.seqNum == seqNum {
+						s = i
+					}
+				}
+				d.mu.Unlock()
+				if s == nil {
+					return "(not found)"
+				} else if err := s.Close(); err != nil {
+					return err.Error()
+				}
+
+				d.mu.Lock()
+				// Closing the snapshot may have triggered a compaction.
+				str := compactionString()
+				d.mu.Unlock()
+				return str
+
+			case "version":
+				d.mu.Lock()
 				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 				d.mu.Unlock()
 				return s

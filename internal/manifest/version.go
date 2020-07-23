@@ -43,12 +43,20 @@ type TableStats struct {
 	// Valid true if stats have been loaded for the table. The rest of the
 	// structure is populated only if true.
 	Valid bool
-	// Estimate of the total disk space that may be reclaimed by compacting
-	// this table's range deletions to the bottom of the LSM. This estimate is
-	// at data-block granularity and is not updated if compactions beneath the
-	// table reduce the amount of reclaimable disk space. It also does not
-	// account for overlapping data in L0 and ignores L0 sublevels, but the
-	// error that introduces is expected to be small.
+	// The total number of entries in the table.
+	NumEntries uint64
+	// The number of point and range deletion entries in the table.
+	NumDeletions uint64
+	// Estimate of the total disk space that may be dropped by this table's
+	// range deletions by compacting them. This estimate is at data-block
+	// granularity and is not updated if compactions beneath the table reduce
+	// the amount of reclaimable disk space. It also does not account for
+	// overlapping data in L0 and ignores L0 sublevels, but the error that
+	// introduces is expected to be small.
+	//
+	// Tables in the bottommost level of the LSM may have a nonzero estimate
+	// if snapshots or move compactions prevented the elision of their range
+	// tombstones.
 	RangeDeletionsBytesEstimate uint64
 }
 
