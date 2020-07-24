@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1904,6 +1905,123 @@ func TestCompactionCheckOrdering(t *testing.T) {
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
+		})
+}
+
+type mockSplitter struct {
+	guaranteesUserKeyChangeVal, shouldSplitVal bool
+}
+
+func (m *mockSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) (bool, bool) {
+	return m.shouldSplitVal, m.guaranteesUserKeyChangeVal
+}
+
+func (m *mockSplitter) guaranteesUserKeyChange() bool {
+	return m.guaranteesUserKeyChangeVal
+}
+
+func (m *mockSplitter) onNewOutput(key *InternalKey) []byte {
+	return nil
+}
+
+func TestCompactionOutputSplitters(t *testing.T) {
+	var main, child0, child1 compactionOutputSplitter
+	pickSplitter := func(input string) *compactionOutputSplitter {
+		switch input {
+		case "main":
+			return &main
+		case "child0":
+			return &child0
+		case "child1":
+			return &child1
+		default:
+			t.Fatalf("invalid splitter slot: %s", input)
+			return nil
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_output_splitters",
+		func(d *datadriven.TestData) string {
+			setShouldSplit := false
+			switch d.Cmd {
+			case "reset":
+				main = nil
+				child0 = nil
+				child1 = nil
+			case "init":
+				if len(d.CmdArgs) < 2 {
+					return "expected at least 2 args"
+				}
+				splitterToInit := pickSplitter(d.CmdArgs[0].Key)
+				switch d.CmdArgs[1].Key {
+				case "array":
+					*splitterToInit = &arraySplitter{
+						cmp: base.DefaultComparer.Compare,
+						splitters: []compactionOutputSplitter{child0, child1},
+					}
+				case "mock":
+					*splitterToInit = &mockSplitter{}
+				case "userkey":
+					*splitterToInit = &userKeyChangeSplitter{
+						cmp:      base.DefaultComparer.Compare,
+						splitter: child0,
+					}
+				case "nonzeroseqnum":
+					c := &compaction{
+						rangeDelFrag: rangedel.Fragmenter {
+							Cmp:    base.DefaultComparer.Compare,
+							Format: base.DefaultFormatter,
+							Emit:   func(fragmented []rangedel.Tombstone) {},
+						},
+					}
+					frag := &c.rangeDelFrag
+					if len(d.CmdArgs) >= 3 {
+						if d.CmdArgs[2].Key == "tombstone" {
+							// Add a tombstone so Empty() returns false.
+							frag.Add(base.ParseInternalKey("foo.RANGEDEL.10"), []byte("pan"))
+						}
+					}
+					*splitterToInit = &nonZeroSeqNumSplitter{
+						c:        c,
+						splitter: child0,
+					}
+				}
+				(*splitterToInit).onNewOutput(nil)
+			case "set-should-split":
+				setShouldSplit = true
+				fallthrough
+			case "set-user-key-change":
+				if len(d.CmdArgs) < 2 {
+					return "expected at least 2 args"
+				}
+				splitterToSet := (*pickSplitter(d.CmdArgs[0].Key)).(*mockSplitter)
+				val, err := strconv.ParseBool(d.CmdArgs[1].Key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if setShouldSplit {
+					splitterToSet.shouldSplitVal = val
+				} else {
+					splitterToSet.guaranteesUserKeyChangeVal = val
+				}
+			case "should-split-before":
+				if len(d.CmdArgs) < 1 {
+					return "expected at least 1 arg"
+				}
+				key := base.ParseInternalKey(d.CmdArgs[0].Key)
+				shouldSplit, userKeyChange := main.shouldSplitBefore(&key, nil)
+				if shouldSplit {
+					main.onNewOutput(&key)
+				}
+				userKeyChangeText := "not guaranteeing user key change"
+				if userKeyChange {
+					userKeyChangeText = "guarantees user key change"
+				}
+				return fmt.Sprintf("%t, %s", shouldSplit, userKeyChangeText)
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+			return "ok"
 		})
 }
 
