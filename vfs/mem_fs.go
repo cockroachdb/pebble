@@ -492,6 +492,11 @@ func (*MemFS) PathDir(p string) string {
 	return path.Dir(p)
 }
 
+// GetFreeSpace implements FS.GetFreeSpace.
+func (*MemFS) GetFreeSpace(string) (uint64, error) {
+	return 0, errors.New("pebble: not supported")
+}
+
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
 	name  string

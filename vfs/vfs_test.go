@@ -238,3 +238,13 @@ func TestVFS(t *testing.T) {
 		})
 	}
 }
+
+func TestVFSGetFreeSpace(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test-free-space")
+	require.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(dir)
+	}()
+	_, err = Default.GetFreeSpace(dir)
+	require.Nil(t, err)
+}
