@@ -1,0 +1,236 @@
+
+# arraySplitter tests
+
+reset
+----
+ok
+
+init child0 mock
+----
+ok
+
+init child1 mock
+----
+ok
+
+init main array
+----
+ok
+
+set-should-split child0 false
+----
+ok
+
+set-should-split child1 false
+----
+ok
+
+should-split-before foo.SET.2
+----
+false
+
+set-should-split child1 true
+----
+ok
+
+should-split-before foo.SET.2
+----
+true
+
+set-should-split child1 false
+----
+ok
+
+should-split-before foo.SET.2
+----
+false
+
+set-should-split child0 true
+----
+ok
+
+should-split-before foo.SET.2
+----
+true
+
+# userKeyChangeSplitter tests
+
+reset
+----
+ok
+
+init child0 mock
+----
+ok
+
+init main userkey
+----
+ok
+
+should-split-before foo.SET.6
+----
+false
+
+should-split-before foo.SET.5
+----
+false
+
+set-should-split child0 true
+----
+ok
+
+should-split-before foo.SET.4
+----
+false
+
+should-split-before foo.SET.3
+----
+false
+
+should-split-before food.SET.6
+----
+true
+
+set-should-split child0 false
+----
+ok
+
+should-split-before food.SET.5
+----
+false
+
+set-should-split child0 true
+----
+ok
+
+should-split-before food.SET.4
+----
+false
+
+set-should-split child0 false
+----
+ok
+
+should-split-before food2.SET.4
+----
+true
+
+# nonZeroSeqNumSplitter tests
+
+reset
+----
+ok
+
+init child0 mock
+----
+ok
+
+init main nonzeroseqnum tombstone
+----
+ok
+
+set-should-split child0 false
+----
+ok
+
+should-split-before foo.SET.5
+----
+false
+
+should-split-before foo.RANGEDEL.0
+----
+false
+
+set-should-split child0 true
+----
+ok
+
+# This should be true, as the last point key is foo.SET.5.
+
+should-split-before foo.SET.0
+----
+true
+
+set-should-split child0 false
+----
+ok
+
+should-split-before food.SET.0
+----
+false
+
+set-should-split child0 true
+----
+ok
+
+should-split-before food1.SET.0
+----
+false
+
+# Even though we've set should-split-before to false for the child splitter,
+# nonZeroSeqNumSplitter "remembers" it and splits at the next good split point.
+
+set-should-split child0 false
+----
+ok
+
+should-split-before food2.SET.0
+----
+false
+
+should-split-before food3.SET.4
+----
+false
+
+# This one should be true, as the previous point seqnum is nonzero.
+
+should-split-before food4.SET.2
+----
+true
+
+should-split-before food4.SET.0
+----
+false
+
+set-should-split child0 true
+----
+ok
+
+should-split-before food5.SET.3
+----
+true
+
+reset
+----
+ok
+
+# nonZeroSeqNumSplitter tests, but with an empty rangedel fragmenter. In
+# this case, it just passees through the child splitter.
+
+reset
+----
+ok
+
+init child0 mock
+----
+ok
+
+init main nonzeroseqnum
+----
+ok
+
+set-should-split child0 false
+----
+ok
+
+should-split-before food.SET.0
+----
+false
+
+set-should-split child0 true
+----
+ok
+
+should-split-before food1.SET.0
+----
+true
