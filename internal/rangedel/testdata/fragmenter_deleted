@@ -28,7 +28,7 @@ a#1,1: true
 a#2,1: true
 a#3,1: false
 l#3,1: false
-e#3,1: pebble: keys must be in order: f#3,15 > e#3,1
+e#3,1: pebble: keys must be in order: f#3,RANGEDEL > e#3,SET
 f#2,1: true
 l#2,1: true
 m#2,1: false

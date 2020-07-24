@@ -32,10 +32,11 @@ func parseTombstone(t *testing.T, s string) Tombstone {
 	}
 }
 
-func buildTombstones(t *testing.T, cmp base.Compare, s string) []Tombstone {
+func buildTombstones(t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string) []Tombstone {
 	var tombstones []Tombstone
 	f := &Fragmenter{
-		Cmp: cmp,
+		Cmp:    cmp,
+		Format: formatKey,
 		Emit: func(fragmented []Tombstone) {
 			tombstones = append(tombstones, fragmented...)
 		},
@@ -94,6 +95,7 @@ func formatTombstones(tombstones []Tombstone) string {
 
 func TestFragmenter(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
 
 	var getRe = regexp.MustCompile(`(\w+)#(\d+)`)
 
@@ -128,7 +130,7 @@ func TestFragmenter(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, d.Input)
+				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
 				iter = NewIter(cmp, tombstones)
 				return formatTombstones(tombstones)
 			}()
@@ -165,7 +167,8 @@ func TestFragmenterDeleted(t *testing.T) {
 		switch d.Cmd {
 		case "build":
 			f := &Fragmenter{
-				Cmp: base.DefaultComparer.Compare,
+				Cmp:    base.DefaultComparer.Compare,
+				Format: base.DefaultComparer.FormatKey,
 				Emit: func(fragmented []Tombstone) {
 				},
 			}
@@ -197,6 +200,7 @@ func TestFragmenterDeleted(t *testing.T) {
 
 func TestFragmenterFlushTo(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
 
 	datadriven.RunTest(t, "testdata/fragmenter_flush_to", func(d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -208,7 +212,7 @@ func TestFragmenterFlushTo(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, d.Input)
+				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
 				return formatTombstones(tombstones)
 			}()
 
@@ -220,6 +224,7 @@ func TestFragmenterFlushTo(t *testing.T) {
 
 func TestFragmenterTruncateAndFlushTo(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
 
 	datadriven.RunTest(t, "testdata/fragmenter_truncate_and_flush_to", func(d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -231,7 +236,7 @@ func TestFragmenterTruncateAndFlushTo(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, d.Input)
+				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
 				return formatTombstones(tombstones)
 			}()
 

@@ -164,7 +164,8 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 				var tombstones []rangedel.Tombstone
 				frag := rangedel.Fragmenter{
-					Cmp: cmp,
+					Cmp:    cmp,
+					Format: formatKey,
 					Emit: func(fragmented []rangedel.Tombstone) {
 						tombstones = append(tombstones, fragmented...)
 					},

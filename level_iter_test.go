@@ -188,7 +188,8 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	})
 	var tombstones []rangedel.Tombstone
 	f := rangedel.Fragmenter{
-		Cmp: lt.cmp.Compare,
+		Cmp:    lt.cmp.Compare,
+		Format: lt.cmp.FormatKey,
 		Emit: func(fragmented []rangedel.Tombstone) {
 			tombstones = append(tombstones, fragmented...)
 		},

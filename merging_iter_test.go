@@ -129,6 +129,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 func TestMergingIterCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
+	fmtKey := DefaultComparer.FormatKey
 	opts := (*Options)(nil).EnsureDefaults()
 	var v *version
 
@@ -191,7 +192,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 				w := sstable.NewWriter(f, sstable.WriterOptions{})
 				var tombstones []rangedel.Tombstone
 				frag := rangedel.Fragmenter{
-					Cmp: cmp,
+					Cmp:    cmp,
+					Format: fmtKey,
 					Emit: func(fragmented []rangedel.Tombstone) {
 						tombstones = append(tombstones, fragmented...)
 					},

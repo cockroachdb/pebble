@@ -57,7 +57,8 @@ func runBuildCmd(td *datadriven.TestData, writerOpts WriterOptions) (*WriterMeta
 	w := NewWriter(f0, writerOpts)
 	var tombstones []rangedel.Tombstone
 	f := rangedel.Fragmenter{
-		Cmp: DefaultComparer.Compare,
+		Cmp:    DefaultComparer.Compare,
+		Format: DefaultComparer.FormatKey,
 		Emit: func(fragmented []rangedel.Tombstone) {
 			tombstones = append(tombstones, fragmented...)
 		},

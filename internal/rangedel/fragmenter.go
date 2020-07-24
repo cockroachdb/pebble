@@ -63,7 +63,8 @@ func Sort(cmp base.Compare, tombstones []Tombstone) {
 // tombstones are split at their overlap points. The fragmented tombstones are
 // output to the supplied Output function.
 type Fragmenter struct {
-	Cmp base.Compare
+	Cmp    base.Compare
+	Format base.FormatKey
 	// Emit is called to emit a chunk of tombstone fragments. Every tombstone
 	// within the chunk has the same start and end key and are in decreasing
 	// order of their sequence numbers.
@@ -95,7 +96,7 @@ func (f *Fragmenter) checkInvariants(buf []Tombstone) {
 		}
 		if f.Cmp(buf[i-1].Start.UserKey, buf[i].Start.UserKey) != 0 {
 			panic(fmt.Sprintf("pebble: pending tombstone invariant violated: %s %s",
-				buf[i-1].Start, buf[i].Start))
+				buf[i-1].Start.Pretty(f.Format), buf[i].Start.Pretty(f.Format)))
 		}
 	}
 }
@@ -182,7 +183,7 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 		switch c := f.Cmp(start.UserKey, f.flushedKey); {
 		case c < 0:
 			panic(fmt.Sprintf("pebble: start key (%s) < flushed key (%s)",
-				start.UserKey, f.flushedKey))
+				f.Format(start.UserKey), f.Format(f.flushedKey)))
 		}
 	}
 	if f.Cmp(start.UserKey, end) >= 0 {
@@ -200,7 +201,7 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 		switch c := f.Cmp(f.pending[0].Start.UserKey, start.UserKey); {
 		case c > 0:
 			panic(fmt.Sprintf("pebble: keys must be added in order: %s > %s",
-				f.pending[0].Start, start))
+				f.pending[0].Start.Pretty(f.Format), start.Pretty(f.Format)))
 		case c == 0:
 			// The new tombstone has the same start key as the existing pending
 			// tombstones. Add it to the pending buffer.
@@ -236,7 +237,7 @@ func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
 
 	if f.Cmp(f.pending[0].Start.UserKey, key.UserKey) > 0 {
 		panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
-			f.pending[0].Start, key))
+			f.pending[0].Start.Pretty(f.Format), key.Pretty(f.Format)))
 	}
 
 	seqNum := key.SeqNum()
@@ -283,7 +284,7 @@ func (f *Fragmenter) FlushTo(key []byte) {
 		switch c := f.Cmp(key, f.flushedKey); {
 		case c < 0:
 			panic(fmt.Sprintf("pebble: flush-to key (%s) < flushed key (%s)",
-				key, f.flushedKey))
+				f.Format(key), f.Format(f.flushedKey)))
 		}
 	}
 	f.flushedKey = append(f.flushedKey[:0], key...)
@@ -294,7 +295,7 @@ func (f *Fragmenter) FlushTo(key []byte) {
 		switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
 		case c > 0:
 			panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
-				f.pending[0].Start, key))
+				f.Format(f.pending[0].Start.UserKey), f.Format(key)))
 		}
 		// Note that we explicitly do not return early here if Start.UserKey ==
 		// key. Similar to the scenario described above, consider:
@@ -360,7 +361,7 @@ func (f *Fragmenter) TruncateAndFlushTo(key []byte) {
 		switch c := f.Cmp(key, f.flushedKey); {
 		case c < 0:
 			panic(fmt.Sprintf("pebble: start key (%s) < flushed key (%s)",
-				key, f.flushedKey))
+				f.Format(key), f.Format(f.flushedKey)))
 		}
 	}
 	if invariants.RaceEnabled {
@@ -373,7 +374,7 @@ func (f *Fragmenter) TruncateAndFlushTo(key []byte) {
 		switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
 		case c > 0:
 			panic(fmt.Sprintf("pebble: keys must be added in order: %s > %s",
-				f.pending[0].Start, key))
+				f.Format(f.pending[0].Start.UserKey), f.Format(key)))
 		case c == 0:
 			return
 		}
