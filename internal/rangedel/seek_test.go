@@ -61,12 +61,13 @@ func (i *iterAdapter) Prev() (*base.InternalKey, []byte) {
 
 func TestSeek(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
 	iter := &iterAdapter{}
 
 	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
-			tombstones := buildTombstones(t, cmp, d.Input)
+			tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
 			iter.Iter = NewIter(cmp, tombstones)
 			return formatTombstones(tombstones)
 

@@ -1157,6 +1157,7 @@ func (c Comparers) readerApply(r *Reader) {
 	}
 	if comparer, ok := c[r.Properties.ComparerName]; ok {
 		r.Compare = comparer.Compare
+		r.FormatKey = comparer.FormatKey
 		r.Split = comparer.Split
 	}
 }
@@ -1206,7 +1207,7 @@ func (c *cacheOpts) writerApply(w *Writer) {
 
 // FileReopenOpt is specified if this reader is allowed to reopen additional
 // file descriptors for this file. Used to take advantage of OS-level readahead.
-type FileReopenOpt struct{
+type FileReopenOpt struct {
 	FS       vfs.FS
 	Filename string
 }
@@ -1255,6 +1256,7 @@ type Reader struct {
 	footerBH          BlockHandle
 	opts              ReaderOptions
 	Compare           Compare
+	FormatKey         base.FormatKey
 	Split             Split
 	mergerOK          bool
 	tableFilter       *tableFilterReader
@@ -1542,7 +1544,8 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 		restartInterval: 1,
 	}
 	frag := rangedel.Fragmenter{
-		Cmp: r.Compare,
+		Cmp:    r.Compare,
+		Format: r.FormatKey,
 		Emit: func(fragmented []rangedel.Tombstone) {
 			for i := range fragmented {
 				t := &fragmented[i]
@@ -1860,6 +1863,7 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Compare = o.Comparer.Compare
+		r.FormatKey = o.Comparer.FormatKey
 		r.Split = o.Comparer.Split
 	}
 

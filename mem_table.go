@@ -60,6 +60,7 @@ var memTableEmptySize = func() uint32 {
 // It is safe to call get, apply, newIter, and newRangeDelIter concurrently.
 type memTable struct {
 	cmp         Compare
+	formatKey   base.FormatKey
 	equal       Equal
 	arenaBuf    []byte
 	skl         arenaskl.Skiplist
@@ -109,6 +110,7 @@ func newMemTable(opts memTableOptions) *memTable {
 
 	m := &memTable{
 		cmp:        opts.Comparer.Compare,
+		formatKey:  opts.Comparer.FormatKey,
 		equal:      opts.Comparer.Equal,
 		arenaBuf:   opts.arenaBuf,
 		writerRefs: 1,
@@ -291,7 +293,8 @@ type rangeTombstoneFrags struct {
 func (f *rangeTombstoneFrags) get(m *memTable) []rangedel.Tombstone {
 	f.once.Do(func() {
 		frag := &rangedel.Fragmenter{
-			Cmp: m.cmp,
+			Cmp:    m.cmp,
+			Format: m.formatKey,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				f.tombstones = append(f.tombstones, fragmented...)
 			},

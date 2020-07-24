@@ -184,6 +184,7 @@ type Batch struct {
 	// memtables.
 	data           []byte
 	cmp            Compare
+	formatKey      base.FormatKey
 	abbreviatedKey AbbreviatedKey
 
 	memTableSize uint32
@@ -251,6 +252,7 @@ func newBatch(db *DB) *Batch {
 func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i := indexedBatchPool.Get().(*indexedBatch)
 	i.batch.cmp = comparer.Compare
+	i.batch.formatKey = comparer.FormatKey
 	i.batch.abbreviatedKey = comparer.AbbreviatedKey
 	i.batch.db = db
 	i.batch.index = &i.index
@@ -275,6 +277,7 @@ func (b *Batch) release() {
 	// complains.
 	b.Reset()
 	b.cmp = nil
+	b.formatKey = nil
 	b.abbreviatedKey = nil
 	b.memTableSize = 0
 
@@ -702,7 +705,8 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 	// tombstone is added to the batch.
 	if b.tombstones == nil {
 		frag := &rangedel.Fragmenter{
-			Cmp: b.cmp,
+			Cmp:    b.cmp,
+			Format: b.formatKey,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
@@ -1029,8 +1033,9 @@ type flushableBatchEntry struct {
 // flushableBatch wraps an existing batch and provides the interfaces needed
 // for making the batch flushable (i.e. able to mimic a memtable).
 type flushableBatch struct {
-	cmp  Compare
-	data []byte
+	cmp       Compare
+	formatKey base.FormatKey
+	data      []byte
 
 	// The base sequence number for the entries in the batch. This is the same
 	// value as Batch.seqNum() and is cached here for performance.
@@ -1059,9 +1064,10 @@ var _ flushable = (*flushableBatch)(nil)
 // of the batch data.
 func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
-		data:    batch.data,
-		cmp:     comparer.Compare,
-		offsets: make([]flushableBatchEntry, 0, batch.Count()),
+		data:      batch.data,
+		cmp:       comparer.Compare,
+		formatKey: comparer.FormatKey,
+		offsets:   make([]flushableBatchEntry, 0, batch.Count()),
 	}
 	if b.data != nil {
 		// Note that this sequence number is not correct when this batch has not
@@ -1110,7 +1116,8 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 
 	if len(rangeDelOffsets) > 0 {
 		frag := &rangedel.Fragmenter{
-			Cmp: b.cmp,
+			Cmp:    b.cmp,
+			Format: b.formatKey,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
