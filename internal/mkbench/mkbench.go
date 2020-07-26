@@ -132,6 +132,9 @@ func (l *loader) loadCooked(path string) {
 func (l *loader) loadRaw(dir string) {
 	var walkFn filepath.WalkFunc
 	walkFn = func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if info == nil {
 			return nil
 		}
