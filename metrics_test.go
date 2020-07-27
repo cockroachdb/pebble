@@ -47,7 +47,7 @@ func TestMetricsFormat(t *testing.T) {
 		base := uint64((i + 1) * 100)
 		l.Sublevels = int32(i + 1)
 		l.NumFiles = int64(base) + 1
-		l.Size = base + 2
+		l.Size = int64(base) + 2
 		l.Score = float64(base) + 3
 		l.BytesIn = base + 4
 		l.BytesIngested = base + 4

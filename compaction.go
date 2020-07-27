@@ -1412,14 +1412,17 @@ func (d *DB) runCompaction(
 			DeletedFiles: map[deletedFileEntry]bool{},
 		}
 		for _, cl := range c.inputs {
-			c.metrics[cl.level] = &LevelMetrics{}
+			levelMetrics := &LevelMetrics{}
 			iter := cl.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
+				levelMetrics.NumFiles--
+				levelMetrics.Size -= int64(f.Size)
 				ve.DeletedFiles[deletedFileEntry{
 					Level:   cl.level,
 					FileNum: f.FileNum,
 				}] = true
 			}
+			c.metrics[cl.level] = levelMetrics
 		}
 		return ve, nil, nil
 	}
@@ -1432,7 +1435,13 @@ func (d *DB) runCompaction(
 		iter := c.startLevel.files.Iter()
 		meta := iter.First()
 		c.metrics = map[int]*LevelMetrics{
+			c.startLevel.level: &LevelMetrics{
+				NumFiles: -1,
+				Size:     -int64(meta.Size),
+			},
 			c.outputLevel.level: &LevelMetrics{
+				NumFiles:    1,
+				Size:        int64(meta.Size),
 				BytesMoved:  meta.Size,
 				TablesMoved: 1,
 			},
@@ -1494,13 +1503,16 @@ func (d *DB) runCompaction(
 		DeletedFiles: map[deletedFileEntry]bool{},
 	}
 
-	metrics := &LevelMetrics{
+	outputMetrics := &LevelMetrics{
 		BytesIn:   c.startLevel.files.SizeSum(),
 		BytesRead: c.outputLevel.files.SizeSum(),
 	}
-	metrics.BytesRead += metrics.BytesIn
+	outputMetrics.BytesRead += outputMetrics.BytesIn
 	c.metrics = map[int]*LevelMetrics{
-		c.outputLevel.level: metrics,
+		c.outputLevel.level: outputMetrics,
+	}
+	if len(c.flushing) == 0 && c.metrics[c.startLevel.level] == nil {
+		c.metrics[c.startLevel.level] = &LevelMetrics{}
 	}
 
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level)
@@ -1636,12 +1648,14 @@ func (d *DB) runCompaction(
 		}
 
 		if c.flushing == nil {
-			metrics.TablesCompacted++
-			metrics.BytesCompacted += meta.Size
+			outputMetrics.TablesCompacted++
+			outputMetrics.BytesCompacted += meta.Size
 		} else {
-			metrics.TablesFlushed++
-			metrics.BytesFlushed += meta.Size
+			outputMetrics.TablesFlushed++
+			outputMetrics.BytesFlushed += meta.Size
 		}
+		outputMetrics.Size += int64(meta.Size)
+		outputMetrics.NumFiles++
 
 		// The handling of range boundaries is a bit complicated.
 		if n := len(ve.NewFiles); n > 1 {
@@ -1958,6 +1972,8 @@ func (d *DB) runCompaction(
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
+			c.metrics[cl.level].NumFiles--
+			c.metrics[cl.level].Size -= int64(f.Size)
 			ve.DeletedFiles[deletedFileEntry{
 				Level:   cl.level,
 				FileNum: f.FileNum,
