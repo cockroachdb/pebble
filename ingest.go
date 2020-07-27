@@ -676,6 +676,8 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 			levelMetrics = &LevelMetrics{}
 			metrics[f.Level] = levelMetrics
 		}
+		levelMetrics.NumFiles++
+		levelMetrics.Size += int64(m.Size)
 		levelMetrics.BytesIngested += m.Size
 		levelMetrics.TablesIngested++
 	}
