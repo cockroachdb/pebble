@@ -235,7 +235,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	stopSamplingRAmp := startSamplingRAmp(rd)
 
 	var replayedCount int
-	var sizeSum, sizeCount uint64
+	var sizeSum, sizeCount int64
 	var ref *manifest.Version
 	for _, li := range hist {
 		// Maintain ref as the reference database's version for calculating
@@ -387,7 +387,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		float64(beforeSize)/float64(afterSize),
 		humanize.Int64(int64(beforeSize)),
 		humanize.Int64(int64(afterSize)),
-		humanize.Uint64(sizeSum/sizeCount))
+		humanize.Int64(sizeSum/sizeCount))
 	return nil
 }
 
@@ -405,8 +405,8 @@ func totalWriteAmp(m *pebble.Metrics) float64 {
 	return total.WriteAmp()
 }
 
-func totalSize(m *pebble.Metrics) uint64 {
-	sz := m.WAL.Size
+func totalSize(m *pebble.Metrics) int64 {
+	sz := int64(m.WAL.Size)
 	for _, lm := range m.Levels {
 		sz += lm.Size
 	}

@@ -267,7 +267,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
 		l.NumFiles = int64(newVersion.Levels[i].Slice().Len())
-		l.Size = uint64(newVersion.Levels[i].Slice().SizeSum())
+		l.Size = int64(newVersion.Levels[i].Slice().SizeSum())
 	}
 	return nil
 }
@@ -476,8 +476,6 @@ func (vs *versionSet) logAndApply(
 	}
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = int64(newVersion.Levels[i].Slice().Len())
-		l.Size = uint64(newVersion.Levels[i].Slice().SizeSum())
 		l.Sublevels = 0
 		if l.NumFiles > 0 {
 			l.Sublevels = 1

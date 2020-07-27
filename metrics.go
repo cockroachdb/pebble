@@ -38,7 +38,7 @@ type LevelMetrics struct {
 	// The total number of files in the level.
 	NumFiles int64
 	// The total size in bytes of the files in the level.
-	Size uint64
+	Size int64
 	// The level's compaction score.
 	Score float64
 	// The number of incoming bytes from other levels read during
@@ -74,6 +74,8 @@ type LevelMetrics struct {
 
 // Add updates the counter metrics for the level.
 func (m *LevelMetrics) Add(u *LevelMetrics) {
+	m.NumFiles += u.NumFiles
+	m.Size += u.Size
 	m.BytesIn += u.BytesIn
 	m.BytesIngested += u.BytesIngested
 	m.BytesMoved += u.BytesMoved
@@ -100,7 +102,7 @@ func (m *LevelMetrics) WriteAmp() float64 {
 func (m *LevelMetrics) format(buf *bytes.Buffer, score string) {
 	fmt.Fprintf(buf, "%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f\n",
 		m.NumFiles,
-		humanize.IEC.Uint64(m.Size),
+		humanize.IEC.Int64(m.Size),
 		score,
 		humanize.IEC.Uint64(m.BytesIn),
 		humanize.IEC.Uint64(m.BytesIngested),
@@ -199,8 +201,6 @@ func (m *Metrics) Total() LevelMetrics {
 		l := &m.Levels[level]
 		total.Add(l)
 		total.Sublevels += l.Sublevels
-		total.NumFiles += l.NumFiles
-		total.Size += l.Size
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
 	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
@@ -278,8 +278,6 @@ func (m *Metrics) String() string {
 		l.format(&buf, score)
 		total.Add(l)
 		total.Sublevels += l.Sublevels
-		total.NumFiles += l.NumFiles
-		total.Size += l.Size
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
 	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
