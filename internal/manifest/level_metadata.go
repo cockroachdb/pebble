@@ -13,12 +13,12 @@ type LevelMetadata struct {
 }
 
 // Iter constructs a LevelIterator over the entire level.
-func (lm LevelMetadata) Iter() LevelIterator {
+func (lm *LevelMetadata) Iter() LevelIterator {
 	return LevelIterator{files: lm.files, end: len(lm.files)}
 }
 
 // Slice constructs a slice containing the entire level.
-func (lm LevelMetadata) Slice() LevelSlice {
+func (lm *LevelMetadata) Slice() LevelSlice {
 	return LevelSlice{files: lm.files, end: len(lm.files)}
 }
 
