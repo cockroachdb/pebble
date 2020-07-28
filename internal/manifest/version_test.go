@@ -17,6 +17,10 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+func makeLevelMetadata(files ...*FileMetadata) LevelMetadata {
+	return LevelMetadata{files: files}
+}
+
 func ikey(s string) InternalKey {
 	return base.MakeInternalKey([]byte(s), 0, base.InternalKeyKindSet)
 }
@@ -72,17 +76,12 @@ func TestIkeyRange(t *testing.T) {
 				})
 			}
 		}
+		levelMetadata := makeLevelMetadata(f...)
 
-		smallest0, largest0 := KeyRange(base.DefaultComparer.Compare, NewLevelSlice(f).Iter())
-		got0 := string(smallest0.UserKey) + "-" + string(largest0.UserKey)
-		if got0 != tc.want {
-			t.Errorf("first []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got0, tc.want)
-		}
-
-		smallest1, largest1 := KeyRange(base.DefaultComparer.Compare, NewLevelSlice(f).Iter())
-		got1 := string(smallest1.UserKey) + "-" + string(largest1.UserKey)
-		if got1 != tc.want {
-			t.Errorf("second []fileMetadata is %v\ngot  %s\nwant %s", tc.input, got1, tc.want)
+		sm, la := KeyRange(base.DefaultComparer.Compare, levelMetadata.Iter())
+		got := string(sm.UserKey) + "-" + string(la.UserKey)
+		if got != tc.want {
+			t.Errorf("KeyRange(%q) = %q, %q", tc.input, got, tc.want)
 		}
 	}
 }
@@ -170,8 +169,8 @@ func TestOverlaps(t *testing.T) {
 
 	v := Version{
 		Levels: [NumLevels]LevelMetadata{
-			0: {files: []*FileMetadata{m00, m01, m02, m03, m04, m05, m06, m07}},
-			1: {files: []*FileMetadata{m10, m11, m12, m13, m14}},
+			0: makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
+			1: makeLevelMetadata(m10, m11, m12, m13, m14),
 		},
 	}
 
@@ -343,8 +342,8 @@ func TestContains(t *testing.T) {
 
 	v := Version{
 		Levels: [NumLevels]LevelMetadata{
-			0: {files: []*FileMetadata{m00, m01, m02, m03, m04, m05, m06, m07}},
-			1: {files: []*FileMetadata{m10, m11, m12, m13, m14}},
+			0: makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
+			1: makeLevelMetadata(m10, m11, m12, m13, m14),
 		},
 	}
 
@@ -414,6 +413,8 @@ func TestVersionUnref(t *testing.T) {
 }
 
 func TestCheckOrdering(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
 	parseMeta := func(s string) FileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
@@ -435,7 +436,7 @@ func TestCheckOrdering(t *testing.T) {
 				// TODO(sumeer): move this Version parsing code to utils, to
 				// avoid repeating it, and make it the inverse of
 				// Version.DebugString().
-				v := Version{}
+				var filesByLevel [NumLevels][]*FileMetadata
 				var files *[]*FileMetadata
 				fileNum := base.FileNum(1)
 
@@ -446,7 +447,7 @@ func TestCheckOrdering(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						files = &v.Levels[level].files
+						files = &filesByLevel[level]
 
 					default:
 						meta := parseMeta(data)
@@ -456,11 +457,8 @@ func TestCheckOrdering(t *testing.T) {
 					}
 				}
 
-				cmp := base.DefaultComparer.Compare
 				result := "OK"
-				if err := v.InitL0Sublevels(cmp, base.DefaultFormatter, 10<<20); err != nil {
-					return fmt.Sprint(err)
-				}
+				v := NewVersion(cmp, fmtKey, 10<<20, filesByLevel)
 				err := v.CheckOrdering(cmp, base.DefaultFormatter)
 				if err != nil {
 					result = fmt.Sprint(err)
@@ -478,6 +476,8 @@ func TestCheckConsistency(t *testing.T) {
 	mem := vfs.NewMem()
 	mem.MkdirAll(dir, 0755)
 
+	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
 	parseMeta := func(s string) (*FileMetadata, error) {
 		if len(s) == 0 {
 			return nil, nil
@@ -504,7 +504,7 @@ func TestCheckConsistency(t *testing.T) {
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-consistency":
-				v := Version{}
+				var filesByLevel [NumLevels][]*FileMetadata
 				var files *[]*FileMetadata
 
 				for _, data := range strings.Split(d.Input, "\n") {
@@ -514,7 +514,7 @@ func TestCheckConsistency(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						files = &v.Levels[level].files
+						files = &filesByLevel[level]
 
 					default:
 						m, err := parseMeta(data)
@@ -537,6 +537,7 @@ func TestCheckConsistency(t *testing.T) {
 					}
 				}
 
+				v := NewVersion(cmp, fmtKey, 0, filesByLevel)
 				err := v.CheckConsistency(dir, mem)
 				if err != nil {
 					if redact {

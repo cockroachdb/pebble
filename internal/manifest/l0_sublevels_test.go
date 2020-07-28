@@ -56,7 +56,7 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 	v, err := readManifest("testdata/MANIFEST_import")
 	require.NoError(t, err)
 
-	sublevels, err := NewL0Sublevels(v.Levels[0].Slice().Collect(),
+	sublevels, err := NewL0Sublevels(&v.Levels[0],
 		base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 	require.NoError(t, err)
 	fmt.Printf("L0Sublevels:\n%s\n\n", sublevels)
@@ -104,7 +104,7 @@ func visualizeSublevels(
 ) string {
 	var buf strings.Builder
 	if compactionFiles == nil {
-		compactionFiles = newBitSet(len(s.filesByAge))
+		compactionFiles = newBitSet(s.levelMetadata.Len())
 	}
 	largestChar := byte('a')
 	printLevel := func(files []*FileMetadata, level string, isL0 bool) {
@@ -313,9 +313,10 @@ func TestL0Sublevels(t *testing.T) {
 				SortBySmallest(fileMetas[i], base.DefaultComparer.Compare)
 			}
 
+			levelMetadata := makeLevelMetadata(fileMetas[0]...)
 			if initialize {
 				sublevels, err = NewL0Sublevels(
-					fileMetas[0],
+					&levelMetadata,
 					base.DefaultComparer.Compare,
 					base.DefaultFormatter,
 					int64(flushSplitMaxBytes))
@@ -324,10 +325,10 @@ func TestL0Sublevels(t *testing.T) {
 				// This case is for use with explicitly-specified sublevels
 				// only.
 				sublevels = &L0Sublevels{
-					Levels:     explicitSublevels,
-					cmp:        base.DefaultComparer.Compare,
-					formatKey:  base.DefaultFormatter,
-					filesByAge: fileMetas[0],
+					Levels:        explicitSublevels,
+					cmp:           base.DefaultComparer.Compare,
+					formatKey:     base.DefaultFormatter,
+					levelMetadata: &levelMetadata,
 				}
 			}
 
@@ -484,7 +485,7 @@ func BenchmarkL0SublevelsInit(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(v.Levels[0].Slice().Collect(),
+		sl, err := NewL0Sublevels(&v.Levels[0],
 			base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
@@ -500,7 +501,7 @@ func BenchmarkL0SublevelsInitAndPick(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(v.Levels[0].Slice().Collect(),
+		sl, err := NewL0Sublevels(&v.Levels[0],
 			base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {

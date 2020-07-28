@@ -240,15 +240,12 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)
 			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
 		}
-		sublevels, err := manifest.NewL0Sublevels(currentFiles[0], l.cmp.Compare, l.fmtKey.fn, 0)
-		if err != nil {
-			panic(err)
-		}
+		v := manifest.NewVersion(l.cmp.Compare, l.fmtKey.fn, 0, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
-		for sublevel, files := range sublevels.Levels {
+		for sublevel, files := range v.L0Sublevels.Levels {
 			for _, f := range files {
 				if len(l.state.Edits) > 0 {
-					lastEdit := l.state.Edits[len(l.state.Edits) - 1]
+					lastEdit := l.state.Edits[len(l.state.Edits)-1]
 					if sublevel2, ok := lastEdit.Sublevels[f.FileNum]; ok && sublevel == sublevel2 {
 						continue
 					}
