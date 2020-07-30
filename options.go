@@ -729,12 +729,17 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "bytes_per_sync":
 				o.BytesPerSync, err = strconv.Atoi(value)
 			case "cache_size":
-				n, err := strconv.ParseInt(value, 10, 64)
-				if err == nil && hooks.NewCache != nil {
+				var n int64
+				n, err = strconv.ParseInt(value, 10, 64)
+				if err == nil {
 					if o.Cache != nil {
 						o.Cache.Unref()
 					}
-					o.Cache = hooks.NewCache(n)
+					if hooks != nil && hooks.NewCache != nil {
+						o.Cache = hooks.NewCache(n)
+					} else {
+						o.Cache = cache.New(n)
+					}
 				}
 			case "cleaner":
 				switch value {
