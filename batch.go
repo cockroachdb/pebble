@@ -767,6 +767,7 @@ func (b *Batch) init(cap int) {
 func (b *Batch) Reset() {
 	b.count = 0
 	b.countRangeDels = 0
+	atomic.StoreUint32(&b.applied, 0)
 	if b.data != nil {
 		if cap(b.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
