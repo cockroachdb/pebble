@@ -18,21 +18,32 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/roachpb"
-	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/stretchr/testify/require"
 )
 
-func newItem(s roachpb.Span) *example {
+type exampleSpan struct {
+	Key, EndKey string
+}
+
+func (e exampleSpan) Equal(o exampleSpan) bool {
+	return e.Key == o.Key && e.EndKey == o.EndKey
+}
+
+func (e exampleSpan) String() string {
+	return fmt.Sprintf("%s-%s", e.Key, e.EndKey)
+}
+
+func newItem(s exampleSpan) *example {
 	i := nilT.New()
-	i.SetKey(s.Key)
-	i.SetEndKey(s.EndKey)
+	i.SetKey([]byte(s.Key))
+	i.SetEndKey([]byte(s.EndKey))
 	return i
 }
 
-func spanFromItem(i *example) roachpb.Span {
-	return roachpb.Span{Key: i.Key(), EndKey: i.EndKey()}
+func spanFromItem(i *example) exampleSpan {
+	return exampleSpan{Key: string(i.Key()), EndKey: string(i.EndKey())}
 }
 
 //////////////////////////////////////////
@@ -149,37 +160,37 @@ func (n *node) recurse(f func(child *node, pos int16)) {
 //              Unit Tests              //
 //////////////////////////////////////////
 
-func key(i int) roachpb.Key {
+func key(i int) string {
 	if i < 0 || i > 99999 {
 		panic("key out of bounds")
 	}
-	return []byte(fmt.Sprintf("%05d", i))
+	return fmt.Sprintf("%05d", i)
 }
 
-func span(i int) roachpb.Span {
+func span(i int) exampleSpan {
 	switch i % 10 {
 	case 0:
-		return roachpb.Span{Key: key(i)}
+		return exampleSpan{Key: key(i)}
 	case 1:
-		return roachpb.Span{Key: key(i), EndKey: key(i).Next()}
+		return exampleSpan{Key: key(i), EndKey: key(i + 1)}
 	case 2:
-		return roachpb.Span{Key: key(i), EndKey: key(i + 64)}
+		return exampleSpan{Key: key(i), EndKey: key(i + 64)}
 	default:
-		return roachpb.Span{Key: key(i), EndKey: key(i + 4)}
+		return exampleSpan{Key: key(i), EndKey: key(i + 4)}
 	}
 }
 
-func spanWithEnd(start, end int) roachpb.Span {
+func spanWithEnd(start, end int) exampleSpan {
 	if start < end {
-		return roachpb.Span{Key: key(start), EndKey: key(end)}
+		return exampleSpan{Key: key(start), EndKey: key(end)}
 	} else if start == end {
-		return roachpb.Span{Key: key(start)}
+		return exampleSpan{Key: key(start)}
 	} else {
 		panic("illegal span")
 	}
 }
 
-func spanWithMemo(i int, memo map[int]roachpb.Span) roachpb.Span {
+func spanWithMemo(i int, memo map[int]exampleSpan) exampleSpan {
 	if s, ok := memo[i]; ok {
 		return s
 	}
@@ -188,7 +199,7 @@ func spanWithMemo(i int, memo map[int]roachpb.Span) roachpb.Span {
 	return s
 }
 
-func randomSpan(rng *rand.Rand, n int) roachpb.Span {
+func randomSpan(rng *rand.Rand, n int) exampleSpan {
 	start := rng.Intn(n)
 	end := rng.Intn(n + 1)
 	if end < start {
@@ -197,7 +208,7 @@ func randomSpan(rng *rand.Rand, n int) roachpb.Span {
 	return spanWithEnd(start, end)
 }
 
-func checkIter(t *testing.T, it iterator, start, end int, spanMemo map[int]roachpb.Span) {
+func checkIter(t *testing.T, it iterator, start, end int, spanMemo map[int]exampleSpan) {
 	i := start
 	for it.First(); it.Valid(); it.Next() {
 		item := it.Cur()
@@ -240,7 +251,7 @@ func checkIter(t *testing.T, it iterator, start, end int, spanMemo map[int]roach
 // TestBTree tests basic btree operations.
 func TestBTree(t *testing.T) {
 	var tr btree
-	spanMemo := make(map[int]roachpb.Span)
+	spanMemo := make(map[int]exampleSpan)
 
 	// With degree == 16 (max-items/node == 31) we need 513 items in order for
 	// there to be 3 levels in the tree. The count here is comfortably above
@@ -413,7 +424,7 @@ func TestBTreeSeekOverlap(t *testing.T) {
 // TestBTreeSeekOverlapRandom tests btree iterator overlap operations using
 // randomized input.
 func TestBTreeSeekOverlapRandom(t *testing.T) {
-	rng := rand.New(rand.NewSource(timeutil.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	const trials = 10
 	for i := 0; i < trials; i++ {
@@ -548,64 +559,64 @@ func TestBTreeCmp(t *testing.T) {
 	// Avoid the slice literal syntax, which GofmtSimplify mandates the use of
 	// anonymous constructors with.
 	type testCase struct {
-		spanA, spanB roachpb.Span
+		spanA, spanB exampleSpan
 		idA, idB     uint64
 		exp          int
 	}
 	var testCases []testCase
 	testCases = append(testCases,
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("a")},
-			spanB: roachpb.Span{Key: roachpb.Key("a")},
+			spanA: exampleSpan{Key: "a"},
+			spanB: exampleSpan{Key: "a"},
 			idA:   1,
 			idB:   1,
 			exp:   0,
 		},
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("a")},
-			spanB: roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("b")},
+			spanA: exampleSpan{Key: "a"},
+			spanB: exampleSpan{Key: "a", EndKey: "b"},
 			idA:   1,
 			idB:   1,
 			exp:   -1,
 		},
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("c")},
-			spanB: roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("b")},
+			spanA: exampleSpan{Key: "a", EndKey: "c"},
+			spanB: exampleSpan{Key: "a", EndKey: "b"},
 			idA:   1,
 			idB:   1,
 			exp:   1,
 		},
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("c")},
-			spanB: roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("c")},
+			spanA: exampleSpan{Key: "a", EndKey: "c"},
+			spanB: exampleSpan{Key: "a", EndKey: "c"},
 			idA:   1,
 			idB:   1,
 			exp:   0,
 		},
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("a")},
-			spanB: roachpb.Span{Key: roachpb.Key("a")},
+			spanA: exampleSpan{Key: "a"},
+			spanB: exampleSpan{Key: "a"},
 			idA:   1,
 			idB:   2,
 			exp:   -1,
 		},
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("a")},
-			spanB: roachpb.Span{Key: roachpb.Key("a")},
+			spanA: exampleSpan{Key: "a"},
+			spanB: exampleSpan{Key: "a"},
 			idA:   2,
 			idB:   1,
 			exp:   1,
 		},
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("b")},
-			spanB: roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("c")},
+			spanA: exampleSpan{Key: "b"},
+			spanB: exampleSpan{Key: "a", EndKey: "c"},
 			idA:   1,
 			idB:   1,
 			exp:   1,
 		},
 		testCase{
-			spanA: roachpb.Span{Key: roachpb.Key("b"), EndKey: roachpb.Key("e")},
-			spanB: roachpb.Span{Key: roachpb.Key("c"), EndKey: roachpb.Key("d")},
+			spanA: exampleSpan{Key: "b", EndKey: "e"},
+			spanB: exampleSpan{Key: "c", EndKey: "d"},
 			idA:   1,
 			idB:   1,
 			exp:   -1,
@@ -798,9 +809,9 @@ func BenchmarkBTreeMakeIter(b *testing.B) {
 // BenchmarkBTreeIterSeekGE measures the cost of seeking a btree iterator
 // forward.
 func BenchmarkBTreeIterSeekGE(b *testing.B) {
-	rng := rand.New(rand.NewSource(timeutil.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var spans []roachpb.Span
+		var spans []exampleSpan
 		var tr btree
 
 		for i := 0; i < count; i++ {
@@ -829,9 +840,9 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 // BenchmarkBTreeIterSeekLT measures the cost of seeking a btree iterator
 // backward.
 func BenchmarkBTreeIterSeekLT(b *testing.B) {
-	rng := rand.New(rand.NewSource(timeutil.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var spans []roachpb.Span
+		var spans []exampleSpan
 		var tr btree
 
 		for i := 0; i < count; i++ {
@@ -868,9 +879,9 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 // BenchmarkBTreeIterFirstOverlap measures the cost of finding a single
 // overlapping item using a btree iterator.
 func BenchmarkBTreeIterFirstOverlap(b *testing.B) {
-	rng := rand.New(rand.NewSource(timeutil.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var spans []roachpb.Span
+		var spans []exampleSpan
 		var tr btree
 
 		for i := 0; i < count; i++ {
@@ -968,7 +979,7 @@ func BenchmarkBTreeIterNextOverlap(b *testing.B) {
 // overlapping items using a btree iterator.
 func BenchmarkBTreeIterOverlapScan(b *testing.B) {
 	var tr btree
-	rng := rand.New(rand.NewSource(timeutil.Now().UnixNano()))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	const count = 8 << 10
 	const size = 2 * maxItems
