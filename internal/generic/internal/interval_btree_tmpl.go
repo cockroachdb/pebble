@@ -14,7 +14,6 @@ package internal
 
 import (
 	"bytes"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -87,13 +86,6 @@ func (b keyBound) contains(a T) bool {
 		return b.inc
 	}
 	return c < 0
-}
-
-func upperBound(c T) keyBound {
-	if len(c.EndKey()) != 0 {
-		return keyBound{key: c.EndKey()}
-	}
-	return keyBound{key: c.Key(), inc: true}
 }
 
 type leafNode struct {
@@ -360,14 +352,6 @@ func (n *node) split(i int) (T, *node) {
 		}
 	}
 	n.count = int16(i)
-
-	next.max = next.findUpperBound()
-	if n.max.compare(next.max) != 0 && n.max.compare(upperBound(out)) != 0 {
-		// If upper bound wasn't from new node or item
-		// at index i, it must still be from old node.
-	} else {
-		n.max = n.findUpperBound()
-	}
 	return out, next
 }
 
@@ -375,15 +359,15 @@ func (n *node) split(i int) (T, *node) {
 // nodes in the subtree exceed maxItems items. Returns true if an existing item
 // was replaced and false if a item was inserted. Also returns whether the
 // node's upper bound changes.
-func (n *node) insert(item T) (replaced, newBound bool) {
+func (n *node) insert(item T) (replaced bool) {
 	i, found := n.find(item)
 	if found {
 		n.items[i] = item
-		return true, false
+		return true
 	}
 	if n.leaf {
 		n.insertAt(i, item, nil)
-		return false, n.adjustUpperBoundOnInsertion(item, nil)
+		return false
 	}
 	if n.children[i].count >= maxItems {
 		splitLa, splitNode := mut(&n.children[i]).split(maxItems / 2)
@@ -396,14 +380,11 @@ func (n *node) insert(item T) (replaced, newBound bool) {
 			i++ // we want second split node
 		default:
 			n.items[i] = item
-			return true, false
+			return true
 		}
 	}
-	replaced, newBound = mut(&n.children[i]).insert(item)
-	if newBound {
-		newBound = n.adjustUpperBoundOnInsertion(item, nil)
-	}
-	return replaced, newBound
+	replaced = mut(&n.children[i]).insert(item)
+	return replaced
 }
 
 // removeMax removes and returns the maximum item from the subtree rooted
@@ -413,7 +394,6 @@ func (n *node) removeMax() T {
 		n.count--
 		out := n.items[n.count]
 		n.items[n.count] = nilT
-		n.adjustUpperBoundOnRemoval(out, nil)
 		return out
 	}
 	child := mut(&n.children[n.count])
@@ -427,14 +407,14 @@ func (n *node) removeMax() T {
 // remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
 // Also returns whether the node's upper bound changes.
-func (n *node) remove(item T) (out T, newBound bool) {
+func (n *node) remove(item T) (out T) {
 	i, found := n.find(item)
 	if n.leaf {
 		if found {
 			out, _ = n.removeAt(i)
-			return out, n.adjustUpperBoundOnRemoval(out, nil)
+			return out
 		}
-		return nilT, false
+		return nilT
 	}
 	if n.children[i].count <= minItems {
 		// Child not large enough to remove from.
@@ -446,14 +426,11 @@ func (n *node) remove(item T) (out T, newBound bool) {
 		// Replace the item being removed with the max item in our left child.
 		out = n.items[i]
 		n.items[i] = child.removeMax()
-		return out, n.adjustUpperBoundOnRemoval(out, nil)
+		return out
 	}
 	// Latch is not in this node and child is large enough to remove from.
-	out, newBound = child.remove(item)
-	if newBound {
-		newBound = n.adjustUpperBoundOnRemoval(out, nil)
-	}
-	return out, newBound
+	out = child.remove(item)
+	return out
 }
 
 // rebalanceOrMerge grows child 'i' to ensure it has sufficient room to remove
@@ -496,9 +473,6 @@ func (n *node) rebalanceOrMerge(i int) {
 		child.pushFront(yLa, grandChild)
 		n.items[i-1] = xLa
 
-		left.adjustUpperBoundOnRemoval(xLa, grandChild)
-		child.adjustUpperBoundOnInsertion(yLa, grandChild)
-
 	case i < int(n.count) && n.children[i+1].count > minItems:
 		// Rebalance from right sibling.
 		//
@@ -534,9 +508,6 @@ func (n *node) rebalanceOrMerge(i int) {
 		yLa := n.items[i]
 		child.pushBack(yLa, grandChild)
 		n.items[i] = xLa
-
-		right.adjustUpperBoundOnRemoval(xLa, grandChild)
-		child.adjustUpperBoundOnInsertion(yLa, grandChild)
 
 	default:
 		// Merge with either the left or right sibling.
@@ -575,75 +546,15 @@ func (n *node) rebalanceOrMerge(i int) {
 		}
 		child.count += mergeChild.count + 1
 
-		child.adjustUpperBoundOnInsertion(mergeLa, mergeChild)
 		mergeChild.decRef(false /* recursive */)
 	}
 }
 
-// findUpperBound returns the largest end key node range, assuming that its
-// children have correct upper bounds already set.
-func (n *node) findUpperBound() keyBound {
-	var max keyBound
-	for i := int16(0); i < n.count; i++ {
-		up := upperBound(n.items[i])
-		if max.compare(up) < 0 {
-			max = up
-		}
-	}
-	if !n.leaf {
-		for i := int16(0); i <= n.count; i++ {
-			up := n.children[i].max
-			if max.compare(up) < 0 {
-				max = up
-			}
-		}
-	}
-	return max
-}
-
-// adjustUpperBoundOnInsertion adjusts the upper key bound for this node
-// given a item and an optional child node that was inserted. Returns
-// true is the upper bound was changed and false if not.
-func (n *node) adjustUpperBoundOnInsertion(item T, child *node) bool {
-	up := upperBound(item)
-	if child != nil {
-		if up.compare(child.max) < 0 {
-			up = child.max
-		}
-	}
-	if n.max.compare(up) < 0 {
-		n.max = up
-		return true
-	}
-	return false
-}
-
-// adjustUpperBoundOnRemoval adjusts the upper key bound for this node
-// given a item and an optional child node that were removed. Returns
-// true is the upper bound was changed and false if not.
-func (n *node) adjustUpperBoundOnRemoval(item T, child *node) bool {
-	up := upperBound(item)
-	if child != nil {
-		if up.compare(child.max) < 0 {
-			up = child.max
-		}
-	}
-	if n.max.compare(up) == 0 {
-		// up was previous upper bound of n.
-		n.max = n.findUpperBound()
-		return n.max.compare(up) != 0
-	}
-	return false
-}
-
-// btree is an implementation of an augmented interval B-Tree.
+// btree is an implementation of a B-Tree.
 //
 // btree stores items in an ordered structure, allowing easy insertion,
-// removal, and iteration. It represents intervals and permits an interval
-// search operation following the approach laid out in CLRS, Chapter 14.
-// The B-Tree stores items in order based on their start key and each
-// B-Tree node maintains the upper-bound end key of all items in its
-// subtree.
+// removal, and iteration.  The B-Tree stores items in order based on their
+// key.
 //
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
@@ -692,7 +603,7 @@ func (t *btree) Delete(item T) {
 	if t.root == nil || t.root.count == 0 {
 		return
 	}
-	if out, _ := mut(&t.root).remove(item); out != nilT {
+	if out := mut(&t.root).remove(item); out != nilT {
 		t.length--
 	}
 	if t.root.count == 0 {
@@ -718,10 +629,9 @@ func (t *btree) Set(item T) {
 		newRoot.items[0] = splitLa
 		newRoot.children[0] = t.root
 		newRoot.children[1] = splitNode
-		newRoot.max = newRoot.findUpperBound()
 		t.root = newRoot
 	}
-	if replaced, _ := mut(&t.root).insert(item); !replaced {
+	if replaced := mut(&t.root).insert(item); !replaced {
 		t.length++
 	}
 }
@@ -844,14 +754,12 @@ type iterator struct {
 	n   *node
 	pos int16
 	s   iterStack
-	o   overlapScan
 }
 
 func (i *iterator) reset() {
 	i.n = i.r
 	i.pos = -1
 	i.s.reset()
-	i.o = overlapScan{}
 }
 
 func (i *iterator) descend(n *node, pos int16) {
@@ -992,152 +900,4 @@ func (i *iterator) Valid() bool {
 // to call Cur if the iterator is not valid.
 func (i *iterator) Cur() T {
 	return i.n.items[i.pos]
-}
-
-// An overlap scan is a scan over all items that overlap with the provided
-// item in order of the overlapping items' start keys. The goal of the scan
-// is to minimize the number of key comparisons performed in total. The
-// algorithm operates based on the following two invariants maintained by
-// augmented interval btree:
-// 1. all items are sorted in the btree based on their start key.
-// 2. all btree nodes maintain the upper bound end key of all items
-//    in their subtree.
-//
-// The scan algorithm starts in "unconstrained minimum" and "unconstrained
-// maximum" states. To enter a "constrained minimum" state, the scan must reach
-// items in the tree with start keys above the search range's start key.
-// Because items in the tree are sorted by start key, once the scan enters the
-// "constrained minimum" state it will remain there. To enter a "constrained
-// maximum" state, the scan must determine the first child btree node in a given
-// subtree that can have items with start keys above the search range's end
-// key. The scan then remains in the "constrained maximum" state until it
-// traverse into this child node, at which point it moves to the "unconstrained
-// maximum" state again.
-//
-// The scan algorithm works like a standard btree forward scan with the
-// following augmentations:
-// 1. before tranversing the tree, the scan performs a binary search on the
-//    root node's items to determine a "soft" lower-bound constraint position
-//    and a "hard" upper-bound constraint position in the root's children.
-// 2. when tranversing into a child node in the lower or upper bound constraint
-//    position, the constraint is refined by searching the child's items.
-// 3. the initial traversal down the tree follows the left-most children
-//    whose upper bound end keys are equal to or greater than the start key
-//    of the search range. The children followed will be equal to or less
-//    than the soft lower bound constraint.
-// 4. once the initial tranversal completes and the scan is in the left-most
-//    btree node whose upper bound overlaps the search range, key comparisons
-//    must be performed with each item in the tree. This is necessary because
-//    any of these items may have end keys that cause them to overlap with the
-//    search range.
-// 5. once the scan reaches the lower bound constraint position (the first item
-//    with a start key equal to or greater than the search range's start key),
-//    it can begin scaning without performing key comparisons. This is allowed
-//    because all items from this point forward will have end keys that are
-//    greater than the search range's start key.
-// 6. once the scan reaches the upper bound constraint position, it terminates.
-//    It does so because the item at this position is the first item with a
-//    start key larger than the search range's end key.
-type overlapScan struct {
-	// The "soft" lower-bound constraint.
-	constrMinN       *node
-	constrMinPos     int16
-	constrMinReached bool
-
-	// The "hard" upper-bound constraint.
-	constrMaxN   *node
-	constrMaxPos int16
-}
-
-// FirstOverlap seeks to the first item in the btree that overlaps with the
-// provided search item.
-func (i *iterator) FirstOverlap(item T) {
-	i.reset()
-	if i.n == nil {
-		return
-	}
-	i.pos = 0
-	i.o = overlapScan{}
-	i.constrainMinSearchBounds(item)
-	i.constrainMaxSearchBounds(item)
-	i.findNextOverlap(item)
-}
-
-// NextOverlap positions the iterator to the item immediately following
-// its current position that overlaps with the search item.
-func (i *iterator) NextOverlap(item T) {
-	if i.n == nil {
-		return
-	}
-	i.pos++
-	i.findNextOverlap(item)
-}
-
-func (i *iterator) constrainMinSearchBounds(item T) {
-	k := item.Key()
-	j := sort.Search(int(i.n.count), func(j int) bool {
-		return bytes.Compare(k, i.n.items[j].Key()) <= 0
-	})
-	i.o.constrMinN = i.n
-	i.o.constrMinPos = int16(j)
-}
-
-func (i *iterator) constrainMaxSearchBounds(item T) {
-	up := upperBound(item)
-	j := sort.Search(int(i.n.count), func(j int) bool {
-		return !up.contains(i.n.items[j])
-	})
-	i.o.constrMaxN = i.n
-	i.o.constrMaxPos = int16(j)
-}
-
-func (i *iterator) findNextOverlap(item T) {
-	for {
-		if i.pos > i.n.count {
-			// Iterate up tree.
-			i.ascend()
-		} else if !i.n.leaf {
-			// Iterate down tree.
-			if i.o.constrMinReached || i.n.children[i.pos].max.contains(item) {
-				par := i.n
-				pos := i.pos
-				i.descend(par, pos)
-
-				// Refine the constraint bounds, if necessary.
-				if par == i.o.constrMinN && pos == i.o.constrMinPos {
-					i.constrainMinSearchBounds(item)
-				}
-				if par == i.o.constrMaxN && pos == i.o.constrMaxPos {
-					i.constrainMaxSearchBounds(item)
-				}
-				continue
-			}
-		}
-
-		// Check search bounds.
-		if i.n == i.o.constrMaxN && i.pos == i.o.constrMaxPos {
-			// Invalid. Past possible overlaps.
-			i.pos = i.n.count
-			return
-		}
-		if i.n == i.o.constrMinN && i.pos == i.o.constrMinPos {
-			// The scan reached the soft lower-bound constraint.
-			i.o.constrMinReached = true
-		}
-
-		// Iterate across node.
-		if i.pos < i.n.count {
-			// Check for overlapping item.
-			if i.o.constrMinReached {
-				// Fast-path to avoid span comparison. i.o.constrMinReached
-				// tells us that all items have end keys above our search
-				// span's start key.
-				return
-			}
-			if upperBound(i.n.items[i.pos]).contains(item) {
-				return
-			}
-		}
-		i.pos++
-	}
 }

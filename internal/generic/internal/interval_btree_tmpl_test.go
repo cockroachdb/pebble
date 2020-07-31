@@ -59,7 +59,6 @@ func (t *btree) Verify(tt *testing.T) {
 	t.verifyLeafSameDepth(tt)
 	t.verifyCountAllowed(tt)
 	t.isSorted(tt)
-	t.isUpperBoundCorrect(tt)
 }
 
 func (t *btree) verifyLeafSameDepth(tt *testing.T) {
@@ -125,26 +124,6 @@ func (n *node) isSorted(t *testing.T) {
 	}
 	n.recurse(func(child *node, _ int16) {
 		child.isSorted(t)
-	})
-}
-
-func (t *btree) isUpperBoundCorrect(tt *testing.T) {
-	t.root.isUpperBoundCorrect(tt)
-}
-
-func (n *node) isUpperBoundCorrect(t *testing.T) {
-	require.Equal(t, 0, n.findUpperBound().compare(n.max))
-	for i := int16(1); i < n.count; i++ {
-		require.LessOrEqual(t, upperBound(n.items[i]).compare(n.max), 0)
-	}
-	if !n.leaf {
-		for i := int16(0); i <= n.count; i++ {
-			child := n.children[i]
-			require.LessOrEqual(t, child.max.compare(n.max), 0)
-		}
-	}
-	n.recurse(func(child *node, _ int16) {
-		child.isUpperBoundCorrect(t)
 	})
 }
 
@@ -232,19 +211,6 @@ func checkIter(t *testing.T, it iterator, start, end int, spanMemo map[int]examp
 	}
 	if i != start {
 		t.Fatalf("expected %d, but at %d: %+v", start, i, it)
-	}
-
-	all := newItem(spanWithEnd(start, end))
-	for it.FirstOverlap(all); it.Valid(); it.NextOverlap(all) {
-		item := it.Cur()
-		expected := spanWithMemo(i, spanMemo)
-		if !expected.Equal(spanFromItem(item)) {
-			t.Fatalf("expected %s, but found %s", expected, spanFromItem(item))
-		}
-		i++
-	}
-	if i != end {
-		t.Fatalf("expected %d, but at %d", end, i)
 	}
 }
 
@@ -339,142 +305,6 @@ func TestBTreeSeek(t *testing.T) {
 	it.SeekLT(newItem(span(0)))
 	if it.Valid() {
 		t.Fatalf("expected invalid iterator")
-	}
-}
-
-// TestBTreeSeekOverlap tests btree iterator overlap operations.
-func TestBTreeSeekOverlap(t *testing.T) {
-	const count = 513
-	const size = 2 * maxItems
-
-	var tr btree
-	for i := 0; i < count; i++ {
-		tr.Set(newItem(spanWithEnd(i, i+size+1)))
-	}
-
-	// Iterate over overlaps with a point scan.
-	it := tr.MakeIter()
-	for i := 0; i < count+size; i++ {
-		scanItem := newItem(spanWithEnd(i, i))
-		it.FirstOverlap(scanItem)
-		for j := 0; j < size+1; j++ {
-			expStart := i - size + j
-			if expStart < 0 {
-				continue
-			}
-			if expStart >= count {
-				continue
-			}
-
-			if !it.Valid() {
-				t.Fatalf("%d/%d: expected valid iterator", i, j)
-			}
-			item := it.Cur()
-			expected := spanWithEnd(expStart, expStart+size+1)
-			if !expected.Equal(spanFromItem(item)) {
-				t.Fatalf("%d: expected %s, but found %s", i, expected, spanFromItem(item))
-			}
-
-			it.NextOverlap(scanItem)
-		}
-		if it.Valid() {
-			t.Fatalf("%d: expected invalid iterator %v", i, it.Cur())
-		}
-	}
-	it.FirstOverlap(newItem(span(count + size + 1)))
-	if it.Valid() {
-		t.Fatalf("expected invalid iterator")
-	}
-
-	// Iterate over overlaps with a range scan.
-	it = tr.MakeIter()
-	for i := 0; i < count+size; i++ {
-		scanItem := newItem(spanWithEnd(i, i+size+1))
-		it.FirstOverlap(scanItem)
-		for j := 0; j < 2*size+1; j++ {
-			expStart := i - size + j
-			if expStart < 0 {
-				continue
-			}
-			if expStart >= count {
-				continue
-			}
-
-			if !it.Valid() {
-				t.Fatalf("%d/%d: expected valid iterator", i, j)
-			}
-			item := it.Cur()
-			expected := spanWithEnd(expStart, expStart+size+1)
-			if !expected.Equal(spanFromItem(item)) {
-				t.Fatalf("%d: expected %s, but found %s", i, expected, spanFromItem(item))
-			}
-
-			it.NextOverlap(scanItem)
-		}
-		if it.Valid() {
-			t.Fatalf("%d: expected invalid iterator %v", i, it.Cur())
-		}
-	}
-	it.FirstOverlap(newItem(span(count + size + 1)))
-	if it.Valid() {
-		t.Fatalf("expected invalid iterator")
-	}
-}
-
-// TestBTreeSeekOverlapRandom tests btree iterator overlap operations using
-// randomized input.
-func TestBTreeSeekOverlapRandom(t *testing.T) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	const trials = 10
-	for i := 0; i < trials; i++ {
-		var tr btree
-
-		const count = 1000
-		items := make([]T, count)
-		itemSpans := make([]int, count)
-		for j := 0; j < count; j++ {
-			var item T
-			end := rng.Intn(count + 10)
-			if end <= j {
-				end = j
-				item = newItem(spanWithEnd(j, end))
-			} else {
-				item = newItem(spanWithEnd(j, end+1))
-			}
-			tr.Set(item)
-			items[j] = item
-			itemSpans[j] = end
-		}
-
-		const scanTrials = 100
-		for j := 0; j < scanTrials; j++ {
-			var scanItem T
-			scanStart := rng.Intn(count)
-			scanEnd := rng.Intn(count + 10)
-			if scanEnd <= scanStart {
-				scanEnd = scanStart
-				scanItem = newItem(spanWithEnd(scanStart, scanEnd))
-			} else {
-				scanItem = newItem(spanWithEnd(scanStart, scanEnd+1))
-			}
-
-			var exp, found []T
-			for startKey, endKey := range itemSpans {
-				if startKey <= scanEnd && endKey >= scanStart {
-					exp = append(exp, items[startKey])
-				}
-			}
-
-			it := tr.MakeIter()
-			it.FirstOverlap(scanItem)
-			for it.Valid() {
-				found = append(found, it.Cur())
-				it.NextOverlap(scanItem)
-			}
-
-			require.Equal(t, len(exp), len(found), "search for %v", spanFromItem(scanItem))
-		}
 	}
 }
 
@@ -876,38 +706,6 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 	})
 }
 
-// BenchmarkBTreeIterFirstOverlap measures the cost of finding a single
-// overlapping item using a btree iterator.
-func BenchmarkBTreeIterFirstOverlap(b *testing.B) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var spans []exampleSpan
-		var tr btree
-
-		for i := 0; i < count; i++ {
-			s := spanWithEnd(i, i+1)
-			spans = append(spans, s)
-			tr.Set(newItem(s))
-		}
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			j := rng.Intn(len(spans))
-			s := spans[j]
-			it := tr.MakeIter()
-			it.FirstOverlap(newItem(s))
-			if testing.Verbose() {
-				if !it.Valid() {
-					b.Fatal("expected to find key")
-				}
-				if !s.Equal(spanFromItem(it.Cur())) {
-					b.Fatalf("expected %s, but found %s", s, spanFromItem(it.Cur()))
-				}
-			}
-		}
-	})
-}
-
 // BenchmarkBTreeIterNext measures the cost of seeking a btree iterator to the
 // next item in the tree.
 func BenchmarkBTreeIterNext(b *testing.B) {
@@ -949,51 +747,5 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 			it.First()
 		}
 		it.Prev()
-	}
-}
-
-// BenchmarkBTreeIterNextOverlap measures the cost of seeking a btree iterator
-// to the next overlapping item in the tree.
-func BenchmarkBTreeIterNextOverlap(b *testing.B) {
-	var tr btree
-
-	const count = 8 << 10
-	const size = 2 * maxItems
-	for i := 0; i < count; i++ {
-		item := newItem(spanWithEnd(i, i+size+1))
-		tr.Set(item)
-	}
-
-	allCmd := newItem(spanWithEnd(0, count+1))
-	it := tr.MakeIter()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if !it.Valid() {
-			it.FirstOverlap(allCmd)
-		}
-		it.NextOverlap(allCmd)
-	}
-}
-
-// BenchmarkBTreeIterOverlapScan measures the cost of scanning over all
-// overlapping items using a btree iterator.
-func BenchmarkBTreeIterOverlapScan(b *testing.B) {
-	var tr btree
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	const count = 8 << 10
-	const size = 2 * maxItems
-	for i := 0; i < count; i++ {
-		tr.Set(newItem(spanWithEnd(i, i+size+1)))
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		item := newItem(randomSpan(rng, count))
-		it := tr.MakeIter()
-		it.FirstOverlap(item)
-		for it.Valid() {
-			it.NextOverlap(item)
-		}
 	}
 }
