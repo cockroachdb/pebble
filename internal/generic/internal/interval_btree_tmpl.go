@@ -23,33 +23,6 @@ const (
 	minItems = degree - 1
 )
 
-// cmp returns a value indicating the sort order relationship between
-// a and b. The comparison is performed lexicographically on
-//  (a.Key(), a.ID())
-// and
-//  (b.Key(), b.ID())
-// tuples.
-//
-// Given c = cmp(a, b):
-//
-//  c == -1  if (a.Key(), a.ID()) <  (b.Key(), b.ID())
-//  c ==  0  if (a.Key(), a.ID()) == (b.Key(), b.ID())
-//  c ==  1  if (a.Key(), a.ID()) >  (b.Key(), b.ID())
-//
-func cmp(a, b T) int {
-	c := bytes.Compare(a.Key(), b.Key())
-	if c != 0 {
-		return c
-	}
-	if a.ID() < b.ID() {
-		return -1
-	} else if a.ID() > b.ID() {
-		return 1
-	} else {
-		return 0
-	}
-}
-
 // keyBound represents the upper-bound of a key range.
 type keyBound struct {
 	key []byte
@@ -282,7 +255,7 @@ func (n *node) popFront() (T, *node) {
 // find returns the index where the given item should be inserted into this
 // list. 'found' is true if the item already exists in the list at the given
 // index.
-func (n *node) find(item T) (index int, found bool) {
+func (n *node) find(cmp func(T, T) int, item T) (index int, found bool) {
 	// Logic copied from sort.Search. Inlining this gave
 	// an 11% speedup on BenchmarkBTreeDeleteInsert.
 	i, j := 0, int(n.count)
@@ -349,8 +322,8 @@ func (n *node) split(i int) (T, *node) {
 // nodes in the subtree exceed maxItems items. Returns true if an existing item
 // was replaced and false if a item was inserted. Also returns whether the
 // node's upper bound changes.
-func (n *node) insert(item T) (replaced bool) {
-	i, found := n.find(item)
+func (n *node) insert(cmp func(T, T) int, item T) (replaced bool) {
+	i, found := n.find(cmp, item)
 	if found {
 		n.items[i] = item
 		return true
@@ -373,7 +346,7 @@ func (n *node) insert(item T) (replaced bool) {
 			return true
 		}
 	}
-	replaced = mut(&n.children[i]).insert(item)
+	replaced = mut(&n.children[i]).insert(cmp, item)
 	return replaced
 }
 
@@ -397,8 +370,8 @@ func (n *node) removeMax() T {
 // remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
 // Also returns whether the node's upper bound changes.
-func (n *node) remove(item T) (out T) {
-	i, found := n.find(item)
+func (n *node) remove(cmp func(T, T) int, item T) (out T) {
+	i, found := n.find(cmp, item)
 	if n.leaf {
 		if found {
 			out, _ = n.removeAt(i)
@@ -409,7 +382,7 @@ func (n *node) remove(item T) (out T) {
 	if n.children[i].count <= minItems {
 		// Child not large enough to remove from.
 		n.rebalanceOrMerge(i)
-		return n.remove(item)
+		return n.remove(cmp, item)
 	}
 	child := mut(&n.children[i])
 	if found {
@@ -419,7 +392,7 @@ func (n *node) remove(item T) (out T) {
 		return out
 	}
 	// Latch is not in this node and child is large enough to remove from.
-	out = child.remove(item)
+	out = child.remove(cmp, item)
 	return out
 }
 
@@ -551,6 +524,7 @@ func (n *node) rebalanceOrMerge(i int) {
 type btree struct {
 	root   *node
 	length int
+	cmp    func(T, T) int
 }
 
 // Reset removes all items from the btree. In doing so, it allows memory
@@ -593,7 +567,7 @@ func (t *btree) Delete(item T) {
 	if t.root == nil || t.root.count == 0 {
 		return
 	}
-	if out := mut(&t.root).remove(item); out != nilT {
+	if out := mut(&t.root).remove(t.cmp, item); out != nilT {
 		t.length--
 	}
 	if t.root.count == 0 {
@@ -621,7 +595,7 @@ func (t *btree) Set(item T) {
 		newRoot.children[1] = splitNode
 		t.root = newRoot
 	}
-	if replaced := mut(&t.root).insert(item); !replaced {
+	if replaced := mut(&t.root).insert(t.cmp, item); !replaced {
 		t.length++
 	}
 }
@@ -630,7 +604,7 @@ func (t *btree) Set(item T) {
 // iterator after modifications are made to the tree. If modifications are made,
 // create a new iterator.
 func (t *btree) MakeIter() iterator {
-	return iterator{r: t.root, pos: -1}
+	return iterator{r: t.root, pos: -1, cmp: t.cmp}
 }
 
 // Height returns the height of the tree.
@@ -743,6 +717,7 @@ type iterator struct {
 	r   *node
 	n   *node
 	pos int16
+	cmp func(T, T) int
 	s   iterStack
 }
 
@@ -774,7 +749,7 @@ func (i *iterator) SeekGE(item T) {
 		return
 	}
 	for {
-		pos, found := i.n.find(item)
+		pos, found := i.n.find(i.cmp, item)
 		i.pos = int16(pos)
 		if found {
 			return
@@ -796,7 +771,7 @@ func (i *iterator) SeekLT(item T) {
 		return
 	}
 	for {
-		pos, found := i.n.find(item)
+		pos, found := i.n.find(i.cmp, item)
 		i.pos = int16(pos)
 		if found || i.n.leaf {
 			i.Prev()

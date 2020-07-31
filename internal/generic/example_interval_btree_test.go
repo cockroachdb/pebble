@@ -7,6 +7,7 @@
 package generic
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -37,6 +38,33 @@ func newItem(s exampleKey) *example {
 
 func exampleKeyFromItem(i *example) exampleKey {
 	return exampleKey{Key: string(i.Key())}
+}
+
+// cmp returns a value indicating the sort order relationship between
+// a and b. The comparison is performed lexicographically on
+//  (a.Key(), a.ID())
+// and
+//  (b.Key(), b.ID())
+// tuples.
+//
+// Given c = cmp(a, b):
+//
+//  c == -1  if (a.Key(), a.ID()) <  (b.Key(), b.ID())
+//  c ==  0  if (a.Key(), a.ID()) == (b.Key(), b.ID())
+//  c ==  1  if (a.Key(), a.ID()) >  (b.Key(), b.ID())
+//
+func cmp(a, b *example) int {
+	c := bytes.Compare(a.Key(), b.Key())
+	if c != 0 {
+		return c
+	}
+	if a.ID() < b.ID() {
+		return -1
+	} else if a.ID() > b.ID() {
+		return 1
+	} else {
+		return 0
+	}
 }
 
 //////////////////////////////////////////
@@ -99,10 +127,10 @@ func (n *node) verifyCountAllowed(t *testing.T, root bool) {
 }
 
 func (t *btree) isSorted(tt *testing.T) {
-	t.root.isSorted(tt)
+	t.root.isSorted(tt, t.cmp)
 }
 
-func (n *node) isSorted(t *testing.T) {
+func (n *node) isSorted(t *testing.T, cmp func(*example, *example) int) {
 	for i := int16(1); i < n.count; i++ {
 		require.LessOrEqual(t, cmp(n.items[i-1], n.items[i]), 0)
 	}
@@ -116,7 +144,7 @@ func (n *node) isSorted(t *testing.T) {
 		}
 	}
 	n.recurse(func(child *node, _ int16) {
-		child.isSorted(t)
+		child.isSorted(t, cmp)
 	})
 }
 
@@ -184,6 +212,7 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]exampl
 // TestBTree tests basic btree operations.
 func TestBTree(t *testing.T) {
 	var tr btree
+	tr.cmp = cmp
 	keyMemo := make(map[int]exampleKey)
 
 	// With degree == 16 (max-items/node == 31) we need 513 items in order for
@@ -237,6 +266,7 @@ func TestBTreeSeek(t *testing.T) {
 	const count = 513
 
 	var tr btree
+	tr.cmp = cmp
 	for i := 0; i < count; i++ {
 		tr.Set(newItem(key(i * 2)))
 	}
@@ -309,6 +339,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 
 	wg.Add(1)
 	var tr btree
+	tr.cmp = cmp
 	go populate(&tr, 0)
 	wg.Wait()
 	close(treeC)
@@ -480,6 +511,7 @@ func BenchmarkBTreeInsert(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; {
 			var tr btree
+			tr.cmp = cmp
 			for _, item := range insertP {
 				tr.Set(item)
 				i++
@@ -499,6 +531,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 		for i := 0; i < b.N; {
 			b.StopTimer()
 			var tr btree
+			tr.cmp = cmp
 			for _, item := range insertP {
 				tr.Set(item)
 			}
@@ -522,6 +555,7 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		insertP := perm(count)
 		var tr btree
+		tr.cmp = cmp
 		for _, item := range insertP {
 			tr.Set(item)
 		}
@@ -561,6 +595,8 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 			forBenchmarkSizes(b, func(b *testing.B, count int) {
 				insertP := perm(count)
 				var tr, trReset btree
+				tr.cmp = cmp
+				trReset.cmp = cmp
 				for _, item := range insertP {
 					tr.Set(item)
 				}
@@ -583,6 +619,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 // BenchmarkBTreeMakeIter measures the cost of creating a btree iterator.
 func BenchmarkBTreeMakeIter(b *testing.B) {
 	var tr btree
+	tr.cmp = cmp
 	for i := 0; i < b.N; i++ {
 		it := tr.MakeIter()
 		it.First()
@@ -596,6 +633,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []exampleKey
 		var tr btree
+		tr.cmp = cmp
 
 		for i := 0; i < count; i++ {
 			s := key(i)
@@ -627,6 +665,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []exampleKey
 		var tr btree
+		tr.cmp = cmp
 
 		for i := 0; i < count; i++ {
 			k := key(i)
@@ -663,6 +702,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 // next item in the tree.
 func BenchmarkBTreeIterNext(b *testing.B) {
 	var tr btree
+	tr.cmp = cmp
 
 	const count = 8 << 10
 	const size = 2 * maxItems
@@ -685,6 +725,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 // previous item in the tree.
 func BenchmarkBTreeIterPrev(b *testing.B) {
 	var tr btree
+	tr.cmp = cmp
 
 	const count = 8 << 10
 	const size = 2 * maxItems
