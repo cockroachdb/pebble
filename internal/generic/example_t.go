@@ -13,16 +13,14 @@ package generic
 //go:generate ./gen.sh *example generic
 
 type example struct {
-	id   uint64
-	span exampleSpan
+	id  uint64
+	key exampleKey
 }
 
 // Methods required by generic contract.
-func (ex *example) ID() uint64         { return ex.id }
-func (ex *example) Key() []byte        { return []byte(ex.span.Key) }
-func (ex *example) EndKey() []byte     { return []byte(ex.span.EndKey) }
-func (ex *example) String() string     { return ex.span.String() }
-func (ex *example) New() *example      { return new(example) }
-func (ex *example) SetID(v uint64)     { ex.id = v }
-func (ex *example) SetKey(v []byte)    { ex.span.Key = string(v) }
-func (ex *example) SetEndKey(v []byte) { ex.span.EndKey = string(v) }
+func (ex *example) ID() uint64      { return ex.id }
+func (ex *example) Key() []byte     { return []byte(ex.key.Key) }
+func (ex *example) String() string  { return ex.key.String() }
+func (ex *example) New() *example   { return new(example) }
+func (ex *example) SetID(v uint64)  { ex.id = v }
+func (ex *example) SetKey(v []byte) { ex.key.Key = string(v) }

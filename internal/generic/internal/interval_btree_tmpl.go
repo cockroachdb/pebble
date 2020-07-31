@@ -31,23 +31,19 @@ const (
 
 // cmp returns a value indicating the sort order relationship between
 // a and b. The comparison is performed lexicographically on
-//  (a.Key(), a.EndKey(), a.ID())
+//  (a.Key(), a.ID())
 // and
-//  (b.Key(), b.EndKey(), b.ID())
+//  (b.Key(), b.ID())
 // tuples.
 //
 // Given c = cmp(a, b):
 //
-//  c == -1  if (a.Key(), a.EndKey(), a.ID()) <  (b.Key(), b.EndKey(), b.ID())
-//  c ==  0  if (a.Key(), a.EndKey(), a.ID()) == (b.Key(), b.EndKey(), b.ID())
-//  c ==  1  if (a.Key(), a.EndKey(), a.ID()) >  (b.Key(), b.EndKey(), b.ID())
+//  c == -1  if (a.Key(), a.ID()) <  (b.Key(), b.ID())
+//  c ==  0  if (a.Key(), a.ID()) == (b.Key(), b.ID())
+//  c ==  1  if (a.Key(), a.ID()) >  (b.Key(), b.ID())
 //
 func cmp(a, b T) int {
 	c := bytes.Compare(a.Key(), b.Key())
-	if c != 0 {
-		return c
-	}
-	c = bytes.Compare(a.EndKey(), b.EndKey())
 	if c != 0 {
 		return c
 	}

@@ -23,27 +23,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type exampleSpan struct {
-	Key, EndKey string
+type exampleKey struct {
+	Key string
 }
 
-func (e exampleSpan) Equal(o exampleSpan) bool {
-	return e.Key == o.Key && e.EndKey == o.EndKey
+func (e exampleKey) Equal(o exampleKey) bool {
+	return e.Key == o.Key
 }
 
-func (e exampleSpan) String() string {
-	return fmt.Sprintf("%s-%s", e.Key, e.EndKey)
+func (e exampleKey) String() string {
+	return e.Key
 }
 
-func newItem(s exampleSpan) T {
+func newItem(s exampleKey) T {
 	i := nilT.New()
 	i.SetKey([]byte(s.Key))
-	i.SetEndKey([]byte(s.EndKey))
 	return i
 }
 
-func spanFromItem(i T) exampleSpan {
-	return exampleSpan{Key: string(i.Key()), EndKey: string(i.EndKey())}
+func exampleKeyFromItem(i T) exampleKey {
+	return exampleKey{Key: string(i.Key())}
 }
 
 //////////////////////////////////////////
@@ -139,61 +138,35 @@ func (n *node) recurse(f func(child *node, pos int16)) {
 //              Unit Tests              //
 //////////////////////////////////////////
 
-func key(i int) string {
+func key(i int) exampleKey {
 	if i < 0 || i > 99999 {
 		panic("key out of bounds")
 	}
-	return fmt.Sprintf("%05d", i)
-}
-
-func span(i int) exampleSpan {
-	switch i % 10 {
-	case 0:
-		return exampleSpan{Key: key(i)}
-	case 1:
-		return exampleSpan{Key: key(i), EndKey: key(i + 1)}
-	case 2:
-		return exampleSpan{Key: key(i), EndKey: key(i + 64)}
-	default:
-		return exampleSpan{Key: key(i), EndKey: key(i + 4)}
+	return exampleKey{
+		Key: fmt.Sprintf("%05d", i),
 	}
 }
 
-func spanWithEnd(start, end int) exampleSpan {
-	if start < end {
-		return exampleSpan{Key: key(start), EndKey: key(end)}
-	} else if start == end {
-		return exampleSpan{Key: key(start)}
-	} else {
-		panic("illegal span")
-	}
-}
-
-func spanWithMemo(i int, memo map[int]exampleSpan) exampleSpan {
+func keyWithMemo(i int, memo map[int]exampleKey) exampleKey {
 	if s, ok := memo[i]; ok {
 		return s
 	}
-	s := span(i)
+	s := key(i)
 	memo[i] = s
 	return s
 }
 
-func randomSpan(rng *rand.Rand, n int) exampleSpan {
-	start := rng.Intn(n)
-	end := rng.Intn(n + 1)
-	if end < start {
-		start, end = end, start
-	}
-	return spanWithEnd(start, end)
+func randomExampleKey(rng *rand.Rand, n int) exampleKey {
+	return key(rng.Intn(n))
 }
 
-func checkIter(t *testing.T, it iterator, start, end int, spanMemo map[int]exampleSpan) {
+func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]exampleKey) {
 	i := start
 	for it.First(); it.Valid(); it.Next() {
 		item := it.Cur()
-		expected := spanWithMemo(i, spanMemo)
-		if !expected.Equal(spanFromItem(item)) {
-			t.Fatalf("expected %s, but found %s", expected, spanFromItem(item))
+		expected := keyWithMemo(i, keyMemo)
+		if !expected.Equal(exampleKeyFromItem(item)) {
+			t.Fatalf("expected %s, but found %s", expected, exampleKeyFromItem(item))
 		}
 		i++
 	}
@@ -204,9 +177,9 @@ func checkIter(t *testing.T, it iterator, start, end int, spanMemo map[int]examp
 	for it.Last(); it.Valid(); it.Prev() {
 		i--
 		item := it.Cur()
-		expected := spanWithMemo(i, spanMemo)
-		if !expected.Equal(spanFromItem(item)) {
-			t.Fatalf("expected %s, but found %s", expected, spanFromItem(item))
+		expected := keyWithMemo(i, keyMemo)
+		if !expected.Equal(exampleKeyFromItem(item)) {
+			t.Fatalf("expected %s, but found %s", expected, exampleKeyFromItem(item))
 		}
 	}
 	if i != start {
@@ -217,7 +190,7 @@ func checkIter(t *testing.T, it iterator, start, end int, spanMemo map[int]examp
 // TestBTree tests basic btree operations.
 func TestBTree(t *testing.T) {
 	var tr btree
-	spanMemo := make(map[int]exampleSpan)
+	keyMemo := make(map[int]exampleKey)
 
 	// With degree == 16 (max-items/node == 31) we need 513 items in order for
 	// there to be 3 levels in the tree. The count here is comfortably above
@@ -226,42 +199,42 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.Set(newItem(span(i)))
+		tr.Set(newItem(key(i)))
 		tr.Verify(t)
 		if e := i + 1; e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
 		}
-		checkIter(t, tr.MakeIter(), 0, i+1, spanMemo)
+		checkIter(t, tr.MakeIter(), 0, i+1, keyMemo)
 	}
 
 	// Delete keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.Delete(newItem(span(i)))
+		tr.Delete(newItem(key(i)))
 		tr.Verify(t)
 		if e := count - (i + 1); e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
 		}
-		checkIter(t, tr.MakeIter(), i+1, count, spanMemo)
+		checkIter(t, tr.MakeIter(), i+1, count, keyMemo)
 	}
 
 	// Add keys in reverse sorted order.
 	for i := 0; i < count; i++ {
-		tr.Set(newItem(span(count - i)))
+		tr.Set(newItem(key(count - i)))
 		tr.Verify(t)
 		if e := i + 1; e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
 		}
-		checkIter(t, tr.MakeIter(), count-i, count+1, spanMemo)
+		checkIter(t, tr.MakeIter(), count-i, count+1, keyMemo)
 	}
 
 	// Delete keys in reverse sorted order.
 	for i := 0; i < count; i++ {
-		tr.Delete(newItem(span(count - i)))
+		tr.Delete(newItem(key(count - i)))
 		tr.Verify(t)
 		if e := count - (i + 1); e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
 		}
-		checkIter(t, tr.MakeIter(), 1, count-i, spanMemo)
+		checkIter(t, tr.MakeIter(), 1, count-i, keyMemo)
 	}
 }
 
@@ -271,38 +244,38 @@ func TestBTreeSeek(t *testing.T) {
 
 	var tr btree
 	for i := 0; i < count; i++ {
-		tr.Set(newItem(span(i * 2)))
+		tr.Set(newItem(key(i * 2)))
 	}
 
 	it := tr.MakeIter()
 	for i := 0; i < 2*count-1; i++ {
-		it.SeekGE(newItem(span(i)))
+		it.SeekGE(newItem(key(i)))
 		if !it.Valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
 		item := it.Cur()
-		expected := span(2 * ((i + 1) / 2))
-		if !expected.Equal(spanFromItem(item)) {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, spanFromItem(item))
+		expected := key(2 * ((i + 1) / 2))
+		if !expected.Equal(exampleKeyFromItem(item)) {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, exampleKeyFromItem(item))
 		}
 	}
-	it.SeekGE(newItem(span(2*count - 1)))
+	it.SeekGE(newItem(key(2*count - 1)))
 	if it.Valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 
 	for i := 1; i < 2*count; i++ {
-		it.SeekLT(newItem(span(i)))
+		it.SeekLT(newItem(key(i)))
 		if !it.Valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
 		item := it.Cur()
-		expected := span(2 * ((i - 1) / 2))
-		if !expected.Equal(spanFromItem(item)) {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, spanFromItem(item))
+		expected := key(2 * ((i - 1) / 2))
+		if !expected.Equal(exampleKeyFromItem(item)) {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, exampleKeyFromItem(item))
 		}
 	}
-	it.SeekLT(newItem(span(0)))
+	it.SeekLT(newItem(key(0)))
 	if it.Valid() {
 		t.Fatalf("expected invalid iterator")
 	}
@@ -389,75 +362,61 @@ func TestBTreeCmp(t *testing.T) {
 	// Avoid the slice literal syntax, which GofmtSimplify mandates the use of
 	// anonymous constructors with.
 	type testCase struct {
-		spanA, spanB exampleSpan
-		idA, idB     uint64
-		exp          int
+		keyA, keyB exampleKey
+		idA, idB   uint64
+		exp        int
 	}
 	var testCases []testCase
 	testCases = append(testCases,
 		testCase{
-			spanA: exampleSpan{Key: "a"},
-			spanB: exampleSpan{Key: "a"},
-			idA:   1,
-			idB:   1,
-			exp:   0,
+			keyA: exampleKey{Key: "a"},
+			keyB: exampleKey{Key: "a"},
+			idA:  1,
+			idB:  1,
+			exp:  0,
 		},
 		testCase{
-			spanA: exampleSpan{Key: "a"},
-			spanB: exampleSpan{Key: "a", EndKey: "b"},
-			idA:   1,
-			idB:   1,
-			exp:   -1,
+			keyA: exampleKey{Key: "a"},
+			keyB: exampleKey{Key: "a"},
+			idA:  1,
+			idB:  1,
+			exp:  0,
 		},
 		testCase{
-			spanA: exampleSpan{Key: "a", EndKey: "c"},
-			spanB: exampleSpan{Key: "a", EndKey: "b"},
-			idA:   1,
-			idB:   1,
-			exp:   1,
+			keyA: exampleKey{Key: "a"},
+			keyB: exampleKey{Key: "a"},
+			idA:  1,
+			idB:  2,
+			exp:  -1,
 		},
 		testCase{
-			spanA: exampleSpan{Key: "a", EndKey: "c"},
-			spanB: exampleSpan{Key: "a", EndKey: "c"},
-			idA:   1,
-			idB:   1,
-			exp:   0,
+			keyA: exampleKey{Key: "a"},
+			keyB: exampleKey{Key: "a"},
+			idA:  2,
+			idB:  1,
+			exp:  1,
 		},
 		testCase{
-			spanA: exampleSpan{Key: "a"},
-			spanB: exampleSpan{Key: "a"},
-			idA:   1,
-			idB:   2,
-			exp:   -1,
+			keyA: exampleKey{Key: "b"},
+			keyB: exampleKey{Key: "a"},
+			idA:  1,
+			idB:  1,
+			exp:  1,
 		},
 		testCase{
-			spanA: exampleSpan{Key: "a"},
-			spanB: exampleSpan{Key: "a"},
-			idA:   2,
-			idB:   1,
-			exp:   1,
-		},
-		testCase{
-			spanA: exampleSpan{Key: "b"},
-			spanB: exampleSpan{Key: "a", EndKey: "c"},
-			idA:   1,
-			idB:   1,
-			exp:   1,
-		},
-		testCase{
-			spanA: exampleSpan{Key: "b", EndKey: "e"},
-			spanB: exampleSpan{Key: "c", EndKey: "d"},
-			idA:   1,
-			idB:   1,
-			exp:   -1,
+			keyA: exampleKey{Key: "b"},
+			keyB: exampleKey{Key: "c"},
+			idA:  1,
+			idB:  1,
+			exp:  -1,
 		},
 	)
 	for _, tc := range testCases {
-		name := fmt.Sprintf("cmp(%s:%d,%s:%d)", tc.spanA, tc.idA, tc.spanB, tc.idB)
+		name := fmt.Sprintf("cmp(%s:%d,%s:%d)", tc.keyA, tc.idA, tc.keyB, tc.idB)
 		t.Run(name, func(t *testing.T) {
-			laA := newItem(tc.spanA)
+			laA := newItem(tc.keyA)
 			laA.SetID(tc.idA)
-			laB := newItem(tc.spanB)
+			laB := newItem(tc.keyB)
 			laB.SetID(tc.idB)
 			require.Equal(t, tc.exp, cmp(laA, laB))
 		})
@@ -485,18 +444,18 @@ func TestIterStack(t *testing.T) {
 //              Benchmarks              //
 //////////////////////////////////////////
 
-// perm returns a random permutation of items with spans in the range [0, n).
+// perm returns a random permutation of items with keys in the range [0, n).
 func perm(n int) (out []T) {
 	for _, i := range rand.Perm(n) {
-		out = append(out, newItem(spanWithEnd(i, i+1)))
+		out = append(out, newItem(key(i)))
 	}
 	return out
 }
 
-// rang returns an ordered list of items with spans in the range [m, n].
+// rang returns an ordered list of items with keys in the range [m, n].
 func rang(m, n int) (out []T) {
 	for i := m; i <= n; i++ {
-		out = append(out, newItem(spanWithEnd(i, i+1)))
+		out = append(out, newItem(key(i)))
 	}
 	return out
 }
@@ -641,26 +600,26 @@ func BenchmarkBTreeMakeIter(b *testing.B) {
 func BenchmarkBTreeIterSeekGE(b *testing.B) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var spans []exampleSpan
+		var keys []exampleKey
 		var tr btree
 
 		for i := 0; i < count; i++ {
-			s := span(i)
-			spans = append(spans, s)
+			s := key(i)
+			keys = append(keys, s)
 			tr.Set(newItem(s))
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			s := spans[rng.Intn(len(spans))]
+			k := keys[rng.Intn(len(keys))]
 			it := tr.MakeIter()
-			it.SeekGE(newItem(s))
+			it.SeekGE(newItem(k))
 			if testing.Verbose() {
 				if !it.Valid() {
 					b.Fatal("expected to find key")
 				}
-				if !s.Equal(spanFromItem(it.Cur())) {
-					b.Fatalf("expected %s, but found %s", s, spanFromItem(it.Cur()))
+				if !k.Equal(exampleKeyFromItem(it.Cur())) {
+					b.Fatalf("expected %s, but found %s", k, exampleKeyFromItem(it.Cur()))
 				}
 			}
 		}
@@ -672,21 +631,21 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 func BenchmarkBTreeIterSeekLT(b *testing.B) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var spans []exampleSpan
+		var keys []exampleKey
 		var tr btree
 
 		for i := 0; i < count; i++ {
-			s := span(i)
-			spans = append(spans, s)
-			tr.Set(newItem(s))
+			k := key(i)
+			keys = append(keys, k)
+			tr.Set(newItem(k))
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			j := rng.Intn(len(spans))
-			s := spans[j]
+			j := rng.Intn(len(keys))
+			k := keys[j]
 			it := tr.MakeIter()
-			it.SeekLT(newItem(s))
+			it.SeekLT(newItem(k))
 			if testing.Verbose() {
 				if j == 0 {
 					if it.Valid() {
@@ -696,9 +655,9 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 					if !it.Valid() {
 						b.Fatal("expected to find key")
 					}
-					s := spans[j-1]
-					if !s.Equal(spanFromItem(it.Cur())) {
-						b.Fatalf("expected %s, but found %s", s, spanFromItem(it.Cur()))
+					k := keys[j-1]
+					if !k.Equal(exampleKeyFromItem(it.Cur())) {
+						b.Fatalf("expected %s, but found %s", k, exampleKeyFromItem(it.Cur()))
 					}
 				}
 			}
@@ -714,7 +673,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 	const count = 8 << 10
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
-		item := newItem(spanWithEnd(i, i+size+1))
+		item := newItem(key(i))
 		tr.Set(item)
 	}
 
@@ -736,7 +695,7 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 	const count = 8 << 10
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
-		item := newItem(spanWithEnd(i, i+size+1))
+		item := newItem(key(i))
 		tr.Set(item)
 	}
 
