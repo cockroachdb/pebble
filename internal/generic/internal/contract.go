@@ -15,11 +15,9 @@ package internal
 type T interface {
 	ID() uint64
 	Key() []byte
-	EndKey() []byte
 	String() string
 	// Used for testing only.
 	New() T
 	SetID(uint64)
 	SetKey([]byte)
-	SetEndKey([]byte)
 }
