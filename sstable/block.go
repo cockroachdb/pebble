@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"unsafe"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 )
@@ -256,7 +255,7 @@ func (i *blockIter) String() string {
 func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
-		return errors.New("pebble/table: invalid table (block has no restart points)")
+		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
 	i.cmp = cmp
 	i.restarts = int32(len(block)) - 4*(1+numRestarts)

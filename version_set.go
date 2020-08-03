@@ -38,6 +38,7 @@ type versionList = manifest.VersionList
 type versionSet struct {
 	// Immutable fields.
 	dirname string
+	// Set to DB.mu.
 	mu      *sync.Mutex
 	opts    *Options
 	fs      vfs.FS
@@ -177,13 +178,13 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		return err
 	}
 	if b[n-1] != '\n' {
-		return errors.Errorf("pebble: CURRENT file for DB %q is malformed", dirname)
+		return base.CorruptionErrorf("pebble: CURRENT file for DB %q is malformed", dirname)
 	}
 	b = bytes.TrimSpace(b)
 
 	var ok bool
 	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
-		return errors.Errorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
+		return base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
 	}
 
 	// Read the versionEdits in the manifest file.
@@ -221,7 +222,9 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 					errors.Safe(b), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
 			}
 		}
-		bve.Accumulate(&ve)
+		if err := bve.Accumulate(&ve); err != nil {
+			return err
+		}
 		if ve.MinUnflushedLogNum != 0 {
 			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 		}
@@ -250,7 +253,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// minUnflushedLogNum, even if WALs with non-zero file numbers are
 			// present in the directory.
 		} else {
-			return errors.Errorf("pebble: malformed manifest file %q for DB %q",
+			return base.CorruptionErrorf("pebble: malformed manifest file %q for DB %q",
 				errors.Safe(b), dirname)
 		}
 	}
@@ -384,7 +387,9 @@ func (vs *versionSet) logAndApply(
 		defer vs.mu.Lock()
 
 		var bve bulkVersionEdit
-		bve.Accumulate(ve)
+		if err := bve.Accumulate(ve); err != nil {
+			return err
+		}
 
 		var err error
 		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.Experimental.FlushSplitBytes)

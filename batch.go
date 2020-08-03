@@ -324,7 +324,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 		return nil
 	}
 	if len(batch.data) < batchHeaderLen {
-		return errors.New("pebble: invalid batch")
+		return base.CorruptionErrorf("pebble: invalid batch")
 	}
 
 	offset := len(b.data)
@@ -657,7 +657,7 @@ func (b *Batch) Repr() []byte {
 // Batch is no longer in use.
 func (b *Batch) SetRepr(data []byte) error {
 	if len(data) < batchHeaderLen {
-		return errors.New("invalid batch")
+		return base.CorruptionErrorf("invalid batch")
 	}
 	b.data = data
 	b.count = uint64(binary.LittleEndian.Uint32(b.countData()))
@@ -984,7 +984,7 @@ func (i *batchIter) Value() []byte {
 	offset, _, keyEnd := i.iter.KeyInfo()
 	data := i.batch.data
 	if len(data[offset:]) == 0 {
-		i.err = errors.New("corrupted batch")
+		i.err = base.CorruptionErrorf("corrupted batch")
 		return nil
 	}
 
@@ -1370,12 +1370,12 @@ func (i *flushableBatchIter) Key() *InternalKey {
 func (i *flushableBatchIter) Value() []byte {
 	p := i.data[i.offsets[i.index].offset:]
 	if len(p) == 0 {
-		i.err = errors.New("corrupted batch")
+		i.err = base.CorruptionErrorf("corrupted batch")
 		return nil
 	}
 	kind := InternalKeyKind(p[0])
 	if kind > InternalKeyKindMax {
-		i.err = errors.New("corrupted batch")
+		i.err = base.CorruptionErrorf("corrupted batch")
 		return nil
 	}
 	var value []byte
@@ -1385,7 +1385,7 @@ func (i *flushableBatchIter) Value() []byte {
 		keyEnd := i.offsets[i.index].keyEnd
 		_, value, ok = batchDecodeStr(i.data[keyEnd:])
 		if !ok {
-			i.err = errors.New("corrupted batch")
+			i.err = base.CorruptionErrorf("corrupted batch")
 			return nil
 		}
 	}
@@ -1469,12 +1469,12 @@ func (i flushFlushableBatchIter) Prev() (*InternalKey, []byte) {
 func (i flushFlushableBatchIter) valueSize() uint64 {
 	p := i.data[i.offsets[i.index].offset:]
 	if len(p) == 0 {
-		i.err = errors.New("corrupted batch")
+		i.err = base.CorruptionErrorf("corrupted batch")
 		return 0
 	}
 	kind := InternalKeyKind(p[0])
 	if kind > InternalKeyKindMax {
-		i.err = errors.New("corrupted batch")
+		i.err = base.CorruptionErrorf("corrupted batch")
 		return 0
 	}
 	var length uint64
@@ -1483,7 +1483,7 @@ func (i flushFlushableBatchIter) valueSize() uint64 {
 		keyEnd := i.offsets[i.index].keyEnd
 		v, n := binary.Uvarint(i.data[keyEnd:])
 		if n <= 0 {
-			i.err = errors.New("corrupted batch")
+			i.err = base.CorruptionErrorf("corrupted batch")
 			return 0
 		}
 		length = v + uint64(n)
