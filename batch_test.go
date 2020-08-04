@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -153,6 +155,83 @@ func TestBatchEmpty(t *testing.T) {
 	require.False(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
+}
+
+func TestBatchReset(t *testing.T) {
+	var b Batch
+	db := &DB{}
+	key := "test-key"
+	value := "test-value"
+	b.Set([]byte(key), []byte(value), nil)
+	d := b.DeleteRangeDeferred(len(key), len(value))
+	copy(d.Key, key)
+	copy(d.Value, value)
+	d.Finish()
+
+	b.setSeqNum(100)
+	b.db = db
+	b.applied = 1
+	b.commitErr = errors.New("test-error")
+	b.commit.Add(1)
+	require.Equal(t, uint32(2), b.Count())
+	require.Equal(t, uint64(1), b.countRangeDels)
+	require.True(t, len(b.data) > 0)
+	require.True(t, b.SeqNum() > 0)
+	require.True(t, b.memTableSize > 0)
+	require.NotEqual(t, b.deferredOp, DeferredBatchOp{})
+
+	b.Reset()
+	require.Equal(t, db, b.db)
+	require.Equal(t, uint32(0), b.applied)
+	require.Nil(t, b.commitErr)
+	require.Equal(t, uint32(0), b.Count())
+	require.Equal(t, uint64(0), b.countRangeDels)
+	require.Equal(t, batchHeaderLen, len(b.data))
+	require.Equal(t, uint64(0), b.SeqNum())
+	require.Equal(t, uint32(0), b.memTableSize)
+	require.Equal(t, b.deferredOp, DeferredBatchOp{})
+
+	var expected Batch
+	expected.SetRepr(b.data)
+	expected.db = db
+	require.Equal(t, &expected, &b)
+}
+
+func TestIndexedBatchReset(t *testing.T) {
+	getCount := func(sl *batchskl.Skiplist) int {
+		count := 0
+		iter := sl.NewIter(nil, nil)
+		defer iter.Close()
+		for iter.First(); iter.Valid(); iter.Next() {
+			count++
+		}
+		return count
+	}
+	b := newIndexedBatch(nil, DefaultComparer)
+	start := "start-key"
+	end := "end-key"
+	key := "test-key"
+	value := "test-value"
+	b.DeleteRange([]byte(start), []byte(end), nil)
+	b.Set([]byte(key), []byte(value), nil)
+	require.NotNil(t, b.rangeDelIndex)
+	require.NotNil(t, b.index)
+	require.Equal(t, 1, getCount(b.index))
+
+	b.Reset()
+	require.NotNil(t, b.cmp)
+	require.NotNil(t, b.formatKey)
+	require.NotNil(t, b.abbreviatedKey)
+	require.Nil(t, b.index)
+	require.Nil(t, b.rangeDelIndex)
+}
+
+func TestFlushableBatchReset(t *testing.T) {
+	var b Batch
+	b.flushable = newFlushableBatch(&b, DefaultComparer)
+
+	b.Reset()
+	require.Nil(t, b.flushable)
 }
 
 func TestBatchIncrement(t *testing.T) {
