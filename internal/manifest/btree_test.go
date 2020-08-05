@@ -66,8 +66,12 @@ func (t *btree) verifyCountAllowed(tt *testing.T) {
 
 func (n *node) verifyCountAllowed(t *testing.T, root bool) {
 	if !root {
-		require.GreaterOrEqual(t, n.count, int16(minItems), "file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
-		require.LessOrEqual(t, n.count, int16(maxItems), "file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
+		if n.count < int16(minItems) {
+			t.Errorf("file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
+		}
+		if n.count > int16(maxItems) {
+			t.Errorf("file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
+		}
 	}
 	for i, item := range n.items {
 		if i < int(n.count) {
@@ -96,15 +100,21 @@ func (t *btree) isSorted(tt *testing.T) {
 
 func (n *node) isSorted(t *testing.T, cmp func(*FileMetadata, *FileMetadata) int) {
 	for i := int16(1); i < n.count; i++ {
-		require.LessOrEqual(t, cmp(n.items[i-1], n.items[i]), 0)
+		if v := cmp(n.items[i-1], n.items[i]); v > 0 {
+			t.Errorf("items not in sorted order: %s, %s", n.items[i-1], n.items[i])
+		}
 	}
 	if !n.leaf {
 		for i := int16(0); i < n.count; i++ {
 			prev := n.children[i]
 			next := n.children[i+1]
 
-			require.LessOrEqual(t, cmp(prev.items[prev.count-1], n.items[i]), 0)
-			require.LessOrEqual(t, cmp(n.items[i], next.items[0]), 0)
+			if cmp(prev.items[prev.count-1], n.items[i]) > 0 {
+				t.Errorf("prev item %s greater than item %s", prev.items[prev.count-1], n.items[i])
+			}
+			if cmp(n.items[i], next.items[0]) > 0 {
+				t.Errorf("item %s greater than next item %s", n.items[i], next.items[0])
+			}
 		}
 	}
 	n.recurse(func(child *node, _ int16) {
