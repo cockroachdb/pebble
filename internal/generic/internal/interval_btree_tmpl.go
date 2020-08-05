@@ -7,7 +7,6 @@
 package internal
 
 import (
-	"bytes"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,39 +22,10 @@ const (
 	minItems = degree - 1
 )
 
-// keyBound represents the upper-bound of a key range.
-type keyBound struct {
-	key []byte
-	inc bool
-}
-
-func (b keyBound) compare(o keyBound) int {
-	c := bytes.Compare(b.key, o.key)
-	if c != 0 {
-		return c
-	}
-	if b.inc == o.inc {
-		return 0
-	}
-	if b.inc {
-		return 1
-	}
-	return -1
-}
-
-func (b keyBound) contains(a T) bool {
-	c := bytes.Compare(a.Key(), b.key)
-	if c == 0 {
-		return b.inc
-	}
-	return c < 0
-}
-
 type leafNode struct {
 	ref   int32
 	count int16
 	leaf  bool
-	max   keyBound
 	items [maxItems]T
 }
 
@@ -164,7 +134,6 @@ func (n *node) clone() *node {
 	// NB: copy field-by-field without touching n.ref to avoid
 	// triggering the race detector and looking like a data race.
 	c.count = n.count
-	c.max = n.max
 	c.items = n.items
 	if !c.leaf {
 		// Copy children and increase each refcount.
