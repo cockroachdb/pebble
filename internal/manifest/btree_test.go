@@ -2,10 +2,9 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package generic
+package manifest
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -13,56 +12,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
 
-type exampleKey struct {
-	Key string
-}
-
-func (e exampleKey) Equal(o exampleKey) bool {
-	return e.Key == o.Key
-}
-
-func (e exampleKey) String() string {
-	return e.Key
-}
-
-func newItem(s exampleKey) *example {
+func newItem(k InternalKey) *example {
 	i := nilT.New()
-	i.SetKey([]byte(s.Key))
+	i.SetKey(k)
 	return i
 }
 
-func exampleKeyFromItem(i *example) exampleKey {
-	return exampleKey{Key: string(i.Key())}
+func InternalKeyFromItem(i *example) InternalKey {
+	return i.key
 }
 
-// cmp returns a value indicating the sort order relationship between
-// a and b. The comparison is performed lexicographically on
-//  (a.Key(), a.ID())
-// and
-//  (b.Key(), b.ID())
-// tuples.
-//
-// Given c = cmp(a, b):
-//
-//  c == -1  if (a.Key(), a.ID()) <  (b.Key(), b.ID())
-//  c ==  0  if (a.Key(), a.ID()) == (b.Key(), b.ID())
-//  c ==  1  if (a.Key(), a.ID()) >  (b.Key(), b.ID())
-//
 func cmp(a, b *example) int {
-	c := bytes.Compare(a.Key(), b.Key())
-	if c != 0 {
-		return c
-	}
-	if a.ID() < b.ID() {
-		return -1
-	} else if a.ID() > b.ID() {
-		return 1
-	} else {
-		return 0
-	}
+	return cmpKey(a.key, b.key)
+}
+
+func cmpKey(a, b InternalKey) int {
+	return base.InternalCompare(base.DefaultComparer.Compare, a, b)
 }
 
 //////////////////////////////////////////
@@ -158,16 +127,14 @@ func (n *node) recurse(f func(child *node, pos int16)) {
 //              Unit Tests              //
 //////////////////////////////////////////
 
-func key(i int) exampleKey {
+func key(i int) InternalKey {
 	if i < 0 || i > 99999 {
 		panic("key out of bounds")
 	}
-	return exampleKey{
-		Key: fmt.Sprintf("%05d", i),
-	}
+	return base.MakeInternalKey([]byte(fmt.Sprintf("%05d", i)), 0, base.InternalKeyKindSet)
 }
 
-func keyWithMemo(i int, memo map[int]exampleKey) exampleKey {
+func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
 	if s, ok := memo[i]; ok {
 		return s
 	}
@@ -176,17 +143,17 @@ func keyWithMemo(i int, memo map[int]exampleKey) exampleKey {
 	return s
 }
 
-func randomExampleKey(rng *rand.Rand, n int) exampleKey {
+func randomInternalKey(rng *rand.Rand, n int) InternalKey {
 	return key(rng.Intn(n))
 }
 
-func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]exampleKey) {
+func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
 	i := start
 	for it.First(); it.Valid(); it.Next() {
 		item := it.Cur()
 		expected := keyWithMemo(i, keyMemo)
-		if !expected.Equal(exampleKeyFromItem(item)) {
-			t.Fatalf("expected %s, but found %s", expected, exampleKeyFromItem(item))
+		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, InternalKeyFromItem(item))
 		}
 		i++
 	}
@@ -198,8 +165,8 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]exampl
 		i--
 		item := it.Cur()
 		expected := keyWithMemo(i, keyMemo)
-		if !expected.Equal(exampleKeyFromItem(item)) {
-			t.Fatalf("expected %s, but found %s", expected, exampleKeyFromItem(item))
+		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, InternalKeyFromItem(item))
 		}
 	}
 	if i != start {
@@ -211,7 +178,7 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]exampl
 func TestBTree(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
-	keyMemo := make(map[int]exampleKey)
+	keyMemo := make(map[int]InternalKey)
 
 	// With degree == 16 (max-items/node == 31) we need 513 items in order for
 	// there to be 3 levels in the tree. The count here is comfortably above
@@ -277,8 +244,8 @@ func TestBTreeSeek(t *testing.T) {
 		}
 		item := it.Cur()
 		expected := key(2 * ((i + 1) / 2))
-		if !expected.Equal(exampleKeyFromItem(item)) {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, exampleKeyFromItem(item))
+		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, InternalKeyFromItem(item))
 		}
 	}
 	it.SeekGE(newItem(key(2*count - 1)))
@@ -293,8 +260,8 @@ func TestBTreeSeek(t *testing.T) {
 		}
 		item := it.Cur()
 		expected := key(2 * ((i - 1) / 2))
-		if !expected.Equal(exampleKeyFromItem(item)) {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, exampleKeyFromItem(item))
+		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, InternalKeyFromItem(item))
 		}
 	}
 	it.SeekLT(newItem(key(0)))
@@ -376,73 +343,6 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		if got := all(tree); !reflect.DeepEqual(wantpart, got) {
 			t.Errorf("tree %v mismatch, want %v got %v", i, len(want), len(got))
 		}
-	}
-}
-
-// TestBTreeCmp tests the btree item comparison.
-func TestBTreeCmp(t *testing.T) {
-	// NB: go_generics doesn't do well with anonymous types, so name this type.
-	// Avoid the slice literal syntax, which GofmtSimplify mandates the use of
-	// anonymous constructors with.
-	type testCase struct {
-		keyA, keyB exampleKey
-		idA, idB   uint64
-		exp        int
-	}
-	var testCases []testCase
-	testCases = append(testCases,
-		testCase{
-			keyA: exampleKey{Key: "a"},
-			keyB: exampleKey{Key: "a"},
-			idA:  1,
-			idB:  1,
-			exp:  0,
-		},
-		testCase{
-			keyA: exampleKey{Key: "a"},
-			keyB: exampleKey{Key: "a"},
-			idA:  1,
-			idB:  1,
-			exp:  0,
-		},
-		testCase{
-			keyA: exampleKey{Key: "a"},
-			keyB: exampleKey{Key: "a"},
-			idA:  1,
-			idB:  2,
-			exp:  -1,
-		},
-		testCase{
-			keyA: exampleKey{Key: "a"},
-			keyB: exampleKey{Key: "a"},
-			idA:  2,
-			idB:  1,
-			exp:  1,
-		},
-		testCase{
-			keyA: exampleKey{Key: "b"},
-			keyB: exampleKey{Key: "a"},
-			idA:  1,
-			idB:  1,
-			exp:  1,
-		},
-		testCase{
-			keyA: exampleKey{Key: "b"},
-			keyB: exampleKey{Key: "c"},
-			idA:  1,
-			idB:  1,
-			exp:  -1,
-		},
-	)
-	for _, tc := range testCases {
-		name := fmt.Sprintf("cmp(%s:%d,%s:%d)", tc.keyA, tc.idA, tc.keyB, tc.idB)
-		t.Run(name, func(t *testing.T) {
-			laA := newItem(tc.keyA)
-			laA.SetID(tc.idA)
-			laB := newItem(tc.keyB)
-			laB.SetID(tc.idB)
-			require.Equal(t, tc.exp, cmp(laA, laB))
-		})
 	}
 }
 
@@ -629,7 +529,7 @@ func BenchmarkBTreeMakeIter(b *testing.B) {
 func BenchmarkBTreeIterSeekGE(b *testing.B) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var keys []exampleKey
+		var keys []InternalKey
 		var tr btree
 		tr.cmp = cmp
 
@@ -648,8 +548,8 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 				if !it.Valid() {
 					b.Fatal("expected to find key")
 				}
-				if !k.Equal(exampleKeyFromItem(it.Cur())) {
-					b.Fatalf("expected %s, but found %s", k, exampleKeyFromItem(it.Cur()))
+				if cmpKey(k, InternalKeyFromItem(it.Cur())) != 0 {
+					b.Fatalf("expected %s, but found %s", k, InternalKeyFromItem(it.Cur()))
 				}
 			}
 		}
@@ -661,7 +561,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 func BenchmarkBTreeIterSeekLT(b *testing.B) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
-		var keys []exampleKey
+		var keys []InternalKey
 		var tr btree
 		tr.cmp = cmp
 
@@ -687,8 +587,8 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 						b.Fatal("expected to find key")
 					}
 					k := keys[j-1]
-					if !k.Equal(exampleKeyFromItem(it.Cur())) {
-						b.Fatalf("expected %s, but found %s", k, exampleKeyFromItem(it.Cur()))
+					if cmpKey(k, InternalKeyFromItem(it.Cur())) != 0 {
+						b.Fatalf("expected %s, but found %s", k, InternalKeyFromItem(it.Cur()))
 					}
 				}
 			}
