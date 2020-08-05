@@ -23,10 +23,6 @@ func newItem(k InternalKey) *FileMetadata {
 	}
 }
 
-func InternalKeyFromItem(i *FileMetadata) InternalKey {
-	return i.Smallest
-}
-
 func cmp(a, b *FileMetadata) int {
 	return cmpKey(a.Smallest, b.Smallest)
 }
@@ -70,14 +66,14 @@ func (t *btree) verifyCountAllowed(tt *testing.T) {
 
 func (n *node) verifyCountAllowed(t *testing.T, root bool) {
 	if !root {
-		require.GreaterOrEqual(t, n.count, int16(minItems), "latch count %d must be in range [%d,%d]", n.count, minItems, maxItems)
-		require.LessOrEqual(t, n.count, int16(maxItems), "latch count %d must be in range [%d,%d]", n.count, minItems, maxItems)
+		require.GreaterOrEqual(t, n.count, int16(minItems), "file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
+		require.LessOrEqual(t, n.count, int16(maxItems), "file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
 	}
 	for i, item := range n.items {
 		if i < int(n.count) {
-			require.NotNil(t, item, "latch below count")
+			require.NotNil(t, item, "file below count")
 		} else {
-			require.Nil(t, item, "latch above count")
+			require.Nil(t, item, "file above count")
 		}
 	}
 	if !n.leaf {
@@ -153,8 +149,8 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]Intern
 	for it.First(); it.Valid(); it.Next() {
 		item := it.Cur()
 		expected := keyWithMemo(i, keyMemo)
-		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
-			t.Fatalf("expected %s, but found %s", expected, InternalKeyFromItem(item))
+		if cmpKey(expected, item.Smallest) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
 		}
 		i++
 	}
@@ -166,8 +162,8 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]Intern
 		i--
 		item := it.Cur()
 		expected := keyWithMemo(i, keyMemo)
-		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
-			t.Fatalf("expected %s, but found %s", expected, InternalKeyFromItem(item))
+		if cmpKey(expected, item.Smallest) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
 		}
 	}
 	if i != start {
@@ -245,8 +241,8 @@ func TestBTreeSeek(t *testing.T) {
 		}
 		item := it.Cur()
 		expected := key(2 * ((i + 1) / 2))
-		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, InternalKeyFromItem(item))
+		if cmpKey(expected, item.Smallest) != 0 {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
 	it.SeekGE(newItem(key(2*count - 1)))
@@ -261,8 +257,8 @@ func TestBTreeSeek(t *testing.T) {
 		}
 		item := it.Cur()
 		expected := key(2 * ((i - 1) / 2))
-		if cmpKey(expected, InternalKeyFromItem(item)) != 0 {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, InternalKeyFromItem(item))
+		if cmpKey(expected, item.Smallest) != 0 {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
 	it.SeekLT(newItem(key(0)))
@@ -549,8 +545,8 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 				if !it.Valid() {
 					b.Fatal("expected to find key")
 				}
-				if cmpKey(k, InternalKeyFromItem(it.Cur())) != 0 {
-					b.Fatalf("expected %s, but found %s", k, InternalKeyFromItem(it.Cur()))
+				if cmpKey(k, it.Cur().Smallest) != 0 {
+					b.Fatalf("expected %s, but found %s", k, it.Cur().Smallest)
 				}
 			}
 		}
@@ -588,8 +584,8 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 						b.Fatal("expected to find key")
 					}
 					k := keys[j-1]
-					if cmpKey(k, InternalKeyFromItem(it.Cur())) != 0 {
-						b.Fatalf("expected %s, but found %s", k, InternalKeyFromItem(it.Cur()))
+					if cmpKey(k, it.Cur().Smallest) != 0 {
+						b.Fatalf("expected %s, but found %s", k, it.Cur().Smallest)
 					}
 				}
 			}

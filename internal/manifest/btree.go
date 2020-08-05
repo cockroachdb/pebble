@@ -284,8 +284,7 @@ func (n *node) split(i int) (*FileMetadata, *node) {
 
 // insert inserts a item into the subtree rooted at this node, making sure no
 // nodes in the subtree exceed maxItems items. Returns true if an existing item
-// was replaced and false if a item was inserted. Also returns whether the
-// node's upper bound changes.
+// was replaced and false if a item was inserted.
 func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (replaced bool) {
 	i, found := n.find(cmp, item)
 	if found {
@@ -333,7 +332,6 @@ func (n *node) removeMax() *FileMetadata {
 
 // remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
-// Also returns whether the node's upper bound changes.
 func (n *node) remove(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (out *FileMetadata) {
 	i, found := n.find(cmp, item)
 	if n.leaf {
@@ -479,9 +477,10 @@ func (n *node) rebalanceOrMerge(i int) {
 
 // btree is an implementation of a B-Tree.
 //
-// btree stores items in an ordered structure, allowing easy insertion,
-// removal, and iteration.  The B-Tree stores items in order based on their
-// key.
+// btree stores FileMetadata in an ordered structure, allowing easy insertion,
+// removal, and iteration. The B-Tree stores items in order based on cmp. The
+// first level of the LSM uses a cmp function that compares sequence numbers.
+// All other levels compare using table key boundaries.
 //
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
