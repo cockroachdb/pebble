@@ -11,19 +11,6 @@ import (
 	"unsafe"
 )
 
-type example struct {
-	id  uint64
-	key InternalKey
-}
-
-// Methods required by generic contract.
-func (ex *example) String() string       { return ex.key.String() }
-func (ex *example) New() *example        { return new(example) }
-func (ex *example) SetKey(k InternalKey) { ex.key = k }
-
-// nilT is a nil instance of the Template type.
-var nilT *example
-
 const (
 	degree   = 16
 	maxItems = 2*degree - 1
@@ -34,7 +21,7 @@ type leafNode struct {
 	ref   int32
 	count int16
 	leaf  bool
-	items [maxItems]*example
+	items [maxItems]*FileMetadata
 }
 
 type node struct {
@@ -153,7 +140,7 @@ func (n *node) clone() *node {
 	return c
 }
 
-func (n *node) insertAt(index int, item *example, nd *node) {
+func (n *node) insertAt(index int, item *FileMetadata, nd *node) {
 	if index < int(n.count) {
 		copy(n.items[index+1:n.count+1], n.items[index:n.count])
 		if !n.leaf {
@@ -167,7 +154,7 @@ func (n *node) insertAt(index int, item *example, nd *node) {
 	n.count++
 }
 
-func (n *node) pushBack(item *example, nd *node) {
+func (n *node) pushBack(item *FileMetadata, nd *node) {
 	n.items[n.count] = item
 	if !n.leaf {
 		n.children[n.count+1] = nd
@@ -175,7 +162,7 @@ func (n *node) pushBack(item *example, nd *node) {
 	n.count++
 }
 
-func (n *node) pushFront(item *example, nd *node) {
+func (n *node) pushFront(item *FileMetadata, nd *node) {
 	if !n.leaf {
 		copy(n.children[1:n.count+2], n.children[:n.count+1])
 		n.children[0] = nd
@@ -187,7 +174,7 @@ func (n *node) pushFront(item *example, nd *node) {
 
 // removeAt removes a value at a given index, pulling all subsequent values
 // back.
-func (n *node) removeAt(index int) (*example, *node) {
+func (n *node) removeAt(index int) (*FileMetadata, *node) {
 	var child *node
 	if !n.leaf {
 		child = n.children[index+1]
@@ -197,15 +184,15 @@ func (n *node) removeAt(index int) (*example, *node) {
 	n.count--
 	out := n.items[index]
 	copy(n.items[index:n.count], n.items[index+1:n.count+1])
-	n.items[n.count] = nilT
+	n.items[n.count] = nil
 	return out, child
 }
 
 // popBack removes and returns the last element in the list.
-func (n *node) popBack() (*example, *node) {
+func (n *node) popBack() (*FileMetadata, *node) {
 	n.count--
 	out := n.items[n.count]
-	n.items[n.count] = nilT
+	n.items[n.count] = nil
 	if n.leaf {
 		return out, nil
 	}
@@ -215,7 +202,7 @@ func (n *node) popBack() (*example, *node) {
 }
 
 // popFront removes and returns the first element in the list.
-func (n *node) popFront() (*example, *node) {
+func (n *node) popFront() (*FileMetadata, *node) {
 	n.count--
 	var child *node
 	if !n.leaf {
@@ -225,14 +212,14 @@ func (n *node) popFront() (*example, *node) {
 	}
 	out := n.items[0]
 	copy(n.items[:n.count], n.items[1:n.count+1])
-	n.items[n.count] = nilT
+	n.items[n.count] = nil
 	return out, child
 }
 
 // find returns the index where the given item should be inserted into this
 // list. 'found' is true if the item already exists in the list at the given
 // index.
-func (n *node) find(cmp func(*example, *example) int, item *example) (index int, found bool) {
+func (n *node) find(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (index int, found bool) {
 	// Logic copied from sort.Search. Inlining this gave
 	// an 11% speedup on BenchmarkBTreeDeleteInsert.
 	i, j := 0, int(n.count)
@@ -272,7 +259,7 @@ func (n *node) find(cmp func(*example, *example) int, item *example) (index int,
 // |         x |     | z         |
 // +-----------+     +-----------+
 //
-func (n *node) split(i int) (*example, *node) {
+func (n *node) split(i int) (*FileMetadata, *node) {
 	out := n.items[i]
 	var next *node
 	if n.leaf {
@@ -283,7 +270,7 @@ func (n *node) split(i int) (*example, *node) {
 	next.count = n.count - int16(i+1)
 	copy(next.items[:], n.items[i+1:n.count])
 	for j := int16(i); j < n.count; j++ {
-		n.items[j] = nilT
+		n.items[j] = nil
 	}
 	if !n.leaf {
 		copy(next.children[:], n.children[i+1:n.count+1])
@@ -299,7 +286,7 @@ func (n *node) split(i int) (*example, *node) {
 // nodes in the subtree exceed maxItems items. Returns true if an existing item
 // was replaced and false if a item was inserted. Also returns whether the
 // node's upper bound changes.
-func (n *node) insert(cmp func(*example, *example) int, item *example) (replaced bool) {
+func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (replaced bool) {
 	i, found := n.find(cmp, item)
 	if found {
 		n.items[i] = item
@@ -329,11 +316,11 @@ func (n *node) insert(cmp func(*example, *example) int, item *example) (replaced
 
 // removeMax removes and returns the maximum item from the subtree rooted
 // at this node.
-func (n *node) removeMax() *example {
+func (n *node) removeMax() *FileMetadata {
 	if n.leaf {
 		n.count--
 		out := n.items[n.count]
-		n.items[n.count] = nilT
+		n.items[n.count] = nil
 		return out
 	}
 	child := mut(&n.children[n.count])
@@ -347,14 +334,14 @@ func (n *node) removeMax() *example {
 // remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
 // Also returns whether the node's upper bound changes.
-func (n *node) remove(cmp func(*example, *example) int, item *example) (out *example) {
+func (n *node) remove(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (out *FileMetadata) {
 	i, found := n.find(cmp, item)
 	if n.leaf {
 		if found {
 			out, _ = n.removeAt(i)
 			return out
 		}
-		return nilT
+		return nil
 	}
 	if n.children[i].count <= minItems {
 		// Child not large enough to remove from.
@@ -501,7 +488,7 @@ func (n *node) rebalanceOrMerge(i int) {
 type btree struct {
 	root   *node
 	length int
-	cmp    func(*example, *example) int
+	cmp    func(*FileMetadata, *FileMetadata) int
 }
 
 // Reset removes all items from the btree. In doing so, it allows memory
@@ -540,11 +527,11 @@ func (t *btree) Clone() btree {
 }
 
 // Delete removes a item equal to the passed in item from the tree.
-func (t *btree) Delete(item *example) {
+func (t *btree) Delete(item *FileMetadata) {
 	if t.root == nil || t.root.count == 0 {
 		return
 	}
-	if out := mut(&t.root).remove(t.cmp, item); out != nilT {
+	if out := mut(&t.root).remove(t.cmp, item); out != nil {
 		t.length--
 	}
 	if t.root.count == 0 {
@@ -560,7 +547,7 @@ func (t *btree) Delete(item *example) {
 
 // Set adds the given item to the tree. If a item in the tree already
 // equals the given one, it is replaced with the new item.
-func (t *btree) Set(item *example) {
+func (t *btree) Set(item *FileMetadata) {
 	if t.root == nil {
 		t.root = newLeafNode()
 	} else if t.root.count >= maxItems {
@@ -694,7 +681,7 @@ type iterator struct {
 	r   *node
 	n   *node
 	pos int16
-	cmp func(*example, *example) int
+	cmp func(*FileMetadata, *FileMetadata) int
 	s   iterStack
 }
 
@@ -720,7 +707,7 @@ func (i *iterator) ascend() {
 
 // SeekGE seeks to the first item greater-than or equal to the provided
 // item.
-func (i *iterator) SeekGE(item *example) {
+func (i *iterator) SeekGE(item *FileMetadata) {
 	i.reset()
 	if i.n == nil {
 		return
@@ -742,7 +729,7 @@ func (i *iterator) SeekGE(item *example) {
 }
 
 // SeekLT seeks to the first item less-than the provided item.
-func (i *iterator) SeekLT(item *example) {
+func (i *iterator) SeekLT(item *FileMetadata) {
 	i.reset()
 	if i.n == nil {
 		return
@@ -840,6 +827,6 @@ func (i *iterator) Valid() bool {
 
 // Cur returns the item at the iterator's current position. It is illegal
 // to call Cur if the iterator is not valid.
-func (i *iterator) Cur() *example {
+func (i *iterator) Cur() *FileMetadata {
 	return i.n.items[i.pos]
 }

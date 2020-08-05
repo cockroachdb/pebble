@@ -16,18 +16,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newItem(k InternalKey) *example {
-	i := nilT.New()
-	i.SetKey(k)
-	return i
+func newItem(k InternalKey) *FileMetadata {
+	return &FileMetadata{
+		Smallest: k,
+		Largest:  k,
+	}
 }
 
-func InternalKeyFromItem(i *example) InternalKey {
-	return i.key
+func InternalKeyFromItem(i *FileMetadata) InternalKey {
+	return i.Smallest
 }
 
-func cmp(a, b *example) int {
-	return cmpKey(a.key, b.key)
+func cmp(a, b *FileMetadata) int {
+	return cmpKey(a.Smallest, b.Smallest)
 }
 
 func cmpKey(a, b InternalKey) int {
@@ -97,7 +98,7 @@ func (t *btree) isSorted(tt *testing.T) {
 	t.root.isSorted(tt, t.cmp)
 }
 
-func (n *node) isSorted(t *testing.T, cmp func(*example, *example) int) {
+func (n *node) isSorted(t *testing.T, cmp func(*FileMetadata, *FileMetadata) int) {
 	for i := int16(1); i < n.count; i++ {
 		require.LessOrEqual(t, cmp(n.items[i-1], n.items[i]), 0)
 	}
@@ -334,7 +335,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 
 	t.Log("Checking all values again")
 	for i, tree := range trees {
-		var wantpart []*example
+		var wantpart []*FileMetadata
 		if i < len(trees)/2 {
 			wantpart = want[:cloneTestSize/2]
 		} else {
@@ -368,7 +369,7 @@ func TestIterStack(t *testing.T) {
 //////////////////////////////////////////
 
 // perm returns a random permutation of items with keys in the range [0, n).
-func perm(n int) (out []*example) {
+func perm(n int) (out []*FileMetadata) {
 	for _, i := range rand.Perm(n) {
 		out = append(out, newItem(key(i)))
 	}
@@ -376,7 +377,7 @@ func perm(n int) (out []*example) {
 }
 
 // rang returns an ordered list of items with keys in the range [m, n].
-func rang(m, n int) (out []*example) {
+func rang(m, n int) (out []*FileMetadata) {
 	for i := m; i <= n; i++ {
 		out = append(out, newItem(key(i)))
 	}
@@ -384,7 +385,7 @@ func rang(m, n int) (out []*example) {
 }
 
 // all extracts all items from a tree in order as a slice.
-func all(tr *btree) (out []*example) {
+func all(tr *btree) (out []*FileMetadata) {
 	it := tr.MakeIter()
 	it.First()
 	for it.Valid() {
