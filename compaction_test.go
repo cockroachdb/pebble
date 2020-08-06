@@ -1665,10 +1665,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						continue
 					}
 					c.flushing = nil
-					c.startLevel.files = manifest.LevelSlice{}
-					c.outputLevel.files = manifest.LevelSlice{}
 					c.startLevel.level = -1
 
+					var startFiles, outputFiles []*fileMetadata
 					var iter internalIterator
 
 					switch {
@@ -1685,19 +1684,23 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					default:
 						for _, p := range parts {
 							level, meta := parseMeta(p)
-							cl := c.startLevel
-							switch {
-							case c.startLevel.level == -1:
+							if c.startLevel.level == -1 {
 								c.startLevel.level = level
-							case c.startLevel.level+1 == level:
-								cl = c.outputLevel
-							case c.startLevel.level != level:
+							}
+
+							switch level {
+							case c.startLevel.level:
+								startFiles = append(startFiles, meta)
+							case c.startLevel.level + 1:
+								outputFiles = append(outputFiles, meta)
+							default:
 								return fmt.Sprintf("invalid level %d: expected %d or %d",
 									level, c.startLevel.level, c.startLevel.level+1)
 							}
-							cl.files = manifest.NewLevelSlice(append(cl.files.Collect(), meta))
 						}
 						c.outputLevel.level = c.startLevel.level + 1
+						c.startLevel.files = manifest.NewLevelSlice(startFiles)
+						c.outputLevel.files = manifest.NewLevelSlice(outputFiles)
 					}
 
 					c.smallest, c.largest = manifest.KeyRange(c.cmp,
@@ -1742,7 +1745,8 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					inputs:    []compactionLevel{{level: -1}, {level: -1}},
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-				var slice *manifest.LevelSlice
+				var startFiles, outputFiles []*fileMetadata
+				var files *[]*fileMetadata
 				fileNum := FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
@@ -1754,13 +1758,13 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						}
 						if c.startLevel.level == -1 {
 							c.startLevel.level = level
-							slice = &c.startLevel.files
+							files = &startFiles
 						} else if c.outputLevel.level == -1 {
 							if c.startLevel.level >= level {
 								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", c.startLevel.level, level)
 							}
 							c.outputLevel.level = level
-							slice = &c.outputLevel.files
+							files = &outputFiles
 						} else {
 							return fmt.Sprintf("outputLevel already set\n")
 						}
@@ -1769,10 +1773,12 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						meta := parseMeta(data)
 						meta.FileNum = fileNum
 						fileNum++
-						*slice = manifest.NewLevelSlice(append(slice.Collect(), meta))
+						*files = append(*files, meta)
 					}
 				}
 
+				c.startLevel.files = manifest.NewLevelSlice(startFiles)
+				c.outputLevel.files = manifest.NewLevelSlice(outputFiles)
 				if c.outputLevel.level == -1 {
 					c.outputLevel.level = 0
 				}

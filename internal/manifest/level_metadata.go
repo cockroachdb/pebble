@@ -54,17 +54,6 @@ type LevelSlice struct {
 	end   int
 }
 
-// Collect returns a Go slice of all files in the slice. The returned slice is
-// owned by the LevelSlice. This method is intended to be a temporary adatpter
-// between interfaces, and callers should prefer using the iterator directory
-// when possible.
-//
-// TODO(jackson): Revisit once the conversion of Version.Files to a btree is
-// complete.
-func (ls LevelSlice) Collect() []*FileMetadata {
-	return ls.files[ls.start:ls.end]
-}
-
 // Each invokes fn for each element in the slice.
 func (ls LevelSlice) Each(fn func(*FileMetadata)) {
 	iter := ls.Iter()
