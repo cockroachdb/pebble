@@ -108,3 +108,43 @@ https://github.com/google/leveldb
 Optimizations and inspiration were drawn from RocksDB:
 
 https://github.com/facebook/rocksdb
+
+## Getting Started
+
+### Example Code
+
+For those new to rocks and pebble check out this [example implementation.](https://github.com/sfproductlabs/tracker/blob/master/pkv.go)
+
+You can then instantiate a db with:
+
+```
+kv, _ = NewKVStore(LogDBConfig{
+			expert: ExpertConfig{
+				ExecShards:  defaultExecShards,
+				LogDBShards: defaultLogDBShards,
+			},
+			KVMaxBackgroundCompactions:         2,
+			KVMaxBackgroundFlushes:             2,
+			KVLRUCacheSize:                     0,
+			KVKeepLogFileNum:                   16,
+			KVWriteBufferSize:                  128 * 1024 * 1024,
+			KVMaxWriteBufferNumber:             4,
+			KVLevel0FileNumCompactionTrigger:   8,
+			KVLevel0SlowdownWritesTrigger:      17,
+			KVLevel0StopWritesTrigger:          24,
+			KVMaxBytesForLevelBase:             4 * 1024 * 1024 * 1024,
+			KVMaxBytesForLevelMultiplier:       2,
+			KVTargetFileSizeBase:               16 * 1024 * 1024,
+			KVTargetFileSizeMultiplier:         2,
+			KVLevelCompactionDynamicLevelBytes: 0,
+			KVRecycleLogFileNum:                0,
+			KVNumOfLevels:                      7,
+			KVBlockSize:                        32 * 1024,
+		}, func(busy bool) { }, "./pdb", "./pdbwal")
+```
+
+Then for example to save a value (see in the file for more examples):
+
+```
+kv.SaveValue([]byte("key"), []byte{byte("value")})
+``
