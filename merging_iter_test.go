@@ -352,6 +352,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							for i := 0; i < b.N; i++ {
 								m.SeekGE(keys[rng.Intn(len(keys))])
 							}
+							m.Close()
 						})
 				}
 			})
@@ -385,6 +386,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 								}
 								_ = key
 							}
+							m.Close()
 						})
 				}
 			})
@@ -418,7 +420,167 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 								}
 								_ = key
 							}
+							m.Close()
 						})
+				}
+			})
+	}
+}
+
+// Builds levels for BenchmarkMergingIterSeqSeekGEWithBounds. The lowest level,
+// index 0 here, contains most of the data. Each level has 2 files, to allow for
+// stepping into the second file if needed. The lowest level has all the keys in
+// the file 0, and a single "lastIKey" in file 1. File 0 in all other levels have
+// only the first and last key of file 0 of the aforementioned level -- this
+// simulates sparseness of data, but not necessarily of file width, in higher
+// levels. File 1 in other levels is similar to File 1 in the aforementioned level
+// since it is only for stepping into.
+func buildLevelsForMergingIterSeqSeek(
+	b *testing.B, blockSize, restartInterval, levelCount int,
+) ([][]*sstable.Reader, []manifest.LevelSlice, [][]byte) {
+	mem := vfs.NewMem()
+	files := make([][]vfs.File, levelCount)
+	for i := range files {
+		for j := 0; j < 2; j++ {
+			f, err := mem.Create(fmt.Sprintf("bench%d_%d", i, j))
+			if err != nil {
+				b.Fatal(err)
+			}
+			files[i] = append(files[i], f)
+		}
+	}
+
+	writers := make([][]*sstable.Writer, levelCount)
+	for i := range files {
+		for j := range files[i] {
+			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], sstable.WriterOptions{
+				BlockRestartInterval: restartInterval,
+				BlockSize:            blockSize,
+				Compression:          NoCompression,
+			}))
+		}
+	}
+
+	var keys [][]byte
+	var i int
+	const targetSize = 2 << 20
+	w := writers[0][0]
+	for ; w.EstimatedSize() < targetSize; i++ {
+		key := []byte(fmt.Sprintf("%08d", i))
+		keys = append(keys, key)
+		ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
+		w.Add(ikey, nil)
+	}
+	for j := 1; j < len(files); j++ {
+		for _, k := range []int{0, len(keys) - 1} {
+			ikey := base.MakeInternalKey(keys[k], 0, InternalKeyKindSet)
+			writers[j][0].Add(ikey, nil)
+		}
+	}
+	lastIKey := base.MakeInternalKey(
+		[]byte(fmt.Sprintf("%08d", i)), 0, InternalKeyKindSet)
+	for j := 0; j < len(files); j++ {
+		writers[j][1].Add(lastIKey, nil)
+	}
+	for _, levelWriters := range writers {
+		for _, w := range levelWriters {
+			if err := w.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+
+	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
+	defer opts.Cache.Unref()
+
+	readers := make([][]*sstable.Reader, levelCount)
+	for i := range files {
+		for j := range files[i] {
+			f, err := mem.Open(fmt.Sprintf("bench%d_%d", i, j))
+			if err != nil {
+				b.Fatal(err)
+			}
+			r, err := sstable.NewReader(f, opts)
+			if err != nil {
+				b.Fatal(err)
+			}
+			readers[i] = append(readers[i], r)
+		}
+	}
+	levelSlices := make([]manifest.LevelSlice, levelCount)
+	for i := range readers {
+		meta := make([]*fileMetadata, len(readers[i]))
+		for j := range readers[i] {
+			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
+			require.NoError(b, err)
+			key, _ := iter.First()
+			meta[j] = &fileMetadata{}
+			// The same FileNum is being reused across different levels, which
+			// is harmless for the benchmark since each level has its own iterator
+			// creation func.
+			meta[j].FileNum = FileNum(j)
+			meta[j].Smallest = key.Clone()
+			key, _ = iter.Last()
+			meta[j].Largest = key.Clone()
+		}
+		levelSlices[i] = manifest.NewLevelSlice(meta)
+	}
+	return readers, levelSlices, keys
+}
+
+// A benchmark that simulates the behavior of a mergingIter where
+// monotonically increasing narrow bounds are repeatedly set and used to Seek
+// and then iterate over the keys within the bounds. This resembles MVCC
+// scanning by CockroachDB when doing a lookup/index join with a large number
+// of left rows, that are batched and reuse the same iterator, and which can
+// have good locality of access. This results in the successive bounds being
+// in the same file.
+func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
+	const blockSize = 32 << 10
+
+	restartInterval := 16
+	for _, levelCount := range []int{5} {
+		b.Run(fmt.Sprintf("levelCount=%d", levelCount),
+			func(b *testing.B) {
+				readers, levelSlices, keys :=
+					buildLevelsForMergingIterSeqSeek(b, blockSize, restartInterval, levelCount)
+				mils := make([]mergingIterLevel, levelCount)
+				for i := len(readers) - 1; i >= 0; i-- {
+					levelIndex := i
+					level := len(readers) - 1 - i
+					newIters := func(
+						file manifest.LevelFile, opts *IterOptions, _ *uint64,
+					) (internalIterator, internalIterator, error) {
+						iter, err := readers[levelIndex][file.FileNum].NewIter(
+							opts.LowerBound, opts.UpperBound)
+						return iter, nil, err
+					}
+					l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
+						newIters, levelSlices[i].Iter(), manifest.Level(level), nil)
+					l.initRangeDel(&mils[level].rangeDelIter)
+					l.initSmallestLargestUserKey(
+						&mils[level].smallestUserKey, &mils[level].largestUserKey,
+						&mils[level].isLargestUserKeyRangeDelSentinel)
+					mils[level].iter = l
+				}
+				m := &mergingIter{}
+				m.init(nil /* logger */, DefaultComparer.Compare, mils...)
+				keyCount := len(keys)
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					pos := i % (keyCount - 1)
+					m.SetBounds(keys[pos], keys[pos+1])
+					// SeekGE will return keys[pos].
+					k, _ := m.SeekGE(keys[pos])
+					for k != nil {
+						k, _ = m.Next()
+					}
+				}
+				m.Close()
+				for i := range readers {
+					for j := range readers[i] {
+						readers[i][j].Close()
+					}
 				}
 			})
 	}
