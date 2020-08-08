@@ -284,6 +284,7 @@ func (b *Batch) release() {
 	if !indexed {
 		batchPool.Put(b)
 	} else {
+		b.index, b.rangeDelIndex = nil, nil
 		indexedBatchPool.Put((*indexedBatch)(unsafe.Pointer(b)))
 	}
 }
@@ -765,10 +766,6 @@ func (b *Batch) Reset() {
 	b.commit = sync.WaitGroup{}
 	b.commitErr = nil
 	atomic.StoreUint32(&b.applied, 0)
-	if b.index != nil {
-		b.index.Reset()
-		b.index, b.rangeDelIndex = nil, nil
-	}
 	if b.data != nil {
 		if cap(b.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
@@ -781,6 +778,10 @@ func (b *Batch) Reset() {
 			b.data = b.data[:batchHeaderLen]
 			b.setSeqNum(0)
 		}
+	}
+	if b.index != nil {
+		b.index.Init(&b.data, b.cmp, b.abbreviatedKey)
+		b.rangeDelIndex = nil
 	}
 }
 
