@@ -251,6 +251,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 	lt := newLevelIterTest()
 	defer lt.runClear(nil)
 
+	var iter *levelIter
 	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
@@ -260,12 +261,49 @@ func TestLevelIterBoundaries(t *testing.T) {
 			return lt.runBuild(d)
 
 		case "iter":
-			iter := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-				lt.newIters, manifest.NewLevelSlice(lt.metas).Iter(), manifest.Level(level), nil)
-			defer iter.Close()
-			// Fake up the range deletion initialization.
-			iter.initRangeDel(new(internalIterator))
+			// The save and continue parameters allow us to save the iterator
+			// for later continued use.
+			save := false
+			cont := false
+			for _, arg := range d.CmdArgs {
+				switch arg.Key {
+				case "save":
+					save = true
+				case "continue":
+					cont = true
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
+			}
+			if !cont && iter != nil {
+				return fmt.Sprintf("preceding iter was not closed")
+			}
+			if cont && iter == nil {
+				return fmt.Sprintf("no existing iter")
+			}
+			if iter == nil {
+				iter = newLevelIter(IterOptions{}, DefaultComparer.Compare,
+					lt.newIters, manifest.NewLevelSlice(lt.metas).Iter(), manifest.Level(level), nil)
+				// Fake up the range deletion initialization.
+				iter.initRangeDel(new(internalIterator))
+			}
+			if !save {
+				defer func() {
+					iter.Close()
+					iter = nil
+				}()
+			}
 			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
+
+		case "file-pos":
+			// Returns the FileNum at which the iterator is positioned.
+			if iter == nil {
+				return "nil levelIter"
+			}
+			if iter.iterFile == nil {
+				return "nil iterFile"
+			}
+			return fmt.Sprintf("file %d", iter.iterFile.FileNum)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -358,7 +396,6 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		defer f.Close()
 		files[i] = f
 	}
 
@@ -439,6 +476,64 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							for i := 0; i < b.N; i++ {
 								l.SeekGE(keys[rng.Intn(len(keys))])
 							}
+							l.Close()
+							for _, reader := range readers {
+								reader.Close()
+							}
+						})
+				}
+			})
+	}
+}
+
+// A benchmark that simulates the behavior of a levelIter being used as part
+// of a mergingIter where narrow bounds are repeatedly set and used to Seek
+// and then iterate over the keys within the bounds. This resembles MVCC
+// scanning by CockroachDB when doing a lookup/index join with a large number
+// of left rows, that are batched and reuse the same iterator, and which can
+// have good locality of access. This results in the successive bounds being
+// in the same file.
+func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
+	const blockSize = 32 << 10
+
+	for _, restartInterval := range []int{16} {
+		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+			func(b *testing.B) {
+				for _, count := range []int{5} {
+					b.Run(fmt.Sprintf("count=%d", count),
+						func(b *testing.B) {
+							readers, metas, keys :=
+								buildLevelIterTables(b, blockSize, restartInterval, count)
+							// This newIters is cheaper than in practice since it does not do
+							// tableCacheShard.findNode.
+							newIters := func(
+								file manifest.LevelFile, opts *IterOptions, _ *uint64,
+							) (internalIterator, internalIterator, error) {
+								iter, err := readers[file.FileNum].NewIter(
+									opts.LowerBound, opts.UpperBound)
+								return iter, nil, err
+							}
+							l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
+								newIters, metas.Iter(), manifest.Level(level), nil)
+							// Fake up the range deletion initialization, to resemble the usage
+							// in a mergingIter.
+							l.initRangeDel(new(internalIterator))
+							keyCount := len(keys)
+							b.ResetTimer()
+							for i := 0; i < b.N; i++ {
+								pos := i % (keyCount - 1)
+								l.SetBounds(keys[pos], keys[pos+1])
+								// SeekGE will return keys[pos].
+								k, _ := l.SeekGE(keys[pos])
+								// Next() will get called once and return nil.
+								for k != nil {
+									k, _ = l.Next()
+								}
+							}
+							l.Close()
+							for _, reader := range readers {
+								reader.Close()
+							}
 						})
 				}
 			})
@@ -472,6 +567,10 @@ func BenchmarkLevelIterNext(b *testing.B) {
 								}
 								_ = key
 							}
+							l.Close()
+							for _, reader := range readers {
+								reader.Close()
+							}
 						})
 				}
 			})
@@ -504,6 +603,10 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 									key, _ = l.Last()
 								}
 								_ = key
+							}
+							l.Close()
+							for _, reader := range readers {
+								reader.Close()
 							}
 						})
 				}
