@@ -368,7 +368,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	// table as findFileGE found the table where key <= meta.Largest. We treat
 	// this case the same as SeekGE where an upper-bound resides within the
 	// sstable and generate a synthetic boundary key.
-	if l.rangeDelIter != nil {
+	if l.rangeDelIter != nil && *l.rangeDelIter != nil {
 		l.syntheticBoundary = l.iterFile.Largest
 		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 		l.largestBoundary = &l.syntheticBoundary
@@ -426,6 +426,11 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 
 	switch {
 	case l.largestBoundary != nil:
+		if l.tableOpts.UpperBound != nil {
+			// The UpperBound was within this file, so don't load the
+			// next file.
+			return nil, nil
+		}
 		// We're stepping past the boundary key, so now we can load the next file.
 		if l.loadFile(l.files.Next(), +1) {
 			if key, val := l.iter.First(); key != nil {
@@ -452,6 +457,11 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 
 	switch {
 	case l.smallestBoundary != nil:
+		if l.tableOpts.LowerBound != nil {
+			// The LowerBound was within this file, so don't load the
+			// previous file.
+			return nil, nil
+		}
 		// We're stepping past the boundary key, so now we can load the prev file.
 		if l.loadFile(l.files.Prev(), -1) {
 			if key, val := l.iter.Last(); key != nil {
@@ -501,16 +511,23 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			// never going to look at subsequent sstables (we've reached the upper
 			// bound).
 			if l.tableOpts.UpperBound != nil {
-				// TODO(peter): Rather than using f.Largest, can we use
-				// l.tableOpts.UpperBound and set the seqnum to 0? We know the upper
-				// bound resides within the table boundaries. Not clear if this is
-				// kosher with respect to the invariant that only one record for a
-				// given user key will have seqnum 0. See Iterator.nextUserKey for an
-				// optimization that requires this.
-				l.syntheticBoundary = l.iterFile.Largest
-				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
-				l.largestBoundary = &l.syntheticBoundary
-				return l.largestBoundary, nil
+				if *l.rangeDelIter != nil {
+					// TODO(peter): Rather than using f.Largest, can we use
+					// l.tableOpts.UpperBound and set the seqnum to 0? We know the upper
+					// bound resides within the table boundaries. Not clear if this is
+					// kosher with respect to the invariant that only one record for a
+					// given user key will have seqnum 0. See Iterator.nextUserKey for an
+					// optimization that requires this.
+					l.syntheticBoundary = l.iterFile.Largest
+					l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+					l.largestBoundary = &l.syntheticBoundary
+					return l.largestBoundary, nil
+				}
+				// Else there are no range deletions in this sstable. This
+				// helps with performance when many levels are populated with
+				// sstables and most don't have any actual keys within the
+				// bounds.
+				return nil, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
 			if l.iterFile.Largest.Kind() == InternalKeyKindRangeDelete {
@@ -557,13 +574,20 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			// never going to look at earlier sstables (we've reached the lower
 			// bound).
 			if l.tableOpts.LowerBound != nil {
-				// TODO(peter): Rather than using f.Smallest, can we use
-				// l.tableOpts.LowerBound and set the seqnum to InternalKeySeqNumMax?
-				// We know the lower bound resides within the table boundaries.
-				l.syntheticBoundary = l.iterFile.Smallest
-				l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
-				l.smallestBoundary = &l.syntheticBoundary
-				return l.smallestBoundary, nil
+				if *l.rangeDelIter != nil {
+					// TODO(peter): Rather than using f.Smallest, can we use
+					// l.tableOpts.LowerBound and set the seqnum to InternalKeySeqNumMax?
+					// We know the lower bound resides within the table boundaries.
+					l.syntheticBoundary = l.iterFile.Smallest
+					l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+					l.smallestBoundary = &l.syntheticBoundary
+					return l.smallestBoundary, nil
+				}
+				// Else there are no range deletions in this sstable. This
+				// helps with performance when many levels are populated with
+				// sstables and most don't have any actual keys within the
+				// bounds.
+				return nil, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
 			if l.iterFile.Smallest.Kind() == InternalKeyKindRangeDelete {
