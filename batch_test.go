@@ -250,7 +250,7 @@ func TestIndexedBatchReset(t *testing.T) {
 		}
 		return count
 	}
-	contains := func(ib *Batch) bool {
+	contains := func(ib *Batch, key, value string) bool {
 		found := false
 		iter := ib.NewIter(nil)
 		defer iter.Close()
@@ -266,14 +266,14 @@ func TestIndexedBatchReset(t *testing.T) {
 	b.Set([]byte(key), []byte(value), nil)
 	require.Equal(t, 1, indexCount(b.index))
 	require.Equal(t, 1, count(b))
-	require.True(t, contains(b))
+	require.True(t, contains(b, key, value))
 
 	// Use range delete to delete the above inserted key-value pair.
 	b.DeleteRange([]byte(key), []byte(value), nil)
 	require.NotNil(t, b.rangeDelIndex)
 	require.Equal(t, 1, indexCount(b.rangeDelIndex))
 	require.Equal(t, 0, count(b))
-	require.False(t, contains(b))
+	require.False(t, contains(b, key, value))
 }
 
 func TestFlushableBatchReset(t *testing.T) {
