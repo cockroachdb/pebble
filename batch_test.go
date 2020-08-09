@@ -199,7 +199,7 @@ func TestBatchReset(t *testing.T) {
 	expected.db = db
 	require.Equal(t, &expected, b)
 
-	// reset batch can be used to write and commit a new record
+	// Reset batch can be used to write and commit a new record.
 	b.Set([]byte(key), []byte(value), nil)
 	require.NoError(t, db.Apply(b, nil))
 	v, closer, err := db.Get([]byte(key))
@@ -209,7 +209,7 @@ func TestBatchReset(t *testing.T) {
 }
 
 func TestIndexedBatchReset(t *testing.T) {
-	getCount := func(sl *batchskl.Skiplist) int {
+	indexCount := func(sl *batchskl.Skiplist) int {
 		count := 0
 		iter := sl.NewIter(nil, nil)
 		defer iter.Close()
@@ -232,7 +232,7 @@ func TestIndexedBatchReset(t *testing.T) {
 	b.Set([]byte(key), []byte(value), nil)
 	require.NotNil(t, b.rangeDelIndex)
 	require.NotNil(t, b.index)
-	require.Equal(t, 1, getCount(b.index))
+	require.Equal(t, 1, indexCount(b.index))
 
 	b.Reset()
 	require.NotNil(t, b.cmp)
@@ -241,34 +241,39 @@ func TestIndexedBatchReset(t *testing.T) {
 	require.NotNil(t, b.index)
 	require.Nil(t, b.rangeDelIndex)
 
-	checkIndexedBatch := func(ib *Batch) (int, bool) {
+	count := func(ib *Batch) int {
 		count := 0
-		found := false
-		iter := b.NewIter(&IterOptions{})
+		iter := ib.NewIter(nil)
+		defer iter.Close()
 		for iter.First(); iter.Valid(); iter.Next() {
 			count++
+		}
+		return count
+	}
+	contains := func(ib *Batch) bool {
+		found := false
+		iter := ib.NewIter(nil)
+		defer iter.Close()
+		for iter.First(); iter.Valid(); iter.Next() {
 			if string(iter.Key()) == key &&
 				string(iter.Value()) == value {
 				found = true
 			}
 		}
-		return count, found
+		return found
 	}
-	// using the reset batch, set a key and check whether the key-value pair is
-	// visible
+	// Set a key and check whether the key-value pair is visible.
 	b.Set([]byte(key), []byte(value), nil)
-	count, found := checkIndexedBatch(b)
-	require.Equal(t, 1, getCount(b.index))
-	require.Equal(t, 1, count)
-	require.True(t, found)
+	require.Equal(t, 1, indexCount(b.index))
+	require.Equal(t, 1, count(b))
+	require.True(t, contains(b))
 
-	// use range delete to delete the above inserted key-value pair
+	// Use range delete to delete the above inserted key-value pair.
 	b.DeleteRange([]byte(key), []byte(value), nil)
 	require.NotNil(t, b.rangeDelIndex)
-	require.Equal(t, 1, getCount(b.rangeDelIndex))
-	count, found = checkIndexedBatch(b)
-	require.Equal(t, 0, count)
-	require.False(t, found)
+	require.Equal(t, 1, indexCount(b.rangeDelIndex))
+	require.Equal(t, 0, count(b))
+	require.False(t, contains(b))
 }
 
 func TestFlushableBatchReset(t *testing.T) {
