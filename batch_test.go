@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -153,6 +155,133 @@ func TestBatchEmpty(t *testing.T) {
 	require.False(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
+}
+
+func TestBatchReset(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer db.Close()
+	key := "test-key"
+	value := "test-value"
+	b := db.NewBatch()
+	b.Set([]byte(key), []byte(value), nil)
+	dd := b.DeleteRangeDeferred(len(key), len(value))
+	copy(dd.Key, key)
+	copy(dd.Value, value)
+	dd.Finish()
+
+	b.setSeqNum(100)
+	b.applied = 1
+	b.commitErr = errors.New("test-error")
+	b.commit.Add(1)
+	require.Equal(t, uint32(2), b.Count())
+	require.Equal(t, uint64(1), b.countRangeDels)
+	require.True(t, len(b.data) > 0)
+	require.True(t, b.SeqNum() > 0)
+	require.True(t, b.memTableSize > 0)
+	require.NotEqual(t, b.deferredOp, DeferredBatchOp{})
+
+	b.Reset()
+	require.Equal(t, db, b.db)
+	require.Equal(t, uint32(0), b.applied)
+	require.Nil(t, b.commitErr)
+	require.Equal(t, uint32(0), b.Count())
+	require.Equal(t, uint64(0), b.countRangeDels)
+	require.Equal(t, batchHeaderLen, len(b.data))
+	require.Equal(t, uint64(0), b.SeqNum())
+	require.Equal(t, uint32(0), b.memTableSize)
+	require.Equal(t, b.deferredOp, DeferredBatchOp{})
+
+	var expected Batch
+	expected.SetRepr(b.data)
+	expected.db = db
+	require.Equal(t, &expected, b)
+
+	// Reset batch can be used to write and commit a new record.
+	b.Set([]byte(key), []byte(value), nil)
+	require.NoError(t, db.Apply(b, nil))
+	v, closer, err := db.Get([]byte(key))
+	require.NoError(t, err)
+	defer closer.Close()
+	require.Equal(t, v, []byte(value))
+}
+
+func TestIndexedBatchReset(t *testing.T) {
+	indexCount := func(sl *batchskl.Skiplist) int {
+		count := 0
+		iter := sl.NewIter(nil, nil)
+		defer iter.Close()
+		for iter.First(); iter.Valid(); iter.Next() {
+			count++
+		}
+		return count
+	}
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer db.Close()
+	b := newIndexedBatch(db, DefaultComparer)
+	start := "start-key"
+	end := "end-key"
+	key := "test-key"
+	value := "test-value"
+	b.DeleteRange([]byte(start), []byte(end), nil)
+	b.Set([]byte(key), []byte(value), nil)
+	require.NotNil(t, b.rangeDelIndex)
+	require.NotNil(t, b.index)
+	require.Equal(t, 1, indexCount(b.index))
+
+	b.Reset()
+	require.NotNil(t, b.cmp)
+	require.NotNil(t, b.formatKey)
+	require.NotNil(t, b.abbreviatedKey)
+	require.NotNil(t, b.index)
+	require.Nil(t, b.rangeDelIndex)
+
+	count := func(ib *Batch) int {
+		count := 0
+		iter := ib.NewIter(nil)
+		defer iter.Close()
+		for iter.First(); iter.Valid(); iter.Next() {
+			count++
+		}
+		return count
+	}
+	contains := func(ib *Batch, key, value string) bool {
+		found := false
+		iter := ib.NewIter(nil)
+		defer iter.Close()
+		for iter.First(); iter.Valid(); iter.Next() {
+			if string(iter.Key()) == key &&
+				string(iter.Value()) == value {
+				found = true
+			}
+		}
+		return found
+	}
+	// Set a key and check whether the key-value pair is visible.
+	b.Set([]byte(key), []byte(value), nil)
+	require.Equal(t, 1, indexCount(b.index))
+	require.Equal(t, 1, count(b))
+	require.True(t, contains(b, key, value))
+
+	// Use range delete to delete the above inserted key-value pair.
+	b.DeleteRange([]byte(key), []byte(value), nil)
+	require.NotNil(t, b.rangeDelIndex)
+	require.Equal(t, 1, indexCount(b.rangeDelIndex))
+	require.Equal(t, 0, count(b))
+	require.False(t, contains(b, key, value))
+}
+
+func TestFlushableBatchReset(t *testing.T) {
+	var b Batch
+	b.flushable = newFlushableBatch(&b, DefaultComparer)
+
+	b.Reset()
+	require.Nil(t, b.flushable)
 }
 
 func TestBatchIncrement(t *testing.T) {

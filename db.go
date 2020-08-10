@@ -523,6 +523,9 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
+	if atomic.LoadUint32(&batch.applied) != 0 {
+		panic("pebble: batch already applied")
+	}
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
