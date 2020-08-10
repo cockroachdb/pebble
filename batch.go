@@ -275,13 +275,12 @@ func (b *Batch) release() {
 	// but necessary so that we can use atomic.StoreUint32 for the Batch.applied
 	// field. Without using an atomic to clear that field the Go race detector
 	// complains.
-	indexed := b.index != nil
 	b.Reset()
 	b.cmp = nil
 	b.formatKey = nil
 	b.abbreviatedKey = nil
 
-	if !indexed {
+	if b.index == nil {
 		batchPool.Put(b)
 	} else {
 		b.index, b.rangeDelIndex = nil, nil
