@@ -66,14 +66,14 @@ func (t *btree) verifyCountAllowed(tt *testing.T) {
 
 func (n *node) verifyCountAllowed(t *testing.T, root bool) {
 	if !root {
-		require.GreaterOrEqual(t, n.count, int16(minItems), "file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
-		require.LessOrEqual(t, n.count, int16(maxItems), "file count %d must be in range [%d,%d]", n.count, minItems, maxItems)
+		require.GreaterOrEqual(t, n.count, int16(minItems), "item count %d must be in range [%d,%d]", n.count, minItems, maxItems)
+		require.LessOrEqual(t, n.count, int16(maxItems), "item count %d must be in range [%d,%d]", n.count, minItems, maxItems)
 	}
 	for i, item := range n.items {
 		if i < int(n.count) {
-			require.NotNil(t, item, "file below count")
+			require.NotNil(t, item, "item below count")
 		} else {
-			require.Nil(t, item, "file above count")
+			require.Nil(t, item, "item above count")
 		}
 	}
 	if !n.leaf {

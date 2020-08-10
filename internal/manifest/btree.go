@@ -480,7 +480,7 @@ func (n *node) rebalanceOrMerge(i int) {
 // btree stores FileMetadata in an ordered structure, allowing easy insertion,
 // removal, and iteration. The B-Tree stores items in order based on cmp. The
 // first level of the LSM uses a cmp function that compares sequence numbers.
-// All other levels compare using table key boundaries.
+// All other levels compare using the FileMetadata.Smallest.
 //
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
