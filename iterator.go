@@ -315,6 +315,8 @@ func (i *Iterator) SeekGE(key []byte) bool {
 	i.prefix = nil
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
+	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
+		key = upperBound
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekGE(key)
@@ -370,6 +372,12 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 			return false
 		}
 		key = lowerBound
+	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
+		if n := i.split(upperBound); !bytes.Equal(i.prefix, upperBound[:n]) {
+			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of upper bound")
+			return false
+		}
+		key = upperBound
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefix, key)
@@ -382,8 +390,10 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 func (i *Iterator) SeekLT(key []byte) bool {
 	i.err = nil // clear cached iteration error
 	i.prefix = nil
-	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) >= 0 {
+	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		key = upperBound
+	} else if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
+		key = lowerBound
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekLT(key)
