@@ -77,6 +77,11 @@ func (i *iterAdapter) Next() bool {
 	return i.update(i.Iterator.Next())
 }
 
+func (i *iterAdapter) NextIgnoreResult() {
+	i.Iterator.Next()
+	i.update(nil, nil)
+}
+
 func (i *iterAdapter) Prev() bool {
 	return i.update(i.Iterator.Prev())
 }
