@@ -281,9 +281,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 		i := newIterAdapter(iter)
 
-		{
-			// NB: the semantics of First are that it starts iteration from the
-			// beginning, not respecting the lower bound.
+		if lower == nil {
 			n := 0
 			for valid := i.First(); valid; valid = i.Next() {
 				n++
@@ -293,9 +291,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			}
 		}
 
-		{
-			// NB: the semantics of Last are that it starts iteration from the end, not
-			// respecting the upper bound.
+		if upper == nil {
 			n := 0
 			for valid := i.Last(); valid; valid = i.Prev() {
 				n++
