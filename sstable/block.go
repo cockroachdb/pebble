@@ -238,6 +238,9 @@ type blockIter struct {
 	cached      []blockEntry
 	cachedBuf   []byte
 	cacheHandle cache.Handle
+	// The first key in the block. This is used by the caller to set bounds
+	// for block iteration for already loaded blocks.
+	firstKey InternalKey
 }
 
 // blockIter implements the base.InternalIterator interface.
@@ -266,6 +269,14 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	i.fullKey = i.fullKey[:0]
 	i.val = nil
 	i.clearCache()
+	if i.restarts > 0 {
+		if err := i.readFirstKey(); err != nil {
+			return err
+		}
+	} else {
+		// Block is empty.
+		i.firstKey = InternalKey{}
+	}
 	return nil
 }
 
@@ -284,11 +295,19 @@ func (i *blockIter) invalidate() {
 	i.data = nil
 }
 
+// isDataInvalidated returns true when the blockIter has been invalidated
+// using an invalidate call. NB: this is different from blockIter.Valid
+// which is part of the InternalIterator implementation.
+func (i *blockIter) isDataInvalidated() bool {
+	return i.data == nil
+}
+
 func (i *blockIter) resetForReuse() blockIter {
 	return blockIter{
 		fullKey:   i.fullKey[:0],
 		cached:    i.cached[:0],
 		cachedBuf: i.cachedBuf[:0],
+		data:      nil,
 	}
 }
 
@@ -296,7 +315,7 @@ func (i *blockIter) readEntry() {
 	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
 
 	// This is an ugly performance hack. Reading entries from blocks is one of
-	// the inner-most routines and decoding the 3 varints per-entry takes a
+	// the inner-most routines and decoding the 3 varints per-entry takes
 	// significant time. Neither go1.11 or go1.12 will inline decodeVarint for
 	// us, so we do it manually. This provides a 10-15% performance improvement
 	// on blockIter benchmarks on both go1.11 and go1.12.
@@ -374,6 +393,73 @@ func (i *blockIter) readEntry() {
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
 	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
+}
+
+func (i *blockIter) readFirstKey() error {
+	ptr := i.ptr
+
+	// This is an ugly performance hack. Reading entries from blocks is one of
+	// the inner-most routines and decoding the 3 varints per-entry takes
+	// significant time. Neither go1.11 or go1.12 will inline decodeVarint for
+	// us, so we do it manually. This provides a 10-15% performance improvement
+	// on blockIter benchmarks on both go1.11 and go1.12.
+	//
+	// TODO(peter): remove this hack if go:inline is ever supported.
+
+	if shared := *((*uint8)(ptr)); shared == 0 {
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else {
+		// The shared length is != 0, which is invalid.
+		panic("first key in block must have zero shared length")
+	}
+
+	var unshared uint32
+	if a := *((*uint8)(ptr)); a < 128 {
+		unshared = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+		unshared = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+		unshared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+		unshared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+		unshared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	// Skip the value length.
+	if a := *((*uint8)(ptr)); a < 128 {
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a := *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); a < 128 {
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if a := *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); a < 128 {
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if a := *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); a < 128 {
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	firstKey := getBytes(ptr, int(unshared))
+	// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
+	// BlockIter benchmarks.
+	if n := len(firstKey) - 8; n >= 0 {
+		i.firstKey.Trailer = binary.LittleEndian.Uint64(firstKey[n:])
+		i.firstKey.UserKey = firstKey[:n:n]
+		if i.globalSeqNum != 0 {
+			i.firstKey.SetSeqNum(i.globalSeqNum)
+		}
+	} else {
+		i.firstKey.Trailer = uint64(InternalKeyKindInvalid)
+		i.firstKey.UserKey = nil
+		return base.CorruptionErrorf("pebble/table: invalid firstKey in block")
+	}
+	return nil
 }
 
 func (i *blockIter) decodeInternalKey(key []byte) {

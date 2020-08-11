@@ -454,3 +454,42 @@ next
 .
 <a:1>
 <aae:1>
+
+# Test that SeekPrefixGE does not position the iterator far outside the iterator bounds.
+# Doing so would break the subsequent SeekGE that is utilizing the next instead of seek
+# optimization.
+iter
+set-bounds lower=a upper=aae
+seek-ge a
+seek-prefix-ge aad
+set-bounds lower=aae upper=b
+seek-ge aae
+next
+----
+.
+<a:1>
+.
+.
+<aae:1>
+<aaf:1>
+
+# Test that using Next does not mislead a twoLevelIterator into believing that the
+# iterator has been positioned based on the latest iterator bounds. The Next call
+# immediately after SetBounds has a non-deterministic result, hence we use
+# next-ignore-result.
+iter
+set-bounds lower=bbq upper=d
+seek-ge bbq
+set-bounds lower=b upper=bbf
+next-ignore-result
+set-bounds lower=bbf upper=c
+seek-ge bbf
+next
+----
+.
+<bbq:2>
+.
+.
+.
+<bbf:2>
+<bbg:2>
