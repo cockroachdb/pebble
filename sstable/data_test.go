@@ -108,7 +108,13 @@ func runBuildCmd(
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := NewReader(f1, ReaderOptions{})
+	readerOpts := ReaderOptions{}
+	if writerOpts.FilterPolicy != nil {
+		readerOpts.Filters = map[string]FilterPolicy{
+			writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy,
+		}
+	}
+	r, err := NewReader(f1, readerOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -215,6 +221,8 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 			iter.Last()
 		case "next":
 			iter.Next()
+		case "next-ignore-result":
+			iter.NextIgnoreResult()
 		case "prev":
 			iter.Prev()
 		case "set-bounds":
