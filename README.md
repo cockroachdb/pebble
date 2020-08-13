@@ -113,38 +113,38 @@ https://github.com/facebook/rocksdb
 
 ### Example Code
 
-For those new to rocks and pebble check out this [example implementation.](https://github.com/sfproductlabs/tracker/blob/master/pkv.go)
+```go
+package main
 
-You can then instantiate a db with:
+import (
+	"fmt"
+	"log"
 
+	"github.com/cockroachdb/pebble"
+)
+
+func main() {
+	db, err := pebble.Open("demo", &pebble.Options{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	key := []byte("hello")
+	if err := db.Set(key, []byte("world"), pebble.Sync); err != nil {
+		log.Fatal(err)
+	}
+	value, closer, err := db.Get(key)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s %s\n", key, value)
+	if err := closer.Close(); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		log.Fatal(err)
+	}
+}
 ```
-kv, _ = NewKVStore(LogDBConfig{
-			expert: ExpertConfig{
-				ExecShards:  defaultExecShards,
-				LogDBShards: defaultLogDBShards,
-			},
-			KVMaxBackgroundCompactions:         2,
-			KVMaxBackgroundFlushes:             2,
-			KVLRUCacheSize:                     0,
-			KVKeepLogFileNum:                   16,
-			KVWriteBufferSize:                  128 * 1024 * 1024,
-			KVMaxWriteBufferNumber:             4,
-			KVLevel0FileNumCompactionTrigger:   8,
-			KVLevel0SlowdownWritesTrigger:      17,
-			KVLevel0StopWritesTrigger:          24,
-			KVMaxBytesForLevelBase:             4 * 1024 * 1024 * 1024,
-			KVMaxBytesForLevelMultiplier:       2,
-			KVTargetFileSizeBase:               16 * 1024 * 1024,
-			KVTargetFileSizeMultiplier:         2,
-			KVLevelCompactionDynamicLevelBytes: 0,
-			KVRecycleLogFileNum:                0,
-			KVNumOfLevels:                      7,
-			KVBlockSize:                        32 * 1024,
-		}, func(busy bool) { }, "./pdb", "./pdbwal")
-```
 
-Then for example to save a value (see in the file for more examples):
 
-```
-kv.SaveValue([]byte("key"), []byte{byte("value")})
-``
+See [here](https://github.com/sfproductlabs/tracker/blob/master/pkv.go) for a full example, including searching, batches and iterators.
