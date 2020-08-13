@@ -42,7 +42,9 @@ func (f *syncingFile) init() {
 	if f.fd == 0 {
 		return
 	}
-	f.useSyncRange = isSyncRangeSupported(f.fd)
+	f.timeDiskOp(func() {
+		f.useSyncRange = isSyncRangeSupported(f.fd)
+	})
 	if f.useSyncRange {
 		f.syncTo = f.syncToRange
 	} else {
@@ -55,7 +57,11 @@ func (f *syncingFile) syncFdatasync() error {
 	if f.fd == 0 {
 		return f.File.Sync()
 	}
-	return syscall.Fdatasync(int(f.fd))
+	var err error
+	f.timeDiskOp(func() {
+		err = syscall.Fdatasync(int(f.fd))
+	})
+	return err
 }
 
 func (f *syncingFile) syncToFdatasync(_ int64) error {
@@ -82,5 +88,9 @@ func (f *syncingFile) syncToRange(offset int64) error {
 	// use of `waitBefore` is to limit how much dirty data is allowed to
 	// accumulate. Linux sometimes behaves poorly when a large amount of dirty
 	// data accumulates, impacting other I/O operations.
-	return syscall.SyncFileRange(int(f.fd), 0, offset, write|waitBefore)
+	var err error
+	f.timeDiskOp(func() {
+		err = syscall.SyncFileRange(int(f.fd), 0, offset, write|waitBefore)
+	})
+	return err
 }
