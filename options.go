@@ -477,9 +477,6 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer
 	}
-	if o.FS == nil {
-		o.FS = vfs.Default
-	}
 	if o.Experimental.L0CompactionConcurrency <= 0 {
 		o.Experimental.L0CompactionConcurrency = 10
 	}
@@ -535,6 +532,15 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.MaxConcurrentCompactions <= 0 {
 		o.MaxConcurrentCompactions = 1
+	}
+	if o.FS == nil {
+		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5 * time.Second,
+			func(name string, duration time.Duration) {
+				o.EventListener.DiskSlow(DiskSlowInfo{
+					Path:     name,
+					Duration: duration,
+				})
+			})
 	}
 
 	o.initMaps()
