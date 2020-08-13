@@ -31,6 +31,7 @@ type syncingFile struct {
 	preallocatedBlocks int64
 	syncData           func() error
 	syncTo             func(offset int64) error
+	timeDiskOp         func(op func())
 }
 
 // NewSyncingFile wraps a writable file and ensures that data is synced
@@ -53,6 +54,16 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	}
 	if d, ok := f.(fd); ok {
 		s.fd = d.Fd()
+	}
+	type dhChecker interface {
+		timeDiskOp(op func())
+	}
+	if d, ok := f.(dhChecker); ok {
+		s.timeDiskOp = d.timeDiskOp
+	} else {
+		s.timeDiskOp = func(op func()) {
+			op()
+		}
 	}
 
 	s.init()
