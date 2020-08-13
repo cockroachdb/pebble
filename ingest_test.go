@@ -326,10 +326,12 @@ func TestIngestLinkFallback(t *testing.T) {
 
 func TestIngestMemtableOverlaps(t *testing.T) {
 	comparers := []Comparer{
-		{Name: "default", Compare: DefaultComparer.Compare},
-		{Name: "reverse", Compare: func(a, b []byte) int {
-			return DefaultComparer.Compare(b, a)
-		}},
+		{Name: "default", Compare: DefaultComparer.Compare, FormatKey: DefaultComparer.FormatKey},
+		{
+			Name:      "reverse",
+			Compare:   func(a, b []byte) int { return DefaultComparer.Compare(b, a) },
+			FormatKey: DefaultComparer.FormatKey,
+		},
 	}
 	m := make(map[string]*Comparer)
 	for i := range comparers {

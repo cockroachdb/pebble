@@ -1475,8 +1475,8 @@ func (d *DB) runCompaction(
 		return nil, pendingOutputs, err
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum(iiter)
-	iter := newCompactionIter(c.cmp, d.merge, iiter, snapshots, &c.rangeDelFrag,
-		c.allowedZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
+	iter := newCompactionIter(c.cmp, c.formatKey, d.merge, iiter, snapshots,
+		&c.rangeDelFrag, c.allowedZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
 	var (
 		filenames []string
