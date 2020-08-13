@@ -182,6 +182,7 @@ type compactionIter struct {
 
 func newCompactionIter(
 	cmp Compare,
+	formatKey base.FormatKey,
 	merge Merge,
 	iter internalIterator,
 	snapshots []uint64,
@@ -201,6 +202,7 @@ func newCompactionIter(
 		elideRangeTombstone: elideRangeTombstone,
 	}
 	i.rangeDelFrag.Cmp = cmp
+	i.rangeDelFrag.Format = formatKey
 	i.rangeDelFrag.Emit = i.emitRangeDelChunk
 	return i
 }

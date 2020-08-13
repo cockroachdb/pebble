@@ -57,6 +57,7 @@ func TestCompactionIter(t *testing.T) {
 	newIter := func() *compactionIter {
 		return newCompactionIter(
 			DefaultComparer.Compare,
+			DefaultComparer.FormatKey,
 			DefaultMerger.Merge,
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
