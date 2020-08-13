@@ -106,6 +106,25 @@ func (i levelInfos) SafeFormat(w redact.SafePrinter, _ rune) {
 	}
 }
 
+// DiskSlowInfo contains the info for a disk slowness event when writing to a
+// file.
+type DiskSlowInfo struct {
+	// Path of file being written to.
+	Path string
+	// Duration that has elapsed since this disk operation started.
+	Duration time.Duration
+}
+
+func (i DiskSlowInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("write to file %s has been ongoing for %0.1fs",
+		i.Path, redact.Safe(i.Duration.Seconds()))
+}
+
 // FlushInfo contains the info for a flush event.
 type FlushInfo struct {
 	// JobID is the ID of the flush job.
@@ -379,6 +398,14 @@ type EventListener struct {
 	// has been installed.
 	CompactionEnd func(CompactionInfo)
 
+	// DiskStalled is invoked after a disk write operation is observed to exceed
+	// options.DiskStalledThreshold.
+	DiskStalled func(DiskSlowInfo)
+
+	// DiskSlow is invoked after a disk write operation is observed to exceed
+	// options.DiskSlowThreshold.
+	DiskSlow func(DiskSlowInfo)
+
 	// FlushBegin is invoked after the inputs to a flush have been determined,
 	// but before the flush has produced any output.
 	FlushBegin func(FlushInfo)
@@ -436,6 +463,12 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.CompactionEnd == nil {
 		l.CompactionEnd = func(info CompactionInfo) {}
 	}
+	if l.DiskStalled == nil {
+		l.DiskStalled = func(info DiskSlowInfo) {}
+	}
+	if l.DiskSlow == nil {
+		l.DiskSlow = func(info DiskSlowInfo) {}
+	}
 	if l.FlushBegin == nil {
 		l.FlushBegin = func(info FlushInfo) {}
 	}
@@ -490,6 +523,12 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		},
 		CompactionEnd: func(info CompactionInfo) {
 			logger.Infof("%s", info)
+		},
+		DiskStalled: func(info DiskSlowInfo) {
+			logger.Infof("disk stall detected: %s", info)
+		},
+		DiskSlow: func(info DiskSlowInfo) {
+			logger.Infof("disk slowness detected: %s", info)
 		},
 		FlushBegin: func(info FlushInfo) {
 			logger.Infof("%s", info)
