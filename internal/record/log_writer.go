@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/diskhealth"
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
@@ -275,9 +276,10 @@ type LogWriter struct {
 		// Accumulated flush error.
 		err error
 		// minSyncInterval is the minimum duration between syncs.
-		minSyncInterval durationFunc
-		pending         []*block
-		syncQ           syncQueue
+		minSyncInterval   durationFunc
+		pending           []*block
+		syncQ             syncQueue
+		diskStallDetector *diskhealth.DiskStallDetector
 	}
 
 	// afterFunc is a hook to allow tests to mock out the timer functionality
@@ -325,6 +327,21 @@ func (w *LogWriter) SetMinSyncInterval(minSyncInterval durationFunc) {
 	f.Unlock()
 }
 
+// InitDiskStallDetection initializes the disk stall detector based on the specified
+// event listeners and disk slowness durations.
+func (w *LogWriter) InitDiskStallDetection(
+	maxSyncDuration time.Duration,
+	slowDiskWarnDuration time.Duration,
+	onDiskStall func(time.Duration),
+	onSlowDisk func(time.Duration),
+) {
+	f := &w.flusher
+	f.Lock()
+	f.diskStallDetector = diskhealth.NewDiskStallDetector(
+		maxSyncDuration, slowDiskWarnDuration, onDiskStall, onSlowDisk)
+	f.Unlock()
+}
+
 func (w *LogWriter) flushLoop(context.Context) {
 	f := &w.flusher
 	f.Lock()
@@ -337,6 +354,10 @@ func (w *LogWriter) flushLoop(context.Context) {
 		close(f.closed)
 		f.Unlock()
 	}()
+	if f.diskStallDetector != nil {
+		f.diskStallDetector.StartTicker()
+		defer f.diskStallDetector.StopTicker()
+	}
 
 	// The flush loop performs flushing of full and partial data blocks to the
 	// underlying writer (LogWriter.w), syncing of the writer, and notification
@@ -422,8 +443,13 @@ func (w *LogWriter) flushLoop(context.Context) {
 			f.syncQ.pop(head, tail, f.err)
 			continue
 		}
+		dsDetector := f.diskStallDetector
 		f.Unlock()
-		synced, err := w.flushPending(data, pending, head, tail)
+		var synced bool
+		var err error
+		dsDetector.TimeDiskOp(func() {
+			synced, err = w.flushPending(data, pending, head, tail)
+		})
 		f.Lock()
 		f.err = err
 		if f.err != nil {

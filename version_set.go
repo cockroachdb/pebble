@@ -10,9 +10,11 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/diskhealth"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
@@ -531,6 +533,21 @@ func (vs *versionSet) createManifest(
 	if err != nil {
 		return err
 	}
+	dsDetector := diskhealth.NewDiskStallDetector(
+		vs.opts.MaxSyncDuration, vs.opts.SlowDiskWarnDuration, func(elapsed time.Duration) {
+			vs.opts.EventListener.DiskStalled(DiskSlowInfo{
+				Path:     filename,
+				Type:     "manifest",
+				Duration: elapsed,
+			})
+		}, func(elapsed time.Duration) {
+			vs.opts.EventListener.DiskSlow(DiskSlowInfo{
+				Path:     filename,
+				Type:     "manifest",
+				Duration: elapsed,
+			})
+		})
+	manifestFile = dsDetector.WrapFile(manifestFile)
 	manifest = record.NewWriter(manifestFile)
 
 	snapshot := versionEdit{

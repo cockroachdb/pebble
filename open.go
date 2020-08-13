@@ -303,6 +303,20 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		})
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum)
 		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
+		d.mu.log.LogWriter.InitDiskStallDetection(
+			d.opts.MaxSyncDuration, d.opts.SlowDiskWarnDuration, func(elapsed time.Duration) {
+				d.opts.EventListener.DiskStalled(DiskSlowInfo{
+					Path:     newLogName,
+					Type:     "WAL",
+					Duration: elapsed,
+				})
+			}, func(elapsed time.Duration) {
+				d.opts.EventListener.DiskSlow(DiskSlowInfo{
+					Path:     newLogName,
+					Type:     "WAL",
+					Duration: elapsed,
+				})
+			})
 		d.mu.versions.metrics.WAL.Files++
 
 		// This logic is slightly different than RocksDB's. Specifically, RocksDB

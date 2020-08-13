@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/diskhealth"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -1542,6 +1543,21 @@ func (d *DB) runCompaction(
 			BytesPerSync: d.opts.BytesPerSync,
 		})
 		filenames = append(filenames, filename)
+		dsDetector := diskhealth.NewDiskStallDetector(
+			d.opts.MaxSyncDuration, d.opts.SlowDiskWarnDuration, func(elapsed time.Duration) {
+				d.opts.EventListener.DiskStalled(DiskSlowInfo{
+					Path:     filename,
+					Type:     "sstable",
+					Duration: elapsed,
+				})
+			}, func(elapsed time.Duration) {
+				d.opts.EventListener.DiskSlow(DiskSlowInfo{
+					Path:     filename,
+					Type:     "sstable",
+					Duration: elapsed,
+				})
+			})
+		file = dsDetector.WrapFile(file)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
 		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt)

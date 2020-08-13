@@ -1304,6 +1304,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 
 		var newLogNum FileNum
+		var newLogName string
 		var newLogFile vfs.File
 		var prevLogSize uint64
 		var err error
@@ -1315,7 +1316,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 
-			newLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
+			newLogName = base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
 
 			// Try to use a recycled log file. Recycling log files is an important
 			// performance optimization as it is faster to sync a file that has
@@ -1382,6 +1383,20 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.log.queue = append(d.mu.log.queue, newLogNum)
 			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum)
 			d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
+			d.mu.log.LogWriter.InitDiskStallDetection(
+				d.opts.MaxSyncDuration, d.opts.SlowDiskWarnDuration, func(elapsed time.Duration) {
+					d.opts.EventListener.DiskStalled(DiskSlowInfo{
+						Path:     newLogName,
+						Type:     "WAL",
+						Duration: elapsed,
+					})
+				}, func(elapsed time.Duration) {
+					d.opts.EventListener.DiskSlow(DiskSlowInfo{
+						Path:     newLogName,
+						Type:     "WAL",
+						Duration: elapsed,
+					})
+				})
 		}
 
 		immMem := d.mu.mem.mutable
