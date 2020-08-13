@@ -406,11 +406,20 @@ type Options struct {
 	// when L0 read-amplification passes the L0CompactionConcurrency threshold.
 	MaxConcurrentCompactions int
 
+	// MaxSyncDuration is the maximum duration of time each disk operation is
+	// expected to take. Any disk writes or syncs that take longer than this
+	// duration would trigger a DiskStall event. Defaults to 1 minute.
+	MaxSyncDuration time.Duration
+
 	// ReadOnly indicates that the DB should be opened in read-only mode. Writes
 	// to the DB will return an error, background compactions are disabled, and
 	// the flush that normally occurs after replaying the WAL at startup is
 	// disabled.
 	ReadOnly bool
+
+	// SlowDiskWarnDuration sets the threshold for disk operations that, when
+	// exceeded, fires an EventListener.DiskSlow event. Defaults to 5 seconds.
+	SlowDiskWarnDuration time.Duration
 
 	// TableFormat specifies the format version for writing sstables. The default
 	// is TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
@@ -477,9 +486,6 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer
 	}
-	if o.FS == nil {
-		o.FS = vfs.Default
-	}
 	if o.Experimental.L0CompactionConcurrency <= 0 {
 		o.Experimental.L0CompactionConcurrency = 10
 	}
@@ -535,6 +541,28 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.MaxConcurrentCompactions <= 0 {
 		o.MaxConcurrentCompactions = 1
+	}
+	if o.MaxSyncDuration <= 0 {
+		o.MaxSyncDuration = 1 * time.Minute
+	}
+	if o.SlowDiskWarnDuration <= 0 {
+		o.SlowDiskWarnDuration = 5 * time.Second
+	}
+	if o.FS == nil {
+		o.FS = vfs.DefaultWithDiskHealthChecks(
+			o.MaxSyncDuration, o.SlowDiskWarnDuration,
+			func(name string, duration time.Duration) {
+				o.EventListener.DiskStalled(DiskSlowInfo{
+					Path:     name,
+					Duration: duration,
+				})
+			},
+			func(name string, duration time.Duration) {
+				o.EventListener.DiskSlow(DiskSlowInfo{
+					Path:     name,
+					Duration: duration,
+				})
+			})
 	}
 
 	o.initMaps()
