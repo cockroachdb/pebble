@@ -145,6 +145,3 @@ func main() {
 	}
 }
 ```
-
-
-See [here](https://github.com/sfproductlabs/tracker/blob/master/pkv.go) for a full example, including searching, batches and iterators.
