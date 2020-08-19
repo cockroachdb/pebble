@@ -141,6 +141,7 @@ func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
 }
 
 func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
+	t.Helper()
 	i := start
 	for it.First(); it.Valid(); it.Next() {
 		item := it.Cur()
@@ -177,10 +178,11 @@ func TestBTree(t *testing.T) {
 	// there to be 3 levels in the tree. The count here is comfortably above
 	// that.
 	const count = 768
+	items := rang(0, count-1)
 
 	// Add keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.Insert(newItem(key(i)))
+		tr.Insert(items[i])
 		tr.Verify(t)
 		if e := i + 1; e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
@@ -190,7 +192,10 @@ func TestBTree(t *testing.T) {
 
 	// Delete keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.Delete(newItem(key(i)))
+		obsolete := tr.Delete(items[i])
+		if !obsolete {
+			t.Fatalf("expected item %d to be obsolete", i)
+		}
 		tr.Verify(t)
 		if e := count - (i + 1); e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
@@ -199,23 +204,26 @@ func TestBTree(t *testing.T) {
 	}
 
 	// Add keys in reverse sorted order.
-	for i := 0; i < count; i++ {
-		tr.Insert(newItem(key(count - i)))
+	for i := 1; i <= count; i++ {
+		tr.Insert(items[count-i])
 		tr.Verify(t)
-		if e := i + 1; e != tr.Len() {
-			t.Fatalf("expected length %d, but found %d", e, tr.Len())
+		if i != tr.Len() {
+			t.Fatalf("expected length %d, but found %d", i, tr.Len())
 		}
-		checkIter(t, tr.MakeIter(), count-i, count+1, keyMemo)
+		checkIter(t, tr.MakeIter(), count-i, count, keyMemo)
 	}
 
 	// Delete keys in reverse sorted order.
-	for i := 0; i < count; i++ {
-		tr.Delete(newItem(key(count - i)))
+	for i := 1; i <= count; i++ {
+		obsolete := tr.Delete(items[count-i])
+		if !obsolete {
+			t.Fatalf("expected item %d to be obsolete", i)
+		}
 		tr.Verify(t)
-		if e := count - (i + 1); e != tr.Len() {
+		if e := count - i; e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
 		}
-		checkIter(t, tr.MakeIter(), 1, count-i, keyMemo)
+		checkIter(t, tr.MakeIter(), 0, count-i, keyMemo)
 	}
 }
 
@@ -316,7 +324,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 	t.Logf("Starting equality checks on %d trees", len(trees))
 	want := rang(0, cloneTestSize-1)
 	for i, tree := range trees {
-		if !reflect.DeepEqual(want, all(tree)) {
+		if got := all(tree); !reflect.DeepEqual(strReprs(got), strReprs(want)) {
 			t.Errorf("tree %v mismatch", i)
 		}
 	}
@@ -343,9 +351,17 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		} else {
 			wantpart = want
 		}
-		if got := all(tree); !reflect.DeepEqual(wantpart, got) {
-			t.Errorf("tree %v mismatch, want %v got %v", i, len(want), len(got))
+		if got := all(tree); !reflect.DeepEqual(strReprs(got), strReprs(wantpart)) {
+			t.Errorf("tree %v mismatch, want %#v got %#v", i, strReprs(wantpart), strReprs(got))
 		}
+	}
+
+	var obsolete []base.FileNum
+	for i := range trees {
+		obsolete = append(obsolete, trees[i].Release()...)
+	}
+	if len(obsolete) != len(p) {
+		t.Errorf("got %d obsolete trees, expected %d", len(obsolete), len(p))
 	}
 }
 
@@ -384,6 +400,14 @@ func rang(m, n int) (out []*FileMetadata) {
 		out = append(out, newItem(key(i)))
 	}
 	return out
+}
+
+func strReprs(items []*FileMetadata) []string {
+	s := make([]string, len(items))
+	for i := range items {
+		s[i] = items[i].String()
+	}
+	return s
 }
 
 // all extracts all items from a tree in order as a slice.
@@ -492,22 +516,22 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 // BenchmarkBTreeDeleteInsertCloneEachTime measures btree deletion and insertion
 // performance while the tree is repeatedly copy-on-write cloned.
 func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
-	for _, reset := range []bool{false, true} {
-		b.Run(fmt.Sprintf("reset=%t", reset), func(b *testing.B) {
+	for _, release := range []bool{false, true} {
+		b.Run(fmt.Sprintf("release=%t", release), func(b *testing.B) {
 			forBenchmarkSizes(b, func(b *testing.B, count int) {
 				insertP := perm(count)
-				var tr, trReset btree
+				var tr, trRelease btree
 				tr.cmp = cmp
-				trReset.cmp = cmp
+				trRelease.cmp = cmp
 				for _, item := range insertP {
 					tr.Insert(item)
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					item := insertP[i%count]
-					if reset {
-						trReset.Reset()
-						trReset = tr
+					if release {
+						trRelease.Release()
+						trRelease = tr
 					}
 					tr = tr.Clone()
 					tr.Delete(item)
