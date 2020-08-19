@@ -5,6 +5,7 @@
 package manifest
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -283,17 +284,19 @@ func (n *node) split(i int) (*FileMetadata, *node) {
 }
 
 // insert inserts a item into the subtree rooted at this node, making sure no
-// nodes in the subtree exceed maxItems items. Returns true if an existing item
-// was replaced and false if a item was inserted.
-func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (replaced bool) {
+// nodes in the subtree exceed maxItems items.
+func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) {
 	i, found := n.find(cmp, item)
 	if found {
-		n.items[i] = item
-		return true
+		// cmp provides a total ordering of the files within a level.
+		// If we're inserting a metadata that's equal to an existing item
+		// in the tree, we're inserting a file into a level twice.
+		panic(fmt.Sprintf("file key collision: existing metadata %s, inserting %s",
+			n.items[i].FileNum, item.FileNum))
 	}
 	if n.leaf {
 		n.insertAt(i, item, nil)
-		return false
+		return
 	}
 	if n.children[i].count >= maxItems {
 		splitLa, splitNode := mut(&n.children[i]).split(maxItems / 2)
@@ -305,12 +308,14 @@ func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMeta
 		case cmp > 0:
 			i++ // we want second split node
 		default:
-			n.items[i] = item
-			return true
+			// cmp provides a total ordering of the files within a level.
+			// If we're inserting a metadata that's equal to an existing item
+			// in the tree, we're inserting a file into a level twice.
+			panic(fmt.Sprintf("file key collision: existing metadata %s, inserting %s",
+				n.items[i].FileNum, item.FileNum))
 		}
 	}
-	replaced = mut(&n.children[i]).insert(cmp, item)
-	return replaced
+	mut(&n.children[i]).insert(cmp, item)
 }
 
 // removeMax removes and returns the maximum item from the subtree rooted
@@ -544,9 +549,9 @@ func (t *btree) Delete(item *FileMetadata) {
 	}
 }
 
-// Set adds the given item to the tree. If a item in the tree already
-// equals the given one, it is replaced with the new item.
-func (t *btree) Set(item *FileMetadata) {
+// Insert adds the given item to the tree. If a item in the tree already
+// equals the given one, Insert panics.
+func (t *btree) Insert(item *FileMetadata) {
 	if t.root == nil {
 		t.root = newLeafNode()
 	} else if t.root.count >= maxItems {
@@ -558,9 +563,8 @@ func (t *btree) Set(item *FileMetadata) {
 		newRoot.children[1] = splitNode
 		t.root = newRoot
 	}
-	if replaced := mut(&t.root).insert(t.cmp, item); !replaced {
-		t.length++
-	}
+	mut(&t.root).insert(t.cmp, item)
+	t.length++
 }
 
 // MakeIter returns a new iterator object. It is not safe to continue using an
