@@ -140,6 +140,22 @@ func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
 	return s
 }
 
+func checkIterRelative(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
+	t.Helper()
+	i := start
+	for ; it.Valid(); it.Next() {
+		item := it.Cur()
+		expected := keyWithMemo(i, keyMemo)
+		if cmpKey(expected, item.Smallest) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
+		}
+		i++
+	}
+	if i != end {
+		t.Fatalf("expected %d, but at %d", end, i)
+	}
+}
+
 func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
 	t.Helper()
 	i := start
@@ -224,6 +240,27 @@ func TestBTree(t *testing.T) {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
 		}
 		checkIter(t, tr.MakeIter(), 0, count-i, keyMemo)
+	}
+}
+
+func TestIterClone(t *testing.T) {
+	const count = 65536
+
+	var tr btree
+	tr.cmp = cmp
+	keyMemo := make(map[int]InternalKey)
+
+	for i := 0; i < count; i++ {
+		tr.Insert(newItem(key(i)))
+	}
+
+	it := tr.MakeIter()
+	i := 0
+	for it.First(); it.Valid(); it.Next() {
+		if i%500 == 0 {
+			checkIterRelative(t, it.clone(), i, count, keyMemo)
+		}
+		i++
 	}
 }
 

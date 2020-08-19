@@ -700,6 +700,18 @@ func (is *iterStack) len() int {
 	return int(is.aLen)
 }
 
+func (is *iterStack) clone() iterStack {
+	// If the iterator is using the embedded iterStackArr, we only need to
+	// copy the struct itself.
+	if is.s == nil {
+		return *is
+	}
+	clone := *is
+	clone.s = make([]iterFrame, len(is.s))
+	copy(clone.s, is.s)
+	return clone
+}
+
 func (is *iterStack) reset() {
 	if is.aLen == -1 {
 		is.s = is.s[:0]
@@ -715,6 +727,12 @@ type iterator struct {
 	pos int16
 	cmp func(*FileMetadata, *FileMetadata) int
 	s   iterStack
+}
+
+func (i *iterator) clone() iterator {
+	c := *i
+	c.s = i.s.clone()
+	return c
 }
 
 func (i *iterator) reset() {
