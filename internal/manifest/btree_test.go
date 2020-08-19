@@ -140,10 +140,6 @@ func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
 	return s
 }
 
-func randomInternalKey(rng *rand.Rand, n int) InternalKey {
-	return key(rng.Intn(n))
-}
-
 func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
 	i := start
 	for it.First(); it.Valid(); it.Next() {
@@ -184,7 +180,7 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.Set(newItem(key(i)))
+		tr.Insert(newItem(key(i)))
 		tr.Verify(t)
 		if e := i + 1; e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
@@ -204,7 +200,7 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in reverse sorted order.
 	for i := 0; i < count; i++ {
-		tr.Set(newItem(key(count - i)))
+		tr.Insert(newItem(key(count - i)))
 		tr.Verify(t)
 		if e := i + 1; e != tr.Len() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Len())
@@ -230,7 +226,7 @@ func TestBTreeSeek(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
 	for i := 0; i < count; i++ {
-		tr.Set(newItem(key(i * 2)))
+		tr.Insert(newItem(key(i * 2)))
 	}
 
 	it := tr.MakeIter()
@@ -267,6 +263,16 @@ func TestBTreeSeek(t *testing.T) {
 	}
 }
 
+func TestBTreeInsertDuplicatePanic(t *testing.T) {
+	var tr btree
+	tr.cmp = cmp
+	tr.Insert(newItem(key(1)))
+	tr.Insert(newItem(key(2)))
+	tr.Insert(newItem(key(3)))
+	require.PanicsWithValue(t, "file key collision: existing metadata 000000, inserting 000000",
+		func() { tr.Insert(newItem(key(2))) })
+}
+
 // TestBTreeCloneConcurrentOperations tests that cloning a btree returns a new
 // btree instance which is an exact logical copy of the original but that can be
 // modified independently going forward.
@@ -289,7 +295,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		t.Logf("Starting new clone at %v", start)
 		treeC <- tr
 		for i := start; i < cloneTestSize; i++ {
-			tr.Set(p[i])
+			tr.Insert(p[i])
 			if i%(cloneTestSize/5) == 0 {
 				wg.Add(1)
 				c := tr.Clone()
@@ -408,7 +414,7 @@ func BenchmarkBTreeInsert(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.Set(item)
+				tr.Insert(item)
 				i++
 				if i >= b.N {
 					return
@@ -428,7 +434,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.Set(item)
+				tr.Insert(item)
 			}
 			b.StartTimer()
 			for _, item := range removeP {
@@ -452,13 +458,13 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.Set(item)
+			tr.Insert(item)
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.Delete(item)
-			tr.Set(item)
+			tr.Insert(item)
 		}
 	})
 }
@@ -469,15 +475,16 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		insertP := perm(count)
 		var tr btree
+		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.Set(item)
+			tr.Insert(item)
 		}
 		tr = tr.Clone()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.Delete(item)
-			tr.Set(item)
+			tr.Insert(item)
 		}
 	})
 }
@@ -493,7 +500,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 				tr.cmp = cmp
 				trReset.cmp = cmp
 				for _, item := range insertP {
-					tr.Set(item)
+					tr.Insert(item)
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -504,7 +511,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 					}
 					tr = tr.Clone()
 					tr.Delete(item)
-					tr.Set(item)
+					tr.Insert(item)
 				}
 			})
 		})
@@ -533,7 +540,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		for i := 0; i < count; i++ {
 			s := key(i)
 			keys = append(keys, s)
-			tr.Set(newItem(s))
+			tr.Insert(newItem(s))
 		}
 
 		b.ResetTimer()
@@ -565,7 +572,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 		for i := 0; i < count; i++ {
 			k := key(i)
 			keys = append(keys, k)
-			tr.Set(newItem(k))
+			tr.Insert(newItem(k))
 		}
 
 		b.ResetTimer()
@@ -603,7 +610,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.Set(item)
+		tr.Insert(item)
 	}
 
 	it := tr.MakeIter()
@@ -626,7 +633,7 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.Set(item)
+		tr.Insert(item)
 	}
 
 	it := tr.MakeIter()
