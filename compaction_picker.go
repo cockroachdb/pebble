@@ -964,7 +964,16 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			if !f.MarkedForCompaction {
 				continue
 			}
-			info := &scores[level]
+			var info *candidateLevelInfo
+			for i := range scores {
+				if scores[i].level == level {
+					info = &scores[i]
+					break
+				}
+			}
+			if info == nil {
+				panic(fmt.Sprintf("could not find candidate level info for level %d", level))
+			}
 			info.file = iter.Take()
 			pc := pickAutoHelper(env, p.opts, p.vers, *info, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable concurrently.
