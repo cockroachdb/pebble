@@ -1841,6 +1841,54 @@ func (d *DB) runCompaction(
 			// beginning of the first file.
 			n := len(ve.NewFiles)
 			limit = c.findGrandparentLimit(ve.NewFiles[n-1].Meta.Largest.UserKey)
+			// This conditional is necessary to maintain the invariant that
+			// successive calls to finishOutput() have an increasing
+			// limit, and that the fragmenter's *FlushTo() and Add() calls are
+			// always made with successively increasing user keys. It's possible
+			// for the last file's Meta.Largest.UserKey
+			// to be substantially less than the last key returned by
+			// the compactionIter, such as in a sequence of consecutive
+			// rangedel tombstones, of which some but not all get elided.
+			// Consider this example:
+			//
+			// Compaction input (all range tombstones in this snippet):
+			// a-b
+			// c-d
+			// e-f  (elided)
+			// g-h  (elided) <-- grandparent limit right before this
+			// i-j  (elided)
+			// k-q  (elided) <-- grandparent limit at m
+			//
+			// Note that elided tombstones are added to the fragmenter, but
+			// removed before they make their way from the fragmenter onto
+			// iter.tombstones. They still affect the fragmenter's internal
+			// tracking of the key up to which all tombstones have been flushed.
+			// After the first output is cut with limit = g, the fragmenter
+			// is empty, so the next grandparent calculation happens with
+			// key = g, and returns m. We continue adding range tombstones to
+			// the fragmenter between [g,m), which splits k-q into k-q and
+			// m-q, both of which will eventually get elided but at the moment
+			// m-q being in the fragmenter makes c.rangeDelFrag.Empty() false.
+			// No output file is actually written (see the `if tw == nil`
+			// conditionals in finishOutput()) as all the keys between
+			// [g,m) got elided.
+			//
+			// When we try to calculate the next grandparent limit, since
+			// c.rangeDelFrag.Empty() == false, we fall into this case,
+			// and use the end key of the last written sstable (which was [a-d])
+			// to calculate the grandparent limit. That gets us g again, which
+			// gets us to call c.rangeDelFrag.FlushTo(g), which violates the
+			// invariant of the last flushed-to key there being m.
+			//
+			// In short, if the grandparent limit falls "in between"
+			// ve.NewFiles[n-1].Meta.Largest.UserKey and key.UserKey (or the
+			// start of a range tombstone already in the fragmenter),
+			// re-calculate a higher limit ahead of that key.
+			if c.rangeDelFrag.Start() != nil && c.cmp(limit, c.rangeDelFrag.Start()) <= 0 {
+				limit = c.findGrandparentLimit(c.rangeDelFrag.Start())
+			} else if key != nil && c.cmp(limit, key.UserKey) <= 0 {
+				limit = c.findGrandparentLimit(key.UserKey)
+			}
 		}
 
 		// Each inner loop iteration processes one key from the input iterator.
