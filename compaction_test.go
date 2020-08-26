@@ -919,7 +919,9 @@ func TestManualCompaction(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
 	defer func() {
-		require.NoError(t, d.Close())
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
 	}()
 
 	reset := func() {

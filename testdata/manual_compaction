@@ -702,3 +702,49 @@ manual compaction blocked until ongoing finished
 5:
   000014:[a#0,SET-a#0,SET]
   000015:[b#0,SET-b#0,SET]
+
+# Test of a scenario where consecutive elided range tombstones and grandparent
+# boundaries could result in an invariant violation in the rangedel fragmenter.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.RANGEDEL.4:b
+  c.RANGEDEL.4:d
+  e.RANGEDEL.4:f
+L1
+  g.RANGEDEL.6:h
+  i.RANGEDEL.4:j
+L1
+  k.RANGEDEL.5:q
+  m.RANGEDEL.4:q
+L2
+  a.SET.2:foo
+L3
+  a.SET.1:foo
+  c.SET.1:foo
+L3
+  ff.SET.1:v
+L3
+  k.SET.1:foo
+----
+1:
+  000004:[a-f]
+  000005:[g-j]
+  000006:[k-q]
+2:
+  000007:[a-a]
+3:
+  000008:[a-c]
+  000009:[ff-ff]
+  000010:[k-k]
+
+compact a-q L1
+----
+2:
+  000011:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000012:[c#4,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000013:[k#5,RANGEDEL-m#72057594037927935,RANGEDEL]
+3:
+  000008:[a#1,SET-c#1,SET]
+  000009:[ff#1,SET-ff#1,SET]
+  000010:[k#1,SET-k#1,SET]
