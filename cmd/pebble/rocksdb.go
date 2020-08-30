@@ -60,6 +60,18 @@ func (i rocksDBIterator) SeekGE(key []byte) bool {
 	return i.Valid()
 }
 
+func (i rocksDBIterator) SeekLT(key []byte) bool {
+	// TODO: unnecessary overhead here. Change the interface.
+	userKey, _, ok := mvccSplitKey(key)
+	if !ok {
+		panic("mvccSplitKey failed")
+	}
+	i.iter.SeekLT(storage.MVCCKey{
+		Key: userKey,
+	})
+	return i.Valid()
+}
+
 func (i rocksDBIterator) Valid() bool {
 	valid, _ := i.iter.Valid()
 	return valid
@@ -229,7 +241,7 @@ func (r rocksDB) Metrics() *pebble.Metrics {
 			} else {
 				panic("unknown unit")
 			}
-			vMetrics.Levels[level].Size = uint64(size)
+			vMetrics.Levels[level].Size = int64(size)
 			vMetrics.Levels[level].Score, _ = strconv.ParseFloat(fields[4], 64)
 			if level > 0 {
 				bytesInGB, _ := strconv.ParseFloat(fields[6], 64)
@@ -309,6 +321,18 @@ func (i crdbPebbleDBIterator) SeekGE(key []byte) bool {
 		panic("mvccSplitKey failed")
 	}
 	i.iter.SeekGE(storage.MVCCKey{
+		Key: userKey,
+	})
+	return i.Valid()
+}
+
+func (i crdbPebbleDBIterator) SeekLT(key []byte) bool {
+	// TODO: unnecessary overhead here. Change the interface.
+	userKey, _, ok := mvccSplitKey(key)
+	if !ok {
+		panic("mvccSplitKey failed")
+	}
+	i.iter.SeekLT(storage.MVCCKey{
 		Key: userKey,
 	})
 	return i.Valid()
@@ -408,7 +432,7 @@ func (r crdbPebbleDB) NewBatch() batch {
 	return crdbPebbleDBBatch{r.d.NewBatch()}
 }
 
-func (r crdbPebbleDB) Scan(key []byte, count int64, reverse bool) error {
+func (r crdbPebbleDB) Scan(iter iterator, key []byte, count int64, reverse bool) error {
 	// TODO: unnecessary overhead here. Change the interface.
 	beginKey, _, ok := mvccSplitKey(key)
 	if !ok {
