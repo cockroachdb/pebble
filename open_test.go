@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -504,6 +505,62 @@ func TestOpenWALReplay2(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTwoWALReplayCorrupt tests WAL-replay behavior when the first of the two
+// WALs is corrupted with an sstable checksum error. Replay must stop at the
+// first WAL because otherwise we may violate point-in-time recovery
+// semantics. See #864.
+func TestTwoWALReplayCorrupt(t *testing.T) {
+	// Use the real filesystem so that we can seek and overwrite WAL data
+	// easily.
+	dir, err := ioutil.TempDir("", "wal-replay")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	d, err := Open(dir, &Options{
+		MemTableStopWritesThreshold: 4,
+		MemTableSize:                2048,
+	})
+	require.NoError(t, err)
+	d.mu.Lock()
+	d.mu.compact.flushing = true
+	d.mu.Unlock()
+	require.NoError(t, d.Set([]byte("1"), []byte(strings.Repeat("a", 1024)), nil))
+	require.NoError(t, d.Set([]byte("2"), nil, nil))
+	d.mu.Lock()
+	d.mu.compact.flushing = false
+	d.mu.Unlock()
+	require.NoError(t, d.Close())
+
+	// We should have two WALs.
+	var logs []string
+	ls, err := vfs.Default.List(dir)
+	require.NoError(t, err)
+	for _, name := range ls {
+		if filepath.Ext(name) == ".log" {
+			logs = append(logs, name)
+		}
+	}
+	sort.Strings(logs)
+	if len(logs) < 2 {
+		t.Fatalf("expected at least two log files, found %d", len(logs))
+	}
+
+	// Corrupt the (n-1)th WAL by zeroing four bytes, 100 bytes from the end
+	// of the file.
+	f, err := os.OpenFile(filepath.Join(dir, logs[len(logs)-2]), os.O_RDWR, os.ModePerm)
+	require.NoError(t, err)
+	off, err := f.Seek(-100, 2)
+	require.NoError(t, err)
+	_, err = f.Write([]byte{0, 0, 0, 0})
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	t.Logf("zeored four bytes in %s at offset %d\n", logs[len(logs)-2], off)
+
+	// Re-opening the database should detect and report the corruption.
+	d, err = Open(dir, nil)
+	require.Error(t, err, "pebble: corruption")
 }
 
 // TestOpenWALReplayReadOnlySeqNums tests opening a database:
