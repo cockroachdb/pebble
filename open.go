@@ -264,9 +264,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	})
 
 	var ve versionEdit
-	for _, lf := range logFiles {
+	for i, lf := range logFiles {
 		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS, opts.FS.PathJoin(d.walDirname, lf.name), lf.num)
-		if err != nil {
+		// Invalid records are expected from recycled WALs, but only in the
+		// most recent WAL.
+		if err != nil && (!record.IsInvalidRecord(err) || i < len(logFiles)-1) {
 			return nil, err
 		}
 		d.mu.versions.markFileNumUsed(lf.num)
@@ -485,17 +487,22 @@ func (d *DB) replayWAL(
 		}
 	}
 	for {
+		var r io.Reader
 		offset = rr.Offset()
-		r, err := rr.Next()
+		r, err = rr.Next()
 		if err == nil {
 			_, err = io.Copy(&buf, r)
 		}
 		if err != nil {
 			// It is common to encounter a zeroed or invalid chunk due to WAL
-			// preallocation and WAL recycling. We need to distinguish these errors
-			// from EOF in order to recognize that the record was truncated, but want
+			// preallocation and WAL recycling. We need to distinguish these
+			// errors from EOF in order to recognize that the record was
+			// truncated and to avoid replaying any subsequent WALs, but want
 			// to otherwise treat them like EOF.
-			if err == io.EOF || record.IsInvalidRecord(err) {
+			if err == io.EOF {
+				err = nil
+				break
+			} else if record.IsInvalidRecord(err) {
 				break
 			}
 			return 0, errors.Wrap(err, "pebble: error when replaying WAL")
@@ -556,16 +563,17 @@ func (d *DB) replayWAL(
 	if !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush, &d.bytesFlushed)
-		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
-		if err != nil {
-			return 0, err
-		}
-		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
-		for i := range toFlush {
-			toFlush[i].readerUnref()
+		newVE, _, cerr := d.runCompaction(jobID, c, nilPacer)
+		if cerr == nil {
+			ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
+			for i := range toFlush {
+				toFlush[i].readerUnref()
+			}
+		} else if err == nil {
+			err = cerr
 		}
 	}
-	return maxSeqNum, nil
+	return maxSeqNum, err
 }
 
 func checkOptions(opts *Options, path string) error {

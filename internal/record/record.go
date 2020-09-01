@@ -90,8 +90,8 @@
 //
 // Recyclable chunks are distinguished from legacy chunks by the addition of 4
 // extra "recyclable" chunk types that map directly to the legacy chunk types
-// (i.e. full, first, middle, last). The CRC is computed over the type, log
-// number, and payload.
+// (i.e. full, first, middle, last), plus one special EOF chunk type. The CRC
+// is computed over the type, log number, and payload.
 //
 // The wire format allows for limited recovery in the face of data corruption:
 // on a format error (such as a checksum mismatch), the reader moves to the
@@ -123,6 +123,7 @@ const (
 	recyclableFirstChunkType  = 6
 	recyclableMiddleChunkType = 7
 	recyclableLastChunkType   = 8
+	recyclableEOFChunkType    = 9
 )
 
 const (
@@ -223,7 +224,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			}
 
 			headerSize := legacyHeaderSize
-			if chunkType >= recyclableFullChunkType && chunkType <= recyclableLastChunkType {
+			if chunkType >= recyclableFullChunkType && chunkType <= recyclableEOFChunkType {
 				headerSize = recyclableHeaderSize
 				if r.end+headerSize > r.n {
 					return ErrInvalidChunk
@@ -239,6 +240,17 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					// Otherwise, treat this chunk as invalid in order to prevent reading
 					// of a partial record.
 					return ErrInvalidChunk
+				}
+
+				// Look for the special EOF chunk that denotes the end of the WAL.
+				// These chunks prevent us from misinterpreting garbage at the
+				// tail of a WAL from recycling.
+				if chunkType == recyclableEOFChunkType {
+					// The EOF chunk must have a zeroed checksum and length.
+					if checksum != 0 || length != 0 {
+						return ErrInvalidChunk
+					}
+					return io.EOF
 				}
 
 				chunkType -= (recyclableFullChunkType - 1)

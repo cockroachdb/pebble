@@ -948,17 +948,21 @@ func TestTruncatedLog(t *testing.T) {
 }
 
 func TestRecycleLogWithPartialBlock(t *testing.T) {
-	backing := make([]byte, 16)
+	backing := make([]byte, 27)
 	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(1))
 	// Will write a chunk with 11 byte header + 5 byte payload.
 	_, err := w.WriteRecord([]byte("aaaaa"))
 	require.NoError(t, err)
+	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
+
 	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(2))
 	// Will write a chunk with 11 byte header + 1 byte payload.
 	_, err = w.WriteRecord([]byte("a"))
 	require.NoError(t, err)
+	// Close will write an 11-byte EOF chunk.
 	require.NoError(t, w.Close())
+
 	r := NewReader(bytes.NewReader(backing), base.FileNum(2))
 	_, err = r.Next()
 	require.NoError(t, err)
