@@ -264,8 +264,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	})
 
 	var ve versionEdit
-	for _, lf := range logFiles {
-		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS, opts.FS.PathJoin(d.walDirname, lf.name), lf.num)
+	for i, lf := range logFiles {
+		lastWAL := i == len(logFiles)-1
+		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS, opts.FS.PathJoin(d.walDirname, lf.name), lf.num, lastWAL)
 		if err != nil {
 			return nil, err
 		}
@@ -427,7 +428,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum FileNum,
+	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum FileNum, lastWAL bool,
 ) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
@@ -492,10 +493,13 @@ func (d *DB) replayWAL(
 		}
 		if err != nil {
 			// It is common to encounter a zeroed or invalid chunk due to WAL
-			// preallocation and WAL recycling. We need to distinguish these errors
-			// from EOF in order to recognize that the record was truncated, but want
+			// preallocation and WAL recycling. We need to distinguish these
+			// errors from EOF in order to recognize that the record was
+			// truncated and to avoid replaying subsequent WALs, but want
 			// to otherwise treat them like EOF.
-			if err == io.EOF || record.IsInvalidRecord(err) {
+			if err == io.EOF {
+				break
+			} else if record.IsInvalidRecord(err) && lastWAL {
 				break
 			}
 			return 0, errors.Wrap(err, "pebble: error when replaying WAL")
@@ -565,7 +569,7 @@ func (d *DB) replayWAL(
 			toFlush[i].readerUnref()
 		}
 	}
-	return maxSeqNum, nil
+	return maxSeqNum, err
 }
 
 func checkOptions(opts *Options, path string) error {

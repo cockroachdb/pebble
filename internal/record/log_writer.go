@@ -534,6 +534,11 @@ func (w *LogWriter) queueBlock() {
 func (w *LogWriter) Close() error {
 	f := &w.flusher
 
+	// Emit an EOF trailer signifying the end of this log. This helps readers
+	// differentiate between a corrupted entry in the middle of a log from
+	// garbage at the tail from a recycled log file.
+	w.emitEOFTrailer()
+
 	// Signal the flush loop to close.
 	f.Lock()
 	f.close = true
@@ -611,6 +616,18 @@ func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64,
 // External synchronisation provided by commitPipeline.mu.
 func (w *LogWriter) Size() int64 {
 	return w.blockNum*blockSize + int64(w.block.written)
+}
+
+func (w *LogWriter) emitEOFTrailer() {
+	// Write a recyclable chunk header with a different log number.  Readers
+	// will treat the header as EOF when the log number does not match.
+	b := w.block
+	i := b.written
+	binary.LittleEndian.PutUint32(b.buf[i+0:i+4], 0) // CRC
+	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], 0) // Size
+	b.buf[i+6] = recyclableFullChunkType
+	binary.LittleEndian.PutUint32(b.buf[i+7:i+11], w.logNum+1) // Log number
+	atomic.StoreInt32(&b.written, i+int32(recyclableHeaderSize))
 }
 
 func (w *LogWriter) emitFragment(n int, p []byte) []byte {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -948,22 +949,55 @@ func TestTruncatedLog(t *testing.T) {
 }
 
 func TestRecycleLogWithPartialBlock(t *testing.T) {
-	backing := make([]byte, 16)
+	backing := make([]byte, 27)
 	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(1))
 	// Will write a chunk with 11 byte header + 5 byte payload.
 	_, err := w.WriteRecord([]byte("aaaaa"))
 	require.NoError(t, err)
+	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
+
 	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(2))
 	// Will write a chunk with 11 byte header + 1 byte payload.
 	_, err = w.WriteRecord([]byte("a"))
 	require.NoError(t, err)
+	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
+
 	r := NewReader(bytes.NewReader(backing), base.FileNum(2))
 	_, err = r.Next()
 	require.NoError(t, err)
 	// 4 bytes left, which are not enough for even the legacy header.
-	if _, err = r.Next(); err != ErrInvalidChunk && err != io.EOF {
+	if _, err = r.Next(); err != io.EOF {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecycleLogNumberOverflow(t *testing.T) {
+	// We truncate log numbers to 32-bits when writing to the WAL. Test log
+	// recycling at the wraparound point, ensuring that EOF chunks are
+	// interpreted correctly.
+
+	backing := make([]byte, 27)
+	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(math.MaxUint32))
+	// Will write a chunk with 11 byte header + 5 byte payload.
+	_, err := w.WriteRecord([]byte("aaaaa"))
+	require.NoError(t, err)
+	// Close will write a 11-byte EOF chunk.
+	require.NoError(t, w.Close())
+
+	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(math.MaxUint32+1))
+	// Will write a chunk with 11 byte header + 1 byte payload.
+	_, err = w.WriteRecord([]byte("a"))
+	require.NoError(t, err)
+	// Close will write a 11-byte EOF chunk.
+	require.NoError(t, w.Close())
+
+	r := NewReader(bytes.NewReader(backing), base.FileNum(math.MaxUint32+1))
+	_, err = r.Next()
+	require.NoError(t, err)
+	// 4 bytes left, which are not enough for even the legacy header.
+	if _, err = r.Next(); err != io.EOF {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
