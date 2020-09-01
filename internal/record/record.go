@@ -90,8 +90,8 @@
 //
 // Recyclable chunks are distinguished from legacy chunks by the addition of 4
 // extra "recyclable" chunk types that map directly to the legacy chunk types
-// (i.e. full, first, middle, last). The CRC is computed over the type, log
-// number, and payload.
+// (i.e. full, first, middle, last), plus one special EOF chunk type. The CRC
+// is computed over the type, log number, and payload.
 //
 // The wire format allows for limited recovery in the face of data corruption:
 // on a format error (such as a checksum mismatch), the reader moves to the
@@ -240,7 +240,6 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					// of a partial record.
 					return ErrInvalidChunk
 				}
-
 				chunkType -= (recyclableFullChunkType - 1)
 			}
 

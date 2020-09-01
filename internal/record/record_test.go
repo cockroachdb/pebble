@@ -58,7 +58,7 @@ func testGeneratorWriter(
 		t.Fatalf("Close: %v", err)
 	}
 	reset()
-	r := NewReader(buf, 0 /* logNum */)
+	r := NewReader(buf, 1 /* logNum */)
 	for {
 		s, ok := gen()
 		if !ok {
@@ -90,7 +90,7 @@ func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 
 	t.Run("LogWriter", func(t *testing.T) {
 		testGeneratorWriter(t, reset, gen, func(w io.Writer) recordWriter {
-			return NewLogWriter(w, 0 /* logNum */)
+			return NewLogWriter(w, 1 /* logNum */)
 		})
 	})
 }
@@ -212,7 +212,7 @@ func TestFlush(t *testing.T) {
 		t.Fatalf("buffer length #5: got %d want %d", got, want)
 	}
 	// Check that reading those records give the right lengths.
-	r := NewReader(buf, 0 /* logNum */)
+	r := NewReader(buf, 1 /* logNum */)
 	wants := []int64{1, 2, 10000, 40000}
 	for i, want := range wants {
 		rr, _ := r.Next()
@@ -242,7 +242,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	r := NewReader(buf, 0 /* logNum */)
+	r := NewReader(buf, 1 /* logNum */)
 	for i := 0; i < n; i++ {
 		rr, _ := r.Next()
 		_, err := io.ReadFull(rr, p)
@@ -268,7 +268,7 @@ func TestStaleReader(t *testing.T) {
 
 	require.NoError(t, w.Close())
 
-	r := NewReader(buf, 0 /* logNum */)
+	r := NewReader(buf, 1 /* logNum */)
 	r0, err := r.Next()
 	require.NoError(t, err)
 
@@ -365,7 +365,7 @@ func TestRecoverNoOp(t *testing.T) {
 		t.Fatalf("makeTestRecords: %v", err)
 	}
 
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	r := NewReader(bytes.NewReader(recs.buf), 1 /* logNum */)
 	_, err = r.Next()
 	if err != nil || r.err != nil {
 		t.Fatalf("reader.Next: %v reader.err: %v", err, r.err)
@@ -396,7 +396,7 @@ func TestBasicRecover(t *testing.T) {
 	corruptBlock(recs.buf, 1)
 
 	underlyingReader := bytes.NewReader(recs.buf)
-	r := NewReader(underlyingReader, 0 /* logNum */)
+	r := NewReader(underlyingReader, 1 /* logNum */)
 
 	// The first record r0 should be read just fine.
 	r0, err := r.Next()
@@ -462,7 +462,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 
 	// The first record should fail, but only when we read deeper beyond the
 	// first block.
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	r := NewReader(bytes.NewReader(recs.buf), 1 /* logNum */)
 	r0, err := r.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
@@ -520,7 +520,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 	corruptBlock(recs.buf, 5)
 
 	// The first record should fail, but only when we read deeper beyond the first block.
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	r := NewReader(bytes.NewReader(recs.buf), 1 /* logNum */)
 	r0, err := r.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
@@ -557,7 +557,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 // last record will be corrupted. It will then try Recover and verify that EOF
 // is returned.
 func verifyLastBlockRecover(recs *testRecords) error {
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	r := NewReader(bytes.NewReader(recs.buf), 1 /* logNum */)
 	// Loop to one element larger than the number of records to verify EOF.
 	for i := 0; i < len(recs.records)+1; i++ {
 		_, err := r.Next()
@@ -640,7 +640,7 @@ func TestReaderOffset(t *testing.T) {
 	}
 
 	// The first record should fail, but only when we read deeper beyond the first block.
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	r := NewReader(bytes.NewReader(recs.buf), 1 /* logNum */)
 	for i, offset := range recs.offsets {
 		if offset != r.Offset() {
 			t.Fatalf("%d: expected offset %d, but found %d", i, offset, r.Offset())
@@ -672,7 +672,7 @@ func TestSeekRecord(t *testing.T) {
 		t.Fatalf("makeTestRecords: %v", err)
 	}
 
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	r := NewReader(bytes.NewReader(recs.buf), 1 /* logNum */)
 	// Seek to a valid block offset, but within a multiblock record. This should cause the next call to
 	// Next after SeekRecord to return the next valid FIRST/FULL chunk of the subsequent record.
 	err = r.seekRecord(blockSize)
@@ -948,17 +948,21 @@ func TestTruncatedLog(t *testing.T) {
 }
 
 func TestRecycleLogWithPartialBlock(t *testing.T) {
-	backing := make([]byte, 16)
+	backing := make([]byte, 27)
 	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(1))
 	// Will write a chunk with 11 byte header + 5 byte payload.
 	_, err := w.WriteRecord([]byte("aaaaa"))
 	require.NoError(t, err)
+	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
+
 	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(2))
 	// Will write a chunk with 11 byte header + 1 byte payload.
 	_, err = w.WriteRecord([]byte("a"))
 	require.NoError(t, err)
+	// Close will write an 11-byte EOF chunk.
 	require.NoError(t, w.Close())
+
 	r := NewReader(bytes.NewReader(backing), base.FileNum(2))
 	_, err = r.Next()
 	require.NoError(t, err)
@@ -1003,7 +1007,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 func BenchmarkRecordWrite(b *testing.B) {
 	for _, size := range []int{8, 16, 32, 64, 256, 1028, 4096, 65_536} {
 		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
-			w := NewLogWriter(ioutil.Discard, 0 /* logNum */)
+			w := NewLogWriter(ioutil.Discard, 1 /* logNum */)
 			defer w.Close()
 			buf := make([]byte, size)
 

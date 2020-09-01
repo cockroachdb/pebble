@@ -136,7 +136,7 @@ func TestSyncError(t *testing.T) {
 	require.NoError(t, err)
 
 	injectedErr := errors.New("injected error")
-	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0)
+	w := NewLogWriter(syncErrorFile{f, injectedErr}, 1)
 
 	syncRecord := func() {
 		var syncErr error
@@ -174,7 +174,7 @@ func (f *syncFile) Sync() error {
 
 func TestSyncRecord(t *testing.T) {
 	f := &syncFile{}
-	w := NewLogWriter(f, 0)
+	w := NewLogWriter(f, 1)
 
 	var syncErr error
 	for i := 0; i < 100000; i++ {
@@ -220,7 +220,7 @@ func TestMinSyncInterval(t *testing.T) {
 	const minSyncInterval = 100 * time.Millisecond
 
 	f := &syncFile{}
-	w := NewLogWriter(f, 0)
+	w := NewLogWriter(f, 1)
 	w.SetMinSyncInterval(func() time.Duration {
 		return minSyncInterval
 	})
@@ -289,7 +289,7 @@ func TestMinSyncIntervalClose(t *testing.T) {
 	const minSyncInterval = 100 * time.Millisecond
 
 	f := &syncFile{}
-	w := NewLogWriter(f, 0)
+	w := NewLogWriter(f, 1)
 	w.SetMinSyncInterval(func() time.Duration {
 		return minSyncInterval
 	})
