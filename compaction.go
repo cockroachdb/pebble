@@ -1821,7 +1821,11 @@ func (d *DB) runCompaction(
 			// In this case, `limit` will be a larger user key than `key.UserKey`, or
 			// nil. In either case, the inner loop will execute at least once to
 			// process `key`, and the input iterator will be advanced.
-			limit = c.findGrandparentLimit(key.UserKey)
+			if key != nil {
+				limit = c.findGrandparentLimit(key.UserKey)
+			} else { // !c.rangeDelFrag.Empty()
+				limit = c.findGrandparentLimit(c.rangeDelFrag.Start())
+			}
 		} else {
 			// There is a range tombstone spanning from the last file into the
 			// current one. Therefore this file's smallest boundary will overlap the

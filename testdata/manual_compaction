@@ -748,3 +748,35 @@ compact a-q L1
   000008:[a#1,SET-c#1,SET]
   000009:[ff#1,SET-ff#1,SET]
   000010:[k#1,SET-k#1,SET]
+
+# Test a case where a new output file is started, there are no previous output
+# files, there are no additional keys (key = nil) and the rangedel fragmenter
+# is non-empty.
+define target-file-sizes=(1, 1, 1)
+L1
+  a.RANGEDEL.10:b
+  d.RANGEDEL.9:e
+  q.RANGEDEL.8:u
+L2
+  g.RANGEDEL.7:h
+L3
+  q.SET.6:6
+L3
+  t.SET.5:5
+----
+1:
+  000004:[a-u]
+2:
+  000005:[g-h]
+3:
+  000006:[q-q]
+  000007:[t-t]
+
+compact a-r L1
+----
+2:
+  000008:[q#8,RANGEDEL-t#72057594037927935,RANGEDEL]
+  000009:[t#8,RANGEDEL-u#72057594037927935,RANGEDEL]
+3:
+  000006:[q#6,SET-q#6,SET]
+  000007:[t#5,SET-t#5,SET]
