@@ -5,6 +5,7 @@
 package bloom
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -12,17 +13,26 @@ import (
 )
 
 func (f tableFilter) String() string {
-	s := make([]byte, 8*len(f))
+	var buf strings.Builder
 	for i, x := range f {
-		for j := 0; j < 8; j++ {
-			if x&(1<<uint(j)) != 0 {
-				s[8*i+j] = '1'
+		if i > 0 {
+			if i%8 == 0 {
+				buf.WriteString("\n")
 			} else {
-				s[8*i+j] = '.'
+				buf.WriteString("  ")
+			}
+		}
+
+		for j := uint(0); j < 8; j++ {
+			if x&(1<<(7-j)) != 0 {
+				buf.WriteString("1")
+			} else {
+				buf.WriteString(".")
 			}
 		}
 	}
-	return string(s)
+	buf.WriteString("\n")
+	return buf.String()
 }
 
 func newTableFilter(buf []byte, keys [][]byte, bitsPerKey int) tableFilter {
@@ -39,11 +49,21 @@ func TestSmallBloomFilter(t *testing.T) {
 		[]byte("world"),
 	}, 10)
 	got := f.String()
+
 	// The magic expected string comes from running RocksDB's util/bloom_test.cc:FullBloomTest.FullSmall.
-	want := "........................1.....................................................1...............1.....................................1.......................................................................................................................1.....................................1.............................1.....................................................1.....................................................1...................1.................................1...1..........................11.....1..............................."
-	if got != want {
-		t.Fatalf("bits:\ngot  %q\nwant %q", got, want)
-	}
+	want := `
+........  ........  ........  .......1  ........  ........  ........  ........
+........  .1......  ........  .1......  ........  ........  ........  ........
+...1....  ........  ........  ........  ........  ........  ........  ........
+........  ........  ........  ........  ........  ........  ........  ...1....
+........  ........  ........  ........  .....1..  ........  ........  ........
+.......1  ........  ........  ........  ........  ........  .1......  ........
+........  ........  ........  ........  ........  ...1....  ........  ........
+.......1  ........  ........  ........  .1...1..  ........  ........  ........
+.....11.  .......1  ........  ........  ........
+`
+	want = strings.TrimLeft(want, "\n")
+	require.EqualValues(t, want, got)
 
 	m := map[string]bool{
 		"hello": true,
@@ -52,10 +72,7 @@ func TestSmallBloomFilter(t *testing.T) {
 		"foo":   false,
 	}
 	for k, want := range m {
-		got := f.MayContain([]byte(k))
-		if got != want {
-			t.Errorf("MayContain: k=%q: got %v, want %v", k, got, want)
-		}
+		require.EqualValues(t, want, f.MayContain([]byte(k)))
 	}
 }
 
