@@ -35,7 +35,7 @@ func (f tableFilter) String() string {
 	return buf.String()
 }
 
-func newTableFilter(buf []byte, keys [][]byte, bitsPerKey int) tableFilter {
+func newTableFilter(bitsPerKey int, keys ...[]byte) tableFilter {
 	w := FilterPolicy(bitsPerKey).NewWriter(base.TableFilter)
 	for _, key := range keys {
 		w.AddKey(key)
@@ -44,11 +44,7 @@ func newTableFilter(buf []byte, keys [][]byte, bitsPerKey int) tableFilter {
 }
 
 func TestSmallBloomFilter(t *testing.T) {
-	f := newTableFilter(nil, [][]byte{
-		[]byte("hello"),
-		[]byte("world"),
-	}, 10)
-	got := f.String()
+	f := newTableFilter(10, []byte("hello"), []byte("world"))
 
 	// The magic expected string comes from running RocksDB's util/bloom_test.cc:FullBloomTest.FullSmall.
 	want := `
@@ -63,7 +59,7 @@ func TestSmallBloomFilter(t *testing.T) {
 .....11.  .......1  ........  ........  ........
 `
 	want = strings.TrimLeft(want, "\n")
-	require.EqualValues(t, want, got)
+	require.EqualValues(t, want, f.String())
 
 	m := map[string]bool{
 		"hello": true,
@@ -105,7 +101,7 @@ loop:
 		for i := 0; i < length; i++ {
 			keys = append(keys, le32(i))
 		}
-		f := newTableFilter(nil, keys, 10)
+		f := newTableFilter(10, keys...)
 		// The size of the table bloom filter is measured in multiples of the
 		// cache line size. The '+2' contribution captures the rounding up in the
 		// length division plus preferring an odd number of cache lines. As such,
