@@ -12,8 +12,16 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
+
+func TestGetBytes(t *testing.T) {
+	const size = (1 << 31) - 1
+	block := make([]byte, size)
+	data := getBytes(unsafe.Pointer(&block[0]), size)
+	require.EqualValues(t, len(block), len(data))
+}
 
 func TestDecodeVarint(t *testing.T) {
 	vals := []uint32{

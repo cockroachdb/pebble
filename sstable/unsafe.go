@@ -4,10 +4,14 @@
 
 package sstable
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/manual"
+)
 
 func getBytes(ptr unsafe.Pointer, length int) []byte {
-	return (*[1 << 30]byte)(ptr)[:length:length]
+	return (*[manual.MaxArrayLen]byte)(ptr)[:length:length]
 }
 
 func decodeVarint(ptr unsafe.Pointer) (uint32, unsafe.Pointer) {
