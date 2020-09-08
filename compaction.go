@@ -699,6 +699,24 @@ func (c *compaction) findL0Limit(start []byte) []byte {
 	return nil
 }
 
+// errorOnUserKeyOverlap returns an error if the last two written sstables in
+// this compaction have revisions of the same user key present in both sstables,
+// when it shouldn't (eg. when splitting flushes).
+func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
+	if n := len(ve.NewFiles); n > 1 {
+		meta := ve.NewFiles[n-1].Meta
+		prevMeta := ve.NewFiles[n-2].Meta
+		if prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel &&
+			c.cmp(prevMeta.Largest.UserKey, meta.Smallest.UserKey) >= 0 {
+			return errors.Errorf("pebble: compaction split user key across two sstables: %s in %s and %s",
+				prevMeta.Largest.Pretty(c.formatKey),
+				prevMeta.FileNum,
+				meta.FileNum)
+		}
+	}
+	return nil
+}
+
 // allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
 // snapshots requiring them to be kept. It performs this determination by
 // looking for an sstable which overlaps the bounds of the compaction at a
@@ -2044,6 +2062,13 @@ func (d *DB) runCompaction(
 				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
 					meta.Largest.Pretty(d.opts.Comparer.FormatKey),
 					c.largest.Pretty(d.opts.Comparer.FormatKey))
+			}
+		}
+		// Verify that when splitting flushes, we never split different
+		// revisions of the same user key across two different sstables.
+		if splittingFlush {
+			if err := c.errorOnUserKeyOverlap(ve); err != nil {
+				return err
 			}
 		}
 		if err := meta.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
