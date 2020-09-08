@@ -1474,6 +1474,8 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
 				inputs:      c.inputs,
+				smallest:    c.smallest,
+				largest:     c.largest,
 				outputLevel: -1,
 			}
 			if c.outputLevel != nil {
@@ -1483,6 +1485,25 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 		}
 	}
 	return
+}
+
+func inProgressL0Compactions(inProgress []compactionInfo) []manifest.L0Compaction {
+	var compactions []manifest.L0Compaction
+	for _, info := range inProgress {
+		l0 := false
+		for _, cl := range info.inputs {
+			l0 = l0 || cl.level == 0
+		}
+		if !l0 {
+			continue
+		}
+		compactions = append(compactions, manifest.L0Compaction{
+			Smallest:  info.smallest,
+			Largest:   info.largest,
+			IsIntraL0: info.outputLevel == 0,
+		})
+	}
+	return compactions
 }
 
 // firstError returns the first non-nil error of err0 and err1, or nil if both
