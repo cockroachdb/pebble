@@ -1828,6 +1828,54 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 		})
 }
 
+func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
+	parseMeta := func(s string) *fileMetadata {
+		parts := strings.Split(s, "-")
+		if len(parts) != 2 {
+			t.Fatalf("malformed table spec: %s", s)
+		}
+		m := &fileMetadata{
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		return m
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_error_on_user_key_overlap",
+		func(d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "error-on-user-key-overlap":
+				c := &compaction{
+					cmp:       DefaultComparer.Compare,
+					formatKey: DefaultComparer.FormatKey,
+				}
+				var files []manifest.NewFileEntry
+				fileNum := FileNum(1)
+
+				for _, data := range strings.Split(d.Input, "\n") {
+					meta := parseMeta(data)
+					meta.FileNum = fileNum
+					fileNum++
+					files = append(files, manifest.NewFileEntry{Level: 1, Meta: meta})
+				}
+
+				result := "OK"
+				ve := &versionEdit{
+					NewFiles: files,
+				}
+				if err := c.errorOnUserKeyOverlap(ve); err != nil {
+					result = fmt.Sprint(err)
+				}
+				return result
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
+}
+
 func TestCompactionCheckOrdering(t *testing.T) {
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
