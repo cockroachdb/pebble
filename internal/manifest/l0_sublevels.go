@@ -321,16 +321,24 @@ func NewL0Sublevels(
 	return s, nil
 }
 
+// L0Compaction describes an active compaction with inputs from L0.
+type L0Compaction struct {
+	Smallest  InternalKey
+	Largest   InternalKey
+	IsIntraL0 bool
+}
+
 // InitCompactingFileInfo initializes internal flags relating to compacting
 // files. Must be called after sublevel initialization.
 //
 // Requires DB.mu to be held.
-func (s *L0Sublevels) InitCompactingFileInfo() {
+func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	for i := range s.orderedIntervals {
 		s.orderedIntervals[i].compactingFileCount = 0
 		s.orderedIntervals[i].isBaseCompacting = false
 		s.orderedIntervals[i].intervalRangeIsBaseCompacting = false
 	}
+
 	iter := s.levelMetadata.Iter()
 	for f := iter.First(); f != nil; f = iter.Next() {
 		if !f.Compacting {
@@ -346,6 +354,29 @@ func (s *L0Sublevels) InitCompactingFileInfo() {
 			}
 		}
 	}
+
+	// Some intervals may be base compacting without the files contained
+	// within those intervals being marked as compacting. This is possible if
+	// the files were added after the compaction initiated, and the active
+	// compaction files straddle the input file. Mark these intervals as base
+	// compacting.
+	for _, c := range inProgress {
+		startIK := intervalKey{key: c.Smallest.UserKey, isLargest: false}
+		endIK := intervalKey{key: c.Largest.UserKey, isLargest: c.Largest.Trailer != base.InternalKeyRangeDeleteSentinel}
+		start := sort.Search(len(s.orderedIntervals), func(i int) bool {
+			return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, startIK) >= 0
+		})
+		end := sort.Search(len(s.orderedIntervals), func(i int) bool {
+			return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, endIK) >= 0
+		})
+		for i := start; i < end && i < len(s.orderedIntervals); i++ {
+			interval := &s.orderedIntervals[i]
+			if !c.IsIntraL0 {
+				interval.isBaseCompacting = true
+			}
+		}
+	}
+
 	min := 0
 	for i := range s.orderedIntervals {
 		interval := &s.orderedIntervals[i]
@@ -603,7 +634,6 @@ func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBas
 			for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 				interval := &s.orderedIntervals[i]
 				interval.compactingFileCount++
-				interval.isBaseCompacting = isBase
 			}
 			if f.minIntervalIndex < minIntervalIndex || minIntervalIndex == -1 {
 				minIntervalIndex = f.minIntervalIndex
@@ -616,6 +646,7 @@ func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBas
 	if isBase {
 		for i := minIntervalIndex; i <= maxIntervalIndex; i++ {
 			interval := &s.orderedIntervals[i]
+			interval.isBaseCompacting = isBase
 			for j := interval.filesMinIntervalIndex; j <= interval.filesMaxIntervalIndex; j++ {
 				s.orderedIntervals[j].intervalRangeIsBaseCompacting = true
 			}
@@ -901,7 +932,7 @@ func (s *L0Sublevels) PickBaseCompaction(
 			// compacting. Usually means the score is not accurately
 			// accounting for files already compacting, or internal state is
 			// inconsistent.
-			return nil, errors.Errorf("file %d chosen as seed file for compaction should not be compacting", f.FileNum)
+			return nil, errors.Errorf("file %s chosen as seed file for compaction should not be compacting", f.FileNum)
 		}
 
 		c := s.baseCompactionUsingSeed(f, interval.index, minCompactionDepth)

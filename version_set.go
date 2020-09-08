@@ -277,7 +277,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	if err != nil {
 		return err
 	}
-	newVersion.L0Sublevels.InitCompactingFileInfo()
+	newVersion.L0Sublevels.InitCompactingFileInfo(nil /* in-progress compactions */)
 	vs.append(newVersion)
 
 	for i := range vs.metrics.Levels {
@@ -465,7 +465,9 @@ func (vs *versionSet) logAndApply(
 
 	// Now that DB.mu is held again, initialize compacting file info in
 	// L0Sublevels.
-	newVersion.L0Sublevels.InitCompactingFileInfo()
+	inProgress := inProgressCompactions()
+
+	newVersion.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
 
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
@@ -506,7 +508,7 @@ func (vs *versionSet) logAndApply(
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Levels))
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgressCompactions(), vs.metrics.levelSizes())
+	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes())
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}
