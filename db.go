@@ -1467,6 +1467,8 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
 				inputs:      c.inputs,
+				smallest:    c.smallest,
+				largest:     c.largest,
 				outputLevel: -1,
 			}
 			if c.outputLevel != nil {
