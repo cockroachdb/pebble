@@ -901,7 +901,7 @@ func (s *L0Sublevels) PickBaseCompaction(
 			// compacting. Usually means the score is not accurately
 			// accounting for files already compacting, or internal state is
 			// inconsistent.
-			return nil, errors.Errorf("file %d chosen as seed file for compaction should not be compacting", f.FileNum)
+			return nil, errors.Errorf("file %s chosen as seed file for compaction should not be compacting", f.FileNum)
 		}
 
 		c := s.baseCompactionUsingSeed(f, interval.index, minCompactionDepth)
