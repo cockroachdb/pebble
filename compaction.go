@@ -1775,6 +1775,18 @@ func (d *DB) runCompaction(
 					c.largest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
+		// Verify that when splitting flushes, we never split different
+		// revisions of the same user key across two different sstables.
+		if n := len(ve.NewFiles); n > 1 && splittingFlush {
+			prevMeta := ve.NewFiles[n-2].Meta
+			if prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel &&
+				c.cmp(prevMeta.Largest.UserKey, meta.Smallest.UserKey) == 0 {
+				return errors.Errorf("pebble: compaction split user key across two sstables: %s in %s and %s",
+					prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey),
+					prevMeta.FileNum,
+					meta.FileNum)
+			}
+		}
 		if err := meta.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 			return err
 		}
