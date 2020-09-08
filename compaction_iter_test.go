@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,6 +48,30 @@ func TestSnapshotIndex(t *testing.T) {
 	}
 }
 
+type debugMerger struct {
+	buf []byte
+}
+
+func (m *debugMerger) MergeNewer(value []byte) error {
+	m.buf = append(m.buf, value...)
+	return nil
+}
+
+func (m *debugMerger) MergeOlder(value []byte) error {
+	buf := make([]byte, 0, len(m.buf)+len(value))
+	buf = append(buf, value...)
+	buf = append(buf, m.buf...)
+	m.buf = buf
+	return nil
+}
+
+func (m *debugMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	if includesBase {
+		m.buf = append(m.buf, []byte("[base]")...)
+	}
+	return m.buf, nil, nil
+}
+
 func TestCompactionIter(t *testing.T) {
 	var keys []InternalKey
 	var vals [][]byte
@@ -58,7 +83,11 @@ func TestCompactionIter(t *testing.T) {
 		return newCompactionIter(
 			DefaultComparer.Compare,
 			DefaultComparer.FormatKey,
-			DefaultMerger.Merge,
+			func(key, value []byte) (base.ValueMerger, error) {
+				m := &debugMerger{}
+				m.buf = append(m.buf, value...)
+				return m, nil
+			},
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
 			&rangedel.Fragmenter{},

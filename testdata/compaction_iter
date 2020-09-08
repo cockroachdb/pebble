@@ -142,7 +142,7 @@ first
 next
 next
 ----
-a#3,1:bcd
+a#3,1:bcd[base]
 b#2,2:ab
 .
 
@@ -153,7 +153,7 @@ next
 next
 ----
 a#3,2:d
-a#2,1:bc
+a#2,1:bc[base]
 b#2,2:ab
 .
 
@@ -444,7 +444,7 @@ next
 tombstones
 ----
 a#3,15:c
-b#5,1:de
+b#5,1:de[base]
 d#5,2:bc
 d#3,15:f
 .
@@ -888,7 +888,7 @@ iter
 first
 next
 ----
-a#2,1:ab
+a#2,1:ab[base]
 .
 
 iter snapshots=2
@@ -904,7 +904,7 @@ iter snapshots=3
 first
 next
 ----
-a#2,1:ab
+a#2,1:ab[base]
 .
 
 iter snapshots=(2,3,4)
@@ -1039,21 +1039,21 @@ iter
 first
 next
 ----
-a#5,1:5
+a#5,1:5[base]
 .
 
 iter allow-zero-seqnum=true
 first
 next
 ----
-a#0,1:5
+a#0,1:5[base]
 .
 
 iter elide-tombstones=true
 first
 next
 ----
-a#5,1:5
+a#5,1:5[base]
 .
 
 iter snapshots=2
@@ -1061,7 +1061,7 @@ first
 next
 next
 ----
-a#5,1:5
+a#5,1:5[base]
 a#1,2:1
 .
 
@@ -1070,7 +1070,7 @@ first
 next
 next
 ----
-a#5,1:5
+a#5,1:5[base]
 a#1,2:1
 .
 
@@ -1090,7 +1090,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
+b#5,1:5[base]
 .
 
 iter allow-zero-seqnum=true
@@ -1099,7 +1099,7 @@ next
 next
 ----
 a#3,15:c
-b#0,1:5
+b#0,1:5[base]
 .
 
 iter snapshots=2
@@ -1108,7 +1108,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
+b#5,1:5[base]
 b#1,2:1
 
 define
@@ -1124,7 +1124,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
+b#5,1:5[base]
 .
 
 iter snapshots=2
@@ -1133,5 +1133,5 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5
+b#5,1:5[base]
 b#1,2:1

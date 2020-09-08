@@ -321,7 +321,10 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				change = i.mergeNext(valueMerger)
 			}
 			if i.err == nil {
-				i.value, i.valueCloser, i.err = valueMerger.Finish()
+				// includesBase is true whenever we've transformed the MERGE record
+				// into a SET.
+				includesBase := i.key.Kind() == InternalKeyKindSet
+				i.value, i.valueCloser, i.err = valueMerger.Finish(includesBase)
 			}
 			if i.err == nil {
 				// A non-skippable entry does not necessarily cover later merge
