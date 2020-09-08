@@ -198,7 +198,7 @@ seek-prefix-ge c
 seek-ge d
 next
 ----
-.
+d#3,15:
 d#3,1:d
 .
 
@@ -207,7 +207,7 @@ seek-prefix-ge c
 seek-lt e
 next
 ----
-.
+d#3,15:
 d#3,1:d
 .
 
@@ -217,7 +217,7 @@ first
 next
 next
 ----
-.
+d#3,15:
 b#4,1:b
 d#3,1:d
 .
@@ -227,156 +227,6 @@ seek-prefix-ge c
 last
 next
 ----
-.
+d#3,15:
 d#3,1:d
 .
-
-clear
-----
-
-build
-a.SET.3:z
-d.SET.4:z
-----
-0: a#3,1-d#4,1
-
-build
-e.SET.5:z
-f.SET.6:z
-g.RANGEDEL.2:h
-----
-0: a#3,1-d#4,1
-1: e#5,1-h#72057594037927935,15
-
-build
-j.SET.6:z
-----
-0: a#3,1-d#4,1
-1: e#5,1-h#72057594037927935,15
-2: j#6,1-j#6,1
-
-# Test cases to check that when the bounds are contained within a file, iterating
-# beyond the bounds does not cause the levelIter to change to the next/prev file.
-# This is not a correctness issue, but is a useful performance optimization and
-# we want to verify that the code does what we want it to.
-iter save
-set-bounds lower=a upper=b
-seek-ge a
-next
-----
-a#3,1:z
-.
-
-file-pos
-----
-file 0
-
-iter save continue
-seek-prefix-ge a
-next
-----
-a#3,1:z
-.
-
-file-pos
-----
-file 0
-
-iter save continue
-set-bounds lower=b upper=c
-seek-ge b
-----
-.
-
-file-pos
-----
-file 0
-
-iter save continue
-seek-prefix-ge b
-----
-.
-
-file-pos
-----
-file 0
-
-# Seek to an earlier position just as a sanity check.
-iter save continue
-set-bounds lower=a upper=b
-seek-ge a
-next
-----
-a#3,1:z
-.
-
-file-pos
-----
-file 0
-
-iter save continue
-set-bounds lower=d upper=e
-seek-ge d
-next
-----
-d#4,1:z
-.
-
-file-pos
-----
-file 1
-
-iter save continue
-seek-prefix-ge d
-next
-----
-d#4,1:z
-.
-
-file-pos
-----
-file 1
-
-iter save continue
-set-bounds lower=e upper=f
-seek-ge e
-next
-next
-----
-e#5,1:z
-h#72057594037927935,15:
-.
-
-file-pos
-----
-file 1
-
-iter save continue
-seek-lt f
-prev
-prev
-----
-e#5,1:z
-.
-.
-
-file-pos
-----
-file 0
-
-iter save continue
-set-bounds lower=f upper=g
-seek-lt g
-prev
-prev
-----
-f#6,1:z
-e#5,15:
-.
-
-file-pos
-----
-file 1
-
-iter continue
-----
