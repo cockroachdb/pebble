@@ -45,6 +45,27 @@ type compactionInfo struct {
 	outputLevel int
 }
 
+func (info compactionInfo) String() string {
+	var buf bytes.Buffer
+	var largest int
+	for i, in := range info.inputs {
+		if i > 0 {
+			fmt.Fprintf(&buf, " -> ")
+		}
+		fmt.Fprintf(&buf, "L%d", in.level)
+		in.files.Each(func(m *fileMetadata) {
+			fmt.Fprintf(&buf, " %s", m.FileNum)
+		})
+		if largest < in.level {
+			largest = in.level
+		}
+	}
+	if largest != info.outputLevel || len(info.inputs) == 1 {
+		fmt.Fprintf(&buf, " -> L%d", info.outputLevel)
+	}
+	return buf.String()
+}
+
 type sortCompactionLevelsDecreasingScore []candidateLevelInfo
 
 func (s sortCompactionLevelsDecreasingScore) Len() int {
@@ -914,7 +935,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			pc = pickL0(env, p.opts, p.vers, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
-			if pc != nil && !inputAlreadyCompacting(pc) {
+			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 				pc.score = info.score
 				// TODO(peter): remove
 				if false {
@@ -933,7 +954,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 		pc := pickAutoHelper(env, p.opts, p.vers, *info, p.baseLevel)
 		// Fail-safe to protect against compacting the same sstable concurrently.
-		if pc != nil && !inputAlreadyCompacting(pc) {
+		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			pc.score = info.score
 			// TODO(peter): remove
 			if false {
@@ -977,7 +998,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			info.file = iter.Take()
 			pc := pickAutoHelper(env, p.opts, p.vers, *info, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable concurrently.
-			if pc != nil && !inputAlreadyCompacting(pc) {
+			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 				pc.score = info.score
 				return pc
 			}
@@ -1043,7 +1064,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(env compactionEnv) (
 	p.elisionCandidate = nil
 
 	// Fail-safe to protect against compacting the same sstable concurrently.
-	if !inputAlreadyCompacting(pc) {
+	if !inputRangeAlreadyCompacting(env, pc) {
 		return pc
 	}
 	return nil
@@ -1266,7 +1287,7 @@ func (p *compactionPickerByScore) pickManual(
 		panic("pebble: compaction picked unexpected output level")
 	}
 	// Fail-safe to protect against compacting the same sstable concurrently.
-	if inputAlreadyCompacting(pc) {
+	if inputRangeAlreadyCompacting(env, pc) {
 		return nil, true
 	}
 	return pc, false
@@ -1291,7 +1312,7 @@ func (p *compactionPickerByScore) forceBaseLevel1() {
 	p.baseLevel = 1
 }
 
-func inputAlreadyCompacting(pc *pickedCompaction) bool {
+func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
 	for _, cl := range pc.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
@@ -1300,6 +1321,60 @@ func inputAlreadyCompacting(pc *pickedCompaction) bool {
 			}
 		}
 	}
+
+	// Check L0->Lbase compactions to ensure they don't conflict with existing
+	// L0->Lbase compactions. For non-L0 compactions, checking that all the
+	// input tables from both start and output levels are not already
+	// compacting is sufficient, because tables in positive levels are
+	// nonoverlapping and we always compact contiguous files.
+	//
+	// L0 files may overlap one another, and a newly flushed L0 file may
+	// overlap an existing L0->Lbase compaction. Consider an active compaction
+	// compacting two L0 files one [a-f] and the other [t-z] into Lbase.
+	//
+	// L0
+	//     ↦ 000100  ↤                           ↦  000101   ↤
+	//     |         |                           |           |
+	// L1  |         |                           |           |
+	//     ↦ 000004  ↤                           ↦  000005   ↤
+	//     |         |                           |           |
+	//     a b c d e f g h i j k l m n o p q r s t u v w x y z
+	//
+	// If a new file 000102 [j-p] is flushed while the existing compaction is
+	// still ongoing, the compaction picker may see that the new file is not
+	// in any compacting intervals and does not overlap with any Lbase files
+	// that are also compacting. However, this compaction cannot be picked
+	// because the compaction's output keyspace [j-p] would overlap the
+	// existing compaction's output keyspace [a-z].
+	//
+	// L0
+	//     ↦ 000100* ↤       ↦   000102  ↤       ↦  000101*  ↤
+	//     |         |       |           |       |           |
+	// L1  |         |       |           |       |           |
+	//     ↦ 000004* ↤       |           |       ↦  000005*  ↤
+	//     |         |       |           |       |           |
+	//     a b c d e f g h i j k l m n o p q r s t u v w x y z
+	//
+	// * - currently compacting
+	if pc.startLevel.level == 0 && pc.outputLevel != nil && pc.outputLevel.level != 0 {
+		for _, c := range env.inProgressCompactions {
+			if c.outputLevel != pc.outputLevel.level {
+				continue
+			}
+			for _, info := range c.inputs {
+				if info.level != 0 {
+					continue
+				}
+				sm, la := manifest.KeyRange(pc.cmp, info.files.Iter())
+				if base.InternalCompare(pc.cmp, la, pc.smallest) < 0 ||
+					base.InternalCompare(pc.cmp, sm, pc.largest) > 0 {
+					continue
+				}
+				return true
+			}
+		}
+	}
+
 	return false
 }
 

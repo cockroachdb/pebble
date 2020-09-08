@@ -450,24 +450,14 @@ func TestCompactionPickerL0(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
-
-		for _, field := range fields[1:] {
-			switch field {
-			case "intra_l0_compacting":
-				m.IsIntraL0Compacting = true
-				m.Compacting = true
-			case "base_compacting":
-				fallthrough
-			case "compacting":
-				m.Compacting = true
-			}
-		}
 		return m, nil
 	}
 
 	opts := (*Options)(nil).EnsureDefaults()
 	opts.Experimental.L0SublevelCompactions = true
+	opts.Experimental.L0CompactionConcurrency = 1
 	var picker *compactionPickerByScore
+	var inProgressCompactions []compactionInfo
 
 	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -476,14 +466,20 @@ func TestCompactionPickerL0(t *testing.T) {
 			baseLevel := manifest.NumLevels - 1
 			level := 0
 			var err error
-			for _, data := range strings.Split(td.Input, "\n") {
-				data = strings.TrimSpace(data)
+			lines := strings.Split(td.Input, "\n")
+			var compactionLines []string
+
+			for len(lines) > 0 {
+				data := strings.TrimSpace(lines[0])
+				lines = lines[1:]
 				switch data {
 				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
 					level, err = strconv.Atoi(data[1:])
 					if err != nil {
 						return err.Error()
 					}
+				case "compactions":
+					compactionLines, lines = lines, nil
 				default:
 					meta, err := parseMeta(data)
 					if err != nil {
@@ -496,7 +492,68 @@ func TestCompactionPickerL0(t *testing.T) {
 				}
 			}
 
+			// Parse in-progress compactions in the form of:
+			//   L0 000001 -> L2 000005
+			inProgressCompactions = nil
+			for len(compactionLines) > 0 {
+				parts := strings.Fields(compactionLines[0])
+				compactionLines = compactionLines[1:]
+
+				var level int
+				var info compactionInfo
+				compactionFiles := map[int][]*fileMetadata{}
+				for _, p := range parts {
+					switch p {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						var err error
+						level, err = strconv.Atoi(p[1:])
+						if err != nil {
+							return err.Error()
+						}
+						if len(info.inputs) > 0 && info.inputs[len(info.inputs)-1].level == level {
+							// eg, L0 -> L0 compaction or L6 -> L6 compaction
+							continue
+						}
+						if info.outputLevel < level {
+							info.outputLevel = level
+						}
+						info.inputs = append(info.inputs, compactionLevel{level: level})
+					case "->":
+						continue
+					default:
+						fileNum, err := strconv.Atoi(p)
+						if err != nil {
+							return err.Error()
+						}
+						var compactFile *fileMetadata
+						for _, m := range fileMetas[level] {
+							if m.FileNum == FileNum(fileNum) {
+								compactFile = m
+							}
+						}
+						if compactFile == nil {
+							return fmt.Sprintf("cannot find compaction file %s", FileNum(fileNum))
+						}
+						compactFile.Compacting = true
+						compactionFiles[level] = append(compactionFiles[level], compactFile)
+					}
+				}
+				for i, cl := range info.inputs {
+					files := compactionFiles[cl.level]
+					info.inputs[i].files = manifest.NewLevelSlice(files)
+					// Mark as intra-L0 compacting if the compaction is
+					// L0 -> L0.
+					if info.outputLevel == 0 {
+						for _, f := range files {
+							f.IsIntraL0Compacting = true
+						}
+					}
+				}
+				inProgressCompactions = append(inProgressCompactions, info)
+			}
+
 			version := newVersion(opts, fileMetas)
+			version.L0Sublevels.InitCompactingFileInfo()
 			vs := &versionSet{
 				opts:    opts,
 				cmp:     DefaultComparer.Compare,
@@ -510,26 +567,17 @@ func TestCompactionPickerL0(t *testing.T) {
 				baseLevel: baseLevel,
 			}
 			vs.picker = picker
-			inProgressCompactions := []compactionInfo{}
-			for level, files := range version.Levels {
-				files.Slice().Each(func(f *fileMetadata) {
-					if f.Compacting {
-						c := compactionInfo{
-							inputs: []compactionLevel{
-								{level: level},
-								{level: level + 1, files: manifest.NewLevelSlice([]*fileMetadata{f})},
-							},
-							outputLevel: level + 1,
-						}
-						if f.IsIntraL0Compacting {
-							c.outputLevel = c.inputs[0].level
-						}
-						inProgressCompactions = append(inProgressCompactions, c)
-					}
-				})
-			}
 			picker.initLevelMaxBytes(inProgressCompactions)
-			return version.DebugString(base.DefaultFormatter)
+
+			var buf bytes.Buffer
+			fmt.Fprint(&buf, version.DebugString(base.DefaultFormatter))
+			if len(inProgressCompactions) > 0 {
+				fmt.Fprintln(&buf, "compactions")
+				for _, c := range inProgressCompactions {
+					fmt.Fprintf(&buf, "  %s\n", c.String())
+				}
+			}
+			return buf.String()
 		case "pick-auto":
 			for _, arg := range td.CmdArgs {
 				var err error
@@ -545,6 +593,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			pc := picker.pickAuto(compactionEnv{
 				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
+				inProgressCompactions:   inProgressCompactions,
 			})
 			var result strings.Builder
 			if pc != nil {

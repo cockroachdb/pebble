@@ -182,9 +182,11 @@ define
 L0
    000100:i.SET.101-p.SET.102
    000110:j.SET.111-q.SET.112
-   000120:r.SET.113-s.SET.114 intra_l0_compacting
+   000120:r.SET.113-s.SET.114
 L6
    000200:f.SET.51-s.SET.52
+compactions
+  L0 000120 -> L0
 ----
 0.1:
   000110:[j#111,SET-q#112,SET]
@@ -193,6 +195,8 @@ L6
   000120:[r#113,SET-s#114,SET]
 6:
   000200:[f#51,SET-s#52,SET]
+compactions
+  L0 000120 -> L0
 
 pick-auto l0_compaction_threshold=2
 ----
@@ -209,7 +213,9 @@ L0
    000110:j.SET.111-q.SET.112
    000120:r.SET.113-s.SET.114
 L6
-   000200:f.SET.51-s.SET.52 compacting
+   000200:f.SET.51-s.SET.52
+compactions
+  L6 000200 -> L6
 ----
 0.1:
   000110:[j#111,SET-q#112,SET]
@@ -218,6 +224,8 @@ L6
   000120:[r#113,SET-s#114,SET]
 6:
   000200:[f#51,SET-s#52,SET]
+compactions
+  L6 000200 -> L6
 
 pick-auto l0_compaction_threshold=2
 ----
@@ -231,13 +239,48 @@ define
 L0
    000100:i.SET.101-p.SET.102
 L6
-   000200:f.SET.51-s.SET.52 compacting
+   000200:f.SET.51-s.SET.52
+compactions
+  L6 000200 -> L6
 ----
 0.0:
   000100:[i#101,SET-p#102,SET]
 6:
   000200:[f#51,SET-s#52,SET]
+compactions
+  L6 000200 -> L6
 
 pick-auto l0_compaction_threshold=1
+----
+nil
+
+# Test an in-progress L0->Lbase compaction with another L0 file that does not
+# overlap any of the compacting files in L0 or Lbase, but does overlap the
+# compaction's range. No new compaction should be picked because the
+# in-progress compaction's output tables could overlap the non-compacting
+# file.
+
+define
+L0
+  000010:a.SET.11-b.SET.12
+  000013:k.SET.23-n.SET.24
+  000011:x.SET.13-z.SET.25
+L1
+  000101:a.SET.1-f.SET.2
+  000102:w.SET.3-z.SET.4
+compactions
+  L0 000010 000011 -> L1 000101 000102
+----
+0.0:
+  000010:[a#11,SET-b#12,SET]
+  000013:[k#23,SET-n#24,SET]
+  000011:[x#13,SET-z#25,SET]
+1:
+  000101:[a#1,SET-f#2,SET]
+  000102:[w#3,SET-z#4,SET]
+compactions
+  L0 000010 000011 -> L1 000101 000102
+
+pick-auto l0_compaction_threshold=2
 ----
 nil
