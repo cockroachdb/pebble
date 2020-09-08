@@ -72,8 +72,8 @@ type levelIter struct {
 	iter     internalIterator
 	iterFile *fileMetadata
 	newIters tableNewIters
-	// When rangeDelIter != nil, the caller requires that *rangeDelIter must point
-	// to a range del iterator corresponding to the current file. When this
+	// When rangeDelIter != nil, the caller requires that a range del iterator
+	// corresponding to the current file be placed in *rangeDelIter. When this
 	// iterator returns nil, *rangeDelIter should also be set to nil. Whenever
 	// a non-nil internalIterator is placed in rangeDelIter, a copy is placed
 	// in rangeDelIterCopy. This is done for the following special case:
