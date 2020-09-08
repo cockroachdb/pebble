@@ -98,11 +98,6 @@ func (d *db) ingest(keyVals ...string) {
 	if err := d.db.Ingest([]string{path}); err != nil {
 		log.Fatal(err)
 	}
-
-	if err := fs.Remove(path); err != nil {
-		// TODO(peter): why is the remove sometimes failing under CI?
-		log.Print(err)
-	}
 }
 
 func (d *db) flush() {
