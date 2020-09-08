@@ -248,6 +248,7 @@ func TestL0Sublevels(t *testing.T) {
 	var err error
 	var fileMetas [NumLevels][]*FileMetadata
 	var explicitSublevels [][]*FileMetadata
+	var activeCompactions []L0Compaction
 	var sublevels *L0Sublevels
 	baseLevel := NumLevels - 1
 
@@ -257,6 +258,7 @@ func TestL0Sublevels(t *testing.T) {
 		case "define":
 			fileMetas = [NumLevels][]*FileMetadata{}
 			explicitSublevels = [][]*FileMetadata{}
+			activeCompactions = nil
 			baseLevel = NumLevels - 1
 			sublevel := -1
 			sublevels = nil
@@ -322,7 +324,7 @@ func TestL0Sublevels(t *testing.T) {
 					base.DefaultComparer.Compare,
 					base.DefaultFormatter,
 					int64(flushSplitMaxBytes))
-				sublevels.InitCompactingFileInfo()
+				sublevels.InitCompactingFileInfo(nil)
 			} else {
 				// This case is for use with explicitly-specified sublevels
 				// only.
@@ -466,7 +468,10 @@ func TestL0Sublevels(t *testing.T) {
 					}
 				}
 			}
-			if err := sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, true); err != nil {
+			slice := NewLevelSlice(files)
+			sm, la := KeyRange(base.DefaultComparer.Compare, slice.Iter())
+			activeCompactions = append(activeCompactions, L0Compaction{Smallest: sm, Largest: la})
+			if err := sublevels.UpdateStateForStartedCompaction([]LevelSlice{slice}, true); err != nil {
 				return err.Error()
 			}
 			return "OK"
