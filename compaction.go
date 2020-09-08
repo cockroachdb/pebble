@@ -767,14 +767,16 @@ func (d *DB) removeInProgressCompaction(c *compaction) {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			if !f.Compacting {
-				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
 			f.Compacting = false
 			f.IsIntraL0Compacting = false
 		}
 	}
 	delete(d.mu.compact.inProgress, c)
-	d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo()
+
+	l0InProgress := inProgressL0Compactions(d.getInProgressCompactionInfoLocked(c))
+	d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
 }
 
 func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
