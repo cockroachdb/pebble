@@ -62,7 +62,7 @@ func (ii *InjectIndex) MaybeError(op Op) error {
 func WithProbability(op Op, p float64) Injector {
 	mu := new(sync.Mutex)
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return injectorFunc(func(currOp Op) error {
+	return InjectorFunc(func(currOp Op) error {
 		mu.Lock()
 		defer mu.Unlock()
 		if currOp == op && rnd.Float64() < p {
@@ -72,9 +72,12 @@ func WithProbability(op Op, p float64) Injector {
 	})
 }
 
-type injectorFunc func(Op) error
+// InjectorFunc implements the Injector interface for a function with
+// MaybeError's signature.
+type InjectorFunc func(Op) error
 
-func (f injectorFunc) MaybeError(op Op) error { return f(op) }
+// MaybeError implements the Injector interface.
+func (f InjectorFunc) MaybeError(op Op) error { return f(op) }
 
 // Injector injects errors into FS operations.
 type Injector interface {

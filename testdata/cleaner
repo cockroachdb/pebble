@@ -29,10 +29,10 @@ sync: wal/000002.log
 
 flush db
 ----
-create: wal/000004.log
-sync: wal
 sync: wal/000002.log
 close: wal/000002.log
+create: wal/000004.log
+sync: wal
 create: db/000005.sst
 sync: db/000005.sst
 close: db/000005.sst
@@ -48,10 +48,10 @@ sync: wal/000004.log
 
 compact db
 ----
-create: wal/000006.log
-sync: wal
 sync: wal/000004.log
 close: wal/000004.log
+create: wal/000006.log
+sync: wal
 create: db/000007.sst
 sync: db/000007.sst
 close: db/000007.sst
