@@ -1315,6 +1315,14 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.switching = true
 			d.mu.Unlock()
 
+			// Close the previous log first. This writes an EOF trailer
+			// signifying the end of the file and syncs it to disk. We must
+			// close the previous log before linking the new log file,
+			// otherwise a crash could leave both logs with unclean tails, and
+			// Open will treat the previous log as corrupt.
+			prevLogSize = uint64(d.mu.log.Size())
+			err = d.mu.log.Close()
+
 			newLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
 
 			// Try to use a recycled log file. Recycling log files is an important
@@ -1323,12 +1331,15 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// time. This is due to the need to sync file metadata when a file is
 			// being written for the first time. Note this is true even if file
 			// preallocation is performed (e.g. fallocate).
-			recycleLogNum := d.logRecycler.peek()
-			if recycleLogNum > 0 {
-				recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLogNum)
-				newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
-			} else {
-				newLogFile, err = d.opts.FS.Create(newLogName)
+			var recycleLogNum base.FileNum
+			if err == nil {
+				recycleLogNum = d.logRecycler.peek()
+				if recycleLogNum > 0 {
+					recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLogNum)
+					newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
+				} else {
+					newLogFile, err = d.opts.FS.Create(newLogName)
+				}
 			}
 
 			if err == nil {
@@ -1337,17 +1348,13 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				err = d.walDir.Sync()
 			}
 
-			if err == nil {
-				prevLogSize = uint64(d.mu.log.Size())
-				err = d.mu.log.Close()
-				if err != nil {
-					newLogFile.Close()
-				} else {
-					newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
-						BytesPerSync:    d.opts.BytesPerSync,
-						PreallocateSize: d.walPreallocateSize(),
-					})
-				}
+			if err != nil && newLogFile != nil {
+				newLogFile.Close()
+			} else if err == nil {
+				newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
+					BytesPerSync:    d.opts.BytesPerSync,
+					PreallocateSize: d.walPreallocateSize(),
+				})
 			}
 
 			if recycleLogNum > 0 {
