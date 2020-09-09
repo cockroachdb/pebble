@@ -34,10 +34,10 @@ sync: db
 flush
 ----
 sync: wal/000002.log
-create: wal/000005.log
-sync: wal
 sync: wal/000002.log
 close: wal/000002.log
+create: wal/000005.log
+sync: wal
 [JOB 2] WAL created 000005
 [JOB 3] flushing 1 memtable to L0
 create: db/000006.sst
@@ -60,10 +60,10 @@ sync: db
 compact
 ----
 sync: wal/000005.log
-reuseForWrite: wal/000002.log -> wal/000008.log
-sync: wal
 sync: wal/000005.log
 close: wal/000005.log
+reuseForWrite: wal/000002.log -> wal/000008.log
+sync: wal
 [JOB 4] WAL created 000008 (recycled 000002)
 [JOB 5] flushing 1 memtable to L0
 create: db/000009.sst
@@ -108,10 +108,10 @@ disable-file-deletions
 flush
 ----
 sync: wal/000008.log
-reuseForWrite: wal/000005.log -> wal/000013.log
-sync: wal
 sync: wal/000008.log
 close: wal/000008.log
+reuseForWrite: wal/000005.log -> wal/000013.log
+sync: wal
 [JOB 7] WAL created 000013 (recycled 000005)
 [JOB 8] flushing 1 memtable to L0
 create: db/000014.sst

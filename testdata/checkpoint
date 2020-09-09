@@ -27,10 +27,10 @@ sync: db/000002.log
 
 flush db
 ----
-create: db/000004.log
-sync: db
 sync: db/000002.log
 close: db/000002.log
+create: db/000004.log
+sync: db
 create: db/000005.sst
 sync: db/000005.sst
 close: db/000005.sst
@@ -46,10 +46,10 @@ sync: db/000004.log
 
 flush db
 ----
-reuseForWrite: db/000002.log -> db/000006.log
-sync: db
 sync: db/000004.log
 close: db/000004.log
+reuseForWrite: db/000002.log -> db/000006.log
+sync: db
 create: db/000007.sst
 sync: db/000007.sst
 close: db/000007.sst
@@ -88,10 +88,10 @@ checkpoint checkpoint1: file already exists
 
 compact db
 ----
-reuseForWrite: db/000004.log -> db/000008.log
-sync: db
 sync: db/000006.log
 close: db/000006.log
+reuseForWrite: db/000004.log -> db/000008.log
+sync: db
 create: db/000009.sst
 sync: db/000009.sst
 close: db/000009.sst

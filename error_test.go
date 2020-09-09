@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -327,5 +328,70 @@ func TestCorruptReadError(t *testing.T) {
 			t.Logf("no failures reported at index %d", i)
 			break
 		}
+	}
+}
+
+func TestDBWALRotationCrash(t *testing.T) {
+	memfs := vfs.NewStrictMem()
+
+	var index int32
+	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if op == errorfs.OpWrite && atomic.AddInt32(&index, -1) == -1 {
+			memfs.SetIgnoreSyncs(true)
+		}
+		return nil
+	})
+	triggered := func() bool { return atomic.LoadInt32(&index) < 0 }
+
+	run := func(fs *errorfs.FS, k int32) (err error) {
+		opts := &Options{
+			FS:           fs,
+			Logger:       panicLogger{},
+			MemTableSize: 1024,
+		}
+		opts.private.disableTableStats = true
+		d, err := Open("", opts)
+		if err != nil || triggered() {
+			return err
+		}
+
+		// Write keys with the FS set up to simulate a crash by ignoring
+		// syncs on the k-th write operation.
+		atomic.StoreInt32(&index, k)
+		key := []byte("test")
+		for i := 0; i < 10; i++ {
+			v := []byte(strings.Repeat("b", i))
+			err = d.Set(key, v, nil)
+			if err != nil || triggered() {
+				break
+			}
+		}
+		err = firstError(err, d.Close())
+		return err
+	}
+
+	fs := errorfs.Wrap(memfs, inj)
+	for k := int32(0); ; k++ {
+		// Run, simulating a crash by ignoring syncs after the k-th write
+		// operation after Open.
+		atomic.StoreInt32(&index, math.MaxInt32)
+		err := run(fs, k)
+		if !triggered() {
+			// Stop when we reach a value of k greater than the number of
+			// write operations performed during `run`.
+			t.Logf("No crash at write operation %d\n", k)
+			if err != nil {
+				t.Fatalf("Filesystem did not 'crash', but error returned: %s", err)
+			}
+			break
+		}
+		t.Logf("Crashed at write operation % 2d, error: %v\n", k, err)
+
+		// Reset the filesystem to its state right before the simulated
+		// "crash", restore syncs, and run again without crashing.
+		memfs.ResetToSyncedState()
+		memfs.SetIgnoreSyncs(false)
+		atomic.StoreInt32(&index, math.MaxInt32)
+		require.NoError(t, run(fs, k))
 	}
 }
