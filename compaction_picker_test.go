@@ -501,6 +501,7 @@ func TestCompactionPickerL0(t *testing.T) {
 
 				var level int
 				var info compactionInfo
+				first := true
 				compactionFiles := map[int][]*fileMetadata{}
 				for _, p := range parts {
 					switch p {
@@ -535,12 +536,13 @@ func TestCompactionPickerL0(t *testing.T) {
 							return fmt.Sprintf("cannot find compaction file %s", FileNum(fileNum))
 						}
 						compactFile.Compacting = true
-						if base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
+						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
 							info.largest = compactFile.Largest
 						}
-						if base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.Smallest) > 0 {
+						if first || base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.Smallest) > 0 {
 							info.smallest = compactFile.Smallest
 						}
+						first = false
 						compactionFiles[level] = append(compactionFiles[level], compactFile)
 					}
 				}
@@ -559,7 +561,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 
 			version := newVersion(opts, fileMetas)
-			version.L0Sublevels.InitCompactingFileInfo()
+			version.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
 				opts:    opts,
 				cmp:     DefaultComparer.Compare,
