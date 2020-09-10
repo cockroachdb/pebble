@@ -106,8 +106,8 @@ func (f *fileSizeSplitter) onNewOutput(key *InternalKey) []byte {
 }
 
 type grandparentLimitSplitter struct {
-	c *compaction
-	ve *versionEdit
+	c     *compaction
+	ve    *versionEdit
 	limit []byte
 }
 
@@ -198,8 +198,8 @@ func (g *grandparentLimitSplitter) onNewOutput(key *InternalKey) []byte {
 }
 
 type l0LimitSplitter struct {
-	c *compaction
-	ve *versionEdit
+	c     *compaction
+	ve    *versionEdit
 	limit []byte
 }
 
@@ -240,7 +240,7 @@ func (l *l0LimitSplitter) onNewOutput(key *InternalKey) []byte {
 // splitterGroup is a compactionOutputSplitter that splits whenever one of its
 // child splitters advises a compaction split.
 type splitterGroup struct {
-	cmp Compare
+	cmp       Compare
 	splitters []compactionOutputSplitter
 }
 
@@ -275,10 +275,10 @@ func (a *splitterGroup) onNewOutput(key *InternalKey) []byte {
 // their determinatino in ways other than comparing the current key against a
 // limit key.
 type userKeyChangeSplitter struct {
-	cmp Compare
+	cmp                Compare
 	splitOnNextUserKey bool
-	savedKey []byte
-	splitter compactionOutputSplitter
+	savedKey           []byte
+	splitter           compactionOutputSplitter
 }
 
 func (u *userKeyChangeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) bool {
@@ -303,9 +303,9 @@ func (u *userKeyChangeSplitter) onNewOutput(key *InternalKey) []byte {
 // and 2) the compaction output is at a point where the previous point sequence
 // number is nonzero.
 type nonZeroSeqNumSplitter struct {
-	c *compaction
-	splitter compactionOutputSplitter
-	prevPointSeqNum uint64
+	c                    *compaction
+	splitter             compactionOutputSplitter
+	prevPointSeqNum      uint64
 	splitOnNonZeroSeqNum bool
 }
 
@@ -375,10 +375,6 @@ type compaction struct {
 	// maxOverlapBytes is the maximum number of bytes of overlap allowed for a
 	// single output table with the tables in the grandparent level.
 	maxOverlapBytes uint64
-	// maxExpandedBytes is the maximum size of an expanded compaction. If growing
-	// a compaction results in a larger size, the original compaction is used
-	// instead.
-	maxExpandedBytes uint64
 	// disableRangeTombstoneElision disables elision of range tombstones. Used by
 	// tests to allow range tombstones to be added to tables where they would
 	// otherwise be elided.
@@ -477,7 +473,6 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 		version:             pc.version,
 		maxOutputFileSize:   pc.maxOutputFileSize,
 		maxOverlapBytes:     pc.maxOverlapBytes,
-		maxExpandedBytes:    pc.maxOverlapBytes,
 		atomicBytesIterated: bytesCompacted,
 	}
 	c.startLevel = &c.inputs[0]
@@ -537,7 +532,6 @@ func newFlush(
 		inputs:              []compactionLevel{{level: -1}, {level: 0}},
 		maxOutputFileSize:   math.MaxUint64,
 		maxOverlapBytes:     math.MaxUint64,
-		maxExpandedBytes:    math.MaxUint64,
 		flushing:            flushing,
 		atomicBytesIterated: bytesFlushed,
 	}
@@ -597,7 +591,6 @@ func newFlush(
 	if opts.Experimental.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
-		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
 		c.grandparents = c.version.Overlaps(baseLevel, c.cmp,
 			c.smallest.UserKey, c.largest.UserKey)
 	}
@@ -1342,7 +1335,9 @@ func pickElisionOnly(picker compactionPicker, env compactionEnv) *pickedCompacti
 // calling `pickFunc` to pick automatic compactions.
 //
 // d.mu must be held when calling this.
-func (d *DB) maybeScheduleCompactionPicker(pickFunc func(compactionPicker, compactionEnv) *pickedCompaction) {
+func (d *DB) maybeScheduleCompactionPicker(
+	pickFunc func(compactionPicker, compactionEnv) *pickedCompaction,
+) {
 	if d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
@@ -2132,8 +2127,8 @@ func (d *DB) runCompaction(
 	// in that case.
 	if !splittingFlush {
 		splitter = &nonZeroSeqNumSplitter{
-			c:               c,
-			splitter:        splitter,
+			c:        c,
+			splitter: splitter,
 		}
 	}
 
