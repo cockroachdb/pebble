@@ -33,6 +33,13 @@ var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
 var gcLabels = pprof.Labels("pebble", "gc")
 
+const (
+	// Number of bytes to write to a compaction output before updating the
+	// Compact.InProgressBytes metric in db-wide metrics with the newest
+	// estimate of output size.
+	inProgressBytesUpdateInterval = 512 << 10 // 512kb
+)
+
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
@@ -377,6 +384,48 @@ func (n *nonZeroSeqNumSplitter) onNewOutput(key *InternalKey) []byte {
 	n.prevPointSeqNum = InternalKeySeqNumMax
 	n.splitOnNonZeroSeqNum = false
 	return n.splitter.onNewOutput(key)
+}
+
+// compactionFile is a vfs.File wrapper that also updates a db metric on
+// bytes written by in-progress compactions after every
+// inProgressBytesUpdateInterval bytes have been written.
+//
+// Note: This wrapper can lock/unlock db.mu when doing IO. Ensure that db.mu
+// is never held when this file is being written to. This is the case for
+// compactions.
+type compactionFile struct {
+	vfs.File
+
+	d                    *DB
+	bytesSinceLastUpdate int64
+}
+
+// Write implements the io.Writer interface.
+func (c *compactionFile) Write(p []byte) (n int, err error) {
+	n, err = c.File.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	c.bytesSinceLastUpdate += int64(n)
+	if c.bytesSinceLastUpdate >= inProgressBytesUpdateInterval {
+		c.d.mu.Lock()
+		c.d.mu.versions.incrementCompactionBytes(c.bytesSinceLastUpdate)
+		c.d.mu.Unlock()
+		c.bytesSinceLastUpdate = 0
+	}
+	return n, err
+}
+
+// Close implements the io.Closer interface.
+func (c *compactionFile) Close() error {
+	if c.bytesSinceLastUpdate > 0 {
+		c.d.mu.Lock()
+		c.d.mu.versions.incrementCompactionBytes(c.bytesSinceLastUpdate)
+		c.d.mu.Unlock()
+		c.bytesSinceLastUpdate = 0
+	}
+	return c.File.Close()
 }
 
 type compactionKind string
@@ -1325,6 +1374,9 @@ func (d *DB) flush1() error {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
+	if outputMetrics := c.metrics[0]; outputMetrics != nil {
+		d.mu.versions.incrementCompactionBytes(-1*outputMetrics.Size)
+	}
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -1728,6 +1780,11 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions()
+	if c.outputLevel != nil {
+		if outputMetrics := c.metrics[c.outputLevel.level]; outputMetrics != nil {
+			d.mu.versions.incrementCompactionBytes(-1*outputMetrics.Size)
+		}
+	}
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
@@ -1888,6 +1945,7 @@ func (d *DB) runCompaction(
 		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,
 		})
+		file = &compactionFile{File: file, d: d}
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)

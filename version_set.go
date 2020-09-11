@@ -507,6 +507,10 @@ func (vs *versionSet) incrementFlushes() {
 	vs.metrics.Flush.Count++
 }
 
+func (vs *versionSet) incrementCompactionBytes(numBytes int64) {
+	vs.metrics.Compact.InProgressBytes += numBytes
+}
+
 // createManifest creates a manifest file that contains a snapshot of vs.
 func (vs *versionSet) createManifest(
 	dirname string, fileNum, minUnflushedLogNum, nextFileNum FileNum,
