@@ -131,6 +131,10 @@ type Metrics struct {
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
 		EstimatedDebt uint64
+		// Number of bytes present in sstables being written by in-progress
+		// compactions. This value will be zero if there are no in-progress
+		// compactions.
+		InProgressBytes int64
 	}
 
 	Flush struct {
@@ -289,10 +293,11 @@ func (m *Metrics) String() string {
 	total.format(&buf, "-")
 
 	fmt.Fprintf(&buf, "  flush %9d\n", m.Flush.Count)
-	fmt.Fprintf(&buf, "compact %9d %7s %7s  (size == estimated-debt)\n",
+	fmt.Fprintf(&buf, "compact %9d %7s %7s %7s  (size == estimated-debt, in = in-progress-bytes)\n",
 		m.Compact.Count,
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
-		"")
+		"",
+		humanize.IEC.Int64(m.Compact.InProgressBytes))
 	fmt.Fprintf(&buf, " memtbl %9d %7s\n",
 		m.MemTable.Count,
 		humanize.IEC.Uint64(m.MemTable.Size))
