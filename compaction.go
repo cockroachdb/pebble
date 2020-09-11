@@ -379,6 +379,28 @@ func (n *nonZeroSeqNumSplitter) onNewOutput(key *InternalKey) []byte {
 	return n.splitter.onNewOutput(key)
 }
 
+// compactionFile is a vfs.File wrapper that, on every write, updates a metric
+// in `versions` on bytes written by in-progress compactions so far. It also
+// increments a per-compaction `written` int.
+type compactionFile struct {
+	vfs.File
+
+	versions *versionSet
+	written  *int64
+}
+
+// Write implements the io.Writer interface.
+func (c *compactionFile) Write(p []byte) (n int, err error) {
+	n, err = c.File.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	*c.written += int64(n)
+	c.versions.incrementCompactionBytes(int64(n))
+	return n, err
+}
+
 type compactionKind string
 
 const (
@@ -425,6 +447,8 @@ type compaction struct {
 	flushing flushableList
 	// bytesIterated contains the number of bytes that have been flushed/compacted.
 	bytesIterated uint64
+	// bytesWritten contains the number of bytes that have been written to outputs.
+	bytesWritten int64
 	// atomicBytesIterated points to the variable to increment during iteration.
 	// atomicBytesIterated must be read/written atomically. Flushing will increment
 	// the shared variable which compaction will read. This allows for the
@@ -1325,6 +1349,7 @@ func (d *DB) flush1() error {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
+	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -1728,6 +1753,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions()
+	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
@@ -1888,6 +1914,11 @@ func (d *DB) runCompaction(
 		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,
 		})
+		file = &compactionFile{
+			File: file,
+			versions: &d.mu.versions,
+			written: &c.bytesWritten,
+		}
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)

@@ -80,6 +80,11 @@ type versionSet struct {
 	logSeqNum     uint64 // next seqNum to use for WAL writes
 	visibleSeqNum uint64 // visible seqNum (<= logSeqNum)
 
+	// Number of bytes present in sstables being written by in-progress
+	// compactions. This value will be zero if there are no in-progress
+	// compactions. Updated and read atomically.
+	atomicInProgressBytes int64
+
 	// The current manifest file number.
 	manifestFileNum FileNum
 
@@ -505,6 +510,10 @@ func (vs *versionSet) incrementCompactions() {
 
 func (vs *versionSet) incrementFlushes() {
 	vs.metrics.Flush.Count++
+}
+
+func (vs *versionSet) incrementCompactionBytes(numBytes int64) {
+	atomic.AddInt64(&vs.atomicInProgressBytes, numBytes)
 }
 
 // createManifest creates a manifest file that contains a snapshot of vs.

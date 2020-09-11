@@ -1052,6 +1052,7 @@ func (d *DB) Metrics() *Metrics {
 	d.mu.Lock()
 	*metrics = d.mu.versions.metrics
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
+	metrics.Compact.InProgressBytes = atomic.LoadInt64(&d.mu.versions.atomicInProgressBytes)
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
 	}
