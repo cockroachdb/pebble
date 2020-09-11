@@ -73,7 +73,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6       701   702 B       -   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B       7     2.0
   total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
   flush         7
-compact         5     6 B          (size == estimated-debt)
+compact         5     6 B             0 B  (size == estimated-debt, in = in-progress-bytes)
  memtbl        11    10 B
 zmemtbl        13    12 B
    ztbl        15    14 B

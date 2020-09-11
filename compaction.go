@@ -1273,6 +1273,9 @@ func (d *DB) flush1() error {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
+	if outputMetrics := c.metrics[0]; outputMetrics != nil {
+		d.mu.versions.incrementCompactionBytes(-1*outputMetrics.Size)
+	}
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -1674,6 +1677,11 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions()
+	if c.outputLevel != nil {
+		if outputMetrics := c.metrics[c.outputLevel.level]; outputMetrics != nil {
+			d.mu.versions.incrementCompactionBytes(-1*outputMetrics.Size)
+		}
+	}
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
@@ -1943,6 +1951,9 @@ func (d *DB) runCompaction(
 			outputMetrics.BytesFlushed += meta.Size
 		}
 		outputMetrics.Size += int64(meta.Size)
+		d.mu.Lock()
+		d.mu.versions.incrementCompactionBytes(int64(meta.Size))
+		d.mu.Unlock()
 		outputMetrics.NumFiles++
 
 		// The handling of range boundaries is a bit complicated.
