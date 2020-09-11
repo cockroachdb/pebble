@@ -33,6 +33,13 @@ var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
 var gcLabels = pprof.Labels("pebble", "gc")
 
+const (
+	// Number of keys to write to a compaction output before updating the
+	// Compact.InProgressBytes metric in db-wide metrics with the newest
+	// estimate of output size.
+	inProgressBytesUpdateInterval = 100
+)
+
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
@@ -1273,6 +1280,9 @@ func (d *DB) flush1() error {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
+	if outputMetrics := c.metrics[0]; outputMetrics != nil {
+		d.mu.versions.incrementCompactionBytes(-1*outputMetrics.Size)
+	}
 	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
@@ -1674,6 +1684,11 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions()
+	if c.outputLevel != nil {
+		if outputMetrics := c.metrics[c.outputLevel.level]; outputMetrics != nil {
+			d.mu.versions.incrementCompactionBytes(-1*outputMetrics.Size)
+		}
+	}
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
@@ -1850,6 +1865,9 @@ func (d *DB) runCompaction(
 	}
 
 	splittingFlush := c.startLevel.level < 0 && c.outputLevel.level == 0 && d.opts.Experimental.FlushSplitBytes > 0
+	// Track the current output's contribution to the InProgressBytes metric.
+	// This is updated every 100 keys.
+	var bytesInCurrentOutput, keysSinceLastMetricUpdate int64
 
 	// finishOutput is called for an sstable with the first key of the next sstable, and for the
 	// last sstable with an empty key.
@@ -1943,6 +1961,11 @@ func (d *DB) runCompaction(
 			outputMetrics.BytesFlushed += meta.Size
 		}
 		outputMetrics.Size += int64(meta.Size)
+		d.mu.Lock()
+		d.mu.versions.incrementCompactionBytes(int64(meta.Size) - bytesInCurrentOutput)
+		d.mu.Unlock()
+		bytesInCurrentOutput = 0
+		keysSinceLastMetricUpdate = 0
 		outputMetrics.NumFiles++
 
 		// The handling of range boundaries is a bit complicated.
@@ -2159,6 +2182,15 @@ func (d *DB) runCompaction(
 			}
 			if err := tw.Add(*key, val); err != nil {
 				return nil, pendingOutputs, err
+			}
+			keysSinceLastMetricUpdate++
+			if keysSinceLastMetricUpdate >= inProgressBytesUpdateInterval {
+				estimatedSize := int64(tw.EstimatedSize())
+				d.mu.Lock()
+				d.mu.versions.incrementCompactionBytes(estimatedSize - bytesInCurrentOutput)
+				d.mu.Unlock()
+				bytesInCurrentOutput = estimatedSize
+				keysSinceLastMetricUpdate = 0
 			}
 			prevPointSeqNum = key.SeqNum()
 		}
