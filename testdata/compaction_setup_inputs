@@ -85,3 +85,18 @@ L1
   000001:a#5,1-b#6,1
 L2
   000003:a#3,1-d#4,1
+
+# Verify setup inputs can identify compacting files in range
+setup-inputs a a
+L1
+  a.SET.5-b.SET.6
+L2
+  a.SET.3-c.SET.4,compacting
+  c.SET.3-d.SET.2
+----
+L1
+  000001:a#5,1-b#6,1
+L2
+  000002:a#3,1-c#4,1
+  000003:c#3,1-d#2,1
+compacting
