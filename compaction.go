@@ -902,7 +902,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			// boundaries at write time. Because we're doing the truncation at read
 			// time, we follow RocksDB's lead and do not truncate tombstones to
 			// atomic unit boundaries at compaction time.
-			atomicUnit := expandToAtomicUnit(c.cmp, f.Slice())
+			atomicUnit, _ := expandToAtomicUnit(c.cmp, f.Slice())
 			lowerBound, upperBound := manifest.KeyRange(c.cmp, atomicUnit.Iter())
 			// Range deletion tombstones are often written to sstables
 			// untruncated on the end key side. However, they are still only

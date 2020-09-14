@@ -716,7 +716,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					_ = iter.Next()
 				}
 
-				inputs := expandToAtomicUnit(cmp, iter.Take().Slice())
+				inputs, _ := expandToAtomicUnit(cmp, iter.Take().Slice())
 
 				var buf bytes.Buffer
 				inputs.Each(func(f *fileMetadata) {
