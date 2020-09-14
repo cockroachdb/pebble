@@ -845,13 +845,19 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := &Options{}
 	opts.EnsureDefaults()
 	parseMeta := func(s string) *fileMetadata {
-		parts := strings.Split(s, "-")
-		if len(parts) != 2 {
+		parts := strings.Split(strings.TrimSpace(s), " ")
+		compacting := false
+		if len(parts) == 2 {
+			compacting = parts[1] == "compacting"
+		}
+		tableParts := strings.Split(parts[0], "-")
+		if len(tableParts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		m := &fileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+			Smallest: base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
+			Compacting: compacting,
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -911,7 +917,10 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
 					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String()))
 
-				pc.setupInputs()
+				var isCompacting bool
+				if !pc.setupInputs() {
+					isCompacting = true
+				}
 
 				var buf bytes.Buffer
 				for _, cl := range pc.inputs {
@@ -923,6 +932,9 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 					cl.files.Each(func(f *fileMetadata) {
 						fmt.Fprintf(&buf, "  %s\n", f)
 					})
+				}
+				if isCompacting {
+					fmt.Fprintf(&buf, "is-compacting")
 				}
 				return buf.String()
 
@@ -991,7 +1003,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					_ = iter.Next()
 				}
 
-				inputs := expandToAtomicUnit(cmp, iter.Take().Slice())
+				inputs, _ := expandToAtomicUnit(cmp, iter.Take().Slice())
 
 				var buf bytes.Buffer
 				inputs.Each(func(f *fileMetadata) {

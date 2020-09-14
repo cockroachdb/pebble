@@ -85,3 +85,39 @@ L1
   000001:a#5,1-b#6,1
 L2
   000003:a#3,1-d#4,1
+
+# Verify setup inputs can identify compacting files in range
+setup-inputs a a
+L1
+  a.SET.5-b.SET.6
+L2
+  a.SET.3-c.SET.4
+  c.SET.3-d.SET.2 compacting
+  d.SET.3-e.SET.6
+----
+L1
+  000001:a#5,1-b#6,1
+L2
+  000002:a#3,1-c#4,1
+  000003:c#3,1-d#2,1
+  000004:d#3,1-e#6,1
+is-compacting
+
+# Verify when there is one file in range and it is compacting
+setup-inputs a a
+L2
+  a.SET.3-c.SET.4 compacting
+  d.SET.3-e.SET.2
+----
+L2
+  000001:a#3,1-c#4,1
+is-compacting
+
+# Verify when there is one file in level and is compacting
+setup-inputs a a
+L2
+  a.SET.3-c.SET.4 compacting
+----
+L2
+  000001:a#3,1-c#4,1
+is-compacting

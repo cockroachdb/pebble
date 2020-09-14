@@ -181,9 +181,13 @@ func newPickedCompactionFromL0(lcf *manifest.L0CompactionFiles, opts *Options, v
 	return pc
 }
 
-func (pc *pickedCompaction) setupInputs() {
+func (pc *pickedCompaction) setupInputs() bool {
 	// Expand the initial inputs to a clean cut.
-	pc.startLevel.files = expandToAtomicUnit(pc.cmp, pc.startLevel.files)
+	var isCompacting bool
+	pc.startLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, pc.startLevel.files)
+	if isCompacting {
+		return false
+	}
 	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
 
 	// Determine the sstables in the output level which overlap with the input
@@ -191,7 +195,10 @@ func (pc *pickedCompaction) setupInputs() {
 	// this for intra-L0 compactions; outputLevel.files is left empty for those.
 	if pc.startLevel.level != pc.outputLevel.level {
 		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey)
-		pc.outputLevel.files = expandToAtomicUnit(pc.cmp, pc.outputLevel.files)
+		pc.outputLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, pc.outputLevel.files)
+		if isCompacting {
+			return false
+		}
 		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 			pc.startLevel.files.Iter(), pc.outputLevel.files.Iter())
 	}
@@ -263,6 +270,7 @@ func (pc *pickedCompaction) setupInputs() {
 		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 			pc.startLevel.files.Iter(), pc.outputLevel.files.Iter())
 	}
+	return true
 }
 
 // grow grows the number of inputs at c.level without changing the number of
@@ -273,7 +281,10 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 		return false
 	}
 	grow0 := pc.version.Overlaps(pc.startLevel.level, pc.cmp, sm.UserKey, la.UserKey)
-	grow0 = expandToAtomicUnit(pc.cmp, grow0)
+	grow0, isCompacting := expandToAtomicUnit(pc.cmp, grow0)
+	if isCompacting {
+		return false
+	}
 	if grow0.Len() <= pc.startLevel.files.Len() {
 		return false
 	}
@@ -282,7 +293,10 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 	}
 	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.Iter())
 	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey, la1.UserKey)
-	grow1 = expandToAtomicUnit(pc.cmp, grow1)
+	grow1, isCompacting = expandToAtomicUnit(pc.cmp, grow1)
+	if isCompacting {
+		return false
+	}
 	if grow1.Len() != pc.outputLevel.files.Len() {
 		return false
 	}
@@ -328,19 +342,25 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 // tombstones will be truncated at "b" (the largest key in its atomic
 // compaction unit). In the scenario here, that could result in b#1 becoming
 // visible when it should be deleted.
-func expandToAtomicUnit(cmp Compare, inputs manifest.LevelSlice) manifest.LevelSlice {
+//
+// isCompacting is returned true for any atomic units that contain files that
+// have in-progress compactions, i.e. FileMetadata.Compacting == true.
+func expandToAtomicUnit(cmp Compare, inputs manifest.LevelSlice) (slice manifest.LevelSlice, isCompacting bool) {
 	// NB: Inputs for L0 can't be expanded and *version.Overlaps guarantees
 	// that we get a 'clean cut.' For L0, Overlaps will return a slice without
 	// access to the rest of the L0 files, so it's OK to try to reslice.
 	if inputs.Empty() {
 		// Nothing to expand.
-		return inputs
+		return inputs, false
 	}
 
-	return inputs.Reslice(func(start, end *manifest.LevelIterator) {
+	inputs = inputs.Reslice(func(start, end *manifest.LevelIterator) {
 		iter := start.Clone()
 		iter.Prev()
 		for cur, prev := start.Current(), iter.Current(); prev != nil; cur, prev = start.Prev(), iter.Prev() {
+			if cur.Compacting {
+				isCompacting = true
+			}
 			if cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
 				break
 			}
@@ -359,6 +379,9 @@ func expandToAtomicUnit(cmp Compare, inputs manifest.LevelSlice) manifest.LevelS
 		iter = end.Clone()
 		iter.Next()
 		for cur, next := end.Current(), iter.Current(); next != nil; cur, next = end.Next(), iter.Next() {
+			if cur.Compacting {
+				isCompacting = true
+			}
 			if cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
 				break
 			}
@@ -374,6 +397,8 @@ func expandToAtomicUnit(cmp Compare, inputs manifest.LevelSlice) manifest.LevelS
 			// include next in the compaction.
 		}
 	})
+	inputIter := inputs.Iter()
+	return inputs, isCompacting || inputIter.First().Compacting || inputIter.Last().Compacting
 }
 
 func newCompactionPicker(
@@ -1059,7 +1084,11 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(env compactionEnv) (
 	// Construct a picked compaction of the elision candidate's atomic
 	// compaction unit.
 	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1)
-	pc.startLevel.files = expandToAtomicUnit(p.opts.Comparer.Compare, p.elisionCandidate.Slice())
+	var isCompacting bool
+	pc.startLevel.files, isCompacting = expandToAtomicUnit(p.opts.Comparer.Compare, p.elisionCandidate.Slice())
+	if isCompacting {
+		return nil
+	}
 
 	p.elisionThreshold = nil
 	p.elisionCandidate = nil
@@ -1093,7 +1122,9 @@ func pickAutoHelper(
 		}
 	}
 
-	pc.setupInputs()
+	if !pc.setupInputs() {
+		return nil
+	}
 	return pc
 }
 
@@ -1132,7 +1163,9 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	}
 	if lcf != nil {
 		pc = newPickedCompactionFromL0(lcf, opts, vers, 0, false)
-		pc.setupInputs()
+		if !pc.setupInputs() {
+			return nil
+		}
 		if pc.startLevel.files.Empty() {
 			opts.Logger.Fatalf("empty compaction chosen")
 		}
@@ -1305,7 +1338,9 @@ func pickManualHelper(
 		// Nothing to do
 		return nil
 	}
-	pc.setupInputs()
+	if !pc.setupInputs() {
+		return nil
+	}
 	return pc
 }
 
