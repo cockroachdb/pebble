@@ -1959,10 +1959,10 @@ func TestCompactionCheckOrdering(t *testing.T) {
 }
 
 type mockSplitter struct {
-	guaranteesUserKeyChangeVal, shouldSplitVal bool
+	shouldSplitVal compactionSplitSuggestion
 }
 
-func (m *mockSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) bool {
+func (m *mockSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
 	return m.shouldSplitVal
 }
 
@@ -2037,23 +2037,28 @@ func TestCompactionOutputSplitters(t *testing.T) {
 					return "expected at least 2 args"
 				}
 				splitterToSet := (*pickSplitter(d.CmdArgs[0].Key)).(*mockSplitter)
-				val, err := strconv.ParseBool(d.CmdArgs[1].Key)
-				if err != nil {
-					t.Fatal(err)
+				var val compactionSplitSuggestion
+				switch d.CmdArgs[1].Key {
+				case "split-now":
+					val = splitNow
+				case "split-soon":
+					val = splitSoon
+				case "no-split":
+					val = noSplit
+				default:
+					t.Fatalf("unexpected value for should-split: %s", d.CmdArgs[1].Key)
 				}
 				splitterToSet.shouldSplitVal = val
-			case "set-user-key-change":
-				return "TODO: remove"
 			case "should-split-before":
 				if len(d.CmdArgs) < 1 {
 					return "expected at least 1 arg"
 				}
 				key := base.ParseInternalKey(d.CmdArgs[0].Key)
 				shouldSplit := main.shouldSplitBefore(&key, nil)
-				if shouldSplit {
+				if shouldSplit == splitNow {
 					main.onNewOutput(&key)
 				}
-				return fmt.Sprintf("%t", shouldSplit)
+				return fmt.Sprintf("%s", shouldSplit)
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}

@@ -17,41 +17,41 @@ init main array
 ----
 ok
 
-set-should-split child0 false
+set-should-split child0 no-split
 ----
 ok
 
-set-should-split child1 false
-----
-ok
-
-should-split-before foo.SET.2
-----
-false
-
-set-should-split child1 true
+set-should-split child1 no-split
 ----
 ok
 
 should-split-before foo.SET.2
 ----
-true
+no-split
 
-set-should-split child1 false
+set-should-split child1 split-now
 ----
 ok
 
 should-split-before foo.SET.2
 ----
-false
+split-now
 
-set-should-split child0 true
+set-should-split child1 no-split
 ----
 ok
 
 should-split-before foo.SET.2
 ----
-true
+no-split
+
+set-should-split child0 split-now
+----
+ok
+
+should-split-before foo.SET.2
+----
+split-now
 
 # userKeyChangeSplitter tests
 
@@ -69,51 +69,51 @@ ok
 
 should-split-before foo.SET.6
 ----
-false
+no-split
 
 should-split-before foo.SET.5
 ----
-false
+no-split
 
-set-should-split child0 true
+set-should-split child0 split-now
 ----
 ok
 
 should-split-before foo.SET.4
 ----
-false
+no-split
 
 should-split-before foo.SET.3
 ----
-false
+no-split
 
 should-split-before food.SET.6
 ----
-true
+split-now
 
-set-should-split child0 false
+set-should-split child0 no-split
 ----
 ok
 
 should-split-before food.SET.5
 ----
-false
+no-split
 
-set-should-split child0 true
+set-should-split child0 split-now
 ----
 ok
 
 should-split-before food.SET.4
 ----
-false
+no-split
 
-set-should-split child0 false
+set-should-split child0 no-split
 ----
 ok
 
 should-split-before food2.SET.4
 ----
-true
+split-now
 
 # nonZeroSeqNumSplitter tests
 
@@ -129,76 +129,76 @@ init main nonzeroseqnum tombstone
 ----
 ok
 
-set-should-split child0 false
+set-should-split child0 no-split
 ----
 ok
 
 should-split-before foo.SET.5
 ----
-false
+no-split
 
 should-split-before foo.RANGEDEL.0
 ----
-false
+no-split
 
-set-should-split child0 true
+set-should-split child0 split-now
 ----
 ok
 
-# This should be true, as the last point key is foo.SET.5.
+# This should be split-now, as the last point key is foo.SET.5.
 
 should-split-before foo.SET.0
 ----
-true
+split-now
 
-set-should-split child0 false
+set-should-split child0 no-split
 ----
 ok
 
 should-split-before food.SET.0
 ----
-false
+no-split
 
-set-should-split child0 true
+set-should-split child0 split-now
 ----
 ok
 
 should-split-before food1.SET.0
 ----
-false
+split-soon
 
-# Even though we've set should-split-before to false for the child splitter,
+# Even though we've set should-split-before to no-split for the child splitter,
 # nonZeroSeqNumSplitter "remembers" it and splits at the next good split point.
 
-set-should-split child0 false
+set-should-split child0 no-split
 ----
 ok
 
 should-split-before food2.SET.0
 ----
-false
+no-split
 
 should-split-before food3.SET.4
 ----
-false
+no-split
 
-# This one should be true, as the previous point seqnum is nonzero.
+# This one should be split-now, as the previous point seqnum is nonzero.
 
 should-split-before food4.SET.2
 ----
-true
+split-now
 
 should-split-before food4.SET.0
 ----
-false
+no-split
 
-set-should-split child0 true
+set-should-split child0 split-now
 ----
 ok
 
 should-split-before food5.SET.3
 ----
-true
+split-now
 
 reset
 ----
@@ -219,18 +219,18 @@ init main nonzeroseqnum
 ----
 ok
 
-set-should-split child0 false
+set-should-split child0 no-split
 ----
 ok
 
 should-split-before food.SET.0
 ----
-false
+no-split
 
-set-should-split child0 true
+set-should-split child0 split-now
 ----
 ok
 
 should-split-before food1.SET.0
 ----
-true
+split-now
