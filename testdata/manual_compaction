@@ -772,3 +772,47 @@ compact a-r L1
   000007:[q#8,RANGEDEL-r#72057594037927935,RANGEDEL]
 3:
   000006:[q#6,SET-q#6,SET]
+
+
+# Test a case where the output ends one key after a grandparent limit is
+# crossed, but we couldn't have split outputs at that key due to the point
+# key before that having a zero seqnum.
+define target-file-sizes=(100, 100, 100)
+L1
+  a.RANGEDEL.10:b
+  b.SET.0:foo
+  d.RANGEDEL.0:e
+  j.SET.10:foo
+L2
+  f.RANGEDEL.7:g
+L3
+  c.SET.6:6
+L3
+  c.SET.5:5
+L3
+  c.SET.4:4
+L4
+  a.SET.0:0
+  f.SET.0:0
+----
+1:
+  000004:[a-j]
+2:
+  000005:[f-g]
+3:
+  000006:[c-c]
+  000007:[c-c]
+  000008:[c-c]
+4:
+  000009:[a-f]
+
+compact a-r L1
+----
+2:
+  000010:[a#10,RANGEDEL-j#10,SET]
+3:
+  000006:[c#6,SET-c#6,SET]
+  000007:[c#5,SET-c#5,SET]
+  000008:[c#4,SET-c#4,SET]
+4:
+  000009:[a#0,SET-f#0,SET]
