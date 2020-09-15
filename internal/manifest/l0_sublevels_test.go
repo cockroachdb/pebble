@@ -317,7 +317,7 @@ func TestL0Sublevels(t *testing.T) {
 				SortBySmallest(fileMetas[i], base.DefaultComparer.Compare)
 			}
 
-			levelMetadata := makeLevelMetadata(fileMetas[0]...)
+			levelMetadata := makeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
 			if initialize {
 				sublevels, err = NewL0Sublevels(
 					&levelMetadata,
@@ -438,7 +438,7 @@ func TestL0Sublevels(t *testing.T) {
 		case "l0-check-ordering":
 			for sublevel, files := range sublevels.Levels {
 				err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter,
-					L0Sublevel(sublevel), NewLevelSlice(files).Iter())
+					L0Sublevel(sublevel), NewLevelSliceSpecificOrder(files).Iter())
 				if err != nil {
 					return err.Error()
 				}

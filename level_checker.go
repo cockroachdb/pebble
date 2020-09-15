@@ -634,7 +634,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		if len(current.L0Sublevels.Levels[sublevel]) == 0 {
 			continue
 		}
-		manifestIter := manifest.NewLevelSlice(current.L0Sublevels.Levels[sublevel]).Iter()
+		manifestIter := manifest.NewLevelSliceKeySorted(c.cmp, current.L0Sublevels.Levels[sublevel]).Iter()
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
 		li.init(iterOpts, c.cmp, c.newIters, manifestIter,

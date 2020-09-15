@@ -73,10 +73,12 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	if p.level == 0 {
 		outputLevel = p.baseLevel
 	}
+	iter := p.vers.Levels[p.level].Iter()
+	iter.First()
 	cInfo := candidateLevelInfo{
 		level:       p.level,
 		outputLevel: outputLevel,
-		file:        p.vers.Levels[p.level].Iter().Take(),
+		file:        iter.Take(),
 	}
 	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
@@ -1116,12 +1118,15 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 	cmp := DefaultComparer.Compare
 	var grandparents []*fileMetadata
 
+	var fileNum base.FileNum
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
+		fileNum++
 		return &fileMetadata{
+			FileNum:  fileNum,
 			Smallest: InternalKey{UserKey: []byte(parts[0])},
 			Largest:  InternalKey{UserKey: []byte(parts[1])},
 		}
@@ -1723,6 +1728,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	}()
 
 	metaRE := regexp.MustCompile(`^L([0-9]+):([^-]+)-(.+)$`)
+	var fileNum base.FileNum
 	parseMeta := func(s string) (level int, meta *fileMetadata) {
 		match := metaRE.FindStringSubmatch(s)
 		if match == nil {
@@ -1732,7 +1738,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 		if err != nil {
 			t.Fatalf("malformed table spec: %s: %s", s, err)
 		}
+		fileNum++
 		meta = &fileMetadata{
+			FileNum:  fileNum,
 			Smallest: InternalKey{UserKey: []byte(match[2])},
 			Largest:  InternalKey{UserKey: []byte(match[3])},
 		}
@@ -2011,8 +2019,8 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					}
 				}
 
-				c.startLevel.files = manifest.NewLevelSlice(startFiles)
-				c.outputLevel.files = manifest.NewLevelSlice(outputFiles)
+				c.startLevel.files = manifest.NewLevelSliceSpecificOrder(startFiles)
+				c.outputLevel.files = manifest.NewLevelSliceSpecificOrder(outputFiles)
 				if c.outputLevel.level == -1 {
 					c.outputLevel.level = 0
 				}

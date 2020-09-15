@@ -60,7 +60,7 @@ func TestLevelIter(t *testing.T) {
 				meta.Largest = f.keys[len(f.keys)-1]
 				metas = append(metas, meta)
 			}
-			files = manifest.NewLevelSlice(metas)
+			files = manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, metas)
 
 			return ""
 

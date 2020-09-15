@@ -1784,7 +1784,7 @@ func (d *DB) runCompaction(
 	if c.kind == compactionKindDeleteOnly {
 		c.metrics = make(map[int]*LevelMetrics, len(c.inputs))
 		ve := &versionEdit{
-			DeletedFiles: map[deletedFileEntry]bool{},
+			DeletedFiles: map[deletedFileEntry]*fileMetadata{},
 		}
 		for _, cl := range c.inputs {
 			levelMetrics := &LevelMetrics{}
@@ -1795,7 +1795,7 @@ func (d *DB) runCompaction(
 				ve.DeletedFiles[deletedFileEntry{
 					Level:   cl.level,
 					FileNum: f.FileNum,
-				}] = true
+				}] = f
 			}
 			c.metrics[cl.level] = levelMetrics
 		}
@@ -1822,8 +1822,8 @@ func (d *DB) runCompaction(
 			},
 		}
 		ve := &versionEdit{
-			DeletedFiles: map[deletedFileEntry]bool{
-				{Level: c.startLevel.level, FileNum: meta.FileNum}: true,
+			DeletedFiles: map[deletedFileEntry]*fileMetadata{
+				{Level: c.startLevel.level, FileNum: meta.FileNum}: meta,
 			},
 			NewFiles: []newFileEntry{
 				{Level: c.outputLevel.level, Meta: meta},
@@ -1875,7 +1875,7 @@ func (d *DB) runCompaction(
 	}()
 
 	ve = &versionEdit{
-		DeletedFiles: map[deletedFileEntry]bool{},
+		DeletedFiles: map[deletedFileEntry]*fileMetadata{},
 	}
 
 	outputMetrics := &LevelMetrics{
@@ -2325,7 +2325,7 @@ func (d *DB) runCompaction(
 			ve.DeletedFiles[deletedFileEntry{
 				Level:   cl.level,
 				FileNum: f.FileNum,
-			}] = true
+			}] = f
 		}
 	}
 
