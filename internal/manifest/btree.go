@@ -5,6 +5,7 @@
 package manifest
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -707,6 +708,19 @@ func (is *iterStack) clone() iterStack {
 	return clone
 }
 
+func (is *iterStack) nth(n int) (f iterFrame, ok bool) {
+	if is.aLen == -1 {
+		if n >= len(is.s) {
+			return f, false
+		}
+		return is.s[n], true
+	}
+	if int16(n) >= is.aLen {
+		return f, false
+	}
+	return is.a[n], true
+}
+
 func (is *iterStack) reset() {
 	if is.aLen == -1 {
 		is.s = is.s[:0]
@@ -734,6 +748,124 @@ func (i *iterator) reset() {
 	i.n = i.r
 	i.pos = -1
 	i.s.reset()
+}
+
+func (i iterator) String() string {
+	var buf bytes.Buffer
+	for n := 0; ; n++ {
+		f, ok := i.s.nth(n)
+		if !ok {
+			break
+		}
+		fmt.Fprintf(&buf, "%p: %02d/%02d\n", f.n, f.pos, f.n.count)
+	}
+	if i.n == nil {
+		fmt.Fprintf(&buf, "<nil>: %02d", i.pos)
+	} else {
+		fmt.Fprintf(&buf, "%p: %02d/%02d", i.n, i.pos, i.n.count)
+	}
+	return buf.String()
+}
+
+func cmpIter(a, b iterator) int {
+	if a.r != b.r {
+		panic("compared iterators from different btrees")
+	}
+
+	// Each iterator has a stack of frames marking the path from the root node
+	// to the current iterator position. We walk both paths formed by the
+	// iterators' stacks simulatenously, descending from the shared root node,
+	// always comparing nodes at the same level in the tree.
+	//
+	// If the iterators' paths ever diverge and point to different nodes, the
+	// iterators are not equal and we use the node positions to evaluate the
+	// comparison.
+	//
+	// If an iterator's stack ends, we stop descending and use its current
+	// node and position for the final comparison. One iterator's stack may
+	// end before another's if one iterator is positioned deeper in the tree.
+	//
+	// a                                b
+	// +------------------------+      +--------------------------+ -
+	// |  Root            pos:5 |   =  |  Root              pos:5 |  |
+	// +------------------------+      +--------------------------+  | stack
+	// |  Root/5          pos:3 |   =  |  Root/5            pos:3 |  | frames
+	// +------------------------+      +--------------------------+  |
+	// |  Root/5/3        pos:9 |   >  |  Root/5/3          pos:1 |  |
+	// +========================+      +==========================+ -
+	// |                        |      |                          |
+	// | a.n: Root/5/3/9 a.pos:2|      | b.n: Root/5/3/1, b.pos:5 |
+	// +------------------------+      +--------------------------+
+
+	// Initialize with the iterator's current node and position. These are
+	// conceptually the most-recent/current frame of the iterator stack.
+	an, apos := a.n, a.pos
+	bn, bpos := b.n, b.pos
+
+	// aok, bok are set while traversing the iterator's path down the B-Tree.
+	// They're declared in the outer scope because they help distinguish the
+	// sentinel case when both iterators' first frame points to the last child
+	// of the root. If an iterator has no other frames in its stack, it's the
+	// end sentinel state which sorts after everything else.
+	var aok, bok bool
+	for i := 0; ; i++ {
+		var af, bf iterFrame
+		af, aok = a.s.nth(i)
+		bf, bok = b.s.nth(i)
+		if !aok || !bok {
+			if aok {
+				// Iterator a, unlike iterator b, still has a frame. Set an,
+				// apos so we compare using the frame from the stack.
+				an, apos = af.n, af.pos
+			}
+			if bok {
+				// Iterator b, unlike iterator a, still has a frame. Set bn,
+				// bpos so we compare using the frame from the stack.
+				bn, bpos = bf.n, bf.pos
+			}
+			break
+		}
+
+		// aok && bok
+		if af.n != bf.n {
+			panic("nonmatching nodes during btree iterator comparison")
+		}
+		switch {
+		case af.pos < bf.pos:
+			return -1
+		case af.pos > bf.pos:
+			return +1
+		default:
+			// Continue up both iterators' stacks (equivalently, down the
+			// B-Tree away from the root).
+		}
+	}
+
+	if aok && bok {
+		panic("expected one or more stacks to have been exhausted")
+	}
+	if an != bn {
+		panic("nonmatching nodes during btree iterator comparison")
+	}
+	switch {
+	case apos < bpos:
+		return -1
+	case apos > bpos:
+		return +1
+	default:
+		switch {
+		case aok:
+			// a is positioned at a leaf child at this position and b is at an
+			// end sentinel state.
+			return -1
+		case bok:
+			// b is positioned at a leaf child at this position and a is at an
+			// end sentinel state.
+			return +1
+		default:
+			return 0
+		}
+	}
 }
 
 func (i *iterator) descend(n *node, pos int16) {

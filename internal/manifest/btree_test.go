@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -140,7 +141,7 @@ func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
 	return s
 }
 
-func checkIterRelative(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
+func checkIterRelative(t *testing.T, it *iterator, start, end int, keyMemo map[int]InternalKey) {
 	t.Helper()
 	i := start
 	for ; it.valid(); it.next() {
@@ -258,9 +259,82 @@ func TestIterClone(t *testing.T) {
 	i := 0
 	for it.first(); it.valid(); it.next() {
 		if i%500 == 0 {
-			checkIterRelative(t, it.clone(), i, count, keyMemo)
+			c := it.clone()
+
+			require.Equal(t, 0, cmpIter(it, c))
+			checkIterRelative(t, &c, i, count, keyMemo)
+			if i < count {
+				require.Equal(t, -1, cmpIter(it, c))
+				require.Equal(t, +1, cmpIter(c, it))
+			}
 		}
 		i++
+	}
+}
+
+func TestIterCmpEdgeCases(t *testing.T) {
+	var tr btree
+	tr.cmp = cmp
+	t.Run("empty", func(t *testing.T) {
+		a := tr.iter()
+		b := tr.iter()
+		require.Equal(t, 0, cmpIter(a, b))
+	})
+	tr.insert(newItem(key(5)))
+	t.Run("exhausted_next", func(t *testing.T) {
+		a := tr.iter()
+		b := tr.iter()
+		a.first()
+		b.first()
+		require.Equal(t, 0, cmpIter(a, b))
+		b.next()
+		require.False(t, b.valid())
+		require.Equal(t, -1, cmpIter(a, b))
+	})
+	t.Run("exhausted_prev", func(t *testing.T) {
+		a := tr.iter()
+		b := tr.iter()
+		a.first()
+		b.first()
+		b.prev()
+		require.False(t, b.valid())
+		require.Equal(t, 1, cmpIter(a, b))
+		b.next()
+		require.Equal(t, 0, cmpIter(a, b))
+	})
+}
+
+func TestIterCmpRand(t *testing.T) {
+	const itemCount = 65536
+	const iterCount = 1000
+
+	var tr btree
+	tr.cmp = cmp
+	for i := 0; i < itemCount; i++ {
+		tr.insert(newItem(key(i)))
+	}
+
+	seed := time.Now().UnixNano()
+	rng := rand.New(rand.NewSource(seed))
+	iters1 := make([]*iterator, iterCount)
+	iters2 := make([]*iterator, iterCount)
+	for i := 0; i < iterCount; i++ {
+		k := rng.Intn(itemCount)
+		iter := tr.iter()
+		iter.seekGE(newItem(key(k)))
+		iters1[i] = &iter
+		iters2[i] = &iter
+	}
+
+	// All the iterators should be positioned, so sorting them by items and by
+	// iterator comparisons should equal identical orderings.
+	sort.SliceStable(iters1, func(i, j int) bool { return cmpIter(*iters1[i], *iters1[j]) < 0 })
+	sort.SliceStable(iters2, func(i, j int) bool { return cmp(iters2[i].cur(), iters2[j].cur()) < 0 })
+	for i := 0; i < iterCount; i++ {
+		if iters1[i] != iters2[i] {
+			t.Fatalf("seed %d: iters out of order at index %d:\n%s\n\n%s",
+				seed, i, iters1[i], iters2[i])
+		}
 	}
 }
 
