@@ -203,6 +203,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
+	bve.AddedByFileNum = make(map[base.FileNum]*fileMetadata)
 	manifest, err := vs.fs.Open(vs.fs.PathJoin(dirname, string(b)))
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
@@ -282,7 +283,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = int64(newVersion.Levels[i].Slice().Len())
+		l.NumFiles = int64(newVersion.Levels[i].Len())
 		l.Size = int64(newVersion.Levels[i].Slice().SizeSum())
 	}
 	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
@@ -498,7 +499,7 @@ func (vs *versionSet) logAndApply(
 			l.Sublevels = 1
 		}
 		if invariants.Enabled {
-			if count := int64(newVersion.Levels[i].Slice().Len()); l.NumFiles != count {
+			if count := int64(newVersion.Levels[i].Len()); l.NumFiles != count {
 				vs.opts.Logger.Fatalf("versionSet metrics L%d NumFiles = %d, actual count = %d", i, l.NumFiles, count)
 			}
 			if size := int64(newVersion.Levels[i].Slice().SizeSum()); l.Size != size {

@@ -17,8 +17,8 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-func makeLevelMetadata(files ...*FileMetadata) LevelMetadata {
-	return LevelMetadata{files: files}
+func levelMetadata(level int, files ...*FileMetadata) LevelMetadata {
+	return makeLevelMetadata(base.DefaultComparer.Compare, level, files)
 }
 
 func ikey(s string) InternalKey {
@@ -69,14 +69,15 @@ func TestIkeyRange(t *testing.T) {
 	for _, tc := range testCases {
 		var f []*FileMetadata
 		if tc.input != "" {
-			for _, s := range strings.Split(tc.input, " ") {
+			for i, s := range strings.Split(tc.input, " ") {
 				f = append(f, &FileMetadata{
+					FileNum:  base.FileNum(i),
 					Smallest: ikey(s[0:1]),
 					Largest:  ikey(s[2:3]),
 				})
 			}
 		}
-		levelMetadata := makeLevelMetadata(f...)
+		levelMetadata := makeLevelMetadata(base.DefaultComparer.Compare, 0, f)
 
 		sm, la := KeyRange(base.DefaultComparer.Compare, levelMetadata.Iter())
 		got := string(sm.UserKey) + "-" + string(la.UserKey)
@@ -157,20 +158,20 @@ func TestOverlaps(t *testing.T) {
 	m13 := &FileMetadata{
 		FileNum:  713,
 		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7138"),
-		Largest:  base.ParseInternalKey("p.SET.7139"),
+		Smallest: base.ParseInternalKey("p.SET.7148"),
+		Largest:  base.ParseInternalKey("p.SET.7149"),
 	}
 	m14 := &FileMetadata{
 		FileNum:  714,
 		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7148"),
-		Largest:  base.ParseInternalKey("u.SET.7149"),
+		Smallest: base.ParseInternalKey("p.SET.7138"),
+		Largest:  base.ParseInternalKey("u.SET.7139"),
 	}
 
 	v := Version{
 		Levels: [NumLevels]LevelMetadata{
-			0: makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
-			1: makeLevelMetadata(m10, m11, m12, m13, m14),
+			0: levelMetadata(0, m00, m01, m02, m03, m04, m05, m06, m07),
+			1: levelMetadata(1, m10, m11, m12, m13, m14),
 		},
 	}
 
@@ -330,20 +331,20 @@ func TestContains(t *testing.T) {
 	m13 := &FileMetadata{
 		FileNum:  713,
 		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7138"),
-		Largest:  base.ParseInternalKey("p.SET.7139"),
+		Smallest: base.ParseInternalKey("p.SET.7148"),
+		Largest:  base.ParseInternalKey("p.SET.7149"),
 	}
 	m14 := &FileMetadata{
 		FileNum:  714,
 		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7148"),
-		Largest:  base.ParseInternalKey("u.SET.7149"),
+		Smallest: base.ParseInternalKey("p.SET.7138"),
+		Largest:  base.ParseInternalKey("u.SET.7139"),
 	}
 
 	v := Version{
 		Levels: [NumLevels]LevelMetadata{
-			0: makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
-			1: makeLevelMetadata(m10, m11, m12, m13, m14),
+			0: levelMetadata(0, m00, m01, m02, m03, m04, m05, m06, m07),
+			1: levelMetadata(1, m10, m11, m12, m13, m14),
 		},
 	}
 
