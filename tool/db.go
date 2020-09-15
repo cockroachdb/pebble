@@ -397,6 +397,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 
 		cmp := base.DefaultComparer
 		var bve manifest.BulkVersionEdit
+		bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 		rr := record.NewReader(f, 0 /* logNum */)
 		for {
 			r, err := rr.Next()

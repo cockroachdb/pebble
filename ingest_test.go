@@ -1131,15 +1131,20 @@ func BenchmarkManySSTablesNewVersion(b *testing.B) {
 			require.NoError(b, d.Ingest(paths))
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				n := strconv.Itoa(count + i)
-				f, err := mem.Create(n)
-				require.NoError(b, err)
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
-				require.NoError(b, w.Set([]byte(n), nil))
-				require.NoError(b, w.Close())
-				require.NoError(b, d.Ingest([]string{n}))
-			}
+			runBenchmarkSSTables(b, d, mem, count)
+			require.NoError(b, d.Close())
 		})
+	}
+}
+
+func runBenchmarkSSTables(b *testing.B, d *DB, fs vfs.FS, count int) {
+	for i := 0; i < b.N; i++ {
+		n := strconv.Itoa(count + i)
+		f, err := fs.Create(n)
+		require.NoError(b, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		require.NoError(b, w.Set([]byte(n), nil))
+		require.NoError(b, w.Close())
+		require.NoError(b, d.Ingest([]string{n}))
 	}
 }

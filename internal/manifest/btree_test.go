@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
@@ -199,7 +200,7 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.insert(items[i])
+		require.NoError(t, tr.insert(items[i]))
 		tr.Verify(t)
 		if e := i + 1; e != tr.length {
 			t.Fatalf("expected length %d, but found %d", e, tr.length)
@@ -222,7 +223,7 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in reverse sorted order.
 	for i := 1; i <= count; i++ {
-		tr.insert(items[count-i])
+		require.NoError(t, tr.insert(items[count-i]))
 		tr.Verify(t)
 		if i != tr.length {
 			t.Fatalf("expected length %d, but found %d", i, tr.length)
@@ -252,7 +253,7 @@ func TestIterClone(t *testing.T) {
 	keyMemo := make(map[int]InternalKey)
 
 	for i := 0; i < count; i++ {
-		tr.insert(newItem(key(i)))
+		require.NoError(t, tr.insert(newItem(key(i))))
 	}
 
 	it := tr.iter()
@@ -280,7 +281,7 @@ func TestIterCmpEdgeCases(t *testing.T) {
 		b := tr.iter()
 		require.Equal(t, 0, cmpIter(a, b))
 	})
-	tr.insert(newItem(key(5)))
+	require.NoError(t, tr.insert(newItem(key(5))))
 	t.Run("exhausted_next", func(t *testing.T) {
 		a := tr.iter()
 		b := tr.iter()
@@ -311,25 +312,25 @@ func TestIterCmpRand(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
 	for i := 0; i < itemCount; i++ {
-		tr.insert(newItem(key(i)))
+		require.NoError(t, tr.insert(newItem(key(i))))
 	}
 
 	seed := time.Now().UnixNano()
 	rng := rand.New(rand.NewSource(seed))
-	iters1 := make([]*iterator, iterCount)
-	iters2 := make([]*iterator, iterCount)
+	iters1 := make([]*LevelIterator, iterCount)
+	iters2 := make([]*LevelIterator, iterCount)
 	for i := 0; i < iterCount; i++ {
 		k := rng.Intn(itemCount)
-		iter := tr.iter()
-		iter.seekGE(newItem(key(k)))
+		iter := LevelIterator{iter: tr.iter()}
+		iter.SeekGE(base.DefaultComparer.Compare, key(k).UserKey)
 		iters1[i] = &iter
 		iters2[i] = &iter
 	}
 
 	// All the iterators should be positioned, so sorting them by items and by
 	// iterator comparisons should equal identical orderings.
-	sort.SliceStable(iters1, func(i, j int) bool { return cmpIter(*iters1[i], *iters1[j]) < 0 })
-	sort.SliceStable(iters2, func(i, j int) bool { return cmp(iters2[i].cur(), iters2[j].cur()) < 0 })
+	sort.SliceStable(iters1, func(i, j int) bool { return cmpIter(iters1[i].iter, iters1[j].iter) < 0 })
+	sort.SliceStable(iters2, func(i, j int) bool { return cmp(iters2[i].iter.cur(), iters2[j].iter.cur()) < 0 })
 	for i := 0; i < iterCount; i++ {
 		if iters1[i] != iters2[i] {
 			t.Fatalf("seed %d: iters out of order at index %d:\n%s\n\n%s",
@@ -338,58 +339,60 @@ func TestIterCmpRand(t *testing.T) {
 	}
 }
 
-// TestBTreeSeek tests basic btree iterator operations.
+// TestBTreeSeek tests basic btree iterator operations on an iterator wrapped
+// by a LevelIterator.
 func TestBTreeSeek(t *testing.T) {
 	const count = 513
 
 	var tr btree
 	tr.cmp = cmp
 	for i := 0; i < count; i++ {
-		tr.insert(newItem(key(i * 2)))
+		require.NoError(t, tr.insert(newItem(key(i*2))))
 	}
 
-	it := tr.iter()
+	it := LevelIterator{iter: tr.iter()}
 	for i := 0; i < 2*count-1; i++ {
-		it.seekGE(newItem(key(i)))
-		if !it.valid() {
+		it.SeekGE(base.DefaultComparer.Compare, key(i).UserKey)
+		if !it.iter.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
-		item := it.cur()
+		item := it.Current()
 		expected := key(2 * ((i + 1) / 2))
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.seekGE(newItem(key(2*count - 1)))
-	if it.valid() {
+	it.SeekGE(base.DefaultComparer.Compare, key(2*count-1).UserKey)
+	if it.iter.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 
 	for i := 1; i < 2*count; i++ {
-		it.seekLT(newItem(key(i)))
-		if !it.valid() {
+		it.SeekLT(base.DefaultComparer.Compare, key(i).UserKey)
+		if !it.iter.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
-		item := it.cur()
+		item := it.Current()
 		expected := key(2 * ((i - 1) / 2))
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.seekLT(newItem(key(0)))
-	if it.valid() {
+	it.SeekLT(base.DefaultComparer.Compare, key(0).UserKey)
+	if it.iter.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 }
 
-func TestBTreeInsertDuplicatePanic(t *testing.T) {
+func TestBTreeInsertDuplicateError(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
-	tr.insert(newItem(key(1)))
-	tr.insert(newItem(key(2)))
-	tr.insert(newItem(key(3)))
-	require.PanicsWithValue(t, "file key collision: existing metadata 000000, inserting 000000",
-		func() { tr.insert(newItem(key(2))) })
+	require.NoError(t, tr.insert(newItem(key(1))))
+	require.NoError(t, tr.insert(newItem(key(2))))
+	require.NoError(t, tr.insert(newItem(key(3))))
+	wantErr := errors.Errorf("files %s and %s collided on sort keys",
+		errors.Safe(base.FileNum(000000)), errors.Safe(base.FileNum(000000)))
+	require.Error(t, wantErr, tr.insert(newItem(key(2))))
 }
 
 // TestBTreeCloneConcurrentOperations tests that cloning a btree returns a new
@@ -414,7 +417,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		t.Logf("Starting new clone at %v", start)
 		treeC <- tr
 		for i := start; i < cloneTestSize; i++ {
-			tr.insert(p[i])
+			require.NoError(t, tr.insert(p[i]))
 			if i%(cloneTestSize/5) == 0 {
 				wg.Add(1)
 				c := tr.clone()
@@ -493,6 +496,26 @@ func TestIterStack(t *testing.T) {
 	}
 }
 
+func TestIterEndSentinel(t *testing.T) {
+	var tr btree
+	tr.cmp = cmp
+	require.NoError(t, tr.insert(newItem(key(1))))
+	require.NoError(t, tr.insert(newItem(key(2))))
+	require.NoError(t, tr.insert(newItem(key(3))))
+	iter := LevelIterator{iter: tr.iter()}
+	iter.SeekGE(base.DefaultComparer.Compare, key(3).UserKey)
+	require.True(t, iter.iter.valid())
+	iter.Next()
+	require.False(t, iter.iter.valid())
+
+	// If we seek into the end sentinel, prev should return us to a valid
+	// position.
+	iter.SeekGE(base.DefaultComparer.Compare, key(4).UserKey)
+	require.False(t, iter.iter.valid())
+	iter.Prev()
+	require.True(t, iter.iter.valid())
+}
+
 //////////////////////////////////////////
 //              Benchmarks              //
 //////////////////////////////////////////
@@ -549,7 +572,7 @@ func BenchmarkBTreeInsert(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.insert(item)
+				require.NoError(b, tr.insert(item))
 				i++
 				if i >= b.N {
 					return
@@ -569,7 +592,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.insert(item)
+				require.NoError(b, tr.insert(item))
 			}
 			b.StartTimer()
 			for _, item := range removeP {
@@ -593,13 +616,13 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.delete(item)
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 	})
 }
@@ -612,14 +635,14 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 		tr = tr.clone()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.delete(item)
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 	})
 }
@@ -635,7 +658,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 				tr.cmp = cmp
 				trRelease.cmp = cmp
 				for _, item := range insertP {
-					tr.insert(item)
+					require.NoError(b, tr.insert(item))
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -646,7 +669,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 					}
 					tr = tr.clone()
 					tr.delete(item)
-					tr.insert(item)
+					require.NoError(b, tr.insert(item))
 				}
 			})
 		})
@@ -675,20 +698,20 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		for i := 0; i < count; i++ {
 			s := key(i)
 			keys = append(keys, s)
-			tr.insert(newItem(s))
+			require.NoError(b, tr.insert(newItem(s)))
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			k := keys[rng.Intn(len(keys))]
-			it := tr.iter()
-			it.seekGE(newItem(k))
+			it := LevelIterator{iter: tr.iter()}
+			it.SeekGE(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
-				if !it.valid() {
+				if !it.iter.valid() {
 					b.Fatal("expected to find key")
 				}
-				if cmpKey(k, it.cur().Smallest) != 0 {
-					b.Fatalf("expected %s, but found %s", k, it.cur().Smallest)
+				if cmpKey(k, it.Current().Smallest) != 0 {
+					b.Fatalf("expected %s, but found %s", k, it.Current().Smallest)
 				}
 			}
 		}
@@ -707,27 +730,27 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 		for i := 0; i < count; i++ {
 			k := key(i)
 			keys = append(keys, k)
-			tr.insert(newItem(k))
+			require.NoError(b, tr.insert(newItem(k)))
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			j := rng.Intn(len(keys))
 			k := keys[j]
-			it := tr.iter()
-			it.seekLT(newItem(k))
+			it := LevelIterator{iter: tr.iter()}
+			it.SeekLT(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
 				if j == 0 {
-					if it.valid() {
+					if it.iter.valid() {
 						b.Fatal("unexpected key")
 					}
 				} else {
-					if !it.valid() {
+					if !it.iter.valid() {
 						b.Fatal("expected to find key")
 					}
 					k := keys[j-1]
-					if cmpKey(k, it.cur().Smallest) != 0 {
-						b.Fatalf("expected %s, but found %s", k, it.cur().Smallest)
+					if cmpKey(k, it.Current().Smallest) != 0 {
+						b.Fatalf("expected %s, but found %s", k, it.Current().Smallest)
 					}
 				}
 			}
@@ -745,7 +768,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.insert(item)
+		require.NoError(b, tr.insert(item))
 	}
 
 	it := tr.iter()
@@ -768,7 +791,7 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.insert(item)
+		require.NoError(b, tr.insert(item))
 	}
 
 	it := tr.iter()

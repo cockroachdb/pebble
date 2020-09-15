@@ -9,8 +9,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"sort"
-	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -103,7 +101,7 @@ type VersionEdit struct {
 	// A file num may be present in both deleted files and new files when it
 	// is moved from a lower level to a higher level (when the compaction
 	// found that there was no overlapping file at the higher level).
-	DeletedFiles map[DeletedFileEntry]bool
+	DeletedFiles map[DeletedFileEntry]*FileMetadata
 	NewFiles     []NewFileEntry
 }
 
@@ -170,9 +168,9 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			if v.DeletedFiles == nil {
-				v.DeletedFiles = make(map[DeletedFileEntry]bool)
+				v.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
 			}
-			v.DeletedFiles[DeletedFileEntry{level, fileNum}] = true
+			v.DeletedFiles[DeletedFileEntry{level, fileNum}] = nil
 
 		case tagNewFile, tagNewFile2, tagNewFile3, tagNewFile4:
 			level, err := d.readLevel()
@@ -430,21 +428,23 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // edits.
 type BulkVersionEdit struct {
 	Added   [NumLevels][]*FileMetadata
-	Deleted [NumLevels]map[base.FileNum]bool
+	Deleted [NumLevels]map[base.FileNum]*FileMetadata
+
+	// AddedByFileNum maps file number to file metadata for all added files
+	// from accumulated version edits. AddedByFileNum is only populated if set
+	// to non-nil by a caller. It must be set to non-nil when replaying
+	// version edits read from a MANIFEST (as opposed to VersionEdits
+	// constructed in-memory).  While replaying a MANIFEST file,
+	// VersionEdit.DeletedFiles map entries have nil values, because the
+	// on-disk deletion record encodes only the file number. Accumulate
+	// uses AddedByFileNum to correctly populate the BulkVersionEdit's Deleted
+	// field with non-nil *FileMetadata.
+	AddedByFileNum map[base.FileNum]*FileMetadata
 }
 
 // Accumulate adds the file addition and deletions in the specified version
 // edit to the bulk edit's internal state.
 func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
-	for df := range ve.DeletedFiles {
-		dmap := b.Deleted[df.Level]
-		if dmap == nil {
-			dmap = make(map[base.FileNum]bool)
-			b.Deleted[df.Level] = dmap
-		}
-		dmap[df.FileNum] = true
-	}
-
 	for _, nf := range ve.NewFiles {
 		// A new file should not have been deleted in this or a preceding
 		// VersionEdit at the same level (though files can move across levels).
@@ -454,6 +454,29 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			}
 		}
 		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
+		if b.AddedByFileNum != nil {
+			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
+		}
+	}
+
+	for df, m := range ve.DeletedFiles {
+		dmap := b.Deleted[df.Level]
+		if dmap == nil {
+			dmap = make(map[base.FileNum]*FileMetadata)
+			b.Deleted[df.Level] = dmap
+		}
+
+		if m == nil {
+			// m is nil only when replaying a MANIFEST.
+			if b.AddedByFileNum == nil {
+				return errors.Errorf("deleted file L%d.%s's metadata is absent and bve.AddedByFileNum is nil", df.Level, df.FileNum)
+			}
+			m = b.AddedByFileNum[df.FileNum]
+			if m == nil {
+				return errors.Errorf("pebble: internal error: unknown deleted file L%d.%s", df.Level, df.FileNum)
+			}
+		}
+		dmap[df.FileNum] = m
 	}
 	return nil
 }
@@ -486,6 +509,12 @@ func (b *BulkVersionEdit) Apply(
 
 	v := new(Version)
 	for level := range v.Levels {
+		if curr == nil || curr.Levels[level].tree.root == nil {
+			v.Levels[level] = makeLevelMetadata(cmp, level, nil /* files */)
+		} else {
+			v.Levels[level] = curr.Levels[level].clone()
+		}
+
 		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
 			// There are no edits on this level.
 			if level == 0 {
@@ -498,65 +527,56 @@ func (b *BulkVersionEdit) Apply(
 					v.L0Sublevels = curr.L0Sublevels
 				}
 			}
-			if curr == nil {
-				continue
-			}
-			levelMetadata := curr.Levels[level]
-			v.Levels[level] = levelMetadata
-			// We still have to bump the ref count for all files.
-			for i := range levelMetadata.files {
-				atomic.AddInt32(&levelMetadata.files[i].refs, 1)
-			}
 			continue
 		}
 
 		// Some edits on this level.
-		var currFiles []*FileMetadata
-		if curr != nil {
-			currFiles = curr.Levels[level].files
-		}
+		lm := &v.Levels[level]
 		addedFiles := b.Added[level]
 		deletedMap := b.Deleted[level]
-		n := len(currFiles) + len(addedFiles)
-		if n == 0 {
+		if n := v.Levels[level].Len() + len(addedFiles); n == 0 {
 			return nil, nil, base.CorruptionErrorf(
 				"pebble: internal error: No current or added files but have deleted files: %d",
 				errors.Safe(len(deletedMap)))
 		}
-		v.Levels[level].files = make([]*FileMetadata, 0, n)
-		// We have 2 lists of files, currFiles and addedFiles either of which (but not both) can
-		// be empty.
-		// - currFiles is internally consistent, since it comes from curr.
-		// - addedFiles is not necessarily internally consistent, since it does not reflect deletions
-		//   in deletedMap (since b could have accumulated multiple VersionEdits, the same file can
-		//   be added and deleted). And we can delay checking consistency of it until we merge
-		//   currFiles, addedFiles and deletedMap.
-		if level == 0 {
-			// - Note that any ingested single sequence number (ssn) file contained inside a multi-sequence
-			//   number (msn) file must have been added before the latter. So it is not possible for
-			//   an ssn file to be in addedFiles and its corresponding msn file to be in currFiles,
-			//   but the reverse is possible. So for consistency checking we may need to look back
-			//   into currFiles for ssn files that overlap with an msn file in addedFiles.
-			// - The previous bullet does not hold for sequence number 0 files that can be added
-			//   later. See the CheckOrdering func in version.go for a detailed explanation.
-			//   Due to these files, the LargestSeqNums may not be increasing across the slice formed by
-			//   concatenating addedFiles and currFiles.
-			// - Instead of constructing a custom variant of the CheckOrdering logic, that is aware
-			//   of the 2 slices, we observe that the number of L0 files is small so we can afford
-			//   to repeat the full check on the combined slices (and CheckOrdering only does
-			//   sequence num comparisons and not expensive key comparisons).
-			for _, ff := range [2][]*FileMetadata{currFiles, addedFiles} {
-				for i := range ff {
-					f := ff[i]
-					if deletedMap[f.FileNum] {
-						addZombie(f.FileNum, f.Size)
-						continue
-					}
-					atomic.AddInt32(&f.refs, 1)
-					v.Levels[level].files = append(v.Levels[level].files, f)
-				}
+
+		// NB: addedFiles may be empty and it also is not necessarily
+		// internally consistent: it does not reflect deletions in deletedMap.
+
+		for _, f := range deletedMap {
+			addZombie(f.FileNum, f.Size)
+			if obsolete := v.Levels[level].tree.delete(f); obsolete {
+				// Deleting a file from the B-Tree may decrement its
+				// reference count. However, because we cloned the
+				// previous level's B-Tree, this should never result in a
+				// file's reference count dropping to zero.
+				err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during B-Tree removal", level, f.FileNum)
+				return nil, nil, err
 			}
-			SortBySeqNum(v.Levels[level].files)
+		}
+
+		var sm, la *FileMetadata
+		for _, f := range addedFiles {
+			if _, ok := deletedMap[f.FileNum]; ok {
+				addZombie(f.FileNum, f.Size)
+				continue
+			}
+			err := lm.tree.insert(f)
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "pebble")
+			}
+			removeZombie(f.FileNum)
+			// Track the keys with the smallest and largest keys, so that we can
+			// check checking consistency of the modified span.
+			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
+				sm = f
+			}
+			if la == nil || base.InternalCompare(cmp, la.Largest, f.Largest) < 0 {
+				la = f
+			}
+		}
+
+		if level == 0 {
 			if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
@@ -566,73 +586,23 @@ func (b *BulkVersionEdit) Apply(
 			continue
 		}
 
-		// level > 0.
-		// - Sort the addedFiles in increasing order of the smallest key.
-		// - In a large db, addedFiles is expected to be much smaller than currFiles, so we
-		//   want to avoid comparing the addedFiles with each file in currFile.
-		SortBySmallest(addedFiles, cmp)
-		for i := range addedFiles {
-			f := addedFiles[i]
-			if deletedMap[f.FileNum] {
-				addZombie(f.FileNum, f.Size)
-				continue
-			}
-			removeZombie(f.FileNum)
-			atomic.AddInt32(&f.refs, 1)
-			// We need to add f. Find the first file in currFiles such that its smallest key
-			// is > f.Largest. This file (if it is kept) will be the immediate successor of f.
-			// The files in currFiles before this file (if they are kept) will precede f.
-			//
-			// Typically all the added files in a VersionEdit are from a single compaction
-			// output, so after we add the first file, the subsequent files should have keys
-			// preceding currFiles[0], so we could fast-path by first testing for that case before
-			// calling sort.Search().
-			j := sort.Search(len(currFiles), func(i int) bool {
-				return base.InternalCompare(cmp, currFiles[i].Smallest, f.Largest) > 0
+		// Check consistency of the level in the vicinity of our edits.
+		if sm != nil && la != nil {
+			overlap := overlaps(v.Levels[level].Iter(), cmp, sm.Smallest.UserKey, la.Largest.UserKey)
+			// overlap contains all of the added files. We want to ensure that
+			// the added files are consistent with neighboring existing files
+			// too, so reslice the overlap to pull in a neighbor on each side.
+			check := overlap.Reslice(func(start, end *LevelIterator) {
+				if m := start.Prev(); m == nil {
+					start.Next()
+				}
+				if m := end.Next(); m == nil {
+					end.Prev()
+				}
 			})
-			// Add the preceding files from currFiles.
-			for k := 0; k < j; k++ {
-				cf := currFiles[k]
-				if deletedMap[cf.FileNum] {
-					addZombie(cf.FileNum, cf.Size)
-					continue
-				}
-				removeZombie(cf.FileNum)
-				atomic.AddInt32(&cf.refs, 1)
-				v.Levels[level].files = append(v.Levels[level].files, cf)
+			if err := CheckOrdering(cmp, formatKey, Level(level), check.Iter()); err != nil {
+				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
-			currFiles = currFiles[j:]
-			numFiles := len(v.Levels[level].files)
-			if numFiles > 0 {
-				// We expect k to typically be large, and we can avoid doing consistency
-				// checks of the files within that set of k, since they are already mutually
-				// consistent.
-				//
-				// Check the consistency of f with its predecessor in v.Files[level]. Note that
-				// its predecessor either came from currFiles or addedFiles, and both are ones
-				// which we need to check against f for consistency (since we have not checked
-				// addedFiles for internal consistency).
-				if base.InternalCompare(cmp, v.Levels[level].files[numFiles-1].Largest, f.Smallest) >= 0 {
-					cf := v.Levels[level].files[numFiles-1]
-					return nil, nil, base.CorruptionErrorf(
-						"pebble: internal error: L%d files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
-						errors.Safe(level), errors.Safe(cf.FileNum), errors.Safe(f.FileNum),
-						cf.Smallest.Pretty(formatKey), cf.Largest.Pretty(formatKey),
-						f.Smallest.Pretty(formatKey), f.Largest.Pretty(formatKey))
-				}
-			}
-			v.Levels[level].files = append(v.Levels[level].files, f)
-		}
-		// Add any remaining files in currFiles that are after all the added files.
-		for i := range currFiles {
-			f := currFiles[i]
-			if deletedMap[f.FileNum] {
-				addZombie(f.FileNum, f.Size)
-				continue
-			}
-			removeZombie(f.FileNum)
-			atomic.AddInt32(&f.refs, 1)
-			v.Levels[level].files = append(v.Levels[level].files, f)
 		}
 	}
 	return v, zombies, nil

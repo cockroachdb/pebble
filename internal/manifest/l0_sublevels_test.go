@@ -41,6 +41,7 @@ func readManifest(filename string) (*Version, error) {
 			return nil, err
 		}
 		var bve BulkVersionEdit
+		bve.AddedByFileNum = make(map[base.FileNum]*FileMetadata)
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
@@ -48,7 +49,7 @@ func readManifest(filename string) (*Version, error) {
 			return nil, err
 		}
 	}
-	fmt.Printf("L0 filecount: %d\n", v.Levels[0].Slice().Len())
+	fmt.Printf("L0 filecount: %d\n", v.Levels[0].Len())
 	return v, nil
 }
 
@@ -78,7 +79,8 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, true))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction(
+			[]LevelSlice{NewLevelSliceSeqSorted(files)}, true))
 	}
 
 	for i := 0; ; i++ {
@@ -97,7 +99,8 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, false))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction(
+			[]LevelSlice{NewLevelSliceSeqSorted(files)}, false))
 	}
 }
 
@@ -177,8 +180,8 @@ func visualizeSublevels(
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
-	for i := len(s.Levels) - 1; i >= 0; i-- {
-		printLevel(s.Levels[i], fmt.Sprintf("0.%d", i), true)
+	for i := len(s.levelFiles) - 1; i >= 0; i-- {
+		printLevel(s.levelFiles[i], fmt.Sprintf("0.%d", i), true)
 	}
 	for i := range otherLevels {
 		if len(otherLevels[i]) == 0 {
@@ -317,7 +320,7 @@ func TestL0Sublevels(t *testing.T) {
 				SortBySmallest(fileMetas[i], base.DefaultComparer.Compare)
 			}
 
-			levelMetadata := makeLevelMetadata(fileMetas[0]...)
+			levelMetadata := makeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
 			if initialize {
 				sublevels, err = NewL0Sublevels(
 					&levelMetadata,
@@ -329,10 +332,13 @@ func TestL0Sublevels(t *testing.T) {
 				// This case is for use with explicitly-specified sublevels
 				// only.
 				sublevels = &L0Sublevels{
-					Levels:        explicitSublevels,
+					levelFiles:    explicitSublevels,
 					cmp:           base.DefaultComparer.Compare,
 					formatKey:     base.DefaultFormatter,
 					levelMetadata: &levelMetadata,
+				}
+				for _, files := range explicitSublevels {
+					sublevels.Levels = append(sublevels.Levels, NewLevelSliceSpecificOrder(files))
 				}
 			}
 
@@ -368,7 +374,8 @@ func TestL0Sublevels(t *testing.T) {
 
 			var lcf *L0CompactionFiles
 			if pickBaseCompaction {
-				lcf, err = sublevels.PickBaseCompaction(minCompactionDepth, NewLevelSlice(fileMetas[baseLevel]))
+				baseFiles := NewLevelSliceKeySorted(base.DefaultComparer.Compare, fileMetas[baseLevel])
+				lcf, err = sublevels.PickBaseCompaction(minCompactionDepth, baseFiles)
 				if err == nil && lcf != nil {
 					// Try to extend the base compaction into a more rectangular
 					// shape, using the smallest/largest keys of the files before
@@ -436,9 +443,9 @@ func TestL0Sublevels(t *testing.T) {
 		case "max-depth-after-ongoing-compactions":
 			return strconv.Itoa(sublevels.MaxDepthAfterOngoingCompactions())
 		case "l0-check-ordering":
-			for sublevel, files := range sublevels.Levels {
+			for sublevel, files := range sublevels.levelFiles {
 				err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter,
-					L0Sublevel(sublevel), NewLevelSlice(files).Iter())
+					L0Sublevel(sublevel), NewLevelSliceSpecificOrder(files).Iter())
 				if err != nil {
 					return err.Error()
 				}
@@ -468,7 +475,7 @@ func TestL0Sublevels(t *testing.T) {
 					}
 				}
 			}
-			slice := NewLevelSlice(files)
+			slice := NewLevelSliceSeqSorted(files)
 			sm, la := KeyRange(base.DefaultComparer.Compare, slice.Iter())
 			activeCompactions = append(activeCompactions, L0Compaction{Smallest: sm, Largest: la})
 			if err := sublevels.UpdateStateForStartedCompaction([]LevelSlice{slice}, true); err != nil {

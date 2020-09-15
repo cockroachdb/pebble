@@ -563,7 +563,7 @@ func TestCompactionPickerL0(t *testing.T) {
 				}
 				for i, cl := range info.inputs {
 					files := compactionFiles[cl.level]
-					info.inputs[i].files = manifest.NewLevelSlice(files)
+					info.inputs[i].files = manifest.NewLevelSliceSeqSorted(files)
 					// Mark as intra-L0 compacting if the compaction is
 					// L0 -> L0.
 					if info.outputLevel == 0 {
@@ -791,7 +791,11 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 				}
 				for i, cl := range info.inputs {
 					files := compactionFiles[cl.level]
-					info.inputs[i].files = manifest.NewLevelSlice(files)
+					if cl.level == 0 {
+						info.inputs[i].files = manifest.NewLevelSliceSeqSorted(files)
+					} else {
+						info.inputs[i].files = manifest.NewLevelSliceKeySorted(DefaultComparer.Compare, files)
+					}
 					// Mark as intra-L0 compacting if the compaction is
 					// L0 -> L0.
 					if info.outputLevel == 0 {
