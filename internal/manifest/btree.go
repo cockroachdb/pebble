@@ -5,6 +5,7 @@
 package manifest
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -712,6 +713,19 @@ func (is *iterStack) clone() iterStack {
 	return clone
 }
 
+func (is *iterStack) nth(n int) (f iterFrame, ok bool) {
+	if is.aLen == -1 {
+		if n >= len(is.s) {
+			return f, false
+		}
+		return is.s[n], true
+	}
+	if int16(n) >= is.aLen {
+		return f, false
+	}
+	return is.a[n], true
+}
+
 func (is *iterStack) reset() {
 	if is.aLen == -1 {
 		is.s = is.s[:0]
@@ -739,6 +753,85 @@ func (i *iterator) reset() {
 	i.n = i.r
 	i.pos = -1
 	i.s.reset()
+}
+
+func (i iterator) String() string {
+	var buf bytes.Buffer
+	for n := 0; ; n++ {
+		f, ok := i.s.nth(n)
+		if !ok {
+			break
+		}
+		fmt.Fprintf(&buf, "%p: %02d/%02d\n", f.n, f.pos, f.n.count)
+	}
+	if i.n == nil {
+		fmt.Fprintf(&buf, "<nil>: %02d", i.pos)
+	} else {
+		fmt.Fprintf(&buf, "%p: %02d/%02d", i.n, i.pos, i.n.count)
+	}
+	return buf.String()
+}
+
+func cmpIter(a, b iterator) int {
+	if a.r != b.r {
+		panic("compared iterators from different btrees")
+	}
+
+	an, apos := a.n, a.pos
+	bn, bpos := b.n, b.pos
+	var aok, bok bool
+
+	// Examine stack frames starting from the root.
+	for i := 0; ; i++ {
+		var af, bf iterFrame
+		af, aok = a.s.nth(i)
+		bf, bok = b.s.nth(i)
+		if !aok || !bok {
+			if aok {
+				an, apos = af.n, af.pos
+			}
+			if bok {
+				bn, bpos = bf.n, bf.pos
+			}
+			break
+		}
+
+		// aok && bok
+		if af.n != bf.n {
+			panic("nonmatching nodes during btree iterator comparison")
+		}
+		switch {
+		case af.pos < bf.pos:
+			return -1
+		case af.pos > bf.pos:
+			return +1
+		default:
+			// continue up both stacks
+		}
+	}
+
+	if an != bn {
+		panic("nonmatching nodes during btree iterator comparison")
+	}
+	switch {
+	case apos < bpos:
+		return -1
+	case apos > bpos:
+		return +1
+	default:
+		switch {
+		case aok:
+			// a is positioned at a leaf child at this position and b is at an
+			// end sentinel state.
+			return -1
+		case bok:
+			// b is positioned at a leaf child at this position and a is at an
+			// end sentinel state.
+			return +1
+		default:
+			return 0
+		}
+	}
 }
 
 func (i *iterator) descend(n *node, pos int16) {
