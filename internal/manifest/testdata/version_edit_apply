@@ -155,8 +155,7 @@ edit
 ----
 zombies [1 2]
 
-# Deletion of a non-existent table does not result in an entry in the
-# zombies map.
+# Deletion of a non-existent table results in an error.
 
 apply
  L0
@@ -166,6 +165,5 @@ edit
   L0
    2
 ----
-0.0:
-  000001:[a#1,SET-b#2,SET]
-zombies []
+pebble: internal error: unknown deleted file L0.000002
+

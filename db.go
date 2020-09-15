@@ -741,7 +741,7 @@ func (d *DB) newIterInternal(
 	start := len(mlevels)
 	current := readState.current
 	for sl := 0; sl < len(current.L0Sublevels.Levels); sl++ {
-		if len(current.L0Sublevels.Levels[sl]) > 0 {
+		if !current.L0Sublevels.Levels[sl].Empty() {
 			mlevels = append(mlevels, mergingIterLevel{})
 		}
 	}
@@ -779,8 +779,7 @@ func (d *DB) newIterInternal(
 	// Add level iterators for the L0 sublevels, iterating from newest to
 	// oldest.
 	for i := len(current.L0Sublevels.Levels) - 1; i >= 0; i-- {
-		slice := manifest.NewLevelSlice(current.L0Sublevels.Levels[i])
-		addLevelIterForFiles(slice, manifest.L0Sublevel(i))
+		addLevelIterForFiles(current.L0Sublevels.Levels[i], manifest.L0Sublevel(i))
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
@@ -1110,9 +1109,7 @@ func (d *DB) SSTables() [][]TableInfo {
 	srcLevels := readState.current.Levels
 	var totalTables int
 	for i := range srcLevels {
-		// TODO(jackson): Use metrics on the LevelMetadata once available
-		// rather than Slice().Len().
-		totalTables += srcLevels[i].Slice().Len()
+		totalTables += srcLevels[i].Len()
 	}
 
 	destTables := make([]TableInfo, totalTables)
@@ -1298,7 +1295,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if d.opts.Experimental.L0SublevelCompactions {
 			l0ReadAmp = d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
 		} else {
-			l0ReadAmp = d.mu.versions.currentVersion().Levels[0].Slice().Len()
+			l0ReadAmp = d.mu.versions.currentVersion().Levels[0].Len()
 		}
 		if l0ReadAmp >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.

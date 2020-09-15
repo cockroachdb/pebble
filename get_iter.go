@@ -30,7 +30,7 @@ type getIter struct {
 	level        int
 	batch        *Batch
 	mem          flushableList
-	l0           [][]*fileMetadata
+	l0           []manifest.LevelSlice
 	version      *version
 	iterKey      *InternalKey
 	iterValue    []byte
@@ -140,7 +140,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level == 0 {
 			// Create iterators from L0 from newest to oldest.
 			if n := len(g.l0); n > 0 {
-				files := manifest.NewLevelSlice(g.l0[n-1]).Iter()
+				files := g.l0[n-1].Iter()
 				g.l0 = g.l0[:n-1]
 				iterOpts := IterOptions{logger: g.logger}
 				g.levelIter.init(iterOpts, g.cmp, g.newIters, files, manifest.L0Sublevel(n), nil)

@@ -524,7 +524,7 @@ func buildLevelsForMergingIterSeqSeek(
 			key, _ = iter.Last()
 			meta[j].Largest = key.Clone()
 		}
-		levelSlices[i] = manifest.NewLevelSlice(meta)
+		levelSlices[i] = manifest.NewLevelSliceSpecificOrder(meta)
 	}
 	return readers, levelSlices, keys
 }

@@ -177,7 +177,7 @@ func newPickedCompactionFromL0(
 			files = append(files, f)
 		}
 	}
-	pc.startLevel.files = manifest.NewLevelSlice(files)
+	pc.startLevel.files = manifest.NewLevelSliceSeqSorted(files)
 	return pc
 }
 
@@ -259,7 +259,7 @@ func (pc *pickedCompaction) setupInputs() bool {
 				}
 			}
 			if sizeSum+pc.outputLevel.files.SizeSum() < pc.maxExpandedBytes {
-				pc.startLevel.files = manifest.NewLevelSlice(newStartLevelFiles)
+				pc.startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
 				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 					pc.startLevel.files.Iter(), pc.outputLevel.files.Iter())
 			} else {
@@ -897,7 +897,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		if p.opts.Experimental.L0SublevelCompactions {
 			l0ReadAmp = p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
 		} else {
-			l0ReadAmp = p.vers.Levels[0].Slice().Len()
+			l0ReadAmp = p.vers.Levels[0].Len()
 		}
 		compactionDebt := int(p.estimatedCompactionDebt(0))
 		ccSignal1 := n * p.opts.Experimental.L0CompactionConcurrency
@@ -1199,7 +1199,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 }
 
 func pickIntraL0(env compactionEnv, opts *Options, vers *version) (pc *pickedCompaction) {
-	l0Files := vers.Levels[0].Slice()
+	l0Files := vers.Levels[0]
 	end := l0Files.Iter()
 	remaining := l0Files.Len()
 	for m := end.Last(); m != nil; m = end.Prev() {
