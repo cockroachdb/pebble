@@ -50,15 +50,15 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			ObsoletePrevLogNum: 33,
 			NextFileNum:        44,
 			LastSeqNum:         55,
-			DeletedFiles: map[DeletedFileEntry]bool{
+			DeletedFiles: map[DeletedFileEntry]*FileMetadata{
 				DeletedFileEntry{
 					Level:   3,
 					FileNum: 703,
-				}: true,
+				}: nil,
 				DeletedFileEntry{
 					Level:   4,
 					FileNum: 704,
-				}: true,
+				}: nil,
 			},
 			NewFiles: []NewFileEntry{
 				{
@@ -271,6 +271,9 @@ func TestVersionEditApply(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		if m.SmallestSeqNum > m.LargestSeqNum {
+			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
+		}
 		m.FileNum = base.FileNum(fileNum)
 		return &m, nil
 	}
@@ -288,6 +291,7 @@ func TestVersionEditApply(t *testing.T) {
 				isDelete := true
 				var level int
 				var err error
+				versionFiles := map[base.FileNum]*FileMetadata{}
 				for _, data := range strings.Split(d.Input, "\n") {
 					data = strings.TrimSpace(data)
 					switch data {
@@ -313,8 +317,12 @@ func TestVersionEditApply(t *testing.T) {
 							if isVersion {
 								if v == nil {
 									v = new(Version)
+									for l := 0; l < NumLevels; l++ {
+										v.Levels[l] = makeLevelMetadata(base.DefaultComparer.Compare, l, nil /* files */)
+									}
 								}
-								v.Levels[level].files = append(v.Levels[level].files, meta)
+								versionFiles[meta.FileNum] = meta
+								v.Levels[level].tree.insert(meta)
 							} else {
 								ve.NewFiles =
 									append(ve.NewFiles, NewFileEntry{Level: level, Meta: meta})
@@ -326,21 +334,21 @@ func TestVersionEditApply(t *testing.T) {
 							}
 							dfe := DeletedFileEntry{Level: level, FileNum: base.FileNum(fileNum)}
 							if ve.DeletedFiles == nil {
-								ve.DeletedFiles = make(map[DeletedFileEntry]bool)
+								ve.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
 							}
-							ve.DeletedFiles[dfe] = true
+							ve.DeletedFiles[dfe] = versionFiles[dfe.FileNum]
 						}
 					}
 				}
 
 				if v != nil {
-					SortBySeqNum(v.Levels[0].files)
 					if err := v.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20); err != nil {
 						return err.Error()
 					}
 				}
 
 				bve := BulkVersionEdit{}
+				bve.AddedByFileNum = make(map[base.FileNum]*FileMetadata)
 				if err := bve.Accumulate(ve); err != nil {
 					return err.Error()
 				}

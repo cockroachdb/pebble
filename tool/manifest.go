@@ -82,12 +82,12 @@ func (m *manifestT) printLevels(v *manifest.Version) {
 		if level == 0 && v.L0Sublevels != nil && !v.Levels[level].Empty() {
 			for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(stdout, "--- L0.%d ---\n", sublevel)
-				for _, f := range v.L0Sublevels.Levels[sublevel] {
+				v.L0Sublevels.Levels[sublevel].Each(func(f *manifest.FileMetadata) {
 					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 					formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
 					fmt.Fprintf(stdout, "\n")
-				}
+				})
 			}
 			continue
 		}
@@ -115,6 +115,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "%s\n", arg)
 
 			var bve manifest.BulkVersionEdit
+			bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 			var cmp *base.Comparer
 			rr := record.NewReader(f, 0 /* logNum */)
 			for {
@@ -245,6 +246,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					break
 				}
 				var bve manifest.BulkVersionEdit
+				bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 				if err := bve.Accumulate(&ve); err != nil {
 					fmt.Fprintf(stderr, "%s\n", err)
 					ok = false
