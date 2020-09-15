@@ -177,7 +177,7 @@ func newPickedCompactionFromL0(
 			files = append(files, f)
 		}
 	}
-	pc.startLevel.files = manifest.NewLevelSlice(files)
+	pc.startLevel.files = manifest.NewLevelSliceSeqSorted(files)
 	return pc
 }
 
@@ -259,7 +259,7 @@ func (pc *pickedCompaction) setupInputs() bool {
 				}
 			}
 			if sizeSum+pc.outputLevel.files.SizeSum() < pc.maxExpandedBytes {
-				pc.startLevel.files = manifest.NewLevelSlice(newStartLevelFiles)
+				pc.startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
 				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 					pc.startLevel.files.Iter(), pc.outputLevel.files.Iter())
 			} else {

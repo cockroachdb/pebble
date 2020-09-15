@@ -60,7 +60,7 @@ func TestLevelIter(t *testing.T) {
 				meta.Largest = f.keys[len(f.keys)-1]
 				metas = append(metas, meta)
 			}
-			files = manifest.NewLevelSlice(metas)
+			files = manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, metas)
 
 			return ""
 
@@ -260,8 +260,8 @@ func TestLevelIterBoundaries(t *testing.T) {
 			return lt.runBuild(d)
 
 		case "iter":
-			iter := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-				lt.newIters, manifest.NewLevelSlice(lt.metas).Iter(), manifest.Level(level), nil)
+			iter := newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters,
+				manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas).Iter(), manifest.Level(level), nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(internalIterator))
@@ -335,8 +335,8 @@ func TestLevelIterSeek(t *testing.T) {
 
 		case "iter":
 			iter := &levelIterTestIter{
-				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare,
-					lt.newIters, manifest.NewLevelSlice(lt.metas).Iter(), manifest.Level(level), nil),
+				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters,
+					manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas).Iter(), manifest.Level(level), nil),
 			}
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
@@ -416,7 +416,8 @@ func buildLevelIterTables(
 		key, _ = iter.Last()
 		meta[i].Largest = *key
 	}
-	return readers, manifest.NewLevelSlice(meta), keys, cleanup
+	slice := manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, meta)
+	return readers, slice, keys, cleanup
 }
 
 func BenchmarkLevelIterSeekGE(b *testing.B) {

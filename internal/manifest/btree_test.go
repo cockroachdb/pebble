@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
@@ -199,7 +200,7 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.insert(items[i])
+		require.NoError(t, tr.insert(items[i]))
 		tr.Verify(t)
 		if e := i + 1; e != tr.length {
 			t.Fatalf("expected length %d, but found %d", e, tr.length)
@@ -222,7 +223,7 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in reverse sorted order.
 	for i := 1; i <= count; i++ {
-		tr.insert(items[count-i])
+		require.NoError(t, tr.insert(items[count-i]))
 		tr.Verify(t)
 		if i != tr.length {
 			t.Fatalf("expected length %d, but found %d", i, tr.length)
@@ -252,7 +253,7 @@ func TestIterClone(t *testing.T) {
 	keyMemo := make(map[int]InternalKey)
 
 	for i := 0; i < count; i++ {
-		tr.insert(newItem(key(i)))
+		require.NoError(t, tr.insert(newItem(key(i))))
 	}
 
 	it := tr.iter()
@@ -280,7 +281,7 @@ func TestIterCmpEdgeCases(t *testing.T) {
 		b := tr.iter()
 		require.Equal(t, 0, cmpIter(a, b))
 	})
-	tr.insert(newItem(key(5)))
+	require.NoError(t, tr.insert(newItem(key(5))))
 	t.Run("exhausted_next", func(t *testing.T) {
 		a := tr.iter()
 		b := tr.iter()
@@ -311,7 +312,7 @@ func TestIterCmpRand(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
 	for i := 0; i < itemCount; i++ {
-		tr.insert(newItem(key(i)))
+		require.NoError(t, tr.insert(newItem(key(i))))
 	}
 
 	seed := time.Now().UnixNano()
@@ -321,7 +322,7 @@ func TestIterCmpRand(t *testing.T) {
 	for i := 0; i < iterCount; i++ {
 		k := rng.Intn(itemCount)
 		iter := tr.iter()
-		iter.seekGE(newItem(key(k)))
+		iter.seekGE(base.DefaultComparer.Compare, key(k).UserKey)
 		iters1[i] = &iter
 		iters2[i] = &iter
 	}
@@ -345,12 +346,12 @@ func TestBTreeSeek(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
 	for i := 0; i < count; i++ {
-		tr.insert(newItem(key(i * 2)))
+		require.NoError(t, tr.insert(newItem(key(i*2))))
 	}
 
 	it := tr.iter()
 	for i := 0; i < 2*count-1; i++ {
-		it.seekGE(newItem(key(i)))
+		it.seekGE(base.DefaultComparer.Compare, key(i).UserKey)
 		if !it.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
@@ -360,13 +361,13 @@ func TestBTreeSeek(t *testing.T) {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.seekGE(newItem(key(2*count - 1)))
+	it.seekGE(base.DefaultComparer.Compare, key(2*count-1).UserKey)
 	if it.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 
 	for i := 1; i < 2*count; i++ {
-		it.seekLT(newItem(key(i)))
+		it.seekLT(base.DefaultComparer.Compare, key(i).UserKey)
 		if !it.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
@@ -376,20 +377,21 @@ func TestBTreeSeek(t *testing.T) {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.seekLT(newItem(key(0)))
+	it.seekLT(base.DefaultComparer.Compare, key(0).UserKey)
 	if it.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 }
 
-func TestBTreeInsertDuplicatePanic(t *testing.T) {
+func TestBTreeInsertDuplicateError(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
-	tr.insert(newItem(key(1)))
-	tr.insert(newItem(key(2)))
-	tr.insert(newItem(key(3)))
-	require.PanicsWithValue(t, "file key collision: existing metadata 000000, inserting 000000",
-		func() { tr.insert(newItem(key(2))) })
+	require.NoError(t, tr.insert(newItem(key(1))))
+	require.NoError(t, tr.insert(newItem(key(2))))
+	require.NoError(t, tr.insert(newItem(key(3))))
+	wantErr := errors.Errorf("files %s and %s collided on sort keys",
+		errors.Safe(base.FileNum(000000)), errors.Safe(base.FileNum(000000)))
+	require.Error(t, wantErr, tr.insert(newItem(key(2))))
 }
 
 // TestBTreeCloneConcurrentOperations tests that cloning a btree returns a new
@@ -414,7 +416,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		t.Logf("Starting new clone at %v", start)
 		treeC <- tr
 		for i := start; i < cloneTestSize; i++ {
-			tr.insert(p[i])
+			require.NoError(t, tr.insert(p[i]))
 			if i%(cloneTestSize/5) == 0 {
 				wg.Add(1)
 				c := tr.clone()
@@ -493,6 +495,26 @@ func TestIterStack(t *testing.T) {
 	}
 }
 
+func TestIterEndSentinel(t *testing.T) {
+	var tr btree
+	tr.cmp = cmp
+	require.NoError(t, tr.insert(newItem(key(1))))
+	require.NoError(t, tr.insert(newItem(key(2))))
+	require.NoError(t, tr.insert(newItem(key(3))))
+	iter := tr.iter()
+	iter.seekGE(base.DefaultComparer.Compare, key(3).UserKey)
+	require.True(t, iter.valid())
+	iter.next()
+	require.False(t, iter.valid())
+
+	// If we seek into the end sentinel, prev should return us to a valid
+	// position.
+	iter.seekGE(base.DefaultComparer.Compare, key(4).UserKey)
+	require.False(t, iter.valid())
+	iter.prev()
+	require.True(t, iter.valid())
+}
+
 //////////////////////////////////////////
 //              Benchmarks              //
 //////////////////////////////////////////
@@ -549,7 +571,7 @@ func BenchmarkBTreeInsert(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.insert(item)
+				require.NoError(b, tr.insert(item))
 				i++
 				if i >= b.N {
 					return
@@ -569,7 +591,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.insert(item)
+				require.NoError(b, tr.insert(item))
 			}
 			b.StartTimer()
 			for _, item := range removeP {
@@ -593,13 +615,13 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.delete(item)
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 	})
 }
@@ -612,14 +634,14 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 		tr = tr.clone()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.delete(item)
-			tr.insert(item)
+			require.NoError(b, tr.insert(item))
 		}
 	})
 }
@@ -635,7 +657,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 				tr.cmp = cmp
 				trRelease.cmp = cmp
 				for _, item := range insertP {
-					tr.insert(item)
+					require.NoError(b, tr.insert(item))
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -646,7 +668,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 					}
 					tr = tr.clone()
 					tr.delete(item)
-					tr.insert(item)
+					require.NoError(b, tr.insert(item))
 				}
 			})
 		})
@@ -675,14 +697,14 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		for i := 0; i < count; i++ {
 			s := key(i)
 			keys = append(keys, s)
-			tr.insert(newItem(s))
+			require.NoError(b, tr.insert(newItem(s)))
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			k := keys[rng.Intn(len(keys))]
 			it := tr.iter()
-			it.seekGE(newItem(k))
+			it.seekGE(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
 				if !it.valid() {
 					b.Fatal("expected to find key")
@@ -707,7 +729,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 		for i := 0; i < count; i++ {
 			k := key(i)
 			keys = append(keys, k)
-			tr.insert(newItem(k))
+			require.NoError(b, tr.insert(newItem(k)))
 		}
 
 		b.ResetTimer()
@@ -715,7 +737,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 			j := rng.Intn(len(keys))
 			k := keys[j]
 			it := tr.iter()
-			it.seekLT(newItem(k))
+			it.seekLT(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
 				if j == 0 {
 					if it.valid() {
@@ -745,7 +767,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.insert(item)
+		require.NoError(b, tr.insert(item))
 	}
 
 	it := tr.iter()
@@ -768,7 +790,7 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.insert(item)
+		require.NoError(b, tr.insert(item))
 	}
 
 	it := tr.iter()
