@@ -78,7 +78,8 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, true))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction(
+			[]LevelSlice{NewLevelSliceSeqSorted(files)}, true))
 	}
 
 	for i := 0; ; i++ {
@@ -97,7 +98,8 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 				files = append(files, c.Files[i])
 			}
 		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction([]LevelSlice{NewLevelSlice(files)}, false))
+		require.NoError(t, sublevels.UpdateStateForStartedCompaction(
+			[]LevelSlice{NewLevelSliceSeqSorted(files)}, false))
 	}
 }
 
@@ -317,7 +319,7 @@ func TestL0Sublevels(t *testing.T) {
 				SortBySmallest(fileMetas[i], base.DefaultComparer.Compare)
 			}
 
-			levelMetadata := makeLevelMetadata(fileMetas[0]...)
+			levelMetadata := makeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
 			if initialize {
 				sublevels, err = NewL0Sublevels(
 					&levelMetadata,
@@ -368,7 +370,8 @@ func TestL0Sublevels(t *testing.T) {
 
 			var lcf *L0CompactionFiles
 			if pickBaseCompaction {
-				lcf, err = sublevels.PickBaseCompaction(minCompactionDepth, NewLevelSlice(fileMetas[baseLevel]))
+				baseFiles := NewLevelSliceKeySorted(base.DefaultComparer.Compare, fileMetas[baseLevel])
+				lcf, err = sublevels.PickBaseCompaction(minCompactionDepth, baseFiles)
 				if err == nil && lcf != nil {
 					// Try to extend the base compaction into a more rectangular
 					// shape, using the smallest/largest keys of the files before
@@ -438,7 +441,7 @@ func TestL0Sublevels(t *testing.T) {
 		case "l0-check-ordering":
 			for sublevel, files := range sublevels.Levels {
 				err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter,
-					L0Sublevel(sublevel), NewLevelSlice(files).Iter())
+					L0Sublevel(sublevel), NewLevelSliceSpecificOrder(files).Iter())
 				if err != nil {
 					return err.Error()
 				}
@@ -468,7 +471,7 @@ func TestL0Sublevels(t *testing.T) {
 					}
 				}
 			}
-			slice := NewLevelSlice(files)
+			slice := NewLevelSliceSeqSorted(files)
 			sm, la := KeyRange(base.DefaultComparer.Compare, slice.Iter())
 			activeCompactions = append(activeCompactions, L0Compaction{Smallest: sm, Largest: la})
 			if err := sublevels.UpdateStateForStartedCompaction([]LevelSlice{slice}, true); err != nil {

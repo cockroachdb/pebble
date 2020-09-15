@@ -778,7 +778,7 @@ func (d *DB) newIterInternal(
 	// Add level iterators for the L0 sublevels, iterating from newest to
 	// oldest.
 	for i := len(current.L0Sublevels.Levels) - 1; i >= 0; i-- {
-		slice := manifest.NewLevelSlice(current.L0Sublevels.Levels[i])
+		slice := manifest.NewLevelSliceKeySorted(d.cmp, current.L0Sublevels.Levels[i])
 		addLevelIterForFiles(slice, manifest.L0Sublevel(i))
 	}
 

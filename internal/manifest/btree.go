@@ -7,12 +7,51 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
+
+type btreeCmp func(*FileMetadata, *FileMetadata) int
+
+func btreeCmpSeqNum(a, b *FileMetadata) int {
+	return a.cmpSeqNum(b)
+}
+
+func btreeCmpKeys(cmp Compare) btreeCmp {
+	return func(a, b *FileMetadata) int {
+		return a.cmpSmallestKey(b, cmp)
+	}
+}
+
+// btreeCmpSpecificOrder is used in tests to construct a B-Tree with a
+// specific ordering of FileMetadata within the tree. It's typically used to
+// test consistency checking code that needs to construct a malformed B-Tree.
+func btreeCmpSpecificOrder(files []*FileMetadata) btreeCmp {
+	m := map[*FileMetadata]int{}
+	for i, f := range files {
+		m[f] = i
+	}
+	return func(a, b *FileMetadata) int {
+		ai, aok := m[a]
+		bi, bok := m[b]
+		if !aok || !bok {
+			panic("btreeCmpSliceOrder called with unknown files")
+		}
+		switch {
+		case ai < bi:
+			return -1
+		case ai > bi:
+			return +1
+		default:
+			return 0
+		}
+	}
+}
 
 const (
 	degree   = 16
@@ -221,9 +260,7 @@ func (n *node) popFront() (*FileMetadata, *node) {
 // find returns the index where the given item should be inserted into this
 // list. 'found' is true if the item already exists in the list at the given
 // index.
-func (n *node) find(
-	cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata,
-) (index int, found bool) {
+func (n *node) find(cmp btreeCmp, item *FileMetadata) (index int, found bool) {
 	// Logic copied from sort.Search. Inlining this gave
 	// an 11% speedup on BenchmarkBTreeDeleteInsert.
 	i, j := 0, int(n.count)
@@ -288,18 +325,18 @@ func (n *node) split(i int) (*FileMetadata, *node) {
 
 // insert inserts a item into the subtree rooted at this node, making sure no
 // nodes in the subtree exceed maxItems items.
-func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) {
+func (n *node) insert(cmp btreeCmp, item *FileMetadata) error {
 	i, found := n.find(cmp, item)
 	if found {
 		// cmp provides a total ordering of the files within a level.
 		// If we're inserting a metadata that's equal to an existing item
 		// in the tree, we're inserting a file into a level twice.
-		panic(fmt.Sprintf("file key collision: existing metadata %s, inserting %s",
-			n.items[i].FileNum, item.FileNum))
+		return errors.Errorf("files %s and %s collided on sort keys",
+			errors.Safe(item.FileNum), errors.Safe(n.items[i].FileNum))
 	}
 	if n.leaf {
 		n.insertAt(i, item, nil)
-		return
+		return nil
 	}
 	if n.children[i].count >= maxItems {
 		splitLa, splitNode := mut(&n.children[i]).split(maxItems / 2)
@@ -314,11 +351,11 @@ func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMeta
 			// cmp provides a total ordering of the files within a level.
 			// If we're inserting a metadata that's equal to an existing item
 			// in the tree, we're inserting a file into a level twice.
-			panic(fmt.Sprintf("file key collision: existing metadata %s, inserting %s",
-				n.items[i].FileNum, item.FileNum))
+			return errors.Errorf("files %s and %s collided on sort keys",
+				errors.Safe(item.FileNum), errors.Safe(n.items[i].FileNum))
 		}
 	}
-	mut(&n.children[i]).insert(cmp, item)
+	return mut(&n.children[i]).insert(cmp, item)
 }
 
 // removeMax removes and returns the maximum item from the subtree rooted
@@ -340,9 +377,7 @@ func (n *node) removeMax() *FileMetadata {
 
 // remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
-func (n *node) remove(
-	cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata,
-) (out *FileMetadata) {
+func (n *node) remove(cmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
 	i, found := n.find(cmp, item)
 	if n.leaf {
 		if found {
@@ -497,7 +532,7 @@ func (n *node) rebalanceOrMerge(i int) {
 type btree struct {
 	root   *node
 	length int
-	cmp    func(*FileMetadata, *FileMetadata) int
+	cmp    btreeCmp
 }
 
 // release dereferences and clears the root node of the btree, removing all
@@ -559,7 +594,7 @@ func (t *btree) delete(item *FileMetadata) (obsolete bool) {
 
 // insert adds the given item to the tree. If a item in the tree already
 // equals the given one, insert panics.
-func (t *btree) insert(item *FileMetadata) {
+func (t *btree) insert(item *FileMetadata) error {
 	if t.root == nil {
 		t.root = newLeafNode()
 	} else if t.root.count >= maxItems {
@@ -572,8 +607,9 @@ func (t *btree) insert(item *FileMetadata) {
 		t.root = newRoot
 	}
 	atomic.AddInt32(&item.refs, 1)
-	mut(&t.root).insert(t.cmp, item)
+	err := mut(&t.root).insert(t.cmp, item)
 	t.length++
+	return err
 }
 
 // iter returns a new iterator object. It is not safe to continue using an
@@ -863,17 +899,16 @@ func (i *iterator) ascend() {
 
 // seekGE seeks to the first item greater-than or equal to the provided
 // item.
-func (i *iterator) seekGE(item *FileMetadata) {
+func (i *iterator) seekGE(cmp Compare, userKey []byte) {
 	i.reset()
 	if i.n == nil {
 		return
 	}
 	for {
-		pos, found := i.n.find(i.cmp, item)
+		pos := sort.Search(int(i.n.count), func(j int) bool {
+			return cmp(userKey, i.n.items[j].Largest.UserKey) <= 0
+		})
 		i.pos = int16(pos)
-		if found {
-			return
-		}
 		if i.n.leaf {
 			if i.pos == i.n.count {
 				i.next()
@@ -885,15 +920,17 @@ func (i *iterator) seekGE(item *FileMetadata) {
 }
 
 // seekLT seeks to the first item less-than the provided item.
-func (i *iterator) seekLT(item *FileMetadata) {
+func (i *iterator) seekLT(cmp Compare, userKey []byte) {
 	i.reset()
 	if i.n == nil {
 		return
 	}
 	for {
-		pos, found := i.n.find(i.cmp, item)
+		pos := sort.Search(int(i.n.count), func(j int) bool {
+			return cmp(i.n.items[j].Smallest.UserKey, userKey) >= 0
+		})
 		i.pos = int16(pos)
-		if found || i.n.leaf {
+		if i.n.leaf {
 			i.prev()
 			return
 		}
@@ -933,7 +970,9 @@ func (i *iterator) next() {
 	}
 
 	if i.n.leaf {
-		i.pos++
+		if i.pos < i.n.count {
+			i.pos++
+		}
 		if i.pos < i.n.count {
 			return
 		}
@@ -978,7 +1017,7 @@ func (i *iterator) prev() {
 
 // valid returns whether the iterator is positioned at a valid position.
 func (i *iterator) valid() bool {
-	return i.pos >= 0 && i.pos < i.n.count
+	return i.r != nil && i.pos >= 0 && i.pos < i.n.count
 }
 
 // cur returns the item at the iterator's current position. It is illegal
