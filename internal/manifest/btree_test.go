@@ -47,7 +47,7 @@ func (t *btree) Verify(tt *testing.T) {
 }
 
 func (t *btree) verifyLeafSameDepth(tt *testing.T) {
-	h := t.Height()
+	h := t.height()
 	t.root.verifyDepthEqualToHeight(tt, 1, h)
 }
 
@@ -143,8 +143,8 @@ func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
 func checkIterRelative(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
 	t.Helper()
 	i := start
-	for ; it.Valid(); it.Next() {
-		item := it.Cur()
+	for ; it.valid(); it.next() {
+		item := it.cur()
 		expected := keyWithMemo(i, keyMemo)
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
@@ -159,8 +159,8 @@ func checkIterRelative(t *testing.T, it iterator, start, end int, keyMemo map[in
 func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
 	t.Helper()
 	i := start
-	for it.First(); it.Valid(); it.Next() {
-		item := it.Cur()
+	for it.first(); it.valid(); it.next() {
+		item := it.cur()
 		expected := keyWithMemo(i, keyMemo)
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
@@ -171,9 +171,9 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]Intern
 		t.Fatalf("expected %d, but at %d", end, i)
 	}
 
-	for it.Last(); it.Valid(); it.Prev() {
+	for it.last(); it.valid(); it.prev() {
 		i--
-		item := it.Cur()
+		item := it.cur()
 		expected := keyWithMemo(i, keyMemo)
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
@@ -198,48 +198,48 @@ func TestBTree(t *testing.T) {
 
 	// Add keys in sorted order.
 	for i := 0; i < count; i++ {
-		tr.Insert(items[i])
+		tr.insert(items[i])
 		tr.Verify(t)
-		if e := i + 1; e != tr.Len() {
-			t.Fatalf("expected length %d, but found %d", e, tr.Len())
+		if e := i + 1; e != tr.length {
+			t.Fatalf("expected length %d, but found %d", e, tr.length)
 		}
-		checkIter(t, tr.MakeIter(), 0, i+1, keyMemo)
+		checkIter(t, tr.iter(), 0, i+1, keyMemo)
 	}
 
-	// Delete keys in sorted order.
+	// delete keys in sorted order.
 	for i := 0; i < count; i++ {
-		obsolete := tr.Delete(items[i])
+		obsolete := tr.delete(items[i])
 		if !obsolete {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
 		tr.Verify(t)
-		if e := count - (i + 1); e != tr.Len() {
-			t.Fatalf("expected length %d, but found %d", e, tr.Len())
+		if e := count - (i + 1); e != tr.length {
+			t.Fatalf("expected length %d, but found %d", e, tr.length)
 		}
-		checkIter(t, tr.MakeIter(), i+1, count, keyMemo)
+		checkIter(t, tr.iter(), i+1, count, keyMemo)
 	}
 
 	// Add keys in reverse sorted order.
 	for i := 1; i <= count; i++ {
-		tr.Insert(items[count-i])
+		tr.insert(items[count-i])
 		tr.Verify(t)
-		if i != tr.Len() {
-			t.Fatalf("expected length %d, but found %d", i, tr.Len())
+		if i != tr.length {
+			t.Fatalf("expected length %d, but found %d", i, tr.length)
 		}
-		checkIter(t, tr.MakeIter(), count-i, count, keyMemo)
+		checkIter(t, tr.iter(), count-i, count, keyMemo)
 	}
 
-	// Delete keys in reverse sorted order.
+	// delete keys in reverse sorted order.
 	for i := 1; i <= count; i++ {
-		obsolete := tr.Delete(items[count-i])
+		obsolete := tr.delete(items[count-i])
 		if !obsolete {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
 		tr.Verify(t)
-		if e := count - i; e != tr.Len() {
-			t.Fatalf("expected length %d, but found %d", e, tr.Len())
+		if e := count - i; e != tr.length {
+			t.Fatalf("expected length %d, but found %d", e, tr.length)
 		}
-		checkIter(t, tr.MakeIter(), 0, count-i, keyMemo)
+		checkIter(t, tr.iter(), 0, count-i, keyMemo)
 	}
 }
 
@@ -251,12 +251,12 @@ func TestIterClone(t *testing.T) {
 	keyMemo := make(map[int]InternalKey)
 
 	for i := 0; i < count; i++ {
-		tr.Insert(newItem(key(i)))
+		tr.insert(newItem(key(i)))
 	}
 
-	it := tr.MakeIter()
+	it := tr.iter()
 	i := 0
-	for it.First(); it.Valid(); it.Next() {
+	for it.first(); it.valid(); it.next() {
 		if i%500 == 0 {
 			checkIterRelative(t, it.clone(), i, count, keyMemo)
 		}
@@ -271,39 +271,39 @@ func TestBTreeSeek(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
 	for i := 0; i < count; i++ {
-		tr.Insert(newItem(key(i * 2)))
+		tr.insert(newItem(key(i * 2)))
 	}
 
-	it := tr.MakeIter()
+	it := tr.iter()
 	for i := 0; i < 2*count-1; i++ {
-		it.SeekGE(newItem(key(i)))
-		if !it.Valid() {
+		it.seekGE(newItem(key(i)))
+		if !it.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
-		item := it.Cur()
+		item := it.cur()
 		expected := key(2 * ((i + 1) / 2))
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.SeekGE(newItem(key(2*count - 1)))
-	if it.Valid() {
+	it.seekGE(newItem(key(2*count - 1)))
+	if it.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 
 	for i := 1; i < 2*count; i++ {
-		it.SeekLT(newItem(key(i)))
-		if !it.Valid() {
+		it.seekLT(newItem(key(i)))
+		if !it.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
-		item := it.Cur()
+		item := it.cur()
 		expected := key(2 * ((i - 1) / 2))
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.SeekLT(newItem(key(0)))
-	if it.Valid() {
+	it.seekLT(newItem(key(0)))
+	if it.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 }
@@ -311,11 +311,11 @@ func TestBTreeSeek(t *testing.T) {
 func TestBTreeInsertDuplicatePanic(t *testing.T) {
 	var tr btree
 	tr.cmp = cmp
-	tr.Insert(newItem(key(1)))
-	tr.Insert(newItem(key(2)))
-	tr.Insert(newItem(key(3)))
+	tr.insert(newItem(key(1)))
+	tr.insert(newItem(key(2)))
+	tr.insert(newItem(key(3)))
 	require.PanicsWithValue(t, "file key collision: existing metadata 000000, inserting 000000",
-		func() { tr.Insert(newItem(key(2))) })
+		func() { tr.insert(newItem(key(2))) })
 }
 
 // TestBTreeCloneConcurrentOperations tests that cloning a btree returns a new
@@ -340,10 +340,10 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		t.Logf("Starting new clone at %v", start)
 		treeC <- tr
 		for i := start; i < cloneTestSize; i++ {
-			tr.Insert(p[i])
+			tr.insert(p[i])
 			if i%(cloneTestSize/5) == 0 {
 				wg.Add(1)
-				c := tr.Clone()
+				c := tr.clone()
 				go populate(&c, i+1)
 			}
 		}
@@ -373,7 +373,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			for _, item := range toRemove {
-				tree.Delete(item)
+				tree.delete(item)
 			}
 			wg.Done()
 		}()
@@ -395,7 +395,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 
 	var obsolete []base.FileNum
 	for i := range trees {
-		obsolete = append(obsolete, trees[i].Release()...)
+		obsolete = append(obsolete, trees[i].release()...)
 	}
 	if len(obsolete) != len(p) {
 		t.Errorf("got %d obsolete trees, expected %d", len(obsolete), len(p))
@@ -449,11 +449,11 @@ func strReprs(items []*FileMetadata) []string {
 
 // all extracts all items from a tree in order as a slice.
 func all(tr *btree) (out []*FileMetadata) {
-	it := tr.MakeIter()
-	it.First()
-	for it.Valid() {
-		out = append(out, it.Cur())
-		it.Next()
+	it := tr.iter()
+	it.first()
+	for it.valid() {
+		out = append(out, it.cur())
+		it.next()
 	}
 	return out
 }
@@ -475,7 +475,7 @@ func BenchmarkBTreeInsert(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.Insert(item)
+				tr.insert(item)
 				i++
 				if i >= b.N {
 					return
@@ -495,17 +495,17 @@ func BenchmarkBTreeDelete(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				tr.Insert(item)
+				tr.insert(item)
 			}
 			b.StartTimer()
 			for _, item := range removeP {
-				tr.Delete(item)
+				tr.delete(item)
 				i++
 				if i >= b.N {
 					return
 				}
 			}
-			if tr.Len() > 0 {
+			if tr.length > 0 {
 				b.Fatalf("tree not empty: %s", &tr)
 			}
 		}
@@ -519,13 +519,13 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.Insert(item)
+			tr.insert(item)
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
-			tr.Delete(item)
-			tr.Insert(item)
+			tr.delete(item)
+			tr.insert(item)
 		}
 	})
 }
@@ -538,14 +538,14 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			tr.Insert(item)
+			tr.insert(item)
 		}
-		tr = tr.Clone()
+		tr = tr.clone()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
-			tr.Delete(item)
-			tr.Insert(item)
+			tr.delete(item)
+			tr.insert(item)
 		}
 	})
 }
@@ -561,31 +561,31 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 				tr.cmp = cmp
 				trRelease.cmp = cmp
 				for _, item := range insertP {
-					tr.Insert(item)
+					tr.insert(item)
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					item := insertP[i%count]
 					if release {
-						trRelease.Release()
+						trRelease.release()
 						trRelease = tr
 					}
-					tr = tr.Clone()
-					tr.Delete(item)
-					tr.Insert(item)
+					tr = tr.clone()
+					tr.delete(item)
+					tr.insert(item)
 				}
 			})
 		})
 	}
 }
 
-// BenchmarkBTreeMakeIter measures the cost of creating a btree iterator.
-func BenchmarkBTreeMakeIter(b *testing.B) {
+// BenchmarkBTreeIter measures the cost of creating a btree iterator.
+func BenchmarkBTreeIter(b *testing.B) {
 	var tr btree
 	tr.cmp = cmp
 	for i := 0; i < b.N; i++ {
-		it := tr.MakeIter()
-		it.First()
+		it := tr.iter()
+		it.first()
 	}
 }
 
@@ -601,20 +601,20 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		for i := 0; i < count; i++ {
 			s := key(i)
 			keys = append(keys, s)
-			tr.Insert(newItem(s))
+			tr.insert(newItem(s))
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			k := keys[rng.Intn(len(keys))]
-			it := tr.MakeIter()
-			it.SeekGE(newItem(k))
+			it := tr.iter()
+			it.seekGE(newItem(k))
 			if testing.Verbose() {
-				if !it.Valid() {
+				if !it.valid() {
 					b.Fatal("expected to find key")
 				}
-				if cmpKey(k, it.Cur().Smallest) != 0 {
-					b.Fatalf("expected %s, but found %s", k, it.Cur().Smallest)
+				if cmpKey(k, it.cur().Smallest) != 0 {
+					b.Fatalf("expected %s, but found %s", k, it.cur().Smallest)
 				}
 			}
 		}
@@ -633,27 +633,27 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 		for i := 0; i < count; i++ {
 			k := key(i)
 			keys = append(keys, k)
-			tr.Insert(newItem(k))
+			tr.insert(newItem(k))
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			j := rng.Intn(len(keys))
 			k := keys[j]
-			it := tr.MakeIter()
-			it.SeekLT(newItem(k))
+			it := tr.iter()
+			it.seekLT(newItem(k))
 			if testing.Verbose() {
 				if j == 0 {
-					if it.Valid() {
+					if it.valid() {
 						b.Fatal("unexpected key")
 					}
 				} else {
-					if !it.Valid() {
+					if !it.valid() {
 						b.Fatal("expected to find key")
 					}
 					k := keys[j-1]
-					if cmpKey(k, it.Cur().Smallest) != 0 {
-						b.Fatalf("expected %s, but found %s", k, it.Cur().Smallest)
+					if cmpKey(k, it.cur().Smallest) != 0 {
+						b.Fatalf("expected %s, but found %s", k, it.cur().Smallest)
 					}
 				}
 			}
@@ -671,16 +671,16 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.Insert(item)
+		tr.insert(item)
 	}
 
-	it := tr.MakeIter()
+	it := tr.iter()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !it.Valid() {
-			it.First()
+		if !it.valid() {
+			it.first()
 		}
-		it.Next()
+		it.next()
 	}
 }
 
@@ -694,15 +694,15 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		tr.Insert(item)
+		tr.insert(item)
 	}
 
-	it := tr.MakeIter()
+	it := tr.iter()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !it.Valid() {
-			it.First()
+		if !it.valid() {
+			it.first()
 		}
-		it.Prev()
+		it.prev()
 	}
 }
