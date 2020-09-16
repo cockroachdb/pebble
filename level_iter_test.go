@@ -350,7 +350,7 @@ func TestLevelIterSeek(t *testing.T) {
 
 func buildLevelIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*sstable.Reader, manifest.LevelSlice, [][]byte) {
+) ([]*sstable.Reader, manifest.LevelSlice, [][]byte, func()) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
@@ -358,7 +358,6 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		defer f.Close()
 		files[i] = f
 	}
 
@@ -388,7 +387,6 @@ func buildLevelIterTables(
 
 	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
 	defer opts.Cache.Unref()
-
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))
@@ -398,6 +396,12 @@ func buildLevelIterTables(
 		readers[i], err = sstable.NewReader(f, opts)
 		if err != nil {
 			b.Fatal(err)
+		}
+	}
+
+	cleanup := func() {
+		for _, r := range readers {
+			require.NoError(b, r.Close())
 		}
 	}
 
@@ -412,7 +416,7 @@ func buildLevelIterTables(
 		key, _ = iter.Last()
 		meta[i].Largest = *key
 	}
-	return readers, manifest.NewLevelSlice(meta), keys
+	return readers, manifest.NewLevelSlice(meta), keys, cleanup
 }
 
 func BenchmarkLevelIterSeekGE(b *testing.B) {
@@ -424,7 +428,8 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 				for _, count := range []int{5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, metas, keys := buildLevelIterTables(b, blockSize, restartInterval, count)
+							readers, metas, keys, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
+							defer cleanup()
 							newIters := func(
 								file manifest.LevelFile, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
@@ -454,7 +459,8 @@ func BenchmarkLevelIterNext(b *testing.B) {
 				for _, count := range []int{5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, metas, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
+							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
+							defer cleanup()
 							newIters := func(
 								file manifest.LevelFile, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
@@ -487,7 +493,8 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 				for _, count := range []int{5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, metas, _ := buildLevelIterTables(b, blockSize, restartInterval, count)
+							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
+							defer cleanup()
 							newIters := func(
 								file manifest.LevelFile, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
