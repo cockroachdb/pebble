@@ -70,7 +70,7 @@ type compactionLevel struct {
 // compactionOutputSplitter.shouldSplitBefore() on how this value is used.
 type compactionSplitSuggestion int
 
-const(
+const (
 	noSplit compactionSplitSuggestion = iota
 	splitSoon
 	splitNow
@@ -383,10 +383,10 @@ type compactionKind string
 
 const (
 	compactionKindDefault     compactionKind = "default"
-	compactionKindFlush                      = "flush"
-	compactionKindMove                       = "move"
-	compactionKindDeleteOnly                 = "delete-only"
-	compactionKindElisionOnly                = "elision-only"
+	compactionKindFlush       compactionKind = "flush"
+	compactionKindMove        compactionKind = "move"
+	compactionKindDeleteOnly  compactionKind = "delete-only"
+	compactionKindElisionOnly compactionKind = "elision-only"
 )
 
 // compaction is a table compaction from one level to the next, starting from a
