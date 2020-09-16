@@ -1254,14 +1254,12 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			err := d.mu.mem.mutable.prepare(b)
 			if err != arenaskl.ErrArenaFull {
 				if stalled {
-					stalled = false
 					d.opts.EventListener.WriteStallEnd()
 				}
 				return err
 			}
 		} else if !force {
 			if stalled {
-				stalled = false
 				d.opts.EventListener.WriteStallEnd()
 			}
 			return nil
