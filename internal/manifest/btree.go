@@ -519,11 +519,11 @@ type btree struct {
 	cmp    func(*FileMetadata, *FileMetadata) int
 }
 
-// Release dereferences and clears the root node of the btree, removing all
+// release dereferences and clears the root node of the btree, removing all
 // items from the btree. In doing so, it allows memory held by the btree to be
 // recycled. It returns a slice of file numbers of newly obsolete files, if
 // any.
-func (t *btree) Release() (obsolete []base.FileNum) {
+func (t *btree) release() (obsolete []base.FileNum) {
 	if t.root != nil {
 		t.root.decRef(true /* recursive */, &obsolete)
 		t.root = nil
@@ -532,8 +532,8 @@ func (t *btree) Release() (obsolete []base.FileNum) {
 	return obsolete
 }
 
-// Clone clones the btree, lazily. It does so in constant time.
-func (t *btree) Clone() btree {
+// clone clones the btree, lazily. It does so in constant time.
+func (t *btree) clone() btree {
 	c := *t
 	if c.root != nil {
 		// Incrementing the reference count on the root node is sufficient to
@@ -555,9 +555,9 @@ func (t *btree) Clone() btree {
 	return c
 }
 
-// Delete removes the provided file from the tree.
+// delete removes the provided file from the tree.
 // It returns true if the file now has a zero reference count.
-func (t *btree) Delete(item *FileMetadata) (obsolete bool) {
+func (t *btree) delete(item *FileMetadata) (obsolete bool) {
 	if t.root == nil || t.root.count == 0 {
 		return false
 	}
@@ -577,9 +577,9 @@ func (t *btree) Delete(item *FileMetadata) (obsolete bool) {
 	return obsolete
 }
 
-// Insert adds the given item to the tree. If a item in the tree already
-// equals the given one, Insert panics.
-func (t *btree) Insert(item *FileMetadata) {
+// insert adds the given item to the tree. If a item in the tree already
+// equals the given one, insert panics.
+func (t *btree) insert(item *FileMetadata) {
 	if t.root == nil {
 		t.root = newLeafNode()
 	} else if t.root.count >= maxItems {
@@ -596,15 +596,15 @@ func (t *btree) Insert(item *FileMetadata) {
 	t.length++
 }
 
-// MakeIter returns a new iterator object. It is not safe to continue using an
+// iter returns a new iterator object. It is not safe to continue using an
 // iterator after modifications are made to the tree. If modifications are made,
 // create a new iterator.
-func (t *btree) MakeIter() iterator {
+func (t *btree) iter() iterator {
 	return iterator{r: t.root, pos: -1, cmp: t.cmp}
 }
 
-// Height returns the height of the tree.
-func (t *btree) Height() int {
+// height returns the height of the tree.
+func (t *btree) height() int {
 	if t.root == nil {
 		return 0
 	}
@@ -615,11 +615,6 @@ func (t *btree) Height() int {
 		h++
 	}
 	return h
-}
-
-// Len returns the number of items currently in the tree.
-func (t *btree) Len() int {
-	return t.length
 }
 
 // String returns a string description of the tree. The format is
@@ -755,9 +750,9 @@ func (i *iterator) ascend() {
 	i.pos = f.pos
 }
 
-// SeekGE seeks to the first item greater-than or equal to the provided
+// seekGE seeks to the first item greater-than or equal to the provided
 // item.
-func (i *iterator) SeekGE(item *FileMetadata) {
+func (i *iterator) seekGE(item *FileMetadata) {
 	i.reset()
 	if i.n == nil {
 		return
@@ -770,7 +765,7 @@ func (i *iterator) SeekGE(item *FileMetadata) {
 		}
 		if i.n.leaf {
 			if i.pos == i.n.count {
-				i.Next()
+				i.next()
 			}
 			return
 		}
@@ -778,8 +773,8 @@ func (i *iterator) SeekGE(item *FileMetadata) {
 	}
 }
 
-// SeekLT seeks to the first item less-than the provided item.
-func (i *iterator) SeekLT(item *FileMetadata) {
+// seekLT seeks to the first item less-than the provided item.
+func (i *iterator) seekLT(item *FileMetadata) {
 	i.reset()
 	if i.n == nil {
 		return
@@ -788,15 +783,15 @@ func (i *iterator) SeekLT(item *FileMetadata) {
 		pos, found := i.n.find(i.cmp, item)
 		i.pos = int16(pos)
 		if found || i.n.leaf {
-			i.Prev()
+			i.prev()
 			return
 		}
 		i.descend(i.n, i.pos)
 	}
 }
 
-// First seeks to the first item in the btree.
-func (i *iterator) First() {
+// first seeks to the first item in the btree.
+func (i *iterator) first() {
 	i.reset()
 	if i.n == nil {
 		return
@@ -807,8 +802,8 @@ func (i *iterator) First() {
 	i.pos = 0
 }
 
-// Last seeks to the last item in the btree.
-func (i *iterator) Last() {
+// last seeks to the last item in the btree.
+func (i *iterator) last() {
 	i.reset()
 	if i.n == nil {
 		return
@@ -819,9 +814,9 @@ func (i *iterator) Last() {
 	i.pos = i.n.count - 1
 }
 
-// Next positions the iterator to the item immediately following
+// next positions the iterator to the item immediately following
 // its current position.
-func (i *iterator) Next() {
+func (i *iterator) next() {
 	if i.n == nil {
 		return
 	}
@@ -844,9 +839,9 @@ func (i *iterator) Next() {
 	i.pos = 0
 }
 
-// Prev positions the iterator to the item immediately preceding
+// prev positions the iterator to the item immediately preceding
 // its current position.
-func (i *iterator) Prev() {
+func (i *iterator) prev() {
 	if i.n == nil {
 		return
 	}
@@ -870,13 +865,13 @@ func (i *iterator) Prev() {
 	i.pos = i.n.count - 1
 }
 
-// Valid returns whether the iterator is positioned at a valid position.
-func (i *iterator) Valid() bool {
+// valid returns whether the iterator is positioned at a valid position.
+func (i *iterator) valid() bool {
 	return i.pos >= 0 && i.pos < i.n.count
 }
 
-// Cur returns the item at the iterator's current position. It is illegal
-// to call Cur if the iterator is not valid.
-func (i *iterator) Cur() *FileMetadata {
+// cur returns the item at the iterator's current position. It is illegal
+// to call cur if the iterator is not valid.
+func (i *iterator) cur() *FileMetadata {
 	return i.n.items[i.pos]
 }
