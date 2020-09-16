@@ -261,7 +261,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 
 func buildMergingIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*sstable.Reader, [][]byte) {
+) ([]*sstable.Reader, [][]byte, func()) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
@@ -269,7 +269,6 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		defer f.Close()
 		files[i] = f
 	}
 
@@ -309,7 +308,6 @@ func buildMergingIterTables(
 	}
 
 	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
-	defer opts.Cache.Unref()
 
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
@@ -322,7 +320,12 @@ func buildMergingIterTables(
 			b.Fatal(err)
 		}
 	}
-	return readers, keys
+	return readers, keys, func() {
+		for _, r := range readers {
+			require.NoError(b, r.Close())
+		}
+		opts.Cache.Unref()
+	}
 }
 
 func BenchmarkMergingIterSeekGE(b *testing.B) {
@@ -334,7 +337,8 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, keys := buildMergingIterTables(b, blockSize, restartInterval, count)
+							readers, keys, cleanup := buildMergingIterTables(b, blockSize, restartInterval, count)
+							defer cleanup()
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
@@ -363,7 +367,8 @@ func BenchmarkMergingIterNext(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
+							readers, _, cleanup := buildMergingIterTables(b, blockSize, restartInterval, count)
+							defer cleanup()
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
@@ -395,7 +400,8 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, _ := buildMergingIterTables(b, blockSize, restartInterval, count)
+							readers, _, cleanup := buildMergingIterTables(b, blockSize, restartInterval, count)
+							defer cleanup()
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error

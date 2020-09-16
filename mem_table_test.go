@@ -398,7 +398,7 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 func BenchmarkMemTableIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
-
+	_, _ = iter.First()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		key, _ := iter.Next()
@@ -412,7 +412,7 @@ func BenchmarkMemTableIterNext(b *testing.B) {
 func BenchmarkMemTableIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
-
+	_, _ = iter.Last()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		key, _ := iter.Prev()
