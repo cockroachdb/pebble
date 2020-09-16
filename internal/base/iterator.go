@@ -29,7 +29,8 @@ import "fmt"
 //
 // The relative positioning methods can be used in conjunction with any of the
 // absolute positioning methods with one exception: SeekPrefixGE does not
-// support reverse iteration via Prev.
+// support reverse iteration via Prev. It is undefined to call relative
+// positioning methods without ever calling an absolute positioning method.
 //
 // InternalIterators can optionally implement a prefix iteration mode. This
 // mode is entered by calling SeekPrefixGE and exited by any other absolute

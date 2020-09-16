@@ -811,6 +811,7 @@ func BenchmarkIterPrev(b *testing.B) {
 	}
 
 	it := l.NewIter(nil, nil)
+	_, _ = it.Last()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		key, _ := it.Prev()
