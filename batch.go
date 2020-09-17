@@ -819,8 +819,11 @@ func (b *Batch) setSeqNum(seqNum uint64) {
 
 // SeqNum returns the batch sequence number which is applied to the first
 // record in the batch. The sequence number is incremented for each subsequent
-// record.
+// record. It returns zero if the batch is empty.
 func (b *Batch) SeqNum() uint64 {
+	if len(b.data) == 0 {
+		b.init(batchHeaderLen)
+	}
 	return binary.LittleEndian.Uint64(b.seqNumData())
 }
 
@@ -840,6 +843,9 @@ func (b *Batch) Count() uint32 {
 // Reader returns a BatchReader for the current batch contents. If the batch is
 // mutated, the new entries will not be visible to the reader.
 func (b *Batch) Reader() BatchReader {
+	if len(b.data) == 0 {
+		b.init(batchHeaderLen)
+	}
 	return b.data[batchHeaderLen:]
 }
 
@@ -878,6 +884,9 @@ type BatchReader []byte
 // MakeBatchReader constructs a BatchReader from a batch representation. The
 // header (containing the batch count and seqnum) is ignored.
 func MakeBatchReader(repr []byte) BatchReader {
+	if len(repr) <= batchHeaderLen {
+		return nil
+	}
 	return repr[batchHeaderLen:]
 }
 

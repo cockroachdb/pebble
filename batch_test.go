@@ -135,26 +135,55 @@ func TestBatchEmpty(t *testing.T) {
 	require.False(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
+	// Reset may choose to reuse b.data, so clear it to the zero value in
+	// order to test the lazy initialization of b.data.
+	b = Batch{}
 
 	b.Merge(nil, nil, nil)
 	require.False(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
+	b = Batch{}
 
 	b.Delete(nil, nil)
 	require.False(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
+	b = Batch{}
 
 	b.DeleteRange(nil, nil, nil)
 	require.False(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
+	b = Batch{}
 
 	b.LogData(nil, nil)
 	require.False(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
+	b = Batch{}
+
+	_ = b.Reader()
+	require.True(t, b.Empty())
+	b.Reset()
+	require.True(t, b.Empty())
+	b = Batch{}
+
+	require.Equal(t, uint64(0), b.SeqNum())
+	require.True(t, b.Empty())
+	b.Reset()
+	require.True(t, b.Empty())
+	b = Batch{}
+
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer d.Close()
+	ib := newIndexedBatch(d, DefaultComparer)
+	iter := ib.NewIter(nil)
+	require.False(t, iter.First())
+	require.NoError(t, iter.Close())
 }
 
 func TestBatchReset(t *testing.T) {
