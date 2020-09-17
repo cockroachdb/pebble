@@ -48,10 +48,10 @@ func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
 	return s.db.newIterInternal(nil /* batchIter */, nil /* batchRangeDelIter */, s, o)
 }
 
-// Close closes the snapshot, releasing its resources. Close must be
-// called. Failure to do so while result in a tiny memory leak, and a large
-// leak of resources on disk due to the entries the snapshot is preventing from
-// being deleted.
+// Close closes the snapshot, releasing its resources. Close must be called.
+// Failure to do so will result in a tiny memory leak and a large leak of
+// resources on disk due to the entries the snapshot is preventing from being
+// deleted.
 func (s *Snapshot) Close() error {
 	if s.db == nil {
 		panic(ErrClosed)
