@@ -1104,3 +1104,42 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 		require.Equal(t, fileBytes[i], afterBytes)
 	}
 }
+
+// BenchmarkManySSTablesNewVersion measures the cost of ingesting a small
+// SSTable at various counts of SSTables within the database.
+func BenchmarkManySSTablesNewVersion(b *testing.B) {
+	counts := []int{10, 1_000, 10_000, 100_000, 1_000_000}
+
+	for _, count := range counts {
+		b.Run(fmt.Sprintf("sstables=%d", count), func(b *testing.B) {
+			mem := vfs.NewMem()
+			d, err := Open("", &Options{
+				FS: mem,
+			})
+			require.NoError(b, err)
+
+			var paths []string
+			for i := 0; i < count; i++ {
+				n := strconv.Itoa(i)
+				f, err := mem.Create(n)
+				require.NoError(b, err)
+				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				require.NoError(b, w.Set([]byte(n), nil))
+				require.NoError(b, w.Close())
+				paths = append(paths, n)
+			}
+			require.NoError(b, d.Ingest(paths))
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				n := strconv.Itoa(count + i)
+				f, err := mem.Create(n)
+				require.NoError(b, err)
+				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				require.NoError(b, w.Set([]byte(n), nil))
+				require.NoError(b, w.Close())
+				require.NoError(b, d.Ingest([]string{n}))
+			}
+		})
+	}
+}
