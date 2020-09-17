@@ -1580,7 +1580,7 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	splittingFlush := c.startLevel.level < 0 && c.outputLevel.level == 0 && d.opts.Experimental.FlushSplitBytes > 0
+	splitL0Outputs := c.outputLevel.level == 0 && d.opts.Experimental.FlushSplitBytes > 0
 
 	// finishOutput is called for an sstable with the first key of the next sstable, and for the
 	// last sstable with an empty key.
@@ -1608,7 +1608,7 @@ func (d *DB) runCompaction(
 		// NB: clone the key because the data can be held on to by the call to
 		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
 		key = append([]byte(nil), key...)
-		for _, v := range iter.Tombstones(key, splittingFlush) {
+		for _, v := range iter.Tombstones(key, splitL0Outputs) {
 			if tw == nil {
 				if err := newOutput(); err != nil {
 					return err
@@ -1793,8 +1793,8 @@ func (d *DB) runCompaction(
 	// exhausted and the range tombstone fragments will all be flushed.
 	for key, val := iter.First(); key != nil || !c.rangeDelFrag.Empty(); {
 		var limit []byte
-		if splittingFlush {
-			// For flushes being split across multiple sstables, call
+		if splitL0Outputs {
+			// For compactions to L0 being split across multiple sstables, call
 			// findL0Limit to find the next L0 limit.
 			if key != nil {
 				limit = c.findL0Limit(key.UserKey)
@@ -1917,16 +1917,16 @@ func (d *DB) runCompaction(
 			// as b#RANGEDEL,3 which sorts before b#SET,0. Normally we just adjust
 			// the seqnum of this key, but that isn't possible for seqnum 0.
 			if passedGrandparentLimit || (limit != nil && c.cmp(key.UserKey, limit) > 0) {
-				// The flush split exception exists because, when flushing
+				// The L0 split exception exists because, when compacting
 				// to L0, we are able to guarantee that the end key of
 				// tombstones will also be truncated (through the
 				// TruncateAndFlushTo call), and no user keys will
 				// be split between sstables.
-				if prevPointSeqNum != 0 || c.rangeDelFrag.Empty() || splittingFlush {
-					if passedGrandparentLimit || splittingFlush {
+				if prevPointSeqNum != 0 || c.rangeDelFrag.Empty() || splitL0Outputs {
+					if passedGrandparentLimit || splitL0Outputs {
 						limit = key.UserKey
 					}
-					if splittingFlush {
+					if splitL0Outputs {
 						// Flush all tombstones up until key.UserKey, and
 						// truncate them at that key.
 						//
@@ -1962,12 +1962,12 @@ func (d *DB) runCompaction(
 			if tw != nil && tw.EstimatedSize() >= c.maxOutputFileSize {
 				// Use the next key as the sstable boundary. Note that we already
 				// checked this key against the grandparent limit above.
-				if !splittingFlush {
+				if !splitL0Outputs {
 					limit = key.UserKey
 					break
 				}
 				// We do not split user keys across different sstables when
-				// splitting flushes. This includes range tombstones; a range
+				// splitting L0 outputs. This includes range tombstones; a range
 				// tombstone covering a key in a given flush is guaranteed to
 				// end up in the same sstable as that key. Wide range tombstones
 				// spanning split boundaries are split to keep this invariant
@@ -1999,11 +1999,11 @@ func (d *DB) runCompaction(
 		case key == nil && prevPointSeqNum == 0 && !c.rangeDelFrag.Empty():
 			// We ran out of keys and the last key added to the sstable has a zero
 			// seqnum and there are buffered range tombstones, so we're unable to use
-			// the grandparent/flush limit for the sstable boundary. See the example in the
+			// the grandparent/L0 limit for the sstable boundary. See the example in the
 			// in the loop above with range tombstones straddling sstables.
 			limit = nil
-		case key == nil && splittingFlush && !c.rangeDelFrag.Empty():
-			// We ran out of keys with flush splits enabled, and have remaining
+		case key == nil && splitL0Outputs && !c.rangeDelFrag.Empty():
+			// We ran out of keys with L0 splits enabled, and have remaining
 			// buffered range tombstones. Set limit to nil so all range
 			// tombstones get flushed in the current sstable. Consider this
 			// example:
@@ -2013,7 +2013,7 @@ func (d *DB) runCompaction(
 			// d.RANGEDEL.3:f
 			// (no more keys remaining)
 			//
-			// Where d is a flush split key (i.e. limit = 'd'). Since d.MERGE.5
+			// Where d is an L0 split key (i.e. limit = 'd'). Since d.MERGE.5
 			// has already been written to this output by this point (as it's
 			// <= limit), and flushes cannot have user keys split across
 			// multiple sstables, we have to set limit to a key greater than

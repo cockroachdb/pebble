@@ -458,6 +458,7 @@ func TestCompactionPickerL0(t *testing.T) {
 	opts.Experimental.L0CompactionConcurrency = 1
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
+	var pc *pickedCompaction
 
 	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -598,7 +599,7 @@ func TestCompactionPickerL0(t *testing.T) {
 				}
 			}
 
-			pc := picker.pickAuto(compactionEnv{
+			pc = picker.pickAuto(compactionEnv{
 				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
@@ -618,6 +619,21 @@ func TestCompactionPickerL0(t *testing.T) {
 				return "nil"
 			}
 			return result.String()
+		case "max-output-file-size":
+			if pc == nil {
+				return "no compaction"
+			}
+			return fmt.Sprintf("%d", pc.maxOutputFileSize)
+		case "max-overlap-bytes":
+			if pc == nil {
+				return "no compaction"
+			}
+			return fmt.Sprintf("%d", pc.maxOverlapBytes)
+		case "max-expanded-bytes":
+			if pc == nil {
+				return "no compaction"
+			}
+			return fmt.Sprintf("%d", pc.maxExpandedBytes)
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
