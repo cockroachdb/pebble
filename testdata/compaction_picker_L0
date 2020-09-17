@@ -205,18 +205,26 @@ L0: 000100,000110
 L6: 000200
 
 # 3 L0 files (1 overlap), Lbase compacting.
-# Should choose an intra-L0 compaction.
+# Should choose an intra-L0 compaction. Note that intra-L0 compactions
+# don't follow l0_compaction_threshold, but rather a minIntraL0Count constant
+# in compaction_picker.go
 
 define
 L0
    000100:i.SET.101-p.SET.102
    000110:j.SET.111-q.SET.112
    000120:r.SET.113-s.SET.114
+   000130:i.SET.110-p.SET.110
+   000140:i.SET.120-p.SET.120
 L6
    000200:f.SET.51-s.SET.52
 compactions
   L6 000200 -> L6
 ----
+0.3:
+  000140:[i#120,SET-p#120,SET]
+0.2:
+  000130:[i#110,SET-p#110,SET]
 0.1:
   000110:[j#111,SET-q#112,SET]
 0.0:
@@ -227,10 +235,22 @@ compactions
 compactions
   L6 000200 -> L6
 
-pick-auto l0_compaction_threshold=2
+pick-auto
 ----
 L0 -> L0
-L0: 000100,000110
+L0: 000100,000110,000130,000140
+
+max-output-file-size
+----
+4194304
+
+max-overlap-bytes
+----
+41943040
+
+max-expanded-bytes
+----
+104857600
 
 # 1 L0 file. Should not choose any compaction, as an intra-L0 compaction
 # with one input is unhelpful.

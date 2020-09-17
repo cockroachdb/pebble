@@ -1948,7 +1948,7 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	splittingFlush := c.startLevel.level < 0 && c.outputLevel.level == 0 && d.opts.Experimental.FlushSplitBytes > 0
+	splitL0Outputs := c.outputLevel.level == 0 && d.opts.Experimental.FlushSplitBytes > 0
 
 	// finishOutput is called for an sstable with the first key of the next sstable, and for the
 	// last sstable with an empty key.
@@ -1976,7 +1976,7 @@ func (d *DB) runCompaction(
 		// NB: clone the key because the data can be held on to by the call to
 		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
 		key = append([]byte(nil), key...)
-		for _, v := range iter.Tombstones(key, splittingFlush) {
+		for _, v := range iter.Tombstones(key, splitL0Outputs) {
 			if tw == nil {
 				if err := newOutput(); err != nil {
 					return err
@@ -2145,9 +2145,9 @@ func (d *DB) runCompaction(
 					c.largest.Pretty(d.opts.Comparer.FormatKey))
 			}
 		}
-		// Verify that when splitting flushes, we never split different
+		// Verify that when splitting an output to L0, we never split different
 		// revisions of the same user key across two different sstables.
-		if splittingFlush {
+		if splitL0Outputs {
 			if err := c.errorOnUserKeyOverlap(ve); err != nil {
 				return err
 			}
@@ -2163,7 +2163,7 @@ func (d *DB) runCompaction(
 	// a new one. Some splitters can wrap other splitters, and
 	// the splitterGroup can be composed of multiple splitters. In this case,
 	// we start off with splitters for file sizes, grandparent limits, and (for
-	// flush splits) L0 limits, before wrapping them in an splitterGroup.
+	// L0 splits) L0 limits, before wrapping them in an splitterGroup.
 	//
 	// There is a complication here: we can't split outputs where the largest
 	// key on the left side has a seqnum of zero. This limitation
@@ -2183,7 +2183,7 @@ func (d *DB) runCompaction(
 	// our splitters with a nonZeroSeqNumSplitter.
 	//
 	// Another case where we may not be able to switch SSTables right away is
-	// when we are splitting a flush. We do not split the same user key
+	// when we are splitting an L0 output. We do not split the same user key
 	// across different sstables within one flush, so the userKeyChangeSplitter
 	// ensures we are at a user key change boundary when doing a split.
 	outputSplitters := []compactionOutputSplitter{
@@ -2191,7 +2191,7 @@ func (d *DB) runCompaction(
 		&grandparentLimitSplitter{c: c, ve: ve},
 	}
 	var splitter compactionOutputSplitter
-	if splittingFlush {
+	if splitL0Outputs {
 		// outputSplitters[0] is the file size splitter, which doesn't guarantee
 		// that all advised splits will be at user key change boundaries. Wrap
 		// it in a userKeyChangeSplitter.
@@ -2205,13 +2205,13 @@ func (d *DB) runCompaction(
 		cmp:       c.cmp,
 		splitters: outputSplitters,
 	}
-	// Flush splits don't need nonzero last-point-key seqnums at split
-	// boundaries because when flushing to L0, we are able to guarantee that
+	// Compactions to L0 don't need nonzero last-point-key seqnums at split
+	// boundaries because when writing to L0, we are able to guarantee that
 	// the end key of tombstones will also be truncated (through the
 	// TruncateAndFlushTo call), and no user keys will
 	// be split between sstables. So a nonZeroSeqNumSplitter is unnecessary
 	// in that case.
-	if !splittingFlush {
+	if !splitL0Outputs {
 		splitter = &nonZeroSeqNumSplitter{
 			c:        c,
 			splitter: splitter,
@@ -2235,7 +2235,7 @@ func (d *DB) runCompaction(
 			if split := splitter.shouldSplitBefore(key, tw); split != noSplit {
 				if split == splitNow {
 					limit = key.UserKey
-					if splittingFlush {
+					if splitL0Outputs {
 						// Flush all tombstones up until key.UserKey, and
 						// truncate them at that key.
 						//
@@ -2291,7 +2291,7 @@ func (d *DB) runCompaction(
 			// limit to nil ensures that we flush the entirety of the rangedel
 			// fragmenter when writing the last output.
 			limit = nil
-		case key == nil && splittingFlush && !c.rangeDelFrag.Empty():
+		case key == nil && splitL0Outputs && !c.rangeDelFrag.Empty():
 			// We ran out of keys with flush splits enabled, and have remaining
 			// buffered range tombstones. Set limit to nil so all range
 			// tombstones get flushed in the current sstable. Consider this

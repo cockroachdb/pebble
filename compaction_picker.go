@@ -1165,7 +1165,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	// compaction. Note that we pass in L0CompactionThreshold here as opposed to
 	// 1, since choosing a single sublevel intra-L0 compaction is
 	// counterproductive.
-	lcf, err = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, opts.L0CompactionThreshold)
+	lcf, err = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count)
 	if err != nil {
 		opts.Logger.Infof("error when picking intra-L0 compaction: %s", err)
 		return
@@ -1187,14 +1187,6 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 		}
 
 		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
-		// Output only a single sstable for intra-L0 compactions.
-		// Now that we have the ability to split flushes, we could conceivably
-		// split the output of intra-L0 compactions too. This may be unnecessary
-		// complexity -- the inputs to intra-L0 should be narrow in the key space
-		// (unlike flushes), so writing a single sstable should be ok.
-		pc.maxOutputFileSize = math.MaxUint64
-		pc.maxOverlapBytes = math.MaxUint64
-		pc.maxExpandedBytes = math.MaxUint64
 	}
 	return pc
 }
