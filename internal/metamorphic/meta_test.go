@@ -51,7 +51,7 @@ var (
 		"write an execution trace to `<run-dir>/file`")
 	keep = flag.Bool("keep", false,
 		"keep the DB directory even on successful runs")
-	seed = flag.Uint64("seed", uint64(time.Now().UnixNano()),
+	seed = flag.Uint64("seed", 0,
 		"a pseudorandom number generator seed")
 	ops    = randvar.NewFlag("uniform:5000-10000")
 	runDir = flag.String("run-dir", "",
@@ -62,7 +62,7 @@ func init() {
 	flag.Var(ops, "ops", "")
 }
 
-func testMetaRun(t *testing.T, runDir string) {
+func testMetaRun(t *testing.T, runDir string, seed uint64) {
 	opsPath := filepath.Join(filepath.Dir(filepath.Clean(runDir)), "ops")
 	opsData, err := ioutil.ReadFile(opsPath)
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func testMetaRun(t *testing.T, runDir string) {
 	require.NoError(t, m.init(h, opts.FS.PathJoin(runDir, "data"), testOpts))
 	for m.step(h) {
 		if err := h.Error(); err != nil {
-			fmt.Fprintf(os.Stderr, "Seed: %d\n", *seed)
+			fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
 			fmt.Fprintln(os.Stderr, err)
 			m.maybeSaveData()
 			os.Exit(1)
@@ -160,8 +160,15 @@ func TestMeta(t *testing.T) {
 		// The --run-dir flag is specified either in the child process (see
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
-		testMetaRun(t, *runDir)
+		testMetaRun(t, *runDir, *seed)
 		return
+	}
+
+	// Setting the default seed here rather than in the flag's default value
+	// ensures each run uses a new seed when using the Go test `-count` flag.
+	seed := *seed
+	if seed == 0 {
+		seed = uint64(time.Now().UnixNano())
 	}
 
 	rootName := t.Name()
@@ -176,7 +183,7 @@ func TestMeta(t *testing.T) {
 		}
 	}()
 
-	rng := rand.New(rand.NewSource(*seed))
+	rng := rand.New(rand.NewSource(seed))
 	opCount := ops.Uint64(rng)
 
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
@@ -226,7 +233,7 @@ func TestMeta(t *testing.T) {
 ===== OPS =====
 %s
 ===== HISTORY =====
-%s`, *seed, err, out, optionsStr, formattedOps, readHistory(filepath.Join(runDir, "history")))
+%s`, seed, err, out, optionsStr, formattedOps, readHistory(filepath.Join(runDir, "history")))
 		}
 	}
 
@@ -303,7 +310,7 @@ func TestMeta(t *testing.T) {
 %s
 ===== OPS =====
 %s
-`, *seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[1], optionsStrB, formattedOps)
+`, seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[1], optionsStrB, formattedOps)
 			os.Exit(1)
 		}
 	}
