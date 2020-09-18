@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"runtime"
 	"sort"
@@ -20,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
@@ -1876,6 +1878,81 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 		})
 }
 
+// TestCompactionErrorCleanup tests an error encountered during a compaction
+// after some output tables have been created. It ensures that the pending
+// output tables are removed from the filesystem.
+func TestCompactionErrorCleanup(t *testing.T) {
+	// protected by d.mu
+	var (
+		initialSetupDone bool
+		tablesCreated    []FileNum
+	)
+
+	mem := vfs.NewMem()
+	ii := errorfs.OnIndex(math.MaxInt32) // start disabled
+	opts := &Options{
+		FS:     errorfs.Wrap(mem, ii),
+		Levels: make([]LevelOptions, numLevels),
+		EventListener: EventListener{
+			TableCreated: func(info TableCreateInfo) {
+				t.Log(info)
+
+				// If the initial setup is over, record tables created and
+				// inject an error immediately after the second table is
+				// created.
+				if initialSetupDone {
+					tablesCreated = append(tablesCreated, info.FileNum)
+					if len(tablesCreated) >= 2 {
+						ii.SetIndex(0)
+					}
+				}
+			},
+		},
+	}
+	for i := range opts.Levels {
+		opts.Levels[i].TargetFileSize = 1
+	}
+	d, err := Open("", opts)
+	require.NoError(t, err)
+
+	ingest := func(keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		for _, k := range keys {
+			require.NoError(t, w.Set([]byte(k), nil))
+		}
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
+	}
+	ingest("a", "c")
+	ingest("b")
+
+	// Trigger a manual compaction, which will encounter an injected error
+	// after the second table is created.
+	d.mu.Lock()
+	initialSetupDone = true
+	d.mu.Unlock()
+	err = d.Compact([]byte("a"), []byte("d"))
+	require.Error(t, err, "injected error")
+
+	d.mu.Lock()
+	if len(tablesCreated) < 2 {
+		t.Fatalf("expected 2 output tables created by compaction: found %d", len(tablesCreated))
+	}
+	d.mu.Unlock()
+
+	require.NoError(t, d.Close())
+	for _, fileNum := range tablesCreated {
+		filename := fmt.Sprintf("%s.sst", fileNum)
+		if _, err = mem.Stat(filename); err == nil || !os.IsNotExist(err) {
+			t.Errorf("expected %q to not exist: %s", filename, err)
+		}
+	}
+}
+
 func TestCompactionCheckOrdering(t *testing.T) {
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
@@ -2001,7 +2078,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 				switch d.CmdArgs[1].Key {
 				case "array":
 					*splitterToInit = &splitterGroup{
-						cmp: base.DefaultComparer.Compare,
+						cmp:       base.DefaultComparer.Compare,
 						splitters: []compactionOutputSplitter{child0, child1},
 					}
 				case "mock":
@@ -2013,7 +2090,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 					}
 				case "nonzeroseqnum":
 					c := &compaction{
-						rangeDelFrag: rangedel.Fragmenter {
+						rangeDelFrag: rangedel.Fragmenter{
 							Cmp:    base.DefaultComparer.Compare,
 							Format: base.DefaultFormatter,
 							Emit:   func(fragmented []rangedel.Tombstone) {},
