@@ -7,6 +7,7 @@ package pebble_test
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -16,6 +17,10 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer func() {
+		// Don't do this in real life, this is just example code.
+		_ = os.RemoveAll("demo")
+	}()
 	key := []byte("hello")
 	if err := db.Set(key, []byte("world"), pebble.Sync); err != nil {
 		log.Fatal(err)
