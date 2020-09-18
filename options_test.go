@@ -236,12 +236,6 @@ func TestOptionsValidate(t *testing.T) {
 `,
 			`MemTableStopWritesThreshold .* must be >= 2`,
 		},
-		{`
-[Options]
-  table_format=leveldb
-`,
-			`TableFormatLevelDB not supported for DB`,
-		},
 	}
 
 	for _, c := range testCases {
