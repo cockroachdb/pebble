@@ -357,11 +357,13 @@ func (i *Iterator) SeekGE(key []byte) bool {
 //
 //  iter := db.NewIter(&pebble.IterOptions{
 //    LowerBound: []byte("prefix"),
-//    UpperBound: []byte("prefix\0"), // Note the \0 suffix.
+//    UpperBound: []byte("prefiy"),
 //  })
-//  for key, value := iter.First(); key != nil; key, value = iter.Next() {
+//  for iter.First(); iter.Valid(); iter.Next() {
 //    // Only keys beginning with "prefix" will be visited.
 //  }
+//
+// See Example_prefixiteration for a working example.
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	i.err = nil // clear cached iteration error
 
