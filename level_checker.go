@@ -645,13 +645,13 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		mlevelAlloc = mlevelAlloc[1:]
 	}
 	for level := 1; level < len(current.Levels); level++ {
-		manifestIter := current.Levels[level].Iter()
-		if manifestIter.Empty() {
+		if current.Levels[level].Empty() {
 			continue
 		}
+
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, c.newIters, manifestIter, manifest.Level(level), nil)
+		li.init(iterOpts, c.cmp, c.newIters, current.Levels[level].Iter(), manifest.Level(level), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
 		mlevelAlloc[0].iter = li

@@ -306,11 +306,11 @@ func (v *Version) Pretty(format base.FormatKey) string {
 		}
 	}
 	for level := 1; level < NumLevels; level++ {
-		iter := v.Levels[level].Iter()
-		if iter.Empty() {
+		if v.Levels[level].Empty() {
 			continue
 		}
 		fmt.Fprintf(&buf, "%d:\n", level)
+		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				format(f.Smallest.UserKey), format(f.Largest.UserKey))
@@ -334,11 +334,11 @@ func (v *Version) DebugString(format base.FormatKey) string {
 		}
 	}
 	for level := 1; level < NumLevels; level++ {
-		iter := v.Levels[level].Iter()
-		if iter.Empty() {
+		if v.Levels[level].Empty() {
 			continue
 		}
 		fmt.Fprintf(&buf, "%d:\n", level)
+		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
 				f.Smallest.Pretty(format), f.Largest.Pretty(format))

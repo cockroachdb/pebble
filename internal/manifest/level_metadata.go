@@ -12,6 +12,11 @@ type LevelMetadata struct {
 	files []*FileMetadata
 }
 
+// Empty indicates whether there are any files in the level.
+func (lm *LevelMetadata) Empty() bool {
+	return lm.Len() == 0
+}
+
 // Len returns the number of files within the level.
 func (lm *LevelMetadata) Len() int {
 	return len(lm.files)
@@ -132,11 +137,6 @@ type LevelIterator struct {
 // position.
 func (i *LevelIterator) Clone() LevelIterator {
 	return *i
-}
-
-// Empty indicates whether there are remaining files in the iterator.
-func (i LevelIterator) Empty() bool {
-	return i.cur >= i.end
 }
 
 // Current returns the item at the current iterator position.
