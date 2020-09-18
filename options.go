@@ -47,15 +47,6 @@ type FilterWriter = base.FilterWriter
 // FilterPolicy exports the base.FilterPolicy type.
 type FilterPolicy = base.FilterPolicy
 
-// TableFormat exports the base.TableFormat type.
-type TableFormat = sstable.TableFormat
-
-// Exported TableFormat constants.
-const (
-	TableFormatRocksDBv2 = sstable.TableFormatRocksDBv2
-	TableFormatLevelDB   = sstable.TableFormatLevelDB
-)
-
 // TablePropertyCollector exports the sstable.TablePropertyCollector type.
 type TablePropertyCollector = sstable.TablePropertyCollector
 
@@ -412,12 +403,6 @@ type Options struct {
 	// disabled.
 	ReadOnly bool
 
-	// TableFormat specifies the format version for writing sstables. The default
-	// is TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
-	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
-	// by a wider range of tools and libraries.
-	TableFormat TableFormat
-
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.
@@ -534,7 +519,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.MaxConcurrentCompactions = 1
 	}
 	if o.FS == nil {
-		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5 * time.Second,
+		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
 			func(name string, duration time.Duration) {
 				o.EventListener.DiskSlow(DiskSlowInfo{
 					Path:     name,
@@ -809,9 +794,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "table_format":
 				switch value {
 				case "leveldb":
-					o.TableFormat = TableFormatLevelDB
 				case "rocksdbv2":
-					o.TableFormat = TableFormatRocksDBv2
 				default:
 					return errors.Errorf("pebble: unknown table format: %q", errors.Safe(value))
 				}
@@ -940,10 +923,6 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",
 			o.MemTableStopWritesThreshold)
 	}
-	switch o.TableFormat {
-	case TableFormatLevelDB:
-		fmt.Fprintf(&buf, "TableFormatLevelDB not supported for DB\n")
-	}
 	if buf.Len() == 0 {
 		return nil
 	}
@@ -975,7 +954,7 @@ func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name
 		}
-		writerOpts.TableFormat = o.TableFormat
+		writerOpts.TableFormat = sstable.TableFormatRocksDBv2
 		writerOpts.TablePropertyCollectors = o.TablePropertyCollectors
 	}
 	levelOpts := o.Level(level)
