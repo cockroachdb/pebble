@@ -155,15 +155,14 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		if g.level >= numLevels {
 			return nil, nil
 		}
-		metadataIter := g.version.Levels[g.level].Iter()
-		if metadataIter.Empty() {
+		if g.version.Levels[g.level].Empty() {
 			g.level++
 			continue
 		}
 
 		iterOpts := IterOptions{logger: g.logger}
 		g.levelIter.init(iterOpts, g.cmp, g.newIters,
-			metadataIter, manifest.Level(g.level), nil)
+			g.version.Levels[g.level].Iter(), manifest.Level(g.level), nil)
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
