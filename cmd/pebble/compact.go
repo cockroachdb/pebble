@@ -102,8 +102,6 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
 		MaxConcurrentCompactions:    2,
-		MinCompactionRate:           4 << 20, // 4 MB/s
-		MinFlushRate:                1 << 20, // 1 MB/s
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       400,
 		LBaseMaxBytes:               64 << 20, // 64 MB

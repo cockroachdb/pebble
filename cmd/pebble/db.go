@@ -67,8 +67,6 @@ func newPebbleDB(dir string) DB {
 		Merger: &pebble.Merger{
 			Name: "cockroach_merge_operator",
 		},
-		MinCompactionRate: 4 << 20, // 4 MB/s
-		MinFlushRate:      4 << 20, // 4 MB/s
 	}
 	opts.Experimental.L0SublevelCompactions = true
 
