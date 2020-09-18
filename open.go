@@ -105,8 +105,12 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
-	d.compactionLimiter = rate.NewLimiter(rate.Limit(d.opts.MinCompactionRate), d.opts.MinCompactionRate)
-	d.flushLimiter = rate.NewLimiter(rate.Limit(d.opts.MinFlushRate), d.opts.MinFlushRate)
+	d.compactionLimiter = rate.NewLimiter(
+		rate.Limit(d.opts.private.minCompactionRate),
+		d.opts.private.minCompactionRate)
+	d.flushLimiter = rate.NewLimiter(
+		rate.Limit(d.opts.private.minFlushRate),
+		d.opts.private.minFlushRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.nextSize = opts.MemTableSize
 	if d.mu.mem.nextSize > initialMemTableSize {
