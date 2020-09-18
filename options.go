@@ -384,14 +384,6 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
-	// MinCompactionRate sets the minimum rate at which compactions occur. The
-	// default is 4 MB/s.
-	MinCompactionRate int
-
-	// MinFlushRate sets the minimum rate at which the MemTables are flushed. The
-	// default is 1 MB/s.
-	MinFlushRate int
-
 	// MaxConcurrentCompactions specifies the maximum number of concurrent
 	// compactions. The default is 1. Concurrent compactions are only performed
 	// when L0 read-amplification passes the L0CompactionConcurrency threshold.
@@ -437,6 +429,16 @@ type Options struct {
 
 		// A private option disable automatic compactions.
 		disableAutomaticCompactions bool
+
+		// minCompactionRate sets the minimum rate at which compactions occur. The
+		// default is 4 MB/s. Currently disabled as this option has no effect while
+		// private.enablePacing is false.
+		minCompactionRate int
+
+		// minFlushRate sets the minimum rate at which the MemTables are flushed. The
+		// default is 1 MB/s. Currently disabled as this option has no effect while
+		// private.enablePacing is false.
+		minFlushRate int
 	}
 }
 
@@ -509,11 +511,11 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
-	if o.MinCompactionRate == 0 {
-		o.MinCompactionRate = 4 << 20 // 4 MB/s
+	if o.private.minCompactionRate == 0 {
+		o.private.minCompactionRate = 4 << 20 // 4 MB/s
 	}
-	if o.MinFlushRate == 0 {
-		o.MinFlushRate = 1 << 20 // 1 MB/s
+	if o.private.minFlushRate == 0 {
+		o.private.minFlushRate = 1 << 20 // 1 MB/s
 	}
 	if o.MaxConcurrentCompactions <= 0 {
 		o.MaxConcurrentCompactions = 1
@@ -606,8 +608,8 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
-	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.MinCompactionRate)
-	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.MinFlushRate)
+	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.private.minCompactionRate)
+	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.private.minFlushRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {
@@ -777,9 +779,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "mem_table_stop_writes_threshold":
 				o.MemTableStopWritesThreshold, err = strconv.Atoi(value)
 			case "min_compaction_rate":
-				o.MinCompactionRate, err = strconv.Atoi(value)
+				o.private.minCompactionRate, err = strconv.Atoi(value)
 			case "min_flush_rate":
-				o.MinFlushRate, err = strconv.Atoi(value)
+				o.private.minFlushRate, err = strconv.Atoi(value)
 			case "merger":
 				switch value {
 				case "nullptr":
