@@ -2001,7 +2001,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 				switch d.CmdArgs[1].Key {
 				case "array":
 					*splitterToInit = &splitterGroup{
-						cmp: base.DefaultComparer.Compare,
+						cmp:       base.DefaultComparer.Compare,
 						splitters: []compactionOutputSplitter{child0, child1},
 					}
 				case "mock":
@@ -2013,7 +2013,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 					}
 				case "nonzeroseqnum":
 					c := &compaction{
-						rangeDelFrag: rangedel.Fragmenter {
+						rangeDelFrag: rangedel.Fragmenter{
 							Cmp:    base.DefaultComparer.Compare,
 							Format: base.DefaultFormatter,
 							Emit:   func(fragmented []rangedel.Tombstone) {},

@@ -70,7 +70,7 @@ type compactionLevel struct {
 // compactionOutputSplitter.shouldSplitBefore() on how this value is used.
 type compactionSplitSuggestion int
 
-const(
+const (
 	noSplit compactionSplitSuggestion = iota
 	splitSoon
 	splitNow

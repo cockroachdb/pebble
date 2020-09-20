@@ -534,7 +534,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.MaxConcurrentCompactions = 1
 	}
 	if o.FS == nil {
-		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5 * time.Second,
+		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
 			func(name string, duration time.Duration) {
 				o.EventListener.DiskSlow(DiskSlowInfo{
 					Path:     name,
