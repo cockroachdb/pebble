@@ -218,7 +218,10 @@ type Batch struct {
 	// memtable.
 	flushable *flushableBatch
 
-	commit    sync.WaitGroup
+	// Wait for publishing this batch sequence number and for syncing the batch to
+	// WAL (if requested).
+	commit sync.WaitGroup
+	// Non-nil if syncing the batch to WAL fails.
 	commitErr error
 	applied   uint32 // updated atomically
 }

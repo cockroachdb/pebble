@@ -417,6 +417,15 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
+	// TODO: Explain.
+	// Paranoid because as such they don't affect the foreground.
+	// Also you won't lose any data. Only act of background code paths
+	// (flush, compaction). But we still have our original SSTs.
+	// But if these fail for good reasons (fsync) for example,
+	// then there's a good chance something is really wrong.
+	// Default true.
+	ParanoidChecks *bool
+
 	// private options are only used by internal tests.
 	private struct {
 		// TODO(peter): A private option to enable flush/compaction pacing. Only used
@@ -454,6 +463,10 @@ func DebugCheckLevels(db *DB) error {
 func (o *Options) EnsureDefaults() *Options {
 	if o == nil {
 		o = &Options{}
+	}
+	if o.ParanoidChecks == nil {
+		paranoidChecks := true
+		o.ParanoidChecks = &paranoidChecks
 	}
 	if o.BytesPerSync <= 0 {
 		o.BytesPerSync = 512 << 10 // 512 KB
@@ -611,6 +624,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.private.minCompactionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.private.minFlushRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	fmt.Fprintf(&buf, "  paranoid_checks=%t\n", *o.ParanoidChecks)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {
 		if i > 0 {
@@ -793,6 +807,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						o.Merger, err = hooks.NewMerger(value)
 					}
 				}
+			case "paranoid_checks":
+				var paranoidChecks bool
+				paranoidChecks, err = strconv.ParseBool(value)
+				o.ParanoidChecks = &paranoidChecks
 			case "table_format":
 				switch value {
 				case "leveldb":

@@ -1161,6 +1161,9 @@ func (d *DB) maybeScheduleFlush() {
 	if len(d.mu.mem.queue) <= 1 {
 		return
 	}
+	if d.errorHandler.isBGWorkStopped() {
+		return
+	}
 
 	var n int
 	var size uint64
@@ -1245,9 +1248,11 @@ func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		if err := d.flush1(); err != nil {
-			// TODO(peter): count consecutive flush errors and backoff.
-			d.opts.EventListener.BackgroundError(err)
+		if !d.errorHandler.isBGWorkStopped() {
+			if err := d.flush1(); err != nil {
+				// TODO(peter): count consecutive flush errors and backoff.
+				d.errorHandler.setBGError(err, BgFlush)
+			}
 		}
 		d.mu.compact.flushing = false
 		// More flush work may have arrived while we were flushing, so schedule
@@ -1405,6 +1410,9 @@ func (d *DB) maybeScheduleCompactionPicker(
 	pickFunc func(compactionPicker, compactionEnv) *pickedCompaction,
 ) {
 	if d.closed.Load() != nil || d.opts.ReadOnly {
+		return
+	}
+	if d.errorHandler.isBGWorkStopped() {
 		return
 	}
 	if d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions {
@@ -1688,10 +1696,18 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 	pprof.Do(context.Background(), compactLabels, func(context.Context) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		if err := d.compact1(c, errChannel); err != nil {
-			// TODO(peter): count consecutive compaction errors and backoff.
-			d.opts.EventListener.BackgroundError(err)
+
+		if d.errorHandler.isBGWorkStopped() {
+			if errChannel != nil {
+				errChannel <- d.errorHandler.getBGError()
+			}
+		} else {
+			if err := d.compact1(c, errChannel); err != nil {
+				// TODO(peter): count consecutive compaction errors and backoff.
+				d.errorHandler.setBGError(err, BgCompaction)
+			}
 		}
+
 		d.mu.compact.compactingCount--
 		// The previous compaction may have produced too many files in a
 		// level, so reschedule another compaction if needed.
