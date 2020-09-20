@@ -209,8 +209,8 @@ type commitEnv struct {
 type commitPipeline struct {
 	// Queue of pending batches to commit.
 	pending commitQueue
-	env commitEnv
-	sem chan struct{}
+	env     commitEnv
+	sem     chan struct{}
 	// The mutex to use for synchronizing access to logSeqNum and serializing
 	// calls to commitEnv.write().
 	mu sync.Mutex
