@@ -30,7 +30,7 @@ var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 
 type tableCache struct {
 	cache         *Cache
-	shards        []tableCacheShard
+	shards        []*tableCacheShard
 	filterMetrics FilterMetrics
 }
 
@@ -38,15 +38,16 @@ func (c *tableCache) init(cacheID uint64, dirname string, fs vfs.FS, opts *Optio
 	c.cache = opts.Cache
 	c.cache.Ref()
 
-	c.shards = make([]tableCacheShard, runtime.NumCPU())
+	c.shards = make([]*tableCacheShard, runtime.NumCPU())
 	for i := range c.shards {
+		c.shards[i] = &tableCacheShard{}
 		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards))
 		c.shards[i].filterMetrics = &c.filterMetrics
 	}
 }
 
 func (c *tableCache) getShard(fileNum FileNum) *tableCacheShard {
-	return &c.shards[uint64(fileNum)%uint64(len(c.shards))]
+	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
 }
 
 func (c *tableCache) newIters(
@@ -62,12 +63,12 @@ func (c *tableCache) evict(fileNum FileNum) {
 func (c *tableCache) metrics() (CacheMetrics, FilterMetrics) {
 	var m CacheMetrics
 	for i := range c.shards {
-		s := &c.shards[i]
+		s := c.shards[i]
 		s.mu.RLock()
 		m.Count += int64(len(s.mu.nodes))
 		s.mu.RUnlock()
-		m.Hits += atomic.LoadInt64(&s.hits)
-		m.Misses += atomic.LoadInt64(&s.misses)
+		m.Hits += atomic.LoadInt64(&s.atomic.hits)
+		m.Misses += atomic.LoadInt64(&s.atomic.misses)
 	}
 	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
 	f := FilterMetrics{
@@ -90,7 +91,7 @@ func (c *tableCache) withReader(meta *fileMetadata, fn func(*sstable.Reader) err
 func (c *tableCache) iterCount() int64 {
 	var n int64
 	for i := range c.shards {
-		n += int64(atomic.LoadInt32(&c.shards[i].iterCount))
+		n += int64(atomic.LoadInt32(&c.shards[i].atomic.iterCount))
 	}
 	return n
 }
@@ -98,6 +99,10 @@ func (c *tableCache) iterCount() int64 {
 func (c *tableCache) Close() error {
 	var err error
 	for i := range c.shards {
+		// The cache shard is not allocated yet, nothing to close
+		if c.shards[i] == nil {
+			continue
+		}
 		err = firstError(err, c.shards[i].Close())
 	}
 	c.cache.Unref()
@@ -105,6 +110,17 @@ func (c *tableCache) Close() error {
 }
 
 type tableCacheShard struct {
+	// WARNING: The following struct `atomic` contains fields are accessed atomically.
+	//
+	// Go allocations are guaranteed to be 64-bit aligned which we take advantage
+	// of by placing the 64-bit fields which we access atomically at the beginning
+	// of the DB struct. For more information, see https://golang.org/pkg/sync/atomic/#pkg-note-BUG.
+	atomic struct {
+		hits      int64
+		misses    int64
+		iterCount int32
+	}
+
 	logger  Logger
 	cacheID uint64
 	dirname string
@@ -127,10 +143,6 @@ type tableCacheShard struct {
 		sizeCold   int
 		sizeTest   int
 	}
-
-	hits          int64
-	misses        int64
-	iterCount     int32
 	releasing     sync.WaitGroup
 	releasingCh   chan *tableCacheValue
 	filterMetrics *FilterMetrics
@@ -198,7 +210,7 @@ func (c *tableCacheShard) newIters(
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here.
 	iter.SetCloseHook(v.closeHook)
 
-	atomic.AddInt32(&c.iterCount, 1)
+	atomic.AddInt32(&c.atomic.iterCount, 1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
@@ -297,7 +309,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		atomic.AddInt32(&v.refCount, 1)
 		c.mu.RUnlock()
 		atomic.StoreInt32(&n.referenced, 1)
-		atomic.AddInt64(&c.hits, 1)
+		atomic.AddInt64(&c.atomic.hits, 1)
 		<-v.loaded
 		return v
 	}
@@ -323,7 +335,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		v := n.value
 		atomic.AddInt32(&v.refCount, 1)
 		atomic.StoreInt32(&n.referenced, 1)
-		atomic.AddInt64(&c.hits, 1)
+		atomic.AddInt64(&c.atomic.hits, 1)
 		c.mu.Unlock()
 		<-v.loaded
 		return v
@@ -342,7 +354,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		c.mu.sizeHot++
 	}
 
-	atomic.AddInt64(&c.misses, 1)
+	atomic.AddInt64(&c.atomic.misses, 1)
 
 	v := &tableCacheValue{
 		loaded:   make(chan struct{}),
@@ -357,7 +369,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 			c.mu.Unlock()
 		}
 		c.unrefValue(v)
-		atomic.AddInt32(&c.iterCount, -1)
+		atomic.AddInt32(&c.atomic.iterCount, -1)
 		return nil
 	}
 	n.value = v
@@ -504,7 +516,7 @@ func (c *tableCacheShard) Close() error {
 	// Check for leaked iterators. Note that we'll still perform cleanup below in
 	// the case that there are leaked iterators.
 	var err error
-	if v := atomic.LoadInt32(&c.iterCount); v > 0 {
+	if v := atomic.LoadInt32(&c.atomic.iterCount); v > 0 {
 		if !invariants.RaceEnabled {
 			err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
 		} else {

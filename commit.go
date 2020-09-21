@@ -207,13 +207,20 @@ type commitEnv struct {
 // that committing of that unapplied batch will eventually find our (applied)
 // batch in the queue. See commitPipeline.publish for additional commentary.
 type commitPipeline struct {
-	env commitEnv
-	sem chan struct{}
+	// WARNING: The following struct `commitQueue` contains fields which will
+	// be accessed atomically.
+	//
+	// Go allocations are guaranteed to be 64-bit aligned which we take advantage
+	// of by placing the 64-bit fields which we access atomically at the beginning
+	// of the commitPipeline struct.
+	// For more information, see https://golang.org/pkg/sync/atomic/#pkg-note-BUG.
+	// Queue of pending batches to commit.
+	pending commitQueue
+	env     commitEnv
+	sem     chan struct{}
 	// The mutex to use for synchronizing access to logSeqNum and serializing
 	// calls to commitEnv.write().
 	mu sync.Mutex
-	// Queue of pending batches to commit.
-	pending commitQueue
 }
 
 func newCommitPipeline(env commitEnv) *commitPipeline {
