@@ -386,7 +386,7 @@ func TestLargeBatch(t *testing.T) {
 
 	startLogNum := logNum()
 	startLogStartSize := fileSize(startLogNum)
-	startSeqNum := atomic.LoadUint64(&d.mu.versions.logSeqNum)
+	startSeqNum := atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum)
 
 	// Write a key with a value larger than the memtable size.
 	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("a"), 512), nil))
@@ -735,7 +735,7 @@ func TestMemTableReservation(t *testing.T) {
 
 	checkReserved := func(expected int64) {
 		t.Helper()
-		if reserved := atomic.LoadInt64(&d.memTableReserved); expected != reserved {
+		if reserved := atomic.LoadInt64(&d.atomic.memTableReserved); expected != reserved {
 			t.Fatalf("expected %d reserved, but found %d", expected, reserved)
 		}
 	}

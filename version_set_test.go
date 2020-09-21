@@ -104,5 +104,5 @@ func TestVersionSetSeqNums(t *testing.T) {
 	// 2 ingestions happened, so LastSeqNum should equal 2.
 	require.Equal(t, uint64(2), lastSeqNum)
 	// logSeqNum is always one greater than the last assigned sequence number.
-	require.Equal(t, d.mu.versions.logSeqNum, lastSeqNum+1)
+	require.Equal(t, d.mu.versions.atomic.logSeqNum, lastSeqNum+1)
 }

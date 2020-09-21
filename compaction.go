@@ -1125,7 +1125,7 @@ func (d *DB) removeInProgressCompaction(c *compaction) {
 }
 
 func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
-	bytesFlushed := atomic.LoadUint64(&d.bytesFlushed)
+	bytesFlushed := atomic.LoadUint64(&d.atomic.bytesFlushed)
 
 	d.mu.Lock()
 	estimatedMaxWAmp := d.mu.versions.picker.getEstimatedMaxWAmp()
@@ -1290,7 +1290,7 @@ func (d *DB) flush1() error {
 	}
 
 	c := newFlush(d.opts, d.mu.versions.currentVersion(),
-		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], &d.bytesFlushed)
+		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], &d.atomic.bytesFlushed)
 	d.addInProgressCompaction(c)
 
 	jobID := d.mu.nextJobID
@@ -1354,7 +1354,7 @@ func (d *DB) flush1() error {
 	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
-	atomic.StoreUint64(&d.bytesFlushed, 0)
+	atomic.StoreUint64(&d.atomic.bytesFlushed, 0)
 
 	var flushed flushableList
 	if err == nil {
@@ -1429,7 +1429,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	env := compactionEnv{
-		bytesCompacted:          &d.bytesCompacted,
+		bytesCompacted:          &d.atomic.bytesCompacted,
 		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
 	}
@@ -1808,11 +1808,11 @@ func (d *DB) runCompaction(
 		iter := c.startLevel.files.Iter()
 		meta := iter.First()
 		c.metrics = map[int]*LevelMetrics{
-			c.startLevel.level: &LevelMetrics{
+			c.startLevel.level: {
 				NumFiles: -1,
 				Size:     -int64(meta.Size),
 			},
-			c.outputLevel.level: &LevelMetrics{
+			c.outputLevel.level: {
 				NumFiles:    1,
 				Size:        int64(meta.Size),
 				BytesMoved:  meta.Size,
@@ -1821,7 +1821,7 @@ func (d *DB) runCompaction(
 		}
 		ve := &versionEdit{
 			DeletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{Level: c.startLevel.level, FileNum: meta.FileNum}: true,
+				{Level: c.startLevel.level, FileNum: meta.FileNum}: true,
 			},
 			NewFiles: []newFileEntry{
 				{Level: c.outputLevel.level, Meta: meta},
@@ -1915,9 +1915,9 @@ func (d *DB) runCompaction(
 			BytesPerSync: d.opts.BytesPerSync,
 		})
 		file = &compactionFile{
-			File: file,
-			versions: &d.mu.versions,
-			written: &c.bytesWritten,
+			File:     file,
+			versions: d.mu.versions,
+			written:  &c.bytesWritten,
 		}
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)

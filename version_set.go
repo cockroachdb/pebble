@@ -36,6 +36,27 @@ type versionList = manifest.VersionList
 // like it sounds: a delta from the previous version. Version edits are logged
 // to the MANIFEST file, which is replayed at startup.
 type versionSet struct {
+	// WARNING: The following struct `atomic` contains fields are accessed atomically.
+	//
+	// Go allocations are guaranteed to be 64-bit aligned which we take advantage
+	// of by placing the 64-bit fields which we access atomically at the beginning
+	// of the versionSet struct.
+	// For more information, see https://golang.org/pkg/sync/atomic/#pkg-note-BUG.
+	atomic struct {
+		logSeqNum uint64 // next seqNum to use for WAL writes
+
+		// The upper bound on sequence numbers that have been assigned so far.
+		// A suffix of these sequence numbers may not have been written to a
+		// WAL. Both logSeqNum and visibleSeqNum are atomically updated by the
+		// commitPipeline.
+		visibleSeqNum uint64 // visible seqNum (<= logSeqNum)
+
+		// Number of bytes present in sstables being written by in-progress
+		// compactions. This value will be zero if there are no in-progress
+		// compactions. Updated and read atomically.
+		atomicInProgressBytes int64
+	}
+
 	// Immutable fields.
 	dirname string
 	// Set to DB.mu.
@@ -72,18 +93,6 @@ type versionSet struct {
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
 	nextFileNum FileNum
-
-	// The upper bound on sequence numbers that have been assigned so far.
-	// A suffix of these sequence numbers may not have been written to a
-	// WAL. Both logSeqNum and visibleSeqNum are atomically updated by the
-	// commitPipeline.
-	logSeqNum     uint64 // next seqNum to use for WAL writes
-	visibleSeqNum uint64 // visible seqNum (<= logSeqNum)
-
-	// Number of bytes present in sstables being written by in-progress
-	// compactions. This value will be zero if there are no in-progress
-	// compactions. Updated and read atomically.
-	atomicInProgressBytes int64
 
 	// The current manifest file number.
 	manifestFileNum FileNum
@@ -244,7 +253,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// (assuming no WALs contain higher sequence numbers than the
 			// manifest's LastSeqNum). Increment LastSeqNum by 1 to get the
 			// next sequence number that will be assigned.
-			vs.logSeqNum = ve.LastSeqNum + 1
+			vs.atomic.logSeqNum = ve.LastSeqNum + 1
 		}
 	}
 	// We have already set vs.nextFileNum = 2 at the beginning of the
@@ -363,7 +372,7 @@ func (vs *versionSet) logAndApply(
 	// in an unflushed memtable. logSeqNum is the _next_ sequence number that
 	// will be assigned, so subtract that by 1 to get the upper bound on the
 	// last assigned sequence number.
-	logSeqNum := atomic.LoadUint64(&vs.logSeqNum)
+	logSeqNum := atomic.LoadUint64(&vs.atomic.logSeqNum)
 	ve.LastSeqNum = logSeqNum - 1
 	if logSeqNum == 0 {
 		// logSeqNum is initialized to 1 in Open() if there are no previous WAL
@@ -513,7 +522,7 @@ func (vs *versionSet) incrementFlushes() {
 }
 
 func (vs *versionSet) incrementCompactionBytes(numBytes int64) {
-	atomic.AddInt64(&vs.atomicInProgressBytes, numBytes)
+	atomic.AddInt64(&vs.atomic.atomicInProgressBytes, numBytes)
 }
 
 // createManifest creates a manifest file that contains a snapshot of vs.
