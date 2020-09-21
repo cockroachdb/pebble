@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -42,27 +41,15 @@ func nodeToLeaf(n *node) *leafNode {
 	return (*leafNode)(unsafe.Pointer(n))
 }
 
-var leafPool = sync.Pool{
-	New: func() interface{} {
-		return new(leafNode)
-	},
-}
-
-var nodePool = sync.Pool{
-	New: func() interface{} {
-		return new(node)
-	},
-}
-
 func newLeafNode() *node {
-	n := leafToNode(leafPool.Get().(*leafNode))
+	n := leafToNode(new(leafNode))
 	n.leaf = true
 	n.ref = 1
 	return n
 }
 
 func newNode() *node {
-	n := nodePool.Get().(*node)
+	n := new(node)
 	n.ref = 1
 	return n
 }
@@ -107,7 +94,7 @@ func (n *node) decRef(recursive bool, obsolete *[]base.FileNum) {
 		return
 	}
 
-	// Dereference the node's metadata.
+	// Dereference the node's metadata and release child references.
 	if recursive {
 		for _, f := range n.items[:n.count] {
 			if atomic.AddInt32(&f.refs, -1) == 0 {
@@ -121,22 +108,11 @@ func (n *node) decRef(recursive bool, obsolete *[]base.FileNum) {
 				*obsolete = append(*obsolete, f.FileNum)
 			}
 		}
-	}
-
-	// Clear and release node into memory pool.
-	if n.leaf {
-		ln := nodeToLeaf(n)
-		*ln = leafNode{}
-		leafPool.Put(ln)
-	} else {
-		// Release child references first, if requested.
-		if recursive {
+		if !n.leaf {
 			for i := int16(0); i <= n.count; i++ {
 				n.children[i].decRef(true /* recursive */, obsolete)
 			}
 		}
-		*n = node{}
-		nodePool.Put(n)
 	}
 }
 
@@ -521,9 +497,8 @@ type btree struct {
 }
 
 // release dereferences and clears the root node of the btree, removing all
-// items from the btree. In doing so, it allows memory held by the btree to be
-// recycled. It returns a slice of file numbers of newly obsolete files, if
-// any.
+// items from the btree. In doing so, it decrements contained file counts.
+// It returns a slice of file numbers of newly obsolete files, if any.
 func (t *btree) release() (obsolete []base.FileNum) {
 	if t.root != nil {
 		t.root.decRef(true /* recursive */, &obsolete)
