@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	minLatency = 10 * time.Microsecond
-	maxLatency = 10 * time.Second
+	minLatency	= 10 * time.Microsecond
+	maxLatency	= 10 * time.Second
 )
 
 func startCPUProfile() func() {
@@ -113,10 +113,10 @@ func newHistogram() *hdrhistogram.Histogram {
 }
 
 type namedHistogram struct {
-	name string
-	mu   struct {
+	name	string
+	mu	struct {
 		sync.Mutex
-		current *hdrhistogram.Histogram
+		current	*hdrhistogram.Histogram
 	}
 }
 
@@ -155,37 +155,37 @@ func (w *namedHistogram) tick(fn func(h *hdrhistogram.Histogram)) {
 
 type histogramTick struct {
 	// Name is the name given to the histograms represented by this tick.
-	Name string
+	Name	string
 	// Hist is the merged result of the represented histograms for this tick.
 	// Hist.TotalCount() is the number of operations that occurred for this tick.
-	Hist *hdrhistogram.Histogram
+	Hist	*hdrhistogram.Histogram
 	// Cumulative is the merged result of the represented histograms for all
 	// time. Cumulative.TotalCount() is the total number of operations that have
 	// occurred over all time.
-	Cumulative *hdrhistogram.Histogram
+	Cumulative	*hdrhistogram.Histogram
 	// Elapsed is the amount of time since the last tick.
-	Elapsed time.Duration
+	Elapsed	time.Duration
 	// Now is the time at which the tick was gathered. It covers the period
 	// [Now-Elapsed,Now).
-	Now time.Time
+	Now	time.Time
 }
 
 type histogramRegistry struct {
-	mu struct {
+	mu	struct {
 		sync.Mutex
-		registered []*namedHistogram
+		registered	[]*namedHistogram
 	}
 
-	start      time.Time
-	cumulative map[string]*hdrhistogram.Histogram
-	prevTick   map[string]time.Time
+	start		time.Time
+	cumulative	map[string]*hdrhistogram.Histogram
+	prevTick	map[string]time.Time
 }
 
 func newHistogramRegistry() *histogramRegistry {
 	return &histogramRegistry{
-		start:      time.Now(),
-		cumulative: make(map[string]*hdrhistogram.Histogram),
-		prevTick:   make(map[string]time.Time),
+		start:		time.Now(),
+		cumulative:	make(map[string]*hdrhistogram.Histogram),
+		prevTick:	make(map[string]time.Time),
 	}
 }
 
@@ -232,19 +232,19 @@ func (w *histogramRegistry) Tick(fn func(histogramTick)) {
 		}
 		w.prevTick[name] = now
 		fn(histogramTick{
-			Name:       name,
-			Hist:       merged[name],
-			Cumulative: w.cumulative[name],
-			Elapsed:    now.Sub(prevTick),
-			Now:        now,
+			Name:		name,
+			Hist:		merged[name],
+			Cumulative:	w.cumulative[name],
+			Elapsed:	now.Sub(prevTick),
+			Now:		now,
 		})
 	}
 }
 
 type test struct {
-	init func(db DB, wg *sync.WaitGroup)
-	tick func(elapsed time.Duration, i int)
-	done func(elapsed time.Duration)
+	init	func(db DB, wg *sync.WaitGroup)
+	tick	func(elapsed time.Duration, i int)
+	done	func(elapsed time.Duration)
 }
 
 func runTest(dir string, t test) {

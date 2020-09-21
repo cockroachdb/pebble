@@ -33,10 +33,10 @@ func TestSetCurrentFileCrash(t *testing.T) {
 	{
 		wantErr := errors.New("rename error")
 		_, err := Open("", &Options{
-			FS:                    renameErrorFS{FS: mem, err: wantErr},
-			Logger:                noFatalLogger{t: t},
-			MaxManifestFileSize:   1,
-			L0CompactionThreshold: 10,
+			FS:			renameErrorFS{FS: mem, err: wantErr},
+			Logger:			noFatalLogger{t: t},
+			MaxManifestFileSize:	1,
+			L0CompactionThreshold:	10,
 		})
 		// Open should fail during a manifest roll,
 		// leaving a temp dir on the filesystem.
@@ -56,9 +56,9 @@ func TestSetCurrentFileCrash(t *testing.T) {
 	// files on Open.
 	{
 		d, err := Open("", &Options{
-			FS:                    mem,
-			MaxManifestFileSize:   1,
-			L0CompactionThreshold: 10,
+			FS:			mem,
+			MaxManifestFileSize:	1,
+			L0CompactionThreshold:	10,
 		})
 		require.NoError(t, err)
 		require.NoError(t, d.Close())
@@ -83,7 +83,7 @@ func allTempFiles(t *testing.T, fs vfs.FS) []string {
 
 type renameErrorFS struct {
 	vfs.FS
-	err error
+	err	error
 }
 
 func (fs renameErrorFS) Rename(oldname string, newname string) error {

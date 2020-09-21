@@ -130,8 +130,8 @@ func TestMany(t *testing.T) {
 func TestRandom(t *testing.T) {
 	const n = 1e2
 	var (
-		i int
-		r *rand.Rand
+		i	int
+		r	*rand.Rand
 	)
 	reset := func() {
 		i, r = 0, rand.New(rand.NewSource(0))
@@ -289,9 +289,9 @@ func TestStaleReader(t *testing.T) {
 }
 
 type testRecords struct {
-	records [][]byte // The raw value of each record.
-	offsets []int64  // The offset of each record within buf, derived from writer.LastRecordOffset.
-	buf     []byte   // The serialized records form of all records.
+	records	[][]byte	// The raw value of each record.
+	offsets	[]int64		// The offset of each record within buf, derived from writer.LastRecordOffset.
+	buf	[]byte		// The serialized records form of all records.
 }
 
 // makeTestRecords generates test records of specified lengths.
@@ -736,7 +736,7 @@ func TestSeekRecord(t *testing.T) {
 	if err != io.ErrUnexpectedEOF {
 		t.Fatalf("Seeking past EOF raised unexpected error: %v", err)
 	}
-	r.recover() // Verify recovery works.
+	r.recover()	// Verify recovery works.
 
 	// Validate the current records are returned after seeking to a valid offset.
 	err = r.seekRecord(blockSize * 4)
@@ -851,7 +851,7 @@ func TestSize(t *testing.T) {
 
 type limitedWriter struct {
 	io.Writer
-	limit int
+	limit	int
 }
 
 func (w *limitedWriter) Write(p []byte) (n int, err error) {
@@ -888,8 +888,8 @@ func TestRecycleLog(t *testing.T) {
 	for i := 1; i <= 100; i++ {
 		blocks := rnd.Intn(100)
 		limitedBuf := &limitedWriter{
-			Writer: bytes.NewBuffer(backing[:0]),
-			limit:  blocks,
+			Writer:	bytes.NewBuffer(backing[:0]),
+			limit:	blocks,
 		}
 
 		w := NewLogWriter(limitedBuf, base.FileNum(i))

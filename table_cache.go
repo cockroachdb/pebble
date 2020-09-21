@@ -29,9 +29,9 @@ var emptyIter = &errorIter{err: nil}
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 
 type tableCache struct {
-	cache         *Cache
-	shards        []tableCacheShard
-	filterMetrics FilterMetrics
+	cache		*Cache
+	shards		[]tableCacheShard
+	filterMetrics	FilterMetrics
 }
 
 func (c *tableCache) init(cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int) {
@@ -71,8 +71,8 @@ func (c *tableCache) metrics() (CacheMetrics, FilterMetrics) {
 	}
 	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
 	f := FilterMetrics{
-		Hits:   atomic.LoadInt64(&c.filterMetrics.Hits),
-		Misses: atomic.LoadInt64(&c.filterMetrics.Misses),
+		Hits:	atomic.LoadInt64(&c.filterMetrics.Hits),
+		Misses:	atomic.LoadInt64(&c.filterMetrics.Misses),
 	}
 	return m, f
 }
@@ -105,35 +105,35 @@ func (c *tableCache) Close() error {
 }
 
 type tableCacheShard struct {
-	logger  Logger
-	cacheID uint64
-	dirname string
-	fs      vfs.FS
-	opts    sstable.ReaderOptions
-	size    int
+	logger	Logger
+	cacheID	uint64
+	dirname	string
+	fs	vfs.FS
+	opts	sstable.ReaderOptions
+	size	int
 
-	mu struct {
+	mu	struct {
 		sync.RWMutex
-		nodes map[FileNum]*tableCacheNode
+		nodes	map[FileNum]*tableCacheNode
 		// The iters map is only created and populated in race builds.
-		iters map[sstable.Iterator][]byte
+		iters	map[sstable.Iterator][]byte
 
-		handHot  *tableCacheNode
-		handCold *tableCacheNode
-		handTest *tableCacheNode
+		handHot		*tableCacheNode
+		handCold	*tableCacheNode
+		handTest	*tableCacheNode
 
-		coldTarget int
-		sizeHot    int
-		sizeCold   int
-		sizeTest   int
+		coldTarget	int
+		sizeHot		int
+		sizeCold	int
+		sizeTest	int
 	}
 
-	hits          int64
-	misses        int64
-	iterCount     int32
-	releasing     sync.WaitGroup
-	releasingCh   chan *tableCacheValue
-	filterMetrics *FilterMetrics
+	hits		int64
+	misses		int64
+	iterCount	int32
+	releasing	sync.WaitGroup
+	releasingCh	chan *tableCacheValue
+	filterMetrics	*FilterMetrics
 }
 
 func (c *tableCacheShard) init(cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int) {
@@ -310,8 +310,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	case n == nil:
 		// Slow-path miss of a non-existent node.
 		n = &tableCacheNode{
-			meta:  meta,
-			ptype: tableCacheNodeCold,
+			meta:	meta,
+			ptype:	tableCacheNodeCold,
 		}
 		c.addNode(n)
 		c.mu.sizeCold++
@@ -345,8 +345,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	atomic.AddInt64(&c.misses, 1)
 
 	v := &tableCacheValue{
-		loaded:   make(chan struct{}),
-		refCount: 2,
+		loaded:		make(chan struct{}),
+		refCount:	2,
 	}
 	// Cache the closure invoked when an iterator is closed. This avoids an
 	// allocation on every call to newIters.
@@ -545,13 +545,13 @@ func (c *tableCacheShard) Close() error {
 }
 
 type tableCacheValue struct {
-	closeHook func(i sstable.Iterator) error
-	reader    *sstable.Reader
-	err       error
-	loaded    chan struct{}
+	closeHook	func(i sstable.Iterator) error
+	reader		*sstable.Reader
+	err		error
+	loaded		chan struct{}
 	// Reference count for the value. The reader is closed when the reference
 	// count drops to zero.
-	refCount int32
+	refCount	int32
 }
 
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
@@ -595,7 +595,7 @@ func (v *tableCacheValue) release(c *tableCacheShard) {
 type tableCacheNodeType int8
 
 const (
-	tableCacheNodeTest tableCacheNodeType = iota
+	tableCacheNodeTest	tableCacheNodeType	= iota
 	tableCacheNodeCold
 	tableCacheNodeHot
 )
@@ -613,17 +613,17 @@ func (p tableCacheNodeType) String() string {
 }
 
 type tableCacheNode struct {
-	meta  *fileMetadata
-	value *tableCacheValue
+	meta	*fileMetadata
+	value	*tableCacheValue
 
-	links struct {
-		next *tableCacheNode
-		prev *tableCacheNode
+	links	struct {
+		next	*tableCacheNode
+		prev	*tableCacheNode
 	}
-	ptype tableCacheNodeType
+	ptype	tableCacheNodeType
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
-	referenced int32
+	referenced	int32
 }
 
 func (n *tableCacheNode) next() *tableCacheNode {

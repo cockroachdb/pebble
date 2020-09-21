@@ -30,15 +30,15 @@ func (l panicLogger) Fatalf(format string, args ...interface{}) {
 // corruptFS injects a corruption in the `index`th byte read.
 type corruptFS struct {
 	vfs.FS
-	index     int32
-	bytesRead int32
+	index		int32
+	bytesRead	int32
 }
 
 func newCorruptFS(index int32) *corruptFS {
 	return &corruptFS{
-		FS:        vfs.NewMem(),
-		index:     index,
-		bytesRead: 0,
+		FS:		vfs.NewMem(),
+		index:		index,
+		bytesRead:	0,
 	}
 }
 
@@ -64,7 +64,7 @@ func (fs *corruptFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error)
 
 type corruptFile struct {
 	vfs.File
-	fs *corruptFS
+	fs	*corruptFS
 }
 
 func (f corruptFile) Read(p []byte) (int, error) {
@@ -106,8 +106,8 @@ func TestErrors(t *testing.T) {
 		}()
 
 		d, err := Open("", &Options{
-			FS:     fs,
-			Logger: panicLogger{},
+			FS:	fs,
+			Logger:	panicLogger{},
 		})
 		if err != nil {
 			return err
@@ -169,8 +169,8 @@ func TestRequireReadError(t *testing.T) {
 		inj := errorfs.OnIndex(-1)
 		fs := errorfs.Wrap(vfs.NewMem(), inj)
 		opts := &Options{
-			FS:     fs,
-			Logger: panicLogger{},
+			FS:	fs,
+			Logger:	panicLogger{},
 		}
 		opts.private.disableTableStats = true
 		d, err := Open("", opts)
@@ -251,12 +251,12 @@ func TestCorruptReadError(t *testing.T) {
 	run := func(index int32) (err error) {
 		// Perform setup with corruption injection disabled as it involves writes/background ops.
 		fs := &corruptFS{
-			FS:    vfs.NewMem(),
-			index: -1,
+			FS:	vfs.NewMem(),
+			index:	-1,
 		}
 		opts := &Options{
-			FS:     fs,
-			Logger: panicLogger{},
+			FS:	fs,
+			Logger:	panicLogger{},
 		}
 		opts.private.disableTableStats = true
 		d, err := Open("", opts)
@@ -345,9 +345,9 @@ func TestDBWALRotationCrash(t *testing.T) {
 
 	run := func(fs *errorfs.FS, k int32) (err error) {
 		opts := &Options{
-			FS:           fs,
-			Logger:       panicLogger{},
-			MemTableSize: 1024,
+			FS:		fs,
+			Logger:		panicLogger{},
+			MemTableSize:	1024,
 		}
 		opts.private.disableTableStats = true
 		d, err := Open("", opts)

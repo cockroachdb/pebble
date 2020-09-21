@@ -3,7 +3,7 @@
 // the LICENSE file.
 
 // Package pebble provides an ordered key/value store.
-package pebble // import "github.com/cockroachdb/pebble"
+package pebble	// import "github.com/cockroachdb/pebble"
 
 import (
 	"fmt"
@@ -26,23 +26,23 @@ import (
 
 const (
 	// minTableCacheSize is the minimum size of the table cache.
-	minTableCacheSize = 64
+	minTableCacheSize	= 64
 
 	// numNonTableCacheFiles is an approximation for the number of MaxOpenFiles
 	// that we don't use for table caches.
-	numNonTableCacheFiles = 10
+	numNonTableCacheFiles	= 10
 )
 
 var (
 	// ErrNotFound is returned when a get operation does not find the requested
 	// key.
-	ErrNotFound = base.ErrNotFound
+	ErrNotFound	= base.ErrNotFound
 	// ErrClosed is returned when an operation is performed on a closed snapshot
 	// or DB. Use errors.Is(err, ErrClosed) to check for this error.
-	ErrClosed = errors.New("pebble: closed")
+	ErrClosed	= errors.New("pebble: closed")
 	// ErrReadOnly is returned when a write operation is performed on a read-only
 	// database.
-	ErrReadOnly = errors.New("pebble: read-only")
+	ErrReadOnly	= errors.New("pebble: read-only")
 )
 
 // Reader is a readable key/value store.
@@ -160,64 +160,64 @@ type Writer interface {
 //		Comparer: myComparer,
 //	})
 type DB struct {
-	cacheID        uint64
-	dirname        string
-	walDirname     string
-	opts           *Options
-	cmp            Compare
-	equal          Equal
-	merge          Merge
-	split          Split
-	abbreviatedKey AbbreviatedKey
+	cacheID		uint64
+	dirname		string
+	walDirname	string
+	opts		*Options
+	cmp		Compare
+	equal		Equal
+	merge		Merge
+	split		Split
+	abbreviatedKey	AbbreviatedKey
 	// The threshold for determining when a batch is "large" and will skip being
 	// inserted into a memtable.
-	largeBatchThreshold int
+	largeBatchThreshold	int
 	// The current OPTIONS file number.
-	optionsFileNum FileNum
+	optionsFileNum	FileNum
 
-	fileLock io.Closer
-	dataDir  vfs.File
-	walDir   vfs.File
+	fileLock	io.Closer
+	dataDir		vfs.File
+	walDir		vfs.File
 
-	tableCache tableCache
-	newIters   tableNewIters
+	tableCache	tableCache
+	newIters	tableNewIters
 
-	commit *commitPipeline
+	commit	*commitPipeline
 
 	// readState provides access to the state needed for reading without needing
 	// to acquire DB.mu.
-	readState struct {
+	readState	struct {
 		sync.RWMutex
-		val *readState
+		val	*readState
 	}
 
 	// logRecycler holds a set of log file numbers that are available for
 	// reuse. Writing to a recycled log file is faster than to a new log file on
 	// some common filesystems (xfs, and ext3/4) due to avoiding metadata
 	// updates.
-	logRecycler logRecycler
+	logRecycler	logRecycler
 
-	closed   atomic.Value
-	closedCh chan struct{}
+	closed		atomic.Value
+	closedCh	chan struct{}
 
 	// The count and size of referenced memtables. This includes memtables
 	// present in DB.mu.mem.queue, as well as memtables that have been flushed
 	// but are still referenced by an inuse readState.
-	memTableCount    int64
-	memTableReserved int64 // number of bytes reserved in the cache for memtables
+	memTableCount		int64
+	memTableReserved	int64	// number of bytes reserved in the cache for memtables
 
-	compactionLimiter limiter
+	compactionLimiter	limiter
 
 	// bytesFlushed is the number of bytes flushed in the current flush. This
 	// must be read/written atomically since it is accessed by both the flush
 	// and compaction routines.
-	bytesFlushed uint64
+	bytesFlushed	uint64
 	// bytesCompacted is the number of bytes compacted in the current compaction.
 	// This is used as a dummy variable to increment during compaction, and the
 	// value is not used anywhere.
-	bytesCompacted uint64
+	bytesCompacted	uint64
 
-	flushLimiter limiter
+	flushLimiter	limiter
 
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
@@ -229,31 +229,31 @@ type DB struct {
 	// it held. See versionSet.logAndApply() and DB.makeRoomForWrite() for
 	// examples. This is a common pattern, so be careful about expectations that
 	// DB.mu will be held continuously across a set of calls.
-	mu struct {
+	mu	struct {
 		sync.Mutex
 
 		// The ID of the next job. Job IDs are passed to event listener
 		// notifications and act as a mechanism for tying together the events and
 		// log messages for a single job such as a flush, compaction, or file
 		// ingestion. Job IDs are not serialized to disk or used for correctness.
-		nextJobID int
+		nextJobID	int
 
 		// The collection of immutable versions and state about the log and visible
 		// sequence numbers.
-		versions versionSet
+		versions	versionSet
 
-		log struct {
+		log	struct {
 			// The queue of logs, containing both flushed and unflushed logs. The
 			// flushed logs will be a prefix, the unflushed logs a suffix. The
 			// delimeter between flushed and unflushed logs is
 			// versionSet.minUnflushedLogNum.
-			queue []FileNum
+			queue	[]FileNum
 			// The size of the current log file (i.e. queue[len(queue)-1].
-			size uint64
+			size	uint64
 			// The number of input bytes to the log. This is the raw size of the
 			// batches written to the WAL, without the overhead of the record
 			// envelopes.
-			bytesIn uint64
+			bytesIn	uint64
 			// The LogWriter is protected by commitPipeline.mu. This allows log
 			// writes to be performed without holding DB.mu, but requires both
 			// commitPipeline.mu and DB.mu to be held when rotating the WAL/memtable
@@ -261,85 +261,85 @@ type DB struct {
 			*record.LogWriter
 		}
 
-		mem struct {
+		mem	struct {
 			// Condition variable used to serialize memtable switching. See
 			// DB.makeRoomForWrite().
-			cond sync.Cond
+			cond	sync.Cond
 			// The current mutable memTable.
-			mutable *memTable
+			mutable	*memTable
 			// Queue of flushables (the mutable memtable is at end). Elements are
 			// added to the end of the slice and removed from the beginning. Once an
 			// index is set it is never modified making a fixed slice immutable and
 			// safe for concurrent reads.
-			queue flushableList
+			queue	flushableList
 			// True when the memtable is actively been switched. Both mem.mutable and
 			// log.LogWriter are invalid while switching is true.
-			switching bool
+			switching	bool
 			// nextSize is the size of the next memtable. The memtable size starts at
 			// min(256KB,Options.MemTableSize) and doubles each time a new memtable
 			// is allocated up to Options.MemTableSize. This reduces the memory
 			// footprint of memtables when lots of DB instances are used concurrently
 			// in test environments.
-			nextSize int
+			nextSize	int
 		}
 
-		compact struct {
+		compact	struct {
 			// Condition variable used to signal when a flush or compaction has
 			// completed. Used by the write-stall mechanism to wait for the stall
 			// condition to clear. See DB.makeRoomForWrite().
-			cond sync.Cond
+			cond	sync.Cond
 			// True when a flush is in progress.
-			flushing bool
+			flushing	bool
 			// The number of ongoing compactions.
-			compactingCount int
+			compactingCount	int
 			// The list of deletion hints, suggesting ranges for delete-only
 			// compactions.
-			deletionHints []deleteCompactionHint
+			deletionHints	[]deleteCompactionHint
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
-			manual []*manualCompaction
+			manual	[]*manualCompaction
 			// inProgress is the set of in-progress flushes and compactions.
-			inProgress map[*compaction]struct{}
+			inProgress	map[*compaction]struct{}
 		}
 
-		cleaner struct {
+		cleaner	struct {
 			// Condition variable used to signal the completion of a file cleaning
 			// operation or an increment to the value of disabled. File cleaning operations are
 			// serialized, and a caller trying to do a file cleaning operation may wait
 			// until the ongoing one is complete.
-			cond sync.Cond
+			cond	sync.Cond
 			// True when a file cleaning operation is in progress.
-			cleaning bool
+			cleaning	bool
 			// Non-zero when file cleaning is disabled. The disabled count acts as a
 			// reference count to prohibit file cleaning. See
 			// DB.{disable,Enable}FileDeletions().
-			disabled int
+			disabled	int
 		}
 
 		// The list of active snapshots.
-		snapshots snapshotList
+		snapshots	snapshotList
 
-		tableStats struct {
+		tableStats	struct {
 			// Condition variable used to signal the completion of a
 			// job to collect table stats.
-			cond sync.Cond
+			cond	sync.Cond
 			// True when a stat collection operation is in progress.
-			loading bool
+			loading	bool
 			// True if stat collection has loaded statistics for all tables
 			// other than those listed explcitly in pending. This flag starts
 			// as false when a database is opened and flips to true once stat
 			// collection has caught up.
-			loadedInitial bool
+			loadedInitial	bool
 			// A slice of files for which stats have not been computed.
 			// Compactions, ingests, flushes append files to be processed. An
 			// active stat collection goroutine clears the list and processes
 			// them.
-			pending []manifest.NewFileEntry
+			pending	[]manifest.NewFileEntry
 		}
 	}
 
 	// Normally equal to time.Now() but may be overridden in tests.
-	timeNow func() time.Time
+	timeNow	func() time.Time
 }
 
 var _ Reader = (*DB)(nil)
@@ -376,8 +376,8 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 
 	var buf struct {
-		dbi Iterator
-		get getIter
+		dbi	Iterator
+		get	getIter
 	}
 
 	get := &buf.get
@@ -649,11 +649,11 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 }
 
 type iterAlloc struct {
-	dbi     Iterator
-	keyBuf  []byte
-	merging mergingIter
-	mlevels [3 + numLevels]mergingIterLevel
-	levels  [3 + numLevels]levelIter
+	dbi	Iterator
+	keyBuf	[]byte
+	merging	mergingIter
+	mlevels	[3 + numLevels]mergingIterLevel
+	levels	[3 + numLevels]levelIter
 }
 
 var iterAllocPool = sync.Pool{
@@ -690,14 +690,14 @@ func (d *DB) newIterInternal(
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		alloc:     buf,
-		cmp:       d.cmp,
-		equal:     d.equal,
-		iter:      &buf.merging,
-		merge:     d.merge,
-		split:     d.split,
-		readState: readState,
-		keyBuf:    buf.keyBuf,
+		alloc:		buf,
+		cmp:		d.cmp,
+		equal:		d.equal,
+		iter:		&buf.merging,
+		merge:		d.merge,
+		split:		d.split,
+		readState:	readState,
+		keyBuf:		buf.keyBuf,
 	}
 	if o != nil {
 		dbi.opts = *o
@@ -707,8 +707,8 @@ func (d *DB) newIterInternal(
 	mlevels := buf.mlevels[:0]
 	if batchIter != nil {
 		mlevels = append(mlevels, mergingIterLevel{
-			iter:         batchIter,
-			rangeDelIter: batchRangeDelIter,
+			iter:		batchIter,
+			rangeDelIter:	batchRangeDelIter,
 		})
 	}
 
@@ -721,8 +721,8 @@ func (d *DB) newIterInternal(
 			continue
 		}
 		mlevels = append(mlevels, mergingIterLevel{
-			iter:         mem.newIter(&dbi.opts),
-			rangeDelIter: mem.newRangeDelIter(&dbi.opts),
+			iter:		mem.newIter(&dbi.opts),
+			rangeDelIter:	mem.newRangeDelIter(&dbi.opts),
 		})
 	}
 
@@ -808,7 +808,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
 func (d *DB) NewIter(o *IterOptions) *Iterator {
-	return d.newIterInternal(nil, /* batchIter */
+	return d.newIterInternal(nil,	/* batchIter */
 		nil /* batchRangeDelIter */, nil /* snapshot */, o)
 }
 
@@ -827,8 +827,8 @@ func (d *DB) NewSnapshot() *Snapshot {
 
 	d.mu.Lock()
 	s := &Snapshot{
-		db:     d,
-		seqNum: atomic.LoadUint64(&d.mu.versions.visibleSeqNum),
+		db:	d,
+		seqNum:	atomic.LoadUint64(&d.mu.versions.visibleSeqNum),
 	}
 	d.mu.snapshots.pushBack(s)
 	d.mu.Unlock()
@@ -930,7 +930,7 @@ func (d *DB) Compact(
 
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
-	meta := []*fileMetadata{&fileMetadata{Smallest: iStart, Largest: iEnd}}
+	meta := []*fileMetadata{{Smallest: iStart, Largest: iEnd}}
 
 	d.mu.Lock()
 	maxLevelWithFiles := 1
@@ -984,10 +984,10 @@ func (d *DB) Compact(
 
 	for level := 0; level < maxLevelWithFiles; {
 		manual := &manualCompaction{
-			done:  make(chan error, 1),
-			level: level,
-			start: iStart,
-			end:   iEnd,
+			done:	make(chan error, 1),
+			level:	level,
+			start:	iStart,
+			end:	iEnd,
 		}
 		if err := d.manualCompact(manual); err != nil {
 			return err
@@ -1061,7 +1061,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.MemTable.ZombieSize = uint64(atomic.LoadInt64(&d.memTableReserved)) - metrics.MemTable.Size
 	metrics.WAL.ObsoleteFiles = int64(recycledLogs)
 	metrics.WAL.Size = atomic.LoadUint64(&d.mu.log.size)
-	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
+	metrics.WAL.BytesIn = d.mu.log.bytesIn	// protected by d.mu
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
 		metrics.WAL.Size += d.mu.mem.queue[i].logSize
 	}
@@ -1205,9 +1205,9 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 	releaseAccountingReservation := d.opts.Cache.Reserve(size)
 
 	mem := newMemTable(memTableOptions{
-		Options:   d.opts,
-		arenaBuf:  manual.New(int(size)),
-		logSeqNum: logSeqNum,
+		Options:	d.opts,
+		arenaBuf:	manual.New(int(size)),
+		logSeqNum:	logSeqNum,
 	})
 	if invariants.Enabled {
 		runtime.SetFinalizer(mem, checkMemTable)
@@ -1226,11 +1226,11 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 
 func (d *DB) newFlushableEntry(f flushable, logNum FileNum, logSeqNum uint64) *flushableEntry {
 	return &flushableEntry{
-		flushable:  f,
-		flushed:    make(chan struct{}),
-		logNum:     logNum,
-		logSeqNum:  logSeqNum,
-		readerRefs: 1,
+		flushable:	f,
+		flushed:	make(chan struct{}),
+		logNum:		logNum,
+		logSeqNum:	logSeqNum,
+		readerRefs:	1,
 	}
 }
 
@@ -1351,8 +1351,8 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				newLogFile.Close()
 			} else if err == nil {
 				newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
-					BytesPerSync:    d.opts.BytesPerSync,
-					PreallocateSize: d.walPreallocateSize(),
+					BytesPerSync:		d.opts.BytesPerSync,
+					PreallocateSize:	d.walPreallocateSize(),
 				})
 			}
 
@@ -1361,11 +1361,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			}
 
 			d.opts.EventListener.WALCreated(WALCreateInfo{
-				JobID:           jobID,
-				Path:            newLogName,
-				FileNum:         newLogNum,
-				RecycledFileNum: recycleLogNum,
-				Err:             err,
+				JobID:			jobID,
+				Path:			newLogName,
+				FileNum:		newLogNum,
+				RecycledFileNum:	recycleLogNum,
+				Err:			err,
 			})
 
 			d.mu.Lock()
@@ -1472,8 +1472,8 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 	for c := range d.mu.compact.inProgress {
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
-				inputs:      c.inputs,
-				outputLevel: -1,
+				inputs:		c.inputs,
+				outputLevel:	-1,
 			}
 			if c.outputLevel != nil {
 				info.outputLevel = c.outputLevel.level

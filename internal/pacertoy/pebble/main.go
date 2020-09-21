@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/rate"
-
 	"golang.org/x/exp/rand"
 )
 
@@ -23,39 +22,39 @@ const (
 	// latencies after all writes are completed. In this mode, all writes
 	// are immediately queued. If this is disabled, writes come in continually
 	// at different rates.
-	measureLatency = false
+	measureLatency	= false
 
-	writeAmount = 2000 << 20 // 2 GB
+	writeAmount	= 2000 << 20	// 2 GB
 
 	// Max rate for all compactions. This is intentionally set low enough that
 	// user writes will have to be delayed.
-	maxCompactionRate = 100 << 20 // 100 MB/s
-	minCompactionRate = 20 << 20  // 20 MB/s
+	maxCompactionRate	= 100 << 20	// 100 MB/s
+	minCompactionRate	= 20 << 20	// 20 MB/s
 
-	memtableSize        = 64 << 20 // 64 MB
-	maxMemtableCount    = 5
-	drainDelayThreshold = 1.05 * memtableSize
-	maxFlushRate        = 30 << 20 // 30 MB/s
-	minFlushRate        = 4 << 20  // 4 MB/s
+	memtableSize		= 64 << 20	// 64 MB
+	maxMemtableCount	= 5
+	drainDelayThreshold	= 1.05 * memtableSize
+	maxFlushRate		= 30 << 20	// 30 MB/s
+	minFlushRate		= 4 << 20	// 4 MB/s
 
-	l0CompactionThreshold = 1
+	l0CompactionThreshold	= 1
 
-	levelRatio = 10
-	numLevels  = 7
+	levelRatio	= 10
+	numLevels	= 7
 
-	compactionDebtSlowdownThreshold = 2 * memtableSize
+	compactionDebtSlowdownThreshold	= 2 * memtableSize
 )
 
 type compactionPacer struct {
-	level      int64
-	maxDrainer *rate.Limiter
-	minDrainer *rate.Limiter
+	level		int64
+	maxDrainer	*rate.Limiter
+	minDrainer	*rate.Limiter
 }
 
 func newCompactionPacer() *compactionPacer {
 	p := &compactionPacer{
-		maxDrainer: rate.NewLimiter(maxCompactionRate, maxCompactionRate),
-		minDrainer: rate.NewLimiter(minCompactionRate, minCompactionRate),
+		maxDrainer:	rate.NewLimiter(maxCompactionRate, maxCompactionRate),
+		minDrainer:	rate.NewLimiter(minCompactionRate, minCompactionRate),
 	}
 	return p
 }
@@ -75,20 +74,20 @@ func (p *compactionPacer) drain(n int64, delay bool) bool {
 }
 
 type flushPacer struct {
-	level           int64
-	drainDelayLevel float64
-	fillCond        sync.Cond
+	level		int64
+	drainDelayLevel	float64
+	fillCond	sync.Cond
 	// minDrainer is the drainer which sets the minimum speed of draining.
-	minDrainer *rate.Limiter
+	minDrainer	*rate.Limiter
 	// maxDrainer is the drainer which sets the maximum speed of draining.
-	maxDrainer *rate.Limiter
+	maxDrainer	*rate.Limiter
 }
 
 func newFlushPacer(mu *sync.Mutex) *flushPacer {
 	p := &flushPacer{
-		drainDelayLevel: drainDelayThreshold,
-		minDrainer:      rate.NewLimiter(minFlushRate, minFlushRate),
-		maxDrainer:      rate.NewLimiter(maxFlushRate, maxFlushRate),
+		drainDelayLevel:	drainDelayThreshold,
+		minDrainer:		rate.NewLimiter(minFlushRate, minFlushRate),
+		maxDrainer:		rate.NewLimiter(maxFlushRate, maxFlushRate),
 	}
 	p.fillCond.L = mu
 	return p
@@ -112,23 +111,23 @@ func (p *flushPacer) drain(n int64, delay bool) bool {
 
 // DB models a Pebble DB.
 type DB struct {
-	mu         sync.Mutex
-	flushPacer *flushPacer
-	flushCond  sync.Cond
-	memtables  []*int64
-	fill       int64
-	drain      int64
+	mu		sync.Mutex
+	flushPacer	*flushPacer
+	flushCond	sync.Cond
+	memtables	[]*int64
+	fill		int64
+	drain		int64
 
-	compactionMu    sync.Mutex
-	compactionPacer *compactionPacer
+	compactionMu	sync.Mutex
+	compactionPacer	*compactionPacer
 	// L0 is represented as an array of integers whereas every other level
 	// is represented as a single integer.
-	L0 []*int64
+	L0	[]*int64
 	// Non-L0 sstables. sstables[0] == L1.
-	sstables            []int64
-	maxSSTableSizes     []int64
-	compactionFlushCond sync.Cond
-	prevCompactionDebt  float64
+	sstables		[]int64
+	maxSSTableSizes		[]int64
+	compactionFlushCond	sync.Cond
+	prevCompactionDebt	float64
 }
 
 func newDB() *DB {
@@ -325,7 +324,7 @@ func (db *DB) printLevels() {
 
 // simulateWrite simulates user writes.
 func simulateWrite(db *DB, measureLatencyMode bool) {
-	limiter := rate.NewLimiter(10<<20, 10<<20) // 10 MB/s
+	limiter := rate.NewLimiter(10<<20, 10<<20)	// 10 MB/s
 	fmt.Printf("filling at 10 MB/sec\n")
 
 	setRate := func(mb int) {

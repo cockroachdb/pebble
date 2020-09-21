@@ -16,14 +16,14 @@ import (
 // Table describes a sstable from the reference database whose writes are
 // being replayed.
 type Table struct {
-	Path         string
-	FileMetadata *manifest.FileMetadata
+	Path		string
+	FileMetadata	*manifest.FileMetadata
 }
 
 type bySeqNum []Table
 
-func (s bySeqNum) Len() int      { return len(s) }
-func (s bySeqNum) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s bySeqNum) Len() int		{ return len(s) }
+func (s bySeqNum) Swap(i, j int)	{ s[i], s[j] = s[j], s[i] }
 func (s bySeqNum) Less(i, j int) bool {
 	return s[i].FileMetadata.SmallestSeqNum < s[j].FileMetadata.SmallestSeqNum
 }
@@ -41,8 +41,8 @@ func Open(dirname string, opts *pebble.Options) (*DB, error) {
 // A DB is a wrapper around a Pebble database for replaying table-level
 // writes to a database. It is not safe for concurrent access.
 type DB struct {
-	done bool
-	d    *pebble.DB
+	done	bool
+	d	*pebble.DB
 }
 
 // Ingest ingests a set of sstables into the DB.

@@ -30,8 +30,8 @@ func TestVersionSetCheckpoint(t *testing.T) {
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
 	opts := &Options{
-		FS:                  mem,
-		MaxManifestFileSize: 1,
+		FS:			mem,
+		MaxManifestFileSize:	1,
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -59,8 +59,8 @@ func TestVersionSetSeqNums(t *testing.T) {
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
 	opts := &Options{
-		FS:                  mem,
-		MaxManifestFileSize: 1,
+		FS:			mem,
+		MaxManifestFileSize:	1,
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)

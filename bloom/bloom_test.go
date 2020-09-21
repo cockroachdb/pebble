@@ -62,10 +62,10 @@ func TestSmallBloomFilter(t *testing.T) {
 	require.EqualValues(t, want, f.String())
 
 	m := map[string]bool{
-		"hello": true,
-		"world": true,
-		"x":     false,
-		"foo":   false,
+		"hello":	true,
+		"world":	true,
+		"x":		false,
+		"foo":		false,
 	}
 	for k, want := range m {
 		require.EqualValues(t, want, f.MayContain([]byte(k)))
@@ -145,8 +145,8 @@ loop:
 
 func TestHash(t *testing.T) {
 	testCases := []struct {
-		s        string
-		expected uint32
+		s		string
+		expected	uint32
 	}{
 		// The magic expected numbers come from RocksDB's util/hash_test.cc:TestHash.
 		{"", 3164544308},

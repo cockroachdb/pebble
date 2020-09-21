@@ -19,16 +19,16 @@ import (
 // walT implements WAL-level tools, including both configuration state and the
 // commands themselves.
 type walT struct {
-	Root *cobra.Command
-	Dump *cobra.Command
+	Root	*cobra.Command
+	Dump	*cobra.Command
 
-	opts     *pebble.Options
-	fmtKey   keyFormatter
-	fmtValue valueFormatter
+	opts		*pebble.Options
+	fmtKey		keyFormatter
+	fmtValue	valueFormatter
 
-	defaultComparer string
-	comparers       sstable.Comparers
-	verbose         bool
+	defaultComparer	string
+	comparers	sstable.Comparers
+	verbose		bool
 }
 
 func newWAL(opts *pebble.Options, comparers sstable.Comparers, defaultComparer string) *walT {
@@ -41,17 +41,17 @@ func newWAL(opts *pebble.Options, comparers sstable.Comparers, defaultComparer s
 	w.defaultComparer = defaultComparer
 
 	w.Root = &cobra.Command{
-		Use:   "wal",
-		Short: "WAL introspection tools",
+		Use:	"wal",
+		Short:	"WAL introspection tools",
 	}
 	w.Dump = &cobra.Command{
-		Use:   "dump <wal-files>",
-		Short: "print WAL contents",
+		Use:	"dump <wal-files>",
+		Short:	"print WAL contents",
 		Long: `
 Print the contents of the WAL files.
 `,
-		Args: cobra.MinimumNArgs(1),
-		Run:  w.runDump,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	w.runDump,
 	}
 
 	w.Root.AddCommand(w.Dump)

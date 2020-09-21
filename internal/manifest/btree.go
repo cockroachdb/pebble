@@ -16,21 +16,21 @@ import (
 )
 
 const (
-	degree   = 16
-	maxItems = 2*degree - 1
-	minItems = degree - 1
+	degree		= 16
+	maxItems	= 2*degree - 1
+	minItems	= degree - 1
 )
 
 type leafNode struct {
-	ref   int32
-	count int16
-	leaf  bool
-	items [maxItems]*FileMetadata
+	ref	int32
+	count	int16
+	leaf	bool
+	items	[maxItems]*FileMetadata
 }
 
 type node struct {
 	leafNode
-	children [maxItems + 1]*node
+	children	[maxItems + 1]*node
 }
 
 //go:nocheckptr casts a ptr to a smaller struct to a ptr to a larger struct.
@@ -245,12 +245,14 @@ func (n *node) popFront() (*FileMetadata, *node) {
 // find returns the index where the given item should be inserted into this
 // list. 'found' is true if the item already exists in the list at the given
 // index.
-func (n *node) find(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (index int, found bool) {
+func (n *node) find(
+	cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata,
+) (index int, found bool) {
 	// Logic copied from sort.Search. Inlining this gave
 	// an 11% speedup on BenchmarkBTreeDeleteInsert.
 	i, j := 0, int(n.count)
 	for i < j {
-		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		h := int(uint(i+j) >> 1)	// avoid overflow when computing h
 		// i ≤ h < j
 		v := cmp(item, n.items[h])
 		if v == 0 {
@@ -331,7 +333,7 @@ func (n *node) insert(cmp func(*FileMetadata, *FileMetadata) int, item *FileMeta
 		case cmp < 0:
 			// no change, we want first split node
 		case cmp > 0:
-			i++ // we want second split node
+			i++	// we want second split node
 		default:
 			// cmp provides a total ordering of the files within a level.
 			// If we're inserting a metadata that's equal to an existing item
@@ -362,7 +364,9 @@ func (n *node) removeMax() *FileMetadata {
 
 // remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
-func (n *node) remove(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (out *FileMetadata) {
+func (n *node) remove(
+	cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata,
+) (out *FileMetadata) {
 	i, found := n.find(cmp, item)
 	if n.leaf {
 		if found {
@@ -515,9 +519,9 @@ func (n *node) rebalanceOrMerge(i int) {
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
 type btree struct {
-	root   *node
-	length int
-	cmp    func(*FileMetadata, *FileMetadata) int
+	root	*node
+	length	int
+	cmp	func(*FileMetadata, *FileMetadata) int
 }
 
 // release dereferences and clears the root node of the btree, removing all
@@ -652,17 +656,17 @@ func (n *node) writeString(b *strings.Builder) {
 // iterStack represents a stack of (node, pos) tuples, which captures
 // iteration state as an iterator descends a btree.
 type iterStack struct {
-	a    iterStackArr
-	aLen int16 // -1 when using s
-	s    []iterFrame
+	a	iterStackArr
+	aLen	int16	// -1 when using s
+	s	[]iterFrame
 }
 
 // Used to avoid allocations for stacks below a certain size.
 type iterStackArr [3]iterFrame
 
 type iterFrame struct {
-	n   *node
-	pos int16
+	n	*node
+	pos	int16
 }
 
 func (is *iterStack) push(f iterFrame) {
@@ -731,11 +735,11 @@ func (is *iterStack) reset() {
 
 // iterator is responsible for search and traversal within a btree.
 type iterator struct {
-	r   *node
-	n   *node
-	pos int16
-	cmp func(*FileMetadata, *FileMetadata) int
-	s   iterStack
+	r	*node
+	n	*node
+	pos	int16
+	cmp	func(*FileMetadata, *FileMetadata) int
+	s	iterStack
 }
 
 func (i *iterator) clone() iterator {

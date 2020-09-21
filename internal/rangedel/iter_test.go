@@ -23,8 +23,8 @@ func TestIter(t *testing.T) {
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				tombstones = append(tombstones, Tombstone{
-					Start: base.ParseInternalKey(key[:j]),
-					End:   []byte(key[j+1:]),
+					Start:	base.ParseInternalKey(key[:j]),
+					End:	[]byte(key[j+1:]),
 				})
 			}
 			return ""

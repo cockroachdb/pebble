@@ -7,7 +7,7 @@ package cache
 type entryType int8
 
 const (
-	etTest entryType = iota
+	etTest	entryType	= iota
 	etCold
 	etHot
 )
@@ -40,36 +40,36 @@ func (p entryType) String() string {
 // violation. What makes this "safe" is that the Cache guarantees that there
 // are other pointers to the shard which will keep it alive.
 type entry struct {
-	key key
+	key	key
 	// The value associated with the entry. The entry holds a reference on the
 	// value which is maintained by entry.setValue().
-	val       *Value
-	blockLink struct {
-		next *entry
-		prev *entry
+	val		*Value
+	blockLink	struct {
+		next	*entry
+		prev	*entry
 	}
-	fileLink struct {
-		next *entry
-		prev *entry
+	fileLink	struct {
+		next	*entry
+		prev	*entry
 	}
-	size  int64
-	ptype entryType
+	size	int64
+	ptype	entryType
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
-	referenced int32
-	shard      *shard
+	referenced	int32
+	shard		*shard
 	// Reference count for the entry. The entry is freed when the reference count
 	// drops to zero.
-	ref refcnt
+	ref	refcnt
 }
 
 func newEntry(s *shard, key key, size int64) *entry {
 	e := entryAllocNew()
 	*e = entry{
-		key:   key,
-		size:  size,
-		ptype: etCold,
-		shard: s,
+		key:	key,
+		size:	size,
+		ptype:	etCold,
+		shard:	s,
 	}
 	e.blockLink.next = e
 	e.blockLink.prev = e

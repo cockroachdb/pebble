@@ -15,7 +15,7 @@ import (
 // to perform apples-to-apples benchmarking for CockroachDB's usage of RocksDB.
 
 var mvccComparer = &pebble.Comparer{
-	Compare: mvccCompare,
+	Compare:	mvccCompare,
 
 	AbbreviatedKey: func(k []byte) uint64 {
 		key, _, ok := mvccSplitKey(k)
@@ -88,7 +88,7 @@ var mvccComparer = &pebble.Comparer{
 		return len(key) + 1
 	},
 
-	Name: "cockroach_comparator",
+	Name:	"cockroach_comparator",
 }
 
 func mvccSplitKey(mvccKey []byte) (key []byte, ts []byte, ok bool) {
@@ -168,8 +168,8 @@ func mvccEncode(dst, key []byte, walltime uint64, logical uint32) []byte {
 
 func mvccForwardScan(d DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
-		LowerBound: mvccEncode(nil, start, 0, 0),
-		UpperBound: mvccEncode(nil, end, 0, 0),
+		LowerBound:	mvccEncode(nil, start, 0, 0),
+		UpperBound:	mvccEncode(nil, end, 0, 0),
 	})
 	defer it.Close()
 
@@ -191,8 +191,8 @@ func mvccForwardScan(d DB, start, end, ts []byte) (int, int64) {
 
 func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
-		LowerBound: mvccEncode(nil, start, 0, 0),
-		UpperBound: mvccEncode(nil, end, 0, 0),
+		LowerBound:	mvccEncode(nil, start, 0, 0),
+		UpperBound:	mvccEncode(nil, end, 0, 0),
 	})
 	defer it.Close()
 
@@ -213,7 +213,7 @@ func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 }
 
 var fauxMVCCMerger = &pebble.Merger{
-	Name: "cockroach_merge_operator",
+	Name:	"cockroach_merge_operator",
 	Merge: func(key, value []byte) (pebble.ValueMerger, error) {
 		// This merger is used by the compact benchmark and use the
 		// pebble default value merger to concatenate values.

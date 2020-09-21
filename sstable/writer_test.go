@@ -202,10 +202,10 @@ func BenchmarkWriter(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w := NewWriter(discardFile{}, WriterOptions{
-			BlockRestartInterval: 16,
-			BlockSize:            32 << 10,
-			Compression:          SnappyCompression,
-			FilterPolicy:         bloom.FilterPolicy(10),
+			BlockRestartInterval:	16,
+			BlockSize:		32 << 10,
+			Compression:		SnappyCompression,
+			FilterPolicy:		bloom.FilterPolicy(10),
 		})
 
 		for i := range keys {

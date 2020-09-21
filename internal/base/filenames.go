@@ -16,14 +16,14 @@ import (
 type FileNum uint64
 
 // String returns a string representation of the file number.
-func (fn FileNum) String() string { return fmt.Sprintf("%06d", fn) }
+func (fn FileNum) String() string	{ return fmt.Sprintf("%06d", fn) }
 
 // FileType enumerates the types of files found in a DB.
 type FileType int
 
 // The FileType enumeration.
 const (
-	FileTypeLog FileType = iota
+	FileTypeLog	FileType	= iota
 	FileTypeLock
 	FileTypeTable
 	FileTypeManifest

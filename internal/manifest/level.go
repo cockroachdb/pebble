@@ -8,10 +8,10 @@ import "fmt"
 
 const (
 	// 3 bits are necessary to represent level values from 0-6.
-	levelBits = 3
-	levelMask = (1 << levelBits) - 1
+	levelBits	= 3
+	levelMask	= (1 << levelBits) - 1
 	// invalidSublevel denotes an invalid or non-applicable sublevel.
-	invalidSublevel = -1
+	invalidSublevel	= -1
 )
 
 // Level encodes a level and optional sublevel for use in log and error

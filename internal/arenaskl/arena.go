@@ -27,8 +27,8 @@ import (
 
 // Arena is lock-free.
 type Arena struct {
-	n   uint64
-	buf []byte
+	n	uint64
+	buf	[]byte
 }
 
 const (
@@ -47,8 +47,8 @@ func NewArena(buf []byte) *Arena {
 	// Don't store data at position 0 in order to reserve offset=0 as a kind
 	// of nil pointer.
 	return &Arena{
-		n:   1,
-		buf: buf,
+		n:	1,
+		buf:	buf,
 	}
 }
 

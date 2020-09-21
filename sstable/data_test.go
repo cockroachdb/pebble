@@ -17,7 +17,9 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-func runBuildCmd(td *datadriven.TestData, writerOpts WriterOptions) (*WriterMetadata, *Reader, error) {
+func runBuildCmd(
+	td *datadriven.TestData, writerOpts WriterOptions,
+) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
 	if err != nil {
@@ -57,8 +59,8 @@ func runBuildCmd(td *datadriven.TestData, writerOpts WriterOptions) (*WriterMeta
 	w := NewWriter(f0, writerOpts)
 	var tombstones []rangedel.Tombstone
 	f := rangedel.Fragmenter{
-		Cmp:    DefaultComparer.Compare,
-		Format: DefaultComparer.FormatKey,
+		Cmp:	DefaultComparer.Compare,
+		Format:	DefaultComparer.FormatKey,
 		Emit: func(fragmented []rangedel.Tombstone) {
 			tombstones = append(tombstones, fragmented...)
 		},

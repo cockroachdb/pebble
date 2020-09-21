@@ -19,8 +19,8 @@ import (
 
 func newItem(k InternalKey) *FileMetadata {
 	return &FileMetadata{
-		Smallest: k,
-		Largest:  k,
+		Smallest:	k,
+		Largest:	k,
 	}
 }
 

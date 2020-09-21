@@ -23,15 +23,15 @@ import (
 
 // WriterMetadata holds info about a finished sstable.
 type WriterMetadata struct {
-	Size                uint64
-	SmallestPoint       InternalKey
-	SmallestRange       InternalKey
-	LargestPoint        InternalKey
-	LargestRange        InternalKey
-	SmallestSeqNum      uint64
-	LargestSeqNum       uint64
-	Properties          Properties
-	MarkedForCompaction bool
+	Size			uint64
+	SmallestPoint		InternalKey
+	SmallestRange		InternalKey
+	LargestPoint		InternalKey
+	LargestRange		InternalKey
+	SmallestSeqNum		uint64
+	LargestSeqNum		uint64
+	Properties		Properties
+	MarkedForCompaction	bool
 }
 
 func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
@@ -82,33 +82,33 @@ type writeCloseSyncer interface {
 
 // Writer is a table writer.
 type Writer struct {
-	writer    io.Writer
-	bufWriter *bufio.Writer
-	syncer    writeCloseSyncer
-	meta      WriterMetadata
-	err       error
+	writer		io.Writer
+	bufWriter	*bufio.Writer
+	syncer		writeCloseSyncer
+	meta		WriterMetadata
+	err		error
 	// cacheID and fileNum are used to remove blocks written to the sstable from
 	// the cache, providing a defense in depth against bugs which cause cache
 	// collisions.
-	cacheID uint64
-	fileNum base.FileNum
+	cacheID	uint64
+	fileNum	base.FileNum
 	// The following fields are copied from Options.
-	blockSize               int
-	blockSizeThreshold      int
-	indexBlockSize          int
-	indexBlockSizeThreshold int
-	compare                 Compare
-	split                   Split
-	formatKey               base.FormatKey
-	compression             Compression
-	separator               Separator
-	successor               Successor
-	tableFormat             TableFormat
-	cache                   *cache.Cache
+	blockSize		int
+	blockSizeThreshold	int
+	indexBlockSize		int
+	indexBlockSizeThreshold	int
+	compare			Compare
+	split			Split
+	formatKey		base.FormatKey
+	compression		Compression
+	separator		Separator
+	successor		Successor
+	tableFormat		TableFormat
+	cache			*cache.Cache
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
-	disableKeyOrderChecks bool
+	disableKeyOrderChecks	bool
 	// With two level indexes, the index/filter of a SST file is partitioned into
 	// smaller blocks with an additional top-level index on them. When reading an
 	// index/filter, only the top-level index is loaded into memory. The two level
@@ -124,30 +124,30 @@ type Writer struct {
 	// re-read many times from the disk. The top level index, which has a much
 	// smaller memory footprint, can be used to prevent the entire index block from
 	// being loaded into the block cache.
-	twoLevelIndex bool
+	twoLevelIndex	bool
 	// Internal flag to allow creation of range-del-v1 format blocks. Only used
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
-	rangeDelV1Format bool
-	block            blockWriter
-	indexBlock       blockWriter
-	rangeDelBlock    blockWriter
-	props            Properties
-	propCollectors   []TablePropertyCollector
+	rangeDelV1Format	bool
+	block			blockWriter
+	indexBlock		blockWriter
+	rangeDelBlock		blockWriter
+	props			Properties
+	propCollectors		[]TablePropertyCollector
 	// compressedBuf is the destination buffer for snappy compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
-	compressedBuf []byte
+	compressedBuf	[]byte
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
-	filter filterWriter
+	filter	filterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
-	tmp [rocksDBFooterLen]byte
+	tmp	[rocksDBFooterLen]byte
 
-	topLevelIndexBlock blockWriter
-	indexPartitions    []blockWriter
+	topLevelIndexBlock	blockWriter
+	indexPartitions		[]blockWriter
 }
 
 // Set sets the value for the given key. The sequence number is set to
@@ -400,9 +400,9 @@ func shouldFlush(
 	if block.nEntries%block.restartInterval == 0 {
 		newSize += 4
 	}
-	newSize += 4                              // varint for shared prefix length
-	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-	newSize += uvarintLen(uint32(len(value))) // varint for value size
+	newSize += 4					// varint for shared prefix length
+	newSize += uvarintLen(uint32(key.Size()))	// varint for unshared key bytes
+	newSize += uvarintLen(uint32(len(value)))	// varint for value size
 	// Flush if the block plus the new entry is larger than the target size.
 	return newSize > blockSize
 }
@@ -643,10 +643,10 @@ func (w *Writer) Close() (err error) {
 
 	// Write the table footer.
 	footer := footer{
-		format:      w.tableFormat,
-		checksum:    checksumCRC32c,
-		metaindexBH: metaindexBH,
-		indexBH:     indexBH,
+		format:		w.tableFormat,
+		checksum:	checksumCRC32c,
+		metaindexBH:	metaindexBH,
+		indexBH:	indexBH,
 	}
 	var n int
 	if n, err = w.writer.Write(footer.encode(w.tmp[:])); err != nil {
@@ -713,22 +713,22 @@ func (i internalTableOpt) writerApply(w *Writer) {
 func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
 	o = o.ensureDefaults()
 	w := &Writer{
-		syncer: f,
+		syncer:	f,
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
-		blockSize:               o.BlockSize,
-		blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
-		indexBlockSize:          o.IndexBlockSize,
-		indexBlockSizeThreshold: (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
-		compare:                 o.Comparer.Compare,
-		split:                   o.Comparer.Split,
-		formatKey:               o.Comparer.FormatKey,
-		compression:             o.Compression,
-		separator:               o.Comparer.Separator,
-		successor:               o.Comparer.Successor,
-		tableFormat:             o.TableFormat,
-		cache:                   o.Cache,
+		blockSize:			o.BlockSize,
+		blockSizeThreshold:		(o.BlockSize*o.BlockSizeThreshold + 99) / 100,
+		indexBlockSize:			o.IndexBlockSize,
+		indexBlockSizeThreshold:	(o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
+		compare:			o.Comparer.Compare,
+		split:				o.Comparer.Split,
+		formatKey:			o.Comparer.FormatKey,
+		compression:			o.Compression,
+		separator:			o.Comparer.Separator,
+		successor:			o.Comparer.Successor,
+		tableFormat:			o.TableFormat,
+		cache:				o.Cache,
 		block: blockWriter{
 			restartInterval: o.BlockRestartInterval,
 		},

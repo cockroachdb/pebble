@@ -25,91 +25,91 @@ import (
 // dbT implements db-level tools, including both configuration state and the
 // commands themselves.
 type dbT struct {
-	Root       *cobra.Command
-	Check      *cobra.Command
-	LSM        *cobra.Command
-	Properties *cobra.Command
-	Scan       *cobra.Command
-	Space      *cobra.Command
+	Root		*cobra.Command
+	Check		*cobra.Command
+	LSM		*cobra.Command
+	Properties	*cobra.Command
+	Scan		*cobra.Command
+	Space		*cobra.Command
 
 	// Configuration.
-	opts      *pebble.Options
-	comparers sstable.Comparers
-	mergers   sstable.Mergers
+	opts		*pebble.Options
+	comparers	sstable.Comparers
+	mergers		sstable.Mergers
 
 	// Flags.
-	comparerName string
-	mergerName   string
-	fmtKey       keyFormatter
-	fmtValue     valueFormatter
-	start        key
-	end          key
-	count        int64
-	verbose      bool
+	comparerName	string
+	mergerName	string
+	fmtKey		keyFormatter
+	fmtValue	valueFormatter
+	start		key
+	end		key
+	count		int64
+	verbose		bool
 }
 
 func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
 	d := &dbT{
-		opts:      opts,
-		comparers: comparers,
-		mergers:   mergers,
+		opts:		opts,
+		comparers:	comparers,
+		mergers:	mergers,
 	}
 	d.fmtKey.mustSet("quoted")
 	d.fmtValue.mustSet("[%x]")
 
 	d.Root = &cobra.Command{
-		Use:   "db",
-		Short: "DB introspection tools",
+		Use:	"db",
+		Short:	"DB introspection tools",
 	}
 	d.Check = &cobra.Command{
-		Use:   "check <dir>",
-		Short: "verify checksums and metadata",
+		Use:	"check <dir>",
+		Short:	"verify checksums and metadata",
 		Long: `
 Verify sstable, manifest, and WAL checksums. Requires that the specified
 database not be in use by another process.
 `,
-		Args: cobra.ExactArgs(1),
-		Run:  d.runCheck,
+		Args:	cobra.ExactArgs(1),
+		Run:	d.runCheck,
 	}
 	d.LSM = &cobra.Command{
-		Use:   "lsm <dir>",
-		Short: "print LSM structure",
+		Use:	"lsm <dir>",
+		Short:	"print LSM structure",
 		Long: `
 Print the structure of the LSM tree. Requires that the specified database not
 be in use by another process.
 `,
-		Args: cobra.ExactArgs(1),
-		Run:  d.runLSM,
+		Args:	cobra.ExactArgs(1),
+		Run:	d.runLSM,
 	}
 	d.Properties = &cobra.Command{
-		Use:   "properties <dir>",
-		Short: "print aggregated sstable properties",
+		Use:	"properties <dir>",
+		Short:	"print aggregated sstable properties",
 		Long: `
 Print SSTable properties, aggregated per level of the LSM.
 `,
-		Args: cobra.ExactArgs(1),
-		Run:  d.runProperties,
+		Args:	cobra.ExactArgs(1),
+		Run:	d.runProperties,
 	}
 	d.Scan = &cobra.Command{
-		Use:   "scan <dir>",
-		Short: "print db records",
+		Use:	"scan <dir>",
+		Short:	"print db records",
 		Long: `
 Print the records in the DB. Requires that the specified database not be in use
 by another process.
 `,
-		Args: cobra.ExactArgs(1),
-		Run:  d.runScan,
+		Args:	cobra.ExactArgs(1),
+		Run:	d.runScan,
 	}
 	d.Space = &cobra.Command{
-		Use:   "space <dir>",
-		Short: "print filesystem space used",
+		Use:	"space <dir>",
+		Short:	"print filesystem space used",
 		Long: `
 Print the estimated filesystem space usage for the inclusive-inclusive range
 specified by --start and --end. Requires that the specified database not be in
 use by another process.
 `,
-		Args: cobra.ExactArgs(1),
-		Run:  d.runSpace,
+		Args:	cobra.ExactArgs(1),
+		Run:	d.runSpace,
 	}
 
 	d.Root.AddCommand(d.Check, d.LSM, d.Properties, d.Scan, d.Space)
@@ -464,21 +464,21 @@ func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
 }
 
 type props struct {
-	Count             uint64
-	SmallestSeqNum    uint64
-	LargestSeqNum     uint64
-	DataSize          uint64
-	FilterSize        uint64
-	IndexSize         uint64
-	NumDataBlocks     uint64
-	NumIndexBlocks    uint64
-	NumDeletions      uint64
-	NumEntries        uint64
-	NumMergeOperands  uint64
-	NumRangeDeletions uint64
-	RawKeySize        uint64
-	RawValueSize      uint64
-	TopLevelIndexSize uint64
+	Count			uint64
+	SmallestSeqNum		uint64
+	LargestSeqNum		uint64
+	DataSize		uint64
+	FilterSize		uint64
+	IndexSize		uint64
+	NumDataBlocks		uint64
+	NumIndexBlocks		uint64
+	NumDeletions		uint64
+	NumEntries		uint64
+	NumMergeOperands	uint64
+	NumRangeDeletions	uint64
+	RawKeySize		uint64
+	RawValueSize		uint64
+	TopLevelIndexSize	uint64
 }
 
 func formatTime(unixSec int64) string {
@@ -522,21 +522,21 @@ func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
 		return err
 	}
 	p.update(props{
-		Count:             1,
-		SmallestSeqNum:    m.SmallestSeqNum,
-		LargestSeqNum:     m.LargestSeqNum,
-		DataSize:          r.Properties.DataSize,
-		FilterSize:        r.Properties.FilterSize,
-		IndexSize:         r.Properties.IndexSize,
-		NumDataBlocks:     r.Properties.NumDataBlocks,
-		NumIndexBlocks:    1 + r.Properties.IndexPartitions,
-		NumDeletions:      r.Properties.NumDeletions,
-		NumEntries:        r.Properties.NumEntries,
-		NumMergeOperands:  r.Properties.NumMergeOperands,
-		NumRangeDeletions: r.Properties.NumRangeDeletions,
-		RawKeySize:        r.Properties.RawKeySize,
-		RawValueSize:      r.Properties.RawValueSize,
-		TopLevelIndexSize: r.Properties.TopLevelIndexSize,
+		Count:			1,
+		SmallestSeqNum:		m.SmallestSeqNum,
+		LargestSeqNum:		m.LargestSeqNum,
+		DataSize:		r.Properties.DataSize,
+		FilterSize:		r.Properties.FilterSize,
+		IndexSize:		r.Properties.IndexSize,
+		NumDataBlocks:		r.Properties.NumDataBlocks,
+		NumIndexBlocks:		1 + r.Properties.IndexPartitions,
+		NumDeletions:		r.Properties.NumDeletions,
+		NumEntries:		r.Properties.NumEntries,
+		NumMergeOperands:	r.Properties.NumMergeOperands,
+		NumRangeDeletions:	r.Properties.NumRangeDeletions,
+		RawKeySize:		r.Properties.RawKeySize,
+		RawValueSize:		r.Properties.RawValueSize,
+		TopLevelIndexSize:	r.Properties.TopLevelIndexSize,
 	})
 	return r.Close()
 }

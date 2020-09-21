@@ -10,7 +10,7 @@ import "github.com/cockroachdb/pebble/vfs"
 // vfs.NewSyncingFile.
 type syncingFS struct {
 	vfs.FS
-	syncOpts vfs.SyncingFileOptions
+	syncOpts	vfs.SyncingFileOptions
 }
 
 func (fs syncingFS) Create(name string) (vfs.File, error) {

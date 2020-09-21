@@ -8,30 +8,30 @@ import "sync/atomic"
 
 // SyncingFileOptions holds the options for a syncingFile.
 type SyncingFileOptions struct {
-	BytesPerSync    int
-	PreallocateSize int
+	BytesPerSync	int
+	PreallocateSize	int
 }
 
 type syncingFile struct {
 	File
-	fd              uintptr
-	useSyncRange    bool
-	bytesPerSync    int64
-	preallocateSize int64
-	atomic          struct {
+	fd		uintptr
+	useSyncRange	bool
+	bytesPerSync	int64
+	preallocateSize	int64
+	atomic		struct {
 		// The offset at which dirty data has been written.
-		offset int64
+		offset	int64
 		// The offset at which data has been synced. Note that if SyncFileRange is
 		// being used, the periodic syncing of data during writing will only ever
 		// sync up to offset-1MB. This is done to avoid rewriting the tail of the
 		// file multiple times, but has the side effect of ensuring that Close will
 		// sync the file's metadata.
-		syncOffset int64
+		syncOffset	int64
 	}
-	preallocatedBlocks int64
-	syncData           func() error
-	syncTo             func(offset int64) error
-	timeDiskOp         func(op func())
+	preallocatedBlocks	int64
+	syncData		func() error
+	syncTo			func(offset int64) error
+	timeDiskOp		func(op func())
 }
 
 // NewSyncingFile wraps a writable file and ensures that data is synced
@@ -41,9 +41,9 @@ type syncingFile struct {
 // buffers. The underlying file is fully synced upon close.
 func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
-		File:            f,
-		bytesPerSync:    int64(opts.BytesPerSync),
-		preallocateSize: int64(opts.PreallocateSize),
+		File:			f,
+		bytesPerSync:		int64(opts.BytesPerSync),
+		preallocateSize:	int64(opts.PreallocateSize),
 	}
 	// Ensure a file that is opened and then closed will be synced, even if no
 	// data has been written to it.
@@ -141,13 +141,13 @@ func (f *syncingFile) maybeSync() error {
 	//       the page.
 	//   Xfs does neighbor page flushing outside of the specified ranges. We
 	//   need to make sure sync range is far from the write offset.
-	const syncRangeBuffer = 1 << 20 // 1 MB
+	const syncRangeBuffer = 1 << 20	// 1 MB
 	offset := atomic.LoadInt64(&f.atomic.offset)
 	if offset <= syncRangeBuffer {
 		return nil
 	}
 
-	const syncRangeAlignment = 4 << 10 // 4 KB
+	const syncRangeAlignment = 4 << 10	// 4 KB
 	syncToOffset := offset - syncRangeBuffer
 	syncToOffset -= syncToOffset % syncRangeAlignment
 	syncOffset := atomic.LoadInt64(&f.atomic.syncOffset)

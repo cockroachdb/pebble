@@ -70,8 +70,8 @@ func (f *syncingFile) syncToFdatasync(_ int64) error {
 
 func (f *syncingFile) syncToRange(offset int64) error {
 	const (
-		waitBefore = 0x1
-		write      = 0x2
+		waitBefore	= 0x1
+		write		= 0x2
 		// waitAfter = 0x4
 	)
 

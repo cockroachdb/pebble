@@ -29,17 +29,17 @@ import (
 )
 
 const (
-	uncompressed = false
-	compressed   = true
+	uncompressed	= false
+	compressed	= true
 
-	noPrefixFilter = false
-	prefixFilter   = true
+	noPrefixFilter	= false
+	prefixFilter	= true
 
-	noFullKeyBloom = false
-	fullKeyBloom   = true
+	noFullKeyBloom	= false
+	fullKeyBloom	= true
 
-	defaultIndexBlockSize = math.MaxInt32
-	smallIndexBlockSize   = 128
+	defaultIndexBlockSize	= math.MaxInt32
+	smallIndexBlockSize	= 128
 )
 
 type keyCountPropertyCollector struct {
@@ -76,10 +76,10 @@ var fixtureComparer = func() *Comparer {
 }()
 
 type fixtureOpts struct {
-	compression    bool
-	fullKeyFilter  bool
-	prefixFilter   bool
-	indexBlockSize int
+	compression	bool
+	fullKeyFilter	bool
+	prefixFilter	bool
+	indexBlockSize	int
 }
 
 func (o fixtureOpts) String() string {
@@ -90,9 +90,9 @@ func (o fixtureOpts) String() string {
 }
 
 var fixtures = map[fixtureOpts]struct {
-	filename      string
-	comparer      *Comparer
-	propCollector func() TablePropertyCollector
+	filename	string
+	comparer	*Comparer
+	propCollector	func() TablePropertyCollector
 }{
 	{compressed, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.sst", nil,

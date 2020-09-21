@@ -17,11 +17,11 @@ import (
 // ensures that each element is returned with a desired frequency within the
 // size of the deck.
 type Deck struct {
-	rng *rand.Rand
-	mu  struct {
+	rng	*rand.Rand
+	mu	struct {
 		sync.Mutex
-		index int
-		deck  []int
+		index	int
+		deck	[]int
 	}
 }
 

@@ -58,7 +58,7 @@
 // 		return err
 // 	}
 // 	return w.Close()
-package sstable // import "github.com/cockroachdb/pebble/sstable"
+package sstable	// import "github.com/cockroachdb/pebble/sstable"
 
 import (
 	"encoding/binary"
@@ -123,56 +123,56 @@ values. The maximum size of an encoded block handle is therefore 20 bytes.
 */
 
 const (
-	blockTrailerLen   = 5
-	blockHandleMaxLen = 10 + 10
+	blockTrailerLen		= 5
+	blockHandleMaxLen	= 10 + 10
 
-	levelDBFooterLen   = 48
-	levelDBMagic       = "\x57\xfb\x80\x8b\x24\x75\x47\xdb"
-	levelDBMagicOffset = levelDBFooterLen - len(levelDBMagic)
+	levelDBFooterLen	= 48
+	levelDBMagic		= "\x57\xfb\x80\x8b\x24\x75\x47\xdb"
+	levelDBMagicOffset	= levelDBFooterLen - len(levelDBMagic)
 
-	rocksDBFooterLen     = 1 + 2*blockHandleMaxLen + 4 + 8
-	rocksDBMagic         = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
-	rocksDBMagicOffset   = rocksDBFooterLen - len(rocksDBMagic)
-	rocksDBVersionOffset = rocksDBMagicOffset - 4
+	rocksDBFooterLen	= 1 + 2*blockHandleMaxLen + 4 + 8
+	rocksDBMagic		= "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
+	rocksDBMagicOffset	= rocksDBFooterLen - len(rocksDBMagic)
+	rocksDBVersionOffset	= rocksDBMagicOffset - 4
 
-	rocksDBExternalFormatVersion = 2
+	rocksDBExternalFormatVersion	= 2
 
-	minFooterLen = levelDBFooterLen
-	maxFooterLen = rocksDBFooterLen
+	minFooterLen	= levelDBFooterLen
+	maxFooterLen	= rocksDBFooterLen
 
-	levelDBFormatVersion  = 0
-	rocksDBFormatVersion2 = 2
+	levelDBFormatVersion	= 0
+	rocksDBFormatVersion2	= 2
 
-	noChecksum     = 0
-	checksumCRC32c = 1
-	checksumXXHash = 2
+	noChecksum	= 0
+	checksumCRC32c	= 1
+	checksumXXHash	= 2
 
 	// The block type gives the per-block compression format.
 	// These constants are part of the file format and should not be changed.
 	// They are different from the Compression constants because the latter
 	// are designed so that the zero value of the Compression type means to
 	// use the default compression (which is snappy).
-	noCompressionBlockType     byte = 0
-	snappyCompressionBlockType byte = 1
+	noCompressionBlockType		byte	= 0
+	snappyCompressionBlockType	byte	= 1
 
-	metaPropertiesName = "rocksdb.properties"
-	metaRangeDelName   = "rocksdb.range_del"
-	metaRangeDelV2Name = "rocksdb.range_del2"
+	metaPropertiesName	= "rocksdb.properties"
+	metaRangeDelName	= "rocksdb.range_del"
+	metaRangeDelV2Name	= "rocksdb.range_del2"
 
 	// Index Types.
 	// A space efficient index block that is optimized for binary-search-based
 	// index.
-	binarySearchIndex = 0
+	binarySearchIndex	= 0
 	// hashSearchIndex               = 1
 	// A two-level index implementation. Both levels are binary search indexes.
-	twoLevelIndex = 2
+	twoLevelIndex	= 2
 	// binarySearchWithFirstKeyIndex = 3
 
 	// RocksDB always includes this in the properties block. Since Pebble
 	// doesn't use zstd compression, the string will always be the same.
 	// This should be removed if we ever decide to diverge from the RocksDB
 	// properties block.
-	rocksDBCompressionOptions = "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
+	rocksDBCompressionOptions	= "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
 )
 
 // legacy (LevelDB) footer format:
@@ -188,11 +188,11 @@ const (
 //    footer version (4 bytes)
 //    table_magic_number (8 bytes)
 type footer struct {
-	format      TableFormat
-	checksum    uint8
-	metaindexBH BlockHandle
-	indexBH     BlockHandle
-	footerBH    BlockHandle
+	format		TableFormat
+	checksum	uint8
+	metaindexBH	BlockHandle
+	indexBH		BlockHandle
+	footerBH	BlockHandle
 }
 
 func readFooter(f vfs.File) (footer, error) {

@@ -17,8 +17,8 @@ import (
 
 func TestSyncRangeSmokeTest(t *testing.T) {
 	testCases := []struct {
-		err      error
-		expected bool
+		err		error
+		expected	bool
 	}{
 		{nil, true},
 		{syscall.EINVAL, true},

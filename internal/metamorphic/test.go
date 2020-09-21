@@ -19,20 +19,20 @@ import (
 type test struct {
 	// The list of ops to execute. The ops refer to slots in the batches, iters,
 	// and snapshots slices.
-	ops []op
-	idx int
+	ops	[]op
+	idx	int
 	// The DB the test is run on.
-	dir       string
-	db        *pebble.DB
-	opts      *pebble.Options
-	testOpts  *testOptions
-	writeOpts *pebble.WriteOptions
-	tmpDir    string
+	dir		string
+	db		*pebble.DB
+	opts		*pebble.Options
+	testOpts	*testOptions
+	writeOpts	*pebble.WriteOptions
+	tmpDir		string
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
-	batches   []*pebble.Batch
-	iters     []*retryableIter
-	snapshots []*pebble.Snapshot
+	batches		[]*pebble.Batch
+	iters		[]*retryableIter
+	snapshots	[]*pebble.Snapshot
 }
 
 func newTest(ops []op) *test {

@@ -14,7 +14,7 @@ type Compression int
 
 // The available compression types.
 const (
-	DefaultCompression Compression = iota
+	DefaultCompression	Compression	= iota
 	NoCompression
 	SnappyCompression
 	NCompression
@@ -55,7 +55,7 @@ type TableFormat uint32
 // be serialized to disk. TableFormatRocksDBv2 is the default if otherwise
 // unspecified.
 const (
-	TableFormatRocksDBv2 TableFormat = iota
+	TableFormatRocksDBv2	TableFormat	= iota
 	TableFormatLevelDB
 )
 
@@ -94,25 +94,25 @@ type ReaderOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default cache size is a zero-size cache.
-	Cache *cache.Cache
+	Cache	*cache.Cache
 
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
 	//
 	// The default value uses the same ordering as bytes.Compare.
-	Comparer *Comparer
+	Comparer	*Comparer
 
 	// Filters is a map from filter policy name to filter policy. It is used for
 	// debugging tools which may be used on multiple databases configured with
 	// different filter policies. It is not necessary to populate this filters
 	// map during normal usage of a DB.
-	Filters map[string]FilterPolicy
+	Filters	map[string]FilterPolicy
 
 	// Merger defines the associative merge operation to use for merging values
 	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
 	// with the value stored in the sstable when it was written.
-	MergerName string
+	MergerName	string
 }
 
 func (o ReaderOptions) ensureDefaults() ReaderOptions {
@@ -131,36 +131,36 @@ type WriterOptions struct {
 	// for delta encoding of keys.
 	//
 	// The default value is 16.
-	BlockRestartInterval int
+	BlockRestartInterval	int
 
 	// BlockSize is the target uncompressed size in bytes of each table block.
 	//
 	// The default value is 4096.
-	BlockSize int
+	BlockSize	int
 
 	// BlockSizeThreshold finishes a block if the block size is larger than the
 	// specified percentage of the target block size and adding the next entry
 	// would cause the block to be larger than the target block size.
 	//
 	// The default value is 90
-	BlockSizeThreshold int
+	BlockSizeThreshold	int
 
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default is a nil cache.
-	Cache *cache.Cache
+	Cache	*cache.Cache
 
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
 	//
 	// The default value uses the same ordering as bytes.Compare.
-	Comparer *Comparer
+	Comparer	*Comparer
 
 	// Compression defines the per-block compression to use.
 	//
 	// The default value (DefaultCompression) uses snappy compression.
-	Compression Compression
+	Compression	Compression
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -169,7 +169,7 @@ type WriterOptions struct {
 	// package.
 	//
 	// The default value means to use no filter.
-	FilterPolicy FilterPolicy
+	FilterPolicy	FilterPolicy
 
 	// FilterType defines whether an existing filter policy is applied at a
 	// block-level or table-level. Block-level filters use less memory to create,
@@ -178,7 +178,7 @@ type WriterOptions struct {
 	// memory proportional to the number of keys in an sstable to create, but
 	// avoids the index lookup when determining if a key is present. Table-level
 	// filters should be preferred except under constrained memory situations.
-	FilterType FilterType
+	FilterType	FilterType
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
 	// block. When the index block size is larger than this target, two-level
@@ -187,23 +187,23 @@ type WriterOptions struct {
 	// indexes.
 	//
 	// The default value is the value of BlockSize.
-	IndexBlockSize int
+	IndexBlockSize	int
 
 	// Merger defines the associative merge operation to use for merging values
 	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
 	// with the value stored in the sstable when it was written.
-	MergerName string
+	MergerName	string
 
 	// TableFormat specifies the format version for writing sstables. The default
 	// is TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
 	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
 	// by a wider range of tools and libraries.
-	TableFormat TableFormat
+	TableFormat	TableFormat
 
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.
-	TablePropertyCollectors []func() TablePropertyCollector
+	TablePropertyCollectors	[]func() TablePropertyCollector
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {

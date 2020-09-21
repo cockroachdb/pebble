@@ -17,16 +17,14 @@
 
 package arenaskl
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 // flushIterator is an iterator over the skiplist object. Use Skiplist.NewFlushIter
 // to construct an iterator. The current state of the iterator can be cloned by
 // simply value copying the struct.
 type flushIterator struct {
 	Iterator
-	bytesIterated *uint64
+	bytesIterated	*uint64
 }
 
 // flushIterator implements the base.InternalIterator interface.

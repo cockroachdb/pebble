@@ -70,13 +70,13 @@ type ValueMerger interface {
 // The merge operation is invoked when a merge value is encountered during a
 // read, either during a compaction or during iteration.
 type Merger struct {
-	Merge Merge
+	Merge	Merge
 
 	// Name is the name of the merger.
 	//
 	// Pebble stores the merger name on disk, and opening a database with a
 	// different merger from the one it was created with will result in an error.
-	Name string
+	Name	string
 }
 
 // AppendValueMerger concatenates merge operands in order from oldest to newest.
@@ -113,5 +113,5 @@ var DefaultMerger = &Merger{
 		return res, nil
 	},
 
-	Name: "pebble.concatenate",
+	Name:	"pebble.concatenate",
 }

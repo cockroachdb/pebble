@@ -9,9 +9,9 @@ import "golang.org/x/exp/rand"
 // Weighted is a random number generator that generates numbers in the range
 // [0,len(weights)-1] where the probability of i is weights(i)/sum(weights).
 type Weighted struct {
-	rng     *rand.Rand
-	sum     float64
-	weights []float64
+	rng	*rand.Rand
+	sum	float64
+	weights	[]float64
 }
 
 // NewWeighted returns a new weighted random number generator.
@@ -21,9 +21,9 @@ func NewWeighted(rng *rand.Rand, weights ...float64) *Weighted {
 		sum += weights[i]
 	}
 	return &Weighted{
-		rng:     ensureRand(rng),
-		sum:     sum,
-		weights: weights,
+		rng:		ensureRand(rng),
+		sum:		sum,
+		weights:	weights,
 	}
 }
 

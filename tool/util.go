@@ -54,10 +54,10 @@ func (k *key) Set(v string) error {
 }
 
 type keyFormatter struct {
-	spec      string
-	fn        base.FormatKey
-	setByUser bool
-	comparer  string
+	spec		string
+	fn		base.FormatKey
+	setByUser	bool
+	comparer	string
 }
 
 func (f *keyFormatter) String() string {
@@ -130,10 +130,10 @@ func (f *keyFormatter) setForComparer(comparerName string, comparers sstable.Com
 }
 
 type valueFormatter struct {
-	spec      string
-	fn        base.FormatValue
-	setByUser bool
-	comparer  string
+	spec		string
+	fn		base.FormatValue
+	setByUser	bool
+	comparer	string
 }
 
 func (f *valueFormatter) String() string {
@@ -206,8 +206,8 @@ func (f *valueFormatter) setForComparer(comparerName string, comparers sstable.C
 }
 
 type fmtFormatter struct {
-	fmt string
-	v   []byte
+	fmt	string
+	v	[]byte
 }
 
 func (f fmtFormatter) Format(s fmt.State, c rune) {

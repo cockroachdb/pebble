@@ -65,8 +65,8 @@ func TestBlockIter(t *testing.T) {
 			"\x00\x06\x00banana" +
 			"\x00\x00\x00\x00\x01\x00\x00\x00"))
 	var testcases = []struct {
-		index int
-		key   string
+		index	int
+		key	string
 	}{
 		{0, ""},
 		{0, "a"},

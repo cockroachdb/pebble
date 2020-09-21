@@ -16,9 +16,9 @@ import (
 )
 
 type mockCountLimiter struct {
-	waitCount  int
-	allowCount int
-	burst      int
+	waitCount	int
+	allowCount	int
+	burst		int
 }
 
 func (m *mockCountLimiter) DelayN(now time.Time, n int) time.Duration {
@@ -36,8 +36,8 @@ func (m *mockCountLimiter) Burst() int {
 }
 
 type mockPrintLimiter struct {
-	buf   bytes.Buffer
-	burst int
+	buf	bytes.Buffer
+	burst	int
 }
 
 func (m *mockPrintLimiter) DelayN(now time.Time, n int) time.Duration {
@@ -102,15 +102,15 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 				case "compaction":
 					getInfo := func() compactionPacerInfo {
 						return compactionPacerInfo{
-							slowdownThreshold:   slowdownThreshold,
-							totalCompactionDebt: currentTotal,
-							totalDirtyBytes:     dirtyBytes,
+							slowdownThreshold:	slowdownThreshold,
+							totalCompactionDebt:	currentTotal,
+							totalDirtyBytes:	dirtyBytes,
 						}
 					}
 					compactionPacer := newCompactionPacer(compactionPacerEnv{
-						limiter:      &mockLimiter,
-						memTableSize: 100,
-						getInfo:      getInfo,
+						limiter:	&mockLimiter,
+						memTableSize:	100,
+						getInfo:	getInfo,
 					})
 
 					err := compactionPacer.maybeThrottle(bytesIterated)
@@ -126,9 +126,9 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 						}
 					}
 					flushPacer := newFlushPacer(flushPacerEnv{
-						limiter:      &mockLimiter,
-						memTableSize: 100,
-						getInfo:      getInfo,
+						limiter:	&mockLimiter,
+						memTableSize:	100,
+						getInfo:	getInfo,
 					})
 					flushPacer.slowdownThreshold = slowdownThreshold
 

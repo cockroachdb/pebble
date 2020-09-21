@@ -20,7 +20,7 @@ var randVarRE = regexp.MustCompile(`^(?:(latest|uniform|zipf):)?(\d+)(?:-(\d+))?
 // variables.
 type Flag struct {
 	Static
-	spec string
+	spec	string
 }
 
 // NewFlag creates a new Flag initialized with the specified spec.
@@ -85,9 +85,9 @@ func (f *Flag) Set(spec string) error {
 // bytes. The specification provides for both the length of the random bytes
 // and a target compression ratio.
 type BytesFlag struct {
-	sizeFlag          Flag
-	targetCompression float64
-	spec              string
+	sizeFlag		Flag
+	targetCompression	float64
+	spec			string
 }
 
 // NewBytesFlag creates a new BytesFlag initialized with the specified spec.

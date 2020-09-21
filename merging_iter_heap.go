@@ -5,15 +5,15 @@
 package pebble
 
 type mergingIterItem struct {
-	index int
-	key   InternalKey
-	value []byte
+	index	int
+	key	InternalKey
+	value	[]byte
 }
 
 type mergingIterHeap struct {
-	cmp     Compare
-	reverse bool
-	items   []mergingIterItem
+	cmp	Compare
+	reverse	bool
+	items	[]mergingIterItem
 }
 
 func (h *mergingIterHeap) len() int {
@@ -68,7 +68,7 @@ func (h *mergingIterHeap) pop() *mergingIterItem {
 
 func (h *mergingIterHeap) up(j int) {
 	for {
-		i := (j - 1) / 2 // parent
+		i := (j - 1) / 2	// parent
 		if i == j || !h.less(j, i) {
 			break
 		}
@@ -81,12 +81,12 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 	i := i0
 	for {
 		j1 := 2*i + 1
-		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+		if j1 >= n || j1 < 0 {	// j1 < 0 after int overflow
 			break
 		}
-		j := j1 // left child
+		j := j1	// left child
 		if j2 := j1 + 1; j2 < n && h.less(j2, j1) {
-			j = j2 // = 2*i + 2  // right child
+			j = j2	// = 2*i + 2  // right child
 		}
 		if !h.less(j, i) {
 			break

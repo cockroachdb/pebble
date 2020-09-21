@@ -37,9 +37,9 @@ func normalizeError(err error) error {
 
 type loggingFS struct {
 	FS
-	base    string
-	w       io.Writer
-	linkErr error
+	base	string
+	w	io.Writer
+	linkErr	error
 }
 
 func (fs loggingFS) stripBase(path string) string {
@@ -101,8 +101,8 @@ func (fs loggingFS) RemoveAll(name string) error {
 
 type loggingFile struct {
 	File
-	name string
-	w    io.Writer
+	name	string
+	w	io.Writer
 }
 
 func (f loggingFile) Close() error {

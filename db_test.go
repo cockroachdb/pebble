@@ -73,51 +73,51 @@ func TestTry(t *testing.T) {
 
 func TestBasicReads(t *testing.T) {
 	testCases := []struct {
-		dirname string
-		wantMap map[string]string
+		dirname	string
+		wantMap	map[string]string
 	}{
 		{
 			"db-stage-1",
 			map[string]string{
-				"aaa":  "",
-				"bar":  "",
-				"baz":  "",
-				"foo":  "",
-				"quux": "",
-				"zzz":  "",
+				"aaa":	"",
+				"bar":	"",
+				"baz":	"",
+				"foo":	"",
+				"quux":	"",
+				"zzz":	"",
 			},
 		},
 		{
 			"db-stage-2",
 			map[string]string{
-				"aaa":  "",
-				"bar":  "",
-				"baz":  "three",
-				"foo":  "four",
-				"quux": "",
-				"zzz":  "",
+				"aaa":	"",
+				"bar":	"",
+				"baz":	"three",
+				"foo":	"four",
+				"quux":	"",
+				"zzz":	"",
 			},
 		},
 		{
 			"db-stage-3",
 			map[string]string{
-				"aaa":  "",
-				"bar":  "",
-				"baz":  "three",
-				"foo":  "four",
-				"quux": "",
-				"zzz":  "",
+				"aaa":	"",
+				"bar":	"",
+				"baz":	"three",
+				"foo":	"four",
+				"quux":	"",
+				"zzz":	"",
 			},
 		},
 		{
 			"db-stage-4",
 			map[string]string{
-				"aaa":  "",
-				"bar":  "",
-				"baz":  "",
-				"foo":  "five",
-				"quux": "six",
-				"zzz":  "",
+				"aaa":	"",
+				"bar":	"",
+				"baz":	"",
+				"foo":	"five",
+				"quux":	"six",
+				"zzz":	"",
 			},
 		},
 	}
@@ -294,8 +294,8 @@ func TestBasicWrites(t *testing.T) {
 
 func TestRandomWrites(t *testing.T) {
 	d, err := Open("", &Options{
-		FS:           vfs.NewMem(),
-		MemTableSize: 8 * 1024,
+		FS:		vfs.NewMem(),
+		MemTableSize:	8 * 1024,
 	})
 	require.NoError(t, err)
 
@@ -347,9 +347,9 @@ func TestRandomWrites(t *testing.T) {
 
 func TestLargeBatch(t *testing.T) {
 	d, err := Open("", &Options{
-		FS:                          vfs.NewMem(),
-		MemTableSize:                1400,
-		MemTableStopWritesThreshold: 100,
+		FS:				vfs.NewMem(),
+		MemTableSize:			1400,
+		MemTableStopWritesThreshold:	100,
 	})
 	require.NoError(t, err)
 
@@ -436,8 +436,8 @@ func TestGetNoCache(t *testing.T) {
 	defer cache.Unref()
 
 	d, err := Open("", &Options{
-		Cache: cache,
-		FS:    vfs.NewMem(),
+		Cache:	cache,
+		FS:	vfs.NewMem(),
 	})
 	require.NoError(t, err)
 
@@ -516,8 +516,8 @@ func TestMergeOrderSameAfterFlush(t *testing.T) {
 }
 
 type closableMerger struct {
-	lastBuf []byte
-	closed  bool
+	lastBuf	[]byte
+	closed	bool
 }
 
 func (m *closableMerger) MergeNewer(value []byte) error {
@@ -543,7 +543,7 @@ func TestMergerClosing(t *testing.T) {
 	m := &closableMerger{}
 
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:	vfs.NewMem(),
 		Merger: &Merger{
 			Merge: func(key, value []byte) (base.ValueMerger, error) {
 				return m, m.MergeNewer(value)
@@ -716,9 +716,9 @@ func TestMemTableReservation(t *testing.T) {
 	defer cache.Unref()
 
 	opts := &Options{
-		Cache:        cache,
-		MemTableSize: initialMemTableSize,
-		FS:           vfs.NewMem(),
+		Cache:		cache,
+		MemTableSize:	initialMemTableSize,
+		FS:		vfs.NewMem(),
 	}
 	opts.EnsureDefaults()
 
@@ -788,8 +788,8 @@ func TestCacheEvict(t *testing.T) {
 	defer cache.Unref()
 
 	d, err := Open("", &Options{
-		Cache: cache,
-		FS:    vfs.NewMem(),
+		Cache:	cache,
+		FS:	vfs.NewMem(),
 	})
 	require.NoError(t, err)
 
@@ -835,9 +835,9 @@ func TestFlushEmpty(t *testing.T) {
 
 func TestRollManifest(t *testing.T) {
 	d, err := Open("", &Options{
-		MaxManifestFileSize:   1,
-		L0CompactionThreshold: 10,
-		FS:                    vfs.NewMem(),
+		MaxManifestFileSize:	1,
+		L0CompactionThreshold:	10,
+		FS:			vfs.NewMem(),
 	})
 	require.NoError(t, err)
 
@@ -974,8 +974,8 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 	mem := vfs.NewMem()
 	for i := 0; i < 100; i++ {
 		d, err := Open("", &Options{
-			FS:                       mem,
-			MaxConcurrentCompactions: 2,
+			FS:				mem,
+			MaxConcurrentCompactions:	2,
 		})
 		require.NoError(t, err)
 

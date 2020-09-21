@@ -33,10 +33,10 @@ func (b badgerDB) NewIter(opts *pebble.IterOptions) iterator {
 	iopts.PrefetchValues = false
 	iter := txn.NewIterator(iopts)
 	return &badgerIterator{
-		txn:   txn,
-		iter:  iter,
-		lower: opts.GetLowerBound(),
-		upper: opts.GetUpperBound(),
+		txn:	txn,
+		iter:	iter,
+		lower:	opts.GetLowerBound(),
+		upper:	opts.GetUpperBound(),
 	}
 }
 
@@ -58,11 +58,11 @@ func (b badgerDB) Flush() error {
 }
 
 type badgerIterator struct {
-	txn   *badger.Txn
-	iter  *badger.Iterator
-	buf   []byte
-	lower []byte
-	upper []byte
+	txn	*badger.Txn
+	iter	*badger.Iterator
+	buf	[]byte
+	lower	[]byte
+	upper	[]byte
 }
 
 func (i *badgerIterator) SeekGE(key []byte) bool {

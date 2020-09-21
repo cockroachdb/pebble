@@ -22,10 +22,10 @@ var walSyncLabels = pprof.Labels("pebble", "wal-sync")
 
 type block struct {
 	// buf[:written] has already been filled with fragments. Updated atomically.
-	written int32
+	written	int32
 	// buf[:flushed] has already been flushed to w.
-	flushed int32
-	buf     [blockSize]byte
+	flushed	int32
+	buf	[blockSize]byte
 }
 
 type flusher interface {
@@ -37,18 +37,18 @@ type syncer interface {
 }
 
 const (
-	syncConcurrencyBits = 9
+	syncConcurrencyBits	= 9
 
 	// SyncConcurrency is the maximum number of concurrent sync operations that
 	// can be performed. Note that a sync operation is initiated either by a call
 	// to SyncRecord or by a call to Close. Exported as this value also limits
 	// the commit concurrency in commitPipeline.
-	SyncConcurrency = 1 << syncConcurrencyBits
+	SyncConcurrency	= 1 << syncConcurrencyBits
 )
 
 type syncSlot struct {
-	wg  *sync.WaitGroup
-	err *error
+	wg	*sync.WaitGroup
+	err	*error
 }
 
 // syncQueue is a lock-free fixed-size single-producer, single-consumer
@@ -68,16 +68,16 @@ type syncQueue struct {
 	//
 	// The head index is stored in the most-significant bits so that we can
 	// atomically add to it and the overflow is harmless.
-	headTail uint64
+	headTail	uint64
 
 	// slots is a ring buffer of values stored in this queue. The size must be a
 	// power of 2. A slot is in use until the tail index has moved beyond it.
-	slots [SyncConcurrency]syncSlot
+	slots	[SyncConcurrency]syncSlot
 
 	// blocked is an atomic boolean which indicates whether syncing is currently
 	// blocked or can proceed. It is used by the implementation of
 	// min-sync-interval to block syncing until the min interval has passed.
-	blocked uint32
+	blocked	uint32
 }
 
 const dequeueBits = 32
@@ -158,9 +158,9 @@ func (q *syncQueue) pop(head, tail uint32, err error) error {
 // particular, when a waiter is added to syncQueue atomically, this condition
 // variable can be signalled without holding flusher.Mutex.
 type flusherCond struct {
-	mu   *sync.Mutex
-	q    *syncQueue
-	cond sync.Cond
+	mu	*sync.Mutex
+	q	*syncQueue
+	cond	sync.Cond
 }
 
 func (c *flusherCond) init(mu *sync.Mutex, q *syncQueue) {
@@ -239,51 +239,51 @@ type syncTimer interface {
 // file will return the error ErrInvalidLogNum.
 type LogWriter struct {
 	// w is the underlying writer.
-	w io.Writer
+	w	io.Writer
 	// c is w as a closer.
-	c io.Closer
+	c	io.Closer
 	// s is w as a syncer.
-	s syncer
+	s	syncer
 	// logNum is the low 32-bits of the log's file number.
-	logNum uint32
+	logNum	uint32
 	// blockNum is the zero based block number for the current block.
-	blockNum int64
+	blockNum	int64
 	// err is any accumulated error. TODO(peter): This needs to be protected in
 	// some fashion. Perhaps using atomic.Value.
-	err error
+	err	error
 	// block is the current block being written. Protected by flusher.Mutex.
-	block *block
-	free  struct {
+	block	*block
+	free	struct {
 		sync.Mutex
 		// Condition variable used to signal a block is freed.
-		cond      sync.Cond
-		blocks    []*block
-		allocated int
+		cond		sync.Cond
+		blocks		[]*block
+		allocated	int
 	}
 
-	flusher struct {
+	flusher	struct {
 		sync.Mutex
 		// Flusher ready is a condition variable that is signalled when there are
 		// blocks to flush, syncing has been requested, or the LogWriter has been
 		// closed. For signalling of a sync, it is safe to call without holding
 		// flusher.Mutex.
-		ready flusherCond
+		ready	flusherCond
 		// Set to true when the flush loop should be closed.
-		close bool
+		close	bool
 		// Closed when the flush loop has terminated.
-		closed chan struct{}
+		closed	chan struct{}
 		// Accumulated flush error.
-		err error
+		err	error
 		// minSyncInterval is the minimum duration between syncs.
-		minSyncInterval durationFunc
-		pending         []*block
-		syncQ           syncQueue
+		minSyncInterval	durationFunc
+		pending		[]*block
+		syncQ		syncQueue
 	}
 
 	// afterFunc is a hook to allow tests to mock out the timer functionality
 	// used for min-sync-interval. In normal operation this points to
 	// time.AfterFunc.
-	afterFunc func(d time.Duration, f func()) syncTimer
+	afterFunc	func(d time.Duration, f func()) syncTimer
 }
 
 // NewLogWriter returns a new LogWriter.
@@ -291,14 +291,14 @@ func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 	c, _ := w.(io.Closer)
 	s, _ := w.(syncer)
 	r := &LogWriter{
-		w: w,
-		c: c,
-		s: s,
+		w:	w,
+		c:	c,
+		s:	s,
 		// NB: we truncate the 64-bit log number to 32-bits. This is ok because a)
 		// we are very unlikely to reach a file number of 4 billion and b) the log
 		// number is used as a validation check and using only the low 32-bits is
 		// sufficient for that purpose.
-		logNum: uint32(logNum),
+		logNum:	uint32(logNum),
 		afterFunc: func(d time.Duration, f func()) syncTimer {
 			return time.AfterFunc(d, f)
 		},
@@ -623,10 +623,10 @@ func (w *LogWriter) emitEOFTrailer() {
 	// will treat the header as EOF when the log number does not match.
 	b := w.block
 	i := b.written
-	binary.LittleEndian.PutUint32(b.buf[i+0:i+4], 0) // CRC
-	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], 0) // Size
+	binary.LittleEndian.PutUint32(b.buf[i+0:i+4], 0)	// CRC
+	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], 0)	// Size
 	b.buf[i+6] = recyclableFullChunkType
-	binary.LittleEndian.PutUint32(b.buf[i+7:i+11], w.logNum+1) // Log number
+	binary.LittleEndian.PutUint32(b.buf[i+7:i+11], w.logNum+1)	// Log number
 	atomic.StoreInt32(&b.written, i+int32(recyclableHeaderSize))
 }
 

@@ -59,27 +59,27 @@ var memTableEmptySize = func() uint32 {
 //
 // It is safe to call get, apply, newIter, and newRangeDelIter concurrently.
 type memTable struct {
-	cmp         Compare
-	formatKey   base.FormatKey
-	equal       Equal
-	arenaBuf    []byte
-	skl         arenaskl.Skiplist
-	rangeDelSkl arenaskl.Skiplist
+	cmp		Compare
+	formatKey	base.FormatKey
+	equal		Equal
+	arenaBuf	[]byte
+	skl		arenaskl.Skiplist
+	rangeDelSkl	arenaskl.Skiplist
 	// reserved tracks the amount of space used by the memtable, both by actual
 	// data stored in the memtable as well as inflight batch commit
 	// operations. This value is incremented pessimistically by prepare() in
 	// order to account for the space needed by a batch.
-	reserved uint32
+	reserved	uint32
 	// writerRefs tracks the write references on the memtable. The two sources of
 	// writer references are the memtable being on DB.mu.mem.queue and from
 	// inflight mutations that have reserved space in the memtable but not yet
 	// applied. The memtable cannot be flushed to disk until the writer refs
 	// drops to zero.
-	writerRefs int32
-	tombstones rangeTombstoneCache
+	writerRefs	int32
+	tombstones	rangeTombstoneCache
 	// The current logSeqNum at the time the memtable was created. This is
 	// guaranteed to be less than or equal to any seqnum stored in the memtable.
-	logSeqNum uint64
+	logSeqNum	uint64
 }
 
 // memTableOptions holds configuration used when creating a memTable. All of
@@ -87,9 +87,9 @@ type memTable struct {
 // which is used by tests.
 type memTableOptions struct {
 	*Options
-	arenaBuf  []byte
-	size      int
-	logSeqNum uint64
+	arenaBuf	[]byte
+	size		int
+	logSeqNum	uint64
 }
 
 func checkMemTable(obj interface{}) {
@@ -109,12 +109,12 @@ func newMemTable(opts memTableOptions) *memTable {
 	}
 
 	m := &memTable{
-		cmp:        opts.Comparer.Compare,
-		formatKey:  opts.Comparer.FormatKey,
-		equal:      opts.Comparer.Equal,
-		arenaBuf:   opts.arenaBuf,
-		writerRefs: 1,
-		logSeqNum:  opts.logSeqNum,
+		cmp:		opts.Comparer.Compare,
+		formatKey:	opts.Comparer.FormatKey,
+		equal:		opts.Comparer.Equal,
+		arenaBuf:	opts.arenaBuf,
+		writerRefs:	1,
+		logSeqNum:	opts.logSeqNum,
 	}
 
 	if m.arenaBuf == nil {
@@ -277,9 +277,9 @@ func (m *memTable) empty() bool {
 // in the memTable. Note that the count of range tombstones in a memTable only
 // ever increases, which provides a monotonically increasing sequence.
 type rangeTombstoneFrags struct {
-	count      uint32
-	once       sync.Once
-	tombstones []rangedel.Tombstone
+	count		uint32
+	once		sync.Once
+	tombstones	[]rangedel.Tombstone
 }
 
 // get retrieves the fragmented tombstones, populating them if necessary. Note
@@ -293,8 +293,8 @@ type rangeTombstoneFrags struct {
 func (f *rangeTombstoneFrags) get(m *memTable) []rangedel.Tombstone {
 	f.once.Do(func() {
 		frag := &rangedel.Fragmenter{
-			Cmp:    m.cmp,
-			Format: m.formatKey,
+			Cmp:	m.cmp,
+			Format:	m.formatKey,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				f.tombstones = append(f.tombstones, fragmented...)
 			},
@@ -312,8 +312,8 @@ func (f *rangeTombstoneFrags) get(m *memTable) []rangedel.Tombstone {
 // cache is invalidated whenever a tombstone is added to a memTable, and
 // populated when empty when a range-del iterator is created.
 type rangeTombstoneCache struct {
-	count uint32
-	frags unsafe.Pointer
+	count	uint32
+	frags	unsafe.Pointer
 }
 
 // Invalidate the current set of cached tombstones, indicating the number of

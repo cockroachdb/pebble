@@ -21,9 +21,9 @@ type db struct {
 
 func open(fs vfs.FS, dir string) *db {
 	d, err := pebble.Open(dir, &pebble.Options{
-		Cleaner:       pebble.ArchiveCleaner{},
-		EventListener: pebble.MakeLoggingEventListener(pebble.DefaultLogger),
-		FS:            fs,
+		Cleaner:	pebble.ArchiveCleaner{},
+		EventListener:	pebble.MakeLoggingEventListener(pebble.DefaultLogger),
+		FS:		fs,
 	})
 	if err != nil {
 		log.Fatal(err)

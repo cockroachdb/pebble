@@ -10,8 +10,8 @@ package pebble
 // used by test code.
 type internalIterAdapter struct {
 	internalIterator
-	key *InternalKey
-	val []byte
+	key	*InternalKey
+	val	[]byte
 }
 
 func newInternalIterAdapter(iter internalIterator) *internalIterAdapter {

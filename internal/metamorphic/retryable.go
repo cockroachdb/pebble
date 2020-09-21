@@ -26,8 +26,8 @@ func withRetries(fn func() error) error {
 // iterator operations by running them again on a non-error iterator with the
 // same pre-operation state.
 type retryableIter struct {
-	iter    *pebble.Iterator
-	lastKey []byte
+	iter	*pebble.Iterator
+	lastKey	[]byte
 }
 
 func (i *retryableIter) needRetry() bool {

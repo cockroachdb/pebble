@@ -12,31 +12,31 @@ import (
 
 func TestParseFilename(t *testing.T) {
 	testCases := map[string]bool{
-		"000000.log":           true,
-		"000000.log.zip":       false,
-		"000000..log":          false,
-		"a000000.log":          false,
-		"abcdef.log":           false,
-		"000001ldb":            false,
-		"000001.sst":           true,
-		"CURRENT":              true,
-		"CURRaNT":              false,
-		"LOCK":                 true,
-		"xLOCK":                false,
-		"x.LOCK":               false,
-		"MANIFEST":             false,
-		"MANIFEST123456":       false,
-		"MANIFEST-":            false,
-		"MANIFEST-123456":      true,
-		"MANIFEST-123456.doc":  false,
-		"OPTIONS":              false,
-		"OPTIONS123456":        false,
-		"OPTIONS-":             false,
-		"OPTIONS-123456":       true,
-		"OPTIONS-123456.doc":   false,
-		"CURRENT.123456":       false,
-		"CURRENT.dbtmp":        false,
-		"CURRENT.123456.dbtmp": true,
+		"000000.log":		true,
+		"000000.log.zip":	false,
+		"000000..log":		false,
+		"a000000.log":		false,
+		"abcdef.log":		false,
+		"000001ldb":		false,
+		"000001.sst":		true,
+		"CURRENT":		true,
+		"CURRaNT":		false,
+		"LOCK":			true,
+		"xLOCK":		false,
+		"x.LOCK":		false,
+		"MANIFEST":		false,
+		"MANIFEST123456":	false,
+		"MANIFEST-":		false,
+		"MANIFEST-123456":	true,
+		"MANIFEST-123456.doc":	false,
+		"OPTIONS":		false,
+		"OPTIONS123456":	false,
+		"OPTIONS-":		false,
+		"OPTIONS-123456":	true,
+		"OPTIONS-123456.doc":	false,
+		"CURRENT.123456":	false,
+		"CURRENT.dbtmp":	false,
+		"CURRENT.123456.dbtmp":	true,
 	}
 	fs := vfs.NewMem()
 	for tc, want := range testCases {
@@ -50,14 +50,14 @@ func TestParseFilename(t *testing.T) {
 func TestFilenameRoundTrip(t *testing.T) {
 	testCases := map[FileType]bool{
 		// CURRENT and LOCK files aren't numbered.
-		FileTypeCurrent: false,
-		FileTypeLock:    false,
+		FileTypeCurrent:	false,
+		FileTypeLock:		false,
 		// The remaining file types are numbered.
-		FileTypeLog:      true,
-		FileTypeManifest: true,
-		FileTypeTable:    true,
-		FileTypeOptions:  true,
-		FileTypeTemp:     true,
+		FileTypeLog:		true,
+		FileTypeManifest:	true,
+		FileTypeTable:		true,
+		FileTypeOptions:	true,
+		FileTypeTemp:		true,
 	}
 	fs := vfs.NewMem()
 	for fileType, numbered := range testCases {

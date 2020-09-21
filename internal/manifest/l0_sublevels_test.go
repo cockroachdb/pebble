@@ -211,8 +211,8 @@ func TestL0Sublevels(t *testing.T) {
 		fields := strings.Fields(parts[1])
 		keyRange := strings.Split(strings.TrimSpace(fields[0]), "-")
 		m := FileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(keyRange[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(keyRange[1])),
+			Smallest:	base.ParseInternalKey(strings.TrimSpace(keyRange[0])),
+			Largest:	base.ParseInternalKey(strings.TrimSpace(keyRange[1])),
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -327,10 +327,10 @@ func TestL0Sublevels(t *testing.T) {
 				// This case is for use with explicitly-specified sublevels
 				// only.
 				sublevels = &L0Sublevels{
-					Levels:        explicitSublevels,
-					cmp:           base.DefaultComparer.Compare,
-					formatKey:     base.DefaultFormatter,
-					levelMetadata: &levelMetadata,
+					Levels:		explicitSublevels,
+					cmp:		base.DefaultComparer.Compare,
+					formatKey:	base.DefaultFormatter,
+					levelMetadata:	&levelMetadata,
 				}
 			}
 

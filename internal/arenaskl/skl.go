@@ -41,7 +41,7 @@ Key differences:
 - Iterator includes mutator functions.
 */
 
-package arenaskl // import "github.com/cockroachdb/pebble/internal/arenaskl"
+package arenaskl	// import "github.com/cockroachdb/pebble/internal/arenaskl"
 
 import (
 	"encoding/binary"
@@ -56,10 +56,10 @@ import (
 )
 
 const (
-	maxHeight   = 20
-	maxNodeSize = int(unsafe.Sizeof(node{}))
-	linksSize   = int(unsafe.Sizeof(links{}))
-	pValue      = 1 / math.E
+	maxHeight	= 20
+	maxNodeSize	= int(unsafe.Sizeof(node{}))
+	linksSize	= int(unsafe.Sizeof(links{}))
+	pValue		= 1 / math.E
 )
 
 // ErrRecordExists indicates that an entry with the specified key already
@@ -76,21 +76,21 @@ var ErrRecordExists = errors.New("record with this key already exists")
 // is up to the user to process these shadow entries and tombstones
 // appropriately during retrieval.
 type Skiplist struct {
-	arena  *Arena
-	cmp    base.Compare
-	head   *node
-	tail   *node
-	height uint32 // Current height. 1 <= height <= maxHeight. CAS.
+	arena	*Arena
+	cmp	base.Compare
+	head	*node
+	tail	*node
+	height	uint32	// Current height. 1 <= height <= maxHeight. CAS.
 
 	// If set to true by tests, then extra delays are added to make it easier to
 	// detect unusual race conditions.
-	testing bool
+	testing	bool
 }
 
 // Inserter TODO(peter)
 type Inserter struct {
-	spl    [maxHeight]splice
-	height uint32
+	spl	[maxHeight]splice
+	height	uint32
 }
 
 // Add TODO(peter)
@@ -145,23 +145,23 @@ func (s *Skiplist) Reset(arena *Arena, cmp base.Compare) {
 	}
 
 	*s = Skiplist{
-		arena:  arena,
-		cmp:    cmp,
-		head:   head,
-		tail:   tail,
-		height: 1,
+		arena:	arena,
+		cmp:	cmp,
+		head:	head,
+		tail:	tail,
+		height:	1,
 	}
 }
 
 // Height returns the height of the highest tower within any of the nodes that
 // have ever been allocated as part of this skiplist.
-func (s *Skiplist) Height() uint32 { return atomic.LoadUint32(&s.height) }
+func (s *Skiplist) Height() uint32	{ return atomic.LoadUint32(&s.height) }
 
 // Arena returns the arena backing this skiplist.
-func (s *Skiplist) Arena() *Arena { return s.arena }
+func (s *Skiplist) Arena() *Arena	{ return s.arena }
 
 // Size returns the number of bytes that have allocated from the arena.
-func (s *Skiplist) Size() uint32 { return s.arena.Size() }
+func (s *Skiplist) Size() uint32	{ return s.arena.Size() }
 
 // Add adds a new key if it does not yet exist. If the key already exists, then
 // Add returns ErrRecordExists. If there isn't enough room in the arena, then
@@ -310,8 +310,8 @@ func (s *Skiplist) NewIter(lower, upper []byte) *Iterator {
 // through.
 func (s *Skiplist) NewFlushIter(bytesFlushed *uint64) base.InternalIterator {
 	return &flushIterator{
-		Iterator:      Iterator{list: s, nd: s.head},
-		bytesIterated: bytesFlushed,
+		Iterator:	Iterator{list: s, nd: s.head},
+		bytesIterated:	bytesFlushed,
 	}
 }
 

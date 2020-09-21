@@ -16,21 +16,21 @@ import (
 )
 
 type mergingIterLevel struct {
-	iter internalIterator
+	iter	internalIterator
 	// rangeDelIter is set to the range-deletion iterator for the level. When
 	// configured with a levelIter, this pointer changes as sstable boundaries
 	// are crossed. See levelIter.initRangeDel and the Range Deletions comment
 	// below.
-	rangeDelIter internalIterator
+	rangeDelIter	internalIterator
 	// iterKey and iterValue cache the current key and value iter are pointed at.
-	iterKey   *InternalKey
-	iterValue []byte
+	iterKey		*InternalKey
+	iterValue	[]byte
 
 	// smallestUserKey, largestUserKey, isLargestUserKeyRangeDelSentinel are set using the sstable
 	// boundary keys when using levelIter. See levelIter comment and the Range Deletions comment
 	// below.
-	smallestUserKey, largestUserKey  []byte
-	isLargestUserKeyRangeDelSentinel bool
+	smallestUserKey, largestUserKey		[]byte
+	isLargestUserKeyRangeDelSentinel	bool
 
 	// tombstone caches the tombstone rangeDelIter is currently pointed at. If
 	// tombstone.Empty() is true, there are no further tombstones within the
@@ -38,7 +38,7 @@ type mergingIterLevel struct {
 	// only valid for the levels in the range [0,heap[0].index]. This avoids
 	// positioning tombstones at lower levels which cannot possibly shadow the
 	// current key.
-	tombstone rangedel.Tombstone
+	tombstone	rangedel.Tombstone
 }
 
 // mergingIter provides a merged view of multiple iterators from different
@@ -210,20 +210,20 @@ type mergingIterLevel struct {
 // scenarios and have each step display the current state (i.e. the current
 // heap and range-del iterator positioning).
 type mergingIter struct {
-	logger   Logger
-	dir      int
-	snapshot uint64
-	levels   []mergingIterLevel
-	heap     mergingIterHeap
-	err      error
-	prefix   []byte
-	lower    []byte
-	upper    []byte
+	logger		Logger
+	dir		int
+	snapshot	uint64
+	levels		[]mergingIterLevel
+	heap		mergingIterHeap
+	err		error
+	prefix		[]byte
+	lower		[]byte
+	upper		[]byte
 
 	// Elide range tombstones from being returned during iteration. Set to true
 	// when mergingIter is a child of Iterator and the mergingIter is processing
 	// range tombstones.
-	elideRangeTombstones bool
+	elideRangeTombstones	bool
 }
 
 // mergingIter implements the base.InternalIterator interface.
@@ -248,7 +248,7 @@ func newMergingIter(logger Logger, cmp Compare, iters ...internalIterator) *merg
 }
 
 func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIterLevel) {
-	m.err = nil // clear cached iteration error
+	m.err = nil	// clear cached iteration error
 	m.logger = opts.getLogger()
 	if opts != nil {
 		m.lower = opts.LowerBound
@@ -269,9 +269,9 @@ func (m *mergingIter) initHeap() {
 	for i := range m.levels {
 		if l := &m.levels[i]; l.iterKey != nil {
 			m.heap.items = append(m.heap.items, mergingIterItem{
-				index: i,
-				key:   *l.iterKey,
-				value: l.iterValue,
+				index:	i,
+				key:	*l.iterKey,
+				value:	l.iterValue,
 			})
 		} else {
 			m.err = firstError(m.err, l.iter.Error())
@@ -849,7 +849,7 @@ func (m *mergingIter) String() string {
 // the upper bound. It is up to the caller to ensure that key is greater than
 // or equal to the lower bound.
 func (m *mergingIter) SeekGE(key []byte) (*InternalKey, []byte) {
-	m.err = nil // clear cached iteration error
+	m.err = nil	// clear cached iteration error
 	m.prefix = nil
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
@@ -859,7 +859,7 @@ func (m *mergingIter) SeekGE(key []byte) (*InternalKey, []byte) {
 // SeekPrefixGE only checks the upper bound. It is up to the caller to ensure
 // that key is greater than or equal to the lower bound.
 func (m *mergingIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	m.err = nil // clear cached iteration error
+	m.err = nil	// clear cached iteration error
 	m.prefix = prefix
 	m.seekGE(key, 0 /* start level */)
 	return m.findNextEntry()
@@ -929,7 +929,7 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 // the lower bound. It is up to the caller to ensure that key is less than the
 // upper bound.
 func (m *mergingIter) SeekLT(key []byte) (*InternalKey, []byte) {
-	m.err = nil // clear cached iteration error
+	m.err = nil	// clear cached iteration error
 	m.prefix = nil
 	m.seekLT(key, 0 /* start level */)
 	return m.findPrevEntry()
@@ -939,7 +939,7 @@ func (m *mergingIter) SeekLT(key []byte) (*InternalKey, []byte) {
 // the upper bound. It is up to the caller to ensure that key is greater than
 // or equal to the lower bound (e.g. via a call to SeekGE(lower)).
 func (m *mergingIter) First() (*InternalKey, []byte) {
-	m.err = nil // clear cached iteration error
+	m.err = nil	// clear cached iteration error
 	m.prefix = nil
 	m.heap.items = m.heap.items[:0]
 	for i := range m.levels {
@@ -954,7 +954,7 @@ func (m *mergingIter) First() (*InternalKey, []byte) {
 // lower bound. It is up to the caller to ensure that key is less than the
 // upper bound (e.g. via a call to SeekLT(upper))
 func (m *mergingIter) Last() (*InternalKey, []byte) {
-	m.err = nil // clear cached iteration error
+	m.err = nil	// clear cached iteration error
 	m.prefix = nil
 	for i := range m.levels {
 		l := &m.levels[i]

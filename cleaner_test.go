@@ -26,9 +26,9 @@ func TestArchiveCleaner(t *testing.T) {
 	var buf syncedBuffer
 	mem := vfs.NewMem()
 	opts := &Options{
-		Cleaner: ArchiveCleaner{},
-		FS:      loggingFS{mem, &buf},
-		WALDir:  "wal",
+		Cleaner:	ArchiveCleaner{},
+		FS:		loggingFS{mem, &buf},
+		WALDir:		"wal",
 	}
 
 	datadriven.RunTest(t, "testdata/cleaner", func(td *datadriven.TestData) string {

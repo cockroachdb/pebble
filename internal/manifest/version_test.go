@@ -71,8 +71,8 @@ func TestIkeyRange(t *testing.T) {
 		if tc.input != "" {
 			for _, s := range strings.Split(tc.input, " ") {
 				f = append(f, &FileMetadata{
-					Smallest: ikey(s[0:1]),
-					Largest:  ikey(s[2:3]),
+					Smallest:	ikey(s[0:1]),
+					Largest:	ikey(s[2:3]),
 				})
 			}
 		}
@@ -88,96 +88,96 @@ func TestIkeyRange(t *testing.T) {
 
 func TestOverlaps(t *testing.T) {
 	m00 := &FileMetadata{
-		FileNum:  700,
-		Size:     1,
-		Smallest: base.ParseInternalKey("b.SET.7008"),
-		Largest:  base.ParseInternalKey("e.SET.7009"),
+		FileNum:	700,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("b.SET.7008"),
+		Largest:	base.ParseInternalKey("e.SET.7009"),
 	}
 	m01 := &FileMetadata{
-		FileNum:  701,
-		Size:     1,
-		Smallest: base.ParseInternalKey("c.SET.7018"),
-		Largest:  base.ParseInternalKey("f.SET.7019"),
+		FileNum:	701,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("c.SET.7018"),
+		Largest:	base.ParseInternalKey("f.SET.7019"),
 	}
 	m02 := &FileMetadata{
-		FileNum:  702,
-		Size:     1,
-		Smallest: base.ParseInternalKey("f.SET.7028"),
-		Largest:  base.ParseInternalKey("g.SET.7029"),
+		FileNum:	702,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("f.SET.7028"),
+		Largest:	base.ParseInternalKey("g.SET.7029"),
 	}
 	m03 := &FileMetadata{
-		FileNum:  703,
-		Size:     1,
-		Smallest: base.ParseInternalKey("x.SET.7038"),
-		Largest:  base.ParseInternalKey("y.SET.7039"),
+		FileNum:	703,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("x.SET.7038"),
+		Largest:	base.ParseInternalKey("y.SET.7039"),
 	}
 	m04 := &FileMetadata{
-		FileNum:  704,
-		Size:     1,
-		Smallest: base.ParseInternalKey("n.SET.7048"),
-		Largest:  base.ParseInternalKey("p.SET.7049"),
+		FileNum:	704,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("n.SET.7048"),
+		Largest:	base.ParseInternalKey("p.SET.7049"),
 	}
 	m05 := &FileMetadata{
-		FileNum:  705,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7058"),
-		Largest:  base.ParseInternalKey("p.SET.7059"),
+		FileNum:	705,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7058"),
+		Largest:	base.ParseInternalKey("p.SET.7059"),
 	}
 	m06 := &FileMetadata{
-		FileNum:  706,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7068"),
-		Largest:  base.ParseInternalKey("u.SET.7069"),
+		FileNum:	706,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7068"),
+		Largest:	base.ParseInternalKey("u.SET.7069"),
 	}
 	m07 := &FileMetadata{
-		FileNum:  707,
-		Size:     1,
-		Smallest: base.ParseInternalKey("r.SET.7078"),
-		Largest:  base.ParseInternalKey("s.SET.7079"),
+		FileNum:	707,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("r.SET.7078"),
+		Largest:	base.ParseInternalKey("s.SET.7079"),
 	}
 
 	m10 := &FileMetadata{
-		FileNum:  710,
-		Size:     1,
-		Smallest: base.ParseInternalKey("d.SET.7108"),
-		Largest:  base.ParseInternalKey("g.SET.7109"),
+		FileNum:	710,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("d.SET.7108"),
+		Largest:	base.ParseInternalKey("g.SET.7109"),
 	}
 	m11 := &FileMetadata{
-		FileNum:  711,
-		Size:     1,
-		Smallest: base.ParseInternalKey("g.SET.7118"),
-		Largest:  base.ParseInternalKey("j.SET.7119"),
+		FileNum:	711,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("g.SET.7118"),
+		Largest:	base.ParseInternalKey("j.SET.7119"),
 	}
 	m12 := &FileMetadata{
-		FileNum:  712,
-		Size:     1,
-		Smallest: base.ParseInternalKey("n.SET.7128"),
-		Largest:  base.ParseInternalKey("p.SET.7129"),
+		FileNum:	712,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("n.SET.7128"),
+		Largest:	base.ParseInternalKey("p.SET.7129"),
 	}
 	m13 := &FileMetadata{
-		FileNum:  713,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7138"),
-		Largest:  base.ParseInternalKey("p.SET.7139"),
+		FileNum:	713,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7138"),
+		Largest:	base.ParseInternalKey("p.SET.7139"),
 	}
 	m14 := &FileMetadata{
-		FileNum:  714,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7148"),
-		Largest:  base.ParseInternalKey("u.SET.7149"),
+		FileNum:	714,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7148"),
+		Largest:	base.ParseInternalKey("u.SET.7149"),
 	}
 
 	v := Version{
 		Levels: [NumLevels]LevelMetadata{
-			0: makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
-			1: makeLevelMetadata(m10, m11, m12, m13, m14),
+			0:	makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
+			1:	makeLevelMetadata(m10, m11, m12, m13, m14),
 		},
 	}
 
 	testCases := []struct {
-		level        int
-		ukey0, ukey1 string
-		want         string
+		level		int
+		ukey0, ukey1	string
+		want		string
 	}{
 		// Level 0: m00=b-e, m01=c-f, m02=f-g, m03=x-y, m04=n-p, m05=p-p, m06=p-u, m07=r-s.
 		// Note that:
@@ -261,96 +261,96 @@ func TestOverlaps(t *testing.T) {
 
 func TestContains(t *testing.T) {
 	m00 := &FileMetadata{
-		FileNum:  700,
-		Size:     1,
-		Smallest: base.ParseInternalKey("b.SET.7008"),
-		Largest:  base.ParseInternalKey("e.SET.7009"),
+		FileNum:	700,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("b.SET.7008"),
+		Largest:	base.ParseInternalKey("e.SET.7009"),
 	}
 	m01 := &FileMetadata{
-		FileNum:  701,
-		Size:     1,
-		Smallest: base.ParseInternalKey("c.SET.7018"),
-		Largest:  base.ParseInternalKey("f.SET.7019"),
+		FileNum:	701,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("c.SET.7018"),
+		Largest:	base.ParseInternalKey("f.SET.7019"),
 	}
 	m02 := &FileMetadata{
-		FileNum:  702,
-		Size:     1,
-		Smallest: base.ParseInternalKey("f.SET.7028"),
-		Largest:  base.ParseInternalKey("g.SET.7029"),
+		FileNum:	702,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("f.SET.7028"),
+		Largest:	base.ParseInternalKey("g.SET.7029"),
 	}
 	m03 := &FileMetadata{
-		FileNum:  703,
-		Size:     1,
-		Smallest: base.ParseInternalKey("x.SET.7038"),
-		Largest:  base.ParseInternalKey("y.SET.7039"),
+		FileNum:	703,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("x.SET.7038"),
+		Largest:	base.ParseInternalKey("y.SET.7039"),
 	}
 	m04 := &FileMetadata{
-		FileNum:  704,
-		Size:     1,
-		Smallest: base.ParseInternalKey("n.SET.7048"),
-		Largest:  base.ParseInternalKey("p.SET.7049"),
+		FileNum:	704,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("n.SET.7048"),
+		Largest:	base.ParseInternalKey("p.SET.7049"),
 	}
 	m05 := &FileMetadata{
-		FileNum:  705,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7058"),
-		Largest:  base.ParseInternalKey("p.SET.7059"),
+		FileNum:	705,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7058"),
+		Largest:	base.ParseInternalKey("p.SET.7059"),
 	}
 	m06 := &FileMetadata{
-		FileNum:  706,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7068"),
-		Largest:  base.ParseInternalKey("u.SET.7069"),
+		FileNum:	706,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7068"),
+		Largest:	base.ParseInternalKey("u.SET.7069"),
 	}
 	m07 := &FileMetadata{
-		FileNum:  707,
-		Size:     1,
-		Smallest: base.ParseInternalKey("r.SET.7078"),
-		Largest:  base.ParseInternalKey("s.SET.7079"),
+		FileNum:	707,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("r.SET.7078"),
+		Largest:	base.ParseInternalKey("s.SET.7079"),
 	}
 
 	m10 := &FileMetadata{
-		FileNum:  710,
-		Size:     1,
-		Smallest: base.ParseInternalKey("d.SET.7108"),
-		Largest:  base.ParseInternalKey("g.SET.7109"),
+		FileNum:	710,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("d.SET.7108"),
+		Largest:	base.ParseInternalKey("g.SET.7109"),
 	}
 	m11 := &FileMetadata{
-		FileNum:  711,
-		Size:     1,
-		Smallest: base.ParseInternalKey("g.SET.7118"),
-		Largest:  base.ParseInternalKey("j.SET.7119"),
+		FileNum:	711,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("g.SET.7118"),
+		Largest:	base.ParseInternalKey("j.SET.7119"),
 	}
 	m12 := &FileMetadata{
-		FileNum:  712,
-		Size:     1,
-		Smallest: base.ParseInternalKey("n.SET.7128"),
-		Largest:  base.ParseInternalKey("p.SET.7129"),
+		FileNum:	712,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("n.SET.7128"),
+		Largest:	base.ParseInternalKey("p.SET.7129"),
 	}
 	m13 := &FileMetadata{
-		FileNum:  713,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7138"),
-		Largest:  base.ParseInternalKey("p.SET.7139"),
+		FileNum:	713,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7138"),
+		Largest:	base.ParseInternalKey("p.SET.7139"),
 	}
 	m14 := &FileMetadata{
-		FileNum:  714,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7148"),
-		Largest:  base.ParseInternalKey("u.SET.7149"),
+		FileNum:	714,
+		Size:		1,
+		Smallest:	base.ParseInternalKey("p.SET.7148"),
+		Largest:	base.ParseInternalKey("u.SET.7149"),
 	}
 
 	v := Version{
 		Levels: [NumLevels]LevelMetadata{
-			0: makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
-			1: makeLevelMetadata(m10, m11, m12, m13, m14),
+			0:	makeLevelMetadata(m00, m01, m02, m03, m04, m05, m06, m07),
+			1:	makeLevelMetadata(m10, m11, m12, m13, m14),
 		},
 	}
 
 	testCases := []struct {
-		level int
-		file  *FileMetadata
-		want  bool
+		level	int
+		file	*FileMetadata
+		want	bool
 	}{
 		// Level 0: m00=b-e, m01=c-f, m02=f-g, m03=x-y, m04=n-p, m05=p-p, m06=p-u, m07=r-s.
 		// Note that:
@@ -421,8 +421,8 @@ func TestCheckOrdering(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		m := FileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+			Smallest:	base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:	base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -495,8 +495,8 @@ func TestCheckConsistency(t *testing.T) {
 			return nil, err
 		}
 		return &FileMetadata{
-			FileNum: base.FileNum(fileNum),
-			Size:    uint64(size),
+			FileNum:	base.FileNum(fileNum),
+			Size:		uint64(size),
 		}, nil
 	}
 

@@ -4,9 +4,7 @@
 
 package tool
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestWAL(t *testing.T) {
 	runTests(t, "testdata/wal_*")

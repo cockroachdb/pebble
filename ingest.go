@@ -174,9 +174,9 @@ func ingestLoad(
 // matching path also gets swapped to the same index. For use in
 // ingestSortAndVerify.
 type metaAndPaths struct {
-	meta  []*fileMetadata
-	paths []string
-	cmp   Compare
+	meta	[]*fileMetadata
+	paths	[]string
+	cmp	Compare
 }
 
 func (m metaAndPaths) Len() int {
@@ -198,9 +198,9 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) erro
 	}
 
 	sort.Sort(&metaAndPaths{
-		meta:  meta,
-		paths: paths,
-		cmp:   cmp,
+		meta:	meta,
+		paths:	paths,
+		cmp:	cmp,
 	})
 
 	for i := 1; i < len(meta); i++ {
@@ -230,7 +230,7 @@ func ingestLink(
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
-		FS: opts.FS,
+		FS:	opts.FS,
 		syncOpts: vfs.SyncingFileOptions{
 			BytesPerSync: opts.BytesPerSync,
 		},
@@ -266,10 +266,10 @@ func ingestLink(
 		}
 		if opts.EventListener.TableCreated != nil {
 			opts.EventListener.TableCreated(TableCreateInfo{
-				JobID:   jobID,
-				Reason:  "ingesting",
-				Path:    target,
-				FileNum: meta[i].FileNum,
+				JobID:		jobID,
+				Reason:		"ingesting",
+				Path:		target,
+				FileNum:	meta[i].FileNum,
 			})
 		}
 	}
@@ -422,7 +422,7 @@ func ingestTargetLevel(
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)
 		overlap := overlapWithIterator(levelIter, &rangeDelIter, meta, cmp)
-		levelIter.Close() // Closes range del iter as well.
+		levelIter.Close()	// Closes range del iter as well.
 		if overlap {
 			return targetLevel, nil
 		}
@@ -617,14 +617,14 @@ func (d *DB) Ingest(paths []string) error {
 	}
 
 	info := TableIngestInfo{
-		JobID:        jobID,
-		GlobalSeqNum: meta[0].SmallestSeqNum,
-		Err:          err,
+		JobID:		jobID,
+		GlobalSeqNum:	meta[0].SmallestSeqNum,
+		Err:		err,
 	}
 	if ve != nil {
 		info.Tables = make([]struct {
 			TableInfo
-			Level int
+			Level	int
 		}, len(ve.NewFiles))
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]

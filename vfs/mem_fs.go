@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package vfs // import "github.com/cockroachdb/pebble/vfs"
+package vfs	// import "github.com/cockroachdb/pebble/vfs"
 
 import (
 	"bytes"
@@ -25,8 +25,8 @@ const sep = "/"
 func NewMem() *MemFS {
 	return &MemFS{
 		root: &memNode{
-			children: make(map[string]*memNode),
-			isDir:    true,
+			children:	make(map[string]*memNode),
+			isDir:		true,
 		},
 	}
 }
@@ -56,10 +56,10 @@ func NewMem() *MemFS {
 func NewStrictMem() *MemFS {
 	return &MemFS{
 		root: &memNode{
-			children: make(map[string]*memNode),
-			isDir:    true,
+			children:	make(map[string]*memNode),
+			isDir:		true,
 		},
-		strict: true,
+		strict:	true,
 	}
 }
 
@@ -70,18 +70,18 @@ func NewMemFile(data []byte) File {
 	n.mu.data = data
 	n.mu.modTime = time.Now()
 	return &memFile{
-		n:    n,
-		read: true,
+		n:	n,
+		read:	true,
 	}
 }
 
 // MemFS implements FS.
 type MemFS struct {
-	mu   sync.Mutex
-	root *memNode
+	mu	sync.Mutex
+	root	*memNode
 
-	strict      bool
-	ignoreSyncs bool
+	strict		bool
+	ignoreSyncs	bool
 }
 
 var _ FS = &MemFS{}
@@ -167,16 +167,16 @@ func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 		child := dir.children[frag]
 		if child == nil {
 			return &os.PathError{
-				Op:   "open",
-				Path: fullname,
-				Err:  os.ErrNotExist,
+				Op:	"open",
+				Path:	fullname,
+				Err:	os.ErrNotExist,
 			}
 		}
 		if !child.isDir {
 			return &os.PathError{
-				Op:   "open",
-				Path: fullname,
-				Err:  errors.New("not a directory"),
+				Op:	"open",
+				Path:	fullname,
+				Err:	errors.New("not a directory"),
 			}
 		}
 		dir, fullname = child, remaining
@@ -195,9 +195,9 @@ func (y *MemFS) Create(fullname string) (File, error) {
 			n := &memNode{name: frag}
 			dir.children[frag] = n
 			ret = &memFile{
-				n:     n,
-				fs:    y,
-				write: true,
+				n:	n,
+				fs:	y,
+				write:	true,
 			}
 		}
 		return nil
@@ -226,10 +226,10 @@ func (y *MemFS) Link(oldname, newname string) error {
 	}
 	if n == nil {
 		return &os.LinkError{
-			Op:  "link",
-			Old: oldname,
-			New: newname,
-			Err: os.ErrNotExist,
+			Op:	"link",
+			Old:	oldname,
+			New:	newname,
+			Err:	os.ErrNotExist,
 		}
 	}
 	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
@@ -239,10 +239,10 @@ func (y *MemFS) Link(oldname, newname string) error {
 			}
 			if _, ok := dir.children[frag]; ok {
 				return &os.LinkError{
-					Op:  "link",
-					Old: oldname,
-					New: newname,
-					Err: os.ErrExist,
+					Op:	"link",
+					Old:	oldname,
+					New:	newname,
+					Err:	os.ErrExist,
 				}
 			}
 			dir.children[frag] = n
@@ -260,16 +260,16 @@ func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 					return errors.New("pebble/vfs: empty file name")
 				}
 				ret = &memFile{
-					n:  dir,
-					fs: y,
+					n:	dir,
+					fs:	y,
 				}
 				return nil
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &memFile{
-					n:    n,
-					fs:   y,
-					read: true,
+					n:	n,
+					fs:	y,
+					read:	true,
 				}
 			}
 		}
@@ -280,9 +280,9 @@ func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 	}
 	if ret == nil {
 		return nil, &os.PathError{
-			Op:   "open",
-			Path: fullname,
-			Err:  os.ErrNotExist,
+			Op:	"open",
+			Path:	fullname,
+			Err:	os.ErrNotExist,
 		}
 	}
 	atomic.AddInt32(&ret.n.refs, 1)
@@ -366,9 +366,9 @@ func (y *MemFS) Rename(oldname, newname string) error {
 	}
 	if n == nil {
 		return &os.PathError{
-			Op:   "open",
-			Path: oldname,
-			Err:  os.ErrNotExist,
+			Op:	"open",
+			Path:	oldname,
+			Err:	os.ErrNotExist,
 		}
 	}
 	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
@@ -412,17 +412,17 @@ func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 		child := dir.children[frag]
 		if child == nil {
 			dir.children[frag] = &memNode{
-				name:     frag,
-				children: make(map[string]*memNode),
-				isDir:    true,
+				name:		frag,
+				children:	make(map[string]*memNode),
+				isDir:		true,
 			}
 			return nil
 		}
 		if !child.isDir {
 			return &os.PathError{
-				Op:   "open",
-				Path: dirname,
-				Err:  errors.New("not a directory"),
+				Op:	"open",
+				Path:	dirname,
+				Err:	errors.New("not a directory"),
 			}
 		}
 		return nil
@@ -499,9 +499,9 @@ func (*MemFS) GetFreeSpace(string) (uint64, error) {
 
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
-	name  string
-	isDir bool
-	refs  int32
+	name	string
+	isDir	bool
+	refs	int32
 
 	// Mutable state.
 	// - For a file: data, syncedDate, modTime: A file is only being mutated by a single goroutine,
@@ -509,15 +509,15 @@ type memNode struct {
 	//   files that are being written to. Additionally Sync() calls can be concurrent with writing.
 	// - For a directory: children and syncedChildren. Concurrent writes are possible, and
 	//   these are protected using MemFS.mu.
-	mu struct {
+	mu	struct {
 		sync.Mutex
-		data       []byte
-		syncedData []byte
-		modTime    time.Time
+		data		[]byte
+		syncedData	[]byte
+		modTime		time.Time
 	}
 
-	children       map[string]*memNode
-	syncedChildren map[string]*memNode
+	children	map[string]*memNode
+	syncedChildren	map[string]*memNode
 }
 
 func (f *memNode) IsDir() bool {
@@ -597,11 +597,11 @@ func (f *memNode) resetToSyncedState() {
 
 // memFile is a reader or writer of a node's data, and implements File.
 type memFile struct {
-	n           *memNode
-	fs          *MemFS // nil for a standalone memFile
-	rpos        int
-	wpos        int
-	read, write bool
+	n		*memNode
+	fs		*MemFS	// nil for a standalone memFile
+	rpos		int
+	wpos		int
+	read, write	bool
 }
 
 func (f *memFile) Close() error {

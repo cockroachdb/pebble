@@ -39,8 +39,8 @@ const arenaSize = 1 << 20
 // returned a boolean corresponding to Valid. Only used by test code.
 type iterAdapter struct {
 	*Iterator
-	key *base.InternalKey
-	val []byte
+	key	*base.InternalKey
+	val	[]byte
 }
 
 func newIterAdapter(iter *Iterator) *iterAdapter {
@@ -863,8 +863,8 @@ func TestInvalidInternalKeyDecoding(t *testing.T) {
 
 	l := NewSkiplist(a, bytes.Compare)
 	it := Iterator{
-		list: l,
-		nd:   nd,
+		list:	l,
+		nd:	nd,
 	}
 	it.decodeKey()
 	require.Nil(t, it.key.UserKey)

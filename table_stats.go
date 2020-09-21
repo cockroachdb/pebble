@@ -190,8 +190,8 @@ func (d *DB) loadNewFileStats(
 		// holding DB.mu. We'll copy it to the FileMetadata after we're
 		// finished with IO.
 		collected = append(collected, collectedStats{
-			fileMetadata: nf.Meta,
-			TableStats:   stats,
+			fileMetadata:	nf.Meta,
+			TableStats:	stats,
 		})
 		hints = append(hints, newHints...)
 	}
@@ -236,8 +236,8 @@ func (d *DB) scanReadStateTableStats(
 				continue
 			}
 			fill = append(fill, collectedStats{
-				fileMetadata: f,
-				TableStats:   stats,
+				fileMetadata:	f,
+				TableStats:	stats,
 			})
 			hints = append(hints, newHints...)
 		}
@@ -300,13 +300,13 @@ func (d *DB) loadTableStats(
 					return nil
 				}
 				hint := deleteCompactionHint{
-					start:                   make([]byte, len(startUserKey)),
-					end:                     make([]byte, len(endUserKey)),
-					tombstoneFile:           meta,
-					tombstoneLevel:          level,
-					tombstoneLargestSeqNum:  largestSeqNum,
-					tombstoneSmallestSeqNum: smallestSeqNum,
-					fileSmallestSeqNum:      hintSeqNum,
+					start:				make([]byte, len(startUserKey)),
+					end:				make([]byte, len(endUserKey)),
+					tombstoneFile:			meta,
+					tombstoneLevel:			level,
+					tombstoneLargestSeqNum:		largestSeqNum,
+					tombstoneSmallestSeqNum:	smallestSeqNum,
+					fileSmallestSeqNum:		hintSeqNum,
 				}
 				copy(hint.start, startUserKey)
 				copy(hint.end, endUserKey)
@@ -437,10 +437,10 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 		return false
 	}
 	meta.Stats = manifest.TableStats{
-		Valid:                       true,
-		NumEntries:                  props.NumEntries,
-		NumDeletions:                props.NumDeletions,
-		RangeDeletionsBytesEstimate: 0,
+		Valid:				true,
+		NumEntries:			props.NumEntries,
+		NumDeletions:			props.NumDeletions,
+		RangeDeletionsBytesEstimate:	0,
 	}
 	return true
 }

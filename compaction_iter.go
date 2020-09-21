@@ -123,33 +123,33 @@ import (
 // keys. Just as with point deletions, a range deletion covering an entry can
 // cause the entry to be elided.
 type compactionIter struct {
-	cmp   Compare
-	merge Merge
-	iter  internalIterator
-	err   error
+	cmp	Compare
+	merge	Merge
+	iter	internalIterator
+	err	error
 	// `key.UserKey` is set to `keyBuf` caused by saving `i.iterKey.UserKey`
 	// and `key.Trailer` is set to `i.iterKey.Trailer`. This is the
 	// case on return from all public methods -- these methods return `key`.
 	// Additionally, it is the internal state when the code is moving to the
 	// next key so it can determine whether the user key has changed from
 	// the previous key.
-	key         InternalKey
-	value       []byte
-	valueCloser io.Closer
+	key		InternalKey
+	value		[]byte
+	valueCloser	io.Closer
 	// Temporary buffer used for storing the previous user key in order to
 	// determine when iteration has advanced to a new user key and thus a new
 	// snapshot stripe.
-	keyBuf []byte
+	keyBuf	[]byte
 	// Is the current entry valid?
-	valid     bool
-	iterKey   *InternalKey
-	iterValue []byte
+	valid		bool
+	iterKey		*InternalKey
+	iterValue	[]byte
 	// `skip` indicates whether the remaining skippable entries in the current
 	// snapshot stripe should be skipped or processed. An example of a non-
 	// skippable entry is a range tombstone as we need to return it from the
 	// `compactionIter`, even if a key covering its start key has already been
 	// seen in the same stripe. `skip` has no effect when `pos == iterPosNext`.
-	skip bool
+	skip	bool
 	// `pos` indicates the iterator position at the top of `Next()`. Its type's
 	// (`iterPos`) values take on the following meanings in the context of
 	// `compactionIter`.
@@ -160,24 +160,24 @@ type compactionIter struct {
 	//   where we advance the iterator all the way into the next stripe or next
 	//   user key to ensure we've seen all mergeable operands.
 	// - `iterPosPrev`: this is invalid as compactionIter is forward-only.
-	pos iterPos
+	pos	iterPos
 	// The index of the snapshot for the current key within the snapshots slice.
-	curSnapshotIdx    int
-	curSnapshotSeqNum uint64
+	curSnapshotIdx		int
+	curSnapshotSeqNum	uint64
 	// The snapshot sequence numbers that need to be maintained. These sequence
 	// numbers define the snapshot stripes (see the Snapshots description
 	// above). The sequence numbers are in ascending order.
-	snapshots []uint64
+	snapshots	[]uint64
 	// Reference to the range deletion tombstone fragmenter (e.g.,
 	// `compaction.rangeDelFrag`).
-	rangeDelFrag *rangedel.Fragmenter
+	rangeDelFrag	*rangedel.Fragmenter
 	// The fragmented tombstones.
-	tombstones []rangedel.Tombstone
+	tombstones	[]rangedel.Tombstone
 	// Byte allocator for the tombstone keys.
-	alloc               bytealloc.A
-	allowZeroSeqNum     bool
-	elideTombstone      func(key []byte) bool
-	elideRangeTombstone func(start, end []byte) bool
+	alloc			bytealloc.A
+	allowZeroSeqNum		bool
+	elideTombstone		func(key []byte) bool
+	elideRangeTombstone	func(start, end []byte) bool
 }
 
 func newCompactionIter(
@@ -192,14 +192,14 @@ func newCompactionIter(
 	elideRangeTombstone func(start, end []byte) bool,
 ) *compactionIter {
 	i := &compactionIter{
-		cmp:                 cmp,
-		merge:               merge,
-		iter:                iter,
-		snapshots:           snapshots,
-		rangeDelFrag:        rangeDelFrag,
-		allowZeroSeqNum:     allowZeroSeqNum,
-		elideTombstone:      elideTombstone,
-		elideRangeTombstone: elideRangeTombstone,
+		cmp:			cmp,
+		merge:			merge,
+		iter:			iter,
+		snapshots:		snapshots,
+		rangeDelFrag:		rangeDelFrag,
+		allowZeroSeqNum:	allowZeroSeqNum,
+		elideTombstone:		elideTombstone,
+		elideRangeTombstone:	elideRangeTombstone,
 	}
 	i.rangeDelFrag.Cmp = cmp
 	i.rangeDelFrag.Format = formatKey
@@ -398,7 +398,7 @@ func (i *compactionIter) iterNext() bool {
 type stripeChangeType int
 
 const (
-	newStripe stripeChangeType = iota
+	newStripe	stripeChangeType	= iota
 	sameStripeSkippable
 	sameStripeNonSkippable
 )

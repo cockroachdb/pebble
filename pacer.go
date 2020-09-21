@@ -29,12 +29,12 @@ type pacer interface {
 // internalPacer contains fields and methods common to both compactionPacer and
 // flushPacer.
 type internalPacer struct {
-	limiter limiter
+	limiter	limiter
 
-	iterCount             uint64
-	prevBytesIterated     uint64
-	refreshBytesThreshold uint64
-	slowdownThreshold     uint64
+	iterCount		uint64
+	prevBytesIterated	uint64
+	refreshBytesThreshold	uint64
+	slowdownThreshold	uint64
 }
 
 // limit applies rate limiting if the current byte level is below the configured
@@ -74,21 +74,21 @@ type compactionPacerInfo struct {
 	// compaction speed as slow as possible to match the speed of flushes. This threshold
 	// is set so that a single flush cannot contribute enough compaction debt to overshoot
 	// the threshold.
-	slowdownThreshold   uint64
-	totalCompactionDebt uint64
+	slowdownThreshold	uint64
+	totalCompactionDebt	uint64
 	// totalDirtyBytes is the number of dirty bytes in memtables. The compaction
 	// pacer can monitor changes to this value to determine if user writes have
 	// stopped.
-	totalDirtyBytes uint64
+	totalDirtyBytes	uint64
 }
 
 // compactionPacerEnv defines the environment in which the compaction rate limiter
 // is applied.
 type compactionPacerEnv struct {
-	limiter      limiter
-	memTableSize uint64
+	limiter		limiter
+	memTableSize	uint64
 
-	getInfo func() compactionPacerInfo
+	getInfo	func() compactionPacerInfo
 }
 
 // compactionPacer rate limits compactions depending on compaction debt. The rate
@@ -97,14 +97,14 @@ type compactionPacerEnv struct {
 // no rate limit is applied.
 type compactionPacer struct {
 	internalPacer
-	env                 compactionPacerEnv
-	totalCompactionDebt uint64
-	totalDirtyBytes     uint64
+	env			compactionPacerEnv
+	totalCompactionDebt	uint64
+	totalDirtyBytes		uint64
 }
 
 func newCompactionPacer(env compactionPacerEnv) *compactionPacer {
 	return &compactionPacer{
-		env: env,
+		env:	env,
 		internalPacer: internalPacer{
 			limiter: env.limiter,
 		},
@@ -168,10 +168,10 @@ type flushPacerInfo struct {
 // flushPacerEnv defines the environment in which the compaction rate limiter is
 // applied.
 type flushPacerEnv struct {
-	limiter      limiter
-	memTableSize uint64
+	limiter		limiter
+	memTableSize	uint64
 
-	getInfo func() flushPacerInfo
+	getInfo	func() flushPacerInfo
 }
 
 // flushPacer rate limits memtable flushing to match the speed of incoming user
@@ -179,17 +179,17 @@ type flushPacerEnv struct {
 // rate limit is applied.
 type flushPacer struct {
 	internalPacer
-	env                flushPacerEnv
-	inuseBytes         uint64
-	adjustedInuseBytes uint64
+	env			flushPacerEnv
+	inuseBytes		uint64
+	adjustedInuseBytes	uint64
 }
 
 func newFlushPacer(env flushPacerEnv) *flushPacer {
 	return &flushPacer{
-		env: env,
+		env:	env,
 		internalPacer: internalPacer{
-			limiter:           env.limiter,
-			slowdownThreshold: env.memTableSize * 105 / 100,
+			limiter:		env.limiter,
+			slowdownThreshold:	env.memTableSize * 105 / 100,
 		},
 	}
 }

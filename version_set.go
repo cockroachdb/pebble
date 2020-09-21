@@ -37,62 +37,62 @@ type versionList = manifest.VersionList
 // to the MANIFEST file, which is replayed at startup.
 type versionSet struct {
 	// Immutable fields.
-	dirname string
+	dirname	string
 	// Set to DB.mu.
-	mu      *sync.Mutex
-	opts    *Options
-	fs      vfs.FS
-	cmp     Compare
-	cmpName string
+	mu	*sync.Mutex
+	opts	*Options
+	fs	vfs.FS
+	cmp	Compare
+	cmpName	string
 	// Dynamic base level allows the dynamic base level computation to be
 	// disabled. Used by tests which want to create specific LSM structures.
-	dynamicBaseLevel bool
+	dynamicBaseLevel	bool
 
 	// Mutable fields.
-	versions versionList
-	picker   compactionPicker
+	versions	versionList
+	picker		compactionPicker
 
-	metrics Metrics
+	metrics	Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []FileNum)
-	obsoleteTables    []FileNum
-	obsoleteManifests []FileNum
-	obsoleteOptions   []FileNum
+	obsoleteFn		func(obsolete []FileNum)
+	obsoleteTables		[]FileNum
+	obsoleteManifests	[]FileNum
+	obsoleteOptions		[]FileNum
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
-	zombieTables map[FileNum]uint64 // filenum -> size
+	zombieTables	map[FileNum]uint64	// filenum -> size
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
-	minUnflushedLogNum FileNum
+	minUnflushedLogNum	FileNum
 
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
-	nextFileNum FileNum
+	nextFileNum	FileNum
 
 	// The upper bound on sequence numbers that have been assigned so far.
 	// A suffix of these sequence numbers may not have been written to a
 	// WAL. Both logSeqNum and visibleSeqNum are atomically updated by the
 	// commitPipeline.
-	logSeqNum     uint64 // next seqNum to use for WAL writes
-	visibleSeqNum uint64 // visible seqNum (<= logSeqNum)
+	logSeqNum	uint64	// next seqNum to use for WAL writes
+	visibleSeqNum	uint64	// visible seqNum (<= logSeqNum)
 
 	// Number of bytes present in sstables being written by in-progress
 	// compactions. This value will be zero if there are no in-progress
 	// compactions. Updated and read atomically.
-	atomicInProgressBytes int64
+	atomicInProgressBytes	int64
 
 	// The current manifest file number.
-	manifestFileNum FileNum
+	manifestFileNum	FileNum
 
-	manifestFile vfs.File
-	manifest     *record.Writer
+	manifestFile	vfs.File
+	manifest	*record.Writer
 
-	writing    bool
-	writerCond sync.Cond
+	writing		bool
+	writerCond	sync.Cond
 }
 
 func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
@@ -145,10 +145,10 @@ func (vs *versionSet) create(
 	}
 
 	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-		JobID:   jobID,
-		Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
-		FileNum: vs.manifestFileNum,
-		Err:     err,
+		JobID:		jobID,
+		Path:		base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
+		FileNum:	vs.manifestFileNum,
+		Err:		err,
 	})
 	if err != nil {
 		return err
@@ -405,10 +405,10 @@ func (vs *versionSet) logAndApply(
 		if newManifestFileNum != 0 {
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-					JobID:   jobID,
-					Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
-					FileNum: newManifestFileNum,
-					Err:     err,
+					JobID:		jobID,
+					Path:		base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+					FileNum:	newManifestFileNum,
+					Err:		err,
 				})
 				return err
 			}
@@ -445,9 +445,9 @@ func (vs *versionSet) logAndApply(
 				return err
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-				JobID:   jobID,
-				Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
-				FileNum: newManifestFileNum,
+				JobID:		jobID,
+				Path:		base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+				FileNum:	newManifestFileNum,
 			})
 		}
 		return nil
@@ -521,9 +521,9 @@ func (vs *versionSet) createManifest(
 	dirname string, fileNum, minUnflushedLogNum, nextFileNum FileNum,
 ) (err error) {
 	var (
-		filename     = base.MakeFilename(vs.fs, dirname, fileTypeManifest, fileNum)
-		manifestFile vfs.File
-		manifest     *record.Writer
+		filename	= base.MakeFilename(vs.fs, dirname, fileTypeManifest, fileNum)
+		manifestFile	vfs.File
+		manifest	*record.Writer
 	)
 	defer func() {
 		if manifest != nil {
@@ -549,8 +549,8 @@ func (vs *versionSet) createManifest(
 		iter := levelMetadata.Iter()
 		for meta := iter.First(); meta != nil; meta = iter.Next() {
 			snapshot.NewFiles = append(snapshot.NewFiles, newFileEntry{
-				Level: level,
-				Meta:  meta,
+				Level:	level,
+				Meta:	meta,
 			})
 		}
 	}

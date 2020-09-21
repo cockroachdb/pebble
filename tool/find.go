@@ -21,61 +21,61 @@ import (
 )
 
 type findRef struct {
-	key     base.InternalKey
-	value   []byte
-	fileNum base.FileNum
+	key	base.InternalKey
+	value	[]byte
+	fileNum	base.FileNum
 }
 
 // findT implements the find tool.
 type findT struct {
-	Root *cobra.Command
+	Root	*cobra.Command
 
 	// Configuration.
-	opts      *pebble.Options
-	comparers sstable.Comparers
+	opts		*pebble.Options
+	comparers	sstable.Comparers
 
 	// Flags.
-	comparerName string
-	fmtKey       keyFormatter
-	fmtValue     valueFormatter
-	verbose      bool
+	comparerName	string
+	fmtKey		keyFormatter
+	fmtValue	valueFormatter
+	verbose		bool
 
 	// Map from file num to path on disk.
-	files map[base.FileNum]string
+	files	map[base.FileNum]string
 	// Map from file num to version edit index which references the file num.
-	editRefs map[base.FileNum][]int
+	editRefs	map[base.FileNum][]int
 	// List of version edits.
-	edits []manifest.VersionEdit
+	edits	[]manifest.VersionEdit
 	// Sorted list of WAL file nums.
-	logs []base.FileNum
+	logs	[]base.FileNum
 	// Sorted list of manifest file nums.
-	manifests []base.FileNum
+	manifests	[]base.FileNum
 	// Sorted list of table file nums.
-	tables []base.FileNum
+	tables	[]base.FileNum
 	// Set of tables that contains references to the search key.
-	tableRefs map[base.FileNum]bool
+	tableRefs	map[base.FileNum]bool
 	// Map from file num to table metadata.
-	tableMeta map[base.FileNum]*manifest.FileMetadata
+	tableMeta	map[base.FileNum]*manifest.FileMetadata
 }
 
 func newFind(opts *pebble.Options, comparers sstable.Comparers, defaultComparer string) *findT {
 	f := &findT{
-		opts:      opts,
-		comparers: comparers,
+		opts:		opts,
+		comparers:	comparers,
 	}
 	f.fmtKey.mustSet("quoted")
 	f.fmtValue.mustSet("[%x]")
 
 	f.Root = &cobra.Command{
-		Use:   "find <dir> <key>",
-		Short: "find references to the specified key",
+		Use:	"find <dir> <key>",
+		Short:	"find references to the specified key",
 		Long: `
 Find references to the specified key and any range tombstones that contain the
 key. This includes references to the key in WAL files and sstables, and the
 provenance of the sstables (flushed, ingested, compacted).
 `,
-		Args: cobra.ExactArgs(2),
-		Run:  f.run,
+		Args:	cobra.ExactArgs(2),
+		Run:	f.run,
 	}
 
 	f.Root.Flags().BoolVarP(
@@ -353,9 +353,9 @@ func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
 					}
 
 					refs = append(refs, findRef{
-						key:     ikey.Clone(),
-						value:   append([]byte(nil), value...),
-						fileNum: fileNum,
+						key:		ikey.Clone(),
+						value:		append([]byte(nil), value...),
+						fileNum:	fileNum,
 					})
 				}
 			}
@@ -399,8 +399,8 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 			}()
 
 			opts := sstable.ReaderOptions{
-				Cache:    cache,
-				Comparer: f.opts.Comparer,
+				Cache:		cache,
+				Comparer:	f.opts.Comparer,
 			}
 			r, err := sstable.NewReader(tf, opts, private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
@@ -435,8 +435,8 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				var tombstones []rangedel.Tombstone
 				for key, value := iter.First(); key != nil; key, value = iter.Next() {
 					t := rangedel.Tombstone{
-						Start: *key,
-						End:   value,
+						Start:	*key,
+						End:	value,
 					}
 					if !t.Contains(r.Compare, searchKey) {
 						continue
@@ -467,16 +467,16 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 					}
 
 					refs = append(refs, findRef{
-						key:     key.Clone(),
-						value:   append([]byte(nil), value...),
-						fileNum: fileNum,
+						key:		key.Clone(),
+						value:		append([]byte(nil), value...),
+						fileNum:	fileNum,
 					})
 					key, value = iter.Next()
 				} else {
 					refs = append(refs, findRef{
-						key:     rangeDelKey.Clone(),
-						value:   append([]byte(nil), rangeDelValue...),
-						fileNum: fileNum,
+						key:		rangeDelKey.Clone(),
+						value:		append([]byte(nil), rangeDelValue...),
+						fileNum:	fileNum,
 					})
 					rangeDelKey, rangeDelValue = rangeDelIter.Next()
 				}

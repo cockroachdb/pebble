@@ -53,8 +53,8 @@ func TestIngestLoad(t *testing.T) {
 			w.Close()
 
 			opts := &Options{
-				Comparer: DefaultComparer,
-				FS:       mem,
+				Comparer:	DefaultComparer,
+				FS:		mem,
 			}
 			meta, _, err := ingestLoad(opts, []string{"ext"}, 0, []FileNum{1})
 			if err != nil {
@@ -92,7 +92,7 @@ func TestIngestLoadRand(t *testing.T) {
 		paths[i] = fmt.Sprint(i)
 		pending[i] = FileNum(rng.Int63())
 		expected[i] = &fileMetadata{
-			FileNum: pending[i],
+			FileNum:	pending[i],
 			Stats: manifest.TableStats{
 				Valid: true,
 			},
@@ -137,8 +137,8 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	opts := &Options{
-		Comparer: DefaultComparer,
-		FS:       mem,
+		Comparer:	DefaultComparer,
+		FS:		mem,
 	}
 	meta, _, err := ingestLoad(opts, paths, 0, pending)
 	require.NoError(t, err)
@@ -158,8 +158,8 @@ func TestIngestLoadInvalid(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	opts := &Options{
-		Comparer: DefaultComparer,
-		FS:       mem,
+		Comparer:	DefaultComparer,
+		FS:		mem,
 	}
 	if _, _, err := ingestLoad(opts, []string{"invalid"}, 0, []FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
@@ -168,7 +168,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 
 func TestIngestSortAndVerify(t *testing.T) {
 	comparers := map[string]Compare{
-		"default": DefaultComparer.Compare,
+		"default":	DefaultComparer.Compare,
 		"reverse": func(a, b []byte) int {
 			return DefaultComparer.Compare(b, a)
 		},
@@ -198,8 +198,8 @@ func TestIngestSortAndVerify(t *testing.T) {
 						return fmt.Sprintf("range %v-%v is not valid", smallest, largest)
 					}
 					meta = append(meta, &fileMetadata{
-						Smallest: smallest,
-						Largest:  largest,
+						Smallest:	smallest,
+						Largest:	largest,
 					})
 					paths = append(paths, strconv.Itoa(i))
 				}
@@ -331,9 +331,9 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 	comparers := []Comparer{
 		{Name: "default", Compare: DefaultComparer.Compare, FormatKey: DefaultComparer.FormatKey},
 		{
-			Name:      "reverse",
-			Compare:   func(a, b []byte) int { return DefaultComparer.Compare(b, a) },
-			FormatKey: DefaultComparer.FormatKey,
+			Name:		"reverse",
+			Compare:	func(a, b []byte) int { return DefaultComparer.Compare(b, a) },
+			FormatKey:	DefaultComparer.FormatKey,
 		},
 	}
 	m := make(map[string]*Comparer)
@@ -431,8 +431,8 @@ func TestIngestTargetLevel(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		return fileMetadata{
-			Smallest: InternalKey{UserKey: []byte(parts[0])},
-			Largest:  InternalKey{UserKey: []byte(parts[1])},
+			Smallest:	InternalKey{UserKey: []byte(parts[0])},
+			Largest:	InternalKey{UserKey: []byte(parts[1])},
 		}
 	}
 
@@ -452,14 +452,14 @@ func TestIngestTargetLevel(t *testing.T) {
 
 			readState := d.loadReadState()
 			c := &checkConfig{
-				logger:    d.opts.Logger,
-				cmp:       d.cmp,
-				readState: readState,
-				newIters:  d.newIters,
+				logger:		d.opts.Logger,
+				cmp:		d.cmp,
+				readState:	readState,
+				newIters:	d.newIters,
 				// TODO: runDBDefineCmd doesn't properly update the visible
 				// sequence number. So we have to explicitly configure level checker with a very large
 				// sequence number, otherwise the DB appears empty.
-				seqNum: InternalKeySeqNumMax,
+				seqNum:	InternalKeySeqNumMax,
 			}
 			if err := checkLevelsInternal(c); err != nil {
 				return err.Error()
@@ -505,10 +505,10 @@ func TestIngest(t *testing.T) {
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		opts := &Options{
-			FS:                    mem,
-			L0CompactionThreshold: 100,
-			L0StopWritesThreshold: 100,
-			DebugCheck:            DebugCheckLevels,
+			FS:			mem,
+			L0CompactionThreshold:	100,
+			L0StopWritesThreshold:	100,
+			DebugCheck:		DebugCheckLevels,
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -593,8 +593,8 @@ func TestIngestError(t *testing.T) {
 
 		inj := errorfs.OnIndex(-1)
 		d, err := Open("", &Options{
-			FS:     errorfs.Wrap(mem, inj),
-			Logger: panicLogger{},
+			FS:	errorfs.Wrap(mem, inj),
+			Logger:	panicLogger{},
 		})
 		require.NoError(t, err)
 		// Force the creation of an L0 sstable that overlaps with the tables
@@ -643,10 +643,10 @@ func TestIngestCompact(t *testing.T) {
 	var buf syncedBuffer
 	mem := vfs.NewMem()
 	d, err := Open("", &Options{
-		EventListener:         MakeLoggingEventListener(&buf),
-		FS:                    mem,
-		L0CompactionThreshold: 1,
-		L0StopWritesThreshold: 1,
+		EventListener:		MakeLoggingEventListener(&buf),
+		FS:			mem,
+		L0CompactionThreshold:	1,
+		L0StopWritesThreshold:	1,
 	})
 	require.NoError(t, err)
 
@@ -736,7 +736,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 			compactionReady := make(chan struct{})
 			compactionBegin := make(chan struct{})
 			d, err := Open("", &Options{
-				FS: mem,
+				FS:	mem,
 				EventListener: EventListener{
 					TableCreated: func(info TableCreateInfo) {
 						if info.Reason == "compacting" {

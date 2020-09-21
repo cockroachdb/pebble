@@ -27,8 +27,8 @@ import (
 
 type tableCacheTestFile struct {
 	vfs.File
-	fs   *tableCacheTestFS
-	name string
+	fs	*tableCacheTestFS
+	name	string
 }
 
 func (f *tableCacheTestFile) Close() error {
@@ -43,10 +43,10 @@ func (f *tableCacheTestFile) Close() error {
 type tableCacheTestFS struct {
 	vfs.FS
 
-	mu               sync.Mutex
-	openCounts       map[string]int
-	closeCounts      map[string]int
-	openErrorEnabled bool
+	mu			sync.Mutex
+	openCounts		map[string]int
+	closeCounts		map[string]int
+	openErrorEnabled	bool
 }
 
 func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
@@ -138,8 +138,8 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 }
 
 const (
-	tableCacheTestNumTables = 300
-	tableCacheTestCacheSize = 100
+	tableCacheTestNumTables	= 300
+	tableCacheTestCacheSize	= 100
 )
 
 func newTableCache() (*tableCache, *tableCacheTestFS, error) {
@@ -168,7 +168,7 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	fs.mu.Unlock()
 
 	opts := &Options{
-		Cache: NewCache(8 << 20), // 8 MB
+		Cache: NewCache(8 << 20),	// 8 MB
 	}
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()
@@ -194,7 +194,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Unlock()
 			iter, _, err := c.newIters(
 				manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: FileNum(fileNum)}},
-				nil, /* iter options */
+				nil,	/* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
@@ -234,14 +234,14 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 	fs.validate(t, c, nil)
 }
 
-func TestTableCacheRandomAccessSequential(t *testing.T) { testTableCacheRandomAccess(t, false) }
-func TestTableCacheRandomAccessConcurrent(t *testing.T) { testTableCacheRandomAccess(t, true) }
+func TestTableCacheRandomAccessSequential(t *testing.T)	{ testTableCacheRandomAccess(t, false) }
+func TestTableCacheRandomAccessConcurrent(t *testing.T)	{ testTableCacheRandomAccess(t, true) }
 
 func TestTableCacheFrequentlyUsed(t *testing.T) {
 	const (
-		N       = 1000
-		pinned0 = 7
-		pinned1 = 11
+		N	= 1000
+		pinned0	= 7
+		pinned1	= 11
 	)
 	c, fs, err := newTableCache()
 	require.NoError(t, err)
@@ -250,7 +250,7 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			iter, _, err := c.newIters(
 				manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: FileNum(j)}},
-				nil, /* iter options */
+				nil,	/* iter options */
 				nil /* bytes iterated */)
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -273,8 +273,8 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 
 func TestTableCacheEvictions(t *testing.T) {
 	const (
-		N      = 1000
-		lo, hi = 10, 20
+		N	= 1000
+		lo, hi	= 10, 20
 	)
 	c, fs, err := newTableCache()
 	require.NoError(t, err)
@@ -284,7 +284,7 @@ func TestTableCacheEvictions(t *testing.T) {
 		j := rng.Intn(tableCacheTestNumTables)
 		iter, _, err := c.newIters(
 			manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: FileNum(j)}},
-			nil, /* iter options */
+			nil,	/* iter options */
 			nil /* bytes iterated */)
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -326,7 +326,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 
 	iter, _, err := c.newIters(
 		manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: 0}},
-		nil, /* iter options */
+		nil,	/* iter options */
 		nil /* bytes iterated */)
 	require.NoError(t, err)
 
@@ -348,7 +348,7 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	fs.setOpenError(true /* enabled */)
 	if _, _, err := c.newIters(
 		manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: 0}},
-		nil, /* iter options */
+		nil,	/* iter options */
 		nil /* bytes iterated */); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
@@ -356,7 +356,7 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	var iter internalIterator
 	iter, _, err = c.newIters(
 		manifest.LevelFile{FileMetadata: &fileMetadata{FileNum: 0}},
-		nil, /* iter options */
+		nil,	/* iter options */
 		nil /* bytes iterated */)
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
@@ -367,7 +367,7 @@ func TestTableCacheEvictClose(t *testing.T) {
 	errs := make(chan error, 10)
 	db, err := Open("test",
 		&Options{
-			FS: vfs.NewMem(),
+			FS:	vfs.NewMem(),
 			EventListener: EventListener{
 				TableDeleted: func(info TableDeleteInfo) {
 					errs <- info.Err
@@ -407,7 +407,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	}
 
 	opts := &Options{
-		Cache: NewCache(8 << 20), // 8 MB
+		Cache: NewCache(8 << 20),	// 8 MB
 	}
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()

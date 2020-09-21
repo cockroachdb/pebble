@@ -19,17 +19,17 @@ import (
 )
 
 var scanConfig struct {
-	reverse bool
-	rows    *randvar.Flag
-	values  *randvar.BytesFlag
+	reverse	bool
+	rows	*randvar.Flag
+	values	*randvar.BytesFlag
 }
 
 var scanCmd = &cobra.Command{
-	Use:   "scan <dir>",
-	Short: "run the scan benchmark",
-	Long:  ``,
-	Args:  cobra.ExactArgs(1),
-	Run:   runScan,
+	Use:	"scan <dir>",
+	Short:	"run the scan benchmark",
+	Long:	``,
+	Args:	cobra.ExactArgs(1),
+	Run:	runScan,
 }
 
 func init() {
@@ -46,11 +46,11 @@ func init() {
 
 func runScan(cmd *cobra.Command, args []string) {
 	var (
-		bytes       int64
-		scanned     int64
-		lastBytes   int64
-		lastScanned int64
-		lastElapsed time.Duration
+		bytes		int64
+		scanned		int64
+		lastBytes	int64
+		lastScanned	int64
+		lastElapsed	time.Duration
 	)
 
 	opts := pebble.Sync

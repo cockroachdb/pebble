@@ -22,7 +22,7 @@ var comparer = func() pebble.Comparer {
 
 func parseOptions(opts *testOptions, data string) error {
 	hooks := &pebble.ParseHooks{
-		NewCache: pebble.NewCache,
+		NewCache:	pebble.NewCache,
 		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
 			if name == "none" {
 				return nil, nil
@@ -64,8 +64,8 @@ func optionsToString(opts *testOptions) string {
 
 func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
-		Comparer: &comparer,
-		FS:       vfs.NewMem(),
+		Comparer:	&comparer,
+		FS:		vfs.NewMem(),
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
@@ -75,17 +75,17 @@ func defaultOptions() *pebble.Options {
 }
 
 type testOptions struct {
-	opts     *pebble.Options
-	strictFS bool
+	opts		*pebble.Options
+	strictFS	bool
 	// Use Batch.Apply rather than DB.Ingest.
-	ingestUsingApply bool
+	ingestUsingApply	bool
 }
 
 func standardOptions() []*testOptions {
 	// The index labels are not strictly necessary, but they make it easier to
 	// find which options correspond to a failure.
 	stdOpts := []string{
-		0: "", // default options
+		0:	"",	// default options
 		1: `
 [Options]
   cache_size=1
@@ -181,31 +181,31 @@ func standardOptions() []*testOptions {
 func randomOptions(rng *rand.Rand) *testOptions {
 	var testOpts = &testOptions{}
 	opts := defaultOptions()
-	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
-	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
+	opts.BytesPerSync = 1 << uint(rng.Intn(28))	// 1B - 256MB
+	opts.Cache = cache.New(1 << uint(rng.Intn(30)))	// 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
-	opts.Experimental.FlushSplitBytes = 1 << rng.Intn(20)       // 1B - 1MB
-	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4) // 1-4
+	opts.Experimental.FlushSplitBytes = 1 << rng.Intn(20)		// 1B - 1MB
+	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)	// 1-4
 	opts.Experimental.L0SublevelCompactions = rng.Intn(2) == 0
-	opts.L0CompactionThreshold = 1 + rng.Intn(100) // 1 - 100
-	opts.L0StopWritesThreshold = 1 + rng.Intn(100) // 1 - 100
+	opts.L0CompactionThreshold = 1 + rng.Intn(100)	// 1 - 100
+	opts.L0StopWritesThreshold = 1 + rng.Intn(100)	// 1 - 100
 	if opts.L0StopWritesThreshold < opts.L0CompactionThreshold {
 		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
 	}
-	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30))       // 1B - 1GB
-	opts.MaxConcurrentCompactions = rng.Intn(4)        // 0-3
-	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30)) // 1B  - 1GB
-	opts.MemTableSize = 1 << (10 + uint(rng.Intn(17))) // 1KB - 256MB
-	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
+	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30))		// 1B - 1GB
+	opts.MaxConcurrentCompactions = rng.Intn(4)		// 0-3
+	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30))	// 1B  - 1GB
+	opts.MemTableSize = 1 << (10 + uint(rng.Intn(17)))	// 1KB - 256MB
+	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5)	// 2 - 5
 	if rng.Intn(2) == 0 {
 		opts.WALDir = "wal"
 	}
 	var lopts pebble.LevelOptions
-	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
-	lopts.BlockSize = 1 << uint(rng.Intn(24))      // 1 - 16MB
-	lopts.BlockSizeThreshold = 50 + rng.Intn(50)   // 50 - 100
-	lopts.IndexBlockSize = 1 << uint(rng.Intn(24)) // 1 - 16MB
-	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
+	lopts.BlockRestartInterval = 1 + rng.Intn(64)	// 1 - 64
+	lopts.BlockSize = 1 << uint(rng.Intn(24))	// 1 - 16MB
+	lopts.BlockSizeThreshold = 50 + rng.Intn(50)	// 50 - 100
+	lopts.IndexBlockSize = 1 << uint(rng.Intn(24))	// 1 - 16MB
+	lopts.TargetFileSize = 1 << uint(rng.Intn(28))	// 1 - 256MB
 	opts.Levels = []pebble.LevelOptions{lopts}
 
 	testOpts.opts = opts

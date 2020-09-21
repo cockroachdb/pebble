@@ -30,44 +30,44 @@ type byteReader interface {
 // Tag 8 is no longer used.
 const (
 	// LevelDB tags.
-	tagComparator     = 1
-	tagLogNumber      = 2
-	tagNextFileNumber = 3
-	tagLastSequence   = 4
-	tagCompactPointer = 5
-	tagDeletedFile    = 6
-	tagNewFile        = 7
-	tagPrevLogNumber  = 9
+	tagComparator		= 1
+	tagLogNumber		= 2
+	tagNextFileNumber	= 3
+	tagLastSequence		= 4
+	tagCompactPointer	= 5
+	tagDeletedFile		= 6
+	tagNewFile		= 7
+	tagPrevLogNumber	= 9
 
 	// RocksDB tags.
-	tagNewFile2         = 100
-	tagNewFile3         = 102
-	tagNewFile4         = 103
-	tagColumnFamily     = 200
-	tagColumnFamilyAdd  = 201
-	tagColumnFamilyDrop = 202
-	tagMaxColumnFamily  = 203
+	tagNewFile2		= 100
+	tagNewFile3		= 102
+	tagNewFile4		= 103
+	tagColumnFamily		= 200
+	tagColumnFamilyAdd	= 201
+	tagColumnFamilyDrop	= 202
+	tagMaxColumnFamily	= 203
 
 	// The custom tags sub-format used by tagNewFile4.
-	customTagTerminate         = 1
-	customTagNeedsCompaction   = 2
-	customTagCreationTime      = 6
-	customTagPathID            = 65
-	customTagNonSafeIgnoreMask = 1 << 6
+	customTagTerminate		= 1
+	customTagNeedsCompaction	= 2
+	customTagCreationTime		= 6
+	customTagPathID			= 65
+	customTagNonSafeIgnoreMask	= 1 << 6
 )
 
 // DeletedFileEntry holds the state for a file deletion from a level. The file
 // itself might still be referenced by another level.
 type DeletedFileEntry struct {
-	Level   int
-	FileNum base.FileNum
+	Level	int
+	FileNum	base.FileNum
 }
 
 // NewFileEntry holds the state for a new file or one moved from a different
 // level.
 type NewFileEntry struct {
-	Level int
-	Meta  *FileMetadata
+	Level	int
+	Meta	*FileMetadata
 }
 
 // VersionEdit holds the state for an edit to a Version along with other
@@ -77,34 +77,34 @@ type VersionEdit struct {
 	// the first VersionEdit in a manifest (either when the DB is created, or
 	// when a new manifest is created) and is used to verify that the comparer
 	// specified at Open matches the comparer that was previously used.
-	ComparerName string
+	ComparerName	string
 
 	// MinUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
 	//
 	// This is an optional field, and 0 represents it is not set.
-	MinUnflushedLogNum base.FileNum
+	MinUnflushedLogNum	base.FileNum
 
 	// ObsoletePrevLogNum is a historic artifact from LevelDB that is not used by
 	// Pebble, RocksDB, or even LevelDB. Its use in LevelDB was deprecated in
 	// 6/2011. We keep it around purely for informational purposes when
 	// displaying MANIFEST contents.
-	ObsoletePrevLogNum uint64
+	ObsoletePrevLogNum	uint64
 
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
-	NextFileNum base.FileNum
+	NextFileNum	base.FileNum
 
 	// LastSeqNum is an upper bound on the sequence numbers that have been
 	// assigned in flushed WALs. Unflushed WALs (that will be replayed during
 	// recovery) may contain sequence numbers greater than this value.
-	LastSeqNum uint64
+	LastSeqNum	uint64
 
 	// A file num may be present in both deleted files and new files when it
 	// is moved from a lower level to a higher level (when the compaction
 	// found that there was no overlapping file at the higher level).
-	DeletedFiles map[DeletedFileEntry]bool
-	NewFiles     []NewFileEntry
+	DeletedFiles	map[DeletedFileEntry]bool
+	NewFiles	[]NewFileEntry
 }
 
 // Decode decodes an edit from the specified reader.
@@ -254,16 +254,16 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
-				Level: level,
+				Level:	level,
 				Meta: &FileMetadata{
-					FileNum:             fileNum,
-					Size:                size,
-					CreationTime:        int64(creationTime),
-					Smallest:            base.DecodeInternalKey(smallest),
-					Largest:             base.DecodeInternalKey(largest),
-					SmallestSeqNum:      smallestSeqNum,
-					LargestSeqNum:       largestSeqNum,
-					MarkedForCompaction: markedForCompaction,
+					FileNum:		fileNum,
+					Size:			size,
+					CreationTime:		int64(creationTime),
+					Smallest:		base.DecodeInternalKey(smallest),
+					Largest:		base.DecodeInternalKey(largest),
+					SmallestSeqNum:		smallestSeqNum,
+					LargestSeqNum:		largestSeqNum,
+					MarkedForCompaction:	markedForCompaction,
 				},
 			})
 
@@ -429,8 +429,8 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // BulkVersionEdit summarizes the files added and deleted from a set of version
 // edits.
 type BulkVersionEdit struct {
-	Added   [NumLevels][]*FileMetadata
-	Deleted [NumLevels]map[base.FileNum]bool
+	Added	[NumLevels][]*FileMetadata
+	Deleted	[NumLevels]map[base.FileNum]bool
 }
 
 // Accumulate adds the file addition and deletions in the specified version

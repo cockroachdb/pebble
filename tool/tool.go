@@ -28,17 +28,17 @@ type Merger = base.Merger
 
 // T is the container for all of the introspection tools.
 type T struct {
-	Commands        []*cobra.Command
-	db              *dbT
-	find            *findT
-	lsm             *lsmT
-	manifest        *manifestT
-	sstable         *sstableT
-	wal             *walT
-	opts            pebble.Options
-	comparers       sstable.Comparers
-	mergers         sstable.Mergers
-	defaultComparer string
+	Commands	[]*cobra.Command
+	db		*dbT
+	find		*findT
+	lsm		*lsmT
+	manifest	*manifestT
+	sstable		*sstableT
+	wal		*walT
+	opts		pebble.Options
+	comparers	sstable.Comparers
+	mergers		sstable.Mergers
+	defaultComparer	string
 }
 
 // A Option configures the Pebble introspection tool.
@@ -87,13 +87,13 @@ func Filters(filters ...FilterPolicy) Option {
 func New(opts ...Option) *T {
 	t := &T{
 		opts: pebble.Options{
-			Filters:  make(map[string]FilterPolicy),
-			FS:       vfs.Default,
-			ReadOnly: true,
+			Filters:	make(map[string]FilterPolicy),
+			FS:		vfs.Default,
+			ReadOnly:	true,
 		},
-		comparers:       make(sstable.Comparers),
-		mergers:         make(sstable.Mergers),
-		defaultComparer: base.DefaultComparer.Name,
+		comparers:		make(sstable.Comparers),
+		mergers:		make(sstable.Mergers),
+		defaultComparer:	base.DefaultComparer.Name,
 	}
 
 	opts = append(opts,

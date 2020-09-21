@@ -30,13 +30,13 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 	d.mu.Unlock()
 
 	m := &fileMetadata{
-		FileNum:        fileNum,
-		Size:           originalMeta.Size,
-		CreationTime:   time.Now().Unix(),
-		Smallest:       originalMeta.Smallest,
-		Largest:        originalMeta.Largest,
-		SmallestSeqNum: originalMeta.SmallestSeqNum,
-		LargestSeqNum:  originalMeta.LargestSeqNum,
+		FileNum:	fileNum,
+		Size:		originalMeta.Size,
+		CreationTime:	time.Now().Unix(),
+		Smallest:	originalMeta.Smallest,
+		Largest:	originalMeta.Largest,
+		SmallestSeqNum:	originalMeta.SmallestSeqNum,
+		LargestSeqNum:	originalMeta.LargestSeqNum,
 	}
 
 	// Hard link the sstable into the DB directory.
@@ -60,14 +60,14 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 	d.mu.Lock()
 	d.mu.versions.logLock()
 	ve := &versionEdit{
-		NewFiles: []newFileEntry{newFileEntry{Level: 0, Meta: m}},
+		NewFiles: []newFileEntry{{Level: 0, Meta: m}},
 	}
 	metrics := map[int]*LevelMetrics{
-		0: &LevelMetrics{
-			NumFiles:       1,
-			Size:           int64(m.Size),
-			BytesIngested:  m.Size,
-			TablesIngested: 1,
+		0: {
+			NumFiles:	1,
+			Size:		int64(m.Size),
+			BytesIngested:	m.Size,
+			TablesIngested:	1,
 		},
 	}
 	err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir, func() []compactionInfo {

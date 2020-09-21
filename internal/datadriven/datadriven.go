@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package datadriven // import "github.com/cockroachdb/pebble/internal/datadriven"
+package datadriven	// import "github.com/cockroachdb/pebble/internal/datadriven"
 
 import (
 	"bufio"
@@ -200,15 +200,15 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 // TestData contains information about one data-driven test case that was
 // parsed from the test file.
 type TestData struct {
-	Pos string // reader and line number
+	Pos	string	// reader and line number
 
 	// Cmd is the first string on the directive line (up to the first whitespace).
-	Cmd string
+	Cmd	string
 
-	CmdArgs []CmdArg
+	CmdArgs	[]CmdArg
 
-	Input    string
-	Expected string
+	Input		string
+	Expected	string
 }
 
 // ScanArgs looks up the first CmdArg matching the given key and scans it into
@@ -253,7 +253,7 @@ func (td *TestData) ScanArgs(t *testing.T, key string, dests ...interface{}) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			*dest = int(n) // assume 64bit ints
+			*dest = int(n)	// assume 64bit ints
 		case *uint64:
 			n, err := strconv.ParseUint(val, 10, 64)
 			if err != nil {
@@ -278,8 +278,8 @@ func (td *TestData) ScanArgs(t *testing.T, key string, dests ...interface{}) {
 //  - argument=value
 //  - argument=(values, ...)
 type CmdArg struct {
-	Key  string
-	Vals []string
+	Key	string
+	Vals	[]string
 }
 
 func (arg CmdArg) String() string {

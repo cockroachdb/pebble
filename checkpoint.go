@@ -21,9 +21,9 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	if _, err := d.opts.FS.Stat(destDir); !os.IsNotExist(err) {
 		if err == nil {
 			return &os.PathError{
-				Op:   "checkpoint",
-				Path: destDir,
-				Err:  os.ErrExist,
+				Op:	"checkpoint",
+				Path:	destDir,
+				Err:	os.ErrExist,
 			}
 		}
 		return err
@@ -63,7 +63,7 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
-		FS: d.opts.FS,
+		FS:	d.opts.FS,
 		syncOpts: vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,
 		},

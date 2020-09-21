@@ -72,8 +72,8 @@ func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint
 		if start := iterKey; start.Visible(snapshot) {
 			// The tombstone is visible at our read sequence number.
 			return Tombstone{
-				Start: *start,
-				End:   iterValue,
+				Start:	*start,
+				End:	iterValue,
 			}
 		}
 		iterKey, iterValue = iter.Next()

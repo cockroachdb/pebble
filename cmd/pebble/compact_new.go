@@ -23,10 +23,10 @@ var compactNewConfig struct {
 }
 
 var compactNewCmd = &cobra.Command{
-	Use:   "new <data src> <workload dst>",
-	Short: "construct a new bench compact workload from a Cockroach archive",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runCompactNew,
+	Use:	"new <data src> <workload dst>",
+	Short:	"construct a new bench compact workload from a Cockroach archive",
+	Args:	cobra.ExactArgs(2),
+	RunE:	runCompactNew,
 }
 
 func init() {
@@ -84,14 +84,14 @@ func runCompactNew(cmd *cobra.Command, args []string) error {
 }
 
 type logItem struct {
-	compaction bool
-	flush      bool
-	ve         manifest.VersionEdit
+	compaction	bool
+	flush		bool
+	ve		manifest.VersionEdit
 }
 
 type fileEntry struct {
-	level int
-	meta  *manifest.FileMetadata
+	level	int
+	meta	*manifest.FileMetadata
 }
 
 // replayManifests replays all manifests from the archive and the data
@@ -181,9 +181,9 @@ func loadManifest(path string, metas map[base.FileNum]*manifest.FileMetadata) ([
 		li := logItem{
 			// If a version edit deletes files, we assume it's a compaction.
 			// Only non-compaction added files will be replayed.
-			compaction: len(ve.DeletedFiles) != 0,
-			flush:      false,
-			ve:         ve,
+			compaction:	len(ve.DeletedFiles) != 0,
+			flush:		false,
+			ve:		ve,
 		}
 		for _, nf := range ve.NewFiles {
 			metas[nf.Meta.FileNum] = nf.Meta

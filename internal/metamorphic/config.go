@@ -7,7 +7,7 @@ package metamorphic
 type opType int
 
 const (
-	batchAbort opType = iota
+	batchAbort	opType	= iota
 	batchCommit
 	dbCheckpoint
 	dbClose
@@ -54,32 +54,32 @@ type config struct {
 var defaultConfig = config{
 	// dbClose is not in this list since it is deterministically generated once, at the end of the test.
 	ops: []int{
-		batchAbort:        5,
-		batchCommit:       5,
-		dbCheckpoint:      1,
-		dbCompact:         1,
-		dbFlush:           2,
-		dbRestart:         2,
-		iterClose:         10,
-		iterFirst:         100,
-		iterLast:          100,
-		iterNext:          100,
-		iterPrev:          100,
-		iterSeekGE:        100,
-		iterSeekLT:        100,
-		iterSeekPrefixGE:  100,
-		iterSetBounds:     10,
-		newBatch:          5,
-		newIndexedBatch:   5,
-		newIter:           10,
-		newSnapshot:       10,
-		readerGet:         100,
-		snapshotClose:     10,
-		writerApply:       10,
-		writerDelete:      100,
-		writerDeleteRange: 50,
-		writerIngest:      100,
-		writerMerge:       100,
-		writerSet:         100,
+		batchAbort:		5,
+		batchCommit:		5,
+		dbCheckpoint:		1,
+		dbCompact:		1,
+		dbFlush:		2,
+		dbRestart:		2,
+		iterClose:		10,
+		iterFirst:		100,
+		iterLast:		100,
+		iterNext:		100,
+		iterPrev:		100,
+		iterSeekGE:		100,
+		iterSeekLT:		100,
+		iterSeekPrefixGE:	100,
+		iterSetBounds:		10,
+		newBatch:		5,
+		newIndexedBatch:	5,
+		newIter:		10,
+		newSnapshot:		10,
+		readerGet:		100,
+		snapshotClose:		10,
+		writerApply:		10,
+		writerDelete:		100,
+		writerDeleteRange:	50,
+		writerIngest:		100,
+		writerMerge:		100,
+		writerSet:		100,
 	},
 }

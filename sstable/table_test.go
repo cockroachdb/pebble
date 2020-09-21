@@ -65,9 +65,9 @@ var nonsenseWords = []string{
 }
 
 var (
-	wordCount = map[string]string{}
-	minWord   = ""
-	maxWord   = ""
+	wordCount	= map[string]string{}
+	minWord		= ""
+	maxWord		= ""
 )
 
 func init() {
@@ -207,8 +207,8 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 
 	// Check that the number of keys >= a given start key matches the expected number.
 	var countTests = []struct {
-		count int
-		start string
+		count	int
+		start	string
 	}{
 		// cat h.txt | cut -c 9- | wc -l gives 1710.
 		{1710, ""},
@@ -334,8 +334,8 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 }
 
 var (
-	memFileSystem = vfs.NewMem()
-	tmpFileCount  int
+	memFileSystem	= vfs.NewMem()
+	tmpFileCount	int
 )
 
 func build(
@@ -365,13 +365,13 @@ func build(
 	tmpFileCount++
 
 	writerOpts := WriterOptions{
-		BlockSize:      blockSize,
-		Comparer:       comparer,
-		Compression:    compression,
-		FilterPolicy:   fp,
-		FilterType:     ftype,
-		IndexBlockSize: indexBlockSize,
-		MergerName:     "nullptr",
+		BlockSize:	blockSize,
+		Comparer:	comparer,
+		Compression:	compression,
+		FilterPolicy:	fp,
+		FilterType:	ftype,
+		IndexBlockSize:	indexBlockSize,
+		MergerName:	"nullptr",
 	}
 	if propCollector != nil {
 		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
@@ -430,9 +430,9 @@ func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPoli
 	}
 }
 
-func TestReaderLevelDB(t *testing.T)            { testReader(t, "h.ldb", nil, nil) }
-func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil, nil) }
-func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil, nil) }
+func TestReaderLevelDB(t *testing.T)		{ testReader(t, "h.ldb", nil, nil) }
+func TestReaderDefaultCompression(t *testing.T)	{ testReader(t, "h.sst", nil, nil) }
+func TestReaderNoCompression(t *testing.T)	{ testReader(t, "h.no-compression.sst", nil, nil) }
 func TestReaderBlockBloomIgnored(t *testing.T) {
 	testReader(t, "h.block-bloom.no-compression.sst", nil, nil)
 }
@@ -453,8 +453,8 @@ func TestReaderBloomUsed(t *testing.T) {
 	}
 
 	files := []struct {
-		path     string
-		comparer *Comparer
+		path		string
+		comparer	*Comparer
 	}{
 		{"h.table-bloom.no-compression.sst", nil},
 		{"h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst", fixtureComparer},
@@ -464,8 +464,8 @@ func TestReaderBloomUsed(t *testing.T) {
 			for _, degenerate := range []bool{false, true} {
 				t.Run(fmt.Sprintf("degenerate=%t", degenerate), func(t *testing.T) {
 					c := &countingFilterPolicy{
-						FilterPolicy: bloom.FilterPolicy(10),
-						degenerate:   degenerate,
+						FilterPolicy:	bloom.FilterPolicy(10),
+						degenerate:	degenerate,
 					}
 					testReader(t, tc.path, tc.comparer, c)
 
@@ -548,12 +548,12 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 
 type countingFilterPolicy struct {
 	FilterPolicy
-	degenerate bool
+	degenerate	bool
 
-	truePositives  int
-	falsePositives int
-	falseNegatives int
-	trueNegatives  int
+	truePositives	int
+	falsePositives	int
+	falseNegatives	int
+	trueNegatives	int
 }
 
 func (c *countingFilterPolicy) MayContain(ftype FilterType, filter, key []byte) bool {
@@ -585,8 +585,8 @@ func TestWriterRoundTrip(t *testing.T) {
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for name, fp := range map[string]FilterPolicy{
-				"none":       nil,
-				"bloom10bit": bloom.FilterPolicy(10),
+				"none":		nil,
+				"bloom10bit":	bloom.FilterPolicy(10),
 			} {
 				t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
 					f, err := build(DefaultCompression, fp, TableFilter,
@@ -618,8 +618,8 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						continue
 					}
 					w := NewWriter(wf, WriterOptions{
-						BlockSize:      blockSize,
-						IndexBlockSize: indexBlockSize,
+						BlockSize:	blockSize,
+						IndexBlockSize:	indexBlockSize,
 					})
 					for _, k := range keys[:nk] {
 						if err := w.Add(InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
@@ -689,7 +689,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 }
 
 func TestMetaIndexEntriesSorted(t *testing.T) {
-	f, err := build(DefaultCompression, nil, /* filter policy */
+	f, err := build(DefaultCompression, nil,	/* filter policy */
 		TableFilter, nil, nil, 4096, 4096)
 	require.NoError(t, err)
 
@@ -725,10 +725,10 @@ func TestFooterRoundTrip(t *testing.T) {
 			for _, checksum := range []uint8{checksumCRC32c} {
 				t.Run(fmt.Sprintf("checksum=%d", checksum), func(t *testing.T) {
 					footer := footer{
-						format:      format,
-						checksum:    checksum,
-						metaindexBH: BlockHandle{Offset: 1, Length: 2},
-						indexBH:     BlockHandle{Offset: 3, Length: 4},
+						format:		format,
+						checksum:	checksum,
+						metaindexBH:	BlockHandle{Offset: 1, Length: 2},
+						indexBH:	BlockHandle{Offset: 3, Length: 4},
 					}
 					for _, offset := range []int64{0, 1, 100} {
 						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
@@ -769,15 +769,15 @@ func TestFooterRoundTrip(t *testing.T) {
 func TestReadFooter(t *testing.T) {
 	encode := func(format TableFormat, checksum uint8) string {
 		f := footer{
-			format:   format,
-			checksum: checksum,
+			format:		format,
+			checksum:	checksum,
 		}
 		return string(f.encode(make([]byte, maxFooterLen)))
 	}
 
 	testCases := []struct {
-		encoded  string
-		expected string
+		encoded		string
+		expected	string
 	}{
 		{strings.Repeat("a", minFooterLen-1), "file size is too small"},
 		{strings.Repeat("a", levelDBFooterLen), "bad magic number"},

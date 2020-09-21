@@ -8,7 +8,6 @@ package vfs
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"golang.org/x/sys/windows"
 )
 

@@ -31,8 +31,8 @@ func MaxNodeSize(keySize, valueSize uint32) uint32 {
 }
 
 type links struct {
-	nextOffset uint32
-	prevOffset uint32
+	nextOffset	uint32
+	prevOffset	uint32
 }
 
 func (l *links) init(prevOffset, nextOffset uint32) {
@@ -42,12 +42,12 @@ func (l *links) init(prevOffset, nextOffset uint32) {
 
 type node struct {
 	// Immutable fields, so no need to lock to access key.
-	keyOffset uint32
-	keySize   uint32
+	keyOffset	uint32
+	keySize		uint32
 	// If valueSize is negative, the value is stored separately from the node in
 	// arena.extValues.
-	valueSize int32
-	allocSize uint32
+	valueSize	int32
+	allocSize	uint32
 
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
@@ -56,7 +56,7 @@ type node struct {
 	// is deliberately truncated to not include unneeded tower elements.
 	//
 	// All accesses to elements should use CAS operations, with no need to lock.
-	tower [maxHeight]links
+	tower	[maxHeight]links
 }
 
 func newNode(

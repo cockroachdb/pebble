@@ -62,8 +62,8 @@ type userKeyRange struct {
 }
 
 type compactionLevel struct {
-	level int
-	files manifest.LevelSlice
+	level	int
+	files	manifest.LevelSlice
 }
 
 // Return output from compactionOutputSplitters. See comment on
@@ -71,7 +71,7 @@ type compactionLevel struct {
 type compactionSplitSuggestion int
 
 const (
-	noSplit compactionSplitSuggestion = iota
+	noSplit	compactionSplitSuggestion	= iota
 	splitSoon
 	splitNow
 )
@@ -119,7 +119,9 @@ type fileSizeSplitter struct {
 	maxFileSize uint64
 }
 
-func (f *fileSizeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (f *fileSizeSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	// The Kind != RangeDelete part exists because EstimatedSize doesn't grow
 	// rightaway when a range tombstone is added to the fragmenter. It's always
 	// better to make a sequence of range tombstones visible to the fragmenter.
@@ -135,12 +137,14 @@ func (f *fileSizeSplitter) onNewOutput(key *InternalKey) []byte {
 }
 
 type grandparentLimitSplitter struct {
-	c     *compaction
-	ve    *versionEdit
-	limit []byte
+	c	*compaction
+	ve	*versionEdit
+	limit	[]byte
 }
 
-func (g *grandparentLimitSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (g *grandparentLimitSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	if g.limit != nil && g.c.cmp(key.UserKey, g.limit) > 0 {
 		return splitNow
 	}
@@ -155,7 +159,7 @@ func (g *grandparentLimitSplitter) onNewOutput(key *InternalKey) []byte {
 		// process `key`, and the input iterator will be advanced.
 		if key != nil {
 			g.limit = g.c.findGrandparentLimit(key.UserKey)
-		} else { // !c.rangeDelFrag.Empty()
+		} else {	// !c.rangeDelFrag.Empty()
 			g.limit = g.c.findGrandparentLimit(g.c.rangeDelFrag.Start())
 		}
 	} else {
@@ -230,12 +234,14 @@ func (g *grandparentLimitSplitter) onNewOutput(key *InternalKey) []byte {
 }
 
 type l0LimitSplitter struct {
-	c     *compaction
-	ve    *versionEdit
-	limit []byte
+	c	*compaction
+	ve	*versionEdit
+	limit	[]byte
 }
 
-func (l *l0LimitSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (l *l0LimitSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	if l.limit != nil && l.c.cmp(key.UserKey, l.limit) > 0 {
 		return splitNow
 	}
@@ -275,11 +281,13 @@ func (l *l0LimitSplitter) onNewOutput(key *InternalKey) []byte {
 // splitterGroup is a compactionOutputSplitter that splits whenever one of its
 // child splitters advises a compaction split.
 type splitterGroup struct {
-	cmp       Compare
-	splitters []compactionOutputSplitter
+	cmp		Compare
+	splitters	[]compactionOutputSplitter
 }
 
-func (a *splitterGroup) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) (suggestion compactionSplitSuggestion) {
+func (a *splitterGroup) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) (suggestion compactionSplitSuggestion) {
 	suggestion = noSplit
 	for _, splitter := range a.splitters {
 		switch splitter.shouldSplitBefore(key, tw) {
@@ -314,13 +322,15 @@ func (a *splitterGroup) onNewOutput(key *InternalKey) []byte {
 // their determinatino in ways other than comparing the current key against a
 // limit key.
 type userKeyChangeSplitter struct {
-	cmp                Compare
-	splitOnNextUserKey bool
-	savedKey           []byte
-	splitter           compactionOutputSplitter
+	cmp			Compare
+	splitOnNextUserKey	bool
+	savedKey		[]byte
+	splitter		compactionOutputSplitter
 }
 
-func (u *userKeyChangeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (u *userKeyChangeSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	if u.splitOnNextUserKey && u.cmp(u.savedKey, key.UserKey) != 0 {
 		u.splitOnNextUserKey = false
 		u.savedKey = u.savedKey[:0]
@@ -343,13 +353,15 @@ func (u *userKeyChangeSplitter) onNewOutput(key *InternalKey) []byte {
 // and 2) the compaction output is at a point where the previous point sequence
 // number is nonzero.
 type nonZeroSeqNumSplitter struct {
-	c                    *compaction
-	splitter             compactionOutputSplitter
-	prevPointSeqNum      uint64
-	splitOnNonZeroSeqNum bool
+	c			*compaction
+	splitter		compactionOutputSplitter
+	prevPointSeqNum		uint64
+	splitOnNonZeroSeqNum	bool
 }
 
-func (n *nonZeroSeqNumSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (n *nonZeroSeqNumSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	curSeqNum := key.SeqNum()
 	keyKind := key.Kind()
 	prevPointSeqNum := n.prevPointSeqNum
@@ -385,8 +397,8 @@ func (n *nonZeroSeqNumSplitter) onNewOutput(key *InternalKey) []byte {
 type compactionFile struct {
 	vfs.File
 
-	versions *versionSet
-	written  *int64
+	versions	*versionSet
+	written		*int64
 }
 
 // Write implements the io.Writer interface.
@@ -404,101 +416,101 @@ func (c *compactionFile) Write(p []byte) (n int, err error) {
 type compactionKind string
 
 const (
-	compactionKindDefault     compactionKind = "default"
-	compactionKindFlush       compactionKind = "flush"
-	compactionKindMove        compactionKind = "move"
-	compactionKindDeleteOnly  compactionKind = "delete-only"
-	compactionKindElisionOnly compactionKind = "elision-only"
+	compactionKindDefault		compactionKind	= "default"
+	compactionKindFlush		compactionKind	= "flush"
+	compactionKindMove		compactionKind	= "move"
+	compactionKindDeleteOnly	compactionKind	= "delete-only"
+	compactionKindElisionOnly	compactionKind	= "elision-only"
 )
 
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
-	kind      compactionKind
-	cmp       Compare
-	formatKey base.FormatKey
-	logger    Logger
-	version   *version
+	kind		compactionKind
+	cmp		Compare
+	formatKey	base.FormatKey
+	logger		Logger
+	version		*version
 
-	score float64
+	score	float64
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
-	startLevel *compactionLevel
+	startLevel	*compactionLevel
 	// outputLevel is the level that files are being produced in. outputLevel is
 	// equal to startLevel+1 except when startLevel is 0 in which case it is
 	// equal to compactionPicker.baseLevel().
-	outputLevel *compactionLevel
+	outputLevel	*compactionLevel
 
-	inputs []compactionLevel
+	inputs	[]compactionLevel
 
 	// maxOutputFileSize is the maximum size of an individual table created
 	// during compaction.
-	maxOutputFileSize uint64
+	maxOutputFileSize	uint64
 	// maxOverlapBytes is the maximum number of bytes of overlap allowed for a
 	// single output table with the tables in the grandparent level.
-	maxOverlapBytes uint64
+	maxOverlapBytes	uint64
 	// disableRangeTombstoneElision disables elision of range tombstones. Used by
 	// tests to allow range tombstones to be added to tables where they would
 	// otherwise be elided.
-	disableRangeTombstoneElision bool
+	disableRangeTombstoneElision	bool
 
 	// flushing contains the flushables (aka memtables) that are being flushed.
-	flushing flushableList
+	flushing	flushableList
 	// bytesIterated contains the number of bytes that have been flushed/compacted.
-	bytesIterated uint64
+	bytesIterated	uint64
 	// bytesWritten contains the number of bytes that have been written to outputs.
-	bytesWritten int64
+	bytesWritten	int64
 	// atomicBytesIterated points to the variable to increment during iteration.
 	// atomicBytesIterated must be read/written atomically. Flushing will increment
 	// the shared variable which compaction will read. This allows for the
 	// compaction routine to know how many bytes have been flushed before the flush
 	// is applied.
-	atomicBytesIterated *uint64
+	atomicBytesIterated	*uint64
 
 	// The boundaries of the input data.
-	smallest InternalKey
-	largest  InternalKey
+	smallest	InternalKey
+	largest		InternalKey
 
 	// The range deletion tombstone fragmenter. Adds range tombstones as they are
 	// returned from `compactionIter` and fragments them for output to files.
 	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
-	rangeDelFrag rangedel.Fragmenter
+	rangeDelFrag	rangedel.Fragmenter
 
 	// A list of objects to close when the compaction finishes. Used by input
 	// iteration to keep rangeDelIters open for the lifetime of the compaction,
 	// and only close them when the compaction finishes.
-	closers []io.Closer
+	closers	[]io.Closer
 
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
 	// in the grandparent when this compaction finishes will be the same.
-	grandparents manifest.LevelSlice
+	grandparents	manifest.LevelSlice
 
 	// Boundaries at which flushes to L0 should be split. Determined by
 	// L0Sublevels. If nil, flushes aren't split.
-	l0Limits [][]byte
+	l0Limits	[][]byte
 
 	// List of disjoint inuse key ranges the compaction overlaps with in
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
 	// determine if keys affected by a tombstone possibly exist at a lower level.
-	inuseKeyRanges      []userKeyRange
-	elideTombstoneIndex int
+	inuseKeyRanges		[]userKeyRange
+	elideTombstoneIndex	int
 
 	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
 	// snapshots requiring them to be kept. This determination is made by
 	// looking for an sstable which overlaps the bounds of the compaction at a
 	// lower level in the LSM during runCompaction.
-	allowedZeroSeqNum bool
+	allowedZeroSeqNum	bool
 
-	metrics map[int]*LevelMetrics
+	metrics	map[int]*LevelMetrics
 }
 
 func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	info := CompactionInfo{
-		JobID: jobID,
-		Input: make([]LevelInfo, 0, len(c.inputs)),
+		JobID:	jobID,
+		Input:	make([]LevelInfo, 0, len(c.inputs)),
 	}
 	for _, cl := range c.inputs {
 		inputInfo := LevelInfo{Level: cl.level, Tables: nil}
@@ -527,18 +539,18 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 
 func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) *compaction {
 	c := &compaction{
-		kind:                compactionKindDefault,
-		cmp:                 pc.cmp,
-		formatKey:           opts.Comparer.FormatKey,
-		score:               pc.score,
-		inputs:              pc.inputs,
-		smallest:            pc.smallest,
-		largest:             pc.largest,
-		logger:              opts.Logger,
-		version:             pc.version,
-		maxOutputFileSize:   pc.maxOutputFileSize,
-		maxOverlapBytes:     pc.maxOverlapBytes,
-		atomicBytesIterated: bytesCompacted,
+		kind:			compactionKindDefault,
+		cmp:			pc.cmp,
+		formatKey:		opts.Comparer.FormatKey,
+		score:			pc.score,
+		inputs:			pc.inputs,
+		smallest:		pc.smallest,
+		largest:		pc.largest,
+		logger:			opts.Logger,
+		version:		pc.version,
+		maxOutputFileSize:	pc.maxOutputFileSize,
+		maxOverlapBytes:	pc.maxOverlapBytes,
+		atomicBytesIterated:	bytesCompacted,
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
@@ -568,12 +580,12 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 
 func newDeleteOnlyCompaction(opts *Options, cur *version, inputs []compactionLevel) *compaction {
 	c := &compaction{
-		kind:      compactionKindDeleteOnly,
-		cmp:       opts.Comparer.Compare,
-		formatKey: opts.Comparer.FormatKey,
-		logger:    opts.Logger,
-		version:   cur,
-		inputs:    inputs,
+		kind:		compactionKindDeleteOnly,
+		cmp:		opts.Comparer.Compare,
+		formatKey:	opts.Comparer.FormatKey,
+		logger:		opts.Logger,
+		version:	cur,
+		inputs:		inputs,
 	}
 
 	// Set c.smallest, c.largest.
@@ -589,16 +601,16 @@ func newFlush(
 	opts *Options, cur *version, baseLevel int, flushing flushableList, bytesFlushed *uint64,
 ) *compaction {
 	c := &compaction{
-		kind:                compactionKindFlush,
-		cmp:                 opts.Comparer.Compare,
-		formatKey:           opts.Comparer.FormatKey,
-		logger:              opts.Logger,
-		version:             cur,
-		inputs:              []compactionLevel{{level: -1}, {level: 0}},
-		maxOutputFileSize:   math.MaxUint64,
-		maxOverlapBytes:     math.MaxUint64,
-		flushing:            flushing,
-		atomicBytesIterated: bytesFlushed,
+		kind:			compactionKindFlush,
+		cmp:			opts.Comparer.Compare,
+		formatKey:		opts.Comparer.FormatKey,
+		logger:			opts.Logger,
+		version:		cur,
+		inputs:			[]compactionLevel{{level: -1}, {level: 0}},
+		maxOutputFileSize:	math.MaxUint64,
+		maxOverlapBytes:	math.MaxUint64,
+		flushing:		flushing,
+		atomicBytesIterated:	bytesFlushed,
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
@@ -634,8 +646,8 @@ func newFlush(
 		}
 		if key, value := iter.Last(); key != nil {
 			tmp := base.InternalKey{
-				UserKey: value,
-				Trailer: key.Trailer,
+				UserKey:	value,
+				Trailer:	key.Trailer,
 			}
 			if !largestSet ||
 				base.InternalCompare(c.cmp, c.largest, tmp) < 0 {
@@ -1040,12 +1052,12 @@ func (c *compaction) String() string {
 type manualCompaction struct {
 	// Count of the retries either due to too many concurrent compactions, or a
 	// concurrent compaction to overlapping levels.
-	retries     int
-	level       int
-	outputLevel int
-	done        chan error
-	start       InternalKey
-	end         InternalKey
+	retries		int
+	level		int
+	outputLevel	int
+	done		chan error
+	start		InternalKey
+	end		InternalKey
 }
 
 func (d *DB) addInProgressCompaction(c *compaction) {
@@ -1130,8 +1142,8 @@ func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
 	d.mu.Lock()
 	estimatedMaxWAmp := d.mu.versions.picker.getEstimatedMaxWAmp()
 	pacerInfo := compactionPacerInfo{
-		slowdownThreshold:   uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
-		totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
+		slowdownThreshold:	uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
+		totalCompactionDebt:	d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
 	}
 	for _, m := range d.mu.mem.queue {
 		pacerInfo.totalDirtyBytes += m.inuseBytes()
@@ -1296,8 +1308,8 @@ func (d *DB) flush1() error {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	d.opts.EventListener.FlushBegin(FlushInfo{
-		JobID: jobID,
-		Input: n,
+		JobID:	jobID,
+		Input:	n,
 	})
 	startTime := d.timeNow()
 
@@ -1306,19 +1318,19 @@ func (d *DB) flush1() error {
 		// TODO(peter): Flush pacing is disabled until we figure out why it impacts
 		// throughput.
 		flushPacer = newFlushPacer(flushPacerEnv{
-			limiter:      d.flushLimiter,
-			memTableSize: uint64(d.opts.MemTableSize),
-			getInfo:      d.getFlushPacerInfo,
+			limiter:	d.flushLimiter,
+			memTableSize:	uint64(d.opts.MemTableSize),
+			getInfo:	d.getFlushPacerInfo,
 		})
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
 
 	info := FlushInfo{
-		JobID:    jobID,
-		Input:    n,
-		Duration: d.timeNow().Sub(startTime),
-		Done:     true,
-		Err:      err,
+		JobID:		jobID,
+		Input:		n,
+		Duration:	d.timeNow().Sub(startTime),
+		Done:		true,
+		Err:		err,
 	}
 	if err == nil {
 		for i := range ve.NewFiles {
@@ -1429,9 +1441,9 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	env := compactionEnv{
-		bytesCompacted:          &d.bytesCompacted,
-		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
-		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
+		bytesCompacted:			&d.bytesCompacted,
+		earliestSnapshotSeqNum:		d.mu.snapshots.earliest(),
+		earliestUnflushedSeqNum:	d.getEarliestUnflushedSeqNumLocked(),
 	}
 
 	// Check for delete-only compactions first, because they're expected to be
@@ -1493,28 +1505,28 @@ func (d *DB) maybeScheduleCompactionPicker(
 // into the same snapshot stripe, a delete-only compaction may delete any
 // sstables within the range.
 type deleteCompactionHint struct {
-	start []byte
-	end   []byte
+	start	[]byte
+	end	[]byte
 	// The level of the file containing the range tombstone(s) when the hint
 	// was created. Only lower levels need to be searched for files that may
 	// be deleted.
-	tombstoneLevel int
+	tombstoneLevel	int
 	// The file containing the range tombstone(s) that created the hint.
-	tombstoneFile *fileMetadata
+	tombstoneFile	*fileMetadata
 	// The smallest and largest sequence numbers of the abutting tombstones
 	// merged to form this hint. All of a tables' keys must be less than the
 	// tombstone smallest sequence number to be deleted. All of a tables'
 	// sequence numbers must fall into the same snapshot stripe as the
 	// tombstone largest sequence number to be deleted.
-	tombstoneLargestSeqNum  uint64
-	tombstoneSmallestSeqNum uint64
+	tombstoneLargestSeqNum	uint64
+	tombstoneSmallestSeqNum	uint64
 	// The smallest sequence number of a sstable that was found to be covered
 	// by this hint. The hint cannot be resolved until this sequence number is
 	// in the same snapshot stripe as the largest tombstone sequence number.
 	// This is set when a hint is created, so the LSM may look different and
 	// notably no longer contian the sstable that contained the key at this
 	// sequence number.
-	fileSmallestSeqNum uint64
+	fileSmallestSeqNum	uint64
 }
 
 func (h deleteCompactionHint) String() string {
@@ -1676,8 +1688,8 @@ func checkDeleteCompactionHints(
 			continue
 		}
 		compactLevels = append(compactLevels, compactionLevel{
-			level: l,
-			files: manifest.NewLevelSlice(files),
+			level:	l,
+			files:	manifest.NewLevelSlice(files),
 		})
 	}
 	return compactLevels, unresolvedHints
@@ -1722,9 +1734,9 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		// TODO(peter): Compaction pacing is disabled until we figure out why it
 		// impacts throughput.
 		compactionPacer = newCompactionPacer(compactionPacerEnv{
-			limiter:      d.compactionLimiter,
-			memTableSize: uint64(d.opts.MemTableSize),
-			getInfo:      d.getCompactionPacerInfo,
+			limiter:	d.compactionLimiter,
+			memTableSize:	uint64(d.opts.MemTableSize),
+			getInfo:	d.getCompactionPacerInfo,
 		})
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
@@ -1791,8 +1803,8 @@ func (d *DB) runCompaction(
 				levelMetrics.NumFiles--
 				levelMetrics.Size -= int64(f.Size)
 				ve.DeletedFiles[deletedFileEntry{
-					Level:   cl.level,
-					FileNum: f.FileNum,
+					Level:		cl.level,
+					FileNum:	f.FileNum,
 				}] = true
 			}
 			c.metrics[cl.level] = levelMetrics
@@ -1808,20 +1820,20 @@ func (d *DB) runCompaction(
 		iter := c.startLevel.files.Iter()
 		meta := iter.First()
 		c.metrics = map[int]*LevelMetrics{
-			c.startLevel.level: &LevelMetrics{
-				NumFiles: -1,
-				Size:     -int64(meta.Size),
+			c.startLevel.level: {
+				NumFiles:	-1,
+				Size:		-int64(meta.Size),
 			},
-			c.outputLevel.level: &LevelMetrics{
-				NumFiles:    1,
-				Size:        int64(meta.Size),
-				BytesMoved:  meta.Size,
-				TablesMoved: 1,
+			c.outputLevel.level: {
+				NumFiles:	1,
+				Size:		int64(meta.Size),
+				BytesMoved:	meta.Size,
+				TablesMoved:	1,
 			},
 		}
 		ve := &versionEdit{
 			DeletedFiles: map[deletedFileEntry]bool{
-				deletedFileEntry{Level: c.startLevel.level, FileNum: meta.FileNum}: true,
+				{Level: c.startLevel.level, FileNum: meta.FileNum}: true,
 			},
 			NewFiles: []newFileEntry{
 				{Level: c.outputLevel.level, Meta: meta},
@@ -1852,8 +1864,8 @@ func (d *DB) runCompaction(
 		&c.rangeDelFrag, c.allowedZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
 	var (
-		filenames []string
-		tw        *sstable.Writer
+		filenames	[]string
+		tw		*sstable.Writer
 	)
 	defer func() {
 		if iter != nil {
@@ -1877,8 +1889,8 @@ func (d *DB) runCompaction(
 	}
 
 	outputMetrics := &LevelMetrics{
-		BytesIn:   c.startLevel.files.SizeSum(),
-		BytesRead: c.outputLevel.files.SizeSum(),
+		BytesIn:	c.startLevel.files.SizeSum(),
+		BytesRead:	c.outputLevel.files.SizeSum(),
 	}
 	outputMetrics.BytesRead += outputMetrics.BytesIn
 	c.metrics = map[int]*LevelMetrics{
@@ -1906,18 +1918,18 @@ func (d *DB) runCompaction(
 			reason = "compacting"
 		}
 		d.opts.EventListener.TableCreated(TableCreateInfo{
-			JobID:   jobID,
-			Reason:  reason,
-			Path:    filename,
-			FileNum: fileNum,
+			JobID:		jobID,
+			Reason:		reason,
+			Path:		filename,
+			FileNum:	fileNum,
 		})
 		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,
 		})
 		file = &compactionFile{
-			File: file,
-			versions: &d.mu.versions,
-			written: &c.bytesWritten,
+			File:		file,
+			versions:	&d.mu.versions,
+			written:	&c.bytesWritten,
 		}
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
@@ -1925,10 +1937,10 @@ func (d *DB) runCompaction(
 		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt)
 
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
-			Level: c.outputLevel.level,
+			Level:	c.outputLevel.level,
 			Meta: &fileMetadata{
-				FileNum:      fileNum,
-				CreationTime: time.Now().Unix(),
+				FileNum:	fileNum,
+				CreationTime:	time.Now().Unix(),
 			},
 		})
 		return nil
@@ -2182,14 +2194,14 @@ func (d *DB) runCompaction(
 		// that all advised splits will be at user key change boundaries. Wrap
 		// it in a userKeyChangeSplitter.
 		outputSplitters[0] = &userKeyChangeSplitter{
-			cmp:      c.cmp,
-			splitter: outputSplitters[0],
+			cmp:		c.cmp,
+			splitter:	outputSplitters[0],
 		}
 		outputSplitters = append(outputSplitters, &l0LimitSplitter{c: c, ve: ve})
 	}
 	splitter = &splitterGroup{
-		cmp:       c.cmp,
-		splitters: outputSplitters,
+		cmp:		c.cmp,
+		splitters:	outputSplitters,
 	}
 	// Flush splits don't need nonzero last-point-key seqnums at split
 	// boundaries because when flushing to L0, we are able to guarantee that
@@ -2199,8 +2211,8 @@ func (d *DB) runCompaction(
 	// in that case.
 	if !splittingFlush {
 		splitter = &nonZeroSeqNumSplitter{
-			c:        c,
-			splitter: splitter,
+			c:		c,
+			splitter:	splitter,
 		}
 	}
 
@@ -2321,8 +2333,8 @@ func (d *DB) runCompaction(
 			c.metrics[cl.level].NumFiles--
 			c.metrics[cl.level].Size -= int64(f.Size)
 			ve.DeletedFiles[deletedFileEntry{
-				Level:   cl.level,
-				FileNum: f.FileNum,
+				Level:		cl.level,
+				FileNum:	f.FileNum,
 			}] = true
 		}
 	}
@@ -2502,8 +2514,8 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 	defer d.mu.Lock()
 
 	files := [4]struct {
-		fileType fileType
-		obsolete []FileNum
+		fileType	fileType
+		obsolete	[]FileNum
 	}{
 		{fileTypeLog, obsoleteLogs},
 		{fileTypeTable, obsoleteTables},
@@ -2571,24 +2583,24 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 	switch fileType {
 	case fileTypeLog:
 		d.opts.EventListener.WALDeleted(WALDeleteInfo{
-			JobID:   jobID,
-			Path:    path,
-			FileNum: fileNum,
-			Err:     err,
+			JobID:		jobID,
+			Path:		path,
+			FileNum:	fileNum,
+			Err:		err,
 		})
 	case fileTypeManifest:
 		d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-			JobID:   jobID,
-			Path:    path,
-			FileNum: fileNum,
-			Err:     err,
+			JobID:		jobID,
+			Path:		path,
+			FileNum:	fileNum,
+			Err:		err,
 		})
 	case fileTypeTable:
 		d.opts.EventListener.TableDeleted(TableDeleteInfo{
-			JobID:   jobID,
-			Path:    path,
-			FileNum: fileNum,
-			Err:     err,
+			JobID:		jobID,
+			Path:		path,
+			FileNum:	fileNum,
+			Err:		err,
 		})
 	}
 }

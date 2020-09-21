@@ -89,14 +89,14 @@ func runTests(t *testing.T, path string) {
 					c.Name = "test-comparer"
 					c.FormatKey = func(key []byte) fmt.Formatter {
 						return fmtFormatter{
-							fmt: "test formatter: %s",
-							v:   key,
+							fmt:	"test formatter: %s",
+							v:	key,
 						}
 					}
 					c.FormatValue = func(_, value []byte) fmt.Formatter {
 						return fmtFormatter{
-							fmt: "test value formatter: %s",
-							v:   value,
+							fmt:	"test value formatter: %s",
+							v:	value,
 						}
 					}
 					return &c

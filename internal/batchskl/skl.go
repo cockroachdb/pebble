@@ -51,7 +51,7 @@ Key differences:
 - Node storage grows to an arbitrary size.
 */
 
-package batchskl // import "github.com/cockroachdb/pebble/internal/batchskl"
+package batchskl	// import "github.com/cockroachdb/pebble/internal/batchskl"
 
 import (
 	"bytes"
@@ -67,9 +67,9 @@ import (
 )
 
 const (
-	maxHeight   = 20
-	maxNodeSize = int(unsafe.Sizeof(node{}))
-	linksSize   = int(unsafe.Sizeof(links{}))
+	maxHeight	= 20
+	maxNodeSize	= int(unsafe.Sizeof(node{}))
+	linksSize	= int(unsafe.Sizeof(links{}))
 )
 
 // ErrExists indicates that a duplicate record was inserted. This should never
@@ -78,28 +78,28 @@ const (
 var ErrExists = errors.New("record with this key already exists")
 
 type links struct {
-	next uint32
-	prev uint32
+	next	uint32
+	prev	uint32
 }
 
 type node struct {
 	// The offset of the start of the record in the storage.
-	offset uint32
+	offset	uint32
 	// The offset of the start and end of the key in storage.
-	keyStart uint32
-	keyEnd   uint32
+	keyStart	uint32
+	keyEnd		uint32
 	// A fixed 8-byte abbreviation of the key, used to avoid retrieval of the key
 	// during seek operations. The key retrieval can be expensive purely due to
 	// cache misses while the abbreviatedKey stored here will be in the same
 	// cache line as the key and the links making accessing and comparing against
 	// it almost free.
-	abbreviatedKey uint64
+	abbreviatedKey	uint64
 	// Most nodes do not need to use the full height of the link tower, since the
 	// probability of each successive level decreases exponentially. Because
 	// these elements are never accessed, they do not need to be allocated.
 	// Therefore, when a node is allocated, its memory footprint is deliberately
 	// truncated to not include unneeded link elements.
-	links [maxHeight]links
+	links	[maxHeight]links
 }
 
 // Skiplist is a fast, non-cocnurrent skiplist implementation that supports
@@ -109,14 +109,14 @@ type node struct {
 // expected to perform deletion via tombstones and needs to process those
 // tombstones appropriately during retrieval operations.
 type Skiplist struct {
-	storage        *[]byte
-	cmp            base.Compare
-	abbreviatedKey base.AbbreviatedKey
-	nodes          []byte
-	head           uint32
-	tail           uint32
-	height         uint32 // Current height: 1 <= height <= maxHeight
-	rand           rand.PCGSource
+	storage		*[]byte
+	cmp		base.Compare
+	abbreviatedKey	base.AbbreviatedKey
+	nodes		[]byte
+	head		uint32
+	tail		uint32
+	height		uint32	// Current height: 1 <= height <= maxHeight
+	rand		rand.PCGSource
 }
 
 var (
@@ -146,10 +146,10 @@ func NewSkiplist(storage *[]byte, cmp base.Compare, abbreviatedKey base.Abbrevia
 // Reset the fields in the skiplist for reuse.
 func (s *Skiplist) Reset() {
 	*s = Skiplist{
-		nodes:  s.nodes[:0],
-		height: 1,
+		nodes:	s.nodes[:0],
+		height:	1,
 	}
-	const batchMaxRetainedSize = 1 << 20 // 1 MB
+	const batchMaxRetainedSize = 1 << 20	// 1 MB
 	if cap(s.nodes) > batchMaxRetainedSize {
 		s.nodes = nil
 	}
@@ -158,11 +158,11 @@ func (s *Skiplist) Reset() {
 // Init the skiplist to empty and re-initialize.
 func (s *Skiplist) Init(storage *[]byte, cmp base.Compare, abbreviatedKey base.AbbreviatedKey) {
 	*s = Skiplist{
-		storage:        storage,
-		cmp:            cmp,
-		abbreviatedKey: abbreviatedKey,
-		nodes:          s.nodes[:0],
-		height:         1,
+		storage:	storage,
+		cmp:		cmp,
+		abbreviatedKey:	abbreviatedKey,
+		nodes:		s.nodes[:0],
+		height:		1,
 	}
 	s.rand.Seed(uint64(time.Now().UnixNano()))
 

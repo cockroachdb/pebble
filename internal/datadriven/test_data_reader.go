@@ -24,11 +24,11 @@ import (
 )
 
 type testDataReader struct {
-	sourceName string
-	reader     io.Reader
-	scanner    *lineScanner
-	data       TestData
-	rewrite    *bytes.Buffer
+	sourceName	string
+	reader		io.Reader
+	scanner		*lineScanner
+	data		TestData
+	rewrite		*bytes.Buffer
 }
 
 func newTestDataReader(
@@ -41,10 +41,10 @@ func newTestDataReader(
 		rewrite = &bytes.Buffer{}
 	}
 	return &testDataReader{
-		sourceName: sourceName,
-		reader:     file,
-		scanner:    newLineScanner(file),
-		rewrite:    rewrite,
+		sourceName:	sourceName,
+		reader:		file,
+		scanner:	newLineScanner(file),
+		rewrite:	rewrite,
 	}
 }
 

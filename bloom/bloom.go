@@ -3,7 +3,7 @@
 // the LICENSE file.
 
 // Package bloom implements Bloom filters.
-package bloom // import "github.com/cockroachdb/pebble/bloom"
+package bloom	// import "github.com/cockroachdb/pebble/bloom"
 
 import (
 	"encoding/binary"
@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	cacheLineSize = 64
-	cacheLineBits = cacheLineSize * 8
+	cacheLineSize	= 64
+	cacheLineBits	= cacheLineSize * 8
 )
 
 // blockFilter is an encoded set of []byte keys.
@@ -72,7 +72,7 @@ func (f tableFilter) MayContain(key []byte) bool {
 
 func calculateProbes(bitsPerKey int) uint32 {
 	// We intentionally round down to reduce probing cost a little bit
-	n := uint32(float64(bitsPerKey) * 0.69) // 0.69 =~ ln(2)
+	n := uint32(float64(bitsPerKey) * 0.69)	// 0.69 =~ ln(2)
 	if n < 1 {
 		n = 1
 	}
@@ -108,8 +108,8 @@ func extend(b []byte, n int) (overall, trailer []byte) {
 // hash implements a hashing algorithm similar to the Murmur hash.
 func hash(b []byte) uint32 {
 	const (
-		seed = 0xbc9f1d34
-		m    = 0xc6a4a793
+		seed	= 0xbc9f1d34
+		m	= 0xc6a4a793
 	)
 	h := uint32(seed) ^ uint32(len(b)*m)
 	for ; len(b) >= 4; b = b[4:] {
@@ -146,8 +146,8 @@ func hash(b []byte) uint32 {
 }
 
 type tableFilterWriter struct {
-	bitsPerKey int
-	hashes     []uint32
+	bitsPerKey	int
+	hashes		[]uint32
 }
 
 // AddKey implements the base.FilterWriter interface.
@@ -181,7 +181,7 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	if nBits != 0 && nLines != 0 {
 		nProbes := calculateProbes(w.bitsPerKey)
 		for _, h := range w.hashes {
-			delta := h>>17 | h<<15 // rotate right 17 bits
+			delta := h>>17 | h<<15	// rotate right 17 bits
 			b := (h % uint32(nLines)) * (cacheLineBits)
 			for i := uint32(0); i < nProbes; i++ {
 				bitPos := b + (h % cacheLineBits)

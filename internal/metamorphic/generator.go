@@ -13,60 +13,60 @@ import (
 )
 
 type generator struct {
-	rng *rand.Rand
+	rng	*rand.Rand
 
-	init *initOp
-	ops  []op
+	init	*initOp
+	ops	[]op
 
 	// keys that have been set in the DB. Used to reuse already generated keys
 	// during random key selection.
-	keys [][]byte
+	keys	[][]byte
 
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
 	// (of which there is exactly 1), batches, iterators, and snapshots.
 	//
 	// liveBatches contains the live indexed and write-only batches.
-	liveBatches objIDSlice
+	liveBatches	objIDSlice
 	// liveIters contains the live iterators.
-	liveIters objIDSlice
+	liveIters	objIDSlice
 	// liveReaders contains the DB, and any live indexed batches and snapshots. The DB is always
 	// at index 0.
-	liveReaders objIDSlice
+	liveReaders	objIDSlice
 	// liveSnapshots contains the live snapshots.
-	liveSnapshots objIDSlice
+	liveSnapshots	objIDSlice
 	// liveWriters contains the DB, and any live batches. The DB is always at index 0.
-	liveWriters objIDSlice
+	liveWriters	objIDSlice
 
 	// Maps used to find associated objects during generation. These maps are not
 	// needed during test execution.
 	//
 	// batchID -> batch iters: used to keep track of the open iterators on an
 	// indexed batch. The iter set value will also be indexed by the readers map.
-	batches map[objID]objIDSet
+	batches	map[objID]objIDSet
 	// iterID -> reader iters: used to keep track of all of the open
 	// iterators. The iter set value will also be indexed by either the batches
 	// or snapshots maps.
-	iters map[objID]objIDSet
+	iters	map[objID]objIDSet
 	// readerID -> reader iters: used to keep track of the open iterators on a
 	// reader. The iter set value will also be indexed by either the batches or
 	// snapshots maps. This map is the union of batches and snapshots maps.
-	readers map[objID]objIDSet
+	readers	map[objID]objIDSet
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
-	snapshots map[objID]objIDSet
+	snapshots	map[objID]objIDSet
 }
 
 func newGenerator(rng *rand.Rand) *generator {
 	g := &generator{
-		rng:         rng,
-		init:        &initOp{},
-		liveReaders: objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters: objIDSlice{makeObjID(dbTag, 0)},
-		batches:     make(map[objID]objIDSet),
-		iters:       make(map[objID]objIDSet),
-		readers:     make(map[objID]objIDSet),
-		snapshots:   make(map[objID]objIDSet),
+		rng:		rng,
+		init:		&initOp{},
+		liveReaders:	objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters:	objIDSlice{makeObjID(dbTag, 0)},
+		batches:	make(map[objID]objIDSet),
+		iters:		make(map[objID]objIDSet),
+		readers:	make(map[objID]objIDSet),
+		snapshots:	make(map[objID]objIDSet),
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -77,33 +77,33 @@ func generate(rng *rand.Rand, count uint64, cfg config) []op {
 	g := newGenerator(rng)
 
 	generators := []func(){
-		batchAbort:        g.batchAbort,
-		batchCommit:       g.batchCommit,
-		dbCheckpoint:      g.dbCheckpoint,
-		dbCompact:         g.dbCompact,
-		dbFlush:           g.dbFlush,
-		dbRestart:         g.dbRestart,
-		iterClose:         g.iterClose,
-		iterFirst:         g.iterFirst,
-		iterLast:          g.iterLast,
-		iterNext:          g.iterNext,
-		iterPrev:          g.iterPrev,
-		iterSeekGE:        g.iterSeekGE,
-		iterSeekLT:        g.iterSeekLT,
-		iterSeekPrefixGE:  g.iterSeekPrefixGE,
-		iterSetBounds:     g.iterSetBounds,
-		newBatch:          g.newBatch,
-		newIndexedBatch:   g.newIndexedBatch,
-		newIter:           g.newIter,
-		newSnapshot:       g.newSnapshot,
-		readerGet:         g.readerGet,
-		snapshotClose:     g.snapshotClose,
-		writerApply:       g.writerApply,
-		writerDelete:      g.writerDelete,
-		writerDeleteRange: g.writerDeleteRange,
-		writerIngest:      g.writerIngest,
-		writerMerge:       g.writerMerge,
-		writerSet:         g.writerSet,
+		batchAbort:		g.batchAbort,
+		batchCommit:		g.batchCommit,
+		dbCheckpoint:		g.dbCheckpoint,
+		dbCompact:		g.dbCompact,
+		dbFlush:		g.dbFlush,
+		dbRestart:		g.dbRestart,
+		iterClose:		g.iterClose,
+		iterFirst:		g.iterFirst,
+		iterLast:		g.iterLast,
+		iterNext:		g.iterNext,
+		iterPrev:		g.iterPrev,
+		iterSeekGE:		g.iterSeekGE,
+		iterSeekLT:		g.iterSeekLT,
+		iterSeekPrefixGE:	g.iterSeekPrefixGE,
+		iterSetBounds:		g.iterSetBounds,
+		newBatch:		g.newBatch,
+		newIndexedBatch:	g.newIndexedBatch,
+		newIter:		g.newIter,
+		newSnapshot:		g.newSnapshot,
+		readerGet:		g.readerGet,
+		snapshotClose:		g.snapshotClose,
+		writerApply:		g.writerApply,
+		writerDelete:		g.writerDelete,
+		writerDeleteRange:	g.writerDeleteRange,
+		writerIngest:		g.writerIngest,
+		writerMerge:		g.writerMerge,
+		writerSet:		g.writerSet,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
@@ -141,7 +141,7 @@ func (g *generator) randValue(min, max int) []byte {
 	// uppercase vs lowercase, or letters vs numbers vs punctuation.
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	const lettersLen = uint64(len(letters))
-	const lettersCharsPerRand = 12 // floor(log(math.MaxUint64)/log(lettersLen))
+	const lettersCharsPerRand = 12	// floor(log(math.MaxUint64)/log(lettersLen))
 
 	n := min
 	if max > min {
@@ -257,8 +257,8 @@ func (g *generator) dbCompact() {
 		start, end = end, start
 	}
 	g.add(&compactOp{
-		start: start,
-		end:   end,
+		start:	start,
+		end:	end,
 	})
 }
 
@@ -315,10 +315,10 @@ func (g *generator) newIter() {
 	}
 
 	g.add(&newIterOp{
-		readerID: readerID,
-		iterID:   iterID,
-		lower:    lower,
-		upper:    upper,
+		readerID:	readerID,
+		iterID:		iterID,
+		lower:		lower,
+		upper:		upper,
 	})
 }
 
@@ -359,9 +359,9 @@ func (g *generator) iterSetBounds() {
 		lower, upper = upper, lower
 	}
 	g.add(&iterSetBoundsOp{
-		iterID: g.liveIters.rand(g.rng),
-		lower:  lower,
-		upper:  upper,
+		iterID:	g.liveIters.rand(g.rng),
+		lower:	lower,
+		upper:	upper,
 	})
 }
 
@@ -371,8 +371,8 @@ func (g *generator) iterSeekGE() {
 	}
 
 	g.add(&iterSeekGEOp{
-		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKey(0.001), // 0.1% new keys
+		iterID:	g.liveIters.rand(g.rng),
+		key:	g.randKey(0.001),	// 0.1% new keys
 	})
 }
 
@@ -382,8 +382,8 @@ func (g *generator) iterSeekPrefixGE() {
 	}
 
 	g.add(&iterSeekPrefixGEOp{
-		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKey(0), // 0% new keys
+		iterID:	g.liveIters.rand(g.rng),
+		key:	g.randKey(0),	// 0% new keys
 	})
 }
 
@@ -393,8 +393,8 @@ func (g *generator) iterSeekLT() {
 	}
 
 	g.add(&iterSeekLTOp{
-		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKey(0.001), // 0.1% new keys
+		iterID:	g.liveIters.rand(g.rng),
+		key:	g.randKey(0.001),	// 0.1% new keys
 	})
 }
 
@@ -444,8 +444,8 @@ func (g *generator) readerGet() {
 	}
 
 	g.add(&getOp{
-		readerID: g.liveReaders.rand(g.rng),
-		key:      g.randKey(0.001), // 0.1% new keys
+		readerID:	g.liveReaders.rand(g.rng),
+		key:		g.randKey(0.001),	// 0.1% new keys
 	})
 }
 
@@ -506,8 +506,8 @@ func (g *generator) writerApply() {
 	g.batchClose(batchID)
 
 	g.add(&applyOp{
-		writerID: writerID,
-		batchID:  batchID,
+		writerID:	writerID,
+		batchID:	batchID,
 	})
 }
 
@@ -517,8 +517,8 @@ func (g *generator) writerDelete() {
 	}
 
 	g.add(&deleteOp{
-		writerID: g.liveWriters.rand(g.rng),
-		key:      g.randKey(0.001), // 0.1% new keys
+		writerID:	g.liveWriters.rand(g.rng),
+		key:		g.randKey(0.001),	// 0.1% new keys
 	})
 }
 
@@ -534,9 +534,9 @@ func (g *generator) writerDeleteRange() {
 	}
 
 	g.add(&deleteRangeOp{
-		writerID: g.liveWriters.rand(g.rng),
-		start:    start,
-		end:      end,
+		writerID:	g.liveWriters.rand(g.rng),
+		start:		start,
+		end:		end,
 	})
 }
 
@@ -567,9 +567,9 @@ func (g *generator) writerMerge() {
 	}
 
 	g.add(&mergeOp{
-		writerID: g.liveWriters.rand(g.rng),
-		key:      g.randKey(0.2), // 20% new keys
-		value:    g.randValue(0, 20),
+		writerID:	g.liveWriters.rand(g.rng),
+		key:		g.randKey(0.2),	// 20% new keys
+		value:		g.randValue(0, 20),
 	})
 }
 
@@ -579,9 +579,9 @@ func (g *generator) writerSet() {
 	}
 
 	g.add(&setOp{
-		writerID: g.liveWriters.rand(g.rng),
-		key:      g.randKey(0.5), // 50% new keys
-		value:    g.randValue(0, 20),
+		writerID:	g.liveWriters.rand(g.rng),
+		key:		g.randKey(0.5),	// 50% new keys
+		value:		g.randValue(0, 20),
 	})
 }
 

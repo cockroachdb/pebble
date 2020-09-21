@@ -90,21 +90,21 @@ type Split func(a []byte) int
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer struct {
-	Compare        Compare
-	Equal          Equal
-	AbbreviatedKey AbbreviatedKey
-	FormatKey      FormatKey
-	FormatValue    FormatValue
-	Separator      Separator
-	Split          Split
-	Successor      Successor
+	Compare		Compare
+	Equal		Equal
+	AbbreviatedKey	AbbreviatedKey
+	FormatKey	FormatKey
+	FormatValue	FormatValue
+	Separator	Separator
+	Split		Split
+	Successor	Successor
 
 	// Name is the name of the comparer.
 	//
 	// The Level-DB on-disk format stores the comparer name, and opening a
 	// database with a different comparer from the one it was created with
 	// will result in an error.
-	Name string
+	Name	string
 }
 
 // DefaultFormatter is the default implementation of user key formatting:
@@ -116,8 +116,8 @@ var DefaultFormatter = func(key []byte) fmt.Formatter {
 // DefaultComparer is the default implementation of the Comparer interface.
 // It uses the natural ordering, consistent with bytes.Compare.
 var DefaultComparer = &Comparer{
-	Compare: bytes.Compare,
-	Equal:   bytes.Equal,
+	Compare:	bytes.Compare,
+	Equal:		bytes.Equal,
 
 	AbbreviatedKey: func(key []byte) uint64 {
 		if len(key) >= 8 {
@@ -131,7 +131,7 @@ var DefaultComparer = &Comparer{
 		return v << uint(8*(8-len(key)))
 	},
 
-	FormatKey: DefaultFormatter,
+	FormatKey:	DefaultFormatter,
 
 	Separator: func(dst, a, b []byte) []byte {
 		i, n := SharedPrefixLen(a, b), len(dst)
@@ -181,7 +181,7 @@ var DefaultComparer = &Comparer{
 
 	// This name is part of the C++ Level-DB implementation's default file
 	// format, and should not be changed.
-	Name: "leveldb.BytewiseComparator",
+	Name:	"leveldb.BytewiseComparator",
 }
 
 // SharedPrefixLen returns the largest i such that a[:i] equals b[:i].

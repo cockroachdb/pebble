@@ -51,13 +51,13 @@ func Example_prefixiteration() {
 				return end[:i+1]
 			}
 		}
-		return nil // no upper-bound
+		return nil	// no upper-bound
 	}
 
 	prefixIterOptions := func(prefix []byte) *pebble.IterOptions {
 		return &pebble.IterOptions{
-			LowerBound: prefix,
-			UpperBound: keyUpperBound(prefix),
+			LowerBound:	prefix,
+			UpperBound:	keyUpperBound(prefix),
 		}
 	}
 

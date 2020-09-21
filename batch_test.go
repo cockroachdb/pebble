@@ -22,8 +22,8 @@ import (
 
 func TestBatch(t *testing.T) {
 	type testCase struct {
-		kind       InternalKeyKind
-		key, value string
+		kind		InternalKeyKind
+		key, value	string
 	}
 
 	verifyTestCases := func(b *Batch, testCases []testCase) {
@@ -420,8 +420,8 @@ func TestBatchOpDoesIncrement(t *testing.T) {
 
 func TestBatchGet(t *testing.T) {
 	testCases := []struct {
-		method       string
-		memTableSize int
+		method		string
+		memTableSize	int
 	}{
 		{"build", 64 << 20},
 		{"build", 1 << 10},
@@ -431,8 +431,8 @@ func TestBatchGet(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(fmt.Sprintf("%s,mem=%d", c.method, c.memTableSize), func(t *testing.T) {
 			d, err := Open("", &Options{
-				FS:           vfs.NewMem(),
-				MemTableSize: c.memTableSize,
+				FS:		vfs.NewMem(),
+				MemTableSize:	c.memTableSize,
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)

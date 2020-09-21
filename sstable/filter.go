@@ -11,11 +11,11 @@ type FilterMetrics struct {
 	// The number of hits for the filter policy. This is the
 	// number of times the filter policy was successfully used to avoid access
 	// of a data block.
-	Hits int64
+	Hits	int64
 	// The number of misses for the filter policy. This is the number of times
 	// the filter policy was checked but was unable to filter an access of a data
 	// block.
-	Misses int64
+	Misses	int64
 }
 
 var dummyFilterMetrics FilterMetrics
@@ -39,14 +39,14 @@ type filterWriter interface {
 }
 
 type tableFilterReader struct {
-	policy  FilterPolicy
-	metrics *FilterMetrics
+	policy	FilterPolicy
+	metrics	*FilterMetrics
 }
 
 func newTableFilterReader(policy FilterPolicy) *tableFilterReader {
 	return &tableFilterReader{
-		policy:  policy,
-		metrics: &dummyFilterMetrics,
+		policy:		policy,
+		metrics:	&dummyFilterMetrics,
 	}
 }
 
@@ -61,16 +61,16 @@ func (f *tableFilterReader) mayContain(data, key []byte) bool {
 }
 
 type tableFilterWriter struct {
-	policy FilterPolicy
-	writer FilterWriter
+	policy	FilterPolicy
+	writer	FilterWriter
 	// count is the count of the number of keys added to the filter.
-	count int
+	count	int
 }
 
 func newTableFilterWriter(policy FilterPolicy) *tableFilterWriter {
 	return &tableFilterWriter{
-		policy: policy,
-		writer: policy.NewWriter(TableFilter),
+		policy:	policy,
+		writer:	policy.NewWriter(TableFilter),
 	}
 }
 

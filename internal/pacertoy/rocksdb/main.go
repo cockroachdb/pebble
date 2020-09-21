@@ -13,34 +13,33 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/rate"
-
 	"golang.org/x/exp/rand"
 )
 
 const (
 	// Max rate for all compactions. This is intentionally set low enough that
 	// user writes will have to be delayed.
-	maxCompactionRate = 80 << 20 // 80 MB/s
+	maxCompactionRate	= 80 << 20	// 80 MB/s
 
-	memtableSize          = 64 << 20 // 64 MB
-	memtableStopThreshold = 2 * memtableSize
-	maxWriteRate          = 30 << 20 // 30 MB/s
-	startingWriteRate     = 30 << 20 // 30 MB/s
+	memtableSize		= 64 << 20	// 64 MB
+	memtableStopThreshold	= 2 * memtableSize
+	maxWriteRate		= 30 << 20	// 30 MB/s
+	startingWriteRate	= 30 << 20	// 30 MB/s
 
-	l0SlowdownThreshold   = 4
-	l0CompactionThreshold = 1
+	l0SlowdownThreshold	= 4
+	l0CompactionThreshold	= 1
 
-	levelRatio = 10
-	numLevels  = 7
+	levelRatio	= 10
+	numLevels	= 7
 
 	// Slowdown threshold is set at the compaction debt incurred by the largest
 	// possible compaction.
-	compactionDebtSlowdownThreshold = memtableSize * (numLevels - 2)
+	compactionDebtSlowdownThreshold	= memtableSize * (numLevels - 2)
 )
 
 type compactionPacer struct {
-	level   int64
-	drainer *rate.Limiter
+	level	int64
+	drainer	*rate.Limiter
 }
 
 func newCompactionPacer() *compactionPacer {
@@ -61,9 +60,9 @@ func (p *compactionPacer) drain(n int64) {
 }
 
 type flushPacer struct {
-	level                 int64
-	memtableStopThreshold float64
-	fillCond              sync.Cond
+	level			int64
+	memtableStopThreshold	float64
+	fillCond		sync.Cond
 }
 
 func newFlushPacer(mu *sync.Mutex) *flushPacer {
@@ -88,26 +87,26 @@ func (p *flushPacer) drain(n int64) {
 
 // DB models a RocksDB DB.
 type DB struct {
-	mu         sync.Mutex
-	flushPacer *flushPacer
-	flushCond  sync.Cond
-	memtables  []*int64
-	fill       int64
-	drain      int64
+	mu		sync.Mutex
+	flushPacer	*flushPacer
+	flushCond	sync.Cond
+	memtables	[]*int64
+	fill		int64
+	drain		int64
 
-	compactionMu    sync.Mutex
-	compactionPacer *compactionPacer
+	compactionMu	sync.Mutex
+	compactionPacer	*compactionPacer
 	// L0 is represented as an array of integers whereas every other level
 	// is represented as a single integer.
-	L0 []*int64
+	L0	[]*int64
 	// Non-L0 sstables. sstables[0] == L1.
-	sstables            []int64
-	maxSSTableSizes     []int64
-	compactionFlushCond sync.Cond
-	prevCompactionDebt  float64
-	previouslyInDebt    bool
+	sstables		[]int64
+	maxSSTableSizes		[]int64
+	compactionFlushCond	sync.Cond
+	prevCompactionDebt	float64
+	previouslyInDebt	bool
 
-	writeLimiter *rate.Limiter
+	writeLimiter	*rate.Limiter
 }
 
 func newDB() *DB {
@@ -316,7 +315,7 @@ func (db *DB) printLevels() {
 
 // simulateWrite simulates user writes.
 func simulateWrite(db *DB) {
-	limiter := rate.NewLimiter(10<<20, 10<<20) // 10 MB/s
+	limiter := rate.NewLimiter(10<<20, 10<<20)	// 10 MB/s
 	fmt.Printf("filling at 10 MB/sec\n")
 
 	setRate := func(mb int) {

@@ -21,8 +21,8 @@ import (
 
 type rateFlag struct {
 	randvar.Flag
-	fluctuateDuration time.Duration
-	spec              string
+	fluctuateDuration	time.Duration
+	spec			string
 }
 
 func newRateFlag(spec string) *rateFlag {
@@ -102,9 +102,9 @@ func wait(l *rate.Limiter) {
 }
 
 type sequence struct {
-	val         int64
-	cycleLength int64
-	seed        int64
+	val		int64
+	cycleLength	int64
+	seed		int64
 }
 
 func (s *sequence) write() int64 {
@@ -128,17 +128,17 @@ type keyGenerator interface {
 }
 
 type hashGenerator struct {
-	seq    *sequence
-	random *rand.Rand
-	hasher hash.Hash
-	buf    [sha1.Size]byte
+	seq	*sequence
+	random	*rand.Rand
+	hasher	hash.Hash
+	buf	[sha1.Size]byte
 }
 
 func newHashGenerator(seq *sequence) *hashGenerator {
 	return &hashGenerator{
-		seq:    seq,
-		random: rand.New(rand.NewSource(uint64(time.Now().UnixNano()))),
-		hasher: sha1.New(),
+		seq:	seq,
+		random:	rand.New(rand.NewSource(uint64(time.Now().UnixNano()))),
+		hasher:	sha1.New(),
 	}
 }
 
@@ -172,14 +172,14 @@ func (g *hashGenerator) sequence() int64 {
 }
 
 type sequentialGenerator struct {
-	seq    *sequence
-	random *rand.Rand
+	seq	*sequence
+	random	*rand.Rand
 }
 
 func newSequentialGenerator(seq *sequence) *sequentialGenerator {
 	return &sequentialGenerator{
-		seq:    seq,
-		random: rand.New(rand.NewSource(uint64(time.Now().UnixNano()))),
+		seq:	seq,
+		random:	rand.New(rand.NewSource(uint64(time.Now().UnixNano()))),
 	}
 }
 

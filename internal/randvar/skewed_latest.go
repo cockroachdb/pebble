@@ -27,8 +27,8 @@ import (
 type SkewedLatest struct {
 	mu struct {
 		sync.RWMutex
-		max  uint64
-		zipf *Zipf
+		max	uint64
+		zipf	*Zipf
 	}
 }
 

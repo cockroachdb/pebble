@@ -24,9 +24,9 @@ import (
 
 func TestZeta(t *testing.T) {
 	var zetaTests = []struct {
-		n        uint64
-		theta    float64
-		expected float64
+		n		uint64
+		theta		float64
+		expected	float64
 	}{
 		{20, 0.99, 3.64309060779367},
 		{200, 0.99, 6.02031118558},
@@ -100,8 +100,8 @@ func TestZetaIncMax(t *testing.T) {
 
 func TestNewZipf(t *testing.T) {
 	var gens = []struct {
-		min, max uint64
-		theta    float64
+		min, max	uint64
+		theta		float64
 	}{
 		{0, 100, 0.99},
 		{0, 100, 1.01},

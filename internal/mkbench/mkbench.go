@@ -45,11 +45,11 @@ import (
 )
 
 type run struct {
-	opsSec     float64
-	readBytes  int64
-	writeBytes int64
-	readAmp    float64
-	writeAmp   float64
+	opsSec		float64
+	readBytes	int64
+	writeBytes	int64
+	readAmp		float64
+	writeAmp	float64
 }
 
 func (r run) formatCSV() string {
@@ -58,18 +58,18 @@ func (r run) formatCSV() string {
 }
 
 type workload struct {
-	days map[string][]run // data -> runs
+	days map[string][]run	// data -> runs
 }
 
 type loader struct {
-	cookedDays map[string]bool      // set of already cooked days
-	data       map[string]*workload // workload name -> workload data
+	cookedDays	map[string]bool		// set of already cooked days
+	data		map[string]*workload	// workload name -> workload data
 }
 
 func newLoader() *loader {
 	return &loader{
-		cookedDays: make(map[string]bool),
-		data:       make(map[string]*workload),
+		cookedDays:	make(map[string]bool),
+		data:		make(map[string]*workload),
 	}
 }
 
@@ -148,7 +148,7 @@ func (l *loader) loadRaw(dir string) {
 
 		parts := strings.Split(path, string(os.PathSeparator))
 		if len(parts) < 2 {
-			return nil // stumble forward on invalid paths
+			return nil	// stumble forward on invalid paths
 		}
 
 		day := parts[1]
@@ -159,7 +159,7 @@ func (l *loader) loadRaw(dir string) {
 		f, err := os.Open(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%+v\n", err)
-			return nil // stumble forward on error
+			return nil	// stumble forward on error
 		}
 		defer f.Close()
 
@@ -171,7 +171,7 @@ func (l *loader) loadRaw(dir string) {
 			r, err = gzip.NewReader(f)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%+v\n", err)
-				return nil // stumble forward on error
+				return nil	// stumble forward on error
 			}
 		}
 

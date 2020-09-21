@@ -19,8 +19,8 @@ func TestLevelOptions(t *testing.T) {
 	opts = opts.EnsureDefaults()
 
 	testCases := []struct {
-		level          int
-		targetFileSize int64
+		level		int
+		targetFileSize	int64
 	}{
 		{0, 2 << 20},
 		{1, (2 * 2) << 20},
@@ -170,9 +170,9 @@ func TestOptionsParse(t *testing.T) {
 	}
 
 	testCases := []struct {
-		cleaner  Cleaner
-		comparer *Comparer
-		merger   *Merger
+		cleaner		Cleaner
+		comparer	*Comparer
+		merger		*Merger
 	}{
 		{testCleaner{}, nil, nil},
 		{nil, &testComparer, nil},
@@ -207,8 +207,8 @@ func TestOptionsParse(t *testing.T) {
 
 func TestOptionsValidate(t *testing.T) {
 	testCases := []struct {
-		options  string
-		expected string
+		options		string
+		expected	string
 	}{
 		{``, ``},
 		{`

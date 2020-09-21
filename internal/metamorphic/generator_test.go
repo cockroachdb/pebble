@@ -138,9 +138,9 @@ func TestGeneratorRandom(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		regeneratedOps := generateFromSeed()
 		diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
-			A:       difflib.SplitLines(referenceOps),
-			B:       difflib.SplitLines(regeneratedOps),
-			Context: 1,
+			A:		difflib.SplitLines(referenceOps),
+			B:		difflib.SplitLines(regeneratedOps),
+			Context:	1,
 		})
 		require.NoError(t, err)
 		if len(diff) > 0 {

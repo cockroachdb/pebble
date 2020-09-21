@@ -16,8 +16,8 @@ import (
 
 // Adapters for BoltDB
 type boltDB struct {
-	db     *bolt.DB
-	bucket []byte
+	db	*bolt.DB
+	bucket	[]byte
 }
 
 func newBoltDB(dir string) DB {
@@ -43,10 +43,10 @@ func (b boltDB) NewIter(opts *pebble.IterOptions) iterator {
 	}
 	cursor := tx.Bucket(b.bucket).Cursor()
 	return &boltDBIterator{
-		tx:     tx,
-		cursor: cursor,
-		lower:  opts.GetLowerBound(),
-		upper:  opts.GetUpperBound(),
+		tx:	tx,
+		cursor:	cursor,
+		lower:	opts.GetLowerBound(),
+		upper:	opts.GetUpperBound(),
 	}
 }
 
@@ -73,12 +73,12 @@ func (b boltDB) Flush() error {
 }
 
 type boltDBIterator struct {
-	tx     *bolt.Tx
-	cursor *bolt.Cursor
-	key    []byte
-	value  []byte
-	lower  []byte
-	upper  []byte
+	tx	*bolt.Tx
+	cursor	*bolt.Cursor
+	key	[]byte
+	value	[]byte
+	lower	[]byte
+	upper	[]byte
 }
 
 func (i *boltDBIterator) SeekGE(key []byte) bool {
@@ -145,8 +145,8 @@ func (i *boltDBIterator) Close() error {
 }
 
 type boltDBBatch struct {
-	tx     *bolt.Tx
-	bucket *bolt.Bucket
+	tx	*bolt.Tx
+	bucket	*bolt.Bucket
 }
 
 func (b boltDBBatch) Close() error {

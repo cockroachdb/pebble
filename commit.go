@@ -32,13 +32,13 @@ type commitQueue struct {
 	//
 	// The head index is stored in the most-significant bits so that we can
 	// atomically add to it and the overflow is harmless.
-	headTail uint64
+	headTail	uint64
 
 	// slots is a ring buffer of values stored in this queue. The size must be a
 	// power of 2. A slot is in use until *both* the tail index has moved beyond
 	// it and the slot value has been set to nil. The slot value is set to nil
 	// atomically by the consumer and read atomically by the producer.
-	slots [record.SyncConcurrency]unsafe.Pointer
+	slots	[record.SyncConcurrency]unsafe.Pointer
 }
 
 const dequeueBits = 32
@@ -121,19 +121,19 @@ func (q *commitQueue) dequeue() *Batch {
 type commitEnv struct {
 	// The next sequence number to give to a batch. Protected by
 	// commitPipeline.mu.
-	logSeqNum *uint64
+	logSeqNum	*uint64
 	// The visible sequence number at which reads should be performed. Ratcheted
 	// upwards atomically as batches are applied to the memtable.
-	visibleSeqNum *uint64
+	visibleSeqNum	*uint64
 
 	// Apply the batch to the specified memtable. Called concurrently.
-	apply func(b *Batch, mem *memTable) error
+	apply	func(b *Batch, mem *memTable) error
 	// Write the batch to the WAL. If wg != nil, the data will be persisted
 	// asynchronously and done will be called on wg upon completion. If wg != nil
 	// and err != nil, a failure to persist the WAL will populate *err. Returns
 	// the memtable the batch should be applied to. Serial execution enforced by
 	// commitPipeline.mu.
-	write func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error)
+	write	func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error)
 }
 
 // A commitPipeline manages the stages of committing a set of mutations
@@ -207,22 +207,22 @@ type commitEnv struct {
 // that committing of that unapplied batch will eventually find our (applied)
 // batch in the queue. See commitPipeline.publish for additional commentary.
 type commitPipeline struct {
-	env commitEnv
-	sem chan struct{}
+	env	commitEnv
+	sem	chan struct{}
 	// The mutex to use for synchronizing access to logSeqNum and serializing
 	// calls to commitEnv.write().
-	mu sync.Mutex
+	mu	sync.Mutex
 	// Queue of pending batches to commit.
-	pending commitQueue
+	pending	commitQueue
 }
 
 func newCommitPipeline(env commitEnv) *commitPipeline {
 	p := &commitPipeline{
-		env: env,
+		env:	env,
 		// NB: the commit concurrency is one less than SyncConcurrency because we
 		// have to allow one "slot" for a concurrent WAL rotation which will close
 		// and sync the WAL.
-		sem: make(chan struct{}, record.SyncConcurrency-1),
+		sem:	make(chan struct{}, record.SyncConcurrency-1),
 	}
 	return p
 }
@@ -245,13 +245,13 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	// for reuse. See Batch.release().
 	mem, err := p.prepare(b, syncWAL)
 	if err != nil {
-		b.db = nil // prevent batch reuse on error
+		b.db = nil	// prevent batch reuse on error
 		return err
 	}
 
 	// Apply the batch to the memtable.
 	if err := p.env.apply(b, mem); err != nil {
-		b.db = nil // prevent batch reuse on error
+		b.db = nil	// prevent batch reuse on error
 		return err
 	}
 
@@ -261,7 +261,7 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	<-p.sem
 
 	if b.commitErr != nil {
-		b.db = nil // prevent batch reuse on error
+		b.db = nil	// prevent batch reuse on error
 	}
 	return b.commitErr
 }

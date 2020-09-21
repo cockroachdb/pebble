@@ -78,7 +78,7 @@ func TestLint(t *testing.T) {
 		if err := stream.ForEach(
 			stream.Sequence(
 				dirCmd(t, pkg.Dir, "go", "vet", "-all", "./..."),
-				stream.GrepNot(`^#`), // ignore comment lines
+				stream.GrepNot(`^#`),	// ignore comment lines
 				ignoreGoMod(),
 			), func(s string) {
 				t.Errorf("\n%s", s)
@@ -93,7 +93,7 @@ func TestLint(t *testing.T) {
 		if err := stream.ForEach(
 			stream.Sequence(
 				dirCmd(t, pkg.Dir, "git", "grep", "fmt\\.Errorf("),
-				stream.GrepNot(`^vendor/`), // ignore vendor
+				stream.GrepNot(`^vendor/`),	// ignore vendor
 			), func(s string) {
 				t.Errorf("\n%s <- please use \"errors.Errorf\" instead", s)
 			}); err != nil {
@@ -106,8 +106,8 @@ func TestLint(t *testing.T) {
 
 		// Forbidden-import-pkg -> permitted-replacement-pkg
 		forbiddenImports := map[string]string{
-			"errors":     "github.com/cockroachdb/errors",
-			"pkg/errors": "github.com/cockroachdb/errors",
+			"errors":	"github.com/cockroachdb/errors",
+			"pkg/errors":	"github.com/cockroachdb/errors",
 		}
 
 		// grepBuf creates a grep string that matches any forbidden import pkgs.

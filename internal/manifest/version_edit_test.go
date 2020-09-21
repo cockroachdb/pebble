@@ -45,43 +45,43 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		{},
 		// A complete version edit.
 		{
-			ComparerName:       "11",
-			MinUnflushedLogNum: 22,
-			ObsoletePrevLogNum: 33,
-			NextFileNum:        44,
-			LastSeqNum:         55,
+			ComparerName:		"11",
+			MinUnflushedLogNum:	22,
+			ObsoletePrevLogNum:	33,
+			NextFileNum:		44,
+			LastSeqNum:		55,
 			DeletedFiles: map[DeletedFileEntry]bool{
-				DeletedFileEntry{
-					Level:   3,
-					FileNum: 703,
+				{
+					Level:		3,
+					FileNum:	703,
 				}: true,
-				DeletedFileEntry{
-					Level:   4,
-					FileNum: 704,
+				{
+					Level:		4,
+					FileNum:	704,
 				}: true,
 			},
 			NewFiles: []NewFileEntry{
 				{
-					Level: 5,
+					Level:	5,
 					Meta: &FileMetadata{
-						FileNum:      805,
-						Size:         8050,
-						CreationTime: 805030,
-						Smallest:     base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
-						Largest:      base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						FileNum:	805,
+						Size:		8050,
+						CreationTime:	805030,
+						Smallest:	base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
+						Largest:	base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 					},
 				},
 				{
-					Level: 6,
+					Level:	6,
 					Meta: &FileMetadata{
-						FileNum:             806,
-						Size:                8060,
-						CreationTime:        806040,
-						Smallest:            base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
-						Largest:             base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
-						SmallestSeqNum:      3,
-						LargestSeqNum:       5,
-						MarkedForCompaction: true,
+						FileNum:		806,
+						Size:			8060,
+						CreationTime:		806040,
+						Smallest:		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
+						Largest:		base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+						SmallestSeqNum:		3,
+						LargestSeqNum:		5,
+						MarkedForCompaction:	true,
 					},
 				},
 			},
@@ -96,13 +96,13 @@ func TestVersionEditRoundTrip(t *testing.T) {
 
 func TestVersionEditDecode(t *testing.T) {
 	testCases := []struct {
-		filename     string
-		encodedEdits []string
-		edits        []VersionEdit
+		filename	string
+		encodedEdits	[]string
+		edits		[]VersionEdit
 	}{
 		// db-stage-1 and db-stage-2 have the same manifest.
 		{
-			filename: "db-stage-1/MANIFEST-000001",
+			filename:	"db-stage-1/MANIFEST-000001",
 			encodedEdits: []string{
 				"\x02\x00\x03\x02\x04\x00",
 			},
@@ -114,7 +114,7 @@ func TestVersionEditDecode(t *testing.T) {
 		},
 		// db-stage-3 and db-stage-4 have the same manifest.
 		{
-			filename: "db-stage-3/MANIFEST-000005",
+			filename:	"db-stage-3/MANIFEST-000005",
 			encodedEdits: []string{
 				"\x01\x1aleveldb.BytewiseComparator",
 				"\x02\x00",
@@ -128,20 +128,20 @@ func TestVersionEditDecode(t *testing.T) {
 				},
 				{},
 				{
-					MinUnflushedLogNum: 4,
-					ObsoletePrevLogNum: 0,
-					NextFileNum:        6,
-					LastSeqNum:         5,
+					MinUnflushedLogNum:	4,
+					ObsoletePrevLogNum:	0,
+					NextFileNum:		6,
+					LastSeqNum:		5,
 					NewFiles: []NewFileEntry{
 						{
-							Level: 0,
+							Level:	0,
 							Meta: &FileMetadata{
-								FileNum:        4,
-								Size:           986,
-								Smallest:       base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
-								Largest:        base.MakeInternalKey([]byte("foo"), 4, base.InternalKeyKindSet),
-								SmallestSeqNum: 3,
-								LargestSeqNum:  5,
+								FileNum:	4,
+								Size:		986,
+								Smallest:	base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
+								Largest:	base.MakeInternalKey([]byte("foo"), 4, base.InternalKeyKindSet),
+								SmallestSeqNum:	3,
+								LargestSeqNum:	5,
 							},
 						},
 					},
@@ -202,8 +202,8 @@ func TestVersionEditDecode(t *testing.T) {
 
 func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 	testCases := []struct {
-		edit    VersionEdit
-		encoded string
+		edit	VersionEdit
+		encoded	string
 	}{
 		// If ComparerName is unset, LastSeqNum is only encoded if non-zero.
 		{VersionEdit{LastSeqNum: 0}, ""},
@@ -266,8 +266,8 @@ func TestVersionEditApply(t *testing.T) {
 		}
 		parts = strings.Split(strings.TrimSpace(parts[1]), "-")
 		m := FileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+			Smallest:	base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:	base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()

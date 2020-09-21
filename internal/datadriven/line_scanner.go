@@ -21,13 +21,13 @@ import (
 
 type lineScanner struct {
 	*bufio.Scanner
-	line int
+	line	int
 }
 
 func newLineScanner(r io.Reader) *lineScanner {
 	return &lineScanner{
-		Scanner: bufio.NewScanner(r),
-		line:    0,
+		Scanner:	bufio.NewScanner(r),
+		line:		0,
 	}
 }
 

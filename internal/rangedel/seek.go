@@ -62,8 +62,8 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		if start := iterKey; start.Visible(snapshot) {
 			// The tombstone is visible at our read sequence number.
 			return Tombstone{
-				Start: *start,
-				End:   iterValue,
+				Start:	*start,
+				End:	iterValue,
 			}
 		}
 		iterKey, iterValue = iter.Next()
@@ -163,8 +163,8 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 			}
 			if start := iterKey; start.Visible(snapshot) {
 				return Tombstone{
-					Start: *start,
-					End:   iterValue,
+					Start:	*start,
+					End:	iterValue,
 				}
 			}
 		}
@@ -188,8 +188,8 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 						// We've found our tombstone as we know earlier tombstones are
 						// either not visible or lie before this tombstone.
 						return Tombstone{
-							Start: *start,
-							End:   iterValue,
+							Start:	*start,
+							End:	iterValue,
 						}
 					}
 					iterKey, iterValue = iter.Next()
@@ -221,7 +221,7 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		// key and is visible. Walk backwards until we find the latest version of
 		// this tombstone that is visible (i.e. has a sequence number less than the
 		// snapshot sequence number).
-		t := Tombstone{Start: *iterKey, End: iterValue} // current candidate to return
+		t := Tombstone{Start: *iterKey, End: iterValue}	// current candidate to return
 		for {
 			iterKey, _ = iter.Prev()
 			if iterKey == nil {

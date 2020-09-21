@@ -20,8 +20,8 @@ import (
 
 // Adapters for rocksDB
 type rocksDB struct {
-	d       *storage.RocksDB
-	ballast []byte
+	d	*storage.RocksDB
+	ballast	[]byte
 }
 
 func newRocksDB(dir string) DB {
@@ -33,15 +33,15 @@ func newRocksDB(dir string) DB {
 		log.Fatal(err)
 	}
 	return rocksDB{
-		d:       r,
-		ballast: make([]byte, 1<<30),
+		d:		r,
+		ballast:	make([]byte, 1<<30),
 	}
 }
 
 type rocksDBIterator struct {
-	iter       storage.Iterator
-	lowerBound []byte
-	upperBound []byte
+	iter		storage.Iterator
+	lowerBound	[]byte
+	upperBound	[]byte
 }
 
 type rocksDBBatch struct {
@@ -156,9 +156,9 @@ func (r rocksDB) NewIter(opts *pebble.IterOptions) iterator {
 	}
 	iter := r.d.NewIterator(ropts)
 	return rocksDBIterator{
-		iter:       iter,
-		lowerBound: ropts.LowerBound,
-		upperBound: ropts.UpperBound,
+		iter:		iter,
+		lowerBound:	ropts.LowerBound,
+		upperBound:	ropts.UpperBound,
 	}
 }
 
@@ -259,8 +259,8 @@ func (r rocksDB) Metrics() *pebble.Metrics {
 }
 
 type crdbPebbleDB struct {
-	d       *storage.Pebble
-	ballast []byte
+	d	*storage.Pebble
+	ballast	[]byte
 }
 
 func newCRDBPebbleDB(dir string) DB {
@@ -299,15 +299,15 @@ func newCRDBPebbleDB(dir string) DB {
 		log.Fatal(err)
 	}
 	return crdbPebbleDB{
-		d:       r,
-		ballast: make([]byte, 1<<30),
+		d:		r,
+		ballast:	make([]byte, 1<<30),
 	}
 }
 
 type crdbPebbleDBIterator struct {
-	iter       storage.Iterator
-	lowerBound []byte
-	upperBound []byte
+	iter		storage.Iterator
+	lowerBound	[]byte
+	upperBound	[]byte
 }
 
 type crdbPebbleDBBatch struct {
@@ -422,9 +422,9 @@ func (r crdbPebbleDB) NewIter(opts *pebble.IterOptions) iterator {
 	}
 	iter := r.d.NewIterator(ropts)
 	return crdbPebbleDBIterator{
-		iter:       iter,
-		lowerBound: ropts.LowerBound,
-		upperBound: ropts.UpperBound,
+		iter:		iter,
+		lowerBound:	ropts.LowerBound,
+		upperBound:	ropts.UpperBound,
 	}
 }
 

@@ -17,24 +17,22 @@
 
 package batchskl
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 type splice struct {
-	prev uint32
-	next uint32
+	prev	uint32
+	next	uint32
 }
 
 // Iterator is an iterator over the skiplist object. Use Skiplist.NewIter
 // to construct an iterator. The current state of the iterator can be cloned
 // by simply value copying the struct.
 type Iterator struct {
-	list  *Skiplist
-	nd    uint32
-	key   base.InternalKey
-	lower []byte
-	upper []byte
+	list	*Skiplist
+	nd	uint32
+	key	base.InternalKey
+	lower	[]byte
+	upper	[]byte
 }
 
 // Close resets the iterator.
@@ -188,9 +186,7 @@ func (it *Iterator) SetBounds(lower, upper []byte) {
 	it.upper = upper
 }
 
-func (it *Iterator) seekForBaseSplice(
-	key []byte, abbreviatedKey uint64,
-) (prev, next uint32) {
+func (it *Iterator) seekForBaseSplice(key []byte, abbreviatedKey uint64) (prev, next uint32) {
 	prev = it.list.head
 	for level := it.list.height - 1; ; level-- {
 		prev, next = it.list.findSpliceForLevel(key, abbreviatedKey, level, prev)

@@ -16,12 +16,12 @@ import (
 )
 
 const (
-	entrySize            = int(unsafe.Sizeof(entry{}))
-	entryAllocCacheLimit = 128
+	entrySize		= int(unsafe.Sizeof(entry{}))
+	entryAllocCacheLimit	= 128
 	// Avoid using runtime.SetFinalizer in race builds as finalizers tickle a bug
 	// in the Go race detector in go1.15 and earlier versions. This requires that
 	// entries are Go allocated rather than manually allocated.
-	entriesGoAllocated = invariants.RaceEnabled
+	entriesGoAllocated	= invariants.RaceEnabled
 )
 
 var entryAllocPool = sync.Pool{

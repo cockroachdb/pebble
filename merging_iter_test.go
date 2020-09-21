@@ -72,19 +72,19 @@ func TestMergingIterNextPrev(t *testing.T) {
 	// iterators differently. This data must match the definition in
 	// testdata/internal_iter_next.
 	iterCases := [][]string{
-		[]string{
+		{
 			"a.SET.2:2 a.SET.1:1 b.SET.2:2 b.SET.1:1 c.SET.2:2 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2 b.SET.2:2 c.SET.2:2",
 			"a.SET.1:1 b.SET.1:1 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2 b.SET.2:2",
 			"a.SET.1:1 b.SET.1:1",
 			"c.SET.2:2 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2",
 			"a.SET.1:1",
 			"b.SET.2:2",
@@ -175,9 +175,9 @@ func TestMergingIterCornerCases(t *testing.T) {
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
 				files[level] = append(files[level], &fileMetadata{
-					FileNum:  fileNum,
-					Smallest: smallestKey,
-					Largest:  largestKey,
+					FileNum:	fileNum,
+					Smallest:	smallestKey,
+					Largest:	largestKey,
 				})
 
 				i++
@@ -192,8 +192,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 				w := sstable.NewWriter(f, sstable.WriterOptions{})
 				var tombstones []rangedel.Tombstone
 				frag := rangedel.Fragmenter{
-					Cmp:    cmp,
-					Format: fmtKey,
+					Cmp:	cmp,
+					Format:	fmtKey,
 					Emit: func(fragmented []rangedel.Tombstone) {
 						tombstones = append(tombstones, fragmented...)
 					},
@@ -275,9 +275,9 @@ func buildMergingIterTables(
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
 		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
-			BlockRestartInterval: restartInterval,
-			BlockSize:            blockSize,
-			Compression:          NoCompression,
+			BlockRestartInterval:	restartInterval,
+			BlockSize:		blockSize,
+			Compression:		NoCompression,
 		})
 	}
 

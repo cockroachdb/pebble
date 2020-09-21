@@ -18,9 +18,9 @@ import (
 // debugging logic errors in manipulating the reference count. This version is
 // used when the "tracing" build tag is enabled.
 type refcnt struct {
-	val int32
+	val	int32
 	sync.Mutex
-	msgs []string
+	msgs	[]string
 }
 
 func (v *refcnt) init(val int32) {

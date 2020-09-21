@@ -5,15 +5,16 @@
 package fastrand
 
 import (
-	"golang.org/x/exp/rand"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/rand"
 )
 
 type defaultRand struct {
-	mu sync.Mutex
-	src rand.PCGSource
+	mu	sync.Mutex
+	src	rand.PCGSource
 }
 
 func newDefaultRand() *defaultRand {

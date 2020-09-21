@@ -22,22 +22,22 @@ import (
 )
 
 type testCommitEnv struct {
-	logSeqNum     uint64
-	visibleSeqNum uint64
-	writePos      int64
-	writeCount    uint64
-	applyBuf      struct {
+	logSeqNum	uint64
+	visibleSeqNum	uint64
+	writePos	int64
+	writeCount	uint64
+	applyBuf	struct {
 		sync.Mutex
-		buf []uint64
+		buf	[]uint64
 	}
 }
 
 func (e *testCommitEnv) env() commitEnv {
 	return commitEnv{
-		logSeqNum:     &e.logSeqNum,
-		visibleSeqNum: &e.visibleSeqNum,
-		apply:         e.apply,
-		write:         e.write,
+		logSeqNum:	&e.logSeqNum,
+		visibleSeqNum:	&e.visibleSeqNum,
+		apply:		e.apply,
+		write:		e.write,
 	}
 }
 
@@ -159,7 +159,7 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 
 type syncDelayFile struct {
 	vfs.File
-	done chan struct{}
+	done	chan struct{}
 }
 
 func (f *syncDelayFile) Sync() error {
@@ -179,16 +179,16 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	// syncDelayFile will block on the done channel befor returning from Sync
 	// call.
 	sf := &syncDelayFile{
-		File: f,
-		done: make(chan struct{}),
+		File:	f,
+		done:	make(chan struct{}),
 	}
 
 	// A basic commitEnv which writes to a WAL.
 	wal := record.NewLogWriter(sf, 0 /* logNum */)
 	var walDone sync.WaitGroup
 	testEnv := commitEnv{
-		logSeqNum:     new(uint64),
-		visibleSeqNum: new(uint64),
+		logSeqNum:	new(uint64),
+		visibleSeqNum:	new(uint64),
 		apply: func(b *Batch, mem *memTable) error {
 			// At this point, we've called SyncRecord but the sync is blocked.
 			walDone.Done()
@@ -238,8 +238,8 @@ func BenchmarkCommitPipeline(b *testing.B) {
 			wal := record.NewLogWriter(ioutil.Discard, 0 /* logNum */)
 
 			nullCommitEnv := commitEnv{
-				logSeqNum:     new(uint64),
-				visibleSeqNum: new(uint64),
+				logSeqNum:	new(uint64),
+				visibleSeqNum:	new(uint64),
 				apply: func(b *Batch, mem *memTable) error {
 					err := mem.apply(b, b.SeqNum())
 					if err != nil {

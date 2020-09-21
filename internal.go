@@ -4,26 +4,24 @@
 
 package pebble
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 // InternalKeyKind exports the base.InternalKeyKind type.
 type InternalKeyKind = base.InternalKeyKind
 
 // These constants are part of the file format, and should not be changed.
 const (
-	InternalKeyKindDelete          = base.InternalKeyKindDelete
-	InternalKeyKindSet             = base.InternalKeyKindSet
-	InternalKeyKindMerge           = base.InternalKeyKindMerge
-	InternalKeyKindLogData         = base.InternalKeyKindLogData
-	InternalKeyKindSingleDelete    = base.InternalKeyKindSingleDelete
-	InternalKeyKindRangeDelete     = base.InternalKeyKindRangeDelete
-	InternalKeyKindMax             = base.InternalKeyKindMax
-	InternalKeyKindInvalid         = base.InternalKeyKindInvalid
-	InternalKeySeqNumBatch         = base.InternalKeySeqNumBatch
-	InternalKeySeqNumMax           = base.InternalKeySeqNumMax
-	InternalKeyRangeDeleteSentinel = base.InternalKeyRangeDeleteSentinel
+	InternalKeyKindDelete		= base.InternalKeyKindDelete
+	InternalKeyKindSet		= base.InternalKeyKindSet
+	InternalKeyKindMerge		= base.InternalKeyKindMerge
+	InternalKeyKindLogData		= base.InternalKeyKindLogData
+	InternalKeyKindSingleDelete	= base.InternalKeyKindSingleDelete
+	InternalKeyKindRangeDelete	= base.InternalKeyKindRangeDelete
+	InternalKeyKindMax		= base.InternalKeyKindMax
+	InternalKeyKindInvalid		= base.InternalKeyKindInvalid
+	InternalKeySeqNumBatch		= base.InternalKeySeqNumBatch
+	InternalKeySeqNumMax		= base.InternalKeySeqNumMax
+	InternalKeyRangeDeleteSentinel	= base.InternalKeyRangeDeleteSentinel
 )
 
 // InternalKey exports the base.InternalKey type.

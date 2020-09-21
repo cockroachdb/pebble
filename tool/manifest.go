@@ -21,37 +21,37 @@ import (
 // manifestT implements manifest-level tools, including both configuration
 // state and the commands themselves.
 type manifestT struct {
-	Root  *cobra.Command
-	Dump  *cobra.Command
-	Check *cobra.Command
+	Root	*cobra.Command
+	Dump	*cobra.Command
+	Check	*cobra.Command
 
-	opts      *pebble.Options
-	comparers sstable.Comparers
-	fmtKey    keyFormatter
-	verbose   bool
+	opts		*pebble.Options
+	comparers	sstable.Comparers
+	fmtKey		keyFormatter
+	verbose		bool
 }
 
 func newManifest(opts *pebble.Options, comparers sstable.Comparers) *manifestT {
 	m := &manifestT{
-		opts:      opts,
-		comparers: comparers,
+		opts:		opts,
+		comparers:	comparers,
 	}
 	m.fmtKey.mustSet("quoted")
 
 	m.Root = &cobra.Command{
-		Use:   "manifest",
-		Short: "manifest introspection tools",
+		Use:	"manifest",
+		Short:	"manifest introspection tools",
 	}
 
 	// Add dump command
 	m.Dump = &cobra.Command{
-		Use:   "dump <manifest-files>",
-		Short: "print manifest contents",
+		Use:	"dump <manifest-files>",
+		Short:	"print manifest contents",
 		Long: `
 Print the contents of the MANIFEST files.
 `,
-		Args: cobra.MinimumNArgs(1),
-		Run:  m.runDump,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	m.runDump,
 	}
 
 	m.Root.AddCommand(m.Dump)
@@ -62,13 +62,13 @@ Print the contents of the MANIFEST files.
 
 	// Add check command
 	m.Check = &cobra.Command{
-		Use:   "check <manifest-files>",
-		Short: "check manifest contents",
+		Use:	"check <manifest-files>",
+		Short:	"check manifest contents",
 		Long: `
 Check the contents of the MANIFEST files.
 `,
-		Args: cobra.MinimumNArgs(1),
-		Run:  m.runCheck,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	m.runCheck,
 	}
 	m.Root.AddCommand(m.Check)
 	m.Check.Flags().Var(

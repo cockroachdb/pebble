@@ -12,19 +12,19 @@ import (
 
 type logRecycler struct {
 	// The maximum number of log files to maintain for recycling.
-	limit int
+	limit	int
 
 	// The minimum log number that is allowed to be recycled. Log numbers smaller
 	// than this will be subject to immediate deletion. This is used to prevent
 	// recycling a log written by a previous instance of the DB which may not
 	// have had log recycling enabled. If that previous instance of the DB was
 	// RocksDB, the old non-recyclable log record headers will be present.
-	minRecycleLogNum FileNum
+	minRecycleLogNum	FileNum
 
-	mu struct {
+	mu	struct {
 		sync.Mutex
-		logNums   []FileNum
-		maxLogNum FileNum
+		logNums		[]FileNum
+		maxLogNum	FileNum
 	}
 }
 

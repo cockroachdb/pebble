@@ -46,8 +46,8 @@ func TestCheckLevelsBasics(t *testing.T) {
 }
 
 type failMerger struct {
-	lastBuf    []byte
-	closeCount int
+	lastBuf		[]byte
+	closeCount	int
 }
 
 func (f *failMerger) MergeNewer(value []byte) error {
@@ -115,7 +115,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			return fm, nil
 		},
 
-		Name: "fail-merger",
+		Name:	"fail-merger",
 	}
 
 	datadriven.RunTest(t, "testdata/level_checker", func(d *datadriven.TestData) string {
@@ -136,9 +136,9 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
 				*li = append(*li, &fileMetadata{
-					FileNum:  fileNum,
-					Smallest: smallestKey,
-					Largest:  largestKey,
+					FileNum:	fileNum,
+					Smallest:	smallestKey,
+					Largest:	largestKey,
 				})
 
 				i++
@@ -164,8 +164,8 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 				var tombstones []rangedel.Tombstone
 				frag := rangedel.Fragmenter{
-					Cmp:    cmp,
-					Format: formatKey,
+					Cmp:	cmp,
+					Format:	formatKey,
 					Emit: func(fragmented []rangedel.Tombstone) {
 						tombstones = append(tombstones, fragmented...)
 					},
@@ -249,12 +249,12 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				files)
 			readState := &readState{current: version}
 			c := &checkConfig{
-				cmp:       cmp,
-				readState: readState,
-				newIters:  newIters,
-				seqNum:    InternalKeySeqNumMax,
-				merge:     merge,
-				formatKey: formatKey,
+				cmp:		cmp,
+				readState:	readState,
+				newIters:	newIters,
+				seqNum:		InternalKeySeqNumMax,
+				merge:		merge,
+				formatKey:	formatKey,
 			}
 			if err := checkLevelsInternal(c); err != nil {
 				return err.Error()

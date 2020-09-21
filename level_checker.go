@@ -47,29 +47,29 @@ import (
 
 // The per-level structure used by simpleMergingIter.
 type simpleMergingIterLevel struct {
-	iter            internalIterator
-	rangeDelIter    internalIterator
-	smallestUserKey []byte
+	iter		internalIterator
+	rangeDelIter	internalIterator
+	smallestUserKey	[]byte
 
-	iterKey   *InternalKey
-	iterValue []byte
-	tombstone rangedel.Tombstone
+	iterKey		*InternalKey
+	iterValue	[]byte
+	tombstone	rangedel.Tombstone
 }
 
 type simpleMergingIter struct {
-	levels   []simpleMergingIterLevel
-	snapshot uint64
-	heap     mergingIterHeap
+	levels		[]simpleMergingIterLevel
+	snapshot	uint64
+	heap		mergingIterHeap
 	// The last point's key and level. For validation.
-	lastKey   InternalKey
-	lastLevel int
+	lastKey		InternalKey
+	lastLevel	int
 	// A non-nil valueMerger means MERGE record processing is ongoing.
-	valueMerger base.ValueMerger
+	valueMerger	base.ValueMerger
 	// The first error will cause step() to return false.
-	err       error
-	numPoints int64
-	merge     Merge
-	formatKey base.FormatKey
+	err		error
+	numPoints	int64
+	merge		Merge
+	formatKey	base.FormatKey
 }
 
 func (m *simpleMergingIter) init(
@@ -91,8 +91,8 @@ func (m *simpleMergingIter) init(
 		l.iterKey, l.iterValue = l.iter.First()
 		if l.iterKey != nil {
 			item := mergingIterItem{
-				index: i,
-				value: l.iterValue,
+				index:	i,
+				value:	l.iterValue,
 			}
 			item.key.Trailer = l.iterKey.Trailer
 			item.key.UserKey = append(item.key.UserKey[:0], l.iterKey.UserKey...)
@@ -288,20 +288,20 @@ func (m *simpleMergingIter) step() bool {
 // A tombstone and the corresponding level it was found in.
 type tombstoneWithLevel struct {
 	rangedel.Tombstone
-	level int
+	level	int
 	// The level in LSM. A -1 means it's a memtable.
-	lsmLevel int
-	fileNum  FileNum
+	lsmLevel	int
+	fileNum		FileNum
 }
 
 // For sorting tombstoneWithLevels in increasing order of start UserKey and
 // for the same start UserKey in decreasing order of seqnum.
 type tombstonesByStartKeyAndSeqnum struct {
-	cmp Compare
-	buf []tombstoneWithLevel
+	cmp	Compare
+	buf	[]tombstoneWithLevel
 }
 
-func (v *tombstonesByStartKeyAndSeqnum) Len() int { return len(v.buf) }
+func (v *tombstonesByStartKeyAndSeqnum) Len() int	{ return len(v.buf) }
 func (v *tombstonesByStartKeyAndSeqnum) Less(i, j int) bool {
 	less := v.cmp(v.buf[i].Start.UserKey, v.buf[j].Start.UserKey)
 	if less == 0 {
@@ -317,8 +317,8 @@ func iterateAndCheckTombstones(
 	cmp Compare, formatKey base.FormatKey, tombstones []tombstoneWithLevel,
 ) error {
 	sortBuf := tombstonesByStartKeyAndSeqnum{
-		cmp: cmp,
-		buf: tombstones,
+		cmp:	cmp,
+		buf:	tombstones,
 	}
 	sort.Sort(&sortBuf)
 
@@ -339,14 +339,14 @@ func iterateAndCheckTombstones(
 }
 
 type checkConfig struct {
-	logger    Logger
-	cmp       Compare
-	readState *readState
-	newIters  tableNewIters
-	seqNum    uint64
-	stats     *CheckLevelsStats
-	merge     Merge
-	formatKey base.FormatKey
+	logger		Logger
+	cmp		Compare
+	readState	*readState
+	newIters	tableNewIters
+	seqNum		uint64
+	stats		*CheckLevelsStats
+	merge		Merge
+	formatKey	base.FormatKey
 }
 
 func checkRangeTombstones(c *checkConfig) error {
@@ -479,10 +479,10 @@ func addTombstonesFromIter(
 		}
 		if !t.Empty() {
 			tombstones = append(tombstones, tombstoneWithLevel{
-				Tombstone: t,
-				level:     level,
-				lsmLevel:  lsmLevel,
-				fileNum:   fileNum,
+				Tombstone:	t,
+				level:		level,
+				lsmLevel:	lsmLevel,
+				fileNum:	fileNum,
 			})
 		}
 	}
@@ -490,11 +490,11 @@ func addTombstonesFromIter(
 }
 
 type userKeysSort struct {
-	cmp Compare
-	buf [][]byte
+	cmp	Compare
+	buf	[][]byte
 }
 
-func (v *userKeysSort) Len() int { return len(v.buf) }
+func (v *userKeysSort) Len() int	{ return len(v.buf) }
 func (v *userKeysSort) Less(i, j int) bool {
 	return v.cmp(v.buf[i], v.buf[j]) < 0
 }
@@ -508,8 +508,8 @@ func collectAllUserKeys(cmp Compare, tombstones []tombstoneWithLevel) [][]byte {
 		keys = append(keys, t.End)
 	}
 	sorter := userKeysSort{
-		cmp: cmp,
-		buf: keys,
+		cmp:	cmp,
+		buf:	keys,
 	}
 	sort.Sort(&sorter)
 	var last, curr int
@@ -548,8 +548,8 @@ func fragmentUsingUserKeys(
 
 // CheckLevelsStats provides basic stats on points and tombstones encountered.
 type CheckLevelsStats struct {
-	NumPoints     int64
-	NumTombstones int
+	NumPoints	int64
+	NumTombstones	int
 }
 
 // CheckLevels checks:
@@ -568,14 +568,14 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	seqNum := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
 
 	checkConfig := &checkConfig{
-		logger:    d.opts.Logger,
-		cmp:       d.cmp,
-		readState: readState,
-		newIters:  d.newIters,
-		seqNum:    seqNum,
-		stats:     stats,
-		merge:     d.merge,
-		formatKey: d.opts.Comparer.FormatKey,
+		logger:		d.opts.Logger,
+		cmp:		d.cmp,
+		readState:	readState,
+		newIters:	d.newIters,
+		seqNum:		seqNum,
+		stats:		stats,
+		merge:		d.merge,
+		formatKey:	d.opts.Comparer.FormatKey,
 	}
 	return checkLevelsInternal(checkConfig)
 }
@@ -607,8 +607,8 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
 		mlevels = append(mlevels, simpleMergingIterLevel{
-			iter:         mem.newIter(nil),
-			rangeDelIter: mem.newRangeDelIter(nil),
+			iter:		mem.newIter(nil),
+			rangeDelIter:	mem.newRangeDelIter(nil),
 		})
 	}
 

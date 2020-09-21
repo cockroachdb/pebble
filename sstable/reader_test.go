@@ -33,8 +33,8 @@ import (
 // returned a boolean corresponding to Valid. Only used by test code.
 type iterAdapter struct {
 	Iterator
-	key *InternalKey
-	val []byte
+	key	*InternalKey
+	val	[]byte
 }
 
 func newIterAdapter(iter Iterator) *iterAdapter {
@@ -101,40 +101,40 @@ func (i *iterAdapter) SetBounds(lower, upper []byte) {
 func TestReader(t *testing.T) {
 	writerOpts := map[string]WriterOptions{
 		// No bloom filters.
-		"default": WriterOptions{},
-		"bloom10bit": WriterOptions{
+		"default":	{},
+		"bloom10bit": {
 			// The standard policy.
-			FilterPolicy: bloom.FilterPolicy(10),
-			FilterType:   base.TableFilter,
+			FilterPolicy:	bloom.FilterPolicy(10),
+			FilterType:	base.TableFilter,
 		},
-		"bloom1bit": WriterOptions{
+		"bloom1bit": {
 			// A policy with many false positives.
-			FilterPolicy: bloom.FilterPolicy(1),
-			FilterType:   base.TableFilter,
+			FilterPolicy:	bloom.FilterPolicy(1),
+			FilterType:	base.TableFilter,
 		},
-		"bloom100bit": WriterOptions{
+		"bloom100bit": {
 			// A policy unlikely to have false positives.
-			FilterPolicy: bloom.FilterPolicy(100),
-			FilterType:   base.TableFilter,
+			FilterPolicy:	bloom.FilterPolicy(100),
+			FilterType:	base.TableFilter,
 		},
 	}
 
 	blockSizes := map[string]int{
-		"1bytes":   1,
-		"5bytes":   5,
-		"10bytes":  10,
-		"25bytes":  25,
-		"Maxbytes": math.MaxInt32,
+		"1bytes":	1,
+		"5bytes":	5,
+		"10bytes":	10,
+		"25bytes":	25,
+		"Maxbytes":	math.MaxInt32,
 	}
 
 	opts := map[string]*Comparer{
-		"default":      nil,
-		"prefixFilter": fixtureComparer,
+		"default":	nil,
+		"prefixFilter":	fixtureComparer,
 	}
 
 	testDirs := map[string]string{
-		"default":      "testdata/reader",
-		"prefixFilter": "testdata/prefixreader",
+		"default":	"testdata/reader",
+		"prefixFilter":	"testdata/prefixreader",
 	}
 
 	for dName, blockSize := range blockSizes {
@@ -236,8 +236,8 @@ func TestInjectedErrors(t *testing.T) {
 
 func TestInvalidReader(t *testing.T) {
 	testCases := []struct {
-		file     vfs.File
-		expected string
+		file		vfs.File
+		expected	string
 	}{
 		{nil, "nil file"},
 		{vfs.NewMemFile([]byte("invalid sst bytes")), "invalid table"},
@@ -301,19 +301,19 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	const testTable = "test"
 
 	testComparer := &base.Comparer{
-		Name:      "test.comparer",
-		Compare:   base.DefaultComparer.Compare,
-		Equal:     base.DefaultComparer.Equal,
-		Separator: base.DefaultComparer.Separator,
-		Successor: base.DefaultComparer.Successor,
+		Name:		"test.comparer",
+		Compare:	base.DefaultComparer.Compare,
+		Equal:		base.DefaultComparer.Equal,
+		Separator:	base.DefaultComparer.Separator,
+		Successor:	base.DefaultComparer.Successor,
 	}
 	testMerger := &base.Merger{
-		Name:  "test.merger",
-		Merge: base.DefaultMerger.Merge,
+		Name:	"test.merger",
+		Merge:	base.DefaultMerger.Merge,
 	}
 	writerOpts := WriterOptions{
-		Comparer:   testComparer,
-		MergerName: "test.merger",
+		Comparer:	testComparer,
+		MergerName:	"test.merger",
 	}
 
 	mem := vfs.NewMem()
@@ -325,9 +325,9 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	require.NoError(t, w.Close())
 
 	testCases := []struct {
-		comparers []*base.Comparer
-		mergers   []*base.Merger
-		expected  string
+		comparers	[]*base.Comparer
+		mergers		[]*base.Merger
+		expected	string
 	}{
 		{
 			[]*base.Comparer{testComparer},
@@ -516,8 +516,8 @@ func TestReaderChecksumErrors(t *testing.T) {
 				}
 
 				w := NewWriter(f, WriterOptions{
-					BlockSize:      blockSize,
-					IndexBlockSize: indexBlockSize,
+					BlockSize:	blockSize,
+					IndexBlockSize:	indexBlockSize,
 				})
 				require.NoError(t, w.Set(bytes.Repeat([]byte("a"), blockSize), nil))
 				require.NoError(t, w.Set(bytes.Repeat([]byte("b"), blockSize), nil))
@@ -593,10 +593,10 @@ func buildTestTable(
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{
-		BlockSize:      blockSize,
-		IndexBlockSize: indexBlockSize,
-		Compression:    compression,
-		FilterPolicy:   nil,
+		BlockSize:	blockSize,
+		IndexBlockSize:	indexBlockSize,
+		Compression:	compression,
+		FilterPolicy:	nil,
 	})
 
 	var ikey InternalKey
@@ -631,9 +631,9 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	}
 
 	w := NewWriter(f0, WriterOptions{
-		BlockRestartInterval: restartInterval,
-		BlockSize:            blockSize,
-		FilterPolicy:         nil,
+		BlockRestartInterval:	restartInterval,
+		BlockSize:		blockSize,
+		FilterPolicy:		nil,
 	})
 
 	var keys [][]byte

@@ -24,90 +24,90 @@ import (
 // sstableT implements sstable-level tools, including both configuration state
 // and the commands themselves.
 type sstableT struct {
-	Root       *cobra.Command
-	Check      *cobra.Command
-	Layout     *cobra.Command
-	Properties *cobra.Command
-	Scan       *cobra.Command
-	Space      *cobra.Command
+	Root		*cobra.Command
+	Check		*cobra.Command
+	Layout		*cobra.Command
+	Properties	*cobra.Command
+	Scan		*cobra.Command
+	Space		*cobra.Command
 
 	// Configuration and state.
-	opts      *pebble.Options
-	comparers sstable.Comparers
-	mergers   sstable.Mergers
+	opts		*pebble.Options
+	comparers	sstable.Comparers
+	mergers		sstable.Mergers
 
 	// Flags.
-	fmtKey   keyFormatter
-	fmtValue valueFormatter
-	start    key
-	end      key
-	filter   key
-	count    int64
-	verbose  bool
+	fmtKey		keyFormatter
+	fmtValue	valueFormatter
+	start		key
+	end		key
+	filter		key
+	count		int64
+	verbose		bool
 }
 
 func newSSTable(
 	opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers,
 ) *sstableT {
 	s := &sstableT{
-		opts:      opts,
-		comparers: comparers,
-		mergers:   mergers,
+		opts:		opts,
+		comparers:	comparers,
+		mergers:	mergers,
 	}
 	s.fmtKey.mustSet("quoted")
 	s.fmtValue.mustSet("[%x]")
 
 	s.Root = &cobra.Command{
-		Use:   "sstable",
-		Short: "sstable introspection tools",
+		Use:	"sstable",
+		Short:	"sstable introspection tools",
 	}
 	s.Check = &cobra.Command{
-		Use:   "check <sstables>",
-		Short: "verify checksums and metadata",
-		Long:  ``,
-		Args:  cobra.MinimumNArgs(1),
-		Run:   s.runCheck,
+		Use:	"check <sstables>",
+		Short:	"verify checksums and metadata",
+		Long:	``,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	s.runCheck,
 	}
 	s.Layout = &cobra.Command{
-		Use:   "layout <sstables>",
-		Short: "print sstable block and record layout",
+		Use:	"layout <sstables>",
+		Short:	"print sstable block and record layout",
 		Long: `
 Print the layout for the sstables. The -v flag controls whether record layout
 is displayed or omitted.
 `,
-		Args: cobra.MinimumNArgs(1),
-		Run:  s.runLayout,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	s.runLayout,
 	}
 	s.Properties = &cobra.Command{
-		Use:   "properties <sstables>",
-		Short: "print sstable properties",
+		Use:	"properties <sstables>",
+		Short:	"print sstable properties",
 		Long: `
 Print the properties for the sstables. The -v flag controls whether the
 properties are pretty-printed or displayed in a verbose/raw format.
 `,
-		Args: cobra.MinimumNArgs(1),
-		Run:  s.runProperties,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	s.runProperties,
 	}
 	s.Scan = &cobra.Command{
-		Use:   "scan <sstables>",
-		Short: "print sstable records",
+		Use:	"scan <sstables>",
+		Short:	"print sstable records",
 		Long: `
 Print the records in the sstables. The sstables are scanned in command line
 order which means the records will be printed in that order. Raw range
 tombstones are displayed interleaved with point records.
 `,
-		Args: cobra.MinimumNArgs(1),
-		Run:  s.runScan,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	s.runScan,
 	}
 	s.Space = &cobra.Command{
-		Use:   "space <sstables>",
-		Short: "print filesystem space used",
+		Use:	"space <sstables>",
+		Short:	"print filesystem space used",
 		Long: `
 Print the estimated space usage in the specified files for the
 inclusive-inclusive range specified by --start and --end.
 `,
-		Args: cobra.MinimumNArgs(1),
-		Run:  s.runSpace,
+		Args:	cobra.MinimumNArgs(1),
+		Run:	s.runSpace,
 	}
 
 	s.Root.AddCommand(s.Check, s.Layout, s.Properties, s.Scan, s.Space)
@@ -139,9 +139,9 @@ inclusive-inclusive range specified by --start and --end.
 
 func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 	o := sstable.ReaderOptions{
-		Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
-		Comparer: s.opts.Comparer,
-		Filters:  s.opts.Filters,
+		Cache:		pebble.NewCache(128 << 20 /* 128 MB */),
+		Comparer:	s.opts.Comparer,
+		Filters:	s.opts.Filters,
 	}
 	defer o.Cache.Unref()
 	return sstable.NewReader(f, o, s.comparers, s.mergers,
@@ -401,8 +401,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			var tombstones []rangedel.Tombstone
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				t := rangedel.Tombstone{
-					Start: *key,
-					End:   value,
+					Start:	*key,
+					End:	value,
 				}
 				if s.end != nil && r.Compare(s.end, t.Start.UserKey) <= 0 {
 					// The range tombstone lies after the scan range.

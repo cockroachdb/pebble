@@ -14,19 +14,19 @@ import (
 const (
 	// The window size constants. These values specify a window that can hold ~1m
 	// pending unacknowledged sequence numbers using 128 KB of memory.
-	windowSize  = 1 << 20
-	windowMask  = windowSize - 1
-	windowBytes = (windowSize + 7) / 8
+	windowSize	= 1 << 20
+	windowMask	= windowSize - 1
+	windowBytes	= (windowSize + 7) / 8
 )
 
 // S keeps track of the largest sequence number such that all sequence numbers
 // in the range [0,v) have been acknowledged.
 type S struct {
-	next uint64
-	mu   struct {
+	next	uint64
+	mu	struct {
 		sync.Mutex
-		base   uint64
-		window [windowBytes]uint8
+		base	uint64
+		window	[windowBytes]uint8
 	}
 }
 

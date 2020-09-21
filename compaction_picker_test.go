@@ -54,11 +54,11 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 			for i := uint64(1); i <= size; i++ {
 				key := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
 				files[level] = append(files[level], &fileMetadata{
-					Smallest:       key,
-					Largest:        key,
-					SmallestSeqNum: key.SeqNum(),
-					LargestSeqNum:  key.SeqNum(),
-					Size:           1,
+					Smallest:	key,
+					Largest:	key,
+					SmallestSeqNum:	key.SeqNum(),
+					LargestSeqNum:	key.SeqNum(),
+					Size:		1,
 				})
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
@@ -127,7 +127,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					{level: levels[i]},
 					{level: levels[i+1]},
 				},
-				outputLevel: levels[i+1],
+				outputLevel:	levels[i+1],
 			})
 		}
 		return inProgress, nil
@@ -177,8 +177,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				var inProgress []compactionInfo
 				for {
 					env := compactionEnv{
-						earliestUnflushedSeqNum: InternalKeySeqNumMax,
-						inProgressCompactions:   inProgress,
+						earliestUnflushedSeqNum:	InternalKeySeqNumMax,
+						inProgressCompactions:		inProgress,
 					}
 					pc := pickerByScore.pickAuto(env)
 					if pc == nil {
@@ -186,8 +186,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", pc.startLevel.level, pc.outputLevel.level, pc.score)
 					inProgress = append(inProgress, compactionInfo{
-						inputs:      pc.inputs,
-						outputLevel: pc.outputLevel.level,
+						inputs:		pc.inputs,
+						outputLevel:	pc.outputLevel.level,
 					})
 					if pc.outputLevel.level == 0 {
 						// Once we pick one L0->L0 compaction, we'll keep on doing so
@@ -254,8 +254,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				}
 
 				pc := pickerByScore.pickAuto(compactionEnv{
-					earliestUnflushedSeqNum: InternalKeySeqNumMax,
-					inProgressCompactions:   inProgress,
+					earliestUnflushedSeqNum:	InternalKeySeqNumMax,
+					inProgressCompactions:		inProgress,
 				})
 				if pc == nil {
 					return "no compaction"
@@ -288,10 +288,10 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				iStart := base.MakeInternalKey([]byte(start), InternalKeySeqNumMax, InternalKeyKindMax)
 				iEnd := base.MakeInternalKey([]byte(end), 0, 0)
 				manual := &manualCompaction{
-					done:  make(chan error, 1),
-					level: startLevel,
-					start: iStart,
-					end:   iEnd,
+					done:	make(chan error, 1),
+					level:	startLevel,
+					start:	iStart,
+					end:	iEnd,
 				}
 
 				pc, retryLater := pickerByScore.pickManual(compactionEnv{
@@ -444,9 +444,9 @@ func TestCompactionPickerL0(t *testing.T) {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
 		m := &fileMetadata{
-			FileNum:  base.FileNum(fileNum),
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+			FileNum:	base.FileNum(fileNum),
+			Smallest:	base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:	base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -498,16 +498,16 @@ func TestCompactionPickerL0(t *testing.T) {
 
 			version := newVersion(opts, fileMetas)
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts:		opts,
+				cmp:		DefaultComparer.Compare,
+				cmpName:	DefaultComparer.Name,
 			}
 			vs.versions.Init(nil)
 			vs.append(version)
 			picker = &compactionPickerByScore{
-				opts:      opts,
-				vers:      version,
-				baseLevel: baseLevel,
+				opts:		opts,
+				vers:		version,
+				baseLevel:	baseLevel,
 			}
 			vs.picker = picker
 			inProgressCompactions := []compactionInfo{}
@@ -519,7 +519,7 @@ func TestCompactionPickerL0(t *testing.T) {
 								{level: level},
 								{level: level + 1, files: manifest.NewLevelSlice([]*fileMetadata{f})},
 							},
-							outputLevel: level + 1,
+							outputLevel:	level + 1,
 						}
 						if f.IsIntraL0Compacting {
 							c.outputLevel = c.inputs[0].level
@@ -543,8 +543,8 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 
 			pc := picker.pickAuto(compactionEnv{
-				bytesCompacted:          new(uint64),
-				earliestUnflushedSeqNum: math.MaxUint64,
+				bytesCompacted:			new(uint64),
+				earliestUnflushedSeqNum:	math.MaxUint64,
 			})
 			var result strings.Builder
 			if pc != nil {
@@ -575,8 +575,8 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		m := &fileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+			Smallest:	base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:	base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -592,9 +592,9 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				}
 
 				pc := &pickedCompaction{
-					cmp:              DefaultComparer.Compare,
-					inputs:           []compactionLevel{{level: -1}, {level: -1}},
-					maxExpandedBytes: 1 << 30,
+					cmp:			DefaultComparer.Compare,
+					inputs:			[]compactionLevel{{level: -1}, {level: -1}},
+					maxExpandedBytes:	1 << 30,
 				}
 				pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
 				var currentLevel int
@@ -669,8 +669,8 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		return &fileMetadata{
-			Smallest: base.ParseInternalKey(parts[0]),
-			Largest:  base.ParseInternalKey(parts[1]),
+			Smallest:	base.ParseInternalKey(parts[0]),
+			Largest:	base.ParseInternalKey(parts[1]),
 		}
 	}
 
@@ -692,8 +692,8 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 
 			case "expand-inputs":
 				pc := &pickedCompaction{
-					cmp:    cmp,
-					inputs: []compactionLevel{{level: 1}},
+					cmp:	cmp,
+					inputs:	[]compactionLevel{{level: 1}},
 				}
 				pc.startLevel = &pc.inputs[0]
 

@@ -24,7 +24,7 @@ type Op int
 
 const (
 	// OpRead describes read operations.
-	OpRead Op = iota
+	OpRead	Op	= iota
 	// OpWrite describes write operations.
 	OpWrite
 )
@@ -42,10 +42,10 @@ type InjectIndex struct {
 }
 
 // Index returns the index at which the error will be injected.
-func (ii *InjectIndex) Index() int32 { return atomic.LoadInt32(&ii.index) }
+func (ii *InjectIndex) Index() int32	{ return atomic.LoadInt32(&ii.index) }
 
 // SetIndex sets the index at which the error will be injected.
-func (ii *InjectIndex) SetIndex(v int32) { atomic.StoreInt32(&ii.index, v) }
+func (ii *InjectIndex) SetIndex(v int32)	{ atomic.StoreInt32(&ii.index, v) }
 
 // MaybeError implements the Injector interface.
 func (ii *InjectIndex) MaybeError(op Op) error {
@@ -77,7 +77,7 @@ func WithProbability(op Op, p float64) Injector {
 type InjectorFunc func(Op) error
 
 // MaybeError implements the Injector interface.
-func (f InjectorFunc) MaybeError(op Op) error { return f(op) }
+func (f InjectorFunc) MaybeError(op Op) error	{ return f(op) }
 
 // Injector injects errors into FS operations.
 type Injector interface {
@@ -87,8 +87,8 @@ type Injector interface {
 // FS implements vfs.FS, injecting errors into
 // its operations.
 type FS struct {
-	fs  vfs.FS
-	inj Injector
+	fs	vfs.FS
+	inj	Injector
 }
 
 // Wrap wraps an existing vfs.FS implementation, returning a new
@@ -98,8 +98,8 @@ type FS struct {
 // shadowing the operation.
 func Wrap(fs vfs.FS, inj Injector) *FS {
 	return &FS{
-		fs:  fs,
-		inj: inj,
+		fs:	fs,
+		inj:	inj,
 	}
 }
 
@@ -259,8 +259,8 @@ func (fs *FS) Stat(name string) (os.FileInfo, error) {
 // errorFile implements vfs.File. The interface is implemented on the pointer
 // type to allow pointer equality comparisons.
 type errorFile struct {
-	file vfs.File
-	inj  Injector
+	file	vfs.File
+	inj	Injector
 }
 
 func (f *errorFile) Close() error {

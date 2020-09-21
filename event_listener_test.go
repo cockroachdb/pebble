@@ -25,8 +25,8 @@ import (
 )
 
 type syncedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
+	mu	sync.Mutex
+	buf	bytes.Buffer
 }
 
 func (b *syncedBuffer) Reset() {
@@ -64,7 +64,7 @@ func (b *syncedBuffer) String() string {
 
 type loggingFS struct {
 	vfs.FS
-	w io.Writer
+	w	io.Writer
 }
 
 func (fs loggingFS) Create(name string) (vfs.File, error) {
@@ -116,8 +116,8 @@ func (fs loggingFS) Lock(name string) (io.Closer, error) {
 
 type loggingFile struct {
 	vfs.File
-	name string
-	w    io.Writer
+	name	string
+	w	io.Writer
 }
 
 func (f loggingFile) Close() error {
@@ -142,10 +142,10 @@ func TestEventListener(t *testing.T) {
 		case "open":
 			buf.Reset()
 			opts := &Options{
-				FS:                  loggingFS{mem, &buf},
-				EventListener:       MakeLoggingEventListener(&buf),
-				MaxManifestFileSize: 1,
-				WALDir:              "wal",
+				FS:			loggingFS{mem, &buf},
+				EventListener:		MakeLoggingEventListener(&buf),
+				MaxManifestFileSize:	1,
+				WALDir:			"wal",
 			}
 			// The table stats collector runs asynchronously and its
 			// timing is less predictable. It increments nextJobID, which
@@ -271,8 +271,8 @@ func TestWriteStallEvents(t *testing.T) {
 	const writeStallEnd = "write stall ending"
 
 	testCases := []struct {
-		delayFlush bool
-		expected   string
+		delayFlush	bool
+		expected	string
 	}{
 		{true, "memtable count limit reached"},
 		{false, "L0 file count limit exceeded"},
@@ -305,12 +305,12 @@ func TestWriteStallEvents(t *testing.T) {
 				},
 			}
 			d, err := Open("db", &Options{
-				EventListener:               listener,
-				FS:                          vfs.NewMem(),
-				MemTableSize:                initialMemTableSize,
-				MemTableStopWritesThreshold: 2,
-				L0CompactionThreshold:       2,
-				L0StopWritesThreshold:       2,
+				EventListener:			listener,
+				FS:				vfs.NewMem(),
+				MemTableSize:			initialMemTableSize,
+				MemTableStopWritesThreshold:	2,
+				L0CompactionThreshold:		2,
+				L0StopWritesThreshold:		2,
 			})
 			require.NoError(t, err)
 			defer d.Close()
@@ -367,9 +367,9 @@ func TestEventListenerRedact(t *testing.T) {
 	var log syncedBuffer
 	l := MakeLoggingEventListener(redactLogger{logger: &log})
 	l.WALDeleted(WALDeleteInfo{
-		JobID:   5,
-		FileNum: FileNum(20),
-		Err:     errors.Errorf("unredacted error: %s", "unredacted string"),
+		JobID:		5,
+		FileNum:	FileNum(20),
+		Err:		errors.Errorf("unredacted error: %s", "unredacted string"),
 	})
 	require.Equal(t, "[JOB 5] WAL delete error: ‹×›\n", log.String())
 }

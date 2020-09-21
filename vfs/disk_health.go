@@ -25,12 +25,12 @@ const (
 type diskHealthCheckingFile struct {
 	File
 
-	onSlowDisk         func(time.Duration)
-	diskSlowThreshold  time.Duration
-	tickInterval       time.Duration
+	onSlowDisk		func(time.Duration)
+	diskSlowThreshold	time.Duration
+	tickInterval		time.Duration
 
-	stopper        chan struct{}
-	lastWriteNanos int64
+	stopper		chan struct{}
+	lastWriteNanos	int64
 }
 
 // newDiskHealthCheckingFile instantiates a new diskHealthCheckingFile, with the
@@ -39,12 +39,12 @@ func newDiskHealthCheckingFile(
 	file File, diskSlowThreshold time.Duration, onSlowDisk func(time.Duration),
 ) *diskHealthCheckingFile {
 	return &diskHealthCheckingFile{
-		File:               file,
-		onSlowDisk:         onSlowDisk,
-		diskSlowThreshold:  diskSlowThreshold,
-		tickInterval:       defaultTickInterval,
+		File:			file,
+		onSlowDisk:		onSlowDisk,
+		diskSlowThreshold:	diskSlowThreshold,
+		tickInterval:		defaultTickInterval,
 
-		stopper: make(chan struct{}),
+		stopper:	make(chan struct{}),
 	}
 }
 
@@ -126,8 +126,8 @@ func (d *diskHealthCheckingFile) timeDiskOp(op func()) {
 type diskHealthCheckingFS struct {
 	FS
 
-	diskSlowThreshold time.Duration
-	onSlowDisk        func(string, time.Duration)
+	diskSlowThreshold	time.Duration
+	onSlowDisk		func(string, time.Duration)
 }
 
 // WithDiskHealthChecks wraps an FS and ensures that all
@@ -138,9 +138,9 @@ func WithDiskHealthChecks(
 	fs FS, diskSlowThreshold time.Duration, onSlowDisk func(string, time.Duration),
 ) FS {
 	return diskHealthCheckingFS{
-		FS:                   fs,
-		diskSlowThreshold:    diskSlowThreshold,
-		onSlowDisk:           onSlowDisk,
+		FS:			fs,
+		diskSlowThreshold:	diskSlowThreshold,
+		onSlowDisk:		onSlowDisk,
 	}
 }
 

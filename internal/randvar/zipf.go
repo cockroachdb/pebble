@@ -29,9 +29,9 @@ import (
 
 const (
 	// See https://github.com/brianfrankcooper/YCSB/blob/f886c1e7988f8f4965cb88a1fe2f6bad2c61b56d/core/src/main/java/com/yahoo/ycsb/generator/ScrambledZipfianGenerator.java#L33-L35
-	defaultMax   = 10000000000
-	defaultTheta = 0.99
-	defaultZetaN = 26.46902820178302
+	defaultMax	= 10000000000
+	defaultTheta	= 0.99
+	defaultZetaN	= 26.46902820178302
 )
 
 // Zipf is a random number generator that generates random numbers from a Zipf
@@ -42,17 +42,17 @@ const (
 // rand.Zipf only supports theta <= 1, we suppose all values of theta.
 type Zipf struct {
 	// Supplied constants.
-	theta float64
-	min   uint64
+	theta	float64
+	min	uint64
 	// Internally computed constants.
-	alpha, zeta2 float64
-	halfPowTheta float64
+	alpha, zeta2	float64
+	halfPowTheta	float64
 	// Mutable state.
-	mu struct {
+	mu	struct {
 		sync.RWMutex
-		max   uint64
-		eta   float64
-		zetaN float64
+		max	uint64
+		eta	float64
+		zetaN	float64
 	}
 }
 
@@ -72,8 +72,8 @@ func NewZipf(min, max uint64, theta float64) (*Zipf, error) {
 	}
 
 	z := &Zipf{
-		min:   min,
-		theta: theta,
+		min:	min,
+		theta:	theta,
 	}
 	z.mu.max = max
 

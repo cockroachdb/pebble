@@ -27,16 +27,18 @@ func parseTombstone(t *testing.T, s string) Tombstone {
 	seqNum, err := strconv.Atoi(m[1])
 	require.NoError(t, err)
 	return Tombstone{
-		Start: base.MakeInternalKey([]byte(m[2]), uint64(seqNum), base.InternalKeyKindRangeDelete),
-		End:   []byte(m[3]),
+		Start:	base.MakeInternalKey([]byte(m[2]), uint64(seqNum), base.InternalKeyKindRangeDelete),
+		End:	[]byte(m[3]),
 	}
 }
 
-func buildTombstones(t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string) []Tombstone {
+func buildTombstones(
+	t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string,
+) []Tombstone {
 	var tombstones []Tombstone
 	f := &Fragmenter{
-		Cmp:    cmp,
-		Format: formatKey,
+		Cmp:	cmp,
+		Format:	formatKey,
 		Emit: func(fragmented []Tombstone) {
 			tombstones = append(tombstones, fragmented...)
 		},
@@ -167,8 +169,8 @@ func TestFragmenterDeleted(t *testing.T) {
 		switch d.Cmd {
 		case "build":
 			f := &Fragmenter{
-				Cmp:    base.DefaultComparer.Compare,
-				Format: base.DefaultComparer.FormatKey,
+				Cmp:	base.DefaultComparer.Compare,
+				Format:	base.DefaultComparer.FormatKey,
 				Emit: func(fragmented []Tombstone) {
 				},
 			}

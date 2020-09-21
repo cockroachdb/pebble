@@ -38,8 +38,8 @@ func TestErrorIfExists(t *testing.T) {
 		}
 
 		d1, err := Open("", &Options{
-			FS:            mem,
-			ErrorIfExists: b,
+			FS:		mem,
+			ErrorIfExists:	b,
 		})
 		if d1 != nil {
 			defer d1.Close()
@@ -54,8 +54,8 @@ func TestErrorIfExists(t *testing.T) {
 func TestErrorIfNotExists(t *testing.T) {
 	mem := vfs.NewMem()
 	_, err := Open("", &Options{
-		FS:               mem,
-		ErrorIfNotExists: true,
+		FS:			mem,
+		ErrorIfNotExists:	true,
 	})
 	if err == nil {
 		t.Fatalf("expected error, but found success")
@@ -65,16 +65,16 @@ func TestErrorIfNotExists(t *testing.T) {
 
 	// Create the DB and try again.
 	d, err := Open("", &Options{
-		FS:               mem,
-		ErrorIfNotExists: false,
+		FS:			mem,
+		ErrorIfNotExists:	false,
 	})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 
 	// The DB exists, so the setting of ErrorIfNotExists is a no-op.
 	d, err = Open("", &Options{
-		FS:               mem,
-		ErrorIfNotExists: true,
+		FS:			mem,
+		ErrorIfNotExists:	true,
 	})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
@@ -236,15 +236,15 @@ func TestOpenOptionsCheck(t *testing.T) {
 	require.NoError(t, d.Close())
 
 	opts = &Options{
-		Comparer: &Comparer{Name: "foo"},
-		FS:       mem,
+		Comparer:	&Comparer{Name: "foo"},
+		FS:		mem,
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `comparer name from file.*!=.*`, err)
 
 	opts = &Options{
-		Merger: &Merger{Name: "bar"},
-		FS:     mem,
+		Merger:	&Merger{Name: "bar"},
+		FS:	mem,
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `merger name from file.*!=.*`, err)
@@ -258,9 +258,9 @@ func TestOpenReadOnly(t *testing.T) {
 		// filesystem operations.
 		var buf syncedBuffer
 		_, err := Open("non-existent", &Options{
-			FS:       loggingFS{mem, &buf},
-			ReadOnly: true,
-			WALDir:   "non-existent-waldir",
+			FS:		loggingFS{mem, &buf},
+			ReadOnly:	true,
+			WALDir:		"non-existent-waldir",
 		})
 		if err == nil {
 			t.Fatalf("expected error, but found success")
@@ -276,9 +276,9 @@ func TestOpenReadOnly(t *testing.T) {
 		// in no mutable filesystem operations other than the LOCK.
 		var buf syncedBuffer
 		_, err := Open("", &Options{
-			FS:       loggingFS{mem, &buf},
-			ReadOnly: true,
-			WALDir:   "non-existent-waldir",
+			FS:		loggingFS{mem, &buf},
+			ReadOnly:	true,
+			WALDir:		"non-existent-waldir",
 		})
 		if err == nil {
 			t.Fatalf("expected error, but found success")
@@ -306,8 +306,8 @@ func TestOpenReadOnly(t *testing.T) {
 	{
 		// Re-open the DB read-only. The directory contents should be unchanged.
 		d, err := Open("", &Options{
-			FS:       mem,
-			ReadOnly: true,
+			FS:		mem,
+			ReadOnly:	true,
 		})
 		require.NoError(t, err)
 
@@ -392,8 +392,8 @@ func TestOpenWALReplay(t *testing.T) {
 			const dir = ""
 			mem := vfs.NewMem()
 			d, err := Open(dir, &Options{
-				FS:           mem,
-				MemTableSize: 32 << 20,
+				FS:		mem,
+				MemTableSize:	32 << 20,
 			})
 			require.NoError(t, err)
 			// All these values will fit in a single memtable, so on closing the db there
@@ -427,9 +427,9 @@ func TestOpenWALReplay(t *testing.T) {
 			// which will cause the previous memtable to be flushed; value for 5 will go in the next
 			// memtable
 			d, err = Open(dir, &Options{
-				FS:           mem,
-				MemTableSize: 300 << 10,
-				ReadOnly:     readOnly,
+				FS:		mem,
+				MemTableSize:	300 << 10,
+				ReadOnly:	readOnly,
 			})
 			require.NoError(t, err)
 
@@ -456,8 +456,8 @@ func TestOpenWALReplay2(t *testing.T) {
 				t.Run(reason, func(t *testing.T) {
 					mem := vfs.NewMem()
 					d, err := Open("", &Options{
-						FS:           mem,
-						MemTableSize: 256 << 10,
+						FS:		mem,
+						MemTableSize:	256 << 10,
 					})
 					require.NoError(t, err)
 
@@ -495,9 +495,9 @@ func TestOpenWALReplay2(t *testing.T) {
 					// which will cause the previous memtable to be flushed; value for 5 will go in the next
 					// memtable
 					d, err = Open("", &Options{
-						FS:           mem,
-						MemTableSize: 300 << 10,
-						ReadOnly:     readOnly,
+						FS:		mem,
+						MemTableSize:	300 << 10,
+						ReadOnly:	readOnly,
 					})
 					require.NoError(t, err)
 					require.NoError(t, d.Close())
@@ -519,8 +519,8 @@ func TestTwoWALReplayCorrupt(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	d, err := Open(dir, &Options{
-		MemTableStopWritesThreshold: 4,
-		MemTableSize:                2048,
+		MemTableStopWritesThreshold:	4,
+		MemTableSize:			2048,
 	})
 	require.NoError(t, err)
 	d.mu.Lock()
@@ -624,8 +624,8 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	// compaction completed, the `logSeqNum` read from the manifest should be
 	// greater than the unflushed log files' sequence numbers.
 	d, err = Open(replayDir, &Options{
-		FS:       mem,
-		ReadOnly: true,
+		FS:		mem,
+		ReadOnly:	true,
 	})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
@@ -635,8 +635,8 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 	mem := vfs.NewMem()
 	const memTableSize = 64 * 1024 * 1024
 	opts := &Options{
-		MemTableSize: memTableSize,
-		FS:           mem,
+		MemTableSize:	memTableSize,
+		FS:		mem,
 	}
 	func() {
 		db, err := Open("", opts)
@@ -718,9 +718,9 @@ func TestRocksDBNoFlushManifest(t *testing.T) {
 	comparer.Name = "cockroach_comparator"
 	merger.Name = "cockroach_merge_operator"
 	opts := &Options{
-		FS:       mem,
-		Comparer: &comparer,
-		Merger:   &merger,
+		FS:		mem,
+		Comparer:	&comparer,
+		Merger:		&merger,
 	}
 
 	// rocksdb-ingest-only is a RocksDB-generated db directory that has not had

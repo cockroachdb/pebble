@@ -15,7 +15,7 @@
 // The original paper: http://static.usenix.org/event/usenix05/tech/general/full_papers/jiang/jiang_html/html.html
 //
 // It is MIT licensed, like the original.
-package cache // import "github.com/cockroachdb/pebble/internal/cache"
+package cache	// import "github.com/cockroachdb/pebble/internal/cache"
 
 import (
 	"fmt"
@@ -32,13 +32,13 @@ import (
 
 type fileKey struct {
 	// id is the namespace for fileNums.
-	id      uint64
-	fileNum base.FileNum
+	id	uint64
+	fileNum	base.FileNum
 }
 
 type key struct {
 	fileKey
-	offset uint64
+	offset	uint64
 }
 
 // file returns the "file key" for the receiver. This is the key used for the
@@ -77,31 +77,31 @@ func (h Handle) Release() {
 }
 
 type shard struct {
-	hits   int64
-	misses int64
+	hits	int64
+	misses	int64
 
-	mu sync.RWMutex
+	mu	sync.RWMutex
 
-	reservedSize int64
-	maxSize      int64
-	coldTarget   int64
-	blocks       robinHoodMap // fileNum+offset -> block
-	files        robinHoodMap // fileNum -> list of blocks
+	reservedSize	int64
+	maxSize		int64
+	coldTarget	int64
+	blocks		robinHoodMap	// fileNum+offset -> block
+	files		robinHoodMap	// fileNum -> list of blocks
 
 	// The blocks and files maps store values in manually managed memory that is
 	// invisible to the Go GC. This is fine for Value and entry objects that are
 	// stored in manually managed memory, but when the "invariants" build tag is
 	// set, all Value and entry objects are Go allocated and the entries map will
 	// contain a reference to every entry.
-	entries map[*entry]struct{}
+	entries	map[*entry]struct{}
 
-	handHot  *entry
-	handCold *entry
-	handTest *entry
+	handHot		*entry
+	handCold	*entry
+	handTest	*entry
 
-	sizeHot  int64
-	sizeCold int64
-	sizeTest int64
+	sizeHot		int64
+	sizeCold	int64
+	sizeTest	int64
 }
 
 func (c *shard) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
@@ -477,13 +477,13 @@ func (c *shard) runHandTest() {
 // Metrics holds metrics for the cache.
 type Metrics struct {
 	// The number of bytes inuse by the cache.
-	Size int64
+	Size	int64
 	// The count of objects (blocks or tables) in the cache.
-	Count int64
+	Count	int64
 	// The number of cache hits.
-	Hits int64
+	Hits	int64
 	// The number of cache misses.
-	Misses int64
+	Misses	int64
 }
 
 // Cache implements Pebble's sharded block cache. The Clock-PRO algorithm is
@@ -523,15 +523,15 @@ type Metrics struct {
 // used in combination by specifying `-tags invariants,tracing`. Note that
 // "tracing" produces a significant slowdown, while "invariants" does not.
 type Cache struct {
-	refs    int64
-	maxSize int64
-	idAlloc uint64
-	shards  []shard
+	refs	int64
+	maxSize	int64
+	idAlloc	uint64
+	shards	[]shard
 
 	// Traces recorded by Cache.trace. Used for debugging.
-	tr struct {
+	tr	struct {
 		sync.Mutex
-		msgs []string
+		msgs	[]string
 	}
 }
 
@@ -550,16 +550,16 @@ func New(size int64) *Cache {
 
 func newShards(size int64, shards int) *Cache {
 	c := &Cache{
-		refs:    1,
-		maxSize: size,
-		idAlloc: 1,
-		shards:  make([]shard, shards),
+		refs:		1,
+		maxSize:	size,
+		idAlloc:	1,
+		shards:		make([]shard, shards),
 	}
 	c.trace("alloc", c.refs)
 	for i := range c.shards {
 		c.shards[i] = shard{
-			maxSize:    size / int64(len(c.shards)),
-			coldTarget: size / int64(len(c.shards)),
+			maxSize:	size / int64(len(c.shards)),
+			coldTarget:	size / int64(len(c.shards)),
 		}
 		if entriesGoAllocated {
 			c.shards[i].entries = make(map[*entry]struct{})

@@ -43,38 +43,38 @@ type tableNewIters func(
 // kind InternalKeyKindRangeDeletion which will be used to pause the levelIter
 // at the sstable until the mergingIter is ready to advance past it.
 type levelIter struct {
-	logger Logger
-	cmp    Compare
+	logger	Logger
+	cmp	Compare
 	// The lower/upper bounds for iteration as specified at creation or the most
 	// recent call to SetBounds.
-	lower []byte
-	upper []byte
+	lower	[]byte
+	upper	[]byte
 	// The iterator options for the currently open table. If
 	// tableOpts.{Lower,Upper}Bound are nil, the corresponding iteration boundary
 	// does not lie within the table bounds.
-	tableOpts IterOptions
+	tableOpts	IterOptions
 	// The LSM level this levelIter is initialized for.
-	level manifest.Level
+	level	manifest.Level
 	// The keys to return when iterating past an sstable boundary and that
 	// boundary is a range deletion tombstone. The boundary could be smallest
 	// (i.e. arrived at with Prev), or largest (arrived at with Next).
-	smallestBoundary *InternalKey
-	largestBoundary  *InternalKey
+	smallestBoundary	*InternalKey
+	largestBoundary		*InternalKey
 	// A synthetic boundary key to return when SeekPrefixGE finds an sstable
 	// which doesn't contain the search key, but which does contain range
 	// tombstones.
-	syntheticBoundary InternalKey
+	syntheticBoundary	InternalKey
 	// The iter for the current file. It is nil under any of the following conditions:
 	// - files.Current() == nil
 	// - err != nil
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter         internalIterator
-	iterFile     *fileMetadata
-	newIters     tableNewIters
-	rangeDelIter *internalIterator
-	files        manifest.LevelIterator
-	err          error
+	iter		internalIterator
+	iterFile	*fileMetadata
+	newIters	tableNewIters
+	rangeDelIter	*internalIterator
+	files		manifest.LevelIterator
+	err		error
 
 	// Pointer into this level's entry in `mergingIterLevel::smallestUserKey,largestUserKey`.
 	// We populate it with the corresponding bounds for the currently opened file. It is used for
@@ -122,16 +122,16 @@ type levelIter struct {
 	// - `*Boundary` is only populated when the iterator is positioned exactly on the sentinel key.
 	// - `*Boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
 	// - `*Boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
-	smallestUserKey, largestUserKey  *[]byte
-	isLargestUserKeyRangeDelSentinel *bool
+	smallestUserKey, largestUserKey		*[]byte
+	isLargestUserKeyRangeDelSentinel	*bool
 
 	// bytesIterated keeps track of the number of bytes iterated during compaction.
-	bytesIterated *uint64
+	bytesIterated	*uint64
 
 	// Disable invariant checks even if they are otherwise enabled. Used by tests
 	// which construct "impossible" situations (e.g. seeking to a key before the
 	// lower bound).
-	disableInvariants bool
+	disableInvariants	bool
 }
 
 // levelIter implements the base.InternalIterator interface.
@@ -338,7 +338,7 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 }
 
 func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
-	l.err = nil // clear cached iteration error
+	l.err = nil	// clear cached iteration error
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
@@ -352,7 +352,7 @@ func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 }
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	l.err = nil // clear cached iteration error
+	l.err = nil	// clear cached iteration error
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
@@ -378,7 +378,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 }
 
 func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
-	l.err = nil // clear cached iteration error
+	l.err = nil	// clear cached iteration error
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
@@ -392,7 +392,7 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (l *levelIter) First() (*InternalKey, []byte) {
-	l.err = nil // clear cached iteration error
+	l.err = nil	// clear cached iteration error
 
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
@@ -406,7 +406,7 @@ func (l *levelIter) First() (*InternalKey, []byte) {
 }
 
 func (l *levelIter) Last() (*InternalKey, []byte) {
-	l.err = nil // clear cached iteration error
+	l.err = nil	// clear cached iteration error
 
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.

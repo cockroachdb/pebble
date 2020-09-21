@@ -27,9 +27,9 @@ type op interface {
 
 // initOp performs test initialization
 type initOp struct {
-	batchSlots    uint32
-	iterSlots     uint32
-	snapshotSlots uint32
+	batchSlots	uint32
+	iterSlots	uint32
+	snapshotSlots	uint32
 }
 
 func (o *initOp) run(t *test, h *history) {
@@ -46,8 +46,8 @@ func (o *initOp) String() string {
 
 // applyOp models a Writer.Apply operation.
 type applyOp struct {
-	writerID objID
-	batchID  objID
+	writerID	objID
+	batchID		objID
 }
 
 func (o *applyOp) run(t *test, h *history) {
@@ -99,8 +99,8 @@ func (o *closeOp) String() string {
 
 // compactOp models a DB.Compact operation.
 type compactOp struct {
-	start []byte
-	end   []byte
+	start	[]byte
+	end	[]byte
 }
 
 func (o *compactOp) run(t *test, h *history) {
@@ -116,8 +116,8 @@ func (o *compactOp) String() string {
 
 // deleteOp models a Write.Delete operation.
 type deleteOp struct {
-	writerID objID
-	key      []byte
+	writerID	objID
+	key		[]byte
 }
 
 func (o *deleteOp) run(t *test, h *history) {
@@ -132,9 +132,9 @@ func (o *deleteOp) String() string {
 
 // deleteRangeOp models a Write.DeleteRange operation.
 type deleteRangeOp struct {
-	writerID objID
-	start    []byte
-	end      []byte
+	writerID	objID
+	start		[]byte
+	end		[]byte
 }
 
 func (o *deleteRangeOp) run(t *test, h *history) {
@@ -162,9 +162,9 @@ func (o *flushOp) String() string {
 
 // mergeOp models a Write.Merge operation.
 type mergeOp struct {
-	writerID objID
-	key      []byte
-	value    []byte
+	writerID	objID
+	key		[]byte
+	value		[]byte
 }
 
 func (o *mergeOp) run(t *test, h *history) {
@@ -179,9 +179,9 @@ func (o *mergeOp) String() string {
 
 // setOp models a Write.Set operation.
 type setOp struct {
-	writerID objID
-	key      []byte
-	value    []byte
+	writerID	objID
+	key		[]byte
+	value		[]byte
 }
 
 func (o *setOp) run(t *test, h *history) {
@@ -455,8 +455,8 @@ func (o *ingestOp) String() string {
 
 // getOp models a Reader.Get operation.
 type getOp struct {
-	readerID objID
-	key      []byte
+	readerID	objID
+	key		[]byte
 }
 
 func (o *getOp) run(t *test, h *history) {
@@ -479,10 +479,10 @@ func (o *getOp) String() string {
 
 // newIterOp models a Reader.NewIter operation.
 type newIterOp struct {
-	readerID objID
-	iterID   objID
-	lower    []byte
-	upper    []byte
+	readerID	objID
+	iterID		objID
+	lower		[]byte
+	upper		[]byte
 }
 
 func (o *newIterOp) run(t *test, h *history) {
@@ -490,8 +490,8 @@ func (o *newIterOp) run(t *test, h *history) {
 	var i *pebble.Iterator
 	for {
 		i = r.NewIter(&pebble.IterOptions{
-			LowerBound: o.lower,
-			UpperBound: o.upper,
+			LowerBound:	o.lower,
+			UpperBound:	o.upper,
 		})
 		if err := i.Error(); !errors.Is(err, errorfs.ErrInjected) {
 			break
@@ -510,9 +510,9 @@ func (o *newIterOp) String() string {
 
 // iterSetBoundsOp models an Iterator.SetBounds operation.
 type iterSetBoundsOp struct {
-	iterID objID
-	lower  []byte
-	upper  []byte
+	iterID	objID
+	lower	[]byte
+	upper	[]byte
 }
 
 func (o *iterSetBoundsOp) run(t *test, h *history) {
@@ -527,8 +527,8 @@ func (o *iterSetBoundsOp) String() string {
 
 // iterSeekGEOp models an Iterator.SeekGE operation.
 type iterSeekGEOp struct {
-	iterID objID
-	key    []byte
+	iterID	objID
+	key	[]byte
 }
 
 func (o *iterSeekGEOp) run(t *test, h *history) {
@@ -547,8 +547,8 @@ func (o *iterSeekGEOp) String() string {
 
 // iterSeekPrefixGEOp models an Iterator.SeekPrefixGE operation.
 type iterSeekPrefixGEOp struct {
-	iterID objID
-	key    []byte
+	iterID	objID
+	key	[]byte
 }
 
 func (o *iterSeekPrefixGEOp) run(t *test, h *history) {
@@ -567,8 +567,8 @@ func (o *iterSeekPrefixGEOp) String() string {
 
 // iterSeekLTOp models an Iterator.SeekLT operation.
 type iterSeekLTOp struct {
-	iterID objID
-	key    []byte
+	iterID	objID
+	key	[]byte
 }
 
 func (o *iterSeekLTOp) run(t *test, h *history) {

@@ -15,9 +15,9 @@ import (
 type iterPos int8
 
 const (
-	iterPosCur  iterPos = 0
-	iterPosNext iterPos = 1
-	iterPosPrev iterPos = -1
+	iterPosCur	iterPos	= 0
+	iterPosNext	iterPos	= 1
+	iterPosPrev	iterPos	= -1
 )
 
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
@@ -51,25 +51,25 @@ type IteratorMetrics struct {
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
-	opts        IterOptions
-	cmp         Compare
-	equal       Equal
-	merge       Merge
-	split       Split
-	iter        internalIterator
-	readState   *readState
-	err         error
-	key         []byte
-	keyBuf      []byte
-	value       []byte
-	valueBuf    []byte
-	valueCloser io.Closer
-	valid       bool
-	iterKey     *InternalKey
-	iterValue   []byte
-	pos         iterPos
-	alloc       *iterAlloc
-	prefix      []byte
+	opts		IterOptions
+	cmp		Compare
+	equal		Equal
+	merge		Merge
+	split		Split
+	iter		internalIterator
+	readState	*readState
+	err		error
+	key		[]byte
+	keyBuf		[]byte
+	value		[]byte
+	valueBuf	[]byte
+	valueCloser	io.Closer
+	valid		bool
+	iterKey		*InternalKey
+	iterValue	[]byte
+	pos		iterPos
+	alloc		*iterAlloc
+	prefix		[]byte
 }
 
 func (i *Iterator) findNextEntry() bool {
@@ -311,7 +311,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 // than or equal to the given key. Returns true if the iterator is pointing at
 // a valid entry and false otherwise.
 func (i *Iterator) SeekGE(key []byte) bool {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	i.prefix = nil
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
@@ -365,7 +365,7 @@ func (i *Iterator) SeekGE(key []byte) bool {
 //
 // See Example_prefixiteration for a working example.
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if i.split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
@@ -393,7 +393,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 // the given key. Returns true if the iterator is pointing at a valid entry and
 // false otherwise.
 func (i *Iterator) SeekLT(key []byte) bool {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	i.prefix = nil
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) >= 0 {
 		key = upperBound
@@ -406,7 +406,7 @@ func (i *Iterator) SeekLT(key []byte) bool {
 // First moves the iterator the the first key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) First() bool {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	i.prefix = nil
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
@@ -419,7 +419,7 @@ func (i *Iterator) First() bool {
 // Last moves the iterator the the last key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Last() bool {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	i.prefix = nil
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
@@ -554,7 +554,7 @@ func (i *Iterator) Close() error {
 	if alloc := i.alloc; alloc != nil {
 		// Avoid caching the key buf if it is overly large. The constant is fairly
 		// arbitrary.
-		const maxKeyBufCacheSize = 4 << 10 // 4 KB
+		const maxKeyBufCacheSize = 4 << 10	// 4 KB
 		if cap(i.keyBuf) >= maxKeyBufCacheSize {
 			alloc.keyBuf = nil
 		} else {

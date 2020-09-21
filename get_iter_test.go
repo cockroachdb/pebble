@@ -17,36 +17,36 @@ func TestGetIter(t *testing.T) {
 	// testTable is a table to insert into a version.
 	// Each element of data is a string of the form "internalKey value".
 	type testTable struct {
-		level   int
-		fileNum FileNum
-		data    []string
+		level	int
+		fileNum	FileNum
+		data	[]string
 	}
 
 	testCases := []struct {
-		description string
+		description	string
 		// badOrdering is whether this test case has a table ordering violation.
-		badOrdering bool
+		badOrdering	bool
 		// tables are the tables to populate the version with.
-		tables []testTable
+		tables	[]testTable
 		// queries are the queries to run against the version. Each element has
 		// the form "internalKey wantedValue". The internalKey is passed to the
 		// version.get method, wantedValue may be "ErrNotFound" if the query
 		// should return that error.
-		queries []string
+		queries	[]string
 	}{
 		{
-			description: "empty: an empty version",
+			description:	"empty: an empty version",
 			queries: []string{
 				"abc.MAX.101 ErrNotFound",
 			},
 		},
 
 		{
-			description: "single-0: one level-0 table",
+			description:	"single-0: one level-0 table",
 			tables: []testTable{
 				{
-					level:   0,
-					fileNum: 10,
+					level:		0,
+					fileNum:	10,
 					data: []string{
 						"the.SET.101 a",
 						"cat.SET.102 b",
@@ -78,11 +78,11 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "triple-0: three level-0 tables",
+			description:	"triple-0: three level-0 tables",
 			tables: []testTable{
 				{
-					level:   0,
-					fileNum: 10,
+					level:		0,
+					fileNum:	10,
 					data: []string{
 						"the.SET.101 a",
 						"cat.SET.102 b",
@@ -94,8 +94,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   0,
-					fileNum: 11,
+					level:		0,
+					fileNum:	11,
 					data: []string{
 						"awk.SET.111 w",
 						"cat.SET.112 x",
@@ -104,8 +104,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   0,
-					fileNum: 12,
+					level:		0,
+					fileNum:	12,
 					data: []string{
 						"the.DEL.121 ",
 						"cat.DEL.122 ",
@@ -161,11 +161,11 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "quad-4: four level-4 tables",
+			description:	"quad-4: four level-4 tables",
 			tables: []testTable{
 				{
-					level:   4,
-					fileNum: 11,
+					level:		4,
+					fileNum:	11,
 					data: []string{
 						"aardvark.SET.101 a1",
 						"alpaca__.SET.201 a2",
@@ -173,8 +173,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   4,
-					fileNum: 22,
+					level:		4,
+					fileNum:	22,
 					data: []string{
 						"baboon__.SET.102 b1",
 						"baboon__.DEL.202 ",
@@ -185,15 +185,15 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   4,
-					fileNum: 33,
+					level:		4,
+					fileNum:	33,
 					data: []string{
 						"buffalo_.SET.103 B1",
 					},
 				},
 				{
-					level:   4,
-					fileNum: 44,
+					level:		4,
+					fileNum:	44,
 					data: []string{
 						"chipmunk.SET.104 c1",
 						"chipmunk.SET.204 c2",
@@ -246,11 +246,11 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "complex: many tables at many levels",
+			description:	"complex: many tables at many levels",
 			tables: []testTable{
 				{
-					level:   0,
-					fileNum: 50,
+					level:		0,
+					fileNum:	50,
 					data: []string{
 						"alfalfa__.SET.501 p1",
 						"asparagus.SET.502 p2",
@@ -259,8 +259,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   0,
-					fileNum: 51,
+					level:		0,
+					fileNum:	51,
 					data: []string{
 						"asparagus.SET.511 q1",
 						"asparagus.SET.512 q2",
@@ -273,8 +273,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   1,
-					fileNum: 40,
+					level:		1,
+					fileNum:	40,
 					data: []string{
 						"alfalfa__.SET.410 r1",
 						"asparagus.SET.420 r2",
@@ -282,8 +282,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   1,
-					fileNum: 41,
+					level:		1,
+					fileNum:	41,
 					data: []string{
 						"beans____.SET.411 s1",
 						"beans____.SET.421 s2",
@@ -292,8 +292,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   1,
-					fileNum: 42,
+					level:		1,
+					fileNum:	42,
 					data: []string{
 						"cabbage__.SET.412 t1",
 						"corn_____.DEL.422 ",
@@ -301,8 +301,8 @@ func TestGetIter(t *testing.T) {
 					},
 				},
 				{
-					level:   2,
-					fileNum: 30,
+					level:		2,
+					fileNum:	30,
 					data: []string{
 						"alfalfa__.SET.310 u1",
 						"bokchoy__.SET.320 u2",
@@ -373,20 +373,20 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "broken invariants 0: non-increasing level 0 sequence numbers",
-			badOrdering: true,
+			description:	"broken invariants 0: non-increasing level 0 sequence numbers",
+			badOrdering:	true,
 			tables: []testTable{
 				{
-					level:   0,
-					fileNum: 19,
+					level:		0,
+					fileNum:	19,
 					data: []string{
 						"a.SET.101 a",
 						"b.SET.102 b",
 					},
 				},
 				{
-					level:   0,
-					fileNum: 20,
+					level:		0,
+					fileNum:	20,
 					data: []string{
 						"c.SET.101 c",
 					},
@@ -395,20 +395,20 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "broken invariants 1: non-increasing level 0 sequence numbers",
-			badOrdering: true,
+			description:	"broken invariants 1: non-increasing level 0 sequence numbers",
+			badOrdering:	true,
 			tables: []testTable{
 				{
-					level:   0,
-					fileNum: 19,
+					level:		0,
+					fileNum:	19,
 					data: []string{
 						"a.SET.101 a",
 						"b.SET.102 b",
 					},
 				},
 				{
-					level:   0,
-					fileNum: 20,
+					level:		0,
+					fileNum:	20,
 					data: []string{
 						"c.SET.100 c",
 						"d.SET.101 d",
@@ -418,19 +418,19 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "broken invariants 2: matching level 0 sequence numbers, considered acceptable",
-			badOrdering: false,
+			description:	"broken invariants 2: matching level 0 sequence numbers, considered acceptable",
+			badOrdering:	false,
 			tables: []testTable{
 				{
-					level:   0,
-					fileNum: 19,
+					level:		0,
+					fileNum:	19,
 					data: []string{
 						"a.SET.101 a",
 					},
 				},
 				{
-					level:   0,
-					fileNum: 20,
+					level:		0,
+					fileNum:	20,
 					data: []string{
 						"a.SET.101 a",
 					},
@@ -439,20 +439,20 @@ func TestGetIter(t *testing.T) {
 		},
 
 		{
-			description: "broken invariants 3: level non-0 overlapping internal key ranges",
-			badOrdering: true,
+			description:	"broken invariants 3: level non-0 overlapping internal key ranges",
+			badOrdering:	true,
 			tables: []testTable{
 				{
-					level:   5,
-					fileNum: 11,
+					level:		5,
+					fileNum:	11,
 					data: []string{
 						"bat.SET.101 xxx",
 						"dog.SET.102 xxx",
 					},
 				},
 				{
-					level:   5,
-					fileNum: 12,
+					level:		5,
+					fileNum:	12,
 					data: []string{
 						"cow.SET.103 xxx",
 						"pig.SET.104 xxx",
@@ -531,8 +531,8 @@ func TestGetIter(t *testing.T) {
 
 		get := func(v *version, ikey InternalKey) ([]byte, error) {
 			var buf struct {
-				dbi Iterator
-				get getIter
+				dbi	Iterator
+				get	getIter
 			}
 
 			get := &buf.get

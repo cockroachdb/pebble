@@ -24,11 +24,11 @@ import (
 )
 
 const (
-	batchHeaderLen       = 12
-	batchInitialSize     = 1 << 10 // 1 KB
-	batchMaxRetainedSize = 1 << 20 // 1 MB
-	invalidBatchCount    = 1<<32 - 1
-	maxVarintLen32       = 5
+	batchHeaderLen		= 12
+	batchInitialSize	= 1 << 10	// 1 KB
+	batchMaxRetainedSize	= 1 << 20	// 1 MB
+	invalidBatchCount	= 1<<32 - 1
+	maxVarintLen32		= 5
 )
 
 // ErrNotIndexed means that a read operation on a batch failed because the
@@ -47,14 +47,14 @@ var ErrBatchTooLarge = errors.Newf("pebble: batch too large: >= %s", humanize.Ui
 // copy or encode keys/values directly into the batch representation instead of
 // copying into an intermediary buffer then having pebble.Batch copy off of it.
 type DeferredBatchOp struct {
-	index *batchskl.Skiplist
+	index	*batchskl.Skiplist
 
 	// Key and Value point to parts of the binary batch representation where
 	// keys and values should be encoded/copied into. len(Key) and len(Value)
 	// bytes must be copied into these slices respectively before calling
 	// Finish(). Changing where these slices point to is not allowed.
-	Key, Value []byte
-	offset     uint32
+	Key, Value	[]byte
+	offset		uint32
 }
 
 // Finish completes the addition of this batch operation, and adds it to the
@@ -182,45 +182,45 @@ type Batch struct {
 	// batches. Large batches will set the data field to nil when committed as
 	// the data has been moved to a flushableBatch and inserted into the queue of
 	// memtables.
-	data           []byte
-	cmp            Compare
-	formatKey      base.FormatKey
-	abbreviatedKey AbbreviatedKey
+	data		[]byte
+	cmp		Compare
+	formatKey	base.FormatKey
+	abbreviatedKey	AbbreviatedKey
 
-	memTableSize uint32
+	memTableSize	uint32
 
 	// The db to which the batch will be committed. Do not change this field
 	// after the batch has been created as it might invalidate internal state.
-	db *DB
+	db	*DB
 
 	// The count of records in the batch. This count will be stored in the batch
 	// data whenever Repr() is called.
-	count uint64
+	count	uint64
 
 	// The count of range deletions in the batch. Updated every time a range
 	// deletion is added.
-	countRangeDels uint64
+	countRangeDels	uint64
 
 	// A deferredOp struct, stored in the Batch so that a pointer can be returned
 	// from the *Deferred() methods rather than a value.
-	deferredOp DeferredBatchOp
+	deferredOp	DeferredBatchOp
 
 	// An optional skiplist keyed by offset into data of the entry.
-	index         *batchskl.Skiplist
-	rangeDelIndex *batchskl.Skiplist
+	index		*batchskl.Skiplist
+	rangeDelIndex	*batchskl.Skiplist
 
 	// Fragmented range deletion tombstones. Cached the first time a range
 	// deletion iterator is requested. The cache is invalidated whenever a new
 	// range deletion is added to the batch.
-	tombstones []rangedel.Tombstone
+	tombstones	[]rangedel.Tombstone
 
 	// The flushableBatch wrapper if the batch is too large to fit in the
 	// memtable.
-	flushable *flushableBatch
+	flushable	*flushableBatch
 
-	commit    sync.WaitGroup
-	commitErr error
-	applied   uint32 // updated atomically
+	commit		sync.WaitGroup
+	commitErr	error
+	applied		uint32	// updated atomically
 }
 
 var _ Reader = (*Batch)(nil)
@@ -233,8 +233,8 @@ var batchPool = sync.Pool{
 }
 
 type indexedBatch struct {
-	batch Batch
-	index batchskl.Skiplist
+	batch	Batch
+	index	batchskl.Skiplist
 }
 
 var indexedBatchPool = sync.Pool{
@@ -677,9 +677,9 @@ func (b *Batch) newInternalIter(o *IterOptions) internalIterator {
 		return newErrorIter(ErrNotIndexed)
 	}
 	return &batchIter{
-		cmp:   b.cmp,
-		batch: b,
-		iter:  b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
+		cmp:	b.cmp,
+		batch:	b,
+		iter:	b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
 	}
 }
 
@@ -696,16 +696,16 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 	// tombstone is added to the batch.
 	if b.tombstones == nil {
 		frag := &rangedel.Fragmenter{
-			Cmp:    b.cmp,
-			Format: b.formatKey,
+			Cmp:	b.cmp,
+			Format:	b.formatKey,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}
 		it := &batchIter{
-			cmp:   b.cmp,
-			batch: b,
-			iter:  b.rangeDelIndex.NewIter(nil, nil),
+			cmp:	b.cmp,
+			batch:	b,
+			iter:	b.rangeDelIndex.NewIter(nil, nil),
 		}
 		// The memory management here is a bit subtle. The keys and values returned
 		// by the iterator are slices in Batch.data. Thus the fragmented tombstones
@@ -917,10 +917,10 @@ func (r *BatchReader) Next() (kind InternalKeyKind, ukey []byte, value []byte, o
 // Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
 // two in sync.
 type batchIter struct {
-	cmp   Compare
-	batch *Batch
-	iter  batchskl.Iterator
-	err   error
+	cmp	Compare
+	batch	*Batch
+	iter	batchskl.Iterator
+	err	error
 }
 
 // batchIter implements the base.InternalIterator interface.
@@ -931,7 +931,7 @@ func (i *batchIter) String() string {
 }
 
 func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	ikey := i.iter.SeekGE(key)
 	if ikey == nil {
 		return nil, nil
@@ -940,12 +940,12 @@ func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *batchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	return i.SeekGE(key)
 }
 
 func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	ikey := i.iter.SeekLT(key)
 	if ikey == nil {
 		return nil, nil
@@ -954,7 +954,7 @@ func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *batchIter) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	ikey := i.iter.First()
 	if ikey == nil {
 		return nil, nil
@@ -963,7 +963,7 @@ func (i *batchIter) First() (*InternalKey, []byte) {
 }
 
 func (i *batchIter) Last() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	ikey := i.iter.Last()
 	if ikey == nil {
 		return nil, nil
@@ -1030,27 +1030,27 @@ func (i *batchIter) SetBounds(lower, upper []byte) {
 
 type flushableBatchEntry struct {
 	// offset is the byte offset of the record within the batch repr.
-	offset uint32
+	offset	uint32
 	// index is the 0-based ordinal number of the record within the batch. Used
 	// to compute the seqnum for the record.
-	index uint32
+	index	uint32
 	// key{Start,End} are the start and end byte offsets of the key within the
 	// batch repr. Cached to avoid decoding the key length on every
 	// comparison. The value is stored starting at keyEnd.
-	keyStart uint32
-	keyEnd   uint32
+	keyStart	uint32
+	keyEnd		uint32
 }
 
 // flushableBatch wraps an existing batch and provides the interfaces needed
 // for making the batch flushable (i.e. able to mimic a memtable).
 type flushableBatch struct {
-	cmp       Compare
-	formatKey base.FormatKey
-	data      []byte
+	cmp		Compare
+	formatKey	base.FormatKey
+	data		[]byte
 
 	// The base sequence number for the entries in the batch. This is the same
 	// value as Batch.seqNum() and is cached here for performance.
-	seqNum uint64
+	seqNum	uint64
 
 	// A slice of offsets and indices for the entries in the batch. Used to
 	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
@@ -1061,10 +1061,10 @@ type flushableBatch struct {
 	// higher offsets correspond to higher sequence numbers).
 	//
 	// Does not include range deletion entries.
-	offsets []flushableBatchEntry
+	offsets	[]flushableBatchEntry
 
 	// Fragmented range deletion tombstones.
-	tombstones []rangedel.Tombstone
+	tombstones	[]rangedel.Tombstone
 }
 
 var _ flushable = (*flushableBatch)(nil)
@@ -1075,10 +1075,10 @@ var _ flushable = (*flushableBatch)(nil)
 // of the batch data.
 func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	b := &flushableBatch{
-		data:      batch.data,
-		cmp:       comparer.Compare,
-		formatKey: comparer.FormatKey,
-		offsets:   make([]flushableBatchEntry, 0, batch.Count()),
+		data:		batch.data,
+		cmp:		comparer.Compare,
+		formatKey:	comparer.FormatKey,
+		offsets:	make([]flushableBatchEntry, 0, batch.Count()),
 	}
 	if b.data != nil {
 		// Note that this sequence number is not correct when this batch has not
@@ -1098,8 +1098,8 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 				break
 			}
 			entry := flushableBatchEntry{
-				offset: uint32(offset),
-				index:  uint32(index),
+				offset:	uint32(offset),
+				index:	uint32(index),
 			}
 			if keySize := uint32(len(key)); keySize == 0 {
 				// Must add 2 to the offset. One byte encodes `kind` and the next
@@ -1127,18 +1127,18 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 
 	if len(rangeDelOffsets) > 0 {
 		frag := &rangedel.Fragmenter{
-			Cmp:    b.cmp,
-			Format: b.formatKey,
+			Cmp:	b.cmp,
+			Format:	b.formatKey,
 			Emit: func(fragmented []rangedel.Tombstone) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}
 		it := &flushableBatchIter{
-			batch:   b,
-			data:    b.data,
-			offsets: rangeDelOffsets,
-			cmp:     b.cmp,
-			index:   -1,
+			batch:		b,
+			data:		b.data,
+			offsets:	rangeDelOffsets,
+			cmp:		b.cmp,
+			index:		-1,
 		}
 		for key, val := it.First(); key != nil; key, val = it.Next() {
 			frag.Add(*key, val)
@@ -1184,26 +1184,26 @@ func (b *flushableBatch) Swap(i, j int) {
 
 func (b *flushableBatch) newIter(o *IterOptions) internalIterator {
 	return &flushableBatchIter{
-		batch:   b,
-		data:    b.data,
-		offsets: b.offsets,
-		cmp:     b.cmp,
-		index:   -1,
-		lower:   o.GetLowerBound(),
-		upper:   o.GetUpperBound(),
+		batch:		b,
+		data:		b.data,
+		offsets:	b.offsets,
+		cmp:		b.cmp,
+		index:		-1,
+		lower:		o.GetLowerBound(),
+		upper:		o.GetUpperBound(),
 	}
 }
 
 func (b *flushableBatch) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
 	return &flushFlushableBatchIter{
 		flushableBatchIter: flushableBatchIter{
-			batch:   b,
-			data:    b.data,
-			offsets: b.offsets,
-			cmp:     b.cmp,
-			index:   -1,
+			batch:		b,
+			data:		b.data,
+			offsets:	b.offsets,
+			cmp:		b.cmp,
+			index:		-1,
 		},
-		bytesIterated: bytesFlushed,
+		bytesIterated:	bytesFlushed,
 	}
 }
 
@@ -1230,23 +1230,23 @@ func (b *flushableBatch) readyForFlush() bool {
 // two in sync.
 type flushableBatchIter struct {
 	// Members to be initialized by creator.
-	batch *flushableBatch
+	batch	*flushableBatch
 	// The bytes backing the batch. Always the same as batch.data?
-	data []byte
+	data	[]byte
 	// The sorted entries. This is not always equal to batch.offsets.
-	offsets []flushableBatchEntry
-	cmp     Compare
+	offsets	[]flushableBatchEntry
+	cmp	Compare
 	// Must be initialized to -1. It is the index into offsets that represents
 	// the current iterator position.
-	index int
+	index	int
 
 	// For internal use by the implementation.
-	key InternalKey
-	err error
+	key	InternalKey
+	err	error
 
 	// Optionally initialize to bounds of iteration, if any.
-	lower []byte
-	upper []byte
+	lower	[]byte
+	upper	[]byte
 }
 
 // flushableBatchIter implements the base.InternalIterator interface.
@@ -1259,7 +1259,7 @@ func (i *flushableBatchIter) String() string {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
@@ -1284,7 +1284,7 @@ func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []b
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
 func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
@@ -1304,7 +1304,7 @@ func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 // First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *flushableBatchIter) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	if len(i.offsets) == 0 {
 		return nil, nil
 	}
@@ -1320,7 +1320,7 @@ func (i *flushableBatchIter) First() (*InternalKey, []byte) {
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
 func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	if len(i.offsets) == 0 {
 		return nil, nil
 	}
@@ -1424,7 +1424,7 @@ func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
 // of number of bytes iterated.
 type flushFlushableBatchIter struct {
 	flushableBatchIter
-	bytesIterated *uint64
+	bytesIterated	*uint64
 }
 
 // flushFlushableBatchIter implements the base.InternalIterator interface.
@@ -1447,7 +1447,7 @@ func (i *flushFlushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *flushFlushableBatchIter) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	key, val := i.flushableBatchIter.First()
 	if key == nil {
 		return nil, nil

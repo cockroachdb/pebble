@@ -25,28 +25,28 @@ type InternalKey = base.InternalKey
 // TableInfo contains the common information for table related events.
 type TableInfo struct {
 	// FileNum is the internal DB identifier for the table.
-	FileNum base.FileNum
+	FileNum	base.FileNum
 	// Size is the size of the file in bytes.
-	Size uint64
+	Size	uint64
 	// Smallest is the smallest internal key in the table.
-	Smallest InternalKey
+	Smallest	InternalKey
 	// Largest is the largest internal key in the table.
-	Largest InternalKey
+	Largest	InternalKey
 	// SmallestSeqNum is the smallest sequence number in the table.
-	SmallestSeqNum uint64
+	SmallestSeqNum	uint64
 	// LargestSeqNum is the largest sequence number in the table.
-	LargestSeqNum uint64
+	LargestSeqNum	uint64
 }
 
 // TableStats contains statistics on a table used for compaction heuristics.
 type TableStats struct {
 	// Valid true if stats have been loaded for the table. The rest of the
 	// structure is populated only if true.
-	Valid bool
+	Valid	bool
 	// The total number of entries in the table.
-	NumEntries uint64
+	NumEntries	uint64
 	// The number of point and range deletion entries in the table.
-	NumDeletions uint64
+	NumDeletions	uint64
 	// Estimate of the total disk space that may be dropped by this table's
 	// range deletions by compacting them. This estimate is at data-block
 	// granularity and is not updated if compactions beneath the table reduce
@@ -57,7 +57,7 @@ type TableStats struct {
 	// Tables in the bottommost level of the LSM may have a nonzero estimate
 	// if snapshots or move compactions prevented the elision of their range
 	// tombstones.
-	RangeDeletionsBytesEstimate uint64
+	RangeDeletionsBytesEstimate	uint64
 }
 
 // FileMetadata holds the metadata for an on-disk table.
@@ -65,28 +65,28 @@ type FileMetadata struct {
 	// Reference count for the file: incremented when a file is added to a
 	// version and decremented when the version is unreferenced. The file is
 	// obsolete when the reference count falls to zero.
-	refs int32
+	refs	int32
 	// FileNum is the file number.
-	FileNum base.FileNum
+	FileNum	base.FileNum
 	// Size is the size of the file, in bytes.
-	Size uint64
+	Size	uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC). For ingested sstables, this corresponds to the time the file was
 	// ingested.
-	CreationTime int64
+	CreationTime	int64
 	// Smallest and Largest are the inclusive bounds for the internal keys
 	// stored in the table.
-	Smallest InternalKey
-	Largest  InternalKey
+	Smallest	InternalKey
+	Largest		InternalKey
 	// Smallest and largest sequence numbers in the table.
-	SmallestSeqNum uint64
-	LargestSeqNum  uint64
+	SmallestSeqNum	uint64
+	LargestSeqNum	uint64
 	// True if user asked us to compact this file.
-	MarkedForCompaction bool
+	MarkedForCompaction	bool
 	// True if the file is actively being compacted. Protected by DB.mu.
-	Compacting bool
+	Compacting	bool
 	// Stats describe table statistics. Protected by DB.mu.
-	Stats TableStats
+	Stats	TableStats
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions.
 	//
@@ -94,11 +94,11 @@ type FileMetadata struct {
 	// compaction. When it's true, Compacting must also be true. If Compacting
 	// is true and IsIntraL0Compacting is false for an L0 file, the file must
 	// be part of a compaction to Lbase.
-	IsIntraL0Compacting bool
-	subLevel            int
-	l0Index             int
-	minIntervalIndex    int
-	maxIntervalIndex    int
+	IsIntraL0Compacting	bool
+	subLevel		int
+	l0Index			int
+	minIntervalIndex	int
+	maxIntervalIndex	int
 }
 
 func (m *FileMetadata) String() string {
@@ -124,12 +124,12 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 // TableInfo.
 func (m *FileMetadata) TableInfo() TableInfo {
 	return TableInfo{
-		FileNum:        m.FileNum,
-		Size:           m.Size,
-		Smallest:       m.Smallest,
-		Largest:        m.Largest,
-		SmallestSeqNum: m.SmallestSeqNum,
-		LargestSeqNum:  m.LargestSeqNum,
+		FileNum:	m.FileNum,
+		Size:		m.Size,
+		Smallest:	m.Smallest,
+		Largest:	m.Largest,
+		SmallestSeqNum:	m.SmallestSeqNum,
+		LargestSeqNum:	m.LargestSeqNum,
 	}
 }
 
@@ -176,11 +176,11 @@ func KeyRange(ucmp Compare, iters ...LevelIterator) (smallest, largest InternalK
 
 type bySeqNum []*FileMetadata
 
-func (b bySeqNum) Len() int { return len(b) }
+func (b bySeqNum) Len() int	{ return len(b) }
 func (b bySeqNum) Less(i, j int) bool {
 	return b[i].lessSeqNum(b[j])
 }
-func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
+func (b bySeqNum) Swap(i, j int)	{ b[i], b[j] = b[j], b[i] }
 
 // SortBySeqNum sorts the specified files by increasing sequence number.
 func SortBySeqNum(files []*FileMetadata) {
@@ -188,15 +188,15 @@ func SortBySeqNum(files []*FileMetadata) {
 }
 
 type bySmallest struct {
-	files []*FileMetadata
-	cmp   Compare
+	files	[]*FileMetadata
+	cmp	Compare
 }
 
-func (b bySmallest) Len() int { return len(b.files) }
+func (b bySmallest) Len() int	{ return len(b.files) }
 func (b bySmallest) Less(i, j int) bool {
 	return b.files[i].lessSmallestKey(b.files[j], b.cmp)
 }
-func (b bySmallest) Swap(i, j int) { b.files[i], b.files[j] = b.files[j], b.files[i] }
+func (b bySmallest) Swap(i, j int)	{ b.files[i], b.files[j] = b.files[j], b.files[i] }
 
 // SortBySmallest sorts the specified files by smallest key using the supplied
 // comparison function to order user keys.
@@ -222,10 +222,7 @@ const NumLevels = 7
 // NewVersion constructs a new Version with the provided files. It assumes
 // the provided files are already well-ordered. It's intended for testing.
 func NewVersion(
-	cmp Compare,
-	formatKey base.FormatKey,
-	flushSplitBytes int64,
-	files [NumLevels][]*FileMetadata,
+	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
 ) *Version {
 	var v Version
 	for i := range files {
@@ -262,7 +259,7 @@ func NewVersion(
 // key in a higher level table that has both the same user key and a higher
 // sequence number.
 type Version struct {
-	refs int32
+	refs	int32
 
 	// The level 0 sstables are organized in a series of sublevels. Similar to
 	// the seqnum invariant in normal levels, there is no internal key in a
@@ -274,19 +271,19 @@ type Version struct {
 	//
 	// L0Sublevels.Levels contains L0 files ordered by sublevels. All the files
 	// in Files[0] are in L0Sublevels.Levels.
-	L0Sublevels *L0Sublevels
+	L0Sublevels	*L0Sublevels
 
-	Levels [NumLevels]LevelMetadata
+	Levels	[NumLevels]LevelMetadata
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
-	Deleted func(obsolete []base.FileNum)
+	Deleted	func(obsolete []base.FileNum)
 
 	// The list the version is linked into.
-	list *VersionList
+	list	*VersionList
 
 	// The next/prev link for the versionList doubly-linked list of versions.
-	prev, next *Version
+	prev, next	*Version
 }
 
 func (v *Version) String() string {
@@ -559,8 +556,8 @@ func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
 // VersionList holds a list of versions. The versions are ordered from oldest
 // to newest.
 type VersionList struct {
-	mu   *sync.Mutex
-	root Version
+	mu	*sync.Mutex
+	root	Version
 }
 
 // Init initializes the version list.
@@ -610,9 +607,9 @@ func (l *VersionList) Remove(v *Version) {
 	}
 	v.prev.next = v.next
 	v.next.prev = v.prev
-	v.next = nil // avoid memory leaks
-	v.prev = nil // avoid memory leaks
-	v.list = nil // avoid memory leaks
+	v.next = nil	// avoid memory leaks
+	v.prev = nil	// avoid memory leaks
+	v.list = nil	// avoid memory leaks
 }
 
 // CheckOrdering checks that the files are consistent with respect to

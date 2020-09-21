@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangedel // import "github.com/cockroachdb/pebble/internal/rangedel"
+package rangedel	// import "github.com/cockroachdb/pebble/internal/rangedel"
 
 import (
 	"bytes"
@@ -15,8 +15,8 @@ import (
 // all of the keys in the range [start,end). Note that the start key is
 // inclusive and the end key is exclusive.
 type Tombstone struct {
-	Start base.InternalKey
-	End   []byte
+	Start	base.InternalKey
+	End	[]byte
 }
 
 // Overlaps returns 0 if this tombstone overlaps the other, -1 if there's no
@@ -68,7 +68,7 @@ func (t Tombstone) Pretty(f base.FormatKey) fmt.Formatter {
 
 type prettyTombstone struct {
 	Tombstone
-	formatKey base.FormatKey
+	formatKey	base.FormatKey
 }
 
 func (t prettyTombstone) Format(s fmt.State, c rune) {

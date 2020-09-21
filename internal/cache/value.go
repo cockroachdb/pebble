@@ -6,10 +6,10 @@ package cache
 
 // Value holds a reference counted immutable value.
 type Value struct {
-	buf []byte
+	buf	[]byte
 	// Reference count for the value. The value is freed when the reference count
 	// drops to zero.
-	ref refcnt
+	ref	refcnt
 }
 
 // Buf returns the buffer associated with the value. The contents of the buffer

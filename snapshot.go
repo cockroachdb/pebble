@@ -12,14 +12,14 @@ import (
 // Snapshot provides a read-only point-in-time view of the DB state.
 type Snapshot struct {
 	// The db the snapshot was created from.
-	db     *DB
-	seqNum uint64
+	db	*DB
+	seqNum	uint64
 
 	// The list the snapshot is linked into.
-	list *snapshotList
+	list	*snapshotList
 
 	// The next/prev link for the snapshotList doubly-linked list of snapshots.
-	prev, next *Snapshot
+	prev, next	*Snapshot
 }
 
 var _ Reader = (*Snapshot)(nil)
@@ -121,7 +121,7 @@ func (l *snapshotList) remove(s *Snapshot) {
 	}
 	s.prev.next = s.next
 	s.next.prev = s.prev
-	s.next = nil // avoid memory leaks
-	s.prev = nil // avoid memory leaks
-	s.list = nil // avoid memory leaks
+	s.next = nil	// avoid memory leaks
+	s.prev = nil	// avoid memory leaks
+	s.list = nil	// avoid memory leaks
 }

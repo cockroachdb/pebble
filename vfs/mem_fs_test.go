@@ -30,9 +30,9 @@ func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 		}
 
 		var (
-			fi  os.FileInfo
-			g   File
-			err error
+			fi	os.FileInfo
+			g	File
+			err	error
 		)
 		switch s[0] {
 		case "create":
@@ -343,7 +343,7 @@ func TestStrictFS(t *testing.T) {
 		"6e: f = reuseForWrite /z /y",
 		"6f: f.write x",
 		"6g: f.sync",
-		"6h: f.write y", // will be lost
+		"6h: f.write y",	// will be lost
 		"6i: f.close",
 		"6j: f = openDir /",
 		"6k: f.sync",

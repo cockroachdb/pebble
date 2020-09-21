@@ -31,7 +31,7 @@ func robinHoodHash(k key, shift uint32) uint32 {
 }
 
 type robinHoodEntry struct {
-	key key
+	key	key
 	// Note that value may point to a Go allocated object (if the "invariants"
 	// build tag was specified), even though the memory for the entry itself is
 	// manually managed. This is technically a volation of the Cgo pointer rules:
@@ -46,21 +46,21 @@ type robinHoodEntry struct {
 	// the entry and shard which will keep them alive. In particular, every Go
 	// allocated entry in the cache is referenced by the shard.entries map. And
 	// every shard is referenced by the Cache.shards map.
-	value *entry
+	value	*entry
 	// The distance the entry is from its desired position.
-	dist uint32
+	dist	uint32
 }
 
 type robinHoodEntries struct {
-	ptr unsafe.Pointer
-	len uint32
+	ptr	unsafe.Pointer
+	len	uint32
 }
 
 func newRobinHoodEntries(n uint32) robinHoodEntries {
 	size := uintptr(n) * unsafe.Sizeof(robinHoodEntry{})
 	return robinHoodEntries{
-		ptr: unsafe.Pointer(&(manual.New(int(size)))[0]),
-		len: n,
+		ptr:	unsafe.Pointer(&(manual.New(int(size)))[0]),
+		len:	n,
 	}
 }
 
@@ -116,11 +116,11 @@ func (e robinHoodEntries) free() {
 // http://codecapsule.com/2013/11/17/robin-hood-hashing-backward-shift-deletion
 // for details.
 type robinHoodMap struct {
-	entries robinHoodEntries
-	size    uint32
-	shift   uint32
-	count   uint32
-	maxDist uint32
+	entries	robinHoodEntries
+	size	uint32
+	shift	uint32
+	count	uint32
+	maxDist	uint32
 }
 
 func maxDistForSize(size uint32) uint32 {

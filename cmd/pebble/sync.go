@@ -18,17 +18,17 @@ import (
 )
 
 var syncConfig struct {
-	batch   *randvar.Flag
-	walOnly bool
-	values  *randvar.BytesFlag
+	batch	*randvar.Flag
+	walOnly	bool
+	values	*randvar.BytesFlag
 }
 
 var syncCmd = &cobra.Command{
-	Use:   "sync <dir>",
-	Short: "run the sync benchmark",
-	Long:  ``,
-	Args:  cobra.ExactArgs(1),
-	Run:   runSync,
+	Use:	"sync <dir>",
+	Short:	"run the sync benchmark",
+	Long:	``,
+	Args:	cobra.ExactArgs(1),
+	Run:	runSync,
 }
 
 func init() {

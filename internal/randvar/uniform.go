@@ -24,8 +24,8 @@ import (
 // Uniform is a random number generator that generates draws from a uniform
 // distribution.
 type Uniform struct {
-	min uint64
-	max uint64
+	min	uint64
+	max	uint64
 }
 
 // NewUniform constructs a new Uniform generator with the given

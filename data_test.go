@@ -25,8 +25,8 @@ const (
 
 func runGetCmd(td *datadriven.TestData, d *DB) string {
 	snap := Snapshot{
-		db:     d,
-		seqNum: InternalKeySeqNumMax,
+		db:	d,
+		seqNum:	InternalKeySeqNumMax,
 	}
 
 	for _, arg := range td.CmdArgs {
@@ -307,10 +307,10 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 			return err
 		}
 		return d.manualCompact(&manualCompaction{
-			done:  make(chan error, 1),
-			level: level,
-			start: iStart,
-			end:   iEnd,
+			done:	make(chan error, 1),
+			level:	level,
+			start:	iStart,
+			end:	iEnd,
 		})
 	}
 	return d.Compact([]byte(parts[0]), []byte(parts[1]))
@@ -380,8 +380,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}
 
 		toFlush := flushableList{{
-			flushable: mem,
-			flushed:   make(chan struct{}),
+			flushable:	mem,
+			flushed:	make(chan struct{}),
 		}}
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			d.mu.versions.picker.getBaseLevel(), toFlush, &d.bytesFlushed)
@@ -392,8 +392,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}
 		for _, f := range newVE.NewFiles {
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{
-				Level: level,
-				Meta:  f.Meta,
+				Level:	level,
+				Meta:	f.Meta,
 			})
 		}
 		level = -1
@@ -407,8 +407,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
 		return &fileMetadata{
-			Smallest: InternalKey{UserKey: []byte(parts[0])},
-			Largest:  InternalKey{UserKey: []byte(parts[1])},
+			Smallest:	InternalKey{UserKey: []byte(parts[0])},
+			Largest:	InternalKey{UserKey: []byte(parts[1])},
 		}, nil
 	}
 
@@ -419,9 +419,9 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			return nil, err
 		}
 		c := &compaction{
-			inputs:   []compactionLevel{{}, {level: outputLevel}},
-			smallest: m.Smallest,
-			largest:  m.Largest,
+			inputs:		[]compactionLevel{{}, {level: outputLevel}},
+			smallest:	m.Smallest,
+			largest:	m.Largest,
 		}
 		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 		return c, nil

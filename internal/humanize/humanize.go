@@ -29,8 +29,8 @@ func humanate(s uint64, base float64, suffixes []string) string {
 }
 
 type config struct {
-	base   float64
-	suffix []string
+	base	float64
+	suffix	[]string
 }
 
 // IEC produces human readable representations of integer values in IEC units.

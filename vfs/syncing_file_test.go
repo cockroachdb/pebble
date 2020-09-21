@@ -41,8 +41,8 @@ func TestSyncingFile(t *testing.T) {
 	t.Logf("sync_file_range=%t", s.(*syncingFile).useSyncRange)
 
 	testCases := []struct {
-		n              int64
-		expectedSyncTo int64
+		n		int64
+		expectedSyncTo	int64
 	}{
 		{mb, -1},
 		{mb, mb},
@@ -64,8 +64,8 @@ func TestSyncingFile(t *testing.T) {
 
 func TestSyncingFileClose(t *testing.T) {
 	testCases := []struct {
-		syncToEnabled bool
-		expected      string
+		syncToEnabled	bool
+		expected	string
 	}{
 		{true, `sync-to(1048576): test [<nil>]
 sync-to(2097152): test [<nil>]

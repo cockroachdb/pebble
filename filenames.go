@@ -17,13 +17,13 @@ type fileType = base.FileType
 type FileNum = base.FileNum
 
 const (
-	fileTypeLog      = base.FileTypeLog
-	fileTypeLock     = base.FileTypeLock
-	fileTypeTable    = base.FileTypeTable
-	fileTypeManifest = base.FileTypeManifest
-	fileTypeCurrent  = base.FileTypeCurrent
-	fileTypeOptions  = base.FileTypeOptions
-	fileTypeTemp     = base.FileTypeTemp
+	fileTypeLog		= base.FileTypeLog
+	fileTypeLock		= base.FileTypeLock
+	fileTypeTable		= base.FileTypeTable
+	fileTypeManifest	= base.FileTypeManifest
+	fileTypeCurrent		= base.FileTypeCurrent
+	fileTypeOptions		= base.FileTypeOptions
+	fileTypeTemp		= base.FileTypeTemp
 )
 
 func setCurrentFile(dirname string, fs vfs.FS, fileNum FileNum) error {

@@ -14,15 +14,15 @@ import (
 )
 
 var (
-	cacheSize       int64
-	concurrency     int
-	disableWAL      bool
-	duration        time.Duration
-	engineType      string
-	maxOpsPerSec    = newRateFlag("")
-	verbose         bool
-	waitCompactions bool
-	wipe            bool
+	cacheSize	int64
+	concurrency	int
+	disableWAL	bool
+	duration	time.Duration
+	engineType	string
+	maxOpsPerSec	= newRateFlag("")
+	verbose		bool
+	waitCompactions	bool
+	wipe		bool
 )
 
 func main() {
@@ -31,8 +31,8 @@ func main() {
 	cobra.EnableCommandSorting = false
 
 	benchCmd := &cobra.Command{
-		Use:   "bench",
-		Short: "benchmarks",
+		Use:	"bench",
+		Short:	"benchmarks",
 	}
 	compactCmd.AddCommand(
 		compactNewCmd,
@@ -46,8 +46,8 @@ func main() {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "pebble [command] (flags)",
-		Short: "pebble benchmarking/introspection tool",
+		Use:	"pebble [command] (flags)",
+		Short:	"pebble benchmarking/introspection tool",
 	}
 	rootCmd.AddCommand(benchCmd)
 

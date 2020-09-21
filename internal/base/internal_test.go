@@ -4,9 +4,7 @@
 
 package base
 
-import (
-	"testing"
-)
+import "testing"
 
 func (k InternalKey) encodedString() string {
 	buf := make([]byte, k.Size())
@@ -117,9 +115,9 @@ func TestInternalKeyComparer(t *testing.T) {
 
 func TestInternalKeySeparator(t *testing.T) {
 	testCases := []struct {
-		a        string
-		b        string
-		expected string
+		a		string
+		b		string
+		expected	string
 	}{
 		{"foo.SET.100", "foo.SET.99", "foo.SET.100"},
 		{"foo.SET.100", "foo.SET.100", "foo.SET.100"},

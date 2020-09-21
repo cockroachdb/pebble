@@ -17,24 +17,24 @@ import (
 // internalIterator, but specialized for Get operations so that it loads data
 // lazily.
 type getIter struct {
-	logger       Logger
-	cmp          Compare
-	equal        Equal
-	newIters     tableNewIters
-	snapshot     uint64
-	key          []byte
-	iter         internalIterator
-	rangeDelIter internalIterator
-	tombstone    rangedel.Tombstone
-	levelIter    levelIter
-	level        int
-	batch        *Batch
-	mem          flushableList
-	l0           [][]*fileMetadata
-	version      *version
-	iterKey      *InternalKey
-	iterValue    []byte
-	err          error
+	logger		Logger
+	cmp		Compare
+	equal		Equal
+	newIters	tableNewIters
+	snapshot	uint64
+	key		[]byte
+	iter		internalIterator
+	rangeDelIter	internalIterator
+	tombstone	rangedel.Tombstone
+	levelIter	levelIter
+	level		int
+	batch		*Batch
+	mem		flushableList
+	l0		[][]*fileMetadata
+	version		*version
+	iterKey		*InternalKey
+	iterValue	[]byte
+	err		error
 }
 
 // getIter implements the base.InternalIterator interface.

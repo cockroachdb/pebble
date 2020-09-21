@@ -4,15 +4,13 @@
 
 package rangedel
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 // Iter is an iterator over a set of fragmented tombstones.
 type Iter struct {
-	cmp        base.Compare
-	tombstones []Tombstone
-	index      int
+	cmp		base.Compare
+	tombstones	[]Tombstone
+	index		int
 }
 
 // Iter implements the base.InternalIterator interface.
@@ -21,9 +19,9 @@ var _ base.InternalIterator = (*Iter)(nil)
 // NewIter returns a new iterator over a set of fragmented tombstones.
 func NewIter(cmp base.Compare, tombstones []Tombstone) *Iter {
 	return &Iter{
-		cmp:        cmp,
-		tombstones: tombstones,
-		index:      -1,
+		cmp:		cmp,
+		tombstones:	tombstones,
+		index:		-1,
 	}
 }
 
@@ -38,12 +36,12 @@ func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	i.index = 0
 	upper := len(i.tombstones)
 	for i.index < upper {
-		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
+		h := int(uint(i.index+upper) >> 1)	// avoid overflow when computing h
 		// i.index ≤ h < upper
 		if base.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) >= 0 {
-			i.index = h + 1 // preserves f(i-1) == false
+			i.index = h + 1	// preserves f(i-1) == false
 		} else {
-			upper = h // preserves f(j) == true
+			upper = h	// preserves f(j) == true
 		}
 	}
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
@@ -73,12 +71,12 @@ func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	i.index = 0
 	upper := len(i.tombstones)
 	for i.index < upper {
-		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
+		h := int(uint(i.index+upper) >> 1)	// avoid overflow when computing h
 		// i.index ≤ h < upper
 		if base.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) > 0 {
-			i.index = h + 1 // preserves f(i-1) == false
+			i.index = h + 1	// preserves f(i-1) == false
 		} else {
-			upper = h // preserves f(j) == true
+			upper = h	// preserves f(j) == true
 		}
 	}
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==

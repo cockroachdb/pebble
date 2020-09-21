@@ -96,7 +96,7 @@
 // The wire format allows for limited recovery in the face of data corruption:
 // on a format error (such as a checksum mismatch), the reader moves to the
 // next block and looks for the next full or first chunk.
-package record // import "github.com/cockroachdb/pebble/internal/record"
+package record	// import "github.com/cockroachdb/pebble/internal/record"
 
 // The C++ Level-DB code calls this the log, but it has been renamed to record
 // to avoid clashing with the standard log package, and because it is generally
@@ -114,39 +114,39 @@ import (
 
 // These constants are part of the wire format and should not be changed.
 const (
-	fullChunkType   = 1
-	firstChunkType  = 2
-	middleChunkType = 3
-	lastChunkType   = 4
+	fullChunkType	= 1
+	firstChunkType	= 2
+	middleChunkType	= 3
+	lastChunkType	= 4
 
-	recyclableFullChunkType   = 5
-	recyclableFirstChunkType  = 6
-	recyclableMiddleChunkType = 7
-	recyclableLastChunkType   = 8
+	recyclableFullChunkType		= 5
+	recyclableFirstChunkType	= 6
+	recyclableMiddleChunkType	= 7
+	recyclableLastChunkType		= 8
 )
 
 const (
-	blockSize            = 32 * 1024
-	blockSizeMask        = blockSize - 1
-	legacyHeaderSize     = 7
-	recyclableHeaderSize = legacyHeaderSize + 4
+	blockSize		= 32 * 1024
+	blockSizeMask		= blockSize - 1
+	legacyHeaderSize	= 7
+	recyclableHeaderSize	= legacyHeaderSize + 4
 )
 
 var (
 	// ErrNotAnIOSeeker is returned if the io.Reader underlying a Reader does not implement io.Seeker.
-	ErrNotAnIOSeeker = errors.New("pebble/record: reader does not implement io.Seeker")
+	ErrNotAnIOSeeker	= errors.New("pebble/record: reader does not implement io.Seeker")
 
 	// ErrNoLastRecord is returned if LastRecordOffset is called and there is no previous record.
-	ErrNoLastRecord = errors.New("pebble/record: no last record exists")
+	ErrNoLastRecord	= errors.New("pebble/record: no last record exists")
 
 	// ErrZeroedChunk is returned if a chunk is encountered that is zeroed. This
 	// usually occurs due to log file preallocation.
-	ErrZeroedChunk = base.CorruptionErrorf("pebble/record: zeroed chunk")
+	ErrZeroedChunk	= base.CorruptionErrorf("pebble/record: zeroed chunk")
 
 	// ErrInvalidChunk is returned if a chunk is encountered with an invalid
 	// header, length, or checksum. This usually occurs when a log is recycled,
 	// but can also occur due to corruption.
-	ErrInvalidChunk = base.CorruptionErrorf("pebble/record: invalid chunk")
+	ErrInvalidChunk	= base.CorruptionErrorf("pebble/record: invalid chunk")
 )
 
 // IsInvalidRecord returns true if the error matches one of the error types
@@ -159,28 +159,28 @@ func IsInvalidRecord(err error) bool {
 // Reader reads records from an underlying io.Reader.
 type Reader struct {
 	// r is the underlying reader.
-	r io.Reader
+	r	io.Reader
 	// logNum is the low 32-bits of the log's file number. May be zero when used
 	// with log files that do not have a file number (e.g. the MANIFEST).
-	logNum uint32
+	logNum	uint32
 	// blockNum is the zero based block number currently held in buf.
-	blockNum int64
+	blockNum	int64
 	// seq is the sequence number of the current record.
-	seq int
+	seq	int
 	// buf[begin:end] is the unread portion of the current chunk's payload. The
 	// low bound, begin, excludes the chunk header.
-	begin, end int
+	begin, end	int
 	// n is the number of bytes of buf that are valid. Once reading has started,
 	// only the final block can have n < blockSize.
-	n int
+	n	int
 	// recovering is true when recovering from corruption.
-	recovering bool
+	recovering	bool
 	// last is whether the current chunk is the last chunk of the record.
-	last bool
+	last	bool
 	// err is any accumulated error.
-	err error
+	err	error
 	// buf is the buffer.
-	buf [blockSize]byte
+	buf	[blockSize]byte
 }
 
 // NewReader returns a new reader. If the file contains records encoded using
@@ -188,9 +188,9 @@ type Reader struct {
 // match the specified logNum.
 func NewReader(r io.Reader, logNum base.FileNum) *Reader {
 	return &Reader{
-		r:        r,
-		logNum:   uint32(logNum),
-		blockNum: -1,
+		r:		r,
+		logNum:		uint32(logNum),
+		blockNum:	-1,
 	}
 }
 
@@ -382,8 +382,8 @@ func (r *Reader) seekRecord(offset int64) error {
 }
 
 type singleReader struct {
-	r   *Reader
-	seq int
+	r	*Reader
+	seq	int
 }
 
 func (x singleReader) Read(p []byte) (int, error) {
@@ -410,35 +410,35 @@ func (x singleReader) Read(p []byte) (int, error) {
 // Writer writes records to an underlying io.Writer.
 type Writer struct {
 	// w is the underlying writer.
-	w io.Writer
+	w	io.Writer
 	// seq is the sequence number of the current record.
-	seq int
+	seq	int
 	// f is w as a flusher.
-	f flusher
+	f	flusher
 	// buf[i:j] is the bytes that will become the current chunk.
 	// The low bound, i, includes the chunk header.
-	i, j int
+	i, j	int
 	// buf[:written] has already been written to w.
 	// written is zero unless Flush has been called.
-	written int
+	written	int
 	// baseOffset is the base offset in w at which writing started. If
 	// w implements io.Seeker, it's relative to the start of w, 0 otherwise.
-	baseOffset int64
+	baseOffset	int64
 	// blockNumber is the zero based block number currently held in buf.
-	blockNumber int64
+	blockNumber	int64
 	// lastRecordOffset is the offset in w where the last record was
 	// written (including the chunk header). It is a relative offset to
 	// baseOffset, thus the absolute offset of the last record is
 	// baseOffset + lastRecordOffset.
-	lastRecordOffset int64
+	lastRecordOffset	int64
 	// first is whether the current chunk is the first chunk of the record.
-	first bool
+	first	bool
 	// pending is whether a chunk is buffered but not yet written.
-	pending bool
+	pending	bool
 	// err is any accumulated error.
-	err error
+	err	error
 	// buf is the buffer.
-	buf [blockSize]byte
+	buf	[blockSize]byte
 }
 
 // NewWriter returns a new Writer.
@@ -453,10 +453,10 @@ func NewWriter(w io.Writer) *Writer {
 		}
 	}
 	return &Writer{
-		w:                w,
-		f:                f,
-		baseOffset:       o,
-		lastRecordOffset: -1,
+		w:			w,
+		f:			f,
+		baseOffset:		o,
+		lastRecordOffset:	-1,
 	}
 }
 
@@ -607,8 +607,8 @@ func (w *Writer) LastRecordOffset() (int64, error) {
 }
 
 type singleWriter struct {
-	w   *Writer
-	seq int
+	w	*Writer
+	seq	int
 }
 
 func (x singleWriter) Write(p []byte) (int, error) {

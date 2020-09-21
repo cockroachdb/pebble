@@ -27,11 +27,11 @@ func (defaultFS) Lock(name string) (io.Closer, error) {
 		return nil, err
 	}
 	spec := syscall.Flock_t{
-		Type:   syscall.F_WRLCK,
-		Whence: io.SeekStart,
-		Start:  0,
-		Len:    0, // 0 means to lock the entire file.
-		Pid:    int32(os.Getpid()),
+		Type:	syscall.F_WRLCK,
+		Whence:	io.SeekStart,
+		Start:	0,
+		Len:	0,	// 0 means to lock the entire file.
+		Pid:	int32(os.Getpid()),
 	}
 	if err := syscall.FcntlFlock(f.Fd(), syscall.F_SETLK, &spec); err != nil {
 		f.Close()

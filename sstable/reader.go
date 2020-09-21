@@ -32,11 +32,11 @@ const (
 	// Constants for dynamic readahead of data blocks. Note that the size values
 	// make sense as some multiple of the default block size; and they should
 	// both be larger than the default block size.
-	minFileReadsForReadahead = 2
+	minFileReadsForReadahead	= 2
 	// TODO(bilal): Have the initial size value be a factor of the block size,
 	// as opposed to a hardcoded value.
-	initialReadaheadSize = 64 << 10  /* 64KB */
-	maxReadaheadSize     = 256 << 10 /* 256KB */
+	initialReadaheadSize	= 64 << 10	/* 64KB */
+	maxReadaheadSize	= 256 << 10	/* 256KB */
 )
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
@@ -72,21 +72,21 @@ type Iterator interface {
 // key, it first looks in the index for the block that contains that key, and then
 // looks inside that block.
 type singleLevelIterator struct {
-	cmp Compare
+	cmp	Compare
 	// Global lower/upper bound for the iterator.
-	lower []byte
-	upper []byte
+	lower	[]byte
+	upper	[]byte
 	// Per-block lower/upper bound. Nil if the bound does not apply to the block
 	// because we determined the block lies completely within the bound.
-	blockLower []byte
-	blockUpper []byte
-	reader     *Reader
-	index      blockIter
-	data       blockIter
-	dataRS     readaheadState
-	dataBH     BlockHandle
-	err        error
-	closeHook  func(i Iterator) error
+	blockLower	[]byte
+	blockUpper	[]byte
+	reader		*Reader
+	index		blockIter
+	data		blockIter
+	dataRS		readaheadState
+	dataBH		BlockHandle
+	err		error
+	closeHook	func(i Iterator) error
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
@@ -164,8 +164,8 @@ func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
 
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
 	return singleLevelIterator{
-		index: i.index.resetForReuse(),
-		data:  i.data.resetForReuse(),
+		index:	i.index.resetForReuse(),
+		data:	i.data.resetForReuse(),
 	}
 }
 
@@ -244,7 +244,7 @@ func (i *singleLevelIterator) recordOffset() uint64 {
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
 func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		// The target key is greater than any key in the sstable. Invalidate the
@@ -269,7 +269,7 @@ func (i *singleLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	// Check prefix bloom filter.
 	if i.reader.tableFilter != nil {
@@ -307,7 +307,7 @@ func (i *singleLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
 func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.index.SeekGE(key); ikey == nil {
 		i.index.Last()
@@ -340,7 +340,7 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *singleLevelIterator) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.index.First(); ikey == nil {
 		i.data.invalidate()
@@ -363,7 +363,7 @@ func (i *singleLevelIterator) First() (*InternalKey, []byte) {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *singleLevelIterator) Last() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.index.Last(); ikey == nil {
 		i.data.invalidate()
@@ -525,8 +525,8 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 // bytes that have been iterated through.
 type compactionIterator struct {
 	*singleLevelIterator
-	bytesIterated *uint64
-	prevOffset    uint64
+	bytesIterated	*uint64
+	prevOffset	uint64
 }
 
 // compactionIterator implements the base.InternalIterator interface.
@@ -549,7 +549,7 @@ func (i *compactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *compactionIterator) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	return i.skipForward(i.singleLevelIterator.First())
 }
 
@@ -596,7 +596,7 @@ func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*Interna
 
 type twoLevelIterator struct {
 	singleLevelIterator
-	topLevelIndex blockIter
+	topLevelIndex	blockIter
 }
 
 // twoLevelIterator implements the base.InternalIterator interface.
@@ -659,7 +659,7 @@ func (i *twoLevelIterator) String() string {
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		i.data.invalidate()
@@ -681,7 +681,7 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		i.data.invalidate()
@@ -703,7 +703,7 @@ func (i *twoLevelIterator) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byt
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
 func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
 		if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
@@ -734,7 +734,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *twoLevelIterator) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.First(); ikey == nil {
 		return nil, nil
@@ -755,7 +755,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 
 	if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
 		return nil, nil
@@ -861,8 +861,8 @@ func (i *twoLevelIterator) Close() error {
 	}
 	err = firstError(err, i.err)
 	*i = twoLevelIterator{
-		singleLevelIterator: i.singleLevelIterator.resetForReuse(),
-		topLevelIndex:       i.topLevelIndex.resetForReuse(),
+		singleLevelIterator:	i.singleLevelIterator.resetForReuse(),
+		topLevelIndex:		i.topLevelIndex.resetForReuse(),
 	}
 	twoLevelIterPool.Put(i)
 	return err
@@ -872,8 +872,8 @@ func (i *twoLevelIterator) Close() error {
 // were separated due to performance.
 type twoLevelCompactionIterator struct {
 	*twoLevelIterator
-	bytesIterated *uint64
-	prevOffset    uint64
+	bytesIterated	*uint64
+	prevOffset	uint64
 }
 
 // twoLevelCompactionIterator implements the base.InternalIterator interface.
@@ -896,7 +896,7 @@ func (i *twoLevelCompactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 }
 
 func (i *twoLevelCompactionIterator) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
+	i.err = nil	// clear cached iteration error
 	return i.skipForward(i.twoLevelIterator.First())
 }
 
@@ -949,24 +949,24 @@ type blockTransform func([]byte) ([]byte, error)
 // file reads.
 type readaheadState struct {
 	// Number of sequential reads.
-	numReads int64
+	numReads	int64
 	// Size issued to the next call to Prefetch. Starts at or above
 	// initialReadaheadSize and grows exponentially until maxReadaheadSize.
-	size int64
+	size	int64
 	// prevSize is the size used in the last Prefetch call.
-	prevSize int64
+	prevSize	int64
 	// The byte offset up to which the OS has been asked to read ahead / cached.
 	// When reading ahead, reads up to this limit should not incur an IO
 	// operation. Reads after this limit can benefit from a new call to
 	// Prefetch.
-	limit int64
+	limit	int64
 	// sequentialFile holds a file descriptor to the same underlying File,
 	// except with fadvise(FADV_SEQUENTIAL) called on it to take advantage of
 	// OS-level readahead. Initialized when the iterator has been consistently
 	// reading blocks in a sequential access pattern. Once this is non-nil,
 	// the other variables in readaheadState don't matter much as we defer
 	// to OS-level readahead.
-	sequentialFile vfs.File
+	sequentialFile	vfs.File
 }
 
 func (rs *readaheadState) recordCacheHit(offset, blockLength int64) {
@@ -1178,14 +1178,14 @@ func (m Mergers) readerApply(r *Reader) {
 // cacheOpts is a Reader open option for specifying the cache ID and sstable file
 // number. If not specified, a unique cache ID will be used.
 type cacheOpts struct {
-	cacheID uint64
-	fileNum base.FileNum
+	cacheID	uint64
+	fileNum	base.FileNum
 }
 
 // Marker function to indicate the option should be applied before reading the
 // sstable properties and, in the write path, before writing the default
 // sstable properties.
-func (c *cacheOpts) preApply() {}
+func (c *cacheOpts) preApply()	{}
 
 func (c *cacheOpts) readerApply(r *Reader) {
 	if r.cacheID == 0 {
@@ -1208,8 +1208,8 @@ func (c *cacheOpts) writerApply(w *Writer) {
 // FileReopenOpt is specified if this reader is allowed to reopen additional
 // file descriptors for this file. Used to take advantage of OS-level readahead.
 type FileReopenOpt struct {
-	FS       vfs.FS
-	Filename string
+	FS		vfs.FS
+	Filename	string
 }
 
 func (f FileReopenOpt) readerApply(r *Reader) {
@@ -1225,7 +1225,7 @@ func (f FileReopenOpt) readerApply(r *Reader) {
 // contained in an sstable.
 type rawTombstonesOpt struct{}
 
-func (rawTombstonesOpt) preApply() {}
+func (rawTombstonesOpt) preApply()	{}
 
 func (rawTombstonesOpt) readerApply(r *Reader) {
 	r.rawTombstones = true
@@ -1240,27 +1240,27 @@ func init() {
 
 // Reader is a table reader.
 type Reader struct {
-	file              vfs.File
-	fs                vfs.FS
-	filename          string
-	cacheID           uint64
-	fileNum           base.FileNum
-	rawTombstones     bool
-	err               error
-	indexBH           BlockHandle
-	filterBH          BlockHandle
-	rangeDelBH        BlockHandle
-	rangeDelTransform blockTransform
-	propertiesBH      BlockHandle
-	metaIndexBH       BlockHandle
-	footerBH          BlockHandle
-	opts              ReaderOptions
-	Compare           Compare
-	FormatKey         base.FormatKey
-	Split             Split
-	mergerOK          bool
-	tableFilter       *tableFilterReader
-	Properties        Properties
+	file			vfs.File
+	fs			vfs.FS
+	filename		string
+	cacheID			uint64
+	fileNum			base.FileNum
+	rawTombstones		bool
+	err			error
+	indexBH			BlockHandle
+	filterBH		BlockHandle
+	rangeDelBH		BlockHandle
+	rangeDelTransform	blockTransform
+	propertiesBH		BlockHandle
+	metaIndexBH		BlockHandle
+	footerBH		BlockHandle
+	opts			ReaderOptions
+	Compare			Compare
+	FormatKey		base.FormatKey
+	Split			Split
+	mergerOK		bool
+	tableFilter		*tableFilterReader
+	Properties		Properties
 }
 
 // Close implements DB.Close, as documented in the pebble package.
@@ -1369,8 +1369,8 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 			return nil, err
 		}
 		return &twoLevelCompactionIterator{
-			twoLevelIterator: i,
-			bytesIterated:    bytesIterated,
+			twoLevelIterator:	i,
+			bytesIterated:		bytesIterated,
 		}, nil
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
@@ -1379,8 +1379,8 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 		return nil, err
 	}
 	return &compactionIterator{
-		singleLevelIterator: i,
-		bytesIterated:       bytesIterated,
+		singleLevelIterator:	i,
+		bytesIterated:		bytesIterated,
 	}, nil
 }
 
@@ -1532,8 +1532,8 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	var tombstones []rangedel.Tombstone
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		t := rangedel.Tombstone{
-			Start: *key,
-			End:   value,
+			Start:	*key,
+			End:	value,
 		}
 		tombstones = append(tombstones, t)
 	}
@@ -1544,8 +1544,8 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 		restartInterval: 1,
 	}
 	frag := rangedel.Fragmenter{
-		Cmp:    r.Compare,
-		Format: r.FormatKey,
+		Cmp:	r.Compare,
+		Format:	r.FormatKey,
 		Emit: func(fragmented []rangedel.Tombstone) {
 			for i := range fragmented {
 				t := &fragmented[i]
@@ -1617,8 +1617,8 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 
 	for name, fp := range r.opts.Filters {
 		types := []struct {
-			ftype  FilterType
-			prefix string
+			ftype	FilterType
+			prefix	string
 		}{
 			{TableFilter, "fullfilter."},
 		}
@@ -1652,12 +1652,12 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 
 	l := &Layout{
-		Data:       make([]BlockHandle, 0, r.Properties.NumDataBlocks),
-		Filter:     r.filterBH,
-		RangeDel:   r.rangeDelBH,
-		Properties: r.propertiesBH,
-		MetaIndex:  r.metaIndexBH,
-		Footer:     r.footerBH,
+		Data:		make([]BlockHandle, 0, r.Properties.NumDataBlocks),
+		Filter:		r.filterBH,
+		RangeDel:	r.rangeDelBH,
+		Properties:	r.propertiesBH,
+		MetaIndex:	r.metaIndexBH,
+		Footer:		r.footerBH,
 	}
 
 	indexH, err := r.readIndex()
@@ -1820,8 +1820,8 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.ensureDefaults()
 	r := &Reader{
-		file: f,
-		opts: o,
+		file:	f,
+		opts:	o,
 	}
 	if r.opts.Cache == nil {
 		r.opts.Cache = cache.New(0)
@@ -1897,14 +1897,14 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 
 // Layout describes the block organization of an sstable.
 type Layout struct {
-	Data       []BlockHandle
-	Index      []BlockHandle
-	TopIndex   BlockHandle
-	Filter     BlockHandle
-	RangeDel   BlockHandle
-	Properties BlockHandle
-	MetaIndex  BlockHandle
-	Footer     BlockHandle
+	Data		[]BlockHandle
+	Index		[]BlockHandle
+	TopIndex	BlockHandle
+	Filter		BlockHandle
+	RangeDel	BlockHandle
+	Properties	BlockHandle
+	MetaIndex	BlockHandle
+	Footer		BlockHandle
 }
 
 // Describe returns a description of the layout. If the verbose parameter is
@@ -1914,7 +1914,7 @@ func (l *Layout) Describe(
 ) {
 	type block struct {
 		BlockHandle
-		name string
+		name	string
 	}
 	var blocks []block
 

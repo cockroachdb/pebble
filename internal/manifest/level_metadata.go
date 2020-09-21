@@ -36,7 +36,7 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 // within a level of the LSM.
 type LevelFile struct {
 	*FileMetadata
-	slice LevelSlice
+	slice	LevelSlice
 }
 
 // Slice constructs a LevelSlice containing only this file.
@@ -54,9 +54,9 @@ func NewLevelSlice(files []*FileMetadata) LevelSlice {
 
 // LevelSlice contains a slice of the files within a level of the LSM.
 type LevelSlice struct {
-	files []*FileMetadata
-	start int
-	end   int
+	files	[]*FileMetadata
+	start	int
+	end	int
 }
 
 // Each invokes fn for each element in the slice.
@@ -75,9 +75,9 @@ func (ls LevelSlice) Empty() bool {
 // Iter constructs a LevelIterator that iterates over the slice.
 func (ls LevelSlice) Iter() LevelIterator {
 	return LevelIterator{
-		files: ls.files,
-		start: ls.start,
-		end:   ls.end,
+		files:	ls.files,
+		start:	ls.start,
+		end:	ls.end,
 	}
 }
 
@@ -105,32 +105,32 @@ func (ls LevelSlice) SizeSum() uint64 {
 // calling resliceFunc.
 func (ls LevelSlice) Reslice(resliceFunc func(start, end *LevelIterator)) LevelSlice {
 	start := LevelIterator{
-		files: ls.files,
-		cur:   ls.start,
-		start: 0,
-		end:   len(ls.files),
+		files:	ls.files,
+		cur:	ls.start,
+		start:	0,
+		end:	len(ls.files),
 	}
 	end := LevelIterator{
-		files: ls.files,
-		cur:   ls.end - 1,
-		start: 0,
-		end:   len(ls.files),
+		files:	ls.files,
+		cur:	ls.end - 1,
+		start:	0,
+		end:	len(ls.files),
 	}
 	resliceFunc(&start, &end)
 	return LevelSlice{
-		files: ls.files,
-		start: start.cur,
-		end:   end.cur + 1,
+		files:	ls.files,
+		start:	start.cur,
+		end:	end.cur + 1,
 	}
 }
 
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
 // empty iterator.
 type LevelIterator struct {
-	files []*FileMetadata
-	cur   int
-	start int
-	end   int
+	files	[]*FileMetadata
+	cur	int
+	start	int
+	end	int
 }
 
 // Clone copies the iterator, returning an independent iterator at the same
@@ -222,11 +222,11 @@ func (i LevelIterator) Take() LevelFile {
 		panic("Take called on invalid LevelIterator")
 	}
 	return LevelFile{
-		FileMetadata: m,
+		FileMetadata:	m,
 		slice: LevelSlice{
-			files: i.files,
-			start: i.cur,
-			end:   i.cur + 1,
+			files:	i.files,
+			start:	i.cur,
+			end:	i.cur + 1,
 		},
 	}
 }

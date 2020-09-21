@@ -22,15 +22,15 @@ func uvarintLen(v uint32) int {
 }
 
 type blockWriter struct {
-	restartInterval int
-	nEntries        int
-	nextRestart     int
-	buf             []byte
-	restarts        []uint32
-	curKey          []byte
-	curValue        []byte
-	prevKey         []byte
-	tmp             [4]byte
+	restartInterval	int
+	nEntries	int
+	nextRestart	int
+	buf		[]byte
+	restarts	[]uint32
+	curKey		[]byte
+	curValue	[]byte
+	prevKey		[]byte
+	tmp		[4]byte
 }
 
 func (w *blockWriter) store(keySize int, value []byte) {
@@ -156,11 +156,11 @@ func (w *blockWriter) estimatedSize() int {
 }
 
 type blockEntry struct {
-	offset   int32
-	keyStart int32
-	keyEnd   int32
-	valStart int32
-	valSize  int32
+	offset		int32
+	keyStart	int32
+	keyEnd		int32
+	valStart	int32
+	valSize		int32
 }
 
 // blockIter is an iterator over a single block of data.
@@ -179,13 +179,13 @@ type blockEntry struct {
 // key stability guarantee is sufficient for range tombstones as they are
 // always encoded in a single block.
 type blockIter struct {
-	cmp Compare
+	cmp	Compare
 	// offset is the byte index that marks where the current key/value is
 	// encoded in the block.
-	offset int32
+	offset	int32
 	// nextOffset is the byte index where the next key/value is encoded in the
 	// block.
-	nextOffset int32
+	nextOffset	int32
 	// A "restart point" in a block is a point where the full key is encoded,
 	// instead of just having a suffix of the key encoded. See readEntry() for
 	// how prefix compression of keys works. Keys in between two restart points
@@ -198,29 +198,29 @@ type blockIter struct {
 	// 4 bytes of the block as a uint32 (i.ptr[len(block)-4:]). i.restarts can
 	// therefore be seen as the point where data in the block ends, and a list
 	// of offsets of all restart points begins.
-	restarts int32
+	restarts	int32
 	// Number of restart points in this block. Encoded at the end of the block
 	// as a uint32.
-	numRestarts  int32
-	globalSeqNum uint64
-	ptr          unsafe.Pointer
-	data         []byte
+	numRestarts	int32
+	globalSeqNum	uint64
+	ptr		unsafe.Pointer
+	data		[]byte
 	// key contains the raw key the iterator is currently pointed at. This may
 	// point directly to data stored in the block (for a key which has no prefix
 	// compression), to fullKey (for a prefix compressed key), or to a slice of
 	// data stored in cachedBuf (during reverse iteration).
-	key []byte
+	key	[]byte
 	// fullKey is a buffer used for key prefix decompression.
-	fullKey []byte
+	fullKey	[]byte
 	// val contains the value the iterator is currently pointed at. If non-nil,
 	// this points to a slice of the block data.
-	val []byte
+	val	[]byte
 	// ikey contains the decoded InternalKey the iterator is currently pointed
 	// at. Note that the memory backing ikey.UserKey is either data stored
 	// directly in the block, fullKey, or cachedBuf. The key stability guarantee
 	// for blocks built with a restart interval of 1 is achieved by having
 	// ikey.UserKey always point to data stored directly in the block.
-	ikey InternalKey
+	ikey	InternalKey
 	// cached and cachedBuf are used during reverse iteration. They are needed
 	// because we can't perform prefix decoding in reverse, only in the forward
 	// direction. In order to iterate in reverse, we decode and cache the entries
@@ -235,9 +235,9 @@ type blockIter struct {
 	// For a block encoded with a restart interval of 1, cached and cachedBuf
 	// will not be used as there are no prefix compressed entries between the
 	// restart points.
-	cached      []blockEntry
-	cachedBuf   []byte
-	cacheHandle cache.Handle
+	cached		[]blockEntry
+	cachedBuf	[]byte
+	cacheHandle	cache.Handle
 }
 
 // blockIter implements the base.InternalIterator interface.
@@ -286,9 +286,9 @@ func (i *blockIter) invalidate() {
 
 func (i *blockIter) resetForReuse() blockIter {
 	return blockIter{
-		fullKey:   i.fullKey[:0],
-		cached:    i.cached[:0],
-		cachedBuf: i.cachedBuf[:0],
+		fullKey:	i.fullKey[:0],
+		cached:		i.cached[:0],
+		cachedBuf:	i.cachedBuf[:0],
 	}
 }
 
@@ -404,11 +404,11 @@ func (i *blockIter) cacheEntry() {
 	}
 
 	i.cached = append(i.cached, blockEntry{
-		offset:   i.offset,
-		keyStart: int32(len(i.cachedBuf)),
-		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
-		valStart: valStart,
-		valSize:  valSize,
+		offset:		i.offset,
+		keyStart:	int32(len(i.cachedBuf)),
+		keyEnd:		int32(len(i.cachedBuf) + len(i.key)),
+		valStart:	valStart,
+		valSize:	valSize,
 	})
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
@@ -432,7 +432,7 @@ func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1)	// avoid overflow when computing h
 			// index ≤ h < upper
 			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
 			// For a restart point, there are 0 bytes shared with the previous key.
@@ -488,9 +488,9 @@ func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
 			}
 
 			if base.InternalCompare(i.cmp, ikey, k) >= 0 {
-				index = h + 1 // preserves f(i-1) == false
+				index = h + 1	// preserves f(i-1) == false
 			} else {
-				upper = h // preserves f(j) == true
+				upper = h	// preserves f(j) == true
 			}
 		}
 		// index == upper, f(index-1) == false, and f(upper) (= f(index)) == true
@@ -543,7 +543,7 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1)	// avoid overflow when computing h
 			// index ≤ h < upper
 			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
 			// For a restart point, there are 0 bytes shared with the previous key.
@@ -599,9 +599,9 @@ func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
 			}
 
 			if base.InternalCompare(i.cmp, ikey, k) > 0 {
-				index = h + 1 // preserves f(i-1) == false
+				index = h + 1	// preserves f(i-1) == false
 			} else {
-				upper = h // preserves f(j) == true
+				upper = h	// preserves f(j) == true
 			}
 		}
 		// index == upper, f(index-1) == false, and f(upper) (= f(index)) == true
@@ -773,13 +773,13 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1)	// avoid overflow when computing h
 			// index ≤ h < upper
 			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
 			if offset < targetOffset {
-				index = h + 1 // preserves f(i-1) == false
+				index = h + 1	// preserves f(i-1) == false
 			} else {
-				upper = h // preserves f(j) == true
+				upper = h	// preserves f(j) == true
 			}
 		}
 		// index == upper, f(index-1) == false, and f(upper) (= f(index)) == true
@@ -823,7 +823,7 @@ func (i *blockIter) Valid() bool {
 // Error implements internalIterator.Error, as documented in the pebble
 // package.
 func (i *blockIter) Error() error {
-	return nil // infallible
+	return nil	// infallible
 }
 
 // Close implements internalIterator.Close, as documented in the pebble

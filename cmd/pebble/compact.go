@@ -26,20 +26,20 @@ import (
 )
 
 var compactCmd = &cobra.Command{
-	Use:   "compact",
-	Short: "compaction benchmarks",
+	Use:	"compact",
+	Short:	"compaction benchmarks",
 }
 
 var compactRunConfig struct {
-	trace   bool
-	profile bool
+	trace	bool
+	profile	bool
 }
 
 var compactRunCmd = &cobra.Command{
-	Use:   "run <workload dir>",
-	Short: "run a compaction benchmark through ingesting sstables",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runReplay,
+	Use:	"run <workload dir>",
+	Short:	"run a compaction benchmark through ingesting sstables",
+	Args:	cobra.ExactArgs(1),
+	RunE:	runReplay,
 }
 
 func init() {
@@ -52,9 +52,9 @@ func init() {
 const numLevels = 7
 
 type compactionTracker struct {
-	mu         sync.Mutex
-	activeJobs map[int]bool
-	waiter     chan struct{}
+	mu		sync.Mutex
+	activeJobs	map[int]bool
+	waiter		chan struct{}
 }
 
 func (t *compactionTracker) countActive() (int, chan struct{}) {
@@ -97,18 +97,18 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 	cache := pebble.NewCache(cacheSize)
 	defer cache.Unref()
 	opts := &pebble.Options{
-		Cache:                       cache,
-		Comparer:                    mvccComparer,
-		MemTableSize:                64 << 20,
-		MemTableStopWritesThreshold: 4,
-		MaxConcurrentCompactions:    2,
-		L0CompactionThreshold:       2,
-		L0StopWritesThreshold:       400,
-		LBaseMaxBytes:               64 << 20, // 64 MB
+		Cache:				cache,
+		Comparer:			mvccComparer,
+		MemTableSize:			64 << 20,
+		MemTableStopWritesThreshold:	4,
+		MaxConcurrentCompactions:	2,
+		L0CompactionThreshold:		2,
+		L0StopWritesThreshold:		400,
+		LBaseMaxBytes:			64 << 20,	// 64 MB
 		Levels: []pebble.LevelOptions{{
 			BlockSize: 32 << 10,
 		}},
-		Merger: fauxMVCCMerger,
+		Merger:	fauxMVCCMerger,
 	}
 	opts.EnsureDefaults()
 
@@ -310,8 +310,8 @@ func runReplay(cmd *cobra.Command, args []string) error {
 				verbosef("Ingesting %d tables: table %d/%d %s (%s)\n", len(li.ve.NewFiles), replayedCount,
 					workloadTableCount, name, humanize.Int64(int64(f.Meta.Size)))
 				tables = append(tables, replay.Table{
-					Path:         tablePath,
-					FileMetadata: f.Meta,
+					Path:		tablePath,
+					FileMetadata:	f.Meta,
 				})
 			}
 			if err := rd.Ingest(tables); err != nil {

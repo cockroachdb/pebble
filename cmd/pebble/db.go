@@ -45,25 +45,25 @@ type batch interface {
 // Adapters for Pebble. Since the interfaces above are based on Pebble's
 // interfaces, it can simply forward calls for everything.
 type pebbleDB struct {
-	d       *pebble.DB
-	ballast []byte
+	d	*pebble.DB
+	ballast	[]byte
 }
 
 func newPebbleDB(dir string) DB {
 	cache := pebble.NewCache(cacheSize)
 	defer cache.Unref()
 	opts := &pebble.Options{
-		Cache:                       cache,
-		Comparer:                    mvccComparer,
-		DisableWAL:                  disableWAL,
-		L0CompactionThreshold:       2,
-		L0StopWritesThreshold:       1000,
-		LBaseMaxBytes:               64 << 20, // 64 MB
-		Levels:                      make([]pebble.LevelOptions, 7),
-		MaxConcurrentCompactions:    3,
-		MaxOpenFiles:                16384,
-		MemTableSize:                64 << 20,
-		MemTableStopWritesThreshold: 4,
+		Cache:				cache,
+		Comparer:			mvccComparer,
+		DisableWAL:			disableWAL,
+		L0CompactionThreshold:		2,
+		L0StopWritesThreshold:		1000,
+		LBaseMaxBytes:			64 << 20,	// 64 MB
+		Levels:				make([]pebble.LevelOptions, 7),
+		MaxConcurrentCompactions:	3,
+		MaxOpenFiles:			16384,
+		MemTableSize:			64 << 20,
+		MemTableStopWritesThreshold:	4,
 		Merger: &pebble.Merger{
 			Name: "cockroach_merge_operator",
 		},
@@ -72,8 +72,8 @@ func newPebbleDB(dir string) DB {
 
 	for i := 0; i < len(opts.Levels); i++ {
 		l := &opts.Levels[i]
-		l.BlockSize = 32 << 10       // 32 KB
-		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.BlockSize = 32 << 10		// 32 KB
+		l.IndexBlockSize = 256 << 10	// 256 KB
 		l.FilterPolicy = bloom.FilterPolicy(10)
 		l.FilterType = pebble.TableFilter
 		if i > 0 {
@@ -99,8 +99,8 @@ func newPebbleDB(dir string) DB {
 		log.Fatal(err)
 	}
 	return pebbleDB{
-		d:       p,
-		ballast: make([]byte, 1<<30),
+		d:		p,
+		ballast:	make([]byte, 1<<30),
 	}
 }
 

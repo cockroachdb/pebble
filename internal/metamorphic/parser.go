@@ -16,8 +16,8 @@ import (
 )
 
 type methodInfo struct {
-	constructor func() op
-	validTags   uint32
+	constructor	func() op
+	validTags	uint32
 }
 
 func makeMethod(i interface{}, tags ...objTag) *methodInfo {
@@ -31,7 +31,7 @@ func makeMethod(i interface{}, tags ...objTag) *methodInfo {
 		constructor: func() op {
 			return reflect.New(t).Interface().(op)
 		},
-		validTags: validTags,
+		validTags:	validTags,
 	}
 }
 
@@ -99,38 +99,38 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 }
 
 var methods = map[string]*methodInfo{
-	"Apply":           makeMethod(applyOp{}, dbTag, batchTag),
-	"Checkpoint":      makeMethod(checkpointOp{}, dbTag),
-	"Close":           makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
-	"Commit":          makeMethod(batchCommitOp{}, batchTag),
-	"Compact":         makeMethod(compactOp{}, dbTag),
-	"Delete":          makeMethod(deleteOp{}, dbTag, batchTag),
-	"DeleteRange":     makeMethod(deleteRangeOp{}, dbTag, batchTag),
-	"First":           makeMethod(iterFirstOp{}, iterTag),
-	"Flush":           makeMethod(flushOp{}, dbTag),
-	"Get":             makeMethod(getOp{}, dbTag, batchTag, snapTag),
-	"Ingest":          makeMethod(ingestOp{}, dbTag),
-	"Init":            makeMethod(initOp{}, dbTag),
-	"Last":            makeMethod(iterLastOp{}, iterTag),
-	"Merge":           makeMethod(mergeOp{}, dbTag, batchTag),
-	"NewBatch":        makeMethod(newBatchOp{}, dbTag),
-	"NewIndexedBatch": makeMethod(newIndexedBatchOp{}, dbTag),
-	"NewIter":         makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
-	"NewSnapshot":     makeMethod(newSnapshotOp{}, dbTag),
-	"Next":            makeMethod(iterNextOp{}, iterTag),
-	"Prev":            makeMethod(iterPrevOp{}, iterTag),
-	"Restart":         makeMethod(dbRestartOp{}, dbTag),
-	"SeekGE":          makeMethod(iterSeekGEOp{}, iterTag),
-	"SeekLT":          makeMethod(iterSeekLTOp{}, iterTag),
-	"SeekPrefixGE":    makeMethod(iterSeekPrefixGEOp{}, iterTag),
-	"Set":             makeMethod(setOp{}, dbTag, batchTag),
-	"SetBounds":       makeMethod(iterSetBoundsOp{}, iterTag),
+	"Apply":		makeMethod(applyOp{}, dbTag, batchTag),
+	"Checkpoint":		makeMethod(checkpointOp{}, dbTag),
+	"Close":		makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
+	"Commit":		makeMethod(batchCommitOp{}, batchTag),
+	"Compact":		makeMethod(compactOp{}, dbTag),
+	"Delete":		makeMethod(deleteOp{}, dbTag, batchTag),
+	"DeleteRange":		makeMethod(deleteRangeOp{}, dbTag, batchTag),
+	"First":		makeMethod(iterFirstOp{}, iterTag),
+	"Flush":		makeMethod(flushOp{}, dbTag),
+	"Get":			makeMethod(getOp{}, dbTag, batchTag, snapTag),
+	"Ingest":		makeMethod(ingestOp{}, dbTag),
+	"Init":			makeMethod(initOp{}, dbTag),
+	"Last":			makeMethod(iterLastOp{}, iterTag),
+	"Merge":		makeMethod(mergeOp{}, dbTag, batchTag),
+	"NewBatch":		makeMethod(newBatchOp{}, dbTag),
+	"NewIndexedBatch":	makeMethod(newIndexedBatchOp{}, dbTag),
+	"NewIter":		makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
+	"NewSnapshot":		makeMethod(newSnapshotOp{}, dbTag),
+	"Next":			makeMethod(iterNextOp{}, iterTag),
+	"Prev":			makeMethod(iterPrevOp{}, iterTag),
+	"Restart":		makeMethod(dbRestartOp{}, dbTag),
+	"SeekGE":		makeMethod(iterSeekGEOp{}, iterTag),
+	"SeekLT":		makeMethod(iterSeekLTOp{}, iterTag),
+	"SeekPrefixGE":		makeMethod(iterSeekPrefixGEOp{}, iterTag),
+	"Set":			makeMethod(setOp{}, dbTag, batchTag),
+	"SetBounds":		makeMethod(iterSetBoundsOp{}, iterTag),
 }
 
 type parser struct {
-	fset *token.FileSet
-	s    scanner.Scanner
-	objs map[objID]bool
+	fset	*token.FileSet
+	s	scanner.Scanner
+	objs	map[objID]bool
 }
 
 func parse(src []byte) (_ []op, err error) {
@@ -138,8 +138,8 @@ func parse(src []byte) (_ []op, err error) {
 	// syntax. We arranged for the textual format of ops (e.g. op.String()) to
 	// look like Go which allows us to use the Go scanner for parsing.
 	p := &parser{
-		fset: token.NewFileSet(),
-		objs: map[objID]bool{makeObjID(dbTag, 0): true},
+		fset:	token.NewFileSet(),
+		objs:	map[objID]bool{makeObjID(dbTag, 0): true},
 	}
 	file := p.fset.AddFile("", -1, len(src))
 	p.s.Init(file, src, nil /* no error handler */, 0)

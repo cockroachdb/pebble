@@ -38,23 +38,23 @@ import (
 // - Add support for Writer.LogData
 
 var (
-	dir = flag.String("dir", "_meta",
+	dir	= flag.String("dir", "_meta",
 		"the directory storing test state")
-	disk = flag.Bool("disk", false,
+	disk	= flag.Bool("disk", false,
 		"whether to use an in-mem DB or on-disk (in-mem is significantly faster)")
 	// TODO: default error rate to a non-zero value
-	errorRate = flag.Float64("error-rate", 0.0,
+	errorRate	= flag.Float64("error-rate", 0.0,
 		"rate of errors injected into filesystem operations (0 ≤ r < 1)")
-	failRE = flag.String("fail", "",
+	failRE	= flag.String("fail", "",
 		"fail the test if the supplied regular expression matches the output")
-	traceFile = flag.String("trace-file", "",
+	traceFile	= flag.String("trace-file", "",
 		"write an execution trace to `<run-dir>/file`")
-	keep = flag.Bool("keep", false,
+	keep	= flag.Bool("keep", false,
 		"keep the DB directory even on successful runs")
-	seed = flag.Uint64("seed", 0,
+	seed	= flag.Uint64("seed", 0,
 		"a pseudorandom number generator seed")
-	ops    = randvar.NewFlag("uniform:5000-10000")
-	runDir = flag.String("run-dir", "",
+	ops	= randvar.NewFlag("uniform:5000-10000")
+	runDir	= flag.String("run-dir", "",
 		"the specific configuration to (re-)run (used for post-mortem debugging)")
 )
 
@@ -285,9 +285,9 @@ func TestMeta(t *testing.T) {
 	for i := 1; i < len(names); i++ {
 		lines := readHistory(names[i])
 		diff := difflib.UnifiedDiff{
-			A:       base,
-			B:       lines,
-			Context: 5,
+			A:		base,
+			B:		lines,
+			Context:	5,
 		}
 		text, err := difflib.GetUnifiedDiffString(diff)
 		require.NoError(t, err)

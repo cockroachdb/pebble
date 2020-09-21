@@ -34,13 +34,13 @@ var testKeyValuePairs = []string{
 }
 
 type fakeIter struct {
-	lower    []byte
-	upper    []byte
-	keys     []InternalKey
-	vals     [][]byte
-	index    int
-	valid    bool
-	closeErr error
+	lower		[]byte
+	upper		[]byte
+	keys		[]InternalKey
+	vals		[][]byte
+	index		int
+	valid		bool
+	closeErr	error
 }
 
 // fakeIter implements the base.InternalIterator interface.
@@ -61,10 +61,10 @@ func newFakeIterator(closeErr error, keys ...string) *fakeIter {
 		ikeys[i] = fakeIkey(k)
 	}
 	return &fakeIter{
-		keys:     ikeys,
-		index:    0,
-		valid:    len(ikeys) > 0,
-		closeErr: closeErr,
+		keys:		ikeys,
+		index:		0,
+		valid:		len(ikeys) > 0,
+		closeErr:	closeErr,
 	}
 }
 
@@ -210,9 +210,9 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 // invalidatingIter tests unsafe key/value slice reuse by modifying the last
 // returned key/value to all 1s.
 type invalidatingIter struct {
-	iter      internalIterator
-	lastKey   *InternalKey
-	lastValue []byte
+	iter		internalIterator
+	lastKey		*InternalKey
+	lastValue	[]byte
 }
 
 func newInvalidatingIter(iter internalIterator) *invalidatingIter {
@@ -300,9 +300,9 @@ func testIterator(
 	// so that the combined key/value pair order is the same whether the
 	// combined iterator is concatenating or merging.
 	testCases := []struct {
-		desc  string
-		iters []internalIterator
-		want  string
+		desc	string
+		iters	[]internalIterator
+		want	string
 	}{
 		{
 			"one sub-iterator",
@@ -410,20 +410,20 @@ func TestIterator(t *testing.T) {
 		split := func(a []byte) int { return len(a) }
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		iter := newMergingIter(nil /* logger */, cmp, &fakeIter{
-			lower: opts.GetLowerBound(),
-			upper: opts.GetUpperBound(),
-			keys:  keys,
-			vals:  vals,
+			lower:	opts.GetLowerBound(),
+			upper:	opts.GetUpperBound(),
+			keys:	keys,
+			vals:	vals,
 		})
 		iter.snapshot = seqNum
 		iter.elideRangeTombstones = true
 		return &Iterator{
-			opts:  opts,
-			cmp:   cmp,
-			equal: equal,
-			split: split,
-			merge: DefaultMerger.Merge,
-			iter:  newInvalidatingIter(iter),
+			opts:	opts,
+			cmp:	cmp,
+			equal:	equal,
+			split:	split,
+			merge:	DefaultMerger.Merge,
+			iter:	newInvalidatingIter(iter),
 		}
 	}
 
@@ -558,8 +558,8 @@ func TestIteratorTableFilter(t *testing.T) {
 			// sequence number. So we have to use a snapshot with a very large
 			// sequence number, otherwise the DB appears empty.
 			snap := Snapshot{
-				db:     d,
-				seqNum: InternalKeySeqNumMax,
+				db:	d,
+				seqNum:	InternalKeySeqNumMax,
 			}
 			iter := snap.NewIter(iterOpts)
 			defer iter.Close()
@@ -632,8 +632,8 @@ func TestIteratorNextPrev(t *testing.T) {
 			}
 
 			snap := Snapshot{
-				db:     d,
-				seqNum: seqNum,
+				db:	d,
+				seqNum:	seqNum,
 			}
 			iter := snap.NewIter(nil)
 			defer iter.Close()
@@ -648,9 +648,9 @@ func TestIteratorNextPrev(t *testing.T) {
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
-		cmp:   DefaultComparer.Compare,
-		equal: DefaultComparer.Equal,
-		iter:  m.newIter(nil),
+		cmp:	DefaultComparer.Compare,
+		equal:	DefaultComparer.Equal,
+		iter:	m.newIter(nil),
 	}
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -664,9 +664,9 @@ func BenchmarkIteratorSeekGE(b *testing.B) {
 func BenchmarkIteratorNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		cmp:   DefaultComparer.Compare,
-		equal: DefaultComparer.Equal,
-		iter:  m.newIter(nil),
+		cmp:	DefaultComparer.Compare,
+		equal:	DefaultComparer.Equal,
+		iter:	m.newIter(nil),
 	}
 
 	b.ResetTimer()
@@ -681,9 +681,9 @@ func BenchmarkIteratorNext(b *testing.B) {
 func BenchmarkIteratorPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		cmp:   DefaultComparer.Compare,
-		equal: DefaultComparer.Equal,
-		iter:  m.newIter(nil),
+		cmp:	DefaultComparer.Compare,
+		equal:	DefaultComparer.Equal,
+		iter:	m.newIter(nil),
 	}
 
 	b.ResetTimer()

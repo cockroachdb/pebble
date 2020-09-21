@@ -134,16 +134,16 @@ func TestLevelIter(t *testing.T) {
 }
 
 type levelIterTest struct {
-	cmp     base.Comparer
-	mem     vfs.FS
-	readers []*sstable.Reader
-	metas   []*fileMetadata
+	cmp	base.Comparer
+	mem	vfs.FS
+	readers	[]*sstable.Reader
+	metas	[]*fileMetadata
 }
 
 func newLevelIterTest() *levelIterTest {
 	lt := &levelIterTest{
-		cmp: *DefaultComparer,
-		mem: vfs.NewMem(),
+		cmp:	*DefaultComparer,
+		mem:	vfs.NewMem(),
 	}
 	lt.cmp.Split = func(a []byte) int { return len(a) }
 	return lt
@@ -183,13 +183,13 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 
 	fp := bloom.FilterPolicy(10)
 	w := sstable.NewWriter(f0, sstable.WriterOptions{
-		Comparer:     &lt.cmp,
-		FilterPolicy: fp,
+		Comparer:	&lt.cmp,
+		FilterPolicy:	fp,
 	})
 	var tombstones []rangedel.Tombstone
 	f := rangedel.Fragmenter{
-		Cmp:    lt.cmp.Compare,
-		Format: lt.cmp.FormatKey,
+		Cmp:	lt.cmp.Compare,
+		Format:	lt.cmp.FormatKey,
 		Emit: func(fragmented []rangedel.Tombstone) {
 			tombstones = append(tombstones, fragmented...)
 		},
@@ -235,9 +235,9 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	}
 	lt.readers = append(lt.readers, r)
 	lt.metas = append(lt.metas, &fileMetadata{
-		FileNum:  fileNum,
-		Smallest: meta.Smallest(lt.cmp.Compare),
-		Largest:  meta.Largest(lt.cmp.Compare),
+		FileNum:	fileNum,
+		Smallest:	meta.Smallest(lt.cmp.Compare),
+		Largest:	meta.Largest(lt.cmp.Compare),
 	})
 
 	var buf bytes.Buffer
@@ -277,7 +277,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 // perform parallel operations on both both a levelIter and rangeDelIter.
 type levelIterTestIter struct {
 	*levelIter
-	rangeDelIter internalIterator
+	rangeDelIter	internalIterator
 }
 
 func (i *levelIterTestIter) rangeDelSeek(
@@ -297,8 +297,8 @@ func (i *levelIterTestIter) rangeDelSeek(
 		}, nil
 	}
 	return &InternalKey{
-		UserKey: []byte(fmt.Sprintf("%s/%s", ikey.UserKey, tombstone)),
-		Trailer: ikey.Trailer,
+		UserKey:	[]byte(fmt.Sprintf("%s/%s", ikey.UserKey, tombstone)),
+		Trailer:	ikey.Trailer,
 	}, val
 }
 
@@ -364,9 +364,9 @@ func buildLevelIterTables(
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
 		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
-			BlockRestartInterval: restartInterval,
-			BlockSize:            blockSize,
-			Compression:          NoCompression,
+			BlockRestartInterval:	restartInterval,
+			BlockSize:		blockSize,
+			Compression:		NoCompression,
 		})
 	}
 

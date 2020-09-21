@@ -18,7 +18,7 @@ import (
 
 type syncErrorFile struct {
 	vfs.File
-	err error
+	err	error
 }
 
 func (f syncErrorFile) Sync() error {
@@ -157,8 +157,8 @@ func TestSyncError(t *testing.T) {
 }
 
 type syncFile struct {
-	writePos int64
-	syncPos  int64
+	writePos	int64
+	syncPos		int64
 }
 
 func (f *syncFile) Write(buf []byte) (int, error) {

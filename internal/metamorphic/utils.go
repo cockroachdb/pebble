@@ -15,7 +15,7 @@ import (
 type objTag uint8
 
 const (
-	dbTag objTag = iota + 1
+	dbTag	objTag	= iota + 1
 	batchTag
 	iterTag
 	snapTag
@@ -56,9 +56,9 @@ func (i objID) String() string {
 // element is required.
 type objIDSlice []objID
 
-func (s objIDSlice) Len() int           { return len(s) }
-func (s objIDSlice) Less(i, j int) bool { return s[i] < s[j] }
-func (s objIDSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s objIDSlice) Len() int		{ return len(s) }
+func (s objIDSlice) Less(i, j int) bool	{ return s[i] < s[j] }
+func (s objIDSlice) Swap(i, j int)	{ s[i], s[j] = s[j], s[i] }
 
 // Remove removes the specified integer from the set.
 //

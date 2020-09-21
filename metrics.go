@@ -34,42 +34,42 @@ type LevelMetrics struct {
 	// to the read amplification for the level. An empty level will have a
 	// sublevel count of 0, implying no read amplification. Only L0 will have
 	// a sublevel count other than 0 or 1.
-	Sublevels int32
+	Sublevels	int32
 	// The total number of files in the level.
-	NumFiles int64
+	NumFiles	int64
 	// The total size in bytes of the files in the level.
-	Size int64
+	Size	int64
 	// The level's compaction score.
-	Score float64
+	Score	float64
 	// The number of incoming bytes from other levels read during
 	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
 	// the bytes written to the WAL.
-	BytesIn uint64
+	BytesIn	uint64
 	// The number of bytes ingested. The sibling metric for tables is
 	// TablesIngested.
-	BytesIngested uint64
+	BytesIngested	uint64
 	// The number of bytes moved into the level by a "move" compaction. The
 	// sibling metric for tables is TablesMoved.
-	BytesMoved uint64
+	BytesMoved	uint64
 	// The number of bytes read for compactions at the level. This includes bytes
 	// read from other levels (BytesIn), as well as bytes read for the level.
-	BytesRead uint64
+	BytesRead	uint64
 	// The number of bytes written during compactions. The sibling
 	// metric for tables is TablesCompacted. This metric may be summed
 	// with BytesFlushed to compute the total bytes written for the level.
-	BytesCompacted uint64
+	BytesCompacted	uint64
 	// The number of bytes written during flushes. The sibling
 	// metrics for tables is TablesFlushed. This metric is always
 	// zero for all levels other than L0.
-	BytesFlushed uint64
+	BytesFlushed	uint64
 	// The number of sstables compacted to this level.
-	TablesCompacted uint64
+	TablesCompacted	uint64
 	// The number of sstables flushed to this level.
-	TablesFlushed uint64
+	TablesFlushed	uint64
 	// The number of sstables ingested into the level.
-	TablesIngested uint64
+	TablesIngested	uint64
 	// The number of sstables moved to this level by a "move" compaction.
-	TablesMoved uint64
+	TablesMoved	uint64
 }
 
 // Add updates the counter metrics for the level.
@@ -123,67 +123,67 @@ func (m *LevelMetrics) format(buf *bytes.Buffer, score string) {
 // be testing that performs various operations on a DB and verifies that the
 // metrics reflect those operations.
 type Metrics struct {
-	BlockCache CacheMetrics
+	BlockCache	CacheMetrics
 
-	Compact struct {
+	Compact	struct {
 		// The total number of compactions.
-		Count int64
+		Count	int64
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
-		EstimatedDebt uint64
+		EstimatedDebt	uint64
 		// Number of bytes present in sstables being written by in-progress
 		// compactions. This value will be zero if there are no in-progress
 		// compactions.
-		InProgressBytes int64
+		InProgressBytes	int64
 	}
 
-	Flush struct {
+	Flush	struct {
 		// The total number of flushes.
 		Count int64
 	}
 
-	Filter FilterMetrics
+	Filter	FilterMetrics
 
-	Levels [numLevels]LevelMetrics
+	Levels	[numLevels]LevelMetrics
 
-	MemTable struct {
+	MemTable	struct {
 		// The number of bytes allocated by memtables and large (flushable)
 		// batches.
-		Size uint64
+		Size	uint64
 		// The count of memtables.
-		Count int64
+		Count	int64
 		// The number of bytes present in zombie memtables which are no longer
 		// referenced by the current DB state but are still in use by an iterator.
-		ZombieSize uint64
+		ZombieSize	uint64
 		// The count of zombie memtables.
-		ZombieCount int64
+		ZombieCount	int64
 	}
 
-	Table struct {
+	Table	struct {
 		// The number of bytes present in zombie tables which are no longer
 		// referenced by the current DB state but are still in use by an iterator.
-		ZombieSize uint64
+		ZombieSize	uint64
 		// The count of zombie tables.
-		ZombieCount int64
+		ZombieCount	int64
 	}
 
-	TableCache CacheMetrics
+	TableCache	CacheMetrics
 
 	// Count of the number of open sstable iterators.
-	TableIters int64
+	TableIters	int64
 
-	WAL struct {
+	WAL	struct {
 		// Number of live WAL files.
-		Files int64
+		Files	int64
 		// Number of obsolete WAL files.
-		ObsoleteFiles int64
+		ObsoleteFiles	int64
 		// Size of the live data in the WAL files. Note that with WAL file
 		// recycling this is less than the actual on-disk size of the WAL files.
-		Size uint64
+		Size	uint64
 		// Number of logical bytes written to the WAL.
-		BytesIn uint64
+		BytesIn	uint64
 		// Number of bytes written to the WAL.
-		BytesWritten uint64
+		BytesWritten	uint64
 	}
 }
 

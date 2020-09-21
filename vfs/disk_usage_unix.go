@@ -6,9 +6,7 @@
 
 package vfs
 
-import (
-	"golang.org/x/sys/unix"
-)
+import "golang.org/x/sys/unix"
 
 func (defaultFS) GetFreeSpace(path string) (uint64, error) {
 	stat := unix.Statfs_t{}

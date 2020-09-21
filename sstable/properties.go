@@ -58,88 +58,88 @@ func init() {
 type Properties struct {
 	// ID of column family for this SST file, corresponding to the CF identified
 	// by column_family_name.
-	ColumnFamilyID uint64 `prop:"rocksdb.column.family.id"`
+	ColumnFamilyID	uint64	`prop:"rocksdb.column.family.id"`
 	// Name of the column family with which this SST file is associated. Empty if
 	// the column family is unknown.
-	ColumnFamilyName string `prop:"rocksdb.column.family.name"`
+	ColumnFamilyName	string	`prop:"rocksdb.column.family.name"`
 	// The name of the comparer used in this table.
-	ComparerName string `prop:"rocksdb.comparator"`
+	ComparerName	string	`prop:"rocksdb.comparator"`
 	// The compression algorithm used to compress blocks.
-	CompressionName string `prop:"rocksdb.compression"`
+	CompressionName	string	`prop:"rocksdb.compression"`
 	// The compression options used to compress blocks.
-	CompressionOptions string `prop:"rocksdb.compression_options"`
+	CompressionOptions	string	`prop:"rocksdb.compression_options"`
 	// The time when the SST file was created. Since SST files are immutable,
 	// this is equivalent to last modified time.
-	CreationTime uint64 `prop:"rocksdb.creation.time"`
+	CreationTime	uint64	`prop:"rocksdb.creation.time"`
 	// The total size of all data blocks.
-	DataSize uint64 `prop:"rocksdb.data.size"`
+	DataSize	uint64	`prop:"rocksdb.data.size"`
 	// The external sstable version format. Version 2 is the one RocksDB has been
 	// using since 5.13. RocksDB only uses the global sequence number for an
 	// sstable if this property has been set.
-	ExternalFormatVersion uint32 `prop:"rocksdb.external_sst_file.version"`
+	ExternalFormatVersion	uint32	`prop:"rocksdb.external_sst_file.version"`
 	// Actual SST file creation time. 0 means unknown.
-	FileCreationTime uint64 `prop:"rocksdb.file.creation.time"`
+	FileCreationTime	uint64	`prop:"rocksdb.file.creation.time"`
 	// The name of the filter policy used in this table. Empty if no filter
 	// policy is used.
-	FilterPolicyName string `prop:"rocksdb.filter.policy"`
+	FilterPolicyName	string	`prop:"rocksdb.filter.policy"`
 	// The size of filter block.
-	FilterSize uint64 `prop:"rocksdb.filter.size"`
+	FilterSize	uint64	`prop:"rocksdb.filter.size"`
 	// If 0, key is variable length. Otherwise number of bytes for each key.
-	FixedKeyLen uint64 `prop:"rocksdb.fixed.key.length"`
+	FixedKeyLen	uint64	`prop:"rocksdb.fixed.key.length"`
 	// Format version, reserved for backward compatibility.
-	FormatVersion uint64 `prop:"rocksdb.format.version"`
+	FormatVersion	uint64	`prop:"rocksdb.format.version"`
 	// The global sequence number to use for all entries in the table. Present if
 	// the table was created externally and ingested whole.
-	GlobalSeqNum uint64 `prop:"rocksdb.external_sst_file.global_seqno"`
+	GlobalSeqNum	uint64	`prop:"rocksdb.external_sst_file.global_seqno"`
 	// Whether the index key is user key or an internal key.
-	IndexKeyIsUserKey uint64 `prop:"rocksdb.index.key.is.user.key"`
+	IndexKeyIsUserKey	uint64	`prop:"rocksdb.index.key.is.user.key"`
 	// Total number of index partitions if kTwoLevelIndexSearch is used.
-	IndexPartitions uint64 `prop:"rocksdb.index.partitions"`
+	IndexPartitions	uint64	`prop:"rocksdb.index.partitions"`
 	// The size of index block.
-	IndexSize uint64 `prop:"rocksdb.index.size"`
+	IndexSize	uint64	`prop:"rocksdb.index.size"`
 	// The index type. TODO(peter): add a more detailed description.
-	IndexType uint32 `prop:"rocksdb.block.based.table.index.type"`
+	IndexType	uint32	`prop:"rocksdb.block.based.table.index.type"`
 	// Whether delta encoding is used to encode the index values.
-	IndexValueIsDeltaEncoded uint64 `prop:"rocksdb.index.value.is.delta.encoded"`
+	IndexValueIsDeltaEncoded	uint64	`prop:"rocksdb.index.value.is.delta.encoded"`
 	// The name of the merger used in this table. Empty if no merger is used.
-	MergerName string `prop:"rocksdb.merge.operator"`
+	MergerName	string	`prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
-	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
+	NumDataBlocks	uint64	`prop:"rocksdb.num.data.blocks"`
 	// The number of deletion entries in this table, including both point and
 	// range deletions.
-	NumDeletions uint64 `prop:"rocksdb.deleted.keys"`
+	NumDeletions	uint64	`prop:"rocksdb.deleted.keys"`
 	// The number of entries in this table.
-	NumEntries uint64 `prop:"rocksdb.num.entries"`
+	NumEntries	uint64	`prop:"rocksdb.num.entries"`
 	// The number of merge operands in the table.
-	NumMergeOperands uint64 `prop:"rocksdb.merge.operands"`
+	NumMergeOperands	uint64	`prop:"rocksdb.merge.operands"`
 	// The number of range deletions in this table.
-	NumRangeDeletions uint64 `prop:"rocksdb.num.range-deletions"`
+	NumRangeDeletions	uint64	`prop:"rocksdb.num.range-deletions"`
 	// Timestamp of the earliest key. 0 if unknown.
-	OldestKeyTime uint64 `prop:"rocksdb.oldest.key.time"`
+	OldestKeyTime	uint64	`prop:"rocksdb.oldest.key.time"`
 	// The name of the prefix extractor used in this table. Empty if no prefix
 	// extractor is used.
-	PrefixExtractorName string `prop:"rocksdb.prefix.extractor.name"`
+	PrefixExtractorName	string	`prop:"rocksdb.prefix.extractor.name"`
 	// If filtering is enabled, was the filter created on the key prefix.
-	PrefixFiltering bool `prop:"rocksdb.block.based.table.prefix.filtering"`
+	PrefixFiltering	bool	`prop:"rocksdb.block.based.table.prefix.filtering"`
 	// A comma separated list of names of the property collectors used in this
 	// table.
-	PropertyCollectorNames string `prop:"rocksdb.property.collectors"`
+	PropertyCollectorNames	string	`prop:"rocksdb.property.collectors"`
 	// Total raw key size.
-	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
+	RawKeySize	uint64	`prop:"rocksdb.raw.key.size"`
 	// Total raw value size.
-	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
+	RawValueSize	uint64	`prop:"rocksdb.raw.value.size"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
-	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
+	TopLevelIndexSize	uint64	`prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
-	UserProperties map[string]string
+	UserProperties	map[string]string
 	// If filtering is enabled, was the filter created on the whole key.
-	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
+	WholeKeyFiltering	bool	`prop:"rocksdb.block.based.table.whole.key.filtering"`
 
 	// Loaded set indicating which fields have been loaded from disk. Indexed by
 	// the field's byte offset within the struct
 	// (reflect.StructField.Offset). Only set if the properties have been loaded
 	// from a file. Only exported for testing purposes.
-	Loaded map[uintptr]struct{}
+	Loaded	map[uintptr]struct{}
 }
 
 func (p *Properties) String() string {

@@ -4,9 +4,7 @@
 
 package tool
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestDB(t *testing.T) {
 	runTests(t, "testdata/db_*")

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	ycsbInsert = iota
+	ycsbInsert	= iota
 	ycsbRead
 	ycsbScan
 	ycsbReverseScan
@@ -32,19 +32,19 @@ const (
 )
 
 var ycsbConfig struct {
-	batch            *randvar.Flag
-	keys             string
-	initialKeys      int
-	prepopulatedKeys int
-	numOps           uint64
-	scans            *randvar.Flag
-	values           *randvar.BytesFlag
-	workload         string
+	batch			*randvar.Flag
+	keys			string
+	initialKeys		int
+	prepopulatedKeys	int
+	numOps			uint64
+	scans			*randvar.Flag
+	values			*randvar.BytesFlag
+	workload		string
 }
 
 var ycsbCmd = &cobra.Command{
-	Use:   "ycsb <dir>",
-	Short: "run customizable YCSB benchmark",
+	Use:	"ycsb <dir>",
+	Short:	"run customizable YCSB benchmark",
 	Long: `
 Run a customizable YCSB workload. The workload is specified by the --workload
 flag which can take either one of the standard workload mixes (A-F), or
@@ -78,8 +78,8 @@ Standard workloads:
   E:  95% scans   /   5% inserts
   F: 100% inserts
 `,
-	Args: cobra.ExactArgs(1),
-	RunE: runYcsb,
+	Args:	cobra.ExactArgs(1),
+	RunE:	runYcsb,
 }
 
 func init() {
@@ -121,27 +121,27 @@ func (w ycsbWeights) get(i int) float64 {
 }
 
 var ycsbWorkloads = map[string]ycsbWeights{
-	"A": ycsbWeights{
-		ycsbRead:   0.5,
-		ycsbUpdate: 0.5,
+	"A": {
+		ycsbRead:	0.5,
+		ycsbUpdate:	0.5,
 	},
-	"B": ycsbWeights{
-		ycsbRead:   0.95,
-		ycsbUpdate: 0.05,
+	"B": {
+		ycsbRead:	0.95,
+		ycsbUpdate:	0.05,
 	},
-	"C": ycsbWeights{
+	"C": {
 		ycsbRead: 1.0,
 	},
-	"D": ycsbWeights{
-		ycsbInsert: 0.05,
-		ycsbRead:   0.95,
+	"D": {
+		ycsbInsert:	0.05,
+		ycsbRead:	0.95,
 		// TODO(peter): default to skewed-latest distribution.
 	},
-	"E": ycsbWeights{
-		ycsbInsert: 0.05,
-		ycsbScan:   0.95,
+	"E": {
+		ycsbInsert:	0.05,
+		ycsbScan:	0.95,
 	},
-	"F": ycsbWeights{
+	"F": {
 		ycsbInsert: 1.0,
 		// TODO(peter): the real workload is read-modify-write.
 	},
@@ -228,36 +228,36 @@ func runYcsb(cmd *cobra.Command, args []string) error {
 	valueDist := ycsbConfig.values
 	y := newYcsb(weights, keyDist, batchDist, scanDist, valueDist)
 	runTest(args[0], test{
-		init: y.init,
-		tick: y.tick,
-		done: y.done,
+		init:	y.init,
+		tick:	y.tick,
+		done:	y.done,
 	})
 	return nil
 }
 
 type ycsbBuf struct {
-	rng      *rand.Rand
-	keyBuf   []byte
-	valueBuf []byte
-	keyNums  []uint64
+	rng		*rand.Rand
+	keyBuf		[]byte
+	valueBuf	[]byte
+	keyNums		[]uint64
 }
 
 type ycsb struct {
-	db           DB
-	writeOpts    *pebble.WriteOptions
-	weights      ycsbWeights
-	reg          *histogramRegistry
-	ops          *randvar.Weighted
-	keyDist      randvar.Dynamic
-	batchDist    randvar.Static
-	scanDist     randvar.Static
-	valueDist    *randvar.BytesFlag
-	readAmpCount uint64
-	readAmpSum   uint64
-	keyNum       *ackseq.S
-	numOps       uint64
-	limiter      *rate.Limiter
-	opsMap       map[string]int
+	db		DB
+	writeOpts	*pebble.WriteOptions
+	weights		ycsbWeights
+	reg		*histogramRegistry
+	ops		*randvar.Weighted
+	keyDist		randvar.Dynamic
+	batchDist	randvar.Static
+	scanDist	randvar.Static
+	valueDist	*randvar.BytesFlag
+	readAmpCount	uint64
+	readAmpSum	uint64
+	keyNum		*ackseq.S
+	numOps		uint64
+	limiter		*rate.Limiter
+	opsMap		map[string]int
 }
 
 func newYcsb(
@@ -267,14 +267,14 @@ func newYcsb(
 	valueDist *randvar.BytesFlag,
 ) *ycsb {
 	y := &ycsb{
-		reg:       newHistogramRegistry(),
-		weights:   weights,
-		ops:       randvar.NewWeighted(nil, weights...),
-		keyDist:   keyDist,
-		batchDist: batchDist,
-		scanDist:  scanDist,
-		valueDist: valueDist,
-		opsMap:    make(map[string]int),
+		reg:		newHistogramRegistry(),
+		weights:	weights,
+		ops:		randvar.NewWeighted(nil, weights...),
+		keyDist:	keyDist,
+		batchDist:	batchDist,
+		scanDist:	scanDist,
+		valueDist:	valueDist,
+		opsMap:		make(map[string]int),
 	}
 	y.writeOpts = pebble.Sync
 	if disableWAL {
@@ -282,11 +282,11 @@ func newYcsb(
 	}
 
 	ops := map[string]int{
-		"insert": ycsbInsert,
-		"read":   ycsbRead,
-		"rscan":  ycsbReverseScan,
-		"scan":   ycsbScan,
-		"update": ycsbUpdate,
+		"insert":	ycsbInsert,
+		"read":		ycsbRead,
+		"rscan":	ycsbReverseScan,
+		"scan":		ycsbScan,
+		"update":	ycsbUpdate,
 	}
 	for name, op := range ops {
 		w := y.weights.get(op)

@@ -14,29 +14,29 @@ import (
 func TestTombstone_Overlaps(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	testCases := []struct {
-		a    string
-		b    string
-		want int
+		a	string
+		b	string
+		want	int
 	}{
-		{ // Same start, end.
-			a:    "a.RANGEDEL.2:b",
-			b:    "a.RANGEDEL.1:b",
-			want: -1,
+		{	// Same start, end.
+			a:	"a.RANGEDEL.2:b",
+			b:	"a.RANGEDEL.1:b",
+			want:	-1,
 		},
-		{ // No overlap.
-			a:    "a.RANGEDEL.2:b",
-			b:    "b.RANGEDEL.1:c",
-			want: -1,
+		{	// No overlap.
+			a:	"a.RANGEDEL.2:b",
+			b:	"b.RANGEDEL.1:c",
+			want:	-1,
 		},
-		{ // Overlap with one range inside other.
-			a:    "a.RANGEDEL.2:d",
-			b:    "b.RANGEDEL.1:c",
-			want: 0,
+		{	// Overlap with one range inside other.
+			a:	"a.RANGEDEL.2:d",
+			b:	"b.RANGEDEL.1:c",
+			want:	0,
 		},
-		{ // Overlap with intersection.
-			a:    "a.RANGEDEL.2:c",
-			b:    "b.RANGEDEL.1:d",
-			want: 0,
+		{	// Overlap with intersection.
+			a:	"a.RANGEDEL.2:c",
+			b:	"b.RANGEDEL.1:d",
+			want:	0,
 		},
 	}
 	parse := func(s string) (start, end string) {
@@ -49,13 +49,13 @@ func TestTombstone_Overlaps(t *testing.T) {
 	for _, tc := range testCases {
 		start, end := parse(tc.a)
 		a := Tombstone{
-			Start: base.ParseInternalKey(start),
-			End:   []byte(end),
+			Start:	base.ParseInternalKey(start),
+			End:	[]byte(end),
 		}
 		start, end = parse(tc.b)
 		b := Tombstone{
-			Start: base.ParseInternalKey(start),
-			End:   []byte(end),
+			Start:	base.ParseInternalKey(start),
+			End:	[]byte(end),
 		}
 		got := a.Overlaps(cmp, b)
 		if got != tc.want {

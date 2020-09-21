@@ -20,10 +20,10 @@ import (
 // history also implements the pebble.Logger interface, outputting to a stdlib
 // logger, prefixing the log messages with "//"-style comments.
 type history struct {
-	err    atomic.Value
-	failRE *regexp.Regexp
-	log    *log.Logger
-	seq    int
+	err	atomic.Value
+	failRE	*regexp.Regexp
+	log	*log.Logger
+	seq	int
 }
 
 func newHistory(failRE string, writers ...io.Writer) *history {

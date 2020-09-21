@@ -4,9 +4,7 @@
 
 package tool
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestSSTable(t *testing.T) {
 	runTests(t, "testdata/sstable_*")

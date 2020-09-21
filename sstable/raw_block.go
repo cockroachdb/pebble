@@ -35,18 +35,18 @@ func (w *rawBlockWriter) add(key InternalKey, value []byte) {
 // reducing duplication is difficult due to the blockIter being performance
 // critical.
 type rawBlockIter struct {
-	cmp         Compare
-	offset      int32
-	nextOffset  int32
-	restarts    int32
-	numRestarts int32
-	ptr         unsafe.Pointer
-	data        []byte
-	key, val    []byte
-	ikey        InternalKey
-	cached      []blockEntry
-	cachedBuf   []byte
-	err         error
+	cmp		Compare
+	offset		int32
+	nextOffset	int32
+	restarts	int32
+	numRestarts	int32
+	ptr		unsafe.Pointer
+	data		[]byte
+	key, val	[]byte
+	ikey		InternalKey
+	cached		[]blockEntry
+	cachedBuf	[]byte
+	err		error
 }
 
 func newRawBlockIter(cmp Compare, block block) (*rawBlockIter, error) {
@@ -104,11 +104,11 @@ func (i *rawBlockIter) cacheEntry() {
 	}
 
 	i.cached = append(i.cached, blockEntry{
-		offset:   i.offset,
-		keyStart: int32(len(i.cachedBuf)),
-		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
-		valStart: valStart,
-		valSize:  valSize,
+		offset:		i.offset,
+		keyStart:	int32(len(i.cachedBuf)),
+		keyEnd:		int32(len(i.cachedBuf) + len(i.key)),
+		valStart:	valStart,
+		valSize:	valSize,
 	})
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }

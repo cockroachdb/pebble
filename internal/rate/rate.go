@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package rate provides a rate limiter.
-package rate // import "github.com/cockroachdb/pebble/internal/rate"
+package rate	// import "github.com/cockroachdb/pebble/internal/rate"
 
 import (
 	"context"
@@ -54,15 +54,15 @@ func Every(interval time.Duration) Limit {
 //
 // The methods AllowN, ReserveN, and WaitN consume n tokens.
 type Limiter struct {
-	limit Limit
-	burst int
+	limit	Limit
+	burst	int
 
-	mu     sync.Mutex
-	tokens float64
+	mu	sync.Mutex
+	tokens	float64
 	// last is the last time the limiter's tokens field was updated
-	last time.Time
+	last	time.Time
 	// lastEvent is the latest time of a rate-limited event (past or future)
-	lastEvent time.Time
+	lastEvent	time.Time
 }
 
 // Limit returns the maximum overall event rate.
@@ -84,8 +84,8 @@ func (lim *Limiter) Burst() int {
 // bursts of at most b tokens.
 func NewLimiter(r Limit, b int) *Limiter {
 	return &Limiter{
-		limit: r,
-		burst: b,
+		limit:	r,
+		burst:	b,
 	}
 }
 
@@ -104,12 +104,12 @@ func (lim *Limiter) AllowN(now time.Time, n int) bool {
 // A Reservation holds information about events that are permitted by a Limiter to happen after a delay.
 // A Reservation may be canceled, which may enable the Limiter to permit additional events.
 type Reservation struct {
-	ok        bool
-	lim       *Limiter
-	tokens    int
-	timeToAct time.Time
+	ok		bool
+	lim		*Limiter
+	tokens		int
+	timeToAct	time.Time
 	// This is the Limit at reservation time, it can change later.
-	limit Limit
+	limit	Limit
 }
 
 // OK returns whether the limiter can provide the requested number of tokens
@@ -299,10 +299,10 @@ func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duratio
 	if lim.limit == Inf {
 		lim.mu.Unlock()
 		return Reservation{
-			ok:        true,
-			lim:       lim,
-			tokens:    n,
-			timeToAct: now,
+			ok:		true,
+			lim:		lim,
+			tokens:		n,
+			timeToAct:	now,
 		}
 	}
 
@@ -322,9 +322,9 @@ func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duratio
 
 	// Prepare reservation
 	r := Reservation{
-		ok:    ok,
-		lim:   lim,
-		limit: lim.limit,
+		ok:	ok,
+		lim:	lim,
+		limit:	lim.limit,
 	}
 	if ok {
 		r.tokens = n

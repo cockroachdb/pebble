@@ -20,10 +20,10 @@ import (
 
 func TestSnapshotIndex(t *testing.T) {
 	testCases := []struct {
-		snapshots      []uint64
-		seq            uint64
-		expectedIndex  int
-		expectedSeqNum uint64
+		snapshots	[]uint64
+		seq		uint64
+		expectedIndex	int
+		expectedSeqNum	uint64
 	}{
 		{[]uint64{}, 1, 0, InternalKeySeqNumMax},
 		{[]uint64{1}, 0, 0, 1},

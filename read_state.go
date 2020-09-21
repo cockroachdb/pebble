@@ -19,10 +19,10 @@ import "sync/atomic"
 // than that without something like thread-local storage which isn't available
 // in Go.
 type readState struct {
-	db        *DB
-	refcnt    int32
-	current   *version
-	memtables flushableList
+	db		*DB
+	refcnt		int32
+	current		*version
+	memtables	flushableList
 }
 
 // ref adds a reference to the readState.
@@ -81,10 +81,10 @@ func (d *DB) loadReadState() *readState {
 // the new readState
 func (d *DB) updateReadStateLocked(checker func(*DB) error) {
 	s := &readState{
-		db:        d,
-		refcnt:    1,
-		current:   d.mu.versions.currentVersion(),
-		memtables: d.mu.mem.queue,
+		db:		d,
+		refcnt:		1,
+		current:	d.mu.versions.currentVersion(),
+		memtables:	d.mu.mem.queue,
 	}
 	s.current.Ref()
 	for _, mem := range s.memtables {

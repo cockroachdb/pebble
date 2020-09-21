@@ -4,9 +4,7 @@
 
 package private
 
-import (
-	"github.com/cockroachdb/pebble/internal/manifest"
-)
+import "github.com/cockroachdb/pebble/internal/manifest"
 
 // FlushExternalTable is a hook for linking files into L0 without assigning a
 // global sequence number, mimicking a flush. FlushExternalTable takes a

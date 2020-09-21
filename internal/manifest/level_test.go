@@ -13,8 +13,8 @@ import (
 
 func TestLevel(t *testing.T) {
 	testCases := []struct {
-		level    int
-		expected string
+		level		int
+		expected	string
 	}{
 		{0, "L0"},
 		{1, "L1"},
@@ -36,9 +36,9 @@ func TestLevel(t *testing.T) {
 
 func TestL0Sublevel(t *testing.T) {
 	testCases := []struct {
-		level    int
-		sublevel int
-		expected string
+		level		int
+		sublevel	int
+		expected	string
 	}{
 		{0, 0, "L0.0"},
 		{0, 1, "L0.1"},

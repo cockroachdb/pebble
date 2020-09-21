@@ -26,15 +26,15 @@ import (
 )
 
 const (
-	initialMemTableSize = 256 << 10 // 256 KB
+	initialMemTableSize	= 256 << 10	// 256 KB
 
 	// The max batch size is limited by the uint32 offsets stored in
 	// internal/batchskl.node, DeferredBatchOp, and flushableBatchEntry.
-	maxBatchSize = 4 << 30 // 4 GB
+	maxBatchSize	= 4 << 30	// 4 GB
 
 	// The max memtable size is limited by the uint32 offsets stored in
 	// internal/arenaskl.node, DeferredBatchOp, and flushableBatchEntry.
-	maxMemTableSize = 4 << 30 // 4 GB
+	maxMemTableSize	= 4 << 30	// 4 GB
 )
 
 // Open opens a DB whose files live in the given directory.
@@ -53,18 +53,18 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 
 	d := &DB{
-		cacheID:             opts.Cache.NewID(),
-		dirname:             dirname,
-		walDirname:          opts.WALDir,
-		opts:                opts,
-		cmp:                 opts.Comparer.Compare,
-		equal:               opts.Comparer.Equal,
-		merge:               opts.Merger.Merge,
-		split:               opts.Comparer.Split,
-		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
-		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
-		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
-		closedCh:            make(chan struct{}),
+		cacheID:		opts.Cache.NewID(),
+		dirname:		dirname,
+		walDirname:		opts.WALDir,
+		opts:			opts,
+		cmp:			opts.Comparer.Compare,
+		equal:			opts.Comparer.Equal,
+		merge:			opts.Merger.Merge,
+		split:			opts.Comparer.Split,
+		abbreviatedKey:		opts.Comparer.AbbreviatedKey,
+		largeBatchThreshold:	(opts.MemTableSize - int(memTableEmptySize)) / 2,
+		logRecycler:		logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
+		closedCh:		make(chan struct{}),
 	}
 
 	defer func() {
@@ -100,10 +100,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
-		logSeqNum:     &d.mu.versions.logSeqNum,
-		visibleSeqNum: &d.mu.versions.visibleSeqNum,
-		apply:         d.commitApply,
-		write:         d.commitWrite,
+		logSeqNum:	&d.mu.versions.logSeqNum,
+		visibleSeqNum:	&d.mu.versions.visibleSeqNum,
+		apply:		d.commitApply,
+		write:		d.commitWrite,
 	})
 	d.compactionLimiter = rate.NewLimiter(
 		rate.Limit(d.opts.private.minCompactionRate),
@@ -224,8 +224,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	// Replay any newer log files than the ones named in the manifest.
 	type fileNumAndName struct {
-		num  FileNum
-		name string
+		num	FileNum
+		name	string
 	}
 	var logFiles []fileNumAndName
 	for _, filename := range ls {
@@ -294,17 +294,17 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, err
 		}
 		d.opts.EventListener.WALCreated(WALCreateInfo{
-			JobID:   jobID,
-			Path:    newLogName,
-			FileNum: newLogNum,
+			JobID:		jobID,
+			Path:		newLogName,
+			FileNum:	newLogNum,
 		})
 		// This isn't strictly necessary as we don't use the log number for
 		// memtables being flushed, only for the next unflushed memtable.
 		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
 
 		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
-			BytesPerSync:    d.opts.BytesPerSync,
-			PreallocateSize: d.walPreallocateSize(),
+			BytesPerSync:		d.opts.BytesPerSync,
+			PreallocateSize:	d.walPreallocateSize(),
 		})
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum)
 		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
@@ -441,14 +441,14 @@ func (d *DB) replayWAL(
 	defer file.Close()
 
 	var (
-		b               Batch
-		buf             bytes.Buffer
-		mem             *memTable
-		entry           *flushableEntry
-		toFlush         flushableList
-		rr              = record.NewReader(file, logNum)
-		offset          int64 // byte offset in rr
-		lastFlushOffset int64
+		b		Batch
+		buf		bytes.Buffer
+		mem		*memTable
+		entry		*flushableEntry
+		toFlush		flushableList
+		rr		= record.NewReader(file, logNum)
+		offset		int64	// byte offset in rr
+		lastFlushOffset	int64
 	)
 
 	if d.opts.ReadOnly {

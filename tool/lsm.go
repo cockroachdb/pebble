@@ -22,68 +22,68 @@ import (
 //go:generate ./make_lsm_data.sh
 
 type lsmFileMetadata struct {
-	Size           uint64
-	Smallest       int // ID of smallest key
-	Largest        int // ID of largest key
-	SmallestSeqNum uint64
-	LargestSeqNum  uint64
+	Size		uint64
+	Smallest	int	// ID of smallest key
+	Largest		int	// ID of largest key
+	SmallestSeqNum	uint64
+	LargestSeqNum	uint64
 }
 
 type lsmVersionEdit struct {
 	// Reason for the edit: flushed, ingested, compacted, added.
-	Reason string
+	Reason	string
 	// Map from level to files added to the level.
-	Added map[int][]base.FileNum `json:",omitempty"`
+	Added	map[int][]base.FileNum	`json:",omitempty"`
 	// Map from level to files deleted from the level.
-	Deleted map[int][]base.FileNum `json:",omitempty"`
+	Deleted	map[int][]base.FileNum	`json:",omitempty"`
 	// L0 sublevels for any files with changed sublevels so far.
-	Sublevels map[base.FileNum]int `json:",omitempty"`
+	Sublevels	map[base.FileNum]int	`json:",omitempty"`
 }
 
 type lsmKey struct {
-	Pretty string
-	SeqNum uint64
-	Kind   int
+	Pretty	string
+	SeqNum	uint64
+	Kind	int
 }
 
 type lsmState struct {
-	Manifest string
-	Edits    []lsmVersionEdit                 `json:",omitempty"`
-	Files    map[base.FileNum]lsmFileMetadata `json:",omitempty"`
-	Keys     []lsmKey                         `json:",omitempty"`
+	Manifest	string
+	Edits		[]lsmVersionEdit			`json:",omitempty"`
+	Files		map[base.FileNum]lsmFileMetadata	`json:",omitempty"`
+	Keys		[]lsmKey				`json:",omitempty"`
 }
 
 type lsmT struct {
-	Root *cobra.Command
+	Root	*cobra.Command
 
 	// Configuration.
-	opts      *pebble.Options
-	comparers sstable.Comparers
+	opts		*pebble.Options
+	comparers	sstable.Comparers
 
-	fmtKey keyFormatter
-	embed  bool
-	pretty bool
+	fmtKey	keyFormatter
+	embed	bool
+	pretty	bool
 
-	cmp    *base.Comparer
-	state  lsmState
-	keyMap map[lsmKey]int
+	cmp	*base.Comparer
+	state	lsmState
+	keyMap	map[lsmKey]int
 }
 
 func newLSM(opts *pebble.Options, comparers sstable.Comparers) *lsmT {
 	l := &lsmT{
-		opts:      opts,
-		comparers: comparers,
+		opts:		opts,
+		comparers:	comparers,
 	}
 	l.fmtKey.mustSet("quoted")
 
 	l.Root = &cobra.Command{
-		Use:   "lsm <manifest>",
-		Short: "LSM visualization tool",
+		Use:	"lsm <manifest>",
+		Short:	"LSM visualization tool",
 		Long: `
 Visualize the evolution of an LSM from the version edits in a MANIFEST.
 `,
-		Args: cobra.ExactArgs(1),
-		Run:  l.runLSM,
+		Args:	cobra.ExactArgs(1),
+		Run:	l.runLSM,
 	}
 
 	l.Root.Flags().Var(&l.fmtKey, "key", "key formatter")
@@ -196,9 +196,9 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 		}
 		j := len(l.state.Keys)
 		l.state.Keys = append(l.state.Keys, lsmKey{
-			Pretty: fmt.Sprint(l.fmtKey.fn(k.UserKey)),
-			SeqNum: k.SeqNum(),
-			Kind:   int(k.Kind()),
+			Pretty:	fmt.Sprint(l.fmtKey.fn(k.UserKey)),
+			SeqNum:	k.SeqNum(),
+			Kind:	int(k.Kind()),
 		})
 		l.keyMap[lsmKey{string(k.UserKey), k.SeqNum(), int(k.Kind())}] = j
 	}
@@ -213,9 +213,9 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 			continue
 		}
 		edit := lsmVersionEdit{
-			Reason:  l.reason(ve),
-			Added:   make(map[int][]base.FileNum),
-			Deleted: make(map[int][]base.FileNum),
+			Reason:		l.reason(ve),
+			Added:		make(map[int][]base.FileNum),
+			Deleted:	make(map[int][]base.FileNum),
 		}
 		for df := range ve.DeletedFiles {
 			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
@@ -230,11 +230,11 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 			nf := &ve.NewFiles[i]
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
 				l.state.Files[nf.Meta.FileNum] = lsmFileMetadata{
-					Size:           nf.Meta.Size,
-					Smallest:       l.findKey(nf.Meta.Smallest),
-					Largest:        l.findKey(nf.Meta.Largest),
-					SmallestSeqNum: nf.Meta.SmallestSeqNum,
-					LargestSeqNum:  nf.Meta.LargestSeqNum,
+					Size:		nf.Meta.Size,
+					Smallest:	l.findKey(nf.Meta.Smallest),
+					Largest:	l.findKey(nf.Meta.Largest),
+					SmallestSeqNum:	nf.Meta.SmallestSeqNum,
+					LargestSeqNum:	nf.Meta.LargestSeqNum,
 				}
 			}
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)

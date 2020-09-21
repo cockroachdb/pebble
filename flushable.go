@@ -29,30 +29,30 @@ type flushable interface {
 type flushableEntry struct {
 	flushable
 	// Channel which is closed when the flushable has been flushed.
-	flushed chan struct{}
+	flushed	chan struct{}
 	// flushForced indicates whether a flush was forced on this memtable (either
 	// manual, or due to ingestion). Protected by DB.mu.
-	flushForced bool
+	flushForced	bool
 	// delayedFlushForced indicates whether a timer has been set to force a flush
 	// on this memtable at some point in the future. Protected by DB.mu
-	delayedFlushForced bool
+	delayedFlushForced	bool
 	// logNum corresponds to the WAL that contains the records present in the
 	// receiver.
-	logNum FileNum
+	logNum	FileNum
 	// logSize is the size in bytes of the associated WAL. Protected by DB.mu.
-	logSize uint64
+	logSize	uint64
 	// The current logSeqNum at the time the memtable was created. This is
 	// guaranteed to be less than or equal to any seqnum stored in the memtable.
-	logSeqNum uint64
+	logSeqNum	uint64
 	// readerRefs tracks the read references on the flushable. The two sources of
 	// reader references are DB.mu.mem.queue and readState.memtables. The memory
 	// reserved by the flushable in the cache is released when the reader refs
 	// drop to zero. If the flushable is a memTable, when the reader refs drops
 	// to zero, the writer refs will already be zero because the memtable will
 	// have been flushed and that only occurs once the writer refs drops to zero.
-	readerRefs int32
+	readerRefs	int32
 	// Closure to invoke to release memory accounting.
-	releaseMemAccounting func()
+	releaseMemAccounting	func()
 }
 
 func (e *flushableEntry) readerRef() {

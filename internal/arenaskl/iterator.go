@@ -25,8 +25,8 @@ import (
 )
 
 type splice struct {
-	prev *node
-	next *node
+	prev	*node
+	next	*node
 }
 
 func (s *splice) init(prev, next *node) {
@@ -38,11 +38,11 @@ func (s *splice) init(prev, next *node) {
 // to construct an iterator. The current state of the iterator can be cloned by
 // simply value copying the struct. All iterator methods are thread-safe.
 type Iterator struct {
-	list  *Skiplist
-	nd    *node
-	key   base.InternalKey
-	lower []byte
-	upper []byte
+	list	*Skiplist
+	nd	*node
+	key	base.InternalKey
+	lower	[]byte
+	upper	[]byte
 }
 
 // Iterator implements the base.InternalIterator interface.

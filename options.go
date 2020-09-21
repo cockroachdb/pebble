@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	cacheDefaultSize = 8 << 20 // 8 MB
+	cacheDefaultSize = 8 << 20	// 8 MB
 )
 
 // Compression exports the base.Compression type.
@@ -28,9 +28,9 @@ type Compression = sstable.Compression
 
 // Exported Compression constants.
 const (
-	DefaultCompression = sstable.DefaultCompression
-	NoCompression      = sstable.NoCompression
-	SnappyCompression  = sstable.SnappyCompression
+	DefaultCompression	= sstable.DefaultCompression
+	NoCompression		= sstable.NoCompression
+	SnappyCompression	= sstable.SnappyCompression
 )
 
 // FilterType exports the base.FilterType type.
@@ -62,19 +62,19 @@ type IterOptions struct {
 	// return during iteration. If the iterator is seeked or iterated past this
 	// boundary the iterator will return Valid()==false. Setting LowerBound
 	// effectively truncates the key space visible to the iterator.
-	LowerBound []byte
+	LowerBound	[]byte
 	// UpperBound specifies the largest key (exclusive) that the iterator will
 	// return during iteration. If the iterator is seeked or iterated past this
 	// boundary the iterator will return Valid()==false. Setting UpperBound
 	// effectively truncates the key space visible to the iterator.
-	UpperBound []byte
+	UpperBound	[]byte
 	// TableFilter can be used to filter the tables that are scanned during
 	// iteration based on the user properties. Return true to scan the table and
 	// false to skip scanning.
-	TableFilter func(userProps map[string]string) bool
+	TableFilter	func(userProps map[string]string) bool
 
 	// Internal options.
-	logger Logger
+	logger	Logger
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.
@@ -140,24 +140,24 @@ type LevelOptions struct {
 	// for delta encoding of keys.
 	//
 	// The default value is 16.
-	BlockRestartInterval int
+	BlockRestartInterval	int
 
 	// BlockSize is the target uncompressed size in bytes of each table block.
 	//
 	// The default value is 4096.
-	BlockSize int
+	BlockSize	int
 
 	// BlockSizeThreshold finishes a block if the block size is larger than the
 	// specified percentage of the target block size and adding the next entry
 	// would cause the block to be larger than the target block size.
 	//
 	// The default value is 90
-	BlockSizeThreshold int
+	BlockSizeThreshold	int
 
 	// Compression defines the per-block compression to use.
 	//
 	// The default value (DefaultCompression) uses snappy compression.
-	Compression Compression
+	Compression	Compression
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -166,7 +166,7 @@ type LevelOptions struct {
 	// package.
 	//
 	// The default value means to use no filter.
-	FilterPolicy FilterPolicy
+	FilterPolicy	FilterPolicy
 
 	// FilterType defines whether an existing filter policy is applied at a
 	// block-level or table-level. Block-level filters use less memory to create,
@@ -175,7 +175,7 @@ type LevelOptions struct {
 	// memory proportional to the number of keys in an sstable to create, but
 	// avoids the index lookup when determining if a key is present. Table-level
 	// filters should be preferred except under constrained memory situations.
-	FilterType FilterType
+	FilterType	FilterType
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
 	// block. When the index block size is larger than this target, two-level
@@ -184,10 +184,10 @@ type LevelOptions struct {
 	// indexes.
 	//
 	// The default value is the value of BlockSize.
-	IndexBlockSize int
+	IndexBlockSize	int
 
 	// The target file size for the level.
-	TargetFileSize int64
+	TargetFileSize	int64
 }
 
 // EnsureDefaults ensures that the default values for all of the options have
@@ -213,7 +213,7 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 		o.IndexBlockSize = o.BlockSize
 	}
 	if o.TargetFileSize <= 0 {
-		o.TargetFileSize = 2 << 20 // 2 MB
+		o.TargetFileSize = 2 << 20	// 2 MB
 	}
 	return o
 }
@@ -228,58 +228,58 @@ type Options struct {
 	// large chunk of dirty filesystem buffers.
 	//
 	// The default value is 512KB.
-	BytesPerSync int
+	BytesPerSync	int
 
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default cache size is 8 MB.
-	Cache *cache.Cache
+	Cache	*cache.Cache
 
 	// Cleaner cleans obsolete files.
 	//
 	// The default cleaner uses the DeleteCleaner.
-	Cleaner Cleaner
+	Cleaner	Cleaner
 
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
 	//
 	// The default value uses the same ordering as bytes.Compare.
-	Comparer *Comparer
+	Comparer	*Comparer
 
 	// DebugCheck is invoked, if non-nil, whenever a new version is being
 	// installed. Typically, this is set to pebble.DebugCheckLevels in tests
 	// or tools only, to check invariants over all the data in the database.
-	DebugCheck func(*DB) error
+	DebugCheck	func(*DB) error
 
 	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
 	// crash recovery, but can improve performance if crash recovery is not
 	// needed (e.g. when only temporary state is being stored in the database).
 	//
 	// TODO(peter): untested
-	DisableWAL bool
+	DisableWAL	bool
 
 	// ErrorIfExists is whether it is an error if the database already exists.
 	//
 	// The default value is false.
-	ErrorIfExists bool
+	ErrorIfExists	bool
 
 	// ErrorIfNotExists is whether it is an error if the database does not
 	// already exist.
 	//
 	// The default value is false which will cause a database to be created if it
 	// does not already exist.
-	ErrorIfNotExists bool
+	ErrorIfNotExists	bool
 
 	// EventListener provides hooks to listening to significant DB events such as
 	// flushes, compactions, and table deletion.
-	EventListener EventListener
+	EventListener	EventListener
 
 	// Experimental contains experimental options which are off by default.
 	// These options are temporary and will eventually either be deleted, moved
 	// out of the experimental group, or made the non-adjustable default. These
 	// options may change at any time, so do not rely on them.
-	Experimental struct {
+	Experimental	struct {
 		// FlushSplitBytes denotes the target number of bytes per sublevel in
 		// each flush split interval (i.e. range between two flush split keys)
 		// in L0 sstables. When set to zero, only a single sstable is generated
@@ -292,12 +292,12 @@ type Options struct {
 		// tables are compacted to lower levels.
 		//
 		// TODO(bilal): Experiment with this option to pick a good value.
-		FlushSplitBytes int64
+		FlushSplitBytes	int64
 
 		// The threshold of L0 read-amplification at which compaction concurrency
 		// is enabled. Every multiple of this value enables another concurrent
 		// compaction up to MaxConcurrentCompactions.
-		L0CompactionConcurrency int
+		L0CompactionConcurrency	int
 
 		// L0SublevelCompactions enables the use of L0 sublevel-based compaction
 		// picking logic. Defaults to false for now. This logic will become
@@ -306,61 +306,61 @@ type Options struct {
 		// When true, this option also changes the interpretation of
 		// L0CompactionThreshold and L0StopWritesThreshold to refer to L0
 		// read amplification as opposed to the count of L0 files.
-		L0SublevelCompactions bool
+		L0SublevelCompactions	bool
 
 		// DeleteRangeFlushDelay configures how long the database should wait
 		// before forcing a flush of a memtable that contains a range
 		// deletion. Disk space cannot be reclaimed until the range deletion
 		// is flushed. No automatic flush occurs if zero.
-		DeleteRangeFlushDelay time.Duration
+		DeleteRangeFlushDelay	time.Duration
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
 	// debugging tools which may be used on multiple databases configured with
 	// different filter policies. It is not necessary to populate this filters
 	// map during normal usage of a DB.
-	Filters map[string]FilterPolicy
+	Filters	map[string]FilterPolicy
 
 	// FS provides the interface for persistent file storage.
 	//
 	// The default value uses the underlying operating system's file system.
-	FS vfs.FS
+	FS	vfs.FS
 
 	// The amount of L0 read-amplification necessary to trigger an L0 compaction.
-	L0CompactionThreshold int
+	L0CompactionThreshold	int
 
 	// Hard limit on L0 read-amplification. Writes are stopped when this
 	// threshold is reached. If Experimental.L0SublevelCompactions is enabled
 	// this threshold is measured against the number of L0 sublevels. Otherwise
 	// it is measured against the number of files in L0.
-	L0StopWritesThreshold int
+	L0StopWritesThreshold	int
 
 	// The maximum number of bytes for LBase. The base level is the level which
 	// L0 is compacted into. The base level is determined dynamically based on
 	// the existing data in the LSM. The maximum number of bytes for other levels
 	// is computed dynamically based on the base level's maximum size. When the
 	// maximum number of bytes for a level is exceeded, compaction is requested.
-	LBaseMaxBytes int64
+	LBaseMaxBytes	int64
 
 	// Per-level options. Options for at least one level must be specified. The
 	// options for the last level are used for all subsequent levels.
-	Levels []LevelOptions
+	Levels	[]LevelOptions
 
 	// Logger used to write log messages.
 	//
 	// The default logger uses the Go standard library log package.
-	Logger Logger
+	Logger	Logger
 
 	// MaxManifestFileSize is the maximum size the MANIFEST file is allowed to
 	// become. When the MANIFEST exceeds this size it is rolled over and a new
 	// MANIFEST is created.
-	MaxManifestFileSize int64
+	MaxManifestFileSize	int64
 
 	// MaxOpenFiles is a soft limit on the number of open files that can be
 	// used by the DB.
 	//
 	// The default value is 1000.
-	MaxOpenFiles int
+	MaxOpenFiles	int
 
 	// The size of a MemTable in steady state. The actual MemTable size starts at
 	// min(256KB, MemTableSize) and doubles for each subsequent MemTable up to
@@ -370,40 +370,40 @@ type Options struct {
 	// writing the contents of the old one in the
 	// background. MemTableStopWritesThreshold places a hard limit on the size of
 	// the queued MemTables.
-	MemTableSize int
+	MemTableSize	int
 
 	// Hard limit on the size of queued of MemTables. Writes are stopped when the
 	// sum of the queued memtable sizes exceeds
 	// MemTableStopWritesThreshold*MemTableSize. This value should be at least 2
 	// or writes will stop whenever a MemTable is being flushed.
-	MemTableStopWritesThreshold int
+	MemTableStopWritesThreshold	int
 
 	// Merger defines the associative merge operation to use for merging values
 	// written with {Batch,DB}.Merge.
 	//
 	// The default merger concatenates values.
-	Merger *Merger
+	Merger	*Merger
 
 	// MaxConcurrentCompactions specifies the maximum number of concurrent
 	// compactions. The default is 1. Concurrent compactions are only performed
 	// when L0 read-amplification passes the L0CompactionConcurrency threshold.
-	MaxConcurrentCompactions int
+	MaxConcurrentCompactions	int
 
 	// ReadOnly indicates that the DB should be opened in read-only mode. Writes
 	// to the DB will return an error, background compactions are disabled, and
 	// the flush that normally occurs after replaying the WAL at startup is
 	// disabled.
-	ReadOnly bool
+	ReadOnly	bool
 
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.
-	TablePropertyCollectors []func() TablePropertyCollector
+	TablePropertyCollectors	[]func() TablePropertyCollector
 
 	// WALDir specifies the directory to store write-ahead logs (WALs) in. If
 	// empty (the default), WALs will be stored in the same directory as sstables
 	// (i.e. the directory passed to pebble.Open).
-	WALDir string
+	WALDir	string
 
 	// WALMinSyncInterval is the minimum duration between syncs of the WAL. If
 	// WAL syncs are requested faster than this interval, they will be
@@ -415,30 +415,30 @@ type Options struct {
 	//
 	// TODO(peter): rather than a closure, should there be another mechanism for
 	// changing options dynamically?
-	WALMinSyncInterval func() time.Duration
+	WALMinSyncInterval	func() time.Duration
 
 	// private options are only used by internal tests.
-	private struct {
+	private	struct {
 		// TODO(peter): A private option to enable flush/compaction pacing. Only used
 		// by tests. Compaction/flush pacing is disabled until we fix the impact on
 		// throughput.
-		enablePacing bool
+		enablePacing	bool
 
 		// A private option to disable stats collection.
-		disableTableStats bool
+		disableTableStats	bool
 
 		// A private option disable automatic compactions.
-		disableAutomaticCompactions bool
+		disableAutomaticCompactions	bool
 
 		// minCompactionRate sets the minimum rate at which compactions occur. The
 		// default is 4 MB/s. Currently disabled as this option has no effect while
 		// private.enablePacing is false.
-		minCompactionRate int
+		minCompactionRate	int
 
 		// minFlushRate sets the minimum rate at which the MemTables are flushed. The
 		// default is 1 MB/s. Currently disabled as this option has no effect while
 		// private.enablePacing is false.
-		minFlushRate int
+		minFlushRate	int
 	}
 }
 
@@ -456,7 +456,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o = &Options{}
 	}
 	if o.BytesPerSync <= 0 {
-		o.BytesPerSync = 512 << 10 // 512 KB
+		o.BytesPerSync = 512 << 10	// 512 KB
 	}
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}
@@ -474,7 +474,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.L0StopWritesThreshold = 12
 	}
 	if o.LBaseMaxBytes <= 0 {
-		o.LBaseMaxBytes = 64 << 20 // 64 MB
+		o.LBaseMaxBytes = 64 << 20	// 64 MB
 	}
 	if o.Levels == nil {
 		o.Levels = make([]LevelOptions, 1)
@@ -497,7 +497,7 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	o.EventListener.EnsureDefaults(o.Logger)
 	if o.MaxManifestFileSize == 0 {
-		o.MaxManifestFileSize = 128 << 20 // 128 MB
+		o.MaxManifestFileSize = 128 << 20	// 128 MB
 	}
 	if o.MaxOpenFiles == 0 {
 		o.MaxOpenFiles = 1000
@@ -512,10 +512,10 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Merger = DefaultMerger
 	}
 	if o.private.minCompactionRate == 0 {
-		o.private.minCompactionRate = 4 << 20 // 4 MB/s
+		o.private.minCompactionRate = 4 << 20	// 4 MB/s
 	}
 	if o.private.minFlushRate == 0 {
-		o.private.minFlushRate = 1 << 20 // 1 MB/s
+		o.private.minFlushRate = 1 << 20	// 1 MB/s
 	}
 	if o.MaxConcurrentCompactions <= 0 {
 		o.MaxConcurrentCompactions = 1
@@ -524,8 +524,8 @@ func (o *Options) EnsureDefaults() *Options {
 		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
 			func(name string, duration time.Duration) {
 				o.EventListener.DiskSlow(DiskSlowInfo{
-					Path:     name,
-					Duration: duration,
+					Path:		name,
+					Duration:	duration,
 				})
 			})
 	}
@@ -690,12 +690,12 @@ func parseOptions(s string, fn func(section, key, value string) error) error {
 // ParseHooks contains callbacks to create options fields which can have
 // user-defined implementations.
 type ParseHooks struct {
-	NewCache        func(size int64) *Cache
-	NewCleaner      func(name string) (Cleaner, error)
-	NewComparer     func(name string) (*Comparer, error)
-	NewFilterPolicy func(name string) (FilterPolicy, error)
-	NewMerger       func(name string) (*Merger, error)
-	SkipUnknown     func(name string) bool
+	NewCache	func(size int64) *Cache
+	NewCleaner	func(name string) (Cleaner, error)
+	NewComparer	func(name string) (*Comparer, error)
+	NewFilterPolicy	func(name string) (FilterPolicy, error)
+	NewMerger	func(name string) (*Merger, error)
+	SkipUnknown	func(name string) bool
 }
 
 // Parse parses the options from the specified string. Note that certain

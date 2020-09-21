@@ -69,8 +69,8 @@ func TestRangeDel(t *testing.T) {
 
 		case "iter":
 			snap := Snapshot{
-				db:     d,
-				seqNum: InternalKeySeqNumMax,
+				db:	d,
+				seqNum:	InternalKeySeqNumMax,
 			}
 
 			for _, arg := range td.CmdArgs {
@@ -159,13 +159,13 @@ func TestDeleteRangeFlushDelay(t *testing.T) {
 func TestRangeDelCompactionTruncation(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:	vfs.NewMem(),
 		Levels: []LevelOptions{
 			{TargetFileSize: 100},
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
-		DebugCheck: DebugCheckLevels,
+		DebugCheck:	DebugCheckLevels,
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -290,13 +290,13 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 func TestRangeDelCompactionTruncation2(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:	vfs.NewMem(),
 		Levels: []LevelOptions{
 			{TargetFileSize: 100},
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
-		DebugCheck: DebugCheckLevels,
+		DebugCheck:	DebugCheckLevels,
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -351,14 +351,14 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 func TestRangeDelCompactionTruncation3(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("tmp", &Options{
-		Cleaner: ArchiveCleaner{},
-		FS:      vfs.NewMem(),
+		Cleaner:	ArchiveCleaner{},
+		FS:		vfs.NewMem(),
 		Levels: []LevelOptions{
 			{TargetFileSize: 100},
 			{TargetFileSize: 100},
 			{TargetFileSize: 1},
 		},
-		DebugCheck: DebugCheckLevels,
+		DebugCheck:	DebugCheckLevels,
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -454,13 +454,13 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 			for _, deleted := range []int{entries, entries - 1} {
 				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
 					mem := vfs.NewMem()
-					cache := NewCache(128 << 20) // 128 MB
+					cache := NewCache(128 << 20)	// 128 MB
 					defer cache.Unref()
 
 					d, err := Open("", &Options{
-						Cache:      cache,
-						FS:         mem,
-						DebugCheck: DebugCheckLevels,
+						Cache:		cache,
+						FS:		mem,
+						DebugCheck:	DebugCheckLevels,
 					})
 					if err != nil {
 						b.Fatal(err)
@@ -478,7 +478,7 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 						b.Fatal(err)
 					}
 					w := sstable.NewWriter(f, sstable.WriterOptions{
-						BlockSize: 32 << 10, // 32 KB
+						BlockSize: 32 << 10,	// 32 KB
 					})
 					for i := 0; i < entries; i++ {
 						key := base.MakeInternalKey(makeKey(i), 0, InternalKeyKindSet)
