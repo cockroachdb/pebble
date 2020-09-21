@@ -435,11 +435,11 @@ func TestTableCacheClockPro(t *testing.T) {
 			tables[key] = true
 		}
 
-		oldHits := atomic.LoadInt64(&cache.hits)
+		oldHits := atomic.LoadInt64(&cache.atomic.hits)
 		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)})
 		cache.unrefValue(v)
 
-		hit := atomic.LoadInt64(&cache.hits) != oldHits
+		hit := atomic.LoadInt64(&cache.atomic.hits) != oldHits
 		wantHit := fields[1][0] == 'h'
 		if hit != wantHit {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)

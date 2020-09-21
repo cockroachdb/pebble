@@ -66,6 +66,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 		closedCh:            make(chan struct{}),
 	}
+	d.mu.versions = &versionSet{}
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
@@ -100,8 +101,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
-		logSeqNum:     &d.mu.versions.logSeqNum,
-		visibleSeqNum: &d.mu.versions.visibleSeqNum,
+		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
+		visibleSeqNum: &d.mu.versions.atomic.visibleSeqNum,
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
@@ -123,7 +124,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.mu.snapshots.init()
 	// logSeqNum is the next sequence number that will be assigned. Start
 	// assigning sequence numbers from 1 to match rocksdb.
-	d.mu.versions.logSeqNum = 1
+	d.mu.versions.atomic.logSeqNum = 1
 
 	d.timeNow = time.Now
 
@@ -206,7 +207,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// sequence number of the first batch that will be inserted.
 	if !d.opts.ReadOnly {
 		var entry *flushableEntry
-		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.logSeqNum)
+		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.atomic.logSeqNum)
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
@@ -275,11 +276,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, err
 		}
 		d.mu.versions.markFileNumUsed(lf.num)
-		if d.mu.versions.logSeqNum < maxSeqNum {
-			d.mu.versions.logSeqNum = maxSeqNum
+		if d.mu.versions.atomic.logSeqNum < maxSeqNum {
+			d.mu.versions.atomic.logSeqNum = maxSeqNum
 		}
 	}
-	d.mu.versions.visibleSeqNum = d.mu.versions.logSeqNum
+	d.mu.versions.atomic.visibleSeqNum = d.mu.versions.atomic.logSeqNum
 
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.
@@ -563,7 +564,7 @@ func (d *DB) replayWAL(
 	// mem is nil here.
 	if !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, toFlush, &d.bytesFlushed)
+			1 /* base level */, toFlush, &d.atomic.bytesFlushed)
 		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
 		if err != nil {
 			return 0, err

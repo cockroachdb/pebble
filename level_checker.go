@@ -565,7 +565,7 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
-	seqNum := atomic.LoadUint64(&d.mu.versions.visibleSeqNum)
+	seqNum := atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
 
 	checkConfig := &checkConfig{
 		logger:    d.opts.Logger,
