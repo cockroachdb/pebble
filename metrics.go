@@ -187,6 +187,14 @@ type Metrics struct {
 	}
 }
 
+func (m *Metrics) levelSizes() [numLevels]int64 {
+	var sizes [numLevels]int64
+	for i := 0; i < len(sizes); i++ {
+		sizes[i] = m.Levels[i].Size
+	}
+	return sizes
+}
+
 // ReadAmp returns the current read amplification of the database.
 // It's computed as the number of sublevels in L0 + the number of non-empty
 // levels below L0.

@@ -126,7 +126,7 @@ func (vs *versionSet) create(
 	vs.init(dirname, opts, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
 
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
@@ -280,13 +280,12 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 	newVersion.L0Sublevels.InitCompactingFileInfo()
 	vs.append(newVersion)
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
-
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
 		l.NumFiles = int64(newVersion.Levels[i].Slice().Len())
 		l.Size = int64(newVersion.Levels[i].Slice().SizeSum())
 	}
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
 	return nil
 }
 
@@ -486,10 +485,6 @@ func (vs *versionSet) logAndApply(
 		}
 		vs.manifestFileNum = newManifestFileNum
 	}
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgressCompactions())
-	if !vs.dynamicBaseLevel {
-		vs.picker.forceBaseLevel1()
-	}
 
 	for level, update := range metrics {
 		vs.metrics.Levels[level].Add(update)
@@ -510,6 +505,12 @@ func (vs *versionSet) logAndApply(
 		}
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Levels))
+
+	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgressCompactions(), vs.metrics.levelSizes())
+	if !vs.dynamicBaseLevel {
+		vs.picker.forceBaseLevel1()
+	}
+
 	return nil
 }
 
