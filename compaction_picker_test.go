@@ -20,17 +20,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
+func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, string) {
+	var sizes [numLevels]int64
 	opts := &Options{}
 	opts.EnsureDefaults()
 
 	if len(d.CmdArgs) != 1 {
-		return nil, nil, fmt.Sprintf("%s expects 1 argument", d.Cmd)
+		return nil, nil, sizes, fmt.Sprintf("%s expects 1 argument", d.Cmd)
 	}
 	var err error
 	opts.LBaseMaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
 	if err != nil {
-		return nil, nil, err.Error()
+		return nil, nil, sizes, err.Error()
 	}
 
 	var files [numLevels][]*fileMetadata
@@ -38,28 +39,28 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 		for _, data := range strings.Split(d.Input, "\n") {
 			parts := strings.Split(data, ":")
 			if len(parts) != 2 {
-				return nil, nil, fmt.Sprintf("malformed test:\n%s", d.Input)
+				return nil, nil, sizes, fmt.Sprintf("malformed test:\n%s", d.Input)
 			}
 			level, err := strconv.Atoi(parts[0])
 			if err != nil {
-				return nil, nil, err.Error()
+				return nil, nil, sizes, err.Error()
 			}
 			if files[level] != nil {
-				return nil, nil, fmt.Sprintf("level %d already filled", level)
+				return nil, nil, sizes, fmt.Sprintf("level %d already filled", level)
 			}
 			size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
 			if err != nil {
-				return nil, nil, err.Error()
+				return nil, nil, sizes, err.Error()
 			}
-			for i := uint64(1); i <= size; i++ {
+			for i := uint64(1); sizes[level] < int64(size); i++ {
 				key := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
-				files[level] = append(files[level], &fileMetadata{
+				m := &fileMetadata{
 					Smallest:       key,
 					Largest:        key,
 					SmallestSeqNum: key.SeqNum(),
 					LargestSeqNum:  key.SeqNum(),
 					Size:           1,
-				})
+				}
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
 					// file in order to avoid massive blow-up in the number of files in
@@ -68,15 +69,16 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, string) {
 					// TODO(peter): There is tension between the testing in
 					// TestCompactionPickerLevelMaxBytes and
 					// TestCompactionPickerTargetLevel. Clean this up somehow.
-					files[level][len(files[level])-1].Size = size
-					break
+					m.Size = size
 				}
+				files[level] = append(files[level], m)
+				sizes[level] += int64(m.Size)
 			}
 		}
 	}
 
 	vers := newVersion(opts, files)
-	return vers, opts, ""
+	return vers, opts, sizes, ""
 }
 
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
@@ -84,12 +86,12 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, errMsg := loadVersion(d)
+				vers, opts, sizes, errMsg := loadVersion(d)
 				if errMsg != "" {
 					return errMsg
 				}
 
-				p, ok := newCompactionPicker(vers, opts, nil).(*compactionPickerByScore)
+				p, ok := newCompactionPicker(vers, opts, nil, sizes).(*compactionPickerByScore)
 				require.True(t, ok)
 				var buf bytes.Buffer
 				for level := p.getBaseLevel(); level < numLevels; level++ {
@@ -106,6 +108,7 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 func TestCompactionPickerTargetLevel(t *testing.T) {
 	var vers *version
 	var opts *Options
+	var sizes [numLevels]int64
 	var pickerByScore *compactionPickerByScore
 
 	parseInProgress := func(vals []string) ([]compactionInfo, error) {
@@ -146,7 +149,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 			switch d.Cmd {
 			case "init":
 				var errMsg string
-				vers, opts, errMsg = loadVersion(d)
+				vers, opts, sizes, errMsg = loadVersion(d)
 				if errMsg != "" {
 					return errMsg
 				}
@@ -167,7 +170,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				p := newCompactionPicker(vers, opts, inProgress)
+				p := newCompactionPicker(vers, opts, inProgress, sizes)
 				var ok bool
 				pickerByScore, ok = p.(*compactionPickerByScore)
 				require.True(t, ok)
@@ -313,13 +316,13 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, errMsg := loadVersion(d)
+				vers, opts, sizes, errMsg := loadVersion(d)
 				if errMsg != "" {
 					return errMsg
 				}
 				opts.MemTableSize = 1000
 
-				p := newCompactionPicker(vers, opts, nil)
+				p := newCompactionPicker(vers, opts, nil, sizes)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:
@@ -511,8 +514,10 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 			vs.picker = picker
 			inProgressCompactions := []compactionInfo{}
+			var sizes [numLevels]int64
 			for level, files := range version.Levels {
 				files.Slice().Each(func(f *fileMetadata) {
+					sizes[level] += int64(f.Size)
 					if f.Compacting {
 						c := compactionInfo{
 							inputs: []compactionLevel{
@@ -528,7 +533,7 @@ func TestCompactionPickerL0(t *testing.T) {
 					}
 				})
 			}
-			picker.initLevelMaxBytes(inProgressCompactions)
+			picker.initLevelMaxBytes(inProgressCompactions, sizes)
 			return version.DebugString(base.DefaultFormatter)
 		case "pick-auto":
 			for _, arg := range td.CmdArgs {
