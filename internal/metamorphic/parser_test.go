@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/kr/pretty"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParser(t *testing.T) {
@@ -41,4 +42,21 @@ func TestParserRandom(t *testing.T) {
 	if diff := pretty.Diff(ops, parsedOps); diff != nil {
 		t.Fatalf("%s\n%s", strings.Join(diff, "\n"), src)
 	}
+}
+
+func TestParserNilBounds(t *testing.T) {
+	formatted := formatOps([]op{
+		&newIterOp{
+			readerID: makeObjID(dbTag, 0),
+			iterID:   makeObjID(iterTag, 1),
+			lower:    nil,
+			upper:    nil,
+		},
+	})
+	parsedOps, err := parse([]byte(formatted))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(parsedOps))
+	v := parsedOps[0].(*newIterOp)
+	require.Nil(t, v.lower)
+	require.Nil(t, v.upper)
 }
