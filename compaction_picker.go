@@ -878,17 +878,35 @@ func (p *compactionPickerByScore) pickFile(level, outputLevel int) (manifest.Lev
 // for a forced compaction (identified by FileMetadata.MarkedForCompaction).
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompaction) {
 	// Compaction concurrency is controlled by L0 read-amp. We allow one
-	// additional compaction per L0CompactionConcurrency sublevels. Compaction
-	// concurrency is tied to L0 sublevels as that signal is independent of the
-	// database size.
-	if n := len(env.inProgressCompactions); n > 0 {
+	// additional compaction per L0CompactionConcurrency sublevels, as well as
+	// one additional compaction per CompactionDebtConcurrency bytes of
+	// compaction debt. Compaction concurrency is tied to L0 sublevels as that
+	// signal is independent of the database size. We tack on the compaction
+	// debt as a second signal to prevent compaction concurrency from dropping
+	// significantly right after a base compaction finishes, and before those
+	// bytes have been compacted further down the LSM.
+	//
+	// Ignore flushes when counting the number of concurrent compactions.
+	compactionCount := len(env.inProgressCompactions)
+	for _, c := range env.inProgressCompactions {
+		if c.inputs[0].level == -1 {
+			compactionCount--
+			if compactionCount <= 0 {
+				break
+			}
+		}
+	}
+	if compactionCount > 0 {
 		var l0ReadAmp int
 		if p.opts.Experimental.L0SublevelCompactions {
 			l0ReadAmp = p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
 		} else {
 			l0ReadAmp = p.vers.Levels[0].Slice().Len()
 		}
-		if l0ReadAmp < n*p.opts.Experimental.L0CompactionConcurrency {
+		compactionDebt := int(p.estimatedCompactionDebt(0))
+		ccSignal1 := compactionCount*p.opts.Experimental.L0CompactionConcurrency
+		ccSignal2 := compactionCount*p.opts.Experimental.CompactionDebtConcurrency
+		if l0ReadAmp < ccSignal1 && compactionDebt < ccSignal2 {
 			return nil
 		}
 	}
