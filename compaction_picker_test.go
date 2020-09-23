@@ -829,6 +829,16 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
+				case "l0_compaction_concurrency":
+					opts.Experimental.L0CompactionConcurrency, err = strconv.Atoi(arg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+				case "compaction_debt_concurrency":
+					opts.Experimental.CompactionDebtConcurrency, err = strconv.Atoi(arg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
 				}
 			}
 

@@ -296,9 +296,18 @@ type Options struct {
 		FlushSplitBytes int64
 
 		// The threshold of L0 read-amplification at which compaction concurrency
-		// is enabled. Every multiple of this value enables another concurrent
+		// is enabled (if CompactionDebtConcurrency was not already exceeded).
+		// Every multiple of this value enables another concurrent
 		// compaction up to MaxConcurrentCompactions.
 		L0CompactionConcurrency int
+
+		// CompactionDebtConcurrency controls the threshold of compaction debt
+		// at which additional compaction concurrency slots are added. For every
+		// multiple of this value in compaction debt bytes, an additional
+		// concurrent compaction is added. This works "on top" of
+		// L0CompactionConcurrency, so the higher of the count of compaction
+		// concurrency slots as determined by the two options is chosen.
+		CompactionDebtConcurrency int
 
 		// L0SublevelCompactions enables the use of L0 sublevel-based compaction
 		// picking logic. Defaults to false for now. This logic will become
@@ -478,6 +487,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Experimental.L0CompactionConcurrency <= 0 {
 		o.Experimental.L0CompactionConcurrency = 10
+	}
+	if o.Experimental.CompactionDebtConcurrency <= 0 {
+		o.Experimental.CompactionDebtConcurrency = 1 << 30 // 1 GB
 	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
