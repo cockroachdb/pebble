@@ -250,7 +250,11 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			if err != nil {
 				panic(err)
 			}
-			*t = []byte(s)
+			if len(s) == 0 {
+				*t = nil
+			} else {
+				*t = []byte(s)
+			}
 
 		case *objID:
 			pos, lit := p.scanToken(token.IDENT)
